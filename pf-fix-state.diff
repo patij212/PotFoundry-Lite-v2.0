@@ -76,42 +76,4 @@ index 1111111..2222222 100644
 +        "expn":      1.1,
 +    })
 +    reset_style_defaults(style)
-diff --git a/app.py b/app.py
-index 1111111..2222222 100644
---- a/app.py
-+++ b/app.py
-@@ -1,20 +1,26 @@
- from __future__ import annotations
- from dataclasses import asdict
- from pathlib import Path
- import json
- import tempfile
- import numpy as np
- import yaml
- import streamlit as st
-+from pfui.state import apply_pending_updates, queue_update, widget_key, reset_style_defaults, reset_all_defaults
- 
- from potfoundry.geometry import (
-     MeshQuality, PotDefaults, STYLES, build_pot_mesh, write_ascii_stl,
-     r_base_out  # for preview sampling
- )
- 
-+# IMPORTANT: apply queued state changes *before* any widgets are created
-+apply_pending_updates()
-+
-@@
--    # somewhere above your widgets, you likely set defaults or handle query/preset values
--    # keep doing that, but do NOT write directly to st.session_state for widget keys after widgets exist
-+    # keep any other defaults/preset handling, but do not write directly to st.session_state
-+    # after widgets exist in this run.
- 
-diff --git a/app.py b/app.py
-index 3333333..4444444 100644
---- a/app.py
-+++ b/app.py
-@@ -100,7 +100,10 @@
--    st.session_state[widget_key(style_name, k)] = v
-+    # Defer widget value changes to next run to avoid "cannot be modified" errors:
-+    queue_update({widget_key(style_name, k): v})
-+    st.rerun()
-+
+
