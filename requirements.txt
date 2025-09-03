@@ -1,0 +1,7 @@
+PyOpenGL
+PyYAML
+matplotlib
+numpy
+pyqtgraph>=0.13.4
+streamlit
+pydantic>=2
