@@ -17,15 +17,17 @@ from pfui.imports import (
 )
 from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict, render_preset_manager
 from pfui.schemas import STYLE_SCHEMAS
-from pfui.state import reset_all_defaults, reset_style_defaults, widget_key
+from pfui.state import apply_pending_updates, queue_update, widget_key, reset_style_defaults, reset_all_defaults
 from pfui.controls import style_controls, adv_shape_controls, twist_controls
 from pfui.preview import make_preview_arrays, render_preview, render_profile
-from pfui.health import _design_health, _health_badge, _design_health
+from pfui.health import _design_health, _health_badge
 from pfui.exporters import export_stl_bytes
 from pfui.yaml_tools import dump_recipe_yaml
 from pfui.batch_tab import render_batch_tab
 from pfui.units import units_selector, unit_number_input, unit_slider, get_units
 from pfui.projects import render_project_io
+
+apply_pending_updates()
 
 
 APP_VERSION = "2.1.0-evo"
@@ -104,7 +106,8 @@ with _tab1:
                 for i, p in enumerate(pdefs.keys()):
                     if cols[i % len(cols)].button(p, key=f"preset_{style_name}_{p}"):
                         for k, v in pdefs[p].items():
-                            st.session_state[widget_key(style_name, k)] = v
+                            queue_update({widget_key(style_name, k): v})
+                            st.rerun()
                         st.rerun()
                 if st.button("Reset style to defaults"):
                     reset_style_defaults(style_name); st.rerun()
@@ -141,7 +144,8 @@ with _tab1:
                     data_obj = json.loads(up.read().decode("utf-8"))
                     if isinstance(data_obj, dict):
                         for k, v in data_obj.items():
-                            st.session_state[widget_key(style_name, k)] = v
+                            queue_update({widget_key(style_name, k): v})
+                            st.rerun()
                         st.success("Preset loaded into controls."); st.rerun()
                 except Exception as e:
                     st.error(f"Failed to load JSON: {e}")
@@ -150,33 +154,57 @@ with _tab1:
         if st.button("Reset all controls"):
             reset_all_defaults(style_name); st.rerun()
 
-        # Snapshots in sidebar to declutter main
-        with st.expander("Snapshots (compare)"):
-            snaps: List[Dict[str, Any]] = st.session_state.get("_snaps", [])
-            sc1, sc2, sc3 = st.columns([1, 1, 1.2])
-            snap_name = sc1.text_input("Name", value=f"{style_name}_H{int(H)}")
-            if sc2.button("Capture"):
-                snaps.append({"name": snap_name, "png": None, "style": style_name,
-                              "params": {"H": H, "top_od": top_od, "bottom_od": bottom_od, "t_wall": t_wall,
-                                         "t_bottom": t_bottom, "r_drain": r_drain, "expn": expn, "opts": dict(ui_opts)}})
-                st.session_state["_snaps"] = snaps[-6:]; st.experimental_rerun()
-            if snaps:
-                for i, s in enumerate(snaps):
-                    st.write(f"**{i+1}. {s['name']}**")
-                    cc1, cc2 = st.columns([1, 1])
-                    if cc1.button("Apply", key=f"apply_{i}"):
-                        st.session_state.update({"H": s["params"]["H"], "top_od": s["params"]["top_od"], "bottom_od": s["params"]["bottom_od"],
-                                                 "t_wall": s["params"]["t_wall"], "t_bottom": s["params"]["t_bottom"], "r_drain": s["params"]["r_drain"],
-                                                 "expn": s["params"]["expn"], "style": s["style"]})
-                        for k, v in s["params"]["opts"].items():
-                            st.session_state[widget_key(s["style"], k)] = v
-                        st.experimental_rerun()
-                    if cc2.button("Delete", key=f"del_{i}"):
-                        del snaps[i]; st.session_state["_snaps"] = snaps; st.experimental_rerun()
+# Snapshots in sidebar to declutter main
+with st.expander("Snapshots (compare)"):
+    snaps: List[Dict[str, Any]] = st.session_state.get("_snaps", [])
+    sc1, sc2, sc3 = st.columns([1, 1, 1.2])
+    snap_name = sc1.text_input("Name", value=f"{style_name}_H{int(H)}")
+
+    if sc2.button("Capture"):
+        new_snaps = snaps + [{
+            "name": snap_name,
+            "png": None,
+            "style": style_name,
+            "params": {
+                "H": H, "top_od": top_od, "bottom_od": bottom_od, "t_wall": t_wall,
+                "t_bottom": t_bottom, "r_drain": r_drain, "expn": expn, "opts": dict(ui_opts)
+            }
+        }]
+        # queue state change, then rerun so widgets pick it up cleanly
+        queue_update({"_snaps": new_snaps[-6:]})
+        st.rerun()
+
+    if snaps:
+        for i, s in enumerate(snaps):
+            st.write(f"**{i+1}. {s['name']}**")
+            cc1, cc2 = st.columns([1, 1])
+
+            if cc1.button("Apply", key=f"apply_{i}"):
+                pending = {
+                    "H": s["params"]["H"],
+                    "top_od": s["params"]["top_od"],
+                    "bottom_od": s["params"]["bottom_od"],
+                    "t_wall": s["params"]["t_wall"],
+                    "t_bottom": s["params"]["t_bottom"],
+                    "r_drain": s["params"]["r_drain"],
+                    "expn": s["params"]["expn"],
+                    "style": s["style"],
+                }
+                # also queue all style option widgets
+                for k, v in s["params"]["opts"].items():
+                    pending[widget_key(s["style"], k)] = v
+
+                queue_update(pending)
+                st.rerun()
+
+            if cc2.button("Delete", key=f"del_{i}"):
+                new_snaps = snaps[:i] + snaps[i+1:]
+                queue_update({"_snaps": new_snaps})
+                st.rerun()
+
 
         st.divider()
         st.subheader("Preview")
-        preview_detail = float(st.slider("Detail multiplier", 0.5, 2.0, 1.25, 0.05))
         fig_w = float(st.slider("Figure width (in)", 4.0, 10.0, 7.5, 0.1))
         fig_h = float(st.slider("Figure height (in)", 4.0, 8.0, 5.2, 0.1))
         dpi   = int(st.slider("DPI", 110, 220, 170, 10))
@@ -189,6 +217,28 @@ with _tab1:
         up = st.select_slider("Quality upscale", options=[1, 2, 3], value=2, help="Multiplies n_theta & n_z for the STL.")
         n_theta_export = int(n_theta * up); n_z_export = int(n_z * up)
         do_export = st.button("Export STL…", type="primary")
+
+    # ---- Preview & Export controls (always available) ----
+    with st.expander("Preview & Export"):
+        preview_detail = float(st.slider(
+            "Detail multiplier", 0.5, 2.0, st.session_state.get("preview_detail", 1.25),
+            0.05, key="preview_detail"
+        ))
+        fig_w = float(st.slider("Figure width (in)", 4.0, 10.0, st.session_state.get("fig_w", 7.5), 0.1, key="fig_w"))
+        fig_h = float(st.slider("Figure height (in)", 4.0, 8.0,  st.session_state.get("fig_h", 5.2), 0.1, key="fig_h"))
+        dpi   = int(st.slider("DPI", 110, 220,                     st.session_state.get("dpi", 170), 10,  key="dpi"))
+        show_inner = st.checkbox("Show inner wall overlay", value=st.session_state.get("show_inner", False), key="show_inner")
+        view_elev  = float(st.slider("View elev (°)", -30.0, 75.0,   st.session_state.get("view_elev", 20.0), 1.0, key="view_elev"))
+        view_azim  = float(st.slider("View azim (°)", -180.0, 180.0, st.session_state.get("view_azim", -60.0), 1.0, key="view_azim"))
+
+        st.divider()
+        up = st.select_slider("Quality upscale", options=[1, 2, 3],
+                            value=st.session_state.get("quality_up", 2), key="quality_up",
+                            help="Multiplies n_theta & n_z for the STL.")
+        n_theta_export = int(n_theta * up)
+        n_z_export     = int(n_z * up)
+        do_export      = st.button("Export STL…", type="primary", key="export_btn")
+
 
     # ---------- MAIN PANE (Preview + health + metrics) ----------
     st.markdown("### Model preview")
@@ -212,11 +262,12 @@ with _tab1:
     r_outer_fn = STYLES[style_name][0]
     opts = dict(ui_opts)  # already includes base & twist
     opts_json = json.dumps(opts, sort_keys=True)
+    preview_n_theta = max(16, min(4096, int(n_theta * preview_detail)))
+    preview_n_z     = max(8,  min(2048, int(n_z     * preview_detail)))
     with st.spinner("Computing preview…"):
         X, Y, Z = make_preview_arrays(
             H, Rt, Rb, expn,
-            int(n_theta * preview_detail),
-            int(max(8, n_z * preview_detail)),
+            preview_n_theta, preview_n_z,
             style_name, opts_json,
         )
     if place_on_ground:
