@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 diff --git a/app.py b/app.py
 index 1111111..2222222 100644
 --- a/app.py
@@ -40,6 +41,9 @@ index 3333333..4444444 100644
 
 
 diff --git a/app.py b/app.py
+=======
+﻿diff --git a/app.py b/app.py
+>>>>>>> 510edf3 (Defer session_state updates + apply early (Streamlit fix))
 index 1111111..2222222 100644
 --- a/app.py
 +++ b/app.py

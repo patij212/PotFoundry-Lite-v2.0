@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 diff --git a/pfui/state.py b/pfui/state.py
 index 1111111..2222222 100644
 --- a/pfui/state.py
@@ -79,6 +80,9 @@ index 1111111..2222222 100644
 
 
 diff --git a/pfui/state.py b/pfui/state.py
+=======
+﻿diff --git a/pfui/state.py b/pfui/state.py
+>>>>>>> 510edf3 (Defer session_state updates + apply early (Streamlit fix))
 index 1111111..2222222 100644
 --- a/pfui/state.py
 +++ b/pfui/state.py
