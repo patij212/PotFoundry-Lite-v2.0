@@ -5,3 +5,7 @@ numpy
 pyqtgraph>=0.13.4
 streamlit
 pydantic>=2
+
+plotly>=5.20
+
+plotly>=5.20

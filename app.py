@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import plotly.graph_objects as go
 import json
 import re
 import tempfile
@@ -205,6 +206,8 @@ with st.expander("Snapshots (compare)"):
 
         st.divider()
         st.subheader("Preview")
+
+
         fig_w = float(st.slider("Figure width (in)", 4.0, 10.0, 7.5, 0.1))
         fig_h = float(st.slider("Figure height (in)", 4.0, 8.0, 5.2, 0.1))
         dpi   = int(st.slider("DPI", 110, 220, 170, 10))
@@ -224,6 +227,8 @@ with st.expander("Snapshots (compare)"):
             "Detail multiplier", 0.5, 2.0, st.session_state.get("preview_detail", 1.25),
             0.05, key="preview_detail"
         ))
+        interactive_3d = st.checkbox("Interactive 3D (beta)", value=st.session_state.get("interactive_3d", False), key="interactive_3d")
+        interactive_mesh = st.checkbox("Interactive 3D (exact mesh)", value=False, key="interactive_mesh")
         fig_w = float(st.slider("Figure width (in)", 4.0, 10.0, st.session_state.get("fig_w", 7.5), 0.1, key="fig_w"))
         fig_h = float(st.slider("Figure height (in)", 4.0, 8.0,  st.session_state.get("fig_h", 5.2), 0.1, key="fig_h"))
         dpi   = int(st.slider("DPI", 110, 220,                     st.session_state.get("dpi", 170), 10,  key="dpi"))
@@ -270,8 +275,40 @@ with st.expander("Snapshots (compare)"):
             preview_n_theta, preview_n_z,
             style_name, opts_json,
         )
+    # Optionally place on ground
     if place_on_ground:
-        Z = Z - Z.min()  # simple ground placement
+        Z = Z - Z.min()
+
+    if interactive_3d:
+        # Interactive Plotly Surface (fast)
+        fig = go.Figure(data=[
+            go.Surface(
+                x=X, y=Y, z=Z,
+                showscale=False,
+                lighting=dict(ambient=0.5, diffuse=0.8, specular=0.05, roughness=0.8),
+            )
+        ])
+        fig.update_layout(
+            scene=dict(
+                aspectmode="data",
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                zaxis=dict(visible=False),
+                camera=dict(up=dict(x=0, y=0, z=1)),
+            ),
+            margin=dict(l=0, r=0, t=30, b=0),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        # Your existing static PNG render
+        png_bytes = render_preview(
+            X, Y, Z,
+            fig_w, fig_h, dpi, True,
+            inner_wall=t_wall if show_inner else None,
+            view_elev=view_elev, view_azim=view_azim, return_png=True,
+        )
+        if png_bytes:
+            st.download_button("Download preview PNG", data=png_bytes, file_name=f"{name}_preview.png", mime="image/png")
 
     png_bytes = render_preview(
         X, Y, Z,
@@ -293,6 +330,53 @@ with st.expander("Snapshots (compare)"):
         m3.metric("Bottom OD (mm)", f"{diag_m.get('estimated_bottom_od_mm', 0):.1f}")
     except Exception:
         st.info("Metrics unavailable for this configuration.")
+
+    if interactive_mesh:
+        # Keep it light for interactivity
+        ntheta_coarse = max(64, int(n_theta * 0.6))
+        nz_coarse     = max(24, int(n_z * 0.6))
+        try:
+            verts, faces, _ = build_pot_mesh(
+                H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
+                expn=expn, n_theta=ntheta_coarse, n_z=nz_coarse,
+                r_outer_fn=r_outer_fn, style_opts=opts,
+            )
+            import numpy as np
+            V = np.asarray(verts)  # shape (N, 3)
+            F = np.asarray(faces)  # shape (M, 3) with vertex indices (i, j, k)
+
+            if place_on_ground:
+                V[:, 2] -= V[:, 2].min()
+
+            fig = go.Figure(data=[
+                go.Mesh3d(
+                    x=V[:, 0], y=V[:, 1], z=V[:, 2],
+                    i=F[:, 0], j=F[:, 1], k=F[:, 2],
+                    flatshading=True,
+                    lighting=dict(ambient=0.45, diffuse=0.85, specular=0.1, roughness=0.9),
+                    color="lightgray",
+                    hoverinfo="skip",
+                    name="pot",
+                )
+            ])
+            fig.update_layout(
+                scene=dict(
+                    aspectmode="data",
+                    xaxis=dict(visible=False),
+                    yaxis=dict(visible=False),
+                    zaxis=dict(visible=False),
+                    camera=dict(up=dict(x=0, y=0, z=1)),
+                ),
+                margin=dict(l=0, r=0, t=30, b=0),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Interactive mesh preview failed: {e}. Falling back to static image.")
+            # fall back to your PNG path here if you like
+    else:
+        # keep your Surface/PNG branch here
+        ...
+
 
     # png download
     if png_bytes:
@@ -321,6 +405,8 @@ with st.expander("Snapshots (compare)"):
 
     with st.expander("2D radial profile"):
         render_profile(H, Rt, Rb, expn, r_outer_fn, opts, t_wall)
+    
+    
 
 
 
