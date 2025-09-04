@@ -5,7 +5,7 @@ Parametric, 3D-printable plant pots with a lightweight Streamlit UI. Adjust dime
 > **License & Commercial Use**
 >
 > - Free for **hobby, educational, and other noncommercial use** under the **PolyForm Noncommercial 1.0.0** license.
-> - **Commercial use** (e.g., selling printed pots, bundling in paid software/services, or use within a for-profit business) **requires a commercial license** — see `COMMERCIAL-LICENSE.md` (to be added).
+> - **Commercial use** (e.g., selling printed pots, bundling in paid software/services, or use within a for-profit business) **requires a commercial license** — see `COMMERCIAL-LICENSE.md`.
 
 ---
 
