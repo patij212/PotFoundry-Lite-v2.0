@@ -17,11 +17,18 @@ def style_controls(style: str) -> Dict[str, Any]:
     for i, (key, meta) in enumerate(schema.items()):
         c = cols[i % colN]
         wkey = widget_key(style, key)
-        default = st.session_state.get(wkey, meta["default"])  # type: ignore[index]
-        if meta["type"] == "int":
-            out[key] = int(c.number_input(meta["label"], meta["min"], meta["max"], default, meta["step"], key=wkey))
+        # Pobierz wartość z session_state lub domyślną
+        if wkey in st.session_state:
+            value = st.session_state[wkey]
         else:
-            out[key] = float(c.number_input(meta["label"], meta["min"], meta["max"], default, meta["step"], key=wkey))
+            value = meta["default"]
+        # Ogranicz wartość do dozwolonego zakresu
+        if meta["type"] == "int":
+            value = int(max(meta["min"], min(meta["max"], value)))
+            out[key] = int(c.number_input(meta["label"], meta["min"], meta["max"], value, meta["step"], key=wkey))
+        else:
+            value = float(max(meta["min"], min(meta["max"], value)))
+            out[key] = float(c.number_input(meta["label"], meta["min"], meta["max"], value, meta["step"], key=wkey))
     return out
 
 
@@ -55,7 +62,8 @@ def twist_controls(style: str) -> Dict[str, Any]:
     k1 = widget_key(style, "spin_turns")
     k2 = widget_key(style, "spin_phase_deg")
     k3 = widget_key(style, "spin_curve_exp")
-    spin_turns = float(c1.slider("Twist turns", 0.0, 3.0, st.session_state.get(k1, 0.0), 0.05, key=k1))
-    spin_phase = float(c2.slider("Twist phase (deg)", -180.0, 180.0, st.session_state.get(k2, 0.0), 1.0, key=k2))
-    spin_curve = float(c3.slider("Twist curve exp", 0.1, 3.0, st.session_state.get(k3, 1.0), 0.05, key=k3))
+    # Pozwól na ujemny twist (np. od -3 do 3)
+    spin_turns = float(c1.slider("Twist turns (negative = left, positive = right)", -3.0, 3.0, st.session_state.get(k1, 0.0), 0.05, key=k1))
+    spin_phase = float(c2.slider("Twist phase (deg, offset)", -180.0, 180.0, st.session_state.get(k2, 0.0), 1.0, key=k2))
+    spin_curve = float(c3.slider("Twist curve exponent", 0.1, 3.0, st.session_state.get(k3, 1.0), 0.05, key=k3))
     return {"spin_turns": spin_turns, "spin_phase_deg": spin_phase, "spin_curve_exp": spin_curve}

@@ -49,9 +49,11 @@ def make_preview_arrays(H: float, Rt: float, Rb: float, expn: float,
             nt = max(24, int(n_theta * scale))
             nz = max(12, int(n_z * scale))
             return _try(nt, nz)
-        except Exception:
+        except Exception as e:
+            st.error(f"Preview generation failed (scale={scale}): {e}")
             continue
 
+    st.error("Preview generation failed for all scales. Showing fallback shape.")
     thetas = _np.linspace(0.0, 2.0 * _np.pi, max(24, n_theta // 4), endpoint=False)
     zvals = _np.linspace(0.0, H, max(12, n_z // 4))
     Rmid = 0.5 * (Rt + Rb)

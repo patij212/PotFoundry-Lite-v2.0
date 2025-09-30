@@ -3,7 +3,10 @@ import streamlit as st
 from .schemas import STYLE_SCHEMAS
 
 def widget_key(style: str, field: str) -> str:
-    return f"opt__{style}_{field}"
+    # Normalizuj styl: tylko małe litery, cyfry, podkreślenia
+    import re
+    norm_style = re.sub(r"[^a-zA-Z0-9_]", "_", style).lower()
+    return f"opt__{norm_style}_{field}"
 
 # ---------- Pending updates machinery ----------
 _PENDING_KEY = "__pending_updates__"

@@ -20,6 +20,7 @@ def render_batch_tab() -> None:
     run = colB.button("Build from YAML", type="primary", disabled=not yaml_file)
 
     cobj = None
+    yaml_error = False
     if yaml_file is not None and load_config is not None:
         try:
             tmp = Path(tempfile.gettempdir()) / f"_pf2_{yaml_file.name}"
@@ -33,6 +34,10 @@ def render_batch_tab() -> None:
                 st.info("This file was migrated from v1 → v2 on load.")
         except Exception as e:
             st.error(f"Failed to parse YAML: {e}")
+            yaml_error = True
+            if st.button("Retry YAML upload"):
+                st.session_state.pop("yaml_file", None)
+                st.rerun()
 
     if dryrun and cobj is not None:
         try:

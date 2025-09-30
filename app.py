@@ -18,6 +18,9 @@ except Exception:
     HAS_PLOTLY = False
     go = None  # type: ignore
 
+if not HAS_PLOTLY:
+    st.info("Plotly is not available. Interactive 3D preview and mesh features are disabled.")
+
 # --- PotFoundry UI/engine imports ---
 from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY
 from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict
@@ -81,8 +84,24 @@ with _tab1:
             value=st.session_state.get("model_name", "SpiralRidges_Design"),
             key="model_name",
         )
-        style_name = st.selectbox("Style family", options=sorted(STYLES.keys()), key="style")
-        style_key  = resolve_schema_key(style_name)  # <-- use this for schema/widget keys
+        prev_style = st.session_state.get("_prev_style", None)
+        style_options = sorted(STYLES.keys())
+        style_name = st.selectbox("Style family", options=style_options, key="style")
+        style_key  = resolve_schema_key(style_name)
+        # Jeśli styl nie istnieje w STYLE_SCHEMAS, pokaż ostrzeżenie i wybierz domyślny
+        if style_key not in STYLE_SCHEMAS:
+            st.warning(f"Style '{style_name}' is not available. Falling back to default style.")
+            style_name = style_options[0]
+            style_key = resolve_schema_key(style_name)
+            st.session_state["style"] = style_name
+            reset_style_defaults(style_name)
+            st.rerun()
+        # Automatycznie resetuj kontrolki stylu po zmianie stylu
+        if prev_style != style_name:
+            st.session_state["_prev_style"] = style_name
+            # NIE resetuj stylu i NIE wywołuj st.rerun()
+            # reset_style_defaults(style_name)
+            # st.rerun()
 
         # Style caption (if available)
         try:
@@ -318,33 +337,42 @@ with _tab1:
                 mime="image/png",
             )
 
-    # Optional: exact triangle mesh preview (coarse) using the toggle from the expander
+    # Optional: exact triangle mesh preview (dokładna siatka)
     if HAS_PLOTLY and interactive_mesh:
-        ntheta_coarse = max(64, int(n_theta * 0.6))
-        nz_coarse     = max(24, int(n_z * 0.6))
         try:
             import numpy as np
+            opts_mesh = json.loads(opts_json)
+            valid_keys = STYLE_SCHEMAS.get(style_key, {}).keys()
+            opts_mesh = {k: v for k, v in opts_mesh.items() if k in valid_keys}
             verts, faces, _ = build_pot_mesh(
                 H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
-                expn=expn, n_theta=ntheta_coarse, n_z=nz_coarse,
-                r_outer_fn=r_outer_fn, style_opts=opts,
+                expn=expn, n_theta=n_theta, n_z=n_z,  # <-- dokładne parametry!
+                r_outer_fn=r_outer_fn, style_opts=opts_mesh,
             )
             V = np.asarray(verts)
             F = np.asarray(faces)
             if place_on_ground:
                 V[:, 2] -= V[:, 2].min()
+            z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+            import matplotlib.cm as cm
+            colorscale = cm.get_cmap("viridis")
+            mesh_colors = [
+                [int(255*r), int(255*g), int(255*b)]
+                for r, g, b, _ in colorscale(z_norm)
+            ]
             fig = go.Figure(data=[
                 go.Mesh3d(
                     x=V[:, 0], y=V[:, 1], z=V[:, 2],
                     i=F[:, 0], j=F[:, 1], k=F[:, 2],
-                    flatshading=True,
-                    lighting=dict(ambient=0.45, diffuse=0.85, specular=0.1, roughness=0.9),
-                    color="lightgray",
+                    flatshading=False,
+                    lighting=dict(ambient=0.35, diffuse=0.95, specular=0.25, roughness=0.7, fresnel=0.2),
+                    vertexcolor=mesh_colors,
                     hoverinfo="skip",
                     name="mesh",
+                    opacity=1.0,
                 )
             ])
-            height_px = max(360, min(900, int(96 * fig_h)))
+            height_px = max(400, min(1000, int(110 * fig_h)))
             fig.update_layout(
                 height=height_px,
                 scene=dict(
@@ -353,12 +381,14 @@ with _tab1:
                     yaxis=dict(visible=False),
                     zaxis=dict(visible=False),
                     camera=dict(up=dict(x=0, y=0, z=1)),
+                    bgcolor="#0E1117",
                 ),
                 margin=dict(l=0, r=0, t=30, b=0),
             )
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
-            st.info(f"Mesh preview unavailable: {e}")
+            import traceback
+            st.info(f"Mesh preview unavailable: {e}\n\n{traceback.format_exc()}")
 
     # -------------------- METRICS ----------------------
     st.subheader("Estimated metrics")
@@ -449,5 +479,5 @@ with _tab1:
 # ============================================================
 # Tab 2 — Batch from YAML
 # ============================================================
-with _tab2:
-    render_batch_tab()
+
+with _tab2:    render_batch_tab()
