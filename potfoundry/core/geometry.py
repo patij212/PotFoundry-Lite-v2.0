@@ -284,11 +284,10 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     verts: list[np.ndarray] = []
     faces: list[tuple[int,int,int]] = []
 
-    def add_ring_xy(r_vals: np.ndarray, z: float, cTw: float, sTw: float) -> np.ndarray:
-        # Vectorized ring placement with precomputed cos/sin(theta) and twist
-        cx =  cos_th * cTw - sin_th * sTw
-        sy =  sin_th * cTw + cos_th * sTw
-        xs = r_vals * cx; ys = r_vals * sy
+    def add_ring_xy(r_vals: np.ndarray, z: float, twist: float) -> np.ndarray:
+        # Współrzędne: X = r * cos(theta + twist), Y = r * sin(theta + twist)
+        xs = r_vals * np.cos(thetas + twist)
+        ys = r_vals * np.sin(thetas + twist)
         start_index = len(verts)
         for x, y in zip(xs, ys):
             verts.append(np.array([x, y, z], dtype=float))
@@ -298,10 +297,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     outer_idx = np.empty((len(z_outer), n_theta), dtype=int)
     for i, z in enumerate(z_outer):
         twist = _spin_twist_radians(z, H, style_opts)
-        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_vals = np.array([r_outer_fn(th + twist, z, r0, H, style_opts) for th in thetas], dtype=float)
-        outer_idx[i] = add_ring_xy(r_vals, z, cTw, sTw)
+        r_vals = np.array([r_outer_fn(th, z, r0, H, style_opts) for th in thetas], dtype=float)
+        outer_idx[i] = add_ring_xy(r_vals, z, twist)
 
     # Vectorized faces for outer wall
     rows = len(z_outer) - 1
@@ -318,15 +316,14 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     clamp_count = 0; total_inner_samples = len(z_inner) * n_theta
     for i, z in enumerate(z_inner):
         twist = _spin_twist_radians(z, H, style_opts)
-        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_out_vals = np.array([r_outer_fn(th + twist, z, r0, H, style_opts) for th in thetas], dtype=float)
+        r_out_vals = np.array([r_outer_fn(th, z, r0, H, style_opts) for th in thetas], dtype=float)
         r_in_vals = r_out_vals - t_wall
         min_allowed = r_drain + 1.0
         clamped = r_in_vals < min_allowed
         clamp_count += int(np.count_nonzero(clamped))
         r_in_vals[clamped] = min_allowed
-        inner_idx[i] = add_ring_xy(r_in_vals, z, cTw, sTw)
+        inner_idx[i] = add_ring_xy(r_in_vals, z, twist)
 
     # Vectorized faces for inner wall (reverse winding)
     rows_in = len(z_inner) - 1
