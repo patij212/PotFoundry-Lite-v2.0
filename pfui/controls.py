@@ -25,10 +25,10 @@ def style_controls(style: str) -> Dict[str, Any]:
         # Ogranicz wartość do dozwolonego zakresu
         if meta["type"] == "int":
             value = int(max(meta["min"], min(meta["max"], value)))
-            out[key] = int(c.number_input(meta["label"], meta["min"], meta["max"], value, meta["step"], key=wkey))
+            out[key] = int(c.slider(meta["label"], int(meta["min"]), int(meta["max"]), value, int(meta["step"]), key=wkey))
         else:
             value = float(max(meta["min"], min(meta["max"], value)))
-            out[key] = float(c.number_input(meta["label"], meta["min"], meta["max"], value, meta["step"], key=wkey))
+            out[key] = float(c.slider(meta["label"], float(meta["min"]), float(meta["max"]), value, float(meta["step"]), key=wkey))
     return out
 
 

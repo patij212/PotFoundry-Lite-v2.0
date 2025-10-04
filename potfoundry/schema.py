@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 from typing import Dict, List, Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict, PositiveFloat, conint, field_validator, model_validator
@@ -7,8 +6,8 @@ from pydantic import BaseModel, Field, ConfigDict, PositiveFloat, conint, field_
 
 class MeshQualityModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    n_theta: conint(ge=32, le=4096) = 168
-    n_z: conint(ge=16, le=4096) = 84
+    n_theta: int = Field(168, ge=32, le=4096)
+    n_z: int = Field(84, ge=16, le=4096)
 
 class DefaultsModel(BaseModel):
     model_config = ConfigDict(extra='forbid')

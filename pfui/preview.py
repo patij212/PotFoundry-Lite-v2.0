@@ -145,6 +145,90 @@ def render_preview(
     return png
 
 
+@st.cache_data(show_spinner=False)
+def render_preview_png_cached(
+    H: float, Rt: float, Rb: float, expn: float,
+    n_theta: int, n_z: int,
+    style_name: str, opts_json: str,
+    fig_w: float, fig_h: float, dpi: int,
+    *, inner_wall: float | None = None,
+    view_elev: float = 20.0, view_azim: float = -60.0,
+    theme: str = "dark",
+    show_floor: bool = True,
+    show_axes: bool = False,
+    # kept for backward compatibility: callers may pass return_png flag
+    return_png: bool = False,
+) -> bytes | None:
+    """Cacheable renderer that returns PNG bytes for given preview parameters.
+
+    This avoids background threads and uses Streamlit's cache to prevent
+    redundant recomputation when inputs haven't changed.
+    """
+    # Build arrays using the cached make_preview_arrays
+    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+    X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
+
+    # Reuse much of render_preview's plotting logic but avoid calling st.pyplot
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+    ax = fig.add_subplot(111, projection="3d")
+
+    if theme == "dark":
+        fig.patch.set_facecolor("#0E1117")
+        ax.set_facecolor("#0E1117")
+        for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+            try:
+                axis.set_pane_color((0.06, 0.07, 0.10, 1.0))
+            except Exception:
+                pass
+        ax._axis3don = show_axes
+    else:
+        ax._axis3don = show_axes
+
+    if show_floor:
+        rmax = float(np.max(np.sqrt(X**2 + Y**2)))
+        size = max(180.0, rmax * 3.0)
+        step = max(10.0, size / 18.0)
+        xs = np.arange(-size, size + step, step)
+        ys = np.arange(-size, size + step, step)
+        z0 = 0.0
+        for x in xs:
+            ax.plot([x, x], [ys[0], ys[-1]], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+        for y in ys:
+            ax.plot([xs[0], xs[-1]], [y, y], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+
+    import numpy as _np
+    if not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all():
+        plt.close(fig)
+        return None
+
+    try:
+        ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True)
+    except Exception:
+        step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
+        ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
+
+    if inner_wall and inner_wall > 0:
+        R = _np.maximum(_np.sqrt(X**2 + Y**2), max(1e-3, inner_wall * 2.0))
+        scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
+        ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
+
+    try:
+        ax.view_init(elev=view_elev, azim=view_azim)
+    except Exception:
+        pass
+
+    ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
+    if show_axes:
+        ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
+
+    buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue()
+    plt.close(fig)
+    return png
+
+
 
 def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts: Dict[str, Any], t_wall: float) -> None:
     import numpy as _np
@@ -165,3 +249,129 @@ def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts
     ax.set_xlabel("z (mm)"); ax.set_ylabel("radius (mm)"); ax.set_title("Radial profile")
     ax.legend(ncol=2, fontsize=8)
     _pyplot(fig, fill_width=True); plt.close(fig)
+
+
+@st.cache_data(show_spinner=False)
+def render_preview_apng_cached(
+    H: float, Rt: float, Rb: float, expn: float,
+    n_theta: int, n_z: int,
+    style_name: str, opts_json: str,
+    fig_w: float, fig_h: float, dpi: int,
+    *, inner_wall: float | None = None,
+    view_elev: float = 20.0, view_azim: float = -60.0,
+    theme: str = "dark",
+    show_floor: bool = True,
+    show_axes: bool = False,
+    frames: int = 12,
+    spin_degrees: float = 360.0,
+    duration_ms: int = 1500,
+) -> bytes | None:
+    """Generate an animated PNG (APNG) by rendering several azimuth frames.
+
+    Falls back to returning a single PNG frame if Pillow/APNG support is not
+    available or if an error occurs.
+    """
+    # Build arrays once
+    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+    X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
+
+    import numpy as _np
+    if not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all():
+        return None
+
+    # Helper to draw a single frame and return PNG bytes
+    def _render_frame(elev: float, azim: float) -> bytes:
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+        ax = fig.add_subplot(111, projection="3d")
+        if theme == "dark":
+            fig.patch.set_facecolor("#0E1117")
+            ax.set_facecolor("#0E1117")
+            for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+                try:
+                    axis.set_pane_color((0.06, 0.07, 0.10, 1.0))
+                except Exception:
+                    pass
+            ax._axis3don = show_axes
+        else:
+            ax._axis3don = show_axes
+
+        if show_floor:
+            try:
+                rmax = float(_np.max(_np.sqrt(X**2 + Y**2)))
+                size = max(180.0, rmax * 3.0)
+                step = max(10.0, size / 18.0)
+                xs = _np.arange(-size, size + step, step)
+                ys = _np.arange(-size, size + step, step)
+                z0 = 0.0
+                for x in xs:
+                    ax.plot([x, x], [ys[0], ys[-1]], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+                for y in ys:
+                    ax.plot([xs[0], xs[-1]], [y, y], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+            except Exception:
+                pass
+
+        try:
+            ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True)
+        except Exception:
+            step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
+            ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
+
+        if inner_wall and inner_wall > 0:
+            R = _np.maximum(_np.sqrt(X**2 + Y**2), max(1e-3, inner_wall * 2.0))
+            scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
+            ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
+
+        try:
+            ax.view_init(elev=elev, azim=azim)
+        except Exception:
+            pass
+
+        ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
+        if show_axes:
+            ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
+
+        from io import BytesIO
+        buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue()
+        plt.close(fig)
+        return png
+
+    # Create frames
+    imgs = []
+    base_az = float(view_azim)
+    for i in range(max(1, frames)):
+        az = base_az + (float(i) / float(max(1, frames))) * spin_degrees
+        try:
+            frame_png = _render_frame(view_elev, az)
+            imgs.append(frame_png)
+        except Exception:
+            # If any frame fails, skip it
+            continue
+
+    if not imgs:
+        return None
+
+    # Try to assemble APNG using Pillow. If Pillow or APNG support is
+    # unavailable, fall back to returning the first frame's PNG bytes.
+    try:
+        from PIL import Image as PILImage
+        from io import BytesIO
+
+        pil_frames = [PILImage.open(BytesIO(b)).convert("RGBA") for b in imgs]
+        out = BytesIO()
+        # duration per frame in ms
+        per_frame = max(20, int(duration_ms / max(1, len(pil_frames))))
+        pil_frames[0].save(
+            out,
+            format="PNG",
+            save_all=True,
+            append_images=pil_frames[1:],
+            duration=per_frame,
+            loop=0,
+            optimize=False,
+        )
+        data = out.getvalue()
+        return data
+    except Exception:
+        # Pillow not available or APNG writing failed: return the first frame
+        return imgs[0]
