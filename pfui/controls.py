@@ -22,7 +22,7 @@ def style_controls(style: str) -> Dict[str, Any]:
             value = st.session_state[wkey]
         else:
             value = meta["default"]
-        # Ogranicz wartość do dozwolonego zakresu
+        # Limit value to allowed range
         if meta["type"] == "int":
             value = int(max(meta["min"], min(meta["max"], value)))
             out[key] = int(c.slider(meta["label"], int(meta["min"]), int(meta["max"]), value, int(meta["step"]), key=wkey))
