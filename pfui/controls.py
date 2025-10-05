@@ -62,7 +62,7 @@ def twist_controls(style: str) -> Dict[str, Any]:
     k1 = widget_key(style, "spin_turns")
     k2 = widget_key(style, "spin_phase_deg")
     k3 = widget_key(style, "spin_curve_exp")
-    # Pozwól na ujemny twist (np. od -3 do 3)
+    # Allow negative twist (e.g. from -3 to 3)
     spin_turns = float(c1.slider("Twist turns (negative = left, positive = right)", -3.0, 3.0, st.session_state.get(k1, 0.0), 0.05, key=k1))
     spin_phase = float(c2.slider("Twist phase (deg, offset)", -180.0, 180.0, st.session_state.get(k2, 0.0), 1.0, key=k2))
     spin_curve = float(c3.slider("Twist curve exponent", 0.1, 3.0, st.session_state.get(k3, 1.0), 0.05, key=k3))
