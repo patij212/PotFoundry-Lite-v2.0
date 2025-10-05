@@ -11,8 +11,9 @@ from functools import lru_cache
 
 __all__ = [
     "MeshQuality", "PotDefaults", "STYLES",
-    "r_base_out", "build_pot_mesh", "write_ascii_stl",
-    "save_preview_png"
+    "r_base_out", "build_pot_mesh", 
+    "save_preview_png",
+    "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
 
 
@@ -93,7 +94,31 @@ def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     return n / norm
 
 def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> None:
-    """Write triangles to ASCII STL (portable, human-readable)."""
+    """Write triangles to ASCII STL (portable, human-readable).
+    
+    .. deprecated:: 2.0
+        ASCII STL export is deprecated. Use :func:`write_stl_binary` instead.
+        Binary STL files are smaller, faster to write/read, and universally supported
+        by all modern slicers and CAD tools.
+        
+        ASCII STL is retained only for debugging or legacy compatibility.
+    
+    Args:
+        path: Output file path
+        name: Model name (embedded in STL file)
+        verts: Vertex array (N×3)
+        faces: Face index array (M×3)
+        
+    Note:
+        For production use, prefer write_stl_binary from potfoundry.core.io.stl
+    """
+    import warnings
+    warnings.warn(
+        "write_ascii_stl is deprecated. Use write_stl_binary instead. "
+        "Binary STL files are smaller, faster, and universally supported.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     with open(path, "w") as f:
         f.write(f"solid {name}\n")
         for ia, ib, ic in faces:
