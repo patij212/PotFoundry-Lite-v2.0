@@ -1,5 +1,8 @@
-# PF2: patched to use binary STL + atomic IO where applicable
+# PF2: Full migration to binary STL exports
 # potfoundry/yaml_api.py (patched for Windows / Python 3.13 dataclass defaults)
+#
+# All STL exports in this module use write_stl_binary for optimal file size
+# and performance. Binary STL is the recommended format for all production use.
 from __future__ import annotations
 from dataclasses import dataclass, asdict, field
 from typing import Dict, Iterable, List, Tuple
@@ -10,8 +13,8 @@ import zipfile
 import numpy as np
 import yaml
 from .schema import ConfigV2, migrate_v1_to_v2, deep_merge, PartialDefaultsModel, DefaultsModel
+# Binary STL writer (recommended for all exports)
 from .core.io.stl import write_stl_binary, atomic_write_bytes
-from .core.io.stl import write_stl_binary
 
 from .geometry import (
     MeshQuality,

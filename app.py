@@ -884,7 +884,8 @@ with _tab1:
             tmp_path = Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
             if WRITE_STL_BINARY is None:
                 raise RuntimeError("write_stl_binary not available in this build")
-            WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)  # binary STL
+            # Export as binary STL (recommended: smaller, faster, universally supported)
+            WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)
             data = tmp_path.read_bytes()
             try:
                 tmp_path.unlink(missing_ok=True)
