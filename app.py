@@ -904,4 +904,5 @@ with _tab1:
 # Tab 2 — Batch from YAML
 # ============================================================
 
-with _tab2:    render_batch_tab()
+with _tab2:
+    render_batch_tab()
