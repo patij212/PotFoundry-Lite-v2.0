@@ -310,7 +310,7 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces: list[tuple[int,int,int]] = []
 
     def add_ring_xy(r_vals: np.ndarray, z: float, twist: float) -> np.ndarray:
-        # Współrzędne: X = r * cos(theta + twist), Y = r * sin(theta + twist)
+        # Coordinates: X = r * cos(theta + twist), Y = r * sin(theta + twist)
         xs = r_vals * np.cos(thetas + twist)
         ys = r_vals * np.sin(thetas + twist)
         start_index = len(verts)
