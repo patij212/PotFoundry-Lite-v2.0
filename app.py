@@ -542,7 +542,7 @@ with _tab1:
     except Exception as e:
         st.write(f"Debug: Failed to generate png_bytes unconditionally: {e}")
 
-    # Optional: exact triangle mesh preview (dok\u0142adna siatka)
+    # Optional: exact triangle mesh preview (exact mesh)
     if interactive_mesh:
         # If Plotly is present, render an interactive Mesh3d. Otherwise render a
         # static high-detail PNG so Full Preview can be displayed even when the
