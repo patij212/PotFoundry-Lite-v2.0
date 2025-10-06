@@ -441,6 +441,22 @@ with _tab1:
 
     # -------------------- PREVIEW ----------------------
     st.subheader("Preview")
+    
+    # Manual preview mode: Add Update Preview button
+    should_update_preview = auto_preview
+    if not auto_preview:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            if st.button("🔄 Update Preview", use_container_width=True, type="primary"):
+                should_update_preview = True
+                # Clear cache to force regeneration
+                try:
+                    st.cache_data.clear()
+                except Exception:
+                    pass
+        with col2:
+            st.caption("Manual mode")
+    
     r_outer_fn = STYLES[style_name][0]  # geometry comes from UI style name
     opts = dict(ui_opts)
     opts_json = json.dumps(opts, sort_keys=True)
@@ -448,140 +464,58 @@ with _tab1:
     preview_n_theta = max(16, min(4096, int(n_theta * preview_detail)))
     preview_n_z     = max(8,  min(2048, int(n_z     * preview_detail)))
 
-    with st.spinner("Computing preview…"):
-        X, Y, Z = make_preview_arrays(
-            H, Rt, Rb, expn,
-            preview_n_theta, preview_n_z,
-            style_name, opts_json,
-        )
-
-    if place_on_ground:
-        Z = Z - Z.min()
-
-    # Interactive Surface (fast) or Static PNG fallback
-    png_bytes = None
-    # Aggressively clean session_state media entries before creating placeholders
+    # Only generate preview if in auto mode or Update button was clicked
+    preview_exists = False
     try:
-        _cleanup_stale_media_ids()
-    except Exception:
-        pass
-    preview_placeholder = st.empty()
-    mesh_placeholder = st.empty()
-    # Ensure previous preview content is removed when Quick Preview disabled
-    if interactive_3d:
-        st.write("Debug: Quick Preview is enabled.")
-        if HAS_PLOTLY:
-            fig = go.Figure(data=[
-                go.Surface(
-                    x=X, y=Y, z=Z,
-                    showscale=False,
-                    lighting=dict(ambient=0.5, diffuse=0.8, specular=0.05, roughness=0.8),
+        if should_update_preview:
+            with st.spinner("Computing preview…"):
+                X, Y, Z = make_preview_arrays(
+                    H, Rt, Rb, expn,
+                    preview_n_theta, preview_n_z,
+                    style_name, opts_json,
                 )
-            ])
-            height_px = max(360, min(900, int(96 * fig_h)))
-            fig.update_layout(
-                height=height_px,
-                scene=dict(
-                    aspectmode="data",
-                    xaxis=dict(visible=False),
-                    yaxis=dict(visible=False),
-                    zaxis=dict(visible=False),
-                    camera=dict(up=dict(x=0, y=0, z=1)),
-                ),
-                margin=dict(l=0, r=0, t=30, b=0),
-            )
-            preview_placeholder.plotly_chart(fig, use_container_width=True)
+                preview_exists = True
         else:
-            st.write("Debug: Plotly is not available, falling back to static PNG.")
-            try:
-                st.cache_data.clear()
-            except Exception:
-                pass
-            png_bytes = render_preview_png_cached(
+            # Use cached preview or show placeholder
+            X, Y, Z = make_preview_arrays(
                 H, Rt, Rb, expn,
                 preview_n_theta, preview_n_z,
                 style_name, opts_json,
-                fig_w, fig_h, dpi,
-                inner_wall=t_wall if show_inner else None,
-                view_elev=view_elev, view_azim=view_azim, return_png=False,
             )
-            if png_bytes:
-                preview_placeholder.image(png_bytes, caption="Preview", use_container_width=True)
-                preview_placeholder.download_button(
-                    "Download preview PNG",
-                    data=png_bytes,
-                    file_name=f"{name}_preview.png",
-                    mime="image/png",
-                )
-    else:
-        st.write("Debug: Quick Preview is disabled.")
-        # Quick Preview is explicitly disabled by user: replace any previous preview
-        try:
-            preview_placeholder.info("Quick Preview is disabled")
-        except Exception:
-            try:
-                preview_placeholder.empty()
-            except Exception:
-                pass
-
-    # Ensure png_bytes is generated even if "Debug: png_bytes is None, cannot save snapshot." is disabled
-    try:
-        png_bytes = render_preview_png_cached(
-            H, Rt, Rb, expn,
-            preview_n_theta, preview_n_z,
-            style_name, opts_json,
-            fig_w, fig_h, dpi,
-            inner_wall=t_wall if show_inner else None,
-            view_elev=view_elev, view_azim=view_azim,
-            return_png=True,
-        )
-        if png_bytes:
-            st.write(f"Debug: png_bytes generated successfully. Size: {len(png_bytes)} bytes")
-        else:
-            st.write("Debug: png_bytes is None after unconditional generation.")
+            preview_exists = True
     except Exception as e:
-        st.write(f"Debug: Failed to generate png_bytes unconditionally: {e}")
+        # If no cached preview exists, show a message
+        preview_exists = False
+        if not auto_preview:
+            st.info("👆 Click 'Update Preview' to generate preview with current parameters")
+        else:
+            st.error(f"Preview generation failed: {e}")
 
-    # Optional: exact triangle mesh preview (exact mesh)
-    if interactive_mesh:
-        # If Plotly is present, render an interactive Mesh3d. Otherwise render a
-        # static high-detail PNG so Full Preview can be displayed even when the
-        # Quick Preview (interactive_3d) is disabled or Plotly is not installed.
-        if HAS_PLOTLY:
-            try:
-                import numpy as np
-                # Use the full UI options (global + style-specific) so flare/bell/twist
-                # and other global controls are applied to the exact mesh as well.
-                opts_mesh = opts
-                verts, faces, _ = build_pot_mesh(
-                    H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
-                    expn=expn, n_theta=n_theta, n_z=n_z,
-                    r_outer_fn=r_outer_fn, style_opts=opts_mesh,
-                )
-                V = np.asarray(verts)
-                F = np.asarray(faces)
-                if place_on_ground:
-                    V[:, 2] -= V[:, 2].min()
-                z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
-                import matplotlib.cm as cm
-                colorscale = cm.get_cmap("viridis")
-                mesh_colors = [
-                    [int(255*r), int(255*g), int(255*b)]
-                    for r, g, b, _ in colorscale(z_norm)
-                ]
+    # Only proceed with preview rendering if we have data
+    if preview_exists:
+        if place_on_ground:
+            Z = Z - Z.min()
+
+        # Interactive Surface (fast) or Static PNG fallback
+        png_bytes = None
+        # Aggressively clean session_state media entries before creating placeholders
+        try:
+            _cleanup_stale_media_ids()
+        except Exception:
+            pass
+        preview_placeholder = st.empty()
+        mesh_placeholder = st.empty()
+        # Ensure previous preview content is removed when Quick Preview disabled
+        if interactive_3d:
+            if HAS_PLOTLY:
                 fig = go.Figure(data=[
-                    go.Mesh3d(
-                        x=V[:, 0], y=V[:, 1], z=V[:, 2],
-                        i=F[:, 0], j=F[:, 1], k=F[:, 2],
-                        flatshading=False,
-                        lighting=dict(ambient=0.35, diffuse=0.95, specular=0.25, roughness=0.7, fresnel=0.2),
-                        vertexcolor=mesh_colors,
-                        hoverinfo="skip",
-                        name="mesh",
-                        opacity=1.0,
+                    go.Surface(
+                        x=X, y=Y, z=Z,
+                        showscale=False,
+                        lighting=dict(ambient=0.5, diffuse=0.8, specular=0.05, roughness=0.8),
                     )
                 ])
-                height_px = max(400, min(1000, int(110 * fig_h)))
+                height_px = max(360, min(900, int(96 * fig_h)))
                 fig.update_layout(
                     height=height_px,
                     scene=dict(
@@ -590,17 +524,115 @@ with _tab1:
                         yaxis=dict(visible=False),
                         zaxis=dict(visible=False),
                         camera=dict(up=dict(x=0, y=0, z=1)),
-                        bgcolor="#0E1117",
                     ),
                     margin=dict(l=0, r=0, t=30, b=0),
                 )
-                mesh_placeholder.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                import traceback
-                st.info(f"Mesh preview unavailable: {e}\n\n{traceback.format_exc()}")
+                preview_placeholder.plotly_chart(fig, use_container_width=True)
+            else:
+                # Plotly not available: fallback to static PNG
+                try:
+                    st.cache_data.clear()
+                except Exception:
+                    pass
+                png_bytes = render_preview_png_cached(
+                    H, Rt, Rb, expn,
+                    preview_n_theta, preview_n_z,
+                    style_name, opts_json,
+                    fig_w, fig_h, dpi,
+                    inner_wall=t_wall if show_inner else None,
+                    view_elev=view_elev, view_azim=view_azim, return_png=False,
+                )
+                if png_bytes:
+                    preview_placeholder.image(png_bytes, caption="Preview", use_container_width=True)
+                    preview_placeholder.download_button(
+                        "Download preview PNG",
+                        data=png_bytes,
+                        file_name=f"{name}_preview.png",
+                        mime="image/png",
+                    )
         else:
-            # Plotly not available: render a static high-detail PNG for the exact mesh
+            # Quick Preview is explicitly disabled by user: replace any previous preview
             try:
+                preview_placeholder.info("Quick Preview is disabled")
+            except Exception:
+                try:
+                    preview_placeholder.empty()
+                except Exception:
+                    pass
+
+        # Ensure png_bytes is generated even if Quick Preview is disabled
+        try:
+            png_bytes = render_preview_png_cached(
+                H, Rt, Rb, expn,
+                preview_n_theta, preview_n_z,
+                style_name, opts_json,
+                fig_w, fig_h, dpi,
+                inner_wall=t_wall if show_inner else None,
+                view_elev=view_elev, view_azim=view_azim,
+                return_png=True,
+            )
+        except Exception:
+            pass  # png_bytes generation for snapshots failed, but preview may still work
+
+        # Optional: exact triangle mesh preview (exact mesh)
+        if interactive_mesh:
+            # If Plotly is present, render an interactive Mesh3d. Otherwise render a
+            # static high-detail PNG so Full Preview can be displayed even when the
+            # Quick Preview (interactive_3d) is disabled or Plotly is not installed.
+            if HAS_PLOTLY:
+                try:
+                    import numpy as np
+                    # Use the full UI options (global + style-specific) so flare/bell/twist
+                    # and other global controls are applied to the exact mesh as well.
+                    opts_mesh = opts
+                    verts, faces, _ = build_pot_mesh(
+                        H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
+                        expn=expn, n_theta=n_theta, n_z=n_z,
+                        r_outer_fn=r_outer_fn, style_opts=opts_mesh,
+                    )
+                    V = np.asarray(verts)
+                    F = np.asarray(faces)
+                    if place_on_ground:
+                        V[:, 2] -= V[:, 2].min()
+                    z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+                    import matplotlib.cm as cm
+                    colorscale = cm.get_cmap("viridis")
+                    mesh_colors = [
+                        [int(255*r), int(255*g), int(255*b)]
+                        for r, g, b, _ in colorscale(z_norm)
+                    ]
+                    fig = go.Figure(data=[
+                        go.Mesh3d(
+                            x=V[:, 0], y=V[:, 1], z=V[:, 2],
+                            i=F[:, 0], j=F[:, 1], k=F[:, 2],
+                            flatshading=False,
+                            lighting=dict(ambient=0.35, diffuse=0.95, specular=0.25, roughness=0.7, fresnel=0.2),
+                            vertexcolor=mesh_colors,
+                            hoverinfo="skip",
+                            name="mesh",
+                            opacity=1.0,
+                        )
+                    ])
+                    height_px = max(400, min(1000, int(110 * fig_h)))
+                    fig.update_layout(
+                        height=height_px,
+                        scene=dict(
+                            aspectmode="data",
+                            xaxis=dict(visible=False),
+                            yaxis=dict(visible=False),
+                            zaxis=dict(visible=False),
+                            camera=dict(up=dict(x=0, y=0, z=1)),
+                            bgcolor="#0E1117",
+                        ),
+                        margin=dict(l=0, r=0, t=30, b=0),
+                    )
+                    mesh_placeholder.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    import traceback
+                    st.info(f"Mesh preview unavailable: {e}\n\n{traceback.format_exc()}")
+            else:
+                # Plotly not available: render a static high-detail PNG for the exact mesh
+                try:
                     from pfui.preview import render_preview_png_cached, render_preview_apng_cached
                     try:
                         st.cache_data.clear()
@@ -630,17 +662,17 @@ with _tab1:
                         )
                         if mesh_png:
                             mesh_placeholder.image(mesh_png, caption="Full Preview (static)", use_container_width=True)
-            except Exception as e:
-                mesh_placeholder.info(f"Mesh preview unavailable (static fallback): {e}")
-    else:
-        # Full Preview disabled: replace previous mesh with a small note
-        try:
-            mesh_placeholder.info("Full Preview is disabled")
-        except Exception:
+                except Exception as e:
+                    mesh_placeholder.info(f"Mesh preview unavailable (static fallback): {e}")
+        else:
+            # Full Preview disabled: replace previous mesh with a small note
             try:
-                mesh_placeholder.empty()
+                mesh_placeholder.info("Full Preview is disabled")
             except Exception:
-                pass
+                try:
+                    mesh_placeholder.empty()
+                except Exception:
+                    pass
 
     # -------------------- METRICS ----------------------
     st.subheader("Estimated metrics")
