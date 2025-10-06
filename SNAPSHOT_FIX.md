@@ -26,15 +26,16 @@ Completely rewrote the snapshot capture logic to **always use the actual triangu
    - Use `Poly3DCollection` to render the actual triangles
    - Color by height using viridis colormap
    - Proper aspect ratio from mesh bounds
+   - Uses Agg backend for reliability
 4. **Never fall back to surface approximation**
 
-### Key Improvements
+### Key Improvements (v2)
 
-- **Accurate geometry**: Snapshots now show the exact same mesh as the Full Preview
-- **Better debugging**: Added detailed logging at each step
-- **Robust fallback**: Two independent rendering methods (Plotly + matplotlib)
-- **Proper aspect ratio**: Uses actual mesh bounds, not parametric approximation
-- **Consistent appearance**: Matches the Full Preview style
+- **Clear All Snapshots button** - Easily remove old snapshots with elongation artifacts
+- **Better error handling** - Detailed logging with traceback on failures
+- **User feedback** - Success/error messages when capturing snapshots
+- **Matplotlib backend** - Explicitly use 'Agg' for non-interactive rendering
+- **Robust rendering** - Enhanced matplotlib fallback with better error reporting
 
 ## Technical Details
 
@@ -50,8 +51,13 @@ fig = go.Figure(data=[go.Mesh3d(...)])
 capture_bytes = fig.to_image(format="png", ...)
 ```
 
+**Note:** Requires kaleido (`pip install kaleido`) for image export. If not available, falls back to matplotlib.
+
 ### Matplotlib Fallback (Secondary Method)
 ```python
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 # Create triangle collection from mesh
@@ -66,13 +72,27 @@ mesh.set_facecolors(colors)
 ax.add_collection3d(mesh)
 ```
 
+## User Features
+
+### Clear All Snapshots
+- New "🗑️ Clear All" button in Snapshots expander
+- Removes all snapshots from session state
+- Cleans up temporary files
+- Useful for removing old snapshots with artifacts
+
+### Feedback Messages
+- ✓ Success: "Snapshot '{name}' captured successfully!"
+- ✗ Error: Clear messages if capture fails with suggestions
+
 ## Benefits
 
 1. **Eliminates elongation artifact** - Uses actual mesh geometry
 2. **Matches Full Preview exactly** - Same rendering as interactive preview
-3. **Better reliability** - Two independent fallback paths
-4. **Better debugging** - Detailed logs help diagnose issues
-5. **Future-proof** - Works whether Plotly is available or not
+3. **Better reliability** - Enhanced matplotlib fallback with Agg backend
+4. **Better debugging** - Detailed logs with traceback help diagnose issues
+5. **User control** - Clear All button to remove old snapshots
+6. **Better UX** - Success/error messages guide users
+7. **Future-proof** - Works whether Plotly/kaleido is available or not
 
 ## Testing
 
@@ -83,7 +103,23 @@ ax.add_collection3d(mesh)
 
 ## Files Modified
 
-- `app.py` - Snapshot capture logic (lines 709-825)
+- `app.py` - Snapshot capture logic (lines 693-875)
+  - Added Clear All Snapshots button
+  - Enhanced matplotlib rendering with Agg backend
+  - Better error handling with traceback
+  - User feedback messages
+
+## Troubleshooting
+
+### If snapshots still show elongated mesh:
+1. **Clear old snapshots** - Click "🗑️ Clear All" button in Snapshots section
+2. **Capture new snapshot** - Click "Capture" button to create new snapshot with fixed rendering
+3. **Check debug logs** - Expand session state to see detailed rendering logs
+
+### If snapshot capture fails:
+1. **Install kaleido** - `pip install kaleido` for best Plotly export quality
+2. **Check Full Preview** - Ensure Full Preview renders correctly first
+3. **Review error message** - App will show specific error if capture fails
 
 ## Before vs After
 
@@ -92,9 +128,12 @@ ax.add_collection3d(mesh)
 - Vertical elongation artifact
 - Inconsistent with Full Preview
 - Limited fallback options
+- No way to clear old snapshots
 
 **After:**
 - Uses actual triangulated mesh
 - Correct aspect ratio
 - Matches Full Preview exactly
 - Robust with multiple fallbacks
+- Clear All button for easy cleanup
+- Better error messages and feedback

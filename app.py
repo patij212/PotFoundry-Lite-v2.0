@@ -696,6 +696,17 @@ with _tab1:
             f"Render: _snaps count = {len(st.session_state.get('_snaps', []))}"
         )
         snaps: List[Dict[str, Any]] = st.session_state.get("_snaps", [])
+        
+        # Add Clear All Snapshots button
+        if snaps:
+            col_clear1, col_clear2 = st.columns([3, 1])
+            with col_clear2:
+                if st.button("🗑️ Clear All", help="Delete all snapshots"):
+                    st.session_state["_snaps"] = []
+                    snaps = []
+                    cleanup_old_tempfiles()  # Clean up temp files
+                    st.rerun()
+        
         sc1, sc2 = st.columns([2, 1])
         snap_name = sc1.text_input("Snapshot name", value=f"{style_name}_H{int(H)}")
         if sc2.button("Capture"):
@@ -789,6 +800,8 @@ with _tab1:
                     if not capture_bytes:
                         log_debug("Falling back to matplotlib mesh rendering...")
                         try:
+                            import matplotlib
+                            matplotlib.use('Agg')  # Use non-interactive backend
                             import matplotlib.pyplot as plt
                             from mpl_toolkits.mplot3d import Axes3D
                             from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -811,8 +824,8 @@ with _tab1:
                             mesh = Poly3DCollection(triangles, alpha=0.9, linewidths=0.1, edgecolors='#555555')
                             
                             # Color by height
-                            z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
-                            colors = plt.cm.viridis(z_norm[F].mean(axis=1))
+                            z_norm_mpl = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+                            colors = plt.cm.viridis(z_norm_mpl[F].mean(axis=1))
                             mesh.set_facecolors(colors)
                             
                             ax.add_collection3d(mesh)
@@ -829,12 +842,14 @@ with _tab1:
                             # Export to bytes
                             from io import BytesIO
                             buf = BytesIO()
-                            fig.savefig(buf, format="png", dpi=dpi, bbox_inches='tight')
+                            fig.savefig(buf, format="png", dpi=dpi, bbox_inches='tight', facecolor=fig.get_facecolor())
                             capture_bytes = buf.getvalue()
                             plt.close(fig)
                             log_debug(f"Matplotlib mesh render successful: {len(capture_bytes)} bytes")
                         except Exception as e:
                             log_debug(f"Matplotlib mesh rendering failed: {e}")
+                            import traceback
+                            log_debug(f"Matplotlib traceback: {traceback.format_exc()}")
                             capture_bytes = None
                     
                 except Exception as e:
@@ -847,12 +862,17 @@ with _tab1:
                     png_path = save_png_temp(capture_bytes)
                     if png_path:
                         log_debug(f"Snapshot saved successfully at {png_path}.")
+                        # Show success message
+                        st.success(f"✓ Snapshot '{snap_name}' captured successfully!")
                     else:
                         log_debug("Failed to save snapshot, png_path is None.")
+                        st.error("Failed to save snapshot file. Please try again.")
                 else:
                     log_debug("capture_bytes is None, cannot save snapshot.")
+                    st.error("Failed to generate snapshot image. Please ensure Full Preview is working and try again.")
             except Exception as e:
                 log_debug(f"Failed to save PNG temp file: {e}")
+                st.error(f"Snapshot capture failed: {e}")
                 png_path = None
 
             log_debug("Updating session state with new snapshot (direct write).")
