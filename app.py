@@ -707,34 +707,33 @@ with _tab1:
                 st.session_state["_debug_logs"].append(message)
 
             try:
-                # Try to generate a fuller, rotated APNG for the snapshot so the
-                # saved preview matches the Full Preview (avoids stretched/odd
-                # aspect artifacts). Prefer APNG; fall back to a single PNG.
+                # Generate snapshot from the Full Mesh preview to match the exact
+                # triangulated geometry (not the surface approximation)
+                capture_bytes = None
+                
+                # Always use the actual mesh (build_pot_mesh) for snapshots
+                # This ensures snapshots show the exact same mesh as Full Preview
                 try:
-                    # If the user has Full Preview enabled and Plotly is
-                    # available, attempt to export the same Mesh3d figure to a
-                    # high-quality PNG so the snapshot visually matches the
-                    # interactive preview. This requires Plotly's image export
-                    # support (kaleido/engine). If that fails, fall back to the
-                    # APNG/PNG matplotlib renderer.
-                    capture_bytes = None
-                    # Try Plotly export whenever Plotly is available so
-                    # snapshots match the Full Preview style, even if the
-                    # 'Full Preview' checkbox isn't currently checked.
+                    log_debug("Building actual mesh for snapshot...")
+                    opts_mesh = opts
+                    verts, faces, _ = build_pot_mesh(
+                        H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
+                        expn=expn, n_theta=n_theta, n_z=n_z,
+                        r_outer_fn=r_outer_fn, style_opts=opts_mesh,
+                    )
+                    
+                    import numpy as _np
+                    V = _np.asarray(verts)
+                    F = _np.asarray(faces)
+                    if place_on_ground:
+                        V[:, 2] -= V[:, 2].min()
+                    
+                    log_debug(f"Mesh built: {len(verts)} vertices, {len(faces)} faces")
+                    
+                    # Try Plotly export first (best quality for snapshots)
                     if HAS_PLOTLY:
                         try:
-                            # Build the exact mesh used in the interactive view
-                            opts_mesh = opts
-                            verts, faces, _ = build_pot_mesh(
-                                H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
-                                expn=expn, n_theta=n_theta, n_z=n_z,
-                                r_outer_fn=r_outer_fn, style_opts=opts_mesh,
-                            )
-                            import numpy as _np
-                            V = _np.asarray(verts)
-                            F = _np.asarray(faces)
-                            if place_on_ground:
-                                V[:, 2] -= V[:, 2].min()
+                            log_debug("Attempting Plotly Mesh3d export...")
                             z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
                             import matplotlib.cm as cm
                             colorscale = cm.get_cmap("viridis")
@@ -767,44 +766,80 @@ with _tab1:
                                 ),
                                 margin=dict(l=0, r=0, t=30, b=0),
                             )
+                            
+                            # Try export via Plotly / kaleido
                             try:
-                                # Try export via Plotly / kaleido
                                 capture_bytes = fig.to_image(format="png", width=width_px, height=height_px, scale=1)
-                            except Exception:
+                                log_debug(f"Plotly export successful: {len(capture_bytes)} bytes")
+                            except Exception as e1:
+                                log_debug(f"Plotly to_image failed: {e1}")
                                 # If direct export fails, try plotly.io
                                 try:
                                     import plotly.io as pio
                                     capture_bytes = pio.to_image(fig, format="png", width=width_px, height=height_px, scale=1)
-                                except Exception:
+                                    log_debug(f"Plotly.io export successful: {len(capture_bytes)} bytes")
+                                except Exception as e2:
+                                    log_debug(f"Plotly.io export failed: {e2}")
                                     capture_bytes = None
-                        except Exception:
+                        except Exception as e:
+                            log_debug(f"Plotly mesh export failed: {e}")
                             capture_bytes = None
-
-                    # If Plotly export didn't produce bytes, fall back to our
-                    # existing APNG/PNG matplotlib-based renderer (high-detail)
+                    
+                    # If Plotly export failed, render mesh with matplotlib
                     if not capture_bytes:
-                        from pfui.preview import render_preview_apng_cached, render_preview_png_cached
-                        capture_bytes = render_preview_apng_cached(
-                            H, Rt, Rb, expn,
-                            n_theta, n_z,
-                            style_name, opts_json,
-                            fig_w, fig_h, dpi,
-                            inner_wall=t_wall if show_inner else None,
-                            view_elev=view_elev, view_azim=view_azim,
-                        )
-                        if not capture_bytes:
-                            capture_bytes = render_preview_png_cached(
-                                H, Rt, Rb, expn,
-                                n_theta, n_z,
-                                style_name, opts_json,
-                                fig_w, fig_h, dpi,
-                                inner_wall=t_wall if show_inner else None,
-                                view_elev=view_elev, view_azim=view_azim,
-                            )
-                except Exception:
-                    # If preview rendering fails for any reason, fall back to
-                    # the earlier png_bytes (if available) or bail.
-                    capture_bytes = png_bytes
+                        log_debug("Falling back to matplotlib mesh rendering...")
+                        try:
+                            import matplotlib.pyplot as plt
+                            from mpl_toolkits.mplot3d import Axes3D
+                            from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+                            
+                            fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+                            ax = fig.add_subplot(111, projection='3d')
+                            
+                            # Style for dark theme
+                            fig.patch.set_facecolor("#0E1117")
+                            ax.set_facecolor("#0E1117")
+                            for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+                                try:
+                                    axis.set_pane_color((0.06, 0.07, 0.10, 1.0))
+                                except Exception:
+                                    pass
+                            ax._axis3don = False
+                            
+                            # Create mesh collection
+                            triangles = V[F]
+                            mesh = Poly3DCollection(triangles, alpha=0.9, linewidths=0.1, edgecolors='#555555')
+                            
+                            # Color by height
+                            z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+                            colors = plt.cm.viridis(z_norm[F].mean(axis=1))
+                            mesh.set_facecolors(colors)
+                            
+                            ax.add_collection3d(mesh)
+                            
+                            # Set limits and aspect
+                            ax.set_xlim(V[:, 0].min(), V[:, 0].max())
+                            ax.set_ylim(V[:, 1].min(), V[:, 1].max())
+                            ax.set_zlim(V[:, 2].min(), V[:, 2].max())
+                            ax.set_box_aspect((_np.ptp(V[:, 0]) or 1.0, _np.ptp(V[:, 1]) or 1.0, _np.ptp(V[:, 2]) or 1.0))
+                            
+                            # Set view angle
+                            ax.view_init(elev=view_elev, azim=view_azim)
+                            
+                            # Export to bytes
+                            from io import BytesIO
+                            buf = BytesIO()
+                            fig.savefig(buf, format="png", dpi=dpi, bbox_inches='tight')
+                            capture_bytes = buf.getvalue()
+                            plt.close(fig)
+                            log_debug(f"Matplotlib mesh render successful: {len(capture_bytes)} bytes")
+                        except Exception as e:
+                            log_debug(f"Matplotlib mesh rendering failed: {e}")
+                            capture_bytes = None
+                    
+                except Exception as e:
+                    log_debug(f"Mesh building failed: {e}")
+                    capture_bytes = None
 
                 if capture_bytes:
                     log_debug("capture_bytes is available, attempting to save.")
