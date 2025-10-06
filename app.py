@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
+import math
 import streamlit as st
 from pfui.preview import render_preview_png_cached
 
@@ -34,12 +35,13 @@ from pfui.state import (
     reset_all_defaults,
 )
 from pfui.controls import style_controls, twist_controls
-from pfui.preview import make_preview_arrays, render_preview, render_profile
+from pfui.preview import make_preview_arrays, render_preview, render_profile, render_mesh_snapshot_cached
 from pfui.health import _design_health, _health_badge
 from pfui.batch_tab import render_batch_tab
 from pfui.units import units_selector
-from pfui.snapshot_store import save_png_temp, cleanup_old_tempfiles, read_png_bytes
+from pfui.snapshot_store import save_png_temp, cleanup_old_tempfiles, read_png_bytes, remove_png_path
 from pfui import state_history as H
+import time
 
 # ------------------------------------------------------------
 # Boot: apply any queued state changes BEFORE creating widgets
@@ -193,6 +195,15 @@ with _tab1:
         units_selector()
 
         st.header("Model")
+        # Timestamp used to implement debounced preview updates
+        if "_last_change_ts" not in st.session_state:
+            st.session_state["_last_change_ts"] = 0.0
+
+        def _mark_changed() -> None:
+            try:
+                st.session_state["_last_change_ts"] = time.time()
+            except Exception:
+                pass
         def _on_model_name_change() -> None:
             # If user edits model name manually, mark it and disable auto-name
             # so we don't overwrite the user's change.
@@ -289,26 +300,26 @@ with _tab1:
         # (model_name auto-default is handled before the text_input above)
 
         st.subheader("Profile")
-        expn = float(st.slider("Flare exponent", 0.7, 1.6, st.session_state.get("expn", 1.1), 0.05, key="expn"))
+        expn = float(st.slider("Flare exponent", 0.7, 1.6, st.session_state.get("expn", 1.1), 0.05, key="expn", on_change=_mark_changed))
         c1, c2, c3 = st.columns(3)
         # NOTE: widget keys now use style_key (not style_name)
         k1 = widget_key(style_key, "flare_center")
         k2 = widget_key(style_key, "flare_sharp")
         k3 = widget_key(style_key, "bell_amp")
-        flare_center = float(c1.slider("Flare center (0–1)", 0.1, 0.9, st.session_state.get(k1, 0.5), 0.01, key=k1))
-        flare_sharp  = float(c2.slider("Flare sharpness",    1.0, 12.0, st.session_state.get(k2, 6.0), 0.1,  key=k2))
-        bell_amp     = float(c3.slider("Bell amplitude",     0.0, 0.5,  st.session_state.get(k3, 0.0), 0.01, key=k3))
+        flare_center = float(c1.slider("Flare center (0–1)", 0.1, 0.9, st.session_state.get(k1, 0.5), 0.01, key=k1, on_change=_mark_changed))
+        flare_sharp  = float(c2.slider("Flare sharpness",    1.0, 12.0, st.session_state.get(k2, 6.0), 0.1,  key=k2, on_change=_mark_changed))
+        bell_amp     = float(c3.slider("Bell amplitude",     0.0, 0.5,  st.session_state.get(k3, 0.0), 0.01, key=k3, on_change=_mark_changed))
 
         c4, c5 = st.columns(2)
         k4 = widget_key(style_key, "bell_center")
         k5 = widget_key(style_key, "bell_width")
-        bell_center = float(c4.slider("Bell center (0–1)", 0.1, 0.9, st.session_state.get(k4, 0.5), 0.01, key=k4))
-        bell_width  = float(c5.slider("Bell width",        0.05, 0.5, st.session_state.get(k5, 0.22), 0.01, key=k5))
+        bell_center = float(c4.slider("Bell center (0–1)", 0.1, 0.9, st.session_state.get(k4, 0.5), 0.01, key=k4, on_change=_mark_changed))
+        bell_width  = float(c5.slider("Bell width",        0.05, 0.5, st.session_state.get(k5, 0.22), 0.01, key=k5, on_change=_mark_changed))
 
         st.subheader("Mesh quality")
         q1, q2 = st.columns(2)
-        n_theta = int(q1.slider("Angular divisions (nθ)", 96, 720, st.session_state.get("n_theta", 168), 12, key="n_theta"))
-        n_z     = int(q2.slider("Vertical divisions (nz)", 32, 256, st.session_state.get("n_z", 84), 4, key="n_z"))
+        n_theta = int(q1.slider("Angular divisions (nθ)", 96, 720, st.session_state.get("n_theta", 168), 12, key="n_theta", on_change=_mark_changed))
+        n_z     = int(q2.slider("Vertical divisions (nz)", 32, 256, st.session_state.get("n_z", 84), 4, key="n_z", on_change=_mark_changed))
 
         # Per-style controls (schema-safe)
         st.subheader("Style options")
@@ -381,8 +392,24 @@ with _tab1:
         c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 1.2])
 
         preview_detail = float(
-            c1.slider("Preview detail (×)", 0.5, 2.0, st.session_state.get("preview_detail", 1.25), 0.05, key="preview_detail")
+            c1.slider("Preview detail (×)", 0.5, 2.0, st.session_state.get("preview_detail", 1.25), 0.05, key="preview_detail", on_change=_mark_changed)
         )
+
+        # Preview mode: manual / auto / debounced
+        preview_mode = c1.selectbox(
+            "Preview mode",
+            options=["manual", "auto", "debounced"],
+            index={"manual": 0, "auto": 1, "debounced": 2}.get(st.session_state.get("preview_mode", "manual"), 0),
+            key="preview_mode",
+            help="Choose how previews update: manual (button), automatic, or debounced (wait until inputs settle).",
+        )
+
+        debounce_timeout = c1.number_input(
+            "Debounce timeout (s)", min_value=0.2, max_value=10.0, value=st.session_state.get("debounce_timeout", 0.8), step=0.1, key="debounce_timeout"
+        )
+
+        # Backwards compatible flag
+        auto_preview = preview_mode == "auto"
 
         interactive_3d = c2.checkbox(
             "Quick Preview",
@@ -595,8 +622,8 @@ with _tab1:
                     if place_on_ground:
                         V[:, 2] -= V[:, 2].min()
                     z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
-                    import matplotlib.cm as cm
-                    colorscale = cm.get_cmap("viridis")
+                    import matplotlib.pyplot as plt
+                    colorscale = plt.get_cmap("viridis")
                     mesh_colors = [
                         [int(255*r), int(255*g), int(255*b)]
                         for r, g, b, _ in colorscale(z_norm)
@@ -718,160 +745,29 @@ with _tab1:
                 st.session_state["_debug_logs"].append(message)
 
             try:
-                # Generate snapshot from the Full Mesh preview to match the exact
-                # triangulated geometry (not the surface approximation)
-                capture_bytes = None
-                
-                # Always use the actual mesh (build_pot_mesh) for snapshots
-                # This ensures snapshots show the exact same mesh as Full Preview
-                try:
-                    log_debug("Building actual mesh for snapshot...")
-                    opts_mesh = opts
-                    verts, faces, _ = build_pot_mesh(
-                        H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
-                        expn=expn, n_theta=n_theta, n_z=n_z,
-                        r_outer_fn=r_outer_fn, style_opts=opts_mesh,
-                    )
-                    
-                    import numpy as _np
-                    V = _np.asarray(verts)
-                    F = _np.asarray(faces)
-                    if place_on_ground:
-                        V[:, 2] -= V[:, 2].min()
-                    
-                    log_debug(f"Mesh built: {len(verts)} vertices, {len(faces)} faces")
-                    
-                    # Try Plotly export first (best quality for snapshots)
-                    if HAS_PLOTLY:
-                        try:
-                            log_debug("Attempting Plotly Mesh3d export...")
-                            z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
-                            import matplotlib.cm as cm
-                            colorscale = cm.get_cmap("viridis")
-                            mesh_colors = [[int(255*r), int(255*g), int(255*b)] for r, g, b, _ in colorscale(z_norm)]
-
-                            fig = go.Figure(data=[
-                                go.Mesh3d(
-                                    x=V[:, 0], y=V[:, 1], z=V[:, 2],
-                                    i=F[:, 0], j=F[:, 1], k=F[:, 2],
-                                    flatshading=False,
-                                    lighting=dict(ambient=0.35, diffuse=0.95, specular=0.25, roughness=0.7, fresnel=0.2),
-                                    vertexcolor=mesh_colors,
-                                    hoverinfo="skip",
-                                    name="mesh",
-                                    opacity=1.0,
-                                )
-                            ])
-                            height_px = max(400, min(1000, int(110 * fig_h)))
-                            width_px = max(400, min(1400, int(96 * fig_w)))
-                            fig.update_layout(
-                                height=height_px,
-                                width=width_px,
-                                scene=dict(
-                                    aspectmode="data",
-                                    xaxis=dict(visible=False),
-                                    yaxis=dict(visible=False),
-                                    zaxis=dict(visible=False),
-                                    camera=dict(up=dict(x=0, y=0, z=1)),
-                                    bgcolor="#0E1117",
-                                ),
-                                margin=dict(l=0, r=0, t=30, b=0),
-                            )
-                            
-                            # Try export via Plotly / kaleido
-                            try:
-                                capture_bytes = fig.to_image(format="png", width=width_px, height=height_px, scale=1)
-                                log_debug(f"Plotly export successful: {len(capture_bytes)} bytes")
-                            except Exception as e1:
-                                log_debug(f"Plotly to_image failed: {e1}")
-                                # If direct export fails, try plotly.io
-                                try:
-                                    import plotly.io as pio
-                                    capture_bytes = pio.to_image(fig, format="png", width=width_px, height=height_px, scale=1)
-                                    log_debug(f"Plotly.io export successful: {len(capture_bytes)} bytes")
-                                except Exception as e2:
-                                    log_debug(f"Plotly.io export failed: {e2}")
-                                    capture_bytes = None
-                        except Exception as e:
-                            log_debug(f"Plotly mesh export failed: {e}")
-                            capture_bytes = None
-                    
-                    # If Plotly export failed, render mesh with matplotlib
-                    if not capture_bytes:
-                        log_debug("Falling back to matplotlib mesh rendering...")
-                        try:
-                            import matplotlib
-                            matplotlib.use('Agg')  # Use non-interactive backend
-                            import matplotlib.pyplot as plt
-                            from mpl_toolkits.mplot3d import Axes3D
-                            from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-                            
-                            fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
-                            ax = fig.add_subplot(111, projection='3d')
-                            
-                            # Style for dark theme
-                            fig.patch.set_facecolor("#0E1117")
-                            ax.set_facecolor("#0E1117")
-                            for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
-                                try:
-                                    axis.set_pane_color((0.06, 0.07, 0.10, 1.0))
-                                except Exception:
-                                    pass
-                            ax._axis3don = False
-                            
-                            # Create mesh collection
-                            triangles = V[F]
-                            mesh = Poly3DCollection(triangles, alpha=0.9, linewidths=0.1, edgecolors='#555555')
-                            
-                            # Color by height
-                            z_norm_mpl = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
-                            colors = plt.cm.viridis(z_norm_mpl[F].mean(axis=1))
-                            mesh.set_facecolors(colors)
-                            
-                            ax.add_collection3d(mesh)
-                            
-                            # Set limits and aspect
-                            ax.set_xlim(V[:, 0].min(), V[:, 0].max())
-                            ax.set_ylim(V[:, 1].min(), V[:, 1].max())
-                            ax.set_zlim(V[:, 2].min(), V[:, 2].max())
-                            ax.set_box_aspect((_np.ptp(V[:, 0]) or 1.0, _np.ptp(V[:, 1]) or 1.0, _np.ptp(V[:, 2]) or 1.0))
-                            
-                            # Set view angle
-                            ax.view_init(elev=view_elev, azim=view_azim)
-                            
-                            # Export to bytes
-                            from io import BytesIO
-                            buf = BytesIO()
-                            fig.savefig(buf, format="png", dpi=dpi, bbox_inches='tight', facecolor=fig.get_facecolor())
-                            capture_bytes = buf.getvalue()
-                            plt.close(fig)
-                            log_debug(f"Matplotlib mesh render successful: {len(capture_bytes)} bytes")
-                        except Exception as e:
-                            log_debug(f"Matplotlib mesh rendering failed: {e}")
-                            import traceback
-                            log_debug(f"Matplotlib traceback: {traceback.format_exc()}")
-                            capture_bytes = None
-                    
-                except Exception as e:
-                    log_debug(f"Mesh building failed: {e}")
-                    capture_bytes = None
+                # Delegate snapshot rendering to central cached function which
+                # builds the actual triangulated mesh and tries Plotly first.
+                opts_json = json.dumps(dict(ui_opts))
+                capture_bytes = render_mesh_snapshot_cached(
+                    H, Rt, Rb, expn,
+                    n_theta, n_z,
+                    style_name, opts_json,
+                    fig_w, fig_h, dpi,
+                    inner_wall=t_wall if show_inner else None,
+                    place_on_ground=place_on_ground,
+                    view_elev=view_elev, view_azim=view_azim,
+                    theme=("dark" if st.get_option("theme.base") == "dark" else "light"),
+                )
 
                 if capture_bytes:
-                    log_debug("capture_bytes is available, attempting to save.")
-                    log_debug(f"capture_bytes size: {len(capture_bytes)} bytes")
                     png_path = save_png_temp(capture_bytes)
-                    if png_path:
-                        log_debug(f"Snapshot saved successfully at {png_path}.")
-                        # Show success message
-                        st.success(f"✓ Snapshot '{snap_name}' captured successfully!")
-                    else:
-                        log_debug("Failed to save snapshot, png_path is None.")
-                        st.error("Failed to save snapshot file. Please try again.")
+                    method = st.session_state.get("_last_snapshot_method", "unknown")
+                    st.success(f"✓ Snapshot '{snap_name}' captured successfully! (method: {method})")
+                    st.session_state.setdefault("_debug_logs", []).append(f"Snapshot capture used method: {method}")
                 else:
-                    log_debug("capture_bytes is None, cannot save snapshot.")
-                    st.error("Failed to generate snapshot image. Please ensure Full Preview is working and try again.")
+                    png_path = None
+                    st.error("Failed to generate snapshot image. Ensure Full Preview is enabled and try again.")
             except Exception as e:
-                log_debug(f"Failed to save PNG temp file: {e}")
                 st.error(f"Snapshot capture failed: {e}")
                 png_path = None
 
@@ -909,8 +805,22 @@ with _tab1:
         # have mutated st.session_state earlier in this run).
         snaps = st.session_state.get("_snaps", [])
 
+        # Paginate snapshots (3 per page)
         if snaps:
-            for i, s in enumerate(snaps):
+            per_page = 3
+            page = st.session_state.get("_snap_page", 0)
+            max_page = max(0, math.ceil(len(snaps) / per_page) - 1)
+            nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 6])
+            if nav_col1.button("◀ Prev"):
+                st.session_state["_snap_page"] = max(0, page - 1); st.experimental_rerun()
+            if nav_col2.button("Next ▶"):
+                st.session_state["_snap_page"] = min(max_page, page + 1); st.experimental_rerun()
+            nav_col3.caption(f"Showing page {page+1} / {max_page+1}  — total snapshots: {len(snaps)}")
+
+            start = page * per_page
+            end = start + per_page
+            for idx, s in enumerate(snaps[start:end], start=start):
+                i = idx
                 cc1, cc2, cc3 = st.columns([2, 1, 1])
                 # show a small preview image if available
                 png_bytes_local = None
@@ -936,17 +846,11 @@ with _tab1:
                     sk = s.get("style_key", resolve_schema_key(s.get("style_ui", style_name)))
                     for k, v in s["params"]["opts"].items():
                         pending[widget_key(sk, k)] = v
-                    # Use the queued-update mechanism so values are applied
-                    # BEFORE widgets are created on the next run. This avoids
-                    # StreamlitAPIException when trying to set widget-backed
-                    # keys after their widgets exist.
                     try:
                         queue_update(pending)
                         st.session_state.setdefault("_debug_logs", []).append(f"Queued snapshot {i+1} for apply; rerunning.")
                         st.experimental_rerun()
                     except Exception:
-                        # As a fallback (best-effort), attempt direct write for
-                        # non-widget keys and log the failure.
                         st.session_state.setdefault("_debug_logs", []).append(f"Failed to queue_update snapshot {i+1}; falling back to direct write.")
                         for _k, _v in pending.items():
                             try:
@@ -954,6 +858,11 @@ with _tab1:
                             except Exception:
                                 pass
                 if cc3.button("Delete", key=f"del_{i}"):
+                    # Remove temp file if present and looks safe
+                    try:
+                        remove_png_path(s.get("png"))
+                    except Exception:
+                        pass
                     new_snaps = snaps[:i] + snaps[i+1:]
                     st.session_state["_snaps"] = new_snaps
                     st.session_state.setdefault("_debug_logs", []).append(f"Deleted snapshot {i+1}.")

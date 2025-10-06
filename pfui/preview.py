@@ -5,7 +5,7 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import streamlit as st
 
-from .imports import STYLES, base_radius, _spin_twist_radians
+from .imports import STYLES, base_radius, _spin_twist_radians, build_pot_mesh
 
 
 def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
@@ -375,3 +375,144 @@ def render_preview_apng_cached(
     except Exception:
         # Pillow not available or APNG writing failed: return the first frame
         return imgs[0]
+
+
+@st.cache_data(show_spinner=False)
+def render_mesh_snapshot_cached(
+    H: float, Rt: float, Rb: float, expn: float,
+    n_theta: int, n_z: int,
+    style_name: str, opts_json: str,
+    fig_w: float, fig_h: float, dpi: int,
+    *,
+    inner_wall: float | None = None,
+    place_on_ground: bool = True,
+    view_elev: float = 20.0, view_azim: float = -60.0,
+    theme: str = "dark",
+) -> bytes | None:
+    """Build the actual triangulated mesh and render it to PNG bytes.
+
+    Tries Plotly Mesh3d export first (kaleido). Falls back to a
+    matplotlib Poly3DCollection-based renderer. Cached so repeated
+    captures with identical inputs are fast.
+    """
+    import numpy as _np
+
+    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+
+    # Build actual mesh using core geometry
+    try:
+        verts, faces, _ = build_pot_mesh(
+            H=H, Rt=Rt, Rb=Rb, t_wall=opts.get("t_wall", 3.0),
+            t_bottom=opts.get("t_bottom", 3.0), r_drain=opts.get("r_drain", 10.0),
+            expn=expn, n_theta=n_theta, n_z=n_z,
+            r_outer_fn=STYLES[style_name][0], style_opts=opts,
+        )
+    except Exception:
+        # If mesh build fails, don't crash the UI; return None
+        return None
+
+    V = _np.asarray(verts)
+    F = _np.asarray(faces)
+    if place_on_ground:
+        V[:, 2] -= V[:, 2].min()
+
+    # Try Plotly export first
+    capture_bytes = None
+    try:
+        try:
+            import plotly.graph_objects as go
+            import plotly.io as pio
+            HAS_PLOTLY = True
+        except Exception:
+            HAS_PLOTLY = False
+
+        if HAS_PLOTLY:
+            try:
+                # Color by height
+                z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+                import matplotlib.pyplot as plt
+                colorscale = plt.get_cmap("viridis")
+                mesh_colors = [[int(255 * r), int(255 * g), int(255 * b)] for r, g, b, _ in colorscale(z_norm)]
+
+                fig = go.Figure(data=[
+                    go.Mesh3d(
+                        x=V[:, 0], y=V[:, 1], z=V[:, 2],
+                        i=F[:, 0], j=F[:, 1], k=F[:, 2],
+                        flatshading=False,
+                        lighting=dict(ambient=0.35, diffuse=0.95, specular=0.25, roughness=0.7, fresnel=0.2),
+                        vertexcolor=mesh_colors,
+                        hoverinfo="skip",
+                        name="mesh",
+                        opacity=1.0,
+                    )
+                ])
+                height_px = max(400, min(1000, int(110 * fig_h)))
+                width_px = max(400, min(1400, int(96 * fig_w)))
+                fig.update_layout(
+                    height=height_px,
+                    width=width_px,
+                    scene=dict(aspectmode="data", xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), bgcolor="#0E1117"),
+                    margin=dict(l=0, r=0, t=30, b=0),
+                )
+                try:
+                    capture_bytes = fig.to_image(format="png", width=width_px, height=height_px, scale=1)
+                except Exception:
+                    capture_bytes = pio.to_image(fig, format="png", width=width_px, height=height_px, scale=1)
+                # Record method used for diagnostics in session state (best-effort)
+                try:
+                    st.session_state["_last_snapshot_method"] = "plotly"
+                except Exception:
+                    pass
+            except Exception:
+                capture_bytes = None
+
+        # Matplotlib fallback: render triangles directly
+        if not capture_bytes:
+            try:
+                import matplotlib
+                matplotlib.use('Agg')
+                import matplotlib.pyplot as plt
+                from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+                fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+                ax = fig.add_subplot(111, projection='3d')
+                if theme == 'dark':
+                    fig.patch.set_facecolor("#0E1117")
+                    ax.set_facecolor("#0E1117")
+                ax._axis3don = False
+
+                triangles = V[F]
+                mesh = Poly3DCollection(triangles, alpha=0.95, linewidths=0.1, edgecolors='#555555')
+
+                z_norm_mpl = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+                colors = plt.cm.viridis(z_norm_mpl[F].mean(axis=1))
+                mesh.set_facecolors(colors)
+                ax.add_collection3d(mesh)
+
+                # Set limits and aspect
+                ax.set_xlim(V[:, 0].min(), V[:, 0].max())
+                ax.set_ylim(V[:, 1].min(), V[:, 1].max())
+                ax.set_zlim(V[:, 2].min(), V[:, 2].max())
+                ax.set_box_aspect((_np.ptp(V[:, 0]) or 1.0, _np.ptp(V[:, 1]) or 1.0, _np.ptp(V[:, 2]) or 1.0))
+                ax.view_init(elev=view_elev, azim=view_azim)
+
+                from io import BytesIO
+                buf = BytesIO()
+                fig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight', facecolor=fig.get_facecolor())
+                capture_bytes = buf.getvalue()
+                plt.close(fig)
+                try:
+                    st.session_state["_last_snapshot_method"] = "matplotlib"
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    import traceback
+                    traceback.print_exc()
+                except Exception:
+                    pass
+                capture_bytes = None
+
+        return capture_bytes
+    except Exception:
+        return None
