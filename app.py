@@ -41,6 +41,9 @@ from pfui.batch_tab import render_batch_tab
 from pfui.units import units_selector
 from pfui.snapshot_store import save_png_temp, cleanup_old_tempfiles, read_png_bytes, remove_png_path
 from pfui import state_history as H
+from pfui.deeplink import parse_query_params, apply_state, clear_query_params
+from pfui.library_ui import render_library_tab
+from potfoundry.integrations.supabase_client import get_singleton_client
 import time
 import math
 
@@ -184,8 +187,34 @@ document.addEventListener('keydown', function(e) {
 # NOTE: don't pop the units guard; let units_selector manage it internally
 # st.session_state.pop("_units_widget_rendered_this_run", None)
 
+# ============================================================
+# Deep Link Handling (load state from URL query param)
+# ============================================================
+if "_deeplink_applied" not in st.session_state:
+    state_from_url = parse_query_params()
+    if state_from_url:
+        try:
+            warnings = apply_state(state_from_url, quiet=True)
+            st.session_state["_deeplink_applied"] = True
+            clear_query_params()
+            if warnings:
+                st.info(f"Loaded design from link (with {len(warnings)} adjustments)")
+            else:
+                st.success("Loaded design from link")
+        except Exception as e:
+            st.warning(f"Failed to load design from link: {e}")
+    st.session_state.setdefault("_deeplink_applied", True)
+
 # ------------ Tabs ------------
-_tab1, _tab2 = st.tabs(["Interactive", "Batch from YAML"])
+# Check if library is configured to show Library tab
+_library_client = get_singleton_client()
+_has_library = _library_client.is_configured()
+
+if _has_library:
+    _tab1, _tab2, _tab3 = st.tabs(["Interactive", "Batch from YAML", "Public Library"])
+else:
+    _tab1, _tab2 = st.tabs(["Interactive", "Batch from YAML"])
+    _tab3 = None
 
 # ============================================================
 # Tab 1 — Interactive Designer
@@ -1304,8 +1333,63 @@ with _tab1:
 
     # ---------------------- EXPORT ---------------------
     st.subheader("Export STL")
+    
+    # Library publish controls (if configured)
+    publish_enabled = False
+    publish_title = ""
+    publish_tags = []
+    publish_license = "CC BY-NC 4.0"
+    license_consent = False
+    
+    if _has_library:
+        with st.expander("📚 Publish to Public Library", expanded=False):
+            st.markdown("Share your design with the community. Published designs are public and downloadable by anyone.")
+            
+            publish_enabled = st.checkbox("Enable publishing", value=False, key="publish_enable")
+            
+            if publish_enabled:
+                # Default title from design name
+                default_title = f"{style_name} pot - {datetime.now().strftime('%Y-%m-%d')}"
+                publish_title = st.text_input(
+                    "Title *",
+                    value=default_title,
+                    max_chars=120,
+                    help="Short descriptive title (1-120 characters)"
+                )
+                
+                publish_tags_input = st.text_input(
+                    "Tags",
+                    value="",
+                    help="Comma-separated tags (max 10, alphanumeric + dash/underscore only)"
+                )
+                publish_tags = [t.strip() for t in publish_tags_input.split(",") if t.strip()]
+                
+                publish_license = st.selectbox(
+                    "License *",
+                    options=[
+                        "CC BY-NC 4.0",
+                        "CC BY 4.0",
+                        "CC BY-SA 4.0",
+                        "CC0 1.0",
+                        "MIT",
+                        "Apache 2.0",
+                    ],
+                    index=0,
+                    help="License for your design. CC BY-NC 4.0 = Attribution, Non-Commercial"
+                )
+                
+                license_consent = st.checkbox(
+                    f"I grant permission to publish this design under {publish_license}",
+                    value=False,
+                    help="Required: You must agree to publish under the selected license"
+                )
+                
+                if not license_consent:
+                    st.warning("⚠️ You must agree to the license terms to publish")
+    
     if do_export:
         try:
+            from datetime import datetime
             verts, faces, _ = build_pot_mesh(
                 H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
                 expn=expn, n_theta=n_theta_export, n_z=n_z_export,
@@ -1324,6 +1408,91 @@ with _tab1:
                 pass
             st.success(f"STL ready: {safe}.stl  — triangles: {len(faces):,}")
             st.download_button("Download STL", data=data, file_name=f"{safe}.stl", mime="model/stl")
+            
+            # Publish to library if enabled
+            if publish_enabled and license_consent and _has_library:
+                try:
+                    from potfoundry.library import publish_design
+                    
+                    # Prepare size dict
+                    size_dict = {
+                        "height": H,
+                        "top_od": top_od,
+                        "bottom_od": bottom_od,
+                        "wall_thickness": t_wall,
+                        "bottom_thickness": t_bottom,
+                        "drain_radius": r_drain,
+                        "flare_exp": expn,
+                    }
+                    
+                    # Prepare mesh dict
+                    mesh_dict = {
+                        "n_theta": n_theta_export,
+                        "n_z": n_z_export,
+                        "twist": opts.get("twist", 0.0),
+                    }
+                    
+                    # Prepare diagnostics
+                    diagnostics_dict = {
+                        "triangle_count": len(faces),
+                        "vertex_count": len(verts),
+                    }
+                    
+                    # Get git commit (optional)
+                    try:
+                        import subprocess
+                        git_commit = subprocess.check_output(
+                            ["git", "rev-parse", "--short", "HEAD"],
+                            cwd=Path(__file__).parent,
+                            stderr=subprocess.DEVNULL
+                        ).decode().strip()
+                    except Exception:
+                        git_commit = None
+                    
+                    # Publish
+                    with st.spinner("Publishing to library..."):
+                        result = publish_design(
+                            stl_bytes=data,
+                            style=style_name,
+                            size=size_dict,
+                            opts=opts,
+                            mesh=mesh_dict,
+                            diagnostics=diagnostics_dict,
+                            license=publish_license,
+                            title=publish_title,
+                            tags=publish_tags,
+                            app_commit=git_commit
+                        )
+                    
+                    if result.duplicate:
+                        st.info(f"✓ Design already published (ID: {result.id[:8]}...)")
+                    else:
+                        st.success(f"✓ Published! ID: {result.id[:8]}...")
+                    
+                    # Show library link
+                    from pfui.deeplink import generate_deep_link, extract_state_from_session
+                    state_to_encode = {
+                        "style": style_name,
+                        "H": H,
+                        "top_od": top_od,
+                        "bottom_od": bottom_od,
+                        "t_wall": t_wall,
+                        "t_bottom": t_bottom,
+                        "r_drain": r_drain,
+                        "expn": expn,
+                        "opts": opts,
+                    }
+                    base_url = st.secrets.get("app_url", "http://localhost:8501")
+                    deep_link = generate_deep_link(state_to_encode, base_url)
+                    
+                    st.code(deep_link, language=None)
+                    if st.button("📋 Copy Link", key="copy_link"):
+                        st.toast("Link copied! (use browser copy from text above)")
+                
+                except Exception as e:
+                    st.error(f"Publishing failed: {e}")
+                    st.exception(e)
+        
         except Exception as e:
             st.error(f"Export failed: {e}")
 
@@ -1347,3 +1516,11 @@ with _tab1:
 
 with _tab2:
     render_batch_tab()
+
+# ============================================================
+# Tab 3 — Public Library (if configured)
+# ============================================================
+
+if _tab3 is not None:
+    with _tab3:
+        render_library_tab()
