@@ -18,6 +18,8 @@ Generate beautiful, customizable flower pots with decorative patterns. Adjust di
 - **📐 Full Parametric Control** - Height, diameter, wall thickness, drainage, flare
 - **🎯 Live 3D Preview** - Interactive Plotly visualization
 - **📦 Batch Processing** - Generate multiple designs from YAML config
+- **📚 Public Library Publishing** - Share designs with the community (optional, requires Supabase)
+- **🔗 Deep Link Sharing** - Share and restore designs via URL
 - **✅ Comprehensive Testing** - 58 tests, golden mesh regression, performance benchmarks
 
 ---
@@ -116,6 +118,83 @@ from potfoundry.yaml_api import build_from_yaml
 build_from_yaml("config.yaml")
 # Generates STL files in output/ directory
 ```
+
+---
+
+## 📚 Public Library Publishing (Optional)
+
+Share your designs with the community! When configured, PotFoundry can publish your designs to a public library hosted on Supabase.
+
+### Features
+
+- **Content-addressed storage**: Duplicate designs are automatically deduplicated
+- **Persistent hosting**: Designs survive app restarts (not stored in ephemeral containers)
+- **Browse & download**: Anyone can view and download published STL files
+- **Deep linking**: "Open in editor" button restores design parameters from URL
+- **License control**: Choose from CC, MIT, Apache licenses
+- **Tags & search**: Filter by style, tags, or title
+
+### Setup
+
+1. **Create a Supabase project** (free tier available):
+   - Go to https://app.supabase.com
+   - Create new project
+   - Note your project URL and service key
+
+2. **Configure storage**:
+   - Create a bucket named `pots` (public read access)
+   - Run the SQL migration from `db/migrations/0001_create_pots.sql`
+
+3. **Add secrets**:
+   ```toml
+   # .streamlit/secrets.toml
+   [connections.supabase]
+   url = "https://YOUR_PROJECT.supabase.co"
+   key = "YOUR_SERVICE_ROLE_KEY"
+   bucket = "pots"
+   ```
+
+4. **Restart app** - The "Public Library" tab will appear automatically
+
+### Usage
+
+When exporting an STL:
+1. Expand "📚 Publish to Public Library"
+2. Check "Enable publishing"
+3. Fill in title, tags, and license
+4. Agree to license terms
+5. Click "Export STL..." to publish
+
+Published designs appear in the Library tab with:
+- Thumbnail preview
+- Download button
+- "Open in editor" button (restores design state)
+
+### Security & Privacy
+
+⚠️ **All published designs are public.** Do not publish:
+- Proprietary designs
+- Designs with sensitive information
+- Designs you don't own the rights to
+
+✅ **Built-in protections:**
+- Rate limiting (max 5 publishes per 60 seconds)
+- Content validation (title/tag blocklist)
+- Size limits (25MB max STL size)
+- License consent required
+
+### Alternative Storage
+
+Don't want to use Supabase? See `docs/alt_s3_r2.md` for:
+- AWS S3 + DynamoDB
+- Cloudflare R2 + D1 (zero egress costs)
+
+### Graceful Degradation
+
+Library publishing is **optional**. If not configured:
+- App works normally (local export still available)
+- No Library tab shown
+- No errors or warnings
 
 ---
 
