@@ -5,6 +5,19 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import streamlit as st
 
+# --- Fallback cache decorator for test environments where streamlit.cache_data
+# may be unavailable or replaced by a SimpleNamespace mock. This prevents
+# AttributeError during pytest collection.
+try:  # pragma: no cover - simple attribute probe
+    _cache_data_impl = getattr(st, "cache_data")  # type: ignore[attr-defined]
+    def cache_data(*args, **kwargs):  # passthrough to real decorator
+        return _cache_data_impl(*args, **kwargs)
+except Exception:  # pragma: no cover - executed only in degraded env
+    def cache_data(*args, **kwargs):  # type: ignore
+        def _wrap(fn):
+            return fn  # no caching fallback
+        return _wrap
+
 from .imports import STYLES, base_radius, _spin_twist_radians, build_pot_mesh
 
 
@@ -15,7 +28,7 @@ def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
         st.pyplot(fig, clear_figure=clear, use_container_width=fill_width)
 
 
-@st.cache_data(show_spinner=False)
+@cache_data(show_spinner=False)
 def make_preview_arrays(H: float, Rt: float, Rb: float, expn: float,
                         n_theta: int, n_z: int,
                         style_name: str, opts_json: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -145,7 +158,7 @@ def render_preview(
     return png
 
 
-@st.cache_data(show_spinner=False)
+@cache_data(show_spinner=False)
 def render_preview_png_cached(
     H: float, Rt: float, Rb: float, expn: float,
     n_theta: int, n_z: int,
@@ -251,7 +264,7 @@ def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts
     _pyplot(fig, fill_width=True); plt.close(fig)
 
 
-@st.cache_data(show_spinner=False)
+@cache_data(show_spinner=False)
 def render_preview_apng_cached(
     H: float, Rt: float, Rb: float, expn: float,
     n_theta: int, n_z: int,
@@ -377,7 +390,7 @@ def render_preview_apng_cached(
         return imgs[0]
 
 
-@st.cache_data(show_spinner=False)
+@cache_data(show_spinner=False)
 def render_mesh_snapshot_cached(
     H: float, Rt: float, Rb: float, expn: float,
     n_theta: int, n_z: int,
