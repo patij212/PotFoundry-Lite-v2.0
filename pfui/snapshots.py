@@ -1,7 +1,9 @@
+# pfui/snapshots.py
 from __future__ import annotations
 from typing import Any, Dict, List
 import streamlit as st
 from .state import widget_key
+from .snapshot_store import save_png_temp, read_png_bytes, remove_png_path
 
 
 def render_snapshots(png_bytes: bytes | None, style_name: str,
@@ -12,9 +14,20 @@ def render_snapshots(png_bytes: bytes | None, style_name: str,
     sc1, sc2, sc3 = st.columns([1, 1, 2])
     snap_name = sc1.text_input("Snapshot name", value=f"{style_name}_H{int(H)}")
     if sc2.button("Capture"):
+        png_target = None
+        if png_bytes:
+            st.write("Debug: png_bytes is available, attempting to save.")
+            try:
+                png_target = save_png_temp(png_bytes)
+            except Exception as e:
+                st.write(f"Debug: Failed to save PNG temp file: {e}")
+                png_target = None
+        else:
+            st.write("Debug: png_bytes is None, cannot save snapshot.")
+
         snap = {
             "name": snap_name,
-            "png": png_bytes,
+            "png": png_target,
             "style": style_name,
             "params": {
                 "H": H, "top_od": top_od, "bottom_od": bottom_od,
@@ -30,8 +43,10 @@ def render_snapshots(png_bytes: bytes | None, style_name: str,
         for i, s in enumerate(snaps):
             st.markdown(f"**{i+1}. {s['name']}**")
             cc1, cc2, cc3 = st.columns([1, 1, 2])
-            if s.get("png"):
-                cc1.image(s["png"], caption="preview", use_column_width=True)
+            png_bytes_local = read_png_bytes(s.get("png"))
+            if png_bytes_local:
+                # replace deprecated use_column_width with use_container_width
+                cc1.image(png_bytes_local, caption="preview", use_container_width=True)
             if cc2.button("Apply", key=f"apply_{i}"):
                 st.session_state.update({
                     "H": s["params"]["H"],
@@ -47,6 +62,11 @@ def render_snapshots(png_bytes: bytes | None, style_name: str,
                     st.session_state[widget_key(s["style"], k)] = v
                 st.rerun()
             if cc3.button("Delete", key=f"del_{i}"):
+                # remove temp file if we created one
+                try:
+                    remove_png_path(s.get("png"))
+                except Exception:
+                    pass
                 del snaps[i]
                 st.session_state["_snaps"] = snaps
                 st.rerun()
