@@ -75,7 +75,7 @@ try:
             print(f"  ❌ Triangle count mismatch: {tri_count} != {len(faces)}")
             sys.exit(1)
 
-        print(f"  ✅ Binary STL export works correctly")
+        print("  ✅ Binary STL export works correctly")
         print(f"     File size: {file_size:,} bytes")
         print(f"     Triangles: {tri_count:,}")
         print(f"     Bytes per triangle: {file_size / tri_count:.1f}")

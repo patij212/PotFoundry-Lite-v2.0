@@ -1,5 +1,4 @@
 import json
-import numpy as np
 
 from pfui.preview import render_mesh_snapshot_cached
 

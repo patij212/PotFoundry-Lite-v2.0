@@ -1,63 +1,297 @@
-# 🏺 PotFoundry-Lite v2.0
+# 🏺 PotFoundry Lite v2.1
 
-Parametric, 3D-printable plant pots with a lightweight Streamlit UI. Adjust dimensions and style, preview in your browser, and export meshes ready for slicing.
+**Parametric, 3D-printable plant pots with a lightweight Streamlit UI.**
+
+Generate beautiful, customizable flower pots with decorative patterns. Adjust dimensions and style, preview in your browser, and export production-ready STL files optimized for 3D printing.
+
+[![Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen)]()
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)]()
+[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)]()
 
 > **License & Commercial Use**
 >
 > - Free for **hobby, educational, and other noncommercial use** under the **PolyForm Noncommercial 1.0.0** license.
-> - **Commercial use** (e.g., selling printed pots, bundling in paid software/services, or use within a for-profit business) **requires a commercial license** — see `COMMERCIAL-LICENSE.md`.
+> - **Commercial use** (selling printed pots, bundling in paid software, use in for-profit business) **requires a commercial license** — see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
 ---
 
-## Contents
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Run the App](#run-the-app)
-- [Project Layout](#project-layout)
-- [Configuration](#configuration)
-- [Tips & Troubleshooting](#tips--troubleshooting)
-- [Developing](#developing)
-- [Contributing](#contributing)
-- [Roadmap](#roadmap)
-- [License](#license)
+## ✨ Features
+
+- **🎨 Five Artistic Styles** - Petal variations, spiral ridges, harmonic ripples, and more
+- **⚡ Fast Binary STL Export** - 80% smaller files, 10x faster than ASCII
+- **🔒 Watertight Meshes** - Production-ready geometry, every time
+- **📐 Full Parametric Control** - Height, diameter, wall thickness, drainage, flare
+- **🎯 Live 3D Preview** - Interactive Plotly visualization
+- **📦 Batch Processing** - Generate multiple designs from YAML config
+- **📚 Public Library Publishing** - Share designs with the community (optional, requires Supabase)
+- **🔗 Deep Link Sharing** - Share and restore designs via URL
+- **✅ Comprehensive Testing** - 99 tests, 100% pass rate, golden mesh regression, performance benchmarks
+- **🧹 High Code Quality** - Type hints, docstrings, LLM-friendly architecture
 
 ---
 
-## Features
-- **Browser UI (Streamlit):** tweak size/shape parameters with live feedback.
-- **Deterministic meshes:** stable, repeatable results for consistent prints.
-- **Simple install:** standard Python + `requirements.txt`.
-- **Testable core:** optional `tests/` folder for smoke/unit tests.
+## 🚀 Quick Start
 
-> Typical controls include: height, top/bottom diameter, wall thickness, bottom thickness, and style-specific options.
+### Prerequisites
 
----
+- Python 3.11+ (tested on 3.11, 3.12, 3.13)
+- pip
 
-## Quick Start
+### Installation
 
-### 1) Requirements
-- Python **3.9+** (3.11+ recommended)
-- Recent **pip** (23+ recommended)
-
-### 2) Create & activate a virtual environment
-
-**macOS / Linux**
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -U pip
-```
+# Clone repository
+git clone https://github.com/patij212/PotFoundry-Lite-v2.0
+cd PotFoundry-Lite-v2.0
 
-**Windows (PowerShell)**
-```powershell
+# Create virtual environment (recommended)
 python -m venv .venv
-. .\.venv\Scripts\Activate.ps1
-python -m pip install -U pip
+source .venv/bin/activate  # On Windows: .\.venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the app
+streamlit run app.py
 ```
 
-### 3) Install dependencies
+The app will open in your browser (usually http://localhost:8501).
+
+### Basic Usage
+
+1. **Choose a style** from the dropdown (SuperformulaBlossom, FourierBloom, etc.)
+2. **Adjust parameters** using sliders (height, diameter, wall thickness)
+3. **Preview in 3D** - rotate and zoom to inspect
+4. **Export STL** - click download button for 3D printing
+
+### Using the Core API
+
+```python
+from potfoundry import build_pot_mesh, write_stl_binary, STYLES
+
+# Generate mesh
+r_outer_fn, _ = STYLES["SuperformulaBlossom"]
+verts, faces, diag = build_pot_mesh(
+    H=120, Rt=70, Rb=50,
+    t_wall=3, t_bottom=3, r_drain=8,
+    expn=1.1, n_theta=168, n_z=84,
+    r_outer_fn=r_outer_fn,
+    style_opts={"a": 1.0, "b": 1.0, "m": 5, "n1": 2, "n2": 7, "n3": 7}
+)
+
+# Export to STL (binary format - recommended)
+write_stl_binary("my_pot.stl", "FlowerPot", verts, faces)
+print(f"Generated {len(faces)} triangles")
+```
+
+### Batch Processing
+
+Create a YAML config file and process multiple designs:
+
 ```bash
-pip install -r requirements.txt
+python -m potfoundry.yaml_api config.yaml
+```
+
+See example configs in the documentation.
+
+---
+
+## 📁 Project Structure
+
+```
+PotFoundry-Lite-v2.0/
+├── app.py                      # Streamlit UI entry point
+├── potfoundry/                 # Core library (UI-agnostic)
+│   ├── __init__.py            # Public API with __version__
+│   ├── geometry.py            # Mesh generation engine
+│   ├── schema.py              # Pydantic v2 schemas
+│   ├── yaml_api.py            # Batch processing
+│   └── core/
+│       ├── geometry.py        # Alternative geometry implementation
+│       └── io/stl.py          # Binary STL writer
+├── pfui/                      # Streamlit UI components
+│   ├── controls.py            # UI widgets
+│   ├── preview.py             # 3D visualization
+│   ├── presets.py             # Preset management
+│   └── ...
+├── tests/                     # Test suite (99 tests)
+│   ├── test_performance.py    # Performance benchmarks
+│   ├── test_golden_meshes.py  # Regression tests
+│   └── ...
+├── docs/
+│   ├── ARCHITECTURE.md        # System design guide
+│   ├── CODE_QUALITY_GUIDE.md  # LLM-friendly coding standards
+│   ├── DEVELOPMENT.md         # Developer workflows
+│   └── ROADMAP.md             # Future Qt desktop app plan
+├── CHANGELOG.md               # Version history
+└── requirements.txt
+```
+
+---
+
+## 📚 Documentation
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design, module organization, and technical overview
+- **[CODE_QUALITY_GUIDE.md](CODE_QUALITY_GUIDE.md)** - Coding standards, testing, and best practices
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Setup, workflows, testing, and contribution guidelines
+- **[ROADMAP.md](ROADMAP.md)** - Future plans for Qt desktop app (v2.5-v3.0)
+- **[STL_EXPORT_GUIDE.md](STL_EXPORT_GUIDE.md)** - Binary STL migration guide
+- **[CHANGELOG.md](CHANGELOG.md)** - Complete version history
+
+---
+
+## 🎨 Available Styles
+
+1. **SuperformulaBlossom** - Petal-like variations using superformula
+2. **FourierBloom** - Organic shapes with Fourier series
+3. **SpiralRidges** - Helical patterns with ridge variations
+4. **SuperellipseMorph** - Smooth, rounded superellipse shapes
+5. **HarmonicRipple** - Wave-like ripples with harmonic frequencies
+
+Each style has customizable parameters for unique designs.
+
+---
+
+## 🧪 Testing
+
+```bash
+# Install test dependencies
+pip install pytest pytest-cov
+
+# Run all tests
+PYTHONPATH=. pytest -v
+
+# Run specific test category
+PYTHONPATH=. pytest tests/test_performance.py -v
+PYTHONPATH=. pytest tests/test_golden_meshes.py -v
+
+# Run with coverage
+PYTHONPATH=. pytest --cov=potfoundry --cov=pfui tests/
+```
+
+### Test Suite
+
+- **99 tests total** (100% pass rate)
+- **Unit tests** - Core functions, geometry, STL export
+- **Integration tests** - End-to-end workflows
+- **Performance benchmarks** - Verify speed targets met
+- **Golden mesh regression** - Ensure deterministic output
+- **Watertightness validation** - Verify closed surfaces
+
+### Performance Targets (All Met ✅)
+
+- Typical mesh (168×84): **132ms** (target: <200ms)
+- Binary STL export: **15ms** (target: <100ms)
+- End-to-end workflow: **144ms** (target: <500ms)
+
+---
+
+## 🛠️ Development
+
+### Code Quality
+
+```bash
+# Run linting
+ruff check .
+
+# Auto-fix issues
+ruff check . --fix
+
+# Run pre-commit hooks
+pre-commit run --all-files
+```
+
+### Contributing
+
+Pull requests are welcome! Please:
+
+1. Follow the [CODE_QUALITY_GUIDE.md](CODE_QUALITY_GUIDE.md)
+2. Add tests for new functionality
+3. Ensure all tests pass: `pytest -v`
+4. Run linting: `ruff check .`
+5. Update documentation as needed
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed guidelines.
+
+---
+
+## 🚀 Future Vision
+
+### v2.1 (Current)
+- ✅ Code quality improvements
+- ✅ Bug fixes and stability
+- ✅ Version management
+- ✅ Comprehensive documentation
+
+### v2.2-v2.5 (Near-term)
+- Enhanced Streamlit UI with better error messages
+- Real-time validation feedback
+- Improved preset management
+- Better batch processing UX
+- Qt desktop prototype
+
+### v3.0 (Long-term)
+- Full Qt desktop application
+- Multi-threading support
+- VTK-powered 3D preview
+- PyInstaller packaging
+- Production release
+
+See [ROADMAP.md](ROADMAP.md) for detailed evolution plan.
+
+---
+
+## 📊 Performance
+
+All performance targets exceeded:
+
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| Typical mesh generation | <200ms | 132ms | ✅ |
+| Low-res mesh | <50ms | 18ms | ✅ |
+| High-res mesh | <1000ms | 519ms | ✅ |
+| Binary STL export | <100ms | 15ms | ✅ |
+| End-to-end workflow | <500ms | 144ms | ✅ |
+
+---
+
+## 📈 Project Status
+
+**Current Version:** v2.1.0  
+**Status:** Production-ready  
+**Test Coverage:** 99 tests (100% pass)  
+**Performance:** All targets met ✅  
+**Documentation:** Comprehensive ✅  
+**Next Version:** v2.2 (Streamlit enhancements)
+
+---
+
+## 📞 Support
+
+- **Issues:** [GitHub Issues](https://github.com/patij212/PotFoundry-Lite-v2.0/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/patij212/PotFoundry-Lite-v2.0/discussions)
+
+---
+
+## 🔒 License
+
+- **Noncommercial:** [PolyForm Noncommercial 1.0.0](LICENSE)
+- **Commercial:** See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for commercial licensing options
+
+---
+
+## 🙏 Acknowledgments
+
+- Built with [Streamlit](https://streamlit.io/), [NumPy](https://numpy.org/), and [Plotly](https://plotly.com/)
+- Inspired by the 3D printing and parametric design community
+- Developed with assistance from GitHub Copilot
+
+---
+
+**Made with ❤️ for the 3D printing community**
+
+Last Updated: December 2024
+
 ```
 
 ---

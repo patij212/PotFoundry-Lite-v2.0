@@ -2,7 +2,7 @@
 # Geometry core with style-agnostic twist/spin and optimized mesh build.
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict
 import math
 import numpy as np
 from functools import lru_cache
@@ -18,7 +18,6 @@ __all__ = [
 
 
 # Shared base profile (outer radius vs height) with flare-center warp and bell
-from typing import Dict
 import math as _m
 
 def base_radius(z: float, H: float, Rb: float, Rt: float, expn: float, opts: Dict) -> float:
@@ -302,7 +301,7 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     assert r_drain > 0 and r_drain < (Rb - t_wall - 2.0), "Drain hole too large for base—adjust sizes."
 
     thetas = np.linspace(0.0, TAU, n_theta, endpoint=False)
-    cos_th = np.cos(thetas); sin_th = np.sin(thetas)
+    np.cos(thetas); np.sin(thetas)
     z_outer = np.linspace(0.0, H, n_z + 1)
     z_inner = np.linspace(t_bottom, H, n_z + 1)
 

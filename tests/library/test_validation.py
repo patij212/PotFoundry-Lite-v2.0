@@ -1,5 +1,4 @@
 """Tests for library validation functions."""
-import pytest
 
 from potfoundry.library import (
     validate_title,

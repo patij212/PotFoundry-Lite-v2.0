@@ -1,17 +1,8 @@
 """Tests for canonical JSON generation and content hashing."""
-import pytest
 import json
 import hashlib
 
 from potfoundry.library import canonical_payload, content_id, _normalize_dict
-from tests.library.fixtures import (
-    sample_style,
-    sample_size,
-    sample_opts,
-    sample_mesh,
-    sample_diagnostics,
-    sample_license,
-)
 
 
 def test_canonical_payload_structure(

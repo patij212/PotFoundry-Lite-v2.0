@@ -58,8 +58,10 @@ def unit_number_input(
         inv = _in_to_mm
         fmt = format_in
     else:
-        conv = lambda x: x
-        inv = lambda x: x
+        def conv(x):
+            return x
+        def inv(x):
+            return x
         fmt = format_mm
 
     def _c(x): return None if x is None else conv(float(x))
@@ -100,8 +102,10 @@ def unit_slider(
         conv = _mm_to_in
         inv = _in_to_mm
     else:
-        conv = lambda x: x
-        inv = lambda x: x
+        def conv(x):
+            return x
+        def inv(x):
+            return x
 
     val = host.slider(
         label,

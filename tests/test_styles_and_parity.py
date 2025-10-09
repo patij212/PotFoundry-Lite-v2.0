@@ -1,6 +1,5 @@
 
-import numpy as np
-from potfoundry.geometry import STYLES, build_pot_mesh, base_radius, _spin_twist_radians
+from potfoundry.geometry import STYLES, build_pot_mesh
 
 def test_styles_are_tuples_and_callable():
     assert isinstance(STYLES, dict)

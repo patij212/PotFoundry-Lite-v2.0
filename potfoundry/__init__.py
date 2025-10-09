@@ -10,6 +10,9 @@ STL Export:
 For all production use, prefer write_stl_binary. It produces smaller files,
 writes faster, and is universally supported by modern slicers and CAD tools.
 """
+
+__version__ = "2.1.0"
+
 from .geometry import (
     MeshQuality,
     PotDefaults,
@@ -34,4 +37,6 @@ __all__ = [
     # STL export (binary is recommended)
     'write_stl_binary',
     'write_ascii_stl',  # deprecated
+    # Version
+    '__version__',
 ]

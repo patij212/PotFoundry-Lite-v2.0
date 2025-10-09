@@ -5,14 +5,13 @@
 # and performance. Binary STL is the recommended format for all production use.
 from __future__ import annotations
 from dataclasses import dataclass, asdict, field
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List
 from pathlib import Path
 import json
 import zipfile
 
-import numpy as np
 import yaml
-from .schema import ConfigV2, migrate_v1_to_v2, deep_merge, PartialDefaultsModel, DefaultsModel
+from .schema import ConfigV2, migrate_v1_to_v2, deep_merge
 # Binary STL writer (recommended for all exports)
 from .core.io.stl import write_stl_binary, atomic_write_bytes
 
@@ -24,7 +23,6 @@ from .geometry import (
     save_preview_png,
 )
 
-
 @dataclass
 class Config:
     version: int = 1
@@ -35,17 +33,6 @@ class Config:
     defaults: PotDefaults = field(default_factory=PotDefaults)
     presets: Dict[str, dict] = field(default_factory=dict)   # name -> {style, size, opts}
     recipes: List[dict] = field(default_factory=list)        # list of {name, style|use, size, opts}
-
-
-def deep_merge(a: dict, b: dict) -> dict:
-    out = dict(a or {})
-    for k, v in (b or {}).items():
-        if isinstance(v, dict) and isinstance(out.get(k), dict):
-            out[k] = deep_merge(out[k], v)
-        else:
-            out[k] = v
-    return out
-
 
 def load_config(path: Path) -> ConfigV2:
     raw = yaml.safe_load(path.read_text()) or {}
@@ -271,8 +258,3 @@ def _resolve_style_name(name: str) -> str:
     if name in STYLES:
         return name
     return STYLE_ALIASES.get(name, name)
-
-    if 'type' in d and 'style' not in d:
-        d = dict(d)
-        d['style'] = d.pop('type')
-    return d

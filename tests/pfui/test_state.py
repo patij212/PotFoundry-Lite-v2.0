@@ -1,7 +1,6 @@
 # tests/pfui/test_state.py
 import sys
 import types
-import pytest
 
 # --- stub streamlit BEFORE importing pfui.state ---
 fake_st = types.SimpleNamespace()

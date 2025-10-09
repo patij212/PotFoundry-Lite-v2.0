@@ -203,7 +203,7 @@ def render_preview_png_cached(
     redundant recomputation when inputs haven't changed.
     """
     # Build arrays using the cached make_preview_arrays
-    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+    __import__("json").loads(opts_json)
     X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
 
     # Reuse much of render_preview's plotting logic but avoid calling st.pyplot
@@ -336,7 +336,7 @@ def render_preview_apng_cached(
     available or if an error occurs.
     """
     # Build arrays once
-    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+    __import__("json").loads(opts_json)
     X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
 
     import numpy as _np
