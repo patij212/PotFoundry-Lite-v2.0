@@ -11,8 +11,9 @@ from functools import lru_cache
 
 __all__ = [
     "MeshQuality", "PotDefaults", "STYLES",
-    "r_base_out", "build_pot_mesh", "write_ascii_stl",
-    "save_preview_png"
+    "r_base_out", "build_pot_mesh",
+    "save_preview_png",
+    "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
 
 
@@ -93,7 +94,31 @@ def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     return n / norm
 
 def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> None:
-    """Write triangles to ASCII STL (portable, human-readable)."""
+    """Write triangles to ASCII STL (portable, human-readable).
+
+    .. deprecated:: 2.0
+        ASCII STL export is deprecated. Use :func:`write_stl_binary` instead.
+        Binary STL files are smaller, faster to write/read, and universally supported
+        by all modern slicers and CAD tools.
+
+        ASCII STL is retained only for debugging or legacy compatibility.
+
+    Args:
+        path: Output file path
+        name: Model name (embedded in STL file)
+        verts: Vertex array (N×3)
+        faces: Face index array (M×3)
+
+    Note:
+        For production use, prefer write_stl_binary from potfoundry.core.io.stl
+    """
+    import warnings
+    warnings.warn(
+        "write_ascii_stl is deprecated. Use write_stl_binary instead. "
+        "Binary STL files are smaller, faster, and universally supported.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     with open(path, "w") as f:
         f.write(f"solid {name}\n")
         for ia, ib, ic in faces:
@@ -148,19 +173,51 @@ def r_outer_superformula_blossom(theta: float, z: float, r0: float, H: float, op
     t = z / H if H > 0 else 0.0
     m_base = float(opts.get("sf_m_base", 6.0))
     m_top  = float(opts.get("sf_m_top", 10.0))
-    m = m_base + (m_top - m_base) * (t ** 1.2)
-    n1 = float(opts.get("sf_n1", 0.35)) + 0.15 * t
-    n2 = float(opts.get("sf_n2", 0.8)) + 0.6 * t
-    n3 = float(opts.get("sf_n3", 0.8)) + 0.6 * (1.0 - t)
-    rf = superformula_r(theta, m, n1, n2, n3)
+    m_curve = float(opts.get("sf_m_curve_exp", 1.2))
+    m = m_base + (m_top - m_base) * (t ** m_curve)
+
+    n1_base = float(opts.get("sf_n1", 0.35))
+    n1_top  = float(opts.get("sf_n1_top", 0.50))
+    n2_base = float(opts.get("sf_n2", 0.8))
+    n2_top  = float(opts.get("sf_n2_top", 1.4))
+    n3_base = float(opts.get("sf_n3", 0.8))
+    n3_top  = float(opts.get("sf_n3_top", 0.8))
+
+    n1 = n1_base + (n1_top - n1_base) * t
+    n2 = n2_base + (n2_top - n2_base) * t
+    n3 = n3_base + (n3_top - n3_base) * t
+
+    a = float(opts.get("sf_a", 1.0))
+    b = float(opts.get("sf_b", 1.0))
+    rf = superformula_r(theta, m, n1, n2, n3, a=a, b=b)
     return r0 * (0.90 + 0.35 * rf)
 
 def r_outer_fourier_bloom(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
     t = z / H if H > 0 else 0.0
-    base = 1.0 + 0.12*math.cos(8*theta) + 0.05*math.sin(4*theta + 0.6) - 0.04*math.cos(12*theta + 1.3)
-    top  = 1.0 + 0.18*math.cos(11*theta + 0.5) - 0.07*math.sin(7*theta) + 0.05*math.cos(22*theta + 0.9)
+
+    bc8  = float(opts.get("fb_base_cos8_amp", 0.12))
+    bc8p = float(opts.get("fb_base_cos8_phase", 0.0))
+    bs4  = float(opts.get("fb_base_sin4_amp", 0.05))
+    bs4p = float(opts.get("fb_base_sin4_phase", 0.6))
+    bc12 = float(opts.get("fb_base_cos12_amp", -0.04))
+    bc12p= float(opts.get("fb_base_cos12_phase", 1.3))
+    base = 1.0 + bc8 * math.cos(8*theta + bc8p) + bs4 * math.sin(4*theta + bs4p) + bc12 * math.cos(12*theta + bc12p)
+
+    tc11  = float(opts.get("fb_top_cos11_amp", 0.18))
+    tc11p = float(opts.get("fb_top_cos11_phase", 0.5))
+    ts7   = float(opts.get("fb_top_sin7_amp", -0.07))
+    ts7p  = float(opts.get("fb_top_sin7_phase", 0.0))
+    tc22  = float(opts.get("fb_top_cos22_amp", 0.05))
+    tc22p = float(opts.get("fb_top_cos22_phase", 0.9))
+    top   = 1.0 + tc11 * math.cos(11*theta + tc11p) + ts7 * math.sin(7*theta + ts7p) + tc22 * math.cos(22*theta + tc22p)
+
     f = (1 - t) * base + t * top
-    f *= (1.0 + 0.06 * math.sin(5*theta + TAU * 0.5 * t))
+
+    wob_amp   = float(opts.get("fb_wobble_amp", 0.06))
+    wob_freq  = float(opts.get("fb_wobble_freq", 5))
+    wob_zgain = float(opts.get("fb_wobble_zgain", 0.5))
+    f *= (1.0 + wob_amp * math.sin(wob_freq * theta + TAU * wob_zgain * t))
+
     strength = float(opts.get("fb_strength", 1.0))
     return r0 * (1.0 + (f - 1.0) * strength)
 
@@ -171,31 +228,51 @@ def r_outer_spiral_ridges(theta: float, z: float, r0: float, H: float, opts: Dic
     phase = TAU * turns * t
     amp_min = float(opts.get("spiral_amp_min", 0.15))
     amp_max = float(opts.get("spiral_amp_max", 0.25))
-    amp = amp_min + (amp_max - amp_min) * (t ** 1.3)
+    amp_curve = float(opts.get("spiral_amp_curve", 1.3))
+    amp = amp_min + (amp_max - amp_min) * (t ** amp_curve)
+
     f = 1.0 + amp * math.sin(k * theta + phase)
-    f += 0.04 * math.sin(3 * k * theta + 1.7 * phase)
+
+    groove_amp  = float(opts.get("spiral_groove_amp", 0.04))
+    groove_mult = float(opts.get("spiral_groove_mult", 3.0))
+    phase_mult  = float(opts.get("spiral_phase_mult", 1.7))
+    f += groove_amp * math.sin(groove_mult * k * theta + phase_mult * phase)
     return r0 * f
 
 def r_outer_superellipse_morph(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
     t = z / H if H > 0 else 0.0
     m_base = float(opts.get("se_m_base", 2.0))
     m_top  = float(opts.get("se_m_top", 5.5))
-    m_exp = m_base + (m_top - m_base) * (t ** 1.1)
+    m_curve = float(opts.get("se_m_curve_exp", 1.1))
+    m_exp = m_base + (m_top - m_base) * (t ** m_curve)
+
     c = abs(math.cos(theta)) ** m_exp
     s = abs(math.sin(theta)) ** m_exp
     rf = (c + s) ** (-1.0 / max(m_exp, 1e-9))
-    rf *= (1.0 + 0.08 * math.cos(4*theta + 0.4) + 0.03 * math.cos(8*theta))
+
+    c4a = float(opts.get("se_c4_amp", 0.08))
+    c4p = float(opts.get("se_c4_phase_deg", 23)) * math.pi / 180.0
+    c8a = float(opts.get("se_c8_amp", 0.03))
+    c8p = float(opts.get("se_c8_phase_deg", 0)) * math.pi / 180.0
+    rf *= (1.0 + c4a * math.cos(4*theta + c4p) + c8a * math.cos(8*theta + c8p))
     return r0 * rf
 
 def r_outer_harmonic_ripple(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
     t = z / H if H > 0 else 0.0
-    petals = int(opts.get("hr_petals", 7))
+    petals  = int(opts.get("hr_petals", 7))
     pet_amp = float(opts.get("hr_petal_amp", 0.16))
+    pet_ph  = float(opts.get("hr_petal_phase_deg", 17)) * math.pi / 180.0
+    pet_zg  = float(opts.get("hr_petal_zgain", 0.6))
+
     rip_freq = int(opts.get("hr_ripple_freq", 31))
     rip_amp  = float(opts.get("hr_ripple_amp", 0.03))
+    rip_ph   = float(opts.get("hr_ripple_phase_deg", 0)) * math.pi / 180.0
+    rip_zg   = float(opts.get("hr_ripple_zgain", 1.0))
+
     bell     = float(opts.get("hr_bell", 0.05))
-    f = (1.0 + pet_amp * math.cos(petals*theta + 0.3 + TAU * 0.6 * t))
-    f *= (1.0 + rip_amp * math.sin(rip_freq*theta + TAU * t))
+
+    f = (1.0 + pet_amp * math.cos(petals*theta + pet_ph + TAU * pet_zg * t))
+    f *= (1.0 + rip_amp * math.sin(rip_freq*theta + rip_ph + TAU * rip_zg * t))
     f *= (1.0 + bell * math.exp(-((t - 0.5) ** 2) / 0.04))
     return r0 * f
 
@@ -232,11 +309,10 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     verts: list[np.ndarray] = []
     faces: list[tuple[int,int,int]] = []
 
-    def add_ring_xy(r_vals: np.ndarray, z: float, cTw: float, sTw: float) -> np.ndarray:
-        # Vectorized ring placement with precomputed cos/sin(theta) and twist
-        cx =  cos_th * cTw - sin_th * sTw
-        sy =  sin_th * cTw + cos_th * sTw
-        xs = r_vals * cx; ys = r_vals * sy
+    def add_ring_xy(r_vals: np.ndarray, z: float, twist: float) -> np.ndarray:
+        # Coordinates: X = r * cos(theta + twist), Y = r * sin(theta + twist)
+        xs = r_vals * np.cos(thetas + twist)
+        ys = r_vals * np.sin(thetas + twist)
         start_index = len(verts)
         for x, y in zip(xs, ys):
             verts.append(np.array([x, y, z], dtype=float))
@@ -246,10 +322,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     outer_idx = np.empty((len(z_outer), n_theta), dtype=int)
     for i, z in enumerate(z_outer):
         twist = _spin_twist_radians(z, H, style_opts)
-        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_vals = np.array([r_outer_fn(th + twist, z, r0, H, style_opts) for th in thetas], dtype=float)
-        outer_idx[i] = add_ring_xy(r_vals, z, cTw, sTw)
+        r_vals = np.array([r_outer_fn(th, z, r0, H, style_opts) for th in thetas], dtype=float)
+        outer_idx[i] = add_ring_xy(r_vals, z, twist)
 
     # Vectorized faces for outer wall
     rows = len(z_outer) - 1
@@ -266,15 +341,14 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     clamp_count = 0; total_inner_samples = len(z_inner) * n_theta
     for i, z in enumerate(z_inner):
         twist = _spin_twist_radians(z, H, style_opts)
-        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_out_vals = np.array([r_outer_fn(th + twist, z, r0, H, style_opts) for th in thetas], dtype=float)
+        r_out_vals = np.array([r_outer_fn(th, z, r0, H, style_opts) for th in thetas], dtype=float)
         r_in_vals = r_out_vals - t_wall
         min_allowed = r_drain + 1.0
         clamped = r_in_vals < min_allowed
         clamp_count += int(np.count_nonzero(clamped))
         r_in_vals[clamped] = min_allowed
-        inner_idx[i] = add_ring_xy(r_in_vals, z, cTw, sTw)
+        inner_idx[i] = add_ring_xy(r_in_vals, z, twist)
 
     # Vectorized faces for inner wall (reverse winding)
     rows_in = len(z_inner) - 1

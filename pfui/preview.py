@@ -5,7 +5,21 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import streamlit as st
 
-from .imports import STYLES, base_radius, _spin_twist_radians
+# --- Fallback cache decorator for test environments where streamlit.cache_data
+# may be unavailable or replaced by a SimpleNamespace mock. This prevents
+# AttributeError during pytest collection.
+try:  # pragma: no cover - simple attribute probe
+    _cache_data_impl = getattr(st, "cache_data")  # type: ignore[attr-defined]
+    def cache_data(*args, **kwargs):  # passthrough to real decorator
+        return _cache_data_impl(*args, **kwargs)
+except Exception:  # pragma: no cover - executed only in degraded env
+    def cache_data(*args, **kwargs):  # type: ignore
+        def _wrap(fn):
+            return fn  # no caching fallback
+        return _wrap
+
+from .imports import STYLES, base_radius, _spin_twist_radians, build_pot_mesh
+from .colors import build_gradient_colors
 
 
 def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
@@ -15,7 +29,7 @@ def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
         st.pyplot(fig, clear_figure=clear, use_container_width=fill_width)
 
 
-@st.cache_data(show_spinner=False)
+@cache_data(show_spinner=False)
 def make_preview_arrays(H: float, Rt: float, Rb: float, expn: float,
                         n_theta: int, n_z: int,
                         style_name: str, opts_json: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -49,9 +63,11 @@ def make_preview_arrays(H: float, Rt: float, Rb: float, expn: float,
             nt = max(24, int(n_theta * scale))
             nz = max(12, int(n_z * scale))
             return _try(nt, nz)
-        except Exception:
+        except Exception as e:
+            st.error(f"Preview generation failed (scale={scale}): {e}")
             continue
 
+    st.error("Preview generation failed for all scales. Showing fallback shape.")
     thetas = _np.linspace(0.0, 2.0 * _np.pi, max(24, n_theta // 4), endpoint=False)
     zvals = _np.linspace(0.0, H, max(12, n_z // 4))
     Rmid = 0.5 * (Rt + Rb)
@@ -114,7 +130,12 @@ def render_preview(
         plt.close(fig); return None
 
     try:
-        ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True)
+        # Use a perceptually-uniform colormap for better visibility on dark background
+        ax.plot_surface(
+            X, Y, Z,
+            linewidth=0, antialiased=True, shade=True,
+            cmap="viridis", edgecolor="none"
+        )
     except Exception:
         step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
         ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
@@ -126,12 +147,29 @@ def render_preview(
         scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
         ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
 
+    # Camera + aspect: use orthographic projection and equal XY, with gently compressed Z
     try:
         ax.view_init(elev=view_elev, azim=view_azim)
     except Exception:
         pass
+    try:
+        ax.set_proj_type('ortho')
+    except Exception:
+        pass
 
-    ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
+    # Symmetric XY limits based on radius; Z from 0..max
+    try:
+        rmax = float(_np.max(_np.sqrt(X**2 + Y**2)))
+        xlim = (-rmax, rmax)
+        ylim = (-rmax, rmax)
+        zlim = (0.0, float(_np.max(Z)))
+        ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+        # Aspect ratios: equal XY, capped Z/XY
+        z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
+        ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
+    except Exception:
+        # Fallback to data-driven aspect
+        ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
     if show_axes:
         ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
 
@@ -139,6 +177,118 @@ def render_preview(
     png = None
     if return_png:
         buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue()
+    plt.close(fig)
+    return png
+
+
+@cache_data(show_spinner=False)
+def render_preview_png_cached(
+    H: float, Rt: float, Rb: float, expn: float,
+    n_theta: int, n_z: int,
+    style_name: str, opts_json: str,
+    fig_w: float, fig_h: float, dpi: int,
+    *, inner_wall: float | None = None,
+    view_elev: float = 20.0, view_azim: float = -60.0,
+    theme: str = "dark",
+    show_floor: bool = True,
+    show_axes: bool = False,
+    # kept for backward compatibility: callers may pass return_png flag
+    return_png: bool = False,
+    # appearance cache key to invalidate cache on palette/lighting changes
+    appearance_key: str = "",
+) -> bytes | None:
+    """Cacheable renderer that returns PNG bytes for given preview parameters.
+
+    This avoids background threads and uses Streamlit's cache to prevent
+    redundant recomputation when inputs haven't changed.
+    """
+    # Build arrays using the cached make_preview_arrays
+    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+    X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
+
+    # Reuse much of render_preview's plotting logic but avoid calling st.pyplot
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+    ax = fig.add_subplot(111, projection="3d")
+
+    if theme == "dark":
+        fig.patch.set_facecolor("#0E1117")
+        ax.set_facecolor("#0E1117")
+        for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+            try:
+                axis.set_pane_color((0.06, 0.07, 0.10, 1.0))
+            except Exception:
+                pass
+        ax._axis3don = show_axes
+    else:
+        ax._axis3don = show_axes
+
+    if show_floor:
+        rmax = float(np.max(np.sqrt(X**2 + Y**2)))
+        size = max(180.0, rmax * 3.0)
+        step = max(10.0, size / 18.0)
+        xs = np.arange(-size, size + step, step)
+        ys = np.arange(-size, size + step, step)
+        z0 = 0.0
+        for x in xs:
+            ax.plot([x, x], [ys[0], ys[-1]], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+        for y in ys:
+            ax.plot([xs[0], xs[-1]], [y, y], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+
+    import numpy as _np
+    if not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all():
+        plt.close(fig)
+        return None
+
+    try:
+        ax.plot_surface(
+            X, Y, Z,
+            linewidth=0, antialiased=True, shade=True,
+            cmap="viridis", edgecolor="none"
+        )
+    except Exception:
+        step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
+        ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
+
+    if inner_wall and inner_wall > 0:
+        R = _np.maximum(_np.sqrt(X**2 + Y**2), max(1e-3, inner_wall * 2.0))
+        scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
+        ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
+
+    try:
+        ax.view_init(elev=view_elev, azim=view_azim)
+    except Exception:
+        pass
+
+    # Use orthographic projection to reduce perspective distortion and compress Z for better aesthetics
+    try:
+        ax.set_proj_type('ortho')
+    except Exception:
+        pass
+
+    # Explicit limits: symmetric XY around 0, Z from 0..max
+    try:
+        rmax = float(np.max(np.sqrt(X**2 + Y**2)))
+        xlim = (-rmax, rmax)
+        ylim = (-rmax, rmax)
+        zlim = (0.0, float(np.max(Z)))
+        ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+        z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
+        ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
+    except Exception:
+        sx = float(np.ptp(X) or 1.0)
+        sy = float(np.ptp(Y) or 1.0)
+        sz = float(np.ptp(Z) or 1.0)
+        xy = max(sx, sy)
+        z_norm = sz / xy if xy > 0 else 1.0
+        z_target = min(z_norm, 0.85)
+        ax.set_box_aspect((1.0, 1.0, z_target))
+    if show_axes:
+        ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
+
+    buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue()
     plt.close(fig)
     return png
 
@@ -163,3 +313,343 @@ def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts
     ax.set_xlabel("z (mm)"); ax.set_ylabel("radius (mm)"); ax.set_title("Radial profile")
     ax.legend(ncol=2, fontsize=8)
     _pyplot(fig, fill_width=True); plt.close(fig)
+
+
+@cache_data(show_spinner=False)
+def render_preview_apng_cached(
+    H: float, Rt: float, Rb: float, expn: float,
+    n_theta: int, n_z: int,
+    style_name: str, opts_json: str,
+    fig_w: float, fig_h: float, dpi: int,
+    *, inner_wall: float | None = None,
+    view_elev: float = 20.0, view_azim: float = -60.0,
+    theme: str = "dark",
+    show_floor: bool = True,
+    show_axes: bool = False,
+    frames: int = 12,
+    spin_degrees: float = 360.0,
+    duration_ms: int = 1500,
+) -> bytes | None:
+    """Generate an animated PNG (APNG) by rendering several azimuth frames.
+
+    Falls back to returning a single PNG frame if Pillow/APNG support is not
+    available or if an error occurs.
+    """
+    # Build arrays once
+    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+    X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
+
+    import numpy as _np
+    if not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all():
+        return None
+
+    # Helper to draw a single frame and return PNG bytes
+    def _render_frame(elev: float, azim: float) -> bytes:
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+        ax = fig.add_subplot(111, projection="3d")
+        if theme == "dark":
+            fig.patch.set_facecolor("#0E1117")
+            ax.set_facecolor("#0E1117")
+            for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+                try:
+                    axis.set_pane_color((0.06, 0.07, 0.10, 1.0))
+                except Exception:
+                    pass
+            ax._axis3don = show_axes
+        else:
+            ax._axis3don = show_axes
+
+        if show_floor:
+            try:
+                rmax = float(_np.max(_np.sqrt(X**2 + Y**2)))
+                size = max(180.0, rmax * 3.0)
+                step = max(10.0, size / 18.0)
+                xs = _np.arange(-size, size + step, step)
+                ys = _np.arange(-size, size + step, step)
+                z0 = 0.0
+                for x in xs:
+                    ax.plot([x, x], [ys[0], ys[-1]], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+                for y in ys:
+                    ax.plot([xs[0], xs[-1]], [y, y], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+            except Exception:
+                pass
+
+        try:
+            ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True, cmap="viridis", edgecolor="none")
+        except Exception:
+            step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
+            ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
+
+        if inner_wall and inner_wall > 0:
+            R = _np.maximum(_np.sqrt(X**2 + Y**2), max(1e-3, inner_wall * 2.0))
+            scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
+            ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
+
+        # View + projection + explicit limits/aspect
+        try:
+            ax.view_init(elev=elev, azim=azim)
+        except Exception:
+            pass
+        try:
+            ax.set_proj_type('ortho')
+        except Exception:
+            pass
+        try:
+            rmax = float(_np.max(_np.sqrt(X**2 + Y**2)))
+            xlim = (-rmax, rmax)
+            ylim = (-rmax, rmax)
+            zlim = (0.0, float(_np.max(Z)))
+            ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+            z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
+            ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
+        except Exception:
+            ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
+        if show_axes:
+            ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
+
+        from io import BytesIO
+        buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue()
+        plt.close(fig)
+        return png
+
+    # Create frames
+    imgs = []
+    base_az = float(view_azim)
+    for i in range(max(1, frames)):
+        az = base_az + (float(i) / float(max(1, frames))) * spin_degrees
+        try:
+            frame_png = _render_frame(view_elev, az)
+            imgs.append(frame_png)
+        except Exception:
+            # If any frame fails, skip it
+            continue
+
+    if not imgs:
+        return None
+
+    # Try to assemble APNG using Pillow. If Pillow or APNG support is
+    # unavailable, fall back to returning the first frame's PNG bytes.
+    try:
+        from PIL import Image as PILImage
+        from io import BytesIO
+
+        pil_frames = [PILImage.open(BytesIO(b)).convert("RGBA") for b in imgs]
+        out = BytesIO()
+        # duration per frame in ms
+        per_frame = max(20, int(duration_ms / max(1, len(pil_frames))))
+        pil_frames[0].save(
+            out,
+            format="PNG",
+            save_all=True,
+            append_images=pil_frames[1:],
+            duration=per_frame,
+            loop=0,
+            optimize=False,
+        )
+        data = out.getvalue()
+        return data
+    except Exception:
+        # Pillow not available or APNG writing failed: return the first frame
+        return imgs[0]
+
+
+@cache_data(show_spinner=False)
+def render_mesh_snapshot_cached(
+    H: float, Rt: float, Rb: float, expn: float,
+    n_theta: int, n_z: int,
+    style_name: str, opts_json: str,
+    fig_w: float, fig_h: float, dpi: int,
+    *,
+    inner_wall: float | None = None,
+    place_on_ground: bool = True,
+    view_elev: float = 20.0, view_azim: float = -60.0,
+    theme: str = "dark",
+    # appearance cache key to invalidate cache on palette/lighting changes
+    appearance_key: str = "",
+) -> bytes | None:
+    """Build the actual triangulated mesh and render it to PNG bytes.
+
+    Tries Plotly Mesh3d export first (kaleido). Falls back to a
+    matplotlib Poly3DCollection-based renderer. Cached so repeated
+    captures with identical inputs are fast.
+    """
+    import numpy as _np
+
+    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+
+    # Build actual mesh using core geometry
+    try:
+        verts, faces, _ = build_pot_mesh(
+            H=H, Rt=Rt, Rb=Rb, t_wall=opts.get("t_wall", 3.0),
+            t_bottom=opts.get("t_bottom", 3.0), r_drain=opts.get("r_drain", 10.0),
+            expn=expn, n_theta=n_theta, n_z=n_z,
+            r_outer_fn=STYLES[style_name][0], style_opts=opts,
+        )
+    except Exception:
+        # If mesh build fails, don't crash the UI; return None
+        return None
+
+    V = _np.asarray(verts)
+    F = _np.asarray(faces)
+    if place_on_ground:
+        V[:, 2] -= V[:, 2].min()
+
+    # Try Plotly export first
+    capture_bytes = None
+    try:
+        try:
+            import plotly.graph_objects as go
+            import plotly.io as pio
+            HAS_PLOTLY = True
+        except Exception:
+            HAS_PLOTLY = False
+
+        if HAS_PLOTLY:
+            try:
+                # Color by height
+                z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+                # Użyj palety z ustawień UI (Custom lub preset)
+                try:
+                    preset = st.session_state.get("preview_palette", "Custom")
+                    custom = [
+                        st.session_state.get("preview_grad_c1", "#2850D0"),
+                        st.session_state.get("preview_grad_c2", "#5FA8FF"),
+                        st.session_state.get("preview_grad_c3", "#E2F3FF"),
+                    ]
+                    mesh_colors = build_gradient_colors(z_norm, preset if preset != "Custom" else None, custom)
+                except Exception:
+                    # awaryjnie viridis
+                    import matplotlib.pyplot as plt
+                    colorscale = plt.get_cmap("viridis")
+                    mesh_colors = [[int(255 * r), int(255 * g), int(255 * b)] for r, g, b, _ in colorscale(z_norm)]
+
+                fig = go.Figure(data=[
+                    go.Mesh3d(
+                        x=V[:, 0], y=V[:, 1], z=V[:, 2],
+                        i=F[:, 0], j=F[:, 1], k=F[:, 2],
+                        flatshading=False,
+                        lighting=dict(
+                            ambient=min(max(st.session_state.get("mesh_ambient", 0.35), 0.0), 1.0),
+                            diffuse=min(max(st.session_state.get("mesh_diffuse", 0.95), 0.0), 1.0),
+                            specular=min(max(st.session_state.get("mesh_specular", 0.25), 0.0), 1.0),
+                            roughness=min(max(st.session_state.get("mesh_roughness", 0.7), 0.0), 1.0),
+                            fresnel=min(max(st.session_state.get("mesh_fresnel", 0.2), 0.0), 1.0),
+                        ),
+                        vertexcolor=mesh_colors,
+                        hoverinfo="skip",
+                        name="mesh",
+                        opacity=1.0,
+                    )
+                ])
+                height_px = max(400, min(1000, int(110 * fig_h)))
+                width_px = max(400, min(1400, int(96 * fig_w)))
+                # Ustawienia sceny: ortho + ręczny aspekt i zakresy
+                try:
+                    rmax = float(max(abs(V[:, 0]).max(), abs(V[:, 1]).max()))
+                    zmin = float(V[:, 2].min()); zmax = float(V[:, 2].max())
+                except Exception:
+                    rmax = max(1.0, float(st.session_state.get("top_od", 140.0)) * 0.5)
+                    zmin, zmax = 0.0, float(st.session_state.get("H", 120.0))
+                xlim = [-rmax, rmax]
+                ylim = [-rmax, rmax]
+                zlim = [zmin, zmax]
+                z_ratio = (zmax - zmin) / max(1e-6, (xlim[1] - xlim[0]))
+                fig.update_layout(
+                    height=height_px,
+                    width=width_px,
+                    scene=dict(
+                        xaxis=dict(visible=False, range=xlim),
+                        yaxis=dict(visible=False, range=ylim),
+                        zaxis=dict(visible=False, range=zlim),
+                        aspectmode="manual",
+                        aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
+                        camera=dict(up=dict(x=0, y=0, z=1), projection=dict(type='orthographic')),
+                        bgcolor=st.session_state.get("preview_bg_color", "#0E1117"),
+                    ),
+                    margin=dict(l=0, r=0, t=30, b=0),
+                )
+                try:
+                    capture_bytes = fig.to_image(format="png", width=width_px, height=height_px, scale=1)
+                except Exception:
+                    capture_bytes = pio.to_image(fig, format="png", width=width_px, height=height_px, scale=1)
+                # Record method used for diagnostics in session state (best-effort)
+                try:
+                    st.session_state["_last_snapshot_method"] = "plotly"
+                except Exception:
+                    pass
+            except Exception:
+                capture_bytes = None
+
+        # Matplotlib fallback: render triangles directly
+        if not capture_bytes:
+            try:
+                import matplotlib
+                matplotlib.use('Agg')
+                import matplotlib.pyplot as plt
+                from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+                fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+                ax = fig.add_subplot(111, projection='3d')
+                if theme == 'dark':
+                    fig.patch.set_facecolor("#0E1117")
+                    ax.set_facecolor("#0E1117")
+                ax._axis3don = False
+
+                triangles = V[F]
+                mesh = Poly3DCollection(triangles, alpha=0.95, linewidths=0.1, edgecolors='#555555')
+
+                # Kolory twarzy zgodne z UI
+                z_norm_v = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+                face_z = z_norm_v[F].mean(axis=1)
+                try:
+                    preset = st.session_state.get("preview_palette", "Custom")
+                    custom = [
+                        st.session_state.get("preview_grad_c1", "#2850D0"),
+                        st.session_state.get("preview_grad_c2", "#5FA8FF"),
+                        st.session_state.get("preview_grad_c3", "#E2F3FF"),
+                    ]
+                    rgb255 = build_gradient_colors(face_z, preset if preset != "Custom" else None, custom)
+                    colors = [(r/255.0, g/255.0, b/255.0, 1.0) for (r,g,b) in rgb255]
+                except Exception:
+                    colors = plt.cm.viridis(face_z)
+                mesh.set_facecolors(colors)
+                ax.add_collection3d(mesh)
+
+                # Set limits and aspect: symmetric XY, ortho projection, compressed Z
+                try:
+                    ax.set_proj_type('ortho')
+                except Exception:
+                    pass
+                rmax = float(max(abs(V[:, 0]).max(), abs(V[:, 1]).max()))
+                xlim = (-rmax, rmax)
+                ylim = (-rmax, rmax)
+                zlim = (float(V[:, 2].min()), float(V[:, 2].max()))
+                ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+                try:
+                    ax.view_init(elev=view_elev, azim=view_azim)
+                except Exception:
+                    pass
+                z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
+                ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
+
+                from io import BytesIO
+                buf = BytesIO()
+                fig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight', facecolor=fig.get_facecolor())
+                capture_bytes = buf.getvalue()
+                plt.close(fig)
+                try:
+                    st.session_state["_last_snapshot_method"] = "matplotlib"
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    import traceback
+                    traceback.print_exc()
+                except Exception:
+                    pass
+                capture_bytes = None
+
+        return capture_bytes
+    except Exception:
+        return None

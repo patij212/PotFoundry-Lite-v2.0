@@ -51,10 +51,20 @@ def _read_user_presets() -> Dict[str, Any]:
         import yaml as _yaml
         data = _yaml.safe_load(PRESET_PATH.read_text("utf-8")) or {}
         if not isinstance(data, dict):
+            st.error("User presets file is corrupted or invalid. You can reset presets below.")
+            if st.button("Reset user presets"):
+                PRESET_PATH.unlink(missing_ok=True)
+                st.success("User presets have been reset.")
+                st.rerun()
             return {"presets": []}
         data.setdefault("presets", [])
         return data
     except Exception:
+        st.error("Failed to read user presets. You can reset presets below.")
+        if st.button("Reset user presets"):
+            PRESET_PATH.unlink(missing_ok=True)
+            st.success("User presets have been reset.")
+            st.rerun()
         return {"presets": []}
 
 def _write_user_presets(data: Dict[str, Any]) -> bool:
