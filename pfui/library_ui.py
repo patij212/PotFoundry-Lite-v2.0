@@ -1,7 +1,6 @@
 """Library UI tab for browsing and opening published designs."""
 from __future__ import annotations
 
-from typing import Optional
 
 try:
     import streamlit as st
@@ -12,7 +11,6 @@ except ImportError:
 
 from potfoundry.library import list_published
 from potfoundry.integrations.supabase_client import get_singleton_client
-from pfui.deeplink import generate_deep_link
 
 
 def render_library_tab():
@@ -179,7 +177,7 @@ def render_library_card(design: dict):
                 use_container_width=True,
                 key=f"dl_{design['id']}"
             )
-        except Exception as e:
+        except Exception:
             st.button("Download", disabled=True, use_container_width=True, key=f"dl_err_{design['id']}")
     
     with col2:

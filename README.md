@@ -1,10 +1,10 @@
-# 🏺 PotFoundry Lite v2.0
+# 🏺 PotFoundry Lite v2.2
 
 **Parametric, 3D-printable plant pots with a lightweight Streamlit UI.**
 
 Generate beautiful, customizable flower pots with decorative patterns. Adjust dimensions and style, preview in your browser, and export production-ready STL files optimized for 3D printing.
 
-[![Tests](https://img.shields.io/badge/tests-58%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen)]()
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)]()
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)]()
 
@@ -16,11 +16,12 @@ Generate beautiful, customizable flower pots with decorative patterns. Adjust di
 - **⚡ Fast Binary STL Export** - 80% smaller files, 10x faster than ASCII
 - **🔒 Watertight Meshes** - Production-ready geometry, every time
 - **📐 Full Parametric Control** - Height, diameter, wall thickness, drainage, flare
-- **🎯 Live 3D Preview** - Interactive Plotly visualization
+- **🎯 Live 3D Preview** - Interactive Plotly visualization with synchronized colors
+- **📸 Snapshot Capture** - Save and compare design variations
 - **📦 Batch Processing** - Generate multiple designs from YAML config
 - **📚 Public Library Publishing** - Share designs with the community (optional, requires Supabase)
 - **🔗 Deep Link Sharing** - Share and restore designs via URL
-- **✅ Comprehensive Testing** - 58 tests, golden mesh regression, performance benchmarks
+- **✅ Comprehensive Testing** - 99 tests, golden mesh regression, performance benchmarks
 
 ---
 
@@ -286,12 +287,13 @@ PYTHONPATH=. pytest --cov=potfoundry --cov=pfui tests/
 
 ### Test Suite
 
-- **58 tests total** (100% pass rate)
+- **99 tests total** (100% pass rate)
 - **Unit tests** - Core functions, geometry, STL export
 - **Integration tests** - End-to-end workflows
 - **Performance benchmarks** - Verify speed targets met
 - **Golden mesh regression** - Ensure deterministic output
 - **Watertightness validation** - Verify closed surfaces
+- **UI component tests** - State management, presets, snapshots
 
 ### Performance Targets (All Met ✅)
 
@@ -409,12 +411,12 @@ See **ROADMAP.md** for detailed evolution plan.
 
 ## 📈 Project Status
 
-**Current Version:** v2.0  
+**Current Version:** v2.2  
 **Status:** Production-ready  
-**Test Coverage:** 58 tests (100% pass)  
+**Test Coverage:** 99 tests (100% pass)  
 **Performance:** All targets met ✅  
 **Documentation:** Comprehensive ✅  
-**Next Version:** v2.1 (Streamlit enhancements)
+**Next Version:** v2.3 (Additional Streamlit enhancements)
 
 ---
 
