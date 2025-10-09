@@ -35,7 +35,7 @@ from pfui.state import (
     reset_all_defaults,
 )
 from pfui.controls import style_controls, twist_controls
-from pfui.preview import make_preview_arrays, render_preview, render_profile, render_mesh_snapshot_cached
+from pfui.preview import make_preview_arrays, render_profile, render_mesh_snapshot_cached
 from pfui.health import _design_health, _health_badge
 from pfui.batch_tab import render_batch_tab
 from pfui.units import units_selector
@@ -45,7 +45,7 @@ from pfui.deeplink import parse_query_params, apply_state, clear_query_params
 from pfui.library_ui import render_library_tab
 from potfoundry.integrations.supabase_client import get_singleton_client
 import time
-import math
+from datetime import datetime
 
 # ------------------------------------------------------------
 # Boot: apply any queued state changes BEFORE creating widgets
@@ -116,7 +116,7 @@ try:
 except Exception:
     pass
 
-APP_VERSION = "2.1.0-evo"
+APP_VERSION = "2.2.0"
 
 
 def resolve_schema_key(style_name: str) -> str:
@@ -384,7 +384,8 @@ with _tab1:
                 for i, p in enumerate(pdefs.keys()):
                     if cols[i % len(cols)].button(p, key=f"preset_{style_name}_{p}"):
                         pending = {widget_key(style_key, k): v for k, v in pdefs[p].items()}
-                        queue_update(pending); st.rerun()
+                        queue_update(pending)
+                        st.rerun()
                 st.caption("Built-in presets apply style option values.")
 
             with st.expander("User presets (save/load)"):
@@ -411,20 +412,24 @@ with _tab1:
                     st.success("Preset saved.") if _write_user_presets(pdata) else st.error("Failed to save preset.")
 
                 if cols[3].button("Delete") and sel != "<none>":
-                    idx = names.index(sel); del pdata["presets"][idx]
+                    idx = names.index(sel)
+                    del pdata["presets"][idx]
                     st.success("Preset deleted.") if _write_user_presets(pdata) else st.error("Failed to update presets.")
 
                 if sel != "<none>" and st.button("Apply selected"):
                     idx = names.index(sel)
                     apply_preset_dict(pdata["presets"][idx])
-                    st.success("Applied preset."); st.rerun()
+                    st.success("Applied preset.")
+                    st.rerun()
 
         # Reset buttons (restored top-level)
         cL, cR = st.columns(2)
         if cL.button("Reset style to defaults"):
-            reset_style_defaults(style_name); st.rerun()
+            reset_style_defaults(style_name)
+            st.rerun()
         if cR.button("Reset ALL controls"):
-            reset_all_defaults(style_name); st.rerun()
+            reset_all_defaults(style_name)
+            st.rerun()
 
     # --------------- PREVIEW & EXPORT CONTROLS ---------------
     with st.expander("Preview & Export", expanded=True):
@@ -642,7 +647,8 @@ with _tab1:
                             expn=expn, n_theta=preview_n_theta, n_z=preview_n_z,
                             r_outer_fn=r_outer_fn, style_opts=opts,
                         )
-                        Vb = _np_mb.asarray(verts); Fb = _np_mb.asarray(faces)
+                        Vb = _np_mb.asarray(verts)
+                        Fb = _np_mb.asarray(faces)
                         if place_on_ground and len(Vb):
                             Vb[:, 2] -= Vb[:, 2].min()
                         mesh_data = (Vb, Fb)
@@ -830,7 +836,8 @@ with _tab1:
                         geom_factors.append((_k, _v))
                 except Exception:
                     pass
-                import hashlib, pickle
+                import hashlib
+                import pickle
                 try:
                     geom_hash = hashlib.sha1(pickle.dumps(geom_factors)).hexdigest()
                 except Exception:
@@ -947,8 +954,8 @@ with _tab1:
                 try:
                     t0_mesh = time.time()
                     import numpy as np
-                    from typing import Tuple, List
-                    from pfui.colors import build_gradient_colors, resolve_palette
+                    from typing import List
+                    from pfui.colors import build_gradient_colors
 
 
                     # Reuse earlier mesh build; if missing (e.g., switched modes) build now
@@ -962,11 +969,13 @@ with _tab1:
                                 expn=expn, n_theta=preview_n_theta, n_z=preview_n_z,
                                 r_outer_fn=r_outer_fn, style_opts=opts,
                             )
-                            V = _np_r.asarray(verts2); F = _np_r.asarray(faces2)
+                            V = _np_r.asarray(verts2)
+                            F = _np_r.asarray(faces2)
                             if place_on_ground and len(V):
                                 V[:, 2] -= V[:, 2].min()
                         except Exception:
-                            V = np.zeros((0,3)); F = np.zeros((0,3), dtype=int)
+                            V = np.zeros((0,3))
+                            F = np.zeros((0,3), dtype=int)
                     # Gradient coloring using user settings
                     if len(V):
                         span_z = float(np.ptp(V[:, 2])) if len(V) else 0.0
@@ -1276,9 +1285,11 @@ with _tab1:
             max_page = max(0, math.ceil(len(snaps) / per_page) - 1)
             nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 6])
             if nav_col1.button("◀ Prev"):
-                st.session_state["_snap_page"] = max(0, page - 1); st.experimental_rerun()
+                st.session_state["_snap_page"] = max(0, page - 1)
+                st.experimental_rerun()
             if nav_col2.button("Next ▶"):
-                st.session_state["_snap_page"] = min(max_page, page + 1); st.experimental_rerun()
+                st.session_state["_snap_page"] = min(max_page, page + 1)
+                st.experimental_rerun()
             nav_col3.caption(f"Showing page {page+1} / {max_page+1}  — total snapshots: {len(snaps)}")
 
             start = page * per_page
@@ -1389,7 +1400,6 @@ with _tab1:
     
     if do_export:
         try:
-            from datetime import datetime
             verts, faces, _ = build_pot_mesh(
                 H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
                 expn=expn, n_theta=n_theta_export, n_z=n_z_export,
@@ -1470,7 +1480,7 @@ with _tab1:
                         st.success(f"✓ Published! ID: {result.id[:8]}...")
                     
                     # Show library link
-                    from pfui.deeplink import generate_deep_link, extract_state_from_session
+                    from pfui.deeplink import generate_deep_link
                     state_to_encode = {
                         "style": style_name,
                         "H": H,
@@ -1506,7 +1516,8 @@ with _tab1:
         st.text_area("Recent timings", value="\n".join(perf_logs[-30:]), height=180)
         if st.button("Force clear caches"):
             try:
-                st.cache_data.clear(); st.success("Caches cleared")
+                st.cache_data.clear()
+                st.success("Caches cleared")
             except Exception:
                 st.error("Failed to clear caches")
 

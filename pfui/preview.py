@@ -125,8 +125,13 @@ def render_preview(
         st.info("Preview fell back due to invalid values; adjust style or detail.")
         _pyplot(fig, fill_width=fill_width)
         if return_png:
-            buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue(); plt.close(fig); return png
-        plt.close(fig); return None
+            buf = BytesIO()
+            fig.savefig(buf, format="png", dpi=dpi)
+            png = buf.getvalue()
+            plt.close(fig)
+            return png
+        plt.close(fig)
+        return None
 
     try:
         ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True)
@@ -178,7 +183,7 @@ def render_preview_png_cached(
     redundant recomputation when inputs haven't changed.
     """
     # Build arrays using the cached make_preview_arrays
-    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+    __import__("json").loads(opts_json)
     X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
 
     # Reuse much of render_preview's plotting logic but avoid calling st.pyplot
@@ -259,9 +264,12 @@ def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts
         ax.plot(zvals, r_list, alpha=0.9, label=f"outer theta={int(th * 180.0 / np.pi)}°")
         inner = _np.maximum(np.array(r_list) - t_wall, 0.0)
         ax.plot(zvals, inner, alpha=0.6, linestyle="--", label=f"inner theta={int(th * 180.0 / np.pi)}°")
-    ax.set_xlabel("z (mm)"); ax.set_ylabel("radius (mm)"); ax.set_title("Radial profile")
+    ax.set_xlabel("z (mm)")
+    ax.set_ylabel("radius (mm)")
+    ax.set_title("Radial profile")
     ax.legend(ncol=2, fontsize=8)
-    _pyplot(fig, fill_width=True); plt.close(fig)
+    _pyplot(fig, fill_width=True)
+    plt.close(fig)
 
 
 @cache_data(show_spinner=False)
@@ -285,7 +293,7 @@ def render_preview_apng_cached(
     available or if an error occurs.
     """
     # Build arrays once
-    opts: Dict[str, Any] = __import__("json").loads(opts_json)
+    __import__("json").loads(opts_json)
     X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
 
     import numpy as _np
