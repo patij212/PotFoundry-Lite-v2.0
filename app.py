@@ -36,7 +36,7 @@ from pfui.state import (
     reset_all_defaults,
 )
 from pfui.controls import style_controls, twist_controls
-from pfui.preview import make_preview_arrays, render_preview, render_profile, render_mesh_snapshot_cached
+from pfui.preview import make_preview_arrays, render_profile, render_mesh_snapshot_cached
 from pfui.health import _design_health, _health_badge
 from pfui.batch_tab import render_batch_tab
 from pfui.units import units_selector
@@ -46,8 +46,6 @@ from pfui.deeplink import parse_query_params, apply_state, clear_query_params
 from pfui.library_ui import render_library_tab
 from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
 import time
-import math
-from typing import Callable
 
 
 def _mask_possible_secrets(text: str) -> str:
@@ -73,7 +71,6 @@ def _mask_possible_secrets(text: str) -> str:
     except Exception:
         return text
     return text
-from typing import Callable
 
 # ------------------------------------------------------------
 # Boot: apply any queued state changes BEFORE creating widgets
@@ -888,7 +885,8 @@ with _tab1:
                         geom_factors.append((_k, _v))
                 except Exception:
                     pass
-                import hashlib, pickle
+                import hashlib
+                import pickle
                 try:
                     geom_hash = hashlib.sha1(pickle.dumps(geom_factors)).hexdigest()
                 except Exception:
@@ -1017,8 +1015,8 @@ with _tab1:
                 try:
                     t0_mesh = time.time()
                     import numpy as np
-                    from typing import Tuple, List
-                    from pfui.colors import build_gradient_colors, resolve_palette
+                    from typing import List
+                    from pfui.colors import build_gradient_colors
 
 
                     # Reuse earlier mesh build; if missing (e.g., switched modes) build now
@@ -1350,7 +1348,7 @@ with _tab1:
         if "_debug_logs" not in st.session_state:
             st.session_state["_debug_logs"] = []
         # Mask any potential secrets before showing debug logs in UI
-        masked_logs = [_mask_possible_secrets(l) for l in st.session_state.get("_debug_logs", [])]
+        masked_logs = [_mask_possible_secrets(log_entry) for log_entry in st.session_state.get("_debug_logs", [])]
         st.text_area("Debug Logs", value="\n".join(masked_logs), height=300)
 
         # Re-read snaps to ensure we display the latest list (capture may
@@ -1638,7 +1636,7 @@ with _tab1:
                         st.success(f"✓ Published! ID: {result.id[:8]}...")
 
                     # Show library link
-                    from pfui.deeplink import generate_deep_link, extract_state_from_session
+                    from pfui.deeplink import generate_deep_link
                     state_to_encode = {
                         "style": style_name,
                         "H": H,

@@ -1,8 +1,6 @@
 """Library UI tab for browsing and opening published designs."""
 from __future__ import annotations
 
-from typing import Optional
-import time
 
 try:
     import streamlit as st
@@ -13,7 +11,6 @@ except ImportError:
 
 from potfoundry.library import list_published
 from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
-from pfui.deeplink import generate_deep_link
 
 
 def render_library_tab():

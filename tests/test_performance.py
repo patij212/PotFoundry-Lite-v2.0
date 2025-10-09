@@ -70,7 +70,7 @@ class TestMeshGenerationPerformance:
             iterations=10
         )
 
-        print(f"\nTypical resolution (168×84):")
+        print("\nTypical resolution (168×84):")
         print(f"  Mean: {stats['mean']*1000:.1f}ms")
         print(f"  Std:  {stats['std']*1000:.1f}ms")
         print(f"  Min:  {stats['min']*1000:.1f}ms")
@@ -92,7 +92,7 @@ class TestMeshGenerationPerformance:
             iterations=20
         )
 
-        print(f"\nLow resolution (60×30):")
+        print("\nLow resolution (60×30):")
         print(f"  Mean: {stats['mean']*1000:.1f}ms")
         print(f"  Std:  {stats['std']*1000:.1f}ms")
 
@@ -112,7 +112,7 @@ class TestMeshGenerationPerformance:
             iterations=5
         )
 
-        print(f"\nHigh resolution (336×168):")
+        print("\nHigh resolution (336×168):")
         print(f"  Mean: {stats['mean']*1000:.1f}ms")
         print(f"  Std:  {stats['std']*1000:.1f}ms")
 
@@ -237,7 +237,7 @@ class TestEndToEndPerformance:
 
         stats = benchmark(workflow, iterations=10)
 
-        print(f"\nEnd-to-end workflow (generate + export):")
+        print("\nEnd-to-end workflow (generate + export):")
         print(f"  Mean: {stats['mean']*1000:.1f}ms")
         print(f"  Std:  {stats['std']*1000:.1f}ms")
 
@@ -251,7 +251,6 @@ class TestMemoryEfficiency:
 
     def test_mesh_size_scaling(self):
         """Verify mesh memory usage scales linearly with resolution."""
-        import sys
 
         style_fn = STYLES["SuperformulaBlossom"][0]
 
@@ -306,7 +305,7 @@ class TestCachingEffectiveness:
         _theta_grid_cached(168)
         second_call = time.perf_counter() - start
 
-        print(f"\nTheta grid caching:")
+        print("\nTheta grid caching:")
         print(f"  First call:  {first_call*1000:.3f}ms")
         print(f"  Second call: {second_call*1000:.3f}ms")
         print(f"  Speedup:     {first_call/second_call:.1f}x")

@@ -56,7 +56,7 @@ def build_gradient_colors(z_norm, preset: str | None, custom_colors: Sequence[st
     Returns list of [r,g,b].
     """
     try:
-        import numpy as np  # local import to keep module light if numpy absent in some contexts
+        pass  # local import to keep module light if numpy absent in some contexts
     except Exception:  # pragma: no cover
         return [[200, 200, 230] for _ in z_norm]
     if z_norm is None:

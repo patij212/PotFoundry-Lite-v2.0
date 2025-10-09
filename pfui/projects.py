@@ -41,7 +41,6 @@ def apply_project(project: Dict[str, Any]) -> None:
 
 def render_project_io(style_name: str, size: Dict[str, float], opts: Dict[str, Any],
                       n_theta: int, n_z: int, view_elev: float, view_azim: float) -> None:
-    import io
     import json as _json
     with st.expander("Project — save / load"):
         left, right = st.columns(2)

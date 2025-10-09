@@ -1,4 +1,3 @@
-import math
 import numpy as np
 from pfui.colors import (
     hex_to_rgb_tuple,

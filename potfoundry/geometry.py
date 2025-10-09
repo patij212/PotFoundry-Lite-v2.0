@@ -2,7 +2,7 @@
 # Geometry core with style-agnostic twist/spin and optimized mesh build.
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict
 import math
 import numpy as np
 from functools import lru_cache
@@ -18,7 +18,6 @@ __all__ = [
 
 
 # Shared base profile (outer radius vs height) with flare-center warp and bell
-from typing import Dict
 import math as _m
 
 def base_radius(z: float, H: float, Rb: float, Rt: float, expn: float, opts: Dict) -> float:

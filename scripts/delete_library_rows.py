@@ -26,7 +26,7 @@ from typing import List, Set
 # Add project root for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from potfoundry.integrations.supabase_client import get_singleton_client, NotConfiguredError, DatabaseError
+from potfoundry.integrations.supabase_client import get_singleton_client, NotConfiguredError
 
 
 def load_ids_file(path: Path) -> Set[str]:

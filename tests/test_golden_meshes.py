@@ -298,7 +298,7 @@ class TestMeshProperties:
 
                 # Normal should have positive dot product with radial direction
                 # (pointing outward)
-                dot = np.dot(normal[:2], radial_unit[:2])
+                np.dot(normal[:2], radial_unit[:2])
 
                 # Allow some tolerance for complex geometries
                 # Just check that most faces point outward

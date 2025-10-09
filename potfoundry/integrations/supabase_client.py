@@ -92,7 +92,7 @@ class SupabaseClient:
                 # Force direct API with apikey only; no Authorization header
                 raise ImportError("force direct api for readonly")
             # Try to import supabase-py for full-access mode
-            from supabase import create_client, Client
+            from supabase import create_client
             self._client = create_client(self.config.url, self.config.key)
         except ImportError:
             # Direct API calls
@@ -148,7 +148,7 @@ class SupabaseClient:
             try:
                 if self._client:
                     # Use supabase-py client
-                    response = self._client.storage.from_(self.config.bucket).upload(
+                    self._client.storage.from_(self.config.bucket).upload(
                         path, data, file_options={"content-type": content_type}
                     )
                     # Get public URL

@@ -4,7 +4,6 @@ Integration test: Verify complete binary STL migration
 import tempfile
 import warnings
 from pathlib import Path
-import pytest
 from potfoundry import build_pot_mesh, write_stl_binary, STYLES
 
 
