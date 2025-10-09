@@ -64,7 +64,7 @@ This provides near-instant updates in auto mode when toggling between previously
 ## Testing
 
 - All 58 tests pass ✅
-- Python syntax validated ✅  
+- Python syntax validated ✅
 - No breaking changes to existing functionality
 - Backward compatible (auto mode is default)
 

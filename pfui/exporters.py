@@ -16,18 +16,18 @@ def _safe_name(name: str) -> str:
 
 def export_stl_bytes(name: str, verts, faces) -> Tuple[bytes, str]:
     """Export mesh to binary STL and return as bytes.
-    
+
     This is the recommended export format - binary STL files are smaller,
     faster to write/read, and universally supported by slicers and CAD tools.
-    
+
     Args:
         name: Model name (will be sanitized for filename)
         verts: Vertex array (N, 3)
         faces: Face indices (M, 3)
-    
+
     Returns:
         Tuple of (stl_bytes, safe_filename)
-    
+
     Raises:
         RuntimeError: If binary STL writer is not available
     """

@@ -104,7 +104,7 @@ recipes:
     size:
       height: 80
       top_od: 100
-  
+
   - name: "LargeRipple"
     style: "HarmonicRipple"
     size:
@@ -357,7 +357,7 @@ The roadmap includes evolution to a professional desktop application:
 
 See **ROADMAP.md** for detailed evolution plan.
 
-**Current focus:** Streamlit app enhancements (v2.x)  
+**Current focus:** Streamlit app enhancements (v2.x)
 **Future major version:** Qt desktop app (v3.0)
 
 ---
@@ -409,11 +409,11 @@ See **ROADMAP.md** for detailed evolution plan.
 
 ## 📈 Project Status
 
-**Current Version:** v2.0  
-**Status:** Production-ready  
-**Test Coverage:** 58 tests (100% pass)  
-**Performance:** All targets met ✅  
-**Documentation:** Comprehensive ✅  
+**Current Version:** v2.0
+**Status:** Production-ready
+**Test Coverage:** 58 tests (100% pass)
+**Performance:** All targets met ✅
+**Documentation:** Comprehensive ✅
 **Next Version:** v2.1 (Streamlit enhancements)
 
 ---

@@ -174,7 +174,7 @@ After STL generation button, add:
   Tags: [________] (comma-separated, e.g., "fluted,tall,modern")
   License: [Dropdown: CC BY-NC 4.0, CC BY 4.0, CC0 1.0]
   ☐ I grant permission to publish under this license
-  
+
   [Export & Publish STL]
 ```
 

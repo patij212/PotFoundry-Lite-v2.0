@@ -45,3 +45,6 @@ Thumbs.db
 out/
 *.stl
 *.zip
+
+# Streamlit secrets (do NOT commit your real secrets)
+.streamlit/secrets.toml

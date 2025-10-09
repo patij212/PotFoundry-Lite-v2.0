@@ -16,19 +16,19 @@ Successfully implemented a complete, production-grade Public Library Publishing 
   - Validation rules
   - UI mockups
   - Acceptance criteria
-  
+
 - [x] **Architecture Decision Record** (`adr/0001-public-library-supabase.md`)
   - Comparison: Supabase vs S3/R2 vs GitHub
   - Decision: Supabase (best DX, integrated solution)
   - Cost analysis
   - Migration path
-  
+
 - [x] **Deep Link Specification** (`docs/deeplink.md`)
   - URL format and encoding
   - Security model (whitelist-based)
   - Validation rules
   - Examples and test cases
-  
+
 - [x] **Alternative Storage Guide** (`docs/alt_s3_r2.md`)
   - Cloudflare R2 + D1 implementation
   - AWS S3 + DynamoDB variant
@@ -42,7 +42,7 @@ Successfully implemented a complete, production-grade Public Library Publishing 
   - Row-Level Security (RLS) policies
   - Comprehensive comments
   - Storage bucket policy (documented)
-  
+
 #### 3. Core Implementation
 
 **Supabase Integration** (`potfoundry/integrations/supabase_client.py`):
@@ -192,18 +192,18 @@ Export STL → Canonical Hash → Dedup Check
 ## Key Features
 
 ### Implemented
-✅ Content-addressed deduplication  
-✅ Persistent storage (Supabase)  
-✅ Public browsing & download  
-✅ Deep linking (state restoration)  
-✅ License control (6 options)  
-✅ Tags & search  
-✅ Rate limiting (5/60s, 10s interval)  
-✅ Blocklist validation  
-✅ Graceful degradation  
-✅ Thumbnail generation  
-✅ Gzip compression (>1MB)  
-✅ Comprehensive tests (35 passing)  
+✅ Content-addressed deduplication
+✅ Persistent storage (Supabase)
+✅ Public browsing & download
+✅ Deep linking (state restoration)
+✅ License control (6 options)
+✅ Tags & search
+✅ Rate limiting (5/60s, 10s interval)
+✅ Blocklist validation
+✅ Graceful degradation
+✅ Thumbnail generation
+✅ Gzip compression (>1MB)
+✅ Comprehensive tests (35 passing)
 
 ### Not Implemented (Future Enhancements)
 - User authentication (all publishes are anonymous)
@@ -264,11 +264,11 @@ app.py                           (+178 lines)
   - Deep link handling at startup
   - Dynamic Library tab
   - Publish controls in Export
-  
+
 README_NEW.md                    (+63 lines)
   - Library Publishing section
   - Updated features list
-  
+
 .github/workflows/ci.yml         (+20 lines)
   - Python matrix (3.10, 3.11)
   - Coverage reporting

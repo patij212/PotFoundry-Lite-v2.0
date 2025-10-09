@@ -56,7 +56,7 @@ from potfoundry import build_pot_mesh, write_stl_binary, STYLES
 
 # Build a mesh (pure computation)
 verts, faces, diagnostics = build_pot_mesh(
-    H=120, Rt=70, Rb=50, 
+    H=120, Rt=70, Rb=50,
     t_wall=3, t_bottom=3, r_drain=10,
     expn=1.1, n_theta=168, n_z=84,
     r_outer_fn=STYLES["SuperformulaBlossom"][0],
@@ -154,7 +154,7 @@ The `pfui/imports.py` module handles both automatically.
        """Generate watertight triangular mesh for a pot."""
        # Returns: (vertices [N,3], faces [M,3], diagnostics)
    ```
-   
+
    **Algorithm:**
    - Generate outer wall rings (stacked circles with style modulation)
    - Generate inner wall rings (outer - wall thickness)
@@ -177,14 +177,14 @@ The `pfui/imports.py` module handles both automatically.
 ```python
 def write_stl_binary(path, name, vertices, faces, normals=None):
     """Write mesh to binary STL file (RECOMMENDED).
-    
+
     Args:
         path: Output file path
         name: Model name (max 80 chars, embedded in header)
         vertices: np.ndarray shape (N, 3)
         faces: np.ndarray shape (M, 3), indices into vertices
         normals: Optional face normals (M, 3), auto-computed if None
-    
+
     Returns:
         Path: Resolved path to written file
     """
@@ -325,10 +325,10 @@ z_outer = np.linspace(0, H, n_z)  # e.g., 84 vertical slices
 for z in z_outer:
     # Compute twist angle (for spiral effects)
     twist = _spin_twist_radians(z, H, style_opts)
-    
+
     # Compute base radius at this height
     r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-    
+
     # Apply style modulation around circumference
     for theta in thetas:  # e.g., 168 angles around
         r = r_outer_fn(theta, z, r0, H, style_opts)
@@ -545,7 +545,7 @@ Streamlit reruns the entire script on every interaction. To preserve state:
    ```python
    # Instead of modifying state directly during render:
    queue_update({"param1": value1})
-   
+
    # Apply at start of next rerun:
    apply_pending_updates()
    ```
@@ -616,20 +616,20 @@ From the Evolution Plan PDF, the roadmap includes:
 ```python
 def function_name(arg1: type1, arg2: type2) -> return_type:
     """One-line summary.
-    
+
     Detailed description explaining what the function does,
     why it exists, and how it should be used.
-    
+
     Args:
         arg1: Description of arg1
         arg2: Description of arg2
-    
+
     Returns:
         Description of return value
-    
+
     Raises:
         ExceptionType: When and why this exception occurs
-    
+
     Example:
         >>> result = function_name(value1, value2)
         >>> print(result)
@@ -663,13 +663,13 @@ Example:
 ```python
 class ClassName:
     """Short description.
-    
+
     Longer explanation of purpose, usage patterns, and responsibilities.
-    
+
     Attributes:
         attr1: Description
         attr2: Description
-    
+
     Example:
         >>> obj = ClassName(arg1, arg2)
         >>> obj.method()
@@ -813,6 +813,6 @@ PotDefaults(
 
 ---
 
-**Last Updated:** 2024  
-**Version:** 2.0 (Binary STL Migration Complete)  
+**Last Updated:** 2024
+**Version:** 2.0 (Binary STL Migration Complete)
 **Architecture Status:** Streamlit app stable, Qt desktop planned

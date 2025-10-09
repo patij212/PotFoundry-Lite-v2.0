@@ -105,5 +105,5 @@ For developers:
 
 ---
 
-For detailed migration instructions, see **STL_EXPORT_GUIDE.md**  
+For detailed migration instructions, see **STL_EXPORT_GUIDE.md**
 For implementation details, see **IMPLEMENTATION_SUMMARY.md**

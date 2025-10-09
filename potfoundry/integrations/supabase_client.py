@@ -20,7 +20,10 @@ except ImportError:
 
 @dataclass
 class SupabaseConfig:
-    """Supabase connection configuration."""
+    """Supabase connection configuration.
+
+    key may be a service_role for full access or anon key for read-only.
+    """
     url: str
     key: str
     bucket: str
@@ -48,53 +51,66 @@ class DatabaseError(LibraryError):
 
 class NotConfiguredClient:
     """Placeholder client when Supabase is not configured."""
-    
+
     def upload_bytes(self, *args, **kwargs):
         raise NotConfiguredError("Supabase not configured")
-    
+
     def upsert_row(self, *args, **kwargs):
         raise NotConfiguredError("Supabase not configured")
-    
+
     def select_rows(self, *args, **kwargs):
         raise NotConfiguredError("Supabase not configured")
-    
+
     def is_configured(self) -> bool:
         return False
+
+    def delete_rows(self, *args, **kwargs):
+        raise NotConfiguredError("Supabase not configured")
+
+    def update_rows(self, *args, **kwargs):
+        raise NotConfiguredError("Supabase not configured")
 
 
 class SupabaseClient:
     """Wrapper for Supabase operations with retry logic."""
-    
-    def __init__(self, config: SupabaseConfig):
+
+    def __init__(self, config: SupabaseConfig, *, read_only: bool = False):
         """Initialize Supabase client.
-        
+
         Args:
             config: Supabase connection configuration
         """
         self.config = config
+        self.read_only = read_only
         self._client = None
         self._init_client()
-    
+
     def _init_client(self):
         """Initialize Supabase Python client."""
         try:
-            # Try to import supabase-py
+            if self.read_only:
+                # Force direct API with apikey only; no Authorization header
+                raise ImportError("force direct api for readonly")
+            # Try to import supabase-py for full-access mode
             from supabase import create_client, Client
             self._client = create_client(self.config.url, self.config.key)
         except ImportError:
-            # Fallback: use requests for direct API calls
+            # Direct API calls
             import requests
             self._client = None
             self._session = requests.Session()
-            self._session.headers.update({
-                "apikey": self.config.key,
-                "Authorization": f"Bearer {self.config.key}",
-            })
-    
+            # Always set apikey; Authorization only if not read_only
+            headers = {"apikey": self.config.key}
+            if not self.read_only:
+                headers["Authorization"] = f"Bearer {self.config.key}"
+            self._session.headers.update(headers)
+            # Reasonable timeouts
+            self._timeout = (5, 15)  # connect, read seconds
+
     def is_configured(self) -> bool:
         """Check if client is properly configured."""
         return self._client is not None or hasattr(self, '_session')
-    
+
     def upload_bytes(
         self,
         path: str,
@@ -104,24 +120,30 @@ class SupabaseClient:
         max_retries: int = 3
     ) -> str:
         """Upload bytes to Supabase Storage.
-        
+
         Args:
             path: Storage path (e.g., "stl/abc123.stl")
             data: File contents as bytes
             content_type: MIME type
             gzip: Whether data is gzipped (sets Content-Encoding header)
             max_retries: Maximum retry attempts
-            
+
         Returns:
             Public URL of uploaded file
-            
+
         Raises:
             UploadError: If upload fails after retries
         """
+        if self.read_only:
+            raise NotConfiguredError("Supabase configured read-only; publishing disabled")
         headers = {"Content-Type": content_type}
         if gzip:
             headers["Content-Encoding"] = "gzip"
-        
+        # Encourage explicit caching policy and allow upsert to avoid conflicts on duplicate publishes
+        headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        # For storage API, enabling upsert prevents 409/400 conflicts if object exists
+        headers["x-upsert"] = "true"
+
         for attempt in range(max_retries):
             try:
                 if self._client:
@@ -135,37 +157,43 @@ class SupabaseClient:
                 else:
                     # Use direct API call
                     url = f"{self.config.url}/storage/v1/object/{self.config.bucket}/{path}"
-                    response = self._session.post(url, data=data, headers=headers)
-                    response.raise_for_status()
-                    
+                    resp = self._session.post(url, data=data, headers=headers, timeout=getattr(self, "_timeout", None))
+                    try:
+                        resp.raise_for_status()
+                    except Exception as e:
+                        # Include response body for easier debugging
+                        raise UploadError(f"HTTP {resp.status_code}: {resp.text}") from e
+
                     # Return public URL
                     public_url = f"{self.config.url}/storage/v1/object/public/{self.config.bucket}/{path}"
                     return public_url
-            
+
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise UploadError(f"Upload failed after {max_retries} attempts: {e}")
-                
+
                 # Exponential backoff
                 wait_time = 2 ** attempt * 0.5
                 time.sleep(wait_time)
-        
+
         raise UploadError("Upload failed")
-    
+
     def upsert_row(self, table: str, row: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
         """Insert or update row in Supabase table.
-        
+
         Args:
             table: Table name
             row: Row data as dictionary
             max_retries: Maximum retry attempts
-            
+
         Returns:
             Inserted/updated row data
-            
+
         Raises:
             DatabaseError: If operation fails after retries
         """
+        if self.read_only:
+            raise NotConfiguredError("Supabase configured read-only; publishing disabled")
         for attempt in range(max_retries):
             try:
                 if self._client:
@@ -175,22 +203,71 @@ class SupabaseClient:
                 else:
                     # Use direct API call
                     url = f"{self.config.url}/rest/v1/{table}"
-                    headers = {"Prefer": "return=representation", "Content-Type": "application/json"}
-                    response = self._session.post(url, json=row, headers=headers)
-                    response.raise_for_status()
-                    
-                    result = response.json()
+                    # Upsert semantics for PostgREST require on_conflict and Prefer resolution
+                    params = {"on_conflict": "id"}
+                    headers = {
+                        "Prefer": "resolution=merge-duplicates,return=representation",
+                        "Content-Type": "application/json",
+                    }
+                    resp = self._session.post(url, params=params, json=row, headers=headers)
+                    resp.raise_for_status()
+
+                    result = resp.json()
                     return result[0] if isinstance(result, list) and result else row
-            
+
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise DatabaseError(f"Database upsert failed after {max_retries} attempts: {e}")
-                
+
                 wait_time = 2 ** attempt * 0.5
                 time.sleep(wait_time)
-        
+
         raise DatabaseError("Upsert failed")
-    
+
+    def update_rows(
+        self,
+        table: str,
+        filters: Dict[str, Any],
+        changes: Dict[str, Any],
+        max_retries: int = 3,
+    ) -> int:
+        """Update rows in a table matching filters with provided changes.
+
+        Returns number of rows updated.
+        """
+        if self.read_only:
+            raise NotConfiguredError("Supabase configured read-only; update disabled")
+        for attempt in range(max_retries):
+            try:
+                if self._client:
+                    query = self._client.table(table).update(changes)
+                    for col, val in (filters or {}).items():
+                        query = query.eq(col, val)
+                    resp = query.execute()
+                    try:
+                        return len(resp.data or [])
+                    except Exception:
+                        return 0
+                else:
+                    url = f"{self.config.url}/rest/v1/{table}"
+                    params = {}
+                    if filters:
+                        for col, val in filters.items():
+                            params[col] = f"eq.{val}"
+                    headers = {"Prefer": "return=representation", "Content-Type": "application/json"}
+                    resp = self._session.patch(url, params=params, json=changes, headers=headers)
+                    resp.raise_for_status()
+                    try:
+                        data = resp.json()
+                        return len(data) if isinstance(data, list) else 0
+                    except Exception:
+                        return 0
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise DatabaseError(f"Database update failed after {max_retries} attempts: {e}")
+                time.sleep(2 ** attempt * 0.5)
+        raise DatabaseError("Update failed")
+
     def select_rows(
         self,
         table: str,
@@ -202,7 +279,7 @@ class SupabaseClient:
         max_retries: int = 3
     ) -> List[Dict[str, Any]]:
         """Select rows from Supabase table.
-        
+
         Args:
             table: Table name
             filters: Column filters (e.g., {"style": "HarmonicRipple"})
@@ -211,10 +288,10 @@ class SupabaseClient:
             limit: Maximum rows to return
             offset: Number of rows to skip
             max_retries: Maximum retry attempts
-            
+
         Returns:
             List of row dictionaries
-            
+
         Raises:
             DatabaseError: If operation fails after retries
         """
@@ -223,7 +300,7 @@ class SupabaseClient:
                 if self._client:
                     # Use supabase-py client
                     query = self._client.table(table).select("*")
-                    
+
                     # Apply filters
                     if filters:
                         for col, val in filters.items():
@@ -236,77 +313,186 @@ class SupabaseClient:
                                 query = query.ilike("title", f"%{val}%")
                             else:
                                 query = query.eq(col, val)
-                    
+
                     # Order and paginate
                     query = query.order(order_by, desc=order_desc)
                     query = query.limit(limit).offset(offset)
-                    
+
                     response = query.execute()
                     return response.data
                 else:
                     # Use direct API call
                     url = f"{self.config.url}/rest/v1/{table}"
                     params = {
+                        "select": "*",
                         "limit": limit,
                         "offset": offset,
                         "order": f"{order_by}.{'desc' if order_desc else 'asc'}",
                     }
-                    
+
                     # Apply filters
                     if filters:
                         for col, val in filters.items():
-                            if col == "title_search":
-                                params["title"] = f"ilike.%{val}%"
-                            elif col != "tags":
+                            if col == "title_search" and isinstance(val, str) and val:
+                                # PostgREST pattern uses * as wildcard to avoid URL encoding
+                                # https://postgrest.org/en/stable/api.html#operators
+                                params["title"] = f"ilike.*{val}*"
+                            elif col == "tags" and isinstance(val, list) and val:
+                                # Basic contains: require first tag to be present (text[] contains)
+                                first = str(val[0])
+                                params["tags"] = f"cs.{{{first}}}"
+                            else:
                                 params[col] = f"eq.{val}"
-                    
-                    response = self._session.get(url, params=params)
-                    response.raise_for_status()
-                    return response.json()
-            
+
+                    # Prefer public read without Authorization if possible. We'll clone headers and drop Authorization.
+                    resp = self._session.get(url, params=params, timeout=getattr(self, "_timeout", None))
+                    if resp.status_code == 401:
+                        # Retry without Authorization to leverage public SELECT policy
+                        import requests
+                        tmp_session = requests.Session()
+                        # Keep apikey for project routing, but no Authorization so it uses anon role
+                        tmp_session.headers.update({
+                            "apikey": self.config.key,
+                        })
+                        resp = tmp_session.get(url, params=params, timeout=getattr(self, "_timeout", None))
+                    resp.raise_for_status()
+                    return resp.json()
+
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise DatabaseError(f"Database select failed after {max_retries} attempts: {e}")
-                
+
                 wait_time = 2 ** attempt * 0.5
                 time.sleep(wait_time)
-        
+
         raise DatabaseError("Select failed")
+
+    def delete_rows(
+        self,
+        table: str,
+        filters: Dict[str, Any],
+        max_retries: int = 3,
+    ) -> int:
+        """Delete rows from a table matching filters. Returns number of rows deleted.
+
+        Supports simple equality filters (e.g., {"id": "..."}).
+        """
+        if self.read_only:
+            raise NotConfiguredError("Supabase configured read-only; delete disabled")
+        for attempt in range(max_retries):
+            try:
+                if self._client:
+                    query = self._client.table(table).delete()
+                    for col, val in (filters or {}).items():
+                        query = query.eq(col, val)
+                    resp = query.execute()
+                    # supabase-py returns count only if requested; best-effort length
+                    try:
+                        return len(resp.data or [])
+                    except Exception:
+                        return 0
+                else:
+                    # REST API
+                    url = f"{self.config.url}/rest/v1/{table}"
+                    params = {}
+                    if filters:
+                        for col, val in filters.items():
+                            params[col] = f"eq.{val}"
+                    headers = {"Prefer": "return=representation"}
+                    resp = self._session.delete(url, params=params, headers=headers)
+                    resp.raise_for_status()
+                    try:
+                        data = resp.json()
+                        return len(data) if isinstance(data, list) else 0
+                    except Exception:
+                        return 0
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise DatabaseError(f"Database delete failed after {max_retries} attempts: {e}")
+                time.sleep(2 ** attempt * 0.5)
+        raise DatabaseError("Delete failed")
+
+
+def _is_disabled_via_secrets() -> bool:
+    if HAS_STREAMLIT and st is not None:
+        try:
+            val = str(st.secrets.get("DISABLE_LIBRARY", "0")).strip()
+            return val == "1"
+        except Exception:
+            return False
+    return False
+
+
+def _looks_like_invalid_key(key: Optional[str]) -> bool:
+    """Return True when a key is definitely invalid (placeholder/empty).
+
+    Accept both JWT-like keys (eyJ...) and srv- prefixed keys.
+    """
+    if not key:
+        return True
+    k = str(key).strip()
+    if not k or "REPLACE_WITH" in k:
+        return True
+    # Accept common formats: JWT (eyJ...) or 'srv-' prefixed
+    if k.startswith("eyJ") or k.startswith("srv-"):
+        return False
+    # Fallback: accept anything reasonably long
+    return len(k) < 20
 
 
 def get_client() -> SupabaseClient | NotConfiguredClient:
     """Get Supabase client instance (singleton pattern).
-    
+
+    Preference order:
+    1) Environment variables (Codespaces secrets)
+    2) Streamlit secrets (service key or anon read-only)
+    3) Env anon read-only fallback
+
     Returns:
         SupabaseClient if configured, NotConfiguredClient otherwise
     """
     # Check for feature flag disable
-    if os.environ.get("DISABLE_LIBRARY") == "1":
+    if os.environ.get("DISABLE_LIBRARY") == "1" or _is_disabled_via_secrets():
         return NotConfiguredClient()
-    
-    # Try to load from Streamlit secrets
+
+    # 1) Environment variables first (Codespaces secrets)
+    url = os.environ.get("SUPABASE_URL") or os.environ.get("STREAMLIT_SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY") or os.environ.get("STREAMLIT_SUPABASE_KEY")
+    bucket = os.environ.get("SUPABASE_BUCKET", "pots")
+
+    if url and key and not _looks_like_invalid_key(key):
+        config = SupabaseConfig(url=url, key=key, bucket=bucket)
+        return SupabaseClient(config)
+
+    # 2) Streamlit secrets
     if HAS_STREAMLIT and st is not None:
         try:
             secrets = st.secrets.get("connections", {}).get("supabase", {})
             if secrets and "url" in secrets and "key" in secrets:
-                config = SupabaseConfig(
-                    url=secrets["url"],
-                    key=secrets["key"],
-                    bucket=secrets.get("bucket", "pots")
-                )
-                return SupabaseClient(config)
+                # Validate key before constructing client
+                if _looks_like_invalid_key(secrets.get("key")):
+                    # Try read-only if anon key is provided under ALT keys
+                    anon = str(secrets.get("anon", "")).strip() or str(secrets.get("anon_key", "")).strip()
+                    if anon:
+                        cfg = SupabaseConfig(url=str(secrets["url"]).strip(), key=anon, bucket=str(secrets.get("bucket", "pots")).strip() or "pots")
+                        return SupabaseClient(cfg, read_only=True)
+                    # If secrets look invalid, fall through to env/anon instead of blocking
+                else:
+                    config = SupabaseConfig(
+                        url=str(secrets["url"]).strip(),
+                        key=str(secrets["key"]).strip(),
+                        bucket=str(secrets.get("bucket", "pots")).strip() or "pots",
+                    )
+                    return SupabaseClient(config)
         except Exception:
             pass
-    
-    # Try environment variables
-    url = os.environ.get("SUPABASE_URL") or os.environ.get("STREAMLIT_SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY") or os.environ.get("STREAMLIT_SUPABASE_KEY")
-    bucket = os.environ.get("SUPABASE_BUCKET", "pots")
-    
-    if url and key:
-        config = SupabaseConfig(url=url, key=key, bucket=bucket)
-        return SupabaseClient(config)
-    
+
+    # 3) Fallback: read-only with anon key from environment
+    anon = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("STREAMLIT_SUPABASE_ANON_KEY")
+    if url and anon:
+        cfg = SupabaseConfig(url=url, key=anon, bucket=bucket)
+        return SupabaseClient(cfg, read_only=True)
+
     # Not configured
     return NotConfiguredClient()
 
@@ -317,11 +503,11 @@ _client_instance: Optional[SupabaseClient | NotConfiguredClient] = None
 
 def get_singleton_client() -> SupabaseClient | NotConfiguredClient:
     """Get cached Supabase client instance.
-    
+
     Returns:
         Cached client instance
     """
     global _client_instance
-    if _client_instance is None:
+    if _client_instance is None or (hasattr(_client_instance, "is_configured") and not _client_instance.is_configured()):
         _client_instance = get_client()
     return _client_instance

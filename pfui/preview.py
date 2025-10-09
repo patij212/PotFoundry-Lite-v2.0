@@ -19,6 +19,7 @@ except Exception:  # pragma: no cover - executed only in degraded env
         return _wrap
 
 from .imports import STYLES, base_radius, _spin_twist_radians, build_pot_mesh
+from .colors import build_gradient_colors
 
 
 def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
@@ -129,7 +130,12 @@ def render_preview(
         plt.close(fig); return None
 
     try:
-        ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True)
+        # Use a perceptually-uniform colormap for better visibility on dark background
+        ax.plot_surface(
+            X, Y, Z,
+            linewidth=0, antialiased=True, shade=True,
+            cmap="viridis", edgecolor="none"
+        )
     except Exception:
         step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
         ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
@@ -141,12 +147,29 @@ def render_preview(
         scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
         ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
 
+    # Camera + aspect: use orthographic projection and equal XY, with gently compressed Z
     try:
         ax.view_init(elev=view_elev, azim=view_azim)
     except Exception:
         pass
+    try:
+        ax.set_proj_type('ortho')
+    except Exception:
+        pass
 
-    ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
+    # Symmetric XY limits based on radius; Z from 0..max
+    try:
+        rmax = float(_np.max(_np.sqrt(X**2 + Y**2)))
+        xlim = (-rmax, rmax)
+        ylim = (-rmax, rmax)
+        zlim = (0.0, float(_np.max(Z)))
+        ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+        # Aspect ratios: equal XY, capped Z/XY
+        z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
+        ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
+    except Exception:
+        # Fallback to data-driven aspect
+        ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
     if show_axes:
         ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
 
@@ -171,6 +194,8 @@ def render_preview_png_cached(
     show_axes: bool = False,
     # kept for backward compatibility: callers may pass return_png flag
     return_png: bool = False,
+    # appearance cache key to invalidate cache on palette/lighting changes
+    appearance_key: str = "",
 ) -> bytes | None:
     """Cacheable renderer that returns PNG bytes for given preview parameters.
 
@@ -218,7 +243,11 @@ def render_preview_png_cached(
         return None
 
     try:
-        ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True)
+        ax.plot_surface(
+            X, Y, Z,
+            linewidth=0, antialiased=True, shade=True,
+            cmap="viridis", edgecolor="none"
+        )
     except Exception:
         step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
         ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
@@ -233,7 +262,29 @@ def render_preview_png_cached(
     except Exception:
         pass
 
-    ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
+    # Use orthographic projection to reduce perspective distortion and compress Z for better aesthetics
+    try:
+        ax.set_proj_type('ortho')
+    except Exception:
+        pass
+
+    # Explicit limits: symmetric XY around 0, Z from 0..max
+    try:
+        rmax = float(np.max(np.sqrt(X**2 + Y**2)))
+        xlim = (-rmax, rmax)
+        ylim = (-rmax, rmax)
+        zlim = (0.0, float(np.max(Z)))
+        ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+        z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
+        ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
+    except Exception:
+        sx = float(np.ptp(X) or 1.0)
+        sy = float(np.ptp(Y) or 1.0)
+        sz = float(np.ptp(Z) or 1.0)
+        xy = max(sx, sy)
+        z_norm = sz / xy if xy > 0 else 1.0
+        z_target = min(z_norm, 0.85)
+        ax.set_box_aspect((1.0, 1.0, z_target))
     if show_axes:
         ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
 
@@ -325,7 +376,7 @@ def render_preview_apng_cached(
                 pass
 
         try:
-            ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True)
+            ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True, cmap="viridis", edgecolor="none")
         except Exception:
             step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
             ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
@@ -335,12 +386,25 @@ def render_preview_apng_cached(
             scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
             ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
 
+        # View + projection + explicit limits/aspect
         try:
             ax.view_init(elev=elev, azim=azim)
         except Exception:
             pass
-
-        ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
+        try:
+            ax.set_proj_type('ortho')
+        except Exception:
+            pass
+        try:
+            rmax = float(_np.max(_np.sqrt(X**2 + Y**2)))
+            xlim = (-rmax, rmax)
+            ylim = (-rmax, rmax)
+            zlim = (0.0, float(_np.max(Z)))
+            ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+            z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
+            ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
+        except Exception:
+            ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
         if show_axes:
             ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
 
@@ -401,6 +465,8 @@ def render_mesh_snapshot_cached(
     place_on_ground: bool = True,
     view_elev: float = 20.0, view_azim: float = -60.0,
     theme: str = "dark",
+    # appearance cache key to invalidate cache on palette/lighting changes
+    appearance_key: str = "",
 ) -> bytes | None:
     """Build the actual triangulated mesh and render it to PNG bytes.
 
@@ -443,16 +509,33 @@ def render_mesh_snapshot_cached(
             try:
                 # Color by height
                 z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
-                import matplotlib.pyplot as plt
-                colorscale = plt.get_cmap("viridis")
-                mesh_colors = [[int(255 * r), int(255 * g), int(255 * b)] for r, g, b, _ in colorscale(z_norm)]
+                # Użyj palety z ustawień UI (Custom lub preset)
+                try:
+                    preset = st.session_state.get("preview_palette", "Custom")
+                    custom = [
+                        st.session_state.get("preview_grad_c1", "#2850D0"),
+                        st.session_state.get("preview_grad_c2", "#5FA8FF"),
+                        st.session_state.get("preview_grad_c3", "#E2F3FF"),
+                    ]
+                    mesh_colors = build_gradient_colors(z_norm, preset if preset != "Custom" else None, custom)
+                except Exception:
+                    # awaryjnie viridis
+                    import matplotlib.pyplot as plt
+                    colorscale = plt.get_cmap("viridis")
+                    mesh_colors = [[int(255 * r), int(255 * g), int(255 * b)] for r, g, b, _ in colorscale(z_norm)]
 
                 fig = go.Figure(data=[
                     go.Mesh3d(
                         x=V[:, 0], y=V[:, 1], z=V[:, 2],
                         i=F[:, 0], j=F[:, 1], k=F[:, 2],
                         flatshading=False,
-                        lighting=dict(ambient=0.35, diffuse=0.95, specular=0.25, roughness=0.7, fresnel=0.2),
+                        lighting=dict(
+                            ambient=min(max(st.session_state.get("mesh_ambient", 0.35), 0.0), 1.0),
+                            diffuse=min(max(st.session_state.get("mesh_diffuse", 0.95), 0.0), 1.0),
+                            specular=min(max(st.session_state.get("mesh_specular", 0.25), 0.0), 1.0),
+                            roughness=min(max(st.session_state.get("mesh_roughness", 0.7), 0.0), 1.0),
+                            fresnel=min(max(st.session_state.get("mesh_fresnel", 0.2), 0.0), 1.0),
+                        ),
                         vertexcolor=mesh_colors,
                         hoverinfo="skip",
                         name="mesh",
@@ -461,10 +544,29 @@ def render_mesh_snapshot_cached(
                 ])
                 height_px = max(400, min(1000, int(110 * fig_h)))
                 width_px = max(400, min(1400, int(96 * fig_w)))
+                # Ustawienia sceny: ortho + ręczny aspekt i zakresy
+                try:
+                    rmax = float(max(abs(V[:, 0]).max(), abs(V[:, 1]).max()))
+                    zmin = float(V[:, 2].min()); zmax = float(V[:, 2].max())
+                except Exception:
+                    rmax = max(1.0, float(st.session_state.get("top_od", 140.0)) * 0.5)
+                    zmin, zmax = 0.0, float(st.session_state.get("H", 120.0))
+                xlim = [-rmax, rmax]
+                ylim = [-rmax, rmax]
+                zlim = [zmin, zmax]
+                z_ratio = (zmax - zmin) / max(1e-6, (xlim[1] - xlim[0]))
                 fig.update_layout(
                     height=height_px,
                     width=width_px,
-                    scene=dict(aspectmode="data", xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), bgcolor="#0E1117"),
+                    scene=dict(
+                        xaxis=dict(visible=False, range=xlim),
+                        yaxis=dict(visible=False, range=ylim),
+                        zaxis=dict(visible=False, range=zlim),
+                        aspectmode="manual",
+                        aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
+                        camera=dict(up=dict(x=0, y=0, z=1), projection=dict(type='orthographic')),
+                        bgcolor=st.session_state.get("preview_bg_color", "#0E1117"),
+                    ),
                     margin=dict(l=0, r=0, t=30, b=0),
                 )
                 try:
@@ -497,17 +599,39 @@ def render_mesh_snapshot_cached(
                 triangles = V[F]
                 mesh = Poly3DCollection(triangles, alpha=0.95, linewidths=0.1, edgecolors='#555555')
 
-                z_norm_mpl = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
-                colors = plt.cm.viridis(z_norm_mpl[F].mean(axis=1))
+                # Kolory twarzy zgodne z UI
+                z_norm_v = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+                face_z = z_norm_v[F].mean(axis=1)
+                try:
+                    preset = st.session_state.get("preview_palette", "Custom")
+                    custom = [
+                        st.session_state.get("preview_grad_c1", "#2850D0"),
+                        st.session_state.get("preview_grad_c2", "#5FA8FF"),
+                        st.session_state.get("preview_grad_c3", "#E2F3FF"),
+                    ]
+                    rgb255 = build_gradient_colors(face_z, preset if preset != "Custom" else None, custom)
+                    colors = [(r/255.0, g/255.0, b/255.0, 1.0) for (r,g,b) in rgb255]
+                except Exception:
+                    colors = plt.cm.viridis(face_z)
                 mesh.set_facecolors(colors)
                 ax.add_collection3d(mesh)
 
-                # Set limits and aspect
-                ax.set_xlim(V[:, 0].min(), V[:, 0].max())
-                ax.set_ylim(V[:, 1].min(), V[:, 1].max())
-                ax.set_zlim(V[:, 2].min(), V[:, 2].max())
-                ax.set_box_aspect((_np.ptp(V[:, 0]) or 1.0, _np.ptp(V[:, 1]) or 1.0, _np.ptp(V[:, 2]) or 1.0))
-                ax.view_init(elev=view_elev, azim=view_azim)
+                # Set limits and aspect: symmetric XY, ortho projection, compressed Z
+                try:
+                    ax.set_proj_type('ortho')
+                except Exception:
+                    pass
+                rmax = float(max(abs(V[:, 0]).max(), abs(V[:, 1]).max()))
+                xlim = (-rmax, rmax)
+                ylim = (-rmax, rmax)
+                zlim = (float(V[:, 2].min()), float(V[:, 2].max()))
+                ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+                try:
+                    ax.view_init(elev=view_elev, azim=view_azim)
+                except Exception:
+                    pass
+                z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
+                ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
 
                 from io import BytesIO
                 buf = BytesIO()

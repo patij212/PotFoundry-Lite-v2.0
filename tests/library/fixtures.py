@@ -82,14 +82,14 @@ def sample_stl_bytes():
     import struct
     header = b"PotFoundry Test STL" + b"\x00" * (80 - 19)
     triangle_count = struct.pack("<I", 1)  # 1 triangle
-    
+
     # Single triangle: normal + 3 vertices + attribute
     normal = struct.pack("<fff", 0.0, 0.0, 1.0)
     v1 = struct.pack("<fff", 0.0, 0.0, 0.0)
     v2 = struct.pack("<fff", 1.0, 0.0, 0.0)
     v3 = struct.pack("<fff", 0.0, 1.0, 0.0)
     attr = struct.pack("<H", 0)
-    
+
     triangle = normal + v1 + v2 + v3 + attr
-    
+
     return header + triangle_count + triangle

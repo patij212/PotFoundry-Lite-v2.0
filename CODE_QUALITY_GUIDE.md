@@ -25,16 +25,16 @@ def build_pot_mesh(
     style_opts: dict
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """Generate a watertight triangular mesh for a parametric flower pot.
-    
+
     This is the main entry point for mesh generation. It creates a complete
     pot model with:
     - Outer decorative wall (modulated by style function)
     - Inner wall (offset by wall thickness)
     - Top rim (bridging outer to inner)
     - Bottom surface with drainage hole
-    
+
     All geometry is deterministic and reproducible given the same inputs.
-    
+
     Args:
         H: Total height of the pot in millimeters (must be > 0)
         Rt: Top radius (half of top outer diameter) in mm (must be > 0)
@@ -55,7 +55,7 @@ def build_pot_mesh(
                     See STYLES dict for available functions
         style_opts: Dictionary of style-specific parameters
                     Contents depend on the r_outer_fn chosen
-    
+
     Returns:
         A tuple of (vertices, faces, diagnostics):
         - vertices: np.ndarray of shape (N, 3) containing [x, y, z] coordinates
@@ -65,11 +65,11 @@ def build_pot_mesh(
             - 'estimated_bottom_od_mm': Measured bottom outer diameter
             - 'clamped_vertices': Count of inner vertices clamped to drain radius
             - 'face_count': Total number of triangular faces
-    
+
     Raises:
         AssertionError: If parameters are invalid (negative, out of range, etc.)
         ValueError: If style function is malformed or returns invalid values
-    
+
     Example:
         >>> from potfoundry import build_pot_mesh, STYLES
         >>> style_fn = STYLES["SuperformulaBlossom"][0]
@@ -83,12 +83,12 @@ def build_pot_mesh(
         >>> # Export to STL:
         >>> from potfoundry import write_stl_binary
         >>> write_stl_binary("pot.stl", "FlowerPot", verts, faces)
-    
+
     Performance:
         - Typical execution time: 50-100ms for default resolution
         - Memory usage: O(n_theta * n_z) for vertex arrays
         - Fully vectorized with NumPy for speed
-    
+
     Notes:
         - Mesh is guaranteed watertight (closed surface)
         - Face winding is consistent (counter-clockwise when viewed from outside)
@@ -190,10 +190,10 @@ def build_pot_mesh(...):
     inner_verts, inner_faces = _build_inner_wall(...)
     rim_faces = _bridge_top_rim(outer_verts, inner_verts, ...)
     bottom_verts, bottom_faces = _build_bottom(...)
-    
+
     all_verts = np.vstack([outer_verts, inner_verts, bottom_verts])
     all_faces = np.vstack([outer_faces, inner_faces, rim_faces, bottom_faces])
-    
+
     diagnostics = _compute_diagnostics(all_verts, all_faces)
     return all_verts, all_faces, diagnostics
 
@@ -314,19 +314,19 @@ def test_build_pot_mesh_generates_watertight_mesh():
         r_outer_fn=STYLES["SuperformulaBlossom"][0],
         style_opts={}
     )
-    
+
     # Watertight mesh properties
     assert faces.shape[0] > 0, "Should have faces"
     assert verts.shape[0] > 0, "Should have vertices"
     assert faces.max() < verts.shape[0], "All face indices valid"
-    
+
     # Each edge appears exactly twice (once per adjacent face) in watertight mesh
     edges = set()
     for face in faces:
         for i in range(3):
             edge = tuple(sorted([face[i], face[(i + 1) % 3]]))
             edges.add(edge)
-    
+
     # More comprehensive watertightness test would count edge occurrences
     # For now, just verify basic structure
     assert len(edges) > 0, "Mesh has edges"
@@ -346,7 +346,7 @@ import time
 def test_mesh_generation_performance():
     """Verify mesh generation completes within performance budget."""
     start = time.time()
-    
+
     verts, faces, diag = build_pot_mesh(
         H=120, Rt=70, Rb=50,
         t_wall=3, t_bottom=3, r_drain=10,
@@ -354,9 +354,9 @@ def test_mesh_generation_performance():
         r_outer_fn=STYLES["SuperformulaBlossom"][0],
         style_opts={}
     )
-    
+
     elapsed = time.time() - start
-    
+
     # Should complete in well under 1 second for typical resolution
     assert elapsed < 0.5, f"Mesh generation took {elapsed:.3f}s, expected <0.5s"
 ```
@@ -401,7 +401,7 @@ from functools import lru_cache
 @lru_cache(maxsize=8)
 def _theta_grid_cached(n_theta: int) -> Tuple[NDArray, NDArray, NDArray]:
     """Generate and cache angle arrays (expensive to recompute).
-    
+
     Returns precomputed theta, cos(theta), sin(theta) arrays.
     Cached because:
     - Computation is expensive for large n_theta
@@ -443,29 +443,29 @@ Fail fast with clear error messages:
 ```python
 def build_pot_mesh(H, Rt, Rb, t_wall, t_bottom, r_drain, ...):
     """Generate pot mesh with validated inputs."""
-    
+
     # Validate early with informative messages
     if H <= 0:
         raise ValueError(f"Height must be positive, got H={H}")
-    
+
     if Rt <= 0 or Rb <= 0:
         raise ValueError(f"Radii must be positive, got Rt={Rt}, Rb={Rb}")
-    
+
     if t_wall <= 0:
         raise ValueError(f"Wall thickness must be positive, got t_wall={t_wall}")
-    
+
     if t_bottom < 2.0:
         raise ValueError(
             f"Bottom thickness must be >= 2.0mm for structural integrity, "
             f"got t_bottom={t_bottom}"
         )
-    
+
     if r_drain <= 0 or r_drain >= (Rb - t_wall - 2.0):
         raise ValueError(
             f"Drain radius must be in range (0, {Rb - t_wall - 2.0}), "
             f"got r_drain={r_drain}"
         )
-    
+
     # Proceed with validated inputs...
 ```
 
@@ -656,5 +656,5 @@ For every code file, ensure:
 
 ---
 
-**Last Updated:** 2024  
+**Last Updated:** 2024
 **Applies To:** PotFoundry v2.0+

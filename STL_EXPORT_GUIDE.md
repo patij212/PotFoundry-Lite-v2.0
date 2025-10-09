@@ -43,8 +43,8 @@ from potfoundry import write_ascii_stl
 
 # This will show a deprecation warning
 write_ascii_stl("debug.stl", "DebugModel", verts, faces)
-# DeprecationWarning: write_ascii_stl is deprecated. 
-# Use write_stl_binary instead. Binary STL files are smaller, 
+# DeprecationWarning: write_ascii_stl is deprecated.
+# Use write_stl_binary instead. Binary STL files are smaller,
 # faster, and universally supported.
 ```
 

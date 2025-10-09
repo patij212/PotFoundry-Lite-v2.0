@@ -103,7 +103,7 @@ def canonical_payload(
     version: str = APP_VERSION
 ) -> dict:
     """Generate canonical payload with normalized floats and sorted keys.
-    
+
     Args:
         style: Style name (e.g., "HarmonicRipple")
         size: Size parameters dict
@@ -112,7 +112,7 @@ def canonical_payload(
         diagnostics: Diagnostics dict (triangle count, etc.)
         license: License identifier
         version: App version string
-        
+
     Returns:
         Canonical payload dictionary
     """
@@ -130,19 +130,19 @@ def canonical_payload(
 
 def content_id(payload: dict) -> str:
     """Generate content-addressed ID (sha256 of canonical JSON).
-    
+
     Args:
         payload: Canonical payload dictionary
-        
+
     Returns:
         Hex-encoded sha256 hash (64 characters)
     """
     # Serialize to canonical JSON (sorted keys, no whitespace)
     canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    
+
     # Hash UTF-8 bytes
     hash_bytes = hashlib.sha256(canonical_json.encode("utf-8")).digest()
-    
+
     # Return hex string
     return hash_bytes.hex()
 
@@ -153,86 +153,86 @@ def content_id(payload: dict) -> str:
 
 def validate_title(title: str) -> Tuple[bool, Optional[str]]:
     """Validate title string.
-    
+
     Returns:
         (is_valid, error_message)
     """
     if not title:
         return False, "Title cannot be empty"
-    
+
     if len(title) > MAX_TITLE_LENGTH:
         return False, f"Title exceeds {MAX_TITLE_LENGTH} characters"
-    
+
     # Check blocklist
     for pattern in BLOCKLIST_PATTERNS:
         if re.search(pattern, title, re.IGNORECASE):
             return False, "Title contains inappropriate content"
-    
+
     return True, None
 
 
 def validate_tags(tags: List[str]) -> Tuple[bool, Optional[str]]:
     """Validate tags list.
-    
+
     Returns:
         (is_valid, error_message)
     """
     if len(tags) > MAX_TAGS:
         return False, f"Maximum {MAX_TAGS} tags allowed"
-    
+
     for tag in tags:
         if len(tag) > MAX_TAG_LENGTH:
             return False, f"Tag '{tag}' exceeds {MAX_TAG_LENGTH} characters"
-        
+
         # Only alphanumeric, dash, underscore
         if not re.match(r'^[A-Za-z0-9_-]+$', tag):
             return False, f"Tag '{tag}' contains invalid characters (use A-Z, 0-9, -, _)"
-        
+
         # Check blocklist
         for pattern in BLOCKLIST_PATTERNS:
             if re.search(pattern, tag, re.IGNORECASE):
                 return False, f"Tag '{tag}' contains inappropriate content"
-    
+
     return True, None
 
 
 def validate_license(license: str) -> Tuple[bool, Optional[str]]:
     """Validate license identifier.
-    
+
     Returns:
         (is_valid, error_message)
     """
     if license not in ALLOWED_LICENSES:
         return False, f"License must be one of: {', '.join(ALLOWED_LICENSES)}"
-    
+
     return True, None
 
 
 def validate_stl_size(stl_bytes: bytes) -> Tuple[bool, Optional[str]]:
     """Validate STL file size.
-    
+
     Returns:
         (is_valid, error_message)
     """
     size_mb = len(stl_bytes) / (1024 * 1024)
-    
+
     if size_mb > MAX_STL_SIZE_MB:
         return False, f"STL file too large: {size_mb:.1f}MB (max {MAX_STL_SIZE_MB}MB)"
-    
+
     return True, None
 
 
 def validate_triangle_count(diagnostics: dict) -> Tuple[bool, Optional[str]]:
     """Validate triangle count from diagnostics.
-    
+
     Returns:
         (is_valid, error_message)
     """
     triangle_count = diagnostics.get("triangle_count", 0)
-    
+
     if triangle_count > MAX_TRIANGLE_COUNT:
         return False, f"Triangle count too high: {triangle_count:,} (max {MAX_TRIANGLE_COUNT:,})"
-    
+
     return True, None
 
 
@@ -242,29 +242,29 @@ def validate_triangle_count(diagnostics: dict) -> Tuple[bool, Optional[str]]:
 
 def check_rate_limit() -> Tuple[bool, Optional[str]]:
     """Check if user can publish (client-side rate limiting).
-    
+
     Returns:
         (can_publish, error_message)
     """
     if not HAS_STREAMLIT or st is None:
         return True, None
-    
+
     # Get publish history from session state
     publish_times = st.session_state.get("_library_publish_times", [])
-    
+
     # Clean old entries (> 60 seconds ago)
     now = datetime.now().timestamp()
     recent_times = [t for t in publish_times if now - t < 60]
-    
+
     # Check burst limit (5 per 60 seconds)
     if len(recent_times) >= 5:
         return False, "Rate limit exceeded. Please wait before publishing again."
-    
+
     # Check minimum interval (10 seconds)
     if recent_times and (now - recent_times[-1]) < 10:
         wait_seconds = int(10 - (now - recent_times[-1]))
         return False, f"Please wait {wait_seconds} seconds before publishing again."
-    
+
     return True, None
 
 
@@ -272,10 +272,10 @@ def record_publish():
     """Record a publish event for rate limiting."""
     if not HAS_STREAMLIT or st is None:
         return
-    
+
     publish_times = st.session_state.get("_library_publish_times", [])
     publish_times.append(datetime.now().timestamp())
-    
+
     # Keep only recent entries
     now = datetime.now().timestamp()
     st.session_state["_library_publish_times"] = [t for t in publish_times if now - t < 120]
@@ -296,56 +296,71 @@ def make_thumbnail(
     opts_json: str
 ) -> bytes:
     """Generate PNG thumbnail from parameters.
-    
+
     Uses existing preview rendering infrastructure.
-    
+
     Args:
         H, Rt, Rb, expn: Geometry parameters
         n_theta, n_z: Mesh quality (use lower values for thumbnail)
         style_name: Style name
         opts_json: JSON-encoded style options
-        
+
     Returns:
         PNG bytes
     """
     try:
-        from pfui.preview import make_preview_arrays, render_preview
-        
-        # Use lower quality for thumbnail (faster generation)
+        # Prefer exact mesh snapshot renderer for thumbnails (better colors/appearance parity)
+        from pfui.preview import render_mesh_snapshot_cached
+        import json as _json
         thumb_theta = max(48, min(144, n_theta))
         thumb_z = max(24, min(64, n_z))
-        
-        # Generate preview arrays
-        X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, thumb_theta, thumb_z, style_name, opts_json)
-        
-        # Render to PNG (small size for thumbnail)
-        png_bytes = render_preview(
-            X, Y, Z,
-            fig_w=4.0,
-            fig_h=4.0,
-            dpi=120,
-            fill_width=False,
-            return_png=True,
+        # appearance key (best-effort) – powoduje przebudowę cache przy zmianie ustawień
+        try:
+            import streamlit as _st
+            ak = "|".join(str(_st.session_state.get(k, "")) for k in (
+                "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
+                "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
+            ))
+        except Exception:
+            ak = ""
+        png = render_mesh_snapshot_cached(
+            H, Rt, Rb, expn,
+            thumb_theta, thumb_z,
+            style_name, _json.dumps(_json.loads(opts_json)),
+            4.0, 4.0, 120,
+            inner_wall=None,
+            place_on_ground=True,
+            view_elev=20.0, view_azim=-60.0,
             theme="dark",
-            show_floor=False,
-            show_axes=False,
+            appearance_key=ak,
         )
-        
-        if png_bytes:
-            return png_bytes
-        
-        # Fallback: empty 1x1 PNG
-        import base64
-        return base64.b64decode(
-            b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-        )
-    
-    except Exception as e:
-        # Fallback: return minimal PNG
-        import base64
-        return base64.b64decode(
-            b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-        )
+        if png:
+            return png
+    except Exception:
+        try:
+            # Fallback to surface preview without floor grid if mesh renderer is unavailable
+            from pfui.preview import render_preview_png_cached
+            import json as _json
+            thumb_theta = max(48, min(144, n_theta))
+            thumb_z = max(24, min(64, n_z))
+            png2 = render_preview_png_cached(
+                H, Rt, Rb, expn,
+                thumb_theta, thumb_z,
+                style_name, _json.dumps(_json.loads(opts_json)),
+                4.0, 4.0, 120,
+                theme="dark", show_floor=False, show_axes=False,
+                appearance_key=ak,
+            )
+            if png2:
+                return png2
+        except Exception:
+            pass
+
+    # Fallback: tiny 1x1 PNG
+    import base64
+    return base64.b64decode(
+        b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    )
 
 
 # ============================================================
@@ -365,7 +380,7 @@ def publish_design(
     app_commit: Optional[str] = None
 ) -> PublishResult:
     """Publish design to public library.
-    
+
     Args:
         stl_bytes: Binary STL file contents
         style: Style name
@@ -377,10 +392,10 @@ def publish_design(
         title: User-provided title
         tags: User-provided tags list
         app_commit: Git commit SHA (optional)
-        
+
     Returns:
         PublishResult with URLs and status
-        
+
     Raises:
         LibraryError: If publish fails
     """
@@ -388,37 +403,37 @@ def publish_design(
     client = get_singleton_client()
     if not client.is_configured():
         raise NotConfiguredError("Library publishing is not configured")
-    
+
     # Validate inputs
     valid, error = validate_title(title)
     if not valid:
         raise LibraryError(f"Invalid title: {error}")
-    
+
     valid, error = validate_tags(tags)
     if not valid:
         raise LibraryError(f"Invalid tags: {error}")
-    
+
     valid, error = validate_license(license)
     if not valid:
         raise LibraryError(f"Invalid license: {error}")
-    
+
     valid, error = validate_stl_size(stl_bytes)
     if not valid:
         raise LibraryError(f"Invalid STL: {error}")
-    
+
     valid, error = validate_triangle_count(diagnostics)
     if not valid:
         raise LibraryError(f"Invalid model: {error}")
-    
+
     # Check rate limit
     can_publish, error = check_rate_limit()
     if not can_publish:
         raise LibraryError(error)
-    
+
     # Generate canonical payload and content ID
     payload = canonical_payload(style, size, opts, mesh, diagnostics, license)
     design_id = content_id(payload)
-    
+
     # Check for duplicate
     try:
         existing = client.select_rows("pots", filters={"id": design_id}, limit=1)
@@ -435,18 +450,18 @@ def publish_design(
     except Exception:
         # Continue with new publish if dedup check fails
         pass
-    
+
     # Compress STL if large
     stl_data = stl_bytes
     stl_path = f"stl/{design_id}.stl"
     stl_content_type = "application/octet-stream"
     stl_gzipped = False
-    
+
     if len(stl_bytes) > GZIP_THRESHOLD_MB * 1024 * 1024:
         stl_data = gzip.compress(stl_bytes, compresslevel=9)
         stl_path = f"stl/{design_id}.stl.gz"
         stl_gzipped = True
-    
+
     # Generate thumbnail
     thumb_bytes = make_thumbnail(
         H=size.get("height", 100.0),
@@ -458,18 +473,18 @@ def publish_design(
         style_name=style,
         opts_json=json.dumps(opts)
     )
-    
+
     # Upload files
     try:
         stl_url = client.upload_bytes(stl_path, stl_data, stl_content_type, gzip=stl_gzipped)
         thumb_url = client.upload_bytes(f"thumb/{design_id}.png", thumb_bytes, "image/png")
-        
+
         # Upload metadata JSON
         meta_json = json.dumps(payload, indent=2)
         meta_url = client.upload_bytes(f"meta/{design_id}.json", meta_json.encode("utf-8"), "application/json")
     except Exception as e:
         raise LibraryError(f"Upload failed: {e}")
-    
+
     # Insert database record
     try:
         row = {
@@ -489,10 +504,10 @@ def publish_design(
         client.upsert_row("pots", row)
     except Exception as e:
         raise LibraryError(f"Database insert failed: {e}")
-    
+
     # Record publish event
     record_publish()
-    
+
     return PublishResult(
         id=design_id,
         stl_url=stl_url,
@@ -513,10 +528,11 @@ def list_published(
     order_by: str = "created_at",
     order_desc: bool = True,
     offset: int = 0,
-    limit: int = 24
+    limit: int = 24,
+    refresh_counter: int = 0,
 ) -> Tuple[List[dict], bool]:
     """List published designs with filters.
-    
+
     Args:
         style: Filter by style name (exact match)
         tags: Filter by tags (designs must have at least one)
@@ -525,14 +541,14 @@ def list_published(
         order_desc: Sort descending if True
         offset: Number of results to skip
         limit: Maximum results to return
-        
+
     Returns:
         Tuple of (results_list, has_next_page)
     """
     client = get_singleton_client()
     if not client.is_configured():
         return [], False
-    
+
     # Build filters
     filters = {}
     if style:
@@ -541,9 +557,9 @@ def list_published(
         filters["tags"] = tags
     if search_query:
         filters["title_search"] = search_query
-    
+
     try:
-        # Fetch one extra to check if there's a next page
+        # Fetch one extra to check if there's a next page — no Streamlit caching to reflect DB immediately
         results = client.select_rows(
             "pots",
             filters=filters,
@@ -552,10 +568,10 @@ def list_published(
             offset=offset,
             limit=limit + 1
         )
-        
+
         has_next = len(results) > limit
         return results[:limit], has_next
-    
+
     except Exception as e:
         if HAS_STREAMLIT and st is not None:
             st.error(f"Failed to fetch library: {e}")

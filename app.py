@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 import math
 import streamlit as st
 from pfui.preview import render_preview_png_cached
+from datetime import datetime
 
 # --- Optional / graceful Plotly import (interactive preview) ---
 try:
@@ -43,9 +44,36 @@ from pfui.snapshot_store import save_png_temp, cleanup_old_tempfiles, read_png_b
 from pfui import state_history as H
 from pfui.deeplink import parse_query_params, apply_state, clear_query_params
 from pfui.library_ui import render_library_tab
-from potfoundry.integrations.supabase_client import get_singleton_client
+from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
 import time
 import math
+from typing import Callable
+
+
+def _mask_possible_secrets(text: str) -> str:
+    """Mask common secret patterns and any known supabase key from st.secrets.
+
+    This is defensive: never reveal raw keys or long hashes in UI text areas.
+    """
+    try:
+        svc_key = None
+        if 'st' in globals() and st is not None:
+            try:
+                svc_key = st.secrets.get("connections", {}).get("supabase", {}).get("key")
+            except Exception:
+                svc_key = None
+        if svc_key and svc_key in text:
+            text = text.replace(svc_key, "[REDACTED]")
+
+        # Mask JWT-like tokens
+        text = re.sub(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "[REDACTED_JWT]", text)
+
+        # Mask long hex hashes (>=48 hex chars)
+        text = re.sub(r"[0-9a-fA-F]{48,}", "[REDACTED_HASH]", text)
+    except Exception:
+        return text
+    return text
+from typing import Callable
 
 # ------------------------------------------------------------
 # Boot: apply any queued state changes BEFORE creating widgets
@@ -209,6 +237,12 @@ if "_deeplink_applied" not in st.session_state:
 # Check if library is configured to show Library tab
 _library_client = get_singleton_client()
 _has_library = _library_client.is_configured()
+_library_read_only = False
+try:
+    if isinstance(_library_client, SupabaseClient):
+        _library_read_only = getattr(_library_client, "read_only", False)
+except Exception:
+    _library_read_only = False
 
 if _has_library:
     _tab1, _tab2, _tab3 = st.tabs(["Interactive", "Batch from YAML", "Public Library"])
@@ -355,11 +389,13 @@ with _tab1:
             bell_center = float(c4.slider("Bell center (0–1)", 0.1, 0.9, st.session_state.get(k4, 0.5), 0.01, key=k4, on_change=_mark_changed))
             bell_width  = float(c5.slider("Bell width",        0.05, 0.5, st.session_state.get(k5, 0.22), 0.01, key=k5, on_change=_mark_changed))
 
-        # --- Mesh Quality Section ---
+    # --- Mesh Quality Section ---
         with st.expander("Mesh Quality", expanded=False):
             q1, q2 = st.columns(2)
             n_theta = int(q1.slider("Angular divisions (nθ)", 96, 720, st.session_state.get("n_theta", 168), 12, key="n_theta", on_change=_mark_changed))
             n_z     = int(q2.slider("Vertical divisions (nz)", 32, 256, st.session_state.get("n_z", 84), 4, key="n_z", on_change=_mark_changed))
+
+        # (Removed duplicate Appearance & Preview Settings block here — consolidated later in the file)
 
         # --- Style Options Section (options only) ---
         with st.expander("Style Options", expanded=False):
@@ -522,7 +558,7 @@ with _tab1:
 
     # -------------------- PREVIEW ----------------------
     st.subheader("Preview")
-    
+
     # Preview update decision: respect preview_mode (auto/manual/debounced)
     should_update_preview = False
     if preview_mode == "auto":
@@ -596,7 +632,7 @@ with _tab1:
             except Exception:
                 # best-effort; ignore failures
                 pass
-    
+
     r_outer_fn = STYLES[style_name][0]  # geometry comes from UI style name
     opts = dict(ui_opts)
     opts_json = json.dumps(opts, sort_keys=True)
@@ -740,14 +776,31 @@ with _tab1:
                     )
                 ])
                 height_px = max(360, min(900, int(96 * fig_h)))
+                # Compute symmetric XY extents and capped Z aspect to avoid elongation
+                try:
+                    import numpy as _np_plot
+                    rmax = float(_np_plot.max(_np_plot.sqrt(X**2 + Y**2)))
+                except Exception:
+                    rmax = max(1.0, float(st.session_state.get("top_od", 140.0)) * 0.5)
+                try:
+                    zmin = float(Z.min()); zmax = float(Z.max())
+                except Exception:
+                    zmin, zmax = 0.0, float(st.session_state.get("H", 120.0))
+                if place_on_ground:
+                    zmin = 0.0
+                xlim = [-rmax, rmax]
+                ylim = [-rmax, rmax]
+                zlim = [zmin, zmax]
+                z_ratio = (zmax - zmin) / max(1e-6, (xlim[1] - xlim[0]))
                 fig.update_layout(
                     height=height_px,
                     scene=dict(
-                        aspectmode="data",
-                        xaxis=dict(visible=False),
-                        yaxis=dict(visible=False),
-                        zaxis=dict(visible=False),
-                        camera=dict(up=dict(x=0, y=0, z=1)),
+                        xaxis=dict(visible=False, range=xlim),
+                        yaxis=dict(visible=False, range=ylim),
+                        zaxis=dict(visible=False, range=zlim),
+                        aspectmode="manual",
+                        aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
+                        camera=dict(up=dict(x=0, y=0, z=1), projection=dict(type='orthographic')),
                         bgcolor=st.session_state.get("preview_bg_color", "#0F1724"),
                     ),
                     margin=dict(l=0, r=0, t=30, b=0),
@@ -789,6 +842,10 @@ with _tab1:
                     st.cache_data.clear()
                 except Exception:
                     pass
+                ak = "|".join(str(st.session_state.get(k, "")) for k in (
+                    "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
+                    "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
+                ))
                 png_bytes = render_preview_png_cached(
                     H, Rt, Rb, expn,
                     preview_n_theta, preview_n_z,
@@ -796,6 +853,7 @@ with _tab1:
                     fig_w, fig_h, dpi,
                     inner_wall=t_wall if show_inner else None,
                     view_elev=view_elev, view_azim=view_azim, return_png=False,
+                    appearance_key=ak,
                 )
                 if png_bytes:
                     preview_placeholder.image(png_bytes, caption="Preview", use_container_width=True)
@@ -875,6 +933,10 @@ with _tab1:
                 if regenerate_mesh_png:
                     try:
                         from pfui.preview import render_mesh_snapshot_cached
+                        ak = "|".join(str(st.session_state.get(k, "")) for k in (
+                            "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
+                            "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
+                        ))
                         png_bytes = render_mesh_snapshot_cached(
                             H, Rt, Rb, expn,
                             preview_n_theta, preview_n_z,  # preview resolution for speed
@@ -882,11 +944,15 @@ with _tab1:
                             fig_w, fig_h, dpi,
                             inner_wall=t_wall if show_inner else None,
                             place_on_ground=place_on_ground,
-                            view_elev=view_elev, view_azim=view_azim,
+                            view_elev=view_elev, view_azim=view_azim, appearance_key=ak,
                         )
                         ss["_last_mesh_geom_hash"] = geom_hash
                         ss["_last_mesh_appearance_hash"] = appearance_hash
                     except Exception:
+                        ak = "|".join(str(st.session_state.get(k, "")) for k in (
+                            "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
+                            "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
+                        ))
                         png_bytes = render_preview_png_cached(
                             H, Rt, Rb, expn,
                             preview_n_theta, preview_n_z,
@@ -894,7 +960,7 @@ with _tab1:
                             fig_w, fig_h, dpi,
                             inner_wall=t_wall if show_inner else None,
                             view_elev=view_elev, view_azim=view_azim,
-                            return_png=True,
+                            return_png=True, appearance_key=ak,
                         )
                         ss["_last_mesh_geom_hash"] = geom_hash
                         ss["_last_mesh_appearance_hash"] = appearance_hash
@@ -912,6 +978,10 @@ with _tab1:
                 except Exception:
                     pass
             else:
+                ak = "|".join(str(st.session_state.get(k, "")) for k in (
+                    "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
+                    "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
+                ))
                 png_bytes = render_preview_png_cached(
                     H, Rt, Rb, expn,
                     preview_n_theta, preview_n_z,
@@ -919,7 +989,7 @@ with _tab1:
                     fig_w, fig_h, dpi,
                     inner_wall=t_wall if show_inner else None,
                     view_elev=view_elev, view_azim=view_azim,
-                    return_png=True,
+                    return_png=True, appearance_key=ak,
                 )
         except Exception:
             pass  # png_bytes generation for snapshots failed, but preview may still work
@@ -1010,14 +1080,26 @@ with _tab1:
                         )
                     ])
                     height_px = max(400, min(1000, int(110 * fig_h)))
+                    # Symmetric XY extents and ortho projection to avoid elongation
+                    try:
+                        rmax = float(max(abs(V[:, 0]).max(), abs(V[:, 1]).max()))
+                        zmin = float(V[:, 2].min()); zmax = float(V[:, 2].max())
+                    except Exception:
+                        rmax = max(1.0, float(st.session_state.get("top_od", 140.0)) * 0.5)
+                        zmin, zmax = 0.0, float(st.session_state.get("H", 120.0))
+                    xlim = [-rmax, rmax]
+                    ylim = [-rmax, rmax]
+                    zlim = [zmin, zmax]
+                    z_ratio = (zmax - zmin) / max(1e-6, (xlim[1] - xlim[0]))
                     fig.update_layout(
                         height=height_px,
                         scene=dict(
-                            aspectmode="data",
-                            xaxis=dict(visible=False),
-                            yaxis=dict(visible=False),
-                            zaxis=dict(visible=False),
-                            camera=dict(up=dict(x=0, y=0, z=1)),
+                            xaxis=dict(visible=False, range=xlim),
+                            yaxis=dict(visible=False, range=ylim),
+                            zaxis=dict(visible=False, range=zlim),
+                            aspectmode="manual",
+                            aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
+                            camera=dict(up=dict(x=0, y=0, z=1), projection=dict(type='orthographic')),
                             bgcolor=st.session_state.get("preview_bg_color", "#0E1117"),
                         ),
                         margin=dict(l=0, r=0, t=30, b=0),
@@ -1042,6 +1124,10 @@ with _tab1:
                         manual_mesh_png = None
                         try:
                             from pfui.preview import render_mesh_snapshot_cached
+                            ak2 = "|".join(str(st.session_state.get(k, "")) for k in (
+                                "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
+                                "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
+                            ))
                             manual_mesh_png = render_mesh_snapshot_cached(
                                 H, Rt, Rb, expn,
                                 n_theta, n_z,  # use full resolution for manual snapshot
@@ -1049,7 +1135,7 @@ with _tab1:
                                 fig_w, fig_h, dpi,
                                 inner_wall=t_wall if show_inner else None,
                                 place_on_ground=place_on_ground,
-                                view_elev=view_elev, view_azim=view_azim,
+                                view_elev=view_elev, view_azim=view_azim, appearance_key=ak2,
                             )
                         except Exception as _e_png:
                             st.session_state.setdefault("_debug_logs", []).append(f"Manual mesh PNG failed: {_e_png}")
@@ -1187,7 +1273,7 @@ with _tab1:
             f"Render: _snaps count = {len(st.session_state.get('_snaps', []))}"
         )
         snaps: List[Dict[str, Any]] = st.session_state.get("_snaps", [])
-        
+
         # Add Clear All Snapshots button
         if snaps:
             col_clear1, col_clear2 = st.columns([3, 1])
@@ -1197,7 +1283,7 @@ with _tab1:
                     snaps = []
                     cleanup_old_tempfiles()  # Clean up temp files
                     st.rerun()
-        
+
         sc1, sc2 = st.columns([2, 1])
         snap_name = sc1.text_input("Snapshot name", value=f"{style_name}_H{int(H)}")
         if sc2.button("Capture"):
@@ -1263,7 +1349,9 @@ with _tab1:
         # Display debug logs in a text area
         if "_debug_logs" not in st.session_state:
             st.session_state["_debug_logs"] = []
-        st.text_area("Debug Logs", value="\n".join(st.session_state["_debug_logs"]), height=300)
+        # Mask any potential secrets before showing debug logs in UI
+        masked_logs = [_mask_possible_secrets(l) for l in st.session_state.get("_debug_logs", [])]
+        st.text_area("Debug Logs", value="\n".join(masked_logs), height=300)
 
         # Re-read snaps to ensure we display the latest list (capture may
         # have mutated st.session_state earlier in this run).
@@ -1333,20 +1421,20 @@ with _tab1:
 
     # ---------------------- EXPORT ---------------------
     st.subheader("Export STL")
-    
+
     # Library publish controls (if configured)
     publish_enabled = False
     publish_title = ""
     publish_tags = []
     publish_license = "CC BY-NC 4.0"
     license_consent = False
-    
-    if _has_library:
+
+    if _has_library and not _library_read_only:
         with st.expander("📚 Publish to Public Library", expanded=False):
             st.markdown("Share your design with the community. Published designs are public and downloadable by anyone.")
-            
+
             publish_enabled = st.checkbox("Enable publishing", value=False, key="publish_enable")
-            
+
             if publish_enabled:
                 # Default title from design name
                 default_title = f"{style_name} pot - {datetime.now().strftime('%Y-%m-%d')}"
@@ -1356,14 +1444,14 @@ with _tab1:
                     max_chars=120,
                     help="Short descriptive title (1-120 characters)"
                 )
-                
+
                 publish_tags_input = st.text_input(
                     "Tags",
                     value="",
                     help="Comma-separated tags (max 10, alphanumeric + dash/underscore only)"
                 )
                 publish_tags = [t.strip() for t in publish_tags_input.split(",") if t.strip()]
-                
+
                 publish_license = st.selectbox(
                     "License *",
                     options=[
@@ -1377,16 +1465,96 @@ with _tab1:
                     index=0,
                     help="License for your design. CC BY-NC 4.0 = Attribution, Non-Commercial"
                 )
-                
+
                 license_consent = st.checkbox(
                     f"I grant permission to publish this design under {publish_license}",
                     value=False,
                     help="Required: You must agree to publish under the selected license"
                 )
-                
+
                 if not license_consent:
                     st.warning("⚠️ You must agree to the license terms to publish")
-    
+
+                # Dedicated Publish button (independent of Export)
+                st.session_state["_publish_clicked"] = st.button("Publish", type="primary", disabled=not (publish_enabled and license_consent))
+    elif _has_library and _library_read_only:
+        with st.expander("📚 Publish to Public Library", expanded=False):
+            st.info("This device is connected to the Public Library in read-only mode (anon key). Browsing works, but publishing is disabled. Provide a service_role key in `.streamlit/secrets.toml` to enable publishing.")
+
+    # Handle explicit Publish click (without requiring Export)
+    if st.session_state.get("_publish_clicked"):
+        try:
+            # Build mesh at export resolution (reuse upscale), else fall back to current n_theta/n_z
+            up = float(st.session_state.get("_export_upscale", 1.0)) if "_export_upscale" in st.session_state else 1.0
+            n_theta_pub = int(n_theta * up)
+            n_z_pub = int(n_z * up)
+            verts, faces, _ = build_pot_mesh(
+                H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
+                expn=expn, n_theta=n_theta_pub, n_z=n_z_pub,
+                r_outer_fn=r_outer_fn, style_opts=opts,
+            )
+            safe = re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80] or "potfoundry_model"
+            tmp_path = Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
+            if WRITE_STL_BINARY is None:
+                raise RuntimeError("write_stl_binary not available in this build")
+            WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)
+            data = tmp_path.read_bytes()
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+            if publish_enabled and license_consent and _has_library:
+                from potfoundry.library import publish_design
+                size_dict = {
+                    "height": H,
+                    "top_od": top_od,
+                    "bottom_od": bottom_od,
+                    "wall_thickness": t_wall,
+                    "bottom_thickness": t_bottom,
+                    "drain_radius": r_drain,
+                    "flare_exp": expn,
+                }
+                mesh_dict = {
+                    "n_theta": n_theta_pub,
+                    "n_z": n_z_pub,
+                    "twist": opts.get("twist", 0.0),
+                }
+                diagnostics_dict = {
+                    "triangle_count": len(faces),
+                    "vertex_count": len(verts),
+                }
+                try:
+                    import subprocess
+                    git_commit = subprocess.check_output(
+                        ["git", "rev-parse", "--short", "HEAD"],
+                        cwd=Path(__file__).parent,
+                        stderr=subprocess.DEVNULL
+                    ).decode().strip()
+                except Exception:
+                    git_commit = None
+
+                with st.spinner("Publishing to library..."):
+                    result = publish_design(
+                        stl_bytes=data,
+                        style=style_name,
+                        size=size_dict,
+                        opts=opts,
+                        mesh=mesh_dict,
+                        diagnostics=diagnostics_dict,
+                        license=publish_license,
+                        title=publish_title,
+                        tags=publish_tags,
+                        app_commit=git_commit
+                    )
+                if result.duplicate:
+                    st.info(f"✓ Design already published (ID: {result.id[:8]}...)")
+                else:
+                    st.success(f"✓ Published! ID: {result.id[:8]}...")
+
+        except Exception as e:
+            st.error(f"Publish failed: {e}")
+
     if do_export:
         try:
             from datetime import datetime
@@ -1408,12 +1576,12 @@ with _tab1:
                 pass
             st.success(f"STL ready: {safe}.stl  — triangles: {len(faces):,}")
             st.download_button("Download STL", data=data, file_name=f"{safe}.stl", mime="model/stl")
-            
+
             # Publish to library if enabled
             if publish_enabled and license_consent and _has_library:
                 try:
                     from potfoundry.library import publish_design
-                    
+
                     # Prepare size dict
                     size_dict = {
                         "height": H,
@@ -1424,20 +1592,20 @@ with _tab1:
                         "drain_radius": r_drain,
                         "flare_exp": expn,
                     }
-                    
+
                     # Prepare mesh dict
                     mesh_dict = {
                         "n_theta": n_theta_export,
                         "n_z": n_z_export,
                         "twist": opts.get("twist", 0.0),
                     }
-                    
+
                     # Prepare diagnostics
                     diagnostics_dict = {
                         "triangle_count": len(faces),
                         "vertex_count": len(verts),
                     }
-                    
+
                     # Get git commit (optional)
                     try:
                         import subprocess
@@ -1448,7 +1616,7 @@ with _tab1:
                         ).decode().strip()
                     except Exception:
                         git_commit = None
-                    
+
                     # Publish
                     with st.spinner("Publishing to library..."):
                         result = publish_design(
@@ -1463,12 +1631,12 @@ with _tab1:
                             tags=publish_tags,
                             app_commit=git_commit
                         )
-                    
+
                     if result.duplicate:
                         st.info(f"✓ Design already published (ID: {result.id[:8]}...)")
                     else:
                         st.success(f"✓ Published! ID: {result.id[:8]}...")
-                    
+
                     # Show library link
                     from pfui.deeplink import generate_deep_link, extract_state_from_session
                     state_to_encode = {
@@ -1482,17 +1650,58 @@ with _tab1:
                         "expn": expn,
                         "opts": opts,
                     }
-                    base_url = st.secrets.get("app_url", "http://localhost:8501")
+                    # Resolve base URL for deep links.
+                    # Preference: root app_url (secrets) -> nested app_url -> APP_URL env -> localhost default.
+                    base_url = st.secrets.get("app_url", None)
+                    if not base_url:
+                        try:
+                            base_url = st.secrets.get("connections", {}).get("supabase", {}).get("app_url")
+                        except Exception:
+                            base_url = None
+                    if not base_url:
+                        import os as _os
+                        base_url = _os.environ.get("APP_URL")
+                    if not base_url:
+                        base_url = "http://localhost:8501"
                     deep_link = generate_deep_link(state_to_encode, base_url)
-                    
-                    st.code(deep_link, language=None)
-                    if st.button("📋 Copy Link", key="copy_link"):
-                        st.toast("Link copied! (use browser copy from text above)")
-                
+
+                    # Mask any accidental secrets before showing the link in UI
+                    def _mask_possible_secrets(text: str) -> str:
+                        try:
+                            # Mask exact supabase service key if available in st.secrets
+                            svc_key = None
+                            if 'st' in globals() and st is not None:
+                                try:
+                                    svc_key = st.secrets.get("connections", {}).get("supabase", {}).get("key")
+                                except Exception:
+                                    svc_key = None
+                            if svc_key and svc_key in text:
+                                text = text.replace(svc_key, "[REDACTED]")
+
+                            # Mask JWT-like tokens (three dot-separated parts)
+                            text = re.sub(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "[REDACTED_JWT]", text)
+
+                            # Mask long hex hashes (e.g., 64-char sha256)
+                            text = re.sub(r"[0-9a-fA-F]{48,}", "[REDACTED_HASH]", text)
+                        except Exception:
+                            # If masking fails, return the original text to avoid hiding useful info
+                            return text
+                        return text
+
+                    safe_link = _mask_possible_secrets(deep_link)
+                    # Show a compact link button and tuck the raw URL into a collapsible section
+                    try:
+                        st.link_button("Open shared link", url=deep_link)
+                    except Exception:
+                        st.markdown(f"[Open shared link]({deep_link})")
+
+                    with st.expander("Shareable link (URL)", expanded=False):
+                        st.code(safe_link, language=None)
+
                 except Exception as e:
                     st.error(f"Publishing failed: {e}")
                     st.exception(e)
-        
+
         except Exception as e:
             st.error(f"Export failed: {e}")
 

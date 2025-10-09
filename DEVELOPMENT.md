@@ -1,3 +1,40 @@
+## Pre-commit hooks & secret scanning
+
+This repository uses `pre-commit` plus `detect-secrets` to prevent accidental commits of sensitive material (e.g., Supabase `service_role` keys).
+
+### One-time setup
+
+1. Install pre-commit (choose one):
+    - Python: `pip install pre-commit detect-secrets`
+    - Homebrew (macOS): `brew install pre-commit`
+2. Install the git hooks:
+    ```bash
+    pre-commit install --install-hooks
+    ```
+3. (Optional) Audit current tree:
+    ```bash
+    pre-commit run --all-files
+    ```
+
+### Updating the detect-secrets baseline
+
+If you intentionally add a new file that triggers false positives and have reviewed it:
+```bash
+detect-secrets scan > detect-secrets.baseline.new
+mv detect-secrets.baseline.new detect-secrets.baseline
+git add detect-secrets.baseline
+```
+
+### Blocking Supabase service_role keys
+
+A lightweight custom hook (`potfoundry-forbid-service-role`) scans staged files for tokens matching `srv-<...>` patterns of length >= 20. If it flags a file:
+
+1. Remove the secret immediately.
+2. Rotate it in Supabase.
+3. Amend the commit after scrubbing (`git commit --amend`).
+
+Never rely solely on client-side hooks—CI should also enforce secret scanning (future improvement: add a GitHub Action).
+
 # Development Guide
 
 ## Quick Start
@@ -172,24 +209,24 @@ def r_outer_my_style(
     theta: float, z: float, r0: float, H: float, opts: Dict[str, float]
 ) -> float:
     """My custom decorative style.
-    
+
     Args:
         theta: Angle around pot (0 to 2π radians)
         z: Height above bottom (0 to H millimeters)
         r0: Base radius at this height (before modulation)
         H: Total pot height in millimeters
         opts: Style-specific parameters from UI/config
-    
+
     Returns:
         Modulated radius at this angle and height
     """
     # Extract parameters with defaults
     amplitude = float(opts.get('my_amplitude', 0.1))
     frequency = float(opts.get('my_frequency', 5))
-    
+
     # Compute normalized height (0 to 1)
     t = z / H if H > 0 else 0.0
-    
+
     # Apply modulation
     modulation = amplitude * math.sin(frequency * theta)
     return r0 * (1.0 + modulation * t)
@@ -378,17 +415,17 @@ tests/
 def test_base_radius_computes_correct_interpolation():
     """Verify base_radius interpolates correctly between Rb and Rt."""
     from potfoundry.geometry import base_radius
-    
+
     opts = {}
-    
+
     # At bottom (z=0), should return Rb
     r_bottom = base_radius(z=0, H=100, Rb=40, Rt=60, expn=1.0, opts=opts)
     assert abs(r_bottom - 40) < 0.01
-    
+
     # At top (z=H), should return Rt
     r_top = base_radius(z=100, H=100, Rb=40, Rt=60, expn=1.0, opts=opts)
     assert abs(r_top - 60) < 0.01
-    
+
     # At middle with expn=1.0 (linear), should be halfway
     r_mid = base_radius(z=50, H=100, Rb=40, Rt=60, expn=1.0, opts=opts)
     assert abs(r_mid - 50) < 0.01
@@ -402,7 +439,7 @@ def test_end_to_end_pot_generation():
     import tempfile
     from pathlib import Path
     from potfoundry import build_pot_mesh, write_stl_binary, STYLES
-    
+
     # Generate mesh
     style_fn = STYLES["SuperformulaBlossom"][0]
     verts, faces, diag = build_pot_mesh(
@@ -410,12 +447,12 @@ def test_end_to_end_pot_generation():
         expn=1.1, n_theta=168, n_z=84,
         r_outer_fn=style_fn, style_opts={}
     )
-    
+
     # Export to temporary file
     with tempfile.TemporaryDirectory() as tmpdir:
         stl_path = Path(tmpdir) / "test.stl"
         write_stl_binary(stl_path, "TestPot", verts, faces)
-        
+
         # Verify file exists and has expected size
         assert stl_path.exists()
         size = stl_path.stat().st_size
@@ -438,14 +475,14 @@ import pytest
 def test_all_styles_generate_valid_meshes(style_name):
     """Verify each style produces valid mesh."""
     from potfoundry import build_pot_mesh, STYLES
-    
+
     style_fn = STYLES[style_name][0]
     verts, faces, diag = build_pot_mesh(
         H=100, Rt=60, Rb=40, t_wall=3, t_bottom=3, r_drain=8,
         expn=1.1, n_theta=120, n_z=60,
         r_outer_fn=style_fn, style_opts={}
     )
-    
+
     assert faces.shape[0] > 0, f"{style_name} produced no faces"
     assert verts.shape[0] > 0, f"{style_name} produced no vertices"
 ```
@@ -515,13 +552,13 @@ def benchmark_operation(func, *args, iterations=100, **kwargs):
         result = func(*args, **kwargs)
         elapsed = time.perf_counter() - start
         times.append(elapsed)
-    
+
     times = np.array(times)
     print(f"Mean: {times.mean()*1000:.2f}ms")
     print(f"Std: {times.std()*1000:.2f}ms")
     print(f"Min: {times.min()*1000:.2f}ms")
     print(f"Max: {times.max()*1000:.2f}ms")
-    
+
     return result
 
 # Usage
@@ -557,7 +594,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.11', '3.12', '3.13']
-    
+
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
@@ -704,5 +741,5 @@ Semantic Versioning (SemVer): `MAJOR.MINOR.PATCH`
 
 ---
 
-**Last Updated:** 2024  
+**Last Updated:** 2024
 **For Version:** PotFoundry v2.0+

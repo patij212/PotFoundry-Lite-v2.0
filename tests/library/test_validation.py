@@ -76,7 +76,7 @@ def test_validate_tags_rejects_invalid_chars():
     valid, error = validate_tags(tags)
     assert not valid
     assert "invalid characters" in error.lower()
-    
+
     tags = ["tag@with!special"]
     valid, error = validate_tags(tags)
     assert not valid
@@ -99,7 +99,7 @@ def test_validate_license_accepts_allowed():
         "MIT",
         "Apache 2.0",
     ]
-    
+
     for license in allowed:
         valid, error = validate_license(license)
         assert valid, f"License {license} should be valid"

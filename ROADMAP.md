@@ -339,7 +339,7 @@ class MeshGenerationWorker(QThread):
     progress = Signal(int)  # 0-100
     finished = Signal(object)  # (verts, faces, diag)
     error = Signal(str)
-    
+
     def run(self):
         try:
             for step in range(total_steps):
@@ -347,7 +347,7 @@ class MeshGenerationWorker(QThread):
                     return
                 # ... work ...
                 self.progress.emit(int(100 * step / total_steps))
-            
+
             result = build_pot_mesh(...)
             self.finished.emit(result)
         except Exception as e:
@@ -617,6 +617,6 @@ The evolution from Streamlit web app to Qt desktop app is a significant but achi
 
 **Next Major Milestone:** v2.1 Streamlit enhancements → v2.5 Qt prototype
 
-**Last Updated:** 2024  
-**Document Version:** 1.0  
+**Last Updated:** 2024
+**Document Version:** 1.0
 **Status:** Planning / Roadmap

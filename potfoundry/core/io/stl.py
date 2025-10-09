@@ -34,15 +34,15 @@ def _ensure_dir(p: Path) -> None:
 
 def atomic_write_bytes(path: Union[str, Path], data: bytes) -> None:
     """Write bytes to file atomically to prevent partial writes.
-    
+
     Writes to a temporary file first, syncs to disk, then atomically
     replaces the target file. This prevents partial/corrupt files if
     the write is interrupted.
-    
+
     Args:
         path: Target file path
         data: Bytes to write
-    
+
     Note:
         Uses os.replace() which is atomic on both Unix and Windows
     """
@@ -62,11 +62,11 @@ def _pack_header(name: str) -> bytes:
 
 def _compute_face_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
     """Compute face normals for triangular mesh using vectorized cross product.
-    
+
     Args:
         vertices: Vertex array (N, 3)
         faces: Face indices (M, 3)
-    
+
     Returns:
         Normal vectors (M, 3), normalized to unit length where possible
     """
@@ -82,17 +82,17 @@ def _compute_face_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray
 
 def _interleave_records(normals: np.ndarray, vertices: np.ndarray, faces: np.ndarray) -> bytes:
     """Pack normals and triangle vertices into binary STL facet records.
-    
+
     Creates the binary body of an STL file. Each facet record is 50 bytes:
     - 12 bytes: normal vector (3 × float32)
     - 36 bytes: three vertices (9 × float32)
     - 2 bytes: attribute (unused, always 0)
-    
+
     Args:
         normals: Face normals (M, 3)
         vertices: Vertex array (N, 3)
         faces: Face indices (M, 3)
-    
+
     Returns:
         bytes: Binary facet records (M × 50 bytes)
     """
@@ -118,30 +118,30 @@ def _interleave_records(normals: np.ndarray, vertices: np.ndarray, faces: np.nda
 
 def write_stl_binary(path: Union[str, Path], name: str, vertices: np.ndarray, faces: np.ndarray, normals: Optional[np.ndarray]=None) -> Path:
     """Write mesh to binary STL file (RECOMMENDED for all exports).
-    
+
     Binary STL is the preferred format for PotFoundry exports. It produces
     files that are 50-90% smaller than ASCII STL and write/read much faster
     while being universally supported by all modern slicers and CAD software.
-    
+
     Args:
         path: Output file path (str or Path)
         name: Model name (embedded in STL header, max 80 chars)
         vertices: Vertex array, shape (N, 3), dtype float or float32
         faces: Face indices array, shape (M, 3), dtype int or int32
         normals: Optional face normals, shape (M, 3). If None, computed automatically.
-    
+
     Returns:
         Path: Resolved path to the written STL file
-    
+
     Raises:
         IOError: If file cannot be written
         ValueError: If vertices/faces have invalid shapes
-    
+
     Example:
         >>> verts, faces, _ = build_pot_mesh(H=100, Rt=50, Rb=40, ...)
         >>> write_stl_binary("my_pot.stl", "FlowerPot", verts, faces)
         Path('my_pot.stl')
-    
+
     Note:
         - Uses atomic write-and-replace to prevent partial files on errors
         - Automatically computes face normals if not provided

@@ -113,7 +113,7 @@ async function handleRequest(request) {
   }
 
   const body = await request.json()
-  
+
   // Validate signature (shared secret)
   const expectedSig = await crypto.subtle.digest(
     'SHA-256',
@@ -226,14 +226,14 @@ def publish_design_r2(stl_bytes, payload, title, tags, license):
     # Generate canonical ID
     canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     content_hash = hashlib.sha256(canonical_json.encode()).hexdigest()
-    
+
     # Create signature
     signature = hmac.new(
         SECRET_KEY.encode(),
         canonical_json.encode(),
         hashlib.sha256
     ).hexdigest()
-    
+
     # Request presigned URLs
     resp = requests.post(
         f"{WORKER_URL}/api/publish",
@@ -251,23 +251,23 @@ def publish_design_r2(stl_bytes, payload, title, tags, license):
             "payload": canonical_json,
         }
     )
-    
+
     if resp.json().get("duplicate"):
         return resp.json()
-    
+
     urls = resp.json()
-    
+
     # Upload files to presigned URLs
     requests.put(urls["stl_upload_url"], data=stl_bytes)
     requests.put(urls["thumb_upload_url"], data=thumb_bytes)
     requests.put(urls["meta_upload_url"], data=canonical_json.encode())
-    
+
     # Finalize
     final_resp = requests.post(
         urls["callback_url"],
         json={"title": title, "style": payload["style"], ...}
     )
-    
+
     return final_resp.json()
 ```
 
@@ -280,16 +280,16 @@ def list_published_r2(style=None, tags=None, offset=0, limit=24):
         params["style"] = style
     if tags:
         params["tags"] = ",".join(tags)
-    
+
     resp = requests.get(f"{WORKER_URL}/api/library", params=params)
     items = resp.json()["items"]
-    
+
     # Parse JSON strings back to dicts
     for item in items:
         item["size"] = json.loads(item["size"])
         item["opts"] = json.loads(item["opts"])
         item["tags"] = json.loads(item["tags"])
-    
+
     return items
 ```
 
@@ -377,15 +377,15 @@ table = dynamodb.Table('pots')
 def lambda_handler(event, context):
     # Parse request
     body = json.loads(event['body'])
-    
+
     # Validate signature
     # ... (same as Worker)
-    
+
     # Check dedup
     resp = table.get_item(Key={'id': body['id']})
     if 'Item' in resp:
         return {'statusCode': 200, 'body': json.dumps({'duplicate': True, 'id': body['id']})}
-    
+
     # Generate presigned PUT URLs
     stl_url = s3.generate_presigned_url(
         'put_object',
@@ -397,7 +397,7 @@ def lambda_handler(event, context):
         Params={'Bucket': 'potfoundry-library', 'Key': f"thumb/{body['id']}.png"},
         ExpiresIn=300
     )
-    
+
     return {'statusCode': 200, 'body': json.dumps({
         'stl_upload_url': stl_url,
         'thumb_upload_url': thumb_url,
@@ -443,7 +443,7 @@ s3 = boto3.client('s3', endpoint_url='https://<account>.r2.cloudflarestorage.com
 for row in rows:
     s3.put_object(Bucket='pots', Key=f"stl/{row['id']}.stl", Body=stl_bytes)
     s3.put_object(Bucket='pots', Key=f"thumb/{row['id']}.png", Body=thumb_bytes)
-    
+
     # Insert to D1 via Worker API
     requests.post(f"{WORKER_URL}/api/import", json=row)
 ```

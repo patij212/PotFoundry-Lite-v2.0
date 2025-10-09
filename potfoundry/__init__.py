@@ -6,7 +6,7 @@ Public domain / Unlicense. See LICENSE for details.
 STL Export:
     - write_stl_binary: **Recommended** - Fast, compact binary STL export (default)
     - write_ascii_stl: **Deprecated** - Legacy ASCII STL (debug/compatibility only)
-    
+
 For all production use, prefer write_stl_binary. It produces smaller files,
 writes faster, and is universally supported by modern slicers and CAD tools.
 """

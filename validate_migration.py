@@ -40,7 +40,7 @@ with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("always", DeprecationWarning)
     with tempfile.NamedTemporaryFile(suffix=".stl", delete=True) as f:
         write_ascii_stl(f.name, "test", verts, faces)
-    
+
     if len(w) > 0 and issubclass(w[0].category, DeprecationWarning):
         print("  ✅ ASCII STL shows deprecation warning")
         print(f"     Message: '{str(w[0].message)}'")
@@ -57,29 +57,29 @@ try:
         expn=1.1, n_theta=48, n_z=24,
         r_outer_fn=style_fn, style_opts={}
     )
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "test.stl"
         write_stl_binary(output_path, "TestPot", verts, faces)
-        
+
         # Verify file
         if not output_path.exists():
             print("  ❌ Binary STL file not created")
             sys.exit(1)
-        
+
         file_size = output_path.stat().st_size
         data = output_path.read_bytes()
         tri_count = int.from_bytes(data[80:84], "little")
-        
+
         if tri_count != len(faces):
             print(f"  ❌ Triangle count mismatch: {tri_count} != {len(faces)}")
             sys.exit(1)
-        
+
         print(f"  ✅ Binary STL export works correctly")
         print(f"     File size: {file_size:,} bytes")
         print(f"     Triangles: {tri_count:,}")
         print(f"     Bytes per triangle: {file_size / tri_count:.1f}")
-        
+
 except Exception as e:
     print(f"  ❌ Binary STL export failed: {e}")
     sys.exit(1)
@@ -90,22 +90,22 @@ try:
     with tempfile.TemporaryDirectory() as tmpdir:
         binary_path = Path(tmpdir) / "binary.stl"
         ascii_path = Path(tmpdir) / "ascii.stl"
-        
+
         # Create both
         write_stl_binary(binary_path, "Test", verts, faces)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             write_ascii_stl(ascii_path, "Test", verts, faces)
-        
+
         binary_size = binary_path.stat().st_size
         ascii_size = ascii_path.stat().st_size
         savings = (ascii_size - binary_size) / ascii_size * 100
-        
+
         print(f"  ✅ Binary is {savings:.1f}% smaller than ASCII")
         print(f"     Binary: {binary_size:,} bytes")
         print(f"     ASCII:  {ascii_size:,} bytes")
         print(f"     Saved:  {ascii_size - binary_size:,} bytes")
-        
+
 except Exception as e:
     print(f"  ❌ Comparison failed: {e}")
     sys.exit(1)

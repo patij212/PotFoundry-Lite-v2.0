@@ -42,22 +42,22 @@ from urllib.parse import quote
 
 def encode_state(state_dict: dict) -> str:
     """Encode state dict to base64url string for URL parameter.
-    
+
     Args:
         state_dict: Design parameters to encode
-        
+
     Returns:
         Base64url-encoded string (URL-safe)
     """
     # Serialize to compact JSON
     json_str = json.dumps(state_dict, separators=(",", ":"))
-    
+
     # Encode to bytes
     json_bytes = json_str.encode("utf-8")
-    
+
     # Base64url encode (URL-safe variant)
     b64_bytes = base64.urlsafe_b64encode(json_bytes)
-    
+
     # Return as string (no padding needed for URL)
     return b64_bytes.decode("ascii").rstrip("=")
 
@@ -87,13 +87,13 @@ import json
 
 def decode_state(encoded: str) -> dict:
     """Decode base64url string to state dict.
-    
+
     Args:
         encoded: Base64url-encoded string from URL parameter
-        
+
     Returns:
         Decoded state dictionary
-        
+
     Raises:
         ValueError: If decoding fails (invalid base64 or JSON)
     """
@@ -101,13 +101,13 @@ def decode_state(encoded: str) -> dict:
         # Add padding if needed (base64 requires length % 4 == 0)
         padding = (4 - len(encoded) % 4) % 4
         encoded_padded = encoded + ("=" * padding)
-        
+
         # Decode base64url
         json_bytes = base64.urlsafe_b64decode(encoded_padded)
-        
+
         # Decode JSON
         state_dict = json.loads(json_bytes.decode("utf-8"))
-        
+
         return state_dict
     except Exception as e:
         raise ValueError(f"Invalid state parameter: {e}")
@@ -129,14 +129,14 @@ from pfui.deeplink import decode_state, apply_state
 query_params = st.experimental_get_query_params()
 if "state" in query_params:
     encoded_state = query_params["state"][0]
-    
+
     try:
         state_dict = decode_state(encoded_state)
         apply_state(state_dict)
-        
+
         # Clear query param to avoid reapplying on every rerun
         st.experimental_set_query_params()
-        
+
         st.success(f"Loaded design: {state_dict.get('style', 'Unknown')}")
         st.rerun()
     except ValueError as e:
@@ -149,7 +149,7 @@ from pfui.state import queue_update
 
 def apply_state(state_dict: dict):
     """Apply state dict to session state (validate and update).
-    
+
     Args:
         state_dict: Decoded state parameters
     """
@@ -158,13 +158,13 @@ def apply_state(state_dict: dict):
         "style", "H", "top_od", "bottom_od", "t_wall", "t_bottom",
         "r_drain", "expn", "n_theta", "n_z", "opts"
     }
-    
+
     # Validate and filter
     validated = {}
     for key, value in state_dict.items():
         if key not in ALLOWED_KEYS:
             continue  # Ignore unknown keys
-        
+
         # Type validation
         if key == "style":
             if not isinstance(value, str):
@@ -183,7 +183,7 @@ def apply_state(state_dict: dict):
             if not isinstance(value, (int, float)):
                 continue
             validated[key] = float(value)
-    
+
     # Queue updates via existing state management
     queue_update(validated)
 ```
@@ -251,7 +251,7 @@ import gzip
 def encode_state_compressed(state_dict: dict) -> str:
     json_str = json.dumps(state_dict, separators=(",", ":"))
     json_bytes = json_str.encode("utf-8")
-    
+
     if len(json_bytes) > 500:
         # Compress with gzip
         compressed = gzip.compress(json_bytes, compresslevel=9)
@@ -272,7 +272,7 @@ def decode_state_compressed(encoded: str) -> dict:
         # Standard format
         padding = (4 - len(encoded) % 4) % 4
         json_bytes = base64.urlsafe_b64decode(encoded + "=" * padding)
-    
+
     return json.loads(json_bytes.decode("utf-8"))
 ```
 
@@ -282,7 +282,7 @@ def decode_state_compressed(encoded: str) -> dict:
 ```python
 def safe_decode_state(encoded: str) -> dict | None:
     """Decode state with graceful error handling.
-    
+
     Returns:
         Decoded state dict or None if invalid
     """
@@ -292,7 +292,7 @@ def safe_decode_state(encoded: str) -> dict | None:
         # Log error for debugging
         import logging
         logging.warning(f"Deep link decode failed: {e}")
-        
+
         # Show user-friendly message
         st.warning("The design link is invalid or corrupted. Starting with default settings.")
         return None
@@ -302,13 +302,13 @@ def safe_decode_state(encoded: str) -> dict | None:
 ```python
 def validate_state(state_dict: dict) -> tuple[dict, list[str]]:
     """Validate state dict and return cleaned dict + warnings.
-    
+
     Returns:
         (validated_dict, warnings_list)
     """
     validated = {}
     warnings = []
-    
+
     # Validate each parameter
     if "H" in state_dict:
         h = state_dict["H"]
@@ -316,9 +316,9 @@ def validate_state(state_dict: dict) -> tuple[dict, list[str]]:
             warnings.append(f"Height {h} out of range, using default")
         else:
             validated["H"] = h
-    
+
     # ... (repeat for other params)
-    
+
     return validated, warnings
 
 # Usage
@@ -341,7 +341,7 @@ def render_library_card(design: dict):
     st.image(design["thumb_url"])
     st.write(f"**{design['title']}**")
     st.write(f"Style: {design['style']}")
-    
+
     # Download STL
     st.download_button(
         "Download STL",
@@ -349,7 +349,7 @@ def render_library_card(design: dict):
         file_name=f"{design['id']}.stl",
         mime="application/octet-stream"
     )
-    
+
     # Open in editor (deep link)
     state_to_encode = {
         "style": design["style"],
@@ -362,10 +362,10 @@ def render_library_card(design: dict):
         "expn": design["size"]["flare_exp"],
         "opts": design["opts"],
     }
-    
+
     encoded = encode_state(state_to_encode)
     deep_link = f"{st.secrets.get('app_url', 'http://localhost:8501')}/?state={encoded}"
-    
+
     st.link_button("Open in Editor", deep_link)
 ```
 
@@ -374,9 +374,9 @@ def render_library_card(design: dict):
 def copy_link_button(encoded_state: str):
     """Render a copy-to-clipboard button for deep link."""
     deep_link = f"{st.secrets.get('app_url', 'http://localhost:8501')}/?state={encoded_state}"
-    
+
     st.code(deep_link, language=None)
-    
+
     # JavaScript copy to clipboard (via st.components)
     st.button(
         "📋 Copy Link",
@@ -399,10 +399,10 @@ def test_encode_decode_roundtrip():
         "top_od": 105.5,
         "opts": {"freq": 8.0, "amp": 2.5}
     }
-    
+
     encoded = encode_state(state)
     decoded = decode_state(encoded)
-    
+
     assert decoded == state
 
 def test_decode_invalid_base64():
@@ -414,7 +414,7 @@ def test_url_safe_characters():
     """Test that encoded string is URL-safe."""
     state = {"style": "Test", "value": 123.456}
     encoded = encode_state(state)
-    
+
     # Should not contain +, /, or = (URL-unsafe chars)
     assert "+" not in encoded
     assert "/" not in encoded
@@ -426,10 +426,10 @@ def test_large_state():
         "style": "SuperformulaBlossom",
         "opts": {f"param_{i}": float(i) for i in range(50)}
     }
-    
+
     encoded = encode_state(state)
     decoded = decode_state(encoded)
-    
+
     assert len(encoded) < 2000  # Under URL limit
     assert decoded == state
 ```
@@ -476,7 +476,7 @@ state = {
 def generate_share_link(session_state: dict) -> str:
     """Generate shareable link from current session state."""
     from pfui.deeplink import encode_state
-    
+
     # Extract relevant parameters
     state = {
         "style": session_state["style"],
@@ -489,7 +489,7 @@ def generate_share_link(session_state: dict) -> str:
         "expn": session_state["expn"],
         "opts": session_state.get("_current_opts", {})
     }
-    
+
     encoded = encode_state(state)
     base_url = st.secrets.get("app_url", "http://localhost:8501")
     return f"{base_url}/?state={encoded}"
@@ -509,14 +509,14 @@ Use URL shortener service (bit.ly, custom) for sharing:
 def create_short_link(state_dict: dict) -> str:
     encoded = encode_state(state_dict)
     long_url = f"{BASE_URL}/?state={encoded}"
-    
+
     # Use URL shortener API
     short_url = requests.post(
         "https://api.short.io/links",
         json={"originalURL": long_url},
         headers={"Authorization": SHORT_IO_KEY}
     ).json()["shortURL"]
-    
+
     return short_url
 ```
 
@@ -530,7 +530,7 @@ def generate_qr_code(deep_link: str) -> bytes:
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(deep_link)
     qr.make(fit=True)
-    
+
     img = qr.make_image(fill_color="black", back_color="white")
     buf = BytesIO()
     img.save(buf, format="PNG")
