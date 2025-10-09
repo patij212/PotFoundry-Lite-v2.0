@@ -3,6 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Dict
+from pathlib import Path
 import math
 import numpy as np
 from functools import lru_cache
@@ -118,7 +119,14 @@ def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> No
         DeprecationWarning,
         stacklevel=2
     )
-    with open(path, "w") as f:
+    # Ensure destination directory exists (important on Windows where /tmp may not exist)
+    p = Path(path)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # If parent cannot be created (e.g., path has no parent), proceed and let open() raise
+        pass
+    with open(p, "w") as f:
         f.write(f"solid {name}\n")
         for ia, ib, ic in faces:
             a = verts[ia]; b = verts[ib]; c = verts[ic]
@@ -300,8 +308,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     assert H > 0 and Rt > 0 and Rb > 0 and t_wall > 0 and t_bottom >= 2.0, "Invalid size parameters."
     assert r_drain > 0 and r_drain < (Rb - t_wall - 2.0), "Drain hole too large for base—adjust sizes."
 
-    thetas = np.linspace(0.0, TAU, n_theta, endpoint=False)
-    cos_th = np.cos(thetas); sin_th = np.sin(thetas)
+    # Use cached theta grid to avoid recomputing across calls
+    thetas, cos_th, sin_th = _theta_grid_cached(int(n_theta))
     z_outer = np.linspace(0.0, H, n_z + 1)
     z_inner = np.linspace(t_bottom, H, n_z + 1)
 
@@ -369,8 +377,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
 
     # ---- Drain circles (untwisted)
     drain_under = []; drain_top = []
-    for th in thetas:
-        x0 = r_drain * float(np.cos(th)); y0 = r_drain * float(np.sin(th))
+    # Vectorized drain circle placement using cached cos/sin
+    for c, s in zip(cos_th, sin_th):
+        x0 = r_drain * float(c); y0 = r_drain * float(s)
         drain_under.append(len(verts)); verts.append(np.array([x0, y0, 0.0], dtype=float))
         drain_top.append(len(verts));   verts.append(np.array([x0, y0, float(t_bottom)], dtype=float))
     drain_under = np.array(drain_under, dtype=int); drain_top = np.array(drain_top, dtype=int)
