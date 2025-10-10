@@ -45,8 +45,8 @@ def render_snapshots(png_bytes: bytes | None, style_name: str,
             cc1, cc2, cc3 = st.columns([1, 1, 2])
             png_bytes_local = read_png_bytes(s.get("png"))
             if png_bytes_local:
-                # replace deprecated use_column_width with use_container_width
-                cc1.image(png_bytes_local, caption="preview", use_container_width=True)
+                # replace deprecated use_column_width with width='stretch'
+                cc1.image(png_bytes_local, caption="preview", width='stretch')
             if cc2.button("Apply", key=f"apply_{i}"):
                 st.session_state.update({
                     "H": s["params"]["H"],

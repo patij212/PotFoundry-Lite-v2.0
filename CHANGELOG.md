@@ -179,7 +179,6 @@ Initial development versions with ASCII STL export, basic Streamlit UI, and core
 
 ---
 
-**For detailed migration instructions, see [STL_EXPORT_GUIDE.md](STL_EXPORT_GUIDE.md)**  
-**For implementation details, see [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)**  
+**For detailed migration instructions, see [STL_EXPORT_GUIDE.md](STL_EXPORT_GUIDE.md)**
+**For implementation details, see [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)**
 **For development guidelines, see [DEVELOPMENT.md](DEVELOPMENT.md)**
-

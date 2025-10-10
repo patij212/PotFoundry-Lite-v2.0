@@ -15,7 +15,7 @@ repos:
     hooks:
       - id: potfoundry-forbid-service-role
         name: "Block committing Supabase service_role keys"
-        entry: scripts/precommit_forbid_service_role.sh
-        language: script
+        entry: scripts/precommit_forbid_service_role.py
+        language: python
         pass_filenames: true
         files: '.*'

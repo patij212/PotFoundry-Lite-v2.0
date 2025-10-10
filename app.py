@@ -7,6 +7,8 @@ import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List
+from typing import cast, Callable, Union
+from typing import Any as _ArrayLike  # for broad array-or-scalar typing without optional module issues
 
 import math
 import streamlit as st
@@ -14,12 +16,14 @@ from pfui.preview import render_preview_png_cached
 from datetime import datetime
 
 # --- Optional / graceful Plotly import (interactive preview) ---
+from typing import Any
 try:
-    import plotly.graph_objects as go
+    import plotly.graph_objects as go  # type: ignore[import-not-found]
     HAS_PLOTLY = True
 except Exception:
     HAS_PLOTLY = False
-    go = None  # type: ignore
+    # Annotate as Any so attribute access (Figure, Surface, Mesh3d) doesn't upset type checker
+    go: Any = None  # type: ignore[assignment]
 
 if not HAS_PLOTLY:
     st.info("Plotly is not available. Interactive 3D preview and mesh features are disabled.")
@@ -41,7 +45,7 @@ from pfui.health import _design_health, _health_badge
 from pfui.batch_tab import render_batch_tab
 from pfui.units import units_selector
 from pfui.snapshot_store import save_png_temp, cleanup_old_tempfiles, read_png_bytes, remove_png_path
-from pfui import state_history as H
+from pfui import state_history as Hist
 from pfui.deeplink import parse_query_params, apply_state, clear_query_params
 from pfui.library_ui import render_library_tab
 from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
@@ -181,13 +185,13 @@ st.title("PotFoundry Pro v2 — Designer & Batch")
 st.caption(f"Build {APP_VERSION}")
 # Undo/Redo buttons and keyboard shortcuts
 try:
-        c_ur1, c_ur2 = st.columns([1, 1])
-        if c_ur1.button("Undo (Ctrl+Z)"):
-                H.undo()
-                st.experimental_rerun()
-        if c_ur2.button("Redo (Ctrl+Y)"):
-                H.redo()
-                st.experimental_rerun()
+    c_ur1, c_ur2 = st.columns([1, 1])
+    if c_ur1.button("Undo (Ctrl+Z)"):
+        Hist.undo()
+        st.rerun()
+    if c_ur2.button("Redo (Ctrl+Y)"):
+        Hist.redo()
+        st.rerun()
 except Exception:
         pass
 
@@ -353,44 +357,86 @@ with _tab1:
         place_on_ground = st.checkbox(
             "Place model on ground (Z=0)",
             value=True,
-            help="Preview only; STL origin is unchanged.",
+            help="Preview-only option that shifts the pot so the lowest vertex sits at Z=0. The exported STL keeps its original origin.",
         )
 
         st.divider()
         # --- Dimensions Section ---
         with st.expander("Dimensions (mm)", expanded=True):
-            H = float(st.number_input("Height", 60.0, 240.0, st.session_state.get("H", 120.0), 5.0, key="H"))
-            top_od = float(st.number_input("Top OD", 60.0, 240.0, st.session_state.get("top_od", 140.0), 5.0, key="top_od"))
-            bottom_od = float(st.number_input("Bottom OD", 40.0, 200.0, st.session_state.get("bottom_od", 90.0), 5.0, key="bottom_od"))
-            t_wall = float(st.number_input("Wall thickness", 2.0, 8.0, st.session_state.get("t_wall", 3.0), 0.5, key="t_wall"))
-            t_bottom = float(st.number_input("Bottom slab", 2.0, 10.0, st.session_state.get("t_bottom", 3.0), 0.5, key="t_bottom"))
-            r_drain = float(st.number_input("Drain hole", 3.0, 30.0, st.session_state.get("r_drain", 10.0), 1.0, key="r_drain"))
+            H = float(st.number_input(
+                "Height", 60.0, 240.0, st.session_state.get("H", 120.0), 5.0, key="H",
+                help="Overall height of the pot measured from the base to the rim."
+            ))
+            top_od = float(st.number_input(
+                "Top OD", 60.0, 240.0, st.session_state.get("top_od", 140.0), 5.0, key="top_od",
+                help="Outer diameter at the rim (OD = outside diameter)."
+            ))
+            bottom_od = float(st.number_input(
+                "Bottom OD", 40.0, 200.0, st.session_state.get("bottom_od", 90.0), 5.0, key="bottom_od",
+                help="Outer diameter at the base. Increase for more stability or reduce for a sleeker profile."
+            ))
+            t_wall = float(st.number_input(
+                "Wall thickness", 2.0, 8.0, st.session_state.get("t_wall", 3.0), 0.5, key="t_wall",
+                help="Thickness of the pot wall. Typical FDM prints work well around 2.5–3.0 mm."
+            ))
+            t_bottom = float(st.number_input(
+                "Bottom slab", 2.0, 10.0, st.session_state.get("t_bottom", 3.0), 0.5, key="t_bottom",
+                help="Thickness of the bottom solid slab. Thicker improves rigidity and weight."
+            ))
+            r_drain = float(st.number_input(
+                "Drain hole", 3.0, 30.0, st.session_state.get("r_drain", 10.0), 1.0, key="r_drain",
+                help="Radius of the drainage hole. Ensure it remains smaller than inner radius at the base."
+            ))
             Rt, Rb = 0.5 * top_od, 0.5 * bottom_od
 
         # (model_name auto-default logic handled earlier)
 
         # --- Profile Section ---
         with st.expander("Profile / Curve", expanded=True):
-            expn = float(st.slider("Flare exponent", 0.7, 1.6, st.session_state.get("expn", 1.1), 0.05, key="expn", on_change=_mark_changed))
+            expn = float(st.slider(
+                "Flare exponent", 0.7, 1.6, st.session_state.get("expn", 1.1), 0.05, key="expn", on_change=_mark_changed,
+                help="Controls how quickly the wall expands from base to rim. >1 favors the top, <1 favors the base."
+            ))
             c1, c2, c3 = st.columns(3)
             # NOTE: widget keys now use style_key (not style_name)
             k1 = widget_key(style_key, "flare_center")
             k2 = widget_key(style_key, "flare_sharp")
             k3 = widget_key(style_key, "bell_amp")
-            flare_center = float(c1.slider("Flare center (0–1)", 0.1, 0.9, st.session_state.get(k1, 0.5), 0.01, key=k1, on_change=_mark_changed))
-            flare_sharp  = float(c2.slider("Flare sharpness",    1.0, 12.0, st.session_state.get(k2, 6.0), 0.1,  key=k2, on_change=_mark_changed))
-            bell_amp     = float(c3.slider("Bell amplitude",     0.0, 0.5,  st.session_state.get(k3, 0.0), 0.01, key=k3, on_change=_mark_changed))
+            flare_center = float(c1.slider(
+                "Flare center (0–1)", 0.1, 0.9, st.session_state.get(k1, 0.5), 0.01, key=k1, on_change=_mark_changed,
+                help="Where along the height the flare concentrates. 0=base, 1=top."
+            ))
+            flare_sharp  = float(c2.slider(
+                "Flare sharpness", 1.0, 12.0, st.session_state.get(k2, 6.0), 0.1,  key=k2, on_change=_mark_changed,
+                help="Higher values make the flare transition more abrupt."
+            ))
+            bell_amp     = float(c3.slider(
+                "Bell amplitude", 0.0, 0.5,  st.session_state.get(k3, 0.0), 0.01, key=k3, on_change=_mark_changed,
+                help="Adds a soft ring-shaped bulge; set to 0 to disable."
+            ))
             c4, c5 = st.columns(2)
             k4 = widget_key(style_key, "bell_center")
             k5 = widget_key(style_key, "bell_width")
-            bell_center = float(c4.slider("Bell center (0–1)", 0.1, 0.9, st.session_state.get(k4, 0.5), 0.01, key=k4, on_change=_mark_changed))
-            bell_width  = float(c5.slider("Bell width",        0.05, 0.5, st.session_state.get(k5, 0.22), 0.01, key=k5, on_change=_mark_changed))
+            bell_center = float(c4.slider(
+                "Bell center (0–1)", 0.1, 0.9, st.session_state.get(k4, 0.5), 0.01, key=k4, on_change=_mark_changed,
+                help="Height position of the bell-shaped bulge."
+            ))
+            bell_width  = float(c5.slider(
+                "Bell width", 0.05, 0.5, st.session_state.get(k5, 0.22), 0.01, key=k5, on_change=_mark_changed,
+                help="Controls how wide the bell bulge spreads."
+            ))
 
     # --- Mesh Quality Section ---
         with st.expander("Mesh Quality", expanded=False):
             q1, q2 = st.columns(2)
-            n_theta = int(q1.slider("Angular divisions (nθ)", 96, 720, st.session_state.get("n_theta", 168), 12, key="n_theta", on_change=_mark_changed))
-            n_z     = int(q2.slider("Vertical divisions (nz)", 32, 256, st.session_state.get("n_z", 84), 4, key="n_z", on_change=_mark_changed))
+            n_theta = int(q1.slider(
+                "Angular divisions (nθ)", 96, 720, st.session_state.get("n_theta", 168), 12, key="n_theta", on_change=_mark_changed,
+                help="Higher values increase roundness and detail around the pot. Affects both preview and export."
+            ))
+            n_z     = int(q2.slider(
+                "Vertical divisions (nz)", 32, 256, st.session_state.get("n_z", 84), 4, key="n_z", on_change=_mark_changed,
+                help="Higher values add more rings along height for smoother vertical transitions."
+            ))
 
         # (Removed duplicate Appearance & Preview Settings block here — consolidated later in the file)
 
@@ -483,18 +529,11 @@ with _tab1:
         # Backwards compatible flag
         auto_preview = preview_mode == "auto"
 
-        interactive_3d = c2.checkbox(
-            "Quick Preview",
-            value=st.session_state.get("interactive_3d", HAS_PLOTLY),
-            key="interactive_3d",
-            help="Quick surface preview (fast pan/orbit).",
-        )
-        interactive_mesh = c2.checkbox(
-            "Full Preview",
-            value=False,
-            key="interactive_mesh",
-            help="Full triangle mesh preview (slower but exact).",
-        )
+        # Always enable both Quick and Full previews (no checkboxes)
+        interactive_3d = True
+        interactive_mesh = True
+        # Default engine: Interactive Plotly when available; remove engine selector per request
+        st.session_state["quick_engine"] = "interactive" if HAS_PLOTLY else "static"
 
         fig_w = float(c3.slider("Figure width (in)", 4.0, 10.0, st.session_state.get("fig_w", 7.5), 0.1, key="fig_w"))
         fig_h = float(c3.slider("Figure height (in)", 4.0, 8.0,  st.session_state.get("fig_h", 5.2), 0.1, key="fig_h"))
@@ -511,7 +550,7 @@ with _tab1:
             options=[1, 2, 3],
             value=st.session_state.get("quality_up", 2),
             key="quality_up",
-            help="Multiplies nθ & nz when generating the STL.",
+            help="Multiplies nθ & nz when generating the STL. Use higher values for ultra-smooth exports.",
         )
         n_theta_export = int(n_theta * up)
         n_z_export     = int(n_z * up)
@@ -530,7 +569,46 @@ with _tab1:
         if last_mesh_regen is not None:
             status = "regenerated" if last_mesh_regen else "cached"
             extra = f" ({last_mesh_time:.0f} ms)" if last_mesh_time is not None else ""
-            cE3.caption(f"Mesh PNG: {status}{extra}")
+            cE3.caption(f"Mesh PNG: {status}{extra} — auto=off")
+
+        # Offer preview image downloads (PNG, optional SVG) using cached previews
+        try:
+            surf_png = st.session_state.get("_last_surface_png")
+            mesh_png = st.session_state.get("_last_mesh_png")
+            # Two compact columns for download buttons if available
+            d1, d2 = cE3.columns(2)
+            if surf_png:
+                d1.download_button(
+                    "Download Quick Preview PNG",
+                    data=surf_png,
+                    file_name=f"{name}_preview_quick.png",
+                    mime="image/png",
+                )
+                # Optional SVG via Plotly if possible
+                if HAS_PLOTLY and st.session_state.get("_last_surface_fig_json"):
+                    try:
+                        fig = go.Figure(st.session_state.get("_last_surface_fig_json"))
+                        w = max(400, min(900, int(96 * fig_h)))
+                        h = max(300, min(800, int(96 * fig_h)))
+                        svg_bytes = fig.to_image(format="svg", width=w, height=h)
+                        if svg_bytes:
+                            d2.download_button(
+                                "Download Quick Preview SVG",
+                                data=svg_bytes,
+                                file_name=f"{name}_preview_quick.svg",
+                                mime="image/svg+xml",
+                            )
+                    except Exception:
+                        pass
+            if mesh_png:
+                cE3.download_button(
+                    "Download Full Preview PNG",
+                    data=mesh_png,
+                    file_name=f"{name}_preview_full.png",
+                    mime="image/png",
+                )
+        except Exception:
+            pass
 
     # ---------------- HEALTH & WARNINGS ----------------
     st.subheader("Design checks")
@@ -566,7 +644,7 @@ with _tab1:
         # server-side fallback below in case the JS doesn't run in the client.
         col1, col2 = st.columns([3, 1])
         with col1:
-            update_clicked = st.button("🔄 Update Preview", use_container_width=True, type="primary")
+            update_clicked = st.button("🔄 Update Preview", type="primary")
             if update_clicked:
                 should_update_preview = True
                 # Clear cache to force regeneration
@@ -630,12 +708,21 @@ with _tab1:
                 # best-effort; ignore failures
                 pass
 
-    r_outer_fn = STYLES[style_name][0]  # geometry comes from UI style name
+    # Style function can handle scalar or vector theta; cast for type-checker
+    # Accept scalar float or any array-like for theta input/return to satisfy Pylance without optional numpy typing
+    ROuterFn = Callable[[Union[float, _ArrayLike], float, float, float, dict], Union[float, _ArrayLike]]
+    r_outer_fn = cast(ROuterFn, STYLES[style_name][0])  # geometry comes from UI style name
     opts = dict(ui_opts)
     opts_json = json.dumps(opts, sort_keys=True)
 
-    preview_n_theta = max(16, min(4096, int(n_theta * preview_detail)))
-    preview_n_z     = max(8,  min(2048, int(n_z     * preview_detail)))
+    # Apply interactive preview scaling to keep Full Preview responsive
+    preview_scale = float(st.session_state.get("preview_res_scale", 1.0))
+    target_n_theta = max(16, int(n_theta * preview_detail * preview_scale))
+    target_n_z = max(8, int(n_z * preview_detail * preview_scale))
+    preview_n_theta = max(16, min(168, target_n_theta))
+    preview_n_z     = max(8,  min(168, target_n_z))
+    full_n_theta = max(16, min(1024, target_n_theta))
+    full_n_z     = max(8,  min(1024, target_n_z))
 
     # Initialize preview cache & stale flag so manual mode can keep showing
     # the last generated preview until the user explicitly updates it.
@@ -650,11 +737,20 @@ with _tab1:
     preview_placeholder = st.empty()
     mesh_placeholder = st.empty()
 
+    # Predeclare values so type checker knows they exist regardless of branches
+    X = Y = Z = None  # type: ignore[assignment]
+    mesh_data = None
+
     # Only generate preview when allowed (auto mode or Update clicked).
     # In manual mode we must NOT recalculate or render previews automatically.
     preview_exists = False
     if should_update_preview:
         t0_total = time.time()
+        # Initialize to satisfy type checkers in all code paths
+        t0_arrays = 0.0
+        t1_arrays = 0.0
+        X = Y = Z = None  # type: ignore[assignment]
+        mesh_data = None
         try:
             with st.spinner("Computing preview…"):
                 t0_arrays = time.time()
@@ -665,14 +761,13 @@ with _tab1:
                 )
                 t1_arrays = time.time()
                 # Build mesh once (preview resolution) if Full Preview enabled
-                mesh_data = None
                 if interactive_mesh:
                     try:
                         t0_mb = time.time()
                         import numpy as _np_mb
                         verts, faces, _ = build_pot_mesh(
                             H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
-                            expn=expn, n_theta=preview_n_theta, n_z=preview_n_z,
+                            expn=expn, n_theta=full_n_theta, n_z=full_n_z,
                             r_outer_fn=r_outer_fn, style_opts=opts,
                         )
                         Vb = _np_mb.asarray(verts); Fb = _np_mb.asarray(faces)
@@ -721,23 +816,23 @@ with _tab1:
         if interactive_3d and HAS_PLOTLY and last_surf_json:
             try:
                 f_s = go.Figure(last_surf_json)
-                preview_placeholder.plotly_chart(f_s, use_container_width=True)
+                preview_placeholder.plotly_chart(f_s, use_container_width=True, config={'displaylogo': False})
             except Exception:
                 if last_surf_png:
-                    preview_placeholder.image(last_surf_png, caption=("Quick Preview (out of date)" if show_warning else "Quick Preview"), use_container_width=True)
+                    preview_placeholder.image(last_surf_png, caption=("Quick Preview (out of date)" if show_warning else "Quick Preview"), width='stretch')
         elif interactive_3d and last_surf_png:
-            preview_placeholder.image(last_surf_png, caption=("Quick Preview (out of date)" if show_warning else "Quick Preview"), use_container_width=True)
+            preview_placeholder.image(last_surf_png, caption=("Quick Preview (out of date)" if show_warning else "Quick Preview"), width='stretch')
 
         # Mesh (full) preview cached display
         if interactive_mesh and HAS_PLOTLY and last_mesh_json:
             try:
                 f_m = go.Figure(last_mesh_json)
-                mesh_placeholder.plotly_chart(f_m, use_container_width=True)
+                mesh_placeholder.plotly_chart(f_m, use_container_width=True, config={'displaylogo': False})
             except Exception:
                 if last_mesh_png:
-                    mesh_placeholder.image(last_mesh_png, caption=("Full Preview (out of date)" if show_warning else "Full Preview"), use_container_width=True)
+                    mesh_placeholder.image(last_mesh_png, caption=("Full Preview (out of date)" if show_warning else "Full Preview"), width='stretch')
         elif interactive_mesh and last_mesh_png:
-            mesh_placeholder.image(last_mesh_png, caption=("Full Preview (out of date)" if show_warning else "Full Preview"), use_container_width=True)
+            mesh_placeholder.image(last_mesh_png, caption=("Full Preview (out of date)" if show_warning else "Full Preview"), width='stretch')
 
         if show_warning:
             st.warning("Preview is out of date — click '🔄 Update Preview' to regenerate with current parameters.")
@@ -745,7 +840,7 @@ with _tab1:
             st.info("👆 Click 'Update Preview' to generate preview with current parameters (manual mode)")
 
     # Only proceed with preview rendering if we have data
-    if preview_exists:
+    if preview_exists and (X is not None) and (Y is not None) and (Z is not None):
         if place_on_ground:
             Z = Z - Z.min()
 
@@ -758,20 +853,109 @@ with _tab1:
             pass
         # Ensure previous preview content is removed when Quick Preview disabled
         if interactive_3d:
-            if HAS_PLOTLY:
+            use_interactive = HAS_PLOTLY and st.session_state.get("quick_engine", "interactive") == "interactive"
+            if use_interactive:
                 t0_surface = time.time()
-                fig = go.Figure(data=[
-                    go.Surface(
-                        x=X, y=Y, z=Z,
-                        showscale=False,
-                        lighting=dict(
-                            ambient=min(max(st.session_state.get("mesh_ambient", 0.5), 0.0), 1.0),
-                            diffuse=min(max(st.session_state.get("mesh_diffuse", 1.0), 0.0), 1.0),
-                            specular=min(max(st.session_state.get("mesh_specular", 0.4), 0.0), 1.0),
-                            roughness=min(max(st.session_state.get("mesh_roughness", 0.45), 0.0), 1.0),
-                        ),
-                    )
-                ])
+                # Build a simplified mesh from the preview arrays for consistent lighting with Full Preview
+                try:
+                    import numpy as _np_mesh
+                    # Check if we can reuse cached mesh topology (faces don't change if grid size is same)
+                    nz, nt = X.shape
+                    cache_key = f"qp_topo_{nz}_{nt}"
+                    if cache_key in st.session_state:
+                        F_quick = st.session_state[cache_key]
+                    else:
+                        # Build triangle faces using vectorized indexing (only once per grid size)
+                        i_idx = _np_mesh.arange(nz - 1).repeat(nt)
+                        j_idx = _np_mesh.tile(_np_mesh.arange(nt), nz - 1)
+
+                        # Vertex indices for quads
+                        v0 = i_idx * nt + j_idx
+                        v1 = i_idx * nt + ((j_idx + 1) % nt)  # Wrap around
+                        v2 = (i_idx + 1) * nt + ((j_idx + 1) % nt)
+                        v3 = (i_idx + 1) * nt + j_idx
+
+                        # Two triangles per quad (vectorized stacking)
+                        F_quick = _np_mesh.vstack([
+                            _np_mesh.column_stack([v0, v1, v2]),
+                            _np_mesh.column_stack([v0, v2, v3])
+                        ])
+                        st.session_state[cache_key] = F_quick
+
+                    # Flatten the grid into vertices (always needed since X,Y,Z change)
+                    V_quick = _np_mesh.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+
+                    # Color by height (same as Full Preview)
+                    z_norm_v = (V_quick[:, 2] - V_quick[:, 2].min()) / max(1e-6, (V_quick[:, 2].max() - V_quick[:, 2].min()))
+                    try:
+                        from pfui.colors import build_gradient_colors
+                        preset = st.session_state.get("preview_palette", "Custom")
+                        custom = [
+                            st.session_state.get("preview_grad_c1", "#2850D0"),
+                            st.session_state.get("preview_grad_c2", "#5FA8FF"),
+                            st.session_state.get("preview_grad_c3", "#E2F3FF"),
+                        ]
+                        mesh_colors = build_gradient_colors(z_norm_v, preset if preset != "Custom" else None, custom)
+                    except Exception:
+                        mesh_colors = [[200,200,230] for _ in range(len(V_quick))]
+
+                    fig = go.Figure(data=[
+                        go.Mesh3d(
+                            x=V_quick[:, 0], y=V_quick[:, 1], z=V_quick[:, 2],
+                            i=F_quick[:, 0], j=F_quick[:, 1], k=F_quick[:, 2],
+                            flatshading=False,
+                            lighting=dict(
+                                ambient=min(max(st.session_state.get("mesh_ambient", 0.35), 0.0), 1.0),
+                                diffuse=min(max(st.session_state.get("mesh_diffuse", 0.95), 0.0), 1.0),
+                                specular=min(max(st.session_state.get("mesh_specular", 0.25), 0.0), 1.0),
+                                roughness=min(max(st.session_state.get("mesh_roughness", 0.7), 0.0), 1.0),
+                                fresnel=min(max(st.session_state.get("mesh_fresnel", 0.2), 0.0), 1.0),
+                            ),
+                            vertexcolor=mesh_colors,
+                            hoverinfo="skip",
+                            name="preview",
+                            opacity=1.0,
+                        )
+                    ])
+                except Exception as e:
+                    # Fallback to Surface if mesh generation fails
+                    st.warning(f"Quick Preview mesh generation failed, using surface: {e}")
+                    try:
+                        import numpy as _np_qc
+                        zmin = float(_np_qc.min(Z)); zmax = float(_np_qc.max(Z));
+                        zspan = max(1e-6, zmax - zmin)
+                        z_norm = (Z - zmin) / zspan
+                    except Exception:
+                        z_norm = Z
+                    def _hex_to_rgb_str(hx: str) -> str:
+                        hx = hx.lstrip('#')
+                        if len(hx) == 3:
+                            hx = ''.join([c*2 for c in hx])
+                        r = int(hx[0:2], 16); g = int(hx[2:4], 16); b = int(hx[4:6], 16)
+                        return f"rgb({r},{g},{b})"
+                    c1 = st.session_state.get("preview_grad_c1", "#2850D0")
+                    c2 = st.session_state.get("preview_grad_c2", "#5FA8FF")
+                    c3 = st.session_state.get("preview_grad_c3", "#E2F3FF")
+                    colorscale = [
+                        [0.0, _hex_to_rgb_str(c1)],
+                        [0.5, _hex_to_rgb_str(c2)],
+                        [1.0, _hex_to_rgb_str(c3)],
+                    ]
+                    fig = go.Figure(data=[
+                        go.Surface(
+                            x=X, y=Y, z=Z,
+                            surfacecolor=z_norm,
+                            colorscale=colorscale,
+                            showscale=False,
+                            lighting=dict(
+                                ambient=0.5,
+                                diffuse=1.0,
+                                specular=0.5,
+                                roughness=0.3,
+                                fresnel=0.4,
+                            ),
+                        )
+                    ])
                 height_px = max(360, min(900, int(96 * fig_h)))
                 # Compute symmetric XY extents and capped Z aspect to avoid elongation
                 try:
@@ -802,7 +986,12 @@ with _tab1:
                     ),
                     margin=dict(l=0, r=0, t=30, b=0),
                 )
-                preview_placeholder.plotly_chart(fig, use_container_width=True)
+                preview_placeholder.plotly_chart(fig, use_container_width=True, config={'displaylogo': False})
+                if interactive_mesh:
+                    try:
+                        mesh_placeholder.info("Rendering full preview…")
+                    except Exception:
+                        pass
                 t1_surface = time.time()
                 try:
                     perf = st.session_state.setdefault("_perf_logs", [])
@@ -820,21 +1009,23 @@ with _tab1:
                         st.session_state["_last_surface_fig_json"] = fig.to_dict()
                     except Exception:
                         pass
-                    try:
-                        if hasattr(fig, "to_image"):
-                            w = max(400, min(900, int(96 * fig_h)))
-                            h = max(300, min(800, int(96 * fig_h)))
-                            png_from_fig = fig.to_image(format="png", width=w, height=h)
-                            if png_from_fig:
-                                st.session_state["_last_surface_png"] = png_from_fig
-                                st.session_state["_preview_stale"] = False
-                    except Exception:
-                        # non-fatal: skip storing PNG
-                        pass
+                    # Only capture heavy PNG from Plotly figure in manual mode to avoid slowdown
+                    if preview_mode == "manual":
+                        try:
+                            if hasattr(fig, "to_image"):
+                                w = max(400, min(900, int(96 * fig_h)))
+                                h = max(300, min(800, int(96 * fig_h)))
+                                png_from_fig = fig.to_image(format="png", width=w, height=h)
+                                if png_from_fig:
+                                    st.session_state["_last_surface_png"] = png_from_fig
+                                    st.session_state["_preview_stale"] = False
+                        except Exception:
+                            # non-fatal: skip storing PNG
+                            pass
                 except Exception:
                     pass
             else:
-                # Plotly not available: fallback to static PNG
+                # Static engine (Matplotlib) or Plotly unavailable: render a fast PNG
                 try:
                     st.cache_data.clear()
                 except Exception:
@@ -853,7 +1044,12 @@ with _tab1:
                     appearance_key=ak,
                 )
                 if png_bytes:
-                    preview_placeholder.image(png_bytes, caption="Preview", use_container_width=True)
+                    preview_placeholder.image(png_bytes, caption="Preview", width='stretch')
+                    if interactive_mesh:
+                        try:
+                            mesh_placeholder.info("Rendering full preview…")
+                        except Exception:
+                            pass
                     preview_placeholder.download_button(
                         "Download preview PNG",
                         data=png_bytes,
@@ -878,7 +1074,7 @@ with _tab1:
             if interactive_mesh:
                 # Decide whether to regenerate heavy mesh PNG.
                 # Geometry hash: factors that alter vertex positions / topology.
-                geom_factors = [H, Rt, Rb, t_wall, t_bottom, r_drain, expn, preview_n_theta, preview_n_z, place_on_ground, style_name]
+                geom_factors = [H, Rt, Rb, t_wall, t_bottom, r_drain, expn, full_n_theta, full_n_z, place_on_ground, style_name]
                 # Include style options that might affect outer radius profile.
                 try:
                     for _k, _v in sorted(opts.items()):
@@ -913,15 +1109,7 @@ with _tab1:
                 prev_app_hash  = ss.get("_last_mesh_appearance_hash")
                 force_capture = ss.get("_force_mesh_png_capture", False)
 
-                regenerate_mesh_png = False
-                if force_capture:
-                    regenerate_mesh_png = True
-                elif geom_hash and geom_hash != prev_geom_hash:
-                    regenerate_mesh_png = True  # geometry changed
-                elif prev_geom_hash is None:
-                    regenerate_mesh_png = True  # first time
-                else:
-                    regenerate_mesh_png = False  # only appearance changed -> skip heavy PNG
+                regenerate_mesh_png = bool(force_capture)
 
                 # Clear capture flag
                 if force_capture:
@@ -937,7 +1125,7 @@ with _tab1:
                         ))
                         png_bytes = render_mesh_snapshot_cached(
                             H, Rt, Rb, expn,
-                            preview_n_theta, preview_n_z,  # preview resolution for speed
+                            full_n_theta, full_n_z,  # full preview resolution with cap
                             style_name, opts_json,
                             fig_w, fig_h, dpi,
                             inner_wall=t_wall if show_inner else None,
@@ -953,7 +1141,7 @@ with _tab1:
                         ))
                         png_bytes = render_preview_png_cached(
                             H, Rt, Rb, expn,
-                            preview_n_theta, preview_n_z,
+                            full_n_theta, full_n_z,
                             style_name, opts_json,
                             fig_w, fig_h, dpi,
                             inner_wall=t_wall if show_inner else None,
@@ -1027,7 +1215,7 @@ with _tab1:
                             import numpy as _np_r
                             verts2, faces2, _ = build_pot_mesh(
                                 H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
-                                expn=expn, n_theta=preview_n_theta, n_z=preview_n_z,
+                                expn=expn, n_theta=full_n_theta, n_z=full_n_z,
                                 r_outer_fn=r_outer_fn, style_opts=opts,
                             )
                             V = _np_r.asarray(verts2); F = _np_r.asarray(faces2)
@@ -1102,7 +1290,11 @@ with _tab1:
                         ),
                         margin=dict(l=0, r=0, t=30, b=0),
                     )
-                    mesh_placeholder.plotly_chart(fig, use_container_width=True)
+                    try:
+                        preview_placeholder.empty()
+                    except Exception:
+                        pass
+                    mesh_placeholder.plotly_chart(fig, use_container_width=True, config={'displaylogo': False})
                     t1_mesh = time.time()
                     try:
                         perf = st.session_state.setdefault("_perf_logs", [])
@@ -1115,37 +1307,7 @@ with _tab1:
                         st.session_state["_last_mesh_fig_json"] = fig.to_dict()
                     except Exception:
                         pass
-                    if preview_mode == "manual":
-                        # In manual mode capture a high-quality static mesh PNG once so it
-                        # can persist when parameters change without an update click.
-                        t0_meshpng = time.time()
-                        manual_mesh_png = None
-                        try:
-                            from pfui.preview import render_mesh_snapshot_cached
-                            ak2 = "|".join(str(st.session_state.get(k, "")) for k in (
-                                "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
-                                "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
-                            ))
-                            manual_mesh_png = render_mesh_snapshot_cached(
-                                H, Rt, Rb, expn,
-                                n_theta, n_z,  # use full resolution for manual snapshot
-                                style_name, opts_json,
-                                fig_w, fig_h, dpi,
-                                inner_wall=t_wall if show_inner else None,
-                                place_on_ground=place_on_ground,
-                                view_elev=view_elev, view_azim=view_azim, appearance_key=ak2,
-                            )
-                        except Exception as _e_png:
-                            st.session_state.setdefault("_debug_logs", []).append(f"Manual mesh PNG failed: {_e_png}")
-                        finally:
-                            try:
-                                perf = st.session_state.setdefault("_perf_logs", [])
-                                perf.append(f"mesh_png(manual):{(time.time()-t0_meshpng)*1000:.1f}ms")
-                                st.session_state["_perf_logs"] = perf[-40:]
-                            except Exception:
-                                pass
-                        if manual_mesh_png:
-                            st.session_state["_last_mesh_png"] = manual_mesh_png
+                    # Removed auto/manual mesh PNG capture here; snapshots and publish handle PNG generation explicitly
                 except Exception as e:
                     mesh_placeholder.info(f"Mesh preview unavailable (static fallback): {e}")
         else:
@@ -1246,7 +1408,7 @@ with _tab1:
 
         st.markdown("**Resolution & Quality**")
         if "preview_res_scale" not in ss:
-            ss.preview_res_scale = 0.6
+            ss.preview_res_scale = 1.0
         if "manual_full_res" not in ss:
             ss.manual_full_res = True
         if "preview_dpi" not in ss:
@@ -1340,7 +1502,7 @@ with _tab1:
 
             # checkpoint the UI state when capturing snapshots
             try:
-                H.checkpoint(style_name)
+                Hist.checkpoint(style_name)
             except Exception:
                 pass
 
@@ -1362,9 +1524,9 @@ with _tab1:
             max_page = max(0, math.ceil(len(snaps) / per_page) - 1)
             nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 6])
             if nav_col1.button("◀ Prev"):
-                st.session_state["_snap_page"] = max(0, page - 1); st.experimental_rerun()
+                st.session_state["_snap_page"] = max(0, page - 1); st.rerun()
             if nav_col2.button("Next ▶"):
-                st.session_state["_snap_page"] = min(max_page, page + 1); st.experimental_rerun()
+                st.session_state["_snap_page"] = min(max_page, page + 1); st.rerun()
             nav_col3.caption(f"Showing page {page+1} / {max_page+1}  — total snapshots: {len(snaps)}")
 
             start = page * per_page
@@ -1379,7 +1541,7 @@ with _tab1:
                 except Exception:
                     png_bytes_local = None
                 if png_bytes_local:
-                    cc1.image(png_bytes_local, caption=f"{i+1}. {s['name']}", use_container_width=True)
+                    cc1.image(png_bytes_local, caption=f"{i+1}. {s['name']}", width='stretch')
                 else:
                     cc1.write(f"**{i+1}. {s['name']}**")
                 if cc2.button("Apply", key=f"apply_{i}"):
@@ -1399,7 +1561,7 @@ with _tab1:
                     try:
                         queue_update(pending)
                         st.session_state.setdefault("_debug_logs", []).append(f"Queued snapshot {i+1} for apply; rerunning.")
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception:
                         st.session_state.setdefault("_debug_logs", []).append(f"Failed to queue_update snapshot {i+1}; falling back to direct write.")
                         for _k, _v in pending.items():
@@ -1491,7 +1653,7 @@ with _tab1:
                 expn=expn, n_theta=n_theta_pub, n_z=n_z_pub,
                 r_outer_fn=r_outer_fn, style_opts=opts,
             )
-            safe = re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80] or "potfoundry_model"
+            safe = re.sub(r"[^A-Za-z0-9._-]+", "_", str(name or ""))[:80] or "potfoundry_model"
             tmp_path = Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
             if WRITE_STL_BINARY is None:
                 raise RuntimeError("write_stl_binary not available in this build")
@@ -1556,22 +1718,23 @@ with _tab1:
     if do_export:
         try:
             from datetime import datetime
-            verts, faces, _ = build_pot_mesh(
-                H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
-                expn=expn, n_theta=n_theta_export, n_z=n_z_export,
-                r_outer_fn=r_outer_fn, style_opts=opts,
-            )
-            safe = re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80] or "potfoundry_model"
-            tmp_path = Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
-            if WRITE_STL_BINARY is None:
-                raise RuntimeError("write_stl_binary not available in this build")
-            # Export as binary STL (recommended: smaller, faster, universally supported)
-            WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)
-            data = tmp_path.read_bytes()
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+            with st.spinner("Exporting STL…"):
+                verts, faces, _ = build_pot_mesh(
+                    H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
+                    expn=expn, n_theta=n_theta_export, n_z=n_z_export,
+                    r_outer_fn=r_outer_fn, style_opts=opts,
+                )
+                safe = re.sub(r"[^A-Za-z0-9._-]+", "_", str(name or ""))[:80] or "potfoundry_model"
+                tmp_path = Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
+                if WRITE_STL_BINARY is None:
+                    raise RuntimeError("write_stl_binary not available in this build")
+                # Export as binary STL (recommended: smaller, faster, universally supported)
+                WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)
+                data = tmp_path.read_bytes()
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
             st.success(f"STL ready: {safe}.stl  — triangles: {len(faces):,}")
             st.download_button("Download STL", data=data, file_name=f"{safe}.stl", mime="model/stl")
 

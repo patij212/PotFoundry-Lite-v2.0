@@ -257,11 +257,11 @@ All performance targets exceeded:
 
 ## 📈 Project Status
 
-**Current Version:** v2.1.0  
-**Status:** Production-ready  
-**Test Coverage:** 99 tests (100% pass)  
-**Performance:** All targets met ✅  
-**Documentation:** Comprehensive ✅  
+**Current Version:** v2.1.0
+**Status:** Production-ready
+**Test Coverage:** 99 tests (100% pass)
+**Performance:** All targets met ✅
+**Documentation:** Comprehensive ✅
 **Next Version:** v2.2 (Streamlit enhancements)
 
 ---
@@ -301,7 +301,7 @@ Last Updated: December 2024
 streamlit run app.py
 ```
 
-Streamlit will open a browser tab (usually at `http://localhost:8501`).  
+Streamlit will open a browser tab (usually at `http://localhost:8501`).
 If prompted, allow local network access.
 
 **Common actions**
@@ -356,17 +356,17 @@ setx STREAMLIT_SERVER_PORT 8501
 
 ## Tips & Troubleshooting
 
-**Virtualenv not activating on Windows**  
+**Virtualenv not activating on Windows**
 If `Activate.ps1` is blocked:
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 Then activate again.
 
-**Streamlit prints giant “object dumps”**  
+**Streamlit prints giant “object dumps”**
 Avoid printing large objects/components directly; prefer concise `st.write()` or proper visual components.
 
-**Performance feels slow**  
+**Performance feels slow**
 Lower mesh resolution while iterating (reduce angular/height samples). Raise for final export.
 
 **Port already in use**
@@ -374,7 +374,7 @@ Lower mesh resolution while iterating (reduce angular/height samples). Raise for
 streamlit run app.py --server.port 8502
 ```
 
-**Firewall prompts**  
+**Firewall prompts**
 Allow local network access when prompted; the app serves a local webpage.
 
 ---
@@ -423,16 +423,5 @@ Pull requests are welcome! For UI changes, include a short screen recording or s
 ---
 
 ## License
-**Noncommercial:** PolyForm Noncommercial 1.0.0 (to be added as `LICENSE`).  
+**Noncommercial:** PolyForm Noncommercial 1.0.0 (to be added as `LICENSE`).
 **Commercial:** Requires a paid commercial license (to be added as `COMMERCIAL-LICENSE.md`).
-
-
-
-
-
-
-
-
-
-
-

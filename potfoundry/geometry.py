@@ -298,7 +298,7 @@ STYLES = {
 
 def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float, r_drain: float,
                    expn: float, n_theta: int, n_z: int,
-                   r_outer_fn: Callable[[float, float, float, float, dict], float],
+                   r_outer_fn: Callable[[np.ndarray | float, float, float, float, dict], np.ndarray | float],
                    style_opts: dict) -> tuple[np.ndarray, np.ndarray, dict]:
     """
     Return (vertices [N,3], faces [M,3], diagnostics).

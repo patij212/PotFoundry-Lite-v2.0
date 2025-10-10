@@ -4,7 +4,7 @@ _Last updated: 2025-09-04_
 
 Commercial use of this software requires a paid license from the author.
 
-**Contact:** <patij212@wp.pl> 
+**Contact:** <patij212@wp.pl>
 
 ---
 

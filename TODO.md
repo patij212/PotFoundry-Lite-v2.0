@@ -2,8 +2,8 @@
 
 This document tracks planned features, improvements, and technical debt for future versions of PotFoundry.
 
-**Last Updated:** December 2024  
-**Current Version:** v2.1.0  
+**Last Updated:** December 2024
+**Current Version:** v2.1.0
 **Next Planned:** v2.2.0
 
 ---

@@ -13,7 +13,7 @@ writes faster, and is universally supported by modern slicers and CAD tools.
 
 __version__ = "2.1.0"
 
-from .geometry import (
+from .core.geometry import (
     MeshQuality,
     PotDefaults,
     STYLES,
@@ -25,7 +25,7 @@ from .geometry import (
 from .core.io.stl import write_stl_binary
 
 # ASCII STL writer (deprecated, kept for backward compatibility)
-from .geometry import write_ascii_stl
+from .core.geometry import write_ascii_stl
 
 __all__ = [
     # Core geometry

@@ -195,7 +195,7 @@ def render_library_card(design: dict):
     url = str(design.get("thumb_url") or "")
     if url:
         try:
-            st.image(url, use_container_width=True)
+            st.image(url, width='stretch')
             shown = True
         except Exception:
             shown = False
@@ -225,7 +225,7 @@ def render_library_card(design: dict):
                 4.0, 4.0, 120, theme="dark", show_floor=False, appearance_key=ak
             )
             if png:
-                st.image(png, use_container_width=True)
+                st.image(png, width='stretch')
                 shown = True
         except Exception:
             shown = False
@@ -258,14 +258,14 @@ def render_library_card(design: dict):
                 theme="dark", show_floor=False, appearance_key=ak
             )
             if png:
-                st.image(png, use_container_width=True)
+                st.image(png, width='stretch')
             else:
                 raise RuntimeError("no png")
         except Exception:
             # As a last resort, show remote thumbnail if present
             url = str(design.get("thumb_url") or "")
             if url:
-                st.image(url, use_container_width=True)
+                st.image(url, width='stretch')
             else:
                 st.markdown("_No preview available_")
 
@@ -301,13 +301,13 @@ def render_library_card(design: dict):
     with col1:
         # Prefer a direct link to avoid eager downloading large STL files per card
         try:
-            st.link_button("Download", url=design["stl_url"], use_container_width=True)
+            st.link_button("Download", url=design["stl_url"], width='stretch')
         except Exception:
             st.markdown(f"[Download]({design['stl_url']})", unsafe_allow_html=True)
 
     with col2:
         # Open in editor button (deep link)
-        if st.button("Open", use_container_width=True, key=f"open_{design['id']}"):
+        if st.button("Open", key=f"open_{design['id']}"):
             open_design_in_editor(design)
 
 

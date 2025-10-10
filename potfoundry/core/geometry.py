@@ -80,6 +80,7 @@ def _theta_grid_cached(n_theta: int):
     thetas = np.linspace(0.0, TAU, n_theta, endpoint=False)
     return thetas, np.cos(thetas), np.sin(thetas)
 
+
 def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     """Unmodulated outer radius vs height z (0..H), with flare exponent."""
     t = 0.0 if H <= 0 else z / H
@@ -160,15 +161,19 @@ def _spin_twist_radians(z: float, H: float, opts: dict) -> float:
 # Styles (outer radius profiles)
 # -----------------------------
 
-def superformula_r(theta: float, m: float, n1: float, n2: float, n3: float,
-                   a: float = 1.0, b: float = 1.0) -> float:
-    """Gielis superformula in polar. Returns a shape radius ~ O(1)."""
-    c = abs(math.cos(m * theta / 4.0) / a) ** n2
-    s = abs(math.sin(m * theta / 4.0) / b) ** n3
+def superformula_r(theta, m: float, n1: float, n2: float, n3: float,
+                   a: float = 1.0, b: float = 1.0):
+    """Gielis superformula in polar. Supports scalar or numpy array theta."""
+    th = np.asarray(theta, dtype=float)
+    c = np.abs(np.cos(m * th / 4.0) / a) ** n2
+    s = np.abs(np.sin(m * th / 4.0) / b) ** n3
     denom = (c + s) ** (1.0 / max(n1, 1e-9))
-    return 0.0 if denom == 0 else 1.0 / denom
+    with np.errstate(divide='ignore', invalid='ignore'):
+        out = np.where(denom == 0, 0.0, 1.0 / denom)
+    # Return scalar for scalar input to preserve API
+    return float(out) if np.isscalar(theta) else out
 
-def r_outer_superformula_blossom(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_superformula_blossom(theta, z: float, r0: float, H: float, opts: Dict):
     t = z / H if H > 0 else 0.0
     m_base = float(opts.get("sf_m_base", 6.0))
     m_top  = float(opts.get("sf_m_top", 10.0))
@@ -191,7 +196,7 @@ def r_outer_superformula_blossom(theta: float, z: float, r0: float, H: float, op
     rf = superformula_r(theta, m, n1, n2, n3, a=a, b=b)
     return r0 * (0.90 + 0.35 * rf)
 
-def r_outer_fourier_bloom(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_fourier_bloom(theta, z: float, r0: float, H: float, opts: Dict):
     t = z / H if H > 0 else 0.0
 
     bc8  = float(opts.get("fb_base_cos8_amp", 0.12))
@@ -200,7 +205,8 @@ def r_outer_fourier_bloom(theta: float, z: float, r0: float, H: float, opts: Dic
     bs4p = float(opts.get("fb_base_sin4_phase", 0.6))
     bc12 = float(opts.get("fb_base_cos12_amp", -0.04))
     bc12p= float(opts.get("fb_base_cos12_phase", 1.3))
-    base = 1.0 + bc8 * math.cos(8*theta + bc8p) + bs4 * math.sin(4*theta + bs4p) + bc12 * math.cos(12*theta + bc12p)
+    th = np.asarray(theta, dtype=float)
+    base = 1.0 + bc8 * np.cos(8*th + bc8p) + bs4 * np.sin(4*th + bs4p) + bc12 * np.cos(12*th + bc12p)
 
     tc11  = float(opts.get("fb_top_cos11_amp", 0.18))
     tc11p = float(opts.get("fb_top_cos11_phase", 0.5))
@@ -208,19 +214,19 @@ def r_outer_fourier_bloom(theta: float, z: float, r0: float, H: float, opts: Dic
     ts7p  = float(opts.get("fb_top_sin7_phase", 0.0))
     tc22  = float(opts.get("fb_top_cos22_amp", 0.05))
     tc22p = float(opts.get("fb_top_cos22_phase", 0.9))
-    top   = 1.0 + tc11 * math.cos(11*theta + tc11p) + ts7 * math.sin(7*theta + ts7p) + tc22 * math.cos(22*theta + tc22p)
+    top   = 1.0 + tc11 * np.cos(11*th + tc11p) + ts7 * np.sin(7*th + ts7p) + tc22 * np.cos(22*th + tc22p)
 
     f = (1 - t) * base + t * top
 
     wob_amp   = float(opts.get("fb_wobble_amp", 0.06))
     wob_freq  = float(opts.get("fb_wobble_freq", 5))
     wob_zgain = float(opts.get("fb_wobble_zgain", 0.5))
-    f *= (1.0 + wob_amp * math.sin(wob_freq * theta + TAU * wob_zgain * t))
+    f *= (1.0 + wob_amp * np.sin(wob_freq * th + TAU * wob_zgain * t))
 
     strength = float(opts.get("fb_strength", 1.0))
     return r0 * (1.0 + (f - 1.0) * strength)
 
-def r_outer_spiral_ridges(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_spiral_ridges(theta, z: float, r0: float, H: float, opts: Dict):
     t = z / H if H > 0 else 0.0
     k = int(opts.get("spiral_k", 9))
     turns = float(opts.get("spiral_turns", 1.15))
@@ -230,33 +236,35 @@ def r_outer_spiral_ridges(theta: float, z: float, r0: float, H: float, opts: Dic
     amp_curve = float(opts.get("spiral_amp_curve", 1.3))
     amp = amp_min + (amp_max - amp_min) * (t ** amp_curve)
 
-    f = 1.0 + amp * math.sin(k * theta + phase)
+    th = np.asarray(theta, dtype=float)
+    f = 1.0 + amp * np.sin(k * th + phase)
 
     groove_amp  = float(opts.get("spiral_groove_amp", 0.04))
     groove_mult = float(opts.get("spiral_groove_mult", 3.0))
     phase_mult  = float(opts.get("spiral_phase_mult", 1.7))
-    f += groove_amp * math.sin(groove_mult * k * theta + phase_mult * phase)
+    f += groove_amp * np.sin(groove_mult * k * th + phase_mult * phase)
     return r0 * f
 
-def r_outer_superellipse_morph(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_superellipse_morph(theta, z: float, r0: float, H: float, opts: Dict):
     t = z / H if H > 0 else 0.0
     m_base = float(opts.get("se_m_base", 2.0))
     m_top  = float(opts.get("se_m_top", 5.5))
     m_curve = float(opts.get("se_m_curve_exp", 1.1))
     m_exp = m_base + (m_top - m_base) * (t ** m_curve)
 
-    c = abs(math.cos(theta)) ** m_exp
-    s = abs(math.sin(theta)) ** m_exp
+    th = np.asarray(theta, dtype=float)
+    c = np.abs(np.cos(th)) ** m_exp
+    s = np.abs(np.sin(th)) ** m_exp
     rf = (c + s) ** (-1.0 / max(m_exp, 1e-9))
 
     c4a = float(opts.get("se_c4_amp", 0.08))
     c4p = float(opts.get("se_c4_phase_deg", 23)) * math.pi / 180.0
     c8a = float(opts.get("se_c8_amp", 0.03))
     c8p = float(opts.get("se_c8_phase_deg", 0)) * math.pi / 180.0
-    rf *= (1.0 + c4a * math.cos(4*theta + c4p) + c8a * math.cos(8*theta + c8p))
+    rf *= (1.0 + c4a * np.cos(4*th + c4p) + c8a * np.cos(8*th + c8p))
     return r0 * rf
 
-def r_outer_harmonic_ripple(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_harmonic_ripple(theta, z: float, r0: float, H: float, opts: Dict):
     t = z / H if H > 0 else 0.0
     petals  = int(opts.get("hr_petals", 7))
     pet_amp = float(opts.get("hr_petal_amp", 0.16))
@@ -270,9 +278,10 @@ def r_outer_harmonic_ripple(theta: float, z: float, r0: float, H: float, opts: D
 
     bell     = float(opts.get("hr_bell", 0.05))
 
-    f = (1.0 + pet_amp * math.cos(petals*theta + pet_ph + TAU * pet_zg * t))
-    f *= (1.0 + rip_amp * math.sin(rip_freq*theta + rip_ph + TAU * rip_zg * t))
-    f *= (1.0 + bell * math.exp(-((t - 0.5) ** 2) / 0.04))
+    th = np.asarray(theta, dtype=float)
+    f = (1.0 + pet_amp * np.cos(petals*th + pet_ph + TAU * pet_zg * t))
+    f *= (1.0 + rip_amp * np.sin(rip_freq*th + rip_ph + TAU * rip_zg * t))
+    f *= (1.0 + bell * np.exp(-((t - 0.5) ** 2) / 0.04))
     return r0 * f
 
 STYLES = {
@@ -290,7 +299,7 @@ STYLES = {
 
 def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float, r_drain: float,
                    expn: float, n_theta: int, n_z: int,
-                   r_outer_fn: Callable[[float, float, float, float, dict], float],
+                   r_outer_fn: Callable[[np.ndarray | float, float, float, float, dict], np.ndarray | float],
                    style_opts: dict) -> tuple[np.ndarray, np.ndarray, dict]:
     """
     Return (vertices [N,3], faces [M,3], diagnostics).
@@ -300,105 +309,134 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     assert H > 0 and Rt > 0 and Rb > 0 and t_wall > 0 and t_bottom >= 2.0, "Invalid size parameters."
     assert r_drain > 0 and r_drain < (Rb - t_wall - 2.0), "Drain hole too large for base—adjust sizes."
 
-    thetas = np.linspace(0.0, TAU, n_theta, endpoint=False)
-    np.cos(thetas); np.sin(thetas)
+    # Use cached theta grid (angles, cos, sin) to avoid recomputation
+    thetas, cos_th, sin_th = _theta_grid_cached(int(n_theta))
     z_outer = np.linspace(0.0, H, n_z + 1)
     z_inner = np.linspace(t_bottom, H, n_z + 1)
 
-    verts: list[np.ndarray] = []
-    faces: list[tuple[int,int,int]] = []
+    verts: list[tuple[float, float, float]] = []
+    faces_out_parts: list[np.ndarray] = []
 
-    def add_ring_xy(r_vals: np.ndarray, z: float, twist: float) -> np.ndarray:
-        # Coordinates: X = r * cos(theta + twist), Y = r * sin(theta + twist)
-        xs = r_vals * np.cos(thetas + twist)
-        ys = r_vals * np.sin(thetas + twist)
+    def add_ring_xy(r_vals: np.ndarray, z: float, cTw: float, sTw: float) -> np.ndarray:
+        # Rotate precomputed cos/sin by twist: cos(θ+tw)=cosθ·cosTw - sinθ·sinTw; sin(θ+tw)=sinθ·cosTw + cosθ·sinTw
+        cx =  cos_th * cTw - sin_th * sTw
+        sy =  sin_th * cTw + cos_th * sTw
+        xs = (r_vals * cx).tolist()
+        ys = (r_vals * sy).tolist()
         start_index = len(verts)
-        for x, y in zip(xs, ys):
-            verts.append(np.array([x, y, z], dtype=float))
+        from itertools import repeat
+        verts.extend(zip(xs, ys, repeat(float(z), n_theta)))
         return np.arange(start_index, start_index + n_theta, dtype=int)
 
     # ---- Outer wall rings
     outer_idx = np.empty((len(z_outer), n_theta), dtype=int)
+    est_top_od = None
+    est_bottom_od = None
+    # No style-specific fast path by default; rely on vectorized style_fn
+
     for i, z in enumerate(z_outer):
         twist = _spin_twist_radians(z, H, style_opts)
+        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_vals = np.array([r_outer_fn(th, z, r0, H, style_opts) for th in thetas], dtype=float)
-        outer_idx[i] = add_ring_xy(r_vals, z, twist)
+        # Sample style at (theta + twist) for parity with rotated placement (vectorized)
+        r_vals = np.asarray(r_outer_fn(thetas + twist, z, r0, H, style_opts), dtype=float)
+        outer_idx[i] = add_ring_xy(r_vals, z, cTw, sTw)
+        # Track estimated ODs without scanning verts
+        max_r = float(np.max(r_vals)) if r_vals.size else 0.0
+        if i == 0:
+            est_bottom_od = 2.0 * max_r
+        if i == (len(z_outer) - 1):
+            est_top_od = 2.0 * max_r
 
     # Vectorized faces for outer wall
     rows = len(z_outer) - 1
     j = np.arange(n_theta, dtype=int)
     jn = (j + 1) % n_theta
-    for i in range(rows):
-        v00 = outer_idx[i, j]; v01 = outer_idx[i, jn]
-        v10 = outer_idx[i+1, j]; v11 = outer_idx[i+1, jn]
-        faces.extend(list(zip(v00, v10, v11)))
-        faces.extend(list(zip(v00, v11, v01)))
+    v00 = outer_idx[:-1, :][:, j]
+    v01 = outer_idx[:-1, :][:, jn]
+    v10 = outer_idx[1:, :][:, j]
+    v11 = outer_idx[1:, :][:, jn]
+    tri1 = np.stack([v00, v10, v11], axis=2).reshape(-1, 3)
+    tri2 = np.stack([v00, v11, v01], axis=2).reshape(-1, 3)
+    faces_out_parts.append(tri1)
+    faces_out_parts.append(tri2)
 
     # ---- Inner wall rings (clamp near drain)
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
     clamp_count = 0; total_inner_samples = len(z_inner) * n_theta
     for i, z in enumerate(z_inner):
         twist = _spin_twist_radians(z, H, style_opts)
+        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_out_vals = np.array([r_outer_fn(th, z, r0, H, style_opts) for th in thetas], dtype=float)
+        r_out_vals = np.asarray(r_outer_fn(thetas + twist, z, r0, H, style_opts), dtype=float)
         r_in_vals = r_out_vals - t_wall
         min_allowed = r_drain + 1.0
         clamped = r_in_vals < min_allowed
         clamp_count += int(np.count_nonzero(clamped))
         r_in_vals[clamped] = min_allowed
-        inner_idx[i] = add_ring_xy(r_in_vals, z, twist)
+        inner_idx[i] = add_ring_xy(r_in_vals, z, cTw, sTw)
 
     # Vectorized faces for inner wall (reverse winding)
     rows_in = len(z_inner) - 1
-    for i in range(rows_in):
-        v00 = inner_idx[i, j]; v01 = inner_idx[i, jn]
-        v10 = inner_idx[i+1, j]; v11 = inner_idx[i+1, jn]
-        faces.extend(list(zip(v00, v11, v10)))
-        faces.extend(list(zip(v00, v01, v11)))
+    vi00 = inner_idx[:-1, :][:, j]
+    vi01 = inner_idx[:-1, :][:, jn]
+    vi10 = inner_idx[1:, :][:, j]
+    vi11 = inner_idx[1:, :][:, jn]
+    tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
+    tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
+    faces_out_parts.append(tri_in1)
+    faces_out_parts.append(tri_in2)
 
     # ---- Rim cap
     outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
     v00 = outer_top[j]; v01 = outer_top[jn]
     vi0 = inner_top[j]; vi1 = inner_top[jn]
-    faces.extend(list(zip(v00, vi0, vi1)))
-    faces.extend(list(zip(v00, vi1, v01)))
+    tri_rim1 = np.stack([outer_top[j], inner_top[j], inner_top[jn]], axis=1)
+    tri_rim2 = np.stack([outer_top[j], inner_top[jn], outer_top[jn]], axis=1)
+    faces_out_parts.append(tri_rim1)
+    faces_out_parts.append(tri_rim2)
 
     # ---- Drain circles (untwisted)
     drain_under = []; drain_top = []
-    for th in thetas:
-        x0 = r_drain * float(np.cos(th)); y0 = r_drain * float(np.sin(th))
-        drain_under.append(len(verts)); verts.append(np.array([x0, y0, 0.0], dtype=float))
-        drain_top.append(len(verts));   verts.append(np.array([x0, y0, float(t_bottom)], dtype=float))
+    # Vectorized drain circles using cached cos/sin
+    for c, s in zip(cos_th, sin_th):
+        x0 = r_drain * float(c); y0 = r_drain * float(s)
+        drain_under.append(len(verts)); verts.append((x0, y0, 0.0))
+        drain_top.append(len(verts));   verts.append((x0, y0, float(t_bottom)))
     drain_under = np.array(drain_under, dtype=int); drain_top = np.array(drain_top, dtype=int)
     outer_bottom = outer_idx[0]; inner_bottom = inner_idx[0]
 
     # Bottom underside (outer bottom ring -> drain under ring)
     v00 = outer_bottom[j]; v01 = outer_bottom[jn]
     vd0 = drain_under[j];  vd1 = drain_under[jn]
-    faces.extend(list(zip(v00, vd1, vd0)))
-    faces.extend(list(zip(v00, v01, vd1)))
+    tri_bot1 = np.stack([outer_bottom[j], drain_under[jn], drain_under[j]], axis=1)
+    tri_bot2 = np.stack([outer_bottom[j], outer_bottom[jn], drain_under[jn]], axis=1)
+    faces_out_parts.append(tri_bot1)
+    faces_out_parts.append(tri_bot2)
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    faces.extend(list(zip(vi0, vi1, vd1)))
-    faces.extend(list(zip(vi0, vd1, vd0)))
+    tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
+    tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
+    faces_out_parts.append(tri_top1)
+    faces_out_parts.append(tri_top2)
 
     # Drain cylinder wall
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    faces.extend(list(zip(v0b, v0t, v1t)))
-    faces.extend(list(zip(v0b, v1t, v1b)))
+    tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
+    tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
+    faces_out_parts.append(tri_cyl1)
+    faces_out_parts.append(tri_cyl2)
 
-    # Diagnostics
-    def ring_od(ids):
-        pts = np.array([verts[k] for k in ids])
-        rs = np.linalg.norm(pts[:, :2], axis=1)
-        return 2.0 * float(np.max(rs))
-
-    est_top_od = ring_od(outer_top)
-    est_bottom_od = ring_od(outer_bottom)
+    # Diagnostics (use tracked radii; fall back to scan if missing)
+    if est_top_od is None:
+        pts = np.array([verts[k] for k in outer_top], dtype=float)
+        est_top_od = 2.0 * float(np.linalg.norm(pts[:, :2], axis=1).max())
+    if est_bottom_od is None:
+        pts = np.array([verts[k] for k in outer_bottom], dtype=float)
+        est_bottom_od = 2.0 * float(np.linalg.norm(pts[:, :2], axis=1).max())
     clamp_ratio = clamp_count / max(1, total_inner_samples)
 
     diagnostics = dict(
@@ -406,7 +444,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
-    return np.array(verts, dtype=float), np.array(faces, dtype=int), diagnostics
+    faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
+    return np.array(verts, dtype=float), faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
@@ -429,9 +468,8 @@ def save_preview_png(path, H: float, Rt: float, Rb: float, expn: float,
         cTw, sTw = math.cos(twist), math.sin(twist)
         cx =  base_cos * cTw - base_sin * sTw
         sy =  base_sin * cTw + base_cos * sTw
-        for j, th in enumerate(thetas):
-            rext = r_outer_fn(th + twist, z, r0, H, style_opts)
-            X[i, j] = rext * cx[j]; Y[i, j] = rext * sy[j]; Z[i, j] = z
+        rext = np.asarray(r_outer_fn(thetas + twist, z, r0, H, style_opts), dtype=float)
+        X[i, :] = rext * cx; Y[i, :] = rext * sy; Z[i, :] = z
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.plot_surface(X, Y, Z, rstride=1, cstride=1, linewidth=0.0, antialiased=True)
