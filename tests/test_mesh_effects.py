@@ -19,8 +19,15 @@ def _base_opts():
 
 
 def test_twist_changes_mesh():
-    H = 120.0; Rt = 70.0; Rb = 45.0; t_wall = 3.0; t_bottom = 3.0; r_drain = 10.0; expn = 1.1
-    n_theta = 64; n_z = 32
+    H = 120.0
+    Rt = 70.0
+    Rb = 45.0
+    t_wall = 3.0
+    t_bottom = 3.0
+    r_drain = 10.0
+    expn = 1.1
+    n_theta = 64
+    n_z = 32
     # use harmonic ripple outer fn for a simple style
     from potfoundry.core.geometry import r_outer_harmonic_ripple
 
@@ -39,8 +46,15 @@ def test_twist_changes_mesh():
 
 
 def test_flare_changes_mesh():
-    H = 120.0; Rt = 70.0; Rb = 45.0; t_wall = 3.0; t_bottom = 3.0; r_drain = 10.0; expn = 1.1
-    n_theta = 64; n_z = 32
+    H = 120.0
+    Rt = 70.0
+    Rb = 45.0
+    t_wall = 3.0
+    t_bottom = 3.0
+    r_drain = 10.0
+    expn = 1.1
+    n_theta = 64
+    n_z = 32
     from potfoundry.core.geometry import r_outer_harmonic_ripple
 
     opts0 = _base_opts()

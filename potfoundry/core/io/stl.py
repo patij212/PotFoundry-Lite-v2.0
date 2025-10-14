@@ -72,7 +72,9 @@ def _compute_face_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray
     """
     v = vertices.astype(np.float32, copy=False)
     f = faces.astype(np.int64, copy=False)
-    a = v[f[:, 0]]; b = v[f[:, 1]]; c = v[f[:, 2]]
+    a = v[f[:, 0]]
+    b = v[f[:, 1]]
+    c = v[f[:, 2]]
     n = np.cross(b - a, c - a)
     lens = np.linalg.norm(n, axis=1)
     mask = lens > 0
@@ -100,7 +102,9 @@ def _interleave_records(normals: np.ndarray, vertices: np.ndarray, faces: np.nda
     v = vertices.astype(np.float32, copy=False)
     f = faces.astype(np.int64, copy=False)
     n = normals.astype(np.float32, copy=False)
-    a = v[f[:, 0]]; b = v[f[:, 1]]; c = v[f[:, 2]]
+    a = v[f[:, 0]]
+    b = v[f[:, 1]]
+    c = v[f[:, 2]]
     facet_dtype = np.dtype([
         ('normals', '<f4', (3,)),
         ('v1', '<f4', (3,)),

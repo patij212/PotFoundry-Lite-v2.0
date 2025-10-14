@@ -154,7 +154,8 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 ## 🔧 Technical Debt & Code Quality
 
 ### High Priority
-- [ ] Reduce remaining 125 semicolon linting warnings (refactor to multi-line)
+- [x] ~~Reduce remaining 125 semicolon linting warnings (refactor to multi-line)~~ ✅ **COMPLETED** - Fixed all 124 E702 warnings
+- [x] ~~Fix unused variable warnings (F841)~~ ✅ **COMPLETED** - Fixed all 10 F841 warnings
 - [ ] Add type hints to all remaining functions
 - [ ] Improve test coverage to >90%
 - [ ] Add property-based testing (Hypothesis)

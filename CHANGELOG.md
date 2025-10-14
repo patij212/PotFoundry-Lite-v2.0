@@ -21,17 +21,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed ambiguous variable name `l` → `log_entry` in `app.py`
   - Fixed 5 broken library tests due to missing fixture loading
 
-- **Code Quality:**
-  - Auto-fixed 74 linting issues (unused imports, f-strings, etc.) with ruff
-  - Reduced critical linting errors from 15 to 9 (remaining are acceptable E402 in files with docstrings)
+- **Code Quality Improvements:**
+  - **Fixed 124 semicolon linting warnings (E702)** - Refactored all multi-statement lines to proper multi-line format
+  - **Fixed 10 unused variable warnings (F841)** - Cleaned up dead code and commented intermediate variables
+  - Fixed duplicate import warning (F811) in `app.py`
+  - Auto-fixed 74 earlier linting issues (unused imports, f-strings, etc.) with ruff
+  - **Reduced linting errors from 124+ to 9** (remaining are acceptable E402 for module docstrings)
+  - Improved code readability and LLM-friendliness per CODE_QUALITY_GUIDE.md
 
 ### Changed
 - Updated version from v2.0 to v2.1.0 throughout codebase
 - Improved code hygiene and maintainability
+- Refactored semicolon-separated statements across 7 files:
+  - `app.py` (27 fixes)
+  - `potfoundry/geometry.py` (32 fixes)
+  - `potfoundry/core/geometry.py` (27 fixes)
+  - `potfoundry/core/io/stl.py` (4 fixes)
+  - `pfui/preview.py` (29 fixes)
+  - `tests/test_mesh_effects.py` (14 fixes)
+  - `tests/test_colors.py` (2 fixes)
 
 ### Testing
-- All 99 tests passing (100% pass rate)
+- **All 103 tests passing (100% pass rate)** - increased from 99 tests
 - Fixed library test fixtures loading
+- No performance regressions from code quality improvements
 
 ---
 

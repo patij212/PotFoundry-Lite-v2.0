@@ -31,7 +31,8 @@ def base_radius(z: float, H: float, Rb: float, Rt: float, expn: float, opts: Dic
     k = float(opts.get('flare_sharp', 6.0))
     def _sig(x: float) -> float:
         return 1.0 / (1.0 + _m.exp(-k * (x - c)))
-    s0 = _sig(0.0); s1 = _sig(1.0)
+    s0 = _sig(0.0)
+    s1 = _sig(1.0)
     tw = (_sig(t) - s0) / (s1 - s0 + 1e-9)
     r = Rb + (Rt - Rb) * (tw ** float(expn))
     # Optional mid-height bell
@@ -129,7 +130,9 @@ def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> No
     with open(p, "w") as f:
         f.write(f"solid {name}\n")
         for ia, ib, ic in faces:
-            a = verts[ia]; b = verts[ib]; c = verts[ic]
+            a = verts[ia]
+            b = verts[ib]
+            c = verts[ic]
             n = _compute_normal(a, b, c)
             f.write(f"  facet normal {n[0]:.6e} {n[1]:.6e} {n[2]:.6e}\n")
             f.write("    outer loop\n")
@@ -303,7 +306,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     """
     Return (vertices [N,3], faces [M,3], diagnostics).
     Parity: sample r_outer_fn at (theta + twist) for preview/export match.
-    Vectorization (stage 1): theta dimension is fully vectorized; faces built by numpy indexing.
+    Vectorization (stage 1): theta dimension is fully vectorized
+    faces built by numpy indexing.
     """
     assert H > 0 and Rt > 0 and Rb > 0 and t_wall > 0 and t_bottom >= 2.0, "Invalid size parameters."
     assert r_drain > 0 and r_drain < (Rb - t_wall - 2.0), "Drain hole too large for base—adjust sizes."
@@ -320,7 +324,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         # Vectorized ring placement with precomputed cos/sin(theta) and twist
         cx =  cos_th * cTw - sin_th * sTw
         sy =  sin_th * cTw + cos_th * sTw
-        xs = r_vals * cx; ys = r_vals * sy
+        xs = r_vals * cx
+        ys = r_vals * sy
         start_index = len(verts)
         for x, y in zip(xs, ys):
             verts.append(np.array([x, y, z], dtype=float))
@@ -340,14 +345,17 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     j = np.arange(n_theta, dtype=int)
     jn = (j + 1) % n_theta
     for i in range(rows):
-        v00 = outer_idx[i, j]; v01 = outer_idx[i, jn]
-        v10 = outer_idx[i+1, j]; v11 = outer_idx[i+1, jn]
+        v00 = outer_idx[i, j]
+        v01 = outer_idx[i, jn]
+        v10 = outer_idx[i+1, j]
+        v11 = outer_idx[i+1, jn]
         faces.extend(list(zip(v00, v10, v11)))
         faces.extend(list(zip(v00, v11, v01)))
 
     # ---- Inner wall rings (clamp near drain)
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
-    clamp_count = 0; total_inner_samples = len(z_inner) * n_theta
+    clamp_count = 0
+    total_inner_samples = len(z_inner) * n_theta
     for i, z in enumerate(z_inner):
         twist = _spin_twist_radians(z, H, style_opts)
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
@@ -363,43 +371,60 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     # Vectorized faces for inner wall (reverse winding)
     rows_in = len(z_inner) - 1
     for i in range(rows_in):
-        v00 = inner_idx[i, j]; v01 = inner_idx[i, jn]
-        v10 = inner_idx[i+1, j]; v11 = inner_idx[i+1, jn]
+        v00 = inner_idx[i, j]
+        v01 = inner_idx[i, jn]
+        v10 = inner_idx[i+1, j]
+        v11 = inner_idx[i+1, jn]
         faces.extend(list(zip(v00, v11, v10)))
         faces.extend(list(zip(v00, v01, v11)))
 
     # ---- Rim cap
-    outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
-    v00 = outer_top[j]; v01 = outer_top[jn]
-    vi0 = inner_top[j]; vi1 = inner_top[jn]
+    outer_top = outer_idx[-1]
+    inner_top = inner_idx[-1]
+    v00 = outer_top[j]
+    v01 = outer_top[jn]
+    vi0 = inner_top[j]
+    vi1 = inner_top[jn]
     faces.extend(list(zip(v00, vi0, vi1)))
     faces.extend(list(zip(v00, vi1, v01)))
 
     # ---- Drain circles (untwisted)
-    drain_under = []; drain_top = []
+    drain_under = []
+    drain_top = []
     # Vectorized drain circle placement using cached cos/sin
     for c, s in zip(cos_th, sin_th):
-        x0 = r_drain * float(c); y0 = r_drain * float(s)
-        drain_under.append(len(verts)); verts.append(np.array([x0, y0, 0.0], dtype=float))
-        drain_top.append(len(verts));   verts.append(np.array([x0, y0, float(t_bottom)], dtype=float))
-    drain_under = np.array(drain_under, dtype=int); drain_top = np.array(drain_top, dtype=int)
-    outer_bottom = outer_idx[0]; inner_bottom = inner_idx[0]
+        x0 = r_drain * float(c)
+        y0 = r_drain * float(s)
+        drain_under.append(len(verts))
+        verts.append(np.array([x0, y0, 0.0], dtype=float))
+        drain_top.append(len(verts))
+        verts.append(np.array([x0, y0, float(t_bottom)], dtype=float))
+    drain_under = np.array(drain_under, dtype=int)
+    drain_top = np.array(drain_top, dtype=int)
+    outer_bottom = outer_idx[0]
+    inner_bottom = inner_idx[0]
 
     # Bottom underside (outer bottom ring -> drain under ring)
-    v00 = outer_bottom[j]; v01 = outer_bottom[jn]
-    vd0 = drain_under[j];  vd1 = drain_under[jn]
+    v00 = outer_bottom[j]
+    v01 = outer_bottom[jn]
+    vd0 = drain_under[j]
+    vd1 = drain_under[jn]
     faces.extend(list(zip(v00, vd1, vd0)))
     faces.extend(list(zip(v00, v01, vd1)))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
-    vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
-    vd0 = drain_top[j];    vd1 = drain_top[jn]
+    vi0 = inner_bottom[j]
+    vi1 = inner_bottom[jn]
+    vd0 = drain_top[j]
+    vd1 = drain_top[jn]
     faces.extend(list(zip(vi0, vi1, vd1)))
     faces.extend(list(zip(vi0, vd1, vd0)))
 
     # Drain cylinder wall
-    v0b = drain_under[j]; v1b = drain_under[jn]
-    v0t = drain_top[j];   v1t = drain_top[jn]
+    v0b = drain_under[j]
+    v1b = drain_under[jn]
+    v0t = drain_top[j]
+    v1t = drain_top[jn]
     faces.extend(list(zip(v0b, v0t, v1t)))
     faces.extend(list(zip(v0b, v1t, v1b)))
 
@@ -433,8 +458,11 @@ def save_preview_png(path, H: float, Rt: float, Rb: float, expn: float,
     z_samp  = max(64,  min(160, int(n_z * 1.25)))
     thetas = np.linspace(0.0, TAU, th_samp, endpoint=False)
     zs = np.linspace(0.0, H, z_samp)
-    X = np.zeros((len(zs), len(thetas))); Y = np.zeros_like(X); Z = np.zeros_like(X)
-    base_cos = np.cos(thetas); base_sin = np.sin(thetas)
+    X = np.zeros((len(zs), len(thetas)))
+    Y = np.zeros_like(X)
+    Z = np.zeros_like(X)
+    base_cos = np.cos(thetas)
+    base_sin = np.sin(thetas)
     for i, z in enumerate(zs):
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
         twist = _spin_twist_radians(z, H, style_opts)
@@ -443,11 +471,15 @@ def save_preview_png(path, H: float, Rt: float, Rb: float, expn: float,
         sy =  base_sin * cTw + base_cos * sTw
         for j, th in enumerate(thetas):
             rext = r_outer_fn(th + twist, z, r0, H, style_opts)
-            X[i, j] = rext * cx[j]; Y[i, j] = rext * sy[j]; Z[i, j] = z
+            X[i, j] = rext * cx[j]
+            Y[i, j] = rext * sy[j]
+            Z[i, j] = z
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.plot_surface(X, Y, Z, rstride=1, cstride=1, linewidth=0.0, antialiased=True)
-    ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
+    ax.set_xlabel("X (mm)")
+    ax.set_ylabel("Y (mm)")
+    ax.set_zlabel("Z (mm)")
     ax.set_title(path.stem)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=180, bbox_inches="tight")

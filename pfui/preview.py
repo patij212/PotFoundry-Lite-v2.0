@@ -133,8 +133,13 @@ def render_preview(
         st.info("Preview fell back due to invalid values; adjust style or detail.")
         _pyplot(fig, fill_width=fill_width)
         if return_png:
-            buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue(); plt.close(fig); return png
-        plt.close(fig); return None
+            buf = BytesIO()
+            fig.savefig(buf, format="png", dpi=dpi)
+            png = buf.getvalue()
+            plt.close(fig)
+            return png
+        plt.close(fig)
+        return None
 
     try:
         # Use a perceptually-uniform colormap for better visibility on dark background
@@ -170,7 +175,9 @@ def render_preview(
         xlim = (-rmax, rmax)
         ylim = (-rmax, rmax)
         zlim = (0.0, float(_np.max(Z)))
-        ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+        ax.set_zlim(*zlim)
         # Aspect ratios: equal XY, capped Z/XY
         z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
         ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
@@ -178,12 +185,16 @@ def render_preview(
         # Fallback to data-driven aspect
         ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
     if show_axes:
-        ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
+        ax.set_xlabel("X (mm)")
+        ax.set_ylabel("Y (mm)")
+        ax.set_zlabel("Z (mm)")
 
     _pyplot(fig, fill_width=fill_width)
     png = None
     if return_png:
-        buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue()
+        buf = BytesIO()
+        fig.savefig(buf, format="png", dpi=dpi)
+        png = buf.getvalue()
     plt.close(fig)
     return png
 
@@ -281,7 +292,9 @@ def render_preview_png_cached(
         xlim = (-rmax, rmax)
         ylim = (-rmax, rmax)
         zlim = (0.0, float(np.max(Z)))
-        ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+        ax.set_zlim(*zlim)
         z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
         ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
     except Exception:
@@ -293,9 +306,13 @@ def render_preview_png_cached(
         z_target = min(z_norm, 0.85)
         ax.set_box_aspect((1.0, 1.0, z_target))
     if show_axes:
-        ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
+        ax.set_xlabel("X (mm)")
+        ax.set_ylabel("Y (mm)")
+        ax.set_zlabel("Z (mm)")
 
-    buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue()
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi)
+    png = buf.getvalue()
     plt.close(fig)
     return png
 
@@ -317,9 +334,12 @@ def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts
         ax.plot(zvals, r_list, alpha=0.9, label=f"outer theta={int(th * 180.0 / np.pi)}°")
         inner = _np.maximum(np.array(r_list) - t_wall, 0.0)
         ax.plot(zvals, inner, alpha=0.6, linestyle="--", label=f"inner theta={int(th * 180.0 / np.pi)}°")
-    ax.set_xlabel("z (mm)"); ax.set_ylabel("radius (mm)"); ax.set_title("Radial profile")
+    ax.set_xlabel("z (mm)")
+    ax.set_ylabel("radius (mm)")
+    ax.set_title("Radial profile")
     ax.legend(ncol=2, fontsize=8)
-    _pyplot(fig, fill_width=True); plt.close(fig)
+    _pyplot(fig, fill_width=True)
+    plt.close(fig)
 
 
 @cache_data(show_spinner=False)
@@ -407,16 +427,22 @@ def render_preview_apng_cached(
             xlim = (-rmax, rmax)
             ylim = (-rmax, rmax)
             zlim = (0.0, float(_np.max(Z)))
-            ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+            ax.set_xlim(*xlim)
+            ax.set_ylim(*ylim)
+            ax.set_zlim(*zlim)
             z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
             ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
         except Exception:
             ax.set_box_aspect((np.ptp(X) or 1.0, np.ptp(Y) or 1.0, np.ptp(Z) or 1.0))
         if show_axes:
-            ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
+            ax.set_xlabel("X (mm)")
+            ax.set_ylabel("Y (mm)")
+            ax.set_zlabel("Z (mm)")
 
         from io import BytesIO
-        buf = BytesIO(); fig.savefig(buf, format="png", dpi=dpi); png = buf.getvalue()
+        buf = BytesIO()
+        fig.savefig(buf, format="png", dpi=dpi)
+        png = buf.getvalue()
         plt.close(fig)
         return png
 
@@ -548,7 +574,9 @@ def render_mesh_snapshot_cached(
             xlim = (-rmax, rmax)
             ylim = (-rmax, rmax)
             zlim = (float(V[:, 2].min()), float(V[:, 2].max()))
-            ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_zlim(*zlim)
+            ax.set_xlim(*xlim)
+            ax.set_ylim(*ylim)
+            ax.set_zlim(*zlim)
             try:
                 ax.view_init(elev=view_elev, azim=view_azim)
             except Exception:
@@ -613,7 +641,8 @@ def render_mesh_snapshot_cached(
             width_px = max(400, min(1400, int(96 * fig_w)))
             try:
                 rmax = float(max(abs(V[:, 0]).max(), abs(V[:, 1]).max()))
-                zmin = float(V[:, 2].min()); zmax = float(V[:, 2].max())
+                zmin = float(V[:, 2].min())
+                zmax = float(V[:, 2].max())
             except Exception:
                 rmax = max(1.0, float(st.session_state.get("top_od", 140.0)) * 0.5)
                 zmin, zmax = 0.0, float(st.session_state.get("H", 120.0))
