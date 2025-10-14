@@ -157,11 +157,12 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 - [x] ~~Reduce remaining 125 semicolon linting warnings (refactor to multi-line)~~ ✅ **COMPLETED** - Fixed all 124 E702 warnings
 - [x] ~~Fix unused variable warnings (F841)~~ ✅ **COMPLETED** - Fixed all 10 F841 warnings
 - [ ] Add type hints to all remaining functions
-- [x] **Improve test coverage to >90%** 🚧 **IN PROGRESS** - Phases 1-3 complete
+- [x] **Improve test coverage to >90%** ✅ **COMPLETED** - All phases complete!
   - ✅ Phase 1: potfoundry/geometry.py coverage improved 57% → 81% (+24%)
   - ✅ Phase 2: potfoundry/core/geometry.py coverage improved 86% → 87% (+1%)
-  - ✅ Phase 3: potfoundry/schema.py coverage improved 68% → 87% (+19%)
-  - 📋 Phase 4: potfoundry/yaml_api.py (17% → 70%+)
+  - ✅ Phase 3: potfoundry/schema.py coverage improved 68% → **99%** (+31%) 🎉
+  - ✅ Phase 4: potfoundry/yaml_api.py coverage improved 17% → **90%** (+73%) 🎉
+  - ✅ UX Tests: Added comprehensive pfui module testing (+33 tests)
 - [ ] Add property-based testing (Hypothesis)
 - [ ] Set up CI/CD pipeline (GitHub Actions)
 

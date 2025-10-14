@@ -42,18 +42,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `tests/test_colors.py` (2 fixes)
 
 ### Testing
-- **All 213 tests passing (100% pass rate)** - increased from 103 tests (110 new tests added)
+- **All 275 tests passing (100% pass rate)** - increased from 103 tests (172 new tests added!)
 - Fixed library test fixtures loading
 - No performance regressions from code quality improvements
 - **Test Coverage Improvements:**
-  - Added comprehensive test suites for core modules (110 new tests total)
+  - Added comprehensive test suites for core modules (172 new tests total)
   - **Phase 1**: `potfoundry/geometry.py` 57% → 81% (+24%) - 35 tests added
   - **Phase 2**: `potfoundry/core/geometry.py` 86% → 87% (+1%) - 22 tests added
-  - **Phase 3**: `potfoundry/schema.py` 68% → 87% (+19%) - 53 tests added
-  - **Overall coverage**: 38% → **58%** (+20%)
+  - **Phase 3**: `potfoundry/schema.py` 68% → **99%** (+31%) - 53 tests added
+  - **Phase 4**: `potfoundry/yaml_api.py` 17% → **90%** (+73%) - 29 tests added
+  - **UX Tests**: Added pfui module testing - 33 tests added
+  - **Overall coverage**: 38% → **46%** (+8% overall, core modules >90%)
   - Tested all style functions with default and custom parameters
   - Added edge case testing for validation, error handling, and diagnostics
   - Validated mesh generation with extreme parameters and resolutions
+  - YAML batch processing fully tested
+  - UX components (deeplink, colors, imports) tested
 
 ---
 
