@@ -42,9 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `tests/test_colors.py` (2 fixes)
 
 ### Testing
-- **All 103 tests passing (100% pass rate)** - increased from 99 tests
+- **All 138 tests passing (100% pass rate)** - increased from 103 tests (35 new tests added)
 - Fixed library test fixtures loading
 - No performance regressions from code quality improvements
+- **Test Coverage Improvements:**
+  - Added comprehensive test suite for `potfoundry/geometry.py` (35 new tests)
+  - Coverage improved: `potfoundry/geometry.py` 57% → **81%** (+24%)
+  - Overall coverage improved: 38% → **41%** (+3%)
+  - Tested all 5 style functions with default and custom parameters
+  - Added edge case testing for base_radius, spin_twist, and diagnostics
+  - Validated mesh generation with extreme parameters and resolutions
 
 ---
 
