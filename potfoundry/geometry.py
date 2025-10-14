@@ -2,11 +2,12 @@
 # Geometry core with style-agnostic twist/spin and optimized mesh build.
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, Dict
+from typing import Callable, Dict, Tuple, Optional, Any
 from pathlib import Path
 import math
 import numpy as np
 from functools import lru_cache
+import numpy.typing as npt
 
 
 
@@ -21,7 +22,7 @@ __all__ = [
 # Shared base profile (outer radius vs height) with flare-center warp and bell
 import math as _m
 
-def base_radius(z: float, H: float, Rb: float, Rt: float, expn: float, opts: Dict) -> float:
+def base_radius(z: float, H: float, Rb: float, Rt: float, expn: float, opts: Dict[str, Any]) -> float:
     if H <= 0:
         return Rb
     # normalized height
@@ -78,7 +79,8 @@ class PotDefaults:
 TAU = 2.0 * math.pi
 
 @lru_cache(maxsize=8)
-def _theta_grid_cached(n_theta: int):
+def _theta_grid_cached(n_theta: int) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Cache theta grid computations for performance."""
     thetas = np.linspace(0.0, TAU, n_theta, endpoint=False)
     return thetas, np.cos(thetas), np.sin(thetas)
 
@@ -87,14 +89,15 @@ def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     t = 0.0 if H <= 0 else z / H
     return Rb + (Rt - Rb) * (t ** expn)
 
-def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+def _compute_normal(a: npt.NDArray[np.float64], b: npt.NDArray[np.float64], c: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Compute face normal from three vertices."""
     n = np.cross(b - a, c - a)
     norm = np.linalg.norm(n)
     if norm == 0:
         return np.array([0.0, 0.0, 0.0], dtype=float)
     return n / norm
 
-def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> None:
+def write_ascii_stl(path: str | Path, name: str, verts: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]) -> None:
     """Write triangles to ASCII STL (portable, human-readable).
 
     .. deprecated:: 2.0
@@ -148,7 +151,7 @@ def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> No
 # Global twist (“spin”) helpers
 # -----------------------------
 
-def _spin_twist_radians(z: float, H: float, opts: dict) -> float:
+def _spin_twist_radians(z: float, H: float, opts: Dict[str, Any]) -> float:
     """
     Smooth twist angle (in radians) applied to theta at height z.
     opts (style-agnostic):
@@ -179,7 +182,7 @@ def superformula_r(theta: float, m: float, n1: float, n2: float, n3: float,
     denom = (c + s) ** (1.0 / max(n1, 1e-9))
     return 0.0 if denom == 0 else 1.0 / denom
 
-def r_outer_superformula_blossom(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_superformula_blossom(theta: float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> float:
     t = z / H if H > 0 else 0.0
     m_base = float(opts.get("sf_m_base", 6.0))
     m_top  = float(opts.get("sf_m_top", 10.0))
@@ -202,7 +205,7 @@ def r_outer_superformula_blossom(theta: float, z: float, r0: float, H: float, op
     rf = superformula_r(theta, m, n1, n2, n3, a=a, b=b)
     return r0 * (0.90 + 0.35 * rf)
 
-def r_outer_fourier_bloom(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_fourier_bloom(theta: float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> float:
     t = z / H if H > 0 else 0.0
 
     bc8  = float(opts.get("fb_base_cos8_amp", 0.12))
@@ -231,7 +234,7 @@ def r_outer_fourier_bloom(theta: float, z: float, r0: float, H: float, opts: Dic
     strength = float(opts.get("fb_strength", 1.0))
     return r0 * (1.0 + (f - 1.0) * strength)
 
-def r_outer_spiral_ridges(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_spiral_ridges(theta: float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> float:
     t = z / H if H > 0 else 0.0
     k = int(opts.get("spiral_k", 9))
     turns = float(opts.get("spiral_turns", 1.15))
@@ -249,7 +252,7 @@ def r_outer_spiral_ridges(theta: float, z: float, r0: float, H: float, opts: Dic
     f += groove_amp * math.sin(groove_mult * k * theta + phase_mult * phase)
     return r0 * f
 
-def r_outer_superellipse_morph(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_superellipse_morph(theta: float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> float:
     t = z / H if H > 0 else 0.0
     m_base = float(opts.get("se_m_base", 2.0))
     m_top  = float(opts.get("se_m_top", 5.5))
@@ -267,7 +270,7 @@ def r_outer_superellipse_morph(theta: float, z: float, r0: float, H: float, opts
     rf *= (1.0 + c4a * math.cos(4*theta + c4p) + c8a * math.cos(8*theta + c8p))
     return r0 * rf
 
-def r_outer_harmonic_ripple(theta: float, z: float, r0: float, H: float, opts: Dict) -> float:
+def r_outer_harmonic_ripple(theta: float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> float:
     t = z / H if H > 0 else 0.0
     petals  = int(opts.get("hr_petals", 7))
     pet_amp = float(opts.get("hr_petal_amp", 0.16))
@@ -299,10 +302,19 @@ STYLES = {
 # Mesh builder (watertight)
 # -----------------------------
 
-def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float, r_drain: float,
-                   expn: float, n_theta: int, n_z: int,
-                   r_outer_fn: Callable[[np.ndarray | float, float, float, float, dict], np.ndarray | float],
-                   style_opts: dict) -> tuple[np.ndarray, np.ndarray, dict]:
+def build_pot_mesh(
+    H: float,
+    Rt: float,
+    Rb: float,
+    t_wall: float,
+    t_bottom: float,
+    r_drain: float,
+    expn: float,
+    n_theta: int,
+    n_z: int,
+    r_outer_fn: Optional[Callable[[float, float, float, float, Dict[str, Any]], float]],
+    style_opts: Dict[str, Any]
+) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.int32], Dict[str, Any]]:
     """
     Return (vertices [N,3], faces [M,3], diagnostics).
     Parity: sample r_outer_fn at (theta + twist) for preview/export match.

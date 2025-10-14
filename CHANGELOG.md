@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **All 275 tests passing (100% pass rate)** - increased from 103 tests (172 new tests added!)
 - Fixed library test fixtures loading
 - No performance regressions from code quality improvements
+- **Type hints added** - Started adding comprehensive type hints to core modules
 - **Test Coverage Improvements:**
   - Added comprehensive test suites for core modules (172 new tests total)
   - **Phase 1**: `potfoundry/geometry.py` 57% → 81% (+24%) - 35 tests added

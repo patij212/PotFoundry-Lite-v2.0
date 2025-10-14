@@ -156,7 +156,11 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 ### High Priority
 - [x] ~~Reduce remaining 125 semicolon linting warnings (refactor to multi-line)~~ ✅ **COMPLETED** - Fixed all 124 E702 warnings
 - [x] ~~Fix unused variable warnings (F841)~~ ✅ **COMPLETED** - Fixed all 10 F841 warnings
-- [ ] Add type hints to all remaining functions
+- [ ] **Add type hints to all remaining functions** 🚧 **IN PROGRESS**
+  - ✅ Created mypy.ini configuration
+  - ✅ Added type hints to key geometry functions
+  - ✅ Updated function signatures with proper types (Dict[str, Any], npt.NDArray, etc.)
+  - 📋 TODO: Complete remaining modules (yaml_api, pfui)
 - [x] **Improve test coverage to >90%** ✅ **COMPLETED** - All phases complete!
   - ✅ Phase 1: potfoundry/geometry.py coverage improved 57% → 81% (+24%)
   - ✅ Phase 2: potfoundry/core/geometry.py coverage improved 86% → 87% (+1%)
