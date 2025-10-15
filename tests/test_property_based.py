@@ -129,7 +129,10 @@ def test_property_face_normals_point_outward(H, Rt, Rb, n_theta, n_z):
     
     verts, faces, diag = build_pot_mesh(
         H=H, Rt=Rt, Rb=Rb, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
-        n_theta=n_theta, n_z=n_z
+        n_theta=n_theta, n_z=n_z,
+        expn=1.1,
+        r_outer_fn=None,
+        style_opts={},
     )
     
     # Compute center of pot (average position)
@@ -186,7 +189,10 @@ def test_property_no_degenerate_triangles(H, Rt, Rb, n_theta, n_z):
     
     verts, faces, diag = build_pot_mesh(
         H=H, Rt=Rt, Rb=Rb, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
-        n_theta=n_theta, n_z=n_z
+        n_theta=n_theta, n_z=n_z,
+        expn=1.1,
+        r_outer_fn=None,
+        style_opts={},
     )
     
     min_area = float('inf')
@@ -227,7 +233,10 @@ def test_property_diameter_estimates_within_bounds(Rt, Rb, t_wall):
     
     verts, faces, diag = build_pot_mesh(
         H=100.0, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=3.0, r_drain=8.0,
-        n_theta=64, n_z=32
+        n_theta=64, n_z=32,
+        expn=1.1,
+        r_outer_fn=None,
+        style_opts={},
     )
     
     # Check diameter estimates
@@ -378,7 +387,10 @@ def test_property_volume_increases_with_diameter(H, Rt, scale_factor):
     # Build smaller pot
     verts1, faces1, diag1 = build_pot_mesh(
         H=H, Rt=Rt, Rb=Rb, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
-        n_theta=64, n_z=32
+        n_theta=64, n_z=32,
+        expn=1.1,
+        r_outer_fn=None,
+        style_opts={},
     )
     
     # Build larger pot (scaled diameter)
@@ -387,7 +399,10 @@ def test_property_volume_increases_with_diameter(H, Rt, scale_factor):
     
     verts2, faces2, diag2 = build_pot_mesh(
         H=H, Rt=Rt2, Rb=Rb2, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
-        n_theta=64, n_z=32
+        n_theta=64, n_z=32,
+        expn=1.1,
+        r_outer_fn=None,
+        style_opts={},
     )
     
     # Compute approximate volumes (sum of tetrahedra from origin)
@@ -466,7 +481,10 @@ def test_property_height_matches_mesh_bounds(H, Rt):
     
     verts, faces, diag = build_pot_mesh(
         H=H, Rt=Rt, Rb=Rt*0.8, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
-        n_theta=64, n_z=32
+        n_theta=64, n_z=32,
+        expn=1.1,
+        r_outer_fn=None,
+        style_opts={},
     )
     
     # Measure actual height
@@ -497,7 +515,10 @@ def test_property_mesh_size_scales_with_resolution(n_theta, n_z):
     # Build mesh with given resolution
     verts, faces, diag = build_pot_mesh(
         H=100.0, Rt=80.0, Rb=60.0, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
-        n_theta=n_theta, n_z=n_z
+        n_theta=n_theta, n_z=n_z,
+        expn=1.1,
+        r_outer_fn=None,
+        style_opts={},
     )
     
     # Vertex count should be roughly proportional to n_theta * n_z
