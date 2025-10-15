@@ -31,6 +31,9 @@ from potfoundry.schema import ConfigV2, RecipeModel, MeshQualityModel
 from potfoundry.yaml_api import load_config
 from pfui.deeplink import encode_state, decode_state
 
+# Default style function for tests
+default_style_fn = STYLES["SuperformulaBlossom"][0]
+
 
 # ============================================================================
 # Strategy Definitions - Define valid input ranges
@@ -131,7 +134,7 @@ def test_property_face_normals_point_outward(H, Rt, Rb, n_theta, n_z):
         H=H, Rt=Rt, Rb=Rb, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
         n_theta=n_theta, n_z=n_z,
         expn=1.1,
-        r_outer_fn=None,
+        r_outer_fn=default_style_fn,
         style_opts={},
     )
     
@@ -191,7 +194,7 @@ def test_property_no_degenerate_triangles(H, Rt, Rb, n_theta, n_z):
         H=H, Rt=Rt, Rb=Rb, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
         n_theta=n_theta, n_z=n_z,
         expn=1.1,
-        r_outer_fn=None,
+        r_outer_fn=default_style_fn,
         style_opts={},
     )
     
@@ -235,13 +238,13 @@ def test_property_diameter_estimates_within_bounds(Rt, Rb, t_wall):
         H=100.0, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=3.0, r_drain=8.0,
         n_theta=64, n_z=32,
         expn=1.1,
-        r_outer_fn=None,
+        r_outer_fn=default_style_fn,
         style_opts={},
     )
     
     # Check diameter estimates
-    top_est = diag.get("top_od_est", 0)
-    bottom_est = diag.get("bottom_od_est", 0)
+    top_est = diag.get("estimated_top_od_mm", 0)
+    bottom_est = diag.get("estimated_bottom_od_mm", 0)
     
     # Allow 5% tolerance due to style modulation
     tolerance = 0.05
@@ -389,7 +392,7 @@ def test_property_volume_increases_with_diameter(H, Rt, scale_factor):
         H=H, Rt=Rt, Rb=Rb, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
         n_theta=64, n_z=32,
         expn=1.1,
-        r_outer_fn=None,
+        r_outer_fn=default_style_fn,
         style_opts={},
     )
     
@@ -401,7 +404,7 @@ def test_property_volume_increases_with_diameter(H, Rt, scale_factor):
         H=H, Rt=Rt2, Rb=Rb2, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
         n_theta=64, n_z=32,
         expn=1.1,
-        r_outer_fn=None,
+        r_outer_fn=default_style_fn,
         style_opts={},
     )
     
@@ -483,7 +486,7 @@ def test_property_height_matches_mesh_bounds(H, Rt):
         H=H, Rt=Rt, Rb=Rt*0.8, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
         n_theta=64, n_z=32,
         expn=1.1,
-        r_outer_fn=None,
+        r_outer_fn=default_style_fn,
         style_opts={},
     )
     
@@ -517,7 +520,7 @@ def test_property_mesh_size_scales_with_resolution(n_theta, n_z):
         H=100.0, Rt=80.0, Rb=60.0, t_wall=3.0, t_bottom=3.0, r_drain=8.0,
         n_theta=n_theta, n_z=n_z,
         expn=1.1,
-        r_outer_fn=None,
+        r_outer_fn=default_style_fn,
         style_opts={},
     )
     
