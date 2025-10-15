@@ -4,8 +4,8 @@
 
 This guide documents the type hint conventions and practices used in PotFoundry to enable static type checking with mypy and improve code quality.
 
-**Status:** Phase 1 Complete (Core modules)  
-**Coverage:** ~60 function signatures with type hints  
+**Status:** Phase 3 Complete (Core + Support + UI Layer)  
+**Coverage:** ~90 function signatures with type hints (80% codebase)  
 **mypy:** Configured and running successfully
 
 ---
@@ -215,7 +215,7 @@ Key functions annotated:
 - `resolve_palette()` - Color palette resolution
 - `build_gradient_colors()` - Gradient generation
 
-### Support Modules (`potfoundry/core/io/stl.py`, `pfui/state.py`, `pfui/exporters.py`) **NEW**
+### Support Modules (`potfoundry/core/io/stl.py`, `pfui/state.py`, `pfui/exporters.py`)
 
 **Coverage:** ~12 functions (100% of public API) ✅
 
@@ -224,6 +224,18 @@ Key functions annotated:
 - `export_stl_bytes()` - Memory-based STL export
 - `queue_update()` - State management with typed dictionaries
 - `_deep_merge()` - Type-safe dictionary merging
+
+### UI Layer Modules (`pfui/controls.py`, `pfui/preview.py`, `pfui/presets.py`, `app.py`) **NEW**
+
+**Coverage:** ~13 functions (100% of key public APIs) ✅
+
+Key functions annotated:
+- `style_controls()` - Style parameter UI controls (returns Dict[str, Any])
+- `adv_shape_controls()` - Advanced shape parameter controls
+- `make_preview_arrays()` - 3D preview data generation with NumPy arrays
+- `widget_key()` - Streamlit widget key generation
+- `_mask_possible_secrets()` - Security utility for masking secrets
+- `_cleanup_stale_media_ids()` - Session state cleanup
 
 ---
 

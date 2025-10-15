@@ -55,6 +55,12 @@ def _mask_possible_secrets(text: str) -> str:
     """Mask common secret patterns and any known supabase key from st.secrets.
 
     This is defensive: never reveal raw keys or long hashes in UI text areas.
+    
+    Args:
+        text: Text potentially containing secrets
+        
+    Returns:
+        Text with secrets masked/redacted
     """
     try:
         svc_key = None
@@ -83,8 +89,7 @@ def _cleanup_stale_media_ids() -> None:
     session_state. These can persist across runs and cause MediaFileStorageError
     when the browser requests a missing id.
 
-    This is defensive and cheap
-    it only removes strings that exactly match
+    This is defensive and cheap - it only removes strings that exactly match
     a 64-hex-character filename with .png extension or containers that contain
     such strings.
     """

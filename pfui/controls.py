@@ -7,6 +7,14 @@ from .state import widget_key
 
 
 def style_controls(style: str) -> Dict[str, Any]:
+    """Display style-specific parameter controls in Streamlit UI.
+    
+    Args:
+        style: Name of the style to display controls for
+        
+    Returns:
+        Dictionary of style parameters with user-selected values
+    """
     schema = STYLE_SCHEMAS.get(style, {})
     if not schema:
         st.info("This style has no specific controls. Use Advanced options below or JSON override.")
@@ -33,6 +41,14 @@ def style_controls(style: str) -> Dict[str, Any]:
 
 
 def adv_shape_controls(style: str) -> Dict[str, Any]:
+    """Display advanced shape parameter controls for base profile.
+    
+    Args:
+        style: Style name (used for widget keys)
+        
+    Returns:
+        Dictionary of advanced shape parameters
+    """
     st.caption("These affect the base profile shared by all styles.")
     c1, c2, c3 = st.columns(3)
     k1 = widget_key(style, "flare_center")

@@ -7,6 +7,15 @@ import streamlit as st
 from .schemas import STYLE_SCHEMAS       # << import from schemas
 
 def widget_key(style: str, field: str) -> str:
+    """Generate unique widget key for Streamlit session state.
+    
+    Args:
+        style: Style name
+        field: Field/parameter name
+        
+    Returns:
+        Unique widget key string
+    """
     return f"opt__{style}_{field}"
 
 
@@ -38,6 +47,11 @@ PRESETS: Dict[str, Dict[str, Dict[str, Any]]] = {
 PRESET_PATH = Path.home() / ".potfoundry_presets.yaml"
 
 def _yaml_available() -> bool:
+    """Check if PyYAML is available for preset loading.
+    
+    Returns:
+        True if yaml module can be imported, False otherwise
+    """
     try:
         import yaml  # noqa: F401
         return True
@@ -45,6 +59,11 @@ def _yaml_available() -> bool:
         return False
 
 def _read_user_presets() -> Dict[str, Any]:
+    """Load user-defined presets from YAML file.
+    
+    Returns:
+        Dictionary with 'presets' key containing list of user presets
+    """
     if not _yaml_available() or not PRESET_PATH.exists():
         return {"presets": []}
     try:

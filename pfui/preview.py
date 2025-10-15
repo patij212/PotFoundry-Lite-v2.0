@@ -1,8 +1,8 @@
 from __future__ import annotations
 from io import BytesIO
-from typing import Any, Dict, Tuple
-
+from typing import Any, Dict, Tuple, Optional
 import numpy as np
+import numpy.typing as npt
 import streamlit as st
 
 # --- Fallback cache decorator for test environments where streamlit.cache_data
@@ -23,6 +23,13 @@ from .colors import build_gradient_colors
 
 
 def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
+    """Render matplotlib figure in Streamlit with compatibility handling.
+    
+    Args:
+        fig: Matplotlib figure to display
+        fill_width: Whether to stretch figure to full width
+        clear: Whether to clear figure after rendering
+    """
     try:
         st.pyplot(fig, clear_figure=clear, width=("stretch" if fill_width else "content"))
     except TypeError:
@@ -31,9 +38,31 @@ def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
 
 
 @cache_data(show_spinner=False)
-def make_preview_arrays(H: float, Rt: float, Rb: float, expn: float,
-                        n_theta: int, n_z: int,
-                        style_name: str, opts_json: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def make_preview_arrays(
+    H: float,
+    Rt: float,
+    Rb: float,
+    expn: float,
+    n_theta: int,
+    n_z: int,
+    style_name: str,
+    opts_json: str
+) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Generate preview arrays for 3D visualization (cached).
+    
+    Args:
+        H: Pot height in mm
+        Rt: Top radius in mm
+        Rb: Bottom radius in mm
+        expn: Flare exponent
+        n_theta: Angular resolution
+        n_z: Vertical resolution
+        style_name: Style function name
+        opts_json: JSON-encoded style options
+        
+    Returns:
+        Tuple of (theta angles, z heights, radius modulation arrays)
+    """
     import numpy as _np
     opts: Dict[str, Any] = __import__("json").loads(opts_json)
     r_outer_fn = STYLES[style_name][0]
