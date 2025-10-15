@@ -58,7 +58,7 @@ def widget_key(style: str, field: str) -> str:
 # ---------- Pending updates machinery ----------------------------------------
 
 # Exposed as a module attribute so tests can reference it.
-_PENDING_KEY = "__pending_updates__"
+_PENDING_KEY: str = "__pending_updates__"
 
 
 def _deep_merge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
@@ -88,7 +88,7 @@ def _deep_merge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
     return dst
 
 
-def queue_update(updates: dict) -> None:
+def queue_update(updates: Dict[str, Any]) -> None:
     """
     Purpose:
         Queue session_state updates for the next run (before widgets render).

@@ -3,7 +3,9 @@ import re
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Any
+import numpy.typing as npt
+import numpy as np
 
 # Binary STL writer (recommended for all exports)
 from .imports import WRITE_STL_BINARY
@@ -14,7 +16,11 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80] or "potfoundry_model"
 
 
-def export_stl_bytes(name: str, verts, faces) -> Tuple[bytes, str]:
+def export_stl_bytes(
+    name: str, 
+    verts: npt.NDArray[np.float64], 
+    faces: npt.NDArray[np.int32]
+) -> Tuple[bytes, str]:
     """Export mesh to binary STL and return as bytes.
 
     This is the recommended export format - binary STL files are smaller,

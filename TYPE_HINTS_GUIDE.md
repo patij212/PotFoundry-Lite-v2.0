@@ -215,6 +215,16 @@ Key functions annotated:
 - `resolve_palette()` - Color palette resolution
 - `build_gradient_colors()` - Gradient generation
 
+### Support Modules (`potfoundry/core/io/stl.py`, `pfui/state.py`, `pfui/exporters.py`) **NEW**
+
+**Coverage:** ~12 functions (100% of public API) ✅
+
+Key functions annotated:
+- `write_stl_binary()` - Binary STL file export with proper array types
+- `export_stl_bytes()` - Memory-based STL export
+- `queue_update()` - State management with typed dictionaries
+- `_deep_merge()` - Type-safe dictionary merging
+
 ---
 
 ## mypy Configuration
