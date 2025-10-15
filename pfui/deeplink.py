@@ -4,6 +4,7 @@ Provides URL-safe encoding of design parameters for "Open in editor" functionali
 """
 from __future__ import annotations
 
+from typing import Any, Dict, List, Optional, Tuple
 import base64
 import json
 
@@ -28,7 +29,7 @@ ALLOWED_MESH_KEYS = {
 ALLOWED_KEYS = ALLOWED_GEOMETRY_KEYS | ALLOWED_MESH_KEYS | {"opts"}
 
 
-def encode_state(state_dict: dict) -> str:
+def encode_state(state_dict: Dict[str, Any]) -> str:
     """Encode state dictionary to base64url string for URL parameter.
 
     Args:
@@ -55,7 +56,7 @@ def encode_state(state_dict: dict) -> str:
     return b64_bytes.decode("ascii").rstrip("=")
 
 
-def decode_state(encoded: str) -> dict:
+def decode_state(encoded: str) -> Dict[str, Any]:
     """Decode base64url string to state dictionary.
 
     Args:

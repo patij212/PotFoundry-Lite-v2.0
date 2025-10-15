@@ -2,9 +2,10 @@
 # Geometry core with style-agnostic twist/spin and optimized mesh build.
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, Dict
+from typing import Any, Callable, Dict, Optional, Tuple
 import math
 import numpy as np
+import numpy.typing as npt
 from functools import lru_cache
 
 
@@ -20,7 +21,7 @@ __all__ = [
 # Shared base profile (outer radius vs height) with flare-center warp and bell
 import math as _m
 
-def base_radius(z: float, H: float, Rb: float, Rt: float, expn: float, opts: Dict) -> float:
+def base_radius(z: float, H: float, Rb: float, Rt: float, expn: float, opts: Dict[str, Any]) -> float:
     if H <= 0:
         return Rb
     # normalized height
@@ -77,7 +78,7 @@ class PotDefaults:
 TAU = 2.0 * math.pi
 
 @lru_cache(maxsize=8)
-def _theta_grid_cached(n_theta: int):
+def _theta_grid_cached(n_theta: int) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     thetas = np.linspace(0.0, TAU, n_theta, endpoint=False)
     return thetas, np.cos(thetas), np.sin(thetas)
 
@@ -87,14 +88,14 @@ def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     t = 0.0 if H <= 0 else z / H
     return Rb + (Rt - Rb) * (t ** expn)
 
-def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+def _compute_normal(a: npt.NDArray[np.float64], b: npt.NDArray[np.float64], c: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     n = np.cross(b - a, c - a)
     norm = np.linalg.norm(n)
     if norm == 0:
         return np.array([0.0, 0.0, 0.0], dtype=float)
     return n / norm
 
-def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> None:
+def write_ascii_stl(path: str, name: str, verts: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]) -> None:
     """Write triangles to ASCII STL (portable, human-readable).
 
     .. deprecated:: 2.0

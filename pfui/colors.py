@@ -4,7 +4,9 @@ This module centralizes color palette resolution and gradient mapping logic so i
 be unit‑tested independent of the Streamlit app.
 """
 from __future__ import annotations
-from typing import Tuple, List, Sequence
+from typing import Any, List, Optional, Sequence, Tuple, Union
+import numpy as np
+import numpy.typing as npt
 
 DEFAULT_CUSTOM_COLORS = ("#2850D0", "#5FA8FF", "#E2F3FF")
 
@@ -38,7 +40,7 @@ def interpolate_rgb(a: Tuple[int, int, int], b: Tuple[int, int, int], t: float) 
     )
 
 
-def resolve_palette(preset: str | None, custom_colors: Sequence[str] | None = None) -> Tuple[Tuple[int, int, int], Tuple[int, int, int], Tuple[int, int, int]]:
+def resolve_palette(preset: Optional[str], custom_colors: Optional[Sequence[str]] = None) -> Tuple[Tuple[int, int, int], Tuple[int, int, int], Tuple[int, int, int]]:
     if preset and preset in _PRESETS:
         return _PRESETS[preset]
     # Fallback to custom or defaults
@@ -49,7 +51,7 @@ def resolve_palette(preset: str | None, custom_colors: Sequence[str] | None = No
     return tuple(map(int, hex_to_rgb_tuple(d1))) , tuple(map(int, hex_to_rgb_tuple(d2))) , tuple(map(int, hex_to_rgb_tuple(d3)))  # type: ignore
 
 
-def build_gradient_colors(z_norm, preset: str | None, custom_colors: Sequence[str] | None = None) -> List[List[int]]:
+def build_gradient_colors(z_norm: Union[Sequence[float], npt.NDArray[np.float64]], preset: Optional[str], custom_colors: Optional[Sequence[str]] = None) -> List[List[int]]:
     """Piecewise 3‑point gradient mapping.
 
     z_norm: 1D iterable/array of values assumed in [0,1].
