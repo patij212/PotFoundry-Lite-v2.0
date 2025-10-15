@@ -1,0 +1,4 @@
+# file: /home/runner/work/PotFoundry-Lite-v2.0/PotFoundry-Lite-v2.0/potfoundry/schema.py
+# hypothesis_version: 6.140.4
+
+[1.1, 3.0, 10.0, 90.0, 120.0, 140.0, 168, 4096, 'after', 'bottom', 'bottom_od', 'defaults', 'drain', 'flare_exp', 'forbid', 'height', 'make_zip', 'mesh', 'n_theta', 'n_z', 'name', 'opts', 'out', 'outdir', 'presets', 'recipes', 'save_previews', 'size', 'style', 'top_od', 'use', 'version', 'wall']

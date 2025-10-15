@@ -1,0 +1,4 @@
+# file: /home/runner/work/PotFoundry-Lite-v2.0/PotFoundry-Lite-v2.0/potfoundry/yaml_api.py
+# hypothesis_version: 6.140.4
+
+[0.02, 0.5, '\n- ', 'HarmonicRipple', 'Invalid YAML:\n- ', 'No recipes found.', 'SpiralRidges', 'SuperellipseMorph', 'SuperformulaBlossom', 'blossom', 'bottom', 'bottom_od', 'description', 'diagnostics', 'drain', 'faces', 'flare_exp', 'flower', 'fluted', 'height', 'manifest', 'manifest.json', 'mm', 'model_dump', 'name', 'opts', 'out', 'outdir', 'pot_gallery_STLs.zip', 'pots', 'ripple', 'size', 'smooth', 'spiral', 'stl', 'style', 'top_od', 'type', 'units', 'use', 'utf-8', 'version', 'vertices', 'w', 'wall', 'zip']

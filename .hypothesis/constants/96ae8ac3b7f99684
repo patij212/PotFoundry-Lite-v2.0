@@ -1,0 +1,4 @@
+# file: /home/runner/work/PotFoundry-Lite-v2.0/PotFoundry-Lite-v2.0/potfoundry/core/io/stl.py
+# hypothesis_version: 6.140.4
+
+[b'\x00', 0.0, '.tmp', '<f4', '<u2', 'C', 'ascii', 'atomic_write_bytes', 'attr', 'normals', 'potfoundry', 'replace', 'v1', 'v2', 'v3', 'wb', 'write_stl_binary']
