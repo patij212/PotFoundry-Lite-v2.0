@@ -12,7 +12,7 @@ typing_extensions==4.15.0
 
 # Application dependencies (for testing)
 streamlit==1.50.0
-numpy==2.3.3
+numpy==1.26.4
 pandas==2.3.3
 pydantic==2.12.2
 pydantic_core==2.41.4
