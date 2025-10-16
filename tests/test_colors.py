@@ -14,7 +14,8 @@ def test_hex_to_rgb_tuple_basic():
 
 
 def test_interpolate_rgb_clamps():
-    a=(0,0,0); b=(100,200,255)
+    a=(0,0,0)
+    b=(100,200,255)
     assert interpolate_rgb(a,b,-1) == a
     assert interpolate_rgb(a,b,2) == b
     mid = interpolate_rgb(a,b,0.5)
@@ -36,7 +37,8 @@ def test_build_gradient_colors_monotonic():
     for r,g,b in cols:
         assert 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255
     # Gradient should begin near first color and end near last preset
-    start = cols[0]; end = cols[-1]
+    start = cols[0]
+    end = cols[-1]
     assert start != end
 
 

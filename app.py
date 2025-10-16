@@ -16,7 +16,6 @@ from pfui.preview import render_preview_png_cached
 from datetime import datetime
 
 # --- Optional / graceful Plotly import (interactive preview) ---
-from typing import Any
 try:
     import plotly.graph_objects as go  # type: ignore[import-not-found]
     HAS_PLOTLY = True
@@ -56,6 +55,12 @@ def _mask_possible_secrets(text: str) -> str:
     """Mask common secret patterns and any known supabase key from st.secrets.
 
     This is defensive: never reveal raw keys or long hashes in UI text areas.
+    
+    Args:
+        text: Text potentially containing secrets
+        
+    Returns:
+        Text with secrets masked/redacted
     """
     try:
         svc_key = None
@@ -84,7 +89,7 @@ def _cleanup_stale_media_ids() -> None:
     session_state. These can persist across runs and cause MediaFileStorageError
     when the browser requests a missing id.
 
-    This is defensive and cheap; it only removes strings that exactly match
+    This is defensive and cheap - it only removes strings that exactly match
     a 64-hex-character filename with .png extension or containers that contain
     such strings.
     """
@@ -152,7 +157,8 @@ def resolve_schema_key(style_name: str) -> str:
     """Resolve a style identifier to a STYLE_SCHEMAS key.
 
     This is intentionally permissive: if the exact name exists in
-    STYLE_SCHEMAS it is returned; otherwise we attempt a case-insensitive
+    STYLE_SCHEMAS it is returned
+    otherwise we attempt a case-insensitive
     match and fall back to the original value.
     """
     if style_name in STYLE_SCHEMAS:
@@ -202,11 +208,15 @@ st.markdown(
 document.addEventListener('keydown', function(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         const btn = Array.from(document.querySelectorAll('button')).find(b=>b.innerText && b.innerText.includes('Undo'));
-        if (btn) { btn.click(); e.preventDefault(); }
+        if (btn) { btn.click()
+        e.preventDefault()
+        }
     }
     if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
         const btn = Array.from(document.querySelectorAll('button')).find(b=>b.innerText && b.innerText.includes('Redo'));
-        if (btn) { btn.click(); e.preventDefault(); }
+        if (btn) { btn.click()
+        e.preventDefault()
+        }
     }
 });
 </script>
@@ -463,7 +473,8 @@ with _tab1:
                 for i, p in enumerate(pdefs.keys()):
                     if cols[i % len(cols)].button(p, key=f"preset_{style_name}_{p}"):
                         pending = {widget_key(style_key, k): v for k, v in pdefs[p].items()}
-                        queue_update(pending); st.rerun()
+                        queue_update(pending)
+                        st.rerun()
                 st.caption("Built-in presets apply style option values.")
 
             with st.expander("User presets (save/load)"):
@@ -490,20 +501,24 @@ with _tab1:
                     st.success("Preset saved.") if _write_user_presets(pdata) else st.error("Failed to save preset.")
 
                 if cols[3].button("Delete") and sel != "<none>":
-                    idx = names.index(sel); del pdata["presets"][idx]
+                    idx = names.index(sel)
+                    del pdata["presets"][idx]
                     st.success("Preset deleted.") if _write_user_presets(pdata) else st.error("Failed to update presets.")
 
                 if sel != "<none>" and st.button("Apply selected"):
                     idx = names.index(sel)
                     apply_preset_dict(pdata["presets"][idx])
-                    st.success("Applied preset."); st.rerun()
+                    st.success("Applied preset.")
+                    st.rerun()
 
         # Reset buttons (restored top-level)
         cL, cR = st.columns(2)
         if cL.button("Reset style to defaults"):
-            reset_style_defaults(style_name); st.rerun()
+            reset_style_defaults(style_name)
+            st.rerun()
         if cR.button("Reset ALL controls"):
-            reset_all_defaults(style_name); st.rerun()
+            reset_all_defaults(style_name)
+            st.rerun()
 
     # --------------- PREVIEW & EXPORT CONTROLS ---------------
     with st.expander("Preview & Export", expanded=True):
@@ -677,13 +692,18 @@ with _tab1:
   function scheduleClick(){
     if(timer) clearTimeout(timer);
     timer = setTimeout(function(){
-      var btn = findButton(); if(btn){ try{ btn.click(); } catch(e){} }
+      var btn = findButton()
+      if(btn){ try{ btn.click()
+      } catch(e){} }
     }, timeout);
   }
-  var observer = new MutationObserver(function(){ scheduleClick(); });
+  var observer = new MutationObserver(function(){ scheduleClick()
+  })
   observer.observe(document.body, {childList:true, subtree:true, attributes:true});
-  ['input','change','mouseup','keyup','pointerup'].forEach(function(ev){ document.addEventListener(ev, scheduleClick, true); });
-  var finder = setInterval(function(){ if(findButton()) { clearInterval(finder); } }, 250);
+  ['input','change','mouseup','keyup','pointerup'].forEach(function(ev){ document.addEventListener(ev, scheduleClick, true)
+  })
+  var finder = setInterval(function(){ if(findButton()) { clearInterval(finder)
+  } }, 250)
 })();
 </script>
 """ % (timeout_ms,)
@@ -770,7 +790,8 @@ with _tab1:
                             expn=expn, n_theta=full_n_theta, n_z=full_n_z,
                             r_outer_fn=r_outer_fn, style_opts=opts,
                         )
-                        Vb = _np_mb.asarray(verts); Fb = _np_mb.asarray(faces)
+                        Vb = _np_mb.asarray(verts)
+                        Fb = _np_mb.asarray(faces)
                         if place_on_ground and len(Vb):
                             Vb[:, 2] -= Vb[:, 2].min()
                         mesh_data = (Vb, Fb)
@@ -922,7 +943,8 @@ with _tab1:
                     st.warning(f"Quick Preview mesh generation failed, using surface: {e}")
                     try:
                         import numpy as _np_qc
-                        zmin = float(_np_qc.min(Z)); zmax = float(_np_qc.max(Z));
+                        zmin = float(_np_qc.min(Z))
+                        zmax = float(_np_qc.max(Z))
                         zspan = max(1e-6, zmax - zmin)
                         z_norm = (Z - zmin) / zspan
                     except Exception:
@@ -931,7 +953,9 @@ with _tab1:
                         hx = hx.lstrip('#')
                         if len(hx) == 3:
                             hx = ''.join([c*2 for c in hx])
-                        r = int(hx[0:2], 16); g = int(hx[2:4], 16); b = int(hx[4:6], 16)
+                        r = int(hx[0:2], 16)
+                        g = int(hx[2:4], 16)
+                        b = int(hx[4:6], 16)
                         return f"rgb({r},{g},{b})"
                     c1 = st.session_state.get("preview_grad_c1", "#2850D0")
                     c2 = st.session_state.get("preview_grad_c2", "#5FA8FF")
@@ -964,7 +988,8 @@ with _tab1:
                 except Exception:
                     rmax = max(1.0, float(st.session_state.get("top_od", 140.0)) * 0.5)
                 try:
-                    zmin = float(Z.min()); zmax = float(Z.max())
+                    zmin = float(Z.min())
+                    zmax = float(Z.max())
                 except Exception:
                     zmin, zmax = 0.0, float(st.session_state.get("H", 120.0))
                 if place_on_ground:
@@ -1218,11 +1243,13 @@ with _tab1:
                                 expn=expn, n_theta=full_n_theta, n_z=full_n_z,
                                 r_outer_fn=r_outer_fn, style_opts=opts,
                             )
-                            V = _np_r.asarray(verts2); F = _np_r.asarray(faces2)
+                            V = _np_r.asarray(verts2)
+                            F = _np_r.asarray(faces2)
                             if place_on_ground and len(V):
                                 V[:, 2] -= V[:, 2].min()
                         except Exception:
-                            V = np.zeros((0,3)); F = np.zeros((0,3), dtype=int)
+                            V = np.zeros((0,3))
+                            F = np.zeros((0,3), dtype=int)
                     # Gradient coloring using user settings
                     if len(V):
                         span_z = float(np.ptp(V[:, 2])) if len(V) else 0.0
@@ -1269,7 +1296,8 @@ with _tab1:
                     # Symmetric XY extents and ortho projection to avoid elongation
                     try:
                         rmax = float(max(abs(V[:, 0]).max(), abs(V[:, 1]).max()))
-                        zmin = float(V[:, 2].min()); zmax = float(V[:, 2].max())
+                        zmin = float(V[:, 2].min())
+                        zmax = float(V[:, 2].max())
                     except Exception:
                         rmax = max(1.0, float(st.session_state.get("top_od", 140.0)) * 0.5)
                         zmin, zmax = 0.0, float(st.session_state.get("H", 120.0))
@@ -1524,9 +1552,11 @@ with _tab1:
             max_page = max(0, math.ceil(len(snaps) / per_page) - 1)
             nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 6])
             if nav_col1.button("◀ Prev"):
-                st.session_state["_snap_page"] = max(0, page - 1); st.rerun()
+                st.session_state["_snap_page"] = max(0, page - 1)
+                st.rerun()
             if nav_col2.button("Next ▶"):
-                st.session_state["_snap_page"] = min(max_page, page + 1); st.rerun()
+                st.session_state["_snap_page"] = min(max_page, page + 1)
+                st.rerun()
             nav_col3.caption(f"Showing page {page+1} / {max_page+1}  — total snapshots: {len(snaps)}")
 
             start = page * per_page
@@ -1876,7 +1906,8 @@ with _tab1:
         st.text_area("Recent timings", value="\n".join(perf_logs[-30:]), height=180)
         if st.button("Force clear caches"):
             try:
-                st.cache_data.clear(); st.success("Caches cleared")
+                st.cache_data.clear()
+                st.success("Caches cleared")
             except Exception:
                 st.error("Failed to clear caches")
 

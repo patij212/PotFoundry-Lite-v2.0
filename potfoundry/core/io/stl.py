@@ -24,6 +24,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Union
 import numpy as np
+import numpy.typing as npt
 import os
 
 __all__ = ['write_stl_binary', 'atomic_write_bytes']
@@ -60,7 +61,10 @@ def _pack_header(name: str) -> bytes:
     header = (name or 'potfoundry').encode('ascii', errors='replace')[:80]
     return header.ljust(80, b'\0')
 
-def _compute_face_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+def _compute_face_normals(
+    vertices: npt.NDArray[np.float64], 
+    faces: npt.NDArray[np.int32]
+) -> npt.NDArray[np.float32]:
     """Compute face normals for triangular mesh using vectorized cross product.
 
     Args:
@@ -72,7 +76,9 @@ def _compute_face_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray
     """
     v = vertices.astype(np.float32, copy=False)
     f = faces.astype(np.int64, copy=False)
-    a = v[f[:, 0]]; b = v[f[:, 1]]; c = v[f[:, 2]]
+    a = v[f[:, 0]]
+    b = v[f[:, 1]]
+    c = v[f[:, 2]]
     n = np.cross(b - a, c - a)
     lens = np.linalg.norm(n, axis=1)
     mask = lens > 0
@@ -80,7 +86,11 @@ def _compute_face_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray
     n[~mask] = np.array([0.0, 0.0, 0.0], dtype=np.float32)
     return n.astype(np.float32, copy=False)
 
-def _interleave_records(normals: np.ndarray, vertices: np.ndarray, faces: np.ndarray) -> bytes:
+def _interleave_records(
+    normals: npt.NDArray[np.float32], 
+    vertices: npt.NDArray[np.float64], 
+    faces: npt.NDArray[np.int32]
+) -> bytes:
     """Pack normals and triangle vertices into binary STL facet records.
 
     Creates the binary body of an STL file. Each facet record is 50 bytes:
@@ -100,7 +110,9 @@ def _interleave_records(normals: np.ndarray, vertices: np.ndarray, faces: np.nda
     v = vertices.astype(np.float32, copy=False)
     f = faces.astype(np.int64, copy=False)
     n = normals.astype(np.float32, copy=False)
-    a = v[f[:, 0]]; b = v[f[:, 1]]; c = v[f[:, 2]]
+    a = v[f[:, 0]]
+    b = v[f[:, 1]]
+    c = v[f[:, 2]]
     facet_dtype = np.dtype([
         ('normals', '<f4', (3,)),
         ('v1', '<f4', (3,)),
@@ -116,7 +128,13 @@ def _interleave_records(normals: np.ndarray, vertices: np.ndarray, faces: np.nda
     recs['attr'] = 0
     return recs.tobytes(order='C')
 
-def write_stl_binary(path: Union[str, Path], name: str, vertices: np.ndarray, faces: np.ndarray, normals: Optional[np.ndarray]=None) -> Path:
+def write_stl_binary(
+    path: Union[str, Path], 
+    name: str, 
+    vertices: npt.NDArray[np.float64], 
+    faces: npt.NDArray[np.int32], 
+    normals: Optional[npt.NDArray[np.float32]] = None
+) -> Path:
     """Write mesh to binary STL file (RECOMMENDED for all exports).
 
     Binary STL is the preferred format for PotFoundry exports. It produces

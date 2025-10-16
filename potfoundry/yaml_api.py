@@ -5,7 +5,7 @@
 # and performance. Binary STL is the recommended format for all production use.
 from __future__ import annotations
 from dataclasses import dataclass, asdict, field
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Sequence, Union
 from pathlib import Path
 import json
 import zipfile
@@ -35,7 +35,7 @@ class Config:
     recipes: List[dict] = field(default_factory=list)        # list of {name, style|use, size, opts}
 
 def load_config(path: Path) -> ConfigV2:
-    raw = yaml.safe_load(path.read_text()) or {}
+    raw: Dict[str, Any] = yaml.safe_load(path.read_text()) or {}
     version = int(raw.get("version", 1))
     if version == 2:
         return ConfigV2.model_validate(raw)
@@ -44,7 +44,7 @@ def load_config(path: Path) -> ConfigV2:
         return ConfigV2.model_validate(migrated)
     else:
         raise ValueError(f"Unsupported version {version}.")
-def _normalize_cfg(cfg) -> Config:
+def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
     """Accept ConfigV2 (Pydantic) or legacy Config dataclass; return legacy Config."""
     try:
         from .schema import ConfigV2
@@ -71,7 +71,7 @@ def _normalize_cfg(cfg) -> Config:
 
 
 
-def validate_recipe(recipe: dict, cfg: Config) -> list[str]:
+def validate_recipe(recipe: Dict[str, Any], cfg: Config) -> List[str]:
     errs: List[str] = []
     r = _normalize_style_alias(recipe or {})
     name = r.get("name")
@@ -109,10 +109,10 @@ def validate_recipe(recipe: dict, cfg: Config) -> list[str]:
 
 
 
-def realize_recipe(recipe: dict, cfg: Config) -> tuple[str, str, dict, dict]:
+def realize_recipe(recipe: Dict[str, Any], cfg: Config) -> Tuple[str, str, Dict[str, Any], Dict[str, Any]]:
     r = _normalize_style_alias(recipe or {})
-    name = r["name"]
-    base = dict(style=None, size={}, opts={})
+    name: str = r["name"]
+    base: Dict[str, Any] = dict(style=None, size={}, opts={})
 
     if r.get("use"):
         pres = _resolve_preset_chain(r["use"], cfg.presets or {})
@@ -136,8 +136,8 @@ def realize_recipe(recipe: dict, cfg: Config) -> tuple[str, str, dict, dict]:
     return name, style, size, opts
 
 
-def build_from_yaml(cfg: Config | object, outdir: Path, do_previews: bool = True, do_zip: bool = True,
-                    only_names: list[str] | None = None, write_manifest: bool = False) -> dict:
+def build_from_yaml(cfg: Union[Config, ConfigV2], outdir: Path, do_previews: bool = True, do_zip: bool = True,
+                    only_names: Optional[Sequence[str]] = None, write_manifest: bool = False) -> Dict[str, Any]:
     cfg = _normalize_cfg(cfg)
     if not cfg.recipes:
         raise SystemExit("No recipes found.")

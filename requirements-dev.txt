@@ -1,0 +1,29 @@
+# Core testing framework
+pytest==8.4.2
+hypothesis==6.140.4
+
+# Code quality tools
+flake8>=6.0.0
+mypy>=1.0.0
+pytest-cov>=4.0.0
+
+# Type hints support
+typing_extensions==4.15.0
+
+# Application dependencies (for testing)
+streamlit==1.50.0
+numpy==1.26.4
+pandas==2.3.3
+pydantic==2.12.2
+pydantic_core==2.41.4
+PyYAML==6.0.1
+matplotlib==3.10.7
+plotly==6.3.1
+altair==5.5.0
+
+# Utility libraries
+requests==2.31.0
+click==8.1.6
+rich==13.7.1
+GitPython==3.1.45
+toml==0.10.2
