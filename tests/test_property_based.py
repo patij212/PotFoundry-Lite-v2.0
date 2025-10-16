@@ -20,6 +20,13 @@ Key properties tested:
 
 import numpy as np
 import pytest
+
+# Skip this module entirely if Hypothesis isn't available (e.g., without dev deps)
+pytest.importorskip(
+    "hypothesis",
+    reason="Hypothesis not installed; install dev deps with 'pip install -r requirements-dev.txt'",
+)
+
 from hypothesis import given, settings, assume
 from hypothesis import strategies as st
 from pathlib import Path
@@ -242,17 +249,19 @@ def test_property_diameter_estimates_within_bounds(Rt, Rb, t_wall):
         style_opts={},
     )
     
-    # Check diameter estimates
+    # Check diameter estimates (diagnostics report outer DIAMETER in mm)
     top_est = diag.get("estimated_top_od_mm", 0)
     bottom_est = diag.get("estimated_bottom_od_mm", 0)
     
-    # Allow 5% tolerance due to style modulation
+    # Allow 5% tolerance due to style modulation (default blossom strength is neutral for tests)
     tolerance = 0.05
+    expected_top = 2 * Rt
+    expected_bottom = 2 * Rb
     
-    assert abs(top_est - Rt) / Rt < tolerance, \
-        f"Top diameter estimate {top_est:.1f} differs from {Rt:.1f} by >{tolerance*100}%"
-    assert abs(bottom_est - Rb) / Rb < tolerance, \
-        f"Bottom diameter estimate {bottom_est:.1f} differs from {Rb:.1f} by >{tolerance*100}%"
+    assert abs(top_est - expected_top) / max(expected_top, 1e-9) < tolerance, \
+        f"Top diameter estimate {top_est:.1f} differs from {expected_top:.1f} by >{tolerance*100}%"
+    assert abs(bottom_est - expected_bottom) / max(expected_bottom, 1e-9) < tolerance, \
+        f"Bottom diameter estimate {bottom_est:.1f} differs from {expected_bottom:.1f} by >{tolerance*100}%"
 
 
 # ============================================================================

@@ -245,11 +245,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed evolution plan.
 
 All performance targets exceeded:
 
-| Metric | Target | Actual | Status |
-|--------|--------|--------|--------|
-| Typical mesh generation | <200ms | 132ms | ✅ |
 | Low-res mesh | <50ms | 18ms | ✅ |
-| High-res mesh | <1000ms | 519ms | ✅ |
 | Binary STL export | <100ms | 15ms | ✅ |
 | End-to-end workflow | <500ms | 144ms | ✅ |
 
@@ -270,25 +266,15 @@ All performance targets exceeded:
 
 - **Issues:** [GitHub Issues](https://github.com/patij212/PotFoundry-Lite-v2.0/issues)
 - **Discussions:** [GitHub Discussions](https://github.com/patij212/PotFoundry-Lite-v2.0/discussions)
-
----
-
-## 🔒 License
-
-- **Noncommercial:** [PolyForm Noncommercial 1.0.0](LICENSE)
 - **Commercial:** See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for commercial licensing options
-
 ---
 
 ## 🙏 Acknowledgments
-
 - Built with [Streamlit](https://streamlit.io/), [NumPy](https://numpy.org/), and [Plotly](https://plotly.com/)
 - Inspired by the 3D printing and parametric design community
-- Developed with assistance from GitHub Copilot
 
 ---
 
-**Made with ❤️ for the 3D printing community**
 
 Last Updated: December 2024
 

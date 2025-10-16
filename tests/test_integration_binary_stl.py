@@ -1,12 +1,14 @@
 """
 Integration test: Verify complete binary STL migration
 """
+import pytest
 import tempfile
 import warnings
 from pathlib import Path
 from potfoundry import build_pot_mesh, write_stl_binary, STYLES
 
 
+@pytest.mark.fast
 def test_end_to_end_export_workflow():
     """Test complete pot generation and binary STL export workflow."""
     # Pick a style
@@ -51,6 +53,7 @@ def test_end_to_end_export_workflow():
         assert len(data) == expected_size
 
 
+@pytest.mark.fast
 def test_no_warnings_for_binary_stl():
     """Binary STL export should not produce any warnings."""
     style_fn, _ = STYLES['HarmonicRipple']
@@ -72,6 +75,7 @@ def test_no_warnings_for_binary_stl():
             assert len(w) == 0, "Binary STL export should not produce warnings"
 
 
+@pytest.mark.fast
 def test_multiple_styles_all_use_binary():
     """Verify binary STL works with all available pot styles."""
     test_styles = ['SuperellipseMorph', 'HarmonicRipple', 'FourierBloom']

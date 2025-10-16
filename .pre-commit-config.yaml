@@ -11,6 +11,23 @@ repos:
       - id: check-added-large-files
       - id: end-of-file-fixer
       - id: trailing-whitespace
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--select=E,F,I", 
+                "--target-version=py311",
+                "--statistics",
+                "."]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (fast marker)
+        entry: pytest -q -m fast
+        language: system
+        pass_filenames: false
+        types: [python]
   - repo: local
     hooks:
       - id: potfoundry-forbid-service-role
