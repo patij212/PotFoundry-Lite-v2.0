@@ -1,6 +1,6 @@
 import json
 p=r"c:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\tools\edgeflow_verbose_diagnostics.jsonl"
-found=None
+found = None
 with open(p,'r',encoding='utf-8') as f:
     for line in f:
         line=line.strip()
@@ -13,26 +13,24 @@ with open(p,'r',encoding='utf-8') as f:
 if not found:
     print('NOT_FOUND')
     raise SystemExit(1)
-Rnew=found['R_new_raw_sample']
+Rnew = found.get('R_new_raw_sample') or []
 # Ensure Env is a sequence (not None) so zip() and indexing are safe and consistent
-Env = found.get('Env_to_use_sample') or found.get('Env_to_use_raw_post') or found.get('Env_to_use')
-if Env is None:
-    Env = []
+Env = found.get('Env_to_use_sample') or found.get('Env_to_use_raw_post') or found.get('Env_to_use') or []
 min_final=found.get('min_final_raw')
 viol=[]
-for i,(r,e) in enumerate(zip(Rnew, Env)):
+for i, (r, e) in enumerate(zip(Rnew, Env)):
     try:
-        if r + 1e-12 < e:
-            viol.append({'i':i,'R_new':r,'Env':e,'diff':e-r})
+        # numeric comparison guard
+        if float(r) + 1e-12 < float(e):
+            viol.append({"i": i, "R_new": r, "Env": e, "diff": float(e) - float(r)})
     except Exception:
         # skip non-numeric comparisons
         continue
-        viol.append({'i':i,'R_new':r,'Env':e,'diff':e-r})
 summary={
     'zi': found.get('zi'),
     'z': found.get('z'),
     'len_Rnew': len(Rnew),
-    'len_Env': len(Env) if Env is not None else None,
+    'len_Env': len(Env),
     'min_final_raw_field': min_final,
     'min_Rnew': min(Rnew) if Rnew else None,
     'min_Env': min(Env) if Env else None,
@@ -41,11 +39,21 @@ summary={
 }
 print(json.dumps(summary, indent=2))
 # print small side-by-side sample at first 24 indices for quick view
-sample_n=24
-pairs=[{'i':i,'R_new':Rnew[i],'Env':Env[i],'R_raw':found.get('R_raw_sample',[None]*len(Rnew))[i]} for i in range(min(sample_n,len(Rnew)))]
+sample_n = 24
+pairs = []
+for i in range(min(sample_n, len(Rnew))):
+    r_val = Rnew[i]
+    e_val = Env[i] if i < len(Env) else None
+    r_raw_list = found.get('R_raw_sample', [None] * len(Rnew))
+    r_raw = r_raw_list[i] if i < len(r_raw_list) else None
+    pairs.append({'i': i, 'R_new': r_val, 'Env': e_val, 'R_raw': r_raw})
+
 print('\nSAMPLE_PAIRS_FIRST')
 for p in pairs:
-    print(f"i={p['i']:3d}  R_new={p['R_new']:10.6f}  Env={p['Env']:10.6f}  R_raw={p['R_raw']:10.6f}")
+    try:
+        print(f"i={p['i']:3d}  R_new={float(p['R_new']):10.6f}  Env={float(p['Env']):10.6f}  R_raw={float(p['R_raw']):10.6f}")
+    except Exception:
+        print(f"i={p['i']:3d}  R_new={p['R_new']}  Env={p['Env']}  R_raw={p['R_raw']}")
 # If violations, print a few
 if viol:
     print('\nVIOLATIONS (first 10):')
