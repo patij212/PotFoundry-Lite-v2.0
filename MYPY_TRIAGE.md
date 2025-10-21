@@ -179,6 +179,7 @@ Purpose
  - [2025-10-21] Commit e0c905f: pfui/yaml_tools: coerce yaml.safe_dump to str to satisfy mypy return type. Ran mypy (focused): Found 126 errors in 13 files. Tests: 347 passed.
  - [2025-10-21] Commit 1d01727: pfui/exporters: cast WRITE_STL_BINARY to Callable to satisfy mypy; removed inline ignore. Ran mypy (focused): Found 125 errors in 12 files. Tests: 347 passed.
  - [2025-10-21] Commit e3a1892: pfui/preview.py: typing fixes — typed cache callable, explicit np.float64 coercions, robust colormap access, renamed png return to avoid shadowing, cast Plotly image outputs to bytes. Ran mypy (focused): preview.py clean; overall focused run: 120 errors in 11 files. Tests: 347 passed.
+ - [2025-10-21] Commit 93b53f7: pfui/colors.py: allow Optional z_norm and safe fallback in exception path to remove unreachable-return mypy error. Tests: targeted colors tests passed (5 passed). Ran mypy (focused): no issues in `pfui/colors.py`.
 
 
 ## Next action (awaiting your direction)
