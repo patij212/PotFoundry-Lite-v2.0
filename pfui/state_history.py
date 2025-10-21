@@ -24,6 +24,11 @@ Errors
 from typing import Any, Dict
 import copy
 
+# Allow tests to stub `streamlit` via sys.modules before importing; pre-declare
+# the `st` name so type-checkers don't require `# type: ignore` on the local
+# import below.
+st: Any
+
 MAX_HISTORY = 50
 UNDO = "__undo_stack__"
 REDO = "__redo_stack__"
@@ -31,7 +36,7 @@ REDO = "__redo_stack__"
 
 def _st():
     # Lazy import so tests can stub sys.modules['streamlit'] first.
-    import streamlit as st  # type: ignore
+    import streamlit as st  # type: ignore[import-not-found]
 
     return st
 
