@@ -1,14 +1,15 @@
 import sys, os
 import importlib
-repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if repo_root not in sys.path:
-    sys.path.insert(0, repo_root)
-    # keep module import path minimal; import PRESETS inside main()
 import json
 from pathlib import Path
 
 
 def main() -> None:
+    # Ensure repository root is on sys.path for local imports (done at runtime)
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
     # Lazy import heavy geometry implementation at runtime so type-checkers
     # and import-time execution don't pull in the large module.
     geom_mod = importlib.import_module('potfoundry' + '.core.geometry')

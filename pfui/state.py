@@ -26,10 +26,25 @@ Example
     apply_pending_updates()  # merge then clear pending
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, MutableMapping, cast
 import streamlit as st
+import importlib
 
-from .schemas import STYLE_SCHEMAS, GLOBAL_CONTROLS
+# Lazy-load schema constants to avoid importing pfui.schemas at module import time.
+STYLE_SCHEMAS: dict = {}
+GLOBAL_CONTROLS: dict = {}
+
+
+def _ensure_schema_globals() -> None:
+    global STYLE_SCHEMAS, GLOBAL_CONTROLS
+    if not STYLE_SCHEMAS or not GLOBAL_CONTROLS:
+        try:
+            mod = importlib.import_module('pfui.schemas')
+            STYLE_SCHEMAS.update(getattr(mod, 'STYLE_SCHEMAS', {}) or {})
+            GLOBAL_CONTROLS.update(getattr(mod, 'GLOBAL_CONTROLS', {}) or {})
+        except Exception:
+            STYLE_SCHEMAS = STYLE_SCHEMAS or {}
+            GLOBAL_CONTROLS = GLOBAL_CONTROLS or {}
 
 # ---------- Widget key helper -------------------------------------------------
 
@@ -61,7 +76,7 @@ def widget_key(style: str, field: str) -> str:
 _PENDING_KEY: str = "__pending_updates__"
 
 
-def _deep_merge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge(dst: MutableMapping[str, Any], src: Dict[str, Any]) -> MutableMapping[str, Any]:
     """
     Purpose:
         Recursively merge src into dst (last-write-wins on leaves).
@@ -126,7 +141,8 @@ def apply_pending_updates() -> None:
     """
     updates = st.session_state.pop(_PENDING_KEY, None)
     if updates:
-        _deep_merge(st.session_state, updates)
+        # st.session_state is a SessionStateProxy; cast to MutableMapping for mypy-friendly merge
+        _deep_merge(cast(MutableMapping[str, Any], st.session_state), updates)
 
 
 # ---------- Reset helpers (DEFERRED writes) ----------------------------------
@@ -146,6 +162,7 @@ def _schema_defaults_for_style(style: str) -> Dict[str, Any]:
     # Global defaults (driven by schema; not hard-coded).
     # IMPORTANT: Do not set a session value if there is no explicit default.
     # Many Streamlit widgets crash when value=None is pre-injected.
+    _ensure_schema_globals()
     for gkey, gmeta in GLOBAL_CONTROLS.items():
         if hasattr(gmeta, "get") and "default" in gmeta:
             updates[widget_key(style, gkey)] = gmeta["default"]

@@ -2,9 +2,22 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
+import importlib
 import streamlit as st
 
-from .schemas import STYLE_SCHEMAS       # << import from schemas
+# Lazy-load STYLE_SCHEMAS to avoid importing the heavy pfui.schemas module on import.
+STYLE_SCHEMAS: dict = {}
+
+
+def _ensure_style_schemas() -> dict:
+    global STYLE_SCHEMAS
+    if not STYLE_SCHEMAS:
+        try:
+            mod = importlib.import_module('pfui.schemas')
+            STYLE_SCHEMAS.update(getattr(mod, 'STYLE_SCHEMAS', {}) or {})
+        except Exception:
+            STYLE_SCHEMAS = {}
+    return STYLE_SCHEMAS
 
 def widget_key(style: str, field: str) -> str:
     """Generate unique widget key for Streamlit session state.
@@ -345,7 +358,7 @@ def render_preset_manager(style_name: str, H: float, top_od: float, bottom_od: f
                     "wall": t_wall, "bottom": t_bottom, "drain": r_drain, "flare_exp": expn,
                 },
                 "opts": {k: st.session_state.get(widget_key(style_name, k), v["default"])
-                         for k, v in STYLE_SCHEMAS.get(style_name, {}).items()},
+                         for k, v in _ensure_style_schemas().get(style_name, {}).items()},
             }
             pdata.setdefault("presets", []).append(preset)
             if _write_user_presets(pdata):

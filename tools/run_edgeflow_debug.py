@@ -9,10 +9,14 @@ import sys
 import importlib
 
 repo_root = Path(r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0")
-sys.path.insert(0, str(repo_root))
+
 
 
 def main() -> None:
+    # Ensure project root is on sys.path at runtime to support local imports
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
     geom_mod = importlib.import_module('potfoundry.core.geometry')
     build_pot_mesh = getattr(geom_mod, 'build_pot_mesh')
 

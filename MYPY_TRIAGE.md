@@ -175,12 +175,23 @@ Purpose
 
 ## Change log (recent)
  - [2025-10-21] Commit da4593d: annotate streamlit 'st' as Any in `pfui/library_ui.py` (removed `# type: ignore`). Ran mypy (focused): Found 162 errors in 19 files (checked packages). Tests: 347 passed.
+
  - [2025-10-21] Commit bddb45e: predeclare streamlit 'st' and remove unused type-ignore in `pfui/state_history.py`. Ran mypy (focused): Found 162 errors in 19 files. Tests: 347 passed.
+
  - [2025-10-21] Commit e0c905f: pfui/yaml_tools: coerce yaml.safe_dump to str to satisfy mypy return type. Ran mypy (focused): Found 126 errors in 13 files. Tests: 347 passed.
+
  - [2025-10-21] Commit 1d01727: pfui/exporters: cast WRITE_STL_BINARY to Callable to satisfy mypy; removed inline ignore. Ran mypy (focused): Found 125 errors in 12 files. Tests: 347 passed.
+
  - [2025-10-21] Commit e3a1892: pfui/preview.py: typing fixes — typed cache callable, explicit np.float64 coercions, robust colormap access, renamed png return to avoid shadowing, cast Plotly image outputs to bytes. Ran mypy (focused): preview.py clean; overall focused run: 120 errors in 11 files. Tests: 347 passed.
+ 
  - [2025-10-21] Commit 93b53f7: pfui/colors.py: allow Optional z_norm and safe fallback in exception path to remove unreachable-return mypy error. Tests: targeted colors tests passed (5 passed). Ran mypy (focused): no issues in `pfui/colors.py`.
  - [2025-10-21] Commit 1088fcc: pfui/deeplink.py: annotate `validate_state` types (Dict[str,Any], List[str]) and normalize Streamlit query param retrieval to avoid mismatched assignment types. Tests: deeplink library tests passed (11 passed). Ran mypy (focused): deeplink.py cleaned of the reported assignment errors.
+
+ - [2025-10-21] Commit 7dd1217: tools/edgeflow_make_compare.py: add explicit return type for `load_row_by_mode` (Tuple[Optional[dict], Optional[float]]). Focused mypy: no issues in file. No tests.
+
+ - [2025-10-21] Commit 7dd1217: tools/debug_print_probe.py: lazy-load `build_pot_mesh` at runtime using importlib and treat as Any to avoid static analysis of heavy geometry module during focused checks. Focused mypy: no issues in file. Runtime smoke: produced a diagnostic entry successfully in this environment.
+
+ - [2025-10-21] Commit 74ee6ed: tools/inspect_edgeflow_zi42.py: coerce JSON fields to concrete lists and avoid name shadowing; focused mypy: no issues in file. Runtime smoke: produced expected summary output.
 
 
 ## Next action (awaiting your direction)

@@ -1,12 +1,14 @@
 import os, sys, json, importlib
-repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if repo_root not in sys.path:
-    sys.path.insert(0, repo_root)
 from pathlib import Path
 
 
 
 def main() -> None:
+    # Ensure repository root is on sys.path for local imports
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
     # Lazy import the heavy geometry module to avoid importing it at module
     # import time (keeps focused mypy runs small and fast).
     geom_mod = importlib.import_module('potfoundry' + '.core.geometry')

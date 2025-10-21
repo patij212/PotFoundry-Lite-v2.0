@@ -7,15 +7,17 @@ These helper import wrappers prefer the modern locations under
 They are typed as Optionals so callers can handle absence at runtime.
 """
 
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple, cast
 import importlib
 
 
 def _import_writer() -> Optional[Callable[..., Any]]:
-    # Preferred location
+    # Preferred location (dynamic import to avoid static analysis of heavy modules)
     try:
-        from potfoundry.core.io.stl import write_stl_binary
-        return write_stl_binary
+        mod = importlib.import_module("potfoundry.core.io.stl")
+        w = getattr(mod, "write_stl_binary", None)
+        if callable(w):
+            return cast(Callable[..., Any], w)
     except Exception:
         # Try older top-level exports or modules using importlib to avoid
         # static import-time complaints from type checkers.
@@ -23,14 +25,14 @@ def _import_writer() -> Optional[Callable[..., Any]]:
             mod = importlib.import_module("potfoundry")
             w = getattr(mod, "write_stl_binary", None)
             if callable(w):
-                return w
+                return cast(Callable[..., Any], w)
         except Exception:
             pass
         try:
             mod = importlib.import_module("potfoundry.stl")
             w = getattr(mod, "write_stl_binary", None)
             if callable(w):
-                return w
+                return cast(Callable[..., Any], w)
         except Exception:
             pass
     return None
@@ -38,9 +40,15 @@ def _import_writer() -> Optional[Callable[..., Any]]:
 
 def _import_geometry() -> Tuple[Any, Any, Any, Any]:
     try:
-        from potfoundry.core.geometry import STYLES, base_radius, _spin_twist_radians, build_pot_mesh
-        return STYLES, base_radius, _spin_twist_radians, build_pot_mesh
+        mod = importlib.import_module("potfoundry.core.geometry")
+        return (
+            getattr(mod, "STYLES"),
+            getattr(mod, "base_radius"),
+            getattr(mod, "_spin_twist_radians"),
+            getattr(mod, "build_pot_mesh"),
+        )
     except Exception:
+        # Fallback to legacy geometry module path
         mod = importlib.import_module("potfoundry.geometry")
         return (
             getattr(mod, "STYLES"),
@@ -80,6 +88,53 @@ def _import_schema_and_batch() -> Tuple[Optional[Callable[..., Any]], Optional[C
     return validate_recipe, load_config, build_from_yaml
 
 
-WRITE_STL_BINARY = _import_writer()
-STYLES, base_radius, _spin_twist_radians, build_pot_mesh = _import_geometry()
-validate_recipe, load_config, build_from_yaml = _import_schema_and_batch()
+# Caches for lazily-exported attributes. Keep names matching the previous API
+# but avoid doing heavy imports at module import time. PEP 562 (__getattr__) is
+# used so attribute access triggers the imports on-demand.
+_WRITE_STL_BINARY: Optional[Callable[..., Any]] = None
+_GEOMETRY_CACHE: Optional[Tuple[Any, Any, Any, Any]] = None
+_SCHEMA_BATCH_CACHE: Optional[Tuple[Optional[Callable[..., Any]], Optional[Callable[..., Any]], Optional[Callable[..., Any]]]] = None
+
+
+def __getattr__(name: str):
+    """Lazily provide attributes matching the old module-level exports.
+
+    Supported names: WRITE_STL_BINARY, STYLES, base_radius,
+    _spin_twist_radians, build_pot_mesh, validate_recipe, load_config,
+    build_from_yaml.
+    """
+    global _WRITE_STL_BINARY, _GEOMETRY_CACHE, _SCHEMA_BATCH_CACHE
+    if name == "WRITE_STL_BINARY":
+        if _WRITE_STL_BINARY is None:
+            _WRITE_STL_BINARY = _import_writer()
+        return _WRITE_STL_BINARY
+
+    if name in ("STYLES", "base_radius", "_spin_twist_radians", "build_pot_mesh"):
+        if _GEOMETRY_CACHE is None:
+            _GEOMETRY_CACHE = _import_geometry()
+        mapping = {"STYLES": 0, "base_radius": 1, "_spin_twist_radians": 2, "build_pot_mesh": 3}
+        return _GEOMETRY_CACHE[mapping[name]]
+
+    if name in ("validate_recipe", "load_config", "build_from_yaml"):
+        if _SCHEMA_BATCH_CACHE is None:
+            _SCHEMA_BATCH_CACHE = _import_schema_and_batch()
+        mapping = {"validate_recipe": 0, "load_config": 1, "build_from_yaml": 2}
+        return _SCHEMA_BATCH_CACHE[mapping[name]]
+
+    raise AttributeError(name)
+
+
+__all__ = [
+    "_import_writer",
+    "_import_geometry",
+    "_import_schema_and_batch",
+    # lazy attributes available via module attribute access
+    "WRITE_STL_BINARY",
+    "STYLES",
+    "base_radius",
+    "_spin_twist_radians",
+    "build_pot_mesh",
+    "validate_recipe",
+    "load_config",
+    "build_from_yaml",
+]

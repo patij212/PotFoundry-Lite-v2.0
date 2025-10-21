@@ -4,9 +4,11 @@ This module centralizes color palette resolution and gradient mapping logic so i
 be unit‑tested independent of the Streamlit app.
 """
 from __future__ import annotations
-from typing import Any, List, Optional, Sequence, Tuple, Union
-import numpy as np
-import numpy.typing as npt
+from typing import Any, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
+if TYPE_CHECKING:
+    # numpy typing for static tools only; runtime import is lazy inside functions
+    import numpy as np
+    import numpy.typing as npt
 
 DEFAULT_CUSTOM_COLORS = ("#2850D0", "#5FA8FF", "#E2F3FF")
 
@@ -51,14 +53,15 @@ def resolve_palette(preset: Optional[str], custom_colors: Optional[Sequence[str]
     return tuple(map(int, hex_to_rgb_tuple(d1))) , tuple(map(int, hex_to_rgb_tuple(d2))) , tuple(map(int, hex_to_rgb_tuple(d3)))  # type: ignore
 
 
-def build_gradient_colors(z_norm: Optional[Union[Sequence[float], npt.NDArray[np.float64]]], preset: Optional[str], custom_colors: Optional[Sequence[str]] = None) -> List[List[int]]:
+def build_gradient_colors(z_norm: Optional[Union[Sequence[float], 'npt.NDArray[np.float64]']], preset: Optional[str], custom_colors: Optional[Sequence[str]] = None) -> List[List[int]]:
     """Piecewise 3‑point gradient mapping.
 
     z_norm: 1D iterable/array of values assumed in [0,1].
     Returns list of [r,g,b].
     """
+    # Keep numpy imports local to avoid import-time heavy dependency resolution.
     try:
-        pass  # local import to keep module light if numpy absent in some contexts
+        import numpy as np  # noqa: F401
     except Exception:  # pragma: no cover
         return [[200, 200, 230] for _ in (z_norm or [])]
     if z_norm is None:

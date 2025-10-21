@@ -2,7 +2,22 @@ from __future__ import annotations
 from typing import Any, Dict
 import streamlit as st
 
-from .schemas import STYLE_SCHEMAS   # << changed
+import importlib
+
+# Avoid importing the heavy/fragile `pfui.schemas` module at module import time.
+# Load on-demand at runtime to keep focused mypy runs and editor diagnostics small.
+STYLE_SCHEMAS: dict = {}
+
+
+def _ensure_style_schemas() -> dict:
+    global STYLE_SCHEMAS
+    if not STYLE_SCHEMAS:
+        try:
+            mod = importlib.import_module('pfui.schemas')
+            STYLE_SCHEMAS.update(getattr(mod, 'STYLE_SCHEMAS', {}) or {})
+        except Exception:
+            STYLE_SCHEMAS = {}
+    return STYLE_SCHEMAS
 from .state import widget_key
 
 
@@ -31,24 +46,24 @@ def _render_control(style: str, key: str, meta: Dict[str, Any]) -> Any:
         default_num = _to_float(default if default is not None else 0.0, 0.0)
         if mtype == "int":
             # Ensure numeric types are explicit for mypy: coerce meta values to float then to int
-            minv: int = int(round(float(meta.get("min", int(default_num) - 10))))
-            maxv: int = int(round(float(meta.get("max", int(default_num) + 10))))
-            step: int = int(round(float(meta.get("step", 1))))
-            if maxv <= minv:
-                maxv = minv + max(1, step)
+            minv_i: int = int(round(float(meta.get("min", int(default_num) - 10))))
+            maxv_i: int = int(round(float(meta.get("max", int(default_num) + 10))))
+            step_i: int = int(round(float(meta.get("step", 1))))
+            if maxv_i <= minv_i:
+                maxv_i = minv_i + max(1, step_i)
             cur = int(round(_to_float(value, default_num)))
-            cur = max(minv, min(maxv, cur))
-            return int(st.slider(meta.get("label", key), minv, maxv, cur, step, key=wkey, help=meta.get("help", "")))
+            cur = max(minv_i, min(maxv_i, cur))
+            return int(st.slider(meta.get("label", key), minv_i, maxv_i, cur, step_i, key=wkey, help=meta.get("help", "")))
         else:
             # Float branch: coerce values to float for consistent typing
-            minv: float = float(meta.get("min", default_num - 1.0))
-            maxv: float = float(meta.get("max", default_num + 1.0))
-            step: float = float(meta.get("step", 0.01))
-            if maxv <= minv:
-                maxv = minv + (step if step > 0 else 1.0)
+            minv_f: float = float(meta.get("min", default_num - 1.0))
+            maxv_f: float = float(meta.get("max", default_num + 1.0))
+            step_f: float = float(meta.get("step", 0.01))
+            if maxv_f <= minv_f:
+                maxv_f = minv_f + (step_f if step_f > 0 else 1.0)
             cur = _to_float(value, default_num)
-            cur = max(minv, min(maxv, cur))
-            return float(st.slider(meta.get("label", key), minv, maxv, cur, step, key=wkey, help=meta.get("help", "")))
+            cur = max(minv_f, min(maxv_f, cur))
+            return float(st.slider(meta.get("label", key), minv_f, maxv_f, cur, step_f, key=wkey, help=meta.get("help", "")))
 
     if mtype == "select":
         options = meta.get("options", []) or []
@@ -78,14 +93,14 @@ def style_controls(style: str) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: map of option key -> selected value
     """
-    schema = STYLE_SCHEMAS.get(style, {})
+    schema = _ensure_style_schemas().get(style, {})
     if not schema:
         st.info("This style has no specific controls. Use Advanced options below or JSON override.")
         return {}
 
     # ---------------- LowPolyFacet: fine-grained grouping ----------------
     if style == "LowPolyFacet":
-        out: Dict[str, Any] = {}
+        out_lp: Dict[str, Any] = {}
 
         shape_keys = [
             "lp_facets", "lp_tiers", "lp_amp", "lp_bevel", "lp_phase_deg", "lp_jitter",
@@ -112,17 +127,17 @@ def style_controls(style: str) -> Dict[str, Any]:
             cols = st.columns(3)
             for i, k in enumerate([kk for kk in shape_keys if kk in schema]):
                 with cols[i % 3]:
-                    out[k] = _render_control(style, k, schema[k])
+                    out_lp[k] = _render_control(style, k, schema[k])
 
         with st.expander("Seam cuts", expanded=False):
             cols = st.columns(3)
             for i, k in enumerate([kk for kk in seam_cut_keys if kk in schema]):
                 with cols[i % 3]:
-                    out[k] = _render_control(style, k, schema[k])
+                    out_lp[k] = _render_control(style, k, schema[k])
             # Convenience: link cut angles mirrors bottom to top
             try:
-                if out.get("lp_link_cut_angles"):
-                    out["lp_cut_top_deg"] = int(out.get("lp_cut_bot_deg", 0) or 0)
+                if out_lp.get("lp_link_cut_angles"):
+                    out_lp["lp_cut_top_deg"] = int(out_lp.get("lp_cut_bot_deg", 0) or 0)
             except Exception:
                 pass
 
@@ -130,13 +145,13 @@ def style_controls(style: str) -> Dict[str, Any]:
             cols = st.columns(3)
             for i, k in enumerate([kk for kk in edge_diag_keys if kk in schema]):
                 with cols[i % 3]:
-                    out[k] = _render_control(style, k, schema[k])
+                    out_lp[k] = _render_control(style, k, schema[k])
 
         with st.expander("Print & debug", expanded=False):
             cols = st.columns(3)
             for i, k in enumerate([kk for kk in print_debug_keys if kk in schema]):
                 with cols[i % 3]:
-                    out[k] = _render_control(style, k, schema[k])
+                    out_lp[k] = _render_control(style, k, schema[k])
 
         # Render any remaining/unknown keys so future additions are not hidden
         consumed = set(shape_keys) | set(seam_cut_keys) | set(edge_diag_keys) | set(print_debug_keys)
@@ -146,13 +161,13 @@ def style_controls(style: str) -> Dict[str, Any]:
                 cols2 = st.columns(3)
                 for i, k in enumerate(remaining):
                     with cols2[i % 3]:
-                        out[k] = _render_control(style, k, schema[k])
+                        out_lp[k] = _render_control(style, k, schema[k])
 
-        return out
+        return out_lp
 
     # ---------------- SuperformulaBlossom: focused grouping ----------------
     if style == "SuperformulaBlossom":
-        out: Dict[str, Any] = {}
+        out_sf: Dict[str, Any] = {}
 
         shape_keys = [
             "sf_strength",
@@ -195,32 +210,32 @@ def style_controls(style: str) -> Dict[str, Any]:
             cols = st.columns(3)
             for i, k in enumerate([kk for kk in shape_keys if kk in schema]):
                 with cols[i % 3]:
-                    out[k] = _render_control(style, k, schema[k])
+                    out_sf[k] = _render_control(style, k, schema[k])
 
         with st.expander("Tame & sharpen", expanded=False):
             cols = st.columns(3)
             for i, k in enumerate([kk for kk in tame_sharp_keys if kk in schema]):
                 with cols[i % 3]:
-                    out[k] = _render_control(style, k, schema[k])
+                    out_sf[k] = _render_control(style, k, schema[k])
 
         with st.expander("Edge clarity & diagonals", expanded=False):
             cols = st.columns(3)
             for i, k in enumerate([kk for kk in edge_diag_keys if kk in schema]):
                 with cols[i % 3]:
-                    out[k] = _render_control(style, k, schema[k])
+                    out_sf[k] = _render_control(style, k, schema[k])
 
         with st.expander("Edge reconstruction (peaks)", expanded=False):
             cols = st.columns(3)
             for i, k in enumerate([kk for kk in peak_snap_keys if kk in schema]):
                 with cols[i % 3]:
-                    out[k] = _render_control(style, k, schema[k])
+                    out_sf[k] = _render_control(style, k, schema[k])
 
         with st.expander("Edge reconstruction (2D flow)", expanded=False):
             st.caption("Core")
             cols = st.columns(3)
             for i, k in enumerate([kk for kk in flow_core_keys if kk in schema]):
                 with cols[i % 3]:
-                    out[k] = _render_control(style, k, schema[k])
+                    out_sf[k] = _render_control(style, k, schema[k])
             # Ridge/path options
             keys2 = [kk for kk in flow_ridge_keys if kk in schema]
             if keys2:
@@ -228,7 +243,7 @@ def style_controls(style: str) -> Dict[str, Any]:
                 cols2 = st.columns(3)
                 for i, k in enumerate(keys2):
                     with cols2[i % 3]:
-                        out[k] = _render_control(style, k, schema[k])
+                        out_sf[k] = _render_control(style, k, schema[k])
             # Alignment/safety options
             keys3 = [kk for kk in flow_align_keys if kk in schema]
             if keys3:
@@ -236,7 +251,7 @@ def style_controls(style: str) -> Dict[str, Any]:
                 cols3 = st.columns(3)
                 for i, k in enumerate(keys3):
                     with cols3[i % 3]:
-                        out[k] = _render_control(style, k, schema[k])
+                        out_sf[k] = _render_control(style, k, schema[k])
 
         # Any future/unknown keys
         consumed = (
@@ -254,17 +269,17 @@ def style_controls(style: str) -> Dict[str, Any]:
                 cols2 = st.columns(3)
                 for i, k in enumerate(remaining):
                     with cols2[i % 3]:
-                        out[k] = _render_control(style, k, schema[k])
-        return out
+                        out_sf[k] = _render_control(style, k, schema[k])
+        return out_sf
 
     # ---------------- Default: simple, compact grid ----------------
     colN = max(2, min(4, len(schema)))
     cols = st.columns(colN)
-    out: Dict[str, Any] = {}
+    out_default: Dict[str, Any] = {}
     for i, (key, meta) in enumerate(schema.items()):
         with cols[i % colN]:
-            out[key] = _render_control(style, key, meta)
-    return out
+            out_default[key] = _render_control(style, key, meta)
+    return out_default
 
 
 def adv_shape_controls(style: str) -> Dict[str, Any]:
