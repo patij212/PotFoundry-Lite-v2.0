@@ -46,9 +46,9 @@ def render_batch_tab() -> None:
                 if validate_recipe is None:
                     st.info(f"{name_r}: Validator not available in this build")
                 else:
-                        # validate_recipe may be untyped; cast to a permissive callable
-                        validator = cast(Callable[..., Any], validate_recipe)
-                        errs = validator(r, cobj)
+                    # validate_recipe may be untyped; cast to a permissive callable
+                    validator = cast(Callable[..., Any], validate_recipe)
+                    errs = validator(r, cobj)
                     if errs:
                         st.error(f"{name_r}: Errors: {len(errs)} - " + "; ".join(errs))
                     else:
