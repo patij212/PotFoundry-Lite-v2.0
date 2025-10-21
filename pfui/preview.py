@@ -79,9 +79,9 @@ def make_preview_arrays(
         base_cos = _np.cos(thetas)
         base_sin = _np.sin(thetas)
         zvals = _np.linspace(0.0, H, nz)
-        X = _np.zeros((nz, nt), dtype=float)
-        Y = _np.zeros((nz, nt), dtype=float)
-        Z = _np.zeros((nz, nt), dtype=float)
+        X = _np.zeros((nz, nt), dtype=_np.float64)
+        Y = _np.zeros((nz, nt), dtype=_np.float64)
+        Z = _np.zeros((nz, nt), dtype=_np.float64)
         ring_fallbacks = 0
         theta_fallbacks = 0
         for i, z in enumerate(zvals):
@@ -101,7 +101,7 @@ def make_preview_arrays(
             r: _np.ndarray
             try:
                 r_vec = r_outer_fn(thetas, z, r0, H, _opts)
-                r = _np.asarray(r_vec, dtype=float)
+                r = _np.asarray(r_vec, dtype=_np.float64)
                 if r.shape != (nt,):
                     raise ValueError("vectorized style returned unexpected shape")
             except Exception:
@@ -123,9 +123,9 @@ def make_preview_arrays(
             X[i, :], Y[i, :], Z[i, :] = r * cx, r * sy, z
         # Final guard: ensure arrays are float and finite to avoid Plotly/Matplotlib failures
         try:
-            X_arr = _np.asarray(X, dtype=float)
-            Y_arr = _np.asarray(Y, dtype=float)
-            Z_arr = _np.asarray(Z, dtype=float)
+            X_arr = _np.asarray(X, dtype=_np.float64)
+            Y_arr = _np.asarray(Y, dtype=_np.float64)
+            Z_arr = _np.asarray(Z, dtype=_np.float64)
             # Replace any residual NaN/Inf with safe zeros; Z should be finite by construction
             X[:] = _np.nan_to_num(X_arr, nan=0.0, posinf=0.0, neginf=0.0)
             Y[:] = _np.nan_to_num(Y_arr, nan=0.0, posinf=0.0, neginf=0.0)
@@ -142,7 +142,8 @@ def make_preview_arrays(
                 st.info(msg)
             except Exception:
                 pass
-        return X, Y, Z
+        # Ensure returned arrays are np.float64 typed for mypy/numpy typing
+        return _np.asarray(X, dtype=_np.float64), _np.asarray(Y, dtype=_np.float64), _np.asarray(Z, dtype=_np.float64)
 
     for scale in (1.0, 0.75, 0.5, 0.33):
         try:
@@ -157,9 +158,9 @@ def make_preview_arrays(
     thetas = _np.linspace(0.0, 2.0 * _np.pi, max(24, n_theta // 4), endpoint=False)
     zvals = _np.linspace(0.0, H, max(12, n_z // 4))
     Rmid = 0.5 * (Rt + Rb)
-    X = _np.outer(_np.ones_like(zvals), Rmid * _np.cos(thetas))
-    Y = _np.outer(_np.ones_like(zvals), Rmid * _np.sin(thetas))
-    Z = _np.outer(zvals, _np.ones_like(thetas))
+    X = _np.asarray(_np.outer(_np.ones_like(zvals), Rmid * _np.cos(thetas)), dtype=_np.float64)
+    Y = _np.asarray(_np.outer(_np.ones_like(zvals), Rmid * _np.sin(thetas)), dtype=_np.float64)
+    Z = _np.asarray(_np.outer(zvals, _np.ones_like(thetas)), dtype=_np.float64)
     return X, Y, Z
 
 
