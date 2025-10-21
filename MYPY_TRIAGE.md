@@ -177,6 +177,7 @@ Purpose
  - [2025-10-21] Commit da4593d: annotate streamlit 'st' as Any in `pfui/library_ui.py` (removed `# type: ignore`). Ran mypy (focused): Found 162 errors in 19 files (checked packages). Tests: 347 passed.
  - [2025-10-21] Commit bddb45e: predeclare streamlit 'st' and remove unused type-ignore in `pfui/state_history.py`. Ran mypy (focused): Found 162 errors in 19 files. Tests: 347 passed.
  - [2025-10-21] Commit e0c905f: pfui/yaml_tools: coerce yaml.safe_dump to str to satisfy mypy return type. Ran mypy (focused): Found 126 errors in 13 files. Tests: 347 passed.
+ - [2025-10-21] Commit 1d01727: pfui/exporters: cast WRITE_STL_BINARY to Callable to satisfy mypy; removed inline ignore. Ran mypy (focused): Found 125 errors in 12 files. Tests: 347 passed.
 
 
 ## Next action (awaiting your direction)
