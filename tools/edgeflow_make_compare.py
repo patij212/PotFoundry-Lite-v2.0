@@ -4,9 +4,9 @@ for a requested zi (default 42). Prints JSON to stdout.
 """
 import sys, json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, Any
 
-def load_row_by_mode(jsonl_path: Path, zi: int, mode: str = 'last', ts: Optional[float] = None):
+def load_row_by_mode(jsonl_path: Path, zi: int, mode: str = 'last', ts: Optional[float] = None) -> Tuple[Optional[dict], Optional[float]]:
     found = None
     found_ts = None
     try:

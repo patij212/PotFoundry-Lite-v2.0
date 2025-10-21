@@ -1,7 +1,20 @@
 import json
 import numpy as np
 from pathlib import Path
-from potfoundry.core.geometry import build_pot_mesh
+from typing import Any
+import importlib
+
+# Dynamically import the heavy geometry module at runtime using importlib so
+# static type checkers won't eagerly analyze it when we run focused mypy on
+# these small helper scripts.
+build_pot_mesh: Any = None
+
+def _get_build_pot_mesh() -> Any:
+    global build_pot_mesh
+    if build_pot_mesh is None:
+        mod = importlib.import_module('potfoundry.core.geometry')
+        build_pot_mesh = getattr(mod, 'build_pot_mesh')
+    return build_pot_mesh
 
 n_theta = 24
 n_z = 6
@@ -30,6 +43,8 @@ style_opts = {
     'sf_edge_flow_auto_deoffset': False,
     'sf_edge_flow_window': 5,
 }
+
+build_pot_mesh = _get_build_pot_mesh()
 
 verts, faces, diagnostics = build_pot_mesh(
     H=7.0, Rt=40.0, Rb=40.0, t_wall=2.5, t_bottom=4.0, r_drain=3.0,
