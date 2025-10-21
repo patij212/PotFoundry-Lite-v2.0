@@ -27,7 +27,8 @@ def load_row_by_mode(jsonl_path: Path, zi: int, mode: str = 'last', ts: Optional
     if mode == 'first':
         iterable = lines
     else:
-        iterable = reversed(lines)
+        # ensure a list is assigned (mypy complains about reversed -> list type)
+        iterable = list(reversed(lines))
 
     for obj in iterable:
         rows = obj.get('rows') if isinstance(obj, dict) else None

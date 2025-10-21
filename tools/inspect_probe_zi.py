@@ -45,7 +45,9 @@ lines = JSONL.read_text(encoding='utf-8').splitlines()
 if mode == 'first' or mode == 'timestamp':
     iterable = lines
 else:
-    iterable = reversed(lines)
+    # mypy: reversed(...) returns a reversed iterator; convert to list to keep a
+    # consistent sequence type for later indexing and len() checks.
+    iterable = list(reversed(lines))
 
 for line in iterable:
     if not line.strip():

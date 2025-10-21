@@ -44,15 +44,25 @@ for line in INPATH.read_text(encoding='utf-8').splitlines():
         # origin map distribution
         om = r.get('origin_map_sample') or []
         if om:
-            # convert to ints if possible
-            try:
-                om_ints = [int(x) for x in om]
-            except Exception:
-                om_ints = [int(x) if isinstance(x, (int,float)) else str(x) for x in om]
+            # normalize origin_map entries to ints where possible to have a
+            # consistent key type for Counter and downstream uses.
+            om_ints: list[int] = []
+            for x in om:
+                try:
+                    om_ints.append(int(x))
+                except Exception:
+                    # fallback: coerce numeric-like floats -> int, else use -1 as sentinel
+                    try:
+                        if isinstance(x, (float,)):
+                            om_ints.append(int(x))
+                        else:
+                            om_ints.append(-1)
+                    except Exception:
+                        om_ints.append(-1)
             cnt = Counter(om_ints)
             s['origin_map_counts'] = dict(cnt)
-            # report contiguous blocks count
-            blocks = []
+            # report contiguous blocks count (list of (value, run_length))
+            blocks: list[tuple[int, int]] = []
             prev = None
             blocklen = 0
             for v in om_ints:

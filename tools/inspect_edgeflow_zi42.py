@@ -14,11 +14,19 @@ if not found:
     print('NOT_FOUND')
     raise SystemExit(1)
 Rnew=found['R_new_raw_sample']
-Env=found.get('Env_to_use_sample') or found.get('Env_to_use_raw_post') or found.get('Env_to_use')
+# Ensure Env is a sequence (not None) so zip() and indexing are safe and consistent
+Env = found.get('Env_to_use_sample') or found.get('Env_to_use_raw_post') or found.get('Env_to_use')
+if Env is None:
+    Env = []
 min_final=found.get('min_final_raw')
 viol=[]
-for i,(r,e) in enumerate(zip(Rnew,Env)):
-    if r + 1e-12 < e:
+for i,(r,e) in enumerate(zip(Rnew, Env)):
+    try:
+        if r + 1e-12 < e:
+            viol.append({'i':i,'R_new':r,'Env':e,'diff':e-r})
+    except Exception:
+        # skip non-numeric comparisons
+        continue
         viol.append({'i':i,'R_new':r,'Env':e,'diff':e-r})
 summary={
     'zi': found.get('zi'),

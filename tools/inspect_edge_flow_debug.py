@@ -28,10 +28,10 @@ reports = latest.get('reports', [])
 print('latest_reports_count=', latest.get('reports_count', len(reports)))
 
 # analyze reports
-empty_idxs = []
-mapped_mismatch = []
-idxs_lens = []
-has_theta_val_nan = []
+empty_idxs: list[tuple[int, int, object]] = []
+mapped_mismatch: list[tuple[int, int, int, int]] = []
+idxs_lens: list[int] = []
+has_theta_val_nan: list[tuple[int, int, object]] = []
 for i, r in enumerate(reports):
     idxs = r.get('idxs', [])
     mapped = r.get('mapped_raw_idxs', [])
