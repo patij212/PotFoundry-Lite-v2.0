@@ -51,7 +51,7 @@ def resolve_palette(preset: Optional[str], custom_colors: Optional[Sequence[str]
     return tuple(map(int, hex_to_rgb_tuple(d1))) , tuple(map(int, hex_to_rgb_tuple(d2))) , tuple(map(int, hex_to_rgb_tuple(d3)))  # type: ignore
 
 
-def build_gradient_colors(z_norm: Union[Sequence[float], npt.NDArray[np.float64]], preset: Optional[str], custom_colors: Optional[Sequence[str]] = None) -> List[List[int]]:
+def build_gradient_colors(z_norm: Optional[Union[Sequence[float], npt.NDArray[np.float64]]], preset: Optional[str], custom_colors: Optional[Sequence[str]] = None) -> List[List[int]]:
     """Piecewise 3‑point gradient mapping.
 
     z_norm: 1D iterable/array of values assumed in [0,1].
@@ -60,7 +60,7 @@ def build_gradient_colors(z_norm: Union[Sequence[float], npt.NDArray[np.float64]
     try:
         pass  # local import to keep module light if numpy absent in some contexts
     except Exception:  # pragma: no cover
-        return [[200, 200, 230] for _ in z_norm]
+        return [[200, 200, 230] for _ in (z_norm or [])]
     if z_norm is None:
         return []
     c1, c2, c3 = resolve_palette(preset, custom_colors)
