@@ -9,7 +9,6 @@ import numpy as np
 
 # Binary STL writer (recommended for all exports)
 from .imports import WRITE_STL_BINARY
-from typing import Any, Callable
 
 
 def _safe_name(name: str) -> str:
