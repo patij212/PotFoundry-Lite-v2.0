@@ -19,4 +19,5 @@ def dump_recipe_yaml(name: str, style_name: str, H: float, top_od: float, bottom
         },
         "opts": opts,
     }
-    return _yaml.safe_dump({"recipes": [recipe]}, sort_keys=False)
+    # safe_dump can return Any/str depending on PyYAML; coerce to str to satisfy typing
+    return str(_yaml.safe_dump({"recipes": [recipe]}, sort_keys=False))
