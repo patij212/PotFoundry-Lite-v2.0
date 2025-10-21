@@ -174,11 +174,9 @@ Purpose
 </details>
 
 ## Change log (recent)
-- [2025-10-21] Merged `MYPY_TRIAGE_FULL.md` into `MYPY_TRIAGE.md` as the canonical triage file. (commit forthcoming)
-- [2025-10-21] Ran mypy after recent Batch 1 fixes and pfui/imports indentation correction: Found 221 errors in 31 files. Tests: 347 passed.
- - [2025-10-21] Commit c4d34e0: applied small preview.py cleanup (removed unused type-ignore, tightened cache decorator). Ran mypy: Found 220 errors in 31 files. Tests: 347 passed.
- - [2025-10-21] Commit f55d281: cleaned `pfui/imports.py` (use importlib/getattr, removed fragile type-ignore fallbacks). Ran mypy: Found 220 errors in 32 files. Tests: 347 passed.
- - [2025-10-21] Commit 77aa504: guarded numeric comparisons and normalized sequences in `tools/inspect_edgeflow_zi42.py`. Ran mypy: Found 220 errors in 32 files. Tests: 347 passed.
+ - [2025-10-21] Commit da4593d: annotate streamlit 'st' as Any in `pfui/library_ui.py` (removed `# type: ignore`). Ran mypy (focused): Found 162 errors in 19 files (checked packages). Tests: 347 passed.
+ - [2025-10-21] Commit bddb45e: predeclare streamlit 'st' and remove unused type-ignore in `pfui/state_history.py`. Ran mypy (focused): Found 162 errors in 19 files. Tests: 347 passed.
+ - [2025-10-21] Commit e0c905f: pfui/yaml_tools: coerce yaml.safe_dump to str to satisfy mypy return type. Ran mypy (focused): Found 126 errors in 13 files. Tests: 347 passed.
 
 
 ## Next action (awaiting your direction)
