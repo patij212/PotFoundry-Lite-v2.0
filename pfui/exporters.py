@@ -9,6 +9,7 @@ import numpy as np
 
 # Binary STL writer (recommended for all exports)
 from .imports import WRITE_STL_BINARY
+from typing import Any, Callable
 
 
 def _safe_name(name: str) -> str:
@@ -37,12 +38,25 @@ def export_stl_bytes(
     Raises:
         RuntimeError: If binary STL writer is not available
     """
-    safe = _safe_name(name)
-    if WRITE_STL_BINARY is None:
+        # wrap the potentially untyped WRITE_STL_BINARY in an annotated callable
+        # so mypy can reason about the call-site without an inline "type: ignore"
+        writer: Callable[[str, str, Any, Any], None] | None = None
+        if callable(WRITE_STL_BINARY):
+            writer = WRITE_STL_BINARY  # type: ignore[assignment]
+
+        if writer is None:
+            raise RuntimeError("WRITE_STL_BINARY not available")
         raise RuntimeError("write_stl_binary not available in this build")
     tmp_path = Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
-    # Export as binary STL (recommended format)
-    WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)  # type: ignore[misc]
+    # Export as binary STL (recommended format). Use a typed Any wrapper so
+    # mypy knows the call is intentional when the imported symbol is an
+    # untyped C-extension or similarly un-annotated helper.
+    writer: Callable[[str, str, Any, Any], None] | None = None
+    if callable(WRITE_STL_BINARY):
+        writer = WRITE_STL_BINARY  # type: ignore[assignment]
+    if writer is None:
+        raise RuntimeError("write_stl_binary not available in this build")
+    writer(str(tmp_path), safe, verts, faces)
     data = tmp_path.read_bytes()
     try:
         tmp_path.unlink(missing_ok=True)
