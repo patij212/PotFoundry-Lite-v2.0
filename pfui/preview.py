@@ -1,18 +1,18 @@
 from __future__ import annotations
 from io import BytesIO
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, Tuple, Optional, Callable, cast
 import numpy as np
 import numpy.typing as npt
 import streamlit as st
 
 # --- Fallback cache decorator for test environments where streamlit.cache_data
 # may be unavailable or replaced by a SimpleNamespace mock. This prevents
-# AttributeError during pytest collection. Use getattr with a default so mypy
-# doesn't require type-ignore annotations.
-_cache_data_impl = getattr(st, "cache_data", None)
+# AttributeError during pytest collection. Declare the type so mypy knows
+# _cache_data_impl may be None and we cast before calling it.
+_cache_data_impl: Optional[Callable[..., Any]] = getattr(st, "cache_data", None)
 if _cache_data_impl is not None:  # pragma: no cover - normal runtime
     def cache_data(*args: Any, **kwargs: Any):  # passthrough to real decorator
-        return _cache_data_impl(*args, **kwargs)
+        return cast(Callable[..., Any], _cache_data_impl)(*args, **kwargs)
 else:  # pragma: no cover - executed only in degraded env (tests)
     def cache_data(*args: Any, **kwargs: Any):
         def _wrap(fn):
@@ -74,7 +74,7 @@ def make_preview_arrays(
         hi = max(lo * 2.0, 4.0 * r0)
         return _np.clip(arr, lo, hi)
 
-    def _try(nt: int, nz: int):
+    def _try(nt: int, nz: int) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
         thetas = _np.linspace(0.0, 2.0 * _np.pi, nt, endpoint=False)
         base_cos = _np.cos(thetas)
         base_sin = _np.sin(thetas)
@@ -100,7 +100,7 @@ def make_preview_arrays(
             # If the style isn't vectorized, gracefully fall back to per-theta sampling.
             r: _np.ndarray
             try:
-                r_vec = r_outer_fn(thetas, z, r0, H, _opts)
+                r_vec: Any = r_outer_fn(thetas, z, r0, H, _opts)
                 r = _np.asarray(r_vec, dtype=_np.float64)
                 if r.shape != (nt,):
                     raise ValueError("vectorized style returned unexpected shape")
@@ -143,7 +143,11 @@ def make_preview_arrays(
             except Exception:
                 pass
         # Ensure returned arrays are np.float64 typed for mypy/numpy typing
-        return _np.asarray(X, dtype=_np.float64), _np.asarray(Y, dtype=_np.float64), _np.asarray(Z, dtype=_np.float64)
+        return (
+            _np.asarray(X, dtype=_np.float64),
+            _np.asarray(Y, dtype=_np.float64),
+            _np.asarray(Z, dtype=_np.float64),
+        )
 
     for scale in (1.0, 0.75, 0.5, 0.33):
         try:
@@ -165,7 +169,8 @@ def make_preview_arrays(
 
 
 def render_preview(
-    X, Y, Z, fig_w: float, fig_h: float, dpi: int, fill_width: bool,
+    X: npt.NDArray[np.float64], Y: npt.NDArray[np.float64], Z: npt.NDArray[np.float64],
+    fig_w: float, fig_h: float, dpi: int, fill_width: bool,
     *, inner_wall: float | None = None,
     view_elev: float = 20.0, view_azim: float = -60.0,
     return_png: bool = False,
@@ -270,13 +275,13 @@ def render_preview(
         ax.set_zlabel("Z (mm)")
 
     _pyplot(fig, fill_width=fill_width)
-    png = None
+    _png_ret: Optional[bytes] = None
     if return_png:
         buf = BytesIO()
         fig.savefig(buf, format="png", dpi=dpi)
-        png = buf.getvalue()
+        _png_ret = buf.getvalue()
     plt.close(fig)
-    return png
+    return _png_ret
 
 
 @cache_data(show_spinner=False)
@@ -646,7 +651,13 @@ def render_mesh_snapshot_cached(
                 rgb255 = build_gradient_colors(face_z, preset if preset != "Custom" else None, custom)
                 colors = [(r/255.0, g/255.0, b/255.0, 1.0) for (r,g,b) in rgb255]
             except Exception:
-                colors = plt.cm.viridis(face_z)
+                # Some matplotlib backends may not expose cm.viridis as an attribute in tests; guard with getattr
+                cmap = getattr(plt.cm, "viridis", None)
+                if cmap is not None:
+                    colors = cmap(face_z)
+                else:
+                    # Fallback: produce grayscale mapping
+                    colors = [(fz, fz, fz, 1.0) for fz in face_z]
             mesh.set_facecolors(colors)
             ax.add_collection3d(mesh)
 
@@ -749,14 +760,14 @@ def render_mesh_snapshot_cached(
                 margin=dict(l=0, r=0, t=30, b=0),
             )
             try:
-                out = fig.to_image(format="png", width=width_px, height=height_px, scale=1)
+                out: Any = fig.to_image(format="png", width=width_px, height=height_px, scale=1)
             except Exception:
                 out = pio.to_image(fig, format="png", width=width_px, height=height_px, scale=1)
             try:
                 st.session_state["_last_snapshot_method"] = "plotly"
             except Exception:
                 pass
-            return out
+            return cast(bytes, out)
         except Exception:
             return None
 
