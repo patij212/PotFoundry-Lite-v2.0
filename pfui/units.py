@@ -1,6 +1,6 @@
 # pfui/units.py
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, cast
 import streamlit as st
 
 _MM_PER_IN = 25.4
@@ -10,7 +10,8 @@ def _in_to_mm(x: float) -> float: return x * _MM_PER_IN
 
 def get_units(key: str = "ui__units") -> str:
     """Return current display units ('mm'|'in')."""
-    return st.session_state.get(key, "mm")
+    # st.session_state.get() is typed as Any; cast to str for mypy while preserving runtime behavior
+    return cast(str, st.session_state.get(key, "mm"))
 
 def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:
     """
@@ -20,7 +21,7 @@ def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:
     """
     mount_flag = f"{key}__mounted"
     if st.session_state.get(mount_flag):
-        return st.session_state.get(key, "mm")
+        return cast(str, st.session_state.get(key, "mm"))
 
     host = st.sidebar if location == "sidebar" else st
     current = st.session_state.get(key, "mm")
