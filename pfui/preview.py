@@ -7,13 +7,14 @@ import streamlit as st
 
 # --- Fallback cache decorator for test environments where streamlit.cache_data
 # may be unavailable or replaced by a SimpleNamespace mock. This prevents
-# AttributeError during pytest collection.
-try:  # pragma: no cover - simple attribute probe
-    _cache_data_impl = getattr(st, "cache_data")  # type: ignore[attr-defined]
-    def cache_data(*args, **kwargs):  # passthrough to real decorator
+# AttributeError during pytest collection. Use getattr with a default so mypy
+# doesn't require type-ignore annotations.
+_cache_data_impl = getattr(st, "cache_data", None)
+if _cache_data_impl is not None:  # pragma: no cover - normal runtime
+    def cache_data(*args: Any, **kwargs: Any):  # passthrough to real decorator
         return _cache_data_impl(*args, **kwargs)
-except Exception:  # pragma: no cover - executed only in degraded env
-    def cache_data(*args, **kwargs):  # type: ignore
+else:  # pragma: no cover - executed only in degraded env (tests)
+    def cache_data(*args: Any, **kwargs: Any):
         def _wrap(fn):
             return fn  # no caching fallback
         return _wrap
