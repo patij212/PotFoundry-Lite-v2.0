@@ -178,6 +178,7 @@ Purpose
  - [2025-10-21] Commit bddb45e: predeclare streamlit 'st' and remove unused type-ignore in `pfui/state_history.py`. Ran mypy (focused): Found 162 errors in 19 files. Tests: 347 passed.
  - [2025-10-21] Commit e0c905f: pfui/yaml_tools: coerce yaml.safe_dump to str to satisfy mypy return type. Ran mypy (focused): Found 126 errors in 13 files. Tests: 347 passed.
  - [2025-10-21] Commit 1d01727: pfui/exporters: cast WRITE_STL_BINARY to Callable to satisfy mypy; removed inline ignore. Ran mypy (focused): Found 125 errors in 12 files. Tests: 347 passed.
+ - [2025-10-21] Commit e3a1892: pfui/preview.py: typing fixes — typed cache callable, explicit np.float64 coercions, robust colormap access, renamed png return to avoid shadowing, cast Plotly image outputs to bytes. Ran mypy (focused): preview.py clean; overall focused run: 120 errors in 11 files. Tests: 347 passed.
 
 
 ## Next action (awaiting your direction)
