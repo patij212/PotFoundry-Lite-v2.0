@@ -49,3 +49,6 @@ out/
 
 # Streamlit secrets (do NOT commit your real secrets)
 .streamlit/secrets.toml
+
+# Runtime debug artifacts
+.pf_edge_flow_debug.json
