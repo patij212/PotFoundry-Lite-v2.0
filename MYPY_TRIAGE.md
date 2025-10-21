@@ -1,10 +1,10 @@
 # MYPY_TRIAGE - master log
 
-Status: IN PROGRESS
-Branch: fix/edgeflow-debug-quick
+- Status: IN PROGRESS
+- Branch: fix/edgeflow-debug-quick
 
 Summary (top)
-- Last mypy run: Found 235 errors in 35 files (run on workspace root).
+- Last mypy run: Found 221 errors in 31 files (run on workspace root).
 - Last pytest run: 347 passed (tests green).
 - Goal: Resolve all mypy errors incrementally while keeping tests green.
 - This file is the single canonical log for triage, fixes, progress and planning. I will update it as I make changes and run checks. Do not create other triage files; use this file.
@@ -81,7 +81,7 @@ Batch 4 (high-risk)
 
 
 ## Full mypy output (captured)
-(kept verbatim from the run that found 235 errors)
+(kept verbatim from the run that found 221 errors)
 
 pfui\\yaml_tools.py:22: error: Returning Any from function declared to return "str"  [no-any-return]
 tmp_append_synth.py:35: error: "object" has no attribute "append"  [attr-defined]
@@ -175,6 +175,8 @@ Purpose
 
 ## Change log (recent)
 - [2025-10-21] Merged `MYPY_TRIAGE_FULL.md` into `MYPY_TRIAGE.md` as the canonical triage file. (commit forthcoming)
+- [2025-10-21] Ran mypy after recent Batch 1 fixes and pfui/imports indentation correction: Found 221 errors in 31 files. Tests: 347 passed.
+ - [2025-10-21] Commit c4d34e0: applied small preview.py cleanup (removed unused type-ignore, tightened cache decorator). Ran mypy: Found 220 errors in 31 files. Tests: 347 passed.
 
 
 ## Next action (awaiting your direction)
