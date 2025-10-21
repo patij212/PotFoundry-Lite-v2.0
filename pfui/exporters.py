@@ -41,9 +41,12 @@ def export_stl_bytes(
 
     # wrap the potentially untyped WRITE_STL_BINARY in an annotated callable
     # so mypy can reason about the call-site without an inline "type: ignore"
+    from typing import cast
+
     writer: Callable[[str, str, Any, Any], None] | None = None
     if callable(WRITE_STL_BINARY):
-        writer = WRITE_STL_BINARY  # type: ignore[assignment]
+        # Cast the dynamically imported symbol to the expected Callable type.
+        writer = cast(Callable[[str, str, Any, Any], None], WRITE_STL_BINARY)
 
     if writer is None:
         raise RuntimeError("WRITE_STL_BINARY not available")
