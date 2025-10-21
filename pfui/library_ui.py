@@ -1,13 +1,19 @@
 """Library UI tab for browsing and opening published designs."""
 from __future__ import annotations
 
+from typing import Any
+
+# Pre-declare `st` so mypy knows it's available and can be annotated as Any when
+# streamlit isn't installed. This avoids using `# type: ignore` and keeps runtime
+# behavior unchanged.
+st: Any = None
+HAS_STREAMLIT = False
 
 try:
-    import streamlit as st
+    import streamlit as st  # type: ignore[assignment]
     HAS_STREAMLIT = True
 except ImportError:
     HAS_STREAMLIT = False
-    st = None  # type: ignore
 
 from potfoundry.library import list_published
 from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
