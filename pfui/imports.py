@@ -31,9 +31,9 @@ def _import_schema_and_batch():
     validate_recipe = None
     load_config = None
     build_from_yaml = None
-        try:
-            from potfoundry.core.schema import validate_recipe as _v, load_config as _l
-            validate_recipe, load_config = _v, _l
+    try:
+        from potfoundry.core.schema import validate_recipe as _v, load_config as _l
+        validate_recipe, load_config = _v, _l
     except Exception:
         try:
             from potfoundry.yaml_api import load_config as _l
