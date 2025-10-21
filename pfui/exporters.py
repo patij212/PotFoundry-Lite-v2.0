@@ -37,7 +37,6 @@ def export_stl_bytes(
     Raises:
         RuntimeError: If binary STL writer is not available
     """
-    """
     safe = _safe_name(name)
 
     # wrap the potentially untyped WRITE_STL_BINARY in an annotated callable
