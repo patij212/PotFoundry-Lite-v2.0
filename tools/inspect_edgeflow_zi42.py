@@ -1,7 +1,7 @@
 import json
-p=r"c:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\tools\edgeflow_verbose_diagnostics.jsonl"
+jsonl_path = r"c:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\tools\edgeflow_verbose_diagnostics.jsonl"
 found = None
-with open(p,'r',encoding='utf-8') as f:
+with open(jsonl_path,'r',encoding='utf-8') as f:
     for line in f:
         line=line.strip()
         if not line: continue
@@ -13,9 +13,9 @@ with open(p,'r',encoding='utf-8') as f:
 if not found:
     print('NOT_FOUND')
     raise SystemExit(1)
-Rnew = found.get('R_new_raw_sample') or []
-# Ensure Env is a sequence (not None) so zip() and indexing are safe and consistent
-Env = found.get('Env_to_use_sample') or found.get('Env_to_use_raw_post') or found.get('Env_to_use') or []
+Rnew = list(found.get('R_new_raw_sample') or [])
+# Ensure Env is a concrete sequence (list) so zip() and indexing are safe and consistent
+Env = list(found.get('Env_to_use_sample') or found.get('Env_to_use_raw_post') or found.get('Env_to_use') or [])
 min_final=found.get('min_final_raw')
 viol=[]
 for i, (r, e) in enumerate(zip(Rnew, Env)):
