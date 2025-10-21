@@ -4,7 +4,7 @@ Provides URL-safe encoding of design parameters for "Open in editor" functionali
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 import base64
 import json
 
@@ -93,7 +93,7 @@ def decode_state(encoded: str) -> Dict[str, Any]:
         raise ValueError(f"Invalid state parameter: {e}")
 
 
-def validate_state(state_dict: dict) -> tuple[dict, list[str]]:
+def validate_state(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     """Validate and sanitize state dictionary.
 
     Args:
@@ -109,8 +109,8 @@ def validate_state(state_dict: dict) -> tuple[dict, list[str]]:
     """
     from pfui.imports import STYLES
 
-    validated = {}
-    warnings = []
+    validated: Dict[str, Any] = {}
+    warnings: List[str] = []
 
     for key, value in state_dict.items():
         # Check whitelist
@@ -284,12 +284,18 @@ def parse_query_params() -> dict | None:
     try:
         # Get query params (Streamlit >= 1.22)
         if hasattr(st, "query_params"):
-            params = st.query_params
-            encoded = params.get("state")
+            # Use a temporary variable typed as Any because Streamlit's query_params
+            # can return either str or list[str] depending on the API/runtime.
+            val: Any = st.query_params.get("state")
+            if isinstance(val, list):
+                encoded = val[0] if val else None
+            elif isinstance(val, str):
+                encoded = val
+            else:
+                encoded = None
         else:
             # Fallback for older Streamlit versions
-            params = st.experimental_get_query_params()
-            encoded = params.get("state", [None])[0]
+            encoded = st.experimental_get_query_params().get("state", [None])[0]
 
         if not encoded:
             return None
