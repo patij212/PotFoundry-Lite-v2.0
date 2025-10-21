@@ -1,15 +1,29 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "Start Streamlit",
-            "type": "shell",
-            "command": "./start_streamlit.sh",
-            "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
-        }
-    ]
+  // VS Code tasks for PotFoundry-Lite
+  "$schema": "https://raw.githubusercontent.com/microsoft/vscode/master/src/vs/workbench/contrib/tasks/schemas/tasks.schema.json",
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Streamlit (Windows)",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-ExecutionPolicy", "Bypass",
+        "-NoProfile",
+        "-File", "${workspaceFolder}/start_streamlit.ps1"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Streamlit (bash)",
+      "type": "shell",
+      "command": "./start_streamlit.sh",
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
 }

@@ -17,6 +17,8 @@ except ImportError:
     HAS_STREAMLIT = False
     st = None  # type: ignore
 
+    _tls_warning_emitted = False
+
 
 @dataclass
 class SupabaseConfig:
@@ -87,10 +89,11 @@ class SupabaseClient:
 
     def _init_client(self):
         """Initialize Supabase Python client."""
+        skip_tls = _should_skip_tls_verify()
         try:
-            if self.read_only:
-                # Force direct API with apikey only; no Authorization header
-                raise ImportError("force direct api for readonly")
+            if self.read_only or skip_tls:
+                # Force direct API when read-only or TLS override is requested
+                raise ImportError("force direct api for readonly or tls override")
             # Try to import supabase-py for full-access mode
             from supabase import create_client
             self._client = create_client(self.config.url, self.config.key)
@@ -106,6 +109,15 @@ class SupabaseClient:
             self._session.headers.update(headers)
             # Reasonable timeouts
             self._timeout = (5, 15)  # connect, read seconds
+            self._skip_tls_verify = skip_tls
+            if skip_tls:
+                self._session.verify = False
+                try:
+                    import urllib3
+                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                except Exception:
+                    pass
+                _emit_tls_override_warning()
 
     def is_configured(self) -> bool:
         """Check if client is properly configured."""
@@ -354,6 +366,8 @@ class SupabaseClient:
                         tmp_session.headers.update({
                             "apikey": self.config.key,
                         })
+                        if getattr(self, "_skip_tls_verify", False):
+                            tmp_session.verify = False
                         resp = tmp_session.get(url, params=params, timeout=getattr(self, "_timeout", None))
                     resp.raise_for_status()
                     return resp.json()
@@ -421,6 +435,48 @@ def _is_disabled_via_secrets() -> bool:
         except Exception:
             return False
     return False
+
+
+def _should_skip_tls_verify() -> bool:
+    """Return True when TLS verification should be skipped (explicit opt-in)."""
+    for key in (
+        "SUPABASE_SKIP_TLS_VERIFY",
+        "STREAMLIT_SUPABASE_SKIP_TLS_VERIFY",
+        "SUPABASE_ALLOW_INSECURE",
+    ):
+        val = os.environ.get(key)
+        if isinstance(val, str) and val.strip().lower() in {"1", "true", "yes", "on"}:
+            return True
+    if HAS_STREAMLIT and st is not None:
+        try:
+            secrets = st.secrets.get("connections", {}).get("supabase", {})
+            raw = secrets.get("skip_tls_verify") or secrets.get("allow_insecure_tls")
+            if isinstance(raw, bool):
+                return raw
+            if isinstance(raw, str) and raw.strip().lower() in {"1", "true", "yes", "on"}:
+                return True
+        except Exception:
+            return False
+    return False
+
+
+def _emit_tls_override_warning() -> None:
+    """Warn once that TLS verification has been disabled."""
+    global _tls_warning_emitted
+    if _tls_warning_emitted:
+        return
+    _tls_warning_emitted = True
+    message = (
+        "⚠️ Supabase TLS certificate verification is disabled. "
+        "Only use this in trusted environments."
+    )
+    if HAS_STREAMLIT and st is not None:
+        try:
+            st.warning(message)
+            return
+        except Exception:
+            pass
+    print(message)
 
 
 def _looks_like_invalid_key(key: Optional[str]) -> bool:

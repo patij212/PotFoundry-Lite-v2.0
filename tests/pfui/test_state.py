@@ -5,9 +5,11 @@ import types
 # --- stub streamlit BEFORE importing pfui.state ---
 fake_st = types.SimpleNamespace()
 fake_st.session_state = {}
-sys.modules["streamlit"] = types.SimpleNamespace(
-    session_state=fake_st.session_state
-)
+# Insert a real module object into sys.modules so tools that iterate or
+# build sets from sys.modules.values() won't encounter unhashable values
+mod = types.ModuleType("streamlit")
+mod.session_state = fake_st.session_state
+sys.modules["streamlit"] = mod
 
 from pfui import state as S
 from pfui import schemas as SC

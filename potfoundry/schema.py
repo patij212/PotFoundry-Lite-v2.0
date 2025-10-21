@@ -19,6 +19,32 @@ class DefaultsModel(BaseModel):
     drain: PositiveFloat = 10.0
     flare_exp: PositiveFloat = 1.1
 
+    # Backwards-compatible accessors for legacy keys used in tests and
+    # older YAML files (H, Rt, Rb, t_wall, t_bottom, r_drain).
+    @property
+    def H(self) -> float:
+        return float(self.height)
+
+    @property
+    def Rt(self) -> float:
+        return float(self.top_od)
+
+    @property
+    def Rb(self) -> float:
+        return float(self.bottom_od)
+
+    @property
+    def t_wall(self) -> float:
+        return float(self.wall)
+
+    @property
+    def t_bottom(self) -> float:
+        return float(self.bottom)
+
+    @property
+    def r_drain(self) -> float:
+        return float(self.drain)
+
 class PartialDefaultsModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
     height: Optional[PositiveFloat] = None

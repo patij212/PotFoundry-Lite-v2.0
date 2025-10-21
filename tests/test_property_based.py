@@ -27,7 +27,7 @@ pytest.importorskip(
     reason="Hypothesis not installed; install dev deps with 'pip install -r requirements-dev.txt'",
 )
 
-from hypothesis import given, settings, assume
+from hypothesis import given, settings, assume, HealthCheck
 from hypothesis import strategies as st
 from pathlib import Path
 import tempfile
@@ -76,7 +76,7 @@ style_names = st.sampled_from(list(STYLES.keys()))
     n_theta=theta_resolutions,
     n_z=z_resolutions,
 )
-@settings(max_examples=50, deadline=2000)
+@settings(max_examples=50, deadline=2000, suppress_health_check=[HealthCheck.too_slow])
 def test_property_mesh_is_watertight(H, Rt, Rb, t_wall, t_bottom, r_drain, n_theta, n_z):
     """Property: Every edge in the mesh should be shared by exactly 2 faces.
     

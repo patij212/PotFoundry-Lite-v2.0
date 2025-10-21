@@ -6,37 +6,262 @@ from .schemas import STYLE_SCHEMAS   # << changed
 from .state import widget_key
 
 
+def _render_control(style: str, key: str, meta: Dict[str, Any]) -> Any:
+    """Render a single control based on meta and return its value."""
+    import streamlit as st  # local alias
+    wkey = widget_key(style, key)
+    mtype = meta.get("type", "float")
+    default = meta.get("default")
+    value = st.session_state.get(wkey, default)
+
+    if mtype == "bool":
+        try:
+            checked = bool(value)
+        except Exception:
+            checked = bool(default)
+        return bool(st.checkbox(meta.get("label", key), value=checked, key=wkey, help=meta.get("help", "")))
+
+    if mtype in ("int", "float"):
+        # Establish safe numeric bounds
+        def _to_float(x, fallback):
+            try:
+                return float(x)
+            except Exception:
+                return float(fallback)
+        default_num = _to_float(default if default is not None else 0.0, 0.0)
+        if mtype == "int":
+            minv = int(meta.get("min", int(default_num) - 10))
+            maxv = int(meta.get("max", int(default_num) + 10))
+            step = int(meta.get("step", 1))
+            if maxv <= minv:
+                maxv = minv + max(1, step)
+            cur = int(round(_to_float(value, default_num)))
+            cur = max(minv, min(maxv, cur))
+            return int(st.slider(meta.get("label", key), minv, maxv, cur, step, key=wkey, help=meta.get("help", "")))
+        else:
+            minv = float(meta.get("min", default_num - 1.0))
+            maxv = float(meta.get("max", default_num + 1.0))
+            step = float(meta.get("step", 0.01))
+            if maxv <= minv:
+                maxv = minv + (step if step > 0 else 1.0)
+            cur = _to_float(value, default_num)
+            cur = max(minv, min(maxv, cur))
+            return float(st.slider(meta.get("label", key), minv, maxv, cur, step, key=wkey, help=meta.get("help", "")))
+
+    if mtype == "select":
+        options = meta.get("options", []) or []
+        if not options:
+            return st.text_input(meta.get("label", key), value=str(value) if value is not None else "", key=wkey, help=meta.get("help", ""))
+        default_choice = value if value in options else (options[0] if options else None)
+        try:
+            idx = options.index(default_choice) if default_choice in options else 0
+        except Exception:
+            idx = 0
+        return st.selectbox(meta.get("label", key), options=options, index=idx, key=wkey, help=meta.get("help", ""))
+
+    # Fallback
+    return st.text_input(meta.get("label", key), value=str(value) if value is not None else "", key=wkey, help=meta.get("help", ""))
+
+
 def style_controls(style: str) -> Dict[str, Any]:
     """Display style-specific parameter controls in Streamlit UI.
-    
+
+    Purpose:
+        Reduce clutter by grouping controls into focused sections per style while
+        preserving all available options. Unknown/new keys are rendered in a catch-all.
+
     Args:
         style: Name of the style to display controls for
-        
+
     Returns:
-        Dictionary of style parameters with user-selected values
+        Dict[str, Any]: map of option key -> selected value
     """
     schema = STYLE_SCHEMAS.get(style, {})
     if not schema:
         st.info("This style has no specific controls. Use Advanced options below or JSON override.")
         return {}
+
+    # ---------------- LowPolyFacet: fine-grained grouping ----------------
+    if style == "LowPolyFacet":
+        out: Dict[str, Any] = {}
+
+        shape_keys = [
+            "lp_facets", "lp_tiers", "lp_amp", "lp_bevel", "lp_phase_deg", "lp_jitter",
+            "lp_facet_dir", "lp_outward_mode",
+        ]
+        seam_cut_keys = [
+            "lp_cut_bot_deg", "lp_cut_top_deg", "lp_link_cut_angles",
+            "lp_cut_cap_mm", "lp_cut_depth_frac_of_facet", "lp_cut_z_window_frac",
+            "lp_cut_softness_mm", "lp_uniform_ring", "lp_uniform_ring_localize",
+            "lp_uniform_ring_lock_threshold", "lp_uniform_ring_blend_pow",
+            "lp_cut_straight_edges", "lp_cut_straight_smooth_mode",
+            "lp_cut_straight_smooth_strength", "lp_cut_straight_smooth_passes",
+        ]
+        edge_diag_keys = [
+            "lp_edge_cut_mm", "lp_edge_cut_sharp",
+            "lp_edge_solidify_enable", "lp_edge_solidify_strength", "lp_edge_solidify_thresh", "lp_edge_solidify_passes",
+            "lp_diagonal_smooth_passes", "lp_seam_sampling_boost", "lp_seam_lock_strength",
+        ]
+        print_debug_keys = [
+            "lp_print_safe_mode", "lp_debug_seam",
+        ]
+
+        with st.expander("Facet shape", expanded=True):
+            cols = st.columns(3)
+            for i, k in enumerate([kk for kk in shape_keys if kk in schema]):
+                with cols[i % 3]:
+                    out[k] = _render_control(style, k, schema[k])
+
+        with st.expander("Seam cuts", expanded=False):
+            cols = st.columns(3)
+            for i, k in enumerate([kk for kk in seam_cut_keys if kk in schema]):
+                with cols[i % 3]:
+                    out[k] = _render_control(style, k, schema[k])
+            # Convenience: link cut angles mirrors bottom to top
+            try:
+                if out.get("lp_link_cut_angles"):
+                    out["lp_cut_top_deg"] = int(out.get("lp_cut_bot_deg", 0) or 0)
+            except Exception:
+                pass
+
+        with st.expander("Edge clarity & diagonals", expanded=False):
+            cols = st.columns(3)
+            for i, k in enumerate([kk for kk in edge_diag_keys if kk in schema]):
+                with cols[i % 3]:
+                    out[k] = _render_control(style, k, schema[k])
+
+        with st.expander("Print & debug", expanded=False):
+            cols = st.columns(3)
+            for i, k in enumerate([kk for kk in print_debug_keys if kk in schema]):
+                with cols[i % 3]:
+                    out[k] = _render_control(style, k, schema[k])
+
+        # Render any remaining/unknown keys so future additions are not hidden
+        consumed = set(shape_keys) | set(seam_cut_keys) | set(edge_diag_keys) | set(print_debug_keys)
+        remaining = [k for k in schema.keys() if k not in consumed]
+        if remaining:
+            with st.expander("Additional parameters", expanded=False):
+                cols2 = st.columns(3)
+                for i, k in enumerate(remaining):
+                    with cols2[i % 3]:
+                        out[k] = _render_control(style, k, schema[k])
+
+        return out
+
+    # ---------------- SuperformulaBlossom: focused grouping ----------------
+    if style == "SuperformulaBlossom":
+        out: Dict[str, Any] = {}
+
+        shape_keys = [
+            "sf_strength",
+            "sf_m_base", "sf_m_top", "sf_m_curve_exp",
+            "sf_a", "sf_b",
+            "sf_n1", "sf_n1_top", "sf_n2", "sf_n2_top", "sf_n3", "sf_n3_top",
+        ]
+        tame_sharp_keys = [
+            "sf_edge_tame_strength", "sf_edge_tame_k",
+            "sf_auto_tame", "sf_auto_tame_thresh", "sf_auto_tame_amount",
+            "sf_edge_sharp",
+        ]
+        edge_diag_keys = [
+            "sf_edge_solidify_enable", "sf_edge_solidify_strength", "sf_edge_solidify_passes",
+            "sf_edge_solidify_sigma_s", "sf_edge_solidify_sigma_r", "sf_edge_solidify_micro_thresh",
+            "sf_edge_solidify_protect_grad", "sf_edge_solidify_preserve_q",
+            "sf_spike_clip_enable", "sf_spike_clip_quantile", "sf_spike_clip_amount", "sf_spike_clip_window",
+            "sf_spike_mad_enable", "sf_spike_mad_k", "sf_spike_mad_amount", "sf_spike_mad_window",
+            "sf_spike_mad_z_boost_enable", "sf_spike_mad_z_start", "sf_spike_mad_z_power", "sf_spike_mad_k_drop_frac", "sf_spike_mad_amount_boost",
+            "sf_diagonal_smooth_passes",
+        ]
+        peak_snap_keys = [
+            "sf_peak_snap_enable", "sf_peak_snap_window", "sf_peak_snap_quantile", "sf_peak_snap_amount",
+        ]
+        flow_core_keys = [
+            "sf_edge_flow_reconstruct_enable", "sf_edge_flow_mode",
+            "sf_edge_flow_amount", "sf_edge_flow_window", "sf_edge_flow_quantile",
+            "sf_edge_flow_valley_only", "sf_edge_flow_theta_snap",
+        ]
+        flow_ridge_keys = [
+            "sf_edge_flow_peak_q", "sf_edge_flow_slopes_max",
+            "sf_edge_flow_paths_band", "sf_edge_flow_max_paths",
+        ]
+        flow_align_keys = [
+            "sf_edge_flow_twist_compensate", "sf_edge_flow_auto_deoffset", "sf_edge_flow_deoffset_max",
+            "sf_edge_flow_anchor_enable", "sf_edge_flow_anchor_radius",
+        ]
+
+        with st.expander("Blossom shape", expanded=True):
+            cols = st.columns(3)
+            for i, k in enumerate([kk for kk in shape_keys if kk in schema]):
+                with cols[i % 3]:
+                    out[k] = _render_control(style, k, schema[k])
+
+        with st.expander("Tame & sharpen", expanded=False):
+            cols = st.columns(3)
+            for i, k in enumerate([kk for kk in tame_sharp_keys if kk in schema]):
+                with cols[i % 3]:
+                    out[k] = _render_control(style, k, schema[k])
+
+        with st.expander("Edge clarity & diagonals", expanded=False):
+            cols = st.columns(3)
+            for i, k in enumerate([kk for kk in edge_diag_keys if kk in schema]):
+                with cols[i % 3]:
+                    out[k] = _render_control(style, k, schema[k])
+
+        with st.expander("Edge reconstruction (peaks)", expanded=False):
+            cols = st.columns(3)
+            for i, k in enumerate([kk for kk in peak_snap_keys if kk in schema]):
+                with cols[i % 3]:
+                    out[k] = _render_control(style, k, schema[k])
+
+        with st.expander("Edge reconstruction (2D flow)", expanded=False):
+            st.caption("Core")
+            cols = st.columns(3)
+            for i, k in enumerate([kk for kk in flow_core_keys if kk in schema]):
+                with cols[i % 3]:
+                    out[k] = _render_control(style, k, schema[k])
+            # Ridge/path options
+            keys2 = [kk for kk in flow_ridge_keys if kk in schema]
+            if keys2:
+                st.caption("Ridge/path options")
+                cols2 = st.columns(3)
+                for i, k in enumerate(keys2):
+                    with cols2[i % 3]:
+                        out[k] = _render_control(style, k, schema[k])
+            # Alignment/safety options
+            keys3 = [kk for kk in flow_align_keys if kk in schema]
+            if keys3:
+                st.caption("Alignment & safety")
+                cols3 = st.columns(3)
+                for i, k in enumerate(keys3):
+                    with cols3[i % 3]:
+                        out[k] = _render_control(style, k, schema[k])
+
+        # Any future/unknown keys
+        consumed = (
+            set(shape_keys)
+            | set(tame_sharp_keys)
+            | set(edge_diag_keys)
+            | set(peak_snap_keys)
+            | set(flow_core_keys)
+            | set(flow_ridge_keys)
+            | set(flow_align_keys)
+        )
+        remaining = [k for k in schema.keys() if k not in consumed]
+        if remaining:
+            with st.expander("Additional parameters", expanded=False):
+                cols2 = st.columns(3)
+                for i, k in enumerate(remaining):
+                    with cols2[i % 3]:
+                        out[k] = _render_control(style, k, schema[k])
+        return out
+
+    # ---------------- Default: simple, compact grid ----------------
     colN = max(2, min(4, len(schema)))
     cols = st.columns(colN)
     out: Dict[str, Any] = {}
     for i, (key, meta) in enumerate(schema.items()):
-        c = cols[i % colN]
-        wkey = widget_key(style, key)
-        # Pobierz wartość z session_state lub domyślną
-        if wkey in st.session_state:
-            value = st.session_state[wkey]
-        else:
-            value = meta["default"]
-        # Limit value to allowed range
-        if meta["type"] == "int":
-            value = int(max(meta["min"], min(meta["max"], value)))
-            out[key] = int(c.slider(meta["label"], int(meta["min"]), int(meta["max"]), value, int(meta["step"]), key=wkey))
-        else:
-            value = float(max(meta["min"], min(meta["max"], value)))
-            out[key] = float(c.slider(meta["label"], float(meta["min"]), float(meta["max"]), value, float(meta["step"]), key=wkey))
+        with cols[i % colN]:
+            out[key] = _render_control(style, key, meta)
     return out
 
 
@@ -83,7 +308,16 @@ def twist_controls(style: str) -> Dict[str, Any]:
     v_turns = float(st.session_state.get(k1, 0.0) or 0.0)
     v_phase = float(st.session_state.get(k2, 0.0) or 0.0)
     v_curve = float(st.session_state.get(k3, 1.0) or 1.0)
-    spin_turns = float(c1.slider("Twist turns (negative = left, positive = right)", -3.0, 3.0, v_turns, 0.05, key=k1))
-    spin_phase = float(c2.slider("Twist phase (deg, offset)", -180.0, 180.0, v_phase, 1.0, key=k2))
-    spin_curve = float(c3.slider("Twist curve exponent", 0.1, 3.0, v_curve, 0.05, key=k3))
+    # Mark preview stale when changing twist controls (debounced/manual modes)
+    def _mark_changed():
+        try:
+            st.session_state["_last_change_ts"] = __import__("time").time()
+            mode = st.session_state.get("preview_mode", "manual")
+            st.session_state["_preview_stale"] = (mode in ("manual", "debounced"))
+        except Exception:
+            pass
+
+    spin_turns = float(c1.slider("Twist turns (negative = left, positive = right)", -3.0, 3.0, v_turns, 0.05, key=k1, on_change=_mark_changed))
+    spin_phase = float(c2.slider("Twist phase (deg, offset)", -180.0, 180.0, v_phase, 1.0, key=k2, on_change=_mark_changed))
+    spin_curve = float(c3.slider("Twist curve exponent", 0.1, 3.0, v_curve, 0.05, key=k3, on_change=_mark_changed))
     return {"spin_turns": spin_turns, "spin_phase_deg": spin_phase, "spin_curve_exp": spin_curve}

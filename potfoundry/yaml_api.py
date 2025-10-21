@@ -34,8 +34,32 @@ class Config:
     presets: Dict[str, dict] = field(default_factory=dict)   # name -> {style, size, opts}
     recipes: List[dict] = field(default_factory=list)        # list of {name, style|use, size, opts}
 
-def load_config(path: Path) -> ConfigV2:
+def load_config(path: Path | str) -> ConfigV2:
+    # Accept either a Path or a string filename
+    if not isinstance(path, Path):
+        path = Path(path)
     raw: Dict[str, Any] = yaml.safe_load(path.read_text()) or {}
+    # Accept some legacy shorthand keys in the 'defaults' block (tests use H/Rt/Rb etc.)
+    defaults = raw.get("defaults") or {}
+    if isinstance(defaults, dict):
+        # map shorthand keys to canonical ConfigV2 names
+        key_map = {
+            "H": "height",
+            "Rt": "top_od",
+            "Rb": "bottom_od",
+            "t_wall": "wall",
+            "t_bottom": "bottom",
+            "r_drain": "drain",
+            # alternate names
+            "expn": "flare_exp",
+        }
+        if any(k in defaults for k in key_map.keys()):
+            new_defaults: Dict[str, Any] = {}
+            for k, v in defaults.items():
+                nk = key_map.get(k, k)
+                new_defaults[nk] = v
+            raw["defaults"] = new_defaults
+
     version = int(raw.get("version", 1))
     if version == 2:
         return ConfigV2.model_validate(raw)

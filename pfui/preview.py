@@ -61,7 +61,7 @@ def make_preview_arrays(
         opts_json: JSON-encoded style options
         
     Returns:
-        Tuple of (theta angles, z heights, radius modulation arrays)
+        Tuple of surface arrays (X, Y, Z) ready for plotting
     """
     import numpy as _np
     opts: Dict[str, Any] = __import__("json").loads(opts_json)
@@ -81,17 +81,66 @@ def make_preview_arrays(
         X = _np.zeros((nz, nt), dtype=float)
         Y = _np.zeros((nz, nt), dtype=float)
         Z = _np.zeros((nz, nt), dtype=float)
+        ring_fallbacks = 0
+        theta_fallbacks = 0
         for i, z in enumerate(zvals):
             r0 = base_radius(z, H, Rb, Rt, expn, opts)
+            # Inject base-shape params for styles needing tier-edge envelopes
+            _opts = dict(opts)
+            _opts.setdefault("_pf_rb", Rb)
+            _opts.setdefault("_pf_rt", Rt)
+            _opts.setdefault("_pf_expn", expn)
             twist = _spin_twist_radians(z, H, opts)
             cTw, sTw = _np.cos(twist), _np.sin(twist)
             # Rotate precomputed cos/sin by twist: cos(θ+tw)=cosθ·cosTw - sinθ·sinTw; sin(θ+tw)=sinθ·cosTw + cosθ·sinTw
             cx = base_cos * cTw - base_sin * sTw
             sy = base_sin * cTw + base_cos * sTw
-            # Vectorized style sampling at (theta + twist)
-            r = _np.asarray(r_outer_fn(thetas + twist, z, r0, H, opts), dtype=float)
+            # Vectorized style sampling at raw theta; twist affects placement only.
+            # If the style isn't vectorized, gracefully fall back to per-theta sampling.
+            r: _np.ndarray
+            try:
+                r_vec = r_outer_fn(thetas, z, r0, H, _opts)
+                r = _np.asarray(r_vec, dtype=float)
+                if r.shape != (nt,):
+                    raise ValueError("vectorized style returned unexpected shape")
+            except Exception:
+                # Per-theta fallback ensures previews work even for scalar-only styles
+                r = _np.empty(nt, dtype=float)
+                local_errors = 0
+                for j, th in enumerate(thetas):
+                    try:
+                        r_val = r_outer_fn(float(th), z, r0, H, _opts)
+                        r[j] = float(r_val)  # may raise if not castable
+                    except Exception:
+                        r[j] = float(r0)
+                        local_errors += 1
+                if local_errors > 0:
+                    theta_fallbacks += local_errors
+                # Count this ring as a fallback if any scalar samples failed
+                ring_fallbacks += 1 if local_errors > 0 else 0
             r = _sanitize(r, r0)
             X[i, :], Y[i, :], Z[i, :] = r * cx, r * sy, z
+        # Final guard: ensure arrays are float and finite to avoid Plotly/Matplotlib failures
+        try:
+            X_arr = _np.asarray(X, dtype=float)
+            Y_arr = _np.asarray(Y, dtype=float)
+            Z_arr = _np.asarray(Z, dtype=float)
+            # Replace any residual NaN/Inf with safe zeros; Z should be finite by construction
+            X[:] = _np.nan_to_num(X_arr, nan=0.0, posinf=0.0, neginf=0.0)
+            Y[:] = _np.nan_to_num(Y_arr, nan=0.0, posinf=0.0, neginf=0.0)
+            Z[:] = _np.nan_to_num(Z_arr, nan=0.0, posinf=0.0, neginf=0.0)
+        except Exception:
+            # If any coercion fails, leave arrays as-is; downstream will catch and fallback
+            pass
+        if ring_fallbacks > 0:
+            try:
+                msg = f"Preview recovered from {ring_fallbacks} ring error(s)"
+                if theta_fallbacks > 0:
+                    msg += f" and {theta_fallbacks} theta sample error(s)"
+                msg += "; display may be approximate."
+                st.info(msg)
+            except Exception:
+                pass
         return X, Y, Z
 
     for scale in (1.0, 0.75, 0.5, 0.33):
@@ -358,8 +407,12 @@ def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts
         r_list = []
         for z in zvals:
             r0 = base_radius(z, H, Rb, Rt, expn, opts)
-            tw = _spin_twist_radians(z, H, opts)
-            r_list.append(float(r_outer_fn(th + tw, z, r0, H, opts)))
+            # For radial profile we sample style at raw theta (parity with 3D paths)
+            _opts = dict(opts)
+            _opts.setdefault("_pf_rb", Rb)
+            _opts.setdefault("_pf_rt", Rt)
+            _opts.setdefault("_pf_expn", expn)
+            r_list.append(float(r_outer_fn(th, z, r0, H, _opts)))
         ax.plot(zvals, r_list, alpha=0.9, label=f"outer theta={int(th * 180.0 / np.pi)}°")
         inner = _np.maximum(np.array(r_list) - t_wall, 0.0)
         ax.plot(zvals, inner, alpha=0.6, linestyle="--", label=f"inner theta={int(th * 180.0 / np.pi)}°")
