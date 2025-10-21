@@ -4,7 +4,7 @@ from __future__ import annotations
 
 def _import_writer():
     try:
-        from potfoundry.core.io.stl import write_stl_binary  # type: ignore
+        from potfoundry.core.io.stl import write_stl_binary
         return write_stl_binary
     except Exception:
         try:
@@ -12,7 +12,7 @@ def _import_writer():
             return write_stl_binary
         except Exception:  # pragma: no cover
             try:
-                from potfoundry.stl import write_stl_binary  # type: ignore
+                from potfoundry.stl import write_stl_binary
                 return write_stl_binary
             except Exception:  # pragma: no cover
                 return None  # type: ignore
@@ -31,26 +31,26 @@ def _import_schema_and_batch():
     validate_recipe = None
     load_config = None
     build_from_yaml = None
-    try:
-        from potfoundry.core.schema import validate_recipe as _v, load_config as _l  # type: ignore
-        validate_recipe, load_config = _v, _l
+        try:
+            from potfoundry.core.schema import validate_recipe as _v, load_config as _l
+            validate_recipe, load_config = _v, _l
     except Exception:
         try:
-            from potfoundry.yaml_api import load_config as _l  # type: ignore
+            from potfoundry.yaml_api import load_config as _l
             load_config = _l
             try:
-                from potfoundry.yaml_api import validate_recipe as _v  # type: ignore
+                from potfoundry.yaml_api import validate_recipe as _v
                 validate_recipe = _v
             except Exception:  # pragma: no cover
                 validate_recipe = None  # type: ignore
         except Exception:
             pass
     try:
-        from potfoundry.adapters.batch import build_from_yaml as _b  # type: ignore
+        from potfoundry.adapters.batch import build_from_yaml as _b
         build_from_yaml = _b
     except Exception:
         try:
-            from potfoundry.yaml_api import build_from_yaml as _b  # type: ignore
+            from potfoundry.yaml_api import build_from_yaml as _b
             build_from_yaml = _b
         except Exception:
             pass
