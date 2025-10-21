@@ -3,6 +3,8 @@ from pathlib import Path
 import tempfile
 import streamlit as st
 
+from typing import Any, Callable, cast
+
 from .imports import validate_recipe, load_config, build_from_yaml
 
 
@@ -44,7 +46,9 @@ def render_batch_tab() -> None:
                 if validate_recipe is None:
                     st.info(f"{name_r}: Validator not available in this build")
                 else:
-                    errs = validate_recipe(r, cobj)  # type: ignore[arg-type]
+                        # validate_recipe may be untyped; cast to a permissive callable
+                        validator = cast(Callable[..., Any], validate_recipe)
+                        errs = validator(r, cobj)
                     if errs:
                         st.error(f"{name_r}: Errors: {len(errs)} - " + "; ".join(errs))
                     else:
