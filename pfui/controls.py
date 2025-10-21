@@ -30,18 +30,20 @@ def _render_control(style: str, key: str, meta: Dict[str, Any]) -> Any:
                 return float(fallback)
         default_num = _to_float(default if default is not None else 0.0, 0.0)
         if mtype == "int":
-            minv = int(meta.get("min", int(default_num) - 10))
-            maxv = int(meta.get("max", int(default_num) + 10))
-            step = int(meta.get("step", 1))
+            # Ensure numeric types are explicit for mypy: coerce meta values to float then to int
+            minv: int = int(round(float(meta.get("min", int(default_num) - 10))))
+            maxv: int = int(round(float(meta.get("max", int(default_num) + 10))))
+            step: int = int(round(float(meta.get("step", 1))))
             if maxv <= minv:
                 maxv = minv + max(1, step)
             cur = int(round(_to_float(value, default_num)))
             cur = max(minv, min(maxv, cur))
             return int(st.slider(meta.get("label", key), minv, maxv, cur, step, key=wkey, help=meta.get("help", "")))
         else:
-            minv = float(meta.get("min", default_num - 1.0))
-            maxv = float(meta.get("max", default_num + 1.0))
-            step = float(meta.get("step", 0.01))
+            # Float branch: coerce values to float for consistent typing
+            minv: float = float(meta.get("min", default_num - 1.0))
+            maxv: float = float(meta.get("max", default_num + 1.0))
+            step: float = float(meta.get("step", 0.01))
             if maxv <= minv:
                 maxv = minv + (step if step > 0 else 1.0)
             cur = _to_float(value, default_num)
