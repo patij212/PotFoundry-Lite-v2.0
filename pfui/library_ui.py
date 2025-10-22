@@ -11,14 +11,14 @@ st: Any = None
 HAS_STREAMLIT = False
 
 try:
-    import streamlit as st  # type: ignore[assignment]
+    import streamlit as st
 
     HAS_STREAMLIT = True
 except ImportError:
     HAS_STREAMLIT = False
 
-from potfoundry.library import list_published  # noqa: E402
-from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient  # noqa: E402
+from potfoundry.library import list_published
+from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
 
 
 def render_library_tab():

@@ -14,15 +14,15 @@ if TYPE_CHECKING:
     # These imports are only for static analyzers (ruff/mypy). At runtime we
     # continue to provide the attributes lazily via __getattr__ to avoid
     # heavy imports at module import time.
-    from potfoundry.core.io.stl import write_stl_binary as WRITE_STL_BINARY  # type: ignore
+    from potfoundry.core.io.stl import write_stl_binary as WRITE_STL_BINARY
     from potfoundry.core.geometry import (
-        STYLES,  # type: ignore
-        base_radius,  # type: ignore
-        _spin_twist_radians,  # type: ignore
-        build_pot_mesh,  # type: ignore
+        STYLES,
+        base_radius,
+        _spin_twist_radians,
+        build_pot_mesh,
     )
-    from potfoundry.core.schema import validate_recipe, load_config  # type: ignore
-    from potfoundry.adapters.batch import build_from_yaml  # type: ignore
+    from potfoundry.core.schema import validate_recipe, load_config
+    from potfoundry.adapters.batch import build_from_yaml
 
 
 def _import_writer() -> Optional[Callable[..., Any]]:

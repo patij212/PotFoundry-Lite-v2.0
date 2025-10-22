@@ -20,6 +20,15 @@ except ImportError:
     st = None  # type: ignore
 
     _tls_warning_emitted = False
+from typing import cast
+
+
+# NOTE: supabase_client uses `requests` as a lightweight runtime fallback when
+# `supabase` (supabase-py) is not installed. Historically mypy reported
+# `import-untyped` / `import-not-found` for `requests` in CI/dev. We add a
+# targeted ignore for import-not-found where requests is imported dynamically
+# below; we also added `types-requests` to `requirements-dev.txt` so dev
+# environments can install the stubs to fully silence mypy locally.
 
 
 @dataclass
@@ -249,7 +258,7 @@ class SupabaseClient:
                         "Content-Type": "application/json",
                     }
                     resp = self._session.post(
-                        url, params=params, json=row, headers=headers
+                        url, params=cast(Any, params), json=row, headers=headers
                     )
                     resp.raise_for_status()
 
@@ -302,7 +311,7 @@ class SupabaseClient:
                         "Content-Type": "application/json",
                     }
                     resp = self._session.patch(
-                        url, params=params, json=changes, headers=headers
+                        url, params=cast(Any, params), json=changes, headers=headers
                     )
                     resp.raise_for_status()
                     try:
@@ -396,7 +405,7 @@ class SupabaseClient:
 
                     # Prefer public read without Authorization if possible. We'll clone headers and drop Authorization.
                     resp = self._session.get(
-                        url, params=params, timeout=getattr(self, "_timeout", None)
+                        url, params=cast(Any, params), timeout=getattr(self, "_timeout", None)
                     )
                     if resp.status_code == 401:
                         # Retry without Authorization to leverage public SELECT policy
@@ -412,7 +421,7 @@ class SupabaseClient:
                         if getattr(self, "_skip_tls_verify", False):
                             tmp_session.verify = False
                         resp = tmp_session.get(
-                            url, params=params, timeout=getattr(self, "_timeout", None)
+                            url, params=cast(Any, params), timeout=getattr(self, "_timeout", None)
                         )
                     resp.raise_for_status()
                     return resp.json()
@@ -460,7 +469,7 @@ class SupabaseClient:
                         for col, val in filters.items():
                             params[col] = f"eq.{val}"
                     headers = {"Prefer": "return=representation"}
-                    resp = self._session.delete(url, params=params, headers=headers)
+                    resp = self._session.delete(url, params=cast(Any, params), headers=headers)
                     resp.raise_for_status()
                     try:
                         data = resp.json()

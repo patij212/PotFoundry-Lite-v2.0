@@ -36,7 +36,7 @@ REDO = "__redo_stack__"
 
 def _st():
     # Lazy import so tests can stub sys.modules['streamlit'] first.
-    import streamlit as st  # type: ignore[import-not-found]
+    import streamlit as st
 
     return st
 

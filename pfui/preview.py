@@ -75,10 +75,23 @@ def make_preview_arrays(
     opts: Dict[str, Any] = __import__("json").loads(opts_json)
     r_outer_fn = STYLES[style_name][0]
 
-    def _sanitize(arr: _np.ndarray, r0: float) -> _np.ndarray:
-        arr = _np.nan_to_num(arr, nan=r0, posinf=r0, neginf=max(0.1, 0.05 * r0))
-        lo = max(0.1, 0.05 * r0)
-        hi = max(lo * 2.0, 4.0 * r0)
+    def _sanitize(
+        arr: _np.ndarray, r0: float | npt.NDArray[np.float64]
+    ) -> _np.ndarray:
+        # Accept either a scalar float or a 0-d numpy array for r0. Coerce to
+        # a Python float for sane numeric operations used below.
+        try:
+            r0_val = float(_np.asarray(r0))
+        except Exception:
+            r0_val = float(0.0)
+        arr = _np.nan_to_num(
+            arr,
+            nan=r0_val,
+            posinf=r0_val,
+            neginf=max(0.1, 0.05 * r0_val),
+        )
+        lo = max(0.1, 0.05 * r0_val)
+        hi = max(lo * 2.0, 4.0 * r0_val)
         return _np.clip(arr, lo, hi)
 
     def _try(
@@ -111,7 +124,7 @@ def make_preview_arrays(
             # If the style isn't vectorized, gracefully fall back to per-theta sampling.
             r: _np.ndarray
             try:
-                r_vec: Any = r_outer_fn(thetas, z, r0, H, _opts)
+                r_vec: Any = r_outer_fn(thetas, z, float(r0), H, _opts)
                 r = _np.asarray(r_vec, dtype=_np.float64)
                 if r.shape != (nt,):
                     raise ValueError("vectorized style returned unexpected shape")
@@ -121,7 +134,7 @@ def make_preview_arrays(
                 local_errors = 0
                 for j, th in enumerate(thetas):
                     try:
-                        r_val = r_outer_fn(float(th), z, r0, H, _opts)
+                        r_val = r_outer_fn(float(th), z, float(r0), H, _opts)
                         r[j] = float(r_val)  # may raise if not castable
                     except Exception:
                         r[j] = float(r0)
@@ -192,9 +205,9 @@ def render_preview(
     dpi: int,
     fill_width: bool,
     *,
-    inner_wall: float | None = None,
-    view_elev: float = 20.0,
-    view_azim: float = -60.0,
+    inner_wall: float | npt.NDArray[np.float64] | None = None,
+    view_elev: float | npt.NDArray[np.float64] = 20.0,
+    view_azim: float | npt.NDArray[np.float64] = -60.0,
     return_png: bool = False,
     theme: str = "dark",
     show_floor: bool = True,
@@ -290,10 +303,20 @@ def render_preview(
         )
         st.info("Preview shown in wireframe due to resource limits.")
 
-    # Inner wall hint
-    if inner_wall and inner_wall > 0:
-        R = _np.maximum(_np.sqrt(X**2 + Y**2), max(1e-3, inner_wall * 2.0))
-        scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
+    # Inner wall hint: accept numpy scalars or Python floats. Coerce to float
+    # for arithmetic and comparisons.
+    _inner_wall: float | None
+    if inner_wall is None:
+        _inner_wall = None
+    else:
+        try:
+            _inner_wall = float(np.asarray(inner_wall))
+        except Exception:
+            _inner_wall = None
+
+    if _inner_wall is not None and _inner_wall > 0:
+        R = _np.maximum(_np.sqrt(X**2 + Y**2), max(1e-3, _inner_wall * 2.0))
+        scale = _np.clip(1.0 - _inner_wall / R, 0.2, 0.999)
         ax.plot_wireframe(
             X * scale,
             Y * scale,
@@ -305,7 +328,7 @@ def render_preview(
 
     # Camera + aspect: use orthographic projection and equal XY, with gently compressed Z
     try:
-        ax.view_init(elev=view_elev, azim=view_azim)
+        ax.view_init(elev=float(_np.asarray(view_elev)), azim=float(_np.asarray(view_azim)))
     except Exception:
         pass
     try:
@@ -357,9 +380,9 @@ def render_preview_png_cached(
     fig_h: float,
     dpi: int,
     *,
-    inner_wall: float | None = None,
-    view_elev: float = 20.0,
-    view_azim: float = -60.0,
+    inner_wall: float | npt.NDArray[np.float64] | None = None,
+    view_elev: float | npt.NDArray[np.float64] = 20.0,
+    view_azim: float | npt.NDArray[np.float64] = -60.0,
     theme: str = "dark",
     show_floor: bool = True,
     show_axes: bool = False,
@@ -424,6 +447,16 @@ def render_preview_png_cached(
 
     import numpy as _np
 
+    # Coerce view/elev to float for matplotlib calls
+    try:
+        _view_elev = float(np.asarray(view_elev))
+    except Exception:
+        _view_elev = float(20.0)
+    try:
+        _view_azim = float(np.asarray(view_azim))
+    except Exception:
+        _view_azim = float(-60.0)
+
     if (
         not _np.isfinite(X).all()
         or not _np.isfinite(Y).all()
@@ -467,7 +500,7 @@ def render_preview_png_cached(
         )
 
     try:
-        ax.view_init(elev=view_elev, azim=view_azim)
+        ax.view_init(elev=_view_elev, azim=_view_azim)
     except Exception:
         pass
 
@@ -676,8 +709,17 @@ def render_preview_apng_cached(
             )
 
         # View + projection + explicit limits/aspect
+        # Coerce numeric frame params to floats (may be numpy scalars)
         try:
-            ax.view_init(elev=elev, azim=azim)
+            _elev = float(_np.asarray(elev))
+        except Exception:
+            _elev = float(20.0)
+        try:
+            _azim = float(_np.asarray(azim))
+        except Exception:
+            _azim = float(-60.0)
+        try:
+            ax.view_init(elev=_elev, azim=_azim)
         except Exception:
             pass
         try:
@@ -784,7 +826,12 @@ def render_mesh_snapshot_cached(
 
     # Build actual mesh using core geometry
     try:
-        verts, faces, _ = build_pot_mesh(
+        # Use import-light bridge to avoid importing heavy numeric modules at
+        # UI import time. The bridge will lazily import potfoundry.core.geometry
+        # only when the builder is invoked.
+        from .geometry_bridge import build_pot_mesh_safe
+
+        verts, faces, _ = build_pot_mesh_safe(
             H=H,
             Rt=Rt,
             Rb=Rb,
@@ -871,7 +918,15 @@ def render_mesh_snapshot_cached(
             ax.set_ylim(*ylim)
             ax.set_zlim(*zlim)
             try:
-                ax.view_init(elev=view_elev, azim=view_azim)
+                _ve = float(np.asarray(view_elev))
+            except Exception:
+                _ve = float(20.0)
+            try:
+                _va = float(np.asarray(view_azim))
+            except Exception:
+                _va = float(-60.0)
+            try:
+                ax.view_init(elev=_ve, azim=_va)
             except Exception:
                 pass
             z_ratio = (zlim[1] - zlim[0]) / max(1e-6, (xlim[1] - xlim[0]))
@@ -972,8 +1027,14 @@ def render_mesh_snapshot_cached(
                 zmin = float(V[:, 2].min())
                 zmax = float(V[:, 2].max())
             except Exception:
-                rmax = max(1.0, float(st.session_state.get("top_od", 140.0)) * 0.5)
-                zmin, zmax = 0.0, float(st.session_state.get("H", 120.0))
+                try:
+                    rmax = max(1.0, float(st.session_state.get("top_od", 140.0)) * 0.5)
+                except Exception:
+                    rmax = 70.0
+                try:
+                    zmin, zmax = 0.0, float(st.session_state.get("H", 120.0))
+                except Exception:
+                    zmin, zmax = 0.0, 120.0
             xlim = [-rmax, rmax]
             ylim = [-rmax, rmax]
             zlim = [zmin, zmax]

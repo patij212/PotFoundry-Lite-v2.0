@@ -2182,13 +2182,13 @@ def check_schema_integrity() -> list[str]:
 
 
 # Freeze alias maps (and their reverses) to avoid runtime mutation.
-GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(GLOBAL_ALIASES))
+GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(_GLOBAL_ALIASES))
 ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()}
+    {k: MappingProxyType(v) for k, v in _ALIASES_BY_STYLE.items()}
 )
-GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(dict(GLOBAL_REVERSE))
+GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(dict(_GLOBAL_REVERSE))
 REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()}
+    {k: MappingProxyType(v) for k, v in _REVERSE_BY_STYLE.items()}
 )
 
 # Build canonical mirrors before freezing schema blocks deeply.

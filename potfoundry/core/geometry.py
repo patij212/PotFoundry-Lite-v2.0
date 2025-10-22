@@ -3,6 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Tuple
+from ..types import NDArrayFloat
 import math
 import numpy as np
 import numpy.typing as npt
@@ -25,13 +26,13 @@ import math as _m
 
 
 def base_radius(
-    z: float | npt.NDArray[np.float64],
+    z: float | NDArrayFloat,
     H: float,
-    Rb: float | npt.NDArray[np.float64],
-    Rt: float | npt.NDArray[np.float64],
+    Rb: float | NDArrayFloat,
+    Rt: float | NDArrayFloat,
     expn: float,
     opts: Dict[str, Any],
-) -> float | npt.NDArray[np.float64]:
+) -> float | NDArrayFloat:
     """Baseline OUTER RADIUS vs height (Rt/Rb are radii).
 
     This function accepts scalar or array-like `z`. For scalars it returns a
@@ -59,7 +60,7 @@ def base_radius(
         s0 = _sig(0.0)
         s1 = _sig(1.0)
         tw = (_sig(t) - s0) / (s1 - s0 + 1e-9)
-        r = Rb + (Rt - Rb) * (tw ** float(expn))
+        r: float | NDArrayFloat = Rb + (Rt - Rb) * (tw ** float(expn))
         # Optional mid-height bell
         amp = float(opts.get("bell_amp", 0.0))
         if amp != 0.0:
@@ -70,7 +71,7 @@ def base_radius(
             r *= 1.0 + amp * g
         # Ensure we always return a Python float for scalar inputs even if
         # intermediate math produced a numpy scalar/array-like value.
-        arr = np.asarray(r)
+        arr: NDArrayFloat = np.asarray(r, dtype=float)
         # If it's a true scalar or size-1 array, return it directly
         if getattr(arr, "size", 1) == 1:
             return float(arr.item())
@@ -245,8 +246,8 @@ def _spin_twist_radians(z: float, H: float, opts: dict) -> float:
 
 
 def superformula_r(
-    theta, m: float, n1: float, n2: float, n3: float, a: float = 1.0, b: float = 1.0
-):
+    theta: NDArrayFloat | float, m: float, n1: float, n2: float, n3: float, a: float = 1.0, b: float = 1.0
+) -> NDArrayFloat | float:
     """Gielis superformula in polar. Supports scalar or numpy array theta."""
     th = np.asarray(theta, dtype=float)
     c = np.abs(np.cos(m * th / 4.0) / a) ** n2
@@ -258,7 +259,7 @@ def superformula_r(
     return float(out) if np.isscalar(theta) else out
 
 
-def r_outer_superformula_blossom(theta, z: float, r0: float, H: float, opts: Dict):
+def r_outer_superformula_blossom(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     # Style strength controls modulation amount (default 0.0 = neutral for regression parity)
     strength = float(opts.get("sf_strength", 0.0))
@@ -556,7 +557,7 @@ def r_outer_superformula_blossom(theta, z: float, r0: float, H: float, opts: Dic
     return r0 * ((1.0 - strength) + strength * (0.90 + 0.35 * rf))
 
 
-def r_outer_fourier_bloom(theta, z: float, r0: float, H: float, opts: Dict):
+def r_outer_fourier_bloom(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
 
@@ -598,7 +599,7 @@ def r_outer_fourier_bloom(theta, z: float, r0: float, H: float, opts: Dict):
     return float(out) if np.isscalar(theta) else out
 
 
-def r_outer_spiral_ridges(theta, z: float, r0: float, H: float, opts: Dict):
+def r_outer_spiral_ridges(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
 
@@ -622,7 +623,7 @@ def r_outer_spiral_ridges(theta, z: float, r0: float, H: float, opts: Dict):
     return float(out) if np.isscalar(theta) else out
 
 
-def r_outer_superellipse_morph(theta, z: float, r0: float, H: float, opts: Dict):
+def r_outer_superellipse_morph(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
 
@@ -645,7 +646,7 @@ def r_outer_superellipse_morph(theta, z: float, r0: float, H: float, opts: Dict)
     return float(out) if np.isscalar(theta) else out
 
 
-def r_outer_harmonic_ripple(theta, z: float, r0: float, H: float, opts: Dict):
+def r_outer_harmonic_ripple(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
 
@@ -1591,7 +1592,7 @@ def build_pot_mesh(
     n_theta: int = 64,
     n_z: int = 32,
     r_outer_fn: Callable[
-        [np.ndarray | float, float, float, float, dict], np.ndarray | float
+        [NDArrayFloat | float, float, float, float, dict], NDArrayFloat | float
     ]
     | None = None,
     style_opts: dict | None = None,
@@ -1660,7 +1661,7 @@ def build_pot_mesh(
                 offs_mid_vals.append(0.16 * z_win)
             if sampling_boost >= 3:
                 offs_mid_vals.append(0.83 * z_win)
-            add_zs = []
+            add_zs: list[float] = []
             for k in range(1, _tiers):
                 z_seam = (k / _tiers) * H
                 # Negative offsets, center, then positive offsets
@@ -1687,13 +1688,13 @@ def build_pot_mesh(
     verts: list[tuple[float, float, float]] = []
     faces_out_parts: list[np.ndarray] = []
 
-    def add_ring_xy(r_vals: np.ndarray, z: float, cTw: float, sTw: float) -> np.ndarray:
+    def add_ring_xy(r_vals: NDArrayFloat, z: float, cTw: float, sTw: float) -> npt.NDArray[np.int64]:
         # Rotate precomputed cos/sin by twist: cos(θ+tw)=cosθ·cosTw - sinθ·sinTw; sin(θ+tw)=sinθ·cosTw + cosθ·sinTw
-        cx = cos_th * cTw - sin_th * sTw
-        sy = sin_th * cTw + cos_th * sTw
-        xs = (r_vals * cx).tolist()
-        ys = (r_vals * sy).tolist()
-        start_index = len(verts)
+        cx: NDArrayFloat = cos_th * cTw - sin_th * sTw
+        sy: NDArrayFloat = sin_th * cTw + cos_th * sTw
+        xs: list[float] = (r_vals * cx).tolist()
+        ys: list[float] = (r_vals * sy).tolist()
+        start_index: int = len(verts)
         from itertools import repeat
 
         verts.extend(zip(xs, ys, repeat(float(z), n_theta)))
@@ -1702,8 +1703,8 @@ def build_pot_mesh(
     # ---- Outer wall rings
     outer_idx = np.empty((len(z_outer), n_theta), dtype=int)
     r_outer_samples_list: list[np.ndarray] = []
-    est_top_od = None
-    est_bottom_od = None
+    est_top_od: float | None = None
+    est_bottom_od: float | None = None
     # No style-specific fast path by default; rely on vectorized style_fn
 
     # Debug seam counters
@@ -1714,7 +1715,7 @@ def build_pot_mesh(
     )
     dbg_outward_picks = 0
     dbg_total_picks = 0
-    dbg_samples_collected: list = []
+    dbg_samples_collected: list[NDArrayFloat] = []
     # Cache rotated cos/sin per ring (used later for geometry-aware diagonals)
     cx_rows_list: list[np.ndarray] = []
     sy_rows_list: list[np.ndarray] = []
@@ -2159,7 +2160,7 @@ def build_pot_mesh(
                 # Limit seeds per ring (highest values) to keep tracing cost bounded
                 max_paths = int(style_opts.get("sf_edge_flow_max_paths", 4))
                 max_paths = max(1, min(24, max_paths))
-                seed_list = []  # list of (z, t)
+                seed_list: list[tuple[int, int]] = []  # list of (z, t)
                 for zi in range(Z):
                     row = R[zi, :]
                     srow = seeds[zi, :]
@@ -2273,7 +2274,7 @@ def build_pot_mesh(
                                 ridge_cols = np.where(pm_row & nms_row)[0]
                                 if ridge_cols.size == 0:
                                     ridge_cols = np.where(pm_row)[0]
-                                top_vals = []
+                                top_vals: list[float] = []
                                 if ridge_cols.size > 0:
                                     top_idxs = ridge_cols[:8]
                                     top_vals = [float(row[int(ii)]) for ii in top_idxs]
@@ -2369,7 +2370,8 @@ def build_pot_mesh(
                                 debug_enabled = bool(
                                     style_opts.get("sf_edge_flow_debug", False)
                                 )
-                                debug_reports = [] if debug_enabled else None
+                                # Typed collector: list of dicts when enabled, otherwise None
+                                debug_reports: list[dict] | None = [] if debug_enabled else None
                                 # prepare a continuous interpolator per ring using periodic extension
                                 for zi in range(Z):
                                     row = R[zi, :]
@@ -2650,16 +2652,17 @@ def build_pot_mesh(
                                         r_pb = float(interp(np.array([theta_b]))[0])
                                         # compute bridge B at discrete theta samples within the sector (including integer grid points)
                                         # find discrete indices within the sector (analysis-frame indices)
-                                        idxs = []
+                                        # Build as a Python list first, then convert to ndarray to keep types narrow
+                                        idxs_list: list[int] = []
                                         for j in range(T):
                                             thj = float(th[j])
                                             # angular offset from theta_start along positive direction
                                             off = (thj - theta_start) % TAU
                                             if off <= arc_len + 1e-12:
-                                                idxs.append(j)
-                                        if not idxs:
+                                                idxs_list.append(j)
+                                        if not idxs_list:
                                             continue
-                                        idxs = np.array(idxs, dtype=int)
+                                        idxs = np.array(idxs_list, dtype=int)
                                         # Safety guard: avoid applying sector lifts to theta positions
                                         # that map to the drain/drain-top (raw) radius. This prevents
                                         # accidental modification of drain rings which can visually
@@ -2843,15 +2846,15 @@ def build_pot_mesh(
                                             if arc_len <= 1e-6:
                                                 continue
                                             # discrete indices in the sector
-                                            idxs = []
+                                            idxs_list: list[int] = []
                                             for j in range(T):
                                                 thj = float(thetas[j])
                                                 off = (thj - theta_start) % TAU
                                                 if off <= arc_len + 1e-12:
-                                                    idxs.append(j)
-                                            if not idxs:
+                                                    idxs_list.append(j)
+                                            if not idxs_list:
                                                 continue
-                                            idxs = np.array(idxs, dtype=int)
+                                            idxs = np.array(idxs_list, dtype=int)
                                             th_idxs = thetas[idxs]
                                             s_vals = (
                                                 (th_idxs - theta_start) % TAU
@@ -2995,9 +2998,9 @@ def build_pot_mesh(
                                                 ).tolist()
                                             ]
                                         except Exception:
-                                            ridge_counts = []
+                                            ridge_counts: list[int] = []
                                         # Ensure reports are JSON-serializable (convert any numpy types)
-                                        safe_reports = []
+                                        safe_reports: list[dict] = []
                                         try:
                                             if debug_reports:
                                                 for r in debug_reports:
@@ -3074,7 +3077,7 @@ def build_pot_mesh(
                                                     }
                                                     safe_reports.append(safe_r)
                                         except Exception:
-                                            safe_reports = []
+                                            safe_reports: list[dict] = []
 
                                         # If no safe reports were produced, synthesize 3 deterministic reports
                                         if (not safe_reports) or len(safe_reports) == 0:
@@ -3116,15 +3119,15 @@ def build_pot_mesh(
                                                         ) % TAU
                                                     if arc_len <= 1e-6:
                                                         continue
-                                                    idxs = []
+                                                    idxs_list: list[int] = []
                                                     for j in range(T):
                                                         thj = float(thetas[j])
                                                         off = (thj - theta_start) % TAU
                                                         if off <= arc_len + 1e-12:
-                                                            idxs.append(j)
-                                                    if not idxs:
+                                                            idxs_list.append(j)
+                                                    if not idxs_list:
                                                         continue
-                                                    idxs = np.array(idxs, dtype=int)
+                                                    idxs = np.array(idxs_list, dtype=int)
                                                     th_idxs = thetas[idxs]
                                                     s_vals = (
                                                         (th_idxs - theta_start) % TAU
@@ -3716,7 +3719,7 @@ def build_pot_mesh(
                                     best_k = k
                             return best_k
 
-                        shifts = []
+                        shifts: list[int] = []
                         for zi in range(Z):
                             row_new = R_new_raw[zi, :]
                             row_old = R_raw[zi, :]
@@ -3859,7 +3862,7 @@ def build_pot_mesh(
                                             pass
                                     try:
                                         # Canonicalize post-deoffset rows for returned diagnostics
-                                        canonical_rows = []
+                                        canonical_rows: list[np.ndarray] = []
                                         for r in dump.get("rows", []):
                                             canonical_rows.append(
                                                 {
@@ -4338,8 +4341,8 @@ def build_pot_mesh(
     faces_out_parts.append(tri_rim2)
 
     # ---- Drain circles (untwisted)
-    drain_under = []
-    drain_top = []
+    drain_under: list[int] = []
+    drain_top: list[int] = []
     # Vectorized drain circles using cached cos/sin
     for c, s in zip(cos_th, sin_th):
         x0 = r_drain * float(c)
