@@ -2,7 +2,7 @@
 # Geometry core with style-agnostic twist/spin and optimized mesh build.
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Tuple
 import math
 import numpy as np
 import numpy.typing as npt
@@ -306,7 +306,10 @@ def r_outer_superformula_blossom(theta, z: float, r0: float, H: float, opts: Dic
         def _avg3(a: np.ndarray) -> np.ndarray:
             return (np.roll(a, 1) + a + np.roll(a, -1)) / 3.0
         def _med5(a: np.ndarray) -> np.ndarray:
-            a1 = np.roll(a, 1); a2 = np.roll(a, 2); b1 = np.roll(a, -1); b2 = np.roll(a, -2)
+            a1 = np.roll(a, 1)
+            a2 = np.roll(a, 2)
+            b1 = np.roll(a, -1)
+            b2 = np.roll(a, -2)
             st = np.stack([a2, a1, a, b1, b2], axis=0)
             st.sort(axis=0)
             return st[2]
@@ -1449,7 +1452,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
                     print(f"[sf_edge_flow_debug] entering edge-flow block: mode={style_opts.get('sf_edge_flow_mode')}, debug=True")
                     # Immediate stamp: write a minimal entry so we can confirm file path and write ability
                     try:
-                        import json, time, os
+                        import json
+                        import time
+                        import os
                         from pathlib import Path
                         repo_root = Path(r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0")
                         outpath = str(repo_root / ".pf_edge_flow_debug.json")
@@ -1510,6 +1515,10 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
             probe_zi = int(style_opts.get("sf_edge_flow_probe_zi", 42))
             # Ensure origin_map exists in this scope so type checkers don't flag possible unbound use later
             origin_map = -np.ones_like(R, dtype=int)
+            # Initialize deoffset/shifts metadata variables so static analyzers don't
+            # flag conditional references later when diagnostics are assembled.
+            shifts = None
+            s0 = 0
             if twist_comp:
                 twists = np.array([_spin_twist_radians(float(z), H, style_opts) for z in z_outer], dtype=float)
                 # integer column shifts approximating twist per ring
@@ -1980,7 +1989,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
                                         row_sorted = row_ordered.copy()
                                     th_ext = np.concatenate([th_sorted, th_sorted + TAU])
                                     row_ext = np.concatenate([row_sorted, row_sorted])
-                                    interp = lambda tarr: np.interp(tarr, th_ext, row_ext)
+                                    def interp(tarr):
+                                        return np.interp(tarr, th_ext, row_ext)
                                     # process each peak pair along the shorter arc
                                     # Track how many debug reports we have before processing this zi
                                     before_reports_len = len(debug_reports) if debug_reports is not None else 0
@@ -2268,7 +2278,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
                                                 "new": newv.tolist()
                                             })
                                     try:
-                                        import json, time, os
+                                        import json
+                                        import time
+                                        import os
                                         from pathlib import Path
                                         # Use absolute workspace path (fallback to cwd) to guarantee file location
                                         try:
@@ -2607,7 +2619,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
                 if verbose_diag:
                     try:
                         from pathlib import Path
-                        import json, time
+                        import json
+                        import time
                         repo_root = Path(r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0")
                         outpath = repo_root / 'tools' / 'edgeflow_verbose_diagnostics.jsonl'
                         drain_thresh = float(style_opts.get('sf_edge_flow_drain_protect_thresh', r_drain + 1.0))
@@ -2827,7 +2840,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
                         if verbose_diag:
                             try:
                                 from pathlib import Path
-                                import json, time
+                                import json
+                                import time
                                 repo_root = Path(r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0")
                                 outpath = repo_root / 'tools' / 'edgeflow_verbose_diagnostics.jsonl'
                                 drain_thresh = float(style_opts.get('sf_edge_flow_drain_protect_thresh', r_drain + 1.0))
@@ -2944,7 +2958,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
                     # how many theta columns were raised by this final enforcement.
                     try:
                         from pathlib import Path
-                        import json, time
+                        import json
+                        import time
                         repo_root = Path(r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0")
                         outpath = repo_root / 'tools' / 'edgeflow_verbose_diagnostics.jsonl'
                         fdump = {
@@ -3041,10 +3056,16 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         r11 = r_outer_samples[1:, :][:, jn]
         # Decide per-cell diagonal using geometry-based triangle quality for LowPolyFacet
         def _tri_quality(ax, ay, az, bx, by, bz, cx, cy, cz):
-            ux = bx - ax; uy = by - ay; uz = bz - az
-            vx = cx - ax; vy = cy - ay; vz = cz - az
+            ux = bx - ax
+            uy = by - ay
+            uz = bz - az
+            vx = cx - ax
+            vy = cy - ay
+            vz = cz - az
             # edge c-b as well
-            wx = cx - bx; wy = cy - by; wz = cz - bz
+            wx = cx - bx
+            wy = cy - by
+            wz = cz - bz
             # squared lengths
             u2 = ux*ux + uy*uy + uz*uz
             v2 = vx*vx + vy*vy + vz*vz
@@ -3064,10 +3085,14 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         z00 = np.broadcast_to(z_outer[:-1, None], r00.shape)
         z11 = np.broadcast_to(z_outer[1:, None], r11.shape)
         # XY for each corner using pre-rotated bases per ring
-        x00 = r00 * cx_rows[:-1, :][:, j]; y00 = r00 * sy_rows[:-1, :][:, j]
-        x01 = r01 * cx_rows[:-1, :][:, jn]; y01 = r01 * sy_rows[:-1, :][:, jn]
-        x10 = r10 * cx_rows[1:, :][:, j]; y10 = r10 * sy_rows[1:, :][:, j]
-        x11 = r11 * cx_rows[1:, :][:, jn]; y11 = r11 * sy_rows[1:, :][:, jn]
+        x00 = r00 * cx_rows[:-1, :][:, j]
+        y00 = r00 * sy_rows[:-1, :][:, j]
+        x01 = r01 * cx_rows[:-1, :][:, jn]
+        y01 = r01 * sy_rows[:-1, :][:, jn]
+        x10 = r10 * cx_rows[1:, :][:, j]
+        y10 = r10 * sy_rows[1:, :][:, j]
+        x11 = r11 * cx_rows[1:, :][:, jn]
+        y11 = r11 * sy_rows[1:, :][:, jn]
 
         # Quality for option A (diag 00-11): triangles (00,11,10) and (00,01,11)
         qA1 = _tri_quality(x00, y00, z00, x11, y11, z11, x10, y10, z11)
