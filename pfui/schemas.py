@@ -163,22 +163,122 @@ REVERSE_BY_STYLE: Dict[str, Dict[str, str]] = {s: _invert(m) for s, m in ALIASES
 
 # Lightweight accessors to avoid heavy constant imports by consumers (helps typing tools)
 def get_global_aliases() -> Mapping[str, str]:
-    """Return the global alias mapping (legacy -> canonical)."""
+    """Return the global alias mapping (legacy -> canonical).
+
+    Brief:
+        Provide a lightweight accessor that returns the read-only global alias
+        map. Callers should import this function instead of importing the
+        `GLOBAL_ALIASES` MappingProxyType directly to avoid binding heavy
+        module-level constants at import time.
+
+    Args:
+        None
+
+    Returns:
+        Mapping[str, str]: A mapping from legacy/engine keys to canonical UI
+            keys. The returned object is a read-only mapping (MappingProxyType
+            view) and must be treated as immutable by callers.
+
+    Raises:
+        None
+
+    Example:
+        >>> from pfui.schemas import get_global_aliases
+        >>> aliases = get_global_aliases()
+        >>> aliases.get('spin_turns')
+        'twist_total_turns'
+
+    Performance:
+        Fast and allocation-free (returns an existing MappingProxyType). Use
+        this accessor to avoid expensive import-time traversal by static
+        analysis tools.
+    """
     return GLOBAL_ALIASES
 
 
 def get_aliases_by_style() -> Mapping[str, Mapping[str, str]]:
-    """Return per-style alias mappings."""
+    """Return per-style alias mappings.
+
+    Brief:
+        Accessor for per-style alias maps. Each top-level key is a style name
+        (e.g., "HarmonicRipple") and the value is a mapping of legacy ->
+        canonical keys for that style.
+
+    Args:
+        None
+
+    Returns:
+        Mapping[str, Mapping[str, str]]: Read-only mapping of style -> (legacy
+            -> canonical) mappings.
+
+    Raises:
+        None
+
+    Example:
+        >>> get_aliases_by_style()['HarmonicRipple']['hr_petals']
+        'petals_count'
+
+    Performance:
+        Returns an existing MappingProxyType; calling is cheap and avoids
+        import-time binding of large constants.
+    """
     return ALIASES_BY_STYLE
 
 
 def get_global_reverse() -> Mapping[str, str]:
-    """Return the inverted global alias map (canonical -> legacy)."""
+    """Return the inverted global alias map (canonical -> legacy).
+
+    Brief:
+        Convenience accessor that yields the canonical->legacy reverse map for
+        global aliases. Useful for translating canonical UI keys back to
+        legacy engine names when preparing arguments for engine calls.
+
+    Args:
+        None
+
+    Returns:
+        Mapping[str, str]: Read-only mapping from canonical names to legacy
+            names.
+
+    Raises:
+        None
+
+    Example:
+        >>> get_global_reverse().get('twist_total_turns')
+        'spin_turns'
+
+    Performance:
+        O(1) to return the existing MappingProxyType; safe for repeated use in
+        import-light code paths.
+    """
     return GLOBAL_REVERSE
 
 
 def get_reverse_by_style() -> Mapping[str, Mapping[str, str]]:
-    """Return per-style inverted alias maps."""
+    """Return per-style inverted alias maps.
+
+    Brief:
+        Accessor for per-style canonical->legacy mappings. Each top-level key
+        is a style name and the value is a mapping from canonical key ->
+        legacy key for that style.
+
+    Args:
+        None
+
+    Returns:
+        Mapping[str, Mapping[str, str]]: Read-only mapping of style -> (canonical
+            -> legacy) mappings.
+
+    Raises:
+        None
+
+    Example:
+        >>> get_reverse_by_style()['HarmonicRipple']['petals_count']
+        'hr_petals'
+
+    Performance:
+        Cheap accessor returning a prebuilt MappingProxyType structure.
+    """
     return REVERSE_BY_STYLE
 
 
@@ -2075,20 +2175,123 @@ CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = _freeze
 # these to importing the raw MappingProxyType objects directly (reduces
 # import-time noise for type-checkers and editors).
 def get_style_schemas() -> Mapping[str, Mapping[str, Mapping[str, Any]]]:
-    """Return the per-style schema mapping (legacy-keyed blocks)."""
+    """Return the per-style schema mapping (legacy-keyed blocks).
+
+    Brief:
+        Provide an import-light accessor that returns the per-style UI schema
+        blocks. Each style maps to a dict of legacy-keyed control metadata
+        (ControlMeta-like dicts). Callers who only need read access should use
+        this function instead of importing `STYLE_SCHEMAS` directly.
+
+    Args:
+        None
+
+    Returns:
+        Mapping[str, Mapping[str, Mapping[str, Any]]]: Read-only mapping of
+            style -> key -> control metadata.
+
+    Raises:
+        None
+
+    Example:
+        >>> ss = get_style_schemas()
+        >>> 'HarmonicRipple' in ss
+        True
+
+    Performance:
+        Returns a MappingProxyType view; inexpensive to call and suitable for
+        use in editor/type-checker friendly code paths.
+    """
     return STYLE_SCHEMAS
 
 
 def get_global_controls() -> Mapping[str, Mapping[str, Any]]:
-    """Return the global (legacy-keyed) control block."""
+    """Return the global (legacy-keyed) control block.
+
+    Brief:
+        Accessor for global UI controls (legacy-keyed). Each returned value is
+        a control metadata mapping (see `ControlMeta`). This accessor should
+        be preferred over importing `GLOBAL_CONTROLS` directly to avoid
+        heavy import-time coupling.
+
+    Args:
+        None
+
+    Returns:
+        Mapping[str, Mapping[str, Any]]: Read-only mapping of legacy key ->
+            control metadata.
+
+    Raises:
+        None
+
+    Example:
+        >>> gc = get_global_controls()
+        >>> gc['spin_turns']['canonical']
+        'twist_total_turns'
+
+    Performance:
+        Constant-time return of a MappingProxyType; callers should not
+        attempt to mutate the returned mapping.
+    """
     return GLOBAL_CONTROLS
 
 
 def get_canonical_controls() -> Mapping[str, Mapping[str, Any]]:
-    """Return the canonical-keyed global control block."""
+    """Return the canonical-keyed global control block.
+
+    Brief:
+        Accessor returning the global controls keyed by their canonical names
+        (human-friendly UI/export naming). The returned items include a
+        "legacy" field that records the original legacy key.
+
+    Args:
+        None
+
+    Returns:
+        Mapping[str, Mapping[str, Any]]: Read-only canonical-keyed control
+            metadata mapping.
+
+    Raises:
+        None
+
+    Example:
+        >>> cc = get_canonical_controls()
+        >>> cc['twist_total_turns']['legacy']
+        'spin_turns'
+
+    Performance:
+        Lightweight accessor returning an immutable view; suitable for use in
+        documentation generation and export code paths.
+    """
     return CANONICAL_CONTROLS
 
 
 def get_canonical_style_schemas() -> Mapping[str, Mapping[str, Mapping[str, Any]]]:
-    """Return canonical-keyed style schema views."""
+    """Return canonical-keyed style schema views.
+
+    Brief:
+        Return per-style schema blocks keyed by canonical names. Each block's
+        entries include a "legacy" field to map back to the original
+        legacy key. Use this accessor when preparing export-ready option
+        dictionaries or documentation.
+
+    Args:
+        None
+
+    Returns:
+        Mapping[str, Mapping[str, Mapping[str, Any]]]: Read-only mapping of
+            style -> canonical-key -> control metadata.
+
+    Raises:
+        None
+
+    Example:
+        >>> css = get_canonical_style_schemas()
+        >>> css['HarmonicRipple']['petals_count']['legacy']
+        'hr_petals'
+
+    Performance:
+        Returns an existing MappingProxyType; cheap to call and safe for use in
+        import-light code.
+    """
     return CANONICAL_STYLE_SCHEMAS
