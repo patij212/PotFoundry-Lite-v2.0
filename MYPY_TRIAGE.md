@@ -180,6 +180,8 @@ Purpose
 
 - [2025-10-22] Batch 2 kickoff: small, conservative changes applied to `pfui/schemas.py` (added accessors and conservative Mapping annotations), added smoke test `tests/typing/test_schemas_smoke.py`, and migrated a set of immediate callers (`app.py`, `pfui/state.py`, `pfui/presets.py`, `pfui/controls.py`, `tests/pfui/test_state.py`) to use accessors. Focused tests + checks: pytest (selected) passed; no new static errors on modified files.
 
+ - [2025-10-22] Commit 1e1e1e4: docs(schemas): add Google-style docstrings to accessor functions. Focused pytest passed. Ran `ruff check . --fix`; ruff produced a list of style issues; most are auto-fixable but a subset required manual attention (see ruff output in terminal). Next Batch 2 step: add a conservative geometry wrapper (`build_pot_mesh_safe`) and a small smoke test to prepare `potfoundry/core/geometry.py` for incremental typing.
+
  - [2025-10-21] Commit bddb45e: predeclare streamlit 'st' and remove unused type-ignore in `pfui/state_history.py`. Ran mypy (focused): Found 162 errors in 19 files. Tests: 347 passed.
 
  - [2025-10-21] Commit e0c905f: pfui/yaml_tools: coerce yaml.safe_dump to str to satisfy mypy return type. Ran mypy (focused): Found 126 errors in 13 files. Tests: 347 passed.
