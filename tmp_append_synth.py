@@ -1,8 +1,9 @@
 import json
 import time
 import math
+from typing import Any, Dict, List, cast
 
-payload = {
+payload: Dict[str, Any] = {
     "timestamp": time.time(),
     "reports_count": 3,
     "notes": "synthetic fallback appended by assistant after run produced only stamps",
@@ -12,7 +13,7 @@ payload = {
     "ridge_counts_per_z": [],
     "reports": [],
 }
-reports = payload.setdefault("reports", [])
+reports = cast(List[Dict[str, Any]], payload.setdefault("reports", []))
 T = 168
 TAU = 2 * math.pi
 th = [TAU * i / T for i in range(T)]
