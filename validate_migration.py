@@ -5,6 +5,7 @@ Final Validation Script for Binary STL Migration
 This script demonstrates that the binary STL migration is complete and working.
 Run this to verify the implementation.
 """
+
 import sys
 import warnings
 from pathlib import Path
@@ -19,6 +20,7 @@ print("=" * 70)
 print("\n[1/5] Verifying imports...")
 try:
     from potfoundry import write_stl_binary, write_ascii_stl, build_pot_mesh, STYLES
+
     print("  ✅ All imports successful")
 except ImportError as e:
     print(f"  ❌ Import failed: {e}")
@@ -51,11 +53,19 @@ with warnings.catch_warnings(record=True) as w:
 # Test 4: Binary STL export works correctly
 print("\n[4/5] Verifying binary STL export...")
 try:
-    style_fn, _ = STYLES['SuperellipseMorph']
+    style_fn, _ = STYLES["SuperellipseMorph"]
     verts, faces, _ = build_pot_mesh(
-        H=80, Rt=50, Rb=40, t_wall=2.5, t_bottom=2.5, r_drain=6,
-        expn=1.1, n_theta=48, n_z=24,
-        r_outer_fn=style_fn, style_opts={}
+        H=80,
+        Rt=50,
+        Rb=40,
+        t_wall=2.5,
+        t_bottom=2.5,
+        r_drain=6,
+        expn=1.1,
+        n_theta=48,
+        n_z=24,
+        r_outer_fn=style_fn,
+        style_opts={},
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:

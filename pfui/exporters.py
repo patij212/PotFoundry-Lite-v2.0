@@ -17,9 +17,7 @@ def _safe_name(name: str) -> str:
 
 
 def export_stl_bytes(
-    name: str, 
-    verts: npt.NDArray[np.float64], 
-    faces: npt.NDArray[np.int32]
+    name: str, verts: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]
 ) -> Tuple[bytes, str]:
     """Export mesh to binary STL and return as bytes.
 

@@ -3,9 +3,12 @@ Pytest configuration for the PotFoundry test suite.
 
 Defines Hypothesis profiles for different testing scenarios.
 """
+
 import warnings
+
 try:
     from hypothesis import settings, Verbosity
+
     _HAVE_HYPOTHESIS = True
 except Exception as _e:  # ImportError or others
     _HAVE_HYPOTHESIS = False
@@ -45,5 +48,6 @@ if _HAVE_HYPOTHESIS:
 
 # Default to CI profile in CI environments, dev otherwise
 import os
+
 if _HAVE_HYPOTHESIS:
     settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "dev"))

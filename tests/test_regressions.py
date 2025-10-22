@@ -45,9 +45,17 @@ def test_build_pot_mesh_diagnostics_match_input_diameters_when_neutral():
 
     style_fn = STYLES["SuperformulaBlossom"][0]
     verts, faces, diag = build_pot_mesh(
-        H, Rt, Rb, t_wall, t_bottom, r_drain,
-        expn=expn, n_theta=n_theta, n_z=n_z,
-        r_outer_fn=style_fn, style_opts={}
+        H,
+        Rt,
+        Rb,
+        t_wall,
+        t_bottom,
+        r_drain,
+        expn=expn,
+        n_theta=n_theta,
+        n_z=n_z,
+        r_outer_fn=style_fn,
+        style_opts={},
     )
 
     # Estimated diameters should equal inputs (within a tiny tolerance)

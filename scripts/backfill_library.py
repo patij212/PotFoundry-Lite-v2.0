@@ -28,6 +28,7 @@ Metadata JSON format:
         "tags": ["tag1", "tag2"]
     }
 """
+
 import sys
 import json
 from pathlib import Path
@@ -37,12 +38,15 @@ from typing import List
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from potfoundry.library import publish_design
-from potfoundry.integrations.supabase_client import get_singleton_client, NotConfiguredError
+from potfoundry.integrations.supabase_client import (
+    get_singleton_client,
+    NotConfiguredError,
+)
 
 
 def load_metadata(json_path: Path) -> dict:
     """Load and validate metadata from JSON file."""
-    with open(json_path, 'r') as f:
+    with open(json_path, "r") as f:
         data = json.load(f)
 
     # Validate required fields
@@ -130,7 +134,7 @@ def backfill(directory: Path, dry_run: bool = False):
                 license=metadata["license"],
                 title=metadata["title"],
                 tags=metadata.get("tags", []),
-                app_commit=metadata.get("app_commit")
+                app_commit=metadata.get("app_commit"),
             )
 
             if result.duplicate:
@@ -159,8 +163,12 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Backfill designs to Public Library")
-    parser.add_argument("directory", type=Path, help="Directory containing STL/JSON files")
-    parser.add_argument("--dry-run", action="store_true", help="Don't actually publish (validate only)")
+    parser.add_argument(
+        "directory", type=Path, help="Directory containing STL/JSON files"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Don't actually publish (validate only)"
+    )
 
     args = parser.parse_args()
 

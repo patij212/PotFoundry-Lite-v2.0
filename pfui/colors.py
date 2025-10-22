@@ -3,8 +3,10 @@
 This module centralizes color palette resolution and gradient mapping logic so it can
 be unit‑tested independent of the Streamlit app.
 """
+
 from __future__ import annotations
 from typing import List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
+
 if TYPE_CHECKING:
     # numpy typing for static tools only; runtime import is lazy inside functions
     import numpy as np
@@ -22,18 +24,20 @@ _PRESETS = {
 
 
 def hex_to_rgb_tuple(h: str) -> Tuple[int, int, int]:
-    h = h.strip().lstrip('#')
+    h = h.strip().lstrip("#")
     if len(h) == 3:
-        h = ''.join(ch * 2 for ch in h)
+        h = "".join(ch * 2 for ch in h)
     if len(h) != 6:
         return (128, 128, 128)
     try:
-        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))  # type: ignore
+        return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore
     except Exception:
         return (128, 128, 128)
 
 
-def interpolate_rgb(a: Tuple[int, int, int], b: Tuple[int, int, int], t: float) -> Tuple[int, int, int]:
+def interpolate_rgb(
+    a: Tuple[int, int, int], b: Tuple[int, int, int], t: float
+) -> Tuple[int, int, int]:
     t = 0.0 if t < 0 else (1.0 if t > 1 else t)
     return (
         int(a[0] + (b[0] - a[0]) * t),
@@ -42,7 +46,9 @@ def interpolate_rgb(a: Tuple[int, int, int], b: Tuple[int, int, int], t: float) 
     )
 
 
-def resolve_palette(preset: Optional[str], custom_colors: Optional[Sequence[str]] = None) -> Tuple[Tuple[int, int, int], Tuple[int, int, int], Tuple[int, int, int]]:
+def resolve_palette(
+    preset: Optional[str], custom_colors: Optional[Sequence[str]] = None
+) -> Tuple[Tuple[int, int, int], Tuple[int, int, int], Tuple[int, int, int]]:
     if preset and preset in _PRESETS:
         return _PRESETS[preset]
     # Fallback to custom or defaults
@@ -50,10 +56,18 @@ def resolve_palette(preset: Optional[str], custom_colors: Optional[Sequence[str]
         c1, c2, c3 = (hex_to_rgb_tuple(c) for c in custom_colors[:3])
         return c1, c2, c3
     d1, d2, d3 = DEFAULT_CUSTOM_COLORS
-    return tuple(map(int, hex_to_rgb_tuple(d1))) , tuple(map(int, hex_to_rgb_tuple(d2))) , tuple(map(int, hex_to_rgb_tuple(d3)))  # type: ignore
+    return (
+        tuple(map(int, hex_to_rgb_tuple(d1))),
+        tuple(map(int, hex_to_rgb_tuple(d2))),
+        tuple(map(int, hex_to_rgb_tuple(d3))),
+    )  # type: ignore
 
 
-def build_gradient_colors(z_norm: Optional[Union[Sequence[float], 'npt.NDArray[np.float64]']], preset: Optional[str], custom_colors: Optional[Sequence[str]] = None) -> List[List[int]]:
+def build_gradient_colors(
+    z_norm: Optional[Union[Sequence[float], "npt.NDArray[np.float64]"]],
+    preset: Optional[str],
+    custom_colors: Optional[Sequence[str]] = None,
+) -> List[List[int]]:
     """Piecewise 3‑point gradient mapping.
 
     z_norm: 1D iterable/array of values assumed in [0,1].

@@ -53,11 +53,15 @@ def test_straight_seam_edges_plateau_matches_expected_limit():
 
     # Straight seam edges enabled
     opts_straight = dict(base_opts, lp_cut_straight_edges=True)
-    r_straight = np.asarray(r_outer_lowpoly_facet(thetas, z_seam, r0, H, opts_straight), dtype=float)
+    r_straight = np.asarray(
+        r_outer_lowpoly_facet(thetas, z_seam, r0, H, opts_straight), dtype=float
+    )
     # Expected clamp at the bottom seam (top seam inactive this far away)
     angle_deg = float(base_opts["lp_cut_bot_deg"])
     z_win = (base_opts["lp_cut_z_window_frac"] * 0.01) * (H / tiers)
-    depth = min(float(base_opts["lp_cut_cap_mm"]), z_win * math.tan(math.radians(angle_deg)))
+    depth = min(
+        float(base_opts["lp_cut_cap_mm"]), z_win * math.tan(math.radians(angle_deg))
+    )
     r_expected = r0 - depth
 
     # The maximum radius at the seam should equal the expected clamp within tolerance
@@ -76,7 +80,10 @@ def test_straight_seam_edges_plateau_matches_expected_limit():
     for dz in z_offsets:
         z_sample = z_seam + dz
         r0_sample = base_radius(z_sample, H, Rb, Rt, expn, opts_straight)
-        r_band = np.asarray(r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts_straight), dtype=float)
+        r_band = np.asarray(
+            r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts_straight),
+            dtype=float,
+        )
         assert float(np.std(r_band)) <= std_tolerance
 
 
@@ -91,10 +98,12 @@ def _baseline_profile(
 ) -> np.ndarray:
     """Return the lowpoly profile without seam cuts for comparison."""
     base_opts = dict(opts)
-    base_opts.update({
-        "lp_cut_bot_deg": 0.0,
-        "lp_cut_top_deg": 0.0,
-    })
+    base_opts.update(
+        {
+            "lp_cut_bot_deg": 0.0,
+            "lp_cut_top_deg": 0.0,
+        }
+    )
     r0 = base_radius(z, H, Rb, Rt, expn, base_opts)
     return np.asarray(r_outer_lowpoly_facet(thetas, z, r0, H, base_opts), dtype=float)
 
@@ -146,7 +155,9 @@ def test_uniform_ring_does_not_extend_outward():
     for dz in (0.25 * z_win, 0.5 * z_win):
         z_sample = z_seam + dz
         r0_sample = base_radius(z_sample, H, Rb, Rt, expn, opts)
-        band = np.asarray(r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts), dtype=float)
+        band = np.asarray(
+            r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts), dtype=float
+        )
         baseline_band = _baseline_profile(thetas, z_sample, H, Rb, Rt, expn, opts)
         assert np.all(band <= baseline_band + 1e-6)
 
@@ -199,6 +210,8 @@ def test_uniform_ring_outward_mode_remains_inward():
     for dz in (0.25 * z_win, 0.5 * z_win):
         z_sample = z_seam + dz
         r0_sample = base_radius(z_sample, H, Rb, Rt, expn, opts)
-        band = np.asarray(r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts), dtype=float)
+        band = np.asarray(
+            r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts), dtype=float
+        )
         baseline_band = _baseline_profile(thetas, z_sample, H, Rb, Rt, expn, opts)
         assert np.all(band <= baseline_band + 1e-6)

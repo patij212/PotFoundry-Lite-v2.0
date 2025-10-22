@@ -23,42 +23,61 @@ def test_edgeflow_diagnostics_contract():
         return np.asarray(R_grid[idx, :], dtype=float)
 
     style_opts = {
-        'sf_edge_flow_reconstruct_enable': True,
-        'sf_edge_flow_mode': 'ridge_paths',
-        'sf_edge_flow_twist_compensate': False,
-        'sf_edge_flow_auto_deoffset': False,
-        'sf_edge_flow_verbose_diagnostics': True,
-        'sf_edge_flow_probe': True,
-        'sf_edge_flow_probe_zi': int(Z // 2),
-        'sf_style': 'SuperformulaBlossom',  # explicit style hint
-        'sf_edge_flow_window': 3,
+        "sf_edge_flow_reconstruct_enable": True,
+        "sf_edge_flow_mode": "ridge_paths",
+        "sf_edge_flow_twist_compensate": False,
+        "sf_edge_flow_auto_deoffset": False,
+        "sf_edge_flow_verbose_diagnostics": True,
+        "sf_edge_flow_probe": True,
+        "sf_edge_flow_probe_zi": int(Z // 2),
+        "sf_style": "SuperformulaBlossom",  # explicit style hint
+        "sf_edge_flow_window": 3,
     }
 
-    verts, faces, diagnostics = build_pot_mesh(H, Rt=40.0, Rb=40.0, t_wall=2.5, t_bottom=4.0, r_drain=3.0,
-                                              expn=1.0, n_theta=n_theta, n_z=n_z,
-                                              r_outer_fn=synthetic_r_outer_fn,
-                                              style_opts=style_opts)
+    verts, faces, diagnostics = build_pot_mesh(
+        H,
+        Rt=40.0,
+        Rb=40.0,
+        t_wall=2.5,
+        t_bottom=4.0,
+        r_drain=3.0,
+        expn=1.0,
+        n_theta=n_theta,
+        n_z=n_z,
+        r_outer_fn=synthetic_r_outer_fn,
+        style_opts=style_opts,
+    )
 
     assert isinstance(diagnostics, dict)
-    ev = diagnostics.get('edgeflow_verbose')
-    assert ev is not None and len(ev) > 0, "Expected edgeflow_verbose to be present and non-empty"
+    ev = diagnostics.get("edgeflow_verbose")
+    assert ev is not None and len(ev) > 0, (
+        "Expected edgeflow_verbose to be present and non-empty"
+    )
 
     # Check canonical keys exist in the first available row sample
     entry = ev[0]
-    rows = entry.get('rows') or []
+    rows = entry.get("rows") or []
     assert len(rows) > 0
     row = rows[0]
     expected_keys = {
-        'zi', 'z', 'R_raw_sample', 'R_analysis_sample', 'Env_sample',
-        'Env_to_use_sample', 'Env_to_use_raw_post', 'R_new_raw_sample'
+        "zi",
+        "z",
+        "R_raw_sample",
+        "R_analysis_sample",
+        "Env_sample",
+        "Env_to_use_sample",
+        "Env_to_use_raw_post",
+        "R_new_raw_sample",
     }
     missing = expected_keys - set(row.keys())
     assert not missing, f"Missing expected diagnostic keys: {missing}"
 
     # Shapes: R_new_raw_sample should match n_theta
-    r_new_raw = np.asarray(row.get('R_new_raw_sample'))
-    env_post = np.asarray(row.get('Env_to_use_raw_post'))
-    assert r_new_raw.ndim == 1 or (r_new_raw.ndim == 2 and r_new_raw.shape[1] == n_theta)
+    r_new_raw = np.asarray(row.get("R_new_raw_sample"))
+    env_post = np.asarray(row.get("Env_to_use_raw_post"))
+    assert r_new_raw.ndim == 1 or (
+        r_new_raw.ndim == 2 and r_new_raw.shape[1] == n_theta
+    )
     # Normalize to 1D for comparison if necessary
     if r_new_raw.ndim == 2:
         r_new_raw = r_new_raw[0]
@@ -70,4 +89,6 @@ def test_edgeflow_diagnostics_contract():
     # Numeric invariant: final raw radii >= envelope (within small tolerance)
     diffs = r_new_raw - env_post
     n_viol = int(np.count_nonzero(diffs < -1e-9))
-    assert n_viol == 0, f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"
+    assert n_viol == 0, (
+        f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"
+    )

@@ -6,10 +6,18 @@ from .state import widget_key
 from .snapshot_store import save_png_temp, read_png_bytes, remove_png_path
 
 
-def render_snapshots(png_bytes: bytes | None, style_name: str,
-                     H: float, top_od: float, bottom_od: float,
-                     t_wall: float, t_bottom: float, r_drain: float,
-                     expn: float, opts: Dict[str, Any]) -> None:
+def render_snapshots(
+    png_bytes: bytes | None,
+    style_name: str,
+    H: float,
+    top_od: float,
+    bottom_od: float,
+    t_wall: float,
+    t_bottom: float,
+    r_drain: float,
+    expn: float,
+    opts: Dict[str, Any],
+) -> None:
     snaps: List[Dict[str, Any]] = st.session_state.get("_snaps", [])
     sc1, sc2, sc3 = st.columns([1, 1, 2])
     snap_name = sc1.text_input("Snapshot name", value=f"{style_name}_H{int(H)}")
@@ -30,9 +38,14 @@ def render_snapshots(png_bytes: bytes | None, style_name: str,
             "png": png_target,
             "style": style_name,
             "params": {
-                "H": H, "top_od": top_od, "bottom_od": bottom_od,
-                "t_wall": t_wall, "t_bottom": t_bottom, "r_drain": r_drain,
-                "expn": expn, "opts": opts,
+                "H": H,
+                "top_od": top_od,
+                "bottom_od": bottom_od,
+                "t_wall": t_wall,
+                "t_bottom": t_bottom,
+                "r_drain": r_drain,
+                "expn": expn,
+                "opts": opts,
             },
         }
         snaps.append(snap)
@@ -41,23 +54,25 @@ def render_snapshots(png_bytes: bytes | None, style_name: str,
 
     if snaps:
         for i, s in enumerate(snaps):
-            st.markdown(f"**{i+1}. {s['name']}**")
+            st.markdown(f"**{i + 1}. {s['name']}**")
             cc1, cc2, cc3 = st.columns([1, 1, 2])
             png_bytes_local = read_png_bytes(s.get("png"))
             if png_bytes_local:
                 # replace deprecated use_column_width with width='stretch'
-                cc1.image(png_bytes_local, caption="preview", width='stretch')
+                cc1.image(png_bytes_local, caption="preview", width="stretch")
             if cc2.button("Apply", key=f"apply_{i}"):
-                st.session_state.update({
-                    "H": s["params"]["H"],
-                    "top_od": s["params"]["top_od"],
-                    "bottom_od": s["params"]["bottom_od"],
-                    "t_wall": s["params"]["t_wall"],
-                    "t_bottom": s["params"]["t_bottom"],
-                    "r_drain": s["params"]["r_drain"],
-                    "expn": s["params"]["expn"],
-                    "style": s["style"],
-                })
+                st.session_state.update(
+                    {
+                        "H": s["params"]["H"],
+                        "top_od": s["params"]["top_od"],
+                        "bottom_od": s["params"]["bottom_od"],
+                        "t_wall": s["params"]["t_wall"],
+                        "t_bottom": s["params"]["t_bottom"],
+                        "r_drain": s["params"]["r_drain"],
+                        "expn": s["params"]["expn"],
+                        "style": s["style"],
+                    }
+                )
                 for k, v in s["params"]["opts"].items():
                     st.session_state[widget_key(s["style"], k)] = v
                 st.rerun()

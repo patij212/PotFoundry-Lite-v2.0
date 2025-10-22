@@ -1,4 +1,5 @@
 """Tests for canonical JSON generation and content hashing."""
+
 import json
 import hashlib
 
@@ -11,7 +12,7 @@ def test_canonical_payload_structure(
     sample_opts,
     sample_mesh,
     sample_diagnostics,
-    sample_license
+    sample_license,
 ):
     """Test that canonical payload has correct structure."""
     payload = canonical_payload(
@@ -20,7 +21,7 @@ def test_canonical_payload_structure(
         sample_opts,
         sample_mesh,
         sample_diagnostics,
-        sample_license
+        sample_license,
     )
 
     assert "version" in payload
@@ -54,10 +55,7 @@ def test_canonical_dict_sorting():
 
 def test_canonical_nested_sorting():
     """Test that nested dictionaries are also sorted."""
-    data = {
-        "z": {"b": 2, "a": 1},
-        "a": {"z": 3, "m": 2}
-    }
+    data = {"z": {"b": 2, "a": 1}, "a": {"z": 3, "m": 2}}
     normalized = _normalize_dict(data)
 
     # Check top-level sort
@@ -75,7 +73,7 @@ def test_content_id_stability(
     sample_opts,
     sample_mesh,
     sample_diagnostics,
-    sample_license
+    sample_license,
 ):
     """Test that content_id is stable across multiple calls."""
     payload = canonical_payload(
@@ -84,7 +82,7 @@ def test_content_id_stability(
         sample_opts,
         sample_mesh,
         sample_diagnostics,
-        sample_license
+        sample_license,
     )
 
     id1 = content_id(payload)
@@ -102,7 +100,7 @@ def test_content_id_key_order_invariant(
     sample_opts,
     sample_mesh,
     sample_diagnostics,
-    sample_license
+    sample_license,
 ):
     """Test that content_id is same regardless of key insertion order."""
     # Create two payloads with different key orders
@@ -112,7 +110,7 @@ def test_content_id_key_order_invariant(
         sample_opts,
         sample_mesh,
         sample_diagnostics,
-        sample_license
+        sample_license,
     )
 
     # Manually reorder keys by reconstructing
@@ -138,7 +136,7 @@ def test_content_id_different_for_different_data(
     sample_opts,
     sample_mesh,
     sample_diagnostics,
-    sample_license
+    sample_license,
 ):
     """Test that different data produces different IDs."""
     payload1 = canonical_payload(
@@ -147,7 +145,7 @@ def test_content_id_different_for_different_data(
         sample_opts,
         sample_mesh,
         sample_diagnostics,
-        sample_license
+        sample_license,
     )
 
     # Change one parameter
@@ -158,7 +156,7 @@ def test_content_id_different_for_different_data(
         sample_opts,
         sample_mesh,
         sample_diagnostics,
-        sample_license
+        sample_license,
     )
 
     id1 = content_id(payload1)

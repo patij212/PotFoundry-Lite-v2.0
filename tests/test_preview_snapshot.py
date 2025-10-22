@@ -11,7 +11,7 @@ def test_render_mesh_snapshot_cached_returns_png_bytes():
     expn = 1.1
     n_theta = 48
     n_z = 24
-    style_name = list(__import__('pfui.imports', fromlist=['STYLES']).STYLES.keys())[0]
+    style_name = list(__import__("pfui.imports", fromlist=["STYLES"]).STYLES.keys())[0]
     opts = {}
     opts_json = json.dumps(opts)
 
@@ -19,11 +19,21 @@ def test_render_mesh_snapshot_cached_returns_png_bytes():
     fig_w, fig_h, dpi = 4.0, 3.0, 100
 
     png = render_mesh_snapshot_cached(
-        H, Rt, Rb, expn,
-        n_theta, n_z,
-        style_name, opts_json,
-        fig_w, fig_h, dpi,
-        inner_wall=None, place_on_ground=True,
+        H,
+        Rt,
+        Rb,
+        expn,
+        n_theta,
+        n_z,
+        style_name,
+        opts_json,
+        fig_w,
+        fig_h,
+        dpi,
+        inner_wall=None,
+        place_on_ground=True,
     )
 
-    assert png is None or (isinstance(png, (bytes, bytearray)) and len(png) > 100), "Expected PNG bytes or None"
+    assert png is None or (isinstance(png, (bytes, bytearray)) and len(png) > 100), (
+        "Expected PNG bytes or None"
+    )

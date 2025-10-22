@@ -7,9 +7,9 @@ from pfui import schemas as S
 def test_strip_alt_to_canonical_removes_legacy():
     style = "HarmonicRipple"
     opts = {
-        "hr_petals": 7,           # legacy
-        "petals_count": 9,        # canonical (wins)
-        "unknown_key": 123,       # passthrough
+        "hr_petals": 7,  # legacy
+        "petals_count": 9,  # canonical (wins)
+        "unknown_key": 123,  # passthrough
     }
     out = S.normalize_style_opts(style, opts, direction="to_canonical", strip_alt=True)
     assert "petals_count" in out
@@ -21,8 +21,8 @@ def test_strip_alt_to_canonical_removes_legacy():
 def test_strip_alt_to_engine_removes_canonical():
     style = "HarmonicRipple"
     opts = {
-        "petals_count": 11,       # canonical
-        "hr_petals": 5,           # legacy (wins for to_engine)
+        "petals_count": 11,  # canonical
+        "hr_petals": 5,  # legacy (wins for to_engine)
     }
     out = S.normalize_style_opts(style, opts, direction="to_engine", strip_alt=True)
     assert "hr_petals" in out

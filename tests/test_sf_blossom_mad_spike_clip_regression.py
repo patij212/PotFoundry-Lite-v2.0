@@ -52,8 +52,15 @@ def test_superformula_blossom_mad_and_spike_clip_builds_mesh():
     }
 
     verts, faces, diag = build_pot_mesh(
-        H, Rt, Rb, t_wall, t_bottom, r_drain,
-        expn=expn, n_theta=96, n_z=48,
+        H,
+        Rt,
+        Rb,
+        t_wall,
+        t_bottom,
+        r_drain,
+        expn=expn,
+        n_theta=96,
+        n_z=48,
         r_outer_fn=STYLES["SuperformulaBlossom"][0],
         style_opts=opts,
     )

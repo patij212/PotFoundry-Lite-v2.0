@@ -9,15 +9,15 @@ def load_latest_row(jsonl_path: Path, zi: int = 2, tol: int = 0):
     """Find the latest diagnostics row for zi within +/- tol (inclusive)."""
     last_row = None
     candidates = set(range(max(0, zi - tol), zi + tol + 1))
-    with open(jsonl_path, 'r', encoding='utf-8') as fh:
+    with open(jsonl_path, "r", encoding="utf-8") as fh:
         for line in fh:
             try:
                 obj = json.loads(line)
             except Exception:
                 continue
-            rows = obj.get('rows') or []
+            rows = obj.get("rows") or []
             for r in rows:
-                if r.get('zi') not in candidates:
+                if r.get("zi") not in candidates:
                     continue
                 # Accept any diagnostics row matching the probe zi. Later
                 # we will inspect available fields (env/r_new variants) and
@@ -67,44 +67,53 @@ def test_edgeflow_strict_outward_enforcement():
     # Style opts: disable twist compensation and auto-deoffset; enable verbose diagnostics
     style_opts = {
         # explicit style hint (replaces function-name detection)
-        'sf_style': 'SuperformulaBlossom',
-        'sf_edge_flow_reconstruct_enable': True,
-        'sf_edge_flow_mode': 'ridge_paths',
+        "sf_style": "SuperformulaBlossom",
+        "sf_edge_flow_reconstruct_enable": True,
+        "sf_edge_flow_mode": "ridge_paths",
         # disable twist compensation so analysis==raw mapping
-        'sf_edge_flow_twist_compensate': False,
+        "sf_edge_flow_twist_compensate": False,
         # ensure auto deoffset won't run
-        'sf_edge_flow_auto_deoffset': False,
-        'sf_edge_flow_debug': True,
-        'sf_edge_flow_verbose_diagnostics': True,
-        'sf_edge_flow_probe': True,
-        'sf_edge_flow_probe_zi': int(mid),
+        "sf_edge_flow_auto_deoffset": False,
+        "sf_edge_flow_debug": True,
+        "sf_edge_flow_verbose_diagnostics": True,
+        "sf_edge_flow_probe": True,
+        "sf_edge_flow_probe_zi": int(mid),
         # smaller window to keep runtime tiny
-        'sf_edge_flow_window': 3,
+        "sf_edge_flow_window": 3,
     }
 
     # Run mesh builder and request returned edgeflow diagnostics (if any)
-    verts, faces, diagnostics = build_pot_mesh(H, Rt=40.0, Rb=40.0, t_wall=2.5, t_bottom=4.0, r_drain=3.0,
-                                              expn=1.0, n_theta=n_theta, n_z=n_z,
-                                              r_outer_fn=synthetic_r_outer_fn,
-                                              style_opts=style_opts)
+    verts, faces, diagnostics = build_pot_mesh(
+        H,
+        Rt=40.0,
+        Rb=40.0,
+        t_wall=2.5,
+        t_bottom=4.0,
+        r_drain=3.0,
+        expn=1.0,
+        n_theta=n_theta,
+        n_z=n_z,
+        r_outer_fn=synthetic_r_outer_fn,
+        style_opts=style_opts,
+    )
 
     # Prefer in-memory diagnostics when present
-    ev = diagnostics.get('edgeflow_verbose') if isinstance(diagnostics, dict) else None
+    ev = diagnostics.get("edgeflow_verbose") if isinstance(diagnostics, dict) else None
     assert diagnostics is not None, "build_pot_mesh did not return diagnostics dict"
     row = None
     if ev is not None and len(ev) > 0:
         # Find the latest row matching the probe zi in the returned diagnostics
         for entry in reversed(ev):
-            rows = entry.get('rows') or []
+            rows = entry.get("rows") or []
             for r in rows:
-                if int(r.get('zi', -1)) == int(mid):
+                if int(r.get("zi", -1)) == int(mid):
                     row = r
                     break
             if row is not None:
                 break
     # Fallback to file-based JSONL if in-memory diagnostics weren't returned
     if row is None:
-        jsonl = repo_root / 'tools' / 'edgeflow_verbose_diagnostics.jsonl'
+        jsonl = repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
         assert jsonl.exists(), f"Expected diagnostics jsonl at {jsonl}"
         row = load_latest_row(jsonl, zi=mid, tol=0)
         assert row is not None, "No matching diagnostics row found for probe zi"
@@ -117,13 +126,19 @@ def test_edgeflow_strict_outward_enforcement():
 
     # Prefer the post-deoffset raw envelope when available
     env_post = None
-    for cand in ('Env_to_use_raw_post', 'env_to_use_raw_post', 'Env_to_use_sample', 'env_to_use_sample', 'Env_sample'):
+    for cand in (
+        "Env_to_use_raw_post",
+        "env_to_use_raw_post",
+        "Env_to_use_sample",
+        "env_to_use_sample",
+        "Env_sample",
+    ):
         env_post = as_np(cand)
         if env_post is not None:
             break
 
     r_new = None
-    for cand in ('r_new_raw_sample', 'R_new_raw_sample', 'R_new_sample'):
+    for cand in ("r_new_raw_sample", "R_new_raw_sample", "R_new_sample"):
         r_new = as_np(cand)
         if r_new is not None:
             break
@@ -141,4 +156,6 @@ def test_edgeflow_strict_outward_enforcement():
     # Strict outward-only invariant: final raw radii >= envelope (post-deoffset)
     diffs = r_new - env_post
     n_viol = int(np.count_nonzero(diffs < -1e-9))
-    assert n_viol == 0, f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"
+    assert n_viol == 0, (
+        f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"
+    )

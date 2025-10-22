@@ -13,6 +13,7 @@ Environment / Secrets:
   Requires Supabase to be configured (env SUPABASE_URL + SUPABASE_KEY or
   .streamlit/secrets.toml). Uses service role to write.
 """
+
 from __future__ import annotations
 
 import sys
@@ -21,9 +22,13 @@ import json
 from typing import List, Tuple
 
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from potfoundry.integrations.supabase_client import get_singleton_client, NotConfiguredError
+from potfoundry.integrations.supabase_client import (
+    get_singleton_client,
+    NotConfiguredError,
+)
 from potfoundry.library import list_published
 
 # Verbose logging flag (enabled via --verbose)
@@ -38,6 +43,7 @@ def _log(msg: str) -> None:
 def _regen_thumb_bytes(row: dict) -> bytes | None:
     try:
         from pfui.preview import render_mesh_snapshot_cached
+
         H = float(row.get("size", {}).get("height", 120.0))
         Rt = float(row.get("size", {}).get("top_od", 140.0)) / 2.0
         Rb = float(row.get("size", {}).get("bottom_od", 90.0)) / 2.0
@@ -47,8 +53,22 @@ def _regen_thumb_bytes(row: dict) -> bytes | None:
         style = row.get("style")
         opts_json = json.dumps(row.get("opts", {}) or {})
         png = render_mesh_snapshot_cached(
-            H, Rt, Rb, expn, n_theta, n_z, style, opts_json, 4.0, 4.0, 120,
-            inner_wall=None, place_on_ground=True, view_elev=20.0, view_azim=-60.0, theme="dark"
+            H,
+            Rt,
+            Rb,
+            expn,
+            n_theta,
+            n_z,
+            style,
+            opts_json,
+            4.0,
+            4.0,
+            120,
+            inner_wall=None,
+            place_on_ground=True,
+            view_elev=20.0,
+            view_azim=-60.0,
+            theme="dark",
         )
         if not png:
             _log(f"render_mesh_snapshot_cached returned None for id={row.get('id')}")
@@ -57,6 +77,7 @@ def _regen_thumb_bytes(row: dict) -> bytes | None:
         _log(f"mesh snapshot failed for id={row.get('id')}: {e}")
         try:
             from pfui.preview import render_preview_png_cached
+
             H = float(row.get("size", {}).get("height", 120.0))
             Rt = float(row.get("size", {}).get("top_od", 140.0)) / 2.0
             Rb = float(row.get("size", {}).get("bottom_od", 90.0)) / 2.0
@@ -66,7 +87,19 @@ def _regen_thumb_bytes(row: dict) -> bytes | None:
             style = row.get("style")
             opts_json = json.dumps(row.get("opts", {}) or {})
             png2 = render_preview_png_cached(
-                H, Rt, Rb, expn, n_theta, n_z, style, opts_json, 4.0, 4.0, 120, theme="dark", show_floor=False
+                H,
+                Rt,
+                Rb,
+                expn,
+                n_theta,
+                n_z,
+                style,
+                opts_json,
+                4.0,
+                4.0,
+                120,
+                theme="dark",
+                show_floor=False,
             )
             if not png2:
                 _log(f"render_preview_png_cached returned None for id={row.get('id')}")
@@ -92,7 +125,9 @@ def backfill(limit: int = 100, offset: int = 0) -> Tuple[int, int]:
             try:
                 png = _regen_thumb_bytes(row)
                 if not png:
-                    _log(f"SKIP: no png generated for id={row.get('id')} style={row.get('style')}")
+                    _log(
+                        f"SKIP: no png generated for id={row.get('id')} style={row.get('style')}"
+                    )
                     skipped += 1
                     continue
                 design_id = row.get("id")
@@ -120,6 +155,7 @@ def backfill(limit: int = 100, offset: int = 0) -> Tuple[int, int]:
 
 def main(argv: List[str]) -> int:
     import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=100)
     p.add_argument("--offset", type=int, default=0)

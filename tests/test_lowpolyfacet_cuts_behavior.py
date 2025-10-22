@@ -53,20 +53,32 @@ def test_lowpolyfacet_cuts_do_not_extend_near_seams():
     )
 
     # Baseline: outward OFF, no cuts
-    baseline_opts = dict(base_opts, lp_outward_mode=False, lp_cut_bot_deg=0, lp_cut_top_deg=0)
+    baseline_opts = dict(
+        base_opts, lp_outward_mode=False, lp_cut_bot_deg=0, lp_cut_top_deg=0
+    )
 
     # With cuts active: outward ON, but should not extend due to engine guard
-    cut_opts = dict(base_opts, lp_outward_mode=True, lp_cut_bot_deg=10, lp_cut_top_deg=6)
+    cut_opts = dict(
+        base_opts, lp_outward_mode=True, lp_cut_bot_deg=10, lp_cut_top_deg=6
+    )
 
     # Bottom-side check
     r0_bot = base_radius(z_bot, H, Rb, Rt, expn, baseline_opts)
-    r_base_bot = np.asarray(r_outer_lowpoly_facet(thetas, z_bot, r0_bot, H, baseline_opts), dtype=float)
-    r_cut_bot = np.asarray(r_outer_lowpoly_facet(thetas, z_bot, r0_bot, H, cut_opts), dtype=float)
+    r_base_bot = np.asarray(
+        r_outer_lowpoly_facet(thetas, z_bot, r0_bot, H, baseline_opts), dtype=float
+    )
+    r_cut_bot = np.asarray(
+        r_outer_lowpoly_facet(thetas, z_bot, r0_bot, H, cut_opts), dtype=float
+    )
 
     # Top-side check
     r0_top = base_radius(z_top, H, Rb, Rt, expn, baseline_opts)
-    r_base_top = np.asarray(r_outer_lowpoly_facet(thetas, z_top, r0_top, H, baseline_opts), dtype=float)
-    r_cut_top = np.asarray(r_outer_lowpoly_facet(thetas, z_top, r0_top, H, cut_opts), dtype=float)
+    r_base_top = np.asarray(
+        r_outer_lowpoly_facet(thetas, z_top, r0_top, H, baseline_opts), dtype=float
+    )
+    r_cut_top = np.asarray(
+        r_outer_lowpoly_facet(thetas, z_top, r0_top, H, cut_opts), dtype=float
+    )
 
     # Assert no outward growth within window (allow tiny numerical tolerance)
     eps = 1e-6

@@ -2,6 +2,7 @@
 Small helper to run a single build_pot_mesh invocation with edge-flow debug flags
 and append diagnostics. This is a quick utility for CI/local debugging.
 """
+
 from pathlib import Path
 import json
 import time
@@ -11,23 +12,22 @@ import importlib
 repo_root = Path(r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0")
 
 
-
 def main() -> None:
     # Ensure project root is on sys.path at runtime to support local imports
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-    geom_mod = importlib.import_module('potfoundry.core.geometry')
-    build_pot_mesh = getattr(geom_mod, 'build_pot_mesh')
+    geom_mod = importlib.import_module("potfoundry.core.geometry")
+    build_pot_mesh = getattr(geom_mod, "build_pot_mesh")
 
     style_opts = {
-        'sf_edge_flow_reconstruct_enable': True,
-        'sf_edge_flow_mode': 'ridge_paths',
-        'sf_edge_flow_debug': True,
-        'sf_edge_flow_verbose_diagnostics': True,
-        'sf_edge_flow_probe': True,
-        'sf_edge_flow_probe_zi': 42,
-        'sf_edge_flow_valley_z_halfwin': 1,
+        "sf_edge_flow_reconstruct_enable": True,
+        "sf_edge_flow_mode": "ridge_paths",
+        "sf_edge_flow_debug": True,
+        "sf_edge_flow_verbose_diagnostics": True,
+        "sf_edge_flow_probe": True,
+        "sf_edge_flow_probe_zi": 42,
+        "sf_edge_flow_valley_z_halfwin": 1,
     }
 
     # Use small mesh to keep runtime low
@@ -39,31 +39,41 @@ def main() -> None:
     r_drain = 10.0
 
     try:
-        verts, faces, diag = build_pot_mesh(H, Rt, Rb, wall, bottom, r_drain,
-                                           expn=1.1, n_theta=168, n_z=84,
-                                           r_outer_fn=None, style_opts=style_opts)
-        out = {'timestamp': time.time(), 'success': True, 'diag': diag}
+        verts, faces, diag = build_pot_mesh(
+            H,
+            Rt,
+            Rb,
+            wall,
+            bottom,
+            r_drain,
+            expn=1.1,
+            n_theta=168,
+            n_z=84,
+            r_outer_fn=None,
+            style_opts=style_opts,
+        )
+        out = {"timestamp": time.time(), "success": True, "diag": diag}
     except Exception as e:
-        out = {'timestamp': time.time(), 'success': False, 'error': repr(e)}
+        out = {"timestamp": time.time(), "success": False, "error": repr(e)}
 
-    outpath = repo_root / '.pf_edge_flow_debug.json'
-    with open(outpath, 'a', encoding='utf-8') as fh:
+    outpath = repo_root / ".pf_edge_flow_debug.json"
+    with open(outpath, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(out, ensure_ascii=False))
-        fh.write('\n')
+        fh.write("\n")
 
-    print('wrote debug summary to', outpath)
+    print("wrote debug summary to", outpath)
 
     # optionally print last few lines of tools/edgeflow_verbose_diagnostics.jsonl if exists
-    diagpath = repo_root / 'tools' / 'edgeflow_verbose_diagnostics.jsonl'
+    diagpath = repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
     if diagpath.exists():
-        with open(diagpath, 'r', encoding='utf-8') as fh:
+        with open(diagpath, "r", encoding="utf-8") as fh:
             lines = fh.readlines()
-        print('last diag jsonl lines:', len(lines))
+        print("last diag jsonl lines:", len(lines))
         for L in lines[-3:]:
             print(L.strip())
     else:
-        print('no diag jsonl found at', diagpath)
+        print("no diag jsonl found at", diagpath)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -24,8 +24,17 @@ def test_twist_changes_geometry():
         "twist_total_turns": 0.0,
     }
     V0, F0, _ = build_pot_mesh(
-        H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
-        expn=expn, n_theta=n_theta, n_z=n_z, r_outer_fn=r_outer_fn, style_opts=opts0,
+        H=H,
+        Rt=Rt,
+        Rb=Rb,
+        t_wall=t_wall,
+        t_bottom=t_bottom,
+        r_drain=r_drain,
+        expn=expn,
+        n_theta=n_theta,
+        n_z=n_z,
+        r_outer_fn=r_outer_fn,
+        style_opts=opts0,
     )
 
     # Build with 0.5 total turns of twist
@@ -33,8 +42,17 @@ def test_twist_changes_geometry():
         "twist_total_turns": 0.5,
     }
     V1, F1, _ = build_pot_mesh(
-        H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
-        expn=expn, n_theta=n_theta, n_z=n_z, r_outer_fn=r_outer_fn, style_opts=opts1,
+        H=H,
+        Rt=Rt,
+        Rb=Rb,
+        t_wall=t_wall,
+        t_bottom=t_bottom,
+        r_drain=r_drain,
+        expn=expn,
+        n_theta=n_theta,
+        n_z=n_z,
+        r_outer_fn=r_outer_fn,
+        style_opts=opts1,
     )
 
     V0 = np.asarray(V0)

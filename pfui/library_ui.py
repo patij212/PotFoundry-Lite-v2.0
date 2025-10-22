@@ -1,4 +1,5 @@
 """Library UI tab for browsing and opening published designs."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -11,6 +12,7 @@ HAS_STREAMLIT = False
 
 try:
     import streamlit as st  # type: ignore[assignment]
+
     HAS_STREAMLIT = True
 except ImportError:
     HAS_STREAMLIT = False
@@ -37,15 +39,20 @@ def render_library_tab():
     # Inform about read-only mode
     try:
         if isinstance(client, SupabaseClient) and getattr(client, "read_only", False):
-            st.warning("Public Library is in read-only mode (anon key). Publishing is disabled on this device.")
+            st.warning(
+                "Public Library is in read-only mode (anon key). Publishing is disabled on this device."
+            )
     except Exception:
         pass
 
     st.header("Public Library")
-    st.markdown("Browse designs published by the community. Download STL files or open them in the editor.")
+    st.markdown(
+        "Browse designs published by the community. Download STL files or open them in the editor."
+    )
     # Info: show connected Supabase project (host) and access mode for clarity
     try:
         from urllib.parse import urlparse
+
         host = urlparse(getattr(client, "config").url).netloc.split(".")[0]
         mode = "read-only" if getattr(client, "read_only", False) else "service"
         st.caption(f"Connected to Supabase project: {host} ({mode})")
@@ -56,27 +63,42 @@ def render_library_tab():
     col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 1, 1, 2])
 
     with col1:
-        search_query = st.text_input("Search", placeholder="Search by title...", label_visibility="collapsed")
+        search_query = st.text_input(
+            "Search", placeholder="Search by title...", label_visibility="collapsed"
+        )
 
     with col2:
         from pfui.imports import STYLES
+
         style_options = ["All"] + sorted(STYLES.keys())
-        style_filter = st.selectbox("Style", style_options, index=0, label_visibility="collapsed")
+        style_filter = st.selectbox(
+            "Style", style_options, index=0, label_visibility="collapsed"
+        )
 
     with col3:
-        tags_input = st.text_input("Tags", placeholder="Filter by tags (comma-separated)", label_visibility="collapsed")
+        tags_input = st.text_input(
+            "Tags",
+            placeholder="Filter by tags (comma-separated)",
+            label_visibility="collapsed",
+        )
 
     with col4:
         sort_options = ["Newest", "Oldest", "Title A-Z"]
-        sort_choice = st.selectbox("Sort", sort_options, index=0, label_visibility="collapsed")
+        sort_choice = st.selectbox(
+            "Sort", sort_options, index=0, label_visibility="collapsed"
+        )
 
     with col5:
         if st.button("↻ Refresh"):
-            st.session_state["_library_refresh"] = st.session_state.get("_library_refresh", 0) + 1
+            st.session_state["_library_refresh"] = (
+                st.session_state.get("_library_refresh", 0) + 1
+            )
             st.rerun()
 
     with col6:
-        auto = st.toggle("Auto-refresh 30s", value=st.session_state.get("_library_auto", False))
+        auto = st.toggle(
+            "Auto-refresh 30s", value=st.session_state.get("_library_auto", False)
+        )
         st.session_state["_library_auto"] = auto
         if auto:
             # Lightweight JS-based refresh every 30s
@@ -93,7 +115,9 @@ def render_library_tab():
 
     # Parse filters
     style = None if style_filter == "All" else style_filter
-    tags = [t.strip() for t in tags_input.split(",") if t.strip()] if tags_input else None
+    tags = (
+        [t.strip() for t in tags_input.split(",") if t.strip()] if tags_input else None
+    )
     search = search_query if search_query else None
 
     # Parse sort
@@ -122,12 +146,14 @@ def render_library_tab():
             order_desc=order_desc,
             offset=offset,
             limit=page_size,
-            refresh_counter=st.session_state.get("_library_refresh", 0)
+            refresh_counter=st.session_state.get("_library_refresh", 0),
         )
 
     # Display results
     if not results:
-        st.info("No designs found. Try adjusting your filters or publish the first one!")
+        st.info(
+            "No designs found. Try adjusting your filters or publish the first one!"
+        )
         return
 
     # Grid layout (4 columns)
@@ -154,7 +180,10 @@ def render_library_tab():
                 st.rerun()
 
     with pcol2:
-        st.markdown(f"<div style='text-align: center'>Page {page + 1}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='text-align: center'>Page {page + 1}</div>",
+            unsafe_allow_html=True,
+        )
 
     with pcol3:
         if has_next:
@@ -166,6 +195,7 @@ def render_library_tab():
     if has_next:
         try:
             import requests
+
             next_results, _ = list_published(
                 style=style,
                 tags=tags,
@@ -174,7 +204,7 @@ def render_library_tab():
                 order_desc=order_desc,
                 offset=offset + page_size,
                 limit=min(8, page_size),
-                refresh_counter=st.session_state.get("_library_refresh", 0)
+                refresh_counter=st.session_state.get("_library_refresh", 0),
             )
             for d in next_results:
                 u = d.get("thumb_url")
@@ -201,13 +231,14 @@ def render_library_card(design: dict):
     url = str(design.get("thumb_url") or "")
     if url:
         try:
-            st.image(url, width='stretch')
+            st.image(url, width="stretch")
             shown = True
         except Exception:
             shown = False
     if not shown:
         try:
             from pfui.preview import render_preview_png_cached
+
             style_name = design.get("style")
             size = design.get("size", {}) or {}
             mesh = design.get("mesh", {}) or {}
@@ -218,20 +249,42 @@ def render_library_card(design: dict):
             n_theta = int(mesh.get("n_theta", 144))
             n_z = int(mesh.get("n_z", 64))
             import json as _json
+
             try:
-                ak = "|".join(str(st.session_state.get(k, "")) for k in (
-                    "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
-                    "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
-                ))
+                ak = "|".join(
+                    str(st.session_state.get(k, ""))
+                    for k in (
+                        "preview_palette",
+                        "preview_grad_c1",
+                        "preview_grad_c2",
+                        "preview_grad_c3",
+                        "mesh_ambient",
+                        "mesh_diffuse",
+                        "mesh_specular",
+                        "mesh_roughness",
+                        "mesh_fresnel",
+                    )
+                )
             except Exception:
                 ak = ""
             png = render_preview_png_cached(
-                H, Rt, Rb, expn, n_theta, n_z, style_name,
+                H,
+                Rt,
+                Rb,
+                expn,
+                n_theta,
+                n_z,
+                style_name,
                 _json.dumps(design.get("opts", {}) or {}),
-                4.0, 4.0, 120, theme="dark", show_floor=False, appearance_key=ak
+                4.0,
+                4.0,
+                120,
+                theme="dark",
+                show_floor=False,
+                appearance_key=ak,
             )
             if png:
-                st.image(png, width='stretch')
+                st.image(png, width="stretch")
                 shown = True
         except Exception:
             shown = False
@@ -240,6 +293,7 @@ def render_library_card(design: dict):
         # Thumbnail: generate local preview for parity with snapshots (faster, consistent)
         try:
             from pfui.preview import render_preview_png_cached
+
             style_name = design.get("style")
             size = design.get("size", {}) or {}
             mesh = design.get("mesh", {}) or {}
@@ -250,28 +304,49 @@ def render_library_card(design: dict):
             n_theta = int(mesh.get("n_theta", 144))
             n_z = int(mesh.get("n_z", 64))
             import json as _json
+
             try:
-                ak = "|".join(str(st.session_state.get(k, "")) for k in (
-                    "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
-                    "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
-                ))
+                ak = "|".join(
+                    str(st.session_state.get(k, ""))
+                    for k in (
+                        "preview_palette",
+                        "preview_grad_c1",
+                        "preview_grad_c2",
+                        "preview_grad_c3",
+                        "mesh_ambient",
+                        "mesh_diffuse",
+                        "mesh_specular",
+                        "mesh_roughness",
+                        "mesh_fresnel",
+                    )
+                )
             except Exception:
                 ak = ""
             png = render_preview_png_cached(
-                H, Rt, Rb, expn, n_theta, n_z,
-                style_name, _json.dumps(design.get("opts", {}) or {}),
-                4.0, 4.0, 120,
-                theme="dark", show_floor=False, appearance_key=ak
+                H,
+                Rt,
+                Rb,
+                expn,
+                n_theta,
+                n_z,
+                style_name,
+                _json.dumps(design.get("opts", {}) or {}),
+                4.0,
+                4.0,
+                120,
+                theme="dark",
+                show_floor=False,
+                appearance_key=ak,
             )
             if png:
-                st.image(png, width='stretch')
+                st.image(png, width="stretch")
             else:
                 raise RuntimeError("no png")
         except Exception:
             # As a last resort, show remote thumbnail if present
             url = str(design.get("thumb_url") or "")
             if url:
-                st.image(url, width='stretch')
+                st.image(url, width="stretch")
             else:
                 st.markdown("_No preview available_")
 
@@ -298,7 +373,7 @@ def render_library_card(design: dict):
 
     st.markdown(
         f"<span style='color: {license_color}; font-size: 0.8em'>📄 {design.get('license', 'Unknown')}</span>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     # Actions
@@ -307,7 +382,7 @@ def render_library_card(design: dict):
     with col1:
         # Prefer a direct link to avoid eager downloading large STL files per card
         try:
-            st.link_button("Download", url=design["stl_url"], width='stretch')
+            st.link_button("Download", url=design["stl_url"], width="stretch")
         except Exception:
             st.markdown(f"[Download]({design['stl_url']})", unsafe_allow_html=True)
 

@@ -2,6 +2,7 @@
 
 Provides URL-safe encoding of design parameters for "Open in editor" functionality.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
@@ -10,6 +11,7 @@ import json
 
 try:
     import streamlit as st
+
     HAS_STREAMLIT = True
 except ImportError:
     HAS_STREAMLIT = False
@@ -18,13 +20,17 @@ except ImportError:
 
 # Whitelisted parameters that can be restored from deep links
 ALLOWED_GEOMETRY_KEYS = {
-    "style", "H", "top_od", "bottom_od", "t_wall", "t_bottom",
-    "r_drain", "expn"
+    "style",
+    "H",
+    "top_od",
+    "bottom_od",
+    "t_wall",
+    "t_bottom",
+    "r_drain",
+    "expn",
 }
 
-ALLOWED_MESH_KEYS = {
-    "n_theta", "n_z", "twist"
-}
+ALLOWED_MESH_KEYS = {"n_theta", "n_z", "twist"}
 
 ALLOWED_KEYS = ALLOWED_GEOMETRY_KEYS | ALLOWED_MESH_KEYS | {"opts"}
 
@@ -157,11 +163,15 @@ def validate_state(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str
 
             # Thicknesses
             if key == "t_wall" and not (1.5 <= numeric_value <= 20):
-                warnings.append(f"Wall thickness {numeric_value} out of range (1.5-20mm)")
+                warnings.append(
+                    f"Wall thickness {numeric_value} out of range (1.5-20mm)"
+                )
                 continue
 
             if key == "t_bottom" and not (2.0 <= numeric_value <= 30):
-                warnings.append(f"Bottom thickness {numeric_value} out of range (2.0-30mm)")
+                warnings.append(
+                    f"Bottom thickness {numeric_value} out of range (2.0-30mm)"
+                )
                 continue
 
             # Drain radius
@@ -171,7 +181,9 @@ def validate_state(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str
 
             # Flare exponent
             if key == "expn" and not (0.5 <= numeric_value <= 4.0):
-                warnings.append(f"Flare exponent {numeric_value} out of range (0.5-4.0)")
+                warnings.append(
+                    f"Flare exponent {numeric_value} out of range (0.5-4.0)"
+                )
                 continue
 
             # Mesh quality
@@ -253,7 +265,9 @@ def extract_state_from_session(session_state: dict) -> dict:
     return state
 
 
-def generate_deep_link(state_dict: dict, base_url: str = "http://localhost:8501") -> str:
+def generate_deep_link(
+    state_dict: dict, base_url: str = "http://localhost:8501"
+) -> str:
     """Generate full deep link URL from state dictionary.
 
     Args:

@@ -32,12 +32,36 @@ def test_twist_changes_mesh():
     from potfoundry.core.geometry import r_outer_harmonic_ripple
 
     opts0 = _base_opts()
-    verts0, faces0, diag0 = build_pot_mesh(H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_outer_harmonic_ripple, opts0)
+    verts0, faces0, diag0 = build_pot_mesh(
+        H,
+        Rt,
+        Rb,
+        t_wall,
+        t_bottom,
+        r_drain,
+        expn,
+        n_theta,
+        n_z,
+        r_outer_harmonic_ripple,
+        opts0,
+    )
 
     # apply twist
     opts1 = dict(opts0)
     opts1["spin_turns"] = 1.0
-    verts1, faces1, diag1 = build_pot_mesh(H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_outer_harmonic_ripple, opts1)
+    verts1, faces1, diag1 = build_pot_mesh(
+        H,
+        Rt,
+        Rb,
+        t_wall,
+        t_bottom,
+        r_drain,
+        expn,
+        n_theta,
+        n_z,
+        r_outer_harmonic_ripple,
+        opts1,
+    )
 
     # The diagnostics or vertices should differ when twist is applied
     assert verts0.shape == verts1.shape
@@ -58,11 +82,35 @@ def test_flare_changes_mesh():
     from potfoundry.core.geometry import r_outer_harmonic_ripple
 
     opts0 = _base_opts()
-    verts0, faces0, diag0 = build_pot_mesh(H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_outer_harmonic_ripple, opts0)
+    verts0, faces0, diag0 = build_pot_mesh(
+        H,
+        Rt,
+        Rb,
+        t_wall,
+        t_bottom,
+        r_drain,
+        expn,
+        n_theta,
+        n_z,
+        r_outer_harmonic_ripple,
+        opts0,
+    )
 
     opts2 = dict(opts0)
     opts2["flare_center"] = 0.2
-    verts2, faces2, diag2 = build_pot_mesh(H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_outer_harmonic_ripple, opts2)
+    verts2, faces2, diag2 = build_pot_mesh(
+        H,
+        Rt,
+        Rb,
+        t_wall,
+        t_bottom,
+        r_drain,
+        expn,
+        n_theta,
+        n_z,
+        r_outer_harmonic_ripple,
+        opts2,
+    )
 
     assert verts0.shape == verts2.shape
     assert not np.allclose(verts0, verts2)

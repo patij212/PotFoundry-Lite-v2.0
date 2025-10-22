@@ -27,9 +27,15 @@ def render_batch_tab() -> None:
             tmp.write_bytes(yaml_file.read())
             cobj = load_config(tmp)
             recs = list(getattr(cobj, "recipes", []) or [])
-            ver = getattr(cobj, "version", None) or getattr(cobj, "schema_version", None)
-            st.caption(f"Detected {len(recs)} recipe(s){f', schema v{ver}' if ver else ''}.")
-            migrated = getattr(cobj, "_migrated", False) or getattr(cobj, "migrated", False)
+            ver = getattr(cobj, "version", None) or getattr(
+                cobj, "schema_version", None
+            )
+            st.caption(
+                f"Detected {len(recs)} recipe(s){f', schema v{ver}' if ver else ''}."
+            )
+            migrated = getattr(cobj, "_migrated", False) or getattr(
+                cobj, "migrated", False
+            )
             if migrated:
                 st.info("This file was migrated from v1 → v2 on load.")
         except Exception as e:
@@ -42,7 +48,9 @@ def render_batch_tab() -> None:
         try:
             recs = list(getattr(cobj, "recipes", []) or [])
             for r in recs:
-                name_r = r.get("name") if isinstance(r, dict) else str(getattr(r, "name", r))
+                name_r = (
+                    r.get("name") if isinstance(r, dict) else str(getattr(r, "name", r))
+                )
                 if validate_recipe is None:
                     st.info(f"{name_r}: Validator not available in this build")
                 else:
@@ -60,8 +68,13 @@ def render_batch_tab() -> None:
         with st.status("Building…", expanded=True) as s:
             try:
                 st.write("Preparing jobs")
-                manifest = build_from_yaml(cobj, Path(outdir),
-                                           do_previews=do_previews, do_zip=do_zip, write_manifest=write_manifest)
+                manifest = build_from_yaml(
+                    cobj,
+                    Path(outdir),
+                    do_previews=do_previews,
+                    do_zip=do_zip,
+                    write_manifest=write_manifest,
+                )
                 st.write("Finalizing")
                 s.update(label="Build complete", state="complete")
                 st.json(manifest)

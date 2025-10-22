@@ -9,17 +9,19 @@ def load_latest_row(jsonl_path: Path, zi: int = 2, tol: int = 1):
     """Find the latest diagnostics row for zi within +/- tol (inclusive)."""
     last_row = None
     candidates = set(range(max(0, zi - tol), zi + tol + 1))
-    with open(jsonl_path, 'r', encoding='utf-8') as fh:
+    with open(jsonl_path, "r", encoding="utf-8") as fh:
         for line in fh:
             try:
                 obj = json.loads(line)
             except Exception:
                 continue
-            rows = obj.get('rows') or []
+            rows = obj.get("rows") or []
             for r in rows:
-                if r.get('zi') not in candidates:
+                if r.get("zi") not in candidates:
                     continue
-                if ('R_new_raw_sample' in r and 'Env_to_use_sample' in r) or ('R_new_sample' in r and 'Env_to_use_sample' in r):
+                if ("R_new_raw_sample" in r and "Env_to_use_sample" in r) or (
+                    "R_new_sample" in r and "Env_to_use_sample" in r
+                ):
                     last_row = r
     return last_row
 
@@ -32,7 +34,7 @@ def test_edgeflow_synthetic_outward_enforcement():
     verbose diagnostics row.
     """
     repo_root = Path(__file__).resolve().parents[1]
-    jsonl = repo_root / 'tools' / 'edgeflow_verbose_diagnostics.jsonl'
+    jsonl = repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
 
     # Small grid parameters
     n_theta = 12
@@ -63,21 +65,30 @@ def test_edgeflow_synthetic_outward_enforcement():
 
     # Style options: enable edge-flow reconstruct, verbose diagnostics and probe the middle ring
     style_opts = {
-        'sf_edge_flow_reconstruct_enable': True,
-        'sf_edge_flow_mode': 'ridge_paths',
-        'sf_edge_flow_debug': True,
-        'sf_edge_flow_verbose_diagnostics': True,
-        'sf_edge_flow_probe': True,
-        'sf_edge_flow_probe_zi': int(mid),
+        "sf_edge_flow_reconstruct_enable": True,
+        "sf_edge_flow_mode": "ridge_paths",
+        "sf_edge_flow_debug": True,
+        "sf_edge_flow_verbose_diagnostics": True,
+        "sf_edge_flow_probe": True,
+        "sf_edge_flow_probe_zi": int(mid),
         # small theta sampling to keep run time short
-        'sf_edge_flow_window': 5,
+        "sf_edge_flow_window": 5,
     }
 
     # Run the mesh builder which will append a diagnostics row for the probed ring
-    verts, faces, diagnostics = build_pot_mesh(H, Rt=30.0, Rb=30.0, t_wall=2.5, t_bottom=4.0, r_drain=3.0,
-                                              expn=1.0, n_theta=n_theta, n_z=n_z,
-                                              r_outer_fn=synthetic_r_outer_fn,
-                                              style_opts=style_opts)
+    verts, faces, diagnostics = build_pot_mesh(
+        H,
+        Rt=30.0,
+        Rb=30.0,
+        t_wall=2.5,
+        t_bottom=4.0,
+        r_drain=3.0,
+        expn=1.0,
+        n_theta=n_theta,
+        n_z=n_z,
+        r_outer_fn=synthetic_r_outer_fn,
+        style_opts=style_opts,
+    )
 
     assert jsonl.exists(), f"Expected diagnostics jsonl at {jsonl}"
     row = load_latest_row(jsonl, zi=mid)
@@ -91,14 +102,20 @@ def test_edgeflow_synthetic_outward_enforcement():
 
     # pick final raw radii array
     r_new = None
-    for cand in ('r_new_raw_sample', 'R_new_raw_sample', 'R_new_sample'):
+    for cand in ("r_new_raw_sample", "R_new_raw_sample", "R_new_sample"):
         r_new = as_np(cand)
         if r_new is not None:
             break
 
     # envelope applied (prefer post-deoffset raw if present)
     env_post = None
-    for cand in ('Env_to_use_raw_post', 'env_to_use_raw_post', 'Env_to_use_sample', 'env_to_use_sample', 'Env_sample'):
+    for cand in (
+        "Env_to_use_raw_post",
+        "env_to_use_raw_post",
+        "Env_to_use_sample",
+        "env_to_use_sample",
+        "Env_sample",
+    ):
         env_post = as_np(cand)
         if env_post is not None:
             break

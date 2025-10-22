@@ -3,13 +3,13 @@ def test_schemas_accessors_importable():
     from pfui import schemas
 
     ga = schemas.get_global_aliases()
-    assert isinstance(ga, dict) or hasattr(ga, 'get')
+    assert isinstance(ga, dict) or hasattr(ga, "get")
 
     abs_ = schemas.get_aliases_by_style()
-    assert isinstance(abs_, dict) or hasattr(abs_, 'get')
+    assert isinstance(abs_, dict) or hasattr(abs_, "get")
 
     gr = schemas.get_global_reverse()
-    assert isinstance(gr, dict) or hasattr(gr, 'get')
+    assert isinstance(gr, dict) or hasattr(gr, "get")
 
     rb = schemas.get_reverse_by_style()
-    assert isinstance(rb, dict) or hasattr(rb, 'get')
+    assert isinstance(rb, dict) or hasattr(rb, "get")

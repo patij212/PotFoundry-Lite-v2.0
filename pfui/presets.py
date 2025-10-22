@@ -14,19 +14,20 @@ def _ensure_style_schemas() -> dict:
     if not STYLE_SCHEMAS:
         try:
             # Use the accessor to avoid importing heavy constants at module import time
-            mod = importlib.import_module('pfui.schemas')
-            STYLE_SCHEMAS.update(getattr(mod, 'get_style_schemas', lambda: {})() or {})
+            mod = importlib.import_module("pfui.schemas")
+            STYLE_SCHEMAS.update(getattr(mod, "get_style_schemas", lambda: {})() or {})
         except Exception:
             STYLE_SCHEMAS = {}
     return STYLE_SCHEMAS
 
+
 def widget_key(style: str, field: str) -> str:
     """Generate unique widget key for Streamlit session state.
-    
+
     Args:
         style: Style name
         field: Field/parameter name
-        
+
     Returns:
         Unique widget key string
     """
@@ -143,25 +144,79 @@ PRESETS: Dict[str, Dict[str, Dict[str, Any]]] = {
         },
     },
     "HarmonicRipple": {
-        "Classic Ripple": {"hr_petals": 7,  "hr_petal_amp": 0.16, "hr_ripple_freq": 31, "hr_ripple_amp": 0.03,  "hr_bell": 0.05},
-        "Bold Ripple":    {"hr_petals": 9,  "hr_petal_amp": 0.26, "hr_ripple_freq": 27, "hr_ripple_amp": 0.065, "hr_bell": 0.08},
-        "Fine Ripple":    {"hr_petals": 12, "hr_petal_amp": 0.08, "hr_ripple_freq": 48, "hr_ripple_amp": 0.02,  "hr_bell": 0.03},
+        "Classic Ripple": {
+            "hr_petals": 7,
+            "hr_petal_amp": 0.16,
+            "hr_ripple_freq": 31,
+            "hr_ripple_amp": 0.03,
+            "hr_bell": 0.05,
+        },
+        "Bold Ripple": {
+            "hr_petals": 9,
+            "hr_petal_amp": 0.26,
+            "hr_ripple_freq": 27,
+            "hr_ripple_amp": 0.065,
+            "hr_bell": 0.08,
+        },
+        "Fine Ripple": {
+            "hr_petals": 12,
+            "hr_petal_amp": 0.08,
+            "hr_ripple_freq": 48,
+            "hr_ripple_amp": 0.02,
+            "hr_bell": 0.03,
+        },
     },
     "SpiralRidges": {
-        "Subtle Spiral":   {"spiral_k": 7,  "spiral_turns": 0.8,  "spiral_amp_min": 0.08, "spiral_amp_max": 0.18},
-        "Bold Spiral":     {"spiral_k": 9,  "spiral_turns": 1.15, "spiral_amp_min": 0.15, "spiral_amp_max": 0.25},
-        "Twisty Showcase": {"spiral_k": 11, "spiral_turns": 1.7,  "spiral_amp_min": 0.12, "spiral_amp_max": 0.32},
+        "Subtle Spiral": {
+            "spiral_k": 7,
+            "spiral_turns": 0.8,
+            "spiral_amp_min": 0.08,
+            "spiral_amp_max": 0.18,
+        },
+        "Bold Spiral": {
+            "spiral_k": 9,
+            "spiral_turns": 1.15,
+            "spiral_amp_min": 0.15,
+            "spiral_amp_max": 0.25,
+        },
+        "Twisty Showcase": {
+            "spiral_k": 11,
+            "spiral_turns": 1.7,
+            "spiral_amp_min": 0.12,
+            "spiral_amp_max": 0.32,
+        },
     },
     "SuperellipseMorph": {
         "Rounded Square": {"se_m_base": 2.0, "se_m_top": 5.5},
-        "Softening":      {"se_m_base": 3.0, "se_m_top": 2.0},
-        "Sharper Top":    {"se_m_base": 2.0, "se_m_top": 7.0},
+        "Softening": {"se_m_base": 3.0, "se_m_top": 2.0},
+        "Sharper Top": {"se_m_base": 2.0, "se_m_top": 7.0},
     },
     "SuperformulaBlossom": {
-        "Gentle Flower": {"sf_m_base": 6.0,  "sf_m_top": 10.0, "sf_n1": 0.35, "sf_n2": 0.8, "sf_n3": 0.8,  "sf_strength": 0.6},
-        "Sharp Petals":  {"sf_m_base": 8.0,  "sf_m_top": 12.0, "sf_n1": 0.6,  "sf_n2": 1.6, "sf_n3": 1.6, "sf_strength": 0.8},
-        "Wide Petals":   {"sf_m_base": 5.0,  "sf_m_top": 8.0,  "sf_n1": 0.25, "sf_n2": 0.6, "sf_n3": 0.6, "sf_strength": 0.5},
-            # Crisp, de-jagged petals with stabilized seams
+        "Gentle Flower": {
+            "sf_m_base": 6.0,
+            "sf_m_top": 10.0,
+            "sf_n1": 0.35,
+            "sf_n2": 0.8,
+            "sf_n3": 0.8,
+            "sf_strength": 0.6,
+        },
+        "Sharp Petals": {
+            "sf_m_base": 8.0,
+            "sf_m_top": 12.0,
+            "sf_n1": 0.6,
+            "sf_n2": 1.6,
+            "sf_n3": 1.6,
+            "sf_strength": 0.8,
+        },
+        "Wide Petals": {
+            "sf_m_base": 5.0,
+            "sf_m_top": 8.0,
+            "sf_n1": 0.25,
+            "sf_n2": 0.6,
+            "sf_n3": 0.6,
+            "sf_strength": 0.5,
+        },
+        # Crisp, de-jagged petals with stabilized seams
         "Crisp Petals (De-Jag)": {
             "sf_strength": 0.75,
             "sf_m_base": 8.0,
@@ -169,31 +224,31 @@ PRESETS: Dict[str, Dict[str, Dict[str, Any]]] = {
             "sf_n1": 0.55,
             "sf_n2": 1.4,
             "sf_n3": 1.4,
-                # Flow-aligned edge reconstruction (debug baseline, v2: ridge_paths)
-                "sf_edge_flow_reconstruct_enable": True,
-                "sf_edge_flow_mode": "ridge_paths",  # follow diagonal ridges strictly
-                "sf_edge_flow_window": 9,
-                "sf_edge_flow_amount": 0.85,
-                "sf_edge_flow_quantile": 0.95,
-                "sf_edge_flow_peak_q": 0.94,
-                "sf_edge_flow_slopes_max": 2,
-                "sf_edge_flow_paths_band": 1,
-                "sf_edge_flow_max_paths": 4,
-                "sf_edge_flow_valley_band_cols": 8,
-                "sf_edge_flow_valley_band_decay": 0.0,
-                "sf_edge_flow_twist_compensate": True,
-                "sf_edge_flow_valley_only": True,
-                # Reduce lateral machinery during debug to avoid spurious peaks
-                "sf_edge_flow_theta_snap": 0,
-                "sf_edge_flow_auto_deoffset": False,
-                "sf_edge_flow_deoffset_max": 0,
-                "sf_edge_flow_anchor_enable": False,
-                "sf_edge_flow_anchor_radius": 0,
-                # Precise valley lock (narrow)
-                "sf_edge_flow_valley_lock_enable": True,
-                "sf_edge_flow_valley_width_cols": 2,
-                "sf_edge_flow_valley_z_halfwin": 1,
-                "sf_edge_flow_debug": True,
+            # Flow-aligned edge reconstruction (debug baseline, v2: ridge_paths)
+            "sf_edge_flow_reconstruct_enable": True,
+            "sf_edge_flow_mode": "ridge_paths",  # follow diagonal ridges strictly
+            "sf_edge_flow_window": 9,
+            "sf_edge_flow_amount": 0.85,
+            "sf_edge_flow_quantile": 0.95,
+            "sf_edge_flow_peak_q": 0.94,
+            "sf_edge_flow_slopes_max": 2,
+            "sf_edge_flow_paths_band": 1,
+            "sf_edge_flow_max_paths": 4,
+            "sf_edge_flow_valley_band_cols": 8,
+            "sf_edge_flow_valley_band_decay": 0.0,
+            "sf_edge_flow_twist_compensate": True,
+            "sf_edge_flow_valley_only": True,
+            # Reduce lateral machinery during debug to avoid spurious peaks
+            "sf_edge_flow_theta_snap": 0,
+            "sf_edge_flow_auto_deoffset": False,
+            "sf_edge_flow_deoffset_max": 0,
+            "sf_edge_flow_anchor_enable": False,
+            "sf_edge_flow_anchor_radius": 0,
+            # Precise valley lock (narrow)
+            "sf_edge_flow_valley_lock_enable": True,
+            "sf_edge_flow_valley_width_cols": 2,
+            "sf_edge_flow_valley_z_halfwin": 1,
+            "sf_edge_flow_debug": True,
             "sf_edge_solidify_enable": True,
             "sf_edge_solidify_strength": 0.65,
             "sf_edge_solidify_passes": 2,
@@ -267,26 +322,33 @@ PRESETS: Dict[str, Dict[str, Dict[str, Any]]] = {
             "sf_edge_sharp": 0.18,
         },
     },
-    "FourierBloom": {"Subtle Detail": {"fb_strength": 0.6}, "Medium Detail": {"fb_strength": 1.0}, "Max Detail": {"fb_strength": 1.6}},
+    "FourierBloom": {
+        "Subtle Detail": {"fb_strength": 0.6},
+        "Medium Detail": {"fb_strength": 1.0},
+        "Max Detail": {"fb_strength": 1.6},
+    },
 }
 
 PRESET_PATH = Path.home() / ".potfoundry_presets.yaml"
 
+
 def _yaml_available() -> bool:
     """Check if PyYAML is available for preset loading.
-    
+
     Returns:
         True if yaml module can be imported, False otherwise
     """
     try:
         import yaml  # noqa: F401
+
         return True
     except Exception:
         return False
 
+
 def _read_user_presets() -> Dict[str, Any]:
     """Load user-defined presets from YAML file.
-    
+
     Returns:
         Dictionary with 'presets' key containing list of user presets
     """
@@ -294,9 +356,12 @@ def _read_user_presets() -> Dict[str, Any]:
         return {"presets": []}
     try:
         import yaml as _yaml
+
         data = _yaml.safe_load(PRESET_PATH.read_text("utf-8")) or {}
         if not isinstance(data, dict):
-            st.error("User presets file is corrupted or invalid. You can reset presets below.")
+            st.error(
+                "User presets file is corrupted or invalid. You can reset presets below."
+            )
             if st.button("Reset user presets"):
                 PRESET_PATH.unlink(missing_ok=True)
                 st.success("User presets have been reset.")
@@ -312,16 +377,19 @@ def _read_user_presets() -> Dict[str, Any]:
             st.rerun()
         return {"presets": []}
 
+
 def _write_user_presets(data: Dict[str, Any]) -> bool:
     if not _yaml_available():
         return False
     try:
         import yaml as _yaml
+
         data = {"presets": list(data.get("presets", []))}
         PRESET_PATH.write_text(_yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
         return True
     except Exception:
         return False
+
 
 def apply_preset_dict(p: Dict[str, Any]) -> None:
     style = p.get("style")
@@ -330,9 +398,15 @@ def apply_preset_dict(p: Dict[str, Any]) -> None:
     size = p.get("size", {})
     for k, v in size.items():
         st.session_state[
-            k if k in ("H", "expn") else {
-                "top_od": "top_od", "bottom_od": "bottom_od", "wall": "t_wall",
-                "bottom": "t_bottom", "drain": "r_drain", "flare_exp": "expn",
+            k
+            if k in ("H", "expn")
+            else {
+                "top_od": "top_od",
+                "bottom_od": "bottom_od",
+                "wall": "t_wall",
+                "bottom": "t_bottom",
+                "drain": "r_drain",
+                "flare_exp": "expn",
             }.get(k, k)
         ] = v
     opts = p.get("opts", {})
@@ -340,13 +414,25 @@ def apply_preset_dict(p: Dict[str, Any]) -> None:
         for k, v in opts.items():
             st.session_state[widget_key(style, k)] = v
 
-def render_preset_manager(style_name: str, H: float, top_od: float, bottom_od: float,
-                          t_wall: float, t_bottom: float, r_drain: float, expn: float) -> None:
+
+def render_preset_manager(
+    style_name: str,
+    H: float,
+    top_od: float,
+    bottom_od: float,
+    t_wall: float,
+    t_bottom: float,
+    r_drain: float,
+    expn: float,
+) -> None:
     with st.expander("Preset Manager (user presets)"):
         if not _yaml_available():
             st.info("Install PyYAML to enable user presets (pip install pyyaml).")
         pdata = _read_user_presets()
-        names = [p.get("name", f"Preset {i+1}") for i, p in enumerate(pdata.get("presets", []))]
+        names = [
+            p.get("name", f"Preset {i + 1}")
+            for i, p in enumerate(pdata.get("presets", []))
+        ]
         cols = st.columns([2, 1, 1, 1])
         sel = cols[0].selectbox("User presets", options=["<none>"] + names, index=0)
         new_name = cols[1].text_input("New name", value=f"{style_name}_H{int(H)}")
@@ -355,11 +441,18 @@ def render_preset_manager(style_name: str, H: float, top_od: float, bottom_od: f
                 "name": new_name or f"{style_name}_H{int(H)}",
                 "style": style_name,
                 "size": {
-                    "height": H, "top_od": top_od, "bottom_od": bottom_od,
-                    "wall": t_wall, "bottom": t_bottom, "drain": r_drain, "flare_exp": expn,
+                    "height": H,
+                    "top_od": top_od,
+                    "bottom_od": bottom_od,
+                    "wall": t_wall,
+                    "bottom": t_bottom,
+                    "drain": r_drain,
+                    "flare_exp": expn,
                 },
-                "opts": {k: st.session_state.get(widget_key(style_name, k), v["default"])
-                         for k, v in _ensure_style_schemas().get(style_name, {}).items()},
+                "opts": {
+                    k: st.session_state.get(widget_key(style_name, k), v["default"])
+                    for k, v in _ensure_style_schemas().get(style_name, {}).items()
+                },
             }
             pdata.setdefault("presets", []).append(preset)
             if _write_user_presets(pdata):

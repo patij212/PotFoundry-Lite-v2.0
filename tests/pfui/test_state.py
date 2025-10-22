@@ -72,7 +72,7 @@ def test_reset_style_defaults_for_all_styles_covers_every_style():
     styles = SC.get_style_schemas()
     for style in styles.keys():
         # find any key with this style's prefix
-        pref = f"opt__{''.join([c if c.isalnum() or c=='_' else '_' for c in style]).lower()}_"
+        pref = f"opt__{''.join([c if c.isalnum() or c == '_' else '_' for c in style]).lower()}_"
         assert any(k.startswith(pref) for k in pending.keys())
 
 

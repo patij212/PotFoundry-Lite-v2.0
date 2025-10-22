@@ -7,6 +7,7 @@ This test suite validates:
 3. Binary STL produces smaller files than ASCII
 4. Both formats produce valid STL files
 """
+
 import warnings
 import numpy as np
 from pathlib import Path
@@ -17,6 +18,7 @@ def test_binary_stl_is_default_export():
     """Binary STL should be the recommended export method."""
     # Verify write_stl_binary is directly importable
     from potfoundry import write_stl_binary
+
     assert write_stl_binary is not None
     assert callable(write_stl_binary)
 
@@ -62,14 +64,32 @@ def test_binary_stl_no_warnings(tmp_path: Path):
 def test_binary_vs_ascii_file_size(tmp_path: Path):
     """Binary STL should produce smaller files than ASCII STL."""
     # Create a mesh with multiple triangles
-    verts = np.array([
-        [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1],
-        [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1]
-    ], dtype=float)
-    faces = np.array([
-        [0, 1, 2], [0, 2, 3], [1, 4, 5], [2, 4, 6],
-        [3, 5, 6], [4, 5, 6], [0, 1, 4], [1, 2, 4]
-    ], dtype=int)
+    verts = np.array(
+        [
+            [0, 0, 0],
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [1, 1, 0],
+            [1, 0, 1],
+            [0, 1, 1],
+            [1, 1, 1],
+        ],
+        dtype=float,
+    )
+    faces = np.array(
+        [
+            [0, 1, 2],
+            [0, 2, 3],
+            [1, 4, 5],
+            [2, 4, 6],
+            [3, 5, 6],
+            [4, 5, 6],
+            [0, 1, 4],
+            [1, 2, 4],
+        ],
+        dtype=int,
+    )
 
     ascii_out = tmp_path / "test_ascii.stl"
     binary_out = tmp_path / "test_binary.stl"

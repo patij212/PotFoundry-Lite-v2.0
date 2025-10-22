@@ -4,13 +4,15 @@ from pydantic import BaseModel, Field, ConfigDict, PositiveFloat, model_validato
 
 # PF2: Pydantic v2 schema (ConfigV2) + migration helpers
 
+
 class MeshQualityModel(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra="forbid")
     n_theta: int = Field(168, ge=32, le=4096)
     n_z: int = Field(84, ge=16, le=4096)
 
+
 class DefaultsModel(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra="forbid")
     height: PositiveFloat = 120.0
     top_od: PositiveFloat = 140.0
     bottom_od: PositiveFloat = 90.0
@@ -45,8 +47,9 @@ class DefaultsModel(BaseModel):
     def r_drain(self) -> float:
         return float(self.drain)
 
+
 class PartialDefaultsModel(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra="forbid")
     height: Optional[PositiveFloat] = None
     top_od: Optional[PositiveFloat] = None
     bottom_od: Optional[PositiveFloat] = None
@@ -55,8 +58,9 @@ class PartialDefaultsModel(BaseModel):
     drain: Optional[PositiveFloat] = None
     flare_exp: Optional[PositiveFloat] = None
 
+
 class RecipeModel(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra="forbid")
     name: str
     style: Optional[str] = None
     use: Optional[str] = None  # reference preset name
@@ -72,14 +76,16 @@ class RecipeModel(BaseModel):
             raise ValueError("Provide only one of 'style' or 'use'.")
         return self
 
+
 class PresetModel(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra="forbid")
     style: str
     size: Optional[PartialDefaultsModel | dict] = None
     opts: Dict = Field(default_factory=dict)
 
+
 class ConfigV2(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra="forbid")
     version: Literal[2] = 2
     outdir: str = "out"
     save_previews: bool = True
@@ -99,10 +105,12 @@ def deep_merge(a: dict, b: dict) -> dict:
             out[k] = v
     return out
 
+
 def _coerce_partial_defaults(d: dict | None) -> PartialDefaultsModel | None:
     if not d:
         return None
     return PartialDefaultsModel(**d)
+
 
 def migrate_v1_to_v2(raw: dict) -> dict:
     # Accepts your old v1 YAML and returns a dict matching ConfigV2
@@ -143,12 +151,14 @@ def migrate_v1_to_v2(raw: dict) -> dict:
 
     # migrate recipes
     for r in recipes:
-        v2["recipes"].append({
-            "name": r.get("name"),
-            "style": r.get("style"),
-            "use": r.get("use"),
-            "size": r.get("size") or {},
-            "opts": r.get("opts") or {},
-        })
+        v2["recipes"].append(
+            {
+                "name": r.get("name"),
+                "style": r.get("style"),
+                "use": r.get("use"),
+                "size": r.get("size") or {},
+                "opts": r.get("opts") or {},
+            }
+        )
 
     return v2

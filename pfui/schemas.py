@@ -28,12 +28,13 @@ __all__ = [
     "warn_on_legacy_keys",
     "validate_keyset",
     "compress_opts",
-     "check_schema_integrity",
+    "check_schema_integrity",
 ]
 
 # =============================================================================
 # Aliases: legacy (engine/YAML) <-> canonical (UI/export)
 # =============================================================================
+
 
 def _invert(d: Mapping[str, str]) -> Dict[str, str]:
     """Invert a string->string mapping.
@@ -158,7 +159,9 @@ ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
 }
 
 GLOBAL_REVERSE = _invert(GLOBAL_ALIASES)
-REVERSE_BY_STYLE: Dict[str, Dict[str, str]] = {s: _invert(m) for s, m in ALIASES_BY_STYLE.items()}
+REVERSE_BY_STYLE: Dict[str, Dict[str, str]] = {
+    s: _invert(m) for s, m in ALIASES_BY_STYLE.items()
+}
 
 
 # Lightweight accessors to avoid heavy constant imports by consumers (helps typing tools)
@@ -284,6 +287,7 @@ def get_reverse_by_style() -> Mapping[str, Mapping[str, str]]:
 
 # Accepted directions for key normalization.
 Direction = Literal["to_canonical", "to_engine", "both"]
+
 
 def normalize_style_opts(
     style: str,
@@ -1767,7 +1771,10 @@ STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
 # Canonical schema views (for export/docs/UI that prefer canonical keys)
 # =============================================================================
 
-def _build_canonical_schema() -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Dict[str, Any]]]]:
+
+def _build_canonical_schema() -> tuple[
+    Dict[str, Dict[str, Any]], Dict[str, Dict[str, Dict[str, Any]]]
+]:
     """Construct canonical-keyed schema mirrors.
 
     Purpose:
@@ -1788,7 +1795,10 @@ def _build_canonical_schema() -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict
     Example:
         CANONICAL_CONTROLS["twist_total_turns"] -> {..., "legacy": "spin_turns"}
     """
-    def remap_block(block: Dict[str, Dict[str, Any]], alias_map: Mapping[str, str]) -> Dict[str, Dict[str, Any]]:
+
+    def remap_block(
+        block: Dict[str, Dict[str, Any]], alias_map: Mapping[str, str]
+    ) -> Dict[str, Dict[str, Any]]:
         out: Dict[str, Dict[str, Any]] = {}
         for legacy_key, meta in block.items():
             canon_key = alias_map.get(legacy_key, legacy_key)
@@ -1810,15 +1820,35 @@ CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
 
 # Freeze alias maps (and their reverses) to avoid runtime mutation.
 GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(GLOBAL_ALIASES))
-ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
+ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()}
+)
 GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(GLOBAL_REVERSE)
-REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
+REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()}
+)
 
 # Freeze top-level schema dicts to avoid accidental mutation at runtime.
-GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType({k: MappingProxyType(v) for k, v in GLOBAL_CONTROLS.items()})
-STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = MappingProxyType({k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()}) for k, v in STYLE_SCHEMAS.items()})
-CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType({k: MappingProxyType(v) for k, v in CANONICAL_CONTROLS.items()})
-CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = MappingProxyType({k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()}) for k, v in CANONICAL_STYLE_SCHEMAS.items()})
+GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
+    {k: MappingProxyType(v) for k, v in GLOBAL_CONTROLS.items()}
+)
+STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = MappingProxyType(
+    {
+        k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()})
+        for k, v in STYLE_SCHEMAS.items()
+    }
+)
+CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
+    {k: MappingProxyType(v) for k, v in CANONICAL_CONTROLS.items()}
+)
+CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = (
+    MappingProxyType(
+        {
+            k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()})
+            for k, v in CANONICAL_STYLE_SCHEMAS.items()
+        }
+    )
+)
 
 # =============================================================================
 # Validation, defaults, and schema helpers
@@ -1844,6 +1874,7 @@ class ControlMeta(TypedDict, total=False):
         units: str - e.g., "deg", "mm"
         legacy: str - legacy key (only in canonical views)
     """
+
     label: str
     help: str
     type: ControlType
@@ -1956,11 +1987,15 @@ def _coerce_one(v: Any, meta: ControlMeta) -> Any:
         opts = meta.get("options")
         if isinstance(opts, (list, tuple)) and opts:
             if v not in opts:
-                raise ValueError(f"invalid option {v!r}; expected one of {list(opts)!r}")
+                raise ValueError(
+                    f"invalid option {v!r}; expected one of {list(opts)!r}"
+                )
     return v
 
 
-def sanitize_opts(style: str, opts: dict, *, canonical: bool = False) -> Tuple[dict, list[str]]:
+def sanitize_opts(
+    style: str, opts: dict, *, canonical: bool = False
+) -> Tuple[dict, list[str]]:
     """Coerce types, clamp to min/max, and fill defaults.
 
     Purpose:
@@ -2101,7 +2136,11 @@ def compress_opts(
         # Fetch and round default the same way before comparing
         dv = sch.get(k, {}).get("default", None)
         if drop_defaults and dv is not None:
-            dv_cmp = round(dv, round_to) if (round_to is not None and isinstance(dv, float)) else dv
+            dv_cmp = (
+                round(dv, round_to)
+                if (round_to is not None and isinstance(dv, float))
+                else dv
+            )
             if v == dv_cmp:
                 continue
         out[k] = v
@@ -2117,6 +2156,7 @@ if __name__ == "__main__":
 # Integrity checks and deep-freeze
 # =============================================================================
 
+
 def _freeze_meta(d: Dict[str, Any]) -> MappingProxyType:
     """Return an immutable view of control meta; freeze options to tuple if present."""
     frozen = dict(d)
@@ -2130,7 +2170,9 @@ def _freeze_block(block: Dict[str, Dict[str, Any]]) -> MappingProxyType:
     return MappingProxyType({k: _freeze_meta(v) for k, v in block.items()})
 
 
-def _freeze_style_map(style_map: Dict[str, Dict[str, Dict[str, Any]]]) -> MappingProxyType:
+def _freeze_style_map(
+    style_map: Dict[str, Dict[str, Dict[str, Any]]],
+) -> MappingProxyType:
     """Freeze style -> (key -> meta) mapping."""
     return MappingProxyType({style: _freeze_block(b) for style, b in style_map.items()})
 
@@ -2145,30 +2187,44 @@ def check_schema_integrity() -> list[str]:
     # 1) Every legacy global alias key should exist in GLOBAL_CONTROLS (since UI is legacy-keyed).
     for k in GLOBAL_ALIASES.keys():
         if k not in GLOBAL_CONTROLS:
-            problems.append(f"GLOBAL_ALIASES legacy key missing from GLOBAL_CONTROLS: {k}")
+            problems.append(
+                f"GLOBAL_ALIASES legacy key missing from GLOBAL_CONTROLS: {k}"
+            )
     # 2) For each style, every legacy key in ALIASES_BY_STYLE[style] should exist in STYLE_SCHEMAS[style].
     for style, amap in ALIASES_BY_STYLE.items():
         block = STYLE_SCHEMAS.get(style, {})
         for legacy_key in amap.keys():
             if legacy_key not in block:
-                problems.append(f"{style}: alias legacy key missing from STYLE_SCHEMAS: {legacy_key}")
+                problems.append(
+                    f"{style}: alias legacy key missing from STYLE_SCHEMAS: {legacy_key}"
+                )
     return problems
 
 
 # Freeze alias maps (and their reverses) to avoid runtime mutation.
 GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(GLOBAL_ALIASES))
-ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
+ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()}
+)
 GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(dict(GLOBAL_REVERSE))
-REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
+REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()}
+)
 
 # Build canonical mirrors before freezing schema blocks deeply.
 CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
 
 # Deep-freeze schema dicts (blocks and inner meta).
 GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(dict(GLOBAL_CONTROLS))  # type: ignore[arg-type]
-STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = _freeze_style_map({k: dict(v) for k, v in STYLE_SCHEMAS.items()})  # type: ignore[dict-item]
-CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(dict(CANONICAL_CONTROLS))  # type: ignore[arg-type]
-CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = _freeze_style_map({k: dict(v) for k, v in CANONICAL_STYLE_SCHEMAS.items()})  # type: ignore[dict-item]
+STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = _freeze_style_map(
+    {k: dict(v) for k, v in STYLE_SCHEMAS.items()}
+)  # type: ignore[dict-item]
+CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(
+    dict(CANONICAL_CONTROLS)
+)  # type: ignore[arg-type]
+CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = (
+    _freeze_style_map({k: dict(v) for k, v in CANONICAL_STYLE_SCHEMAS.items()})
+)  # type: ignore[dict-item]
 
 
 # Conservative accessors for large schema constants. Callers should prefer

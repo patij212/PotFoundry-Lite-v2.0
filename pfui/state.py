@@ -39,12 +39,15 @@ def _ensure_schema_globals() -> None:
     global STYLE_SCHEMAS, GLOBAL_CONTROLS
     if not STYLE_SCHEMAS or not GLOBAL_CONTROLS:
         try:
-            mod = importlib.import_module('pfui.schemas')
-            STYLE_SCHEMAS.update(getattr(mod, 'get_style_schemas', lambda: {})() or {})
-            GLOBAL_CONTROLS.update(getattr(mod, 'get_global_controls', lambda: {})() or {})
+            mod = importlib.import_module("pfui.schemas")
+            STYLE_SCHEMAS.update(getattr(mod, "get_style_schemas", lambda: {})() or {})
+            GLOBAL_CONTROLS.update(
+                getattr(mod, "get_global_controls", lambda: {})() or {}
+            )
         except Exception:
             STYLE_SCHEMAS = STYLE_SCHEMAS or {}
             GLOBAL_CONTROLS = GLOBAL_CONTROLS or {}
+
 
 # ---------- Widget key helper -------------------------------------------------
 
@@ -76,7 +79,9 @@ def widget_key(style: str, field: str) -> str:
 _PENDING_KEY: str = "__pending_updates__"
 
 
-def _deep_merge(dst: MutableMapping[str, Any], src: Dict[str, Any]) -> MutableMapping[str, Any]:
+def _deep_merge(
+    dst: MutableMapping[str, Any], src: Dict[str, Any]
+) -> MutableMapping[str, Any]:
     """
     Purpose:
         Recursively merge src into dst (last-write-wins on leaves).
@@ -92,11 +97,7 @@ def _deep_merge(dst: MutableMapping[str, Any], src: Dict[str, Any]) -> MutableMa
         - Works in-place on dst; src is not modified.
     """
     for k, v in src.items():
-        if (
-            k in dst
-            and isinstance(dst[k], dict)
-            and isinstance(v, dict)
-        ):
+        if k in dst and isinstance(dst[k], dict) and isinstance(v, dict):
             _deep_merge(dst[k], v)
         else:
             dst[k] = v

@@ -11,13 +11,17 @@ import streamlit as st
 # _cache_data_impl may be None and we cast before calling it.
 _cache_data_impl: Optional[Callable[..., Any]] = getattr(st, "cache_data", None)
 if _cache_data_impl is not None:  # pragma: no cover - normal runtime
+
     def cache_data(*args: Any, **kwargs: Any):  # passthrough to real decorator
         return cast(Callable[..., Any], _cache_data_impl)(*args, **kwargs)
 else:  # pragma: no cover - executed only in degraded env (tests)
+
     def cache_data(*args: Any, **kwargs: Any):
         def _wrap(fn):
             return fn  # no caching fallback
+
         return _wrap
+
 
 from .imports import STYLES, base_radius, _spin_twist_radians, build_pot_mesh  # noqa: E402
 from .colors import build_gradient_colors  # noqa: E402
@@ -25,14 +29,16 @@ from .colors import build_gradient_colors  # noqa: E402
 
 def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
     """Render matplotlib figure in Streamlit with compatibility handling.
-    
+
     Args:
         fig: Matplotlib figure to display
         fill_width: Whether to stretch figure to full width
         clear: Whether to clear figure after rendering
     """
     try:
-        st.pyplot(fig, clear_figure=clear, width=("stretch" if fill_width else "content"))
+        st.pyplot(
+            fig, clear_figure=clear, width=("stretch" if fill_width else "content")
+        )
     except TypeError:
         # Fallback for older Streamlit versions that don't support the width kwarg
         st.pyplot(fig, clear_figure=clear)
@@ -47,10 +53,10 @@ def make_preview_arrays(
     n_theta: int,
     n_z: int,
     style_name: str,
-    opts_json: str
+    opts_json: str,
 ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Generate preview arrays for 3D visualization (cached).
-    
+
     Args:
         H: Pot height in mm
         Rt: Top radius in mm
@@ -60,11 +66,12 @@ def make_preview_arrays(
         n_z: Vertical resolution
         style_name: Style function name
         opts_json: JSON-encoded style options
-        
+
     Returns:
         Tuple of surface arrays (X, Y, Z) ready for plotting
     """
     import numpy as _np
+
     opts: Dict[str, Any] = __import__("json").loads(opts_json)
     r_outer_fn = STYLES[style_name][0]
 
@@ -74,7 +81,11 @@ def make_preview_arrays(
         hi = max(lo * 2.0, 4.0 * r0)
         return _np.clip(arr, lo, hi)
 
-    def _try(nt: int, nz: int) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    def _try(
+        nt: int, nz: int
+    ) -> Tuple[
+        npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]
+    ]:
         thetas = _np.linspace(0.0, 2.0 * _np.pi, nt, endpoint=False)
         base_cos = _np.cos(thetas)
         base_sin = _np.sin(thetas)
@@ -162,17 +173,28 @@ def make_preview_arrays(
     thetas = _np.linspace(0.0, 2.0 * _np.pi, max(24, n_theta // 4), endpoint=False)
     zvals = _np.linspace(0.0, H, max(12, n_z // 4))
     Rmid = 0.5 * (Rt + Rb)
-    X = _np.asarray(_np.outer(_np.ones_like(zvals), Rmid * _np.cos(thetas)), dtype=_np.float64)
-    Y = _np.asarray(_np.outer(_np.ones_like(zvals), Rmid * _np.sin(thetas)), dtype=_np.float64)
+    X = _np.asarray(
+        _np.outer(_np.ones_like(zvals), Rmid * _np.cos(thetas)), dtype=_np.float64
+    )
+    Y = _np.asarray(
+        _np.outer(_np.ones_like(zvals), Rmid * _np.sin(thetas)), dtype=_np.float64
+    )
     Z = _np.asarray(_np.outer(zvals, _np.ones_like(thetas)), dtype=_np.float64)
     return X, Y, Z
 
 
 def render_preview(
-    X: npt.NDArray[np.float64], Y: npt.NDArray[np.float64], Z: npt.NDArray[np.float64],
-    fig_w: float, fig_h: float, dpi: int, fill_width: bool,
-    *, inner_wall: float | None = None,
-    view_elev: float = 20.0, view_azim: float = -60.0,
+    X: npt.NDArray[np.float64],
+    Y: npt.NDArray[np.float64],
+    Z: npt.NDArray[np.float64],
+    fig_w: float,
+    fig_h: float,
+    dpi: int,
+    fill_width: bool,
+    *,
+    inner_wall: float | None = None,
+    view_elev: float = 20.0,
+    view_azim: float = -60.0,
     return_png: bool = False,
     theme: str = "dark",
     show_floor: bool = True,
@@ -209,12 +231,30 @@ def render_preview(
         ys = _np.arange(-size, size + step, step)
         z0 = 0.0  # pot is already built from z=0..H
         for x in xs:
-            ax.plot([x, x], [ys[0], ys[-1]], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+            ax.plot(
+                [x, x],
+                [ys[0], ys[-1]],
+                [z0, z0],
+                linewidth=0.4,
+                alpha=0.35,
+                color="white",
+            )
         for y in ys:
-            ax.plot([xs[0], xs[-1]], [y, y], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+            ax.plot(
+                [xs[0], xs[-1]],
+                [y, y],
+                [z0, z0],
+                linewidth=0.4,
+                alpha=0.35,
+                color="white",
+            )
 
     # --- Mesh surface ---
-    if not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all():
+    if (
+        not _np.isfinite(X).all()
+        or not _np.isfinite(Y).all()
+        or not _np.isfinite(Z).all()
+    ):
         st.info("Preview fell back due to invalid values; adjust style or detail.")
         _pyplot(fig, fill_width=fill_width)
         if return_png:
@@ -229,20 +269,39 @@ def render_preview(
     try:
         # Use a perceptually-uniform colormap for better visibility on dark background
         ax.plot_surface(
-            X, Y, Z,
-            linewidth=0, antialiased=True, shade=True,
-            cmap="viridis", edgecolor="none"
+            X,
+            Y,
+            Z,
+            linewidth=0,
+            antialiased=True,
+            shade=True,
+            cmap="viridis",
+            edgecolor="none",
         )
     except Exception:
         step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
-        ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
+        ax.plot_wireframe(
+            X[::step, ::step],
+            Y[::step, ::step],
+            Z[::step, ::step],
+            rstride=1,
+            cstride=1,
+            linewidth=0.3,
+        )
         st.info("Preview shown in wireframe due to resource limits.")
 
     # Inner wall hint
     if inner_wall and inner_wall > 0:
         R = _np.maximum(_np.sqrt(X**2 + Y**2), max(1e-3, inner_wall * 2.0))
         scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
-        ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
+        ax.plot_wireframe(
+            X * scale,
+            Y * scale,
+            Z,
+            rstride=max(1, X.shape[0] // 16),
+            cstride=max(1, X.shape[1] // 24),
+            linewidth=0.2,
+        )
 
     # Camera + aspect: use orthographic projection and equal XY, with gently compressed Z
     try:
@@ -250,7 +309,7 @@ def render_preview(
     except Exception:
         pass
     try:
-        ax.set_proj_type('ortho')
+        ax.set_proj_type("ortho")
     except Exception:
         pass
 
@@ -286,12 +345,21 @@ def render_preview(
 
 @cache_data(show_spinner=False)
 def render_preview_png_cached(
-    H: float, Rt: float, Rb: float, expn: float,
-    n_theta: int, n_z: int,
-    style_name: str, opts_json: str,
-    fig_w: float, fig_h: float, dpi: int,
-    *, inner_wall: float | None = None,
-    view_elev: float = 20.0, view_azim: float = -60.0,
+    H: float,
+    Rt: float,
+    Rb: float,
+    expn: float,
+    n_theta: int,
+    n_z: int,
+    style_name: str,
+    opts_json: str,
+    fig_w: float,
+    fig_h: float,
+    dpi: int,
+    *,
+    inner_wall: float | None = None,
+    view_elev: float = 20.0,
+    view_azim: float = -60.0,
     theme: str = "dark",
     show_floor: bool = True,
     show_axes: bool = False,
@@ -336,29 +404,67 @@ def render_preview_png_cached(
         ys = np.arange(-size, size + step, step)
         z0 = 0.0
         for x in xs:
-            ax.plot([x, x], [ys[0], ys[-1]], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+            ax.plot(
+                [x, x],
+                [ys[0], ys[-1]],
+                [z0, z0],
+                linewidth=0.4,
+                alpha=0.35,
+                color="white",
+            )
         for y in ys:
-            ax.plot([xs[0], xs[-1]], [y, y], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+            ax.plot(
+                [xs[0], xs[-1]],
+                [y, y],
+                [z0, z0],
+                linewidth=0.4,
+                alpha=0.35,
+                color="white",
+            )
 
     import numpy as _np
-    if not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all():
+
+    if (
+        not _np.isfinite(X).all()
+        or not _np.isfinite(Y).all()
+        or not _np.isfinite(Z).all()
+    ):
         plt.close(fig)
         return None
 
     try:
         ax.plot_surface(
-            X, Y, Z,
-            linewidth=0, antialiased=True, shade=True,
-            cmap="viridis", edgecolor="none"
+            X,
+            Y,
+            Z,
+            linewidth=0,
+            antialiased=True,
+            shade=True,
+            cmap="viridis",
+            edgecolor="none",
         )
     except Exception:
         step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
-        ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
+        ax.plot_wireframe(
+            X[::step, ::step],
+            Y[::step, ::step],
+            Z[::step, ::step],
+            rstride=1,
+            cstride=1,
+            linewidth=0.3,
+        )
 
     if inner_wall and inner_wall > 0:
         R = _np.maximum(_np.sqrt(X**2 + Y**2), max(1e-3, inner_wall * 2.0))
         scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
-        ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
+        ax.plot_wireframe(
+            X * scale,
+            Y * scale,
+            Z,
+            rstride=max(1, X.shape[0] // 16),
+            cstride=max(1, X.shape[1] // 24),
+            linewidth=0.2,
+        )
 
     try:
         ax.view_init(elev=view_elev, azim=view_azim)
@@ -367,7 +473,7 @@ def render_preview_png_cached(
 
     # Use orthographic projection to reduce perspective distortion and compress Z for better aesthetics
     try:
-        ax.set_proj_type('ortho')
+        ax.set_proj_type("ortho")
     except Exception:
         pass
 
@@ -402,8 +508,15 @@ def render_preview_png_cached(
     return png
 
 
-
-def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts: Dict[str, Any], t_wall: float) -> None:
+def render_profile(
+    H: float,
+    Rt: float,
+    Rb: float,
+    expn: float,
+    r_outer_fn,
+    opts: Dict[str, Any],
+    t_wall: float,
+) -> None:
     import numpy as _np
     import matplotlib.pyplot as plt
 
@@ -420,9 +533,17 @@ def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts
             _opts.setdefault("_pf_rt", Rt)
             _opts.setdefault("_pf_expn", expn)
             r_list.append(float(r_outer_fn(th, z, r0, H, _opts)))
-        ax.plot(zvals, r_list, alpha=0.9, label=f"outer theta={int(th * 180.0 / np.pi)}°")
+        ax.plot(
+            zvals, r_list, alpha=0.9, label=f"outer theta={int(th * 180.0 / np.pi)}°"
+        )
         inner = _np.maximum(np.array(r_list) - t_wall, 0.0)
-        ax.plot(zvals, inner, alpha=0.6, linestyle="--", label=f"inner theta={int(th * 180.0 / np.pi)}°")
+        ax.plot(
+            zvals,
+            inner,
+            alpha=0.6,
+            linestyle="--",
+            label=f"inner theta={int(th * 180.0 / np.pi)}°",
+        )
     ax.set_xlabel("z (mm)")
     ax.set_ylabel("radius (mm)")
     ax.set_title("Radial profile")
@@ -433,12 +554,21 @@ def render_profile(H: float, Rt: float, Rb: float, expn: float, r_outer_fn, opts
 
 @cache_data(show_spinner=False)
 def render_preview_apng_cached(
-    H: float, Rt: float, Rb: float, expn: float,
-    n_theta: int, n_z: int,
-    style_name: str, opts_json: str,
-    fig_w: float, fig_h: float, dpi: int,
-    *, inner_wall: float | None = None,
-    view_elev: float = 20.0, view_azim: float = -60.0,
+    H: float,
+    Rt: float,
+    Rb: float,
+    expn: float,
+    n_theta: int,
+    n_z: int,
+    style_name: str,
+    opts_json: str,
+    fig_w: float,
+    fig_h: float,
+    dpi: int,
+    *,
+    inner_wall: float | None = None,
+    view_elev: float = 20.0,
+    view_azim: float = -60.0,
     theme: str = "dark",
     show_floor: bool = True,
     show_axes: bool = False,
@@ -456,12 +586,18 @@ def render_preview_apng_cached(
     X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
 
     import numpy as _np
-    if not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all():
+
+    if (
+        not _np.isfinite(X).all()
+        or not _np.isfinite(Y).all()
+        or not _np.isfinite(Z).all()
+    ):
         return None
 
     # Helper to draw a single frame and return PNG bytes
     def _render_frame(elev: float, azim: float) -> bytes:
         import matplotlib.pyplot as plt
+
         fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
         ax = fig.add_subplot(111, projection="3d")
         if theme == "dark":
@@ -485,22 +621,59 @@ def render_preview_apng_cached(
                 ys = _np.arange(-size, size + step, step)
                 z0 = 0.0
                 for x in xs:
-                    ax.plot([x, x], [ys[0], ys[-1]], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+                    ax.plot(
+                        [x, x],
+                        [ys[0], ys[-1]],
+                        [z0, z0],
+                        linewidth=0.4,
+                        alpha=0.35,
+                        color="white",
+                    )
                 for y in ys:
-                    ax.plot([xs[0], xs[-1]], [y, y], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+                    ax.plot(
+                        [xs[0], xs[-1]],
+                        [y, y],
+                        [z0, z0],
+                        linewidth=0.4,
+                        alpha=0.35,
+                        color="white",
+                    )
             except Exception:
                 pass
 
         try:
-            ax.plot_surface(X, Y, Z, linewidth=0, antialiased=True, shade=True, cmap="viridis", edgecolor="none")
+            ax.plot_surface(
+                X,
+                Y,
+                Z,
+                linewidth=0,
+                antialiased=True,
+                shade=True,
+                cmap="viridis",
+                edgecolor="none",
+            )
         except Exception:
             step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
-            ax.plot_wireframe(X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3)
+            ax.plot_wireframe(
+                X[::step, ::step],
+                Y[::step, ::step],
+                Z[::step, ::step],
+                rstride=1,
+                cstride=1,
+                linewidth=0.3,
+            )
 
         if inner_wall and inner_wall > 0:
             R = _np.maximum(_np.sqrt(X**2 + Y**2), max(1e-3, inner_wall * 2.0))
             scale = _np.clip(1.0 - inner_wall / R, 0.2, 0.999)
-            ax.plot_wireframe(X * scale, Y * scale, Z, rstride=max(1, X.shape[0] // 16), cstride=max(1, X.shape[1] // 24), linewidth=0.2)
+            ax.plot_wireframe(
+                X * scale,
+                Y * scale,
+                Z,
+                rstride=max(1, X.shape[0] // 16),
+                cstride=max(1, X.shape[1] // 24),
+                linewidth=0.2,
+            )
 
         # View + projection + explicit limits/aspect
         try:
@@ -508,7 +681,7 @@ def render_preview_apng_cached(
         except Exception:
             pass
         try:
-            ax.set_proj_type('ortho')
+            ax.set_proj_type("ortho")
         except Exception:
             pass
         try:
@@ -529,6 +702,7 @@ def render_preview_apng_cached(
             ax.set_zlabel("Z (mm)")
 
         from io import BytesIO
+
         buf = BytesIO()
         fig.savefig(buf, format="png", dpi=dpi)
         png = buf.getvalue()
@@ -578,14 +752,22 @@ def render_preview_apng_cached(
 
 @cache_data(show_spinner=False)
 def render_mesh_snapshot_cached(
-    H: float, Rt: float, Rb: float, expn: float,
-    n_theta: int, n_z: int,
-    style_name: str, opts_json: str,
-    fig_w: float, fig_h: float, dpi: int,
+    H: float,
+    Rt: float,
+    Rb: float,
+    expn: float,
+    n_theta: int,
+    n_z: int,
+    style_name: str,
+    opts_json: str,
+    fig_w: float,
+    fig_h: float,
+    dpi: int,
     *,
     inner_wall: float | None = None,
     place_on_ground: bool = True,
-    view_elev: float = 20.0, view_azim: float = -60.0,
+    view_elev: float = 20.0,
+    view_azim: float = -60.0,
     theme: str = "dark",
     # appearance cache key to invalidate cache on palette/lighting changes
     appearance_key: str = "",
@@ -603,10 +785,17 @@ def render_mesh_snapshot_cached(
     # Build actual mesh using core geometry
     try:
         verts, faces, _ = build_pot_mesh(
-            H=H, Rt=Rt, Rb=Rb, t_wall=opts.get("t_wall", 3.0),
-            t_bottom=opts.get("t_bottom", 3.0), r_drain=opts.get("r_drain", 10.0),
-            expn=expn, n_theta=n_theta, n_z=n_z,
-            r_outer_fn=STYLES[style_name][0], style_opts=opts,
+            H=H,
+            Rt=Rt,
+            Rb=Rb,
+            t_wall=opts.get("t_wall", 3.0),
+            t_bottom=opts.get("t_bottom", 3.0),
+            r_drain=opts.get("r_drain", 10.0),
+            expn=expn,
+            n_theta=n_theta,
+            n_z=n_z,
+            r_outer_fn=STYLES[style_name][0],
+            style_opts=opts,
         )
     except Exception:
         # If mesh build fails, don't crash the UI; return None
@@ -618,28 +807,33 @@ def render_mesh_snapshot_cached(
         V[:, 2] -= V[:, 2].min()
 
     # Choose PNG engine: default to 'matplotlib' for speed; override with st.session_state['mesh_png_engine'] = 'plotly'
-    engine = str(st.session_state.get('mesh_png_engine', 'matplotlib')).lower()
+    engine = str(st.session_state.get("mesh_png_engine", "matplotlib")).lower()
     capture_bytes = None
 
     def _render_matplotlib() -> bytes | None:
         try:
             import matplotlib
-            matplotlib.use('Agg')
+
+            matplotlib.use("Agg")
             import matplotlib.pyplot as plt
             from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
             fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
-            ax = fig.add_subplot(111, projection='3d')
-            if theme == 'dark':
+            ax = fig.add_subplot(111, projection="3d")
+            if theme == "dark":
                 fig.patch.set_facecolor("#0E1117")
                 ax.set_facecolor("#0E1117")
             ax._axis3don = False
 
             triangles = V[F]
-            mesh = Poly3DCollection(triangles, alpha=0.95, linewidths=0.1, edgecolors='#555555')
+            mesh = Poly3DCollection(
+                triangles, alpha=0.95, linewidths=0.1, edgecolors="#555555"
+            )
 
             # Face colors based on height (UI palette)
-            z_norm_v = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+            z_norm_v = (V[:, 2] - V[:, 2].min()) / max(
+                1e-6, (V[:, 2].max() - V[:, 2].min())
+            )
             face_z = z_norm_v[F].mean(axis=1)
             try:
                 preset = st.session_state.get("preview_palette", "Custom")
@@ -648,8 +842,12 @@ def render_mesh_snapshot_cached(
                     st.session_state.get("preview_grad_c2", "#5FA8FF"),
                     st.session_state.get("preview_grad_c3", "#E2F3FF"),
                 ]
-                rgb255 = build_gradient_colors(face_z, preset if preset != "Custom" else None, custom)
-                colors = [(r/255.0, g/255.0, b/255.0, 1.0) for (r,g,b) in rgb255]
+                rgb255 = build_gradient_colors(
+                    face_z, preset if preset != "Custom" else None, custom
+                )
+                colors = [
+                    (r / 255.0, g / 255.0, b / 255.0, 1.0) for (r, g, b) in rgb255
+                ]
             except Exception:
                 # Some matplotlib backends may not expose cm.viridis as an attribute in tests; guard with getattr
                 cmap = getattr(plt.cm, "viridis", None)
@@ -662,7 +860,7 @@ def render_mesh_snapshot_cached(
             ax.add_collection3d(mesh)
 
             try:
-                ax.set_proj_type('ortho')
+                ax.set_proj_type("ortho")
             except Exception:
                 pass
             rmax = float(max(abs(V[:, 0]).max(), abs(V[:, 1]).max()))
@@ -680,8 +878,15 @@ def render_mesh_snapshot_cached(
             ax.set_box_aspect((1.0, 1.0, min(0.85, z_ratio)))
 
             from io import BytesIO
+
             buf = BytesIO()
-            fig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight', facecolor=fig.get_facecolor())
+            fig.savefig(
+                buf,
+                format="png",
+                dpi=dpi,
+                bbox_inches="tight",
+                facecolor=fig.get_facecolor(),
+            )
             out = buf.getvalue()
             plt.close(fig)
             try:
@@ -700,7 +905,9 @@ def render_mesh_snapshot_cached(
             return None
         try:
             # Color by height
-            z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+            z_norm = (V[:, 2] - V[:, 2].min()) / max(
+                1e-6, (V[:, 2].max() - V[:, 2].min())
+            )
             try:
                 preset = st.session_state.get("preview_palette", "Custom")
                 custom = [
@@ -708,30 +915,56 @@ def render_mesh_snapshot_cached(
                     st.session_state.get("preview_grad_c2", "#5FA8FF"),
                     st.session_state.get("preview_grad_c3", "#E2F3FF"),
                 ]
-                mesh_colors = build_gradient_colors(z_norm, preset if preset != "Custom" else None, custom)
+                mesh_colors = build_gradient_colors(
+                    z_norm, preset if preset != "Custom" else None, custom
+                )
             except Exception:
                 import matplotlib.pyplot as plt
-                colorscale = plt.get_cmap("viridis")
-                mesh_colors = [[int(255 * r), int(255 * g), int(255 * b)] for r, g, b, _ in colorscale(z_norm)]
 
-            fig = go.Figure(data=[
-                go.Mesh3d(
-                    x=V[:, 0], y=V[:, 1], z=V[:, 2],
-                    i=F[:, 0], j=F[:, 1], k=F[:, 2],
-                    flatshading=False,
-                    lighting=dict(
-                        ambient=min(max(st.session_state.get("mesh_ambient", 0.35), 0.0), 1.0),
-                        diffuse=min(max(st.session_state.get("mesh_diffuse", 0.95), 0.0), 1.0),
-                        specular=min(max(st.session_state.get("mesh_specular", 0.25), 0.0), 1.0),
-                        roughness=min(max(st.session_state.get("mesh_roughness", 0.7), 0.0), 1.0),
-                        fresnel=min(max(st.session_state.get("mesh_fresnel", 0.2), 0.0), 1.0),
-                    ),
-                    vertexcolor=mesh_colors,
-                    hoverinfo="skip",
-                    name="mesh",
-                    opacity=1.0,
-                )
-            ])
+                colorscale = plt.get_cmap("viridis")
+                mesh_colors = [
+                    [int(255 * r), int(255 * g), int(255 * b)]
+                    for r, g, b, _ in colorscale(z_norm)
+                ]
+
+            fig = go.Figure(
+                data=[
+                    go.Mesh3d(
+                        x=V[:, 0],
+                        y=V[:, 1],
+                        z=V[:, 2],
+                        i=F[:, 0],
+                        j=F[:, 1],
+                        k=F[:, 2],
+                        flatshading=False,
+                        lighting=dict(
+                            ambient=min(
+                                max(st.session_state.get("mesh_ambient", 0.35), 0.0),
+                                1.0,
+                            ),
+                            diffuse=min(
+                                max(st.session_state.get("mesh_diffuse", 0.95), 0.0),
+                                1.0,
+                            ),
+                            specular=min(
+                                max(st.session_state.get("mesh_specular", 0.25), 0.0),
+                                1.0,
+                            ),
+                            roughness=min(
+                                max(st.session_state.get("mesh_roughness", 0.7), 0.0),
+                                1.0,
+                            ),
+                            fresnel=min(
+                                max(st.session_state.get("mesh_fresnel", 0.2), 0.0), 1.0
+                            ),
+                        ),
+                        vertexcolor=mesh_colors,
+                        hoverinfo="skip",
+                        name="mesh",
+                        opacity=1.0,
+                    )
+                ]
+            )
             height_px = max(400, min(1000, int(110 * fig_h)))
             width_px = max(400, min(1400, int(96 * fig_w)))
             try:
@@ -754,15 +987,21 @@ def render_mesh_snapshot_cached(
                     zaxis=dict(visible=False, range=zlim),
                     aspectmode="manual",
                     aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
-                    camera=dict(up=dict(x=0, y=0, z=1), projection=dict(type='orthographic')),
+                    camera=dict(
+                        up=dict(x=0, y=0, z=1), projection=dict(type="orthographic")
+                    ),
                     bgcolor=st.session_state.get("preview_bg_color", "#0E1117"),
                 ),
                 margin=dict(l=0, r=0, t=30, b=0),
             )
             try:
-                out: Any = fig.to_image(format="png", width=width_px, height=height_px, scale=1)
+                out: Any = fig.to_image(
+                    format="png", width=width_px, height=height_px, scale=1
+                )
             except Exception:
-                out = pio.to_image(fig, format="png", width=width_px, height=height_px, scale=1)
+                out = pio.to_image(
+                    fig, format="png", width=width_px, height=height_px, scale=1
+                )
             try:
                 st.session_state["_last_snapshot_method"] = "plotly"
             except Exception:
@@ -773,7 +1012,7 @@ def render_mesh_snapshot_cached(
 
     # Prefer selected engine; fall back to the other if it fails
     try:
-        if engine == 'plotly':
+        if engine == "plotly":
             capture_bytes = _render_plotly() or _render_matplotlib()
         else:
             capture_bytes = _render_matplotlib() or _render_plotly()

@@ -1,16 +1,25 @@
 import json
 import os
 
-def find_detailed_row(path, require_keys=('R_analysis_sample','Env_sample','Env_to_use_sample','origin_map_sample')):
-    with open(path,'r',encoding='utf-8') as f:
+
+def find_detailed_row(
+    path,
+    require_keys=(
+        "R_analysis_sample",
+        "Env_sample",
+        "Env_to_use_sample",
+        "origin_map_sample",
+    ),
+):
+    with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
-            obj=json.loads(line)
-            rows=obj.get('rows',[])
+            obj = json.loads(line)
+            rows = obj.get("rows", [])
             for r in rows:
-                if not isinstance(r,dict):
+                if not isinstance(r, dict):
                     continue
                 if all(k in r for k in require_keys):
                     return r
@@ -18,15 +27,19 @@ def find_detailed_row(path, require_keys=('R_analysis_sample','Env_sample','Env_
 
 
 def test_argmin_alignment_bridge_vs_analysis_min():
-    p=os.path.join(os.path.dirname(__file__),'..','tools','edgeflow_verbose_diagnostics.jsonl')
-    p=os.path.normpath(p)
-    row=find_detailed_row(p)
-    assert row is not None, f"No detailed diagnostic row found in {p} with required keys"
+    p = os.path.join(
+        os.path.dirname(__file__), "..", "tools", "edgeflow_verbose_diagnostics.jsonl"
+    )
+    p = os.path.normpath(p)
+    row = find_detailed_row(p)
+    assert row is not None, (
+        f"No detailed diagnostic row found in {p} with required keys"
+    )
 
-    R_analysis=row['R_analysis_sample']
-    Env=row['Env_sample']
-    Env_to_use=row['Env_to_use_sample']
-    origin_map=row['origin_map_sample']
+    R_analysis = row["R_analysis_sample"]
+    Env = row["Env_sample"]
+    Env_to_use = row["Env_to_use_sample"]
+    origin_map = row["origin_map_sample"]
 
     # compute discrete bridge (where Env_to_use raised above Env)
     bridge = [(u - v) for u, v in zip(Env_to_use, Env)]
@@ -47,8 +60,16 @@ def test_argmin_alignment_bridge_vs_analysis_min():
     # Build ordered unique origins and compute sector indices for a higher-level comparison.
     unique_origins = sorted(list(dict.fromkeys(origin_map))) if origin_map else None
     if unique_origins:
-        sec_bridge = unique_origins.index(mapped_bridge) if mapped_bridge in unique_origins else None
-        sec_analysis = unique_origins.index(mapped_analysis) if mapped_analysis in unique_origins else None
+        sec_bridge = (
+            unique_origins.index(mapped_bridge)
+            if mapped_bridge in unique_origins
+            else None
+        )
+        sec_analysis = (
+            unique_origins.index(mapped_analysis)
+            if mapped_analysis in unique_origins
+            else None
+        )
     else:
         sec_bridge = mapped_bridge
         sec_analysis = mapped_analysis

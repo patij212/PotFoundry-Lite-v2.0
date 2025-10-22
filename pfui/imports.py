@@ -72,7 +72,11 @@ def _import_geometry() -> Tuple[Any, Any, Any, Any]:
         )
 
 
-def _import_schema_and_batch() -> Tuple[Optional[Callable[..., Any]], Optional[Callable[..., Any]], Optional[Callable[..., Any]]]:
+def _import_schema_and_batch() -> Tuple[
+    Optional[Callable[..., Any]],
+    Optional[Callable[..., Any]],
+    Optional[Callable[..., Any]],
+]:
     validate_recipe: Optional[Callable[..., Any]] = None
     load_config: Optional[Callable[..., Any]] = None
     build_from_yaml: Optional[Callable[..., Any]] = None
@@ -107,7 +111,13 @@ def _import_schema_and_batch() -> Tuple[Optional[Callable[..., Any]], Optional[C
 # used so attribute access triggers the imports on-demand.
 _WRITE_STL_BINARY: Optional[Callable[..., Any]] = None
 _GEOMETRY_CACHE: Optional[Tuple[Any, Any, Any, Any]] = None
-_SCHEMA_BATCH_CACHE: Optional[Tuple[Optional[Callable[..., Any]], Optional[Callable[..., Any]], Optional[Callable[..., Any]]]] = None
+_SCHEMA_BATCH_CACHE: Optional[
+    Tuple[
+        Optional[Callable[..., Any]],
+        Optional[Callable[..., Any]],
+        Optional[Callable[..., Any]],
+    ]
+] = None
 
 
 def __getattr__(name: str):
@@ -126,7 +136,12 @@ def __getattr__(name: str):
     if name in ("STYLES", "base_radius", "_spin_twist_radians", "build_pot_mesh"):
         if _GEOMETRY_CACHE is None:
             _GEOMETRY_CACHE = _import_geometry()
-        mapping = {"STYLES": 0, "base_radius": 1, "_spin_twist_radians": 2, "build_pot_mesh": 3}
+        mapping = {
+            "STYLES": 0,
+            "base_radius": 1,
+            "_spin_twist_radians": 2,
+            "build_pot_mesh": 3,
+        }
         return _GEOMETRY_CACHE[mapping[name]]
 
     if name in ("validate_recipe", "load_config", "build_from_yaml"):
@@ -144,11 +159,11 @@ __all__ = [
     "_import_schema_and_batch",
     # lazy attributes available via module attribute access
     "WRITE_STL_BINARY",  # lazy: resolved via __getattr__ on first access
-    "STYLES",            # lazy: resolved via __getattr__ on first access
-    "base_radius",       # lazy
+    "STYLES",  # lazy: resolved via __getattr__ on first access
+    "base_radius",  # lazy
     "_spin_twist_radians",  # lazy
-    "build_pot_mesh",    # lazy
-    "validate_recipe",   # lazy
-    "load_config",       # lazy
-    "build_from_yaml",   # lazy
+    "build_pot_mesh",  # lazy
+    "validate_recipe",  # lazy
+    "load_config",  # lazy
+    "build_from_yaml",  # lazy
 ]

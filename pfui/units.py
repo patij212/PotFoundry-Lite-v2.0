@@ -5,13 +5,20 @@ import streamlit as st
 
 _MM_PER_IN = 25.4
 
-def _mm_to_in(x: float) -> float: return x / _MM_PER_IN
-def _in_to_mm(x: float) -> float: return x * _MM_PER_IN
+
+def _mm_to_in(x: float) -> float:
+    return x / _MM_PER_IN
+
+
+def _in_to_mm(x: float) -> float:
+    return x * _MM_PER_IN
+
 
 def get_units(key: str = "ui__units") -> str:
     """Return current display units ('mm'|'in')."""
     # st.session_state.get() is typed as Any; cast to str for mypy while preserving runtime behavior
     return cast(str, st.session_state.get(key, "mm"))
+
 
 def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:
     """
@@ -34,6 +41,7 @@ def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:
     )
     st.session_state[mount_flag] = True
     return choice
+
 
 def unit_number_input(
     label: str,
@@ -59,13 +67,17 @@ def unit_number_input(
         inv = _in_to_mm
         fmt = format_in
     else:
+
         def conv(x):
             return x
+
         def inv(x):
             return x
+
         fmt = format_mm
 
-    def _c(x): return None if x is None else conv(float(x))
+    def _c(x):
+        return None if x is None else conv(float(x))
 
     out = host.number_input(
         label,
@@ -81,6 +93,7 @@ def unit_number_input(
         return float(inv(out))
     except Exception:
         return float(value)
+
 
 def unit_slider(
     label: str,
@@ -103,8 +116,10 @@ def unit_slider(
         conv = _mm_to_in
         inv = _in_to_mm
     else:
+
         def conv(x):
             return x
+
         def inv(x):
             return x
 
