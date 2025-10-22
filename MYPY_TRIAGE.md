@@ -182,6 +182,13 @@ Purpose
 
  - [2025-10-22] Commit 1e1e1e4: docs(schemas): add Google-style docstrings to accessor functions. Focused pytest passed. Ran `ruff check . --fix`; ruff produced a list of style issues; most are auto-fixable but a subset required manual attention (see ruff output in terminal). Next Batch 2 step: add a conservative geometry wrapper (`build_pot_mesh_safe`) and a small smoke test to prepare `potfoundry/core/geometry.py` for incremental typing.
 
+- [2025-10-22] Commit 61f5dba: mypy: `pfui/schemas.py` — make top-level schema constants private and add casts to reduce redefinition/type warnings.
+    - What: Renamed module-level mutable constants to private names (prefix `_`) and created single public frozen `MappingProxyType` instances. Replaced `dict(...)
+        # type: ignore` in `get_schema` with `cast(...)` to `Dict[str, ControlMeta]` so mypy sees the intended shape.
+    - Why: Remove `no-redef` and spurious `unused type: ignore` errors and provide a stable, single assignment for public constants.
+    - Result: Ran mypy for `potfoundry/` and `pfui/` (saved to `.mypy_ci.txt`): errors reduced from ~144 -> 133 for these packages; specifically `pfui/schemas.py` decreased from 30 -> 17 errors. Full per-file counts: 67 `potfoundry/geometry.py`, 65 `potfoundry/core/geometry.py`, 17 `pfui/schemas.py`, 10 `potfoundry/integrations/supabase_client.py`, others smaller. Tests: existing tests unchanged (previous full pytest run was green).
+    - Next: Fix remaining `pfui/schemas.py` arg-type warnings by widening helper signatures to accept `Mapping[...]` where appropriate or add narrower casts at call sites; then remove the remaining unused `# type: ignore` comments. After that, prepare `build_pot_mesh_safe` wrapper and begin conservative typing in `potfoundry/core/geometry.py`.
+
  - [2025-10-21] Commit bddb45e: predeclare streamlit 'st' and remove unused type-ignore in `pfui/state_history.py`. Ran mypy (focused): Found 162 errors in 19 files. Tests: 347 passed.
 
  - [2025-10-21] Commit e0c905f: pfui/yaml_tools: coerce yaml.safe_dump to str to satisfy mypy return type. Ran mypy (focused): Found 126 errors in 13 files. Tests: 347 passed.
