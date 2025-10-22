@@ -29,19 +29,26 @@ if not HAS_PLOTLY:
     st.info("Plotly is not available. Interactive 3D preview and mesh features are disabled.")
 
 # --- PotFoundry UI/engine imports ---
-from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY
-from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict
-import pfui.schemas as SC
+# These imports intentionally occur after some runtime checks/optional imports
+# to avoid importing heavy modules (potfoundry/pfui internals) at module
+# import time which can trigger editor/type-checker traversal and noisy
+# diagnostics. Keep the delayed import but silence ruff E402 with an
+# explanatory noqa.
+from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY  # ruff: noqa: E402
+from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict  # ruff: noqa: E402
+import pfui.schemas as SC  # ruff: noqa: E402
 
 # Prefer accessor call to reduce heavy constant binding at module scope in other modules
 styles = SC.get_style_schemas()
+# Deliberate delayed import of `pfui.state` to avoid importing heavy
+# Streamlit/session-related modules at top-level. Documented and allowed.
 from pfui.state import (
     apply_pending_updates,
     queue_update,
     widget_key,
     reset_style_defaults,
     reset_all_defaults,
-)
+)  # ruff: noqa: E402
 from pfui.controls import style_controls, twist_controls
 from pfui.preview import make_preview_arrays, render_profile, render_mesh_snapshot_cached
 from pfui.health import _design_health, _health_badge, validate_dimensions

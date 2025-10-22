@@ -129,12 +129,12 @@ __all__ = [
     "_import_geometry",
     "_import_schema_and_batch",
     # lazy attributes available via module attribute access
-    "WRITE_STL_BINARY",
-    "STYLES",
-    "base_radius",
-    "_spin_twist_radians",
-    "build_pot_mesh",
-    "validate_recipe",
-    "load_config",
-    "build_from_yaml",
+    "WRITE_STL_BINARY",  # lazy: resolved via __getattr__ on first access
+    "STYLES",            # lazy: resolved via __getattr__ on first access
+    "base_radius",       # lazy
+    "_spin_twist_radians",  # lazy
+    "build_pot_mesh",    # lazy
+    "validate_recipe",   # lazy
+    "load_config",       # lazy
+    "build_from_yaml",   # lazy
 ]
