@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Literal, TypedDict, Tuple, Optional
+from typing import Any, Dict, Mapping, Literal, TypedDict, Tuple, Optional, cast
 from types import MappingProxyType
 import warnings
 
@@ -62,7 +62,7 @@ def _invert(d: Mapping[str, str]) -> Dict[str, str]:
 
 # -- Canonical names (human-friendly) and alias maps --------------------------
 
-GLOBAL_ALIASES: Mapping[str, str] = {
+_GLOBAL_ALIASES: Mapping[str, str] = {
     # legacy -> canonical
     "spin_turns": "twist_total_turns",
     "spin_phase_deg": "twist_start_angle_deg",
@@ -74,7 +74,7 @@ GLOBAL_ALIASES: Mapping[str, str] = {
     "bell_width": "mid_bulge_width",
 }
 
-ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
+_ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
     "HarmonicRipple": {
         "hr_petals": "petals_count",
         "hr_petal_amp": "petals_amplitude",
@@ -158,9 +158,9 @@ ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
     },
 }
 
-GLOBAL_REVERSE = _invert(GLOBAL_ALIASES)
-REVERSE_BY_STYLE: Dict[str, Dict[str, str]] = {
-    s: _invert(m) for s, m in ALIASES_BY_STYLE.items()
+_GLOBAL_REVERSE = _invert(_GLOBAL_ALIASES)
+_REVERSE_BY_STYLE: Dict[str, Dict[str, str]] = {
+    s: _invert(m) for s, m in _ALIASES_BY_STYLE.items()
 }
 
 
@@ -418,7 +418,7 @@ def to_engine(style: str, opts: dict | None) -> dict:
 # UI slider schemas (legacy-keyed for compatibility with existing UI)
 # =============================================================================
 
-GLOBAL_CONTROLS: Dict[str, Dict[str, Any]] = {
+_GLOBAL_CONTROLS: Dict[str, Dict[str, Any]] = {
     "spin_turns": {
         "label": "Twist across height (turns)",
         "help": "Total rotations from base to rim. Negative values twist the opposite way.",
@@ -501,7 +501,7 @@ GLOBAL_CONTROLS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
+_STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
     "HarmonicRipple": {
         "hr_petals": {
             "label": "Petal count",
@@ -1816,36 +1816,36 @@ def _build_canonical_schema() -> tuple[
     return canonical_globals, canonical_styles
 
 
-CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
+_CANONICAL_CONTROLS, _CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
 
 # Freeze alias maps (and their reverses) to avoid runtime mutation.
-GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(GLOBAL_ALIASES))
+GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(_GLOBAL_ALIASES))
 ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()}
+    {k: MappingProxyType(v) for k, v in _ALIASES_BY_STYLE.items()}
 )
-GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(GLOBAL_REVERSE)
+GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(dict(_GLOBAL_REVERSE))
 REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()}
+    {k: MappingProxyType(v) for k, v in _REVERSE_BY_STYLE.items()}
 )
 
 # Freeze top-level schema dicts to avoid accidental mutation at runtime.
 GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in GLOBAL_CONTROLS.items()}
+    {k: MappingProxyType(v) for k, v in _GLOBAL_CONTROLS.items()}
 )
 STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = MappingProxyType(
     {
         k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()})
-        for k, v in STYLE_SCHEMAS.items()
+        for k, v in _STYLE_SCHEMAS.items()
     }
 )
 CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in CANONICAL_CONTROLS.items()}
+    {k: MappingProxyType(v) for k, v in _CANONICAL_CONTROLS.items()}
 )
 CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = (
     MappingProxyType(
         {
             k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()})
-            for k, v in CANONICAL_STYLE_SCHEMAS.items()
+            for k, v in _CANONICAL_STYLE_SCHEMAS.items()
         }
     )
 )
@@ -1909,11 +1909,12 @@ def get_schema(style: str, *, canonical: bool = False) -> Dict[str, ControlMeta]
         - None.
     """
     if canonical:
-        block: Dict[str, ControlMeta] = dict(CANONICAL_CONTROLS)  # type: ignore[assignment]
-        block.update(CANONICAL_STYLE_SCHEMAS.get(style, {}))  # type: ignore[arg-type]
+        # CANONICAL_* are Mapping types; cast to the expected Dict[str, ControlMeta]
+        block: Dict[str, ControlMeta] = cast(Dict[str, ControlMeta], dict(_CANONICAL_CONTROLS))
+        block.update(cast(Dict[str, Dict[str, Any]], _CANONICAL_STYLE_SCHEMAS).get(style, {}))
     else:
-        block = dict(GLOBAL_CONTROLS)  # type: ignore[assignment]
-        block.update(STYLE_SCHEMAS.get(style, {}))
+        block = cast(Dict[str, ControlMeta], dict(_GLOBAL_CONTROLS))
+        block.update(cast(Dict[str, Dict[str, Any]], _STYLE_SCHEMAS).get(style, {}))
     return block
 
 
