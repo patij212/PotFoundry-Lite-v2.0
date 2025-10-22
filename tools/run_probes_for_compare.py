@@ -1,4 +1,7 @@
-import os, sys, json, importlib
+import os
+import sys
+import json
+import importlib
 from pathlib import Path
 
 
@@ -14,7 +17,6 @@ def main() -> None:
     geom_mod = importlib.import_module('potfoundry' + '.core.geometry')
     build_pot_mesh = getattr(geom_mod, 'build_pot_mesh')
     # Import presets dynamically to avoid static analysis importing pfui.
-    import importlib
     PRESETS = importlib.import_module('pfui' + '.presets').PRESETS
 
     # Parameters must match reproduce runs

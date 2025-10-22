@@ -5,7 +5,7 @@
 # and performance. Binary STL is the recommended format for all production use.
 from __future__ import annotations
 from dataclasses import dataclass, asdict, field
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union, Tuple
 from pathlib import Path
 import json
 import zipfile

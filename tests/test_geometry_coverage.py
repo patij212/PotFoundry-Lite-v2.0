@@ -7,7 +7,6 @@ This test file focuses on:
 3. Error handling paths
 4. Diagnostic outputs
 """
-import pytest
 import numpy as np
 from potfoundry.geometry import (
     base_radius,

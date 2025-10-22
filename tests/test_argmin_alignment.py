@@ -4,8 +4,9 @@ import os
 def find_detailed_row(path, require_keys=('R_analysis_sample','Env_sample','Env_to_use_sample','origin_map_sample')):
     with open(path,'r',encoding='utf-8') as f:
         for line in f:
-            line=line.strip()
-            if not line: continue
+            line = line.strip()
+            if not line:
+                continue
             obj=json.loads(line)
             rows=obj.get('rows',[])
             for r in rows:

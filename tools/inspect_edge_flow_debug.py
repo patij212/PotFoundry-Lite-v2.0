@@ -1,5 +1,4 @@
 import json
-from collections import Counter
 
 
 def main() -> None:

@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 
 from potfoundry import build_pot_mesh, STYLES
-from potfoundry.core.geometry import r_outer_superformula_blossom, base_radius
+from potfoundry.core.geometry import r_outer_superformula_blossom
 
 
 @pytest.mark.fast

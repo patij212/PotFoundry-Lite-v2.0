@@ -1,6 +1,6 @@
-import sys, os
+import sys
+import os
 import importlib
-import json
 from pathlib import Path
 
 
@@ -16,7 +16,6 @@ def main() -> None:
     build_pot_mesh = getattr(geom_mod, 'build_pot_mesh')
 
     # Import presets dynamically to avoid static analysis importing pfui.
-    import importlib
     PRESETS = importlib.import_module('pfui' + '.presets').PRESETS
 
     p = PRESETS['SuperformulaBlossom']['Crisp Petals (De-Jag)']

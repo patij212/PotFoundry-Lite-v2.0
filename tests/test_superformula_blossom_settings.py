@@ -122,8 +122,8 @@ def test_m_top_increases_petal_count_with_height():
     }
     f_low = _sample_rf(z=10.0, base_opts=opts)
     f_high = _sample_rf(z=110.0, base_opts=opts)
-    peaks_low = _count_peaks(f_low)
-    peaks_high = _count_peaks(f_high)
+    _ = _count_peaks(f_low)
+    _ = _count_peaks(f_high)
 
 
 def test_filters_respect_zero_strength_identity():
@@ -239,7 +239,7 @@ def test_solidify_protection_controls_reduction():
         return st[2]
     def micro_resid(a: np.ndarray) -> np.ndarray:
         return np.maximum(0.0, a - med5(a))
-    r0 = micro_resid(f0)
+    _r0 = micro_resid(f0)
     r_low = micro_resid(f_lowprot)
     r_high = micro_resid(f_highprot)
     # Low protection should reduce micro residual more than high protection
@@ -386,7 +386,7 @@ def test_diagonal_smoothing_flag_does_not_change_rf():
 
 def test_combined_spike_clip_and_mad_dont_duplicate_overclip():
     # Combined mode should be stronger than either alone, but not collapse variation
-    f_base = _sample_rf()
+    _ = _sample_rf()
     f_clip = _sample_rf(base_opts={
         "sf_spike_clip_enable": True,
         "sf_spike_clip_quantile": 0.985,

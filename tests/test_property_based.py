@@ -34,7 +34,6 @@ import tempfile
 
 # Import core functionality
 from potfoundry import build_pot_mesh, STYLES
-from potfoundry.schema import ConfigV2, RecipeModel, MeshQualityModel
 from potfoundry.yaml_api import load_config
 from pfui.deeplink import encode_state, decode_state
 
@@ -100,7 +99,7 @@ def test_property_mesh_is_watertight(H, Rt, Rb, t_wall, t_bottom, r_drain, n_the
     )
     
     # Check watertightness: every edge appears exactly twice (once per face)
-    edges = set()
+    _ = set()
     edge_counts = {}
     
     for face in faces:
@@ -466,8 +465,8 @@ def test_property_all_styles_produce_valid_meshes(H, Rt, Rb, style):
     # Basic validity checks
     assert len(verts) > 0, f"Style {style} produced no vertices"
     assert len(faces) > 0, f"Style {style} produced no faces"
-    assert verts.shape[1] == 3, f"Vertices should be 3D"
-    assert faces.shape[1] == 3, f"Faces should be triangles"
+    assert verts.shape[1] == 3, "Vertices should be 3D"
+    assert faces.shape[1] == 3, "Faces should be triangles"
     
     # All face indices should be valid
     max_index = len(verts) - 1

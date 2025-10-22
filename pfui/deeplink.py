@@ -4,7 +4,7 @@ Provides URL-safe encoding of design parameters for "Open in editor" functionali
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Tuple
 import base64
 import json
 

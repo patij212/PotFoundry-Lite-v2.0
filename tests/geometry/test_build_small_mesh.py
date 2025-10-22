@@ -1,10 +1,8 @@
-import numpy as np
-from potfoundry.core.geometry import build_pot_mesh, PotDefaults
+from potfoundry.core.geometry import build_pot_mesh
 
 
 def test_build_small_mesh_smoke():
     # small mesh to exercise core builder paths
-    defaults = PotDefaults()
     H = 50.0
     Rt = 60.0
     Rb = 40.0
@@ -17,4 +15,4 @@ def test_build_small_mesh_smoke():
     assert verts.shape[0] > 0
     assert faces.shape[0] > 0
     # diagnostics should include estimated top/bottom OD when present
-    assert 'est_top_od' in diag or 'est_top_od' in diag.keys() or True
+    assert ('estimated_top_od_mm' in diag) or ('estimated_bottom_od_mm' in diag)

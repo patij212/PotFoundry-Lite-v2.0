@@ -1,4 +1,6 @@
-import json, time, math
+import json
+import time
+import math
 payload = {
   "timestamp": time.time(),
   "reports_count": 3,

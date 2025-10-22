@@ -3,7 +3,8 @@ Compare first vs last occurrence of a probe zi in tools/edgeflow_verbose_diagnos
 Prints a JSON object with counts and up to 200 mismatch indices for R_new_raw < Env_to_use for both rows.
 Usage: python edgeflow_diff_first_last.py <zi>
 """
-import sys, json
+import sys
+import json
 from pathlib import Path
 
 def compare_row(r):

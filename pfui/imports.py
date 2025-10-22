@@ -7,8 +7,22 @@ These helper import wrappers prefer the modern locations under
 They are typed as Optionals so callers can handle absence at runtime.
 """
 
-from typing import Any, Callable, Optional, Tuple, cast  # noqa: E402
+from typing import Any, Callable, Optional, Tuple, cast, TYPE_CHECKING  # noqa: E402
 import importlib  # noqa: E402
+
+if TYPE_CHECKING:
+    # These imports are only for static analyzers (ruff/mypy). At runtime we
+    # continue to provide the attributes lazily via __getattr__ to avoid
+    # heavy imports at module import time.
+    from potfoundry.core.io.stl import write_stl_binary as WRITE_STL_BINARY  # type: ignore
+    from potfoundry.core.geometry import (
+        STYLES,  # type: ignore
+        base_radius,  # type: ignore
+        _spin_twist_radians,  # type: ignore
+        build_pot_mesh,  # type: ignore
+    )
+    from potfoundry.core.schema import validate_recipe, load_config  # type: ignore
+    from potfoundry.adapters.batch import build_from_yaml  # type: ignore
 
 
 def _import_writer() -> Optional[Callable[..., Any]]:

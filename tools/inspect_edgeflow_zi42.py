@@ -3,9 +3,10 @@ jsonl_path = r"c:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\tools\edgeflow_v
 found = None
 with open(jsonl_path,'r',encoding='utf-8') as f:
     for line in f:
-        line=line.strip()
-        if not line: continue
-        obj=json.loads(line)
+        line = line.strip()
+        if not line:
+            continue
+        obj = json.loads(line)
         rows=obj.get('rows',[])
         for r in rows:
             if isinstance(r,dict) and r.get('zi')==42 and 'R_new_raw_sample' in r and 'Env_to_use_sample' in r:

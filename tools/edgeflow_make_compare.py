@@ -2,9 +2,10 @@
 Read tools/edgeflow_verbose_diagnostics.jsonl and produce a compact JSON report
 for a requested zi (default 42). Prints JSON to stdout.
 """
-import sys, json
+import sys
+import json
 from pathlib import Path
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple
 
 def load_row_by_mode(jsonl_path: Path, zi: int, mode: str = 'last', ts: Optional[float] = None) -> Tuple[Optional[dict], Optional[float]]:
     found = None

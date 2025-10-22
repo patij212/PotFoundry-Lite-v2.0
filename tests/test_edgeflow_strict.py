@@ -3,7 +3,6 @@ from pathlib import Path
 import numpy as np
 
 from potfoundry.core.geometry import build_pot_mesh
-from potfoundry.core.geometry import STYLES
 
 
 def load_latest_row(jsonl_path: Path, zi: int = 2, tol: int = 0):

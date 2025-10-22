@@ -113,7 +113,7 @@ def test_phase_rotation_equivalence():
     shift = 12
     deg = shift * (360.0 / N)
     phased = _sample_lpf_rf(theta_samples=N, z=z, H=H, r0=r0, base_opts={"lp_phase_deg": deg})
-    rolled = np.roll(base, shift)
+    _ = np.roll(base, shift)
     # Allow small off-by-one shift due to discretization and bevel smoothing; find best local shift
     candidates = [shift - 1, shift, shift + 1]
     errs = [float(np.linalg.norm(phased - np.roll(base, s))) for s in candidates]

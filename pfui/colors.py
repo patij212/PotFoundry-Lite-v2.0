@@ -4,7 +4,7 @@ This module centralizes color palette resolution and gradient mapping logic so i
 be unit‑tested independent of the Streamlit app.
 """
 from __future__ import annotations
-from typing import Any, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
+from typing import List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     # numpy typing for static tools only; runtime import is lazy inside functions
     import numpy as np

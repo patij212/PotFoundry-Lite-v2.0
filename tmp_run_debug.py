@@ -15,6 +15,6 @@ try:
     verts, faces, diag = build_pot_mesh(H, Rt, Rb, t_wall, t_bottom, r_drain,
                                         expn=1.1, n_theta=168, n_z=84, style_opts=style_opts)
     print('build_pot_mesh finished; diagnostics keys:', list(diag.keys()))
-except Exception as e:
+except Exception:
     print('Exception during headless run:')
     traceback.print_exc()

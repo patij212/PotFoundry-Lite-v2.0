@@ -315,7 +315,7 @@ class TestBuildFromYaml:
         with tempfile.TemporaryDirectory() as tmpdir:
             outdir = Path(tmpdir) / "out"
             
-            result = build_from_yaml(
+            build_from_yaml(
                 cfg, outdir, 
                 do_previews=False, 
                 do_zip=False,
@@ -340,7 +340,7 @@ class TestBuildFromYaml:
         with tempfile.TemporaryDirectory() as tmpdir:
             outdir = Path(tmpdir) / "out"
             
-            result = build_from_yaml(
+            build_from_yaml(
                 cfg, outdir,
                 do_previews=False,
                 do_zip=False,
@@ -365,7 +365,7 @@ class TestBuildFromYaml:
         with tempfile.TemporaryDirectory() as tmpdir:
             outdir = Path(tmpdir) / "out"
             
-            result = build_from_yaml(
+            build_from_yaml(
                 cfg, outdir,
                 only_names=["pot1", "pot3"],
                 do_previews=False,
@@ -389,7 +389,7 @@ class TestBuildFromYaml:
         with tempfile.TemporaryDirectory() as tmpdir:
             outdir = Path(tmpdir) / "out"
             
-            result = build_from_yaml(
+            build_from_yaml(
                 cfg, outdir,
                 do_previews=False,
                 do_zip=False,
@@ -411,7 +411,7 @@ class TestBuildFromYaml:
         with tempfile.TemporaryDirectory() as tmpdir:
             outdir = Path(tmpdir) / "out"
             
-            result = build_from_yaml(
+            build_from_yaml(
                 config, outdir,
                 do_previews=False,
                 do_zip=False,
@@ -441,7 +441,7 @@ class TestPresetResolution:
         with tempfile.TemporaryDirectory() as tmpdir:
             outdir = Path(tmpdir) / "out"
             
-            result = build_from_yaml(
+            build_from_yaml(
                 cfg, outdir,
                 do_previews=False,
                 do_zip=False,
@@ -467,7 +467,7 @@ class TestPresetResolution:
         with tempfile.TemporaryDirectory() as tmpdir:
             outdir = Path(tmpdir) / "out"
             
-            result = build_from_yaml(
+            build_from_yaml(
                 cfg, outdir,
                 do_previews=False,
                 do_zip=False,

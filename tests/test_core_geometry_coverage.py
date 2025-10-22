@@ -8,7 +8,6 @@ This test file focuses on:
 4. Alternative geometry implementation paths
 """
 import pytest
-import numpy as np
 import tempfile
 from pathlib import Path
 from potfoundry.core.geometry import (
