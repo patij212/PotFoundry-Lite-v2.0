@@ -2,7 +2,7 @@
 # Geometry core with style-agnostic twist/spin and optimized mesh build.
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, Dict, Tuple, Optional, Any
+from typing import Callable, Dict, Tuple, Optional, Any, Union
 from pathlib import Path
 import math
 import numpy as np
@@ -54,6 +54,45 @@ def base_radius(
     return float(r)
 
 
+def _call_r_outer(
+    r_outer_fn: Optional[Callable[..., Any]],
+    theta: Union[float, npt.NDArray[np.float64]],
+    z: float,
+    r0: Union[float, npt.NDArray[np.float64]],
+    H: float,
+    style_opts: Dict[str, Any],
+) -> Union[float, npt.NDArray[np.float64]]:
+    """Adapter for r_outer_fn callables.
+
+    Accepts either scalar theta or an ndarray of thetas. If `r_outer_fn` is None,
+    returns the unmodulated base radius (r0) for the given inputs. If the
+    provided callable supports vectorized inputs (ndarray), we pass them
+    through; otherwise we fall back to element-wise evaluation and coerce the
+    result to an ndarray of floats.
+    """
+    if r_outer_fn is None:
+        return np.asarray(r0, dtype=float) if isinstance(theta, np.ndarray) else float(r0)
+
+    # Vectorized theta path
+    if isinstance(theta, np.ndarray):
+        try:
+            res = r_outer_fn(theta, z, r0, H, style_opts)
+            return np.asarray(res, dtype=float)
+        except Exception:
+            # Fallback: call per-element
+            out = [float(r_outer_fn(float(t), float(z), float(r0) if not isinstance(r0, np.ndarray) else float(r0[i]), float(H), style_opts)) for i, t in enumerate(theta)]
+            return np.array(out, dtype=float)
+
+    # Scalar theta path
+    try:
+        res = r_outer_fn(float(theta), float(z), float(r0) if not isinstance(r0, np.ndarray) else float(r0), float(H), style_opts)
+        return float(res)
+    except Exception:
+        # Maybe the callable expects an ndarray; try calling with a 1-element array
+        res = r_outer_fn(np.array([float(theta)], dtype=float), z, r0, H, style_opts)
+        return float(np.asarray(res, dtype=float)[0])
+
+
 # -----------------------------
 # Dataclasses / configuration
 # -----------------------------
@@ -99,7 +138,7 @@ def _theta_grid_cached(
 def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     """Unmodulated outer radius vs height z (0..H), with flare exponent."""
     t = 0.0 if H <= 0 else z / H
-    return Rb + (Rt - Rb) * (t**expn)
+    return float(Rb + (Rt - Rb) * (t**expn))
 
 
 def _compute_normal(
@@ -190,7 +229,7 @@ def _spin_twist_radians(z: float, H: float, opts: Dict[str, Any]) -> float:
     t = max(0.0, min(1.0, z / H))
     phase_deg = float(opts.get("spin_phase_deg", 0.0))
     curve = max(0.1, float(opts.get("spin_curve_exp", 1.0)))
-    return (phase_deg * math.pi / 180.0) + (turns * TAU) * (t**curve)
+    return float((phase_deg * math.pi / 180.0) + (turns * TAU) * (t**curve))
 
 
 # -----------------------------
@@ -237,7 +276,7 @@ def r_outer_superformula_blossom(
     a = float(opts.get("sf_a", 1.0))
     b = float(opts.get("sf_b", 1.0))
     rf = superformula_r(theta, m, n1, n2, n3, a=a, b=b)
-    return r0 * (0.90 + 0.35 * rf)
+    return float(r0 * (0.90 + 0.35 * rf))
 
 
 def r_outer_fourier_bloom(
@@ -279,7 +318,7 @@ def r_outer_fourier_bloom(
     f *= 1.0 + wob_amp * math.sin(wob_freq * theta + TAU * wob_zgain * t)
 
     strength = float(opts.get("fb_strength", 1.0))
-    return r0 * (1.0 + (f - 1.0) * strength)
+    return float(r0 * (1.0 + (f - 1.0) * strength))
 
 
 def r_outer_spiral_ridges(
@@ -300,7 +339,7 @@ def r_outer_spiral_ridges(
     groove_mult = float(opts.get("spiral_groove_mult", 3.0))
     phase_mult = float(opts.get("spiral_phase_mult", 1.7))
     f += groove_amp * math.sin(groove_mult * k * theta + phase_mult * phase)
-    return r0 * f
+    return float(r0 * f)
 
 
 def r_outer_superellipse_morph(
@@ -321,7 +360,7 @@ def r_outer_superellipse_morph(
     c8a = float(opts.get("se_c8_amp", 0.03))
     c8p = float(opts.get("se_c8_phase_deg", 0)) * math.pi / 180.0
     rf *= 1.0 + c4a * math.cos(4 * theta + c4p) + c8a * math.cos(8 * theta + c8p)
-    return r0 * rf
+    return float(r0 * rf)
 
 
 def r_outer_harmonic_ripple(
@@ -343,7 +382,7 @@ def r_outer_harmonic_ripple(
     f = 1.0 + pet_amp * math.cos(petals * theta + pet_ph + TAU * pet_zg * t)
     f *= 1.0 + rip_amp * math.sin(rip_freq * theta + rip_ph + TAU * rip_zg * t)
     f *= 1.0 + bell * math.exp(-((t - 0.5) ** 2) / 0.04)
-    return r0 * f
+    return float(r0 * f)
 
 
 STYLES = {
@@ -420,9 +459,7 @@ def build_pot_mesh(
         twist = _spin_twist_radians(z, H, style_opts)
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_vals = np.array(
-            [r_outer_fn(th + twist, z, r0, H, style_opts) for th in thetas], dtype=float
-        )
+        r_vals = np.asarray(_call_r_outer(r_outer_fn, thetas + twist, z, r0, H, style_opts), dtype=float)
         outer_idx[i] = add_ring_xy(r_vals, z, cTw, sTw)
 
     # Vectorized faces for outer wall
@@ -434,8 +471,8 @@ def build_pot_mesh(
         v01 = outer_idx[i, jn]
         v10 = outer_idx[i + 1, j]
         v11 = outer_idx[i + 1, jn]
-        faces.extend(list(zip(v00, v10, v11)))
-        faces.extend(list(zip(v00, v11, v01)))
+        faces.extend(list(zip(list(v00), list(v10), list(v11))))
+        faces.extend(list(zip(list(v00), list(v11), list(v01))))
 
     # ---- Inner wall rings (clamp near drain)
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
@@ -445,9 +482,7 @@ def build_pot_mesh(
         twist = _spin_twist_radians(z, H, style_opts)
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_out_vals = np.array(
-            [r_outer_fn(th + twist, z, r0, H, style_opts) for th in thetas], dtype=float
-        )
+        r_out_vals = np.asarray(_call_r_outer(r_outer_fn, thetas + twist, z, r0, H, style_opts), dtype=float)
         r_in_vals = r_out_vals - t_wall
         min_allowed = r_drain + 1.0
         clamped = r_in_vals < min_allowed
@@ -462,8 +497,8 @@ def build_pot_mesh(
         v01 = inner_idx[i, jn]
         v10 = inner_idx[i + 1, j]
         v11 = inner_idx[i + 1, jn]
-        faces.extend(list(zip(v00, v11, v10)))
-        faces.extend(list(zip(v00, v01, v11)))
+        faces.extend(list(zip(list(v00), list(v11), list(v10))))
+        faces.extend(list(zip(list(v00), list(v01), list(v11))))
 
     # ---- Rim cap
     outer_top = outer_idx[-1]
@@ -472,48 +507,48 @@ def build_pot_mesh(
     v01 = outer_top[jn]
     vi0 = inner_top[j]
     vi1 = inner_top[jn]
-    faces.extend(list(zip(v00, vi0, vi1)))
-    faces.extend(list(zip(v00, vi1, v01)))
+    faces.extend(list(zip(list(v00), list(vi0), list(vi1))))
+    faces.extend(list(zip(list(v00), list(vi1), list(v01))))
 
     # ---- Drain circles (untwisted)
-    drain_under = []
-    drain_top = []
+    drain_under_list: list[int] = []
+    drain_top_list: list[int] = []
     # Vectorized drain circle placement using cached cos/sin
     for c, s in zip(cos_th, sin_th):
         x0 = r_drain * float(c)
         y0 = r_drain * float(s)
-        drain_under.append(len(verts))
+        drain_under_list.append(len(verts))
         verts.append(np.array([x0, y0, 0.0], dtype=float))
-        drain_top.append(len(verts))
+        drain_top_list.append(len(verts))
         verts.append(np.array([x0, y0, float(t_bottom)], dtype=float))
-    drain_under = np.array(drain_under, dtype=int)
-    drain_top = np.array(drain_top, dtype=int)
+    drain_under_arr = np.array(drain_under_list, dtype=int)
+    drain_top_arr = np.array(drain_top_list, dtype=int)
     outer_bottom = outer_idx[0]
     inner_bottom = inner_idx[0]
 
     # Bottom underside (outer bottom ring -> drain under ring)
     v00 = outer_bottom[j]
     v01 = outer_bottom[jn]
-    vd0 = drain_under[j]
-    vd1 = drain_under[jn]
-    faces.extend(list(zip(v00, vd1, vd0)))
-    faces.extend(list(zip(v00, v01, vd1)))
+    vd0 = drain_under_arr[j]
+    vd1 = drain_under_arr[jn]
+    faces.extend(list(zip(list(v00), list(vd1), list(vd0))))
+    faces.extend(list(zip(list(v00), list(v01), list(vd1))))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     vi0 = inner_bottom[j]
     vi1 = inner_bottom[jn]
-    vd0 = drain_top[j]
-    vd1 = drain_top[jn]
-    faces.extend(list(zip(vi0, vi1, vd1)))
-    faces.extend(list(zip(vi0, vd1, vd0)))
+    vd0 = drain_top_arr[j]
+    vd1 = drain_top_arr[jn]
+    faces.extend(list(zip(list(vi0), list(vi1), list(vd1))))
+    faces.extend(list(zip(list(vi0), list(vd1), list(vd0))))
 
     # Drain cylinder wall
-    v0b = drain_under[j]
-    v1b = drain_under[jn]
-    v0t = drain_top[j]
-    v1t = drain_top[jn]
-    faces.extend(list(zip(v0b, v0t, v1t)))
-    faces.extend(list(zip(v0b, v1t, v1b)))
+    v0b = drain_under_arr[j]
+    v1b = drain_under_arr[jn]
+    v0t = drain_top_arr[j]
+    v1t = drain_top_arr[jn]
+    faces.extend(list(zip(list(v0b), list(v0t), list(v1t))))
+    faces.extend(list(zip(list(v0b), list(v1t), list(v1b))))
 
     # Diagnostics
     def ring_od(ids):
@@ -533,11 +568,16 @@ def build_pot_mesh(
     return np.array(verts, dtype=float), np.array(faces, dtype=int), diagnostics
 
 
+from typing import Any as _Any
+
+plt: _Any | None = None
 try:
-    import matplotlib.pyplot as plt
+    import matplotlib.pyplot as _plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    plt = _plt
 except Exception:
-    plt = None
+    # plt stays as None when matplotlib is unavailable
+    pass
 
 
 def save_preview_png(
@@ -568,11 +608,12 @@ def save_preview_png(
         cTw, sTw = math.cos(twist), math.sin(twist)
         cx = base_cos * cTw - base_sin * sTw
         sy = base_sin * cTw + base_cos * sTw
-        for j, th in enumerate(thetas):
-            rext = r_outer_fn(th + twist, z, r0, H, style_opts)
-            X[i, j] = rext * cx[j]
-            Y[i, j] = rext * sy[j]
-            Z[i, j] = z
+        # Use adapter which handles scalar and vector callables
+        rexts = _call_r_outer(r_outer_fn, thetas + twist, z, r0, H, style_opts)
+        rexts = np.asarray(rexts, dtype=float)
+        X[i, :] = rexts * cx
+        Y[i, :] = rexts * sy
+        Z[i, :] = z
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
     ax.plot_surface(X, Y, Z, rstride=1, cstride=1, linewidth=0.0, antialiased=True)

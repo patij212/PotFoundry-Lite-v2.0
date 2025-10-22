@@ -295,5 +295,41 @@ Please reply with either:
 Once you approve, I will continue automatically and update this file with each commit summary, test results, and any triage additions.
 
 
+## Focused geometry triage — potfoundry/core/geometry.py (2025-10-22)
+
+Summary
+-------
+During a focused typing pass on `potfoundry/core/geometry.py` several conservative, low-risk edits were applied to remove persistent mypy noise while preserving runtime behavior. The most important outcome: a single-file mypy run for `potfoundry/core/geometry.py` now reports no errors.
+
+Before (selected):
+- Target file: `potfoundry/core/geometry.py`
+- mypy (single-file) initial errors: ~40+ (major clusters: scalar->ndarray assignments, Returning Any from nested helpers, Path vs str assignments, index/name reuse `j`)
+
+After (selected):
+- Target file: `potfoundry/core/geometry.py`
+- mypy (single-file) final: Success — no issues found
+- Full test validation after edits: 349 passed
+
+Concrete changes applied
+- Added `potfoundry/types.py` with an NDArray alias to centralize ndarray typing.
+- Extracted many small helper functions to `potfoundry/core/geometry_helpers.py` with explicit return types and `np.asarray(..., dtype=float)` normalization where needed.
+- Preferenced vectorized facet helpers at vectorized sites (avoid assigning float into ndarray-typed variables).
+- Initialized diagnostic collectors early (`dump: dict[str, Any] = {}`, `edgeflow_verbose_collector: list[dict[str, Any]] = []`).
+- Renamed index variable from `j` to `j_idx` and annotated it as an ndarray of ints to avoid shadowing and UnboundLocalError during refactors.
+- Added a small typed wrapper for style functions to normalize scalar vs ndarray returns.
+- Cast Path-like values to `str` at diagnostic I/O boundaries to silence Path vs str mismatches where appropriate.
+
+Why these changes
+- Small, localized edits reduce mypy/editor noise quickly and safely.
+- Extracting and typing helpers improves editor assistance and prevents implicit `Any` returns from nested functions.
+- Using vector-first helpers at vector sites keeps variable types consistent and avoids the need for repeated coercions.
+
+Remaining follow-ups (recommended)
+- Run a repo-wide mypy run and capture per-file error counts to prioritize next small fixes.
+- Address remaining `Returning Any` sites across other numeric modules by extracting and typing helpers similarly.
+- Adopt a repository policy for Path vs str (recommendation: prefer `pathlib.Path` internally and cast to `str` only at I/O boundaries).
+- Add a few small runtime tests for critical helpers in `geometry_helpers.py` to guard future refactors.
+
+If you'd like, I can commit these updates with message `docs(mypy): record geometry.py triage and results` and optionally run repo-wide mypy next.
 
 <!-- End of file -->

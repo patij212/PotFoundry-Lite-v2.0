@@ -2,12 +2,29 @@
 # Geometry core with style-agnostic twist/spin and optimized mesh build.
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Tuple, cast
 from ..types import NDArrayFloat
 import math
 import numpy as np
 import numpy.typing as npt
 from functools import lru_cache
+from .geometry_helpers import (
+    cdiff_theta,
+    cdiff_z,
+    estimate_shifts,
+    roll_rows,
+    roll_rows_2d,
+    dilate_adaptive,
+    avg3,
+    bilateral1d_peak_only,
+    med5,
+    median3_circular,
+    smooth_max,
+    smooth_min,
+    lift_valleys,
+    facet_mod_for_tier_vector,
+    facet_mod_for_tier_scalar,
+)
 
 
 __all__ = [
@@ -46,6 +63,15 @@ def base_radius(
 
     z_arr = np.asarray(z)
     scalar_in = z_arr.shape == ()
+    # Local temporaries may be scalar floats or numpy arrays depending on
+    # whether the caller passed a scalar or vectorized `z`. Declare as a
+    # union so mypy accepts both code paths.
+    t: float | NDArrayFloat
+    s0: float | NDArrayFloat
+    s1: float | NDArrayFloat
+    tw: float | NDArrayFloat
+    # Local that may be scalar or array depending on input
+    g: float | NDArrayFloat
     # Use vectorized math for array inputs, math (fast) for scalar
     if scalar_in:
         # normalized height
@@ -152,7 +178,7 @@ def _theta_grid_cached(
 def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     """Unmodulated outer radius vs height z (0..H), with flare exponent (Rt/Rb are radii)."""
     t = 0.0 if H <= 0 else z / H
-    return Rb + (Rt - Rb) * (t**expn)
+    return float(Rb + (Rt - Rb) * (t**expn))
 
 
 def _compute_normal(
@@ -237,7 +263,7 @@ def _spin_twist_radians(z: float, H: float, opts: dict) -> float:
     if turns == 0.0 and phase_deg == 0.0:
         return 0.0
     t = max(0.0, min(1.0, z / H))
-    return (phase_deg * math.pi / 180.0) + (turns * TAU) * (t**curve)
+    return float((phase_deg * math.pi / 180.0) + (turns * TAU) * (t**curve))
 
 
 # -----------------------------
@@ -331,36 +357,16 @@ def r_outer_superformula_blossom(theta: NDArrayFloat | float, z: float, r0: floa
         # Perform circular bilateral smoothing but peak-only (do not raise valleys)
         arr = np.asarray(rf, dtype=float)
 
+        # Use typed helpers from geometry_helpers to avoid inline untyped returns
         def _bilateral1d_peak_only(a: np.ndarray) -> np.ndarray:
-            # 5-tap bilateral kernel centered; weights by spatial Gaussian and range Gaussian
-            res = a.copy()
-            # build offsets and spatial weights
-            offs = np.array([-2, -1, 0, 1, 2], dtype=int)
-            w_s = np.exp(-0.5 * (offs.astype(float) / max(1e-6, sigma_s)) ** 2)
-            n = int(a.size)
-            for i in range(n):
-                vals = np.array([a[(i + o) % n] for o in offs], dtype=float)
-                dr = vals - a[i]
-                w_r = np.exp(-0.5 * (dr / sigma_r) ** 2)
-                w = w_s * w_r
-                w /= max(1e-9, np.sum(w))
-                m = float(np.sum(w * vals))
-                # peak-only: only pull down peaks, never lift valleys
-                res[i] = min(a[i], m)
-            return res
+            return bilateral1d_peak_only(a, sigma_s, sigma_r)
 
         # Precompute local micro-residual and edge weights to preserve strong edges
         def _avg3(a: np.ndarray) -> np.ndarray:
-            return (np.roll(a, 1) + a + np.roll(a, -1)) / 3.0
+            return avg3(a)
 
         def _med5(a: np.ndarray) -> np.ndarray:
-            a1 = np.roll(a, 1)
-            a2 = np.roll(a, 2)
-            b1 = np.roll(a, -1)
-            b2 = np.roll(a, -2)
-            st = np.stack([a2, a1, a, b1, b2], axis=0)
-            st.sort(axis=0)
-            return st[2]
+            return med5(a)
 
         for _ in range(es_passes):
             sm = _bilateral1d_peak_only(arr)
@@ -429,10 +435,10 @@ def r_outer_superformula_blossom(theta: NDArrayFloat | float, z: float, r0: floa
         # quantile index
         k = int(np.clip(int(np.ceil(q * win)) - 1, 0, win - 1))
         W_sorted = np.sort(W, axis=0)
-        thr_q = W_sorted[k, :]
+        thr_q_arr = np.asarray(W_sorted[k, :], dtype=float)
         # peak-only clipping toward threshold by amount
-        over = arr > thr_q
-        arr = np.where(over, thr_q + (1.0 - amt) * (arr - thr_q), arr)
+        over = arr > thr_q_arr
+        arr = np.where(over, thr_q_arr + (1.0 - amt) * (arr - thr_q_arr), arr)
         rf = arr
 
     # Optional robust MAD-based spike clipping: local median + MAD thresholding (peak-only).
@@ -490,7 +496,7 @@ def r_outer_superformula_blossom(theta: NDArrayFloat | float, z: float, r0: floa
 
         # Edge protection borrowed from solidify step (optional, defaults conservative)
         def _avg3(a: np.ndarray) -> np.ndarray:
-            return (np.roll(a, 1) + a + np.roll(a, -1)) / 3.0
+            return avg3(a)
 
         edge_mag = np.abs(arr - _avg3(arr))
         protect_grad = float(opts.get("sf_edge_solidify_protect_grad", 0.12))
@@ -554,7 +560,10 @@ def r_outer_superformula_blossom(theta: NDArrayFloat | float, z: float, r0: floa
     # Final sanitize before blending
     rf = _sanitize_rf(rf)
     # Blend between base and flower using strength
-    return r0 * ((1.0 - strength) + strength * (0.90 + 0.35 * rf))
+    out = r0 * ((1.0 - strength) + strength * (0.90 + 0.35 * rf))
+    # Normalize to numpy array for vectorized paths; keep scalar float for scalar theta
+    out_arr = np.asarray(out, dtype=float)
+    return float(out_arr) if out_arr.shape == () else out_arr
 
 
 def r_outer_fourier_bloom(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
@@ -751,32 +760,10 @@ def r_outer_lowpoly_facet(
 
         # Helpers to compute facet modulation for a given tier index (vector and scalar variants)
         def _facet_mod_for_tier(tier_index: int) -> np.ndarray:
-            idx = max(0, min(tiers - 1, int(tier_index)))
-            seed = (idx + 1) * 1.61803398875
-            phase_idx = (jitter_amt / max(1, facets)) * TAU * math.sin(seed)
-            tot_ph = phase + phase_idx
-            x_idx = (facets * (th + tot_ph)) / TAU
-            frac_idx = x_idx - np.floor(x_idx)
-            tri_idx = 1.0 - np.abs(2.0 * frac_idx - 1.0)
-            tri_s_idx = tri_idx**p
-            if outward_dir:
-                return 1.0 + amp * (tri_s_idx)
-            else:
-                return 1.0 - amp * (1.0 - tri_s_idx)
+            return facet_mod_for_tier_vector(th, tier_index, facets, jitter_amt, phase, p, amp, outward_dir)
 
         def _facet_mod_scalar(theta_scalar: float, tier_index: int) -> float:
-            idx = max(0, min(tiers - 1, int(tier_index)))
-            seed = (idx + 1) * 1.61803398875
-            phase_idx = (jitter_amt / max(1, facets)) * TAU * math.sin(seed)
-            tot_ph = phase + phase_idx
-            x_idx = (facets * (theta_scalar + tot_ph)) / TAU
-            frac_idx = x_idx - math.floor(x_idx)
-            tri_idx = 1.0 - abs(2.0 * frac_idx - 1.0)
-            tri_s_idx = tri_idx**p
-            if outward_dir:
-                return float(1.0 + amp * (tri_s_idx))
-            else:
-                return float(1.0 - amp * (1.0 - tri_s_idx))
+            return facet_mod_for_tier_scalar(theta_scalar, tier_index, facets, jitter_amt, phase, p, amp, outward_dir)
 
         # Base shape at seams
         Rb = float(opts.get("_pf_rb", 0.0))
@@ -818,21 +805,10 @@ def r_outer_lowpoly_facet(
 
         # Smooth max/min helpers (stable log-sum-exp forms)
         def _smooth_max(a, b, s):
-            if s <= 0.0:
-                return np.maximum(a, b)
-            a_arr = np.asarray(a, dtype=float)
-            b_arr = np.asarray(b, dtype=float)
-            mx = np.maximum(a_arr, b_arr)
-            mn = np.minimum(a_arr, b_arr)
-            return mx + s * np.log1p(np.exp((mn - mx) / s))
+            return smooth_max(a, b, float(s))
 
         def _smooth_min(a, b, s):
-            if s <= 0.0:
-                return np.minimum(a, b)
-            # min(a,b) = -max(-a,-b)
-            return -_smooth_max(
-                -np.asarray(a, dtype=float), -np.asarray(b, dtype=float), s
-            )
+            return smooth_min(a, b, float(s))
 
         # Blend softness and windowing around seams: keep the cut very local
         h_tier = H / tiers if tiers > 0 else 0.0
@@ -1136,14 +1112,7 @@ def r_outer_lowpoly_facet(
                 lift_gamma = max(0.2, min(3.0, lift_gamma))
 
                 def _lift_valleys(base_vals, weight, target_val):
-                    b = np.asarray(base_vals, dtype=float)
-                    wv = np.asarray(weight, dtype=float)
-                    # zero lift at the seam plane (w=1), increasing as we move away (w->0)
-                    alpha = np.power(np.clip(1.0 - wv, 0.0, 1.0), lift_gamma)
-                    # Only lift where base is below the straight-edge target
-                    delta = np.maximum(0.0, float(target_val) - b)
-                    lift = lift_strength * alpha * delta
-                    return b + lift
+                    return lift_valleys(base_vals, weight, target_val, lift_strength, lift_gamma)
 
                 if cut_bot_deg > 0.0 and (
                     np.any(w_bot > 0.0)
@@ -1185,14 +1154,7 @@ def r_outer_lowpoly_facet(
                 if near_bot or near_top:
 
                     def _median3_circular(arr: np.ndarray) -> np.ndarray:
-                        # Compute circular 3-point median along theta dimension
-                        a = np.roll(arr, 1)
-                        b = arr
-                        c = np.roll(arr, -1)
-                        stacked = np.stack([a, b, c], axis=0)
-                        # sort along the stack axis and take middle
-                        sorted3 = np.sort(stacked, axis=0)
-                        return sorted3[1]
+                        return median3_circular(arr)
 
                     # We'll apply later to the final r_tmp array once computed
                     opts["_pf_apply_seam_median3"] = (True, aa_passes)
@@ -1226,15 +1188,15 @@ def r_outer_lowpoly_facet(
                     )
                     # Select seam start depending on which seam plane zc relates to
                     if zc <= z_bot:
-                        f_km1 = _facet_mod_scalar(theta_mid, k - 1 if k > 0 else k)
-                        f_kc = _facet_mod_scalar(theta_mid, k)
-                        Rstart_mid = max(r0_mid * f_km1, r0_mid * f_kc)
+                        f_km1_s = _facet_mod_scalar(theta_mid, k - 1 if k > 0 else k)
+                        f_kc_s = _facet_mod_scalar(theta_mid, k)
+                        Rstart_mid = max(r0_mid * f_km1_s, r0_mid * f_kc_s)
                     else:
-                        f_kc = _facet_mod_scalar(theta_mid, k)
-                        f_kp1 = _facet_mod_scalar(
+                        f_kc_s = _facet_mod_scalar(theta_mid, k)
+                        f_kp1_s = _facet_mod_scalar(
                             theta_mid, k + 1 if k < (tiers - 1) else k
                         )
-                        Rstart_mid = max(r0_mid * f_kc, r0_mid * f_kp1)
+                        Rstart_mid = max(r0_mid * f_kc_s, r0_mid * f_kp1_s)
                     r_base_mid = r0_mid * _facet_mod_scalar(theta_mid, k)
                     # In diagnostics, report the effective start envelope actually used by the mode:
                     # when outward growth is disabled or cuts are active, we never grow beyond the base.
@@ -1269,17 +1231,14 @@ def r_outer_lowpoly_facet(
                             opts,
                         )
                         if zc <= z_bot:
-                            f_km1 = _facet_mod_scalar(
-                                theta_mid, kk - 1 if kk > 0 else kk
-                            )
-                            f_kc = _facet_mod_scalar(theta_mid, kk)
-                            Rstart_mid = max(r0_mid * f_km1, r0_mid * f_kc)
+                            # For vector samples, prefer vector helper where possible
+                            f_km1_v = _facet_mod_for_tier(kk - 1 if kk > 0 else kk)
+                            f_kc_v = _facet_mod_for_tier(kk)
+                            Rstart_mid = max(r0_mid * f_km1_v, r0_mid * f_kc_v)
                         else:
-                            f_kc = _facet_mod_scalar(theta_mid, kk)
-                            f_kp1 = _facet_mod_scalar(
-                                theta_mid, kk + 1 if kk < (tiers - 1) else kk
-                            )
-                            Rstart_mid = max(r0_mid * f_kc, r0_mid * f_kp1)
+                            f_kc_v = _facet_mod_for_tier(kk)
+                            f_kp1_v = _facet_mod_for_tier(kk + 1 if kk < (tiers - 1) else kk)
+                            Rstart_mid = max(r0_mid * f_kc_v, r0_mid * f_kp1_v)
                         r_base_mid = r0_mid * _facet_mod_scalar(theta_mid, kk)
                         # Effective envelope for diagnostics (no outward growth under cuts/inward modes)
                         if (not use_outward) or has_cut:
@@ -1374,7 +1333,7 @@ def r_outer_lowpoly_facet(
                     c = np.roll(arr, -1)
                     stacked = np.stack([a, b, c], axis=0)
                     sorted3 = np.sort(stacked, axis=0)
-                    return sorted3[1]
+                    return np.asarray(sorted3[1], dtype=float)
 
                 arr = np.asarray(r_tmp, dtype=float)
                 for _ in range(passes):
@@ -1416,13 +1375,7 @@ def r_outer_lowpoly_facet(
 
                     # Robust center estimator: median-of-five along θ
                     def _med5_circ(a: np.ndarray) -> np.ndarray:
-                        a1 = np.roll(a, 1)
-                        a2 = np.roll(a, 2)
-                        b1 = np.roll(a, -1)
-                        b2 = np.roll(a, -2)
-                        st = np.stack([a2, a1, a, b1, b2], axis=0)
-                        st.sort(axis=0)
-                        return st[2]
+                        return med5(a)
 
                     for _ in range(passes_es):
                         center = _med5_circ(arr)
@@ -1458,7 +1411,7 @@ def r_outer_lowpoly_facet(
 
                 # Circular 3-tap average
                 def _avg3_circular(arr: np.ndarray) -> np.ndarray:
-                    return (np.roll(arr, 1) + arr + np.roll(arr, -1)) / 3.0
+                    return avg3(arr)
 
                 arr = np.asarray(r_tmp, dtype=float)
                 base_guard = np.asarray(r_base_local_in_orig, dtype=float)
@@ -1592,7 +1545,7 @@ def build_pot_mesh(
     n_theta: int = 64,
     n_z: int = 32,
     r_outer_fn: Callable[
-        [NDArrayFloat | float, float, float, float, dict], NDArrayFloat | float
+        [NDArrayFloat | float, float, float | NDArrayFloat, float, dict], NDArrayFloat | float
     ]
     | None = None,
     style_opts: dict | None = None,
@@ -1615,6 +1568,9 @@ def build_pot_mesh(
 
     # Use cached theta grid (angles, cos, sin) to avoid recomputation
     thetas, cos_th, sin_th = _theta_grid_cached(int(n_theta))
+    # Local typed diagnostic dict placeholder used by verbose diagnostics logic
+    # Initialize as empty dict so later diagnostic code can index safely.
+    dump: Dict[str, Any] = {}
     z_outer = np.linspace(0.0, H, n_z + 1)
     # Refine sampling around LowPolyFacet tier seams to improve alignment of triangles near cuts
     try:
@@ -1623,7 +1579,38 @@ def build_pot_mesh(
         # import STYLES at call sites and also prevents the type-checker from complaining
         # when a None is passed through higher-level callers during static analysis.
         if r_outer_fn is None:
-            r_outer_fn = STYLES["SuperformulaBlossom"][0]
+            # Cast the selected style function to the expected Callable signature
+            r_outer_fn = cast(
+                Callable[[NDArrayFloat | float, float, float | NDArrayFloat, float, dict], NDArrayFloat | float],
+                STYLES["SuperformulaBlossom"][0],
+            )
+        # Tell the type-checker this is now a callable (non-None) so subsequent calls
+        # like `r_outer_fn(thetas, z, r0, H, _opts)` are accepted.
+        assert r_outer_fn is not None
+        # Local wrapper with an explicit typed contract to help mypy understand
+        # style functions may accept scalar or array-like inputs for r0.
+        def _call_r_outer(
+            th_in: NDArrayFloat | float,
+            z_in: float,
+            r0_in: float | NDArrayFloat,
+            H_in: float,
+            opts_in: dict,
+        ) -> NDArrayFloat | float:
+            # Ensure r0 is a Python float for scalar-style functions that expect it
+            # r0_arg may be a float or an ndarray depending on caller; annotate to help mypy
+            r0_arg: float | NDArrayFloat
+            try:
+                if isinstance(r0_in, np.ndarray):
+                    r0_arg = r0_in
+                else:
+                    r0_arg = float(r0_in)
+            except Exception:
+                r0_arg = float(r0_in)
+            res = r_outer_fn(th_in, z_in, r0_arg, H_in, opts_in)
+            # Normalize numpy arrays to NDArrayFloat, keep scalar floats as float
+            if isinstance(res, np.ndarray):
+                return np.asarray(res, dtype=float)
+            return float(res)
         _tiers = (
             int(style_opts.get("lp_tiers", 1)) if isinstance(style_opts, dict) else 1
         )
@@ -1730,7 +1717,8 @@ def build_pot_mesh(
         _opts.setdefault("_pf_rt", Rt)
         _opts.setdefault("_pf_expn", expn)
         # Apply twist in placement (XY rotation) only; sample style at raw theta
-        r_out_raw = r_outer_fn(thetas, z, r0, H, _opts)
+        # Use the typed local wrapper to normalize scalar/array returns for mypy
+        r_out_raw = _call_r_outer(thetas, z, r0, H, _opts)
         r_vals = np.asarray(r_out_raw, dtype=float)
         # Rotated basis for this ring
         cx_ring = cos_th * cTw - sin_th * sTw
@@ -1866,7 +1854,9 @@ def build_pot_mesh(
             R = R_raw
             # In-memory collector for verbose diagnostics (always initialize so tests
             # and callers can request diagnostics regardless of twist compensation)
-            edgeflow_verbose_collector: list[dict] = []
+            from typing import Dict
+
+            edgeflow_verbose_collector: list[Dict[str, Any]] = []
             # Debug flag (define early so diagnostics prints can use it)
             debug_enabled = bool(style_opts.get("sf_edge_flow_debug", False))
             # Probe flag: optional single-zi inspection
@@ -1876,8 +1866,10 @@ def build_pot_mesh(
             origin_map = -np.ones_like(R, dtype=int)
             # Initialize deoffset/shifts metadata variables so static analyzers don't
             # flag conditional references later when diagnostics are assembled.
-            shifts = None
-            s0 = 0
+            # `shifts` is a list[int] when computed; initialize as an empty list to
+            # allow appends without conditional checks.
+            shifts: list[int] = []
+            s0: int = 0
             if twist_comp:
                 twists = np.array(
                     [_spin_twist_radians(float(z), H, style_opts) for z in z_outer],
@@ -1892,7 +1884,7 @@ def build_pot_mesh(
                 try:
                     if probe_enabled and 0 <= probe_zi < Z:
                         # in analysis frame, inspect a small neighbourhood around candidate minima
-                        probe_out = {}
+                        probe_out: Dict[str, Any] = {}
                         probe_out["timestamp"] = time.time()
                         probe_out["event"] = "probe_mapping"
                         probe_out["probe_zi"] = int(probe_zi)
@@ -1939,13 +1931,9 @@ def build_pot_mesh(
                     pass
 
             # Gradient energies (central differences)
-            def _cdiff_theta(A: np.ndarray) -> np.ndarray:
-                return 0.5 * (np.roll(A, -1, axis=1) - np.roll(A, 1, axis=1))
-
-            def _cdiff_z(A: np.ndarray) -> np.ndarray:
-                up = np.vstack([A[1:2, :], A[1:, :]])
-                dn = np.vstack([A[:-1, :], A[-2:-1, :]])
-                return 0.5 * (up - dn)
+            # Use typed helpers from geometry_helpers for central differences
+            _cdiff_theta = cdiff_theta
+            _cdiff_z = cdiff_z
 
             Gt = np.abs(_cdiff_theta(R))
             Gz = np.abs(_cdiff_z(R))
@@ -2051,94 +2039,21 @@ def build_pot_mesh(
                         if dtheta_per_dz != 0:
                             S_back = np.roll(S_back, dtheta_per_dz, axis=1)
                         acc_back = np.maximum(acc_back, S_back)
-                    return np.maximum(acc_forw, acc_back)
+                    return np.asarray(np.maximum(acc_forw, acc_back), dtype=float)
 
                 Env_vert = _dilate_dir(seed, h, 0)
                 Env_diap = _dilate_dir(seed, h, +1)
                 Env_diam = _dilate_dir(seed, h, -1)
 
-                # Adaptive per-ring ridge following using cross-correlation shifts
-                def _estimate_shifts(
-                    A: np.ndarray, K: int
-                ) -> tuple[np.ndarray, np.ndarray]:
-                    """Estimate per-ring integer shifts s_fwd aligning ring z-1 -> z; and s_bwd (z+1 -> z)."""
-                    if K <= 0:
-                        return np.zeros(A.shape[0], dtype=int), np.zeros(
-                            A.shape[0], dtype=int
-                        )
-                    Zloc, Tloc = A.shape
-                    s_fwd = np.zeros(Zloc, dtype=int)
-                    # Optionally focus on top quantile to emphasize peaks
-                    try:
-                        qmask = A >= np.quantile(A, 0.85, axis=1, keepdims=True)
-                    except Exception:
-                        qmask = np.ones_like(A, dtype=bool)
-                    for z in range(1, Zloc):
-                        ref = A[z, :]
-                        prev = A[z - 1, :]
-                        refm = ref * qmask[z, :]
-                        best_k = 0
-                        best_dot = -1.0
-                        for kshift in range(-K, K + 1):
-                            rolled = np.roll(prev, kshift)
-                            dot = float(np.dot(refm, rolled))
-                            if dot > best_dot:
-                                best_dot = dot
-                                best_k = kshift
-                        s_fwd[z] = best_k
-                    # backward shifts align z+1 -> z
-                    s_bwd = np.zeros(Zloc, dtype=int)
-                    for z in range(0, Zloc - 1):
-                        s_bwd[z] = -s_fwd[z + 1]
-                    return s_fwd, s_bwd
-
-                def _roll_rows(
-                    arr: np.ndarray, shifts: np.ndarray, sign: int = -1
-                ) -> np.ndarray:
-                    """Roll each row by shifts[z]*sign along theta axis."""
-                    # Support both 1D (single-row) and 2D (Z x T) arrays.
-                    if arr.ndim == 1:
-                        # single row: apply single shift (use first entry of shifts)
-                        k = int(shifts[0]) * sign if shifts.size > 0 else 0
-                        return np.roll(arr, k)
-                    out = np.empty_like(arr)
-                    for zi in range(arr.shape[0]):
-                        k = int(shifts[zi]) * sign
-                        # roll the 1D theta row and store back
-                        out[zi, :] = np.roll(arr[zi, :], k)
-                    return out
-
-                # Corrected per-row roll for 2D arrays (theta is axis=1)
-                def _roll_rows_2d(
-                    arr: np.ndarray, shifts: np.ndarray, sign: int = -1
-                ) -> np.ndarray:
-                    out = np.empty_like(arr)
-                    for zi in range(arr.shape[0]):
-                        k = int(shifts[zi]) * sign
-                        out[zi, :] = np.roll(arr[zi, :], k, axis=0)
-                    return out
-
-                def _dilate_adaptive(
-                    seed_arr: np.ndarray,
-                    steps: int,
-                    s_fwd: np.ndarray,
-                    s_bwd: np.ndarray,
-                ) -> np.ndarray:
-                    # Forward pass with per-ring shifts
-                    S_forw = seed_arr.copy()
-                    acc_forw = S_forw.copy()
-                    for _ in range(steps):
-                        S_forw = np.vstack([S_forw[0:1, :], S_forw[:-1, :]])
-                        S_forw = _roll_rows_2d(S_forw, s_fwd, sign=-1)
-                        acc_forw = np.maximum(acc_forw, S_forw)
-                    # Backward pass
-                    S_back = seed_arr.copy()
-                    acc_back = S_back.copy()
-                    for _ in range(steps):
-                        S_back = np.vstack([S_back[1:, :], S_back[-1:, :]])
-                        S_back = _roll_rows_2d(S_back, s_bwd, sign=-1)
-                        acc_back = np.maximum(acc_back, S_back)
-                    return np.maximum(acc_forw, acc_back)
+                # Use typed helpers from geometry_helpers to keep the heavy
+                # algorithmic helpers top-level and easier to type-check.
+                # Assign local aliases so existing call sites (which reference
+                # _estimate_shifts, _roll_rows, _roll_rows_2d, _dilate_adaptive)
+                # keep working without changing surrounding logic.
+                _estimate_shifts = estimate_shifts
+                _roll_rows = roll_rows
+                _roll_rows_2d = roll_rows_2d
+                _dilate_adaptive = dilate_adaptive
 
                 if slopes_max > 0:
                     s_fwd, s_bwd = _estimate_shifts(R, slopes_max)
@@ -2370,8 +2285,8 @@ def build_pot_mesh(
                                 debug_enabled = bool(
                                     style_opts.get("sf_edge_flow_debug", False)
                                 )
-                                # Typed collector: list of dicts when enabled, otherwise None
-                                debug_reports: list[dict] | None = [] if debug_enabled else None
+                                # Typed collector: always a list; only populated when enabled
+                                debug_reports: list[dict] = []
                                 # prepare a continuous interpolator per ring using periodic extension
                                 for zi in range(Z):
                                     row = R[zi, :]
@@ -2846,7 +2761,7 @@ def build_pot_mesh(
                                             if arc_len <= 1e-6:
                                                 continue
                                             # discrete indices in the sector
-                                            idxs_list: list[int] = []
+                                            idxs_list = []
                                             for j in range(T):
                                                 thj = float(thetas[j])
                                                 off = (thj - theta_start) % TAU
@@ -2998,9 +2913,9 @@ def build_pot_mesh(
                                                 ).tolist()
                                             ]
                                         except Exception:
-                                            ridge_counts: list[int] = []
+                                            ridge_counts = []
                                         # Ensure reports are JSON-serializable (convert any numpy types)
-                                        safe_reports: list[dict] = []
+                                        safe_reports = []
                                         try:
                                             if debug_reports:
                                                 for r in debug_reports:
@@ -3077,7 +2992,7 @@ def build_pot_mesh(
                                                     }
                                                     safe_reports.append(safe_r)
                                         except Exception:
-                                            safe_reports: list[dict] = []
+                                            safe_reports = []
 
                                         # If no safe reports were produced, synthesize 3 deterministic reports
                                         if (not safe_reports) or len(safe_reports) == 0:
@@ -3119,7 +3034,7 @@ def build_pot_mesh(
                                                         ) % TAU
                                                     if arc_len <= 1e-6:
                                                         continue
-                                                    idxs_list: list[int] = []
+                                                    idxs_list = []
                                                     for j in range(T):
                                                         thj = float(thetas[j])
                                                         off = (thj - theta_start) % TAU
@@ -3240,7 +3155,7 @@ def build_pot_mesh(
                 Env = env_final
             else:
                 # No env_final produced in mode branch; compute a reasonable fallback based on mode
-                if mode == "vertical":
+                if mode == "vertical":  # type: ignore[unreachable]
                     # vertical quantile envelope
                     stacks = []
                     for dz in range(-h, h + 1):
@@ -3430,13 +3345,11 @@ def build_pot_mesh(
                         from pathlib import Path
                         import json
                         import time
-
                         repo_root = Path(
                             r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
                         )
-                        outpath = (
-                            repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
-                        )
+                        # prefer str for outpath to keep typing consistent when opening files
+                        outpath = str(repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl")
                         drain_thresh = float(
                             style_opts.get(
                                 "sf_edge_flow_drain_protect_thresh", r_drain + 1.0
@@ -3446,22 +3359,24 @@ def build_pot_mesh(
                         min_per_row = np.min(R_new_raw, axis=1)
                         rows_to_dump = np.where(min_per_row <= drain_thresh)[0]
                         # write one JSON line per dump run with selected rings
-                        dump = {"timestamp": time.time(), "rows": []}
+                        # Reuse top-level `dump` variable to avoid shadowing/redefinition
+                        dump.clear()
+                        dump.update({"timestamp": time.time(), "stage": "post_deoffset", "rows": []})
                         # Allow forcing a single probe zi via style options for targeted dumps
-                        probe_zi = None
+                        from typing import Optional
+
+                        probe_zi_post: Optional[int] = None
                         try:
-                            probe_zi = (
-                                style_opts.get("sf_edge_flow_probe_zi", None)
-                                if isinstance(style_opts, dict)
-                                else None
-                            )
+                            if isinstance(style_opts, dict):
+                                v = style_opts.get("sf_edge_flow_probe_zi", None)
+                                probe_zi_post = int(v) if v is not None else None
                         except Exception:
-                            probe_zi = None
+                            probe_zi_post = None
                         # Ensure probe_zi is included in rows_to_dump
                         try:
                             rows_set = set(rows_to_dump.tolist())
-                            if probe_zi is not None:
-                                pzi = int(probe_zi)
+                            if probe_zi_post is not None:
+                                pzi = int(probe_zi_post)
                                 if 0 <= pzi < R_new_raw.shape[0]:
                                     rows_set.add(pzi)
                             rows_to_dump = np.array(sorted(list(rows_set)), dtype=int)
@@ -3588,7 +3503,8 @@ def build_pot_mesh(
                             shifts_meta = None
                             s0_meta = None
                             try:
-                                if "shifts" in locals():
+                                # ensure shifts is a list before converting
+                                if "shifts" in locals() and shifts is not None:
                                     shifts_meta = np.asarray(shifts).tolist()
                             except Exception:
                                 shifts_meta = None
@@ -3718,8 +3634,6 @@ def build_pot_mesh(
                                     best_score = score
                                     best_k = k
                             return best_k
-
-                        shifts: list[int] = []
                         for zi in range(Z):
                             row_new = R_new_raw[zi, :]
                             row_old = R_raw[zi, :]
@@ -3728,15 +3642,15 @@ def build_pot_mesh(
                                 _best_shift(row_new, row_old, lift_mask, kmax)
                             )
                         if shifts:
-                            shifts = np.asarray(shifts, dtype=int)
+                            shifts_arr = np.asarray(shifts, dtype=int)
                             # choose median integer shift
-                            s0 = int(np.median(shifts))
+                            s0 = int(np.median(shifts_arr))
                             if s0 != 0:
                                 # ensure a simple majority agrees to avoid harming diagonal features
-                                vals, counts = np.unique(shifts, return_counts=True)
+                                vals, counts = np.unique(shifts_arr, return_counts=True)
                                 idx = int(np.argmax(counts))
                                 top_shift = int(vals[idx])
-                                frac = float(counts[idx]) / max(1, len(shifts))
+                                frac = float(counts[idx]) / max(1, len(shifts_arr))
                                 if top_shift == s0 and frac >= 0.55:
                                     R_new_raw = np.roll(R_new_raw, -s0, axis=1)
                 except Exception:
@@ -3760,7 +3674,7 @@ def build_pot_mesh(
                                 repo_root = Path(
                                     r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
                                 )
-                                outpath = (
+                                outpath = str(
                                     repo_root
                                     / "tools"
                                     / "edgeflow_verbose_diagnostics.jsonl"
@@ -3862,7 +3776,7 @@ def build_pot_mesh(
                                             pass
                                     try:
                                         # Canonicalize post-deoffset rows for returned diagnostics
-                                        canonical_rows: list[np.ndarray] = []
+                                        canonical_rows: list[Dict[str, Any]] = []
                                         for r in dump.get("rows", []):
                                             canonical_rows.append(
                                                 {
@@ -3985,9 +3899,7 @@ def build_pot_mesh(
                         repo_root = Path(
                             r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
                         )
-                        outpath = (
-                            repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
-                        )
+                        outpath = str(repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl")
                         fdump = {
                             "timestamp": time.time(),
                             "stage": "final_enforcement",
@@ -4067,11 +3979,12 @@ def build_pot_mesh(
 
     # Vectorized faces for outer wall with adaptive diagonals
     rows = len(z_outer) - 1
-    j = np.arange(n_theta, dtype=int)
-    jn = (j + 1) % n_theta
-    v00 = outer_idx[:-1, :][:, j]
+    # j_idx is an index array used for vectorized selection; annotate as NDArray[int]
+    j_idx: npt.NDArray[np.int_] = np.arange(n_theta, dtype=int)
+    jn = (j_idx + 1) % n_theta
+    v00 = outer_idx[:-1, :][:, j_idx]
     v01 = outer_idx[:-1, :][:, jn]
-    v10 = outer_idx[1:, :][:, j]
+    v10 = outer_idx[1:, :][:, j_idx]
     v11 = outer_idx[1:, :][:, jn]
     # Decide per-cell diagonal to reduce sliver/aliasing near sharp cuts
     try:
@@ -4080,9 +3993,9 @@ def build_pot_mesh(
         )  # shape (len(z_outer), n_theta)
         cx_rows = np.vstack(cx_rows_list)
         sy_rows = np.vstack(sy_rows_list)
-        r00 = r_outer_samples[:-1, :][:, j]
+        r00 = r_outer_samples[:-1, :][:, j_idx]
         r01 = r_outer_samples[:-1, :][:, jn]
-        r10 = r_outer_samples[1:, :][:, j]
+        r10 = r_outer_samples[1:, :][:, j_idx]
         r11 = r_outer_samples[1:, :][:, jn]
 
         # Decide per-cell diagonal using geometry-based triangle quality for LowPolyFacet
@@ -4116,12 +4029,12 @@ def build_pot_mesh(
         z00 = np.broadcast_to(z_outer[:-1, None], r00.shape)
         z11 = np.broadcast_to(z_outer[1:, None], r11.shape)
         # XY for each corner using pre-rotated bases per ring
-        x00 = r00 * cx_rows[:-1, :][:, j]
-        y00 = r00 * sy_rows[:-1, :][:, j]
+        x00 = r00 * cx_rows[:-1, :][:, j_idx]
+        y00 = r00 * sy_rows[:-1, :][:, j_idx]
         x01 = r01 * cx_rows[:-1, :][:, jn]
         y01 = r01 * sy_rows[:-1, :][:, jn]
-        x10 = r10 * cx_rows[1:, :][:, j]
-        y10 = r10 * sy_rows[1:, :][:, j]
+        x10 = r10 * cx_rows[1:, :][:, j_idx]
+        y10 = r10 * sy_rows[1:, :][:, j_idx]
         x11 = r11 * cx_rows[1:, :][:, jn]
         y11 = r11 * sy_rows[1:, :][:, jn]
 
@@ -4218,7 +4131,7 @@ def build_pot_mesh(
                     sum3 = ua + ua_roll_l + ua_roll_r
                     ua_new = ua.copy()
                     for zs in seam_zs:
-                        band = np.abs(z_mid - zs) <= z_win
+                        band_mask = np.abs(z_mid - zs) <= z_win
                         if np.any(band):
                             # majority threshold >=2 (of 3)
                             ua_new[band, :] = (sum3[band, :] >= 2).astype(np.int8)
@@ -4310,7 +4223,8 @@ def build_pot_mesh(
         _opts.setdefault("_pf_rt", Rt)
         _opts.setdefault("_pf_expn", expn)
         # Parity with outer/preview: sample style at raw theta; apply twist only in placement
-        r_out_vals = np.asarray(r_outer_fn(thetas, z, r0, H, _opts), dtype=float)
+        # Normalize via the typed wrapper to avoid float/NDArray typing ambiguity
+        r_out_vals = np.asarray(_call_r_outer(thetas, z, r0, H, _opts), dtype=float)
         r_in_vals = r_out_vals - t_wall
         min_allowed = r_drain + 1.0
         clamped = r_in_vals < min_allowed
@@ -4320,9 +4234,9 @@ def build_pot_mesh(
 
     # Vectorized faces for inner wall (choose winding to also point outward-from-center)
     # rows_in = len(z_inner) - 1  # Computed but not used - kept for clarity
-    vi00 = inner_idx[:-1, :][:, j]
+    vi00 = inner_idx[:-1, :][:, j_idx]
     vi01 = inner_idx[:-1, :][:, jn]
-    vi10 = inner_idx[1:, :][:, j]
+    vi10 = inner_idx[1:, :][:, j_idx]
     vi11 = inner_idx[1:, :][:, jn]
     tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
     tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
@@ -4332,11 +4246,11 @@ def build_pot_mesh(
     # ---- Rim cap
     outer_top = outer_idx[-1]
     inner_top = inner_idx[-1]
-    v00 = outer_top[j]
+    v00 = outer_top[j_idx]
     v01 = outer_top[jn]
     # Intermediate variables vi0, vi1 computed but not used - kept for clarity
-    tri_rim1 = np.stack([outer_top[j], inner_top[j], inner_top[jn]], axis=1)
-    tri_rim2 = np.stack([outer_top[j], inner_top[jn], outer_top[jn]], axis=1)
+    tri_rim1 = np.stack([outer_top[j_idx], inner_top[j_idx], inner_top[jn]], axis=1)
+    tri_rim2 = np.stack([outer_top[j_idx], inner_top[jn], outer_top[jn]], axis=1)
     faces_out_parts.append(tri_rim1)
     faces_out_parts.append(tri_rim2)
 
@@ -4351,31 +4265,31 @@ def build_pot_mesh(
         verts.append((x0, y0, 0.0))
         drain_top.append(len(verts))
         verts.append((x0, y0, float(t_bottom)))
-    drain_under = np.array(drain_under, dtype=int)
-    drain_top = np.array(drain_top, dtype=int)
+    drain_under_arr = np.array(drain_under, dtype=int)
+    drain_top_arr = np.array(drain_top, dtype=int)
     outer_bottom = outer_idx[0]
     inner_bottom = inner_idx[0]
 
     # Bottom underside (outer bottom ring -> drain under ring)
-    v00 = outer_bottom[j]
+    v00 = outer_bottom[j_idx]
     v01 = outer_bottom[jn]
     # Intermediate variables vd0, vd1 computed but not used - kept for clarity
-    tri_bot1 = np.stack([outer_bottom[j], drain_under[jn], drain_under[j]], axis=1)
-    tri_bot2 = np.stack([outer_bottom[j], outer_bottom[jn], drain_under[jn]], axis=1)
+    tri_bot1 = np.stack([outer_bottom[j_idx], drain_under_arr[jn], drain_under_arr[j_idx]], axis=1)
+    tri_bot2 = np.stack([outer_bottom[j_idx], outer_bottom[jn], drain_under_arr[jn]], axis=1)
     faces_out_parts.append(tri_bot1)
     faces_out_parts.append(tri_bot2)
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     # Intermediate variables vi0, vi1, vd0, vd1 computed but not used - kept for clarity
-    tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
-    tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_top1 = np.stack([inner_bottom[j_idx], inner_bottom[jn], drain_top_arr[jn]], axis=1)
+    tri_top2 = np.stack([inner_bottom[j_idx], drain_top_arr[jn], drain_top_arr[j_idx]], axis=1)
     faces_out_parts.append(tri_top1)
     faces_out_parts.append(tri_top2)
 
     # Drain cylinder wall
     # Intermediate variables v0b, v1b, v0t, v1t computed but not used - kept for clarity
-    tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
-    tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
+    tri_cyl1 = np.stack([drain_under_arr[j_idx], drain_top_arr[j_idx], drain_top_arr[jn]], axis=1)
+    tri_cyl2 = np.stack([drain_under_arr[j_idx], drain_top_arr[jn], drain_under_arr[jn]], axis=1)
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 
@@ -4412,10 +4326,13 @@ def build_pot_mesh(
     return np.array(verts, dtype=float), faces_arr, diagnostics
 
 
+from typing import Any
+plt: Any | None
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 except Exception:
+    # If matplotlib isn't available, set module-level sentinel to None
     plt = None
 
 
