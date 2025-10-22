@@ -24,7 +24,9 @@ def test_perf_budget_blossom_filters_vs_baseline():
     # Ensure heavy filters remain within a reasonable absolute and relative budget
     fn = STYLES["SuperformulaBlossom"][0]
     th = np.linspace(0.0, 2.0 * np.pi, 256, endpoint=False)
-    z = 100.0; r0 = 60.0; H = 120.0
+    z = 100.0
+    r0 = 60.0
+    H = 120.0
     base = {
         "sf_strength": 1.0,
         "sf_m_base": 8.0, "sf_m_top": 12.0,
@@ -52,7 +54,9 @@ def test_perf_budget_blossom_filters_vs_baseline():
     def timed(call_opts, reps=3):
         tot = 0.0
         for _i in range(reps):
-            t0 = time.perf_counter(); _ = fn(th, z, r0, H, call_opts); t1 = time.perf_counter()
+            t0 = time.perf_counter()
+            _ = fn(th, z, r0, H, call_opts)
+            t1 = time.perf_counter()
             tot += (t1 - t0)
         return tot / reps
     base_mean = timed(base)
@@ -69,7 +73,9 @@ def test_perf_budget_blossom_filters_vs_baseline():
 def test_peak_snap_lifts_valleys_without_raising_peaks():
     fn = STYLES["SuperformulaBlossom"][0]
     th = np.linspace(0.0, 2.0 * np.pi, 360, endpoint=False)
-    z = 110.0; r0 = 70.0; H = 120.0
+    z = 110.0
+    r0 = 70.0
+    H = 120.0
     base_opts = dict(sf_strength=1.0, sf_m_base=8.0, sf_m_top=12.0, sf_n1=0.45, sf_n2=1.2, sf_n3=1.2)
     # Baseline profile with pronounced peaks/valleys
     r_base = np.asarray(fn(th, z, r0, H, base_opts), dtype=float)
@@ -160,7 +166,9 @@ def test_edge_sharp_monotonic_spread_increase():
     base = _sample_rf(base_opts={"sf_strength": 1.0})
     s1 = _sample_rf(base_opts={"sf_strength": 1.0, "sf_edge_sharp": 0.2})
     s2 = _sample_rf(base_opts={"sf_strength": 1.0, "sf_edge_sharp": 0.5})
-    spread = lambda a: float(np.max(a) - np.min(a))
+    def spread(a: np.ndarray) -> float:
+        """Return the peak-to-peak spread of the array as a Python float."""
+        return float(np.max(a) - np.min(a))
     assert spread(s1) >= spread(base) - 1e-6
     assert spread(s2) >= spread(s1) - 1e-6
 
@@ -222,7 +230,10 @@ def test_solidify_protection_controls_reduction():
     })
     # Micro-jag reduction measure: residual to circular median-of-5 (focus on tiny peaks)
     def med5(a: np.ndarray) -> np.ndarray:
-        a1 = np.roll(a, 1); a2 = np.roll(a, 2); b1 = np.roll(a, -1); b2 = np.roll(a, -2)
+        a1 = np.roll(a, 1)
+        a2 = np.roll(a, 2)
+        b1 = np.roll(a, -1)
+        b2 = np.roll(a, -2)
         st = np.stack([a2, a1, a, b1, b2], axis=0)
         st.sort(axis=0)
         return st[2]
@@ -234,7 +245,9 @@ def test_solidify_protection_controls_reduction():
     # Low protection should reduce micro residual more than high protection
     assert float(np.mean(r_low)) <= float(np.mean(r_high)) - 1e-4
     # And overall variance reduction stronger for low protection
-    var0 = float(np.var(f0)); var_low = float(np.var(f_lowprot)); var_high = float(np.var(f_highprot))
+    var0 = float(np.var(f0))
+    var_low = float(np.var(f_lowprot))
+    var_high = float(np.var(f_highprot))
     assert (var0 - var_low) >= (var0 - var_high) + 1e-4
 
 

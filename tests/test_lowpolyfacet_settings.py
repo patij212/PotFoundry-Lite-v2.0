@@ -513,8 +513,12 @@ def test_edge_solidify_reduces_micro_oscillations_without_flattening():
                                                           "lp_edge_solidify_passes": 2})
     # Reuse micro-residual metric
     def med5(a: np.ndarray) -> np.ndarray:
-        a1 = np.roll(a, 1); a2 = np.roll(a, 2); b1 = np.roll(a, -1); b2 = np.roll(a, -2)
-        st = np.stack([a2, a1, a, b1, b2], axis=0); st.sort(axis=0)
+        a1 = np.roll(a, 1)
+        a2 = np.roll(a, 2)
+        b1 = np.roll(a, -1)
+        b2 = np.roll(a, -2)
+        st = np.stack([a2, a1, a, b1, b2], axis=0)
+        st.sort(axis=0)
         return cast(np.ndarray, st[2])
     def micro_resid(a: np.ndarray) -> np.ndarray:
         return cast(np.ndarray, np.maximum(0.0, a - med5(a)))
@@ -652,7 +656,8 @@ def test_cut_depth_fraction_under_true_flare_mesh_based():
     Vf, Ff, _ = build_pot_mesh(H, Rt, Rb, 3.0, 3.0, 8.0, 1.2, n_theta, n_z, style_fn, opts_frac)
     # Compare seam ring radii at a seam plane: fraction should trim more than small cap
     # Extract z closest to first seam and compute mean radius across theta
-    tiers = int(base["lp_tiers"]) ; seam_z = (1 / tiers) * H
+    tiers = int(base["lp_tiers"])
+    seam_z = (1 / tiers) * H
     # Find ring index nearest to seam
     ring_z = np.linspace(0.0, H, n_z)
     k = int(np.argmin(np.abs(ring_z - seam_z)))

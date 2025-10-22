@@ -1,10 +1,12 @@
-from pathlib import Path
 import numpy as np
-from potfoundry.core.geometry import build_pot_mesh, STYLES
+from potfoundry.core.geometry import build_pot_mesh
 
-n_theta=24; n_z=6; H=7.0
-Z=n_z+1; T=n_theta
-R_grid=np.ones((Z,T),dtype=float)*15.0
+n_theta = 24
+n_z = 6
+H = 7.0
+Z = n_z + 1
+T = n_theta
+R_grid = np.ones((Z, T), dtype=float) * 15.0
 for zi in range(Z):
     R_grid[zi,0]=25.0
     R_grid[zi,T//2]=25.0
