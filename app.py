@@ -2,6 +2,12 @@
 # pyright: reportGeneralTypeIssues=false
 from __future__ import annotations
 
+# File-level ruff suppression: this module intentionally performs runtime
+# setup (optional imports, checks) before importing many `pfui` modules to
+# avoid importing fragile or heavy modules at interpreter startup. Silencing
+# E402 here keeps editor/type-checker noise low while preserving behavior.
+# ruff: noqa: E402
+
 import json
 import re
 import tempfile
@@ -34,21 +40,21 @@ if not HAS_PLOTLY:
 # import time which can trigger editor/type-checker traversal and noisy
 # diagnostics. Keep the delayed import but silence ruff E402 with an
 # explanatory noqa.
-from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY  # ruff: noqa: E402
-from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict  # ruff: noqa: E402
-import pfui.schemas as SC  # ruff: noqa: E402
+from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY  # noqa: E402
+from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict  # noqa: E402
+import pfui.schemas as SC  # noqa: E402
 
 # Prefer accessor call to reduce heavy constant binding at module scope in other modules
 styles = SC.get_style_schemas()
 # Deliberate delayed import of `pfui.state` to avoid importing heavy
 # Streamlit/session-related modules at top-level. Documented and allowed.
-from pfui.state import (
+from pfui.state import (  # noqa: E402
     apply_pending_updates,
     queue_update,
     widget_key,
     reset_style_defaults,
     reset_all_defaults,
-)  # ruff: noqa: E402
+)
 from pfui.controls import style_controls, twist_controls
 from pfui.preview import make_preview_arrays, render_profile, render_mesh_snapshot_cached
 from pfui.health import _design_health, _health_badge, validate_dimensions

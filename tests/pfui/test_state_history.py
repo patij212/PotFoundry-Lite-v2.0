@@ -10,7 +10,7 @@ mod = types.ModuleType("streamlit")
 mod.session_state = fake_st.session_state
 sys.modules["streamlit"] = mod
 
-from pfui import state_history as H
+from pfui import state_history as H  # noqa: E402
 
 
 def _reset():

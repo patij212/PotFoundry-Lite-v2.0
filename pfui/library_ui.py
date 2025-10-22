@@ -15,8 +15,8 @@ try:
 except ImportError:
     HAS_STREAMLIT = False
 
-from potfoundry.library import list_published
-from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
+from potfoundry.library import list_published  # noqa: E402
+from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient  # noqa: E402
 
 
 def render_library_tab():

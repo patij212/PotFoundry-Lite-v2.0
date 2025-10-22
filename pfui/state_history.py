@@ -21,8 +21,8 @@ Errors
     - Functions are no-ops when stacks are empty.
 """
 
-from typing import Any, Dict
-import copy
+from typing import Any, Dict  # noqa: E402
+import copy  # noqa: E402
 
 # Allow tests to stub `streamlit` via sys.modules before importing; pre-declare
 # the `st` name so type-checkers don't require `# type: ignore` on the local

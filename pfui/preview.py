@@ -19,8 +19,8 @@ else:  # pragma: no cover - executed only in degraded env (tests)
             return fn  # no caching fallback
         return _wrap
 
-from .imports import STYLES, base_radius, _spin_twist_radians, build_pot_mesh
-from .colors import build_gradient_colors
+from .imports import STYLES, base_radius, _spin_twist_radians, build_pot_mesh  # noqa: E402
+from .colors import build_gradient_colors  # noqa: E402
 
 
 def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:

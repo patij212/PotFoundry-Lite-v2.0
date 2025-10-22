@@ -22,7 +22,7 @@ def _ensure_style_schemas() -> dict:
 # helper to avoid importing heavy modules (like pfui.state/pfui.schemas) at
 # module-import time which can trigger editor/type-checker traversal. Keep
 # this import delayed for runtime to reduce mypy/Pylance noise.
-from .state import widget_key  # ruff: noqa: E402
+from .state import widget_key  # noqa: E402
 
 
 def _render_control(style: str, key: str, meta: Dict[str, Any]) -> Any:

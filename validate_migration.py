@@ -9,6 +9,7 @@ import sys
 import warnings
 from pathlib import Path
 import tempfile
+import numpy as np
 
 print("=" * 70)
 print("Binary STL Migration - Final Validation")
@@ -32,7 +33,6 @@ else:
 
 # Test 3: ASCII STL shows deprecation warning
 print("\n[3/5] Verifying ASCII STL deprecation...")
-import numpy as np
 verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
 faces = np.array([[0, 1, 2]], dtype=int)
 

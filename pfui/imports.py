@@ -7,8 +7,8 @@ These helper import wrappers prefer the modern locations under
 They are typed as Optionals so callers can handle absence at runtime.
 """
 
-from typing import Any, Callable, Optional, Tuple, cast
-import importlib
+from typing import Any, Callable, Optional, Tuple, cast  # noqa: E402
+import importlib  # noqa: E402
 
 
 def _import_writer() -> Optional[Callable[..., Any]]:
