@@ -12,6 +12,7 @@ payload = {
     "ridge_counts_per_z": [],
     "reports": [],
 }
+reports = payload.setdefault("reports", [])
 T = 168
 TAU = 2 * math.pi
 th = [TAU * i / T for i in range(T)]
@@ -35,7 +36,7 @@ for szi, a_idx, b_idx in [(0, 0, 21), (42, 17, 34), (83, 14, 28)]:
     B_vals = [(1.0 - s) * r_pa + s * r_pb for s in s_vals]
     cur = [float(rv - 0.1) for rv in B_vals]
     newv = [float(max(c, b)) for c, b in zip(cur, B_vals)]
-    payload["reports"].append(
+    reports.append(
         {
             "zi": int(szi),
             "peak_a_col": int(a_idx),
