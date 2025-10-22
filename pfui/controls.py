@@ -14,7 +14,7 @@ def _ensure_style_schemas() -> dict:
     if not STYLE_SCHEMAS:
         try:
             mod = importlib.import_module('pfui.schemas')
-            STYLE_SCHEMAS.update(getattr(mod, 'STYLE_SCHEMAS', {}) or {})
+            STYLE_SCHEMAS.update(getattr(mod, 'get_style_schemas', lambda: {})() or {})
         except Exception:
             STYLE_SCHEMAS = {}
     return STYLE_SCHEMAS

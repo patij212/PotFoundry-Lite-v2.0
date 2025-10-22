@@ -13,8 +13,9 @@ def _ensure_style_schemas() -> dict:
     global STYLE_SCHEMAS
     if not STYLE_SCHEMAS:
         try:
+            # Use the accessor to avoid importing heavy constants at module import time
             mod = importlib.import_module('pfui.schemas')
-            STYLE_SCHEMAS.update(getattr(mod, 'STYLE_SCHEMAS', {}) or {})
+            STYLE_SCHEMAS.update(getattr(mod, 'get_style_schemas', lambda: {})() or {})
         except Exception:
             STYLE_SCHEMAS = {}
     return STYLE_SCHEMAS

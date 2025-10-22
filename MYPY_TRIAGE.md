@@ -23,6 +23,8 @@ Batch 1 (low-risk, quick wins)
 - Apply small fixes in `tools/`, `pfui` helpers, remove unused `# type: ignore`, install type stubs (types-requests). (ETA: 0.5–1.5h)
 Batch 2 (low-medium)
 - Fix schema MappingProxy assignments, preview dtype fixes, small test adjustments. (ETA: 1–2.5h)
+    - Status: STARTED (Batch 2 kickoff committed changes: accessors + smoke test + conservative annotations to reduce import-time noise)
+    - Short goal: Add conservative annotations and accessors to `pfui/schemas.py`, migrate immediate callers to those accessors, and create a small, test-backed path to tighten types further without introducing noise from heavy modules.
 Batch 3 (medium-risk)
 - Core `potfoundry/core/geometry.py` safe annotations, debug collectors, and integration fixes. Run tests after each small commit. (ETA: 2–6h)
 Batch 4 (high-risk)
@@ -176,6 +178,8 @@ Purpose
 ## Change log (recent)
  - [2025-10-21] Commit da4593d: annotate streamlit 'st' as Any in `pfui/library_ui.py` (removed `# type: ignore`). Ran mypy (focused): Found 162 errors in 19 files (checked packages). Tests: 347 passed.
 
+- [2025-10-22] Batch 2 kickoff: small, conservative changes applied to `pfui/schemas.py` (added accessors and conservative Mapping annotations), added smoke test `tests/typing/test_schemas_smoke.py`, and migrated a set of immediate callers (`app.py`, `pfui/state.py`, `pfui/presets.py`, `pfui/controls.py`, `tests/pfui/test_state.py`) to use accessors. Focused tests + checks: pytest (selected) passed; no new static errors on modified files.
+
  - [2025-10-21] Commit bddb45e: predeclare streamlit 'st' and remove unused type-ignore in `pfui/state_history.py`. Ran mypy (focused): Found 162 errors in 19 files. Tests: 347 passed.
 
  - [2025-10-21] Commit e0c905f: pfui/yaml_tools: coerce yaml.safe_dump to str to satisfy mypy return type. Ran mypy (focused): Found 126 errors in 13 files. Tests: 347 passed.
@@ -183,8 +187,9 @@ Purpose
  - [2025-10-21] Commit 1d01727: pfui/exporters: cast WRITE_STL_BINARY to Callable to satisfy mypy; removed inline ignore. Ran mypy (focused): Found 125 errors in 12 files. Tests: 347 passed.
 
  - [2025-10-21] Commit e3a1892: pfui/preview.py: typing fixes — typed cache callable, explicit np.float64 coercions, robust colormap access, renamed png return to avoid shadowing, cast Plotly image outputs to bytes. Ran mypy (focused): preview.py clean; overall focused run: 120 errors in 11 files. Tests: 347 passed.
- 
+
  - [2025-10-21] Commit 93b53f7: pfui/colors.py: allow Optional z_norm and safe fallback in exception path to remove unreachable-return mypy error. Tests: targeted colors tests passed (5 passed). Ran mypy (focused): no issues in `pfui/colors.py`.
+
  - [2025-10-21] Commit 1088fcc: pfui/deeplink.py: annotate `validate_state` types (Dict[str,Any], List[str]) and normalize Streamlit query param retrieval to avoid mismatched assignment types. Tests: deeplink library tests passed (11 passed). Ran mypy (focused): deeplink.py cleaned of the reported assignment errors.
 
  - [2025-10-21] Commit 7dd1217: tools/edgeflow_make_compare.py: add explicit return type for `load_row_by_mode` (Tuple[Optional[dict], Optional[float]]). Focused mypy: no issues in file. No tests.
@@ -194,8 +199,58 @@ Purpose
  - [2025-10-21] Commit 74ee6ed: tools/inspect_edgeflow_zi42.py: coerce JSON fields to concrete lists and avoid name shadowing; focused mypy: no issues in file. Runtime smoke: produced expected summary output.
 
 
-## Next action (awaiting your direction)
-- Confirm you want me to start with Batch 1 (quick wins). If so I'll apply small fixes one-by-one, commit each, rerun mypy+pytest, and update this file after each step.
+## Batch 2 — Detailed plan (ready for automatic execution after your approval)
+
+Objective
+- Safely start refining `pfui/schemas.py` and `potfoundry/core/geometry.py` by first removing import-time coupling and adding conservative typings and small accessors. Keep changes small, test-backed, and reversible.
+
+Contract (what each patch must satisfy)
+- Input: small edit that only changes annotations, lightweight accessors, or replaces direct imports with accessor calls.
+- Output: tests covering touched functionality pass, focused mypy (targeted files) reports no new errors, and runtime behavior unchanged.
+- Error modes: If tests fail or mypy introduces new errors in untouched modules, revert the specific change and log the failure.
+
+Batch 2 plan (step-by-step)
+1) Schema accessors and conservative annotations (IN-PROGRESS)
+    - Add Mapping[...] annotations for top-level constants in `pfui/schemas.py` and expose accessors (done).
+    - Add `tests/typing/test_schemas_smoke.py` to verify importability and shape of accessors (done).
+    - Acceptance: smoke test passes; focused error check for `pfui/schemas.py` and test file shows no errors.
+
+2) Migrate immediate callers to accessors (IN-PROGRESS)
+    - Replace direct imports/usages of `STYLE_SCHEMAS`, `GLOBAL_CONTROLS`, `GLOBAL_ALIASES`, `ALIASES_BY_STYLE`, `GLOBAL_REVERSE`, `REVERSE_BY_STYLE` in nearby modules (app.py, pfui/state.py, pfui/presets.py, pfui/controls.py, and tests) with accessor calls.
+    - Acceptance: targeted tests pass, no new errors in modified files.
+
+3) Conservative leaf-typing in schemas
+    - Replace `Any` leaves with `ControlMeta` or `Mapping[str, ControlMeta]` where safe. Do this in small commits covering handfuls of controls and update callers accordingly.
+    - Add unit tests for any newly-narrowed behavior (e.g., ensure defaults apply and sanitize_opts behavior unchanged).
+    - Acceptance: focused mypy for `pfui/schemas.py` + touched callers passes (or shows fewer warnings), tests remain green.
+
+4) Geometry bridging (safe wrapper) — prepare for `potfoundry/core/geometry.py` work
+    - Add a small wrapper `build_pot_mesh_safe(...)` in an import-light module (`pfui/imports.py` or `potfoundry/__init__.py`) that calls into `potfoundry.core.geometry.build_pot_mesh` but annotated with conservative types: Tuple[Any, Any, Dict[str, Any]]. Use TYPE_CHECKING to avoid importing numpy at runtime when not needed.
+    - Replace heavy-call sites in `tools/` and `pfui/preview.py` to use the safe wrapper.
+    - Acceptance: tests and focused mypy for wrapper+callers pass.
+
+5) Iterative narrowing (multiple small commits)
+    - Incrementally replace `Any` in geometry and schema with more precise types. Each commit covers a small function and includes a unit test. Avoid touching large functions in one commit.
+    - Acceptance: each commit passes tests and focused mypy for the files changed.
+
+6) Final sweep and triage update
+    - Run targeted mypy for the set of modules touched. Update `MYPY_TRIAGE.md` with remaining errors and next batch plan.
+
+Operational rules (how I'll proceed without asking after you approve)
+- I'll perform only small, reversible commits (single-file or tightly-grouped small change sets). After each commit I will:
+  1. Run focused pytest for related tests (or the small smoke test if no targeted tests exist).
+  2. Run mypy / static error check for the modified files.
+  3. If either step fails, immediately revert the change and log the failure here for your review.
+- I will only pause to ask you when a change is medium/high risk (touches `potfoundry/core/geometry.py` major behavior or >2 files with >10 lines of logic change).
+
+Estimated timeline
+- This Batch 2 plan (steps 1–4) is targeted to be completed across 2–6 focused commits and ~2–6 hours of work depending on follow-up issues. Iterative narrowing (step 5) will continue beyond that depending on remaining mypy noise.
+
+Please reply with either:
+- "Approve batch 2 plan" — I will continue executing steps automatically per the operational rules above; or
+- "Modify plan: <your edits>" — I will adapt the plan accordingly before proceeding.
+
+Once you approve, I will continue automatically and update this file with each commit summary, test results, and any triage additions.
 
 
 

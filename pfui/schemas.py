@@ -161,6 +161,27 @@ GLOBAL_REVERSE = _invert(GLOBAL_ALIASES)
 REVERSE_BY_STYLE: Dict[str, Dict[str, str]] = {s: _invert(m) for s, m in ALIASES_BY_STYLE.items()}
 
 
+# Lightweight accessors to avoid heavy constant imports by consumers (helps typing tools)
+def get_global_aliases() -> Mapping[str, str]:
+    """Return the global alias mapping (legacy -> canonical)."""
+    return GLOBAL_ALIASES
+
+
+def get_aliases_by_style() -> Mapping[str, Mapping[str, str]]:
+    """Return per-style alias mappings."""
+    return ALIASES_BY_STYLE
+
+
+def get_global_reverse() -> Mapping[str, str]:
+    """Return the inverted global alias map (canonical -> legacy)."""
+    return GLOBAL_REVERSE
+
+
+def get_reverse_by_style() -> Mapping[str, Mapping[str, str]]:
+    """Return per-style inverted alias maps."""
+    return REVERSE_BY_STYLE
+
+
 # Accepted directions for key normalization.
 Direction = Literal["to_canonical", "to_engine", "both"]
 
@@ -1688,16 +1709,16 @@ def _build_canonical_schema() -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict
 CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
 
 # Freeze alias maps (and their reverses) to avoid runtime mutation.
-GLOBAL_ALIASES = MappingProxyType(dict(GLOBAL_ALIASES))
-ALIASES_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
-GLOBAL_REVERSE = MappingProxyType(GLOBAL_REVERSE)
-REVERSE_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
+GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(GLOBAL_ALIASES))
+ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
+GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(GLOBAL_REVERSE)
+REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
 
 # Freeze top-level schema dicts to avoid accidental mutation at runtime.
-GLOBAL_CONTROLS = MappingProxyType({k: MappingProxyType(v) for k, v in GLOBAL_CONTROLS.items()})
-STYLE_SCHEMAS = MappingProxyType({k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()}) for k, v in STYLE_SCHEMAS.items()})
-CANONICAL_CONTROLS = MappingProxyType({k: MappingProxyType(v) for k, v in CANONICAL_CONTROLS.items()})
-CANONICAL_STYLE_SCHEMAS = MappingProxyType({k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()}) for k, v in CANONICAL_STYLE_SCHEMAS.items()})
+GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType({k: MappingProxyType(v) for k, v in GLOBAL_CONTROLS.items()})
+STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = MappingProxyType({k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()}) for k, v in STYLE_SCHEMAS.items()})
+CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType({k: MappingProxyType(v) for k, v in CANONICAL_CONTROLS.items()})
+CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = MappingProxyType({k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()}) for k, v in CANONICAL_STYLE_SCHEMAS.items()})
 
 # =============================================================================
 # Validation, defaults, and schema helpers
@@ -2035,16 +2056,39 @@ def check_schema_integrity() -> list[str]:
 
 
 # Freeze alias maps (and their reverses) to avoid runtime mutation.
-GLOBAL_ALIASES = MappingProxyType(dict(GLOBAL_ALIASES))
-ALIASES_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
-GLOBAL_REVERSE = MappingProxyType(dict(GLOBAL_REVERSE))
-REVERSE_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
+GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(GLOBAL_ALIASES))
+ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
+GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(dict(GLOBAL_REVERSE))
+REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
 
 # Build canonical mirrors before freezing schema blocks deeply.
 CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
 
 # Deep-freeze schema dicts (blocks and inner meta).
-GLOBAL_CONTROLS = _freeze_block(dict(GLOBAL_CONTROLS))  # type: ignore[arg-type]
-STYLE_SCHEMAS = _freeze_style_map({k: dict(v) for k, v in STYLE_SCHEMAS.items()})  # type: ignore[dict-item]
-CANONICAL_CONTROLS = _freeze_block(dict(CANONICAL_CONTROLS))  # type: ignore[arg-type]
-CANONICAL_STYLE_SCHEMAS = _freeze_style_map({k: dict(v) for k, v in CANONICAL_STYLE_SCHEMAS.items()})  # type: ignore[dict-item]
+GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(dict(GLOBAL_CONTROLS))  # type: ignore[arg-type]
+STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = _freeze_style_map({k: dict(v) for k, v in STYLE_SCHEMAS.items()})  # type: ignore[dict-item]
+CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(dict(CANONICAL_CONTROLS))  # type: ignore[arg-type]
+CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = _freeze_style_map({k: dict(v) for k, v in CANONICAL_STYLE_SCHEMAS.items()})  # type: ignore[dict-item]
+
+
+# Conservative accessors for large schema constants. Callers should prefer
+# these to importing the raw MappingProxyType objects directly (reduces
+# import-time noise for type-checkers and editors).
+def get_style_schemas() -> Mapping[str, Mapping[str, Mapping[str, Any]]]:
+    """Return the per-style schema mapping (legacy-keyed blocks)."""
+    return STYLE_SCHEMAS
+
+
+def get_global_controls() -> Mapping[str, Mapping[str, Any]]:
+    """Return the global (legacy-keyed) control block."""
+    return GLOBAL_CONTROLS
+
+
+def get_canonical_controls() -> Mapping[str, Mapping[str, Any]]:
+    """Return the canonical-keyed global control block."""
+    return CANONICAL_CONTROLS
+
+
+def get_canonical_style_schemas() -> Mapping[str, Mapping[str, Mapping[str, Any]]]:
+    """Return canonical-keyed style schema views."""
+    return CANONICAL_STYLE_SCHEMAS

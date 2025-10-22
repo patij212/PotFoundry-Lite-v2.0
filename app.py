@@ -31,7 +31,10 @@ if not HAS_PLOTLY:
 # --- PotFoundry UI/engine imports ---
 from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY
 from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict
-from pfui.schemas import STYLE_SCHEMAS
+import pfui.schemas as SC
+
+# Prefer accessor call to reduce heavy constant binding at module scope in other modules
+styles = SC.get_style_schemas()
 from pfui.state import (
     apply_pending_updates,
     queue_update,
@@ -162,9 +165,10 @@ def resolve_schema_key(style_name: str) -> str:
     otherwise we attempt a case-insensitive
     match and fall back to the original value.
     """
-    if style_name in STYLE_SCHEMAS:
+    styles = SC.get_style_schemas()
+    if style_name in styles:
         return style_name
-    for k in STYLE_SCHEMAS.keys():
+    for k in styles.keys():
         if k.lower() == str(style_name).lower():
             return k
     return style_name
@@ -345,7 +349,7 @@ with _tab1:
         style_name = st.selectbox("Style family", options=style_options, key="style")
         style_key  = resolve_schema_key(style_name)
         # Jeśli styl nie istnieje w STYLE_SCHEMAS, pokaż ostrzeżenie i wybierz domyślny
-        if style_key not in STYLE_SCHEMAS:
+        if style_key not in styles:
             st.warning(f"Style '{style_name}' is not available. Falling back to default style.")
             style_name = style_options[0]
             style_key = resolve_schema_key(style_name)
@@ -526,7 +530,7 @@ with _tab1:
                         },
                         "opts": {
                             k: st.session_state.get(widget_key(style_key, k), v["default"])
-                            for k, v in STYLE_SCHEMAS.get(style_key, {}).items()
+                            for k, v in styles.get(style_key, {}).items()
                         },
                     }
                     pdata.setdefault("presets", []).append(preset)

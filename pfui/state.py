@@ -40,8 +40,8 @@ def _ensure_schema_globals() -> None:
     if not STYLE_SCHEMAS or not GLOBAL_CONTROLS:
         try:
             mod = importlib.import_module('pfui.schemas')
-            STYLE_SCHEMAS.update(getattr(mod, 'STYLE_SCHEMAS', {}) or {})
-            GLOBAL_CONTROLS.update(getattr(mod, 'GLOBAL_CONTROLS', {}) or {})
+            STYLE_SCHEMAS.update(getattr(mod, 'get_style_schemas', lambda: {})() or {})
+            GLOBAL_CONTROLS.update(getattr(mod, 'get_global_controls', lambda: {})() or {})
         except Exception:
             STYLE_SCHEMAS = STYLE_SCHEMAS or {}
             GLOBAL_CONTROLS = GLOBAL_CONTROLS or {}
