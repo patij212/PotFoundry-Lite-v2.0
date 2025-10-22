@@ -1797,7 +1797,7 @@ def _build_canonical_schema() -> tuple[
     """
 
     def remap_block(
-        block: Dict[str, Dict[str, Any]], alias_map: Mapping[str, str]
+        block: Mapping[str, Mapping[str, Any]], alias_map: Mapping[str, str]
     ) -> Dict[str, Dict[str, Any]]:
         out: Dict[str, Dict[str, Any]] = {}
         for legacy_key, meta in block.items():
@@ -1809,46 +1809,14 @@ def _build_canonical_schema() -> tuple[
             out[canon_key] = m
         return out
 
-    canonical_globals = remap_block(GLOBAL_CONTROLS, GLOBAL_ALIASES)
+    canonical_globals = remap_block(_GLOBAL_CONTROLS, _GLOBAL_ALIASES)
     canonical_styles: Dict[str, Dict[str, Dict[str, Any]]] = {}
-    for style, block in STYLE_SCHEMAS.items():
-        canonical_styles[style] = remap_block(block, ALIASES_BY_STYLE.get(style, {}))
+    for style, block in _STYLE_SCHEMAS.items():
+        canonical_styles[style] = remap_block(block, _ALIASES_BY_STYLE.get(style, {}))
     return canonical_globals, canonical_styles
 
 
 _CANONICAL_CONTROLS, _CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
-
-# Freeze alias maps (and their reverses) to avoid runtime mutation.
-GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(_GLOBAL_ALIASES))
-ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in _ALIASES_BY_STYLE.items()}
-)
-GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(dict(_GLOBAL_REVERSE))
-REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in _REVERSE_BY_STYLE.items()}
-)
-
-# Freeze top-level schema dicts to avoid accidental mutation at runtime.
-GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in _GLOBAL_CONTROLS.items()}
-)
-STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = MappingProxyType(
-    {
-        k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()})
-        for k, v in _STYLE_SCHEMAS.items()
-    }
-)
-CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in _CANONICAL_CONTROLS.items()}
-)
-CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = (
-    MappingProxyType(
-        {
-            k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()})
-            for k, v in _CANONICAL_STYLE_SCHEMAS.items()
-        }
-    )
-)
 
 # =============================================================================
 # Validation, defaults, and schema helpers
@@ -2031,10 +1999,12 @@ def sanitize_opts(
         try:
             vv = _coerce_one(v, meta)
             if isinstance(vv, (int, float)):
-                if "min" in meta:
-                    vv = max(vv, meta["min"])  # type: ignore[index]
-                if "max" in meta:
-                    vv = min(vv, meta["max"])  # type: ignore[index]
+                minv = meta.get("min")
+                maxv = meta.get("max")
+                if isinstance(minv, (int, float)):
+                    vv = max(vv, minv)
+                if isinstance(maxv, (int, float)):
+                    vv = min(vv, maxv)
             out[k] = vv
         except Exception as e:
             errors.append(f"{k}: {e}")
@@ -2150,7 +2120,9 @@ def compress_opts(
 
 if __name__ == "__main__":
     # Allow running the module directly without side effects (import-safe).
-    print("pfui.schemas loaded OK. Styles:", ", ".join(sorted(STYLE_SCHEMAS.keys())))
+    # Use the private `_STYLE_SCHEMAS` here to avoid referencing the
+    # public frozen `STYLE_SCHEMAS` before it is built later in the file.
+    print("pfui.schemas loaded OK. Styles:", ", ".join(sorted(_STYLE_SCHEMAS.keys())))
 
 
 # =============================================================================
@@ -2158,7 +2130,7 @@ if __name__ == "__main__":
 # =============================================================================
 
 
-def _freeze_meta(d: Dict[str, Any]) -> MappingProxyType:
+def _freeze_meta(d: Mapping[str, Any]) -> MappingProxyType:
     """Return an immutable view of control meta; freeze options to tuple if present."""
     frozen = dict(d)
     if "options" in frozen and isinstance(frozen["options"], list):
@@ -2166,15 +2138,22 @@ def _freeze_meta(d: Dict[str, Any]) -> MappingProxyType:
     return MappingProxyType(frozen)
 
 
-def _freeze_block(block: Dict[str, Dict[str, Any]]) -> MappingProxyType:
-    """Freeze a block mapping key -> meta."""
+def _freeze_block(block: Mapping[str, Mapping[str, Any]]) -> MappingProxyType:
+    """Freeze a block mapping key -> meta.
+
+    Accept Mapping inputs (including MappingProxyType) so callers that
+    pass already-frozen mappings don't trigger mypy arg-type errors.
+    """
     return MappingProxyType({k: _freeze_meta(v) for k, v in block.items()})
 
 
 def _freeze_style_map(
-    style_map: Dict[str, Dict[str, Dict[str, Any]]],
+    style_map: Mapping[str, Mapping[str, Mapping[str, Any]]],
 ) -> MappingProxyType:
-    """Freeze style -> (key -> meta) mapping."""
+    """Freeze style -> (key -> meta) mapping.
+
+    Accept Mapping inputs to be compatible with already-frozen structures.
+    """
     return MappingProxyType({style: _freeze_block(b) for style, b in style_map.items()})
 
 
@@ -2213,19 +2192,17 @@ REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
 )
 
 # Build canonical mirrors before freezing schema blocks deeply.
-CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
+# (Use the previously-created private canonical mirrors: _CANONICAL_CONTROLS/_CANONICAL_STYLE_SCHEMAS)
 
 # Deep-freeze schema dicts (blocks and inner meta).
-GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(dict(GLOBAL_CONTROLS))  # type: ignore[arg-type]
+GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(_GLOBAL_CONTROLS)
 STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = _freeze_style_map(
-    {k: dict(v) for k, v in STYLE_SCHEMAS.items()}
-)  # type: ignore[dict-item]
-CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(
-    dict(CANONICAL_CONTROLS)
-)  # type: ignore[arg-type]
+    _STYLE_SCHEMAS
+)
+CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(_CANONICAL_CONTROLS)
 CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = (
-    _freeze_style_map({k: dict(v) for k, v in CANONICAL_STYLE_SCHEMAS.items()})
-)  # type: ignore[dict-item]
+    _freeze_style_map(_CANONICAL_STYLE_SCHEMAS)
+)
 
 
 # Conservative accessors for large schema constants. Callers should prefer
