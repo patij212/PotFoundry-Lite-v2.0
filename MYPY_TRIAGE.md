@@ -209,6 +209,11 @@ Found 235 errors in 35 files (checked 98 source files)
     - Files: `app.py`
     - Change: Replaced `st.session_state.setdefault("_debug_logs", ...)` with `ss.setdefault(...)` and `del st.session_state[k]` with `del ss[k]` to consistently use the narrowed session mapping.
     - Focused mypy: expected success (verify in next focused run)
+
+- [2025-10-23] Micro-fix: app.py — replace `st.session_state[...]` with `ss[...]` in sidebar
+    - Files: `app.py`
+    - Change: Replaced multiple direct reads/writes to `st.session_state` in the sidebar scope with the narrowed `ss` mapping (assignments and initializers). This reduces mypy/IDE noise and keeps a single typed local for session access.
+    - Focused mypy: success (no issues found in `app.py` after change)
     - Change: Renamed local color picker result variables to `preview_grad_c1_val`, `_c2_val`, `_c3_val` to avoid assigning Streamlit DeltaGenerator values into simple `str` names. Predeclared `png_path: Optional[str] = None` before snapshot capture try-block to avoid None vs str assignment warnings.
     - Focused mypy (before): 16 errors in 1 file
     - Focused mypy (after): 11 errors in 1 file

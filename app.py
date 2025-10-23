@@ -287,11 +287,13 @@ document.addEventListener('keydown', function(e) {
 # Deep Link Handling (load state from URL query param)
 # ============================================================
 if "_deeplink_applied" not in st.session_state:
+    # Narrow session-state for this block to keep type-checker happy
+    ss = cast(dict[str, Any], st.session_state)
     state_from_url = parse_query_params()
     if state_from_url:
         try:
             warnings = apply_state(state_from_url, quiet=True)
-            st.session_state["_deeplink_applied"] = True
+            ss["_deeplink_applied"] = True
             clear_query_params()
             if warnings:
                 st.info(f"Loaded design from link (with {len(warnings)} adjustments)")
@@ -299,7 +301,7 @@ if "_deeplink_applied" not in st.session_state:
                 st.success("Loaded design from link")
         except Exception as e:
             st.warning(f"Failed to load design from link: {e}")
-    st.session_state.setdefault("_deeplink_applied", True)
+    ss.setdefault("_deeplink_applied", True)
 
 # ------------ Tabs ------------
 # Check if library is configured to show Library tab
@@ -547,7 +549,7 @@ with _tab1:
                             if st.button("Fix", key=f"fix_{issue.field}_{i}"):
                                 for k, v in issue.suggestion.items():
                                     try:
-                                        st.session_state[k] = v
+                                        ss[k] = v
                                     except Exception:
                                         pass
                                 try:
@@ -924,8 +926,8 @@ with _tab1:
             key="force_mesh_capture",
             help="Regeneruj statyczny obraz siatki niezależnie od tego czy geometria się zmieniła.",
         ):
-            st.session_state["_force_mesh_png_capture"] = True
-            st.session_state["_preview_stale"] = True
+            ss["_force_mesh_png_capture"] = True
+            ss["_preview_stale"] = True
             try:
                 st.rerun()
             except Exception:
@@ -1074,11 +1076,11 @@ with _tab1:
                     "_last_surface_png",
                 ):
                     try:
-                        if k in st.session_state:
-                            del st.session_state[k]
+                        if k in ss:
+                            del ss[k]
                     except Exception:
                         pass
-                st.session_state["_preview_stale"] = True
+                ss["_preview_stale"] = True
                 st.rerun()
 
         # Server-side fallback for debounced mode: if enough time has elapsed
@@ -1164,11 +1166,11 @@ with _tab1:
     # Initialize preview cache & stale flag so manual mode can keep showing
     # the last generated preview until the user explicitly updates it.
     # Keep separate caches for surface (fast) and mesh (exact) previews
-    st.session_state.setdefault("_last_surface_png", None)
-    st.session_state.setdefault("_last_surface_fig_json", None)
-    st.session_state.setdefault("_last_mesh_png", None)
-    st.session_state.setdefault("_last_mesh_fig_json", None)
-    st.session_state.setdefault("_preview_stale", False)
+    ss.setdefault("_last_surface_png", None)
+    ss.setdefault("_last_surface_fig_json", None)
+    ss.setdefault("_last_mesh_png", None)
+    ss.setdefault("_last_mesh_fig_json", None)
+    ss.setdefault("_preview_stale", False)
 
     # Early placeholders so we can render the cached preview when needed.
     preview_placeholder = st.empty()
@@ -1289,9 +1291,9 @@ with _tab1:
                     )
                     # Cache for appearance-only changes
                     try:
-                        st.session_state["_last_X"] = X
-                        st.session_state["_last_Y"] = Y
-                        st.session_state["_last_Z"] = Z
+                        ss["_last_X"] = X
+                        ss["_last_Y"] = Y
+                        ss["_last_Z"] = Z
                     except Exception:
                         pass
                 t1_arrays = time.time()
@@ -1375,7 +1377,7 @@ with _tab1:
                     pass
                 # In auto mode we consider the new preview current, so clear stale flag
                 if preview_mode == "auto":
-                    st.session_state["_preview_stale"] = False
+                    ss["_preview_stale"] = False
                 preview_exists = True
         except Exception as e:
             preview_exists = False
@@ -1389,14 +1391,14 @@ with _tab1:
                     )
                 else:
                     perf.append("arrays:ERROR")
-                st.session_state["_perf_logs"] = perf[-40:]
+                ss["_perf_logs"] = perf[-40:]
             except Exception:
                 pass
             # Remember last successful preview signatures
             try:
                 if preview_exists and geom_sig is not None and app_sig is not None:
-                    st.session_state["_last_preview_geom_sig"] = geom_sig
-                    st.session_state["_last_preview_app_sig"] = app_sig
+                    ss["_last_preview_geom_sig"] = geom_sig
+                    ss["_last_preview_app_sig"] = app_sig
             except Exception:
                 pass
 
@@ -1617,15 +1619,15 @@ with _tab1:
                 )
                 # Persist latest quick preview figure for cached mode
                 try:
-                    st.session_state["_last_surface_fig_json"] = fig.to_dict()
+                    ss["_last_surface_fig_json"] = fig.to_dict()
                 except Exception:
                     pass
                 try:
-                    perf = st.session_state.setdefault("_perf_logs", [])
+                    perf = ss.setdefault("_perf_logs", [])
                     perf.append(
                         f"surface_plotly:{(time.time() - t0_surface) * 1000:.1f}ms"
                     )
-                    st.session_state["_perf_logs"] = perf[-40:]
+                    ss["_perf_logs"] = perf[-40:]
                 except Exception:
                     pass
             elif not HAS_PLOTLY:
@@ -1676,10 +1678,10 @@ with _tab1:
             # we stored png_bytes after choosing mesh vs surface above
             # but if interactive_mesh was false this is from surface
             if interactive_mesh:
-                st.session_state["_last_mesh_png"] = png_bytes
+                ss["_last_mesh_png"] = png_bytes
             else:
-                st.session_state["_last_surface_png"] = png_bytes
-            st.session_state["_preview_stale"] = False
+                ss["_last_surface_png"] = png_bytes
+            ss["_preview_stale"] = False
     except Exception:
         pass
 
@@ -1758,9 +1760,9 @@ with _tab1:
                                 V[:, 2] -= V[:, 2].min()
                             # Persist cache for future appearance-only updates
                             try:
-                                st.session_state["_last_mesh_V"] = V
-                                st.session_state["_last_mesh_F"] = F
-                                st.session_state["_last_mesh_ntheta"] = int(ntheta)
+                                ss["_last_mesh_V"] = Vb
+                                ss["_last_mesh_F"] = Fb
+                                ss["_perf_logs"] = perf[-40:]
                                 st.session_state["_last_mesh_nz"] = int(nz)
                             except Exception:
                                 pass
