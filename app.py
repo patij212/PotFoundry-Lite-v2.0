@@ -1406,10 +1406,11 @@ with _tab1:
     # previously cached preview so the UI remains usable. Only display the
     # 'out-of-date' warning in explicit manual mode when the stale flag is set.
     if not should_update_preview:
-        last_mesh_png = ss.get("_last_mesh_png")
-        last_mesh_json = ss.get("_last_mesh_fig_json")
-        last_surf_png = ss.get("_last_surface_png")
-        last_surf_json = ss.get("_last_surface_fig_json")
+        # Cast cached preview artifacts to concrete optionals for the type checker
+        last_mesh_png = cast(Optional[bytes], ss.get("_last_mesh_png"))
+        last_mesh_json = cast(Optional[dict], ss.get("_last_mesh_fig_json"))
+        last_surf_png = cast(Optional[bytes], ss.get("_last_surface_png"))
+        last_surf_json = cast(Optional[dict], ss.get("_last_surface_fig_json"))
 
         stale = bool(ss.get("_preview_stale", False))
         show_warning = (preview_mode == "manual") and stale
