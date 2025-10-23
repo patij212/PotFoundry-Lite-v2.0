@@ -1947,7 +1947,7 @@ with _tab1:
             except Exception as e:
                 # Fallback to last known mesh PNG if available
                 try:
-                    last_png = ss.get("_last_mesh_png")
+                    last_png = cast(Optional[bytes], ss.get("_last_mesh_png"))
                     if last_png:
                         mesh_placeholder.image(
                             last_png,
@@ -1963,7 +1963,7 @@ with _tab1:
         else:
             # Plotly not available: show static PNG
             try:
-                current_png = png_bytes or ss.get("_last_mesh_png")
+                current_png = png_bytes or cast(Optional[bytes], ss.get("_last_mesh_png"))
                 if current_png:
                     mesh_placeholder.image(
                         current_png, caption="Full Preview (static)", width="stretch"
