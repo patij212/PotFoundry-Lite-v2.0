@@ -226,15 +226,17 @@ def resolve_schema_key(style_name: str) -> str:
 # creating widgets. This ensures queue_update() calls are realized on the
 # subsequent run rather than being lost across a rerun.
 try:
-    # ensure debug log container exists early so boot messages persist
-    if "_debug_logs" not in st.session_state:
-        st.session_state["_debug_logs"] = []
+    # Narrow session state for type-checking and ensure debug log container
+    # exists early so boot messages persist
+    ss = cast(dict[str, Any], st.session_state)
+    if "_debug_logs" not in ss:
+        ss["_debug_logs"] = []
     apply_pending_updates()
-    st.session_state["_debug_logs"].append("Boot: applied pending updates.")
+    ss["_debug_logs"].append("Boot: applied pending updates.")
 except Exception:
     # Do not crash the UI on boot; best-effort diagnostics only.
     try:
-        st.session_state.setdefault("_debug_logs", []).append(
+        ss.setdefault("_debug_logs", []).append(
             "Boot: failed to apply pending updates"
         )
     except Exception:

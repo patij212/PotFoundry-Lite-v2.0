@@ -199,6 +199,11 @@ Found 235 errors in 35 files (checked 98 source files)
 
 - [2025-10-23] Micro-fix: app.py Appearance color-picker rename + png_path predeclare
     - Files: `app.py`
+
+- [2025-10-23] Micro-fix: app.py — narrow early boot `_debug_logs` access to use `ss = cast(dict[str, Any], st.session_state)`
+    - Files: `app.py`
+    - Change: In the early boot block replaced direct `st.session_state` accesses with a narrowed `ss` mapping and used `ss.setdefault`/`ss.append` to reduce mypy noise.
+    - Focused mypy: success (no issues in `app.py` after change)
     - Change: Renamed local color picker result variables to `preview_grad_c1_val`, `_c2_val`, `_c3_val` to avoid assigning Streamlit DeltaGenerator values into simple `str` names. Predeclared `png_path: Optional[str] = None` before snapshot capture try-block to avoid None vs str assignment warnings.
     - Focused mypy (before): 16 errors in 1 file
     - Focused mypy (after): 11 errors in 1 file
