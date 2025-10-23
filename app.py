@@ -172,7 +172,7 @@ def _cleanup_stale_media_ids() -> None:
             "_preview_stale",
         ):
             try:
-                st.session_state.setdefault("_debug_logs", []).append(
+                ss.setdefault("_debug_logs", []).append(
                     f"Debug: preserved session key {k}"
                 )
             except Exception:
@@ -187,7 +187,7 @@ def _cleanup_stale_media_ids() -> None:
         try:
             if _has_stale(v):
                 try:
-                    del st.session_state[k]
+                    del ss[k]
                 except Exception:
                     # best-effort removal; ignore failures
                     pass
