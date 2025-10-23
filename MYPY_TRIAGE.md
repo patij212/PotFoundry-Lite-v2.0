@@ -199,6 +199,7 @@ Found 235 errors in 35 files (checked 98 source files)
 
 - [2025-10-23] Micro-fix: app.py Appearance color-picker rename + png_path predeclare
     - Files: `app.py`
+ - [2025-10-23] Fix: app.py — fixed inconsistent indentation in debounced-preview `try:` block (around line 1092); re-ran focused mypy: Success: no issues found in 1 source file.
 
 - [2025-10-23] Micro-fix: app.py — narrow early boot `_debug_logs` access to use `ss = cast(dict[str, Any], st.session_state)`
     - Files: `app.py`
@@ -213,6 +214,11 @@ Found 235 errors in 35 files (checked 98 source files)
 - [2025-10-23] Micro-fix: app.py — replace `st.session_state[...]` with `ss[...]` in sidebar
     - Files: `app.py`
     - Change: Replaced multiple direct reads/writes to `st.session_state` in the sidebar scope with the narrowed `ss` mapping (assignments and initializers). This reduces mypy/IDE noise and keeps a single typed local for session access.
+    - Focused mypy: success (no issues found in `app.py` after change)
+
+- [2025-10-23] Micro-fix: app.py — cast session-derived locals and predeclare Optionals
+    - Files: `app.py`
+    - Change: Cast several session-derived short-lived variables to concrete types (e.g., `mode`, `prev_style`, `last_mesh_regen`, `last_mesh_time`, `surf_png`, `mesh_png`, `last_ts`) and predeclare Optionals where helpful to reduce None-vs-value and Any-type noise in editor/myPy.
     - Focused mypy: success (no issues found in `app.py` after change)
     - Change: Renamed local color picker result variables to `preview_grad_c1_val`, `_c2_val`, `_c3_val` to avoid assigning Streamlit DeltaGenerator values into simple `str` names. Predeclared `png_path: Optional[str] = None` before snapshot capture try-block to avoid None vs str assignment warnings.
     - Focused mypy (before): 16 errors in 1 file

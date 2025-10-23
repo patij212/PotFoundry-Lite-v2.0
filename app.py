@@ -345,7 +345,7 @@ with _tab1:
                 # Only mark preview as stale if we're in manual or debounced
                 # modes. In auto mode previews update immediately so we
                 # shouldn't mark them stale.
-                mode = ss.get("preview_mode", "manual")
+                mode = cast(str, ss.get("preview_mode", "manual"))
                 if mode in ("manual", "debounced"):
                     ss["_preview_stale"] = True
                 else:
@@ -379,9 +379,9 @@ with _tab1:
         # selectbox and our auto-name use the same initial value.
         if "style" not in ss and all_styles:
             ss["style"] = all_styles[0]
-        style_guess = ss.get(
+        style_guess = cast(Optional[str], ss.get(
             "style", all_styles[0] if all_styles else None
-        )
+        ))
         H_guess = int(ss.get("H", 120.0))
         try:
             auto_name_guess = (
@@ -416,7 +416,7 @@ with _tab1:
             value=ss.get("_model_name_auto", True),
             key="_model_name_auto",
         )
-        prev_style = ss.get("_prev_style", None)
+        prev_style = cast(Optional[str], ss.get("_prev_style", None))
         style_options = sorted(STYLES.keys())
         style_name = st.selectbox("Style family", options=style_options, key="style")
         style_key = resolve_schema_key(style_name)
@@ -933,8 +933,8 @@ with _tab1:
             except Exception:
                 pass
         # Cached / regen status indicator
-        last_mesh_regen = ss.get("_last_mesh_png_regenerated", None)
-        last_mesh_time = ss.get("_last_mesh_png_time_ms", None)
+        last_mesh_regen = cast(Optional[bool], ss.get("_last_mesh_png_regenerated", None))
+        last_mesh_time = cast(Optional[float], ss.get("_last_mesh_png_time_ms", None))
         if last_mesh_regen is not None:
             status = "regenerated" if last_mesh_regen else "cached"
             extra = f" ({last_mesh_time:.0f} ms)" if last_mesh_time is not None else ""
@@ -942,8 +942,8 @@ with _tab1:
 
         # Offer preview image downloads (PNG, optional SVG) using cached previews
         try:
-            surf_png = ss.get("_last_surface_png")
-            mesh_png = ss.get("_last_mesh_png")
+            surf_png = cast(Optional[bytes], ss.get("_last_surface_png"))
+            mesh_png = cast(Optional[bytes], ss.get("_last_mesh_png"))
             # Two compact columns for download buttons if available
             d1, d2 = cE3.columns(2)
             if surf_png:
@@ -1088,7 +1088,7 @@ with _tab1:
         # client-side click didn't occur.
         if preview_mode == "debounced":
             try:
-                last_ts = ss.get("_last_change_ts", None)
+                last_ts = cast(Optional[float], ss.get("_last_change_ts", None))
                 debounce_timeout_seconds = float(ss.get("debounce_timeout", 0.8))
                 # Only update if a change actually occurred (stale flag set)
                 if (
