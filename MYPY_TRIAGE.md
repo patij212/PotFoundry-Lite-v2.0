@@ -186,6 +186,9 @@ Found 235 errors in 35 files (checked 98 source files)
     - Focused mypy (before): 16 errors in 1 file
     - Focused mypy (after): 11 errors in 1 file
     - Notes: Reduced several attribute/index errors in the preview area. Remaining issues are assignment incompatibilities (None vs str) and one unreachable statement.
+ - [2025-10-23] Micro-fix: app.py — iterate using narrowed `ss` in `_cleanup_stale_media_ids`
+     - Change: replaced `for k in list(st.session_state.keys()):` with `for k in list(ss.keys()):` to consistently use the cast `ss = cast(dict[str, Any], st.session_state)` and reduce attribute access sites.
+     - Focused mypy: success (no issues in `app.py` after change)
 
 - [2025-10-23] Micro-fix: cast snapshot method to str to avoid DeltaGenerator assignment
     - Files: `app.py`
