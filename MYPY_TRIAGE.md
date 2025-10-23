@@ -201,6 +201,7 @@ Found 235 errors in 35 files (checked 98 source files)
     - Files: `app.py`
  - [2025-10-23] Fix: app.py — fixed inconsistent indentation in debounced-preview `try:` block (around line 1092); re-ran focused mypy: Success: no issues found in 1 source file.
  - [2025-10-24] Micro-fix: app.py — cast cached preview session values to concrete Optionals (`last_mesh_png`, `last_mesh_json`, `last_surf_png`, `last_surf_json`) to reduce editor/mypy noise; focused mypy: Success.
+ - [2025-10-24] Micro-fix: app.py — narrow publish UI values to concrete types before publish flows (`publish_title` -> `title_safe` (str), `publish_license` -> `license_safe` (str), `publish_tags` -> `tags_safe` (list[str])); focused mypy: Success.
 
 - [2025-10-23] Micro-fix: app.py — narrow early boot `_debug_logs` access to use `ss = cast(dict[str, Any], st.session_state)`
     - Files: `app.py`

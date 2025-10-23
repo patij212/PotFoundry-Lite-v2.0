@@ -2485,6 +2485,10 @@ with _tab1:
     # Handle explicit Publish click (without requiring Export)
     ss = cast(dict[str, Any], st.session_state)
     if ss.get("_publish_clicked"):
+        # Narrow publish fields once for the publish flow; these values come from Streamlit widgets
+        title_safe: str = str(publish_title or "")
+        license_safe: str = str(publish_license or "CC BY-NC 4.0")
+        tags_safe: list[str] = list(publish_tags or [])
         try:
             # Build mesh at export resolution (reuse upscale), else fall back to current n_theta/n_z
             up = (
@@ -2583,9 +2587,9 @@ with _tab1:
                         opts=opts,
                         mesh=mesh_dict,
                         diagnostics=diagnostics_dict,
-                        license=publish_license,
-                        title=publish_title,
-                        tags=publish_tags,
+                        license=license_safe,
+                        title=title_safe,
+                        tags=tags_safe,
                         app_commit=git_commit or "",
                     )
                 if result.duplicate:
@@ -2694,9 +2698,9 @@ with _tab1:
                             opts=opts,
                             mesh=mesh_dict,
                             diagnostics=diagnostics_dict,
-                            license=publish_license,
-                            title=publish_title,
-                            tags=publish_tags,
+                            license=license_safe,
+                            title=title_safe,
+                            tags=tags_safe,
                             app_commit=git_commit or "",
                         )
 
