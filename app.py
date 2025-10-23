@@ -1325,15 +1325,15 @@ with _tab1:
                         mesh_data = (Vb, Fb)
                         # Cache geometry for reuse when only appearance changes
                         try:
-                            st.session_state["_last_mesh_V"] = Vb
-                            st.session_state["_last_mesh_F"] = Fb
+                            ss["_last_mesh_V"] = Vb
+                            ss["_last_mesh_F"] = Fb
                         except Exception:
                             pass
                         t1_mb = time.time()
                         try:
-                            perf = st.session_state.setdefault("_perf_logs", [])
+                            perf = ss.setdefault("_perf_logs", [])
                             perf.append(f"mesh_build:{(t1_mb - t0_mb) * 1000:.1f}ms")
-                            st.session_state["_perf_logs"] = perf[-40:]
+                            ss["_perf_logs"] = perf[-40:]
                         except Exception:
                             pass
                         # If seam debug samples are present, show them in a collapsible panel
@@ -1365,11 +1365,11 @@ with _tab1:
                                             except Exception:
                                                 st.write(repr(samp))
                         except Exception as _e_dbg:
-                            st.session_state.setdefault("_debug_logs", []).append(
+                            ss.setdefault("_debug_logs", []).append(
                                 f"Seam debug display failed: {_e_dbg}"
                             )
                     except Exception as _e_mb:
-                        st.session_state.setdefault("_debug_logs", []).append(
+                        ss.setdefault("_debug_logs", []).append(
                             f"Mesh build failed (preview): {_e_mb}"
                         )
                 else:
@@ -1384,7 +1384,7 @@ with _tab1:
             st.error(f"Preview generation failed: {e}")
         finally:
             try:
-                perf = st.session_state.setdefault("_perf_logs", [])
+                perf = ss.setdefault("_perf_logs", [])
                 if preview_exists:
                     perf.append(
                         f"arrays:{(t1_arrays - t0_arrays) * 1000:.1f}ms total_so_far:{(time.time() - t0_total) * 1000:.1f}ms"
@@ -2211,11 +2211,11 @@ with _tab1:
             col_clear1, col_clear2 = st.columns([3, 1])
             with col_clear2:
                 if st.button("🗑️ Clear All", help="Delete all snapshots"):
-                    st.session_state["_snaps"] = []
+                    ss["_snaps"] = []
                     snaps = []
                     cleanup_old_tempfiles()  # Clean up temp files
                     # UI-only change; suppress preview update on next rerun
-                    st.session_state["_suppress_preview_once"] = True
+                    ss["_suppress_preview_once"] = True
                     st.rerun()
 
         sc1, sc2 = st.columns([2, 1])
@@ -2223,11 +2223,11 @@ with _tab1:
         if sc2.button("Capture"):
             png_path: Optional[str] = None
             # Initialize debug logs in session state if not already present
-            if "_debug_logs" not in st.session_state:
-                st.session_state["_debug_logs"] = []
+            if "_debug_logs" not in ss:
+                ss["_debug_logs"] = []
 
             def log_debug(message: str):
-                st.session_state["_debug_logs"].append(message)
+                ss.setdefault("_debug_logs", []).append(message)
 
             try:
                 # Delegate snapshot rendering to central cached function which
@@ -2261,7 +2261,7 @@ with _tab1:
                     st.success(
                         f"✓ Snapshot '{snap_name}' captured successfully! (method: {method})"
                     )
-                    st.session_state.setdefault("_debug_logs", []).append(
+                    ss.setdefault("_debug_logs", []).append(
                         f"Snapshot capture used method: {method}"
                     )
                 else:
@@ -2294,7 +2294,7 @@ with _tab1:
             ]
             # Write directly so the UI reflects the new snapshot without a
             # forced rerun. Keep only the last 6 snapshots.
-            st.session_state["_snaps"] = new_snaps[-6:]
+            ss["_snaps"] = new_snaps[-6:]
             log_debug("Session state updated (direct write).")
             # Re-read into local variable so the current run will render the
             # newly added snapshot immediately (avoids needing st.rerun()).
@@ -2375,23 +2375,23 @@ with _tab1:
                     )
                     for k, v in s["params"]["opts"].items():
                         pending[widget_key(sk, k)] = v
-                    try:
-                        queue_update(pending)
-                        st.session_state.setdefault("_debug_logs", []).append(
-                            f"Queued snapshot {i + 1} for apply; rerunning."
-                        )
-                        # We'll re-render after state applies; avoid an extra preview compute during rerun frame
-                        st.session_state["_suppress_preview_once"] = True
-                        st.rerun()
-                    except Exception:
-                        st.session_state.setdefault("_debug_logs", []).append(
-                            f"Failed to queue_update snapshot {i + 1}; falling back to direct write."
-                        )
-                        for _k, _v in pending.items():
-                            try:
-                                st.session_state[_k] = _v
-                            except Exception:
-                                pass
+                        try:
+                            queue_update(pending)
+                            ss.setdefault("_debug_logs", []).append(
+                                f"Queued snapshot {i + 1} for apply; rerunning."
+                            )
+                            # We'll re-render after state applies; avoid an extra preview compute during rerun frame
+                            ss["_suppress_preview_once"] = True
+                            st.rerun()
+                        except Exception:
+                            ss.setdefault("_debug_logs", []).append(
+                                f"Failed to queue_update snapshot {i + 1}; falling back to direct write."
+                            )
+                            for _k, _v in pending.items():
+                                try:
+                                    ss[_k] = _v
+                                except Exception:
+                                    pass
                 if cc3.button("Delete", key=f"del_{i}"):
                     # Remove temp file if present and looks safe
                     try:
@@ -2399,11 +2399,11 @@ with _tab1:
                     except Exception:
                         pass
                     new_snaps = snaps[:i] + snaps[i + 1 :]
-                    st.session_state["_snaps"] = new_snaps
-                    st.session_state.setdefault("_debug_logs", []).append(
+                    ss["_snaps"] = new_snaps
+                    ss.setdefault("_debug_logs", []).append(
                         f"Deleted snapshot {i + 1}."
                     )
-                    st.session_state["_suppress_preview_once"] = True
+                    ss["_suppress_preview_once"] = True
 
     # ---------------------- EXPORT ---------------------
     st.subheader("Export STL")
