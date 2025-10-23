@@ -335,35 +335,35 @@ with _tab1:
         st.header("Model")
         # Timestamp used to implement debounced preview updates
         if "_last_change_ts" not in ss:
-            st.session_state["_last_change_ts"] = 0.0
+            ss["_last_change_ts"] = 0.0
 
         def _mark_changed() -> None:
             try:
-                st.session_state["_last_change_ts"] = time.time()
+                ss["_last_change_ts"] = time.time()
                 # Only mark preview as stale if we're in manual or debounced
                 # modes. In auto mode previews update immediately so we
                 # shouldn't mark them stale.
                 mode = ss.get("preview_mode", "manual")
                 if mode in ("manual", "debounced"):
-                    st.session_state["_preview_stale"] = True
+                    ss["_preview_stale"] = True
                 else:
-                    st.session_state["_preview_stale"] = False
+                    ss["_preview_stale"] = False
             except Exception:
                 pass
 
         def _on_model_name_change() -> None:
             # If user edits model name manually, mark it and disable auto-name
             # so we don't overwrite the user's change.
-            st.session_state["_model_name_user_edited"] = True
-            st.session_state["_model_name_auto"] = False
+            ss["_model_name_user_edited"] = True
+            ss["_model_name_auto"] = False
 
         # Ensure user-edited flag exists (default False)
         if "_model_name_user_edited" not in ss:
-            st.session_state["_model_name_user_edited"] = False
+            ss["_model_name_user_edited"] = False
         # Ensure an explicit auto-name checkbox state exists. Default to True
         # (auto name enabled) unless the user has edited the name previously.
         if "_model_name_auto" not in ss:
-            st.session_state["_model_name_auto"] = not ss[
+            ss["_model_name_auto"] = not ss[
                 "_model_name_user_edited"
             ]
         # Compute an auto name (mirrors Snapshot default) from the last-known
@@ -375,8 +375,8 @@ with _tab1:
         all_styles = sorted(STYLES.keys()) if isinstance(STYLES, dict) else []
         # If no style is set in the session (first run), initialize it so the
         # selectbox and our auto-name use the same initial value.
-        if "style" not in st.session_state and all_styles:
-            st.session_state["style"] = all_styles[0]
+        if "style" not in ss and all_styles:
+            ss["style"] = all_styles[0]
         style_guess = ss.get(
             "style", all_styles[0] if all_styles else None
         )
@@ -393,8 +393,8 @@ with _tab1:
         # If auto-name checkbox is enabled, make sure the session reflects
         # the automatic name before creating the widget so the input shows it.
         if ss.get("_model_name_auto", True):
-            st.session_state["model_name"] = auto_name_guess
-            st.session_state["_model_name_user_edited"] = False
+            ss["model_name"] = auto_name_guess
+            ss["_model_name_user_edited"] = False
 
         # Model name input (placed near the top of the sidebar)
         name = st.text_input(
