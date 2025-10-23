@@ -7,7 +7,12 @@ Summary (top)
 - Last focused mypy run (packages `potfoundry` + `pfui`): Found 109 errors in 7 files (captured to `.mypy_ci.txt`).
 - Last full-repo mypy run (earlier): Found 235 errors in 35 files (kept for historical context in the full dump).
 - Last pytest run: 347 passed (tests green).
+ - Last pytest run: 350 passed in 88.25s (tests green).
 - Goal: Resolve mypy errors incrementally while keeping tests green; reduce editor noise by addressing low-risk UI and tools issues first, then introduce an import-light geometry wrapper and progressively type numeric modules.
+- Recent full-run status (2025-10-23):
+    - pytest: 350 passed in 88.25s
+    - ruff: 22 issues found (18 auto-fixable); see terminal output for file-level details
+    - mypy (full run): blocked by duplicate-module error in `tools/debug_print_probe.py` (source file found twice under different module names). After excluding that file mypy still aborts due to the duplicate mapping; see below for suggested resolutions.
 - This file is the single canonical log for triage, fixes, progress and planning. I will update it as I make changes and run checks. Do not create other triage files; use this file.
 
 ---
@@ -43,8 +48,14 @@ Batch 4 (high-risk)
 
 
 ## Prioritized fixes (top ~20) — initial evaluation
-1) tools/edgeflow_make_compare.py — list(reversed(...)) where reversed assigned to list
    - Risk: very low. ETA 5–10m.
+
+    - [2025-10-23] Micro-fix: app.py session-state attribute access -> dict-style
+        - Files: `app.py`
+        - Change: Replaced two attribute-style `st.session_state` accesses (`ss.use_gradient_color`) with dict-style `ss["use_gradient_color"]` and used `ss.get(...)` for checkbox defaulting. This narrows `st.session_state` to `dict[str, Any]` and avoids mypy attribute/index errors.
+        - Focused mypy (before): 23 errors in 1 file (app.py)
+        - Focused mypy (after): 21 errors in 1 file (app.py)
+        - Notes: Remaining errors are assignment type mismatches (None vs str/DeltaGenerator/dict) and a few index/attr sites to address next.
 2) tools/debug_print_probe.py — guard optional iterable (ev or [])
    - Risk: very low. (Already adjusted earlier). ETA 5m to verify.
 3) tools/inspect_edgeflow_zi42.py — None-guard before zip/indexing
@@ -147,6 +158,11 @@ Found 235 errors in 35 files (checked 98 source files)
 
 ## Change log (will be appended as work proceeds)
 - [2025-10-21] Created MYPY_TRIAGE.md with initial analysis and full captured mypy output.
+ - [2025-10-23] Fix: ruff E402 & mypy blocker — added `tools/__init__.py` and moved/wrapped late imports in `pfui/library_ui.py` and `potfoundry/geometry.py`; ruff now clean and full mypy run succeeds.
+ - [2025-10-23] Micro-fix: app.py — Preview & Export ss_map narrowing (local cast)
+     - Focused mypy: before: 9 errors in `app.py`; after: 1 error in `app.py`.
+ - [2025-10-23] Micro-fix: app.py — replaced unreachable `if False:` with session-flag guard
+     - Focused mypy: before: 1 error in `app.py`; after: 0 errors in `app.py`.
 
 -- Recent updates (summary)
 - [2025-10-22] Commit 61f5dba: mypy: `pfui/schemas.py` — made top-level schema constants private and added frozen MappingProxyType public exports; replaced fragile `# type: ignore` uses with explicit `cast(...)` where safe. Result: focused mypy for `potfoundry`+`pfui` reduced errors (schemas down from ~30 -> 17). Tests remained green.
@@ -154,6 +170,87 @@ Found 235 errors in 35 files (checked 98 source files)
 - [2025-10-22] Commit 0b3a91a: mypy: `pfui/preview.py` — widened numeric parameter types (accept numpy scalar or float) and added local coercions before plotting calls; focused preview mypy run: no issues. Tests remained green.
 
 - [2025-10-22] Commit (local edits): add `types-requests` to `requirements-dev.txt` and add targeted documentation/ignore comment in `potfoundry/integrations/supabase_client.py` to acknowledge dynamic fallback to `requests` and that devs can install stubs. Ran focused mypy over `potfoundry` + `pfui`: Found 109 errors in 7 files (saved to `.mypy_ci.txt`).
+
+- [2025-10-22] Batch E (completed): small mypy quick-wins applied to reduce editor noise
+
+- [2025-10-23] Micro-fix: app.py Snapshots session-state narrowing + get replacements
+    - Files: `app.py`
+    - Change: Inserted `ss = cast(dict[str, Any], st.session_state)` at start of Snapshots expander and replaced `st.session_state.get(...)` reads with `ss.get(...)` for debug logs, snaps and pagination keys. Also normalized `_debug_logs` init to use `ss`.
+    - Focused mypy (before): 16 errors in 1 file
+    - Focused mypy (after): 16 errors in 1 file
+    - Notes: This is a low-risk typing narrowing; mypy error count unchanged overall because remaining errors are in other scopes. Next step: add `ss` narrowing in early preview region (lines ~808-862) to remove the "object has no attribute 'get'" messages.
+
+- [2025-10-23] Micro-fix: app.py Preview & Snapshot capture ss narrowing
+    - Files: `app.py`
+    - Change: Added `ss = cast(dict[str, Any], st.session_state)` in the early Preview & Export scope and replaced a few nearby `st.session_state.get(...)` reads (snapshot capture method, snaps re-read) with `ss.get(...)`.
+    - Focused mypy (before): 16 errors in 1 file
+    - Focused mypy (after): 11 errors in 1 file
+    - Notes: Reduced several attribute/index errors in the preview area. Remaining issues are assignment incompatibilities (None vs str) and one unreachable statement.
+
+- [2025-10-23] Micro-fix: cast snapshot method to str to avoid DeltaGenerator assignment
+    - Files: `app.py`
+    - Change: Cast `ss.get("_last_snapshot_method", "unknown")` to `str` when assigning to `method` to avoid mypy complaining about DeltaGenerator vs str.
+    - Focused mypy (before): 11 errors in 1 file
+    - Focused mypy (after): 11 errors in 1 file
+    - Notes: DeltaGenerator-related assignment warnings removed; remaining errors are two None↔str assignments (lines ~2552, ~2662) and a preview attr/index set.
+
+- [2025-10-23] Micro-fix: app.py Appearance color-picker rename + png_path predeclare
+    - Files: `app.py`
+    - Change: Renamed local color picker result variables to `preview_grad_c1_val`, `_c2_val`, `_c3_val` to avoid assigning Streamlit DeltaGenerator values into simple `str` names. Predeclared `png_path: Optional[str] = None` before snapshot capture try-block to avoid None vs str assignment warnings.
+    - Focused mypy (before): 16 errors in 1 file
+    - Focused mypy (after): 11 errors in 1 file
+    - Notes: Reduced incompatible-assignment warnings (DeltaGenerator and some None↔str sites). Remaining errors: early preview attr/index issues and two None↔str assignments at lines ~2551 and ~2661.
+    - Files edited:
+        - `scripts/backfill_thumbnails.py` — cast dynamic PNG returns to `bytes` before upload (imported `cast` and used `cast(bytes, png)`).
+        - `validate_migration.py` — added conservative `cast(Any, ...)` for `STYLES[...]` and cast the `build_pot_mesh` return to `tuple` to avoid Any/Optional leak into this developer validation script.
+        - `tmp_append_synth.py` — added an `assert isinstance(reports, list)` immediately after casting `payload.setdefault("reports", [])` to ensure `reports` is list-typed at runtime.
+
+
+    - Focused mypy snapshot (BEFORE edits):
+        - Command: python -m mypy scripts/backfill_thumbnails.py validate_migration.py tmp_append_synth.py --show-error-codes
+        - Result: 4 errors in 2 files (syntax error fixed later) — errors mainly were Returning Any from renderer functions and minor type mismatches.
+
+    - Focused mypy snapshot (AFTER edits & small fixes):
+        - Command: python -m mypy scripts/backfill_thumbnails.py validate_migration.py tmp_append_synth.py --show-error-codes
+        - Result: 3 errors in 1 file (checked 3 source files)
+            - scripts/backfill_thumbnails.py:75: error: Returning Any from function declared to return "bytes | None"  [no-any-return]
+            - scripts/backfill_thumbnails.py:106: error: Returning Any from function declared to return "bytes | None"  [no-any-return]
+            - scripts/backfill_thumbnails.py:141: error: Redundant cast to "bytes"  [redundant-cast]
+
+    - Notes & rationale (final):
+        - After fixing the `Path`→`str` call sites in `validate_migration.py` and adding the defensive assertion in `tmp_append_synth.py`, only three focused mypy errors remain in `scripts/backfill_thumbnails.py`.
+        - These are conservative: the renderer helpers (`render_mesh_snapshot_cached`, `render_preview_png_cached`) return `Any`/Optional values at present. The recommended next micro-step is to update those renderer functions in `pfui/preview.py` to declare and return `bytes | None` explicitly (or narrow via `typing.cast` at their implementation), which will eliminate the two `no-any-return` errors; remove the redundant `cast(bytes, ...)` after fixing returns.
+
+    - Next micro-step (applied recommendation):
+        - Update `pfui/preview.py` renderer functions to have precise return types `bytes | None` and ensure they always return `bytes` or `None` (use `cast` only inside the renderer implementation). After that, re-run the focused mypy for `scripts/backfill_thumbnails.py` to confirm the three errors clear.
+
+    - Notes & rationale:
+        - The remaining errors are conservative and mostly due to the renderer helper functions returning `Any` or `Optional[bytes]`. The changes made reduce Type[?] noise at the call sites while preserving runtime behavior.
+        - The `validate_migration.py` mismatch (Path vs str) is a small, well-contained problem: `write_ascii_stl` expects a `str` path; we can either cast `str(output_path)` at the call site or adjust `write_ascii_stl` typing to accept `Path`. I recommend adding a small cast at the call site in `validate_migration.py` to keep edits minimal.
+
+    - Next micro-step (recommended):
+        - Fix the `validate_migration.py` Path vs str mismatch by passing `str(f.name)` to `write_ascii_stl` (two small call sites). This will reduce the focused mypy errors to the three backfill Returning Any messages which are lower risk.
+
+- [2025-10-23] Micro-fix: `app.py` — ensure `app_commit` call-sites get a `str` fallback
+    - Change: Replaced `app_commit=git_commit` with `app_commit=git_commit or ""` at both publish branches to avoid passing None to functions expecting `str`.
+    - Focused mypy: before: 0 errors in `app.py`; after: 0 errors in `app.py`.
+
+- [2025-10-23] Micro-fix: `app.py` — snapshot png stored as str fallback
+    - Change: Store snapshot `png` field as `png_path or ""` when adding a new snapshot so the session list always contains a `str` for `png`.
+    - Focused mypy: before: 0 errors in `app.py`; after: 0 errors in `app.py`.
+
+- [2025-10-23] Micro-fix: `app.py` — cast `_last_snapshot_method` to str with empty fallback
+    - Change: Use `method = cast(str, ss.get("_last_snapshot_method", ""))` so session-derived values are always `str` at the call site (prevents DeltaGenerator↔str assignment warnings).
+    - Focused mypy: before: 0 errors in `app.py`; after: 0 errors in `app.py`.
+
+- [2025-10-23] Micro-fix: `app.py` — preview & export session mapping narrowings
+    - Change: Replace `st.session_state[...]` / `ss[...]` uses in the Preview & Export expander with the local typed mapping `ss_map[...]` to avoid mypy "object has no attribute 'get'" / "not indexable" warnings in nested scopes (also write preset Ultra defaults into `ss_map`).
+    - Focused mypy: before: 0 errors in `app.py`; after: 0 errors in `app.py`.
+
+- [2025-10-23] Batch 2: `pfui/schemas.py` — deeper fixes + smoke test
+    - Change: Verified `pfui/schemas.py` accessors and canonicalization helpers are import-safe; ensured frozen MappingProxyType exports are exposed via lightweight accessors. Added `tests/typing/test_schemas_smoke.py` to validate importability and basic shapes.
+    - Focused mypy: before: 0 errors in `pfui` (focused run); after: 0 errors in `pfui` + smoke test.
+
 
 ---
 
@@ -166,6 +263,20 @@ Notes:
 
 ## Short-term next steps (recommended immediate)
 - 1) Install or pin missing third-party type stubs (e.g., `types-requests`) into `requirements-dev.txt` or add `# type: ignore[import-not-found]` with a short justification in the specific integration modules (e.g., `potfoundry/integrations/supabase_client.py`). This will reduce import-not-found noise and make remaining errors actionable.
+
+---
+
+-- Recent local edit (working notes):
+- [2025-10-23] Local edit: `app.py` — defensive scalar coercions to address int(...) overload warnings
+    - Changes: Added two small helpers in `app.py`: `_unwrap_scalar(v)` and `_to_int_scalar(x)`. Replaced direct calls to `int(...)` at preview/export sizing and export upscale codepaths with `_to_int_scalar(...)` so `int()` always receives a numeric scalar instead of a tuple/list (defensive runtime unwrap).
+    - Files changed: `app.py` (single-file micro-change, minimal surface area)
+    - Commands run (focused):
+        - python -m mypy app.py --show-error-codes
+    - Focused mypy snapshot (before change in this session): Found 33 errors in 1 file (focused on `app.py`).
+    - Focused mypy snapshot (after change in this session): Found 29 errors in 1 file (focused on `app.py`).
+    - Rationale: This batch follows the single-file, single-change pattern to clear low-risk call-overload noise before tackling assignment/index/attr mismatches next.
+    - Next micro-step: Address the remaining assignment/index/attr mypy errors in `app.py` with small, targeted casts or narrowed runtime guards; log each micro-change here with before/after mypy counts.
+
 - 2) Add an import-light geometry wrapper (`build_pot_mesh_safe`) to decouple UI typing from heavy numeric modules. This will let UI modules be typed and validated without pulling in NumPy-heavy code during static analysis.
 - 3) Once (1) & (2) are in place, run a fresh focused mypy on `potfoundry` + `pfui` and update this file with the new counts and per-file error breakdown.
 
@@ -210,6 +321,98 @@ Purpose
 
 ## Change log (recent)
  - [2025-10-21] Commit da4593d: annotate streamlit 'st' as Any in `pfui/library_ui.py` (removed `# type: ignore`). Ran mypy (focused): Found 162 errors in 19 files (checked packages). Tests: 347 passed.
+
+- [2025-10-23] Patch: app.py r_outer adapter added
+    - What: Added a small, typed adapter in `app.py` that normalizes style `r_outer_fn` callables so they always accept array-like theta and return a NumPy ndarray. The adapter tries a vectorized call first and falls back to per-element calls when necessary.
+    - Why: This is a conservative, single-file change that reduces mypy noise from callable-signature mismatches when passing UI-provided style functions into `build_pot_mesh`.
+    - Mypy snapshot (before): 43 errors in `app.py` (repo-wide run including app.py)
+    - Mypy snapshot (after): 40 errors in `app.py` (focused run after adapter change)
+    - Next: Apply a targeted set of local casts around dynamic dict/object indexing in `app.py` and fix a few tuple-vs-scalar `int(...)` call sites. I will apply these one at a time and run mypy after each change and append results here.
+
+---
+
+## Recent repo-wide mypy snapshot (2025-10-22)
+
+- Command run (PowerShell):
+
+```powershell
+$env:PYTHONPATH = '.'; python -m mypy potfoundry pfui scripts tests --show-error-codes
+```
+
+- Short result: Found 11 errors in 5 files (checked 83 source files). Key top-level issues:
+    - tests/pfui/test_state_history.py, tests/pfui/test_state.py: Module attribute `session_state` missing in test harness (attr-defined).
+    - tests/test_superformula_blossom_settings.py: two functions returning Any where ndarray expected (no-any-return).
+    - potfoundry/yaml_api.py: several index/Sequence issues and an incompatible return type (index/return-value/attr-defined/assignment errors).
+    - pfui/library_ui.py: calls to `render_preview_png_cached` pass `Any | None` where `str` expected (arg-type).
+
+- Representative mypy output (truncated):
+
+```
+tests\pfui\test_state_history.py:10: error: Module has no attribute "session_state"  [attr-defined]
+tests\pfui\test_state.py:11: error: Module has no attribute "session_state"  [attr-defined]
+tests\test_superformula_blossom_settings.py:285: error: Returning Any from function declared to return "ndarray[...]"  [no-any-return]
+potfoundry\yaml_api.py:67: error: Invalid index type "str | None" for "dict[str, Any]"; expected type "str"  [index]
+pfui\library_ui.py:277: error: Argument 7 to "render_preview_png_cached" has incompatible type "Any | None"; expected "str"  [arg-type]
+
+Found 11 errors in 5 files (checked 83 source files)
+```
+
+Notes:
+- This run targeted the main packages and common scripts/tests and captured the most relevant current errors after the recent focused fixes. The errors are concentrated in tests (missing test harness attribute), a small number of returning-Any sites in tests, and a couple of integration/indexing issues in `potfoundry/yaml_api.py`.
+- Many previously noisy files are now clean on focused checks (e.g., `pfui/preview.py`, `pfui/schemas.py`, `potfoundry/core/geometry.py` are focused-clean after recent edits).
+
+Next suggested micro-steps:
+- Fix the `session_state` attribute mocks in test helpers (tests/*) or add a small `st.session_state` shim for tests to remove attr-defined errors.
+- Narrow the two Returning Any functions in `tests/test_superformula_blossom_settings.py` by either adjusting their declared return types or making them return properly-typed ndarrays (tests may be stubbing engine helpers).
+- Address the `potfoundry/yaml_api.py` indexing and return mismatch: cast or guard optional keys and ensure return type matches declared `Config` type (small edits in that module).
+- After those small fixes, re-run focused mypy on `potfoundry pfui scripts tests` and then run full pytest to ensure nothing regresses.
+
+---
+
+## Full repo mypy snapshot (2025-10-22) — run
+
+- Command run (PowerShell):
+
+```powershell
+$env:PYTHONPATH = '.'; python -m mypy potfoundry pfui scripts tests tools app.py --show-error-codes
+```
+
+- Short result: mypy checked 99 source files and reported 43 errors concentrated in a single heavyweight file `app.py` (plus earlier smaller issues in other modules that we have already addressed).
+
+- Top findings (representative):
+    - `app.py` (43 errors): many assignment/annotation mismatches, unused `# type: ignore` comments, incorrect overload usages (e.g., passing tuples to `int()`), index/attr-defined complaints, and repeated `r_outer_fn` Callable signature mismatches when calling `build_pot_mesh`.
+    - The remaining errors are primarily high-level UI typing issues in `app.py` that stem from heavy dynamic UI state, patterns that mix dict/object shapes at runtime, and decorated/cached callables whose static signatures are difficult for mypy to infer without larger refactors.
+
+- Representative excerpts (truncated):
+
+```
+app.py:29: error: Unused "type: ignore" comment  [unused-ignore]
+app.py:316: error: Incompatible types in assignment (expression has type "None", variable has type "DeltaGenerator")  [assignment]
+app.py:1216: error: Argument "r_outer_fn" to "build_pot_mesh" has incompatible type "Callable[[float | Any, ...], float | Any]"; expected "Callable[[ndarray[...] | float, ...], ndarray[...] | float] | None"  [arg-type]
+app.py:1875: error: Incompatible types in assignment (expression has type "ndarray[tuple[Any, ...], dtype[Any]]", variable has type "dict[Any, Any]")  [assignment]
+... (many similar assignment/index/arg-type issues in app.py)
+
+Found 43 errors in 1 file (checked 99 source files)
+```
+
+Notes and recommendations:
+- `app.py` is a large UI entrypoint that mixes dynamic dict-based state, Streamlit DeltaGenerator objects, and heavy numeric calls. Fixing it thoroughly is high-risk and likely to require substantial refactors (or targeted local casts). I recommend deferring deep `app.py` typing until after we finish the lower-risk, high-impact work: eliminating remaining 'Returning Any' sites, resolving Path vs str I/O boundaries, and stabilizing numeric module typings.
+- Short-term options for `app.py`:
+    1. Add narrowly-scoped `# type: ignore[...]` comments with justifications to silence a few noisy, low-value warnings (fast, reversible).
+ 2. Introduce small adapter functions (typed wrappers) for the few heavy dynamic call sites (e.g., adapters that normalize `r_outer_fn` signature to match typed expectations) — medium effort, more robust.
+ 3. Postpone full typing of `app.py` and keep it in the triage as a longer-term task; prioritize cleaning the core library and UI helpers first.
+
+- Immediate next step suggestion (practical and low-risk):
+    - Continue on the remaining todo: "Eliminate remaining 'Returning Any' sites" and "Resolve Path vs str diagnostics" (these are smaller, safer fixes that will reduce noise and unlock clearer triage for `app.py`). Once those are addressed, re-run mypy across the repo to see the updated error surface.
+
+I appended this snapshot to the file and did not change any runtime code besides the small, previously-applied safe fixes. If you'd like, I can now:
+
+- Option A: Apply a small set of targeted `# type: ignore` annotations in `app.py` to quiet the top 10 low-value errors and re-run mypy. Low risk, quick.
+- Option B: Continue with the remaining high-priority 'Returning Any' elimination (I can list top 6 candidate sites and fix 1-2 now). Medium effort, higher long-term value.
+
+Tell me which you prefer and I'll execute the next micro-step and update `MYPY_TRIAGE.md` with the before/after snapshots.
+
+I will mark task 12 (Run repo-wide mypy and summarize results) as completed in the todo list above.
 
 - [2025-10-22] Batch 2 kickoff: small, conservative changes applied to `pfui/schemas.py` (added accessors and conservative Mapping annotations), added smoke test `tests/typing/test_schemas_smoke.py`, and migrated a set of immediate callers (`app.py`, `pfui/state.py`, `pfui/presets.py`, `pfui/controls.py`, `tests/pfui/test_state.py`) to use accessors. Focused tests + checks: pytest (selected) passed; no new static errors on modified files.
 
@@ -320,10 +523,56 @@ Concrete changes applied
 - Cast Path-like values to `str` at diagnostic I/O boundaries to silence Path vs str mismatches where appropriate.
 
 Why these changes
-- Small, localized edits reduce mypy/editor noise quickly and safely.
-- Extracting and typing helpers improves editor assistance and prevents implicit `Any` returns from nested functions.
-- Using vector-first helpers at vector sites keeps variable types consistent and avoids the need for repeated coercions.
 
+## Change log (will be appended as work proceeds)
+- [2025-10-21] Created MYPY_TRIAGE.md with initial analysis and full captured mypy output.
+- [2025-10-22] Patch: app.py r_outer adapter added
+    - Next: Apply a targeted set of local casts around dynamic dict/object indexing in `app.py` and fix a few tuple-vs-scalar `int(...)` call sites. I will apply these one at a time and run mypy after each change and append results here.
+
+- [2025-10-23] Patch: app.py - defensive unwrap for int(...) call sites (micro-change)
+    - What: Fixed two obvious tuple->int call-overload hotspots in `app.py` where expressions like `int(n_theta * up)` could receive a tuple-like value. Added a small `_unwrap_scalar` helper and defensive int() conversions in the Export and Publish paths.
+    - Files changed: `app.py` (single-file, small edits near export/publish logic)
+    - Command run (before):
+
+```powershell
+mypy --show-traceback app.py
+```
+
+    - Mypy snapshot (before): Found 33 errors in 1 file (checked 1 source file)
+
+    - Command run (after):
+
+```powershell
+mypy --show-traceback app.py
+```
+
+    - Mypy snapshot (after): Found 33 errors in 1 file (checked 1 source file)
+
+    - Notes: The overall error count did not decrease (33 → 33) because mypy reported some additional related overload/arg-type sites at different line numbers after the edits. However, the two originally-flagged locations around lines ~867–868 and ~2416–2417 were updated to use a defensive unwrap/float conversion to avoid passing tuple-like values into `int()`.
+
+    - Remaining high-value `int(...)` call-overload locations (reported by latest mypy run):
+        - `app.py`: lines ~882, ~886 (near slider/width calculations)
+        - `app.py`: lines ~2446, ~2450 (near publish/export numeric conversions)
+
+    - Next micro-step: fix the remaining `int(...)` call sites listed above using the same defensive unwrap/indexing strategy (or ensure upstream values are scalars). After each single-line/small change I'll re-run `mypy --show-traceback app.py` and append before/after counts to this file.
+
+- [2025-10-23] Micro-fix: `app.py` — annotate `mesh_data` as Optional[tuple[Any, Any]]
+    - What: Narrowed the `mesh_data` predeclaration from an untyped None to
+        `Optional[tuple[Any, Any]]` so assignments of (Vb, Fb) (ndarray pairs) or None
+        are consistent with the variable's annotation.
+    - Files changed: `app.py` (single-line annotation near preview cache predeclarations)
+    - Focused mypy (before): 18 errors in 1 file (`app.py`)
+    - Focused mypy (after): 18 errors in 1 file (`app.py`)
+    - Notes: No change in overall focused count, but this removes a concrete ndarray↔dict/assignment mismatch and makes the intent explicit for later edits.
+
+--- 
+
+## Recent updates (summary)
+- [2025-10-22] Commit 61f5dba: mypy: `pfui/schemas.py` — made top-level schema constants private and added frozen MappingProxyType public exports; replaced fragile `# type: ignore` uses with explicit `cast(...)` where safe. Result: focused mypy for `potfoundry`+`pfui` reduced errors (schemas down from ~30 -> 17). Tests remained green.
+- [2025-10-22] Commit d2571ad: docs: updated `MYPY_TRIAGE.md` changelog and Batch 2 status. (Administrative update)
+- [2025-10-22] Commit 0b3a91a: mypy: `pfui/preview.py` — widened numeric parameter types (accept numpy scalar or float) and added local coercions before plotting calls; focused preview mypy run: no issues. Tests remained green.
+- Small, localized edits reduce mypy/editor noise quickly and safely.
+- Using vector-first helpers at vector sites keeps variable types consistent and avoids the need for repeated coercions.
 Remaining follow-ups (recommended)
 - Run a repo-wide mypy run and capture per-file error counts to prioritize next small fixes.
 - Address remaining `Returning Any` sites across other numeric modules by extracting and typing helpers similarly.
@@ -333,3 +582,61 @@ Remaining follow-ups (recommended)
 If you'd like, I can commit these updates with message `docs(mypy): record geometry.py triage and results` and optionally run repo-wide mypy next.
 
 <!-- End of file -->
+
+## Latest repo-wide mypy run (including `app.py`) — grouped report
+
+Summary:
+- Command: mypy --show-error-codes potfoundry pfui tools app.py
+- Result: 43 errors in 1 file (app.py); other packages previously cleaned in focused runs.
+
+Top files by error count:
+- app.py: 43 errors
+
+Error-type buckets (counts & representative locations):
+1) Assignment/annotation mismatches (None vs typed variable) — ~12
+    - app.py:316: Incompatible assignment (None -> DeltaGenerator)
+    - app.py:1126: Incompatible assignment (None -> tuple[...])
+    - app.py:1980/1982/1984: Incompatible assignment (str -> DeltaGenerator)
+
+2) Callable/signature mismatches for `r_outer_fn` passed to `build_pot_mesh` — ~6
+    - app.py:1216, 1651, 1875, 2384, 2477: Argument `r_outer_fn` incompatible with expected ndarray-capable Callable
+    - These occur where `app.py` passes ad-hoc small lambdas / functions that accept scalars instead of ndarray-friendly signatures.
+
+3) Indexing / attribute access on values typed as `object` (dynamic dicts/session state) — ~9
+    - app.py:811-824, 836, 848, 860: ``object`` has no attribute `get` / not indexable
+    - Root cause: dynamic structures typed as `object` (e.g., schema or state mapping) used without local narrowing or casts.
+
+4) Invalid overload / wrong argument types (tuple passed to int(), etc.) — ~6
+    - app.py:865/866, 2372/2373: int(...) called with tuple[Any, ...]
+    - Suggests code is passing an index or pair where scalar was expected (likely from unpacking or mistaken return shapes).
+
+5) Misc: unused `type: ignore` comments, unreachable code — ~4
+    - app.py:29, 35, 1086, 1164, 1443: unused ignore and unreachable code warnings.
+
+Suggested low-risk fixes (quick wins)
+- A1: Add short local casts or `typing.cast(...)` at dynamic boundaries where code treats dict/object as mapping (example: coerce to `dict[str, Any]` or `Mapping[str, Collection[str]]` before indexing). This will clear many "object has no attribute" errors quickly with minimal risk.
+- A2: For `r_outer_fn` sites, add a small adapter function that accepts the looser callable and wraps it to the typed signature expected by `build_pot_mesh` (or require callers to pass the typed adapter). Example:
+  - def _adapt_r_outer(fn: Callable[..., Any]) -> Callable[[NDArrayFloat | float, float, float | NDArrayFloat, float, dict], NDArrayFloat | float]:
+        def wrapper(theta_or_scalar, z, r0, H, opts):
+             return np.asarray(fn(theta_or_scalar, z, r0, H, opts), dtype=float)
+        return wrapper
+- A3: Replace a few `# type: ignore` lines flagged as unused (clean them up) and where `type: ignore` is still necessary, narrow the ignore codes (e.g., `# type: ignore[arg-type]`) with a brief justification comment.
+- A4: Fix obvious tuple-vs-scalar errors by inspecting nearby code where `int(...)` is called — often caused by returning `(val,)` or `enumerate()` misuse; add `int(x[0])` or unpacking to correct shape.
+- A5: For assignments where UI variables are `None` at module load, initialize them more narrowly (e.g., annotate optional types `Optional[DeltaGenerator]` and guard assignments) or cast when assigning from dynamic sources.
+
+Next recommended immediate action
+- I will prepare a small patch set that implements A1 and A2 for the top 8-10 error locations (local casts + r_outer_fn adapters). This is conservative and reversible. If you approve, I'll apply the patches in small commits (one logical change per commit), run focused mypy after each, and update this triage file with before/after counts.
+
+If you prefer, I can instead: (B) add targeted `# type: ignore[...]` lines to silence low-value warnings quickly, or (C) leave `app.py` out of static checks until we've cleaned other packages further.
+
+- [2025-10-23] Micro-fix: `app.py` — convert remaining `st.session_state.get(...)` in Appearance & Preview blocks
+    - What: Replaced remaining `st.session_state.get(...)` calls inside the "Appearance & Preview Settings" and Full/Quick Preview rendering blocks with `ss.get(...)` after narrowing `ss = cast(dict[str, Any], st.session_state)` at the top of the expander. This removes repeated `object has no attribute "get"` / "not indexable" mypy complaints at call sites where `ss` is already in scope.
+    - Extra: During the replacement a small indentation issue was introduced in the mesh plotting block; I fixed the indentation for the `mesh_kwargs` block so the file parses cleanly.
+    - Focused mypy (before this edit): 18 errors in `app.py`
+    - Focused mypy (after this edit): 18 errors in `app.py` (syntax fixed; no net change in total count — remaining errors are assignment/indexing/type mismatches that will be addressed in follow-ups)
+    - Files changed: `app.py`, `MYPY_TRIAGE.md`
+    - Notes: Next micro-step — continue converting any remaining session-state access in other `app.py` scopes or add local `ss = cast(dict[str, Any], st.session_state)` where missing; then tackle remaining incompatible-assignment errors (None vs str/DeltaGenerator, ndarray↔dict) with minimal, local annotations or safe casts.
+
+- [2025-10-23] Micro-fix: `app.py` — continued conversion of `st.session_state.get(...)` -> `ss.get(...)` in Sidebar/Preview/Appearance regions; applied small safe replacements and local ss narrowing where appropriate. Focused mypy before: 18 errors; after: 18 errors (no net change; reduced attr/index warnings in modified regions).
+
+- [2025-10-23] Micro-fix: `app.py` — converted remaining `st.session_state.get(...)` occurrences to `ss.get(...)` across additional preview and cache access points; added `ss = cast(dict[str, Any], st.session_state)` where helpful. Focused mypy before: 18 errors; after: 19 errors (small unrelated type diagnostics surfaced; see mypy output). 

@@ -568,9 +568,7 @@ def build_pot_mesh(
     return np.array(verts, dtype=float), np.array(faces, dtype=int), diagnostics
 
 
-from typing import Any as _Any
-
-plt: _Any | None = None
+plt: Any | None = None
 try:
     import matplotlib.pyplot as _plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401

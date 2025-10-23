@@ -17,14 +17,15 @@ try:
 except ImportError:
     HAS_STREAMLIT = False
 
-from potfoundry.library import list_published
-from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
-
 
 def render_library_tab():
     """Render the Public Library browse tab."""
     if not HAS_STREAMLIT or st is None:
         return
+
+    # Local imports (lazy) to avoid heavy import-time dependencies and satisfy ruff
+    from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
+    from potfoundry.library import list_published
 
     # Check if library is configured
     client = get_singleton_client()
@@ -239,7 +240,7 @@ def render_library_card(design: dict):
         try:
             from pfui.preview import render_preview_png_cached
 
-            style_name = design.get("style")
+            style_name = str(design.get("style") or "")
             size = design.get("size", {}) or {}
             mesh = design.get("mesh", {}) or {}
             H = float(size.get("height", 120.0))
@@ -294,7 +295,7 @@ def render_library_card(design: dict):
         try:
             from pfui.preview import render_preview_png_cached
 
-            style_name = design.get("style")
+            style_name = str(design.get("style") or "")
             size = design.get("size", {}) or {}
             mesh = design.get("mesh", {}) or {}
             H = float(size.get("height", 120.0))
@@ -402,6 +403,7 @@ def open_design_in_editor(design: dict):
         return
 
     from pfui.deeplink import apply_state
+    # Local import for consistency (deep link helpers are light-weight)
 
     # Extract state from design
     state_to_apply = {
