@@ -6,7 +6,7 @@ This script performs a few conservative regex-based fixes:
  - Collapse nested identical Optional casts, e.g., cast(Optional[bytes], cast(Optional[bytes], ss.get(...))) -> cast(Optional[bytes], ss.get(...))
  - For Optional[dict] nested casts similarly.
 
-Run: python tools\clean_narrowing.py
+Run: python tools/clean_narrowing.py
 """
 from pathlib import Path
 import re
