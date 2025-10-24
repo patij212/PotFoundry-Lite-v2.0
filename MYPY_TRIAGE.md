@@ -18,6 +18,9 @@ Summary (top)
 ---
 
 How I will work
+
+- [2025-10-24] Micro-fix: app.py — tightened `preview_res_scale` typing by replacing
+    float(cast(Any, ss.get("preview_res_scale", 1.0))) with cast(float, ss.get("preview_res_scale", 1.0)). Focused mypy (file-only): Success.
 - Record a short changelog at the top for progress deltas.
 - Keep a prioritized task list with statuses and rough ETAs.
 - For each applied change, log commit SHA, description, mypy/pytest results after the change.

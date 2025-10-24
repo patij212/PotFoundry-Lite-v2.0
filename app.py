@@ -457,19 +457,22 @@ with _tab1:
                     "Height",
                     60.0,
                     240.0,
-                    cast(Any, ss.get("H", 120.0)),
+                    cast(float, ss.get("H", 120.0)),
                     5.0,
                     key="H",
                     help="Overall height of the pot measured from the base to the rim.",
                     on_change=_mark_changed,
                 )
             )
+
+            # 'Flare exponent' control removed from Dimensions to avoid duplication.
+            # The canonical 'Flare exponent' slider lives under the Profile / Curve section.
             top_od = float(
                 st.number_input(
                     "Top OD",
                     60.0,
                     240.0,
-                    cast(Any, ss.get("top_od", 140.0)),
+                    cast(float, ss.get("top_od", 140.0)),
                     5.0,
                     key="top_od",
                     help="Outer diameter at the rim (OD = outside diameter).",
@@ -481,7 +484,7 @@ with _tab1:
                     "Bottom OD",
                     40.0,
                     200.0,
-                    cast(Any, ss.get("bottom_od", 90.0)),
+                    cast(float, ss.get("bottom_od", 90.0)),
                     5.0,
                     key="bottom_od",
                     help="Outer diameter at the base. Increase for more stability or reduce for a sleeker profile.",
@@ -493,7 +496,7 @@ with _tab1:
                     "Wall thickness",
                     2.0,
                     8.0,
-                    cast(Any, ss.get("t_wall", 3.0)),
+                    cast(float, ss.get("t_wall", 3.0)),
                     0.5,
                     key="t_wall",
                     help="Thickness of the pot wall. Typical FDM prints work well around 2.5–3.0 mm.",
@@ -505,7 +508,7 @@ with _tab1:
                     "Bottom slab",
                     2.0,
                     10.0,
-                    cast(Any, ss.get("t_bottom", 3.0)),
+                    cast(float, ss.get("t_bottom", 3.0)),
                     0.5,
                     key="t_bottom",
                     help="Thickness of the bottom solid slab. Thicker improves rigidity and weight.",
@@ -517,7 +520,7 @@ with _tab1:
                     "Drain hole",
                     3.0,
                     30.0,
-                    cast(Any, ss.get("r_drain", 10.0)),
+                    cast(float, ss.get("r_drain", 10.0)),
                     1.0,
                     key="r_drain",
                     help="Radius of the drainage hole. Ensure it remains smaller than inner radius at the base.",
@@ -570,11 +573,14 @@ with _tab1:
                     1.6,
                     cast(Any, ss.get("expn", 1.1)),
                     0.05,
-                    key="expn",
+                    key=widget_key(style_key, "expn"),
                     on_change=_mark_changed,
                     help="Controls how quickly the wall expands from base to rim. >1 favors the top, <1 favors the base.",
                 )
             )
+            # The profile slider uses a style-scoped key and must remain
+            # independent from other sliders; do NOT overwrite the canonical
+            # session key 'expn' here.
             c1, c2, c3 = st.columns(3)
             # NOTE: widget keys now use style_key (not style_name)
             k1 = widget_key(style_key, "flare_center")
@@ -933,8 +939,8 @@ with _tab1:
             except Exception:
                 pass
         # Cached / regen status indicator
-        last_mesh_regen = cast(Optional[bool], cast(Any, ss.get("_last_mesh_png_regenerated", None)))
-        last_mesh_time = cast(Any, ss.get("_last_mesh_png_time_ms", None))
+        last_mesh_regen = cast(Optional[bool], ss.get("_last_mesh_png_regenerated", None))
+        last_mesh_time = cast(Optional[float], ss.get("_last_mesh_png_time_ms", None))
         if last_mesh_regen is not None:
             status = "regenerated" if last_mesh_regen else "cached"
             extra = f" ({last_mesh_time:.0f} ms)" if last_mesh_time is not None else ""
@@ -1155,7 +1161,8 @@ with _tab1:
     opts_json = json.dumps(opts, sort_keys=True)
 
     # Apply interactive preview scaling to keep Full Preview responsive
-    preview_scale = float(cast(Any, ss.get("preview_res_scale", 1.0)))
+    # Narrow typing: preview_res_scale is expected to be a float; use a direct cast
+    preview_scale = cast(float, ss.get("preview_res_scale", 1.0))
     target_n_theta = max(16, int(n_theta * preview_detail * preview_scale))
     target_n_z = max(8, int(n_z * preview_detail * preview_scale))
     preview_n_theta = max(16, min(168, target_n_theta))
@@ -1227,13 +1234,13 @@ with _tab1:
         app_sig = None
 
     # Compare with last-run signatures
-    last_geom_sig = cast(Optional[tuple], cast(Any, ss.get("_last_preview_geom_sig")))
-    last_app_sig = cast(Optional[tuple], cast(Any, ss.get("_last_preview_app_sig")))
+    last_geom_sig = cast(Optional[tuple], ss.get("_last_preview_geom_sig"))
+    last_app_sig = cast(Optional[tuple], ss.get("_last_preview_app_sig"))
     geom_changed = (geom_sig is None) or (geom_sig != last_geom_sig)
     app_changed = (app_sig is None) or (app_sig != last_app_sig)
 
     # One-shot suppression for non-model reruns (e.g., snapshot pagination)
-    if cast(Any, ss.get("_suppress_preview_once", False)):
+    if bool(cast(Optional[bool], ss.get("_suppress_preview_once", False))):
         should_update_preview = False
         ss["_suppress_preview_once"] = False
 
@@ -1249,11 +1256,11 @@ with _tab1:
         )
         if (
             cached_any
-            and not cast(Any, ss.get("_preview_stale", False))
+            and not bool(cast(Optional[bool], ss.get("_preview_stale", False)))
             and geom_sig is not None
             and app_sig is not None
-            and geom_sig == cast(Optional[tuple], cast(Any, ss.get("_last_preview_geom_sig")))
-            and app_sig == cast(Optional[tuple], cast(Any, ss.get("_last_preview_app_sig")))
+            and geom_sig == cast(Optional[tuple], ss.get("_last_preview_geom_sig"))
+            and app_sig == cast(Optional[tuple], ss.get("_last_preview_app_sig"))
         ):
             should_update_preview = False
     if should_update_preview:
@@ -1720,8 +1727,8 @@ with _tab1:
                         F = None
                     # If exact is requested but the cached mesh uses different resolution, rebuild
                     # use_exact_full already set above
-                    last_nt = cast(Any, ss.get("_last_mesh_ntheta"))
-                    last_nz = cast(Any, ss.get("_last_mesh_nz"))
+                    last_nt = cast(Optional[int], ss.get("_last_mesh_ntheta"))
+                    last_nz = cast(Optional[int], ss.get("_last_mesh_nz"))
                     needs_exact_rebuild = bool(
                         use_exact_full and ((last_nt != n_theta) or (last_nz != n_z))
                     )
