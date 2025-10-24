@@ -963,8 +963,9 @@ with _tab1:
                 if HAS_PLOTLY and cast(Optional[dict], ss.get("_last_surface_fig_json")):
                     try:
                         fig = go.Figure(cast(Optional[dict], ss.get("_last_surface_fig_json")))
-                        w = max(400, min(900, _to_int_scalar(96 * fig_h)))
-                        h = max(300, min(800, _to_int_scalar(96 * fig_h)))
+                        # Defensive unwrap to avoid passing list/tuple into float()/int()
+                        w = max(400, min(900, _to_int_scalar(96 * _unwrap_scalar(fig_h))))
+                        h = max(300, min(800, _to_int_scalar(96 * _unwrap_scalar(fig_h))))
                         svg_bytes = fig.to_image(format="svg", width=w, height=h)
                         if svg_bytes:
                             d2.download_button(
@@ -1123,35 +1124,49 @@ with _tab1:
         UI type-sound for callers that always pass array-like inputs to r_outer_fn.
         """
         def _wrapped(theta, z, r_base, expn, opts):
+            # Bind a numpy alias if available. If import fails, set _np = None
+            # so static analyzers (Pylance) don't report it as possibly unbound.
             try:
                 import numpy as _np
-
                 th = _np.asarray(theta)
             except Exception:
-                # If numpy import fails for any reason, attempt best-effort passthrough
-                try:
-                    return _np.asarray(cast(Any, fn(theta, z, r_base, expn, opts)))
-                except Exception:
-                    # Last resort: call with scalar and wrap
-                    return _np.asarray(cast(Any, fn(float(theta), z, r_base, expn, opts)))
+                _np = None
+                # Fallback: keep the raw theta; downstream logic prefers numpy,
+                # but in environments without numpy we'll pass through the raw values.
+                th = theta
 
-            # Scalar-like input: call once and wrap
-            if th.ndim == 0:
-                res = fn(float(th), z, r_base, expn, opts)
-                return _np.asarray(res)
+            # Scalar-like input: call once and wrap (use numpy only when available)
+            try:
+                if _np is not None and getattr(th, "ndim", None) == 0:
+                    res = fn(float(th), z, r_base, expn, opts)
+                    return _np.asarray(res)
+            except Exception:
+                # If any scalar-path call fails, fall through to vectorized attempts
+                pass
 
             # Try vectorized call first (some style funcs accept ndarray)
             try:
                 res = fn(th, z, r_base, expn, opts)
-                return _np.asarray(res)
+                return _np.asarray(res) if _np is not None else res
             except Exception:
                 # Fallback: call per-element and reconstruct array
-                flat = [_np.asarray(fn(float(t), z, r_base, expn, opts)) for t in th.ravel()]
-                out = _np.asarray(flat)
                 try:
-                    return out.reshape(th.shape)
+                    if _np is not None:
+                        flat = [_np.asarray(fn(float(t), z, r_base, expn, opts)) for t in th.ravel()]
+                        out = _np.asarray(flat)
+                        try:
+                            return out.reshape(th.shape)
+                        except Exception:
+                            return out
+                    else:
+                        # No numpy available: return a Python list of per-element results
+                        return [fn(float(t), z, r_base, expn, opts) for t in theta]
                 except Exception:
-                    return out
+                    # Last-resort fallback: attempt scalar call
+                    try:
+                        return fn(float(theta), z, r_base, expn, opts)
+                    except Exception:
+                        return fn(theta, z, r_base, expn, opts)
 
         return _wrapped
 

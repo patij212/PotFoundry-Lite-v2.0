@@ -21,6 +21,9 @@ How I will work
 
 - [2025-10-24] Micro-fix: app.py — tightened `preview_res_scale` typing by replacing
     float(cast(Any, ss.get("preview_res_scale", 1.0))) with cast(float, ss.get("preview_res_scale", 1.0)). Focused mypy (file-only): Success.
+
+- [2025-10-24] Micro-fix: app.py — guard numpy alias and defensive scalar unwrapping to appease Pylance
+    diagnostics: bind `_np = None` when numpy import fails and use `_unwrap_scalar(fig_h)` before numeric conversions; focused mypy & ruff: Success.
 - Record a short changelog at the top for progress deltas.
 - Keep a prioritized task list with statuses and rough ETAs.
 - For each applied change, log commit SHA, description, mypy/pytest results after the change.
