@@ -7,7 +7,7 @@ and large numeric types into their import-time type-checking.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, cast
+from typing import Any, Dict, Tuple, cast, List
 
 # Import the lazy importer from this package; accessing `build_pot_mesh` will
 # trigger the dynamic import only when `build_pot_mesh_safe` is called.
@@ -26,7 +26,7 @@ def build_pot_mesh_safe(
     n_z: int,
     r_outer_fn: Any,
     style_opts: Dict[str, Any],
-) -> Tuple[Any, Any, Dict[str, Any]]:
+) -> Tuple[List[tuple[float, float, float]], List[tuple[int, int, int]], Dict[str, Any]]:
     """Call the real mesh builder lazily and return conservative-typed results.
 
     The return types are intentionally `Any`/`Dict[str, Any]` to avoid importing
@@ -55,4 +55,64 @@ def build_pot_mesh_safe(
         r_outer_fn=r_outer_fn,
         style_opts=style_opts,
     )
-    return cast(Tuple[Any, Any, Dict[str, Any]], (verts, faces, diag))
+    # Cast to conservative but structured types so callers (UI code) can
+    # rely on predictable shapes without importing NumPy types at module import.
+    return cast(
+        Tuple[List[tuple[float, float, float]], List[tuple[int, int, int]], Dict[str, Any]],
+        (verts, faces, diag),
+    )
+
+
+def adapt_r_outer_fn(fn: Any):
+    """Return a wrapper that accepts array-like theta and returns an array-like result.
+
+    This central adapter mirrors the lightweight adapter used in the UI but lives in
+    the import-light bridge so other callers (tests, scripts, UI) can reuse it
+    without duplicating logic. It imports NumPy lazily at call time to avoid
+    bringing heavy numeric imports into import-time for UI modules.
+
+    Args:
+        fn: Original style function which may accept scalar or array-like theta.
+
+    Returns:
+        A callable wrapper with the signature (theta, z, r_base, expn, opts) -> array-like
+    """
+    def _wrapped(theta, z, r_base, expn, opts):
+        try:
+            import numpy as _np
+            th = _np.asarray(theta)
+        except Exception:
+            _np = None
+            th = theta
+
+        # Try scalar fast-path when input looks scalar
+        try:
+            if _np is not None and getattr(th, "ndim", None) == 0:
+                res = fn(float(th), z, r_base, expn, opts)
+                return _np.asarray(res) if _np is not None else res
+        except Exception:
+            pass
+
+        # Try vectorized call first
+        try:
+            res = fn(th, z, r_base, expn, opts)
+            return _np.asarray(res) if _np is not None else res
+        except Exception:
+            # Fall back to per-element invocation
+            try:
+                if _np is not None:
+                    flat = [_np.asarray(fn(float(t), z, r_base, expn, opts)) for t in th.ravel()]
+                    out = _np.asarray(flat)
+                    try:
+                        return out.reshape(th.shape)
+                    except Exception:
+                        return out
+                else:
+                    return [fn(float(t), z, r_base, expn, opts) for t in theta]
+            except Exception:
+                try:
+                    return fn(float(theta), z, r_base, expn, opts)
+                except Exception:
+                    return fn(theta, z, r_base, expn, opts)
+
+    return _wrapped

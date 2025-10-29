@@ -45,7 +45,7 @@ if not HAS_PLOTLY:
 # import time which can trigger editor/type-checker traversal and noisy
 # diagnostics. Keep the delayed import but silence ruff E402 with an
 # explanatory noqa.
-from pfui.imports import STYLES, build_pot_mesh, build_pot_mesh_safe, WRITE_STL_BINARY  # noqa: E402
+from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY  # noqa: E402
 from pfui.presets import (
     PRESETS,
     _read_user_presets,
@@ -1175,62 +1175,12 @@ with _tab1:
     # Raw style function (may accept scalar or vector theta, and may return scalar or array-like)
     _r_outer_raw = cast(ROuterFn, STYLES[style_name][0])  # geometry comes from UI style name
 
-    def _adapt_r_outer_fn(fn: ROuterFn):
-        """Return a wrapper that always accepts an array-like theta and returns a numpy.ndarray.
+    # Use the centralized adapter (imported from pfui.geometry_bridge) so callers
+    # across the codebase get consistent behavior. This also avoids duplicating
+    # the adapter logic in multiple places.
+    from pfui.geometry_bridge import adapt_r_outer_fn
 
-        The adapter will try a vectorized call first. If that fails, it will fall back to
-        calling the original function per-element and rebuilding an array. This keeps the
-        UI type-sound for callers that always pass array-like inputs to r_outer_fn.
-        """
-        def _wrapped(theta, z, r_base, expn, opts):
-            # Bind a numpy alias if available. If import fails, set _np = None
-            # so static analyzers (Pylance) don't report it as possibly unbound.
-            try:
-                import numpy as _np
-                th = _np.asarray(theta)
-            except Exception:
-                _np = None
-                # Fallback: keep the raw theta; downstream logic prefers numpy,
-                # but in environments without numpy we'll pass through the raw values.
-                th = theta
-
-            # Scalar-like input: call once and wrap (use numpy only when available)
-            try:
-                if _np is not None and getattr(th, "ndim", None) == 0:
-                    res = fn(float(th), z, r_base, expn, opts)
-                    return _np.asarray(res)
-            except Exception:
-                # If any scalar-path call fails, fall through to vectorized attempts
-                pass
-
-            # Try vectorized call first (some style funcs accept ndarray)
-            try:
-                res = fn(th, z, r_base, expn, opts)
-                return _np.asarray(res) if _np is not None else res
-            except Exception:
-                # Fallback: call per-element and reconstruct array
-                try:
-                    if _np is not None:
-                        flat = [_np.asarray(fn(float(t), z, r_base, expn, opts)) for t in th.ravel()]
-                        out = _np.asarray(flat)
-                        try:
-                            return out.reshape(th.shape)
-                        except Exception:
-                            return out
-                    else:
-                        # No numpy available: return a Python list of per-element results
-                        return [fn(float(t), z, r_base, expn, opts) for t in theta]
-                except Exception:
-                    # Last-resort fallback: attempt scalar call
-                    try:
-                        return fn(float(theta), z, r_base, expn, opts)
-                    except Exception:
-                        return fn(theta, z, r_base, expn, opts)
-
-        return _wrapped
-
-    # Use adapter so downstream callers always get an ndarray-returning callable
-    r_outer_fn = _adapt_r_outer_fn(_r_outer_raw)
+    r_outer_fn = adapt_r_outer_fn(_r_outer_raw)
     opts = dict(ui_opts)
     opts_json = json.dumps(opts, sort_keys=True)
 
@@ -1385,7 +1335,7 @@ with _tab1:
                         t0_mb = time.time()
                         import numpy as _np_mb
 
-                        verts, faces, diag = build_pot_mesh_safe(
+                        verts, faces, diag = build_pot_mesh(
                             H=H,
                             Rt=Rt,
                             Rb=Rb,
@@ -1823,7 +1773,7 @@ with _tab1:
                             # rather than the scaled/clamped full_n_* values.
                             ntheta = n_theta if use_exact_full else preview_n_theta
                             nz = n_z if use_exact_full else preview_n_z
-                            verts2, faces2, _ = build_pot_mesh_safe(
+                            verts2, faces2, _ = build_pot_mesh(
                                 H=H,
                                 Rt=Rt,
                                 Rb=Rb,
@@ -2057,29 +2007,21 @@ with _tab1:
     # -------------------- METRICS ----------------------
     st.subheader("Estimated metrics")
     try:
-        _, faces_m, diag_m = cast(
-            tuple[Any, Any, Any],
-            build_pot_mesh_safe(
-                H=H,
-                Rt=Rt,
-                Rb=Rb,
-                t_wall=t_wall,
-                t_bottom=t_bottom,
-                r_drain=r_drain,
-                expn=expn,
-                n_theta=max(48, n_theta // 2),
-                n_z=max(24, n_z // 2),
-                r_outer_fn=r_outer_fn,
-                style_opts=opts,
-            ),
-        )
+        _, faces_m, diag_m = cast(tuple[Any, Any, Any], build_pot_mesh(
+            H=H,
+            Rt=Rt,
+            Rb=Rb,
+            t_wall=t_wall,
+            t_bottom=t_bottom,
+            r_drain=r_drain,
+            expn=expn,
+            n_theta=max(48, n_theta // 2),
+            n_z=max(24, n_z // 2),
+            r_outer_fn=r_outer_fn,
+            style_opts=opts,
+        ))
         m1, m2, m3 = st.columns(3)
-        try:
-            from typing import cast as _cast
-
-            m1.metric("Triangles", f"{len(_cast(Any, faces_m)):,}")
-        except Exception:
-            m1.metric("Triangles", "N/A")
+        m1.metric("Triangles", f"{len(faces_m):,}")
         # diag_m may be either a dict of diagnostics or another type returned
         # by the geometry engine in some code paths; guard access with
         # isinstance so mypy knows we're only calling .get on a dict.
@@ -2612,7 +2554,7 @@ with _tab1:
                 n_z_pub = _to_int_scalar(prod)
             except Exception:
                 n_z_pub = _to_int_scalar(n_z * up)
-            verts, faces, _ = build_pot_mesh_safe(
+            verts, faces, _ = build_pot_mesh(
                 H=H,
                 Rt=Rt,
                 Rb=Rb,
@@ -2634,15 +2576,7 @@ with _tab1:
             )
             if WRITE_STL_BINARY is None:
                 raise RuntimeError("write_stl_binary not available in this build")
-            try:
-                import numpy as _np_write
-
-                verts_arr = cast(Any, _np_write.asarray(verts, dtype=_np_write.float64))
-                faces_arr = cast(Any, _np_write.asarray(faces, dtype=_np_write.int32))
-            except Exception:
-                verts_arr = cast(Any, verts)
-                faces_arr = cast(Any, faces)
-            WRITE_STL_BINARY(str(tmp_path), safe, verts_arr, faces_arr)
+            WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)
             data = tmp_path.read_bytes()
             try:
                 tmp_path.unlink(missing_ok=True)
@@ -2667,8 +2601,8 @@ with _tab1:
                     "twist": opts.get("twist", 0.0),
                 }
                 diagnostics_dict = {
-                    "triangle_count": len(cast(Any, faces_arr)),
-                    "vertex_count": len(cast(Any, verts_arr)),
+                    "triangle_count": len(faces),
+                    "vertex_count": len(verts),
                 }
                 git_commit: Optional[str] = None
                 try:
@@ -2714,7 +2648,7 @@ with _tab1:
             from datetime import datetime
 
             with st.spinner("Exporting STL…"):
-                verts, faces, _ = build_pot_mesh_safe(
+                verts, faces, _ = build_pot_mesh(
                     H=H,
                     Rt=Rt,
                     Rb=Rb,
@@ -2737,27 +2671,14 @@ with _tab1:
                 )
                 if WRITE_STL_BINARY is None:
                     raise RuntimeError("write_stl_binary not available in this build")
-                try:
-                    import numpy as _np_write
-
-                    verts_arr = cast(Any, _np_write.asarray(verts, dtype=_np_write.float64))
-                    faces_arr = cast(Any, _np_write.asarray(faces, dtype=_np_write.int32))
-                except Exception:
-                    verts_arr = cast(Any, verts)
-                    faces_arr = cast(Any, faces)
                 # Export as binary STL (recommended: smaller, faster, universally supported)
-                WRITE_STL_BINARY(str(tmp_path), safe, verts_arr, faces_arr)
+                WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)
                 data = tmp_path.read_bytes()
                 try:
                     tmp_path.unlink(missing_ok=True)
                 except Exception:
                     pass
-            try:
-                st.success(
-                    f"STL ready: {safe}.stl  — triangles: {len(cast(Any, faces_arr)):,}"
-                )
-            except Exception:
-                st.success(f"STL ready: {safe}.stl")
+            st.success(f"STL ready: {safe}.stl  — triangles: {len(faces):,}")
             st.download_button(
                 "Download STL", data=data, file_name=f"{safe}.stl", mime="model/stl"
             )
@@ -2789,8 +2710,8 @@ with _tab1:
 
                     # Prepare diagnostics
                     diagnostics_dict = {
-                        "triangle_count": len(cast(Any, faces_arr)),
-                        "vertex_count": len(cast(Any, verts_arr)),
+                        "triangle_count": len(faces),
+                        "vertex_count": len(verts),
                     }
 
                     # Get git commit (optional)
