@@ -674,3 +674,5 @@ If you prefer, I can instead: (B) add targeted `# type: ignore[...]` lines to si
 
 - [2025-10-23] Micro-fix: `app.py` — converted remaining `st.session_state.get(...)` occurrences to `ss.get(...)` across additional preview and cache access points; added `ss = cast(dict[str, Any], st.session_state)` where helpful. Focused mypy before: 18 errors; after: 19 errors (small unrelated type diagnostics surfaced; see mypy output). 
  - [2025-10-24] Micro-fix: `app.py` — automated narrowing sweep: targeted numeric & preview/signature casts, collapsed redundant nested casts, and exhaustively wrapped remaining `ss.get(...)` with `cast(Any, ...)` to reach 100% coverage of session-state gets; focused mypy (file-only): Success: no issues found in 1 source file.
+
+2025-10-29: Tightened session-state numeric casts in `app.py` (debounce, mesh lighting clamps, top_od/H, export upscale); added robust helpers `_to_float_scalar` and improved `_to_int_scalar` to centralize safe conversions and reduce editor/myPy noise.
