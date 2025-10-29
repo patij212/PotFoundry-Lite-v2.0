@@ -25,13 +25,13 @@ if TYPE_CHECKING:
     from potfoundry.adapters.batch import build_from_yaml
 
 
-def _import_writer() -> Optional[Callable[..., Any]]:
+def _import_writer() -> Optional[Callable[..., object]]:
     # Preferred location (dynamic import to avoid static analysis of heavy modules)
     try:
         mod = importlib.import_module("potfoundry.core.io.stl")
         w = getattr(mod, "write_stl_binary", None)
         if callable(w):
-            return cast(Callable[..., Any], w)
+            return cast(Callable[..., object], w)
     except Exception:
         # Try older top-level exports or modules using importlib to avoid
         # static import-time complaints from type checkers.
@@ -39,20 +39,20 @@ def _import_writer() -> Optional[Callable[..., Any]]:
             mod = importlib.import_module("potfoundry")
             w = getattr(mod, "write_stl_binary", None)
             if callable(w):
-                return cast(Callable[..., Any], w)
+                return cast(Callable[..., object], w)
         except Exception:
             pass
         try:
             mod = importlib.import_module("potfoundry.stl")
             w = getattr(mod, "write_stl_binary", None)
             if callable(w):
-                return cast(Callable[..., Any], w)
+                return cast(Callable[..., object], w)
         except Exception:
             pass
     return None
 
 
-def _import_geometry() -> Tuple[Any, Any, Any, Any]:
+def _import_geometry() -> Tuple[object, object, object, object]:
     try:
         mod = importlib.import_module("potfoundry.core.geometry")
         return (
@@ -73,13 +73,13 @@ def _import_geometry() -> Tuple[Any, Any, Any, Any]:
 
 
 def _import_schema_and_batch() -> Tuple[
-    Optional[Callable[..., Any]],
-    Optional[Callable[..., Any]],
-    Optional[Callable[..., Any]],
+    Optional[Callable[..., object]],
+    Optional[Callable[..., object]],
+    Optional[Callable[..., object]],
 ]:
-    validate_recipe: Optional[Callable[..., Any]] = None
-    load_config: Optional[Callable[..., Any]] = None
-    build_from_yaml: Optional[Callable[..., Any]] = None
+    validate_recipe: Optional[Callable[..., object]] = None
+    load_config: Optional[Callable[..., object]] = None
+    build_from_yaml: Optional[Callable[..., object]] = None
 
     try:
         mod = importlib.import_module("potfoundry.core.schema")
@@ -109,13 +109,13 @@ def _import_schema_and_batch() -> Tuple[
 # Caches for lazily-exported attributes. Keep names matching the previous API
 # but avoid doing heavy imports at module import time. PEP 562 (__getattr__) is
 # used so attribute access triggers the imports on-demand.
-_WRITE_STL_BINARY: Optional[Callable[..., Any]] = None
-_GEOMETRY_CACHE: Optional[Tuple[Any, Any, Any, Any]] = None
+_WRITE_STL_BINARY: Optional[Callable[..., object]] = None
+_GEOMETRY_CACHE: Optional[Tuple[object, object, object, object]] = None
 _SCHEMA_BATCH_CACHE: Optional[
     Tuple[
-        Optional[Callable[..., Any]],
-        Optional[Callable[..., Any]],
-        Optional[Callable[..., Any]],
+        Optional[Callable[..., object]],
+        Optional[Callable[..., object]],
+        Optional[Callable[..., object]],
     ]
 ] = None
 
@@ -167,3 +167,55 @@ __all__ = [
     "load_config",  # lazy
     "build_from_yaml",  # lazy
 ]
+
+
+def build_pot_mesh_safe(
+    *,
+    H: float,
+    Rt: float,
+    Rb: float,
+    t_wall: float,
+    t_bottom: float,
+    r_drain: float,
+    expn: float,
+    n_theta: int,
+    n_z: int,
+    r_outer_fn: Any,
+    style_opts: dict,
+) -> tuple[object, object, dict]:
+    """Lightweight, import-safe wrapper around the real `build_pot_mesh`.
+
+    This wrapper attempts to resolve and call the real `build_pot_mesh` lazily.
+    It returns a conservative tuple (verts, faces, diagnostics) and will
+    return empty fallbacks on failure. Use this from UI code that should not
+    trigger heavy imports at module import time.
+    """
+    # Lazily resolve the real build_pot_mesh via this module's __getattr__.
+    bp = None
+    try:
+        bp = build_pot_mesh
+    except Exception:
+        bp = None
+
+    # If we have a callable implementation, invoke it and return its result.
+    if callable(bp):
+        try:
+            return bp(
+                H=H,
+                Rt=Rt,
+                Rb=Rb,
+                t_wall=t_wall,
+                t_bottom=t_bottom,
+                r_drain=r_drain,
+                expn=expn,
+                n_theta=n_theta,
+                n_z=n_z,
+                r_outer_fn=r_outer_fn,
+                style_opts=style_opts,
+            )
+        except Exception:
+            # If the underlying implementation raises, fall through to safe fallback
+            return ([], [], {})
+
+    # No implementation available or non-callable: return safe empty fallback
+    return ([], [], {})

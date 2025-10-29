@@ -45,7 +45,7 @@ if not HAS_PLOTLY:
 # import time which can trigger editor/type-checker traversal and noisy
 # diagnostics. Keep the delayed import but silence ruff E402 with an
 # explanatory noqa.
-from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY  # noqa: E402
+from pfui.imports import STYLES, build_pot_mesh, build_pot_mesh_safe, WRITE_STL_BINARY  # noqa: E402
 from pfui.presets import (
     PRESETS,
     _read_user_presets,
@@ -382,7 +382,7 @@ with _tab1:
         style_guess = cast(Optional[str], ss.get(
             "style", all_styles[0] if all_styles else None
         ))
-        H_guess = int(cast(Any, ss.get("H", 120.0)))
+        H_guess = int(cast(float, ss.get("H", 120.0)))
         try:
             auto_name_guess = (
                 f"{style_guess}_H{int(H_guess)}"
@@ -893,7 +893,12 @@ with _tab1:
         # (e.g., trailing commas in assignment), unwrap the first element
         # before performing numeric operations. This avoids passing a tuple
         # into float()/int() which triggers mypy call-overload errors.
-        def _unwrap_scalar(v):
+        def _unwrap_scalar(v: Any) -> Any:
+            """If v is a list/tuple, return its first element; otherwise return v.
+
+            Annotated to help static analysis (Pylance) reason about downstream
+            conversions.
+            """
             if isinstance(v, (list, tuple)):
                 try:
                     return v[0]
@@ -901,28 +906,82 @@ with _tab1:
                     return v
             return v
 
-        def _to_int_scalar(x):
-            """Coerce x to a numeric scalar then to int, unwrapping list/tuple first.
+        def _to_int_scalar(x: Any) -> int:
+            """Coerce x to an int in a defensive, editor-friendly way.
 
-            This is a small defensive helper to avoid passing tuple-like values to
-            builtin int() which causes mypy call-overload errors in dynamic UI code.
+            - Unwrap list/tuple-like containers.
+            - If the resulting value is a primitive known to be convertible to
+              float (int/float/str/bytes), call float(x) safely and cast to int.
+            - Otherwise, attempt best-effort conversions with exception guards.
             """
             try:
                 xv = _unwrap_scalar(x)
-                return int(float(xv))
-            except Exception:
-                # fallback to best-effort conversion
+                if isinstance(xv, (int, float)):
+                    return int(xv)
+                if isinstance(xv, (str, bytes)):
+                    try:
+                        return int(float(xv))
+                    except Exception:
+                        return int(0)
+                # Last-resort: attempt float coercion then int
                 try:
-                    return int(x)
+                    return int(float(xv))
+                except Exception:
+                    return 0
+            except Exception:
+                try:
+                    return int(x)  # best-effort fallback
                 except Exception:
                     return 0
 
+        def _to_float_scalar(x: Any) -> float:
+            """Coerce x to a float in a defensive, editor-friendly way.
+
+            - Unwrap list/tuple-like containers.
+            - If x is already int/float/str/bytes, call float(x).
+            - Otherwise, attempt a best-effort conversion and fall back to 0.0 on error.
+            """
+            try:
+                v = _unwrap_scalar(x)
+                if isinstance(v, (int, float)):
+                    return float(v)
+                if isinstance(v, (str, bytes)):
+                    try:
+                        return float(v)
+                    except Exception:
+                        return 0.0
+                # Last-resort numeric coercion
+                try:
+                    return float(v)
+                except Exception:
+                    return 0.0
+            except Exception:
+                return 0.0
+
         try:
-            n_theta_export = _to_int_scalar(_unwrap_scalar(n_theta) * _unwrap_scalar(up))
+            a = _unwrap_scalar(n_theta)
+            b = _unwrap_scalar(up)
+            try:
+                prod = float(a) * float(b)
+            except Exception:
+                try:
+                    prod = a * b
+                except Exception:
+                    prod = a
+            n_theta_export = _to_int_scalar(prod)
         except Exception:
             n_theta_export = _to_int_scalar(n_theta * up)  # fallback, best-effort
         try:
-            n_z_export = _to_int_scalar(_unwrap_scalar(n_z) * _unwrap_scalar(up))
+            a = _unwrap_scalar(n_z)
+            b = _unwrap_scalar(up)
+            try:
+                prod = float(a) * float(b)
+            except Exception:
+                try:
+                    prod = a * b
+                except Exception:
+                    prod = a
+            n_z_export = _to_int_scalar(prod)
         except Exception:
             n_z_export = _to_int_scalar(n_z * up)  # fallback, best-effort
         do_export = cE2.button("Export STL…", type="primary", key="export_btn")
@@ -1020,7 +1079,7 @@ with _tab1:
             if preview_mode == "debounced":
                 # Inject a more robust debounce helper that schedules a click
                 # on the Update button when inputs stop changing.
-                timeout_ms = int(float(cast(Any, ss.get("debounce_timeout", 0.8))) * 1000)
+                timeout_ms = int(_to_float_scalar(ss.get("debounce_timeout", 0.8)) * 1000)
                 js = """
 <script>
 (function(){
@@ -1096,7 +1155,7 @@ with _tab1:
         if preview_mode == "debounced":
             try:
                 last_ts = cast(Any, ss.get("_last_change_ts", None))
-                debounce_timeout_seconds = float(cast(Any, ss.get("debounce_timeout", 0.8)))
+                debounce_timeout_seconds = _to_float_scalar(ss.get("debounce_timeout", 0.8))
                 # Only update if a change actually occurred (stale flag set)
                 if (
                     last_ts is not None
@@ -1177,7 +1236,7 @@ with _tab1:
 
     # Apply interactive preview scaling to keep Full Preview responsive
     # Narrow typing: preview_res_scale is expected to be a float; use a direct cast
-    preview_scale = cast(float, ss.get("preview_res_scale", 1.0))
+    preview_scale = _to_float_scalar(ss.get("preview_res_scale", 1.0))
     target_n_theta = max(16, int(n_theta * preview_detail * preview_scale))
     target_n_z = max(8, int(n_z * preview_detail * preview_scale))
     preview_n_theta = max(16, min(168, target_n_theta))
@@ -1231,11 +1290,11 @@ with _tab1:
             cast(Any, ss.get("preview_grad_c1")),
             cast(Any, ss.get("preview_grad_c2")),
             cast(Any, ss.get("preview_grad_c3")),
-            float(cast(Any, ss.get("mesh_ambient", 0.35))),
-            float(cast(Any, ss.get("mesh_diffuse", 0.95))),
-            float(cast(Any, ss.get("mesh_specular", 0.25))),
-            float(cast(Any, ss.get("mesh_roughness", 0.7))),
-            float(cast(Any, ss.get("mesh_fresnel", 0.2))),
+            _to_float_scalar(ss.get("mesh_ambient", 0.35)),
+            _to_float_scalar(ss.get("mesh_diffuse", 0.95)),
+            _to_float_scalar(ss.get("mesh_specular", 0.25)),
+            _to_float_scalar(ss.get("mesh_roughness", 0.7)),
+            _to_float_scalar(ss.get("mesh_fresnel", 0.2)),
             bool(show_inner),
             float(view_elev),
             float(view_azim),
@@ -1326,7 +1385,7 @@ with _tab1:
                         t0_mb = time.time()
                         import numpy as _np_mb
 
-                        verts, faces, diag = build_pot_mesh(
+                        verts, faces, diag = build_pot_mesh_safe(
                             H=H,
                             Rt=Rt,
                             Rb=Rb,
@@ -1473,7 +1532,7 @@ with _tab1:
             ss = cast(dict[str, Any], st.session_state)
             force_capture = bool(cast(Any, ss.get("_force_mesh_png_capture", False)))
             # Cap PNG mesh resolution aggressively to keep it cheap
-            png_cap_n = int(cast(Any, ss.get("png_cap_n", 64)))
+            png_cap_n = _to_int_scalar(ss.get("png_cap_n", 64))
 
             t0_meshpng = time.time()
             png_bytes = None
@@ -1607,8 +1666,8 @@ with _tab1:
                     zmin = float(Z.min())
                     zmax = float(Z.max())
                 except Exception:
-                    rmax = max(1.0, float(cast(Any, ss.get("top_od", 140.0))) * 0.5)
-                    zmin, zmax = 0.0, float(cast(Any, ss.get("H", 120.0)))
+                    rmax = max(1.0, _to_float_scalar(ss.get("top_od", 140.0)) * 0.5)
+                    zmin, zmax = 0.0, _to_float_scalar(ss.get("H", 120.0))
                 if place_on_ground:
                     zmin = 0.0
                 xlim = [-rmax, rmax]
@@ -1764,7 +1823,7 @@ with _tab1:
                             # rather than the scaled/clamped full_n_* values.
                             ntheta = n_theta if use_exact_full else preview_n_theta
                             nz = n_z if use_exact_full else preview_n_z
-                            verts2, faces2, _ = build_pot_mesh(
+                            verts2, faces2, _ = build_pot_mesh_safe(
                                 H=H,
                                 Rt=Rt,
                                 Rb=Rb,
@@ -1876,19 +1935,19 @@ with _tab1:
                         flatshading=bool(cast(Any, ss.get("mesh_flatshading", False))),
                         lighting=dict(
                             ambient=min(
-                                max(cast(Any, ss.get("mesh_ambient", 0.35)), 0.0), 1.0
+                                max(cast(float, ss.get("mesh_ambient", 0.35)), 0.0), 1.0
                             ),
                             diffuse=min(
-                                max(cast(Any, ss.get("mesh_diffuse", 0.95)), 0.0), 1.0
+                                max(cast(float, ss.get("mesh_diffuse", 0.95)), 0.0), 1.0
                             ),
                             specular=min(
-                                max(cast(Any, ss.get("mesh_specular", 0.25)), 0.0), 1.0
+                                max(cast(float, ss.get("mesh_specular", 0.25)), 0.0), 1.0
                             ),
                             roughness=min(
-                                max(cast(Any, ss.get("mesh_roughness", 0.7)), 0.0), 1.0
+                                max(cast(float, ss.get("mesh_roughness", 0.7)), 0.0), 1.0
                             ),
                             fresnel=min(
-                                max(cast(Any, ss.get("mesh_fresnel", 0.2)), 0.0), 1.0
+                                max(cast(float, ss.get("mesh_fresnel", 0.2)), 0.0), 1.0
                             ),
                         ),
                         hoverinfo="skip",
@@ -1908,21 +1967,21 @@ with _tab1:
                     zmin = float(V[:, 2].min())
                     zmax = float(V[:, 2].max())
                 except Exception:
-                    rmax = max(1.0, float(cast(Any, ss.get("top_od", 140.0))) * 0.5)
-                    zmin, zmax = 0.0, float(cast(Any, ss.get("H", 120.0)))
+                    rmax = max(1.0, _to_float_scalar(ss.get("top_od", 140.0)) * 0.5)
+                    zmin, zmax = 0.0, _to_float_scalar(ss.get("H", 120.0))
                 xlim = [-rmax, rmax]
                 ylim = [-rmax, rmax]
                 zlim = [zmin, zmax]
                 z_ratio = (zmax - zmin) / max(1e-6, (xlim[1] - xlim[0]))
                 # Title includes mesh resolution and face count, and whether exact or approximate was used
                 try:
-                    nt_used = int(cast(Any, ss.get("_last_mesh_ntheta")) or 0) or (
+                    nt_used = _to_int_scalar(ss.get("_last_mesh_ntheta", 0)) or (
                         int(V.shape[0]) // max(1, (n_z if n_z else 1))
                     )
                 except Exception:
                     nt_used = 0
                 try:
-                    nz_used = int(cast(Any, ss.get("_last_mesh_nz")) or 0) or (
+                    nz_used = _to_int_scalar(ss.get("_last_mesh_nz", 0)) or (
                         int(V.shape[0]) // max(1, (n_theta if n_theta else 1))
                     )
                 except Exception:
@@ -1998,21 +2057,29 @@ with _tab1:
     # -------------------- METRICS ----------------------
     st.subheader("Estimated metrics")
     try:
-        _, faces_m, diag_m = cast(tuple[Any, Any, Any], build_pot_mesh(
-            H=H,
-            Rt=Rt,
-            Rb=Rb,
-            t_wall=t_wall,
-            t_bottom=t_bottom,
-            r_drain=r_drain,
-            expn=expn,
-            n_theta=max(48, n_theta // 2),
-            n_z=max(24, n_z // 2),
-            r_outer_fn=r_outer_fn,
-            style_opts=opts,
-        ))
+        _, faces_m, diag_m = cast(
+            tuple[Any, Any, Any],
+            build_pot_mesh_safe(
+                H=H,
+                Rt=Rt,
+                Rb=Rb,
+                t_wall=t_wall,
+                t_bottom=t_bottom,
+                r_drain=r_drain,
+                expn=expn,
+                n_theta=max(48, n_theta // 2),
+                n_z=max(24, n_z // 2),
+                r_outer_fn=r_outer_fn,
+                style_opts=opts,
+            ),
+        )
         m1, m2, m3 = st.columns(3)
-        m1.metric("Triangles", f"{len(faces_m):,}")
+        try:
+            from typing import cast as _cast
+
+            m1.metric("Triangles", f"{len(_cast(Any, faces_m)):,}")
+        except Exception:
+            m1.metric("Triangles", "N/A")
         # diag_m may be either a dict of diagnostics or another type returned
         # by the geometry engine in some code paths; guard access with
         # isinstance so mypy knows we're only calling .get on a dict.
@@ -2140,7 +2207,7 @@ with _tab1:
                 "Diffuse",
                 0.0,
                 1.0,
-                min(max(cast(Any, ss.get("mesh_diffuse", 1.0)), 0.0), 1.0),
+                min(max(cast(float, ss.get("mesh_diffuse", 1.0)), 0.0), 1.0),
                 0.01,
                 key="mesh_diffuse",
             )
@@ -2514,28 +2581,38 @@ with _tab1:
         try:
             # Build mesh at export resolution (reuse upscale), else fall back to current n_theta/n_z
             up = (
-                float(cast(Any, ss.get("_export_upscale", 1.0)))
+                cast(float, ss.get("_export_upscale", 1.0))
                 if "_export_upscale" in ss
                 else 1.0
             )
-            # Defensive unwrap similar to export path
-            def _unwrap_scalar(v):
-                if isinstance(v, (list, tuple)):
-                    try:
-                        return v[0]
-                    except Exception:
-                        return v
-                return v
-
+            # Reuse the already-defined defensive helpers above (no redeclaration)
             try:
-                n_theta_pub = _to_int_scalar(_unwrap_scalar(n_theta) * _unwrap_scalar(up))
+                a = _unwrap_scalar(n_theta)
+                b = _unwrap_scalar(up)
+                try:
+                    prod = float(a) * float(b)
+                except Exception:
+                    try:
+                        prod = a * b
+                    except Exception:
+                        prod = a
+                n_theta_pub = _to_int_scalar(prod)
             except Exception:
                 n_theta_pub = _to_int_scalar(n_theta * up)
             try:
-                n_z_pub = _to_int_scalar(_unwrap_scalar(n_z) * _unwrap_scalar(up))
+                a = _unwrap_scalar(n_z)
+                b = _unwrap_scalar(up)
+                try:
+                    prod = float(a) * float(b)
+                except Exception:
+                    try:
+                        prod = a * b
+                    except Exception:
+                        prod = a
+                n_z_pub = _to_int_scalar(prod)
             except Exception:
                 n_z_pub = _to_int_scalar(n_z * up)
-            verts, faces, _ = build_pot_mesh(
+            verts, faces, _ = build_pot_mesh_safe(
                 H=H,
                 Rt=Rt,
                 Rb=Rb,
@@ -2557,7 +2634,15 @@ with _tab1:
             )
             if WRITE_STL_BINARY is None:
                 raise RuntimeError("write_stl_binary not available in this build")
-            WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)
+            try:
+                import numpy as _np_write
+
+                verts_arr = cast(Any, _np_write.asarray(verts, dtype=_np_write.float64))
+                faces_arr = cast(Any, _np_write.asarray(faces, dtype=_np_write.int32))
+            except Exception:
+                verts_arr = cast(Any, verts)
+                faces_arr = cast(Any, faces)
+            WRITE_STL_BINARY(str(tmp_path), safe, verts_arr, faces_arr)
             data = tmp_path.read_bytes()
             try:
                 tmp_path.unlink(missing_ok=True)
@@ -2582,8 +2667,8 @@ with _tab1:
                     "twist": opts.get("twist", 0.0),
                 }
                 diagnostics_dict = {
-                    "triangle_count": len(faces),
-                    "vertex_count": len(verts),
+                    "triangle_count": len(cast(Any, faces_arr)),
+                    "vertex_count": len(cast(Any, verts_arr)),
                 }
                 git_commit: Optional[str] = None
                 try:
@@ -2629,7 +2714,7 @@ with _tab1:
             from datetime import datetime
 
             with st.spinner("Exporting STL…"):
-                verts, faces, _ = build_pot_mesh(
+                verts, faces, _ = build_pot_mesh_safe(
                     H=H,
                     Rt=Rt,
                     Rb=Rb,
@@ -2652,14 +2737,27 @@ with _tab1:
                 )
                 if WRITE_STL_BINARY is None:
                     raise RuntimeError("write_stl_binary not available in this build")
+                try:
+                    import numpy as _np_write
+
+                    verts_arr = cast(Any, _np_write.asarray(verts, dtype=_np_write.float64))
+                    faces_arr = cast(Any, _np_write.asarray(faces, dtype=_np_write.int32))
+                except Exception:
+                    verts_arr = cast(Any, verts)
+                    faces_arr = cast(Any, faces)
                 # Export as binary STL (recommended: smaller, faster, universally supported)
-                WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)
+                WRITE_STL_BINARY(str(tmp_path), safe, verts_arr, faces_arr)
                 data = tmp_path.read_bytes()
                 try:
                     tmp_path.unlink(missing_ok=True)
                 except Exception:
                     pass
-            st.success(f"STL ready: {safe}.stl  — triangles: {len(faces):,}")
+            try:
+                st.success(
+                    f"STL ready: {safe}.stl  — triangles: {len(cast(Any, faces_arr)):,}"
+                )
+            except Exception:
+                st.success(f"STL ready: {safe}.stl")
             st.download_button(
                 "Download STL", data=data, file_name=f"{safe}.stl", mime="model/stl"
             )
@@ -2691,8 +2789,8 @@ with _tab1:
 
                     # Prepare diagnostics
                     diagnostics_dict = {
-                        "triangle_count": len(faces),
-                        "vertex_count": len(verts),
+                        "triangle_count": len(cast(Any, faces_arr)),
+                        "vertex_count": len(cast(Any, verts_arr)),
                     }
 
                     # Get git commit (optional)
