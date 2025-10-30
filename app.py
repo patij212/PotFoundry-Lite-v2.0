@@ -2141,7 +2141,7 @@ with _tab1:
         lc1, lc2, lc3, lc4, lc5, lc6 = st.columns(6)
         with lc1:
                 ambient_val = st.slider(
-                "Ambient", 0.0, 1.0, cast(Any, ss.get("mesh_ambient", 0.50)), 0.01, key="mesh_ambient"
+                "Ambient", 0.0, 1.0, _to_float_scalar(ss.get("mesh_ambient", 0.50)), 0.01, key="mesh_ambient"
             )
         with lc2:
                 diffuse_val = st.slider(
@@ -2154,15 +2154,15 @@ with _tab1:
             )
         with lc3:
                 specular_val = st.slider(
-                "Specular", 0.0, 1.0, cast(Any, ss.get("mesh_specular", 0.40)), 0.01, key="mesh_specular"
+                "Specular", 0.0, 1.0, _to_float_scalar(ss.get("mesh_specular", 0.40)), 0.01, key="mesh_specular"
             )
         with lc4:
                 roughness_val = st.slider(
-                "Roughness", 0.0, 1.0, cast(Any, ss.get("mesh_roughness", 0.45)), 0.01, key="mesh_roughness"
+                "Roughness", 0.0, 1.0, _to_float_scalar(ss.get("mesh_roughness", 0.45)), 0.01, key="mesh_roughness"
             )
         with lc5:
                 fresnel_val = st.slider(
-                "Fresnel", 0.0, 1.0, cast(Any, ss.get("mesh_fresnel", 0.25)), 0.01, key="mesh_fresnel"
+                "Fresnel", 0.0, 1.0, _to_float_scalar(ss.get("mesh_fresnel", 0.25)), 0.01, key="mesh_fresnel"
             )
         with lc6:
                 st.checkbox(
@@ -2193,7 +2193,7 @@ with _tab1:
                 "Preview resolution scale",
                 0.2,
                 1.0,
-                cast(Any, ss.get("preview_res_scale", 1.0)),
+                _to_float_scalar(ss.get("preview_res_scale", 1.0)),
                 0.05,
                 key="preview_res_scale",
                 help="Multiplier applied to n_theta/n_z for interactive previews to improve speed.",
@@ -2216,7 +2216,7 @@ with _tab1:
             "PNG dpi",
             80,
             220,
-            cast(Any, ss.get("preview_dpi", 110)),
+            _to_int_scalar(ss.get("preview_dpi", 110)),
             5,
             key="preview_dpi",
             help="Higher DPI for crisper static PNG snapshots.",
