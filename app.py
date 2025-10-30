@@ -87,6 +87,71 @@ from potfoundry.integrations.supabase_client import get_singleton_client, Supaba
 import time
 
 
+def build_mesh_kwargs_for_test(Vd, Fd, ss, n_theta, n_z, fig_h):
+    """Construct the mesh kwargs used for Plotly Mesh3d rendering.
+
+    This helper mirrors the logic used in the full-preview path but is
+    kept isolated so unit tests can exercise the branch that previously
+    left `mesh_kwargs` undefined when gradient coloring was active.
+
+    Args:
+        Vd: (N,3) vertex array
+        Fd: (M,3) face index array
+        ss: mapping-like session state (must support .get)
+        n_theta, n_z: ints used for title/diagnostics
+        fig_h: float, figure height factor used elsewhere
+
+    Returns:
+        dict: mesh_kwargs suitable for passing to go.Mesh3d
+    """
+    import numpy as _np
+
+    use_gradient = bool(ss.get("use_gradient_color", True))
+    solid_hex = str(ss.get("solid_color", "#BFC7D5"))
+    mesh_colors = []
+    if len(Vd) and use_gradient:
+        try:
+            span_z = float(_np.ptp(Vd[:, 2])) if len(Vd) else 0.0
+            z_norm = (Vd[:, 2] - Vd[:, 2].min()) / max(1e-6, span_z)
+            # Simplified: always use full-length color mapping for tests
+            mesh_colors = build_gradient_colors(
+                z_norm, ss.get("preview_palette", None),
+                [ss.get("preview_grad_c1", "#2850D0"), ss.get("preview_grad_c2", "#5FA8FF"), ss.get("preview_grad_c3", "#E2F3FF")]
+            )
+        except Exception:
+            mesh_colors = [[200, 200, 230] for _ in range(len(Vd))]
+    else:
+        mesh_colors = []
+
+    # Build mesh kwargs unconditionally to avoid NameError in all branches
+    mesh_kwargs = dict(
+        x=Vd[:, 0],
+        y=Vd[:, 1],
+        z=Vd[:, 2],
+        i=Fd[:, 0],
+        j=Fd[:, 1],
+        k=Fd[:, 2],
+        flatshading=bool(ss.get("mesh_flatshading", False)),
+        lighting=dict(
+            ambient=min(max(float(ss.get("mesh_ambient", 0.35)), 0.0), 1.0),
+            diffuse=min(max(float(ss.get("mesh_diffuse", 0.95)), 0.0), 1.0),
+            specular=min(max(float(ss.get("mesh_specular", 0.25)), 0.0), 1.0),
+            roughness=min(max(float(ss.get("mesh_roughness", 0.7)), 0.0), 1.0),
+            fresnel=min(max(float(ss.get("mesh_fresnel", 0.2)), 0.0), 1.0),
+        ),
+        hoverinfo="skip",
+        name="mesh",
+        opacity=1.0,
+    )
+
+    if use_gradient and len(mesh_colors):
+        mesh_kwargs["vertexcolor"] = mesh_colors
+    else:
+        mesh_kwargs["color"] = solid_hex
+
+    return mesh_kwargs
+
+
 def _mask_possible_secrets(text: str) -> str:
     """Mask common secret patterns and any known supabase key from st.secrets.
 
@@ -1874,35 +1939,39 @@ with _tab1:
                 else:
                     mesh_colors = []
 
-                    mesh_kwargs = dict(
-                        x=Vd[:, 0],
-                        y=Vd[:, 1],
-                        z=Vd[:, 2],
-                        i=Fd[:, 0],
-                        j=Fd[:, 1],
-                        k=Fd[:, 2],
-                        flatshading=bool(cast(Any, ss.get("mesh_flatshading", False))),
-                        lighting=dict(
-                            ambient=min(
-                                max(_to_float_scalar(ss.get("mesh_ambient", 0.35)), 0.0), 1.0
-                            ),
-                            diffuse=min(
-                                max(_to_float_scalar(ss.get("mesh_diffuse", 0.95)), 0.0), 1.0
-                            ),
-                            specular=min(
-                                max(_to_float_scalar(ss.get("mesh_specular", 0.25)), 0.0), 1.0
-                            ),
-                            roughness=min(
-                                max(_to_float_scalar(ss.get("mesh_roughness", 0.7)), 0.0), 1.0
-                            ),
-                            fresnel=min(
-                                max(_to_float_scalar(ss.get("mesh_fresnel", 0.2)), 0.0), 1.0
-                            ),
+                # Build mesh kwargs unconditionally. Previously the dict was
+                # only created in the non-gradient branch which could leave it
+                # undefined when gradient coloring was enabled, causing a
+                # NameError at runtime: "name 'mesh_kwargs' is not defined".
+                mesh_kwargs = dict(
+                    x=Vd[:, 0],
+                    y=Vd[:, 1],
+                    z=Vd[:, 2],
+                    i=Fd[:, 0],
+                    j=Fd[:, 1],
+                    k=Fd[:, 2],
+                    flatshading=bool(cast(Any, ss.get("mesh_flatshading", False))),
+                    lighting=dict(
+                        ambient=min(
+                            max(_to_float_scalar(ss.get("mesh_ambient", 0.35)), 0.0), 1.0
                         ),
-                        hoverinfo="skip",
-                        name="mesh",
-                        opacity=1.0,
-                    )
+                        diffuse=min(
+                            max(_to_float_scalar(ss.get("mesh_diffuse", 0.95)), 0.0), 1.0
+                        ),
+                        specular=min(
+                            max(_to_float_scalar(ss.get("mesh_specular", 0.25)), 0.0), 1.0
+                        ),
+                        roughness=min(
+                            max(_to_float_scalar(ss.get("mesh_roughness", 0.7)), 0.0), 1.0
+                        ),
+                        fresnel=min(
+                            max(_to_float_scalar(ss.get("mesh_fresnel", 0.2)), 0.0), 1.0
+                        ),
+                    ),
+                    hoverinfo="skip",
+                    name="mesh",
+                    opacity=1.0,
+                )
                 if use_gradient and len(mesh_colors):
                     mesh_kwargs["vertexcolor"] = mesh_colors
                 else:

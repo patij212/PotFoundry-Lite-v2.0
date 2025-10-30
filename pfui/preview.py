@@ -138,6 +138,11 @@ def make_preview_arrays(
                     raise ValueError("vectorized style returned unexpected shape")
             except Exception:
                 # Per-theta fallback ensures previews work even for scalar-only styles
+                # If the vectorized call fails we still consider this ring a
+                # fallback recovery even when the scalar sampling succeeds, so
+                # report it to the user. Previously ring_fallbacks was only
+                # incremented when scalar samples themselves errored which
+                # produced silent recoveries in the UI.
                 r = _np.empty(nt, dtype=float)
                 local_errors = 0
                 for j, th in enumerate(thetas):
@@ -149,8 +154,10 @@ def make_preview_arrays(
                         local_errors += 1
                 if local_errors > 0:
                     theta_fallbacks += local_errors
-                # Count this ring as a fallback if any scalar samples failed
-                ring_fallbacks += 1 if local_errors > 0 else 0
+                # Always mark this ring as a fallback when the vectorized call
+                # failed — that makes the subsequent st.info message surface
+                # user-visible recovery even for scalar-only styles.
+                ring_fallbacks += 1
             r = _sanitize(r, r0)
             X[i, :], Y[i, :], Z[i, :] = r * cx, r * sy, z
         # Final guard: ensure arrays are float and finite to avoid Plotly/Matplotlib failures

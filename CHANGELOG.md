@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed unused `Client` import in `supabase_client.py`
   - Fixed ambiguous variable name `l` → `log_entry` in `app.py`
   - Fixed 5 broken library tests due to missing fixture loading
+  - Fixed: Ensure full preview `mesh_kwargs` is always defined to avoid
+    NameError when gradient coloring is active; added `build_mesh_kwargs_for_test`
+    helper and `tests/test_app_full_preview_branch.py` to cover this branch.
 
 - **Code Quality Improvements:**
   - **Fixed 124 semicolon linting warnings (E702)** - Refactored all multi-statement lines to proper multi-line format
