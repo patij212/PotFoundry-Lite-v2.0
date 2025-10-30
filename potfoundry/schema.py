@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict, PositiveFloat, model_validator
 
 # PF2: Pydantic v2 schema (ConfigV2) + migration helpers
@@ -68,9 +68,9 @@ class RecipeModel(BaseModel):
     opts: Dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _style_or_use(self):
+    def _style_or_use(self) -> "RecipeModel":
         # either style or use (preset) must be provided
-        if not self.style and not self.use:
+        if not self.style and self.use is None:
             raise ValueError("Recipe must provide either 'style' or 'use' (preset).")
         if self.style and self.use:
             raise ValueError("Provide only one of 'style' or 'use'.")
@@ -90,7 +90,7 @@ class ConfigV2(BaseModel):
     outdir: str = "out"
     save_previews: bool = True
     make_zip: bool = False
-    mesh: MeshQualityModel = Field(default_factory=MeshQualityModel)
+    mesh: MeshQualityModel = Field(default_factory=lambda: MeshQualityModel(n_theta=168, n_z=84))
     defaults: DefaultsModel = Field(default_factory=DefaultsModel)
     presets: Dict[str, PresetModel] = Field(default_factory=dict)
     recipes: List[RecipeModel] = Field(default_factory=list)
@@ -119,7 +119,7 @@ def migrate_v1_to_v2(raw: dict) -> dict:
     presets = raw.get("presets", {}) or {}
     recipes = raw.get("recipes", []) or []
 
-    v2 = {
+    v2: dict[str, Any] = {
         "version": 2,
         "outdir": str(raw.get("outdir", "out")),
         "save_previews": bool(raw.get("save_previews", True)),

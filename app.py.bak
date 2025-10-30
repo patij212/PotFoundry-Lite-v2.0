@@ -180,7 +180,7 @@ def _cleanup_stale_media_ids() -> None:
             continue
 
         try:
-            v = cast(Any, ss.get(str(k)))
+            v = ss.get(str(k))
         except Exception:
             # If we can't access a key, skip it.
             continue
@@ -382,72 +382,7 @@ with _tab1:
         style_guess = cast(Optional[str], ss.get(
             "style", all_styles[0] if all_styles else None
         ))
-        def _unwrap_scalar(v: Any) -> Any:
-            """If v is a list/tuple, return its first element; otherwise return v.
-
-            Annotated to help static analysis (Pylance) reason about downstream
-            conversions.
-            """
-            if isinstance(v, (list, tuple)):
-                try:
-                    return v[0]
-                except Exception:
-                    return v
-            return v
-
-        def _to_int_scalar(x: Any) -> int:
-            """Coerce x to an int in a defensive, editor-friendly way.
-
-            - Unwrap list/tuple-like containers.
-            - If the resulting value is a primitive known to be convertible to
-              float (int/float/str/bytes), call float(x) safely and cast to int.
-            - Otherwise, attempt best-effort conversions with exception guards.
-            """
-            try:
-                xv = _unwrap_scalar(x)
-                if isinstance(xv, (int, float)):
-                    return int(xv)
-                if isinstance(xv, (str, bytes)):
-                    try:
-                        return int(float(xv))
-                    except Exception:
-                        return int(0)
-                # Last-resort: attempt float coercion then int
-                try:
-                    return int(float(xv))
-                except Exception:
-                    return 0
-            except Exception:
-                try:
-                    return int(x)  # best-effort fallback
-                except Exception:
-                    return 0
-
-        def _to_float_scalar(x: Any) -> float:
-            """Coerce x to a float in a defensive, editor-friendly way.
-
-            - Unwrap list/tuple-like containers.
-            - If x is already int/float/str/bytes, call float(x).
-            - Otherwise, attempt a best-effort conversion and fall back to 0.0 on error.
-            """
-            try:
-                v = _unwrap_scalar(x)
-                if isinstance(v, (int, float)):
-                    return float(v)
-                if isinstance(v, (str, bytes)):
-                    try:
-                        return float(v)
-                    except Exception:
-                        return 0.0
-                # Last-resort numeric coercion
-                try:
-                    return float(v)
-                except Exception:
-                    return 0.0
-            except Exception:
-                return 0.0
-
-        H_guess = _to_int_scalar(ss.get("H", 120.0))
+        H_guess = int(ss.get("H", 120.0))
         try:
             auto_name_guess = (
                 f"{style_guess}_H{int(H_guess)}"
@@ -455,18 +390,18 @@ with _tab1:
                 else "SpiralRidges_Design"
             )
         except Exception:
-            auto_name_guess = cast(Any, ss.get("model_name", "SpiralRidges_Design"))
+            auto_name_guess = ss.get("model_name", "SpiralRidges_Design")
 
         # If auto-name checkbox is enabled, make sure the session reflects
         # the automatic name before creating the widget so the input shows it.
-        if cast(Any, ss.get("_model_name_auto", True)):
+        if ss.get("_model_name_auto", True):
             ss["model_name"] = auto_name_guess
             ss["_model_name_user_edited"] = False
 
         # Model name input (placed near the top of the sidebar)
         name = st.text_input(
             "Model name",
-            value=cast(Any, ss.get("model_name", "SpiralRidges_Design")),
+            value=ss.get("model_name", "SpiralRidges_Design"),
             key="model_name",
             on_change=_on_model_name_change,
         )
@@ -478,7 +413,7 @@ with _tab1:
         auto_label = "Auto-name (follow style/H)"
         st.checkbox(
             auto_label,
-            value=cast(Any, ss.get("_model_name_auto", True)),
+            value=ss.get("_model_name_auto", True),
             key="_model_name_auto",
         )
         prev_style = cast(Optional[str], ss.get("_prev_style", None))
@@ -522,22 +457,19 @@ with _tab1:
                     "Height",
                     60.0,
                     240.0,
-                    cast(float, ss.get("H", 120.0)),
+                    ss.get("H", 120.0),
                     5.0,
                     key="H",
                     help="Overall height of the pot measured from the base to the rim.",
                     on_change=_mark_changed,
                 )
             )
-
-            # 'Flare exponent' control removed from Dimensions to avoid duplication.
-            # The canonical 'Flare exponent' slider lives under the Profile / Curve section.
             top_od = float(
                 st.number_input(
                     "Top OD",
                     60.0,
                     240.0,
-                    cast(float, ss.get("top_od", 140.0)),
+                    ss.get("top_od", 140.0),
                     5.0,
                     key="top_od",
                     help="Outer diameter at the rim (OD = outside diameter).",
@@ -549,7 +481,7 @@ with _tab1:
                     "Bottom OD",
                     40.0,
                     200.0,
-                    cast(float, ss.get("bottom_od", 90.0)),
+                    ss.get("bottom_od", 90.0),
                     5.0,
                     key="bottom_od",
                     help="Outer diameter at the base. Increase for more stability or reduce for a sleeker profile.",
@@ -561,7 +493,7 @@ with _tab1:
                     "Wall thickness",
                     2.0,
                     8.0,
-                    cast(float, ss.get("t_wall", 3.0)),
+                    ss.get("t_wall", 3.0),
                     0.5,
                     key="t_wall",
                     help="Thickness of the pot wall. Typical FDM prints work well around 2.5–3.0 mm.",
@@ -573,7 +505,7 @@ with _tab1:
                     "Bottom slab",
                     2.0,
                     10.0,
-                    cast(float, ss.get("t_bottom", 3.0)),
+                    ss.get("t_bottom", 3.0),
                     0.5,
                     key="t_bottom",
                     help="Thickness of the bottom solid slab. Thicker improves rigidity and weight.",
@@ -585,7 +517,7 @@ with _tab1:
                     "Drain hole",
                     3.0,
                     30.0,
-                    cast(float, ss.get("r_drain", 10.0)),
+                    ss.get("r_drain", 10.0),
                     1.0,
                     key="r_drain",
                     help="Radius of the drainage hole. Ensure it remains smaller than inner radius at the base.",
@@ -636,16 +568,13 @@ with _tab1:
                     "Flare exponent",
                     0.7,
                     1.6,
-                    cast(Any, ss.get("expn", 1.1)),
+                    ss.get("expn", 1.1),
                     0.05,
-                    key=widget_key(style_key, "expn"),
+                    key="expn",
                     on_change=_mark_changed,
                     help="Controls how quickly the wall expands from base to rim. >1 favors the top, <1 favors the base.",
                 )
             )
-            # The profile slider uses a style-scoped key and must remain
-            # independent from other sliders; do NOT overwrite the canonical
-            # session key 'expn' here.
             c1, c2, c3 = st.columns(3)
             # NOTE: widget keys now use style_key (not style_name)
             k1 = widget_key(style_key, "flare_center")
@@ -656,7 +585,7 @@ with _tab1:
                     "Flare center (0–1)",
                     0.1,
                     0.9,
-                    cast(Any, ss.get(k1, 0.5)),
+                    ss.get(k1, 0.5),
                     0.01,
                     key=k1,
                     on_change=_mark_changed,
@@ -668,7 +597,7 @@ with _tab1:
                     "Flare sharpness",
                     1.0,
                     12.0,
-                    cast(Any, ss.get(k2, 6.0)),
+                    ss.get(k2, 6.0),
                     0.1,
                     key=k2,
                     on_change=_mark_changed,
@@ -680,7 +609,7 @@ with _tab1:
                     "Bell amplitude",
                     0.0,
                     0.5,
-                    cast(Any, ss.get(k3, 0.0)),
+                    ss.get(k3, 0.0),
                     0.01,
                     key=k3,
                     on_change=_mark_changed,
@@ -695,7 +624,7 @@ with _tab1:
                     "Bell center (0–1)",
                     0.1,
                     0.9,
-                    cast(Any, ss.get(k4, 0.5)),
+                    ss.get(k4, 0.5),
                     0.01,
                     key=k4,
                     on_change=_mark_changed,
@@ -707,7 +636,7 @@ with _tab1:
                     "Bell width",
                     0.05,
                     0.5,
-                    cast(Any, ss.get(k5, 0.22)),
+                    ss.get(k5, 0.22),
                     0.01,
                     key=k5,
                     on_change=_mark_changed,
@@ -782,9 +711,9 @@ with _tab1:
                             "flare_exp": expn,
                         },
                             "opts": {
-                                k: cast(Any, ss.get(
+                                k: ss.get(
                                     widget_key(style_key, k), v["default"]
-                                ))
+                                )
                                 for k, v in styles.get(style_key, {}).items()
                             },
                     }
@@ -954,33 +883,40 @@ with _tab1:
             key="quality_up",
             help="Multiplies nθ & nz when generating the STL. Use higher values for ultra-smooth exports.",
         )
-        # Defensive conversion helpers (_unwrap_scalar/_to_int_scalar/_to_float_scalar)
-        # are declared earlier so they can be used by code in this module.
+        # Defensive unwrap: if sliders or values accidentally become tuples
+        # (e.g., trailing commas in assignment), unwrap the first element
+        # before performing numeric operations. This avoids passing a tuple
+        # into float()/int() which triggers mypy call-overload errors.
+        def _unwrap_scalar(v):
+            if isinstance(v, (list, tuple)):
+                try:
+                    return v[0]
+                except Exception:
+                    return v
+            return v
+
+        def _to_int_scalar(x):
+            """Coerce x to a numeric scalar then to int, unwrapping list/tuple first.
+
+            This is a small defensive helper to avoid passing tuple-like values to
+            builtin int() which causes mypy call-overload errors in dynamic UI code.
+            """
+            try:
+                xv = _unwrap_scalar(x)
+                return int(float(xv))
+            except Exception:
+                # fallback to best-effort conversion
+                try:
+                    return int(x)
+                except Exception:
+                    return 0
 
         try:
-            a = _unwrap_scalar(n_theta)
-            b = _unwrap_scalar(up)
-            try:
-                prod = float(a) * float(b)
-            except Exception:
-                try:
-                    prod = a * b
-                except Exception:
-                    prod = a
-            n_theta_export = _to_int_scalar(prod)
+            n_theta_export = _to_int_scalar(_unwrap_scalar(n_theta) * _unwrap_scalar(up))
         except Exception:
             n_theta_export = _to_int_scalar(n_theta * up)  # fallback, best-effort
         try:
-            a = _unwrap_scalar(n_z)
-            b = _unwrap_scalar(up)
-            try:
-                prod = float(a) * float(b)
-            except Exception:
-                try:
-                    prod = a * b
-                except Exception:
-                    prod = a
-            n_z_export = _to_int_scalar(prod)
+            n_z_export = _to_int_scalar(_unwrap_scalar(n_z) * _unwrap_scalar(up))
         except Exception:
             n_z_export = _to_int_scalar(n_z * up)  # fallback, best-effort
         do_export = cE2.button("Export STL…", type="primary", key="export_btn")
@@ -1018,12 +954,11 @@ with _tab1:
                     mime="image/png",
                 )
                 # Optional SVG via Plotly if possible
-                if HAS_PLOTLY and cast(Optional[dict], ss.get("_last_surface_fig_json")):
+                if HAS_PLOTLY and ss.get("_last_surface_fig_json"):
                     try:
-                        fig = go.Figure(cast(Optional[dict], ss.get("_last_surface_fig_json")))
-                        # Defensive unwrap to avoid passing list/tuple into float()/int()
-                        w = max(400, min(900, _to_int_scalar(96 * _unwrap_scalar(fig_h))))
-                        h = max(300, min(800, _to_int_scalar(96 * _unwrap_scalar(fig_h))))
+                        fig = go.Figure(ss.get("_last_surface_fig_json"))
+                        w = max(400, min(900, _to_int_scalar(96 * fig_h)))
+                        h = max(300, min(800, _to_int_scalar(96 * fig_h)))
                         svg_bytes = fig.to_image(format="svg", width=w, height=h)
                         if svg_bytes:
                             d2.download_button(
@@ -1078,7 +1013,7 @@ with _tab1:
             if preview_mode == "debounced":
                 # Inject a more robust debounce helper that schedules a click
                 # on the Update button when inputs stop changing.
-                timeout_ms = int(_to_float_scalar(ss.get("debounce_timeout", 0.8)) * 1000)
+                timeout_ms = int(float(ss.get("debounce_timeout", 0.8)) * 1000)
                 js = """
 <script>
 (function(){
@@ -1153,12 +1088,12 @@ with _tab1:
         # client-side click didn't occur.
         if preview_mode == "debounced":
             try:
-                last_ts = cast(Any, ss.get("_last_change_ts", None))
-                debounce_timeout_seconds = _to_float_scalar(ss.get("debounce_timeout", 0.8))
+                last_ts = cast(Optional[float], ss.get("_last_change_ts", None))
+                debounce_timeout_seconds = float(ss.get("debounce_timeout", 0.8))
                 # Only update if a change actually occurred (stale flag set)
                 if (
                     last_ts is not None
-                    and bool(cast(Any, ss.get("_preview_stale", False)))
+                    and bool(ss.get("_preview_stale", False))
                     and (time.time() - float(last_ts)) >= debounce_timeout_seconds
                 ):
                     should_update_preview = True
@@ -1174,18 +1109,53 @@ with _tab1:
     # Raw style function (may accept scalar or vector theta, and may return scalar or array-like)
     _r_outer_raw = cast(ROuterFn, STYLES[style_name][0])  # geometry comes from UI style name
 
-    # Use the centralized adapter (imported from pfui.geometry_bridge) so callers
-    # across the codebase get consistent behavior. This also avoids duplicating
-    # the adapter logic in multiple places.
-    from pfui.geometry_bridge import adapt_r_outer_fn
+    def _adapt_r_outer_fn(fn: ROuterFn):
+        """Return a wrapper that always accepts an array-like theta and returns a numpy.ndarray.
 
-    r_outer_fn = adapt_r_outer_fn(_r_outer_raw)
+        The adapter will try a vectorized call first. If that fails, it will fall back to
+        calling the original function per-element and rebuilding an array. This keeps the
+        UI type-sound for callers that always pass array-like inputs to r_outer_fn.
+        """
+        def _wrapped(theta, z, r_base, expn, opts):
+            try:
+                import numpy as _np
+
+                th = _np.asarray(theta)
+            except Exception:
+                # If numpy import fails for any reason, attempt best-effort passthrough
+                try:
+                    return _np.asarray(cast(Any, fn(theta, z, r_base, expn, opts)))
+                except Exception:
+                    # Last resort: call with scalar and wrap
+                    return _np.asarray(cast(Any, fn(float(theta), z, r_base, expn, opts)))
+
+            # Scalar-like input: call once and wrap
+            if th.ndim == 0:
+                res = fn(float(th), z, r_base, expn, opts)
+                return _np.asarray(res)
+
+            # Try vectorized call first (some style funcs accept ndarray)
+            try:
+                res = fn(th, z, r_base, expn, opts)
+                return _np.asarray(res)
+            except Exception:
+                # Fallback: call per-element and reconstruct array
+                flat = [_np.asarray(fn(float(t), z, r_base, expn, opts)) for t in th.ravel()]
+                out = _np.asarray(flat)
+                try:
+                    return out.reshape(th.shape)
+                except Exception:
+                    return out
+
+        return _wrapped
+
+    # Use adapter so downstream callers always get an ndarray-returning callable
+    r_outer_fn = _adapt_r_outer_fn(_r_outer_raw)
     opts = dict(ui_opts)
     opts_json = json.dumps(opts, sort_keys=True)
 
     # Apply interactive preview scaling to keep Full Preview responsive
-    # Narrow typing: preview_res_scale is expected to be a float; use a direct cast
-    preview_scale = _to_float_scalar(ss.get("preview_res_scale", 1.0))
+    preview_scale = float(ss.get("preview_res_scale", 1.0))
     target_n_theta = max(16, int(n_theta * preview_detail * preview_scale))
     target_n_z = max(8, int(n_z * preview_detail * preview_scale))
     preview_n_theta = max(16, min(168, target_n_theta))
@@ -1235,15 +1205,15 @@ with _tab1:
             int(full_n_z),
         )
         app_sig = (
-            cast(Any, ss.get("preview_palette")),
-            cast(Any, ss.get("preview_grad_c1")),
-            cast(Any, ss.get("preview_grad_c2")),
-            cast(Any, ss.get("preview_grad_c3")),
-            _to_float_scalar(ss.get("mesh_ambient", 0.35)),
-            _to_float_scalar(ss.get("mesh_diffuse", 0.95)),
-            _to_float_scalar(ss.get("mesh_specular", 0.25)),
-            _to_float_scalar(ss.get("mesh_roughness", 0.7)),
-            _to_float_scalar(ss.get("mesh_fresnel", 0.2)),
+            ss.get("preview_palette"),
+            ss.get("preview_grad_c1"),
+            ss.get("preview_grad_c2"),
+            ss.get("preview_grad_c3"),
+            float(ss.get("mesh_ambient", 0.35)),
+            float(ss.get("mesh_diffuse", 0.95)),
+            float(ss.get("mesh_specular", 0.25)),
+            float(ss.get("mesh_roughness", 0.7)),
+            float(ss.get("mesh_fresnel", 0.2)),
             bool(show_inner),
             float(view_elev),
             float(view_azim),
@@ -1257,13 +1227,13 @@ with _tab1:
         app_sig = None
 
     # Compare with last-run signatures
-    last_geom_sig = cast(Optional[tuple], ss.get("_last_preview_geom_sig"))
-    last_app_sig = cast(Optional[tuple], ss.get("_last_preview_app_sig"))
+    last_geom_sig = ss.get("_last_preview_geom_sig")
+    last_app_sig = ss.get("_last_preview_app_sig")
     geom_changed = (geom_sig is None) or (geom_sig != last_geom_sig)
     app_changed = (app_sig is None) or (app_sig != last_app_sig)
 
     # One-shot suppression for non-model reruns (e.g., snapshot pagination)
-    if bool(cast(Optional[bool], ss.get("_suppress_preview_once", False))):
+    if ss.get("_suppress_preview_once", False):
         should_update_preview = False
         ss["_suppress_preview_once"] = False
 
@@ -1271,19 +1241,19 @@ with _tab1:
     if should_update_preview and preview_mode == "auto":
         cached_any = any(
             [
-                cast(Optional[bytes], ss.get("_last_surface_png")),
-                cast(Optional[dict], ss.get("_last_surface_fig_json")),
-                cast(Optional[bytes], ss.get("_last_mesh_png")),
-                cast(Optional[dict], ss.get("_last_mesh_fig_json")),
+                ss.get("_last_surface_png"),
+                ss.get("_last_surface_fig_json"),
+                ss.get("_last_mesh_png"),
+                ss.get("_last_mesh_fig_json"),
             ]
         )
         if (
             cached_any
-            and not bool(cast(Optional[bool], ss.get("_preview_stale", False)))
+            and not ss.get("_preview_stale", False)
             and geom_sig is not None
             and app_sig is not None
-            and geom_sig == cast(Optional[tuple], ss.get("_last_preview_geom_sig"))
-            and app_sig == cast(Optional[tuple], ss.get("_last_preview_app_sig"))
+            and geom_sig == ss.get("_last_preview_geom_sig")
+            and app_sig == ss.get("_last_preview_app_sig")
         ):
             should_update_preview = False
     if should_update_preview:
@@ -1303,9 +1273,9 @@ with _tab1:
                     k in st.session_state for k in ("_last_X", "_last_Y", "_last_Z")
                 ):
                     try:
-                        X = cast(Any, ss.get("_last_X"))
-                        Y = cast(Any, ss.get("_last_Y"))
-                        Z = cast(Any, ss.get("_last_Z"))
+                        X = ss.get("_last_X")
+                        Y = ss.get("_last_Y")
+                        Z = ss.get("_last_Z")
                     except Exception:
                         X = Y = Z = None
                 if (X is None) or (Y is None) or (Z is None):
@@ -1442,7 +1412,7 @@ with _tab1:
         last_surf_png = cast(Optional[bytes], ss.get("_last_surface_png"))
         last_surf_json = cast(Optional[dict], ss.get("_last_surface_fig_json"))
 
-        stale = bool(cast(Any, ss.get("_preview_stale", False)))
+        stale = bool(ss.get("_preview_stale", False))
         show_warning = (preview_mode == "manual") and stale
 
         # Cached display: if Full preview exists, prefer it; otherwise show Quick if available.
@@ -1479,9 +1449,9 @@ with _tab1:
         # Only generate mesh PNGs when Plotly is unavailable (fallback), or when explicitly forced by the user.
         try:
             ss = cast(dict[str, Any], st.session_state)
-            force_capture = bool(cast(Any, ss.get("_force_mesh_png_capture", False)))
+            force_capture = bool(ss.get("_force_mesh_png_capture", False))
             # Cap PNG mesh resolution aggressively to keep it cheap
-            png_cap_n = _to_int_scalar(ss.get("png_cap_n", 64))
+            png_cap_n = int(ss.get("png_cap_n", 64))
 
             t0_meshpng = time.time()
             png_bytes = None
@@ -1495,7 +1465,7 @@ with _tab1:
                 if force_capture:
                     ss["_force_mesh_png_capture"] = False
                 ak = "|".join(
-                    str(cast(Any, ss.get(k, "")))
+                    str(ss.get(k, ""))
                     for k in (
                         "preview_palette",
                         "preview_grad_c1",
@@ -1572,7 +1542,7 @@ with _tab1:
             pass  # PNG generation is best-effort; failures shouldn't break the app
 
         # Dynamic placeholder: use a session flag so static analysis won't mark as unreachable
-        if bool(cast(Any, ss.get("_quick_preview_disabled", False))):
+        if bool(ss.get("_quick_preview_disabled", False)):
             # Quick Preview is explicitly disabled by user: replace any previous preview
             try:
                 preview_placeholder.info("Quick Preview is disabled")
@@ -1594,11 +1564,11 @@ with _tab1:
                 t0_surface = time.time()
                 # Build colorscale for Quick preview from Appearance & Preview Settings
                 ss = cast(dict[str, Any], st.session_state)
-                use_grad_q = bool(cast(Any, ss.get("use_gradient_color", True)))
-                solid_hex_q = str(cast(Any, ss.get("solid_color", "#BFC7D5")))
-                c1_q = str(cast(Any, ss.get("preview_grad_c1", "#2850D0")))
-                c2_q = str(cast(Any, ss.get("preview_grad_c2", "#5FA8FF")))
-                c3_q = str(cast(Any, ss.get("preview_grad_c3", "#E2F3FF")))
+                use_grad_q = bool(ss.get("use_gradient_color", True))
+                solid_hex_q = str(ss.get("solid_color", "#BFC7D5"))
+                c1_q = str(ss.get("preview_grad_c1", "#2850D0"))
+                c2_q = str(ss.get("preview_grad_c2", "#5FA8FF"))
+                c3_q = str(ss.get("preview_grad_c3", "#E2F3FF"))
                 if use_grad_q:
                     cs_q = [[0.0, c1_q], [0.5, c2_q], [1.0, c3_q]]
                 else:
@@ -1615,8 +1585,8 @@ with _tab1:
                     zmin = float(Z.min())
                     zmax = float(Z.max())
                 except Exception:
-                    rmax = max(1.0, _to_float_scalar(ss.get("top_od", 140.0)) * 0.5)
-                    zmin, zmax = 0.0, _to_float_scalar(ss.get("H", 120.0))
+                    rmax = max(1.0, float(ss.get("top_od", 140.0)) * 0.5)
+                    zmin, zmax = 0.0, float(ss.get("H", 120.0))
                 if place_on_ground:
                     zmin = 0.0
                 xlim = [-rmax, rmax]
@@ -1641,7 +1611,7 @@ with _tab1:
                         camera=dict(
                             up=dict(x=0, y=0, z=1), projection=dict(type="orthographic")
                         ),
-                        bgcolor=cast(Any, ss.get("preview_bg_color", "#0F1724")),
+                        bgcolor=ss.get("preview_bg_color", "#0F1724"),
                     ),
                     margin=dict(l=0, r=0, t=30, b=0),
                 )
@@ -1664,7 +1634,7 @@ with _tab1:
             elif not HAS_PLOTLY:
                 # Static fallback when Plotly is unavailable
                 ak = "|".join(
-                    str(cast(Any, ss.get(k, "")))
+                    str(ss.get(k, ""))
                     for k in (
                         "preview_palette",
                         "preview_grad_c1",
@@ -1727,7 +1697,7 @@ with _tab1:
                 from pfui.colors import build_gradient_colors
 
                 # Honor exact full preview: when enabled, do not reuse preview-res mesh_data
-                use_exact_full = bool(cast(Any, ss.get("exact_full_preview", True)))
+                use_exact_full = bool(ss.get("exact_full_preview", True))
                 V = None
                 F = None
 
@@ -1743,15 +1713,15 @@ with _tab1:
                     V = None
                     F = None
                     try:
-                        V = cast(Any, ss.get("_last_mesh_V"))
-                        F = cast(Any, ss.get("_last_mesh_F"))
+                        V = ss.get("_last_mesh_V")
+                        F = ss.get("_last_mesh_F")
                     except Exception:
                         V = None
                         F = None
                     # If exact is requested but the cached mesh uses different resolution, rebuild
                     # use_exact_full already set above
-                    last_nt = cast(Optional[int], ss.get("_last_mesh_ntheta"))
-                    last_nz = cast(Optional[int], ss.get("_last_mesh_nz"))
+                    last_nt = ss.get("_last_mesh_ntheta")
+                    last_nz = ss.get("_last_mesh_nz")
                     needs_exact_rebuild = bool(
                         use_exact_full and ((last_nt != n_theta) or (last_nz != n_z))
                     )
@@ -1766,7 +1736,7 @@ with _tab1:
                             import numpy as _np_r
 
                             use_exact_full = bool(
-                                cast(Any, ss.get("exact_full_preview", True))
+                                ss.get("exact_full_preview", True)
                             )
                             # When exact is requested, use the user-selected raw sliders (n_theta, n_z)
                             # rather than the scaled/clamped full_n_* values.
@@ -1802,15 +1772,15 @@ with _tab1:
                             F = np.zeros((0, 3), dtype=int)
 
                 # Decimation removed per request; always use V,F as built (exact when enabled, preview-res otherwise)
-                use_exact_full = bool(cast(Any, ss.get("exact_full_preview", True)))
+                use_exact_full = bool(ss.get("exact_full_preview", True))
                 use_approx = False
 
                 stride_used = 1
                 Vd, Fd = V, F
 
                 # Gradient coloring using user settings based on the final plotted vertices Vd
-                use_gradient = bool(cast(Any, ss.get("use_gradient_color", True)))
-                solid_hex = str(cast(Any, ss.get("solid_color", "#BFC7D5")))
+                use_gradient = bool(ss.get("use_gradient_color", True))
+                solid_hex = str(ss.get("solid_color", "#BFC7D5"))
                 if len(Vd) and use_gradient:
                     try:
                         perf = st.session_state.setdefault("_perf_logs", [])
@@ -1834,11 +1804,11 @@ with _tab1:
                         color_stride = 1
                     t0_col = time.time()
                     try:
-                        preset = cast(Any, ss.get("preview_palette", "Custom"))
+                        preset = ss.get("preview_palette", "Custom")
                         custom = [
-                            cast(Any, ss.get("preview_grad_c1", "#2850D0")),
-                            cast(Any, ss.get("preview_grad_c2", "#5FA8FF")),
-                            cast(Any, ss.get("preview_grad_c3", "#E2F3FF")),
+                            ss.get("preview_grad_c1", "#2850D0"),
+                            ss.get("preview_grad_c2", "#5FA8FF"),
+                            ss.get("preview_grad_c3", "#E2F3FF"),
                         ]
                         if color_stride > 1:
                             # Build on downsample and expand to full length to cut compute + JSON size
@@ -1881,22 +1851,22 @@ with _tab1:
                         i=Fd[:, 0],
                         j=Fd[:, 1],
                         k=Fd[:, 2],
-                        flatshading=bool(cast(Any, ss.get("mesh_flatshading", False))),
+                        flatshading=bool(ss.get("mesh_flatshading", False)),
                         lighting=dict(
                             ambient=min(
-                                max(_to_float_scalar(ss.get("mesh_ambient", 0.35)), 0.0), 1.0
+                                max(ss.get("mesh_ambient", 0.35), 0.0), 1.0
                             ),
                             diffuse=min(
-                                max(_to_float_scalar(ss.get("mesh_diffuse", 0.95)), 0.0), 1.0
+                                max(ss.get("mesh_diffuse", 0.95), 0.0), 1.0
                             ),
                             specular=min(
-                                max(_to_float_scalar(ss.get("mesh_specular", 0.25)), 0.0), 1.0
+                                max(ss.get("mesh_specular", 0.25), 0.0), 1.0
                             ),
                             roughness=min(
-                                max(_to_float_scalar(ss.get("mesh_roughness", 0.7)), 0.0), 1.0
+                                max(ss.get("mesh_roughness", 0.7), 0.0), 1.0
                             ),
                             fresnel=min(
-                                max(_to_float_scalar(ss.get("mesh_fresnel", 0.2)), 0.0), 1.0
+                                max(ss.get("mesh_fresnel", 0.2), 0.0), 1.0
                             ),
                         ),
                         hoverinfo="skip",
@@ -1916,21 +1886,21 @@ with _tab1:
                     zmin = float(V[:, 2].min())
                     zmax = float(V[:, 2].max())
                 except Exception:
-                    rmax = max(1.0, _to_float_scalar(ss.get("top_od", 140.0)) * 0.5)
-                    zmin, zmax = 0.0, _to_float_scalar(ss.get("H", 120.0))
+                    rmax = max(1.0, float(ss.get("top_od", 140.0)) * 0.5)
+                    zmin, zmax = 0.0, float(ss.get("H", 120.0))
                 xlim = [-rmax, rmax]
                 ylim = [-rmax, rmax]
                 zlim = [zmin, zmax]
                 z_ratio = (zmax - zmin) / max(1e-6, (xlim[1] - xlim[0]))
                 # Title includes mesh resolution and face count, and whether exact or approximate was used
                 try:
-                    nt_used = _to_int_scalar(ss.get("_last_mesh_ntheta", 0)) or (
+                    nt_used = int(ss.get("_last_mesh_ntheta") or 0) or (
                         int(V.shape[0]) // max(1, (n_z if n_z else 1))
                     )
                 except Exception:
                     nt_used = 0
                 try:
-                    nz_used = _to_int_scalar(ss.get("_last_mesh_nz", 0)) or (
+                    nz_used = int(ss.get("_last_mesh_nz") or 0) or (
                         int(V.shape[0]) // max(1, (n_theta if n_theta else 1))
                     )
                 except Exception:
@@ -1950,7 +1920,7 @@ with _tab1:
                         camera=dict(
                             up=dict(x=0, y=0, z=1), projection=dict(type="orthographic")
                         ),
-                        bgcolor=cast(Any, ss.get("preview_bg_color", "#0E1117")),
+                        bgcolor=ss.get("preview_bg_color", "#0E1117"),
                     ),
                     margin=dict(l=0, r=0, t=30, b=0),
                 )
@@ -2104,7 +2074,7 @@ with _tab1:
         with cols_toggle[0]:
             use_solid = st.checkbox(
                 "Use solid color",
-                value=(not cast(Any, ss.get("use_gradient_color", True))),
+                value=(not ss.get("use_gradient_color", True)),
                 help="When enabled, surfaces and mesh use a single solid color (faster for very large meshes).",
             )
             # Reflect into existing session key expected by rendering paths
@@ -2117,7 +2087,7 @@ with _tab1:
                 help="Choose a predefined palette or 'Custom' to edit colors manually.",
             )
 
-        if cast(Any, ss.get("use_gradient_color", True)):
+        if ss.get("use_gradient_color", True):
             colc1, colc2, colc3 = st.columns(3)
             with colc1:
                 preview_grad_c1_val = st.color_picker(
@@ -2141,33 +2111,33 @@ with _tab1:
         lc1, lc2, lc3, lc4, lc5, lc6 = st.columns(6)
         with lc1:
                 ambient_val = st.slider(
-                "Ambient", 0.0, 1.0, cast(Any, ss.get("mesh_ambient", 0.50)), 0.01, key="mesh_ambient"
+                "Ambient", 0.0, 1.0, ss.get("mesh_ambient", 0.50), 0.01, key="mesh_ambient"
             )
         with lc2:
                 diffuse_val = st.slider(
                 "Diffuse",
                 0.0,
                 1.0,
-                min(max(_to_float_scalar(ss.get("mesh_diffuse", 1.0)), 0.0), 1.0),
+                min(max(ss.get("mesh_diffuse", 1.0), 0.0), 1.0),
                 0.01,
                 key="mesh_diffuse",
             )
         with lc3:
                 specular_val = st.slider(
-                "Specular", 0.0, 1.0, cast(Any, ss.get("mesh_specular", 0.40)), 0.01, key="mesh_specular"
+                "Specular", 0.0, 1.0, ss.get("mesh_specular", 0.40), 0.01, key="mesh_specular"
             )
         with lc4:
                 roughness_val = st.slider(
-                "Roughness", 0.0, 1.0, cast(Any, ss.get("mesh_roughness", 0.45)), 0.01, key="mesh_roughness"
+                "Roughness", 0.0, 1.0, ss.get("mesh_roughness", 0.45), 0.01, key="mesh_roughness"
             )
         with lc5:
                 fresnel_val = st.slider(
-                "Fresnel", 0.0, 1.0, cast(Any, ss.get("mesh_fresnel", 0.25)), 0.01, key="mesh_fresnel"
+                "Fresnel", 0.0, 1.0, ss.get("mesh_fresnel", 0.25), 0.01, key="mesh_fresnel"
             )
         with lc6:
                 st.checkbox(
                 "Flat shading",
-                value=cast(Any, ss.get("mesh_flatshading", False)),
+                value=ss.get("mesh_flatshading", False),
                 key="mesh_flatshading",
                 help="Toggle flat shading to better see facet divisions.",
             )
@@ -2193,7 +2163,7 @@ with _tab1:
                 "Preview resolution scale",
                 0.2,
                 1.0,
-                cast(Any, ss.get("preview_res_scale", 1.0)),
+                ss.get("preview_res_scale", 1.0),
                 0.05,
                 key="preview_res_scale",
                 help="Multiplier applied to n_theta/n_z for interactive previews to improve speed.",
@@ -2201,14 +2171,14 @@ with _tab1:
         with rc2:
             exact_full_preview_val = st.checkbox(
                 "Exact Full Preview",
-                value=cast(Any, ss.get("exact_full_preview", True)),
+                value=ss.get("exact_full_preview", True),
                 key="exact_full_preview",
                 help="When enabled, the Full preview uses the exact full resolution (n_theta/n_z) with no decimation.",
             )
         with rc3:
             manual_full_res_val = st.checkbox(
                 "Manual mode full res",
-                value=cast(Any, ss.get("manual_full_res", True)),
+                value=ss.get("manual_full_res", True),
                 key="manual_full_res",
                 help="In manual mode, use full base resolution when generating mesh PNG.",
             )
@@ -2216,7 +2186,7 @@ with _tab1:
             "PNG dpi",
             80,
             220,
-            cast(Any, ss.get("preview_dpi", 110)),
+            ss.get("preview_dpi", 110),
             5,
             key="preview_dpi",
             help="Higher DPI for crisper static PNG snapshots.",
@@ -2233,9 +2203,9 @@ with _tab1:
         ss = cast(dict[str, Any], st.session_state)
         # Record current snapshots count for debugging (helps trace clears)
         ss.setdefault("_debug_logs", []).append(
-            f"Render: _snaps count = {len(cast(Any, ss.get('_snaps', [])))}"
+            f"Render: _snaps count = {len(ss.get('_snaps', []))}"
         )
-        snaps: List[Dict[str, Any]] = cast(Any, ss.get("_snaps", []))
+        snaps: List[Dict[str, Any]] = ss.get("_snaps", [])
 
         # Add Clear All Snapshots button
         if snaps:
@@ -2329,7 +2299,7 @@ with _tab1:
             log_debug("Session state updated (direct write).")
             # Re-read into local variable so the current run will render the
             # newly added snapshot immediately (avoids needing st.rerun()).
-            snaps = cast(Any, ss.get("_snaps", []))
+            snaps = ss.get("_snaps", [])
 
             # checkpoint the UI state when capturing snapshots
             try:
@@ -2343,18 +2313,18 @@ with _tab1:
         # Mask any potential secrets before showing debug logs in UI
         masked_logs = [
             _mask_possible_secrets(log_entry)
-            for log_entry in cast(Any, ss.get("_debug_logs", []))
+            for log_entry in ss.get("_debug_logs", [])
         ]
         st.text_area("Debug Logs", value="\n".join(masked_logs), height=300)
 
         # Re-read snaps to ensure we display the latest list (capture may
         # have mutated st.session_state earlier in this run).
-        snaps = cast(Any, ss.get("_snaps", []))
+        snaps = ss.get("_snaps", [])
 
         # Paginate snapshots (3 per page)
         if snaps:
             per_page = 3
-            page = _to_int_scalar(ss.get("_snap_page", 0))
+            page = ss.get("_snap_page", 0)
             max_page = max(0, math.ceil(len(snaps) / per_page) - 1)
             nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 6])
             if nav_col1.button("◀ Prev"):
@@ -2514,7 +2484,7 @@ with _tab1:
 
     # Handle explicit Publish click (without requiring Export)
     ss = cast(dict[str, Any], st.session_state)
-    if cast(Any, ss.get("_publish_clicked")):
+    if ss.get("_publish_clicked"):
         # Narrow publish fields once for the publish flow; these values come from Streamlit widgets
         title_safe: str = str(publish_title or "")
         license_safe: str = str(publish_license or "CC BY-NC 4.0")
@@ -2522,35 +2492,25 @@ with _tab1:
         try:
             # Build mesh at export resolution (reuse upscale), else fall back to current n_theta/n_z
             up = (
-                _to_float_scalar(ss.get("_export_upscale", 1.0))
+                float(ss.get("_export_upscale", 1.0))
                 if "_export_upscale" in ss
                 else 1.0
             )
-            # Reuse the already-defined defensive helpers above (no redeclaration)
-            try:
-                a = _unwrap_scalar(n_theta)
-                b = _unwrap_scalar(up)
-                try:
-                    prod = float(a) * float(b)
-                except Exception:
+            # Defensive unwrap similar to export path
+            def _unwrap_scalar(v):
+                if isinstance(v, (list, tuple)):
                     try:
-                        prod = a * b
+                        return v[0]
                     except Exception:
-                        prod = a
-                n_theta_pub = _to_int_scalar(prod)
+                        return v
+                return v
+
+            try:
+                n_theta_pub = _to_int_scalar(_unwrap_scalar(n_theta) * _unwrap_scalar(up))
             except Exception:
                 n_theta_pub = _to_int_scalar(n_theta * up)
             try:
-                a = _unwrap_scalar(n_z)
-                b = _unwrap_scalar(up)
-                try:
-                    prod = float(a) * float(b)
-                except Exception:
-                    try:
-                        prod = a * b
-                    except Exception:
-                        prod = a
-                n_z_pub = _to_int_scalar(prod)
+                n_z_pub = _to_int_scalar(_unwrap_scalar(n_z) * _unwrap_scalar(up))
             except Exception:
                 n_z_pub = _to_int_scalar(n_z * up)
             verts, faces, _ = build_pot_mesh(
@@ -2837,7 +2797,7 @@ with _tab1:
 
     # --------------- PERFORMANCE (DEV) ----------------
     with st.expander("Performance (dev)"):
-        perf_logs = cast(Any, ss.get("_perf_logs", []))
+        perf_logs = ss.get("_perf_logs", [])
         st.text_area("Recent timings", value="\n".join(perf_logs[-30:]), height=180)
         if st.button("Force clear caches"):
             try:

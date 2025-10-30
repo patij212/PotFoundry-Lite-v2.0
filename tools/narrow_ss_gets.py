@@ -12,7 +12,6 @@ Run from repository root: python tools\narrow_ss_gets.py
 from __future__ import annotations
 import re
 from pathlib import Path
-from typing import List
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_PY = ROOT / "app.py"
@@ -117,17 +116,17 @@ pattern_full = re.compile(r"(?<!cast\()ss\.get\(", flags=re.DOTALL)
 idx = 0
 final_repls = []
 while True:
-    m = pattern_full.search(s, idx)
-    if not m:
+    ms = pattern_full.search(s, idx)
+    if not ms:
         break
-    start_call = m.start()
+    start_call = ms.start()
     open_paren = s.find('(', start_call)
     if open_paren == -1:
-        idx = m.end()
+        idx = ms.end()
         continue
     close_paren = find_matching_paren(s, open_paren)
     if close_paren == -1:
-        idx = m.end()
+        idx = ms.end()
         continue
     orig = s[start_call: close_paren + 1]
     # Check if this ss.get is already inside a cast in a nearby left context

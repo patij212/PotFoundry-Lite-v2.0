@@ -1915,7 +1915,7 @@ def apply_defaults(style: str, opts: dict, *, canonical: bool = False) -> dict:
     return out
 
 
-def _coerce_one(v: Any, meta: ControlMeta) -> Any:
+def _coerce_one(v: Any, meta: ControlMeta) -> object:
     """Coerce a single value to the type declared by meta.
 
     Purpose:
@@ -1964,7 +1964,7 @@ def _coerce_one(v: Any, meta: ControlMeta) -> Any:
 
 def sanitize_opts(
     style: str, opts: dict, *, canonical: bool = False
-) -> Tuple[dict, list[str]]:
+) -> Tuple[dict[str, object], list[str]]:
     """Coerce types, clamp to min/max, and fill defaults.
 
     Purpose:
@@ -1988,13 +1988,13 @@ def sanitize_opts(
         - None (errors collected in list instead of raising).
     """
     sch = get_schema(style, canonical=canonical)
-    out: dict = {}
+    out: dict[str, object] = {}
     errors: list[str] = []
 
     for k, v in opts.items():
         meta = sch.get(k)
         if not meta:
-            out[k] = v  # unknown key: pass through
+            out[k] = v  # unknown key: pass through (preserve runtime value)
             continue
         try:
             vv = _coerce_one(v, meta)

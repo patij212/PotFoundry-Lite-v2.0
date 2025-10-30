@@ -1,6 +1,6 @@
 from __future__ import annotations
 from io import BytesIO
-from typing import Any, Dict, Tuple, Optional, Callable, cast
+from typing import Any, Dict, Tuple, Optional, Callable, cast, TypeVar, ParamSpec
 import numpy as np
 import numpy.typing as npt
 import streamlit as st
@@ -10,20 +10,28 @@ import streamlit as st
 # AttributeError during pytest collection. Declare the type so mypy knows
 # _cache_data_impl may be None and we cast before calling it.
 _cache_data_impl: Optional[Callable[..., Any]] = getattr(st, "cache_data", None)
+# Make cache_data a generic decorator so mypy preserves decorated function
+# signatures (ParamSpec/TypeVar). This prevents decorated functions from
+# being treated as returning Any which would mask precise return annotations
+# like `bytes | None` used below.
+P = ParamSpec("P")
+R = TypeVar("R")
+
 if _cache_data_impl is not None:  # pragma: no cover - normal runtime
 
-    def cache_data(*args: Any, **kwargs: Any):  # passthrough to real decorator
-        return cast(Callable[..., Any], _cache_data_impl)(*args, **kwargs)
+    def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
+        # Cast the runtime-provided decorator to the generic form for mypy
+        return cast(Callable[[Callable[P, R]], Callable[P, R]], _cache_data_impl)(*args, **kwargs)
 else:  # pragma: no cover - executed only in degraded env (tests)
 
-    def cache_data(*args: Any, **kwargs: Any):
-        def _wrap(fn):
+    def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
+        def _wrap(fn: Callable[P, R]) -> Callable[P, R]:
             return fn  # no caching fallback
 
         return _wrap
 
 
-from .imports import STYLES, base_radius, _spin_twist_radians, build_pot_mesh  # noqa: E402
+from .imports import STYLES, base_radius, _spin_twist_radians  # noqa: E402
 from .colors import build_gradient_colors  # noqa: E402
 
 

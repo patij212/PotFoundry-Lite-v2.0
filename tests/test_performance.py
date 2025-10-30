@@ -58,12 +58,12 @@ def benchmark(func: Callable, *args, iterations: int = 10, **kwargs) -> dict:
         elapsed = time.perf_counter() - start
         times.append(elapsed)
 
-    times = np.array(times)
+    arr = np.array(times, dtype=float)
     return {
-        "mean": float(times.mean()),
-        "std": float(times.std()),
-        "min": float(times.min()),
-        "max": float(times.max()),
+        "mean": float(arr.mean()),
+        "std": float(arr.std()),
+        "min": float(arr.min()),
+        "max": float(arr.max()),
         "result": result,
     }
 

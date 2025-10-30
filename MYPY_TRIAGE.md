@@ -676,3 +676,6 @@ If you prefer, I can instead: (B) add targeted `# type: ignore[...]` lines to si
  - [2025-10-24] Micro-fix: `app.py` — automated narrowing sweep: targeted numeric & preview/signature casts, collapsed redundant nested casts, and exhaustively wrapped remaining `ss.get(...)` with `cast(Any, ...)` to reach 100% coverage of session-state gets; focused mypy (file-only): Success: no issues found in 1 source file.
 
 2025-10-29: Tightened session-state numeric casts in `app.py` (debounce, mesh lighting clamps, top_od/H, export upscale); added robust helpers `_to_float_scalar` and improved `_to_int_scalar` to centralize safe conversions and reduce editor/myPy noise.
+
+- [2025-10-30] Micro-fix: app.py — Export/Publish sweep: converted remaining `ss.get(...)` numeric hotspots to use `_to_float_scalar` / `_to_int_scalar`; focused mypy (app.py): Success.
+ - [2025-10-30] Micro-fix: app.py — Snapshots sweep: coerced `_snap_page` to an int via `_to_int_scalar`, improving pagination typing and avoiding overload/index warnings; focused mypy (app.py): Success. Focused pytest: `tests/test_preview_snapshot.py` passed.

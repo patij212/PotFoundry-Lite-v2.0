@@ -179,16 +179,19 @@ class SupabaseClient:
 
         for attempt in range(max_retries):
             try:
-                if self._client:
-                    # Use supabase-py client
-                    self._client.storage.from_(self.config.bucket).upload(
+                client_obj = getattr(self, "_client", None)
+                if client_obj is not None:
+                    # Use supabase-py client (typed dynamically)
+                    client_any = cast(Any, client_obj)
+                    client_any.storage.from_(self.config.bucket).upload(
                         path, data, file_options={"content-type": content_type}
                     )
                     # Get public URL
-                    url = self._client.storage.from_(self.config.bucket).get_public_url(
+                    url = client_any.storage.from_(self.config.bucket).get_public_url(
                         path
                     )
-                    return url
+                    # Ensure we return a concrete str for mypy
+                    return str(url)
                 else:
                     # Use direct API call
                     url = f"{self.config.url}/storage/v1/object/{self.config.bucket}/{path}"
@@ -244,10 +247,13 @@ class SupabaseClient:
             )
         for attempt in range(max_retries):
             try:
-                if self._client:
+                client_obj = getattr(self, "_client", None)
+                if client_obj is not None:
                     # Use supabase-py client
-                    response = self._client.table(table).upsert(row).execute()
-                    return response.data[0] if response.data else row
+                    client_any = cast(Any, client_obj)
+                    response = client_any.table(table).upsert(row).execute()
+                    resp_data = cast(List[Dict[str, Any]], getattr(response, "data", []))
+                    return resp_data[0] if resp_data else row
                 else:
                     # Use direct API call
                     url = f"{self.config.url}/rest/v1/{table}"
@@ -263,7 +269,9 @@ class SupabaseClient:
                     resp.raise_for_status()
 
                     result = resp.json()
-                    return result[0] if isinstance(result, list) and result else row
+                    # resp.json() is dynamically typed; cast to expected structure for mypy
+                    result_typed = cast(List[Dict[str, Any]], result)
+                    return result_typed[0] if isinstance(result_typed, list) and result_typed else row
 
             except Exception as e:
                 if attempt == max_retries - 1:
@@ -291,13 +299,16 @@ class SupabaseClient:
             raise NotConfiguredError("Supabase configured read-only; update disabled")
         for attempt in range(max_retries):
             try:
-                if self._client:
-                    query = self._client.table(table).update(changes)
+                client_obj = getattr(self, "_client", None)
+                if client_obj is not None:
+                    client_any = cast(Any, client_obj)
+                    query = client_any.table(table).update(changes)
                     for col, val in (filters or {}).items():
                         query = query.eq(col, val)
                     resp = query.execute()
                     try:
-                        return len(resp.data or [])
+                        resp_data = cast(List[Dict[str, Any]], getattr(resp, "data", []))
+                        return len(resp_data or [])
                     except Exception:
                         return 0
                 else:
@@ -316,7 +327,8 @@ class SupabaseClient:
                     resp.raise_for_status()
                     try:
                         data = resp.json()
-                        return len(data) if isinstance(data, list) else 0
+                        data_typed = cast(List[Dict[str, Any]], data)
+                        return len(data_typed) if isinstance(data_typed, list) else 0
                     except Exception:
                         return 0
             except Exception as e:
@@ -356,9 +368,11 @@ class SupabaseClient:
         """
         for attempt in range(max_retries):
             try:
-                if self._client:
+                client_obj = getattr(self, "_client", None)
+                if client_obj is not None:
                     # Use supabase-py client
-                    query = self._client.table(table).select("*")
+                    client_any = cast(Any, client_obj)
+                    query = client_any.table(table).select("*")
 
                     # Apply filters
                     if filters:
@@ -378,7 +392,8 @@ class SupabaseClient:
                     query = query.limit(limit).offset(offset)
 
                     response = query.execute()
-                    return response.data
+                    resp_data = cast(List[Dict[str, Any]], getattr(response, "data", []))
+                    return resp_data
                 else:
                     # Use direct API call
                     url = f"{self.config.url}/rest/v1/{table}"
@@ -424,7 +439,8 @@ class SupabaseClient:
                             url, params=cast(Any, params), timeout=getattr(self, "_timeout", None)
                         )
                     resp.raise_for_status()
-                    return resp.json()
+                    data = resp.json()
+                    return cast(List[Dict[str, Any]], data)
 
             except Exception as e:
                 if attempt == max_retries - 1:
@@ -451,14 +467,17 @@ class SupabaseClient:
             raise NotConfiguredError("Supabase configured read-only; delete disabled")
         for attempt in range(max_retries):
             try:
-                if self._client:
-                    query = self._client.table(table).delete()
+                client_obj = getattr(self, "_client", None)
+                if client_obj is not None:
+                    client_any = cast(Any, client_obj)
+                    query = client_any.table(table).delete()
                     for col, val in (filters or {}).items():
                         query = query.eq(col, val)
                     resp = query.execute()
                     # supabase-py returns count only if requested; best-effort length
                     try:
-                        return len(resp.data or [])
+                        resp_data = cast(List[Dict[str, Any]], getattr(resp, "data", []))
+                        return len(resp_data or [])
                     except Exception:
                         return 0
                 else:
@@ -614,11 +633,11 @@ def get_client() -> SupabaseClient | NotConfiguredClient:
             pass
 
     # 3) Fallback: read-only with anon key from environment
-    anon = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get(
+    anon_env: Optional[str] = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get(
         "STREAMLIT_SUPABASE_ANON_KEY"
     )
-    if url and anon:
-        cfg = SupabaseConfig(url=url, key=anon, bucket=bucket)
+    if url and anon_env:
+        cfg = SupabaseConfig(url=url, key=anon_env, bucket=bucket)
         return SupabaseClient(cfg, read_only=True)
 
     # Not configured

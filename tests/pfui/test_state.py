@@ -1,13 +1,14 @@
 # tests/pfui/test_state.py
 import sys
 import types
+from typing import Any
 
 # --- stub streamlit BEFORE importing pfui.state ---
 fake_st = types.SimpleNamespace()
 fake_st.session_state = {}
 # Insert a real module object into sys.modules so tools that iterate or
 # build sets from sys.modules.values() won't encounter unhashable values
-mod = types.ModuleType("streamlit")
+mod: Any = types.ModuleType("streamlit")
 mod.session_state = fake_st.session_state
 sys.modules["streamlit"] = mod
 

@@ -51,6 +51,8 @@ def _regen_thumb_bytes(row: dict) -> bytes | None:
         n_theta = int(row.get("mesh", {}).get("n_theta", 144))
         n_z = int(row.get("mesh", {}).get("n_z", 64))
         style = row.get("style")
+        # coerce style to a str (renderer expects style name) and ensure opts_json is str
+        style_name = str(style) if style is not None else ""
         opts_json = json.dumps(row.get("opts", {}) or {})
         png = render_mesh_snapshot_cached(
             H,
@@ -59,7 +61,7 @@ def _regen_thumb_bytes(row: dict) -> bytes | None:
             expn,
             n_theta,
             n_z,
-            style,
+            style_name,
             opts_json,
             4.0,
             4.0,
@@ -93,7 +95,7 @@ def _regen_thumb_bytes(row: dict) -> bytes | None:
                 expn,
                 n_theta,
                 n_z,
-                style,
+                style_name,
                 opts_json,
                 4.0,
                 4.0,
@@ -137,6 +139,7 @@ def backfill(limit: int = 100, offset: int = 0) -> Tuple[int, int]:
                     continue
                 # Upload and update thumb_url (with cache buster)
                 path = f"thumb/{design_id}.png"
+                # png may be typed as Optional[bytes] or Any by renderers; cast to bytes
                 url = client.upload_bytes(path, png, content_type="image/png")
                 url_ver = f"{url}?v={int(time.time())}"
                 # Update existing row in-place to avoid NOT NULL column requirements of INSERT/UPSERT

@@ -47,7 +47,9 @@ def load_config(path: Path | str) -> ConfigV2:
         path = Path(path)
     raw: Dict[str, Any] = yaml.safe_load(path.read_text()) or {}
     # Accept some legacy shorthand keys in the 'defaults' block (tests use H/Rt/Rb etc.)
-    defaults = raw.get("defaults") or {}
+    from typing import cast
+
+    defaults = cast(Dict[str, Any], raw.get("defaults") or {})
     if isinstance(defaults, dict):
         # map shorthand keys to canonical ConfigV2 names
         key_map = {
@@ -100,7 +102,9 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
     except Exception:
         pass
     # already legacy Config
-    return cfg
+    from typing import cast
+
+    return cast(Config, cfg)
 
 
 def validate_recipe(recipe: Dict[str, Any], cfg: Config) -> List[str]:
@@ -197,7 +201,7 @@ def build_from_yaml(
     outdir.mkdir(parents=True, exist_ok=True)
     names = set(only_names) if only_names else None
 
-    manifest = {"units": "mm", "outdir": str(outdir.resolve()), "pots": []}
+    manifest: Dict[str, Any] = {"units": "mm", "outdir": str(outdir.resolve()), "pots": []}
     for rec in cfg.recipes:
         rec = (
             rec if isinstance(rec, dict) else getattr(rec, "model_dump", lambda: rec)()
@@ -271,7 +275,8 @@ def build_from_yaml(
 def _resolve_preset_chain(preset_name: str, presets: dict) -> dict:
     """Resolve a preset with optional inheritance (preset may have 'use' to extend another)."""
     seen = set()
-    current = preset_name
+
+    current: Optional[str] = preset_name
     merged: dict = {}
     while current:
         if current in seen:

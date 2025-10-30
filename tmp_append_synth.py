@@ -14,6 +14,7 @@ payload: Dict[str, Any] = {
     "reports": [],
 }
 reports = cast(List[Dict[str, Any]], payload.setdefault("reports", []))
+assert isinstance(reports, list), "payload['reports'] must be a list"
 T = 168
 TAU = 2 * math.pi
 th = [TAU * i / T for i in range(T)]

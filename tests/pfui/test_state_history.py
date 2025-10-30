@@ -1,12 +1,13 @@
 # tests/pfui/test_state_history.py
 import sys
 import types
+from typing import Any
 
 # stub streamlit
 fake_st = types.SimpleNamespace()
 fake_st.session_state = {}
 # Use ModuleType so sys.modules contains proper module objects (hashable)
-mod = types.ModuleType("streamlit")
+mod: Any = types.ModuleType("streamlit")
 mod.session_state = fake_st.session_state
 sys.modules["streamlit"] = mod
 

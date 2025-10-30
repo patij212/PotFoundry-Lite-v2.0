@@ -1854,7 +1854,6 @@ def build_pot_mesh(
             R = R_raw
             # In-memory collector for verbose diagnostics (always initialize so tests
             # and callers can request diagnostics regardless of twist compensation)
-            from typing import Dict
 
             edgeflow_verbose_collector: list[Dict[str, Any]] = []
             # Debug flag (define early so diagnostics prints can use it)
@@ -4326,7 +4325,6 @@ def build_pot_mesh(
     return np.array(verts, dtype=float), faces_arr, diagnostics
 
 
-from typing import Any
 plt: Any | None
 try:
     import matplotlib.pyplot as plt

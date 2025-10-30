@@ -275,17 +275,20 @@ def test_solidify_protection_controls_reduction():
     )
 
     # Micro-jag reduction measure: residual to circular median-of-5 (focus on tiny peaks)
+    from typing import cast
+
     def med5(a: np.ndarray) -> np.ndarray:
         a1 = np.roll(a, 1)
         a2 = np.roll(a, 2)
         b1 = np.roll(a, -1)
         b2 = np.roll(a, -2)
         st = np.stack([a2, a1, a, b1, b2], axis=0)
+        st = np.asarray(st, dtype=float)
         st.sort(axis=0)
-        return st[2]
+        return cast(np.ndarray, st[2])
 
     def micro_resid(a: np.ndarray) -> np.ndarray:
-        return np.maximum(0.0, a - med5(a))
+        return cast(np.ndarray, np.maximum(0.0, a - med5(a)))
 
     _r0 = micro_resid(f0)
     r_low = micro_resid(f_lowprot)

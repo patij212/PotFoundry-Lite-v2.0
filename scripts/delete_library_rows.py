@@ -64,7 +64,8 @@ def gather_ids(style: str | None, limit: int) -> List[str]:
         )
         if not rows:
             break
-        ids.extend([row.get("id") for row in rows if row.get("id")])
+        # Ensure we only collect str IDs (filter out None). Use indexing when present
+        ids.extend([row["id"] for row in rows if row.get("id") is not None])
         offset += len(rows)
         remaining -= len(rows)
         if len(rows) < batch:

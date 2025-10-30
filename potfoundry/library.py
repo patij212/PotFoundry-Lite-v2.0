@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 try:
@@ -76,22 +76,25 @@ def _round_float(value: float, precision: int = 6) -> float:
     return round(value, precision)
 
 
-def _normalize_dict(d: dict, precision: int = 6) -> dict:
+def _normalize_dict(d: dict[str, Any], precision: int = 6) -> dict[str, Any]:
     """Recursively normalize dictionary: round floats, sort keys."""
-    result = {}
+    result: dict[str, Any] = {}
     for key in sorted(d.keys()):
         value = d[key]
         if isinstance(value, dict):
+            # child dicts normalize to dict[str, Any]
             result[key] = _normalize_dict(value, precision)
         elif isinstance(value, (list, tuple)):
-            result[key] = [
-                _normalize_dict(v, precision)
-                if isinstance(v, dict)
-                else _round_float(v, precision)
-                if isinstance(v, float)
-                else v
-                for v in value
-            ]
+            # normalize list/tuple entries; ensure Any typing for heterogenous lists
+            out_list: List[Any] = []
+            for v in value:
+                if isinstance(v, dict):
+                    out_list.append(_normalize_dict(v, precision))
+                elif isinstance(v, float):
+                    out_list.append(_round_float(v, precision))
+                else:
+                    out_list.append(v)
+            result[key] = out_list
         elif isinstance(value, float):
             result[key] = _round_float(value, precision)
         else:
@@ -589,7 +592,7 @@ def list_published(
     offset: int = 0,
     limit: int = 24,
     refresh_counter: int = 0,
-) -> Tuple[List[dict], bool]:
+ ) -> Tuple[List[dict], bool]:
     """List published designs with filters.
 
     Args:
@@ -609,7 +612,7 @@ def list_published(
         return [], False
 
     # Build filters
-    filters = {}
+    filters: Dict[str, object] = {}
     if style:
         filters["style"] = style
     if tags:

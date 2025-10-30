@@ -6,10 +6,10 @@ import importlib
 
 # Avoid importing the heavy/fragile `pfui.schemas` module at module import time.
 # Load on-demand at runtime to keep focused mypy runs and editor diagnostics small.
-STYLE_SCHEMAS: dict = {}
+STYLE_SCHEMAS: Dict[str, Dict[str, Any]] = {}
 
 
-def _ensure_style_schemas() -> dict:
+def _ensure_style_schemas() -> Dict[str, Dict[str, Any]]:
     global STYLE_SCHEMAS
     if not STYLE_SCHEMAS:
         try:
@@ -27,8 +27,12 @@ def _ensure_style_schemas() -> dict:
 from .state import widget_key  # noqa: E402
 
 
-def _render_control(style: str, key: str, meta: Dict[str, Any]) -> Any:
-    """Render a single control based on meta and return its value."""
+def _render_control(style: str, key: str, meta: Dict[str, Any]) -> object:
+    """Render a single control based on meta and return its value.
+
+    Return type is deliberately `object` (rather than `Any`) to avoid
+    propagating `Any` into callers while preserving runtime flexibility.
+    """
     import streamlit as st  # local alias
 
     wkey = widget_key(style, key)
@@ -52,7 +56,7 @@ def _render_control(style: str, key: str, meta: Dict[str, Any]) -> Any:
 
     if mtype in ("int", "float"):
         # Establish safe numeric bounds
-        def _to_float(x, fallback):
+        def _to_float(x: Any, fallback: float) -> float:
             try:
                 return float(x)
             except Exception:
@@ -61,19 +65,19 @@ def _render_control(style: str, key: str, meta: Dict[str, Any]) -> Any:
         default_num = _to_float(default if default is not None else 0.0, 0.0)
         if mtype == "int":
             # Ensure numeric types are explicit for mypy: coerce meta values to float then to int
-            minv_i: int = int(round(float(meta.get("min", int(default_num) - 10))))
-            maxv_i: int = int(round(float(meta.get("max", int(default_num) + 10))))
-            step_i: int = int(round(float(meta.get("step", 1))))
+            minv_i = int(round(float(meta.get("min", int(default_num) - 10))))
+            maxv_i = int(round(float(meta.get("max", int(default_num) + 10))))
+            step_i = int(round(float(meta.get("step", 1))))
             if maxv_i <= minv_i:
                 maxv_i = minv_i + max(1, step_i)
-            cur = int(round(_to_float(value, default_num)))
-            cur = max(minv_i, min(maxv_i, cur))
+            cur_i = int(round(_to_float(value, default_num)))
+            cur_i = max(minv_i, min(maxv_i, cur_i))
             return int(
                 st.slider(
                     meta.get("label", key),
                     minv_i,
                     maxv_i,
-                    cur,
+                    cur_i,
                     step_i,
                     key=wkey,
                     help=meta.get("help", ""),
@@ -86,14 +90,14 @@ def _render_control(style: str, key: str, meta: Dict[str, Any]) -> Any:
             step_f: float = float(meta.get("step", 0.01))
             if maxv_f <= minv_f:
                 maxv_f = minv_f + (step_f if step_f > 0 else 1.0)
-            cur = _to_float(value, default_num)
-            cur = max(minv_f, min(maxv_f, cur))
+            cur_f = _to_float(value, default_num)
+            cur_f = max(minv_f, min(maxv_f, cur_f))
             return float(
                 st.slider(
                     meta.get("label", key),
                     minv_f,
                     maxv_f,
-                    cur,
+                    cur_f,
                     step_f,
                     key=wkey,
                     help=meta.get("help", ""),

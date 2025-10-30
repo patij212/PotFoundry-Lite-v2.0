@@ -1,19 +1,37 @@
 import json
 import numpy as np
-from typing import Any
+from typing import Callable, Optional, Tuple
 import importlib
 
 # Dynamically import the heavy geometry module at runtime using importlib so
 # static type checkers won't eagerly analyze it when we run focused mypy on
 # these small helper scripts.
-build_pot_mesh: Any = None
+# Type alias for the mesh builder function signature we expect at runtime.
+# Keep Optional here so we can initialize lazily without importing heavy modules
+# during static analysis.
+MeshBuilder = Callable[..., Tuple[np.ndarray, np.ndarray, dict]]
+
+build_pot_mesh: Optional[MeshBuilder] = None
 
 
-def _get_build_pot_mesh() -> Any:
+def _get_build_pot_mesh() -> MeshBuilder:
+    """Lazily import and return the `build_pot_mesh` callable.
+
+    Returning a typed Callable lets mypy reason about downstream usage
+    without importing the heavy `potfoundry.core.geometry` module at
+    module-import time.
+    """
     global build_pot_mesh
     if build_pot_mesh is None:
-        mod = importlib.import_module("potfoundry.core.geometry")
-        build_pot_mesh = getattr(mod, "build_pot_mesh")
+        try:
+            mod = importlib.import_module("potfoundry.core.geometry")
+            build_pot_mesh = getattr(mod, "build_pot_mesh")
+        except Exception as exc:  # pragma: no cover - defensive runtime guard
+            raise RuntimeError(
+                "Failed to import `build_pot_mesh` from package 'potfoundry.core.geometry'. "
+                "At runtime ensure the project is on PYTHONPATH and the package imports cleanly."
+            ) from exc
+    assert build_pot_mesh is not None
     return build_pot_mesh
 
 
@@ -26,7 +44,7 @@ for zi in range(Z):
     R_grid[zi, 0] = 200.0
 
 
-def synthetic_r_outer_fn(thetas, z, r0, H_local, opts):
+def synthetic_r_outer_fn(thetas: np.ndarray, z: float, r0: float, H_local: float, opts: dict) -> np.ndarray:
     idx = int(round((float(z) / float(7.0)) * float(n_z)))
     idx = max(0, min(Z - 1, idx))
     return np.asarray(R_grid[idx, :], dtype=float)
