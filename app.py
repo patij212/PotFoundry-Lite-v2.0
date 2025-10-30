@@ -336,8 +336,11 @@ except Exception:
     pass
 
 # Inject small JS to forward Ctrl+Z / Ctrl+Y to Streamlit buttons (best-effort)
-st.markdown(
-    """
+# Inject small JS to forward Ctrl+Z / Ctrl+Y to Streamlit buttons (best-effort)
+try:
+    if hasattr(st, "markdown"):
+        st.markdown(
+            """
 <script>
 document.addEventListener('keydown', function(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -355,8 +358,10 @@ document.addEventListener('keydown', function(e) {
 });
 </script>
 """,
-    unsafe_allow_html=True,
-)
+            unsafe_allow_html=True,
+        )
+except Exception:
+    pass
 # NOTE: don't pop the units guard; let units_selector manage it internally
 # st.session_state.pop("_units_widget_rendered_this_run", None)
 
