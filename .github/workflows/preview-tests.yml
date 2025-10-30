@@ -1,0 +1,38 @@
+name: Preview Tests
+
+on:
+  push:
+    branches:
+      - main
+      - 'fix/**'
+      - 'feat/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  preview-tests:
+    runs-on: ubuntu-latest
+    name: Run preview-focused tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Run preview-focused tests
+        run: |
+          # Run only the preview-related tests to catch UI/preview regressions quickly
+          pytest -q tests/test_app_full_preview_branch.py tests/test_preview_adversarial.py tests/test_preview_adversarial_more.py tests/test_preview_full_resolution_strict.py tests/test_preview_inner_wall_behavior.py tests/test_preview_fuzz.py -q
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-pytest-report
+          path: pytest-report.xml
