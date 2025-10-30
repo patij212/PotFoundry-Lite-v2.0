@@ -308,9 +308,21 @@ except Exception:
         pass
 
 # ------------ Page config ------------
-st.set_page_config(page_title="PotFoundry Pro v2", layout="wide")
-st.title("PotFoundry Pro v2 — Designer & Batch")
-st.caption(f"Build {APP_VERSION}")
+try:
+    if hasattr(st, "set_page_config"):
+        st.set_page_config(page_title="PotFoundry Pro v2", layout="wide")
+except Exception:
+    pass
+try:
+    if hasattr(st, "title"):
+        st.title("PotFoundry Pro v2 — Designer & Batch")
+except Exception:
+    pass
+try:
+    if hasattr(st, "caption"):
+        st.caption(f"Build {APP_VERSION}")
+except Exception:
+    pass
 # Undo/Redo buttons and keyboard shortcuts
 try:
     c_ur1, c_ur2 = st.columns([1, 1])
