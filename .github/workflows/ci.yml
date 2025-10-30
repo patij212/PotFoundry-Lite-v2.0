@@ -119,3 +119,18 @@ jobs:
         run: |
           pytest -q tests/test_windows_export_path.py tests/test_integration_binary_stl.py -q
           python -c "from potfoundry import build_pot_mesh, STYLES; fn,_=STYLES['HarmonicRipple']; import numpy as np; v,f,_=build_pot_mesh(H=80,Rt=50,Rb=40,t_wall=2.5,t_bottom=2.5,r_drain=6,expn=1.0,n_theta=48,n_z=24,r_outer_fn=fn,style_opts={}); assert v.size>0 and f.size>0; print('HarmonicRipple smoke OK:', v.shape, f.shape)"
+      - name: Install pytest-cov on Windows
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest-cov
+      - name: Run preview/adversarial tests with coverage on Windows
+        run: |
+          pytest -v --cov=potfoundry --cov=pfui --cov-report=xml --junitxml=pytest-windows-preview-report.xml tests/test_app_full_preview_branch.py tests/test_preview_adversarial.py tests/test_preview_adversarial_more.py tests/test_preview_full_resolution_strict.py tests/test_preview_inner_wall_behavior.py tests/test_preview_fuzz.py
+      - name: Upload Windows preview pytest report and coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-preview-pytest-report
+          path: |
+            pytest-windows-preview-report.xml
+            coverage.xml
