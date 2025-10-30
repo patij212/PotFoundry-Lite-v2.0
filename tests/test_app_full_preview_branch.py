@@ -1,4 +1,14 @@
 import numpy as np
+
+# Ensure Streamlit has the `set_page_config` symbol at import time so importing
+# `app` during test collection doesn't raise on environments with older/stub
+# Streamlit builds used by CI runners.
+import streamlit as st
+if not hasattr(st, "set_page_config"):
+    # noop replacement used only for import-time call in `app.py`
+    st.set_page_config = lambda *a, **k: None
+
+import importlib
 import app
 
 
