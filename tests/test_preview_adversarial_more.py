@@ -70,7 +70,9 @@ def test_vectorized_inconsistent_shape_causes_scalar_fallback(monkeypatch):
     monkeypatch.setitem(preview.STYLES, "BadShape", (bad_shape_style, "adversarial"))
 
     opts = _make_opts()
-    X, Y, Z = preview.make_preview_arrays(120.0, 70.0, 45.0, 1.1, 40, 10, "BadShape", json.dumps(opts))
+    X, Y, Z = preview.make_preview_arrays(
+        120.0, 70.0, 45.0, 1.1, 40, 10, "BadShape", json.dumps(opts)
+    )
 
     assert X.shape[0] >= 10 and X.shape[1] >= 24
     assert np.isfinite(X).all() and np.isfinite(Y).all() and np.isfinite(Z).all()

@@ -9,6 +9,7 @@ It is conservative: it avoids rewriting ss.get(...) already wrapped in a cast(..
 
 Run from repository root: python tools\narrow_ss_gets.py
 """
+
 from __future__ import annotations
 import re
 from pathlib import Path
@@ -22,17 +23,19 @@ BACKUP.write_text(text, encoding="utf-8")
 
 # Helper: find matching closing parenthesis for ss.get(...) starting at open_paren index
 
+
 def find_matching_paren(s: str, start: int) -> int:
     depth = 0
     for i in range(start, len(s)):
         c = s[i]
-        if c == '(':
+        if c == "(":
             depth += 1
-        elif c == ')':
+        elif c == ")":
             depth -= 1
             if depth == 0:
                 return i
     return -1
+
 
 # Lists of keys to strongly-typed-cast
 numeric_float_keys = {
@@ -64,7 +67,12 @@ numeric_float_keys = {
 numeric_int_keys = {"n_theta", "n_z", "dpi", "png_cap_n", "quality_up"}
 preview_bytes_keys = {"_last_surface_png", "_last_mesh_png"}
 preview_json_keys = {"_last_surface_fig_json", "_last_mesh_fig_json"}
-signature_keys = {"_last_preview_geom_sig", "_last_preview_app_sig", "geom_sig", "app_sig"}
+signature_keys = {
+    "_last_preview_geom_sig",
+    "_last_preview_app_sig",
+    "geom_sig",
+    "app_sig",
+}
 
 # Build a pattern for ss.get occurrences
 pattern = re.compile(r"ss\.get\(\s*(['\"])(?P<key>.+?)\1", flags=re.DOTALL)
@@ -74,20 +82,20 @@ s = text
 offset = 0
 replacements = []  # list of (start_idx, end_idx, new_text)
 for m in pattern.finditer(text):
-    key = m.group('key')
+    key = m.group("key")
     start_call = m.start()
     # If the match is already inside a cast( before start_call, skip
-    pre = text[max(0, start_call - 20):start_call]
-    if 'cast(' in pre:
+    pre = text[max(0, start_call - 20) : start_call]
+    if "cast(" in pre:
         continue
     # Find the opening parenthesis position of ss.get( which is m.end()-1 at the '(', but safer search
-    open_paren = text.find('(', m.start())
+    open_paren = text.find("(", m.start())
     if open_paren == -1:
         continue
     close_paren = find_matching_paren(text, open_paren)
     if close_paren == -1:
         continue
-    orig = text[start_call: close_paren + 1]
+    orig = text[start_call : close_paren + 1]
 
     # Decide cast type
     new = None
@@ -120,7 +128,7 @@ while True:
     if not ms:
         break
     start_call = ms.start()
-    open_paren = s.find('(', start_call)
+    open_paren = s.find("(", start_call)
     if open_paren == -1:
         idx = ms.end()
         continue
@@ -128,10 +136,10 @@ while True:
     if close_paren == -1:
         idx = ms.end()
         continue
-    orig = s[start_call: close_paren + 1]
+    orig = s[start_call : close_paren + 1]
     # Check if this ss.get is already inside a cast in a nearby left context
-    pre = s[max(0, start_call - 20):start_call]
-    if 'cast(' in pre:
+    pre = s[max(0, start_call - 20) : start_call]
+    if "cast(" in pre:
         idx = close_paren + 1
         continue
     new = f"cast(Any, {orig})"
@@ -146,7 +154,9 @@ for a, b, new in reversed(final_repls):
 
 # Write back only if changed
 if s != text:
-    APP_PY.write_text(s, encoding='utf-8')
-    print(f"Patched {APP_PY} — {len(replacements)} targeted replacements, {len(final_repls)} fallback replacements.")
+    APP_PY.write_text(s, encoding="utf-8")
+    print(
+        f"Patched {APP_PY} — {len(replacements)} targeted replacements, {len(final_repls)} fallback replacements."
+    )
 else:
     print("No changes made — file already appears narrowed.")

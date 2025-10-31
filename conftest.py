@@ -12,6 +12,7 @@ import os
 import sys
 import warnings
 from typing import Any
+
 # Placeholders so static analyzers don't complain when Hypothesis isn't installed
 settings: Any = None
 Verbosity: Any = None
@@ -21,6 +22,7 @@ from types import ModuleType
 _HAVE_HYPOTHESIS = False
 try:
     from hypothesis import settings, Verbosity
+
     _HAVE_HYPOTHESIS = True
 except Exception:
     _HAVE_HYPOTHESIS = False
@@ -33,8 +35,12 @@ if _HAVE_HYPOTHESIS:
         verbosity=Verbosity.normal,
         print_blob=True,
     )
-    settings.register_profile("dev", max_examples=50, deadline=10000, verbosity=Verbosity.verbose)
-    settings.register_profile("quick", max_examples=5, deadline=2000, verbosity=Verbosity.quiet)
+    settings.register_profile(
+        "dev", max_examples=50, deadline=10000, verbosity=Verbosity.verbose
+    )
+    settings.register_profile(
+        "quick", max_examples=5, deadline=2000, verbosity=Verbosity.quiet
+    )
     settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "dev"))
 else:
     warnings.warn(
@@ -81,7 +87,7 @@ except Exception:
                 return None
 
             def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-                        return None
+                return None
 
         return _Ctx()
 

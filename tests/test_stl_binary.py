@@ -5,7 +5,9 @@ from potfoundry.core.io.stl import write_stl_binary
 
 def test_binary_stl_header_and_count(tmp_path: Path):
     # Triangle for a tiny right-angled tri
-    verts = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64)
+    verts = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64
+    )
     faces = np.array([[0, 1, 2]], dtype=np.int32)
     out = tmp_path / "tri.stl"
     write_stl_binary(out, "test", verts, faces)

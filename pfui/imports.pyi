@@ -5,6 +5,7 @@ exported at runtime by a lazy importer. It exists to teach static type
 checkers (mypy, Pylance) about the runtime contract without forcing heavy
 numeric imports at module import time.
 """
+
 from typing import Callable, Any, Tuple, Dict, Optional
 from pathlib import Path
 import numpy as np
@@ -13,28 +14,27 @@ import numpy as np
 # Keep the r_outer_fn flexible: some styles accept a callable that computes
 # an outer radius given (theta, z_norm, Rt, Rb, opts) and returns a float.
 def build_pot_mesh(
-	H: float,
-	Rt: float,
-	Rb: float,
-	t_wall: float,
-	t_bottom: float,
-	r_drain: float,
-	expn: float,
-	n_theta: int,
-	n_z: int,
-	r_outer_fn: Optional[Callable[[float, float, float, float, Dict[str, Any]], float]],
-	style_opts: Optional[Dict[str, Any]] = None,
+    H: float,
+    Rt: float,
+    Rb: float,
+    t_wall: float,
+    t_bottom: float,
+    r_drain: float,
+    expn: float,
+    n_theta: int,
+    n_z: int,
+    r_outer_fn: Optional[Callable[[float, float, float, float, Dict[str, Any]], float]],
+    style_opts: Optional[Dict[str, Any]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]: ...
-
 
 # Binary STL writer: path + numeric arrays -> None
 
 def write_stl_binary(
-	path: Path | str,
-	name: str,
-	vertices: np.ndarray,
-	faces: np.ndarray,
-	normals: Optional[np.ndarray] = ...,
+    path: Path | str,
+    name: str,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    normals: Optional[np.ndarray] = ...,
 ) -> Path: ...
 
 WRITE_STL_BINARY = write_stl_binary

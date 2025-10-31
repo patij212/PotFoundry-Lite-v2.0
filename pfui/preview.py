@@ -47,14 +47,22 @@ R = TypeVar("R")
 # non-callable object (e.g., a SimpleNamespace or a custom _Cache object).
 # Only treat it as a decorator if it is callable; otherwise fall back to a
 # no-op decorator to avoid TypeError during module import / test collection.
-if _cache_data_impl is not None and callable(_cache_data_impl):  # pragma: no cover - normal runtime
+if _cache_data_impl is not None and callable(
+    _cache_data_impl
+):  # pragma: no cover - normal runtime
 
-    def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def cache_data(
+        *args: Any, **kwargs: Any
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
         # Cast the runtime-provided decorator to the generic form for mypy
-        return cast(Callable[[Callable[P, R]], Callable[P, R]], _cache_data_impl)(*args, **kwargs)
+        return cast(Callable[[Callable[P, R]], Callable[P, R]], _cache_data_impl)(
+            *args, **kwargs
+        )
 else:  # pragma: no cover - executed only in degraded env (tests)
 
-    def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def cache_data(
+        *args: Any, **kwargs: Any
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
         def _wrap(fn: Callable[P, R]) -> Callable[P, R]:
             return fn  # no caching fallback
 
@@ -113,9 +121,7 @@ def make_preview_arrays(
     opts: Dict[str, Any] = __import__("json").loads(opts_json)
     r_outer_fn = STYLES[style_name][0]
 
-    def _sanitize(
-        arr: _np.ndarray, r0: float | npt.NDArray[np.float64]
-    ) -> _np.ndarray:
+    def _sanitize(arr: _np.ndarray, r0: float | npt.NDArray[np.float64]) -> _np.ndarray:
         # Accept either a scalar float or a 0-d numpy array for r0. Coerce to
         # a Python float for sane numeric operations used below.
         try:
@@ -373,7 +379,9 @@ def render_preview(
 
     # Camera + aspect: use orthographic projection and equal XY, with gently compressed Z
     try:
-        ax.view_init(elev=float(_np.asarray(view_elev)), azim=float(_np.asarray(view_azim)))
+        ax.view_init(
+            elev=float(_np.asarray(view_elev)), azim=float(_np.asarray(view_azim))
+        )
     except Exception:
         pass
     try:

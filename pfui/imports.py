@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         _spin_twist_radians,
         build_pot_mesh,
     )
+
     # Prefer the canonical YAML API for static analysis; runtime code will
     # still dynamically resolve these functions from either the new core
     # locations or the legacy `potfoundry.yaml_api` module.

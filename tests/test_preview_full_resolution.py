@@ -22,7 +22,11 @@ def test_make_preview_arrays_full_resolution_returns_expected_shape_and_finite()
 
     X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, style_name, opts_json)
 
-    assert isinstance(X, np.ndarray) and isinstance(Y, np.ndarray) and isinstance(Z, np.ndarray)
+    assert (
+        isinstance(X, np.ndarray)
+        and isinstance(Y, np.ndarray)
+        and isinstance(Z, np.ndarray)
+    )
     assert X.shape == (n_z, n_theta), f"Expected shape {(n_z, n_theta)}, got {X.shape}"
     assert Y.shape == (n_z, n_theta)
     assert Z.shape == (n_z, n_theta)

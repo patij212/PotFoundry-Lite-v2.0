@@ -10,23 +10,32 @@ if "streamlit" not in sys.modules:
     class _Dummy:
         def __init__(self, *args, **kwargs):
             pass
+
         def button(self, *a, **k):
             return False
+
         def selectbox(self, *a, **k):
             # return first option if provided
-            return (a[1][0] if len(a) > 1 and a[1] else None)
+            return a[1][0] if len(a) > 1 and a[1] else None
+
         def slider(self, *a, **k):
             return 0
+
         def number_input(self, *a, **k):
             return 0
+
         def text_input(self, *a, **k):
             return ""
+
         def markdown(self, *a, **k):
             return None
+
         def caption(self, *a, **k):
             return None
+
         def write(self, *a, **k):
             return None
+
         def download_button(self, *a, **k):
             return None
 
@@ -40,6 +49,7 @@ if "streamlit" not in sys.modules:
     class _Ctx:
         def __enter__(self):
             return _Dummy()
+
         def __exit__(self, exc_type, exc, tb):
             return False
 
@@ -51,19 +61,25 @@ if "streamlit" not in sys.modules:
         def __call__(self, *a, **k):
             def _wrap(f):
                 return f
+
             return _wrap
+
         def clear(self):
             return None
 
     class _Empty:
         def image(self, *a, **k):
             return None
+
         def plotly_chart(self, *a, **k):
             return None
+
         def info(self, *a, **k):
             return None
+
         def empty(self):
             return None
+
         def caption(self, *a, **k):
             return None
 
@@ -87,8 +103,6 @@ if "streamlit" not in sys.modules:
     sys.modules["streamlit"] = _st
 
 
-
-
 import ast
 from importlib import import_module
 from pathlib import Path
@@ -98,8 +112,8 @@ from typing import Callable, Any, cast, TYPE_CHECKING
 # is a callable. This avoids Pylance warning about an Optional being called while
 # keeping runtime behavior unchanged.
 if TYPE_CHECKING:
-    def app_build_mesh_kwargs_for_test(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        ...
+
+    def app_build_mesh_kwargs_for_test(*args: Any, **kwargs: Any) -> dict[str, Any]: ...
 
 # Instead of importing the whole `app` module (which runs lots of Streamlit
 # UI code at import time), extract only the `build_mesh_kwargs_for_test`
@@ -127,7 +141,6 @@ try:
 except Exception:
     # Fallback: if pfui.colors can't be imported in this environment, provide a simple stub
     local_ns["build_gradient_colors"] = lambda z, p, c: [[200, 200, 230] for _ in z]
-
 
 
 try:

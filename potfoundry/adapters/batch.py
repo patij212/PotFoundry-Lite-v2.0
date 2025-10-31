@@ -9,12 +9,14 @@ falling back to a simple placeholder when the target module is unavailable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-	from potfoundry.yaml_api import build_from_yaml
+    from potfoundry.yaml_api import build_from_yaml
 else:
-	try:
-		from potfoundry.yaml_api import build_from_yaml
-	except Exception:
-		def build_from_yaml(*_a, **_k):
-			raise RuntimeError("potfoundry.yaml_api not available")
+    try:
+        from potfoundry.yaml_api import build_from_yaml
+    except Exception:
+
+        def build_from_yaml(*_a, **_k):
+            raise RuntimeError("potfoundry.yaml_api not available")
+
 
 __all__ = ["build_from_yaml"]

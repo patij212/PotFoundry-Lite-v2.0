@@ -42,7 +42,9 @@ from typing import cast
 
 def _as_mesh(m: object) -> MeshQualityModel:
     if isinstance(m, dict):
-        return MeshQualityModel(n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84)))
+        return MeshQualityModel(
+            n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84))
+        )
     return cast(MeshQualityModel, m)
 
 
@@ -56,6 +58,7 @@ def _as_recipe(r: object) -> RecipeModel:
     if isinstance(r, dict):
         return RecipeModel(**r)
     return cast(RecipeModel, r)
+
 
 # Default style function for tests
 default_style_fn = STYLES["SuperformulaBlossom"][0]

@@ -21,15 +21,17 @@ def test_fuzz_many_adversarial_styles(monkeypatch):
     n_z = 16
 
     for i in range(n_iter):
-        typ = rng.choice([
-            "ok",
-            "vec_raise",
-            "wrong_shape",
-            "nan_return",
-            "inf_return",
-            "object_dtype",
-            "negatives",
-        ])
+        typ = rng.choice(
+            [
+                "ok",
+                "vec_raise",
+                "wrong_shape",
+                "nan_return",
+                "inf_return",
+                "object_dtype",
+                "negatives",
+            ]
+        )
 
         def make_fn(t=typ):
             def fn(theta, z, r0, H, opts):
@@ -57,7 +59,9 @@ def test_fuzz_many_adversarial_styles(monkeypatch):
                     return float("inf")
                 if t == "object_dtype":
                     if isinstance(theta, _np.ndarray):
-                        return _np.array([object() for _ in range(theta.size)], dtype=object)
+                        return _np.array(
+                            [object() for _ in range(theta.size)], dtype=object
+                        )
                     return object()
                 if t == "negatives":
                     if isinstance(theta, _np.ndarray):
@@ -69,7 +73,9 @@ def test_fuzz_many_adversarial_styles(monkeypatch):
         name = f"fuzz_{i}_{typ}"
         _register_style(name, make_fn(), monkeypatch)
 
-        X, Y, Z = preview.make_preview_arrays(120.0, 70.0, 45.0, 1.1, n_theta, n_z, name, json.dumps({}))
+        X, Y, Z = preview.make_preview_arrays(
+            120.0, 70.0, 45.0, 1.1, n_theta, n_z, name, json.dumps({})
+        )
 
         # Shapes: must be 2D arrays with nz rows and >=24 columns (nt may be reduced on fallback)
         assert X.ndim == 2 and Y.ndim == 2 and Z.ndim == 2

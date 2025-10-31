@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 if TYPE_CHECKING:
     import streamlit as st
+
     HAS_STREAMLIT = True
 else:
     try:
@@ -256,7 +257,9 @@ class SupabaseClient:
                     # Use supabase-py client
                     client_any = cast(Any, client_obj)
                     response = client_any.table(table).upsert(row).execute()
-                    resp_data = cast(List[Dict[str, Any]], getattr(response, "data", []))
+                    resp_data = cast(
+                        List[Dict[str, Any]], getattr(response, "data", [])
+                    )
                     return resp_data[0] if resp_data else row
                 else:
                     # Use direct API call
@@ -275,7 +278,11 @@ class SupabaseClient:
                     result = resp.json()
                     # resp.json() is dynamically typed; cast to expected structure for mypy
                     result_typed = cast(List[Dict[str, Any]], result)
-                    return result_typed[0] if isinstance(result_typed, list) and result_typed else row
+                    return (
+                        result_typed[0]
+                        if isinstance(result_typed, list) and result_typed
+                        else row
+                    )
 
             except Exception as e:
                 if attempt == max_retries - 1:
@@ -311,7 +318,9 @@ class SupabaseClient:
                         query = query.eq(col, val)
                     resp = query.execute()
                     try:
-                        resp_data = cast(List[Dict[str, Any]], getattr(resp, "data", []))
+                        resp_data = cast(
+                            List[Dict[str, Any]], getattr(resp, "data", [])
+                        )
                         return len(resp_data or [])
                     except Exception:
                         return 0
@@ -396,7 +405,9 @@ class SupabaseClient:
                     query = query.limit(limit).offset(offset)
 
                     response = query.execute()
-                    resp_data = cast(List[Dict[str, Any]], getattr(response, "data", []))
+                    resp_data = cast(
+                        List[Dict[str, Any]], getattr(response, "data", [])
+                    )
                     return resp_data
                 else:
                     # Use direct API call
@@ -424,7 +435,9 @@ class SupabaseClient:
 
                     # Prefer public read without Authorization if possible. We'll clone headers and drop Authorization.
                     resp = self._session.get(
-                        url, params=cast(Any, params), timeout=getattr(self, "_timeout", None)
+                        url,
+                        params=cast(Any, params),
+                        timeout=getattr(self, "_timeout", None),
                     )
                     if resp.status_code == 401:
                         # Retry without Authorization to leverage public SELECT policy
@@ -440,7 +453,9 @@ class SupabaseClient:
                         if getattr(self, "_skip_tls_verify", False):
                             tmp_session.verify = False
                         resp = tmp_session.get(
-                            url, params=cast(Any, params), timeout=getattr(self, "_timeout", None)
+                            url,
+                            params=cast(Any, params),
+                            timeout=getattr(self, "_timeout", None),
                         )
                     resp.raise_for_status()
                     data = resp.json()
@@ -480,7 +495,9 @@ class SupabaseClient:
                     resp = query.execute()
                     # supabase-py returns count only if requested; best-effort length
                     try:
-                        resp_data = cast(List[Dict[str, Any]], getattr(resp, "data", []))
+                        resp_data = cast(
+                            List[Dict[str, Any]], getattr(resp, "data", [])
+                        )
                         return len(resp_data or [])
                     except Exception:
                         return 0
@@ -492,7 +509,9 @@ class SupabaseClient:
                         for col, val in filters.items():
                             params[col] = f"eq.{val}"
                     headers = {"Prefer": "return=representation"}
-                    resp = self._session.delete(url, params=cast(Any, params), headers=headers)
+                    resp = self._session.delete(
+                        url, params=cast(Any, params), headers=headers
+                    )
                     resp.raise_for_status()
                     try:
                         data = resp.json()

@@ -27,7 +27,9 @@ from typing import cast
 def _as_mesh(m: object) -> MeshQualityModel:
     """Return a MeshQualityModel whether input is a dict or model."""
     if isinstance(m, dict):
-        return MeshQualityModel(n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84)))
+        return MeshQualityModel(
+            n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84))
+        )
     return cast(MeshQualityModel, m)
 
 
@@ -88,7 +90,9 @@ class TestMeshQualityModel:
     def test_mesh_quality_rejects_extra_fields(self):
         """Test that extra fields are rejected."""
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            MeshQualityModel.model_validate({"n_theta": 100, "n_z": 50, "invalid_field": "test"})
+            MeshQualityModel.model_validate(
+                {"n_theta": 100, "n_z": 50, "invalid_field": "test"}
+            )
 
 
 class TestDefaultsModel:
@@ -239,7 +243,9 @@ class TestRecipeModel:
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
             # Validate from a raw mapping so we exercise Pydantic's runtime
             # extra-field rejection while keeping static type checking clean.
-            RecipeModel.model_validate({"name": "test", "style": "SuperformulaBlossom", "extra": "field"})
+            RecipeModel.model_validate(
+                {"name": "test", "style": "SuperformulaBlossom", "extra": "field"}
+            )
 
 
 class TestPresetModel:
@@ -270,7 +276,9 @@ class TestPresetModel:
         """Test that extra fields are rejected."""
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
             # Use model_validate to trigger extra-field rejection at runtime.
-            PresetModel.model_validate({"style": "SuperformulaBlossom", "invalid": "field"})
+            PresetModel.model_validate(
+                {"style": "SuperformulaBlossom", "invalid": "field"}
+            )
 
 
 class TestConfigV2:
@@ -389,7 +397,12 @@ class TestConfigV2:
         """Test that extra fields are rejected."""
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
             # Use model_validate to assert ConfigV2 rejects unknown top-level keys.
-            ConfigV2.model_validate({"recipes": [{"name": "test", "style": "SuperformulaBlossom"}], "invalid_field": "test"})
+            ConfigV2.model_validate(
+                {
+                    "recipes": [{"name": "test", "style": "SuperformulaBlossom"}],
+                    "invalid_field": "test",
+                }
+            )
 
 
 class TestDeepMerge:

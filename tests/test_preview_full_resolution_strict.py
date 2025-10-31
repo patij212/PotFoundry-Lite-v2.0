@@ -21,9 +21,14 @@ def test_full_resolution_exact_shape(monkeypatch):
 
     n_theta = 64
     n_z = 16
-    X, Y, Z = preview.make_preview_arrays(120.0, 70.0, 45.0, 1.1, n_theta, n_z, "GoodVecAlways", json.dumps({}))
+    X, Y, Z = preview.make_preview_arrays(
+        120.0, 70.0, 45.0, 1.1, n_theta, n_z, "GoodVecAlways", json.dumps({})
+    )
 
-    assert X.shape == (n_z, n_theta), f"expected shape {(n_z,n_theta)} but got {X.shape}"
+    assert X.shape == (
+        n_z,
+        n_theta,
+    ), f"expected shape {(n_z, n_theta)} but got {X.shape}"
     assert Y.shape == (n_z, n_theta)
     assert Z.shape == (n_z, n_theta)
     assert np.isfinite(X).all() and np.isfinite(Y).all() and np.isfinite(Z).all()

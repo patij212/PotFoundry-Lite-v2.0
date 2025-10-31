@@ -71,7 +71,9 @@ def _call_r_outer(
     result to an ndarray of floats.
     """
     if r_outer_fn is None:
-        return np.asarray(r0, dtype=float) if isinstance(theta, np.ndarray) else float(r0)
+        return (
+            np.asarray(r0, dtype=float) if isinstance(theta, np.ndarray) else float(r0)
+        )
 
     # Vectorized theta path
     if isinstance(theta, np.ndarray):
@@ -80,12 +82,29 @@ def _call_r_outer(
             return np.asarray(res, dtype=float)
         except Exception:
             # Fallback: call per-element
-            out = [float(r_outer_fn(float(t), float(z), float(r0) if not isinstance(r0, np.ndarray) else float(r0[i]), float(H), style_opts)) for i, t in enumerate(theta)]
+            out = [
+                float(
+                    r_outer_fn(
+                        float(t),
+                        float(z),
+                        float(r0) if not isinstance(r0, np.ndarray) else float(r0[i]),
+                        float(H),
+                        style_opts,
+                    )
+                )
+                for i, t in enumerate(theta)
+            ]
             return np.array(out, dtype=float)
 
     # Scalar theta path
     try:
-        res = r_outer_fn(float(theta), float(z), float(r0) if not isinstance(r0, np.ndarray) else float(r0), float(H), style_opts)
+        res = r_outer_fn(
+            float(theta),
+            float(z),
+            float(r0) if not isinstance(r0, np.ndarray) else float(r0),
+            float(H),
+            style_opts,
+        )
         return float(res)
     except Exception:
         # Maybe the callable expects an ndarray; try calling with a 1-element array
@@ -459,7 +478,9 @@ def build_pot_mesh(
         twist = _spin_twist_radians(z, H, style_opts)
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_vals = np.asarray(_call_r_outer(r_outer_fn, thetas + twist, z, r0, H, style_opts), dtype=float)
+        r_vals = np.asarray(
+            _call_r_outer(r_outer_fn, thetas + twist, z, r0, H, style_opts), dtype=float
+        )
         outer_idx[i] = add_ring_xy(r_vals, z, cTw, sTw)
 
     # Vectorized faces for outer wall
@@ -482,7 +503,9 @@ def build_pot_mesh(
         twist = _spin_twist_radians(z, H, style_opts)
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        r_out_vals = np.asarray(_call_r_outer(r_outer_fn, thetas + twist, z, r0, H, style_opts), dtype=float)
+        r_out_vals = np.asarray(
+            _call_r_outer(r_outer_fn, thetas + twist, z, r0, H, style_opts), dtype=float
+        )
         r_in_vals = r_out_vals - t_wall
         min_allowed = r_drain + 1.0
         clamped = r_in_vals < min_allowed
@@ -572,6 +595,7 @@ plt: Any | None = None
 try:
     import matplotlib.pyplot as _plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
     plt = _plt
 except Exception:
     # plt stays as None when matplotlib is unavailable

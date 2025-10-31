@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     # For static analysis, expose streamlit names so type checkers can reason
     # about Streamlit usage in the module without performing a runtime import.
     import streamlit as st
+
     HAS_STREAMLIT = True
 else:
     try:
@@ -598,7 +599,7 @@ def list_published(
     offset: int = 0,
     limit: int = 24,
     refresh_counter: int = 0,
- ) -> Tuple[List[dict], bool]:
+) -> Tuple[List[dict], bool]:
     """List published designs with filters.
 
     Args:

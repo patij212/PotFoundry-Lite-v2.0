@@ -15,22 +15,22 @@ tests), provide harmless placeholders so imports don't fail during collection.
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-	# Static tools: ConfigV2 lives in potfoundry.schema; helpers are implemented
-	# in potfoundry.yaml_api.
-	from potfoundry.schema import ConfigV2
-	from potfoundry.yaml_api import load_config, validate_recipe
+    # Static tools: ConfigV2 lives in potfoundry.schema; helpers are implemented
+    # in potfoundry.yaml_api.
+    from potfoundry.schema import ConfigV2
+    from potfoundry.yaml_api import load_config, validate_recipe
 else:
-	try:
-		from potfoundry.schema import ConfigV2
-		from potfoundry.yaml_api import load_config, validate_recipe
-	except Exception:
-		# Runtime fallbacks when the canonical modules are not available
-		def load_config(*_a, **_k):
-			raise RuntimeError("potfoundry.yaml_api not available")
+    try:
+        from potfoundry.schema import ConfigV2
+        from potfoundry.yaml_api import load_config, validate_recipe
+    except Exception:
+        # Runtime fallbacks when the canonical modules are not available
+        def load_config(*_a, **_k):
+            raise RuntimeError("potfoundry.yaml_api not available")
 
-		def validate_recipe(*_a, **_k):
-			raise RuntimeError("potfoundry.yaml_api not available")
+        def validate_recipe(*_a, **_k):
+            raise RuntimeError("potfoundry.yaml_api not available")
 
-		ConfigV2 = Any
+        ConfigV2 = Any
 
 __all__ = ["load_config", "validate_recipe", "ConfigV2"]

@@ -4,6 +4,7 @@ This module provides a single NDArray alias for NumPy float64 arrays used
 across the codebase. Adding a centralized alias makes incremental typing
 of geometry functions safer and clearer.
 """
+
 from __future__ import annotations
 
 import numpy as np

@@ -1878,8 +1878,12 @@ def get_schema(style: str, *, canonical: bool = False) -> Dict[str, ControlMeta]
     """
     if canonical:
         # CANONICAL_* are Mapping types; cast to the expected Dict[str, ControlMeta]
-        block: Dict[str, ControlMeta] = cast(Dict[str, ControlMeta], dict(_CANONICAL_CONTROLS))
-        block.update(cast(Dict[str, Dict[str, Any]], _CANONICAL_STYLE_SCHEMAS).get(style, {}))
+        block: Dict[str, ControlMeta] = cast(
+            Dict[str, ControlMeta], dict(_CANONICAL_CONTROLS)
+        )
+        block.update(
+            cast(Dict[str, Dict[str, Any]], _CANONICAL_STYLE_SCHEMAS).get(style, {})
+        )
     else:
         block = cast(Dict[str, ControlMeta], dict(_GLOBAL_CONTROLS))
         block.update(cast(Dict[str, Dict[str, Any]], _STYLE_SCHEMAS).get(style, {}))

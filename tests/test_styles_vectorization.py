@@ -46,7 +46,9 @@ def test_all_styles_vectorized_at_full_resolution():
 
             # Call at full resolution
             try:
-                X, Y, Z = make_preview_arrays(H, Rt, Rb, expn, n_theta, n_z, name, opts_json)
+                X, Y, Z = make_preview_arrays(
+                    H, Rt, Rb, expn, n_theta, n_z, name, opts_json
+                )
             except Exception as e:
                 failures.append((name, f"exception during make_preview_arrays: {e}"))
                 # restore and continue

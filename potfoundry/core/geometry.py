@@ -193,7 +193,10 @@ def _compute_normal(
 
 
 def write_ascii_stl(
-    path: str | Path, name: str, verts: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]
+    path: str | Path,
+    name: str,
+    verts: npt.NDArray[np.float64],
+    faces: npt.NDArray[np.int32],
 ) -> None:
     """Write triangles to ASCII STL (portable, human-readable).
 
@@ -273,7 +276,13 @@ def _spin_twist_radians(z: float, H: float, opts: dict) -> float:
 
 
 def superformula_r(
-    theta: NDArrayFloat | float, m: float, n1: float, n2: float, n3: float, a: float = 1.0, b: float = 1.0
+    theta: NDArrayFloat | float,
+    m: float,
+    n1: float,
+    n2: float,
+    n3: float,
+    a: float = 1.0,
+    b: float = 1.0,
 ) -> NDArrayFloat | float:
     """Gielis superformula in polar. Supports scalar or numpy array theta."""
     th = np.asarray(theta, dtype=float)
@@ -286,7 +295,9 @@ def superformula_r(
     return float(out) if np.isscalar(theta) else out
 
 
-def r_outer_superformula_blossom(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
+def r_outer_superformula_blossom(
+    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
+) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     # Style strength controls modulation amount (default 0.0 = neutral for regression parity)
     strength = float(opts.get("sf_strength", 0.0))
@@ -567,7 +578,9 @@ def r_outer_superformula_blossom(theta: NDArrayFloat | float, z: float, r0: floa
     return float(out_arr) if out_arr.shape == () else out_arr
 
 
-def r_outer_fourier_bloom(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
+def r_outer_fourier_bloom(
+    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
+) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
 
@@ -609,7 +622,9 @@ def r_outer_fourier_bloom(theta: NDArrayFloat | float, z: float, r0: float, H: f
     return float(out) if np.isscalar(theta) else out
 
 
-def r_outer_spiral_ridges(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
+def r_outer_spiral_ridges(
+    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
+) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
 
@@ -633,7 +648,9 @@ def r_outer_spiral_ridges(theta: NDArrayFloat | float, z: float, r0: float, H: f
     return float(out) if np.isscalar(theta) else out
 
 
-def r_outer_superellipse_morph(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
+def r_outer_superellipse_morph(
+    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
+) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
 
@@ -656,7 +673,9 @@ def r_outer_superellipse_morph(theta: NDArrayFloat | float, z: float, r0: float,
     return float(out) if np.isscalar(theta) else out
 
 
-def r_outer_harmonic_ripple(theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]) -> NDArrayFloat | float:
+def r_outer_harmonic_ripple(
+    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
+) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
 
@@ -761,10 +780,14 @@ def r_outer_lowpoly_facet(
 
         # Helpers to compute facet modulation for a given tier index (vector and scalar variants)
         def _facet_mod_for_tier(tier_index: int) -> np.ndarray:
-            return facet_mod_for_tier_vector(th, tier_index, facets, jitter_amt, phase, p, amp, outward_dir)
+            return facet_mod_for_tier_vector(
+                th, tier_index, facets, jitter_amt, phase, p, amp, outward_dir
+            )
 
         def _facet_mod_scalar(theta_scalar: float, tier_index: int) -> float:
-            return facet_mod_for_tier_scalar(theta_scalar, tier_index, facets, jitter_amt, phase, p, amp, outward_dir)
+            return facet_mod_for_tier_scalar(
+                theta_scalar, tier_index, facets, jitter_amt, phase, p, amp, outward_dir
+            )
 
         # Base shape at seams
         Rb = float(opts.get("_pf_rb", 0.0))
@@ -1113,7 +1136,9 @@ def r_outer_lowpoly_facet(
                 lift_gamma = max(0.2, min(3.0, lift_gamma))
 
                 def _lift_valleys(base_vals, weight, target_val):
-                    return lift_valleys(base_vals, weight, target_val, lift_strength, lift_gamma)
+                    return lift_valleys(
+                        base_vals, weight, target_val, lift_strength, lift_gamma
+                    )
 
                 if cut_bot_deg > 0.0 and (
                     np.any(w_bot > 0.0)
@@ -1238,7 +1263,9 @@ def r_outer_lowpoly_facet(
                             Rstart_mid = max(r0_mid * f_km1_v, r0_mid * f_kc_v)
                         else:
                             f_kc_v = _facet_mod_for_tier(kk)
-                            f_kp1_v = _facet_mod_for_tier(kk + 1 if kk < (tiers - 1) else kk)
+                            f_kp1_v = _facet_mod_for_tier(
+                                kk + 1 if kk < (tiers - 1) else kk
+                            )
                             Rstart_mid = max(r0_mid * f_kc_v, r0_mid * f_kp1_v)
                         r_base_mid = r0_mid * _facet_mod_scalar(theta_mid, kk)
                         # Effective envelope for diagnostics (no outward growth under cuts/inward modes)
@@ -1579,12 +1606,16 @@ def build_pot_mesh(
         if r_outer_fn is None:
             # Cast the selected style function to the expected Callable signature
             r_outer_fn = cast(
-                Callable[[NDArrayFloat | float, float, float | NDArrayFloat, float, dict], NDArrayFloat | float],
+                Callable[
+                    [NDArrayFloat | float, float, float | NDArrayFloat, float, dict],
+                    NDArrayFloat | float,
+                ],
                 STYLES["SuperformulaBlossom"][0],
             )
         # Tell the type-checker this is now a callable (non-None) so subsequent calls
         # like `r_outer_fn(thetas, z, r0, H, _opts)` are accepted.
         assert r_outer_fn is not None
+
         # Local wrapper with an explicit typed contract to help mypy understand
         # style functions may accept scalar or array-like inputs for r0.
         def _call_r_outer(
@@ -1609,6 +1640,7 @@ def build_pot_mesh(
             if isinstance(res, np.ndarray):
                 return np.asarray(res, dtype=float)
             return float(res)
+
         _tiers = (
             int(style_opts.get("lp_tiers", 1)) if isinstance(style_opts, dict) else 1
         )
@@ -1673,7 +1705,9 @@ def build_pot_mesh(
     verts: list[tuple[float, float, float]] = []
     faces_out_parts: list[np.ndarray] = []
 
-    def add_ring_xy(r_vals: NDArrayFloat, z: float, cTw: float, sTw: float) -> npt.NDArray[np.int64]:
+    def add_ring_xy(
+        r_vals: NDArrayFloat, z: float, cTw: float, sTw: float
+    ) -> npt.NDArray[np.int64]:
         # Rotate precomputed cos/sin by twist: cos(θ+tw)=cosθ·cosTw - sinθ·sinTw; sin(θ+tw)=sinθ·cosTw + cosθ·sinTw
         cx: NDArrayFloat = cos_th * cTw - sin_th * sTw
         sy: NDArrayFloat = sin_th * cTw + cos_th * sTw
@@ -3039,7 +3073,9 @@ def build_pot_mesh(
                                                             idxs_list.append(j)
                                                     if not idxs_list:
                                                         continue
-                                                    idxs = np.array(idxs_list, dtype=int)
+                                                    idxs = np.array(
+                                                        idxs_list, dtype=int
+                                                    )
                                                     th_idxs = thetas[idxs]
                                                     s_vals = (
                                                         (th_idxs - theta_start) % TAU
@@ -3347,11 +3383,14 @@ def build_pot_mesh(
                         from pathlib import Path
                         import json
                         import time
+
                         repo_root = Path(
                             r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
                         )
                         # prefer str for outpath to keep typing consistent when opening files
-                        outpath = str(repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl")
+                        outpath = str(
+                            repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
+                        )
                         drain_thresh = float(
                             style_opts.get(
                                 "sf_edge_flow_drain_protect_thresh", r_drain + 1.0
@@ -3363,7 +3402,13 @@ def build_pot_mesh(
                         # write one JSON line per dump run with selected rings
                         # Reuse top-level `dump` variable to avoid shadowing/redefinition
                         dump.clear()
-                        dump.update({"timestamp": time.time(), "stage": "post_deoffset", "rows": []})
+                        dump.update(
+                            {
+                                "timestamp": time.time(),
+                                "stage": "post_deoffset",
+                                "rows": [],
+                            }
+                        )
                         # Allow forcing a single probe zi via style options for targeted dumps
                         from typing import Optional
 
@@ -3636,6 +3681,7 @@ def build_pot_mesh(
                                     best_score = score
                                     best_k = k
                             return best_k
+
                         for zi in range(Z):
                             row_new = R_new_raw[zi, :]
                             row_old = R_raw[zi, :]
@@ -3901,7 +3947,9 @@ def build_pot_mesh(
                         repo_root = Path(
                             r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
                         )
-                        outpath = str(repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl")
+                        outpath = str(
+                            repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
+                        )
                         fdump = {
                             "timestamp": time.time(),
                             "stage": "final_enforcement",
@@ -4276,22 +4324,34 @@ def build_pot_mesh(
     v00 = outer_bottom[j_idx]
     v01 = outer_bottom[jn]
     # Intermediate variables vd0, vd1 computed but not used - kept for clarity
-    tri_bot1 = np.stack([outer_bottom[j_idx], drain_under_arr[jn], drain_under_arr[j_idx]], axis=1)
-    tri_bot2 = np.stack([outer_bottom[j_idx], outer_bottom[jn], drain_under_arr[jn]], axis=1)
+    tri_bot1 = np.stack(
+        [outer_bottom[j_idx], drain_under_arr[jn], drain_under_arr[j_idx]], axis=1
+    )
+    tri_bot2 = np.stack(
+        [outer_bottom[j_idx], outer_bottom[jn], drain_under_arr[jn]], axis=1
+    )
     faces_out_parts.append(tri_bot1)
     faces_out_parts.append(tri_bot2)
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     # Intermediate variables vi0, vi1, vd0, vd1 computed but not used - kept for clarity
-    tri_top1 = np.stack([inner_bottom[j_idx], inner_bottom[jn], drain_top_arr[jn]], axis=1)
-    tri_top2 = np.stack([inner_bottom[j_idx], drain_top_arr[jn], drain_top_arr[j_idx]], axis=1)
+    tri_top1 = np.stack(
+        [inner_bottom[j_idx], inner_bottom[jn], drain_top_arr[jn]], axis=1
+    )
+    tri_top2 = np.stack(
+        [inner_bottom[j_idx], drain_top_arr[jn], drain_top_arr[j_idx]], axis=1
+    )
     faces_out_parts.append(tri_top1)
     faces_out_parts.append(tri_top2)
 
     # Drain cylinder wall
     # Intermediate variables v0b, v1b, v0t, v1t computed but not used - kept for clarity
-    tri_cyl1 = np.stack([drain_under_arr[j_idx], drain_top_arr[j_idx], drain_top_arr[jn]], axis=1)
-    tri_cyl2 = np.stack([drain_under_arr[j_idx], drain_top_arr[jn], drain_under_arr[jn]], axis=1)
+    tri_cyl1 = np.stack(
+        [drain_under_arr[j_idx], drain_top_arr[j_idx], drain_top_arr[jn]], axis=1
+    )
+    tri_cyl2 = np.stack(
+        [drain_under_arr[j_idx], drain_top_arr[jn], drain_under_arr[jn]], axis=1
+    )
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 

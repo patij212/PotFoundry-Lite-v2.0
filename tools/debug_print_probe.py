@@ -44,7 +44,9 @@ for zi in range(Z):
     R_grid[zi, 0] = 200.0
 
 
-def synthetic_r_outer_fn(thetas: np.ndarray, z: float, r0: float, H_local: float, opts: dict) -> np.ndarray:
+def synthetic_r_outer_fn(
+    thetas: np.ndarray, z: float, r0: float, H_local: float, opts: dict
+) -> np.ndarray:
     idx = int(round((float(z) / float(7.0)) * float(n_z)))
     idx = max(0, min(Z - 1, idx))
     return np.asarray(R_grid[idx, :], dtype=float)

@@ -71,12 +71,15 @@ def test_straight_seam_edges_plateau_matches_expected_limit():
     tol = 1e-5
     clamped = np.isclose(r_straight, r_expected, atol=tol)
     from typing import cast
+
     # Use explicit float denominator so static type checkers don't see mixed
     # numpy/object numeric unions in the division. Guard length with max(1, ...)
     # Use integer counts to avoid static-typing issues with NumPy scalar types
     count_i: int = int(np.count_nonzero(clamped))
     threshold: int = max(1, int(0.02 * float(len(r_straight))))
-    assert count_i >= threshold  # at least ~2% of theta samples lie on the straight plateau
+    assert (
+        count_i >= threshold
+    )  # at least ~2% of theta samples lie on the straight plateau
 
     # Within half of the seam window above the seam plane, variation across theta should remain tiny.
     # This guards against the jagged “saw tooth” perimeter that motivated the straight-edge fix.

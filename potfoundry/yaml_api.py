@@ -95,7 +95,9 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
 
             m = cfg_any.mesh
             if isinstance(m, dict):
-                mesh = MeshQuality(n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84)))
+                mesh = MeshQuality(
+                    n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84))
+                )
             else:
                 mesh = MeshQuality(n_theta=int(m.n_theta), n_z=int(m.n_z))
 
@@ -113,7 +115,7 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
                     presets[k] = v.model_dump()
 
             recipes = []
-            for r in (cfg_any.recipes or []):
+            for r in cfg_any.recipes or []:
                 if isinstance(r, dict):
                     recipes.append(r)
                 else:
@@ -231,7 +233,11 @@ def build_from_yaml(
     outdir.mkdir(parents=True, exist_ok=True)
     names = set(only_names) if only_names else None
 
-    manifest: Dict[str, Any] = {"units": "mm", "outdir": str(outdir.resolve()), "pots": []}
+    manifest: Dict[str, Any] = {
+        "units": "mm",
+        "outdir": str(outdir.resolve()),
+        "pots": [],
+    }
     for rec in cfg.recipes:
         rec = (
             rec if isinstance(rec, dict) else getattr(rec, "model_dump", lambda: rec)()

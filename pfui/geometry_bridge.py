@@ -5,6 +5,7 @@ defers importing the numeric-heavy `potfoundry` geometry implementation until
 call time. Callers (UI code) should use this function to avoid pulling NumPy
 and large numeric types into their import-time type-checking.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, Tuple, cast, List, TYPE_CHECKING
@@ -37,7 +38,9 @@ def build_pot_mesh_safe(
     n_z: int,
     r_outer_fn: Any,
     style_opts: Dict[str, Any],
-) -> Tuple[List[tuple[float, float, float]], List[tuple[int, int, int]], Dict[str, Any]]:
+) -> Tuple[
+    List[tuple[float, float, float]], List[tuple[int, int, int]], Dict[str, Any]
+]:
     """Call the real mesh builder lazily and return conservative-typed results.
 
     The return types are intentionally `Any`/`Dict[str, Any]` to avoid importing
@@ -51,7 +54,11 @@ def build_pot_mesh_safe(
     _BUILDER_NOT_FOUND = object()
     builder_raw: Any = _BUILDER_NOT_FOUND
     try:
-        builder_raw = getattr(importlib.import_module("pfui.imports"), "build_pot_mesh", _BUILDER_NOT_FOUND)
+        builder_raw = getattr(
+            importlib.import_module("pfui.imports"),
+            "build_pot_mesh",
+            _BUILDER_NOT_FOUND,
+        )
     except Exception:
         builder_raw = _BUILDER_NOT_FOUND
     if builder_raw is _BUILDER_NOT_FOUND:
@@ -77,7 +84,9 @@ def build_pot_mesh_safe(
     # Cast to conservative but structured types so callers (UI code) can
     # rely on predictable shapes without importing NumPy types at module import.
     return cast(
-        Tuple[List[tuple[float, float, float]], List[tuple[int, int, int]], Dict[str, Any]],
+        Tuple[
+            List[tuple[float, float, float]], List[tuple[int, int, int]], Dict[str, Any]
+        ],
         (verts, faces, diag),
     )
 
@@ -96,11 +105,13 @@ def adapt_r_outer_fn(fn: Any):
     Returns:
         A callable wrapper with the signature (theta, z, r_base, expn, opts) -> array-like
     """
+
     def _wrapped(theta, z, r_base, expn, opts):
         # Lazily import numpy if available and coerce input to an ndarray
         _np: Any = None
         try:
             import numpy as _np
+
             th = _np.asarray(theta)
         except Exception:
             th = theta

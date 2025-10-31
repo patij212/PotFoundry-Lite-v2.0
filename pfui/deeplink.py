@@ -11,10 +11,12 @@ import json
 
 if TYPE_CHECKING:
     import streamlit as st
+
     HAS_STREAMLIT = True
 else:
     try:
         import streamlit as st
+
         HAS_STREAMLIT = True
     except Exception:
         HAS_STREAMLIT = False

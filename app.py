@@ -115,8 +115,13 @@ def build_mesh_kwargs_for_test(Vd, Fd, ss, n_theta, n_z, fig_h):
             z_norm = (Vd[:, 2] - Vd[:, 2].min()) / max(1e-6, span_z)
             # Simplified: always use full-length color mapping for tests
             mesh_colors = build_gradient_colors(
-                z_norm, ss.get("preview_palette", None),
-                [ss.get("preview_grad_c1", "#2850D0"), ss.get("preview_grad_c2", "#5FA8FF"), ss.get("preview_grad_c3", "#E2F3FF")]
+                z_norm,
+                ss.get("preview_palette", None),
+                [
+                    ss.get("preview_grad_c1", "#2850D0"),
+                    ss.get("preview_grad_c2", "#5FA8FF"),
+                    ss.get("preview_grad_c3", "#E2F3FF"),
+                ],
             )
         except Exception:
             mesh_colors = [[200, 200, 230] for _ in range(len(Vd))]
@@ -301,9 +306,7 @@ try:
 except Exception:
     # Do not crash the UI on boot; best-effort diagnostics only.
     try:
-        ss.setdefault("_debug_logs", []).append(
-            "Boot: failed to apply pending updates"
-        )
+        ss.setdefault("_debug_logs", []).append("Boot: failed to apply pending updates")
     except Exception:
         pass
 
@@ -447,9 +450,7 @@ with _tab1:
         # Ensure an explicit auto-name checkbox state exists. Default to True
         # (auto name enabled) unless the user has edited the name previously.
         if "_model_name_auto" not in ss:
-            ss["_model_name_auto"] = not ss[
-                "_model_name_user_edited"
-            ]
+            ss["_model_name_auto"] = not ss["_model_name_user_edited"]
         # Compute an auto name (mirrors Snapshot default) from the last-known
         # style/H in session state so we can present the same auto-updating
         # behaviour without moving the widget in the sidebar.
@@ -461,9 +462,10 @@ with _tab1:
         # selectbox and our auto-name use the same initial value.
         if "style" not in ss and all_styles:
             ss["style"] = all_styles[0]
-        style_guess = cast(Optional[str], ss.get(
-            "style", all_styles[0] if all_styles else None
-        ))
+        style_guess = cast(
+            Optional[str], ss.get("style", all_styles[0] if all_styles else None)
+        )
+
         def _unwrap_scalar(v: Any) -> Any:
             """If v is a list/tuple, return its first element; otherwise return v.
 
@@ -863,12 +865,10 @@ with _tab1:
                             "drain": r_drain,
                             "flare_exp": expn,
                         },
-                            "opts": {
-                                k: cast(Any, ss.get(
-                                    widget_key(style_key, k), v["default"]
-                                ))
-                                for k, v in styles.get(style_key, {}).items()
-                            },
+                        "opts": {
+                            k: cast(Any, ss.get(widget_key(style_key, k), v["default"]))
+                            for k, v in styles.get(style_key, {}).items()
+                        },
                     }
                     pdata.setdefault("presets", []).append(preset)
                     if _write_user_presets(pdata):
@@ -953,7 +953,7 @@ with _tab1:
         prev_preset = cast(Optional[str], ss_map.get("_last_quality_preset", None))
         _quality_raw = ss_map.get("quality_preset", "Medium")
         quality_index = {"Low": 0, "Medium": 1, "High": 2, "Ultra": 3}.get(
-                cast(str, _quality_raw), 1
+            cast(str, _quality_raw), 1
         )
         preset_name = qc1.selectbox(
             "Quality preset",
@@ -983,9 +983,7 @@ with _tab1:
             ss_map["n_z"] = d.get("n_z", ss_map.get("n_z", 84))
             ss_map["quality_up"] = d.get("quality_up", ss_map.get("quality_up", 2))
             if preset_name == "Ultra":
-                ss_map["exact_full_preview"] = d.get(
-                    "exact_full_preview", True
-                )
+                ss_map["exact_full_preview"] = d.get("exact_full_preview", True)
                 ss_map["preview_res_scale"] = d.get("preview_res_scale", 1.0)
             ss_map["_last_quality_preset"] = preset_name
             _mark_changed()
@@ -1000,9 +998,9 @@ with _tab1:
                 720,
                 ss_map.get(
                     "n_theta",
-                    cast(dict, preset_defaults).get(preset_name, {}).get(
-                        "n_theta", 168
-                    ),
+                    cast(dict, preset_defaults)
+                    .get(preset_name, {})
+                    .get("n_theta", 168),
                 ),
                 12,
                 key="n_theta",
@@ -1079,7 +1077,9 @@ with _tab1:
             except Exception:
                 pass
         # Cached / regen status indicator
-        last_mesh_regen = cast(Optional[bool], ss.get("_last_mesh_png_regenerated", None))
+        last_mesh_regen = cast(
+            Optional[bool], ss.get("_last_mesh_png_regenerated", None)
+        )
         last_mesh_time = cast(Optional[float], ss.get("_last_mesh_png_time_ms", None))
         if last_mesh_regen is not None:
             status = "regenerated" if last_mesh_regen else "cached"
@@ -1100,12 +1100,20 @@ with _tab1:
                     mime="image/png",
                 )
                 # Optional SVG via Plotly if possible
-                if HAS_PLOTLY and cast(Optional[dict], ss.get("_last_surface_fig_json")):
+                if HAS_PLOTLY and cast(
+                    Optional[dict], ss.get("_last_surface_fig_json")
+                ):
                     try:
-                        fig = go.Figure(cast(Optional[dict], ss.get("_last_surface_fig_json")))
+                        fig = go.Figure(
+                            cast(Optional[dict], ss.get("_last_surface_fig_json"))
+                        )
                         # Defensive unwrap to avoid passing list/tuple into float()/int()
-                        w = max(400, min(900, _to_int_scalar(96 * _unwrap_scalar(fig_h))))
-                        h = max(300, min(800, _to_int_scalar(96 * _unwrap_scalar(fig_h))))
+                        w = max(
+                            400, min(900, _to_int_scalar(96 * _unwrap_scalar(fig_h)))
+                        )
+                        h = max(
+                            300, min(800, _to_int_scalar(96 * _unwrap_scalar(fig_h)))
+                        )
                         svg_bytes = fig.to_image(format="svg", width=w, height=h)
                         if svg_bytes:
                             d2.download_button(
@@ -1160,7 +1168,9 @@ with _tab1:
             if preview_mode == "debounced":
                 # Inject a more robust debounce helper that schedules a click
                 # on the Update button when inputs stop changing.
-                timeout_ms = int(_to_float_scalar(ss.get("debounce_timeout", 0.8)) * 1000)
+                timeout_ms = int(
+                    _to_float_scalar(ss.get("debounce_timeout", 0.8)) * 1000
+                )
                 js = """
 <script>
 (function(){
@@ -1236,7 +1246,9 @@ with _tab1:
         if preview_mode == "debounced":
             try:
                 last_ts = cast(Any, ss.get("_last_change_ts", None))
-                debounce_timeout_seconds = _to_float_scalar(ss.get("debounce_timeout", 0.8))
+                debounce_timeout_seconds = _to_float_scalar(
+                    ss.get("debounce_timeout", 0.8)
+                )
                 # Only update if a change actually occurred (stale flag set)
                 if (
                     last_ts is not None
@@ -1254,7 +1266,9 @@ with _tab1:
         [Union[float, _ArrayLike], float, float, float, dict], Union[float, _ArrayLike]
     ]
     # Raw style function (may accept scalar or vector theta, and may return scalar or array-like)
-    _r_outer_raw = cast(ROuterFn, STYLES[style_name][0])  # geometry comes from UI style name
+    _r_outer_raw = cast(
+        ROuterFn, STYLES[style_name][0]
+    )  # geometry comes from UI style name
 
     # Use the centralized adapter (imported from pfui.geometry_bridge) so callers
     # across the codebase get consistent behavior. This also avoids duplicating
@@ -1301,8 +1315,29 @@ with _tab1:
     # Build signatures to classify changes (geometry vs appearance)
     # Predeclare signature variables with Optional types so assigning None in
     # exception paths doesn't conflict with the tuple types constructed below.
-    geom_sig: Optional[tuple[float, float, float, float, int, int, str, str, int, int]] = None
-    app_sig: Optional[tuple[Any, Any, Any, Any, float, float, float, float, float, bool, float, float, float, float, int, bool]] = None
+    geom_sig: Optional[
+        tuple[float, float, float, float, int, int, str, str, int, int]
+    ] = None
+    app_sig: Optional[
+        tuple[
+            Any,
+            Any,
+            Any,
+            Any,
+            float,
+            float,
+            float,
+            float,
+            float,
+            bool,
+            float,
+            float,
+            float,
+            float,
+            int,
+            bool,
+        ]
+    ] = None
     try:
         geom_sig = (
             float(H),
@@ -1970,16 +2005,20 @@ with _tab1:
                     flatshading=bool(cast(Any, ss.get("mesh_flatshading", False))),
                     lighting=dict(
                         ambient=min(
-                            max(_to_float_scalar(ss.get("mesh_ambient", 0.35)), 0.0), 1.0
+                            max(_to_float_scalar(ss.get("mesh_ambient", 0.35)), 0.0),
+                            1.0,
                         ),
                         diffuse=min(
-                            max(_to_float_scalar(ss.get("mesh_diffuse", 0.95)), 0.0), 1.0
+                            max(_to_float_scalar(ss.get("mesh_diffuse", 0.95)), 0.0),
+                            1.0,
                         ),
                         specular=min(
-                            max(_to_float_scalar(ss.get("mesh_specular", 0.25)), 0.0), 1.0
+                            max(_to_float_scalar(ss.get("mesh_specular", 0.25)), 0.0),
+                            1.0,
                         ),
                         roughness=min(
-                            max(_to_float_scalar(ss.get("mesh_roughness", 0.7)), 0.0), 1.0
+                            max(_to_float_scalar(ss.get("mesh_roughness", 0.7)), 0.0),
+                            1.0,
                         ),
                         fresnel=min(
                             max(_to_float_scalar(ss.get("mesh_fresnel", 0.2)), 0.0), 1.0
@@ -2079,7 +2118,9 @@ with _tab1:
         else:
             # Plotly not available: show static PNG
             try:
-                current_png = png_bytes or cast(Optional[bytes], ss.get("_last_mesh_png"))
+                current_png = png_bytes or cast(
+                    Optional[bytes], ss.get("_last_mesh_png")
+                )
                 if current_png:
                     mesh_placeholder.image(
                         current_png, caption="Full Preview (static)", width="stretch"
@@ -2092,19 +2133,22 @@ with _tab1:
     # -------------------- METRICS ----------------------
     st.subheader("Estimated metrics")
     try:
-        _, faces_m, diag_m = cast(tuple[Any, Any, Any], build_pot_mesh(
-            H=H,
-            Rt=Rt,
-            Rb=Rb,
-            t_wall=t_wall,
-            t_bottom=t_bottom,
-            r_drain=r_drain,
-            expn=expn,
-            n_theta=max(48, n_theta // 2),
-            n_z=max(24, n_z // 2),
-            r_outer_fn=r_outer_fn,
-            style_opts=opts,
-        ))
+        _, faces_m, diag_m = cast(
+            tuple[Any, Any, Any],
+            build_pot_mesh(
+                H=H,
+                Rt=Rt,
+                Rb=Rb,
+                t_wall=t_wall,
+                t_bottom=t_bottom,
+                r_drain=r_drain,
+                expn=expn,
+                n_theta=max(48, n_theta // 2),
+                n_z=max(24, n_z // 2),
+                r_outer_fn=r_outer_fn,
+                style_opts=opts,
+            ),
+        )
         m1, m2, m3 = st.columns(3)
         m1.metric("Triangles", f"{len(faces_m):,}")
         # diag_m may be either a dict of diagnostics or another type returned
@@ -2226,11 +2270,16 @@ with _tab1:
             ss["mesh_flatshading"] = False
         lc1, lc2, lc3, lc4, lc5, lc6 = st.columns(6)
         with lc1:
-                ambient_val = st.slider(
-                "Ambient", 0.0, 1.0, _to_float_scalar(ss.get("mesh_ambient", 0.50)), 0.01, key="mesh_ambient"
+            ambient_val = st.slider(
+                "Ambient",
+                0.0,
+                1.0,
+                _to_float_scalar(ss.get("mesh_ambient", 0.50)),
+                0.01,
+                key="mesh_ambient",
             )
         with lc2:
-                diffuse_val = st.slider(
+            diffuse_val = st.slider(
                 "Diffuse",
                 0.0,
                 1.0,
@@ -2239,19 +2288,34 @@ with _tab1:
                 key="mesh_diffuse",
             )
         with lc3:
-                specular_val = st.slider(
-                "Specular", 0.0, 1.0, _to_float_scalar(ss.get("mesh_specular", 0.40)), 0.01, key="mesh_specular"
+            specular_val = st.slider(
+                "Specular",
+                0.0,
+                1.0,
+                _to_float_scalar(ss.get("mesh_specular", 0.40)),
+                0.01,
+                key="mesh_specular",
             )
         with lc4:
-                roughness_val = st.slider(
-                "Roughness", 0.0, 1.0, _to_float_scalar(ss.get("mesh_roughness", 0.45)), 0.01, key="mesh_roughness"
+            roughness_val = st.slider(
+                "Roughness",
+                0.0,
+                1.0,
+                _to_float_scalar(ss.get("mesh_roughness", 0.45)),
+                0.01,
+                key="mesh_roughness",
             )
         with lc5:
-                fresnel_val = st.slider(
-                "Fresnel", 0.0, 1.0, _to_float_scalar(ss.get("mesh_fresnel", 0.25)), 0.01, key="mesh_fresnel"
+            fresnel_val = st.slider(
+                "Fresnel",
+                0.0,
+                1.0,
+                _to_float_scalar(ss.get("mesh_fresnel", 0.25)),
+                0.01,
+                key="mesh_fresnel",
             )
         with lc6:
-                st.checkbox(
+            st.checkbox(
                 "Flat shading",
                 value=cast(Any, ss.get("mesh_flatshading", False)),
                 key="mesh_flatshading",

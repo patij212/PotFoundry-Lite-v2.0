@@ -1,8 +1,3 @@
-
-
-
-
-
 from __future__ import annotations
 from typing import Tuple
 import numpy as np
@@ -41,7 +36,9 @@ def cdiff_z(A: np.ndarray) -> npt.NDArray[np.float64]:
     return np.asarray(out, dtype=float)
 
 
-def estimate_shifts(A: np.ndarray, K: int) -> Tuple[npt.NDArray[np.int_], npt.NDArray[np.int_]]:
+def estimate_shifts(
+    A: np.ndarray, K: int
+) -> Tuple[npt.NDArray[np.int_], npt.NDArray[np.int_]]:
     """Estimate integer per-row shifts aligning adjacent rows.
 
     Returns (s_fwd, s_bwd) arrays of dtype int.
@@ -73,7 +70,9 @@ def estimate_shifts(A: np.ndarray, K: int) -> Tuple[npt.NDArray[np.int_], npt.ND
     return np.asarray(s_fwd, dtype=int), np.asarray(s_bwd, dtype=int)
 
 
-def roll_rows(arr: np.ndarray, shifts: np.ndarray, sign: int = -1) -> npt.NDArray[np.float64]:
+def roll_rows(
+    arr: np.ndarray, shifts: np.ndarray, sign: int = -1
+) -> npt.NDArray[np.float64]:
     """Roll each row by shifts[z]*sign along theta axis.
 
     Works for 1D (single row) and 2D arrays.
@@ -88,9 +87,10 @@ def roll_rows(arr: np.ndarray, shifts: np.ndarray, sign: int = -1) -> npt.NDArra
     return np.asarray(out, dtype=float)
 
 
-def roll_rows_2d(arr: np.ndarray, shifts: np.ndarray, sign: int = -1) -> npt.NDArray[np.float64]:
-    """Per-row roll for 2D arrays; axis handling preserved from original code.
-    """
+def roll_rows_2d(
+    arr: np.ndarray, shifts: np.ndarray, sign: int = -1
+) -> npt.NDArray[np.float64]:
+    """Per-row roll for 2D arrays; axis handling preserved from original code."""
     out = np.empty_like(arr)
     for zi in range(arr.shape[0]):
         k = int(shifts[zi]) * sign
@@ -98,7 +98,9 @@ def roll_rows_2d(arr: np.ndarray, shifts: np.ndarray, sign: int = -1) -> npt.NDA
     return np.asarray(out, dtype=float)
 
 
-def dilate_adaptive(seed_arr: np.ndarray, steps: int, s_fwd: np.ndarray, s_bwd: np.ndarray) -> npt.NDArray[np.float64]:
+def dilate_adaptive(
+    seed_arr: np.ndarray, steps: int, s_fwd: np.ndarray, s_bwd: np.ndarray
+) -> npt.NDArray[np.float64]:
     """Adaptive dilation used by ridge propagation logic.
 
     Behaviour preserved from original implementation.
@@ -133,7 +135,9 @@ def avg3(a: np.ndarray) -> npt.NDArray[np.float64]:
     return np.asarray((np.roll(a, 1) + a + np.roll(a, -1)) / 3.0, dtype=float)
 
 
-def bilateral1d_peak_only(a: np.ndarray, sigma_s: float, sigma_r: float) -> npt.NDArray[np.float64]:
+def bilateral1d_peak_only(
+    a: np.ndarray, sigma_s: float, sigma_r: float
+) -> npt.NDArray[np.float64]:
     """5-tap bilateral smoothing (peak-only) used by seam solidify.
 
     This mirrors the behavior in the original inline helper but is typed and
@@ -189,10 +193,15 @@ def smooth_min(a, b, s: float) -> npt.NDArray[np.float64]:
     """Stable smooth min implemented via negated smooth_max."""
     if s <= 0.0:
         return np.asarray(np.minimum(a, b), dtype=float)
-    return np.asarray(-smooth_max(-np.asarray(a, dtype=float), -np.asarray(b, dtype=float), s), dtype=float)
+    return np.asarray(
+        -smooth_max(-np.asarray(a, dtype=float), -np.asarray(b, dtype=float), s),
+        dtype=float,
+    )
 
 
-def lift_valleys(base_vals, weight, target_val, lift_strength: float, lift_gamma: float):
+def lift_valleys(
+    base_vals, weight, target_val, lift_strength: float, lift_gamma: float
+):
     b = np.asarray(base_vals, dtype=float)
     wv = np.asarray(weight, dtype=float)
     alpha = np.power(np.clip(1.0 - wv, 0.0, 1.0), lift_gamma)

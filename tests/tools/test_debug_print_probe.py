@@ -3,8 +3,6 @@ import pytest
 from tools import debug_print_probe
 
 
-
-
 @pytest.mark.integration
 def test_get_build_pot_mesh_callable():
     """Runtime test: ensure the lazy wrapper returns a callable.

@@ -59,19 +59,22 @@ try:
     # STYLES contains callables and arbitrary metadata; cast to Any for safety
     style_fn, _ = cast(Any, STYLES["SuperellipseMorph"])
     # build_pot_mesh has dynamic return types in some configs; cast to expected tuple
-    verts, faces, _ = cast(tuple, build_pot_mesh(
-        H=80,
-        Rt=50,
-        Rb=40,
-        t_wall=2.5,
-        t_bottom=2.5,
-        r_drain=6,
-        expn=1.1,
-        n_theta=48,
-        n_z=24,
-        r_outer_fn=style_fn,
-        style_opts={},
-    ))
+    verts, faces, _ = cast(
+        tuple,
+        build_pot_mesh(
+            H=80,
+            Rt=50,
+            Rb=40,
+            t_wall=2.5,
+            t_bottom=2.5,
+            r_drain=6,
+            expn=1.1,
+            n_theta=48,
+            n_z=24,
+            r_outer_fn=style_fn,
+            style_opts={},
+        ),
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "test.stl"

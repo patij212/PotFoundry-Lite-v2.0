@@ -13,6 +13,7 @@ def test_render_mesh_snapshot_cached_returns_png_bytes():
     n_z = 24
     style_name = list(__import__("pfui.imports", fromlist=["STYLES"]).STYLES.keys())[0]
     from typing import Any
+
     opts: dict[str, Any] = {}
     opts_json = json.dumps(opts)
 

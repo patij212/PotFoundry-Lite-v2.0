@@ -95,7 +95,9 @@ class ConfigV2(BaseModel):
     # Accept either the Pydantic submodels or plain dicts (tests and YAML
     # parsers sometimes provide dicts for nested fields). Allowing dict here
     # reduces friction for callers that construct ConfigV2 from raw mappings.
-    mesh: MeshQualityModel | dict = Field(default_factory=lambda: MeshQualityModel(n_theta=168, n_z=84))
+    mesh: MeshQualityModel | dict = Field(
+        default_factory=lambda: MeshQualityModel(n_theta=168, n_z=84)
+    )
     defaults: DefaultsModel | dict = Field(default_factory=DefaultsModel)
     presets: Dict[str, PresetModel | dict] = Field(default_factory=dict)
     recipes: List[RecipeModel | dict] = Field(default_factory=list)
