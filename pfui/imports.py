@@ -7,7 +7,7 @@ These helper import wrappers prefer the modern locations under
 They are typed as Optionals so callers can handle absence at runtime.
 """
 
-from typing import Any, Callable, Optional, Tuple, cast, TYPE_CHECKING  # noqa: E402
+from typing import Callable, Optional, Tuple, cast, TYPE_CHECKING  # noqa: E402
 import importlib  # noqa: E402
 
 if TYPE_CHECKING:
@@ -21,8 +21,10 @@ if TYPE_CHECKING:
         _spin_twist_radians,
         build_pot_mesh,
     )
-    from potfoundry.core.schema import validate_recipe, load_config
-    from potfoundry.adapters.batch import build_from_yaml
+    # Prefer the canonical YAML API for static analysis; runtime code will
+    # still dynamically resolve these functions from either the new core
+    # locations or the legacy `potfoundry.yaml_api` module.
+    from potfoundry.yaml_api import validate_recipe, load_config, build_from_yaml
 
 
 def _import_writer() -> Optional[Callable[..., object]]:
@@ -167,55 +169,3 @@ __all__ = [
     "load_config",  # lazy
     "build_from_yaml",  # lazy
 ]
-
-
-def build_pot_mesh_safe(
-    *,
-    H: float,
-    Rt: float,
-    Rb: float,
-    t_wall: float,
-    t_bottom: float,
-    r_drain: float,
-    expn: float,
-    n_theta: int,
-    n_z: int,
-    r_outer_fn: Any,
-    style_opts: dict,
-) -> tuple[object, object, dict]:
-    """Lightweight, import-safe wrapper around the real `build_pot_mesh`.
-
-    This wrapper attempts to resolve and call the real `build_pot_mesh` lazily.
-    It returns a conservative tuple (verts, faces, diagnostics) and will
-    return empty fallbacks on failure. Use this from UI code that should not
-    trigger heavy imports at module import time.
-    """
-    # Lazily resolve the real build_pot_mesh via this module's __getattr__.
-    bp = None
-    try:
-        bp = build_pot_mesh
-    except Exception:
-        bp = None
-
-    # If we have a callable implementation, invoke it and return its result.
-    if callable(bp):
-        try:
-            return bp(
-                H=H,
-                Rt=Rt,
-                Rb=Rb,
-                t_wall=t_wall,
-                t_bottom=t_bottom,
-                r_drain=r_drain,
-                expn=expn,
-                n_theta=n_theta,
-                n_z=n_z,
-                r_outer_fn=r_outer_fn,
-                style_opts=style_opts,
-            )
-        except Exception:
-            # If the underlying implementation raises, fall through to safe fallback
-            return ([], [], {})
-
-    # No implementation available or non-callable: return safe empty fallback
-    return ([], [], {})

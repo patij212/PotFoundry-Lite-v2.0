@@ -65,13 +65,18 @@ def test_straight_seam_edges_plateau_matches_expected_limit():
     r_expected = r0 - depth
 
     # The maximum radius at the seam should equal the expected clamp within tolerance
-    assert abs(float(np.max(r_straight)) - r_expected) <= 1e-6
+    assert abs(float(np.max(r_straight)) - float(r_expected)) <= 1e-6
 
     # A substantial fraction of samples should be clamped (plateau exists)
     tol = 1e-5
     clamped = np.isclose(r_straight, r_expected, atol=tol)
-    frac = float(np.count_nonzero(clamped)) / max(1, len(r_straight))
-    assert frac >= 0.02  # at least ~2% of theta samples lie on the straight plateau
+    from typing import cast
+    # Use explicit float denominator so static type checkers don't see mixed
+    # numpy/object numeric unions in the division. Guard length with max(1, ...)
+    # Use integer counts to avoid static-typing issues with NumPy scalar types
+    count_i: int = int(np.count_nonzero(clamped))
+    threshold: int = max(1, int(0.02 * float(len(r_straight))))
+    assert count_i >= threshold  # at least ~2% of theta samples lie on the straight plateau
 
     # Within half of the seam window above the seam plane, variation across theta should remain tiny.
     # This guards against the jagged “saw tooth” perimeter that motivated the straight-edge fix.

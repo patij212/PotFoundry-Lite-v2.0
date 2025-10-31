@@ -30,7 +30,10 @@ def hex_to_rgb_tuple(h: str) -> Tuple[int, int, int]:
     if len(h) != 6:
         return (128, 128, 128)
     try:
-        return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore
+        r = int(h[0:2], 16)
+        g = int(h[2:4], 16)
+        b = int(h[4:6], 16)
+        return (r, g, b)
     except Exception:
         return (128, 128, 128)
 
@@ -53,14 +56,12 @@ def resolve_palette(
         return _PRESETS[preset]
     # Fallback to custom or defaults
     if custom_colors and len(custom_colors) >= 3:
-        c1, c2, c3 = (hex_to_rgb_tuple(c) for c in custom_colors[:3])
+        # Build explicit tuples to keep types clear for static checkers
+        palette = tuple(hex_to_rgb_tuple(c) for c in custom_colors[:3])
+        c1, c2, c3 = palette
         return c1, c2, c3
     d1, d2, d3 = DEFAULT_CUSTOM_COLORS
-    return (
-        tuple(map(int, hex_to_rgb_tuple(d1))),
-        tuple(map(int, hex_to_rgb_tuple(d2))),
-        tuple(map(int, hex_to_rgb_tuple(d3))),
-    )  # type: ignore
+    return (hex_to_rgb_tuple(d1), hex_to_rgb_tuple(d2), hex_to_rgb_tuple(d3))
 
 
 def build_gradient_colors(

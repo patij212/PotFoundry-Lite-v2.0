@@ -11,16 +11,22 @@ import hashlib
 import json
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
 
-try:
+if TYPE_CHECKING:
+    # For static analysis, expose streamlit names so type checkers can reason
+    # about Streamlit usage in the module without performing a runtime import.
     import streamlit as st
-
     HAS_STREAMLIT = True
-except ImportError:
-    HAS_STREAMLIT = False
-    st = None  # type: ignore
+else:
+    try:
+        import streamlit as st
+
+        HAS_STREAMLIT = True
+    except Exception:
+        HAS_STREAMLIT = False
+        st = None
 
 from potfoundry.integrations.supabase_client import (
     get_singleton_client,

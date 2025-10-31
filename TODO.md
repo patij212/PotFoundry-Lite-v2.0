@@ -158,7 +158,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 - [x] ~~Fix unused variable warnings (F841)~~ ✅ **COMPLETED** - Fixed all 10 F841 warnings
 - [ ] **Add type hints to all remaining functions** ✅ **Phase 3 COMPLETE - 80% codebase coverage!**
   - ✅ Created mypy.ini configuration
-  - ✅ Added TYPE_HINTS_GUIDE.md documentation  
+  - ✅ Added TYPE_HINTS_GUIDE.md documentation
   - ✅ Phase 1: Core modules (~65 functions)
     - ✅ potfoundry/geometry.py (~25 functions)
     - ✅ potfoundry/core/geometry.py (~20 functions)

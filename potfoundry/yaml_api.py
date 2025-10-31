@@ -85,15 +85,45 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
         from .schema import ConfigV2
 
         if isinstance(cfg, ConfigV2):
-            mesh = MeshQuality(n_theta=int(cfg.mesh.n_theta), n_z=int(cfg.mesh.n_z))
-            defaults = PotDefaults(**cfg.defaults.model_dump())
-            presets = {k: v.model_dump() for k, v in (cfg.presets or {}).items()}
-            recipes = [r.model_dump() for r in (cfg.recipes or [])]
+            # The Pydantic models sometimes contain plain dicts for nested
+            # fields in test/legacy scenarios. Cast to Any so that static
+            # analysis doesn't treat the subsequent runtime isinstance checks
+            # as unreachable (cfg.mesh is annotated as a model in the schema).
+            from typing import cast, Any as _Any
+
+            cfg_any = cast(_Any, cfg)
+
+            m = cfg_any.mesh
+            if isinstance(m, dict):
+                mesh = MeshQuality(n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84)))
+            else:
+                mesh = MeshQuality(n_theta=int(m.n_theta), n_z=int(m.n_z))
+
+            d = cfg_any.defaults
+            if isinstance(d, dict):
+                defaults = PotDefaults(**d)
+            else:
+                defaults = PotDefaults(**d.model_dump())
+
+            presets = {}
+            for k, v in (cfg_any.presets or {}).items():
+                if isinstance(v, dict):
+                    presets[k] = v
+                else:
+                    presets[k] = v.model_dump()
+
+            recipes = []
+            for r in (cfg_any.recipes or []):
+                if isinstance(r, dict):
+                    recipes.append(r)
+                else:
+                    recipes.append(r.model_dump())
+
             return Config(
                 version=2,
-                outdir=str(cfg.outdir),
-                save_previews=bool(cfg.save_previews),
-                make_zip=bool(cfg.make_zip),
+                outdir=str(cfg_any.outdir),
+                save_previews=bool(cfg_any.save_previews),
+                make_zip=bool(cfg_any.make_zip),
                 mesh=mesh,
                 defaults=defaults,
                 presets=presets,

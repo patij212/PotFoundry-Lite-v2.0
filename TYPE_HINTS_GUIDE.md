@@ -4,8 +4,8 @@
 
 This guide documents the type hint conventions and practices used in PotFoundry to enable static type checking with mypy and improve code quality.
 
-**Status:** Phase 3 Complete (Core + Support + UI Layer)  
-**Coverage:** ~90 function signatures with type hints (80% codebase)  
+**Status:** Phase 3 Complete (Core + Support + UI Layer)
+**Coverage:** ~90 function signatures with type hints (80% codebase)
 **mypy:** Configured and running successfully
 
 ---
@@ -357,18 +357,18 @@ ColorPalette = Tuple[RGBTuple, RGBTuple, RGBTuple]
 ## Best Practices
 
 ### DO:
-✅ **Start with return types** - Highest value, easiest to add  
-✅ **Annotate public APIs first** - Most important for users  
-✅ **Use specific types** - `Dict[str, float]` better than `dict`  
-✅ **Document complex types** - Add comments for clarity  
-✅ **Run mypy frequently** - Catch issues early  
+✅ **Start with return types** - Highest value, easiest to add
+✅ **Annotate public APIs first** - Most important for users
+✅ **Use specific types** - `Dict[str, float]` better than `dict`
+✅ **Document complex types** - Add comments for clarity
+✅ **Run mypy frequently** - Catch issues early
 ✅ **Fix real type bugs** - Type errors often reveal real issues
 
 ### DON'T:
-❌ **Don't use `Any` excessively** - Defeats purpose of type hints  
-❌ **Don't ignore all errors** - Fix or document why ignored  
-❌ **Don't break compatibility** - Type hints are non-invasive  
-❌ **Don't over-complicate** - Start simple, refine later  
+❌ **Don't use `Any` excessively** - Defeats purpose of type hints
+❌ **Don't ignore all errors** - Fix or document why ignored
+❌ **Don't break compatibility** - Type hints are non-invasive
+❌ **Don't over-complicate** - Start simple, refine later
 ❌ **Don't skip tests** - Type hints don't replace runtime tests
 
 ---
@@ -451,9 +451,9 @@ Type hints have been added to **~65 functions** across core modules, providing:
 - Clearer function contracts
 - Foundation for strict typing
 
-**Status:** Production-ready  
-**Coverage:** 60% of codebase (core modules at 90%+)  
-**mypy:** Configured and running successfully  
+**Status:** Production-ready
+**Coverage:** 60% of codebase (core modules at 90%+)
+**mypy:** Configured and running successfully
 **Tests:** All 275 tests passing ✅
 
 This establishes a solid foundation for ongoing type safety improvements.

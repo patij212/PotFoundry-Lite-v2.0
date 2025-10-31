@@ -65,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - potfoundry/yaml_api.py: ~10 functions with type hints
   - potfoundry/core/io/stl.py: ~4 functions with type hints **NEW**
   - pfui/colors.py: ~5 functions with type hints
-  - pfui/deeplink.py: ~5 functions with type hints  
+  - pfui/deeplink.py: ~5 functions with type hints
   - pfui/state.py: ~6 functions with type hints **NEW**
   - pfui/exporters.py: ~2 functions with type hints **NEW**
   - mypy configuration created (mypy.ini)
@@ -265,4 +265,3 @@ Initial development versions with ASCII STL export, basic Streamlit UI, and core
 - 2 tests passing, 8 require minor fixes
 - Framework ready for expansion
 - Documentation complete in PROPERTY_BASED_TESTING_IMPLEMENTATION.md
-

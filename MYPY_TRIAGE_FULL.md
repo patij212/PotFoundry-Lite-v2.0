@@ -243,5 +243,3 @@ pytest -q
 
 Change log
 - [2025-10-21] Created MYPY_TRIAGE_FULL.md with full mypy output and detailed triage plan.
-
-

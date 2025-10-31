@@ -5,6 +5,32 @@ import numpy as np
 import numpy.typing as npt
 import streamlit as st
 
+# Ensure commonly-used Streamlit attributes exist in degraded/test environments.
+# Some tests monkeypatch `preview.st.info`; make sure the attribute exists so
+# monkeypatch.setattr(...) doesn't raise. Keep these as simple no-ops so they
+# won't affect runtime behavior when real Streamlit is present.
+for _attr in (
+    "info",
+    "warning",
+    "error",
+    "success",
+    "caption",
+    "empty",
+    "write",
+    "json",
+    "pyplot",
+    "set_page_config",
+    "session_state",
+):
+    if not hasattr(st, _attr):
+        try:
+            setattr(st, _attr, (lambda *a, **k: None))
+        except Exception:
+            # Be defensive: if setting attributes into the imported object
+            # fails for any reason, ignore — the tests will handle missing
+            # attributes via monkeypatch or other shims.
+            pass
+
 # --- Fallback cache decorator for test environments where streamlit.cache_data
 # may be unavailable or replaced by a SimpleNamespace mock. This prevents
 # AttributeError during pytest collection. Declare the type so mypy knows
@@ -17,7 +43,11 @@ _cache_data_impl: Optional[Callable[..., Any]] = getattr(st, "cache_data", None)
 P = ParamSpec("P")
 R = TypeVar("R")
 
-if _cache_data_impl is not None:  # pragma: no cover - normal runtime
+# Defensive: some test environments or shims may set `st.cache_data` to a
+# non-callable object (e.g., a SimpleNamespace or a custom _Cache object).
+# Only treat it as a decorator if it is callable; otherwise fall back to a
+# no-op decorator to avoid TypeError during module import / test collection.
+if _cache_data_impl is not None and callable(_cache_data_impl):  # pragma: no cover - normal runtime
 
     def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
         # Cast the runtime-provided decorator to the generic form for mypy

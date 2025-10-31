@@ -418,7 +418,7 @@ def build_pot_mesh(
     expn: float,
     n_theta: int,
     n_z: int,
-    r_outer_fn: Optional[Callable[[float, float, float, float, Dict[str, Any]], float]],
+    r_outer_fn: Optional[Callable[..., Any]],
     style_opts: Dict[str, Any],
 ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.int32], Dict[str, Any]]:
     """

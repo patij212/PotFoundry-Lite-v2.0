@@ -36,6 +36,26 @@ import tempfile
 from potfoundry import build_pot_mesh, STYLES
 from potfoundry.yaml_api import load_config
 from pfui.deeplink import encode_state, decode_state
+from potfoundry.schema import MeshQualityModel, DefaultsModel, RecipeModel
+from typing import cast
+
+
+def _as_mesh(m: object) -> MeshQualityModel:
+    if isinstance(m, dict):
+        return MeshQualityModel(n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84)))
+    return cast(MeshQualityModel, m)
+
+
+def _as_defaults(d: object) -> DefaultsModel:
+    if isinstance(d, dict):
+        return DefaultsModel(**d)
+    return cast(DefaultsModel, d)
+
+
+def _as_recipe(r: object) -> RecipeModel:
+    if isinstance(r, dict):
+        return RecipeModel(**r)
+    return cast(RecipeModel, r)
 
 # Default style function for tests
 default_style_fn = STYLES["SuperformulaBlossom"][0]
@@ -109,7 +129,7 @@ def test_property_mesh_is_watertight(
 
     # Check watertightness: every edge appears exactly twice (once per face)
     _ = set()
-    edge_counts = {}
+    edge_counts: dict[tuple[int, int], int] = {}
 
     for face in faces:
         # Get the three edges of this triangle
@@ -229,7 +249,7 @@ def test_property_no_degenerate_triangles(H, Rt, Rb, n_theta, n_z):
         style_opts={},
     )
 
-    min_area = float("inf")
+    min_area: float = float("inf")
 
     for face in faces:
         v0, v1, v2 = verts[face[0]], verts[face[1]], verts[face[2]]
@@ -238,7 +258,7 @@ def test_property_no_degenerate_triangles(H, Rt, Rb, n_theta, n_z):
         edge1 = v1 - v0
         edge2 = v2 - v0
         cross = np.cross(edge1, edge2)
-        area = np.linalg.norm(cross) / 2.0
+        area = float(np.linalg.norm(cross) / 2.0)
 
         min_area = min(min_area, area)
 
@@ -399,15 +419,18 @@ def test_property_yaml_configuration_roundtrip(H, Rt, Rb, style):
 
         # Verify structure
         assert loaded_config.version == 2
-        assert loaded_config.mesh.n_theta == 64
-        assert loaded_config.mesh.n_z == 32
+        m = _as_mesh(loaded_config.mesh)
+        r = _as_recipe(loaded_config.recipes[0])
+        d = _as_defaults(loaded_config.defaults)
+        assert m.n_theta == 64
+        assert m.n_z == 32
         assert len(loaded_config.recipes) == 1
-        assert loaded_config.recipes[0].style == style
+        assert r.style == style
 
         # Verify defaults
-        assert abs(loaded_config.defaults.H - H) < 0.01
-        assert abs(loaded_config.defaults.Rt - Rt) < 0.01
-        assert abs(loaded_config.defaults.Rb - Rb) < 0.01
+        assert abs(d.H - H) < 0.01
+        assert abs(d.Rt - Rt) < 0.01
+        assert abs(d.Rb - Rb) < 0.01
 
     finally:
         # Clean up

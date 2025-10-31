@@ -5,17 +5,20 @@ Provides URL-safe encoding of design parameters for "Open in editor" functionali
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, TYPE_CHECKING
 import base64
 import json
 
-try:
+if TYPE_CHECKING:
     import streamlit as st
-
     HAS_STREAMLIT = True
-except ImportError:
-    HAS_STREAMLIT = False
-    st = None  # type: ignore
+else:
+    try:
+        import streamlit as st
+        HAS_STREAMLIT = True
+    except Exception:
+        HAS_STREAMLIT = False
+        st = None
 
 
 # Whitelisted parameters that can be restored from deep links

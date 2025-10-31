@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Tuple, cast
 from ..types import NDArrayFloat
+from pathlib import Path
 import math
 import numpy as np
 import numpy.typing as npt
@@ -192,7 +193,7 @@ def _compute_normal(
 
 
 def write_ascii_stl(
-    path: str, name: str, verts: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]
+    path: str | Path, name: str, verts: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]
 ) -> None:
     """Write triangles to ASCII STL (portable, human-readable).
 
@@ -1544,11 +1545,8 @@ def build_pot_mesh(
     expn: float = 1.1,
     n_theta: int = 64,
     n_z: int = 32,
-    r_outer_fn: Callable[
-        [NDArrayFloat | float, float, float | NDArrayFloat, float, dict], NDArrayFloat | float
-    ]
-    | None = None,
-    style_opts: dict | None = None,
+    r_outer_fn: Callable[..., Any] | None = None,
+    style_opts: Any = None,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """
     Return (vertices [N,3], faces [M,3], diagnostics).
@@ -3154,7 +3152,12 @@ def build_pot_mesh(
                 Env = env_final
             else:
                 # No env_final produced in mode branch; compute a reasonable fallback based on mode
-                if mode == "vertical":  # type: ignore[unreachable]
+                # This branch is a defensive runtime fallback when `env_final`
+                # is None and `mode` still indicates a vertical envelope. Static
+                # analyzers may consider this unreachable due to earlier
+                # control-flow narrowing; keep a narrow ignore for that false
+                # positive and document the reason.
+                if mode == "vertical":  # type: ignore[unreachable]  # justification: defensive runtime fallback when env_final is None
                     # vertical quantile envelope
                     stacks = []
                     for dz in range(-h, h + 1):

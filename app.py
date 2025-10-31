@@ -124,7 +124,7 @@ def build_mesh_kwargs_for_test(Vd, Fd, ss, n_theta, n_z, fig_h):
         mesh_colors = []
 
     # Build mesh kwargs unconditionally to avoid NameError in all branches
-    mesh_kwargs = dict(
+    mesh_kwargs: dict[str, Any] = dict(
         x=Vd[:, 0],
         y=Vd[:, 1],
         z=Vd[:, 2],

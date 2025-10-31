@@ -99,7 +99,7 @@ Get-Content .\.pf_edge_flow_debug.json -Tail 200
 ## Next immediate actions
 
 1. Finish Task 2: finalize documentation in this tracker (complete). (I'll mark it done after writing the remaining sections.)
-2. Task 3: add more implementation detail and edge-case notes (I'll complete this next). 
+2. Task 3: add more implementation detail and edge-case notes (I'll complete this next).
 3. Task 4/5: optionally run the headless runner and paste the `probe_mapping` and 3 sample `debug_reports` into this file for inspection (ask me to proceed or I can proceed now).
 
 ---
@@ -205,6 +205,3 @@ I (the automated assistant) will update this file as I complete items from the t
 - Relevant file: `potfoundry/core/geometry.py` (edge-flow `ridge_paths` branch and valley-locking logic).
 - Debug artifact: `.pf_edge_flow_debug.json` in repository root (newline-delimited JSON).
 - Runner: `tmp_force_reports2.py` (headless test runner used to exercise the path).
-
-
-

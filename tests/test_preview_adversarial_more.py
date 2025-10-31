@@ -1,5 +1,6 @@
 import json
 import numpy as np
+from typing import Any
 import pfui.preview as preview
 
 
@@ -11,7 +12,7 @@ def test_vectorized_failure_but_scalar_success_reports_info(monkeypatch):
     """If a style raises for vectorized input but scalar sampling succeeds,
     preview should still report that it recovered via st.info.
     """
-    state = {"vec_called": 0, "scalar_called": 0, "infos": []}
+    state: dict[str, Any] = {"vec_called": 0, "scalar_called": 0, "infos": []}
 
     def broken_style(theta, z, r0, H, opts):
         import numpy as _np

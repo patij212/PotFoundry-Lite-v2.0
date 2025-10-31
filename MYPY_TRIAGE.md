@@ -598,7 +598,7 @@ mypy --show-traceback app.py
     - Focused mypy (after): 18 errors in 1 file (`app.py`)
     - Notes: No change in overall focused count, but this removes a concrete ndarray↔dict/assignment mismatch and makes the intent explicit for later edits.
 
---- 
+---
 
 ## Recent updates (summary)
 - [2025-10-22] Commit 61f5dba: mypy: `pfui/schemas.py` — made top-level schema constants private and added frozen MappingProxyType public exports; replaced fragile `# type: ignore` uses with explicit `cast(...)` where safe. Result: focused mypy for `potfoundry`+`pfui` reduced errors (schemas down from ~30 -> 17). Tests remained green.
@@ -672,7 +672,7 @@ If you prefer, I can instead: (B) add targeted `# type: ignore[...]` lines to si
 
 - [2025-10-23] Micro-fix: `app.py` — continued conversion of `st.session_state.get(...)` -> `ss.get(...)` in Sidebar/Preview/Appearance regions; applied small safe replacements and local ss narrowing where appropriate. Focused mypy before: 18 errors; after: 18 errors (no net change; reduced attr/index warnings in modified regions).
 
-- [2025-10-23] Micro-fix: `app.py` — converted remaining `st.session_state.get(...)` occurrences to `ss.get(...)` across additional preview and cache access points; added `ss = cast(dict[str, Any], st.session_state)` where helpful. Focused mypy before: 18 errors; after: 19 errors (small unrelated type diagnostics surfaced; see mypy output). 
+- [2025-10-23] Micro-fix: `app.py` — converted remaining `st.session_state.get(...)` occurrences to `ss.get(...)` across additional preview and cache access points; added `ss = cast(dict[str, Any], st.session_state)` where helpful. Focused mypy before: 18 errors; after: 19 errors (small unrelated type diagnostics surfaced; see mypy output).
  - [2025-10-24] Micro-fix: `app.py` — automated narrowing sweep: targeted numeric & preview/signature casts, collapsed redundant nested casts, and exhaustively wrapped remaining `ss.get(...)` with `cast(Any, ...)` to reach 100% coverage of session-state gets; focused mypy (file-only): Success: no issues found in 1 source file.
 
 2025-10-29: Tightened session-state numeric casts in `app.py` (debounce, mesh lighting clamps, top_od/H, export upscale); added robust helpers `_to_float_scalar` and improved `_to_int_scalar` to centralize safe conversions and reduce editor/myPy noise.

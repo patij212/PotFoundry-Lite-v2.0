@@ -5,7 +5,9 @@ from pfui.preview import make_preview_arrays, render_preview_png_cached
 
 
 def _first_style_name() -> str:
-    return list(__import__("pfui.imports", fromlist=["STYLES"]).STYLES.keys())[0]
+    # The dynamic import returns an untyped module for tests; coerce to
+    # str so static analyzers see a concrete return type.
+    return str(list(__import__("pfui.imports", fromlist=["STYLES"]).STYLES.keys())[0])
 
 
 def test_make_preview_arrays_full_resolution_returns_expected_shape_and_finite():

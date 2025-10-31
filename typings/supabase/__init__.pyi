@@ -107,4 +107,3 @@ class Session:
         timeout: Optional[Union[float, Tuple[float, float]]] = ...,
         **kwargs: Any,
     ) -> HTTPResponse: ...
-

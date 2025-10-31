@@ -7,6 +7,7 @@ Generate beautiful, customizable flower pots with decorative patterns. Adjust di
 [![Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen)]()
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)]()
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)]()
+[![Codecov](https://img.shields.io/codecov/c/github/patij212/PotFoundry-Lite-v2.0?logo=codecov)](https://codecov.io/gh/patij212/PotFoundry-Lite-v2.0)
 
 > **License & Commercial Use**
 >

@@ -15,24 +15,24 @@ jobs:
   validate-release:
     name: Validate Release
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
         cache: 'pip'
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
         pip install pytest pytest-cov
-        
+
     - name: Run full test suite
       run: |
         pytest tests/ \
@@ -41,11 +41,11 @@ jobs:
           --cov-report=term-missing \
           --cov-report=xml \
           -v
-          
+
     - name: Check coverage threshold
       run: |
         coverage report --fail-under=45
-        
+
     - name: Generate release notes
       id: notes
       run: |
@@ -54,29 +54,29 @@ jobs:
         echo "- ✅ All tests passing" >> release_notes.md
         echo "- ✅ Coverage threshold met (>45%)" >> release_notes.md
         echo "- ✅ Code quality validated" >> release_notes.md
-        
+
     - name: Upload release notes
       uses: actions/upload-artifact@v4
       with:
         name: release-notes
         path: release_notes.md
-        
+
   create-release:
     name: Create GitHub Release
     needs: validate-release
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Download release notes
       uses: actions/download-artifact@v4
       with:
         name: release-notes
-        
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')

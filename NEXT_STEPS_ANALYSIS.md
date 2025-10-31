@@ -1,7 +1,7 @@
 # Next Steps Analysis - Post Coverage Roadmap
 
-**Date:** 2025-10-14  
-**Current Status:** All test coverage phases complete (92% core module average)  
+**Date:** 2025-10-14
+**Current Status:** All test coverage phases complete (92% core module average)
 **Version:** v2.1.0 → v2.2.0
 
 ---
@@ -37,8 +37,8 @@ Based on TODO.md Technical Debt & Code Quality section, the next high-priority i
 
 ### Option 1: Add Type Hints to All Functions ⭐ **RECOMMENDED**
 
-**Priority:** High  
-**Estimated Effort:** 6-8 hours  
+**Priority:** High
+**Estimated Effort:** 6-8 hours
 **Risk:** Low (purely additive)
 
 **Pros:**
@@ -83,8 +83,8 @@ Based on TODO.md Technical Debt & Code Quality section, the next high-priority i
 
 ### Option 2: Add Property-Based Testing (Hypothesis)
 
-**Priority:** High  
-**Estimated Effort:** 4-6 hours  
+**Priority:** High
+**Estimated Effort:** 4-6 hours
 **Risk:** Low (new tests, no code changes)
 
 **Pros:**
@@ -125,8 +125,8 @@ Based on TODO.md Technical Debt & Code Quality section, the next high-priority i
 
 ### Option 3: Set Up CI/CD Pipeline (GitHub Actions)
 
-**Priority:** High  
-**Estimated Effort:** 3-4 hours  
+**Priority:** High
+**Estimated Effort:** 3-4 hours
 **Risk:** Low (infrastructure only)
 
 **Pros:**
@@ -160,8 +160,8 @@ Based on TODO.md Technical Debt & Code Quality section, the next high-priority i
 
 ### Option 4: Refactor Large Functions
 
-**Priority:** Medium  
-**Estimated Effort:** 8-12 hours  
+**Priority:** Medium
+**Estimated Effort:** 8-12 hours
 **Risk:** Medium (code changes)
 
 **Pros:**
@@ -181,8 +181,8 @@ Based on TODO.md Technical Debt & Code Quality section, the next high-priority i
 
 ### Option 5: Extract Magic Numbers to Constants
 
-**Priority:** Medium  
-**Estimated Effort:** 2-3 hours  
+**Priority:** Medium
+**Estimated Effort:** 2-3 hours
 **Risk:** Low
 
 **Pros:**
@@ -218,7 +218,7 @@ Based on TODO.md Technical Debt & Code Quality section, the next high-priority i
 ## Implementation Strategy for Type Hints
 
 ### Phase 1: Core Geometry Functions (Highest Value)
-**Files:** potfoundry/geometry.py, potfoundry/core/geometry.py  
+**Files:** potfoundry/geometry.py, potfoundry/core/geometry.py
 **Focus:** Public API functions first
 
 ```python
@@ -246,15 +246,15 @@ def build_pot_mesh(
 ```
 
 ### Phase 2: Helper Functions & Utilities
-**Files:** Internal functions, utilities  
+**Files:** Internal functions, utilities
 **Focus:** Complete coverage
 
 ### Phase 3: UI Layer (If Needed)
-**Files:** pfui modules  
+**Files:** pfui modules
 **Focus:** Streamlit-specific typing
 
 ### Phase 4: Validation with mypy
-**Add:** mypy.ini configuration  
+**Add:** mypy.ini configuration
 **Run:** mypy --strict (goal)
 
 ---
@@ -285,9 +285,9 @@ def build_pot_mesh(
 5. Run full test suite
 6. Final commit
 
-**Total Estimated Time:** 8 hours over 3 days  
-**Risk Level:** Low  
-**Value:** High  
+**Total Estimated Time:** 8 hours over 3 days
+**Risk Level:** Low
+**Value:** High
 **Production Ready:** Yes
 
 ---
@@ -351,6 +351,6 @@ After type hints are complete, we can proceed with:
 
 ---
 
-**Status:** Ready to implement  
-**Approval:** Pending user confirmation  
+**Status:** Ready to implement
+**Approval:** Pending user confirmation
 **Next Action:** Begin Phase 1 - Core Geometry Type Hints

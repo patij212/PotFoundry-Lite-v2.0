@@ -2,6 +2,7 @@
 import pytest
 
 from pfui import schemas as S
+from typing import Any, cast
 
 
 def test_strip_alt_to_canonical_removes_legacy():
@@ -59,9 +60,9 @@ def test_backward_compatibility_legacy_keys_roundtrip():
 
 def test_select_validation_in_coerce_one():
     meta = {"type": "select", "options": ["a", "b", "c"]}
-    assert S._coerce_one("a", meta) == "a"
+    assert S._coerce_one("a", cast(Any, meta)) == "a"
     with pytest.raises(ValueError):
-        S._coerce_one("z", meta)
+        S._coerce_one("z", cast(Any, meta))
 
 
 def test_integrity_ok():

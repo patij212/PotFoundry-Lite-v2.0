@@ -8,18 +8,22 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 
-try:
+if TYPE_CHECKING:
     import streamlit as st
-
     HAS_STREAMLIT = True
-except ImportError:
-    HAS_STREAMLIT = False
-    st = None  # type: ignore
+else:
+    try:
+        import streamlit as st
 
-    _tls_warning_emitted = False
+        HAS_STREAMLIT = True
+    except Exception:
+        HAS_STREAMLIT = False
+        st = None
+
+_tls_warning_emitted: bool = False
 from typing import cast
 
 
@@ -100,7 +104,7 @@ class SupabaseClient:
         """
         self.config = config
         self.read_only = read_only
-        self._client = None
+        self._client: Any = None
         self._init_client()
 
     def _init_client(self):

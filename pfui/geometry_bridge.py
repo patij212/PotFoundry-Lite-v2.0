@@ -7,11 +7,22 @@ and large numeric types into their import-time type-checking.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, cast, List
+from typing import Any, Dict, Tuple, cast, List, TYPE_CHECKING
+import importlib
+
+if TYPE_CHECKING:
+    # Define the expected callable type for the builder so the type checker
+    # understands the signature without importing heavy numeric types at
+    # module import time.
+    from typing import Callable
+    import numpy as np
+
+    _BuildPotMeshType = Callable[..., Tuple["np.ndarray", "np.ndarray", Dict[str, Any]]]
+else:
+    _BuildPotMeshType = Any
 
 # Import the lazy importer from this package; accessing `build_pot_mesh` will
 # trigger the dynamic import only when `build_pot_mesh_safe` is called.
-from .imports import build_pot_mesh as _lazy_build_pot_mesh
 
 
 def build_pot_mesh_safe(
@@ -36,9 +47,17 @@ def build_pot_mesh_safe(
     Raises:
         RuntimeError: If the underlying builder is not available.
     """
-    builder = _lazy_build_pot_mesh
-    if builder is None:
+    # Resolve the lazily-exported builder from the imports bridge at call time.
+    _BUILDER_NOT_FOUND = object()
+    builder_raw: Any = _BUILDER_NOT_FOUND
+    try:
+        builder_raw = getattr(importlib.import_module("pfui.imports"), "build_pot_mesh", _BUILDER_NOT_FOUND)
+    except Exception:
+        builder_raw = _BUILDER_NOT_FOUND
+    if builder_raw is _BUILDER_NOT_FOUND:
         raise RuntimeError("build_pot_mesh implementation not available")
+    # Tell the type checker that builder matches the expected (stub) type.
+    builder = cast("_BuildPotMeshType", builder_raw)
     # Call through directly; the underlying implementation does the heavy work
     # and will import NumPy at that time. We return conservative types so
     # callers don't incur heavy typing dependencies.
@@ -78,41 +97,52 @@ def adapt_r_outer_fn(fn: Any):
         A callable wrapper with the signature (theta, z, r_base, expn, opts) -> array-like
     """
     def _wrapped(theta, z, r_base, expn, opts):
+        # Lazily import numpy if available and coerce input to an ndarray
+        _np: Any = None
         try:
             import numpy as _np
             th = _np.asarray(theta)
         except Exception:
-            _np = None
             th = theta
 
-        # Try scalar fast-path when input looks scalar
-        try:
-            if _np is not None and getattr(th, "ndim", None) == 0:
+        # Scalar fast-path
+        if _np is not None and getattr(th, "ndim", None) == 0:
+            try:
                 res = fn(float(th), z, r_base, expn, opts)
-                return _np.asarray(res) if _np is not None else res
-        except Exception:
-            pass
+                return _np.asarray(res)
+            except Exception:
+                # fall through to vectorized/per-element strategies
+                pass
 
-        # Try vectorized call first
+        # Vectorized attempt
         try:
             res = fn(th, z, r_base, expn, opts)
             return _np.asarray(res) if _np is not None else res
         except Exception:
-            # Fall back to per-element invocation
-            try:
-                if _np is not None:
-                    flat = [_np.asarray(fn(float(t), z, r_base, expn, opts)) for t in th.ravel()]
-                    out = _np.asarray(flat)
-                    try:
-                        return out.reshape(th.shape)
-                    except Exception:
-                        return out
-                else:
-                    return [fn(float(t), z, r_base, expn, opts) for t in theta]
-            except Exception:
+            # per-element fallback
+            if _np is not None:
+                flat = []
                 try:
-                    return fn(float(theta), z, r_base, expn, opts)
+                    iterator = th.ravel()
                 except Exception:
+                    # If ravel isn't available, iterate directly
+                    iterator = th
+                for t in iterator:
+                    try:
+                        flat.append(_np.asarray(fn(float(t), z, r_base, expn, opts)))
+                    except Exception:
+                        # Best-effort fallback per element
+                        flat.append(_np.asarray(fn(t, z, r_base, expn, opts)))
+                out = _np.asarray(flat)
+                try:
+                    return out.reshape(getattr(th, "shape", out.shape))
+                except Exception:
+                    return out
+            else:
+                try:
+                    return [fn(float(t), z, r_base, expn, opts) for t in theta]
+                except Exception:
+                    # Final fallback: call original function with provided theta
                     return fn(theta, z, r_base, expn, opts)
 
     return _wrapped
