@@ -7,25 +7,25 @@ These helper import wrappers prefer the modern locations under
 They are typed as Optionals so callers can handle absence at runtime.
 """
 
-from typing import Callable, Optional, Tuple, cast, TYPE_CHECKING  # noqa: E402
 import importlib  # noqa: E402
+from typing import TYPE_CHECKING, Callable, Optional, Tuple, cast  # noqa: E402
 
 if TYPE_CHECKING:
     # These imports are only for static analyzers (ruff/mypy). At runtime we
     # continue to provide the attributes lazily via __getattr__ to avoid
     # heavy imports at module import time.
-    from potfoundry.core.io.stl import write_stl_binary as WRITE_STL_BINARY
     from potfoundry.core.geometry import (
         STYLES,
-        base_radius,
         _spin_twist_radians,
+        base_radius,
         build_pot_mesh,
     )
+    from potfoundry.core.io.stl import write_stl_binary as WRITE_STL_BINARY
 
     # Prefer the canonical YAML API for static analysis; runtime code will
     # still dynamically resolve these functions from either the new core
     # locations or the legacy `potfoundry.yaml_api` module.
-    from potfoundry.yaml_api import validate_recipe, load_config, build_from_yaml
+    from potfoundry.yaml_api import build_from_yaml, load_config, validate_recipe
 
 
 def _import_writer() -> Optional[Callable[..., object]]:
@@ -75,11 +75,13 @@ def _import_geometry() -> Tuple[object, object, object, object]:
         )
 
 
-def _import_schema_and_batch() -> Tuple[
-    Optional[Callable[..., object]],
-    Optional[Callable[..., object]],
-    Optional[Callable[..., object]],
-]:
+def _import_schema_and_batch() -> (
+    Tuple[
+        Optional[Callable[..., object]],
+        Optional[Callable[..., object]],
+        Optional[Callable[..., object]],
+    ]
+):
     validate_recipe: Optional[Callable[..., object]] = None
     load_config: Optional[Callable[..., object]] = None
     build_from_yaml: Optional[Callable[..., object]] = None

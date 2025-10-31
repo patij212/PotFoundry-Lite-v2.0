@@ -1,4 +1,5 @@
 import json
+
 import numpy as np
 
 import pfui.imports as imports_mod
@@ -57,7 +58,7 @@ def test_all_styles_vectorized_at_full_resolution():
 
             # if vectorized wrapper was never called, the style did not accept ndarray
             if counters["vec"] == 0:
-                failures.append((name, f"no vectorized calls observed (scalar-only)"))
+                failures.append((name, "no vectorized calls observed (scalar-only)"))
 
             # restore original
             STYLES[name] = original[name]

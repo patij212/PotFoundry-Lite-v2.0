@@ -10,9 +10,9 @@ import gzip
 import hashlib
 import json
 import re
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     # For static analysis, expose streamlit names so type checkers can reason
@@ -30,11 +30,10 @@ else:
         st = None
 
 from potfoundry.integrations.supabase_client import (
-    get_singleton_client,
-    NotConfiguredError,
     LibraryError,
+    NotConfiguredError,
+    get_singleton_client,
 )
-
 
 # Constants
 APP_VERSION = "2.0.0"
@@ -337,8 +336,9 @@ def make_thumbnail(
     """
     try:
         # Prefer exact mesh snapshot renderer for thumbnails (better colors/appearance parity)
-        from pfui.preview import render_mesh_snapshot_cached
         import json as _json
+
+        from pfui.preview import render_mesh_snapshot_cached
 
         thumb_theta = max(48, min(144, n_theta))
         thumb_z = max(24, min(64, n_z))
@@ -386,8 +386,9 @@ def make_thumbnail(
     except Exception:
         try:
             # Fallback to surface preview without floor grid if mesh renderer is unavailable
-            from pfui.preview import render_preview_png_cached
             import json as _json
+
+            from pfui.preview import render_preview_png_cached
 
             thumb_theta = max(48, min(144, n_theta))
             thumb_z = max(24, min(64, n_z))

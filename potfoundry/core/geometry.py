@@ -1,32 +1,34 @@
 # potfoundry/geometry.py — vNEXT2
 # Geometry core with style-agnostic twist/spin and optimized mesh build.
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Tuple, cast
-from ..types import NDArrayFloat
-from pathlib import Path
+
 import math
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Callable, Dict, Tuple, cast
+
 import numpy as np
 import numpy.typing as npt
-from functools import lru_cache
+
+from ..types import NDArrayFloat
 from .geometry_helpers import (
-    cdiff_theta,
-    cdiff_z,
-    estimate_shifts,
-    roll_rows,
-    roll_rows_2d,
-    dilate_adaptive,
     avg3,
     bilateral1d_peak_only,
+    cdiff_theta,
+    cdiff_z,
+    dilate_adaptive,
+    estimate_shifts,
+    facet_mod_for_tier_scalar,
+    facet_mod_for_tier_vector,
+    lift_valleys,
     med5,
     median3_circular,
+    roll_rows,
+    roll_rows_2d,
     smooth_max,
     smooth_min,
-    lift_valleys,
-    facet_mod_for_tier_vector,
-    facet_mod_for_tier_scalar,
 )
-
 
 __all__ = [
     "MeshQuality",
@@ -1581,12 +1583,12 @@ def build_pot_mesh(
     Vectorization (stage 1): theta dimension is fully vectorized
     faces built by numpy indexing.
     """
-    assert H > 0 and Rt > 0 and Rb > 0 and t_wall > 0 and t_bottom >= 2.0, (
-        "Invalid size parameters."
-    )
-    assert r_drain > 0 and r_drain < (Rb - t_wall - 2.0), (
-        "Drain hole too large for base—adjust sizes."
-    )
+    assert (
+        H > 0 and Rt > 0 and Rb > 0 and t_wall > 0 and t_bottom >= 2.0
+    ), "Invalid size parameters."
+    assert r_drain > 0 and r_drain < (
+        Rb - t_wall - 2.0
+    ), "Drain hole too large for base—adjust sizes."
     if not isinstance(style_opts, dict):
         # Guard against accidental description string passed from STYLES tuples
         style_opts = {}
@@ -1819,8 +1821,8 @@ def build_pot_mesh(
                     # Immediate stamp: write a minimal entry so we can confirm file path and write ability
                     try:
                         import json
-                        import time
                         import os
+                        import time
                         from pathlib import Path
 
                         repo_root = Path(
@@ -2841,8 +2843,8 @@ def build_pot_mesh(
                                             )
                                     try:
                                         import json
-                                        import time
                                         import os
+                                        import time
                                         from pathlib import Path
 
                                         # Use absolute workspace path (fallback to cwd) to guarantee file location
@@ -3380,9 +3382,9 @@ def build_pot_mesh(
                 )
                 if verbose_diag:
                     try:
-                        from pathlib import Path
                         import json
                         import time
+                        from pathlib import Path
 
                         repo_root = Path(
                             r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
@@ -3715,9 +3717,9 @@ def build_pot_mesh(
                         )
                         if verbose_diag:
                             try:
-                                from pathlib import Path
                                 import json
                                 import time
+                                from pathlib import Path
 
                                 repo_root = Path(
                                     r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
@@ -3940,9 +3942,9 @@ def build_pot_mesh(
                     # Append a small JSONL summary so diagnostics can see exactly
                     # how many theta columns were raised by this final enforcement.
                     try:
-                        from pathlib import Path
                         import json
                         import time
+                        from pathlib import Path
 
                         repo_root = Path(
                             r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"

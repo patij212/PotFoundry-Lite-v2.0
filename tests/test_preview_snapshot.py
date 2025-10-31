@@ -36,6 +36,6 @@ def test_render_mesh_snapshot_cached_returns_png_bytes():
         place_on_ground=True,
     )
 
-    assert png is None or (isinstance(png, (bytes, bytearray)) and len(png) > 100), (
-        "Expected PNG bytes or None"
-    )
+    assert png is None or (
+        isinstance(png, (bytes, bytearray)) and len(png) > 100
+    ), "Expected PNG bytes or None"

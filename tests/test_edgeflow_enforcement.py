@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+
 import numpy as np
 
 
@@ -73,13 +74,13 @@ def test_enforcement_invariant_latest_row():
     if env_post.ndim == 2:
         env_post = env_post[0]
 
-    assert r_new.shape == env_post.shape, (
-        f"Shape mismatch r_new {r_new.shape} vs env {env_post.shape}"
-    )
+    assert (
+        r_new.shape == env_post.shape
+    ), f"Shape mismatch r_new {r_new.shape} vs env {env_post.shape}"
 
     # The invariant: r_new >= env_post elementwise
     diffs = r_new - env_post
     n_viol = int(np.count_nonzero(diffs < -1e-9))
-    assert n_viol == 0, (
-        f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"
-    )
+    assert (
+        n_viol == 0
+    ), f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"

@@ -12,8 +12,8 @@ mod: Any = types.ModuleType("streamlit")
 mod.session_state = fake_st.session_state
 sys.modules["streamlit"] = mod
 
-from pfui import state as S  # noqa: E402
 from pfui import schemas as SC  # noqa: E402
+from pfui import state as S  # noqa: E402
 
 
 def _reset_session():

@@ -26,9 +26,10 @@ Example
     apply_pending_updates()  # merge then clear pending
 """
 
-from typing import Any, Dict, MutableMapping, cast  # noqa: E402
-import streamlit as st  # noqa: E402
 import importlib  # noqa: E402
+from typing import Any, Dict, MutableMapping, cast  # noqa: E402
+
+import streamlit as st  # noqa: E402
 
 # Lazy-load schema constants to avoid importing pfui.schemas at module import time.
 STYLE_SCHEMAS: dict = {}

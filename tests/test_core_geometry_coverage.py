@@ -8,13 +8,15 @@ This test file focuses on:
 4. Alternative geometry implementation paths
 """
 
-import pytest
 import tempfile
 from pathlib import Path
+
+import pytest
+
 from potfoundry.core.geometry import (
+    STYLES,
     build_pot_mesh,
     write_ascii_stl,
-    STYLES,
 )
 
 
@@ -484,12 +486,12 @@ class TestCoreGeometryAllStyles:
             )
             assert verts.shape[0] > 0, f"{style_name} produced no vertices"
             assert faces.shape[0] > 0, f"{style_name} produced no faces"
-            assert diag["estimated_top_od_mm"] > 0, (
-                f"{style_name} has invalid top diameter"
-            )
-            assert diag["estimated_bottom_od_mm"] > 0, (
-                f"{style_name} has invalid bottom diameter"
-            )
+            assert (
+                diag["estimated_top_od_mm"] > 0
+            ), f"{style_name} has invalid top diameter"
+            assert (
+                diag["estimated_bottom_od_mm"] > 0
+            ), f"{style_name} has invalid bottom diameter"
 
 
 class TestCoreGeometryNumericalStability:

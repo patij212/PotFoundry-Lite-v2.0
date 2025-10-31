@@ -9,19 +9,21 @@ This test file focuses on:
 5. Migration helpers
 """
 
+from typing import cast
+
 import pytest
 from pydantic import ValidationError
+
 from potfoundry.schema import (
-    MeshQualityModel,
-    DefaultsModel,
-    PartialDefaultsModel,
-    RecipeModel,
-    PresetModel,
     ConfigV2,
-    deep_merge,
+    DefaultsModel,
+    MeshQualityModel,
+    PartialDefaultsModel,
+    PresetModel,
+    RecipeModel,
     _coerce_partial_defaults,
+    deep_merge,
 )
-from typing import cast
 
 
 def _as_mesh(m: object) -> MeshQualityModel:

@@ -1,7 +1,7 @@
-import pytest
 import numpy as np
+import pytest
 
-from potfoundry import build_pot_mesh, STYLES
+from potfoundry import STYLES, build_pot_mesh
 from potfoundry.core.geometry import r_outer_superformula_blossom
 
 

@@ -1,4 +1,5 @@
 import numpy as np
+
 from potfoundry.core.geometry import build_pot_mesh
 
 
@@ -78,6 +79,6 @@ def test_detect_lift_delta_on_valley():
     lift_delta = probe_row.get("lift_delta")
     assert lift_delta is not None
     # Expect a positive lift at theta index 6
-    assert float(lift_delta[6]) > 0.0, (
-        f"Expected positive lift at theta 6, got {lift_delta[6]}"
-    )
+    assert (
+        float(lift_delta[6]) > 0.0
+    ), f"Expected positive lift at theta 6, got {lift_delta[6]}"

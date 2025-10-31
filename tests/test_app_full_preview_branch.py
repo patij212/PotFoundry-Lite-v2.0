@@ -1,7 +1,7 @@
-import numpy as np
-
 import sys
 import types
+
+import numpy as np
 
 if "streamlit" not in sys.modules:
     # real streamlit not present; create a small stub module
@@ -106,7 +106,7 @@ if "streamlit" not in sys.modules:
 import ast
 from importlib import import_module
 from pathlib import Path
-from typing import Callable, Any, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 # Provide a static-only stub so the type checker knows `app_build_mesh_kwargs_for_test`
 # is a callable. This avoids Pylance warning about an Optional being called while

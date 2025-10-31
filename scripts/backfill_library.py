@@ -29,19 +29,19 @@ Metadata JSON format:
     }
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 # Add parent directory to path to import library modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from potfoundry.library import publish_design
 from potfoundry.integrations.supabase_client import (
-    get_singleton_client,
     NotConfiguredError,
+    get_singleton_client,
 )
+from potfoundry.library import publish_design
 
 
 def load_metadata(json_path: Path) -> dict[str, Any]:

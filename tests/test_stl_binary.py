@@ -1,5 +1,7 @@
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+
 from potfoundry.core.io.stl import write_stl_binary
 
 

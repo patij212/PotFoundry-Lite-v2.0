@@ -62,8 +62,8 @@ def test_no_file_written_when_disabled(tmp_path):
         assert existed_after, "Existing diagnostics file was removed unexpectedly"
         stat2 = jsonl.stat()
         # Ensure mtime and size didn't change (allow tiny clock differences)
-        assert stat2.st_mtime == mtime_before and stat2.st_size == size_before, (
-            "Diagnostics file was modified despite write disable"
-        )
+        assert (
+            stat2.st_mtime == mtime_before and stat2.st_size == size_before
+        ), "Diagnostics file was modified despite write disable"
     else:
         assert not existed_after, "Diagnostics file was created despite write disable"

@@ -1,7 +1,8 @@
+import time
+
 import numpy as np
 
 from potfoundry.core.geometry import STYLES
-import time
 
 
 def _sample_rf(theta_samples=168, *, z=100.0, H=120.0, r0=60.0, base_opts=None):

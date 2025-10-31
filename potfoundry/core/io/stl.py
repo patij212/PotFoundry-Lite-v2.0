@@ -22,11 +22,13 @@ Example:
 """
 
 from __future__ import annotations
+
+import os
 from pathlib import Path
 from typing import Optional, Union
+
 import numpy as np
 import numpy.typing as npt
-import os
 
 __all__ = ["write_stl_binary", "atomic_write_bytes"]
 

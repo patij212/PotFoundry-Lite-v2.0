@@ -8,9 +8,10 @@ If you have an in-memory diagnostics dict (e.g., in a notebook), you can reuse t
 functions below directly.
 """
 
-from pathlib import Path
-import json
 import argparse
+import json
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 

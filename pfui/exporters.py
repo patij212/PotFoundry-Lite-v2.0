@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 import re
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Tuple, Any, Callable
-import numpy.typing as npt
+from typing import Any, Callable, Tuple
+
 import numpy as np
+import numpy.typing as npt
 
 # Binary STL writer (recommended for all exports)
 from .imports import WRITE_STL_BINARY

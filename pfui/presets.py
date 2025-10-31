@@ -1,8 +1,10 @@
 # pfui/presets.py
 from __future__ import annotations
+
+import importlib
 from pathlib import Path
 from typing import Any, Dict
-import importlib
+
 import streamlit as st
 
 # Lazy-load STYLE_SCHEMAS to avoid importing the heavy pfui.schemas module on import.

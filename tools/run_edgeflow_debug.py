@@ -3,11 +3,11 @@ Small helper to run a single build_pot_mesh invocation with edge-flow debug flag
 and append diagnostics. This is a quick utility for CI/local debugging.
 """
 
-from pathlib import Path
-import json
-import time
-import sys
 import importlib
+import json
+import sys
+import time
+from pathlib import Path
 
 repo_root = Path(r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0")
 

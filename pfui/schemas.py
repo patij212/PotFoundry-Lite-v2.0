@@ -4,9 +4,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Literal, TypedDict, Tuple, Optional, cast
-from types import MappingProxyType
 import warnings
+from types import MappingProxyType
+from typing import Any, Dict, Literal, Mapping, Optional, Tuple, TypedDict, cast
 
 __all__ = [
     # primary schema/aliases
@@ -1772,9 +1772,9 @@ _STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
 # =============================================================================
 
 
-def _build_canonical_schema() -> tuple[
-    Dict[str, Dict[str, Any]], Dict[str, Dict[str, Dict[str, Any]]]
-]:
+def _build_canonical_schema() -> (
+    tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Dict[str, Any]]]]
+):
     """Construct canonical-keyed schema mirrors.
 
     Purpose:

@@ -9,22 +9,23 @@ This test file covers:
 """
 
 import pytest
-from pfui.deeplink import (
-    encode_state,
-    decode_state,
-    validate_state,
-    apply_state,
-)
+
 from pfui.colors import (
+    build_gradient_colors,
     hex_to_rgb_tuple,
     interpolate_rgb,
     resolve_palette,
-    build_gradient_colors,
+)
+from pfui.deeplink import (
+    apply_state,
+    decode_state,
+    encode_state,
+    validate_state,
 )
 from pfui.imports import (
     STYLES,
-    build_pot_mesh,
     WRITE_STL_BINARY,
+    build_pot_mesh,
 )
 
 

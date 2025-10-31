@@ -17,9 +17,9 @@ def test_version_format():
     assert len(parts) == 3, f"Version should be MAJOR.MINOR.PATCH, got {version}"
     # Check parts are numeric
     for part in parts:
-        assert part.isdigit(), (
-            f"Version part should be numeric, got {part} in {version}"
-        )
+        assert (
+            part.isdigit()
+        ), f"Version part should be numeric, got {part} in {version}"
 
 
 def test_version_value():

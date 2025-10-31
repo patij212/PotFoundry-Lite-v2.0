@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+
 import numpy as np
 
 from potfoundry.core.geometry import build_pot_mesh

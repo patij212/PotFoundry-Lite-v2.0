@@ -5,7 +5,8 @@ be unit‑tested independent of the Streamlit app.
 """
 
 from __future__ import annotations
-from typing import List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
+
+from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple, Union
 
 if TYPE_CHECKING:
     # numpy typing for static tools only; runtime import is lazy inside functions

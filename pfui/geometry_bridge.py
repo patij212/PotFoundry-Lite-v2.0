@@ -8,14 +8,15 @@ and large numeric types into their import-time type-checking.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, cast, List, TYPE_CHECKING
 import importlib
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, cast
 
 if TYPE_CHECKING:
     # Define the expected callable type for the builder so the type checker
     # understands the signature without importing heavy numeric types at
     # module import time.
     from typing import Callable
+
     import numpy as np
 
     _BuildPotMeshType = Callable[..., Tuple["np.ndarray", "np.ndarray", Dict[str, Any]]]

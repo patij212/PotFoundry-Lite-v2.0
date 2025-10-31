@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 from io import BytesIO
-from typing import Any, Dict, Tuple, Optional, Callable, cast, TypeVar, ParamSpec
+from typing import Any, Callable, Dict, Optional, ParamSpec, Tuple, TypeVar, cast
+
 import numpy as np
 import numpy.typing as npt
 import streamlit as st
@@ -69,8 +71,8 @@ else:  # pragma: no cover - executed only in degraded env (tests)
         return _wrap
 
 
-from .imports import STYLES, base_radius, _spin_twist_radians  # noqa: E402
 from .colors import build_gradient_colors  # noqa: E402
+from .imports import STYLES, _spin_twist_radians, base_radius  # noqa: E402
 
 
 def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
@@ -264,8 +266,8 @@ def render_preview(
     show_floor: bool = True,
     show_axes: bool = False,
 ):
-    import numpy as _np
     import matplotlib.pyplot as plt
+    import numpy as _np
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
@@ -603,8 +605,8 @@ def render_profile(
     opts: Dict[str, Any],
     t_wall: float,
 ) -> None:
-    import numpy as _np
     import matplotlib.pyplot as plt
+    import numpy as _np
 
     zvals = np.linspace(0.0, H, 200)
     thetas = [0.0, np.pi / 6.0, np.pi / 3.0]
@@ -822,8 +824,9 @@ def render_preview_apng_cached(
     # Try to assemble APNG using Pillow. If Pillow or APNG support is
     # unavailable, fall back to returning the first frame's PNG bytes.
     try:
-        from PIL import Image as PILImage
         from io import BytesIO
+
+        from PIL import Image as PILImage
 
         pil_frames = [PILImage.open(BytesIO(b)).convert("RGBA") for b in imgs]
         out = BytesIO()

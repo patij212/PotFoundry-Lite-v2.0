@@ -7,22 +7,21 @@ from __future__ import annotations
 # avoid importing fragile or heavy modules at interpreter startup. Silencing
 # E402 here keeps editor/type-checker noise low while preserving behavior.
 # ruff: noqa: E402
-
 import json
+import math
 import re
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from typing import cast, Callable, Union
+from typing import Any, Callable, Dict, List, Optional, Union, cast
 from typing import (
     Any as _ArrayLike,
 )  # for broad array-or-scalar typing without optional module issues
 
-import math
 import streamlit as st
+
 from pfui.preview import render_preview_png_cached
-from datetime import datetime
 
 # --- Optional / graceful Plotly import (interactive preview) ---
 try:
@@ -45,46 +44,47 @@ if not HAS_PLOTLY:
 # import time which can trigger editor/type-checker traversal and noisy
 # diagnostics. Keep the delayed import but silence ruff E402 with an
 # explanatory noqa.
-from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY  # noqa: E402
+import pfui.schemas as SC  # noqa: E402
+from pfui.imports import STYLES, WRITE_STL_BINARY, build_pot_mesh  # noqa: E402
 from pfui.presets import (
     PRESETS,
     _read_user_presets,
     _write_user_presets,
     apply_preset_dict,
 )  # noqa: E402
-import pfui.schemas as SC  # noqa: E402
 
 # Prefer accessor call to reduce heavy constant binding at module scope in other modules
 styles = SC.get_style_schemas()
 # Deliberate delayed import of `pfui.state` to avoid importing heavy
 # Streamlit/session-related modules at top-level. Documented and allowed.
-from pfui.state import (  # noqa: E402
-    apply_pending_updates,
-    queue_update,
-    widget_key,
-    reset_style_defaults,
-    reset_all_defaults,
-)
+import time
+
+from pfui import state_history as Hist
+from pfui.batch_tab import render_batch_tab
 from pfui.controls import style_controls, twist_controls
+from pfui.deeplink import apply_state, clear_query_params, parse_query_params
+from pfui.health import _design_health, _health_badge, validate_dimensions
+from pfui.library_ui import render_library_tab
 from pfui.preview import (
     make_preview_arrays,
-    render_profile,
     render_mesh_snapshot_cached,
+    render_profile,
 )
-from pfui.health import _design_health, _health_badge, validate_dimensions
-from pfui.batch_tab import render_batch_tab
-from pfui.units import units_selector
 from pfui.snapshot_store import (
-    save_png_temp,
     cleanup_old_tempfiles,
     read_png_bytes,
     remove_png_path,
+    save_png_temp,
 )
-from pfui import state_history as Hist
-from pfui.deeplink import parse_query_params, apply_state, clear_query_params
-from pfui.library_ui import render_library_tab
-from potfoundry.integrations.supabase_client import get_singleton_client, SupabaseClient
-import time
+from pfui.state import (  # noqa: E402
+    apply_pending_updates,
+    queue_update,
+    reset_all_defaults,
+    reset_style_defaults,
+    widget_key,
+)
+from pfui.units import units_selector
+from potfoundry.integrations.supabase_client import SupabaseClient, get_singleton_client
 
 
 def build_mesh_kwargs_for_test(Vd, Fd, ss, n_theta, n_z, fig_h):
@@ -1839,8 +1839,10 @@ with _tab1:
         if HAS_PLOTLY:
             try:
                 t0_mesh = time.time()
-                import numpy as np
                 from typing import List
+
+                import numpy as np
+
                 from pfui.colors import build_gradient_colors
 
                 # Honor exact full preview: when enabled, do not reuse preview-res mesh_data

@@ -13,17 +13,17 @@ Run with: PYTHONPATH=. pytest tests/test_performance.py -v -s
 
 from __future__ import annotations
 
+import os
+import sys
 import tempfile
 import time
 from pathlib import Path
-import os
-import sys
 from typing import Callable
 
 import numpy as np
 import pytest
 
-from potfoundry import build_pot_mesh, write_stl_binary, STYLES
+from potfoundry import STYLES, build_pot_mesh, write_stl_binary
 
 # Allow slightly slower thresholds on Windows or slower environments
 IS_WINDOWS = sys.platform.startswith("win")
@@ -97,9 +97,9 @@ class TestMeshGenerationPerformance:
         print(f"  Min:  {stats['min'] * 1000:.1f}ms")
         print(f"  Max:  {stats['max'] * 1000:.1f}ms")
         # Performance target: should complete in < 200ms on average (relaxed on Windows)
-        assert stats["mean"] < thresh(0.2), (
-            f"Too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.2) * 1000:.0f}ms)"
-        )
+        assert (
+            stats["mean"] < thresh(0.2)
+        ), f"Too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.2) * 1000:.0f}ms)"
 
     def test_low_resolution_performance(self):
         """Verify low resolution (60×30) generates quickly."""
@@ -125,9 +125,9 @@ class TestMeshGenerationPerformance:
         print(f"  Mean: {stats['mean'] * 1000:.1f}ms")
         print(f"  Std:  {stats['std'] * 1000:.1f}ms")
         # Low resolution should be very fast
-        assert stats["mean"] < thresh(0.05), (
-            f"Too slow for low res: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.05) * 1000:.0f}ms)"
-        )
+        assert (
+            stats["mean"] < thresh(0.05)
+        ), f"Too slow for low res: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.05) * 1000:.0f}ms)"
 
     def test_high_resolution_performance(self):
         """Verify high resolution (336×168) completes within budget."""
@@ -153,9 +153,9 @@ class TestMeshGenerationPerformance:
         print(f"  Mean: {stats['mean'] * 1000:.1f}ms")
         print(f"  Std:  {stats['std'] * 1000:.1f}ms")
         # High resolution allowed to be slower, but still reasonable
-        assert stats["mean"] < thresh(1.0), (
-            f"Too slow for high res: {stats['mean'] * 1000:.1f}ms (target: <{thresh(1.0) * 1000:.0f}ms)"
-        )
+        assert (
+            stats["mean"] < thresh(1.0)
+        ), f"Too slow for high res: {stats['mean'] * 1000:.1f}ms (target: <{thresh(1.0) * 1000:.0f}ms)"
 
 
 class TestStylePerformance:
@@ -195,9 +195,9 @@ class TestStylePerformance:
         print(f"  Mean: {stats['mean'] * 1000:.1f}ms")
 
         # All styles should meet the same performance target
-        assert stats["mean"] < thresh(0.2), (
-            f"{style_name} too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.2) * 1000:.0f}ms)"
-        )
+        assert (
+            stats["mean"] < thresh(0.2)
+        ), f"{style_name} too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.2) * 1000:.0f}ms)"
 
 
 class TestSTLExportPerformance:
@@ -236,9 +236,9 @@ class TestSTLExportPerformance:
             print(f"  Std:  {stats['std'] * 1000:.1f}ms")
 
             # Binary STL should be very fast
-            assert stats["mean"] < thresh(0.1), (
-                f"STL write too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.1) * 1000:.0f}ms)"
-            )
+            assert (
+                stats["mean"] < thresh(0.1)
+            ), f"STL write too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.1) * 1000:.0f}ms)"
 
     def test_large_mesh_export_performance(self):
         """Verify export works efficiently for large meshes."""
@@ -271,9 +271,9 @@ class TestSTLExportPerformance:
             print(f"  Mean: {stats['mean'] * 1000:.1f}ms")
 
             # Even large meshes should export quickly
-            assert stats["mean"] < thresh(0.5), (
-                f"Large export too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.5) * 1000:.0f}ms)"
-            )
+            assert (
+                stats["mean"] < thresh(0.5)
+            ), f"Large export too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.5) * 1000:.0f}ms)"
 
 
 class TestEndToEndPerformance:
@@ -310,9 +310,9 @@ class TestEndToEndPerformance:
         print(f"  Std:  {stats['std'] * 1000:.1f}ms")
 
         # Complete workflow should be snappy
-        assert stats["mean"] < thresh(0.5), (
-            f"Workflow too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.5) * 1000:.0f}ms)"
-        )
+        assert (
+            stats["mean"] < thresh(0.5)
+        ), f"Workflow too slow: {stats['mean'] * 1000:.1f}ms (target: <{thresh(0.5) * 1000:.0f}ms)"
 
 
 class TestMemoryEfficiency:
@@ -360,9 +360,9 @@ class TestMemoryEfficiency:
         # Memory should scale roughly linearly
         # Larger resolutions should use more memory
         for i in range(len(results) - 1):
-            assert results[i + 1][1] > results[i][1], (
-                "Memory should increase with resolution"
-            )
+            assert (
+                results[i + 1][1] > results[i][1]
+            ), "Memory should increase with resolution"
 
 
 class TestCachingEffectiveness:
@@ -388,9 +388,9 @@ class TestCachingEffectiveness:
         print(f"  Speedup:     {first_call / second_call:.1f}x")
 
         # Cache hit should be much faster
-        assert second_call < first_call * 0.5, (
-            "Cache should provide significant speedup"
-        )
+        assert (
+            second_call < first_call * 0.5
+        ), "Cache should provide significant speedup"
 
 
 if __name__ == "__main__":

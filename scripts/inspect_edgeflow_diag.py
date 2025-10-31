@@ -1,4 +1,5 @@
 import numpy as np
+
 from potfoundry.core.geometry import build_pot_mesh
 
 n_theta = 24

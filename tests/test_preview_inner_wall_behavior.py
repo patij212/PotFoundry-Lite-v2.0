@@ -1,5 +1,7 @@
 import json
+
 import numpy as np
+
 import pfui.preview as preview
 
 

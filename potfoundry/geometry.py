@@ -1,14 +1,15 @@
 # potfoundry/geometry.py — vNEXT2
 # Geometry core with style-agnostic twist/spin and optimized mesh build.
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Callable, Dict, Tuple, Optional, Any, Union
-from pathlib import Path
-import math
-import numpy as np
-from functools import lru_cache
-import numpy.typing as npt
 
+import math
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Tuple, Union
+
+import numpy as np
+import numpy.typing as npt
 
 __all__ = [
     "MeshQuality",
@@ -446,12 +447,12 @@ def build_pot_mesh(
     Vectorization (stage 1): theta dimension is fully vectorized
     faces built by numpy indexing.
     """
-    assert H > 0 and Rt > 0 and Rb > 0 and t_wall > 0 and t_bottom >= 2.0, (
-        "Invalid size parameters."
-    )
-    assert r_drain > 0 and r_drain < (Rb - t_wall - 2.0), (
-        "Drain hole too large for base—adjust sizes."
-    )
+    assert (
+        H > 0 and Rt > 0 and Rb > 0 and t_wall > 0 and t_bottom >= 2.0
+    ), "Invalid size parameters."
+    assert r_drain > 0 and r_drain < (
+        Rb - t_wall - 2.0
+    ), "Drain hole too large for base—adjust sizes."
 
     # Use cached theta grid to avoid recomputing across calls
     thetas, cos_th, sin_th = _theta_grid_cached(int(n_theta))

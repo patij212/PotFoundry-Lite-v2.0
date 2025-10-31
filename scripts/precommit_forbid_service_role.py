@@ -3,7 +3,6 @@ import re
 import sys
 from pathlib import Path
 
-
 # JWT-ish token pattern
 JWT_RE = re.compile(r"eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+")
 SERVICE_ROLE_RE = re.compile(r"service_role", re.IGNORECASE)

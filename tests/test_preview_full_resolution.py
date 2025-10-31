@@ -1,4 +1,5 @@
 import json
+
 import numpy as np
 
 from pfui.preview import make_preview_arrays, render_preview_png_cached
@@ -60,6 +61,6 @@ def test_render_preview_png_cached_full_resolution_returns_bytes():
         return_png=True,
     )
 
-    assert png is None or (isinstance(png, (bytes, bytearray)) and len(png) > 100), (
-        "Expected PNG bytes or None"
-    )
+    assert png is None or (
+        isinstance(png, (bytes, bytearray)) and len(png) > 100
+    ), "Expected PNG bytes or None"

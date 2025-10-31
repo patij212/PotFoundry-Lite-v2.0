@@ -1,9 +1,10 @@
 import numpy as np
+
 from pfui.colors import (
+    build_gradient_colors,
     hex_to_rgb_tuple,
     interpolate_rgb,
     resolve_palette,
-    build_gradient_colors,
 )
 
 

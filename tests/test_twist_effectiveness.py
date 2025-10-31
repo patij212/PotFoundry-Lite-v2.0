@@ -1,7 +1,8 @@
 from __future__ import annotations
+
 import numpy as np
 
-from potfoundry.core.geometry import build_pot_mesh, STYLES
+from potfoundry.core.geometry import STYLES, build_pot_mesh
 
 
 def test_twist_changes_geometry():

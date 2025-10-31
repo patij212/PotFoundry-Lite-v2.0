@@ -1,7 +1,8 @@
-import time
 import importlib
-import numpy as np
+import time
 from typing import Any, cast
+
+import numpy as np
 
 # Use dynamic import to avoid mypy recursing into potfoundry internals
 _geom = importlib.import_module("potfoundry.core.geometry")

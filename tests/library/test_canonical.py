@@ -1,9 +1,9 @@
 """Tests for canonical JSON generation and content hashing."""
 
-import json
 import hashlib
+import json
 
-from potfoundry.library import canonical_payload, content_id, _normalize_dict
+from potfoundry.library import _normalize_dict, canonical_payload, content_id
 
 
 def test_canonical_payload_structure(

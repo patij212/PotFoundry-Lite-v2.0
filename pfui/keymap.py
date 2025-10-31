@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 # Thin wrapper around pfui.schemas conversion helpers so callers don't

@@ -9,19 +9,20 @@ This test file focuses on:
 """
 
 import numpy as np
+
 from potfoundry.geometry import (
-    base_radius,
+    STYLES,
     _spin_twist_radians,
-    superformula_r,
-    r_outer_superformula_blossom,
+    _theta_grid_cached,
+    base_radius,
+    build_pot_mesh,
+    r_base_out,
     r_outer_fourier_bloom,
+    r_outer_harmonic_ripple,
     r_outer_spiral_ridges,
     r_outer_superellipse_morph,
-    r_outer_harmonic_ripple,
-    build_pot_mesh,
-    STYLES,
-    r_base_out,
-    _theta_grid_cached,
+    r_outer_superformula_blossom,
+    superformula_r,
 )
 
 

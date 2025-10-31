@@ -1,6 +1,8 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Literal
-from pydantic import BaseModel, Field, ConfigDict, PositiveFloat, model_validator
+
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, model_validator
 
 # PF2: Pydantic v2 schema (ConfigV2) + migration helpers
 

@@ -4,9 +4,9 @@ from potfoundry.geometry import STYLES, build_pot_mesh
 def test_styles_are_tuples_and_callable():
     assert isinstance(STYLES, dict)
     for name, val in STYLES.items():
-        assert isinstance(val, tuple) and len(val) >= 1, (
-            f"{name} must be a tuple(callable, ...)"
-        )
+        assert (
+            isinstance(val, tuple) and len(val) >= 1
+        ), f"{name} must be a tuple(callable, ...)"
         assert callable(val[0]), f"{name} first element must be callable"
 
 

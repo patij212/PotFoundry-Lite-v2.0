@@ -4,7 +4,7 @@ This file provides a tiny subset of the public API used by the project so mypy s
 Note: This is intentionally minimal. If you use more of the supabase API, expand these declarations.
 """
 
-from typing import Any, Dict, List, Optional, Mapping, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 class SupabaseResponse:
     # Most call-sites expect a list of row dicts or None

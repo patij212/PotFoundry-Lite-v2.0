@@ -1,9 +1,12 @@
 # pfui/snapshots.py
 from __future__ import annotations
+
 from typing import Any, Dict, List
+
 import streamlit as st
+
+from .snapshot_store import read_png_bytes, remove_png_path, save_png_temp
 from .state import widget_key
-from .snapshot_store import save_png_temp, read_png_bytes, remove_png_path
 
 
 def render_snapshots(

@@ -1,8 +1,9 @@
 # tests/pfui/test_schemas.py
+from typing import Any, cast
+
 import pytest
 
 from pfui import schemas as S
-from typing import Any, cast
 
 
 def test_strip_alt_to_canonical_removes_legacy():

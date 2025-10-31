@@ -32,9 +32,9 @@ def test_argmin_alignment_bridge_vs_analysis_min():
     )
     p = os.path.normpath(p)
     row = find_detailed_row(p)
-    assert row is not None, (
-        f"No detailed diagnostic row found in {p} with required keys"
-    )
+    assert (
+        row is not None
+    ), f"No detailed diagnostic row found in {p} with required keys"
 
     R_analysis = row["R_analysis_sample"]
     Env = row["Env_sample"]

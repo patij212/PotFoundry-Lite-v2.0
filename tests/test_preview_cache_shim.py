@@ -2,8 +2,6 @@ import importlib
 import sys
 import types
 
-import pytest
-
 
 def _reload_preview():
     # Ensure a fresh import of pfui.preview so its module-level decorators

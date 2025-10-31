@@ -3,8 +3,8 @@ Read tools/edgeflow_verbose_diagnostics.jsonl and produce a compact JSON report
 for a requested zi (default 42). Prints JSON to stdout.
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
 from typing import Optional, Tuple
 

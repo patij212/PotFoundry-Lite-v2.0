@@ -1,7 +1,9 @@
-import pytest
 from pathlib import Path
-from potfoundry import write_stl_binary
+
 import numpy as np
+import pytest
+
+from potfoundry import write_stl_binary
 
 
 @pytest.mark.fast

@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 import numpy as np
 
 from potfoundry.core.geometry import (
-    r_outer_lowpoly_facet,
     base_radius,
+    r_outer_lowpoly_facet,
 )
 
 

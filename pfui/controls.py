@@ -1,8 +1,9 @@
 from __future__ import annotations
-from typing import Any, Dict
-import streamlit as st
 
 import importlib
+from typing import Any, Dict
+
+import streamlit as st
 
 # Avoid importing the heavy/fragile `pfui.schemas` module at module import time.
 # Load on-demand at runtime to keep focused mypy runs and editor diagnostics small.

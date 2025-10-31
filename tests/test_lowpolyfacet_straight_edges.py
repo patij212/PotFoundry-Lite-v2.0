@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import math
+
 import numpy as np
 
-from potfoundry.core.geometry import r_outer_lowpoly_facet, base_radius
+from potfoundry.core.geometry import base_radius, r_outer_lowpoly_facet
 
 
 def test_straight_seam_edges_plateau_matches_expected_limit():
@@ -70,7 +71,6 @@ def test_straight_seam_edges_plateau_matches_expected_limit():
     # A substantial fraction of samples should be clamped (plateau exists)
     tol = 1e-5
     clamped = np.isclose(r_straight, r_expected, atol=tol)
-    from typing import cast
 
     # Use explicit float denominator so static type checkers don't see mixed
     # numpy/object numeric unions in the division. Guard length with max(1, ...)

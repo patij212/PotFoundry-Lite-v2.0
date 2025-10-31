@@ -4,8 +4,8 @@ Prints a JSON object with counts and up to 200 mismatch indices for R_new_raw < 
 Usage: python edgeflow_diff_first_last.py <zi>
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
 
 

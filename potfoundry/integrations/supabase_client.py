@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     import streamlit as st
@@ -26,7 +26,6 @@ else:
 
 _tls_warning_emitted: bool = False
 from typing import cast
-
 
 # NOTE: supabase_client uses `requests` as a lightweight runtime fallback when
 # `supabase` (supabase-py) is not installed. Historically mypy reported

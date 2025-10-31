@@ -1,6 +1,8 @@
 import json
-import numpy as np
 from typing import Any
+
+import numpy as np
+
 import pfui.preview as preview
 
 

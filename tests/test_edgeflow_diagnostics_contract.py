@@ -50,9 +50,9 @@ def test_edgeflow_diagnostics_contract():
 
     assert isinstance(diagnostics, dict)
     ev = diagnostics.get("edgeflow_verbose")
-    assert ev is not None and len(ev) > 0, (
-        "Expected edgeflow_verbose to be present and non-empty"
-    )
+    assert (
+        ev is not None and len(ev) > 0
+    ), "Expected edgeflow_verbose to be present and non-empty"
 
     # Check canonical keys exist in the first available row sample
     entry = ev[0]
@@ -89,6 +89,6 @@ def test_edgeflow_diagnostics_contract():
     # Numeric invariant: final raw radii >= envelope (within small tolerance)
     diffs = r_new_raw - env_post
     n_viol = int(np.count_nonzero(diffs < -1e-9))
-    assert n_viol == 0, (
-        f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"
-    )
+    assert (
+        n_viol == 0
+    ), f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"

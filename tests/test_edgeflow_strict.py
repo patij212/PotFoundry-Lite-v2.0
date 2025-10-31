@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+
 import numpy as np
 
 from potfoundry.core.geometry import build_pot_mesh
@@ -156,6 +157,6 @@ def test_edgeflow_strict_outward_enforcement():
     # Strict outward-only invariant: final raw radii >= envelope (post-deoffset)
     diffs = r_new - env_post
     n_viol = int(np.count_nonzero(diffs < -1e-9))
-    assert n_viol == 0, (
-        f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"
-    )
+    assert (
+        n_viol == 0
+    ), f"Found {n_viol} cells where final_raw < env_post; min_delta={diffs.min():.6f}"

@@ -5,9 +5,9 @@ Provides URL-safe encoding of design parameters for "Open in editor" functionali
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple, TYPE_CHECKING
 import base64
 import json
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 if TYPE_CHECKING:
     import streamlit as st

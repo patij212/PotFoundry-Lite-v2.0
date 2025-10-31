@@ -6,8 +6,9 @@ checkers (mypy, Pylance) about the runtime contract without forcing heavy
 numeric imports at module import time.
 """
 
-from typing import Callable, Any, Tuple, Dict, Optional
 from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Tuple
+
 import numpy as np
 
 # Precise-ish signature for the core mesh builder used across the project.

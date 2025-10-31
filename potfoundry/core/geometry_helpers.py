@@ -1,8 +1,10 @@
 from __future__ import annotations
+
+import math
 from typing import Tuple
+
 import numpy as np
 import numpy.typing as npt
-import math
 
 # Local TAU constant for helper computations
 TAU = 2.0 * math.pi

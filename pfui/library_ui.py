@@ -25,8 +25,8 @@ def render_library_tab():
 
     # Local imports (lazy) to avoid heavy import-time dependencies and satisfy ruff
     from potfoundry.integrations.supabase_client import (
-        get_singleton_client,
         SupabaseClient,
+        get_singleton_client,
     )
     from potfoundry.library import list_published
 

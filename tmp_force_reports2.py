@@ -1,8 +1,8 @@
 import traceback
 
 try:
-    from potfoundry.core.geometry import build_pot_mesh
     from pfui.presets import PRESETS
+    from potfoundry.core.geometry import build_pot_mesh
 
     p = PRESETS["SuperformulaBlossom"]["Crisp Petals (De-Jag)"]
     style_opts = dict(p)

@@ -4,14 +4,14 @@ This script is intentionally minimal and prints timestamps so you can see where
 it spends time (import vs function call).
 """
 
-import time
 import sys
+import time
 
 print("python:", sys.executable)
 print("start time:", time.time())
 try:
     t0 = time.time()
-    from potfoundry.core.geometry import build_pot_mesh, PotDefaults
+    from potfoundry.core.geometry import PotDefaults, build_pot_mesh
 
     t1 = time.time()
     print(f"import done (dt={t1 - t0:.3f}s)")

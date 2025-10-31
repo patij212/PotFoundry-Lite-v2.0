@@ -1,10 +1,10 @@
 """Tests for library validation functions."""
 
 from potfoundry.library import (
-    validate_title,
-    validate_tags,
     validate_license,
     validate_stl_size,
+    validate_tags,
+    validate_title,
     validate_triangle_count,
 )
 

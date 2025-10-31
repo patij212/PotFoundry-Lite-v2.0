@@ -6,7 +6,7 @@ falling back to a simple placeholder when the target module is unavailable
 (helps pytest collection in isolated environments).
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from potfoundry.yaml_api import build_from_yaml

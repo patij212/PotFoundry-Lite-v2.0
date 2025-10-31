@@ -1,7 +1,8 @@
 import json
+
 import numpy as np
+
 import pfui.preview as preview
-import potfoundry.geometry as geom
 
 
 def _make_opts():
@@ -49,9 +50,9 @@ def test_vectorized_style_fallback_reported(monkeypatch):
 
     # Confirm the vectorized attempt occurred and that scalar sampling was used
     assert state["vec_called"] > 0, "expected preview to attempt vectorized style call"
-    assert state["scalar_called"] > 0, (
-        "expected preview to fall back to scalar sampling"
-    )
+    assert (
+        state["scalar_called"] > 0
+    ), "expected preview to fall back to scalar sampling"
 
 
 def test_nonfinite_style_sanitized(monkeypatch):

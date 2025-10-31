@@ -9,9 +9,11 @@ This test suite validates:
 """
 
 import warnings
-import numpy as np
 from pathlib import Path
-from potfoundry import write_stl_binary, write_ascii_stl
+
+import numpy as np
+
+from potfoundry import write_ascii_stl, write_stl_binary
 
 
 def test_binary_stl_is_default_export():

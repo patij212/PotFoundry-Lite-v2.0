@@ -16,18 +16,17 @@ Environment / Secrets:
 
 from __future__ import annotations
 
+import json
 import sys
 import time
-import json
-from typing import List, Tuple
-
 from pathlib import Path
+from typing import List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from potfoundry.integrations.supabase_client import (
-    get_singleton_client,
     NotConfiguredError,
+    get_singleton_client,
 )
 from potfoundry.library import list_published
 

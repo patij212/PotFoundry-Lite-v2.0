@@ -1,12 +1,13 @@
 from __future__ import annotations
-from pathlib import Path
+
+import importlib
 import tempfile
+from pathlib import Path
+from typing import Any
+
 import streamlit as st
 
-from typing import Any, Callable
-import importlib
-
-from .imports import validate_recipe, load_config, build_from_yaml
+from .imports import build_from_yaml, load_config
 
 
 def render_batch_tab() -> None:

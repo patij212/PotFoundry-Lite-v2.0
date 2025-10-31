@@ -12,10 +12,11 @@ Run with: PYTHONPATH=. pytest tests/test_golden_meshes.py -v
 from __future__ import annotations
 
 import hashlib
+
 import numpy as np
 import pytest
 
-from potfoundry import build_pot_mesh, STYLES
+from potfoundry import STYLES, build_pot_mesh
 
 
 def compute_mesh_hash(verts: np.ndarray, faces: np.ndarray) -> str:
@@ -147,45 +148,45 @@ class TestGoldenMeshes:
         metrics = compute_mesh_metrics(verts, faces)
 
         # Verify expected properties
-        assert metrics["vertex_count"] == 28896, (
-            f"Expected 28896 vertices, got {metrics['vertex_count']}"
-        )
+        assert (
+            metrics["vertex_count"] == 28896
+        ), f"Expected 28896 vertices, got {metrics['vertex_count']}"
 
-        assert metrics["face_count"] == 57792, (
-            f"Expected 57792 faces, got {metrics['face_count']}"
-        )
+        assert (
+            metrics["face_count"] == 57792
+        ), f"Expected 57792 faces, got {metrics['face_count']}"
 
-        assert abs(metrics["height"] - 120.0) < 0.1, (
-            f"Height should be ~120mm, got {metrics['height']}"
-        )
+        assert (
+            abs(metrics["height"] - 120.0) < 0.1
+        ), f"Height should be ~120mm, got {metrics['height']}"
 
         # Width/depth should be roughly 2 * top_radius
         # Note: SuperformulaBlossom adds petal variations, so actual size is larger
         base_diameter = 140.0  # 2 * Rt
         # Allow wider margin for decorative styles (petals can extend outward)
-        assert metrics["width"] > base_diameter * 0.9, (
-            f"Width should be > {base_diameter * 0.9}mm, got {metrics['width']}"
-        )
-        assert metrics["width"] < base_diameter * 1.5, (
-            f"Width should be < {base_diameter * 1.5}mm, got {metrics['width']}"
-        )
+        assert (
+            metrics["width"] > base_diameter * 0.9
+        ), f"Width should be > {base_diameter * 0.9}mm, got {metrics['width']}"
+        assert (
+            metrics["width"] < base_diameter * 1.5
+        ), f"Width should be < {base_diameter * 1.5}mm, got {metrics['width']}"
 
-        assert metrics["depth"] > base_diameter * 0.9, (
-            f"Depth should be > {base_diameter * 0.9}mm, got {metrics['depth']}"
-        )
-        assert metrics["depth"] < base_diameter * 1.5, (
-            f"Depth should be < {base_diameter * 1.5}mm, got {metrics['depth']}"
-        )
+        assert (
+            metrics["depth"] > base_diameter * 0.9
+        ), f"Depth should be > {base_diameter * 0.9}mm, got {metrics['depth']}"
+        assert (
+            metrics["depth"] < base_diameter * 1.5
+        ), f"Depth should be < {base_diameter * 1.5}mm, got {metrics['depth']}"
 
         # Min Z should be near 0 (bottom)
-        assert abs(metrics["min_z"]) < 0.1, (
-            f"Min Z should be ~0, got {metrics['min_z']}"
-        )
+        assert (
+            abs(metrics["min_z"]) < 0.1
+        ), f"Min Z should be ~0, got {metrics['min_z']}"
 
         # Max Z should be near H (top)
-        assert abs(metrics["max_z"] - 120.0) < 0.1, (
-            f"Max Z should be ~120mm, got {metrics['max_z']}"
-        )
+        assert (
+            abs(metrics["max_z"] - 120.0) < 0.1
+        ), f"Max Z should be ~120mm, got {metrics['max_z']}"
 
         # Diagnostics should match (with margin for style modulation)
         # Superformula creates petals that extend beyond base radius
@@ -275,9 +276,9 @@ class TestGoldenMeshes:
         metrics1 = compute_mesh_metrics(verts1, faces1)
         metrics2 = compute_mesh_metrics(verts2, faces2)
 
-        assert metrics1["height"] < metrics2["height"], (
-            "Taller pot should have greater height"
-        )
+        assert (
+            metrics1["height"] < metrics2["height"]
+        ), "Taller pot should have greater height"
 
 
 class TestMeshProperties:
@@ -317,9 +318,9 @@ class TestMeshProperties:
         # In a watertight mesh, each edge appears exactly twice
         non_manifold_edges = [e for e, count in edge_counts.items() if count != 2]
 
-        assert len(non_manifold_edges) == 0, (
-            f"Found {len(non_manifold_edges)} non-manifold edges (mesh not watertight)"
-        )
+        assert (
+            len(non_manifold_edges) == 0
+        ), f"Found {len(non_manifold_edges)} non-manifold edges (mesh not watertight)"
 
     def test_mesh_has_consistent_normals(self):
         """Verify face normals point consistently outward."""
@@ -408,9 +409,9 @@ class TestMeshProperties:
         max_radius = Rt * 1.5  # 50% margin for style effects
 
         radii = np.sqrt(verts[:, 0] ** 2 + verts[:, 1] ** 2)
-        assert radii.max() < max_radius, (
-            f"Max radius {radii.max():.1f} exceeds bounds {max_radius:.1f}"
-        )
+        assert (
+            radii.max() < max_radius
+        ), f"Max radius {radii.max():.1f} exceeds bounds {max_radius:.1f}"
 
 
 class TestStyleSpecificGoldens:

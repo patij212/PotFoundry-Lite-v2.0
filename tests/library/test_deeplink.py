@@ -1,14 +1,15 @@
 """Tests for deep link encoding/decoding."""
 
-import pytest
 import base64
 import json
 
+import pytest
+
 from pfui.deeplink import (
-    encode_state,
     decode_state,
-    validate_state,
+    encode_state,
     generate_deep_link,
+    validate_state,
 )
 
 

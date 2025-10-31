@@ -28,8 +28,8 @@ from typing import List, Set
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from potfoundry.integrations.supabase_client import (
-    get_singleton_client,
     NotConfiguredError,
+    get_singleton_client,
 )
 
 

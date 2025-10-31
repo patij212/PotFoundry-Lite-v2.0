@@ -1,7 +1,8 @@
-import json
-import numpy as np
-from typing import Callable, Optional, Tuple
 import importlib
+import json
+from typing import Callable, Optional, Tuple
+
+import numpy as np
 
 # Dynamically import the heavy geometry module at runtime using importlib so
 # static type checkers won't eagerly analyze it when we run focused mypy on

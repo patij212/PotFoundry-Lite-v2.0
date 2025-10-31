@@ -21,7 +21,7 @@ from types import ModuleType
 # Hypothesis profile setup (optional)
 _HAVE_HYPOTHESIS = False
 try:
-    from hypothesis import settings, Verbosity
+    from hypothesis import Verbosity, settings
 
     _HAVE_HYPOTHESIS = True
 except Exception:

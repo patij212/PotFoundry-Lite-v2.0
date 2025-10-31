@@ -4,25 +4,25 @@
 # All STL exports in this module use write_stl_binary for optimal file size
 # and performance. Binary STL is the recommended format for all production use.
 from __future__ import annotations
-from dataclasses import dataclass, asdict, field
-from typing import Any, Dict, List, Optional, Sequence, Union, Tuple
-from pathlib import Path
+
 import json
 import zipfile
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import yaml
-from .schema import ConfigV2, migrate_v1_to_v2, deep_merge
 
 # Binary STL writer (recommended for all exports)
-from .core.io.stl import write_stl_binary, atomic_write_bytes
-
+from .core.io.stl import atomic_write_bytes, write_stl_binary
 from .geometry import (
+    STYLES,
     MeshQuality,
     PotDefaults,
-    STYLES,
     build_pot_mesh,
     save_preview_png,
 )
+from .schema import ConfigV2, deep_merge, migrate_v1_to_v2
 
 
 @dataclass
@@ -89,7 +89,8 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
             # fields in test/legacy scenarios. Cast to Any so that static
             # analysis doesn't treat the subsequent runtime isinstance checks
             # as unreachable (cfg.mesh is annotated as a model in the schema).
-            from typing import cast, Any as _Any
+            from typing import Any as _Any
+            from typing import cast
 
             cfg_any = cast(_Any, cfg)
 

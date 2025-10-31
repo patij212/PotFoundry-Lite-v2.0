@@ -9,18 +9,20 @@ This test file focuses on:
 5. Error handling for invalid configurations
 """
 
-import pytest
 import tempfile
 from pathlib import Path
+
+import pytest
 import yaml
-from potfoundry.yaml_api import (
-    load_config,
-    validate_recipe,
-    realize_recipe,
-    build_from_yaml,
-    Config,
-)
+
 from potfoundry.schema import ConfigV2
+from potfoundry.yaml_api import (
+    Config,
+    build_from_yaml,
+    load_config,
+    realize_recipe,
+    validate_recipe,
+)
 
 
 class TestLoadConfig:

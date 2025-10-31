@@ -1,8 +1,11 @@
 # pfui/projects.py
 from __future__ import annotations
+
 import json
-import streamlit as st
 from typing import Any, Dict
+
+import streamlit as st
+
 from .state import widget_key
 
 APP_KEY = "PotFoundry Pro v2"

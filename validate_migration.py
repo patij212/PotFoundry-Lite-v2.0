@@ -7,9 +7,10 @@ Run this to verify the implementation.
 """
 
 import sys
+import tempfile
 import warnings
 from pathlib import Path
-import tempfile
+
 import numpy as np
 
 print("=" * 70)
@@ -21,7 +22,7 @@ print("\n[1/5] Verifying imports...")
 try:
     from typing import Any, cast
 
-    from potfoundry import write_stl_binary, write_ascii_stl, build_pot_mesh, STYLES
+    from potfoundry import STYLES, build_pot_mesh, write_ascii_stl, write_stl_binary
 
     print("  ✅ All imports successful")
 except ImportError as e:

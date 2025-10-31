@@ -27,17 +27,19 @@ pytest.importorskip(
     reason="Hypothesis not installed; install dev deps with 'pip install -r requirements-dev.txt'",
 )
 
-from hypothesis import given, settings, assume, HealthCheck
-from hypothesis import strategies as st
-from pathlib import Path
 import tempfile
+from pathlib import Path
+from typing import cast
+
+from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import strategies as st
+
+from pfui.deeplink import decode_state, encode_state
 
 # Import core functionality
-from potfoundry import build_pot_mesh, STYLES
+from potfoundry import STYLES, build_pot_mesh
+from potfoundry.schema import DefaultsModel, MeshQualityModel, RecipeModel
 from potfoundry.yaml_api import load_config
-from pfui.deeplink import encode_state, decode_state
-from potfoundry.schema import MeshQualityModel, DefaultsModel, RecipeModel
-from typing import cast
 
 
 def _as_mesh(m: object) -> MeshQualityModel:
@@ -145,9 +147,9 @@ def test_property_mesh_is_watertight(
 
     # Every edge should appear exactly 2 times (manifold property)
     for edge, count in edge_counts.items():
-        assert count == 2, (
-            f"Edge {edge} appears {count} times, expected 2 (watertight mesh)"
-        )
+        assert (
+            count == 2
+        ), f"Edge {edge} appears {count} times, expected 2 (watertight mesh)"
 
 
 # ============================================================================
@@ -312,12 +314,12 @@ def test_property_diameter_estimates_within_bounds(Rt, Rb, t_wall):
     expected_top = 2 * Rt
     expected_bottom = 2 * Rb
 
-    assert abs(top_est - expected_top) / max(expected_top, 1e-9) < tolerance, (
-        f"Top diameter estimate {top_est:.1f} differs from {expected_top:.1f} by >{tolerance * 100}%"
-    )
-    assert abs(bottom_est - expected_bottom) / max(expected_bottom, 1e-9) < tolerance, (
-        f"Bottom diameter estimate {bottom_est:.1f} differs from {expected_bottom:.1f} by >{tolerance * 100}%"
-    )
+    assert (
+        abs(top_est - expected_top) / max(expected_top, 1e-9) < tolerance
+    ), f"Top diameter estimate {top_est:.1f} differs from {expected_top:.1f} by >{tolerance * 100}%"
+    assert (
+        abs(bottom_est - expected_bottom) / max(expected_bottom, 1e-9) < tolerance
+    ), f"Bottom diameter estimate {bottom_est:.1f} differs from {expected_bottom:.1f} by >{tolerance * 100}%"
 
 
 # ============================================================================
@@ -363,13 +365,13 @@ def test_property_state_encoding_roundtrip(H, top_od, bottom_od, t_wall, style):
 
             if isinstance(original_val, (int, float)):
                 # Allow small numerical differences due to encoding
-                assert abs(original_val - decoded_val) < 0.1, (
-                    f"Round-trip failed for {key}: {original_val} != {decoded_val}"
-                )
+                assert (
+                    abs(original_val - decoded_val) < 0.1
+                ), f"Round-trip failed for {key}: {original_val} != {decoded_val}"
             else:
-                assert original_val == decoded_val, (
-                    f"Round-trip failed for {key}: {original_val} != {decoded_val}"
-                )
+                assert (
+                    original_val == decoded_val
+                ), f"Round-trip failed for {key}: {original_val} != {decoded_val}"
 
 
 # ============================================================================
@@ -506,9 +508,9 @@ def test_property_volume_increases_with_diameter(H, Rt, scale_factor):
     vol2 = compute_volume(verts2, faces2)
 
     # Larger diameter should give larger volume
-    assert vol2 > vol1, (
-        f"Scaled pot volume {vol2:.1f} not larger than original {vol1:.1f}"
-    )
+    assert (
+        vol2 > vol1
+    ), f"Scaled pot volume {vol2:.1f} not larger than original {vol1:.1f}"
 
 
 # ============================================================================
@@ -598,9 +600,9 @@ def test_property_height_matches_mesh_bounds(H, Rt):
 
     # Should match within 5% tolerance
     tolerance = 0.05
-    assert abs(actual_height - H) / H < tolerance, (
-        f"Mesh height {actual_height:.1f} differs from specified {H:.1f} by >{tolerance * 100}%"
-    )
+    assert (
+        abs(actual_height - H) / H < tolerance
+    ), f"Mesh height {actual_height:.1f} differs from specified {H:.1f} by >{tolerance * 100}%"
 
 
 # ============================================================================
@@ -639,12 +641,12 @@ def test_property_mesh_size_scales_with_resolution(n_theta, n_z):
     actual_verts = len(verts)
 
     # Should be within same order of magnitude
-    assert actual_verts > expected_order * 0.1, (
-        f"Too few vertices: {actual_verts} vs expected ~{expected_order}"
-    )
-    assert actual_verts < expected_order * 10, (
-        f"Too many vertices: {actual_verts} vs expected ~{expected_order}"
-    )
+    assert (
+        actual_verts > expected_order * 0.1
+    ), f"Too few vertices: {actual_verts} vs expected ~{expected_order}"
+    assert (
+        actual_verts < expected_order * 10
+    ), f"Too many vertices: {actual_verts} vs expected ~{expected_order}"
 
 
 # ============================================================================

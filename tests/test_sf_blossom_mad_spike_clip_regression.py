@@ -1,6 +1,6 @@
 import numpy as np
 
-from potfoundry.core.geometry import build_pot_mesh, STYLES
+from potfoundry.core.geometry import STYLES, build_pot_mesh
 
 
 def test_superformula_blossom_mad_and_spike_clip_builds_mesh():
