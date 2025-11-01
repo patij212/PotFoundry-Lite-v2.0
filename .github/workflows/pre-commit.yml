@@ -49,6 +49,9 @@ jobs:
       - name: Run pre-commit hooks (via pre-commit/action)
         id: precommit
         uses: pre-commit/action@v3.0.1
+        env:
+          # Avoid writing .pyc files while hooks run in CI
+          PYTHONDONTWRITEBYTECODE: "1"
         with:
           extra_args: --all-files
         continue-on-error: true
