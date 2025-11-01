@@ -30,14 +30,7 @@ jobs:
           # available under $HOME/.local/bin which we add to PATH below.
           pip install --user -r requirements-dev.txt
 
-      - name: Make project helper scripts executable
-        run: |
-          # Some pre-commit hooks expect project scripts to be executable
-          # in the runner. Ensure the script used by the hook has the
-          # executable bit set before running pre-commit.
-          if [ -f ./scripts/precommit_forbid_service_role.py ]; then
-            chmod +x ./scripts/precommit_forbid_service_role.py
-          fi
+
 
       - name: "Debug: print repo state (pwd, ls, git status)"
         run: |
