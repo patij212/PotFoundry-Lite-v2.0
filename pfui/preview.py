@@ -45,22 +45,46 @@ _cache_data_impl: Optional[Callable[..., Any]] = getattr(st, "cache_data", None)
 P = ParamSpec("P")
 R = TypeVar("R")
 
-# Defensive: some test environments or shims may set `st.cache_data` to a
-# non-callable object (e.g., a SimpleNamespace or a custom _Cache object).
-# Only treat it as a decorator if it is callable; otherwise fall back to a
-# no-op decorator to avoid TypeError during module import / test collection.
-if _cache_data_impl is not None and callable(
-    _cache_data_impl
-):  # pragma: no cover - normal runtime
+# Defensive: test environments or newer Streamlit versions may expose
+# `st.cache_data` as either a callable decorator factory or as an object
+# exposing a `.decorate(...)` method (or other non-callable compatibility
+# wrapper). Handle both shapes robustly. If neither is available, fall back
+# to a no-op decorator so importing `pfui.preview` during pytest collection
+# doesn't raise TypeError.
+if _cache_data_impl is not None:
+    if callable(_cache_data_impl):  # common case: function that returns decorator
 
-    def cache_data(
-        *args: Any, **kwargs: Any
-    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-        # Cast the runtime-provided decorator to the generic form for mypy
-        return cast(Callable[[Callable[P, R]], Callable[P, R]], _cache_data_impl)(
-            *args, **kwargs
-        )
-else:  # pragma: no cover - executed only in degraded env (tests)
+        def cache_data(
+            *args: Any, **kwargs: Any
+        ) -> Callable[[Callable[P, R]], Callable[P, R]]:
+            # Cast the runtime-provided decorator to the generic form for mypy
+            return cast(Callable[[Callable[P, R]], Callable[P, R]], _cache_data_impl)(
+                *args, **kwargs
+            )
+
+    elif hasattr(_cache_data_impl, "decorate") and callable(
+        getattr(_cache_data_impl, "decorate")
+    ):
+
+        def cache_data(
+            *args: Any, **kwargs: Any
+        ) -> Callable[[Callable[P, R]], Callable[P, R]]:
+            # Some Streamlit shims expose a `.decorate(...)` API instead of being
+            # directly callable. Use that when present.
+            return cast(
+                Callable[[Callable[P, R]], Callable[P, R]], _cache_data_impl.decorate
+            )(*args, **kwargs)
+
+    else:
+
+        def cache_data(
+            *args: Any, **kwargs: Any
+        ) -> Callable[[Callable[P, R]], Callable[P, R]]:
+            def _wrap(fn: Callable[P, R]) -> Callable[P, R]:
+                return fn  # no caching fallback
+
+            return _wrap
+else:
 
     def cache_data(
         *args: Any, **kwargs: Any
