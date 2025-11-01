@@ -15,7 +15,11 @@ repos:
     hooks:
       - id: potfoundry-forbid-service-role
         name: "Block committing Supabase service_role keys"
-        entry: scripts/precommit_forbid_service_role.py
-        language: python
+        # Run the script via the system python to avoid requiring the
+        # executable bit on Windows-checkouts and CI clones. Using
+        # `language: system` runs the provided entry with the system
+        # environment (here we call python explicitly).
+        entry: python scripts/precommit_forbid_service_role.py
+        language: system
         pass_filenames: true
         files: '.*'
