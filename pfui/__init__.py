@@ -1,7 +1,10 @@
-"""PFUI package for PotFoundry UI utilities.
+﻿"""pfui package initializer.
 
-This file makes the directory a Python package so tools like mypy can
-resolve relative imports (e.g., from . import schemas).
+This file intentionally kept minimal. Adding it enables relative imports
+within the `pfui` package and fixes static analysis tools (mypy) that
+require a package __init__ to resolve relative imports.
+
+Keep logic-free to avoid import-time side-effects during test discovery.
 """
 
 __all__ = []
