@@ -9,47 +9,6 @@ on:
       - fix/edgeflow-debug-quick
 
 concurrency:
-  # Use a ref-based group to avoid failures when the workflow is triggered
-  # by non-pull_request events where github.event.pull_request.number is not set.
-  name: PR Validation
-
-  on:
-    pull_request:
-      types: [opened, synchronize, reopened]
-    workflow_dispatch: {}
-
-  concurrency:
-    # Use a ref-based group to avoid failures when the workflow is triggered
-    # by non-pull_request events where github.event.pull_request.number is not set.
-    group: pr-validation-${{ github.ref }}
-    cancel-in-progress: true
-name: PR Validation
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  workflow_dispatch: {}
-  push:
-    branches:
-      - fix/edgeflow-debug-quick
-
-concurrency:
-  # Use a ref-based group to avoid failures when the workflow is triggered
-  # by non-pull_request events where github.event.pull_request.number is not set.
-  group: pr-validation-${{ github.ref }}
-  cancel-in-progress: true
-
-name: PR Validation
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  workflow_dispatch: {}
-  push:
-    branches:
-      - fix/edgeflow-debug-quick
-
-concurrency:
   group: pr-validation-${{ github.ref }}
   cancel-in-progress: true
 
@@ -60,7 +19,8 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
@@ -113,7 +73,8 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
@@ -134,7 +95,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git diff > ruff-fix.patch || true
 
-      - uses: actions/upload-artifact@v3
+      - name: Upload ruff patch
+        uses: actions/upload-artifact@v3
         with:
           name: ruff-fix
           path: ruff-fix.patch
@@ -145,7 +107,8 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -167,6 +130,5 @@ jobs:
         run: |
           bandit -r potfoundry/ pfui/ -f json || true
         continue-on-error: true
-          safety check --json || true
 
         continue-on-error: true
