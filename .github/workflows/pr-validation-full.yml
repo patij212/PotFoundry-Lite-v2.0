@@ -91,7 +91,9 @@ jobs:
 
       - name: Run mypy
         run: |
-          mypy . || true
+          # Run mypy against package folders to avoid "No parent module" errors
+          # when files use relative imports.
+          mypy pfui potfoundry || true
 
   pytest:
     name: Pytest (fast-fail)
@@ -113,6 +115,14 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt || true; fi
           if [ -f requirements-dev.txt ]; then python -m pip install -r requirements-dev.txt || true; fi
+
+      - name: Ensure pytest is available
+        run: |
+          # Some branches may not include dev requirements or pip may skip
+          # installing console-scripts into the PATH for the runner environment,
+          # so explicitly install pytest into the current interpreter.
+          python -m pip install --upgrade pip
+          python -m pip install pytest || true
 
       - name: Run pytest (fail fast)
         run: |
