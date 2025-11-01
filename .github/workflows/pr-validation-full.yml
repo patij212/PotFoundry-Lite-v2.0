@@ -1,6 +1,8 @@
 name: PR Validation (full)
 
 on:
+  push:
+    branches: [ 'fix/edgeflow-debug-quick' ]
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch: {}
