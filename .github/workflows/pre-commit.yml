@@ -67,8 +67,9 @@ jobs:
             LOG_PATH="/home/runner/.cache/pre-commit/pre-commit.log"
             if [ -f "$LOG_PATH" ]; then
               echo "=== start pre-commit.log ==="
-              sed -n '1,2000p' "$LOG_PATH" || true
-              echo "=== end pre-commit.log ==="
+                # Use cat instead of sed (some minimal shells in runners may not have sed)
+                cat "$LOG_PATH" || true
+                echo "=== end pre-commit.log ==="
             else
               echo "pre-commit internal log not found at $LOG_PATH"
             fi
