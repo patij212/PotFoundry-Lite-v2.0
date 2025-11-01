@@ -40,6 +40,18 @@ jobs:
             chmod +x ./scripts/precommit_forbid_service_role.py
           fi
 
+      - name: "Debug: print repo state (pwd, ls, git status)"
+        run: |
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          echo "pwd: $(pwd)"
+          echo "ls -la (repo root):"
+          ls -la
+          echo "ls -la .git (if present):"
+          if [ -d .git ]; then ls -la .git || true; else echo ".git not present"; fi
+          echo "git version: $(git --version || true)"
+          echo "git rev-parse --show-toplevel: $(git rev-parse --show-toplevel 2>/dev/null || true)"
+          echo "git status:"; git status --porcelain --untracked-files=all || true
+
       - name: Run pre-commit hooks
         env:
           PATH: $HOME/.local/bin:$PATH
