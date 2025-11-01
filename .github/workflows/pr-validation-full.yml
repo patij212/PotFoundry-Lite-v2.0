@@ -65,7 +65,7 @@ jobs:
           pip install pre-commit
 
       - name: Run pre-commit
-        uses: pre-commit/action@v4.3.0
+        uses: pre-commit/action@v4
         with:
           extra_args: --all-files
 
