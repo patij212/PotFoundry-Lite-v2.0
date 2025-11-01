@@ -27,8 +27,12 @@ jobs:
       - name: Install dev dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          # Install into the runner user site so CLI entrypoints (pytest) are
+          # available under $HOME/.local/bin which we add to PATH below.
+          pip install --user -r requirements-dev.txt
 
       - name: Run pre-commit hooks
+        env:
+          PATH: $HOME/.local/bin:$PATH
         run: |
           pre-commit run --all-files
