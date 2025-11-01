@@ -5,7 +5,9 @@ on:
     types: [opened, synchronize, reopened]
 
 concurrency:
-  group: pr-validation-${{ github.event.pull_request.number }}
+  # Use a ref-based group to avoid failures when the workflow is triggered
+  # by non-pull_request events where github.event.pull_request.number is not set.
+  group: pr-validation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
