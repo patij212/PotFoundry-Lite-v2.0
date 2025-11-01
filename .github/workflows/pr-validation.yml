@@ -4,6 +4,9 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch: {}
+  push:
+    branches:
+      - fix/edgeflow-debug-quick
 
 concurrency:
   # Use a ref-based group to avoid failures when the workflow is triggered
