@@ -3,6 +3,7 @@ name: PR Validation
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
 
 concurrency:
   # Use a ref-based group to avoid failures when the workflow is triggered
