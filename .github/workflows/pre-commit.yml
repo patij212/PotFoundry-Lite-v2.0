@@ -43,11 +43,13 @@ jobs:
       - name: "Debug: print repo state (pwd, ls, git status)"
         run: |
           echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          echo "whoami: $(whoami)"
           echo "pwd: $(pwd)"
           echo "ls -la (repo root):"
-          ls -la
+          ls -la || true
           echo "ls -la .git (if present):"
           if [ -d .git ]; then ls -la .git || true; else echo ".git not present"; fi
+          echo "git which: $(which git || true)"
           echo "git version: $(git --version || true)"
           echo "git rev-parse --show-toplevel: $(git rev-parse --show-toplevel 2>/dev/null || true)"
           echo "git status:"; git status --porcelain --untracked-files=all || true
@@ -56,4 +58,19 @@ jobs:
         env:
           PATH: $HOME/.local/bin:$PATH
         run: |
-          pre-commit run --all-files
+          # Ensure we're in the checked-out repository root
+          cd "$GITHUB_WORKSPACE"
+
+          # Run pre-commit and on failure collect the pre-commit internal log
+          pre-commit run --all-files || {
+            echo "\npre-commit exited non-zero. Collecting pre-commit internal log..."
+            LOG_PATH="/home/runner/.cache/pre-commit/pre-commit.log"
+            if [ -f "$LOG_PATH" ]; then
+              echo "=== start pre-commit.log ==="
+              sed -n '1,2000p' "$LOG_PATH" || true
+              echo "=== end pre-commit.log ==="
+            else
+              echo "pre-commit internal log not found at $LOG_PATH"
+            fi
+            exit 1
+          }
