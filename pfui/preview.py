@@ -37,62 +37,41 @@ for _attr in (
 # may be unavailable or replaced by a SimpleNamespace mock. This prevents
 # AttributeError during pytest collection. Declare the type so mypy knows
 # _cache_data_impl may be None and we cast before calling it.
-_cache_data_impl: Optional[Callable[..., Any]] = getattr(st, "cache_data", None)
-# Make cache_data a generic decorator so mypy preserves decorated function
-# signatures (ParamSpec/TypeVar). This prevents decorated functions from
-# being treated as returning Any which would mask precise return annotations
-# like `bytes | None` used below.
 P = ParamSpec("P")
 R = TypeVar("R")
 
-# Defensive: test environments or newer Streamlit versions may expose
-# `st.cache_data` as either a callable decorator factory or as an object
-# exposing a `.decorate(...)` method (or other non-callable compatibility
-# wrapper). Handle both shapes robustly. If neither is available, fall back
-# to a no-op decorator so importing `pfui.preview` during pytest collection
-# doesn't raise TypeError.
-if _cache_data_impl is not None:
-    if callable(_cache_data_impl):  # common case: function that returns decorator
 
-        def cache_data(
-            *args: Any, **kwargs: Any
-        ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-            # Cast the runtime-provided decorator to the generic form for mypy
-            return cast(Callable[[Callable[P, R]], Callable[P, R]], _cache_data_impl)(
-                *args, **kwargs
-            )
+# Lazily-resolving cache_data decorator
+#
+# Some CI/test environments replace or shim `streamlit.cache_data` with an
+# object that is not directly callable (for example, a `_Cache` instance) or
+# provide a `.decorate(...)` method. Calling the underlying object at module
+# import time can raise TypeError during pytest collection. To be defensive we
+# defer lookup of `st.cache_data` until the decorator is actually applied to
+# a function: the returned decorator queries the current `st.cache_data` and
+# adapts to the callable/.decorate/no-op shapes at that moment.
+def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def _decorator(fn: Callable[P, R]) -> Callable[P, R]:
+        impl = getattr(st, "cache_data", None)
+        try:
+            if callable(impl):
+                return cast(
+                    Callable[[Callable[P, R]], Callable[P, R]], impl(*args, **kwargs)
+                )(fn)
+            if hasattr(impl, "decorate") and callable(getattr(impl, "decorate")):
+                return cast(
+                    Callable[[Callable[P, R]], Callable[P, R]],
+                    impl.decorate(*args, **kwargs),
+                )(fn)
+        except Exception:
+            # Any error while trying to create a cached wrapper should not
+            # prevent the module from importing; fall back to a no-op.
+            pass
 
-    elif hasattr(_cache_data_impl, "decorate") and callable(
-        getattr(_cache_data_impl, "decorate")
-    ):
+        # No caching available: return the original function unchanged.
+        return fn
 
-        def cache_data(
-            *args: Any, **kwargs: Any
-        ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-            # Some Streamlit shims expose a `.decorate(...)` API instead of being
-            # directly callable. Use that when present.
-            return cast(
-                Callable[[Callable[P, R]], Callable[P, R]], _cache_data_impl.decorate
-            )(*args, **kwargs)
-
-    else:
-
-        def cache_data(
-            *args: Any, **kwargs: Any
-        ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-            def _wrap(fn: Callable[P, R]) -> Callable[P, R]:
-                return fn  # no caching fallback
-
-            return _wrap
-else:
-
-    def cache_data(
-        *args: Any, **kwargs: Any
-    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-        def _wrap(fn: Callable[P, R]) -> Callable[P, R]:
-            return fn  # no caching fallback
-
-        return _wrap
+    return _decorator
 
 
 from .colors import build_gradient_colors  # noqa: E402
