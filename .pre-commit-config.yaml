@@ -36,10 +36,11 @@ repos:
       - id: detect-secrets
         name: detect-secrets (baseline)
         # Use the baseline file and exclude generated artifacts and CI dumps
-        # that produce noisy false positives (e.g. .runs_grep.txt and artifacts/).
-        # Use the explicit --exclude-files option (not --exclude) which the
-        # detect-secrets hook expects.
-        args: ["--baseline", "detect-secrets.baseline", "--exclude-files", "^(?:\\.runs_grep\\.txt$|artifacts/|\\.gha_.*|\\.github/workflows/pr-validation.yml.corrupt.bak$)"]
+        # that produce noisy false positives (e.g. .runs_grep.txt, artifacts/,
+        # or local caches like .mypy_cache). Match both forward and back
+        # slashes so the exclusion works on Windows runners and local dev
+        # environments.
+        args: ["--baseline", "detect-secrets.baseline", "--exclude-files", "(?:^\\.runs_grep\\.txt$|(?:artifacts|\\.gha_.*|\\.github/workflows/pr-validation.yml.corrupt.bak$|\\.mypy_cache|\\.venv|\\.pytest_cache)(?:[\\\\/]|$))"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
     hooks:
