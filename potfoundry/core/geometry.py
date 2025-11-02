@@ -335,7 +335,7 @@ def r_outer_superformula_blossom(
         rf = np.asarray(rf, dtype=float)
 
     # Helper to sanitize rf values to a safe, finite band
-    def _sanitize_rf(val):
+    def _sanitize_rf(val: float | NDArrayFloat) -> float | NDArrayFloat:
         arr = np.asarray(val, dtype=float)
         arr = np.nan_to_num(arr, nan=1.0, posinf=1.0, neginf=1.0)
         # Clamp radius factor to a conservative range
@@ -830,10 +830,10 @@ def r_outer_lowpoly_facet(
         m_top = math.tan(a_top)
 
         # Smooth max/min helpers (stable log-sum-exp forms)
-        def _smooth_max(a, b, s):
+        def _smooth_max(a: float | NDArrayFloat, b: float | NDArrayFloat, s: float) -> float | NDArrayFloat:
             return smooth_max(a, b, float(s))
 
-        def _smooth_min(a, b, s):
+        def _smooth_min(a: float | NDArrayFloat, b: float | NDArrayFloat, s: float) -> float | NDArrayFloat:
             return smooth_min(a, b, float(s))
 
         # Blend softness and windowing around seams: keep the cut very local
@@ -943,7 +943,7 @@ def r_outer_lowpoly_facet(
 
         # When straight edges are requested, trim only the excess above the uniform clamp near the seam plane.
         # A higher power concentrates the blend close to the seam so the chamfer band keeps its faceted character.
-        def _apply_plateau(r_vals, *_args, **_kwargs):
+        def _apply_plateau(r_vals: Any, *_args: Any, **_kwargs: Any) -> Any:
             """Default passthrough when straight-edge plateauing is inactive."""
             return r_vals
 
@@ -1013,7 +1013,11 @@ def r_outer_lowpoly_facet(
             # blending must never increase the base above its original value.
             strict_no_outward = bool(opts.get("lp_outward_mode", False)) and has_cut
 
-            def _straight_blend(weight, original, uniform_val):
+            def _straight_blend(
+                weight: NDArrayFloat | float,
+                original: NDArrayFloat | float,
+                uniform_val: float,
+            ) -> Any:
                 uniform_scalar = float(uniform_val)
                 w_arr = np.asarray(weight, dtype=float)
                 orig_arr = np.asarray(original, dtype=float)
@@ -1066,7 +1070,13 @@ def r_outer_lowpoly_facet(
             if cut_top_deg > 0.0 and outward_dir:
                 r_lim_top = np.maximum(r_lim_top, r_uniform_top_target)
 
-            def _apply_plateau_impl(r_vals, weight, depth0, uniform_val, base_guard):
+            def _apply_plateau_impl(
+                r_vals: NDArrayFloat | float,
+                weight: NDArrayFloat | float,
+                depth0: float,
+                uniform_val: float,
+                base_guard: NDArrayFloat | float,
+            ) -> Any:
                 if depth0 <= 0.0:
                     return r_vals
                 r_arr = np.asarray(r_vals, dtype=float)
@@ -1123,7 +1133,7 @@ def r_outer_lowpoly_facet(
                     else:
                         guard_arr = np.broadcast_to(guard_arr, r_arr.shape)
                     mixed = np.minimum(mixed, guard_arr)
-                return float(mixed) if mixed.shape == () else mixed
+                return float(mixed) if mixed.shape == () else cast(NDArrayFloat, mixed)
 
             _apply_plateau = _apply_plateau_impl
 
@@ -1137,7 +1147,11 @@ def r_outer_lowpoly_facet(
                 lift_strength = max(0.0, min(2.5, lift_strength))
                 lift_gamma = max(0.2, min(3.0, lift_gamma))
 
-                def _lift_valleys(base_vals, weight, target_val):
+                def _lift_valleys(
+                    base_vals: NDArrayFloat | float,
+                    weight: NDArrayFloat | float,
+                    target_val: NDArrayFloat | float,
+                ) -> Any:
                     return lift_valleys(
                         base_vals, weight, target_val, lift_strength, lift_gamma
                     )
@@ -2414,7 +2428,7 @@ def build_pot_mesh(
                                     )
                                     row_ext = np.concatenate([row_sorted, row_sorted])
 
-                                    def interp(tarr):
+                                    def interp(tarr: float | NDArrayFloat) -> Any:
                                         return np.interp(tarr, th_ext, row_ext)
 
                                     # process each peak pair along the shorter arc
@@ -2596,8 +2610,8 @@ def build_pot_mesh(
                                         except Exception:
                                             pass
                                         # peak radii values via interpolant at the peak angles
-                                        r_pa = float(interp(np.array([theta_a]))[0])
-                                        r_pb = float(interp(np.array([theta_b]))[0])
+                                        r_pa = float(np.asarray(interp(np.array([theta_a])), dtype=float).ravel()[0])
+                                        r_pb = float(np.asarray(interp(np.array([theta_b])), dtype=float).ravel()[0])
                                         # compute bridge B at discrete theta samples within the sector (including integer grid points)
                                         # find discrete indices within the sector (analysis-frame indices)
                                         # Build as a Python list first, then convert to ndarray to keep types narrow
@@ -2641,7 +2655,7 @@ def build_pot_mesh(
                                                 continue
                                             # reduce idxs, th_idxs and s_vals to kept subset
                                             idxs = idxs[keep_mask]
-                                            th_idxs = th[idxs]
+                                            th_idxs = np.asarray(th, dtype=float)[idxs]
                                             s_vals = (
                                                 (th_idxs - theta_start) % TAU
                                             ) / arc_len
@@ -3195,7 +3209,7 @@ def build_pot_mesh(
                 # analyzers may consider this unreachable due to earlier
                 # control-flow narrowing; keep a narrow ignore for that false
                 # positive and document the reason.
-                if mode == "vertical":  # type: ignore[unreachable]  # justification: defensive runtime fallback when env_final is None
+                if mode == "vertical":  # justification: defensive runtime fallback when env_final is None
                     # vertical quantile envelope
                     stacks = []
                     for dz in range(-h, h + 1):
@@ -4051,7 +4065,17 @@ def build_pot_mesh(
         r11 = r_outer_samples[1:, :][:, jn]
 
         # Decide per-cell diagonal using geometry-based triangle quality for LowPolyFacet
-        def _tri_quality(ax, ay, az, bx, by, bz, cx, cy, cz):
+        def _tri_quality(
+            ax: NDArrayFloat | float,
+            ay: NDArrayFloat | float,
+            az: NDArrayFloat | float,
+            bx: NDArrayFloat | float,
+            by: NDArrayFloat | float,
+            bz: NDArrayFloat | float,
+            cx: NDArrayFloat | float,
+            cy: NDArrayFloat | float,
+            cz: NDArrayFloat | float,
+        ) -> NDArrayFloat:
             ux = bx - ax
             uy = by - ay
             uz = bz - az
@@ -4074,7 +4098,7 @@ def build_pot_mesh(
             # mean ratio: q = (4*sqrt(3)*A)/(a^2+b^2+c^2); here 4*sqrt(3)*A = sqrt(3) * sqrt(area2)
             num = np.sqrt(3.0) * np.sqrt(np.maximum(area2, 0.0))
             den = np.maximum(u2 + v2 + w2, 1e-12)
-            return num / den
+            return cast(NDArrayFloat, num / den)
 
         # Build 3D positions for corners of each quad cell (rows x cols)
         # Current and next ring z values
@@ -4400,15 +4424,15 @@ except Exception:
 
 
 def save_preview_png(
-    path,
+    path: str | Path,
     H: float,
     Rt: float,
     Rb: float,
     expn: float,
     n_theta: int,
     n_z: int,
-    r_outer_fn,
-    style_opts: Dict,
+    r_outer_fn: Callable[..., Any],
+    style_opts: Dict[str, Any],
 ) -> None:
     """Render a simple 3D surface preview and save to PNG.
 
