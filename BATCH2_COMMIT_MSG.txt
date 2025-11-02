@@ -1,8 +1,0 @@
-Batch 2 start: conservative annotations + accessors for pfui.schemas
-
-- Add Mapping[...] annotations for top-level schema constants in `pfui/schemas.py`.
-- Add accessor functions (get_style_schemas, get_global_controls, get_canonical_controls, get_canonical_style_schemas) and alias accessors for aliases already present.
-- Add smoke test `tests/typing/test_schemas_smoke.py`.
-- Migrate immediate callers (app.py, pfui/state.py, pfui/presets.py, pfui/controls.py, tests/pfui/test_state.py) to use accessors to reduce import-time coupling.
-
-Rationale: Reduce import-time heavy coupling to allow iterative mypy fixes for schemas and geometry in safe, test-backed steps.

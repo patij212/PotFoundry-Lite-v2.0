@@ -1,15 +1,13 @@
 """Tests for deep link encoding/decoding."""
-
+import pytest
 import base64
 import json
 
-import pytest
-
 from pfui.deeplink import (
-    decode_state,
     encode_state,
-    generate_deep_link,
+    decode_state,
     validate_state,
+    generate_deep_link,
 )
 
 
@@ -20,7 +18,7 @@ def test_encode_decode_roundtrip():
         "H": 120.0,
         "top_od": 105.5,
         "bottom_od": 95.5,
-        "opts": {"freq": 8.0, "amp": 2.5},
+        "opts": {"freq": 8.0, "amp": 2.5}
     }
 
     encoded = encode_state(state)
@@ -63,7 +61,7 @@ def test_validate_state_accepts_valid_params():
         "style": "HarmonicRipple",
         "H": 120.0,
         "top_od": 105.5,
-        "opts": {"freq": 8.0},
+        "opts": {"freq": 8.0}
     }
 
     validated, warnings = validate_state(state)
@@ -141,7 +139,7 @@ def test_encode_large_state():
         "t_bottom": 3.0,
         "r_drain": 6.0,
         "expn": 1.5,
-        "opts": {f"param_{i}": float(i) for i in range(20)},
+        "opts": {f"param_{i}": float(i) for i in range(20)}
     }
 
     encoded = encode_state(state)

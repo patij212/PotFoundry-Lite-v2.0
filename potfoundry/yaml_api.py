@@ -4,26 +4,24 @@
 # All STL exports in this module use write_stl_binary for optimal file size
 # and performance. Binary STL is the recommended format for all production use.
 from __future__ import annotations
-
+from dataclasses import dataclass, asdict, field
+from typing import Dict, List
+from pathlib import Path
 import json
 import zipfile
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 import yaml
-
+from .schema import ConfigV2, migrate_v1_to_v2, deep_merge
 # Binary STL writer (recommended for all exports)
-from .core.io.stl import atomic_write_bytes, write_stl_binary
+from .core.io.stl import write_stl_binary, atomic_write_bytes
+
 from .geometry import (
-    STYLES,
     MeshQuality,
     PotDefaults,
+    STYLES,
     build_pot_mesh,
     save_preview_png,
 )
-from .schema import ConfigV2, deep_merge, migrate_v1_to_v2
-
 
 @dataclass
 class Config:
@@ -33,41 +31,11 @@ class Config:
     make_zip: bool = False
     mesh: MeshQuality = field(default_factory=MeshQuality)
     defaults: PotDefaults = field(default_factory=PotDefaults)
-    presets: Dict[str, dict] = field(
-        default_factory=dict
-    )  # name -> {style, size, opts}
-    recipes: List[dict] = field(
-        default_factory=list
-    )  # list of {name, style|use, size, opts}
+    presets: Dict[str, dict] = field(default_factory=dict)   # name -> {style, size, opts}
+    recipes: List[dict] = field(default_factory=list)        # list of {name, style|use, size, opts}
 
-
-def load_config(path: Path | str) -> ConfigV2:
-    # Accept either a Path or a string filename
-    if not isinstance(path, Path):
-        path = Path(path)
-    raw: Dict[str, Any] = yaml.safe_load(path.read_text()) or {}
-    # Accept some legacy shorthand keys in the 'defaults' block (tests use H/Rt/Rb etc.)
-
-    defaults = cast(Dict[str, Any], raw.get("defaults") or {})
-    if isinstance(defaults, dict):
-        # map shorthand keys to canonical ConfigV2 names
-        key_map = {
-            "H": "height",
-            "Rt": "top_od",
-            "Rb": "bottom_od",
-            "t_wall": "wall",
-            "t_bottom": "bottom",
-            "r_drain": "drain",
-            # alternate names
-            "expn": "flare_exp",
-        }
-        if any(k in defaults for k in key_map.keys()):
-            new_defaults: Dict[str, Any] = {}
-            for k, v in defaults.items():
-                nk = key_map.get(k, k)
-                new_defaults[nk] = v
-            raw["defaults"] = new_defaults
-
+def load_config(path: Path) -> ConfigV2:
+    raw = yaml.safe_load(path.read_text()) or {}
     version = int(raw.get("version", 1))
     if version == 2:
         return ConfigV2.model_validate(raw)
@@ -76,55 +44,20 @@ def load_config(path: Path | str) -> ConfigV2:
         return ConfigV2.model_validate(migrated)
     else:
         raise ValueError(f"Unsupported version {version}.")
-
-
-def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
+def _normalize_cfg(cfg) -> Config:
     """Accept ConfigV2 (Pydantic) or legacy Config dataclass; return legacy Config."""
     try:
         from .schema import ConfigV2
-
         if isinstance(cfg, ConfigV2):
-            # The Pydantic models sometimes contain plain dicts for nested
-            # fields in test/legacy scenarios. Cast to Any so that static
-            # analysis doesn't treat the subsequent runtime isinstance checks
-            # as unreachable (cfg.mesh is annotated as a model in the schema).
-            from typing import Any as _Any
-
-            cfg_any = cast(_Any, cfg)
-
-            m = cfg_any.mesh
-            if isinstance(m, dict):
-                mesh = MeshQuality(
-                    n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84))
-                )
-            else:
-                mesh = MeshQuality(n_theta=int(m.n_theta), n_z=int(m.n_z))
-
-            d = cfg_any.defaults
-            if isinstance(d, dict):
-                defaults = PotDefaults(**d)
-            else:
-                defaults = PotDefaults(**d.model_dump())
-
-            presets = {}
-            for k, v in (cfg_any.presets or {}).items():
-                if isinstance(v, dict):
-                    presets[k] = v
-                else:
-                    presets[k] = v.model_dump()
-
-            recipes = []
-            for r in cfg_any.recipes or []:
-                if isinstance(r, dict):
-                    recipes.append(r)
-                else:
-                    recipes.append(r.model_dump())
-
+            mesh = MeshQuality(n_theta=int(cfg.mesh.n_theta), n_z=int(cfg.mesh.n_z))
+            defaults = PotDefaults(**cfg.defaults.model_dump())
+            presets = {k: v.model_dump() for k, v in (cfg.presets or {}).items()}
+            recipes = [r.model_dump() for r in (cfg.recipes or [])]
             return Config(
                 version=2,
-                outdir=str(cfg_any.outdir),
-                save_previews=bool(cfg_any.save_previews),
-                make_zip=bool(cfg_any.make_zip),
+                outdir=str(cfg.outdir),
+                save_previews=bool(cfg.save_previews),
+                make_zip=bool(cfg.make_zip),
                 mesh=mesh,
                 defaults=defaults,
                 presets=presets,
@@ -133,10 +66,12 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
     except Exception:
         pass
     # already legacy Config
-    return cast(Config, cfg)
+    return cfg
 
 
-def validate_recipe(recipe: Dict[str, Any], cfg: Config) -> List[str]:
+
+
+def validate_recipe(recipe: dict, cfg: Config) -> list[str]:
     errs: List[str] = []
     r = _normalize_style_alias(recipe or {})
     name = r.get("name")
@@ -166,26 +101,18 @@ def validate_recipe(recipe: Dict[str, Any], cfg: Config) -> List[str]:
         errs.append(f"Recipe '{name}': unknown style '{style}'.")
 
     size = r.get("size", {}) or {}
-    for key in (
-        "height",
-        "top_od",
-        "bottom_od",
-        "wall",
-        "bottom",
-        "drain",
-        "flare_exp",
-    ):
+    for key in ("height", "top_od", "bottom_od", "wall", "bottom", "drain", "flare_exp"):
         if key in size and not isinstance(size[key], (int, float)):
             errs.append(f"Recipe '{name}': size['{key}'] must be a number.")
     return errs
 
 
-def realize_recipe(
-    recipe: Dict[str, Any], cfg: Config
-) -> Tuple[str, str, Dict[str, Any], Dict[str, Any]]:
+
+
+def realize_recipe(recipe: dict, cfg: Config) -> tuple[str, str, dict, dict]:
     r = _normalize_style_alias(recipe or {})
-    name: str = r["name"]
-    base: Dict[str, Any] = dict(style=None, size={}, opts={})
+    name = r["name"]
+    base = dict(style=None, size={}, opts={})
 
     if r.get("use"):
         pres = _resolve_preset_chain(r["use"], cfg.presets or {})
@@ -209,20 +136,14 @@ def realize_recipe(
     return name, style, size, opts
 
 
-def build_from_yaml(
-    cfg: Union[Config, ConfigV2],
-    outdir: Path,
-    do_previews: bool = True,
-    do_zip: bool = True,
-    only_names: Optional[Sequence[str]] = None,
-    write_manifest: bool = False,
-) -> Dict[str, Any]:
+def build_from_yaml(cfg: Config | object, outdir: Path, do_previews: bool = True, do_zip: bool = True,
+                    only_names: list[str] | None = None, write_manifest: bool = False) -> dict:
     cfg = _normalize_cfg(cfg)
     if not cfg.recipes:
         raise SystemExit("No recipes found.")
     errs = []
     for r in cfg.recipes:
-        r_dict = r if isinstance(r, dict) else getattr(r, "model_dump", lambda: r)()
+        r_dict = r if isinstance(r, dict) else getattr(r, 'model_dump', lambda: r)()
         errs.extend(validate_recipe(r_dict, cfg))
     if errs:
         raise SystemExit("Invalid YAML:\n- " + "\n- ".join(errs))
@@ -230,15 +151,9 @@ def build_from_yaml(
     outdir.mkdir(parents=True, exist_ok=True)
     names = set(only_names) if only_names else None
 
-    manifest: Dict[str, Any] = {
-        "units": "mm",
-        "outdir": str(outdir.resolve()),
-        "pots": [],
-    }
+    manifest = {"units": "mm", "outdir": str(outdir.resolve()), "pots": []}
     for rec in cfg.recipes:
-        rec = (
-            rec if isinstance(rec, dict) else getattr(rec, "model_dump", lambda: rec)()
-        )
+        rec = rec if isinstance(rec, dict) else getattr(rec, 'model_dump', lambda: rec)()
         name, style, size, opts = realize_recipe(rec, cfg)
         if names and name not in names:
             continue
@@ -263,29 +178,19 @@ def build_from_yaml(
         write_stl_binary(stl_path, name, verts, faces)
 
         if diag["clamp_ratio_at_bottom"] > 0.02:
-            print(
-                f"[WARN] '{name}': inner radius near drain was clamped in "
-                f"{100.0 * diag['clamp_ratio_at_bottom']:.1f}% of inner samples. "
-                "Consider increasing bottom_od, decreasing drain, or increasing wall."
-            )
+            print(f"[WARN] '{name}': inner radius near drain was clamped in "
+                  f"{100.0*diag['clamp_ratio_at_bottom']:.1f}% of inner samples. "
+                  "Consider increasing bottom_od, decreasing drain, or increasing wall.")
 
         if do_previews:
             png_path = outdir / f"preview_{name}.png"
             save_preview_png(png_path, H, Rt, Rb, expn, n_theta, n_z, r_fn, opts)
 
-        manifest["pots"].append(
-            {
-                "name": name,
-                "style": style,
-                "description": desc,
-                "size": size,
-                "opts": opts,
-                "vertices": int(len(verts)),
-                "faces": int(len(faces)),
-                "diagnostics": diag,
-                "stl": str(stl_path.resolve()),
-            }
-        )
+        manifest["pots"].append({
+            "name": name, "style": style, "description": desc, "size": size, "opts": opts,
+            "vertices": int(len(verts)), "faces": int(len(faces)), "diagnostics": diag,
+            "stl": str(stl_path.resolve())
+        })
         print(f"[OK] Wrote {stl_path.name}  (V={len(verts)} F={len(faces)})")
 
     if do_zip and manifest["pots"]:
@@ -298,7 +203,7 @@ def build_from_yaml(
 
     if write_manifest:
         mpath = outdir / "manifest.json"
-        atomic_write_bytes(mpath, json.dumps(manifest, indent=2).encode("utf-8"))
+        atomic_write_bytes(mpath, json.dumps(manifest, indent=2).encode('utf-8'))
         print(f"[OK] Wrote {mpath.name}")
         manifest["manifest"] = str(mpath.resolve())
 
@@ -308,8 +213,7 @@ def build_from_yaml(
 def _resolve_preset_chain(preset_name: str, presets: dict) -> dict:
     """Resolve a preset with optional inheritance (preset may have 'use' to extend another)."""
     seen = set()
-
-    current: Optional[str] = preset_name
+    current = preset_name
     merged: dict = {}
     while current:
         if current in seen:
@@ -319,21 +223,20 @@ def _resolve_preset_chain(preset_name: str, presets: dict) -> dict:
         if not isinstance(p, dict):
             break
         # normalize alias 'type' -> 'style'
-        if "type" in p and "style" not in p:
+        if 'type' in p and 'style' not in p:
             p = dict(p)
-            p["style"] = p.pop("type")
+            p['style'] = p.pop('type')
         # merge child over parent
         merged = deep_merge(p, merged)
-        current = p.get("use")
+        current = p.get('use')
     return merged
 
 
 def _normalize_style_alias(d: dict) -> dict:
-    if isinstance(d, dict) and "type" in d and "style" not in d:
+    if isinstance(d, dict) and 'type' in d and 'style' not in d:
         d = dict(d)
-        d["style"] = d.pop("type")
+        d['style'] = d.pop('type')
     return d
-
 
 def _strip_nones(obj):
     if isinstance(obj, dict):
@@ -341,7 +244,6 @@ def _strip_nones(obj):
     if isinstance(obj, list):
         return [_strip_nones(v) for v in obj]
     return obj
-
 
 STYLE_ALIASES = {
     "fluted": "HarmonicRipple",
@@ -351,7 +253,6 @@ STYLE_ALIASES = {
     "spiral": "SpiralRidges",
     "smooth": "SuperellipseMorph",
 }
-
 
 def _resolve_style_name(name: str) -> str:
     if name in STYLES:

@@ -1,5 +1,4 @@
 """Test fixtures for library tests."""
-
 import pytest
 
 
@@ -81,7 +80,6 @@ def golden_content_id():
 def sample_stl_bytes():
     """Minimal binary STL file (80-byte header + 4-byte triangle count + triangles)."""
     import struct
-
     header = b"PotFoundry Test STL" + b"\x00" * (80 - 19)
     triangle_count = struct.pack("<I", 1)  # 1 triangle
 

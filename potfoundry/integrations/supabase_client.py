@@ -3,35 +3,19 @@
 Provides graceful degradation when Supabase is not configured.
 Wraps storage and database operations with error handling and retries.
 """
-
 from __future__ import annotations
 
 import os
 import time
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast  # noqa: E402
 
-if TYPE_CHECKING:
+try:
     import streamlit as st
-
     HAS_STREAMLIT = True
-else:
-    try:
-        import streamlit as st
-
-        HAS_STREAMLIT = True
-    except Exception:
-        HAS_STREAMLIT = False
-        st = None
-
-_tls_warning_emitted: bool = False
-
-# NOTE: supabase_client uses `requests` as a lightweight runtime fallback when
-# `supabase` (supabase-py) is not installed. Historically mypy reported
-# `import-untyped` / `import-not-found` for `requests` in CI/dev. We add a
-# targeted ignore for import-not-found where requests is imported dynamically
-# below; we also added `types-requests` to `requirements-dev.txt` so dev
-# environments can install the stubs to fully silence mypy locally.
+except ImportError:
+    HAS_STREAMLIT = False
+    st = None  # type: ignore
 
 
 @dataclass
@@ -40,7 +24,6 @@ class SupabaseConfig:
 
     key may be a service_role for full access or anon key for read-only.
     """
-
     url: str
     key: str
     bucket: str
@@ -48,25 +31,21 @@ class SupabaseConfig:
 
 class LibraryError(Exception):
     """Base exception for library operations."""
-
     pass
 
 
 class NotConfiguredError(LibraryError):
     """Raised when Supabase is not configured."""
-
     pass
 
 
 class UploadError(LibraryError):
     """Raised when file upload fails."""
-
     pass
 
 
 class DatabaseError(LibraryError):
     """Raised when database operation fails."""
-
     pass
 
 
@@ -103,24 +82,21 @@ class SupabaseClient:
         """
         self.config = config
         self.read_only = read_only
-        self._client: Any = None
+        self._client = None
         self._init_client()
 
     def _init_client(self):
         """Initialize Supabase Python client."""
-        skip_tls = _should_skip_tls_verify()
         try:
-            if self.read_only or skip_tls:
-                # Force direct API when read-only or TLS override is requested
-                raise ImportError("force direct api for readonly or tls override")
+            if self.read_only:
+                # Force direct API with apikey only; no Authorization header
+                raise ImportError("force direct api for readonly")
             # Try to import supabase-py for full-access mode
             from supabase import create_client
-
             self._client = create_client(self.config.url, self.config.key)
         except ImportError:
             # Direct API calls
             import requests
-
             self._client = None
             self._session = requests.Session()
             # Always set apikey; Authorization only if not read_only
@@ -130,20 +106,10 @@ class SupabaseClient:
             self._session.headers.update(headers)
             # Reasonable timeouts
             self._timeout = (5, 15)  # connect, read seconds
-            self._skip_tls_verify = skip_tls
-            if skip_tls:
-                self._session.verify = False
-                try:
-                    import urllib3
-
-                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                except Exception:
-                    pass
-                _emit_tls_override_warning()
 
     def is_configured(self) -> bool:
         """Check if client is properly configured."""
-        return self._client is not None or hasattr(self, "_session")
+        return self._client is not None or hasattr(self, '_session')
 
     def upload_bytes(
         self,
@@ -151,7 +117,7 @@ class SupabaseClient:
         data: bytes,
         content_type: str = "application/octet-stream",
         gzip: bool = False,
-        max_retries: int = 3,
+        max_retries: int = 3
     ) -> str:
         """Upload bytes to Supabase Storage.
 
@@ -169,9 +135,7 @@ class SupabaseClient:
             UploadError: If upload fails after retries
         """
         if self.read_only:
-            raise NotConfiguredError(
-                "Supabase configured read-only; publishing disabled"
-            )
+            raise NotConfiguredError("Supabase configured read-only; publishing disabled")
         headers = {"Content-Type": content_type}
         if gzip:
             headers["Content-Encoding"] = "gzip"
@@ -182,35 +146,23 @@ class SupabaseClient:
 
         for attempt in range(max_retries):
             try:
-                client_obj = getattr(self, "_client", None)
-                if client_obj is not None:
-                    # Use supabase-py client (typed dynamically)
-                    client_any = cast(Any, client_obj)
-                    client_any.storage.from_(self.config.bucket).upload(
+                if self._client:
+                    # Use supabase-py client
+                    self._client.storage.from_(self.config.bucket).upload(
                         path, data, file_options={"content-type": content_type}
                     )
                     # Get public URL
-                    url = client_any.storage.from_(self.config.bucket).get_public_url(
-                        path
-                    )
-                    # Ensure we return a concrete str for mypy
-                    return str(url)
+                    url = self._client.storage.from_(self.config.bucket).get_public_url(path)
+                    return url
                 else:
                     # Use direct API call
                     url = f"{self.config.url}/storage/v1/object/{self.config.bucket}/{path}"
-                    resp = self._session.post(
-                        url,
-                        data=data,
-                        headers=headers,
-                        timeout=getattr(self, "_timeout", None),
-                    )
+                    resp = self._session.post(url, data=data, headers=headers, timeout=getattr(self, "_timeout", None))
                     try:
                         resp.raise_for_status()
                     except Exception as e:
                         # Include response body for easier debugging
-                        raise UploadError(
-                            f"HTTP {resp.status_code}: {resp.text}"
-                        ) from e
+                        raise UploadError(f"HTTP {resp.status_code}: {resp.text}") from e
 
                     # Return public URL
                     public_url = f"{self.config.url}/storage/v1/object/public/{self.config.bucket}/{path}"
@@ -218,19 +170,15 @@ class SupabaseClient:
 
             except Exception as e:
                 if attempt == max_retries - 1:
-                    raise UploadError(
-                        f"Upload failed after {max_retries} attempts: {e}"
-                    )
+                    raise UploadError(f"Upload failed after {max_retries} attempts: {e}")
 
                 # Exponential backoff
-                wait_time = 2**attempt * 0.5
+                wait_time = 2 ** attempt * 0.5
                 time.sleep(wait_time)
 
         raise UploadError("Upload failed")
 
-    def upsert_row(
-        self, table: str, row: Dict[str, Any], max_retries: int = 3
-    ) -> Dict[str, Any]:
+    def upsert_row(self, table: str, row: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
         """Insert or update row in Supabase table.
 
         Args:
@@ -245,20 +193,13 @@ class SupabaseClient:
             DatabaseError: If operation fails after retries
         """
         if self.read_only:
-            raise NotConfiguredError(
-                "Supabase configured read-only; publishing disabled"
-            )
+            raise NotConfiguredError("Supabase configured read-only; publishing disabled")
         for attempt in range(max_retries):
             try:
-                client_obj = getattr(self, "_client", None)
-                if client_obj is not None:
+                if self._client:
                     # Use supabase-py client
-                    client_any = cast(Any, client_obj)
-                    response = client_any.table(table).upsert(row).execute()
-                    resp_data = cast(
-                        List[Dict[str, Any]], getattr(response, "data", [])
-                    )
-                    return resp_data[0] if resp_data else row
+                    response = self._client.table(table).upsert(row).execute()
+                    return response.data[0] if response.data else row
                 else:
                     # Use direct API call
                     url = f"{self.config.url}/rest/v1/{table}"
@@ -268,27 +209,17 @@ class SupabaseClient:
                         "Prefer": "resolution=merge-duplicates,return=representation",
                         "Content-Type": "application/json",
                     }
-                    resp = self._session.post(
-                        url, params=cast(Any, params), json=row, headers=headers
-                    )
+                    resp = self._session.post(url, params=params, json=row, headers=headers)
                     resp.raise_for_status()
 
                     result = resp.json()
-                    # resp.json() is dynamically typed; cast to expected structure for mypy
-                    result_typed = cast(List[Dict[str, Any]], result)
-                    return (
-                        result_typed[0]
-                        if isinstance(result_typed, list) and result_typed
-                        else row
-                    )
+                    return result[0] if isinstance(result, list) and result else row
 
             except Exception as e:
                 if attempt == max_retries - 1:
-                    raise DatabaseError(
-                        f"Database upsert failed after {max_retries} attempts: {e}"
-                    )
+                    raise DatabaseError(f"Database upsert failed after {max_retries} attempts: {e}")
 
-                wait_time = 2**attempt * 0.5
+                wait_time = 2 ** attempt * 0.5
                 time.sleep(wait_time)
 
         raise DatabaseError("Upsert failed")
@@ -308,18 +239,13 @@ class SupabaseClient:
             raise NotConfiguredError("Supabase configured read-only; update disabled")
         for attempt in range(max_retries):
             try:
-                client_obj = getattr(self, "_client", None)
-                if client_obj is not None:
-                    client_any = cast(Any, client_obj)
-                    query = client_any.table(table).update(changes)
+                if self._client:
+                    query = self._client.table(table).update(changes)
                     for col, val in (filters or {}).items():
                         query = query.eq(col, val)
                     resp = query.execute()
                     try:
-                        resp_data = cast(
-                            List[Dict[str, Any]], getattr(resp, "data", [])
-                        )
-                        return len(resp_data or [])
+                        return len(resp.data or [])
                     except Exception:
                         return 0
                 else:
@@ -328,26 +254,18 @@ class SupabaseClient:
                     if filters:
                         for col, val in filters.items():
                             params[col] = f"eq.{val}"
-                    headers = {
-                        "Prefer": "return=representation",
-                        "Content-Type": "application/json",
-                    }
-                    resp = self._session.patch(
-                        url, params=cast(Any, params), json=changes, headers=headers
-                    )
+                    headers = {"Prefer": "return=representation", "Content-Type": "application/json"}
+                    resp = self._session.patch(url, params=params, json=changes, headers=headers)
                     resp.raise_for_status()
                     try:
                         data = resp.json()
-                        data_typed = cast(List[Dict[str, Any]], data)
-                        return len(data_typed) if isinstance(data_typed, list) else 0
+                        return len(data) if isinstance(data, list) else 0
                     except Exception:
                         return 0
             except Exception as e:
                 if attempt == max_retries - 1:
-                    raise DatabaseError(
-                        f"Database update failed after {max_retries} attempts: {e}"
-                    )
-                time.sleep(2**attempt * 0.5)
+                    raise DatabaseError(f"Database update failed after {max_retries} attempts: {e}")
+                time.sleep(2 ** attempt * 0.5)
         raise DatabaseError("Update failed")
 
     def select_rows(
@@ -358,7 +276,7 @@ class SupabaseClient:
         order_desc: bool = True,
         limit: int = 24,
         offset: int = 0,
-        max_retries: int = 3,
+        max_retries: int = 3
     ) -> List[Dict[str, Any]]:
         """Select rows from Supabase table.
 
@@ -379,11 +297,9 @@ class SupabaseClient:
         """
         for attempt in range(max_retries):
             try:
-                client_obj = getattr(self, "_client", None)
-                if client_obj is not None:
+                if self._client:
                     # Use supabase-py client
-                    client_any = cast(Any, client_obj)
-                    query = client_any.table(table).select("*")
+                    query = self._client.table(table).select("*")
 
                     # Apply filters
                     if filters:
@@ -403,10 +319,7 @@ class SupabaseClient:
                     query = query.limit(limit).offset(offset)
 
                     response = query.execute()
-                    resp_data = cast(
-                        List[Dict[str, Any]], getattr(response, "data", [])
-                    )
-                    return resp_data
+                    return response.data
                 else:
                     # Use direct API call
                     url = f"{self.config.url}/rest/v1/{table}"
@@ -432,40 +345,24 @@ class SupabaseClient:
                                 params[col] = f"eq.{val}"
 
                     # Prefer public read without Authorization if possible. We'll clone headers and drop Authorization.
-                    resp = self._session.get(
-                        url,
-                        params=cast(Any, params),
-                        timeout=getattr(self, "_timeout", None),
-                    )
+                    resp = self._session.get(url, params=params, timeout=getattr(self, "_timeout", None))
                     if resp.status_code == 401:
                         # Retry without Authorization to leverage public SELECT policy
                         import requests
-
                         tmp_session = requests.Session()
                         # Keep apikey for project routing, but no Authorization so it uses anon role
-                        tmp_session.headers.update(
-                            {
-                                "apikey": self.config.key,
-                            }
-                        )
-                        if getattr(self, "_skip_tls_verify", False):
-                            tmp_session.verify = False
-                        resp = tmp_session.get(
-                            url,
-                            params=cast(Any, params),
-                            timeout=getattr(self, "_timeout", None),
-                        )
+                        tmp_session.headers.update({
+                            "apikey": self.config.key,
+                        })
+                        resp = tmp_session.get(url, params=params, timeout=getattr(self, "_timeout", None))
                     resp.raise_for_status()
-                    data = resp.json()
-                    return cast(List[Dict[str, Any]], data)
+                    return resp.json()
 
             except Exception as e:
                 if attempt == max_retries - 1:
-                    raise DatabaseError(
-                        f"Database select failed after {max_retries} attempts: {e}"
-                    )
+                    raise DatabaseError(f"Database select failed after {max_retries} attempts: {e}")
 
-                wait_time = 2**attempt * 0.5
+                wait_time = 2 ** attempt * 0.5
                 time.sleep(wait_time)
 
         raise DatabaseError("Select failed")
@@ -484,19 +381,14 @@ class SupabaseClient:
             raise NotConfiguredError("Supabase configured read-only; delete disabled")
         for attempt in range(max_retries):
             try:
-                client_obj = getattr(self, "_client", None)
-                if client_obj is not None:
-                    client_any = cast(Any, client_obj)
-                    query = client_any.table(table).delete()
+                if self._client:
+                    query = self._client.table(table).delete()
                     for col, val in (filters or {}).items():
                         query = query.eq(col, val)
                     resp = query.execute()
                     # supabase-py returns count only if requested; best-effort length
                     try:
-                        resp_data = cast(
-                            List[Dict[str, Any]], getattr(resp, "data", [])
-                        )
-                        return len(resp_data or [])
+                        return len(resp.data or [])
                     except Exception:
                         return 0
                 else:
@@ -507,9 +399,7 @@ class SupabaseClient:
                         for col, val in filters.items():
                             params[col] = f"eq.{val}"
                     headers = {"Prefer": "return=representation"}
-                    resp = self._session.delete(
-                        url, params=cast(Any, params), headers=headers
-                    )
+                    resp = self._session.delete(url, params=params, headers=headers)
                     resp.raise_for_status()
                     try:
                         data = resp.json()
@@ -518,10 +408,8 @@ class SupabaseClient:
                         return 0
             except Exception as e:
                 if attempt == max_retries - 1:
-                    raise DatabaseError(
-                        f"Database delete failed after {max_retries} attempts: {e}"
-                    )
-                time.sleep(2**attempt * 0.5)
+                    raise DatabaseError(f"Database delete failed after {max_retries} attempts: {e}")
+                time.sleep(2 ** attempt * 0.5)
         raise DatabaseError("Delete failed")
 
 
@@ -533,53 +421,6 @@ def _is_disabled_via_secrets() -> bool:
         except Exception:
             return False
     return False
-
-
-def _should_skip_tls_verify() -> bool:
-    """Return True when TLS verification should be skipped (explicit opt-in)."""
-    for key in (
-        "SUPABASE_SKIP_TLS_VERIFY",
-        "STREAMLIT_SUPABASE_SKIP_TLS_VERIFY",
-        "SUPABASE_ALLOW_INSECURE",
-    ):
-        val = os.environ.get(key)
-        if isinstance(val, str) and val.strip().lower() in {"1", "true", "yes", "on"}:
-            return True
-    if HAS_STREAMLIT and st is not None:
-        try:
-            secrets = st.secrets.get("connections", {}).get("supabase", {})
-            raw = secrets.get("skip_tls_verify") or secrets.get("allow_insecure_tls")
-            if isinstance(raw, bool):
-                return raw
-            if isinstance(raw, str) and raw.strip().lower() in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }:
-                return True
-        except Exception:
-            return False
-    return False
-
-
-def _emit_tls_override_warning() -> None:
-    """Warn once that TLS verification has been disabled."""
-    global _tls_warning_emitted
-    if _tls_warning_emitted:
-        return
-    _tls_warning_emitted = True
-    message = (
-        "⚠️ Supabase TLS certificate verification is disabled. "
-        "Only use this in trusted environments."
-    )
-    if HAS_STREAMLIT and st is not None:
-        try:
-            st.warning(message)
-            return
-        except Exception:
-            pass
-    print(message)
 
 
 def _looks_like_invalid_key(key: Optional[str]) -> bool:
@@ -631,16 +472,9 @@ def get_client() -> SupabaseClient | NotConfiguredClient:
                 # Validate key before constructing client
                 if _looks_like_invalid_key(secrets.get("key")):
                     # Try read-only if anon key is provided under ALT keys
-                    anon = (
-                        str(secrets.get("anon", "")).strip()
-                        or str(secrets.get("anon_key", "")).strip()
-                    )
+                    anon = str(secrets.get("anon", "")).strip() or str(secrets.get("anon_key", "")).strip()
                     if anon:
-                        cfg = SupabaseConfig(
-                            url=str(secrets["url"]).strip(),
-                            key=anon,
-                            bucket=str(secrets.get("bucket", "pots")).strip() or "pots",
-                        )
+                        cfg = SupabaseConfig(url=str(secrets["url"]).strip(), key=anon, bucket=str(secrets.get("bucket", "pots")).strip() or "pots")
                         return SupabaseClient(cfg, read_only=True)
                     # If secrets look invalid, fall through to env/anon instead of blocking
                 else:
@@ -654,11 +488,9 @@ def get_client() -> SupabaseClient | NotConfiguredClient:
             pass
 
     # 3) Fallback: read-only with anon key from environment
-    anon_env: Optional[str] = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get(
-        "STREAMLIT_SUPABASE_ANON_KEY"
-    )
-    if url and anon_env:
-        cfg = SupabaseConfig(url=url, key=anon_env, bucket=bucket)
+    anon = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("STREAMLIT_SUPABASE_ANON_KEY")
+    if url and anon:
+        cfg = SupabaseConfig(url=url, key=anon, bucket=bucket)
         return SupabaseClient(cfg, read_only=True)
 
     # Not configured
@@ -676,9 +508,6 @@ def get_singleton_client() -> SupabaseClient | NotConfiguredClient:
         Cached client instance
     """
     global _client_instance
-    if _client_instance is None or (
-        hasattr(_client_instance, "is_configured")
-        and not _client_instance.is_configured()
-    ):
+    if _client_instance is None or (hasattr(_client_instance, "is_configured") and not _client_instance.is_configured()):
         _client_instance = get_client()
     return _client_instance

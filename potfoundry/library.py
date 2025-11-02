@@ -3,37 +3,29 @@
 Handles canonical JSON generation, content hashing, deduplication,
 thumbnail creation, validation, and publish workflow.
 """
-
 from __future__ import annotations
 
 import gzip
 import hashlib
 import json
 import re
-from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
+from dataclasses import dataclass
 
-if TYPE_CHECKING:
-    # For static analysis, expose streamlit names so type checkers can reason
-    # about Streamlit usage in the module without performing a runtime import.
+try:
     import streamlit as st
-
     HAS_STREAMLIT = True
-else:
-    try:
-        import streamlit as st
-
-        HAS_STREAMLIT = True
-    except Exception:
-        HAS_STREAMLIT = False
-        st = None
+except ImportError:
+    HAS_STREAMLIT = False
+    st = None  # type: ignore
 
 from potfoundry.integrations.supabase_client import (
-    LibraryError,
-    NotConfiguredError,
     get_singleton_client,
+    NotConfiguredError,
+    LibraryError
 )
+
 
 # Constants
 APP_VERSION = "2.0.0"
@@ -46,7 +38,7 @@ GZIP_THRESHOLD_MB = 1
 
 # Blocklist for inappropriate content (expandable)
 BLOCKLIST_PATTERNS = [
-    r"\b(spam|test123|asdf|xxx)\b",  # Common spam/test patterns
+    r'\b(spam|test123|asdf|xxx)\b',  # Common spam/test patterns
 ]
 
 # Allowed licenses
@@ -63,7 +55,6 @@ ALLOWED_LICENSES = [
 @dataclass
 class PublishResult:
     """Result of a publish operation."""
-
     id: str
     stl_url: str
     thumb_url: str
@@ -76,31 +67,25 @@ class PublishResult:
 # Canonical JSON & Hashing
 # ============================================================
 
-
 def _round_float(value: float, precision: int = 6) -> float:
     """Round float to specified precision, removing trailing zeros."""
     return round(value, precision)
 
 
-def _normalize_dict(d: dict[str, Any], precision: int = 6) -> dict[str, Any]:
+def _normalize_dict(d: dict, precision: int = 6) -> dict:
     """Recursively normalize dictionary: round floats, sort keys."""
-    result: dict[str, Any] = {}
+    result = {}
     for key in sorted(d.keys()):
         value = d[key]
         if isinstance(value, dict):
-            # child dicts normalize to dict[str, Any]
             result[key] = _normalize_dict(value, precision)
         elif isinstance(value, (list, tuple)):
-            # normalize list/tuple entries; ensure Any typing for heterogenous lists
-            out_list: List[Any] = []
-            for v in value:
-                if isinstance(v, dict):
-                    out_list.append(_normalize_dict(v, precision))
-                elif isinstance(v, float):
-                    out_list.append(_round_float(v, precision))
-                else:
-                    out_list.append(v)
-            result[key] = out_list
+            result[key] = [
+                _normalize_dict(v, precision) if isinstance(v, dict)
+                else _round_float(v, precision) if isinstance(v, float)
+                else v
+                for v in value
+            ]
         elif isinstance(value, float):
             result[key] = _round_float(value, precision)
         else:
@@ -115,7 +100,7 @@ def canonical_payload(
     mesh: dict,
     diagnostics: dict,
     license: str,
-    version: str = APP_VERSION,
+    version: str = APP_VERSION
 ) -> dict:
     """Generate canonical payload with normalized floats and sorted keys.
 
@@ -166,7 +151,6 @@ def content_id(payload: dict) -> str:
 # Validation
 # ============================================================
 
-
 def validate_title(title: str) -> Tuple[bool, Optional[str]]:
     """Validate title string.
 
@@ -201,11 +185,8 @@ def validate_tags(tags: List[str]) -> Tuple[bool, Optional[str]]:
             return False, f"Tag '{tag}' exceeds {MAX_TAG_LENGTH} characters"
 
         # Only alphanumeric, dash, underscore
-        if not re.match(r"^[A-Za-z0-9_-]+$", tag):
-            return (
-                False,
-                f"Tag '{tag}' contains invalid characters (use A-Z, 0-9, -, _)",
-            )
+        if not re.match(r'^[A-Za-z0-9_-]+$', tag):
+            return False, f"Tag '{tag}' contains invalid characters (use A-Z, 0-9, -, _)"
 
         # Check blocklist
         for pattern in BLOCKLIST_PATTERNS:
@@ -250,10 +231,7 @@ def validate_triangle_count(diagnostics: dict) -> Tuple[bool, Optional[str]]:
     triangle_count = diagnostics.get("triangle_count", 0)
 
     if triangle_count > MAX_TRIANGLE_COUNT:
-        return (
-            False,
-            f"Triangle count too high: {triangle_count:,} (max {MAX_TRIANGLE_COUNT:,})",
-        )
+        return False, f"Triangle count too high: {triangle_count:,} (max {MAX_TRIANGLE_COUNT:,})"
 
     return True, None
 
@@ -261,7 +239,6 @@ def validate_triangle_count(diagnostics: dict) -> Tuple[bool, Optional[str]]:
 # ============================================================
 # Rate Limiting
 # ============================================================
-
 
 def check_rate_limit() -> Tuple[bool, Optional[str]]:
     """Check if user can publish (client-side rate limiting).
@@ -291,12 +268,8 @@ def check_rate_limit() -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def record_publish() -> None:
-    """Record a publish event for rate limiting.
-
-    This function mutates Streamlit's `session_state` to append a timestamp of
-    the publish event. It intentionally returns None.
-    """
+def record_publish():
+    """Record a publish event for rate limiting."""
     if not HAS_STREAMLIT or st is None:
         return
 
@@ -305,15 +278,12 @@ def record_publish() -> None:
 
     # Keep only recent entries
     now = datetime.now().timestamp()
-    st.session_state["_library_publish_times"] = [
-        t for t in publish_times if now - t < 120
-    ]
+    st.session_state["_library_publish_times"] = [t for t in publish_times if now - t < 120]
 
 
 # ============================================================
 # Thumbnail Generation
 # ============================================================
-
 
 def make_thumbnail(
     H: float,
@@ -323,7 +293,7 @@ def make_thumbnail(
     n_theta: int,
     n_z: int,
     style_name: str,
-    opts_json: str,
+    opts_json: str
 ) -> bytes:
     """Generate PNG thumbnail from parameters.
 
@@ -340,48 +310,27 @@ def make_thumbnail(
     """
     try:
         # Prefer exact mesh snapshot renderer for thumbnails (better colors/appearance parity)
-        import json as _json
-
         from pfui.preview import render_mesh_snapshot_cached
-
+        import json as _json
         thumb_theta = max(48, min(144, n_theta))
         thumb_z = max(24, min(64, n_z))
         # appearance key (best-effort) – powoduje przebudowę cache przy zmianie ustawień
         try:
             import streamlit as _st
-
-            ak = "|".join(
-                str(_st.session_state.get(k, ""))
-                for k in (
-                    "preview_palette",
-                    "preview_grad_c1",
-                    "preview_grad_c2",
-                    "preview_grad_c3",
-                    "mesh_ambient",
-                    "mesh_diffuse",
-                    "mesh_specular",
-                    "mesh_roughness",
-                    "mesh_fresnel",
-                )
-            )
+            ak = "|".join(str(_st.session_state.get(k, "")) for k in (
+                "preview_palette", "preview_grad_c1", "preview_grad_c2", "preview_grad_c3",
+                "mesh_ambient", "mesh_diffuse", "mesh_specular", "mesh_roughness", "mesh_fresnel",
+            ))
         except Exception:
             ak = ""
         png = render_mesh_snapshot_cached(
-            H,
-            Rt,
-            Rb,
-            expn,
-            thumb_theta,
-            thumb_z,
-            style_name,
-            _json.dumps(_json.loads(opts_json)),
-            4.0,
-            4.0,
-            120,
+            H, Rt, Rb, expn,
+            thumb_theta, thumb_z,
+            style_name, _json.dumps(_json.loads(opts_json)),
+            4.0, 4.0, 120,
             inner_wall=None,
             place_on_ground=True,
-            view_elev=20.0,
-            view_azim=-60.0,
+            view_elev=20.0, view_azim=-60.0,
             theme="dark",
             appearance_key=ak,
         )
@@ -390,27 +339,16 @@ def make_thumbnail(
     except Exception:
         try:
             # Fallback to surface preview without floor grid if mesh renderer is unavailable
-            import json as _json
-
             from pfui.preview import render_preview_png_cached
-
+            import json as _json
             thumb_theta = max(48, min(144, n_theta))
             thumb_z = max(24, min(64, n_z))
             png2 = render_preview_png_cached(
-                H,
-                Rt,
-                Rb,
-                expn,
-                thumb_theta,
-                thumb_z,
-                style_name,
-                _json.dumps(_json.loads(opts_json)),
-                4.0,
-                4.0,
-                120,
-                theme="dark",
-                show_floor=False,
-                show_axes=False,
+                H, Rt, Rb, expn,
+                thumb_theta, thumb_z,
+                style_name, _json.dumps(_json.loads(opts_json)),
+                4.0, 4.0, 120,
+                theme="dark", show_floor=False, show_axes=False,
                 appearance_key=ak,
             )
             if png2:
@@ -420,7 +358,6 @@ def make_thumbnail(
 
     # Fallback: tiny 1x1 PNG
     import base64
-
     return base64.b64decode(
         b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
     )
@@ -429,7 +366,6 @@ def make_thumbnail(
 # ============================================================
 # Publish Workflow
 # ============================================================
-
 
 def publish_design(
     stl_bytes: bytes,
@@ -441,7 +377,7 @@ def publish_design(
     license: str,
     title: str,
     tags: List[str],
-    app_commit: Optional[str] = None,
+    app_commit: Optional[str] = None
 ) -> PublishResult:
     """Publish design to public library.
 
@@ -508,11 +444,8 @@ def publish_design(
                 id=design_id,
                 stl_url=row["stl_url"],
                 thumb_url=row["thumb_url"],
-                meta_url=row.get(
-                    "meta_url",
-                    f"{row['stl_url'].rsplit('/', 1)[0]}/../meta/{design_id}.json",
-                ),
-                duplicate=True,
+                meta_url=row.get("meta_url", f"{row['stl_url'].rsplit('/', 1)[0]}/../meta/{design_id}.json"),
+                duplicate=True
             )
     except Exception:
         # Continue with new publish if dedup check fails
@@ -538,23 +471,17 @@ def publish_design(
         n_theta=mesh.get("n_theta", 144),
         n_z=mesh.get("n_z", 64),
         style_name=style,
-        opts_json=json.dumps(opts),
+        opts_json=json.dumps(opts)
     )
 
     # Upload files
     try:
-        stl_url = client.upload_bytes(
-            stl_path, stl_data, stl_content_type, gzip=stl_gzipped
-        )
-        thumb_url = client.upload_bytes(
-            f"thumb/{design_id}.png", thumb_bytes, "image/png"
-        )
+        stl_url = client.upload_bytes(stl_path, stl_data, stl_content_type, gzip=stl_gzipped)
+        thumb_url = client.upload_bytes(f"thumb/{design_id}.png", thumb_bytes, "image/png")
 
         # Upload metadata JSON
         meta_json = json.dumps(payload, indent=2)
-        meta_url = client.upload_bytes(
-            f"meta/{design_id}.json", meta_json.encode("utf-8"), "application/json"
-        )
+        meta_url = client.upload_bytes(f"meta/{design_id}.json", meta_json.encode("utf-8"), "application/json")
     except Exception as e:
         raise LibraryError(f"Upload failed: {e}")
 
@@ -586,14 +513,13 @@ def publish_design(
         stl_url=stl_url,
         thumb_url=thumb_url,
         meta_url=meta_url,
-        duplicate=False,
+        duplicate=False
     )
 
 
 # ============================================================
 # Query / Listing
 # ============================================================
-
 
 def list_published(
     style: Optional[str] = None,
@@ -624,7 +550,7 @@ def list_published(
         return [], False
 
     # Build filters
-    filters: Dict[str, object] = {}
+    filters = {}
     if style:
         filters["style"] = style
     if tags:
@@ -640,7 +566,7 @@ def list_published(
             order_by=order_by,
             order_desc=order_desc,
             offset=offset,
-            limit=limit + 1,
+            limit=limit + 1
         )
 
         has_next = len(results) > limit

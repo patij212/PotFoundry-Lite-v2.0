@@ -4,9 +4,9 @@
 
 from __future__ import annotations
 
-import warnings
+from typing import Any, Dict, Mapping, Literal, TypedDict, Tuple, Optional
 from types import MappingProxyType
-from typing import Any, Dict, Literal, Mapping, Optional, Tuple, TypedDict, cast
+import warnings
 
 __all__ = [
     # primary schema/aliases
@@ -28,13 +28,12 @@ __all__ = [
     "warn_on_legacy_keys",
     "validate_keyset",
     "compress_opts",
-    "check_schema_integrity",
+     "check_schema_integrity",
 ]
 
 # =============================================================================
 # Aliases: legacy (engine/YAML) <-> canonical (UI/export)
 # =============================================================================
-
 
 def _invert(d: Mapping[str, str]) -> Dict[str, str]:
     """Invert a string->string mapping.
@@ -62,7 +61,7 @@ def _invert(d: Mapping[str, str]) -> Dict[str, str]:
 
 # -- Canonical names (human-friendly) and alias maps --------------------------
 
-_GLOBAL_ALIASES: Mapping[str, str] = {
+GLOBAL_ALIASES: Mapping[str, str] = {
     # legacy -> canonical
     "spin_turns": "twist_total_turns",
     "spin_phase_deg": "twist_start_angle_deg",
@@ -74,7 +73,7 @@ _GLOBAL_ALIASES: Mapping[str, str] = {
     "bell_width": "mid_bulge_width",
 }
 
-_ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
+ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
     "HarmonicRipple": {
         "hr_petals": "petals_count",
         "hr_petal_amp": "petals_amplitude",
@@ -117,16 +116,6 @@ _ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
         "sf_n2_top": "blossom_cos_power_top",
         "sf_n3": "blossom_sin_power_base",
         "sf_n3_top": "blossom_sin_power_top",
-        # Edge reconstruction (peak snap)
-        "sf_peak_snap_enable": "blossom_peak_snap_enable",
-        "sf_peak_snap_window": "blossom_peak_snap_window",
-        "sf_peak_snap_quantile": "blossom_peak_snap_quantile",
-        "sf_peak_snap_amount": "blossom_peak_snap_amount",
-        # Flow-aware (2D) reconstruction
-        "sf_edge_flow_reconstruct_enable": "blossom_edge_flow_reconstruct_enable",
-        "sf_edge_flow_window": "blossom_edge_flow_window",
-        "sf_edge_flow_quantile": "blossom_edge_flow_quantile",
-        "sf_edge_flow_amount": "blossom_edge_flow_amount",
     },
     "FourierBloom": {
         "fb_strength": "harmonic_blend_strength",
@@ -146,148 +135,14 @@ _ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
         "fb_wobble_freq": "wobble_frequency_x_theta",
         "fb_wobble_zgain": "wobble_z_gain_x_tau",
     },
-    "LowPolyFacet": {
-        "lp_facets": "facets_count",
-        "lp_tiers": "tiers_count",
-        "lp_amp": "facet_amplitude",
-        "lp_jitter": "tier_phase_jitter",
-        "lp_phase_deg": "facet_phase_deg",
-        "lp_bevel": "bevel_softness",
-        "lp_cut_bot_deg": "tier_cut_bot_deg",
-        "lp_cut_top_deg": "tier_cut_top_deg",
-    },
 }
 
-_GLOBAL_REVERSE = _invert(_GLOBAL_ALIASES)
-_REVERSE_BY_STYLE: Dict[str, Dict[str, str]] = {
-    s: _invert(m) for s, m in _ALIASES_BY_STYLE.items()
-}
-
-
-# Lightweight accessors to avoid heavy constant imports by consumers (helps typing tools)
-def get_global_aliases() -> Mapping[str, str]:
-    """Return the global alias mapping (legacy -> canonical).
-
-    Brief:
-        Provide a lightweight accessor that returns the read-only global alias
-        map. Callers should import this function instead of importing the
-        `GLOBAL_ALIASES` MappingProxyType directly to avoid binding heavy
-        module-level constants at import time.
-
-    Args:
-        None
-
-    Returns:
-        Mapping[str, str]: A mapping from legacy/engine keys to canonical UI
-            keys. The returned object is a read-only mapping (MappingProxyType
-            view) and must be treated as immutable by callers.
-
-    Raises:
-        None
-
-    Example:
-        >>> from pfui.schemas import get_global_aliases
-        >>> aliases = get_global_aliases()
-        >>> aliases.get('spin_turns')
-        'twist_total_turns'
-
-    Performance:
-        Fast and allocation-free (returns an existing MappingProxyType). Use
-        this accessor to avoid expensive import-time traversal by static
-        analysis tools.
-    """
-    return GLOBAL_ALIASES
-
-
-def get_aliases_by_style() -> Mapping[str, Mapping[str, str]]:
-    """Return per-style alias mappings.
-
-    Brief:
-        Accessor for per-style alias maps. Each top-level key is a style name
-        (e.g., "HarmonicRipple") and the value is a mapping of legacy ->
-        canonical keys for that style.
-
-    Args:
-        None
-
-    Returns:
-        Mapping[str, Mapping[str, str]]: Read-only mapping of style -> (legacy
-            -> canonical) mappings.
-
-    Raises:
-        None
-
-    Example:
-        >>> get_aliases_by_style()['HarmonicRipple']['hr_petals']
-        'petals_count'
-
-    Performance:
-        Returns an existing MappingProxyType; calling is cheap and avoids
-        import-time binding of large constants.
-    """
-    return ALIASES_BY_STYLE
-
-
-def get_global_reverse() -> Mapping[str, str]:
-    """Return the inverted global alias map (canonical -> legacy).
-
-    Brief:
-        Convenience accessor that yields the canonical->legacy reverse map for
-        global aliases. Useful for translating canonical UI keys back to
-        legacy engine names when preparing arguments for engine calls.
-
-    Args:
-        None
-
-    Returns:
-        Mapping[str, str]: Read-only mapping from canonical names to legacy
-            names.
-
-    Raises:
-        None
-
-    Example:
-        >>> get_global_reverse().get('twist_total_turns')
-        'spin_turns'
-
-    Performance:
-        O(1) to return the existing MappingProxyType; safe for repeated use in
-        import-light code paths.
-    """
-    return GLOBAL_REVERSE
-
-
-def get_reverse_by_style() -> Mapping[str, Mapping[str, str]]:
-    """Return per-style inverted alias maps.
-
-    Brief:
-        Accessor for per-style canonical->legacy mappings. Each top-level key
-        is a style name and the value is a mapping from canonical key ->
-        legacy key for that style.
-
-    Args:
-        None
-
-    Returns:
-        Mapping[str, Mapping[str, str]]: Read-only mapping of style -> (canonical
-            -> legacy) mappings.
-
-    Raises:
-        None
-
-    Example:
-        >>> get_reverse_by_style()['HarmonicRipple']['petals_count']
-        'hr_petals'
-
-    Performance:
-        Cheap accessor returning a prebuilt MappingProxyType structure.
-    """
-    return REVERSE_BY_STYLE
+GLOBAL_REVERSE = _invert(GLOBAL_ALIASES)
+REVERSE_BY_STYLE: Dict[str, Dict[str, str]] = {s: _invert(m) for s, m in ALIASES_BY_STYLE.items()}
 
 
 # Accepted directions for key normalization.
 Direction = Literal["to_canonical", "to_engine", "both"]
-
 
 def normalize_style_opts(
     style: str,
@@ -418,7 +273,7 @@ def to_engine(style: str, opts: dict | None) -> dict:
 # UI slider schemas (legacy-keyed for compatibility with existing UI)
 # =============================================================================
 
-_GLOBAL_CONTROLS: Dict[str, Dict[str, Any]] = {
+GLOBAL_CONTROLS: Dict[str, Dict[str, Any]] = {
     "spin_turns": {
         "label": "Twist across height (turns)",
         "help": "Total rotations from base to rim. Negative values twist the opposite way.",
@@ -501,7 +356,7 @@ _GLOBAL_CONTROLS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-_STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
+STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
     "HarmonicRipple": {
         "hr_petals": {
             "label": "Petal count",
@@ -749,225 +604,6 @@ _STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
         },
     },
     "SuperformulaBlossom": {
-        "sf_strength": {
-            "label": "Blossom strength",
-            "help": "Blend from base shape (0) to blossom-modulated profile (1).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.0,
-        },
-        # --- Edge reconstruction: peak snap ---
-        "sf_peak_snap_enable": {
-            "label": "Edge reconstruction (peak snap)",
-            "help": "Lift local valleys toward a high-quantile envelope so the mesh follows true edges (peaks).",
-            "type": "bool",
-            "default": False,
-        },
-        "sf_peak_snap_window": {
-            "label": "Peak snap window (samples)",
-            "help": "Odd window size used to compute the envelope (5–63).",
-            "type": "int",
-            "min": 5,
-            "max": 63,
-            "step": 2,
-            "default": 9,
-        },
-        "sf_peak_snap_quantile": {
-            "label": "Peak snap quantile",
-            "help": "High quantile for the envelope (e.g., 0.9 for 90th percentile).",
-            "type": "float",
-            "min": 0.7,
-            "max": 0.995,
-            "step": 0.005,
-            "default": 0.9,
-        },
-        "sf_peak_snap_amount": {
-            "label": "Peak snap amount",
-            "help": "How much to pull valleys toward the envelope (0=no change, 1=to envelope).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.6,
-        },
-        # --- Flow-aware edge reconstruction (2D) ---
-        "sf_edge_flow_reconstruct_enable": {
-            "label": "Flow-aware reconstruction (2D)",
-            "help": "Lift valleys along vertical or diagonal edge flow using 2D envelopes (z×θ).",
-            "type": "bool",
-            "default": False,
-        },
-        "sf_edge_flow_window": {
-            "label": "Flow window (rings)",
-            "help": "Vertical/diagonal window (odd, 3–31) for 2D envelope.",
-            "type": "int",
-            "min": 3,
-            "max": 31,
-            "step": 2,
-            "default": 7,
-        },
-        "sf_edge_flow_quantile": {
-            "label": "Flow quantile",
-            "help": "High quantile for 2D envelope (e.g., 0.9).",
-            "type": "float",
-            "min": 0.7,
-            "max": 0.995,
-            "step": 0.005,
-            "default": 0.9,
-        },
-        "sf_edge_flow_amount": {
-            "label": "Flow amount",
-            "help": "Blend amount toward 2D envelope (0–1).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.6,
-        },
-        "sf_edge_flow_mode": {
-            "label": "Flow method",
-            "help": "Choose envelope type: quantile (smoother), ridge (peak-propagation), vertical (column-only), or ridge_paths (thin path tracing).",
-            "type": "select",
-            "options": ["quantile", "ridge", "vertical", "ridge_paths"],
-            "default": "ridge",
-        },
-        "sf_edge_flow_twist_compensate": {
-            "label": "Twist-compensated analysis",
-            "help": "Analyze edges in world-angle space by de-rotating each ring, so lifting aligns to spatial edges despite twist.",
-            "type": "bool",
-            "default": True,
-        },
-        "sf_edge_flow_valley_only": {
-            "label": "Valley-only lifting",
-            "help": "Lift only true valleys (vertical dips) to avoid widening peaks.",
-            "type": "bool",
-            "default": True,
-        },
-        "sf_edge_flow_theta_snap": {
-            "label": "Theta snap (±cols)",
-            "help": "Before lifting, snap the envelope laterally up to ±K columns to align with the nearest ridge and avoid offset filling.",
-            "type": "int",
-            "min": 0,
-            "max": 3,
-            "step": 1,
-            "default": 1,
-        },
-        "sf_edge_flow_auto_deoffset": {
-            "label": "Auto de-offset",
-            "help": "Detect and cancel a small consistent theta shift after lifting if most rings agree (median+majority check).",
-            "type": "bool",
-            "default": True,
-        },
-        "sf_edge_flow_deoffset_max": {
-            "label": "De-offset max (±cols)",
-            "help": "Maximum columns to shift back when auto de-offset is enabled.",
-            "type": "int",
-            "min": 0,
-            "max": 3,
-            "step": 1,
-            "default": 1,
-        },
-        "sf_edge_flow_anchor_enable": {
-            "label": "Anchor to nearest peaks",
-            "help": "Re-index the envelope to the nearest theta peaks within a radius to avoid lateral offset before lifting.",
-            "type": "bool",
-            "default": True,
-        },
-        "sf_edge_flow_anchor_radius": {
-            "label": "Anchor radius (±cols)",
-            "help": "Theta radius within which to anchor to the nearest peak (0 disables).",
-            "type": "int",
-            "min": 0,
-            "max": 16,
-            "step": 1,
-            "default": 6,
-        },
-        "sf_edge_flow_paths_band": {
-            "label": "Path band (θ neighbors)",
-            "help": "How many theta neighbors to include around traced paths (0–6).",
-            "type": "int",
-            "min": 0,
-            "max": 6,
-            "step": 1,
-            "default": 1,
-        },
-        "sf_edge_flow_valley_band_cols": {
-            "label": "Valley-side band (±cols)",
-            "help": "For ridge_paths: propagate the ridge envelope only toward the valley-side up to this many columns to lift valleys without widening peaks.",
-            "type": "int",
-            "min": 0,
-            "max": 16,
-            "step": 1,
-            "default": 8,
-        },
-        "sf_edge_flow_valley_band_decay": {
-            "label": "Valley band decay",
-            "help": "Per-column decay applied to propagated envelope (0–0.05); small values avoid over-lifting far from the ridge.",
-            "type": "float",
-            "min": 0.0,
-            "max": 0.05,
-            "step": 0.005,
-            "default": 0.0,
-        },
-        "sf_edge_flow_valley_lock_enable": {
-            "label": "Valley lock (precise)",
-            "help": "Restrict lifting strictly to a narrow band centered at valleys between adjacent peaks (per ring).",
-            "type": "bool",
-            "default": True,
-        },
-        "sf_edge_flow_valley_width_cols": {
-            "label": "Valley width (±cols)",
-            "help": "Half-width in columns around each valley center where lifting is allowed (0–6).",
-            "type": "int",
-            "min": 0,
-            "max": 6,
-            "step": 1,
-            "default": 2,
-        },
-        "sf_edge_flow_valley_z_halfwin": {
-            "label": "Valley z-halfwin (rings)",
-            "help": "Extend the valley mask up/down this many rings (0–3) to form a narrow valley tube along z.",
-            "type": "int",
-            "min": 0,
-            "max": 3,
-            "step": 1,
-            "default": 1,
-        },
-        "sf_edge_flow_debug": {
-            "label": "Edge flow debug",
-            "help": "Enable per-sector debug reports during edge-flow processing (prints compact diagnostics to stdout).",
-            "type": "bool",
-            "default": False,
-        },
-        "sf_edge_flow_max_paths": {
-            "label": "Max seeds per ring",
-            "help": "Limit of ridge path seeds per ring (top peaks after NMS).",
-            "type": "int",
-            "min": 1,
-            "max": 24,
-            "step": 1,
-            "default": 4,
-        },
-        "sf_edge_flow_peak_q": {
-            "label": "Ridge seed peak quantile",
-            "help": "Threshold for selecting true peaks as seeds (used in ridge mode).",
-            "type": "float",
-            "min": 0.6,
-            "max": 0.995,
-            "step": 0.005,
-            "default": 0.92,
-        },
-        "sf_edge_flow_slopes_max": {
-            "label": "Max diagonal slope (θ/ring)",
-            "help": "Consider slopes −S..+S when following edges (ridge mode). 0=vertical only, 1=±45°, 2=±2 etc.",
-            "type": "int",
-            "min": 0,
-            "max": 4,
-            "step": 1,
-            "default": 2,
-        },
         "sf_m_base": {
             "label": "Blossom symmetry @ base (m)",
             "help": "Superformula symmetry count near base.",
@@ -1077,243 +713,6 @@ _STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
             "step": 0.05,
             "default": 0.80,
             "canonical": "blossom_sin_power_top",
-        },
-        "sf_edge_tame_strength": {
-            "label": "Edge tame strength",
-            "help": "Reduce ultra-spiky peaks while preserving crisp edges (0=off).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.0,
-        },
-        "sf_edge_tame_k": {
-            "label": "Edge tame scale (k)",
-            "help": "Lower values cap spikes more aggressively.",
-            "type": "float",
-            "min": 0.1,
-            "max": 2.0,
-            "step": 0.05,
-            "default": 0.55,
-        },
-        "sf_auto_tame": {
-            "label": "Auto tame when strong",
-            "help": "Automatically tame spikes when blossom strength is high.",
-            "type": "bool",
-            "default": True,
-        },
-        "sf_auto_tame_thresh": {
-            "label": "Auto tame threshold",
-            "help": "Trigger auto tame when sf_strength >= this threshold.",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.65,
-        },
-        "sf_auto_tame_amount": {
-            "label": "Auto tame amount",
-            "help": "Strength to apply when auto tame triggers.",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.45,
-        },
-        "sf_edge_sharp": {
-            "label": "Edge sharpening",
-            "help": "Boost edge contrast after taming (unsharp mask along θ).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.0,
-        },
-        "sf_edge_solidify_enable": {
-            "label": "Edge solidify (de-jag)",
-            "help": "Peak-only, edge-preserving smoothing along θ to remove sawtooth at edges without flattening the whole pot.",
-            "type": "bool",
-            "default": False,
-        },
-        "sf_edge_solidify_strength": {
-            "label": "Solidify strength",
-            "help": "How strongly to pull down tiny peaks at edges (0..1).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.7,
-        },
-        "sf_edge_solidify_passes": {
-            "label": "Solidify passes",
-            "help": "Number of bilateral smoothing passes (more = stronger).",
-            "type": "int",
-            "min": 1,
-            "max": 5,
-            "step": 1,
-            "default": 2,
-        },
-        "sf_edge_solidify_sigma_s": {
-            "label": "Solidify sigma_s (samples)",
-            "help": "Spatial Gaussian radius in samples for bilateral kernel.",
-            "type": "float",
-            "min": 0.5,
-            "max": 3.0,
-            "step": 0.1,
-            "default": 1.0,
-        },
-        "sf_edge_solidify_sigma_r": {
-            "label": "Solidify sigma_r",
-            "help": "Range Gaussian for bilateral kernel on rf (lower preserves edges more).",
-            "type": "float",
-            "min": 0.02,
-            "max": 0.6,
-            "step": 0.01,
-            "default": 0.15,
-        },
-        "sf_edge_solidify_protect_grad": {
-            "label": "Solidify protect gradient",
-            "help": "Edge-protection threshold on local gradient; above this, solidify will not smooth (preserves sharp corners).",
-            "type": "float",
-            "min": 0.0,
-            "max": 0.5,
-            "step": 0.01,
-            "default": 0.12,
-        },
-        "sf_edge_solidify_micro_thresh": {
-            "label": "Solidify micro threshold",
-            "help": "Only smooth peaks smaller than this delta (preserve large, intentional edges).",
-            "type": "float",
-            "min": 0.0,
-            "max": 0.5,
-            "step": 0.01,
-            "default": 0.09,
-        },
-        "sf_edge_solidify_preserve_q": {
-            "label": "Solidify preserve top quantile",
-            "help": "Do not smooth the strongest edges by preserving values in the top quantile (e.g., 0.9 = preserve top 10%).",
-            "type": "float",
-            "min": 0.5,
-            "max": 0.99,
-            "step": 0.01,
-            "default": 0.9,
-        },
-        "sf_spike_clip_enable": {
-            "label": "Spike clipping",
-            "help": "Clip only the tallest local peaks using a sliding-window quantile (surgical, peak-only).",
-            "type": "bool",
-            "default": False,
-        },
-        "sf_spike_clip_quantile": {
-            "label": "Spike clip quantile",
-            "help": "Quantile of local window used as clip threshold (e.g., 0.97).",
-            "type": "float",
-            "min": 0.85,
-            "max": 0.999,
-            "step": 0.005,
-            "default": 0.97,
-        },
-        "sf_spike_clip_amount": {
-            "label": "Spike clip amount",
-            "help": "How far to pull peaks toward the threshold (0=no change, 1=to threshold).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.7,
-        },
-        "sf_spike_clip_window": {
-            "label": "Spike clip window",
-            "help": "Odd number of samples in the local window (5–31).",
-            "type": "int",
-            "min": 5,
-            "max": 31,
-            "step": 2,
-            "default": 9,
-        },
-        "sf_spike_mad_enable": {
-            "label": "Spike clip (MAD)",
-            "help": "Robust outlier clipping using local median and MAD (peak-only).",
-            "type": "bool",
-            "default": False,
-        },
-        "sf_spike_mad_k": {
-            "label": "MAD clip k-sigma",
-            "help": "Threshold multiplier relative to robust sigma (1.4826*MAD). Typical 2.5–4.0.",
-            "type": "float",
-            "min": 1.0,
-            "max": 6.0,
-            "step": 0.1,
-            "default": 3.2,
-        },
-        "sf_spike_mad_amount": {
-            "label": "MAD clip amount",
-            "help": "How far to pull peaks toward the MAD threshold (0=no change, 1=to threshold).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.85,
-        },
-        "sf_spike_mad_window": {
-            "label": "MAD clip window",
-            "help": "Odd number of samples in the local window (5–31).",
-            "type": "int",
-            "min": 5,
-            "max": 31,
-            "step": 2,
-            "default": 9,
-        },
-        "sf_spike_mad_z_boost_enable": {
-            "label": "MAD rim boost",
-            "help": "Stronger MAD clipping toward the rim (higher z).",
-            "type": "bool",
-            "default": True,
-        },
-        "sf_spike_mad_z_start": {
-            "label": "MAD boost start z",
-            "help": "Height (0–1) above which MAD boost begins (e.g., 0.75).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.01,
-            "default": 0.75,
-        },
-        "sf_spike_mad_z_power": {
-            "label": "MAD boost curve",
-            "help": "Exponent shaping how fast the boost grows toward the rim (1=linear).",
-            "type": "float",
-            "min": 0.5,
-            "max": 4.0,
-            "step": 0.1,
-            "default": 1.5,
-        },
-        "sf_spike_mad_k_drop_frac": {
-            "label": "MAD k drop @ rim",
-            "help": "How much to reduce the MAD threshold k at the rim (fraction 0–0.8).",
-            "type": "float",
-            "min": 0.0,
-            "max": 0.8,
-            "step": 0.05,
-            "default": 0.35,
-        },
-        "sf_spike_mad_amount_boost": {
-            "label": "MAD amount boost",
-            "help": "Extra clip amount at rim (0–1, multiplied by rim boost).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.25,
-        },
-        "sf_diagonal_smooth_passes": {
-            "label": "Diagonal smoothing passes",
-            "help": "Stabilize triangle diagonals in seam bands across θ for Blossom.",
-            "type": "int",
-            "min": 0,
-            "max": 4,
-            "step": 1,
-            "default": 0,
         },
     },
     "FourierBloom": {
@@ -1478,303 +877,13 @@ _STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
             "canonical": "wobble_z_gain_x_tau",
         },
     },
-    "LowPolyFacet": {
-        "lp_facets": {
-            "label": "Facet count",
-            "help": "Number of flat facets around the pot (>=3).",
-            "type": "int",
-            "min": 3,
-            "max": 72,
-            "step": 1,
-            "default": 12,
-            "canonical": "facets_count",
-        },
-        "lp_tiers": {
-            "label": "Vertical tiers",
-            "help": "Segment height into this many tiers with slight phase shifts.",
-            "type": "int",
-            "min": 1,
-            "max": 12,
-            "step": 1,
-            "default": 1,
-            "canonical": "tiers_count",
-        },
-        "lp_amp": {
-            "label": "Facet amplitude",
-            "help": "How deep edges cut in (fraction of radius).",
-            "type": "float",
-            "min": 0.0,
-            "max": 0.4,
-            "step": 0.005,
-            "default": 0.12,
-            "canonical": "facet_amplitude",
-        },
-        "lp_jitter": {
-            "label": "Tier phase jitter",
-            "help": "Phase offset between tiers; 0=no offset, 1=up to one facet.",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.01,
-            "default": 0.15,
-            "canonical": "tier_phase_jitter",
-        },
-        "lp_phase_deg": {
-            "label": "Facet phase (°)",
-            "help": "Global rotational offset in degrees.",
-            "type": "int",
-            "min": -180,
-            "max": 180,
-            "step": 1,
-            "default": 0,
-            "canonical": "facet_phase_deg",
-        },
-        "lp_bevel": {
-            "label": "Bevel softness",
-            "help": "Higher = more rounded edges; 0 = sharp.",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.01,
-            "default": 0.15,
-            "canonical": "bevel_softness",
-        },
-        "lp_facet_dir": {
-            "label": "Facet direction",
-            "help": "Inward (classic) vs outward (bulging centers).",
-            "type": "select",
-            "options": ["in", "out"],
-            "default": "in",
-        },
-        "lp_outward_mode": {
-            "label": "Outward cuts (ridge)",
-            "help": "Favor larger radius on outside side of seam; when off, classic low-poly (respects flare)",
-            "type": "bool",
-            "default": False,
-        },
-        "lp_cut_bot_deg": {
-            "label": "Cut angle at tier bottom (°)",
-            "help": "Add a chamfer near each tier bottom to limit outward overhang; 0 disables.",
-            "type": "int",
-            "min": 0,
-            "max": 75,
-            "step": 1,
-            "default": 0,
-            "canonical": "tier_cut_bot_deg",
-        },
-        "lp_cut_top_deg": {
-            "label": "Cut angle at tier top (°)",
-            "help": "Add a chamfer near each tier top to limit outward overhang; 0 disables.",
-            "type": "int",
-            "min": 0,
-            "max": 75,
-            "step": 1,
-            "default": 0,
-            "canonical": "tier_cut_top_deg",
-        },
-        "lp_link_cut_angles": {
-            "label": "Link cut angles",
-            "help": "Use the bottom cut angle for both top and bottom (mirrors the value).",
-            "type": "bool",
-            "default": False,
-        },
-        "lp_cut_cap_mm": {
-            "label": "Cut amount (mm)",
-            "help": "Maximum radial amount trimmed by the tiny tier chamfer.",
-            "type": "float",
-            "min": 0.0,
-            "max": 3.0,
-            "step": 0.05,
-            "default": 0.8,
-        },
-        "lp_cut_depth_frac_of_facet": {
-            "label": "Cut depth vs facet span",
-            "help": "If >0, limits cut depth to this fraction of the local facet span (respects flare).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.01,
-            "default": 0.0,
-        },
-        "lp_cut_z_window_frac": {
-            "label": "Cut range (% of tier)",
-            "help": "How far above/below a tier seam the tiny chamfer applies (as percent of that tier height).",
-            "type": "float",
-            "min": 0.0,
-            "max": 50.0,
-            "step": 1.0,
-            "default": 12.0,
-        },
-        "lp_cut_softness_mm": {
-            "label": "Cut softness (mm)",
-            "help": "Smoothing for the chamfer blend; lower values keep facets crisp.",
-            "type": "float",
-            "min": 0.01,
-            "max": 0.5,
-            "step": 0.01,
-            "default": 0.03,
-        },
-        "lp_uniform_ring": {
-            "label": "Uniform seam ring",
-            "help": "Chamfer bands are circumferentially uniform (based on base radius).",
-            "type": "bool",
-            "default": False,
-        },
-        "lp_uniform_ring_localize": {
-            "label": "Localize uniform ring",
-            "help": "Limit flattening to near the seam plane (reduces band-wide flattening).",
-            "type": "bool",
-            "default": False,
-        },
-        "lp_uniform_ring_lock_threshold": {
-            "label": "Uniform ring lock threshold",
-            "help": "Start of flattening (0..1) where 1.0 is exactly at the seam plane.",
-            "type": "float",
-            "min": 0.0,
-            "max": 0.99,
-            "step": 0.01,
-            "default": 0.7,
-        },
-        "lp_uniform_ring_blend_pow": {
-            "label": "Uniform ring blend power",
-            "help": "Higher values concentrate flattening closer to the seam plane.",
-            "type": "float",
-            "min": 0.5,
-            "max": 8.0,
-            "step": 0.1,
-            "default": 2.0,
-        },
-        "lp_edge_cut_mm": {
-            "label": "Edge trim (mm)",
-            "help": "Inward trim concentrated at facet edges (theta-local).",
-            "type": "float",
-            "min": 0.0,
-            "max": 3.0,
-            "step": 0.05,
-            "default": 0.0,
-        },
-        "lp_edge_cut_sharp": {
-            "label": "Edge trim sharpness",
-            "help": "Higher = more concentrated at edges (uses (1-tri)^p).",
-            "type": "float",
-            "min": 0.5,
-            "max": 4.0,
-            "step": 0.1,
-            "default": 1.2,
-        },
-        "lp_cut_straight_edges": {
-            "label": "Straight seam edge",
-            "help": "Make chamfer bands circumferentially straight (uses base radius as reference during cuts).",
-            "type": "bool",
-            "default": True,
-        },
-        "lp_cut_straight_smooth_mode": {
-            "label": "Straight edge: smooth mode",
-            "help": "Instead of a flat plateau, gently round facets near seam windows so they flow into the seam ring.",
-            "type": "bool",
-            "default": False,
-        },
-        "lp_cut_straight_smooth_strength": {
-            "label": "Straight smooth strength",
-            "help": "How much to smooth across theta near the seam (0=no change, 1=strong).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.65,
-        },
-        "lp_cut_straight_smooth_passes": {
-            "label": "Straight smooth passes",
-            "help": "Number of smoothing passes across theta near the seam (more = smoother).",
-            "type": "int",
-            "min": 1,
-            "max": 4,
-            "step": 1,
-            "default": 2,
-        },
-        "lp_edge_solidify_enable": {
-            "label": "Edge solidify (seam de-jag)",
-            "help": "Reduce tiny oscillations across θ within seam windows to make cut edges look like solid, sharp lines (non-flattening).",
-            "type": "bool",
-            "default": False,
-        },
-        "lp_edge_solidify_strength": {
-            "label": "Solidify strength",
-            "help": "How strongly to suppress θ ripples near seam planes (0=test off, 1=strong).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.05,
-            "default": 0.75,
-        },
-        "lp_edge_solidify_thresh": {
-            "label": "Solidify proximity threshold",
-            "help": "Only apply solidify when seam proximity ≥ this threshold (0..1).",
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.01,
-            "default": 0.7,
-        },
-        "lp_edge_solidify_passes": {
-            "label": "Solidify passes",
-            "help": "Number of robust smoothing passes across θ at seam (more = stronger).",
-            "type": "int",
-            "min": 1,
-            "max": 5,
-            "step": 1,
-            "default": 2,
-        },
-        "lp_diagonal_smooth_passes": {
-            "label": "Diagonal smoothing passes",
-            "help": "Stabilize triangle diagonals across θ within seam bands to avoid zig-zag aliasing.",
-            "type": "int",
-            "min": 0,
-            "max": 4,
-            "step": 1,
-            "default": 0,
-        },
-        "lp_print_safe_mode": {
-            "label": "Print-safe mode",
-            "help": "Auto-limit angles and chamfer range to reduce near-overhangs on thin tiers; softens edge trim.",
-            "type": "bool",
-            "default": False,
-        },
-        "lp_debug_seam": {
-            "label": "Debug: show seam stats",
-            "help": "Augment diagnostics with per-tier seam outward ratios.",
-            "type": "bool",
-            "default": False,
-        },
-        "lp_seam_sampling_boost": {
-            "label": "Seam sampling boost",
-            "help": "Adds extra z-rings within the chamfer window to reduce aliasing along the cut edge.",
-            "type": "int",
-            "min": 1,
-            "max": 3,
-            "step": 1,
-            "default": 1,
-        },
-        "lp_seam_lock_strength": {
-            "label": "Seam lock strength",
-            "help": "Multiplier for seam band width used to lock triangle diagonals (1.0–1.5). Higher = more stable diagonals across the band.",
-            "type": "float",
-            "min": 1.0,
-            "max": 1.5,
-            "step": 0.05,
-            "default": 1.0,
-        },
-    },
 }
 
 # =============================================================================
 # Canonical schema views (for export/docs/UI that prefer canonical keys)
 # =============================================================================
 
-
-def _build_canonical_schema() -> (
-    tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Dict[str, Any]]]]
-):
+def _build_canonical_schema() -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Dict[str, Any]]]]:
     """Construct canonical-keyed schema mirrors.
 
     Purpose:
@@ -1795,10 +904,7 @@ def _build_canonical_schema() -> (
     Example:
         CANONICAL_CONTROLS["twist_total_turns"] -> {..., "legacy": "spin_turns"}
     """
-
-    def remap_block(
-        block: Mapping[str, Mapping[str, Any]], alias_map: Mapping[str, str]
-    ) -> Dict[str, Dict[str, Any]]:
+    def remap_block(block: Dict[str, Dict[str, Any]], alias_map: Mapping[str, str]) -> Dict[str, Dict[str, Any]]:
         out: Dict[str, Dict[str, Any]] = {}
         for legacy_key, meta in block.items():
             canon_key = alias_map.get(legacy_key, legacy_key)
@@ -1809,14 +915,26 @@ def _build_canonical_schema() -> (
             out[canon_key] = m
         return out
 
-    canonical_globals = remap_block(_GLOBAL_CONTROLS, _GLOBAL_ALIASES)
+    canonical_globals = remap_block(GLOBAL_CONTROLS, GLOBAL_ALIASES)
     canonical_styles: Dict[str, Dict[str, Dict[str, Any]]] = {}
-    for style, block in _STYLE_SCHEMAS.items():
-        canonical_styles[style] = remap_block(block, _ALIASES_BY_STYLE.get(style, {}))
+    for style, block in STYLE_SCHEMAS.items():
+        canonical_styles[style] = remap_block(block, ALIASES_BY_STYLE.get(style, {}))
     return canonical_globals, canonical_styles
 
 
-_CANONICAL_CONTROLS, _CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
+CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
+
+# Freeze alias maps (and their reverses) to avoid runtime mutation.
+GLOBAL_ALIASES = MappingProxyType(dict(GLOBAL_ALIASES))
+ALIASES_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
+GLOBAL_REVERSE = MappingProxyType(GLOBAL_REVERSE)
+REVERSE_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
+
+# Freeze top-level schema dicts to avoid accidental mutation at runtime.
+GLOBAL_CONTROLS = MappingProxyType({k: MappingProxyType(v) for k, v in GLOBAL_CONTROLS.items()})
+STYLE_SCHEMAS = MappingProxyType({k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()}) for k, v in STYLE_SCHEMAS.items()})
+CANONICAL_CONTROLS = MappingProxyType({k: MappingProxyType(v) for k, v in CANONICAL_CONTROLS.items()})
+CANONICAL_STYLE_SCHEMAS = MappingProxyType({k: MappingProxyType({kk: MappingProxyType(mm) for kk, mm in v.items()}) for k, v in CANONICAL_STYLE_SCHEMAS.items()})
 
 # =============================================================================
 # Validation, defaults, and schema helpers
@@ -1842,7 +960,6 @@ class ControlMeta(TypedDict, total=False):
         units: str - e.g., "deg", "mm"
         legacy: str - legacy key (only in canonical views)
     """
-
     label: str
     help: str
     type: ControlType
@@ -1877,16 +994,11 @@ def get_schema(style: str, *, canonical: bool = False) -> Dict[str, ControlMeta]
         - None.
     """
     if canonical:
-        # CANONICAL_* are Mapping types; cast to the expected Dict[str, ControlMeta]
-        block: Dict[str, ControlMeta] = cast(
-            Dict[str, ControlMeta], dict(_CANONICAL_CONTROLS)
-        )
-        block.update(
-            cast(Dict[str, Dict[str, Any]], _CANONICAL_STYLE_SCHEMAS).get(style, {})
-        )
+        block: Dict[str, ControlMeta] = dict(CANONICAL_CONTROLS)  # type: ignore[assignment]
+        block.update(CANONICAL_STYLE_SCHEMAS.get(style, {}))  # type: ignore[arg-type]
     else:
-        block = cast(Dict[str, ControlMeta], dict(_GLOBAL_CONTROLS))
-        block.update(cast(Dict[str, Dict[str, Any]], _STYLE_SCHEMAS).get(style, {}))
+        block = dict(GLOBAL_CONTROLS)  # type: ignore[assignment]
+        block.update(STYLE_SCHEMAS.get(style, {}))
     return block
 
 
@@ -1919,7 +1031,7 @@ def apply_defaults(style: str, opts: dict, *, canonical: bool = False) -> dict:
     return out
 
 
-def _coerce_one(v: Any, meta: ControlMeta) -> object:
+def _coerce_one(v: Any, meta: ControlMeta) -> Any:
     """Coerce a single value to the type declared by meta.
 
     Purpose:
@@ -1960,15 +1072,11 @@ def _coerce_one(v: Any, meta: ControlMeta) -> object:
         opts = meta.get("options")
         if isinstance(opts, (list, tuple)) and opts:
             if v not in opts:
-                raise ValueError(
-                    f"invalid option {v!r}; expected one of {list(opts)!r}"
-                )
+                raise ValueError(f"invalid option {v!r}; expected one of {list(opts)!r}")
     return v
 
 
-def sanitize_opts(
-    style: str, opts: dict, *, canonical: bool = False
-) -> Tuple[dict[str, object], list[str]]:
+def sanitize_opts(style: str, opts: dict, *, canonical: bool = False) -> Tuple[dict, list[str]]:
     """Coerce types, clamp to min/max, and fill defaults.
 
     Purpose:
@@ -1992,23 +1100,21 @@ def sanitize_opts(
         - None (errors collected in list instead of raising).
     """
     sch = get_schema(style, canonical=canonical)
-    out: dict[str, object] = {}
+    out: dict = {}
     errors: list[str] = []
 
     for k, v in opts.items():
         meta = sch.get(k)
         if not meta:
-            out[k] = v  # unknown key: pass through (preserve runtime value)
+            out[k] = v  # unknown key: pass through
             continue
         try:
             vv = _coerce_one(v, meta)
             if isinstance(vv, (int, float)):
-                minv = meta.get("min")
-                maxv = meta.get("max")
-                if isinstance(minv, (int, float)):
-                    vv = max(vv, minv)
-                if isinstance(maxv, (int, float)):
-                    vv = min(vv, maxv)
+                if "min" in meta:
+                    vv = max(vv, meta["min"])  # type: ignore[index]
+                if "max" in meta:
+                    vv = min(vv, meta["max"])  # type: ignore[index]
             out[k] = vv
         except Exception as e:
             errors.append(f"{k}: {e}")
@@ -2111,11 +1217,7 @@ def compress_opts(
         # Fetch and round default the same way before comparing
         dv = sch.get(k, {}).get("default", None)
         if drop_defaults and dv is not None:
-            dv_cmp = (
-                round(dv, round_to)
-                if (round_to is not None and isinstance(dv, float))
-                else dv
-            )
+            dv_cmp = round(dv, round_to) if (round_to is not None and isinstance(dv, float)) else dv
             if v == dv_cmp:
                 continue
         out[k] = v
@@ -2124,17 +1226,14 @@ def compress_opts(
 
 if __name__ == "__main__":
     # Allow running the module directly without side effects (import-safe).
-    # Use the private `_STYLE_SCHEMAS` here to avoid referencing the
-    # public frozen `STYLE_SCHEMAS` before it is built later in the file.
-    print("pfui.schemas loaded OK. Styles:", ", ".join(sorted(_STYLE_SCHEMAS.keys())))
+    print("pfui.schemas loaded OK. Styles:", ", ".join(sorted(STYLE_SCHEMAS.keys())))
 
 
 # =============================================================================
 # Integrity checks and deep-freeze
 # =============================================================================
 
-
-def _freeze_meta(d: Mapping[str, Any]) -> MappingProxyType:
+def _freeze_meta(d: Dict[str, Any]) -> MappingProxyType:
     """Return an immutable view of control meta; freeze options to tuple if present."""
     frozen = dict(d)
     if "options" in frozen and isinstance(frozen["options"], list):
@@ -2142,22 +1241,13 @@ def _freeze_meta(d: Mapping[str, Any]) -> MappingProxyType:
     return MappingProxyType(frozen)
 
 
-def _freeze_block(block: Mapping[str, Mapping[str, Any]]) -> MappingProxyType:
-    """Freeze a block mapping key -> meta.
-
-    Accept Mapping inputs (including MappingProxyType) so callers that
-    pass already-frozen mappings don't trigger mypy arg-type errors.
-    """
+def _freeze_block(block: Dict[str, Dict[str, Any]]) -> MappingProxyType:
+    """Freeze a block mapping key -> meta."""
     return MappingProxyType({k: _freeze_meta(v) for k, v in block.items()})
 
 
-def _freeze_style_map(
-    style_map: Mapping[str, Mapping[str, Mapping[str, Any]]],
-) -> MappingProxyType:
-    """Freeze style -> (key -> meta) mapping.
-
-    Accept Mapping inputs to be compatible with already-frozen structures.
-    """
+def _freeze_style_map(style_map: Dict[str, Dict[str, Dict[str, Any]]]) -> MappingProxyType:
+    """Freeze style -> (key -> meta) mapping."""
     return MappingProxyType({style: _freeze_block(b) for style, b in style_map.items()})
 
 
@@ -2171,165 +1261,27 @@ def check_schema_integrity() -> list[str]:
     # 1) Every legacy global alias key should exist in GLOBAL_CONTROLS (since UI is legacy-keyed).
     for k in GLOBAL_ALIASES.keys():
         if k not in GLOBAL_CONTROLS:
-            problems.append(
-                f"GLOBAL_ALIASES legacy key missing from GLOBAL_CONTROLS: {k}"
-            )
+            problems.append(f"GLOBAL_ALIASES legacy key missing from GLOBAL_CONTROLS: {k}")
     # 2) For each style, every legacy key in ALIASES_BY_STYLE[style] should exist in STYLE_SCHEMAS[style].
     for style, amap in ALIASES_BY_STYLE.items():
         block = STYLE_SCHEMAS.get(style, {})
         for legacy_key in amap.keys():
             if legacy_key not in block:
-                problems.append(
-                    f"{style}: alias legacy key missing from STYLE_SCHEMAS: {legacy_key}"
-                )
+                problems.append(f"{style}: alias legacy key missing from STYLE_SCHEMAS: {legacy_key}")
     return problems
 
 
 # Freeze alias maps (and their reverses) to avoid runtime mutation.
-GLOBAL_ALIASES: Mapping[str, str] = MappingProxyType(dict(_GLOBAL_ALIASES))
-ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in _ALIASES_BY_STYLE.items()}
-)
-GLOBAL_REVERSE: Mapping[str, str] = MappingProxyType(dict(_GLOBAL_REVERSE))
-REVERSE_BY_STYLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in _REVERSE_BY_STYLE.items()}
-)
+GLOBAL_ALIASES = MappingProxyType(dict(GLOBAL_ALIASES))
+ALIASES_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
+GLOBAL_REVERSE = MappingProxyType(dict(GLOBAL_REVERSE))
+REVERSE_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
 
 # Build canonical mirrors before freezing schema blocks deeply.
-# (Use the previously-created private canonical mirrors: _CANONICAL_CONTROLS/_CANONICAL_STYLE_SCHEMAS)
+CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS = _build_canonical_schema()
 
 # Deep-freeze schema dicts (blocks and inner meta).
-GLOBAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(_GLOBAL_CONTROLS)
-STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = _freeze_style_map(
-    _STYLE_SCHEMAS
-)
-CANONICAL_CONTROLS: Mapping[str, Mapping[str, Any]] = _freeze_block(_CANONICAL_CONTROLS)
-CANONICAL_STYLE_SCHEMAS: Mapping[str, Mapping[str, Mapping[str, Any]]] = (
-    _freeze_style_map(_CANONICAL_STYLE_SCHEMAS)
-)
-
-
-# Conservative accessors for large schema constants. Callers should prefer
-# these to importing the raw MappingProxyType objects directly (reduces
-# import-time noise for type-checkers and editors).
-def get_style_schemas() -> Mapping[str, Mapping[str, Mapping[str, Any]]]:
-    """Return the per-style schema mapping (legacy-keyed blocks).
-
-    Brief:
-        Provide an import-light accessor that returns the per-style UI schema
-        blocks. Each style maps to a dict of legacy-keyed control metadata
-        (ControlMeta-like dicts). Callers who only need read access should use
-        this function instead of importing `STYLE_SCHEMAS` directly.
-
-    Args:
-        None
-
-    Returns:
-        Mapping[str, Mapping[str, Mapping[str, Any]]]: Read-only mapping of
-            style -> key -> control metadata.
-
-    Raises:
-        None
-
-    Example:
-        >>> ss = get_style_schemas()
-        >>> 'HarmonicRipple' in ss
-        True
-
-    Performance:
-        Returns a MappingProxyType view; inexpensive to call and suitable for
-        use in editor/type-checker friendly code paths.
-    """
-    return STYLE_SCHEMAS
-
-
-def get_global_controls() -> Mapping[str, Mapping[str, Any]]:
-    """Return the global (legacy-keyed) control block.
-
-    Brief:
-        Accessor for global UI controls (legacy-keyed). Each returned value is
-        a control metadata mapping (see `ControlMeta`). This accessor should
-        be preferred over importing `GLOBAL_CONTROLS` directly to avoid
-        heavy import-time coupling.
-
-    Args:
-        None
-
-    Returns:
-        Mapping[str, Mapping[str, Any]]: Read-only mapping of legacy key ->
-            control metadata.
-
-    Raises:
-        None
-
-    Example:
-        >>> gc = get_global_controls()
-        >>> gc['spin_turns']['canonical']
-        'twist_total_turns'
-
-    Performance:
-        Constant-time return of a MappingProxyType; callers should not
-        attempt to mutate the returned mapping.
-    """
-    return GLOBAL_CONTROLS
-
-
-def get_canonical_controls() -> Mapping[str, Mapping[str, Any]]:
-    """Return the canonical-keyed global control block.
-
-    Brief:
-        Accessor returning the global controls keyed by their canonical names
-        (human-friendly UI/export naming). The returned items include a
-        "legacy" field that records the original legacy key.
-
-    Args:
-        None
-
-    Returns:
-        Mapping[str, Mapping[str, Any]]: Read-only canonical-keyed control
-            metadata mapping.
-
-    Raises:
-        None
-
-    Example:
-        >>> cc = get_canonical_controls()
-        >>> cc['twist_total_turns']['legacy']
-        'spin_turns'
-
-    Performance:
-        Lightweight accessor returning an immutable view; suitable for use in
-        documentation generation and export code paths.
-    """
-    return CANONICAL_CONTROLS
-
-
-def get_canonical_style_schemas() -> Mapping[str, Mapping[str, Mapping[str, Any]]]:
-    """Return canonical-keyed style schema views.
-
-    Brief:
-        Return per-style schema blocks keyed by canonical names. Each block's
-        entries include a "legacy" field to map back to the original
-        legacy key. Use this accessor when preparing export-ready option
-        dictionaries or documentation.
-
-    Args:
-        None
-
-    Returns:
-        Mapping[str, Mapping[str, Mapping[str, Any]]]: Read-only mapping of
-            style -> canonical-key -> control metadata.
-
-    Raises:
-        None
-
-    Example:
-        >>> css = get_canonical_style_schemas()
-        >>> css['HarmonicRipple']['petals_count']['legacy']
-        'hr_petals'
-
-    Performance:
-        Returns an existing MappingProxyType; cheap to call and safe for use in
-        import-light code.
-    """
-    return CANONICAL_STYLE_SCHEMAS
+GLOBAL_CONTROLS = _freeze_block(dict(GLOBAL_CONTROLS))  # type: ignore[arg-type]
+STYLE_SCHEMAS = _freeze_style_map({k: dict(v) for k, v in STYLE_SCHEMAS.items()})  # type: ignore[dict-item]
+CANONICAL_CONTROLS = _freeze_block(dict(CANONICAL_CONTROLS))  # type: ignore[arg-type]
+CANONICAL_STYLE_SCHEMAS = _freeze_style_map({k: dict(v) for k, v in CANONICAL_STYLE_SCHEMAS.items()})  # type: ignore[dict-item]

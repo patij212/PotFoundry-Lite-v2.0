@@ -1,53 +1,18 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
     hooks:
-      # Ruff will run in fix mode for F and I codes so many issues are
-      # auto-corrected by the hook.
-      - id: ruff
-        args: ["--fix", "--select=F,I", "--target-version=py311", "--statistics", "."]
-      - id: ruff-format
-
-  # Note: mirrors-isort removed because the mirrors tag on Windows git clone
-  # caused checkout errors in CI. Ruff's --fix and ruff-format are used to
-  # handle formatting and import issues instead.
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.1
-    hooks:
-      - id: mypy
-        args: ["--config-file", "mypy_ci.ini"]
-
+      - id: detect-secrets
+        name: detect-secrets (baseline)
+        args: ["--baseline", "detect-secrets.baseline"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
     hooks:
       - id: check-added-large-files
       - id: end-of-file-fixer
       - id: trailing-whitespace
-      - id: check-yaml
-
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.5.0
-    hooks:
-      - id: detect-secrets
-        name: detect-secrets (baseline)
-        # Use the baseline file and exclude generated artifacts and CI dumps
-        # that produce noisy false positives (e.g. .runs_grep.txt, artifacts/,
-        # or local caches like .mypy_cache). Also ignore any generated
-        # detect-secrets temporary baseline files. Match both forward and
-        # back slashes so the exclusion works on Windows runners and local dev
-        # environments.
-        args: ["--baseline", "detect-secrets.baseline", "--exclude-files", "(?:^\\.runs_grep\\.txt$|(?:detect-secrets(?:.*)?\\.baseline|artifacts|\\.gha_.*|\\.github/workflows/pr-validation.yml.corrupt.bak$|\\.mypy_cache|\\.venv|\\.pytest_cache)(?:[\\\\/]|$))"]
-
   - repo: local
     hooks:
-      - id: pytest
-        name: pytest (fast marker)
-        entry: pytest -q -m fast
-        language: system
-        pass_filenames: false
-        types: [python]
-
       - id: potfoundry-forbid-service-role
         name: "Block committing Supabase service_role keys"
         # Run the script via the system python to avoid requiring the

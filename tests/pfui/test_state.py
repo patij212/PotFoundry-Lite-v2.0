@@ -1,19 +1,16 @@
 # tests/pfui/test_state.py
 import sys
 import types
-from typing import Any
 
 # --- stub streamlit BEFORE importing pfui.state ---
 fake_st = types.SimpleNamespace()
 fake_st.session_state = {}
-# Insert a real module object into sys.modules so tools that iterate or
-# build sets from sys.modules.values() won't encounter unhashable values
-mod: Any = types.ModuleType("streamlit")
-mod.session_state = fake_st.session_state
-sys.modules["streamlit"] = mod
+sys.modules["streamlit"] = types.SimpleNamespace(
+    session_state=fake_st.session_state
+)
 
-from pfui import schemas as SC  # noqa: E402
-from pfui import state as S  # noqa: E402
+from pfui import state as S
+from pfui import schemas as SC
 
 
 def _reset_session():
@@ -53,13 +50,12 @@ def test_reset_style_defaults_uses_schema_defaults():
     # look at the pending updates that were queued
     pending = fake_st.session_state[S._PENDING_KEY]
     # all global defaults present
-    for gkey, gmeta in SC.get_global_controls().items():
+    for gkey, gmeta in SC.GLOBAL_CONTROLS.items():
         wk = S.widget_key(style, gkey)
         assert wk in pending
         assert pending[wk] == gmeta.get("default")
     # all style defaults present
-    styles = SC.get_style_schemas()
-    for skey, smeta in styles[style].items():
+    for skey, smeta in SC.STYLE_SCHEMAS[style].items():
         wk = S.widget_key(style, skey)
         assert wk in pending
         assert pending[wk] == smeta.get("default")
@@ -70,10 +66,9 @@ def test_reset_style_defaults_for_all_styles_covers_every_style():
     S.reset_style_defaults_for_all_styles()
     pending = fake_st.session_state[S._PENDING_KEY]
     # every style key block should have at least one widget key
-    styles = SC.get_style_schemas()
-    for style in styles.keys():
+    for style in SC.STYLE_SCHEMAS.keys():
         # find any key with this style's prefix
-        pref = f"opt__{''.join([c if c.isalnum() or c == '_' else '_' for c in style]).lower()}_"
+        pref = f"opt__{''.join([c if c.isalnum() or c=='_' else '_' for c in style]).lower()}_"
         assert any(k.startswith(pref) for k in pending.keys())
 
 

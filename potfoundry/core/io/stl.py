@@ -20,23 +20,17 @@ Example:
     >>> from potfoundry import write_stl_binary
     >>> write_stl_binary("pot.stl", "MyPot", vertices, faces)
 """
-
 from __future__ import annotations
-
-import os
 from pathlib import Path
 from typing import Optional, Union
-
 import numpy as np
-import numpy.typing as npt
+import os
 
-__all__ = ["write_stl_binary", "atomic_write_bytes"]
-
+__all__ = ['write_stl_binary', 'atomic_write_bytes']
 
 def _ensure_dir(p: Path) -> None:
     """Ensure parent directory exists for given path."""
     p.parent.mkdir(parents=True, exist_ok=True)
-
 
 def atomic_write_bytes(path: Union[str, Path], data: bytes) -> None:
     """Write bytes to file atomically to prevent partial writes.
@@ -54,23 +48,19 @@ def atomic_write_bytes(path: Union[str, Path], data: bytes) -> None:
     """
     path = Path(path)
     _ensure_dir(path)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "wb") as f:
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    with open(tmp, 'wb') as f:
         f.write(data)
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, path)
 
-
 def _pack_header(name: str) -> bytes:
     """Pack STL header (80 bytes, name encoded as ASCII)."""
-    header = (name or "potfoundry").encode("ascii", errors="replace")[:80]
-    return header.ljust(80, b"\0")
+    header = (name or 'potfoundry').encode('ascii', errors='replace')[:80]
+    return header.ljust(80, b'\0')
 
-
-def _compute_face_normals(
-    vertices: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]
-) -> npt.NDArray[np.float32]:
+def _compute_face_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
     """Compute face normals for triangular mesh using vectorized cross product.
 
     Args:
@@ -82,9 +72,7 @@ def _compute_face_normals(
     """
     v = vertices.astype(np.float32, copy=False)
     f = faces.astype(np.int64, copy=False)
-    a = v[f[:, 0]]
-    b = v[f[:, 1]]
-    c = v[f[:, 2]]
+    a = v[f[:, 0]]; b = v[f[:, 1]]; c = v[f[:, 2]]
     n = np.cross(b - a, c - a)
     lens = np.linalg.norm(n, axis=1)
     mask = lens > 0
@@ -92,12 +80,7 @@ def _compute_face_normals(
     n[~mask] = np.array([0.0, 0.0, 0.0], dtype=np.float32)
     return n.astype(np.float32, copy=False)
 
-
-def _interleave_records(
-    normals: npt.NDArray[np.float32],
-    vertices: npt.NDArray[np.float64],
-    faces: npt.NDArray[np.int32],
-) -> bytes:
+def _interleave_records(normals: np.ndarray, vertices: np.ndarray, faces: np.ndarray) -> bytes:
     """Pack normals and triangle vertices into binary STL facet records.
 
     Creates the binary body of an STL file. Each facet record is 50 bytes:
@@ -117,34 +100,23 @@ def _interleave_records(
     v = vertices.astype(np.float32, copy=False)
     f = faces.astype(np.int64, copy=False)
     n = normals.astype(np.float32, copy=False)
-    a = v[f[:, 0]]
-    b = v[f[:, 1]]
-    c = v[f[:, 2]]
-    facet_dtype = np.dtype(
-        [
-            ("normals", "<f4", (3,)),
-            ("v1", "<f4", (3,)),
-            ("v2", "<f4", (3,)),
-            ("v3", "<f4", (3,)),
-            ("attr", "<u2"),
-        ]
-    )
+    a = v[f[:, 0]]; b = v[f[:, 1]]; c = v[f[:, 2]]
+    facet_dtype = np.dtype([
+        ('normals', '<f4', (3,)),
+        ('v1', '<f4', (3,)),
+        ('v2', '<f4', (3,)),
+        ('v3', '<f4', (3,)),
+        ('attr', '<u2'),
+    ])
     recs = np.empty(M, dtype=facet_dtype)
-    recs["normals"] = n
-    recs["v1"] = a
-    recs["v2"] = b
-    recs["v3"] = c
-    recs["attr"] = 0
-    return recs.tobytes(order="C")
+    recs['normals'] = n
+    recs['v1'] = a
+    recs['v2'] = b
+    recs['v3'] = c
+    recs['attr'] = 0
+    return recs.tobytes(order='C')
 
-
-def write_stl_binary(
-    path: Union[str, Path],
-    name: str,
-    vertices: npt.NDArray[np.float64],
-    faces: npt.NDArray[np.int32],
-    normals: Optional[npt.NDArray[np.float32]] = None,
-) -> Path:
+def write_stl_binary(path: Union[str, Path], name: str, vertices: np.ndarray, faces: np.ndarray, normals: Optional[np.ndarray]=None) -> Path:
     """Write mesh to binary STL file (RECOMMENDED for all exports).
 
     Binary STL is the preferred format for PotFoundry exports. It produces
