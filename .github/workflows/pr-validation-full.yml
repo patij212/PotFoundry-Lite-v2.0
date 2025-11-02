@@ -2,13 +2,14 @@ name: PR Validation (full)
 
 on:
   push:
-    branches: ['fix/edgeflow-debug-quick']
+    branches: [ 'fix/edgeflow-debug-quick' ]
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch: {}
 
 env:
-  PYTHONDONTWRITEBYTECODE: true
+  PYTHONDONTWRITEBYTECODE: '1'
+
 permissions:
   contents: read
   issues: write
@@ -61,7 +62,9 @@ jobs:
       - name: Install pre-commit + dev deps
         run: |
           python -m pip install --upgrade pip
+          # Install project dev/test dependencies so pre-commit's pytest hook can import runtime deps
           python -m pip install -r requirements-dev.txt --no-cache-dir
+          # Install pre-commit and pytest (pre-commit will still manage its own hook envs)
           python -m pip install pre-commit pytest
 
       - name: Run pre-commit
@@ -84,6 +87,7 @@ jobs:
       - name: Install mypy + dev requirements (for stubs)
         run: |
           python -m pip install --upgrade pip
+          # Install project dev/test dependencies so mypy can find type stubs (types-requests, etc.)
           python -m pip install -r requirements-dev.txt --no-cache-dir
 
       - name: Run mypy on packages (non-blocking)
@@ -106,10 +110,12 @@ jobs:
       - name: Install test deps
         run: |
           python -m pip install --upgrade pip
+          # install full dev/test dependencies so numpy, pydantic, etc. are available
           python -m pip install -r requirements-dev.txt --no-cache-dir
 
       - name: Run pytest (write junit + durations)
         run: |
+          # Run pytest with durations and produce junit xml + plain text output
           python -m pytest -q --durations=10 --junitxml=pytest-report.xml 2>&1 | tee pytest-output.txt
 
       - name: Upload pytest artifacts
@@ -135,7 +141,7 @@ jobs:
         uses: actions/github-script@v6
         continue-on-error: true
         with:
-          github-token: ${{ secrets.ACTIONS_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
             const path = 'pytest-summary.json';
@@ -145,6 +151,7 @@ jobs:
             }
             const content = fs.readFileSync(path, 'utf8');
             const summary = JSON.parse(content);
+            // Find PR for this branch
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const branch = process.env.GITHUB_REF.replace('refs/heads/', '');
@@ -154,7 +161,7 @@ jobs:
               return;
             }
             const pr = prs.data[0];
-            const top = (summary.slowest || []).slice(0,10).map((s, i) => `${i+1}. ${s.file || s.nodeid} :: ${s.name} - ${s.time}s`).join('\n');
+            const top = (summary.slowest || []).slice(0,10).map((s, i) => `${i+1}. ${s.file || s.nodeid} — ${s.name} — ${s.time}s`).join('\n');
             const body = `Automated CI summary:\n\n- Status: ✅ completed\n- Tests: ${summary.tests.total} passed (errors=${summary.tests.errors} failures=${summary.tests.failures} skipped=${summary.tests.skipped})\n- Total time: ${summary.tests.time}s\n\nTop slow tests:\n${top}\n\nFull artifacts: ${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
             await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
 name: PR Validation (full)
