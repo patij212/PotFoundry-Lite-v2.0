@@ -60,7 +60,7 @@ def main() -> None:
                 except Exception:
                     pass
 
-    report = {
+    report: Dict[str, Any] = {
         "zi": zi,
         "found_first": first is not None,
         "found_last": last is not None,

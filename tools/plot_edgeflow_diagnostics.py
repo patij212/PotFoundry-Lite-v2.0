@@ -31,9 +31,13 @@ def load_jsonl(path: Path) -> List[Dict[str, Any]]:
 def plot_row(row: Dict[str, Any], outpath: Path, title: str = "") -> None:
     # prefer theta_sample if present
     thetas = row.get("theta_sample")
-    if thetas is None and row.get("R_raw_sample") is not None:
-        T = len(row.get("R_raw_sample"))
-        thetas = np.arange(T) * (2.0 * np.pi / float(T))
+    r_raw_sample = row.get("R_raw_sample")
+    if thetas is None:
+        if r_raw_sample is not None:
+            T = len(r_raw_sample)
+            thetas = np.arange(T) * (2.0 * np.pi / float(T))
+        else:
+            thetas = np.array([], dtype=float)
     else:
         thetas = np.asarray(thetas, dtype=float)
 

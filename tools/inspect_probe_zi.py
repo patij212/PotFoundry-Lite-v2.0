@@ -17,7 +17,7 @@ def main() -> None:
     BASE = Path(__file__).resolve().parent
     JSONL = BASE / "edgeflow_verbose_diagnostics.jsonl"
 
-    def usage():
+    def usage() -> None:
         print("Usage: python inspect_probe_zi.py <zi> [--mode first|last|timestamp]")
         print("  mode: first (default) | last | timestamp=<float>")
 

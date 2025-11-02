@@ -96,7 +96,7 @@ def compact_report(row: Dict[str, Any]) -> Dict[str, Any]:
     return report
 
 
-def main():
+def main() -> None:
     if len(sys.argv) < 2:
         print("Usage: python edgeflow_make_compare.py <zi>")
         sys.exit(2)
