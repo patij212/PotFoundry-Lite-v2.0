@@ -830,10 +830,14 @@ def r_outer_lowpoly_facet(
         m_top = math.tan(a_top)
 
         # Smooth max/min helpers (stable log-sum-exp forms)
-        def _smooth_max(a: float | NDArrayFloat, b: float | NDArrayFloat, s: float) -> float | NDArrayFloat:
+        def _smooth_max(
+            a: float | NDArrayFloat, b: float | NDArrayFloat, s: float
+        ) -> float | NDArrayFloat:
             return smooth_max(a, b, float(s))
 
-        def _smooth_min(a: float | NDArrayFloat, b: float | NDArrayFloat, s: float) -> float | NDArrayFloat:
+        def _smooth_min(
+            a: float | NDArrayFloat, b: float | NDArrayFloat, s: float
+        ) -> float | NDArrayFloat:
             return smooth_min(a, b, float(s))
 
         # Blend softness and windowing around seams: keep the cut very local
@@ -2610,8 +2614,16 @@ def build_pot_mesh(
                                         except Exception:
                                             pass
                                         # peak radii values via interpolant at the peak angles
-                                        r_pa = float(np.asarray(interp(np.array([theta_a])), dtype=float).ravel()[0])
-                                        r_pb = float(np.asarray(interp(np.array([theta_b])), dtype=float).ravel()[0])
+                                        r_pa = float(
+                                            np.asarray(
+                                                interp(np.array([theta_a])), dtype=float
+                                            ).ravel()[0]
+                                        )
+                                        r_pb = float(
+                                            np.asarray(
+                                                interp(np.array([theta_b])), dtype=float
+                                            ).ravel()[0]
+                                        )
                                         # compute bridge B at discrete theta samples within the sector (including integer grid points)
                                         # find discrete indices within the sector (analysis-frame indices)
                                         # Build as a Python list first, then convert to ndarray to keep types narrow
@@ -3209,7 +3221,9 @@ def build_pot_mesh(
                 # analyzers may consider this unreachable due to earlier
                 # control-flow narrowing; keep a narrow ignore for that false
                 # positive and document the reason.
-                if mode == "vertical":  # justification: defensive runtime fallback when env_final is None
+                if (
+                    mode == "vertical"
+                ):  # justification: defensive runtime fallback when env_final is None
                     # vertical quantile envelope
                     stacks = []
                     for dz in range(-h, h + 1):
@@ -4414,10 +4428,12 @@ def build_pot_mesh(
     return np.array(verts, dtype=float), faces_arr, diagnostics
 
 
-plt: Any | None
+plt: Any | None = None
 try:
-    import matplotlib.pyplot as plt
+    import matplotlib.pyplot as _plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    plt = _plt
 except Exception:
     # If matplotlib isn't available, set module-level sentinel to None
     plt = None
