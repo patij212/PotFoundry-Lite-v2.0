@@ -14,10 +14,11 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import Any, Dict, List, Optional
 
 
-def load_jsonl(path: Path):
-    entries = []
+def load_jsonl(path: Path) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
     with open(path, "r", encoding="utf-8") as fh:
         for line in fh:
             try:
@@ -27,7 +28,7 @@ def load_jsonl(path: Path):
     return entries
 
 
-def plot_row(row, outpath: Path, title: str = ""):
+def plot_row(row: Dict[str, Any], outpath: Path, title: str = "") -> None:
     # prefer theta_sample if present
     thetas = row.get("theta_sample")
     if thetas is None and row.get("R_raw_sample") is not None:
@@ -72,7 +73,7 @@ def plot_row(row, outpath: Path, title: str = ""):
     plt.close()
 
 
-def main():
+def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--jsonl", type=str, required=True)
     p.add_argument("--outdir", type=str, required=True)
