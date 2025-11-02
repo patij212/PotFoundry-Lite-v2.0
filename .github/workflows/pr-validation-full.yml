@@ -68,8 +68,11 @@ jobs:
 
       - name: Run autoformat hooks (may modify files)
         run: |
-          # Run pre-commit hooks that can modify files (ruff-format, ruff --fix)
-          pre-commit run --all-files
+          # Run only the formatting hooks to avoid requiring test/runtime deps
+          # (this keeps auto-format fast and safe). If additional hooks should
+          # be auto-applied, add them explicitly here.
+          pre-commit run ruff --all-files || true
+          pre-commit run ruff-format --all-files || true
 
       - name: Commit & push fixes (if any)
         run: |
