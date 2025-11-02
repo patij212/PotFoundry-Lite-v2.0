@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import warnings
-from types import ModuleType
+from types import ModuleType  # noqa: E402
 from typing import TYPE_CHECKING, Any
 
 # Provide names for static checkers during type-checking. At runtime we

@@ -11,7 +11,7 @@ backwards-compatible imports working. It re-exports the public functions from
 # at module import time. If the canonical module is unavailable (very rare in
 # tests), provide harmless placeholders so imports don't fail during collection.
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any  # noqa: E402
 
 if TYPE_CHECKING:
     # Static tools: ConfigV2 lives in potfoundry.schema; helpers are implemented
