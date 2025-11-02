@@ -70,9 +70,13 @@ jobs:
         run: |
           # Run only the formatting hooks to avoid requiring test/runtime deps
           # (this keeps auto-format fast and safe). If additional hooks should
-          # be auto-applied, add them explicitly here.
+          # be auto-applied, add them explicitly here. We include a couple of
+          # safe, auto-fix hooks (end-of-file-fixer and trailing-whitespace)
+          # so trivial whitespace issues are committed automatically.
           pre-commit run ruff --all-files || true
           pre-commit run ruff-format --all-files || true
+          pre-commit run end-of-file-fixer --all-files || true
+          pre-commit run trailing-whitespace --all-files || true
 
       - name: Commit & push fixes (if any)
         run: |
