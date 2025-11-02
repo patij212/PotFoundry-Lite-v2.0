@@ -47,7 +47,6 @@ def load_config(path: Path | str) -> ConfigV2:
         path = Path(path)
     raw: Dict[str, Any] = yaml.safe_load(path.read_text()) or {}
     # Accept some legacy shorthand keys in the 'defaults' block (tests use H/Rt/Rb etc.)
-    from typing import cast
 
     defaults = cast(Dict[str, Any], raw.get("defaults") or {})
     if isinstance(defaults, dict):

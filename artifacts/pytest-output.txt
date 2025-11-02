@@ -1,0 +1,19 @@
+........................................................................ [ 19%]
+........................................................................ [ 39%]
+........................................................................ [ 59%]
+........................................................................ [ 79%]
+........................................................................ [ 98%]
+....                                                                     [100%]
+- generated xml file: /home/runner/work/PotFoundry-Lite-v2.0/PotFoundry-Lite-v2.0/pytest-report.xml -
+============================= slowest 10 durations =============================
+12.94s call     tests/test_property_based.py::test_property_volume_increases_with_diameter
+6.84s call     tests/test_property_based.py::test_property_face_normals_point_outward
+4.87s call     tests/test_property_based.py::test_property_no_degenerate_triangles
+1.25s call     tests/test_property_based.py::test_property_mesh_is_watertight
+0.63s call     tests/test_preview_snapshot.py::test_render_mesh_snapshot_cached_returns_png_bytes
+0.61s call     tests/test_performance.py::TestSTLExportPerformance::test_large_mesh_export_performance
+0.54s call     tests/test_property_based.py::test_property_diameter_estimates_within_bounds
+0.40s call     tests/test_performance.py::TestMeshGenerationPerformance::test_high_resolution_performance
+0.39s call     tests/test_sf_blossom_mad_spike_clip_regression.py::test_superformula_blossom_mad_and_spike_clip_builds_mesh
+0.35s call     tests/test_yaml_api_coverage.py::TestBuildFromYaml::test_build_from_yaml_multiple_recipes
+364 passed in 38.62s

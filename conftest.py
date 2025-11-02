@@ -12,11 +12,11 @@ import os
 import sys
 import warnings
 from typing import Any
+from types import ModuleType
 
 # Placeholders so static analyzers don't complain when Hypothesis isn't installed
 settings: Any = None
 Verbosity: Any = None
-from types import ModuleType
 
 # Hypothesis profile setup (optional)
 _HAVE_HYPOTHESIS = False
