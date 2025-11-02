@@ -8,15 +8,16 @@ HAS_STREAMLIT = False
 
 if TYPE_CHECKING:
     # Provide a name for the typechecker only (avoids runtime redefinition warnings)
-    st: Any
+    import streamlit as st  # type: ignore
+else:
+    st: Any = None
+    try:
+        import streamlit as st  # type: ignore
 
-try:
-    import streamlit as st
-
-    HAS_STREAMLIT = True
-except ImportError:
-    st = None
-    HAS_STREAMLIT = False
+        HAS_STREAMLIT = True
+    except Exception:
+        st = None
+        HAS_STREAMLIT = False
 
 
 def render_library_tab():
