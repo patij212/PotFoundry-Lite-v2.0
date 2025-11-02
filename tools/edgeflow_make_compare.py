@@ -6,7 +6,7 @@ for a requested zi (default 42). Prints JSON to stdout.
 import json
 import sys
 from pathlib import Path
-from typing import Optional, Tuple, Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 
 def load_row_by_mode(

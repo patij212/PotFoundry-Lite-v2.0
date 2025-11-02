@@ -26,7 +26,9 @@ def main() -> None:
 
     from typing import Any, Dict, List, Tuple
 
-    def build_with(opts_overrides: Dict[str, Any]) -> Tuple[List[Tuple[float, float]], int]:
+    def build_with(
+        opts_overrides: Dict[str, Any],
+    ) -> Tuple[List[Tuple[float, float]], int]:
         style_opts = dict(p)
         style_opts.update(opts_overrides)
         verts, faces, diag = build_pot_mesh(

@@ -11,10 +11,10 @@ functions below directly.
 import argparse
 import json
 from pathlib import Path
+from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Any, Dict, List, Optional
 
 
 def load_jsonl(path: Path) -> List[Dict[str, Any]]:

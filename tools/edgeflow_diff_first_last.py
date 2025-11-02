@@ -7,7 +7,7 @@ Usage: python edgeflow_diff_first_last.py <zi>
 import json
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 def compare_row(r: Any) -> Optional[Dict[str, Any]]:
