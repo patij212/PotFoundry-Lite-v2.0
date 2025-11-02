@@ -9,6 +9,10 @@ on:
 
 env:
   PYTHONDONTWRITEBYTECODE: '1'
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   import-smoke:
@@ -134,6 +138,7 @@ jobs:
 
       - name: Post pytest summary as PR comment
         uses: actions/github-script@v6
+        continue-on-error: true
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
