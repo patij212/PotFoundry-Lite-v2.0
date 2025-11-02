@@ -34,7 +34,7 @@ UNDO = "__undo_stack__"
 REDO = "__redo_stack__"
 
 
-def _st():
+def _st() -> Any:
     # Lazy import so tests can stub sys.modules['streamlit'] first.
     import streamlit as st
 

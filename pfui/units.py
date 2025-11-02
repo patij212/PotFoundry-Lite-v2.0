@@ -70,15 +70,15 @@ def unit_number_input(
         fmt = format_in
     else:
 
-        def conv(x):
+        def conv(x: float) -> float:
             return x
 
-        def inv(x):
+        def inv(x: float) -> float:
             return x
 
         fmt = format_mm
 
-    def _c(x):
+    def _c(x: Optional[float]) -> Optional[float]:
         return None if x is None else conv(float(x))
 
     out = host.number_input(
@@ -119,10 +119,10 @@ def unit_slider(
         inv = _in_to_mm
     else:
 
-        def conv(x):
+        def conv(x: float) -> float:
             return x
 
-        def inv(x):
+        def inv(x: float) -> float:
             return x
 
     val = host.slider(

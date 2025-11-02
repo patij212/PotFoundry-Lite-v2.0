@@ -327,7 +327,7 @@ def parse_query_params() -> dict | None:
         return None
 
 
-def clear_query_params():
+def clear_query_params() -> None:
     """Clear state from URL query parameters (Streamlit-specific)."""
     if not HAS_STREAMLIT or st is None:
         return

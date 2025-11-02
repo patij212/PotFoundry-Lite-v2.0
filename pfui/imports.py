@@ -8,7 +8,7 @@ They are typed as Optionals so callers can handle absence at runtime.
 """
 
 import importlib  # noqa: E402
-from typing import TYPE_CHECKING, Callable, Optional, Tuple, cast  # noqa: E402
+from typing import TYPE_CHECKING, Callable, Optional, Tuple, cast, Any  # noqa: E402
 
 if TYPE_CHECKING:
     # These imports are only for static analyzers (ruff/mypy). At runtime we
@@ -125,7 +125,7 @@ _SCHEMA_BATCH_CACHE: Optional[
 ] = None
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazily provide attributes matching the old module-level exports.
 
     Supported names: WRITE_STL_BINARY, STYLES, base_radius,
