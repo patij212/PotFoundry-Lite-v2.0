@@ -7,9 +7,10 @@ Usage: python edgeflow_diff_first_last.py <zi>
 import json
 import sys
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 
-def compare_row(r):
+def compare_row(r: Any) -> Optional[Dict[str, Any]]:
     if r is None:
         return None
     r_new = r.get("R_new_raw_sample")
@@ -59,7 +60,7 @@ def main() -> None:
                 except Exception:
                     pass
 
-    report = {
+    report: Dict[str, Any] = {
         "zi": zi,
         "found_first": first is not None,
         "found_last": last is not None,

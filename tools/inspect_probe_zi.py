@@ -1,9 +1,10 @@
 import json
 import sys
 from pathlib import Path
+from typing import Any, List, Optional
 
 
-def _as_seq(x):
+def _as_seq(x: Any) -> Optional[List[Any]]:
     if x is None:
         return None
     try:
@@ -16,7 +17,7 @@ def main() -> None:
     BASE = Path(__file__).resolve().parent
     JSONL = BASE / "edgeflow_verbose_diagnostics.jsonl"
 
-    def usage():
+    def usage() -> None:
         print("Usage: python inspect_probe_zi.py <zi> [--mode first|last|timestamp]")
         print("  mode: first (default) | last | timestamp=<float>")
 
@@ -154,7 +155,7 @@ def main() -> None:
             f"Found {len(viol)} violating theta columns (final_raw < Env_to_use). Showing up to 50:"
         )
 
-        def _fmt(v):
+        def _fmt(v: Any) -> str:
             try:
                 return f"{float(v):.6f}"
             except Exception:

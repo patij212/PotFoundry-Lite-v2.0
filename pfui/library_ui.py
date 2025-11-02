@@ -8,11 +8,11 @@ HAS_STREAMLIT = False
 
 if TYPE_CHECKING:
     # Provide a name for the typechecker only (avoids runtime redefinition warnings)
-    import streamlit as st  # type: ignore
+    import streamlit as st
 else:
     st: Any = None
     try:
-        import streamlit as st  # type: ignore
+        import streamlit as st
 
         HAS_STREAMLIT = True
     except Exception:
@@ -20,7 +20,7 @@ else:
         HAS_STREAMLIT = False
 
 
-def render_library_tab():
+def render_library_tab() -> None:
     """Render the Public Library browse tab."""
     if not HAS_STREAMLIT or st is None:
         return
@@ -223,7 +223,7 @@ def render_library_tab():
             pass
 
 
-def render_library_card(design: dict):
+def render_library_card(design: dict) -> None:
     """Render a single library design card.
 
     Args:
@@ -398,7 +398,7 @@ def render_library_card(design: dict):
             open_design_in_editor(design)
 
 
-def open_design_in_editor(design: dict):
+def open_design_in_editor(design: dict) -> None:
     """Open design in editor by applying its state.
 
     Args:

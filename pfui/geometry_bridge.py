@@ -92,7 +92,7 @@ def build_pot_mesh_safe(
     )
 
 
-def adapt_r_outer_fn(fn: Any):
+def adapt_r_outer_fn(fn: Any) -> Any:
     """Return a wrapper that accepts array-like theta and returns an array-like result.
 
     This central adapter mirrors the lightweight adapter used in the UI but lives in
@@ -107,12 +107,13 @@ def adapt_r_outer_fn(fn: Any):
         A callable wrapper with the signature (theta, z, r_base, expn, opts) -> array-like
     """
 
-    def _wrapped(theta, z, r_base, expn, opts):
+    def _wrapped(theta: Any, z: Any, r_base: Any, expn: Any, opts: Any) -> Any:
         # Lazily import numpy if available and coerce input to an ndarray
         _np: Any = None
         try:
-            import numpy as _np
+            import numpy as _np_mod
 
+            _np = _np_mod
             th = _np.asarray(theta)
         except Exception:
             th = theta

@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import warnings
-from types import ModuleType
+from types import ModuleType  # noqa: E402
 from typing import TYPE_CHECKING, Any
 
 # Provide names for static checkers during type-checking. At runtime we
@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 # twice (once as a placeholder and once by `from hypothesis import ...`).
 if TYPE_CHECKING:
     # Let type checkers know these symbols exist (no runtime import here).
-    from hypothesis import Verbosity, settings  # type: ignore
+    from hypothesis import Verbosity, settings
 else:
     settings: Any = None
     Verbosity: Any = None

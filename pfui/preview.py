@@ -78,7 +78,7 @@ from .colors import build_gradient_colors  # noqa: E402
 from .imports import STYLES, _spin_twist_radians, base_radius  # noqa: E402
 
 
-def _pyplot(fig, *, fill_width: bool, clear: bool = True) -> None:
+def _pyplot(fig: Any, *, fill_width: bool, clear: bool = True) -> None:
     """Render matplotlib figure in Streamlit with compatibility handling.
 
     Args:
@@ -268,7 +268,7 @@ def render_preview(
     theme: str = "dark",
     show_floor: bool = True,
     show_axes: bool = False,
-):
+) -> Optional[bytes]:
     import matplotlib.pyplot as plt
     import numpy as _np
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
@@ -604,7 +604,7 @@ def render_profile(
     Rt: float,
     Rb: float,
     expn: float,
-    r_outer_fn,
+    r_outer_fn: Any,
     opts: Dict[str, Any],
     t_wall: float,
 ) -> None:

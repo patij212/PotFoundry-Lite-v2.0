@@ -11,13 +11,14 @@ functions below directly.
 import argparse
 import json
 from pathlib import Path
+from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def load_jsonl(path: Path):
-    entries = []
+def load_jsonl(path: Path) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
     with open(path, "r", encoding="utf-8") as fh:
         for line in fh:
             try:
@@ -27,12 +28,16 @@ def load_jsonl(path: Path):
     return entries
 
 
-def plot_row(row, outpath: Path, title: str = ""):
+def plot_row(row: Dict[str, Any], outpath: Path, title: str = "") -> None:
     # prefer theta_sample if present
     thetas = row.get("theta_sample")
-    if thetas is None and row.get("R_raw_sample") is not None:
-        T = len(row.get("R_raw_sample"))
-        thetas = np.arange(T) * (2.0 * np.pi / float(T))
+    r_raw_sample = row.get("R_raw_sample")
+    if thetas is None:
+        if r_raw_sample is not None:
+            T = len(r_raw_sample)
+            thetas = np.arange(T) * (2.0 * np.pi / float(T))
+        else:
+            thetas = np.array([], dtype=float)
     else:
         thetas = np.asarray(thetas, dtype=float)
 
@@ -72,7 +77,7 @@ def plot_row(row, outpath: Path, title: str = ""):
     plt.close()
 
 
-def main():
+def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--jsonl", type=str, required=True)
     p.add_argument("--outdir", type=str, required=True)

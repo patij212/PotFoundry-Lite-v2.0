@@ -1,7 +1,7 @@
 # pfui/units.py
 from __future__ import annotations
 
-from typing import Optional, cast
+from typing import Optional
 
 import streamlit as st
 
@@ -18,8 +18,17 @@ def _in_to_mm(x: float) -> float:
 
 def get_units(key: str = "ui__units") -> str:
     """Return current display units ('mm'|'in')."""
-    # st.session_state.get() is typed as Any; cast to str for mypy while preserving runtime behavior
-    return cast(str, st.session_state.get(key, "mm"))
+    # Treat the retrieved session value as an `object` (not `Any`) so mypy can
+    # narrow it with isinstance checks. Assigning to `object` discards the
+    # `Any`-ness coming from the runtime `st.session_state` accessor while
+    # remaining safe at runtime.
+    val: object = st.session_state.get(key, "mm")
+    if isinstance(val, str):
+        return val
+    if isinstance(val, (int, float, bool)):
+        return str(val)
+    # Fallback to default units if the stored value is unexpected.
+    return "mm"
 
 
 def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:
@@ -30,7 +39,9 @@ def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:
     """
     mount_flag = f"{key}__mounted"
     if st.session_state.get(mount_flag):
-        return cast(str, st.session_state.get(key, "mm"))
+        # When already mounted, prefer the normalized `get_units` helper which
+        # guarantees a `str` return for mypy.
+        return get_units(key)
 
     host = st.sidebar if location == "sidebar" else st
     current = st.session_state.get(key, "mm")
@@ -42,7 +53,8 @@ def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:
         help="Values display in these units; geometry stays in mm internally.",
     )
     st.session_state[mount_flag] = True
-    return choice
+    # Streamlit widgets return Any; coerce to str so mypy sees a stable return type
+    return str(choice)
 
 
 def unit_number_input(
@@ -70,15 +82,15 @@ def unit_number_input(
         fmt = format_in
     else:
 
-        def conv(x):
+        def conv(x: float) -> float:
             return x
 
-        def inv(x):
+        def inv(x: float) -> float:
             return x
 
         fmt = format_mm
 
-    def _c(x):
+    def _c(x: Optional[float]) -> Optional[float]:
         return None if x is None else conv(float(x))
 
     out = host.number_input(
@@ -119,10 +131,10 @@ def unit_slider(
         inv = _in_to_mm
     else:
 
-        def conv(x):
+        def conv(x: float) -> float:
             return x
 
-        def inv(x):
+        def inv(x: float) -> float:
             return x
 
     val = host.slider(

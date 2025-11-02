@@ -11,7 +11,7 @@ class HealthBadge:
     tip: str
 
 
-def _health_badge(dg, label: str, status: str, tip: str) -> None:
+def _health_badge(dg: Any, label: str, status: str, tip: str) -> None:
     if status == "ok":
         dg.success(f"{label}: OK")
     else:

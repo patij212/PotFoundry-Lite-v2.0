@@ -6,7 +6,7 @@ for a requested zi (default 42). Prints JSON to stdout.
 import json
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 def load_row_by_mode(
@@ -55,8 +55,8 @@ def load_row_by_mode(
     return found, found_ts
 
 
-def compact_report(row):
-    report = {"zi": row.get("zi")}
+def compact_report(row: Dict[str, Any]) -> Dict[str, Any]:
+    report: Dict[str, Any] = {"zi": row.get("zi")}
     # fetch arrays
     env_to_use = row.get("Env_to_use_sample")
     env_applied = row.get("Env_applied_raw_sample")
@@ -80,7 +80,7 @@ def compact_report(row):
         n_theta = None
     report["n_theta"] = n_theta
 
-    def compare(a, b):
+    def compare(a: Optional[list], b: Optional[list]) -> Optional[Dict[str, Any]]:
         # return count and indices where a < b (elementwise). Expect lists of same len.
         if a is None or b is None:
             return None
@@ -96,7 +96,7 @@ def compact_report(row):
     return report
 
 
-def main():
+def main() -> None:
     if len(sys.argv) < 2:
         print("Usage: python edgeflow_make_compare.py <zi>")
         sys.exit(2)

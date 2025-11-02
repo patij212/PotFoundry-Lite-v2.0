@@ -466,7 +466,7 @@ def twist_controls(style: str) -> Dict[str, Any]:
     v_curve = float(st.session_state.get(k3, 1.0) or 1.0)
 
     # Mark preview stale when changing twist controls (debounced/manual modes)
-    def _mark_changed():
+    def _mark_changed() -> None:
         try:
             st.session_state["_last_change_ts"] = __import__("time").time()
             mode = st.session_state.get("preview_mode", "manual")
