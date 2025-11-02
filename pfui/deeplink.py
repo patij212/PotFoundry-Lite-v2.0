@@ -2,33 +2,45 @@
 
 Provides URL-safe encoding of design parameters for "Open in editor" functionality.
 """
+
 from __future__ import annotations
 
 import base64
 import json
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
-try:
+if TYPE_CHECKING:
     import streamlit as st
+
     HAS_STREAMLIT = True
-except ImportError:
-    HAS_STREAMLIT = False
-    st = None  # type: ignore
+else:
+    try:
+        import streamlit as st
+
+        HAS_STREAMLIT = True
+    except Exception:
+        HAS_STREAMLIT = False
+        st = None
 
 
 # Whitelisted parameters that can be restored from deep links
 ALLOWED_GEOMETRY_KEYS = {
-    "style", "H", "top_od", "bottom_od", "t_wall", "t_bottom",
-    "r_drain", "expn"
+    "style",
+    "H",
+    "top_od",
+    "bottom_od",
+    "t_wall",
+    "t_bottom",
+    "r_drain",
+    "expn",
 }
 
-ALLOWED_MESH_KEYS = {
-    "n_theta", "n_z", "twist"
-}
+ALLOWED_MESH_KEYS = {"n_theta", "n_z", "twist"}
 
 ALLOWED_KEYS = ALLOWED_GEOMETRY_KEYS | ALLOWED_MESH_KEYS | {"opts"}
 
 
-def encode_state(state_dict: dict) -> str:
+def encode_state(state_dict: Dict[str, Any]) -> str:
     """Encode state dictionary to base64url string for URL parameter.
 
     Args:
@@ -55,7 +67,7 @@ def encode_state(state_dict: dict) -> str:
     return b64_bytes.decode("ascii").rstrip("=")
 
 
-def decode_state(encoded: str) -> dict:
+def decode_state(encoded: str) -> Dict[str, Any]:
     """Decode base64url string to state dictionary.
 
     Args:
@@ -92,7 +104,7 @@ def decode_state(encoded: str) -> dict:
         raise ValueError(f"Invalid state parameter: {e}")
 
 
-def validate_state(state_dict: dict) -> tuple[dict, list[str]]:
+def validate_state(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     """Validate and sanitize state dictionary.
 
     Args:
@@ -108,8 +120,8 @@ def validate_state(state_dict: dict) -> tuple[dict, list[str]]:
     """
     from pfui.imports import STYLES
 
-    validated = {}
-    warnings = []
+    validated: Dict[str, Any] = {}
+    warnings: List[str] = []
 
     for key, value in state_dict.items():
         # Check whitelist
@@ -156,11 +168,15 @@ def validate_state(state_dict: dict) -> tuple[dict, list[str]]:
 
             # Thicknesses
             if key == "t_wall" and not (1.5 <= numeric_value <= 20):
-                warnings.append(f"Wall thickness {numeric_value} out of range (1.5-20mm)")
+                warnings.append(
+                    f"Wall thickness {numeric_value} out of range (1.5-20mm)"
+                )
                 continue
 
             if key == "t_bottom" and not (2.0 <= numeric_value <= 30):
-                warnings.append(f"Bottom thickness {numeric_value} out of range (2.0-30mm)")
+                warnings.append(
+                    f"Bottom thickness {numeric_value} out of range (2.0-30mm)"
+                )
                 continue
 
             # Drain radius
@@ -170,7 +186,9 @@ def validate_state(state_dict: dict) -> tuple[dict, list[str]]:
 
             # Flare exponent
             if key == "expn" and not (0.5 <= numeric_value <= 4.0):
-                warnings.append(f"Flare exponent {numeric_value} out of range (0.5-4.0)")
+                warnings.append(
+                    f"Flare exponent {numeric_value} out of range (0.5-4.0)"
+                )
                 continue
 
             # Mesh quality
@@ -252,7 +270,9 @@ def extract_state_from_session(session_state: dict) -> dict:
     return state
 
 
-def generate_deep_link(state_dict: dict, base_url: str = "http://localhost:8501") -> str:
+def generate_deep_link(
+    state_dict: dict, base_url: str = "http://localhost:8501"
+) -> str:
     """Generate full deep link URL from state dictionary.
 
     Args:
@@ -283,12 +303,18 @@ def parse_query_params() -> dict | None:
     try:
         # Get query params (Streamlit >= 1.22)
         if hasattr(st, "query_params"):
-            params = st.query_params
-            encoded = params.get("state")
+            # Use a temporary variable typed as Any because Streamlit's query_params
+            # can return either str or list[str] depending on the API/runtime.
+            val: Any = st.query_params.get("state")
+            if isinstance(val, list):
+                encoded = val[0] if val else None
+            elif isinstance(val, str):
+                encoded = val
+            else:
+                encoded = None
         else:
             # Fallback for older Streamlit versions
-            params = st.experimental_get_query_params()
-            encoded = params.get("state", [None])[0]
+            encoded = st.experimental_get_query_params().get("state", [None])[0]
 
         if not encoded:
             return None
@@ -301,7 +327,7 @@ def parse_query_params() -> dict | None:
         return None
 
 
-def clear_query_params():
+def clear_query_params() -> None:
     """Clear state from URL query parameters (Streamlit-specific)."""
     if not HAS_STREAMLIT or st is None:
         return

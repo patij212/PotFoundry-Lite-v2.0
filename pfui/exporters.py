@@ -1,9 +1,13 @@
 from __future__ import annotations
+
 import re
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Callable, Tuple
+
+import numpy as np
+import numpy.typing as npt
 
 # Binary STL writer (recommended for all exports)
 from .imports import WRITE_STL_BINARY
@@ -14,7 +18,9 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80] or "potfoundry_model"
 
 
-def export_stl_bytes(name: str, verts, faces) -> Tuple[bytes, str]:
+def export_stl_bytes(
+    name: str, verts: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]
+) -> Tuple[bytes, str]:
     """Export mesh to binary STL and return as bytes.
 
     This is the recommended export format - binary STL files are smaller,
@@ -32,11 +38,24 @@ def export_stl_bytes(name: str, verts, faces) -> Tuple[bytes, str]:
         RuntimeError: If binary STL writer is not available
     """
     safe = _safe_name(name)
-    if WRITE_STL_BINARY is None:
-        raise RuntimeError("write_stl_binary not available in this build")
+
+    # wrap the potentially untyped WRITE_STL_BINARY in an annotated callable
+    # so mypy can reason about the call-site without an inline "type: ignore"
+    from typing import cast
+
+    writer: Callable[[str, str, Any, Any], None] | None = None
+    if callable(WRITE_STL_BINARY):
+        # Cast the dynamically imported symbol to the expected Callable type.
+        writer = cast(Callable[[str, str, Any, Any], None], WRITE_STL_BINARY)
+
+    if writer is None:
+        raise RuntimeError("WRITE_STL_BINARY not available")
+
     tmp_path = Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
-    # Export as binary STL (recommended format)
-    WRITE_STL_BINARY(str(tmp_path), safe, verts, faces)  # type: ignore[misc]
+    # Export as binary STL (recommended format). Use a typed Any wrapper so
+    # mypy knows the call is intentional when the imported symbol is an
+    # untyped C-extension or similarly un-annotated helper.
+    writer(str(tmp_path), safe, verts, faces)
     data = tmp_path.read_bytes()
     try:
         tmp_path.unlink(missing_ok=True)

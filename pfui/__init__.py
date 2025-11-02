@@ -7,4 +7,8 @@ require a package __init__ to resolve relative imports.
 Keep logic-free to avoid import-time side-effects during test discovery.
 """
 
-__all__ = []
+<<<<<<< HEAD
+__all__: list[str] = []
+=======
+__all__: list[str] = []
+>>>>>>> mypy/geometry-tighten

@@ -1,0 +1,19 @@
+Pytest run captured by assistant
+
+Command: python -m pytest -q
+
+Output summary (captured):
+........................................................................ [ 20%]
+........................................................................ [ 41%]
+........................................................................ [ 61%]
+........................................................................ [ 82%]
+..............................................................           [100%]
+350 passed in 81.74s (0:01:21)
+
+If you want to reproduce locally in your integrated terminal, run:
+
+& .\.venv\Scripts\Activate.ps1
+python -m pytest -q
+
+If you prefer verbose output (one test per line):
+python -m pytest -v

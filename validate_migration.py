@@ -5,10 +5,13 @@ Final Validation Script for Binary STL Migration
 This script demonstrates that the binary STL migration is complete and working.
 Run this to verify the implementation.
 """
+
 import sys
+import tempfile
 import warnings
 from pathlib import Path
-import tempfile
+
+import numpy as np
 
 print("=" * 70)
 print("Binary STL Migration - Final Validation")
@@ -17,7 +20,10 @@ print("=" * 70)
 # Test 1: Import verification
 print("\n[1/5] Verifying imports...")
 try:
-    from potfoundry import write_stl_binary, write_ascii_stl, build_pot_mesh, STYLES
+    from typing import Any, cast
+
+    from potfoundry import STYLES, build_pot_mesh, write_ascii_stl, write_stl_binary
+
     print("  ✅ All imports successful")
 except ImportError as e:
     print(f"  ❌ Import failed: {e}")
@@ -32,14 +38,14 @@ else:
 
 # Test 3: ASCII STL shows deprecation warning
 print("\n[3/5] Verifying ASCII STL deprecation...")
-import numpy as np
 verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
 faces = np.array([[0, 1, 2]], dtype=int)
 
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("always", DeprecationWarning)
     with tempfile.NamedTemporaryFile(suffix=".stl", delete=True) as f:
-        write_ascii_stl(f.name, "test", verts, faces)
+        # write_ascii_stl expects a file path as str; cast Path/filename to str
+        write_ascii_stl(str(f.name), "test", verts, faces)
 
     if len(w) > 0 and issubclass(w[0].category, DeprecationWarning):
         print("  ✅ ASCII STL shows deprecation warning")
@@ -51,11 +57,24 @@ with warnings.catch_warnings(record=True) as w:
 # Test 4: Binary STL export works correctly
 print("\n[4/5] Verifying binary STL export...")
 try:
-    style_fn, _ = STYLES['SuperellipseMorph']
-    verts, faces, _ = build_pot_mesh(
-        H=80, Rt=50, Rb=40, t_wall=2.5, t_bottom=2.5, r_drain=6,
-        expn=1.1, n_theta=48, n_z=24,
-        r_outer_fn=style_fn, style_opts={}
+    # STYLES contains callables and arbitrary metadata; cast to Any for safety
+    style_fn, _ = cast(Any, STYLES["SuperellipseMorph"])
+    # build_pot_mesh has dynamic return types in some configs; cast to expected tuple
+    verts, faces, _ = cast(
+        tuple,
+        build_pot_mesh(
+            H=80,
+            Rt=50,
+            Rb=40,
+            t_wall=2.5,
+            t_bottom=2.5,
+            r_drain=6,
+            expn=1.1,
+            n_theta=48,
+            n_z=24,
+            r_outer_fn=style_fn,
+            style_opts={},
+        ),
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -95,7 +114,7 @@ try:
         write_stl_binary(binary_path, "Test", verts, faces)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
-            write_ascii_stl(ascii_path, "Test", verts, faces)
+            write_ascii_stl(str(ascii_path), "Test", verts, faces)
 
         binary_size = binary_path.stat().st_size
         ascii_size = ascii_path.stat().st_size

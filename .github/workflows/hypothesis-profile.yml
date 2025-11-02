@@ -1,0 +1,11 @@
+# Hypothesis configuration for CI environments
+# This file is referenced by the CI workflow
+# Place this content in tests/conftest.py or similar
+
+# In tests/conftest.py or similar, add:
+# from hypothesis import settings, HealthCheck
+#
+# settings.register_profile("ci", max_examples=10, deadline=2000,
+#                          suppress_health_check=[HealthCheck.too_slow])
+# settings.register_profile("dev", max_examples=50, deadline=2000)
+# settings.load_profile("dev")  # Default for local development

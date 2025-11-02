@@ -26,10 +26,29 @@ Example
     apply_pending_updates()  # merge then clear pending
 """
 
-from typing import Any, Dict
-import streamlit as st
+import importlib  # noqa: E402
+from typing import Any, Dict, MutableMapping, cast  # noqa: E402
 
-from .schemas import STYLE_SCHEMAS, GLOBAL_CONTROLS
+import streamlit as st  # noqa: E402
+
+# Lazy-load schema constants to avoid importing pfui.schemas at module import time.
+STYLE_SCHEMAS: dict = {}
+GLOBAL_CONTROLS: dict = {}
+
+
+def _ensure_schema_globals() -> None:
+    global STYLE_SCHEMAS, GLOBAL_CONTROLS
+    if not STYLE_SCHEMAS or not GLOBAL_CONTROLS:
+        try:
+            mod = importlib.import_module("pfui.schemas")
+            STYLE_SCHEMAS.update(getattr(mod, "get_style_schemas", lambda: {})() or {})
+            GLOBAL_CONTROLS.update(
+                getattr(mod, "get_global_controls", lambda: {})() or {}
+            )
+        except Exception:
+            STYLE_SCHEMAS = STYLE_SCHEMAS or {}
+            GLOBAL_CONTROLS = GLOBAL_CONTROLS or {}
+
 
 # ---------- Widget key helper -------------------------------------------------
 
@@ -58,10 +77,12 @@ def widget_key(style: str, field: str) -> str:
 # ---------- Pending updates machinery ----------------------------------------
 
 # Exposed as a module attribute so tests can reference it.
-_PENDING_KEY = "__pending_updates__"
+_PENDING_KEY: str = "__pending_updates__"
 
 
-def _deep_merge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge(
+    dst: MutableMapping[str, Any], src: Dict[str, Any]
+) -> MutableMapping[str, Any]:
     """
     Purpose:
         Recursively merge src into dst (last-write-wins on leaves).
@@ -77,18 +98,14 @@ def _deep_merge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
         - Works in-place on dst; src is not modified.
     """
     for k, v in src.items():
-        if (
-            k in dst
-            and isinstance(dst[k], dict)
-            and isinstance(v, dict)
-        ):
+        if k in dst and isinstance(dst[k], dict) and isinstance(v, dict):
             _deep_merge(dst[k], v)
         else:
             dst[k] = v
     return dst
 
 
-def queue_update(updates: dict) -> None:
+def queue_update(updates: Dict[str, Any]) -> None:
     """
     Purpose:
         Queue session_state updates for the next run (before widgets render).
@@ -126,7 +143,8 @@ def apply_pending_updates() -> None:
     """
     updates = st.session_state.pop(_PENDING_KEY, None)
     if updates:
-        _deep_merge(st.session_state, updates)
+        # st.session_state is a SessionStateProxy; cast to MutableMapping for mypy-friendly merge
+        _deep_merge(cast(MutableMapping[str, Any], st.session_state), updates)
 
 
 # ---------- Reset helpers (DEFERRED writes) ----------------------------------
@@ -146,6 +164,7 @@ def _schema_defaults_for_style(style: str) -> Dict[str, Any]:
     # Global defaults (driven by schema; not hard-coded).
     # IMPORTANT: Do not set a session value if there is no explicit default.
     # Many Streamlit widgets crash when value=None is pre-injected.
+    _ensure_schema_globals()
     for gkey, gmeta in GLOBAL_CONTROLS.items():
         if hasattr(gmeta, "get") and "default" in gmeta:
             updates[widget_key(style, gkey)] = gmeta["default"]

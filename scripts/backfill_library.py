@@ -28,22 +28,29 @@ Metadata JSON format:
         "tags": ["tag1", "tag2"]
     }
 """
-import sys
+
 import json
+import sys
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional, cast
 
 # Add parent directory to path to import library modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from potfoundry.integrations.supabase_client import (
+    NotConfiguredError,
+    get_singleton_client,
+)
 from potfoundry.library import publish_design
-from potfoundry.integrations.supabase_client import get_singleton_client, NotConfiguredError
 
 
-def load_metadata(json_path: Path) -> dict:
+def load_metadata(json_path: Path) -> dict[str, Any]:
     """Load and validate metadata from JSON file."""
-    with open(json_path, 'r') as f:
-        data = json.load(f)
+    with open(json_path, "r") as f:
+        data_raw = json.load(f)
+
+    # mypy: ensure we treat loaded JSON as a mapping
+    data = cast(Dict[str, Any], data_raw)
 
     # Validate required fields
     required = ["title", "style", "size", "opts", "mesh", "diagnostics", "license"]
@@ -54,24 +61,24 @@ def load_metadata(json_path: Path) -> dict:
     return data
 
 
-def find_designs(directory: Path) -> List[tuple[Path, Path, Path | None]]:
+def find_designs(directory: Path) -> List[tuple[Path, Path, Optional[Path]]]:
     """Find all design triples (STL, JSON, optional PNG) in directory.
 
     Returns:
         List of (stl_path, json_path, png_path) tuples
     """
-    designs = []
+    designs: List[tuple[Path, Path, Optional[Path]]] = []
 
     for stl_path in directory.glob("*.stl"):
         stem = stl_path.stem
         json_path = directory / f"{stem}.json"
-        png_path = directory / f"{stem}.png"
+        png_candidate = directory / f"{stem}.png"
 
         if not json_path.exists():
             print(f"Warning: No metadata found for {stl_path.name}, skipping")
             continue
 
-        png_path = png_path if png_path.exists() else None
+        png_path: Optional[Path] = png_candidate if png_candidate.exists() else None
         designs.append((stl_path, json_path, png_path))
 
     return designs
@@ -130,7 +137,7 @@ def backfill(directory: Path, dry_run: bool = False):
                 license=metadata["license"],
                 title=metadata["title"],
                 tags=metadata.get("tags", []),
-                app_commit=metadata.get("app_commit")
+                app_commit=metadata.get("app_commit"),
             )
 
             if result.duplicate:
@@ -159,8 +166,12 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Backfill designs to Public Library")
-    parser.add_argument("directory", type=Path, help="Directory containing STL/JSON files")
-    parser.add_argument("--dry-run", action="store_true", help="Don't actually publish (validate only)")
+    parser.add_argument(
+        "directory", type=Path, help="Directory containing STL/JSON files"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Don't actually publish (validate only)"
+    )
 
     args = parser.parse_args()
 

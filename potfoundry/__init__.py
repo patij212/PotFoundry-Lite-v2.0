@@ -13,30 +13,29 @@ writes faster, and is universally supported by modern slicers and CAD tools.
 
 __version__ = "2.1.0"
 
+# ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import (
+    STYLES,
     MeshQuality,
     PotDefaults,
-    STYLES,
     build_pot_mesh,
     save_preview_png,
+    write_ascii_stl,
 )
 
 # Binary STL writer (recommended)
 from .core.io.stl import write_stl_binary
 
-# ASCII STL writer (deprecated, kept for backward compatibility)
-from .core.geometry import write_ascii_stl
-
 __all__ = [
     # Core geometry
-    'MeshQuality',
-    'PotDefaults',
-    'STYLES',
-    'build_pot_mesh',
-    'save_preview_png',
+    "MeshQuality",
+    "PotDefaults",
+    "STYLES",
+    "build_pot_mesh",
+    "save_preview_png",
     # STL export (binary is recommended)
-    'write_stl_binary',
-    'write_ascii_stl',  # deprecated
+    "write_stl_binary",
+    "write_ascii_stl",  # deprecated
     # Version
-    '__version__',
+    "__version__",
 ]

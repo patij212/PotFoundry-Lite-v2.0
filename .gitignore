@@ -36,6 +36,7 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+.hypothesis/
 
 # OS
 .DS_Store
@@ -46,5 +47,25 @@ out/
 *.stl
 *.zip
 
+# CI artifacts and local caches - avoid scanning/committing these
+artifacts/
+.gha_artifacts_*/
+.gha_run_*.log
+.runs_grep.txt
+_runs_all.json
+pytest-output.txt
+pytest-report.xml
+pytest-summary.json
+artifacts/**
+.mypy_cache/
+.venv/
+.pytest_cache/
+pre-commit-output*.txt
+ruff-*.txt
+mypy-out*.txt
+
 # Streamlit secrets (do NOT commit your real secrets)
 .streamlit/secrets.toml
+
+# Runtime debug artifacts
+.pf_edge_flow_debug.json

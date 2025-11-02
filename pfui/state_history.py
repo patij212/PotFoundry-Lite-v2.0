@@ -21,17 +21,22 @@ Errors
     - Functions are no-ops when stacks are empty.
 """
 
-from typing import Any, Dict
-import copy
+import copy  # noqa: E402
+from typing import Any, Dict  # noqa: E402
+
+# Allow tests to stub `streamlit` via sys.modules before importing; pre-declare
+# the `st` name so type-checkers don't require `# type: ignore` on the local
+# import below.
+st: Any
 
 MAX_HISTORY = 50
 UNDO = "__undo_stack__"
 REDO = "__redo_stack__"
 
 
-def _st():
+def _st() -> Any:
     # Lazy import so tests can stub sys.modules['streamlit'] first.
-    import streamlit as st  # type: ignore
+    import streamlit as st
 
     return st
 

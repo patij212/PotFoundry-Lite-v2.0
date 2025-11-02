@@ -1,10 +1,10 @@
 """Tests for library validation functions."""
 
 from potfoundry.library import (
-    validate_title,
-    validate_tags,
     validate_license,
     validate_stl_size,
+    validate_tags,
+    validate_title,
     validate_triangle_count,
 )
 
@@ -20,6 +20,7 @@ def test_validate_title_rejects_empty():
     """Test that empty titles are rejected."""
     valid, error = validate_title("")
     assert not valid
+    assert error is not None
     assert "empty" in error.lower()
 
 
@@ -28,6 +29,7 @@ def test_validate_title_rejects_too_long():
     long_title = "x" * 121
     valid, error = validate_title(long_title)
     assert not valid
+    assert error is not None
     assert "120" in error
 
 
@@ -42,6 +44,7 @@ def test_validate_title_blocklist():
     """Test that blocklisted words are rejected."""
     valid, error = validate_title("This is a spam title")
     assert not valid
+    assert error is not None
     assert "inappropriate" in error.lower()
 
 
@@ -58,6 +61,7 @@ def test_validate_tags_rejects_too_many():
     tags = [f"tag{i}" for i in range(11)]
     valid, error = validate_tags(tags)
     assert not valid
+    assert error is not None
     assert "10" in error
 
 
@@ -66,6 +70,7 @@ def test_validate_tags_rejects_too_long():
     tags = ["x" * 25]
     valid, error = validate_tags(tags)
     assert not valid
+    assert error is not None
     assert "24" in error
 
 
@@ -74,6 +79,7 @@ def test_validate_tags_rejects_invalid_chars():
     tags = ["tag with spaces"]
     valid, error = validate_tags(tags)
     assert not valid
+    assert error is not None
     assert "invalid characters" in error.lower()
 
     tags = ["tag@with!special"]
@@ -108,6 +114,7 @@ def test_validate_license_rejects_unknown():
     """Test that unknown licenses are rejected."""
     valid, error = validate_license("Unknown License")
     assert not valid
+    assert error is not None
     assert "must be one of" in error.lower()
 
 
@@ -123,7 +130,9 @@ def test_validate_stl_size_rejects_large():
     large_stl = b"x" * (26 * 1024 * 1024)  # 26MB
     valid, error = validate_stl_size(large_stl)
     assert not valid
+    assert error is not None
     assert "too large" in error.lower()
+    assert error is not None
     assert "25" in error
 
 
@@ -139,5 +148,7 @@ def test_validate_triangle_count_rejects_huge():
     diagnostics = {"triangle_count": 6_000_000}
     valid, error = validate_triangle_count(diagnostics)
     assert not valid
+    assert error is not None
     assert "too high" in error.lower()
+    assert error is not None
     assert "5,000,000" in error or "5000000" in error

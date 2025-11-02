@@ -1,15 +1,17 @@
 # tests/pfui/test_state_history.py
 import sys
 import types
+from typing import Any
 
 # stub streamlit
 fake_st = types.SimpleNamespace()
 fake_st.session_state = {}
-sys.modules["streamlit"] = types.SimpleNamespace(
-    session_state=fake_st.session_state
-)
+# Use ModuleType so sys.modules contains proper module objects (hashable)
+mod: Any = types.ModuleType("streamlit")
+mod.session_state = fake_st.session_state
+sys.modules["streamlit"] = mod
 
-from pfui import state_history as H
+from pfui import state_history as H  # noqa: E402
 
 
 def _reset():

@@ -1,0 +1,47 @@
+TERMINAL OUTPUT CHECK
+
+This file was created by the assistant to provide a visible copy of the terminal checks
+in case your VS Code integrated terminal is not showing output.
+
+Timestamp: 2025-10-23 19:35:41Z
+
+Working directory:
+C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0
+
+Git branch:
+fix/edgeflow-debug-quick
+
+Python:
+Python 3.13.9
+
+Git status (porcelain) - partial listing:
+ M app.py
+ M pfui/controls.py
+ M pfui/geometry_bridge.py
+ M pfui/imports.py
+ M pfui/preview.py
+ M pfui/schemas.py
+ M potfoundry/core/geometry.py
+ M potfoundry/integrations/supabase_client.py
+ M potfoundry/library.py
+ M potfoundry/schema.py
+ M potfoundry/yaml_api.py
+ M pytest.ini
+ M tools/debug_print_probe.py
+ ?? potfoundry/adapters/
+ ?? tests/tools/
+
+If you still don't see terminal output, try these steps in VS Code:
+1) View → Terminal (Ctrl+`) to open the terminal panel.
+2) Select the correct terminal instance from the dropdown (PowerShell) and scroll up.
+3) Run a simple command in the terminal to test output:
+
+PowerShell commands to paste and run:
+& .\.venv\Scripts\Activate.ps1
+Write-Output "TERMINAL CHECK: Hello from user";
+Write-Output "Time: $(Get-Date -Format 'u')";
+
+4) If that still shows nothing, create a new terminal: Terminal → New Terminal, and run the commands above.
+5) As a last resort, open an external PowerShell window and run the same commands there.
+
+If you want, I can also write other commands to a file or run tests and save their outputs to files you can open in the editor.

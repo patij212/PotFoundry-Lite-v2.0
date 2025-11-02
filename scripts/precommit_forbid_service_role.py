@@ -3,7 +3,6 @@ import re
 import sys
 from pathlib import Path
 
-
 # JWT-ish token pattern
 JWT_RE = re.compile(r"eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+")
 SERVICE_ROLE_RE = re.compile(r"service_role", re.IGNORECASE)
@@ -23,9 +22,16 @@ def is_text_file(p: Path) -> bool:
 def interesting_file(p: Path) -> bool:
     # Only scan config/code files that could contain secrets;
     # ignore docs, migrations, and shell scripts to reduce false positives.
-    if any(str(p).replace("\\", "/").startswith(prefix) for prefix in (
-        "docs/", "adr/", "db/", "tests/", "scripts/precommit_forbid_service_role",
-    )):
+    if any(
+        str(p).replace("\\", "/").startswith(prefix)
+        for prefix in (
+            "docs/",
+            "adr/",
+            "db/",
+            "tests/",
+            "scripts/precommit_forbid_service_role",
+        )
+    ):
         return False
     if p.suffix.lower() in {".md", ".sql", ".sh", ".bat", ".ps1"}:
         return False
@@ -36,7 +42,9 @@ def interesting_file(p: Path) -> bool:
 
 def extract_env_value(text: str, key: str) -> str | None:
     # Try common formats: TOML/INI/ENV
-    rx = re.compile(rf"^{key}\s*[:=]\s*(['\"]?)(.+?)\1\s*$", re.IGNORECASE | re.MULTILINE)
+    rx = re.compile(
+        rf"^{key}\s*[:=]\s*(['\"]?)(.+?)\1\s*$", re.IGNORECASE | re.MULTILINE
+    )
     m = rx.search(text)
     if m:
         return m.group(2).strip()
@@ -60,14 +68,21 @@ def file_has_real_service_role_secret(text: str) -> bool:
     if val and not looks_like_placeholder(val) and len(val) >= 20:
         return True
     # Or a long JWT-like token present alongside a service_role mention
-    if SERVICE_ROLE_RE.search(text) and any(len(tok) > 80 for tok in JWT_RE.findall(text)):
+    if SERVICE_ROLE_RE.search(text) and any(
+        len(tok) > 80 for tok in JWT_RE.findall(text)
+    ):
         return True
     return False
 
 
 def scan_file(p: Path) -> bool:
     try:
-        if not p.exists() or not p.is_file() or not is_text_file(p) or not interesting_file(p):
+        if (
+            not p.exists()
+            or not p.is_file()
+            or not is_text_file(p)
+            or not interesting_file(p)
+        ):
             return False
         text = p.read_text(errors="ignore")
         # Ignore templates/examples
@@ -87,10 +102,14 @@ def main(argv: list[str]) -> int:
             bad.append(str(p))
 
     if bad:
-        sys.stderr.write("\nERROR: Potential Supabase service_role secret detected in the following files:\n")
+        sys.stderr.write(
+            "\nERROR: Potential Supabase service_role secret detected in the following files:\n"
+        )
         for fname in bad:
             sys.stderr.write(f"  - {fname}\n")
-        sys.stderr.write("\nRefuse to commit. Remove or redact service_role credentials before committing.\n")
+        sys.stderr.write(
+            "\nRefuse to commit. Remove or redact service_role credentials before committing.\n"
+        )
         return 1
     return 0
 
