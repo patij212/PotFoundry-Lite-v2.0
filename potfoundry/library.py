@@ -291,8 +291,12 @@ def check_rate_limit() -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def record_publish():
-    """Record a publish event for rate limiting."""
+def record_publish() -> None:
+    """Record a publish event for rate limiting.
+
+    This function mutates Streamlit's `session_state` to append a timestamp of
+    the publish event. It intentionally returns None.
+    """
     if not HAS_STREAMLIT or st is None:
         return
 
