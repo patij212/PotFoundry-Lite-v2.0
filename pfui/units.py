@@ -19,7 +19,8 @@ def _in_to_mm(x: float) -> float:
 def get_units(key: str = "ui__units") -> str:
     """Return current display units ('mm'|'in')."""
     # st.session_state.get() is typed as Any; cast to str for mypy while preserving runtime behavior
-    return cast(str, st.session_state.get(key, "mm"))
+    # Prefer an explicit str() coercion to avoid returning Any under strict mypy
+    return str(st.session_state.get(key, "mm"))
 
 
 def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:

@@ -111,8 +111,9 @@ def adapt_r_outer_fn(fn: Any) -> Any:
         # Lazily import numpy if available and coerce input to an ndarray
         _np: Any = None
         try:
-            import numpy as _np
+            import numpy as _np_mod
 
+            _np = _np_mod
             th = _np.asarray(theta)
         except Exception:
             th = theta

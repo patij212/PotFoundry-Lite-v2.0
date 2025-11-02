@@ -8,7 +8,7 @@ They are typed as Optionals so callers can handle absence at runtime.
 """
 
 import importlib  # noqa: E402
-from typing import TYPE_CHECKING, Callable, Optional, Tuple, cast, Any  # noqa: E402
+from typing import TYPE_CHECKING, Any, Callable, Optional, Tuple, cast  # noqa: E402
 
 if TYPE_CHECKING:
     # These imports are only for static analyzers (ruff/mypy). At runtime we
