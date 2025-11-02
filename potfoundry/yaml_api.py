@@ -89,7 +89,6 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
             # analysis doesn't treat the subsequent runtime isinstance checks
             # as unreachable (cfg.mesh is annotated as a model in the schema).
             from typing import Any as _Any
-            from typing import cast
 
             cfg_any = cast(_Any, cfg)
 
@@ -134,8 +133,6 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
     except Exception:
         pass
     # already legacy Config
-    from typing import cast
-
     return cast(Config, cfg)
 
 

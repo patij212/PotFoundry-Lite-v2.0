@@ -10,6 +10,14 @@ from typing import Any, Callable, Dict, Tuple, cast
 
 import numpy as np
 import numpy.typing as npt
+from numpy.typing import NDArray
+
+# Local typed aliases to help mypy narrow numpy usages incrementally
+# NDArrayFloat is the project's canonical alias (imported from ..types), but
+# having a couple of local helper aliases makes small, focused typing fixes
+# easier in this large module.
+NDArrayAny = NDArray[Any]
+NDArrayF = NDArray[np.float64]
 
 from ..types import NDArrayFloat
 from .geometry_helpers import (

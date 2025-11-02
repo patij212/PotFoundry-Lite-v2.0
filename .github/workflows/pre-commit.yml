@@ -69,6 +69,33 @@ jobs:
             echo "pre-commit internal log not found at $LOG_PATH"
           fi
 
+      - name: Collect pre-commit outputs and prepare artifacts
+        if: always()
+        run: |
+          # Try to copy the internal pre-commit log into the workspace if present
+          LOG_PATH="/home/runner/.cache/pre-commit/pre-commit.log"
+          if [ -f "$LOG_PATH" ]; then
+            cp "$LOG_PATH" pre-commit-internal.log || true
+            echo "Copied internal pre-commit log to pre-commit-internal.log"
+          else
+            echo "No internal pre-commit log available to copy"
+          fi
+          # Re-run pre-commit in a capture mode to produce a human-readable output file
+          # This is intentionally non-fatal; we only want a textual capture for diagnostics.
+          python -m pip install --upgrade pip || true
+          python -m pip install --user pre-commit >/dev/null 2>&1 || true
+          # Capture console output (hooks may report details here)
+          pre-commit run --all-files 2>&1 | tee pre-commit-output.txt || true
+
+      - name: Upload pre-commit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pre-commit-reports
+          path: |
+            pre-commit-output.txt
+            pre-commit-internal.log
+
       - name: Fail if pre-commit failed
         if: steps.precommit.outcome != 'success'
         run: |
