@@ -79,8 +79,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install mypy
-        run: python -m pip install mypy
+      - name: Install mypy + dev requirements (for stubs)
+        run: |
+          python -m pip install --upgrade pip
+          # Install project dev/test dependencies so mypy can find type stubs (types-requests, etc.)
+          python -m pip install -r requirements-dev.txt --no-cache-dir
 
       - name: Run mypy on packages (non-blocking)
         run: |
@@ -105,5 +108,26 @@ jobs:
           # install full dev/test dependencies so numpy, pydantic, etc. are available
           python -m pip install -r requirements-dev.txt --no-cache-dir
 
-      - name: Run pytest
-        run: python -m pytest -q
+      - name: Run pytest (write junit + durations)
+        run: |
+          # Run pytest with durations and produce junit xml + plain text output
+          python -m pytest -q --durations=10 --junitxml=pytest-report.xml 2>&1 | tee pytest-output.txt
+
+      - name: Upload pytest artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-reports
+          path: |
+            pytest-report.xml
+            pytest-output.txt
+
+      - name: Generate pytest summary JSON
+        run: |
+          python .github/scripts/pytest_junit_summary.py pytest-report.xml pytest-summary.json
+
+      - name: Upload pytest summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-summary
+          path: |
+            pytest-summary.json

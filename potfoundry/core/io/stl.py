@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 import numpy as np
 import numpy.typing as npt

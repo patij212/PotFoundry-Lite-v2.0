@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-# Pre-declare `st` so mypy knows it's available and can be annotated as Any when
-# streamlit isn't installed. This avoids using `# type: ignore` and keeps runtime
-# behavior unchanged.
-st: Any = None
 HAS_STREAMLIT = False
+
+if TYPE_CHECKING:
+    # Provide a name for the typechecker only (avoids runtime redefinition warnings)
+    st: Any
 
 try:
     import streamlit as st
 
     HAS_STREAMLIT = True
 except ImportError:
+    st = None
     HAS_STREAMLIT = False
 
 

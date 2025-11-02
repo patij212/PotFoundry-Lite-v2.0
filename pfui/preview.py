@@ -52,7 +52,7 @@ R = TypeVar("R")
 # adapts to the callable/.decorate/no-op shapes at that moment.
 def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
     def _decorator(fn: Callable[P, R]) -> Callable[P, R]:
-        impl = getattr(st, "cache_data", None)
+        impl: Any = getattr(st, "cache_data", None)
         try:
             if callable(impl):
                 return cast(
