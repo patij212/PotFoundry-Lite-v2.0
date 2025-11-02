@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 else:
     st: Any = None
     try:
-        import streamlit as st  # type: ignore
+        import streamlit as st
 
         HAS_STREAMLIT = True
     except Exception:

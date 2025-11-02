@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 # twice (once as a placeholder and once by `from hypothesis import ...`).
 if TYPE_CHECKING:
     # Let type checkers know these symbols exist (no runtime import here).
-    from hypothesis import Verbosity, settings  # type: ignore
+    from hypothesis import Verbosity, settings
 else:
     settings: Any = None
     Verbosity: Any = None
