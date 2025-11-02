@@ -11,8 +11,8 @@ from __future__ import annotations
 import os
 import sys
 import warnings
-from typing import Any
 from types import ModuleType
+from typing import Any
 
 # Placeholders so static analyzers don't complain when Hypothesis isn't installed
 settings: Any = None

@@ -12,12 +12,13 @@ Output structure (pytest-summary.json):
 
 The script extracts testcase times and lists the top 10 slowest testcases.
 """
+
 from __future__ import annotations
 
 import json
 import sys
+from typing import Any, Dict, List
 from xml.etree import ElementTree as ET
-from typing import List, Dict, Any
 
 
 def parse_junit(path: str) -> Dict[str, Any]:
@@ -149,11 +150,14 @@ def parse_junit(path: str) -> Dict[str, Any]:
             "skipped": total_skipped,
             "time": total_time,
         },
-        "suites": [{
-            "name": s.attrib.get("name", ""),
-            "tests": int(s.attrib.get("tests", "0")),
-            "time": float(s.attrib.get("time", "0")),
-        } for s in suites],
+        "suites": [
+            {
+                "name": s.attrib.get("name", ""),
+                "tests": int(s.attrib.get("tests", "0")),
+                "time": float(s.attrib.get("time", "0")),
+            }
+            for s in suites
+        ],
         "slowest": top_n,
     }
 

@@ -2,7 +2,7 @@
 > {"total_count":218,"workflow_runs":[{"id":19003253941,"name":".github/workflo
 ws/pr-validation.yml","node_id":"WFR_kwLOPo5Cvs8AAAAEbK6ktQ","head_branch":"fix
 /edgeflow-debug-quick","head_sha":"162baad6cd8cc3869dc8c3dea9a725916b266a13","p
-ath":".github/workflows/pr-validation.yml","display_title":"ci: add 
+ath":".github/workflows/pr-validation.yml","display_title":"ci: add
 pr-validation-full workflow (stable)","run_number":47,"event":"push","status":"
 completed","conclusion":"failure","workflow_id":198112311,"check_suite_id":4893
 4504461,"check_suite_node_id":"CS_kwDOPo5Cvs8AAAALZLlIDQ","url":"https://api.gi
@@ -52,10 +52,10 @@ s/patij212/PotFoundry-Lite-v2.0/actions/runs/19003253941/rerun","previous_attem
 pt_url":null,"workflow_url":"https://api.github.com/repos/patij212/PotFoundry-L
 ite-v2.0/actions/workflows/198112311","head_commit":{"id":"162baad6cd8cc3869dc8
 c3dea9a725916b266a13","tree_id":"da1ae783a2848d6774893c8e69a12494323e8e40","mes
-sage":"ci: add pr-validation-full workflow 
-(stable)","timestamp":"2025-11-01T22:03:38Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+sage":"ci: add pr-validation-full workflow
+(stable)","timestamp":"2025-11-01T22:03:38Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -224,10 +224,10 @@ rl":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/runs/19
 003253899/rerun","previous_attempt_url":null,"workflow_url":"https://api.github
 .com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/198112304","head_com
 mit":{"id":"162baad6cd8cc3869dc8c3dea9a725916b266a13","tree_id":"da1ae783a2848d
-6774893c8e69a12494323e8e40","message":"ci: add pr-validation-full workflow 
-(stable)","timestamp":"2025-11-01T22:03:38Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+6774893c8e69a12494323e8e40","message":"ci: add pr-validation-full workflow
+(stable)","timestamp":"2025-11-01T22:03:38Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -347,7 +347,7 @@ ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":19
 003085786,"name":".github/workflows/pr-validation.yml","node_id":"WFR_kwLOPo5Cv
 s8AAAAEbKwT2g","head_branch":"fix/edgeflow-debug-quick","head_sha":"1fa7030b2b9
 8c0c4b4af3f939ecc6a34f20ea156","path":".github/workflows/pr-validation.yml","di
-splay_title":"ci: add full PR validation workflow (import-smoke, pre-commit, 
+splay_title":"ci: add full PR validation workflow (import-smoke, pre-commit,
 mypy, ΓÇª","run_number":46,"event":"push","status":"completed","conclusion":"fa
 ilure","workflow_id":198112311,"check_suite_id":48934142997,"check_suite_node_i
 d":"CS_kwDOPo5Cvs8AAAALZLPEFQ","url":"https://api.github.com/repos/patij212/Pot
@@ -396,11 +396,11 @@ ttps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/runs/19003085
 v2.0/actions/runs/19003085786/rerun","previous_attempt_url":null,"workflow_url"
 :"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/
 198112311","head_commit":{"id":"1fa7030b2b98c0c4b4af3f939ecc6a34f20ea156","tree
-_id":"d9253328eac228fd215d2ef7b2a032f3bb46f3e7","message":"ci: add full PR 
-validation workflow (import-smoke, pre-commit, mypy, 
-pytest)","timestamp":"2025-11-01T21:46:07Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+_id":"d9253328eac228fd215d2ef7b2a032f3bb46f3e7","message":"ci: add full PR
+validation workflow (import-smoke, pre-commit, mypy,
+pytest)","timestamp":"2025-11-01T21:46:07Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -520,7 +520,7 @@ ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":19
 003085732,"name":".github/workflows/hypothesis-profile.yml","node_id":"WFR_kwLO
 Po5Cvs8AAAAEbKwTpA","head_branch":"fix/edgeflow-debug-quick","head_sha":"1fa703
 0b2b98c0c4b4af3f939ecc6a34f20ea156","path":".github/workflows/hypothesis-profil
-e.yml","display_title":"ci: add full PR validation workflow (import-smoke, 
+e.yml","display_title":"ci: add full PR validation workflow (import-smoke,
 pre-commit, mypy, ΓÇª","run_number":91,"event":"push","status":"completed","con
 clusion":"failure","workflow_id":198112304,"check_suite_id":48934142843,"check_
 suite_node_id":"CS_kwDOPo5Cvs8AAAALZLPDew","url":"https://api.github.com/repos/
@@ -569,11 +569,11 @@ uns/19003085732/cancel","rerun_url":"https://api.github.com/repos/patij212/PotF
 oundry-Lite-v2.0/actions/runs/19003085732/rerun","previous_attempt_url":null,"w
 orkflow_url":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/action
 s/workflows/198112304","head_commit":{"id":"1fa7030b2b98c0c4b4af3f939ecc6a34f20
-ea156","tree_id":"d9253328eac228fd215d2ef7b2a032f3bb46f3e7","message":"ci: add 
-full PR validation workflow (import-smoke, pre-commit, mypy, 
-pytest)","timestamp":"2025-11-01T21:46:07Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+ea156","tree_id":"d9253328eac228fd215d2ef7b2a032f3bb46f3e7","message":"ci: add
+full PR validation workflow (import-smoke, pre-commit, mypy,
+pytest)","timestamp":"2025-11-01T21:46:07Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -742,10 +742,10 @@ tij212/PotFoundry-Lite-v2.0/actions/runs/19002697351/cancel","rerun_url":"https
 rerun","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos
 /patij212/PotFoundry-Lite-v2.0/actions/workflows/198112311","head_commit":{"id"
 :"180bdde9e3cb3f05db5651b002d9c1a38c9e4def","tree_id":"513b2c5cf8df88e205b44524
-61e49e58c2f65ccd","message":"ci: trigger pr-validation run (empty 
-commit)","timestamp":"2025-11-01T21:11:21Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+61e49e58c2f65ccd","message":"ci: trigger pr-validation run (empty
+commit)","timestamp":"2025-11-01T21:11:21Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -914,10 +914,10 @@ rl":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/runs/19
 002697250/rerun","previous_attempt_url":null,"workflow_url":"https://api.github
 .com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/198112304","head_com
 mit":{"id":"180bdde9e3cb3f05db5651b002d9c1a38c9e4def","tree_id":"513b2c5cf8df88
-e205b4452461e49e58c2f65ccd","message":"ci: trigger pr-validation run (empty 
-commit)","timestamp":"2025-11-01T21:11:21Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+e205b4452461e49e58c2f65ccd","message":"ci: trigger pr-validation run (empty
+commit)","timestamp":"2025-11-01T21:11:21Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -1086,10 +1086,10 @@ epos/patij212/PotFoundry-Lite-v2.0/actions/runs/19002473724/cancel","rerun_url"
 473724/rerun","previous_attempt_url":null,"workflow_url":"https://api.github.co
 m/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/198112311","head_commit
 ":{"id":"9457cd1fb19a5dc56caba8c584262251dabd83d7","tree_id":"513b2c5cf8df88e20
-5b4452461e49e58c2f65ccd","message":"ci: make pfui a package for relative 
-imports (mypy)","timestamp":"2025-11-01T20:25:44Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+5b4452461e49e58c2f65ccd","message":"ci: make pfui a package for relative
+imports (mypy)","timestamp":"2025-11-01T20:25:44Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -1258,11 +1258,11 @@ rerun_url":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/
 runs/19002473674/rerun","previous_attempt_url":null,"workflow_url":"https://api
 .github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/198112304","h
 ead_commit":{"id":"9457cd1fb19a5dc56caba8c584262251dabd83d7","tree_id":"513b2c5
-cf8df88e205b4452461e49e58c2f65ccd","message":"ci: make pfui a package for 
-relative imports 
-(mypy)","timestamp":"2025-11-01T20:25:44Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+cf8df88e205b4452461e49e58c2f65ccd","message":"ci: make pfui a package for
+relative imports
+(mypy)","timestamp":"2025-11-01T20:25:44Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -1381,7 +1381,7 @@ b.com/repos/patij212/PotFoundry-Lite-v2.0/releases{/id}","deployments_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":19
 001871873,"name":"CI","node_id":"WFR_kwLOPo5Cvs8AAAAEbJmOAQ","head_branch":"app
 ly/streamlit-fix","head_sha":"4a0183ba1ba65edcb682ad9ce723caf03c0485e5","path":
-".github/workflows/ci.yml","display_title":"ci: make pfui a package for 
+".github/workflows/ci.yml","display_title":"ci: make pfui a package for
 relative imports (mypy)","run_number":14,"event":"push","status":"completed","c
 onclusion":"failure","workflow_id":195670673,"check_suite_id":48929681598,"chec
 k_suite_node_id":"CS_kwDOPo5Cvs8AAAALZG-wvg","url":"https://api.github.com/repo
@@ -1424,10 +1424,10 @@ ithub.com/repos/patij212/PotFoundry-Lite-v2.0/actions/runs/19001871873/rerun","
 previous_attempt_url":null,"workflow_url":"https://api.github.com/repos/patij21
 2/PotFoundry-Lite-v2.0/actions/workflows/195670673","head_commit":{"id":"4a0183
 ba1ba65edcb682ad9ce723caf03c0485e5","tree_id":"f1c08b89f00ec97ced38c77acef3783a
-86b58c7b","message":"ci: make pfui a package for relative imports 
-(mypy)","timestamp":"2025-11-01T19:59:58Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+86b58c7b","message":"ci: make pfui a package for relative imports
+(mypy)","timestamp":"2025-11-01T19:59:58Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -1589,10 +1589,10 @@ tij212/PotFoundry-Lite-v2.0/actions/runs/19001793429/cancel","rerun_url":"https
 rerun","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos
 /patij212/PotFoundry-Lite-v2.0/actions/workflows/203021210","head_commit":{"id"
 :"8e41365f86183881537197db17dd5b91e63317b1","tree_id":"c29c7ec0e4ed23d932530e10
-5ced79f7cf2692d4","message":"ci(workflow): run mypy on packages and ensure 
-pytest installed in pytest 
-job","timestamp":"2025-11-01T19:49:51Z","author":{"name":"Patryk Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+5ced79f7cf2692d4","message":"ci(workflow): run mypy on packages and ensure
+pytest installed in pytest
+job","timestamp":"2025-11-01T19:49:51Z","author":{"name":"Patryk Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -1711,7 +1711,7 @@ b.com/repos/patij212/PotFoundry-Lite-v2.0/releases{/id}","deployments_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":19
 001792198,"name":"CI","node_id":"WFR_kwLOPo5Cvs8AAAAEbJhWxg","head_branch":"app
 ly/streamlit-fix","head_sha":"8e41365f86183881537197db17dd5b91e63317b1","path":
-".github/workflows/ci.yml","display_title":"ci(workflow): run mypy on packages 
+".github/workflows/ci.yml","display_title":"ci(workflow): run mypy on packages
 and ensure pytest installed in pytΓÇª","run_number":13,"event":"push","status":
 "completed","conclusion":"failure","workflow_id":195670673,"check_suite_id":489
 29473633,"check_suite_node_id":"CS_kwDOPo5Cvs8AAAALZGyEYQ","url":"https://api.g
@@ -1754,10 +1754,10 @@ pos/patij212/PotFoundry-Lite-v2.0/actions/runs/19001792198/cancel","rerun_url":
 92198/rerun","previous_attempt_url":null,"workflow_url":"https://api.github.com
 /repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/195670673","head_commit"
 :{"id":"8e41365f86183881537197db17dd5b91e63317b1","tree_id":"c29c7ec0e4ed23d932
-530e105ced79f7cf2692d4","message":"ci(workflow): run mypy on packages and 
-ensure pytest installed in pytest 
-job","timestamp":"2025-11-01T19:49:51Z","author":{"name":"Patryk Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+530e105ced79f7cf2692d4","message":"ci(workflow): run mypy on packages and
+ensure pytest installed in pytest
+job","timestamp":"2025-11-01T19:49:51Z","author":{"name":"Patryk Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -1919,10 +1919,10 @@ tij212/PotFoundry-Lite-v2.0/actions/runs/19001687863/cancel","rerun_url":"https
 rerun","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos
 /patij212/PotFoundry-Lite-v2.0/actions/workflows/203021210","head_commit":{"id"
 :"11e8b18a0f0f42b90d798a11bdf91baf05992a88","tree_id":"e915c40b922a827f8d98bdd9
-31a59e57ee75ead9","message":"ci(workflow): run pytest via python -m pytest and 
-install dev deps with python -m 
-pip","timestamp":"2025-11-01T19:25:58Z","author":{"name":"Patryk Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+31a59e57ee75ead9","message":"ci(workflow): run pytest via python -m pytest and
+install dev deps with python -m
+pip","timestamp":"2025-11-01T19:25:58Z","author":{"name":"Patryk Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -2041,7 +2041,7 @@ b.com/repos/patij212/PotFoundry-Lite-v2.0/releases{/id}","deployments_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":19
 001569114,"name":"CI","node_id":"WFR_kwLOPo5Cvs8AAAAEbJTvWg","head_branch":"app
 ly/streamlit-fix","head_sha":"11e8b18a0f0f42b90d798a11bdf91baf05992a88","path":
-".github/workflows/ci.yml","display_title":"ci(workflow): run pytest via 
+".github/workflows/ci.yml","display_title":"ci(workflow): run pytest via
 python -m pytest and install dev deps wiΓÇª","run_number":12,"event":"push","st
 atus":"completed","conclusion":"failure","workflow_id":195670673,"check_suite_i
 d":48928988368,"check_suite_node_id":"CS_kwDOPo5Cvs8AAAALZGUc0A","url":"https:/
@@ -2085,10 +2085,10 @@ _url":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/runs/
 2/PotFoundry-Lite-v2.0/actions/runs/19001569114/attempts/1","workflow_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/19567
 0673","head_commit":{"id":"11e8b18a0f0f42b90d798a11bdf91baf05992a88","tree_id":
-"e915c40b922a827f8d98bdd931a59e57ee75ead9","message":"ci(workflow): run pytest 
-via python -m pytest and install dev deps with python -m 
-pip","timestamp":"2025-11-01T19:25:58Z","author":{"name":"Patryk Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+"e915c40b922a827f8d98bdd931a59e57ee75ead9","message":"ci(workflow): run pytest
+via python -m pytest and install dev deps with python -m
+pip","timestamp":"2025-11-01T19:25:58Z","author":{"name":"Patryk Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -2251,11 +2251,11 @@ rerun","previous_attempt_url":"https://api.github.com/repos/patij212/PotFoundry
 -Lite-v2.0/actions/runs/18998982946/attempts/1","workflow_url":"https://api.git
 hub.com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/203021210","head_
 commit":{"id":"31568a528a1c6a162804b4a51f857ef0c1183426","tree_id":"b9e61d22267
-58c87621f07a493f98e0d95f9a1cb","message":"ci(pre-commit): run local python 
-hook via system python to avoid exec-bit 
-issues","timestamp":"2025-11-01T15:42:44Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+58c87621f07a493f98e0d95f9a1cb","message":"ci(pre-commit): run local python
+hook via system python to avoid exec-bit
+issues","timestamp":"2025-11-01T15:42:44Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -2374,7 +2374,7 @@ b.com/repos/patij212/PotFoundry-Lite-v2.0/releases{/id}","deployments_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":18
 998981342,"name":"CI","node_id":"WFR_kwLOPo5Cvs8AAAAEbG1y3g","head_branch":"app
 ly/streamlit-fix","head_sha":"31568a528a1c6a162804b4a51f857ef0c1183426","path":
-".github/workflows/ci.yml","display_title":"ci(pre-commit): run local python 
+".github/workflows/ci.yml","display_title":"ci(pre-commit): run local python
 hook via system python to avoid execΓÇª","run_number":11,"event":"push","status
 ":"completed","conclusion":"failure","workflow_id":195670673,"check_suite_id":4
 8923513224,"check_suite_node_id":"CS_kwDOPo5Cvs8AAAALZBGRiA","url":"https://api
@@ -2417,11 +2417,11 @@ repos/patij212/PotFoundry-Lite-v2.0/actions/runs/18998981342/cancel","rerun_url
 8981342/rerun","previous_attempt_url":null,"workflow_url":"https://api.github.c
 om/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/195670673","head_commi
 t":{"id":"31568a528a1c6a162804b4a51f857ef0c1183426","tree_id":"b9e61d2226758c87
-621f07a493f98e0d95f9a1cb","message":"ci(pre-commit): run local python hook via 
-system python to avoid exec-bit 
-issues","timestamp":"2025-11-01T15:42:44Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+621f07a493f98e0d95f9a1cb","message":"ci(pre-commit): run local python hook via
+system python to avoid exec-bit
+issues","timestamp":"2025-11-01T15:42:44Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -2583,10 +2583,10 @@ tij212/PotFoundry-Lite-v2.0/actions/runs/18998938481/cancel","rerun_url":"https
 rerun","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos
 /patij212/PotFoundry-Lite-v2.0/actions/workflows/203021210","head_commit":{"id"
 :"6506ed2e03afd41cae2538a5d9e39a9e0ac2d40d","tree_id":"6079d16382667ee920bbcd9a
-48a3ab8512d770b9","message":"ci: run pre-commit via CLI instead of action (fix 
-resolution)","timestamp":"2025-11-01T15:38:17Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+48a3ab8512d770b9","message":"ci: run pre-commit via CLI instead of action (fix
+resolution)","timestamp":"2025-11-01T15:38:17Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -2705,7 +2705,7 @@ b.com/repos/patij212/PotFoundry-Lite-v2.0/releases{/id}","deployments_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":18
 998937355,"name":"CI","node_id":"WFR_kwLOPo5Cvs8AAAAEbGzHCw","head_branch":"app
 ly/streamlit-fix","head_sha":"6506ed2e03afd41cae2538a5d9e39a9e0ac2d40d","path":
-".github/workflows/ci.yml","display_title":"ci: run pre-commit via CLI instead 
+".github/workflows/ci.yml","display_title":"ci: run pre-commit via CLI instead
 of action (fix resolution)","run_number":10,"event":"push","status":"completed"
 ,"conclusion":"failure","workflow_id":195670673,"check_suite_id":48923415577,"c
 heck_suite_node_id":"CS_kwDOPo5Cvs8AAAALZBAUGQ","url":"https://api.github.com/r
@@ -2748,10 +2748,10 @@ i.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/runs/18998937355/rerun
 ","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos/pati
 j212/PotFoundry-Lite-v2.0/actions/workflows/195670673","head_commit":{"id":"650
 6ed2e03afd41cae2538a5d9e39a9e0ac2d40d","tree_id":"6079d16382667ee920bbcd9a48a3a
-b8512d770b9","message":"ci: run pre-commit via CLI instead of action (fix 
-resolution)","timestamp":"2025-11-01T15:38:17Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+b8512d770b9","message":"ci: run pre-commit via CLI instead of action (fix
+resolution)","timestamp":"2025-11-01T15:38:17Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -2913,9 +2913,9 @@ tij212/PotFoundry-Lite-v2.0/actions/runs/18998922149/cancel","rerun_url":"https
 rerun","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos
 /patij212/PotFoundry-Lite-v2.0/actions/workflows/203021210","head_commit":{"id"
 :"eaddf95ef18737a9fe8c38163104251541e58264","tree_id":"4741b049ed6f1b9cfc43fb74
-16d10572fb1cea92","message":"ci: use stable pre-commit action tag 
-v4","timestamp":"2025-11-01T15:36:47Z","author":{"name":"Patryk Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+16d10572fb1cea92","message":"ci: use stable pre-commit action tag
+v4","timestamp":"2025-11-01T15:36:47Z","author":{"name":"Patryk Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -3034,7 +3034,7 @@ b.com/repos/patij212/PotFoundry-Lite-v2.0/releases{/id}","deployments_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":18
 998921523,"name":"CI","node_id":"WFR_kwLOPo5Cvs8AAAAEbGyJMw","head_branch":"app
 ly/streamlit-fix","head_sha":"eaddf95ef18737a9fe8c38163104251541e58264","path":
-".github/workflows/ci.yml","display_title":"ci: use stable pre-commit action 
+".github/workflows/ci.yml","display_title":"ci: use stable pre-commit action
 tag v4","run_number":9,"event":"push","status":"completed","conclusion":"failur
 e","workflow_id":195670673,"check_suite_id":48923381169,"check_suite_node_id":"
 CS_kwDOPo5Cvs8AAAALZA-NsQ","url":"https://api.github.com/repos/patij212/PotFoun
@@ -3077,9 +3077,9 @@ tij212/PotFoundry-Lite-v2.0/actions/runs/18998921523/rerun","previous_attempt_u
 rl":null,"workflow_url":"https://api.github.com/repos/patij212/PotFoundry-Lite-
 v2.0/actions/workflows/195670673","head_commit":{"id":"eaddf95ef18737a9fe8c3816
 3104251541e58264","tree_id":"4741b049ed6f1b9cfc43fb7416d10572fb1cea92","message
-":"ci: use stable pre-commit action tag 
-v4","timestamp":"2025-11-01T15:36:47Z","author":{"name":"Patryk Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+":"ci: use stable pre-commit action tag
+v4","timestamp":"2025-11-01T15:36:47Z","author":{"name":"Patryk Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -3241,11 +3241,11 @@ tij212/PotFoundry-Lite-v2.0/actions/runs/18998905069/cancel","rerun_url":"https
 rerun","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos
 /patij212/PotFoundry-Lite-v2.0/actions/workflows/203021210","head_commit":{"id"
 :"efc9e2586f2d448818a798072c17dcad12b1b7b5","tree_id":"d038f71ac3545da5e31be4ae
-fccd73ec9f437788","message":"ci: add pr-validation-full workflow (incremental 
-smoke, pre-commit, mypy, 
-pytest)","timestamp":"2025-11-01T15:35:01Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+fccd73ec9f437788","message":"ci: add pr-validation-full workflow (incremental
+smoke, pre-commit, mypy,
+pytest)","timestamp":"2025-11-01T15:35:01Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -3364,7 +3364,7 @@ b.com/repos/patij212/PotFoundry-Lite-v2.0/releases{/id}","deployments_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":18
 998899883,"name":"CI","node_id":"WFR_kwLOPo5Cvs8AAAAEbGw0qw","head_branch":"app
 ly/streamlit-fix","head_sha":"efc9e2586f2d448818a798072c17dcad12b1b7b5","path":
-".github/workflows/ci.yml","display_title":"ci: add pr-validation-full 
+".github/workflows/ci.yml","display_title":"ci: add pr-validation-full
 workflow (incremental smoke, pre-commit, mΓÇª","run_number":8,"event":"push","s
 tatus":"completed","conclusion":"failure","workflow_id":195670673,"check_suite_
 id":48923337606,"check_suite_node_id":"CS_kwDOPo5Cvs8AAAALZA7jhg","url":"https:
@@ -3407,11 +3407,11 @@ n_url":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/runs
 /18998899883/rerun","previous_attempt_url":null,"workflow_url":"https://api.git
 hub.com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/195670673","head_
 commit":{"id":"efc9e2586f2d448818a798072c17dcad12b1b7b5","tree_id":"d038f71ac35
-45da5e31be4aefccd73ec9f437788","message":"ci: add pr-validation-full workflow 
-(incremental smoke, pre-commit, mypy, 
-pytest)","timestamp":"2025-11-01T15:35:01Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+45da5e31be4aefccd73ec9f437788","message":"ci: add pr-validation-full workflow
+(incremental smoke, pre-commit, mypy,
+pytest)","timestamp":"2025-11-01T15:35:01Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -3573,11 +3573,11 @@ un_url":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/run
 s/18998838354/rerun","previous_attempt_url":null,"workflow_url":"https://api.gi
 thub.com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/198112311","head
 _commit":{"id":"1f127a075ae0050ddb2378ac26a7ea97b1d2eef8","tree_id":"395220668c
-3a152cb6f74fe9b79f85250a2809c0","message":"ci: replace pr-validation with 
-minimal parsed 
-workflow","timestamp":"2025-11-01T15:24:41Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+3a152cb6f74fe9b79f85250a2809c0","message":"ci: replace pr-validation with
+minimal parsed
+workflow","timestamp":"2025-11-01T15:24:41Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -3696,7 +3696,7 @@ b.com/repos/patij212/PotFoundry-Lite-v2.0/releases{/id}","deployments_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":18
 998778558,"name":"CI","node_id":"WFR_kwLOPo5Cvs8AAAAEbGpavg","head_branch":"app
 ly/streamlit-fix","head_sha":"1f127a075ae0050ddb2378ac26a7ea97b1d2eef8","path":
-".github/workflows/ci.yml","display_title":"ci: replace pr-validation with 
+".github/workflows/ci.yml","display_title":"ci: replace pr-validation with
 minimal parsed workflow","run_number":7,"event":"push","status":"completed","co
 nclusion":"failure","workflow_id":195670673,"check_suite_id":48923083278,"check
 _suite_node_id":"CS_kwDOPo5Cvs8AAAALZAsCDg","url":"https://api.github.com/repos
@@ -3739,10 +3739,10 @@ thub.com/repos/patij212/PotFoundry-Lite-v2.0/actions/runs/18998778558/rerun","p
 revious_attempt_url":null,"workflow_url":"https://api.github.com/repos/patij212
 /PotFoundry-Lite-v2.0/actions/workflows/195670673","head_commit":{"id":"1f127a0
 75ae0050ddb2378ac26a7ea97b1d2eef8","tree_id":"395220668c3a152cb6f74fe9b79f85250
-a2809c0","message":"ci: replace pr-validation with minimal parsed 
-workflow","timestamp":"2025-11-01T15:24:41Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+a2809c0","message":"ci: replace pr-validation with minimal parsed
+workflow","timestamp":"2025-11-01T15:24:41Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -3911,11 +3911,11 @@ ij212/PotFoundry-Lite-v2.0/actions/runs/18998633869/cancel","rerun_url":"https:
 erun","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos/
 patij212/PotFoundry-Lite-v2.0/actions/workflows/202728564","head_commit":{"id":
 "22549db11642d08721716e9bb7fe6f27e277c658","tree_id":"2ba49295dcfe87f63e94ecc61
-e19fb8a2863d51f","message":"ci: add diagnostic workflow to inspect 
-pr-validation 
-parsing","timestamp":"2025-11-01T15:14:08Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+e19fb8a2863d51f","message":"ci: add diagnostic workflow to inspect
+pr-validation
+parsing","timestamp":"2025-11-01T15:14:08Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -4084,11 +4084,11 @@ erun_url":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/r
 uns/18998633495/rerun","previous_attempt_url":null,"workflow_url":"https://api.
 github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/198112311","he
 ad_commit":{"id":"22549db11642d08721716e9bb7fe6f27e277c658","tree_id":"2ba49295
-dcfe87f63e94ecc61e19fb8a2863d51f","message":"ci: add diagnostic workflow to 
-inspect pr-validation 
-parsing","timestamp":"2025-11-01T15:14:08Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+dcfe87f63e94ecc61e19fb8a2863d51f","message":"ci: add diagnostic workflow to
+inspect pr-validation
+parsing","timestamp":"2025-11-01T15:14:08Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -4257,11 +4257,11 @@ cancel","rerun_url":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0
 /actions/runs/18998633449/rerun","previous_attempt_url":null,"workflow_url":"ht
 tps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/1981
 12304","head_commit":{"id":"22549db11642d08721716e9bb7fe6f27e277c658","tree_id"
-:"2ba49295dcfe87f63e94ecc61e19fb8a2863d51f","message":"ci: add diagnostic 
-workflow to inspect pr-validation 
-parsing","timestamp":"2025-11-01T15:14:08Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+:"2ba49295dcfe87f63e94ecc61e19fb8a2863d51f","message":"ci: add diagnostic
+workflow to inspect pr-validation
+parsing","timestamp":"2025-11-01T15:14:08Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -4430,11 +4430,11 @@ ij212/PotFoundry-Lite-v2.0/actions/runs/18998617196/cancel","rerun_url":"https:
 erun","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos/
 patij212/PotFoundry-Lite-v2.0/actions/workflows/202728564","head_commit":{"id":
 "632e0c34f86058302d6fc0c5b772e9fc3c452e3a","tree_id":"ff0bb11c26cc7b26dbc0b838e
-496c2dda805dc03","message":"ci: replace corrupted pr-validation workflow with 
-clean version (temporary push 
-trigger)","timestamp":"2025-11-01T15:12:48Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+496c2dda805dc03","message":"ci: replace corrupted pr-validation workflow with
+clean version (temporary push
+trigger)","timestamp":"2025-11-01T15:12:48Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -4603,11 +4603,11 @@ ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/runs/1899861646
 .0/actions/runs/18998616464/rerun","previous_attempt_url":null,"workflow_url":"
 https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actions/workflows/19
 8112311","head_commit":{"id":"632e0c34f86058302d6fc0c5b772e9fc3c452e3a","tree_i
-d":"ff0bb11c26cc7b26dbc0b838e496c2dda805dc03","message":"ci: replace corrupted 
-pr-validation workflow with clean version (temporary push 
-trigger)","timestamp":"2025-11-01T15:12:48Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+d":"ff0bb11c26cc7b26dbc0b838e496c2dda805dc03","message":"ci: replace corrupted
+pr-validation workflow with clean version (temporary push
+trigger)","timestamp":"2025-11-01T15:12:48Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -4727,7 +4727,7 @@ ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}},{"id":18
 998616388,"name":".github/workflows/hypothesis-profile.yml","node_id":"WFR_kwLO
 Po5Cvs8AAAAEbGfhRA","head_branch":"fix/edgeflow-debug-quick","head_sha":"632e0c
 34f86058302d6fc0c5b772e9fc3c452e3a","path":".github/workflows/hypothesis-profil
-e.yml","display_title":"ci: replace corrupted pr-validation workflow with 
+e.yml","display_title":"ci: replace corrupted pr-validation workflow with
 clean version (tempΓÇª","run_number":87,"event":"push","status":"completed","co
 nclusion":"failure","workflow_id":198112304,"check_suite_id":48922758962,"check
 _suite_node_id":"CS_kwDOPo5Cvs8AAAALZAYPMg","url":"https://api.github.com/repos
@@ -4776,11 +4776,11 @@ runs/18998616388/cancel","rerun_url":"https://api.github.com/repos/patij212/Pot
 Foundry-Lite-v2.0/actions/runs/18998616388/rerun","previous_attempt_url":null,"
 workflow_url":"https://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/actio
 ns/workflows/198112304","head_commit":{"id":"632e0c34f86058302d6fc0c5b772e9fc3c
-452e3a","tree_id":"ff0bb11c26cc7b26dbc0b838e496c2dda805dc03","message":"ci: 
-replace corrupted pr-validation workflow with clean version (temporary push 
-trigger)","timestamp":"2025-11-01T15:12:48Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+452e3a","tree_id":"ff0bb11c26cc7b26dbc0b838e496c2dda805dc03","message":"ci:
+replace corrupted pr-validation workflow with clean version (temporary push
+trigger)","timestamp":"2025-11-01T15:12:48Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -4949,11 +4949,11 @@ ij212/PotFoundry-Lite-v2.0/actions/runs/18998594493/cancel","rerun_url":"https:
 erun","previous_attempt_url":null,"workflow_url":"https://api.github.com/repos/
 patij212/PotFoundry-Lite-v2.0/actions/workflows/202728564","head_commit":{"id":
 "49d885e7a24808c884bc9c9706b01d875968f176","tree_id":"c1f3e85ddd42c853449719471
-100fb35a7333d30","message":"ci: replace corrupted pr-validation workflow with 
-clean copy + 
-backup","timestamp":"2025-11-01T15:11:15Z","author":{"name":"Patryk 
-Januszewski 
-(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk 
+100fb35a7333d30","message":"ci: replace corrupted pr-validation workflow with
+clean copy +
+backup","timestamp":"2025-11-01T15:11:15Z","author":{"name":"Patryk
+Januszewski
+(janusze3)","email":"janusze3@coventry.ac.uk"},"committer":{"name":"Patryk
 Januszewski (janusze3)","email":"janusze3@coventry.ac.uk"}},"repository":{"id":
 1049510590,"node_id":"R_kgDOPo5Cvg","name":"PotFoundry-Lite-v2.0","full_name":"
 patij212/PotFoundry-Lite-v2.0","private":false,"owner":{"login":"patij212","id"
@@ -5070,6 +5070,3 @@ fications{?since,all,participating}","labels_url":"https://api.github.com/repos
 /patij212/PotFoundry-Lite-v2.0/labels{/name}","releases_url":"https://api.githu
 b.com/repos/patij212/PotFoundry-Lite-v2.0/releases{/id}","deployments_url":"htt
 ps://api.github.com/repos/patij212/PotFoundry-Lite-v2.0/deployments"}}]}
-
-
-

@@ -1,4 +1,4 @@
-﻿"""pfui package initializer.
+"""pfui package initializer.
 
 This file intentionally kept minimal. Adding it enables relative imports
 within the `pfui` package and fixes static analysis tools (mypy) that
