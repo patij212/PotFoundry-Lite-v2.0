@@ -77,7 +77,65 @@ def parse_junit(path: str) -> Dict[str, Any]:
             classname = tc.attrib.get("classname") or ""
             name = tc.attrib.get("name") or tc.attrib.get("testcase") or ""
             nodeid = f"{classname}::{name}" if classname else name
-            slow_entries.append({"nodeid": nodeid, "time": t, "classname": classname, "name": name})
+
+            # Attempt to guess source file from classname (module-like) -> path
+            guessed_file = None
+            if classname:
+                candidate = classname.replace(".", "/") + ".py"
+                # Prefer repository-relative path if exists
+                try:
+                    from pathlib import Path
+
+                    p = Path(candidate)
+                    if p.exists():
+                        guessed_file = str(p)
+                    else:
+                        # Try tests/ prefix in case classname starts with test path
+                        p2 = Path("tests") / Path(candidate)
+                        if p2.exists():
+                            guessed_file = str(p2)
+                except Exception:
+                    guessed_file = None
+
+            # Extract any marker/property info attached specifically to this testcase
+            markers: List[str] = []
+            # pytest sometimes encodes markers/properties as attributes or children; gather anything useful
+            for prop in tc.findall("properties/property"):
+                pname = prop.attrib.get("name", "")
+                if pname.startswith("marker") or pname.startswith("markers"):
+                    markers.append(prop.attrib.get("value", ""))
+
+            # Per-test captured stdout/stderr if present
+            stdout = None
+            stderr = None
+            so = tc.find("system-out") or tc.find("system-out")
+            se = tc.find("system-err") or tc.find("system-err")
+            if so is not None and so.text:
+                stdout = so.text
+            if se is not None and se.text:
+                stderr = se.text
+
+            # Parameter parsing: try to extract parameter suffix like 'testname[param]' -> parameters='param'
+            parameters = None
+            if "[" in name and name.endswith("]"):
+                try:
+                    parameters = name[name.index("[") + 1 : -1]
+                except Exception:
+                    parameters = None
+
+            slow_entries.append(
+                {
+                    "nodeid": nodeid,
+                    "time": t,
+                    "classname": classname,
+                    "name": name,
+                    "file": guessed_file,
+                    "markers": markers,
+                    "parameters": parameters,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                }
+            )
 
     # Sort slowest by time desc and pick top N
     slow_entries.sort(key=lambda x: x.get("time", 0.0), reverse=True)
@@ -106,12 +164,35 @@ def main(argv: List[str]):
         return 2
     infile = argv[1]
     outfile = argv[2]
-
     try:
         summary = parse_junit(infile)
     except Exception as e:
         print(f"Failed to parse {infile}: {e}")
         return 3
+
+    # Attach git sha if available (env or local git)
+    sha = None
+    try:
+        import os
+
+        sha = os.environ.get("GITHUB_SHA")
+        if not sha:
+            # fallback to git
+            from subprocess import check_output
+
+            sha = check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
+    except Exception:
+        sha = None
+    if sha:
+        summary["git_sha"] = sha
+
+    # Attach raw pytest output if available in cwd
+    try:
+        with open("pytest-output.txt", "r", encoding="utf-8") as rf:
+            raw = rf.read()
+            summary["raw_output"] = raw
+    except Exception:
+        summary["raw_output"] = None
 
     with open(outfile, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)

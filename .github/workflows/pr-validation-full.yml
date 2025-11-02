@@ -131,3 +131,30 @@ jobs:
           name: pytest-summary
           path: |
             pytest-summary.json
+
+      - name: Post pytest summary as PR comment
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = 'pytest-summary.json';
+            if (!fs.existsSync(path)) {
+              core.info('No summary file present, skipping PR comment.');
+              return;
+            }
+            const content = fs.readFileSync(path, 'utf8');
+            const summary = JSON.parse(content);
+            // Find PR for this branch
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = process.env.GITHUB_REF.replace('refs/heads/', '');
+            const prs = await github.rest.pulls.list({ owner, repo, head: `${owner}:${branch}` });
+            if (!prs.data || prs.data.length === 0) {
+              core.info(`No pull request found for branch ${branch}, skipping comment.`);
+              return;
+            }
+            const pr = prs.data[0];
+            const top = (summary.slowest || []).slice(0,10).map((s, i) => `${i+1}. ${s.file || s.nodeid} :: ${s.name} — ${s.time}s`).join('\n');
+            const body = `Automated CI summary:\n\n- Status: ✅ completed\n- Tests: ${summary.tests.total} passed (errors=${summary.tests.errors} failures=${summary.tests.failures} skipped=${summary.tests.skipped})\n- Total time: ${summary.tests.time}s\n\nTop slow tests:\n${top}\n\nFull artifacts: ${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
