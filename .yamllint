@@ -1,0 +1,18 @@
+extends: default
+
+rules:
+  # Allow long lines in workflow files (actions, scripts embed long URLs/commands)
+  line-length:
+    max: 120
+    level: warning
+
+  # Workflow files often contain arrays written like ['a', 'b'] with spaces; relax this
+  brackets:
+    max-spaces-inside: 2
+    level: warning
+
+  # Allow (or require) the YAML document start when present
+  document-start:
+    present: true
+
+  # Keep default truthy handling (do not customize here)

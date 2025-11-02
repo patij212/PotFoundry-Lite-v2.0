@@ -5,12 +5,11 @@ backwards-compatible imports working. It re-exports the public functions from
 `potfoundry.schema`.
 """
 
-"""Re-export shim for stable schema helpers.
+# Re-export shim for stable schema helpers.
 
-We import under TYPE_CHECKING for static tools and attempt a runtime import
-at module import time. If the canonical module is unavailable (very rare in
-tests), provide harmless placeholders so imports don't fail during collection.
-"""
+# We import under TYPE_CHECKING for static tools and attempt a runtime import
+# at module import time. If the canonical module is unavailable (very rare in
+# tests), provide harmless placeholders so imports don't fail during collection.
 
 from typing import TYPE_CHECKING, Any
 

@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-# Pre-declare `st` so mypy knows it's available and can be annotated as Any when
-# streamlit isn't installed. This avoids using `# type: ignore` and keeps runtime
-# behavior unchanged.
-st: Any = None
 HAS_STREAMLIT = False
 
-try:
-    import streamlit as st
+if TYPE_CHECKING:
+    # Provide a name for the typechecker only (avoids runtime redefinition warnings)
+    import streamlit as st  # type: ignore
+else:
+    st: Any = None
+    try:
+        import streamlit as st  # type: ignore
 
-    HAS_STREAMLIT = True
-except ImportError:
-    HAS_STREAMLIT = False
+        HAS_STREAMLIT = True
+    except Exception:
+        st = None
+        HAS_STREAMLIT = False
 
 
 def render_library_tab():

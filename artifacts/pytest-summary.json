@@ -1,0 +1,78 @@
+{
+  "tests": {
+    "total": 364,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "time": 38.624
+  },
+  "suites": [
+    {
+      "name": "pytest",
+      "tests": 364,
+      "time": 38.624
+    }
+  ],
+  "slowest": [
+    {
+      "nodeid": "tests.test_property_based::test_property_volume_increases_with_diameter",
+      "time": 12.938,
+      "classname": "tests.test_property_based",
+      "name": "test_property_volume_increases_with_diameter"
+    },
+    {
+      "nodeid": "tests.test_property_based::test_property_face_normals_point_outward",
+      "time": 6.841,
+      "classname": "tests.test_property_based",
+      "name": "test_property_face_normals_point_outward"
+    },
+    {
+      "nodeid": "tests.test_property_based::test_property_no_degenerate_triangles",
+      "time": 4.871,
+      "classname": "tests.test_property_based",
+      "name": "test_property_no_degenerate_triangles"
+    },
+    {
+      "nodeid": "tests.test_property_based::test_property_mesh_is_watertight",
+      "time": 1.248,
+      "classname": "tests.test_property_based",
+      "name": "test_property_mesh_is_watertight"
+    },
+    {
+      "nodeid": "tests.test_preview_snapshot::test_render_mesh_snapshot_cached_returns_png_bytes",
+      "time": 0.632,
+      "classname": "tests.test_preview_snapshot",
+      "name": "test_render_mesh_snapshot_cached_returns_png_bytes"
+    },
+    {
+      "nodeid": "tests.test_performance.TestSTLExportPerformance::test_large_mesh_export_performance",
+      "time": 0.612,
+      "classname": "tests.test_performance.TestSTLExportPerformance",
+      "name": "test_large_mesh_export_performance"
+    },
+    {
+      "nodeid": "tests.test_property_based::test_property_diameter_estimates_within_bounds",
+      "time": 0.542,
+      "classname": "tests.test_property_based",
+      "name": "test_property_diameter_estimates_within_bounds"
+    },
+    {
+      "nodeid": "tests.test_performance.TestMeshGenerationPerformance::test_high_resolution_performance",
+      "time": 0.401,
+      "classname": "tests.test_performance.TestMeshGenerationPerformance",
+      "name": "test_high_resolution_performance"
+    },
+    {
+      "nodeid": "tests.test_sf_blossom_mad_spike_clip_regression::test_superformula_blossom_mad_and_spike_clip_builds_mesh",
+      "time": 0.388,
+      "classname": "tests.test_sf_blossom_mad_spike_clip_regression",
+      "name": "test_superformula_blossom_mad_and_spike_clip_builds_mesh"
+    },
+    {
+      "nodeid": "tests.test_yaml_api_coverage.TestBuildFromYaml::test_build_from_yaml_multiple_recipes",
+      "time": 0.355,
+      "classname": "tests.test_yaml_api_coverage.TestBuildFromYaml",
+      "name": "test_build_from_yaml_multiple_recipes"
+    }
+  ]
+}
