@@ -217,11 +217,11 @@ def build_from_yaml(
     only_names: Optional[Sequence[str]] = None,
     write_manifest: bool = False,
 ) -> Dict[str, Any]:
-    cfg = _normalize_cfg(cfg)
-    if not cfg.recipes:
+    cfg1: Config = _normalize_cfg(cfg)
+    if not cfg1.recipes:
         raise SystemExit("No recipes found.")
     errs = []
-    for r in cfg.recipes:
+    for r in cfg1.recipes:
         r_dict = r if isinstance(r, dict) else getattr(r, "model_dump", lambda: r)()
         errs.extend(validate_recipe(r_dict, cfg))
     if errs:
@@ -235,7 +235,7 @@ def build_from_yaml(
         "outdir": str(outdir.resolve()),
         "pots": [],
     }
-    for rec in cfg.recipes:
+    for rec in cfg1.recipes:
         rec = (
             rec if isinstance(rec, dict) else getattr(rec, "model_dump", lambda: rec)()
         )
@@ -250,8 +250,8 @@ def build_from_yaml(
         t_bottom = float(size["bottom"])
         r_drain = float(size["drain"]) * 0.5
         expn = float(size["flare_exp"])
-        n_theta = int(cfg.mesh.n_theta)
-        n_z = int(cfg.mesh.n_z)
+        n_theta = int(cfg1.mesh.n_theta)
+        n_z = int(cfg1.mesh.n_z)
 
         r_fn, desc = STYLES[style]
 

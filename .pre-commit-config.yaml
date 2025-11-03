@@ -16,7 +16,10 @@ repos:
     rev: v1.11.1
     hooks:
       - id: mypy
-        args: ["--config-file", "mypy_ci.ini"]
+        args: ["--config-file", "mypy_ci.ini", "pfui", "potfoundry"]
+        additional_dependencies: ["types-Pillow"]
+        pass_filenames: false
+        files: '^(pfui|potfoundry)/'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
@@ -37,7 +40,8 @@ repos:
         # detect-secrets temporary baseline files. Match both forward and
         # back slashes so the exclusion works on Windows runners and local dev
         # environments.
-        args: ["--baseline", "detect-secrets.baseline", "--exclude-files", "(?:^\\.runs_grep\\.txt$|(?:detect-secrets(?:.*)?\\.baseline|artifacts|\\.gha_.*|\\.github/workflows/pr-validation.yml.corrupt.bak$|\\.mypy_cache|\\.venv|\\.pytest_cache)(?:[\\\\/]|$))"]
+        args: ["--baseline", "detect-secrets.baseline", "--exclude-files", "(?:^\\.runs_grep\\.txt$|(?:detect-secrets(?:.*)?\\.baseline|artifacts|\\.gha_.*|\\.github/workflows/pr-validation.yml.corrupt.bak$|\\.mypy_cache|\\.venv|\\.pytest_cache|\\.scripts)(?:[\\\\/]|$))"]
+        exclude: "\\.ps1$"
 
   - repo: local
     hooks:
