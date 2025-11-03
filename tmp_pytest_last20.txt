@@ -1,0 +1,20 @@
+﻿                ambient=min(max(float(ss.get("mesh_ambient", 0.35)), 0.0), 1.0),
+                diffuse=min(max(float(ss.get("mesh_diffuse", 0.95)), 0.0), 1.0),
+                specular=min(max(float(ss.get("mesh_specular", 0.25)), 0.0), 1.0),
+                roughness=min(max(float(ss.get("mesh_roughness", 0.7)), 0.0), 1.0),
+                fresnel=min(max(float(ss.get("mesh_fresnel", 0.2)), 0.0), 1.0),
+            ),
+            hoverinfo="skip",
+            name="mesh",
+            opacity=1.0,
+        )
+    
+        if use_gradient and len(mesh_colors):
+>           mesh_kwargs["vertexcolor"] = mesh_colors
+            ^^^^^^^^^^^
+E           UnboundLocalError: cannot access local variable 'mesh_kwargs' where it is not associated with a value
+
+app.py:154: UnboundLocalError
+=========================== short test summary info ===========================
+FAILED tests/test_app_full_preview_branch.py::test_build_mesh_kwargs_gradient_branch
+1 failed, 366 passed in 80.85s (0:01:20)
