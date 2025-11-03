@@ -153,6 +153,35 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 
 ## 🔧 Technical Debt & Code Quality
 
+### Repository Refactoring (NEW - January 2025) 🏗️
+- [ ] **Execute comprehensive repository refactoring plan** - See [REFACTORING_INDEX.md](REFACTORING_INDEX.md)
+  - [ ] Phase 1: Documentation & File Organization (2-3h, Low Risk) ⭐ **READY TO EXECUTE**
+    - Archive historical documents (13+ files)
+    - Reorganize docs/ with guides/ subdirectory
+    - Delete temporary files, update .gitignore
+    - Create CONTRIBUTING.md
+    - **Result:** Clean root directory (~20 files vs 58)
+  - [ ] Phase 2: Code Structure Refactoring (8-12h, Medium Risk)
+    - Split app.py: 3015 LOC → ~500 LOC
+    - Refactor pfui/schemas.py: 2335 LOC → ~800 LOC
+    - Refactor pfui/preview.py: 1141 LOC → ~600 LOC
+    - Consolidate dual geometry implementations
+  - [ ] Phase 3: Component Extraction (6-8h, Medium Risk)
+    - Create pfui/widgets/ package
+    - Create potfoundry/validators/ package
+  - [ ] Phase 4: Testing Infrastructure (4-6h, Low Risk)
+    - Reorganize tests by category
+    - Add property-based tests
+  - [ ] Phase 5: CI/CD & Automation (3-4h, Low Risk)
+    - GitHub Actions workflows
+    - Automated testing and coverage
+  - 📚 **Planning Documents:**
+    - [REFACTORING_EXECUTIVE_SUMMARY.md](REFACTORING_EXECUTIVE_SUMMARY.md) - Overview for stakeholders
+    - [REFACTORING_PLAN.md](REFACTORING_PLAN.md) - Comprehensive 5-phase strategy
+    - [REFACTORING_ANALYSIS.md](REFACTORING_ANALYSIS.md) - Pros/cons analysis
+    - [MIGRATION_GUIDE_PHASE1.md](MIGRATION_GUIDE_PHASE1.md) - Step-by-step Phase 1 guide
+  - **Status:** Planning complete, scaffolding ready, awaiting execution approval
+
 ### High Priority
 - [x] ~~Reduce remaining 125 semicolon linting warnings (refactor to multi-line)~~ ✅ **COMPLETED** - Fixed all 124 E702 warnings
 - [x] ~~Fix unused variable warnings (F841)~~ ✅ **COMPLETED** - Fixed all 10 F841 warnings
