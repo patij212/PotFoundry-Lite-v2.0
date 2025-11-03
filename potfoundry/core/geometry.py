@@ -135,7 +135,7 @@ def base_radius(
             mu = float(opts.get("bell_center", 0.5))
             width = max(0.05, float(opts.get("bell_width", 0.22)))
             sigma = max(1e-3, width * 0.5)
-            g = np.exp(-0.5 * ((t - mu) / sigma) ** 2)
+            g = float(np.exp(-0.5 * ((t - mu) / sigma) ** 2))
             r = r * (1.0 + amp * g)
         # Normalize type: if computation produced a scalar (0-d or size-1),
         # return a Python float so callers that expect scalars keep working.
@@ -776,7 +776,7 @@ def r_outer_lowpoly_facet(
     # Fast path: classic geometry (no outward, no cuts)
     if (not use_outward) and (not has_cut) and (not has_edge_cut):
         out = r0 * f
-        return float(out) if np.isscalar(theta) else out
+        return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
 
     # Outward-only V-cuts from a start line between facet intersections per tier boundary
     # Always enforce r >= R_start(θ); with nonzero angles, grow away from seams
@@ -1556,11 +1556,11 @@ def r_outer_lowpoly_facet(
         if dbg_enabled:
             # Attach diagnostic sample to opts so caller can extract it (build_pot_mesh will read)
             opts["_lp_debug_sample"] = dbg_sample
-        return float(r_out) if np.isscalar(theta) else r_out
+        return float(r_out) if np.isscalar(theta) else cast(NDArrayFloat, r_out)
 
     out = r0 * f
     # Preserve scalar return behavior
-    return float(out) if np.isscalar(theta) else out
+    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
 
 
 STYLES = {
