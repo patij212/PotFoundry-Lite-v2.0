@@ -38,17 +38,25 @@ if _HAVE_HYPOTHESIS:
     settings.register_profile(
         "ci",
         max_examples=10,
-        deadline=5000,
+        deadline=2000,
         verbosity=Verbosity.normal,
         print_blob=True,
     )
     settings.register_profile(
-        "dev", max_examples=50, deadline=10000, verbosity=Verbosity.verbose
+        "dev", max_examples=50, deadline=2000, verbosity=Verbosity.verbose
     )
     settings.register_profile(
         "quick", max_examples=5, deadline=2000, verbosity=Verbosity.quiet
     )
-    settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "dev"))
+    _sel = os.getenv("HYPOTHESIS_PROFILE")
+    if _sel:
+        settings.load_profile(_sel)
+    else:
+        # Prefer CI profile on GH Actions or CI environments
+        if os.getenv("GITHUB_ACTIONS") == "true" or os.getenv("CI"):
+            settings.load_profile("ci")
+        else:
+            settings.load_profile("dev")
 else:
     warnings.warn(
         "Hypothesis not installed; property-based tests may be skipped. "

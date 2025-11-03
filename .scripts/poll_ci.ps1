@@ -1,5 +1,5 @@
 $sha = (git rev-parse HEAD).Trim()
-Write-Output "Polling GH Actions for commit: $sha"
+Write-Output "Polling GH Actions for commit: $sha" # pragma: allowlist secret
 $end = (Get-Date).AddMinutes(6)
 while((Get-Date) -lt $end) {
     try {
