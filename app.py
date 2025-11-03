@@ -129,26 +129,26 @@ def build_mesh_kwargs_for_test(Vd, Fd, ss, n_theta, n_z, fig_h):
     else:
         mesh_colors = []
 
-        # Build mesh kwargs unconditionally to avoid NameError in all branches
-        mesh_kwargs: dict[str, Any] = dict(
-            x=Vd[:, 0],
-            y=Vd[:, 1],
-            z=Vd[:, 2],
-            i=Fd[:, 0],
-            j=Fd[:, 1],
-            k=Fd[:, 2],
-            flatshading=bool(ss.get("mesh_flatshading", False)),
-            lighting=dict(
-                ambient=min(max(float(ss.get("mesh_ambient", 0.35)), 0.0), 1.0),
-                diffuse=min(max(float(ss.get("mesh_diffuse", 0.95)), 0.0), 1.0),
-                specular=min(max(float(ss.get("mesh_specular", 0.25)), 0.0), 1.0),
-                roughness=min(max(float(ss.get("mesh_roughness", 0.7)), 0.0), 1.0),
-                fresnel=min(max(float(ss.get("mesh_fresnel", 0.2)), 0.0), 1.0),
-            ),
-            hoverinfo="skip",
-            name="mesh",
-            opacity=1.0,
-        )
+    # Build mesh kwargs unconditionally to avoid NameError in all branches
+    mesh_kwargs: dict[str, Any] = dict(
+        x=Vd[:, 0],
+        y=Vd[:, 1],
+        z=Vd[:, 2],
+        i=Fd[:, 0],
+        j=Fd[:, 1],
+        k=Fd[:, 2],
+        flatshading=bool(ss.get("mesh_flatshading", False)),
+        lighting=dict(
+            ambient=min(max(float(ss.get("mesh_ambient", 0.35)), 0.0), 1.0),
+            diffuse=min(max(float(ss.get("mesh_diffuse", 0.95)), 0.0), 1.0),
+            specular=min(max(float(ss.get("mesh_specular", 0.25)), 0.0), 1.0),
+            roughness=min(max(float(ss.get("mesh_roughness", 0.7)), 0.0), 1.0),
+            fresnel=min(max(float(ss.get("mesh_fresnel", 0.2)), 0.0), 1.0),
+        ),
+        hoverinfo="skip",
+        name="mesh",
+        opacity=1.0,
+    )
 
     if use_gradient and len(mesh_colors):
         mesh_kwargs["vertexcolor"] = mesh_colors
