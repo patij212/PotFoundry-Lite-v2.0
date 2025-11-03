@@ -61,11 +61,11 @@ else:
 # the right symbols; at runtime we either use the real module or a tiny
 # shim that provides the same attributes used by the app/tests.
 if TYPE_CHECKING:
-    import streamlit as st  # type: ignore
+    import streamlit as st
 else:
     st: Any = None
     try:
-        import streamlit as st  # type: ignore
+        import streamlit as st
     except Exception:
         # Build a small ModuleType shim
         st_mod = ModuleType("streamlit")

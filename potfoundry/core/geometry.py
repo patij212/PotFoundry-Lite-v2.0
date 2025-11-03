@@ -302,7 +302,7 @@ def superformula_r(
     with np.errstate(divide="ignore", invalid="ignore"):
         out = np.where(denom == 0, 0.0, 1.0 / denom)
     # Return scalar for scalar input to preserve API
-    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
+    return float(out) if np.isscalar(theta) else out
 
 
 def r_outer_superformula_blossom(
@@ -381,14 +381,16 @@ def r_outer_superformula_blossom(
 
         # Use typed helpers from geometry_helpers to avoid inline untyped returns
         def _bilateral1d_peak_only(a: np.ndarray) -> np.ndarray:
-            return bilateral1d_peak_only(a, sigma_s, sigma_r)
+            # geometry_helpers functions are not fully typed in some environments
+            # so cast their returns to narrow the type for this module.
+            return cast(np.ndarray, bilateral1d_peak_only(a, sigma_s, sigma_r))
 
         # Precompute local micro-residual and edge weights to preserve strong edges
         def _avg3(a: np.ndarray) -> np.ndarray:
-            return avg3(a)
+            return cast(np.ndarray, avg3(a))
 
         def _med5(a: np.ndarray) -> np.ndarray:
-            return med5(a)
+            return cast(np.ndarray, med5(a))
 
         for _ in range(es_passes):
             sm = _bilateral1d_peak_only(arr)
@@ -629,7 +631,7 @@ def r_outer_fourier_bloom(
 
     strength = float(opts.get("fb_strength", 1.0))
     out = r0 * (1.0 + (f - 1.0) * strength)
-    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
+    return float(out) if np.isscalar(theta) else out
 
 
 def r_outer_spiral_ridges(
@@ -655,7 +657,7 @@ def r_outer_spiral_ridges(
         f += groove_amp * np.sin(groove_mult * k * th + phase_mult * phase)
 
     out = r0 * f
-    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
+    return float(out) if np.isscalar(theta) else out
 
 
 def r_outer_superellipse_morph(
@@ -680,7 +682,7 @@ def r_outer_superellipse_morph(
     rf *= 1.0 + c4a * np.cos(4.0 * th + c4p) + c8a * np.cos(8.0 * th + c8p)
 
     out = r0 * rf
-    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
+    return float(out) if np.isscalar(theta) else out
 
 
 def r_outer_harmonic_ripple(
@@ -707,7 +709,7 @@ def r_outer_harmonic_ripple(
         f *= 1.0 + bell * np.exp(-((t - 0.5) ** 2.0) / 0.04)
 
     out = r0 * f
-    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
+    return float(out) if np.isscalar(theta) else out
 
 
 def r_outer_lowpoly_facet(
@@ -776,7 +778,7 @@ def r_outer_lowpoly_facet(
     # Fast path: classic geometry (no outward, no cuts)
     if (not use_outward) and (not has_cut) and (not has_edge_cut):
         out = r0 * f
-        return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
+        return float(out) if np.isscalar(theta) else out
 
     # Outward-only V-cuts from a start line between facet intersections per tier boundary
     # Always enforce r >= R_start(θ); with nonzero angles, grow away from seams
@@ -1145,7 +1147,7 @@ def r_outer_lowpoly_facet(
                     else:
                         guard_arr = np.broadcast_to(guard_arr, r_arr.shape)
                     mixed = np.minimum(mixed, guard_arr)
-                return float(mixed) if mixed.shape == () else cast(NDArrayFloat, mixed)
+                return float(mixed) if mixed.shape == () else mixed
 
             _apply_plateau = _apply_plateau_impl
 
@@ -1389,7 +1391,7 @@ def r_outer_lowpoly_facet(
                     c = np.roll(arr, -1)
                     stacked = np.stack([a, b, c], axis=0)
                     sorted3 = np.sort(stacked, axis=0)
-                    return cast(np.ndarray, np.asarray(sorted3[1], dtype=float))
+                    return np.asarray(sorted3[1], dtype=float)
 
                 arr = np.asarray(r_tmp, dtype=float)
                 for _ in range(passes):
@@ -1560,7 +1562,7 @@ def r_outer_lowpoly_facet(
 
     out = r0 * f
     # Preserve scalar return behavior
-    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
+    return float(out) if np.isscalar(theta) else out
 
 
 STYLES = {
@@ -2098,7 +2100,7 @@ def build_pot_mesh(
                         if dtheta_per_dz != 0:
                             S_back = np.roll(S_back, dtheta_per_dz, axis=1)
                         acc_back = np.maximum(acc_back, S_back)
-                    return cast(np.ndarray, np.asarray(np.maximum(acc_forw, acc_back), dtype=float))
+                    return np.asarray(np.maximum(acc_forw, acc_back), dtype=float)
 
                 Env_vert = _dilate_dir(seed, h, 0)
                 Env_diap = _dilate_dir(seed, h, +1)
@@ -2802,7 +2804,7 @@ def build_pot_mesh(
                                 if debug_enabled:
                                     if (not debug_reports) or len(debug_reports) == 0:
                                         # generate up to 3 synthetic sector reports from simple per-ring peaks
-                                        debug_reports: list[dict] = []
+                                        debug_reports = []
                                         for zi in range(min(3, Z)):
                                             row = R[zi, :]
                                             nms = (row >= np.roll(row, 1)) & (
