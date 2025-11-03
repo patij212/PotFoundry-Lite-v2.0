@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ apply/streamlit-fix, main ]
   schedule:
     - cron: '0 6 * * *'  # daily at 06:00 UTC
 

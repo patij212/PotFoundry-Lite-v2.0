@@ -5,7 +5,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   push:
-    branches: [ 'main' ]
+    branches: [ 'apply/streamlit-fix', 'main', 'fix/edgeflow-debug-quick' ]
   workflow_dispatch: {}
 
 env:
