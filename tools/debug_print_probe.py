@@ -3,6 +3,9 @@ import json
 from typing import Callable, Optional, Tuple
 
 import numpy as np
+from typing import Any
+
+from potfoundry.types import StyleOpts
 
 # Dynamically import the heavy geometry module at runtime using importlib so
 # static type checkers won't eagerly analyze it when we run focused mypy on
@@ -53,7 +56,7 @@ def synthetic_r_outer_fn(
     return np.asarray(R_grid[idx, :], dtype=float)
 
 
-style_opts = {
+style_opts: StyleOpts | dict[str, Any] = {
     "sf_style": "SuperformulaBlossom",
     "sf_edge_flow_reconstruct_enable": True,
     "sf_edge_flow_verbose_diagnostics": True,

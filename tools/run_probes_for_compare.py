@@ -60,8 +60,11 @@ def main() -> None:
     base_style["sf_edge_flow_verbose_diagnostics"] = True
 
     out_lines = []
+    from potfoundry.types import StyleOpts
+    from typing import Any
+
     for zi in zi_list:
-        style_opts = dict(base_style)
+        style_opts: StyleOpts | dict[str, Any] = dict(base_style)
         style_opts["sf_edge_flow_probe_zi"] = int(zi)
         print(f"Running build_pot_mesh with probe zi={zi} ...")
         verts, faces, diag = build_pot_mesh(

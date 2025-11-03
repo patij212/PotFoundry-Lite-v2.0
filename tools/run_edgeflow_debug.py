@@ -8,6 +8,9 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import Any
+
+from potfoundry.types import StyleOpts
 
 repo_root = Path(r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0")
 
@@ -20,7 +23,7 @@ def main() -> None:
     geom_mod = importlib.import_module("potfoundry.core.geometry")
     build_pot_mesh = getattr(geom_mod, "build_pot_mesh")
 
-    style_opts = {
+    style_opts: StyleOpts | dict[str, Any] = {
         "sf_edge_flow_reconstruct_enable": True,
         "sf_edge_flow_mode": "ridge_paths",
         "sf_edge_flow_debug": True,

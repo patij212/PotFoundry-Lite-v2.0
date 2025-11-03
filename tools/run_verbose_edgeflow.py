@@ -2,6 +2,9 @@ import importlib
 import os
 import sys
 from pathlib import Path
+from typing import Any
+
+from potfoundry.types import StyleOpts
 
 
 def main() -> None:
@@ -19,7 +22,7 @@ def main() -> None:
     PRESETS = importlib.import_module("pfui" + ".presets").PRESETS
 
     p = PRESETS["SuperformulaBlossom"]["Crisp Petals (De-Jag)"]
-    style_opts = dict(p)
+    style_opts: StyleOpts | dict[str, Any] = dict(p)
     style_opts["sf_edge_flow_reconstruct_enable"] = True
     style_opts["sf_edge_flow_mode"] = "ridge_paths"
     style_opts["sf_edge_flow_debug"] = True
