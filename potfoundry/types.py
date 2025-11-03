@@ -33,4 +33,18 @@ class StyleOpts(TypedDict, total=False):
     sf_edge_flow_reconstruct_enable: bool
     sf_edge_flow_debug: bool
     sf_edge_flow_mode: str
+    # Edge-flow / diagnostics knobs commonly used by tooling and UI
+    sf_edge_flow_verbose_diagnostics: bool
+    sf_edge_flow_verbose_write_file: bool
+    sf_edge_flow_probe: bool
+    sf_edge_flow_probe_zi: int
+    sf_edge_flow_valley_z_halfwin: float
+    sf_edge_flow_quantile: float
+    sf_edge_flow_amount: float
+    sf_edge_flow_twist_compensate: bool
+    sf_edge_flow_auto_deoffset: bool
+    sf_edge_flow_window: int
+    sf_edge_flow_seam_sample_stride: int
+    sf_edge_flow_mode_options: str
+    sf_style: str
     # Add other commonly used knobs here as needed in subsequent PRs.

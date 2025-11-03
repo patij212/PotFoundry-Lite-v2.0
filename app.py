@@ -15,6 +15,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, cast
+from typing import Any as _ArrayLike  # for broad array-or-scalar typing without optional module issues
+
+from potfoundry.types import StyleOpts
 from typing import (
     Any as _ArrayLike,
 )  # for broad array-or-scalar typing without optional module issues
@@ -1276,7 +1279,7 @@ with _tab1:
     from pfui.geometry_bridge import adapt_r_outer_fn
 
     r_outer_fn = adapt_r_outer_fn(_r_outer_raw)
-    opts = dict(ui_opts)
+    opts: StyleOpts | dict[str, Any] = dict(ui_opts)
     opts_json = json.dumps(opts, sort_keys=True)
 
     # Apply interactive preview scaling to keep Full Preview responsive
