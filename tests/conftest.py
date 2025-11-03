@@ -7,9 +7,11 @@
 
 These settings can be overridden by setting HYPOTHESIS_PROFILE.
 """
+
 from __future__ import annotations
 
 import os
+
 from hypothesis import HealthCheck, settings
 
 # Register profiles
