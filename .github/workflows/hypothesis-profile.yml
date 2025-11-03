@@ -1,14 +1,11 @@
-name: Hypothesis profile (deprecated)
+name: Hypothesis profile (removed)
 
 on:
-  # Disabled for automatic triggers. Kept only for manual dispatch as a notice.
+  # File retained temporarily for branch hygiene; has no active triggers
   workflow_dispatch: {}
 
 jobs:
-  placeholder:
+  noop:
     runs-on: ubuntu-latest
     steps:
-      - name: Notice
-        run: |
-          echo "Deprecated: Hypothesis configuration now lives in tests/conftest.py."
-          echo "This workflow remains only as a manual placeholder and will be removed later."
+      - run: echo "No-op placeholder. Intended for removal."

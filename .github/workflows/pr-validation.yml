@@ -1,13 +1,11 @@
-name: PR Validation (deprecated)
+name: PR Validation (removed)
 
 on:
-  # Kept for compatibility but disabled for automatic triggers
+  # File retained temporarily for branch hygiene; has no active triggers
   workflow_dispatch: {}
 
 jobs:
-  placeholder:
+  noop:
     runs-on: ubuntu-latest
     steps:
-      - name: Notice
-        run: |
-          echo "This workflow is deprecated. Use 'PR Validation (full)'."
+      - run: echo "No-op placeholder. Intended for removal."
