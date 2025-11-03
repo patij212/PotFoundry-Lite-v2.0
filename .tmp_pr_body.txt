@@ -52,4 +52,3 @@ If posting the comment via GH CLI fails due to auth/scopes, run the following lo
 
 $body = Get-Content .\\.tmp_pr_body.txt -Raw
 gh pr comment 18 --body "$body"
-

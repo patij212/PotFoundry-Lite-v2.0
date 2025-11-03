@@ -8,7 +8,7 @@
             name="mesh",
             opacity=1.0,
         )
-    
+
         if use_gradient and len(mesh_colors):
 >           mesh_kwargs["vertexcolor"] = mesh_colors
             ^^^^^^^^^^^
