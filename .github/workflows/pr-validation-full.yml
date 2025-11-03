@@ -192,10 +192,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt --no-cache-dir
+          python -m pip install pytest-cov
 
-      - name: Run pytest (write junit + durations)
+      - name: Run pytest (write junit + durations + coverage)
         run: |
-          python -m pytest -q --durations=10 --junitxml=pytest-report.xml 2>&1 | tee pytest-output.txt
+          python -m pytest -q \
+            --durations=10 \
+            --junitxml=pytest-report.xml \
+            --cov=potfoundry --cov=pfui \
+            --cov-report=xml --cov-report=term \
+            2>&1 | tee pytest-output.txt
+
+      - name: Enforce coverage threshold (>= 50%)
+        run: |
+          coverage report --fail-under=50
 
       - name: Upload pytest artifacts
         uses: actions/upload-artifact@v4
@@ -242,3 +252,33 @@ jobs:
             const top = (summary.slowest || []).slice(0,10).map((s, i) => `${i+1}. ${s.file || s.nodeid} — ${s.name} — ${s.time}s`).join('\n');
             const body = `Automated CI summary:\n\n- Status: ✅ completed\n- Tests: ${summary.tests.total} passed (errors=${summary.tests.errors} failures=${summary.tests.failures} skipped=${summary.tests.skipped})\n- Total time: ${summary.tests.time}s\n\nTop slow tests:\n${top}\n\nFull artifacts: ${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
             await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+
+  pytest-windows-smoke:
+    name: Windows smoke tests
+    runs-on: windows-latest
+    needs: mypy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run a tiny Windows smoke suite
+        run: |
+          pytest -q tests/test_windows_export_path.py || exit 1
+          python - <<'PY'
+          from potfoundry import build_pot_mesh, STYLES
+          fn,_ = STYLES['HarmonicRipple']
+          v,f,_ = build_pot_mesh(H=40,Rt=30,Rb=25,t_wall=2.0,t_bottom=2.0,r_drain=4,expn=1.0,n_theta=24,n_z=12,r_outer_fn=fn,style_opts={})
+          assert v.size>0 and f.size>0
+          print('Windows smoke OK:', v.shape, f.shape)
+          PY
