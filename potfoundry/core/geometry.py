@@ -198,8 +198,8 @@ def _compute_normal(
     n = np.cross(b - a, c - a)
     norm = np.linalg.norm(n)
     if norm == 0:
-        return np.array([0.0, 0.0, 0.0], dtype=float)
-    return n / norm
+        return cast(npt.NDArray[np.float64], np.array([0.0, 0.0, 0.0], dtype=float))
+    return cast(npt.NDArray[np.float64], n / norm)
 
 
 def write_ascii_stl(
@@ -302,7 +302,7 @@ def superformula_r(
     with np.errstate(divide="ignore", invalid="ignore"):
         out = np.where(denom == 0, 0.0, 1.0 / denom)
     # Return scalar for scalar input to preserve API
-    return float(out) if np.isscalar(theta) else out
+    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
 
 
 def r_outer_superformula_blossom(
@@ -350,7 +350,7 @@ def r_outer_superformula_blossom(
         lo = 0.1
         hi = 3.0
         arr = np.clip(arr, lo, hi)
-        return float(arr) if arr.shape == () else arr
+        return float(arr) if arr.shape == () else cast(NDArrayFloat, arr)
 
     # Localized edge-preserving seam solidify (optional): peak-only, theta-wise, bilateral-like
     # Goal: suppress tiny jaggies at cut/edge lines without flattening the whole circumference.
@@ -585,7 +585,7 @@ def r_outer_superformula_blossom(
     out = r0 * ((1.0 - strength) + strength * (0.90 + 0.35 * rf))
     # Normalize to numpy array for vectorized paths; keep scalar float for scalar theta
     out_arr = np.asarray(out, dtype=float)
-    return float(out_arr) if out_arr.shape == () else out_arr
+    return float(out_arr) if out_arr.shape == () else cast(NDArrayFloat, out_arr)
 
 
 def r_outer_fourier_bloom(
@@ -629,7 +629,7 @@ def r_outer_fourier_bloom(
 
     strength = float(opts.get("fb_strength", 1.0))
     out = r0 * (1.0 + (f - 1.0) * strength)
-    return float(out) if np.isscalar(theta) else out
+    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
 
 
 def r_outer_spiral_ridges(
@@ -655,7 +655,7 @@ def r_outer_spiral_ridges(
         f += groove_amp * np.sin(groove_mult * k * th + phase_mult * phase)
 
     out = r0 * f
-    return float(out) if np.isscalar(theta) else out
+    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
 
 
 def r_outer_superellipse_morph(
@@ -680,7 +680,7 @@ def r_outer_superellipse_morph(
     rf *= 1.0 + c4a * np.cos(4.0 * th + c4p) + c8a * np.cos(8.0 * th + c8p)
 
     out = r0 * rf
-    return float(out) if np.isscalar(theta) else out
+    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
 
 
 def r_outer_harmonic_ripple(
@@ -707,7 +707,7 @@ def r_outer_harmonic_ripple(
         f *= 1.0 + bell * np.exp(-((t - 0.5) ** 2.0) / 0.04)
 
     out = r0 * f
-    return float(out) if np.isscalar(theta) else out
+    return float(out) if np.isscalar(theta) else cast(NDArrayFloat, out)
 
 
 def r_outer_lowpoly_facet(
@@ -1389,7 +1389,7 @@ def r_outer_lowpoly_facet(
                     c = np.roll(arr, -1)
                     stacked = np.stack([a, b, c], axis=0)
                     sorted3 = np.sort(stacked, axis=0)
-                    return np.asarray(sorted3[1], dtype=float)
+                    return cast(np.ndarray, np.asarray(sorted3[1], dtype=float))
 
                 arr = np.asarray(r_tmp, dtype=float)
                 for _ in range(passes):
@@ -1666,7 +1666,7 @@ def build_pot_mesh(
             res = r_outer_fn(th_in, z_in, r0_arg, H_in, opts_in)
             # Normalize numpy arrays to NDArrayFloat, keep scalar floats as float
             if isinstance(res, np.ndarray):
-                return np.asarray(res, dtype=float)
+                return cast(NDArrayFloat, np.asarray(res, dtype=float))
             return float(res)
 
         _tiers = (
@@ -1854,7 +1854,7 @@ def build_pot_mesh(
                         repo_root = Path(
                             r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
                         )
-                        outpath = str(repo_root / ".pf_edge_flow_debug.json")
+                        outpath: str = str(repo_root / ".pf_edge_flow_debug.json")
                         payload0 = {
                             "timestamp": time.time(),
                             "event": "entered_edge_flow",
@@ -2098,7 +2098,7 @@ def build_pot_mesh(
                         if dtheta_per_dz != 0:
                             S_back = np.roll(S_back, dtheta_per_dz, axis=1)
                         acc_back = np.maximum(acc_back, S_back)
-                    return np.asarray(np.maximum(acc_forw, acc_back), dtype=float)
+                    return cast(np.ndarray, np.asarray(np.maximum(acc_forw, acc_back), dtype=float))
 
                 Env_vert = _dilate_dir(seed, h, 0)
                 Env_diap = _dilate_dir(seed, h, +1)
@@ -2345,7 +2345,7 @@ def build_pot_mesh(
                                     style_opts.get("sf_edge_flow_debug", False)
                                 )
                                 # Typed collector: always a list; only populated when enabled
-                                debug_reports: list[dict] = []
+                                debug_reports: list[dict[str, Any]] = []
                                 # prepare a continuous interpolator per ring using periodic extension
                                 for zi in range(Z):
                                     row = R[zi, :]
@@ -2802,7 +2802,7 @@ def build_pot_mesh(
                                 if debug_enabled:
                                     if (not debug_reports) or len(debug_reports) == 0:
                                         # generate up to 3 synthetic sector reports from simple per-ring peaks
-                                        debug_reports = []
+                                        debug_reports: list[dict] = []
                                         for zi in range(min(3, Z)):
                                             row = R[zi, :]
                                             nms = (row >= np.roll(row, 1)) & (
