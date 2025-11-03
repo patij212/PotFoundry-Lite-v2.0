@@ -1,3 +1,22 @@
+name: Hypothesis profile placeholder
+
+# This file previously contained commented guidance and a fenced block
+# which made it invalid as a GitHub Actions workflow. CI attempted to
+# parse it and failed. Replace it with a minimal no-op workflow so the
+# repository keeps a record here without breaking Actions.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  placeholder:
+    name: Placeholder job (no-op)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show notice
+        run: |
+          echo "This workflow is a placeholder. Hypothesis profile guidance"
+          echo "belongs in tests/conftest.py or documentation, not in .github/workflows."
 # Hypothesis configuration for CI environments
 # This file is referenced by the CI workflow
 # Place this content in tests/conftest.py or similar
