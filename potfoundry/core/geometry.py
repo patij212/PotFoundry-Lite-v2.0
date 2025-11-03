@@ -19,7 +19,7 @@ from numpy.typing import NDArray
 NDArrayAny = NDArray[Any]
 NDArrayF = NDArray[np.float64]
 
-from ..types import NDArrayFloat
+from ..types import NDArrayFloat, StyleOpts
 from .geometry_helpers import (
     avg3,
     bilateral1d_peak_only,
@@ -1603,7 +1603,7 @@ def build_pot_mesh(
     n_theta: int = 64,
     n_z: int = 32,
     r_outer_fn: Callable[..., Any] | None = None,
-    style_opts: Any = None,
+    style_opts: StyleOpts | dict[str, Any] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """
     Return (vertices [N,3], faces [M,3], diagnostics).
