@@ -15,16 +15,14 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, cast
-from typing import Any as _ArrayLike  # for broad array-or-scalar typing without optional module issues
-
-from potfoundry.types import StyleOpts
 from typing import (
-    Any as _ArrayLike,
-)  # for broad array-or-scalar typing without optional module issues
+    Any as _ArrayLike,  # for broad array-or-scalar typing without optional module issues
+)
 
 import streamlit as st
 
 from pfui.preview import render_preview_png_cached
+from potfoundry.types import StyleOpts
 
 # --- Optional / graceful Plotly import (interactive preview) ---
 try:

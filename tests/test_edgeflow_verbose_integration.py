@@ -1,4 +1,3 @@
-import pytest
 from potfoundry.core.geometry import build_pot_mesh
 
 
