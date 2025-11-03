@@ -23,14 +23,14 @@ from typing import TypedDict
 
 
 class StyleOpts(TypedDict, total=False):
-	lp_tiers: int
-	lp_cut_bot_deg: float
-	lp_cut_top_deg: float
-	lp_enable_flattening: bool
-	lp_facet_dir: str
-	lp_debug_seam: bool
-	lp_edge_solidify_enable: bool
-	sf_edge_flow_reconstruct_enable: bool
-	sf_edge_flow_debug: bool
-	sf_edge_flow_mode: str
-	# Add other commonly used knobs here as needed in subsequent PRs.
+    lp_tiers: int
+    lp_cut_bot_deg: float
+    lp_cut_top_deg: float
+    lp_enable_flattening: bool
+    lp_facet_dir: str
+    lp_debug_seam: bool
+    lp_edge_solidify_enable: bool
+    sf_edge_flow_reconstruct_enable: bool
+    sf_edge_flow_debug: bool
+    sf_edge_flow_mode: str
+    # Add other commonly used knobs here as needed in subsequent PRs.
