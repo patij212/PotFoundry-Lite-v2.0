@@ -5,8 +5,8 @@ covering the major code quality and test coverage improvement initiatives.
 
 ## Summary
 
-**Period:** October - December 2024  
-**Version:** v2.0.0 → v2.1.0  
+**Period:** October - December 2024
+**Version:** v2.0.0 → v2.1.0
 **Focus:** Code quality, test coverage, type hints
 
 ### Major Achievements
@@ -83,6 +83,6 @@ covering the major code quality and test coverage improvement initiatives.
 
 ---
 
-**Archive Date:** January 2025  
-**Original Period:** October - December 2024  
+**Archive Date:** January 2025
+**Original Period:** October - December 2024
 **Status:** Historical Reference

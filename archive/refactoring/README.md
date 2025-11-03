@@ -67,6 +67,6 @@ different stages of the improvement process.
 
 ---
 
-**Last Updated:** January 2025  
-**Primary Period:** Q4 2024  
+**Last Updated:** January 2025
+**Primary Period:** Q4 2024
 **Related:** See archive/evolution/2024-q4/ for improvement summaries

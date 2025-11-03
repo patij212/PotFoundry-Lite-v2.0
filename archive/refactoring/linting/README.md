@@ -29,5 +29,5 @@ Ruff and other linting tool outputs from code quality improvement phases.
 
 ---
 
-**Period:** Q4 2024  
+**Period:** Q4 2024
 **Tools:** ruff 0.1.x → 0.2.x

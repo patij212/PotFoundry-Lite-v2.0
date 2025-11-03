@@ -91,6 +91,6 @@ At the end of each quarter, maintainers should:
 
 ---
 
-**Last Updated:** January 2025  
-**Maintained By:** PotFoundry Team  
+**Last Updated:** January 2025
+**Maintained By:** PotFoundry Team
 **Contact:** See main README.md for current contact information

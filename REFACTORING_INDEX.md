@@ -24,10 +24,10 @@ This document serves as the central index for all refactoring planning and imple
 ## Refactoring Phases
 
 ### Phase 1: Documentation & File Organization ⭐ READY
-**Status:** Planned, scaffolding complete  
-**Priority:** CRITICAL  
-**Risk:** Low  
-**Effort:** 2-3 hours  
+**Status:** Planned, scaffolding complete
+**Priority:** CRITICAL
+**Risk:** Low
+**Effort:** 2-3 hours
 
 **Objectives:**
 - Create archive structure for historical documents
@@ -49,10 +49,10 @@ This document serves as the central index for all refactoring planning and imple
 ---
 
 ### Phase 2: Code Structure Refactoring
-**Status:** Planned  
-**Priority:** High  
-**Risk:** Medium  
-**Effort:** 8-12 hours  
+**Status:** Planned
+**Priority:** High
+**Risk:** Medium
+**Effort:** 8-12 hours
 
 **Objectives:**
 - Split app.py (3015 LOC → ~500 LOC)
@@ -71,10 +71,10 @@ This document serves as the central index for all refactoring planning and imple
 ---
 
 ### Phase 3: Component Extraction & Modularization
-**Status:** Planned  
-**Priority:** Medium  
-**Risk:** Medium  
-**Effort:** 6-8 hours  
+**Status:** Planned
+**Priority:** Medium
+**Risk:** Medium
+**Effort:** 6-8 hours
 
 **Objectives:**
 - Create pfui/widgets/ for reusable UI components
@@ -91,10 +91,10 @@ This document serves as the central index for all refactoring planning and imple
 ---
 
 ### Phase 4: Testing Infrastructure
-**Status:** Planned  
-**Priority:** High  
-**Risk:** Low  
-**Effort:** 4-6 hours  
+**Status:** Planned
+**Priority:** High
+**Risk:** Low
+**Effort:** 4-6 hours
 
 **Objectives:**
 - Reorganize test directory by category
@@ -112,10 +112,10 @@ This document serves as the central index for all refactoring planning and imple
 ---
 
 ### Phase 5: CI/CD & Automation
-**Status:** Planned  
-**Priority:** High  
-**Risk:** Low  
-**Effort:** 3-4 hours  
+**Status:** Planned
+**Priority:** High
+**Risk:** Low
+**Effort:** 3-4 hours
 
 **Objectives:**
 - Set up GitHub Actions workflows
@@ -357,9 +357,9 @@ PotFoundry-Lite-v2.0/
 
 ---
 
-**Document Version:** 1.0  
-**Created:** January 2025  
-**Status:** Active Planning  
+**Document Version:** 1.0
+**Created:** January 2025
+**Status:** Active Planning
 **Next Review:** After Phase 1 completion
 
 **For questions or clarifications, see REFACTORING_PLAN.md or create a GitHub Discussion.**

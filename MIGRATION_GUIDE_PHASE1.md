@@ -203,7 +203,7 @@ Comprehensive documentation for PotFoundry-Lite v2.x.
 
 ---
 
-**Last Updated:** January 2025  
+**Last Updated:** January 2025
 **Version:** v2.1.0+
 EOF
 ```
@@ -293,18 +293,18 @@ Thank you for your interest in contributing to PotFoundry!
    # Clone repository
    git clone https://github.com/patij212/PotFoundry-Lite-v2.0
    cd PotFoundry-Lite-v2.0
-   
+
    # Create virtual environment
    python -m venv venv
    source venv/bin/activate  # Windows: venv\Scripts\activate
-   
+
    # Install dependencies
    pip install -r requirements.txt
    pip install -r requirements-dev.txt
-   
+
    # Run tests
    PYTHONPATH=. pytest -v
-   
+
    # Run linting
    ruff check .
    ```
@@ -319,10 +319,10 @@ Thank you for your interest in contributing to PotFoundry!
    ```bash
    # Run tests
    PYTHONPATH=. pytest -v
-   
+
    # Run linting
    ruff check .
-   
+
    # Test the app
    streamlit run app.py
    ```
@@ -395,7 +395,7 @@ Before submitting, ensure:
 
 ---
 
-**License:** PolyForm Noncommercial 1.0.0 (see [LICENSE](LICENSE))  
+**License:** PolyForm Noncommercial 1.0.0 (see [LICENSE](LICENSE))
 **Commercial Use:** Requires separate license (see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md))
 EOF
 ```
@@ -575,7 +575,7 @@ git cherry-pick <commit-hash>
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** January 2025  
-**Phase:** 1 - Documentation Cleanup  
+**Document Version:** 1.0
+**Last Updated:** January 2025
+**Phase:** 1 - Documentation Cleanup
 **Status:** Ready for Execution

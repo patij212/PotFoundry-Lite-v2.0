@@ -48,6 +48,6 @@ See `docs/guides/TYPE_HINTS_GUIDE.md` for current conventions.
 
 ---
 
-**Period:** Q4 2024  
-**Tools:** mypy 1.7.x → 1.8.x  
+**Period:** Q4 2024
+**Tools:** mypy 1.7.x → 1.8.x
 **Coverage:** 80% → target 95%

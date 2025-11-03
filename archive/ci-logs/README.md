@@ -66,6 +66,6 @@ grep -r "ERROR" ci-logs/2024-q4/
 
 ---
 
-**Last Updated:** January 2025  
-**Retention Period:** 12 months  
+**Last Updated:** January 2025
+**Retention Period:** 12 months
 **Next Review:** End of Q1 2025

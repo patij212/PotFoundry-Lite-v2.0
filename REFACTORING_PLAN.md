@@ -1,8 +1,8 @@
 # PotFoundry Repository Refactoring Plan
 
-**Version:** 1.0  
-**Date:** January 2025  
-**Status:** Planning Phase  
+**Version:** 1.0
+**Date:** January 2025
+**Status:** Planning Phase
 **Objective:** Restructure repository for improved maintainability, scalability, and robustness
 
 ---
@@ -62,8 +62,8 @@ Current Structure Issues:
 ## Refactoring Strategy
 
 ### Phase 1: Documentation & File Organization (Low Risk) ⭐ START HERE
-**Effort:** 2-3 hours  
-**Risk:** Minimal  
+**Effort:** 2-3 hours
+**Risk:** Minimal
 **Impact:** Immediate clarity
 
 #### 1.1 Create Archive Structure
@@ -157,8 +157,8 @@ archive/
 ---
 
 ### Phase 2: Code Structure Refactoring (Medium Risk)
-**Effort:** 8-12 hours  
-**Risk:** Medium (requires careful testing)  
+**Effort:** 8-12 hours
+**Risk:** Medium (requires careful testing)
 **Impact:** High maintainability improvement
 
 #### 2.1 Split app.py (3015 LOC → ~500 LOC)
@@ -282,8 +282,8 @@ potfoundry/
 ---
 
 ### Phase 3: Component Extraction & Modularization (Medium Risk)
-**Effort:** 6-8 hours  
-**Risk:** Medium  
+**Effort:** 6-8 hours
+**Risk:** Medium
 **Impact:** High for future Qt migration
 
 #### 3.1 Create pfui/widgets/ Package
@@ -331,8 +331,8 @@ potfoundry/validators/
 ---
 
 ### Phase 4: Testing Infrastructure (Low Risk)
-**Effort:** 4-6 hours  
-**Risk:** Low (additive only)  
+**Effort:** 4-6 hours
+**Risk:** Low (additive only)
 **Impact:** High for CI/CD
 
 #### 4.1 Reorganize Test Directory
@@ -417,8 +417,8 @@ def test_preview_renders_consistently(snapshot):
 ---
 
 ### Phase 5: CI/CD & Automation (Low Risk)
-**Effort:** 3-4 hours  
-**Risk:** Low (infrastructure)  
+**Effort:** 3-4 hours
+**Risk:** Low (infrastructure)
 **Impact:** High for quality assurance
 
 #### 5.1 GitHub Actions Workflows
@@ -445,7 +445,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.11', '3.12', '3.13']
-    
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
@@ -477,7 +477,7 @@ jobs:
 | 2.3 Refactor preview.py | Low | Medium | 3-4h | Medium | **8th** |
 | 3.2 Create validators | Low | Low | 2-3h | Low | **9th** |
 
-**Total Estimated Effort:** 27-38 hours  
+**Total Estimated Effort:** 27-38 hours
 **Recommended Timeline:** 2-3 weeks (4-6 hours per session)
 
 ---
@@ -809,7 +809,7 @@ Delete (temporary):
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** January 2025  
-**Status:** Ready for Review and Implementation  
+**Document Version:** 1.0
+**Last Updated:** January 2025
+**Status:** Ready for Review and Implementation
 **Estimated Completion:** 3-6 weeks (phased approach)

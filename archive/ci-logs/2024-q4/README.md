@@ -38,5 +38,5 @@ This directory contains logs from:
 
 ---
 
-**Period:** October - December 2024  
+**Period:** October - December 2024
 **Archive Date:** January 2025
