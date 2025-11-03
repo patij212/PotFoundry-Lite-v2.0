@@ -1,9 +1,8 @@
 import importlib
 import json
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
-from typing import Any
 
 from potfoundry.types import StyleOpts
 

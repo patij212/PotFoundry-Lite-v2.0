@@ -60,8 +60,9 @@ def main() -> None:
     base_style["sf_edge_flow_verbose_diagnostics"] = True
 
     out_lines = []
-    from potfoundry.types import StyleOpts
     from typing import Any
+
+    from potfoundry.types import StyleOpts
 
     for zi in zi_list:
         style_opts: StyleOpts | dict[str, Any] = dict(base_style)

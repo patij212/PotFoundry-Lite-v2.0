@@ -27,7 +27,7 @@ def main() -> None:
     t_bottom = 3.0
     r_drain = 10.0
 
-    from typing import Any, Dict, List, Tuple
+    from typing import Dict, List, Tuple
 
     def build_with(
         opts_overrides: Dict[str, Any],

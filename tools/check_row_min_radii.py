@@ -16,8 +16,9 @@ def main() -> None:
     PRESETS = importlib.import_module("pfui" + ".presets").PRESETS
 
     p = PRESETS["SuperformulaBlossom"]["Crisp Petals (De-Jag)"]
-    from potfoundry.types import StyleOpts
     from typing import Any
+
+    from potfoundry.types import StyleOpts
 
     style_opts: StyleOpts | dict[str, Any] = dict(p)
     # use defaults as the user requested (no edge flow overrides)
