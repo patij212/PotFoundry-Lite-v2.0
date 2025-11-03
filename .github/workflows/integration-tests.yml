@@ -9,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Install dependencies
@@ -19,7 +19,10 @@ jobs:
           pip install pytest pytest-cov
       - name: Run integration tests (long-running)
         run: |
-          pytest -v tests/test_integration_binary_stl.py tests/test_golden_meshes.py
+          pytest -v \
+            --junitxml=pytest-report.xml \
+            tests/test_integration_binary_stl.py \
+            tests/test_golden_meshes.py
       - name: Upload integration artifacts
         if: always()
         uses: actions/upload-artifact@v4

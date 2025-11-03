@@ -33,7 +33,10 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 branch: branch,
-                required_status_checks: { strict: true, contexts: ['pre-commit'] },
+                // Recommend setting required checks in the UI to match your current gate names
+                // e.g., 'PR Validation (full) / pytest' and 'PR Validation (full) / mypy'
+                // Leaving contexts empty here avoids desync if names change.
+                required_status_checks: null,
                 enforce_admins: false,
                 required_pull_request_reviews: null,
                 restrictions: null,

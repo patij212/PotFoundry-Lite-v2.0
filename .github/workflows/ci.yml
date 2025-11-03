@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, apply/streamlit-fix, mesh-preview-fix ]
-  pull_request:
     branches: [ main ]
+  schedule:
+    - cron: '0 6 * * *'  # daily at 06:00 UTC
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -94,6 +94,7 @@ jobs:
           pre-commit run --all-files
   test-windows:
     runs-on: windows-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
