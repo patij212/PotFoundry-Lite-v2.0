@@ -223,7 +223,7 @@ def build_from_yaml(
     errs = []
     for r in cfg1.recipes:
         r_dict = r if isinstance(r, dict) else getattr(r, "model_dump", lambda: r)()
-        errs.extend(validate_recipe(r_dict, cfg))
+        errs.extend(validate_recipe(r_dict, cfg1))
     if errs:
         raise SystemExit("Invalid YAML:\n- " + "\n- ".join(errs))
 
@@ -239,7 +239,7 @@ def build_from_yaml(
         rec = (
             rec if isinstance(rec, dict) else getattr(rec, "model_dump", lambda: rec)()
         )
-        name, style, size, opts = realize_recipe(rec, cfg)
+        name, style, size, opts = realize_recipe(rec, cfg1)
         if names and name not in names:
             continue
 
