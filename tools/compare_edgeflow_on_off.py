@@ -32,7 +32,8 @@ def main() -> None:
     def build_with(
         opts_overrides: Dict[str, Any],
     ) -> Tuple[List[Tuple[float, float]], int]:
-        style_opts: StyleOpts | dict[str, Any] = dict(p)
+        # Use a plain dict for update to avoid TypedDict.update type mismatch
+        style_opts: dict[str, Any] = dict(p)
         style_opts.update(opts_overrides)
         verts, faces, diag = build_pot_mesh(
             H,

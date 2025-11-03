@@ -1,0 +1,19 @@
+name: PR Validation (minimal)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
+
+jobs:
+  validate-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Smoke
+        run: |
+          echo "PR validation workflow is parsed and running"
+
+        continue-on-error: true

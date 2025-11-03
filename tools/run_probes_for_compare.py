@@ -65,7 +65,8 @@ def main() -> None:
     from potfoundry.types import StyleOpts
 
     for zi in zi_list:
-        style_opts: StyleOpts | dict[str, Any] = dict(base_style)
+        # Construct a concrete StyleOpts for each probe run (safe: we control base_style)
+        style_opts: StyleOpts = dict(base_style)  # type: ignore[assignment]
         style_opts["sf_edge_flow_probe_zi"] = int(zi)
         print(f"Running build_pot_mesh with probe zi={zi} ...")
         verts, faces, diag = build_pot_mesh(

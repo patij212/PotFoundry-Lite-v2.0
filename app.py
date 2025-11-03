@@ -129,8 +129,8 @@ def build_mesh_kwargs_for_test(Vd, Fd, ss, n_theta, n_z, fig_h):
     else:
         mesh_colors = []
 
-    # Build mesh kwargs unconditionally to avoid NameError in all branches
-    mesh_kwargs: dict[str, Any] = dict(
+        # Build mesh kwargs unconditionally to avoid NameError in all branches
+        mesh_kwargs: dict[str, Any] = dict(
         x=Vd[:, 0],
         y=Vd[:, 1],
         z=Vd[:, 2],
@@ -2777,7 +2777,7 @@ with _tab1:
                         stl_bytes=data,
                         style=style_name,
                         size=size_dict,
-                        opts=opts,
+                        opts=dict(opts),
                         mesh=mesh_dict,
                         diagnostics=diagnostics_dict,
                         license=license_safe,
@@ -2888,7 +2888,7 @@ with _tab1:
                             stl_bytes=data,
                             style=style_name,
                             size=size_dict,
-                            opts=opts,
+                            opts=dict(opts),
                             mesh=mesh_dict,
                             diagnostics=diagnostics_dict,
                             license=license_safe,
@@ -2986,7 +2986,7 @@ with _tab1:
 
     # ----------------- 2D PROFILE ----------------------
     with st.expander("2D radial profile"):
-        render_profile(H, Rt, Rb, expn, r_outer_fn, opts, t_wall)
+        render_profile(H, Rt, Rb, expn, r_outer_fn, dict(opts), t_wall)
 
     # --------------- PERFORMANCE (DEV) ----------------
     with st.expander("Performance (dev)"):

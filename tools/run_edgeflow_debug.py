@@ -23,7 +23,7 @@ def main() -> None:
     geom_mod = importlib.import_module("potfoundry.core.geometry")
     build_pot_mesh = getattr(geom_mod, "build_pot_mesh")
 
-    style_opts: StyleOpts | dict[str, Any] = {
+    style_opts: StyleOpts = {
         "sf_edge_flow_reconstruct_enable": True,
         "sf_edge_flow_mode": "ridge_paths",
         "sf_edge_flow_debug": True,

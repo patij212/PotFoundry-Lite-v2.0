@@ -22,7 +22,8 @@ def main() -> None:
     PRESETS = importlib.import_module("pfui" + ".presets").PRESETS
 
     p = PRESETS["SuperformulaBlossom"]["Crisp Petals (De-Jag)"]
-    style_opts: StyleOpts | dict[str, Any] = dict(p)
+    # PRESETS are dict-like; construct a concrete StyleOpts mapping for this run
+    style_opts: StyleOpts = dict(p)  # type: ignore[assignment]
     style_opts["sf_edge_flow_reconstruct_enable"] = True
     style_opts["sf_edge_flow_mode"] = "ridge_paths"
     style_opts["sf_edge_flow_debug"] = True

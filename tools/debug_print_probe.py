@@ -55,7 +55,7 @@ def synthetic_r_outer_fn(
     return np.asarray(R_grid[idx, :], dtype=float)
 
 
-style_opts: StyleOpts | dict[str, Any] = {
+style_opts: StyleOpts = {
     "sf_style": "SuperformulaBlossom",
     "sf_edge_flow_reconstruct_enable": True,
     "sf_edge_flow_verbose_diagnostics": True,

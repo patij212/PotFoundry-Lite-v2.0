@@ -59,7 +59,7 @@ def base_radius(
     Rb: float | NDArrayFloat,
     Rt: float | NDArrayFloat,
     expn: float,
-    opts: Dict[str, Any],
+    opts: StyleOpts | dict[str, Any],
 ) -> float | NDArrayFloat:
     """Baseline OUTER RADIUS vs height (Rt/Rb are radii).
 
@@ -256,7 +256,7 @@ def write_ascii_stl(
 # -----------------------------
 
 
-def _spin_twist_radians(z: float, H: float, opts: dict) -> float:
+def _spin_twist_radians(z: float, H: float, opts: StyleOpts | dict[str, Any]) -> float:
     """
     Smooth twist angle (in radians) applied to theta at height z.
     opts (style-agnostic):
@@ -267,12 +267,17 @@ def _spin_twist_radians(z: float, H: float, opts: dict) -> float:
     if H <= 0:
         return 0.0
     # Accept canonical aliases if present
-    turns = float(opts.get("spin_turns", opts.get("twist_total_turns", 0.0)))
+    # TypedDict.get is treated as returning `object` by the type checker; cast
+    # to the expected primitive types so mypy accepts the float/int conversions.
+    turns = float(cast(float, opts.get("spin_turns", opts.get("twist_total_turns", 0.0))))
     phase_deg = float(
-        opts.get("spin_phase_deg", opts.get("twist_start_angle_deg", 0.0))
+        cast(float, opts.get("spin_phase_deg", opts.get("twist_start_angle_deg", 0.0)))
     )
     curve = max(
-        0.1, float(opts.get("spin_curve_exp", opts.get("twist_ease_exponent", 1.0)))
+        0.1,
+        float(
+            cast(float, opts.get("spin_curve_exp", opts.get("twist_ease_exponent", 1.0)))
+        ),
     )
     if turns == 0.0 and phase_deg == 0.0:
         return 0.0
@@ -1620,6 +1625,9 @@ def build_pot_mesh(
     if not isinstance(style_opts, dict):
         # Guard against accidental description string passed from STYLES tuples
         style_opts = {}
+    # Normalize to a plain dict for the remainder of this function so the type
+    # checker sees a concrete mutable mapping (resolves unions with TypedDicts).
+    style_opts = dict(style_opts)
 
     # Use cached theta grid (angles, cos, sin) to avoid recomputation
     thetas, cos_th, sin_th = _theta_grid_cached(int(n_theta))
@@ -1974,9 +1982,10 @@ def build_pot_mesh(
                         # write to debug file and print
                         try:
                             # store probe mapping in the in-memory collector as well
-                            edgeflow_verbose_collector.append(
-                                {"stage": "probe_mapping", **probe_out}
-                            )
+                            # Ensure a uniform diagnostic shape: always include a 'rows' list.
+                            entry = {"stage": "probe_mapping", **probe_out}
+                            entry.setdefault("rows", [])
+                            edgeflow_verbose_collector.append(entry)
                         except Exception:
                             pass
                         try:
@@ -4004,18 +4013,18 @@ def build_pot_mesh(
                     except Exception:
                         pass
 
-                        try:
-                            # include final enforcement summary in the in-memory collector
-                            canonical_fdump = {
-                                "timestamp": fdump.get("timestamp"),
-                                "stage": fdump.get("stage"),
-                                "deoff": fdump.get("deoff"),
-                                "total_changes": fdump.get("total_changes"),
-                                "per_row_changes": fdump.get("per_row_changes"),
-                            }
-                            edgeflow_verbose_collector.append(canonical_fdump)
-                        except Exception:
-                            pass
+                    try:
+                        # include final enforcement summary in the in-memory collector
+                        canonical_fdump = {
+                            "timestamp": fdump.get("timestamp"),
+                            "stage": fdump.get("stage"),
+                            "deoff": fdump.get("deoff"),
+                            "total_changes": fdump.get("total_changes"),
+                            "per_row_changes": fdump.get("per_row_changes"),
+                        }
+                        # Make collector entries uniform: include 'rows' (possibly empty)
+                        canonical_fdump.setdefault("rows", [])
+                        edgeflow_verbose_collector.append(canonical_fdump)
                     except Exception:
                         pass
 
@@ -4204,11 +4213,12 @@ def build_pot_mesh(
             # Accept both LP and Blossom diagonal smoothing toggles
             passes_diag = 0
             if isinstance(style_opts, dict):
+                # Narrow TypedDict.get result to int for mypy
                 pd_lp = int(
-                    max(0, min(4, int(style_opts.get("lp_diagonal_smooth_passes", 0))))
+                    max(0, min(4, int(cast(int, style_opts.get("lp_diagonal_smooth_passes", 0)))))
                 )
                 pd_sf = int(
-                    max(0, min(4, int(style_opts.get("sf_diagonal_smooth_passes", 0))))
+                    max(0, min(4, int(cast(int, style_opts.get("sf_diagonal_smooth_passes", 0)))))
                 )
                 passes_diag = max(pd_lp, pd_sf)
             if (
@@ -4267,7 +4277,7 @@ def build_pot_mesh(
                 z_win_frac = (z_win_raw * 0.01) if z_win_raw > 1.0 else z_win_raw
                 z_win = max(1e-6, z_win_frac * h_tier)
                 lock_strength = (
-                    float(style_opts.get("lp_seam_lock_strength", 1.0))
+                    float(cast(float, style_opts.get("lp_seam_lock_strength", 1.0)))
                     if isinstance(style_opts, dict)
                     else 1.0
                 )
