@@ -1,10 +1,11 @@
 name: PR Validation (full)
 
 on:
-  push:
-    branches: [ 'fix/edgeflow-debug-quick' ]
+  # Run on pull requests across all branches, plus pushes to the default branch
   pull_request:
     types: [opened, synchronize, reopened]
+  push:
+    branches: [ 'main' ]
   workflow_dispatch: {}
 
 env:

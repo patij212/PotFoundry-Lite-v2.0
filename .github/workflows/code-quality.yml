@@ -1,8 +1,7 @@
 name: Code Quality Checks
 
 on:
-  pull_request:
-    branches: [ main, develop ]
+  # Run this workflow only when manually dispatched to avoid duplicating PR Validation
   workflow_dispatch:
 
 jobs:

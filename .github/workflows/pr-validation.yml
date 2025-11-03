@@ -1,19 +1,13 @@
-name: PR Validation (minimal)
+name: PR Validation (deprecated)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  # Kept for compatibility but disabled for automatic triggers
   workflow_dispatch: {}
 
 jobs:
-  validate-pr:
+  placeholder:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Smoke
+      - name: Notice
         run: |
-          echo "PR validation workflow is parsed and running"
-
-        continue-on-error: true
+          echo "This workflow is deprecated. Use 'PR Validation (full)'."

@@ -1,10 +1,8 @@
 name: pre-commit checks
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  push:
-    branches: [main, master]
+  # Restrict to manual invocation to avoid duplicate PR checks (PR Validation runs pre-commit)
+  workflow_dispatch:
 
 jobs:
   pre-commit:
