@@ -3,8 +3,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from potfoundry.types import StyleOpts
-
 
 def main() -> None:
     # Avoid importing heavy modules at import-time to keep focused mypy runs small.

@@ -269,14 +269,18 @@ def _spin_twist_radians(z: float, H: float, opts: StyleOpts | dict[str, Any]) ->
     # Accept canonical aliases if present
     # TypedDict.get is treated as returning `object` by the type checker; cast
     # to the expected primitive types so mypy accepts the float/int conversions.
-    turns = float(cast(float, opts.get("spin_turns", opts.get("twist_total_turns", 0.0))))
+    turns = float(
+        cast(float, opts.get("spin_turns", opts.get("twist_total_turns", 0.0)))
+    )
     phase_deg = float(
         cast(float, opts.get("spin_phase_deg", opts.get("twist_start_angle_deg", 0.0)))
     )
     curve = max(
         0.1,
         float(
-            cast(float, opts.get("spin_curve_exp", opts.get("twist_ease_exponent", 1.0)))
+            cast(
+                float, opts.get("spin_curve_exp", opts.get("twist_ease_exponent", 1.0))
+            )
         ),
     )
     if turns == 0.0 and phase_deg == 0.0:
@@ -4215,10 +4219,30 @@ def build_pot_mesh(
             if isinstance(style_opts, dict):
                 # Narrow TypedDict.get result to int for mypy
                 pd_lp = int(
-                    max(0, min(4, int(cast(int, style_opts.get("lp_diagonal_smooth_passes", 0)))))
+                    max(
+                        0,
+                        min(
+                            4,
+                            int(
+                                cast(
+                                    int, style_opts.get("lp_diagonal_smooth_passes", 0)
+                                )
+                            ),
+                        ),
+                    )
                 )
                 pd_sf = int(
-                    max(0, min(4, int(cast(int, style_opts.get("sf_diagonal_smooth_passes", 0)))))
+                    max(
+                        0,
+                        min(
+                            4,
+                            int(
+                                cast(
+                                    int, style_opts.get("sf_diagonal_smooth_passes", 0)
+                                )
+                            ),
+                        ),
+                    )
                 )
                 passes_diag = max(pd_lp, pd_sf)
             if (

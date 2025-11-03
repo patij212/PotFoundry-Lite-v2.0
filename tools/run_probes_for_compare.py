@@ -60,7 +60,6 @@ def main() -> None:
     base_style["sf_edge_flow_verbose_diagnostics"] = True
 
     out_lines = []
-    from typing import Any
 
     from potfoundry.types import StyleOpts
 

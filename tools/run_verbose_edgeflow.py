@@ -2,7 +2,6 @@ import importlib
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 from potfoundry.types import StyleOpts
 
