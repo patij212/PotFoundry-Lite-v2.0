@@ -6,6 +6,9 @@ This module contains the outer radius function for the harmonic_ripple pot style
 from __future__ import annotations
 
 import math
+
+# Constants
+TAU = 2.0 * math.pi
 import numpy as np
 from numpy.typing import NDArray
 

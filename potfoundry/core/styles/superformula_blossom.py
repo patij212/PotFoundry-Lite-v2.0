@@ -6,12 +6,50 @@ This module contains the outer radius function for the superformula_blossom pot 
 from __future__ import annotations
 
 import math
+from typing import Any, Dict, cast
 import numpy as np
 from numpy.typing import NDArray
 
 from ...types import StyleOpts
+from ..geometry_helpers import (
+    avg3,
+    bilateral1d_peak_only,
+    cdiff_theta,
+    cdiff_z,
+    med5,
+    median3_circular,
+    smooth_max,
+    smooth_min,
+)
 
-__all__ = ["r_outer_superformula_blossom"]
+# Type aliases
+NDArrayFloat = NDArray[np.float64]
+
+# Constants
+TAU = 2.0 * math.pi
+
+__all__ = ["r_outer_superformula_blossom", "superformula_r"]
+
+
+def superformula_r(
+    theta: NDArrayFloat | float,
+    m: float,
+    n1: float,
+    n2: float,
+    n3: float,
+    a: float = 1.0,
+    b: float = 1.0,
+) -> NDArrayFloat | float:
+    """Gielis superformula in polar. Supports scalar or numpy array theta."""
+    th = np.asarray(theta, dtype=float)
+    c = np.abs(np.cos(m * th / 4.0) / a) ** n2
+    s = np.abs(np.sin(m * th / 4.0) / b) ** n3
+    denom = (c + s) ** (1.0 / max(n1, 1e-9))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out = np.where(denom == 0, 0.0, 1.0 / denom)
+    # Return scalar for scalar input to preserve API
+    return float(out) if np.isscalar(theta) else out
+
 
 def r_outer_superformula_blossom(
     theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
