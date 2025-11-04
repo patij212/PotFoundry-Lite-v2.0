@@ -1,5 +1,7 @@
 # STL Export Migration Guide
 
+> Note: This document has moved to docs/guides/STL_EXPORT_GUIDE.md. This root copy remains only as a pointer to the canonical version.
+
 ## Overview
 
 PotFoundry has fully migrated to **binary STL** as the default and recommended export format. Binary STL files are:
