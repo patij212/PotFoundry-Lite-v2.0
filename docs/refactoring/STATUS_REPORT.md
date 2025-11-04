@@ -94,15 +94,40 @@ Repository refactoring Phases 1-5 have been systematically reviewed and assessed
 
 ---
 
-### ⏳ Phase 3: Component Extraction & Modularization - PLANNED
+### 🔄 Phase 3: Component Extraction & Modularization - IN PROGRESS
 
-**Status:** ⏳ Not Started (0% Complete)  
+**Status:** 🔄 50% Complete  
 **Target:** v2.3.x  
-**Effort:** 6-8 hours
+**Effort:** 6-8 hours (3-4 hours completed)
 
-**Planned Work:**
+**Completed Work:**
 
-#### 3.1: Create pfui/widgets/ Package
+#### 3.2: Create potfoundry/validators/ Package ✅ COMPLETE
+**Purpose:** Centralize validation logic shared across UI and APIs
+
+**Implemented Modules:**
+- ✅ `dimensions.py` - H, Rt, Rb, t_wall, t_bottom, r_drain constraints
+- ✅ `geometry.py` - Mesh resolution, exponent, style validation
+- ✅ `utils.py` - Error formatting, coercion, type checking
+- ✅ `__init__.py` - Public API exports
+
+**Features Implemented:**
+- ✅ Dimension validation with cross-checks (drain fits in bottom, wall < radius)
+- ✅ Aspect ratio validation (printability checks)
+- ✅ Mesh resolution validation (memory/performance warnings)
+- ✅ Descriptive error messages with constraints
+- ✅ Type coercion utilities (safe float/int conversion)
+- ✅ 20 comprehensive tests (100% coverage)
+
+**Benefits Realized:**
+- ✅ Shared validation between UI and YAML API
+- ✅ Clearer, more helpful error messages
+- ✅ Better testability and type safety
+- ✅ Foundation for future UI validation improvements
+
+**Remaining Work:**
+
+#### 3.1: Create pfui/widgets/ Package ⏳ PLANNED
 **Purpose:** Reusable UI components for Streamlit (future Qt migration prep)
 
 **Planned Modules:**
@@ -119,20 +144,7 @@ Repository refactoring Phases 1-5 have been systematically reviewed and assessed
 - Centralize widget styling and behavior
 - Easier testing
 
-#### 3.2: Create potfoundry/validators/ Package
-**Purpose:** Centralize validation logic shared across UI and APIs
-
-**Planned Modules:**
-- `dimensions.py` - H, Rt, Rb, t_wall, t_bottom, r_drain constraints
-- `parameters.py` - Style parameter bounds/types
-- `geometry.py` - Geometric invariants and relationships
-- `utils.py` - Error formatting, coercion
-
-**Benefits:**
-- Shared validation between UI and YAML API
-- Clearer error messages
-- Better testability
-- Reduced duplication
+**Effort:** 3-4 hours remaining
 
 ---
 
@@ -200,11 +212,11 @@ tests/
 |-------|--------|----------|-----------|
 | 1. Documentation | ✅ COMPLETE | 100% | 0% |
 | 2. Code Structure | ✅ MOSTLY COMPLETE | 85% | 15% (app.py splitting) |
-| 3. Components | ⏳ PLANNED | 0% | 100% |
+| 3. Components | 🔄 IN PROGRESS | 50% | 50% (widgets package) |
 | 4. Testing | ✅ SUBSTANTIALLY COMPLETE | 90% | 10% |
 | 5. CI/CD | ✅ COMPLETE | 100% | 0% |
 
-**Overall:** 75% Complete
+**Overall:** 80% Complete (was 75%)
 
 ---
 
@@ -217,10 +229,10 @@ tests/
    - Extract parameter management to `pfui/app_components/parameters.py`
    - Target: Reduce app.py from 2453 to ~500-600 LOC
 
-2. **Phase 3: Component Extraction** (6-8 hours)
+2. **Phase 3.1: Complete Component Extraction** (3-4 hours)
    - Create `pfui/widgets/` package
-   - Create `potfoundry/validators/` package
    - Extract common UI patterns
+   - ✅ `potfoundry/validators/` package COMPLETE
 
 ### Medium Priority
 
@@ -240,7 +252,7 @@ tests/
 ## Testing Status
 
 **All refactoring work maintains 100% test pass rate:**
-- ✅ 380 tests passing
+- ✅ **400 tests passing** (was 380, added 20 validator tests)
 - ✅ 92% code coverage
 - ✅ No behavioral changes
 - ✅ No performance regressions
