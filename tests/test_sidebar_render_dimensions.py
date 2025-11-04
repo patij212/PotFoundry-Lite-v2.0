@@ -100,7 +100,7 @@ def test_render_dimensions_fix_suggestion_applies(monkeypatch):
     # Monkeypatch rerun to no-op
     monkeypatch.setattr(st, "rerun", lambda: None, raising=False)
 
-    out = render_dimensions(mark_changed=lambda: None, style_key="test")
+    render_dimensions(mark_changed=lambda: None, style_key="test")
 
     # After pressing Fix, session_state should contain the suggested key
     assert ss.get("H") == 99.0

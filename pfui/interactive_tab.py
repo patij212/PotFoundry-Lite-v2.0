@@ -6,14 +6,18 @@ extracted from app.py to improve modularity and maintainability.
 
 from __future__ import annotations
 
+import json
+import re
+import tempfile
 import time
+import uuid
 from datetime import datetime
-from typing import Any, Optional, cast
+from pathlib import Path
+from typing import Any, Callable, Optional, Union, cast
 
 import streamlit as st
 
 # Import all dependencies needed by the interactive tab
-from pfui import state_history as Hist
 from pfui.app_components import (
     render_appearance_settings,
     render_export_widgets,
@@ -26,7 +30,7 @@ from pfui.app_components.utils import resolve_schema_key
 from pfui.controls import style_controls, twist_controls
 from pfui.health import _design_health, _health_badge
 import pfui.schemas as SC
-from pfui.imports import STYLES, build_pot_mesh
+from pfui.imports import STYLES, WRITE_STL_BINARY, build_pot_mesh
 from pfui.presets import (
     PRESETS,
     _read_user_presets,
@@ -35,7 +39,7 @@ from pfui.presets import (
 )
 from pfui.preview import (
     make_preview_arrays,
-    render_mesh_snapshot_cached,
+    render_preview_png_cached,
     render_profile,
 )
 from pfui.state import (
@@ -45,7 +49,18 @@ from pfui.state import (
     widget_key,
 )
 from pfui.units import units_selector
-from potfoundry.integrations.supabase_client import SupabaseClient, get_singleton_client
+from potfoundry.types import StyleOpts
+
+# Typing aliases for array-like objects
+_ArrayLike = Any
+
+# Check if Plotly is available for interactive previews
+try:
+    import plotly.graph_objects as go
+    HAS_PLOTLY = True
+except Exception:
+    HAS_PLOTLY = False
+    go = cast(Any, None)
 
 # Get style schemas at module level
 styles = SC.get_style_schemas()
@@ -1070,7 +1085,7 @@ def render_interactive_tab(
         # Show Full if it exists
         if interactive_mesh and full_exists and HAS_PLOTLY and last_mesh_json:
             try:
-                f_m = go.Figure(last_mesh_json)
+                f_m = go.Figure(last_mesh_json)  # noqa: F823
                 mesh_placeholder.plotly_chart(
                     f_m, use_container_width=True, config={"displaylogo": False}
                 )
@@ -1860,7 +1875,7 @@ def render_interactive_tab(
         tags_safe: list[str] = list(publish_tags or [])
         try:
             # Build mesh at export resolution (reuse upscale), else fall back to current n_theta/n_z
-            up = (
+            up_scale = (
                 _to_float_scalar(ss.get("_export_upscale", 1.0))
                 if "_export_upscale" in ss
                 else 1.0
@@ -1868,7 +1883,7 @@ def render_interactive_tab(
             # Reuse the already-defined defensive helpers above (no redeclaration)
             try:
                 a = _unwrap_scalar(n_theta)
-                b = _unwrap_scalar(up)
+                b = _unwrap_scalar(up_scale)
                 try:
                     prod = float(a) * float(b)
                 except Exception:
@@ -1983,7 +1998,6 @@ def render_interactive_tab(
 
     if do_export:
         try:
-            from datetime import datetime
 
             with st.spinner("Exporting STL…"):
                 verts, faces, _ = build_pot_mesh(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 import streamlit as st
 
@@ -11,7 +11,7 @@ def metric_display(
     label: str,
     value: str,
     delta: Optional[str] = None,
-    delta_color: str = "normal",
+    delta_color: Literal["normal", "inverse", "off"] = "normal",
     help_text: Optional[str] = None,
 ) -> None:
     """Display a metric with consistent styling.

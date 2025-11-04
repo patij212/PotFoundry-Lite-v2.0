@@ -6,10 +6,10 @@ to improve modularity and prepare for Qt desktop migration.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Optional, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import streamlit as st
+    pass
 
 
 def render_interactive_tab() -> None:

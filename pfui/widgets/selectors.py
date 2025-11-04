@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional, Union
+from typing import Any, Callable, List, Optional
 
 import streamlit as st
 
@@ -13,7 +13,7 @@ def select_box(
     index: int = 0,
     key: Optional[str] = None,
     help_text: Optional[str] = None,
-    format_func: Optional[callable] = None,
+    format_func: Optional[Callable[[Any], str]] = None,
 ) -> Any:
     """Create a select box (dropdown) with consistent styling.
 

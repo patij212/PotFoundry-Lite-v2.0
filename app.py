@@ -7,21 +7,10 @@ from __future__ import annotations
 # avoid importing fragile or heavy modules at interpreter startup. Silencing
 # E402 here keeps editor/type-checker noise low while preserving behavior.
 # ruff: noqa: E402
-import json
-import re
-import tempfile
-import uuid
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Callable, Optional, Union, cast
-from typing import (
-    Any as _ArrayLike,  # for broad array-or-scalar typing without optional module issues
-)
+from typing import Any, cast
 
 import streamlit as st
 
-from pfui.preview import render_preview_png_cached
-from potfoundry.types import StyleOpts
 
 # --- Optional / graceful Plotly import (interactive preview) ---
 try:
@@ -45,19 +34,11 @@ if not HAS_PLOTLY:
 # diagnostics. Keep the delayed import but silence ruff E402 with an
 # explanatory noqa.
 import pfui.schemas as SC  # noqa: E402
-from pfui.imports import STYLES, WRITE_STL_BINARY, build_pot_mesh  # noqa: E402
-from pfui.presets import (
-    PRESETS,
-    _read_user_presets,
-    _write_user_presets,
-    apply_preset_dict,
-)  # noqa: E402
 
 # Prefer accessor call to reduce heavy constant binding at module scope in other modules
 styles = SC.get_style_schemas()
 # Deliberate delayed import of `pfui.state` to avoid importing heavy
 # Streamlit/session-related modules at top-level. Documented and allowed.
-import time
 
 from pfui import state_history as Hist
 from pfui.batch_tab import render_batch_tab
@@ -67,7 +48,6 @@ from pfui.library_ui import render_library_tab
 from pfui.state import (  # noqa: E402
     apply_pending_updates,
 )
-from pfui.units import units_selector
 from potfoundry.integrations.supabase_client import SupabaseClient, get_singleton_client
 
 ## moved to pfui.app_components.utils: _mask_possible_secrets
