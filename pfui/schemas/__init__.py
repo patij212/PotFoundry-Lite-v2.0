@@ -1,43 +1,91 @@
-"""pfui.schemas package (transitional shim)
+"""pfui.schemas package - Schema definitions and utilities.
 
-This package preserves the original public API by loading and re-exporting
-symbols from the legacy module file ``pfui/schemas.py``. This allows us to
-gradually split the implementation into submodules without breaking imports
-like ``import pfui.schemas as SC``.
+This package provides schema definitions, validation, and normalization
+for PotFoundry UI controls and style parameters.
 
-Implementation note: we now expose structured submodules (aliases, data,
-normalize, validators). For backward compatibility during the transition,
-we also load the legacy module to fill in any remaining public names.
+Public API:
+    Aliases:
+        - get_global_aliases()
+        - get_aliases_by_style()
+        - get_global_reverse()
+        - get_reverse_by_style()
+    
+    Data:
+        - get_style_schemas()
+        - get_global_controls()
+        - get_canonical_controls()
+        - get_canonical_style_schemas()
+    
+    Normalization:
+        - normalize_style_opts()
+        - to_canonical()
+        - to_engine()
+    
+    Validation:
+        - get_schema()
+        - apply_defaults()
+        - sanitize_opts()
+        - warn_on_legacy_keys()
+        - validate_keyset()
+        - compress_opts()
+        - check_schema_integrity()
+        - ControlMeta (class)
+
+Example:
+    >>> import pfui.schemas as SC
+    >>> schemas = SC.get_style_schemas()
+    >>> SC.apply_defaults(config, schema)
 """
 
 from __future__ import annotations
 
-import importlib.util
+# Import all public APIs from submodules
+from .aliases import (
+    get_aliases_by_style,
+    get_global_aliases,
+    get_global_reverse,
+    get_reverse_by_style,
+)
+from .data import (
+    get_canonical_controls,
+    get_canonical_style_schemas,
+    get_global_controls,
+    get_style_schemas,
+)
+from .normalize import normalize_style_opts, to_canonical, to_engine
+from .validators import (
+    ControlMeta,
+    apply_defaults,
+    check_schema_integrity,
+    compress_opts,
+    get_schema,
+    sanitize_opts,
+    validate_keyset,
+    warn_on_legacy_keys,
+)
 
-from .aliases import *  # noqa: F401,F403
-from .data import *  # noqa: F401,F403
-from .normalize import *  # noqa: F401,F403
-from .validators import *  # noqa: F401,F403
-
-
-# Fallback: if any public symbol is missing from submodules, hydrate from legacy.
-def _hydrate_from_legacy() -> None:
-    from pathlib import Path
-    from types import ModuleType
-
-    pkg_dir = Path(__file__).resolve().parent
-    legacy_path = pkg_dir.parent / "schemas.py"
-    spec = importlib.util.spec_from_file_location(
-        "pfui._schemas_legacy", str(legacy_path)
-    )
-    if spec and spec.loader:
-        mod: ModuleType = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        for k, v in mod.__dict__.items():
-            # Preserve private helpers (single underscore) for backward compatibility,
-            # but avoid importing dunder names.
-            if not k.startswith("__") and k not in globals():
-                globals()[k] = v
-
-
-_hydrate_from_legacy()
+__all__ = [
+    # Aliases
+    "get_global_aliases",
+    "get_aliases_by_style",
+    "get_global_reverse",
+    "get_reverse_by_style",
+    # Data
+    "get_style_schemas",
+    "get_global_controls",
+    "get_canonical_controls",
+    "get_canonical_style_schemas",
+    # Normalization
+    "normalize_style_opts",
+    "to_canonical",
+    "to_engine",
+    # Validation
+    "get_schema",
+    "apply_defaults",
+    "sanitize_opts",
+    "warn_on_legacy_keys",
+    "validate_keyset",
+    "compress_opts",
+    "check_schema_integrity",
+    "ControlMeta",
+]
