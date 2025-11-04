@@ -1,7 +1,5 @@
 # Type Hints Guide for PotFoundry
 
-> Note: This document has moved to docs/guides/TYPE_HINTS_GUIDE.md. This root copy remains only as a pointer to the canonical version.
-
 ## Overview
 
 This guide documents the type hint conventions and practices used in PotFoundry to enable static type checking with mypy and improve code quality.

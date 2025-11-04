@@ -290,10 +290,12 @@ jobs:
       - name: Run a tiny Windows smoke suite
         run: |
           pytest -q tests/test_windows_export_path.py || exit 1
-          python - <<'PY'
+          $code = @'
           from potfoundry import build_pot_mesh, STYLES
           fn,_ = STYLES['HarmonicRipple']
           v,f,_ = build_pot_mesh(H=40,Rt=30,Rb=25,t_wall=2.0,t_bottom=2.0,r_drain=4,expn=1.0,n_theta=24,n_z=12,r_outer_fn=fn,style_opts={})
-          assert v.size>0 and f.size>0
+          assert v.size > 0 and f.size > 0
           print('Windows smoke OK:', v.shape, f.shape)
-          PY
+          '@
+          Set-Content -Path win_smoke.py -Value $code
+          python win_smoke.py

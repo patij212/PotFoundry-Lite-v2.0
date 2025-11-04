@@ -141,6 +141,23 @@ PotFoundry-Lite-v2.0/
 
 ---
 
+## 🗂️ Archive
+
+Historical and auxiliary documents are organized under `archive/`:
+
+- `archive/evolution/2024-q4/` — Q4 historical docs and reports
+    - Implementation details: [IMPLEMENTATION_SUMMARY.md](archive/evolution/2024-q4/IMPLEMENTATION_SUMMARY.md)
+    - Executive summary: [FINAL_REPORT.md](archive/evolution/2024-q4/FINAL_REPORT.md)
+    - Planning notes: [NEXT_STEPS_ANALYSIS.md](archive/evolution/2024-q4/NEXT_STEPS_ANALYSIS.md)
+    - Release notes: [RELEASE_NOTES_v2.1.0.md](archive/evolution/2024-q4/RELEASE_NOTES_v2.1.0.md)
+- `archive/ci-logs/2024-q4/` — CI and run logs, artifacts
+- `archive/refactoring/linting/` — Ruff outputs and linting snapshots
+- `archive/refactoring/type-checking/` — mypy reports and type-checking artifacts
+
+These files are retained for traceability but are not part of the active code paths.
+
+---
+
 ## 🎨 Available Styles
 
 1. **SuperformulaBlossom** - Petal-like variations using superformula

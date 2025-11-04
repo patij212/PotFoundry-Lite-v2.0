@@ -1,3 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments and Python tooling
+venv/
+.venv/
+.env
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Streamlit
+.streamlit/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Project-specific debug logs
+.pf_edge_flow_debug.json
+.pf_edge_flow_log.md
+
+# Build artifacts
+dist/
+build/
 # Python
 __pycache__/
 *.py[cod]
@@ -69,3 +99,17 @@ mypy-out*.txt
 
 # Runtime debug artifacts
 .pf_edge_flow_debug.json
+
+# Additional logs and temporary artifacts
+run_*.log
+tmp_pr_validation_run_*.log
+mypy_full_output.txt
+.ruff_*.txt
+.mypy_*.txt
+.tmp_*.txt
+tmp_*.py
+pytest_output.txt
+.pf_edge_flow_log.md
+*.bak
+*_COMMIT_MSG.txt
+TERMINAL_OUTPUT_CHECK.txt

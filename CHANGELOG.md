@@ -236,7 +236,7 @@ Initial development versions with ASCII STL export, basic Streamlit UI, and core
 ---
 
 **For detailed migration instructions, see [STL_EXPORT_GUIDE.md](STL_EXPORT_GUIDE.md)**
-**For implementation details, see [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)**
+**For implementation details, see [IMPLEMENTATION_SUMMARY.md](archive/evolution/2024-q4/IMPLEMENTATION_SUMMARY.md)**
 **For development guidelines, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
 ## Property-Based Testing (In Progress - 2024-12-XX)

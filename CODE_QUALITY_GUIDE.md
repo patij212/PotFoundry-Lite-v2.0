@@ -1,5 +1,7 @@
 # Code Quality Guide for PotFoundry
 
+> Note: This document has moved to docs/guides/CODE_QUALITY_GUIDE.md. This root copy remains only as a pointer to the canonical version.
+
 ## Purpose
 
 This guide ensures PotFoundry code is:

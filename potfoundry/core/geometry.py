@@ -186,6 +186,210 @@ def _theta_grid_cached(
     return thetas, np.cos(thetas), np.sin(thetas)
 
 
+# -----------------------------
+# Internal helpers (extracted from build_pot_mesh)
+# -----------------------------
+
+
+def _refine_z_outer_for_seams(
+    z_outer: npt.NDArray[np.float64], H: float, style_opts: dict[str, Any]
+) -> npt.NDArray[np.float64]:
+    """Optionally refine z sampling near LowPolyFacet tier seams.
+
+    Preserves prior behavior by reading LowPolyFacet-related keys from style_opts
+    and inserting additional z-rings around seam planes and window edges.
+
+    Args:
+        z_outer: Base z sampling for the outer wall (uniform grid by default)
+        H: Total height
+        style_opts: Style options dict
+
+    Returns:
+        Refined z array (may be identical to input if no refinement is needed)
+    """
+    try:
+        _tiers = int(style_opts.get("lp_tiers", 1)) if isinstance(style_opts, dict) else 1
+        _cut_bot = float(style_opts.get("lp_cut_bot_deg", 0.0)) if isinstance(style_opts, dict) else 0.0
+        _cut_top = float(style_opts.get("lp_cut_top_deg", 0.0)) if isinstance(style_opts, dict) else 0.0
+        _has_cuts = (_tiers > 1) and ((_cut_bot > 0.0) or (_cut_top > 0.0))
+        if not (_has_cuts and H > 0):
+            return z_outer
+        h_tier = H / max(1, _tiers)
+        z_win_raw = (
+            float(style_opts.get("lp_cut_z_window_frac", 0.12))
+            if isinstance(style_opts, dict)
+            else 0.12
+        )
+        z_win_frac = (z_win_raw * 0.01) if z_win_raw > 1.0 else z_win_raw
+        z_win = max(1e-6, z_win_frac * h_tier)
+        sampling_boost = (
+            int(style_opts.get("lp_seam_sampling_boost", 2)) if isinstance(style_opts, dict) else 2
+        )
+        offs_edge = z_win
+        offs_mid_vals = [0.66 * z_win, 0.33 * z_win]
+        if sampling_boost >= 2:
+            offs_mid_vals.append(0.16 * z_win)
+        if sampling_boost >= 3:
+            offs_mid_vals.append(0.83 * z_win)
+        add_zs: list[float] = []
+        for k in range(1, _tiers):
+            z_seam = (k / _tiers) * H
+            seq = (
+                [-offs_edge]
+                + [-v for v in sorted(offs_mid_vals, reverse=True)]
+                + [0.0]
+                + sorted(offs_mid_vals)
+                + [offs_edge]
+            )
+            for dz in seq:
+                zc = z_seam + dz
+                if (zc > 1e-9) and (zc < H - 1e-9):
+                    add_zs.append(float(zc))
+        if add_zs:
+            z_out = np.unique(np.concatenate([z_outer, np.array(add_zs, dtype=float)])).astype(float)
+            return z_out
+        return z_outer
+    except Exception:
+        # Fail-safe: keep original uniform z if any issue arises
+        return z_outer
+
+
+def _call_style_r_outer(
+    r_outer_fn: Callable[..., Any],
+    th_in: NDArrayFloat | float,
+    z_in: float,
+    r0_in: float | NDArrayFloat,
+    H_in: float,
+    opts_in: dict,
+) -> NDArrayFloat | float:
+    """Typed wrapper to call a style's r_outer function with scalar/array inputs.
+
+    Normalizes r0 to float when appropriate and returns either a float or
+    NDArray[float] depending on the style function's output.
+    """
+    try:
+        if isinstance(r0_in, np.ndarray):
+            r0_arg: float | NDArrayFloat = r0_in
+        else:
+            r0_arg = float(r0_in)
+    except Exception:
+        r0_arg = float(r0_in)
+    res = r_outer_fn(th_in, z_in, r0_arg, H_in, opts_in)
+    if isinstance(res, np.ndarray):
+        return cast(NDArrayFloat, np.asarray(res, dtype=float))
+    return float(res)
+
+
+def _add_ring_xy(
+    verts: list[tuple[float, float, float]],
+    r_vals: NDArrayFloat,
+    z: float,
+    cTw: float,
+    sTw: float,
+    cos_th: NDArrayFloat,
+    sin_th: NDArrayFloat,
+    n_theta: int,
+) -> npt.NDArray[np.int64]:
+    """Append a ring of XY vertices (rotated by twist) and return the index row."""
+    cx: NDArrayFloat = cos_th * cTw - sin_th * sTw
+    sy: NDArrayFloat = sin_th * cTw + cos_th * sTw
+    xs: list[float] = (r_vals * cx).tolist()
+    ys: list[float] = (r_vals * sy).tolist()
+    start_index: int = len(verts)
+    from itertools import repeat as _repeat
+
+    verts.extend(zip(xs, ys, _repeat(float(z), n_theta)))
+    return np.arange(start_index, start_index + n_theta, dtype=int)
+
+
+def _sample_outer_rings(
+    *,
+    H: float,
+    Rb: float,
+    Rt: float,
+    expn: float,
+    style_opts: dict[str, Any],
+    r_outer_fn: Callable[..., Any],
+    z_outer: npt.NDArray[np.float64],
+    thetas: npt.NDArray[np.float64],
+    cos_th: npt.NDArray[np.float64],
+    sin_th: npt.NDArray[np.float64],
+    n_theta: int,
+    verts: list[tuple[float, float, float]],
+) -> tuple[
+    npt.NDArray[np.int64],
+    list[np.ndarray],
+    float | None,
+    float | None,
+    list[np.ndarray],
+    list[np.ndarray],
+    int,
+    int,
+    list[NDArrayFloat],
+]:
+    """Vectorized sampling of outer rings; appends vertices and returns indices and diagnostics."""
+    outer_idx = np.empty((len(z_outer), n_theta), dtype=int)
+    r_outer_samples_list: list[np.ndarray] = []
+    est_top_od: float | None = None
+    est_bottom_od: float | None = None
+    dbg_seam = bool(style_opts.get("lp_debug_seam", False)) if isinstance(style_opts, dict) else False
+    dbg_outward_picks = 0
+    dbg_total_picks = 0
+    dbg_samples_collected: list[NDArrayFloat] = []
+    cx_rows_list: list[np.ndarray] = []
+    sy_rows_list: list[np.ndarray] = []
+
+    for i, z in enumerate(z_outer):
+        twist = _spin_twist_radians(float(z), H, style_opts)
+        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
+        r0 = base_radius(float(z), H, Rb, Rt, expn, style_opts)
+        _opts = dict(style_opts)
+        _opts.setdefault("_pf_rb", Rb)
+        _opts.setdefault("_pf_rt", Rt)
+        _opts.setdefault("_pf_expn", expn)
+        r_out_raw = _call_style_r_outer(r_outer_fn, thetas, float(z), r0, H, _opts)
+        r_vals = np.asarray(r_out_raw, dtype=float)
+        cx_ring = cos_th * cTw - sin_th * sTw
+        sy_ring = sin_th * cTw + cos_th * sTw
+        dbg_sample_from_style = _opts.pop("_lp_debug_sample", None)
+        if dbg_seam and dbg_sample_from_style is not None:
+            dbg_samples_collected.append(dbg_sample_from_style)
+        if dbg_seam:
+            tiers = int(_opts.get("lp_tiers", 1))
+            if tiers > 1:
+                t = float(z) / H if H > 0 else 0.0
+                tier_pos = t * tiers
+                k = int(np.floor(tier_pos))
+                eps_z = max(1e-6, 0.002 * H)
+                z_bot = (k / tiers) * H
+                z_top = ((k + 1) / tiers) * H
+                near_seam = (abs(float(z) - z_bot) < eps_z) or (abs(float(z) - z_top) < eps_z)
+                if near_seam:
+                    dbg_total_picks += int(r_vals.size)
+                    dbg_outward_picks += int(np.count_nonzero(r_vals > float(r0) + 1e-9))
+        outer_idx[i] = _add_ring_xy(verts, r_vals, float(z), cTw, sTw, cos_th, sin_th, n_theta)
+        cx_rows_list.append(np.asarray(cx_ring, dtype=float))
+        sy_rows_list.append(np.asarray(sy_ring, dtype=float))
+        r_outer_samples_list.append(r_vals)
+        max_r = float(np.max(r_vals)) if r_vals.size else 0.0
+        if i == 0:
+            est_bottom_od = 2.0 * max_r
+        if i == (len(z_outer) - 1):
+            est_top_od = 2.0 * max_r
+
+    return (
+        outer_idx,
+        r_outer_samples_list,
+        est_top_od,
+        est_bottom_od,
+        cx_rows_list,
+        sy_rows_list,
+        dbg_outward_picks,
+        dbg_total_picks,
+        dbg_samples_collected,
+    )
+
+
 def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     """Unmodulated outer radius vs height z (0..H), with flare exponent (Rt/Rb are radii)."""
     t = 0.0 if H <= 0 else z / H
@@ -1639,194 +1843,45 @@ def build_pot_mesh(
     # Initialize as empty dict so later diagnostic code can index safely.
     dump: Dict[str, Any] = {}
     z_outer = np.linspace(0.0, H, n_z + 1)
+    # Ensure we have a callable style function
+    if r_outer_fn is None:
+        r_outer_fn = cast(
+            Callable[[NDArrayFloat | float, float, float | NDArrayFloat, float, dict], NDArrayFloat | float],
+            STYLES["SuperformulaBlossom"][0],
+        )
+    assert r_outer_fn is not None
     # Refine sampling around LowPolyFacet tier seams to improve alignment of triangles near cuts
-    try:
-        # Backwards-compatible default for r_outer_fn: if caller passed None, use the
-        # registered SuperformulaBlossom implementation. This avoids forcing callers to
-        # import STYLES at call sites and also prevents the type-checker from complaining
-        # when a None is passed through higher-level callers during static analysis.
-        if r_outer_fn is None:
-            # Cast the selected style function to the expected Callable signature
-            r_outer_fn = cast(
-                Callable[
-                    [NDArrayFloat | float, float, float | NDArrayFloat, float, dict],
-                    NDArrayFloat | float,
-                ],
-                STYLES["SuperformulaBlossom"][0],
-            )
-        # Tell the type-checker this is now a callable (non-None) so subsequent calls
-        # like `r_outer_fn(thetas, z, r0, H, _opts)` are accepted.
-        assert r_outer_fn is not None
-
-        # Local wrapper with an explicit typed contract to help mypy understand
-        # style functions may accept scalar or array-like inputs for r0.
-        def _call_r_outer(
-            th_in: NDArrayFloat | float,
-            z_in: float,
-            r0_in: float | NDArrayFloat,
-            H_in: float,
-            opts_in: dict,
-        ) -> NDArrayFloat | float:
-            # Ensure r0 is a Python float for scalar-style functions that expect it
-            # r0_arg may be a float or an ndarray depending on caller; annotate to help mypy
-            r0_arg: float | NDArrayFloat
-            try:
-                if isinstance(r0_in, np.ndarray):
-                    r0_arg = r0_in
-                else:
-                    r0_arg = float(r0_in)
-            except Exception:
-                r0_arg = float(r0_in)
-            res = r_outer_fn(th_in, z_in, r0_arg, H_in, opts_in)
-            # Normalize numpy arrays to NDArrayFloat, keep scalar floats as float
-            if isinstance(res, np.ndarray):
-                return cast(NDArrayFloat, np.asarray(res, dtype=float))
-            return float(res)
-
-        _tiers = (
-            int(style_opts.get("lp_tiers", 1)) if isinstance(style_opts, dict) else 1
-        )
-        _cut_bot = (
-            float(style_opts.get("lp_cut_bot_deg", 0.0))
-            if isinstance(style_opts, dict)
-            else 0.0
-        )
-        _cut_top = (
-            float(style_opts.get("lp_cut_top_deg", 0.0))
-            if isinstance(style_opts, dict)
-            else 0.0
-        )
-        _has_cuts = (_tiers > 1) and ((_cut_bot > 0.0) or (_cut_top > 0.0))
-        if _has_cuts and H > 0:
-            h_tier = H / max(1, _tiers)
-            z_win_raw = (
-                float(style_opts.get("lp_cut_z_window_frac", 0.12))
-                if isinstance(style_opts, dict)
-                else 0.12
-            )
-            z_win_frac = (z_win_raw * 0.01) if z_win_raw > 1.0 else z_win_raw
-            z_win = max(1e-6, z_win_frac * h_tier)
-            sampling_boost = (
-                int(style_opts.get("lp_seam_sampling_boost", 2))
-                if isinstance(style_opts, dict)
-                else 2
-            )
-            # Add rings exactly at each seam and at the seam window edges (±z_win)
-            # This aligns mesh rows with the chamfer's effective range boundaries to cut jaggies.
-            offs_edge = z_win  # exact window edges
-            # Multiple mid offsets to densify sampling within the band. Allow UI boost.
-            offs_mid_vals = [0.66 * z_win, 0.33 * z_win]
-            if sampling_boost >= 2:
-                offs_mid_vals.append(0.16 * z_win)
-            if sampling_boost >= 3:
-                offs_mid_vals.append(0.83 * z_win)
-            add_zs: list[float] = []
-            for k in range(1, _tiers):
-                z_seam = (k / _tiers) * H
-                # Negative offsets, center, then positive offsets
-                seq = (
-                    [-offs_edge]
-                    + [-v for v in sorted(offs_mid_vals, reverse=True)]
-                    + [0.0]
-                    + sorted(offs_mid_vals)
-                    + [offs_edge]
-                )
-                for dz in seq:
-                    zc = z_seam + dz
-                    if (zc > 1e-9) and (zc < H - 1e-9):
-                        add_zs.append(zc)
-            if add_zs:
-                z_outer = np.unique(
-                    np.concatenate([z_outer, np.array(add_zs, dtype=float)])
-                ).astype(float)
-    except Exception:
-        # Fail-safe: keep original uniform z if any issue arises
-        pass
+    z_outer = _refine_z_outer_for_seams(z_outer, H, style_opts)
     z_inner = np.linspace(t_bottom, H, n_z + 1)
 
     verts: list[tuple[float, float, float]] = []
     faces_out_parts: list[np.ndarray] = []
 
-    def add_ring_xy(
-        r_vals: NDArrayFloat, z: float, cTw: float, sTw: float
-    ) -> npt.NDArray[np.int64]:
-        # Rotate precomputed cos/sin by twist: cos(θ+tw)=cosθ·cosTw - sinθ·sinTw; sin(θ+tw)=sinθ·cosTw + cosθ·sinTw
-        cx: NDArrayFloat = cos_th * cTw - sin_th * sTw
-        sy: NDArrayFloat = sin_th * cTw + cos_th * sTw
-        xs: list[float] = (r_vals * cx).tolist()
-        ys: list[float] = (r_vals * sy).tolist()
-        start_index: int = len(verts)
-        from itertools import repeat
-
-        verts.extend(zip(xs, ys, repeat(float(z), n_theta)))
-        return np.arange(start_index, start_index + n_theta, dtype=int)
-
     # ---- Outer wall rings
-    outer_idx = np.empty((len(z_outer), n_theta), dtype=int)
-    r_outer_samples_list: list[np.ndarray] = []
-    est_top_od: float | None = None
-    est_bottom_od: float | None = None
-    # No style-specific fast path by default; rely on vectorized style_fn
-
-    # Debug seam counters
-    dbg_seam = (
-        bool(style_opts.get("lp_debug_seam", False))
-        if isinstance(style_opts, dict)
-        else False
+    (
+        outer_idx,
+        r_outer_samples_list,
+        est_top_od,
+        est_bottom_od,
+        cx_rows_list,
+        sy_rows_list,
+        dbg_outward_picks,
+        dbg_total_picks,
+        dbg_samples_collected,
+    ) = _sample_outer_rings(
+        H=H,
+        Rb=Rb,
+        Rt=Rt,
+        expn=expn,
+        style_opts=style_opts,
+        r_outer_fn=r_outer_fn,
+        z_outer=z_outer,
+        thetas=thetas,
+        cos_th=cos_th,
+        sin_th=sin_th,
+        n_theta=n_theta,
+        verts=verts,
     )
-    dbg_outward_picks = 0
-    dbg_total_picks = 0
-    dbg_samples_collected: list[NDArrayFloat] = []
-    # Cache rotated cos/sin per ring (used later for geometry-aware diagonals)
-    cx_rows_list: list[np.ndarray] = []
-    sy_rows_list: list[np.ndarray] = []
-    for i, z in enumerate(z_outer):
-        twist = _spin_twist_radians(z, H, style_opts)
-        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
-        r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        # Sample style at raw theta; twist is applied only to placement (vectorized)
-        # Enrich opts with base shape parameters for styles that may need them
-        _opts = dict(style_opts)
-        _opts.setdefault("_pf_rb", Rb)
-        _opts.setdefault("_pf_rt", Rt)
-        _opts.setdefault("_pf_expn", expn)
-        # Apply twist in placement (XY rotation) only; sample style at raw theta
-        # Use the typed local wrapper to normalize scalar/array returns for mypy
-        r_out_raw = _call_r_outer(thetas, z, r0, H, _opts)
-        r_vals = np.asarray(r_out_raw, dtype=float)
-        # Rotated basis for this ring
-        cx_ring = cos_th * cTw - sin_th * sTw
-        sy_ring = sin_th * cTw + cos_th * sTw
-        # If style function attached diagnostics samples into _opts, pull them out
-        dbg_sample_from_style = _opts.pop("_lp_debug_sample", None)
-        if dbg_seam and dbg_sample_from_style is not None:
-            dbg_samples_collected.append(dbg_sample_from_style)
-        if dbg_seam:
-            # crude heuristic: sample a tiny band around each tier seam to estimate outward selection frequency
-            tiers = int(_opts.get("lp_tiers", 1))
-            if tiers > 1:
-                t = z / H if H > 0 else 0.0
-                tier_pos = t * tiers
-                k = int(np.floor(tier_pos))
-                # Count picks only when z is very near a seam plane
-                eps_z = max(1e-6, 0.002 * H)
-                z_bot = (k / tiers) * H
-                z_top = ((k + 1) / tiers) * H
-                near_seam = (abs(z - z_bot) < eps_z) or (abs(z - z_top) < eps_z)
-                if near_seam:
-                    dbg_total_picks += r_vals.size
-                    # Without instrumenting the style function more deeply, approximate: larger-than-base implies outward pick
-                    dbg_outward_picks += int(np.count_nonzero(r_vals > r0 + 1e-9))
-        outer_idx[i] = add_ring_xy(r_vals, z, cTw, sTw)
-        cx_rows_list.append(np.asarray(cx_ring, dtype=float))
-        sy_rows_list.append(np.asarray(sy_ring, dtype=float))
-        r_outer_samples_list.append(r_vals)
-        # Track estimated ODs without scanning verts
-        max_r = float(np.max(r_vals)) if r_vals.size else 0.0
-        if i == 0:
-            est_bottom_od = 2.0 * max_r
-        if i == (len(z_outer) - 1):
-            est_top_od = 2.0 * max_r
 
     # Optional: flow-aware edge reconstruction across (z, theta) for Blossom.
     try:
@@ -4358,13 +4413,24 @@ def build_pot_mesh(
         _opts.setdefault("_pf_expn", expn)
         # Parity with outer/preview: sample style at raw theta; apply twist only in placement
         # Normalize via the typed wrapper to avoid float/NDArray typing ambiguity
-        r_out_vals = np.asarray(_call_r_outer(thetas, z, r0, H, _opts), dtype=float)
+        r_out_vals = np.asarray(
+            _call_style_r_outer(r_outer_fn, thetas, z, r0, H, _opts), dtype=float
+        )
         r_in_vals = r_out_vals - t_wall
         min_allowed = r_drain + 1.0
         clamped = r_in_vals < min_allowed
         clamp_count += int(np.count_nonzero(clamped))
         r_in_vals[clamped] = min_allowed
-        inner_idx[i] = add_ring_xy(r_in_vals, z, cTw, sTw)
+        inner_idx[i] = _add_ring_xy(
+            verts,
+            np.asarray(r_in_vals, dtype=float),
+            float(z),
+            cTw,
+            sTw,
+            cos_th,
+            sin_th,
+            n_theta,
+        )
 
     # Vectorized faces for inner wall (choose winding to also point outward-from-center)
     # rows_in = len(z_inner) - 1  # Computed but not used - kept for clarity
@@ -4453,9 +4519,10 @@ def build_pot_mesh(
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
-    if dbg_seam and dbg_total_picks > 0:
+    # Seam diagnostics (safe guards: only emit when data was collected)
+    if dbg_total_picks > 0:
         diagnostics["seam_outward_ratio"] = float(dbg_outward_picks / dbg_total_picks)
-    if dbg_seam and len(dbg_samples_collected) > 0:
+    if len(dbg_samples_collected) > 0:
         # Flatten and present a concise readout: list of sample groups
         diagnostics["seam_debug_samples"] = dbg_samples_collected
     # If the edge-flow in-memory collector exists and has content, attach it

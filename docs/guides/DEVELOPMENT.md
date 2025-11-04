@@ -1,5 +1,3 @@
-> Note: This document has moved to docs/guides/DEVELOPMENT.md. This root copy remains only as a pointer to the canonical version.
-
 ## Pre-commit hooks & secret scanning
 
 This repository uses `pre-commit` plus `detect-secrets` to prevent accidental commits of sensitive material (e.g., Supabase `service_role` keys).
@@ -726,7 +724,7 @@ Semantic Versioning (SemVer): `MAJOR.MINOR.PATCH`
 - **ARCHITECTURE.md** - System design and structure
 - **CODE_QUALITY_GUIDE.md** - Coding standards and best practices
 - **STL_EXPORT_GUIDE.md** - STL export migration guide
-- **[IMPLEMENTATION_SUMMARY.md](archive/evolution/2024-q4/IMPLEMENTATION_SUMMARY.md)** - Binary STL implementation details
+- **[IMPLEMENTATION_SUMMARY.md](../../archive/evolution/2024-q4/IMPLEMENTATION_SUMMARY.md)** - Binary STL implementation details
 
 ### External Resources
 
