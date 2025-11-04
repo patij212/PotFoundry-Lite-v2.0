@@ -33,23 +33,26 @@ Repository refactoring Phases 1-5 have been systematically reviewed and assessed
 **Target:** v2.2.x
 
 #### 2.1: Split app.py - COMPLETE ✅
-**Current:** 2453 LOC with comprehensive extraction framework  
-**Status:** Modularization infrastructure complete
+**Before:** 2453 LOC  
+**After:** 306 LOC (87.5% reduction!)  
+**Status:** SUCCESS - Exceeded target of ≤600 LOC
 
-**Extracted Components (pfui/app_components/):**
-- ✅ `appearance.py` (231 LOC) - Appearance settings
-- ✅ `export_handlers.py` (109 LOC) - Export functionality
-- ✅ `plotting.py` (281 LOC) - Plot rendering
-- ✅ `preview_controls.py` (164 LOC) - Preview controls
-- ✅ `sidebar.py` (311 LOC) - Sidebar configuration
-- ✅ `snapshots.py` (251 LOC) - Snapshot management
-- ✅ `utils.py` (119 LOC) - Utilities
-- ✅ `main_content.py` (NEW) - Framework for tab content rendering
+**Extracted Components:**
+- ✅ Previous extractions: appearance.py, export_handlers.py, plotting.py, preview_controls.py, sidebar.py, snapshots.py, utils.py (1,466 LOC)
+- ✅ **NEW:** `pfui/interactive_tab.py` (2,192 LOC) - Complete Interactive Designer tab logic
 
-**Total Extracted:** 1,466 LOC + framework  
-**Status:** Extraction framework complete. App.py remains stable and functional.
+**Result:** app.py is now a thin orchestration layer that:
+- Sets up page configuration
+- Handles deeplink loading
+- Manages tab navigation
+- Delegates all content rendering to focused modules
 
-**Decision:** Maintain current stable structure. Further extraction can be done incrementally without disrupting production use.
+**Benefits:**
+- 87.5% reduction in app.py size (2453 → 306 LOC)
+- Clear separation of concerns
+- Interactive tab logic fully modularized
+- Easier to maintain and test
+- Prepared for Qt migration
 
 #### 2.2: Refactor pfui/schemas.py - COMPLETE ✅
 **Current:** Package structure implemented with transitional compatibility
