@@ -55,6 +55,7 @@ from .data import (
 from .normalize import normalize_style_opts, to_canonical, to_engine
 from .validators import (
     ControlMeta,
+    _coerce_one,  # private but exposed for tests
     apply_defaults,
     check_schema_integrity,
     compress_opts,

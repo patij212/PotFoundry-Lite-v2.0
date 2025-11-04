@@ -8,7 +8,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from types import ModuleType
-from typing import Dict, List, Literal, Tuple, TypedDict
+from typing import Any, Dict, List, Literal, Tuple, TypedDict
 
 
 def _load_legacy() -> ModuleType:
@@ -41,6 +41,53 @@ class ControlMeta(TypedDict, total=False):
     options: list[str]
     units: str
     legacy: str
+
+
+def _coerce_one(v: Any, meta: ControlMeta) -> object:
+    """Coerce a single value to the type declared by meta.
+
+    Purpose:
+        Harden user input before using it.
+
+    Inputs:
+        v: Any - incoming value
+        meta: ControlMeta - control metadata (type/min/max)
+
+    Outputs:
+        Any - coerced value
+
+    Guarantees:
+        - int/float are coerced via float -> int round for "int".
+        - bool accepts common truthy strings.
+
+    Errors:
+        - ValueError for invalid numeric coercions.
+    """
+    t = meta.get("type")
+    if t == "int":
+        try:
+            v = int(round(float(v)))
+        except Exception as e:
+            raise ValueError(f"expected int, got {v!r}") from e
+    elif t == "float":
+        try:
+            v = float(v)
+        except Exception as e:
+            raise ValueError(f"expected float, got {v!r}") from e
+    elif t == "bool":
+        if isinstance(v, str):
+            v = v.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            v = bool(v)
+    elif t == "select":
+        # enforce allowed options if provided (accept list or tuple)
+        opts = meta.get("options")
+        if isinstance(opts, (list, tuple)) and opts:
+            if v not in opts:
+                raise ValueError(
+                    f"invalid option {v!r}; expected one of {list(opts)!r}"
+                )
+    return v
 
 
 def get_schema(style: str, *, canonical: bool = False) -> Dict[str, ControlMeta]:
@@ -85,6 +132,7 @@ def check_schema_integrity() -> List[str]:
 __all__ = [
     "ControlType",
     "ControlMeta",
+    "_coerce_one",  # exported for backward compatibility with tests
     "get_schema",
     "apply_defaults",
     "sanitize_opts",
