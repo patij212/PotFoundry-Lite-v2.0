@@ -41,19 +41,26 @@ from __future__ import annotations
 
 # Import all public APIs from submodules
 from .aliases import (
+    GLOBAL_ALIASES,
+    ALIASES_BY_STYLE,
+    GLOBAL_REVERSE,
+    REVERSE_BY_STYLE,
     get_aliases_by_style,
     get_global_aliases,
     get_global_reverse,
     get_reverse_by_style,
 )
-from .base import ControlMeta
+from .base import ControlMeta, ControlType
+from .canonical_schemas import CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS
 from .data import (
     get_canonical_controls,
     get_canonical_style_schemas,
     get_global_controls,
     get_style_schemas,
 )
+from .global_controls import GLOBAL_CONTROLS
 from .normalize import normalize_style_opts, to_canonical, to_engine
+from .style_schemas import STYLE_SCHEMAS
 from .utils import check_schema_integrity, compress_opts
 from .validators import (
     _coerce_one,  # private but exposed for tests
@@ -65,12 +72,24 @@ from .validators import (
 )
 
 __all__ = [
-    # Aliases
+    # Types
+    "ControlType",
+    "ControlMeta",
+    # Constants
+    "GLOBAL_CONTROLS",
+    "STYLE_SCHEMAS",
+    "GLOBAL_ALIASES",
+    "ALIASES_BY_STYLE",
+    "GLOBAL_REVERSE",
+    "REVERSE_BY_STYLE",
+    "CANONICAL_CONTROLS",
+    "CANONICAL_STYLE_SCHEMAS",
+    # Alias functions
     "get_global_aliases",
     "get_aliases_by_style",
     "get_global_reverse",
     "get_reverse_by_style",
-    # Data
+    # Data accessors
     "get_style_schemas",
     "get_global_controls",
     "get_canonical_controls",
@@ -87,5 +106,5 @@ __all__ = [
     "validate_keyset",
     "compress_opts",
     "check_schema_integrity",
-    "ControlMeta",
+    "_coerce_one",
 ]
