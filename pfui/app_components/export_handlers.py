@@ -77,7 +77,9 @@ def render_export_widgets(
                     # Local import to avoid hard dependency
                     import plotly.graph_objects as go
 
-                    fig = go.Figure(cast(Optional[dict], ss.get("_last_surface_fig_json")))
+                    fig = go.Figure(
+                        cast(Optional[dict], ss.get("_last_surface_fig_json"))
+                    )
                     # Heuristic sizing with clamped bounds (px)
                     w = max(400, min(900, int(96 * float(fig_h_inches))))
                     h = max(300, min(800, int(96 * float(fig_h_inches))))

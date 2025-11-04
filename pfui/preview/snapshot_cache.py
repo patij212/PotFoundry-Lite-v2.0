@@ -64,19 +64,33 @@ def render_preview_png_cached(
     import numpy as _np
 
     if (
-        not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all()
+        not _np.isfinite(X).all()
+        or not _np.isfinite(Y).all()
+        or not _np.isfinite(Z).all()
     ):
         plt.close(fig)
         return None
 
     try:
         ax.plot_surface(
-            X, Y, Z, linewidth=0, antialiased=True, shade=True, cmap="viridis", edgecolor="none"
+            X,
+            Y,
+            Z,
+            linewidth=0,
+            antialiased=True,
+            shade=True,
+            cmap="viridis",
+            edgecolor="none",
         )
     except Exception:
         step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
         ax.plot_wireframe(
-            X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3
+            X[::step, ::step],
+            Y[::step, ::step],
+            Z[::step, ::step],
+            rstride=1,
+            cstride=1,
+            linewidth=0.3,
         )
 
     if inner_wall and inner_wall > 0:
@@ -132,6 +146,7 @@ def render_preview_png_cached(
     fig.savefig(buf, format="png", dpi=dpi)
     png = buf.getvalue()
     import matplotlib.pyplot as plt  # ensure close after save
+
     plt.close(fig)
     return png
 
@@ -166,7 +181,9 @@ def render_preview_apng_cached(
     import numpy as _np
 
     if (
-        not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all()
+        not _np.isfinite(X).all()
+        or not _np.isfinite(Y).all()
+        or not _np.isfinite(Z).all()
     ):
         return None
 
@@ -197,20 +214,46 @@ def render_preview_apng_cached(
                 ys = _np.arange(-size, size + step, step)
                 z0 = 0.0
                 for x in xs:
-                    ax.plot([x, x], [ys[0], ys[-1]], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+                    ax.plot(
+                        [x, x],
+                        [ys[0], ys[-1]],
+                        [z0, z0],
+                        linewidth=0.4,
+                        alpha=0.35,
+                        color="white",
+                    )
                 for y in ys:
-                    ax.plot([xs[0], xs[-1]], [y, y], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+                    ax.plot(
+                        [xs[0], xs[-1]],
+                        [y, y],
+                        [z0, z0],
+                        linewidth=0.4,
+                        alpha=0.35,
+                        color="white",
+                    )
             except Exception:
                 pass
 
         try:
             ax.plot_surface(
-                X, Y, Z, linewidth=0, antialiased=True, shade=True, cmap="viridis", edgecolor="none"
+                X,
+                Y,
+                Z,
+                linewidth=0,
+                antialiased=True,
+                shade=True,
+                cmap="viridis",
+                edgecolor="none",
             )
         except Exception:
             step = max(1, int(max(X.shape[0], X.shape[1]) // 150))
             ax.plot_wireframe(
-                X[::step, ::step], Y[::step, ::step], Z[::step, ::step], rstride=1, cstride=1, linewidth=0.3
+                X[::step, ::step],
+                Y[::step, ::step],
+                Z[::step, ::step],
+                rstride=1,
+                cstride=1,
+                linewidth=0.3,
             )
 
         if inner_wall and inner_wall > 0:
@@ -259,6 +302,7 @@ def render_preview_apng_cached(
         fig.savefig(buf, format="png", dpi=dpi)
         png = buf.getvalue()
         import matplotlib.pyplot as plt  # ensure close
+
         plt.close(fig)
         return png
 

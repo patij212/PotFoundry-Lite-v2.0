@@ -5,7 +5,9 @@ from typing import Any, Callable, Dict, cast
 import streamlit as st
 
 
-def render_dimensions(*, mark_changed: Callable[[], None], style_key: str) -> Dict[str, Any]:
+def render_dimensions(
+    *, mark_changed: Callable[[], None], style_key: str
+) -> Dict[str, Any]:
     """Render the "Dimensions (mm)" expander and return structured values.
 
     This mirrors the existing UI block in `app.py` but is isolated so the
@@ -19,6 +21,7 @@ def render_dimensions(*, mark_changed: Callable[[], None], style_key: str) -> Di
     Returns:
         Dict with keys: H, top_od, bottom_od, t_wall, t_bottom, r_drain, Rt, Rb, _dim_issues
     """
+
     # Local defensive coercions (kept upstream-compatible)
     def _unwrap_scalar(v: Any) -> Any:
         if isinstance(v, (list, tuple)):
@@ -46,7 +49,9 @@ def render_dimensions(*, mark_changed: Callable[[], None], style_key: str) -> Di
             return 0.0
 
     ss = cast(dict[str, Any], st.session_state)
-    from pfui.health import validate_dimensions  # local import to avoid heavy startup cost
+    from pfui.health import (
+        validate_dimensions,  # local import to avoid heavy startup cost
+    )
 
     with st.expander("Dimensions (mm)", expanded=True):
         H = float(
@@ -127,7 +132,9 @@ def render_dimensions(*, mark_changed: Callable[[], None], style_key: str) -> Di
 
         # Inline validation with actionable suggestions (kept identical to app.py)
         try:
-            _dim_issues = validate_dimensions(H, top_od, bottom_od, t_wall, t_bottom, r_drain)
+            _dim_issues = validate_dimensions(
+                H, top_od, bottom_od, t_wall, t_bottom, r_drain
+            )
         except Exception:
             _dim_issues = []
         if _dim_issues:
@@ -170,7 +177,9 @@ def render_dimensions(*, mark_changed: Callable[[], None], style_key: str) -> Di
 __all__ = ["render_dimensions"]
 
 
-def render_profile_controls(*, mark_changed: Callable[[], None], style_key: str) -> Dict[str, Any]:
+def render_profile_controls(
+    *, mark_changed: Callable[[], None], style_key: str
+) -> Dict[str, Any]:
     """Render the "Profile / Curve" controls and return structured values.
 
     Mirrors the Profile / Curve expander in `app.py` and updates
@@ -178,6 +187,7 @@ def render_profile_controls(*, mark_changed: Callable[[], None], style_key: str)
     canonical keys used by the app: expn, flare_center, flare_sharp,
     bell_amp, bell_center, bell_width.
     """
+
     def _unwrap_scalar(v: Any) -> Any:
         if isinstance(v, (list, tuple)):
             try:

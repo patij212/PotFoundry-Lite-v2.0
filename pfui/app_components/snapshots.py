@@ -11,16 +11,16 @@ from typing import Any, Dict, List, Optional, cast
 
 import streamlit as st
 
+from pfui import state_history as Hist
+from pfui.app_components.utils import _mask_possible_secrets, resolve_schema_key
+from pfui.preview import render_mesh_snapshot_cached
 from pfui.snapshot_store import (
     cleanup_old_tempfiles,
     read_png_bytes,
     remove_png_path,
     save_png_temp,
 )
-from pfui.preview import render_mesh_snapshot_cached
-from pfui.app_components.utils import _mask_possible_secrets, resolve_schema_key
-from pfui.state import widget_key, queue_update
-from pfui import state_history as Hist
+from pfui.state import queue_update, widget_key
 
 
 def render_snapshots(
@@ -104,7 +104,9 @@ def render_snapshots(
                 png_path = save_png_temp(capture_bytes)
                 # Ensure method is typed as str (session may contain DeltaGenerator)
                 method = cast(str, ss.get("_last_snapshot_method", ""))
-                st.success(f"✓ Snapshot '{snap_name}' captured successfully! (method: {method})")
+                st.success(
+                    f"✓ Snapshot '{snap_name}' captured successfully! (method: {method})"
+                )
                 ss.setdefault("_debug_logs", []).append(
                     f"Snapshot capture used method: {method}"
                 )
@@ -154,7 +156,10 @@ def render_snapshots(
     if "_debug_logs" not in ss:
         ss["_debug_logs"] = []
     # Mask any potential secrets before showing debug logs in UI
-    masked_logs = [_mask_possible_secrets(log_entry) for log_entry in cast(Any, ss.get("_debug_logs", []))]
+    masked_logs = [
+        _mask_possible_secrets(log_entry)
+        for log_entry in cast(Any, ss.get("_debug_logs", []))
+    ]
     st.text_area("Debug Logs", value="\n".join(masked_logs), height=300)
 
     # Re-read snaps to ensure we display the latest list (capture may
@@ -193,7 +198,9 @@ def render_snapshots(
             except Exception:
                 png_bytes_local = None
             if png_bytes_local:
-                cc1.image(png_bytes_local, caption=f"{i + 1}. {s['name']}", width="stretch")
+                cc1.image(
+                    png_bytes_local, caption=f"{i + 1}. {s['name']}", width="stretch"
+                )
             else:
                 cc1.write(f"**{i + 1}. {s['name']}**")
             if cc2.button("Apply", key=f"apply_{i}"):
@@ -207,7 +214,9 @@ def render_snapshots(
                     "expn": s["params"]["expn"],
                     "style": s.get("style_ui", style_name),  # update visible selectbox
                 }
-                sk = s.get("style_key", resolve_schema_key(s.get("style_ui", style_name)))
+                sk = s.get(
+                    "style_key", resolve_schema_key(s.get("style_ui", style_name))
+                )
                 for k, v in s["params"]["opts"].items():
                     pending[widget_key(sk, k)] = v
                     try:

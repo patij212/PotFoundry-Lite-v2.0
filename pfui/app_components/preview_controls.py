@@ -6,8 +6,8 @@ controls and returns the selected values as a small dict while updating
 """
 
 from __future__ import annotations
-# mypy: disable-error-code=attr-defined
 
+# mypy: disable-error-code=attr-defined
 from typing import Any, Callable, Dict, MutableMapping, cast
 
 import streamlit as st
@@ -109,7 +109,9 @@ def render_preview_controls(
             "Angular divisions (nθ)",
             96,
             720,
-            ss_map.get("n_theta", preset_defaults.get(preset_name, {}).get("n_theta", 168)),
+            ss_map.get(
+                "n_theta", preset_defaults.get(preset_name, {}).get("n_theta", 168)
+            ),
             12,
             key="n_theta",
             on_change=mark_changed,
@@ -132,7 +134,9 @@ def render_preview_controls(
     up = cE1.select_slider(
         "Export quality upscale",
         options=[1, 2, 3],
-        value=ss_map.get("quality_up", preset_defaults.get(preset_name, {}).get("quality_up", 2)),
+        value=ss_map.get(
+            "quality_up", preset_defaults.get(preset_name, {}).get("quality_up", 2)
+        ),
         key="quality_up",
         help="Multiplies nθ & nz when generating the STL. Use higher values for ultra-smooth exports.",
     )

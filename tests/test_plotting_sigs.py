@@ -1,4 +1,4 @@
-from pfui.app_components.plotting import compute_geom_sig, compute_app_sig
+from pfui.app_components.plotting import compute_app_sig, compute_geom_sig
 
 
 def test_compute_geom_sig_happy_path():

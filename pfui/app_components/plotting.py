@@ -10,7 +10,9 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 
 
-def should_update_preview(mode: str, *, last_change_ts: float, debounce_timeout_s: float, stale: bool) -> bool:
+def should_update_preview(
+    mode: str, *, last_change_ts: float, debounce_timeout_s: float, stale: bool
+) -> bool:
     """Decide whether to update the preview given mode and session flags.
 
     Mirrors existing logic in app.py and can be adopted incrementally.

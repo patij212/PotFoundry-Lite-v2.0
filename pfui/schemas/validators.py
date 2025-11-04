@@ -8,13 +8,15 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from types import ModuleType
-from typing import Dict, List, Tuple, TypedDict, Literal
+from typing import Dict, List, Literal, Tuple, TypedDict
 
 
 def _load_legacy() -> ModuleType:
     pkg_dir = Path(__file__).resolve().parent
     legacy_path = pkg_dir.parent / "schemas.py"
-    spec = importlib.util.spec_from_file_location("pfui._schemas_legacy", str(legacy_path))
+    spec = importlib.util.spec_from_file_location(
+        "pfui._schemas_legacy", str(legacy_path)
+    )
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load legacy schemas module at {legacy_path}")
     mod = importlib.util.module_from_spec(spec)
@@ -49,7 +51,9 @@ def apply_defaults(style: str, opts: dict, *, canonical: bool = False) -> dict:
     return _legacy.apply_defaults(style, opts, canonical=canonical)
 
 
-def sanitize_opts(style: str, opts: dict, *, canonical: bool = False) -> Tuple[dict[str, object], list[str]]:
+def sanitize_opts(
+    style: str, opts: dict, *, canonical: bool = False
+) -> Tuple[dict[str, object], list[str]]:
     return _legacy.sanitize_opts(style, opts, canonical=canonical)
 
 
@@ -61,8 +65,17 @@ def validate_keyset(style: str, opts: dict, *, canonical: bool = False) -> list[
     return _legacy.validate_keyset(style, opts, canonical=canonical)
 
 
-def compress_opts(style: str, opts: dict, *, canonical: bool = True, drop_defaults: bool = True, round_to: int | None = 4) -> dict:
-    return _legacy.compress_opts(style, opts, canonical=canonical, drop_defaults=drop_defaults, round_to=round_to)
+def compress_opts(
+    style: str,
+    opts: dict,
+    *,
+    canonical: bool = True,
+    drop_defaults: bool = True,
+    round_to: int | None = 4,
+) -> dict:
+    return _legacy.compress_opts(
+        style, opts, canonical=canonical, drop_defaults=drop_defaults, round_to=round_to
+    )
 
 
 def check_schema_integrity() -> List[str]:

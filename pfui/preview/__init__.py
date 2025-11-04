@@ -13,6 +13,7 @@ keep static analysis clean.
 from __future__ import annotations
 
 import streamlit as st
+
 from pfui.imports import STYLES  # re-exposed for test monkeypatching
 
 # Ensure commonly-used Streamlit attributes exist in degraded/test environments.
@@ -37,14 +38,14 @@ for _attr in (
 
 # ruff: noqa: E402 - See module docstring for justification
 # Export explicit symbols from structured submodules (avoid F405)
-from .utils import cache_data, _pyplot  # noqa: E402
-from .visualization import make_preview_arrays, render_preview  # noqa: E402
+from .mesh_renderer import render_mesh_snapshot_cached  # noqa: E402
 from .profile_renderer import render_profile  # noqa: E402
 from .snapshot_cache import (  # noqa: E402
-    render_preview_png_cached,
     render_preview_apng_cached,
+    render_preview_png_cached,
 )
-from .mesh_renderer import render_mesh_snapshot_cached  # noqa: E402
+from .utils import _pyplot, cache_data  # noqa: E402
+from .visualization import make_preview_arrays, render_preview  # noqa: E402
 
 __all__ = [
     # utils

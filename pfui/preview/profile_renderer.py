@@ -38,7 +38,9 @@ def render_profile(
             _opts.setdefault("_pf_rt", Rt)
             _opts.setdefault("_pf_expn", expn)
             r_list.append(float(r_outer_fn(th, z, r0, H, _opts)))
-        ax.plot(zvals, r_list, alpha=0.9, label=f"outer theta={int(th * 180.0 / np.pi)}°")
+        ax.plot(
+            zvals, r_list, alpha=0.9, label=f"outer theta={int(th * 180.0 / np.pi)}°"
+        )
         inner = _np.maximum(np.array(r_list) - t_wall, 0.0)
         ax.plot(
             zvals,

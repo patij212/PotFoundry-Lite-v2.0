@@ -15,7 +15,9 @@ from typing import Mapping
 def _load_legacy() -> ModuleType:
     pkg_dir = Path(__file__).resolve().parent
     legacy_path = pkg_dir.parent / "schemas.py"
-    spec = importlib.util.spec_from_file_location("pfui._schemas_legacy", str(legacy_path))
+    spec = importlib.util.spec_from_file_location(
+        "pfui._schemas_legacy", str(legacy_path)
+    )
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load legacy schemas module at {legacy_path}")
     mod = importlib.util.module_from_spec(spec)

@@ -11,8 +11,8 @@ from typing import Any
 
 import numpy as np
 
-from pfui.colors import build_gradient_colors
 import pfui.schemas as SC
+from pfui.colors import build_gradient_colors
 
 
 def build_mesh_kwargs_for_test(Vd, Fd, ss, n_theta, n_z, fig_h):
@@ -80,9 +80,7 @@ def _mask_possible_secrets(text: str) -> str:
         try:
             import streamlit as _st  # local import
 
-            svc_key = (
-                _st.secrets.get("connections", {}).get("supabase", {}).get("key")
-            )
+            svc_key = _st.secrets.get("connections", {}).get("supabase", {}).get("key")
         except Exception:
             svc_key = None
         if svc_key and svc_key in text:

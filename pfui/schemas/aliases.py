@@ -8,9 +8,8 @@ the transitional shim and is a step in consolidating pfui.schemas.
 
 from __future__ import annotations
 
-import importlib.util
-from typing import Dict, Mapping
 from types import MappingProxyType
+from typing import Dict, Mapping
 
 
 def _invert(d: Mapping[str, str]) -> Dict[str, str]:

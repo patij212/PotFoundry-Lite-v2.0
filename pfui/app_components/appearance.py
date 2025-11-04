@@ -124,13 +124,22 @@ def render_appearance_settings() -> None:
             st.color_picker("Mid / secondary", key="preview_grad_c2")
         with colc3:
             st.color_picker("Gradient end", key="preview_grad_c3")
-    st.color_picker("Solid color", key="solid_color", help="Used when gradient is disabled.")
+    st.color_picker(
+        "Solid color", key="solid_color", help="Used when gradient is disabled."
+    )
 
     st.markdown("**Mesh Lighting**")
     ss.setdefault("mesh_flatshading", False)
     lc1, lc2, lc3, lc4, lc5, lc6 = st.columns(6)
     with lc1:
-        st.slider("Ambient", 0.0, 1.0, _to_float_scalar(ss.get("mesh_ambient", 0.50)), 0.01, key="mesh_ambient")
+        st.slider(
+            "Ambient",
+            0.0,
+            1.0,
+            _to_float_scalar(ss.get("mesh_ambient", 0.50)),
+            0.01,
+            key="mesh_ambient",
+        )
     with lc2:
         st.slider(
             "Diffuse",
@@ -141,11 +150,32 @@ def render_appearance_settings() -> None:
             key="mesh_diffuse",
         )
     with lc3:
-        st.slider("Specular", 0.0, 1.0, _to_float_scalar(ss.get("mesh_specular", 0.40)), 0.01, key="mesh_specular")
+        st.slider(
+            "Specular",
+            0.0,
+            1.0,
+            _to_float_scalar(ss.get("mesh_specular", 0.40)),
+            0.01,
+            key="mesh_specular",
+        )
     with lc4:
-        st.slider("Roughness", 0.0, 1.0, _to_float_scalar(ss.get("mesh_roughness", 0.45)), 0.01, key="mesh_roughness")
+        st.slider(
+            "Roughness",
+            0.0,
+            1.0,
+            _to_float_scalar(ss.get("mesh_roughness", 0.45)),
+            0.01,
+            key="mesh_roughness",
+        )
     with lc5:
-        st.slider("Fresnel", 0.0, 1.0, _to_float_scalar(ss.get("mesh_fresnel", 0.25)), 0.01, key="mesh_fresnel")
+        st.slider(
+            "Fresnel",
+            0.0,
+            1.0,
+            _to_float_scalar(ss.get("mesh_fresnel", 0.25)),
+            0.01,
+            key="mesh_fresnel",
+        )
     with lc6:
         st.checkbox(
             "Flat shading",

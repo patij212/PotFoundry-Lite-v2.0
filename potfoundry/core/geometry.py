@@ -208,9 +208,19 @@ def _refine_z_outer_for_seams(
         Refined z array (may be identical to input if no refinement is needed)
     """
     try:
-        _tiers = int(style_opts.get("lp_tiers", 1)) if isinstance(style_opts, dict) else 1
-        _cut_bot = float(style_opts.get("lp_cut_bot_deg", 0.0)) if isinstance(style_opts, dict) else 0.0
-        _cut_top = float(style_opts.get("lp_cut_top_deg", 0.0)) if isinstance(style_opts, dict) else 0.0
+        _tiers = (
+            int(style_opts.get("lp_tiers", 1)) if isinstance(style_opts, dict) else 1
+        )
+        _cut_bot = (
+            float(style_opts.get("lp_cut_bot_deg", 0.0))
+            if isinstance(style_opts, dict)
+            else 0.0
+        )
+        _cut_top = (
+            float(style_opts.get("lp_cut_top_deg", 0.0))
+            if isinstance(style_opts, dict)
+            else 0.0
+        )
         _has_cuts = (_tiers > 1) and ((_cut_bot > 0.0) or (_cut_top > 0.0))
         if not (_has_cuts and H > 0):
             return z_outer
@@ -223,7 +233,9 @@ def _refine_z_outer_for_seams(
         z_win_frac = (z_win_raw * 0.01) if z_win_raw > 1.0 else z_win_raw
         z_win = max(1e-6, z_win_frac * h_tier)
         sampling_boost = (
-            int(style_opts.get("lp_seam_sampling_boost", 2)) if isinstance(style_opts, dict) else 2
+            int(style_opts.get("lp_seam_sampling_boost", 2))
+            if isinstance(style_opts, dict)
+            else 2
         )
         offs_edge = z_win
         offs_mid_vals = [0.66 * z_win, 0.33 * z_win]
@@ -246,7 +258,9 @@ def _refine_z_outer_for_seams(
                 if (zc > 1e-9) and (zc < H - 1e-9):
                     add_zs.append(float(zc))
         if add_zs:
-            z_out = np.unique(np.concatenate([z_outer, np.array(add_zs, dtype=float)])).astype(float)
+            z_out = np.unique(
+                np.concatenate([z_outer, np.array(add_zs, dtype=float)])
+            ).astype(float)
             return z_out
         return z_outer
     except Exception:
@@ -332,7 +346,11 @@ def _sample_outer_rings(
     r_outer_samples_list: list[np.ndarray] = []
     est_top_od: float | None = None
     est_bottom_od: float | None = None
-    dbg_seam = bool(style_opts.get("lp_debug_seam", False)) if isinstance(style_opts, dict) else False
+    dbg_seam = (
+        bool(style_opts.get("lp_debug_seam", False))
+        if isinstance(style_opts, dict)
+        else False
+    )
     dbg_outward_picks = 0
     dbg_total_picks = 0
     dbg_samples_collected: list[NDArrayFloat] = []
@@ -363,11 +381,17 @@ def _sample_outer_rings(
                 eps_z = max(1e-6, 0.002 * H)
                 z_bot = (k / tiers) * H
                 z_top = ((k + 1) / tiers) * H
-                near_seam = (abs(float(z) - z_bot) < eps_z) or (abs(float(z) - z_top) < eps_z)
+                near_seam = (abs(float(z) - z_bot) < eps_z) or (
+                    abs(float(z) - z_top) < eps_z
+                )
                 if near_seam:
                     dbg_total_picks += int(r_vals.size)
-                    dbg_outward_picks += int(np.count_nonzero(r_vals > float(r0) + 1e-9))
-        outer_idx[i] = _add_ring_xy(verts, r_vals, float(z), cTw, sTw, cos_th, sin_th, n_theta)
+                    dbg_outward_picks += int(
+                        np.count_nonzero(r_vals > float(r0) + 1e-9)
+                    )
+        outer_idx[i] = _add_ring_xy(
+            verts, r_vals, float(z), cTw, sTw, cos_th, sin_th, n_theta
+        )
         cx_rows_list.append(np.asarray(cx_ring, dtype=float))
         sy_rows_list.append(np.asarray(sy_ring, dtype=float))
         r_outer_samples_list.append(r_vals)
@@ -1846,7 +1870,10 @@ def build_pot_mesh(
     # Ensure we have a callable style function
     if r_outer_fn is None:
         r_outer_fn = cast(
-            Callable[[NDArrayFloat | float, float, float | NDArrayFloat, float, dict], NDArrayFloat | float],
+            Callable[
+                [NDArrayFloat | float, float, float | NDArrayFloat, float, dict],
+                NDArrayFloat | float,
+            ],
             STYLES["SuperformulaBlossom"][0],
         )
     assert r_outer_fn is not None

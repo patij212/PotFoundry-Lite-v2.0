@@ -88,9 +88,16 @@ def render_mesh_snapshot_cached(
 
             triangles = V[F]
             # Cast to Any so Pylance doesn't flag runtime methods like set_facecolors
-            mesh = cast(Any, Poly3DCollection(triangles, alpha=0.95, linewidths=0.1, edgecolors="#555555"))
+            mesh = cast(
+                Any,
+                Poly3DCollection(
+                    triangles, alpha=0.95, linewidths=0.1, edgecolors="#555555"
+                ),
+            )
 
-            z_norm_v = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+            z_norm_v = (V[:, 2] - V[:, 2].min()) / max(
+                1e-6, (V[:, 2].max() - V[:, 2].min())
+            )
             face_z = z_norm_v[F].mean(axis=1)
             try:
                 preset = st.session_state.get("preview_palette", "Custom")
@@ -99,8 +106,12 @@ def render_mesh_snapshot_cached(
                     st.session_state.get("preview_grad_c2", "#5FA8FF"),
                     st.session_state.get("preview_grad_c3", "#E2F3FF"),
                 ]
-                rgb255 = build_gradient_colors(face_z, preset if preset != "Custom" else None, custom)
-                colors = [(r / 255.0, g / 255.0, b / 255.0, 1.0) for (r, g, b) in rgb255]
+                rgb255 = build_gradient_colors(
+                    face_z, preset if preset != "Custom" else None, custom
+                )
+                colors = [
+                    (r / 255.0, g / 255.0, b / 255.0, 1.0) for (r, g, b) in rgb255
+                ]
             except Exception:
                 import matplotlib.pyplot as plt
 
@@ -141,7 +152,13 @@ def render_mesh_snapshot_cached(
             from io import BytesIO
 
             buf = BytesIO()
-            fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", facecolor=fig.get_facecolor())
+            fig.savefig(
+                buf,
+                format="png",
+                dpi=dpi,
+                bbox_inches="tight",
+                facecolor=fig.get_facecolor(),
+            )
             out = buf.getvalue()
             plt.close(fig)
             try:
@@ -159,7 +176,9 @@ def render_mesh_snapshot_cached(
         except Exception:
             return None
         try:
-            z_norm = (V[:, 2] - V[:, 2].min()) / max(1e-6, (V[:, 2].max() - V[:, 2].min()))
+            z_norm = (V[:, 2] - V[:, 2].min()) / max(
+                1e-6, (V[:, 2].max() - V[:, 2].min())
+            )
             try:
                 preset = st.session_state.get("preview_palette", "Custom")
                 custom = [
@@ -167,12 +186,17 @@ def render_mesh_snapshot_cached(
                     st.session_state.get("preview_grad_c2", "#5FA8FF"),
                     st.session_state.get("preview_grad_c3", "#E2F3FF"),
                 ]
-                mesh_colors = build_gradient_colors(z_norm, preset if preset != "Custom" else None, custom)
+                mesh_colors = build_gradient_colors(
+                    z_norm, preset if preset != "Custom" else None, custom
+                )
             except Exception:
                 import matplotlib.pyplot as plt
 
                 colorscale = plt.get_cmap("viridis")
-                mesh_colors = [[int(255 * r), int(255 * g), int(255 * b)] for r, g, b, _ in colorscale(z_norm)]
+                mesh_colors = [
+                    [int(255 * r), int(255 * g), int(255 * b)]
+                    for r, g, b, _ in colorscale(z_norm)
+                ]
 
             fig = go.Figure(
                 data=[
@@ -185,11 +209,25 @@ def render_mesh_snapshot_cached(
                         k=F[:, 2],
                         flatshading=False,
                         lighting=dict(
-                            ambient=min(max(st.session_state.get("mesh_ambient", 0.35), 0.0), 1.0),
-                            diffuse=min(max(st.session_state.get("mesh_diffuse", 0.95), 0.0), 1.0),
-                            specular=min(max(st.session_state.get("mesh_specular", 0.25), 0.0), 1.0),
-                            roughness=min(max(st.session_state.get("mesh_roughness", 0.7), 0.0), 1.0),
-                            fresnel=min(max(st.session_state.get("mesh_fresnel", 0.2), 0.0), 1.0),
+                            ambient=min(
+                                max(st.session_state.get("mesh_ambient", 0.35), 0.0),
+                                1.0,
+                            ),
+                            diffuse=min(
+                                max(st.session_state.get("mesh_diffuse", 0.95), 0.0),
+                                1.0,
+                            ),
+                            specular=min(
+                                max(st.session_state.get("mesh_specular", 0.25), 0.0),
+                                1.0,
+                            ),
+                            roughness=min(
+                                max(st.session_state.get("mesh_roughness", 0.7), 0.0),
+                                1.0,
+                            ),
+                            fresnel=min(
+                                max(st.session_state.get("mesh_fresnel", 0.2), 0.0), 1.0
+                            ),
                         ),
                         vertexcolor=mesh_colors,
                         hoverinfo="skip",
@@ -226,15 +264,21 @@ def render_mesh_snapshot_cached(
                     zaxis=dict(visible=False, range=zlim),
                     aspectmode="manual",
                     aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
-                    camera=dict(up=dict(x=0, y=0, z=1), projection=dict(type="orthographic")),
+                    camera=dict(
+                        up=dict(x=0, y=0, z=1), projection=dict(type="orthographic")
+                    ),
                     bgcolor=st.session_state.get("preview_bg_color", "#0E1117"),
                 ),
                 margin=dict(l=0, r=0, t=30, b=0),
             )
             try:
-                out: Any = fig.to_image(format="png", width=width_px, height=height_px, scale=1)
+                out: Any = fig.to_image(
+                    format="png", width=width_px, height=height_px, scale=1
+                )
             except Exception:
-                out = pio.to_image(fig, format="png", width=width_px, height=height_px, scale=1)
+                out = pio.to_image(
+                    fig, format="png", width=width_px, height=height_px, scale=1
+                )
             try:
                 st.session_state["_last_snapshot_method"] = "plotly"
             except Exception:

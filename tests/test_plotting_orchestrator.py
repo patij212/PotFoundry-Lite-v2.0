@@ -1,5 +1,4 @@
 import time
-from types import SimpleNamespace
 
 from pfui.app_components.plotting import orchestrate_preview
 

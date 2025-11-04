@@ -42,7 +42,9 @@ def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable
 def _pyplot(fig: Any, *, fill_width: bool, clear: bool = True) -> None:
     """Render matplotlib figure with Streamlit version compatibility."""
     try:
-        st.pyplot(fig, clear_figure=clear, width=("stretch" if fill_width else "content"))
+        st.pyplot(
+            fig, clear_figure=clear, width=("stretch" if fill_width else "content")
+        )
     except TypeError:
         st.pyplot(fig, clear_figure=clear)
 

@@ -14,7 +14,7 @@ import streamlit as st
 
 from pfui.imports import STYLES, _spin_twist_radians, base_radius
 
-from .utils import cache_data, _pyplot
+from .utils import _pyplot, cache_data
 
 
 @cache_data(show_spinner=False)
@@ -95,9 +95,15 @@ def make_preview_arrays(
             X[i, :], Y[i, :], Z[i, :] = r * cx, r * sy, z
         # Force finiteness
         try:
-            X[:] = _np.nan_to_num(_np.asarray(X, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0)
-            Y[:] = _np.nan_to_num(_np.asarray(Y, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0)
-            Z[:] = _np.nan_to_num(_np.asarray(Z, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0)
+            X[:] = _np.nan_to_num(
+                _np.asarray(X, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0
+            )
+            Y[:] = _np.nan_to_num(
+                _np.asarray(Y, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0
+            )
+            Z[:] = _np.nan_to_num(
+                _np.asarray(Z, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0
+            )
         except Exception:
             pass
         if ring_fallbacks > 0:
@@ -169,7 +175,7 @@ def render_preview(
             try:
                 # Matplotlib's 3D axis objects expose set_pane_color at runtime,
                 # but the type stubs for XAxis/YAxis may not include it; cast to Any.
-                from typing import cast, Any
+                from typing import Any, cast
 
                 axis_any = cast(Any, axis)
                 axis_any.set_pane_color((0.06, 0.07, 0.10, 1.0))
@@ -187,12 +193,28 @@ def render_preview(
         ys = _np.arange(-size, size + step, step)
         z0 = 0.0
         for x in xs:
-            ax.plot([x, x], [ys[0], ys[-1]], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+            ax.plot(
+                [x, x],
+                [ys[0], ys[-1]],
+                [z0, z0],
+                linewidth=0.4,
+                alpha=0.35,
+                color="white",
+            )
         for y in ys:
-            ax.plot([xs[0], xs[-1]], [y, y], [z0, z0], linewidth=0.4, alpha=0.35, color="white")
+            ax.plot(
+                [xs[0], xs[-1]],
+                [y, y],
+                [z0, z0],
+                linewidth=0.4,
+                alpha=0.35,
+                color="white",
+            )
 
     if (
-        not _np.isfinite(X).all() or not _np.isfinite(Y).all() or not _np.isfinite(Z).all()
+        not _np.isfinite(X).all()
+        or not _np.isfinite(Y).all()
+        or not _np.isfinite(Z).all()
     ):
         st.info("Preview fell back due to invalid values; adjust style or detail.")
         _pyplot(fig, fill_width=fill_width)
@@ -250,7 +272,9 @@ def render_preview(
         )
 
     try:
-        ax.view_init(elev=float(_np.asarray(view_elev)), azim=float(_np.asarray(view_azim)))
+        ax.view_init(
+            elev=float(_np.asarray(view_elev)), azim=float(_np.asarray(view_azim))
+        )
     except Exception:
         pass
     try:
@@ -282,6 +306,7 @@ def render_preview(
         fig.savefig(buf, format="png", dpi=dpi)
         _png_ret = buf.getvalue()
     import matplotlib.pyplot as plt  # ensure close after save
+
     plt.close(fig)
     return _png_ret
 

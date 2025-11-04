@@ -1,8 +1,3 @@
-import builtins
-from types import SimpleNamespace
-
-import pytest
-
 import streamlit as st
 
 from pfui.app_components.sidebar import render_dimensions
@@ -93,7 +88,9 @@ def test_render_dimensions_fix_suggestion_applies(monkeypatch):
     monkeypatch.setattr(ph, "validate_dimensions", fake_validate)
 
     # Monkeypatch st.columns used by the Fix button (we only need a simple object)
-    monkeypatch.setattr(st, "columns", lambda *a, **k: (DummyExpander(), DummyExpander()), raising=False)
+    monkeypatch.setattr(
+        st, "columns", lambda *a, **k: (DummyExpander(), DummyExpander()), raising=False
+    )
 
     # Monkeypatch st.button to simulate clicking the Fix button once
     def fake_button(label, *a, **k):

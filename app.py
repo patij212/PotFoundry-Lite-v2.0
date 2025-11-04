@@ -8,13 +8,12 @@ from __future__ import annotations
 # E402 here keeps editor/type-checker noise low while preserving behavior.
 # ruff: noqa: E402
 import json
-import math
 import re
 import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, cast
+from typing import Any, Callable, Optional, Union, cast
 from typing import (
     Any as _ArrayLike,  # for broad array-or-scalar typing without optional module issues
 )
@@ -61,6 +60,20 @@ styles = SC.get_style_schemas()
 import time
 
 from pfui import state_history as Hist
+from pfui.app_components import (
+    render_appearance_settings,
+    render_export_widgets,
+    render_preview_controls,
+    render_snapshots,
+)
+from pfui.app_components.plotting import should_update_preview as plotting_should_update
+from pfui.app_components.sidebar import render_dimensions, render_profile_controls
+
+# Extracted UI-agnostic helpers
+from pfui.app_components.utils import (
+    _mask_possible_secrets,
+    resolve_schema_key,
+)
 from pfui.batch_tab import render_batch_tab
 from pfui.controls import style_controls, twist_controls
 from pfui.deeplink import apply_state, clear_query_params, parse_query_params
@@ -71,12 +84,6 @@ from pfui.preview import (
     render_mesh_snapshot_cached,
     render_profile,
 )
-from pfui.snapshot_store import (
-    cleanup_old_tempfiles,
-    read_png_bytes,
-    remove_png_path,
-    save_png_temp,
-)
 from pfui.state import (  # noqa: E402
     apply_pending_updates,
     queue_update,
@@ -86,21 +93,6 @@ from pfui.state import (  # noqa: E402
 )
 from pfui.units import units_selector
 from potfoundry.integrations.supabase_client import SupabaseClient, get_singleton_client
-
-# Extracted UI-agnostic helpers
-from pfui.app_components.utils import (
-    resolve_schema_key,
-    _mask_possible_secrets,
-)
-from pfui.app_components import (
-    render_preview_controls,
-    render_export_widgets,
-    render_appearance_settings,
-    render_snapshots,
-)
-from pfui.app_components.sidebar import render_dimensions, render_profile_controls
-from pfui.app_components.plotting import should_update_preview as plotting_should_update
-
 
 ## moved to pfui.app_components.utils: _mask_possible_secrets
 
@@ -525,13 +517,40 @@ with _tab1:
         # (model_name auto-default logic handled earlier)
 
         # --- Profile Section (extracted) ---
-        _profile = render_profile_controls(mark_changed=_mark_changed, style_key=style_key)
+        _profile = render_profile_controls(
+            mark_changed=_mark_changed, style_key=style_key
+        )
         expn = float(_profile.get("expn", _to_float_scalar(ss.get("expn", 1.1))))
-        flare_center = float(_profile.get("flare_center", _to_float_scalar(ss.get(widget_key(style_key, "flare_center"), 0.5))))
-        flare_sharp = float(_profile.get("flare_sharp", _to_float_scalar(ss.get(widget_key(style_key, "flare_sharp"), 6.0))))
-        bell_amp = float(_profile.get("bell_amp", _to_float_scalar(ss.get(widget_key(style_key, "bell_amp"), 0.0))))
-        bell_center = float(_profile.get("bell_center", _to_float_scalar(ss.get(widget_key(style_key, "bell_center"), 0.5))))
-        bell_width = float(_profile.get("bell_width", _to_float_scalar(ss.get(widget_key(style_key, "bell_width"), 0.22))))
+        flare_center = float(
+            _profile.get(
+                "flare_center",
+                _to_float_scalar(ss.get(widget_key(style_key, "flare_center"), 0.5)),
+            )
+        )
+        flare_sharp = float(
+            _profile.get(
+                "flare_sharp",
+                _to_float_scalar(ss.get(widget_key(style_key, "flare_sharp"), 6.0)),
+            )
+        )
+        bell_amp = float(
+            _profile.get(
+                "bell_amp",
+                _to_float_scalar(ss.get(widget_key(style_key, "bell_amp"), 0.0)),
+            )
+        )
+        bell_center = float(
+            _profile.get(
+                "bell_center",
+                _to_float_scalar(ss.get(widget_key(style_key, "bell_center"), 0.5)),
+            )
+        )
+        bell_width = float(
+            _profile.get(
+                "bell_width",
+                _to_float_scalar(ss.get(widget_key(style_key, "bell_width"), 0.22)),
+            )
+        )
 
         # --- Mesh Quality Section (moved into Preview & Export) ---
         # n_theta and n_z will be configured in the Preview & Export section below
@@ -636,7 +655,9 @@ with _tab1:
     # --------------- PREVIEW & EXPORT CONTROLS ---------------
     with st.expander("Preview & Export", expanded=True):
         # Render consolidated preview controls via modular component
-        _controls = render_preview_controls(mark_changed=_mark_changed, has_plotly=HAS_PLOTLY)
+        _controls = render_preview_controls(
+            mark_changed=_mark_changed, has_plotly=HAS_PLOTLY
+        )
         # Unpack for downstream logic (keep names stable)
         preview_detail = float(_controls["preview_detail"])
         preview_mode = cast(str, _controls["preview_mode"])
@@ -903,8 +924,8 @@ with _tab1:
     try:
         # Use plotting helpers to compute signatures (centralized and testable)
         from pfui.app_components.plotting import (
-            compute_geom_sig,
             compute_app_sig,
+            compute_geom_sig,
         )
 
         geom_sig = compute_geom_sig(
@@ -974,7 +995,9 @@ with _tab1:
                 last_geom_sig=cast(Optional[tuple], ss.get("_last_preview_geom_sig")),
                 last_app_sig=cast(Optional[tuple], ss.get("_last_preview_app_sig")),
                 preview_mode=cast(str, ss.get("preview_mode", preview_mode)),
-                preview_stale=bool(cast(Optional[bool], ss.get("_preview_stale", False))),
+                preview_stale=bool(
+                    cast(Optional[bool], ss.get("_preview_stale", False))
+                ),
                 cached_any=bool(cached_any),
                 last_change_ts=cast(Any, ss.get("_last_change_ts", 0.0)),
                 debounce_timeout_s=debounce_timeout_seconds,
@@ -1007,7 +1030,9 @@ with _tab1:
                 if (X is None) or (Y is None) or (Z is None):
                     # Use centralized orchestrator for array generation; preserves behavior and enables further refactor
                     try:
-                        from pfui.app_components.plotting import orchestrate_preview as _orchestrate_preview
+                        from pfui.app_components.plotting import (
+                            orchestrate_preview as _orchestrate_preview,
+                        )
 
                         res = _orchestrate_preview(
                             H,
@@ -1020,10 +1045,18 @@ with _tab1:
                             full_n_z,
                             style_name,
                             opts_json,
-                            preview_mode=cast(str, ss.get("preview_mode", preview_mode)),
-                            preview_stale=bool(cast(Any, ss.get("_preview_stale", False))),
-                            last_geom_sig=cast(Optional[tuple], ss.get("_last_preview_geom_sig")),
-                            last_app_sig=cast(Optional[tuple], ss.get("_last_preview_app_sig")),
+                            preview_mode=cast(
+                                str, ss.get("preview_mode", preview_mode)
+                            ),
+                            preview_stale=bool(
+                                cast(Any, ss.get("_preview_stale", False))
+                            ),
+                            last_geom_sig=cast(
+                                Optional[tuple], ss.get("_last_preview_geom_sig")
+                            ),
+                            last_app_sig=cast(
+                                Optional[tuple], ss.get("_last_preview_app_sig")
+                            ),
                             geom_sig=geom_sig,
                             app_sig=app_sig,
                             debounce_timeout_s=debounce_timeout_seconds,
@@ -1065,7 +1098,9 @@ with _tab1:
                 if do_mesh_build:
                     # Prefer orchestrator for mesh build when available
                     try:
-                        from pfui.app_components.plotting import orchestrate_preview as _orchestrate_preview
+                        from pfui.app_components.plotting import (
+                            orchestrate_preview as _orchestrate_preview,
+                        )
 
                         res2 = _orchestrate_preview(
                             H,
@@ -1078,10 +1113,18 @@ with _tab1:
                             full_n_z,
                             style_name,
                             opts_json,
-                            preview_mode=cast(str, ss.get("preview_mode", preview_mode)),
-                            preview_stale=bool(cast(Any, ss.get("_preview_stale", False))),
-                            last_geom_sig=cast(Optional[tuple], ss.get("_last_preview_geom_sig")),
-                            last_app_sig=cast(Optional[tuple], ss.get("_last_preview_app_sig")),
+                            preview_mode=cast(
+                                str, ss.get("preview_mode", preview_mode)
+                            ),
+                            preview_stale=bool(
+                                cast(Any, ss.get("_preview_stale", False))
+                            ),
+                            last_geom_sig=cast(
+                                Optional[tuple], ss.get("_last_preview_geom_sig")
+                            ),
+                            last_app_sig=cast(
+                                Optional[tuple], ss.get("_last_preview_app_sig")
+                            ),
                             geom_sig=geom_sig,
                             app_sig=app_sig,
                             debounce_timeout_s=debounce_timeout_seconds,
@@ -1130,7 +1173,8 @@ with _tab1:
                                     and "seam_debug_samples" in diag
                                 ):
                                     with st.expander(
-                                        "Seam debug samples (lp_debug_seam)", expanded=False
+                                        "Seam debug samples (lp_debug_seam)",
+                                        expanded=False,
                                     ):
                                         all_groups = diag.get("seam_debug_samples", [])
                                         for gi, group in enumerate(all_groups):
@@ -1548,7 +1592,6 @@ with _tab1:
         if HAS_PLOTLY:
             try:
                 t0_mesh = time.time()
-                from typing import List
 
                 import numpy as np
 
@@ -1602,7 +1645,9 @@ with _tab1:
                             nz = n_z if use_exact_full else preview_n_z
                             # Prefer orchestrator for exact/preview mesh build
                             try:
-                                from pfui.app_components.plotting import orchestrate_preview as _orchestrate_preview
+                                from pfui.app_components.plotting import (
+                                    orchestrate_preview as _orchestrate_preview,
+                                )
 
                                 res_full = _orchestrate_preview(
                                     H,
@@ -1615,14 +1660,27 @@ with _tab1:
                                     full_n_z,
                                     style_name,
                                     opts_json,
-                                    preview_mode=cast(str, ss.get("preview_mode", preview_mode)),
-                                    preview_stale=bool(cast(Any, ss.get("_preview_stale", False))),
-                                    last_geom_sig=cast(Optional[tuple], ss.get("_last_preview_geom_sig")),
-                                    last_app_sig=cast(Optional[tuple], ss.get("_last_preview_app_sig")),
+                                    preview_mode=cast(
+                                        str, ss.get("preview_mode", preview_mode)
+                                    ),
+                                    preview_stale=bool(
+                                        cast(Any, ss.get("_preview_stale", False))
+                                    ),
+                                    last_geom_sig=cast(
+                                        Optional[tuple],
+                                        ss.get("_last_preview_geom_sig"),
+                                    ),
+                                    last_app_sig=cast(
+                                        Optional[tuple], ss.get("_last_preview_app_sig")
+                                    ),
                                     geom_sig=geom_sig,
                                     app_sig=app_sig,
-                                    debounce_timeout_s=_to_float_scalar(ss.get("debounce_timeout", 0.8)),
-                                    last_change_ts=cast(Any, ss.get("_last_change_ts", 0.0)),
+                                    debounce_timeout_s=_to_float_scalar(
+                                        ss.get("debounce_timeout", 0.8)
+                                    ),
+                                    last_change_ts=cast(
+                                        Any, ss.get("_last_change_ts", 0.0)
+                                    ),
                                     interactive_mesh=True,
                                     build_mesh_fn=build_pot_mesh,
                                     t_wall=t_wall,
