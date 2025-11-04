@@ -1,46 +1,87 @@
-"""Validation, defaults, compression, and integrity helpers.
-
-Initial extraction that re-exports from the legacy module implementation.
-"""
+# pfui/schemas/validators.py - Validation and schema helpers
+"""Validation, sanitization, and schema helper functions."""
 
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-from types import ModuleType
-from typing import Any, Dict, List, Literal, Tuple, TypedDict
+import warnings
+from typing import Any, Dict, Tuple, cast
+
+from .base import ControlMeta, ControlType
+from .canonical_schemas import CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS
+from .global_controls import GLOBAL_CONTROLS
+from .style_schemas import STYLE_SCHEMAS
+
+__all__ = [
+    "get_schema",
+    "apply_defaults",
+    "_coerce_one",
+    "sanitize_opts",
+    "warn_on_legacy_keys",
+    "validate_keyset",
+]
 
 
-def _load_legacy() -> ModuleType:
-    pkg_dir = Path(__file__).resolve().parent
-    legacy_path = pkg_dir.parent / "schemas.py"
-    spec = importlib.util.spec_from_file_location(
-        "pfui._schemas_legacy", str(legacy_path)
-    )
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load legacy schemas module at {legacy_path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+def get_schema(style: str, *, canonical: bool = False) -> Dict[str, ControlMeta]:
+    """Return merged schema (globals + per-style), keyed by legacy or canonical names.
+
+    Purpose:
+        Feed UI or export with one dict keyed by the desired keyspace.
+
+    Inputs:
+        style: str - style name.
+        canonical: bool - True returns canonical-keyed schema; False returns legacy-keyed.
+
+    Outputs:
+        Dict[str, ControlMeta] - shallow copies of control meta dicts.
+
+    Guarantees:
+        - Pure function; does not mutate module-level dicts.
+        - Returns empty per-style block if style unknown.
+
+    Errors:
+        - None.
+    """
+    if canonical:
+        # CANONICAL_* are Mapping types; cast to the expected Dict[str, ControlMeta]
+        block: Dict[str, ControlMeta] = cast(
+            Dict[str, ControlMeta], dict(CANONICAL_CONTROLS)
+        )
+        block.update(
+            cast(Dict[str, Dict[str, Any]], CANONICAL_STYLE_SCHEMAS).get(style, {})
+        )
+    else:
+        block = cast(Dict[str, ControlMeta], dict(GLOBAL_CONTROLS))
+        block.update(cast(Dict[str, Dict[str, Any]], STYLE_SCHEMAS).get(style, {}))
+    return block
 
 
-_legacy = _load_legacy()
+def apply_defaults(style: str, opts: dict, *, canonical: bool = False) -> dict:
+    """Fill missing keys with schema defaults.
 
-ControlType = Literal["int", "float", "bool", "text", "select"]
+    Purpose:
+        Make downstream code simpler by ensuring required keys exist.
 
+    Inputs:
+        style: str
+        opts: dict - partial or full options
+        canonical: bool - interpret keys as canonical if True
 
-class ControlMeta(TypedDict, total=False):
-    label: str
-    help: str
-    type: ControlType
-    min: float | int
-    max: float | int
-    step: float | int
-    default: object
-    canonical: str
-    options: list[str]
-    units: str
-    legacy: str
+    Outputs:
+        dict - copy with defaults filled.
+
+    Guarantees:
+        - Only fills keys present in schema and missing in opts.
+        - Does not mutate inputs.
+
+    Errors:
+        - None.
+    """
+    sch = get_schema(style, canonical=canonical)
+    out = {**opts}
+    for k, meta in sch.items():
+        if k not in out and "default" in meta:
+            out[k] = meta["default"]
+    return out
 
 
 def _coerce_one(v: Any, meta: ControlMeta) -> object:
@@ -90,26 +131,110 @@ def _coerce_one(v: Any, meta: ControlMeta) -> object:
     return v
 
 
-def get_schema(style: str, *, canonical: bool = False) -> Dict[str, ControlMeta]:
-    return _legacy.get_schema(style, canonical=canonical)
-
-
-def apply_defaults(style: str, opts: dict, *, canonical: bool = False) -> dict:
-    return _legacy.apply_defaults(style, opts, canonical=canonical)
-
-
 def sanitize_opts(
     style: str, opts: dict, *, canonical: bool = False
 ) -> Tuple[dict[str, object], list[str]]:
-    return _legacy.sanitize_opts(style, opts, canonical=canonical)
+    """Coerce types, clamp to min/max, and fill defaults.
+
+    Purpose:
+        Create safe, engine/preview-ready option dicts.
+
+    Inputs:
+        style: str
+        opts: dict
+        canonical: bool - interpret keys as canonical if True
+
+    Outputs:
+        (clean_opts, errors):
+            clean_opts: dict - coerced + clamped + defaults-filled
+            errors: list[str] - human-friendly conversion errors encountered
+
+    Guarantees:
+        - Unknown keys are passed through unchanged.
+        - Defaults are applied last.
+
+    Errors:
+        - None (errors collected in list instead of raising).
+    """
+    sch = get_schema(style, canonical=canonical)
+    out: dict[str, object] = {}
+    errors: list[str] = []
+
+    for k, v in opts.items():
+        meta = sch.get(k)
+        if not meta:
+            out[k] = v  # unknown key: pass through (preserve runtime value)
+            continue
+        try:
+            vv = _coerce_one(v, meta)
+            if isinstance(vv, (int, float)):
+                minv = meta.get("min")
+                maxv = meta.get("max")
+                if isinstance(minv, (int, float)):
+                    vv = max(vv, minv)
+                if isinstance(maxv, (int, float)):
+                    vv = min(vv, maxv)
+            out[k] = vv
+        except Exception as e:
+            errors.append(f"{k}: {e}")
+
+    out = apply_defaults(style, out, canonical=canonical)
+    return out, errors
 
 
 def warn_on_legacy_keys(style: str, opts: dict) -> None:
-    return _legacy.warn_on_legacy_keys(style, opts)
+    """Emit a warning for legacy keys that have canonical replacements.
+
+    Purpose:
+        Nudge UI developers toward to_canonical(...) at display time.
+
+    Inputs:
+        style: str
+        opts: dict
+
+    Outputs:
+        None
+
+    Guarantees:
+        - Emits a Python warning only when legacy keys are present.
+
+    Errors:
+        - None.
+    """
+    alias = ALIASES_BY_STYLE.get(style, {})
+    # include both style-specific and global legacy aliases
+    legacy_seen = [k for k in opts if (k in alias) or (k in GLOBAL_ALIASES)]
+    if legacy_seen:
+        warnings.warn(
+            "Legacy keys detected: "
+            + ", ".join(legacy_seen)
+            + ". Prefer canonical names via to_canonical(...).",
+            stacklevel=2,
+        )
 
 
 def validate_keyset(style: str, opts: dict, *, canonical: bool = False) -> list[str]:
-    return _legacy.validate_keyset(style, opts, canonical=canonical)
+    """Return unknown keys relative to the schema.
+
+    Purpose:
+        Aid linting/tests for user presets and imports.
+
+    Inputs:
+        style: str
+        opts: dict
+        canonical: bool
+
+    Outputs:
+        list[str] - keys not present in the schema for the chosen keyspace.
+
+    Guarantees:
+        - Pure function.
+
+    Errors:
+        - None.
+    """
+    sch = get_schema(style, canonical=canonical)
+    return [k for k in opts.keys() if k not in sch]
 
 
 def compress_opts(
@@ -118,26 +243,55 @@ def compress_opts(
     *,
     canonical: bool = True,
     drop_defaults: bool = True,
-    round_to: int | None = 4,
+    round_to: Optional[int] = 4,
 ) -> dict:
-    return _legacy.compress_opts(
-        style, opts, canonical=canonical, drop_defaults=drop_defaults, round_to=round_to
-    )
+    """Return a compact copy of options for export (e.g., YAML).
+
+    Purpose:
+        Keep exports minimal and human-diffable.
+
+    Inputs:
+        style: str
+        opts: dict
+        canonical: bool - interpret as canonical keys if True
+        drop_defaults: bool - omit values equal to schema defaults
+        round_to: Optional[int] - decimal places for floats, or None to keep exact
+
+    Outputs:
+        dict - compacted options
+
+    Guarantees:
+        - Only keys present in opts are returned (minus dropped defaults).
+        - Unknown keys are preserved.
+
+    Errors:
+        - None.
+    """
+    sch = get_schema(style, canonical=canonical)
+    out: dict = {}
+    for k, v in opts.items():
+        # Round value first (if requested)
+        if round_to is not None and isinstance(v, float):
+            v = round(v, round_to)
+        # Fetch and round default the same way before comparing
+        dv = sch.get(k, {}).get("default", None)
+        if drop_defaults and dv is not None:
+            dv_cmp = (
+                round(dv, round_to)
+                if (round_to is not None and isinstance(dv, float))
+                else dv
+            )
+            if v == dv_cmp:
+                continue
+        out[k] = v
+    return out
 
 
-def check_schema_integrity() -> List[str]:
-    return _legacy.check_schema_integrity()
+if __name__ == "__main__":
+    # Allow running the module directly without side effects (import-safe).
+    # Use the private `STYLE_SCHEMAS` here to avoid referencing the
+    # public frozen `STYLE_SCHEMAS` before it is built later in the file.
+    print("pfui.schemas loaded OK. Styles:", ", ".join(sorted(STYLE_SCHEMAS.keys())))
 
 
-__all__ = [
-    "ControlType",
-    "ControlMeta",
-    "_coerce_one",  # exported for backward compatibility with tests
-    "get_schema",
-    "apply_defaults",
-    "sanitize_opts",
-    "warn_on_legacy_keys",
-    "validate_keyset",
-    "compress_opts",
-    "check_schema_integrity",
-]
+# =============================================================================

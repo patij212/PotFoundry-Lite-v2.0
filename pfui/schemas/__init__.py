@@ -46,6 +46,7 @@ from .aliases import (
     get_global_reverse,
     get_reverse_by_style,
 )
+from .base import ControlMeta
 from .data import (
     get_canonical_controls,
     get_canonical_style_schemas,
@@ -53,12 +54,10 @@ from .data import (
     get_style_schemas,
 )
 from .normalize import normalize_style_opts, to_canonical, to_engine
+from .utils import check_schema_integrity, compress_opts
 from .validators import (
-    ControlMeta,
     _coerce_one,  # private but exposed for tests
     apply_defaults,
-    check_schema_integrity,
-    compress_opts,
     get_schema,
     sanitize_opts,
     validate_keyset,
