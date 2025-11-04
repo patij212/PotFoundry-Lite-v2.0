@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Mapping
-from types import MappingProxyType
 
 from .aliases import GLOBAL_ALIASES as _GLOBAL_ALIASES
 from .aliases import ALIASES_BY_STYLE as _ALIASES_BY_STYLE

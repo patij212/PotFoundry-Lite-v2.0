@@ -10,9 +10,7 @@ import math
 # Constants
 TAU = 2.0 * math.pi
 import numpy as np
-from numpy.typing import NDArray
 
-from ...types import StyleOpts
 
 __all__ = ["r_outer_fourier_bloom"]
 

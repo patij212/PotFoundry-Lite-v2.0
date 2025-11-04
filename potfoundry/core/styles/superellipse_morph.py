@@ -7,9 +7,7 @@ from __future__ import annotations
 
 import math
 import numpy as np
-from numpy.typing import NDArray
 
-from ...types import StyleOpts
 
 __all__ = ["r_outer_superellipse_morph"]
 

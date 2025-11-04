@@ -10,16 +10,10 @@ from typing import Any, Dict, cast
 import numpy as np
 from numpy.typing import NDArray
 
-from ...types import StyleOpts
 from ..geometry_helpers import (
     avg3,
     bilateral1d_peak_only,
-    cdiff_theta,
-    cdiff_z,
     med5,
-    median3_circular,
-    smooth_max,
-    smooth_min,
 )
 
 # Type aliases

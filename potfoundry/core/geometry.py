@@ -21,30 +21,15 @@ NDArrayF = NDArray[np.float64]
 
 from ..types import NDArrayFloat, StyleOpts
 from .geometry_helpers import (
-    avg3,
-    bilateral1d_peak_only,
     cdiff_theta,
     cdiff_z,
     dilate_adaptive,
     estimate_shifts,
-    facet_mod_for_tier_scalar,
-    facet_mod_for_tier_vector,
-    lift_valleys,
-    med5,
-    median3_circular,
     roll_rows,
     roll_rows_2d,
-    smooth_max,
-    smooth_min,
 )
 from .styles import (
     STYLES,
-    r_outer_harmonic_ripple,
-    r_outer_spiral_ridges,
-    r_outer_superellipse_morph,
-    r_outer_fourier_bloom,
-    r_outer_superformula_blossom,
-    r_outer_lowpoly_facet,
 )
 
 __all__ = [

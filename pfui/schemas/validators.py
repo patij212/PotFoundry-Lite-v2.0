@@ -6,7 +6,7 @@ from __future__ import annotations
 import warnings
 from typing import Any, Dict, Tuple, cast
 
-from .base import ControlMeta, ControlType
+from .base import ControlMeta
 from .canonical_schemas import CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS
 from .global_controls import GLOBAL_CONTROLS
 from .style_schemas import STYLE_SCHEMAS

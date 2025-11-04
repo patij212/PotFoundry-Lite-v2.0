@@ -13,21 +13,15 @@ from typing import Any, Dict, cast
 TAU = 2.0 * math.pi
 import numpy as np
 import numpy.typing as npt
-from numpy.typing import NDArray
 
 from ...types import StyleOpts, NDArrayFloat
 from ..geometry_helpers import (
     avg3,
-    bilateral1d_peak_only,
-    dilate_adaptive,
-    estimate_shifts,
     facet_mod_for_tier_scalar,
     facet_mod_for_tier_vector,
     lift_valleys,
     med5,
     median3_circular,
-    roll_rows,
-    roll_rows_2d,
     smooth_max,
     smooth_min,
 )
