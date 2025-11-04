@@ -4,7 +4,8 @@ import math
 
 import numpy as np
 
-from potfoundry.core.geometry import base_radius, r_outer_lowpoly_facet
+from potfoundry.core.geometry import base_radius
+from potfoundry.core.styles.lowpoly_facet import r_outer_lowpoly_facet
 
 
 def test_straight_seam_edges_plateau_matches_expected_limit():

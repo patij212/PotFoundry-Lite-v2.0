@@ -28,6 +28,12 @@ from .geometry_helpers import (
     roll_rows,
     roll_rows_2d,
 )
+from .mesh import (
+    MeshQuality,
+    PotDefaults,
+    refine_z_outer_for_seams,
+    theta_grid_cached,
+)
 from .styles import (
     STYLES,
 )
@@ -139,31 +145,6 @@ def base_radius(
         return r
 
 
-# -----------------------------
-# Dataclasses / configuration
-# -----------------------------
-
-
-@dataclass
-class MeshQuality:
-    """Mesh resolution. Higher -> smoother -> more faces -> larger STL."""
-
-    n_theta: int = 168  # angular divisions around the pot
-    n_z: int = 84  # vertical divisions along the height
-
-
-@dataclass
-class PotDefaults:
-    """Default dimensions (mm) for convenience or YAML defaults."""
-
-    height: float = 120.0
-    top_od: float = 140.0
-    bottom_od: float = 90.0
-    wall: float = 3.0
-    bottom: float = 3.0
-    drain: float = 10.0
-    flare_exp: float = 1.1  # >1 flares near the top, <1 near the base
-
 
 # -----------------------------
 # Utilities
@@ -172,94 +153,9 @@ class PotDefaults:
 TAU = 2.0 * math.pi
 
 
-@lru_cache(maxsize=8)
-def _theta_grid_cached(
-    n_theta: int,
-) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    thetas = np.linspace(0.0, TAU, n_theta, endpoint=False)
-    return thetas, np.cos(thetas), np.sin(thetas)
-
-
 # -----------------------------
 # Internal helpers (extracted from build_pot_mesh)
 # -----------------------------
-
-
-def _refine_z_outer_for_seams(
-    z_outer: npt.NDArray[np.float64], H: float, style_opts: dict[str, Any]
-) -> npt.NDArray[np.float64]:
-    """Optionally refine z sampling near LowPolyFacet tier seams.
-
-    Preserves prior behavior by reading LowPolyFacet-related keys from style_opts
-    and inserting additional z-rings around seam planes and window edges.
-
-    Args:
-        z_outer: Base z sampling for the outer wall (uniform grid by default)
-        H: Total height
-        style_opts: Style options dict
-
-    Returns:
-        Refined z array (may be identical to input if no refinement is needed)
-    """
-    try:
-        _tiers = (
-            int(style_opts.get("lp_tiers", 1)) if isinstance(style_opts, dict) else 1
-        )
-        _cut_bot = (
-            float(style_opts.get("lp_cut_bot_deg", 0.0))
-            if isinstance(style_opts, dict)
-            else 0.0
-        )
-        _cut_top = (
-            float(style_opts.get("lp_cut_top_deg", 0.0))
-            if isinstance(style_opts, dict)
-            else 0.0
-        )
-        _has_cuts = (_tiers > 1) and ((_cut_bot > 0.0) or (_cut_top > 0.0))
-        if not (_has_cuts and H > 0):
-            return z_outer
-        h_tier = H / max(1, _tiers)
-        z_win_raw = (
-            float(style_opts.get("lp_cut_z_window_frac", 0.12))
-            if isinstance(style_opts, dict)
-            else 0.12
-        )
-        z_win_frac = (z_win_raw * 0.01) if z_win_raw > 1.0 else z_win_raw
-        z_win = max(1e-6, z_win_frac * h_tier)
-        sampling_boost = (
-            int(style_opts.get("lp_seam_sampling_boost", 2))
-            if isinstance(style_opts, dict)
-            else 2
-        )
-        offs_edge = z_win
-        offs_mid_vals = [0.66 * z_win, 0.33 * z_win]
-        if sampling_boost >= 2:
-            offs_mid_vals.append(0.16 * z_win)
-        if sampling_boost >= 3:
-            offs_mid_vals.append(0.83 * z_win)
-        add_zs: list[float] = []
-        for k in range(1, _tiers):
-            z_seam = (k / _tiers) * H
-            seq = (
-                [-offs_edge]
-                + [-v for v in sorted(offs_mid_vals, reverse=True)]
-                + [0.0]
-                + sorted(offs_mid_vals)
-                + [offs_edge]
-            )
-            for dz in seq:
-                zc = z_seam + dz
-                if (zc > 1e-9) and (zc < H - 1e-9):
-                    add_zs.append(float(zc))
-        if add_zs:
-            z_out = np.unique(
-                np.concatenate([z_outer, np.array(add_zs, dtype=float)])
-            ).astype(float)
-            return z_out
-        return z_outer
-    except Exception:
-        # Fail-safe: keep original uniform z if any issue arises
-        return z_outer
 
 
 def _call_style_r_outer(
@@ -569,7 +465,7 @@ def build_pot_mesh(
     style_opts = dict(style_opts)
 
     # Use cached theta grid (angles, cos, sin) to avoid recomputation
-    thetas, cos_th, sin_th = _theta_grid_cached(int(n_theta))
+    thetas, cos_th, sin_th = theta_grid_cached(int(n_theta))
     # Local typed diagnostic dict placeholder used by verbose diagnostics logic
     # Initialize as empty dict so later diagnostic code can index safely.
     dump: Dict[str, Any] = {}
@@ -585,7 +481,7 @@ def build_pot_mesh(
         )
     assert r_outer_fn is not None
     # Refine sampling around LowPolyFacet tier seams to improve alignment of triangles near cuts
-    z_outer = _refine_z_outer_for_seams(z_outer, H, style_opts)
+    z_outer = refine_z_outer_for_seams(z_outer, H, style_opts)
     z_inner = np.linspace(t_bottom, H, n_z + 1)
 
     verts: list[tuple[float, float, float]] = []

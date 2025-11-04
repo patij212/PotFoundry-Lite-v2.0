@@ -19,9 +19,12 @@ The main entry point is build_pot_mesh() which orchestrates all components.
 
 from __future__ import annotations
 
+from .grid import refine_z_outer_for_seams, theta_grid_cached
+from .parameters import MeshQuality, PotDefaults
+
 __all__ = [
     "MeshQuality",
     "PotDefaults",
+    "theta_grid_cached",
+    "refine_z_outer_for_seams",
 ]
-
-# Will be populated as we extract modules

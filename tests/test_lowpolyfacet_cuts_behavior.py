@@ -4,8 +4,8 @@ import numpy as np
 
 from potfoundry.core.geometry import (
     base_radius,
-    r_outer_lowpoly_facet,
 )
+from potfoundry.core.styles.lowpoly_facet import r_outer_lowpoly_facet
 
 
 def test_lowpolyfacet_cuts_do_not_extend_near_seams():
