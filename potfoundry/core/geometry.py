@@ -31,7 +31,11 @@ from .geometry_helpers import (
 from .mesh import (
     MeshQuality,
     PotDefaults,
+    add_ring_xy,
+    call_style_r_outer,
     refine_z_outer_for_seams,
+    sample_outer_rings,
+    spin_twist_radians,
     theta_grid_cached,
 )
 from .styles import (
@@ -154,154 +158,8 @@ TAU = 2.0 * math.pi
 
 
 # -----------------------------
-# Internal helpers (extracted from build_pot_mesh)
+# Base radius helper (kept in geometry for backward compatibility)
 # -----------------------------
-
-
-def _call_style_r_outer(
-    r_outer_fn: Callable[..., Any],
-    th_in: NDArrayFloat | float,
-    z_in: float,
-    r0_in: float | NDArrayFloat,
-    H_in: float,
-    opts_in: dict,
-) -> NDArrayFloat | float:
-    """Typed wrapper to call a style's r_outer function with scalar/array inputs.
-
-    Normalizes r0 to float when appropriate and returns either a float or
-    NDArray[float] depending on the style function's output.
-    """
-    try:
-        if isinstance(r0_in, np.ndarray):
-            r0_arg: float | NDArrayFloat = r0_in
-        else:
-            r0_arg = float(r0_in)
-    except Exception:
-        r0_arg = float(r0_in)
-    res = r_outer_fn(th_in, z_in, r0_arg, H_in, opts_in)
-    if isinstance(res, np.ndarray):
-        return cast(NDArrayFloat, np.asarray(res, dtype=float))
-    return float(res)
-
-
-def _add_ring_xy(
-    verts: list[tuple[float, float, float]],
-    r_vals: NDArrayFloat,
-    z: float,
-    cTw: float,
-    sTw: float,
-    cos_th: NDArrayFloat,
-    sin_th: NDArrayFloat,
-    n_theta: int,
-) -> npt.NDArray[np.int64]:
-    """Append a ring of XY vertices (rotated by twist) and return the index row."""
-    cx: NDArrayFloat = cos_th * cTw - sin_th * sTw
-    sy: NDArrayFloat = sin_th * cTw + cos_th * sTw
-    xs: list[float] = (r_vals * cx).tolist()
-    ys: list[float] = (r_vals * sy).tolist()
-    start_index: int = len(verts)
-    from itertools import repeat as _repeat
-
-    verts.extend(zip(xs, ys, _repeat(float(z), n_theta)))
-    return np.arange(start_index, start_index + n_theta, dtype=int)
-
-
-def _sample_outer_rings(
-    *,
-    H: float,
-    Rb: float,
-    Rt: float,
-    expn: float,
-    style_opts: dict[str, Any],
-    r_outer_fn: Callable[..., Any],
-    z_outer: npt.NDArray[np.float64],
-    thetas: npt.NDArray[np.float64],
-    cos_th: npt.NDArray[np.float64],
-    sin_th: npt.NDArray[np.float64],
-    n_theta: int,
-    verts: list[tuple[float, float, float]],
-) -> tuple[
-    npt.NDArray[np.int64],
-    list[np.ndarray],
-    float | None,
-    float | None,
-    list[np.ndarray],
-    list[np.ndarray],
-    int,
-    int,
-    list[NDArrayFloat],
-]:
-    """Vectorized sampling of outer rings; appends vertices and returns indices and diagnostics."""
-    outer_idx = np.empty((len(z_outer), n_theta), dtype=int)
-    r_outer_samples_list: list[np.ndarray] = []
-    est_top_od: float | None = None
-    est_bottom_od: float | None = None
-    dbg_seam = (
-        bool(style_opts.get("lp_debug_seam", False))
-        if isinstance(style_opts, dict)
-        else False
-    )
-    dbg_outward_picks = 0
-    dbg_total_picks = 0
-    dbg_samples_collected: list[NDArrayFloat] = []
-    cx_rows_list: list[np.ndarray] = []
-    sy_rows_list: list[np.ndarray] = []
-
-    for i, z in enumerate(z_outer):
-        twist = _spin_twist_radians(float(z), H, style_opts)
-        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
-        r0 = base_radius(float(z), H, Rb, Rt, expn, style_opts)
-        _opts = dict(style_opts)
-        _opts.setdefault("_pf_rb", Rb)
-        _opts.setdefault("_pf_rt", Rt)
-        _opts.setdefault("_pf_expn", expn)
-        r_out_raw = _call_style_r_outer(r_outer_fn, thetas, float(z), r0, H, _opts)
-        r_vals = np.asarray(r_out_raw, dtype=float)
-        cx_ring = cos_th * cTw - sin_th * sTw
-        sy_ring = sin_th * cTw + cos_th * sTw
-        dbg_sample_from_style = _opts.pop("_lp_debug_sample", None)
-        if dbg_seam and dbg_sample_from_style is not None:
-            dbg_samples_collected.append(dbg_sample_from_style)
-        if dbg_seam:
-            tiers = int(_opts.get("lp_tiers", 1))
-            if tiers > 1:
-                t = float(z) / H if H > 0 else 0.0
-                tier_pos = t * tiers
-                k = int(np.floor(tier_pos))
-                eps_z = max(1e-6, 0.002 * H)
-                z_bot = (k / tiers) * H
-                z_top = ((k + 1) / tiers) * H
-                near_seam = (abs(float(z) - z_bot) < eps_z) or (
-                    abs(float(z) - z_top) < eps_z
-                )
-                if near_seam:
-                    dbg_total_picks += int(r_vals.size)
-                    dbg_outward_picks += int(
-                        np.count_nonzero(r_vals > float(r0) + 1e-9)
-                    )
-        outer_idx[i] = _add_ring_xy(
-            verts, r_vals, float(z), cTw, sTw, cos_th, sin_th, n_theta
-        )
-        cx_rows_list.append(np.asarray(cx_ring, dtype=float))
-        sy_rows_list.append(np.asarray(sy_ring, dtype=float))
-        r_outer_samples_list.append(r_vals)
-        max_r = float(np.max(r_vals)) if r_vals.size else 0.0
-        if i == 0:
-            est_bottom_od = 2.0 * max_r
-        if i == (len(z_outer) - 1):
-            est_top_od = 2.0 * max_r
-
-    return (
-        outer_idx,
-        r_outer_samples_list,
-        est_top_od,
-        est_bottom_od,
-        cx_rows_list,
-        sy_rows_list,
-        dbg_outward_picks,
-        dbg_total_picks,
-        dbg_samples_collected,
-    )
 
 
 def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
@@ -368,43 +226,6 @@ def write_ascii_stl(
             f.write("  endfacet\n")
         f.write(f"endsolid {name}\n")
 
-
-# -----------------------------
-# Global twist (“spin”) helpers
-# -----------------------------
-
-
-def _spin_twist_radians(z: float, H: float, opts: StyleOpts | dict[str, Any]) -> float:
-    """
-    Smooth twist angle (in radians) applied to theta at height z.
-    opts (style-agnostic):
-      - spin_turns: total revolutions from base to rim (float, default 0.0)
-      - spin_phase_deg: constant offset in degrees (float, default 0.0)
-      - spin_curve_exp: easing exponent for twist vs height t=z/H (>=0.1, default 1.0)
-    """
-    if H <= 0:
-        return 0.0
-    # Accept canonical aliases if present
-    # TypedDict.get is treated as returning `object` by the type checker; cast
-    # to the expected primitive types so mypy accepts the float/int conversions.
-    turns = float(
-        cast(float, opts.get("spin_turns", opts.get("twist_total_turns", 0.0)))
-    )
-    phase_deg = float(
-        cast(float, opts.get("spin_phase_deg", opts.get("twist_start_angle_deg", 0.0)))
-    )
-    curve = max(
-        0.1,
-        float(
-            cast(
-                float, opts.get("spin_curve_exp", opts.get("twist_ease_exponent", 1.0))
-            )
-        ),
-    )
-    if turns == 0.0 and phase_deg == 0.0:
-        return 0.0
-    t = max(0.0, min(1.0, z / H))
-    return float((phase_deg * math.pi / 180.0) + (turns * TAU) * (t**curve))
 
 
 # -----------------------------
@@ -498,7 +319,7 @@ def build_pot_mesh(
         dbg_outward_picks,
         dbg_total_picks,
         dbg_samples_collected,
-    ) = _sample_outer_rings(
+    ) = sample_outer_rings(
         H=H,
         Rb=Rb,
         Rt=Rt,
@@ -511,6 +332,7 @@ def build_pot_mesh(
         sin_th=sin_th,
         n_theta=n_theta,
         verts=verts,
+        base_radius_fn=base_radius,
     )
 
     # Optional: flow-aware edge reconstruction across (z, theta) for Blossom.
@@ -630,7 +452,7 @@ def build_pot_mesh(
             s0: int = 0
             if twist_comp:
                 twists = np.array(
-                    [_spin_twist_radians(float(z), H, style_opts) for z in z_outer],
+                    [spin_twist_radians(float(z), H, style_opts) for z in z_outer],
                     dtype=float,
                 )
                 # integer column shifts approximating twist per ring
@@ -3034,7 +2856,7 @@ def build_pot_mesh(
     clamp_count = 0
     total_inner_samples = len(z_inner) * n_theta
     for i, z in enumerate(z_inner):
-        twist = _spin_twist_radians(z, H, style_opts)
+        twist = spin_twist_radians(z, H, style_opts)
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
         _opts = dict(style_opts)
@@ -3044,14 +2866,14 @@ def build_pot_mesh(
         # Parity with outer/preview: sample style at raw theta; apply twist only in placement
         # Normalize via the typed wrapper to avoid float/NDArray typing ambiguity
         r_out_vals = np.asarray(
-            _call_style_r_outer(r_outer_fn, thetas, z, r0, H, _opts), dtype=float
+            call_style_r_outer(r_outer_fn, thetas, z, r0, H, _opts), dtype=float
         )
         r_in_vals = r_out_vals - t_wall
         min_allowed = r_drain + 1.0
         clamped = r_in_vals < min_allowed
         clamp_count += int(np.count_nonzero(clamped))
         r_in_vals[clamped] = min_allowed
-        inner_idx[i] = _add_ring_xy(
+        inner_idx[i] = add_ring_xy(
             verts,
             np.asarray(r_in_vals, dtype=float),
             float(z),
@@ -3214,7 +3036,7 @@ def save_preview_png(
         r0 = base_radius(
             z, H, Rb, Rt, expn, style_opts if isinstance(style_opts, dict) else {}
         )
-        twist = _spin_twist_radians(
+        twist = spin_twist_radians(
             z, H, style_opts if isinstance(style_opts, dict) else {}
         )
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))

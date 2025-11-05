@@ -20,11 +20,21 @@ The main entry point is build_pot_mesh() which orchestrates all components.
 from __future__ import annotations
 
 from .grid import refine_z_outer_for_seams, theta_grid_cached
+from .outer_wall import (
+    add_ring_xy,
+    call_style_r_outer,
+    sample_outer_rings,
+    spin_twist_radians,
+)
 from .parameters import MeshQuality, PotDefaults
 
 __all__ = [
     "MeshQuality",
     "PotDefaults",
+    "add_ring_xy",
+    "call_style_r_outer",
     "theta_grid_cached",
     "refine_z_outer_for_seams",
+    "sample_outer_rings",
+    "spin_twist_radians",
 ]
