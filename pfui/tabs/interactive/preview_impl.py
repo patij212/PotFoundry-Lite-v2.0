@@ -29,6 +29,7 @@ try:
     from .preview.cache_management import initialize_preview_cache
     from .preview.utils import to_float_scalar as _to_float_scalar
     from .preview.update_decision import should_update_preview_ui
+    from .preview.signatures import compute_preview_signatures
 except ImportError:
     # Fallback if package structure not available
     def initialize_preview_cache(ss):
@@ -185,73 +186,19 @@ def render_preview_section(preview_mode: str) -> None:
     preview_exists = False
     
     # ==================== SIGNATURE COMPUTATION ====================
-    # Build signatures to classify changes (geometry vs appearance)
-    # Predeclare signature variables with Optional types so assigning None in
-    # exception paths doesn't conflict with the tuple types constructed below.
-    geom_sig: Optional[
-        tuple[float, float, float, float, int, int, str, str, int, int]
-    ] = None
-    app_sig: Optional[
-        tuple[
-            Any,
-            Any,
-            Any,
-            Any,
-            float,
-            float,
-            float,
-            float,
-            float,
-            bool,
-            float,
-            float,
-            float,
-            float,
-            int,
-            bool,
-        ]
-    ] = None
+    # Compute geometry and appearance signatures for change detection
     try:
-        # Use plotting helpers to compute signatures (centralized and testable)
-        from pfui.app_components.plotting import (
-            compute_app_sig,
-            compute_geom_sig,
+        geom_sig, app_sig = compute_preview_signatures(
+            H, Rt, Rb, expn,
+            preview_n_theta, preview_n_z,
+            full_n_theta, full_n_z,
+            style_name, opts_json, ss,
+            show_inner, view_elev, view_azim,
+            fig_w, fig_h, dpi, place_on_ground
         )
-    
-        geom_sig = compute_geom_sig(
-            H,
-            Rt,
-            Rb,
-            expn,
-            preview_n_theta,
-            preview_n_z,
-            style_name,
-            opts_json,
-            full_n_theta,
-            full_n_z,
-        )
-    
-        app_sig = compute_app_sig(
-            cast(Any, ss.get("preview_palette")),
-            cast(Any, ss.get("preview_grad_c1")),
-            cast(Any, ss.get("preview_grad_c2")),
-            cast(Any, ss.get("preview_grad_c3")),
-            _to_float_scalar(ss.get("mesh_ambient", 0.35)),
-            _to_float_scalar(ss.get("mesh_diffuse", 0.95)),
-            _to_float_scalar(ss.get("mesh_specular", 0.25)),
-            _to_float_scalar(ss.get("mesh_roughness", 0.7)),
-            _to_float_scalar(ss.get("mesh_fresnel", 0.2)),
-            bool(show_inner),
-            float(view_elev),
-            float(view_azim),
-            float(fig_w),
-            float(fig_h),
-            int(dpi),
-            bool(place_on_ground),
-        )
-    except Exception:
-        geom_sig = None
-        app_sig = None
+    except NameError:
+        # Fallback if module not imported
+        geom_sig, app_sig = None, None
     
     # Compare with last-run signatures
     last_geom_sig = cast(Optional[tuple], ss.get("_last_preview_geom_sig"))
