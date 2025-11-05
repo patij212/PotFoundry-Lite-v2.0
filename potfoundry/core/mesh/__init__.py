@@ -19,9 +19,33 @@ The main entry point is build_pot_mesh() which orchestrates all components.
 
 from __future__ import annotations
 
+from .diagnostics import calculate_mesh_diagnostics
+from .drain import build_drain_hole
+from .faces import assemble_faces
+from .grid import refine_z_outer_for_seams, theta_grid_cached
+from .inner_wall import generate_inner_wall
+from .outer_wall import (
+    add_ring_xy,
+    call_style_r_outer,
+    sample_outer_rings,
+    spin_twist_radians,
+)
+from .parameters import MeshQuality, PotDefaults
+from .rim import build_inner_wall_faces, build_rim_cap
+
 __all__ = [
     "MeshQuality",
     "PotDefaults",
+    "add_ring_xy",
+    "assemble_faces",
+    "build_drain_hole",
+    "build_inner_wall_faces",
+    "build_rim_cap",
+    "calculate_mesh_diagnostics",
+    "call_style_r_outer",
+    "generate_inner_wall",
+    "theta_grid_cached",
+    "refine_z_outer_for_seams",
+    "sample_outer_rings",
+    "spin_twist_radians",
 ]
-
-# Will be populated as we extract modules

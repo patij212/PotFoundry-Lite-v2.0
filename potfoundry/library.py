@@ -1,15 +1,15 @@
 """Core library publishing functionality.
 
-Handles canonical JSON generation, content hashing, deduplication,
-thumbnail creation, validation, and publish workflow.
+Handles thumbnail creation, publish workflow, and listing.
+
+Note: Validation, hashing, and rate limiting have been extracted to
+potfoundry.library package for better modularity. This module maintains
+backward compatibility.
 """
 
 from __future__ import annotations
 
 import gzip
-import hashlib
-import json
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -35,29 +35,29 @@ from potfoundry.integrations.supabase_client import (
     get_singleton_client,
 )
 
-# Constants
-APP_VERSION = "2.0.0"
-MAX_TITLE_LENGTH = 120
-MAX_TAGS = 10
-MAX_TAG_LENGTH = 24
-MAX_STL_SIZE_MB = 25
-MAX_TRIANGLE_COUNT = 5_000_000
+# Import from library package for modularity
+from .library import (
+    ALLOWED_LICENSES,
+    APP_VERSION,
+    BLOCKLIST_PATTERNS,
+    MAX_STL_SIZE_MB,
+    MAX_TAG_LENGTH,
+    MAX_TAGS,
+    MAX_TITLE_LENGTH,
+    MAX_TRIANGLE_COUNT,
+    canonical_payload,
+    check_rate_limit,
+    content_id,
+    record_publish,
+    validate_license,
+    validate_stl_size,
+    validate_tags,
+    validate_title,
+    validate_triangle_count,
+)
+
+# Local constant not in library package
 GZIP_THRESHOLD_MB = 1
-
-# Blocklist for inappropriate content (expandable)
-BLOCKLIST_PATTERNS = [
-    r"\b(spam|test123|asdf|xxx)\b",  # Common spam/test patterns
-]
-
-# Allowed licenses
-ALLOWED_LICENSES = [
-    "CC BY-NC 4.0",
-    "CC BY 4.0",
-    "CC BY-SA 4.0",
-    "CC0 1.0",
-    "MIT",
-    "Apache 2.0",
-]
 
 
 @dataclass
@@ -72,242 +72,10 @@ class PublishResult:
     error: Optional[str] = None
 
 
-# ============================================================
-# Canonical JSON & Hashing
-# ============================================================
 
 
-def _round_float(value: float, precision: int = 6) -> float:
-    """Round float to specified precision, removing trailing zeros."""
-    return round(value, precision)
 
 
-def _normalize_dict(d: dict[str, Any], precision: int = 6) -> dict[str, Any]:
-    """Recursively normalize dictionary: round floats, sort keys."""
-    result: dict[str, Any] = {}
-    for key in sorted(d.keys()):
-        value = d[key]
-        if isinstance(value, dict):
-            # child dicts normalize to dict[str, Any]
-            result[key] = _normalize_dict(value, precision)
-        elif isinstance(value, (list, tuple)):
-            # normalize list/tuple entries; ensure Any typing for heterogenous lists
-            out_list: List[Any] = []
-            for v in value:
-                if isinstance(v, dict):
-                    out_list.append(_normalize_dict(v, precision))
-                elif isinstance(v, float):
-                    out_list.append(_round_float(v, precision))
-                else:
-                    out_list.append(v)
-            result[key] = out_list
-        elif isinstance(value, float):
-            result[key] = _round_float(value, precision)
-        else:
-            result[key] = value
-    return result
-
-
-def canonical_payload(
-    style: str,
-    size: dict,
-    opts: dict,
-    mesh: dict,
-    diagnostics: dict,
-    license: str,
-    version: str = APP_VERSION,
-) -> dict:
-    """Generate canonical payload with normalized floats and sorted keys.
-
-    Args:
-        style: Style name (e.g., "HarmonicRipple")
-        size: Size parameters dict
-        opts: Style-specific options dict
-        mesh: Mesh quality parameters dict
-        diagnostics: Diagnostics dict (triangle count, etc.)
-        license: License identifier
-        version: App version string
-
-    Returns:
-        Canonical payload dictionary
-    """
-    payload = {
-        "version": version,
-        "style": style,
-        "size": _normalize_dict(size),
-        "opts": _normalize_dict(opts),
-        "mesh": _normalize_dict(mesh),
-        "diagnostics": _normalize_dict(diagnostics),
-        "license": license,
-    }
-    return payload
-
-
-def content_id(payload: dict) -> str:
-    """Generate content-addressed ID (sha256 of canonical JSON).
-
-    Args:
-        payload: Canonical payload dictionary
-
-    Returns:
-        Hex-encoded sha256 hash (64 characters)
-    """
-    # Serialize to canonical JSON (sorted keys, no whitespace)
-    canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-
-    # Hash UTF-8 bytes
-    hash_bytes = hashlib.sha256(canonical_json.encode("utf-8")).digest()
-
-    # Return hex string
-    return hash_bytes.hex()
-
-
-# ============================================================
-# Validation
-# ============================================================
-
-
-def validate_title(title: str) -> Tuple[bool, Optional[str]]:
-    """Validate title string.
-
-    Returns:
-        (is_valid, error_message)
-    """
-    if not title:
-        return False, "Title cannot be empty"
-
-    if len(title) > MAX_TITLE_LENGTH:
-        return False, f"Title exceeds {MAX_TITLE_LENGTH} characters"
-
-    # Check blocklist
-    for pattern in BLOCKLIST_PATTERNS:
-        if re.search(pattern, title, re.IGNORECASE):
-            return False, "Title contains inappropriate content"
-
-    return True, None
-
-
-def validate_tags(tags: List[str]) -> Tuple[bool, Optional[str]]:
-    """Validate tags list.
-
-    Returns:
-        (is_valid, error_message)
-    """
-    if len(tags) > MAX_TAGS:
-        return False, f"Maximum {MAX_TAGS} tags allowed"
-
-    for tag in tags:
-        if len(tag) > MAX_TAG_LENGTH:
-            return False, f"Tag '{tag}' exceeds {MAX_TAG_LENGTH} characters"
-
-        # Only alphanumeric, dash, underscore
-        if not re.match(r"^[A-Za-z0-9_-]+$", tag):
-            return (
-                False,
-                f"Tag '{tag}' contains invalid characters (use A-Z, 0-9, -, _)",
-            )
-
-        # Check blocklist
-        for pattern in BLOCKLIST_PATTERNS:
-            if re.search(pattern, tag, re.IGNORECASE):
-                return False, f"Tag '{tag}' contains inappropriate content"
-
-    return True, None
-
-
-def validate_license(license: str) -> Tuple[bool, Optional[str]]:
-    """Validate license identifier.
-
-    Returns:
-        (is_valid, error_message)
-    """
-    if license not in ALLOWED_LICENSES:
-        return False, f"License must be one of: {', '.join(ALLOWED_LICENSES)}"
-
-    return True, None
-
-
-def validate_stl_size(stl_bytes: bytes) -> Tuple[bool, Optional[str]]:
-    """Validate STL file size.
-
-    Returns:
-        (is_valid, error_message)
-    """
-    size_mb = len(stl_bytes) / (1024 * 1024)
-
-    if size_mb > MAX_STL_SIZE_MB:
-        return False, f"STL file too large: {size_mb:.1f}MB (max {MAX_STL_SIZE_MB}MB)"
-
-    return True, None
-
-
-def validate_triangle_count(diagnostics: dict) -> Tuple[bool, Optional[str]]:
-    """Validate triangle count from diagnostics.
-
-    Returns:
-        (is_valid, error_message)
-    """
-    triangle_count = diagnostics.get("triangle_count", 0)
-
-    if triangle_count > MAX_TRIANGLE_COUNT:
-        return (
-            False,
-            f"Triangle count too high: {triangle_count:,} (max {MAX_TRIANGLE_COUNT:,})",
-        )
-
-    return True, None
-
-
-# ============================================================
-# Rate Limiting
-# ============================================================
-
-
-def check_rate_limit() -> Tuple[bool, Optional[str]]:
-    """Check if user can publish (client-side rate limiting).
-
-    Returns:
-        (can_publish, error_message)
-    """
-    if not HAS_STREAMLIT or st is None:
-        return True, None
-
-    # Get publish history from session state
-    publish_times = st.session_state.get("_library_publish_times", [])
-
-    # Clean old entries (> 60 seconds ago)
-    now = datetime.now().timestamp()
-    recent_times = [t for t in publish_times if now - t < 60]
-
-    # Check burst limit (5 per 60 seconds)
-    if len(recent_times) >= 5:
-        return False, "Rate limit exceeded. Please wait before publishing again."
-
-    # Check minimum interval (10 seconds)
-    if recent_times and (now - recent_times[-1]) < 10:
-        wait_seconds = int(10 - (now - recent_times[-1]))
-        return False, f"Please wait {wait_seconds} seconds before publishing again."
-
-    return True, None
-
-
-def record_publish() -> None:
-    """Record a publish event for rate limiting.
-
-    This function mutates Streamlit's `session_state` to append a timestamp of
-    the publish event. It intentionally returns None.
-    """
-    if not HAS_STREAMLIT or st is None:
-        return
-
-    publish_times = st.session_state.get("_library_publish_times", [])
-    publish_times.append(datetime.now().timestamp())
-
-    # Keep only recent entries
-    now = datetime.now().timestamp()
-    st.session_state["_library_publish_times"] = [
-        t for t in publish_times if now - t < 120
-    ]
 
 
 # ============================================================

@@ -2,14 +2,30 @@
 
 Provides graceful degradation when Supabase is not configured.
 Wraps storage and database operations with error handling and retries.
+
+Note: Core types and utilities have been extracted to potfoundry.integrations.supabase
+package for better modularity. This module maintains backward compatibility.
 """
 
 from __future__ import annotations
 
 import os
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast  # noqa: E402
+
+# Import from supabase package for modularity
+from .supabase import (
+    DatabaseError,
+    LibraryError,
+    NotConfiguredClient,
+    NotConfiguredError,
+    SupabaseConfig,
+    UploadError,
+    emit_tls_override_warning as _emit_tls_override_warning,
+    is_disabled_via_secrets as _is_disabled_via_secrets,
+    looks_like_invalid_key as _looks_like_invalid_key,
+    should_skip_tls_verify as _should_skip_tls_verify,
+)
 
 if TYPE_CHECKING:
     import streamlit as st
@@ -24,72 +40,12 @@ else:
         HAS_STREAMLIT = False
         st = None
 
-_tls_warning_emitted: bool = False
-
 # NOTE: supabase_client uses `requests` as a lightweight runtime fallback when
 # `supabase` (supabase-py) is not installed. Historically mypy reported
 # `import-untyped` / `import-not-found` for `requests` in CI/dev. We add a
 # targeted ignore for import-not-found where requests is imported dynamically
 # below; we also added `types-requests` to `requirements-dev.txt` so dev
 # environments can install the stubs to fully silence mypy locally.
-
-
-@dataclass
-class SupabaseConfig:
-    """Supabase connection configuration.
-
-    key may be a service_role for full access or anon key for read-only.
-    """
-
-    url: str
-    key: str
-    bucket: str
-
-
-class LibraryError(Exception):
-    """Base exception for library operations."""
-
-    pass
-
-
-class NotConfiguredError(LibraryError):
-    """Raised when Supabase is not configured."""
-
-    pass
-
-
-class UploadError(LibraryError):
-    """Raised when file upload fails."""
-
-    pass
-
-
-class DatabaseError(LibraryError):
-    """Raised when database operation fails."""
-
-    pass
-
-
-class NotConfiguredClient:
-    """Placeholder client when Supabase is not configured."""
-
-    def upload_bytes(self, *args, **kwargs):
-        raise NotConfiguredError("Supabase not configured")
-
-    def upsert_row(self, *args, **kwargs):
-        raise NotConfiguredError("Supabase not configured")
-
-    def select_rows(self, *args, **kwargs):
-        raise NotConfiguredError("Supabase not configured")
-
-    def is_configured(self) -> bool:
-        return False
-
-    def delete_rows(self, *args, **kwargs):
-        raise NotConfiguredError("Supabase not configured")
-
-    def update_rows(self, *args, **kwargs):
-        raise NotConfiguredError("Supabase not configured")
 
 
 class SupabaseClient:
@@ -523,80 +479,6 @@ class SupabaseClient:
                     )
                 time.sleep(2**attempt * 0.5)
         raise DatabaseError("Delete failed")
-
-
-def _is_disabled_via_secrets() -> bool:
-    if HAS_STREAMLIT and st is not None:
-        try:
-            val = str(st.secrets.get("DISABLE_LIBRARY", "0")).strip()
-            return val == "1"
-        except Exception:
-            return False
-    return False
-
-
-def _should_skip_tls_verify() -> bool:
-    """Return True when TLS verification should be skipped (explicit opt-in)."""
-    for key in (
-        "SUPABASE_SKIP_TLS_VERIFY",
-        "STREAMLIT_SUPABASE_SKIP_TLS_VERIFY",
-        "SUPABASE_ALLOW_INSECURE",
-    ):
-        val = os.environ.get(key)
-        if isinstance(val, str) and val.strip().lower() in {"1", "true", "yes", "on"}:
-            return True
-    if HAS_STREAMLIT and st is not None:
-        try:
-            secrets = st.secrets.get("connections", {}).get("supabase", {})
-            raw = secrets.get("skip_tls_verify") or secrets.get("allow_insecure_tls")
-            if isinstance(raw, bool):
-                return raw
-            if isinstance(raw, str) and raw.strip().lower() in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }:
-                return True
-        except Exception:
-            return False
-    return False
-
-
-def _emit_tls_override_warning() -> None:
-    """Warn once that TLS verification has been disabled."""
-    global _tls_warning_emitted
-    if _tls_warning_emitted:
-        return
-    _tls_warning_emitted = True
-    message = (
-        "⚠️ Supabase TLS certificate verification is disabled. "
-        "Only use this in trusted environments."
-    )
-    if HAS_STREAMLIT and st is not None:
-        try:
-            st.warning(message)
-            return
-        except Exception:
-            pass
-    print(message)
-
-
-def _looks_like_invalid_key(key: Optional[str]) -> bool:
-    """Return True when a key is definitely invalid (placeholder/empty).
-
-    Accept both JWT-like keys (eyJ...) and srv- prefixed keys.
-    """
-    if not key:
-        return True
-    k = str(key).strip()
-    if not k or "REPLACE_WITH" in k:
-        return True
-    # Accept common formats: JWT (eyJ...) or 'srv-' prefixed
-    if k.startswith("eyJ") or k.startswith("srv-"):
-        return False
-    # Fallback: accept anything reasonably long
-    return len(k) < 20
 
 
 def get_client() -> SupabaseClient | NotConfiguredClient:
