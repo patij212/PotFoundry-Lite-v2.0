@@ -32,6 +32,8 @@ from .mesh import (
     MeshQuality,
     PotDefaults,
     add_ring_xy,
+    build_inner_wall_faces,
+    build_rim_cap,
     call_style_r_outer,
     generate_inner_wall,
     refine_z_outer_for_seams,
@@ -2875,24 +2877,12 @@ def build_pot_mesh(
     )
 
     # Vectorized faces for inner wall (choose winding to also point outward-from-center)
-    # rows_in = len(z_inner) - 1  # Computed but not used - kept for clarity
-    vi00 = inner_idx[:-1, :][:, j_idx]
-    vi01 = inner_idx[:-1, :][:, jn]
-    vi10 = inner_idx[1:, :][:, j_idx]
-    vi11 = inner_idx[1:, :][:, jn]
-    tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
-    tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
+    tri_in1, tri_in2 = build_inner_wall_faces(inner_idx, j_idx, jn)
     faces_out_parts.append(tri_in1)
     faces_out_parts.append(tri_in2)
 
     # ---- Rim cap
-    outer_top = outer_idx[-1]
-    inner_top = inner_idx[-1]
-    v00 = outer_top[j_idx]
-    v01 = outer_top[jn]
-    # Intermediate variables vi0, vi1 computed but not used - kept for clarity
-    tri_rim1 = np.stack([outer_top[j_idx], inner_top[j_idx], inner_top[jn]], axis=1)
-    tri_rim2 = np.stack([outer_top[j_idx], inner_top[jn], outer_top[jn]], axis=1)
+    tri_rim1, tri_rim2 = build_rim_cap(outer_idx, inner_idx, j_idx, jn)
     faces_out_parts.append(tri_rim1)
     faces_out_parts.append(tri_rim2)
 

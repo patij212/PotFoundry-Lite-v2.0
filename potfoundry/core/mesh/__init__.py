@@ -28,11 +28,14 @@ from .outer_wall import (
     spin_twist_radians,
 )
 from .parameters import MeshQuality, PotDefaults
+from .rim import build_inner_wall_faces, build_rim_cap
 
 __all__ = [
     "MeshQuality",
     "PotDefaults",
     "add_ring_xy",
+    "build_inner_wall_faces",
+    "build_rim_cap",
     "call_style_r_outer",
     "generate_inner_wall",
     "theta_grid_cached",
