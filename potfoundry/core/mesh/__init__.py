@@ -20,6 +20,7 @@ The main entry point is build_pot_mesh() which orchestrates all components.
 from __future__ import annotations
 
 from .grid import refine_z_outer_for_seams, theta_grid_cached
+from .inner_wall import generate_inner_wall
 from .outer_wall import (
     add_ring_xy,
     call_style_r_outer,
@@ -33,6 +34,7 @@ __all__ = [
     "PotDefaults",
     "add_ring_xy",
     "call_style_r_outer",
+    "generate_inner_wall",
     "theta_grid_cached",
     "refine_z_outer_for_seams",
     "sample_outer_rings",

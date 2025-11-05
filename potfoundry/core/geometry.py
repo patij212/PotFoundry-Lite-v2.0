@@ -33,6 +33,7 @@ from .mesh import (
     PotDefaults,
     add_ring_xy,
     call_style_r_outer,
+    generate_inner_wall,
     refine_z_outer_for_seams,
     sample_outer_rings,
     spin_twist_radians,
@@ -2852,37 +2853,26 @@ def build_pot_mesh(
     faces_out_parts.append(tri2)
 
     # ---- Inner wall rings (clamp near drain)
-    inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
-    clamp_count = 0
-    total_inner_samples = len(z_inner) * n_theta
-    for i, z in enumerate(z_inner):
-        twist = spin_twist_radians(z, H, style_opts)
-        cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
-        r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
-        _opts = dict(style_opts)
-        _opts.setdefault("_pf_rb", Rb)
-        _opts.setdefault("_pf_rt", Rt)
-        _opts.setdefault("_pf_expn", expn)
-        # Parity with outer/preview: sample style at raw theta; apply twist only in placement
-        # Normalize via the typed wrapper to avoid float/NDArray typing ambiguity
-        r_out_vals = np.asarray(
-            call_style_r_outer(r_outer_fn, thetas, z, r0, H, _opts), dtype=float
-        )
-        r_in_vals = r_out_vals - t_wall
-        min_allowed = r_drain + 1.0
-        clamped = r_in_vals < min_allowed
-        clamp_count += int(np.count_nonzero(clamped))
-        r_in_vals[clamped] = min_allowed
-        inner_idx[i] = add_ring_xy(
-            verts,
-            np.asarray(r_in_vals, dtype=float),
-            float(z),
-            cTw,
-            sTw,
-            cos_th,
-            sin_th,
-            n_theta,
-        )
+    inner_idx, clamp_count, total_inner_samples = generate_inner_wall(
+        H=H,
+        Rb=Rb,
+        Rt=Rt,
+        expn=expn,
+        t_wall=t_wall,
+        r_drain=r_drain,
+        style_opts=style_opts,
+        r_outer_fn=r_outer_fn,
+        z_inner=z_inner,
+        thetas=thetas,
+        cos_th=cos_th,
+        sin_th=sin_th,
+        n_theta=n_theta,
+        verts=verts,
+        base_radius_fn=base_radius,
+        spin_twist_radians_fn=spin_twist_radians,
+        call_style_r_outer_fn=call_style_r_outer,
+        add_ring_xy_fn=add_ring_xy,
+    )
 
     # Vectorized faces for inner wall (choose winding to also point outward-from-center)
     # rows_in = len(z_inner) - 1  # Computed but not used - kept for clarity
