@@ -2,6 +2,9 @@
 
 This module contains all preview rendering logic including array generation,
 mesh building, Plotly visualization, PNG fallbacks, and update orchestration.
+
+NOTE: This file contains a large monolithic function that should be further
+decomposed. See docs/refactoring/PREVIEW_DECOMPOSITION_STATUS.md for details.
 """
 
 from __future__ import annotations
@@ -20,6 +23,18 @@ from pfui.imports import STYLES, WRITE_STL_BINARY, build_pot_mesh
 from pfui.preview import make_preview_arrays, render_preview_png_cached
 import pfui.schemas as SC
 from pfui.state import widget_key
+
+# Import extracted preview modules
+try:
+    from .preview.cache_management import initialize_preview_cache
+except ImportError:
+    # Fallback if package structure not available
+    def initialize_preview_cache(ss):
+        ss.setdefault("_last_surface_png", None)
+        ss.setdefault("_last_surface_fig_json", None)
+        ss.setdefault("_last_mesh_png", None)
+        ss.setdefault("_last_mesh_fig_json", None)
+        ss.setdefault("_preview_stale", False)
 
 # Check if Plotly is available
 try:
@@ -183,6 +198,7 @@ def render_preview_section(preview_mode: str) -> None:
             # best-effort; ignore failures
             pass
     
+    # ==================== STYLE FUNCTION SETUP ====================
     # Style function can handle scalar or vector theta; cast for type-checker
     # Accept scalar float or any array-like for theta input/return to satisfy Pylance without optional numpy typing
     ROuterFn = Callable[
@@ -212,14 +228,10 @@ def render_preview_section(preview_mode: str) -> None:
     full_n_theta = max(16, min(1024, target_n_theta))
     full_n_z = max(8, min(1024, target_n_z))
     
+    # ==================== CACHE INITIALIZATION ====================
     # Initialize preview cache & stale flag so manual mode can keep showing
     # the last generated preview until the user explicitly updates it.
-    # Keep separate caches for surface (fast) and mesh (exact) previews
-    ss.setdefault("_last_surface_png", None)
-    ss.setdefault("_last_surface_fig_json", None)
-    ss.setdefault("_last_mesh_png", None)
-    ss.setdefault("_last_mesh_fig_json", None)
-    ss.setdefault("_preview_stale", False)
+    initialize_preview_cache(ss)
     
     # Early placeholders so we can render the cached preview when needed.
     preview_placeholder = st.empty()
@@ -235,6 +247,7 @@ def render_preview_section(preview_mode: str) -> None:
     # In manual mode we must NOT recalculate or render previews automatically.
     preview_exists = False
     
+    # ==================== SIGNATURE COMPUTATION ====================
     # Build signatures to classify changes (geometry vs appearance)
     # Predeclare signature variables with Optional types so assigning None in
     # exception paths doesn't conflict with the tuple types constructed below.
