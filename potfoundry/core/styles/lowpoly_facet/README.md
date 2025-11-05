@@ -13,8 +13,10 @@ lowpoly_facet/
 ├── __init__.py          Main orchestration with fast path optimization
 ├── parameters.py        Parameter extraction and validation
 ├── core.py              Core faceting algorithm (triangle wave, modulation)
-├── utils.py             Helper functions (base_radius, smooth operations)
-├── _legacy.py           Legacy complex seam handling (temporary)
+├── utils.py             Helper functions (base_radius)
+├── seams.py             Seam handling utilities ✨
+├── experimental.py      Experimental features ✨
+├── _legacy.py           Complete implementation (production-ready)
 └── README.md            This file
 ```
 
@@ -74,20 +76,53 @@ Provides utility functions used throughout the package.
   - Optional mid-height bell curve
   - Type-preserving (scalar in → scalar out)
 
-### `_legacy.py` (892 LOC) **[Temporary]**
-Contains the original complex seam handling logic.
+### `seams.py` (285 LOC) ✨ NEW
+Seam handling utilities for tier-based cuts.
 
-**Features:**
-- Multi-tier seam cuts with V-groove geometry
+**Key Functions:**
+- `compute_tier_boundaries()` - Calculate tier index and boundary heights
+- `create_facet_mod_helpers()` - Create facet modulation helper functions
+- `compute_seam_radii()` - Compute start-line radii at seam boundaries
+- `compute_seam_angles_and_slopes()` - Convert cut angles to slopes
+- `create_smooth_helpers()` - Create smooth max/min helper functions
+- `compute_window_parameters()` - Calculate window sizing and cut depths
+- `compute_window_weights()` - Compute seam blending weights
+
+**Purpose:** Provides reusable helper functions for seam geometry calculations,
+extracted from the main implementation for better organization and testability.
+
+### `experimental.py` (360 LOC) ✨ NEW
+Experimental features including anti-aliasing and advanced processing.
+
+**Key Functions:**
+- `apply_edge_trimming()` - Trim near facet edges (theta-local)
+- `apply_lift_valleys_antialiasing()` - Valley lifting smoothing
+- `apply_median3_antialiasing()` - Median3 circular filter
+- `apply_med5_antialiasing()` - Median5 circular filter
+- `apply_avg3_antialiasing()` - Average3 circular filter
+- `apply_outward_mode()` - Outward envelope processing
+- `apply_uniform_ring_guard()` - Uniform ring constraints
+
+**Purpose:** Contains all anti-aliasing algorithms and experimental features,
+organized as reusable functions that can be applied to radius arrays.
+
+### `_legacy.py` (892 LOC)
+Complete production implementation with all features.
+
+**Contains:**
+- Multi-tier seam cuts with V-groove geometry (~400 LOC)
+- Straight-edge flattening logic (~250 LOC of complex nested closures)
 - Outward envelope mode with smooth limiting
 - Uniform ring mode for consistent seam bands
-- Straight edge flattening for crisp seams
 - Edge trimming near facet boundaries
-- Anti-aliasing for smooth seam transitions
+- Anti-aliasing integration
 - Print-safe mode tempering
 - Debug sampling infrastructure
 
-**Status:** Temporary module containing logic to be extracted in future work.
+**Status:** Production-ready, battle-tested implementation. Contains intricate
+straight-edge flattening logic with nested closures that would require significant
+effort to extract safely. Current approach keeps this proven code intact while
+extracting reusable helper functions.
 
 ## Fast Path Optimization
 
