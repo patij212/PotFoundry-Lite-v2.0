@@ -14,8 +14,8 @@ TAU = 2.0 * math.pi
 import numpy as np
 import numpy.typing as npt
 
-from ...types import StyleOpts, NDArrayFloat
-from ..geometry_helpers import (
+from ....types import StyleOpts, NDArrayFloat
+from ...geometry_helpers import (
     avg3,
     facet_mod_for_tier_scalar,
     facet_mod_for_tier_vector,
