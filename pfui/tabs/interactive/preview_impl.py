@@ -27,6 +27,7 @@ from pfui.state import widget_key
 # Import extracted preview modules
 try:
     from .preview.cache_management import initialize_preview_cache
+    from .preview.utils import to_float_scalar as _to_float_scalar
 except ImportError:
     # Fallback if package structure not available
     def initialize_preview_cache(ss):
@@ -35,6 +36,36 @@ except ImportError:
         ss.setdefault("_last_mesh_png", None)
         ss.setdefault("_last_mesh_fig_json", None)
         ss.setdefault("_preview_stale", False)
+    
+    # Fallback to_float_scalar if import fails
+    def _to_float_scalar(x: Any) -> float:
+        """Coerce x to a float in a defensive way."""
+        def _unwrap(v):
+            if isinstance(v, (list, tuple)):
+                try:
+                    return v[0]
+                except Exception:
+                    return v
+            return v
+        
+        try:
+            v = _unwrap(x)
+            if isinstance(v, (int, float)):
+                return float(v)
+            if isinstance(v, (str, bytes)):
+                try:
+                    return float(v)
+                except Exception:
+                    return 0.0
+            try:
+                return float(v)
+            except Exception:
+                return 0.0
+        except Exception:
+            try:
+                return float(x)
+            except Exception:
+                return 0.0
 
 # Check if Plotly is available
 try:
@@ -43,36 +74,6 @@ try:
 except Exception:
     HAS_PLOTLY = False
     go = cast(Any, None)
-
-
-def _to_float_scalar(x: Any) -> float:
-    """Coerce x to a float in a defensive way."""
-    def _unwrap(v):
-        if isinstance(v, (list, tuple)):
-            try:
-                return v[0]
-            except Exception:
-                return v
-        return v
-    
-    try:
-        v = _unwrap(x)
-        if isinstance(v, (int, float)):
-            return float(v)
-        if isinstance(v, (str, bytes)):
-            try:
-                return float(v)
-            except Exception:
-                return 0.0
-        try:
-            return float(v)
-        except Exception:
-            return 0.0
-    except Exception:
-        try:
-            return float(x)
-        except Exception:
-            return 0.0
 
 
 def render_preview_section(preview_mode: str) -> None:
