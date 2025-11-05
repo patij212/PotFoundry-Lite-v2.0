@@ -60,6 +60,33 @@ def r_outer_lowpoly_facet(
         For simple faceting (no cuts/experimental features), uses fast path.
         For complex features (seam cuts, edge trim), delegates to full algorithm.
     """
-    # Delegate to original function for now
-    # TODO: Gradually migrate seam and experimental logic to dedicated modules
+    import math
+    
+    # Extract parameters
+    params = extract_params(opts)
+    
+    # Check if we need complex features
+    needs_complex = (
+        params.use_outward or 
+        has_cuts(params) or 
+        has_edge_cut(params)
+    )
+    
+    # Fast path for simple faceting (no cuts or experimental features)
+    if not needs_complex:
+        # Compute tier index
+        t = z / H if H > 0 else 0.0
+        tier_idx = int(min(params.tiers - 1, max(0, math.floor(t * params.tiers))))
+        
+        # Compute basic faceted radius using extracted modules
+        tri_s, f, p = compute_basic_facet_radius(theta, r0, params, tier_idx)
+        
+        # Apply modulation
+        out = r0 * f
+        
+        # Preserve scalar return behavior
+        return float(out) if np.isscalar(theta) else out
+    
+    # Complex path: delegate to legacy implementation
+    # TODO: Extract seam and experimental logic to dedicated modules
     return _r_outer_lowpoly_facet_original(theta, z, r0, H, opts)
