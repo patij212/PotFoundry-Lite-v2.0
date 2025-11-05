@@ -1,0 +1,285 @@
+"""
+Seam handling for LowPolyFacet style.
+
+This module contains the logic for creating and managing seam cuts
+between tiers, including V-groove geometry, window weights, and
+straight edge flattening.
+"""
+from __future__ import annotations
+
+import math
+from typing import Any, Callable, Dict, Tuple
+
+import numpy as np
+import numpy.typing as npt
+
+from ....types import NDArrayFloat
+from ...geometry_helpers import (
+    facet_mod_for_tier_scalar,
+    facet_mod_for_tier_vector,
+    smooth_max,
+    smooth_min,
+)
+from .utils import base_radius
+
+
+def compute_tier_boundaries(
+    z: float,
+    H: float,
+    tiers: int
+) -> Tuple[int, float, float]:
+    """Compute tier index and boundary heights for current position.
+    
+    Args:
+        z: Current height in mm
+        H: Total pot height in mm
+        tiers: Number of tiers
+        
+    Returns:
+        Tuple of (tier_index, z_bottom, z_top)
+    """
+    t = z / H if H > 0 else 0.0
+    tier_pos = t * tiers
+    k = int(np.floor(tier_pos))
+    k = min(max(k, 0), tiers - 1)
+    z_bot = (k / tiers) * H
+    z_top = ((k + 1) / tiers) * H
+    return k, z_bot, z_top
+
+
+def create_facet_mod_helpers(
+    th: npt.NDArray[np.float64],
+    facets: int,
+    jitter_amt: float,
+    phase: float,
+    p: float,
+    amp: float,
+    outward_dir: bool
+) -> Tuple[Callable[[int], np.ndarray], Callable[[float, int], float]]:
+    """Create helper functions for facet modulation at different tiers.
+    
+    Args:
+        th: Theta array
+        facets: Number of facets
+        jitter_amt: Jitter amount
+        phase: Phase offset
+        p: Power for bevel
+        amp: Amplitude
+        outward_dir: Direction flag
+        
+    Returns:
+        Tuple of (vector_function, scalar_function)
+    """
+    def _facet_mod_for_tier(tier_index: int) -> np.ndarray:
+        return facet_mod_for_tier_vector(
+            th, tier_index, facets, jitter_amt, phase, p, amp, outward_dir
+        )
+    
+    def _facet_mod_scalar(theta_scalar: float, tier_index: int) -> float:
+        return facet_mod_for_tier_scalar(
+            theta_scalar, tier_index, facets, jitter_amt, phase, p, amp, outward_dir
+        )
+    
+    return _facet_mod_for_tier, _facet_mod_scalar
+
+
+def compute_seam_radii(
+    z_bot: float,
+    z_top: float,
+    H: float,
+    r0: float,
+    k: int,
+    tiers: int,
+    facet_mod_for_tier: Callable[[int], np.ndarray],
+    opts: Dict
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute start-line radii at seam boundaries.
+    
+    Args:
+        z_bot: Bottom of tier in mm
+        z_top: Top of tier in mm
+        H: Total height in mm
+        r0: Base radius at current height
+        k: Current tier index
+        tiers: Total number of tiers
+        facet_mod_for_tier: Function to get modulation for a tier
+        opts: Style options
+        
+    Returns:
+        Tuple of (R_start_bot, R_start_top) arrays
+    """
+    Rb = float(opts.get("_pf_rb", 0.0))
+    Rt = float(opts.get("_pf_rt", 0.0))
+    expn = float(opts.get("_pf_expn", 1.0))
+    
+    r0_bot = base_radius(
+        z_bot, H, Rb if Rb > 0 else r0, Rt if Rt > 0 else r0, expn, opts
+    )
+    r0_top = base_radius(
+        z_top, H, Rb if Rb > 0 else r0, Rt if Rt > 0 else r0, expn, opts
+    )
+    
+    # Start-line radii at seams: R_start = max(R_lo, R_hi)
+    f_k = facet_mod_for_tier(k)
+    s_k_at_bot = r0_bot * f_k
+    s_k_at_top = r0_top * f_k
+    
+    if k > 0:
+        f_km1 = facet_mod_for_tier(k - 1)
+        s_km1_at_bot = r0_bot * f_km1
+    else:
+        s_km1_at_bot = s_k_at_bot
+    
+    if k < (tiers - 1):
+        f_kp1 = facet_mod_for_tier(k + 1)
+        s_kp1_at_top = r0_top * f_kp1
+    else:
+        s_kp1_at_top = s_k_at_top
+    
+    R_start_bot = np.maximum(s_km1_at_bot, s_k_at_bot)
+    R_start_top = np.maximum(s_k_at_top, s_kp1_at_top)
+    
+    return R_start_bot, R_start_top
+
+
+def compute_seam_angles_and_slopes(
+    cut_bot_deg: float,
+    cut_top_deg: float,
+    print_safe: bool
+) -> Tuple[float, float]:
+    """Compute slopes for seam cuts from angles.
+    
+    Args:
+        cut_bot_deg: Bottom cut angle in degrees
+        cut_top_deg: Top cut angle in degrees
+        print_safe: Whether print-safe mode is enabled
+        
+    Returns:
+        Tuple of (slope_bottom, slope_top)
+    """
+    if print_safe:
+        a_bot = min(math.radians(50.0), math.radians(cut_bot_deg))
+        a_top = min(math.radians(50.0), math.radians(cut_top_deg))
+    else:
+        a_bot = min(math.radians(60.0), math.radians(cut_bot_deg))
+        a_top = min(math.radians(60.0), math.radians(cut_top_deg))
+    
+    m_bot = math.tan(a_bot)
+    m_top = math.tan(a_top)
+    
+    return m_bot, m_top
+
+
+def create_smooth_helpers() -> Tuple[Callable, Callable]:
+    """Create smooth max/min helper functions.
+    
+    Returns:
+        Tuple of (smooth_max_func, smooth_min_func)
+    """
+    def _smooth_max(
+        a: float | NDArrayFloat, b: float | NDArrayFloat, s: float
+    ) -> float | NDArrayFloat:
+        return smooth_max(a, b, float(s))
+    
+    def _smooth_min(
+        a: float | NDArrayFloat, b: float | NDArrayFloat, s: float
+    ) -> float | NDArrayFloat:
+        return smooth_min(a, b, float(s))
+    
+    return _smooth_max, _smooth_min
+
+
+def compute_window_parameters(
+    H: float,
+    tiers: int,
+    bevel: float,
+    outward_dir: bool,
+    print_safe: bool,
+    r0: float,
+    amp: float,
+    m_bot: float,
+    m_top: float,
+    opts: Dict
+) -> Tuple[float, float, float, float, float, float, float, float]:
+    """Compute windowing parameters for seam cuts.
+    
+    Returns:
+        Tuple of (z_win, cut_cap_mm, facet_span_mm, cut_soft_mm, 
+                  s_bot, s_top, depth_bot0, depth_top0)
+    """
+    h_tier = H / tiers if tiers > 0 else 0.0
+    bev = max(0.0, min(1.0, bevel))
+    
+    # Narrow z window for cuts around each seam
+    z_win_raw = float(opts.get("lp_cut_z_window_frac", 0.12))
+    z_win_frac = (z_win_raw * 0.01) if z_win_raw > 1.0 else z_win_raw
+    z_win = max(1e-6, z_win_frac * h_tier)
+    
+    if outward_dir:
+        z_win *= 0.9
+    if print_safe:
+        z_win *= 0.9
+    
+    # Radial cap and facet span
+    cut_cap_mm = float(opts.get("lp_cut_cap_mm", 0.8))
+    facet_span_mm = float(r0 * amp)
+    
+    # Softness parameters
+    cut_soft_mm = max(1e-4, float(opts.get("lp_cut_softness_mm", 0.03)))
+    t_blend_z = h_tier * (0.12 * max(0.15, bev))
+    s_bot = min(cut_soft_mm, max(1e-6, 0.35 * max(1e-6, m_bot) * t_blend_z))
+    s_top = min(cut_soft_mm, max(1e-6, 0.35 * max(1e-6, m_top) * t_blend_z))
+    
+    # Hard cap softness
+    s_cap = 0.3 * z_win
+    s_bot = min(s_bot, s_cap)
+    s_top = min(s_top, s_cap)
+    
+    # Cut depths
+    cut_depth_frac = max(0.0, float(opts.get("lp_cut_depth_frac_of_facet", 0.0)))
+    base_cap_mm = (cut_depth_frac * facet_span_mm) if cut_depth_frac > 0.0 else cut_cap_mm
+    
+    cut_bot_deg = max(0.0, float(opts.get("lp_cut_bot_deg", 0.0)))
+    cut_top_deg = max(0.0, float(opts.get("lp_cut_top_deg", 0.0)))
+    
+    depth_bot0 = min(base_cap_mm, z_win * m_bot) if cut_bot_deg > 0.0 else 0.0
+    depth_top0 = min(base_cap_mm, z_win * m_top) if cut_top_deg > 0.0 else 0.0
+    
+    return z_win, cut_cap_mm, facet_span_mm, cut_soft_mm, s_bot, s_top, depth_bot0, depth_top0
+
+
+def compute_window_weights(
+    z: float,
+    z_bot: float,
+    z_top: float,
+    z_win: float
+) -> Tuple[Any, Any, float, float]:
+    """Compute window weights for seam blending.
+    
+    Args:
+        z: Current height
+        z_bot: Bottom seam height
+        z_top: Top seam height
+        z_win: Window size
+        
+    Returns:
+        Tuple of (w_bot, w_top, w_bot_scalar, w_top_scalar)
+    """
+    dz_bot = np.maximum(0.0, z - z_bot)
+    dz_top = np.maximum(0.0, z_top - z)
+    
+    w_bot = np.clip(1.0 - (dz_bot / z_win), 0.0, 1.0)
+    w_top = np.clip(1.0 - (dz_top / z_win), 0.0, 1.0)
+    
+    # Cache scalar forms
+    if isinstance(w_bot, np.ndarray):
+        w_bot_scalar = float(np.clip(np.max(w_bot), 0.0, 1.0)) if w_bot.size else 0.0
+    else:
+        w_bot_scalar = float(np.clip(float(w_bot), 0.0, 1.0))
+    
+    if isinstance(w_top, np.ndarray):
+        w_top_scalar = float(np.clip(np.max(w_top), 0.0, 1.0)) if w_top.size else 0.0
+    else:
+        w_top_scalar = float(np.clip(float(w_top), 0.0, 1.0))
+    
+    return w_bot, w_top, w_bot_scalar, w_top_scalar
