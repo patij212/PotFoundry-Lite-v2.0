@@ -32,9 +32,11 @@ from .mesh import (
     MeshQuality,
     PotDefaults,
     add_ring_xy,
+    assemble_faces,
     build_drain_hole,
     build_inner_wall_faces,
     build_rim_cap,
+    calculate_mesh_diagnostics,
     call_style_r_outer,
     generate_inner_wall,
     refine_z_outer_for_seams,
@@ -2915,39 +2917,32 @@ def build_pot_mesh(
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 
-    # Diagnostics (use tracked radii; fall back to scan if missing)
-    outer_top = outer_idx[-1]
-    outer_bottom = outer_idx[0]
-    if est_top_od is None:
-        pts = np.array([verts[k] for k in outer_top], dtype=float)
-        est_top_od = 2.0 * float(np.linalg.norm(pts[:, :2], axis=1).max())
-    if est_bottom_od is None:
-        pts = np.array([verts[k] for k in outer_bottom], dtype=float)
-        est_bottom_od = 2.0 * float(np.linalg.norm(pts[:, :2], axis=1).max())
-    clamp_ratio = clamp_count / max(1, total_inner_samples)
-
-    diagnostics: Dict[str, Any] = dict(
-        clamp_ratio_at_bottom=float(clamp_ratio),
-        estimated_top_od_mm=float(est_top_od),
-        estimated_bottom_od_mm=float(est_bottom_od),
-    )
-    # Seam diagnostics (safe guards: only emit when data was collected)
-    if dbg_total_picks > 0:
-        diagnostics["seam_outward_ratio"] = float(dbg_outward_picks / dbg_total_picks)
-    if len(dbg_samples_collected) > 0:
-        # Flatten and present a concise readout: list of sample groups
-        diagnostics["seam_debug_samples"] = dbg_samples_collected
-    # If the edge-flow in-memory collector exists and has content, attach it
+    # Diagnostics
+    edgeflow_verbose_collector_local = None
     try:
         if (
             "edgeflow_verbose_collector" in locals()
             and isinstance(edgeflow_verbose_collector, list)
             and len(edgeflow_verbose_collector) > 0
         ):
-            diagnostics["edgeflow_verbose"] = edgeflow_verbose_collector
+            edgeflow_verbose_collector_local = edgeflow_verbose_collector
     except Exception:
         pass
-    faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
+    
+    diagnostics = calculate_mesh_diagnostics(
+        verts=verts,
+        outer_idx=outer_idx,
+        est_top_od=est_top_od,
+        est_bottom_od=est_bottom_od,
+        clamp_count=clamp_count,
+        total_inner_samples=total_inner_samples,
+        dbg_outward_picks=dbg_outward_picks,
+        dbg_total_picks=dbg_total_picks,
+        dbg_samples_collected=dbg_samples_collected,
+        edgeflow_verbose_collector=edgeflow_verbose_collector_local,
+    )
+    
+    faces_arr = assemble_faces(faces_out_parts)
     return np.array(verts, dtype=float), faces_arr, diagnostics
 
 
