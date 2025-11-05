@@ -19,6 +19,7 @@ The main entry point is build_pot_mesh() which orchestrates all components.
 
 from __future__ import annotations
 
+from .drain import build_drain_hole
 from .grid import refine_z_outer_for_seams, theta_grid_cached
 from .inner_wall import generate_inner_wall
 from .outer_wall import (
@@ -34,6 +35,7 @@ __all__ = [
     "MeshQuality",
     "PotDefaults",
     "add_ring_xy",
+    "build_drain_hole",
     "build_inner_wall_faces",
     "build_rim_cap",
     "call_style_r_outer",

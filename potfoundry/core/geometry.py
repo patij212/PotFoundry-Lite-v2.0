@@ -32,6 +32,7 @@ from .mesh import (
     MeshQuality,
     PotDefaults,
     add_ring_xy,
+    build_drain_hole,
     build_inner_wall_faces,
     build_rim_cap,
     call_style_r_outer,
@@ -2887,57 +2888,36 @@ def build_pot_mesh(
     faces_out_parts.append(tri_rim2)
 
     # ---- Drain circles (untwisted)
-    drain_under: list[int] = []
-    drain_top: list[int] = []
-    # Vectorized drain circles using cached cos/sin
-    for c, s in zip(cos_th, sin_th):
-        x0 = r_drain * float(c)
-        y0 = r_drain * float(s)
-        drain_under.append(len(verts))
-        verts.append((x0, y0, 0.0))
-        drain_top.append(len(verts))
-        verts.append((x0, y0, float(t_bottom)))
-    drain_under_arr = np.array(drain_under, dtype=int)
-    drain_top_arr = np.array(drain_top, dtype=int)
-    outer_bottom = outer_idx[0]
-    inner_bottom = inner_idx[0]
-
-    # Bottom underside (outer bottom ring -> drain under ring)
-    v00 = outer_bottom[j_idx]
-    v01 = outer_bottom[jn]
-    # Intermediate variables vd0, vd1 computed but not used - kept for clarity
-    tri_bot1 = np.stack(
-        [outer_bottom[j_idx], drain_under_arr[jn], drain_under_arr[j_idx]], axis=1
-    )
-    tri_bot2 = np.stack(
-        [outer_bottom[j_idx], outer_bottom[jn], drain_under_arr[jn]], axis=1
+    (
+        tri_bot1,
+        tri_bot2,
+        tri_top1,
+        tri_top2,
+        tri_cyl1,
+        tri_cyl2,
+        drain_under_arr,
+        drain_top_arr,
+    ) = build_drain_hole(
+        r_drain=r_drain,
+        t_bottom=t_bottom,
+        cos_th=cos_th,
+        sin_th=sin_th,
+        verts=verts,
+        outer_idx=outer_idx,
+        inner_idx=inner_idx,
+        j_idx=j_idx,
+        jn=jn,
     )
     faces_out_parts.append(tri_bot1)
     faces_out_parts.append(tri_bot2)
-
-    # Top of bottom slab (inner bottom ring -> drain top ring)
-    # Intermediate variables vi0, vi1, vd0, vd1 computed but not used - kept for clarity
-    tri_top1 = np.stack(
-        [inner_bottom[j_idx], inner_bottom[jn], drain_top_arr[jn]], axis=1
-    )
-    tri_top2 = np.stack(
-        [inner_bottom[j_idx], drain_top_arr[jn], drain_top_arr[j_idx]], axis=1
-    )
     faces_out_parts.append(tri_top1)
     faces_out_parts.append(tri_top2)
-
-    # Drain cylinder wall
-    # Intermediate variables v0b, v1b, v0t, v1t computed but not used - kept for clarity
-    tri_cyl1 = np.stack(
-        [drain_under_arr[j_idx], drain_top_arr[j_idx], drain_top_arr[jn]], axis=1
-    )
-    tri_cyl2 = np.stack(
-        [drain_under_arr[j_idx], drain_top_arr[jn], drain_under_arr[jn]], axis=1
-    )
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 
     # Diagnostics (use tracked radii; fall back to scan if missing)
+    outer_top = outer_idx[-1]
+    outer_bottom = outer_idx[0]
     if est_top_od is None:
         pts = np.array([verts[k] for k in outer_top], dtype=float)
         est_top_od = 2.0 * float(np.linalg.norm(pts[:, :2], axis=1).max())
