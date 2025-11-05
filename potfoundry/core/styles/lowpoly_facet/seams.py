@@ -283,3 +283,112 @@ def compute_window_weights(
         w_top_scalar = float(np.clip(float(w_top), 0.0, 1.0))
     
     return w_bot, w_top, w_bot_scalar, w_top_scalar
+
+
+def apply_seam_limits(
+    r0: float,
+    r_base_local: Any,
+    depth_bot0: float,
+    depth_top0: float,
+    w_bot: Any,
+    w_top: Any,
+    uniform_ring: bool,
+    straight_edge: bool
+) -> Tuple[Any, Any]:
+    """Compute radius limits for seam cuts.
+    
+    Args:
+        r0: Base radius
+        r_base_local: Local base radius
+        depth_bot0: Bottom cut depth
+        depth_top0: Top cut depth
+        w_bot: Bottom window weights
+        w_top: Top window weights
+        uniform_ring: Whether uniform ring mode is enabled
+        straight_edge: Whether straight edge mode is enabled
+        
+    Returns:
+        Tuple of (r_lim_bot, r_lim_top)
+    """
+    if uniform_ring or straight_edge:
+        r_lim_bot = np.maximum(1e-6, r0 - depth_bot0 * w_bot)
+        r_lim_top = np.maximum(1e-6, r0 - depth_top0 * w_top)
+    else:
+        r_ref_bot = r_base_local
+        r_ref_top = r_base_local
+        r_lim_bot = np.maximum(1e-6, r_ref_bot - depth_bot0 * w_bot)
+        r_lim_top = np.maximum(1e-6, r_ref_top - depth_top0 * w_top)
+    
+    return r_lim_bot, r_lim_top
+
+
+def compute_straight_edge_targets(
+    r0: float,
+    depth_bot0: float,
+    depth_top0: float,
+    cut_bot_deg: float,
+    cut_top_deg: float,
+    uniform_ring: bool,
+    r_base_local_in_orig: Any
+) -> Tuple[float, float, Any]:
+    """Compute target radii for straight edge flattening.
+    
+    Args:
+        r0: Base radius
+        depth_bot0: Bottom cut depth
+        depth_top0: Top cut depth
+        cut_bot_deg: Bottom cut angle
+        cut_top_deg: Top cut angle
+        uniform_ring: Whether uniform ring mode is enabled
+        r_base_local_in_orig: Original inward base
+        
+    Returns:
+        Tuple of (r_uniform_bot_target, r_uniform_top_target, uniform_flat_target)
+    """
+    if uniform_ring:
+        base_in_arr = np.asarray(r_base_local_in_orig, dtype=float)
+        uniform_flat_target = float(np.min(base_in_arr))
+        uniform_target_scalar = max(1e-6, uniform_flat_target)
+        r_uniform_bot_target = uniform_target_scalar
+        r_uniform_top_target = uniform_target_scalar
+    else:
+        uniform_flat_target = None
+        if cut_bot_deg > 0.0:
+            uniform_target_bot = float(r0) - depth_bot0
+            r_uniform_bot_target = max(1e-6, uniform_target_bot)
+        else:
+            r_uniform_bot_target = float(r0)
+        
+        if cut_top_deg > 0.0:
+            uniform_target_top = float(r0) - depth_top0
+            r_uniform_top_target = max(1e-6, uniform_target_top)
+        else:
+            r_uniform_top_target = float(r0)
+    
+    return r_uniform_bot_target, r_uniform_top_target, uniform_flat_target
+
+
+def apply_seam_cuts_with_smooth_limiting(
+    r_base: Any,
+    r_lim_bot: Any,
+    r_lim_top: Any,
+    s_bot: float,
+    s_top: float,
+    smooth_min_func: Any
+) -> Any:
+    """Apply seam cuts using smooth minimum limiting.
+    
+    Args:
+        r_base: Base radius values
+        r_lim_bot: Bottom limit
+        r_lim_top: Top limit
+        s_bot: Bottom softness
+        s_top: Top softness
+        smooth_min_func: Smooth minimum function
+        
+    Returns:
+        Radius with seam cuts applied
+    """
+    r_cut_bot = smooth_min_func(r_base, r_lim_bot, s_bot)
+    r_cut_both = smooth_min_func(r_cut_bot, r_lim_top, s_top)
+    return r_cut_both
