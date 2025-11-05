@@ -113,3 +113,5 @@ pytest_output.txt
 *.bak
 *_COMMIT_MSG.txt
 TERMINAL_OUTPUT_CHECK.txt
+pfui/tabs/interactive/preview_impl_old_backup.py
+pfui/tabs/interactive/preview_impl.py.backup
