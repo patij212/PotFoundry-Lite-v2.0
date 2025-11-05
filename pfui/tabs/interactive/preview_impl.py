@@ -27,15 +27,17 @@ from pfui.state import widget_key
 # Import extracted preview modules
 try:
     from .preview.cache_management import initialize_preview_cache
-    from .preview.utils import to_float_scalar as _to_float_scalar
+    from .preview.utils import to_float_scalar as _to_float_scalar, to_int_scalar as _to_int_scalar
     from .preview.update_decision import should_update_preview_ui
     from .preview.signatures import compute_preview_signatures
     from .preview.array_generation import generate_preview_arrays
     from .preview.mesh_building import build_preview_mesh
     from .preview.plotly_surface import render_quick_preview_surface
     from .preview.plotly_mesh import render_full_preview_mesh
+    from .preview.png_rendering import render_preview_png_fallback
+    from .preview.cached_display import display_cached_preview
 except ImportError:
-    # Fallback if package structure not available
+    # Fallback implementations if package structure not available
     def initialize_preview_cache(ss):
         ss.setdefault("_last_surface_png", None)
         ss.setdefault("_last_surface_fig_json", None)
@@ -43,7 +45,6 @@ except ImportError:
         ss.setdefault("_last_mesh_fig_json", None)
         ss.setdefault("_preview_stale", False)
     
-    # Fallback to_float_scalar if import fails
     def _to_float_scalar(x: Any) -> float:
         """Coerce x to a float in a defensive way."""
         def _unwrap(v):
@@ -53,7 +54,6 @@ except ImportError:
                 except Exception:
                     return v
             return v
-        
         try:
             v = _unwrap(x)
             if isinstance(v, (int, float)):
@@ -72,6 +72,35 @@ except ImportError:
                 return float(x)
             except Exception:
                 return 0.0
+    
+    def _to_int_scalar(x: Any) -> int:
+        """Coerce x to an int in a defensive way."""
+        return int(_to_float_scalar(x))
+    
+    # Stub functions for other modules
+    def should_update_preview_ui(preview_mode, ss):
+        return (True, None) if preview_mode == "auto" else (False, None)
+    
+    def compute_preview_signatures(*args, **kwargs):
+        return (None, None)
+    
+    def generate_preview_arrays(*args, **kwargs):
+        return (None, None, None, 0.0)
+    
+    def build_preview_mesh(*args, **kwargs):
+        return (None, False)
+    
+    def render_quick_preview_surface(*args, **kwargs):
+        pass
+    
+    def render_full_preview_mesh(*args, **kwargs):
+        pass
+    
+    def render_preview_png_fallback(*args, **kwargs):
+        return None
+    
+    def display_cached_preview(*args, **kwargs):
+        pass
 
 # Check if Plotly is available
 try:
@@ -334,157 +363,45 @@ def render_preview_section(preview_mode: str) -> None:
                 pass
     
     # If we're NOT updating (manual mode and Update not clicked), show the
-    # previously cached preview so the UI remains usable. Only display the
-    # 'out-of-date' warning in explicit manual mode when the stale flag is set.
+    # previously cached preview so the UI remains usable.
     if not should_update_preview:
-        # Cast cached preview artifacts to concrete optionals for the type checker
-        last_mesh_png = cast(Optional[bytes], ss.get("_last_mesh_png"))
-        last_mesh_json = cast(Optional[dict], ss.get("_last_mesh_fig_json"))
-        last_surf_png = cast(Optional[bytes], ss.get("_last_surface_png"))
-        last_surf_json = cast(Optional[dict], ss.get("_last_surface_fig_json"))
-    
-        stale = bool(cast(Any, ss.get("_preview_stale", False)))
-        show_warning = (preview_mode == "manual") and stale
-    
-        # Cached display: if Full preview exists, prefer it; otherwise show Quick if available.
-        full_exists = bool((HAS_PLOTLY and last_mesh_json) or last_mesh_png)
-        quick_exists = bool((HAS_PLOTLY and last_surf_json) or last_surf_png)
-    
-        # Show Full if it exists
-        if interactive_mesh and full_exists and HAS_PLOTLY and last_mesh_json:
-            try:
-                f_m = go.Figure(last_mesh_json)  # noqa: F823
-                mesh_placeholder.plotly_chart(
-                    f_m, use_container_width=True, config={"displaylogo": False}
-                )
-            except Exception:
-                if last_mesh_png:
-                    mesh_placeholder.image(
-                        last_mesh_png,
-                        caption=(
-                            "Full Preview (out of date)"
-                            if show_warning
-                            else "Full Preview"
-                        ),
-                        width="stretch",
-                    )
-        elif interactive_mesh and full_exists and last_mesh_png:
-            mesh_placeholder.image(
-                last_mesh_png,
-                caption=(
-                    "Full Preview (out of date)" if show_warning else "Full Preview"
-                ),
-                width="stretch",
-            )
-    
-        # Only generate mesh PNGs when Plotly is unavailable (fallback), or when explicitly forced by the user.
         try:
-            ss = cast(dict[str, Any], st.session_state)
-            force_capture = bool(cast(Any, ss.get("_force_mesh_png_capture", False)))
-            # Cap PNG mesh resolution aggressively to keep it cheap
-            png_cap_n = _to_int_scalar(ss.get("png_cap_n", 64))
+            display_cached_preview(
+                preview_mode,
+                interactive_mesh,
+                HAS_PLOTLY,
+                ss,
+                mesh_placeholder,
+                preview_placeholder
+            )
+        except NameError:
+            # Fallback if module not imported - show basic cached display
+            last_mesh_png = cast(Optional[bytes], ss.get("_last_mesh_png"))
+            if last_mesh_png:
+                mesh_placeholder.image(last_mesh_png, caption="Full Preview (cached)")
     
-            t0_meshpng = time.time()
+    # ==================== PNG FALLBACK RENDERING ====================
+    # Generate PNG fallback when Plotly is unavailable or forced
+    png_bytes = None
+    if should_update_preview:
+        try:
+            png_bytes = render_preview_png_fallback(
+                H, Rt, Rb, expn,
+                preview_n_theta, preview_n_z,
+                full_n_theta, full_n_z,
+                style_name, opts_json,
+                fig_w, fig_h, dpi,
+                t_wall, show_inner,
+                place_on_ground,
+                view_elev, view_azim,
+                interactive_mesh,
+                HAS_PLOTLY,
+                ss,
+                _to_int_scalar
+            )
+        except NameError:
+            # Fallback if module not imported
             png_bytes = None
-            regen = False
-            mode = "auto=off"
-    
-            if (not HAS_PLOTLY) or force_capture:
-                regen = True
-                mode = "force" if force_capture else "no_plotly"
-                # Clear the flag immediately to avoid repeated regeneration
-                if force_capture:
-                    ss["_force_mesh_png_capture"] = False
-                ak = "|".join(
-                    str(cast(Any, ss.get(k, "")))
-                    for k in (
-                        "preview_palette",
-                        "preview_grad_c1",
-                        "preview_grad_c2",
-                        "preview_grad_c3",
-                        "mesh_ambient",
-                        "mesh_diffuse",
-                        "mesh_specular",
-                        "mesh_roughness",
-                        "mesh_fresnel",
-                    )
-                )
-                try:
-                    if interactive_mesh and (force_capture):
-                        # Explicit mesh PNG capture: use snapshot renderer, but at capped mesh resolution
-                        from pfui.preview import render_mesh_snapshot_cached
-    
-                        png_n_theta = int(max(8, min(png_cap_n, full_n_theta)))
-                        png_n_z = int(max(8, min(png_cap_n, full_n_z)))
-                        png_bytes = render_mesh_snapshot_cached(
-                            H,
-                            Rt,
-                            Rb,
-                            expn,
-                            png_n_theta,
-                            png_n_z,
-                            style_name,
-                            opts_json,
-                            fig_w,
-                            fig_h,
-                            dpi,
-                            inner_wall=t_wall if show_inner else None,
-                            place_on_ground=place_on_ground,
-                            view_elev=view_elev,
-                            view_azim=view_azim,
-                            appearance_key=ak,
-                        )
-                    else:
-                        # Fallback to fast preview PNG (static engine) at capped resolution
-                        png_n_theta = int(max(8, min(png_cap_n, preview_n_theta)))
-                        png_n_z = int(max(8, min(png_cap_n, preview_n_z)))
-                        png_bytes = render_preview_png_cached(
-                            H,
-                            Rt,
-                            Rb,
-                            expn,
-                            png_n_theta,
-                            png_n_z,
-                            style_name,
-                            opts_json,
-                            fig_w,
-                            fig_h,
-                            dpi,
-                            inner_wall=t_wall if show_inner else None,
-                            view_elev=view_elev,
-                            view_azim=view_azim,
-                            return_png=True,
-                            appearance_key=ak,
-                        )
-                except Exception:
-                    png_bytes = None
-    
-            # Timing log for visibility
-            try:
-                perf = ss.setdefault("_perf_logs", [])
-                elapsed_ms = (time.time() - t0_meshpng) * 1000
-                perf.append(f"mesh_png:{elapsed_ms:.1f}ms regen={regen} {mode}")
-                ss["_last_mesh_png_regenerated"] = regen
-                ss["_last_mesh_png_time_ms"] = elapsed_ms
-                ss["_perf_logs"] = perf[-40:]
-            except Exception:
-                pass
-        except Exception:
-            pass  # PNG generation is best-effort; failures shouldn't break the app
-    
-        # Dynamic placeholder: use a session flag so static analysis won't mark as unreachable
-        if bool(cast(Any, ss.get("_quick_preview_disabled", False))):
-            # Quick Preview is explicitly disabled by user: replace any previous preview
-            try:
-                preview_placeholder.info("Quick Preview is disabled")
-            except Exception:
-                try:
-                    preview_placeholder.empty()
-                except Exception:
-                    pass
-    
-    # (No-op now: PNG generation is handled above in the gated block.)
-    png_bytes = locals().get("png_bytes", None)
     
     # ==================== QUICK PREVIEW (PLOTLY SURFACE) ====================
     # Quick Preview (live) — Plotly surface if available, otherwise static PNG fallback
