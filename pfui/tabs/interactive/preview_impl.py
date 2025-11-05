@@ -30,6 +30,7 @@ try:
     from .preview.utils import to_float_scalar as _to_float_scalar
     from .preview.update_decision import should_update_preview_ui
     from .preview.signatures import compute_preview_signatures
+    from .preview.array_generation import generate_preview_arrays
 except ImportError:
     # Fallback if package structure not available
     def initialize_preview_cache(ss):
@@ -253,82 +254,27 @@ def render_preview_section(preview_mode: str) -> None:
         mesh_data = None
         try:
             with st.spinner("Computing preview…"):
-                t0_arrays = time.time()
-                # Reuse cached arrays when geometry unchanged
-                if (not geom_changed) and all(
-                    k in st.session_state for k in ("_last_X", "_last_Y", "_last_Z")
-                ):
-                    try:
-                        X = cast(Any, ss.get("_last_X"))
-                        Y = cast(Any, ss.get("_last_Y"))
-                        Z = cast(Any, ss.get("_last_Z"))
-                    except Exception:
-                        X = Y = Z = None
-                if (X is None) or (Y is None) or (Z is None):
-                    # Use centralized orchestrator for array generation; preserves behavior and enables further refactor
-                    try:
-                        from pfui.app_components.plotting import (
-                            orchestrate_preview as _orchestrate_preview,
-                        )
-    
-                        res = _orchestrate_preview(
-                            H,
-                            Rt,
-                            Rb,
-                            expn,
-                            preview_n_theta,
-                            preview_n_z,
-                            full_n_theta,
-                            full_n_z,
-                            style_name,
-                            opts_json,
-                            preview_mode=cast(
-                                str, ss.get("preview_mode", preview_mode)
-                            ),
-                            preview_stale=bool(
-                                cast(Any, ss.get("_preview_stale", False))
-                            ),
-                            last_geom_sig=cast(
-                                Optional[tuple], ss.get("_last_preview_geom_sig")
-                            ),
-                            last_app_sig=cast(
-                                Optional[tuple], ss.get("_last_preview_app_sig")
-                            ),
-                            geom_sig=geom_sig,
-                            app_sig=app_sig,
-                            debounce_timeout_s=debounce_timeout_seconds,
-                            last_change_ts=cast(Any, ss.get("_last_change_ts", 0.0)),
-                            interactive_mesh=bool(interactive_mesh),
-                        )
-                        arrs = cast(Any, res.get("arrays"))
-                        if arrs is not None:
-                            try:
-                                X, Y, Z = arrs
-                            except Exception:
-                                X = Y = Z = None
-                    except Exception:
-                        # Fall back to direct call if orchestrator fails
-                        X = Y = Z = None
-    
-                    if (X is None) or (Y is None) or (Z is None):
-                        X, Y, Z = make_preview_arrays(
-                            H,
-                            Rt,
-                            Rb,
-                            expn,
-                            preview_n_theta,
-                            preview_n_z,
-                            style_name,
-                            opts_json,
-                        )
-                    # Cache for appearance-only changes
-                    try:
-                        ss["_last_X"] = X
-                        ss["_last_Y"] = Y
-                        ss["_last_Z"] = Z
-                    except Exception:
-                        pass
-                t1_arrays = time.time()
+                # ==================== ARRAY GENERATION ====================
+                # Generate X, Y, Z arrays with caching and orchestration
+                try:
+                    X, Y, Z, t_arrays = generate_preview_arrays(
+                        H, Rt, Rb, expn,
+                        preview_n_theta, preview_n_z,
+                        full_n_theta, full_n_z,
+                        style_name, opts_json,
+                        geom_changed, preview_mode, ss,
+                        geom_sig, app_sig,
+                        debounce_timeout_seconds,
+                        interactive_mesh
+                    )
+                except NameError:
+                    # Fallback if module not imported
+                    X, Y, Z = make_preview_arrays(
+                        H, Rt, Rb, expn,
+                        preview_n_theta, preview_n_z,
+                        style_name, opts_json
+                    )
+                    t_arrays = 0.0
                 # Build mesh only when geometry/style changed; appearance-only changes reuse previous mesh
                 do_mesh_build = bool(interactive_mesh and geom_changed)
                 built_via_orchestrator = False
