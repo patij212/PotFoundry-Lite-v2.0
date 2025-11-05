@@ -32,6 +32,8 @@ try:
     from .preview.signatures import compute_preview_signatures
     from .preview.array_generation import generate_preview_arrays
     from .preview.mesh_building import build_preview_mesh
+    from .preview.plotly_surface import render_quick_preview_surface
+    from .preview.plotly_mesh import render_full_preview_mesh
 except ImportError:
     # Fallback if package structure not available
     def initialize_preview_cache(ss):
@@ -484,84 +486,27 @@ def render_preview_section(preview_mode: str) -> None:
     # (No-op now: PNG generation is handled above in the gated block.)
     png_bytes = locals().get("png_bytes", None)
     
+    # ==================== QUICK PREVIEW (PLOTLY SURFACE) ====================
     # Quick Preview (live) — Plotly surface if available, otherwise static PNG fallback
     try:
         if should_update_preview:
-            if HAS_PLOTLY and (X is not None) and (Y is not None) and (Z is not None):
-                import plotly.graph_objects as go
-    
-                t0_surface = time.time()
-                # Build colorscale for Quick preview from Appearance & Preview Settings
-                ss = cast(dict[str, Any], st.session_state)
-                use_grad_q = bool(cast(Any, ss.get("use_gradient_color", True)))
-                solid_hex_q = str(cast(Any, ss.get("solid_color", "#BFC7D5")))
-                c1_q = str(cast(Any, ss.get("preview_grad_c1", "#2850D0")))
-                c2_q = str(cast(Any, ss.get("preview_grad_c2", "#5FA8FF")))
-                c3_q = str(cast(Any, ss.get("preview_grad_c3", "#E2F3FF")))
-                if use_grad_q:
-                    cs_q = [[0.0, c1_q], [0.5, c2_q], [1.0, c3_q]]
-                else:
-                    cs_q = [[0.0, solid_hex_q], [1.0, solid_hex_q]]
-                fig = go.Figure(
-                    data=[go.Surface(x=X, y=Y, z=Z, colorscale=cs_q, showscale=False)]
+            try:
+                render_quick_preview_surface(
+                    X, Y, Z,
+                    preview_n_theta, preview_n_z,
+                    fig_h, place_on_ground, ss,
+                    preview_placeholder,
+                    _to_float_scalar, _to_int_scalar
                 )
-                # Make the Quick preview window twice as tall by default
-                height_px = max(360, min(1800, _to_int_scalar(192 * fig_h)))
-                try:
-                    import numpy as _np_plot
-    
-                    rmax = float(_np_plot.max(_np_plot.sqrt(X**2 + Y**2)))
-                    zmin = float(Z.min())
-                    zmax = float(Z.max())
-                except Exception:
-                    rmax = max(1.0, _to_float_scalar(ss.get("top_od", 140.0)) * 0.5)
-                    zmin, zmax = 0.0, _to_float_scalar(ss.get("H", 120.0))
-                if place_on_ground:
-                    zmin = 0.0
-                xlim = [-rmax, rmax]
-                ylim = [-rmax, rmax]
-                zlim = [zmin, zmax]
-                z_ratio = (zmax - zmin) / max(1e-6, (xlim[1] - xlim[0]))
-                # Title includes grid size to make resolution explicit
-                nz_q, nt_q = (
-                    (Z.shape[0], Z.shape[1])
-                    if hasattr(Z, "shape") and len(Z.shape) == 2
-                    else (preview_n_z, preview_n_theta)
-                )
-                fig.update_layout(
-                    height=height_px,
-                    title=f"Quick preview (grid {nt_q}×{nz_q})",
-                    scene=dict(
-                        xaxis=dict(visible=False, range=xlim),
-                        yaxis=dict(visible=False, range=ylim),
-                        zaxis=dict(visible=False, range=zlim),
-                        aspectmode="manual",
-                        aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
-                        camera=dict(
-                            up=dict(x=0, y=0, z=1), projection=dict(type="orthographic")
-                        ),
-                        bgcolor=cast(Any, ss.get("preview_bg_color", "#0F1724")),
-                    ),
-                    margin=dict(l=0, r=0, t=30, b=0),
-                )
-                preview_placeholder.plotly_chart(
-                    fig, use_container_width=True, config={"displaylogo": False}
-                )
-                # Persist latest quick preview figure for cached mode
-                try:
-                    ss["_last_surface_fig_json"] = fig.to_dict()
-                except Exception:
-                    pass
-                try:
-                    perf = ss.setdefault("_perf_logs", [])
-                    perf.append(
-                        f"surface_plotly:{(time.time() - t0_surface) * 1000:.1f}ms"
-                    )
-                    ss["_perf_logs"] = perf[-40:]
-                except Exception:
-                    pass
-            elif not HAS_PLOTLY:
-                # Static fallback when Plotly is unavailable
+            except NameError:
+                # Fallback if module not imported - basic surface rendering
+                if HAS_PLOTLY and (X is not None) and (Y is not None) and (Z is not None):
+                    import plotly.graph_objects as go
+                    fig = go.Figure(data=[go.Surface(x=X, y=Y, z=Z)])
+                    preview_placeholder.plotly_chart(fig, use_container_width=True)
+            
+            # PNG fallback when Plotly is unavailable
+            if not HAS_PLOTLY:
                 ak = "|".join(
                     str(cast(Any, ss.get(k, "")))
                     for k in (
@@ -577,17 +522,10 @@ def render_preview_section(preview_mode: str) -> None:
                     )
                 )
                 png_bytes_q = render_preview_png_cached(
-                    H,
-                    Rt,
-                    Rb,
-                    expn,
-                    preview_n_theta,
-                    preview_n_z,
-                    style_name,
-                    opts_json,
-                    fig_w,
-                    fig_h,
-                    dpi,
+                    H, Rt, Rb, expn,
+                    preview_n_theta, preview_n_z,
+                    style_name, opts_json,
+                    fig_w, fig_h, dpi,
                     inner_wall=t_wall if show_inner else None,
                     view_elev=view_elev,
                     view_azim=view_azim,
@@ -615,360 +553,29 @@ def render_preview_section(preview_mode: str) -> None:
     except Exception:
         pass
     
+    # ==================== FULL PREVIEW (PLOTLY MESH3D) ====================
     # Full Preview (interactive Mesh3d or static fallback). Render only when updating.
     if should_update_preview and interactive_mesh:
-        # If Plotly is present, render an interactive Mesh3d. Otherwise render a static PNG fallback.
-        if HAS_PLOTLY:
-            try:
-                t0_mesh = time.time()
-    
-                import numpy as np
-    
-                from pfui.colors import build_gradient_colors
-    
-                # Honor exact full preview: when enabled, do not reuse preview-res mesh_data
-                use_exact_full = bool(cast(Any, ss.get("exact_full_preview", True)))
-                V = None
-                F = None
-    
-                # Reuse earlier mesh build; if missing (e.g., switched modes) build now
-                if (
-                    (not use_exact_full)
-                    and ("mesh_data" in locals())
-                    and (mesh_data is not None)
-                ):
-                    V, F = mesh_data
-                else:
-                    # If only appearance changed, try to reuse last cached geometry
-                    V = None
-                    F = None
-                    try:
-                        V = cast(Any, ss.get("_last_mesh_V"))
-                        F = cast(Any, ss.get("_last_mesh_F"))
-                    except Exception:
-                        V = None
-                        F = None
-                    # If exact is requested but the cached mesh uses different resolution, rebuild
-                    # use_exact_full already set above
-                    last_nt = cast(Optional[int], ss.get("_last_mesh_ntheta"))
-                    last_nz = cast(Optional[int], ss.get("_last_mesh_nz"))
-                    needs_exact_rebuild = bool(
-                        use_exact_full and ((last_nt != n_theta) or (last_nz != n_z))
-                    )
-                    if (
-                        (V is None)
-                        or (F is None)
-                        or geom_changed
-                        or needs_exact_rebuild
-                    ):
-                        # Build mesh geometry depending on exact/preview mode
-                        try:
-                            import numpy as _np_r
-    
-                            use_exact_full = bool(
-                                cast(Any, ss.get("exact_full_preview", True))
-                            )
-                            # When exact is requested, use the user-selected raw sliders (n_theta, n_z)
-                            # rather than the scaled/clamped full_n_* values.
-                            ntheta = n_theta if use_exact_full else preview_n_theta
-                            nz = n_z if use_exact_full else preview_n_z
-                            # Prefer orchestrator for exact/preview mesh build
-                            try:
-                                from pfui.app_components.plotting import (
-                                    orchestrate_preview as _orchestrate_preview,
-                                )
-    
-                                res_full = _orchestrate_preview(
-                                    H,
-                                    Rt,
-                                    Rb,
-                                    expn,
-                                    int(ntheta),
-                                    int(nz),
-                                    full_n_theta,
-                                    full_n_z,
-                                    style_name,
-                                    opts_json,
-                                    preview_mode=cast(
-                                        str, ss.get("preview_mode", preview_mode)
-                                    ),
-                                    preview_stale=bool(
-                                        cast(Any, ss.get("_preview_stale", False))
-                                    ),
-                                    last_geom_sig=cast(
-                                        Optional[tuple],
-                                        ss.get("_last_preview_geom_sig"),
-                                    ),
-                                    last_app_sig=cast(
-                                        Optional[tuple], ss.get("_last_preview_app_sig")
-                                    ),
-                                    geom_sig=geom_sig,
-                                    app_sig=app_sig,
-                                    debounce_timeout_s=_to_float_scalar(
-                                        ss.get("debounce_timeout", 0.8)
-                                    ),
-                                    last_change_ts=cast(
-                                        Any, ss.get("_last_change_ts", 0.0)
-                                    ),
-                                    interactive_mesh=True,
-                                    build_mesh_fn=build_pot_mesh,
-                                    t_wall=t_wall,
-                                    t_bottom=t_bottom,
-                                    r_drain=r_drain,
-                                    r_outer_fn=r_outer_fn,
-                                    style_opts=opts,
-                                )
-                                m_full = cast(Any, res_full.get("mesh"))
-                            except Exception:
-                                m_full = None
-                            if m_full is not None:
-                                try:
-                                    verts2, faces2, _diag2 = m_full
-                                except Exception:
-                                    verts2, faces2 = m_full
-                                V = _np_r.asarray(verts2)
-                                F = _np_r.asarray(faces2)
-                            else:
-                                # Fallback direct build
-                                verts2, faces2, _ = build_pot_mesh(
-                                    H=H,
-                                    Rt=Rt,
-                                    Rb=Rb,
-                                    t_wall=t_wall,
-                                    t_bottom=t_bottom,
-                                    r_drain=r_drain,
-                                    expn=expn,
-                                    n_theta=int(ntheta),
-                                    n_z=int(nz),
-                                    r_outer_fn=r_outer_fn,
-                                    style_opts=opts,
-                                )
-                                V = _np_r.asarray(verts2)
-                                F = _np_r.asarray(faces2)
-                            if place_on_ground and len(V):
-                                V[:, 2] -= V[:, 2].min()
-                            # Persist cache for future appearance-only updates
-                            try:
-                                ss["_last_mesh_V"] = V
-                                ss["_last_mesh_F"] = F
-                                ss["_last_mesh_ntheta"] = int(ntheta)
-                                ss["_last_mesh_nz"] = int(nz)
-                            except Exception:
-                                pass
-                        except Exception:
-                            V = np.zeros((0, 3))
-                            F = np.zeros((0, 3), dtype=int)
-    
-                # Decimation removed per request; always use V,F as built (exact when enabled, preview-res otherwise)
-                use_exact_full = bool(cast(Any, ss.get("exact_full_preview", True)))
-                use_approx = False
-    
-                stride_used = 1
-                Vd, Fd = V, F
-    
-                # Gradient coloring using user settings based on the final plotted vertices Vd
-                use_gradient = bool(cast(Any, ss.get("use_gradient_color", True)))
-                solid_hex = str(cast(Any, ss.get("solid_color", "#BFC7D5")))
-                if len(Vd) and use_gradient:
-                    try:
-                        perf = st.session_state.setdefault("_perf_logs", [])
-                        perf.append(
-                            f"mesh_plot_setup:verts={len(Vd)},faces={len(Fd)},approx={use_approx},stride={stride_used}"
-                        )
-                        st.session_state["_perf_logs"] = perf[-40:]
-                    except Exception:
-                        pass
-                    span_z = float(np.ptp(Vd[:, 2])) if len(Vd) else 0.0
-                    z_norm = (Vd[:, 2] - Vd[:, 2].min()) / max(1e-6, span_z)
-                    # Optional: subsample colors to reduce JSON size for very large meshes
-                    color_stride = 1
-                    try:
-                        # Dense meshes benefit from lighter color payload
-                        if len(Vd) > 200_000:
-                            color_stride = 2
-                        if len(Vd) > 500_000:
-                            color_stride = 4
-                    except Exception:
-                        color_stride = 1
-                    t0_col = time.time()
-                    try:
-                        preset = cast(Any, ss.get("preview_palette", "Custom"))
-                        custom = [
-                            cast(Any, ss.get("preview_grad_c1", "#2850D0")),
-                            cast(Any, ss.get("preview_grad_c2", "#5FA8FF")),
-                            cast(Any, ss.get("preview_grad_c3", "#E2F3FF")),
-                        ]
-                        if color_stride > 1:
-                            # Build on downsample and expand to full length to cut compute + JSON size
-                            from pfui.colors import build_gradient_colors as _bgc
-    
-                            z_sub = z_norm[::color_stride]
-                            cols_sub = _bgc(
-                                z_sub, preset if preset != "Custom" else None, custom
-                            )
-                            # Repeat each color 'color_stride' times and trim to len(Vd)
-                            mesh_colors = [
-                                c for c in cols_sub for _ in range(color_stride)
-                            ][: len(Vd)]
-                            if len(mesh_colors) < len(Vd):
-                                mesh_colors.extend(
-                                    [cols_sub[-1]] * (len(Vd) - len(mesh_colors))
-                                )
-                        else:
-                            mesh_colors = build_gradient_colors(
-                                z_norm, preset if preset != "Custom" else None, custom
-                            )
-                    except Exception:
-                        mesh_colors = [[200, 200, 230] for _ in range(len(Vd))]
-                    finally:
-                        try:
-                            perf = st.session_state.setdefault("_perf_logs", [])
-                            perf.append(
-                                f"color_map:{(time.time() - t0_col) * 1000:.1f}ms"
-                            )
-                            st.session_state["_perf_logs"] = perf[-40:]
-                        except Exception:
-                            pass
-                else:
-                    mesh_colors = []
-    
-                # Build mesh kwargs unconditionally. Previously the dict was
-                # only created in the non-gradient branch which could leave it
-                # undefined when gradient coloring was enabled, causing a
-                # NameError at runtime: "name 'mesh_kwargs' is not defined".
-                mesh_kwargs = dict(
-                    x=Vd[:, 0],
-                    y=Vd[:, 1],
-                    z=Vd[:, 2],
-                    i=Fd[:, 0],
-                    j=Fd[:, 1],
-                    k=Fd[:, 2],
-                    flatshading=bool(cast(Any, ss.get("mesh_flatshading", False))),
-                    lighting=dict(
-                        ambient=min(
-                            max(_to_float_scalar(ss.get("mesh_ambient", 0.35)), 0.0),
-                            1.0,
-                        ),
-                        diffuse=min(
-                            max(_to_float_scalar(ss.get("mesh_diffuse", 0.95)), 0.0),
-                            1.0,
-                        ),
-                        specular=min(
-                            max(_to_float_scalar(ss.get("mesh_specular", 0.25)), 0.0),
-                            1.0,
-                        ),
-                        roughness=min(
-                            max(_to_float_scalar(ss.get("mesh_roughness", 0.7)), 0.0),
-                            1.0,
-                        ),
-                        fresnel=min(
-                            max(_to_float_scalar(ss.get("mesh_fresnel", 0.2)), 0.0), 1.0
-                        ),
-                    ),
-                    hoverinfo="skip",
-                    name="mesh",
-                    opacity=1.0,
-                )
-                if use_gradient and len(mesh_colors):
-                    mesh_kwargs["vertexcolor"] = mesh_colors
-                else:
-                    mesh_kwargs["color"] = solid_hex
-                fig = go.Figure(data=[go.Mesh3d(**mesh_kwargs)])
-                # Make the Full preview window twice as tall by default
-                height_px = max(400, min(2000, _to_int_scalar(220 * fig_h)))
-                # Symmetric XY extents and ortho projection to avoid elongation
-                try:
-                    rmax = float(max(abs(V[:, 0]).max(), abs(V[:, 1]).max()))
-                    zmin = float(V[:, 2].min())
-                    zmax = float(V[:, 2].max())
-                except Exception:
-                    rmax = max(1.0, _to_float_scalar(ss.get("top_od", 140.0)) * 0.5)
-                    zmin, zmax = 0.0, _to_float_scalar(ss.get("H", 120.0))
-                xlim = [-rmax, rmax]
-                ylim = [-rmax, rmax]
-                zlim = [zmin, zmax]
-                z_ratio = (zmax - zmin) / max(1e-6, (xlim[1] - xlim[0]))
-                # Title includes mesh resolution and face count, and whether exact or approximate was used
-                try:
-                    nt_used = _to_int_scalar(ss.get("_last_mesh_ntheta", 0)) or (
-                        int(V.shape[0]) // max(1, (n_z if n_z else 1))
-                    )
-                except Exception:
-                    nt_used = 0
-                try:
-                    nz_used = _to_int_scalar(ss.get("_last_mesh_nz", 0)) or (
-                        int(V.shape[0]) // max(1, (n_theta if n_theta else 1))
-                    )
-                except Exception:
-                    nz_used = 0
-                title_txt = (
-                    f"Full preview (triangles {len(Fd):,}, exact={use_exact_full})"
-                )
-                fig.update_layout(
-                    height=height_px,
-                    title=title_txt,
-                    scene=dict(
-                        xaxis=dict(visible=False, range=xlim),
-                        yaxis=dict(visible=False, range=ylim),
-                        zaxis=dict(visible=False, range=zlim),
-                        aspectmode="manual",
-                        aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
-                        camera=dict(
-                            up=dict(x=0, y=0, z=1), projection=dict(type="orthographic")
-                        ),
-                        bgcolor=cast(Any, ss.get("preview_bg_color", "#0E1117")),
-                    ),
-                    margin=dict(l=0, r=0, t=30, b=0),
-                )
-                try:
-                    preview_placeholder.empty()
-                except Exception:
-                    pass
-                mesh_placeholder.plotly_chart(
-                    fig, use_container_width=True, config={"displaylogo": False}
-                )
-                t1_mesh = time.time()
-                try:
-                    perf = st.session_state.setdefault("_perf_logs", [])
-                    perf.append(f"mesh_plotly:{(t1_mesh - t0_mesh) * 1000:.1f}ms")
-                    st.session_state["_perf_logs"] = perf[-40:]
-                except Exception:
-                    pass
-                # Persist the exact mesh figure so manual mode can show it
-                try:
-                    st.session_state["_last_mesh_fig_json"] = fig.to_dict()
-                except Exception:
-                    pass
-                # Removed auto/manual mesh PNG capture here; snapshots and publish handle PNG generation explicitly
-            except Exception as e:
-                # Fallback to last known mesh PNG if available
-                try:
-                    last_png = cast(Optional[bytes], ss.get("_last_mesh_png"))
-                    if last_png:
-                        mesh_placeholder.image(
-                            last_png,
-                            caption="Full Preview (PNG fallback)",
-                            width="stretch",
-                        )
-                    else:
-                        mesh_placeholder.info(
-                            f"Mesh preview unavailable (no fallback): {e}"
-                        )
-                except Exception:
-                    mesh_placeholder.info(f"Mesh preview unavailable (error): {e}")
-        else:
-            # Plotly not available: show static PNG
-            try:
-                current_png = png_bytes or cast(
-                    Optional[bytes], ss.get("_last_mesh_png")
-                )
-                if current_png:
-                    mesh_placeholder.image(
-                        current_png, caption="Full Preview (static)", width="stretch"
-                    )
-                else:
-                    mesh_placeholder.info("Full preview PNG not available yet.")
-            except Exception:
-                pass
+        try:
+            render_full_preview_mesh(
+                H, Rt, Rb, expn,
+                preview_n_theta, preview_n_z,
+                full_n_theta, full_n_z,
+                n_theta, n_z,
+                style_name, opts_json,
+                t_wall, t_bottom, r_drain,
+                r_outer_fn, opts,
+                mesh_data, geom_changed,
+                preview_mode, ss,
+                geom_sig, app_sig,
+                debounce_timeout_seconds,
+                place_on_ground, fig_h,
+                mesh_placeholder, preview_placeholder,
+                png_bytes,
+                _to_float_scalar, _to_int_scalar
+            )
+        except NameError:
+            # Fallback if module not imported
+            mesh_placeholder.info("Full preview module not available")
     
     
