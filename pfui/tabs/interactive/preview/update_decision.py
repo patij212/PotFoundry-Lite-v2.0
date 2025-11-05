@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import streamlit as st
 
+from .cache_management import clear_preview_cache
 from .utils import to_float_scalar
 
 
@@ -105,37 +106,6 @@ timer = setTimeout(function(){
         components.html(js, height=0)
     except Exception:
         pass
-
-
-def clear_preview_cache(ss: dict[str, Any]) -> None:
-    """Clear all preview caches from session state.
-    
-    Args:
-        ss: Session state dictionary
-    """
-    try:
-        st.cache_data.clear()
-    except Exception:
-        pass
-    
-    # Clear session-cached arrays and figures
-    for k in (
-        "_last_X",
-        "_last_Y",
-        "_last_Z",
-        "_last_mesh_V",
-        "_last_mesh_F",
-        "_last_mesh_fig_json",
-        "_last_surface_fig_json",
-        "_last_mesh_png",
-        "_last_surface_png",
-    ):
-        try:
-            if k in ss:
-                del ss[k]
-        except Exception:
-            pass
-    ss["_preview_stale"] = True
 
 
 def check_server_side_update(preview_mode: str, ss: dict[str, Any]) -> bool:
