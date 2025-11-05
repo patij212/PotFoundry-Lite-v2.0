@@ -48,6 +48,11 @@ from pfui.state import (
     reset_style_defaults,
     widget_key,
 )
+from pfui.tabs.interactive import (
+    render_metrics_section,
+    render_performance_section,
+    render_profile_section,
+)
 from pfui.units import units_selector
 from potfoundry.types import StyleOpts
 
@@ -1706,61 +1711,19 @@ def render_interactive_tab(
                 pass
 
     # -------------------- METRICS ----------------------
-    st.subheader("Estimated metrics")
-    try:
-        _, faces_m, diag_m = cast(
-            tuple[Any, Any, Any],
-            build_pot_mesh(
-                H=H,
-                Rt=Rt,
-                Rb=Rb,
-                t_wall=t_wall,
-                t_bottom=t_bottom,
-                r_drain=r_drain,
-                expn=expn,
-                n_theta=max(48, n_theta // 2),
-                n_z=max(24, n_z // 2),
-                r_outer_fn=r_outer_fn,
-                style_opts=opts,
-            ),
-        )
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Triangles", f"{len(faces_m):,}")
-        # diag_m may be either a dict of diagnostics or another type returned
-        # by the geometry engine in some code paths; guard access with
-        # isinstance so mypy knows we're only calling .get on a dict.
-        if isinstance(diag_m, dict):
-            top_od_val = diag_m.get("estimated_top_od_mm", 0)
-            bottom_od_val = diag_m.get("estimated_bottom_od_mm", 0)
-        else:
-            top_od_val = 0
-            bottom_od_val = 0
-        m2.metric("Top OD (mm)", f"{top_od_val:.1f}")
-        m3.metric("Bottom OD (mm)", f"{bottom_od_val:.1f}")
-        # Seam debug samples panel: show readout when user enabled lp_debug_seam
-        try:
-            if (
-                opts.get("lp_debug_seam", False)
-                and isinstance(diag_m, dict)
-                and "seam_debug_samples" in diag_m
-            ):
-                with st.expander("Seam debug samples (lp_debug_seam)"):
-                    groups = diag_m.get("seam_debug_samples", [])
-                    for gi, group in enumerate(groups):
-                        st.markdown(f"**Group {gi + 1}**")
-                        for samp in group:
-                            try:
-                                theta_mid, zc, r_base_mid, Rstart_mid = samp
-                                delta = r_base_mid - Rstart_mid
-                                st.write(
-                                    f"θ_mid={theta_mid:.3f}, z={zc:.3f}, r_base={r_base_mid:.3f}, R_start={Rstart_mid:.3f}, delta={delta:.6f}"
-                                )
-                            except Exception:
-                                st.write(repr(samp))
-        except Exception:
-            pass
-    except Exception:
-        st.info("Metrics unavailable for this configuration.")
+    render_metrics_section(
+        H=H,
+        Rt=Rt,
+        Rb=Rb,
+        t_wall=t_wall,
+        t_bottom=t_bottom,
+        r_drain=r_drain,
+        expn=expn,
+        n_theta=n_theta,
+        n_z=n_z,
+        r_outer_fn=r_outer_fn,
+        opts=opts,
+    )
 
     # -------------------- APPEARANCE / PREVIEW SETTINGS --------------------
     with st.expander("Appearance & Preview Settings"):
@@ -2185,19 +2148,10 @@ def render_interactive_tab(
             st.error(f"Export failed: {e}")
 
     # ----------------- 2D PROFILE ----------------------
-    with st.expander("2D radial profile"):
-        render_profile(H, Rt, Rb, expn, r_outer_fn, dict(opts), t_wall)
+    render_profile_section(H, Rt, Rb, expn, r_outer_fn, dict(opts), t_wall)
 
     # --------------- PERFORMANCE (DEV) ----------------
-    with st.expander("Performance (dev)"):
-        perf_logs = cast(Any, ss.get("_perf_logs", []))
-        st.text_area("Recent timings", value="\n".join(perf_logs[-30:]), height=180)
-        if st.button("Force clear caches"):
-            try:
-                st.cache_data.clear()
-                st.success("Caches cleared")
-            except Exception:
-                st.error("Failed to clear caches")
+    render_performance_section()
 
 # ============================================================
 # Tab 2 — Batch from YAML
