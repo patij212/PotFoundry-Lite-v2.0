@@ -195,6 +195,21 @@ def compute_mesh_hash(
         sorted for consistent hashing.
     """
     # Create a canonical representation of parameters
+    # Safe function name extraction (handles lambdas and objects without __name__)
+    try:
+        fn_name = r_outer_fn.__name__ if r_outer_fn else "None"
+    except AttributeError:
+        fn_name = str(type(r_outer_fn).__name__) if r_outer_fn else "None"
+    
+    # Safe style options conversion (only convert numeric values)
+    safe_style_opts = {}
+    for k, v in sorted(style_opts.items()):
+        try:
+            safe_style_opts[k] = float(v)
+        except (TypeError, ValueError):
+            # Keep non-numeric values as strings for hash consistency
+            safe_style_opts[k] = str(v)
+    
     param_dict = {
         "H": float(H),
         "Rt": float(Rt),
@@ -205,8 +220,8 @@ def compute_mesh_hash(
         "expn": float(expn),
         "n_theta": int(n_theta),
         "n_z": int(n_z),
-        "r_outer_fn_name": r_outer_fn.__name__ if r_outer_fn else "None",
-        "style_opts": {k: float(v) for k, v in sorted(style_opts.items())},
+        "r_outer_fn_name": fn_name,
+        "style_opts": safe_style_opts,
     }
 
     # Serialize to stable JSON representation
