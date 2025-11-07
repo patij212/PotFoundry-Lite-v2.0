@@ -84,13 +84,15 @@ def vectorized_vertex_generation(
     n_z = len(z_array)
     n_theta = len(thetas)
     
-    # Compute all base radii at once
+    # Compute all base radii and twist angles
+    # Note: These loops call user-provided functions (base_radius_fn, spin_twist_fn)
+    # which may not be vectorizable. The loops themselves are minimal overhead
+    # compared to the vectorized operations that follow.
     r0_array = np.array([
         base_radius_fn(float(z), H, Rb, Rt, expn, style_opts)
         for z in z_array
     ], dtype=np.float64)
     
-    # Compute all twist angles at once
     twist_array = np.array([
         spin_twist_fn(float(z), H, style_opts)
         for z in z_array
@@ -106,6 +108,9 @@ def vectorized_vertex_generation(
     _opts.setdefault("_pf_expn", expn)
     
     # Call style function for each z-level (vectorized over theta)
+    # Note: This loop is necessary because r_outer_fn is user-provided and may have
+    # state or side effects. The key optimization is that r_outer_fn receives the
+    # entire theta array and returns vectorized results, avoiding inner loops.
     for i, (z, r0) in enumerate(zip(z_array, r0_array)):
         r_vals_row = r_outer_fn(thetas, float(z), r0, H, _opts)
         r_values[i] = np.asarray(r_vals_row, dtype=np.float64)
@@ -297,13 +302,16 @@ def accelerated_build_pot_mesh(
     clamp_count = np.count_nonzero(clamped_mask)
     r_inner_vals[clamped_mask] = min_allowed
     
-    # Use same twist as outer wall for inner wall
+    # Use same twist computation helper (user-provided function)
+    # Note: This is a helper function call, not a hot loop
     twist_inner = np.array([
         spin_twist_fn(float(z), H, style_opts)
         for z in z_inner
     ], dtype=np.float64)
     
-    # Get inner wall r-values at z_inner positions
+    # Get inner wall r-values at z_inner positions  
+    # Note: This loop is necessary for calling user-provided style function
+    # The key optimization is vectorization WITHIN each iteration (over theta)
     r_inner_at_z = np.empty((len(z_inner), n_theta), dtype=np.float64)
     _opts = dict(style_opts)
     _opts.setdefault("_pf_rb", Rb)
@@ -312,7 +320,7 @@ def accelerated_build_pot_mesh(
     
     for i, z in enumerate(z_inner):
         r0 = base_radius_fn(float(z), H, Rb, Rt, expn, style_opts)
-        r_out = r_outer_fn(thetas, float(z), r0, H, _opts)
+        r_out = r_outer_fn(thetas, float(z), r0, H, _opts)  # Vectorized over theta!
         r_in = np.asarray(r_out, dtype=np.float64) - t_wall
         r_in[r_in < min_allowed] = min_allowed
         r_inner_at_z[i] = r_in
