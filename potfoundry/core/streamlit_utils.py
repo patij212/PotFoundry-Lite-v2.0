@@ -252,7 +252,20 @@ def render_pot_preview():
         
         # Export to STL
         from potfoundry import write_stl_binary
-        stl_bytes = write_stl_binary_to_bytes(verts, faces)
+        import tempfile
+        
+        # Write to temporary file and read bytes
+        with tempfile.NamedTemporaryFile(suffix='.stl', delete=False) as tmp:
+            write_stl_binary(tmp.name, "Pot", verts, faces)
+            tmp_path = tmp.name
+        
+        with open(tmp_path, 'rb') as f:
+            stl_bytes = f.read()
+        
+        # Clean up
+        import os
+        os.unlink(tmp_path)
+        
         st.download_button(
             label='Download STL',
             data=stl_bytes,
