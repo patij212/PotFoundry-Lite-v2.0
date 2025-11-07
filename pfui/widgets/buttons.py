@@ -35,10 +35,10 @@ def button_with_callback(
         disabled=disabled,
         use_container_width=use_container_width,
     )
-    
+
     if clicked:
         callback()
-    
+
     return clicked
 
 

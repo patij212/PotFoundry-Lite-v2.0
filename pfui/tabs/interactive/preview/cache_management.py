@@ -9,10 +9,10 @@ import streamlit as st
 
 def initialize_preview_cache(ss: dict[str, Any]) -> None:
     """Initialize preview cache keys in session state.
-    
+
     Sets up separate caches for surface (fast) and mesh (exact) previews,
     and initializes the stale flag for manual mode.
-    
+
     Args:
         ss: Session state dictionary
     """
@@ -26,9 +26,9 @@ def initialize_preview_cache(ss: dict[str, Any]) -> None:
 
 def clear_preview_cache(ss: dict[str, Any]) -> None:
     """Clear all preview caches from session state.
-    
+
     Clears both Streamlit cache and session-cached arrays/figures.
-    
+
     Args:
         ss: Session state dictionary
     """
@@ -36,7 +36,7 @@ def clear_preview_cache(ss: dict[str, Any]) -> None:
         st.cache_data.clear()
     except Exception:
         pass
-    
+
     # Clear session-cached arrays and figures
     for k in (
         "_last_X",

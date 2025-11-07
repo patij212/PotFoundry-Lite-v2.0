@@ -17,9 +17,7 @@ Performance modes:
 
 from __future__ import annotations
 
-import hashlib
 import json
-from functools import lru_cache
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
@@ -143,31 +141,31 @@ def vectorized_face_generation(
     # Fully vectorized face generation using broadcasting (no Python loops)
     # This implementation uses NumPy's advanced indexing to generate all faces
     # at once, which is >100x faster than Python loops for millions of values.
-    
+
     # Create index arrays for all rows at once
     i_rows = np.arange(n_rows, dtype=np.int32)[:, np.newaxis]  # Shape: (n_rows, 1)
-    
+
     # Get all four corners of all quads using broadcasting
-    v00 = ring_indices[i_rows, j]      # Shape: (n_rows, n_theta)
-    v01 = ring_indices[i_rows, jn]     # Shape: (n_rows, n_theta)
+    v00 = ring_indices[i_rows, j]  # Shape: (n_rows, n_theta)
+    v01 = ring_indices[i_rows, jn]  # Shape: (n_rows, n_theta)
     v10 = ring_indices[i_rows + 1, j]  # Shape: (n_rows, n_theta)
-    v11 = ring_indices[i_rows + 1, jn] # Shape: (n_rows, n_theta)
-    
+    v11 = ring_indices[i_rows + 1, jn]  # Shape: (n_rows, n_theta)
+
     # Flatten to get linear indexing for face array
     v00_flat = v00.ravel()
     v01_flat = v01.ravel()
     v10_flat = v10.ravel()
     v11_flat = v11.ravel()
-    
+
     # Total number of quads
     n_quads = n_rows * n_theta
-    
+
     if reverse_winding:
         # Inner wall (reverse winding) - first triangle of each quad
         faces[:n_quads, 0] = v00_flat
         faces[:n_quads, 1] = v11_flat
         faces[:n_quads, 2] = v10_flat
-        
+
         # Inner wall (reverse winding) - second triangle of each quad
         faces[n_quads:, 0] = v00_flat
         faces[n_quads:, 1] = v01_flat
@@ -177,7 +175,7 @@ def vectorized_face_generation(
         faces[:n_quads, 0] = v00_flat
         faces[:n_quads, 1] = v10_flat
         faces[:n_quads, 2] = v11_flat
-        
+
         # Outer wall (normal winding) - second triangle of each quad
         faces[n_quads:, 0] = v00_flat
         faces[n_quads:, 1] = v11_flat
@@ -220,7 +218,7 @@ def compute_mesh_hash(
         fn_name = r_outer_fn.__name__ if r_outer_fn else "None"
     except AttributeError:
         fn_name = str(type(r_outer_fn).__name__) if r_outer_fn else "None"
-    
+
     # Safe style options conversion (only convert numeric values)
     safe_style_opts = {}
     for k, v in sorted(style_opts.items()):
@@ -229,7 +227,7 @@ def compute_mesh_hash(
         except (TypeError, ValueError):
             # Keep non-numeric values as strings for hash consistency
             safe_style_opts[k] = str(v)
-    
+
     param_dict = {
         "H": float(H),
         "Rt": float(Rt),
@@ -251,10 +249,10 @@ def compute_mesh_hash(
     # This is much faster than SHA256 (~100x) and sufficient for cache keys.
     # We use hash of the JSON string for consistency and stability.
     cache_hash = hash(param_json)
-    
+
     # Convert to hexadecimal string for readability (mimics hashlib interface)
     # Note: Python's hash() can be negative, so we use abs() and format as hex
-    return format(abs(cache_hash), '016x')
+    return format(abs(cache_hash), "016x")
 
 
 # LRU cache for mesh results (keeps last 8 meshes in memory)
@@ -474,16 +472,16 @@ def build_pot_mesh_accelerated(
     style_opts: Dict[str, Any],
 ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.int32], Dict[str, Any]]:
     """Accelerated mesh generation for full-resolution previews.
-    
+
     This function uses the fully vectorized accelerated mesh builder to generate
     full-resolution meshes 2-3x faster than the standard implementation.
-    
+
     Key optimizations:
     - Fully vectorized vertex generation (no Python loops)
     - Batch computation of all rings at once
     - Vectorized face indexing
     - Optional Numba JIT compilation (auto-detected)
-    
+
     Args:
         H: Total height in mm (must be > 0)
         Rt: Top radius in mm (must be > 0)
@@ -496,23 +494,23 @@ def build_pot_mesh_accelerated(
         n_z: Vertical divisions along height
         r_outer_fn: Style function for outer radius modulation
         style_opts: Style-specific options dict
-        
+
     Returns:
         Tuple of (vertices, faces, diagnostics) - same as build_pot_mesh
         - vertices: np.ndarray shape (N, 3)
         - faces: np.ndarray shape (M, 3)
         - diagnostics: dict with clamp_ratio, estimated dimensions
-        
+
     Performance:
         - 168×84 mesh: ~10-15ms (vs ~20-25ms standard)
         - 336×168 mesh: ~35-45ms (vs ~80-100ms standard)
         - 672×336 mesh: ~120-150ms (vs ~250-300ms standard)
         - With Numba: 2-3x faster again
-        
+
     Example:
         >>> from potfoundry import STYLES
         >>> from potfoundry.core.optimizations import build_pot_mesh_accelerated
-        >>> 
+        >>>
         >>> style_fn = STYLES["SuperformulaBlossom"][0]
         >>> verts, faces, diag = build_pot_mesh_accelerated(
         ...     H=120, Rt=70, Rb=50, t_wall=3, t_bottom=3, r_drain=10,
@@ -520,19 +518,19 @@ def build_pot_mesh_accelerated(
         ...     r_outer_fn=style_fn, style_opts={}
         ... )
         >>> print(f"Generated {len(faces)} faces in ~10-15ms")
-    
+
     Note:
         This function requires the accelerated module. It will automatically
         use Numba JIT compilation if available for additional 2-3x speedup.
     """
     # Import the accelerated builder
+    from ..core.geometry import base_radius
     from .accelerated import accelerated_build_pot_mesh
-    
+
     # Import required helper functions from the geometry modules
     from .mesh import theta_grid_cached
-    from ..core.geometry import base_radius
     from .mesh.outer_wall import spin_twist_radians
-    
+
     # Call the accelerated builder
     return accelerated_build_pot_mesh(
         H=H,

@@ -85,7 +85,7 @@ PYTHONPATH=. python3 << 'EOF'
 import sys
 import importlib.util
 spec = importlib.util.spec_from_file_location(
-    "preview_impl", 
+    "preview_impl",
     "pfui/tabs/interactive/preview_impl.py"
 )
 # Note: Will fail on streamlit import, but validates structure

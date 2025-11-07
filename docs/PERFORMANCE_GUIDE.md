@@ -164,7 +164,7 @@ import streamlit as st
 from potfoundry import build_pot_mesh, STYLES
 
 @st.cache_data(show_spinner=False)
-def cached_mesh_generation(H, Rt, Rb, t_wall, t_bottom, r_drain, 
+def cached_mesh_generation(H, Rt, Rb, t_wall, t_bottom, r_drain,
                            expn, n_theta, n_z, style_name, **style_opts):
     """Cache mesh generation results in Streamlit session."""
     r_outer_fn = STYLES[style_name][0]
@@ -376,7 +376,7 @@ from potfoundry import build_pot_mesh, STYLES
 def benchmark_mesh_generation(n_theta, n_z, iterations=10):
     """Benchmark mesh generation performance."""
     style_fn = STYLES["SuperformulaBlossom"][0]
-    
+
     times = []
     for _ in range(iterations):
         start = time.perf_counter()
@@ -387,7 +387,7 @@ def benchmark_mesh_generation(n_theta, n_z, iterations=10):
         )
         elapsed = time.perf_counter() - start
         times.append(elapsed * 1000)  # Convert to ms
-    
+
     return {
         'mean_ms': np.mean(times),
         'std_ms': np.std(times),

@@ -30,7 +30,7 @@ def generate_preview_arrays(
     interactive_mesh: bool,
 ) -> tuple[Optional[Any], Optional[Any], Optional[Any], float]:
     """Generate X, Y, Z preview arrays with caching.
-    
+
     Args:
         H: Height
         Rt: Top radius
@@ -49,16 +49,16 @@ def generate_preview_arrays(
         app_sig: Appearance signature
         debounce_timeout_seconds: Debounce timeout
         interactive_mesh: Whether interactive mesh is enabled
-        
+
     Returns:
         Tuple of (X, Y, Z, elapsed_time)
     """
     X: Optional[Any] = None
     Y: Optional[Any] = None
     Z: Optional[Any] = None
-    
+
     t0_arrays = time.time()
-    
+
     # Reuse cached arrays when geometry unchanged
     if (not geom_changed) and all(
         k in st.session_state for k in ("_last_X", "_last_Y", "_last_Z")
@@ -69,7 +69,7 @@ def generate_preview_arrays(
             Z = cast(Any, ss.get("_last_Z"))
         except Exception:
             X = Y = Z = None
-    
+
     if (X is None) or (Y is None) or (Z is None):
         # Use centralized orchestrator for array generation
         try:
@@ -88,18 +88,10 @@ def generate_preview_arrays(
                 full_n_z,
                 style_name,
                 opts_json,
-                preview_mode=cast(
-                    str, ss.get("preview_mode", preview_mode)
-                ),
-                preview_stale=bool(
-                    cast(Any, ss.get("_preview_stale", False))
-                ),
-                last_geom_sig=cast(
-                    Optional[tuple], ss.get("_last_preview_geom_sig")
-                ),
-                last_app_sig=cast(
-                    Optional[tuple], ss.get("_last_preview_app_sig")
-                ),
+                preview_mode=cast(str, ss.get("preview_mode", preview_mode)),
+                preview_stale=bool(cast(Any, ss.get("_preview_stale", False))),
+                last_geom_sig=cast(Optional[tuple], ss.get("_last_preview_geom_sig")),
+                last_app_sig=cast(Optional[tuple], ss.get("_last_preview_app_sig")),
                 geom_sig=geom_sig,
                 app_sig=app_sig,
                 debounce_timeout_s=debounce_timeout_seconds,
@@ -127,7 +119,7 @@ def generate_preview_arrays(
                 style_name,
                 opts_json,
             )
-        
+
         # Cache for appearance-only changes
         try:
             ss["_last_X"] = X
@@ -135,8 +127,8 @@ def generate_preview_arrays(
             ss["_last_Z"] = Z
         except Exception:
             pass
-    
+
     t1_arrays = time.time()
     elapsed = t1_arrays - t0_arrays
-    
+
     return X, Y, Z, elapsed

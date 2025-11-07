@@ -22,7 +22,7 @@ def normalize_style_opts(
     strip_alt: bool = False,
 ) -> dict:
     """Normalize style options between legacy and canonical key formats.
-    
+
     See aliases.normalize_style_opts for full documentation.
     """
     return _normalize(style, opts, direction, strip_alt=strip_alt)
@@ -30,7 +30,7 @@ def normalize_style_opts(
 
 def to_canonical(style: str, opts: dict | None) -> dict:
     """Convert style options to canonical key format.
-    
+
     See aliases.to_canonical for full documentation.
     """
     return _to_canonical(style, opts)
@@ -38,7 +38,7 @@ def to_canonical(style: str, opts: dict | None) -> dict:
 
 def to_engine(style: str, opts: dict | None) -> dict:
     """Convert style options to legacy/engine key format.
-    
+
     See aliases.to_engine for full documentation.
     """
     return _to_engine(style, opts)

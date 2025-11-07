@@ -4,16 +4,16 @@ Utility functions for LowPolyFacet style.
 This module contains helper functions used by the lowpoly_facet style,
 including radius calculations and smooth min/max operations.
 """
+
 from __future__ import annotations
 
-import math
 import math as _m  # Alias for base_radius function
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
-from ....types import StyleOpts, NDArrayFloat
+from ....types import NDArrayFloat, StyleOpts
 
 
 def base_radius(

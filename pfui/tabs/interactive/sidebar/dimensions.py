@@ -9,7 +9,7 @@ from pfui.app_components.sidebar import render_dimensions as _render_dimensions
 
 def render_dimensions(on_change: callable) -> None:
     """Render dimensions controls.
-    
+
     Args:
         on_change: Callback to trigger when dimensions change
     """

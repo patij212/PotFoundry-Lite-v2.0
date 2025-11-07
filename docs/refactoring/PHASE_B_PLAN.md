@@ -1,15 +1,15 @@
 # Phase B: Interactive Tab Refinement - Analysis and Plan
 
-**Date:** 2025-11-05  
-**Status:** 📋 PLANNED - Ready for implementation  
+**Date:** 2025-11-05
+**Status:** 📋 PLANNED - Ready for implementation
 **Estimated Effort:** 8-12 hours
 
 ---
 
 ## Current State
 
-**File:** `pfui/interactive_tab.py`  
-**Size:** 2,205 LOC  
+**File:** `pfui/interactive_tab.py`
+**Size:** 2,205 LOC
 **Type:** Monolithic function with inline logic
 
 ### Structure Analysis
@@ -129,10 +129,10 @@ def render_export_section(
     has_library: bool, library_read_only: bool
 ) -> None:
     """Handle STL export and library publishing."""
-    
+
 def _generate_deep_link(state: dict) -> str:
     """Generate shareable deep link."""
-    
+
 def _mask_secrets(text: str) -> str:
     """Mask sensitive information in links."""
 ```
@@ -147,13 +147,13 @@ def render_preview_section(
     expn, opts, r_outer_fn
 ) -> tuple[vertices, faces, diagnostics]:
     """Render 3D preview and manage preview updates."""
-    
+
 def _should_update_preview() -> bool:
     """Check if preview needs updating based on debounce logic."""
-    
+
 def _render_plotly_preview(vertices, faces) -> None:
     """Render interactive Plotly preview."""
-    
+
 def _render_png_preview(vertices, faces) -> None:
     """Render static PNG preview."""
 ```
@@ -165,7 +165,7 @@ def _render_png_preview(vertices, faces) -> None:
 # pfui/tabs/interactive/sidebar.py (~450 LOC)
 def render_sidebar_section() -> dict:
     """Render sidebar controls and return current parameters."""
-    
+
 def _mark_changed() -> None:
     """Mark parameters as changed for debounced updates."""
 ```
@@ -182,26 +182,26 @@ def render_interactive_tab(
     """Main orchestration of Interactive Designer tab."""
     # Sidebar
     params = render_sidebar_section()
-    
+
     # Preview & controls
     vertices, faces, diagnostics = render_preview_section(**params)
-    
+
     # Health
     render_health_section()
-    
+
     # Metrics
     render_metrics_section(diagnostics)
-    
+
     # Appearance (already extracted)
-    
+
     # Snapshots (already extracted)
-    
+
     # Export
     render_export_section(vertices, faces, ...)
-    
+
     # Profile
     render_profile_section(...)
-    
+
     # Performance
     render_performance_section()
 ```
@@ -299,8 +299,8 @@ Given the complexity, consider an incremental approach:
 
 ## Status
 
-**Current:** Analysis complete, ready for implementation  
-**Blocker:** None - can proceed when ready  
-**Dependencies:** None - Phase D complete  
+**Current:** Analysis complete, ready for implementation
+**Blocker:** None - can proceed when ready
+**Dependencies:** None - Phase D complete
 
 This is a significant refactoring that should be done carefully with extensive testing at each step.

@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, Tuple, cast
+from typing import Any, Callable, Dict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -155,7 +153,6 @@ def base_radius(
         return r
 
 
-
 # -----------------------------
 # Utilities
 # -----------------------------
@@ -231,7 +228,6 @@ def write_ascii_stl(
             f.write("    endloop\n")
             f.write("  endfacet\n")
         f.write(f"endsolid {name}\n")
-
 
 
 # -----------------------------
@@ -2928,7 +2924,7 @@ def build_pot_mesh(
             edgeflow_verbose_collector_local = edgeflow_verbose_collector
     except Exception:
         pass
-    
+
     diagnostics = calculate_mesh_diagnostics(
         verts=verts,
         outer_idx=outer_idx,
@@ -2941,7 +2937,7 @@ def build_pot_mesh(
         dbg_samples_collected=dbg_samples_collected,
         edgeflow_verbose_collector=edgeflow_verbose_collector_local,
     )
-    
+
     faces_arr = assemble_faces(faces_out_parts)
     return np.array(verts, dtype=float), faces_arr, diagnostics
 

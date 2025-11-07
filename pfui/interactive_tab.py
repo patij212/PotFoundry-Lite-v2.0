@@ -5,7 +5,7 @@ extracted from app.py to improve modularity and maintainability.
 
 The tab has been fully modularized with components extracted to:
 - pfui/tabs/interactive/sidebar.py - All sidebar input controls
-- pfui/tabs/interactive/preview.py - Preview rendering and orchestration  
+- pfui/tabs/interactive/preview.py - Preview rendering and orchestration
 - pfui/tabs/interactive/export.py - STL export and library publishing
 - pfui/tabs/interactive/metrics.py - Mesh statistics
 - pfui/tabs/interactive/performance.py - Performance logs
@@ -36,17 +36,17 @@ def render_interactive_tab(
     _library_read_only: bool = False,
 ) -> None:
     """Render the complete Interactive Designer tab.
-    
+
     This is the main UI for designing and previewing pots interactively.
     All major sections have been extracted to focused modules.
-    
+
     Args:
         _has_library: Whether library is configured
         _library_read_only: Whether library is in read-only mode
     """
     # Get session state reference
     ss = cast(dict[str, Any], st.session_state)
-    
+
     # ------------------ SIDEBAR (all inputs) ------------------
     with st.sidebar:
         render_sidebar_section()

@@ -90,15 +90,15 @@ def checkbox_group(
     """
     if default is None:
         default = []
-    
+
     st.write(label)
     if help_text:
         st.caption(help_text)
-    
+
     selected = []
     for option in options:
         option_key = f"{key}_{option}" if key else None
         if st.checkbox(option, value=option in default, key=option_key):
             selected.append(option)
-    
+
     return selected

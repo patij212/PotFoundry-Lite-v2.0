@@ -10,7 +10,6 @@ import hashlib
 import json
 from typing import Any, List
 
-
 __all__ = [
     "APP_VERSION",
     "canonical_payload",
@@ -30,11 +29,11 @@ def _round_float(value: float, precision: int = 6) -> float:
 
 def _normalize_dict(d: dict[str, Any], precision: int = 6) -> dict[str, Any]:
     """Recursively normalize dictionary: round floats, sort keys.
-    
+
     Args:
         d: Dictionary to normalize
         precision: Float rounding precision
-        
+
     Returns:
         Normalized dictionary with sorted keys and rounded floats
     """

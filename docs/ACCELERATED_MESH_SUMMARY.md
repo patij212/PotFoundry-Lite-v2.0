@@ -1,7 +1,7 @@
 # Accelerated Mesh Generation - Performance Summary
 
-**Date:** November 2025  
-**Feature:** Full-resolution mesh generation acceleration  
+**Date:** November 2025
+**Feature:** Full-resolution mesh generation acceleration
 **Impact:** 7-22x faster mesh generation for interactive Streamlit previews
 
 ---
@@ -160,6 +160,6 @@ Users can now enjoy full-quality previews with instant feedback during parameter
 
 ---
 
-**Author:** GitHub Copilot  
-**Commit:** 8aa7d92  
+**Author:** GitHub Copilot
+**Commit:** 8aa7d92
 **Status:** Complete ✅

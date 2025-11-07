@@ -1,7 +1,7 @@
 # Handoff to Next Agent - Phase D Continuation
 
-**Date:** 2025-11-05  
-**Current Status:** Phase D 50% Complete  
+**Date:** 2025-11-05
+**Current Status:** Phase D 50% Complete
 **Ready For:** Phase D Steps 4-6 (Seam & Experimental Extraction)
 
 ---
@@ -59,13 +59,13 @@ potfoundry/core/styles/lowpoly_facet/
 
 def compute_tier_boundaries(t, H, tiers):
     """Calculate bottom and top heights for current tier."""
-    
+
 def compute_seam_cuts(r_base, params, tier_info, opts):
     """Apply seam cuts with V-groove geometry."""
-    
+
 def apply_straight_edges(r_vals, params, weights):
     """Apply straight edge flattening near seams."""
-    
+
 def blend_seam_windows(r_vals, weights_bot, weights_top):
     """Blend seam effects with windowing."""
 ```
@@ -96,13 +96,13 @@ result = r_outer_lowpoly_facet(
 
 def apply_outward_mode(r_vals, R_start, dz, slope, softness):
     """Apply outward envelope with smooth limiting."""
-    
+
 def apply_uniform_ring(r_vals, r_guard, params):
     """Enforce uniform ring mode constraints."""
-    
+
 def apply_antialiasing(r_vals, weights, passes, strength):
     """Smooth seam transitions with anti-aliasing."""
-    
+
 def apply_edge_trimming(r_vals, tri_s, edge_cut_mm, sharpness):
     """Trim near facet edges (theta-local)."""
 ```
@@ -130,31 +130,31 @@ result = r_outer_lowpoly_facet(
 ```python
 def r_outer_lowpoly_facet(theta, z, r0, H, opts):
     params = extract_params(opts)
-    
+
     # Fast path
     if not (params.use_outward or has_cuts(params) or has_edge_cut(params)):
         tier_idx = compute_tier_idx(z, H, params.tiers)
         tri_s, f, p = compute_basic_facet_radius(theta, r0, params, tier_idx)
         return r0 * f
-    
+
     # Complex path
     tier_idx = compute_tier_idx(z, H, params.tiers)
     tri_s, f, p = compute_basic_facet_radius(theta, r0, params, tier_idx)
     r_base = r0 * f
-    
+
     if has_cuts(params):
         tier_info = compute_tier_boundaries(z, H, params.tiers)
         r_base = compute_seam_cuts(r_base, params, tier_info, opts)
-    
+
     if has_edge_cut(params):
         r_base = apply_edge_trimming(r_base, tri_s, params.edge_cut_mm, params.edge_cut_sharp)
-    
+
     if params.use_outward:
         r_base = apply_outward_mode(r_base, ...)
-    
+
     if params.uniform_ring:
         r_base = apply_uniform_ring(r_base, ...)
-    
+
     return r_base
 ```
 
@@ -416,6 +416,6 @@ Good luck! 🚀
 
 ---
 
-**Document Version:** 1.0  
-**Author:** GitHub Copilot  
+**Document Version:** 1.0
+**Author:** GitHub Copilot
 **Status:** Ready for Next Agent

@@ -11,10 +11,12 @@ from typing import TYPE_CHECKING, Optional, Tuple
 
 if TYPE_CHECKING:
     import streamlit as st
+
     HAS_STREAMLIT = True
 else:
     try:
         import streamlit as st
+
         HAS_STREAMLIT = True
     except Exception:
         HAS_STREAMLIT = False
@@ -64,7 +66,7 @@ def record_publish() -> None:
 
     Appends current timestamp to session state publish history.
     Automatically cleans entries older than 120 seconds.
-    
+
     Note:
         This function mutates Streamlit's session_state and returns None.
     """

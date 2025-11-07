@@ -5,13 +5,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, Mapping
 
-from .aliases import GLOBAL_ALIASES as _GLOBAL_ALIASES
 from .aliases import ALIASES_BY_STYLE as _ALIASES_BY_STYLE
+from .aliases import GLOBAL_ALIASES as _GLOBAL_ALIASES
 from .global_controls import GLOBAL_CONTROLS
 from .style_schemas import STYLE_SCHEMAS
 
 __all__ = ["CANONICAL_CONTROLS", "CANONICAL_STYLE_SCHEMAS"]
-
 
 
 def _build_canonical_schema() -> (

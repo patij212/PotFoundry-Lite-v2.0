@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
 from types import MappingProxyType
+from typing import Any, Dict
 
 __all__ = ["STYLE_SCHEMAS"]
 

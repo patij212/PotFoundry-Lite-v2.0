@@ -1,7 +1,7 @@
 # PotFoundry Mesh Package
 
-**Package**: `potfoundry.core.mesh`  
-**Purpose**: Modular mesh generation for 3D-printable flower pots  
+**Package**: `potfoundry.core.mesh`
+**Purpose**: Modular mesh generation for 3D-printable flower pots
 **Version**: 2.1.0
 
 ---
@@ -20,7 +20,7 @@ potfoundry/core/mesh/
 ├── outer_wall.py        - Outer wall ring sampling
 ├── inner_wall.py        - Inner wall with drain clamping
 ├── rim.py               - Rim cap geometry
-├── drain.py             - Drain hole geometry  
+├── drain.py             - Drain hole geometry
 ├── faces.py             - Face array assembly
 └── diagnostics.py       - Mesh quality metrics
 ```
@@ -324,7 +324,7 @@ Each module can be tested independently:
 - **Total**: O(n_z × n_theta) - linear in mesh resolution
 
 ### Space Complexity
-- Vertices: O(n_z × n_theta) 
+- Vertices: O(n_z × n_theta)
 - Faces: O(n_z × n_theta × 2) - two triangles per quad
 - **Total**: O(n_z × n_theta)
 
@@ -344,7 +344,7 @@ All mesh functions are re-exported by `potfoundry.core.geometry` for backward co
 from potfoundry.core.mesh import sample_outer_rings
 
 # Old way (still works via re-export)
-from potfoundry.core.geometry import MeshQuality  
+from potfoundry.core.geometry import MeshQuality
 ```
 
 This ensures existing code continues to work while new code can use the modular structure.
@@ -386,6 +386,6 @@ When adding new mesh functionality:
 
 ---
 
-**Last Updated**: 2025-11-05  
-**Package Version**: 2.1.0  
+**Last Updated**: 2025-11-05
+**Package Version**: 2.1.0
 **Maintainers**: PotFoundry Core Team

@@ -11,7 +11,6 @@ from typing import Any, cast
 
 import streamlit as st
 
-
 # --- Optional / graceful Plotly import (interactive preview) ---
 try:
     import plotly.graph_objects as go
@@ -271,7 +270,9 @@ else:
 # Tab 1 — Interactive Designer
 # ============================================================
 with _tab1:
-    render_interactive_tab(_has_library=_has_library, _library_read_only=_library_read_only)
+    render_interactive_tab(
+        _has_library=_has_library, _library_read_only=_library_read_only
+    )
 
 with _tab2:
     render_batch_tab()

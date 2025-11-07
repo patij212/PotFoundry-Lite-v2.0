@@ -10,8 +10,8 @@ from typing import Any, Optional, cast
 
 import streamlit as st
 
-from pfui.app_components.utils import resolve_schema_key
 import pfui.schemas as SC
+from pfui.app_components.utils import resolve_schema_key
 from pfui.units import units_selector
 
 from .dimensions import render_dimensions
@@ -27,21 +27,21 @@ from .utils import create_change_marker
 
 def render_sidebar_section(on_change_callback: Optional[callable] = None) -> None:
     """Render the complete sidebar section with all input controls.
-    
+
     Args:
         on_change_callback: Optional callback to trigger when inputs change
     """
     # Get style schemas
     styles = SC.get_style_schemas()
-    
+
     # Narrow the runtime-typed session state to a mapping for type-checker
     ss = cast(dict[str, Any], st.session_state)
-    
+
     # Units at a fixed, stable location
     units_selector()
 
     st.header("Model")
-    
+
     # Timestamp used to implement debounced preview updates
     if "_last_change_ts" not in ss:
         ss["_last_change_ts"] = 0.0

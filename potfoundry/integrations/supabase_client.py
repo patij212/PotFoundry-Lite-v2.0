@@ -16,14 +16,21 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast  # noqa: E402
 # Import from supabase package for modularity
 from .supabase import (
     DatabaseError,
-    LibraryError,
     NotConfiguredClient,
     NotConfiguredError,
     SupabaseConfig,
     UploadError,
+)
+from .supabase import (
     emit_tls_override_warning as _emit_tls_override_warning,
+)
+from .supabase import (
     is_disabled_via_secrets as _is_disabled_via_secrets,
+)
+from .supabase import (
     looks_like_invalid_key as _looks_like_invalid_key,
+)
+from .supabase import (
     should_skip_tls_verify as _should_skip_tls_verify,
 )
 

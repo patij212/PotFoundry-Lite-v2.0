@@ -14,10 +14,11 @@ from .utils import to_int_scalar
 
 def render_model_name_controls(ss: dict[str, Any]) -> None:
     """Render model name input with auto-naming logic.
-    
+
     Args:
         ss: Session state dictionary
     """
+
     def _on_model_name_change() -> None:
         # If user edits model name manually, mark it and disable auto-name
         # so we don't overwrite the user's change.
@@ -31,7 +32,7 @@ def render_model_name_controls(ss: dict[str, Any]) -> None:
     # (auto name enabled) unless the user has edited the name previously.
     if "_model_name_auto" not in ss:
         ss["_model_name_auto"] = not ss["_model_name_user_edited"]
-    
+
     # Compute an auto name (mirrors Snapshot default) from the last-known
     # style/H in session state so we can present the same auto-updating
     # behaviour without moving the widget in the sidebar.
@@ -55,11 +56,13 @@ def render_model_name_controls(ss: dict[str, Any]) -> None:
         H_val = to_int_scalar(H_val_raw)
     except Exception:
         H_val = 100
-    
+
     # If model_name doesn't exist yet, or if auto-name is enabled, we can
     # safely set or update the auto-generated name.
-    computed_auto_name = f"{style_guess or 'pot'}_{H_val}mm" if style_guess else "pot_100mm"
-    
+    computed_auto_name = (
+        f"{style_guess or 'pot'}_{H_val}mm" if style_guess else "pot_100mm"
+    )
+
     # If auto-naming is enabled, or if the model name is missing, initialize it
     if "_model_name_auto" not in ss:
         ss["_model_name_auto"] = True

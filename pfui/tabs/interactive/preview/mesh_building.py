@@ -36,7 +36,7 @@ def build_preview_mesh(
     place_on_ground: bool,
 ) -> tuple[Optional[tuple], bool]:
     """Build mesh for interactive preview with caching and orchestration.
-    
+
     Args:
         H: Height
         Rt: Top radius
@@ -61,17 +61,17 @@ def build_preview_mesh(
         app_sig: Appearance signature
         debounce_timeout_seconds: Debounce timeout
         place_on_ground: Whether to place on ground
-        
+
     Returns:
         Tuple of (mesh_data, built_via_orchestrator)
         where mesh_data is (vertices, faces) or None
     """
     mesh_data = None
     built_via_orchestrator = False
-    
+
     # Build mesh only when geometry/style changed; appearance-only changes reuse previous mesh
     do_mesh_build = bool(interactive_mesh and geom_changed)
-    
+
     if do_mesh_build:
         # Prefer orchestrator for mesh build when available
         try:
@@ -90,18 +90,10 @@ def build_preview_mesh(
                 full_n_z,
                 style_name,
                 opts_json,
-                preview_mode=cast(
-                    str, ss.get("preview_mode", preview_mode)
-                ),
-                preview_stale=bool(
-                    cast(Any, ss.get("_preview_stale", False))
-                ),
-                last_geom_sig=cast(
-                    Optional[tuple], ss.get("_last_preview_geom_sig")
-                ),
-                last_app_sig=cast(
-                    Optional[tuple], ss.get("_last_preview_app_sig")
-                ),
+                preview_mode=cast(str, ss.get("preview_mode", preview_mode)),
+                preview_stale=bool(cast(Any, ss.get("_preview_stale", False))),
+                last_geom_sig=cast(Optional[tuple], ss.get("_last_preview_geom_sig")),
+                last_app_sig=cast(Optional[tuple], ss.get("_last_preview_app_sig")),
                 geom_sig=geom_sig,
                 app_sig=app_sig,
                 debounce_timeout_s=debounce_timeout_seconds,
@@ -190,13 +182,13 @@ def build_preview_mesh(
             _display_seam_debug(opts, diag, ss)
         except Exception:
             pass
-    
+
     return mesh_data, built_via_orchestrator
 
 
 def _display_seam_debug(opts: dict[str, Any], diag: Any, ss: dict[str, Any]) -> None:
     """Display seam debug samples if debugging is enabled.
-    
+
     Args:
         opts: Style options dictionary
         diag: Diagnostics dictionary from mesh build
@@ -230,6 +222,4 @@ def _display_seam_debug(opts: dict[str, Any], diag: Any, ss: dict[str, Any]) -> 
                         except Exception:
                             st.write(repr(samp))
     except Exception as _e_dbg:
-        ss.setdefault("_debug_logs", []).append(
-            f"Seam debug display failed: {_e_dbg}"
-        )
+        ss.setdefault("_debug_logs", []).append(f"Seam debug display failed: {_e_dbg}")

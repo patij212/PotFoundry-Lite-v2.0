@@ -13,10 +13,10 @@ def unwrap_scalar(v: Any) -> Any:
 
     Annotated to help static analysis (Pylance) reason about downstream
     conversions.
-    
+
     Args:
         v: Value to unwrap
-        
+
     Returns:
         Unwrapped value (first element if list/tuple, otherwise original)
     """
@@ -35,10 +35,10 @@ def to_int_scalar(x: Any) -> int:
     - If the resulting value is a primitive known to be convertible to
       float (int/float/str/bytes), call float(x) safely and cast to int.
     - Otherwise, attempt best-effort conversions with exception guards.
-    
+
     Args:
         x: Value to convert to int
-        
+
     Returns:
         Int value, or 0 if conversion fails
     """
@@ -69,10 +69,10 @@ def to_float_scalar(x: Any) -> float:
     - Unwrap list/tuple-like containers.
     - If x is already int/float/str/bytes, call float(x).
     - Otherwise, attempt a best-effort conversion and fall back to 0.0 on error.
-    
+
     Args:
         x: Value to convert to float
-        
+
     Returns:
         Float value, or 0.0 if conversion fails
     """
@@ -99,13 +99,14 @@ def to_float_scalar(x: Any) -> float:
 
 def create_change_marker(on_change_callback: Optional[callable] = None) -> callable:
     """Create a change marker function that updates timestamps and triggers callbacks.
-    
+
     Args:
         on_change_callback: Optional callback to trigger when inputs change
-        
+
     Returns:
         Function that marks changes in session state
     """
+
     def _mark_changed() -> None:
         ss = cast(dict[str, Any], st.session_state)
         try:
@@ -120,12 +121,12 @@ def create_change_marker(on_change_callback: Optional[callable] = None) -> calla
                 ss["_preview_stale"] = False
         except Exception:
             pass
-        
+
         # Call the external callback if provided
         if on_change_callback is not None:
             try:
                 on_change_callback()
             except Exception:
                 pass
-    
+
     return _mark_changed

@@ -19,10 +19,8 @@ from typing import Any, Callable, cast
 
 import numpy as np
 import numpy.typing as npt
-from numpy.typing import NDArray
 
 from ...types import NDArrayFloat, StyleOpts
-
 
 __all__ = [
     "add_ring_xy",
@@ -48,7 +46,7 @@ def call_style_r_outer(
 
     Normalizes r0 to float when appropriate and returns either a float or
     NDArray[float] depending on the style function's output.
-    
+
     Args:
         r_outer_fn: Style function to call
         th_in: Theta values (scalar or array)
@@ -56,7 +54,7 @@ def call_style_r_outer(
         r0_in: Base radius (scalar or array)
         H_in: Total height
         opts_in: Style options dictionary
-        
+
     Returns:
         Radius value(s) from style function
     """
@@ -84,7 +82,7 @@ def add_ring_xy(
     n_theta: int,
 ) -> npt.NDArray[np.int64]:
     """Append a ring of XY vertices (rotated by twist) and return the index row.
-    
+
     Args:
         verts: Vertex list to append to
         r_vals: Radius values for the ring
@@ -94,7 +92,7 @@ def add_ring_xy(
         cos_th: Cosine of theta grid
         sin_th: Sine of theta grid
         n_theta: Number of theta divisions
-        
+
     Returns:
         Array of vertex indices for this ring
     """
@@ -111,10 +109,10 @@ def add_ring_xy(
 
 def spin_twist_radians(z: float, H: float, opts: StyleOpts | dict[str, Any]) -> float:
     """Smooth twist angle (in radians) applied to theta at height z.
-    
+
     Calculates the twist angle for the pot at a given height based on
     style options for spin/twist.
-    
+
     Args:
         z: Current height position
         H: Total height
@@ -122,7 +120,7 @@ def spin_twist_radians(z: float, H: float, opts: StyleOpts | dict[str, Any]) -> 
             - spin_turns: total revolutions from base to rim (default 0.0)
             - spin_phase_deg: constant offset in degrees (default 0.0)
             - spin_curve_exp: easing exponent for twist vs height (default 1.0)
-            
+
     Returns:
         Twist angle in radians
     """
@@ -178,10 +176,10 @@ def sample_outer_rings(
     list[NDArrayFloat],
 ]:
     """Vectorized sampling of outer rings; appends vertices and returns indices and diagnostics.
-    
+
     Generates the outer wall of the pot by sampling the style function at each
     z-level and creating rings of vertices with applied twist.
-    
+
     Args:
         H: Total height
         Rb: Bottom radius
@@ -196,7 +194,7 @@ def sample_outer_rings(
         n_theta: Number of theta divisions
         verts: Vertex list to append to
         base_radius_fn: Function to calculate base radius at height
-        
+
     Returns:
         Tuple of:
         - outer_idx: Index array for outer wall vertices

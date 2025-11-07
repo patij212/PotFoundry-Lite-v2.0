@@ -2,6 +2,7 @@
 
 Handles displaying performance logs and cache management.
 """
+
 from __future__ import annotations
 
 from typing import Any, cast
@@ -11,7 +12,7 @@ import streamlit as st
 
 def render_performance_section() -> None:
     """Render performance monitoring section.
-    
+
     Displays recent performance logs and provides cache clearing controls
     for development purposes.
     """

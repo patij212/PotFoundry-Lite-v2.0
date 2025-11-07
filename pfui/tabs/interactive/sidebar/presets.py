@@ -6,14 +6,19 @@ from typing import Any
 
 import streamlit as st
 
-from pfui.app_components.utils import resolve_schema_key
-from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict
 import pfui.schemas as SC
+from pfui.app_components.utils import resolve_schema_key
+from pfui.presets import (
+    PRESETS,
+    _read_user_presets,
+    _write_user_presets,
+    apply_preset_dict,
+)
 
 
 def render_presets(ss: dict[str, Any], on_change: callable) -> None:
     """Render preset management section.
-    
+
     Args:
         ss: Session state dictionary
         on_change: Callback to trigger when presets are applied
@@ -44,7 +49,9 @@ def render_presets(ss: dict[str, Any], on_change: callable) -> None:
         st.markdown("#### User Presets")
         # Load user presets
         user_presets_list = _read_user_presets()
-        user_preset_names = [p.get("name", "") for p in user_presets_list if p.get("name")]
+        user_preset_names = [
+            p.get("name", "") for p in user_presets_list if p.get("name")
+        ]
 
         # Save current design as a user preset
         st.text_input(
@@ -62,7 +69,7 @@ def render_presets(ss: dict[str, Any], on_change: callable) -> None:
                 try:
                     # Get style schemas
                     styles = SC.get_style_schemas()
-                    
+
                     # Build preset dict from current session state
                     preset_data = {
                         "name": preset_name,
@@ -117,8 +124,12 @@ def render_presets(ss: dict[str, Any], on_change: callable) -> None:
                     try:
                         # Find the preset data
                         preset_data = next(
-                            (p for p in user_presets_list if p.get("name") == chosen_user_preset),
-                            None
+                            (
+                                p
+                                for p in user_presets_list
+                                if p.get("name") == chosen_user_preset
+                            ),
+                            None,
                         )
                         if preset_data:
                             apply_preset_dict(preset_data)
@@ -134,7 +145,8 @@ def render_presets(ss: dict[str, Any], on_change: callable) -> None:
                     try:
                         # Remove the preset
                         user_presets_list = [
-                            p for p in user_presets_list
+                            p
+                            for p in user_presets_list
                             if p.get("name") != chosen_user_preset
                         ]
                         _write_user_presets(user_presets_list)

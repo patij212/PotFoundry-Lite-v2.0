@@ -36,7 +36,7 @@ except ImportError:
         ss.setdefault("_last_mesh_png", None)
         ss.setdefault("_last_mesh_fig_json", None)
         ss.setdefault("_preview_stale", False)
-    
+
     # Fallback to_float_scalar if import fails
     def _to_float_scalar(x: Any) -> float:
         """Coerce x to a float in a defensive way."""
@@ -47,7 +47,7 @@ except ImportError:
                 except Exception:
                     return v
             return v
-        
+
         try:
             v = _unwrap(x)
             if isinstance(v, (int, float)):
@@ -78,13 +78,13 @@ except Exception:
 
 def render_preview_section(preview_mode: str) -> None:
     """Render the complete preview section.
-    
+
     Args:
         preview_mode: One of "auto", "manual", or "debounced"
     """
     st.subheader("Preview")
     ss = cast(dict[str, Any], st.session_state)
-    
+
     # Preview update decision: respect preview_mode (auto/manual/debounced)
     should_update_preview = False
     if preview_mode == "auto":
@@ -103,7 +103,7 @@ def render_preview_section(preview_mode: str) -> None:
                     st.cache_data.clear()
                 except Exception:
                     pass
-    
+
             if preview_mode == "debounced":
                 # Inject a more robust debounce helper that schedules a click
                 # on the Update button when inputs stop changing.
@@ -147,7 +147,7 @@ def render_preview_section(preview_mode: str) -> None:
     """ % (timeout_ms,)
                 try:
                     import streamlit.components.v1 as components
-    
+
                     components.html(js, height=0)
                 except Exception:
                     pass
@@ -178,7 +178,7 @@ def render_preview_section(preview_mode: str) -> None:
                         pass
                 ss["_preview_stale"] = True
                 st.rerun()
-    
+
         # Server-side fallback for debounced/manual modes: use centralized helper
         try:
             last_ts = cast(Any, ss.get("_last_change_ts", None))
@@ -198,7 +198,7 @@ def render_preview_section(preview_mode: str) -> None:
         except Exception:
             # best-effort; ignore failures
             pass
-    
+
     # ==================== STYLE FUNCTION SETUP ====================
     # Style function can handle scalar or vector theta; cast for type-checker
     # Accept scalar float or any array-like for theta input/return to satisfy Pylance without optional numpy typing
@@ -209,16 +209,16 @@ def render_preview_section(preview_mode: str) -> None:
     _r_outer_raw = cast(
         ROuterFn, STYLES[style_name][0]
     )  # geometry comes from UI style name
-    
+
     # Use the centralized adapter (imported from pfui.geometry_bridge) so callers
     # across the codebase get consistent behavior. This also avoids duplicating
     # the adapter logic in multiple places.
     from pfui.geometry_bridge import adapt_r_outer_fn
-    
+
     r_outer_fn = adapt_r_outer_fn(_r_outer_raw)
     opts: StyleOpts | dict[str, Any] = dict(ui_opts)
     opts_json = json.dumps(opts, sort_keys=True)
-    
+
     # Apply interactive preview scaling to keep Full Preview responsive
     # Narrow typing: preview_res_scale is expected to be a float; use a direct cast
     preview_scale = _to_float_scalar(ss.get("preview_res_scale", 1.0))
@@ -228,26 +228,26 @@ def render_preview_section(preview_mode: str) -> None:
     preview_n_z = max(8, min(168, target_n_z))
     full_n_theta = max(16, min(1024, target_n_theta))
     full_n_z = max(8, min(1024, target_n_z))
-    
+
     # ==================== CACHE INITIALIZATION ====================
     # Initialize preview cache & stale flag so manual mode can keep showing
     # the last generated preview until the user explicitly updates it.
     initialize_preview_cache(ss)
-    
+
     # Early placeholders so we can render the cached preview when needed.
     preview_placeholder = st.empty()
     mesh_placeholder = st.empty()
-    
+
     # Predeclare values so type checker knows they exist regardless of branches
     X: Optional[Any] = None
     Y: Optional[Any] = None
     Z: Optional[Any] = None
     mesh_data: Optional[tuple[Any, Any]] = None
-    
+
     # Only generate preview when allowed (auto mode or Update clicked).
     # In manual mode we must NOT recalculate or render previews automatically.
     preview_exists = False
-    
+
     # ==================== SIGNATURE COMPUTATION ====================
     # Build signatures to classify changes (geometry vs appearance)
     # Predeclare signature variables with Optional types so assigning None in
@@ -281,7 +281,7 @@ def render_preview_section(preview_mode: str) -> None:
             compute_app_sig,
             compute_geom_sig,
         )
-    
+
         geom_sig = compute_geom_sig(
             H,
             Rt,
@@ -294,7 +294,7 @@ def render_preview_section(preview_mode: str) -> None:
             full_n_theta,
             full_n_z,
         )
-    
+
         app_sig = compute_app_sig(
             cast(Any, ss.get("preview_palette")),
             cast(Any, ss.get("preview_grad_c1")),
@@ -316,18 +316,18 @@ def render_preview_section(preview_mode: str) -> None:
     except Exception:
         geom_sig = None
         app_sig = None
-    
+
     # Compare with last-run signatures
     last_geom_sig = cast(Optional[tuple], ss.get("_last_preview_geom_sig"))
     last_app_sig = cast(Optional[tuple], ss.get("_last_preview_app_sig"))
     geom_changed = (geom_sig is None) or (geom_sig != last_geom_sig)
     app_changed = (app_sig is None) or (app_sig != last_app_sig)
-    
+
     # One-shot suppression for non-model reruns (e.g., snapshot pagination)
     if bool(cast(Optional[bool], ss.get("_suppress_preview_once", False))):
         should_update_preview = False
         ss["_suppress_preview_once"] = False
-    
+
     # Centralize cached-vs-regenerate decision into plotting.should_regenerate
     if should_update_preview:
         try:
@@ -342,7 +342,7 @@ def render_preview_section(preview_mode: str) -> None:
             )
             # Import the centralized decision helper (keeps imports local and safe)
             from pfui.app_components.plotting import should_regenerate
-    
+
             should_update_preview = should_regenerate(
                 geom_sig,
                 app_sig,
@@ -387,7 +387,7 @@ def render_preview_section(preview_mode: str) -> None:
                         from pfui.app_components.plotting import (
                             orchestrate_preview as _orchestrate_preview,
                         )
-    
+
                         res = _orchestrate_preview(
                             H,
                             Rt,
@@ -426,7 +426,7 @@ def render_preview_section(preview_mode: str) -> None:
                     except Exception:
                         # Fall back to direct call if orchestrator fails
                         X = Y = Z = None
-    
+
                     if (X is None) or (Y is None) or (Z is None):
                         X, Y, Z = make_preview_arrays(
                             H,
@@ -455,7 +455,7 @@ def render_preview_section(preview_mode: str) -> None:
                         from pfui.app_components.plotting import (
                             orchestrate_preview as _orchestrate_preview,
                         )
-    
+
                         res2 = _orchestrate_preview(
                             H,
                             Rt,
@@ -494,7 +494,7 @@ def render_preview_section(preview_mode: str) -> None:
                         m = cast(Any, res2.get("mesh"))
                         if m is not None:
                             import numpy as _np_mb
-    
+
                             try:
                                 verts, faces, diag = m
                             except Exception:
@@ -554,13 +554,13 @@ def render_preview_section(preview_mode: str) -> None:
                             built_via_orchestrator = True
                     except Exception:
                         built_via_orchestrator = False
-    
+
                 if do_mesh_build and (not built_via_orchestrator):
                     # Fallback to direct local mesh build
                     try:
                         t0_mb = time.time()
                         import numpy as _np_mb
-    
+
                         verts, faces, diag = build_pot_mesh(
                             H=H,
                             Rt=Rt,
@@ -655,7 +655,7 @@ def render_preview_section(preview_mode: str) -> None:
                     ss["_last_preview_app_sig"] = app_sig
             except Exception:
                 pass
-    
+
     # If we're NOT updating (manual mode and Update not clicked), show the
     # previously cached preview so the UI remains usable. Only display the
     # 'out-of-date' warning in explicit manual mode when the stale flag is set.
@@ -665,14 +665,14 @@ def render_preview_section(preview_mode: str) -> None:
         last_mesh_json = cast(Optional[dict], ss.get("_last_mesh_fig_json"))
         last_surf_png = cast(Optional[bytes], ss.get("_last_surface_png"))
         last_surf_json = cast(Optional[dict], ss.get("_last_surface_fig_json"))
-    
+
         stale = bool(cast(Any, ss.get("_preview_stale", False)))
         show_warning = (preview_mode == "manual") and stale
-    
+
         # Cached display: if Full preview exists, prefer it; otherwise show Quick if available.
         full_exists = bool((HAS_PLOTLY and last_mesh_json) or last_mesh_png)
         quick_exists = bool((HAS_PLOTLY and last_surf_json) or last_surf_png)
-    
+
         # Show Full if it exists
         if interactive_mesh and full_exists and HAS_PLOTLY and last_mesh_json:
             try:
@@ -699,19 +699,19 @@ def render_preview_section(preview_mode: str) -> None:
                 ),
                 width="stretch",
             )
-    
+
         # Only generate mesh PNGs when Plotly is unavailable (fallback), or when explicitly forced by the user.
         try:
             ss = cast(dict[str, Any], st.session_state)
             force_capture = bool(cast(Any, ss.get("_force_mesh_png_capture", False)))
             # Cap PNG mesh resolution aggressively to keep it cheap
             png_cap_n = _to_int_scalar(ss.get("png_cap_n", 64))
-    
+
             t0_meshpng = time.time()
             png_bytes = None
             regen = False
             mode = "auto=off"
-    
+
             if (not HAS_PLOTLY) or force_capture:
                 regen = True
                 mode = "force" if force_capture else "no_plotly"
@@ -736,7 +736,7 @@ def render_preview_section(preview_mode: str) -> None:
                     if interactive_mesh and (force_capture):
                         # Explicit mesh PNG capture: use snapshot renderer, but at capped mesh resolution
                         from pfui.preview import render_mesh_snapshot_cached
-    
+
                         png_n_theta = int(max(8, min(png_cap_n, full_n_theta)))
                         png_n_z = int(max(8, min(png_cap_n, full_n_z)))
                         png_bytes = render_mesh_snapshot_cached(
@@ -781,7 +781,7 @@ def render_preview_section(preview_mode: str) -> None:
                         )
                 except Exception:
                     png_bytes = None
-    
+
             # Timing log for visibility
             try:
                 perf = ss.setdefault("_perf_logs", [])
@@ -794,7 +794,7 @@ def render_preview_section(preview_mode: str) -> None:
                 pass
         except Exception:
             pass  # PNG generation is best-effort; failures shouldn't break the app
-    
+
         # Dynamic placeholder: use a session flag so static analysis won't mark as unreachable
         if bool(cast(Any, ss.get("_quick_preview_disabled", False))):
             # Quick Preview is explicitly disabled by user: replace any previous preview
@@ -805,16 +805,16 @@ def render_preview_section(preview_mode: str) -> None:
                     preview_placeholder.empty()
                 except Exception:
                     pass
-    
+
     # (No-op now: PNG generation is handled above in the gated block.)
     png_bytes = locals().get("png_bytes", None)
-    
+
     # Quick Preview (live) — Plotly surface if available, otherwise static PNG fallback
     try:
         if should_update_preview:
             if HAS_PLOTLY and (X is not None) and (Y is not None) and (Z is not None):
                 import plotly.graph_objects as go
-    
+
                 t0_surface = time.time()
                 # Build colorscale for Quick preview from Appearance & Preview Settings
                 ss = cast(dict[str, Any], st.session_state)
@@ -834,7 +834,7 @@ def render_preview_section(preview_mode: str) -> None:
                 height_px = max(360, min(1800, _to_int_scalar(192 * fig_h)))
                 try:
                     import numpy as _np_plot
-    
+
                     rmax = float(_np_plot.max(_np_plot.sqrt(X**2 + Y**2)))
                     zmin = float(Z.min())
                     zmax = float(Z.max())
@@ -925,7 +925,7 @@ def render_preview_section(preview_mode: str) -> None:
                     )
     except Exception:
         pass
-    
+
     # Cache the freshly rendered PNG so manual mode can continue showing
     # the last preview until the user updates again.
     try:
@@ -939,23 +939,23 @@ def render_preview_section(preview_mode: str) -> None:
             ss["_preview_stale"] = False
     except Exception:
         pass
-    
+
     # Full Preview (interactive Mesh3d or static fallback). Render only when updating.
     if should_update_preview and interactive_mesh:
         # If Plotly is present, render an interactive Mesh3d. Otherwise render a static PNG fallback.
         if HAS_PLOTLY:
             try:
                 t0_mesh = time.time()
-    
+
                 import numpy as np
-    
+
                 from pfui.colors import build_gradient_colors
-    
+
                 # Honor exact full preview: when enabled, do not reuse preview-res mesh_data
                 use_exact_full = bool(cast(Any, ss.get("exact_full_preview", True)))
                 V = None
                 F = None
-    
+
                 # Reuse earlier mesh build; if missing (e.g., switched modes) build now
                 if (
                     (not use_exact_full)
@@ -989,7 +989,7 @@ def render_preview_section(preview_mode: str) -> None:
                         # Build mesh geometry depending on exact/preview mode
                         try:
                             import numpy as _np_r
-    
+
                             use_exact_full = bool(
                                 cast(Any, ss.get("exact_full_preview", True))
                             )
@@ -1002,7 +1002,7 @@ def render_preview_section(preview_mode: str) -> None:
                                 from pfui.app_components.plotting import (
                                     orchestrate_preview as _orchestrate_preview,
                                 )
-    
+
                                 res_full = _orchestrate_preview(
                                     H,
                                     Rt,
@@ -1083,14 +1083,14 @@ def render_preview_section(preview_mode: str) -> None:
                         except Exception:
                             V = np.zeros((0, 3))
                             F = np.zeros((0, 3), dtype=int)
-    
+
                 # Decimation removed per request; always use V,F as built (exact when enabled, preview-res otherwise)
                 use_exact_full = bool(cast(Any, ss.get("exact_full_preview", True)))
                 use_approx = False
-    
+
                 stride_used = 1
                 Vd, Fd = V, F
-    
+
                 # Gradient coloring using user settings based on the final plotted vertices Vd
                 use_gradient = bool(cast(Any, ss.get("use_gradient_color", True)))
                 solid_hex = str(cast(Any, ss.get("solid_color", "#BFC7D5")))
@@ -1126,7 +1126,7 @@ def render_preview_section(preview_mode: str) -> None:
                         if color_stride > 1:
                             # Build on downsample and expand to full length to cut compute + JSON size
                             from pfui.colors import build_gradient_colors as _bgc
-    
+
                             z_sub = z_norm[::color_stride]
                             cols_sub = _bgc(
                                 z_sub, preset if preset != "Custom" else None, custom
@@ -1156,7 +1156,7 @@ def render_preview_section(preview_mode: str) -> None:
                             pass
                 else:
                     mesh_colors = []
-    
+
                 # Build mesh kwargs unconditionally. Previously the dict was
                 # only created in the non-gradient branch which could leave it
                 # undefined when gradient coloring was enabled, causing a
@@ -1295,5 +1295,5 @@ def render_preview_section(preview_mode: str) -> None:
                     mesh_placeholder.info("Full preview PNG not available yet.")
             except Exception:
                 pass
-    
-    
+
+

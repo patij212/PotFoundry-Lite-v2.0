@@ -28,7 +28,7 @@ def compute_preview_signatures(
     place_on_ground: bool,
 ) -> tuple[Optional[tuple], Optional[tuple]]:
     """Compute geometry and appearance signatures for change detection.
-    
+
     Args:
         H: Height
         Rt: Top radius
@@ -48,20 +48,20 @@ def compute_preview_signatures(
         fig_h: Figure height
         dpi: DPI
         place_on_ground: Place on ground
-        
+
     Returns:
         Tuple of (geometry_signature, appearance_signature)
     """
     geom_sig: Optional[tuple] = None
     app_sig: Optional[tuple] = None
-    
+
     try:
         # Use plotting helpers to compute signatures (centralized and testable)
         from pfui.app_components.plotting import (
             compute_app_sig,
             compute_geom_sig,
         )
-    
+
         geom_sig = compute_geom_sig(
             H,
             Rt,
@@ -74,7 +74,7 @@ def compute_preview_signatures(
             full_n_theta,
             full_n_z,
         )
-    
+
         app_sig = compute_app_sig(
             cast(Any, ss.get("preview_palette")),
             cast(Any, ss.get("preview_grad_c1")),
@@ -96,5 +96,5 @@ def compute_preview_signatures(
     except Exception:
         geom_sig = None
         app_sig = None
-    
+
     return geom_sig, app_sig

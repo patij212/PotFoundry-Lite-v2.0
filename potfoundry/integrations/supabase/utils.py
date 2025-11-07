@@ -13,10 +13,12 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     import streamlit as st
+
     HAS_STREAMLIT = True
 else:
     try:
         import streamlit as st
+
         HAS_STREAMLIT = True
     except Exception:
         HAS_STREAMLIT = False
@@ -37,7 +39,7 @@ _tls_warning_emitted: bool = False
 
 def is_disabled_via_secrets() -> bool:
     """Check if library is disabled via Streamlit secrets.
-    
+
     Returns:
         True if DISABLE_LIBRARY secret is set to "1"
     """
@@ -52,9 +54,9 @@ def is_disabled_via_secrets() -> bool:
 
 def should_skip_tls_verify() -> bool:
     """Return True when TLS verification should be skipped (explicit opt-in).
-    
+
     Checks environment variables and Streamlit secrets for TLS skip flags.
-    
+
     Returns:
         True if TLS verification should be skipped
     """
@@ -86,7 +88,7 @@ def should_skip_tls_verify() -> bool:
 
 def emit_tls_override_warning() -> None:
     """Warn once that TLS verification has been disabled.
-    
+
     Emits warning to Streamlit UI if available, otherwise prints to console.
     Uses global flag to ensure warning is only shown once.
     """
@@ -111,10 +113,10 @@ def looks_like_invalid_key(key: Optional[str]) -> bool:
     """Return True when a key is definitely invalid (placeholder/empty).
 
     Accepts both JWT-like keys (eyJ...) and srv- prefixed keys.
-    
+
     Args:
         key: API key to validate
-        
+
     Returns:
         True if key appears invalid or is a placeholder
     """

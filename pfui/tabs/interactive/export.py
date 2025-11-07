@@ -2,6 +2,7 @@
 
 Handles STL export, library publishing, and deep link generation.
 """
+
 from __future__ import annotations
 
 import os
@@ -22,12 +23,12 @@ from potfoundry.types import StyleOpts
 
 def _mask_possible_secrets(text: str) -> str:
     """Mask sensitive information in text.
-    
+
     Masks Supabase service keys, JWT tokens, and long hex hashes.
-    
+
     Args:
         text: Text that may contain sensitive information
-        
+
     Returns:
         Text with sensitive information masked
     """
@@ -37,9 +38,7 @@ def _mask_possible_secrets(text: str) -> str:
         if "st" in globals() and st is not None:
             try:
                 svc_key = (
-                    st.secrets.get("connections", {})
-                    .get("supabase", {})
-                    .get("key")
+                    st.secrets.get("connections", {}).get("supabase", {}).get("key")
                 )
             except Exception:
                 svc_key = None
@@ -63,7 +62,7 @@ def _mask_possible_secrets(text: str) -> str:
 
 def _get_git_commit() -> Optional[str]:
     """Get current git commit hash.
-    
+
     Returns:
         Short git commit hash, or None if not available
     """
@@ -84,7 +83,7 @@ def _get_git_commit() -> Optional[str]:
 
 def _get_base_url() -> str:
     """Get base URL for deep links.
-    
+
     Returns:
         Base URL from secrets, environment, or localhost default
     """
@@ -93,9 +92,7 @@ def _get_base_url() -> str:
     if not base_url:
         try:
             base_url = (
-                st.secrets.get("connections", {})
-                .get("supabase", {})
-                .get("app_url")
+                st.secrets.get("connections", {}).get("supabase", {}).get("app_url")
             )
         except Exception:
             base_url = None
@@ -112,12 +109,12 @@ def render_library_publish_controls(
     style_name: str,
 ) -> tuple[bool, str, list[str], str, bool]:
     """Render library publishing controls.
-    
+
     Args:
         _has_library: Whether library is configured
         _library_read_only: Whether library is in read-only mode
         style_name: Name of the current style
-        
+
     Returns:
         Tuple of (publish_enabled, publish_title, publish_tags, publish_license, license_consent)
     """
@@ -193,7 +190,13 @@ def render_library_publish_controls(
                 "This device is connected to the Public Library in read-only mode (anon key). Browsing works, but publishing is disabled. Provide a service_role key in `.streamlit/secrets.toml` to enable publishing."
             )
 
-    return publish_enabled, publish_title, publish_tags, publish_license, license_consent
+    return (
+        publish_enabled,
+        publish_title,
+        publish_tags,
+        publish_license,
+        license_consent,
+    )
 
 
 def handle_standalone_publish(
@@ -220,7 +223,7 @@ def handle_standalone_publish(
     bottom_od: float,
 ) -> None:
     """Handle standalone publish action (without export).
-    
+
     Args:
         _has_library: Whether library is configured
         publish_enabled: Whether publishing is enabled
@@ -252,17 +255,15 @@ def handle_standalone_publish(
     title_safe: str = str(publish_title or "")
     license_safe: str = str(publish_license or "CC BY-NC 4.0")
     tags_safe: list[str] = list(publish_tags or [])
-    
+
     try:
         # Build mesh at export resolution (reuse upscale), else fall back to current n_theta/n_z
         up_scale = (
-            float(ss.get("_export_upscale", 1.0))
-            if "_export_upscale" in ss
-            else 1.0
+            float(ss.get("_export_upscale", 1.0)) if "_export_upscale" in ss else 1.0
         )
         n_theta_pub = int(n_theta * up_scale)
         n_z_pub = int(n_z * up_scale)
-        
+
         verts, faces, _ = build_pot_mesh(
             H=H,
             Rt=Rt,
@@ -277,8 +278,7 @@ def handle_standalone_publish(
             style_opts=opts,
         )
         safe = (
-            re.sub(r"[^A-Za-z0-9._-]+", "_", str(name or ""))[:80]
-            or "potfoundry_model"
+            re.sub(r"[^A-Za-z0-9._-]+", "_", str(name or ""))[:80] or "potfoundry_model"
         )
         tmp_path = (
             Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
@@ -364,7 +364,7 @@ def handle_export(
     bottom_od: float,
 ) -> None:
     """Handle STL export and optional library publishing.
-    
+
     Args:
         do_export: Whether to perform export
         H: Total height in mm
@@ -412,8 +412,7 @@ def handle_export(
                 or "potfoundry_model"
             )
             tmp_path = (
-                Path(tempfile.gettempdir())
-                / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
+                Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.stl"
             )
             if WRITE_STL_BINARY is None:
                 raise RuntimeError("write_stl_binary not available in this build")
@@ -539,9 +538,9 @@ def render_export_section(
     n_z_export: int,
 ) -> None:
     """Render complete export section.
-    
+
     Handles STL export, library publishing controls, and deep link generation.
-    
+
     Args:
         _has_library: Whether library is configured
         _library_read_only: Whether library is in read-only mode

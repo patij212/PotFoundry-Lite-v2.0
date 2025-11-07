@@ -39,7 +39,7 @@ This document tracks the systematic implementation of the comprehensive codebase
 #### ⏳ Step A.2: Extract Parameters Module
 - [ ] Create `mesh/parameters.py`
 - [ ] Extract MeshQuality class (if exists)
-- [ ] Extract PotDefaults class (if exists)  
+- [ ] Extract PotDefaults class (if exists)
 - [ ] Extract parameter validation helpers
 - [ ] Test: 409/409 must pass
 
@@ -136,7 +136,7 @@ This document tracks the systematic implementation of the comprehensive codebase
 
 1. Create `pfui/tabs/` package
 2. Extract interactive tab components
-3. Extract batch tab 
+3. Extract batch tab
 4. Extract library tab
 5. Update imports and orchestration
 6. Test and validate

@@ -7,13 +7,12 @@ from __future__ import annotations
 
 from .exceptions import NotConfiguredError
 
-
 __all__ = ["NotConfiguredClient"]
 
 
 class NotConfiguredClient:
     """Placeholder client when Supabase is not configured.
-    
+
     All operations raise NotConfiguredError to provide clear feedback
     when Supabase integration is not available.
     """

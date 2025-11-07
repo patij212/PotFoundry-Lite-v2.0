@@ -41,7 +41,7 @@ def number_input_validated(
         key=key,
         help=help_text,
     )
-    
+
     if validator is not None:
         try:
             validated = validator(input_value)
@@ -49,7 +49,7 @@ def number_input_validated(
         except ValueError as e:
             st.error(f"Validation error: {e}")
             return value if value is not None else 0
-    
+
     return input_value
 
 
@@ -84,7 +84,7 @@ def text_input_validated(
         help=help_text,
         placeholder=placeholder,
     )
-    
+
     if validator is not None:
         try:
             validated = validator(input_value)
@@ -92,5 +92,5 @@ def text_input_validated(
         except ValueError as e:
             st.error(f"Validation error: {e}")
             return value
-    
+
     return input_value

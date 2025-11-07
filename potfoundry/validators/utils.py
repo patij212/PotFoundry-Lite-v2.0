@@ -13,7 +13,7 @@ def coerce_positive_float(
     value: Any,
     name: str = "value",
     min_val: float = 0.0,
-    max_val: float = float('inf'),
+    max_val: float = float("inf"),
 ) -> float:
     """Coerce value to positive float with range checking.
 
@@ -33,12 +33,12 @@ def coerce_positive_float(
         f = float(value)
     except (TypeError, ValueError) as e:
         raise ValueError(f"{name} must be convertible to float: {e}")
-    
+
     if f < min_val:
         raise ValueError(f"{name} must be >= {min_val}, got {f}")
     if f > max_val:
         raise ValueError(f"{name} must be <= {max_val}, got {f}")
-    
+
     return f
 
 
@@ -66,12 +66,12 @@ def coerce_positive_int(
         i = int(value)
     except (TypeError, ValueError) as e:
         raise ValueError(f"{name} must be convertible to integer: {e}")
-    
+
     if i < min_val:
         raise ValueError(f"{name} must be >= {min_val}, got {i}")
     if i > max_val:
         raise ValueError(f"{name} must be <= {max_val}, got {i}")
-    
+
     return i
 
 
@@ -125,13 +125,13 @@ def validate_range(
             raise ValueError(f"{name} must be >= {min_val}, got {value}")
         elif not inclusive and value <= min_val:
             raise ValueError(f"{name} must be > {min_val}, got {value}")
-    
+
     if max_val is not None:
         if inclusive and value > max_val:
             raise ValueError(f"{name} must be <= {max_val}, got {value}")
         elif not inclusive and value >= max_val:
             raise ValueError(f"{name} must be < {max_val}, got {value}")
-    
+
     return value
 
 
@@ -151,8 +151,7 @@ def validate_type(value: Any, expected_type: type, name: str) -> Any:
     """
     if not isinstance(value, expected_type):
         raise TypeError(
-            f"{name} must be {expected_type.__name__}, "
-            f"got {type(value).__name__}"
+            f"{name} must be {expected_type.__name__}, " f"got {type(value).__name__}"
         )
     return value
 

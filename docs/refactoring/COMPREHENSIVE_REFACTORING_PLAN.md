@@ -115,7 +115,7 @@
    - Highest impact (81% reduction in geometry.py)
    - Enables independent testing of components
    - Foundation for Qt migration
-   
+
 2. **Phase B** (HIGH) - Interactive tab cleanup
    - Major complexity reduction
    - Better tab organization

@@ -36,7 +36,7 @@ To complete the decomposition, the monolithic function needs to be refactored in
 # parameters.py
 def extract_preview_parameters(ss: dict) -> PreviewParameters:
     """Extract all required parameters from session state.
-    
+
     Returns dataclass with all parameters needed for preview rendering.
     """
     # Extract geometry parameters
@@ -44,13 +44,13 @@ def extract_preview_parameters(ss: dict) -> PreviewParameters:
     Rt = ss.get("Rt", 50)
     Rb = ss.get("Rb", 40)
     # ... extract all other parameters
-    
+
     return PreviewParameters(H=H, Rt=Rt, Rb=Rb, ...)
 ```
 
 ### 2. Signatures Module (Lines ~238-310)
 ```python
-# signatures.py  
+# signatures.py
 def compute_preview_signatures(...) -> tuple:
     """Compute geometry and appearance signatures for change detection."""
 ```
@@ -143,7 +143,7 @@ def render_png_fallback(...) -> Optional[bytes]:
 ## Estimated Effort
 
 - **Refactoring (Phase 1):** 2-3 hours
-- **Extraction (Phase 2):** 2-3 hours  
+- **Extraction (Phase 2):** 2-3 hours
 - **Testing (Phase 3):** 1 hour
 - **Total:** 5-7 hours
 

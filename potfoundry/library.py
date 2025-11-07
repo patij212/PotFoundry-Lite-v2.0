@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import gzip
 from dataclasses import dataclass
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     # For static analysis, expose streamlit names so type checkers can reason
@@ -37,14 +36,6 @@ from potfoundry.integrations.supabase_client import (
 
 # Import from library package for modularity
 from .library import (
-    ALLOWED_LICENSES,
-    APP_VERSION,
-    BLOCKLIST_PATTERNS,
-    MAX_STL_SIZE_MB,
-    MAX_TAG_LENGTH,
-    MAX_TAGS,
-    MAX_TITLE_LENGTH,
-    MAX_TRIANGLE_COUNT,
     canonical_payload,
     check_rate_limit,
     content_id,
@@ -70,12 +61,6 @@ class PublishResult:
     meta_url: str
     duplicate: bool
     error: Optional[str] = None
-
-
-
-
-
-
 
 
 # ============================================================

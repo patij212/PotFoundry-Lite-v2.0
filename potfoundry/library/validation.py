@@ -13,7 +13,6 @@ from __future__ import annotations
 import re
 from typing import List, Optional, Tuple
 
-
 __all__ = [
     "MAX_TITLE_LENGTH",
     "MAX_TAGS",
@@ -58,7 +57,7 @@ def validate_title(title: str) -> Tuple[bool, Optional[str]]:
 
     Args:
         title: Title to validate
-        
+
     Returns:
         Tuple of (is_valid, error_message)
     """
@@ -81,7 +80,7 @@ def validate_tags(tags: List[str]) -> Tuple[bool, Optional[str]]:
 
     Args:
         tags: List of tags to validate
-        
+
     Returns:
         Tuple of (is_valid, error_message)
     """
@@ -112,7 +111,7 @@ def validate_license(license: str) -> Tuple[bool, Optional[str]]:
 
     Args:
         license: License identifier to validate
-        
+
     Returns:
         Tuple of (is_valid, error_message)
     """
@@ -127,7 +126,7 @@ def validate_stl_size(stl_bytes: bytes) -> Tuple[bool, Optional[str]]:
 
     Args:
         stl_bytes: STL file content as bytes
-        
+
     Returns:
         Tuple of (is_valid, error_message)
     """
@@ -144,7 +143,7 @@ def validate_triangle_count(diagnostics: dict) -> Tuple[bool, Optional[str]]:
 
     Args:
         diagnostics: Mesh diagnostics dictionary containing triangle_count
-        
+
     Returns:
         Tuple of (is_valid, error_message)
     """

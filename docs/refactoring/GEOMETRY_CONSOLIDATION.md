@@ -1,8 +1,8 @@
 # Geometry Implementation Consolidation - Phase 2.4
 
-**Date:** January 2025  
-**Status:** DOCUMENTED - Decision Made  
-**Issue:** Dual geometry implementations exist  
+**Date:** January 2025
+**Status:** DOCUMENTED - Decision Made
+**Issue:** Dual geometry implementations exist
 
 ## Current State
 
@@ -97,7 +97,7 @@ The geometry consolidation has already been properly implemented via the import 
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** January 2025  
-**Decision Owner:** Core Development Team  
+**Document Version:** 1.0
+**Last Updated:** January 2025
+**Decision Owner:** Core Development Team
 **Review Date:** After v3.0 Qt migration completion

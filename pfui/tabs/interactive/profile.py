@@ -2,6 +2,7 @@
 
 Handles rendering of 2D radial profile visualization.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -21,9 +22,9 @@ def render_profile_section(
     t_wall: float,
 ) -> None:
     """Render 2D radial profile section.
-    
+
     Displays a 2D visualization of the pot's radial profile.
-    
+
     Args:
         H: Total height in mm
         Rt: Top radius in mm

@@ -30,7 +30,7 @@ pfui/tabs/interactive/preview/
 ├── utils.py                 # Helper functions (to_float_scalar, to_int_scalar)
 ├── update_decision.py       # Update decision logic + debounce JS injection
 ├── cache_management.py      # Cache initialization and cleanup
-├── signatures.py            # Signature computation for change detection  
+├── signatures.py            # Signature computation for change detection
 ├── array_generation.py      # Array generation orchestration
 ├── mesh_building.py         # Mesh building orchestration
 ├── plotly_surface.py        # Quick preview (Plotly surface rendering)
@@ -50,30 +50,30 @@ Already created with `to_float_scalar()` and `to_int_scalar()` functions.
 ```python
 def should_update_preview(preview_mode: str, ss: dict) -> tuple[bool, bool]:
     """Determine if preview should update based on mode.
-    
+
     Returns:
         (should_update, should_show_controls) tuple
     """
-    
+
 def inject_debounce_js(timeout_ms: int) -> None:
     """Inject JavaScript for debounced preview updates."""
-    
+
 def render_update_controls(preview_mode: str, ss: dict) -> bool:
     """Render update button and controls.
-    
+
     Returns:
         True if update button was clicked
     """
 ```
 
-#### Step 3: Extract cache_management.py  
+#### Step 3: Extract cache_management.py
 **Lines:** 215-223, 141-164 from preview.py
 
 **Functions to extract:**
 ```python
 def initialize_preview_cache(ss: dict) -> None:
     """Initialize preview cache keys in session state."""
-    
+
 def clear_preview_cache(ss: dict) -> None:
     """Clear all preview caches from session state."""
 ```
@@ -184,7 +184,7 @@ The sidebar.py file has a similar pattern - one large function with embedded log
 
 **Key sections to extract:**
 1. Lines 24-64: Helper functions and change tracking
-2. Lines 66-143: Model name with auto-naming  
+2. Lines 66-143: Model name with auto-naming
 3. Lines 145-178: Style selector
 4. Lines 180-245: Dimensions and profile (delegated)
 5. Lines 247-290: Style options expander
@@ -397,7 +397,7 @@ Based on complexity:
 This decomposition is **CRITICAL** for Phase B completion. The current preview.py and sidebar.py modules are too large and monolithic for proper maintenance. Breaking them down will:
 
 1. Improve testability
-2. Enhance maintainability  
+2. Enhance maintainability
 3. Enable parallel development
 4. Reduce cognitive load
 5. Follow project conventions (all modules < 400 LOC)

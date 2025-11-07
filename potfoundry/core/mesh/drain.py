@@ -15,7 +15,6 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 
-
 __all__ = [
     "build_drain_hole",
 ]
@@ -43,13 +42,13 @@ def build_drain_hole(
     npt.NDArray[np.int64],
 ]:
     """Build drain hole geometry including cylinder and connecting faces.
-    
+
     Creates the drain hole at the bottom of the pot, including:
     - Two rings of vertices (bottom at z=0, top at z=t_bottom)
     - Cylindrical wall connecting the rings
     - Faces connecting outer bottom ring to drain bottom ring
     - Faces connecting inner bottom ring to drain top ring
-    
+
     Args:
         r_drain: Drain hole radius
         t_bottom: Bottom slab thickness
@@ -60,7 +59,7 @@ def build_drain_hole(
         inner_idx: Index array for inner wall vertices
         j_idx: Index array for theta positions
         jn: Next theta index (wrapped around)
-        
+
     Returns:
         Tuple of 8 face arrays:
         - tri_bot1, tri_bot2: Bottom underside (outer to drain)

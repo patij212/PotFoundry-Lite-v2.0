@@ -18,10 +18,6 @@ from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
-from numpy.typing import NDArray
-
-from ...types import NDArrayFloat
-
 
 __all__ = [
     "generate_inner_wall",
@@ -50,11 +46,11 @@ def generate_inner_wall(
     add_ring_xy_fn: Callable[..., Any],
 ) -> tuple[npt.NDArray[np.int64], int, int]:
     """Generate inner wall rings with drain hole clamping.
-    
+
     Creates the inner wall of the pot by offsetting the outer wall inward
     by the wall thickness. Applies clamping near the drain hole to prevent
     the inner wall from getting too close to the drain.
-    
+
     Args:
         H: Total height
         Rb: Bottom radius
@@ -74,7 +70,7 @@ def generate_inner_wall(
         spin_twist_radians_fn: Function to calculate twist angle
         call_style_r_outer_fn: Function to call style function
         add_ring_xy_fn: Function to add a ring of vertices
-        
+
     Returns:
         Tuple of:
         - inner_idx: Index array for inner wall vertices
@@ -84,7 +80,7 @@ def generate_inner_wall(
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
     clamp_count = 0
     total_inner_samples = len(z_inner) * n_theta
-    
+
     for i, z in enumerate(z_inner):
         twist = spin_twist_radians_fn(z, H, style_opts)
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
@@ -113,5 +109,5 @@ def generate_inner_wall(
             sin_th,
             n_theta,
         )
-    
+
     return inner_idx, clamp_count, total_inner_samples

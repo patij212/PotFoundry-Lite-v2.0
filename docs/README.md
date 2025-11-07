@@ -73,6 +73,6 @@ Historical documents and evolution logs are preserved in:
 
 ---
 
-**Last Updated:** January 2025  
-**Version:** v2.1.0+  
+**Last Updated:** January 2025
+**Version:** v2.1.0+
 **Questions?** Open a [GitHub Discussion](https://github.com/patij212/PotFoundry-Lite-v2.0/discussions)

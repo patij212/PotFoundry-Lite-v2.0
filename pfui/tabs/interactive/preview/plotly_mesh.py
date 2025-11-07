@@ -11,6 +11,7 @@ from pfui.imports import build_pot_mesh
 
 try:
     import plotly.graph_objects as go
+
     HAS_PLOTLY = True
 except ImportError:
     HAS_PLOTLY = False
@@ -50,7 +51,7 @@ def render_full_preview_mesh(
     to_int_scalar: callable,
 ) -> None:
     """Render full interactive mesh preview using Plotly Mesh3d.
-    
+
     Args:
         H: Height
         Rt: Top radius
@@ -87,9 +88,7 @@ def render_full_preview_mesh(
     if not HAS_PLOTLY:
         # Plotly not available: show static PNG fallback
         try:
-            current_png = png_bytes or cast(
-                Optional[bytes], ss.get("_last_mesh_png")
-            )
+            current_png = png_bytes or cast(Optional[bytes], ss.get("_last_mesh_png"))
             if current_png:
                 mesh_placeholder.image(
                     current_png, caption="Full Preview (static)", width="stretch"
@@ -99,7 +98,7 @@ def render_full_preview_mesh(
         except Exception:
             pass
         return
-    
+
     try:
         t0_mesh = time.time()
 
@@ -113,10 +112,7 @@ def render_full_preview_mesh(
         F = None
 
         # Reuse earlier mesh build; if missing (e.g., switched modes) build now
-        if (
-            (not use_exact_full)
-            and (mesh_data is not None)
-        ):
+        if (not use_exact_full) and (mesh_data is not None):
             V, F = mesh_data
         else:
             # If only appearance changed, try to reuse last cached geometry
@@ -134,19 +130,12 @@ def render_full_preview_mesh(
             needs_exact_rebuild = bool(
                 use_exact_full and ((last_nt != n_theta) or (last_nz != n_z))
             )
-            if (
-                (V is None)
-                or (F is None)
-                or geom_changed
-                or needs_exact_rebuild
-            ):
+            if (V is None) or (F is None) or geom_changed or needs_exact_rebuild:
                 # Build mesh geometry depending on exact/preview mode
                 try:
                     import numpy as _np_r
 
-                    use_exact_full = bool(
-                        cast(Any, ss.get("exact_full_preview", True))
-                    )
+                    use_exact_full = bool(cast(Any, ss.get("exact_full_preview", True)))
                     # When exact is requested, use the user-selected raw sliders (n_theta, n_z)
                     # rather than the scaled/clamped full_n_* values.
                     ntheta = n_theta if use_exact_full else preview_n_theta
@@ -186,9 +175,7 @@ def render_full_preview_mesh(
                             debounce_timeout_s=to_float_scalar(
                                 ss.get("debounce_timeout", 0.8)
                             ),
-                            last_change_ts=cast(
-                                Any, ss.get("_last_change_ts", 0.0)
-                            ),
+                            last_change_ts=cast(Any, ss.get("_last_change_ts", 0.0)),
                             interactive_mesh=True,
                             build_mesh_fn=build_pot_mesh,
                             t_wall=t_wall,
@@ -286,9 +273,9 @@ def render_full_preview_mesh(
                         z_sub, preset if preset != "Custom" else None, custom
                     )
                     # Repeat each color 'color_stride' times and trim to len(Vd)
-                    mesh_colors = [
-                        c for c in cols_sub for _ in range(color_stride)
-                    ][: len(Vd)]
+                    mesh_colors = [c for c in cols_sub for _ in range(color_stride)][
+                        : len(Vd)
+                    ]
                     if len(mesh_colors) < len(Vd):
                         mesh_colors.extend(
                             [cols_sub[-1]] * (len(Vd) - len(mesh_colors))
@@ -302,9 +289,7 @@ def render_full_preview_mesh(
             finally:
                 try:
                     perf = st.session_state.setdefault("_perf_logs", [])
-                    perf.append(
-                        f"color_map:{(time.time() - t0_col) * 1000:.1f}ms"
-                    )
+                    perf.append(f"color_map:{(time.time() - t0_col) * 1000:.1f}ms")
                     st.session_state["_perf_logs"] = perf[-40:]
                 except Exception:
                     pass
@@ -377,9 +362,7 @@ def render_full_preview_mesh(
             )
         except Exception:
             nz_used = 0
-        title_txt = (
-            f"Full preview (triangles {len(Fd):,}, exact={use_exact_full})"
-        )
+        title_txt = f"Full preview (triangles {len(Fd):,}, exact={use_exact_full})"
         fig.update_layout(
             height=height_px,
             title=title_txt,
@@ -426,8 +409,6 @@ def render_full_preview_mesh(
                     width="stretch",
                 )
             else:
-                mesh_placeholder.info(
-                    f"Mesh preview unavailable (no fallback): {e}"
-                )
+                mesh_placeholder.info(f"Mesh preview unavailable (no fallback): {e}")
         except Exception:
             mesh_placeholder.info(f"Mesh preview unavailable (error): {e}")

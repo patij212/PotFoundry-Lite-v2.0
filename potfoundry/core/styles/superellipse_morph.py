@@ -3,13 +3,15 @@ Superellipse Morph style function for PotFoundry.
 
 This module contains the outer radius function for the superellipse_morph pot style.
 """
+
 from __future__ import annotations
 
 import math
+
 import numpy as np
 
-
 __all__ = ["r_outer_superellipse_morph"]
+
 
 def r_outer_superellipse_morph(
     theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
@@ -34,6 +36,3 @@ def r_outer_superellipse_morph(
 
     out = r0 * rf
     return float(out) if np.isscalar(theta) else out
-
-
-

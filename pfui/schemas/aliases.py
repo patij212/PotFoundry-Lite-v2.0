@@ -7,7 +7,7 @@ from typing import Dict, Literal, Mapping
 
 __all__ = [
     "GLOBAL_ALIASES",
-    "ALIASES_BY_STYLE", 
+    "ALIASES_BY_STYLE",
     "GLOBAL_REVERSE",
     "REVERSE_BY_STYLE",
     "get_global_aliases",
@@ -400,8 +400,12 @@ def to_engine(style: str, opts: dict | None) -> dict:
 
 # Freeze mappings as read-only
 from types import MappingProxyType
-GLOBAL_ALIASES = MappingProxyType(GLOBAL_ALIASES)
-ALIASES_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
-GLOBAL_REVERSE = MappingProxyType(GLOBAL_REVERSE)
-REVERSE_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
 
+GLOBAL_ALIASES = MappingProxyType(GLOBAL_ALIASES)
+ALIASES_BY_STYLE = MappingProxyType(
+    {k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()}
+)
+GLOBAL_REVERSE = MappingProxyType(GLOBAL_REVERSE)
+REVERSE_BY_STYLE = MappingProxyType(
+    {k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()}
+)

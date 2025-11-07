@@ -3,10 +3,12 @@ Superformula Blossom style function for PotFoundry.
 
 This module contains the outer radius function for the superformula_blossom pot style.
 """
+
 from __future__ import annotations
 
 import math
 from typing import Any, Dict, cast
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -328,6 +330,3 @@ def r_outer_superformula_blossom(
     # Normalize to numpy array for vectorized paths; keep scalar float for scalar theta
     out_arr = np.asarray(out, dtype=float)
     return float(out_arr) if out_arr.shape == () else cast(NDArrayFloat, out_arr)
-
-
-

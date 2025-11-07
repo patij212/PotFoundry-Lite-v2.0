@@ -7,13 +7,14 @@ from typing import Any
 
 def to_float_scalar(x: Any) -> float:
     """Coerce x to a float in a defensive way.
-    
+
     Args:
         x: Value to convert to float
-        
+
     Returns:
         Float value, or 0.0 if conversion fails
     """
+
     def _unwrap(v):
         if isinstance(v, (list, tuple)):
             try:
@@ -21,7 +22,7 @@ def to_float_scalar(x: Any) -> float:
             except Exception:
                 return v
         return v
-    
+
     try:
         v = _unwrap(x)
         if isinstance(v, (int, float)):
@@ -44,10 +45,10 @@ def to_float_scalar(x: Any) -> float:
 
 def to_int_scalar(x: Any) -> int:
     """Coerce x to an int in a defensive way.
-    
+
     Args:
         x: Value to convert to int
-        
+
     Returns:
         Int value, or 0 if conversion fails
     """

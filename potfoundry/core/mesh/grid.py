@@ -19,7 +19,6 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-
 __all__ = [
     "theta_grid_cached",
     "refine_z_outer_for_seams",
@@ -31,20 +30,20 @@ def theta_grid_cached(
     n_theta: int,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Generate cached theta (angular) grid with LRU caching for performance.
-    
+
     Creates evenly-spaced angular values from 0 to 2π (exclusive of endpoint)
     for sampling around the pot's circumference, along with pre-computed
     cosine and sine values for efficiency.
-    
+
     Args:
         n_theta: Number of angular divisions (e.g., 64, 128, 256, 512)
-        
+
     Returns:
         Tuple of (thetas, cos_thetas, sin_thetas) where:
         - thetas: Array of shape (n_theta,) with angular values in radians
         - cos_thetas: Precomputed cosine values
         - sin_thetas: Precomputed sine values
-        
+
     Note:
         Uses LRU cache (maxsize=8) to avoid regenerating common grid sizes.
         This significantly improves performance when building multiple pots
@@ -71,7 +70,7 @@ def refine_z_outer_for_seams(
 
     Returns:
         Refined z array (may be identical to input if no refinement is needed)
-        
+
     Note:
         This is specific to LowPolyFacet style tier handling. The additional
         z-levels ensure vertices are placed exactly at tier boundaries and

@@ -37,10 +37,10 @@ def check_schema_integrity() -> list[str]:
     Returns:
         list[str]: problems found (empty if OK).
     """
-    from .aliases import GLOBAL_ALIASES, ALIASES_BY_STYLE
+    from .aliases import ALIASES_BY_STYLE, GLOBAL_ALIASES
     from .global_controls import GLOBAL_CONTROLS
     from .style_schemas import STYLE_SCHEMAS
-    
+
     problems: list[str] = []
     # 1) Every legacy global alias key should exist in GLOBAL_CONTROLS (since UI is legacy-keyed).
     for k in GLOBAL_ALIASES.keys():

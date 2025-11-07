@@ -2,6 +2,7 @@
 
 Handles rendering of mesh statistics and diagnostics.
 """
+
 from __future__ import annotations
 
 from typing import Any, cast
@@ -26,10 +27,10 @@ def render_metrics_section(
     opts: StyleOpts,
 ) -> None:
     """Render estimated metrics section.
-    
+
     Displays mesh statistics including triangle count, top/bottom OD,
     and debug information if enabled.
-    
+
     Args:
         H: Total height in mm
         Rt: Top radius in mm

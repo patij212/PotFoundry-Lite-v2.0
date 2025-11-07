@@ -32,7 +32,9 @@ def validate_height(H: float, min_val: float = 10.0, max_val: float = 500.0) -> 
     return float(H)
 
 
-def validate_top_radius(Rt: float, min_val: float = 10.0, max_val: float = 300.0) -> float:
+def validate_top_radius(
+    Rt: float, min_val: float = 10.0, max_val: float = 300.0
+) -> float:
     """Validate top radius.
 
     Args:
@@ -57,7 +59,9 @@ def validate_top_radius(Rt: float, min_val: float = 10.0, max_val: float = 300.0
     return float(Rt)
 
 
-def validate_bottom_radius(Rb: float, min_val: float = 10.0, max_val: float = 300.0) -> float:
+def validate_bottom_radius(
+    Rb: float, min_val: float = 10.0, max_val: float = 300.0
+) -> float:
     """Validate bottom radius.
 
     Args:
@@ -82,7 +86,9 @@ def validate_bottom_radius(Rb: float, min_val: float = 10.0, max_val: float = 30
     return float(Rb)
 
 
-def validate_wall_thickness(t_wall: float, min_val: float = 0.8, max_val: float = 10.0) -> float:
+def validate_wall_thickness(
+    t_wall: float, min_val: float = 0.8, max_val: float = 10.0
+) -> float:
     """Validate wall thickness.
 
     Args:
@@ -97,17 +103,23 @@ def validate_wall_thickness(t_wall: float, min_val: float = 0.8, max_val: float 
         ValueError: If thickness is out of range or invalid
     """
     if not isinstance(t_wall, (int, float)):
-        raise ValueError(f"Wall thickness must be a number, got {type(t_wall).__name__}")
+        raise ValueError(
+            f"Wall thickness must be a number, got {type(t_wall).__name__}"
+        )
     if t_wall <= 0:
         raise ValueError(f"Wall thickness must be positive, got {t_wall}")
     if t_wall < min_val:
-        raise ValueError(f"Wall thickness {t_wall}mm too thin (minimum: {min_val}mm for 3D printing)")
+        raise ValueError(
+            f"Wall thickness {t_wall}mm too thin (minimum: {min_val}mm for 3D printing)"
+        )
     if t_wall > max_val:
         raise ValueError(f"Wall thickness {t_wall}mm too thick (maximum: {max_val}mm)")
     return float(t_wall)
 
 
-def validate_bottom_thickness(t_bottom: float, min_val: float = 0.8, max_val: float = 10.0) -> float:
+def validate_bottom_thickness(
+    t_bottom: float, min_val: float = 0.8, max_val: float = 10.0
+) -> float:
     """Validate bottom thickness.
 
     Args:
@@ -122,17 +134,29 @@ def validate_bottom_thickness(t_bottom: float, min_val: float = 0.8, max_val: fl
         ValueError: If thickness is out of range or invalid
     """
     if not isinstance(t_bottom, (int, float)):
-        raise ValueError(f"Bottom thickness must be a number, got {type(t_bottom).__name__}")
+        raise ValueError(
+            f"Bottom thickness must be a number, got {type(t_bottom).__name__}"
+        )
     if t_bottom <= 0:
         raise ValueError(f"Bottom thickness must be positive, got {t_bottom}")
     if t_bottom < min_val:
-        raise ValueError(f"Bottom thickness {t_bottom}mm too thin (minimum: {min_val}mm for 3D printing)")
+        raise ValueError(
+            f"Bottom thickness {t_bottom}mm too thin (minimum: {min_val}mm for 3D printing)"
+        )
     if t_bottom > max_val:
-        raise ValueError(f"Bottom thickness {t_bottom}mm too thick (maximum: {max_val}mm)")
+        raise ValueError(
+            f"Bottom thickness {t_bottom}mm too thick (maximum: {max_val}mm)"
+        )
     return float(t_bottom)
 
 
-def validate_drain_radius(r_drain: float, Rb: float, t_wall: float, min_val: float = 0.0, max_val: float = 50.0) -> float:
+def validate_drain_radius(
+    r_drain: float,
+    Rb: float,
+    t_wall: float,
+    min_val: float = 0.0,
+    max_val: float = 50.0,
+) -> float:
     """Validate drain hole radius.
 
     Args:
@@ -156,7 +180,7 @@ def validate_drain_radius(r_drain: float, Rb: float, t_wall: float, min_val: flo
         raise ValueError(f"Drain radius {r_drain}mm too small (minimum: {min_val}mm)")
     if r_drain > max_val:
         raise ValueError(f"Drain radius {r_drain}mm too large (maximum: {max_val}mm)")
-    
+
     # Check compatibility with bottom radius and wall thickness
     max_drain = Rb - t_wall
     if r_drain > max_drain:
@@ -164,7 +188,7 @@ def validate_drain_radius(r_drain: float, Rb: float, t_wall: float, min_val: flo
             f"Drain radius {r_drain}mm too large for bottom radius {Rb}mm "
             f"and wall thickness {t_wall}mm (maximum: {max_drain:.1f}mm)"
         )
-    
+
     return float(r_drain)
 
 
@@ -201,14 +225,14 @@ def validate_dimensions_compatibility(
         raise ValueError(
             f"Wall thickness {t_wall}mm must be less than bottom radius {Rb}mm"
         )
-    
+
     # Bottom thickness check (reasonable limit)
     if t_bottom > H / 4:
         raise ValueError(
             f"Bottom thickness {t_bottom}mm too large for height {H}mm "
             f"(should be < {H/4:.1f}mm)"
         )
-    
+
     # Drain hole must fit within bottom
     if r_drain > 0:
         max_drain = Rb - t_wall
@@ -217,7 +241,7 @@ def validate_dimensions_compatibility(
                 f"Drain radius {r_drain}mm too large for bottom radius {Rb}mm "
                 f"and wall thickness {t_wall}mm (maximum: {max_drain:.1f}mm)"
             )
-    
+
     # Aspect ratio check (warn if extreme)
     aspect_ratio = H / max(Rt, Rb)
     if aspect_ratio > 10:

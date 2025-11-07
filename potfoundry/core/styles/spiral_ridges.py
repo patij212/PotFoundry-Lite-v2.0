@@ -3,6 +3,7 @@ Spiral Ridges style function for PotFoundry.
 
 This module contains the outer radius function for the spiral_ridges pot style.
 """
+
 from __future__ import annotations
 
 import math
@@ -11,8 +12,8 @@ import math
 TAU = 2.0 * math.pi
 import numpy as np
 
-
 __all__ = ["r_outer_spiral_ridges"]
+
 
 def r_outer_spiral_ridges(
     theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
@@ -38,6 +39,3 @@ def r_outer_spiral_ridges(
 
     out = r0 * f
     return float(out) if np.isscalar(theta) else out
-
-
-
