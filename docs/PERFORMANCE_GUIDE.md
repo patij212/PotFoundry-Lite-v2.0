@@ -1,7 +1,7 @@
 # PotFoundry Performance Optimization Guide
 
 **Version:** v2.1+ (Performance Enhancements)
-**Last Updated:** January 2025
+**Last Updated:** December 2024
 
 This guide explains the performance optimizations in PotFoundry and how to use optional acceleration features.
 
@@ -477,7 +477,7 @@ write_stl_binary("pot.stl", "MyPot", verts, faces)
 - ✅ Theta grid caching (84x speedup)
 - ✅ Baseline vectorization
 
-### v2.1 (January 2025)
+### v2.1 (December 2024)
 - ✅ **Fully vectorized mesh generation** (20-30% faster for large meshes)
 - ✅ **Result caching infrastructure** (instant cache hits)
 - ✅ **Performance documentation** (this guide)
@@ -518,5 +518,5 @@ The Streamlit app is production-ready and performs excellently for its intended 
 
 **Questions or suggestions?** Open an issue on GitHub!
 
-**Last Updated:** January 2025
+**Last Updated:** December 2024
 **Version:** v2.1+

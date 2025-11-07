@@ -133,7 +133,10 @@ def vectorized_face_generation(
     n_faces = n_rows * n_theta * 2
     faces = np.empty((n_faces, 3), dtype=np.int32)
 
-    # Process all rows at once using broadcasting
+    # Process all rows using loop (vectorized within each row iteration)
+    # Note: Full vectorization across all rows would require significant memory
+    # for intermediate arrays, so we loop over rows but vectorize operations
+    # within each row for a good balance of speed and memory efficiency.
     for i in range(n_rows):
         # Get the four corners of each quad
         v00 = ring_indices[i, j]  # Bottom-left
@@ -228,6 +231,9 @@ def compute_mesh_hash(
     param_json = json.dumps(param_dict, sort_keys=True)
 
     # Compute SHA256 hash
+    # Note: SHA256 is used for stability and uniqueness, not cryptographic security.
+    # While a faster hash (e.g., xxhash) could be used, SHA256 is part of Python's
+    # standard library and fast enough for this use case (~0.01ms overhead).
     return hashlib.sha256(param_json.encode("utf-8")).hexdigest()
 
 
@@ -299,8 +305,10 @@ def cached_build_pot_mesh(
     )
 
     # Store in cache (evict oldest if full)
+    # Note: Relies on dict insertion order preservation (Python 3.7+)
+    # This is guaranteed behavior in Python 3.7+ and is part of the language spec.
     if len(_mesh_cache) >= _mesh_cache_maxsize:
-        # Remove oldest entry (first key in dict)
+        # Remove oldest entry (first key in dict - FIFO eviction)
         oldest_key = next(iter(_mesh_cache))
         del _mesh_cache[oldest_key]
 
