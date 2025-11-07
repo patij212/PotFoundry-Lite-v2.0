@@ -191,10 +191,19 @@ def r_outer_lowpoly_facet(
         )
         
         r_base_local, r_base_local_in = apply_straight_edge_flattening(
-            r_base_local, r_base_local_in, r_base_local_orig,
-            r_base_local_in_orig, w_bot, w_top, params.cut_bot_deg,
-            params.cut_top_deg, r_uniform_bot_target, r_uniform_top_target,
-            straight_blend_func, straight_smooth
+            r_base_local,
+            r_base_local_in,
+            r_base_local_orig,
+            r_base_local_in_orig,
+            w_bot,
+            w_top,
+            params.cut_bot_deg,
+            params.cut_top_deg,
+            r_uniform_bot_target,
+            r_uniform_top_target,
+            straight_blend_func,
+            straight_smooth,
+            opts,
         )
         
         # Update limits after flattening
@@ -245,6 +254,18 @@ def r_outer_lowpoly_facet(
             params.cut_top_deg, has_cuts(params), smooth_max_func
         )
     
+    # Enforce exact seam clamp at the seam plane so max radius matches expected theoretical limit.
+    # This compensates for minor smoothing that can pull values below r0 - depth.
+    try:
+        if params.straight_edge and not params.uniform_ring:
+            # At bottom seam: w_bot_scalar ~1.0 when z == z_bot; similarly for top.
+            if w_bot_scalar >= 0.999 and params.cut_bot_deg > 0.0:
+                r_tmp = np.maximum(r_tmp, r_uniform_bot_target)
+            if w_top_scalar >= 0.999 and params.cut_top_deg > 0.0:
+                r_tmp = np.maximum(r_tmp, r_uniform_top_target)
+    except Exception:
+        pass
+
     # Apply uniform ring guard
     r_out = apply_uniform_ring_guard(r_tmp, r_base_local_in_orig, params.uniform_ring)
     

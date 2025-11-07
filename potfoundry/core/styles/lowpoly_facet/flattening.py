@@ -69,7 +69,8 @@ def apply_straight_edge_flattening(
     r_uniform_bot_target: float,
     r_uniform_top_target: float,
     straight_blend_func: Callable,
-    straight_smooth: bool
+    straight_smooth: bool,
+    opts: Dict | None = None,
 ) -> Tuple[Any, Any]:
     """Apply straight-edge flattening to seam bands.
     
@@ -90,8 +91,75 @@ def apply_straight_edge_flattening(
     Returns:
         Tuple of (r_base_local, r_base_local_in) with flattening applied
     """
+    # Smooth mode: softly pull high-radius values toward the uniform targets
+    # without creating a hard flat plateau. The original implementation returned
+    # early (no-op) which failed tests expecting a modest peak reduction.
     if straight_smooth:
-        return r_base_local, r_base_local_in
+        # Options dict may be absent in legacy call; fall back to defaults.
+        strength = float((opts or {}).get("lp_cut_straight_smooth_strength", 0.5))
+        strength = max(0.0, min(1.0, strength))
+        passes = int((opts or {}).get("lp_cut_straight_smooth_passes", 1))
+        passes = max(1, min(8, passes))
+        # Convert inputs to numpy arrays for vector blending; preserve scalar behaviour.
+        rb_loc = np.asarray(r_base_local, dtype=float)
+        rb_loc_in = np.asarray(r_base_local_in, dtype=float)
+        w_bot_arr = np.asarray(w_bot, dtype=float)
+        w_top_arr = np.asarray(w_top, dtype=float)
+        for _ in range(passes):
+            # Local adaptive blend weights (only where window active)
+            if cut_bot_deg > 0.0:
+                wb = np.clip(w_bot_arr, 0.0, 1.0)
+                if np.any(wb > 0.0):
+                    blend_bot = strength * wb
+                    rb_loc = np.where(
+                        blend_bot > 0.0,
+                        (1.0 - blend_bot) * rb_loc + blend_bot * float(r_uniform_bot_target),
+                        rb_loc,
+                    )
+                    rb_loc_in = np.where(
+                        blend_bot > 0.0,
+                        (1.0 - blend_bot) * rb_loc_in + blend_bot * float(r_uniform_bot_target),
+                        rb_loc_in,
+                    )
+            if cut_top_deg > 0.0:
+                wt = np.clip(w_top_arr, 0.0, 1.0)
+                if np.any(wt > 0.0):
+                    blend_top = strength * wt
+                    rb_loc = np.where(
+                        blend_top > 0.0,
+                        (1.0 - blend_top) * rb_loc + blend_top * float(r_uniform_top_target),
+                        rb_loc,
+                    )
+                    rb_loc_in = np.where(
+                        blend_top > 0.0,
+                        (1.0 - blend_top) * rb_loc_in + blend_top * float(r_uniform_top_target),
+                        rb_loc_in,
+                    )
+            # Very light median smoothing each pass (avoids creating plateaus).
+            # Only apply when we have enough samples (vector case).
+            if rb_loc.ndim == 1 and rb_loc.size >= 5:
+                rolled = np.vstack([
+                    np.roll(rb_loc, 2),
+                    np.roll(rb_loc, 1),
+                    rb_loc,
+                    np.roll(rb_loc, -1),
+                    np.roll(rb_loc, -2),
+                ])
+                rb_loc = np.median(rolled, axis=0)
+                rolled_in = np.vstack([
+                    np.roll(rb_loc_in, 2),
+                    np.roll(rb_loc_in, 1),
+                    rb_loc_in,
+                    np.roll(rb_loc_in, -1),
+                    np.roll(rb_loc_in, -2),
+                ])
+                rb_loc_in = np.median(rolled_in, axis=0)
+        # Preserve original scalar return semantics
+        if rb_loc.shape == ():
+            rb_loc = float(rb_loc)
+        if rb_loc_in.shape == ():
+            rb_loc_in = float(rb_loc_in)
+        return rb_loc, rb_loc_in
     
     if cut_bot_deg > 0.0 and (
         np.any(w_bot > 0.0) if isinstance(w_bot, np.ndarray) else (w_bot > 0.0)
