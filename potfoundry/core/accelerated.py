@@ -329,23 +329,30 @@ def accelerated_build_pot_mesh(
         r_inner_at_z, twist_inner, z_inner, cos_th, sin_th
     )
     
-    # === DRAIN HOLE (vectorized) ===
+    # === DRAIN HOLE (vectorized with interleaved vertices) ===
+    # Standard builder interleaves drain_under and drain_top vertices:
+    # drain_under[0], drain_top[0], drain_under[1], drain_top[1], ...
     drain_x = r_drain * cos_th
     drain_y = r_drain * sin_th
     
-    drain_under = np.column_stack([drain_x, drain_y, np.zeros(n_theta)])
-    drain_top = np.column_stack([drain_x, drain_y, np.full(n_theta, t_bottom)])
+    # Create interleaved drain vertices
+    drain_vertices = np.empty((n_theta * 2, 3), dtype=np.float64)
+    drain_vertices[0::2, 0] = drain_x  # drain_under X
+    drain_vertices[0::2, 1] = drain_y  # drain_under Y
+    drain_vertices[0::2, 2] = 0.0      # drain_under Z
+    drain_vertices[1::2, 0] = drain_x  # drain_top X
+    drain_vertices[1::2, 1] = drain_y  # drain_top Y
+    drain_vertices[1::2, 2] = t_bottom # drain_top Z
     
     # === COMBINE ALL VERTICES ===
     n_outer = len(outer_vertices)
     n_inner = len(inner_vertices)
-    n_drain = len(drain_under) + len(drain_top)
+    n_drain = len(drain_vertices)
     
     vertices = np.empty((n_outer + n_inner + n_drain, 3), dtype=np.float64)
     vertices[:n_outer] = outer_vertices
     vertices[n_outer:n_outer + n_inner] = inner_vertices
-    vertices[n_outer + n_inner:n_outer + n_inner + n_theta] = drain_under
-    vertices[n_outer + n_inner + n_theta:] = drain_top
+    vertices[n_outer + n_inner:] = drain_vertices
     
     # === GENERATE FACES (fully vectorized) ===
     # Outer wall faces
@@ -371,34 +378,39 @@ def accelerated_build_pot_mesh(
     # Bottom faces (outer bottom, inner bottom, drain)
     outer_bottom_start = 0
     inner_bottom_start = n_outer
-    drain_under_start = n_outer + n_inner
-    drain_top_start = n_outer + n_inner + n_theta
+    drain_start = n_outer + n_inner
+    
+    # Create drain index arrays (interleaved structure)
+    # drain_under indices: drain_start + 0, 2, 4, 6, ...
+    # drain_top indices: drain_start + 1, 3, 5, 7, ...
+    drain_under_indices = drain_start + np.arange(n_theta, dtype=np.int32) * 2
+    drain_top_indices = drain_start + np.arange(n_theta, dtype=np.int32) * 2 + 1
     
     bottom_faces = np.empty((n_theta * 6, 3), dtype=np.int32)
     
     # Outer to drain under
     bottom_faces[:n_theta, 0] = outer_bottom_start + j
-    bottom_faces[:n_theta, 1] = drain_under_start + jn
-    bottom_faces[:n_theta, 2] = drain_under_start + j
+    bottom_faces[:n_theta, 1] = drain_under_indices[jn]
+    bottom_faces[:n_theta, 2] = drain_under_indices[j]
     bottom_faces[n_theta:2*n_theta, 0] = outer_bottom_start + j
     bottom_faces[n_theta:2*n_theta, 1] = outer_bottom_start + jn
-    bottom_faces[n_theta:2*n_theta, 2] = drain_under_start + jn
+    bottom_faces[n_theta:2*n_theta, 2] = drain_under_indices[jn]
     
     # Inner to drain top
     bottom_faces[2*n_theta:3*n_theta, 0] = inner_bottom_start + j
     bottom_faces[2*n_theta:3*n_theta, 1] = inner_bottom_start + jn
-    bottom_faces[2*n_theta:3*n_theta, 2] = drain_top_start + jn
+    bottom_faces[2*n_theta:3*n_theta, 2] = drain_top_indices[jn]
     bottom_faces[3*n_theta:4*n_theta, 0] = inner_bottom_start + j
-    bottom_faces[3*n_theta:4*n_theta, 1] = drain_top_start + jn
-    bottom_faces[3*n_theta:4*n_theta, 2] = drain_top_start + j
+    bottom_faces[3*n_theta:4*n_theta, 1] = drain_top_indices[jn]
+    bottom_faces[3*n_theta:4*n_theta, 2] = drain_top_indices[j]
     
     # Drain cylinder wall
-    bottom_faces[4*n_theta:5*n_theta, 0] = drain_under_start + j
-    bottom_faces[4*n_theta:5*n_theta, 1] = drain_top_start + j
-    bottom_faces[4*n_theta:5*n_theta, 2] = drain_top_start + jn
-    bottom_faces[5*n_theta:, 0] = drain_under_start + j
-    bottom_faces[5*n_theta:, 1] = drain_top_start + jn
-    bottom_faces[5*n_theta:, 2] = drain_under_start + jn
+    bottom_faces[4*n_theta:5*n_theta, 0] = drain_under_indices[j]
+    bottom_faces[4*n_theta:5*n_theta, 1] = drain_top_indices[j]
+    bottom_faces[4*n_theta:5*n_theta, 2] = drain_top_indices[jn]
+    bottom_faces[5*n_theta:, 0] = drain_under_indices[j]
+    bottom_faces[5*n_theta:, 1] = drain_top_indices[jn]
+    bottom_faces[5*n_theta:, 2] = drain_under_indices[jn]
     
     # Combine all faces
     faces = np.vstack([outer_faces, inner_faces, rim_faces, bottom_faces])
