@@ -21,7 +21,6 @@ import streamlit as st
 # Import modular components
 from pfui.app_components import render_appearance_settings, render_snapshots
 from pfui.health import _design_health, _health_badge
-from pfui.state import widget_key
 from pfui.tabs.interactive import (
     render_export_section,
     render_metrics_section,
@@ -61,7 +60,7 @@ def render_interactive_tab(
                 options=["manual", "auto", "debounced"],
                 index=0,
                 horizontal=True,
-                key=widget_key("preview_mode"),
+                key="preview_mode",
                 help=(
                     "**Manual**: Click 'Update Preview' button to refresh\n\n"
                     "**Auto**: Preview updates immediately on every change\n\n"
@@ -74,7 +73,7 @@ def render_interactive_tab(
                 options=["quick", "full"],
                 index=0,
                 horizontal=True,
-                key=widget_key("mesh_quality"),
+                key="mesh_quality",
                 help=(
                     "**Quick**: Fast surface preview\n\n"
                     "**Full**: Complete triangular mesh (slower but accurate)"
