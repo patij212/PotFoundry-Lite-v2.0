@@ -4,6 +4,8 @@ This module tests the accelerated builder against the standard builder
 to ensure geometric correctness, performance, and compatibility.
 """
 
+import time
+
 import numpy as np
 import pytest
 
@@ -101,7 +103,9 @@ class TestAcceleratedBuilderCorrectness:
         n_inner = (n_z + 1) * n_theta
         drain_start = n_outer + n_inner
         
-        # Check interleaving pattern: drain_under[i], drain_top[i], drain_under[i+1], ...
+        # Check interleaving pattern:
+        # Index 2*i: drain_under[i] at z=0
+        # Index 2*i+1: drain_top[i] at z=t_bottom
         for i in range(n_theta):
             drain_under_idx = drain_start + 2 * i
             drain_top_idx = drain_start + 2 * i + 1
@@ -121,7 +125,6 @@ class TestAcceleratedBuilderPerformance:
     @pytest.mark.parametrize("style_name", list(STYLES.keys()))
     def test_faster_than_standard(self, style_name):
         """Verify accelerated is faster than standard for all styles."""
-        import time
         style_fn, _ = STYLES[style_name]
         
         # Standard builder

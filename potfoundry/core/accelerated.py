@@ -330,8 +330,12 @@ def accelerated_build_pot_mesh(
     )
     
     # === DRAIN HOLE (vectorized with interleaved vertices) ===
-    # Standard builder interleaves drain_under and drain_top vertices:
-    # drain_under[0], drain_top[0], drain_under[1], drain_top[1], ...
+    # Standard builder interleaves drain_under and drain_top vertices in pairs:
+    # Index 0: drain_under[0] (x, y, 0)
+    # Index 1: drain_top[0] (x, y, t_bottom)
+    # Index 2: drain_under[1] (x, y, 0)
+    # Index 3: drain_top[1] (x, y, t_bottom)
+    # ... and so on
     drain_x = r_drain * cos_th
     drain_y = r_drain * sin_th
     
