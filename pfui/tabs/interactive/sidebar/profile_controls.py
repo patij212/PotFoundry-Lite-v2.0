@@ -1,4 +1,8 @@
-"""Profile controls rendering."""
+"""Profile controls wrapper.
+
+Delegates to `pfui.app_components.sidebar.render_profile_controls`,
+which expects keyword-only arguments `(mark_changed, style_key)`.
+"""
 
 from __future__ import annotations
 
@@ -7,11 +11,11 @@ import streamlit as st
 from pfui.app_components.sidebar import render_profile_controls as _render_profile_controls
 
 
-def render_profile(on_change: callable) -> None:
-    """Render profile controls.
-    
+def render_profile(style_name: str, mark_changed: callable) -> None:
+    """Render profile controls for the given style.
+
     Args:
-        on_change: Callback to trigger when profile settings change
+        style_name: Current style name (for widget scoping)
+        mark_changed: Callback to mark preview stale on change
     """
-    with st.expander("Profile"):
-        _render_profile_controls(on_change=on_change)
+    _render_profile_controls(mark_changed=mark_changed, style_key=style_name)

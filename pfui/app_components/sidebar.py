@@ -298,6 +298,52 @@ def render_profile_controls(
             )
         )
 
+        # --- Twist controls (per-style) ---
+        st.caption("Twist (per-style)")
+        t1, t2, t3 = st.columns([1.5, 1.5, 1.0])
+        kt1 = widget_key(style_key, "spin_turns")
+        kt2 = widget_key(style_key, "spin_phase_deg")
+        kt3 = widget_key(style_key, "spin_curve_exp")
+        v_turns = float(ss.get(kt1, 0.0) or 0.0)
+        v_phase = float(ss.get(kt2, 0.0) or 0.0)
+        v_curve = float(ss.get(kt3, 1.0) or 1.0)
+        spin_turns = float(
+            t1.slider(
+                "Twist turns",
+                -3.0,
+                3.0,
+                v_turns,
+                0.05,
+                key=kt1,
+                on_change=mark_changed,
+                help="Per-style twist turns (negative = left, positive = right).",
+            )
+        )
+        spin_phase = float(
+            t2.slider(
+                "Twist phase (deg)",
+                -180.0,
+                180.0,
+                v_phase,
+                1.0,
+                key=kt2,
+                on_change=mark_changed,
+                help="Per-style twist phase offset in degrees.",
+            )
+        )
+        spin_curve = float(
+            t3.slider(
+                "Twist curve exp",
+                0.1,
+                3.0,
+                v_curve,
+                0.05,
+                key=kt3,
+                on_change=mark_changed,
+                help="Per-style twist curve exponent.",
+            )
+        )
+
     return {
         "expn": expn,
         "flare_center": flare_center,

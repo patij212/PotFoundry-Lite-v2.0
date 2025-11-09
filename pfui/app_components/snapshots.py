@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, cast
 import streamlit as st
 
 from pfui import state_history as Hist
+import pfui.schemas as SC
 from pfui.app_components.utils import _mask_possible_secrets, resolve_schema_key
 from pfui.preview import render_mesh_snapshot_cached
 from pfui.snapshot_store import (
@@ -80,7 +81,17 @@ def render_snapshots(
             # builds the actual triangulated mesh and tries Plotly first.
             import json
 
-            opts_json = json.dumps(dict(ui_opts))
+            # Ensure geometry parameters are present inside opts for snapshot builder
+            enriched_opts = dict(ui_opts)
+            enriched_opts.setdefault("t_wall", t_wall)
+            enriched_opts.setdefault("t_bottom", t_bottom)
+            enriched_opts.setdefault("r_drain", r_drain)
+            # Normalize to engine keyspace so style functions respond correctly
+            try:
+                enriched_opts = SC.to_engine(style_name, enriched_opts)
+            except Exception:
+                enriched_opts = dict(enriched_opts)
+            opts_json = json.dumps(enriched_opts)
             capture_bytes = render_mesh_snapshot_cached(
                 H,
                 top_od * 0.5,

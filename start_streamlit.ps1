@@ -27,8 +27,8 @@ $env:WATCHFILES_FORCE_POLLING = "1"
 # Log files
 $logOut = Join-Path $env:TEMP 'streamlit.out.log'
 $logErr = Join-Path $env:TEMP 'streamlit.err.log'
-if (Test-Path $logOut) { Remove-Item $logOut -Force }
-if (Test-Path $logErr) { Remove-Item $logErr -Force }
+try { if (Test-Path $logOut) { Remove-Item $logOut -Force -ErrorAction SilentlyContinue } } catch {}
+try { if (Test-Path $logErr) { Remove-Item $logErr -Force -ErrorAction SilentlyContinue } } catch {}
 
 # Kill any previous Streamlit instances started via 'python -m streamlit'
 Get-CimInstance Win32_Process -Filter "CommandLine LIKE '%python -m streamlit%'" | ForEach-Object {

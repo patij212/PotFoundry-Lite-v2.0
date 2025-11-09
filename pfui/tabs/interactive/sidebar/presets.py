@@ -20,31 +20,49 @@ def render_presets(ss: dict[str, Any], on_change: callable) -> None:
     """
     with st.expander("Presets"):
         st.markdown("#### Built-in Presets")
-        # List built-in presets from PRESETS
-        preset_names = sorted(PRESETS.keys()) if isinstance(PRESETS, dict) else []
-        if preset_names:
-            chosen_preset = st.selectbox(
-                "Select a preset",
-                options=[""] + preset_names,
-                help="Choose a built-in preset to quickly configure your pot",
+        style_names = sorted(PRESETS.keys()) if isinstance(PRESETS, dict) else []
+        if not style_names:
+            st.info("No built-in presets available.")
+        else:
+            col_style, col_preset = st.columns([1, 1])
+            chosen_style = col_style.selectbox(
+                "Preset style",
+                options=[""] + style_names,
+                help="Choose a style to view its curated presets",
+                key="_builtin_preset_style_select",
             )
-            if chosen_preset and st.button("Apply Preset"):
+            chosen_preset = ""
+            preset_options: list[str] = []
+            if chosen_style:
+                preset_options = sorted(PRESETS.get(chosen_style, {}).keys())
+                chosen_preset = col_preset.selectbox(
+                    "Preset variant",
+                    options=[""] + preset_options,
+                    help="Choose a curated preset variant",
+                    key="_builtin_preset_variant_select",
+                )
+            apply_disabled = not (chosen_style and chosen_preset)
+            if st.button(
+                "Apply Built-in Preset",
+                disabled=apply_disabled,
+                help="Apply the selected style + preset values",
+                key="_apply_builtin_preset_btn",
+            ) and not apply_disabled:
                 try:
-                    preset_dict = PRESETS.get(chosen_preset, {})
-                    apply_preset_dict(preset_dict)
-                    st.success(f"Applied preset: {chosen_preset}")
+                    opts = PRESETS[chosen_style][chosen_preset]
+                    apply_preset_dict({"style": chosen_style, "size": {}, "opts": opts})
+                    st.success(f"Applied preset: {chosen_style} / {chosen_preset}")
                     on_change()
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error applying preset: {e}")
-        else:
-            st.info("No built-in presets available.")
 
         st.markdown("---")
         st.markdown("#### User Presets")
-        # Load user presets
-        user_presets_list = _read_user_presets()
-        user_preset_names = [p.get("name", "") for p in user_presets_list if p.get("name")]
+        # Load user presets (schema: {"presets": [ ... ]})
+        user_presets_data = _read_user_presets()
+        user_presets_list = list(user_presets_data.get("presets", [])) if isinstance(user_presets_data, dict) else []
+        user_preset_names = [p.get("name", "") for p in user_presets_list if isinstance(p, dict) and p.get("name")]
 
         # Save current design as a user preset
         st.text_input(
@@ -82,7 +100,7 @@ def render_presets(ss: dict[str, Any], on_change: callable) -> None:
                     }
                     # Add style-specific options if present
                     style_val = ss.get("style", "")
-                    schema_k = resolve_schema_key(style_val, styles)
+                    schema_k = resolve_schema_key(style_val)
                     if schema_k:
                         sch = styles.get(schema_k, {})
                         opts_schema = sch.get("options", {})
@@ -98,7 +116,8 @@ def render_presets(ss: dict[str, Any], on_change: callable) -> None:
 
                     # Save to user presets
                     user_presets_list.append(preset_data)
-                    _write_user_presets(user_presets_list)
+                    user_presets_data = {"presets": user_presets_list}
+                    _write_user_presets(user_presets_data)
                     st.success(f"Saved preset: {preset_name}")
                     st.rerun()
                 except Exception as e:
@@ -121,7 +140,18 @@ def render_presets(ss: dict[str, Any], on_change: callable) -> None:
                             None
                         )
                         if preset_data:
-                            apply_preset_dict(preset_data)
+                            # Convert legacy flat user preset shape to structured form
+                            # Identify style-specific option keys via schema if not already split.
+                            style_val = preset_data.get("style", "")
+                            # Separate size-like keys
+                            size_keys = {"H","height","top_od","bottom_od","t_wall","wall","t_bottom","bottom","r_drain","drain","expn","flare_exp"}
+                            size_block = {k: v for k, v in preset_data.items() if k in size_keys}
+                            # Remaining options
+                            opts_block = {
+                                k: v for k, v in preset_data.items() if k not in size_keys and k not in {"name","style"}
+                            }
+                            structured = {"style": style_val, "size": size_block, "opts": opts_block}
+                            apply_preset_dict(structured)
                             st.success(f"Applied user preset: {chosen_user_preset}")
                             on_change()
                             st.rerun()
@@ -135,9 +165,10 @@ def render_presets(ss: dict[str, Any], on_change: callable) -> None:
                         # Remove the preset
                         user_presets_list = [
                             p for p in user_presets_list
-                            if p.get("name") != chosen_user_preset
+                            if isinstance(p, dict) and p.get("name") != chosen_user_preset
                         ]
-                        _write_user_presets(user_presets_list)
+                        user_presets_data = {"presets": user_presets_list}
+                        _write_user_presets(user_presets_data)
                         st.success(f"Deleted preset: {chosen_user_preset}")
                         st.rerun()
                     except Exception as e:

@@ -15,6 +15,7 @@ __all__ = [
     "APP_VERSION",
     "canonical_payload",
     "content_id",
+    "_normalize_dict",  # Exported for testing
 ]
 
 

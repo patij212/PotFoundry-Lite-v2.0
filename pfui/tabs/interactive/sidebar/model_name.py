@@ -38,7 +38,13 @@ def render_model_name_controls(ss: dict[str, Any]) -> None:
     # If the session doesn't yet have a chosen style (first load), use
     # the first style from STYLES as the default so the auto-name matches
     # what the selectbox will show once rendered.
-    all_styles = sorted(STYLES.keys()) if isinstance(STYLES, dict) else []
+    try:
+        all_styles = sorted(list(STYLES.keys()))
+    except Exception:
+        try:
+            all_styles = sorted([k for k in STYLES])
+        except Exception:
+            all_styles = []
     # If no style is set in the session (first run), initialize it so the
     # selectbox and our auto-name use the same initial value.
     if "style" not in ss and all_styles:

@@ -106,7 +106,8 @@ def make_preview_arrays(
             )
         except Exception:
             pass
-        if ring_fallbacks > 0:
+        # Only surface informational messages for significant fallback counts to reduce noise
+        if ring_fallbacks > 2 or theta_fallbacks > 10:
             try:
                 msg = f"Preview recovered from {ring_fallbacks} ring error(s)"
                 if theta_fallbacks > 0:

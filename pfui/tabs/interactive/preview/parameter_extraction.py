@@ -62,10 +62,11 @@ def extract_preview_parameters(ss: dict[str, Any]) -> PreviewParameters:
     """
     return PreviewParameters(
         # Style parameters
-        style_name=ss.get("style", "PetalWave"),
+        style_name=ss.get("style", "HarmonicRipple"),
         ui_opts=ss.get("style_opts", {}),
-        n_theta=ss.get("n_theta", 168),
-        n_z=ss.get("n_z", 84),
+        # Prefer preview-specific keys if present (new sliders)
+        n_theta=ss.get("preview_n_theta", ss.get("n_theta", 168)),
+        n_z=ss.get("preview_n_z", ss.get("n_z", 84)),
         preview_detail=ss.get("preview_detail", 2.0),
         
         # Geometry parameters
@@ -107,11 +108,24 @@ def get_preview_resolution(
     Returns:
         Tuple of (preview_n_theta, preview_n_z, full_n_theta, full_n_z)
     """
-    # Apply interactive preview scaling
+    # If the newer preview-specific sliders are present, respect them directly
     preview_scale = to_float_scalar(ss.get("preview_res_scale", 1.0))
+    if "preview_n_theta" in ss or "preview_n_z" in ss:
+        base_n_theta = max(16, int(params.n_theta))
+        base_n_z = max(8, int(params.n_z))
+        # Preview resolution: allow up to 720 so user changes are visible
+        preview_n_theta = max(16, min(720, base_n_theta))
+        preview_n_z = max(8, min(360, base_n_z))
+        # Full resolution scales with preview_detail and preview_res_scale
+        target_n_theta = max(16, int(base_n_theta * params.preview_detail * preview_scale))
+        target_n_z = max(8, int(base_n_z * params.preview_detail * preview_scale))
+        full_n_theta = max(16, min(2048, target_n_theta))
+        full_n_z = max(8, min(2048, target_n_z))
+        return preview_n_theta, preview_n_z, full_n_theta, full_n_z
+
+    # Legacy behavior: apply interactive preview scaling
     target_n_theta = max(16, int(params.n_theta * params.preview_detail * preview_scale))
     target_n_z = max(8, int(params.n_z * params.preview_detail * preview_scale))
-    
     preview_n_theta = max(16, min(168, target_n_theta))
     preview_n_z = max(8, min(168, target_n_z))
     full_n_theta = max(16, min(1024, target_n_theta))

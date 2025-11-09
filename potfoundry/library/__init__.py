@@ -11,7 +11,7 @@ Core modules remain in parent library.py (publish_design, make_thumbnail, etc.)
 
 from __future__ import annotations
 
-from .hashing import APP_VERSION, canonical_payload, content_id
+from .hashing import APP_VERSION, _normalize_dict, canonical_payload, content_id
 from .rate_limit import check_rate_limit, record_publish
 from .validation import (
     ALLOWED_LICENSES,
@@ -34,6 +34,7 @@ __all__ = [
     # Hashing
     "canonical_payload",
     "content_id",
+    "_normalize_dict",  # Exported for testing
     # Validation
     "MAX_TITLE_LENGTH",
     "MAX_TAGS",
