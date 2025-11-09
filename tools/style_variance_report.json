@@ -1,0 +1,175 @@
+{
+  "results": [
+    {
+      "style": "SuperformulaBlossom",
+      "variant0": {
+        "sf_strength": 0.0
+      },
+      "variant1": {
+        "sf_strength": 0.9,
+        "sf_edge_flow_reconstruct_enable": false
+      },
+      "sig0": {
+        "r_mean": 54.73224415411741,
+        "r_std": 11.084351246159786,
+        "z_mean": 59.565
+      },
+      "sig1": {
+        "r_mean": 60.73156053035304,
+        "r_std": 13.201889520390893,
+        "z_mean": 59.565
+      },
+      "diff": {
+        "radial_l2": 6.746336867313247,
+        "radial_linf": 15.74999999316411
+      },
+      "changed": true,
+      "verts0": 9600,
+      "verts1": 9600,
+      "faces0": 19200,
+      "faces1": 19200
+    },
+    {
+      "style": "FourierBloom",
+      "variant0": {
+        "fb_strength": 0.2
+      },
+      "variant1": {
+        "fb_strength": 1.6
+      },
+      "sig0": {
+        "r_mean": 54.732244154117396,
+        "r_std": 11.158893573461627,
+        "z_mean": 59.565
+      },
+      "sig1": {
+        "r_mean": 54.73224415411741,
+        "r_std": 15.132048427975445,
+        "z_mean": 59.565
+      },
+      "diff": {
+        "radial_l2": 9.013606300719031,
+        "radial_linf": 35.64638111458794
+      },
+      "changed": true,
+      "verts0": 9600,
+      "verts1": 9600,
+      "faces0": 19200,
+      "faces1": 19200
+    },
+    {
+      "style": "SpiralRidges",
+      "variant0": {
+        "spiral_k": 7
+      },
+      "variant1": {
+        "spiral_k": 15
+      },
+      "sig0": {
+        "r_mean": 54.73224415411741,
+        "r_std": 13.953437284190315,
+        "z_mean": 59.565
+      },
+      "sig1": {
+        "r_mean": 54.73224415411741,
+        "r_std": 13.953437284190318,
+        "z_mean": 59.565
+      },
+      "diff": {
+        "radial_l2": 11.986289625700557,
+        "radial_linf": 38.4033574783453
+      },
+      "changed": true,
+      "verts0": 9600,
+      "verts1": 9600,
+      "faces0": 19200,
+      "faces1": 19200
+    },
+    {
+      "style": "SuperellipseMorph",
+      "variant0": {
+        "se_m_top": 2.0
+      },
+      "variant1": {
+        "se_m_top": 6.0
+      },
+      "sig0": {
+        "r_mean": 54.73224415411741,
+        "r_std": 11.612054638938613,
+        "z_mean": 59.565
+      },
+      "sig1": {
+        "r_mean": 58.88331717230006,
+        "r_std": 13.280235698214915,
+        "z_mean": 59.565
+      },
+      "diff": {
+        "radial_l2": 5.973271651842718,
+        "radial_linf": 17.400459597389094
+      },
+      "changed": true,
+      "verts0": 9600,
+      "verts1": 9600,
+      "faces0": 19200,
+      "faces1": 19200
+    },
+    {
+      "style": "HarmonicRipple",
+      "variant0": {
+        "hr_petals": 6
+      },
+      "variant1": {
+        "hr_petals": 14
+      },
+      "sig0": {
+        "r_mean": 55.71035759535178,
+        "r_std": 13.070543974507434,
+        "z_mean": 59.565
+      },
+      "sig1": {
+        "r_mean": 55.710357595351795,
+        "r_std": 13.070543974507434,
+        "z_mean": 59.565
+      },
+      "diff": {
+        "radial_l2": 9.325207113668293,
+        "radial_linf": 22.883287868296954
+      },
+      "changed": true,
+      "verts0": 9600,
+      "verts1": 9600,
+      "faces0": 19200,
+      "faces1": 19200
+    },
+    {
+      "style": "LowPolyFacet",
+      "variant0": {
+        "lp_facets": 8,
+        "lp_amp": 0.08
+      },
+      "variant1": {
+        "lp_facets": 24,
+        "lp_amp": 0.22
+      },
+      "sig0": {
+        "r_mean": 52.07916582997481,
+        "r_std": 10.61987308517394,
+        "z_mean": 59.565
+      },
+      "sig1": {
+        "r_mean": 47.30738256820406,
+        "r_std": 10.114012179011642,
+        "z_mean": 59.565
+      },
+      "diff": {
+        "radial_l2": 6.110015650975429,
+        "radial_linf": 12.445557687588128
+      },
+      "changed": true,
+      "verts0": 9600,
+      "verts1": 9600,
+      "faces0": 19200,
+      "faces1": 19200
+    }
+  ]
+}

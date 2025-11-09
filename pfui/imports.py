@@ -56,23 +56,61 @@ def _import_writer() -> Optional[Callable[..., object]]:
 
 
 def _import_geometry() -> Tuple[object, object, object, object]:
+    # Prefer the new core locations but be resilient: obtain STYLES from
+    # the dedicated styles package when possible so the UI sees the full
+    # registry even if importing the large `geometry` module fails.
+    styles_mod = None
+    geom_mod = None
     try:
-        mod = importlib.import_module("potfoundry.core.geometry")
-        return (
-            getattr(mod, "STYLES"),
-            getattr(mod, "base_radius"),
-            getattr(mod, "_spin_twist_radians"),
-            getattr(mod, "build_pot_mesh"),
-        )
+        styles_mod = importlib.import_module("potfoundry.core.styles")
     except Exception:
-        # Fallback to legacy geometry module path
-        mod = importlib.import_module("potfoundry.geometry")
-        return (
-            getattr(mod, "STYLES"),
-            getattr(mod, "base_radius"),
-            getattr(mod, "_spin_twist_radians"),
-            getattr(mod, "build_pot_mesh"),
-        )
+        styles_mod = None
+
+    try:
+        geom_mod = importlib.import_module("potfoundry.core.geometry")
+    except Exception:
+        geom_mod = None
+
+    # Resolve STYLES: prefer explicit styles package, else geometry, else legacy
+    if styles_mod is not None:
+        styles_obj = getattr(styles_mod, "STYLES")
+    elif geom_mod is not None and hasattr(geom_mod, "STYLES"):
+        styles_obj = getattr(geom_mod, "STYLES")
+    else:
+        # Last-resort legacy location
+        legacy = importlib.import_module("potfoundry.geometry")
+        styles_obj = getattr(legacy, "STYLES")
+
+    # Resolve other geometry functions: prefer core.geometry, fall back to legacy
+    if geom_mod is not None:
+        base_radius = getattr(geom_mod, "base_radius")
+        # Some refactors renamed the internal spin/twist helper. Accept either name.
+        spin = getattr(geom_mod, "_spin_twist_radians", None)
+        if spin is None:
+            spin = getattr(geom_mod, "spin_twist_radians", None)
+        if spin is None:
+            # If core.geometry doesn't expose a spin helper, try to derive a safe
+            # no-op that returns 0.0 for compatibility so callers don't crash.
+            def _spin_noop(z: float, H: float, opts: dict) -> float:
+                return 0.0
+
+            spin = _spin_noop
+        build = getattr(geom_mod, "build_pot_mesh")
+    else:
+        legacy = importlib.import_module("potfoundry.geometry")
+        base_radius = getattr(legacy, "base_radius")
+        # Legacy geometry may also use either name
+        spin = getattr(legacy, "_spin_twist_radians", None)
+        if spin is None:
+            spin = getattr(legacy, "spin_twist_radians", None)
+        if spin is None:
+            def _spin_noop(z: float, H: float, opts: dict) -> float:
+                return 0.0
+
+            spin = _spin_noop
+        build = getattr(legacy, "build_pot_mesh")
+
+    return (styles_obj, base_radius, spin, build)
 
 
 def _import_schema_and_batch() -> (
@@ -163,12 +201,102 @@ __all__ = [
     "_import_geometry",
     "_import_schema_and_batch",
     # lazy attributes available via module attribute access
-    "WRITE_STL_BINARY",  # lazy: resolved via __getattr__ on first access
-    "STYLES",  # lazy: resolved via __getattr__ on first access
-    "base_radius",  # lazy
-    "_spin_twist_radians",  # lazy
-    "build_pot_mesh",  # lazy
-    "validate_recipe",  # lazy
-    "load_config",  # lazy
-    "build_from_yaml",  # lazy
+    "WRITE_STL_BINARY",
+    "STYLES",
+    "base_radius",
+    "_spin_twist_radians",
+    "build_pot_mesh",
+    "validate_recipe",
+    "load_config",
+    "build_from_yaml",
 ]
+
+
+# Provide module-level lazy proxies so consumers can use ``from pfui.imports import STYLES``
+# without triggering heavy imports at import-time. Each proxy resolves on first use
+# and replaces itself in the module globals with the real object to avoid future
+# indirection and to play nicely with monkeypatching in tests.
+class _LazyProxy:
+    def __init__(self, name: str, resolver: Callable[[], Any]):
+        self.__name__ = name
+        self._name = name
+        self._resolver: Callable[[], Any] = resolver
+        self._resolved: bool = False
+        self._value: Any | None = None
+
+    def _ensure(self) -> Any:
+        if not self._resolved:
+            val = self._resolver()
+            # replace with the concrete object in module globals for future imports
+            globals()[self._name] = val
+            self._value = val
+            self._resolved = True
+        return self._value
+
+    def __call__(self, *args, **kwargs):
+        val = self._ensure()
+        return val(*args, **kwargs)
+
+    def __getattr__(self, item: str) -> Any:
+        val = self._ensure()
+        return getattr(val, item)
+
+    def __iter__(self):
+        val = self._ensure()
+        return iter(val)
+
+    def __len__(self) -> int:
+        val = self._ensure()
+        return len(val)
+
+    def __getitem__(self, key: object) -> object:
+        val = self._ensure()
+        return val[key]
+
+    def __contains__(self, key: object) -> bool:
+        val = self._ensure()
+        try:
+            return key in val
+        except Exception:
+            # Fallback: attempt mapping-style membership
+            try:
+                return getattr(val, "__contains__", lambda k: False)(key)
+            except Exception:
+                return False
+
+    def keys(self):
+        val = self._ensure()
+        return getattr(val, "keys", lambda: [])()
+
+    def items(self):
+        val = self._ensure()
+        return getattr(val, "items", lambda: [])()
+
+    def get(self, key: object, default: object = None) -> object:
+        val = self._ensure()
+        return getattr(val, "get", lambda k, d=None: d)(key, default)
+
+    def __repr__(self) -> str:  # pragma: no cover - trivial
+        if self._resolved:
+            return repr(self._value)
+        return f"<LazyProxy {self._name}>"
+
+
+def _resolve_geometry_attr(idx: int) -> object:
+    # Ensure _import_geometry is used so the heavy modules are only imported when
+    # actually needed. Returns the selected element from the geometry tuple.
+    items = _import_geometry()
+    return items[idx]
+
+
+# Create lazy proxies for exports commonly used via from-import.
+STYLES = _LazyProxy("STYLES", lambda: _resolve_geometry_attr(0))
+base_radius = _LazyProxy("base_radius", lambda: _resolve_geometry_attr(1))
+_spin_twist_radians = _LazyProxy("_spin_twist_radians", lambda: _resolve_geometry_attr(2))
+build_pot_mesh = _LazyProxy("build_pot_mesh", lambda: _resolve_geometry_attr(3))
+WRITE_STL_BINARY = _LazyProxy("WRITE_STL_BINARY", _import_writer)
+
+# Schema/batch proxies
+validate_recipe = _LazyProxy("validate_recipe", lambda: _import_schema_and_batch()[0])
+load_config = _LazyProxy("load_config", lambda: _import_schema_and_batch()[1])
+build_from_yaml = _LazyProxy("build_from_yaml", lambda: _import_schema_and_batch()[2])

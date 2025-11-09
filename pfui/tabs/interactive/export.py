@@ -566,6 +566,17 @@ def render_export_section(
     """
     st.subheader("Export STL")
 
+    ss = cast(dict[str, Any], st.session_state)
+
+    # Export trigger button (sets a session flag so the rest of the
+    # export pipeline can run in the same rerun). This mirrors previous
+    # behavior where an Export button kicked the export flow.
+    try:
+        if st.button("Export STL", key="_export_button"):
+            ss["_do_export"] = True
+    except Exception:
+        ss["_do_export"] = bool(ss.get("_do_export", False))
+
     # Library publish controls
     publish_enabled, publish_title, publish_tags, publish_license, license_consent = (
         render_library_publish_controls(_has_library, _library_read_only, style_name)
@@ -621,3 +632,10 @@ def render_export_section(
         top_od=top_od,
         bottom_od=bottom_od,
     )
+
+    # Clear one-shot export flag to avoid repeating export on subsequent reruns
+    try:
+        if ss.get("_do_export"):
+            ss["_do_export"] = False
+    except Exception:
+        pass

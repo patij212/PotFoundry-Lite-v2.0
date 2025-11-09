@@ -85,6 +85,27 @@ def render_preview_section(preview_mode: str) -> None:
     if not style_config:
         st.error("Failed to setup style")
         return
+
+    # Quick style function radial sample (first ring) for debug visibility
+    try:
+        import numpy as _np_dbg
+        th_sample = _np_dbg.linspace(0.0, 2.0 * _np_dbg.pi, num=16, endpoint=False)
+        # Use base radius mid-height for comparison
+        z_mid = float(params.H) * 0.5
+        # Provide minimal base radius reference (Rb + flare fraction)
+        r_base_mid = float(params.Rb + (params.Rt - params.Rb) * (z_mid / max(params.H, 1e-6))**params.expn)
+        r_mod = style_config.r_outer_fn(th_sample, z_mid, params.H, params.Rb, style_config.opts)
+        r_arr = _np_dbg.asarray(r_mod, dtype=float)
+        # Store compact stats in session for debug panel
+        st.session_state["_style_radius_sample"] = {
+            "style": params.style_name,
+            "r_base_mid": r_base_mid,
+            "r_min": float(r_arr.min()) if r_arr.size else 0.0,
+            "r_max": float(r_arr.max()) if r_arr.size else 0.0,
+            "r_span": float(r_arr.max() - r_arr.min()) if r_arr.size else 0.0,
+        }
+    except Exception:
+        st.session_state["_style_radius_sample"] = {"style": params.style_name, "error": True}
     
     # ==================== MODULE 3: CACHE INITIALIZATION ====================
     initialize_preview_cache(ss)

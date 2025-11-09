@@ -53,25 +53,39 @@ def _ensure_schema_globals() -> None:
 # ---------- Widget key helper -------------------------------------------------
 
 
-def widget_key(style: str, field: str) -> str:
+def widget_key(style: str, field: str | None = None) -> str:
     """
     Purpose:
-        Build a stable Streamlit widget key for a (style, field) pair.
+        Build a stable Streamlit widget key.
+
+    Behavior:
+        - Two-arg form: widget_key(style, field) -> "opt__{style}_{field}"
+        - One-arg form:  widget_key(field)       -> "opt__global_{field}"
 
     Inputs:
-        style: str  - style name (UI display label)
-        field: str  - parameter key (legacy-keyed in current UI)
+        style: str  - style name (UI display label) OR field when using one-arg form
+        field: Optional[str] - parameter key; if omitted, the first arg is treated as field
 
     Outputs:
         str - normalized widget key, safe for Streamlit.
 
     Guarantees:
         - Only [a-z0-9_] in the key after normalization.
+
+    Notes:
+        The one-arg form is used for global controls (e.g., "style", "model_name").
+        The two-arg form remains for per-style option keys and existing tests.
     """
     import re
 
-    norm_style = re.sub(r"[^a-zA-Z0-9_]", "_", style).lower()
-    return f"opt__{norm_style}_{field}"
+    if field is None:
+        # Single-argument form: style param actually carries the field name
+        field = style
+        norm_style = "global"
+    else:
+        norm_style = re.sub(r"[^a-zA-Z0-9_]", "_", style).lower()
+    norm_field = re.sub(r"[^a-zA-Z0-9_]", "_", field).lower()
+    return f"opt__{norm_style}_{norm_field}"
 
 
 # ---------- Pending updates machinery ----------------------------------------

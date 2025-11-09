@@ -23,6 +23,7 @@ from .style_options import render_style_options
 from .style_selector import render_style_selector
 from .twist_spin import render_twist_spin
 from .utils import create_change_marker
+from .mesh_resolution import render_mesh_resolution
 
 
 def render_sidebar_section(on_change_callback: Optional[callable] = None) -> None:
@@ -54,20 +55,28 @@ def render_sidebar_section(on_change_callback: Optional[callable] = None) -> Non
 
     # --- Style Selector ---
     current_style = render_style_selector(ss, on_change=_mark_changed)
-    schema_key = resolve_schema_key(current_style, styles)
+    # resolve_schema_key only requires the style name; it looks up schemas internally
+    schema_key = resolve_schema_key(current_style)
     style_schema = styles.get(schema_key, {}) if schema_key else {}
 
     # --- Dimensions Section ---
-    render_dimensions(on_change=_mark_changed)
+    render_dimensions(current_style, _mark_changed)
 
     # --- Twist / Spin Section ---
-    render_twist_spin(style_schema, on_change=_mark_changed)
+    render_twist_spin(current_style, style_schema, on_change=_mark_changed)
 
     # --- Profile Section ---
-    render_profile(on_change=_mark_changed)
+    render_profile(current_style, _mark_changed)
+
+    # --- Mesh resolution sliders ---
+    try:
+        render_mesh_resolution(ss, on_change=_mark_changed)
+    except Exception:
+        # Don't block the sidebar if resolution controls fail
+        pass
 
     # --- Style Options Section ---
-    render_style_options(current_style, on_change=_mark_changed)
+    render_style_options(current_style)
 
     # --- Presets Section ---
     render_presets(ss, on_change=_mark_changed)

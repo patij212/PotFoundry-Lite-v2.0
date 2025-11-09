@@ -7,6 +7,9 @@ from typing import Any, Dict
 
 import streamlit as st
 
+# Use the canonical widget_key and queued updates to avoid post-instantiation mutations.
+from pfui.state import widget_key, queue_update  # noqa: E402
+
 # Lazy-load STYLE_SCHEMAS to avoid importing the heavy pfui.schemas module on import.
 STYLE_SCHEMAS: dict = {}
 
@@ -15,25 +18,11 @@ def _ensure_style_schemas() -> dict:
     global STYLE_SCHEMAS
     if not STYLE_SCHEMAS:
         try:
-            # Use the accessor to avoid importing heavy constants at module import time
             mod = importlib.import_module("pfui.schemas")
             STYLE_SCHEMAS.update(getattr(mod, "get_style_schemas", lambda: {})() or {})
         except Exception:
             STYLE_SCHEMAS = {}
     return STYLE_SCHEMAS
-
-
-def widget_key(style: str, field: str) -> str:
-    """Generate unique widget key for Streamlit session state.
-
-    Args:
-        style: Style name
-        field: Field/parameter name
-
-    Returns:
-        Unique widget key string
-    """
-    return f"opt__{style}_{field}"
 
 
 # Built-in curated presets (unchanged)
@@ -394,27 +383,50 @@ def _write_user_presets(data: Dict[str, Any]) -> bool:
 
 
 def apply_preset_dict(p: Dict[str, Any]) -> None:
+    """Apply a preset dictionary to session state.
+
+    Supports two shapes:
+    1. New structured form: {"style": str, "size": {...}, "opts": {...}}
+    2. Legacy curated form: {preset_name: {option_key: value}, ...} (passed directly)
+       In this case caller must pass a wrapper with a 'style' key OR select one preset.
+    """
+    # Detect legacy form (no 'style' key but nested option dicts). No direct apply.
+    if "style" not in p and "opts" not in p and any(isinstance(v, dict) for v in p.values()):
+        # Nothing to apply; caller should supply structured wrapper. Fail fast silently.
+        return
+
+    updates: Dict[str, Any] = {}
     style = p.get("style")
     if style:
-        st.session_state["style"] = style
+        # Queue both raw and widget-keyed style so selector initializes correctly next run.
+        updates["style"] = style
+        updates[widget_key("style")] = style
+
     size = p.get("size", {})
     for k, v in size.items():
-        st.session_state[
-            k
-            if k in ("H", "expn")
-            else {
-                "top_od": "top_od",
-                "bottom_od": "bottom_od",
-                "wall": "t_wall",
-                "bottom": "t_bottom",
-                "drain": "r_drain",
-                "flare_exp": "expn",
-            }.get(k, k)
-        ] = v
+        mapping = {
+            "top_od": "top_od",
+            "bottom_od": "bottom_od",
+            "wall": "t_wall",
+            "bottom": "t_bottom",
+            "drain": "r_drain",
+            "flare_exp": "expn",
+            "height": "H",  # allow user preset field name
+        }
+        mapped = mapping.get(k, k)
+        target: str = mapped if isinstance(mapped, str) else str(mapped)
+        updates[target] = v
+
     opts = p.get("opts", {})
     if style:
         for k, v in opts.items():
-            st.session_state[widget_key(style, k)] = v
+            updates[widget_key(style, k)] = v
+
+    # Ensure preview rebuilds on next run
+    updates["_preview_stale"] = True
+
+    # Defer applying updates until before widgets are created in the next run
+    queue_update(updates)
 
 
 def render_preset_manager(
@@ -452,7 +464,7 @@ def render_preset_manager(
                     "flare_exp": expn,
                 },
                 "opts": {
-                    k: st.session_state.get(widget_key(style_name, k), v["default"])
+                    k: st.session_state.get(widget_key(style_name, k), v.get("default"))
                     for k, v in _ensure_style_schemas().get(style_name, {}).items()
                 },
             }
