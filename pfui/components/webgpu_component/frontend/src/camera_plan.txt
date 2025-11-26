@@ -9,6 +9,7 @@
             - Verified TS build after this migration; no runtime changes to UX observed.
             - Next: Migrate remaining helper functions (zoom-to-cursor, free-look translation inertia) into the CameraController.
             - Add unit/integration tests for the `startFocusTween` behavior and for arcball/pointer inertia behavior.
+        [2025-11-26] Migrated free-look helpers (`applyFreeLookRotation`,`applyFreeLookPan`,`applyFreeLookDolly`,`applyFreeKeyboardInput`, `translateFreeCamera`, `ensureFreePosition`) into `CameraController` and replaced top-level wrappers.
 Professional-Grade WebGPU Camera Control System Design
 Requirements and Goals
 We need to implement a robust camera controller for a WebGPU 3D viewer that supports multiple interaction modes and fluid user experience. Key goals include:

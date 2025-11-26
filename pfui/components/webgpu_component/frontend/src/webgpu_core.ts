@@ -80,22 +80,9 @@ const clampZoomValue = (value: number): number => Math.min(4.0, Math.max(0.25, v
 
 const ensureInteractiveBasis = (state: WebGPUState): CameraBasis => cameraController.ensureInteractiveBasis();
 
-const ensureFreePosition = (state: WebGPUState): Vec3 => {
-  const pos = state.freePosition;
-  if (Array.isArray(pos) && pos.length === 3 && pos.every((v) => Number.isFinite(v))) {
-    return pos as Vec3;
-  }
-  const pivotZ = state.pivot?.[2] ?? 0;
-  const fallback: Vec3 = [state.panX, state.panY - Math.max(state.sceneRadius * CAMERA_DISTANCE_FALLOFF, 120), pivotZ + Math.max(state.sceneRadius * 0.25, 30)];
-  state.freePosition = fallback;
-  return fallback;
-};
+  const ensureFreePosition = (state: WebGPUState): Vec3 => cameraController.ensureFreePosition(state);
 
-const translateFreeCamera = (state: WebGPUState, delta: Vec3): void => {
-  const pos = ensureFreePosition(state);
-  state.freePosition = [pos[0] + delta[0], pos[1] + delta[1], pos[2] + delta[2]];
-  state.cameraDirty = true;
-};
+const translateFreeCamera = (state: WebGPUState, delta: Vec3): void => cameraController.translateFreeCamera(state, delta);
 
 const applyTurntableDrag = (
   state: WebGPUState,
@@ -1848,6 +1835,92 @@ export const mount = async ({
       }
       return normalized;
     }
+    ensureFreePosition(stateArg?: WebGPUState): Vec3 {
+      const s = stateArg ?? this.state;
+      const pos = s.freePosition;
+      if (Array.isArray(pos) && pos.length === 3 && pos.every((v) => Number.isFinite(v))) {
+        return pos as Vec3;
+      }
+      const pivotZ = s.pivot?.[2] ?? 0;
+      const fallback: Vec3 = [s.panX, s.panY - Math.max(s.sceneRadius * CAMERA_DISTANCE_FALLOFF, 120), pivotZ + Math.max(s.sceneRadius * 0.25, 30)];
+      s.freePosition = fallback;
+      return fallback;
+    }
+    translateFreeCamera(stateArg: WebGPUState, delta: Vec3): void {
+      const pos = this.ensureFreePosition(stateArg);
+      stateArg.freePosition = [pos[0] + delta[0], pos[1] + delta[1], pos[2] + delta[2]];
+      stateArg.cameraDirty = true;
+    }
+    applyFreeLookRotation(dx: number, dy: number): void {
+      const vw = this.canvas.clientWidth || Math.max(1, this.canvas.width || 1);
+      const vh = this.canvas.clientHeight || Math.max(1, this.canvas.height || 1);
+      const basis = ensureInteractiveBasis(this.state);
+      const yawDelta = (-dx / Math.max(1, vw)) * FREE_LOOK_YAW_SENS;
+      const pitchDelta = (-dy / Math.max(1, vh)) * FREE_LOOK_PITCH_SENS;
+      let rotated = rotateBasisAboutAxisFull(basis, basis.up, yawDelta) ?? basis;
+      rotated = rotateBasisAboutAxisFull(rotated, rotated.right, pitchDelta) ?? rotated;
+      const angles = cbSyncAnglesFromBasis(rotated);
+      let rotX = angles.rotX;
+      if (rotX > PITCH_SOFT_LIMIT) {
+        const correction = rotX - PITCH_SOFT_LIMIT;
+        rotated = rotateBasisAboutAxisFull(rotated, rotated.right, -correction) ?? rotated;
+        rotX = PITCH_SOFT_LIMIT;
+      } else if (rotX < -PITCH_SOFT_LIMIT) {
+        const correction = rotX + PITCH_SOFT_LIMIT;
+        rotated = rotateBasisAboutAxisFull(rotated, rotated.right, -correction) ?? rotated;
+        rotX = -PITCH_SOFT_LIMIT;
+      }
+      this.state.displayCamRight = [...rotated.right];
+      this.state.displayCamUp = [...rotated.up];
+      this.state.displayCamForward = [...rotated.forward];
+      this.state.displayCamQuat = quaternionFromBasis(rotated);
+      this.state.displayRotX = rotX;
+      this.state.displayRotY = angles.rotY;
+      this.state.cameraDirty = true;
+    }
+    applyFreeLookPan(dx: number, dy: number): void {
+      const factor = computePanFactor(this.state, this.canvas) * this.state.freeSpeed * FREE_LOOK_PAN_SENS;
+      const basis = ensureInteractiveBasis(this.state);
+      const deltaRight = vec3Scale(basis.right, -dx * factor);
+      const deltaUp = vec3Scale(basis.up, dy * factor);
+      this.translateFreeCamera(this.state, vec3Add(deltaRight, deltaUp));
+    }
+    applyFreeLookDolly(delta: number): void {
+      const basis = ensureInteractiveBasis(this.state);
+      const move = vec3Scale(basis.forward, delta * this.state.sceneRadius * FREE_LOOK_DOLLY_SENS);
+      this.translateFreeCamera(this.state, move);
+    }
+    applyFreeKeyboardInput(deltaMs: number): boolean {
+      if (this.state.cameraMode !== 'free' || freeKeyboard.activeKeys.size === 0) {
+        return false;
+      }
+      const seconds = Math.max(0, Math.min(deltaMs, 48)) / 1000;
+      if (seconds <= 0) {
+        return false;
+      }
+      const basis = ensureInteractiveBasis(this.state);
+      let direction: Vec3 = [0, 0, 0];
+      const addDir = (vec: Vec3, scale = 1): void => {
+        direction = vec3Add(direction, vec3Scale(vec, scale));
+      };
+      if (freeKeyboard.activeKeys.has('w')) addDir(basis.forward);
+      if (freeKeyboard.activeKeys.has('s')) addDir(basis.forward, -1);
+      if (freeKeyboard.activeKeys.has('d')) addDir(basis.right);
+      if (freeKeyboard.activeKeys.has('a')) addDir(basis.right, -1);
+      if (freeKeyboard.activeKeys.has('e') || freeKeyboard.activeKeys.has('r')) addDir(basis.up);
+      if (freeKeyboard.activeKeys.has('q') || freeKeyboard.activeKeys.has('f')) addDir(basis.up, -1);
+      if (vec3Length(direction) < 1e-6) {
+        return false;
+      }
+      const normalized = vec3Normalize(direction);
+      const boost = freeKeyboard.boost ? 2.25 : 1.0;
+      const distance = this.state.sceneRadius * 0.65 * this.state.freeSpeed * boost * seconds;
+      if (!Number.isFinite(distance) || distance <= 0) {
+        return false;
+      }
+      this.translateFreeCamera(this.state, vec3Scale(normalized, distance));
+      return true;
+    }
     commitDisplayBasisToState(): boolean {
       if (!this.state.displayCamForward || !this.state.displayCamUp || !this.state.displayCamRight) return false;
       try {
@@ -2185,79 +2258,19 @@ export const mount = async ({
     freeKeyboard.boost = false;
   };
 
-  const applyFreeLookRotation = (dx: number, dy: number): void => {
-    const vw = canvas.clientWidth || Math.max(1, canvas.width || 1);
-    const vh = canvas.clientHeight || Math.max(1, canvas.height || 1);
-    const basis = ensureInteractiveBasis(state);
-    const yawDelta = (-dx / Math.max(1, vw)) * FREE_LOOK_YAW_SENS;
-    const pitchDelta = (-dy / Math.max(1, vh)) * FREE_LOOK_PITCH_SENS;
-    let rotated = rotateBasisAboutAxisFull(basis, basis.up, yawDelta) ?? basis;
-    rotated = rotateBasisAboutAxisFull(rotated, rotated.right, pitchDelta) ?? rotated;
-    const angles = cbSyncAnglesFromBasis(rotated);
-    let rotX = angles.rotX;
-    if (rotX > PITCH_SOFT_LIMIT) {
-      const correction = rotX - PITCH_SOFT_LIMIT;
-      rotated = rotateBasisAboutAxisFull(rotated, rotated.right, -correction) ?? rotated;
-      rotX = PITCH_SOFT_LIMIT;
-    } else if (rotX < -PITCH_SOFT_LIMIT) {
-      const correction = rotX + PITCH_SOFT_LIMIT;
-      rotated = rotateBasisAboutAxisFull(rotated, rotated.right, -correction) ?? rotated;
-      rotX = -PITCH_SOFT_LIMIT;
-    }
-    state.displayCamRight = [...rotated.right];
-    state.displayCamUp = [...rotated.up];
-    state.displayCamForward = [...rotated.forward];
-    state.displayCamQuat = quaternionFromBasis(rotated);
-    state.displayRotX = rotX;
-    state.displayRotY = angles.rotY;
-    state.cameraDirty = true;
-  };
+  const applyFreeLookRotation = (dx: number, dy: number): void => cameraController.applyFreeLookRotation(dx, dy);
 
-  const applyFreeLookPan = (dx: number, dy: number): void => {
-    const factor = computePanFactor(state, canvas) * state.freeSpeed * FREE_LOOK_PAN_SENS;
-    const basis = ensureInteractiveBasis(state);
-    const deltaRight = vec3Scale(basis.right, -dx * factor);
-    const deltaUp = vec3Scale(basis.up, dy * factor);
-    translateFreeCamera(state, vec3Add(deltaRight, deltaUp));
-  };
+  // Delegate free-look helpers to CameraController
+  const applyFreeLookRotationWrapper = (dx: number, dy: number): void => cameraController.applyFreeLookRotation(dx, dy);
+  const applyFreeLookPanWrapper = (dx: number, dy: number): void => cameraController.applyFreeLookPan(dx, dy);
+  const applyFreeLookDollyWrapper = (delta: number): void => cameraController.applyFreeLookDolly(delta);
+  const applyFreeKeyboardInputWrapper = (deltaMs: number): boolean => cameraController.applyFreeKeyboardInput(deltaMs);
 
-  const applyFreeLookDolly = (delta: number): void => {
-    const basis = ensureInteractiveBasis(state);
-    const move = vec3Scale(basis.forward, delta * state.sceneRadius * FREE_LOOK_DOLLY_SENS);
-    translateFreeCamera(state, move);
-  };
+  const applyFreeLookPan = (dx: number, dy: number): void => cameraController.applyFreeLookPan(dx, dy);
 
-  const applyFreeKeyboardInput = (deltaMs: number): boolean => {
-    if (state.cameraMode !== 'free' || freeKeyboard.activeKeys.size === 0) {
-      return false;
-    }
-    const seconds = Math.max(0, Math.min(deltaMs, 48)) / 1000;
-    if (seconds <= 0) {
-      return false;
-    }
-    const basis = ensureInteractiveBasis(state);
-    let direction: Vec3 = [0, 0, 0];
-    const addDir = (vec: Vec3, scale = 1): void => {
-      direction = vec3Add(direction, vec3Scale(vec, scale));
-    };
-    if (freeKeyboard.activeKeys.has('w')) addDir(basis.forward);
-    if (freeKeyboard.activeKeys.has('s')) addDir(basis.forward, -1);
-    if (freeKeyboard.activeKeys.has('d')) addDir(basis.right);
-    if (freeKeyboard.activeKeys.has('a')) addDir(basis.right, -1);
-    if (freeKeyboard.activeKeys.has('e') || freeKeyboard.activeKeys.has('r')) addDir(basis.up);
-    if (freeKeyboard.activeKeys.has('q') || freeKeyboard.activeKeys.has('f')) addDir(basis.up, -1);
-    if (vec3Length(direction) < 1e-6) {
-      return false;
-    }
-    const normalized = vec3Normalize(direction);
-    const boost = freeKeyboard.boost ? 2.25 : 1.0;
-    const distance = state.sceneRadius * 0.65 * state.freeSpeed * boost * seconds;
-    if (!Number.isFinite(distance) || distance <= 0) {
-      return false;
-    }
-    translateFreeCamera(state, vec3Scale(normalized, distance));
-    return true;
-  };
+  const applyFreeLookDolly = (delta: number): void => cameraController.applyFreeLookDolly(delta);
+
+  const applyFreeKeyboardInput = (deltaMs: number): boolean => cameraController.applyFreeKeyboardInput(deltaMs);
 
   const updatePivotFromPan = (): void => cameraController.updatePivotFromPan();
 
