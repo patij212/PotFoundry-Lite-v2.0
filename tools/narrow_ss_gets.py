@@ -157,7 +157,7 @@ for a, b, new in reversed(final_repls):
 if s != text:
     APP_PY.write_text(s, encoding="utf-8")
     print(
-        f"Patched {APP_PY} — {len(replacements)} targeted replacements, {len(final_repls)} fallback replacements."
+        f"Patched {APP_PY} — {len(replacements)} targeted replacements, {len(final_repls)} fallback replacements.",
     )
 else:
     print("No changes made — file already appears narrowed.")

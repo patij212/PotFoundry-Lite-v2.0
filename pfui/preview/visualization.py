@@ -5,14 +5,16 @@ Implements generation of preview arrays and a static matplotlib renderer.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from io import BytesIO
-from typing import Any, Tuple
+from typing import Any, cast
+from typing import Any as _Any
 
 import numpy as np
 import numpy.typing as npt
-import streamlit as st
 
 from pfui.imports import STYLES, _spin_twist_radians, base_radius
+from pfui.preview import st
 
 from .utils import _pyplot, cache_data
 
@@ -27,17 +29,24 @@ def make_preview_arrays(
     n_z: int,
     style_name: str,
     opts_json: str,
-) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     import numpy as _np
 
     opts: dict[str, Any] = __import__("json").loads(opts_json)
-    r_outer_fn = STYLES[style_name][0]
+    # Use the package-level proxy exported by preview.__init__ so tests can
+    # monkeypatch preview.st and have that affect visualization behavior.
+    # Importing `pfui.preview` here is safe because preview.__init__ creates
+    # the `st` proxy before importing submodules.
+    # STYLES may be a lazy proxy typed as `object` during import-light scenarios;
+    # cast to a Mapping so static analyzers allow indexing.
+    styles = cast("Mapping[str, _Any]", STYLES)
+    r_outer_fn = cast("Callable[..., _Any]", styles[style_name][0])
 
     def _sanitize(arr: _np.ndarray, r0: float | npt.NDArray[np.float64]) -> _np.ndarray:
         try:
             r0_val = float(_np.asarray(r0))
         except Exception:
-            r0_val = float(0.0)
+            r0_val = 0.0
         arr = _np.nan_to_num(
             arr,
             nan=r0_val,
@@ -49,9 +58,9 @@ def make_preview_arrays(
         return _np.clip(arr, lo, hi)
 
     def _try(
-        nt: int, nz: int
-    ) -> Tuple[
-        npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]
+        nt: int, nz: int,
+    ) -> tuple[
+        npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64],
     ]:
         thetas = _np.linspace(0.0, 2.0 * _np.pi, nt, endpoint=False)
         base_cos = _np.cos(thetas)
@@ -96,13 +105,13 @@ def make_preview_arrays(
         # Force finiteness
         try:
             X[:] = _np.nan_to_num(
-                _np.asarray(X, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0
+                _np.asarray(X, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0,
             )
             Y[:] = _np.nan_to_num(
-                _np.asarray(Y, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0
+                _np.asarray(Y, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0,
             )
             Z[:] = _np.nan_to_num(
-                _np.asarray(Z, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0
+                _np.asarray(Z, dtype=_np.float64), nan=0.0, posinf=0.0, neginf=0.0,
             )
         except Exception:
             pass
@@ -136,10 +145,10 @@ def make_preview_arrays(
     zvals = _np.linspace(0.0, H, max(12, n_z // 4))
     Rmid = 0.5 * (Rt + Rb)
     X = _np.asarray(
-        _np.outer(_np.ones_like(zvals), Rmid * _np.cos(thetas)), dtype=_np.float64
+        _np.outer(_np.ones_like(zvals), Rmid * _np.cos(thetas)), dtype=_np.float64,
     )
     Y = _np.asarray(
-        _np.outer(_np.ones_like(zvals), Rmid * _np.sin(thetas)), dtype=_np.float64
+        _np.outer(_np.ones_like(zvals), Rmid * _np.sin(thetas)), dtype=_np.float64,
     )
     Z = _np.asarray(_np.outer(zvals, _np.ones_like(thetas)), dtype=_np.float64)
     return X, Y, Z
@@ -162,6 +171,7 @@ def render_preview(
     show_floor: bool = True,
     show_axes: bool = False,
 ) -> bytes | None:
+    # st is now imported from `pfui.preview` above
     import matplotlib.pyplot as plt
     import numpy as _np
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
@@ -170,15 +180,15 @@ def render_preview(
     ax = fig.add_subplot(111, projection="3d")
 
     if theme == "dark":
-        fig.patch.set_facecolor("#0E1117")
-        ax.set_facecolor("#0E1117")
+        fig.patch.set_facecolor("#242B46")
+        ax.set_facecolor("#242B46")
         for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
             try:
                 # Matplotlib's 3D axis objects expose set_pane_color at runtime,
                 # but the type stubs for XAxis/YAxis may not include it; cast to Any.
-                from typing import Any, cast
+                from typing import cast
 
-                axis_any = cast(Any, axis)
+                axis_any = cast("Any", axis)
                 axis_any.set_pane_color((0.06, 0.07, 0.10, 1.0))
             except Exception:
                 pass
@@ -274,7 +284,7 @@ def render_preview(
 
     try:
         ax.view_init(
-            elev=float(_np.asarray(view_elev)), azim=float(_np.asarray(view_azim))
+            elev=float(_np.asarray(view_elev)), azim=float(_np.asarray(view_azim)),
         )
     except Exception:
         pass

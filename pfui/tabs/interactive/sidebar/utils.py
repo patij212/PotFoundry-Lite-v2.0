@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Optional, cast
+from collections.abc import Callable
+from typing import Any, cast
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
 def unwrap_scalar(v: Any) -> Any:
@@ -19,6 +20,7 @@ def unwrap_scalar(v: Any) -> Any:
         
     Returns:
         Unwrapped value (first element if list/tuple, otherwise original)
+
     """
     if isinstance(v, (list, tuple)):
         try:
@@ -41,6 +43,7 @@ def to_int_scalar(x: Any) -> int:
         
     Returns:
         Int value, or 0 if conversion fails
+
     """
     try:
         xv = unwrap_scalar(x)
@@ -50,7 +53,7 @@ def to_int_scalar(x: Any) -> int:
             try:
                 return int(float(xv))
             except Exception:
-                return int(0)
+                return 0
         # Last-resort: attempt float coercion then int
         try:
             return int(float(xv))
@@ -75,6 +78,7 @@ def to_float_scalar(x: Any) -> float:
         
     Returns:
         Float value, or 0.0 if conversion fails
+
     """
     try:
         v = unwrap_scalar(x)
@@ -97,7 +101,7 @@ def to_float_scalar(x: Any) -> float:
             return 0.0
 
 
-def create_change_marker(on_change_callback: Optional[callable] = None) -> callable:
+def create_change_marker(on_change_callback: Callable[[], None] | None = None) -> Callable[[], None]:
     """Create a change marker function that updates timestamps and triggers callbacks.
     
     Args:
@@ -105,27 +109,29 @@ def create_change_marker(on_change_callback: Optional[callable] = None) -> calla
         
     Returns:
         Function that marks changes in session state
+
     """
     def _mark_changed() -> None:
-        ss = cast(dict[str, Any], st.session_state)
+        st = get_st()
+        ss = cast("dict[str, Any]", st.session_state)
         try:
             ss["_last_change_ts"] = time.time()
             # Only mark preview as stale if we're in manual or debounced
             # modes. In auto mode previews update immediately so we
             # shouldn't mark them stale.
-            mode = cast(str, ss.get("preview_mode", "manual"))
+            mode = cast("str", ss.get("preview_mode", "manual"))
             if mode in ("manual", "debounced"):
                 ss["_preview_stale"] = True
             else:
                 ss["_preview_stale"] = False
         except Exception:
             pass
-        
+
         # Call the external callback if provided
         if on_change_callback is not None:
             try:
                 on_change_callback()
             except Exception:
                 pass
-    
+
     return _mark_changed

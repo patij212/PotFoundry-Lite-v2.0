@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
 def _unwrap_scalar(v: Any) -> Any:
@@ -68,16 +68,22 @@ def ensure_appearance_defaults(ss: dict[str, Any]) -> None:
     intended for unit testing without rendering Streamlit widgets.
     """
     ss.setdefault("preview_color_mode", "gradient-3")
-    ss.setdefault("preview_grad_c1", "#2850D0")  # deep blue
-    ss.setdefault("preview_grad_c2", "#5FA8FF")  # mid blue
-    ss.setdefault("preview_grad_c3", "#E2F3FF")  # light tint
+    ss.setdefault("preview_grad_c1", "#1149FF")  # electric cobalt
+    ss.setdefault("preview_grad_c2", "#8801DE")  # electric violet
+    ss.setdefault("preview_grad_c3", "#124FA0")  # richer cobalt tail
     ss.setdefault("preview_palette", "Custom")
-    ss.setdefault("mesh_ambient", 0.50)
-    ss.setdefault("mesh_diffuse", 1.00)
-    ss.setdefault("mesh_specular", 0.40)
-    ss.setdefault("mesh_roughness", 0.45)
-    ss.setdefault("mesh_fresnel", 0.25)
-    ss.setdefault("preview_bg_color", "#0F1724")  # dark blue-gray
+    # Lighting mode: "Classic" uses Plotly's native lighting for natural shading
+    # Default lighting values tuned to match the old working WebGPU/PyVista appearance
+    ss.setdefault("mesh_ambient", 0.5)
+    ss.setdefault("mesh_diffuse", 0.95)
+    ss.setdefault("mesh_specular", 0.25)
+    ss.setdefault("mesh_roughness", 0.70)
+    ss.setdefault("mesh_fresnel", 0.20)
+    ss.setdefault("preview_bg_color", "#242B46")  # fallback solid matches gradient start
+    ss.setdefault("preview_bg_mode", "gradient")
+    ss.setdefault("preview_bg_grad_start", "#242B46")
+    ss.setdefault("preview_bg_grad_end", "#060A14")
+    ss.setdefault("preview_bg_grad_angle", 180.0)
     ss.setdefault("use_gradient_color", True)
     ss.setdefault("solid_color", "#BFC7D5")
     ss.setdefault("mesh_flatshading", False)
@@ -86,6 +92,7 @@ def ensure_appearance_defaults(ss: dict[str, Any]) -> None:
     ss.setdefault("exact_full_preview", True)
     ss.setdefault("manual_full_res", True)
     ss.setdefault("preview_dpi", 110)
+    ss.setdefault("pyvista_screenshot_mode", False)
 
 
 def render_appearance_settings() -> None:
@@ -94,7 +101,8 @@ def render_appearance_settings() -> None:
     Stores values in st.session_state under the same keys as the legacy
     inline implementation to preserve behavior across the app.
     """
-    ss = cast(dict[str, Any], st.session_state)
+    st = get_st()
+    ss = cast("dict[str, Any]", st.session_state)
 
     # Initialize defaults once
     ensure_appearance_defaults(ss)
@@ -104,7 +112,7 @@ def render_appearance_settings() -> None:
     with cols_toggle[0]:
         use_solid = st.checkbox(
             "Use solid color",
-            value=(not cast(Any, ss.get("use_gradient_color", True))),
+            value=(not cast("Any", ss.get("use_gradient_color", True))),
             help="When enabled, surfaces and mesh use a single solid color (faster for very large meshes).",
         )
         ss["use_gradient_color"] = not use_solid
@@ -116,7 +124,7 @@ def render_appearance_settings() -> None:
             help="Choose a predefined palette or 'Custom' to edit colors manually.",
         )
 
-    if cast(Any, ss.get("use_gradient_color", True)):
+    if cast("Any", ss.get("use_gradient_color", True)):
         colc1, colc2, colc3 = st.columns(3)
         with colc1:
             st.color_picker("Gradient start", key="preview_grad_c1")
@@ -125,7 +133,7 @@ def render_appearance_settings() -> None:
         with colc3:
             st.color_picker("Gradient end", key="preview_grad_c3")
     st.color_picker(
-        "Solid color", key="solid_color", help="Used when gradient is disabled."
+        "Solid color", key="solid_color", help="Used when gradient is disabled.",
     )
 
     st.markdown("**Mesh Lighting**")
@@ -136,7 +144,7 @@ def render_appearance_settings() -> None:
             "Ambient",
             0.0,
             1.0,
-            _to_float_scalar(ss.get("mesh_ambient", 0.50)),
+            _to_float_scalar(ss.get("mesh_ambient", 0.70)),
             0.01,
             key="mesh_ambient",
         )
@@ -145,7 +153,7 @@ def render_appearance_settings() -> None:
             "Diffuse",
             0.0,
             1.0,
-            min(max(_to_float_scalar(ss.get("mesh_diffuse", 1.0)), 0.0), 1.0),
+            min(max(_to_float_scalar(ss.get("mesh_diffuse", 0.60)), 0.0), 1.0),
             0.01,
             key="mesh_diffuse",
         )
@@ -154,7 +162,7 @@ def render_appearance_settings() -> None:
             "Specular",
             0.0,
             1.0,
-            _to_float_scalar(ss.get("mesh_specular", 0.40)),
+            _to_float_scalar(ss.get("mesh_specular", 0.10)),
             0.01,
             key="mesh_specular",
         )
@@ -163,7 +171,7 @@ def render_appearance_settings() -> None:
             "Roughness",
             0.0,
             1.0,
-            _to_float_scalar(ss.get("mesh_roughness", 0.45)),
+            _to_float_scalar(ss.get("mesh_roughness", 0.80)),
             0.01,
             key="mesh_roughness",
         )
@@ -172,20 +180,49 @@ def render_appearance_settings() -> None:
             "Fresnel",
             0.0,
             1.0,
-            _to_float_scalar(ss.get("mesh_fresnel", 0.25)),
+            _to_float_scalar(ss.get("mesh_fresnel", 0.10)),
             0.01,
             key="mesh_fresnel",
         )
     with lc6:
         st.checkbox(
             "Flat shading",
-            value=cast(Any, ss.get("mesh_flatshading", False)),
+            value=cast("Any", ss.get("mesh_flatshading", False)),
             key="mesh_flatshading",
             help="Toggle flat shading to better see facet divisions.",
         )
 
     st.markdown("**Background**")
-    st.color_picker("Preview background", key="preview_bg_color")
+    bg_cols = st.columns([1, 2])
+    with bg_cols[0]:
+        st.selectbox(
+            "Background type",
+            ["Solid", "Gradient"],
+            index=(0 if str(ss.get("preview_bg_mode", "gradient")).lower() != "gradient" else 1),
+            key="preview_bg_mode",
+            help="Choose a solid color or enable a two-color linear gradient background.",
+        )
+    mode = str(ss.get("preview_bg_mode", "gradient")).lower()
+    if mode == "gradient":
+        grad_cols = st.columns(3)
+        with grad_cols[0]:
+            st.color_picker("Background start", key="preview_bg_grad_start")
+        with grad_cols[1]:
+            st.color_picker("Background end", key="preview_bg_grad_end")
+        with grad_cols[2]:
+            st.slider(
+                "Angle",
+                0,
+                360,
+                int(_to_int_scalar(ss.get("preview_bg_grad_angle", 135))),
+                key="preview_bg_grad_angle",
+                help="Rotation of the gradient sweep in degrees.",
+            )
+    st.color_picker(
+        "Solid background",
+        key="preview_bg_color",
+        help="Used for solid mode and as fallback for renderers that do not support gradients.",
+    )
 
     st.markdown("**Resolution & Quality**")
     rc1, rc2, rc3 = st.columns(3)
@@ -200,16 +237,20 @@ def render_appearance_settings() -> None:
             help="Multiplier applied to n_theta/n_z for interactive previews to improve speed.",
         )
     with rc2:
-        st.checkbox(
-            "Exact Full Preview",
-            value=cast(Any, ss.get("exact_full_preview", True)),
-            key="exact_full_preview",
-            help="When enabled, the Full preview uses the exact full resolution (n_theta/n_z) with no decimation.",
-        )
+            # Use a unique key to avoid collisions with Interactive tab controls
+            exact_val = bool(ss.get("exact_full_preview", True))
+            st.checkbox(
+                "Exact Full Preview",
+                value=exact_val,
+                key="exact_full_preview_settings",
+                help="Render full-resolution triangles in full preview (disable for adaptive speedups)",
+            )
+            # Synchronize to the canonical session key used by the renderer
+            ss["exact_full_preview"] = bool(ss.get("exact_full_preview_settings", exact_val))
     with rc3:
         st.checkbox(
             "Manual mode full res",
-            value=cast(Any, ss.get("manual_full_res", True)),
+            value=cast("Any", ss.get("manual_full_res", True)),
             key="manual_full_res",
             help="In manual mode, use full base resolution when generating mesh PNG.",
         )
@@ -222,10 +263,19 @@ def render_appearance_settings() -> None:
         key="preview_dpi",
         help="Higher DPI for crisper static PNG snapshots.",
     )
+    st.checkbox(
+        "Use PyVista screenshot mode",
+        value=bool(ss.get("pyvista_screenshot_mode", False)),
+        key="pyvista_screenshot_mode",
+        help=(
+            "Show PyVista renders as static screenshots for maximum reliability. "
+            "Disable to use the interactive stpyvista component."
+        ),
+    )
 
     st.caption(
-        "Settings are applied immediately to new renders. Existing previews update on next recalculation / Update click (manual mode)."
+        "Settings are applied immediately to new renders. Existing previews update on next recalculation / Update click (manual mode).",
     )
 
 
-__all__ = ["render_appearance_settings", "ensure_appearance_defaults"]
+__all__ = ["ensure_appearance_defaults", "render_appearance_settings"]

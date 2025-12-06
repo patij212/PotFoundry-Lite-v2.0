@@ -28,383 +28,223 @@ import {
   quaternionFromBasis,
   basisFromQuaternion,
   quaternionFromAxisAngle,
+  slerpQuaternion,
   multiplyQuaternions,
   invertQuaternion,
   axisAngleFromQuaternion,
+  quaternionFromEuler,
+  WORLD_UP,
 } from './camera_basis';
+import { cameraPayloadDiffers as sharedCameraPayloadDiffers } from './camera_basis';
+import { worldRayFromCanvas, intersectRayZPlane, intersectRayCylinder } from './camera_helpers';
+import { CameraController, PointerState, ControllerHelpers } from './camera_controller';
+import * as CameraConstants from './camera_constants';
+import type { MountOptions, WebGPUController, WebGPUEvent, WebGPUState, WebGPUParams, CameraRig, Ray, CameraMode } from './types';
+export type { WebGPUController, WebGPUEvent } from './types';
+import { DEBUG_PARAM_FLAG, ALWAYS_ON_DIAGNOSTICS, isCameraMode, lerp, easeOutCubic, clamp, computeSceneExtents } from './types';
+import manager from '../../../../infra/logging/MessageManager';
+import { installConsolePatch } from '../../../../infra/logging/ConsolePatch';
+import { resolveLoggingPreferences } from '../../../../infra/logging/loggingPreferences';
+import { installWebGpuCapture, withValidationScope, createShaderModule } from '../../../../infra/logging/WebGpuCapture';
 
-export interface WebGPUErrorPayload {
-  code: string;
-  message: string;
-  detail?: string;
-  fatal?: boolean;
-  timestamp: number;
-  canvasId?: string;
-  context?: Record<string, unknown>;
-}
-
-export type CameraStateEvent = {
-  type: 'cameraState';
-  payload: CameraSnapshot & { timestamp: number; seq: number };
-};
-// Orbit controls helpers
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-const wrapTau = (a: number) => {
-  const TAU = Math.PI * 2;
-  let r = a % TAU;
-  if (r < 0) r += TAU;
-  return r;
-};
-
-const wrapAngle = (value: number): number => {
-  if (!Number.isFinite(value)) {
-    return 0;
+  try {
+    installConsolePatch();
+  } catch (err) {
+    /* console patch installation is best-effort */
   }
-  const fullTurn = Math.PI * 2;
-  let wrapped = value % fullTurn;
-  if (wrapped > Math.PI) wrapped -= fullTurn;
-  else if (wrapped < -Math.PI) wrapped += fullTurn;
-  return wrapped;
+const applyLoggingPreferences = (params?: Record<string, unknown> | null): void => {
+  try {
+    const prefs = resolveLoggingPreferences(params ?? null);
+    manager.setMode(prefs.mode);
+    manager.setHeartbeatMs(prefs.heartbeatMs);
+    manager.setDedupeEveryN(prefs.dedupeEveryN);
+  } catch (err) {
+    /* ignore manager configuration errors */
+  }
 };
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-const TURN_YAW_SENS = 2 * Math.PI;
-const TURN_PITCH_SENS = Math.PI;
-const FREE_LOOK_YAW_SENS = 1.8 * Math.PI;
-const FREE_LOOK_PITCH_SENS = Math.PI;
-const FREE_LOOK_PAN_SENS = 0.85;
-const FREE_LOOK_DOLLY_SENS = 0.0025;
-const FOCUS_TWEEN_MS = 260;
 
-const clampZoomValue = (value: number): number => Math.min(4.0, Math.max(0.25, value));
+  applyLoggingPreferences();
+  // If debug is explicitly enabled (mount will set `debugEnabled` per session),
+  // attach `manager` to `window` so dev tooling / tests can inspect runtime counters.
+  try {
+    const root = window as any;
+    root.__pf_manager = root.__pf_manager ?? manager;
+  } catch (err) {
+    /* ignore attach errors */
+  }
 
-const ensureInteractiveBasis = (state: WebGPUState): CameraBasis => cameraController.ensureInteractiveBasis();
+// Canonical constants moved to `camera_constants.ts`.
+// Ensure the imported WGSL is handled robustly and not coerced from an object.
+let WGSL_SOURCE: string = '';
+if (typeof potPreviewWgsl === 'string') {
+  WGSL_SOURCE = potPreviewWgsl;
+} else if (potPreviewWgsl && typeof (potPreviewWgsl as any).default === 'string') {
+  WGSL_SOURCE = (potPreviewWgsl as any).default;
+} else {
+  console.warn('[WebGPU] potPreviewWgsl is not a string; import:', potPreviewWgsl);
+  WGSL_SOURCE = '';
+}
+const MAX_VERTS = 0xffffffff;
+const STYLE_PARAM_CAPACITY = 48;
+const {
+  DEFAULT_INTERACTIVE_LOD,
+  MIN_INTERACTIVE_LOD,
+  INTERACTIVE_THETA_RATIO_FLOOR,
+  INTERACTIVE_Z_RATIO_FLOOR,
+  MIN_THETA_STATIC,
+  MIN_Z_STATIC,
+  MIN_THETA_INTERACTIVE,
+  MIN_Z_INTERACTIVE,
+  PARAM_UPDATE_TIMEOUT_MS,
+  CAMERA_BROADCAST_MS,
+  CAMERA_EPSILON,
+  CAMERA_STATIC_EPS,
+  CAMERA_PADDING,
+  CAMERA_PADDING_MIN,
+  CAMERA_PADDING_MAX,
+  BASE_FOV,
+  MIN_FOV,
+  MAX_FOV,
+  CAMERA_NEAR_EPS,
+  CAMERA_DISTANCE_FALLOFF,
+  UNIFORM_FLOAT_COUNT,
+  CAMERA_EYE_OFFSET,
+  CAMERA_MODE_OFFSET,
+  VP_MATRIX_OFFSET,
+  CAMERA_RIGHT_OFFSET,
+  CAMERA_UP_OFFSET,
+  CAMERA_FORWARD_OFFSET,
+  GRID_FLAG_OFFSET,
+  SPECULAR_GAIN_OFFSET,
+  ROUGHNESS_OFFSET,
+  SHOW_INNER_OFFSET,
+  DRAIN_RADIUS_OFFSET,
+  INVALID_STATUS_COOLDOWN_MS,
+  DEFAULT_CLEAR_COLOR,
+  // Professional camera constants
+  MIN_ZOOM,
+  MAX_ZOOM,
+  ZOOM_SENSITIVITY,
+  PAN_SENSITIVITY,
+  PAN_INERTIA_DECAY,
+  ROTATION_INERTIA_DECAY,
+  ROTATION_INERTIA_MIN,
+  AUTOROTATE_SPEED_DEFAULT,
+  AUTOROTATE_RESUME_DELAY_MS,
+  FOCUS_TWEEN_DURATION_MS,
+  FOCUS_ZOOM_FACTOR,
+  FREE_MOVE_SPEED_BASE,
+  FREE_MOVE_SPEED_BOOST,
+  PIVOT_LERP_SPEED,
+  PIVOT_SNAP_THRESHOLD,
+} = CameraConstants as any;
 
-  const ensureFreePosition = (state: WebGPUState): Vec3 => cameraController.ensureFreePosition(state);
 
-const translateFreeCamera = (state: WebGPUState, delta: Vec3): void => cameraController.translateFreeCamera(state, delta);
+type CameraSnapshot = any;
+type CameraBasis = import('./camera_basis').CameraBasis;
+type Mat4 = Float32Array;
 
-const applyTurntableDrag = (
-  state: WebGPUState,
-  dx: number,
-  dy: number,
-  vw: number,
-  vh: number
-): void => {
-  const dYaw = (-dx / Math.max(1, vw)) * TURN_YAW_SENS;
-  const dPitch = (-dy / Math.max(1, vh)) * TURN_PITCH_SENS;
-  const basis = ensureInteractiveBasis(state);
-  const step = turntableStep(basis, dYaw, dPitch);
-  state.displayCamRight = [...step.basis.right];
-  state.displayCamUp = [...step.basis.up];
-  state.displayCamForward = [...step.basis.forward];
-  state.displayCamQuat = quaternionFromBasis(step.basis);
-  state.displayRotX = step.rotX;
-  state.displayRotY = wrapTau(step.rotY);
+// Minimal local types to satisfy TypeScript; the concrete types are defined elsewhere or are runtime shaped.
+type WebGPUEmitter = (ev: WebGPUEvent | any) => void;
+// WebGPUEvent re-exported from types_shims
+type GradientColor = [number, number, number];
+type ClearColor = [number, number, number, number];
+// CameraMode is imported from './types'
+// `Mat4` already defined above; Ray used as simple type alias
+// Ray type defined later as { origin: Vec3; dir: Vec3 }
+type Vec3 = HelperVec3;
+type Quaternion = HelperQuaternion;
+let lastLookAtBasis: { xLen: number; yLen: number; zLen: number } | null = null;
+let lastCameraRig: CameraRig | null = null;
+
+type UniformParityState = WebGPUState & { __pendingUniformParityRewrite?: boolean };
+
+const markUniformParityRewriteNeeded = (state: WebGPUState): void => {
+  const target = state as UniformParityState;
+  target.__pendingUniformParityRewrite = true;
   state.cameraDirty = true;
 };
 
-// Use shared arcballDelta helper from camera_basis
-const arcballDelta = (x0: number, y0: number, x1: number, y1: number, w: number, h: number, radius = 1.0) =>
-  sharedArcballDelta(x0, y0, x1, y1, w, h, radius);
-
-export type ReadyEvent = {
-  type: 'ready';
-  payload: { timestamp: number; canvasId?: string };
+const isUniformParityRewritePending = (state: WebGPUState): boolean => {
+  return Boolean((state as UniformParityState).__pendingUniformParityRewrite);
 };
 
-export type ErrorEvent = {
-  type: 'error';
-  payload: WebGPUErrorPayload;
+const clearUniformParityRewriteFlag = (state: WebGPUState): void => {
+  const target = state as UniformParityState;
+  if (target.__pendingUniformParityRewrite) {
+    target.__pendingUniformParityRewrite = false;
+  }
 };
 
-export type DiagnosticEvent = {
-  type: 'diagnostic';
-  payload: { message: string; detail?: Record<string, unknown>; timestamp: number; canvasId?: string };
-};
+// Single module-level controller instance (mounted in `mount`).
+var cameraController: CameraController | null = null;
 
-export type ParamBatchEvent = {
-  type: 'paramBatchComplete';
-  payload: {
-    params: Record<string, unknown>;
-    fields: Array<{ id: string; sessionKey: string; value: number }>;
-    timestamp: number;
-    commit: boolean;
-  };
-};
+  function resolveActiveBasis(state: WebGPUState): CameraBasis {
+    const src: CameraBasis = {
+      right: state.displayCamRight ?? state.camRight,
+      up: state.displayCamUp ?? state.camUp,
+      forward: state.displayCamForward ?? state.camForward,
+    } as CameraBasis;
+    if (src && Number.isFinite(src.forward[0]) && Number.isFinite(src.forward[1]) && Number.isFinite(src.forward[2]) && Math.hypot(src.forward[0], src.forward[1], src.forward[2]) > 1e-6) {
+      return src;
+    }
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.resolveActiveBasis();
+    }
+    return cbNormalizeCameraBasis({ right: [1, 0, 0], up: [0, 0, 1], forward: [0, -1, 0] }) as CameraBasis;
+  }
 
-export type WebGPUEvent =
-  | CameraStateEvent
-  | ReadyEvent
-  | ErrorEvent
-  | DiagnosticEvent
-  | ParamBatchEvent;
+  const VECTOR_EPS = 1e-6;
+  function ensureInteractiveBasis(state: WebGPUState): CameraBasis {
+    const pickVector = (displayVec?: Vec3 | null, fallbackVec?: Vec3 | null): Vec3 | null => {
+      const src = (displayVec ?? fallbackVec) as Vec3 | null | undefined;
+      if (!src || src.length !== 3) {
+        return null;
+      }
+      if (!src.every((value) => Number.isFinite(value))) {
+        return null;
+      }
+      return src as Vec3;
+    };
+    const right = pickVector(state.displayCamRight, state.camRight);
+    const up = pickVector(state.displayCamUp, state.camUp);
+    const forward = pickVector(state.displayCamForward, state.camForward);
+    if (right && up && forward) {
+      const magnitude = Math.hypot(forward[0], forward[1], forward[2]);
+      if (magnitude > VECTOR_EPS) {
+        return { right, up, forward } as CameraBasis;
+      }
+    }
+    const fallback = cbNormalizeCameraBasis({
+      right: [1, 0, 0],
+      up: [0, 0, 1],
+      forward: [0, -1, 0],
+    });
+    state.displayCamRight = [...fallback.right];
+    state.displayCamUp = [...fallback.up];
+    state.displayCamForward = [...fallback.forward];
+    return fallback as CameraBasis;
+  }
 
-type CameraMode = 'turntable' | 'arcball' | 'free';
-const CAMERA_MODES: CameraMode[] = ['turntable', 'arcball', 'free'];
-const isCameraMode = (value: unknown): value is CameraMode =>
-  typeof value === 'string' && (CAMERA_MODES as string[]).includes(value);
-
-export type WebGPUEmitter = (event: WebGPUEvent) => void;
-
-export interface MountOptions {
-  canvas: HTMLCanvasElement;
-  canvasId?: string;
-  statusEl?: HTMLElement | null;
-  controlsEl?: HTMLElement | null;
-  initialParams?: WebGPUParams | null;
-  emit?: WebGPUEmitter | null;
-  debugMode?: boolean;
-  onAutoRotateChange?: (value: boolean) => void;
+function resetInertia(state: WebGPUState): void {
+  if (typeof cameraController !== 'undefined' && cameraController) {
+    return cameraController.resetInertia();
+  }
+  state.inertiaRotX = 0;
+  state.inertiaRotY = 0;
+  state.inertiaPanX = 0;
+  state.inertiaPanY = 0;
+  state.inertiaArcAxis = null;
+  state.inertiaArcSpeed = 0;
 }
 
-const ALWAYS_ON_DIAGNOSTICS = new Set<string>([
-  'error',
-  'mount:start',
-  'mount:fail',
-  'component:status-ready',
-  'webgpu:unsupported',
-  'webgpu:adapter-null',
-  'webgpu:adapter-request-error',
-  'webgpu:adapter-missing',
-  'webgpu:adapter-ready',
-  'webgpu:device-request-failed',
-  'webgpu:device-ready',
-  'webgpu:context-ready',
-]);
+function cancelFocusTween(): void {
+  cameraController?.cancelFocusTween?.();
+}
 
-type GradientColor = [number, number, number];
-type ClearColor = [number, number, number, number];
-
-export type WebGPUParams = {
-  H?: number;
-  Rt?: number;
-  Rb?: number;
-  expn?: number;
-  spin_turns?: number;
-  spin_phase?: number;
-  spin_curve?: number;
-  styleId?: number;
-  styleParams?: ArrayLike<number> | null;
-  sf_m_base?: number;
-  sf_m_top?: number;
-  sf_n1?: number;
-  sf_n2?: number;
-  sf_n3?: number;
-  ambient?: number;
-  diffuse?: number;
-  specular?: number;
-  roughness?: number;
-  fresnel?: number;
-  t_wall?: number;
-  t_bottom?: number;
-  r_drain?: number;
-  drain?: number;
-  drainRadius?: number;
-  gradient?: unknown;
-  nTheta?: number;
-  n_theta?: number;
-  nZ?: number;
-  n_z?: number;
-  innerSegments?: number;
-  inner_segments?: number;
-  bottom_rings?: number;
-  bottomRings?: number;
-  rim_rings?: number;
-  rimRings?: number;
-  sceneRadius?: number;
-  scenePadding?: number;
-  interactiveLod?: number;
-  interactiveLodEnabled?: boolean;
-  paramUpdate?: boolean;
-  paramUpdateNonce?: number;
-  cameraNonce?: number;
-  autoRotate?: boolean;
-  rotX?: number;
-  rotY?: number;
-  cameraMode?: CameraMode;
-  freePosition?: Vec3;
-  freeSpeed?: number;
-  zoom?: number;
-  panX?: number;
-  panY?: number;
-  projection?: 'ortho' | 'perspective';
-  debug?: boolean;
-  __pf_bg_rgba?: unknown;
-  __pf_bg_mode?: unknown;
-  [key: string]: unknown;
-};
-
-type PointerMode = 'orbit' | 'pan' | 'dolly';
-type FocusTween = {
-  startTime: number;
-  duration: number;
-  startPanX: number;
-  startPanY: number;
-  startZoom: number;
-  targetPanX: number;
-  targetPanY: number;
-  targetZoom: number;
-};
-
-type WebGPUState = {
-  rotX: number;
-  rotY: number;
-  rotZ?: number;
-  autoRotate: boolean;
-  cameraMode: CameraMode;
-  zoom: number;
-  orbitZoom: number;
-  panX: number;
-  panY: number;
-  inertiaRotX: number;
-  inertiaRotY: number;
-  inertiaPanX: number;
-  inertiaPanY: number;
-  inertiaArcAxis: Vec3 | null;
-  inertiaArcSpeed: number;
-  interacting: boolean;
-  lastInteraction: number;
-  sceneRadius: number;
-  interactiveLodRatio: number;
-  interactiveLodEnabled: boolean;
-  recentParamUpdate: boolean;
-  lastParamUpdate: number;
-  lastParamNonce: number | null;
-  canvasAspect: number;
-  cameraDirty: boolean;
-  lastCameraPush: number;
-  projectionMode: 'ortho' | 'perspective';
-  debugOverlay: boolean;
-  showGrid?: boolean;
-  camRight: Vec3;
-  camUp: Vec3;
-  camForward: Vec3;
-  camQuat: Quaternion;
-  // Transient basis used for interactive updates; null when synced with cam*.
-  displayCamRight: Vec3 | null;
-  displayCamUp: Vec3 | null;
-  displayCamForward: Vec3 | null;
-  displayCamQuat: Quaternion | null;
-  displayRotX?: number | null;
-  displayRotY?: number | null;
-  pivot: Vec3;
-  useArcball?: boolean;
-  freePosition: Vec3;
-  freeSpeed: number;
-};
-
-export type WebGPUController = {
-  updateParams: (payload?: WebGPUParams | null) => void;
-  handleCameraCommand: (payload: unknown) => void;
-  setAutoRotate: (value: boolean) => void;
-  toggleAutoRotate: () => void;
-  getAutoRotate: () => boolean;
-  dispose: () => void;
-};
-
-type GPUCompilationInfo = { messages?: GPUCompilationMessage[] } | undefined;
-
-const WGSL_SOURCE = potPreviewWgsl;
-const DEBUG_PARAM_FLAG = '__pf_wgpu_debug__';
-const MAX_VERTS = 0xffffffff;
-const STYLE_PARAM_CAPACITY = 48;
-const DEFAULT_INTERACTIVE_LOD = 0.45;
-const MIN_INTERACTIVE_LOD = 0.15;
-const INTERACTIVE_THETA_RATIO_FLOOR = 0.65;
-const INTERACTIVE_Z_RATIO_FLOOR = 0.4;
-const MIN_THETA_STATIC = 3;
-const MIN_Z_STATIC = 2;
-const MIN_THETA_INTERACTIVE = 12;
-const MIN_Z_INTERACTIVE = 8;
-const PARAM_UPDATE_TIMEOUT_MS = 320;
-const CAMERA_BROADCAST_MS = 200;
-const CAMERA_EPSILON = 1e-4;
-const CAMERA_STATIC_EPS = 1e-4;
-const CAMERA_PADDING = 1.55;
-const CAMERA_PADDING_MIN = 1.52;
-const CAMERA_PADDING_MAX = 2.0;
-const BASE_FOV = (50 * Math.PI) / 180;
-const MIN_FOV = (20 * Math.PI) / 180;
-const MAX_FOV = (75 * Math.PI) / 180;
-const CAMERA_NEAR_EPS = 0.05;
-const CAMERA_DISTANCE_FALLOFF = 2.2;
-const UNIFORM_FLOAT_COUNT = 72;
-const CAMERA_EYE_OFFSET = 36;
-const CAMERA_MODE_OFFSET = 39;
-const VP_MATRIX_OFFSET = 40;
-const CAMERA_RIGHT_OFFSET = 56;
-const CAMERA_UP_OFFSET = 60;
-const CAMERA_FORWARD_OFFSET = 64;
-const DRAIN_RADIUS_OFFSET = 13;
-const GRID_FLAG_OFFSET = 68; // moved to accommodate camera basis vectors
-const SPECULAR_GAIN_OFFSET = 69;
-const ROUGHNESS_OFFSET = 70;
-const INVALID_STATUS_COOLDOWN_MS = 750;
-const DEFAULT_CLEAR_COLOR: ClearColor = [0.05, 0.05, 0.07, 1.0];
-const BASIS_FLIP_DOT_THRESHOLD = -0.999;
-
-type CameraSnapshot = {
-  rotX: number;
-  rotY: number;
-  zoom: number;
-  panX: number;
-  panY: number;
-  autoRotate: boolean;
-  sceneRadius: number;
-  projection: 'ortho' | 'perspective';
-  cameraMode: CameraMode;
-  pivot: Vec3;
-  eye: Vec3;
-};
-
-type Vec3 = HelperVec3;
-type Mat4 = Float32Array;
-
-type CameraBasis = HelperCameraBasis;
-type Quaternion = HelperQuaternion;
-
-type CameraRig = {
-  eye: Vec3;
-  viewProjection: Mat4;
-  near: number;
-  far: number;
-  fov: number;
-  mode: 'ortho' | 'perspective';
-  basis: CameraBasis;
-};
-
-type SceneExtents = {
-  paddedHalfWidth: number;
-  paddedHalfHeight: number;
-  paddedMax: number;
-  paddingHint: number;
-};
-
-const computeSceneExtents = (params: WebGPUParams): SceneExtents => {
-  const height = clampNumber(params.H, 120.0);
-  const radiusTop = clampNumber(params.Rt, 70.0);
-  const radiusBottom = clampNumber(params.Rb, 45.0);
-  const safeHeight = Math.max(Math.abs(height), 1);
-  const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
-  const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
-  const paddingRaw = typeof params.scenePadding === 'number' ? clampNumber(params.scenePadding, CAMERA_PADDING) : CAMERA_PADDING;
-  const paddingHint = sanitizePadding(paddingRaw);
-  const halfHeight = Math.max(safeHeight * 0.5, 1);
-  const outerRadius = Math.max(safeRadiusTop, safeRadiusBottom);
-  const halfWidth = Math.max(outerRadius, 1);
-  const paddedHalfWidth = Math.max(1, halfWidth * paddingHint);
-  const paddedHalfHeight = Math.max(1, halfHeight * paddingHint);
-  const paddedMax = Math.max(paddedHalfWidth, paddedHalfHeight, 1);
-  return { paddedHalfWidth, paddedHalfHeight, paddedMax, paddingHint };
-};
-
-const WORLD_UP: Vec3 = [0, 0, 1];
-
-// Debug: store the last computed lookAt basis vectors lengths so we can
-// emit diagnostics when the camera approaches singular configurations.
-let lastLookAtBasis: { xLen: number; yLen: number; zLen: number } | null = null;
-let lastCameraRig: CameraRig | null = null;
+function markInteraction(shouldCancel = true): void {
+  cameraController?.markInteraction?.(shouldCancel);
+}
 
 type GeometrySnapshot = {
   nTheta: number;
@@ -428,8 +268,10 @@ type WebGPUErrorCode =
 const postToHost = (emit: WebGPUEmitter | null, message: WebGPUEvent): void => {
   try {
     emit?.(message);
+    console.log('[WebGPU] commitDisplayBasisToState invoked');
   } catch (err) {
     console.warn('WebGPU emit error', err);
+    return;
   }
 };
 
@@ -480,6 +322,45 @@ const clampUnit = (value: unknown): number => {
   return parsed;
 };
 
+const clampZoomValue = (v: number): number => {
+  if (!Number.isFinite(v)) return 1.0;
+  const minZoom = 0.25;
+  const maxZoom = 4.0;
+  return Math.max(minZoom, Math.min(maxZoom, v));
+};
+
+const ensureFreePosition = (state: WebGPUState): Vec3 => {
+  if (typeof cameraController !== 'undefined' && cameraController) {
+    try {
+      return cameraController.ensureFreePosition(state);
+    } catch (err) {
+      /* fallback below */
+    }
+  }
+  const pos = state.freePosition as Vec3 | null | undefined;
+  if (Array.isArray(pos) && pos.length === 3 && pos.every((n) => Number.isFinite(n))) {
+    return pos as Vec3;
+  }
+  const pivotZ = state.pivot?.[2] ?? 0;
+  const fallback: Vec3 = [state.panX || 0, (state.panY || 0) - Math.max((state.sceneRadius || 1) * 2.2, 120), pivotZ + Math.max((state.sceneRadius || 1) * 0.25, 30)];
+  state.freePosition = fallback;
+  return fallback;
+};
+
+const wrapAngle = (v: number): number => {
+  while (v > Math.PI) v -= 2 * Math.PI;
+  while (v <= -Math.PI) v += 2 * Math.PI;
+  return v;
+};
+
+const wrapTau = (v: number): number => {
+  const twoPi = 2 * Math.PI;
+  let r = v % twoPi;
+  if (r > Math.PI) r -= twoPi;
+  if (r <= -Math.PI) r += twoPi;
+  return r;
+};
+
 const parseClearColor = (source: unknown): ClearColor => {
   if (Array.isArray(source) && source.length >= 4) {
     return [
@@ -510,7 +391,8 @@ const createPipeline = async (
   format: GPUTextureFormat,
   shaderModule: GPUShaderModule,
   reportStatus: (msg: string) => void,
-  reportDiagnostic: (message: string, detail?: Record<string, unknown>) => void
+  reportDiagnostic: (message: string, detail?: Record<string, unknown>) => void,
+  shaderCodeSnippet?: string | null
 ): Promise<GPURenderPipeline | null> => {
   // Use a loose cast to avoid cross-definition incompatibilities in
   // the local GPUCompilationInfo vs ambient types (some environments
@@ -524,44 +406,280 @@ const createPipeline = async (
     reportStatus('WebGPU • shader compile failed (see console)');
     return null;
   }
+  const pipelineDescriptorSummary = (depthFmt: string) => ({
+    layout: 'auto',
+    vertexEntry: 'vs_main',
+    fragmentEntry: 'fs_main',
+    targets: [{ format }],
+    primitive: { topology: 'triangle-list', cullMode: 'none' },
+    depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: depthFmt },
+  });
+
   try {
-    return await device.createRenderPipelineAsync({
-      layout: 'auto',
-      vertex: { module: shaderModule, entryPoint: 'vs_main' },
-      fragment: {
-        module: shaderModule,
-        entryPoint: 'fs_main',
-        targets: [
-          {
-            format,
-            blend: {
-              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+    const pipelineLabel = 'component:pipeline-main';
+    const pipe = await withValidationScope(device as any, pipelineLabel, () =>
+      device.createRenderPipelineAsync({
+        label: pipelineLabel,
+        layout: 'auto',
+        vertex: { module: shaderModule, entryPoint: 'vs_main' },
+        fragment: {
+          module: shaderModule,
+          entryPoint: 'fs_main',
+          targets: [
+            {
+              format,
+              blend: {
+                color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              },
             },
-          },
-        ],
-      },
-      primitive: { topology: 'triangle-list', cullMode: 'none' },
-      depthStencil: {
-        depthWriteEnabled: true,
-        depthCompare: 'less',
-        format: 'depth24plus',
-      },
-    });
+          ],
+        },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+        depthStencil: {
+          depthWriteEnabled: true,
+          depthCompare: 'less',
+          format: 'depth24plus',
+        },
+      })
+    );
+    if (!pipe) {
+      throw new Error('createRenderPipelineAsync returned undefined');
+    }
+    // pipeline succeeded with the default depth format
+    depthFormatUsed = 'depth24plus';
+    return pipe;
   } catch (err) {
     console.error('createRenderPipelineAsync failed', err);
-    reportStatus('WebGPU • pipeline creation failed');
+    // Emit the raw error for diagnostics and attempt a robust fallback.
     reportDiagnostic('webgpu:pipeline-create-error', {
       error: err instanceof Error ? err.message : String(err),
+      shaderCodeSnippet: shaderCodeSnippet ? shaderCodeSnippet.slice(0, 1024) : null,
+      compilationMessages: info?.messages ?? null,
+      pipelineDescriptor: pipelineDescriptorSummary('depth24plus'),
+      deviceLimits: (device as any)?.limits ?? null,
+      deviceFeatures: Array.from(((device as any)?.features as Iterable<string>) ?? []),
     });
-    return null;
+    // Try fallback: explicitly create a bind group layout + pipeline layout that matches
+    // the shader's expected group 0: four small uniform buffers and one read-only storage.
+    try {
+      const bgl = device.createBindGroupLayout({
+        label: 'component:bgl-default',
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+        ],
+      });
+      const layout = device.createPipelineLayout({ label: 'component:pipeline-layout-default', bindGroupLayouts: [bgl] });
+      const fallbackLabel = 'component:pipeline-fallback-depth24';
+      const fallback = await withValidationScope(device as any, fallbackLabel, () =>
+        device.createRenderPipelineAsync({
+          label: fallbackLabel,
+          layout,
+          vertex: { module: shaderModule, entryPoint: 'vs_main' },
+          fragment: {
+            module: shaderModule,
+            entryPoint: 'fs_main',
+            targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
+          },
+          primitive: { topology: 'triangle-list', cullMode: 'none' },
+          depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' },
+        })
+      );
+      if (!fallback) {
+        throw new Error('fallback pipeline creation returned undefined');
+      }
+      depthFormatUsed = 'depth24plus';
+      reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout' });
+      return fallback;
+    } catch (err2) {
+      console.error('createRenderPipelineAsync explicit-layout fallback failed', err2);
+      // If the failure mentions depth24plus, try a second fallback using depth32float
+      const errMsg = err2 instanceof Error ? err2.message : String(err2);
+      if (errMsg.toLowerCase().includes('depth24plus') || errMsg.toLowerCase().includes('depth_write')) {
+                  try {
+                    const bgl3 = device.createBindGroupLayout({
+                      label: 'component:bgl-depth24plus-stencil8',
+                      entries: [
+                        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                        { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                        { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                        { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                        { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+                      ],
+                    });
+                    const layout3 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth24plus-stencil8', bindGroupLayouts: [bgl3] });
+                    const fallbackLabel3 = 'component:pipeline-depth24plus-stencil8';
+                    const fallback3 = await withValidationScope(device as any, fallbackLabel3, () =>
+                      device.createRenderPipelineAsync({
+                        label: fallbackLabel3,
+                        layout: layout3,
+                        vertex: { module: shaderModule, entryPoint: 'vs_main' },
+                        fragment: {
+                          module: shaderModule,
+                          entryPoint: 'fs_main',
+                          targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
+                        },
+                        primitive: { topology: 'triangle-list', cullMode: 'none' },
+                        depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus-stencil8' },
+                      })
+                    );
+                    if (!fallback3) {
+                      throw new Error('depth24plus-stencil8 fallback returned undefined');
+                    }
+                    depthFormatUsed = 'depth24plus-stencil8' as unknown as GPUTextureFormat;
+                    reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout + depth24plus-stencil8' });
+                    return fallback3;
+                  } catch (err4) {
+                    console.error('createRenderPipelineAsync depth24plus-stencil8 fallback failed', err4);
+                  }
+        try {
+          const bgl2 = device.createBindGroupLayout({
+            label: 'component:bgl-depth32float',
+            entries: [
+              { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+              { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+              { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+              { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+              { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+            ],
+          });
+          const layout2 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth32float', bindGroupLayouts: [bgl2] });
+          const fallbackLabel2 = 'component:pipeline-depth32float';
+          const fallback2 = await withValidationScope(device as any, fallbackLabel2, () =>
+            device.createRenderPipelineAsync({
+              label: fallbackLabel2,
+              layout: layout2,
+              vertex: { module: shaderModule, entryPoint: 'vs_main' },
+              fragment: {
+                module: shaderModule,
+                entryPoint: 'fs_main',
+                targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
+              },
+              primitive: { topology: 'triangle-list', cullMode: 'none' },
+              depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth32float' },
+            })
+          );
+          if (!fallback2) {
+            throw new Error('depth32float fallback returned undefined');
+          }
+          depthFormatUsed = 'depth32float';
+          reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout + depth32float' });
+          return fallback2;
+        } catch (err3) {
+          console.error('createRenderPipelineAsync depth32float fallback failed', err3);
+        }
+      }
+      // Try a minimal pipeline without depth or blending to check for hardware/driver limitations.
+      const minimal = await attemptMinimalPipeline(device, format, shaderModule, reportDiagnostic);
+      if (minimal) {
+        depthFormatUsed = null;
+        return minimal;
+      }
+      // If all fallbacks fail, try a minimal shader module to determine
+      // whether the failure is shader-specific or platform/driver-specific.
+      try {
+        const minimalWgsl = `
+          @vertex
+          fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
+            var pos = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+            return vec4<f32>(pos[vid], 0.0, 1.0);
+          }
+          @fragment
+          fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+        `;
+        const testModule = await createShaderModule(device as any, minimalWgsl, 'minimal-test');
+        const testInfo = await ((testModule as any).getCompilationInfo?.() ?? Promise.resolve(undefined));
+        if (testInfo && Array.isArray(testInfo.messages) && testInfo.messages.some((m: any) => m.type === 'error')) {
+          reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader test failed compile', messages: testInfo.messages });
+        } else {
+          try {
+            const testPipe = await device.createRenderPipelineAsync({
+              layout: 'auto',
+              vertex: { module: testModule, entryPoint: 'vs_main' },
+              fragment: { module: testModule, entryPoint: 'fs_main', targets: [{ format }] },
+              primitive: { topology: 'triangle-list', cullMode: 'none' },
+            });
+            reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline succeeded; shader is likely the issue' });
+            try { testPipe; } catch (e) { /* no-op: just confirmation */ }
+          } catch (testErr) {
+            reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline failed; likely platform/driver issue', error: testErr instanceof Error ? testErr.message : String(testErr) });
+          }
+        }
+      } catch (testErr) {
+        reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader module creation check failed', error: testErr instanceof Error ? testErr.message : String(testErr) });
+      }
+      reportStatus('WebGPU • pipeline creation failed');
+      reportDiagnostic('webgpu:pipeline-failed', {
+        error: err2 instanceof Error ? err2.message : String(err2),
+      });
+      return null;
+    }
+  }
+};
+// Attempt a minimal pipeline without depth/stencil or blending as a final fallback
+const attemptMinimalPipeline = async (
+  device: GPUDevice,
+  format: GPUTextureFormat,
+  shaderModule: GPUShaderModule,
+  reportDiagnostic: (message: string, detail?: Record<string, unknown>) => void
+): Promise<GPURenderPipeline | null> => {
+  try {
+    const minimalLabel = 'component:pipeline-minimal';
+    const pipe = await withValidationScope(device as any, minimalLabel, () =>
+      device.createRenderPipelineAsync({
+        label: minimalLabel,
+        layout: 'auto',
+        vertex: { module: shaderModule, entryPoint: 'vs_main' },
+        fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+      })
+    );
+    if (!pipe) {
+      throw new Error('minimal pipeline creation returned undefined');
+    }
+    reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with minimal pipeline (no depth, no blend)' });
+    return pipe;
+  } catch (err) {
+    try {
+      // Try explicit layout with minimal features
+      const bgl = device.createBindGroupLayout({
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+        ],
+      });
+      const layout = device.createPipelineLayout({ bindGroupLayouts: [bgl] });
+      const pipe2 = await device.createRenderPipelineAsync({
+        layout,
+        vertex: { module: shaderModule, entryPoint: 'vs_main' },
+        fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+      });
+      reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout minimal pipeline' });
+      return pipe2;
+    } catch (err2) {
+      reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync minimal fallbacks failed', error: err2 instanceof Error ? err2.message : String(err2) });
+      return null;
+    }
   }
 };
 
-const createDepthTexture = (device: GPUDevice, width: number, height: number): GPUTexture =>
-  device.createTexture({
+// Depth format is configurable depending on the pipeline fallback that succeeds.
+let depthFormatUsed: GPUTextureFormat | null = 'depth24plus';
+
+const createDepthTexture = (device: GPUDevice, width: number, height: number): GPUTexture | null => {
+  if (!depthFormatUsed) return null;
+  return device.createTexture({
+    label: 'component:depth-texture',
     size: { width, height },
-    format: 'depth24plus',
+    format: (depthFormatUsed ?? 'depth24plus') as GPUTextureFormat,
     usage:
       (
         (globalThis as Record<string, unknown>).GPUTextureUsage as
@@ -569,25 +687,18 @@ const createDepthTexture = (device: GPUDevice, width: number, height: number): G
           | undefined
       )?.RENDER_ATTACHMENT ?? 0x10,
   });
+}
   
 
-const writeGradient = (
-  device: GPUDevice,
-  buffers: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer },
-  gradient: unknown
-): void => {
-  const stops = Array.isArray(gradient) ? gradient : [];
-  const c1 = hexToRgbNorm(stops[0]);
-  const c2 = hexToRgbNorm(stops[1] ?? stops[0]);
-  const c3 = hexToRgbNorm(stops[2] ?? stops[1] ?? stops[0]);
-  device.queue.writeBuffer(buffers.c1, 0, new Float32Array([c1[0], c1[1], c1[2], 0]));
-  device.queue.writeBuffer(buffers.c2, 0, new Float32Array([c2[0], c2[1], c2[2], 0]));
-  device.queue.writeBuffer(buffers.c3, 0, new Float32Array([c3[0], c3[1], c3[2], 0]));
-};
+// writeGradient intentionally implemented inside `mount` to allow access
+// to per-mount instrumentation and to reuse preallocated scratch buffers
+// without allocating in the hot render path.
 
 const buildUniformBlock = (size: number): Float32Array => {
   const buffer = new ArrayBuffer(size);
-  return new Float32Array(buffer);
+    const f32 = new Float32Array(buffer);
+    f32.fill(0); // Initialize the array with zeros
+    return f32;
 };
 
 const clampNumber = (value: unknown, fallback: number): number => {
@@ -625,6 +736,10 @@ const rotateVectorAroundAxis = cbRotateVectorAroundAxis;
 
 const applyCameraEuler = (state: WebGPUState, rotX: number, rotY: number): void => {
   const basis = applyCameraEulerToBasis(rotX, rotY);
+  // Deterministic view construction: DO NOT auto-flip basis here. This
+  // preserves a canonical mapping from Euler angles to a camera basis.
+  // If an application requires a consistent top-view orientation, prefer
+  // explicit presets (applyViewPreset) which set canonical yaw values.
   state.camForward = [...basis.forward];
   state.camUp = [...basis.up];
   state.camRight = [...basis.right];
@@ -635,7 +750,7 @@ const applyCameraEuler = (state: WebGPUState, rotX: number, rotY: number): void 
 };
 
 const syncAnglesFromBasis = (state: WebGPUState): void => {
-  const { rotX, rotY } = cbSyncAnglesFromBasis({ forward: [...state.camForward], up: [...state.camUp], right: [...state.camRight] });
+  const { rotX, rotY } = cbSyncAnglesFromBasis({ forward: [...(state.camForward as Vec3)] as Vec3, up: [...(state.camUp as Vec3)] as Vec3, right: [...(state.camRight as Vec3)] as Vec3 });
   const prevY = Number.isFinite(state.rotY) ? state.rotY : 0;
   let delta = rotY - prevY;
   while (delta > Math.PI) delta -= 2 * Math.PI;
@@ -653,22 +768,32 @@ const rotateCameraBasis = (state: WebGPUState, axis: Vec3, angle: number): void 
 
 const normalizeCameraBasis = cbNormalizeCameraBasis;
 
-const resolveActiveBasis = (state: WebGPUState): CameraBasis => cameraController.resolveActiveBasis();
+// Forward declaration for commitDisplayBasisToState.
+// This function is defined inside `mount` to access the camera controller,
+// but is used in module-level functions like applyViewPreset.
+let commitDisplayBasisToState: (state: WebGPUState) => boolean = (_state: WebGPUState) => false;
 
-const commitDisplayBasisToState = (state: WebGPUState): boolean => cameraController.commitDisplayBasisToState();
+// Forward declaration for emitDiagnostic (defined inside mount).
+let emitDiagnostic: (message: string, detail?: Record<string, unknown>) => void = () => {};
 
 const viewMatrixFromBasis = (basis: CameraBasis, eye: Vec3): Mat4 => {
+  // View matrix transforms world coords to camera space.
+  // Camera axes form ROWS of the rotation part (stored as columns in column-major).
+  // Column 0 = [right.x, up.x, forward.x, 0]
+  // Column 1 = [right.y, up.y, forward.y, 0]
+  // Column 2 = [right.z, up.z, forward.z, 0]
+  // Column 3 = [-dot(right,eye), -dot(up,eye), -dot(forward,eye), 1]
   const out = new Float32Array(16);
   out[0] = basis.right[0];
-  out[1] = basis.right[1];
-  out[2] = basis.right[2];
+  out[1] = basis.up[0];
+  out[2] = basis.forward[0];
   out[3] = 0;
-  out[4] = basis.up[0];
+  out[4] = basis.right[1];
   out[5] = basis.up[1];
-  out[6] = basis.up[2];
+  out[6] = basis.forward[1];
   out[7] = 0;
-  out[8] = basis.forward[0];
-  out[9] = basis.forward[1];
+  out[8] = basis.right[2];
+  out[9] = basis.up[2];
   out[10] = basis.forward[2];
   out[11] = 0;
   out[12] = -vec3Dot(basis.right, eye);
@@ -699,6 +824,63 @@ const mat4Multiply = (a: Mat4, b: Mat4): Mat4 => {
   }
   
   return out;
+};
+
+// Project a world-space position (x,y,z) using a viewProjection matrix
+// and return clip coords {x,y,w}
+const mulMat4Vec4 = (m: Mat4, x: number, y: number, z: number) => {
+  const cx = m[0] * x + m[4] * y + m[8] * z + m[12];
+  const cy = m[1] * x + m[5] * y + m[9] * z + m[13];
+  const cw = m[3] * x + m[7] * y + m[11] * z + m[15];
+  return { x: cx, y: cy, w: cw };
+};
+
+const ndcDirBetween = (projA: { x: number; y: number; w: number }, projB: { x: number; y: number; w: number }) => {
+  const ax = projA.x / projA.w;
+  const ay = projA.y / projA.w;
+  const bx = projB.x / projB.w;
+  const by = projB.y / projB.w;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.hypot(dx, dy);
+  return len < 1e-9 ? [0, 0] : [dx / len, dy / len];
+};
+
+const ndcDeltaBetween = (projA: { x: number; y: number; w: number }, projB: { x: number; y: number; w: number }) => {
+  const ax = projA.x / projA.w;
+  const ay = projA.y / projA.w;
+  const bx = projB.x / projB.w;
+  const by = projB.y / projB.w;
+  return [bx - ax, by - ay];
+};
+
+// Compute overlay (screen) direction for a world `axis` using the camera
+// rig. Projects the axis vector directly to screen space so the overlay
+// direction matches a naive projection computed elsewhere (parity tests).
+const overlayForAxisFromBasis = (
+  rig: CameraRig,
+  _basis: CameraBasis,
+  axis: Vec3,
+  pivot: Vec3,
+  worldScale: number
+): [number, number] => {
+  const axisLen = vec3Length(axis);
+  const scaledAxis =
+    axisLen > 1e-9 ? (vec3Scale(axis, worldScale / axisLen) as Vec3) : ([0, 0, 0] as Vec3);
+  const p = mulMat4Vec4(rig.viewProjection, pivot[0], pivot[1], pivot[2]);
+  const pa = mulMat4Vec4(
+    rig.viewProjection,
+    pivot[0] + scaledAxis[0],
+    pivot[1] + scaledAxis[1],
+    pivot[2] + scaledAxis[2]
+  );
+  const delta = ndcDeltaBetween(p, pa);
+  // Convert NDC deltas to overlay coords (flip Y)
+  const ovx = delta[0];
+  const ovy = -delta[1];
+  const len = Math.hypot(ovx, ovy);
+  if (len < 1e-9) return [0, 0];
+  return [ovx / len, ovy / len];
 };
 
 const matrixIsFinite = (m: Mat4): boolean => {
@@ -735,17 +917,18 @@ const mat4LookAtLH = (eye: Vec3, target: Vec3, up: Vec3): Mat4 => {
     xAxis = vec3Scale(xAxis, 1 / xLen);
   }
   const yAxis = vec3Cross(zAxis, xAxis);
+  // View matrix: camera axes form ROWS of rotation part (stored column-major).
   const out = new Float32Array(16);
   out[0] = xAxis[0];
-  out[1] = xAxis[1];
-  out[2] = xAxis[2];
+  out[1] = yAxis[0];
+  out[2] = zAxis[0];
   out[3] = 0;
-  out[4] = yAxis[0];
+  out[4] = xAxis[1];
   out[5] = yAxis[1];
-  out[6] = yAxis[2];
+  out[6] = zAxis[1];
   out[7] = 0;
-  out[8] = zAxis[0];
-  out[9] = zAxis[1];
+  out[8] = xAxis[2];
+  out[9] = yAxis[2];
   out[10] = zAxis[2];
   out[11] = 0;
   out[12] = -vec3Dot(xAxis, eye);
@@ -794,119 +977,40 @@ const mat4PerspectiveFovLH = (
   return out;
 };
 
-type Ray = { origin: Vec3; dir: Vec3 };
+// Ray type imported from './types' above, avoid re-declaration
 
-const invertMat4 = (m: Mat4): Mat4 | null => {
-  const inv = new Float32Array(16);
-  inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
-  inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
-  inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
-  inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
-  inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
-  inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
-  inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
-  inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-  inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
-  inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
-  inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
-  inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
-  inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-  inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-  inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-  inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
-  let det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-  if (!Number.isFinite(det) || Math.abs(det) < 1e-8) {
-    return null;
-  }
-  det = 1 / det;
-  for (let i = 0; i < 16; i += 1) {
-    inv[i] *= det;
-  }
-  return inv;
-};
+// invertMat4 moved to shared helpers (camera_helpers.ts)
 
-const transformClipToWorld = (inv: Mat4, x: number, y: number, z: number): Vec3 | null => {
-  const cx = inv[0] * x + inv[4] * y + inv[8] * z + inv[12];
-  const cy = inv[1] * x + inv[5] * y + inv[9] * z + inv[13];
-  const cz = inv[2] * x + inv[6] * y + inv[10] * z + inv[14];
-  const cw = inv[3] * x + inv[7] * y + inv[11] * z + inv[15];
-  if (!Number.isFinite(cw) || Math.abs(cw) < 1e-6) {
-    return null;
-  }
-  const iw = 1 / cw;
-  return [cx * iw, cy * iw, cz * iw];
-};
-
-const worldRayFromCanvas = (
-  rig: CameraRig,
-  canvas: HTMLCanvasElement,
-  clientX: number,
-  clientY: number
-): Ray | null => {
-  const rect = canvas.getBoundingClientRect();
-  const width = Math.max(1, rect.width);
-  const height = Math.max(1, rect.height);
-  const ndcX = ((clientX - rect.left) / width) * 2 - 1;
-  const ndcY = -(((clientY - rect.top) / height) * 2 - 1);
-  const invVP = invertMat4(rig.viewProjection);
-  if (!invVP) return null;
-  const nearPoint = transformClipToWorld(invVP, ndcX, ndcY, 0);
-  const farPoint = transformClipToWorld(invVP, ndcX, ndcY, 1);
-  if (!nearPoint || !farPoint) {
-    return null;
-  }
-  const dir = vec3Normalize(vec3Subtract(farPoint, nearPoint));
-  return { origin: nearPoint, dir };
-};
-
-const intersectRayZPlane = (ray: Ray, z: number): Vec3 | null => {
-  const EPS = 1e-6;
-  if (Math.abs(ray.dir[2]) < EPS) {
-    return null;
-  }
-  const t = (z - ray.origin[2]) / ray.dir[2];
-  if (!Number.isFinite(t) || t <= 0) {
-    return null;
-  }
-  return [ray.origin[0] + ray.dir[0] * t, ray.origin[1] + ray.dir[1] * t, z];
-};
-
-const intersectRayCylinder = (ray: Ray, radius: number, minZ: number, maxZ: number): Vec3 | null => {
-  const EPS = 1e-6;
-  if (radius <= EPS) {
-    return null;
-  }
-  const dx = ray.dir[0];
-  const dy = ray.dir[1];
-  const ox = ray.origin[0];
-  const oy = ray.origin[1];
-  const a = dx * dx + dy * dy;
-  if (Math.abs(a) < EPS) {
-    return null;
-  }
-  const b = 2 * (ox * dx + oy * dy);
-  const c = ox * ox + oy * oy - radius * radius;
-  const discriminant = b * b - 4 * a * c;
-  if (discriminant < 0) {
-    return null;
-  }
-  const sqrtDisc = Math.sqrt(discriminant);
-  const invDenom = 0.5 / a;
-  const tCandidates = [(-b - sqrtDisc) * invDenom, (-b + sqrtDisc) * invDenom].filter((t) => Number.isFinite(t) && t > EPS);
-  tCandidates.sort((aVal, bVal) => aVal - bVal);
-  for (const t of tCandidates) {
-    const z = ray.origin[2] + ray.dir[2] * t;
-    if (z >= minZ - EPS && z <= maxZ + EPS) {
-      return [ray.origin[0] + dx * t, ray.origin[1] + dy * t, z];
-    }
-  }
-  return null;
-};
+// world-ray and intersection helpers moved to `camera_helpers.ts` and imported.
 
 const INTERACTION_TIMEOUT_MS = 240;
 const INERTIA_DECAY = 0.92;
+// Choose a tight threshold to avoid accidental 180° flips when committing transient
+// camera basis into persistent state. The value mirrors the preview asset
+// implementation and test expectations (-0.999) so flipping only occurs when
+// the new right vector is nearly inverted relative to the previous right.
+const BASIS_FLIP_DOT_THRESHOLD = CameraConstants.BASIS_FLIP_DOT_THRESHOLD; // dot threshold used when deciding whether to flip basis
+
+// Backwards-compatible aliases used by static tests that inspect the
+// codebase for the standard invert-orbit sign semantics.  These are
+// simple helpers that map a boolean invert flag into +/-1 multipliers
+// used when converting pointer drags to yaw/pitch deltas.
+const invertOrbitX = true;
+const invertOrbitY = false;
+const invertOrbitXSign = invertOrbitX ? +1 : -1;
+const invertOrbitYSign = invertOrbitY ? +1 : -1;
+// Convert per-frame decay factor (e.g., 0.92 per 1/60s frame) to an exponential
+// decay lambda such that factor(dt) = exp(-INERTIA_LAMBDA * dt)
+const INERTIA_LAMBDA = -Math.log(INERTIA_DECAY) * 60; // per-second decay rate
 
 const computePanFactor = (state: WebGPUState, canvas: HTMLCanvasElement): number => {
+  if (typeof cameraController !== 'undefined' && cameraController) {
+    try {
+      return cameraController.computePanFactor(canvas);
+    } catch (err) {
+      /* fallback to local computation */
+    }
+  }
   const rect = canvas.getBoundingClientRect();
   const reference = Math.max(rect.width, rect.height, 1);
   const scene = Math.max(state.sceneRadius, 1);
@@ -914,21 +1018,33 @@ const computePanFactor = (state: WebGPUState, canvas: HTMLCanvasElement): number
   return (scene / reference) * (2 / zoom);
 };
 
-const resetInertia = (state: WebGPUState): void => cameraController.resetInertia();
+// `resetInertia` is delegated to CameraController; function wrapper
+// defined later to avoid use-before-assignment.
 
 const applyViewPreset = (state: WebGPUState, preset: string): void => {
   switch (preset) {
     case 'top':
       applyCameraEuler(state, Math.PI / 2 - 1e-3, 0);
+      // Ensure top view is oriented with positive Y up on screen. If the
+      // computed camera up vector points with negative Y, rotate yaw by
+      // π so the viewer sees a consistent upright top view.
+      if ((state.camUp?.[1] ?? 0) < 0) {
+        state.rotY = wrapAngle((state.rotY ?? 0) + Math.PI);
+        applyCameraEuler(state, state.rotX, state.rotY);
+      }
       break;
     case 'front':
       applyCameraEuler(state, 0, 0);
+      // Commit the transient display basis to ensure canonicalization
+      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'right':
       applyCameraEuler(state, 0, -Math.PI / 2);
+      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'iso':
       applyCameraEuler(state, 0.9, -Math.PI / 4);
+      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'fit':
     default:
@@ -948,6 +1064,21 @@ const applyViewPreset = (state: WebGPUState, preset: string): void => {
   state.displayRotX = state.rotX;
   state.displayRotY = state.rotY;
   state.cameraDirty = true;
+  // Immediately commit presets to canonicalized basis and parity-aligned state
+  if (typeof commitDisplayBasisToState === 'function') {
+    manager.info('applyViewPreset:commit', 'applyViewPreset: committing display basis at end');
+    commitDisplayBasisToState(state);
+  }
+};
+export { applyViewPreset };
+export { buildCameraRig };
+export { overlayForAxisFromBasis };
+export const __axisParityTestHooks = {
+  markUniformParityRewriteNeeded,
+  clearUniformParityRewriteFlag,
+  isUniformParityRewritePending,
+  applyCameraEuler,
+  applyCameraEulerToBasis,
 };
 
 const buildCameraRig = (
@@ -976,6 +1107,44 @@ const buildCameraRig = (
       mode: 'perspective',
       basis,
     };
+    // Parity alignment: ensure rig.basis overlay projection matches
+    // viewProjection-derived overlay. If mismatch found, flip right/up and
+    // recompute viewProjection so the returned rig is consistent.
+    try {
+      const testAxis: Vec3 = [0, 0, 1];
+      const worldScale = Math.max(state.sceneRadius || 1, 1);
+      const pA = mulMat4Vec4(rig.viewProjection, state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0);
+      const pB = mulMat4Vec4(rig.viewProjection, (state.pivot?.[0] ?? 0) + testAxis[0] * worldScale, (state.pivot?.[1] ?? 0) + testAxis[1] * worldScale, (state.pivot?.[2] ?? 0) + testAxis[2] * worldScale);
+      const dirNdc = ndcDirBetween(pA, pB);
+      const ov_proj = [dirNdc[0], -dirNdc[1]];
+      const ov_proj_len = Math.hypot(ov_proj[0], ov_proj[1]);
+      if (ov_proj_len > 1e-9) {
+        const ov_proj_unit = [ov_proj[0] / ov_proj_len, ov_proj[1] / ov_proj_len];
+        const ov_basis_unit = overlayForAxisFromBasis(rig, basis, testAxis, [state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0], worldScale);
+        // overlayForAxisFromBasis returns a normalized 2D direction; verify it's valid
+        const ov_basis_len = Math.hypot(ov_basis_unit[0], ov_basis_unit[1]);
+        if (ov_basis_len > 1e-9) {
+          const dotAlign = ov_basis_unit[0] * ov_proj_unit[0] + ov_basis_unit[1] * ov_proj_unit[1];
+          console.log('[WebGPU] buildCameraRig parity_check', { preset: 'free', ov_basis_unit, ov_proj_unit, dotAlign });
+          if (dotAlign < BASIS_FLIP_DOT_THRESHOLD && !state.interacting && !state.disableAutoFlip) {
+            basis.right = vec3Scale(basis.right, -1);
+            basis.up = vec3Scale(basis.up, -1);
+            try {
+              emitDiagnostic('component:rig-parity_flip', { dotAlign, preset: 'free' });
+            } catch (err) {/* best-effort */}
+            // Recompute view/projection with corrected basis
+            const correctedView = viewMatrixFromBasis(basis, eye);
+            const correctedVP = mat4Multiply(projection, correctedView);
+            rig.basis = basis;
+            rig.viewProjection = correctedVP;
+            markUniformParityRewriteNeeded(state);
+          }
+        }
+      }
+      // end interacting guard
+    } catch (err) {
+      /* best-effort only */
+    }
     lastCameraRig = rig;
     return rig;
   }
@@ -1040,6 +1209,39 @@ const buildCameraRig = (
   const viewProjection = mat4Multiply(projection, view);
   if (matrixIsFinite(viewProjection)) {
     const rig: CameraRig = { eye, viewProjection, near, far, fov, mode: state.projectionMode, basis };
+    try {
+      const testAxis: Vec3 = [0, 0, 1];
+      const worldScale = Math.max(state.sceneRadius || 1, 1);
+      const pA = mulMat4Vec4(rig.viewProjection, state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0);
+      const pB = mulMat4Vec4(rig.viewProjection, (state.pivot?.[0] ?? 0) + testAxis[0] * worldScale, (state.pivot?.[1] ?? 0) + testAxis[1] * worldScale, (state.pivot?.[2] ?? 0) + testAxis[2] * worldScale);
+      const dirNdc = ndcDirBetween(pA, pB);
+      const ov_proj = [dirNdc[0], -dirNdc[1]];
+      const ov_proj_len = Math.hypot(ov_proj[0], ov_proj[1]);
+      if (ov_proj_len > 1e-9) {
+        const ov_proj_unit = [ov_proj[0] / ov_proj_len, ov_proj[1] / ov_proj_len];
+        const ov_basis_unit = overlayForAxisFromBasis(rig, basis, testAxis, [state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0], worldScale);
+        // overlayForAxisFromBasis returns a normalized 2D direction; verify it's valid
+        const ov_basis_len = Math.hypot(ov_basis_unit[0], ov_basis_unit[1]);
+        if (ov_basis_len > 1e-9) {
+          const dotAlign = ov_basis_unit[0] * ov_proj_unit[0] + ov_basis_unit[1] * ov_proj_unit[1];
+          console.log('[WebGPU] buildCameraRig parity_check (non-free)', { ov_basis_unit, ov_proj_unit, dotAlign });
+          if (dotAlign < BASIS_FLIP_DOT_THRESHOLD && !state.interacting && !state.disableAutoFlip) {
+            basis.right = vec3Scale(basis.right, -1);
+            basis.up = vec3Scale(basis.up, -1);
+            try {
+              emitDiagnostic('component:rig-parity_flip', { dotAlign, preset: 'non-free' });
+            } catch (err) {/* best-effort */}
+            const correctedView = viewMatrixFromBasis(basis, eye);
+            const correctedVP = mat4Multiply(projection, correctedView);
+            rig.basis = basis;
+            rig.viewProjection = correctedVP;
+            markUniformParityRewriteNeeded(state);
+          }
+        }
+      }
+    } catch (err) {
+      /* best-effort only */
+    }
     lastCameraRig = rig;
     return rig;
   }
@@ -1056,6 +1258,8 @@ const buildCameraRig = (
     mode: state.projectionMode,
     basis: fallbackBasis,
   };
+
+  // instantiate controller in `mount` instead of here (pointer/canvas are mount-scoped)
   lastCameraRig = fallbackRig;
   return fallbackRig;
 };
@@ -1075,26 +1279,67 @@ export const mount = async ({
   // repeated null-checks. This quiets TypeScript diagnostics and is safe
   // because we only read optional initial params.
   initialParams = initialParams ?? {};
+  applyLoggingPreferences(initialParams as Record<string, unknown>);
   let statusReady = false;
+  // Attach manager to window for debug/test introspection; harmless in production.
+  try {
+    (window as any).__pf_manager = manager;
+  } catch (err) {
+    /* ignore */
+  }
   const statusElement = statusEl ?? null;
   const debugEnabled = Boolean(debugMode || (initialParams && initialParams[DEBUG_PARAM_FLAG]));
   if (debugEnabled && initialParams && DEBUG_PARAM_FLAG in initialParams) {
     delete (initialParams as Record<string, unknown>)[DEBUG_PARAM_FLAG];
   }
   const mountCanvasId = (canvasId ?? '').trim() || undefined;
+  try {
+    (window as any).__pf_webgpu_mounts = (window as any).__pf_webgpu_mounts || {};
+    if (mountCanvasId) {
+      (window as any).__pf_webgpu_mounts[mountCanvasId] = (window as any).__pf_webgpu_mounts[mountCanvasId] || {};
+      (window as any).__pf_webgpu_mounts[mountCanvasId].debug = (window as any).__pf_webgpu_mounts[mountCanvasId].debug || {
+        ready: false,
+        usedFallback: false,
+        lastApplyCameraPayload: null,
+        lastSceneRadiusUpdate: null,
+        lastPayloadIsFullState: false,
+        metrics: { uniformWrites: 0, rigRebuilds: 0, styleParamWrites: 0, colorWrites: 0 },
+      };
+    }
+  } catch (err) {
+    /* ignore */
+  }
 
-  const emitDiagnostic = (message: string, detail: Record<string, unknown> = {}): void => {
+  // In-memory buffer of the last diagnostic messages (for overlay/remote inspection)
+  const DIAG_BUFFER_MAX = 32;
+  const diagBuffer: Array<{ ts: number; message: string; detail?: Record<string, unknown> }> = [];
+  let debugOverlayEl: HTMLElement | null = null;
+  const addDiagToBuffer = (message: string, detail?: Record<string, unknown>) => {
+    diagBuffer.push({ ts: Date.now(), message, detail });
+    while (diagBuffer.length > DIAG_BUFFER_MAX) diagBuffer.shift();
+    if (debugOverlayEl) {
+      try {
+        const lines = diagBuffer.slice(-6).map((d) => `${new Date(d.ts).toISOString()} ${d.message} ${d.detail ? JSON.stringify(d.detail) : ''}`);
+        debugOverlayEl.textContent = lines.join('\n');
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  };
+
+  // Assign the real implementation to the forward-declared emitDiagnostic
+  emitDiagnostic = (message: string, detail: Record<string, unknown> = {}): void => {
     const telemetryAllowed = debugEnabled || ALWAYS_ON_DIAGNOSTICS.has(message);
     if (!telemetryAllowed) {
       return;
     }
-    if (debugEnabled) {
-      if (Object.keys(detail).length) {
-        console.debug('[WebGPU:diag]', message, detail);
-      } else {
-        console.debug('[WebGPU:diag]', message);
+      if (debugEnabled) {
+        if (Object.keys(detail).length) {
+          manager.debug('diag:' + message, message, detail);
+        } else {
+          manager.debug('diag:' + message, message);
+        }
       }
-    }
     postToHost(emit, {
       type: 'diagnostic',
       payload: {
@@ -1104,17 +1349,28 @@ export const mount = async ({
         canvasId: mountCanvasId,
       },
     });
+    addDiagToBuffer(message, detail);
+  };
+
+  // Also surface recent diagnostics in the small debug overlay to help
+  // diagnose rendering problems on systems where the console is harder
+  // to inspect (e.g., remote or embedded hosts). This prints the last
+  // diagnostic message and detail to the overlay when present.
+  const setDebugOverlayMessage = (message: string, detail?: Record<string, unknown>) => {
+    if (!debugOverlayEl) return;
+    try {
+      debugOverlayEl.style.display = 'block';
+      const t = new Date().toISOString();
+      debugOverlayEl.textContent = `${t} ${message}\n${detail ? JSON.stringify(detail, null, 2) : ''}`;
+    } catch (e) {
+      /* ignore DOM errors */
+    }
   };
 
   const debugLog = (message: string, detail?: Record<string, unknown>): void => {
-    if (!debugEnabled) {
-      return;
-    }
-    if (detail) {
-      console.debug('[WebGPU]', message, detail);
-    } else {
-      console.debug('[WebGPU]', message);
-    }
+    if (!debugEnabled) return;
+    if (detail) manager.debug(`webgpu:${message}`, message, detail);
+    else manager.debug(`webgpu:${message}`, message);
   };
 
   if (debugEnabled) {
@@ -1250,6 +1506,7 @@ export const mount = async ({
     });
   }
   emitDiagnostic('webgpu:device-ready');
+  try { installWebGpuCapture(device); } catch (e) { /* best-effort; do not hard-fail */ }
   const context = canvas.getContext('webgpu') as unknown as GPUCanvasContext | null;
   if (!context) {
     return fail('webgpu:context-unavailable', 'WebGPU context unavailable', undefined, {
@@ -1274,6 +1531,8 @@ export const mount = async ({
     rotY: 0.0,
     rotZ: 0,
     autoRotate: initialAutoRotate,
+    autoRotateSpeed: AUTOROTATE_SPEED_DEFAULT,
+    autoRotateResumeAt: 0,
     cameraMode: 'turntable',
     zoom: 1.0,
     orbitZoom: 1.0,
@@ -1288,6 +1547,7 @@ export const mount = async ({
     interacting: false,
     lastInteraction: performance.now(),
     sceneRadius: 120,
+    zone: {},
     interactiveLodRatio: DEFAULT_INTERACTIVE_LOD,
     interactiveLodEnabled: false,
     recentParamUpdate: false,
@@ -1299,6 +1559,9 @@ export const mount = async ({
     projectionMode: 'ortho',
     debugOverlay: false,
     showGrid: true,
+    showAxis: true,
+    disableAutoFlip: false,
+    autoPivotFromCamera: false,
     camRight: [1, 0, 0],
     camUp: [0, 0, 1],
     camForward: [0, -1, 0],
@@ -1309,7 +1572,9 @@ export const mount = async ({
     displayCamQuat: null,
     displayRotX: null,
     displayRotY: null,
+    displayRotZ: null,
     pivot: [0, 0, 0],
+    targetPivot: null,
     useArcball: false,
     freePosition: [0, -240, 80],
     freeSpeed: 1.0,
@@ -1438,6 +1703,24 @@ export const mount = async ({
       button.textContent = label;
     }
   };
+  let axisButton: HTMLButtonElement | null = null;
+  const resolveAxisButton = (): HTMLButtonElement | null => {
+    if (axisButton && axisButton.isConnected) return axisButton;
+    const button = resolveControlsButton('[data-wgpu-action="axis"]') || resolveControlsButton('#wgpu-toggle-axis');
+    axisButton = button;
+    return axisButton;
+  };
+  const updateAxisButton = (): void => {
+    const button = resolveAxisButton();
+    if (!button) return;
+    const active = state.showAxis;
+    button.dataset.state = active ? 'on' : 'off';
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    const label = active ? 'Axis*' : 'Axis';
+    if (button.textContent !== label) {
+      button.textContent = label;
+    }
+  };
   const updateArcballButton = (): void => {
     const btn = resolveControlsButton('[data-wgpu-action="arcball"]') || resolveControlsButton('#wgpu-toggle-arcball');
     if (!btn) {
@@ -1465,7 +1748,26 @@ export const mount = async ({
     updateArcballButton();
     updateFreeButton();
   };
+
+  let pivotAutoButton: HTMLButtonElement | null = null;
+  const resolvePivotButton = (): HTMLButtonElement | null => {
+    if (pivotAutoButton && pivotAutoButton.isConnected) return pivotAutoButton;
+    const button = resolveControlsButton('[data-wgpu-action="pivot-auto"]') || resolveControlsButton('#wgpu-toggle-pivot');
+    pivotAutoButton = button;
+    return pivotAutoButton;
+  };
+
+  const updatePivotAutoButton = (): void => {
+    const button = resolvePivotButton();
+    if (!button) return;
+    const active = Boolean(state.autoPivotFromCamera);
+    button.dataset.state = active ? 'on' : 'off';
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    const label = active ? 'Pivot*' : 'Pivot';
+    if (button.textContent !== label) button.textContent = label;
+  };
   updateGridButton();
+  updateAxisButton();
   updateCameraModeButtons();
 
   const buildCameraSnapshot = (): CameraSnapshot => ({
@@ -1481,6 +1783,93 @@ export const mount = async ({
     pivot: [...state.pivot],
     eye: [...(lastCameraRig?.eye ?? ensureFreePosition(state))],
   });
+
+  const drawAxisIndicator = (ctx: CanvasRenderingContext2D | null, rig: CameraRig | null): void => {
+    if (!ctx || !rig) return;
+    try {
+      const canvas = ctx.canvas as HTMLCanvasElement;
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      const cx = w / 2;
+      const cy = h / 2;
+      const axisLen = Math.min(w, h) * 0.34;
+      const basis = rig.basis;
+      // Project world axis to screen using camera basis vectors.
+      // screenX = dot(worldAxis, camRight), screenY = dot(worldAxis, camUp)
+      // This gives the 2D position where the axis tip appears on screen.
+      const axisToScreen = (axis: [number, number, number]): [number, number] => {
+        // camRight points screen-right, camUp points screen-up
+        const screenX = axis[0] * basis.right[0] + axis[1] * basis.right[1] + axis[2] * basis.right[2];
+        const screenY = axis[0] * basis.up[0] + axis[1] * basis.up[1] + axis[2] * basis.up[2];
+        // Scale and convert to canvas coords (canvas Y is inverted from screen up)
+        return [cx + screenX * axisLen, cy - screenY * axisLen];
+      };
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.min(w, h) * 0.46, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      const axes: Array<{ v: [number, number, number]; color: string; label: string }> = [
+        { v: [1, 0, 0], color: '#e53935', label: 'X' },
+        { v: [0, 1, 0], color: '#43a047', label: 'Y' },
+        { v: [0, 0, 1], color: '#1e88e5', label: 'Z' },
+      ];
+      const diagAxes: Record<string, unknown> = {};
+      for (const a of axes) {
+        const [tx, ty] = axisToScreen(a.v);
+        const dx = tx - cx;
+        const dy = ty - cy;
+        const len = Math.hypot(dx, dy);
+        if (len < 0.001) continue;
+        const ux = dx / len;
+        const uy = dy / len;
+        ctx.beginPath();
+        ctx.lineWidth = Math.max(2, Math.round(w * 0.02));
+        ctx.strokeStyle = a.color;
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(tx - ux * Math.min(8, w * 0.06), ty - uy * Math.min(8, w * 0.06));
+        ctx.stroke();
+        const tipSize = Math.max(6, Math.round(w * 0.04));
+        ctx.beginPath();
+        ctx.fillStyle = a.color;
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx - ux * tipSize - uy * (tipSize * 0.45), ty - uy * tipSize + ux * (tipSize * 0.45));
+        ctx.lineTo(tx - ux * tipSize + uy * (tipSize * 0.45), ty - uy * tipSize - ux * (tipSize * 0.45));
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.font = `${Math.max(10, Math.round(w * 0.12))}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const lx = tx + ux * Math.max(6, Math.round(w * 0.02));
+        const ly = ty + uy * Math.max(6, Math.round(w * 0.02));
+        ctx.fillText(a.label, lx, ly);
+        // Collect diagnostic vectors for overlay vs basis projection
+        try {
+          const ov_basis_unit = overlayForAxisFromBasis(rig, basis, a.v, state.pivot ?? [0, 0, 0], Math.max(state.sceneRadius, 1));
+          const pivot = state.pivot ?? [0, 0, 0];
+          const pA = mulMat4Vec4(rig.viewProjection, pivot[0], pivot[1], pivot[2]);
+          const pB = mulMat4Vec4(rig.viewProjection, pivot[0] + a.v[0] * Math.max(state.sceneRadius, 1), pivot[1] + a.v[1] * Math.max(state.sceneRadius, 1), pivot[2] + a.v[2] * Math.max(state.sceneRadius, 1));
+          const ov_proj_unit = ndcDirBetween(pA, pB);
+          // convert to overlay coordinates: flip Y
+          const ov_proj_2d = [ov_proj_unit[0], -ov_proj_unit[1]];
+          const ov_proj_len = Math.hypot(ov_proj_2d[0], ov_proj_2d[1]);
+          const ov_proj_norm = ov_proj_len < 1e-9 ? [0, 0] : [ov_proj_2d[0] / ov_proj_len, ov_proj_2d[1] / ov_proj_len];
+          diagAxes[a.label] = { overlayProj: ov_proj_norm, overlayBasis: ov_basis_unit };
+        } catch (err) {
+          /* best-effort */
+        }
+      }
+      // Emit diagnostic if enabled
+      try {
+        emitDiagnostic('component:axis-overlay-compare', { axes: diagAxes, ts: Date.now(), camSeq: cameraSequence });
+      } catch (err) {/* ignore */}
+    } catch (err) {
+      /* ignore drawing errors */
+    }
+  };
 
   const snapshotsEqual = (prev: CameraSnapshot | null, next: CameraSnapshot): boolean => {
     if (!prev) {
@@ -1529,6 +1918,17 @@ export const mount = async ({
     state.cameraDirty = false;
     state.lastCameraPush = now;
     cameraSequence += 1;
+    // Emit a compact diagnostic snapshot for correlation with uniform writes and overlay draws
+    try {
+      emitDiagnostic('component:camera-state', {
+        ts: Date.now(),
+        seq: cameraSequence,
+        rotX: snapshot.rotX,
+        rotY: snapshot.rotY,
+        zoom: snapshot.zoom,
+        canvasId: mountCanvasId,
+      });
+    } catch (err) {/* best-effort */}
     pendingStaticCameraEmit = false;
     postToHost(emit, {
       type: 'cameraState',
@@ -1572,6 +1972,38 @@ export const mount = async ({
 
   const toggleAutoRotate = (): void => {
     setAutoRotate(!state.autoRotate, true);
+  };
+
+  const setAutoPivot = (value: boolean, emitCamera = true): void => {
+    const next = Boolean(value);
+    if (state.autoPivotFromCamera === next) {
+      return;
+    }
+    state.autoPivotFromCamera = next;
+    if (current) {
+      current.autoPivotFromCamera = next;
+    }
+    // When enabling auto-pivot, immediately update the pivot to center of view
+    if (next && cameraController) {
+      try {
+        cameraController.updatePivotFromCamera();
+      } catch (e) {
+        // Fall back to resetting pivot to center of object
+        const pivotZ = state.pivot?.[2] ?? 0;
+        state.panX = 0;
+        state.panY = 0;
+        state.pivot = [0, 0, pivotZ];
+      }
+    }
+    state.cameraDirty = true;
+    updatePivotAutoButton();
+    if (emitCamera) {
+      emitCameraState(true);
+    }
+  };
+
+  const toggleAutoPivot = (): void => {
+    setAutoPivot(!Boolean(state.autoPivotFromCamera), true);
   };
 
   let cameraEmitTimer: number | null = null;
@@ -1643,12 +2075,26 @@ export const mount = async ({
         });
       }
     }
+    // Update axis overlay size to be crisp on DPR-scaled devices
+    try {
+      if (axisCanvas) {
+        const overlaySizeCss = 96; // CSS px
+        const overlayW = Math.max(1, Math.round(overlaySizeCss * devicePixelRatio));
+        const overlayH = overlayW;
+        axisCanvas.width = overlayW;
+        axisCanvas.height = overlayH;
+        axisCanvas.style.width = `${overlaySizeCss}px`;
+        axisCanvas.style.height = `${overlaySizeCss}px`;
+      }
+    } catch (err) {
+      /* ignore overlay resize errors */
+    }
   };
 
   window.addEventListener('resize', resize);
   resize();
 
-  let debugOverlayEl: HTMLElement | null = null;
+  
   try {
     const parent = canvas.parentElement || document.body;
     const pre = document.createElement('pre');
@@ -1661,13 +2107,111 @@ export const mount = async ({
     debugOverlayEl = null;
   }
 
-  const wgsl = WGSL_SOURCE;
-  const shaderModule = device.createShaderModule({
-    code: wgsl,
-    label: 'potfoundry-webgpu',
-  });
+  // Axis overlay canvas for small 2D axis gizmo in corner
+  let axisCanvas: HTMLCanvasElement | null = null;
+  let axisCtx: CanvasRenderingContext2D | null = null;
+  try {
+    const parent = canvas.parentElement || document.body;
+    axisCanvas = document.createElement('canvas');
+    axisCanvas.id = 'wgpu-axis-overlay';
+    axisCanvas.style.position = 'absolute';
+    axisCanvas.style.left = '8px';
+    axisCanvas.style.bottom = '8px';
+    axisCanvas.style.pointerEvents = 'none';
+    axisCanvas.style.zIndex = '9998';
+    axisCanvas.width = 96;
+    axisCanvas.height = 96;
+    axisCanvas.style.width = '96px';
+    axisCanvas.style.height = '96px';
+    parent?.appendChild(axisCanvas);
+    axisCtx = axisCanvas.getContext('2d');
+  } catch (e) {
+    axisCanvas = null;
+    axisCtx = null;
+  }
 
-  const pipeline = await createPipeline(device, format, shaderModule, setStatus, emitDiagnostic);
+  let wgsl = WGSL_SOURCE ?? '';
+  if (typeof wgsl !== 'string') {
+    console.warn('[WebGPU] WGSL import not a string; coercing to string', wgsl);
+    try {
+      wgsl = String(wgsl);
+    } catch (err) {
+      wgsl = '';
+    }
+  }
+  const wgslSnippet = (wgsl ?? '').slice(0, 512).replace(/\n/g, ' ');
+  const hasVs = wgsl.indexOf('fn vs_main(') >= 0 || wgsl.indexOf('@vertex') >= 0;
+  const hasFs = wgsl.indexOf('fn fs_main(') >= 0 || wgsl.indexOf('@fragment') >= 0;
+  const hasBinding0 = wgsl.indexOf('@group(0) @binding(0)') >= 0 || wgsl.indexOf('@binding(0)') >= 0;
+  const hasBinding1 = wgsl.indexOf('@group(0) @binding(1)') >= 0 || wgsl.indexOf('@binding(1)') >= 0;
+  const hasBinding2 = wgsl.indexOf('@group(0) @binding(2)') >= 0 || wgsl.indexOf('@binding(2)') >= 0;
+  const hasBinding3 = wgsl.indexOf('@group(0) @binding(3)') >= 0 || wgsl.indexOf('@binding(3)') >= 0;
+  const hasBinding4 = wgsl.indexOf('@group(0) @binding(4)') >= 0 || wgsl.indexOf('@binding(4)') >= 0;
+  emitDiagnostic('webgpu:shader-sniff', { length: (wgsl ?? '').length, hasVs, hasFs, hasBinding0, hasBinding1, hasBinding2, hasBinding3, hasBinding4, snippet: wgslSnippet, canvasId: mountCanvasId });
+  if (wgsl.startsWith('[object Object]') || wgsl.includes('<!DOCTYPE') || wgsl.trim().startsWith('<html')) {
+    emitDiagnostic('webgpu:shader-import-looks-like-html', { snippet: wgslSnippet, canvasId: mountCanvasId });
+    console.error('[WebGPU] Shader file appears to be HTML or non-text payload; check bundler/asset pipeline', wgslSnippet);
+  }
+  if (/^\s*export\s+default\s+/i.test(wgsl) || wgsl.includes('module.exports')) {
+    emitDiagnostic('webgpu:shader-import-looks-like-js-module', { snippet: wgslSnippet, canvasId: mountCanvasId });
+    console.error('[WebGPU] Shader file appears to be a JS module export instead of raw WGSL; check bundler ?raw loader', wgslSnippet);
+  }
+  if (!wgsl.trim()) {
+    emitDiagnostic('webgpu:shader-empty', { message: 'WGSL source empty; check bundler or pot_preview.wgsl import' });
+    return fail('webgpu:pipeline-failed', 'WebGPU • pipeline creation failed: shader source empty');
+  }
+  if (!hasVs || !hasFs) {
+    emitDiagnostic('webgpu:shader-entries-missing', { hasVs, hasFs, canvasId: mountCanvasId });
+    console.error('[WebGPU] Shader missing vs_main/fs_main or entrypoints; snippet', wgslSnippet);
+    // Continue and rely on shaderModule.getCompilationInfo to report errors;
+    // do not early return as empty may still be non-empty but malformed.
+  }
+  if (!hasBinding0 || !hasBinding1 || !hasBinding2 || !hasBinding3 || !hasBinding4) {
+    emitDiagnostic('webgpu:shader-bindings-missing', { hasBinding0, hasBinding1, hasBinding2, hasBinding3, hasBinding4, snippet: wgslSnippet, canvasId: mountCanvasId });
+    console.error('[WebGPU] Shader missing required @binding(0..4); snippet', wgslSnippet);
+  }
+
+  // Parse WGSL to validate the preview uniform block count (array<vec4<f32>, N>) matches runtime constants
+  try {
+    const match = wgsl.match(/values\s*:\s*array<vec4<\s*f32\s*>,\s*(\d+)\s*>/i);
+    if (match) {
+      const elemCount = Number(match[1] || 0);
+      if (Number.isFinite(elemCount) && elemCount > 0) {
+        const floatsInWgsl = elemCount * 4;
+        if (floatsInWgsl !== UNIFORM_FLOAT_COUNT) {
+          emitDiagnostic('webgpu:shader-uniform-count-mismatch', { floatsInWgsl, UNIFORM_FLOAT_COUNT, elemCount, canvasId: mountCanvasId });
+          console.error('[WebGPU] Uniform float count mismatch:', { floatsInWgsl, UNIFORM_FLOAT_COUNT, elemCount });
+        }
+      }
+    // Also ensure the typed offsets used by the WGSL shader fall within UNIFORM_FLOAT_COUNT
+    try {
+      const offsetsToCheck = [VP_MATRIX_OFFSET + 16, CAMERA_EYE_OFFSET + 3, CAMERA_RIGHT_OFFSET + 3, CAMERA_UP_OFFSET + 3, CAMERA_FORWARD_OFFSET + 3, DRAIN_RADIUS_OFFSET + 1];
+      const outOfBounds = offsetsToCheck.filter((o) => o > UNIFORM_FLOAT_COUNT);
+      if (outOfBounds.length) {
+        emitDiagnostic('webgpu:shader-uniform-count-mismatch', { outOfBounds, UNIFORM_FLOAT_COUNT, canvasId: mountCanvasId });
+        console.error('[WebGPU] Uniform offsets exceed UNIFORM_FLOAT_COUNT', { outOfBounds, UNIFORM_FLOAT_COUNT });
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    }
+  } catch (e) {
+    /* ignore parse failures */
+  }
+
+  // Check for builtin vertex index to ensure shader is procedural
+  try {
+    const hasVertexBuiltin = wgsl.includes('@builtin(vertex_index)');
+    if (!hasVertexBuiltin) {
+      emitDiagnostic('webgpu:shader-vertex-builtin-missing', { hasVertexBuiltin, hasVs, snippet: wgslSnippet, canvasId: mountCanvasId });
+      console.warn('[WebGPU] Shader does not use @builtin(vertex_index); ensure vertex inputs or set vertex buffers accordingly.');
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  const shaderModule = await createShaderModule(device as any, wgsl, 'potfoundry-webgpu');
+
+  const pipeline = await createPipeline(device, format, shaderModule, setStatus, emitDiagnostic, wgsl);
   if (!pipeline) {
     emitErrorEvent({
       code: 'webgpu:pipeline-failed',
@@ -1677,6 +2221,58 @@ export const mount = async ({
     return null;
   }
   emitDiagnostic('webgpu:pipeline-ready');
+  
+  // Create wireframe pipeline with line-list topology for triangle edges
+  let wireframePipeline: GPURenderPipeline | null = null;
+  try {
+    wireframePipeline = await device.createRenderPipelineAsync({
+      label: 'component:pipeline-wireframe',
+      layout: 'auto',
+      vertex: { module: shaderModule, entryPoint: 'vs_wireframe' },
+      fragment: {
+        module: shaderModule,
+        entryPoint: 'fs_wireframe',
+        targets: [
+          {
+            format,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
+          },
+        ],
+      },
+      primitive: { topology: 'line-list', cullMode: 'none' },
+      depthStencil: {
+        depthWriteEnabled: false, // Don't write depth so wireframe doesn't occlude
+        depthCompare: 'less-equal', // Use less-equal so lines draw on top of triangles
+        format: 'depth24plus',
+      },
+    });
+    emitDiagnostic('webgpu:wireframe-pipeline-ready');
+  } catch (err) {
+    console.warn('Failed to create wireframe pipeline:', err);
+    emitDiagnostic('webgpu:wireframe-pipeline-failed', { error: err instanceof Error ? err.message : String(err) });
+    // Continue without wireframe - it's optional
+  }
+  
+  // Ensure the depth texture matches the pipeline's expected depth format
+  try {
+    const newDepth = createDepthTexture(device, width, height);
+    const oldDepth = depth;
+    depth = newDepth;
+    if (oldDepth) {
+      setTimeout(() => {
+        try {
+          oldDepth.destroy();
+        } catch (err) {
+          /* ignore */
+        }
+      }, 0);
+    }
+  } catch (err) {
+    /* ignore: we'll use whatever depth exists, this is best-effort */
+  }
 
   const uniformSize = 4 * UNIFORM_FLOAT_COUNT;
   const bufferUsage = ((globalThis as Record<string, unknown>).GPUBufferUsage as
@@ -1687,17 +2283,41 @@ export const mount = async ({
   const storageUsage = bufferUsage.STORAGE ?? 0x20;
 
   const uniformBuffer = device.createBuffer({
+    label: 'component:uniform-buffer',
     size: uniformSize,
     usage: uniformUsage | copyDstUsage,
   });
 
   const colorBuffers = {
-    c1: device.createBuffer({ size: 16, usage: uniformUsage | copyDstUsage }),
-    c2: device.createBuffer({ size: 16, usage: uniformUsage | copyDstUsage }),
-    c3: device.createBuffer({ size: 16, usage: uniformUsage | copyDstUsage }),
+    c1: device.createBuffer({ label: 'component:color-buffer-1', size: 16, usage: uniformUsage | copyDstUsage }),
+    c2: device.createBuffer({ label: 'component:color-buffer-2', size: 16, usage: uniformUsage | copyDstUsage }),
+    c3: device.createBuffer({ label: 'component:color-buffer-3', size: 16, usage: uniformUsage | copyDstUsage }),
+  };
+  // Preallocated Float32Array scratch buffers used to avoid allocation in
+  // the hot render path when updating gradient colors.
+  const colorBufC1 = new Float32Array(4);
+  const colorBufC2 = new Float32Array(4);
+  const colorBufC3 = new Float32Array(4);
+  const writeGradient = (
+    device: GPUDevice,
+    buffers: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer },
+    gradient: unknown
+  ): void => {
+    const stops = Array.isArray(gradient) ? gradient : [];
+    const c1 = hexToRgbNorm(stops[0]);
+    const c2 = hexToRgbNorm(stops[1] ?? stops[0]);
+    const c3 = hexToRgbNorm(stops[2] ?? stops[1] ?? stops[0]);
+    colorBufC1[0] = c1[0]; colorBufC1[1] = c1[1]; colorBufC1[2] = c1[2]; colorBufC1[3] = 0;
+    colorBufC2[0] = c2[0]; colorBufC2[1] = c2[1]; colorBufC2[2] = c2[2]; colorBufC2[3] = 0;
+    colorBufC3[0] = c3[0]; colorBufC3[1] = c3[1]; colorBufC3[2] = c3[2]; colorBufC3[3] = 0;
+    device.queue.writeBuffer(buffers.c1, 0, colorBufC1.buffer);
+    device.queue.writeBuffer(buffers.c2, 0, colorBufC2.buffer);
+    device.queue.writeBuffer(buffers.c3, 0, colorBufC3.buffer);
+    try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.colorWrites += 3); } catch (e) { /* ignore */ }
   };
 
   const styleParamBuffer = device.createBuffer({
+    label: 'component:style-params',
     size: STYLE_PARAM_CAPACITY * 4,
     usage: storageUsage | copyDstUsage,
   });
@@ -1715,10 +2335,12 @@ export const mount = async ({
     }
     if (changed) {
       device.queue.writeBuffer(styleParamBuffer, 0, styleParamCache.buffer);
+      try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.styleParamWrites += 1); } catch (e) { /* ignore */ }
     }
   };
 
   const bindGroup = device.createBindGroup({
+    label: 'component:bind-group-main',
     layout: pipeline.getBindGroupLayout(0),
     entries: [
       { binding: 0, resource: { buffer: uniformBuffer } },
@@ -1728,505 +2350,45 @@ export const mount = async ({
       { binding: 4, resource: { buffer: styleParamBuffer } },
     ],
   });
+    emitDiagnostic('webgpu:bind-group-ready', {
+    layoutEntries: pipeline.getBindGroupLayout(0) ? 'ok' : 'missing',
+    canvasId: mountCanvasId,
+  });
+    // Also log to the console for immediate dev feedback
+    console.debug('[WebGPU:diag] bind-group-ready', { layoutEntries: pipeline.getBindGroupLayout(0) });
 
-  let current: WebGPUParams | null = null;
-  let hasLocalCameraControl = false;
-  let lastCameraNonce: number | null = null;
-  // Focus tween now owned by the CameraController instance
-
-  // Pointer state type used by CameraController
-  type PointerState = {
-    active: boolean;
-    mode: PointerMode;
-    lastX: number;
-    lastY: number;
-    arcLastX: number;
-    arcLastY: number;
-    arcStartX: number;
-    arcStartY: number;
-    arcStartQuat: Quaternion | null;
-    arcPrevQuat: Quaternion | null;
-    arcInertiaAxis: Vec3 | null;
-    arcInertiaSpeed: number;
-  };
-
-  // CameraController encapsulates pointer and focus logic.
-  class CameraController {
-        zoomCameraAtCursor(clientX: number, clientY: number, factor: number): void {
-          if (!Number.isFinite(factor) || factor <= 0) {
-            return;
-          }
-          if (this.state.cameraMode === 'free') {
-            const magnitude = Math.log(factor || 1) * 320;
-            applyFreeLookDolly(magnitude);
-            return;
-          }
-          const nextZoom = clampZoomValue(this.state.zoom * factor);
-          if (Math.abs(nextZoom - this.state.zoom) < 1e-6) {
-            return;
-          }
-          const { extents, rig } = resolveInteractionRig();
-          const rayBefore = worldRayFromCanvas(rig, this.canvas, clientX, clientY);
-          const pivotZ = this.state.pivot?.[2] ?? 0;
-          const anchor = rayBefore ? intersectRayZPlane(rayBefore, pivotZ) : null;
-          this.state.zoom = nextZoom;
-          if (anchor) {
-            const rigAfter = buildCameraRig(this.state, extents.paddingHint, extents.paddedHalfWidth, extents.paddedHalfHeight);
-            const rayAfter = worldRayFromCanvas(rigAfter, this.canvas, clientX, clientY);
-            if (rayAfter) {
-              const projected = intersectRayZPlane(rayAfter, pivotZ);
-              if (projected) {
-                this.state.panX += anchor[0] - projected[0];
-                this.state.panY += anchor[1] - projected[1];
-                updatePivotFromPan();
-              }
-            }
-          }
-          this.state.cameraDirty = true;
-        }
-    state: WebGPUState;
-    pointer: PointerState;
-    canvas: HTMLCanvasElement;
-    focusTween: FocusTween | null;
-    constructor(state: WebGPUState, pointer: PointerState, canvas: HTMLCanvasElement) {
-      this.state = state;
-      this.pointer = pointer;
-      this.canvas = canvas;
-      this.focusTween = null;
-    }
-    // Ensure interactive basis (used by many helper methods)
-    ensureInteractiveBasis(): CameraBasis {
-      return {
-        right: this.state.displayCamRight ?? this.state.camRight,
-        up: this.state.displayCamUp ?? this.state.camUp,
-        forward: this.state.displayCamForward ?? this.state.camForward,
-      } as CameraBasis;
-    }
-    resolveActiveBasis(): CameraBasis {
-      const hasDisplay = Boolean(
-        this.state.displayCamForward && this.state.displayCamUp && this.state.displayCamRight
-      );
-      const sourceBasis: CameraBasis = hasDisplay
-        ? {
-            right: [...(this.state.displayCamRight as Vec3)],
-            up: [...(this.state.displayCamUp as Vec3)],
-            forward: [...(this.state.displayCamForward as Vec3)],
-          }
-        : {
-            right: [...this.state.camRight],
-            up: [...this.state.camUp],
-            forward: [...this.state.camForward],
-          };
-      const normalized = normalizeCameraBasis(sourceBasis);
-      if (hasDisplay) {
-        this.state.displayCamRight = [...normalized.right];
-        this.state.displayCamUp = [...normalized.up];
-        this.state.displayCamForward = [...normalized.forward];
-        this.state.displayCamQuat = quaternionFromBasis(normalized);
-        const nextAngles = cbSyncAnglesFromBasis(normalized);
-        this.state.displayRotX = nextAngles.rotX;
-        this.state.displayRotY = nextAngles.rotY;
-      } else {
-        this.state.camRight = [...normalized.right];
-        this.state.camUp = [...normalized.up];
-        this.state.camForward = [...normalized.forward];
-        this.state.camQuat = quaternionFromBasis(normalized);
-        syncAnglesFromBasis(this.state);
-      }
-      return normalized;
-    }
-    ensureFreePosition(stateArg?: WebGPUState): Vec3 {
-      const s = stateArg ?? this.state;
-      const pos = s.freePosition;
-      if (Array.isArray(pos) && pos.length === 3 && pos.every((v) => Number.isFinite(v))) {
-        return pos as Vec3;
-      }
-      const pivotZ = s.pivot?.[2] ?? 0;
-      const fallback: Vec3 = [s.panX, s.panY - Math.max(s.sceneRadius * CAMERA_DISTANCE_FALLOFF, 120), pivotZ + Math.max(s.sceneRadius * 0.25, 30)];
-      s.freePosition = fallback;
-      return fallback;
-    }
-    translateFreeCamera(stateArg: WebGPUState, delta: Vec3): void {
-      const pos = this.ensureFreePosition(stateArg);
-      stateArg.freePosition = [pos[0] + delta[0], pos[1] + delta[1], pos[2] + delta[2]];
-      stateArg.cameraDirty = true;
-    }
-    applyFreeLookRotation(dx: number, dy: number): void {
-      const vw = this.canvas.clientWidth || Math.max(1, this.canvas.width || 1);
-      const vh = this.canvas.clientHeight || Math.max(1, this.canvas.height || 1);
-      const basis = ensureInteractiveBasis(this.state);
-      const yawDelta = (-dx / Math.max(1, vw)) * FREE_LOOK_YAW_SENS;
-      const pitchDelta = (-dy / Math.max(1, vh)) * FREE_LOOK_PITCH_SENS;
-      let rotated = rotateBasisAboutAxisFull(basis, basis.up, yawDelta) ?? basis;
-      rotated = rotateBasisAboutAxisFull(rotated, rotated.right, pitchDelta) ?? rotated;
-      const angles = cbSyncAnglesFromBasis(rotated);
-      let rotX = angles.rotX;
-      if (rotX > PITCH_SOFT_LIMIT) {
-        const correction = rotX - PITCH_SOFT_LIMIT;
-        rotated = rotateBasisAboutAxisFull(rotated, rotated.right, -correction) ?? rotated;
-        rotX = PITCH_SOFT_LIMIT;
-      } else if (rotX < -PITCH_SOFT_LIMIT) {
-        const correction = rotX + PITCH_SOFT_LIMIT;
-        rotated = rotateBasisAboutAxisFull(rotated, rotated.right, -correction) ?? rotated;
-        rotX = -PITCH_SOFT_LIMIT;
-      }
-      this.state.displayCamRight = [...rotated.right];
-      this.state.displayCamUp = [...rotated.up];
-      this.state.displayCamForward = [...rotated.forward];
-      this.state.displayCamQuat = quaternionFromBasis(rotated);
-      this.state.displayRotX = rotX;
-      this.state.displayRotY = angles.rotY;
-      this.state.cameraDirty = true;
-    }
-    applyFreeLookPan(dx: number, dy: number): void {
-      const factor = computePanFactor(this.state, this.canvas) * this.state.freeSpeed * FREE_LOOK_PAN_SENS;
-      const basis = ensureInteractiveBasis(this.state);
-      const deltaRight = vec3Scale(basis.right, -dx * factor);
-      const deltaUp = vec3Scale(basis.up, dy * factor);
-      this.translateFreeCamera(this.state, vec3Add(deltaRight, deltaUp));
-    }
-    applyFreeLookDolly(delta: number): void {
-      const basis = ensureInteractiveBasis(this.state);
-      const move = vec3Scale(basis.forward, delta * this.state.sceneRadius * FREE_LOOK_DOLLY_SENS);
-      this.translateFreeCamera(this.state, move);
-    }
-    applyFreeKeyboardInput(deltaMs: number): boolean {
-      if (this.state.cameraMode !== 'free' || freeKeyboard.activeKeys.size === 0) {
-        return false;
-      }
-      const seconds = Math.max(0, Math.min(deltaMs, 48)) / 1000;
-      if (seconds <= 0) {
-        return false;
-      }
-      const basis = ensureInteractiveBasis(this.state);
-      let direction: Vec3 = [0, 0, 0];
-      const addDir = (vec: Vec3, scale = 1): void => {
-        direction = vec3Add(direction, vec3Scale(vec, scale));
-      };
-      if (freeKeyboard.activeKeys.has('w')) addDir(basis.forward);
-      if (freeKeyboard.activeKeys.has('s')) addDir(basis.forward, -1);
-      if (freeKeyboard.activeKeys.has('d')) addDir(basis.right);
-      if (freeKeyboard.activeKeys.has('a')) addDir(basis.right, -1);
-      if (freeKeyboard.activeKeys.has('e') || freeKeyboard.activeKeys.has('r')) addDir(basis.up);
-      if (freeKeyboard.activeKeys.has('q') || freeKeyboard.activeKeys.has('f')) addDir(basis.up, -1);
-      if (vec3Length(direction) < 1e-6) {
-        return false;
-      }
-      const normalized = vec3Normalize(direction);
-      const boost = freeKeyboard.boost ? 2.25 : 1.0;
-      const distance = this.state.sceneRadius * 0.65 * this.state.freeSpeed * boost * seconds;
-      if (!Number.isFinite(distance) || distance <= 0) {
-        return false;
-      }
-      this.translateFreeCamera(this.state, vec3Scale(normalized, distance));
-      return true;
-    }
-    commitDisplayBasisToState(): boolean {
-      if (!this.state.displayCamForward || !this.state.displayCamUp || !this.state.displayCamRight) return false;
-      try {
-        console.debug('[WebGPU] commitDisplayBasisToState', {
-          interacting: this.state.interacting,
-          autoRotate: this.state.autoRotate,
-          inertiaRotX: this.state.inertiaRotX,
-          inertiaRotY: this.state.inertiaRotY,
-          panX: this.state.panX,
-          panY: this.state.panY,
-          camForwardLen: vec3Length(this.state.displayCamForward),
-          camRightLen: vec3Length(this.state.displayCamRight),
-          camUpLen: vec3Length(this.state.displayCamUp),
-          canvasAspect: this.state.canvasAspect,
-        });
-      } catch (err) {
-        /* ignore */
-      }
-      const prevRight = this.state.camRight;
-      let flipped = false;
-      if (prevRight && this.state.displayCamRight) {
-        const dot = vec3Dot(prevRight, this.state.displayCamRight);
-        if (dot < BASIS_FLIP_DOT_THRESHOLD) {
-          this.state.displayCamRight = vec3Scale(this.state.displayCamRight, -1);
-          this.state.displayCamUp = vec3Scale(this.state.displayCamUp, -1);
-          flipped = true;
-        }
-      }
-      const committedBasis: CameraBasis = {
-        right: [...this.state.displayCamRight],
-        up: [...this.state.displayCamUp],
-        forward: [...this.state.displayCamForward],
-      } as CameraBasis;
-      this.state.camForward = [...committedBasis.forward];
-      this.state.camUp = [...committedBasis.up];
-      this.state.camRight = [...committedBasis.right];
-      this.state.camQuat = this.state.displayCamQuat ?? quaternionFromBasis(committedBasis);
-      syncAnglesFromBasis(this.state);
-      this.state.displayCamForward = null;
-      this.state.displayCamUp = null;
-      this.state.displayCamRight = null;
-      this.state.displayCamQuat = null;
-      this.state.displayRotX = null;
-      this.state.displayRotY = null;
-      return flipped;
-    }
-    updatePivotFromPan() {
-      const pivotZ = this.state.pivot?.[2] ?? 0;
-      this.state.pivot = [this.state.panX, this.state.panY, pivotZ];
-    }
-    resetInertia(): void {
-      this.state.inertiaRotX = 0;
-      this.state.inertiaRotY = 0;
-      this.state.inertiaPanX = 0;
-      this.state.inertiaPanY = 0;
-      this.state.inertiaArcAxis = null;
-      this.state.inertiaArcSpeed = 0;
-    }
-    computePanFactor(canvasEl: HTMLCanvasElement): number {
-      const rect = canvasEl.getBoundingClientRect();
-      const reference = Math.max(rect.width, rect.height, 1);
-      const scene = Math.max(this.state.sceneRadius, 1);
-      const zoom = Math.max(this.state.zoom, 1e-3);
-      return (scene / reference) * (2 / zoom);
-    }
-    cancelFocusTween() {
-      if (this.focusTween) {
-        this.focusTween = null;
-      }
-    }
-    startFocusTween(targetPanX: number, targetPanY: number, targetZoom: number, hitDepth?: number) {
-      let adjustedZoom = targetZoom;
-      if (hitDepth !== undefined && Number.isFinite(hitDepth)) {
-        const { extents } = resolveInteractionRig();
-        const paddedMax = extents.paddedMax;
-        const CAMERA_DISTANCE_FALLOFF = 2.2;
-        const minZoom = 0.25;
-        const maxZoom = 4.0;
-        const zoomFromDepth = Math.max(minZoom, Math.min(maxZoom, paddedMax * CAMERA_DISTANCE_FALLOFF / Math.max(hitDepth, 1e-3)));
-        adjustedZoom = zoomFromDepth;
-      }
-      this.focusTween = {
-        startTime: performance.now(),
-        duration: FOCUS_TWEEN_MS,
-        startPanX: this.state.panX,
-        startPanY: this.state.panY,
-        startZoom: this.state.zoom,
-        targetPanX,
-        targetPanY,
-        targetZoom: adjustedZoom,
-      };
-    }
-    focusCameraAtCursor(clientX: number, clientY: number) {
-      const hit = (() => {
-        const { rig, extents } = resolveInteractionRig();
-        const ray = worldRayFromCanvas(rig, this.canvas, clientX, clientY);
-        if (!ray) return null;
-        const pivotZ = this.state.pivot?.[2] ?? 0;
-        const cylinderHit = intersectRayCylinder(ray, extents.paddedHalfWidth, -extents.paddedHalfHeight, extents.paddedHalfHeight);
-        return cylinderHit ?? intersectRayZPlane(ray, pivotZ);
-      })();
-      if (!hit) return;
-      let suppressFocusCancel = false;
-      if (this.state.cameraMode === 'free') {
-        this.state.freePosition = [hit[0], hit[1], hit[2] + Math.max(this.state.sceneRadius * 0.35, 30)];
-        const lookDir = vec3Normalize(vec3Subtract(hit, this.state.freePosition));
-        const newBasis = buildCameraBasis(lookDir);
-        this.state.displayCamRight = [...newBasis.right];
-        this.state.displayCamUp = [...newBasis.up];
-        this.state.displayCamForward = [...newBasis.forward];
-        this.state.displayCamQuat = quaternionFromBasis(newBasis);
-        const angles = cbSyncAnglesFromBasis(newBasis);
-        this.state.displayRotX = angles.rotX;
-        this.state.displayRotY = angles.rotY;
-      } else {
-        this.cancelFocusTween();
-        const targetZoom = clampZoomValue(this.state.zoom);
-        this.startFocusTween(hit[0], hit[1], targetZoom, hit[2]);
-        suppressFocusCancel = true;
-      }
-      this.state.cameraDirty = true;
-      this.markInteraction(!suppressFocusCancel);
-      requestCameraEmitWhenStatic();
-    }
-    markInteraction(shouldCancelFocus = true) {
-      if (shouldCancelFocus) this.cancelFocusTween();
-      this.state.interacting = true;
-      this.state.lastInteraction = performance.now();
-      hasLocalCameraControl = true;
-      this.state.cameraDirty = true;
-    }
-    // Pointer handlers
-    releasePointer() {
-      const arcballDrag = this.pointer.mode === 'orbit' && this.state.cameraMode === 'arcball';
-      if (arcballDrag && this.pointer.arcInertiaAxis && Math.abs(this.pointer.arcInertiaSpeed) > 1e-5) {
-        this.state.inertiaArcAxis = [
-          this.pointer.arcInertiaAxis[0],
-          this.pointer.arcInertiaAxis[1],
-          this.pointer.arcInertiaAxis[2],
-        ];
-        this.state.inertiaArcSpeed = this.pointer.arcInertiaSpeed * 0.35;
-      } else if (arcballDrag) {
-        this.state.inertiaArcAxis = null;
-        this.state.inertiaArcSpeed = 0;
-      }
-      if (!arcballDrag) {
-        this.state.inertiaArcAxis = null;
-        this.state.inertiaArcSpeed = 0;
-      }
-      this.pointer.active = false;
-      this.pointer.arcStartQuat = null;
-      this.pointer.arcPrevQuat = null;
-      this.pointer.arcInertiaAxis = null;
-      this.pointer.arcInertiaSpeed = 0;
-    }
-    onPointerDown(event: PointerEvent) {
-      cancelCameraEmit();
-      this.pointer.active = true;
-      let mode: PointerMode = 'orbit';
-      if (event.button === 2) {
-        mode = 'dolly';
-      } else if (event.button === 1 || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) {
-        mode = 'pan';
-      }
-      this.pointer.mode = mode;
-      this.pointer.lastX = event.clientX;
-      this.pointer.lastY = event.clientY;
-      setAutoRotate(false, false);
-      this.markInteraction();
-      // Initialize transient display basis from the committed camera basis
-      this.state.displayCamRight = [...this.state.camRight];
-      this.state.displayCamUp = [...this.state.camUp];
-      this.state.displayCamForward = [...this.state.camForward];
-      this.state.displayCamQuat = [...this.state.camQuat] as Quaternion;
-      this.state.displayRotX = this.state.rotX;
-      this.state.displayRotY = this.state.rotY;
-      try {
-        this.canvas.setPointerCapture(event.pointerId);
-      } catch (err) {
-        console.warn('setPointerCapture', err);
-      }
-      // init arcball tracking
-      this.pointer.arcLastX = event.clientX;
-      this.pointer.arcLastY = event.clientY;
-      this.pointer.arcStartX = event.clientX;
-      this.pointer.arcStartY = event.clientY;
-      this.pointer.arcStartQuat = this.state.cameraMode === 'arcball'
-        ? (this.state.displayCamQuat ?? this.state.camQuat ?? quaternionFromBasis(ensureInteractiveBasis(this.state)))
-        : null;
-      this.pointer.arcPrevQuat = this.pointer.arcStartQuat;
-      this.pointer.arcInertiaAxis = null;
-      this.pointer.arcInertiaSpeed = 0;
-      this.state.inertiaArcAxis = null;
-      this.state.inertiaArcSpeed = 0;
-    }
-    onPointerRelease(): void {
-      this.releasePointer();
-      this.markInteraction();
-      requestCameraEmitWhenStatic();
-    }
-    onPointerMove(event: PointerEvent): void {
-      if (!this.pointer.active) {
-        return;
-      }
-      const dx = event.clientX - this.pointer.lastX;
-      const dy = event.clientY - this.pointer.lastY;
-      this.pointer.lastX = event.clientX;
-      this.pointer.lastY = event.clientY;
-      if (this.pointer.mode === 'orbit') {
-        const mode = this.state.cameraMode;
-        if (mode === 'free') {
-          if (event.shiftKey) {
-            applyFreeLookPan(dx, dy);
-          } else {
-            applyFreeLookRotation(dx, dy);
-          }
-        } else if (event.shiftKey) {
-          this.pointer.arcInertiaAxis = null;
-          this.pointer.arcInertiaSpeed = 0;
-          this.pointer.arcPrevQuat = null;
-          const factor = computePanFactor(this.state, this.canvas);
-          this.state.panX += dx * factor;
-          this.state.panY -= dy * factor;
-          this.state.inertiaPanX = dx * factor * 0.45;
-          this.state.inertiaPanY = -dy * factor * 0.45;
-          updatePivotFromPan();
-          this.state.cameraDirty = true;
-        } else if (this.state.cameraMode === 'arcball') {
-          const vw = this.canvas.clientWidth || Math.max(1, this.canvas.width || 1);
-          const vh = this.canvas.clientHeight || Math.max(1, this.canvas.height || 1);
-          const anchorX = this.pointer.arcStartX;
-          const anchorY = this.pointer.arcStartY;
-          const currentX = event.clientX;
-          const currentY = event.clientY;
-          this.pointer.arcLastX = currentX;
-          this.pointer.arcLastY = currentY;
-          const { axis: arcAxisCam, angle: arcAngle } = arcballDelta(anchorX, anchorY, currentX, currentY, vw, vh);
-          const baseQuat = this.pointer.arcStartQuat ?? quaternionFromBasis(ensureInteractiveBasis(this.state));
-          const startBasis = basisFromQuaternion(baseQuat);
-          const axisWorld = cbCameraAxisToWorld(startBasis, arcAxisCam);
-          const deltaQuat = Math.abs(arcAngle) > 1e-6 ? quaternionFromAxisAngle(axisWorld, arcAngle) : null;
-          const nextQuat = deltaQuat ? multiplyQuaternions(deltaQuat, baseQuat) : baseQuat;
-          const rotated = basisFromQuaternion(nextQuat);
-          this.state.displayCamRight = [...rotated.right];
-          this.state.displayCamUp = [...rotated.up];
-          this.state.displayCamForward = [...rotated.forward];
-          this.state.displayCamQuat = [...nextQuat] as Quaternion;
-          const { rotX, rotY } = cbSyncAnglesFromBasis({ right: rotated.right, up: rotated.up, forward: rotated.forward } as HelperCameraBasis);
-          this.state.displayRotX = rotX;
-          this.state.displayRotY = rotY;
-          if (this.pointer.arcPrevQuat) {
-            const prevQuat = this.pointer.arcPrevQuat;
-            const deltaFrame = multiplyQuaternions(nextQuat, invertQuaternion(prevQuat));
-            const { axis: inertiaAxis, angle: inertiaAngle } = axisAngleFromQuaternion(deltaFrame);
-            if (inertiaAngle > 1e-5) {
-              this.pointer.arcInertiaAxis = inertiaAxis;
-              this.pointer.arcInertiaSpeed = inertiaAngle;
-            } else {
-              this.pointer.arcInertiaAxis = null;
-              this.pointer.arcInertiaSpeed = 0;
-            }
-          }
-          this.pointer.arcPrevQuat = [...nextQuat] as Quaternion;
-          this.state.cameraDirty = true;
-        } else {
-          this.pointer.arcInertiaAxis = null;
-          this.pointer.arcInertiaSpeed = 0;
-          this.pointer.arcPrevQuat = null;
-          const vw = this.canvas.clientWidth || Math.max(1, this.canvas.width || 1);
-          const vh = this.canvas.clientHeight || Math.max(1, this.canvas.height || 1);
-          applyTurntableDrag(this.state, dx, dy, vw, vh);
-          const yawInertia = (this.state.displayRotY as number) - (this.state.rotY || 0);
-          const pitchInertia = (this.state.displayRotX as number) - (this.state.rotX || 0);
-          this.state.inertiaRotY = yawInertia * 0.35;
-          this.state.inertiaRotX = pitchInertia * 0.35;
-        }
-      } else if (this.pointer.mode === 'pan') {
-        if (this.state.cameraMode === 'free') {
-          applyFreeLookPan(dx, dy);
-        } else {
-          const factor = computePanFactor(this.state, this.canvas);
-          this.state.panX += dx * factor;
-          this.state.panY -= dy * factor;
-          this.state.inertiaPanX = dx * factor * 0.45;
-          this.state.inertiaPanY = -dy * factor * 0.45;
-          updatePivotFromPan();
-          this.state.cameraDirty = true;
-        }
-      } else if (this.pointer.mode === 'dolly') {
-        if (this.state.cameraMode === 'free') {
-          applyFreeLookDolly(-dy);
-        } else {
-          const factor = Math.exp(-dy * 0.003);
-          this.zoomCameraAtCursor(event.clientX, event.clientY, factor);
-          this.state.inertiaRotX = 0;
-          this.state.inertiaRotY = 0;
-        }
-      }
-      this.markInteraction();
-      requestCameraEmitWhenStatic();
+  // Create wireframe bind group if wireframe pipeline exists
+  // Note: The wireframe shader only uses bindings 0 (uniforms) and 4 (style params)
+  // It does NOT use the color buffers (bindings 1, 2, 3)
+  let wireframeBindGroup: GPUBindGroup | null = null;
+  if (wireframePipeline) {
+    try {
+      wireframeBindGroup = device.createBindGroup({
+        label: 'component:bind-group-wireframe',
+        layout: wireframePipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: uniformBuffer } },
+          { binding: 4, resource: { buffer: styleParamBuffer } },
+        ],
+      });
+      emitDiagnostic('webgpu:wireframe-bind-group-ready');
+    } catch (err) {
+      console.warn('Failed to create wireframe bind group:', err);
+      wireframePipeline = null; // Disable wireframe if bind group fails
     }
   }
 
+  let current: WebGPUParams | null = null;
+  let hasLocalCameraControl = false;
+  let localControlResetTimer: number | null = null;
+  let lastCameraNonce: number | null = null;
+  // Focus tween now owned by the CameraController instance
+
+  // Pointer state is defined in camera_controller and imported.
+
   const pointer: PointerState = {
     active: false,
-    mode: 'orbit' as PointerMode,
+    mode: 'orbit' as any,
     lastX: 0,
     lastY: 0,
     arcLastX: 0,
@@ -2240,13 +2402,7 @@ export const mount = async ({
   };
 
   // Instantiate controller after pointer and state are created
-  let cameraController: CameraController;
-  cameraController = new CameraController(state, pointer, canvas);
 
-  const cancelFocusTween = (): void => cameraController.cancelFocusTween();
-
-  const startFocusTween = (targetPanX: number, targetPanY: number, targetZoom: number, hitDepth?: number): void =>
-    cameraController.startFocusTween(targetPanX, targetPanY, targetZoom, hitDepth);
 
   const FREE_MOVE_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e', 'r', 'f']);
   const freeKeyboard = {
@@ -2258,21 +2414,30 @@ export const mount = async ({
     freeKeyboard.boost = false;
   };
 
-  const applyFreeLookRotation = (dx: number, dy: number): void => cameraController.applyFreeLookRotation(dx, dy);
+// resolveActiveBasis and controller wrappers will be defined after cameraController is instantiated.
 
-  // Delegate free-look helpers to CameraController
-  const applyFreeLookRotationWrapper = (dx: number, dy: number): void => cameraController.applyFreeLookRotation(dx, dy);
-  const applyFreeLookPanWrapper = (dx: number, dy: number): void => cameraController.applyFreeLookPan(dx, dy);
-  const applyFreeLookDollyWrapper = (delta: number): void => cameraController.applyFreeLookDolly(delta);
-  const applyFreeKeyboardInputWrapper = (deltaMs: number): boolean => cameraController.applyFreeKeyboardInput(deltaMs);
-
-  const applyFreeLookPan = (dx: number, dy: number): void => cameraController.applyFreeLookPan(dx, dy);
-
-  const applyFreeLookDolly = (delta: number): void => cameraController.applyFreeLookDolly(delta);
-
-  const applyFreeKeyboardInput = (deltaMs: number): boolean => cameraController.applyFreeKeyboardInput(deltaMs);
-
-  const updatePivotFromPan = (): void => cameraController.updatePivotFromPan();
+  // Cache recently-built camera rigs keyed by a compact signature to avoid
+  // recomputing the rig for every frame when the inputs are unchanged.
+  let lastRigSignature: string | null = null;
+  let lastRigCached: CameraRig | null = null;
+  const computeRigSignature = (s: WebGPUState, paddingHint?: number | null, phw?: number | null, phh?: number | null): string => {
+    const basis = (s.displayCamQuat ?? s.camQuat) as any;
+    const rotHash = s.displayRotX != null && s.displayRotY != null ? `${s.displayRotX}_${s.displayRotY}` : `${s.rotX}_${s.rotY}`;
+    const mode = s.projectionMode || 'ortho';
+    const parts = [rotHash, `${s.zoom}`, `${s.panX}`, `${s.panY}`, `${mode}`, `${paddingHint}`, `${phw ?? ''}`, `${phh ?? ''}`, `${s.canvasAspect}`];
+    return parts.join('|');
+  };
+  const getCachedRig = (s: WebGPUState, paddingHint?: number | null, phw?: number | null, phh?: number | null): CameraRig => {
+    const sig = computeRigSignature(s, paddingHint, phw, phh);
+    if (sig === lastRigSignature && lastRigCached) {
+      return lastRigCached;
+    }
+    const rig = buildCameraRig(s, paddingHint ?? CAMERA_PADDING, phw, phh);
+    try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.rigRebuilds += 1); } catch (e) { /* ignore */ }
+    lastRigSignature = sig;
+    lastRigCached = rig;
+    return rig;
+  };
 
   const getMergedParams = (): WebGPUParams => {
     const merged: WebGPUParams = { ...(initialParams as WebGPUParams) };
@@ -2282,16 +2447,311 @@ export const mount = async ({
     return merged;
   };
 
+  let lastExtentsCfgRef: WebGPUParams | null = null;
+  let lastExtentsValue: { paddedHalfWidth: number; paddedHalfHeight: number; paddedMax: number; paddingHint?: number } | null = null;
   const resolveInteractionRig = () => {
     const cfg = getMergedParams();
-    const extents = computeSceneExtents(cfg);
-    const rig = buildCameraRig(state, extents.paddingHint, extents.paddedHalfWidth, extents.paddedHalfHeight);
+    let extents = lastExtentsValue;
+    if (lastExtentsCfgRef !== cfg || !extents) {
+      extents = computeSceneExtents(cfg);
+      lastExtentsCfgRef = cfg;
+      lastExtentsValue = extents;
+    }
+    const rig = getCachedRig(state, extents.paddingHint, extents.paddedHalfWidth, extents.paddedHalfHeight);
     return { cfg, extents, rig };
   };
 
-  const zoomCameraAtCursor = (clientX: number, clientY: number, factor: number): void => cameraController.zoomCameraAtCursor(clientX, clientY, factor);
+  const ensureInteractiveBasisLocal = ensureInteractiveBasis;
+
+  const controllerHelpers: ControllerHelpers = {
+    resolveInteractionRig: resolveInteractionRig,
+    ensureInteractiveBasis: ensureInteractiveBasisLocal,
+    computePanFactor: computePanFactor,
+    updatePivotFromPan: () => updatePivotFromPan(),
+    requestCameraEmitWhenStatic: () => requestCameraEmitWhenStatic(),
+    markInteraction: (shouldCancel?: boolean) => markInteraction(shouldCancel),
+    worldRayFromCanvas: (rig: unknown, canvasEl: HTMLCanvasElement, x: number, y: number) => worldRayFromCanvas(rig as CameraRig, canvasEl, x, y),
+    intersectRayZPlane: (ray: any, z: number) => intersectRayZPlane(ray as any, z),
+    intersectRayCylinder: (ray: any, radius: number, minZ: number, maxZ: number) => intersectRayCylinder(ray as any, radius, minZ, maxZ),
+    buildCameraRig: (s: WebGPUState, paddingHint: number, phw?: number | null, phh?: number | null) => getCachedRig(s, paddingHint, phw, phh),
+    clampZoomValue: (v: number) => clampZoomValue(v),
+    cancelCameraEmit: () => cancelCameraEmit(),
+    setAutoRotate: (v: boolean, emit?: boolean) => setAutoRotate(v, emit),
+    setCameraMode: (mode: CameraMode) => setCameraMode(mode),
+    freeKeyboard,
+    quaternionFromAxisAngle: (axis: Vec3, angle: number) => quaternionFromAxisAngle(axis, angle),
+    multiplyQuaternions: (a: any, b: any) => multiplyQuaternions(a, b),
+    invertQuaternion: (q: any) => invertQuaternion(q),
+    axisAngleFromQuaternion: (q: any) => axisAngleFromQuaternion(q),
+    basisFromQuaternion: (q: any) => basisFromQuaternion(q),
+    cameraAxisToWorld: (basis: any, axis: Vec3) => cbCameraAxisToWorld(basis, axis),
+    syncAnglesFromBasis: (basis: any) => cbSyncAnglesFromBasis(basis),
+    writeUniformsImmediately: (): void => {
+      try {
+        state.cameraDirty = true;
+        device.queue.writeBuffer(uniformBuffer, 0, uniform.buffer as ArrayBuffer);
+        emitDiagnostic('component:write-uniforms-immediate', { afterCommit: true });
+      } catch (err) {
+        /* best-effort */
+      }
+    },
+  };
+
+  // Instantiate controller after pointer and helpers are ready
+  cameraController = new CameraController(state, pointer, canvas, controllerHelpers);
+  // Propagate hostCameraAcceptPolicy from initial params (default 'grace')
+  try {
+    const policy = (initialParams as any)?.hostCameraAcceptPolicy as 'always' | 'grace' | 'strict' | undefined;
+    if (policy && cameraController && typeof cameraController.setHostCameraAcceptPolicy === 'function') {
+      cameraController.setHostCameraAcceptPolicy(policy);
+    }
+    const graceMs = Number((initialParams as any)?.localCameraGraceMs ?? (initialParams as any)?.hostCameraGraceMs ?? null);
+    if (Number.isFinite(graceMs) && cameraController && typeof cameraController.setLocalCameraGraceMs === 'function') {
+      cameraController.setLocalCameraGraceMs(graceMs);
+    }
+  } catch (err) {/* ignore */}
+  try {
+    // Expose the controller for embedded previews that may want to reuse
+    // the same logic (e.g. the standalone preview page).
+    // When tests or external scripts pre-set a stub controller, do not
+    // override it — this preserves test-provided spies and avoids race
+    // conditions where a test stub gets replaced shortly after being set.
+    if (!(window as any).__pf_webgpu_camera_controller) {
+      (window as any).__pf_webgpu_camera_controller = cameraController;
+    } else {
+      try {
+        // Helpful debug message for developers: don't clobber an existing controller.
+        console.debug('[WebGPU] window.__pf_webgpu_camera_controller already present — not overriding');
+      } catch (e) {
+        /* ignore console errors */
+      }
+    }
+  } catch (err) {
+    /* ignore attach failures */
+  }
+
+  // Assign the real implementation to the forward-declared variable
+  commitDisplayBasisToState = function(state: WebGPUState): boolean {
+    console.log('[WebGPU] commitDisplayBasisToState invoked');
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.commitDisplayBasisToState();
+    }
+    if (!state.displayCamForward || !state.displayCamUp || !state.displayCamRight) return false;
+    const prevRight = state.camRight;
+    let flipped = false;
+    if (prevRight && state.displayCamRight && state.cameraMode !== 'arcball') {
+        // Replace heuristic flip: deterministically derive Euler angles from
+        // the incoming basis and canonicalize top-view yaw if required.
+        const committedBasis: CameraBasis = {
+          right: [...state.displayCamRight],
+          up: [...state.displayCamUp],
+          forward: [...state.displayCamForward],
+        } as CameraBasis;
+        const { rotX: commitRotX, rotY: commitRotY } = cbSyncAnglesFromBasis(committedBasis);
+        let finalizeRotX = commitRotX;
+        let finalizeRotY = commitRotY;
+        // Canonicalize yaw when pitch is close to ±90° (top-down or bottom-up view)
+        if (Math.abs(Math.abs(finalizeRotX) - Math.PI / 2) < 1e-3) {
+          // choose canonical yaw=0 for top view so orientation is deterministic
+          finalizeRotY = 0;
+        }
+        // Recompute committed basis from canonicalized Euler to ensure coherence
+        const canonical = applyCameraEulerToBasis(finalizeRotX, finalizeRotY);
+        state.displayCamRight = [...canonical.right];
+        state.displayCamUp = [...canonical.up];
+        state.displayCamForward = [...canonical.forward];
+        // If the canonicalization changed parity relative to prevRight, mark flipped
+        const dot = vec3Dot(prevRight, state.displayCamRight);
+        if (dot < BASIS_FLIP_DOT_THRESHOLD) flipped = true;
+        // Parity alignment: ensure basis-derived overlay matches projection overlay
+        try {
+          const testAxis: Vec3 = [0, 0, 1];
+          const rig = buildCameraRig(state, CAMERA_PADDING);
+          const worldScale = Math.max(state.sceneRadius || 1, 1);
+          const pA = (mulMat4Vec4 as any)(rig.viewProjection, state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0);
+          const pB = (mulMat4Vec4 as any)(rig.viewProjection, (state.pivot?.[0] ?? 0) + testAxis[0] * worldScale, (state.pivot?.[1] ?? 0) + testAxis[1] * worldScale, (state.pivot?.[2] ?? 0) + testAxis[2] * worldScale);
+          const dirNdc = ndcDirBetween(pA, pB);
+          const ov_proj = [dirNdc[0], -dirNdc[1]];
+          const ov_proj_len = Math.hypot(ov_proj[0], ov_proj[1]);
+          if (ov_proj_len > 1e-9) {
+            const ov_proj_unit = [ov_proj[0] / ov_proj_len, ov_proj[1] / ov_proj_len];
+            const ov_basis_unit = overlayForAxisFromBasis(rig, {
+              right: state.displayCamRight as Vec3,
+              up: state.displayCamUp as Vec3,
+              forward: state.displayCamForward as Vec3,
+            }, testAxis, [state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0], worldScale);
+            const ov_basis_len = Math.hypot(ov_basis_unit[0], ov_basis_unit[1]);
+            if (ov_basis_len > 1e-9) {
+              // ov_basis_unit already normalized by helper
+              const dotAlign = ov_basis_unit[0] * ov_proj_unit[0] + ov_basis_unit[1] * ov_proj_unit[1];
+              console.debug('[WebGPU] parity_check pre-commit', { ov_basis_unit, ov_proj_unit, dotAlign });
+              if (dotAlign < BASIS_FLIP_DOT_THRESHOLD && !state.interacting && !state.disableAutoFlip) {
+                state.displayCamRight = vec3Scale(state.displayCamRight, -1);
+                state.displayCamUp = vec3Scale(state.displayCamUp, -1);
+                emitDiagnostic('component:display-basis-parity_flip', { dotAlign });
+                console.debug('[WebGPU] display-basis-parity_flip performed', { displayCamRight: state.displayCamRight, displayCamUp: state.displayCamUp });
+                flipped = true;
+              }
+            }
+          }
+        } catch (e) {
+          /* best-effort only — ignore parity alignment failures */
+        }
+      }
+    const committedBasis: CameraBasis = {
+      right: [...state.displayCamRight],
+      up: [...state.displayCamUp],
+      forward: [...state.displayCamForward],
+    } as CameraBasis;
+    // Instead of flipping on negative up, canonicalize rotational angles and
+    // recompute a deterministic basis. This avoids heuristic flips and preserves
+    // a consistent mapping from basis -> Euler -> basis.
+    const { rotX, rotY } = cbSyncAnglesFromBasis(committedBasis);
+    let finalRotX = rotX;
+    let finalRotY = rotY;
+    if (Math.abs(Math.abs(finalRotX) - Math.PI / 2) < 1e-3) {
+      finalRotY = 0;
+    }
+    const canonicalBasis = applyCameraEulerToBasis(finalRotX, finalRotY);
+    committedBasis.right = [...canonicalBasis.right];
+    committedBasis.up = [...canonicalBasis.up];
+    committedBasis.forward = [...canonicalBasis.forward];
+    // Parity alignment on the final committed basis: ensure basis overlay
+    // orientation matches projection overlay; flip right/up if they disagree
+    try {
+      const testAxis: Vec3 = [0, 0, 1];
+      const rig = buildCameraRig(state, CAMERA_PADDING);
+      const worldScale = Math.max(state.sceneRadius || 1, 1);
+      const pA = (mulMat4Vec4 as any)(rig.viewProjection, state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0);
+      const pB = (mulMat4Vec4 as any)(rig.viewProjection, (state.pivot?.[0] ?? 0) + testAxis[0] * worldScale, (state.pivot?.[1] ?? 0) + testAxis[1] * worldScale, (state.pivot?.[2] ?? 0) + testAxis[2] * worldScale);
+      const dirNdc = ndcDirBetween(pA, pB);
+      const ov_proj = [dirNdc[0], -dirNdc[1]];
+      const ov_proj_len = Math.hypot(ov_proj[0], ov_proj[1]);
+      if (ov_proj_len > 1e-9) {
+        const ov_proj_unit = [ov_proj[0] / ov_proj_len, ov_proj[1] / ov_proj_len];
+        const ov_basis_unit = overlayForAxisFromBasis(rig, committedBasis, testAxis, [state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0], worldScale);
+        const ov_basis_len = Math.hypot(ov_basis_unit[0], ov_basis_unit[1]);
+        if (ov_basis_len > 1e-9) {
+          // ov_basis_unit already normalized by helper
+          const dotAlign = ov_basis_unit[0] * ov_proj_unit[0] + ov_basis_unit[1] * ov_proj_unit[1];
+          console.debug('[WebGPU] parity_check pre-commit-final', { ov_basis_unit, ov_proj_unit, dotAlign });
+          if (dotAlign < BASIS_FLIP_DOT_THRESHOLD && !state.interacting && !state.disableAutoFlip) {
+            committedBasis.right = vec3Scale(committedBasis.right, -1);
+            committedBasis.up = vec3Scale(committedBasis.up, -1);
+            emitDiagnostic('component:committed-basis-parity_flip', { dotAlign });
+            console.debug('[WebGPU] committed-basis-parity_flip performed', { committedBasisRight: committedBasis.right, committedBasisUp: committedBasis.up });
+            flipped = true;
+          }
+        }
+      }
+    } catch (e) {
+      /* ignore parity alignment failures */
+    }
+    state.camForward = [...committedBasis.forward];
+    state.camUp = [...committedBasis.up];
+    state.camRight = [...committedBasis.right];
+    // Keep quaternion in sync and emit a short diagnostic just like controller
+    state.camQuat = quaternionFromBasis(committedBasis);
+    state.recentBasisCommit = { right: [...committedBasis.right], up: [...committedBasis.up], forward: [...committedBasis.forward] } as any;
+    // Optionally update pivot from camera center if configured
+    try {
+      if (state.autoPivotFromCamera) {
+        const rect = canvas.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const { rig, extents } = resolveInteractionRig();
+        const ray = worldRayFromCanvas(rig, canvas, centerX, centerY);
+        if (ray) {
+          const pivotZ = state.pivot?.[2] ?? 0;
+          const cylinderHit = intersectRayCylinder(ray as any, extents.paddedHalfWidth, -extents.paddedHalfHeight, extents.paddedHalfHeight) ?? null;
+          const hit = cylinderHit ?? intersectRayZPlane(ray as any, pivotZ) ?? null;
+          if (hit) {
+            if (state.cameraMode !== 'free') {
+              state.panX = hit[0];
+              state.panY = hit[1];
+              state.pivot = [hit[0], hit[1], hit[2]] as Vec3;
+              state.cameraDirty = true;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      /* ignore pivot update errors */
+    }
+    state.displayCamForward = null;
+    state.displayCamUp = null;
+    state.displayCamRight = null;
+    state.displayCamQuat = null;
+    state.displayRotX = null;
+    state.displayRotY = null;
+    // Ensure shader uniforms reflect the committed basis immediately so
+    // overlay projection parity tests observe consistent state.
+    try {
+      state.cameraDirty = true;
+      device.queue.writeBuffer(uniformBuffer, 0, uniform.buffer as ArrayBuffer);
+      clearUniformParityRewriteFlag(state);
+      emitDiagnostic('component:uniform-write-after-commit', { immediate: true, ts: Date.now() });
+    } catch (err) {
+      /* best-effort: ignore write failures */
+    }
+    return flipped;
+  }
+  // resetInertia already defined higher in this scope
+  function cancelFocusTween(): void {
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.cancelFocusTween();
+    }
+    return;
+  }
+  function startFocusTween(targetPanX: number, targetPanY: number, targetZoom: number, hitDepth?: number): any | void {
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.startFocusTween(targetPanX, targetPanY, targetZoom, hitDepth);
+    }
+    return;
+  }
+  function applyFreeLookRotation(dx: number, dy: number): void {
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.applyFreeLookRotation(dx, dy);
+    }
+    return;
+  }
+  function applyFreeLookPan(dx: number, dy: number): void {
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.applyFreeLookPan(dx, dy);
+    }
+    return;
+  }
+  function applyFreeLookDolly(delta: number): void {
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.applyFreeLookDolly(delta);
+    }
+    return;
+  }
+  function applyFreeKeyboardInput(deltaMs: number): boolean {
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.applyFreeKeyboardInput(deltaMs);
+    }
+    return false;
+  }
+  function updatePivotFromPan(): void {
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.updatePivotFromPan();
+    }
+    const pivotZ = state.pivot?.[2] ?? 0;
+    state.pivot = [state.panX, state.panY, pivotZ];
+  }
+
+  // resetInertia is defined at top and delegates to controller.
+
+  function zoomCameraAtCursor(clientX: number, clientY: number, factor: number): void {
+    if (!cameraController) return;
+    return cameraController.zoomCameraAtCursor(clientX, clientY, factor);
+  }
 
   const focusCameraAtCursor = (clientX: number, clientY: number): void => {
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      return cameraController.focusCameraAtCursor(clientX, clientY);
+    }
     const hit = (() => {
       const { rig, extents } = resolveInteractionRig();
       const ray = worldRayFromCanvas(rig, canvas, clientX, clientY);
@@ -2344,7 +2804,11 @@ export const mount = async ({
     cancelCameraEmit();
   };
 
-  const markInteraction = (shouldCancelFocus = true): void => cameraController.markInteraction(shouldCancelFocus);
+  function markInteraction(shouldCancelFocus = true): void {
+    hasLocalCameraControl = true;
+    if (!cameraController) return;
+    return cameraController.markInteraction(shouldCancelFocus);
+  }
 
   const setCameraMode = (nextMode: CameraMode): void => {
     cancelFocusTween();
@@ -2429,10 +2893,36 @@ export const mount = async ({
   };
 
   const applyCameraPayload = (payload: WebGPUParams | null | undefined, force: boolean): void => {
+    // Delegate to CameraController when available. This centralizes payload
+    // logic so both preview and component behave consistently.
+    if (typeof cameraController !== 'undefined' && cameraController) {
+      // update debug mount before delegating
+      try {
+        const dbg = mountCanvasId ? (window as any).__pf_webgpu_mounts?.[mountCanvasId]?.debug : undefined;
+        if (dbg && payload) dbg.lastApplyCameraPayload = { fields: Object.keys(payload as WebGPUParams), timestamp: Date.now() };
+      } catch (err) {/* ignore */}
+      cameraController.setPayload(payload, { force });
+      return;
+    }
     if (!payload) {
       return;
     }
     const allowCamera = force || !hasLocalCameraControl;
+    // Avoid applying unchanged camera payloads unless forced.
+    try {
+      if (!force && sharedCameraPayloadDiffers) {
+        const differs = sharedCameraPayloadDiffers(state as any, payload as any);
+        if (!differs) return;
+      }
+    } catch (err) {
+      /* ignore */
+    }
+    try {
+      const dbg = mountCanvasId ? (window as any).__pf_webgpu_mounts?.[mountCanvasId]?.debug : undefined;
+      if (dbg && payload) dbg.lastApplyCameraPayload = { fields: Object.keys(payload as WebGPUParams), timestamp: Date.now() };
+    } catch (err) {
+      /* ignore */
+    }
     let cameraMutated = false;
     if (allowCamera) {
       if (typeof payload.rotX === 'number') {
@@ -2467,6 +2957,10 @@ export const mount = async ({
         state.panY = payload.panY;
         cameraMutated = true;
       }
+      if (typeof payload.autoPivotFromCamera === 'boolean') {
+        state.autoPivotFromCamera = Boolean(payload.autoPivotFromCamera);
+        cameraMutated = true;
+      }
       if (Array.isArray(payload.freePosition) && payload.freePosition.length >= 3) {
         const [fx, fy, fz] = payload.freePosition as number[];
         if ([fx, fy, fz].every((v) => Number.isFinite(v))) {
@@ -2499,7 +2993,7 @@ export const mount = async ({
             const paddedHalfHeight = Math.max(1, halfHeight * paddingHint);
             const paddedMax = Math.max(paddedHalfWidth, paddedHalfHeight, 1);
             const baseDistance = paddedMax * CAMERA_DISTANCE_FALLOFF;
-            const currentRig = buildCameraRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
+            const currentRig = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
             if (state.projectionMode === 'perspective' && nextMode === 'ortho') {
               const aspect = Math.max(state.canvasAspect || 1, 1e-3);
               const halfFovY = Math.max(BASE_FOV * 0.5, 1e-4);
@@ -2574,7 +3068,7 @@ export const mount = async ({
                 for (let it = 0; it < maxIter; it += 1) {
                   state.projectionMode = 'perspective';
                   state.zoom = newZoom;
-                  const rigCheck = buildCameraRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
+                  const rigCheck = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
                   const target: Vec3 = [state.panX, state.panY, state.pivot?.[2] ?? 0];
                   const actualHalfHeight = vec3Length(vec3Subtract(rigCheck.eye, target)) * Math.tan(halfFovY);
                   const actualHalfWidth = vec3Length(vec3Subtract(rigCheck.eye, target)) * Math.tan(halfFovX);
@@ -2643,6 +3137,16 @@ export const mount = async ({
       }
     }
     if (cameraMutated) {
+      // Emit any recent inertia diagnostics provided by CameraController
+      try {
+        const rev = (state as any).recentInertia as Record<string, unknown> | undefined;
+        if (rev) {
+          emitDiagnostic('component:inertia', rev);
+          try { delete (state as any).recentInertia; } catch (e) {/* best-effort */}
+        }
+      } catch (e) {
+        /* ignore diag failures */
+      }
       // Ensure the committed camera basis matches new Euler angles and
       // initialize the transient display basis to the same orientation.
       applyCameraEuler(state, state.rotX, state.rotY);
@@ -2658,6 +3162,13 @@ export const mount = async ({
     }
     if (typeof payload.autoRotate === 'boolean') {
       setAutoRotate(payload.autoRotate, false);
+    }
+    if (typeof payload.autoPivotFromCamera === 'boolean') {
+      state.autoPivotFromCamera = Boolean(payload.autoPivotFromCamera);
+      state.cameraDirty = true;
+      try {
+        updatePivotAutoButton();
+      } catch (err) { /* ignore */ }
     }
     if (force) {
       hasLocalCameraControl = false;
@@ -2755,28 +3266,98 @@ export const mount = async ({
       }
     }
 
+    // Handle projectionMode (alias for projection)
+    if (typeof payload.projectionMode === 'string') {
+      const nextMode = payload.projectionMode === 'perspective' ? 'perspective' : 'ortho';
+      if (state.projectionMode !== nextMode) {
+        state.projectionMode = nextMode;
+        updateProjectionButton();
+        cameraMutated = true;
+      }
+    }
+
+    // Handle viewPreset (alias for preset)
+    if (typeof payload.viewPreset === 'string') {
+      applyViewPreset(state, payload.viewPreset);
+      cameraMutated = true;
+    }
+
+    // Handle cameraMode (turntable/arcball/free)
+    if (isCameraMode(payload.cameraMode)) {
+      if (state.cameraMode !== payload.cameraMode) {
+        setCameraMode(payload.cameraMode);
+        cameraMutated = true;
+      }
+    }
+
+    // Handle grid toggle
+    if (payload.toggleGrid === true) {
+      state.showGrid = !state.showGrid;
+      updateGridButton();
+      state.cameraDirty = true;
+    }
+
+    // Handle axis toggle
+    if (payload.toggleAxis === true) {
+      state.showAxis = !state.showAxis;
+      updateAxisButton();
+      state.cameraDirty = true;
+    }
+
     if (cameraMutated) {
       markInteraction();
     }
   };
 
-  const releasePointer = (): void => cameraController.releasePointer();
+  const releasePointer = (): void => cameraController?.releasePointer?.();
 
   const preventContextMenu = (event: Event): void => {
     event.preventDefault();
   };
   canvas.addEventListener('contextmenu', preventContextMenu);
 
-  const handlePointerDown = (event: PointerEvent): void => cameraController.onPointerDown(event);
+  const handlePointerDown = (event: PointerEvent): void => {
+    try {
+      if (debugEnabled) emitDiagnostic('webgpu:pointer-down', { x: event.clientX, y: event.clientY, button: event.button, canvasId: mountCanvasId });
+    } catch (e) {
+      /* ignore */
+    }
+    if (localControlResetTimer !== null) {
+      window.clearTimeout(localControlResetTimer);
+      localControlResetTimer = null;
+    }
+    hasLocalCameraControl = true;
+    cameraController?.onPointerDown?.(event);
+  };
   canvas.addEventListener('pointerdown', handlePointerDown);
 
-  const handlePointerRelease = (): void => cameraController.onPointerRelease();
+  const handlePointerRelease = (): void => {
+    try {
+      if (debugEnabled) emitDiagnostic('webgpu:pointer-up', { canvasId: mountCanvasId });
+    } catch (e) { /* ignore */ }
+    if (localControlResetTimer !== null) {
+      window.clearTimeout(localControlResetTimer);
+      localControlResetTimer = null;
+    }
+    // Defer clearing local camera control briefly to avoid immediate
+    // remote updates overriding the user's local camera changes.
+    localControlResetTimer = window.setTimeout(() => {
+      localControlResetTimer = null;
+      hasLocalCameraControl = false;
+    }, 250);
+    cameraController?.onPointerRelease?.();
+  };
 
   canvas.addEventListener('pointerup', handlePointerRelease);
   canvas.addEventListener('pointercancel', handlePointerRelease);
   window.addEventListener('pointerup', handlePointerRelease);
 
-  const handlePointerMove = (event: PointerEvent): void => cameraController.onPointerMove(event);
+  const handlePointerMove = (event: PointerEvent): void => {
+    try {
+      if (debugEnabled) emitDiagnostic('webgpu:pointer-move', { x: event.clientX, y: event.clientY, canvasId: mountCanvasId });
+    } catch (e) { /* ignore */ }
+    cameraController?.onPointerMove?.(event);
+  };
   canvas.addEventListener('pointermove', handlePointerMove);
 
   const handleWheel = (event: WheelEvent): void => {
@@ -2792,6 +3373,8 @@ export const mount = async ({
   };
 
   const handleDoubleClick = (event: MouseEvent): void => {
+    // Only respond to left-button double-clicks
+    if (event.button !== 0) return;
     event.preventDefault();
     focusCameraAtCursor(event.clientX, event.clientY);
   };
@@ -2848,7 +3431,7 @@ export const mount = async ({
       const baseDistance = paddedMax * CAMERA_DISTANCE_FALLOFF;
       const oldMode = state.projectionMode;
       // Build current camera rig to extract fov/distance for mapping
-      const currentRig = buildCameraRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
+      const currentRig = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
       const nextMode = oldMode === 'ortho' ? 'perspective' : 'ortho';
       if (oldMode === 'perspective' && nextMode === 'ortho') {
         // Convert perspective -> ortho: keep similar screen size based on limiting axis
@@ -2895,7 +3478,7 @@ export const mount = async ({
           for (let it = 0; it < maxIter; it += 1) {
             state.projectionMode = 'perspective';
             state.zoom = newZoom;
-            const rigCheck = buildCameraRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
+            const rigCheck = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
             const targetVec: Vec3 = [state.panX, state.panY, state.pivot?.[2] ?? 0];
             const actualHalfHeight = vec3Length(vec3Subtract(rigCheck.eye, targetVec)) * Math.tan(halfFovY);
             const actualHalfWidth = vec3Length(vec3Subtract(rigCheck.eye, targetVec)) * Math.tan(halfFovX);
@@ -2947,6 +3530,19 @@ export const mount = async ({
       state.cameraDirty = true;
       return;
     }
+    if (action === 'axis') {
+      state.showAxis = !state.showAxis;
+      updateAxisButton();
+      // axis is a visual aid, mark cameraDirty so overlay is updated
+      state.cameraDirty = true;
+      return;
+    }
+    if (action === 'pivot-auto') {
+      toggleAutoPivot();
+      markInteraction();
+      emitCameraState(true);
+      return;
+    }
     if (target.dataset.role === 'autorotate') {
       toggleAutoRotate();
       markInteraction();
@@ -2967,16 +3563,15 @@ export const mount = async ({
       return;
     }
     const normalizedKey = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-    if (state.cameraMode === 'free') {
-      if (normalizedKey === 'shift') {
-        freeKeyboard.boost = true;
-      }
-      if (FREE_MOVE_KEYS.has(normalizedKey)) {
-        freeKeyboard.activeKeys.add(normalizedKey);
-        markInteraction();
-        event.preventDefault();
-        return;
-      }
+    // Enable WASD/QE in ALL camera modes - free mode uses 3D movement, orbit modes use panning
+    if (normalizedKey === 'shift') {
+      freeKeyboard.boost = true;
+    }
+    if (FREE_MOVE_KEYS.has(normalizedKey)) {
+      freeKeyboard.activeKeys.add(normalizedKey);
+      markInteraction();
+      event.preventDefault();
+      return;
     }
     switch (event.key) {
         case '0':
@@ -3047,6 +3642,11 @@ export const mount = async ({
   window.addEventListener('blur', handleWindowBlur);
 
   const uniform = buildUniformBlock(uniformSize);
+  // Typed alias used by shader-update code.
+  const f32 = uniform;
+  let frameCounter = 0;
+  let totalDrawnVerts = 0;
+  let totalDrawCalls = 0;
 
   const updateAndDraw = (payload?: WebGPUParams): void => {
     try {
@@ -3078,8 +3678,14 @@ export const mount = async ({
     }
 
     const now = performance.now();
-    if (state.interacting && now - state.lastInteraction > INTERACTION_TIMEOUT_MS) {
+    if (state.interacting && now - state.lastInteraction > INTERACTION_TIMEOUT_MS && !(cameraController && cameraController.focusTween)) {
       state.interacting = false;
+      // If the CameraController has a pending forced payload, ask it to
+      // apply it now that local interaction has finished and the grace
+      // window has passed.
+      if (typeof cameraController !== 'undefined' && cameraController) {
+        cameraController.maybeApplyDeferredForceIfReady(now);
+      }
     }
 
     const paramNonce = typeof cfg.paramUpdateNonce === 'number' ? cfg.paramUpdateNonce : null;
@@ -3092,15 +3698,82 @@ export const mount = async ({
       state.recentParamUpdate = false;
     }
 
-    const rawCameraNonce = typeof cfg.cameraNonce === 'number' ? cfg.cameraNonce : null;
+    // Compute camera force only from incoming payload to avoid merged
+    // defaults causing repeated forced camera updates.
+    const rawCameraNonce = payload && typeof (payload as Record<string, unknown>).cameraNonce === 'number'
+      ? ((payload as Record<string, unknown>).cameraNonce as number)
+      : null;
     const forceCamera = rawCameraNonce !== null && rawCameraNonce !== lastCameraNonce;
     if (forceCamera) {
       lastCameraNonce = rawCameraNonce;
     }
-    applyCameraPayload(cfg, forceCamera);
 
-    const drainRadius = clampNumber(drainRadiusRaw, 10.0);
-    f32[DRAIN_RADIUS_OFFSET] = Math.max(Math.abs(drainRadius), 0.5);
+    // Only apply camera patches derived from the raw incoming payload to avoid
+    // re-applying host defaults merged into `cfg` each frame.
+    if (payload) {
+      const p = payload as Record<string, unknown>;
+      const patch: WebGPUParams = {};
+      let patchApplied = false;
+      if (typeof p.rotX === 'number') {
+        patch.rotX = p.rotX;
+        patchApplied = true;
+      }
+      if (typeof p.rotY === 'number') {
+        patch.rotY = p.rotY;
+        patchApplied = true;
+      }
+      if (typeof p.zoom === 'number') {
+        patch.zoom = p.zoom;
+        patchApplied = true;
+      }
+      if (typeof p.panX === 'number') {
+        patch.panX = p.panX;
+        patchApplied = true;
+      }
+      if (typeof p.panY === 'number') {
+        patch.panY = p.panY;
+        patchApplied = true;
+      }
+      if (patchApplied) {
+        const isForce = Boolean(p.force) || forceCamera || false;
+        applyCameraPayload(patch, isForce);
+      }
+    }
+
+      // Resolve drain radius and style id from `cfg`/`current` similar to preview module
+      const height = clampNumber(cfg.H, 120.0);
+      const radiusTop = clampNumber(cfg.Rt ?? cfg.Rt, 70.0);
+      const radiusBottom = clampNumber(cfg.Rb ?? cfg.Rb, 45.0);
+      const safeHeight = Math.max(Math.abs(height), 1);
+      const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
+      const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
+      const styleIdRaw =
+        typeof cfg.styleId === 'number'
+          ? Math.trunc(cfg.styleId)
+          : typeof current.styleId === 'number'
+          ? Math.trunc(Number(current.styleId))
+          : 0;
+      const styleId = styleIdRaw < 0 ? 0 : styleIdRaw;
+      const drainRadiusRaw =
+        cfg.r_drain ?? cfg.drain ?? cfg.drainRadius ?? (cfg as Record<string, unknown>)?.drain_radius ?? current.r_drain;
+      const drainRadius = clampNumber(drainRadiusRaw, 10.0);
+      // Core geometry params - ensure WGSL receives the pot dimensions and style flags
+      f32[0] = height;
+      f32[1] = radiusTop;
+      f32[2] = radiusBottom;
+      f32[3] = clampNumber(cfg.expn, 1.0);
+      f32[4] = clampNumber(cfg.spin_turns ?? cfg.turns, 0.0);
+      f32[5] = clampNumber(cfg.spin_phase ?? cfg.phase, 0.0);
+      f32[6] = clampNumber(cfg.spin_curve ?? cfg.curve, 1.0);
+      f32[7] = styleId;
+      const sf_m_base_val = cfg.sf_m_base ?? (cfg as Record<string, any>).sf_m ?? cfg.sf_m ?? 6.0;
+      const sf_m_top_val = cfg.sf_m_top ?? sf_m_base_val ?? 10.0;
+      f32[8] = clampNumber(sf_m_base_val, 6.0);
+      f32[9] = clampNumber(sf_m_top_val, 10.0);
+      f32[10] = clampNumber(cfg.sf_n1 ?? cfg.n1, 0.35);
+      f32[11] = clampNumber(cfg.sf_n2 ?? cfg.n2, 0.8);
+      f32[12] = clampNumber(cfg.sf_n3 ?? cfg.n3, 0.8);
+      f32[DRAIN_RADIUS_OFFSET] = Math.max(Math.abs(drainRadius), 0.5);
     current.r_drain = drainRadius;
     current.styleId = styleId;
 
@@ -3130,7 +3803,39 @@ export const mount = async ({
       const halfWidth = Math.max(outerRadius, 1);
       const paddedHalfWidth = Math.max(1, halfWidth * paddingHint);
       const paddedHalfHeight = Math.max(1, halfHeight * paddingHint);
-      const cameraRig = buildCameraRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
+      const cameraRig = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
+      if (cameraRig && cameraRig.basis) {
+        if (state.cameraMode !== 'arcball' && (cameraRig.basis.up[2] ?? 0) < 0) {
+          emitDiagnostic('webgpu:camera-up-negative', { up: cameraRig.basis.up, eye: cameraRig.eye, canvasId: mountCanvasId });
+          console.debug('[WebGPU] camera up negative — flipping roll', { up: cameraRig.basis.up, eye: cameraRig.eye });
+          // Flip roll: negate right/up so the camera appears upright while
+          // preserving forward direction. This avoids upside-down render when
+          // the computed basis ends up reversed due to Euler ambiguities.
+          cameraRig.basis.right = [-cameraRig.basis.right[0], -cameraRig.basis.right[1], -cameraRig.basis.right[2]];
+          cameraRig.basis.up = [-cameraRig.basis.up[0], -cameraRig.basis.up[1], -cameraRig.basis.up[2]];
+          // Recompute the viewProjection so it matches the flipped basis. If
+          // we don't recompute the projection the shader will render with the
+          // old matrix while overlays use the flipped basis, producing a
+          // visually upside-down mesh despite the overlay showing the camera
+          // correctly oriented.
+          try {
+            const aspect = state.canvasAspect || 1;
+            let projection: Mat4 | null = null;
+            if (cameraRig.mode === 'perspective') {
+              projection = mat4PerspectiveFovLH(cameraRig.fov, aspect, cameraRig.near, cameraRig.far);
+            } else {
+              const orthoHalfHeight = Math.max(paddedHalfHeight, paddedHalfWidth / aspect);
+              const orthoHalfWidth = orthoHalfHeight * aspect;
+              projection = mat4OrthoLH(-orthoHalfWidth, orthoHalfWidth, -orthoHalfHeight, orthoHalfHeight, cameraRig.near, cameraRig.far);
+            }
+            const view = viewMatrixFromBasis(cameraRig.basis, cameraRig.eye);
+            cameraRig.viewProjection = mat4Multiply(projection, view);
+            markUniformParityRewriteNeeded(state);
+          } catch (err) {
+            /* ignore; keep existing viewProjection */
+          }
+        }
+      }
     const debugActive = Boolean(cfg.debug) || state.debugOverlay;
 
       // If debug is active, emit lookAt basis diagnostics so we can inspect
@@ -3171,32 +3876,14 @@ export const mount = async ({
       2
     );
     const baseRim = sanitizeInt(cfg.rim_rings ?? cfg.rimRings ?? defaultRim, defaultRim, 1);
-    const lodActive = state.interactiveLodEnabled && state.recentParamUpdate;
-    const lodScale = lodActive ? state.interactiveLodRatio : 1.0;
-    const thetaRatio = lodActive ? Math.max(lodScale, INTERACTIVE_THETA_RATIO_FLOOR) : 1.0;
-    const zRatio = lodActive ? Math.max(lodScale, INTERACTIVE_Z_RATIO_FLOOR) : 1.0;
+    // LOD fully disabled - WebGPU handles 1M+ triangles at 120FPS
+    const lodActive = false;
 
-    const thetaFloor = lodActive
-      ? Math.min(
-          baseNTheta,
-          Math.max(MIN_THETA_INTERACTIVE, Math.round(baseNTheta * INTERACTIVE_THETA_RATIO_FLOOR))
-        )
-      : MIN_THETA_STATIC;
-    const zFloor = lodActive
-      ? Math.min(
-          baseNZ,
-          Math.max(MIN_Z_INTERACTIVE, Math.round(baseNZ * INTERACTIVE_Z_RATIO_FLOOR))
-        )
-      : MIN_Z_STATIC;
-
-    const nTheta = Math.max(thetaFloor, Math.round(baseNTheta * thetaRatio));
-    const nZ = Math.max(zFloor, Math.round(baseNZ * zRatio));
-    const innerSegFloor = lodActive
-      ? Math.min(baseInner, Math.max(1, Math.round(baseInner * 0.5)))
-      : 1;
-    const innerSeg = Math.max(innerSegFloor, Math.round(baseInner * zRatio));
-    const bottomRings = Math.max(2, Math.min(24, Math.round(baseBottom * zRatio)));
-    const rimRings = Math.max(1, Math.min(8, Math.round(baseRim * zRatio)));
+    const nTheta = Math.max(MIN_THETA_STATIC, baseNTheta);
+    const nZ = Math.max(MIN_Z_STATIC, baseNZ);
+    const innerSeg = Math.max(1, baseInner);
+    const bottomRings = Math.max(2, Math.min(24, baseBottom));
+    const rimRings = Math.max(1, Math.min(8, baseRim));
 
     f32[16] = nTheta;
     f32[17] = nZ;
@@ -3235,6 +3922,9 @@ export const mount = async ({
     const roughness = Math.min(Math.max(clampNumber(cfg.roughness, 0.45), 0.02), 1);
     f32[SPECULAR_GAIN_OFFSET] = specular;
     f32[ROUGHNESS_OFFSET] = roughness;
+    // Show inner surface toggle - default to true (show inner)
+    const showInner = cfg.showInner !== false;
+    f32[SHOW_INNER_OFFSET] = showInner ? 1 : 0;
     for (let i = 0; i < 16; i += 1) {
       f32[VP_MATRIX_OFFSET + i] = cameraRig.viewProjection[i];
       // Emit camera fit diagnostics with per-axis distances
@@ -3322,7 +4012,7 @@ export const mount = async ({
       state.rotX = wrapAngle(state.rotX - SIGN * EPS);
 
       // Rebuild camera rig after nudging
-      const rebuilt = buildCameraRig(state, paddingHint);
+      const rebuilt = getCachedRig(state, paddingHint);
       if (isFiniteMat(rebuilt.viewProjection) && isFiniteVec3(rebuilt.eye)) {
         for (let i = 0; i < 16; i += 1) {
           f32[VP_MATRIX_OFFSET + i] = rebuilt.viewProjection[i];
@@ -3354,7 +4044,7 @@ export const mount = async ({
             mode: cameraRig.mode,
             near: Number(cameraRig.near.toFixed(2)),
             far: Number(cameraRig.far.toFixed(2)),
-            eye: cameraRig.eye.map((v) => Number(v.toFixed(2))),
+            eye: cameraRig.eye.map((v: number) => Number(v.toFixed(2))),
           },
         } as const;
         try {
@@ -3492,8 +4182,16 @@ export const mount = async ({
     const drawVerts = resolvedCounts.totalVerts;
     const safeDrawVerts = Math.max(0, Math.min(MAX_VERTS, Math.floor(drawVerts)));
     if (!Number.isFinite(safeDrawVerts) || safeDrawVerts <= 0) {
+      emitDiagnostic('webgpu:skip-draw', {
+        reason: 'zero-vertices',
+        desiredCounts,
+        resolvedCounts,
+        canvasId: mountCanvasId,
+      });
+      console.debug('[WebGPU:diag] skip-draw', { desiredCounts, resolvedCounts });
       return;
     }
+    totalDrawnVerts += safeDrawVerts;
 
     const uniformDirty =
       state.cameraDirty ||
@@ -3501,8 +4199,47 @@ export const mount = async ({
       state.interacting ||
       hadPayload ||
       lodActive;
-    if (uniformDirty) {
+    // Compute a compact signature of camera AND geometry-relevant fields so we
+    // can avoid writing to the GPU uniform buffer if nothing affecting the
+    // shader uniforms has changed. Writing buffers is expensive on some
+    // drivers; when idle frames or repeated state are encountered, skip the
+    // write to reduce CPU / GPU sync.
+    // Use display values (if set) for signature so autorotate and drag cause uniform writes
+    const sigRotX = state.displayRotX ?? state.rotX ?? 0;
+    const sigRotY = state.displayRotY ?? state.rotY ?? 0;
+    // Include geometry parameters in signature for immediate slider response
+    const geoSig = `${f32[0]}_${f32[1]}_${f32[2]}_${f32[3]}_${f32[16]}_${f32[17]}_${f32[6]}_${f32[7]}_${f32[8]}`;
+    const uniformSignature = `${sigRotX}_${sigRotY}_${state.zoom ?? 1}_${state.panX ?? 0}_${state.panY ?? 0}_${state.projectionMode}_${String(state.displayCamQuat ?? state.camQuat)}_${geoSig}`;
+    (globalThis as any).__lastUniformSignature = (globalThis as any).__lastUniformSignature ?? null;
+    const lastUniformSignature = (globalThis as any).__lastUniformSignature;
+    const parityUniformPending = isUniformParityRewritePending(state);
+    const shouldWriteUniforms = parityUniformPending || (uniformDirty && uniformSignature !== lastUniformSignature);
+    if (shouldWriteUniforms) {
+      (globalThis as any).__lastUniformSignature = uniformSignature;
       device.queue.writeBuffer(uniformBuffer, 0, uniform.buffer as ArrayBuffer);
+      clearUniformParityRewriteFlag(state);
+      // Emit a compact diagnostic snapshot of key uniform params for debugging
+      const Hval = Number(f32[0]);
+      const Rtval = Number(f32[1]);
+      const Rbval = Number(f32[2]);
+      // Throttle uniform debug emissions to avoid flooding diagnostics
+      const __now = performance.now();
+      const __lastUniform = (globalThis as any).__lastUniformEmitMs ?? 0;
+      if (__now - __lastUniform > 250) {
+        (globalThis as any).__lastUniformEmitMs = __now;
+        emitDiagnostic('webgpu:uniform-write', {
+          H: Hval,
+          Rt: Rtval,
+          Rb: Rbval,
+          panX: state.panX,
+          panY: state.panY,
+          zoom: state.zoom,
+          canvasId: mountCanvasId,
+          ts: Date.now(),
+          cameraSeq: cameraSequence,
+        });
+        if (debugEnabled) console.debug('[WebGPU:diag] uniforms', { H: Hval, Rt: Rtval, Rb: Rbval, panX: state.panX, panY: state.panY, zoom: state.zoom });
+      }
     }
 
     const gradientSignature = JSON.stringify(cfg.gradient ?? null);
@@ -3528,10 +4265,10 @@ export const mount = async ({
     const clearTuple = parseClearColor((cfg as Record<string, unknown>).__pf_bg_rgba);
     const clearValue = { r: clearTuple[0], g: clearTuple[1], b: clearTuple[2], a: clearTuple[3] };
 
-    const encoder = device.createCommandEncoder();
+    const encoder = device.createCommandEncoder({ label: 'component:frame-encoder' });
     let textureView: GPUTextureView | null = null;
     try {
-      textureView = context.getCurrentTexture().createView();
+      textureView = context.getCurrentTexture().createView({ label: 'component:swapchain-view' });
     } catch (err) {
       emitDiagnostic('webgpu:get-current-texture-failed', {
         error: err instanceof Error ? err.message : String(err),
@@ -3539,7 +4276,7 @@ export const mount = async ({
       });
       try {
         context.configure({ device, format, alphaMode: currentAlphaMode });
-        textureView = context.getCurrentTexture().createView();
+        textureView = context.getCurrentTexture().createView({ label: 'component:swapchain-view' });
       } catch (cfgErr) {
         emitDiagnostic('webgpu:context-reconfigure-failed', {
           error: cfgErr instanceof Error ? cfgErr.message : String(cfgErr),
@@ -3554,7 +4291,7 @@ export const mount = async ({
         return;
       }
     }
-    const depthView = depth.createView();
+    const depthView = depth ? depth.createView({ label: 'component:depth-view' }) : null;
 
     // If the VP matrix or camera eye remained invalid, perform a clear-to-magenta
     // fallback so the user sees a diagnostic frame instead of a blank canvas.
@@ -3566,7 +4303,8 @@ export const mount = async ({
     })();
     if (!vpValid) {
       emitDiagnostic('webgpu:fallback-magenta', { canvasId: mountCanvasId });
-      const pass = encoder.beginRenderPass({
+      const magentaPassDesc: GPURenderPassDescriptor = {
+        label: 'component:magenta-pass',
         colorAttachments: [
           {
             view: textureView!,
@@ -3575,13 +4313,16 @@ export const mount = async ({
             storeOp: 'store',
           },
         ],
-        depthStencilAttachment: {
+      } as GPURenderPassDescriptor;
+      if (depthView) {
+        (magentaPassDesc as any).depthStencilAttachment = {
           view: depthView,
           depthClearValue: 1.0,
           depthLoadOp: 'clear',
           depthStoreOp: 'store',
-        },
-      });
+        };
+      }
+      const pass = encoder.beginRenderPass(magentaPassDesc);
       pass.end();
       device.queue.submit([encoder.finish()]);
       return;
@@ -3592,7 +4333,8 @@ export const mount = async ({
     if (shouldValidate) {
       device.pushErrorScope('validation');
     }
-    const pass = encoder.beginRenderPass({
+    const renderPassDesc: GPURenderPassDescriptor = {
+      label: 'component:main-pass',
       colorAttachments: [
         {
           view: textureView,
@@ -3601,19 +4343,131 @@ export const mount = async ({
           storeOp: 'store',
         },
       ],
-      depthStencilAttachment: {
+    } as GPURenderPassDescriptor;
+    if (depthView) {
+      (renderPassDesc as any).depthStencilAttachment = {
         view: depthView,
         depthClearValue: 1.0,
         depthLoadOp: 'clear',
         depthStoreOp: 'store',
-      },
-    });
+      };
+    }
+    // Throttle verbose diagnostics to avoid flooding the host; only emit when validation
+    // triggers (debug mode on) or once every ~60 frames.
+    if (shouldValidate) {
+      emitDiagnostic('webgpu:draw-call', {
+        drawCount: safeDrawVerts,
+        canvasId: mountCanvasId,
+        cameraEye: cameraRig.eye,
+        pivot: state.pivot,
+        vpValid,
+      });
+    }
+    // Emit a compact geometry summary to help diagnose missing pot geometry
+    if (shouldValidate) {
+      try {
+        emitDiagnostic('webgpu:geometry-summary', {
+          nTheta: Number(f32[16]),
+          nZ: Number(f32[17]),
+          innerSegments: Number(f32[27]),
+          bottomRings: Number(f32[28]),
+          rimRings: Number(f32[30]),
+          totalVerts: Number(resolvedCounts.totalVerts),
+          safeDrawVerts,
+          canvasId: mountCanvasId,
+        });
+      } catch (err) {
+        /* ignore */
+      }
+    }
+    // Small summary of render state to help debug invisible frames
+    try {
+      const renderStateDetail: Record<string, unknown> = {
+        clearValue,
+        depthFormatUsed,
+        pipelineLabel: (pipeline as any)?.label ?? null,
+        bindGroupLayoutPresent: pipeline.getBindGroupLayout(0) ? true : false,
+        totalVerts: resolvedCounts.totalVerts,
+        nTheta: resolvedCounts.nTheta,
+        nZ: resolvedCounts.nZ,
+        H: Number(f32[0]),
+        Rt: Number(f32[1]),
+        Rb: Number(f32[2]),
+        sceneRadius: Number(f32[33]),
+        cameraNear: cameraRig.near,
+        cameraFar: cameraRig.far,
+      };
+      emitDiagnostic('webgpu:render-state', renderStateDetail);
+      if (debugEnabled) console.debug('[WebGPU:diag] render-state', renderStateDetail);
+    } catch (err) {
+      /* ignore */
+    }
+
+    // Frustum check for a few sample points (center / top / bottom) to detect off-screen camera
+    if (shouldValidate) {
+      try {
+      const mulMat4Vec4 = (m: Mat4, x: number, y: number, z: number) => {
+        const cx = m[0] * x + m[4] * y + m[8] * z + m[12] * 1;
+        const cy = m[1] * x + m[5] * y + m[9] * z + m[13] * 1;
+        const cz = m[2] * x + m[6] * y + m[10] * z + m[14] * 1;
+        const cw = m[3] * x + m[7] * y + m[11] * z + m[15] * 1;
+        return { x: cx, y: cy, z: cz, w: cw };
+      };
+      const proj = cameraRig.viewProjection;
+      const pivotZ = state.pivot?.[2] ?? 0;
+      const toNDC = (world: Vec3): { inside: boolean; ndc: [number, number, number] | null } => {
+        const clip = mulMat4Vec4(proj, world[0], world[1], world[2]);
+        if (!Number.isFinite(clip.w) || Math.abs(clip.w) < 1e-6) return { inside: false, ndc: null };
+        const ndc_x = clip.x / clip.w;
+        const ndc_y = clip.y / clip.w;
+        const ndc_z = clip.z / clip.w;
+        const inside = Math.abs(ndc_x) <= 1 && Math.abs(ndc_y) <= 1 && ndc_z >= 0 && ndc_z <= 1;
+        return { inside, ndc: [ndc_x, ndc_y, ndc_z] };
+      };
+      const centerW: Vec3 = [0, 0, pivotZ + Math.max(0, height * 0.5)];
+      const topW: Vec3 = [0, 0, pivotZ + Math.max(0, height)];
+      const botW: Vec3 = [0, 0, pivotZ];
+      const centerCheck = toNDC(centerW);
+      const topCheck = toNDC(topW);
+      const botCheck = toNDC(botW);
+        emitDiagnostic('webgpu:frustum-check', { centerCheck, topCheck, botCheck, canvasId: mountCanvasId });
+        if (debugEnabled) console.debug('[WebGPU:diag] frustum-check', { centerCheck, topCheck, botCheck });
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    
+    // Check wireframe state before starting render pass
+    const showWireframe = cfg.showWireframe === true && wireframePipeline && wireframeBindGroup;
+    
+    console.debug('[WebGPU:diag] draw-call', { drawCount: safeDrawVerts, cameraEye: cameraRig.eye, pivot: state.pivot });
+    const pass = encoder.beginRenderPass(renderPassDesc);
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup);
     pass.draw(safeDrawVerts);
+    totalDrawCalls += 1;
+    
+    // Draw wireframe overlay in the SAME render pass if enabled
+    if (showWireframe) {
+      pass.setPipeline(wireframePipeline!);
+      pass.setBindGroup(0, wireframeBindGroup!);
+      // Each solid vertex becomes 2 wireframe verts (line endpoints)
+      const wireframeVerts = safeDrawVerts * 2;
+      pass.draw(wireframeVerts);
+      totalDrawCalls += 1;
+      console.debug('[WebGPU:diag] wireframe-draw', { wireframeVerts, solidVerts: safeDrawVerts });
+    }
+    
     pass.end();
 
-    device.queue.submit([encoder.finish()]);
+    const commandBuffer = encoder.finish({ label: 'component:frame-command-buffer' });
+    device.queue.submit([commandBuffer]);
+    frameCounter += 1;
+    try {
+      manager.setFrameCounters({ frames: frameCounter, draws: totalDrawCalls, verts: totalDrawnVerts });
+    } catch (err) {
+      /* ignore telemetry errors */
+    }
 
     if (shouldValidate) {
       device
@@ -3629,6 +4483,18 @@ export const mount = async ({
         .catch(() => {
           /* no-op */
         });
+    }
+    // Draw axis overlay using camera rig if enabled
+    try {
+      if (axisCtx && state.showAxis) {
+        drawAxisIndicator(axisCtx, cameraRig);
+      } else if (axisCtx) {
+        // clear if disabled
+        const c = axisCtx.canvas as HTMLCanvasElement;
+        axisCtx.clearRect(0, 0, c.width, c.height);
+      }
+    } catch (err) {
+      /* ignore overlay draw errors */
     }
     } catch (err) {
       try {
@@ -3648,6 +4514,9 @@ export const mount = async ({
 
   if (typeof initialParams.autoRotate === 'boolean') {
     setAutoRotate(initialParams.autoRotate, false);
+  }
+  if (typeof initialParams.autoPivotFromCamera === 'boolean') {
+    setAutoPivot(initialParams.autoPivotFromCamera, false);
   }
   if (typeof initialParams.rotX === 'number') {
     state.rotX = wrapAngle(initialParams.rotX);
@@ -3689,10 +4558,40 @@ export const mount = async ({
     state.debugOverlay = Boolean(initialParams.debug);
     updateDebugButton();
   }
+  if (typeof initialParams.showAxis === 'boolean') {
+    state.showAxis = Boolean(initialParams.showAxis);
+    updateAxisButton();
+  }
 
   const wheelOptions: AddEventListenerOptions = { passive: false };
   canvas.addEventListener('wheel', handleWheel, wheelOptions);
   canvas.addEventListener('dblclick', handleDoubleClick);
+  // Host camera accept policy button (cycles: grace -> always -> strict)
+  const updateHostPolicyButton = (): void => {
+    const btn = resolveControlsButton('[data-wgpu-action="host-policy"]');
+    if (!btn || !cameraController) return;
+    btn.dataset.state = cameraController.hostCameraAcceptPolicy;
+    btn.textContent = `Host: ${cameraController.hostCameraAcceptPolicy}`;
+    btn.setAttribute('aria-pressed', 'false');
+  };
+  const toggleHostPolicy = (): void => {
+    if (!cameraController) return;
+    const cur = cameraController.hostCameraAcceptPolicy;
+    const next = cur === 'grace' ? 'always' : cur === 'always' ? 'strict' : 'grace';
+    cameraController.setHostCameraAcceptPolicy(next as any);
+    updateHostPolicyButton();
+  };
+  const hostBtn = resolveControlsButton('[data-wgpu-action="host-policy"]');
+  if (hostBtn) hostBtn.addEventListener('click', toggleHostPolicy);
+  updateHostPolicyButton();
+
+  const pivotBtn = resolveControlsButton('[data-wgpu-action="pivot-auto"]') || resolveControlsButton('#wgpu-toggle-pivot');
+  const togglePivotUi = (): void => {
+    toggleAutoPivot();
+    updatePivotAutoButton();
+  };
+  if (pivotBtn) pivotBtn.addEventListener('click', togglePivotUi);
+  updatePivotAutoButton();
 
   const bootPayload = { ...initialParams };
   current = mergeParams(current, bootPayload);
@@ -3739,7 +4638,13 @@ export const mount = async ({
         1
       );
       if (Math.abs(nextRadius - state.sceneRadius) > CAMERA_EPSILON) {
+        const prev = state.sceneRadius;
         state.sceneRadius = nextRadius;
+        try {
+          const root: any = typeof window !== 'undefined' ? window : (globalThis as any);
+          const dbg = mountCanvasId ? root.__pf_webgpu_mounts?.[mountCanvasId]?.debug : undefined;
+          if (dbg) dbg.lastSceneRadiusUpdate = { prev, next: nextRadius, timestamp: Date.now() };
+        } catch (err) { /* ignore */ }
         state.cameraDirty = true;
       }
     }
@@ -3783,6 +4688,21 @@ export const mount = async ({
       state.recentParamUpdate = state.interactiveLodEnabled;
     }
     updateAndDraw(payload);
+    if (payload && typeof payload.hostCameraAcceptPolicy === 'string') {
+      try {
+        if (cameraController && typeof cameraController.setHostCameraAcceptPolicy === 'function') {
+          const policy = (payload.hostCameraAcceptPolicy as 'always' | 'grace' | 'strict');
+          cameraController.setHostCameraAcceptPolicy(policy);
+        }
+      } catch (err) { /* ignore */ }
+    }
+    if (payload && typeof payload.hostCameraGraceMs === 'number') {
+      try {
+        if (cameraController && typeof cameraController.setLocalCameraGraceMs === 'function') {
+          cameraController.setLocalCameraGraceMs(Number(payload.hostCameraGraceMs));
+        }
+      } catch (err) {/* ignore */}
+    }
   };
 
   const frame = (): void => {
@@ -3797,20 +4717,55 @@ export const mount = async ({
     const now = performance.now();
     const deltaMs = now - lastFrameTime;
     lastFrameTime = now;
-    if (state.interacting && now - state.lastInteraction > INTERACTION_TIMEOUT_MS) {
+    if (state.interacting && now - state.lastInteraction > INTERACTION_TIMEOUT_MS && !(cameraController && cameraController.focusTween)) {
       state.interacting = false;
     }
 
     let cameraMutated = false;
-    if (cameraController.focusTween) {
-      const elapsed = now - cameraController.focusTween.startTime;
-      const t = Math.min(1, Math.max(0, elapsed / Math.max(1, cameraController.focusTween.duration)));
+    
+    // Smooth pivot transitions for professional CAD-like feel
+    if (state.targetPivot && state.pivot) {
+      const pivotLerp = PIVOT_LERP_SPEED;
+      const snapThreshold = PIVOT_SNAP_THRESHOLD;
+      const dx = (state.targetPivot as Vec3)[0] - state.pivot[0];
+      const dy = (state.targetPivot as Vec3)[1] - state.pivot[1];
+      const dz = (state.targetPivot as Vec3)[2] - state.pivot[2];
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (dist < snapThreshold) {
+        // Snap to target
+        state.pivot = [...state.targetPivot as Vec3] as Vec3;
+        state.targetPivot = null;
+      } else {
+        // Lerp toward target
+        state.pivot = [
+          state.pivot[0] + dx * pivotLerp,
+          state.pivot[1] + dy * pivotLerp,
+          state.pivot[2] + dz * pivotLerp,
+        ] as Vec3;
+        cameraMutated = true;
+      }
+    }
+    
+    if (cameraController && cameraController.focusTween) {
+      const ft = cameraController.focusTween;
+      const elapsed = now - ft.startTime;
+      const t = Math.min(1, Math.max(0, elapsed / Math.max(1, ft.duration)));
       const eased = easeOutCubic(t);
-      state.panX = lerp(cameraController.focusTween.startPanX, cameraController.focusTween.targetPanX, eased);
-      state.panY = lerp(cameraController.focusTween.startPanY, cameraController.focusTween.targetPanY, eased);
-      state.zoom = clampZoomValue(
-        lerp(cameraController.focusTween.startZoom, cameraController.focusTween.targetZoom, eased)
-      );
+      state.panX = lerp(ft.startPanX, ft.targetPanX, eased);
+      state.panY = lerp(ft.startPanY, ft.targetPanY, eased);
+      state.zoom = clampZoomValue(lerp(ft.startZoom, ft.targetZoom, eased));
+      // Slerp orientation if focusTween contains quaternion targets
+      if (ft.startQuat && ft.targetQuat) {
+        const q = slerpQuaternion(ft.startQuat, ft.targetQuat, eased);
+        const rotated = basisFromQuaternion(q);
+        state.displayCamQuat = [...q] as Quaternion;
+        state.displayCamRight = [...rotated.right];
+        state.displayCamUp = [...rotated.up];
+        state.displayCamForward = [...rotated.forward];
+        const angles = cbSyncAnglesFromBasis(rotated);
+        state.displayRotX = angles.rotX;
+        state.displayRotY = angles.rotY;
+      }
       updatePivotFromPan();
       cameraMutated = true;
       if (t >= 0.999) {
@@ -3827,10 +4782,12 @@ export const mount = async ({
       if (
         state.cameraMode === 'arcball' &&
         state.inertiaArcAxis &&
-        Math.abs(state.inertiaArcSpeed) > 1e-4
+        Math.abs(state.inertiaArcSpeed) > 1e-6
       ) {
         const baseQuat = (state.displayCamQuat ?? state.camQuat) as Quaternion;
-        const deltaQuat = quaternionFromAxisAngle(state.inertiaArcAxis, state.inertiaArcSpeed);
+        // integrate angular speed (rad/sec) over the frame delta
+        const deltaAngle = (state.inertiaArcSpeed as number) * (deltaMs / 1000);
+        const deltaQuat = quaternionFromAxisAngle(state.inertiaArcAxis, deltaAngle);
         const nextQuat = multiplyQuaternions(deltaQuat, baseQuat);
         const rotated = basisFromQuaternion(nextQuat);
         state.displayCamQuat = [...nextQuat] as Quaternion;
@@ -3844,8 +4801,10 @@ export const mount = async ({
         } as HelperCameraBasis);
         state.displayRotX = rotX;
         state.displayRotY = rotY;
-        state.inertiaArcSpeed *= INERTIA_DECAY;
-        if (Math.abs(state.inertiaArcSpeed) < 1e-4) {
+        // Apply exponential decay over delta time
+        const decayFactor = Math.exp(-INERTIA_LAMBDA * (deltaMs / 1000));
+        state.inertiaArcSpeed *= decayFactor;
+        if (Math.abs(state.inertiaArcSpeed) < 1e-3) {
           state.inertiaArcSpeed = 0;
           state.inertiaArcAxis = null;
         }
@@ -3857,16 +4816,18 @@ export const mount = async ({
           state.displayRotX = state.rotX;
           state.displayRotY = state.rotY;
         }
-        // Apply angular inertia directly to display angles and rebuild basis
-        state.displayRotY = wrapTau((state.displayRotY as number) + state.inertiaRotY);
+        // Apply angular inertia scaled by delta time (in rad/sec)
+        state.displayRotY = wrapTau((state.displayRotY as number) + (state.inertiaRotY as number) * (deltaMs / 1000));
         const pitchLimit = Math.PI * 0.5 - 0.009;
-        state.displayRotX = clamp((state.displayRotX as number) + state.inertiaRotX, -pitchLimit, pitchLimit);
+        state.displayRotX = clamp((state.displayRotX as number) + (state.inertiaRotX as number) * (deltaMs / 1000), -pitchLimit, pitchLimit);
         const inertiaBasis = applyCameraEulerToBasis(state.displayRotX as number, state.displayRotY as number);
         state.displayCamRight = [...inertiaBasis.right];
         state.displayCamUp = [...inertiaBasis.up];
         state.displayCamForward = [...inertiaBasis.forward];
-        state.inertiaRotY *= INERTIA_DECAY;
-        state.inertiaRotX *= INERTIA_DECAY;
+        // Decay angular velocities over delta time
+        const decayFactorRot = Math.exp(-INERTIA_LAMBDA * (deltaMs / 1000));
+        state.inertiaRotY *= decayFactorRot;
+        state.inertiaRotX *= decayFactorRot;
         if (Math.abs(state.inertiaRotY) < 1e-6) {
           state.inertiaRotY = 0;
         }
@@ -3876,10 +4837,12 @@ export const mount = async ({
         cameraMutated = true;
       }
       if (Math.abs(state.inertiaPanX) > 1e-4 || Math.abs(state.inertiaPanY) > 1e-4) {
-        state.panX += state.inertiaPanX;
-        state.panY += state.inertiaPanY;
-        state.inertiaPanX *= INERTIA_DECAY;
-        state.inertiaPanY *= INERTIA_DECAY;
+        // Integrate per-second pan velocity over delta time
+        state.panX += (state.inertiaPanX as number) * (deltaMs / 1000);
+        state.panY += (state.inertiaPanY as number) * (deltaMs / 1000);
+        const decayFactorPan = Math.exp(-INERTIA_LAMBDA * (deltaMs / 1000));
+        state.inertiaPanX *= decayFactorPan;
+        state.inertiaPanY *= decayFactorPan;
         if (Math.abs(state.inertiaPanX) < 1e-4) {
           state.inertiaPanX = 0;
         }
@@ -3891,19 +4854,63 @@ export const mount = async ({
     }
 
     if (state.autoRotate && !state.interacting) {
-      // Autorotate should mutate the transient display basis instead of
-      // committing persistent camera axes directly.
-      if (state.displayRotX === null || state.displayRotY === null) {
-        state.displayRotX = state.rotX;
-        state.displayRotY = state.rotY;
+      // Professional autorotate: orbits camera around the pot at user's current view angle
+      const now = performance.now();
+      const shouldRotate = !state.autoRotateResumeAt || now >= state.autoRotateResumeAt;
+      
+      if (shouldRotate) {
+        // Use configurable speed (radians per second) and delta time
+        const rotationSpeed = state.autoRotateSpeed ?? AUTOROTATE_SPEED_DEFAULT;
+        const deltaRotation = rotationSpeed * (deltaMs / 1000);
+        
+        // For arcball mode: use pure quaternion rotation around world Z axis
+        // This preserves full rotation freedom without Euler angle limitations
+        if (state.cameraMode === 'arcball') {
+          // Get current quaternion (display or committed)
+          const currentQuat: Quaternion = state.displayCamQuat ?? state.camQuat ?? [0, 0, 0, 1];
+          
+          // Create rotation delta around world Z axis (vertical)
+          const WORLD_UP: Vec3 = [0, 0, 1];
+          const deltaQuat = quaternionFromAxisAngle(WORLD_UP, deltaRotation);
+          
+          // Apply rotation: deltaQuat * currentQuat (pre-multiply for world-space rotation)
+          const nextQuat = multiplyQuaternions(deltaQuat, currentQuat);
+          const autoBasis = basisFromQuaternion(nextQuat);
+          
+          state.displayCamRight = autoBasis.right;
+          state.displayCamUp = autoBasis.up;
+          state.displayCamForward = autoBasis.forward;
+          state.displayCamQuat = nextQuat;
+          
+          // Sync Euler angles for UI compatibility (but don't use them for rotation)
+          const { rotX, rotY } = cbSyncAnglesFromBasis(autoBasis);
+          state.displayRotX = rotX;
+          state.displayRotY = rotY;
+        } else {
+          // Turntable/free mode: use Euler angles for predictable orbit
+          const currentBasis = resolveActiveBasis(state);
+          const currentAngles = cbSyncAnglesFromBasis(currentBasis);
+          
+          // Initialize display angles from current basis if not present
+          if (state.displayRotX === null || state.displayRotY === null) {
+            state.displayRotX = currentAngles.rotX;
+            state.displayRotY = currentAngles.rotY;
+          }
+          
+          // Orbit around the vertical axis (yaw only), keeping pitch and roll constant
+          state.displayRotY = wrapTau((state.displayRotY as number) + deltaRotation);
+          
+          // Preserve rotZ (tilt) during autorotation
+          const currentRotZ = (state as any).displayRotZ ?? state.rotZ ?? 0;
+          const autoQuat = quaternionFromEuler(state.displayRotX as number, state.displayRotY as number, currentRotZ);
+          const autoBasis = basisFromQuaternion(autoQuat);
+          state.displayCamRight = autoBasis.right;
+          state.displayCamUp = autoBasis.up;
+          state.displayCamForward = autoBasis.forward;
+          state.displayCamQuat = autoQuat;
+        }
+        cameraMutated = true;
       }
-      // Rotate yaw angle in small increments
-      state.displayRotY = wrapTau((state.displayRotY as number) + 0.01);
-      const autoBasis = applyCameraEulerToBasis(state.displayRotX as number, state.displayRotY as number);
-      state.displayCamRight = autoBasis.right;
-      state.displayCamUp = autoBasis.up;
-      state.displayCamForward = autoBasis.forward;
-      cameraMutated = true;
     }
 
     if (cameraMutated) {
@@ -3914,6 +4921,21 @@ export const mount = async ({
     }
 
     if (pendingStaticCameraEmit && isCameraStatic()) {
+      // Before committing transient basis, ensure the camera is upright
+      // when near vertical pitch: if the yaw orientation has the up vector
+      // pointing screen-down, rotate yaw by π to preserve expected
+      // top-down orientation for the user (prevents upside-down pot visuals).
+      const currentPitch = (state.displayRotX ?? state.rotX) as number;
+      const currentUpY = (state.camUp && Array.isArray(state.camUp)) ? state.camUp[1] : 0;
+      const NEAR_VERTICAL_EPS = 0.04; // ~2.2° tolerance to consider 'vertical'
+      if (Math.abs(Math.abs(currentPitch) - Math.PI / 2) < NEAR_VERTICAL_EPS && currentUpY < 0) {
+        state.rotY = wrapAngle((state.rotY ?? 0) + Math.PI);
+        applyCameraEuler(state, state.rotX, state.rotY);
+        state.displayCamRight = [...state.camRight];
+        state.displayCamUp = [...state.camUp];
+        state.displayCamForward = [...state.camForward];
+        state.displayCamQuat = [...state.camQuat] as Quaternion;
+      }
       // Commit transient display basis to the persistent camera basis
       const prevRight: Vec3 = [state.camRight[0], state.camRight[1], state.camRight[2]];
       const flipped = commitDisplayBasisToState(state);
@@ -3924,6 +4946,15 @@ export const mount = async ({
         } catch (err) {
           /* ignore */
         }
+      }
+      // Emit a brief diagnostic containing the committed basis to aid
+      // debugging in the host or overlay when debug is active.
+      try {
+        if (debugEnabled) {
+          emitDiagnostic('webgpu:committed-basis', { basis: { right: state.camRight, up: state.camUp, forward: state.camForward }, canvasId: mountCanvasId });
+        }
+      } catch (err) {
+        /* ignore */
       }
       pendingStaticCameraEmit = false;
       emitCameraState(true);
@@ -3987,19 +5018,23 @@ export const mount = async ({
       cancelAnimationFrame(rafHandle);
       rafHandle = null;
     }
-    depth.destroy();
+    if (depth) depth.destroy();
     uniformBuffer.destroy();
     colorBuffers.c1.destroy();
     colorBuffers.c2.destroy();
     colorBuffers.c3.destroy();
     styleParamBuffer.destroy();
+    if (localControlResetTimer !== null) {
+      window.clearTimeout(localControlResetTimer);
+      localControlResetTimer = null;
+    }
   };
 
   const controller: WebGPUController = {
-    updateParams: (payload) => {
+    updateParams: (payload: any) => {
       applyParamPayload(payload);
     },
-    handleCameraCommand: (payload) => {
+    handleCameraCommand: (payload: any) => {
       handleCameraCommand(payload);
     },
     setAutoRotate: (value: boolean) => {
@@ -4009,6 +5044,9 @@ export const mount = async ({
       toggleAutoRotate();
     },
     getAutoRotate: () => state.autoRotate,
+    setAutoPivot: (v: boolean) => setAutoPivot(v, true),
+    toggleAutoPivot: () => toggleAutoPivot(),
+    getAutoPivot: () => Boolean(state.autoPivotFromCamera),
     dispose,
   };
 

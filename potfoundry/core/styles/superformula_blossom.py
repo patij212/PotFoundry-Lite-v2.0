@@ -1,12 +1,12 @@
-"""
-Superformula Blossom style function for PotFoundry.
+"""Superformula Blossom style function for PotFoundry.
 
 This module contains the outer radius function for the superformula_blossom pot style.
 """
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, cast
+from typing import Any, cast
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -46,7 +46,7 @@ def superformula_r(
 
 
 def r_outer_superformula_blossom(
-    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
+    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: dict[str, Any],
 ) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     # Style strength controls modulation amount (default 0.0 = neutral for regression parity)
@@ -90,7 +90,7 @@ def r_outer_superformula_blossom(
         lo = 0.1
         hi = 3.0
         arr = np.clip(arr, lo, hi)
-        return float(arr) if arr.shape == () else cast(NDArrayFloat, arr)
+        return float(arr) if arr.shape == () else cast("NDArrayFloat", arr)
 
     # Localized edge-preserving seam solidify (optional): peak-only, theta-wise, bilateral-like
     # Goal: suppress tiny jaggies at cut/edge lines without flattening the whole circumference.
@@ -103,7 +103,7 @@ def r_outer_superformula_blossom(
     ):
         # Parameters
         es_strength = max(
-            0.0, min(1.0, float(opts.get("sf_edge_solidify_strength", 0.7)))
+            0.0, min(1.0, float(opts.get("sf_edge_solidify_strength", 0.7))),
         )
         es_passes = int(max(1, min(5, int(opts.get("sf_edge_solidify_passes", 2)))))
         # spatial sigma in samples; range sigma on rf
@@ -123,14 +123,14 @@ def r_outer_superformula_blossom(
         def _bilateral1d_peak_only(a: np.ndarray) -> np.ndarray:
             # geometry_helpers functions are not fully typed in some environments
             # so cast their returns to narrow the type for this module.
-            return cast(np.ndarray, bilateral1d_peak_only(a, sigma_s, sigma_r))
+            return cast("np.ndarray", bilateral1d_peak_only(a, sigma_s, sigma_r))
 
         # Precompute local micro-residual and edge weights to preserve strong edges
         def _avg3(a: np.ndarray) -> np.ndarray:
-            return cast(np.ndarray, avg3(a))
+            return cast("np.ndarray", avg3(a))
 
         def _med5(a: np.ndarray) -> np.ndarray:
-            return cast(np.ndarray, med5(a))
+            return cast("np.ndarray", med5(a))
 
         for _ in range(es_passes):
             sm = _bilateral1d_peak_only(arr)
@@ -327,7 +327,11 @@ def r_outer_superformula_blossom(
     out = r0 * ((1.0 - strength) + strength * (0.90 + 0.35 * rf))
     # Normalize to numpy array for vectorized paths; keep scalar float for scalar theta
     out_arr = np.asarray(out, dtype=float)
-    return float(out_arr) if out_arr.shape == () else cast(NDArrayFloat, out_arr)
+    return float(out_arr) if out_arr.shape == () else cast("NDArrayFloat", out_arr)
+
+
+# This style function is vectorizable across z when theta is provided as a vector
+r_outer_superformula_blossom.__vectorized__ = True
 
 
 

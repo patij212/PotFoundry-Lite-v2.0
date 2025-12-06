@@ -17,6 +17,7 @@ Comprehensive documentation for PotFoundry-Lite v2.x and beyond.
 - [Type Hints Guide](guides/TYPE_HINTS_GUIDE.md) - Type annotation conventions
 - [STL Export Guide](guides/STL_EXPORT_GUIDE.md) - Binary STL implementation details
 - [Property-Based Testing](guides/PROPERTY_BASED_TESTING_IMPLEMENTATION.md) - Hypothesis integration
+- [WGSL Analyzer Guide](guides/WGSL_VALIDATION.md) - Shader validation tooling
 
 ### Feature Documentation
 - [Deep Link System](deeplink.md) - URL-based state sharing

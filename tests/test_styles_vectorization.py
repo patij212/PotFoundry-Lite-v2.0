@@ -48,12 +48,12 @@ def test_all_styles_vectorized_at_full_resolution():
             # Call at full resolution
             try:
                 X, Y, Z = make_preview_arrays(
-                    H, Rt, Rb, expn, n_theta, n_z, name, opts_json
+                    H, Rt, Rb, expn, n_theta, n_z, name, opts_json,
                 )
             except Exception as e:
                 failures.append((name, f"exception during make_preview_arrays: {e}"))
                 # restore and continue
-                STYLES[name] = original[name]
+                STYLES[name] = entry
                 continue
 
             # if vectorized wrapper was never called, the style did not accept ndarray
@@ -61,7 +61,7 @@ def test_all_styles_vectorized_at_full_resolution():
                 failures.append((name, "no vectorized calls observed (scalar-only)"))
 
             # restore original
-            STYLES[name] = original[name]
+            STYLES[name] = entry
 
     finally:
         # Ensure restoration in case of test interruption

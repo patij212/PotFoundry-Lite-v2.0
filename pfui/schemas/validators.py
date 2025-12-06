@@ -4,24 +4,25 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Dict, Tuple, cast
+from typing import Any, cast
 
+from .aliases import ALIASES_BY_STYLE, GLOBAL_ALIASES
 from .base import ControlMeta
 from .canonical_schemas import CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS
 from .global_controls import GLOBAL_CONTROLS
 from .style_schemas import STYLE_SCHEMAS
 
 __all__ = [
-    "get_schema",
-    "apply_defaults",
     "_coerce_one",
+    "apply_defaults",
+    "get_schema",
     "sanitize_opts",
-    "warn_on_legacy_keys",
     "validate_keyset",
+    "warn_on_legacy_keys",
 ]
 
 
-def get_schema(style: str, *, canonical: bool = False) -> Dict[str, ControlMeta]:
+def get_schema(style: str, *, canonical: bool = False) -> dict[str, ControlMeta]:
     """Return merged schema (globals + per-style), keyed by legacy or canonical names.
 
     Purpose:
@@ -43,15 +44,15 @@ def get_schema(style: str, *, canonical: bool = False) -> Dict[str, ControlMeta]
     """
     if canonical:
         # CANONICAL_* are Mapping types; cast to the expected Dict[str, ControlMeta]
-        block: Dict[str, ControlMeta] = cast(
-            Dict[str, ControlMeta], dict(CANONICAL_CONTROLS)
+        block: dict[str, ControlMeta] = cast(
+            "dict[str, ControlMeta]", dict(CANONICAL_CONTROLS),
         )
         block.update(
-            cast(Dict[str, Dict[str, Any]], CANONICAL_STYLE_SCHEMAS).get(style, {})
+            cast("dict[str, dict[str, Any]]", CANONICAL_STYLE_SCHEMAS).get(style, {}),
         )
     else:
-        block = cast(Dict[str, ControlMeta], dict(GLOBAL_CONTROLS))
-        block.update(cast(Dict[str, Dict[str, Any]], STYLE_SCHEMAS).get(style, {}))
+        block = cast("dict[str, ControlMeta]", dict(GLOBAL_CONTROLS))
+        block.update(cast("dict[str, dict[str, Any]]", STYLE_SCHEMAS).get(style, {}))
     return block
 
 
@@ -126,14 +127,14 @@ def _coerce_one(v: Any, meta: ControlMeta) -> object:
         if isinstance(opts, (list, tuple)) and opts:
             if v not in opts:
                 raise ValueError(
-                    f"invalid option {v!r}; expected one of {list(opts)!r}"
+                    f"invalid option {v!r}; expected one of {list(opts)!r}",
                 )
     return v
 
 
 def sanitize_opts(
-    style: str, opts: dict, *, canonical: bool = False
-) -> Tuple[dict[str, object], list[str]]:
+    style: str, opts: dict, *, canonical: bool = False,
+) -> tuple[dict[str, object], list[str]]:
     """Coerce types, clamp to min/max, and fill defaults.
 
     Purpose:
@@ -234,7 +235,7 @@ def validate_keyset(style: str, opts: dict, *, canonical: bool = False) -> list[
         - None.
     """
     sch = get_schema(style, canonical=canonical)
-    return [k for k in opts.keys() if k not in sch]
+    return [k for k in opts if k not in sch]
 
 
 def compress_opts(
@@ -243,7 +244,7 @@ def compress_opts(
     *,
     canonical: bool = True,
     drop_defaults: bool = True,
-    round_to: Optional[int] = 4,
+    round_to: int | None = 4,
 ) -> dict:
     """Return a compact copy of options for export (e.g., YAML).
 

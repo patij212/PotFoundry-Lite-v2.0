@@ -8,19 +8,20 @@ the block should appear.
 
 from __future__ import annotations
 
-from typing import Any, Optional, Callable
+from collections.abc import Callable
+from typing import Any
 
-import streamlit as st
-
+from pfui._st import get_effective_st as get_st
 from pfui.controls import twist_controls as _twist_controls
 
 
-def render_twist_spin(style_name: str, style_schema: dict[str, Any], on_change: Optional[Callable[[], None]] = None) -> None:
+def render_twist_spin(style_name: str, style_schema: dict[str, Any], on_change: Callable[[], None] | None = None) -> None:
     """Render twist/spin controls if schema indicates support.
 
     Args:
         style_name: Current style name for widget key scoping
         style_schema: Style schema metadata dict
+
     """
     # Some style schemas declare explicit flags; others simply include the
     # parameter keys. Treat either case as enabling the controls so they
@@ -30,6 +31,7 @@ def render_twist_spin(style_name: str, style_schema: dict[str, Any], on_change: 
     spin_keys = {"spin_turns", "spin_phase_deg", "spin_curve_exp"}
     schema_keys = set(style_schema.keys() if style_schema else [])
     if has_spin or has_twist or (schema_keys & spin_keys):
+        st = get_st()
         with st.expander("Twist / Spin", expanded=False):
             # Global twist controls (apply after style function)
             try:

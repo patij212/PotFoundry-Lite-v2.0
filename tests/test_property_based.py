@@ -45,21 +45,21 @@ from potfoundry.yaml_api import load_config
 def _as_mesh(m: object) -> MeshQualityModel:
     if isinstance(m, dict):
         return MeshQualityModel(
-            n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84))
+            n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84)),
         )
-    return cast(MeshQualityModel, m)
+    return cast("MeshQualityModel", m)
 
 
 def _as_defaults(d: object) -> DefaultsModel:
     if isinstance(d, dict):
         return DefaultsModel(**d)
-    return cast(DefaultsModel, d)
+    return cast("DefaultsModel", d)
 
 
 def _as_recipe(r: object) -> RecipeModel:
     if isinstance(r, dict):
         return RecipeModel(**r)
-    return cast(RecipeModel, r)
+    return cast("RecipeModel", r)
 
 
 # Default style function for tests
@@ -103,7 +103,7 @@ style_names = st.sampled_from(list(STYLES.keys()))
 )
 @settings(max_examples=50, deadline=2000, suppress_health_check=[HealthCheck.too_slow])
 def test_property_mesh_is_watertight(
-    H, Rt, Rb, t_wall, t_bottom, r_drain, n_theta, n_z
+    H, Rt, Rb, t_wall, t_bottom, r_drain, n_theta, n_z,
 ):
     """Property: Every edge in the mesh should be shared by exactly 2 faces.
 
@@ -409,7 +409,7 @@ def test_property_yaml_configuration_roundtrip(H, Rt, Rb, style):
             {
                 "name": "test_pot",
                 "style": style,
-            }
+            },
         ],
     }
 

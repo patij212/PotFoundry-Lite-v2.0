@@ -17,10 +17,9 @@ Performance modes:
 
 from __future__ import annotations
 
-import hashlib
 import json
-from functools import lru_cache
-from typing import Any, Callable, Dict, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -53,13 +52,13 @@ except ImportError:
 
 
 __all__ = [
-    "HAS_NUMBA",
     "HAS_CUPY",
+    "HAS_NUMBA",
+    "build_pot_mesh_accelerated",  # New: accelerated full-resolution builder
+    "cached_build_pot_mesh",
+    "compute_mesh_hash",
     "vectorized_add_rings",
     "vectorized_face_generation",
-    "compute_mesh_hash",
-    "cached_build_pot_mesh",
-    "build_pot_mesh_accelerated",  # New: accelerated full-resolution builder
 ]
 
 
@@ -89,6 +88,7 @@ def vectorized_add_rings(
 
     Performance:
         ~2-3x faster than list append loop for typical resolutions
+
     """
     # Apply twist transformation to base cos/sin
     cx = cos_th * cTw - sin_th * sTw
@@ -128,6 +128,7 @@ def vectorized_face_generation(
 
     Performance:
         ~5-10x faster than loop-based approach for large meshes
+
     """
     n_rings = ring_indices.shape[0]
     n_rows = n_rings - 1
@@ -143,31 +144,31 @@ def vectorized_face_generation(
     # Fully vectorized face generation using broadcasting (no Python loops)
     # This implementation uses NumPy's advanced indexing to generate all faces
     # at once, which is >100x faster than Python loops for millions of values.
-    
+
     # Create index arrays for all rows at once
     i_rows = np.arange(n_rows, dtype=np.int32)[:, np.newaxis]  # Shape: (n_rows, 1)
-    
+
     # Get all four corners of all quads using broadcasting
     v00 = ring_indices[i_rows, j]      # Shape: (n_rows, n_theta)
     v01 = ring_indices[i_rows, jn]     # Shape: (n_rows, n_theta)
     v10 = ring_indices[i_rows + 1, j]  # Shape: (n_rows, n_theta)
     v11 = ring_indices[i_rows + 1, jn] # Shape: (n_rows, n_theta)
-    
+
     # Flatten to get linear indexing for face array
     v00_flat = v00.ravel()
     v01_flat = v01.ravel()
     v10_flat = v10.ravel()
     v11_flat = v11.ravel()
-    
+
     # Total number of quads
     n_quads = n_rows * n_theta
-    
+
     if reverse_winding:
         # Inner wall (reverse winding) - first triangle of each quad
         faces[:n_quads, 0] = v00_flat
         faces[:n_quads, 1] = v11_flat
         faces[:n_quads, 2] = v10_flat
-        
+
         # Inner wall (reverse winding) - second triangle of each quad
         faces[n_quads:, 0] = v00_flat
         faces[n_quads:, 1] = v01_flat
@@ -177,7 +178,7 @@ def vectorized_face_generation(
         faces[:n_quads, 0] = v00_flat
         faces[:n_quads, 1] = v10_flat
         faces[:n_quads, 2] = v11_flat
-        
+
         # Outer wall (normal winding) - second triangle of each quad
         faces[n_quads:, 0] = v00_flat
         faces[n_quads:, 1] = v11_flat
@@ -196,8 +197,8 @@ def compute_mesh_hash(
     expn: float,
     n_theta: int,
     n_z: int,
-    r_outer_fn: Optional[Callable],
-    style_opts: Dict[str, Any],
+    r_outer_fn: Callable | None,
+    style_opts: dict[str, Any],
 ) -> str:
     """Compute a hash of mesh generation parameters for caching.
 
@@ -213,6 +214,7 @@ def compute_mesh_hash(
     Note:
         Function identity is hashed by name, not code. Style option dicts are
         sorted for consistent hashing.
+
     """
     # Create a canonical representation of parameters
     # Safe function name extraction (handles lambdas and objects without __name__)
@@ -220,7 +222,7 @@ def compute_mesh_hash(
         fn_name = r_outer_fn.__name__ if r_outer_fn else "None"
     except AttributeError:
         fn_name = str(type(r_outer_fn).__name__) if r_outer_fn else "None"
-    
+
     # Safe style options conversion (only convert numeric values)
     safe_style_opts = {}
     for k, v in sorted(style_opts.items()):
@@ -229,7 +231,7 @@ def compute_mesh_hash(
         except (TypeError, ValueError):
             # Keep non-numeric values as strings for hash consistency
             safe_style_opts[k] = str(v)
-    
+
     param_dict = {
         "H": float(H),
         "Rt": float(Rt),
@@ -251,14 +253,14 @@ def compute_mesh_hash(
     # This is much faster than SHA256 (~100x) and sufficient for cache keys.
     # We use hash of the JSON string for consistency and stability.
     cache_hash = hash(param_json)
-    
+
     # Convert to hexadecimal string for readability (mimics hashlib interface)
     # Note: Python's hash() can be negative, so we use abs() and format as hex
-    return format(abs(cache_hash), '016x')
+    return format(abs(cache_hash), "016x")
 
 
 # LRU cache for mesh results (keeps last 8 meshes in memory)
-_mesh_cache: Dict[str, Tuple[npt.NDArray, npt.NDArray, Dict]] = {}
+_mesh_cache: dict[str, tuple[npt.NDArray, npt.NDArray, dict]] = {}
 _mesh_cache_maxsize = 8
 
 
@@ -273,9 +275,9 @@ def cached_build_pot_mesh(
     expn: float,
     n_theta: int,
     n_z: int,
-    r_outer_fn: Optional[Callable],
-    style_opts: Dict[str, Any],
-) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.int32], Dict[str, Any]]:
+    r_outer_fn: Callable | None,
+    style_opts: dict[str, Any],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int32], dict[str, Any]]:
     """Cached wrapper for build_pot_mesh to avoid redundant computation.
 
     Checks if a mesh with identical parameters has been computed recently.
@@ -297,10 +299,11 @@ def cached_build_pot_mesh(
     Note:
         Cache is limited to last 8 meshes to prevent excessive memory usage.
         Cache is cleared when size limit is exceeded (LRU eviction).
+
     """
     # Compute hash of parameters
     cache_key = compute_mesh_hash(
-        H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_outer_fn, style_opts
+        H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_outer_fn, style_opts,
     )
 
     # Check cache
@@ -346,11 +349,12 @@ def clear_mesh_cache() -> None:
     _mesh_cache.clear()
 
 
-def get_cache_stats() -> Dict[str, Any]:
+def get_cache_stats() -> dict[str, Any]:
     """Get statistics about the mesh cache.
 
     Returns:
         Dict with cache size, memory usage estimate, etc.
+
     """
     n_cached = len(_mesh_cache)
     if n_cached == 0:
@@ -373,7 +377,7 @@ if HAS_NUMBA:
 
     @jit(nopython=True, parallel=True, cache=True)
     def numba_face_generation_outer(
-        ring_indices: npt.NDArray[np.int32], n_theta: int
+        ring_indices: npt.NDArray[np.int32], n_theta: int,
     ) -> npt.NDArray[np.int32]:
         """Numba-accelerated outer wall face generation.
 
@@ -389,6 +393,7 @@ if HAS_NUMBA:
 
         Note:
             Only available if Numba is installed (optional dependency)
+
         """
         n_rings = ring_indices.shape[0]
         n_rows = n_rings - 1
@@ -420,7 +425,7 @@ else:
     def numba_face_generation_outer(*args, **kwargs):
         raise RuntimeError(
             "Numba not installed. Install with: pip install numba\n"
-            "Or use vectorized_face_generation instead."
+            "Or use vectorized_face_generation instead.",
         )
 
 
@@ -428,8 +433,8 @@ else:
 if HAS_CUPY:
 
     def gpu_accelerated_mesh_generation(
-        *args, **kwargs
-    ) -> Tuple[npt.NDArray, npt.NDArray, Dict]:
+        *args, **kwargs,
+    ) -> tuple[npt.NDArray, npt.NDArray, dict]:
         """GPU-accelerated mesh generation using CuPy.
 
         Transfers computation to GPU for 5-10x speedup on large meshes.
@@ -442,12 +447,13 @@ if HAS_CUPY:
 
         Returns:
             Same as build_pot_mesh
+
         """
         raise NotImplementedError(
             "GPU acceleration is planned for future release.\n"
             "The current implementation requires significant refactoring\n"
             "to minimize CPU-GPU transfer overhead.\n"
-            "For now, use CPU-based optimizations (Numba, caching, vectorization)."
+            "For now, use CPU-based optimizations (Numba, caching, vectorization).",
         )
 
 else:
@@ -456,7 +462,7 @@ else:
         raise RuntimeError(
             "CuPy not installed. Install with: pip install cupy-cuda12x\n"
             "(Replace cuda12x with your CUDA version)\n"
-            "Or use CPU-based optimizations instead."
+            "Or use CPU-based optimizations instead.",
         )
 
 
@@ -471,8 +477,10 @@ def build_pot_mesh_accelerated(
     n_theta: int,
     n_z: int,
     r_outer_fn: Callable,
-    style_opts: Dict[str, Any],
-) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.int32], Dict[str, Any]]:
+    style_opts: dict[str, Any],
+    collect_timings: bool = False,
+    enforce_parity: bool = True,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int32], dict[str, Any]]:
     """Accelerated mesh generation for full-resolution previews.
     
     This function uses the fully vectorized accelerated mesh builder to generate
@@ -524,17 +532,104 @@ def build_pot_mesh_accelerated(
     Note:
         This function requires the accelerated module. It will automatically
         use Numba JIT compilation if available for additional 2-3x speedup.
+
     """
+    # (vectorized detection moved below where theta grid & base radius helpers are imported)
     # Import the accelerated builder
+    from ..core.geometry import base_radius
     from .accelerated import accelerated_build_pot_mesh
-    
+
     # Import required helper functions from the geometry modules
     from .mesh import theta_grid_cached
-    from ..core.geometry import base_radius
     from .mesh.outer_wall import spin_twist_radians
-    
+
+    # Use style metadata to decide vectorization support. If a style function
+    # explicitly marks itself as not vectorizable (LowPolyFacet), fall back to
+    # the standard builder and avoid the expensive runtime checks.
+    thetas, _, _ = theta_grid_cached(n_theta)
+    # Compute optionally refined z_outer for styles like LowPolyFacet
+    from .mesh.grid import refine_z_outer_for_seams
+    z_outer = np.linspace(0.0, H, n_z + 1)
+    z_outer = refine_z_outer_for_seams(z_outer, H, style_opts)
+    z_inner = np.linspace(t_bottom, H, n_z + 1)
+    # Prefer explicit style metadata to determine whether this style supports
+    # multi-z vectorized inputs. Falls back to runtime detection only when
+    # metadata is absent (which is rare), but avoid heavy timing checks.
+    explicit_vectorized = getattr(r_outer_fn, "__vectorized__", None)
+    if explicit_vectorized is False:
+        vectorized_ok = False
+    elif explicit_vectorized is True:
+        vectorized_ok = True
+    else:
+        # Last resort: try a lightweight vectorized invocation (single test call),
+        # but avoid expensive multi-z timing checks which dominate performance.
+        try:
+            sample = r_outer_fn(thetas, 0.0, base_radius(0.0, H, Rb, Rt, expn, style_opts), H, style_opts)
+            sample_arr = np.asarray(sample, dtype=np.float64)
+            vectorized_ok = (sample_arr.ndim == 1 and sample_arr.shape[0] == thetas.shape[0])
+        except Exception:
+            vectorized_ok = False
+    if not vectorized_ok:
+        from potfoundry.core.geometry import build_pot_mesh as _std_build
+        # Special-case LowPolyFacet to avoid seam/refinement discrepancies in the accelerated path
+        try:
+            # If the style exposes a Numba per-z accelerated helper and Numba
+            # is available, allow the accelerated builder when the caller
+            # explicitly disables parity enforcement. This provides a safe
+            # opt-in path for LowPolyFacet to use the Numba parallel path.
+            if (
+                getattr(r_outer_fn, "__name__", "") == "r_outer_lowpoly_facet"
+                and getattr(r_outer_fn, "__numba_parallel__", None) is not None
+                and HAS_NUMBA
+                and not enforce_parity
+            ):
+                # Use accelerated path (vectorized per theta, per-z numba)
+                verts, faces, diag = accelerated_build_pot_mesh(
+                    H=H,
+                    Rt=Rt,
+                    Rb=Rb,
+                    t_wall=t_wall,
+                    t_bottom=t_bottom,
+                    r_drain=r_drain,
+                    expn=expn,
+                    n_theta=n_theta,
+                    n_z=n_z,
+                    r_outer_fn=r_outer_fn,
+                    style_opts=style_opts,
+                    base_radius_fn=base_radius,
+                    spin_twist_fn=spin_twist_radians,
+                    theta_grid_fn=theta_grid_cached,
+                    z_outer=z_outer,
+                    z_inner=z_inner,
+                    collect_timings=collect_timings,
+                    enforce_parity=False,
+                )
+                # accelerated_build_pot_mesh sets diag['accelerated_used'] = True
+            
+            else:
+                verts, faces, diag = _std_build(
+                    H=H,
+                    Rt=Rt,
+                    Rb=Rb,
+                    t_wall=t_wall,
+                    t_bottom=t_bottom,
+                    r_drain=r_drain,
+                    expn=expn,
+                    n_theta=n_theta,
+                    n_z=n_z,
+                    r_outer_fn=r_outer_fn,
+                    style_opts=style_opts,
+                )
+                diag["accelerated_used"] = False
+        except Exception:
+            # Re-raise any exceptions to preserve original behavior
+            raise
+        # Canonicalize drain ordering to guarantee parity
+        verts, faces = _ensure_canonical_drain_in_mesh(verts, faces, t_bottom, r_drain, n_theta, len(z_outer), len(z_inner))
+        return verts, faces, diag
+
     # Call the accelerated builder
-    return accelerated_build_pot_mesh(
+    verts, faces, diag = accelerated_build_pot_mesh(
         H=H,
         Rt=Rt,
         Rb=Rb,
@@ -549,4 +644,130 @@ def build_pot_mesh_accelerated(
         base_radius_fn=base_radius,
         spin_twist_fn=spin_twist_radians,
         theta_grid_fn=theta_grid_cached,
+        z_outer=z_outer,
+        z_inner=z_inner,
+        collect_timings=collect_timings,
+        enforce_parity=enforce_parity,
     )
+    # Indicate in diagnostics that we used the accelerated path
+    try:
+        diag["accelerated_used"] = True
+    except Exception:
+        pass
+    # Guarantee canonical drain ordering and face assembly (interleaved under/top)
+    if enforce_parity:
+        verts, faces = _ensure_canonical_drain_in_mesh(verts, faces, t_bottom, r_drain, n_theta, len(z_outer), len(z_inner))
+    return verts, faces, diag
+
+
+def _ensure_canonical_drain_in_mesh(
+    verts: npt.NDArray[np.float64],
+    faces: npt.NDArray[np.int32],
+    t_bottom: float,
+    r_drain: float,
+    n_theta: int,
+    n_z_outer: int,
+    n_z_inner: int,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int32]]:
+    """Ensure the mesh uses canonical interleaved drain ordering.
+
+    This function will reconstruct the drain vertices and bottom faces to
+    use the canonical interleaved ordering as produced by build_drain_hole.
+    If the mesh already uses the canonical ordering, this is a no-op.
+    """
+    n_drain = 2 * n_theta
+    total_verts = verts.shape[0]
+    if total_verts < n_drain + 2 * n_theta:
+        return verts, faces
+    n_outer = n_z_outer * n_theta
+    n_inner = n_z_inner * n_theta
+    drain_start = n_outer + n_inner
+    # If we don't have exactly 2*n_theta drain vertices, bail out
+    if verts.shape[0] < drain_start + 2 * n_theta:
+        return verts, faces
+
+    # Quick check for interleaved z pattern
+    drain_z = verts[drain_start : drain_start + 2 * n_theta, 2]
+    if np.allclose(drain_z[0::2], 0.0, atol=1e-9) and np.allclose(drain_z[1::2], float(t_bottom), atol=1e-9):
+        return verts, faces
+
+    # Rebuild the drain using canonical builder
+    verts_list = [tuple(v) for v in verts[:drain_start]]
+    from .mesh.drain import build_drain_hole
+    from .mesh.grid import theta_grid_cached
+    thetas, cos_th, sin_th = theta_grid_cached(n_theta)
+    outer_idx = np.arange(n_outer, dtype=np.int32).reshape((n_outer // n_theta, n_theta))
+    inner_idx = np.arange(n_outer, n_outer + n_inner, dtype=np.int32).reshape((n_inner // n_theta, n_theta))
+    j_idx = np.arange(n_theta, dtype=np.int32)
+    jn = (j_idx + 1) % n_theta
+
+    (
+        tri_bot1,
+        tri_bot2,
+        tri_top1,
+        tri_top2,
+        tri_cyl1,
+        tri_cyl2,
+        drain_under_arr,
+        drain_top_arr,
+    ) = build_drain_hole(
+        r_drain=r_drain,
+        t_bottom=t_bottom,
+        cos_th=cos_th,
+        sin_th=sin_th,
+        verts=verts_list,
+        outer_idx=outer_idx,
+        inner_idx=inner_idx,
+        j_idx=j_idx,
+        jn=jn,
+    )
+
+    new_verts = np.asarray(verts_list, dtype=np.float64)
+
+    from .accelerated import build_faces_vectorized
+
+    # Compute actual ring counts for outer/inner from vertex counts
+    n_z_outer = n_outer // n_theta
+    n_z_inner = n_inner // n_theta
+    outer_faces = build_faces_vectorized(n_z_outer, n_theta, outer_offset=0, reverse_winding=False)
+    inner_faces = build_faces_vectorized(n_z_inner, n_theta, outer_offset=n_outer, reverse_winding=True)
+    outer_top_start = n_outer - n_theta
+    inner_top_start = n_outer + n_inner - n_theta
+    j = np.arange(n_theta, dtype=np.int32)
+    jn = (j + 1) % n_theta
+    rim_faces = np.empty((n_theta * 2, 3), dtype=np.int32)
+    rim_faces[:n_theta, 0] = outer_top_start + j
+    rim_faces[:n_theta, 1] = inner_top_start + j
+    rim_faces[:n_theta, 2] = inner_top_start + jn
+    rim_faces[n_theta:, 0] = outer_top_start + j
+    rim_faces[n_theta:, 1] = inner_top_start + jn
+    rim_faces[n_theta:, 2] = outer_top_start + jn
+
+    # Bottom faces
+    outer_bottom_start = 0
+    inner_bottom_start = n_outer
+    j = np.arange(n_theta, dtype=np.int32)
+    jn = (j + 1) % n_theta
+    bottom_faces = np.empty((n_theta * 6, 3), dtype=np.int32)
+    bottom_faces[:n_theta, 0] = outer_bottom_start + j
+    bottom_faces[:n_theta, 1] = drain_under_arr[jn]
+    bottom_faces[:n_theta, 2] = drain_under_arr[j]
+    bottom_faces[n_theta:2 * n_theta, 0] = outer_bottom_start + j
+    bottom_faces[n_theta:2 * n_theta, 1] = outer_bottom_start + jn
+    bottom_faces[n_theta:2 * n_theta, 2] = drain_under_arr[jn]
+    bottom_faces[2 * n_theta:3 * n_theta, 0] = inner_bottom_start + j
+    bottom_faces[2 * n_theta:3 * n_theta, 1] = inner_bottom_start + jn
+    bottom_faces[2 * n_theta:3 * n_theta, 2] = drain_top_arr[jn]
+    bottom_faces[3 * n_theta:4 * n_theta, 0] = inner_bottom_start + j
+    bottom_faces[3 * n_theta:4 * n_theta, 1] = drain_top_arr[jn]
+    bottom_faces[3 * n_theta:4 * n_theta, 2] = drain_top_arr[j]
+    bottom_faces[4 * n_theta:5 * n_theta, 0] = drain_under_arr[j]
+    bottom_faces[4 * n_theta:5 * n_theta, 1] = drain_top_arr[j]
+    bottom_faces[4 * n_theta:5 * n_theta, 2] = drain_top_arr[jn]
+    bottom_faces[5 * n_theta:, 0] = drain_under_arr[j]
+    bottom_faces[5 * n_theta:, 1] = drain_top_arr[jn]
+    bottom_faces[5 * n_theta:, 2] = drain_under_arr[jn]
+
+    drain_faces = np.vstack([tri_bot1, tri_bot2, tri_top1, tri_top2, tri_cyl1, tri_cyl2])
+    new_faces = np.vstack([outer_faces, inner_faces, rim_faces, bottom_faces, drain_faces])
+    return new_verts, new_faces

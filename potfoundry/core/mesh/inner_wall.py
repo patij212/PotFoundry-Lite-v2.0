@@ -14,14 +14,11 @@ structural integrity.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from numpy.typing import NDArray
-
-from ...types import NDArrayFloat
-
 
 __all__ = [
     "generate_inner_wall",
@@ -80,11 +77,12 @@ def generate_inner_wall(
         - inner_idx: Index array for inner wall vertices
         - clamp_count: Number of vertices clamped due to drain proximity
         - total_inner_samples: Total number of inner wall samples
+
     """
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
     clamp_count = 0
     total_inner_samples = len(z_inner) * n_theta
-    
+
     for i, z in enumerate(z_inner):
         twist = spin_twist_radians_fn(z, H, style_opts)
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
@@ -96,7 +94,7 @@ def generate_inner_wall(
         # Parity with outer/preview: sample style at raw theta; apply twist only in placement
         # Normalize via the typed wrapper to avoid float/NDArray typing ambiguity
         r_out_vals = np.asarray(
-            call_style_r_outer_fn(r_outer_fn, thetas, z, r0, H, _opts), dtype=float
+            call_style_r_outer_fn(r_outer_fn, thetas, z, r0, H, _opts), dtype=float,
         )
         r_in_vals = r_out_vals - t_wall
         min_allowed = r_drain + 1.0
@@ -113,5 +111,5 @@ def generate_inner_wall(
             sin_th,
             n_theta,
         )
-    
+
     return inner_idx, clamp_count, total_inner_samples

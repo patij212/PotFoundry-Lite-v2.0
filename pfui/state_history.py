@@ -22,7 +22,7 @@ Errors
 """
 
 import copy  # noqa: E402
-from typing import Any, Dict  # noqa: E402
+from typing import Any  # noqa: E402
 
 # Allow tests to stub `streamlit` via sys.modules before importing; pre-declare
 # the `st` name so type-checkers don't require `# type: ignore` on the local
@@ -34,14 +34,15 @@ UNDO = "__undo_stack__"
 REDO = "__redo_stack__"
 
 
+from pfui._st import get_effective_st as get_st
+
+
 def _st() -> Any:
-    # Lazy import so tests can stub sys.modules['streamlit'] first.
-    import streamlit as st
-
-    return st
+    # Use central get_st() helper to support dynamic Streamlit shims in tests
+    return get_st()
 
 
-def _push(stack: str, snapshot: Dict[str, Any]) -> None:
+def _push(stack: str, snapshot: dict[str, Any]) -> None:
     st = _st()
     st.session_state.setdefault(stack, [])
     st.session_state[stack].append(snapshot)
@@ -49,7 +50,7 @@ def _push(stack: str, snapshot: Dict[str, Any]) -> None:
         st.session_state[stack].pop(0)
 
 
-def _snapshot(style: str) -> Dict[str, Any]:
+def _snapshot(style: str) -> dict[str, Any]:
     st = _st()
     # Deep copy so later UI edits don’t mutate the snapshot.
     return {
@@ -60,9 +61,8 @@ def _snapshot(style: str) -> Dict[str, Any]:
 
 
 def checkpoint(style: str) -> None:
-    """
-    Purpose:
-        Save a snapshot to the undo stack and clear the redo stack.
+    """Purpose:
+    Save a snapshot to the undo stack and clear the redo stack.
     """
     st = _st()
     _push(UNDO, _snapshot(style))
@@ -70,9 +70,8 @@ def checkpoint(style: str) -> None:
 
 
 def undo() -> None:
-    """
-    Purpose:
-        Restore the last snapshot from undo, pushing current state to redo.
+    """Purpose:
+    Restore the last snapshot from undo, pushing current state to redo.
     """
     st = _st()
     if not st.session_state.get(UNDO):
@@ -86,9 +85,8 @@ def undo() -> None:
 
 
 def redo() -> None:
-    """
-    Purpose:
-        Restore the last snapshot from redo, pushing current state to undo.
+    """Purpose:
+    Restore the last snapshot from redo, pushing current state to undo.
     """
     st = _st()
     if not st.session_state.get(REDO):

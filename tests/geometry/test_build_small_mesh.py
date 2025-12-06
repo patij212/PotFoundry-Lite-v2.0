@@ -10,7 +10,7 @@ def test_build_small_mesh_smoke():
     t_bottom = 3.0
     r_drain = 5.0
     verts, faces, diag = build_pot_mesh(
-        H, Rt, Rb, t_wall, t_bottom, r_drain, expn=1.0, n_theta=32, n_z=8
+        H, Rt, Rb, t_wall, t_bottom, r_drain, expn=1.0, n_theta=32, n_z=8,
     )
     assert verts.shape[1] == 3
     assert faces.shape[1] == 3

@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Union
+from collections.abc import Callable
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
 def number_input_validated(
     label: str,
-    min_value: Optional[Union[int, float]] = None,
-    max_value: Optional[Union[int, float]] = None,
-    value: Union[int, float, None] = None,
-    step: Optional[Union[int, float]] = None,
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
-    validator: Optional[Callable[[Union[int, float]], Union[int, float]]] = None,
-) -> Union[int, float]:
+    min_value: float | None = None,
+    max_value: float | None = None,
+    value: float | None = None,
+    step: float | None = None,
+    key: str | None = None,
+    help_text: str | None = None,
+    validator: Callable[[int | float], int | float] | None = None,
+) -> int | float:
     """Create a number input with optional validation.
 
     Args:
@@ -31,7 +31,9 @@ def number_input_validated(
 
     Returns:
         Input number value (validated if validator provided)
+
     """
+    st = get_st()
     input_value = st.number_input(
         label=label,
         min_value=min_value,
@@ -41,7 +43,7 @@ def number_input_validated(
         key=key,
         help=help_text,
     )
-    
+
     if validator is not None:
         try:
             validated = validator(input_value)
@@ -49,18 +51,18 @@ def number_input_validated(
         except ValueError as e:
             st.error(f"Validation error: {e}")
             return value if value is not None else 0
-    
+
     return input_value
 
 
 def text_input_validated(
     label: str,
     value: str = "",
-    max_chars: Optional[int] = None,
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
-    placeholder: Optional[str] = None,
-    validator: Optional[Callable[[str], str]] = None,
+    max_chars: int | None = None,
+    key: str | None = None,
+    help_text: str | None = None,
+    placeholder: str | None = None,
+    validator: Callable[[str], str] | None = None,
 ) -> str:
     """Create a text input with optional validation.
 
@@ -75,7 +77,9 @@ def text_input_validated(
 
     Returns:
         Input text value (validated if validator provided)
+
     """
+    st = get_st()
     input_value = st.text_input(
         label=label,
         value=value,
@@ -84,7 +88,7 @@ def text_input_validated(
         help=help_text,
         placeholder=placeholder,
     )
-    
+
     if validator is not None:
         try:
             validated = validator(input_value)
@@ -92,5 +96,5 @@ def text_input_validated(
         except ValueError as e:
             st.error(f"Validation error: {e}")
             return value
-    
+
     return input_value

@@ -19,10 +19,9 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-
 __all__ = [
-    "theta_grid_cached",
     "refine_z_outer_for_seams",
+    "theta_grid_cached",
 ]
 
 
@@ -49,6 +48,7 @@ def theta_grid_cached(
         Uses LRU cache (maxsize=8) to avoid regenerating common grid sizes.
         This significantly improves performance when building multiple pots
         with the same resolution settings.
+
     """
     thetas = np.linspace(0, 2 * np.pi, n_theta, endpoint=False, dtype=np.float64)
     return thetas, np.cos(thetas), np.sin(thetas)
@@ -76,6 +76,7 @@ def refine_z_outer_for_seams(
         This is specific to LowPolyFacet style tier handling. The additional
         z-levels ensure vertices are placed exactly at tier boundaries and
         window edges for proper seam rendering and cut angle handling.
+
     """
     try:
         _tiers = (
@@ -129,7 +130,7 @@ def refine_z_outer_for_seams(
                     add_zs.append(float(zc))
         if add_zs:
             z_out = np.unique(
-                np.concatenate([z_outer, np.array(add_zs, dtype=float)])
+                np.concatenate([z_outer, np.array(add_zs, dtype=float)]),
             ).astype(float)
             return z_out
         return z_outer

@@ -44,8 +44,8 @@ __all__ = [
     "calculate_mesh_diagnostics",
     "call_style_r_outer",
     "generate_inner_wall",
-    "theta_grid_cached",
     "refine_z_outer_for_seams",
     "sample_outer_rings",
     "spin_twist_radians",
+    "theta_grid_cached",
 ]

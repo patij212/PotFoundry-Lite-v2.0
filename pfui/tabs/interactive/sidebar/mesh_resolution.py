@@ -11,17 +11,20 @@ excessive work in the browser while still allowing high-quality exports.
 
 from __future__ import annotations
 
-from typing import Any, Optional, Callable
+from collections.abc import Callable
+from typing import Any
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
-def render_mesh_resolution(ss: dict[str, Any], on_change: Optional[Callable[[], None]] = None) -> None:
+def render_mesh_resolution(ss: dict[str, Any], on_change: Callable[[], None] | None = None) -> None:
     """Render mesh resolution sliders in the sidebar.
 
     Args:
         ss: The Streamlit session state mapping.
+
     """
+    st = get_st()
     st.subheader("Mesh resolution")
 
     # Preview resolution controls (affect interactive preview)

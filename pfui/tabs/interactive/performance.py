@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
 def render_performance_section() -> None:
@@ -15,9 +15,10 @@ def render_performance_section() -> None:
     Displays recent performance logs and provides cache clearing controls
     for development purposes.
     """
+    st = get_st()
     with st.expander("Performance (dev)"):
-        ss = cast(dict[str, Any], st.session_state)
-        perf_logs = cast(Any, ss.get("_perf_logs", []))
+        ss = cast("dict[str, Any]", st.session_state)
+        perf_logs = cast("Any", ss.get("_perf_logs", []))
         st.text_area("Recent timings", value="\n".join(perf_logs[-30:]), height=180)
         if st.button("Force clear caches"):
             try:

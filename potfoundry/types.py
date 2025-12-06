@@ -7,7 +7,7 @@ of geometry functions safer and clearer.
 
 from __future__ import annotations
 
-from typing import TypeAlias
+from typing import TypeAlias, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -19,7 +19,6 @@ NDArrayFloat: TypeAlias = npt.NDArray[np.float64]
 # YAML presets. This is intentionally conservative: fields are NotRequired and
 # limited to commonly-accessed keys so we can incrementally tighten typing in
 # large geometry functions without changing runtime behavior.
-from typing import TypedDict
 
 
 class StyleOpts(TypedDict, total=False):

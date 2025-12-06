@@ -11,10 +11,9 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, cast
 
-import streamlit as st
-
+from pfui._st import get_effective_st as get_st
 from pfui.deeplink import generate_deep_link
 from pfui.imports import WRITE_STL_BINARY, build_pot_mesh
 from potfoundry.types import StyleOpts
@@ -30,19 +29,19 @@ def _mask_possible_secrets(text: str) -> str:
         
     Returns:
         Text with sensitive information masked
+
     """
     try:
         # Mask exact supabase service key if available in st.secrets
         svc_key = None
-        if "st" in globals() and st is not None:
-            try:
-                svc_key = (
-                    st.secrets.get("connections", {})
-                    .get("supabase", {})
-                    .get("key")
-                )
-            except Exception:
-                svc_key = None
+        try:
+            svc_key = (
+                get_st().secrets.get("connections", {})
+                .get("supabase", {})
+                .get("key")
+            )
+        except Exception:
+            svc_key = None
         if svc_key and svc_key in text:
             text = text.replace(svc_key, "[REDACTED]")
 
@@ -61,11 +60,12 @@ def _mask_possible_secrets(text: str) -> str:
     return text
 
 
-def _get_git_commit() -> Optional[str]:
+def _get_git_commit() -> str | None:
     """Get current git commit hash.
     
     Returns:
         Short git commit hash, or None if not available
+
     """
     try:
         git_commit = (
@@ -87,13 +87,14 @@ def _get_base_url() -> str:
     
     Returns:
         Base URL from secrets, environment, or localhost default
+
     """
     # Preference: root app_url (secrets) -> nested app_url -> APP_URL env -> localhost default
-    base_url = st.secrets.get("app_url", None)
+    base_url = get_st().secrets.get("app_url", None)
     if not base_url:
         try:
             base_url = (
-                st.secrets.get("connections", {})
+                get_st().secrets.get("connections", {})
                 .get("supabase", {})
                 .get("app_url")
             )
@@ -120,6 +121,7 @@ def render_library_publish_controls(
         
     Returns:
         Tuple of (publish_enabled, publish_title, publish_tags, publish_license, license_consent)
+
     """
     publish_enabled = False
     publish_title = ""
@@ -127,14 +129,15 @@ def render_library_publish_controls(
     publish_license = "CC BY-NC 4.0"
     license_consent = False
 
+    st = get_st()
     if _has_library and not _library_read_only:
         with st.expander("📚 Publish to Public Library", expanded=False):
             st.markdown(
-                "Share your design with the community. Published designs are public and downloadable by anyone."
+                "Share your design with the community. Published designs are public and downloadable by anyone.",
             )
 
             publish_enabled = st.checkbox(
-                "Enable publishing", value=False, key="publish_enable"
+                "Enable publishing", value=False, key="publish_enable",
             )
 
             if publish_enabled:
@@ -190,7 +193,7 @@ def render_library_publish_controls(
     elif _has_library and _library_read_only:
         with st.expander("📚 Publish to Public Library", expanded=False):
             st.info(
-                "This device is connected to the Public Library in read-only mode (anon key). Browsing works, but publishing is disabled. Provide a service_role key in `.streamlit/secrets.toml` to enable publishing."
+                "This device is connected to the Public Library in read-only mode (anon key). Browsing works, but publishing is disabled. Provide a service_role key in `.streamlit/secrets.toml` to enable publishing.",
             )
 
     return publish_enabled, publish_title, publish_tags, publish_license, license_consent
@@ -243,16 +246,18 @@ def handle_standalone_publish(
         name: Design name
         top_od: Top outer diameter
         bottom_od: Bottom outer diameter
+
     """
-    ss = cast(dict[str, Any], st.session_state)
-    if not cast(Any, ss.get("_publish_clicked")):
+    st = get_st()
+    ss = cast("dict[str, Any]", st.session_state)
+    if not cast("Any", ss.get("_publish_clicked")):
         return
 
     # Narrow publish fields once for the publish flow
     title_safe: str = str(publish_title or "")
     license_safe: str = str(publish_license or "CC BY-NC 4.0")
     tags_safe: list[str] = list(publish_tags or [])
-    
+
     try:
         # Build mesh at export resolution (reuse upscale), else fall back to current n_theta/n_z
         up_scale = (
@@ -262,7 +267,7 @@ def handle_standalone_publish(
         )
         n_theta_pub = int(n_theta * up_scale)
         n_z_pub = int(n_z * up_scale)
-        
+
         verts, faces, _ = build_pot_mesh(
             H=H,
             Rt=Rt,
@@ -388,7 +393,9 @@ def handle_export(
         style_name: Name of the current style
         top_od: Top outer diameter
         bottom_od: Bottom outer diameter
+
     """
+    st = get_st()
     if not do_export:
         return
 
@@ -426,7 +433,7 @@ def handle_export(
                 pass
         st.success(f"STL ready: {safe}.stl  — triangles: {len(faces):,}")
         st.download_button(
-            "Download STL", data=data, file_name=f"{safe}.stl", mime="model/stl"
+            "Download STL", data=data, file_name=f"{safe}.stl", mime="model/stl",
         )
         # Avoid recomputing preview on the next UI rerun after export
         st.session_state["_suppress_preview_once"] = True
@@ -563,10 +570,12 @@ def render_export_section(
         do_export: Whether to perform export
         n_theta_export: Angular resolution for export
         n_z_export: Vertical resolution for export
+
     """
+    st = get_st()
     st.subheader("Export STL")
 
-    ss = cast(dict[str, Any], st.session_state)
+    ss = cast("dict[str, Any]", st.session_state)
 
     # Export trigger button (sets a session flag so the rest of the
     # export pipeline can run in the same rerun). This mirrors previous

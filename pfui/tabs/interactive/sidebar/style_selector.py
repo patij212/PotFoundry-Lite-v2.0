@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
-import streamlit as st
-
+from pfui._st import get_effective_st as get_st
 from pfui.imports import STYLES
 from pfui.state import widget_key
 
 
-def render_style_selector(ss: dict[str, Any], on_change: callable) -> str:
+def render_style_selector(ss: dict[str, Any], on_change: Callable[[], None]) -> str:
     """Render style selection widget.
     
     Args:
@@ -19,6 +19,7 @@ def render_style_selector(ss: dict[str, Any], on_change: callable) -> str:
         
     Returns:
         Selected style name
+
     """
     # STYLES may be a lazy proxy (not a plain dict). Call .keys() defensively.
     try:
@@ -30,6 +31,7 @@ def render_style_selector(ss: dict[str, Any], on_change: callable) -> str:
         except Exception:
             all_styles = []
 
+    st = get_st()
     st.selectbox(
         "Style",
         options=all_styles,

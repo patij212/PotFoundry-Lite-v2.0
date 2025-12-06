@@ -9,7 +9,7 @@ Provides helper functions for:
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import streamlit as st
@@ -24,10 +24,10 @@ else:
 
 
 __all__ = [
-    "is_disabled_via_secrets",
-    "should_skip_tls_verify",
     "emit_tls_override_warning",
+    "is_disabled_via_secrets",
     "looks_like_invalid_key",
+    "should_skip_tls_verify",
 ]
 
 
@@ -40,6 +40,7 @@ def is_disabled_via_secrets() -> bool:
     
     Returns:
         True if DISABLE_LIBRARY secret is set to "1"
+
     """
     if HAS_STREAMLIT and st is not None:
         try:
@@ -57,6 +58,7 @@ def should_skip_tls_verify() -> bool:
     
     Returns:
         True if TLS verification should be skipped
+
     """
     for key in (
         "SUPABASE_SKIP_TLS_VERIFY",
@@ -107,7 +109,7 @@ def emit_tls_override_warning() -> None:
     print(message)
 
 
-def looks_like_invalid_key(key: Optional[str]) -> bool:
+def looks_like_invalid_key(key: str | None) -> bool:
     """Return True when a key is definitely invalid (placeholder/empty).
 
     Accepts both JWT-like keys (eyJ...) and srv- prefixed keys.
@@ -117,6 +119,7 @@ def looks_like_invalid_key(key: Optional[str]) -> bool:
         
     Returns:
         True if key appears invalid or is a placeholder
+
     """
     if not key:
         return True

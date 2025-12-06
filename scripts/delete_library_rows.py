@@ -16,13 +16,13 @@ Usage examples:
 Notes:
 - Requires service role (SUPABASE_KEY) with write permissions.
 - Use filters to target specific rows; avoid broad, unfiltered deletes.
+
 """
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import List, Set
 
 # Add project root for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -33,8 +33,8 @@ from potfoundry.integrations.supabase_client import (
 )
 
 
-def load_ids_file(path: Path) -> Set[str]:
-    ids: Set[str] = set()
+def load_ids_file(path: Path) -> set[str]:
+    ids: set[str] = set()
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             s = line.strip()
@@ -43,9 +43,9 @@ def load_ids_file(path: Path) -> Set[str]:
     return ids
 
 
-def gather_ids(style: str | None, limit: int) -> List[str]:
+def gather_ids(style: str | None, limit: int) -> list[str]:
     client = get_singleton_client()
-    ids: List[str] = []
+    ids: list[str] = []
     offset = 0
     page = 200 if limit <= 0 else min(200, limit)
     remaining = limit if limit > 0 else 10_000_000
@@ -73,7 +73,7 @@ def gather_ids(style: str | None, limit: int) -> List[str]:
     return ids
 
 
-def delete_ids(ids: List[str], apply: bool) -> int:
+def delete_ids(ids: list[str], apply: bool) -> int:
     client = get_singleton_client()
     deleted = 0
     for i, id_ in enumerate(ids, start=1):
@@ -92,12 +92,12 @@ def delete_ids(ids: List[str], apply: bool) -> int:
     return deleted
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     import argparse
 
     p = argparse.ArgumentParser(description="Delete rows from Public Library (pots)")
     p.add_argument(
-        "--id", dest="ids", action="append", help="Delete by specific id (repeatable)"
+        "--id", dest="ids", action="append", help="Delete by specific id (repeatable)",
     )
     p.add_argument("--ids-file", type=Path, help="Path to file with ids (one per line)")
     p.add_argument("--style", type=str, help="Delete rows matching a style name")
@@ -108,7 +108,7 @@ def main(argv: List[str]) -> int:
         help="Max rows to fetch for style filter (0=no limit)",
     )
     p.add_argument(
-        "--apply", action="store_true", help="Apply deletions (default is dry-run)"
+        "--apply", action="store_true", help="Apply deletions (default is dry-run)",
     )
     args = p.parse_args(argv)
 
@@ -116,14 +116,14 @@ def main(argv: List[str]) -> int:
         client = get_singleton_client()
         if not client.is_configured():
             raise NotConfiguredError(
-                "Supabase not configured (set SUPABASE_URL and SUPABASE_KEY)"
+                "Supabase not configured (set SUPABASE_URL and SUPABASE_KEY)",
             )
     except NotConfiguredError as e:
         print(f"ERROR: {e}")
         return 2
 
     # Collect target IDs
-    target_ids: Set[str] = set()
+    target_ids: set[str] = set()
     if args.ids:
         target_ids.update(args.ids)
     if args.ids_file and args.ids_file.exists():

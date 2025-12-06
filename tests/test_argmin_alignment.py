@@ -11,7 +11,7 @@ def find_detailed_row(
         "origin_map_sample",
     ),
 ):
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -28,7 +28,7 @@ def find_detailed_row(
 
 def test_argmin_alignment_bridge_vs_analysis_min():
     p = os.path.join(
-        os.path.dirname(__file__), "..", "tools", "edgeflow_verbose_diagnostics.jsonl"
+        os.path.dirname(__file__), "..", "tools", "edgeflow_verbose_diagnostics.jsonl",
     )
     p = os.path.normpath(p)
     row = find_detailed_row(p)

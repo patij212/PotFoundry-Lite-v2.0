@@ -4,7 +4,6 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
 
 _PREFIX = "_pf2_snap_"
 
@@ -21,7 +20,7 @@ def save_png_temp(png_bytes: bytes) -> str:
     return str(p)
 
 
-def read_png_bytes(obj: Optional[object]) -> Optional[bytes]:
+def read_png_bytes(obj: object | None) -> bytes | None:
     """Return bytes for either raw bytes or a temp-file path.
 
     Returns None if no data available.
@@ -39,7 +38,7 @@ def read_png_bytes(obj: Optional[object]) -> Optional[bytes]:
     return None
 
 
-def remove_png_path(path_like: Optional[str]) -> None:
+def remove_png_path(path_like: str | None) -> None:
     """Remove a temp PNG file if it looks like one we created.
 
     Safe-guards: only remove files that live in tempfile.gettempdir()

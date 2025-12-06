@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 
-import pfui.preview as preview
+from pfui import preview
 
 
 def test_full_resolution_exact_shape(monkeypatch):
@@ -24,7 +24,7 @@ def test_full_resolution_exact_shape(monkeypatch):
     n_theta = 64
     n_z = 16
     X, Y, Z = preview.make_preview_arrays(
-        120.0, 70.0, 45.0, 1.1, n_theta, n_z, "GoodVecAlways", json.dumps({})
+        120.0, 70.0, 45.0, 1.1, n_theta, n_z, "GoodVecAlways", json.dumps({}),
     )
 
     assert X.shape == (

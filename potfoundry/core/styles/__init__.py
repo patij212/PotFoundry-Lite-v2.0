@@ -28,34 +28,35 @@ Style Function Signature:
     ) -> NDArrayFloat | float:
         '''Compute outer radius at height z and angle(s) theta.
         
-        Args:
+Args:
             theta: Angle(s) in radians (scalar or array)
             z: Height position in mm
             r0: Base radius at this height in mm
             H: Total pot height in mm
             opts: Style-specific parameters dict
             
-        Returns:
+Returns:
             Modulated radius (same type as theta)
         '''
+
 """
 
 # Import all style functions
+from .fourier_bloom import r_outer_fourier_bloom
 from .harmonic_ripple import r_outer_harmonic_ripple
+from .lowpoly_facet import r_outer_lowpoly_facet
 from .spiral_ridges import r_outer_spiral_ridges
 from .superellipse_morph import r_outer_superellipse_morph
-from .fourier_bloom import r_outer_fourier_bloom
 from .superformula_blossom import r_outer_superformula_blossom
-from .lowpoly_facet import r_outer_lowpoly_facet
 
 __all__ = [
     "STYLES",
+    "r_outer_fourier_bloom",
     "r_outer_harmonic_ripple",
+    "r_outer_lowpoly_facet",
     "r_outer_spiral_ridges",
     "r_outer_superellipse_morph",
-    "r_outer_fourier_bloom",
     "r_outer_superformula_blossom",
-    "r_outer_lowpoly_facet",
 ]
 
 # Registry of available styles (function, description)

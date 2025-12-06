@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from collections.abc import Mapping
 from types import MappingProxyType
+from typing import Any
 
 __all__ = ["GLOBAL_CONTROLS"]
 
-GLOBAL_CONTROLS: Dict[str, Dict[str, Any]] = {
+GLOBAL_CONTROLS: Mapping[str, dict[str, Any]] = {
     "spin_turns": {
         "label": "Twist across height (turns)",
         "help": "Total rotations from base to rim. Negative values twist the opposite way.",

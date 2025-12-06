@@ -1,0 +1,29 @@
+{
+  "name": "potfoundry-lite-webgpu",
+  "version": "1.0.0",
+  "description": "Build tooling for PotFoundry's WebGPU preview bundle.",
+  "private": true,
+  "scripts": {
+    "build:webgpu": "esbuild pfui/preview/assets/webgpu_preview.ts --bundle --format=esm --target=es2020 --outfile=pfui/preview/assets/webgpu_preview.js",
+    "lint:webgpu": "eslint --ext .ts pfui/preview/assets --max-warnings 0",
+    "format": "prettier --write --ignore-unknown \"pfui/preview/assets/**/*.{ts,js,wgsl}\"",
+    "test": "vitest",
+    "test:webgpu:playwright": "bash ./scripts/run_playwright_webgpu_tests.sh chrome 1",
+    "test:webgpu:playwright:ps": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/run_playwright_webgpu_tests.ps1 -ChromiumChannel 'chrome' -Headful"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "esbuild": "^0.27.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.0.0",
+    "jsdom": "^22.1.0",
+    "prettier": "^2.8.0",
+    "typescript": "5.5.4",
+    "vitest": "^1.2.13",
+    "wgsl_reflect": "^1.2.3"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}

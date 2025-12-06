@@ -7,9 +7,10 @@ versions.
 
 from __future__ import annotations
 
-from typing import Any, Callable, ParamSpec, TypeVar, cast
+from collections.abc import Callable
+from typing import Any, ParamSpec, TypeVar, cast
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -19,15 +20,15 @@ def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable
     """Lazily resolve st.cache_data and adapt callable/.decorate/no-op shapes."""
 
     def _decorator(fn: Callable[P, R]) -> Callable[P, R]:
-        impl: Any = getattr(st, "cache_data", None)
+        impl: Any = getattr(get_st(), "cache_data", None)
         try:
             if callable(impl):
                 return cast(
-                    Callable[[Callable[P, R]], Callable[P, R]], impl(*args, **kwargs)
+                    "Callable[[Callable[P, R]], Callable[P, R]]", impl(*args, **kwargs),
                 )(fn)
-            if hasattr(impl, "decorate") and callable(getattr(impl, "decorate")):
+            if hasattr(impl, "decorate") and callable(impl.decorate):
                 return cast(
-                    Callable[[Callable[P, R]], Callable[P, R]],
+                    "Callable[[Callable[P, R]], Callable[P, R]]",
                     impl.decorate(*args, **kwargs),
                 )(fn)
         except Exception:
@@ -42,14 +43,14 @@ def cache_data(*args: Any, **kwargs: Any) -> Callable[[Callable[P, R]], Callable
 def _pyplot(fig: Any, *, fill_width: bool, clear: bool = True) -> None:
     """Render matplotlib figure with Streamlit version compatibility."""
     try:
-        st.pyplot(
-            fig, clear_figure=clear, width=("stretch" if fill_width else "content")
+        get_st().pyplot(
+            fig, clear_figure=clear, width=("stretch" if fill_width else "content"),
         )
     except TypeError:
-        st.pyplot(fig, clear_figure=clear)
+        get_st().pyplot(fig, clear_figure=clear)
 
 
 __all__ = [
-    "cache_data",
     "_pyplot",
+    "cache_data",
 ]

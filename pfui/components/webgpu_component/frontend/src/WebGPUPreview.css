@@ -1,0 +1,99 @@
+/**
+ * WebGPU Preview styles.
+ */
+
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.pf-wgpu-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Establish proper stacking context */
+  isolation: isolate;
+}
+
+/* ============================================================================
+   Canvas
+   ============================================================================ */
+
+.pf-wgpu-preview__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  cursor: grab;
+}
+
+.pf-wgpu-preview__canvas:active {
+  cursor: grabbing;
+}
+
+/* ============================================================================
+   Status
+   ============================================================================ */
+
+.pf-wgpu-preview__status {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.pf-wgpu-preview__status[data-ready='1'] {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ============================================================================
+   Hint
+   ============================================================================ */
+
+.pf-wgpu-preview__hint {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   With Embedded UI
+   ============================================================================ */
+
+.pf-wgpu-preview[data-embedded-ui='1'] {
+  /* Ensure proper layering when embedded UI is active */
+  isolation: isolate;
+  /* CRITICAL: establish containing block for absolute children */
+  position: relative;
+}
+
+.pf-wgpu-preview[data-embedded-ui='1'] .pf-wgpu-preview__canvas {
+  /* Canvas takes full space behind UI */
+  position: absolute;
+  inset: 0;
+}
+
+/* Ensure the app UI layer fills the container */
+.pf-wgpu-preview[data-embedded-ui='1'] .pf-app-ui {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+}

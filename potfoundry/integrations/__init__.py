@@ -1,5 +1,4 @@
-"""
-potfoundry.integrations - External service integrations
+"""potfoundry.integrations - External service integrations
 ------------------------------------------------------
 
 Optional integrations with external services like Supabase for library features.

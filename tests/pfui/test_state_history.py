@@ -9,9 +9,8 @@ fake_st.session_state = {}
 # Use ModuleType so sys.modules contains proper module objects (hashable)
 mod: Any = types.ModuleType("streamlit")
 mod.session_state = fake_st.session_state
-sys.modules["streamlit"] = mod
 
-from pfui import state_history as H  # noqa: E402
+import importlib
 
 
 def _reset():
@@ -20,6 +19,10 @@ def _reset():
 
 def test_checkpoint_and_undo_redo_roundtrip():
     _reset()
+    # Ensure the pfui modules import under the test's shim
+    sys.modules["streamlit"] = mod
+    H = importlib.import_module("pfui.state_history")
+    importlib.reload(H)
     # prepare UI state
     fake_st.session_state["ui.style"] = "S1"
     fake_st.session_state["ui.global"] = {"H": 100}

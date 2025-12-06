@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any, Dict, List
+from typing import Any
 from xml.etree import ElementTree as ET
 
 
-def parse_junit(path: str) -> Dict[str, Any]:
+def parse_junit(path: str) -> dict[str, Any]:
     tree = ET.parse(path)
     root = tree.getroot()
 
@@ -40,7 +40,7 @@ def parse_junit(path: str) -> Dict[str, Any]:
     total_failures = 0
     total_skipped = 0
     total_time = 0.0
-    slow_entries: List[Dict[str, Any]] = []
+    slow_entries: list[dict[str, Any]] = []
 
     for s in suites:
         try:
@@ -99,7 +99,7 @@ def parse_junit(path: str) -> Dict[str, Any]:
                     guessed_file = None
 
             # Extract any marker/property info attached specifically to this testcase
-            markers: List[str] = []
+            markers: list[str] = []
             # pytest sometimes encodes markers/properties as attributes or children; gather anything useful
             for prop in tc.findall("properties/property"):
                 pname = prop.attrib.get("name", "")
@@ -135,7 +135,7 @@ def parse_junit(path: str) -> Dict[str, Any]:
                     "parameters": parameters,
                     "stdout": stdout,
                     "stderr": stderr,
-                }
+                },
             )
 
     # Sort slowest by time desc and pick top N
@@ -162,7 +162,7 @@ def parse_junit(path: str) -> Dict[str, Any]:
     }
 
 
-def main(argv: List[str]):
+def main(argv: list[str]):
     if len(argv) < 3:
         print("Usage: python pytest_junit_summary.py <input-junit-xml> <output-json>")
         return 2
@@ -192,7 +192,7 @@ def main(argv: List[str]):
 
     # Attach raw pytest output if available in cwd
     try:
-        with open("pytest-output.txt", "r", encoding="utf-8") as rf:
+        with open("pytest-output.txt", encoding="utf-8") as rf:
             raw = rf.read()
             summary["raw_output"] = raw
     except Exception:

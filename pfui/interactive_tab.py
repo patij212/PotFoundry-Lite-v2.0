@@ -14,14 +14,32 @@ The tab has been fully modularized with components extracted to:
 
 from __future__ import annotations
 
-from typing import Any, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st, StreamlitLike
+from potfoundry.types import StyleOpts
+
+if TYPE_CHECKING:
+    from streamlit import DeltaGenerator
+else:
+    DeltaGenerator = Any  # type: ignore
 
 # Import modular components
+import pfui.schemas as SC
 from pfui.app_components import render_appearance_settings, render_snapshots
 from pfui.app_components.utils import resolve_schema_key
-from pfui.health import _design_health, _health_badge, HealthBadge
+from pfui.geometry_bridge import adapt_r_outer_fn
+from pfui.health import (  # type: ignore[reportPrivateUsage]
+    _design_health,
+    _health_badge,
+)
+
+# Help the type checker by declaring expected call signatures for re-exported
+# functions (they are provided by submodules and can be dynamically typed).
+# Re-exported render functions are provided by submodules; no cast needed.
+from pfui.imports import STYLES  # geometry + style registry
+from pfui.state import widget_key
 from pfui.tabs.interactive import (
     render_export_section,
     render_metrics_section,
@@ -30,12 +48,7 @@ from pfui.tabs.interactive import (
     render_profile_section,
     render_sidebar_section,
 )
-from pfui.preview import render_profile  # profile visualization
-from pfui.imports import build_pot_mesh, STYLES  # geometry + style registry
-from pfui.geometry_bridge import adapt_r_outer_fn
 from pfui.tabs.interactive.preview.style_setup import setup_preview_style
-from pfui.state import widget_key
-import pfui.schemas as SC
 
 
 def render_interactive_tab(
@@ -50,16 +63,21 @@ def render_interactive_tab(
     Args:
         _has_library: Whether library is configured
         _library_read_only: Whether library is in read-only mode
+
     """
     # Get session state reference
-    ss = cast(dict[str, Any], st.session_state)
-    
+    st = get_st()
+    ss = cast("dict[str, Any]", st.session_state)
+    # Ensure preview_mode and has_pyvista are always defined for static analysis
+    preview_mode: str = str(ss.get("preview_mode", "auto"))
+    has_pyvista: bool = False
+
     # ------------------ SIDEBAR (all inputs) ------------------
     with st.sidebar:
         render_sidebar_section()
 
     # Gather current design parameters from session state after sidebar render
-    H = float(ss.get("H", 120.0))
+    h = float(ss.get("H", 120.0))
     top_od = float(ss.get("top_od", 140.0))
     bottom_od = float(ss.get("bottom_od", 90.0))
     t_wall = float(ss.get("t_wall", 3.0))
@@ -74,7 +92,7 @@ def render_interactive_tab(
     style_name = str(
         _style_from_global
         or _style_from_widget
-        or (next(iter(STYLES.keys())) if STYLES else "HarmonicRipple")
+        or (next(iter(cast("dict[str, Any]", STYLES).keys())) if STYLES else "HarmonicRipple"),
     )
     ss["style"] = style_name
     # Write Rt/Rb so preview extractor reads current values
@@ -106,27 +124,44 @@ def render_interactive_tab(
         opts = {}
     # Translate to legacy/engine keyspace for geometry (retain canonical separately)
     try:
-        engine_opts = SC.to_engine(style_name, opts)
+        engine_opts = cast("dict[str, Any]", cast("Any", SC.to_engine)(style_name, opts))
     except Exception:
         engine_opts = dict(opts)
     # Force preview recompute when style actually changed
     if ss.get("_last_style_applied") != style_name:
         ss["_preview_stale"] = True
         ss["_last_style_applied"] = style_name
+        # Invalidate PyVista caches to avoid reusing previous style mesh/colors
+        try:
+            ss.pop("_pyvista_mesh_cache", None)
+            ss.pop("_pyvista_colors_cache", None)
+        except Exception:
+            pass
     ss["style_opts_canonical"] = dict(opts)
     ss["style_opts"] = dict(engine_opts)
     # Obtain outer radius style function
+    # default outer-radius function used when STYLES doesn't provide one
+    def _fallback_r_outer(th: float, z: float, H_: float, Rb_: float, o: Any) -> float:
+        return Rb_
+
+    _default_style_tuple: tuple[Callable[[float, float, float, float, Any], float], dict[str, Any]] = (_fallback_r_outer, {})
+
     try:
-        r_outer_raw = STYLES.get(style_name, (lambda th,z,H,Rb,o: Rb, {}))[0]
+        # STYLES is dynamically provided by imports; cast to a known mapping
+        # shape so static analyzers can reason about .get
+        r_outer_raw = cast("dict[str, Any]", STYLES).get(style_name, _default_style_tuple)[0]
+        # give r_outer_raw a callable signature for the analyzer
+        r_outer_raw = cast("Callable[[float, float, float, float, Any], float]", r_outer_raw)
     except Exception:
-        r_outer_raw = lambda th, z, H_, Rb_, o: Rb_  # noqa: E731
+        r_outer_raw = _fallback_r_outer
     r_outer_fn = adapt_r_outer_fn(r_outer_raw)
     n_theta = int(ss.get("n_theta", ss.get("preview_n_theta", 168)))
     n_z = int(ss.get("n_z", ss.get("preview_n_z", 84)))
 
     # --------------- PREVIEW & EXPORT CONTROLS ---------------
     with st.expander("Preview & Export", expanded=True):
-        col1, col2 = st.columns(2)
+        cols_12: list[DeltaGenerator] = list(st.columns(2))
+        col1, col2 = cols_12[0], cols_12[1]
         with col1:
             preview_mode = st.radio(
                 "Preview Mode",
@@ -142,7 +177,7 @@ def render_interactive_tab(
             )
         with col2:
             # Mesh quality slider (restored) controlling preview detail multiplier
-            preview_detail = st.slider(
+            st.slider(
                 "Mesh quality",
                 0.5,
                 3.0,
@@ -154,10 +189,65 @@ def render_interactive_tab(
                 ),
             )
 
+        # Renderer selection (PyVista vs Plotly)
+        cols_34: list[DeltaGenerator] = list(st.columns(2))
+        col3, col4 = cols_34[0], cols_34[1]
+        with col3:
+            # Check if PyVista is available (avoid importing modules into local scope)
+            try:
+                from importlib import util
+
+                has_pyvista = bool(util.find_spec("pyvista") and util.find_spec("stpyvista"))
+            except Exception:
+                has_pyvista = False
+
+            # Renderer selection expanded (PyVista / WebGPU / Plotly)
+            if has_pyvista:
+                renderer_choice = st.selectbox(
+                    "Renderer",
+                    options=["PyVista", "WebGPU", "Plotly"],
+                    index=["PyVista", "WebGPU", "Plotly"].index(ss.get("renderer", "PyVista")),
+                    key="renderer",
+                    help=(
+                        "**PyVista**: VTK-backed, camera persistence, high fidelity.\n"
+                        "**WebGPU**: Experimental fast path (fragment shader gradient, large mesh friendly).\n"
+                        "**Plotly**: Fallback surface/mesh renderer."
+                    ),
+                )
+                if renderer_choice == "PyVista":
+                    st.success("✨ PyVista active - camera persists")
+                elif renderer_choice == "WebGPU":
+                    ss.setdefault("webgpu_live_controls", False)
+                    st.info("🚀 WebGPU experimental renderer active")
+                    st.checkbox(
+                        "WebGPU live controls",
+                        key="webgpu_live_controls",
+                        help=(
+                            "When enabled, the WebGPU preview owns the critical sliders so geometry updates "
+                            "instantly without Streamlit reruns. Disable to return controls to the sidebar."
+                        ),
+                    )
+            else:
+                st.info(
+                    "💡 **PyVista not installed**\n\n"
+                    "Install for GPU-accelerated rendering:\n"
+                    "`pip install pyvista stpyvista`\n\n"
+                    "Benefits: 60+ FPS, camera persistence, professional quality",
+                )
+        with col4:
+            # Show edges option for PyVista
+            if has_pyvista and ss.get("use_pyvista_renderer", True):
+                st.checkbox(
+                    "Show mesh edges",
+                    value=bool(ss.get("show_mesh_edges", False)),
+                    key="show_mesh_edges",
+                    help="Display wireframe edges on the mesh (PyVista only)",
+                )
+
     # ---------------- HEALTH & WARNINGS ----------------
     # Collect dimension primitives from session state (fallbacks preserve legacy defaults)
     try:
-        H = float(ss.get("H", 120.0))
+        h = float(ss.get("H", 120.0))
         top_od = float(ss.get("top_od", 140.0))
         bottom_od = float(ss.get("bottom_od", 90.0))
         t_wall = float(ss.get("t_wall", 3.0))
@@ -165,12 +255,12 @@ def render_interactive_tab(
         r_drain = float(ss.get("r_drain", 10.0))
         Rt = 0.5 * top_od
         Rb = 0.5 * bottom_od
-        badges = _design_health(H, Rt, Rb, t_wall, t_bottom, r_drain)
+        badges = _design_health(h, Rt, Rb, t_wall, t_bottom, r_drain)
     except Exception:
         badges = []
     if badges:
         st.subheader("Design health")
-        cols = st.columns(len(badges)) if len(badges) else []
+        cols: list[DeltaGenerator] = list(st.columns(len(badges))) if badges else []
         for i, b in enumerate(badges):
             try:
                 _health_badge(cols[i], b.label, b.status, b.tip)
@@ -206,7 +296,11 @@ def render_interactive_tab(
                 int(max(256, n_theta * 2)),
                 int(max(128, n_z * 2)),
             )
-            export_r_outer = style_config.r_outer_fn
+            _maybe_r = getattr(style_config, "r_outer_fn", None)
+            if callable(_maybe_r):
+                export_r_outer = cast("Callable[..., Any]", _maybe_r)
+            else:
+                export_r_outer = r_outer_fn
             export_opts = style_config.opts
         except Exception:
             export_r_outer = r_outer_fn
@@ -216,7 +310,7 @@ def render_interactive_tab(
             _has_library=_has_library,
             _library_read_only=_library_read_only,
             style_name=style_name,
-            H=H,
+            H=h,
             Rt=Rt,
             Rb=Rb,
             t_wall=t_wall,
@@ -226,11 +320,11 @@ def render_interactive_tab(
             n_theta=n_theta,
             n_z=n_z,
             r_outer_fn=export_r_outer,
-            opts=export_opts,
+            opts=cast("StyleOpts", export_opts),
             name=str(
                 ss.get("model_name")
                 or ss.get("_design_name")
-                or f"{style_name}_{int(H)}mm"
+                or f"{style_name}_{int(h)}mm",
             ),
             top_od=top_od,
             bottom_od=bottom_od,
@@ -245,7 +339,7 @@ def render_interactive_tab(
     # Metrics (lightweight subsample). Guard errors internally.
     try:
         render_metrics_section(
-            H,
+            h,
             Rt,
             Rb,
             t_wall,
@@ -255,7 +349,7 @@ def render_interactive_tab(
             n_theta,
             n_z,
             r_outer_fn,
-            engine_opts,
+            cast("StyleOpts", engine_opts),
         )
     except Exception:
         st.info("Metrics unavailable.")
@@ -269,7 +363,7 @@ def render_interactive_tab(
         render_snapshots(
             style_name=style_name,
             style_key=resolve_schema_key(style_name),
-            H=H,
+            H=h,
             top_od=top_od,
             bottom_od=bottom_od,
             t_wall=t_wall,
@@ -293,7 +387,7 @@ def render_interactive_tab(
     # ----------------- 2D PROFILE ----------------------
     try:
         render_profile_section(
-            H,
+            h,
             Rt,
             Rb,
             expn,

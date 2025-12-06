@@ -15,7 +15,6 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 
-
 __all__ = [
     "build_drain_hole",
 ]
@@ -67,6 +66,7 @@ def build_drain_hole(
         - tri_top1, tri_top2: Bottom slab top (inner to drain)
         - tri_cyl1, tri_cyl2: Drain cylinder wall
         - drain_under_arr, drain_top_arr: Drain vertex indices (for debugging)
+
     """
     # ---- Drain circles (untwisted)
     drain_under: list[int] = []
@@ -86,26 +86,26 @@ def build_drain_hole(
 
     # Bottom underside (outer bottom ring -> drain under ring)
     tri_bot1 = np.stack(
-        [outer_bottom[j_idx], drain_under_arr[jn], drain_under_arr[j_idx]], axis=1
+        [outer_bottom[j_idx], drain_under_arr[jn], drain_under_arr[j_idx]], axis=1,
     )
     tri_bot2 = np.stack(
-        [outer_bottom[j_idx], outer_bottom[jn], drain_under_arr[jn]], axis=1
+        [outer_bottom[j_idx], outer_bottom[jn], drain_under_arr[jn]], axis=1,
     )
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     tri_top1 = np.stack(
-        [inner_bottom[j_idx], inner_bottom[jn], drain_top_arr[jn]], axis=1
+        [inner_bottom[j_idx], inner_bottom[jn], drain_top_arr[jn]], axis=1,
     )
     tri_top2 = np.stack(
-        [inner_bottom[j_idx], drain_top_arr[jn], drain_top_arr[j_idx]], axis=1
+        [inner_bottom[j_idx], drain_top_arr[jn], drain_top_arr[j_idx]], axis=1,
     )
 
     # Drain cylinder wall
     tri_cyl1 = np.stack(
-        [drain_under_arr[j_idx], drain_top_arr[j_idx], drain_top_arr[jn]], axis=1
+        [drain_under_arr[j_idx], drain_top_arr[j_idx], drain_top_arr[jn]], axis=1,
     )
     tri_cyl2 = np.stack(
-        [drain_under_arr[j_idx], drain_top_arr[jn], drain_under_arr[jn]], axis=1
+        [drain_under_arr[j_idx], drain_top_arr[jn], drain_under_arr[jn]], axis=1,
     )
 
     return (

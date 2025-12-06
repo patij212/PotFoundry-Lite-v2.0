@@ -300,7 +300,7 @@ class TestWriteAsciiStl:
 
             # This should trigger deprecation warning
             with pytest.warns(
-                DeprecationWarning, match="write_ascii_stl is deprecated"
+                DeprecationWarning, match="write_ascii_stl is deprecated",
             ):
                 write_ascii_stl(stl_path, "TestPot", verts, faces)
 

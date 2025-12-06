@@ -27,6 +27,8 @@ This document tracks planned features, improvements, and technical debt for futu
 - [ ] Improve lighting and material rendering in preview
 - [ ] Add export preview as image (PNG, SVG)
 - [ ] Add comparison mode (side-by-side designs)
+- [x] **Wireframe rendering mode** - implemented with line-list pipeline
+- [x] **Inner surface toggle** - implemented with shader uniform flag
 
 #### Preset & State Management
 - [ ] Enhanced preset management UI with thumbnails

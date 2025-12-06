@@ -14,7 +14,7 @@ def load_latest_row(jsonl_path: Path, zi: int = 42):
     'R_new_raw_sample' and 'Env_to_use_sample'.
     """
     last_row = None
-    with open(jsonl_path, "r", encoding="utf-8") as fh:
+    with open(jsonl_path, encoding="utf-8") as fh:
         for line in fh:
             try:
                 obj = json.loads(line)

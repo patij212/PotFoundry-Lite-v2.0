@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import warnings
-from types import ModuleType  # noqa: E402
+from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 # Provide names for static checkers during type-checking. At runtime we
@@ -43,20 +43,19 @@ if _HAVE_HYPOTHESIS:
         print_blob=True,
     )
     settings.register_profile(
-        "dev", max_examples=50, deadline=2000, verbosity=Verbosity.verbose
+        "dev", max_examples=50, deadline=2000, verbosity=Verbosity.verbose,
     )
     settings.register_profile(
-        "quick", max_examples=5, deadline=2000, verbosity=Verbosity.quiet
+        "quick", max_examples=5, deadline=2000, verbosity=Verbosity.quiet,
     )
     _sel = os.getenv("HYPOTHESIS_PROFILE")
     if _sel:
         settings.load_profile(_sel)
+    # Prefer CI profile on GH Actions or CI environments
+    elif os.getenv("GITHUB_ACTIONS") == "true" or os.getenv("CI"):
+        settings.load_profile("ci")
     else:
-        # Prefer CI profile on GH Actions or CI environments
-        if os.getenv("GITHUB_ACTIONS") == "true" or os.getenv("CI"):
-            settings.load_profile("ci")
-        else:
-            settings.load_profile("dev")
+        settings.load_profile("dev")
 else:
     warnings.warn(
         "Hypothesis not installed; property-based tests may be skipped. "
@@ -124,14 +123,84 @@ else:
         ):
             setattr(st_mod, n, _noop)
 
-        setattr(st_mod, "empty", _EmptyObj())
-        setattr(st_mod, "columns", _cols)
-        setattr(st_mod, "tabs", _tabs)
-        setattr(st_mod, "spinner", _spinner)
-        setattr(st_mod, "cache_data", _cache_data_stub)
-        setattr(st_mod, "session_state", {})
+        st_mod.empty = _EmptyObj()
+        st_mod.columns = _cols
+        st_mod.tabs = _tabs
+        st_mod.spinner = _spinner
+        st_mod.cache_data = _cache_data_stub
+        st_mod.session_state = {}
 
         st = st_mod
 
-# Ensure streamlit is importable via sys.modules
+# Ensure streamlit is importable via sys.modules.
+# Use assignment so test-runner can override real Streamlit with the shim
+# during collection/ import-time, ensuring deterministic behavior.
 sys.modules.setdefault("streamlit", st)
+
+
+import sys as _sys
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_pfui_py_modules():
+    """Autouse fixture to remove any `pfui` or `potfoundry` modules imported
+    during a test so each test imports a fresh set of modules and honors
+    test-specific streamlit shims.
+
+    This reduces test flakiness caused by module-level `st` bindings that may
+    otherwise refer to an older streamlit shim from a previous test.
+    """
+    before = set(k for k in _sys.modules.keys())
+    # Save original streamlit module (if present) so we can restore it after tests
+    original_streamlit = _sys.modules.get("streamlit")
+    try:
+        yield
+    finally:
+        after = set(k for k in _sys.modules.keys())
+        # Remove modules that were created during the test and belong to pfui or potfoundry
+        for name in sorted(after - before):
+            if name.startswith("pfui.") or name == "pfui" or name.startswith("potfoundry.") or name == "potfoundry":
+                try:
+                    del _sys.modules[name]
+                except KeyError:
+                    pass
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _default_streamlit_shim():
+    """Session-level fixture that ensures a default streamlit shim exists
+    to make tests deterministic when the real Streamlit package is present
+    or when no package is installed. Tests that need the real Streamlit can
+    override `sys.modules['streamlit']` per test.
+    """
+    import sys as _sys
+    import types as _types
+
+    # Save previous module to restore at end of session
+    prev = _sys.modules.get("streamlit")
+    # Minimal shim used by many tests
+    shim = _types.ModuleType("streamlit")
+    shim.session_state = {}
+    shim.info = lambda *a, **k: None
+    shim.warning = lambda *a, **k: None
+    shim.caption = lambda *a, **k: None
+    class _Ctx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    shim.columns = lambda *a, **k: (_Ctx(), _Ctx())
+    shim.expander = lambda *a, **k: _Ctx()
+    # Tweak session_state default to empty dict if not set
+    _sys.modules["streamlit"] = shim
+    try:
+        yield
+    finally:
+        if prev is None:
+            _sys.modules.pop("streamlit", None)
+        else:
+            _sys.modules["streamlit"] = prev

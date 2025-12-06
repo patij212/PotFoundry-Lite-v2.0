@@ -6,7 +6,8 @@ Provides modular library publishing functionality with:
 - Rate limiting for publish operations
 - Backward compatibility with potfoundry.library module
 
-Core modules remain in parent library.py (publish_design, make_thumbnail, etc.)
+Core API functions (publish_design, list_published, etc.) are in potfoundry/library_api.py
+and re-exported here for backward compatibility.
 """
 
 from __future__ import annotations
@@ -26,6 +27,15 @@ from .validation import (
     validate_tags,
     validate_title,
     validate_triangle_count,
+)
+
+# Re-export core functions from library_api.py (renamed from library.py to avoid
+# Python's module/package naming conflict)
+from potfoundry.library_api import (
+    PublishResult,
+    list_published,
+    make_thumbnail,
+    publish_design,
 )
 
 __all__ = [
@@ -51,4 +61,9 @@ __all__ = [
     # Rate limiting
     "check_rate_limit",
     "record_publish",
+    # Re-exported from library_api.py (core API)
+    "publish_design",
+    "list_published",
+    "PublishResult",
+    "make_thumbnail",
 ]

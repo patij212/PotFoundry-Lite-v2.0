@@ -7,11 +7,12 @@ without changing behavior.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 
 def should_update_preview(
-    mode: str, *, last_change_ts: float, debounce_timeout_s: float, stale: bool
+    mode: str, *, last_change_ts: float, debounce_timeout_s: float, stale: bool,
 ) -> bool:
     """Decide whether to update the preview given mode and session flags.
 
@@ -46,7 +47,7 @@ def compute_geom_sig(
     opts_json: Any,
     full_n_theta: Any,
     full_n_z: Any,
-) -> Optional[tuple]:
+) -> tuple | None:
     """Compute the geometry signature tuple used for cache comparison.
 
     Returns a tuple of strongly-typed primitives or None on failure.
@@ -85,7 +86,7 @@ def compute_app_sig(
     fig_h: Any,
     dpi: Any,
     place_on_ground: Any,
-) -> Optional[tuple]:
+) -> tuple | None:
     """Compute the application/appearance signature tuple used for cache comparison.
 
     Returns a tuple of primitives or None on failure.
@@ -113,15 +114,15 @@ def compute_app_sig(
         return None
 
 
-__all__.extend(["compute_geom_sig", "compute_app_sig"])
+__all__.extend(["compute_app_sig", "compute_geom_sig"])
 
 
 def should_regenerate(
-    geom_sig: Optional[tuple],
-    app_sig: Optional[tuple],
+    geom_sig: tuple | None,
+    app_sig: tuple | None,
     *,
-    last_geom_sig: Optional[tuple],
-    last_app_sig: Optional[tuple],
+    last_geom_sig: tuple | None,
+    last_app_sig: tuple | None,
     preview_mode: str,
     preview_stale: bool,
     cached_any: bool,
@@ -171,7 +172,7 @@ def should_regenerate(
     if mode == "debounced":
         try:
             if preview_stale and (time.time() - float(last_change_ts)) >= float(
-                debounce_timeout_s
+                debounce_timeout_s,
             ):
                 return True
         except Exception:
@@ -199,10 +200,10 @@ def orchestrate_preview(
     *,
     preview_mode: str,
     preview_stale: bool,
-    last_geom_sig: Optional[tuple],
-    last_app_sig: Optional[tuple],
-    geom_sig: Optional[tuple],
-    app_sig: Optional[tuple],
+    last_geom_sig: tuple | None,
+    last_app_sig: tuple | None,
+    geom_sig: tuple | None,
+    app_sig: tuple | None,
     debounce_timeout_s: float = 0.8,
     last_change_ts: float = 0.0,
     interactive_mesh: bool = False,
@@ -255,7 +256,7 @@ def orchestrate_preview(
 
     try:
         X, Y, Z = make_preview_arrays_fn(
-            H, Rt, Rb, expn, preview_n_theta, preview_n_z, style_name, opts_json
+            H, Rt, Rb, expn, preview_n_theta, preview_n_z, style_name, opts_json,
         )
         result["arrays"] = (X, Y, Z)
 

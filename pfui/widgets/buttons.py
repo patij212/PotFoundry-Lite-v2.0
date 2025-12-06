@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
 def button_with_callback(
     label: str,
     callback: Callable[[], None],
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
+    key: str | None = None,
+    help_text: str | None = None,
     disabled: bool = False,
     use_container_width: bool = False,
 ) -> bool:
@@ -27,7 +27,9 @@ def button_with_callback(
 
     Returns:
         True if button was clicked this render
+
     """
+    st = get_st()
     clicked = st.button(
         label=label,
         key=key,
@@ -35,17 +37,17 @@ def button_with_callback(
         disabled=disabled,
         use_container_width=use_container_width,
     )
-    
+
     if clicked:
         callback()
-    
+
     return clicked
 
 
 def export_button(
     label: str = "Export",
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
+    key: str | None = None,
+    help_text: str | None = None,
     disabled: bool = False,
 ) -> bool:
     """Create an export button with consistent styling.
@@ -58,7 +60,9 @@ def export_button(
 
     Returns:
         True if button was clicked
+
     """
+    st = get_st()
     return st.button(
         label=label,
         key=key,
@@ -71,8 +75,8 @@ def export_button(
 
 def reset_button(
     label: str = "Reset to Defaults",
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
+    key: str | None = None,
+    help_text: str | None = None,
     disabled: bool = False,
 ) -> bool:
     """Create a reset button with consistent styling.
@@ -85,7 +89,9 @@ def reset_button(
 
     Returns:
         True if button was clicked
+
     """
+    st = get_st()
     return st.button(
         label=label,
         key=key,

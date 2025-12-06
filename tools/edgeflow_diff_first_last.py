@@ -1,5 +1,4 @@
-"""
-Compare first vs last occurrence of a probe zi in tools/edgeflow_verbose_diagnostics.jsonl
+"""Compare first vs last occurrence of a probe zi in tools/edgeflow_verbose_diagnostics.jsonl
 Prints a JSON object with counts and up to 200 mismatch indices for R_new_raw < Env_to_use for both rows.
 Usage: python edgeflow_diff_first_last.py <zi>
 """
@@ -7,10 +6,10 @@ Usage: python edgeflow_diff_first_last.py <zi>
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 
-def compare_row(r: Any) -> Optional[Dict[str, Any]]:
+def compare_row(r: Any) -> dict[str, Any] | None:
     if r is None:
         return None
     r_new = r.get("R_new_raw_sample")
@@ -60,7 +59,7 @@ def main() -> None:
                 except Exception:
                     pass
 
-    report: Dict[str, Any] = {
+    report: dict[str, Any] = {
         "zi": zi,
         "found_first": first is not None,
         "found_last": last is not None,

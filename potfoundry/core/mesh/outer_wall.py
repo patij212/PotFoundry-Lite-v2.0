@@ -15,14 +15,13 @@ z-level and creating rings of vertices that are then connected with faces.
 from __future__ import annotations
 
 import math
-from typing import Any, Callable, cast
+from collections.abc import Callable
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
-from numpy.typing import NDArray
 
 from ...types import NDArrayFloat, StyleOpts
-
 
 __all__ = [
     "add_ring_xy",
@@ -59,6 +58,7 @@ def call_style_r_outer(
         
     Returns:
         Radius value(s) from style function
+
     """
     try:
         if isinstance(r0_in, np.ndarray):
@@ -69,7 +69,7 @@ def call_style_r_outer(
         r0_arg = float(r0_in)
     res = r_outer_fn(th_in, z_in, r0_arg, H_in, opts_in)
     if isinstance(res, np.ndarray):
-        return cast(NDArrayFloat, np.asarray(res, dtype=float))
+        return cast("NDArrayFloat", np.asarray(res, dtype=float))
     return float(res)
 
 
@@ -97,6 +97,7 @@ def add_ring_xy(
         
     Returns:
         Array of vertex indices for this ring
+
     """
     cx: NDArrayFloat = cos_th * cTw - sin_th * sTw
     sy: NDArrayFloat = sin_th * cTw + cos_th * sTw
@@ -109,7 +110,7 @@ def add_ring_xy(
     return np.arange(start_index, start_index + n_theta, dtype=int)
 
 
-def spin_twist_radians(z: float, H: float, opts: StyleOpts | dict[str, Any]) -> float:
+def spin_twist_radians(z: float | npt.NDArray[np.float64], H: float, opts: StyleOpts | dict[str, Any]) -> float | npt.NDArray[np.float64]:
     """Smooth twist angle (in radians) applied to theta at height z.
     
     Calculates the twist angle for the pot at a given height based on
@@ -125,30 +126,36 @@ def spin_twist_radians(z: float, H: float, opts: StyleOpts | dict[str, Any]) -> 
             
     Returns:
         Twist angle in radians
+
     """
     if H <= 0:
-        return 0.0
+        return 0.0 if np.isscalar(z) else np.zeros_like(np.asarray(z, dtype=float))
     # Accept canonical aliases if present
     # TypedDict.get is treated as returning `object` by the type checker; cast
     # to the expected primitive types so mypy accepts the float/int conversions.
     turns = float(
-        cast(float, opts.get("spin_turns", opts.get("twist_total_turns", 0.0)))
+        cast("float", opts.get("spin_turns", opts.get("twist_total_turns", 0.0))),
     )
     phase_deg = float(
-        cast(float, opts.get("spin_phase_deg", opts.get("twist_start_angle_deg", 0.0)))
+        cast("float", opts.get("spin_phase_deg", opts.get("twist_start_angle_deg", 0.0))),
     )
-    curve = max(
-        0.1,
-        float(
-            cast(
-                float, opts.get("spin_curve_exp", opts.get("twist_ease_exponent", 1.0))
-            )
-        ),
+    curve = float(
+        cast("float", opts.get("spin_curve_exp", opts.get("twist_ease_exponent", 1.0))),
     )
+    curve = max(0.1, curve)
     if turns == 0.0 and phase_deg == 0.0:
-        return 0.0
-    t = max(0.0, min(1.0, z / H))
-    return float((phase_deg * math.pi / 180.0) + (turns * TAU) * (t**curve))
+        return 0.0 if np.isscalar(z) else np.zeros_like(np.asarray(z, dtype=float))
+
+    # Vectorized path: accept array-like z values and return matching array shape
+    z_arr = np.asarray(z, dtype=float)
+    t = np.clip(z_arr / float(H), 0.0, 1.0)
+    # Compute twist: phase + turns*TAU * t**curve
+    phase_rad = float(phase_deg) * np.pi / 180.0
+    twist_vals = phase_rad + (float(turns) * TAU) * (t ** float(curve))
+    # Return scalar for scalar input, array otherwise
+    if np.isscalar(z):
+        return float(twist_vals)
+    return twist_vals
 
 
 def sample_outer_rings(
@@ -208,6 +215,7 @@ def sample_outer_rings(
         - dbg_outward_picks: Debug counter for outward samples
         - dbg_total_picks: Debug counter for total samples
         - dbg_samples_collected: Debug samples from style
+
     """
     outer_idx = np.empty((len(z_outer), n_theta), dtype=int)
     r_outer_samples_list: list[np.ndarray] = []
@@ -254,10 +262,10 @@ def sample_outer_rings(
                 if near_seam:
                     dbg_total_picks += int(r_vals.size)
                     dbg_outward_picks += int(
-                        np.count_nonzero(r_vals > float(r0) + 1e-9)
+                        np.count_nonzero(r_vals > float(r0) + 1e-9),
                     )
         outer_idx[i] = add_ring_xy(
-            verts, r_vals, float(z), cTw, sTw, cos_th, sin_th, n_theta
+            verts, r_vals, float(z), cTw, sTw, cos_th, sin_th, n_theta,
         )
         cx_rows_list.append(np.asarray(cx_ring, dtype=float))
         sy_rows_list.append(np.asarray(sy_ring, dtype=float))

@@ -34,12 +34,16 @@ def test_build_gradient_colors_monotonic():
     z = np.linspace(0, 1, 11)
     cols = build_gradient_colors(z, "Classic Blue")
     assert len(cols) == len(z)
+    # Return type should be numpy array
+    assert isinstance(cols, np.ndarray)
+    assert cols.dtype == np.uint8
+    assert cols.shape == (len(z), 3)
     # Ensure channels stay within 0..255
     for r, g, b in cols:
         assert 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255
     # Gradient should begin near first color and end near last preset
-    start = cols[0]
-    end = cols[-1]
+    start = tuple(cols[0])
+    end = tuple(cols[-1])
     assert start != end
 
 
@@ -47,6 +51,10 @@ def test_build_gradient_colors_custom():
     z = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
     custom = ["#100000", "#800000", "#FF0000"]
     cols = build_gradient_colors(z, None, custom)
+    # Return type should be numpy array
+    assert isinstance(cols, np.ndarray)
+    assert cols.dtype == np.uint8
+    assert cols.shape == (len(z), 3)
     assert cols[0][0] < cols[-1][0]
     # At midpoint (~0.5) should be close to second color
     mid = cols[2]

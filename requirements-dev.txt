@@ -28,3 +28,7 @@ rich==13.7.1
 GitPython==3.1.45
 toml==0.10.2
 types-requests==2.31.0
+
+# Browser automation + e2e testing
+pytest-playwright==0.7.1
+playwright==1.56.0

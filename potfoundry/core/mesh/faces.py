@@ -14,7 +14,6 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 
-
 __all__ = [
     "assemble_faces",
 ]
@@ -31,6 +30,7 @@ def assemble_faces(faces_out_parts: list[npt.NDArray]) -> npt.NDArray[np.int64]:
         
     Returns:
         Combined face array with all triangles
+
     """
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
     return faces_arr

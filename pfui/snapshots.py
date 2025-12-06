@@ -1,9 +1,10 @@
 # pfui/snapshots.py
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st, StreamlitLike, safe_placeholder_image
+from typing import cast
 
 from .snapshot_store import read_png_bytes, remove_png_path, save_png_temp
 from .state import widget_key
@@ -19,9 +20,10 @@ def render_snapshots(
     t_bottom: float,
     r_drain: float,
     expn: float,
-    opts: Dict[str, Any],
+    opts: dict[str, Any],
 ) -> None:
-    snaps: List[Dict[str, Any]] = st.session_state.get("_snaps", [])
+    st = get_st()
+    snaps: list[dict[str, Any]] = st.session_state.get("_snaps", [])
     sc1, sc2, sc3 = st.columns([1, 1, 2])
     snap_name = sc1.text_input("Snapshot name", value=f"{style_name}_H{int(H)}")
     if sc2.button("Capture"):
@@ -62,7 +64,13 @@ def render_snapshots(
             png_bytes_local = read_png_bytes(s.get("png"))
             if png_bytes_local:
                 # replace deprecated use_column_width with width='stretch'
-                cc1.image(png_bytes_local, caption="preview", width="stretch")
+                try:
+                    safe_placeholder_image(cc1, png_bytes_local, caption="preview", width="stretch")
+                except Exception:
+                    try:
+                        st.warning("Snapshot preview not available")
+                    except Exception:
+                        pass
             if cc2.button("Apply", key=f"apply_{i}"):
                 st.session_state.update(
                     {
@@ -74,7 +82,7 @@ def render_snapshots(
                         "r_drain": s["params"]["r_drain"],
                         "expn": s["params"]["expn"],
                         "style": s["style"],
-                    }
+                    },
                 )
                 for k, v in s["params"]["opts"].items():
                     st.session_state[widget_key(s["style"], k)] = v

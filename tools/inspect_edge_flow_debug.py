@@ -4,7 +4,7 @@ import json
 def main() -> None:
     path = ".pf_edge_flow_debug.json"
     lines = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for ln in f:
             ln = ln.strip()
             if not ln:

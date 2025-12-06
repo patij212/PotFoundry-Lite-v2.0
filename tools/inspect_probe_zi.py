@@ -1,10 +1,10 @@
 import json
 import sys
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 
-def _as_seq(x: Any) -> Optional[List[Any]]:
+def _as_seq(x: Any) -> list[Any] | None:
     if x is None:
         return None
     try:
@@ -148,11 +148,11 @@ def main() -> None:
 
     if not viol:
         print(
-            "No violations: all final raw radii >= envelope_to_use (using Env_to_use_raw_post if available)"
+            "No violations: all final raw radii >= envelope_to_use (using Env_to_use_raw_post if available)",
         )
     else:
         print(
-            f"Found {len(viol)} violating theta columns (final_raw < Env_to_use). Showing up to 50:"
+            f"Found {len(viol)} violating theta columns (final_raw < Env_to_use). Showing up to 50:",
         )
 
         def _fmt(v: Any) -> str:
@@ -163,7 +163,7 @@ def main() -> None:
 
         for idx, rraw, rans, envv, rnew, rnew_raw, om in viol[:50]:
             print(
-                f"idx={idx:3d} raw={_fmt(rraw)} analysis={_fmt(rans)} env_to_use={_fmt(envv)} R_new={_fmt(rnew)} R_new_raw={_fmt(rnew_raw)} origin_map={om}"
+                f"idx={idx:3d} raw={_fmt(rraw)} analysis={_fmt(rans)} env_to_use={_fmt(envv)} R_new={_fmt(rnew)} R_new_raw={_fmt(rnew_raw)} origin_map={om}",
             )
 
     # Also show contiguous blocks

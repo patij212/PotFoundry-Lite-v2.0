@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, cast
+from typing import Any, cast
 
-import streamlit as st
-
+from pfui._st import get_effective_st as get_st
 from pfui.imports import STYLES
 from pfui.state import widget_key
 
@@ -17,6 +16,7 @@ def render_model_name_controls(ss: dict[str, Any]) -> None:
     
     Args:
         ss: Session state dictionary
+
     """
     def _on_model_name_change() -> None:
         # If user edits model name manually, mark it and disable auto-name
@@ -31,7 +31,7 @@ def render_model_name_controls(ss: dict[str, Any]) -> None:
     # (auto name enabled) unless the user has edited the name previously.
     if "_model_name_auto" not in ss:
         ss["_model_name_auto"] = not ss["_model_name_user_edited"]
-    
+
     # Compute an auto name (mirrors Snapshot default) from the last-known
     # style/H in session state so we can present the same auto-updating
     # behaviour without moving the widget in the sidebar.
@@ -50,7 +50,7 @@ def render_model_name_controls(ss: dict[str, Any]) -> None:
     if "style" not in ss and all_styles:
         ss["style"] = all_styles[0]
     style_guess = cast(
-        Optional[str], ss.get("style", all_styles[0] if all_styles else None)
+        "str | None", ss.get("style", all_styles[0] if all_styles else None),
     )
 
     # Build auto-name from style + height (if available). If H doesn't
@@ -61,17 +61,18 @@ def render_model_name_controls(ss: dict[str, Any]) -> None:
         H_val = to_int_scalar(H_val_raw)
     except Exception:
         H_val = 100
-    
+
     # If model_name doesn't exist yet, or if auto-name is enabled, we can
     # safely set or update the auto-generated name.
     computed_auto_name = f"{style_guess or 'pot'}_{H_val}mm" if style_guess else "pot_100mm"
-    
+
     # If auto-naming is enabled, or if the model name is missing, initialize it
     if "_model_name_auto" not in ss:
         ss["_model_name_auto"] = True
     if ("model_name" not in ss) or (ss.get("_model_name_auto", False) is True):
         ss["model_name"] = computed_auto_name
 
+    st = get_st()
     col1, col2 = st.columns([3, 1])
     with col1:
         st.text_input(

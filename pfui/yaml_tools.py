@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 
 def dump_recipe_yaml(
@@ -13,7 +13,7 @@ def dump_recipe_yaml(
     t_bottom: float,
     r_drain: float,
     expn: float,
-    opts: Dict[str, Any],
+    opts: dict[str, Any],
 ) -> str:
     try:
         import yaml as _yaml

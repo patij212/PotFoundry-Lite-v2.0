@@ -17,8 +17,8 @@ import os
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 import pytest
@@ -228,7 +228,7 @@ class TestSTLExportPerformance:
             stl_path = Path(tmpdir) / "test.stl"
 
             stats = benchmark(
-                write_stl_binary, stl_path, "TestPot", verts, faces, iterations=20
+                write_stl_binary, stl_path, "TestPot", verts, faces, iterations=20,
             )
 
             print(f"Binary STL write ({len(faces)} triangles):")
@@ -264,7 +264,7 @@ class TestSTLExportPerformance:
             stl_path = Path(tmpdir) / "large.stl"
 
             stats = benchmark(
-                write_stl_binary, stl_path, "LargePot", verts, faces, iterations=10
+                write_stl_binary, stl_path, "LargePot", verts, faces, iterations=10,
             )
 
             print(f"Large mesh export ({len(faces)} triangles):")

@@ -3,7 +3,7 @@ from typing import Any
 
 import numpy as np
 
-import pfui.preview as preview
+from pfui import preview
 
 
 def _make_opts():
@@ -73,7 +73,7 @@ def test_vectorized_inconsistent_shape_causes_scalar_fallback(monkeypatch):
 
     opts = _make_opts()
     X, Y, Z = preview.make_preview_arrays(
-        120.0, 70.0, 45.0, 1.1, 40, 10, "BadShape", json.dumps(opts)
+        120.0, 70.0, 45.0, 1.1, 40, 10, "BadShape", json.dumps(opts),
     )
 
     assert X.shape[0] >= 10 and X.shape[1] >= 24

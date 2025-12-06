@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>WebGPU Adapter Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 18px; }
+    pre { background:#111; color:#0f0; padding:12px; max-height:60vh; overflow:auto }
+    button { margin:6px 0; }
+    .warn { color: #f66 }
+  </style>
+</head>
+<body>
+  <h2>WebGPU Adapter Test</h2>
+  <p id="note">This page tests <code>navigator.gpu.requestAdapter</code> + device. Use Edge (recommended) or Chrome with flags.</p>
+  <button id="run">Run tests</button>
+  <div id="outcontainer">
+    <pre id="out">(logs will appear here)</pre>
+  </div>
+  <script>
+    const out = document.getElementById('out');
+    function log(...args){
+      console.log(...args);
+      out.textContent += args.map(a => (typeof a === 'object' ? JSON.stringify(a,null,2) : String(a))).join(' ') + '\n';
+    }
+
+    async function testAdapter(pref){
+      log('--- testAdapter(', pref, ')');
+      if (!('gpu' in navigator)){
+        log('navigator.gpu is NOT present');
+        return null;
+      }
+      try{
+        const adapter = await navigator.gpu.requestAdapter(pref ? { powerPreference: pref } : undefined);
+        if (!adapter){
+          log('No adapter returned for', pref || '(no option)');
+          return null;
+        }
+        log('Adapter:', adapter.name || '(no name)');
+        try{
+          log('Adapter.features:', Array.from(adapter.features || []));
+        }catch(e){ log('Adapter.features read failed', e); }
+        try{
+          log('Adapter.limits:', adapter.limits || {});
+        }catch(e){ log('Adapter.limits read failed', e); }
+        try{
+          const device = await adapter.requestDevice();
+          log('Device created. device.limits:', device.limits);
+          try{ log('Device.features:', Array.from(device.features || [])); }catch(e){}
+        }catch(devErr){
+          log('requestDevice() failed:', devErr);
+        }
+        return adapter;
+      }catch(err){
+        log('requestAdapter() threw ->', err);
+        return null;
+      }
+    }
+
+    async function runAll(){
+      out.textContent = '';
+      log('UserAgent:', navigator.userAgent);
+      await testAdapter();
+      await testAdapter('high-performance');
+      await testAdapter('low-power');
+      log('\nAdvice: If all tests return "No adapter", try:\n - Use Microsoft Edge or Chrome Canary with `--enable-unsafe-webgpu --ignore-gpu-blocklist`\n - Update GPU drivers\n - Avoid RDP / VM contexts\n - Try Edge if Chrome fails');
+    }
+
+    document.getElementById('run').addEventListener('click', runAll);
+
+    // run on load
+    runAll();
+  </script>
+</body>
+</html>

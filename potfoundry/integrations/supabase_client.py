@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast  # noqa: E402
+from typing import TYPE_CHECKING, Any, cast
 
 # Import from supabase package for modularity
 from .supabase import (
@@ -21,9 +21,17 @@ from .supabase import (
     NotConfiguredError,
     SupabaseConfig,
     UploadError,
+)
+from .supabase import (
     emit_tls_override_warning as _emit_tls_override_warning,
+)
+from .supabase import (
     is_disabled_via_secrets as _is_disabled_via_secrets,
+)
+from .supabase import (
     looks_like_invalid_key as _looks_like_invalid_key,
+)
+from .supabase import (
     should_skip_tls_verify as _should_skip_tls_verify,
 )
 
@@ -56,6 +64,7 @@ class SupabaseClient:
 
         Args:
             config: Supabase connection configuration
+
         """
         self.config = config
         self.read_only = read_only
@@ -123,10 +132,11 @@ class SupabaseClient:
 
         Raises:
             UploadError: If upload fails after retries
+
         """
         if self.read_only:
             raise NotConfiguredError(
-                "Supabase configured read-only; publishing disabled"
+                "Supabase configured read-only; publishing disabled",
             )
         headers = {"Content-Type": content_type}
         if gzip:
@@ -141,41 +151,40 @@ class SupabaseClient:
                 client_obj = getattr(self, "_client", None)
                 if client_obj is not None:
                     # Use supabase-py client (typed dynamically)
-                    client_any = cast(Any, client_obj)
+                    client_any = cast("Any", client_obj)
                     client_any.storage.from_(self.config.bucket).upload(
-                        path, data, file_options={"content-type": content_type}
+                        path, data, file_options={"content-type": content_type},
                     )
                     # Get public URL
                     url = client_any.storage.from_(self.config.bucket).get_public_url(
-                        path
+                        path,
                     )
                     # Ensure we return a concrete str for mypy
                     return str(url)
-                else:
-                    # Use direct API call
-                    url = f"{self.config.url}/storage/v1/object/{self.config.bucket}/{path}"
-                    resp = self._session.post(
-                        url,
-                        data=data,
-                        headers=headers,
-                        timeout=getattr(self, "_timeout", None),
-                    )
-                    try:
-                        resp.raise_for_status()
-                    except Exception as e:
-                        # Include response body for easier debugging
-                        raise UploadError(
-                            f"HTTP {resp.status_code}: {resp.text}"
-                        ) from e
+                # Use direct API call
+                url = f"{self.config.url}/storage/v1/object/{self.config.bucket}/{path}"
+                resp = self._session.post(
+                    url,
+                    data=data,
+                    headers=headers,
+                    timeout=getattr(self, "_timeout", None),
+                )
+                try:
+                    resp.raise_for_status()
+                except Exception as e:
+                    # Include response body for easier debugging
+                    raise UploadError(
+                        f"HTTP {resp.status_code}: {resp.text}",
+                    ) from e
 
-                    # Return public URL
-                    public_url = f"{self.config.url}/storage/v1/object/public/{self.config.bucket}/{path}"
-                    return public_url
+                # Return public URL
+                public_url = f"{self.config.url}/storage/v1/object/public/{self.config.bucket}/{path}"
+                return public_url
 
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise UploadError(
-                        f"Upload failed after {max_retries} attempts: {e}"
+                        f"Upload failed after {max_retries} attempts: {e}",
                     )
 
                 # Exponential backoff
@@ -185,8 +194,8 @@ class SupabaseClient:
         raise UploadError("Upload failed")
 
     def upsert_row(
-        self, table: str, row: Dict[str, Any], max_retries: int = 3
-    ) -> Dict[str, Any]:
+        self, table: str, row: dict[str, Any], max_retries: int = 3,
+    ) -> dict[str, Any]:
         """Insert or update row in Supabase table.
 
         Args:
@@ -199,49 +208,49 @@ class SupabaseClient:
 
         Raises:
             DatabaseError: If operation fails after retries
+
         """
         if self.read_only:
             raise NotConfiguredError(
-                "Supabase configured read-only; publishing disabled"
+                "Supabase configured read-only; publishing disabled",
             )
         for attempt in range(max_retries):
             try:
                 client_obj = getattr(self, "_client", None)
                 if client_obj is not None:
                     # Use supabase-py client
-                    client_any = cast(Any, client_obj)
+                    client_any = cast("Any", client_obj)
                     response = client_any.table(table).upsert(row).execute()
                     resp_data = cast(
-                        List[Dict[str, Any]], getattr(response, "data", [])
+                        "list[dict[str, Any]]", getattr(response, "data", []),
                     )
                     return resp_data[0] if resp_data else row
-                else:
-                    # Use direct API call
-                    url = f"{self.config.url}/rest/v1/{table}"
-                    # Upsert semantics for PostgREST require on_conflict and Prefer resolution
-                    params = {"on_conflict": "id"}
-                    headers = {
-                        "Prefer": "resolution=merge-duplicates,return=representation",
-                        "Content-Type": "application/json",
-                    }
-                    resp = self._session.post(
-                        url, params=cast(Any, params), json=row, headers=headers
-                    )
-                    resp.raise_for_status()
+                # Use direct API call
+                url = f"{self.config.url}/rest/v1/{table}"
+                # Upsert semantics for PostgREST require on_conflict and Prefer resolution
+                params = {"on_conflict": "id"}
+                headers = {
+                    "Prefer": "resolution=merge-duplicates,return=representation",
+                    "Content-Type": "application/json",
+                }
+                resp = self._session.post(
+                    url, params=cast("Any", params), json=row, headers=headers,
+                )
+                resp.raise_for_status()
 
-                    result = resp.json()
-                    # resp.json() is dynamically typed; cast to expected structure for mypy
-                    result_typed = cast(List[Dict[str, Any]], result)
-                    return (
-                        result_typed[0]
-                        if isinstance(result_typed, list) and result_typed
-                        else row
-                    )
+                result = resp.json()
+                # resp.json() is dynamically typed; cast to expected structure for mypy
+                result_typed = cast("list[dict[str, Any]]", result)
+                return (
+                    result_typed[0]
+                    if isinstance(result_typed, list) and result_typed
+                    else row
+                )
 
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise DatabaseError(
-                        f"Database upsert failed after {max_retries} attempts: {e}"
+                        f"Database upsert failed after {max_retries} attempts: {e}",
                     )
 
                 wait_time = 2**attempt * 0.5
@@ -252,8 +261,8 @@ class SupabaseClient:
     def update_rows(
         self,
         table: str,
-        filters: Dict[str, Any],
-        changes: Dict[str, Any],
+        filters: dict[str, Any],
+        changes: dict[str, Any],
         max_retries: int = 3,
     ) -> int:
         """Update rows in a table matching filters with provided changes.
@@ -266,14 +275,14 @@ class SupabaseClient:
             try:
                 client_obj = getattr(self, "_client", None)
                 if client_obj is not None:
-                    client_any = cast(Any, client_obj)
+                    client_any = cast("Any", client_obj)
                     query = client_any.table(table).update(changes)
                     for col, val in (filters or {}).items():
                         query = query.eq(col, val)
                     resp = query.execute()
                     try:
                         resp_data = cast(
-                            List[Dict[str, Any]], getattr(resp, "data", [])
+                            "list[dict[str, Any]]", getattr(resp, "data", []),
                         )
                         return len(resp_data or [])
                     except Exception:
@@ -289,19 +298,19 @@ class SupabaseClient:
                         "Content-Type": "application/json",
                     }
                     resp = self._session.patch(
-                        url, params=cast(Any, params), json=changes, headers=headers
+                        url, params=cast("Any", params), json=changes, headers=headers,
                     )
                     resp.raise_for_status()
                     try:
                         data = resp.json()
-                        data_typed = cast(List[Dict[str, Any]], data)
+                        data_typed = cast("list[dict[str, Any]]", data)
                         return len(data_typed) if isinstance(data_typed, list) else 0
                     except Exception:
                         return 0
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise DatabaseError(
-                        f"Database update failed after {max_retries} attempts: {e}"
+                        f"Database update failed after {max_retries} attempts: {e}",
                     )
                 time.sleep(2**attempt * 0.5)
         raise DatabaseError("Update failed")
@@ -309,13 +318,13 @@ class SupabaseClient:
     def select_rows(
         self,
         table: str,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: dict[str, Any] | None = None,
         order_by: str = "created_at",
         order_desc: bool = True,
         limit: int = 24,
         offset: int = 0,
         max_retries: int = 3,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Select rows from Supabase table.
 
         Args:
@@ -332,13 +341,14 @@ class SupabaseClient:
 
         Raises:
             DatabaseError: If operation fails after retries
+
         """
         for attempt in range(max_retries):
             try:
                 client_obj = getattr(self, "_client", None)
                 if client_obj is not None:
                     # Use supabase-py client
-                    client_any = cast(Any, client_obj)
+                    client_any = cast("Any", client_obj)
                     query = client_any.table(table).select("*")
 
                     # Apply filters
@@ -360,65 +370,64 @@ class SupabaseClient:
 
                     response = query.execute()
                     resp_data = cast(
-                        List[Dict[str, Any]], getattr(response, "data", [])
+                        "list[dict[str, Any]]", getattr(response, "data", []),
                     )
                     return resp_data
-                else:
-                    # Use direct API call
-                    url = f"{self.config.url}/rest/v1/{table}"
-                    params = {
-                        "select": "*",
-                        "limit": limit,
-                        "offset": offset,
-                        "order": f"{order_by}.{'desc' if order_desc else 'asc'}",
-                    }
+                # Use direct API call
+                url = f"{self.config.url}/rest/v1/{table}"
+                params = {
+                    "select": "*",
+                    "limit": limit,
+                    "offset": offset,
+                    "order": f"{order_by}.{'desc' if order_desc else 'asc'}",
+                }
 
-                    # Apply filters
-                    if filters:
-                        for col, val in filters.items():
-                            if col == "title_search" and isinstance(val, str) and val:
-                                # PostgREST pattern uses * as wildcard to avoid URL encoding
-                                # https://postgrest.org/en/stable/api.html#operators
-                                params["title"] = f"ilike.*{val}*"
-                            elif col == "tags" and isinstance(val, list) and val:
-                                # Basic contains: require first tag to be present (text[] contains)
-                                first = str(val[0])
-                                params["tags"] = f"cs.{{{first}}}"
-                            else:
-                                params[col] = f"eq.{val}"
+                # Apply filters
+                if filters:
+                    for col, val in filters.items():
+                        if col == "title_search" and isinstance(val, str) and val:
+                            # PostgREST pattern uses * as wildcard to avoid URL encoding
+                            # https://postgrest.org/en/stable/api.html#operators
+                            params["title"] = f"ilike.*{val}*"
+                        elif col == "tags" and isinstance(val, list) and val:
+                            # Basic contains: require first tag to be present (text[] contains)
+                            first = str(val[0])
+                            params["tags"] = f"cs.{{{first}}}"
+                        else:
+                            params[col] = f"eq.{val}"
 
-                    # Prefer public read without Authorization if possible. We'll clone headers and drop Authorization.
-                    resp = self._session.get(
+                # Prefer public read without Authorization if possible. We'll clone headers and drop Authorization.
+                resp = self._session.get(
+                    url,
+                    params=cast("Any", params),
+                    timeout=getattr(self, "_timeout", None),
+                )
+                if resp.status_code == 401:
+                    # Retry without Authorization to leverage public SELECT policy
+                    import requests
+
+                    tmp_session = requests.Session()
+                    # Keep apikey for project routing, but no Authorization so it uses anon role
+                    tmp_session.headers.update(
+                        {
+                            "apikey": self.config.key,
+                        },
+                    )
+                    if getattr(self, "_skip_tls_verify", False):
+                        tmp_session.verify = False
+                    resp = tmp_session.get(
                         url,
-                        params=cast(Any, params),
+                        params=cast("Any", params),
                         timeout=getattr(self, "_timeout", None),
                     )
-                    if resp.status_code == 401:
-                        # Retry without Authorization to leverage public SELECT policy
-                        import requests
-
-                        tmp_session = requests.Session()
-                        # Keep apikey for project routing, but no Authorization so it uses anon role
-                        tmp_session.headers.update(
-                            {
-                                "apikey": self.config.key,
-                            }
-                        )
-                        if getattr(self, "_skip_tls_verify", False):
-                            tmp_session.verify = False
-                        resp = tmp_session.get(
-                            url,
-                            params=cast(Any, params),
-                            timeout=getattr(self, "_timeout", None),
-                        )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    return cast(List[Dict[str, Any]], data)
+                resp.raise_for_status()
+                data = resp.json()
+                return cast("list[dict[str, Any]]", data)
 
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise DatabaseError(
-                        f"Database select failed after {max_retries} attempts: {e}"
+                        f"Database select failed after {max_retries} attempts: {e}",
                     )
 
                 wait_time = 2**attempt * 0.5
@@ -429,7 +438,7 @@ class SupabaseClient:
     def delete_rows(
         self,
         table: str,
-        filters: Dict[str, Any],
+        filters: dict[str, Any],
         max_retries: int = 3,
     ) -> int:
         """Delete rows from a table matching filters. Returns number of rows deleted.
@@ -442,7 +451,7 @@ class SupabaseClient:
             try:
                 client_obj = getattr(self, "_client", None)
                 if client_obj is not None:
-                    client_any = cast(Any, client_obj)
+                    client_any = cast("Any", client_obj)
                     query = client_any.table(table).delete()
                     for col, val in (filters or {}).items():
                         query = query.eq(col, val)
@@ -450,7 +459,7 @@ class SupabaseClient:
                     # supabase-py returns count only if requested; best-effort length
                     try:
                         resp_data = cast(
-                            List[Dict[str, Any]], getattr(resp, "data", [])
+                            "list[dict[str, Any]]", getattr(resp, "data", []),
                         )
                         return len(resp_data or [])
                     except Exception:
@@ -464,7 +473,7 @@ class SupabaseClient:
                             params[col] = f"eq.{val}"
                     headers = {"Prefer": "return=representation"}
                     resp = self._session.delete(
-                        url, params=cast(Any, params), headers=headers
+                        url, params=cast("Any", params), headers=headers,
                     )
                     resp.raise_for_status()
                     try:
@@ -475,7 +484,7 @@ class SupabaseClient:
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise DatabaseError(
-                        f"Database delete failed after {max_retries} attempts: {e}"
+                        f"Database delete failed after {max_retries} attempts: {e}",
                     )
                 time.sleep(2**attempt * 0.5)
         raise DatabaseError("Delete failed")
@@ -491,6 +500,7 @@ def get_client() -> SupabaseClient | NotConfiguredClient:
 
     Returns:
         SupabaseClient if configured, NotConfiguredClient otherwise
+
     """
     # Check for feature flag disable
     if os.environ.get("DISABLE_LIBRARY") == "1" or _is_disabled_via_secrets():
@@ -536,8 +546,8 @@ def get_client() -> SupabaseClient | NotConfiguredClient:
             pass
 
     # 3) Fallback: read-only with anon key from environment
-    anon_env: Optional[str] = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get(
-        "STREAMLIT_SUPABASE_ANON_KEY"
+    anon_env: str | None = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get(
+        "STREAMLIT_SUPABASE_ANON_KEY",
     )
     if url and anon_env:
         cfg = SupabaseConfig(url=url, key=anon_env, bucket=bucket)
@@ -548,7 +558,7 @@ def get_client() -> SupabaseClient | NotConfiguredClient:
 
 
 # Module-level singleton
-_client_instance: Optional[SupabaseClient | NotConfiguredClient] = None
+_client_instance: SupabaseClient | NotConfiguredClient | None = None
 
 
 def get_singleton_client() -> SupabaseClient | NotConfiguredClient:
@@ -556,6 +566,7 @@ def get_singleton_client() -> SupabaseClient | NotConfiguredClient:
 
     Returns:
         Cached client instance
+
     """
     global _client_instance
     if _client_instance is None or (

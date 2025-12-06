@@ -10,7 +10,7 @@ from __future__ import annotations
 from .buttons import button_with_callback, export_button, reset_button
 from .displays import info_badge, metric_display, status_message
 from .inputs import number_input_validated, text_input_validated
-from .selectors import radio_selector, select_box, checkbox_group
+from .selectors import checkbox_group, radio_selector, select_box
 from .sliders import float_slider, int_slider, range_slider
 
 __all__ = [

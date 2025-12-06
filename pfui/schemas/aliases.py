@@ -3,15 +3,17 @@
 
 from __future__ import annotations
 
-from typing import Dict, Literal, Mapping
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Literal
 
 __all__ = [
+    "ALIASES_BY_STYLE",
     "GLOBAL_ALIASES",
-    "ALIASES_BY_STYLE", 
     "GLOBAL_REVERSE",
     "REVERSE_BY_STYLE",
-    "get_global_aliases",
     "get_aliases_by_style",
+    "get_global_aliases",
     "get_global_reverse",
     "get_reverse_by_style",
     "normalize_style_opts",
@@ -20,7 +22,7 @@ __all__ = [
 ]
 
 
-def _invert(d: Mapping[str, str]) -> Dict[str, str]:
+def _invert(d: Mapping[str, str]) -> dict[str, str]:
     """Invert a string->string mapping.
 
     Purpose:
@@ -40,13 +42,14 @@ def _invert(d: Mapping[str, str]) -> Dict[str, str]:
 
     Example:
         _invert({"a":"b"}) -> {"b":"a"}
+
     """
     return {v: k for k, v in d.items()}
 
 
 # -- Canonical names (human-friendly) and alias maps --------------------------
 
-GLOBAL_ALIASES: Mapping[str, str] = {
+_GLOBAL_ALIASES: dict[str, str] = {
     # legacy -> canonical
     "spin_turns": "twist_total_turns",
     "spin_phase_deg": "twist_start_angle_deg",
@@ -58,7 +61,7 @@ GLOBAL_ALIASES: Mapping[str, str] = {
     "bell_width": "mid_bulge_width",
 }
 
-ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
+_ALIASES_BY_STYLE: dict[str, dict[str, str]] = {
     "HarmonicRipple": {
         "hr_petals": "petals_count",
         "hr_petal_amp": "petals_amplitude",
@@ -142,9 +145,9 @@ ALIASES_BY_STYLE: Mapping[str, Mapping[str, str]] = {
     },
 }
 
-GLOBAL_REVERSE = _invert(GLOBAL_ALIASES)
-REVERSE_BY_STYLE: Dict[str, Dict[str, str]] = {
-    s: _invert(m) for s, m in ALIASES_BY_STYLE.items()
+_GLOBAL_REVERSE = _invert(_GLOBAL_ALIASES)
+_REVERSE_BY_STYLE: dict[str, dict[str, str]] = {
+    s: _invert(m) for s, m in _ALIASES_BY_STYLE.items()
 }
 
 
@@ -179,6 +182,7 @@ def get_global_aliases() -> Mapping[str, str]:
         Fast and allocation-free (returns an existing MappingProxyType). Use
         this accessor to avoid expensive import-time traversal by static
         analysis tools.
+
     """
     return GLOBAL_ALIASES
 
@@ -208,6 +212,7 @@ def get_aliases_by_style() -> Mapping[str, Mapping[str, str]]:
     Performance:
         Returns an existing MappingProxyType; calling is cheap and avoids
         import-time binding of large constants.
+
     """
     return ALIASES_BY_STYLE
 
@@ -237,6 +242,7 @@ def get_global_reverse() -> Mapping[str, str]:
     Performance:
         O(1) to return the existing MappingProxyType; safe for repeated use in
         import-light code paths.
+
     """
     return GLOBAL_REVERSE
 
@@ -265,6 +271,7 @@ def get_reverse_by_style() -> Mapping[str, Mapping[str, str]]:
 
     Performance:
         Cheap accessor returning a prebuilt MappingProxyType structure.
+
     """
     return REVERSE_BY_STYLE
 
@@ -306,6 +313,7 @@ def normalize_style_opts(
     Example:
         normalize_style_opts("HarmonicRipple", {"hr_petals":7}, "to_canonical")
         -> {"petals_count":7, ...}
+
     """
     if not opts:
         return {}
@@ -398,10 +406,20 @@ def to_engine(style: str, opts: dict | None) -> dict:
     return normalize_style_opts(style, opts, "to_engine")
 
 
-# Freeze mappings as read-only
-from types import MappingProxyType
-GLOBAL_ALIASES = MappingProxyType(GLOBAL_ALIASES)
-ALIASES_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in ALIASES_BY_STYLE.items()})
-GLOBAL_REVERSE = MappingProxyType(GLOBAL_REVERSE)
-REVERSE_BY_STYLE = MappingProxyType({k: MappingProxyType(v) for k, v in REVERSE_BY_STYLE.items()})
+# Freeze mappings as read-only. Use `cast` to satisfy the type checker when
+# replacing mutable dicts with MappingProxyType instances.
+from typing import cast
+
+# Freeze mappings as read-only and cast to Mapping[...] so the type checker
+# sees the immutable MappingProxyType as the expected Mapping types.
+GLOBAL_ALIASES = cast("Mapping[str, str]", MappingProxyType(dict(_GLOBAL_ALIASES)))
+ALIASES_BY_STYLE = cast(
+    "Mapping[str, Mapping[str, str]]",
+    MappingProxyType({k: MappingProxyType(dict(v)) for k, v in _ALIASES_BY_STYLE.items()}),
+)
+GLOBAL_REVERSE = cast("Mapping[str, str]", MappingProxyType(dict(_GLOBAL_REVERSE)))
+REVERSE_BY_STYLE = cast(
+    "Mapping[str, Mapping[str, str]]",
+    MappingProxyType({k: MappingProxyType(dict(v)) for k, v in _REVERSE_BY_STYLE.items()}),
+)
 

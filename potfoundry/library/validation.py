@@ -11,21 +11,19 @@ Provides validation for:
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Tuple
-
 
 __all__ = [
-    "MAX_TITLE_LENGTH",
+    "ALLOWED_LICENSES",
+    "BLOCKLIST_PATTERNS",
+    "MAX_STL_SIZE_MB",
     "MAX_TAGS",
     "MAX_TAG_LENGTH",
-    "MAX_STL_SIZE_MB",
+    "MAX_TITLE_LENGTH",
     "MAX_TRIANGLE_COUNT",
-    "BLOCKLIST_PATTERNS",
-    "ALLOWED_LICENSES",
-    "validate_title",
-    "validate_tags",
     "validate_license",
     "validate_stl_size",
+    "validate_tags",
+    "validate_title",
     "validate_triangle_count",
 ]
 
@@ -53,7 +51,7 @@ ALLOWED_LICENSES = [
 ]
 
 
-def validate_title(title: str) -> Tuple[bool, Optional[str]]:
+def validate_title(title: str) -> tuple[bool, str | None]:
     """Validate title string.
 
     Args:
@@ -61,6 +59,7 @@ def validate_title(title: str) -> Tuple[bool, Optional[str]]:
         
     Returns:
         Tuple of (is_valid, error_message)
+
     """
     if not title:
         return False, "Title cannot be empty"
@@ -76,7 +75,7 @@ def validate_title(title: str) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def validate_tags(tags: List[str]) -> Tuple[bool, Optional[str]]:
+def validate_tags(tags: list[str]) -> tuple[bool, str | None]:
     """Validate tags list.
 
     Args:
@@ -84,6 +83,7 @@ def validate_tags(tags: List[str]) -> Tuple[bool, Optional[str]]:
         
     Returns:
         Tuple of (is_valid, error_message)
+
     """
     if len(tags) > MAX_TAGS:
         return False, f"Maximum {MAX_TAGS} tags allowed"
@@ -107,7 +107,7 @@ def validate_tags(tags: List[str]) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def validate_license(license: str) -> Tuple[bool, Optional[str]]:
+def validate_license(license: str) -> tuple[bool, str | None]:
     """Validate license identifier.
 
     Args:
@@ -115,6 +115,7 @@ def validate_license(license: str) -> Tuple[bool, Optional[str]]:
         
     Returns:
         Tuple of (is_valid, error_message)
+
     """
     if license not in ALLOWED_LICENSES:
         return False, f"License must be one of: {', '.join(ALLOWED_LICENSES)}"
@@ -122,7 +123,7 @@ def validate_license(license: str) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def validate_stl_size(stl_bytes: bytes) -> Tuple[bool, Optional[str]]:
+def validate_stl_size(stl_bytes: bytes) -> tuple[bool, str | None]:
     """Validate STL file size.
 
     Args:
@@ -130,6 +131,7 @@ def validate_stl_size(stl_bytes: bytes) -> Tuple[bool, Optional[str]]:
         
     Returns:
         Tuple of (is_valid, error_message)
+
     """
     size_mb = len(stl_bytes) / (1024 * 1024)
 
@@ -139,7 +141,7 @@ def validate_stl_size(stl_bytes: bytes) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def validate_triangle_count(diagnostics: dict) -> Tuple[bool, Optional[str]]:
+def validate_triangle_count(diagnostics: dict) -> tuple[bool, str | None]:
     """Validate triangle count from diagnostics.
 
     Args:
@@ -147,6 +149,7 @@ def validate_triangle_count(diagnostics: dict) -> Tuple[bool, Optional[str]]:
         
     Returns:
         Tuple of (is_valid, error_message)
+
     """
     triangle_count = diagnostics.get("triangle_count", 0)
 

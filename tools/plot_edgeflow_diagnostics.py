@@ -1,5 +1,4 @@
-"""
-Simple plotting helper for edgeflow diagnostics JSONL or in-memory diagnostics.
+"""Simple plotting helper for edgeflow diagnostics JSONL or in-memory diagnostics.
 
 Usage:
     python tools/plot_edgeflow_diagnostics.py --jsonl tools/edgeflow_verbose_diagnostics.jsonl --outdir tmp/plots
@@ -11,15 +10,15 @@ functions below directly.
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def load_jsonl(path: Path) -> List[Dict[str, Any]]:
-    entries: List[Dict[str, Any]] = []
-    with open(path, "r", encoding="utf-8") as fh:
+def load_jsonl(path: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             try:
                 entries.append(json.loads(line))
@@ -28,7 +27,7 @@ def load_jsonl(path: Path) -> List[Dict[str, Any]]:
     return entries
 
 
-def plot_row(row: Dict[str, Any], outpath: Path, title: str = "") -> None:
+def plot_row(row: dict[str, Any], outpath: Path, title: str = "") -> None:
     # prefer theta_sample if present
     thetas = row.get("theta_sample")
     r_raw_sample = row.get("R_raw_sample")
@@ -64,7 +63,7 @@ def plot_row(row: Dict[str, Any], outpath: Path, title: str = "") -> None:
     if violations:
         vi = np.asarray(violations, dtype=int)
         plt.scatter(
-            thetas[vi], r_new_raw[vi], color="red", marker="x", s=60, label="violations"
+            thetas[vi], r_new_raw[vi], color="red", marker="x", s=60, label="violations",
         )
 
     plt.legend()

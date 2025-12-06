@@ -5,12 +5,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 from .imports import build_from_yaml, load_config
 
 
 def render_batch_tab() -> None:
+    st = get_st()
     st.subheader("Build from YAML")
     yaml_file = st.file_uploader("Select a YAML file (v1 or v2)", type=["yaml", "yml"])
     do_previews = st.checkbox("Save preview PNGs", value=True)
@@ -30,13 +31,13 @@ def render_batch_tab() -> None:
             cobj = load_config(tmp)
             recs = list(getattr(cobj, "recipes", []) or [])
             ver = getattr(cobj, "version", None) or getattr(
-                cobj, "schema_version", None
+                cobj, "schema_version", None,
             )
             st.caption(
-                f"Detected {len(recs)} recipe(s){f', schema v{ver}' if ver else ''}."
+                f"Detected {len(recs)} recipe(s){f', schema v{ver}' if ver else ''}.",
             )
             migrated = getattr(cobj, "_migrated", False) or getattr(
-                cobj, "migrated", False
+                cobj, "migrated", False,
             )
             if migrated:
                 st.info("This file was migrated from v1 → v2 on load.")

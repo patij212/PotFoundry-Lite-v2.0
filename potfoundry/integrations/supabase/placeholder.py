@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from .exceptions import NotConfiguredError
 
-
 __all__ = ["NotConfiguredClient"]
 
 

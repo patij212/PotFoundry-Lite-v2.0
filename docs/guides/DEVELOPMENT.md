@@ -43,7 +43,7 @@ Never rely solely on client-side hooks—CI should also enforce secret scanning 
 
 ### Prerequisites
 
-- Python 3.11+ (tested on 3.11, 3.12, 3.13)
+- Python 3.11–3.13 (NumPy 2.3.x does **not** publish wheels for Python 3.14 yet; using 3.14 results in `_multiarray_umath` import errors)
 - pip
 - Git
 
@@ -115,6 +115,32 @@ ruff check .
 
 # Auto-fix linting issues
 ruff check . --fix
+
+### Playwright WebGPU tests
+
+To run the optional Playwright WebGPU tests (requires a WebGPU-capable
+Chromium), set the following environment variables or use the helper scripts
+under `scripts/`:
+
+**PowerShell (Windows)**
+```powershell
+Set-Item Env:PF_RUN_WEBGPU_PLAYWRIGHT '1'
+Set-Item Env:PF_WEBGPU_HEADFUL '1'
+Set-Item Env:PF_WEBGPU_CHROMIUM_CHANNEL 'chrome'
+pytest -q tests/test_webgpu_playwright.py -s
+```
+
+**Linux / macOS (bash)**
+```bash
+PF_RUN_WEBGPU_PLAYWRIGHT=1 PF_WEBGPU_HEADFUL=1 PF_WEBGPU_CHROMIUM_CHANNEL=chrome pytest -q tests/test_webgpu_playwright.py -s
+```
+
+Or run the convenience scripts in `scripts/`:
+```bash
+./scripts/run_playwright_webgpu_tests.sh <channel> 1
+# Or on Windows PowerShell
+./scripts/run_playwright_webgpu_tests.ps1 -Headful -ChromiumChannel chrome
+```
 ```
 
 ### 4. Manual Testing
@@ -142,6 +168,35 @@ write_stl_binary('test.stl', 'Test', verts, faces)
 print(f'Generated {len(faces)} triangles')
 "
 ```
+
+### WebGPU Component Builds
+
+The WebGPU preview ships as a Streamlit custom component that must be built with Node and copied into the Python package **before** launching the app.
+
+1. Install dependencies once per clone:
+
+    ```bash
+    cd pfui/components/webgpu_component/frontend
+    npm ci
+    ```
+
+2. Build + copy assets into the canonical package path:
+
+    ```bash
+    npm run build
+    ```
+
+    The `build` script runs Vite, copies `frontend/build/` into `pfui/components/webgpu_component/frontend_build/`, and fails if `frontend_build/index.html` does not exist. CI can run the same command to guarantee artifacts land where the Python wrapper expects them.
+
+3. Launch Streamlit with the working virtualenv (currently `.venv312` on Windows) so the component can load its assets:
+
+    ```powershell
+    .venv312\Scripts\python.exe -m streamlit run app.py --server.port 8501
+    ```
+
+4. Check the server logs for a line similar to `WebGPU component using build path .../frontend_build`. If it is missing, bump the logging level to INFO (Streamlit defaults to INFO) or verify that the component rendered at least once.
+
+If the component cannot find its bundle it now logs each path it searched in the order tried, preventing silent fallbacks to the legacy preview.
 
 ### 5. Committing Changes
 

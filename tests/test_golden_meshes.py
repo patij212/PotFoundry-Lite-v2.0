@@ -70,8 +70,8 @@ def compute_mesh_metrics(verts: np.ndarray, faces: np.ndarray) -> dict:
     areas = 0.5 * np.linalg.norm(cross, axis=1)
 
     return {
-        "vertex_count": int(len(verts)),
-        "face_count": int(len(faces)),
+        "vertex_count": len(verts),
+        "face_count": len(faces),
         "height": round(height, 2),
         "width": round(width, 2),
         "depth": round(depth, 2),
@@ -374,7 +374,7 @@ class TestMeshProperties:
                 # Allow some tolerance for complex geometries
                 # Just check that most faces point outward
                 # This is a heuristic, not a strict requirement
-                pass  # Skip strict check for now
+                # Skip strict check for now
 
         # At minimum, normals should exist and be non-zero
         normal_lengths = np.linalg.norm(normals, axis=1)

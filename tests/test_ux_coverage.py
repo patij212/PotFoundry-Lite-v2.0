@@ -176,19 +176,27 @@ class TestColorUtilities:
 
     def test_build_gradient_colors_basic(self):
         """Test building gradient colors."""
+        import numpy as np
         z_values = [0.0, 0.25, 0.5, 0.75, 1.0]
         gradient = build_gradient_colors(z_values, "Classic Blue")
+        # Should return numpy array
+        assert isinstance(gradient, np.ndarray)
+        assert gradient.dtype == np.uint8
         assert len(gradient) == 5
-        # All should be valid RGB lists
+        assert gradient.shape == (5, 3)
+        # All should be valid RGB values
         for color in gradient:
             assert len(color) == 3
             assert all(0 <= c <= 255 for c in color)
 
     def test_build_gradient_colors_monotonic(self):
         """Test building monotonic gradient."""
+        import numpy as np
         z_values = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
         gradient = build_gradient_colors(z_values, "Mono Height")
+        assert isinstance(gradient, np.ndarray)
         assert len(gradient) == 6
+        assert gradient.shape == (6, 3)
 
 
 class TestImportUtilities:

@@ -1,0 +1,217 @@
+/**
+ * Sidebar styles with tabbed navigation.
+ * 
+ * @module ui/layout/Sidebar
+ */
+
+.pf-sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 340px;
+  min-width: 300px;
+  max-width: 400px;
+  height: 100%;
+  max-height: 100%;
+  background: rgba(18, 18, 24, 0.97);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  animation: pf-sidebar-slide-in 0.25s ease;
+  contain: style;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+@keyframes pf-sidebar-slide-in {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Header */
+.pf-sidebar__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pf-sidebar__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pf-sidebar__title h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -0.5px;
+}
+
+.pf-sidebar__version {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Tab Navigation */
+.pf-sidebar__tabs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pf-sidebar__tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  pointer-events: auto;
+}
+
+.pf-sidebar__tab:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pf-sidebar__tab--active {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+}
+
+.pf-sidebar__tab--active:hover {
+  color: #6366f1;
+}
+
+.pf-sidebar__tab svg {
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* Content Area */
+.pf-sidebar__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: auto;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.pf-sidebar__page {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.pf-sidebar__page--library {
+  padding: 0;
+  height: 100%;
+}
+
+/* Library page - ensure full height */
+.pf-sidebar__page--library .pf-library-panel {
+  height: 100%;
+}
+
+/* Footer */
+.pf-sidebar__footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
+}
+
+/* Scrollbar Styling */
+.pf-sidebar__content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.pf-sidebar__content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.pf-sidebar__content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.pf-sidebar__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .pf-sidebar {
+    width: 320px;
+    min-width: 280px;
+  }
+}
+
+@media (max-width: 768px) {
+  .pf-sidebar {
+    width: 100%;
+    max-width: 380px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .pf-sidebar {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    border-right: none;
+  }
+  
+  .pf-sidebar__tab span {
+    display: none;
+  }
+  
+  .pf-sidebar__tab {
+    padding: 12px;
+  }
+}

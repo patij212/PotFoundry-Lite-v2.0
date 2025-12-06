@@ -19,18 +19,18 @@ Implementation Notes:
 Example:
     >>> from potfoundry import write_stl_binary
     >>> write_stl_binary("pot.stl", "MyPot", vertices, faces)
+
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 import numpy.typing as npt
 
-__all__ = ["write_stl_binary", "atomic_write_bytes"]
+__all__ = ["atomic_write_bytes", "write_stl_binary"]
 
 
 def _ensure_dir(p: Path) -> None:
@@ -38,7 +38,7 @@ def _ensure_dir(p: Path) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
 
 
-def atomic_write_bytes(path: Union[str, Path], data: bytes) -> None:
+def atomic_write_bytes(path: str | Path, data: bytes) -> None:
     """Write bytes to file atomically to prevent partial writes.
 
     Writes to a temporary file first, syncs to disk, then atomically
@@ -51,6 +51,7 @@ def atomic_write_bytes(path: Union[str, Path], data: bytes) -> None:
 
     Note:
         Uses os.replace() which is atomic on both Unix and Windows
+
     """
     path = Path(path)
     _ensure_dir(path)
@@ -69,7 +70,7 @@ def _pack_header(name: str) -> bytes:
 
 
 def _compute_face_normals(
-    vertices: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]
+    vertices: npt.NDArray[np.float64], faces: npt.NDArray[np.int32],
 ) -> npt.NDArray[np.float32]:
     """Compute face normals for triangular mesh using vectorized cross product.
 
@@ -79,6 +80,7 @@ def _compute_face_normals(
 
     Returns:
         Normal vectors (M, 3), normalized to unit length where possible
+
     """
     v = vertices.astype(np.float32, copy=False)
     f = faces.astype(np.int64, copy=False)
@@ -112,6 +114,7 @@ def _interleave_records(
 
     Returns:
         bytes: Binary facet records (M × 50 bytes)
+
     """
     M = faces.shape[0]
     v = vertices.astype(np.float32, copy=False)
@@ -127,7 +130,7 @@ def _interleave_records(
             ("v2", "<f4", (3,)),
             ("v3", "<f4", (3,)),
             ("attr", "<u2"),
-        ]
+        ],
     )
     recs = np.empty(M, dtype=facet_dtype)
     recs["normals"] = n
@@ -139,11 +142,11 @@ def _interleave_records(
 
 
 def write_stl_binary(
-    path: Union[str, Path],
+    path: str | Path,
     name: str,
     vertices: npt.NDArray[np.float64],
     faces: npt.NDArray[np.int32],
-    normals: Optional[npt.NDArray[np.float32]] = None,
+    normals: npt.NDArray[np.float32] | None = None,
 ) -> Path:
     """Write mesh to binary STL file (RECOMMENDED for all exports).
 
@@ -174,6 +177,7 @@ def write_stl_binary(
         - Uses atomic write-and-replace to prevent partial files on errors
         - Automatically computes face normals if not provided
         - Always writes little-endian format per STL specification
+
     """
     path = Path(path)
     if normals is None:

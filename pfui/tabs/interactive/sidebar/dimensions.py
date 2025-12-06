@@ -8,17 +8,18 @@ keyword-only arguments `(mark_changed, style_key)`.
 
 from __future__ import annotations
 
-import streamlit as st
+from collections.abc import Callable
 
 from pfui.app_components.sidebar import render_dimensions as _render_dimensions
 
 
-def render_dimensions(style_name: str, mark_changed: callable) -> None:
+def render_dimensions(style_name: str, mark_changed: Callable[[], None]) -> None:
     """Render dimensions controls for the given style.
 
     Args:
         style_name: Current style name (used for style-scoped widget keys)
         mark_changed: Callback invoked on value change to mark preview stale
+
     """
     # Underlying function creates its own expander; just delegate.
     try:

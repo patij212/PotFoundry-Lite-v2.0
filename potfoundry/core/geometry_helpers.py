@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import Tuple
 
 import numpy as np
 import numpy.typing as npt
@@ -18,6 +17,7 @@ def cdiff_theta(A: np.ndarray) -> npt.NDArray[np.float64]:
 
     Returns:
         Array of same shape containing central differences along theta.
+
     """
     out = 0.5 * (np.roll(A, -1, axis=1) - np.roll(A, 1, axis=1))
     return np.asarray(out, dtype=float)
@@ -31,6 +31,7 @@ def cdiff_z(A: np.ndarray) -> npt.NDArray[np.float64]:
 
     Returns:
         Array of same shape containing central differences along z.
+
     """
     up = np.vstack([A[1:2, :], A[1:, :]])
     dn = np.vstack([A[:-1, :], A[-2:-1, :]])
@@ -39,8 +40,8 @@ def cdiff_z(A: np.ndarray) -> npt.NDArray[np.float64]:
 
 
 def estimate_shifts(
-    A: np.ndarray, K: int
-) -> Tuple[npt.NDArray[np.int_], npt.NDArray[np.int_]]:
+    A: np.ndarray, K: int,
+) -> tuple[npt.NDArray[np.int_], npt.NDArray[np.int_]]:
     """Estimate integer per-row shifts aligning adjacent rows.
 
     Returns (s_fwd, s_bwd) arrays of dtype int.
@@ -50,7 +51,7 @@ def estimate_shifts(
     Zloc, Tloc = A.shape
     s_fwd = np.zeros(Zloc, dtype=int)
     try:
-        qmask = A >= np.quantile(A, 0.85, axis=1, keepdims=True)
+        qmask = np.quantile(A, 0.85, axis=1, keepdims=True) <= A
     except Exception:
         qmask = np.ones_like(A, dtype=bool)
     for z in range(1, Zloc):
@@ -67,13 +68,13 @@ def estimate_shifts(
                 best_k = kshift
         s_fwd[z] = best_k
     s_bwd = np.zeros(Zloc, dtype=int)
-    for z in range(0, Zloc - 1):
+    for z in range(Zloc - 1):
         s_bwd[z] = -s_fwd[z + 1]
     return np.asarray(s_fwd, dtype=int), np.asarray(s_bwd, dtype=int)
 
 
 def roll_rows(
-    arr: np.ndarray, shifts: np.ndarray, sign: int = -1
+    arr: np.ndarray, shifts: np.ndarray, sign: int = -1,
 ) -> npt.NDArray[np.float64]:
     """Roll each row by shifts[z]*sign along theta axis.
 
@@ -90,7 +91,7 @@ def roll_rows(
 
 
 def roll_rows_2d(
-    arr: np.ndarray, shifts: np.ndarray, sign: int = -1
+    arr: np.ndarray, shifts: np.ndarray, sign: int = -1,
 ) -> npt.NDArray[np.float64]:
     """Per-row roll for 2D arrays; axis handling preserved from original code."""
     out = np.empty_like(arr)
@@ -101,7 +102,7 @@ def roll_rows_2d(
 
 
 def dilate_adaptive(
-    seed_arr: np.ndarray, steps: int, s_fwd: np.ndarray, s_bwd: np.ndarray
+    seed_arr: np.ndarray, steps: int, s_fwd: np.ndarray, s_bwd: np.ndarray,
 ) -> npt.NDArray[np.float64]:
     """Adaptive dilation used by ridge propagation logic.
 
@@ -133,12 +134,13 @@ def avg3(a: np.ndarray) -> npt.NDArray[np.float64]:
 
     Returns:
         Averaged array with dtype float
+
     """
     return np.asarray((np.roll(a, 1) + a + np.roll(a, -1)) / 3.0, dtype=float)
 
 
 def bilateral1d_peak_only(
-    a: np.ndarray, sigma_s: float, sigma_r: float
+    a: np.ndarray, sigma_s: float, sigma_r: float,
 ) -> npt.NDArray[np.float64]:
     """5-tap bilateral smoothing (peak-only) used by seam solidify.
 
@@ -202,7 +204,7 @@ def smooth_min(a, b, s: float) -> npt.NDArray[np.float64]:
 
 
 def lift_valleys(
-    base_vals, weight, target_val, lift_strength: float, lift_gamma: float
+    base_vals, weight, target_val, lift_strength: float, lift_gamma: float,
 ):
     b = np.asarray(base_vals, dtype=float)
     wv = np.asarray(weight, dtype=float)

@@ -1,0 +1,16 @@
+from typing import Any, TypeAlias
+
+# Minimal cupy stub mimicking a small subset of NumPy-like API used optionally.
+ndarray: TypeAlias = Any
+
+def asarray(obj: Any) -> Any: ...
+
+def array(obj: Any) -> Any: ...
+
+def zeros(shape: Any, dtype: Any = None) -> Any: ...
+
+def empty(shape: Any, dtype: Any = None) -> Any: ...
+
+def where(*args: Any, **kwargs: Any) -> Any: ...
+
+__all__ = ["array", "asarray", "empty", "ndarray", "where", "zeros"]

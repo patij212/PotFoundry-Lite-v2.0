@@ -5,14 +5,15 @@ configuration for the preview system.
 """
 
 from __future__ import annotations
-import json
-from typing import Any, Callable, Union
-from dataclasses import dataclass
 
+import json
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from typing import Any, cast
 
 try:
-    from pfui.imports import STYLES
     from pfui.geometry_bridge import adapt_r_outer_fn
+    from pfui.imports import STYLES
     IMPORTS_AVAILABLE = True
 except ImportError:
     STYLES = {}
@@ -36,7 +37,7 @@ _ArrayLike = Any
 @dataclass
 class StyleConfiguration:
     """Container for style configuration results."""
-    
+
     r_outer_fn: Callable
     opts: dict[str, Any]
     opts_json: str
@@ -52,7 +53,7 @@ def setup_preview_style(
     preview_n_theta: int,
     preview_n_z: int,
     full_n_theta: int,
-    full_n_z: int
+    full_n_z: int,
 ) -> StyleConfiguration:
     """Setup style function and configuration for preview.
     
@@ -76,24 +77,27 @@ def setup_preview_style(
     Example:
         >>> config = setup_preview_style("PetalWave", {}, 84, 42, 168, 84)
         >>> mesh = build_pot_mesh(..., config.r_outer_fn, config.opts, ...)
+
     """
     # Type alias for style function signature
-    ROuterFn = Callable[
-        [Union[float, _ArrayLike], float, float, float, dict], 
-        Union[float, _ArrayLike]
+    _ROuterFn = Callable[
+        [float | _ArrayLike, float, float, float, dict],
+        float | _ArrayLike,
     ]
-    
-    # Get raw style function
-    if IMPORTS_AVAILABLE and style_name in STYLES:
-        _r_outer_raw = STYLES[style_name][0]
+
+    # Get raw style function. Cast `STYLES` to a Mapping so static analyzers
+    # recognize indexing and membership checks on the lazy proxy.
+    styles = cast("Mapping[str, Any]", STYLES) if IMPORTS_AVAILABLE else {}
+    if IMPORTS_AVAILABLE and style_name in styles:
+        _r_outer_raw = styles[style_name][0]
     else:
         # Fallback to identity function
         def _r_outer_raw(theta, z, H, Rb, opts):
             return Rb
-    
+
     # Adapt for consistent scalar/vector handling
     r_outer_fn = adapt_r_outer_fn(_r_outer_raw)
-    
+
     # Prepare options (normalize to engine keyspace for geometry)
     if _HAS_SCHEMAS:
         try:
@@ -109,6 +113,7 @@ def setup_preview_style(
     # style's options.
     try:
         import streamlit as _st
+
         from pfui.imports import _spin_twist_radians
 
         g_enabled = bool(_st.session_state.get("global_spin_enable", False))

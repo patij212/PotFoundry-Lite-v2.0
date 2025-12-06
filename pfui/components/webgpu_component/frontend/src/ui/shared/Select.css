@@ -1,0 +1,189 @@
+/**
+ * Select component styles.
+ */
+
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.pf-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pf-select--full-width {
+  width: 100%;
+}
+
+/* ============================================================================
+   Label
+   ============================================================================ */
+
+.pf-select__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  user-select: none;
+}
+
+/* ============================================================================
+   Trigger (Button)
+   ============================================================================ */
+
+.pf-select__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.pf-select__trigger:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.pf-select__trigger:focus-visible {
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.pf-select__trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pf-select__trigger[data-state='open'] {
+  border-color: rgba(99, 102, 241, 0.6);
+}
+
+.pf-select__icon {
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.5);
+  transition: transform 0.2s ease;
+}
+
+.pf-select__trigger[data-state='open'] .pf-select__icon {
+  transform: rotate(180deg);
+}
+
+/* ============================================================================
+   Content (Dropdown)
+   ============================================================================ */
+
+.pf-select__content {
+  overflow: hidden;
+  background: rgba(30, 30, 40, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  box-shadow: 
+    0 10px 38px -10px rgba(0, 0, 0, 0.6),
+    0 10px 20px -15px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  backdrop-filter: blur(12px);
+  animation: pf-select-fade-in 0.15s ease;
+}
+
+@keyframes pf-select-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pf-select__viewport {
+  padding: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* ============================================================================
+   Items
+   ============================================================================ */
+
+.pf-select__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  transition: background 0.1s ease;
+}
+
+.pf-select__item:hover,
+.pf-select__item[data-highlighted] {
+  background: rgba(99, 102, 241, 0.2);
+  color: rgba(255, 255, 255, 1);
+}
+
+.pf-select__item[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.pf-select__item[data-state='checked'] {
+  color: #818cf8;
+}
+
+.pf-select__item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pf-select__item-label {
+  font-weight: 500;
+}
+
+.pf-select__item-description {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.pf-select__item-indicator {
+  display: flex;
+  align-items: center;
+  color: #818cf8;
+}
+
+/* ============================================================================
+   Scrollbar
+   ============================================================================ */
+
+.pf-select__viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pf-select__viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pf-select__viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.pf-select__viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}

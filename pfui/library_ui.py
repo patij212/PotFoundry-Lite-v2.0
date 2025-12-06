@@ -2,27 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-HAS_STREAMLIT = False
-
-if TYPE_CHECKING:
-    # Provide a name for the typechecker only (avoids runtime redefinition warnings)
-    import streamlit as st
-else:
-    st: Any = None
-    try:
-        import streamlit as st
-
-        HAS_STREAMLIT = True
-    except Exception:
-        st = None
-        HAS_STREAMLIT = False
+from pfui._st import try_get_st, safe_image
 
 
 def render_library_tab() -> None:
     """Render the Public Library browse tab."""
-    if not HAS_STREAMLIT or st is None:
+    st = try_get_st()
+    if st is None:
         return
 
     # Local imports (lazy) to avoid heavy import-time dependencies and satisfy ruff
@@ -38,7 +24,7 @@ def render_library_tab() -> None:
         st.info(
             "📚 Public Library is not configured. "
             "To enable, add Supabase credentials to `.streamlit/secrets.toml`. "
-            "See `.streamlit/secrets.template.toml` for details."
+            "See `.streamlit/secrets.template.toml` for details.",
         )
         return
 
@@ -46,20 +32,20 @@ def render_library_tab() -> None:
     try:
         if isinstance(client, SupabaseClient) and getattr(client, "read_only", False):
             st.warning(
-                "Public Library is in read-only mode (anon key). Publishing is disabled on this device."
+                "Public Library is in read-only mode (anon key). Publishing is disabled on this device.",
             )
     except Exception:
         pass
 
     st.header("Public Library")
     st.markdown(
-        "Browse designs published by the community. Download STL files or open them in the editor."
+        "Browse designs published by the community. Download STL files or open them in the editor.",
     )
     # Info: show connected Supabase project (host) and access mode for clarity
     try:
         from urllib.parse import urlparse
 
-        host = urlparse(getattr(client, "config").url).netloc.split(".")[0]
+        host = urlparse(client.config.url).netloc.split(".")[0]
         mode = "read-only" if getattr(client, "read_only", False) else "service"
         st.caption(f"Connected to Supabase project: {host} ({mode})")
     except Exception:
@@ -70,7 +56,7 @@ def render_library_tab() -> None:
 
     with col1:
         search_query = st.text_input(
-            "Search", placeholder="Search by title...", label_visibility="collapsed"
+            "Search", placeholder="Search by title...", label_visibility="collapsed",
         )
 
     with col2:
@@ -78,7 +64,7 @@ def render_library_tab() -> None:
 
         style_options = ["All"] + sorted(STYLES.keys())
         style_filter = st.selectbox(
-            "Style", style_options, index=0, label_visibility="collapsed"
+            "Style", style_options, index=0, label_visibility="collapsed",
         )
 
     with col3:
@@ -91,7 +77,7 @@ def render_library_tab() -> None:
     with col4:
         sort_options = ["Newest", "Oldest", "Title A-Z"]
         sort_choice = st.selectbox(
-            "Sort", sort_options, index=0, label_visibility="collapsed"
+            "Sort", sort_options, index=0, label_visibility="collapsed",
         )
 
     with col5:
@@ -103,7 +89,7 @@ def render_library_tab() -> None:
 
     with col6:
         auto = st.toggle(
-            "Auto-refresh 30s", value=st.session_state.get("_library_auto", False)
+            "Auto-refresh 30s", value=st.session_state.get("_library_auto", False),
         )
         st.session_state["_library_auto"] = auto
         if auto:
@@ -158,7 +144,7 @@ def render_library_tab() -> None:
     # Display results
     if not results:
         st.info(
-            "No designs found. Try adjusting your filters or publish the first one!"
+            "No designs found. Try adjusting your filters or publish the first one!",
         )
         return
 
@@ -228,8 +214,10 @@ def render_library_card(design: dict) -> None:
 
     Args:
         design: Design record from database
+
     """
-    if not HAS_STREAMLIT or st is None:
+    st = try_get_st()
+    if st is None:
         return
 
     # Thumbnail / animated preview (APNG if available). If unavailable, render a local preview as fallback.
@@ -237,8 +225,7 @@ def render_library_card(design: dict) -> None:
     url = str(design.get("thumb_url") or "")
     if url:
         try:
-            st.image(url, width="stretch")
-            shown = True
+            shown = safe_image(st, url, width="stretch")
         except Exception:
             shown = False
     if not shown:
@@ -290,8 +277,10 @@ def render_library_card(design: dict) -> None:
                 appearance_key=ak,
             )
             if png:
-                st.image(png, width="stretch")
-                shown = True
+                try:
+                    shown = safe_image(st, png, width="stretch")
+                except Exception:
+                    shown = False
         except Exception:
             shown = False
     if not shown:
@@ -345,14 +334,20 @@ def render_library_card(design: dict) -> None:
                 appearance_key=ak,
             )
             if png:
-                st.image(png, width="stretch")
+                try:
+                    shown = safe_image(st, png, width="stretch")
+                except Exception:
+                    shown = False
             else:
                 raise RuntimeError("no png")
         except Exception:
             # As a last resort, show remote thumbnail if present
             url = str(design.get("thumb_url") or "")
             if url:
-                st.image(url, width="stretch")
+                try:
+                    _ = safe_image(st, url, width="stretch")
+                except Exception:
+                    pass
             else:
                 st.markdown("_No preview available_")
 
@@ -403,8 +398,10 @@ def open_design_in_editor(design: dict) -> None:
 
     Args:
         design: Design record from database
+
     """
-    if not HAS_STREAMLIT or st is None:
+    st = try_get_st()
+    if st is None:
         return
 
     from pfui.deeplink import apply_state

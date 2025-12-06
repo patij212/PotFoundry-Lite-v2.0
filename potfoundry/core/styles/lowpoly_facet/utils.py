@@ -1,19 +1,17 @@
-"""
-Utility functions for LowPolyFacet style.
+"""Utility functions for LowPolyFacet style.
 
 This module contains helper functions used by the lowpoly_facet style,
 including radius calculations and smooth min/max operations.
 """
 from __future__ import annotations
 
-import math
 import math as _m  # Alias for base_radius function
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
-from ....types import StyleOpts, NDArrayFloat
+from ....types import NDArrayFloat, StyleOpts
 
 
 def base_radius(
@@ -41,6 +39,7 @@ def base_radius(
 
     Returns:
         Computed radius at height z (scalar or array)
+
     """
     # Fast scalar path when H is non-positive
     if H <= 0:
@@ -91,29 +90,28 @@ def base_radius(
         # value rather than raising an obscure exception. This keeps the
         # legacy scalar API stable while avoiding crashes during debug runs.
         return float(arr.ravel()[0])
-    else:
-        # Vectorized branch: operate on NumPy arrays
-        t = np.where(H == 0, 0.0, np.clip(z_arr / H, 0.0, 1.0))
-        c = float(opts.get("flare_center", 0.5))
-        k = float(opts.get("flare_sharp", 6.0))
+    # Vectorized branch: operate on NumPy arrays
+    t = np.where(H == 0, 0.0, np.clip(z_arr / H, 0.0, 1.0))
+    c = float(opts.get("flare_center", 0.5))
+    k = float(opts.get("flare_sharp", 6.0))
 
-        def _sig_np(x: npt.NDArray[np.float64] | float) -> npt.NDArray[np.float64]:
-            return 1.0 / (1.0 + np.exp(-k * (x - c)))
+    def _sig_np(x: npt.NDArray[np.float64] | float) -> npt.NDArray[np.float64]:
+        return 1.0 / (1.0 + np.exp(-k * (x - c)))
 
-        s0 = _sig_np(0.0)
-        s1 = _sig_np(1.0)
-        tw = (_sig_np(t) - s0) / (s1 - s0 + 1e-9)
-        r = Rb + (Rt - Rb) * (tw ** float(expn))
-        amp = float(opts.get("bell_amp", 0.0))
-        if amp != 0.0:
-            mu = float(opts.get("bell_center", 0.5))
-            width = max(0.05, float(opts.get("bell_width", 0.22)))
-            sigma = max(1e-3, width * 0.5)
-            g = float(np.exp(-0.5 * ((t - mu) / sigma) ** 2))
-            r = r * (1.0 + amp * g)
-        # Normalize type: if computation produced a scalar (0-d or size-1),
-        # return a Python float so callers that expect scalars keep working.
-        r = np.asarray(r, dtype=float)
-        if r.shape == () or getattr(r, "size", 0) == 1:
-            return float(r.item())
-        return r
+    s0 = _sig_np(0.0)
+    s1 = _sig_np(1.0)
+    tw = (_sig_np(t) - s0) / (s1 - s0 + 1e-9)
+    r = Rb + (Rt - Rb) * (tw ** float(expn))
+    amp = float(opts.get("bell_amp", 0.0))
+    if amp != 0.0:
+        mu = float(opts.get("bell_center", 0.5))
+        width = max(0.05, float(opts.get("bell_width", 0.22)))
+        sigma = max(1e-3, width * 0.5)
+        g = float(np.exp(-0.5 * ((t - mu) / sigma) ** 2))
+        r = r * (1.0 + amp * g)
+    # Normalize type: if computation produced a scalar (0-d or size-1),
+    # return a Python float so callers that expect scalars keep working.
+    r = np.asarray(r, dtype=float)
+    if r.shape == () or getattr(r, "size", 0) == 1:
+        return float(r.item())
+    return r

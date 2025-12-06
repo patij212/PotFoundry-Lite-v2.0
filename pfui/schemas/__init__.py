@@ -35,14 +35,15 @@ Example:
     >>> import pfui.schemas as SC
     >>> schemas = SC.get_style_schemas()
     >>> SC.apply_defaults(config, schema)
+
 """
 
 from __future__ import annotations
 
 # Import all public APIs from submodules
 from .aliases import (
-    GLOBAL_ALIASES,
     ALIASES_BY_STYLE,
+    GLOBAL_ALIASES,
     GLOBAL_REVERSE,
     REVERSE_BY_STYLE,
     get_aliases_by_style,

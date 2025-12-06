@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Optional, cast
+from typing import Any, cast
 
-import streamlit as st
-
+from pfui._st import get_effective_st as get_st
 from pfui.imports import build_pot_mesh
 
 
@@ -30,11 +29,11 @@ def build_preview_mesh(
     interactive_mesh: bool,
     preview_mode: str,
     ss: dict[str, Any],
-    geom_sig: Optional[tuple],
-    app_sig: Optional[tuple],
+    geom_sig: tuple | None,
+    app_sig: tuple | None,
     debounce_timeout_seconds: float,
     place_on_ground: bool,
-) -> tuple[Optional[tuple], bool]:
+) -> tuple[tuple | None, bool]:
     """Build mesh for interactive preview with caching and orchestration.
     
     Args:
@@ -65,13 +64,14 @@ def build_preview_mesh(
     Returns:
         Tuple of (mesh_data, built_via_orchestrator)
         where mesh_data is (vertices, faces) or None
+
     """
     mesh_data = None
     built_via_orchestrator = False
-    
+
     # Build mesh only when geometry/style changed; appearance-only changes reuse previous mesh
     do_mesh_build = bool(interactive_mesh and geom_changed)
-    
+
     if do_mesh_build:
         # Prefer orchestrator for mesh build when available
         try:
@@ -86,26 +86,26 @@ def build_preview_mesh(
                 expn,
                 preview_n_theta,
                 preview_n_z,
-                full_n_theta,
-                full_n_z,
+                full_n_theta,  # Use full resolution (no capping)
+                full_n_z,      # Use full resolution (no capping)
                 style_name,
                 opts_json,
                 preview_mode=cast(
-                    str, ss.get("preview_mode", preview_mode)
+                    "str", ss.get("preview_mode", preview_mode),
                 ),
                 preview_stale=bool(
-                    cast(Any, ss.get("_preview_stale", False))
+                    cast("Any", ss.get("_preview_stale", False)),
                 ),
                 last_geom_sig=cast(
-                    Optional[tuple], ss.get("_last_preview_geom_sig")
+                    "tuple | None", ss.get("_last_preview_geom_sig"),
                 ),
                 last_app_sig=cast(
-                    Optional[tuple], ss.get("_last_preview_app_sig")
+                    "tuple | None", ss.get("_last_preview_app_sig"),
                 ),
                 geom_sig=geom_sig,
                 app_sig=app_sig,
                 debounce_timeout_s=debounce_timeout_seconds,
-                last_change_ts=cast(Any, ss.get("_last_change_ts", 0.0)),
+                last_change_ts=cast("Any", ss.get("_last_change_ts", 0.0)),
                 interactive_mesh=True,
                 build_mesh_fn=build_pot_mesh,
                 t_wall=t_wall,
@@ -114,7 +114,7 @@ def build_preview_mesh(
                 r_outer_fn=r_outer_fn,
                 style_opts=opts,
             )
-            m = cast(Any, res2.get("mesh"))
+            m = cast("Any", res2.get("mesh"))
             if m is not None:
                 import numpy as _np_mb
 
@@ -161,10 +161,9 @@ def build_preview_mesh(
                 t_wall=t_wall,
                 t_bottom=t_bottom,
                 r_drain=r_drain,
-                # Use preview resolution for interactive mesh to keep UI responsive
                 expn=expn,
-                n_theta=preview_n_theta,
-                n_z=preview_n_z,
+                n_theta=full_n_theta,  # Use full resolution (no capping)
+                n_z=full_n_z,          # Use full resolution (no capping)
                 r_outer_fn=r_outer_fn,
                 style_opts=opts,
             )
@@ -190,7 +189,7 @@ def build_preview_mesh(
             _display_seam_debug(opts, diag, ss)
         except Exception:
             pass
-    
+
     return mesh_data, built_via_orchestrator
 
 
@@ -201,8 +200,10 @@ def _display_seam_debug(opts: dict[str, Any], diag: Any, ss: dict[str, Any]) -> 
         opts: Style options dictionary
         diag: Diagnostics dictionary from mesh build
         ss: Session state dictionary
+
     """
     try:
+        st = get_st()
         if (
             opts.get("lp_debug_seam", False)
             and isinstance(diag, dict)
@@ -225,11 +226,11 @@ def _display_seam_debug(opts: dict[str, Any], diag: Any, ss: dict[str, Any]) -> 
                             ) = samp
                             delta = r_base_mid - Rstart_mid
                             st.write(
-                                f"θ_mid={theta_mid:.3f}, z={zc:.3f}, r_base={r_base_mid:.3f}, R_start={Rstart_mid:.3f}, delta={delta:.6f}"
+                                f"θ_mid={theta_mid:.3f}, z={zc:.3f}, r_base={r_base_mid:.3f}, R_start={Rstart_mid:.3f}, delta={delta:.6f}",
                             )
                         except Exception:
                             st.write(repr(samp))
     except Exception as _e_dbg:
         ss.setdefault("_debug_logs", []).append(
-            f"Seam debug display failed: {_e_dbg}"
+            f"Seam debug display failed: {_e_dbg}",
         )

@@ -84,7 +84,7 @@ def test_peak_snap_lifts_valleys_without_raising_peaks():
     r0 = 70.0
     H = 120.0
     base_opts = dict(
-        sf_strength=1.0, sf_m_base=8.0, sf_m_top=12.0, sf_n1=0.45, sf_n2=1.2, sf_n3=1.2
+        sf_strength=1.0, sf_m_base=8.0, sf_m_top=12.0, sf_n1=0.45, sf_n2=1.2, sf_n3=1.2,
     )
     # Baseline profile with pronounced peaks/valleys
     r_base = np.asarray(fn(th, z, r0, H, base_opts), dtype=float)
@@ -162,7 +162,7 @@ def test_filters_respect_zero_strength_identity():
             "sf_spike_mad_enable": True,
             "sf_spike_mad_k": 3.0,
             "sf_spike_mad_amount": 1.0,
-        }
+        },
     )
     assert np.allclose(f, base)
 
@@ -258,7 +258,7 @@ def test_solidify_protection_controls_reduction():
             "sf_edge_solidify_micro_thresh": 0.12,
             "sf_edge_solidify_protect_grad": 0.3,
             "sf_edge_solidify_preserve_q": 0.99,
-        }
+        },
     )
     # High protection: preserve more edges (protect more), smooth less
     f_highprot = _sample_rf(
@@ -272,7 +272,7 @@ def test_solidify_protection_controls_reduction():
             "sf_edge_solidify_micro_thresh": 0.12,
             "sf_edge_solidify_protect_grad": 0.05,
             "sf_edge_solidify_preserve_q": 0.5,
-        }
+        },
     )
 
     # Micro-jag reduction measure: residual to circular median-of-5 (focus on tiny peaks)
@@ -286,10 +286,10 @@ def test_solidify_protection_controls_reduction():
         st = np.stack([a2, a1, a, b1, b2], axis=0)
         st = np.asarray(st, dtype=float)
         st.sort(axis=0)
-        return cast(np.ndarray, st[2])
+        return cast("np.ndarray", st[2])
 
     def micro_resid(a: np.ndarray) -> np.ndarray:
-        return cast(np.ndarray, np.maximum(0.0, a - med5(a)))
+        return cast("np.ndarray", np.maximum(0.0, a - med5(a)))
 
     _r0 = micro_resid(f0)
     r_low = micro_resid(f_lowprot)
@@ -310,7 +310,7 @@ def test_auto_tame_triggers_on_high_strength():
             "sf_strength": 1.0,
             "sf_edge_tame_strength": 0.0,
             "sf_auto_tame": False,
-        }
+        },
     )
     auto_on = _sample_rf(
         base_opts={
@@ -319,7 +319,7 @@ def test_auto_tame_triggers_on_high_strength():
             "sf_auto_tame": True,
             "sf_auto_tame_thresh": 0.5,
             "sf_auto_tame_amount": 0.7,
-        }
+        },
     )
     # Expect reduced spread and non-increasing high tail with auto_tame
     spread0 = float(np.max(base) - np.min(base))
@@ -344,7 +344,7 @@ def test_spike_clip_quantile_reduces_top_quantiles_only():
             "sf_spike_clip_window": 9,
             # Max out strength for clearer effect
             "sf_strength": 1.0,
-        }
+        },
     )
     # No increases at peaks; at least one reduction expected
     diff = f1 - f0
@@ -363,7 +363,7 @@ def test_spike_mad_clipping_is_peak_only_and_robust():
             "sf_spike_mad_amount": 1.0,
             "sf_spike_mad_window": 21,
             "sf_strength": 1.0,
-        }
+        },
     )
     # Peak-only reduction expected at some thetas (no requirement on valleys)
     diff = f1 - f0
@@ -405,7 +405,7 @@ def test_edge_solidify_reduces_micro_jaggies_preserving_edges():
             "sf_edge_solidify_micro_thresh": 0.10,
             "sf_edge_solidify_protect_grad": 0.12,
             "sf_edge_solidify_preserve_q": 0.9,
-        }
+        },
     )
     # Peak-only smoothing: should not raise values
     assert np.all(f1 <= f0 + 1e-9)
@@ -421,7 +421,7 @@ def test_edge_tame_saturates_extreme_peaks():
             "sf_edge_tame_strength": 1.0,
             "sf_edge_tame_k": 0.3,
             "sf_strength": 1.0,
-        }
+        },
     )
     # Taming reduces spread (brings peaks/valleys toward center)
     spread0 = float(np.max(f0) - np.min(f0))
@@ -434,7 +434,7 @@ def test_edge_sharp_increases_contrast_without_exceeding_bounds():
     f1 = _sample_rf(
         base_opts={
             "sf_edge_sharp": 0.3,
-        }
+        },
     )
     # Contrast lift: spread increases a bit
     assert (np.max(f1) - np.min(f1)) >= (np.max(f0) - np.min(f0)) - 1e-6
@@ -460,7 +460,7 @@ def test_combined_spike_clip_and_mad_dont_duplicate_overclip():
             "sf_spike_clip_quantile": 0.985,
             "sf_spike_clip_amount": 0.7,
             "sf_spike_clip_window": 9,
-        }
+        },
     )
     f_mad = _sample_rf(
         base_opts={
@@ -468,7 +468,7 @@ def test_combined_spike_clip_and_mad_dont_duplicate_overclip():
             "sf_spike_mad_k": 3.1,
             "sf_spike_mad_amount": 0.88,
             "sf_spike_mad_window": 9,
-        }
+        },
     )
     f_both = _sample_rf(
         base_opts={
@@ -480,7 +480,7 @@ def test_combined_spike_clip_and_mad_dont_duplicate_overclip():
             "sf_spike_mad_k": 3.1,
             "sf_spike_mad_amount": 0.88,
             "sf_spike_mad_window": 9,
-        }
+        },
     )
     # Stronger than each alone at top quantiles, but keep variation alive
     q = 0.98

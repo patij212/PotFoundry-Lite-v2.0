@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
 def float_slider(
@@ -13,8 +11,8 @@ def float_slider(
     max_value: float,
     value: float,
     step: float = 0.1,
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
+    key: str | None = None,
+    help_text: str | None = None,
     format_str: str = "%.2f",
 ) -> float:
     """Create a float slider with consistent styling.
@@ -31,7 +29,9 @@ def float_slider(
 
     Returns:
         Selected float value
+
     """
+    st = get_st()
     return st.slider(
         label=label,
         min_value=min_value,
@@ -50,8 +50,8 @@ def int_slider(
     max_value: int,
     value: int,
     step: int = 1,
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
+    key: str | None = None,
+    help_text: str | None = None,
 ) -> int:
     """Create an integer slider with consistent styling.
 
@@ -66,7 +66,9 @@ def int_slider(
 
     Returns:
         Selected integer value
+
     """
+    st = get_st()
     return st.slider(
         label=label,
         min_value=min_value,
@@ -80,13 +82,13 @@ def int_slider(
 
 def range_slider(
     label: str,
-    min_value: Union[int, float],
-    max_value: Union[int, float],
-    value: tuple[Union[int, float], Union[int, float]],
-    step: Union[int, float, None] = None,
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
-) -> tuple[Union[int, float], Union[int, float]]:
+    min_value: float,
+    max_value: float,
+    value: tuple[int | float, int | float],
+    step: float | None = None,
+    key: str | None = None,
+    help_text: str | None = None,
+) -> tuple[int | float, int | float]:
     """Create a range slider (two-value slider) with consistent styling.
 
     Args:
@@ -100,7 +102,9 @@ def range_slider(
 
     Returns:
         Tuple of (min_selected, max_selected)
+
     """
+    st = get_st()
     return st.slider(
         label=label,
         min_value=min_value,

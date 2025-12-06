@@ -1,0 +1,190 @@
+/**
+ * Section component styles.
+ */
+
+/* ============================================================================
+   Section Container
+   ============================================================================ */
+
+.pf-section {
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.pf-section + .pf-section {
+  margin-top: 10px;
+}
+
+/* ============================================================================
+   Trigger (Collapsible Header)
+   ============================================================================ */
+
+.pf-section__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 14px;
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease;
+}
+
+.pf-section__trigger:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pf-section__trigger:focus-visible {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+/* ============================================================================
+   Header (shared by trigger and static)
+   ============================================================================ */
+
+.pf-section__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pf-section--static .pf-section__header {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pf-section__icon {
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.pf-section__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pf-section__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ============================================================================
+   Chevron
+   ============================================================================ */
+
+.pf-section__chevron {
+  color: rgba(255, 255, 255, 0.4);
+  transition: transform 0.2s ease;
+}
+
+.pf-section__trigger[data-state='open'] .pf-section__chevron {
+  transform: rotate(90deg);
+}
+
+/* ============================================================================
+   Content
+   ============================================================================ */
+
+.pf-section__content-wrapper {
+  overflow: hidden;
+  /* Ensure content is properly measured */
+  will-change: height;
+}
+
+.pf-section__content-wrapper[data-state='open'] {
+  animation: pf-section-expand 0.25s ease-out forwards;
+}
+
+.pf-section__content-wrapper[data-state='closed'] {
+  animation: pf-section-collapse 0.2s ease-in forwards;
+}
+
+@keyframes pf-section-expand {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes pf-section-collapse {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+/* Ensure expanded content is fully visible */
+.pf-section__content-wrapper[data-state='open'] .pf-section__content {
+  visibility: visible;
+}
+
+.pf-section__content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 14px;
+  padding-top: 10px;
+  /* Ensure content doesn't get cut off */
+  min-width: 0;
+}
+
+.pf-section--static .pf-section__content {
+  padding-top: 16px;
+}
+
+/* ============================================================================
+   Section Divider
+   ============================================================================ */
+
+.pf-section-divider {
+  height: 1px;
+  margin: 8px 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ============================================================================
+   Section Group
+   ============================================================================ */
+
+.pf-section-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Ensure content is contained */
+  min-width: 0;
+}
+
+.pf-section-group__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.pf-section-group__content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* Ensure sliders have room */
+  min-width: 0;
+}

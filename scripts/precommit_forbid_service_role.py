@@ -43,7 +43,7 @@ def interesting_file(p: Path) -> bool:
 def extract_env_value(text: str, key: str) -> str | None:
     # Try common formats: TOML/INI/ENV
     rx = re.compile(
-        rf"^{key}\s*[:=]\s*(['\"]?)(.+?)\1\s*$", re.IGNORECASE | re.MULTILINE
+        rf"^{key}\s*[:=]\s*(['\"]?)(.+?)\1\s*$", re.IGNORECASE | re.MULTILINE,
     )
     m = rx.search(text)
     if m:
@@ -103,12 +103,12 @@ def main(argv: list[str]) -> int:
 
     if bad:
         sys.stderr.write(
-            "\nERROR: Potential Supabase service_role secret detected in the following files:\n"
+            "\nERROR: Potential Supabase service_role secret detected in the following files:\n",
         )
         for fname in bad:
             sys.stderr.write(f"  - {fname}\n")
         sys.stderr.write(
-            "\nRefuse to commit. Remove or redact service_role credentials before committing.\n"
+            "\nRefuse to commit. Remove or redact service_role credentials before committing.\n",
         )
         return 1
     return 0

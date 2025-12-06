@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from collections.abc import Mapping
 from types import MappingProxyType
+from typing import Any
 
 __all__ = ["STYLE_SCHEMAS"]
 
-STYLE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
+STYLE_SCHEMAS: Mapping[str, dict[str, dict[str, Any]]] = {
     "HarmonicRipple": {
         "hr_petals": {
             "label": "Petal count",

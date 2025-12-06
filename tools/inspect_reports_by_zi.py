@@ -13,7 +13,7 @@ def main() -> None:
             pass
 
     lines = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for ln in f:
             ln = ln.strip()
             if not ln:
@@ -82,7 +82,7 @@ def main() -> None:
                 "B_max": max(B) if B else None,
                 "cur_min": min(cur) if cur else None,
                 "cur_max": max(cur) if cur else None,
-            }
+            },
         )
 
     # print a human-friendly table
@@ -111,7 +111,7 @@ def main() -> None:
             s["cur_max"],
         )
         print("  sample idxs", s["sample_idxs"], "sample_mapped", s["sample_mapped"])
-        print("")
+        print()
 
     # summary stats
     print("SUMMARY for zi", zi_target)

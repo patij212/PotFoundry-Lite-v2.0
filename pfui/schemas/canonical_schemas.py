@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping
+from collections.abc import Mapping
+from typing import Any
 
-from .aliases import GLOBAL_ALIASES as _GLOBAL_ALIASES
 from .aliases import ALIASES_BY_STYLE as _ALIASES_BY_STYLE
+from .aliases import GLOBAL_ALIASES as _GLOBAL_ALIASES
 from .global_controls import GLOBAL_CONTROLS
 from .style_schemas import STYLE_SCHEMAS
 
@@ -15,7 +16,7 @@ __all__ = ["CANONICAL_CONTROLS", "CANONICAL_STYLE_SCHEMAS"]
 
 
 def _build_canonical_schema() -> (
-    tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Dict[str, Any]]]]
+    tuple[dict[str, dict[str, Any]], dict[str, dict[str, dict[str, Any]]]]
 ):
     """Construct canonical-keyed schema mirrors.
 
@@ -36,12 +37,13 @@ def _build_canonical_schema() -> (
 
     Example:
         CANONICAL_CONTROLS["twist_total_turns"] -> {..., "legacy": "spin_turns"}
+
     """
 
     def remap_block(
-        block: Mapping[str, Mapping[str, Any]], alias_map: Mapping[str, str]
-    ) -> Dict[str, Dict[str, Any]]:
-        out: Dict[str, Dict[str, Any]] = {}
+        block: Mapping[str, Mapping[str, Any]], alias_map: Mapping[str, str],
+    ) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
         for legacy_key, meta in block.items():
             canon_key = alias_map.get(legacy_key, legacy_key)
             m = dict(meta)
@@ -52,7 +54,7 @@ def _build_canonical_schema() -> (
         return out
 
     canonical_globals = remap_block(GLOBAL_CONTROLS, _GLOBAL_ALIASES)
-    canonical_styles: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    canonical_styles: dict[str, dict[str, dict[str, Any]]] = {}
     for style, block in STYLE_SCHEMAS.items():
         canonical_styles[style] = remap_block(block, _ALIASES_BY_STYLE.get(style, {}))
     return canonical_globals, canonical_styles

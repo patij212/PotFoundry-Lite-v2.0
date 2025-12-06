@@ -7,21 +7,9 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import Any
 
-if TYPE_CHECKING:
-    import streamlit as st
-
-    HAS_STREAMLIT = True
-else:
-    try:
-        import streamlit as st
-
-        HAS_STREAMLIT = True
-    except Exception:
-        HAS_STREAMLIT = False
-        st = None
-
+from pfui._st import try_get_st
 
 # Whitelisted parameters that can be restored from deep links
 ALLOWED_GEOMETRY_KEYS = {
@@ -40,7 +28,7 @@ ALLOWED_MESH_KEYS = {"n_theta", "n_z", "twist"}
 ALLOWED_KEYS = ALLOWED_GEOMETRY_KEYS | ALLOWED_MESH_KEYS | {"opts"}
 
 
-def encode_state(state_dict: Dict[str, Any]) -> str:
+def encode_state(state_dict: dict[str, Any]) -> str:
     """Encode state dictionary to base64url string for URL parameter.
 
     Args:
@@ -53,6 +41,7 @@ def encode_state(state_dict: Dict[str, Any]) -> str:
         >>> state = {"style": "HarmonicRipple", "H": 120.0}
         >>> encoded = encode_state(state)
         >>> # Returns: "eyJzdHlsZSI6Ikhhcm1vbmljUmlwcGxlIiwiSCI6MTIwLjB9"
+
     """
     # Serialize to compact JSON (no whitespace)
     json_str = json.dumps(state_dict, separators=(",", ":"), sort_keys=True)
@@ -67,7 +56,7 @@ def encode_state(state_dict: Dict[str, Any]) -> str:
     return b64_bytes.decode("ascii").rstrip("=")
 
 
-def decode_state(encoded: str) -> Dict[str, Any]:
+def decode_state(encoded: str) -> dict[str, Any]:
     """Decode base64url string to state dictionary.
 
     Args:
@@ -83,6 +72,7 @@ def decode_state(encoded: str) -> Dict[str, Any]:
         >>> encoded = "eyJzdHlsZSI6Ikhhcm1vbmljUmlwcGxlIiwiSCI6MTIwLjB9"
         >>> state = decode_state(encoded)
         >>> # Returns: {"style": "HarmonicRipple", "H": 120.0}
+
     """
     try:
         # Add padding if needed (base64 requires length % 4 == 0)
@@ -104,7 +94,7 @@ def decode_state(encoded: str) -> Dict[str, Any]:
         raise ValueError(f"Invalid state parameter: {e}")
 
 
-def validate_state(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
+def validate_state(state_dict: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """Validate and sanitize state dictionary.
 
     Args:
@@ -117,11 +107,12 @@ def validate_state(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str
         >>> state = {"style": "Unknown", "H": 999, "evil_key": "hack"}
         >>> validated, warnings = validate_state(state)
         >>> # validated = {}, warnings = ["Unknown key: evil_key", ...]
+
     """
     from pfui.imports import STYLES
 
-    validated: Dict[str, Any] = {}
-    warnings: List[str] = []
+    validated: dict[str, Any] = {}
+    warnings: list[str] = []
 
     for key, value in state_dict.items():
         # Check whitelist
@@ -169,13 +160,13 @@ def validate_state(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str
             # Thicknesses
             if key == "t_wall" and not (1.5 <= numeric_value <= 20):
                 warnings.append(
-                    f"Wall thickness {numeric_value} out of range (1.5-20mm)"
+                    f"Wall thickness {numeric_value} out of range (1.5-20mm)",
                 )
                 continue
 
             if key == "t_bottom" and not (2.0 <= numeric_value <= 30):
                 warnings.append(
-                    f"Bottom thickness {numeric_value} out of range (2.0-30mm)"
+                    f"Bottom thickness {numeric_value} out of range (2.0-30mm)",
                 )
                 continue
 
@@ -187,7 +178,7 @@ def validate_state(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str
             # Flare exponent
             if key == "expn" and not (0.5 <= numeric_value <= 4.0):
                 warnings.append(
-                    f"Flare exponent {numeric_value} out of range (0.5-4.0)"
+                    f"Flare exponent {numeric_value} out of range (0.5-4.0)",
                 )
                 continue
 
@@ -218,26 +209,52 @@ def apply_state(state_dict: dict, quiet: bool = False) -> list[str]:
 
     Returns:
         List of warnings generated during validation
+
     """
-    from pfui.state import queue_update
+    from pfui.state import queue_update, widget_key
 
     # Validate first
     validated, warnings = validate_state(state_dict)
 
     if not validated:
         if not quiet and warnings:
-            if HAS_STREAMLIT and st is not None:
+            st = try_get_st()
+            if st is not None:
                 for warning in warnings:
                     st.warning(warning)
         return warnings
 
+    # Build expanded updates including widget keys for opts
+    updates: dict[str, Any] = {}
+    style = validated.get("style")
+    
+    for key, value in validated.items():
+        if key == "opts" and style:
+            # Store raw opts dict
+            updates["opts"] = value
+            updates["style_opts"] = value
+            # Also set widget keys for each opt so sliders pick up the values
+            for opt_key, opt_val in value.items():
+                updates[widget_key(style, opt_key)] = opt_val
+        elif key == "style":
+            # Set both raw style and widget key
+            updates["style"] = value
+            updates[widget_key("style")] = value
+        else:
+            updates[key] = value
+    
+    # Mark preview as stale to trigger rebuild
+    updates["_preview_stale"] = True
+
     # Queue updates via existing state management
-    queue_update(validated)
+    queue_update(updates)
 
     # Show warnings if not quiet
-    if not quiet and warnings and HAS_STREAMLIT and st is not None:
-        for warning in warnings:
-            st.warning(warning)
+    if not quiet and warnings:
+        st = try_get_st()
+        if st is not None:
+            for warning in warnings:
+                st.warning(warning)
 
     return warnings
 
@@ -250,6 +267,7 @@ def extract_state_from_session(session_state: dict) -> dict:
 
     Returns:
         State dictionary suitable for encoding
+
     """
     state = {}
 
@@ -271,7 +289,7 @@ def extract_state_from_session(session_state: dict) -> dict:
 
 
 def generate_deep_link(
-    state_dict: dict, base_url: str = "http://localhost:8501"
+    state_dict: dict, base_url: str = "http://localhost:8501",
 ) -> str:
     """Generate full deep link URL from state dictionary.
 
@@ -286,6 +304,7 @@ def generate_deep_link(
         >>> state = {"style": "HarmonicRipple", "H": 120.0}
         >>> url = generate_deep_link(state, "https://app.streamlit.io")
         >>> # Returns: "https://app.streamlit.io/?state=eyJ..."
+
     """
     encoded = encode_state(state_dict)
     return f"{base_url.rstrip('/')}/?state={encoded}"
@@ -296,8 +315,10 @@ def parse_query_params() -> dict | None:
 
     Returns:
         Decoded state dict if present and valid, None otherwise
+
     """
-    if not HAS_STREAMLIT or st is None:
+    st = try_get_st()
+    if st is None:
         return None
 
     try:
@@ -329,9 +350,9 @@ def parse_query_params() -> dict | None:
 
 def clear_query_params() -> None:
     """Clear state from URL query parameters (Streamlit-specific)."""
-    if not HAS_STREAMLIT or st is None:
+    st = try_get_st()
+    if st is None:
         return
-
     try:
         if hasattr(st, "query_params"):
             # Streamlit >= 1.22

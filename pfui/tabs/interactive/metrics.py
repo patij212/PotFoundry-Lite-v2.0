@@ -6,8 +6,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import streamlit as st
-
+from pfui._st import get_effective_st as get_st
 from pfui.imports import build_pot_mesh
 from potfoundry.types import StyleOpts
 
@@ -42,11 +41,13 @@ def render_metrics_section(
         n_z: Vertical resolution
         r_outer_fn: Outer radius style function
         opts: Style options dictionary
+
     """
+    st = get_st()
     st.subheader("Estimated metrics")
     try:
         _, faces_m, diag_m = cast(
-            tuple[Any, Any, Any],
+            "tuple[Any, Any, Any]",
             build_pot_mesh(
                 H=H,
                 Rt=Rt,
@@ -81,7 +82,7 @@ def render_metrics_section(
                 and isinstance(diag_m, dict)
                 and "seam_debug_samples" in diag_m
             ):
-                with st.expander("Seam debug samples (lp_debug_seam)"):
+                with st.expander("Seam debug samples (lp_debug_seam"):
                     groups = diag_m.get("seam_debug_samples", [])
                     for gi, group in enumerate(groups):
                         st.markdown(f"**Group {gi + 1}**")
@@ -90,7 +91,7 @@ def render_metrics_section(
                                 theta_mid, zc, r_base_mid, Rstart_mid = samp
                                 delta = r_base_mid - Rstart_mid
                                 st.write(
-                                    f"θ_mid={theta_mid:.3f}, z={zc:.3f}, r_base={r_base_mid:.3f}, R_start={Rstart_mid:.3f}, delta={delta:.6f}"
+                                    f"θ_mid={theta_mid:.3f}, z={zc:.3f}, r_base={r_base_mid:.3f}, R_start={Rstart_mid:.3f}, delta={delta:.6f}",
                                 )
                             except Exception:
                                 st.write(repr(samp))

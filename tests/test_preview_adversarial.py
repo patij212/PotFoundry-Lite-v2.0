@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 
-import pfui.preview as preview
+from pfui import preview
 
 
 def _make_opts():
@@ -71,7 +71,7 @@ def test_nonfinite_style_sanitized(monkeypatch):
 
     opts = _make_opts()
     X, Y, Z = preview.make_preview_arrays(
-        120.0, 70.0, 45.0, 1.1, 48, 12, "NanStyle", json.dumps(opts)
+        120.0, 70.0, 45.0, 1.1, 48, 12, "NanStyle", json.dumps(opts),
     )
 
     # All arrays must be finite after sanitization

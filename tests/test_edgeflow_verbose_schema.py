@@ -48,7 +48,7 @@ def test_edgeflow_verbose_schema():
             # minimal required fields and types
             assert "zi" in row and isinstance(row["zi"], int)
             assert "min_final_raw" in row and isinstance(
-                row["min_final_raw"], (int, float)
+                row["min_final_raw"], (int, float),
             )
             # When present, sample arrays must be lists
             if "R_raw_sample" in row and row["R_raw_sample"] is not None:

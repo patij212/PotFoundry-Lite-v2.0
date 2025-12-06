@@ -9,17 +9,17 @@ and large numeric types into their import-time type-checking.
 from __future__ import annotations
 
 import importlib
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple, cast
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     # Define the expected callable type for the builder so the type checker
     # understands the signature without importing heavy numeric types at
     # module import time.
-    from typing import Callable
+    from collections.abc import Callable
 
     import numpy as np
 
-    _BuildPotMeshType = Callable[..., Tuple["np.ndarray", "np.ndarray", Dict[str, Any]]]
+    _BuildPotMeshType = Callable[..., tuple["np.ndarray", "np.ndarray", dict[str, Any]]]
 else:
     _BuildPotMeshType = Any
 
@@ -38,9 +38,9 @@ def build_pot_mesh_safe(
     n_theta: int,
     n_z: int,
     r_outer_fn: Any,
-    style_opts: Dict[str, Any],
-) -> Tuple[
-    List[tuple[float, float, float]], List[tuple[int, int, int]], Dict[str, Any]
+    style_opts: dict[str, Any],
+) -> tuple[
+    list[tuple[float, float, float]], list[tuple[int, int, int]], dict[str, Any],
 ]:
     """Call the real mesh builder lazily and return conservative-typed results.
 
@@ -50,6 +50,7 @@ def build_pot_mesh_safe(
 
     Raises:
         RuntimeError: If the underlying builder is not available.
+
     """
     # Resolve the lazily-exported builder from the imports bridge at call time.
     _BUILDER_NOT_FOUND = object()
@@ -85,9 +86,7 @@ def build_pot_mesh_safe(
     # Cast to conservative but structured types so callers (UI code) can
     # rely on predictable shapes without importing NumPy types at module import.
     return cast(
-        Tuple[
-            List[tuple[float, float, float]], List[tuple[int, int, int]], Dict[str, Any]
-        ],
+        "tuple[list[tuple[float, float, float]], list[tuple[int, int, int]], dict[str, Any]]",
         (verts, faces, diag),
     )
 
@@ -105,6 +104,7 @@ def adapt_r_outer_fn(fn: Any) -> Any:
 
     Returns:
         A callable wrapper with the signature (theta, z, r_base, expn, opts) -> array-like
+
     """
 
     def _wrapped(theta: Any, z: Any, r_base: Any, expn: Any, opts: Any) -> Any:

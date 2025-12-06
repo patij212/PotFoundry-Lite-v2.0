@@ -2,7 +2,7 @@ import json
 
 jsonl_path = r"c:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\tools\edgeflow_verbose_diagnostics.jsonl"
 found = None
-with open(jsonl_path, "r", encoding="utf-8") as f:
+with open(jsonl_path, encoding="utf-8") as f:
     for line in f:
         line = line.strip()
         if not line:
@@ -26,7 +26,7 @@ Env = list(
     found.get("Env_to_use_sample")
     or found.get("Env_to_use_raw_post")
     or found.get("Env_to_use")
-    or []
+    or [],
 )
 min_final = found.get("min_final_raw")
 viol = []
@@ -64,7 +64,7 @@ print("\nSAMPLE_PAIRS_FIRST")
 for p in pairs:
     try:
         print(
-            f"i={p['i']:3d}  R_new={float(p['R_new']):10.6f}  Env={float(p['Env']):10.6f}  R_raw={float(p['R_raw']):10.6f}"
+            f"i={p['i']:3d}  R_new={float(p['R_new']):10.6f}  Env={float(p['Env']):10.6f}  R_raw={float(p['R_raw']):10.6f}",
         )
     except Exception:
         print(f"i={p['i']:3d}  R_new={p['R_new']}  Env={p['Env']}  R_raw={p['R_raw']}")

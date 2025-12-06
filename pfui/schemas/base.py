@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Literal, TypedDict
 
-__all__ = ["ControlType", "ControlMeta"]
+__all__ = ["ControlMeta", "ControlType"]
 
 
 # Accepted control types for UI elements

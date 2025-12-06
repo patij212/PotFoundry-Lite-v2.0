@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Final Validation Script for Binary STL Migration
+"""Final Validation Script for Binary STL Migration
 
 This script demonstrates that the binary STL migration is complete and working.
 Run this to verify the implementation.
@@ -49,7 +48,7 @@ with warnings.catch_warnings(record=True) as w:
 
     if len(w) > 0 and issubclass(w[0].category, DeprecationWarning):
         print("  ✅ ASCII STL shows deprecation warning")
-        print(f"     Message: '{str(w[0].message)}'")
+        print(f"     Message: '{w[0].message!s}'")
     else:
         print("  ❌ ASCII STL does not show deprecation warning")
         sys.exit(1)
@@ -58,10 +57,10 @@ with warnings.catch_warnings(record=True) as w:
 print("\n[4/5] Verifying binary STL export...")
 try:
     # STYLES contains callables and arbitrary metadata; cast to Any for safety
-    style_fn, _ = cast(Any, STYLES["SuperellipseMorph"])
+    style_fn, _ = cast("Any", STYLES["SuperellipseMorph"])
     # build_pot_mesh has dynamic return types in some configs; cast to expected tuple
     verts, faces, _ = cast(
-        tuple,
+        "tuple",
         build_pot_mesh(
             H=80,
             Rt=50,

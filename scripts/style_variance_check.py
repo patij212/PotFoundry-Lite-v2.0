@@ -9,16 +9,15 @@ tools/style_variance_report.json for later inspection.
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import numpy as np
 
 from potfoundry import STYLES, build_pot_mesh
 
 
-def mesh_signature(verts: np.ndarray) -> Dict[str, float]:
+def mesh_signature(verts: np.ndarray) -> dict[str, float]:
     if verts.size == 0:
         return {"r_mean": 0.0, "r_std": 0.0, "z_mean": 0.0}
     r = np.sqrt(verts[:, 0] ** 2 + verts[:, 1] ** 2)
@@ -29,7 +28,7 @@ def mesh_signature(verts: np.ndarray) -> Dict[str, float]:
     }
 
 
-def diff_metric(v0: np.ndarray, v1: np.ndarray) -> Dict[str, float]:
+def diff_metric(v0: np.ndarray, v1: np.ndarray) -> dict[str, float]:
     # Allow different triangulations by comparing per-vertex radial distributions
     r0 = np.sqrt(v0[:, 0] ** 2 + v0[:, 1] ** 2)
     r1 = np.sqrt(v1[:, 0] ** 2 + v1[:, 1] ** 2)
@@ -41,7 +40,7 @@ def diff_metric(v0: np.ndarray, v1: np.ndarray) -> Dict[str, float]:
     return {"radial_l2": float(np.sqrt(np.sum(d**2) / n)), "radial_linf": float(np.max(d))}
 
 
-def style_variants(style: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def style_variants(style: str) -> tuple[dict[str, Any], dict[str, Any]]:
     # Minimal, legacy-keyed variants per style
     if style == "HarmonicRipple":
         return ({"hr_petals": 6}, {"hr_petals": 14})
@@ -58,7 +57,7 @@ def style_variants(style: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     return ({}, {"twist": 0.25})
 
 
-def run_once(style: str) -> Dict[str, Any]:
+def run_once(style: str) -> dict[str, Any]:
     fn = STYLES[style][0]
     base = {
         "H": 120.0,
@@ -88,10 +87,10 @@ def run_once(style: str) -> Dict[str, Any]:
         "sig1": s1,
         "diff": d,
         "changed": bool(changed),
-        "verts0": int(len(V0)),
-        "verts1": int(len(V1)),
-        "faces0": int(len(F0)),
-        "faces1": int(len(F1)),
+        "verts0": len(V0),
+        "verts1": len(V1),
+        "faces0": len(F0),
+        "faces1": len(F1),
     }
 
 

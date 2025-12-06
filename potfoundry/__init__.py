@@ -1,5 +1,4 @@
-"""
-potfoundry — a tiny toolkit for generating parametric, printable flower pots
+"""potfoundry — a tiny toolkit for generating parametric, printable flower pots
 ---------------------------------------------------------------------------
 Public domain / Unlicense. See LICENSE for details.
 

@@ -49,11 +49,11 @@ def render_preview_png_cached(
     ax = fig.add_subplot(111, projection="3d")
 
     if theme == "dark":
-        fig.patch.set_facecolor("#0E1117")
-        ax.set_facecolor("#0E1117")
+        fig.patch.set_facecolor("#242B46")
+        ax.set_facecolor("#242B46")
         for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
             try:
-                axis_any = cast(Any, axis)
+                axis_any = cast("Any", axis)
                 axis_any.set_pane_color((0.06, 0.07, 0.10, 1.0))
             except Exception:
                 pass
@@ -108,11 +108,11 @@ def render_preview_png_cached(
     try:
         _view_elev = float(np.asarray(view_elev))
     except Exception:
-        _view_elev = float(20.0)
+        _view_elev = 20.0
     try:
         _view_azim = float(np.asarray(view_azim))
     except Exception:
-        _view_azim = float(-60.0)
+        _view_azim = -60.0
     try:
         ax.view_init(elev=_view_elev, azim=_view_azim)
     except Exception:
@@ -193,11 +193,11 @@ def render_preview_apng_cached(
         fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
         ax = fig.add_subplot(111, projection="3d")
         if theme == "dark":
-            fig.patch.set_facecolor("#0E1117")
-            ax.set_facecolor("#0E1117")
+            fig.patch.set_facecolor("#242B46")
+            ax.set_facecolor("#242B46")
             for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
                 try:
-                    axis_any = cast(Any, axis)
+                    axis_any = cast("Any", axis)
                     axis_any.set_pane_color((0.06, 0.07, 0.10, 1.0))
                 except Exception:
                     pass
@@ -271,11 +271,11 @@ def render_preview_apng_cached(
         try:
             _elev = float(_np.asarray(elev))
         except Exception:
-            _elev = float(20.0)
+            _elev = 20.0
         try:
             _azim = float(_np.asarray(azim))
         except Exception:
-            _azim = float(-60.0)
+            _azim = -60.0
         try:
             ax.view_init(elev=_elev, azim=_azim)
         except Exception:
@@ -339,6 +339,6 @@ def render_preview_apng_cached(
 
 
 __all__ = [
-    "render_preview_png_cached",
     "render_preview_apng_cached",
+    "render_preview_png_cached",
 ]

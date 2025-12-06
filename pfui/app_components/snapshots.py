@@ -7,12 +7,11 @@ implementation in app.py.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
-import streamlit as st
-
-from pfui import state_history as Hist
 import pfui.schemas as SC
+from pfui import state_history as Hist
+from pfui._st import get_effective_st as get_st, safe_placeholder_image
 from pfui.app_components.utils import _mask_possible_secrets, resolve_schema_key
 from pfui.preview import render_mesh_snapshot_cached
 from pfui.snapshot_store import (
@@ -35,7 +34,7 @@ def render_snapshots(
     t_bottom: float,
     r_drain: float,
     expn: float,
-    ui_opts: Dict[str, Any],
+    ui_opts: dict[str, Any],
     n_theta: int,
     n_z: int,
     fig_w: float,
@@ -46,12 +45,13 @@ def render_snapshots(
     view_elev: float,
     view_azim: float,
 ) -> None:
-    ss = cast(dict[str, Any], st.session_state)
+    st = get_st()
+    ss = cast("dict[str, Any]", st.session_state)
     # Record current snapshots count for debugging (helps trace clears)
     ss.setdefault("_debug_logs", []).append(
-        f"Render: _snaps count = {len(cast(Any, ss.get('_snaps', [])))}"
+        f"Render: _snaps count = {len(cast('Any', ss.get('_snaps', [])))}",
     )
-    snaps: List[Dict[str, Any]] = cast(Any, ss.get("_snaps", []))
+    snaps: list[dict[str, Any]] = cast("Any", ss.get("_snaps", []))
 
     # Add Clear All Snapshots button
     if snaps:
@@ -68,7 +68,7 @@ def render_snapshots(
     sc1, sc2 = st.columns([2, 1])
     snap_name = sc1.text_input("Snapshot name", value=f"{style_name}_H{int(H)}")
     if sc2.button("Capture"):
-        png_path: Optional[str] = None
+        png_path: str | None = None
         # Initialize debug logs in session state if not already present
         if "_debug_logs" not in ss:
             ss["_debug_logs"] = []
@@ -114,17 +114,17 @@ def render_snapshots(
             if capture_bytes:
                 png_path = save_png_temp(capture_bytes)
                 # Ensure method is typed as str (session may contain DeltaGenerator)
-                method = cast(str, ss.get("_last_snapshot_method", ""))
+                method = cast("str", ss.get("_last_snapshot_method", ""))
                 st.success(
-                    f"✓ Snapshot '{snap_name}' captured successfully! (method: {method})"
+                    f"✓ Snapshot '{snap_name}' captured successfully! (method: {method})",
                 )
                 ss.setdefault("_debug_logs", []).append(
-                    f"Snapshot capture used method: {method}"
+                    f"Snapshot capture used method: {method}",
                 )
             else:
                 png_path = None
                 st.error(
-                    "Failed to generate snapshot image. Ensure Full Preview is enabled and try again."
+                    "Failed to generate snapshot image. Ensure Full Preview is enabled and try again.",
                 )
         except Exception as e:
             st.error(f"Snapshot capture failed: {e}")
@@ -147,7 +147,7 @@ def render_snapshots(
                     "expn": expn,
                     "opts": dict(ui_opts),
                 },
-            }
+            },
         ]
         # Write directly so the UI reflects the new snapshot without a
         # forced rerun. Keep only the last 6 snapshots.
@@ -155,7 +155,7 @@ def render_snapshots(
         log_debug("Session state updated (direct write).")
         # Re-read into local variable so the current run will render the
         # newly added snapshot immediately (avoids needing st.rerun()).
-        snaps = cast(Any, ss.get("_snaps", []))
+        snaps = cast("Any", ss.get("_snaps", []))
 
         # checkpoint the UI state when capturing snapshots
         try:
@@ -169,20 +169,20 @@ def render_snapshots(
     # Mask any potential secrets before showing debug logs in UI
     masked_logs = [
         _mask_possible_secrets(log_entry)
-        for log_entry in cast(Any, ss.get("_debug_logs", []))
+        for log_entry in cast("Any", ss.get("_debug_logs", []))
     ]
     st.text_area("Debug Logs", value="\n".join(masked_logs), height=300)
 
     # Re-read snaps to ensure we display the latest list (capture may
     # have mutated st.session_state earlier in this run).
-    snaps = cast(Any, ss.get("_snaps", []))
+    snaps = cast("Any", ss.get("_snaps", []))
 
     # Paginate snapshots (3 per page)
     if snaps:
         import math
 
         per_page = 3
-        page = int(cast(Any, ss.get("_snap_page", 0)) or 0)
+        page = int(cast("Any", ss.get("_snap_page", 0)) or 0)
         max_page = max(0, math.ceil(len(snaps) / per_page) - 1)
         nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 6])
         if nav_col1.button("◀ Prev"):
@@ -194,7 +194,7 @@ def render_snapshots(
             st.session_state["_suppress_preview_once"] = True
             st.rerun()
         nav_col3.caption(
-            f"Showing page {page + 1} / {max_page + 1}  — total snapshots: {len(snaps)}"
+            f"Showing page {page + 1} / {max_page + 1}  — total snapshots: {len(snaps)}",
         )
 
         start = page * per_page
@@ -209,8 +209,8 @@ def render_snapshots(
             except Exception:
                 png_bytes_local = None
             if png_bytes_local:
-                cc1.image(
-                    png_bytes_local, caption=f"{i + 1}. {s['name']}", width="stretch"
+                safe_placeholder_image(
+                    cc1, png_bytes_local, caption=f"{i + 1}. {s['name']}", width="stretch",
                 )
             else:
                 cc1.write(f"**{i + 1}. {s['name']}**")
@@ -226,21 +226,21 @@ def render_snapshots(
                     "style": s.get("style_ui", style_name),  # update visible selectbox
                 }
                 sk = s.get(
-                    "style_key", resolve_schema_key(s.get("style_ui", style_name))
+                    "style_key", resolve_schema_key(s.get("style_ui", style_name)),
                 )
                 for k, v in s["params"]["opts"].items():
                     pending[widget_key(sk, k)] = v
                     try:
                         queue_update(pending)
                         ss.setdefault("_debug_logs", []).append(
-                            f"Queued snapshot {i + 1} for apply; rerunning."
+                            f"Queued snapshot {i + 1} for apply; rerunning.",
                         )
                         # We'll re-render after state applies; avoid an extra preview compute during rerun frame
                         ss["_suppress_preview_once"] = True
                         st.rerun()
                     except Exception:
                         ss.setdefault("_debug_logs", []).append(
-                            f"Failed to queue_update snapshot {i + 1}; falling back to direct write."
+                            f"Failed to queue_update snapshot {i + 1}; falling back to direct write.",
                         )
                         for _k, _v in pending.items():
                             try:

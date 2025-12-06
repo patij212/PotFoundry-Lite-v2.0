@@ -56,13 +56,13 @@ def test_straight_seam_edges_plateau_matches_expected_limit():
     # Straight seam edges enabled
     opts_straight = dict(base_opts, lp_cut_straight_edges=True)
     r_straight = np.asarray(
-        r_outer_lowpoly_facet(thetas, z_seam, r0, H, opts_straight), dtype=float
+        r_outer_lowpoly_facet(thetas, z_seam, r0, H, opts_straight), dtype=float,
     )
     # Expected clamp at the bottom seam (top seam inactive this far away)
     angle_deg = float(base_opts["lp_cut_bot_deg"])
     z_win = (base_opts["lp_cut_z_window_frac"] * 0.01) * (H / tiers)
     depth = min(
-        float(base_opts["lp_cut_cap_mm"]), z_win * math.tan(math.radians(angle_deg))
+        float(base_opts["lp_cut_cap_mm"]), z_win * math.tan(math.radians(angle_deg)),
     )
     r_expected = r0 - depth
 
@@ -111,7 +111,7 @@ def _baseline_profile(
         {
             "lp_cut_bot_deg": 0.0,
             "lp_cut_top_deg": 0.0,
-        }
+        },
     )
     r0 = base_radius(z, H, Rb, Rt, expn, base_opts)
     return np.asarray(r_outer_lowpoly_facet(thetas, z, r0, H, base_opts), dtype=float)
@@ -165,7 +165,7 @@ def test_uniform_ring_does_not_extend_outward():
         z_sample = z_seam + dz
         r0_sample = base_radius(z_sample, H, Rb, Rt, expn, opts)
         band = np.asarray(
-            r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts), dtype=float
+            r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts), dtype=float,
         )
         baseline_band = _baseline_profile(thetas, z_sample, H, Rb, Rt, expn, opts)
         assert np.all(band <= baseline_band + 1e-6)
@@ -220,7 +220,7 @@ def test_uniform_ring_outward_mode_remains_inward():
         z_sample = z_seam + dz
         r0_sample = base_radius(z_sample, H, Rb, Rt, expn, opts)
         band = np.asarray(
-            r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts), dtype=float
+            r_outer_lowpoly_facet(thetas, z_sample, r0_sample, H, opts), dtype=float,
         )
         baseline_band = _baseline_profile(thetas, z_sample, H, Rb, Rt, expn, opts)
         assert np.all(band <= baseline_band + 1e-6)

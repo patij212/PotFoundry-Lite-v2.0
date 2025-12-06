@@ -3,8 +3,9 @@ from __future__ import annotations
 import re
 import tempfile
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Tuple
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -19,8 +20,8 @@ def _safe_name(name: str) -> str:
 
 
 def export_stl_bytes(
-    name: str, verts: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]
-) -> Tuple[bytes, str]:
+    name: str, verts: npt.NDArray[np.float64], faces: npt.NDArray[np.int32],
+) -> tuple[bytes, str]:
     """Export mesh to binary STL and return as bytes.
 
     This is the recommended export format - binary STL files are smaller,
@@ -36,6 +37,7 @@ def export_stl_bytes(
 
     Raises:
         RuntimeError: If binary STL writer is not available
+
     """
     safe = _safe_name(name)
 
@@ -46,7 +48,7 @@ def export_stl_bytes(
     writer: Callable[[str, str, Any, Any], None] | None = None
     if callable(WRITE_STL_BINARY):
         # Cast the dynamically imported symbol to the expected Callable type.
-        writer = cast(Callable[[str, str, Any, Any], None], WRITE_STL_BINARY)
+        writer = cast("Callable[[str, str, Any, Any], None]", WRITE_STL_BINARY)
 
     if writer is None:
         raise RuntimeError("WRITE_STL_BINARY not available")

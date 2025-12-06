@@ -32,7 +32,7 @@ print("calling build_pot_mesh...")
 call_t0 = time.time()
 try:
     verts, faces, diag = build_pot_mesh(
-        H, Rt, Rb, t_wall, t_bottom, r_drain, expn=1.0, n_theta=32, n_z=8
+        H, Rt, Rb, t_wall, t_bottom, r_drain, expn=1.0, n_theta=32, n_z=8,
     )
     call_t1 = time.time()
     print(f"build_pot_mesh done (dt={call_t1 - call_t0:.3f}s)")

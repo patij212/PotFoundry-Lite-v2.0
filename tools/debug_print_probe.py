@@ -1,6 +1,6 @@
 import importlib
 import json
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
 
 import numpy as np
 
@@ -12,9 +12,9 @@ from potfoundry.types import StyleOpts
 # Type alias for the mesh builder function signature we expect at runtime.
 # Keep Optional here so we can initialize lazily without importing heavy modules
 # during static analysis.
-MeshBuilder = Callable[..., Tuple[np.ndarray, np.ndarray, dict]]
+MeshBuilder = Callable[..., tuple[np.ndarray, np.ndarray, dict]]
 
-build_pot_mesh: Optional[MeshBuilder] = None
+build_pot_mesh: MeshBuilder | None = None
 
 
 def _get_build_pot_mesh() -> MeshBuilder:
@@ -28,11 +28,11 @@ def _get_build_pot_mesh() -> MeshBuilder:
     if build_pot_mesh is None:
         try:
             mod = importlib.import_module("potfoundry.core.geometry")
-            build_pot_mesh = getattr(mod, "build_pot_mesh")
+            build_pot_mesh = mod.build_pot_mesh
         except Exception as exc:  # pragma: no cover - defensive runtime guard
             raise RuntimeError(
                 "Failed to import `build_pot_mesh` from package 'potfoundry.core.geometry'. "
-                "At runtime ensure the project is on PYTHONPATH and the package imports cleanly."
+                "At runtime ensure the project is on PYTHONPATH and the package imports cleanly.",
             ) from exc
     assert build_pot_mesh is not None
     return build_pot_mesh
@@ -48,9 +48,9 @@ for zi in range(Z):
 
 
 def synthetic_r_outer_fn(
-    thetas: np.ndarray, z: float, r0: float, H_local: float, opts: dict
+    thetas: np.ndarray, z: float, r0: float, H_local: float, opts: dict,
 ) -> np.ndarray:
-    idx = int(round((float(z) / float(7.0)) * float(n_z)))
+    idx = int(round((float(z) / 7.0) * float(n_z)))
     idx = max(0, min(Z - 1, idx))
     return np.asarray(R_grid[idx, :], dtype=float)
 

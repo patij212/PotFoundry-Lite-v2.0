@@ -23,7 +23,7 @@ def test_detect_lift_delta_on_valley():
     import math
 
     def synthetic_r_outer_fn(
-        thetas: object, z: float, r0: float, H_local: float, opts: dict
+        thetas: object, z: float, r0: float, H_local: float, opts: dict,
     ) -> np.ndarray:
         frac = (float(z) / 7.0) * float(int(n_z))
         idx = math.floor(frac + 0.5)
@@ -67,8 +67,8 @@ def test_detect_lift_delta_on_valley():
 
     for entry in ev:
         for r in entry.get("rows") or []:
-            if int(cast(int, r.get("zi", -1))) == int(
-                cast(int, style_opts["sf_edge_flow_probe_zi"])
+            if int(cast("int", r.get("zi", -1))) == int(
+                cast("int", style_opts["sf_edge_flow_probe_zi"]),
             ):
                 probe_row = r
                 break

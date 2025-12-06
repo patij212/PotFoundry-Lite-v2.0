@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import json
 import zipfile
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
+from typing import Any, cast
 
 import yaml
 
@@ -33,11 +34,11 @@ class Config:
     make_zip: bool = False
     mesh: MeshQuality = field(default_factory=MeshQuality)
     defaults: PotDefaults = field(default_factory=PotDefaults)
-    presets: Dict[str, dict] = field(
-        default_factory=dict
+    presets: dict[str, dict] = field(
+        default_factory=dict,
     )  # name -> {style, size, opts}
-    recipes: List[dict] = field(
-        default_factory=list
+    recipes: list[dict] = field(
+        default_factory=list,
     )  # list of {name, style|use, size, opts}
 
 
@@ -45,10 +46,10 @@ def load_config(path: Path | str) -> ConfigV2:
     # Accept either a Path or a string filename
     if not isinstance(path, Path):
         path = Path(path)
-    raw: Dict[str, Any] = yaml.safe_load(path.read_text()) or {}
+    raw: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
     # Accept some legacy shorthand keys in the 'defaults' block (tests use H/Rt/Rb etc.)
 
-    defaults = cast(Dict[str, Any], raw.get("defaults") or {})
+    defaults = cast("dict[str, Any]", raw.get("defaults") or {})
     if isinstance(defaults, dict):
         # map shorthand keys to canonical ConfigV2 names
         key_map = {
@@ -61,8 +62,8 @@ def load_config(path: Path | str) -> ConfigV2:
             # alternate names
             "expn": "flare_exp",
         }
-        if any(k in defaults for k in key_map.keys()):
-            new_defaults: Dict[str, Any] = {}
+        if any(k in defaults for k in key_map):
+            new_defaults: dict[str, Any] = {}
             for k, v in defaults.items():
                 nk = key_map.get(k, k)
                 new_defaults[nk] = v
@@ -71,14 +72,13 @@ def load_config(path: Path | str) -> ConfigV2:
     version = int(raw.get("version", 1))
     if version == 2:
         return ConfigV2.model_validate(raw)
-    elif version == 1 or version == 0:
+    if version == 1 or version == 0:
         migrated = migrate_v1_to_v2(raw)
         return ConfigV2.model_validate(migrated)
-    else:
-        raise ValueError(f"Unsupported version {version}.")
+    raise ValueError(f"Unsupported version {version}.")
 
 
-def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
+def _normalize_cfg(cfg: ConfigV2 | Config) -> Config:
     """Accept ConfigV2 (Pydantic) or legacy Config dataclass; return legacy Config."""
     try:
         from .schema import ConfigV2
@@ -90,12 +90,12 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
             # as unreachable (cfg.mesh is annotated as a model in the schema).
             from typing import Any as _Any
 
-            cfg_any = cast(_Any, cfg)
+            cfg_any = cast("_Any", cfg)
 
             m = cfg_any.mesh
             if isinstance(m, dict):
                 mesh = MeshQuality(
-                    n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84))
+                    n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84)),
                 )
             else:
                 mesh = MeshQuality(n_theta=int(m.n_theta), n_z=int(m.n_z))
@@ -133,11 +133,11 @@ def _normalize_cfg(cfg: Union[ConfigV2, Config]) -> Config:
     except Exception:
         pass
     # already legacy Config
-    return cast(Config, cfg)
+    return cast("Config", cfg)
 
 
-def validate_recipe(recipe: Dict[str, Any], cfg: Config) -> List[str]:
-    errs: List[str] = []
+def validate_recipe(recipe: dict[str, Any], cfg: Config) -> list[str]:
+    errs: list[str] = []
     r = _normalize_style_alias(recipe or {})
     name = r.get("name")
     if not name or not isinstance(name, str):
@@ -181,11 +181,11 @@ def validate_recipe(recipe: Dict[str, Any], cfg: Config) -> List[str]:
 
 
 def realize_recipe(
-    recipe: Dict[str, Any], cfg: Config
-) -> Tuple[str, str, Dict[str, Any], Dict[str, Any]]:
+    recipe: dict[str, Any], cfg: Config,
+) -> tuple[str, str, dict[str, Any], dict[str, Any]]:
     r = _normalize_style_alias(recipe or {})
     name: str = r["name"]
-    base: Dict[str, Any] = dict(style=None, size={}, opts={})
+    base: dict[str, Any] = dict(style=None, size={}, opts={})
 
     if r.get("use"):
         pres = _resolve_preset_chain(r["use"], cfg.presets or {})
@@ -204,19 +204,33 @@ def realize_recipe(
         raise ValueError(f"Recipe '{name}': no style specified after merging preset.")
 
     style = _resolve_style_name(base["style"])
-    size = deep_merge(asdict(cfg.defaults), _strip_nones(base.get("size") or {}))
+    # cfg.defaults may be either a dataclass (legacy Config) or a Pydantic
+    # model (ConfigV2) depending on how the config was normalized. Handle
+    # both gracefully: prefer dataclass.asdict, then fall back to model_dump
+    # or plain dict.
+    try:
+        defaults_dict = asdict(cfg.defaults)
+    except Exception:
+        if hasattr(cfg.defaults, "model_dump"):
+            defaults_dict = cfg.defaults.model_dump()
+        elif isinstance(cfg.defaults, dict):
+            defaults_dict = cfg.defaults
+        else:
+            # Last resort: coerce via copy to dict
+            defaults_dict = dict(cfg.defaults)
+    size = deep_merge(defaults_dict, _strip_nones(base.get("size") or {}))
     opts = base.get("opts") or {}
     return name, style, size, opts
 
 
 def build_from_yaml(
-    cfg: Union[Config, ConfigV2],
+    cfg: Config | ConfigV2,
     outdir: Path,
     do_previews: bool = True,
     do_zip: bool = True,
-    only_names: Optional[Sequence[str]] = None,
+    only_names: Sequence[str] | None = None,
     write_manifest: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     cfg1: Config = _normalize_cfg(cfg)
     if not cfg1.recipes:
         raise SystemExit("No recipes found.")
@@ -230,7 +244,7 @@ def build_from_yaml(
     outdir.mkdir(parents=True, exist_ok=True)
     names = set(only_names) if only_names else None
 
-    manifest: Dict[str, Any] = {
+    manifest: dict[str, Any] = {
         "units": "mm",
         "outdir": str(outdir.resolve()),
         "pots": [],
@@ -256,7 +270,7 @@ def build_from_yaml(
         r_fn, desc = STYLES[style]
 
         verts, faces, diag = build_pot_mesh(
-            H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_fn, opts
+            H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_fn, opts,
         )
 
         stl_path = outdir / f"{name}.stl"
@@ -266,7 +280,7 @@ def build_from_yaml(
             print(
                 f"[WARN] '{name}': inner radius near drain was clamped in "
                 f"{100.0 * diag['clamp_ratio_at_bottom']:.1f}% of inner samples. "
-                "Consider increasing bottom_od, decreasing drain, or increasing wall."
+                "Consider increasing bottom_od, decreasing drain, or increasing wall.",
             )
 
         if do_previews:
@@ -280,11 +294,11 @@ def build_from_yaml(
                 "description": desc,
                 "size": size,
                 "opts": opts,
-                "vertices": int(len(verts)),
-                "faces": int(len(faces)),
+                "vertices": len(verts),
+                "faces": len(faces),
                 "diagnostics": diag,
                 "stl": str(stl_path.resolve()),
-            }
+            },
         )
         print(f"[OK] Wrote {stl_path.name}  (V={len(verts)} F={len(faces)})")
 
@@ -309,7 +323,7 @@ def _resolve_preset_chain(preset_name: str, presets: dict) -> dict:
     """Resolve a preset with optional inheritance (preset may have 'use' to extend another)."""
     seen = set()
 
-    current: Optional[str] = preset_name
+    current: str | None = preset_name
     merged: dict = {}
     while current:
         if current in seen:

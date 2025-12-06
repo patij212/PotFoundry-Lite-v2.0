@@ -15,7 +15,7 @@ def main() -> None:
     # Lazy import heavy geometry implementation at runtime so type-checkers
     # and import-time execution don't pull in the large module.
     geom_mod = importlib.import_module("potfoundry" + ".core.geometry")
-    build_pot_mesh = getattr(geom_mod, "build_pot_mesh")
+    build_pot_mesh = geom_mod.build_pot_mesh
 
     # Import presets dynamically to avoid static analysis importing pfui.
     PRESETS = importlib.import_module("pfui" + ".presets").PRESETS
@@ -51,7 +51,7 @@ def main() -> None:
         style_opts=style_opts,
     )
     print("Done; diagnostics keys:", list(diag.keys()))
-    out = Path(".").resolve() / "tools" / "edgeflow_verbose_diagnostics.jsonl"
+    out = Path().resolve() / "tools" / "edgeflow_verbose_diagnostics.jsonl"
     print("verbose diagnostics path:", out)
 
 

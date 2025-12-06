@@ -14,7 +14,7 @@ def main() -> None:
     # Lazy import the heavy geometry module to avoid importing it at module
     # import time (keeps focused mypy runs small and fast).
     geom_mod = importlib.import_module("potfoundry" + ".core.geometry")
-    build_pot_mesh = getattr(geom_mod, "build_pot_mesh")
+    build_pot_mesh = geom_mod.build_pot_mesh
     # Import presets dynamically to avoid static analysis importing pfui.
     PRESETS = importlib.import_module("pfui" + ".presets").PRESETS
 
@@ -30,7 +30,7 @@ def main() -> None:
         print("compare file not found:", compare_path)
         sys.exit(1)
 
-    with open(compare_path, "r", encoding="utf-8") as fh:
+    with open(compare_path, encoding="utf-8") as fh:
         comp = json.load(fh)
 
     # min_on is list of [z, min]
@@ -84,7 +84,7 @@ def main() -> None:
         print(f"Completed zi={zi}; diagnostics keys: {list(diag.keys())}")
 
     print(
-        "Done running probes; verbose JSONL should contain entries for these zi values."
+        "Done running probes; verbose JSONL should contain entries for these zi values.",
     )
 
 

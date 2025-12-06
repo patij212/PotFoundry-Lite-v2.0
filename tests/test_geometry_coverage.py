@@ -143,7 +143,7 @@ class TestStyleFunctions:
             "petal_taper_exp": 1.5,
         }
         result = r_outer_superformula_blossom(
-            theta=np.pi / 4, z=75, r0=50, H=100, opts=opts
+            theta=np.pi / 4, z=75, r0=50, H=100, opts=opts,
         )
         assert result > 0
 
@@ -195,7 +195,7 @@ class TestStyleFunctions:
         """Test SuperellipseMorph with custom exponents."""
         opts = {"se_n_bot": 1.5, "se_n_top": 4.0, "se_amp": 0.1}
         result = r_outer_superellipse_morph(
-            theta=np.pi / 6, z=90, r0=45, H=100, opts=opts
+            theta=np.pi / 6, z=90, r0=45, H=100, opts=opts,
         )
         assert result > 0
 

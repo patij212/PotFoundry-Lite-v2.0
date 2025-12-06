@@ -8,13 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 __all__ = [
-    "SupabaseConfig",
+    "DatabaseError",
     "LibraryError",
     "NotConfiguredError",
+    "SupabaseConfig",
     "UploadError",
-    "DatabaseError",
 ]
 
 
@@ -26,6 +25,7 @@ class SupabaseConfig:
         url: Supabase project URL
         key: API key (service_role for full access or anon for read-only)
         bucket: Storage bucket name for file uploads
+
     """
 
     url: str
@@ -36,22 +36,18 @@ class SupabaseConfig:
 class LibraryError(Exception):
     """Base exception for library operations."""
 
-    pass
 
 
 class NotConfiguredError(LibraryError):
     """Raised when Supabase is not configured."""
 
-    pass
 
 
 class UploadError(LibraryError):
     """Raised when file upload fails."""
 
-    pass
 
 
 class DatabaseError(LibraryError):
     """Raised when database operation fails."""
 
-    pass

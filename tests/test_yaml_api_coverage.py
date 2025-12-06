@@ -183,7 +183,7 @@ class TestRealizeRecipe:
     def test_realize_recipe_with_preset(self):
         """Test realizing a recipe that uses a preset."""
         cfg = Config(
-            presets={"tall": {"style": "FourierBloom", "size": {"height": 180}}}
+            presets={"tall": {"style": "FourierBloom", "size": {"height": 180}}},
         )
         recipe = {"name": "tall_pot", "use": "tall"}
 
@@ -199,8 +199,8 @@ class TestRealizeRecipe:
                 "base": {
                     "style": "SuperformulaBlossom",
                     "size": {"height": 100, "wall": 3},
-                }
-            }
+                },
+            },
         )
         recipe = {
             "name": "custom",
@@ -230,10 +230,10 @@ class TestRealizeRecipe:
         cfg = Config(
             presets={
                 "incomplete": {
-                    "size": {"height": 100}
+                    "size": {"height": 100},
                     # Missing style
-                }
-            }
+                },
+            },
         )
         recipe = {"name": "bad", "use": "incomplete"}
 
@@ -272,15 +272,15 @@ class TestBuildFromYaml:
                     "name": "test_pot",
                     "style": "SuperformulaBlossom",
                     "size": {"height": 100, "top_od": 120, "bottom_od": 80},
-                }
-            ]
+                },
+            ],
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             outdir = Path(tmpdir) / "out"
 
             build_from_yaml(
-                cfg, outdir, do_previews=False, do_zip=False, write_manifest=False
+                cfg, outdir, do_previews=False, do_zip=False, write_manifest=False,
             )
 
             # Check that STL file was created
@@ -295,14 +295,14 @@ class TestBuildFromYaml:
                 {"name": "pot1", "style": "SuperformulaBlossom"},
                 {"name": "pot2", "style": "FourierBloom"},
                 {"name": "pot3", "style": "SpiralRidges"},
-            ]
+            ],
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             outdir = Path(tmpdir) / "out"
 
             build_from_yaml(
-                cfg, outdir, do_previews=False, do_zip=False, write_manifest=False
+                cfg, outdir, do_previews=False, do_zip=False, write_manifest=False,
             )
 
             # Check that all STL files were created
@@ -317,7 +317,7 @@ class TestBuildFromYaml:
                 {"name": "pot1", "style": "SuperformulaBlossom"},
                 {"name": "pot2", "style": "FourierBloom"},
                 {"name": "pot3", "style": "SpiralRidges"},
-            ]
+            ],
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -345,7 +345,7 @@ class TestBuildFromYaml:
             outdir = Path(tmpdir) / "out"
 
             build_from_yaml(
-                cfg, outdir, do_previews=False, do_zip=False, write_manifest=True
+                cfg, outdir, do_previews=False, do_zip=False, write_manifest=True,
             )
 
             # Check manifest file was created
@@ -360,7 +360,7 @@ class TestBuildFromYaml:
             outdir = Path(tmpdir) / "out"
 
             build_from_yaml(
-                config, outdir, do_previews=False, do_zip=False, write_manifest=False
+                config, outdir, do_previews=False, do_zip=False, write_manifest=False,
             )
 
             assert (outdir / "pydantic_pot.stl").exists()
@@ -376,7 +376,7 @@ class TestPresetResolution:
                 "wide": {
                     "style": "SuperformulaBlossom",
                     "size": {"top_od": 200, "bottom_od": 150},
-                }
+                },
             },
             recipes=[{"name": "wide_pot", "use": "wide"}],
         )
@@ -385,7 +385,7 @@ class TestPresetResolution:
             outdir = Path(tmpdir) / "out"
 
             build_from_yaml(
-                cfg, outdir, do_previews=False, do_zip=False, write_manifest=False
+                cfg, outdir, do_previews=False, do_zip=False, write_manifest=False,
             )
 
             assert (outdir / "wide_pot.stl").exists()
@@ -397,7 +397,7 @@ class TestPresetResolution:
                 "custom_bloom": {
                     "style": "FourierBloom",
                     "opts": {"fb_amp1": 0.1, "fb_freq1": 8},
-                }
+                },
             },
             recipes=[{"name": "bloom_pot", "use": "custom_bloom"}],
         )
@@ -406,7 +406,7 @@ class TestPresetResolution:
             outdir = Path(tmpdir) / "out"
 
             build_from_yaml(
-                cfg, outdir, do_previews=False, do_zip=False, write_manifest=False
+                cfg, outdir, do_previews=False, do_zip=False, write_manifest=False,
             )
 
             assert (outdir / "bloom_pot.stl").exists()

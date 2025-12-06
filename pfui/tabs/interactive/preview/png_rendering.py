@@ -7,9 +7,7 @@ with caching and performance tracking.
 from __future__ import annotations
 
 import time
-from typing import Any, Optional, cast
-
-import streamlit as st
+from typing import Any, cast
 
 
 def render_preview_png_fallback(
@@ -35,7 +33,7 @@ def render_preview_png_fallback(
     HAS_PLOTLY: bool,
     ss: dict[str, Any],
     to_int_scalar_fn,
-) -> Optional[bytes]:
+) -> bytes | None:
     """Generate PNG fallback when Plotly is unavailable or forced.
     
     Args:
@@ -64,27 +62,28 @@ def render_preview_png_fallback(
         
     Returns:
         PNG bytes if successful, None otherwise
+
     """
     try:
-        force_capture = bool(cast(Any, ss.get("_force_mesh_png_capture", False)))
+        force_capture = bool(cast("Any", ss.get("_force_mesh_png_capture", False)))
         # Cap PNG mesh resolution aggressively to keep it cheap
         png_cap_n = to_int_scalar_fn(ss.get("png_cap_n", 64))
-        
+
         t0_meshpng = time.time()
         png_bytes = None
         regen = False
         mode = "auto=off"
-        
+
         if (not HAS_PLOTLY) or force_capture:
             regen = True
             mode = "force" if force_capture else "no_plotly"
             # Clear the flag immediately to avoid repeated regeneration
             if force_capture:
                 ss["_force_mesh_png_capture"] = False
-            
+
             # Build appearance key from session state
             ak = "|".join(
-                str(cast(Any, ss.get(k, "")))
+                str(cast("Any", ss.get(k, "")))
                 for k in (
                     "preview_palette",
                     "preview_grad_c1",
@@ -97,12 +96,12 @@ def render_preview_png_fallback(
                     "mesh_fresnel",
                 )
             )
-            
+
             try:
                 if interactive_mesh and force_capture:
                     # Explicit mesh PNG capture: use snapshot renderer, but at capped mesh resolution
                     from pfui.preview import render_mesh_snapshot_cached
-                    
+
                     png_n_theta = int(max(8, min(png_cap_n, full_n_theta)))
                     png_n_z = int(max(8, min(png_cap_n, full_n_z)))
                     png_bytes = render_mesh_snapshot_cached(
@@ -126,7 +125,7 @@ def render_preview_png_fallback(
                 else:
                     # Fallback to fast preview PNG (static engine) at capped resolution
                     from pfui.preview import render_preview_png_cached
-                    
+
                     png_n_theta = int(max(8, min(png_cap_n, preview_n_theta)))
                     png_n_z = int(max(8, min(png_cap_n, preview_n_z)))
                     png_bytes = render_preview_png_cached(
@@ -149,7 +148,7 @@ def render_preview_png_fallback(
                     )
             except Exception:
                 png_bytes = None
-        
+
         # Timing log for visibility
         try:
             perf = ss.setdefault("_perf_logs", [])
@@ -160,8 +159,8 @@ def render_preview_png_fallback(
             ss["_perf_logs"] = perf[-40:]
         except Exception:
             pass
-        
+
         return png_bytes
-        
+
     except Exception:
         return None  # PNG generation is best-effort; failures shouldn't break the app

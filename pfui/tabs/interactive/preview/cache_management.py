@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
 def initialize_preview_cache(ss: dict[str, Any]) -> None:
@@ -15,6 +15,7 @@ def initialize_preview_cache(ss: dict[str, Any]) -> None:
     
     Args:
         ss: Session state dictionary
+
     """
     # Keep separate caches for surface (fast) and mesh (exact) previews
     ss.setdefault("_last_surface_png", None)
@@ -31,12 +32,13 @@ def clear_preview_cache(ss: dict[str, Any]) -> None:
     
     Args:
         ss: Session state dictionary
+
     """
     try:
-        st.cache_data.clear()
+        get_st().cache_data.clear()
     except Exception:
         pass
-    
+
     # Clear session-cached arrays and figures
     for k in (
         "_last_X",
@@ -48,10 +50,10 @@ def clear_preview_cache(ss: dict[str, Any]) -> None:
         "_last_surface_fig_json",
         "_last_mesh_png",
         "_last_surface_png",
+        "_webgpu_last_render",
     ):
         try:
-            if k in ss:
-                del ss[k]
+            ss.pop(k, None)
         except Exception:
             pass
     ss["_preview_stale"] = True

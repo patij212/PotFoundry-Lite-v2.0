@@ -5,7 +5,7 @@ Provides direct access to schema data from the package modules.
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from .canonical_schemas import CANONICAL_CONTROLS, CANONICAL_STYLE_SCHEMAS
 from .global_controls import GLOBAL_CONTROLS
@@ -13,14 +13,14 @@ from .style_schemas import STYLE_SCHEMAS
 
 # Re-export for backward compatibility
 __all__ = [
-    "GLOBAL_CONTROLS",
-    "STYLE_SCHEMAS",
     "CANONICAL_CONTROLS",
     "CANONICAL_STYLE_SCHEMAS",
-    "get_style_schemas",
-    "get_global_controls",
+    "GLOBAL_CONTROLS",
+    "STYLE_SCHEMAS",
     "get_canonical_controls",
     "get_canonical_style_schemas",
+    "get_global_controls",
+    "get_style_schemas",
 ]
 
 
@@ -46,12 +46,12 @@ def get_canonical_style_schemas() -> Mapping[str, Mapping[str, Mapping[str, obje
 
 
 __all__ = [
-    "GLOBAL_CONTROLS",
-    "STYLE_SCHEMAS",
     "CANONICAL_CONTROLS",
     "CANONICAL_STYLE_SCHEMAS",
-    "get_style_schemas",
-    "get_global_controls",
+    "GLOBAL_CONTROLS",
+    "STYLE_SCHEMAS",
     "get_canonical_controls",
     "get_canonical_style_schemas",
+    "get_global_controls",
+    "get_style_schemas",
 ]

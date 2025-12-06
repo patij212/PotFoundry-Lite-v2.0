@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 from .state import widget_key
 
@@ -29,8 +29,9 @@ def apply_project(project: Dict[str, Any]) -> None:
         raise ValueError("Not a PotFoundry project file")
     style = str(project.get("style", ""))
     if style:
-        st.session_state["style"] = style
+        get_st().session_state["style"] = style
     size = project.get("size", {}) or {}
+    st = get_st()
     for k, v in size.items():
         st.session_state[k] = v
     opts = project.get("opts", {}) or {}
@@ -38,10 +39,10 @@ def apply_project(project: Dict[str, Any]) -> None:
         if style:
             st.session_state[widget_key(style, k)] = v
     prev = project.get("preview", {}) or {}
-    st.session_state["_view_elev"] = float(prev.get("view_elev", 20.0))
-    st.session_state["_view_azim"] = float(prev.get("view_azim", -60.0))
-    st.session_state["_n_theta"] = int(prev.get("n_theta", 180))
-    st.session_state["_n_z"] = int(prev.get("n_z", 90))
+    get_st().session_state["_view_elev"] = float(prev.get("view_elev", 20.0))
+    get_st().session_state["_view_azim"] = float(prev.get("view_azim", -60.0))
+    get_st().session_state["_n_theta"] = int(prev.get("n_theta", 180))
+    get_st().session_state["_n_z"] = int(prev.get("n_z", 90))
 
 
 def render_project_io(
@@ -55,6 +56,7 @@ def render_project_io(
 ) -> None:
     import json as _json
 
+    st = get_st()
     with st.expander("Project — save / load"):
         left, right = st.columns(2)
         if left.button("Download project (.pfproj)"):

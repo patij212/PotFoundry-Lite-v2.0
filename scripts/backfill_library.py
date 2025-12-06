@@ -32,7 +32,7 @@ Metadata JSON format:
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 # Add parent directory to path to import library modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -46,11 +46,11 @@ from potfoundry.library import publish_design
 
 def load_metadata(json_path: Path) -> dict[str, Any]:
     """Load and validate metadata from JSON file."""
-    with open(json_path, "r") as f:
+    with open(json_path) as f:
         data_raw = json.load(f)
 
     # mypy: ensure we treat loaded JSON as a mapping
-    data = cast(Dict[str, Any], data_raw)
+    data = cast("dict[str, Any]", data_raw)
 
     # Validate required fields
     required = ["title", "style", "size", "opts", "mesh", "diagnostics", "license"]
@@ -61,13 +61,14 @@ def load_metadata(json_path: Path) -> dict[str, Any]:
     return data
 
 
-def find_designs(directory: Path) -> List[tuple[Path, Path, Optional[Path]]]:
+def find_designs(directory: Path) -> list[tuple[Path, Path, Path | None]]:
     """Find all design triples (STL, JSON, optional PNG) in directory.
 
     Returns:
         List of (stl_path, json_path, png_path) tuples
+
     """
-    designs: List[tuple[Path, Path, Optional[Path]]] = []
+    designs: list[tuple[Path, Path, Path | None]] = []
 
     for stl_path in directory.glob("*.stl"):
         stem = stl_path.stem
@@ -78,7 +79,7 @@ def find_designs(directory: Path) -> List[tuple[Path, Path, Optional[Path]]]:
             print(f"Warning: No metadata found for {stl_path.name}, skipping")
             continue
 
-        png_path: Optional[Path] = png_candidate if png_candidate.exists() else None
+        png_path: Path | None = png_candidate if png_candidate.exists() else None
         designs.append((stl_path, json_path, png_path))
 
     return designs
@@ -90,13 +91,14 @@ def backfill(directory: Path, dry_run: bool = False):
     Args:
         directory: Directory containing STL/JSON/PNG files
         dry_run: If True, don't actually publish (just validate)
+
     """
     # Check if library is configured
     client = get_singleton_client()
     if not client.is_configured():
         raise NotConfiguredError(
             "Library not configured. Set SUPABASE_URL and SUPABASE_KEY environment variables "
-            "or configure in .streamlit/secrets.toml"
+            "or configure in .streamlit/secrets.toml",
         )
 
     # Find all designs
@@ -167,10 +169,10 @@ def main():
 
     parser = argparse.ArgumentParser(description="Backfill designs to Public Library")
     parser.add_argument(
-        "directory", type=Path, help="Directory containing STL/JSON files"
+        "directory", type=Path, help="Directory containing STL/JSON files",
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="Don't actually publish (validate only)"
+        "--dry-run", action="store_true", help="Don't actually publish (validate only)",
     )
 
     args = parser.parse_args()

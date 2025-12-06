@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st, StreamlitLike
+from typing import cast
 
 # Use the canonical widget_key and queued updates to avoid post-instantiation mutations.
-from pfui.state import widget_key, queue_update  # noqa: E402
+from pfui.state import queue_update, widget_key
 
 # Lazy-load STYLE_SCHEMAS to avoid importing the heavy pfui.schemas module on import.
 STYLE_SCHEMAS: dict = {}
@@ -19,14 +20,14 @@ def _ensure_style_schemas() -> dict:
     if not STYLE_SCHEMAS:
         try:
             mod = importlib.import_module("pfui.schemas")
-            STYLE_SCHEMAS.update(getattr(mod, "get_style_schemas", lambda: {})() or {})
+            STYLE_SCHEMAS.update(getattr(mod, "get_style_schemas", dict)() or {})
         except Exception:
             STYLE_SCHEMAS = {}
     return STYLE_SCHEMAS
 
 
 # Built-in curated presets (unchanged)
-PRESETS: Dict[str, Dict[str, Dict[str, Any]]] = {
+PRESETS: dict[str, dict[str, dict[str, Any]]] = {
     # LowPolyFacet presets to quickly match the original look
     "LowPolyFacet": {
         # Crisp, inward chamfer bands with proportional depth
@@ -328,6 +329,7 @@ def _yaml_available() -> bool:
 
     Returns:
         True if yaml module can be imported, False otherwise
+
     """
     try:
         import yaml  # noqa: F401
@@ -337,11 +339,12 @@ def _yaml_available() -> bool:
         return False
 
 
-def _read_user_presets() -> Dict[str, Any]:
+def _read_user_presets() -> dict[str, Any]:
     """Load user-defined presets from YAML file.
 
     Returns:
         Dictionary with 'presets' key containing list of user presets
+
     """
     if not _yaml_available() or not PRESET_PATH.exists():
         return {"presets": []}
@@ -350,26 +353,26 @@ def _read_user_presets() -> Dict[str, Any]:
 
         data = _yaml.safe_load(PRESET_PATH.read_text("utf-8")) or {}
         if not isinstance(data, dict):
-            st.error(
-                "User presets file is corrupted or invalid. You can reset presets below."
+            get_st().error(
+                "User presets file is corrupted or invalid. You can reset presets below.",
             )
-            if st.button("Reset user presets"):
+            if get_st().button("Reset user presets"):
                 PRESET_PATH.unlink(missing_ok=True)
-                st.success("User presets have been reset.")
-                st.rerun()
+                get_st().success("User presets have been reset.")
+                get_st().rerun()
             return {"presets": []}
         data.setdefault("presets", [])
         return data
     except Exception:
-        st.error("Failed to read user presets. You can reset presets below.")
-        if st.button("Reset user presets"):
+        get_st().error("Failed to read user presets. You can reset presets below.")
+        if get_st().button("Reset user presets"):
             PRESET_PATH.unlink(missing_ok=True)
-            st.success("User presets have been reset.")
-            st.rerun()
+            get_st().success("User presets have been reset.")
+            get_st().rerun()
         return {"presets": []}
 
 
-def _write_user_presets(data: Dict[str, Any]) -> bool:
+def _write_user_presets(data: dict[str, Any]) -> bool:
     if not _yaml_available():
         return False
     try:
@@ -382,7 +385,7 @@ def _write_user_presets(data: Dict[str, Any]) -> bool:
         return False
 
 
-def apply_preset_dict(p: Dict[str, Any]) -> None:
+def apply_preset_dict(p: dict[str, Any]) -> None:
     """Apply a preset dictionary to session state.
 
     Supports two shapes:
@@ -395,7 +398,7 @@ def apply_preset_dict(p: Dict[str, Any]) -> None:
         # Nothing to apply; caller should supply structured wrapper. Fail fast silently.
         return
 
-    updates: Dict[str, Any] = {}
+    updates: dict[str, Any] = {}
     style = p.get("style")
     if style:
         # Queue both raw and widget-keyed style so selector initializes correctly next run.
@@ -439,6 +442,7 @@ def render_preset_manager(
     r_drain: float,
     expn: float,
 ) -> None:
+    st = get_st()
     with st.expander("Preset Manager (user presets)"):
         if not _yaml_available():
             st.info("Install PyYAML to enable user presets (pip install pyyaml).")

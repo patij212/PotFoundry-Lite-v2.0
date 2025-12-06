@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 
 @dataclass
@@ -20,14 +20,14 @@ def _health_badge(dg: Any, label: str, status: str, tip: str) -> None:
 
 
 def _design_health(
-    H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float, r_drain: float
-) -> List[HealthBadge]:
-    badges: List[HealthBadge] = []
+    H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float, r_drain: float,
+) -> list[HealthBadge]:
+    badges: list[HealthBadge] = []
     minR = min(Rt, Rb)
     wall_ratio = t_wall / max(1.0, minR)
     if wall_ratio < 0.01:
         badges.append(
-            HealthBadge("Wall ratio", "warn", "Walls <1% of radius may be fragile.")
+            HealthBadge("Wall ratio", "warn", "Walls <1% of radius may be fragile."),
         )
     elif wall_ratio > 0.15:
         badges.append(
@@ -35,7 +35,7 @@ def _design_health(
                 "Wall ratio",
                 "warn",
                 "Very thick walls reduce volume; may self-intersect.",
-            )
+            ),
         )
     else:
         badges.append(HealthBadge("Wall ratio", "ok", "Looks reasonable for FDM/FFF."))
@@ -43,8 +43,8 @@ def _design_health(
     if r_drain < max(4.0, 0.8 * t_wall):
         badges.append(
             HealthBadge(
-                "Drain", "warn", "Consider larger drain vs wall for reliable flow."
-            )
+                "Drain", "warn", "Consider larger drain vs wall for reliable flow.",
+            ),
         )
     else:
         badges.append(HealthBadge("Drain", "ok", "Drain to wall ratio OK."))
@@ -52,12 +52,12 @@ def _design_health(
     if t_bottom > 0.3 * H:
         badges.append(
             HealthBadge(
-                "Bottom thickness", "warn", "Bottom >30% of height – likely excessive."
-            )
+                "Bottom thickness", "warn", "Bottom >30% of height – likely excessive.",
+            ),
         )
     else:
         badges.append(
-            HealthBadge("Bottom thickness", "ok", "Bottom thickness proportion OK.")
+            HealthBadge("Bottom thickness", "ok", "Bottom thickness proportion OK."),
         )
 
     return badges
@@ -71,7 +71,7 @@ class ValidationIssue:
     field: str  # which control this primarily concerns (e.g., "r_drain")
     level: str  # "info" | "warn" | "error"
     message: str  # user-facing text
-    suggestion: Dict[str, Any] | None = None  # optional dict of session_state updates
+    suggestion: dict[str, Any] | None = None  # optional dict of session_state updates
 
 
 def validate_dimensions(
@@ -81,13 +81,13 @@ def validate_dimensions(
     t_wall: float,
     t_bottom: float,
     r_drain: float,
-) -> List[ValidationIssue]:
+) -> list[ValidationIssue]:
     """Validate high-level dimension inputs and propose fixes.
 
     Returns a list of ValidationIssue with optional suggestion dicts that can
     be queued into session state to auto-fix common problems.
     """
-    issues: List[ValidationIssue] = []
+    issues: list[ValidationIssue] = []
 
     # Derived radii
     Rt = 0.5 * float(top_od)
@@ -104,7 +104,7 @@ def validate_dimensions(
                 level="warn",
                 message=f"Drain radius is small vs wall; consider at least {min_drain:.1f} mm.",
                 suggestion=sug,
-            )
+            ),
         )
 
     # 2) Wall thickness too large relative to diameter
@@ -116,7 +116,7 @@ def validate_dimensions(
                 level="warn",
                 message="Wall thickness is very large vs diameter; may self-intersect.",
                 suggestion={"t_wall": max(1.5, target)},
-            )
+            ),
         )
 
     # 3) Bottom slab too thick
@@ -128,7 +128,7 @@ def validate_dimensions(
                 level="warn",
                 message="Bottom thickness >30% of height; consider reducing.",
                 suggestion={"t_bottom": max(2.0, sug_val)},
-            )
+            ),
         )
 
     # 4) Wall thickness approaches/exceeds radius
@@ -147,7 +147,7 @@ def validate_dimensions(
                 level="error",
                 message="Wall thickness approaches/exceeds radius; increase diameters or reduce wall.",
                 suggestion=sug,
-            )
+            ),
         )
 
     # 5) Very thin walls
@@ -158,7 +158,7 @@ def validate_dimensions(
                 level="info",
                 message="Very thin walls (<1.5 mm) may be fragile in printing.",
                 suggestion={"t_wall": 1.8},
-            )
+            ),
         )
 
     return issues

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 
-
 class TestWidgetsImport:
     """Test that widgets package imports work correctly."""
 
@@ -23,7 +22,7 @@ class TestWidgetsImport:
             status_message,
             text_input_validated,
         )
-        
+
         # Verify functions are callable
         assert callable(button_with_callback)
         assert callable(export_button)
@@ -41,15 +40,19 @@ class TestWidgetsImport:
     def test_sliders_module(self):
         """Test sliders module functions exist."""
         from pfui.widgets.sliders import float_slider, int_slider, range_slider
-        
+
         assert callable(float_slider)
         assert callable(int_slider)
         assert callable(range_slider)
 
     def test_buttons_module(self):
         """Test buttons module functions exist."""
-        from pfui.widgets.buttons import button_with_callback, export_button, reset_button
-        
+        from pfui.widgets.buttons import (
+            button_with_callback,
+            export_button,
+            reset_button,
+        )
+
         assert callable(button_with_callback)
         assert callable(export_button)
         assert callable(reset_button)
@@ -57,7 +60,7 @@ class TestWidgetsImport:
     def test_selectors_module(self):
         """Test selectors module functions exist."""
         from pfui.widgets.selectors import checkbox_group, radio_selector, select_box
-        
+
         assert callable(select_box)
         assert callable(radio_selector)
         assert callable(checkbox_group)
@@ -65,14 +68,14 @@ class TestWidgetsImport:
     def test_inputs_module(self):
         """Test inputs module functions exist."""
         from pfui.widgets.inputs import number_input_validated, text_input_validated
-        
+
         assert callable(number_input_validated)
         assert callable(text_input_validated)
 
     def test_displays_module(self):
         """Test displays module functions exist."""
         from pfui.widgets.displays import info_badge, metric_display, status_message
-        
+
         assert callable(metric_display)
         assert callable(info_badge)
         assert callable(status_message)
@@ -83,29 +86,32 @@ class TestWidgetFunctionSignatures:
 
     def test_float_slider_signature(self):
         """Test float_slider has expected parameters."""
-        from pfui.widgets.sliders import float_slider
         import inspect
-        
+
+        from pfui.widgets.sliders import float_slider
+
         sig = inspect.signature(float_slider)
-        assert 'label' in sig.parameters
-        assert 'min_value' in sig.parameters
-        assert 'max_value' in sig.parameters
-        assert 'value' in sig.parameters
+        assert "label" in sig.parameters
+        assert "min_value" in sig.parameters
+        assert "max_value" in sig.parameters
+        assert "value" in sig.parameters
 
     def test_button_with_callback_signature(self):
         """Test button_with_callback has expected parameters."""
-        from pfui.widgets.buttons import button_with_callback
         import inspect
-        
+
+        from pfui.widgets.buttons import button_with_callback
+
         sig = inspect.signature(button_with_callback)
-        assert 'label' in sig.parameters
-        assert 'callback' in sig.parameters
+        assert "label" in sig.parameters
+        assert "callback" in sig.parameters
 
     def test_select_box_signature(self):
         """Test select_box has expected parameters."""
-        from pfui.widgets.selectors import select_box
         import inspect
-        
+
+        from pfui.widgets.selectors import select_box
+
         sig = inspect.signature(select_box)
-        assert 'label' in sig.parameters
-        assert 'options' in sig.parameters
+        assert "label" in sig.parameters
+        assert "options" in sig.parameters

@@ -6,8 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import streamlit as st
-
+from pfui._st import get_effective_st as get_st
 from pfui.preview import render_profile
 
 
@@ -32,6 +31,8 @@ def render_profile_section(
         r_outer_fn: Outer radius style function
         opts: Style options dictionary
         t_wall: Wall thickness in mm
+
     """
+    st = get_st()
     with st.expander("2D radial profile"):
         render_profile(H, Rt, Rb, expn, r_outer_fn, dict(opts), t_wall)

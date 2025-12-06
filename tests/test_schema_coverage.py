@@ -30,16 +30,16 @@ def _as_mesh(m: object) -> MeshQualityModel:
     """Return a MeshQualityModel whether input is a dict or model."""
     if isinstance(m, dict):
         return MeshQualityModel(
-            n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84))
+            n_theta=int(m.get("n_theta", 168)), n_z=int(m.get("n_z", 84)),
         )
-    return cast(MeshQualityModel, m)
+    return cast("MeshQualityModel", m)
 
 
 def _as_defaults(d: object) -> DefaultsModel:
     """Return a DefaultsModel whether input is a dict or model."""
     if isinstance(d, dict):
         return DefaultsModel(**d)
-    return cast(DefaultsModel, d)
+    return cast("DefaultsModel", d)
 
 
 class TestMeshQualityModel:
@@ -93,7 +93,7 @@ class TestMeshQualityModel:
         """Test that extra fields are rejected."""
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
             MeshQualityModel.model_validate(
-                {"n_theta": 100, "n_z": 50, "invalid_field": "test"}
+                {"n_theta": 100, "n_z": 50, "invalid_field": "test"},
             )
 
 
@@ -222,17 +222,17 @@ class TestRecipeModel:
     def test_recipe_rejects_neither_style_nor_use(self):
         """Test that recipe without style or use is rejected."""
         with pytest.raises(
-            ValidationError, match="must provide either 'style' or 'use'"
+            ValidationError, match="must provide either 'style' or 'use'",
         ):
             RecipeModel(name="invalid_pot")
 
     def test_recipe_rejects_both_style_and_use(self):
         """Test that recipe with both style and use is rejected."""
         with pytest.raises(
-            ValidationError, match="Provide only one of 'style' or 'use'"
+            ValidationError, match="Provide only one of 'style' or 'use'",
         ):
             RecipeModel(
-                name="invalid_pot", style="SuperformulaBlossom", use="my_preset"
+                name="invalid_pot", style="SuperformulaBlossom", use="my_preset",
             )
 
     def test_recipe_default_opts_empty(self):
@@ -246,7 +246,7 @@ class TestRecipeModel:
             # Validate from a raw mapping so we exercise Pydantic's runtime
             # extra-field rejection while keeping static type checking clean.
             RecipeModel.model_validate(
-                {"name": "test", "style": "SuperformulaBlossom", "extra": "field"}
+                {"name": "test", "style": "SuperformulaBlossom", "extra": "field"},
             )
 
 
@@ -263,7 +263,7 @@ class TestPresetModel:
     def test_preset_with_size(self):
         """Test preset with size parameters."""
         preset = PresetModel(
-            style="FourierBloom", size={"height": 130.0, "top_od": 150.0}
+            style="FourierBloom", size={"height": 130.0, "top_od": 150.0},
         )
         assert preset.style == "FourierBloom"
         assert preset.size is not None
@@ -279,7 +279,7 @@ class TestPresetModel:
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
             # Use model_validate to trigger extra-field rejection at runtime.
             PresetModel.model_validate(
-                {"style": "SuperformulaBlossom", "invalid": "field"}
+                {"style": "SuperformulaBlossom", "invalid": "field"},
             )
 
 
@@ -329,7 +329,7 @@ class TestConfigV2:
         """Test ConfigV2 with presets."""
         config = ConfigV2(
             presets={
-                "tall": {"style": "SuperformulaBlossom", "size": {"height": 180.0}}
+                "tall": {"style": "SuperformulaBlossom", "size": {"height": 180.0}},
             },
             recipes=[{"name": "test", "use": "tall"}],
         )
@@ -361,7 +361,7 @@ class TestConfigV2:
 
         # Explicit version 2 works
         config2 = ConfigV2(
-            version=2, recipes=[{"name": "test", "style": "SuperformulaBlossom"}]
+            version=2, recipes=[{"name": "test", "style": "SuperformulaBlossom"}],
         )
         assert config2.version == 2
 
@@ -369,7 +369,7 @@ class TestConfigV2:
         """Test that wrong version is rejected."""
         with pytest.raises(ValidationError, match="Input should be 2"):
             ConfigV2(
-                version=1, recipes=[{"name": "test", "style": "SuperformulaBlossom"}]
+                version=1, recipes=[{"name": "test", "style": "SuperformulaBlossom"}],
             )
 
     def test_config_v2_custom_outdir(self):
@@ -383,7 +383,7 @@ class TestConfigV2:
     def test_config_v2_make_zip_option(self):
         """Test ConfigV2 with make_zip option."""
         config = ConfigV2(
-            make_zip=True, recipes=[{"name": "test", "style": "SuperformulaBlossom"}]
+            make_zip=True, recipes=[{"name": "test", "style": "SuperformulaBlossom"}],
         )
         assert config.make_zip is True
 
@@ -403,7 +403,7 @@ class TestConfigV2:
                 {
                     "recipes": [{"name": "test", "style": "SuperformulaBlossom"}],
                     "invalid_field": "test",
-                }
+                },
             )
 
 

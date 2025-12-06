@@ -16,15 +16,15 @@ The core potfoundry library remains UI-agnostic.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
-import numpy as np
 import numpy.typing as npt
 
 __all__ = [
     "build_pot_mesh_for_preview",  # NEW: Use this for fast full-res previews
-    "get_export_resolution",
     "create_streamlit_cache_decorator",
+    "get_export_resolution",
 ]
 
 
@@ -39,8 +39,8 @@ def build_pot_mesh_for_preview(
     n_theta: int,
     n_z: int,
     r_outer_fn: Callable,
-    style_opts: Dict[str, Any],
-) -> Tuple[npt.NDArray, npt.NDArray, Dict[str, Any]]:
+    style_opts: dict[str, Any],
+) -> tuple[npt.NDArray, npt.NDArray, dict[str, Any]]:
     """Generate mesh for preview using accelerated builder (7-17x faster).
     
     This is the RECOMMENDED function for generating full-resolution previews
@@ -73,17 +73,18 @@ def build_pot_mesh_for_preview(
     Note:
         This function automatically uses the accelerated builder which is
         7-17x faster for full-resolution meshes. No need to lower resolution!
+
     """
     from .optimizations import build_pot_mesh_accelerated
-    
+
     return build_pot_mesh_accelerated(
         H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
         expn=expn, n_theta=n_theta, n_z=n_z,
-        r_outer_fn=r_outer_fn, style_opts=style_opts
+        r_outer_fn=r_outer_fn, style_opts=style_opts,
     )
 
 
-def get_preview_resolution(base_theta: int = 168, base_z: int = 84) -> Tuple[int, int]:
+def get_preview_resolution(base_theta: int = 168, base_z: int = 84) -> tuple[int, int]:
     """Get resolution for preview (DEPRECATED - use full resolution now).
     
     With the accelerated builder, full resolution is fast enough for previews.
@@ -99,12 +100,13 @@ def get_preview_resolution(base_theta: int = 168, base_z: int = 84) -> Tuple[int
     Note:
         DEPRECATED: Use full resolution with build_pot_mesh_for_preview() instead.
         The accelerated builder makes full-resolution previews fast (3-5ms).
+
     """
     # Return full resolution now that we have acceleration
     return base_theta, base_z
 
 
-def get_export_resolution(quality: str = "standard") -> Tuple[int, int]:
+def get_export_resolution(quality: str = "standard") -> tuple[int, int]:
     """Get resolution for STL export based on quality setting.
     
     Args:
@@ -119,6 +121,7 @@ def get_export_resolution(quality: str = "standard") -> Tuple[int, int]:
         
     Raises:
         ValueError: If quality is not recognized
+
     """
     resolutions = {
         "draft": (84, 42),      # ~14k triangles, ~10ms generation
@@ -126,13 +129,13 @@ def get_export_resolution(quality: str = "standard") -> Tuple[int, int]:
         "high": (336, 168),     # ~230k triangles, ~80ms generation
         "ultra": (672, 336),    # ~900k triangles, ~300ms generation
     }
-    
+
     if quality not in resolutions:
         raise ValueError(
             f"Unknown quality '{quality}'. "
-            f"Valid options: {', '.join(resolutions.keys())}"
+            f"Valid options: {', '.join(resolutions.keys())}",
         )
-    
+
     return resolutions[quality]
 
 
@@ -178,10 +181,11 @@ def create_streamlit_cache_decorator(ttl: int = 3600, max_entries: int = 8):
     Note:
         This function requires Streamlit to be installed. It returns a no-op
         decorator if Streamlit is not available.
+
     """
     try:
         import streamlit as st
-        
+
         # Create the decorator with specified settings
         return st.cache_data(
             ttl=ttl,

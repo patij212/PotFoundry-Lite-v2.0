@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 from .utils import to_float_scalar
 
@@ -26,7 +26,7 @@ def compute_preview_signatures(
     fig_h: float,
     dpi: int,
     place_on_ground: bool,
-) -> tuple[Optional[tuple], Optional[tuple]]:
+) -> tuple[tuple | None, tuple | None]:
     """Compute geometry and appearance signatures for change detection.
     
     Args:
@@ -51,17 +51,18 @@ def compute_preview_signatures(
         
     Returns:
         Tuple of (geometry_signature, appearance_signature)
+
     """
-    geom_sig: Optional[tuple] = None
-    app_sig: Optional[tuple] = None
-    
+    geom_sig: tuple | None = None
+    app_sig: tuple | None = None
+
     try:
         # Use plotting helpers to compute signatures (centralized and testable)
         from pfui.app_components.plotting import (
             compute_app_sig,
             compute_geom_sig,
         )
-    
+
         geom_sig = compute_geom_sig(
             H,
             Rt,
@@ -74,12 +75,12 @@ def compute_preview_signatures(
             full_n_theta,
             full_n_z,
         )
-    
+
         app_sig = compute_app_sig(
-            cast(Any, ss.get("preview_palette")),
-            cast(Any, ss.get("preview_grad_c1")),
-            cast(Any, ss.get("preview_grad_c2")),
-            cast(Any, ss.get("preview_grad_c3")),
+            cast("Any", ss.get("preview_palette")),
+            cast("Any", ss.get("preview_grad_c1")),
+            cast("Any", ss.get("preview_grad_c2")),
+            cast("Any", ss.get("preview_grad_c3")),
             to_float_scalar(ss.get("mesh_ambient", 0.35)),
             to_float_scalar(ss.get("mesh_diffuse", 0.95)),
             to_float_scalar(ss.get("mesh_specular", 0.25)),
@@ -96,5 +97,5 @@ def compute_preview_signatures(
     except Exception:
         geom_sig = None
         app_sig = None
-    
+
     return geom_sig, app_sig

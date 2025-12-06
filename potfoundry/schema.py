@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, model_validator
 
@@ -52,25 +52,25 @@ class DefaultsModel(BaseModel):
 
 class PartialDefaultsModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    height: Optional[PositiveFloat] = None
-    top_od: Optional[PositiveFloat] = None
-    bottom_od: Optional[PositiveFloat] = None
-    wall: Optional[PositiveFloat] = None
-    bottom: Optional[PositiveFloat] = None
-    drain: Optional[PositiveFloat] = None
-    flare_exp: Optional[PositiveFloat] = None
+    height: PositiveFloat | None = None
+    top_od: PositiveFloat | None = None
+    bottom_od: PositiveFloat | None = None
+    wall: PositiveFloat | None = None
+    bottom: PositiveFloat | None = None
+    drain: PositiveFloat | None = None
+    flare_exp: PositiveFloat | None = None
 
 
 class RecipeModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
-    style: Optional[str] = None
-    use: Optional[str] = None  # reference preset name
-    size: Optional[PartialDefaultsModel | dict] = None
-    opts: Dict = Field(default_factory=dict)
+    style: str | None = None
+    use: str | None = None  # reference preset name
+    size: PartialDefaultsModel | dict | None = None
+    opts: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _style_or_use(self) -> "RecipeModel":
+    def _style_or_use(self) -> RecipeModel:
         # either style or use (preset) must be provided
         if not self.style and self.use is None:
             raise ValueError("Recipe must provide either 'style' or 'use' (preset).")
@@ -82,8 +82,8 @@ class RecipeModel(BaseModel):
 class PresetModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     style: str
-    size: Optional[PartialDefaultsModel | dict] = None
-    opts: Dict = Field(default_factory=dict)
+    size: PartialDefaultsModel | dict | None = None
+    opts: dict = Field(default_factory=dict)
 
 
 class ConfigV2(BaseModel):
@@ -98,14 +98,14 @@ class ConfigV2(BaseModel):
     # parsers sometimes provide dicts for nested fields). Allowing dict here
     # reduces friction for callers that construct ConfigV2 from raw mappings.
     mesh: MeshQualityModel | dict = Field(
-        default_factory=lambda: MeshQualityModel(n_theta=168, n_z=84)
+        default_factory=lambda: MeshQualityModel(n_theta=168, n_z=84),
     )
     defaults: DefaultsModel | dict = Field(default_factory=DefaultsModel)
-    presets: Dict[str, PresetModel | dict] = Field(default_factory=dict)
-    recipes: List[RecipeModel | dict] = Field(default_factory=list)
+    presets: dict[str, PresetModel | dict] = Field(default_factory=dict)
+    recipes: list[RecipeModel | dict] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _ensure_version_is_two(self) -> "ConfigV2":
+    def _ensure_version_is_two(self) -> ConfigV2:
         """Ensure runtime validation requires version == 2.
 
         We keep the type annotation permissive (Literal[1,2]) to reduce
@@ -181,7 +181,7 @@ def migrate_v1_to_v2(raw: dict) -> dict:
                 "use": r.get("use"),
                 "size": r.get("size") or {},
                 "opts": r.get("opts") or {},
-            }
+            },
         )
 
     return v2

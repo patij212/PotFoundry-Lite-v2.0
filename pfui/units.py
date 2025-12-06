@@ -1,9 +1,7 @@
 # pfui/units.py
 from __future__ import annotations
 
-from typing import Optional
-
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 _MM_PER_IN = 25.4
 
@@ -22,6 +20,7 @@ def get_units(key: str = "ui__units") -> str:
     # narrow it with isinstance checks. Assigning to `object` discards the
     # `Any`-ness coming from the runtime `st.session_state` accessor while
     # remaining safe at runtime.
+    st = get_st()
     val: object = st.session_state.get(key, "mm")
     if isinstance(val, str):
         return val
@@ -32,11 +31,11 @@ def get_units(key: str = "ui__units") -> str:
 
 
 def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:
-    """
-    Renders a single units selector (guarded so it can be called multiple times
+    """Renders a single units selector (guarded so it can be called multiple times
     without creating duplicate widgets). The widget key is customizable to avoid
     collisions.
     """
+    st = get_st()
     mount_flag = f"{key}__mounted"
     if st.session_state.get(mount_flag):
         # When already mounted, prefer the normalized `get_units` helper which
@@ -60,19 +59,19 @@ def units_selector(*, key: str = "ui__units", location: str = "sidebar") -> str:
 def unit_number_input(
     label: str,
     *,
-    min_value: Optional[float] = None,
-    max_value: Optional[float] = None,
+    min_value: float | None = None,
+    max_value: float | None = None,
     value: float = 0.0,
-    step: Optional[float] = None,
+    step: float | None = None,
     format_mm: str = "%.1f",
     format_in: str = "%.2f",
-    key: Optional[str] = None,
-    help: Optional[str] = None,
+    key: str | None = None,
+    help: str | None = None,
     location: str = "sidebar",
 ) -> float:
+    """Number input that shows values in the selected units, but **returns mm**.
     """
-    Number input that shows values in the selected units, but **returns mm**.
-    """
+    st = get_st()
     host = st.sidebar if location == "sidebar" else st
     units = get_units()
 
@@ -90,7 +89,7 @@ def unit_number_input(
 
         fmt = format_mm
 
-    def _c(x: Optional[float]) -> Optional[float]:
+    def _c(x: float | None) -> float | None:
         return None if x is None else conv(float(x))
 
     out = host.number_input(
@@ -115,14 +114,14 @@ def unit_slider(
     min_value: float,
     max_value: float,
     value: float,
-    step: Optional[float] = None,
-    key: Optional[str] = None,
-    help: Optional[str] = None,
+    step: float | None = None,
+    key: str | None = None,
+    help: str | None = None,
     location: str = "sidebar",
 ) -> float:
+    """Slider that shows values in the selected units, but **returns mm**.
     """
-    Slider that shows values in the selected units, but **returns mm**.
-    """
+    st = get_st()
     host = st.sidebar if location == "sidebar" else st
     units = get_units()
 

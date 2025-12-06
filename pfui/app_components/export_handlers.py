@@ -6,9 +6,9 @@ preview download buttons while preserving existing app semantics.
 
 from __future__ import annotations
 
-from typing import Any, Optional, cast
+from typing import Any, cast
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
 def render_export_widgets(
@@ -30,8 +30,10 @@ def render_export_widgets(
 
     Returns:
         True if the user clicked Export STL in this run; otherwise False.
+
     """
-    ss = cast(dict[str, Any], st.session_state)
+    st = get_st()
+    ss = cast("dict[str, Any]", st.session_state)
 
     do_export = col_actions.button("Export STL…", type="primary", key="export_btn")
 
@@ -51,8 +53,8 @@ def render_export_widgets(
             pass
 
     # Cached / regen status indicator
-    last_mesh_regen = cast(Optional[bool], ss.get("_last_mesh_png_regenerated", None))
-    last_mesh_time = cast(Optional[float], ss.get("_last_mesh_png_time_ms", None))
+    last_mesh_regen = cast("bool | None", ss.get("_last_mesh_png_regenerated", None))
+    last_mesh_time = cast("float | None", ss.get("_last_mesh_png_time_ms", None))
     if last_mesh_regen is not None:
         status = "regenerated" if last_mesh_regen else "cached"
         extra = f" ({last_mesh_time:.0f} ms)" if last_mesh_time is not None else ""
@@ -60,8 +62,8 @@ def render_export_widgets(
 
     # Offer preview image downloads (PNG, optional SVG) using cached previews
     try:
-        surf_png = cast(Optional[bytes], ss.get("_last_surface_png"))
-        mesh_png = cast(Optional[bytes], ss.get("_last_mesh_png"))
+        surf_png = cast("bytes | None", ss.get("_last_surface_png"))
+        mesh_png = cast("bytes | None", ss.get("_last_mesh_png"))
         # Two compact columns for download buttons if available
         d1, d2 = col_status.columns(2)
         if surf_png:
@@ -72,13 +74,13 @@ def render_export_widgets(
                 mime="image/png",
             )
             # Optional SVG via Plotly if possible
-            if has_plotly and cast(Optional[dict], ss.get("_last_surface_fig_json")):
+            if has_plotly and cast("dict | None", ss.get("_last_surface_fig_json")):
                 try:
                     # Local import to avoid hard dependency
                     import plotly.graph_objects as go
 
                     fig = go.Figure(
-                        cast(Optional[dict], ss.get("_last_surface_fig_json"))
+                        cast("dict | None", ss.get("_last_surface_fig_json")),
                     )
                     # Heuristic sizing with clamped bounds (px)
                     w = max(400, min(900, int(96 * float(fig_h_inches))))

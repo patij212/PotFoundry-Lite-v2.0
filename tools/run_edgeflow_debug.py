@@ -1,5 +1,4 @@
-"""
-Small helper to run a single build_pot_mesh invocation with edge-flow debug flags
+"""Small helper to run a single build_pot_mesh invocation with edge-flow debug flags
 and append diagnostics. This is a quick utility for CI/local debugging.
 """
 
@@ -20,7 +19,7 @@ def main() -> None:
         sys.path.insert(0, str(repo_root))
 
     geom_mod = importlib.import_module("potfoundry.core.geometry")
-    build_pot_mesh = getattr(geom_mod, "build_pot_mesh")
+    build_pot_mesh = geom_mod.build_pot_mesh
 
     style_opts: StyleOpts = {
         "sf_edge_flow_reconstruct_enable": True,
@@ -68,7 +67,7 @@ def main() -> None:
     # optionally print last few lines of tools/edgeflow_verbose_diagnostics.jsonl if exists
     diagpath = repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
     if diagpath.exists():
-        with open(diagpath, "r", encoding="utf-8") as fh:
+        with open(diagpath, encoding="utf-8") as fh:
             lines = fh.readlines()
         print("last diag jsonl lines:", len(lines))
         for L in lines[-3:]:

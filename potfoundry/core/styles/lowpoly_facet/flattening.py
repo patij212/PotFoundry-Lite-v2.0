@@ -1,15 +1,14 @@
-"""
-Straight-edge flattening logic for LowPolyFacet seams.
+"""Straight-edge flattening logic for LowPolyFacet seams.
 
 This module contains the complex straight-edge flattening algorithms
 that create crisp, uniform seam bands.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
-import numpy.typing as npt
 
 from ....types import NDArrayFloat
 
@@ -17,7 +16,7 @@ from ....types import NDArrayFloat
 def create_straight_edge_blender(
     straight_blend_pow: float,
     straight_start: float,
-    strict_no_outward: bool
+    strict_no_outward: bool,
 ) -> Callable:
     """Create a straight-edge blending function.
     
@@ -28,6 +27,7 @@ def create_straight_edge_blender(
         
     Returns:
         Blending function
+
     """
     def _blend_factor(weights: np.ndarray | float) -> np.ndarray | float:
         w_arr = np.asarray(weights, dtype=float)
@@ -39,13 +39,14 @@ def create_straight_edge_blender(
             w_norm = np.clip((w_clamped - straight_start) / denom, 0.0, 1.0)
         blend_arr = w_norm**straight_blend_pow
         return float(blend_arr) if blend_arr.shape == () else blend_arr
-    
+
     def _straight_blend(
         weight: NDArrayFloat | float,
         original: NDArrayFloat | float,
-        uniform_val: float,
+        uniform_val: float | npt.NDArray[np.float64],
     ) -> Any:
-        uniform_scalar = float(uniform_val)
+        # Accept either scalar or array uniform target; use directly for vector ops
+        uniform_scalar = float(uniform_val) if not isinstance(uniform_val, np.ndarray) else uniform_val
         w_arr = np.asarray(weight, dtype=float)
         orig_arr = np.asarray(original, dtype=float)
         blend_arr = _blend_factor(w_arr)
@@ -53,7 +54,7 @@ def create_straight_edge_blender(
         if strict_no_outward:
             adjusted = np.minimum(adjusted, orig_arr)
         return float(adjusted) if adjusted.shape == () else adjusted
-    
+
     return _straight_blend
 
 
@@ -66,12 +67,12 @@ def apply_straight_edge_flattening(
     w_top: Any,
     cut_bot_deg: float,
     cut_top_deg: float,
-    r_uniform_bot_target: float,
-    r_uniform_top_target: float,
+    r_uniform_bot_target: float | npt.NDArray[np.float64],
+    r_uniform_top_target: float | npt.NDArray[np.float64],
     straight_blend_func: Callable,
     straight_smooth: bool,
-    opts: Dict | None = None,
-) -> Tuple[Any, Any]:
+    opts: dict | None = None,
+) -> tuple[Any, Any]:
     """Apply straight-edge flattening to seam bands.
     
     Args:
@@ -90,6 +91,7 @@ def apply_straight_edge_flattening(
         
     Returns:
         Tuple of (r_base_local, r_base_local_in) with flattening applied
+
     """
     # Smooth mode: softly pull high-radius values toward the uniform targets
     # without creating a hard flat plateau. The original implementation returned
@@ -154,42 +156,48 @@ def apply_straight_edge_flattening(
                     np.roll(rb_loc_in, -2),
                 ])
                 rb_loc_in = np.median(rolled_in, axis=0)
-        # Preserve original scalar return semantics
+        # Preserve original scalar return semantics without changing variable types
+        rb_loc_out: NDArrayFloat | float
+        rb_loc_in_out: NDArrayFloat | float
         if rb_loc.shape == ():
-            rb_loc = float(rb_loc)
+            rb_loc_out = float(rb_loc)
+        else:
+            rb_loc_out = rb_loc
         if rb_loc_in.shape == ():
-            rb_loc_in = float(rb_loc_in)
-        return rb_loc, rb_loc_in
-    
+            rb_loc_in_out = float(rb_loc_in)
+        else:
+            rb_loc_in_out = rb_loc_in
+        return rb_loc_out, rb_loc_in_out
+
     if cut_bot_deg > 0.0 and (
         np.any(w_bot > 0.0) if isinstance(w_bot, np.ndarray) else (w_bot > 0.0)
     ):
         r_base_local = straight_blend_func(
-            w_bot, r_base_local_orig, r_uniform_bot_target
+            w_bot, r_base_local_orig, r_uniform_bot_target,
         )
         r_base_local_in = straight_blend_func(
-            w_bot, r_base_local_in_orig, r_uniform_bot_target
+            w_bot, r_base_local_in_orig, r_uniform_bot_target,
         )
-    
+
     if cut_top_deg > 0.0 and (
         np.any(w_top > 0.0) if isinstance(w_top, np.ndarray) else (w_top > 0.0)
     ):
         r_base_local = straight_blend_func(
-            w_top, r_base_local, r_uniform_top_target
+            w_top, r_base_local, r_uniform_top_target,
         )
         r_base_local_in = straight_blend_func(
-            w_top, r_base_local_in, r_uniform_top_target
+            w_top, r_base_local_in, r_uniform_top_target,
         )
-    
+
     return r_base_local, r_base_local_in
 
 
 def compute_straight_edge_parameters(
-    opts: Dict,
+    opts: dict,
     straight_edge: bool,
     uniform_ring: bool,
-    has_cut: bool
-) -> Tuple[bool, bool, bool, float, float]:
+    has_cut: bool,
+) -> tuple[bool, bool, bool, float, float]:
     """Compute parameters for straight-edge flattening.
     
     Args:
@@ -201,27 +209,28 @@ def compute_straight_edge_parameters(
     Returns:
         Tuple of (enable_straight, enable_uniform, straight_smooth, 
                   straight_blend_pow, straight_start)
+
     """
     flatten_enabled_local = bool(opts.get("lp_enable_flattening", False))
     disable_straight = bool(opts.get("lp_disable_straight_flattening", False))
     enable_straight = straight_edge and not disable_straight
     enable_uniform = uniform_ring and flatten_enabled_local
-    
+
     straight_smooth = (
         bool(opts.get("lp_cut_straight_smooth_mode", False))
         and enable_straight
         and has_cut
         and not uniform_ring
     )
-    
+
     if not (enable_straight or enable_uniform) or not has_cut:
         return False, False, False, 0.0, 0.0
-    
+
     # Compute blend parameters
     straight_blend_pow = max(0.01, float(opts.get("lp_cut_straight_blend_pow", 0.05)))
     straight_start = float(opts.get("lp_cut_straight_lock_threshold", 0.2))
     straight_start = min(max(0.0, straight_start), 0.995)
-    
+
     # Optional: preserve facet planarity
     if bool(opts.get("lp_cut_straight_preserve_facets", False)):
         straight_start = max(
@@ -232,7 +241,7 @@ def compute_straight_edge_parameters(
             straight_blend_pow,
             float(opts.get("lp_cut_straight_preserve_blend_pow", 2.0)),
         )
-    
+
     if uniform_ring:
         straight_blend_pow = 1.0
         straight_start = 0.0
@@ -245,5 +254,5 @@ def compute_straight_edge_parameters(
                 straight_blend_pow,
                 float(opts.get("lp_uniform_ring_blend_pow", 2.0)),
             )
-    
+
     return enable_straight, enable_uniform, straight_smooth, straight_blend_pow, straight_start

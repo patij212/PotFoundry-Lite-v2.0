@@ -6,11 +6,6 @@ to improve modularity and prepare for Qt desktop migration.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
-
 
 def render_interactive_tab() -> None:
     """Render the main Interactive Designer tab content.
@@ -21,7 +16,7 @@ def render_interactive_tab() -> None:
     
     Future work: Extract the complete Interactive tab rendering logic here.
     """
-    pass  # Implemented directly in app.py for now
+    # Implemented directly in app.py for now
 
 
 def render_batch_tab() -> None:
@@ -45,7 +40,7 @@ def render_library_tab() -> None:
 
 
 __all__ = [
-    "render_interactive_tab",
     "render_batch_tab",
+    "render_interactive_tab",
     "render_library_tab",
 ]

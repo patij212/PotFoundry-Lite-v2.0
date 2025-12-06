@@ -5,7 +5,7 @@ Renders a simple 2D profile plot of outer/inner radii for a few theta slices.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 
@@ -20,7 +20,7 @@ def render_profile(
     Rb: float,
     expn: float,
     r_outer_fn: Any,
-    opts: Dict[str, Any],
+    opts: dict[str, Any],
     t_wall: float,
 ) -> None:
     import matplotlib.pyplot as plt
@@ -39,7 +39,7 @@ def render_profile(
             _opts.setdefault("_pf_expn", expn)
             r_list.append(float(r_outer_fn(th, z, r0, H, _opts)))
         ax.plot(
-            zvals, r_list, alpha=0.9, label=f"outer theta={int(th * 180.0 / np.pi)}°"
+            zvals, r_list, alpha=0.9, label=f"outer theta={int(th * 180.0 / np.pi)}°",
         )
         inner = _np.maximum(np.array(r_list) - t_wall, 0.0)
         ax.plot(

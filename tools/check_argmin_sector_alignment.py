@@ -4,11 +4,11 @@ import os
 
 def main() -> None:
     p = os.path.join(
-        os.path.dirname(__file__), "..", "tools", "edgeflow_verbose_diagnostics.jsonl"
+        os.path.dirname(__file__), "..", "tools", "edgeflow_verbose_diagnostics.jsonl",
     )
     p = os.path.normpath(p)
     found = None
-    with open(p, "r", encoding="utf-8") as f:
+    with open(p, encoding="utf-8") as f:
         for line in f:
             if not line.strip():
                 continue

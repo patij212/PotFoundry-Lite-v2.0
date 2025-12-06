@@ -10,16 +10,16 @@ from __future__ import annotations
 
 from .dimensions import (
     validate_bottom_radius,
+    validate_bottom_thickness,
+    validate_dimensions_compatibility,
     validate_drain_radius,
     validate_height,
     validate_top_radius,
     validate_wall_thickness,
-    validate_bottom_thickness,
-    validate_dimensions_compatibility,
 )
 from .geometry import (
-    validate_mesh_resolution,
     validate_exponent,
+    validate_mesh_resolution,
     validate_style_name,
 )
 from .utils import (

@@ -1,154 +1,536 @@
-    [2025-11-26] Focus tween now adjusts camera distance based on hit depth for natural framing.
-    [2025-11-26] Initial CameraController class extracted for pointer/state logic centralization.
-        [2025-11-26] Pointer event handlers (pointerdown/pointermove/pointerup) now delegate to CameraController, preserving previous behavior while consolidating logic.
-        [2025-11-26] CameraController now encapsulates focus tween state, pointer event handling, and interaction bookkeeping. This includes:
-            - `cancelFocusTween`, `startFocusTween` and `markInteraction` moved into CameraController and exposed via wrappers.
-            - Delegated pointer handlers `onPointerDown`, `onPointerMove`, `onPointerRelease` implemented.
-            - Arcball inertia handshake preserved (pointer -> state inertia transfer on release).
-        Validation & Next Steps:
-            - Verified TS build after this migration; no runtime changes to UX observed.
-            - Next: Migrate remaining helper functions (zoom-to-cursor, free-look translation inertia) into the CameraController.
-            - Add unit/integration tests for the `startFocusTween` behavior and for arcball/pointer inertia behavior.
-        [2025-11-26] Migrated free-look helpers (`applyFreeLookRotation`,`applyFreeLookPan`,`applyFreeLookDolly`,`applyFreeKeyboardInput`, `translateFreeCamera`, `ensureFreePosition`) into `CameraController` and replaced top-level wrappers.
-        [2025-11-26] Exported CameraController and implemented wrappers for all camera-related utilities (pivot updates, inertia reset, zoom-to-cursor, focus tween). Rebuilding confirmed success.
-        Pending: Move CameraController to its own module file, add unit tests for `startFocusTween(hitDepth)`, arcball inertia, and pointer event behavior; complete API extraction and add docs.
-Professional-Grade WebGPU Camera Control System Design
+WebGPU Camera Control System Design
 Requirements and Goals
-We need to implement a robust camera controller for a WebGPU 3D viewer that supports multiple interaction modes and fluid user experience. Key goals include:
-•	Unconstrained Rotation: Full 360° yaw and 180° pitch rotation without artificial limits. The camera should be able to flip upside-down when passing the zenith/nadir (pole) without abrupt orientation jumps or gimbal lock issues[1].
-    Progress 2025-11-26: Quaternion math now lives in `camera_basis.ts` and both committed/display quaternions are tracked in `webgpu_core.ts`, so pole crossings stay continuous in every mode.
-•	Turntable Orbit Mode: A CAD-style turntable control where yaw rotates around the global vertical (world-up axis) and pitch rotates around the camera’s local right axis. The horizon remains level (no roll), and drag directions feel natural (dragging horizontally yaws around world up; dragging vertically pitches up/down)[2].
-    Progress 2025-11-26: Turntable basis mutations now route through the shared quaternion state, keeping roll suppression intact while presets/payloads stay in sync; further UX tuning still needed.
-•	Arcball (Trackball) Mode: A free-form orbit mode (toggleable via UI or props) that lets the user tumble the view around the target as if dragging a trackball. This allows rotation about all axes (including camera roll) for maximum flexibility[2]. It should be intuitive – moving the mouse rotates the scene as if you’re “rolling” a sphere under the cursor.
-    Progress 2025-11-26: Pointer-down captures now stash the start quaternion and compute drag deltas as `q_drag * q_start`, eliminating incremental drift; inertia remains to be wired.
-•	Free-Look Mode: An optional first-person or “fly” mode where the camera is not constrained to orbit around a fixed target. In free-look, the camera’s position and orientation move freely (no locked pivot). This mode enables inspecting the scene from any position, with controls similar to FPS games (e.g. click-and-drag to look around, WASD to move).
-    Progress 2025-11-26: Free-look reuses the same quaternion/basis pipeline so switching modes preserves heading; keyboard translation and pitch clamping are next.
-•	Smooth Pan & Zoom: Panning (translating the view) and zooming should be fluid and precise. Panning will translate the camera or orbit target without changing orientation, and zooming (dolly in/out) should preferably be zoom-to-cursor – meaning the point under the cursor stays centered while zooming[3]. This avoids the need for constant panning adjustments.
-•	Intuitive Controls: User input mapping should be consistent across modes. No unexpected inversions of controls when the camera passes over the top – the motion should always correspond to the drag direction on screen. We must avoid the common “orbit flip” problem when looking straight up/down by using a rotation representation that remains continuous (quaternions)[1]. Dragging the mouse left/right or up/down should have a predictable effect in all modes.
-•	Focus on Point (Re-center): Users can double-click or tap a point in the scene to refocus the camera on that point. In orbit modes, this means shifting the orbit target to that location (and possibly adjusting camera distance) so that subsequent rotations pivot around the new point. This feature enhances navigation by letting users quickly center on areas of interest[4].
-•	State Management: Cleanly separate transient interaction state from the committed camera state. For example, during an ongoing drag, maintain a temporary rotation offset that is applied to the camera, and only commit it when the drag ends. This approach, consistent with our existing displayCamForward/right/up basis usage, prevents accumulating numerical error and makes the math easier to manage. The camera’s basis (forward, right, up vectors) should be updated only with committed changes, while a separate variable represents the in-progress change. (This mirrors known arcball implementations that keep an initial quaternion and a live quaternion during drag[5].)
-    Progress 2025-11-26: Display basis/quaternion now mirror transient drags while commits normalize into `state.cam*`, so payloads/presets no longer accumulate float drift.
-Overview of the Solution
-We propose a CameraController module in TypeScript that encapsulates all camera interaction logic. This controller will manage the camera’s state (position, orientation, target pivot, etc.) and expose methods to handle user input (pointer events, gestures, etc.). The design cleanly separates the mathematical operations (in camera_basis.ts) from event handling and state updates (in webgpu_core.ts or a new controller class), in line with PotFoundry’s basis-based camera philosophy. The core ideas are:
-•	Use a unified camera representation based on position and orientation (using a quaternion or equivalent basis) rather than Euler angles. A quaternion provides smooth, continuous rotations without gimbal lock[6], allowing the full range of motion (360° yaw, 180° pitch) with no singularities. We will convert this orientation to the existing forward/right/up basis vectors for rendering usage each frame.
-•	Maintain a distinct camera pivot (target point) for orbit modes. The camera’s position in orbit mode is derived as position = pivot - (forward * distance), where forward is the camera’s viewing direction. In free-look mode, the concept of pivot is not used (the camera moves independently).
-•	Implement mode switching between Turntable, Arcball, and Free-look via a mode flag or enum. The CameraController will interpret input events differently depending on the mode, but will use shared data structures so switching modes is seamless. (For example, if switching from orbit to free-look, we can drop the pivot but carry over the camera’s current orientation and position.)
-We will update the existing webgpu_core.ts to replace any old orbit/tumble logic with calls into this new CameraController. The camera_basis.ts utilities might be extended to support new operations (like constructing quaternions, transforming basis vectors, etc.), but we will strive to keep the math helper functions separate from state management. Below we detail each aspect of the implementation.
+•	Unconstrained Rotation: The camera should allow full infinite 360° yaw and ±90° pitch without gimbal lock or abrupt flips. Users can even turn the camera upside-down smoothly, with no sudden orientation jumps. Using quaternion-based rotations ensures continuous movement through the poles without singularities.
+•	Turntable Orbit Mode: A classic CAD-style orbit around a target point (pivot). Yaw rotates around the world “up” axis (e.g. global Y axis), and pitch rotates around the camera’s local right axis. The horizon stays level (no roll). Dragging horizontally yaws around world up; dragging vertically pitches the camera up/down. This mode keeps the camera’s up vector aligned to world up except when fully inverted.
+•	Arcball (Trackball) Orbit Mode: A free-form tumble around the target. The user can rotate the view about any axis by “dragging the scene” as if spinning a trackball under the cursor. This allows roll as well (unlike turntable) for maximum flexibility. The implementation must feel intuitive – mouse movements translate directly into scene rotations. (Dragging left rotates the scene left, etc., even at odd angles.)
+•	Free-Look (First-Person) Mode: An optional mode where the camera isn’t locked to orbit a pivot. The camera moves and rotates freely in space (6 DoF). Typically yaw and pitch control orientation (like an FPS camera), and the user can translate the camera with keyboard (e.g. WASD for forward/strafe) or mouse controls. In free-look, there is no pivot or fixed point of rotation – the user navigates as if walking/flying through the scene.
+•	Smooth Pan & Zoom: Panning (translating the view in the image plane) and zooming should be fluid and precise. In orbit modes, panning moves the camera and pivot together parallel to the view plane, so the camera continues to look at the same point from a shifted angle. Zooming is implemented as dollying the camera in and out. Ideally, implement zoom-to-cursor: when the user scrolls or pinches to zoom, the point under the cursor stays under the cursor (instead of always zooming toward the center). This reduces the need for corrective panning when zooming into details.
+•	Intuitive Controls: The controls should always correspond to the user’s drag direction, even if the camera is upside-down. We must avoid the common issue where controls feel inverted after the camera passes over the top. The solution is to adjust input interpretation based on camera orientation (using quaternions and perhaps flipping the horizontal drag when inverted) so that moving the mouse left/right/up/down consistently rotates or moves the view in the expected direction.
+•	Focus on Point (Re-center): The user can double-click a point in the scene to focus the camera on that point. In orbit mode, this will smoothly move the pivot to that point (and adjust camera distance if needed) so that subsequent rotations orbit around the new focus. This feature helps navigate large models by quickly zooming into an area of interest. It should animate smoothly (not jump cut) for a polished feel.
+•	Robust State Management: Cleanly separate the committed camera state (the actual position, orientation, etc. that defines the view) from any transient interaction state (intermediate values during an ongoing mouse drag or animation). For example, while dragging to rotate, we might keep an initial orientation and a live delta rotation, applying the combination for display without immediately overwriting the base state until the drag ends. This prevents numerical drift from incremental updates and makes the math easier to manage. We will use a consistent representation (like a quaternion or basis vectors) for camera orientation in all modes.
+(Progress 2025-11-26: Core goals identified; quaternion math moved into a helper module to handle pole crossing smoothly. The design will use CameraController to unify state and interactions, replacing ad-hoc logic in webgpu_core.ts.)
+Overview and Architecture
+We will implement a dedicated CameraController class (in a new module, e.g. camera_controller.ts) that encapsulates all camera control logic. This controller manages the camera’s state (position, orientation, pivot, etc.), handles user input events (mouse, touch, scroll), and orchestrates smooth movements (inertia, focus animations). By centralizing camera logic, we avoid scattering state across the app, making it easier to maintain and extend.
+Key architectural points:
+•	Unified Camera Orientation: We represent the camera’s orientation with a quaternion (rather than Euler angles) to allow smooth, gimbal-lock-free rotation. The quaternion can be converted each frame to the direction vectors or view matrix needed by WebGPU. All rotations from user input (yaw, pitch, roll) update this quaternion. Using quaternions ensures that as the camera pitches up through 90° and beyond, it naturally rolls 180° to remain continuous rather than experiencing a sudden flip. The camera can freely spin 360° in any direction without singularities.
+•	Camera Position and Pivot: In orbit modes (turntable, arcball), the camera’s position is defined relative to a pivot point (the point it’s orbiting around). We store pivot (a Vec3 in world coords) and a scalar distance (camera-pivot distance). The camera’s position is then position = pivot - forward * distance (assuming forward is the viewing direction vector derived from the orientation). In free-look mode, we don’t use a pivot or distance; the camera’s position moves independently. The controller will maintain the pivot and distance only when applicable. Switching modes may involve dropping or reinstating the pivot.
+•	Camera Modes: We support three modes – "turntable", "arcball", and "free" – controlled by an enum or similar. The CameraController will interpret the same input events differently depending on the current mode:
+•	In turntable mode, input drags affect yaw and pitch around the appropriate axes (global up and camera right).
+•	In arcball mode, input drags result in a free-axis quaternion rotation (trackball).
+•	In free-look mode, input controls behave like first-person (orientation changes yaw/pitch and we translate the camera instead of pivoting around a target).
+We will provide a method to switch modes (e.g. setMode(CameraMode)), ensuring a seamless transition. When switching from an orbit mode to free-look, the camera’s current world position and orientation are retained, and we simply discard the pivot. When switching from free-look back to orbit, we may need to define a new pivot (for example, the last known pivot or a point straight ahead of the camera at some distance) – but commonly the application might default to a sensible point (like the model center or last focus point).
+•	Separation of Math and State: Low-level math operations (quaternion math, vector transforms) will live in a utility module (e.g. camera_basis.ts). This keeps the controller focused on state management and input logic. For instance, functions to create quaternions from axis-angle, multiply quaternions, rotate vectors by quaternions, etc., will be defined in camera_basis.ts. The CameraController will use these utilities to apply rotations and compute new orientations or positions. Keeping math in one place makes it easier to test and ensures consistency (the same quaternion routines are used everywhere).
+•	Rendering Integration: The camera controller will output the camera parameters needed by the renderer each frame. Specifically, after each update, we derive the camera’s basis vectors from the quaternion:
+•	cameraForward = orientation * (0, 0, -1) (assuming forward is -Z in camera local coords)
+•	cameraRight = orientation * (1, 0, 0)
+•	cameraUp = orientation * (0, 1, 0)
+These vectors (or the view matrix constructed from position & orientation) will be fed into the WebGPU shaders or uniform buffers. In the existing system, webgpu_core.ts uses displayCamForward, displayCamUp, displayCamRight for rendering – our controller will update these each frame to reflect the current view. We’ll remove older Euler-angle or incremental orientation code in favor of this unified quaternion approach.
+(Progress 2025-11-26: The initial CameraController class has been created to centralize state and pointer logic. Mouse event handlers in the app now delegate to CameraController methods, preserving existing behavior but in a cleaner structure. Functions like startFocusTween, cancelFocusTween, and markInteraction have been moved into this class. The quaternion-basis representation is in place: orientation is stored as camQuat, and we also track a displayCamQuat during interactions to mirror the transient rotation without immediately committing it.)
 Camera Rotation Modes
 Turntable Orbit Mode
-In turntable mode, the camera orbits around a fixed target point (pivot) like a potter’s wheel or turntable. The implementation will maintain spherical angles under the hood (or derive them from quaternions): a horizontal angle (yaw) around the global up-axis, and a vertical angle (pitch) around the camera’s right axis. We do not clamp the pitch to avoid the poles; instead we allow it to reach ±90° (straight up or down). At exactly the poles, yaw rotations technically have no effect on the view orientation, but as soon as the camera passes the pole, it will effectively be upside-down. By using quaternions for orientation, we ensure the transition is smooth – the camera will roll 180° implicitly rather than suddenly flipping the view vectors[1]. In practice, this means the camera’s up vector will invert once you go beyond 90°, but it happens as a natural consequence of the continuous rotation representation, not an abrupt forced flip.
-
-    Progress 2025-11-26: Turntable yaw/pitch inputs now update `camQuat` and `displayCamQuat` via the shared helpers, so pole crossings stay smooth; still need to finalize drag-speed curves and flip detection UX.
-Rotation controls: Dragging the pointer will adjust yaw and pitch: if the user drags to the right, we rotate the camera to the right around the world’s vertical axis; dragging up rotates the camera up around the camera’s side axis. The drag-to-rotation mapping will be set so that it feels direct. (For example, dragging upward causes the scene to tilt upward, showing more of the ground – which means the camera pitched downward. We’ll ensure this is intuitive by possibly inverting the pitch input if needed.) Because turntable locks the roll, the camera’s “up” remains roughly aligned with world up except when fully inverted. This mode is essentially the classic orbit control with a defined up-direction[2], giving users a consistent frame of reference (no confusion about which way is up).
-Internally, each drag will create a small yaw rotation (about global Y axis) and/or pitch rotation (about camera’s right-axis). We compose these via quaternion multiplication with the current orientation. For example: newOrientation = rotate(quat, axis=worldUp, angle=Δx) * rotate(quat, axis=cameraRight, angle=Δy) * currentOrientation. Using quaternions avoids gimbal lock and axis discontinuities by smoothly interpolating the orientation in 3D space[6]. We also ensure the turntable’s implementation handles the pole crossing elegantly: as the pitch approaches ±90°, further mouse movement will start to introduce a camera roll so that yaw dragging still causes a rotation in the viewer’s plane rather than doing nothing or snapping axes. This way, even when the camera goes upside-down, continuing a left-right drag will appear to rotate the scene consistently (albeit the camera is inverted). The end result is a full 180° pitch range without any locked viewpoint, and no sudden camera flips – any inversion happens as a smooth continuation of the drag.
-Arcball (Trackball) Orbit Mode
-Arcball mode provides unconstrained rotation about all axes by treating the scene like a trackball[2]. When the user clicks and drags, we map the mouse motion to a virtual sphere (or hemisphere) centered on the viewport. Each drag motion from the initial press point to the current point corresponds to a 3D rotation. We will implement Shoemake’s arcball algorithm: on mouse-down, record the initial click’s projection onto the virtual sphere (point p1). On each mouse move, project the new cursor position to the sphere (point p2). Compute the rotation that takes p1 to p2: the axis of rotation is a = p1 × p2 (cross product) and the angle θ between p1 and p2 is given by the dot product (cos θ = p1·p2)[7][8]. We then create a quaternion representing that rotation and apply it to the camera’s orientation. Importantly, we compose this rotation with the camera’s starting orientation at drag-begin (which we saved). For example, if q_start is the quaternion of the camera when the drag began, and q_drag is the quaternion from p1 to p2, then the new camera orientation q_now = q_drag * q_start. This ensures the rotation is applied relative to the camera’s original orientation at the start of the drag (so small drags always produce small relative rotations). We do not accumulate incremental Euler angles; we always compute the delta from the initial drag point to current, which is more stable. This approach cleanly separates the transient rotation (q_drag) from the base orientation (q_start), matching recommended arcball practices (e.g. storing an mQDown and updating mQNow on the fly[5]). When the drag ends, we multiply the base orientation by the final q_drag to commit the new orientation as the starting point for future interactions.
-
-    Progress 2025-11-26: Implemented the q_drag * q_start workflow with normalized display bases; next actions include refactoring into a controller class and adding inertial continuation.
-Arcball mode allows the camera to roll freely – so unlike turntable, the camera’s up vector is not constrained to world up. The benefit is that the user can view the scene from any angle without gimbal issues or gimpy poles. However, it could be disorienting to some users if the view tilts. We will provide a UI toggle or programmatic switch to choose Arcball vs Turntable, so users (or the app) can select their preferred mode. The code structure might treat both as orbit modes but with a conditional for how rotations are computed: turntable uses separate yaw/pitch constraints, arcball uses the trackball quaternion approach. Toggling modes can reuse the same camera state (position, orientation, pivot) – for example, enabling arcball simply means subsequent drags use the trackball algorithm, but the current orientation carries over (even if it includes a rolled state).
-Free-Look Mode (First-Person)
-Free-look mode divorces the camera from any orbit target. Here, the camera has full six-degree-of-freedom movement: it can yaw/pitch (and potentially roll) in place, and it can translate in any direction. This is akin to a spectator camera or FPS camera. We will implement free-look rotation similarly to turntable’s approach (yaw and pitch angles), but crucially, the yaw will be about the camera’s own up axis (not the world’s up) since in free-look the camera’s up can drift if roll is allowed. We likely will not intentionally introduce roll in free-look unless a specific UI for rolling is added – typically, free-look (FPS style) locks roll to keep the horizon level for the user, so we could treat the camera’s local up as aligned to world up initially and only allow yaw (360°) and pitch (~180°) like an FPS camera. This gives a stable experience (no sideways tilt unless the user specifically wants to simulate an aircraft roll, which is an edge case).
-For translation, we’ll support keyboard or on-screen controls: e.g. W/A/S/D to move forward/left/back/right in the camera’s local coordinate system, and perhaps Q/E or R/F to move up/down. In a Streamlit context, keyboard events may be tricky, but we can also use right-drag or a modifier + drag for movement. Another approach is to use the scroll wheel in free-look to move forward/back (instead of dollying toward a pivot, it literally moves the camera forward). This will be configured to ensure a fluid free-fly experience.
-
-    Progress 2025-11-26: Free-look rotations now reuse the orbit quaternion utilities, and payload/preset switches preserve `freePosition`; translation controls are still TODO.
-Implementationally, enabling free-look mode means we ignore any target/pivot. The camera’s position and orientation are updated directly. Rotations are applied to the camera’s orientation quaternion (similar to turntable, but with no external pivot). Panning in free-look is effectively the same as translating the camera: for example, dragging the scene (with a certain mouse button or modifier) could strafe the camera horizontally/vertically relative to the view. Zoom inputs (scroll) in free-look will translate the camera forward or backward along its forward vector (achieving a similar effect to moving closer or farther).
-Because free-look can potentially lead to the camera being upside-down as well (if the user pitches past 90°), we will again rely on quaternions to handle the continuity. If we decide to prevent roll in free-look (to mimic typical FPS controls), we will clamp the roll or realign the camera’s up after rotations. Otherwise, if we allow full 360° pitch (which would loop the camera), the controls might invert after passing 180° of pitch – but since free-look is less frequently used for continuous upside-down loops, this is a minor consideration. By default, we can limit pitch to ±90° in free-look to avoid going upside down, which is a reasonable UX choice for an FPS-style camera. In any case, free-look uses the same underlying math utilities and state structure, just with pivot undefined and position/orientation updating freely.
-Panning and Zooming Mechanics
-Panning (Orbit Modes): In turntable or arcball mode, panning will strafe the camera and pivot together in the view plane. Typically, orbit controllers pan by shifting the target (pivot) horizontally/vertically relative to the camera. We will implement panning such that a click-and-drag with e.g. the right mouse button (or a two-finger drag on touch, or left-drag with a key modifier) moves the camera’s target along the plane parallel to the camera’s image plane. This means if the user drags left, the entire view’s center shifts left – effectively the camera and pivot move right relative to the scene. Concretely: we can take the camera’s right and up direction vectors, and move the camera’s position and pivot by a vector Δx * -right + Δy * up (with appropriate scaling for speed and possibly adjusted for depth). This translates both the camera and pivot so that the camera continues looking at the same point but that point shifts in screen space. Because the camera orientation doesn’t change during a pure pan, the operation is straightforward addition to position and target. We will include speed damping so that panning feels smooth and not overly sensitive.
-Panning (Free-Look): In free-look, panning is essentially the same as moving the camera. A horizontal pan drag could move the camera laterally (strafing), and a vertical pan drag could move it up/down. We’ll use the camera’s orientation to determine the axes: e.g. for lateral movement use camera’s right vector, for vertical movement use world up (or camera’s up if we allow tilted roll). Alternatively, in free-look, traditional “pan” might not be needed if we implement explicit movement controls (WASD covers panning motions). Regardless, the controller will support a pointer-driven pan for consistency – mapping to translating the camera’s position.
-Zoom/Dolly: Zooming the view will be handled by moving the camera toward or away from the pivot (for orbit modes) or moving the camera forward/back (for free-look). In orbit modes, we maintain a distance from the camera to the pivot. Scrolling the mouse wheel or pinching will decrease or increase this distance, respectively, dollying the camera. To achieve zoom-to-cursor behavior, we incorporate a slight pan during the zoom so that the point under the cursor stays fixed on screen[3]. The idea is that instead of always zooming into the center of the view, we zoom towards the area of interest under the mouse. Implementation: when a zoom input occurs, we cast a ray from the camera through the cursor’s position into the scene (if we have a depth buffer or scene geometry, we can find the intersection point near the cursor). If an intersection point is found, we will use that as the anchor. If not (e.g. empty background), we can use the ray at the depth of the current pivot or some default plane. We then compute a new camera position such that after moving, the cursor’s world point is aligned. This can be done by a combination of moving the camera forward along its view direction and panning slightly. Another simpler approach is: project the pivot point into screen coordinates; when zooming, shift the pivot in screen-space toward the cursor by some factor to simulate that anchor. Either way, the effect we achieve is that whatever was under the cursor stays roughly under the cursor (and grows in size) as you zoom in[3]. This is a much more natural experience, as noted in CAD software and Google Maps 3D. We will likely include a setting or automatically enable zoom-to-cursor. If for some reason we want the old behavior (zoom to center), we could disable that calculation.
-Zoom Limits & Behavior: We will define reasonable limits for zoom distance to avoid going through the pivot or too far out. For example, stop at a small minimum distance (or switch to a different navigation if attempting to go inside an object) and a far maximum (or when the scene extents are fully visible). If using a perspective camera, zooming is implemented by dolly movement (not by changing the FOV, which remains fixed for predictability). In an orthographic projection case (if any), zooming would adjust the orthographic scale, but the logic of zoom-to-cursor still applies (adjust the center offset accordingly).
+Turntable mode restricts camera rotation to yaw (around the world’s up axis) and pitch (around the camera’s horizontal axis), with the camera orbiting a fixed pivot. This gives a traditional orbital view where “up” in the scene remains up in the view (until you go upside-down).
+•	Rotation Axes: Yaw rotates the camera around the global up axis (e.g. the Y axis in world space). Pitch rotates the camera around its own right axis (which is perpendicular to both the forward direction and world up). By combining these, the camera can move to any orientation on a sphere around the target, except that roll is locked (the camera’s up vector always stays in the same vertical plane as world up). We do not artificially clamp the pitch, allowing the camera to reach the poles (looking straight down or up at the pivot).
+•	Quaternion Application: To apply a yaw and pitch update to the camera’s quaternion:
+•	Compute the yaw rotation quaternion q_yaw = Quaternion(axis = worldUp, angle = Δyaw). This rotates the orientation around a fixed global axis.
+•	Compute the pitch rotation quaternion q_pitch = Quaternion(axis = cameraRight, angle = Δpitch). The cameraRight axis is the camera’s local X-axis before the pitch is applied. (This axis is derived from the current orientation or from the intermediate yaw-adjusted orientation.)
+•	Update orientation: newOrientation = q_pitch * (q_yaw * currentOrientation). Here we pre-multiply by yaw (global rotation) and post-multiply by pitch (local rotation). In practice, we may apply them sequentially: first apply yaw (orientation = q_yaw * orientation), then pitch about the new right axis (orientation = orientation * q_pitch). Using quaternion multiplication ensures smooth combination of these rotations. We normalize the resulting quaternion to avoid drift.
+Fully using quaternions prevents gimbal lock. Even when pitch approaches ±90°, the representation remains stable. If the camera passes beyond 90° pitch (going upside-down), the quaternion will smoothly incorporate a 180° roll. This means the camera’s up vector flips without any sudden jump – it’s just part of the continuous rotation.
+•	Drag Control Mapping: Dragging the mouse or touch controls the yaw and pitch:
+•	Horizontal drag (Δx) → rotate yaw by some scaled angle. The scene appears to rotate left/right as the user drags.
+•	Vertical drag (Δy) → rotate pitch up or down. Dragging up typically pitches the camera down (showing more of the ground), which can feel inverted, so we will adjust the sign as needed to ensure it feels natural. We likely set it such that dragging upward moves the viewpoint upward (i.e., tilts the camera to look down).
+•	We will fine-tune the sensitivity (degrees per pixel dragged) to make orbiting feel responsive yet precise.
+•	Pole Behavior: At the top or bottom (pitch ~ ±90°), yaw has a diminished effect on the view (rotating around world up when looking straight down doesn’t change the scene). In our implementation, as the camera passes the pole, it will start to roll around to maintain a continuous feeling. From the user’s perspective, if they drag horizontally while upside-down, we will consider flipping the direction of yaw input to avoid confusion (because when inverted, moving the mouse left might otherwise rotate the view the opposite of normal). A simple check: if the camera’s up vector dot product with world up is negative (meaning camera is upside-down), we invert the horizontal drag direction. This ensures that the controls remain consistent from the user’s viewpoint.
+•	World-Up Lock: Except for the implicit 180° roll on inversion, the camera in turntable mode doesn’t roll freely. The “horizon” remains level in typical use. This is useful for technical viewing where an upright orientation is preferred.
+Progress 2025-11-26: Turntable yaw/pitch inputs are now wired through the shared quaternion state (camQuat). The camera smoothly transitions through the zenith without sudden flips. Remaining tasks include tuning the drag sensitivity curves and perfecting the inverted drag logic to keep controls intuitive when the camera goes upside-down.
+Arcball Orbit Mode
+Arcball mode offers unconstrained rotation about all axes, using a virtual trackball metaphor. This is implemented via quaternion rotations derived from cursor motion, giving a very fluid tumble.
+•	Rotation Mechanism: We use Shoemake’s classic arcball technique. Imagine a sphere centered in the view (covering the screen). When the user clicks and drags:
+•	On pointer down, project the cursor’s 2D position onto this virtual sphere (or sphere cap) to get a 3D point p1. This is done by mapping screen coordinates to a [-1,1] range (normalized device coordinates), then interpreting those as x,y on the sphere and computing z = √(1 - x² - y²) (if the point is outside the sphere, we normalize it onto the sphere’s surface).
+•	On pointer move, project the new cursor position to get p2 on the sphere.
+•	Compute the rotation that takes p1 to p2. The rotation axis a is the cross product p1 × p2 (which is perpendicular to the plane containing both points), and the rotation angle θ can be derived from the dot product: cos(θ) = p1 · p2, so θ = arccos(p1·p2). We create a quaternion q_drag representing this rotation (axis = a (normalized), angle = θ).
+•	Apply this quaternion to the camera’s starting orientation from when the drag began. If q_start is the camera’s orientation (quaternion) saved at the moment of mouse-down, then the current orientation during the drag is q_now = q_drag * q_start. We do not incrementally apply small deltas frame-by-frame; instead we always recompute the relative rotation from the initial grab point. This avoids accumulation errors and provides a stable, reversible rotation as the user moves back and forth.
+•	Quaternion Composition: The key formula is q_now = q_drag * q_start. Here, q_drag is computed fresh each update from the cursor positions, and q_start is the quaternion orientation when the drag started. By multiplying, we apply the new rotation in addition to the original orientation. We will normalize q_drag and q_start as needed to ensure numerical stability. When the drag ends, we commit the new orientation by updating the camera’s stored orientation quaternion (and discarding the now-outdated q_start and q_drag). This approach cleanly separates transient rotation from base orientation.
+•	Free Rolling: Unlike turntable, arcball imposes no constraint on the camera’s up vector. The camera can roll in any direction depending on how the user drags (for instance, a diagonal drag will produce a combined yaw+pitch+roll rotation). This gives maximum freedom in examining the model from any angle. The downside is that the view can become tilted, which some users might find disorienting – hence the option to use turntable mode as a more restricted alternative. We allow toggling between arcball and turntable, reusing the same camera state (the orientation quaternion will simply carry whatever orientation it had – including any roll – into the new mode, though turntable mode might ignore roll component except for the upside-down logic).
+•	User Input Mapping: In arcball mode, typically the primary mouse button (left-click drag) is used for rotation (since it’s the main interaction). The movement is interpreted via the arcball math described. The feeling is that the user’s drag directly “drags the world”. We ensure the implementation is drag direction consistent: moving the mouse left makes the object rotate as if you pushed its right side backward (object appears to rotate left). The math with the cross product inherently handles this correctly.
+•	Inertia in Arcball: (Detailed in a later section, but worth noting) – If the user “flings” the view (a quick drag-release), we can continue rotating with inertia. For arcball, we can derive an angular velocity vector from the last few positions (p1 to p2 changes) to continue the motion.
+Progress 2025-11-26: Arcball rotation is now implemented using the stored start quaternion and live q_drag as described. The orientation updates as q_now = q_drag * q_start, which eliminated incremental drift and gimbal issues. Next, inertial rotation on release will be added so that a quick tumble continues to spin the model momentarily.
+Free-Look (First-Person) Mode
+Free-look mode disconnects the camera from any orbit pivot, allowing free movement and looking around from a first-person perspective. This is akin to an FPS camera or a spectator mode in 3D apps.
+•	Orientation Control: We adopt a yaw/pitch scheme similar to turntable, but crucially, yaw is applied around the camera’s local up axis, not a fixed world up, since the camera might not be aligned with world axes. Typically, we will keep the camera’s “up” oriented to world up in free-look to avoid unnatural roll (most first-person cameras keep the horizon level for the viewer). We can enforce that by not allowing roll input in this mode. Yaw rotates the camera around its current up vector; pitch rotates around its right vector. This is essentially like turntable but without a pivot constraint. We will likely clamp pitch to avoid flipping over in free-look (e.g. limit to ~±85°) so the user doesn’t end up upside-down in this mode, since that’s generally not desired in first-person navigation. (If full 180° pitch is allowed, we must handle inverted controls as with turntable.)
+•	Position Control: Since there’s no pivot, moving the camera is done via translations. We have two main ways to move:
+•	Keyboard: In a typical setting, W/A/S/D keys move forward/left/back/right, and perhaps Q/E or R/F move vertically up/down. However, in a Streamlit environment we may not have continuous key events (Streamlit doesn’t support persistent real-time keyboard input easily). We can still plan for it (maybe via JavaScript in the front-end if needed), but we also design pointer alternatives.
+•	Pointer (Mouse/Touch): We can repurpose mouse drags with a modifier for translation. For example, right-click drag (or Shift + left-drag) can translate the camera: horizontal drag = strafe right/left, vertical drag = move up/down. The scroll wheel (or touchpad two-finger scroll) can move the camera forward/backward (dolly in/out) in free-look mode. This way, all movement can be done with mouse inputs alone:
+o	Scroll up = move forward, Scroll down = move backward.
+o	Right-drag or middle-drag = pan the camera position (strafe or elevator).
+o	Left-drag = look around (change orientation yaw/pitch).
+•	No Pivot, Just Position: The camera’s state in free-look simply consists of a position vector and an orientation quaternion. We ignore any pivot or orbit distance. If the user switches from an orbit mode to free-look, we take the current camera world position (which was pivot - forward*distance in orbit mode) as the starting free-look position, and maintain the same orientation. We also internally drop the concept of pivot (or set it to null). If switching back to orbit, we might restore a saved pivot or pick a new pivot (perhaps cast a ray from camera to find an object to orbit, or use the last known pivot).
+•	Movement Speed: The translation speed (per key press or per pixel drag) will be tuned. We might allow acceleration for continuous input (not applicable if keys can’t be held easily in Streamlit, but if we detect a way, e.g., hold W to move continuously forward). Since that’s tricky in Streamlit, the design relies on discrete or short interactions – e.g., each scroll tick moves a fixed amount, each drag moves proportionally to distance (we can scale movement speed by some factor relative to scene scale or use the camera’s current distance to some reference).
+•	Roll (Optional): Normally free-look cameras do not roll (to keep the view upright). We will by default not include roll controls. If needed, one could implement Q/E to roll the camera, but this is low priority. The quaternion approach supports it, but we’d only use it if a use-case arises (like simulating an aircraft bank).
+Progress 2025-11-26: Free-look mode support has been started. The camera’s orientation updates with yaw/pitch using the same quaternion logic as orbit (ensuring continuity). The code now preserves the freePosition (camera world coords) when switching modes, so toggling free-look keeps the last viewpoint. Next steps are to implement translation controls (WASD or drag) and possibly clamp pitch to avoid flipping over.
+Panning and Zooming
+Panning (Orbit Modes)
+In turntable or arcball mode, panning moves the camera’s viewpoint laterally or vertically relative to the scene, without changing the viewing direction. This is equivalent to moving the orbit pivot on a plane parallel to the camera’s image plane, or equivalently moving both camera and pivot together in world space.
+•	Mechanism: When the user drags with a pan action (commonly assigned to right mouse button drag, middle mouse drag, or left drag with a modifier like Shift), we translate the camera’s position and pivot by the same offset. The offset is computed in world coordinates from the screen movement. A typical approach:
+•	Determine a scale factor so that a given screen pixel movement corresponds to a certain world distance. One method: use the current camera distance or depth to scale movements. For example, a small movement when zoomed in close should move the camera less in world units than the same screen movement when zoomed out far. We can cast a ray from the camera through the screen and find a reference depth (like the pivot distance or depth of a point under cursor) to decide how to map pixels to world units.
+•	Compute the horizontal movement vector as -Δx * rightVector * k and vertical movement as Δy * upVector * k (where rightVector and upVector are the camera’s current right and up directions, and k is the scale factor). Note the negative on Δx: dragging the view to the right (positive Δx) should move the camera left relative to the scene, which is achieved by moving the pivot right (so we subtract from camera’s position movement).
+•	Add this vector to both camera.position and camera.pivot. As a result, the camera and target shift together, keeping the relative orientation and distance the same, but the region of the scene in the center of view changes.
+•	Result: The user perceives this as “grabbing the scene and moving it”. Importantly, because the camera’s orientation does not change when panning, the operation feels like sliding the camera’s viewpoint along a plane. We will ensure the motion is smooth by possibly applying a slight damping to panning speed to avoid it feeling too twitchy.
+•	Edge Cases: If the scene is completely empty (no reference point), panning still just moves the camera in its plane. We might set an arbitrary scaling (like at some default depth). If there is a ground plane or reference, using the intersection with a plane at pivot depth under the cursor yields a natural pan scale.
+•	Free-Look Panning: In free-look mode, panning is essentially just moving the camera. We can treat the same input (e.g. right-drag) as a translation command: horizontal drag moves the camera right/left, vertical drag moves it up/down. The difference from orbit is there’s no pivot to move, only the camera position changes. We use the camera’s orientation to define directions: e.g. use the camera’s right vector for horizontal movement, and either the world up or camera’s up for vertical movement. If we want to allow “flying” up/down irrespective of where the camera is looking, we might choose world up for vertical movement (so you always go straight up/down in world coordinates). Alternatively, using camera’s up will move in the direction the camera considers up (which if pitched could send you at an angle). A common FPS scheme is to keep vertical movement separate (e.g., jump/crouch keys), but for our purposes, we might stick with world up for clarity on a drag pan.
+Zooming (Dolly In/Out)
+Zooming changes the camera’s distance to the scene. In a perspective camera, we achieve a zoom by moving the camera forward or backward (dolly) rather than altering the field-of-view (to maintain a consistent perspective and avoid distortion issues). In orbit mode, this means changing the camera-pivot distance. In free-look, it means moving the camera along its forward axis.
+•	Basic Dolly: If the user scrolls the mouse wheel or pinch-zooms on a touchpad, we compute a delta distance. For example, each notch of the wheel could reduce the distance by a certain percentage (zoom in) or increase it (zoom out). We update camera.distance = camera.distance * factor or camera.distance + delta (with some sensitivity curve). For free-look (no pivot), we move the camera position forward or back along camera.forward by some amount.
+•	Zoom Limits: We enforce limits to avoid invalid positions:
+•	Min Distance: We don’t allow the camera to get so close that it passes through the pivot or goes inside geometry (if the user scrolls too far in). We can set a minimum distance (maybe a small value like 0.1 units or relative to model scale). If reached, we might prevent further zoom-in or switch to a different behavior (some systems automatically transition to first-person at very close distances, but we probably just clamp).
+•	Max Distance: We might set a reasonable far distance (or not, if the scene is unbounded). Possibly clamp to when the entire scene fits in view or some multiple of scene size for practicality.
+The controller will clamp distance within [min, max] range.
+•	Zooming Implementation: The straightforward way is:
+•	In orbit: distance += zoomDelta (with sign such that positive scroll moves in or out appropriately). Or multiplicative for a smooth zoom (like factor 0.95 per tick for zoom in, 1/0.95 for out).
+•	In free-look: position += forward * zoomDelta. We will choose the convention such that scrolling up (forward on a mouse wheel) zooms in (decreasing distance, moving camera closer), which is typical.
+•	Zoom-to-Cursor (Screen-to-World Anchor): To make zoom more intuitive, we will implement zoom-to-cursor behavior. Instead of always zooming toward the screen center, we zoom toward the point under the cursor:
+•	Determine Anchor Point: On a zoom event, cast a ray from the camera through the cursor’s position on the screen into the 3D scene. If we have access to the scene’s geometry or a depth buffer, we try to find the intersection point of this ray with an object or terrain. That intersection is the anchor point – the thing the user is attempting to zoom in on. If an intersection is found, we use it. If not (e.g., the user is pointing at empty sky or we lack picking), we fall back to a reasonable choice: for instance, use a point on the camera’s forward ray at the current pivot distance (meaning assume they intend to zoom towards where the camera is looking at that depth).
+•	Compute Camera Movement: We want to move the camera closer or farther such that the anchor point stays under the cursor during the zoom. If we only dolly forward, the anchor point (if off-center) will drift toward the center. To counteract this, we combine dolly with a slight pan. One method:
+o	Before zoom, note the screen position of the anchor (which is at the cursor by definition initially).
+o	Determine the new desired distance: e.g. newDistance = currentDistance * factor (for orbit) or moveAmount for free-look.
+o	If in orbit mode, set camera.distance = newDistance. This moves the camera along forward vector.
+o	Now, to keep the anchor in the same screen spot, we adjust the pivot: essentially, we want the anchor to be along the camera’s center line after the move. We can set the new pivot equal to the anchor point (so that the camera will now orbit around that point). However, switching the pivot on every tiny zoom step might be too aggressive and cause a slight lateral shift. Another approach is to interpolate: move the pivot a fraction of the way toward the anchor. But the simplest reliable way: recenter on the anchor for the zoom action. So we set camera.pivot = anchor and then position = pivot - forward * newDistance. This way, after zooming, the anchor point is exactly at the center of view (under the crosshair).
+o	If we don’t want to fully center it (to truly keep it under the cursor, not move it to center), a more complex calculation would be needed: essentially, figure out how the camera’s view frustum changes with the new distance and shift the pivot accordingly such that the projection of the anchor remains at the same normalized coordinates. This can be done via some algebra using the projection matrix. But in practice, snapping the pivot to the anchor might be an acceptable solution for now, as it effectively makes the anchor the new center of rotation going forward.
+•	Fallback: If no anchor could be determined (ray hit nothing and perhaps we don’t have a known scene depth), we can default to zooming toward the center of the view (keeping pivot same). Or we can use the depth of the current pivot as an approximate anchor plane.
+•	Effect: With zoom-to-cursor, if the user points at a specific feature on the model and scrolls in, that feature stays under their cursor and zooms closer, rather than sliding off toward the center. This feels much more natural. CAD applications and Google Earth use this technique. We will likely enable this by default. It does mean the pivot (target) may shift during zoom, but the user may not notice except that the zoom felt intuitive.
+•	Orthographic Note: (If we ever use orthographic projections, zooming would adjust the camera’s orthographic scale rather than moving it. The concept of zoom-to-cursor still applies: you would adjust the projection center or use an offset to keep the cursor’s world point stationary in the view.)
+(Progress 2025-11-26: Zoom logic now accounts for the cursor position. Raycasting is used to find a hit point under the cursor; the focus tween (for double-click) uses a similar raycast. If a hit is found on scroll, the controller slightly adjusts the pivot toward that point as it dollys, so the zoom feels targeted. These adjustments are subtle per tick, avoiding jarring jumps. If no hit point is available, the zoom defaults to the view center.)
 Inertia and Smooth Motion
-To give a professional polish, the camera controller will support inertial smoothing for rotations, panning, and zooming. This means if a user “flicks” the view (a quick drag and release), the camera will continue moving for a short duration, decelerating to a stop. In practice, we’ll implement this by storing the last input velocities: e.g., as the user drags, we compute the rotation angular velocity (degrees per second or similar) from the recent events. On mouse release, if the velocity exceeds a threshold, we enter an inertia loop where the camera continues to update its rotation each frame using a gradually decreasing velocity. We’ll apply a exponential damping so that it smoothly comes to rest. The same applies to pan: if you release the mouse while panning quickly, continue translating the view a bit. For zoom, if the user uses a touchpad fling or similar, continue dollying in/out briefly. This feature makes the controls feel “weighty” and natural, and helps in examining objects (users can spin the model and let it rotate to see all sides). We will need to integrate this with the rendering loop – likely using requestAnimationFrame to continue updating the camera during inertia until motion stops.
+To give the camera controls a professional, smooth feel, we incorporate inertia. Inertia means that when the user releases the mouse after a quick drag, the camera continues moving slightly, as if it has momentum, and then gradually slows to a stop. This applies to rotations (orbit or free-look), panning, and zooming if applicable.
+•	Rotation Inertia: During a rotation drag (turntable or arcball), we track the angular velocity. For turntable, we might track separate velocities for yaw and pitch (in degrees per second). For arcball, we can derive an axis-angle velocity. For example, as the user moves the mouse, we can compare the last few orientation changes or cursor positions over time to compute an estimated angular velocity vector (axis + speed). When the drag ends (pointerup), if the angular speed is above a threshold, we enable inertial rotation: the camera will keep rotating at that speed, decelerating over time. For turntable, this means continue changing yaw/pitch each frame by a decaying amount. For arcball, we could continuously rotate the camera around the derived axis by the stored angular velocity (using quaternion slerp or small incremental rotations each frame). We apply a damping factor each frame (e.g. multiply velocity by 0.95 or use an exponential decay function) so that the motion eases out and stops smoothly.
+•	Pan Inertia: Similarly, if the user was panning and releases while still moving the mouse quickly, we carry on translating the view. We store a 2D velocity for the pan (screen-space or world-space units per second). On release, we convert that to a world movement vector (in the camera’s plane) and move the camera & pivot by that vector each frame, reducing it gradually to zero. This allows the view to coast to a stop instead of halting abruptly.
+•	Zoom Inertia: For scroll wheel zoom, inertia usually isn’t needed because scroll is typically discrete steps. However, for touchpad pinch-zoom or a kinetic scroll, one might implement it. If we detect a “fling” zoom (e.g., in a touch environment where the user does a quick pinch release), we could continue adjusting the distance for a brief moment. This is less common, but we’ll keep the architecture open to it.
+•	Implementation: The CameraController will have an update loop (likely tied into the app’s animation frame or update cycle) where it checks for any ongoing inertial motion and updates the camera state accordingly:
+•	We maintain state like inertiaRotationVel (could be a vector or separate yaw/pitch velocities), inertiaPanVel (a 2D or 3D vector), inertiaZoomVel (a scalar for dolly speed).
+•	On each frame, if any of these are non-zero, we integrate them: e.g. camera.orientation = rotationVelocityAxisAngle * camera.orientation (for rotation), camera.pivot += panVelocity, camera.position += panVelocity (for orbit pan), or camera.position += forward * zoomVel (for free-look zoom).
+•	After applying, multiply each velocity by a damping factor (or subtract a fixed deceleration). If the magnitude falls below a small threshold, we set it to zero (stop the motion).
+•	If the user interacts again (e.g., another drag or click) during an inertia motion, we cancel the inertia immediately to give priority to the new interaction. For example, calling markInteraction() could clear any ongoing inertial velocities.
+•	Duration and Feel: The exact damping will be tweaked. A common approach is an exponential decay that slows movement over perhaps 0.5–1 second. The idea is to mimic a friction that is just enough to stop the motion in a short time, without feeling abrupt. We also ensure frame-rate independence by scaling motion by the actual deltaTime between frames (for consistent behavior across 60Hz vs 144Hz, etc.).
+Progress 2025-11-26: Inertial motion has been prototyped. The arcball rotation now captures an axis and angular speed on drag release, and the camera continues to rotate around that axis for a brief period. Turntable inertia for yaw/pitch and pan inertia are also wired in using the last event velocities. The inertial update runs on each animation frame. We’ve verified that starting a new interaction (e.g., a mousedown) calls CameraController.markInteraction() which cancels any ongoing inertia or focus tween, ensuring immediate response to user input.
+Focus and Pivot Re-Centering (Double-Click Focus)
+To enhance navigation, the user can double-click on a point in the scene (or tap twice) to refocus the camera on that point. This is often called “focus on object” or “zoom to fit selection” in other applications. Our implementation smoothly moves the camera so that the clicked point becomes the new pivot (center of rotation).
+•	Raycast to Find Point: On a double-click event, we cast a ray from the camera through the 2D canvas at the click position into the scene. We need either the actual geometry or a depth buffer to get the intersection. Assuming we can get it (in a Streamlit context, perhaps the 3D engine can expose a picking function), we retrieve the 3D coordinates of the clicked point on the model. If nothing is hit (e.g., background was clicked), we might choose to do nothing, or we could default to focusing the camera on some fixed point (like the origin or current pivot).
+•	Animating the Transition: Instead of teleporting the camera instantly, we perform a short animation (say 0.25–0.5 seconds) to move the camera to the new pivot. This involves:
+•	Pivot change: Set the target pivot to the clicked point.
+•	Distance adjustment: Optionally adjust the camera distance for a better view. Often, if the clicked point is far from the current pivot, we want to maintain the same distance. But if the clicked point is on the surface of the object and the current distance is very large or very small relative to it, we might want to zoom in or out to frame that point nicely. A strategy: compute a desired distance such that the point is a certain fraction of the view (perhaps based on scene size or just keep the same distance unless very close to camera).
+•	Position/orientation interpolation: We need to move the camera’s position from its current position to the new position (which is newPivot - forward * newDistance for orbit cameras) while changing the pivot and keeping the point in view. The orientation likely should change to look at the new pivot. If we keep the same forward direction, the camera might already be roughly facing that way, but if not, we can interpolate orientation as well to directly look at the new target.
+•	We will use an easing function (like ease in/out) to make the motion smooth. This can be done via a simple linear interpolation of position and perhaps spherical interpolation (slerp) for orientation.
+•	Focus Tween Implementation: The controller will provide a function like startFocusTween(targetPoint: Vec3). When called, it will:
+•	Compute the current state (position, orientation, pivot, distance).
+•	Compute the desired target state (new pivot = targetPoint, new distance maybe equal to current distance or adjusted, and orientation such that camera forward aims at target pivot from the current approach direction).
+•	Start a timer or use the animation loop to gradually transition from current state to target state over a fixed duration (e.g. 0.3 seconds).
+•	During the tween, user input might be locked out or if the user does interact, we will cancel the tween immediately (to let them take control — nothing is more jarring than fighting the camera).
+•	At the end of the tween, set the camera’s committed state to the new pivot and position, ensure orientation is precisely adjusted to face the pivot.
+•	Canceling/Interrupting: If a new user interaction begins while focusing (e.g., they drag the view mid-tween), we should abort the focus animation. A method cancelFocusTween() will stop the animation and keep the camera at its current state (partway through the transition). We’ll integrate this by calling CameraController.markInteraction() on any user input which in turn calls cancelFocusTween() internally to ensure the camera immediately responds to the user.
+•	Free-Look Mode Behavior: In free-look (which has no pivot), double-click-to-focus could be handled differently. We might choose to interpret a double-click as a command to look at the point without moving the camera to it. For example, we could rotate the camera in place so that its forward vector points at the clicked location (essentially a quick orient toward that point). However, we won’t move the camera’s position because that would be a teleport. Alternatively, we might simply not enable this in free-look mode (or treat it as a no-op). The primary use of focus is in orbit modes.
+•	Home/Predefined Views: (Not exactly part of double-click, but related) We could have preset buttons to reset the view or set an orthographic view. This can be achieved by setting specific pivots/orientations in the controller as well (since our controller can take arbitrary targets).
+Progress 2025-11-26: Double-click focus is implemented. On double-click, a raycast finds the clicked point on the mesh. The controller calls startFocusTween(hitPoint) which creates a 260 ms eased animation. During this tween, the camera smoothly moves to center that point: the pivot shifts to the point, and the distance is adjusted based on the hit depth (so the point is comfortably framed, not too close or too far). The animation updates the camera position and orientation each frame. If the user intervenes (e.g., another drag), CameraController.markInteraction() triggers cancelFocusTween(), aborting the animation to give control back to the user immediately. The result is a slick “zoom to selection” feel when double-clicking, with no abrupt jump.
+State Management and Interaction Lifecycle
+A clear separation of camera state vs interaction state is critical. We define structured types to hold the camera’s persistent state, and use temporary variables for ongoing interactions.
+•	CameraState: This represents the committed, authoritative state of the camera at any given time. We can define it as an interface or type:
+type CameraMode = 'turntable' | 'arcball' | 'free';
 
-    Progress 2025-11-26: Added quaternion-based arcball inertia (axis + angular speed) plus existing pan/turntable decay, so flicks now continue smoothly regardless of orientation.
-We will ensure that inertia is applied only when appropriate (e.g., not when a user intentionally makes a precise small move). Also, if the user engages another interaction (new drag or key press) while inertia is ongoing, we cancel the inertia immediately to retain responsiveness.
-The inertia implementation requires keeping some transient state, e.g. a velocity vector or separate angular velocities for yaw and pitch in turntable mode, or an axis-angle velocity in arcball mode. A simple approach for arcball is to use the last few quaternion differences to derive an angular velocity axis and magnitude. We can simplify by treating turntable and arcball somewhat differently: in turntable, track separate velocities for yaw and pitch (and maybe for roll if ever needed), then update angles each frame; in arcball, store an axis and velocity magnitude. Either way, this will be encapsulated in the CameraController’s update loop. The result is a smoother experience, closer to what users expect from modern 3D viewers.
-Focus and Pivot Re-Centering
-The controller will support double-click (or tap) to focus on a point. When the user double-clicks a location on the model, we perform a raycast in the scene to find the 3D point under the cursor. If a point is found (e.g., on the mesh surface), we will smoothly transition the camera’s pivot to that point. In an orbit mode, this means the new target of the camera becomes that point. We likely also adjust the camera distance if needed so that the point is comfortably in view (for example, if the point was very close, we might back up a bit so the view is not extremely zoomed; or if it’s far, we might move closer). A common implementation is to move the camera such that the clicked point becomes the center of the view. In Blender’s terminology, this is like “View Selected” – the view orbits around the chosen element[4]. We can achieve it by setting: pivot = clickedPoint. Then set camera.position = pivot - forward * distance where distance could remain the same or be adjusted based on scene size. We then update the orientation to look at the new pivot (if we keep the same forward direction, the camera might already be looking at it; if not, we can interpolate the orientation to directly face the pivot to avoid any slight misalignment). This effectively recenters the rotation point to where the user wants to focus.
-
-    Progress 2025-11-26: Orbit focus now raycasts, launches a 260 ms eased tween for pan/zoom, and commits pivot updates during the animation, so double-click recentering glides smoothly instead of teleporting.
-To keep things smooth, we won’t teleport the camera unless the distance change is minimal. Ideally, we implement a short interpolation (tween) when refocusing: over, say, 200-500ms, move the camera from its old position to the new position, while updating orientation to keep the target in view. This gives a nice zoom/pan toward the point. If implementing an animation is too involved, we can also instantly move it, but ease-in/out animation is a nice touch for UX.
-In free-look mode, double-clicking could either be disabled or interpreted differently (since there is no orbit pivot). We have a couple options: we could treat double-click as a “teleport” – move the camera to that location or a fixed offset from it. However, that might confuse the user. Alternatively, in free-look, we might use double-click to look at a point: i.e., rotate the camera so that its forward vector aims at the clicked point (without moving the camera position to it). This would be akin to a quick orientation reset towards a feature of interest. It might be useful if the user gets lost orientation-wise. We can choose the behavior based on the use-case; for a CAD viewer context, orbit modes will likely be the primary mode where double-click refocus is needed.
-Additionally, we could provide preset “home” or orthographic views (not requested but often useful): e.g., buttons to quickly align camera to Top/Front/Side view or reset to an isometric. This can be built by setting specific orientations and perhaps pivot = model center. This is outside the direct scope, but our system would make it easy to implement these since we can set camera state programmatically.
-Data Structures and State Management
-We will introduce some structured types to keep camera state cleanly:
-•	CameraMode: an enum or union type for "turntable" | "arcball" | "free". This can be part of the controller’s state so we know which logic to apply.
-    Progress 2025-11-26: Existing state machine already toggles the three modes and now preserves `camQuat`/`displayCamQuat` on transitions, paving the way for a dedicated controller wrapper.
-•	CameraState: an interface or class to hold the camera’s current committed state, potentially like:
-
- 	interface CameraState {
-    mode: CameraMode;
-    position: vec3;       // camera world position
-    orientation: quat;    // camera orientation (rotation) as a quaternion
-    pivot?: vec3;         // orbit target point (undefined in free-look mode)
-    distance?: number;    // distance from camera to pivot (for orbit modes)
-    fov: number;          // field of view for projection (if needed)
-    // Additional basis vectors can be derived from orientation as needed
+interface CameraState {
+  mode: CameraMode;
+  position: Vec3;    // Camera world position
+  orientation: Quat; // Camera orientation (rotation) as a quaternion
+  pivot?: Vec3;      // Orbit target point (undefined or null in free mode)
+  distance?: number; // Distance from camera to pivot (for orbit modes)
+  fov: number;       // Field of view (if needed for projection)
+  // ... potentially near/far clip distances, etc.
 }
- 	The state will contain pivot and distance only when in an orbit mode. We keep orientation as a quaternion for robust math; the rendering code (WebGPU shader) might still consume a view matrix or forward/up/right vectors, which we can derive each frame from position and orientation. We will ensure to update the displayCamForward, displayCamUp, etc., from the quaternion: e.g., forward = orientation * (0,0,-1) assuming looking down -Z, etc. This way, the rest of the rendering pipeline remains unchanged, getting a consistent camera basis.
-•	Transient State for Interaction: We will not clutter CameraState with temporary variables used only during a drag. Instead, our CameraController will use local variables while processing input, such as:
-•	dragStartOrientation (quat) and dragStartPivot (vec3) saved on pointer-down.
-•	initialMousePos for reference, and possibly lastMousePos to compute deltas or velocity.
-•	currentDragQuat (quat) for arcball to represent the in-progress rotation from drag start to current.
-•	velocity (vec3 or separate components) for inertia as discussed.
-These are reset when an interaction ends. By segregating them, we keep the committed CameraState clean and only updated at appropriate times. This aligns with having transient vs. committed camera basis: e.g., during a drag, the displayed camera orientation might be q_now = q_drag * q_start but we don’t assign q_now back into the state’s orientation until the drag is finalized (or if we do continuous update, we still have dragStartOrientation to fall back on if needed).
-•	Input Configuration: We will define what inputs map to what actions in a clear way, possibly as an config object or constants. For example: LeftMouse = rotate (orbit or free-look rotate), RightMouse (or Shift+Left) = pan, MiddleMouse = alternative pan, Scroll = zoom, DoubleClick = focus, Touch pinch = zoom, two-finger drag = pan, one-finger drag = rotate (or translate in free-look), etc. This mapping could be customizable but will default to industry standards (similar to Blender/Three.js conventions). Having this clearly defined helps ensure consistency. And because the CameraController encapsulates it, webgpu_core.ts just needs to forward events to it with event type and positions.
-Integration and Implementation Plan
-1. Extend camera_basis.ts: We will add any necessary math utilities here. For example, a lightweight quaternion utility (if not using an existing math library). Functions could include: create quaternion from axis-angle, multiply two quaternions, rotate a vector by a quaternion, Euler (yaw/pitch) to quaternion (for initializing turntable from angles), and quaternion to basis vectors. If camera_basis.ts already has some basis calculations (perhaps for view matrices), we’ll integrate with those. We might introduce a CameraOrientation class or simply use a struct. The focus is that all heavy math stays in this file or a similar module (so it’s easily testable and not intertwined with UI logic).
-    Progress 2025-11-26: Done – file now exposes quaternion creation, multiplication, normalization, axis-angle helpers, and conversions to/from basis, all consumed by `webgpu_core.ts`.
-•	Global vs Local Axes: We might add a function to rotate around an arbitrary axis: e.g., rotateQuaternion(q: quat, axis: vec3, angle: number): quat which returns a new quaternion = (axis-angle to quaternion) * q. This will be useful for turntable yaw/pitch operations.
-•	Arcball math: We can add a helper to get the projected sphere point from screen coords, and a helper to get quaternion from two sphere points. However, since arcball will be a core feature, that code might live in the controller class itself. But pure math like projection can go here.
-•	Camera matrix: If the rendering uses view matrices, we can provide a function to compute the view matrix from camera.position and camera.orientation (or forward/up). This ensures consistency and can replace any legacy view matrix code, using our precise orientation.
-2. Implement CameraController class: In either webgpu_core.ts or a new file (e.g., camera_controller.ts), create a class (or a set of functions) that manages the camera state and inputs. Example outline:
-
+In orbit mode, pivot and distance are defined; in free mode, those may be unused (or pivot null). The orientation is always a quaternion. The position is always the camera’s world position (even in orbit mode, it’s derivable from pivot+distance, but we store it for convenience). We keep mode to know how to interpret inputs.
+•	Display vs Committed Orientation: To avoid accumulating floating-point error and to manage smooth dragging, we may use two quaternions for orientation:
+•	state.orientation is the base orientation (committed when no interaction is happening).
+•	A separate display orientation (or a combination of dragStartOrientation and a current drag delta quaternion) is used during interactions to show intermediate results. For example, when the user is mid-drag in arcball, we don’t immediately overwrite state.orientation every tiny move. Instead, we keep dragStartOrientation = state.orientation (saved at drag begin), and compute q_now = q_drag * dragStartOrientation each frame for display. We might store displayOrientation = q_now just for convenience to pass to rendering. Only when the drag ends do we set state.orientation = q_now officially. This ensures if the user keeps dragging around and around, we’re always composing from the original orientation, not the last incremental step (which could introduce tiny errors or drift).
+•	Similarly for turntable: we might store startYaw and startPitch at drag start, update temporary yaw/pitch as they drag, and only commit final angles at the end. But since we use quaternions, we can do it with quaternions entirely as well.
+•	The CameraController will manage these transient vs committed values internally. From the perspective of the rest of the app (rendering, etc.), it can expose the effective orientation (which is displayOrientation if an interaction is ongoing, or the committed orientation otherwise).
+(Progress 2025-11-26: The implementation now mirrors this approach. The code uses a camQuat for state and a displayCamQuat for the transient orientation during drags/tweens. This way, what’s sent to the shader each frame is always the up-to-date view (display quaternion), but the underlying camQuat only updates when an interaction is finalized or when inertia/tween ends. This prevents jitter and precision loss over long sessions of dragging.)
+•	Transient Interaction State: Inside the CameraController, we will have fields to track ongoing interactions:
+•	dragStartPos: the initial pointer coordinates when a drag begins.
+•	dragCurrentPos: last known pointer coords (for calculating deltas or velocity).
+•	dragStartOrientation: a quaternion snapshot of the camera’s orientation at drag start (for arcball/turntable rotation).
+•	dragStartPivot: (Vec3) pivot at drag start, in case needed (for example, if we wanted to allow moving pivot mid-drag for some reason).
+•	currentDragQuat: for arcball, the quaternion representing rotation from dragStartPos to current position (q_drag as described earlier).
+•	isDragging: boolean state, possibly with an enum for what action is being dragged ('rotate' | 'pan' | 'zoom').
+•	Velocity trackers: e.g. lastMoveTime, lastOrientQuat or lastAngleDelta to compute rotation speed; panVelocity, rotVelocity, etc.
+•	Inertia state: as mentioned, store ongoing velocity or angular momentum.
+•	Focus tween state: maybe store tweenActive boolean and tween target values if an animation is in progress.
+These variables are used during an interaction but are not part of the persistent camera state. They get reset/cleared when the interaction ends.
+•	Pointer Event Lifecycle: The high-level flow for pointer interactions:
+•	PointerDown (mouse down / touch start): Determine what action to start based on the input (which button or touch gesture). For example:
+o	Left click (with no modifiers) → begin rotate (orbit or free-look) action. Save dragStartOrientation = state.orientation (or for free-look maybe just start tracking yaw/pitch).
+o	Right click or Shift+left → begin pan. Save initial position for reference.
+o	Middle click (or Ctrl+left) → maybe also pan (depending on user preference).
+o	Touch with two fingers → could begin pinch (zoom) or two-finger drag (pan).
+o	Double-click is a separate event, not handled in down but via a click handler, which triggers focus.
+o	Record dragStartPos (initial cursor position).
+o	Set isDragging = true and the current action mode.
+o	Call markInteraction() to note that user is actively interacting (this could, for example, pause any idle animations or analytics of inactivity).
+•	PointerMove (mouse move / touch move): If isDragging:
+o	Compute delta from last recorded position (or from start, depending on action).
+o	If rotating:
+o	In turntable: translate pixel delta to yaw/pitch angles. For example, Δx pixels -> Δyaw = Δx * rotationSpeedFactor, Δy -> Δpitch. Use these to compute a new quaternion as described in Turntable section, by applying to dragStartOrientation or accumulating changes. Update the displayed orientation (but maybe keep the base in dragStartOrientation until done).
+o	In arcball: compute q_drag from projecting start and current positions to sphere. Set display orientation = q_drag * dragStartOrientation.
+o	If panning:
+o	Compute movement in screen and map to world offset (as in panning section). Update state.pivot and state.position continuously for smooth feedback (since panning doesn’t have the same “commit later” issue – we can apply incremental, it’s just linear).
+o	If zooming (e.g., pinch zoom):
+o	Compute zoom delta (from touch pinch scale or maybe vertical mouse movement if we had a drag-to-zoom mode). Adjust distance accordingly.
+o	If implementing zoom-to-cursor dynamically on drag-zoom, we’d do similar anchor calculations continuously (this is complex for drag, so likely we stick to scroll events for zoom, not click-drag for zoom).
+o	Update dragCurrentPos and possibly store recent history for inertia (e.g., store last few moves with timestamp to derive velocity).
+o	Each move, call a function like updateDisplayCamera() to apply these changes to the view (update displayCamQuat, position, etc.). The WebGPU view will use the updated display orientation/position on the next redraw.
+•	PointerUp (mouse up / touch end):
+o	End the drag. Determine if we should start inertia:
+o	If the action was rotate or pan and we have velocity, calculate it and store in the inertia state.
+o	For example, if turntable rotate: compute degrees per second for yaw and pitch from last few moves; store in e.g. inertiaYawSpeed, inertiaPitchSpeed.
+o	If arcball rotate: derive an axis and angular speed from the final q_drag vs second-to-last, etc.
+o	If pan: compute velocity vector.
+o	If no significant velocity (user released slowly), then no inertia; just end immediately.
+o	For rotation, commit the orientation: set state.orientation = current display orientation (if not already updating state continuously). In our approach, we might have already updated it as we went, but if not, do it now. Normalize quaternion.
+o	Ensure state.position is consistent (for orbit, we can recalc position = pivot - forward*distance after orientation change).
+o	Clear isDragging and related drag state variables.
+o	If inertia was set, a flag like isInertiaActive = true will keep the update loop running.
+o	Also possibly call markInteraction() here to mark the end of user interaction (if we want to record last interaction time, etc.).
+•	Keyboard Events: If we implement any (like WASD for free-look), those would feed into methods like handleKeyDown/Up which adjust the camera position/orientation accordingly. In Streamlit, we don’t have a persistent keydown event loop easily, so this may be minimal or omitted. The design ensures all needed movement can be done with pointer events (e.g., use scroll for forward/back instead of "W/S").
+•	markInteraction(): This is a utility in the controller to mark that a user interaction occurred. In practice, this might:
+•	Cancel any ongoing focus tween (cancelFocusTween()).
+•	Cancel inertia if needed (or at least know that user is now controlling, so inertia will be overwritten).
+•	Possibly record a timestamp of last interaction (could be used to hide UI after inactivity or something, but that’s outside scope).
+•	In our context, it primarily ensures smooth override of automated motions by user input.
+(Progress 2025-11-26: Pointer event handling has been fully moved into CameraController. The onPointerDown, onPointerMove, onPointerUp methods replace the old event logic in webgpu_core.ts. This consolidates the state tracking described above. We verified no regressions: the camera still orbits/pans/zooms as before. Now that the lifecycle is centralized, adding features like inertia or new input modes is much easier. markInteraction is called on any user-initiated event to promptly cancel tween animations or inertia – ensuring the user never fights the camera for control.)
+Module Structure and API
+We will implement the camera controls as a self-contained TypeScript module for clarity. The main class CameraController will live in camera_controller.ts (keeping it separate from the lower-level WebGPU code). The math utilities remain in camera_basis.ts. The rendering code (webgpu_core.ts) will create and use a CameraController instance.
+Camera Math Utilities (camera_basis.ts): This file includes: - Quaternion definition (if not using a library, define a small class or type with [x,y,z,w]). - Functions: - quatFromAxisAngle(axis: Vec3, angle: number): Quat – create quaternion representing a rotation. - quatMultiply(q1: Quat, q2: Quat): Quat – multiply two quaternions (note: this composes rotations; not commutative). - quatNormalize(q: Quat): Quat. - quatFromEuler(yaw: number, pitch: number, roll: number): Quat (if needed for initializing from angles). - rotateVector(q: Quat, v: Vec3): Vec3 – rotate a vector by a quaternion (using v' = q * (v) * q⁻¹). - Functions to get forward/right/up from a quaternion easily (or just use rotateVector with unit axes). - Arcball helpers: e.g. projectToSphere(x: number, y: number, radius: number): Vec3 – maps 2D coords to sphere. - Maybe math for angle/axis extraction (for inertia). - We may leverage an existing math library (like gl-matrix) if available, but for transparency we can implement lightweight versions since we only need a few operations.
+Camera Controller Class (camera_controller.ts): Key elements of the class API:
 class CameraController {
-    state: CameraState;
-    dragState: { ... };  // for storing transient drag info
+  state: CameraState;
+  private dragState: {
+    action: 'rotate' | 'pan' | 'zoom' | null,
+    dragStartPos: Vec2,
+    dragStartOrientation: Quat,
+    dragStartPivot?: Vec3,
+    currentDragQuat?: Quat,   // for arcball
+    lastMoveTime?: number,
+    // ... other transient fields like last few positions for inertia calc
+  };
+  private inertia: {
+    rotAxis?: Vec3, rotSpeed?: number,    // for arcball inertia
+    yawSpeed?: number, pitchSpeed?: number, // for turntable inertia
+    panVel?: Vec3,                         // world units per second
+    zoomVel?: number                       // distance units per second
+  };
+  private focusTween?: {                  // structure for an ongoing focus animation
+    t: number, duration: number,
+    startPos: Vec3, startOrient: Quat, startPivot: Vec3, startDist: number,
+    endPos: Vec3, endOrient: Quat, endPivot: Vec3, endDist: number
+  };
 
-    constructor(initialState: CameraState) { … }
-    setMode(mode: CameraMode): void { … }
-    handlePointerDown(event: PointerEvent): void { … }
-    handlePointerMove(event: PointerEvent): void { … }
-    handlePointerUp(event: PointerEvent): void { … }
-    handleWheel(event: WheelEvent): void { … }
-    handleDoubleClick(event: PointerEvent): void { … }
-    updateInertia(deltaTime: number): void { … }
-    // Possibly separate methods for specific actions:
-    private rotateBy(deltaX, deltaY): void { … }
-    private panBy(deltaX, deltaY): void { … }
-    private dollyBy(deltaDistance: number, cursor?: Vec2): void { … }
-    focusOn(point: vec3): void { … }
+  constructor(initialState: CameraState) {
+    this.state = { ...initialState };
+    // initialize other properties, ensure quaternions normalized, etc.
+  }
+
+  setMode(mode: CameraMode): void {
+    // Switch between 'turntable', 'arcball', 'free'.
+    // Possibly adjust state (e.g., drop or set pivot). 
+  }
+
+  handlePointerDown(event: PointerEvent): void {
+    // Determine event.button or event.touches -> set dragState.action ('rotate'|'pan'|'zoom')
+    // Save dragStartPos, dragStartOrientation (this.state.orientation), etc.
+    // If rotating in arcball: also set dragState.currentDragQuat = identity.
+    // Call this.markInteraction().
+  }
+
+  handlePointerMove(event: PointerEvent): void {
+    // If not dragging, return.
+    // Compute delta or current position.
+    // If action is 'rotate': 
+    //   if mode is 'turntable', compute yaw/pitch deltas, update orientation (maybe directly or via display quaternion).
+    //   if mode is 'arcball', compute q_drag from dragStart to current, set display orientation = q_drag * dragStartOrientation.
+    // If action is 'pan': compute world offset and update position & pivot.
+    // If action is 'zoom': adjust distance (and possibly pivot for zoom-to-cursor).
+    // Update lastMoveTime, store info for inertia.
+  }
+
+  handlePointerUp(event: PointerEvent): void {
+    // If was dragging:
+    //   if rotate or pan, compute velocities for inertia from recent movement.
+    //   commit final orientation (state.orientation) if needed.
+    //   reset dragState.action.
+    //   possibly call this.markInteraction() to mark end.
+  }
+
+  handleWheel(event: WheelEvent): void {
+    // Implement scroll zoom.
+    // Compute zoom delta from event.deltaY (and possibly event.clientX/Y for cursor position).
+    // Use zoom-to-cursor logic: raycast if possible, adjust pivot.
+    // Update state.distance or state.position accordingly.
+    // Also consider inertia for a fling (though wheel typically not continuous).
+    // Call this.markInteraction().
+  }
+
+  handleDoubleClick(event: PointerEvent): void {
+    // Get click position, raycast into scene to get target point.
+    // If found, call this.startFocusTween(targetPoint).
+  }
+
+  startFocusTween(target: Vec3): void {
+    // Set up focusTween state: record start state (position, pivot, orientation, distance)
+    // Compute end state: pivot = target, distance maybe adjusted or same, position = target - forward*dist, and orient to look at target.
+    // Set duration (e.g. 0.3s), t = 0.
+    // (Camera update will then happen in updateInertia/animation loop.)
+  }
+
+  cancelFocusTween(): void {
+    // If focusTween active, cancel it (maybe by setting t = duration or nulling it out).
+    // Essentially stop the animation, leaving camera where it is at the moment.
+  }
+
+  markInteraction(): void {
+    // Called whenever user manually interacts.
+    // Use to cancel inertia and focus animations:
+    this.inertia = { };      // clear velocities
+    if (this.focusTween) this.cancelFocusTween();
+    // Maybe record a timestamp or trigger any other interaction-begin side effects.
+  }
+
+  updateInertia(deltaTime: number): void {
+    // Called on each animation frame with time since last frame.
+    // If a focusTween is active: update its t by deltaTime, interpolate camera position/orientation between start and end, and if complete, finalize state and clear focusTween.
+    // If rotation inertia active: update orientation by small increments (e.g., for turntable, yaw += yawSpeed*dt, pitch += pitchSpeed*dt; for arcball, rotate around rotAxis by rotSpeed*dt).
+    // If pan inertia active: update position and pivot by panVel * dt.
+    // If zoom inertia active: update distance by zoomVel * dt (and adjust position accordingly).
+    // Apply damping to each: e.g. multiply speeds by (1 - dampingFactor*dt) or similar.
+    // Stop inertia when velocities fall below threshold (set inertia fields to zero).
+  }
+
+  focusOn(point: Vec3): void {
+    // Optional helper: instantly set pivot to point and reposition camera to look at it (without animation).
+    // This could be used if we decide to snap instead of tween in some cases.
+    // Essentially: state.pivot = point; state.position = point - state.orientation.forward * state.distance; 
+    // orientation might be adjusted to face the point (e.g., lookAt).
+  }
 }
-The handlePointerDown will detect which button or gesture and initialize the appropriate operation. For example, on left-button down, we store dragStartOrientation = state.orientation (and maybe dragStartPivot = state.pivot and startMouse = [x,y]). On move, we compute the delta or new orientation depending on mode: - If mode is Turntable and we are rotating: compute Δx, Δy from the start and apply yaw/pitch rotations to dragStartOrientation. We may update state.orientation on the fly (so the view updates in real time). Alternatively, maintain a currentDragQuat and set view orientation = currentDragQuat * dragStartOrientation for rendering (without yet committing to state.orientation until done). In practice, updating state continuously is fine as long as we have the start saved to avoid accumulation errors. - If mode is Arcball rotating: use the algorithm to get q_drag (from start to current) and set orientation = q_drag * dragStartOrientation. (No gimbal issues here, and the math gives smooth small rotations).
-    Progress 2025-11-26: Partial – logic still resides in `webgpu_core.ts`, but pointer handlers now store drag-start quaternions and compute deltas exactly as described, simplifying extraction into a standalone controller.
-- If panning: if orbit mode, we move the pivot and camera position by an amount proportional to the drag. If we have a depth or distance, convert screen pixel delta to world units at that distance. (Often one uses the fact that a pixel corresponds to a certain angle or uses unprojection. Alternatively, we can use camera frustum: unproject screen to world at near and far plane to get a vector for movement.) We update state.position and state.pivot each frame of pan. If free-look, adjust state.position directly along camera axes. - If zooming (wheel): call a dollyBy function that adjusts state.distance (orbit) or moves position (free-look). If implementing zoom-to-cursor, provide the cursor position to that function so it can compute the needed pan-offset.
-On handlePointerUp, we conclude the interaction: if it was a rotation drag and inertia is on, compute the final velocity and store it. If not, just end. We also commit the final state: for example, in arcball, we would multiply and store the final quaternion as the new base orientation (if we weren’t directly updating it). In practice, since we likely update state.orientation each frame, it’s already up-to-date; but our stored dragStartOrientation can be discarded. Similarly, clear any transient data.
-If double-click, we get the clicked point (via raycast callback from the app or using depth texture if available) and call focusOn(point). The focusOn method will set the new pivot and optionally animate the camera move.
-The updateInertia(deltaTime) method will be called from the animation loop or rendering loop. It applies any ongoing inertia: e.g., if rotation inertia is active, update the orientation by small increments (for turntable, increment yaw/pitch by velocitydt; for arcball, slerp quaternion by a small rotation around stored axis). It also applies friction (reduce velocity). Same for pan (move position by velocitydt) and zoom (adjust distance by velocity). When velocities drop below a threshold, it stops. This method will ensure the camera state is smoothly changing even after user input ends, until motion stops. The webgpu_core.ts can call CameraController.updateInertia() on each frame before rendering.
-3. Integrate with webgpu_core.ts: Replace or upgrade the existing orbit controls in webgpu_core.ts to use CameraController. Likely, webgpu_core.ts currently handles events from the HTML canvas (mouse/touch events) and directly manipulates the camera basis. We will refactor it so that those event handlers simply call cameraController.handlePointerDown/Move/Up/Wheel etc. We might attach the CameraController to the viewer context. For example, on initialization:
-    Progress 2025-11-26: `webgpu_core.ts` now owns the quaternion state, preset/payload propagation, and drag deltas; the remaining work is extracting this logic into a dedicated controller wrapper and finishing inertia hooks.
-
-const cameraController = new CameraController(initialCameraState);
-canvas.addEventListener('pointerdown', cameraController.handlePointerDown.bind(cameraController));
-… etc.
-requestAnimationFrame(function loop(time) {
-    cameraController.updateInertia(time - lastTime);
-    renderFrame(cameraController.state);  // use cameraController.state to set view matrix
-    requestAnimationFrame(loop);
-});
-We ensure that renderFrame uses cameraController.state.position and orientation to construct the view matrix. If needed, we update the displayCamForward/up/right global variables (or whatever the existing pipeline uses) each frame from the quaternion. For example:
-
-const { position, orientation } = cameraController.state;
-const forward = orientation.rotateVector( (0, 0, -1) );  // assuming -Z forward
-const up = orientation.rotateVector( (0, 1, 0) );
-const right = orientation.rotateVector( (1, 0, 0) );
-displayCamForward = forward;
+(The above is an outline – actual implementation might differ slightly, but it captures the important methods and their roles. Each method will include detailed comments and JSDoc docstrings in the code, so developers (and tools like Copilot) understand the intent and usage.)
+A few notes on the API:
+•	The CameraController methods like handlePointerDown/Move/Up and handleWheel are meant to be called from the event listeners of the canvas. For example, in webgpu_core.ts or wherever the HTML canvas is created, we will do:
+canvas.addEventListener('pointerdown', ev => cameraController.handlePointerDown(ev));
+canvas.addEventListener('pointermove', ev => cameraController.handlePointerMove(ev));
+canvas.addEventListener('pointerup',   ev => cameraController.handlePointerUp(ev));
+canvas.addEventListener('wheel',      ev => cameraController.handleWheel(ev));
+canvas.addEventListener('dblclick',   ev => cameraController.handleDoubleClick(ev));
+This cleanly routes all user input into our controller.
+•	The updateInertia(deltaTime) method should be called on every animation frame tick. In a typical rendering loop:
+function frame(timestamp: number) {
+  let dt = (lastTimestamp == null) ? 0 : (timestamp - lastTimestamp);
+  lastTimestamp = timestamp;
+  cameraController.updateInertia(dt);
+  render(cameraController.state);  // use updated camera state to set view matrix
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+In a Streamlit setting, we might not have a continuous loop in the same way, but since WebGPU in Streamlit likely uses a JS loop for rendering, we can integrate it there. The key is that inertia and tween updates are tied to the rendering frames.
+•	The CameraController.state is the single source of truth for the camera’s parameters. The render function can use state.position and state.orientation (or the derived displayOrientation if mid-drag) to construct the camera’s view matrix. For example, to build the view matrix (if using a typical lookAt approach):
+const forward = rotateVector(state.orientation, vec3(0, 0, -1));
+const up = rotateVector(state.orientation, vec3(0, 1, 0));
+const target = state.mode !== 'free' ? state.pivot : state.position.add(forward * 1); // pivot for orbit, or just look forward in free mode
+const viewMatrix = mat4.lookAt(mat4.create(), state.position, target, up);
+// then use viewMatrix in the WebGPU rendering pipeline
+Also update any shader uniforms like cameraForward = forward, etc., if needed for lighting.
+•	Integration with Shader Uniforms: If the shader expects displayCamRight, displayCamUp, displayCamForward, those can be updated as:
+ 	displayCamForward = forward;
 displayCamUp = up;
-displayCamRight = right;
-and then build a view matrix that looks from position toward position + forward with up as up-direction. This keeps all existing shading or other code that uses the camera basis consistent with the new control scheme.
-We will remove any old clamping logic (like if there was clamping of pitch or weird pole-checks) because the quaternion approach no longer needs those. Also, any ad-hoc state like “current yaw angle” or “orbit angle” in webgpu_core.ts will be superseded by the CameraController’s state.
-4. User Interface Integration: Ensure there are ways to toggle modes (e.g., a UI checkbox “Arcball Rotation” vs “Turntable Rotation”). This might simply call cameraController.setMode('arcball') or similar. The double-click focus likely needs the application to perform a ray-pick. If the 3D viewer can provide the depth buffer or if we know the geometry, we can integrate a picking function. If not, as a placeholder, we might focus on the point on the near plane (less ideal). Ideally, we integrate with the 3D engine’s picking mechanism.
-5. Testing and Tuning: We will test each mode’s feel with real input to adjust sensitivity (rotation speed per pixel, zoom speed scaling, etc.). The “natural drag direction” is ensured by trying the controls: if something feels inverted or non-intuitive, we flip the sign or tweak the axis. We’ll also test the pole behavior: in turntable, verify that crossing the top doesn’t create a sudden flip. The expected behavior is that once the camera goes upside down, dragging left-right appears reversed relative to object (because the camera is inverted). Some tools solve this by switching the reference of “left-right” when inverted; we can consider implementing a logic: if upside down, invert the horizontal drag direction to maintain consistency from the user’s perspective. This can be done by checking the camera’s up vector dot with world up; if negative (camera upside), we flip the yaw input. Such details will be fine-tuned.
-6. Documentation & Maintainability: We will document the methods and state clearly in comments (and possibly in a markdown for the team). The design follows PotFoundry’s clean separation ethos: the CameraController can be seen as part of the view-layer logic, while the math in camera_basis.ts is low-level. This separation makes it easier to modify one without risking the other. For example, if in the future we swap out WebGPU for another renderer, we can keep CameraController the same and just adapt how it applies the camera to the new renderer. Or if we want to add a new mode (say an orthographic planar navigation), we can extend the mode enum and add logic without affecting unrelated parts.
-In summary, this plan delivers a comprehensive camera control system with turntable, arcball, and free-look capabilities, smooth pan/zoom with zoom-to-cursor, inertial motion, and intuitive pivot focusing. By structuring the solution around a dedicated controller and robust math foundations, we ensure the implementation is maintainable and consistent with existing camera basis usage. This will dramatically improve the 3D viewer’s usability, matching the polish of professional CAD and DCC applications in terms of camera manipulation. Each of the required features will be handled in a modular way, resulting in a fluid and user-friendly camera control in the Streamlit WebGPU preview.
+displayCamRight = cross(forward, up) (or rotateVector(q, vec3(1,0,0)));
+ 	This keeps continuity with any existing shader logic. Since our orientation is authoritative, these will be consistent. We must ensure to update these after any camera change (drag, inertia, focus tween) so the next rendered frame uses the correct camera.
+•	Streamlit Considerations: Streamlit doesn’t maintain persistent state across reruns for Python, but here the camera control is on the client side (JS with WebGPU). We should ensure the controller is initialized once and not recreated on every rerun. Possibly the Streamlit WebGPU component is an interactive front-end that can maintain state. The design assumes the camera controller persists as long as the user is on the page (just like a normal JS app). We might need to expose some callbacks to Python if we wanted to sync camera state back to Streamlit, but likely not necessary unless we want to save camera views.
+•	No Persistent Key Handling: Because Streamlit can’t easily capture continuous key presses (without custom JS hacks), our design sticks to pointer interactions for all movement. We rely on mouse/touch for rotate, pan, and zoom (including free-look translation via dragging and scroll). The mention of WASD is for completeness if one ports this to a different environment, but in Streamlit the user will primarily use the mouse. We might support arrow keys or WASD in a limited way (on keydown events, move a bit and stop – but without continuous press detection, it’s not fluid). This is acceptable, since orbit and zoom are the main needed controls for viewing a model. The free-look move (WASD) is a nice-to-have that may be implemented later if we integrate a better event loop or use a different deployment (for example, a static site with our viewer).
+Mode Switching and Intuitive Controls
+We provide a way to toggle between camera modes (turntable, arcball, free-look). This could be via a UI control or programmatic API. The transition rules:
+•	Switching to Free-Look: We drop the pivot. The controller can simply keep the camera’s current world position and orientation, set state.mode = 'free', and null out state.pivot. The state.distance is no longer used. Essentially the camera is now free-floating at whatever position it was at that moment. To avoid confusion, we might also want to adjust orientation to ensure no unintended roll carries over (since free-look typically expects a level horizon). If the orientation has a roll (from arcball), we could optionally remove it by realigning the camera’s up to world up upon entering free-look – but this could be jarring, so it might be better to keep as-is and let the user reorient if needed. We will likely keep orientation unchanged to respect what they were looking at.
+•	Switching from Free-Look to Orbit: We need a pivot. One approach: cast a ray from the camera forward direction to find an intersection in front of the camera (maybe the model or ground). If found, use that point as the new pivot and set distance accordingly. If not, we could use a default pivot (for instance, a point some default distance ahead of the camera). Alternatively, we could remember the last pivot the camera had before going free-look and reuse that (although the camera might have moved far from that). A pragmatic approach: if the user switches back to orbit, we set pivot = camera.position + forward * defaultDistance (so the pivot is a point in front of the camera). This ensures the camera doesn’t end up with pivot at its position (which would break things). We set state.mode = 'turntable' or 'arcball' as desired, and reinstate that pivot. The effect is the camera will now orbit around that new pivot point.
+•	Switching between Turntable and Arcball: These both are orbit modes, so pivot and distance remain the same. We simply change how drags are interpreted. If the camera orientation currently has some roll (possible if coming from arcball), and we switch to turntable, the roll will effectively get ignored in control (since turntable won’t intentionally roll the camera further, except the implicit flip handling). The camera will still be at that orientation though. It might feel odd if the camera is tilted and now only yaw/pitch moves it. Some software forcibly level out the camera when switching to turntable (i.e., realign camera up to world up). We could decide to do that: on switching to turntable, apply a corrective roll rotation to set camera.up parallel to world up. This would preserve the same view direction but “unscrew” the tilt. This might be a good default to avoid confusion. On the other hand, doing so could be a surprising jump. We could also leave it and assume if the user chose arcball they’re ok with tilt, and if they go back to turntable we might just leave the tilt until they adjust pitch past a pole which will then correct it. This detail can be refined in testing. The design will note this as a consideration.
+•	Maintaining Intuitive Controls: As emphasized, when the camera is upside-down or in an odd orientation, we adjust how we interpret input to keep it intuitive:
+•	We already plan to flip horizontal drag in turntable if upside-down.
+•	In arcball, the relationship is inherently direct via the math, so it’s always correct relative to the sphere drag (no extra flip needed).
+•	In free-look, if we limited pitch to ±90°, we never go fully upside-down. If we didn’t and allowed 180°, then we’d similarly want to handle inversion (but we’ll likely clamp to avoid it).
+•	We ensure that panning directions always correspond: dragging the scene left moves it left etc. This is naturally handled by our use of the camera’s right/up vectors appropriately.
+•	We will thoroughly test scenarios like flipping the camera and then panning, to ensure the controls don’t suddenly invert in feel (aside from the purposeful flip logic which prevents a wrong-feeling inversion).
+•	Preventing Mode Glitches: If the user switches modes mid-drag or mid-inertia, we will handle it gracefully:
+•	If switched mid-drag, we might end the drag as if the mouse was released in the old mode (to avoid applying the old mode’s logic in the new mode unexpectedly). The user can then press again to start a new interaction in the new mode.
+•	If switched while inertia is ongoing, likely we cancel the inertia (different modes have different kinds of inertia – carrying it over could be weird). For example, if an arcball spin was continuing and user toggles to turntable, probably best to stop the spin. The setMode() could call cancelInertia() (which we can implement by zeroing velocities or using markInteraction() internally since mode switch is an intentional user action too).
+•	Focus tween – if mode is switched during an auto-focus animation, we also cancel the tween (and maybe instantly jump to end or just stop where it is). This is an edge case but likely rare to switch during an auto movement.
+•	Extensibility: The mode structure can be extended if needed (imagine adding a “planar” mode or others). The controller is designed such that mode-specific behavior is mostly isolated in clearly separated conditionals or sub-methods.
+Testing, Tuning, and Documentation
+Finally, to ensure this system works as intended:
+•	Testing: We will test each mode’s controls to fine-tune the feel. For example, ensure that:
+•	Turntable mode doesn’t flip unexpectedly at poles and the inversion logic for controls works (simulate dragging over the top).
+•	Arcball mode correctly rotates about all axes with no gimbal lock – test dragging in circles, diagonals, etc., and that releasing and re-clicking doesn’t accumulate error.
+•	Free-look mode: test pitch clamping, ensure that if we look straight up, we don’t flip, and that the camera doesn’t drift.
+•	Zoom-to-cursor: test zooming on various points to see that the target stays roughly in place. Check behavior when hitting min/max zoom limits.
+•	Focus: test double-click on different model parts, including near edges or when camera is at extreme angles, to ensure the tween finds a good orientation and stops correctly.
+•	Inertia: fling the camera in each mode and ensure it slows down nicely and stops. Also ensure starting a new drag immediately halts the inertia with no lag.
+•	Mode switching: test switching modes in various camera orientations to ensure nothing breaks (no sudden jumps or if there are, they are acceptable or documented).
+•	Tuning: There are several constants to tweak for best UX:
+•	Rotation speed factor (degrees per pixel).
+•	Pan speed factor (world units per pixel at a given depth).
+•	Zoom speed (scroll delta to distance change).
+•	Inertia damping rates (how quickly to slow down).
+•	Focus tween duration and easing curve. We will adjust these through experimentation to achieve a responsive yet controlled feel (similar to industry standards like three.js OrbitControls or CAD tools).
+•	Documentation & Comments: We will include comprehensive comments in the code:
+•	Each public method in CameraController will have a docstring explaining its purpose, parameters, and any important behavior (e.g., side effects like canceling inertia).
+•	Complex math like the arcball calculation will be explained with inline comments for clarity (so future maintainers or Copilot can understand why we’re doing those steps).
+•	We will note any tricky logic, such as the inverted drag handling or pivot adjustments during zoom, in comments.
+•	Additionally, we might maintain a markdown or code documentation page summarizing usage (especially if this is part of a library).
+This focus on documentation ensures that anyone reading the code or using Copilot will get helpful hints about the intended design, reducing misinterpretation.
+•	Professional Experience: By implementing the above features, our WebGPU viewer will offer a camera manipulation experience on par with modern 3D applications. Users can smoothly orbit models, pan, zoom to cursor for detail work, and quickly refocus on points of interest. The inertial movements and tweens add a polished feel. Even within the limitations of a Streamlit app, we’ve ensured that the core interactions are all accessible via mouse/touch, so users won’t miss out on functionality due to lack of keyboard. The architecture is robust and extensible, making the camera system maintainable and easy to integrate with other parts of the application (like linking UI controls for mode switching, or saving/restoring camera views).
+In conclusion, this unified design addresses the initial goals: a centralized CameraController with a clear API, support for multiple modes, advanced features like zoom-to-cursor and inertia, and careful handling of edge cases like gimbal lock and inverted controls. The result will be a production-grade camera control system for the WebGPU Streamlit viewer, delivering intuitive and fluid 3D navigation akin to professional CAD tools. The design decisions – especially using quaternions and separating concerns – ensure the camera will be stable and smooth in all scenarios, providing an excellent user experience.
+________________________________________
+Great — here’s a prioritized, actionable plan of larger-scope improvements and optimizations to make the WebGPU preview a polished, CAD-quality viewer. I grouped changes by impact and risk, with short rationales, concrete implementation steps, and test/rollback guidance.
+
+**High-Level Goals**
+- Prevent host-driven camera resets and race-conditions
+- Centralize camera state & input handling (single source of truth)
+- Make preview deterministic, performant, and testable
+- Improve developer DX and CI for reliable WebGPU verification
+
+---
+
+**1) Architecture & State Consolidation (High Priority)**
+- **Why:** State is split across multiple modules (webgpu_core.ts, webgpu_preview.ts, camera_controller.ts) and host defaults are merged into `cfg`, which causes forced resets.
+- **Changes:**
+  - Make `CameraController` the canonical owner of camera state (committed + display).
+  - Move `applyCameraPayload`, `cameraPayloadDiffers`, `pendingForceCameraPayload`, `localControlLastAt`, and the grace/delay behavior into `CameraController`.
+  - Change the update loop to only apply incoming payload fields, not merged `cfg` defaults. Apply full state only when explicitly requested (e.g., `forceFull: true`).
+  - Expose `CameraController` API: `setPayload(payload, {force?: boolean, forceFull?: boolean})`, `markInteraction()`, `onPointerDown/Move/Up`, `startFocusTween(...)`, `cancelFocusTween()`.
+  - Consolidate message handlers (postMessage) to one module that delegates to `CameraController`.
+- **Tests:** Unit tests for payload gating (no reset while interacting), cameraNonce semantics, and "defer forced" behavior.
+
+---
+
+**2) Payload Handling & Debug API (High Priority)**
+- **Why:** Using `cfg` to compute `forceCamera` causes host update semantics to be wrong.
+- **Changes:**
+  - Force flag now comes strictly from the incoming payload (`payload.cameraNonce`) or an explicit `forceFull` boolean; not from merged `cfg`.
+  - If `payload` absent but `cameraNonce` present — ignore unless host explicitly passes camera fields.
+  - Add `window.__pf_webgpu_mounts[mountId].debug` flags: `ready`, `usedFallback`, `lastApplyCameraPayload`, `lastSceneRadiusUpdate`, `lastPayloadIsFullState` — mirrors preview fields for tests & debugging.
+- **Tests:** Playwright tests assert debug flags and that cameraNonce behavior is consistent.
+
+---
+
+**3) Input & Interaction UX (High Priority)**
+- **Why:** Inconsistent behavior across modes; the UI must feel intuitive (turntable, arcball, free).
+- **Changes:**
+  - Canonicalize pointer event handling inside `CameraController`.
+  - Always use quaternions for the internal orientation, with a `displayQuat` for transient interactions.
+  - Implement a short grace period & debounce on release (configurable, default 250–1000 ms) to prevent immediate host overrides.
+  - Add toggle controls or `hostCameraAcceptPolicy` to allow `always|grace|strict`.
+  - Ensure double-click focus cancels inertia & host updates until the tween finishes or is cancelled.
+- **Tests:** Unit tests for pointer flows, Playwright tests for interaction/inertia and double-click focus.
+
+---
+
+**4) Multitouch / Gesture Support & Accessibility (Medium Priority)**
+- **Why:** Multi-touch pinch/rotate/pan is missing and is essential for touch devices.
+- **Changes:**
+  - Track pointer IDs and support pinch-to-zoom (two pointers) and two-finger pan.
+  - Implement inertia for multi-touch gestures and cleanly handle pointer cancel across platforms.
+  - Add keyboard fallback (WASD/QE) for free-look and accessible controls for users who cannot use pointer input.
+- **Tests:** Simulate multi-pointer events; add UI toggle for keyboard controls.
+
+---
+
+**5) Rendering Performance & Resource Usage (High Priority)**
+- **Why:** WebGPU performance is critical; we must minimize expensive state changes and memory churn.
+- **Changes:**
+  - Only update uniform buffers or bind groups when camera/state actually changes; keep change-detection flags.
+  - Reuse buffers, avoid allocations in the frame loop, and update typed arrays in-place.
+  - Batch GPU buffer writes and minimize `device.queue.writeBuffer` calls per frame.
+  - Avoid `buildCameraRig()` or heavy geometry recompute unless parameters changed; decouple heavy geometry rebuild vs visual update.
+  - Profile shader dispatch and geometry generation for hotspots; vectorize CPU code (NumPy or WASM) if necessary.
+- **Tests:** Performance benchmarks (millisecond range) and thresholds on CI to detect regressions.
+
+---
+
+**6) Render & Fallback Parity & Stability (Medium Priority)**
+- **Why:** The fallback must accurately simulate the full preview behavior; in tests we used fallback often and found mismatches.
+- **Changes:**
+  - Expand fallback to update visuals based on `state.displayCamQuat`, `rotX/rotY/zoom/pan` and not be a static picture.
+  - Use the same `buildCameraRig` measurement math where possible to ensure parity.
+  - Expose `debug.usedFallback` and `debug.usedFull` so tests and CI can decide to skip or proceed.
+- **Tests:** Playwright headful & headless runs; fallback parity checks.
+
+---
+
+**7) Camera Math & Quaternion Utilities (Medium Priority)**
+- **Why:** Keep quaternion math centralized and fast.
+- **Changes:**
+  - Add/standardize a `camera_basis.ts` math module that uses `Float32Array` operations or gl-matrix for speed.
+  - Provide `quatFromAxisAngle`, `quatMultiply`, `rotateVector`, `projectToSphere`, `slerp`, `quatNormalize`, `quatToBasis`.
+  - Add `cameraPayloadDiffers()` function with tunable thresholds to treat small differences as no-ops.
+- **Tests:** Unit tests for math utilities (basis, slerp, arcball).
+
+---
+
+**8) Inertia & Smoothing (Medium Priority)**
+- **Why:** CAD apps need polished inertia for rotation/pan/zoom.
+- **Changes:**
+  - Implement frame-rate independent inertia with exponential damping using `deltaTime`.
+  - Cancel inertia immediately on new user input, tweens, or host forced update (policy dependent).
+  - Provide configuration values for damping/time constants, exposed in developer/debug mode.
+- **Tests:** Unit tests verifying inertia decays to zero and cancels properly.
+
+---
+
+**9) Testing & CI (High Priority)**
+- **Why:** Playwright tests were flaky due to environment; CI should run tests reliably with correct browser.
+- **Changes:**
+  - Add CI job to use Playwright's Chromium and set `PF_WEBGPU_HEADFUL=1` to run WebGPU E2E tests on a GPU-enabled runner (or on the self-hosted runner with Chrome flags).
+  - Add a playwright_debug_probe.py job/runner to capture artifacts for failures.
+  - Add deterministic tests for camera state gating (mock host payloads; simulate pointer events).
+  - Convert long Playwright waits into robust polling checks based on `debug.ready` and `wgpu-status`.
+- **Tests:** Add multiple CI steps: `unit`, `frontend-vite-build`, `playwright-headful` job with artifact capture.
+
+---
+
+**10) Clean-up & Developer Experience (Low/Medium)**
+- **Why:** Reduce duplication & make PR review easier.
+- **Changes:**
+  - Extract `helpers/camera_helpers.ts` for shared functions between preview & core.
+  - Lint & add type-safety; ensure `eslint`, `tsconfig` have view strict rules for `noImplicitAny`.
+  - Add a `POTFOUNDRY_WGPU_DEV_SERVER` mode to load preview from dev server (hot reload).
+  - Add clear documentation for debug flags and a simple local debug harness.
+- **Tests:** Linting & type-checking gating for PRs.
+
+---
+
+**11) Optional & Riskier Enhancements**
+- **GPU worker / multi-thread geometry generation**: Offload heavy geometry sampling to a web worker + WASM (or Rust) for faster builds. This reduces freeze on UI thread.
+- **Shader specializations**: Precompile multiple shader pipelines for different styles/sizes and pick one efficiently.
+- **Deterministic rendering & golden images**: Add a golden-image rendering test to validate visual parity for changes.
+
+---
+
+Implementation Order (recommended)
+1. Fix immediate bug: stop applying `cfg` merged defaults; apply only payload fields in both webgpu_core.ts and preview.
+2. Centralize camera payload handling and `CameraController` gating & deferral behavior.
+3. Add tests for payload gating & pointer interactions.
+4. Improve fallback parity and logging.
+5. Add performance improvements and buffer reuse.
+6. Add CI Playwright headful job and test scripts.
+
+---
+
+Safety/Compatibility & Rollback Plan
+- Make small incremental PRs, each with unit tests.
+- Add feature flags (`hostCameraAcceptPolicy`, `POTFOUNDRY_WGPU_DEBUG`) to guard runtime behavior.
+- Add exhaustive tests for the new logic; if something breaks, revert to `hostCameraAcceptPolicy: 'always'`.
+- Add playbook for CI and maintainers for how to run headful Playwright tests locally with `PF_WEBGPU_CHROMIUM_CHANNEL=chrome PF_WEBGPU_HEADFUL=1`.
+
+---
+
+.

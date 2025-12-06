@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-import streamlit as st
+from collections.abc import Callable
 
+from pfui._st import get_effective_st as get_st
 from pfui.state import reset_all_defaults, reset_style_defaults
 
 
-def render_reset_controls(on_change: callable) -> None:
+def render_reset_controls(on_change: Callable[[], None]) -> None:
     """Render reset buttons.
     
     Args:
         on_change: Callback to trigger when reset is performed
+
     """
+    st = get_st()
     st.markdown("---")
     col_reset1, col_reset2 = st.columns(2)
     with col_reset1:

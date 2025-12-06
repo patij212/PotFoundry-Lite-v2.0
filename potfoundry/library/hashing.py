@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, List
-
+from typing import Any
 
 __all__ = [
     "APP_VERSION",
+    "_normalize_dict",  # Exported for testing
     "canonical_payload",
     "content_id",
-    "_normalize_dict",  # Exported for testing
 ]
 
 
@@ -37,6 +36,7 @@ def _normalize_dict(d: dict[str, Any], precision: int = 6) -> dict[str, Any]:
         
     Returns:
         Normalized dictionary with sorted keys and rounded floats
+
     """
     result: dict[str, Any] = {}
     for key in sorted(d.keys()):
@@ -46,7 +46,7 @@ def _normalize_dict(d: dict[str, Any], precision: int = 6) -> dict[str, Any]:
             result[key] = _normalize_dict(value, precision)
         elif isinstance(value, (list, tuple)):
             # normalize list/tuple entries; ensure Any typing for heterogenous lists
-            out_list: List[Any] = []
+            out_list: list[Any] = []
             for v in value:
                 if isinstance(v, dict):
                     out_list.append(_normalize_dict(v, precision))
@@ -87,6 +87,7 @@ def canonical_payload(
 
     Returns:
         Canonical payload dictionary with normalized values
+
     """
     payload = {
         "version": version,
@@ -111,6 +112,7 @@ def content_id(payload: dict) -> str:
 
     Returns:
         Hex-encoded sha256 hash (64 characters)
+
     """
     # Serialize to canonical JSON (sorted keys, no whitespace)
     canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))

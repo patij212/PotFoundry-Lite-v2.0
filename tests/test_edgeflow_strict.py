@@ -10,7 +10,7 @@ def load_latest_row(jsonl_path: Path, zi: int = 2, tol: int = 0):
     """Find the latest diagnostics row for zi within +/- tol (inclusive)."""
     last_row = None
     candidates = set(range(max(0, zi - tol), zi + tol + 1))
-    with open(jsonl_path, "r", encoding="utf-8") as fh:
+    with open(jsonl_path, encoding="utf-8") as fh:
         for line in fh:
             try:
                 obj = json.loads(line)

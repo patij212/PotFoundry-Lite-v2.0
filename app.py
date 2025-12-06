@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # pyright: reportGeneralTypeIssues=false
 from __future__ import annotations
 
@@ -11,20 +10,28 @@ from typing import Any, cast
 
 import streamlit as st
 
+# Narrowed session-state reference used across boot/init blocks. Assigning here
+# ensures `ss` is always bound for the subsequent try/except boot logic so
+# static analyzers don't report "possibly unbound" when `ss` is referenced
+# inside later exception handlers.
+ss: dict[str, Any] = st.session_state
+
 
 # --- Optional / graceful Plotly import (interactive preview) ---
 try:
     import plotly.graph_objects as go
 
-    HAS_PLOTLY = True
+    has_plotly = True
+    # mark imported symbol as used for static analyzers
+    _ = cast("Any", go)
 except Exception:
-    HAS_PLOTLY = False
+    has_plotly = False
     # Annotate as Any so attribute access (Figure, Surface, Mesh3d) doesn't upset type checker
-    go = cast(Any, None)
+    go = None
 
-if not HAS_PLOTLY:
+if not has_plotly:
     st.info(
-        "Plotly is not available. Interactive 3D preview and mesh features are disabled."
+        "Plotly is not available. Interactive 3D preview and mesh features are disabled.",
     )
 
 # --- PotFoundry UI/engine imports ---
@@ -33,7 +40,7 @@ if not HAS_PLOTLY:
 # import time which can trigger editor/type-checker traversal and noisy
 # diagnostics. Keep the delayed import but silence ruff E402 with an
 # explanatory noqa.
-import pfui.schemas as SC  # noqa: E402
+import pfui.schemas as SC
 
 # Prefer accessor call to reduce heavy constant binding at module scope in other modules
 styles = SC.get_style_schemas()
@@ -45,15 +52,24 @@ from pfui.batch_tab import render_batch_tab
 from pfui.deeplink import apply_state, clear_query_params, parse_query_params
 from pfui.interactive_tab import render_interactive_tab
 from pfui.library_ui import render_library_tab
-from pfui.state import (  # noqa: E402
+from pfui.state import (
     apply_pending_updates,
 )
+
+try:
+    from pfui.tabs.interactive.preview.webgpu_renderer import (
+        process_pending_webgpu_events as _process_webgpu_events,
+    )
+except Exception:  # pragma: no cover - WebGPU optional
+    def _process_webgpu_events() -> None:
+        """No-op when WebGPU renderer is unavailable."""
+        return
 from potfoundry.integrations.supabase_client import SupabaseClient, get_singleton_client
 
 ## moved to pfui.app_components.utils: _mask_possible_secrets
 
 
-def build_mesh_kwargs_for_test(Vd, Fd, ss, n_theta, n_z, fig_h):
+def build_mesh_kwargs_for_test(Vd: Any, Fd: Any, ss: dict[str, Any], n_theta: int, n_z: int, fig_h: float) -> dict[str, Any]:
     """Compatibility shim: expose the original helper in app.py for tests.
 
     This wrapper delegates to the implementation in
@@ -81,7 +97,7 @@ def _cleanup_stale_media_ids() -> None:
 
     pattern = re.compile(r"^[0-9a-f]{64}\.png$")
 
-    def _has_stale(obj: object) -> bool:
+    def _has_stale(obj: Any) -> bool:  # type: ignore
         if isinstance(obj, str):
             # treat explicit 64-hex.png ids as stale, and any string that
             # looks like a media path or contains '.png' as potentially stale
@@ -91,15 +107,29 @@ def _cleanup_stale_media_ids() -> None:
                 return True
             return False
         if isinstance(obj, dict):
-            return any(_has_stale(v) for v in obj.values())
+            for v in cast("list[Any]", list(obj.values())):  # type: ignore[reportUnknownArgumentType]
+                try:
+                    v_any = v
+                    if _has_stale(v_any):
+                        return True
+                except Exception:
+                    continue
+            return False
         if isinstance(obj, (list, tuple)):
-            return any(_has_stale(v) for v in obj)
+            for v in cast("list[Any]", list(obj)):  # type: ignore[reportUnknownArgumentType]
+                try:
+                    v_any = v
+                    if _has_stale(v_any):
+                        return True
+                except Exception:
+                    continue
+            return False
         if isinstance(obj, (bytes, bytearray)):
             # raw PNG bytes stored in session_state — consider stale
             return True
         return False
 
-    ss = cast(dict[str, Any], st.session_state)
+    ss: dict[str, Any] = st.session_state
     for k in list(ss.keys()):
         # Don't treat our internal debug containers or the snapshots
         # list as stale even if they contain filenames or paths. These are
@@ -115,15 +145,17 @@ def _cleanup_stale_media_ids() -> None:
             "_preview_stale",
         ):
             try:
-                ss.setdefault("_debug_logs", []).append(
-                    f"Debug: preserved session key {k}"
-                )
+                _debug_logs = cast("list[str]", ss.setdefault("_debug_logs", []))
+                try:
+                    _debug_logs.append(f"Debug: preserved session key {k}")
+                except Exception:
+                    pass
             except Exception:
                 pass
             continue
 
         try:
-            v = cast(Any, ss.get(str(k)))
+            v = cast("Any", ss.get(str(k)))
         except Exception:
             # If we can't access a key, skip it.
             continue
@@ -145,7 +177,7 @@ try:
 except Exception:
     pass
 
-APP_VERSION = "2.1.0-evo"
+APP_VERSION = "2.3.0-pyvista"
 
 
 ## moved to pfui.app_components.utils: resolve_schema_key
@@ -157,11 +189,25 @@ APP_VERSION = "2.1.0-evo"
 try:
     # Narrow session state for type-checking and ensure debug log container
     # exists early so boot messages persist
-    ss = cast(dict[str, Any], st.session_state)
+    ss: dict[str, Any] = st.session_state
     if "_debug_logs" not in ss:
         ss["_debug_logs"] = []
+    try:
+        _process_webgpu_events()
+    except Exception:
+        try:
+            ss.setdefault("_debug_logs", []).append("Boot: WebGPU event intake failed")
+        except Exception:
+            pass
     apply_pending_updates()
-    ss["_debug_logs"].append("Boot: applied pending updates.")
+    try:
+        _debug_logs = cast("list[str]", ss.setdefault("_debug_logs", []))
+        _debug_logs.append("Boot: applied pending updates.")
+    except Exception:
+        try:
+            ss.setdefault("_debug_logs", []).append("Boot: applied pending updates.")
+        except Exception:
+            pass
 except Exception:
     # Do not crash the UI on boot; best-effort diagnostics only.
     try:
@@ -232,7 +278,7 @@ except Exception:
 # ============================================================
 if "_deeplink_applied" not in st.session_state:
     # Narrow session-state for this block to keep type-checker happy
-    ss = cast(dict[str, Any], st.session_state)
+    ss: dict[str, Any] = st.session_state
     state_from_url = parse_query_params()
     if state_from_url:
         try:
@@ -265,7 +311,7 @@ else:
     # _tab3 is DeltaGenerator when tabs() returns three elements; when tabs() returns
     # only two we intentionally set it to None. Use cast(Any, None) so mypy won't
     # complain about assigning None to a DeltaGenerator-typed variable.
-    _tab3 = cast(Any, None)
+    _tab3 = cast("Any", None)
 
 # ============================================================
 # Tab 1 — Interactive Designer

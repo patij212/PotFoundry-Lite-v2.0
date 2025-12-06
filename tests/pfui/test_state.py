@@ -12,16 +12,23 @@ mod: Any = types.ModuleType("streamlit")
 mod.session_state = fake_st.session_state
 sys.modules["streamlit"] = mod
 
+import importlib
+
 from pfui import schemas as SC  # noqa: E402
-from pfui import state as S  # noqa: E402
 
 
 def _reset_session():
     fake_st.session_state.clear()
 
+print("DEBUG: sys.modules['streamlit'] id (top of test module)", id(sys.modules.get("streamlit")))
+
 
 def test_queue_update_deep_merge_and_apply():
     _reset_session()
+    sys.modules["streamlit"] = mod
+    S = importlib.import_module("pfui.state")
+    importlib.reload(S)
+    # debug prints removed
     S.queue_update({"a": {"x": 1}})
     S.queue_update({"a": {"y": 2}})
     S.apply_pending_updates()
@@ -32,6 +39,9 @@ def test_queue_update_deep_merge_and_apply():
 
 def test_queue_update_order_last_write_wins_leaf():
     _reset_session()
+    sys.modules["streamlit"] = mod
+    S = importlib.import_module("pfui.state")
+    importlib.reload(S)
     S.queue_update({"k": 1})
     S.queue_update({"k": 2})
     S.apply_pending_updates()
@@ -41,6 +51,9 @@ def test_queue_update_order_last_write_wins_leaf():
 def test_queue_update_merges_into_existing_nested():
     _reset_session()
     fake_st.session_state["cfg"] = {"a": 1, "b": {"x": 1}}
+    sys.modules["streamlit"] = mod
+    S = importlib.import_module("pfui.state")
+    importlib.reload(S)
     S.queue_update({"cfg": {"b": {"y": 2}}})
     S.apply_pending_updates()
     assert fake_st.session_state["cfg"] == {"a": 1, "b": {"x": 1, "y": 2}}
@@ -49,6 +62,9 @@ def test_queue_update_merges_into_existing_nested():
 def test_reset_style_defaults_uses_schema_defaults():
     _reset_session()
     style = "HarmonicRipple"
+    sys.modules["streamlit"] = mod
+    S = importlib.import_module("pfui.state")
+    importlib.reload(S)
     S.reset_style_defaults(style)
     # look at the pending updates that were queued
     pending = fake_st.session_state[S._PENDING_KEY]
@@ -67,8 +83,12 @@ def test_reset_style_defaults_uses_schema_defaults():
 
 def test_reset_style_defaults_for_all_styles_covers_every_style():
     _reset_session()
+    sys.modules["streamlit"] = mod
+    S = importlib.import_module("pfui.state")
+    importlib.reload(S)
     S.reset_style_defaults_for_all_styles()
     pending = fake_st.session_state[S._PENDING_KEY]
+    # debug printing removed
     # every style key block should have at least one widget key
     styles = SC.get_style_schemas()
     for style in styles.keys():
@@ -80,6 +100,9 @@ def test_reset_style_defaults_for_all_styles_covers_every_style():
 def test_apply_pending_updates_noop_when_empty():
     _reset_session()
     # no pending key yet
+    sys.modules["streamlit"] = mod
+    S = importlib.import_module("pfui.state")
+    importlib.reload(S)
     S.apply_pending_updates()  # should not raise
     assert S._PENDING_KEY not in fake_st.session_state
 
@@ -87,8 +110,79 @@ def test_apply_pending_updates_noop_when_empty():
 def test_ensure_initialized_queues_and_applies():
     _reset_session()
     # ensure_initialized should queue defaults and apply them
+    sys.modules["streamlit"] = mod
+    S = importlib.import_module("pfui.state")
+    importlib.reload(S)
     S.ensure_initialized("HarmonicRipple")
     # after running, initialized flag should be set
     assert "__ui_initialized__" in fake_st.session_state
     # pending should be cleared (applied)
     assert S._PENDING_KEY not in fake_st.session_state
+
+
+def test_get_webgpu_camera_snapshot_defaults():
+    _reset_session()
+    sys.modules["streamlit"] = mod
+    S = importlib.import_module("pfui.state")
+    snap = S.get_webgpu_camera_snapshot(fake_st.session_state)
+    assert snap["autoRotate"] is False
+    assert snap["rotX"] == 0.35
+    assert snap["rotY"] == 0.0
+    assert snap["zoom"] == 1.0
+    assert snap["panX"] == 0.0
+    assert snap["panY"] == 0.0
+    assert snap["cameraNonce"] == 0
+
+
+def test_get_webgpu_camera_snapshot_uses_session_values():
+    _reset_session()
+    sys.modules["streamlit"] = mod
+    fake_st.session_state.update(
+        {
+            "webgpu_rotX": "0.7",
+            "webgpu_rotY": -0.25,
+            "webgpu_zoom": 1.8,
+            "webgpu_panX": 0.1,
+            "webgpu_panY": -0.2,
+            "webgpu_auto_rotate": True,
+            "webgpu_camera_nonce": 12,
+        },
+    )
+    S = importlib.import_module("pfui.state")
+    snap = S.get_webgpu_camera_snapshot(fake_st.session_state)
+    assert snap == {
+        "autoRotate": True,
+        "rotX": 0.7,
+        "rotY": -0.25,
+        "zoom": 1.8,
+        "panX": 0.1,
+        "panY": -0.2,
+        "cameraNonce": 12,
+    }
+
+
+def test_queue_webgpu_camera_state_flags_auto_toggle():
+    _reset_session()
+    sys.modules["streamlit"] = mod
+    S = importlib.import_module("pfui.state")
+    assert S.queue_webgpu_camera_state({"autoRotate": True}) is True
+    S.apply_pending_updates()
+    assert fake_st.session_state["webgpu_auto_rotate"] is True
+
+    # Same value should not request another rerun
+    assert S.queue_webgpu_camera_state({"autoRotate": True}) is False
+    assert S.queue_webgpu_camera_state({"autoRotate": False}) is True
+
+
+def test_webgpu_camera_signature_changes_on_update():
+    _reset_session()
+    sys.modules["streamlit"] = mod
+    fake_st.session_state.update({
+        "webgpu_rotX": 0.1,
+        "webgpu_auto_rotate": False,
+    })
+    S = importlib.import_module("pfui.state")
+    first = S.webgpu_camera_signature(S.get_webgpu_camera_snapshot(fake_st.session_state))
+    fake_st.session_state["webgpu_auto_rotate"] = True
+    second = S.webgpu_camera_signature(S.get_webgpu_camera_snapshot(fake_st.session_state))
+    assert first != second

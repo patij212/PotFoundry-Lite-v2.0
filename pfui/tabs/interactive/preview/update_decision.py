@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import streamlit as st
+from pfui._st import get_components_v1
+from pfui._st import get_effective_st as get_st
 
 from .cache_management import clear_preview_cache
 from .utils import to_float_scalar
@@ -19,10 +20,12 @@ def should_update_preview_ui(preview_mode: str, ss: dict[str, Any]) -> tuple[boo
         
     Returns:
         Tuple of (should_update, controls_rendered)
+
     """
     should_update = False
     controls_rendered = False
-    
+
+    st = get_st()
     if preview_mode == "auto":
         should_update = True
     else:
@@ -40,22 +43,22 @@ def should_update_preview_ui(preview_mode: str, ss: dict[str, Any]) -> tuple[boo
                     st.cache_data.clear()
                 except Exception:
                     pass
-    
+
             if preview_mode == "debounced":
                 # Inject debounce JavaScript
                 inject_debounce_js(ss)
-        
+
         with col2:
             st.caption("Manual mode" if preview_mode == "manual" else "Debounced mode")
             # Quick utility: allow clearing preview caches if rendering gets stuck
             if st.button("Reset preview cache", key="btn_reset_preview_cache"):
                 clear_preview_cache(ss)
                 st.rerun()
-    
+
         # Server-side fallback for debounced/manual modes
         if not should_update:
             should_update = check_server_side_update(preview_mode, ss)
-    
+
     return should_update, controls_rendered
 
 
@@ -64,6 +67,7 @@ def inject_debounce_js(ss: dict[str, Any]) -> None:
     
     Args:
         ss: Session state dictionary
+
     """
     timeout_ms = int(to_float_scalar(ss.get("debounce_timeout", 0.8)) * 1000)
     js = """
@@ -102,8 +106,7 @@ timer = setTimeout(function(){
 </script>
 """ % (timeout_ms,)
     try:
-        import streamlit.components.v1 as components
-        components.html(js, height=0)
+        get_components_v1().html(js, height=0)
     except Exception:
         pass
 
@@ -117,20 +120,21 @@ def check_server_side_update(preview_mode: str, ss: dict[str, Any]) -> bool:
         
     Returns:
         True if should update based on server-side check
+
     """
     try:
         # Import the helper function (may not exist in all versions)
         from pfui.app_components.plotting import should_update_preview
-        
-        last_ts = cast(Any, ss.get("_last_change_ts", None))
+
+        last_ts = cast("Any", ss.get("_last_change_ts"))
         debounce_timeout_seconds = to_float_scalar(ss.get("debounce_timeout", 0.8))
-        
+
         try:
             if should_update_preview(
                 preview_mode,
                 last_change_ts=last_ts,
                 debounce_timeout_s=debounce_timeout_seconds,
-                stale=bool(cast(Any, ss.get("_preview_stale", False))),
+                stale=bool(cast("Any", ss.get("_preview_stale", False))),
             ):
                 return True
         except Exception:
@@ -142,5 +146,5 @@ def check_server_side_update(preview_mode: str, ss: dict[str, Any]) -> bool:
     except Exception:
         # best-effort; ignore failures
         pass
-    
+
     return False

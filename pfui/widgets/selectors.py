@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st
 
 
 def select_box(
     label: str,
-    options: List[Any],
+    options: list[Any],
     index: int = 0,
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
-    format_func: Optional[Callable[[Any], str]] = None,
+    key: str | None = None,
+    help_text: str | None = None,
+    format_func: Callable[[Any], str] | None = None,
 ) -> Any:
     """Create a select box (dropdown) with consistent styling.
 
@@ -27,7 +28,9 @@ def select_box(
 
     Returns:
         Selected option value
+
     """
+    st = get_st()
     return st.selectbox(
         label=label,
         options=options,
@@ -40,10 +43,10 @@ def select_box(
 
 def radio_selector(
     label: str,
-    options: List[Any],
+    options: list[Any],
     index: int = 0,
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
+    key: str | None = None,
+    help_text: str | None = None,
     horizontal: bool = False,
 ) -> Any:
     """Create a radio button selector with consistent styling.
@@ -58,7 +61,9 @@ def radio_selector(
 
     Returns:
         Selected option value
+
     """
+    st = get_st()
     return st.radio(
         label=label,
         options=options,
@@ -71,11 +76,11 @@ def radio_selector(
 
 def checkbox_group(
     label: str,
-    options: List[str],
-    default: Optional[List[str]] = None,
-    key: Optional[str] = None,
-    help_text: Optional[str] = None,
-) -> List[str]:
+    options: list[str],
+    default: list[str] | None = None,
+    key: str | None = None,
+    help_text: str | None = None,
+) -> list[str]:
     """Create a group of checkboxes with consistent styling.
 
     Args:
@@ -87,18 +92,20 @@ def checkbox_group(
 
     Returns:
         List of selected option values
+
     """
     if default is None:
         default = []
-    
+
+    st = get_st()
     st.write(label)
     if help_text:
         st.caption(help_text)
-    
+
     selected = []
     for option in options:
         option_key = f"{key}_{option}" if key else None
         if st.checkbox(option, value=option in default, key=option_key):
             selected.append(option)
-    
+
     return selected

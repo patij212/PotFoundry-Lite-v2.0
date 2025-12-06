@@ -13,6 +13,7 @@ def to_float_scalar(x: Any) -> float:
         
     Returns:
         Float value, or 0.0 if conversion fails
+
     """
     def _unwrap(v):
         if isinstance(v, (list, tuple)):
@@ -21,7 +22,7 @@ def to_float_scalar(x: Any) -> float:
             except Exception:
                 return v
         return v
-    
+
     try:
         v = _unwrap(x)
         if isinstance(v, (int, float)):
@@ -50,6 +51,7 @@ def to_int_scalar(x: Any) -> int:
         
     Returns:
         Int value, or 0 if conversion fails
+
     """
     try:
         return int(to_float_scalar(x))

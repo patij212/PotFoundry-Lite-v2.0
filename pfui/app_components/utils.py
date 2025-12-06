@@ -33,9 +33,9 @@ def build_mesh_kwargs_for_test(Vd, Fd, ss, n_theta, n_z, fig_h):
                 z_norm,
                 ss.get("preview_palette", None),
                 [
-                    ss.get("preview_grad_c1", "#2850D0"),
-                    ss.get("preview_grad_c2", "#5FA8FF"),
-                    ss.get("preview_grad_c3", "#E2F3FF"),
+                    ss.get("preview_grad_c1", "#1149FF"),
+                    ss.get("preview_grad_c2", "#8801DE"),
+                    ss.get("preview_grad_c3", "#124FA0"),
                 ],
             )
         except Exception:
@@ -88,7 +88,7 @@ def _mask_possible_secrets(text: str) -> str:
 
         # Mask JWT-like tokens
         text = re.sub(
-            r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "[REDACTED_JWT]", text
+            r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "[REDACTED_JWT]", text,
         )
         # Mask long hex hashes (>=48 hex chars)
         text = re.sub(r"[0-9a-fA-F]{48,}", "[REDACTED_HASH]", text)
@@ -113,7 +113,7 @@ def resolve_schema_key(style_name: str) -> str:
 
 
 __all__ = [
-    "build_mesh_kwargs_for_test",
     "_mask_possible_secrets",
+    "build_mesh_kwargs_for_test",
     "resolve_schema_key",
 ]

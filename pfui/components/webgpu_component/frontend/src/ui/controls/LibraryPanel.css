@@ -1,0 +1,301 @@
+/**
+ * Library Panel styles.
+ * 
+ * @module ui/controls/LibraryPanel.css
+ */
+
+.pf-library-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  height: 100%;
+}
+
+/* Search Bar */
+.pf-library-panel__search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pf-library-panel__search-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--pf-surface-2, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--pf-border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+}
+
+.pf-library-panel__search-input input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--pf-text, #e0e0e0);
+  font-size: 13px;
+}
+
+.pf-library-panel__search-input input::placeholder {
+  color: var(--pf-text-muted, rgba(255, 255, 255, 0.5));
+}
+
+.pf-library-panel__search-input svg {
+  color: var(--pf-text-muted, rgba(255, 255, 255, 0.4));
+  flex-shrink: 0;
+}
+
+.pf-library-panel__filter {
+  padding: 8px 10px;
+  background: var(--pf-surface-2, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--pf-border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  color: var(--pf-text, #e0e0e0);
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.pf-library-panel__filter:focus {
+  outline: none;
+  border-color: var(--pf-accent, #6366f1);
+}
+
+.pf-library-panel__filter option {
+  background: #1a1a1a;
+}
+
+/* Error Message */
+.pf-library-panel__error {
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 12px;
+}
+
+/* Design Grid */
+.pf-library-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 240px;
+  padding-right: 4px;
+  grid-auto-rows: minmax(240px, auto);
+}
+
+.pf-library-panel__grid::-webkit-scrollbar {
+  width: 4px;
+}
+
+.pf-library-panel__grid::-webkit-scrollbar-thumb {
+  background: var(--pf-border, rgba(255, 255, 255, 0.2));
+  border-radius: 2px;
+}
+
+/* Design Card */
+.pf-library-panel__card {
+  display: flex;
+  flex-direction: column;
+  background: var(--pf-surface-2, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--pf-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.15s ease;
+  min-height: 240px;
+}
+
+.pf-library-panel__card:hover {
+  border-color: var(--pf-accent, #6366f1);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pf-library-panel__thumb {
+  aspect-ratio: 4 / 3;
+  min-height: 140px;
+  background: var(--pf-surface-1, rgba(0, 0, 0, 0.25));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.pf-library-panel__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pf-library-panel__thumb-placeholder {
+  color: var(--pf-text-muted, rgba(255, 255, 255, 0.3));
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+}
+
+.pf-library-panel__card-info {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pf-library-panel__card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--pf-text, #e0e0e0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-library-panel__card-style {
+  font-size: 10px;
+  color: var(--pf-text-muted, rgba(255, 255, 255, 0.5));
+}
+
+.pf-library-panel__card-actions {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+@media (max-width: 420px) {
+  .pf-library-panel__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Loading State */
+.pf-library-panel__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  color: var(--pf-text-muted, rgba(255, 255, 255, 0.5));
+  font-size: 13px;
+}
+
+.pf-library-panel__spinner {
+  animation: pf-spin 1s linear infinite;
+}
+
+@keyframes pf-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Empty State */
+.pf-library-panel__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: var(--pf-text-muted, rgba(255, 255, 255, 0.4));
+  text-align: center;
+}
+
+.pf-library-panel__empty p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--pf-text, rgba(255, 255, 255, 0.7));
+}
+
+.pf-library-panel__empty span {
+  font-size: 12px;
+}
+
+/* Load More */
+.pf-library-panel__load-more {
+  align-self: center;
+}
+
+/* Sync to Sidebar Banner */
+.pf-library-panel__sync-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.08));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--pf-text, #e0e0e0);
+}
+
+.pf-library-panel__sync-banner span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-library-panel__sync-banner strong {
+  color: var(--pf-accent, #a5b4fc);
+}
+
+/* Publish Section */
+.pf-library-panel__publish {
+  border-top: 1px solid var(--pf-border, rgba(255, 255, 255, 0.1));
+  padding-top: 12px;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pf-library-panel__publish-btn {
+  width: 100%;
+}
+
+.pf-library-panel__publish-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--pf-surface-2, rgba(255, 255, 255, 0.03));
+  border-radius: 8px;
+}
+
+.pf-library-panel__publish-form input,
+.pf-library-panel__publish-form select {
+  padding: 10px 12px;
+  background: var(--pf-surface-1, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--pf-border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  color: var(--pf-text, #e0e0e0);
+  font-size: 13px;
+}
+
+.pf-library-panel__publish-form input:focus,
+.pf-library-panel__publish-form select:focus {
+  outline: none;
+  border-color: var(--pf-accent, #6366f1);
+}
+
+.pf-library-panel__publish-form input::placeholder {
+  color: var(--pf-text-muted, rgba(255, 255, 255, 0.5));
+}
+
+.pf-library-panel__publish-form select option {
+  background: #1a1a1a;
+}

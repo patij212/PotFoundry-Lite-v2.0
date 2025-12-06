@@ -1,24 +1,28 @@
-"""
-Harmonic Ripple style function for PotFoundry.
+"""Harmonic Ripple style function for PotFoundry.
 
 This module contains the outer radius function for the harmonic_ripple pot style.
 """
 from __future__ import annotations
 
 import math
+from typing import Any
+
+import numpy as np
+
+from ...types import NDArrayFloat
 
 # Constants
 TAU = 2.0 * math.pi
-import numpy as np
 
 
 __all__ = ["r_outer_harmonic_ripple"]
 
 def r_outer_harmonic_ripple(
-    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
+    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: dict[str, Any],
 ) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
+    is_grid = th.ndim == 2
 
     petals = max(1, int(opts.get("hr_petals", 7)))
     pet_amp = float(opts.get("hr_petal_amp", 0.16))
@@ -32,13 +36,19 @@ def r_outer_harmonic_ripple(
 
     bell = float(opts.get("hr_bell", 0.05))
 
-    f = 1.0 + pet_amp * np.cos(petals * th + pet_ph + TAU * pet_zg * t)
-    f *= 1.0 + rip_amp * np.sin(rip_freq * th + rip_ph + TAU * rip_zg * t)
+    pet_th = petals * th
+    rip_th = rip_freq * th
+    f = 1.0 + pet_amp * np.cos(pet_th + pet_ph + TAU * pet_zg * t)
+    f *= 1.0 + rip_amp * np.sin(rip_th + rip_ph + TAU * rip_zg * t)
     if bell != 0.0:
         f *= 1.0 + bell * np.exp(-((t - 0.5) ** 2.0) / 0.04)
 
     out = r0 * f
     return float(out) if np.isscalar(theta) else out
+
+
+# Vectorize-supported style
+r_outer_harmonic_ripple.__vectorized__ = True
 
 
 

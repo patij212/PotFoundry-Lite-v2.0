@@ -43,7 +43,7 @@ Never rely solely on client-side hooks—CI should also enforce secret scanning 
 
 ### Prerequisites
 
-- Python 3.11+ (tested on 3.11, 3.12, 3.13)
+- Python 3.11–3.13 (NumPy 2.3.x does **not** publish wheels for Python 3.14 yet; using 3.14 results in `_multiarray_umath` import errors)
 - pip
 - Git
 

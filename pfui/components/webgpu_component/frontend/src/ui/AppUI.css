@@ -1,0 +1,122 @@
+/**
+ * App UI styles.
+ */
+
+/* ============================================================================
+   Root Container
+   ============================================================================ */
+
+.pf-app-ui {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Allow clicks to pass through to canvas */
+  pointer-events: none;
+  /* Establish stacking context */
+  isolation: isolate;
+}
+
+/* Enable pointer events on UI overlays only (panel, toolbar, statusbar) */
+.pf-app-ui > .pf-control-panel,
+.pf-app-ui > .pf-toolbar,
+.pf-app-ui > .pf-status-bar,
+.pf-app-ui > .pf-help-dialog {
+  pointer-events: auto;
+}
+
+/* ============================================================================
+   Viewport (Canvas Container)
+   ============================================================================ */
+
+.pf-app-ui__viewport {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  /* MUST pass through pointer events - canvas is a sibling, not a child */
+  pointer-events: none;
+}
+
+.pf-app-ui__viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ============================================================================
+   CSS Variables (Theme)
+   ============================================================================ */
+
+:root {
+  /* Colors */
+  --pf-color-primary: #6366f1;
+  --pf-color-primary-light: #818cf8;
+  --pf-color-primary-dark: #4f46e5;
+  
+  --pf-color-surface: rgba(18, 18, 24, 0.95);
+  --pf-color-surface-light: rgba(255, 255, 255, 0.08);
+  --pf-color-surface-lighter: rgba(255, 255, 255, 0.12);
+  
+  --pf-color-border: rgba(255, 255, 255, 0.1);
+  --pf-color-border-light: rgba(255, 255, 255, 0.15);
+  
+  --pf-color-text: rgba(255, 255, 255, 0.9);
+  --pf-color-text-secondary: rgba(255, 255, 255, 0.7);
+  --pf-color-text-muted: rgba(255, 255, 255, 0.5);
+  
+  /* Spacing */
+  --pf-spacing-xs: 4px;
+  --pf-spacing-sm: 8px;
+  --pf-spacing-md: 12px;
+  --pf-spacing-lg: 16px;
+  --pf-spacing-xl: 24px;
+  
+  /* Border Radius */
+  --pf-radius-sm: 4px;
+  --pf-radius-md: 6px;
+  --pf-radius-lg: 8px;
+  --pf-radius-xl: 12px;
+  
+  /* Shadows */
+  --pf-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --pf-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --pf-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  
+  /* Transitions */
+  --pf-transition-fast: 0.1s ease;
+  --pf-transition-normal: 0.15s ease;
+  --pf-transition-slow: 0.25s ease;
+  
+  /* Z-Index Layers */
+  --pf-z-viewport: 0;
+  --pf-z-toolbar: 50;
+  --pf-z-panel: 100;
+  --pf-z-modal: 200;
+  --pf-z-tooltip: 300;
+}
+
+/* ============================================================================
+   Global Resets
+   ============================================================================ */
+
+.pf-app-ui *,
+.pf-app-ui *::before,
+.pf-app-ui *::after {
+  box-sizing: border-box;
+}
+
+.pf-app-ui button {
+  font-family: inherit;
+}
+
+.pf-app-ui input {
+  font-family: inherit;
+}

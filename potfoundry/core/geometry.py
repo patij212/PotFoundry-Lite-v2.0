@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from functools import lru_cache
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, Tuple, cast
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -19,8 +18,8 @@ from numpy.typing import NDArray
 NDArrayAny = NDArray[Any]
 NDArrayF = NDArray[np.float64]
 
-from ..types import NDArrayFloat, StyleOpts
-from .geometry_helpers import (
+from ..types import NDArrayFloat, StyleOpts  # noqa: E402
+from .geometry_helpers import (  # noqa: E402
     cdiff_theta,
     cdiff_z,
     dilate_adaptive,
@@ -28,7 +27,7 @@ from .geometry_helpers import (
     roll_rows,
     roll_rows_2d,
 )
-from .mesh import (
+from .mesh import (  # noqa: E402
     MeshQuality,
     PotDefaults,
     add_ring_xy,
@@ -44,23 +43,23 @@ from .mesh import (
     spin_twist_radians,
     theta_grid_cached,
 )
-from .styles import (
+from .styles import (  # noqa: E402
     STYLES,
 )
 
 __all__ = [
+    "STYLES",
     "MeshQuality",
     "PotDefaults",
-    "STYLES",
-    "r_base_out",
     "build_pot_mesh",
+    "r_base_out",
     "save_preview_png",
     "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
 
 
 # Shared base profile (outer radius vs height) with flare-center warp and bell
-import math as _m
+import math as _m  # noqa: E402
 
 
 def base_radius(
@@ -127,32 +126,31 @@ def base_radius(
         # value rather than raising an obscure exception. This keeps the
         # legacy scalar API stable while avoiding crashes during debug runs.
         return float(arr.ravel()[0])
-    else:
-        # Vectorized branch: operate on NumPy arrays
-        t = np.where(H == 0, 0.0, np.clip(z_arr / H, 0.0, 1.0))
-        c = float(opts.get("flare_center", 0.5))
-        k = float(opts.get("flare_sharp", 6.0))
+    # Vectorized branch: operate on NumPy arrays
+    t = np.where(H == 0, 0.0, np.clip(z_arr / H, 0.0, 1.0))
+    c = float(opts.get("flare_center", 0.5))
+    k = float(opts.get("flare_sharp", 6.0))
 
-        def _sig_np(x: npt.NDArray[np.float64] | float) -> npt.NDArray[np.float64]:
-            return 1.0 / (1.0 + np.exp(-k * (x - c)))
+    def _sig_np(x: npt.NDArray[np.float64] | float) -> npt.NDArray[np.float64]:
+        return 1.0 / (1.0 + np.exp(-k * (x - c)))
 
-        s0 = _sig_np(0.0)
-        s1 = _sig_np(1.0)
-        tw = (_sig_np(t) - s0) / (s1 - s0 + 1e-9)
-        r = Rb + (Rt - Rb) * (tw ** float(expn))
-        amp = float(opts.get("bell_amp", 0.0))
-        if amp != 0.0:
-            mu = float(opts.get("bell_center", 0.5))
-            width = max(0.05, float(opts.get("bell_width", 0.22)))
-            sigma = max(1e-3, width * 0.5)
-            g = float(np.exp(-0.5 * ((t - mu) / sigma) ** 2))
-            r = r * (1.0 + amp * g)
-        # Normalize type: if computation produced a scalar (0-d or size-1),
-        # return a Python float so callers that expect scalars keep working.
-        r = np.asarray(r, dtype=float)
-        if r.shape == () or getattr(r, "size", 0) == 1:
-            return float(r.item())
-        return r
+    s0 = _sig_np(0.0)
+    s1 = _sig_np(1.0)
+    tw = (_sig_np(t) - s0) / (s1 - s0 + 1e-9)
+    r = Rb + (Rt - Rb) * (tw ** float(expn))
+    amp = float(opts.get("bell_amp", 0.0))
+    if amp != 0.0:
+        mu = float(opts.get("bell_center", 0.5))
+        width = max(0.05, float(opts.get("bell_width", 0.22)))
+        sigma = max(1e-3, width * 0.5)
+        g = float(np.exp(-0.5 * ((t - mu) / sigma) ** 2))
+        r = r * (1.0 + amp * g)
+    # Normalize type: if computation produced a scalar (0-d or size-1),
+    # return a Python float so callers that expect scalars keep working.
+    r = np.asarray(r, dtype=float)
+    if r.shape == () or getattr(r, "size", 0) == 1:
+        return float(r.item())
+    return r
 
 
 
@@ -175,13 +173,13 @@ def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
 
 
 def _compute_normal(
-    a: npt.NDArray[np.float64], b: npt.NDArray[np.float64], c: npt.NDArray[np.float64]
+    a: npt.NDArray[np.float64], b: npt.NDArray[np.float64], c: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     n = np.cross(b - a, c - a)
     norm = np.linalg.norm(n)
     if norm == 0:
-        return cast(npt.NDArray[np.float64], np.array([0.0, 0.0, 0.0], dtype=float))
-    return cast(npt.NDArray[np.float64], n / norm)
+        return cast("npt.NDArray[np.float64]", np.array([0.0, 0.0, 0.0], dtype=float))
+    return cast("npt.NDArray[np.float64]", n / norm)
 
 
 def write_ascii_stl(
@@ -207,6 +205,7 @@ def write_ascii_stl(
 
     Note:
         For production use, prefer write_stl_binary from potfoundry.core.io.stl
+
     """
     import warnings
 
@@ -272,8 +271,7 @@ def build_pot_mesh(
     r_outer_fn: Callable[..., Any] | None = None,
     style_opts: StyleOpts | dict[str, Any] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
-    """
-    Return (vertices [N,3], faces [M,3], diagnostics).
+    """Return (vertices [N,3], faces [M,3], diagnostics).
     Parity: sample r_outer_fn at (theta + twist) for preview/export match.
     Vectorization (stage 1): theta dimension is fully vectorized
     faces built by numpy indexing.
@@ -295,15 +293,12 @@ def build_pot_mesh(
     thetas, cos_th, sin_th = theta_grid_cached(int(n_theta))
     # Local typed diagnostic dict placeholder used by verbose diagnostics logic
     # Initialize as empty dict so later diagnostic code can index safely.
-    dump: Dict[str, Any] = {}
+    dump: dict[str, Any] = {}
     z_outer = np.linspace(0.0, H, n_z + 1)
     # Ensure we have a callable style function
     if r_outer_fn is None:
         r_outer_fn = cast(
-            Callable[
-                [NDArrayFloat | float, float, float | NDArrayFloat, float, dict],
-                NDArrayFloat | float,
-            ],
+            "Callable[[NDArrayFloat | float, float, float | NDArrayFloat, float, dict], NDArrayFloat | float]",
             STYLES["SuperformulaBlossom"][0],
         )
     assert r_outer_fn is not None
@@ -349,7 +344,7 @@ def build_pot_mesh(
         sf_style_hint = None
         try:
             if isinstance(style_opts, dict):
-                sf_style_hint = style_opts.get("sf_style", None)
+                sf_style_hint = style_opts.get("sf_style")
         except Exception:
             sf_style_hint = None
         _fn_name = getattr(r_outer_fn, "__name__", "")
@@ -369,7 +364,7 @@ def build_pot_mesh(
             try:
                 if bool(style_opts.get("sf_edge_flow_debug", False)):
                     print(
-                        f"[sf_edge_flow_debug] entering edge-flow block: mode={style_opts.get('sf_edge_flow_mode')}, debug=True"
+                        f"[sf_edge_flow_debug] entering edge-flow block: mode={style_opts.get('sf_edge_flow_mode')}, debug=True",
                     )
                     # Immediate stamp: write a minimal entry so we can confirm file path and write ability
                     try:
@@ -379,7 +374,7 @@ def build_pot_mesh(
                         from pathlib import Path
 
                         repo_root = Path(
-                            r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
+                            r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0",
                         )
                         outpath: str = str(repo_root / ".pf_edge_flow_debug.json")
                         payload0 = {
@@ -389,7 +384,7 @@ def build_pot_mesh(
                         }
                         # Respect file-write toggle for debug stamp
                         verbose_write_file = bool(
-                            style_opts.get("sf_edge_flow_verbose_write_file", True)
+                            style_opts.get("sf_edge_flow_verbose_write_file", True),
                         )
                         if verbose_write_file:
                             with open(outpath, "a", encoding="utf-8") as fh0:
@@ -397,7 +392,7 @@ def build_pot_mesh(
                                 fh0.write("\n")
                             try:
                                 print(
-                                    f"[sf_edge_flow_debug] stamped entry to {outpath}"
+                                    f"[sf_edge_flow_debug] stamped entry to {outpath}",
                                 )
                             except Exception:
                                 pass
@@ -407,7 +402,7 @@ def build_pot_mesh(
                 pass
             # Build R[z, th]
             R_raw = np.vstack(
-                [np.asarray(row, dtype=float) for row in r_outer_samples_list]
+                [np.asarray(row, dtype=float) for row in r_outer_samples_list],
             )
             Z, T = R_raw.shape
             # Parameters (clamped)
@@ -442,7 +437,7 @@ def build_pot_mesh(
             # In-memory collector for verbose diagnostics (always initialize so tests
             # and callers can request diagnostics regardless of twist compensation)
 
-            edgeflow_verbose_collector: list[Dict[str, Any]] = []
+            edgeflow_verbose_collector: list[dict[str, Any]] = []
             # Debug flag (define early so diagnostics prints can use it)
             debug_enabled = bool(style_opts.get("sf_edge_flow_debug", False))
             # Probe flag: optional single-zi inspection
@@ -470,7 +465,7 @@ def build_pot_mesh(
                 try:
                     if probe_enabled and 0 <= probe_zi < Z:
                         # in analysis frame, inspect a small neighbourhood around candidate minima
-                        probe_out: Dict[str, Any] = {}
+                        probe_out: dict[str, Any] = {}
                         probe_out["timestamp"] = time.time()
                         probe_out["event"] = "probe_mapping"
                         probe_out["probe_zi"] = int(probe_zi)
@@ -481,7 +476,7 @@ def build_pot_mesh(
                         # show the first, middle, last analysis values for brevity
                         probe_out["analysis_row_first"] = float(row_analysis[0])
                         probe_out["analysis_row_mid"] = float(
-                            row_analysis[len(row_analysis) // 2]
+                            row_analysis[len(row_analysis) // 2],
                         )
                         probe_out["analysis_row_last"] = float(row_analysis[-1])
                         # compute mapping of all analysis indices -> raw indices via inverse roll
@@ -507,10 +502,10 @@ def build_pot_mesh(
                             pass
                         try:
                             print(
-                                f"[sf_edge_flow_probe] zi={probe_zi} s_tw={s_tw[probe_zi]} inv_shift={inv_shift} T={T}"
+                                f"[sf_edge_flow_probe] zi={probe_zi} s_tw={s_tw[probe_zi]} inv_shift={inv_shift} T={T}",
                             )
                             print(
-                                f"[sf_edge_flow_probe] mapped_raw_idxs sample: {mapped_raw_idxs[:10]} ... {mapped_raw_idxs[-10:]}"
+                                f"[sf_edge_flow_probe] mapped_raw_idxs sample: {mapped_raw_idxs[:10]} ... {mapped_raw_idxs[-10:]}",
                             )
                         except Exception:
                             pass
@@ -536,7 +531,7 @@ def build_pot_mesh(
             if mode == "quantile":
                 # Build high-quantile envelopes along vertical and +/-45° diagonals (previous method)
                 def _quantile_env_vertical(
-                    A: np.ndarray, half: int, q: float
+                    A: np.ndarray, half: int, q: float,
                 ) -> np.ndarray:
                     stacks = []
                     for dz in range(-half, half + 1):
@@ -546,13 +541,13 @@ def build_pot_mesh(
                     W_sorted = np.sort(W, axis=0)
                     k = int(
                         np.clip(
-                            int(np.ceil(q * (2 * half + 1))) - 1, 0, (2 * half + 1) - 1
-                        )
+                            int(np.ceil(q * (2 * half + 1))) - 1, 0, (2 * half + 1) - 1,
+                        ),
                     )
                     return W_sorted[k, :, :]
 
                 def _quantile_env_diag(
-                    A: np.ndarray, half: int, q: float, sign: int
+                    A: np.ndarray, half: int, q: float, sign: int,
                 ) -> np.ndarray:
                     stacks = []
                     for dz in range(-half, half + 1):
@@ -565,8 +560,8 @@ def build_pot_mesh(
                     W_sorted = np.sort(W, axis=0)
                     k = int(
                         np.clip(
-                            int(np.ceil(q * (2 * half + 1))) - 1, 0, (2 * half + 1) - 1
-                        )
+                            int(np.ceil(q * (2 * half + 1))) - 1, 0, (2 * half + 1) - 1,
+                        ),
                     )
                     env = W_sorted[k, :, :]
                     return env
@@ -575,12 +570,12 @@ def build_pot_mesh(
                 Env_diap = _quantile_env_diag(R, h, q_hi, sign=+1)
                 Env_diam = _quantile_env_diag(R, h, q_hi, sign=-1)
                 env_final = np.where(
-                    dom == 0, Env_vert, np.where(dom == 1, Env_diap, Env_diam)
+                    dom == 0, Env_vert, np.where(dom == 1, Env_diap, Env_diam),
                 )
             elif mode == "vertical":
                 # Strict vertical-only lifting to avoid lateral (theta) ballooning
                 def _quantile_env_vertical(
-                    A: np.ndarray, half: int, q: float
+                    A: np.ndarray, half: int, q: float,
                 ) -> np.ndarray:
                     stacks = []
                     for dz in range(-half, half + 1):
@@ -590,8 +585,8 @@ def build_pot_mesh(
                     W_sorted = np.sort(W, axis=0)
                     k = int(
                         np.clip(
-                            int(np.ceil(q * (2 * half + 1))) - 1, 0, (2 * half + 1) - 1
-                        )
+                            int(np.ceil(q * (2 * half + 1))) - 1, 0, (2 * half + 1) - 1,
+                        ),
                     )
                     return W_sorted[k, :, :]
 
@@ -601,17 +596,17 @@ def build_pot_mesh(
                 # Ridge-propagation envelopes from true peaks along orientation directions
                 # 1) Identify peaks per ring using a high quantile threshold to avoid ghost seeds
                 thr_ring = np.quantile(R, peak_q, axis=1, keepdims=True)
-                seed = np.where(R >= thr_ring, R, -np.inf)
+                seed = np.where(thr_ring <= R, R, -np.inf)
 
                 def _dilate_dir(
-                    seed_arr: np.ndarray, steps: int, dtheta_per_dz: int
+                    seed_arr: np.ndarray, steps: int, dtheta_per_dz: int,
                 ) -> np.ndarray:
                     # Forward along +z
                     S_forw = seed_arr.copy()
                     acc_forw = S_forw.copy()
                     for _ in range(steps):
                         S_forw = np.vstack(
-                            [S_forw[0:1, :], S_forw[:-1, :]]
+                            [S_forw[0:1, :], S_forw[:-1, :]],
                         )  # shift from z-1 to z
                         if dtheta_per_dz != 0:
                             S_forw = np.roll(S_forw, -dtheta_per_dz, axis=1)
@@ -621,7 +616,7 @@ def build_pot_mesh(
                     acc_back = S_back.copy()
                     for _ in range(steps):
                         S_back = np.vstack(
-                            [S_back[1:, :], S_back[-1:, :]]
+                            [S_back[1:, :], S_back[-1:, :]],
                         )  # shift from z+1 to z
                         if dtheta_per_dz != 0:
                             S_back = np.roll(S_back, dtheta_per_dz, axis=1)
@@ -650,14 +645,14 @@ def build_pot_mesh(
                     Env_diap = np.maximum(Env_diap, Env_adap)
                     Env_diam = np.maximum(Env_diam, Env_adap)
                 env_final = np.where(
-                    dom == 0, Env_vert, np.where(dom == 1, Env_diap, Env_diam)
+                    dom == 0, Env_vert, np.where(dom == 1, Env_diap, Env_diam),
                 )
             else:
                 # ridge_paths: trace thin peak paths; then propagate envelope toward valley side
                 # Seed with high-quantile + theta NMS to avoid ghosts
                 thr_ring = np.quantile(R, peak_q, axis=1, keepdims=True)
-                seeds_raw = R >= thr_ring
-                nms_theta = (R >= np.roll(R, 1, axis=1)) & (R >= np.roll(R, -1, axis=1))
+                seeds_raw = thr_ring <= R
+                nms_theta = (np.roll(R, 1, axis=1) <= R) & (np.roll(R, -1, axis=1) <= R)
                 seeds = seeds_raw & nms_theta
                 # Limit seeds per ring (highest values) to keep tracing cost bounded
                 max_paths = int(style_opts.get("sf_edge_flow_max_paths", 4))
@@ -758,7 +753,7 @@ def build_pot_mesh(
                     if debug_enabled:
                         pm_count = int(np.count_nonzero(path_mask))
                         print(
-                            f"[sf_edge_flow_debug] path_mask nonzero count={pm_count}"
+                            f"[sf_edge_flow_debug] path_mask nonzero count={pm_count}",
                         )
                 except Exception:
                     pass
@@ -781,11 +776,11 @@ def build_pot_mesh(
                                     top_idxs = ridge_cols[:8]
                                     top_vals = [float(row[int(ii)]) for ii in top_idxs]
                                 print(
-                                    f"[sf_edge_flow_debug] sample zi={szi} pm_count={int(np.count_nonzero(pm_row))} ridge_cols={ridge_cols.tolist()} ridge_vals_sample={top_vals}"
+                                    f"[sf_edge_flow_debug] sample zi={szi} pm_count={int(np.count_nonzero(pm_row))} ridge_cols={ridge_cols.tolist()} ridge_vals_sample={top_vals}",
                                 )
                             except Exception:
                                 print(
-                                    f"[sf_edge_flow_debug] sample zi={szi} diagnostic failed"
+                                    f"[sf_edge_flow_debug] sample zi={szi} diagnostic failed",
                                 )
                 except Exception:
                     pass
@@ -814,8 +809,8 @@ def build_pot_mesh(
                     Wv_sorted = np.sort(Wv, axis=0)
                     k = int(
                         np.clip(
-                            int(np.ceil(q_hi * (2 * h + 1))) - 1, 0, (2 * h + 1) - 1
-                        )
+                            int(np.ceil(q_hi * (2 * h + 1))) - 1, 0, (2 * h + 1) - 1,
+                        ),
                     )
                     env_final = Wv_sorted[k, :, :]
                     # jump to anchor/snap step with this fallback
@@ -825,7 +820,7 @@ def build_pot_mesh(
                     vband = int(style_opts.get("sf_edge_flow_valley_band_cols", 0))
                     vband = max(0, min(T // 2, vband))
                     vdecay = float(
-                        style_opts.get("sf_edge_flow_valley_band_decay", 0.0)
+                        style_opts.get("sf_edge_flow_valley_band_decay", 0.0),
                     )
                     vdecay = max(0.0, min(0.05, vdecay))
                     if env_final is None:
@@ -861,16 +856,16 @@ def build_pot_mesh(
                             # For each z-slice, find true angular valleys between adjacent peaks using interpolation
                             # and apply an outward-only bridge B(θ) between peak radii across the shorter arc.
                             if bool(
-                                style_opts.get("sf_edge_flow_valley_lock_enable", True)
+                                style_opts.get("sf_edge_flow_valley_lock_enable", True),
                             ):
                                 # small angular/z softness parameters (kept for optional blending)
                                 zhw = int(
-                                    style_opts.get("sf_edge_flow_valley_z_halfwin", 1)
+                                    style_opts.get("sf_edge_flow_valley_z_halfwin", 1),
                                 )
                                 zhw = max(0, min(3, zhw))
                                 # debug collection
                                 debug_enabled = bool(
-                                    style_opts.get("sf_edge_flow_debug", False)
+                                    style_opts.get("sf_edge_flow_debug", False),
                                 )
                                 # Typed collector: always a list; only populated when enabled
                                 debug_reports: list[dict[str, Any]] = []
@@ -893,8 +888,8 @@ def build_pot_mesh(
                                         ksel = min(
                                             int(
                                                 style_opts.get(
-                                                    "sf_edge_flow_max_paths", 4
-                                                )
+                                                    "sf_edge_flow_max_paths", 4,
+                                                ),
                                             ),
                                             idxs.size,
                                         )
@@ -913,7 +908,7 @@ def build_pot_mesh(
                                                 int(np.count_nonzero(pm_row))
                                                 if "pm_row" in locals()
                                                 else int(
-                                                    np.count_nonzero(path_mask[zi, :])
+                                                    np.count_nonzero(path_mask[zi, :]),
                                                 )
                                             )
                                             # show a short sample of ridge column indices and their values
@@ -925,7 +920,7 @@ def build_pot_mesh(
                                             except Exception:
                                                 ridge_sample_vals = []
                                             print(
-                                                f"[sf_edge_flow_debug] ridge debug zi={zi} pm_count={pm_count} ridge_cols={ridge_cols.tolist()} ridge_vals_sample={ridge_sample_vals}"
+                                                f"[sf_edge_flow_debug] ridge debug zi={zi} pm_count={pm_count} ridge_cols={ridge_cols.tolist()} ridge_vals_sample={ridge_sample_vals}",
                                             )
                                     except Exception:
                                         pass
@@ -955,16 +950,16 @@ def build_pot_mesh(
                                         k = int(wrap_idxs[0])
                                         # reorder so angles are increasing: take tail then head+TAU
                                         th_sorted = np.concatenate(
-                                            [th[k + 1 :], th[: k + 1] + TAU]
+                                            [th[k + 1 :], th[: k + 1] + TAU],
                                         )
                                         row_sorted = np.concatenate(
-                                            [row_ordered[k + 1 :], row_ordered[: k + 1]]
+                                            [row_ordered[k + 1 :], row_ordered[: k + 1]],
                                         )
                                     else:
                                         th_sorted = th.copy()
                                         row_sorted = row_ordered.copy()
                                     th_ext = np.concatenate(
-                                        [th_sorted, th_sorted + TAU]
+                                        [th_sorted, th_sorted + TAU],
                                     )
                                     row_ext = np.concatenate([row_sorted, row_sorted])
 
@@ -982,8 +977,8 @@ def build_pot_mesh(
                                     try:
                                         probe_zi = int(
                                             style_opts.get(
-                                                "sf_edge_flow_probe_zi", Z // 2
-                                            )
+                                                "sf_edge_flow_probe_zi", Z // 2,
+                                            ),
                                         )
                                         if debug_enabled and probe_zi == zi:
                                             # show the integer twist shift used to roll into analysis frame
@@ -1002,17 +997,17 @@ def build_pot_mesh(
                                                     probe_row >= np.roll(probe_row, -1)
                                                 )
                                                 probe_ridges = np.where(
-                                                    probe_pm & probe_nms
+                                                    probe_pm & probe_nms,
                                                 )[0]
                                             except Exception:
                                                 probe_ridges = np.array([], dtype=int)
                                             print(
-                                                f"[sf_edge_flow_probe] zi={zi} s_tw={stw} probe_ridges={probe_ridges.tolist()}"
+                                                f"[sf_edge_flow_probe] zi={zi} s_tw={stw} probe_ridges={probe_ridges.tolist()}",
                                             )
                                     except Exception:
                                         pass
                                     for a, b in zip(
-                                        ridge_cols, np.roll(ridge_cols, -1)
+                                        ridge_cols, np.roll(ridge_cols, -1),
                                     ):
                                         if a == b:
                                             continue
@@ -1038,7 +1033,7 @@ def build_pot_mesh(
                                             ):
                                                 try:
                                                     print(
-                                                        f"[sf_edge_flow_debug] pair zi={zi} a={a} b={b} theta_a={theta_a:.6f} theta_b={theta_b:.6f} d={d:.6f} arc_len={arc_len:.6f}"
+                                                        f"[sf_edge_flow_debug] pair zi={zi} a={a} b={b} theta_a={theta_a:.6f} theta_b={theta_b:.6f} d={d:.6f} arc_len={arc_len:.6f}",
                                                     )
                                                 except Exception:
                                                     pass
@@ -1048,7 +1043,7 @@ def build_pot_mesh(
                                             continue
                                         # fine sample across the open arc (exclude exact peaks so bridge touches at endpoints)
                                         Nf = max(
-                                            9, int(max(12, (arc_len / TAU) * T * 4))
+                                            9, int(max(12, (arc_len / TAU) * T * 4)),
                                         )
                                         fine_th = np.linspace(
                                             theta_start + 1e-12,
@@ -1070,7 +1065,7 @@ def build_pot_mesh(
                                                     style_opts.get(
                                                         "sf_edge_flow_valley_z_halfwin",
                                                         1,
-                                                    )
+                                                    ),
                                                 )
                                                 if isinstance(style_opts, dict)
                                                 else 1
@@ -1093,20 +1088,20 @@ def build_pot_mesh(
                                                     # find local minimum in neighbor across the same fine sample
                                                     idx2 = int(np.argmin(R2_fine))
                                                     cand_angles.append(
-                                                        float(fine_th[idx2])
+                                                        float(fine_th[idx2]),
                                                     )
                                                 except Exception:
                                                     # fall back to a coarse discrete argmin on neighbor
                                                     try:
                                                         idxs2 = np.where(
-                                                            (np.arange(T) >= 0)
+                                                            np.arange(T) >= 0,
                                                         )[0]
                                                         if idxs2.size:
                                                             local_idx = int(
-                                                                np.argmin(R[zi2, :])
+                                                                np.argmin(R[zi2, :]),
                                                             )
                                                             cand_angles.append(
-                                                                float(th[local_idx])
+                                                                float(th[local_idx]),
                                                             )
                                                     except Exception:
                                                         pass
@@ -1124,7 +1119,7 @@ def build_pot_mesh(
                                                 )
                                                 mean_diff = float(np.median(diffs))
                                                 theta_val = float(
-                                                    (ref + mean_diff) % TAU
+                                                    (ref + mean_diff) % TAU,
                                                 )
                                         except Exception:
                                             # if any issue arises, keep original theta_val
@@ -1143,7 +1138,7 @@ def build_pot_mesh(
                                                     rmin = float("nan")
                                                 try:
                                                     print(
-                                                        f"[sf_edge_flow_debug] sector zi={zi} peaks=({a},{b}) Nf={Nf} theta_val={theta_val:.6f} R_fine_min={rmin:.6f}"
+                                                        f"[sf_edge_flow_debug] sector zi={zi} peaks=({a},{b}) Nf={Nf} theta_val={theta_val:.6f} R_fine_min={rmin:.6f}",
                                                     )
                                                 except Exception:
                                                     pass
@@ -1152,13 +1147,13 @@ def build_pot_mesh(
                                         # peak radii values via interpolant at the peak angles
                                         r_pa = float(
                                             np.asarray(
-                                                interp(np.array([theta_a])), dtype=float
-                                            ).ravel()[0]
+                                                interp(np.array([theta_a])), dtype=float,
+                                            ).ravel()[0],
                                         )
                                         r_pb = float(
                                             np.asarray(
-                                                interp(np.array([theta_b])), dtype=float
-                                            ).ravel()[0]
+                                                interp(np.array([theta_b])), dtype=float,
+                                            ).ravel()[0],
                                         )
                                         # compute bridge B at discrete theta samples within the sector (including integer grid points)
                                         # find discrete indices within the sector (analysis-frame indices)
@@ -1193,7 +1188,7 @@ def build_pot_mesh(
                                                 style_opts.get(
                                                     "sf_edge_flow_drain_protect_thresh",
                                                     r_drain + 1.0,
-                                                )
+                                                ),
                                             )
                                             keep_mask = (
                                                 R_raw[zi, mapped_raw] > drain_thresh
@@ -1230,7 +1225,7 @@ def build_pot_mesh(
                                                 # find discrete index nearest to theta_val within this sector
                                                 # use circular-aware distance
                                                 th_arr = np.asarray(
-                                                    th_idxs, dtype=float
+                                                    th_idxs, dtype=float,
                                                 )
                                                 # normalize differences into [-TAU/2, TAU/2]
                                                 dif = (
@@ -1284,7 +1279,7 @@ def build_pot_mesh(
                                                     "theta_b": float(theta_b),
                                                     "theta_start": float(theta_start),
                                                     "theta_end": float(
-                                                        (theta_start + arc_len) % TAU
+                                                        (theta_start + arc_len) % TAU,
                                                     ),
                                                     "theta_val": float(theta_val),
                                                     "r_peak_a": float(r_pa),
@@ -1295,14 +1290,14 @@ def build_pot_mesh(
                                                             np.mod(
                                                                 int(i - int(s_tw[zi])),
                                                                 T,
-                                                            )
+                                                            ),
                                                         )
                                                         for i in idxs.tolist()
                                                     ],
                                                     "cur": cur.tolist(),
                                                     "B_vals": B_vals.tolist(),
                                                     "new": newv.tolist(),
-                                                }
+                                                },
                                             )
                                     # After processing all peak pairs for this zi, report how many were appended
                                     try:
@@ -1317,7 +1312,7 @@ def build_pot_mesh(
                                             )
                                             if added > 0:
                                                 print(
-                                                    f"[sf_edge_flow_debug] appended {added} debug_reports for zi={zi}"
+                                                    f"[sf_edge_flow_debug] appended {added} debug_reports for zi={zi}",
                                                 )
                                     except Exception:
                                         pass
@@ -1384,7 +1379,7 @@ def build_pot_mesh(
                                                     "theta_a": float(theta_a),
                                                     "theta_b": float(theta_b),
                                                     "theta_val": float(
-                                                        thetas[idxs[np.argmin(cur)]]
+                                                        thetas[idxs[np.argmin(cur)]],
                                                     ),
                                                     "r_peak_a": float(r_pa),
                                                     "r_peak_b": float(r_pb),
@@ -1394,14 +1389,14 @@ def build_pot_mesh(
                                                             np.mod(
                                                                 int(i - int(s_tw[zi])),
                                                                 T,
-                                                            )
+                                                            ),
                                                         )
                                                         for i in idxs.tolist()
                                                     ],
                                                     "cur": cur.tolist(),
                                                     "B_vals": B_vals.tolist(),
                                                     "new": newv.tolist(),
-                                                }
+                                                },
                                             )
                                     try:
                                         import json
@@ -1413,12 +1408,12 @@ def build_pot_mesh(
                                         try:
                                             # Known workspace root for this environment
                                             repo_root = Path(
-                                                r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
+                                                r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0",
                                             )
                                         except Exception:
                                             repo_root = Path(os.getcwd())
                                         outpath = str(
-                                            repo_root / ".pf_edge_flow_debug.json"
+                                            repo_root / ".pf_edge_flow_debug.json",
                                         )
                                         # Print a concise, safe summary of debug_reports before writing
                                         try:
@@ -1428,7 +1423,7 @@ def build_pot_mesh(
                                                 else 0
                                             )
                                             print(
-                                                f"[sf_edge_flow_debug] about to write debug summary: reports_count={cnt} outpath={outpath}"
+                                                f"[sf_edge_flow_debug] about to write debug summary: reports_count={cnt} outpath={outpath}",
                                             )
                                             if cnt > 0:
                                                 first = debug_reports[0]
@@ -1438,32 +1433,32 @@ def build_pot_mesh(
                                                     za = -1
                                                 try:
                                                     pa = int(
-                                                        first.get("peak_a_col", -1)
+                                                        first.get("peak_a_col", -1),
                                                     )
                                                 except Exception:
                                                     pa = -1
                                                 try:
                                                     pb = int(
-                                                        first.get("peak_b_col", -1)
+                                                        first.get("peak_b_col", -1),
                                                     )
                                                 except Exception:
                                                     pb = -1
                                                 try:
                                                     tv = float(
                                                         first.get(
-                                                            "theta_val", float("nan")
-                                                        )
+                                                            "theta_val", float("nan"),
+                                                        ),
                                                     )
                                                 except Exception:
                                                     tv = float("nan")
                                                 try:
                                                     idxs_len = len(
-                                                        first.get("idxs", [])
+                                                        first.get("idxs", []),
                                                     )
                                                 except Exception:
                                                     idxs_len = 0
                                                 print(
-                                                    f"[sf_edge_flow_debug] sample report zi={za} peaks=({pa},{pb}) theta_val={tv:.6f} idxs_len={idxs_len}"
+                                                    f"[sf_edge_flow_debug] sample report zi={za} peaks=({pa},{pb}) theta_val={tv:.6f} idxs_len={idxs_len}",
                                                 )
                                         except Exception:
                                             pass
@@ -1498,13 +1493,13 @@ def build_pot_mesh(
                                             )
                                         # per-ring local ridge candidate counts (NMS peaks)
                                         try:
-                                            nms_local = (R >= np.roll(R, 1, axis=1)) & (
-                                                R >= np.roll(R, -1, axis=1)
+                                            nms_local = (np.roll(R, 1, axis=1) <= R) & (
+                                                np.roll(R, -1, axis=1) <= R
                                             )
                                             ridge_counts = [
                                                 int(x)
                                                 for x in np.sum(
-                                                    nms_local, axis=1
+                                                    nms_local, axis=1,
                                                 ).tolist()
                                             ]
                                         except Exception:
@@ -1517,39 +1512,39 @@ def build_pot_mesh(
                                                     safe_r = {
                                                         "zi": int(r.get("zi", -1)),
                                                         "peak_a_col": int(
-                                                            r.get("peak_a_col", -1)
+                                                            r.get("peak_a_col", -1),
                                                         ),
                                                         "peak_b_col": int(
-                                                            r.get("peak_b_col", -1)
+                                                            r.get("peak_b_col", -1),
                                                         ),
                                                         "theta_a": float(
                                                             r.get(
-                                                                "theta_a", float("nan")
-                                                            )
+                                                                "theta_a", float("nan"),
+                                                            ),
                                                         ),
                                                         "theta_b": float(
                                                             r.get(
-                                                                "theta_b", float("nan")
-                                                            )
+                                                                "theta_b", float("nan"),
+                                                            ),
                                                         ),
                                                         "theta_val": float(
                                                             r.get(
                                                                 "theta_val",
                                                                 float("nan"),
-                                                            )
+                                                            ),
                                                         ),
                                                         "r_peak_a": float(
                                                             r.get(
-                                                                "r_peak_a", float("nan")
-                                                            )
+                                                                "r_peak_a", float("nan"),
+                                                            ),
                                                         ),
                                                         "r_peak_b": float(
                                                             r.get(
-                                                                "r_peak_b", float("nan")
-                                                            )
+                                                                "r_peak_b", float("nan"),
+                                                            ),
                                                         ),
                                                         "idxs": list(
-                                                            map(int, r.get("idxs", []))
+                                                            map(int, r.get("idxs", [])),
                                                         )
                                                         if r.get("idxs") is not None
                                                         else [],
@@ -1560,7 +1555,7 @@ def build_pot_mesh(
                                                                     "mapped_raw_idxs",
                                                                     [],
                                                                 ),
-                                                            )
+                                                            ),
                                                         )
                                                         if r.get("mapped_raw_idxs")
                                                         is not None
@@ -1638,7 +1633,7 @@ def build_pot_mesh(
                                                     if not idxs_list:
                                                         continue
                                                     idxs = np.array(
-                                                        idxs_list, dtype=int
+                                                        idxs_list, dtype=int,
                                                     )
                                                     th_idxs = thetas[idxs]
                                                     s_vals = (
@@ -1665,12 +1660,12 @@ def build_pot_mesh(
                                                             "theta_val": float(
                                                                 thetas[
                                                                     idxs[np.argmin(cur)]
-                                                                ]
+                                                                ],
                                                             ),
                                                             "r_peak_a": float(r_pa),
                                                             "r_peak_b": float(r_pb),
                                                             "idxs": list(
-                                                                map(int, idxs.tolist())
+                                                                map(int, idxs.tolist()),
                                                             ),
                                                             "mapped_raw_idxs": [
                                                                 int(
@@ -1680,13 +1675,13 @@ def build_pot_mesh(
                                                                             - int(
                                                                                 s_tw[
                                                                                     int(
-                                                                                        szi
+                                                                                        szi,
                                                                                     )
-                                                                                ]
-                                                                            )
+                                                                                ],
+                                                                            ),
                                                                         ),
                                                                         T,
-                                                                    )
+                                                                    ),
                                                                 )
                                                                 for i in idxs.tolist()
                                                             ],
@@ -1702,7 +1697,7 @@ def build_pot_mesh(
                                                                 float(x)
                                                                 for x in newv.tolist()
                                                             ],
-                                                        }
+                                                        },
                                                     )
                                             except Exception:
                                                 # If synthesis fails, leave safe_reports empty
@@ -1721,13 +1716,13 @@ def build_pot_mesh(
                                         # Append to existing file as a JSON lines sequence (always write a summary entry)
                                         with open(outpath, "a", encoding="utf-8") as fh:
                                             fh.write(
-                                                json.dumps(payload, ensure_ascii=False)
+                                                json.dumps(payload, ensure_ascii=False),
                                             )
                                             fh.write("\n")
                                         # Also print a concise summary to stdout so Streamlit logs display it immediately
                                         try:
                                             print(
-                                                f"[sf_edge_flow_debug] wrote {outpath} summary: reports_count={payload.get('reports_count', 0)} timestamp={payload.get('timestamp')}"
+                                                f"[sf_edge_flow_debug] wrote {outpath} summary: reports_count={payload.get('reports_count', 0)} timestamp={payload.get('timestamp')}",
                                             )
                                         except Exception:
                                             pass
@@ -1750,62 +1745,61 @@ def build_pot_mesh(
             # Select or use computed envelope
             if env_final is not None:
                 Env = env_final
+            # No env_final produced in mode branch; compute a reasonable fallback based on mode
+            # This branch is a defensive runtime fallback when `env_final`
+            # is None and `mode` still indicates a vertical envelope. Static
+            # analyzers may consider this unreachable due to earlier
+            # control-flow narrowing; keep a narrow ignore for that false
+            # positive and document the reason.
+            elif (
+                mode == "vertical"
+            ):  # justification: defensive runtime fallback when env_final is None
+                # vertical quantile envelope
+                stacks = []
+                for dz in range(-h, h + 1):
+                    z_idx = np.clip(np.arange(Z) + dz, 0, Z - 1)
+                    stacks.append(R[z_idx, :])
+                W = np.stack(stacks, axis=0)
+                W_sorted = np.sort(W, axis=0)
+                k = int(
+                    np.clip(
+                        int(np.ceil(q_hi * (2 * h + 1))) - 1, 0, (2 * h + 1) - 1,
+                    ),
+                )
+                Env = W_sorted[k, :, :]
+            elif mode == "quantile" or mode == "ridge":
+                # If not already computed, recompute minimal envelopes
+                stacks = []
+                for dz in range(-h, h + 1):
+                    z_idx = np.clip(np.arange(Z) + dz, 0, Z - 1)
+                    stacks.append(R[z_idx, :])
+                W = np.stack(stacks, axis=0)
+                W_sorted = np.sort(W, axis=0)
+                k = int(
+                    np.clip(
+                        int(np.ceil(q_hi * (2 * h + 1))) - 1, 0, (2 * h + 1) - 1,
+                    ),
+                )
+                Env_vert_fallback = W_sorted[k, :, :]
+                # Use dominant orientation map if available; else fallback to vertical
+                try:
+                    Env = np.where(dom == 0, Env_vert_fallback, Env_vert_fallback)
+                except Exception:
+                    Env = Env_vert_fallback
             else:
-                # No env_final produced in mode branch; compute a reasonable fallback based on mode
-                # This branch is a defensive runtime fallback when `env_final`
-                # is None and `mode` still indicates a vertical envelope. Static
-                # analyzers may consider this unreachable due to earlier
-                # control-flow narrowing; keep a narrow ignore for that false
-                # positive and document the reason.
-                if (
-                    mode == "vertical"
-                ):  # justification: defensive runtime fallback when env_final is None
-                    # vertical quantile envelope
-                    stacks = []
-                    for dz in range(-h, h + 1):
-                        z_idx = np.clip(np.arange(Z) + dz, 0, Z - 1)
-                        stacks.append(R[z_idx, :])
-                    W = np.stack(stacks, axis=0)
-                    W_sorted = np.sort(W, axis=0)
-                    k = int(
-                        np.clip(
-                            int(np.ceil(q_hi * (2 * h + 1))) - 1, 0, (2 * h + 1) - 1
-                        )
-                    )
-                    Env = W_sorted[k, :, :]
-                elif mode == "quantile" or mode == "ridge":
-                    # If not already computed, recompute minimal envelopes
-                    stacks = []
-                    for dz in range(-h, h + 1):
-                        z_idx = np.clip(np.arange(Z) + dz, 0, Z - 1)
-                        stacks.append(R[z_idx, :])
-                    W = np.stack(stacks, axis=0)
-                    W_sorted = np.sort(W, axis=0)
-                    k = int(
-                        np.clip(
-                            int(np.ceil(q_hi * (2 * h + 1))) - 1, 0, (2 * h + 1) - 1
-                        )
-                    )
-                    Env_vert_fallback = W_sorted[k, :, :]
-                    # Use dominant orientation map if available; else fallback to vertical
-                    try:
-                        Env = np.where(dom == 0, Env_vert_fallback, Env_vert_fallback)
-                    except Exception:
-                        Env = Env_vert_fallback
-                else:
-                    # ridge_paths but somehow env_final is None; fallback to vertical
-                    stacks = []
-                    for dz in range(-h, h + 1):
-                        z_idx = np.clip(np.arange(Z) + dz, 0, Z - 1)
-                        stacks.append(R[z_idx, :])
-                    W = np.stack(stacks, axis=0)
-                    W_sorted = np.sort(W, axis=0)
-                    k = int(
-                        np.clip(
-                            int(np.ceil(q_hi * (2 * h + 1))) - 1, 0, (2 * h + 1) - 1
-                        )
-                    )
-                    Env = W_sorted[k, :, :]
+                # ridge_paths but somehow env_final is None; fallback to vertical
+                stacks = []
+                for dz in range(-h, h + 1):
+                    z_idx = np.clip(np.arange(Z) + dz, 0, Z - 1)
+                    stacks.append(R[z_idx, :])
+                W = np.stack(stacks, axis=0)
+                W_sorted = np.sort(W, axis=0)
+                k = int(
+                    np.clip(
+                        int(np.ceil(q_hi * (2 * h + 1))) - 1, 0, (2 * h + 1) - 1,
+                    ),
+                )
+                Env = W_sorted[k, :, :]
 
             # Optional: anchor envelope to nearest theta peaks to remove lateral offset
             # If pin_to_origin is enabled, skip anchoring/snapping/deoffset to preserve exact origin mapping
@@ -1816,15 +1810,15 @@ def build_pot_mesh(
             if (not pin_to_origin) and anchor_enable and anchor_rad > 0:
                 try:
                     # Compute theta peaks per ring (NMS). Optionally gate by high quantile for robustness.
-                    nms_theta = (R >= np.roll(R, 1, axis=1)) & (
-                        R >= np.roll(R, -1, axis=1)
+                    nms_theta = (np.roll(R, 1, axis=1) <= R) & (
+                        np.roll(R, -1, axis=1) <= R
                     )
                     # Prefer stronger peaks: keep only those above per-ring 80th percentile, if any
                     thr = np.quantile(R, 0.8, axis=1, keepdims=True)
-                    peak_mask = nms_theta & (R >= thr)
+                    peak_mask = nms_theta & (thr <= R)
 
                     def _nearest_indices_circular(
-                        Tloc: int, peaks_idx: np.ndarray
+                        Tloc: int, peaks_idx: np.ndarray,
                     ) -> tuple[np.ndarray, np.ndarray]:
                         # Returns (nearest_idx_per_j, circular_distance_per_j)
                         j = np.arange(Tloc)[:, None]
@@ -1904,19 +1898,19 @@ def build_pot_mesh(
                 # theta-local strict valley (local minima across theta)
                 Rl = np.roll(R, 1, axis=1)
                 Rr = np.roll(R, -1, axis=1)
-                is_valley_theta = R < np.minimum(Rl, Rr)
-                is_valley_z = R < med3
+                is_valley_theta = np.minimum(Rl, Rr) > R
+                is_valley_z = med3 > R
                 # exclude theta peaks
-                nms_theta = (R >= Rl) & (R >= Rr)
+                nms_theta = (Rl <= R) & (Rr <= R)
                 mask_v = (is_valley_theta | is_valley_z) & (~nms_theta)
                 # if ridge_paths with valley band, optionally constrain to where envelope exists
                 if mode == "ridge_paths":
                     mask_v &= Env_to_use > -1e20
                 R_new = np.where(
-                    mask_v & (R < Env_to_use), R + amt * (Env_to_use - R), R
+                    mask_v & (Env_to_use > R), R + amt * (Env_to_use - R), R,
                 )
             else:
-                R_new = np.where(R < Env_to_use, R + amt * (Env_to_use - R), R)
+                R_new = np.where(Env_to_use > R, R + amt * (Env_to_use - R), R)
             # Map back to raw-theta frame if twist compensation was active
             # inverse roll to raw theta indices (no-op if s_tw==0)
             R_new_raw = _roll_rows_theta(R_new, -s_tw)
@@ -1939,10 +1933,10 @@ def build_pot_mesh(
             # impacting normal runs.
             try:
                 verbose_diag = bool(
-                    style_opts.get("sf_edge_flow_verbose_diagnostics", False)
+                    style_opts.get("sf_edge_flow_verbose_diagnostics", False),
                 )
                 verbose_write_file = bool(
-                    style_opts.get("sf_edge_flow_verbose_write_file", True)
+                    style_opts.get("sf_edge_flow_verbose_write_file", True),
                 )
                 if verbose_diag:
                     try:
@@ -1951,16 +1945,16 @@ def build_pot_mesh(
                         from pathlib import Path
 
                         repo_root = Path(
-                            r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
+                            r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0",
                         )
                         # prefer str for outpath to keep typing consistent when opening files
                         outpath = str(
-                            repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
+                            repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl",
                         )
                         drain_thresh = float(
                             style_opts.get(
-                                "sf_edge_flow_drain_protect_thresh", r_drain + 1.0
-                            )
+                                "sf_edge_flow_drain_protect_thresh", r_drain + 1.0,
+                            ),
                         )
                         # compute per-ring minima of the final (raw) radii
                         min_per_row = np.min(R_new_raw, axis=1)
@@ -1973,15 +1967,14 @@ def build_pot_mesh(
                                 "timestamp": time.time(),
                                 "stage": "post_deoffset",
                                 "rows": [],
-                            }
+                            },
                         )
                         # Allow forcing a single probe zi via style options for targeted dumps
-                        from typing import Optional
 
-                        probe_zi_post: Optional[int] = None
+                        probe_zi_post: int | None = None
                         try:
                             if isinstance(style_opts, dict):
-                                v = style_opts.get("sf_edge_flow_probe_zi", None)
+                                v = style_opts.get("sf_edge_flow_probe_zi")
                                 probe_zi_post = int(v) if v is not None else None
                         except Exception:
                             probe_zi_post = None
@@ -2002,7 +1995,7 @@ def build_pot_mesh(
                                 if "Env_to_use_raw" in locals():
                                     # Env_to_use_raw already rolled by -s_tw earlier
                                     Env_applied_raw_row = np.asarray(
-                                        Env_to_use_raw[zi, :], dtype=float
+                                        Env_to_use_raw[zi, :], dtype=float,
                                     )
                             except Exception:
                                 Env_applied_raw_row = None
@@ -2041,7 +2034,7 @@ def build_pot_mesh(
                                 if "Env" in locals()
                                 else None,
                                 "Env_to_use_sample": np.asarray(
-                                    Env_to_use[zi, :]
+                                    Env_to_use[zi, :],
                                 ).tolist()
                                 if "Env_to_use" in locals()
                                 else None,
@@ -2051,7 +2044,7 @@ def build_pot_mesh(
                                 # Env_to_use_raw_post is the envelope aligned to raw-theta after any deoffset
                                 "Env_to_use_raw_post": (
                                     np.roll(
-                                        Env_to_use_raw[zi, :], -int(s0), axis=0
+                                        Env_to_use_raw[zi, :], -int(s0), axis=0,
                                     ).tolist()
                                     if (
                                         "Env_to_use_raw" in locals()
@@ -2064,7 +2057,7 @@ def build_pot_mesh(
                                     )
                                 ),
                                 "origin_map_sample": np.asarray(
-                                    origin_map[zi, :]
+                                    origin_map[zi, :],
                                 ).tolist()
                                 if "origin_map" in locals()
                                 else None,
@@ -2072,7 +2065,7 @@ def build_pot_mesh(
                                 if "R_new" in locals()
                                 else None,
                                 "R_new_raw_sample": np.asarray(
-                                    R_new_raw[zi, :]
+                                    R_new_raw[zi, :],
                                 ).tolist()
                                 if "R_new_raw" in locals()
                                 else None,
@@ -2171,7 +2164,7 @@ def build_pot_mesh(
                                 "Env_sample": row_entry.get("Env_sample"),
                                 "Env_to_use_sample": row_entry.get("Env_to_use_sample"),
                                 "Env_to_use_raw_post": row_entry.get(
-                                    "Env_to_use_raw_post"
+                                    "Env_to_use_raw_post",
                                 )
                                 if row_entry.get("Env_to_use_raw_post") is not None
                                 else row_entry.get("Env_applied_raw_sample"),
@@ -2179,10 +2172,10 @@ def build_pot_mesh(
                                 "R_new_sample": row_entry.get("R_new_sample"),
                                 "R_new_raw_sample": row_entry.get("R_new_raw_sample"),
                                 "enforcement_violations_count": row_entry.get(
-                                    "enforcement_violations_count"
+                                    "enforcement_violations_count",
                                 ),
                                 "enforcement_violations_indices": row_entry.get(
-                                    "enforcement_violations_indices"
+                                    "enforcement_violations_indices",
                                 ),
                                 "theta_sample": theta_sample,
                                 "lift_delta": lift_delta,
@@ -2197,7 +2190,7 @@ def build_pot_mesh(
                                     {
                                         "timestamp": dump.get("timestamp"),
                                         "rows": [canonical_row],
-                                    }
+                                    },
                                 )
                             except Exception:
                                 pass
@@ -2208,7 +2201,7 @@ def build_pot_mesh(
                                 fh.write("\n")
                             try:
                                 print(
-                                    f"[sf_edge_flow_debug] verbose diagnostic wrote {len(rows_to_dump)} rows to {outpath}"
+                                    f"[sf_edge_flow_debug] verbose diagnostic wrote {len(rows_to_dump)} rows to {outpath}",
                                 )
                             except Exception:
                                 pass
@@ -2222,7 +2215,7 @@ def build_pot_mesh(
             if bool(style_opts.get("sf_edge_flow_auto_deoffset", True)):
                 try:
                     kmax = int(
-                        style_opts.get("sf_edge_flow_deoffset_max", max(1, theta_snap))
+                        style_opts.get("sf_edge_flow_deoffset_max", max(1, theta_snap)),
                     )
                     kmax = max(0, min(3, kmax))
                     if kmax > 0:
@@ -2253,7 +2246,7 @@ def build_pot_mesh(
                             row_old = R_raw[zi, :]
                             lift_mask = row_new > (row_old + 1e-12)
                             shifts.append(
-                                _best_shift(row_new, row_old, lift_mask, kmax)
+                                _best_shift(row_new, row_old, lift_mask, kmax),
                             )
                         if shifts:
                             shifts_arr = np.asarray(shifts, dtype=int)
@@ -2268,7 +2261,6 @@ def build_pot_mesh(
                                 if top_shift == s0 and frac >= 0.55:
                                     R_new_raw = np.roll(R_new_raw, -s0, axis=1)
                 except Exception:
-                    pass
 
                     # Post-deoffset verbose diagnostics: write a JSONL entry after any
                     # automatic deoffset roll so we can detect whether the deoffset
@@ -2277,7 +2269,7 @@ def build_pot_mesh(
                     # line per run with arrays for rows that are suspicious.
                     try:
                         verbose_diag = bool(
-                            style_opts.get("sf_edge_flow_verbose_diagnostics", False)
+                            style_opts.get("sf_edge_flow_verbose_diagnostics", False),
                         )
                         if verbose_diag:
                             try:
@@ -2286,18 +2278,18 @@ def build_pot_mesh(
                                 from pathlib import Path
 
                                 repo_root = Path(
-                                    r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
+                                    r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0",
                                 )
                                 outpath = str(
                                     repo_root
                                     / "tools"
-                                    / "edgeflow_verbose_diagnostics.jsonl"
+                                    / "edgeflow_verbose_diagnostics.jsonl",
                                 )
                                 drain_thresh = float(
                                     style_opts.get(
                                         "sf_edge_flow_drain_protect_thresh",
                                         r_drain + 1.0,
-                                    )
+                                    ),
                                 )
                                 # compute per-ring minima pre/post deoffset
                                 min_pre = np.min(R_new_raw_pre, axis=1)
@@ -2313,7 +2305,7 @@ def build_pot_mesh(
                                 if "shifts" in locals():
                                     try:
                                         dump["deoffset"]["shifts"] = np.asarray(
-                                            shifts
+                                            shifts,
                                         ).tolist()
                                     except Exception:
                                         dump["deoffset"]["shifts"] = None
@@ -2334,120 +2326,120 @@ def build_pot_mesh(
                                             "min_final_raw_post": float(min_post[zi]),
                                             "min_final_raw_pre": float(min_pre[zi]),
                                             "R_raw_sample": np.asarray(
-                                                R_raw[zi, :]
+                                                R_raw[zi, :],
                                             ).tolist()
                                             if "R_raw" in locals()
                                             else None,
                                             "R_analysis_sample": np.asarray(
-                                                R[zi, :]
+                                                R[zi, :],
                                             ).tolist()
                                             if "R" in locals()
                                             else None,
                                             "Env_sample": np.asarray(
-                                                Env[zi, :]
+                                                Env[zi, :],
                                             ).tolist()
                                             if "Env" in locals()
                                             else None,
                                             "Env_to_use_sample": np.asarray(
-                                                Env_to_use[zi, :]
+                                                Env_to_use[zi, :],
                                             ).tolist()
                                             if "Env_to_use" in locals()
                                             else None,
                                             "origin_map_sample": np.asarray(
-                                                origin_map[zi, :]
+                                                origin_map[zi, :],
                                             ).tolist()
                                             if "origin_map" in locals()
                                             else None,
                                             "R_new_sample_pre": np.asarray(
-                                                R_new[zi, :]
+                                                R_new[zi, :],
                                             ).tolist()
                                             if "R_new" in locals()
                                             else None,
                                             "R_new_raw_sample_pre": np.asarray(
-                                                R_new_raw_pre[zi, :]
+                                                R_new_raw_pre[zi, :],
                                             ).tolist()
                                             if "R_new_raw_pre" in locals()
                                             else None,
                                             "R_new_raw_sample_post": np.asarray(
-                                                R_new_raw[zi, :]
+                                                R_new_raw[zi, :],
                                             ).tolist()
                                             if "R_new_raw" in locals()
                                             else None,
-                                        }
+                                        },
                                     )
                                     # append the JSON line
                                     if verbose_write_file:
                                         with open(outpath, "a", encoding="utf-8") as fh:
                                             fh.write(
-                                                json.dumps(dump, ensure_ascii=False)
+                                                json.dumps(dump, ensure_ascii=False),
                                             )
                                             fh.write("\n")
                                         try:
                                             print(
-                                                f"[sf_edge_flow_debug] post-deoffset verbose diagnostic wrote {len(rows_to_dump)} rows to {outpath}"
+                                                f"[sf_edge_flow_debug] post-deoffset verbose diagnostic wrote {len(rows_to_dump)} rows to {outpath}",
                                             )
                                         except Exception:
                                             pass
                                     try:
                                         # Canonicalize post-deoffset rows for returned diagnostics
-                                        canonical_rows: list[Dict[str, Any]] = []
+                                        canonical_rows: list[dict[str, Any]] = []
                                         for r in dump.get("rows", []):
                                             canonical_rows.append(
                                                 {
                                                     "zi": r.get("zi"),
                                                     "z": r.get("z"),
                                                     "min_final_raw_pre": r.get(
-                                                        "min_final_raw_pre"
+                                                        "min_final_raw_pre",
                                                     ),
                                                     "min_final_raw_post": r.get(
-                                                        "min_final_raw_post"
+                                                        "min_final_raw_post",
                                                     ),
                                                     "R_raw_sample": r.get(
-                                                        "R_raw_sample"
+                                                        "R_raw_sample",
                                                     ),
                                                     "R_analysis_sample": r.get(
-                                                        "R_analysis_sample"
+                                                        "R_analysis_sample",
                                                     ),
                                                     "Env_sample": r.get("Env_sample"),
                                                     "Env_to_use_sample": r.get(
-                                                        "Env_to_use_sample"
+                                                        "Env_to_use_sample",
                                                     ),
                                                     "origin_map_sample": r.get(
-                                                        "origin_map_sample"
+                                                        "origin_map_sample",
                                                     ),
                                                     "R_new_sample_pre": r.get(
-                                                        "R_new_sample_pre"
+                                                        "R_new_sample_pre",
                                                     ),
                                                     "R_new_raw_sample_pre": r.get(
-                                                        "R_new_raw_sample_pre"
+                                                        "R_new_raw_sample_pre",
                                                     ),
                                                     "R_new_raw_sample_post": r.get(
-                                                        "R_new_raw_sample_post"
+                                                        "R_new_raw_sample_post",
                                                     ),
                                                     "theta_sample": None,
                                                     "lift_delta": None,
                                                     "valley_mask": None,
                                                     "shifts": dump.get(
-                                                        "deoffset", {}
+                                                        "deoffset", {},
                                                     ).get("shifts")
                                                     if isinstance(
                                                         dump.get("deoffset", {}).get(
-                                                            "shifts"
+                                                            "shifts",
                                                         ),
                                                         list,
                                                     )
                                                     else None,
                                                     "s0": dump.get("deoffset", {}).get(
-                                                        "s0"
+                                                        "s0",
                                                     )
                                                     if isinstance(
                                                         dump.get("deoffset", {}).get(
-                                                            "s0"
+                                                            "s0",
                                                         ),
                                                         int,
                                                     )
                                                     else None,
-                                                }
+                                                },
                                             )
                                         edgeflow_verbose_collector.append(
                                             {
@@ -2455,7 +2447,7 @@ def build_pot_mesh(
                                                 "stage": dump.get("stage"),
                                                 "deoffset": dump.get("deoffset"),
                                                 "rows": canonical_rows,
-                                            }
+                                            },
                                         )
                                     except Exception:
                                         pass
@@ -2490,7 +2482,7 @@ def build_pot_mesh(
                         diffs = after - before
                         # per-row count of theta columns changed
                         per_row_changes = np.count_nonzero(
-                            diffs > 1e-12, axis=1
+                            diffs > 1e-12, axis=1,
                         ).tolist()
                         total_changes = int(np.count_nonzero(diffs > 1e-12))
                         R_new_raw = after
@@ -2501,7 +2493,7 @@ def build_pot_mesh(
                         total_changes = None
                     if bool(style_opts.get("sf_edge_flow_debug", False)):
                         print(
-                            f"[sf_edge_flow_debug] final envelope enforcement applied (deoff={deoff}) - total_changes={total_changes}"
+                            f"[sf_edge_flow_debug] final envelope enforcement applied (deoff={deoff}) - total_changes={total_changes}",
                         )
                     # Append a small JSONL summary so diagnostics can see exactly
                     # how many theta columns were raised by this final enforcement.
@@ -2511,10 +2503,10 @@ def build_pot_mesh(
                         from pathlib import Path
 
                         repo_root = Path(
-                            r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0"
+                            r"C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0",
                         )
                         outpath = str(
-                            repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl"
+                            repo_root / "tools" / "edgeflow_verbose_diagnostics.jsonl",
                         )
                         fdump = {
                             "timestamp": time.time(),
@@ -2571,7 +2563,7 @@ def build_pot_mesh(
                                 ]
                                 raise AssertionError(
                                     f"Edge-flow enforcement invariant violated: {n_viol} cells where final_raw < env_post; "
-                                    f"min_delta={min_delta:.6f}; sample_coords={sample_coords}"
+                                    f"min_delta={min_delta:.6f}; sample_coords={sample_coords}",
                                 )
             except Exception:
                 pass
@@ -2605,7 +2597,7 @@ def build_pot_mesh(
     # Decide per-cell diagonal to reduce sliver/aliasing near sharp cuts
     try:
         r_outer_samples = np.vstack(
-            r_outer_samples_list
+            r_outer_samples_list,
         )  # shape (len(z_outer), n_theta)
         cx_rows = np.vstack(cx_rows_list)
         sy_rows = np.vstack(sy_rows_list)
@@ -2648,7 +2640,7 @@ def build_pot_mesh(
             # mean ratio: q = (4*sqrt(3)*A)/(a^2+b^2+c^2); here 4*sqrt(3)*A = sqrt(3) * sqrt(area2)
             num = np.sqrt(3.0) * np.sqrt(np.maximum(area2, 0.0))
             den = np.maximum(u2 + v2 + w2, 1e-12)
-            return cast(NDArrayFloat, num / den)
+            return cast("NDArrayFloat", num / den)
 
         # Build 3D positions for corners of each quad cell (rows x cols)
         # Current and next ring z values
@@ -2679,7 +2671,7 @@ def build_pot_mesh(
         sf_style_hint_local = None
         try:
             if isinstance(style_opts, dict):
-                sf_style_hint_local = style_opts.get("sf_style", None)
+                sf_style_hint_local = style_opts.get("sf_style")
         except Exception:
             sf_style_hint_local = None
         if isinstance(sf_style_hint_local, str) and sf_style_hint_local.strip():
@@ -2738,11 +2730,11 @@ def build_pot_mesh(
                             4,
                             int(
                                 cast(
-                                    int, style_opts.get("lp_diagonal_smooth_passes", 0)
-                                )
+                                    "int", style_opts.get("lp_diagonal_smooth_passes", 0),
+                                ),
                             ),
                         ),
-                    )
+                    ),
                 )
                 pd_sf = int(
                     max(
@@ -2751,11 +2743,11 @@ def build_pot_mesh(
                             4,
                             int(
                                 cast(
-                                    int, style_opts.get("sf_diagonal_smooth_passes", 0)
-                                )
+                                    "int", style_opts.get("sf_diagonal_smooth_passes", 0),
+                                ),
                             ),
                         ),
-                    )
+                    ),
                 )
                 passes_diag = max(pd_lp, pd_sf)
             if (
@@ -2814,7 +2806,7 @@ def build_pot_mesh(
                 z_win_frac = (z_win_raw * 0.01) if z_win_raw > 1.0 else z_win_raw
                 z_win = max(1e-6, z_win_frac * h_tier)
                 lock_strength = (
-                    float(cast(float, style_opts.get("lp_seam_lock_strength", 1.0)))
+                    float(cast("float", style_opts.get("lp_seam_lock_strength", 1.0)))
                     if isinstance(style_opts, dict)
                     else 1.0
                 )
@@ -2837,7 +2829,7 @@ def build_pot_mesh(
                         d_diag_00_11 = np.abs(r00 - r11)
                         d_diag_01_10 = np.abs(r01 - r10)
                         pref_alt = float(np.sum(d_diag_01_10[band_mask])) < float(
-                            np.sum(d_diag_00_11[band_mask])
+                            np.sum(d_diag_00_11[band_mask]),
                         )
                     use_alt[band_mask, :] = pref_alt
         except Exception:
@@ -2928,7 +2920,7 @@ def build_pot_mesh(
             edgeflow_verbose_collector_local = edgeflow_verbose_collector
     except Exception:
         pass
-    
+
     diagnostics = calculate_mesh_diagnostics(
         verts=verts,
         outer_idx=outer_idx,
@@ -2941,7 +2933,7 @@ def build_pot_mesh(
         dbg_samples_collected=dbg_samples_collected,
         edgeflow_verbose_collector=edgeflow_verbose_collector_local,
     )
-    
+
     faces_arr = assemble_faces(faces_out_parts)
     return np.array(verts, dtype=float), faces_arr, diagnostics
 
@@ -2966,7 +2958,7 @@ def save_preview_png(
     n_theta: int,
     n_z: int,
     r_outer_fn: Callable[..., Any],
-    style_opts: Dict[str, Any],
+    style_opts: dict[str, Any],
 ) -> None:
     """Render a simple 3D surface preview and save to PNG.
 
@@ -2989,10 +2981,10 @@ def save_preview_png(
     base_sin = np.sin(thetas)
     for i, z in enumerate(zs):
         r0 = base_radius(
-            z, H, Rb, Rt, expn, style_opts if isinstance(style_opts, dict) else {}
+            z, H, Rb, Rt, expn, style_opts if isinstance(style_opts, dict) else {},
         )
         twist = spin_twist_radians(
-            z, H, style_opts if isinstance(style_opts, dict) else {}
+            z, H, style_opts if isinstance(style_opts, dict) else {},
         )
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         cx = base_cos * cTw - base_sin * sTw

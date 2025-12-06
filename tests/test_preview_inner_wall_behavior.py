@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 
-import pfui.preview as preview
+from pfui import preview
 
 
 def test_render_preview_png_cached_with_numpy_scalar_inner_wall(monkeypatch):

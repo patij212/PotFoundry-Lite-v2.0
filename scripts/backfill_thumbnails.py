@@ -20,7 +20,6 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -110,7 +109,7 @@ def _regen_thumb_bytes(row: dict) -> bytes | None:
             return None
 
 
-def backfill(limit: int = 100, offset: int = 0) -> Tuple[int, int]:
+def backfill(limit: int = 100, offset: int = 0) -> tuple[int, int]:
     client = get_singleton_client()
     if not client.is_configured():
         raise NotConfiguredError("Supabase not configured for this environment.")
@@ -127,7 +126,7 @@ def backfill(limit: int = 100, offset: int = 0) -> Tuple[int, int]:
                 png = _regen_thumb_bytes(row)
                 if not png:
                     _log(
-                        f"SKIP: no png generated for id={row.get('id')} style={row.get('style')}"
+                        f"SKIP: no png generated for id={row.get('id')} style={row.get('style')}",
                     )
                     skipped += 1
                     continue
@@ -155,7 +154,7 @@ def backfill(limit: int = 100, offset: int = 0) -> Tuple[int, int]:
     return updated, skipped
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     import argparse
 
     p = argparse.ArgumentParser()

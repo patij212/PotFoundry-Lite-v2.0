@@ -7,19 +7,22 @@ controls and returns the selected values as a small dict while updating
 
 from __future__ import annotations
 
-# mypy: disable-error-code=attr-defined
-from typing import Any, Callable, Dict, MutableMapping, cast
+from collections.abc import Callable, MutableMapping
 
-import streamlit as st
+# mypy: disable-error-code=attr-defined
+from typing import Any, cast
+
+from pfui._st import get_effective_st as get_st
 
 
 def render_preview_controls(
     *,
     mark_changed: Callable[[], None],
     has_plotly: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
+    st = get_st()
     # Treat session_state as a mutable mapping for typing; Streamlit lacks stubs
-    ss_map: MutableMapping[str, Any] = cast(MutableMapping[str, Any], st.session_state)
+    ss_map: MutableMapping[str, Any] = st.session_state
 
     # Clean layout; hide some advanced controls
     c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 1.2])
@@ -31,7 +34,7 @@ def render_preview_controls(
         "Preview mode",
         options=["manual", "auto", "debounced"],
         index={"manual": 0, "auto": 1, "debounced": 2}.get(
-            ss_map.get("preview_mode", "auto"), 1
+            ss_map.get("preview_mode", "auto"), 1,
         ),
         key="preview_mode",
         help="Choose how previews update: manual (button), automatic, or debounced (wait until inputs settle).",
@@ -65,7 +68,7 @@ def render_preview_controls(
     prev_preset = ss_map.get("_last_quality_preset", None)
     _quality_raw = ss_map.get("quality_preset", "Medium")
     quality_index = {"Low": 0, "Medium": 1, "High": 2, "Ultra": 3}.get(
-        str(_quality_raw), 1
+        str(_quality_raw), 1,
     )
     preset_name = qc1.selectbox(
         "Quality preset",
@@ -110,13 +113,13 @@ def render_preview_controls(
             96,
             720,
             ss_map.get(
-                "n_theta", preset_defaults.get(preset_name, {}).get("n_theta", 168)
+                "n_theta", preset_defaults.get(preset_name, {}).get("n_theta", 168),
             ),
             12,
             key="n_theta",
             on_change=mark_changed,
             help="Higher values increase roundness and detail around the pot. Affects both preview and export.",
-        )
+        ),
     )
     n_z = int(
         qc3.slider(
@@ -128,14 +131,14 @@ def render_preview_controls(
             key="n_z",
             on_change=mark_changed,
             help="Higher values add more rings along height for smoother vertical transitions.",
-        )
+        ),
     )
 
     up = cE1.select_slider(
         "Export quality upscale",
         options=[1, 2, 3],
         value=ss_map.get(
-            "quality_up", preset_defaults.get(preset_name, {}).get("quality_up", 2)
+            "quality_up", preset_defaults.get(preset_name, {}).get("quality_up", 2),
         ),
         key="quality_up",
         help="Multiplies nθ & nz when generating the STL. Use higher values for ultra-smooth exports.",

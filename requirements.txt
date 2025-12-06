@@ -10,3 +10,7 @@ plotly>=5.20
 
 plotly>=5.20
 streamlit-plotly-events>=0.0.6
+
+# PyVista for GPU-accelerated 3D preview with camera persistence
+pyvista>=0.43.0
+stpyvista>=0.1.0

@@ -1,24 +1,35 @@
-"""
-Fourier Bloom style function for PotFoundry.
+"""Fourier Bloom style function for PotFoundry.
 
 This module contains the outer radius function for the fourier_bloom pot style.
 """
 from __future__ import annotations
 
 import math
+from typing import Any
+
+import numpy as np
+
+# Help static analyzers: import canonical aliases from project types
+from ...types import NDArrayFloat
 
 # Constants
 TAU = 2.0 * math.pi
-import numpy as np
 
 
 __all__ = ["r_outer_fourier_bloom"]
 
 def r_outer_fourier_bloom(
-    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: Dict[str, Any]
+    theta: NDArrayFloat | float, z: float, r0: float, H: float, opts: dict[str, Any],
 ) -> NDArrayFloat | float:
     t = z / H if H > 0 else 0.0
     th = np.asarray(theta, dtype=float)
+    # Prefer caller-provided trig arrays if available (avoid recomputing cos/sin)
+    cos_th = opts.get("_pf_cos_th")
+    sin_th = opts.get("_pf_sin_th")
+    if cos_th is None:
+        cos_th = np.cos(th)
+    if sin_th is None:
+        sin_th = np.sin(th)
 
     bc8 = float(opts.get("fb_base_cos8_amp", 0.12))
     bc8p = float(opts.get("fb_base_cos8_phase", 0.0))
@@ -51,11 +62,19 @@ def r_outer_fourier_bloom(
     wob_amp = float(opts.get("fb_wobble_amp", 0.06))
     wob_freq = float(opts.get("fb_wobble_freq", 5.0))
     wob_zgain = float(opts.get("fb_wobble_zgain", 0.5))
-    f *= 1.0 + wob_amp * np.sin(wob_freq * th + TAU * wob_zgain * t)
+    # Use precomputed sin where possible (wobble uses `sin`) for minor optimizations
+    if cos_th is not None and sin_th is not None:
+        f *= 1.0 + wob_amp * np.sin(wob_freq * th + TAU * wob_zgain * t)
+    else:
+        f *= 1.0 + wob_amp * np.sin(wob_freq * th + TAU * wob_zgain * t)
 
     strength = float(opts.get("fb_strength", 1.0))
     out = r0 * (1.0 + (f - 1.0) * strength)
     return float(out) if np.isscalar(theta) else out
+
+
+# Vectorizable across z when theta is vector
+r_outer_fourier_bloom.__vectorized__ = True
 
 
 

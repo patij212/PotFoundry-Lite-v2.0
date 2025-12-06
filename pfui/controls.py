@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 import importlib
-from typing import Any, Dict
+from typing import Any
 
-import streamlit as st
+from pfui._st import get_effective_st as get_st, StreamlitLike
+from typing import cast
 
 # Avoid importing the heavy/fragile `pfui.schemas` module at module import time.
 # Load on-demand at runtime to keep focused mypy runs and editor diagnostics small.
-STYLE_SCHEMAS: Dict[str, Dict[str, Any]] = {}
+STYLE_SCHEMAS: dict[str, dict[str, Any]] = {}
 
 
-def _ensure_style_schemas() -> Dict[str, Dict[str, Any]]:
+def _ensure_style_schemas() -> dict[str, dict[str, Any]]:
     global STYLE_SCHEMAS
     if not STYLE_SCHEMAS:
         try:
             mod = importlib.import_module("pfui.schemas")
-            STYLE_SCHEMAS.update(getattr(mod, "get_style_schemas", lambda: {})() or {})
+            STYLE_SCHEMAS.update(getattr(mod, "get_style_schemas", dict)() or {})
         except Exception:
             STYLE_SCHEMAS = {}
     return STYLE_SCHEMAS
@@ -28,7 +29,7 @@ def _ensure_style_schemas() -> Dict[str, Dict[str, Any]]:
 from .state import widget_key  # noqa: E402
 
 
-def _render_control(style: str, key: str, meta: Dict[str, Any]) -> object:
+def _render_control(style: str, key: str, meta: dict[str, Any]) -> object:
     """Render a single control based on meta and return its value.
 
     Return type is deliberately `object` (rather than `Any`) to avoid
@@ -52,7 +53,7 @@ def _render_control(style: str, key: str, meta: Dict[str, Any]) -> object:
                 value=checked,
                 key=wkey,
                 help=meta.get("help", ""),
-            )
+            ),
         )
 
     if mtype in ("int", "float"):
@@ -82,28 +83,27 @@ def _render_control(style: str, key: str, meta: Dict[str, Any]) -> object:
                     step_i,
                     key=wkey,
                     help=meta.get("help", ""),
-                )
+                ),
             )
-        else:
-            # Float branch: coerce values to float for consistent typing
-            minv_f: float = float(meta.get("min", default_num - 1.0))
-            maxv_f: float = float(meta.get("max", default_num + 1.0))
-            step_f: float = float(meta.get("step", 0.01))
-            if maxv_f <= minv_f:
-                maxv_f = minv_f + (step_f if step_f > 0 else 1.0)
-            cur_f = _to_float(value, default_num)
-            cur_f = max(minv_f, min(maxv_f, cur_f))
-            return float(
-                st.slider(
-                    meta.get("label", key),
-                    minv_f,
-                    maxv_f,
-                    cur_f,
-                    step_f,
-                    key=wkey,
-                    help=meta.get("help", ""),
-                )
-            )
+        # Float branch: coerce values to float for consistent typing
+        minv_f: float = float(meta.get("min", default_num - 1.0))
+        maxv_f: float = float(meta.get("max", default_num + 1.0))
+        step_f: float = float(meta.get("step", 0.01))
+        if maxv_f <= minv_f:
+            maxv_f = minv_f + (step_f if step_f > 0 else 1.0)
+        cur_f = _to_float(value, default_num)
+        cur_f = max(minv_f, min(maxv_f, cur_f))
+        return float(
+            st.slider(
+                meta.get("label", key),
+                minv_f,
+                maxv_f,
+                cur_f,
+                step_f,
+                key=wkey,
+                help=meta.get("help", ""),
+            ),
+        )
 
     if mtype == "select":
         options = meta.get("options", []) or []
@@ -138,7 +138,7 @@ def _render_control(style: str, key: str, meta: Dict[str, Any]) -> object:
     )
 
 
-def style_controls(style: str) -> Dict[str, Any]:
+def style_controls(style: str) -> dict[str, Any]:
     """Display style-specific parameter controls in Streamlit UI.
 
     Purpose:
@@ -150,17 +150,19 @@ def style_controls(style: str) -> Dict[str, Any]:
 
     Returns:
         Dict[str, Any]: map of option key -> selected value
+
     """
+    st = get_st()
     schema = _ensure_style_schemas().get(style, {})
     if not schema:
         st.info(
-            "This style has no specific controls. Use Advanced options below or JSON override."
+            "This style has no specific controls. Use Advanced options below or JSON override.",
         )
         return {}
 
     # ---------------- LowPolyFacet: fine-grained grouping ----------------
     if style == "LowPolyFacet":
-        out_lp: Dict[str, Any] = {}
+        out_lp: dict[str, Any] = {}
 
         shape_keys = [
             "lp_facets",
@@ -254,7 +256,7 @@ def style_controls(style: str) -> Dict[str, Any]:
 
     # ---------------- SuperformulaBlossom: focused grouping ----------------
     if style == "SuperformulaBlossom":
-        out_sf: Dict[str, Any] = {}
+        out_sf: dict[str, Any] = {}
 
         shape_keys = [
             "sf_strength",
@@ -400,14 +402,14 @@ def style_controls(style: str) -> Dict[str, Any]:
     # ---------------- Default: simple, compact grid ----------------
     colN = max(2, min(4, len(schema)))
     cols = st.columns(colN)
-    out_default: Dict[str, Any] = {}
+    out_default: dict[str, Any] = {}
     for i, (key, meta) in enumerate(schema.items()):
         with cols[i % colN]:
             out_default[key] = _render_control(style, key, meta)
     return out_default
 
 
-def adv_shape_controls(style: str) -> Dict[str, Any]:
+def adv_shape_controls(style: str) -> dict[str, Any]:
     """Display advanced shape parameter controls for base profile.
 
     Args:
@@ -415,34 +417,36 @@ def adv_shape_controls(style: str) -> Dict[str, Any]:
 
     Returns:
         Dictionary of advanced shape parameters
+
     """
+    st = get_st()
     st.caption("These affect the base profile shared by all styles.")
     c1, c2, c3 = st.columns(3)
     k1 = widget_key(style, "flare_center")
     k2 = widget_key(style, "flare_sharp")
     k3 = widget_key(style, "bell_amp")
     flare_center = float(
-        c1.slider("Flare center", 0.1, 0.9, st.session_state.get(k1, 0.5), 0.01, key=k1)
+        c1.slider("Flare center", 0.1, 0.9, st.session_state.get(k1, 0.5), 0.01, key=k1),
     )
     flare_sharp = float(
         c2.slider(
-            "Flare sharpness", 1.0, 12.0, st.session_state.get(k2, 6.0), 0.1, key=k2
-        )
+            "Flare sharpness", 1.0, 12.0, st.session_state.get(k2, 6.0), 0.1, key=k2,
+        ),
     )
     bell_amp = float(
         c3.slider(
-            "Bell amplitude", 0.0, 0.5, st.session_state.get(k3, 0.0), 0.01, key=k3
-        )
+            "Bell amplitude", 0.0, 0.5, st.session_state.get(k3, 0.0), 0.01, key=k3,
+        ),
     )
 
     c4, c5 = st.columns(2)
     k4 = widget_key(style, "bell_center")
     k5 = widget_key(style, "bell_width")
     bell_center = float(
-        c4.slider("Bell center", 0.1, 0.9, st.session_state.get(k4, 0.5), 0.01, key=k4)
+        c4.slider("Bell center", 0.1, 0.9, st.session_state.get(k4, 0.5), 0.01, key=k4),
     )
     bell_width = float(
-        c5.slider("Bell width", 0.05, 0.5, st.session_state.get(k5, 0.22), 0.01, key=k5)
+        c5.slider("Bell width", 0.05, 0.5, st.session_state.get(k5, 0.22), 0.01, key=k5),
     )
 
     return {
@@ -454,7 +458,8 @@ def adv_shape_controls(style: str) -> Dict[str, Any]:
     }
 
 
-def twist_controls(style: str) -> Dict[str, Any]:
+def twist_controls(style: str) -> dict[str, Any]:
+    st = get_st()
     c1, c2, c3 = st.columns(3)
     k1 = widget_key(style, "spin_turns")
     k2 = widget_key(style, "spin_phase_deg")
@@ -483,7 +488,7 @@ def twist_controls(style: str) -> Dict[str, Any]:
             0.05,
             key=k1,
             on_change=_mark_changed,
-        )
+        ),
     )
     spin_phase = float(
         c2.slider(
@@ -494,7 +499,7 @@ def twist_controls(style: str) -> Dict[str, Any]:
             1.0,
             key=k2,
             on_change=_mark_changed,
-        )
+        ),
     )
     spin_curve = float(
         c3.slider(
@@ -505,7 +510,7 @@ def twist_controls(style: str) -> Dict[str, Any]:
             0.05,
             key=k3,
             on_change=_mark_changed,
-        )
+        ),
     )
     return {
         "spin_turns": spin_turns,

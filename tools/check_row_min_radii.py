@@ -12,7 +12,7 @@ def main() -> None:
     import importlib
 
     geom_mod = importlib.import_module("potfoundry" + ".core.geometry")
-    build_pot_mesh = getattr(geom_mod, "build_pot_mesh")
+    build_pot_mesh = geom_mod.build_pot_mesh
     PRESETS = importlib.import_module("pfui" + ".presets").PRESETS
 
     p = PRESETS["SuperformulaBlossom"]["Crisp Petals (De-Jag)"]
@@ -69,7 +69,7 @@ def main() -> None:
     )
 
     # write a short JSON summary
-    out = Path(".").resolve() / "tools" / "row_min_radii.json"
+    out = Path().resolve() / "tools" / "row_min_radii.json"
     with open(out, "w", encoding="utf-8") as fh:
         json.dump(
             {

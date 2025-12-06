@@ -7,7 +7,7 @@ publishing system.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import streamlit as st
@@ -27,7 +27,7 @@ __all__ = [
 ]
 
 
-def check_rate_limit() -> Tuple[bool, Optional[str]]:
+def check_rate_limit() -> tuple[bool, str | None]:
     """Check if user can publish (client-side rate limiting).
 
     Enforces:
@@ -36,6 +36,7 @@ def check_rate_limit() -> Tuple[bool, Optional[str]]:
 
     Returns:
         Tuple of (can_publish, error_message)
+
     """
     if not HAS_STREAMLIT or st is None:
         return True, None
@@ -67,6 +68,7 @@ def record_publish() -> None:
     
     Note:
         This function mutates Streamlit's session_state and returns None.
+
     """
     if not HAS_STREAMLIT or st is None:
         return

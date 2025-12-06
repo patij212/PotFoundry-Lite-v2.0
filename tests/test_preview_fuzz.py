@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 
-import pfui.preview as preview
+from pfui import preview
 
 
 def _register_style(name, fn, monkeypatch):
@@ -32,7 +32,7 @@ def test_fuzz_many_adversarial_styles(monkeypatch):
                 "inf_return",
                 "object_dtype",
                 "negatives",
-            ]
+            ],
         )
 
         def make_fn(t=typ):
@@ -62,7 +62,7 @@ def test_fuzz_many_adversarial_styles(monkeypatch):
                 if t == "object_dtype":
                     if isinstance(theta, _np.ndarray):
                         return _np.array(
-                            [object() for _ in range(theta.size)], dtype=object
+                            [object() for _ in range(theta.size)], dtype=object,
                         )
                     return object()
                 if t == "negatives":
@@ -76,7 +76,7 @@ def test_fuzz_many_adversarial_styles(monkeypatch):
         _register_style(name, make_fn(), monkeypatch)
 
         X, Y, Z = preview.make_preview_arrays(
-            120.0, 70.0, 45.0, 1.1, n_theta, n_z, name, json.dumps({})
+            120.0, 70.0, 45.0, 1.1, n_theta, n_z, name, json.dumps({}),
         )
 
         # Shapes: must be 2D arrays with nz rows and >=24 columns (nt may be reduced on fallback)

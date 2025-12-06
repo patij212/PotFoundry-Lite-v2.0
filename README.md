@@ -58,6 +58,18 @@ streamlit run app.py
 
 The app will open in your browser (usually http://localhost:8501).
 
+### WebGPU Preview Assets
+
+The WebGPU preview is packaged as a Streamlit component. Build it once (and whenever you change the frontend) so the Python wrapper can find `frontend_build/index.html`:
+
+```bash
+cd pfui/components/webgpu_component/frontend
+npm ci
+npm run build
+```
+
+`npm run build` runs Vite, copies the bundle into `pfui/components/webgpu_component/frontend_build/`, and now fails CI if the copy step does not produce `index.html`. When Streamlit starts you should see an INFO log similar to `WebGPU component using build path .../frontend_build`; if not, rebuild and restart the server to avoid falling back to the legacy preview.
+
 ### Basic Usage
 
 1. **Choose a style** from the dropdown (SuperformulaBlossom, FourierBloom, etc.)
@@ -188,6 +200,28 @@ PYTHONPATH=. pytest --cov=potfoundry --cov=pfui tests/
 ```
 
 ### Test Suite
+### Playwright WebGPU Tests
+
+- These tests require a Playwright-capable Chromium with WebGPU enabled. The test harness will prefer the `chrome` Playwright channel in headful mode when no explicit Chromium executable or channel is set.
+- Prefer running the helper script in `scripts/` to ensure a WebGPU-capable Chromium is selected and `PF_RUN_WEBGPU_PLAYWRIGHT` is enabled.
+
+PowerShell (Windows):
+```powershell
+# Launch tests headful using Playwright's Chrome channel (preferred for WebGPU)
+Set-Item Env:PF_RUN_WEBGPU_PLAYWRIGHT '1'
+Set-Item Env:PF_WEBGPU_HEADFUL '1'
+Set-Item Env:PF_WEBGPU_CHROMIUM_CHANNEL 'chrome'
+pytest -q tests/test_webgpu_playwright.py -s
+```
+
+Linux / macOS (bash):
+```bash
+# Launch tests headful using Playwright's Chrome channel
+PF_RUN_WEBGPU_PLAYWRIGHT=1 PF_WEBGPU_HEADFUL=1 PF_WEBGPU_CHROMIUM_CHANNEL=chrome pytest -q tests/test_webgpu_playwright.py -s
+```
+
+- Or use the convenience scripts: `scripts/run_playwright_webgpu_tests.sh` (bash) and `scripts/run_playwright_webgpu_tests.ps1` (PowerShell).
+
 
 - **99 tests total** (100% pass rate)
 - **Unit tests** - Core functions, geometry, STL export

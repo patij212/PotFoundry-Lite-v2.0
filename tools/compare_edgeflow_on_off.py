@@ -13,7 +13,7 @@ def main() -> None:
     import importlib
 
     geom_mod = importlib.import_module("potfoundry" + ".core.geometry")
-    build_pot_mesh = getattr(geom_mod, "build_pot_mesh")
+    build_pot_mesh = geom_mod.build_pot_mesh
     PRESETS = importlib.import_module("pfui" + ".presets").PRESETS
 
     p = PRESETS["SuperformulaBlossom"]["Crisp Petals (De-Jag)"]
@@ -25,11 +25,10 @@ def main() -> None:
     t_bottom = 3.0
     r_drain = 10.0
 
-    from typing import Dict, List, Tuple
 
     def build_with(
-        opts_overrides: Dict[str, Any],
-    ) -> Tuple[List[Tuple[float, float]], int]:
+        opts_overrides: dict[str, Any],
+    ) -> tuple[list[tuple[float, float]], int]:
         # Use a plain dict for update to avoid TypedDict.update type mismatch
         style_opts: dict[str, Any] = dict(p)
         style_opts.update(opts_overrides)
@@ -59,7 +58,7 @@ def main() -> None:
 
     print("Building with edge-flow OFF (defaults)")
     min_off, cnt_off = build_with(
-        {"sf_edge_flow_reconstruct_enable": False, "sf_edge_flow_debug": False}
+        {"sf_edge_flow_reconstruct_enable": False, "sf_edge_flow_debug": False},
     )
     print("cnt_at_or_below (off):", cnt_off)
 
@@ -69,12 +68,12 @@ def main() -> None:
             "sf_edge_flow_reconstruct_enable": True,
             "sf_edge_flow_mode": "ridge_paths",
             "sf_edge_flow_debug": False,
-        }
+        },
     )
     print("cnt_at_or_below (on):", cnt_on)
 
     # write summaries
-    out = Path(".").resolve() / "tools" / "edgeflow_compare.json"
+    out = Path().resolve() / "tools" / "edgeflow_compare.json"
     with open(out, "w", encoding="utf-8") as fh:
         json.dump(
             {
