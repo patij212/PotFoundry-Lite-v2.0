@@ -1,6 +1,37 @@
-# potfoundry/geometry.py — vNEXT2
-# Geometry core with style-agnostic twist/spin and optimized mesh build.
-from __future__ import annotations
+"""potfoundry/geometry.py — Simplified geometry module for fast-path operations.
+
+This module provides a streamlined geometry implementation optimized for
+performance-critical paths. It contains core geometry functions with Numba
+acceleration when available.
+
+Relationship to core/geometry.py
+--------------------------------
+This module (potfoundry/geometry.py) and potfoundry/core/geometry.py serve
+different purposes:
+
+- **potfoundry/core/geometry.py** (3000+ lines):
+  The canonical, full-featured implementation with:
+  - Extended type hints and TypedDict support
+  - Edge-flow reconstruction for SuperformulaBlossom
+  - LowPolyFacet tier seam refinement
+  - Rich diagnostics and verbose debugging
+  - Full integration with core.mesh helpers
+
+- **potfoundry/geometry.py** (this file, ~850 lines):
+  Simplified fast-path implementation with:
+  - Minimal dependencies
+  - Numba-accelerated style functions
+  - Core mesh building without advanced features
+  - Suitable for quick previews and simple exports
+
+For new features, prefer potfoundry.core.geometry. This module is maintained
+for backward compatibility and performance-critical paths that don't need
+the full feature set.
+
+See Also:
+    potfoundry.core.geometry: Full-featured canonical implementation
+    potfoundry.core.mesh: Shared mesh building utilities
+"""
 
 import math
 from collections.abc import Callable
@@ -27,7 +58,6 @@ __all__ = [
     "build_pot_mesh",
     "r_base_out",
     "save_preview_png",
-    "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
 
 
@@ -182,61 +212,7 @@ def _compute_normal(
     return n / norm
 
 
-def write_ascii_stl(
-    path: str | Path,
-    name: str,
-    verts: npt.NDArray[np.float64],
-    faces: npt.NDArray[np.int32],
-) -> None:
-    """Write triangles to ASCII STL (portable, human-readable).
 
-    .. deprecated:: 2.0
-        ASCII STL export is deprecated. Use :func:`write_stl_binary` instead.
-        Binary STL files are smaller, faster to write/read, and universally supported
-        by all modern slicers and CAD tools.
-
-        ASCII STL is retained only for debugging or legacy compatibility.
-
-    Args:
-        path: Output file path
-        name: Model name (embedded in STL file)
-        verts: Vertex array (N×3)
-        faces: Face index array (M×3)
-
-    Note:
-        For production use, prefer write_stl_binary from potfoundry.core.io.stl
-
-    """
-    import warnings
-
-    warnings.warn(
-        "write_ascii_stl is deprecated. Use write_stl_binary instead. "
-        "Binary STL files are smaller, faster, and universally supported.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    # Ensure destination directory exists (important on Windows where /tmp may not exist)
-    p = Path(path)
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        # If parent cannot be created (e.g., path has no parent), proceed and let open() raise
-        pass
-    with open(p, "w") as f:
-        f.write(f"solid {name}\n")
-        for ia, ib, ic in faces:
-            a = verts[ia]
-            b = verts[ib]
-            c = verts[ic]
-            n = _compute_normal(a, b, c)
-            f.write(f"  facet normal {n[0]:.6e} {n[1]:.6e} {n[2]:.6e}\n")
-            f.write("    outer loop\n")
-            f.write(f"      vertex {a[0]:.6e} {a[1]:.6e} {a[2]:.6e}\n")
-            f.write(f"      vertex {b[0]:.6e} {b[1]:.6e} {b[2]:.6e}\n")
-            f.write(f"      vertex {c[0]:.6e} {c[1]:.6e} {c[2]:.6e}\n")
-            f.write("    endloop\n")
-            f.write("  endfacet\n")
-        f.write(f"endsolid {name}\n")
 
 
 # -----------------------------

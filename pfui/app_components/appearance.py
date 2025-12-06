@@ -74,11 +74,11 @@ def ensure_appearance_defaults(ss: dict[str, Any]) -> None:
     ss.setdefault("preview_palette", "Custom")
     # Lighting mode: "Classic" uses Plotly's native lighting for natural shading
     # Default lighting values tuned to match the old working WebGPU/PyVista appearance
-    ss.setdefault("mesh_ambient", 0.5)
-    ss.setdefault("mesh_diffuse", 0.95)
+    ss.setdefault("mesh_ambient", 0.85)
+    ss.setdefault("mesh_diffuse", 0.25)
     ss.setdefault("mesh_specular", 0.25)
     ss.setdefault("mesh_roughness", 0.70)
-    ss.setdefault("mesh_fresnel", 0.20)
+    ss.setdefault("mesh_fresnel", 0.1)
     ss.setdefault("preview_bg_color", "#242B46")  # fallback solid matches gradient start
     ss.setdefault("preview_bg_mode", "gradient")
     ss.setdefault("preview_bg_grad_start", "#242B46")
@@ -144,7 +144,7 @@ def render_appearance_settings() -> None:
             "Ambient",
             0.0,
             1.0,
-            _to_float_scalar(ss.get("mesh_ambient", 0.70)),
+            _to_float_scalar(ss.get("mesh_ambient", 0.85)),
             0.01,
             key="mesh_ambient",
         )
@@ -153,7 +153,7 @@ def render_appearance_settings() -> None:
             "Diffuse",
             0.0,
             1.0,
-            min(max(_to_float_scalar(ss.get("mesh_diffuse", 0.60)), 0.0), 1.0),
+            min(max(_to_float_scalar(ss.get("mesh_diffuse", 0.25)), 0.0), 1.0),
             0.01,
             key="mesh_diffuse",
         )
@@ -162,7 +162,7 @@ def render_appearance_settings() -> None:
             "Specular",
             0.0,
             1.0,
-            _to_float_scalar(ss.get("mesh_specular", 0.10)),
+            _to_float_scalar(ss.get("mesh_specular", 0.25)),
             0.01,
             key="mesh_specular",
         )
@@ -171,7 +171,7 @@ def render_appearance_settings() -> None:
             "Roughness",
             0.0,
             1.0,
-            _to_float_scalar(ss.get("mesh_roughness", 0.80)),
+            _to_float_scalar(ss.get("mesh_roughness", 0.70)),
             0.01,
             key="mesh_roughness",
         )
@@ -180,7 +180,7 @@ def render_appearance_settings() -> None:
             "Fresnel",
             0.0,
             1.0,
-            _to_float_scalar(ss.get("mesh_fresnel", 0.10)),
+            _to_float_scalar(ss.get("mesh_fresnel", 0.1)),
             0.01,
             key="mesh_fresnel",
         )

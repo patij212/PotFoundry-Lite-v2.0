@@ -8,10 +8,14 @@ latest stub/module instance.
 from __future__ import annotations
 
 import importlib
+import logging
 import sys
+import base64
 from types import ModuleType
 from typing import Any, MutableMapping, Protocol, cast
-import base64
+
+# Module-level logger for Streamlit utility operations
+_logger = logging.getLogger(__name__)
 
 
 class StreamlitLike(Protocol):
@@ -39,13 +43,14 @@ def get_st() -> StreamlitLike:  # pragma: no cover - tiny helper
     # are always honored. Fall back to importlib when not present.
     try:
         mod_sys = sys.modules.get("streamlit")
-    except Exception:
+    except (RuntimeError, KeyError) as e:
+        _logger.debug("Could not access sys.modules['streamlit']: %s", e)
         mod_sys = None
     mod_import = None
     try:
         mod_import = importlib.import_module("streamlit")
-    except Exception:
-        mod_import = None
+    except ImportError as e:
+        _logger.debug("Could not import streamlit: %s", e)
 
     # Prefer a module object that exposes common widget helpers like number_input
     # (this helps when tests monkeypatch an imported streamlit module). Fall
@@ -53,7 +58,7 @@ def get_st() -> StreamlitLike:  # pragma: no cover - tiny helper
     def _has_widgets(m: ModuleType | None) -> bool:
         try:
             return m is not None and (hasattr(m, "number_input") or hasattr(m, "session_state"))
-        except Exception:
+        except (AttributeError, TypeError):
             return False
 
 
@@ -91,7 +96,8 @@ def try_get_st() -> StreamlitLike | None:
         if mod is not None:
             return cast(StreamlitLike, mod)
         return cast(StreamlitLike, importlib.import_module("streamlit"))
-    except Exception:
+    except (ImportError, AttributeError, KeyError) as e:
+        _logger.debug("Could not get streamlit module: %s", e)
         return None
 
 
@@ -121,12 +127,12 @@ def safe_image(st: StreamlitLike, image: Any, **kwargs: Any) -> bool:
         st.image(image, **kwargs)
         return True
     except Exception as e:  # pragma: no cover - defensive behavior
+        _logger.debug("Failed to display image: %s", e)
         try:
             # Try to write a single-line warning in the UI but avoid crashing
             st.warning("Preview unavailable (media missing or failed to load)")
-        except Exception:
-            # If streamlit isn't fully importable, fall back to a no-op
-            pass
+        except Exception as warn_err:
+            _logger.debug("Could not display warning: %s", warn_err)
         # As a graceful UI fallback, display a minimal transparent pixel as PNG
         try:
             # 1x1 transparent PNG - base64
@@ -135,8 +141,8 @@ def safe_image(st: StreamlitLike, image: Any, **kwargs: Any) -> bool:
             )
             png_bytes = base64.b64decode(tiny_png_b64)
             st.image(png_bytes, **kwargs)
-        except Exception:
-            pass
+        except Exception as fallback_err:
+            _logger.debug("Could not display fallback image: %s", fallback_err)
         return False
 
 
@@ -147,20 +153,21 @@ def safe_placeholder_image(target: Any, image: Any, **kwargs: Any) -> bool:
     try:
         target.image(image, **kwargs)
         return True
-    except Exception:  # pragma: no cover - defensive behavior
+    except Exception as e:  # pragma: no cover - defensive behavior
+        _logger.debug("Failed to display placeholder image: %s", e)
         try:
             st = get_effective_st()
             st.warning("Preview unavailable (media missing or failed to load)")
-        except Exception:
-            pass
+        except Exception as warn_err:
+            _logger.debug("Could not display warning: %s", warn_err)
         try:
             tiny_png_b64 = (
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="
             )
             png_bytes = base64.b64decode(tiny_png_b64)
             target.image(png_bytes, **kwargs)
-        except Exception:
-            pass
+        except Exception as fallback_err:
+            _logger.debug("Could not display fallback image: %s", fallback_err)
         return False
 
 
@@ -223,8 +230,8 @@ def get_effective_st() -> StreamlitLike:
         # Fallback to any candidate if we didn't find an external one
         if candidates:
             return candidates[0][1]
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Error in get_effective_st frame inspection: %s", e)
     finally:
         _in_get_effective_st = False
 

@@ -7,6 +7,7 @@ coordination and error handling.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import time
@@ -14,6 +15,9 @@ from collections.abc import Callable
 from typing import Any, cast
 
 import numpy as np
+
+# Module-level logger for preview operations
+_logger = logging.getLogger(__name__)
 
 import pfui.schemas as SC
 from pfui._st import get_effective_st as get_st
@@ -513,6 +517,7 @@ def _cleanup_renderer_state(old_renderer: str | None, new_renderer: str, ss: dic
             "_pyvista_mesh_cache",
             "_pyvista_colors_cache",
             "_pyvista_full_done",
+            "_pyvista_html_cache",  # Clear cached HTML export
         ]
         for key in keys_to_clear:
             ss.pop(key, None)

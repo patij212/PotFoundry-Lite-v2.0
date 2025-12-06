@@ -91,7 +91,7 @@ def render_quick_preview_surface(
         else (preview_n_z, preview_n_theta)
     )
 
-    # Build scene configuration
+    # Build scene configuration with uirevision for camera persistence
     scene_config = dict(
         xaxis=dict(visible=False, range=xlim),
         yaxis=dict(visible=False, range=ylim),
@@ -99,6 +99,8 @@ def render_quick_preview_surface(
         aspectmode="manual",
         aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
         bgcolor=cast("Any", ss.get("preview_bg_color", "#242B46")),
+        # CRITICAL: uirevision preserves camera state when data changes
+        uirevision=True,
     )
 
     # Always apply default camera - DO NOT try to persist
@@ -113,13 +115,16 @@ def render_quick_preview_surface(
         title=f"Quick preview (grid {nt_q}×{nz_q})",
         scene=scene_config,
         margin=dict(l=0, r=0, t=30, b=0),
+        # Top-level uirevision for camera persistence
+        uirevision=True,
     )
 
-    # Render - Plotly will handle interaction state internally during this render
+    # Render with consistent key for camera persistence
     preview_placeholder.plotly_chart(
         fig,
         use_container_width=True,
         config={"displaylogo": False},
+        key="quick_preview_plotly_surface",
     )
 
     # Persist latest quick preview figure for cached mode

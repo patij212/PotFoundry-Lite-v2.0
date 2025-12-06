@@ -32,6 +32,7 @@ from collections.abc import Mapping, MutableMapping
 from typing import Any, cast
 
 from pfui._st import get_effective_st as get_st, StreamlitLike
+from potfoundry.core.logging import logger
 
 # Lazy-load schema constants to avoid importing pfui.schemas at module import time.
 STYLE_SCHEMAS: dict = {}
@@ -47,7 +48,8 @@ def _ensure_schema_globals() -> None:
             GLOBAL_CONTROLS.update(
                 getattr(mod, "get_global_controls", dict)() or {},
             )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to load schema globals: {e}")
             STYLE_SCHEMAS = STYLE_SCHEMAS or {}
             GLOBAL_CONTROLS = GLOBAL_CONTROLS or {}
 
@@ -211,10 +213,12 @@ def get_webgpu_camera_snapshot(ss: Mapping[str, Any]) -> dict[str, Any]:
             try:
                 snapshot[field] = float(raw_value)
             except Exception:
+                logger.debug(f"Invalid camera value for {field}: {raw_value}, using default")
                 snapshot[field] = float(default_value or 0.0)
     try:
         snapshot["cameraNonce"] = int(float(ss.get("webgpu_camera_nonce", 0) or 0))
     except Exception:
+        logger.debug(f"Invalid camera nonce: {ss.get('webgpu_camera_nonce')}, defaulting to 0")
         snapshot["cameraNonce"] = 0
     return snapshot
 

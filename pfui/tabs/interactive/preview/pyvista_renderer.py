@@ -145,20 +145,21 @@ def render_pyvista_preview(
     rendering. Camera state is automatically preserved across Streamlit reruns
     via the widget_key parameter.
     
-                try:
-                    mesh_decimated = mesh.decimate_pro(
+    Args:
+        vertices: Nx3 array of vertex positions
         faces: Mx3 array of triangle indices
         height_px: Height of preview window in pixels (default: 600)
         use_gradient: Whether to apply gradient coloring (default: True)
         gradient_colors: Nx3 uint8 array of RGB colors (default: None)
         solid_color: Hex color for solid rendering (default: "#BFC7D5")
-                    )
-                    t_decimate_ms = (time.time() - t_decimate_start) * 1000
+        background_color: Hex color for background (default: "#242B46")
+        title: Title text for the preview (default: "3D Preview")
         widget_key: Unique key for Streamlit widget state (default: "pyvista_preview")
         lighting_params: Dict of lighting parameters (ambient, diffuse, specular)
         camera_position: Initial camera position preset ("iso", "xy", "xz", "yz")
         show_edges: Whether to show mesh edges (default: False)
         place_on_ground: Whether to translate mesh to ground plane (default: True)
+        preview_placeholder: Optional Streamlit placeholder for the preview
     
     Returns:
         None (renders in Streamlit container)
@@ -693,22 +694,11 @@ def render_pyvista_preview(
         except Exception:
             pass
 
-        # CRITICAL: Always reset camera to ensure mesh is visible
-        # This is essential for reliable rendering - without it, the mesh
-        # may be outside the camera's view frustum
-        try:
-            plotter.reset_camera()
-            # Slight zoom out for better framing
-            try:
-                plotter.camera.zoom(0.85)
-            except Exception:
-                pass
-        except Exception:
-            pass
-        
-        # Now restore previous camera if available (after reset ensures valid state)
-        if ss.get("_pyvista_camera"):
-            cam_prev = ss["_pyvista_camera"]
+        # CRITICAL: Camera persistence logic
+        # We only reset camera if there's NO saved state. Otherwise we restore from saved state.
+        cam_prev = ss.get("_pyvista_camera")
+        if cam_prev and isinstance(cam_prev, dict):
+            # Restore saved camera state
             try:
                 plotter.camera.position = cam_prev.get("position", plotter.camera.position)
                 plotter.camera.focal_point = cam_prev.get("focal_point", plotter.camera.focal_point)
@@ -720,11 +710,42 @@ def render_pyvista_preview(
                     if ps is not None:
                         plotter.camera.parallel_scale = float(ps)
             except Exception:
+                # If restoration fails, fall back to reset
+                plotter.reset_camera()
+                try:
+                    plotter.camera.zoom(0.85)
+                except Exception:
+                    pass
+        else:
+            # No saved state - reset to default isometric view
+            try:
+                plotter.reset_camera()
+                try:
+                    plotter.camera.zoom(0.85)
+                except Exception:
+                    pass
+            except Exception:
                 pass
         
         # Always reset clipping range after camera setup to ensure mesh visibility
         try:
             plotter.reset_camera_clipping_range()
+        except Exception:
+            pass
+        
+        # CRITICAL: Save current camera state BEFORE calling stpyvista
+        # stpyvista does NOT return camera state, so we must save it now
+        # This will be the state the user sees, and we restore it next time
+        try:
+            ss["_pyvista_camera"] = {
+                "position": tuple(plotter.camera.position),
+                "focal_point": tuple(plotter.camera.focal_point),
+                "up": tuple(plotter.camera.up),
+                "parallel_projection": bool(getattr(plotter.camera, "parallel_projection", False)),
+                "parallel_scale": float(getattr(plotter.camera, "parallel_scale", 1.0)),
+                "view_angle": float(getattr(plotter.camera, "view_angle", 30.0)),
+                "clipping_range": tuple(getattr(plotter.camera, "clipping_range", (0.1, 10000.0))),
+            }
         except Exception:
             pass
 
@@ -802,44 +823,64 @@ def render_pyvista_preview(
             return placeholder
 
         def _render_interactive_html(caption_suffix: str | None = None) -> bool:
-            """Export the current plotter to interactive HTML and embed via Streamlit."""
+            """Export the current plotter to interactive HTML and embed via Streamlit.
+            
+            Uses caching to avoid regenerating the ~2MB HTML export when mesh hasn't changed.
+            """
+            # Generate a cache key based on mesh geometry (vertices + faces hash)
             try:
-                export_result = plotter.export_html(None)
-            except Exception as e_export:
-                st.warning(f"🔧 [PyVista Debug] HTML export exception: {e_export}")
-                return False
-
-            if export_result is None:
-                st.warning("🔧 [PyVista Debug] HTML export returned None")
-                return False
-
-            if hasattr(export_result, "getvalue"):
+                import hashlib
+                mesh_hash = hashlib.sha256(
+                    vertices.tobytes() + faces.tobytes()
+                ).hexdigest()[:16]
+                cache_key = f"pyvista_html_{mesh_hash}_{height_px}"
+            except Exception:
+                cache_key = None
+            
+            # Check cache for existing HTML
+            html_str = None
+            if cache_key:
+                cached = ss.get("_pyvista_html_cache")
+                if isinstance(cached, dict) and cached.get("key") == cache_key:
+                    html_str = cached.get("html")
+            
+            # Generate HTML if not cached
+            if html_str is None:
                 try:
-                    html_str = export_result.getvalue()
-                except Exception as e_getval:
-                    st.warning(f"🔧 [PyVista Debug] getvalue() failed: {e_getval}")
+                    export_result = plotter.export_html(None)
+                except Exception:
                     return False
-            elif isinstance(export_result, str):
-                html_str = export_result
-            else:
-                st.warning(f"🔧 [PyVista Debug] Unknown export type: {type(export_result)}")
-                return False
+
+                if export_result is None:
+                    return False
+
+                if hasattr(export_result, "getvalue"):
+                    try:
+                        html_str = export_result.getvalue()
+                    except Exception:
+                        return False
+                elif isinstance(export_result, str):
+                    html_str = export_result
+                else:
+                    return False
+                
+                # Store in cache
+                if cache_key and html_str:
+                    ss["_pyvista_html_cache"] = {"key": cache_key, "html": html_str}
 
             try:
-                html_len = len(html_str) if html_str else 0
-                st.info(f"🔧 [PyVista Debug] HTML export success, {html_len} chars, embedding...")
                 st_html(html_str, height=max(320, height_px), scrolling=False)
                 if caption_suffix:
                     st.caption(caption_suffix)
-            except Exception as e_embed:
-                st.warning(f"🔧 [PyVista Debug] HTML embed failed: {e_embed}")
+            except Exception:
                 return False
             return True
 
         # Check if we should use screenshot mode (more reliable) or interactive mode
-        # Default to HTML export which is more reliable than stpyvista WebGL component
-        # stpyvista has known blank screen issues with certain VTK/Panel configurations
-        use_html_export = bool(ss.get("pyvista_use_html_export", True))  # Default to HTML export
+        # Default to stpyvista component mode which has native camera persistence via 'key' param
+        # HTML export mode doesn't preserve camera state across reruns
+        # Set pyvista_use_html_export=True in session state to force HTML mode
+        use_html_export = bool(ss.get("pyvista_use_html_export", False))  # Default to stpyvista for camera persistence
         use_screenshot_mode = bool(ss.get("pyvista_screenshot_mode", False))
         precomputed_img: Any | None = None
         if use_screenshot_mode:
@@ -871,7 +912,7 @@ def render_pyvista_preview(
                             plotter.view_isometric()
                         except Exception:
                             pass
-                        stpyvista(
+                        pv_event = stpyvista(
                             plotter,
                             key=widget_key,
                             height=height_px,
@@ -880,6 +921,10 @@ def render_pyvista_preview(
                                 "interactive_orientation_widget": False,
                             },
                         )
+                        # CRITICAL: Capture camera state from client to enable persistence
+                        if pv_event:
+                            ss["_pyvista_camera"] = pv_event
+                            ss["_pyvista_camera_last_update"] = True
                         stpyvista_success = True
                         break
                     except Exception as e_render:
@@ -902,7 +947,7 @@ def render_pyvista_preview(
                         plotter.view_isometric()
                     except Exception:
                         pass
-                    stpyvista(
+                    pv_event = stpyvista(
                         plotter,
                         key=widget_key,  # CRITICAL: This enables camera persistence
                         height=height_px,
@@ -911,6 +956,9 @@ def render_pyvista_preview(
                             "interactive_orientation_widget": False,
                         },
                     )
+                    if pv_event:
+                        ss["_pyvista_camera"] = pv_event
+                        ss["_pyvista_camera_last_update"] = True
                     stpyvista_success = True
                     break
                 except Exception as e_render:
@@ -994,20 +1042,8 @@ def render_pyvista_preview(
             except Exception:
                 pass
 
-        # Capture camera after successful render for next rerun
-        if stpyvista_success and not use_screenshot_mode:
-            try:
-                ss["_pyvista_camera"] = {
-                    "position": plotter.camera.position,
-                    "focal_point": plotter.camera.focal_point,
-                    "up": plotter.camera.up,
-                    "parallel_projection": bool(getattr(plotter.camera, "parallel_projection", False)),
-                    "parallel_scale": float(getattr(plotter.camera, "parallel_scale", 1.0)),
-                    "view_angle": float(getattr(plotter.camera, "view_angle", 30.0)),
-                    "clipping_range": tuple(getattr(plotter.camera, "clipping_range", (0.1, 10000.0))),
-                }
-            except Exception:
-                pass
+        # Camera state was already saved BEFORE calling stpyvista (see above)
+        # stpyvista does NOT return camera state to Python, so we can't capture it here
 
         # Log performance metrics
         elapsed_ms = (time.time() - t0) * 1000
@@ -1168,8 +1204,8 @@ def render_pyvista_full_preview(
 
             # Lighting parameters
             lighting_params = {
-                "ambient": min(max(to_float_scalar(ss.get("mesh_ambient", 0.35)), 0.0), 1.0),
-                "diffuse": min(max(to_float_scalar(ss.get("mesh_diffuse", 0.95)), 0.0), 1.0),
+                "ambient": min(max(to_float_scalar(ss.get("mesh_ambient", 0.85)), 0.0), 1.0),
+                "diffuse": min(max(to_float_scalar(ss.get("mesh_diffuse", 0.25)), 0.0), 1.0),
                 "specular": min(max(to_float_scalar(ss.get("mesh_specular", 0.25)), 0.0), 1.0),
             }
 

@@ -54,7 +54,6 @@ __all__ = [
     "build_pot_mesh",
     "r_base_out",
     "save_preview_png",
-    "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
 
 
@@ -182,54 +181,7 @@ def _compute_normal(
     return cast("npt.NDArray[np.float64]", n / norm)
 
 
-def write_ascii_stl(
-    path: str | Path,
-    name: str,
-    verts: npt.NDArray[np.float64],
-    faces: npt.NDArray[np.int32],
-) -> None:
-    """Write triangles to ASCII STL (portable, human-readable).
 
-    .. deprecated:: 2.0
-        ASCII STL export is deprecated. Use :func:`write_stl_binary` instead.
-        Binary STL files are smaller, faster to write/read, and universally supported
-        by all modern slicers and CAD tools.
-
-        ASCII STL is retained only for debugging or legacy compatibility.
-
-    Args:
-        path: Output file path
-        name: Model name (embedded in STL file)
-        verts: Vertex array (N×3)
-        faces: Face index array (M×3)
-
-    Note:
-        For production use, prefer write_stl_binary from potfoundry.core.io.stl
-
-    """
-    import warnings
-
-    warnings.warn(
-        "write_ascii_stl is deprecated. Use write_stl_binary instead. "
-        "Binary STL files are smaller, faster, and universally supported.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    with open(path, "w") as f:
-        f.write(f"solid {name}\n")
-        for ia, ib, ic in faces:
-            a = verts[ia]
-            b = verts[ib]
-            c = verts[ic]
-            n = _compute_normal(a, b, c)
-            f.write(f"  facet normal {n[0]:.6e} {n[1]:.6e} {n[2]:.6e}\n")
-            f.write("    outer loop\n")
-            f.write(f"      vertex {a[0]:.6e} {a[1]:.6e} {a[2]:.6e}\n")
-            f.write(f"      vertex {b[0]:.6e} {b[1]:.6e} {b[2]:.6e}\n")
-            f.write(f"      vertex {c[0]:.6e} {c[1]:.6e} {c[2]:.6e}\n")
-            f.write("    endloop\n")
-            f.write("  endfacet\n")
-        f.write(f"endsolid {name}\n")
 
 
 

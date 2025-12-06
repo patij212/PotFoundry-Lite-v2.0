@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from typing import Any, cast
 
 from pfui._st import get_effective_st as get_st
+
+# Module-level logger
+_logger = logging.getLogger(__name__)
 
 
 def unwrap_scalar(v: Any) -> Any:
@@ -25,7 +29,7 @@ def unwrap_scalar(v: Any) -> Any:
     if isinstance(v, (list, tuple)):
         try:
             return v[0]
-        except Exception:
+        except (IndexError, TypeError):
             return v
     return v
 
@@ -52,17 +56,17 @@ def to_int_scalar(x: Any) -> int:
         if isinstance(xv, (str, bytes)):
             try:
                 return int(float(xv))
-            except Exception:
+            except (ValueError, TypeError):
                 return 0
         # Last-resort: attempt float coercion then int
         try:
             return int(float(xv))
-        except Exception:
+        except (ValueError, TypeError):
             return 0
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
         try:
             return int(x)  # best-effort fallback
-        except Exception:
+        except (ValueError, TypeError):
             return 0
 
 
@@ -87,17 +91,17 @@ def to_float_scalar(x: Any) -> float:
         if isinstance(v, (str, bytes)):
             try:
                 return float(v)
-            except Exception:
+            except (ValueError, TypeError):
                 return 0.0
         # Last-resort numeric coercion
         try:
             return float(v)
-        except Exception:
+        except (ValueError, TypeError):
             return 0.0
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
         try:
             return float(x)
-        except Exception:
+        except (ValueError, TypeError):
             return 0.0
 
 
@@ -124,14 +128,15 @@ def create_change_marker(on_change_callback: Callable[[], None] | None = None) -
                 ss["_preview_stale"] = True
             else:
                 ss["_preview_stale"] = False
-        except Exception:
-            pass
+        except (KeyError, TypeError, AttributeError) as e:
+            _logger.debug("Could not mark change: %s", e)
 
         # Call the external callback if provided
         if on_change_callback is not None:
             try:
                 on_change_callback()
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("Change callback error: %s", e)
 
     return _mark_changed
+

@@ -34,6 +34,7 @@ from .supabase import (
 from .supabase import (
     should_skip_tls_verify as _should_skip_tls_verify,
 )
+from potfoundry.core.logging import logger
 
 if TYPE_CHECKING:
     import streamlit as st
@@ -285,7 +286,8 @@ class SupabaseClient:
                             "list[dict[str, Any]]", getattr(resp, "data", []),
                         )
                         return len(resp_data or [])
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(f"Failed to parse update response: {e}")
                         return 0
                 else:
                     url = f"{self.config.url}/rest/v1/{table}"
@@ -305,7 +307,8 @@ class SupabaseClient:
                         data = resp.json()
                         data_typed = cast("list[dict[str, Any]]", data)
                         return len(data_typed) if isinstance(data_typed, list) else 0
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(f"Failed to parse REST update response: {e}")
                         return 0
             except Exception as e:
                 if attempt == max_retries - 1:
@@ -462,7 +465,8 @@ class SupabaseClient:
                             "list[dict[str, Any]]", getattr(resp, "data", []),
                         )
                         return len(resp_data or [])
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(f"Failed to extract delete count: {e}")
                         return 0
                 else:
                     # REST API
@@ -479,7 +483,8 @@ class SupabaseClient:
                     try:
                         data = resp.json()
                         return len(data) if isinstance(data, list) else 0
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(f"Failed to parse REST delete response: {e}")
                         return 0
             except Exception as e:
                 if attempt == max_retries - 1:

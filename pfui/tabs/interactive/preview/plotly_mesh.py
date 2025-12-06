@@ -322,12 +322,12 @@ def render_full_preview_mesh(
             k=Fd[:, 2],
             flatshading=False,  # Hardcoded like old code
             lighting=dict(
-                # Increased ambient (0.5 vs 0.35) acts like soft fill light from all sides
-                ambient=min(max(ss.get("mesh_ambient", 0.5), 0.0), 1.0),
-                diffuse=min(max(ss.get("mesh_diffuse", 0.95), 0.0), 1.0),
+                # High ambient for flat, evenly-lit appearance
+                ambient=min(max(ss.get("mesh_ambient", 0.85), 0.0), 1.0),
+                diffuse=min(max(ss.get("mesh_diffuse", 0.25), 0.0), 1.0),
                 specular=min(max(ss.get("mesh_specular", 0.25), 0.0), 1.0),
                 roughness=min(max(ss.get("mesh_roughness", 0.7), 0.0), 1.0),
-                fresnel=min(max(ss.get("mesh_fresnel", 0.2), 0.0), 1.0),
+                fresnel=min(max(ss.get("mesh_fresnel", 0.1), 0.0), 1.0),
             ),
             # NO lightposition - let Plotly use defaults (x=100000, y=100000, z=0)
             # Higher ambient compensates for single light source
@@ -341,6 +341,75 @@ def render_full_preview_mesh(
             mesh_kwargs["color"] = solid_hex
         
         fig = go.Figure(data=[go.Mesh3d(**mesh_kwargs)])
+        
+        # =================================================================
+        # MESH EDGES - Optional wireframe overlay
+        # =================================================================
+        show_edges = bool(ss.get("show_mesh_edges", False))
+        if show_edges and len(Fd) > 0:
+            try:
+                # Optimized exact edge rendering:
+                # 1. Extract all edges from triangles
+                # 2. Sort vertex indices per edge to handle direction (0-1 vs 1-0)
+                # 3. Use unique() to remove duplicate internal edges (shared by 2 triangles)
+                # 4. Render minimal set of unique edges
+                
+                # Extract all 3 edges per face: (0,1), (1,2), (2,0)
+                # Shape: (N_faces * 3, 2)
+                edges = np.concatenate([
+                    Fd[:, [0, 1]],
+                    Fd[:, [1, 2]],
+                    Fd[:, [2, 0]]
+                ], axis=0).astype(np.uint32)
+                
+                # Sort indices within each edge so (A,B) becomes same as (B,A)
+                edges.sort(axis=1)
+                
+                # Remove duplicates to get unique wireframe edges
+                # This reduces geometry count by ~50% for closed meshes
+                unique_edges = np.unique(edges, axis=0)
+                n_edges = len(unique_edges)
+                
+                # Build line segments (start, end, NaN)
+                edge_x = np.empty(n_edges * 3, dtype=np.float32)
+                edge_y = np.empty(n_edges * 3, dtype=np.float32)
+                edge_z = np.empty(n_edges * 3, dtype=np.float32)
+                
+                # Get vertex coordinates for all edges
+                # invalid/NaN separator is needed for Plotly to break lines
+                u0 = unique_edges[:, 0]
+                u1 = unique_edges[:, 1]
+                
+                # Start points
+                edge_x[0::3] = Vd[u0, 0]
+                edge_y[0::3] = Vd[u0, 1]
+                edge_z[0::3] = Vd[u0, 2]
+                
+                # End points
+                edge_x[1::3] = Vd[u1, 0]
+                edge_y[1::3] = Vd[u1, 1]
+                edge_z[1::3] = Vd[u1, 2]
+                
+                # Separators
+                edge_x[2::3] = np.nan
+                edge_y[2::3] = np.nan
+                edge_z[2::3] = np.nan
+                
+                # Add wireframe trace
+                edge_color = ss.get("mesh_edge_color", "#222222")
+                fig.add_trace(go.Scatter3d(
+                    x=edge_x,
+                    y=edge_y,
+                    z=edge_z,
+                    mode="lines",
+                    line=dict(color=edge_color, width=1.0),
+                    hoverinfo="skip",
+                    name="edges",
+                    showlegend=False,
+                ))
+            except Exception:
+                # Edge rendering is optional - fail silently
+                pass
         
         # =================================================================
         # LAYOUT - Matching old _render_plotly() code
@@ -386,6 +455,11 @@ def render_full_preview_mesh(
             # Matching old code's camera and background exactly
             camera=dict(up=dict(x=0, y=0, z=1), projection=dict(type='orthographic')),
             bgcolor=ss.get("preview_bg_color", "#0E1117"),
+            # CRITICAL: uirevision=True preserves camera/zoom state when data changes
+            # We use True to be as aggressive as possible about keeping user state.
+            # Note: This only works while the component remains mounted. Switching renderers
+            # unmounts the component, losing the client-side state.
+            uirevision=True,
         )
 
         fig.update_layout(
@@ -393,6 +467,8 @@ def render_full_preview_mesh(
             title=title_txt,
             scene=scene_config,
             margin=dict(l=0, r=0, t=30, b=0),
+            # Top-level uirevision=True is sufficient
+            uirevision=True,
         )
 
         # Render - Plotly will handle interaction state internally during this render
@@ -400,6 +476,7 @@ def render_full_preview_mesh(
             fig,
             use_container_width=True,
             config={"displaylogo": False},
+            key="main_preview_plotly_mesh",
         )
         t1_mesh = time.time()
         

@@ -16,8 +16,8 @@ import pytest
 from potfoundry.core.geometry import (
     STYLES,
     build_pot_mesh,
-    write_ascii_stl,
 )
+
 
 
 class TestCoreGeometryErrorHandling:
@@ -275,73 +275,7 @@ class TestCoreGeometryDiagnostics:
         assert 2 * Rb * 0.8 <= bottom_estimate <= 2 * Rb * 1.5
 
 
-class TestWriteAsciiStl:
-    """Test ASCII STL writer (deprecated but should still work)."""
 
-    def test_write_ascii_stl_creates_file(self):
-        """Test that ASCII STL writer creates a valid file."""
-        # Generate a simple mesh
-        verts, faces, _ = build_pot_mesh(
-            H=80,
-            Rt=50,
-            Rb=35,
-            t_wall=3,
-            t_bottom=3,
-            r_drain=8,
-            expn=1.0,
-            n_theta=40,
-            n_z=30,
-            r_outer_fn=STYLES["SuperformulaBlossom"][0],
-            style_opts={},
-        )
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            stl_path = Path(tmpdir) / "test_pot.stl"
-
-            # This should trigger deprecation warning
-            with pytest.warns(
-                DeprecationWarning, match="write_ascii_stl is deprecated",
-            ):
-                write_ascii_stl(stl_path, "TestPot", verts, faces)
-
-            # Verify file was created
-            assert stl_path.exists()
-
-            # Verify file has content
-            content = stl_path.read_text()
-            assert "solid TestPot" in content
-            assert "endsolid TestPot" in content
-            assert "facet normal" in content
-            assert "vertex" in content
-
-    def test_write_ascii_stl_correct_face_count(self):
-        """Test that ASCII STL has correct number of facets."""
-        verts, faces, _ = build_pot_mesh(
-            H=60,
-            Rt=40,
-            Rb=30,
-            t_wall=3,
-            t_bottom=3,
-            r_drain=6,
-            expn=1.0,
-            n_theta=30,
-            n_z=20,
-            r_outer_fn=STYLES["FourierBloom"][0],
-            style_opts={},
-        )
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            stl_path = Path(tmpdir) / "count_test.stl"
-
-            with pytest.warns(DeprecationWarning):
-                write_ascii_stl(stl_path, "CountTest", verts, faces)
-
-            # Count facets in file
-            content = stl_path.read_text()
-            facet_count = content.count("facet normal")
-
-            # Should match number of faces
-            assert facet_count == len(faces)
 
 
 class TestCoreGeometryBoundaryConditions:

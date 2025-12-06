@@ -235,14 +235,13 @@ def render_interactive_tab(
                     "Benefits: 60+ FPS, camera persistence, professional quality",
                 )
         with col4:
-            # Show edges option for PyVista
-            if has_pyvista and ss.get("use_pyvista_renderer", True):
-                st.checkbox(
-                    "Show mesh edges",
-                    value=bool(ss.get("show_mesh_edges", False)),
-                    key="show_mesh_edges",
-                    help="Display wireframe edges on the mesh (PyVista only)",
-                )
+            # Show edges option - now works for both PyVista and Plotly
+            st.checkbox(
+                "Show mesh edges",
+                value=bool(ss.get("show_mesh_edges", False)),
+                key="show_mesh_edges",
+                help="Display wireframe edges on the mesh (PyVista and Plotly)",
+            )
 
     # ---------------- HEALTH & WARNINGS ----------------
     # Collect dimension primitives from session state (fallbacks preserve legacy defaults)
