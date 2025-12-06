@@ -1,0 +1,64 @@
+/**
+ * Toolbar styles.
+ */
+
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.pf-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  background: rgba(18, 18, 24, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  z-index: 50;
+}
+
+/* ============================================================================
+   Groups
+   ============================================================================ */
+
+.pf-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pf-toolbar__group + .pf-toolbar__group {
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pf-toolbar__group--center {
+  /* Center group has slightly more spacing */
+  gap: 2px;
+}
+
+/* ============================================================================
+   Responsive
+   ============================================================================ */
+
+@media (max-width: 480px) {
+  .pf-toolbar {
+    top: auto;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    transform: none;
+    justify-content: space-between;
+  }
+}
+
+/* When panel is open, shift toolbar right */
+.pf-toolbar--shifted {
+  left: calc(50% + 160px);
+}

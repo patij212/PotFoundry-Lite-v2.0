@@ -1,0 +1,167 @@
+/**
+ * UI state slice for Zustand store.
+ * 
+ * Manages UI-related state including panel visibility, active tabs,
+ * modals, and fullscreen mode.
+ * 
+ * @module state/slices/ui
+ */
+
+import { StateCreator } from 'zustand';
+import { UIState, DEFAULT_UI_STATE } from '../types';
+
+// ============================================================================
+// Slice Interface
+// ============================================================================
+
+/**
+ * UI slice state and actions.
+ */
+export interface UISlice {
+  /** Current UI state */
+  ui: UIState;
+  
+  /**
+   * Toggle the control panel visibility.
+   */
+  togglePanel: () => void;
+  
+  /**
+   * Set the control panel visibility.
+   * 
+   * @param open - Whether the panel should be open
+   */
+  setPanelOpen: (open: boolean) => void;
+  
+  /**
+   * Change the active tab in the control panel.
+   * 
+   * @param tab - Tab identifier
+   */
+  setActiveTab: (tab: UIState['activeTab']) => void;
+  
+  /**
+   * Open a modal dialog.
+   * 
+   * @param modal - Modal identifier to open
+   */
+  openModal: (modal: NonNullable<UIState['modalOpen']>) => void;
+  
+  /**
+   * Close the currently open modal.
+   */
+  closeModal: () => void;
+  
+  /**
+   * Toggle fullscreen mode.
+   */
+  toggleFullscreen: () => void;
+  
+  /**
+   * Set fullscreen mode.
+   * 
+   * @param fullscreen - Whether to enable fullscreen
+   */
+  setFullscreen: (fullscreen: boolean) => void;
+  
+  /**
+   * Reset UI to default state.
+   */
+  resetUI: () => void;
+}
+
+// ============================================================================
+// Slice Creator
+// ============================================================================
+
+/**
+ * Create the UI slice.
+ */
+export const createUISlice: StateCreator<
+  UISlice,
+  [],
+  [],
+  UISlice
+> = (set) => ({
+  ui: { ...DEFAULT_UI_STATE },
+  
+  togglePanel: () => {
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        panelOpen: !state.ui.panelOpen,
+      },
+    }));
+  },
+  
+  setPanelOpen: (open) => {
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        panelOpen: open,
+      },
+    }));
+  },
+  
+  setActiveTab: (tab) => {
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        activeTab: tab,
+      },
+    }));
+  },
+  
+  openModal: (modal) => {
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        modalOpen: modal,
+      },
+    }));
+  },
+  
+  closeModal: () => {
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        modalOpen: null,
+      },
+    }));
+  },
+  
+  toggleFullscreen: () => {
+    set((state) => {
+      const newFullscreen = !state.ui.fullscreen;
+      
+      // Attempt to use the browser fullscreen API
+      if (typeof document !== 'undefined') {
+        if (newFullscreen) {
+          document.documentElement.requestFullscreen?.();
+        } else {
+          document.exitFullscreen?.();
+        }
+      }
+      
+      return {
+        ui: {
+          ...state.ui,
+          fullscreen: newFullscreen,
+        },
+      };
+    });
+  },
+  
+  setFullscreen: (fullscreen) => {
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        fullscreen,
+      },
+    }));
+  },
+  
+  resetUI: () => {
+    set({ ui: { ...DEFAULT_UI_STATE } });
+  },
+});

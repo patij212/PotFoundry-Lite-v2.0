@@ -1,0 +1,309 @@
+/**
+ * HelpDialog Styles
+ *
+ * Styling for the help dialog and keyboard shortcuts display.
+ *
+ * @module ui/shared/HelpDialog.css
+ */
+
+/* ============================================
+   Dialog Overlay
+   ============================================ */
+
+.help-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  animation: overlayShow 150ms ease-out;
+  z-index: 1000;
+}
+
+@keyframes overlayShow {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ============================================
+   Dialog Content
+   ============================================ */
+
+.help-dialog-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90vw;
+  max-width: 520px;
+  max-height: 85vh;
+  background: var(--color-surface, #2d2d30);
+  border: 1px solid var(--color-border, #3d3d3d);
+  border-radius: 12px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+  padding: 24px;
+  z-index: 1001;
+  animation: contentShow 200ms ease-out;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes contentShow {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.help-dialog-title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text, #e0e0e0);
+}
+
+.help-dialog-description {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--color-text-muted, #8b8b8b);
+}
+
+.help-dialog-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text-muted, #8b8b8b);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.help-dialog-close:hover {
+  background: var(--color-surface-hover, #3d3d40);
+  color: var(--color-text, #e0e0e0);
+}
+
+/* ============================================
+   Dialog Body
+   ============================================ */
+
+.help-dialog-body {
+  overflow-y: auto;
+  flex: 1;
+  padding-right: 8px;
+  margin-right: -8px;
+}
+
+/* Custom scrollbar */
+.help-dialog-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.help-dialog-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.help-dialog-body::-webkit-scrollbar-thumb {
+  background: var(--color-border, #3d3d3d);
+  border-radius: 3px;
+}
+
+.help-dialog-body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted, #8b8b8b);
+}
+
+/* ============================================
+   Help Sections
+   ============================================ */
+
+.help-section {
+  margin-bottom: 24px;
+}
+
+.help-section:last-child {
+  margin-bottom: 0;
+}
+
+.help-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border, #3d3d3d);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text, #e0e0e0);
+}
+
+.help-section-title svg {
+  color: var(--color-primary, #0e639c);
+}
+
+/* ============================================
+   Shortcut Groups
+   ============================================ */
+
+.help-group {
+  margin-bottom: 16px;
+}
+
+.help-group:last-child {
+  margin-bottom: 0;
+}
+
+.help-group-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-muted, #8b8b8b);
+}
+
+.help-shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.help-shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.help-shortcut-key {
+  min-width: 100px;
+  padding: 4px 8px;
+  background: var(--color-surface-dark, #1e1e1e);
+  border: 1px solid var(--color-border, #3d3d3d);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--color-text-secondary, #b0b0b0);
+  text-align: center;
+}
+
+.help-shortcut-desc {
+  font-size: 13px;
+  color: var(--color-text, #e0e0e0);
+}
+
+/* ============================================
+   Tips List
+   ============================================ */
+
+.help-tips-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.help-tip-item {
+  position: relative;
+  padding: 8px 0 8px 20px;
+  font-size: 13px;
+  color: var(--color-text-secondary, #b0b0b0);
+  line-height: 1.5;
+}
+
+.help-tip-item::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--color-primary, #0e639c);
+  font-weight: bold;
+}
+
+/* ============================================
+   About Section
+   ============================================ */
+
+.help-about-text {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary, #b0b0b0);
+  line-height: 1.6;
+}
+
+.help-links {
+  display: flex;
+  gap: 12px;
+}
+
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-surface-dark, #1e1e1e);
+  border: 1px solid var(--color-border, #3d3d3d);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--color-primary, #0e639c);
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.help-link:hover {
+  background: var(--color-surface-hover, #3d3d40);
+  border-color: var(--color-primary, #0e639c);
+}
+
+/* ============================================
+   Info Tooltip
+   ============================================ */
+
+.info-tooltip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  color: var(--color-text-muted, #8b8b8b);
+  cursor: help;
+  vertical-align: middle;
+  transition: color 0.15s ease;
+}
+
+.info-tooltip:hover {
+  color: var(--color-primary, #0e639c);
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+
+@media (max-width: 480px) {
+  .help-dialog-content {
+    width: 95vw;
+    padding: 16px;
+  }
+
+  .help-shortcut-key {
+    min-width: 80px;
+    font-size: 10px;
+  }
+
+  .help-shortcut-desc {
+    font-size: 12px;
+  }
+}

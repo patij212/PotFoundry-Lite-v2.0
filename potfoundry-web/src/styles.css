@@ -1,0 +1,63 @@
+/* PotFoundry Web - Global Styles */
+
+:root {
+  --pf-bg-primary: #0a0a0f;
+  --pf-bg-secondary: #12151e;
+  --pf-bg-tertiary: #1a1f2e;
+  --pf-text-primary: #e6edf3;
+  --pf-text-secondary: #8b949e;
+  --pf-accent: #6366f1;
+  --pf-accent-hover: #818cf8;
+  --pf-border: rgba(255, 255, 255, 0.1);
+  --pf-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--pf-bg-primary);
+  color: var(--pf-text-primary);
+}
+
+#root {
+  height: 100%;
+}
+
+.pf-app {
+  height: 100%;
+  width: 100%;
+}
+
+.pf-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 2rem;
+  text-align: center;
+  background: var(--pf-bg-primary);
+}
+
+.pf-error h1 {
+  font-size: 1.75rem;
+  margin-bottom: 1rem;
+  color: #f87171;
+}
+
+.pf-error p {
+  max-width: 480px;
+  margin-bottom: 1rem;
+  line-height: 1.6;
+  color: var(--pf-text-secondary);
+}

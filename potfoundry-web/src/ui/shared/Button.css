@@ -1,0 +1,269 @@
+/**
+ * Button component styles.
+ * 
+ * Uses CSS custom properties for theming consistency.
+ */
+
+/* ============================================================================
+   Base Button
+   ============================================================================ */
+
+.pf-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: inherit;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  outline: none;
+}
+
+.pf-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
+}
+
+.pf-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   Size Variants
+   ============================================================================ */
+
+.pf-button--sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.pf-button--md {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.pf-button--lg {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+/* ============================================================================
+   Color Variants
+   ============================================================================ */
+
+/* Primary */
+.pf-button--primary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: white;
+}
+
+.pf-button--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c7ff2 0%, #6366f1 100%);
+  transform: translateY(-1px);
+}
+
+.pf-button--primary:active:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  transform: translateY(0);
+}
+
+/* Secondary */
+.pf-button--secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.pf-button--secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.pf-button--secondary:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Ghost */
+.pf-button--ghost {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.pf-button--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.pf-button--ghost:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Danger */
+.pf-button--danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+}
+
+.pf-button--danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+}
+
+.pf-button--danger:active:not(:disabled) {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+/* ============================================================================
+   Modifiers
+   ============================================================================ */
+
+.pf-button--full-width {
+  width: 100%;
+}
+
+.pf-button--loading {
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Button Parts
+   ============================================================================ */
+
+.pf-button__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pf-button__icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.pf-button--sm .pf-button__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pf-button--md .pf-button__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pf-button--lg .pf-button__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pf-button__label {
+  display: flex;
+  align-items: center;
+}
+
+.pf-button__spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pf-button__spinner-icon {
+  width: 16px;
+  height: 16px;
+  animation: pf-spin 0.8s linear infinite;
+}
+
+@keyframes pf-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================================
+   Icon Button
+   ============================================================================ */
+
+.pf-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.pf-icon-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
+}
+
+.pf-icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Icon Button Sizes */
+.pf-icon-button--sm {
+  width: 28px;
+  height: 28px;
+}
+
+.pf-icon-button--md {
+  width: 36px;
+  height: 36px;
+}
+
+.pf-icon-button--lg {
+  width: 44px;
+  height: 44px;
+}
+
+/* Icon Button Variants */
+.pf-icon-button--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.pf-icon-button--secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.pf-icon-button--secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.pf-icon-button--primary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: white;
+}
+
+.pf-icon-button--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c7ff2 0%, #6366f1 100%);
+}
+
+.pf-icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pf-icon-button--sm svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pf-icon-button--lg svg {
+  width: 22px;
+  height: 22px;
+}

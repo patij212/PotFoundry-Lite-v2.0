@@ -1,0 +1,397 @@
+/**
+ * PresetPanel Styles
+ *
+ * Styling for the preset gallery component with grid/list views,
+ * category filters, search, and preset cards.
+ *
+ * @module ui/controls/PresetPanel.css
+ */
+
+/* ============================================
+   Panel Structure
+   ============================================ */
+
+.preset-panel {
+  /* Container inherits from Section, add panel-specific overrides here */
+  --preset-panel-max-height: 400px;
+}
+
+/* ============================================
+   Toolbar (Search + View Toggle)
+   ============================================ */
+
+.preset-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.preset-search {
+  flex: 1;
+  position: relative;
+}
+
+.preset-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted, #8b8b8b);
+  pointer-events: none;
+}
+
+.preset-search-input {
+  width: 100%;
+  padding: 8px 10px 8px 32px;
+  background: var(--color-surface, #2d2d30);
+  border: 1px solid var(--color-border, #3d3d3d);
+  border-radius: 6px;
+  color: var(--color-text, #e0e0e0);
+  font-size: 13px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.preset-search-input:focus {
+  outline: none;
+  border-color: var(--color-primary, #0e639c);
+  box-shadow: 0 0 0 2px var(--color-primary-alpha, rgba(14, 99, 156, 0.25));
+}
+
+.preset-search-input::placeholder {
+  color: var(--color-text-muted, #8b8b8b);
+}
+
+.preset-view-toggle {
+  display: flex;
+  background: var(--color-surface, #2d2d30);
+  border-radius: 6px;
+  border: 1px solid var(--color-border, #3d3d3d);
+  overflow: hidden;
+}
+
+.preset-view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted, #8b8b8b);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.preset-view-btn:hover {
+  background: var(--color-surface-hover, #3d3d40);
+  color: var(--color-text, #e0e0e0);
+}
+
+.preset-view-btn--active {
+  background: var(--color-primary, #0e639c);
+  color: var(--color-text-on-primary, #ffffff);
+}
+
+.preset-view-btn--active:hover {
+  background: var(--color-primary-hover, #1177bb);
+}
+
+/* ============================================
+   Category Filters
+   ============================================ */
+
+.preset-category-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.preset-category-chip {
+  padding: 4px 10px;
+  background: var(--color-surface, #2d2d30);
+  border: 1px solid var(--color-border, #3d3d3d);
+  border-radius: 12px;
+  color: var(--color-text-secondary, #b0b0b0);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preset-category-chip:hover {
+  background: var(--color-surface-hover, #3d3d40);
+  border-color: var(--color-border-hover, #505050);
+  color: var(--color-text, #e0e0e0);
+}
+
+.preset-category-chip--active {
+  background: var(--color-primary, #0e639c);
+  border-color: var(--color-primary, #0e639c);
+  color: var(--color-text-on-primary, #ffffff);
+}
+
+.preset-category-chip--active:hover {
+  background: var(--color-primary-hover, #1177bb);
+  border-color: var(--color-primary-hover, #1177bb);
+}
+
+/* ============================================
+   Gallery Container
+   ============================================ */
+
+.preset-gallery {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+/* Grid view - 2 columns */
+.preset-gallery--grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* List view - single column */
+.preset-gallery--list {
+  grid-template-columns: 1fr;
+}
+
+/* Custom scrollbar */
+.preset-gallery::-webkit-scrollbar {
+  width: 6px;
+}
+
+.preset-gallery::-webkit-scrollbar-track {
+  background: var(--color-surface, #2d2d30);
+  border-radius: 3px;
+}
+
+.preset-gallery::-webkit-scrollbar-thumb {
+  background: var(--color-border, #3d3d3d);
+  border-radius: 3px;
+}
+
+.preset-gallery::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted, #8b8b8b);
+}
+
+/* ============================================
+   Preset Card
+   ============================================ */
+
+.preset-card {
+  position: relative;
+  display: flex;
+  background: var(--color-surface, #2d2d30);
+  border: 1px solid var(--color-border, #3d3d3d);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+  text-align: left;
+}
+
+.preset-card:hover {
+  border-color: var(--color-border-hover, #505050);
+  background: var(--color-surface-hover, #3d3d40);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.preset-card--active {
+  border-color: var(--color-primary, #0e639c);
+  box-shadow: 0 0 0 2px var(--color-primary-alpha, rgba(14, 99, 156, 0.25));
+}
+
+.preset-card--active:hover {
+  border-color: var(--color-primary-hover, #1177bb);
+}
+
+/* Grid view card layout */
+.preset-card--grid {
+  flex-direction: column;
+  padding: 8px;
+}
+
+.preset-card--grid .preset-thumbnail {
+  width: 100%;
+  height: 60px;
+  margin-bottom: 8px;
+}
+
+.preset-card--grid .preset-card-info {
+  width: 100%;
+}
+
+/* List view card layout */
+.preset-card--list {
+  flex-direction: row;
+  align-items: center;
+  padding: 8px 12px;
+  gap: 12px;
+}
+
+.preset-card--list .preset-thumbnail {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.preset-card--list .preset-card-info {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.preset-card--list .preset-card-name {
+  flex: 1;
+}
+
+/* ============================================
+   Preset Thumbnail
+   ============================================ */
+
+.preset-thumbnail {
+  background: var(--color-surface-dark, #1e1e1e);
+  border-radius: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.preset-thumbnail-inner {
+  width: 60%;
+  height: 70%;
+  background: var(--preset-color, #7a9e7e);
+  border-radius: 4px 4px 8px 8px;
+  position: relative;
+  transform: perspective(100px) rotateX(5deg);
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.3),
+    inset 0 2px 4px rgba(255, 255, 255, 0.1);
+}
+
+.preset-thumbnail-pattern {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, calc(0.1 * var(--preset-pattern, 0.5))) 3px,
+    rgba(0, 0, 0, calc(0.1 * var(--preset-pattern, 0.5))) 4px
+  );
+  border-radius: inherit;
+  opacity: 0.6;
+}
+
+/* ============================================
+   Card Info
+   ============================================ */
+
+.preset-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.preset-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text, #e0e0e0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preset-card-category {
+  font-size: 10px;
+  color: var(--color-text-muted, #8b8b8b);
+  text-transform: capitalize;
+}
+
+/* ============================================
+   Active Indicator
+   ============================================ */
+
+.preset-card-active-indicator {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  background: var(--color-success, #4caf50);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   Empty State
+   ============================================ */
+
+.preset-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: var(--color-text-muted, #8b8b8b);
+}
+
+.preset-empty svg {
+  opacity: 0.5;
+}
+
+.preset-empty span {
+  font-size: 13px;
+}
+
+/* ============================================
+   Footer
+   ============================================ */
+
+.preset-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border, #3d3d3d);
+}
+
+.preset-count {
+  font-size: 11px;
+  color: var(--color-text-muted, #8b8b8b);
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+@media (max-width: 320px) {
+  .preset-gallery--grid {
+    grid-template-columns: 1fr;
+  }
+
+  .preset-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .preset-view-toggle {
+    justify-content: flex-end;
+  }
+}

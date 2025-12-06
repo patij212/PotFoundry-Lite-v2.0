@@ -1,0 +1,25 @@
+/**
+ * Dimension controls styles.
+ */
+
+.pf-dimension-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  /* Ensure minimum width for each slider */
+  min-width: 0;
+}
+
+/* Stack vertically when panel is narrow */
+@media (max-width: 420px) {
+  .pf-dimension-row {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
+
+/* Also stack when in narrow container */
+.pf-control-panel[style*='width: 2'] .pf-dimension-row,
+.pf-control-panel[style*='width: 3'] .pf-dimension-row {
+  grid-template-columns: 1fr;
+}

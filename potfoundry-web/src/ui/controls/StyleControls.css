@@ -1,0 +1,62 @@
+/**
+ * Style controls styles.
+ */
+
+.pf-style-empty {
+  padding: 12px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.pf-style-empty p {
+  margin: 0;
+}
+
+/* Advanced section styling */
+.pf-advanced-section {
+  margin-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+}
+
+.pf-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pf-advanced-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.pf-advanced-toggle:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb, 139, 92, 246), 0.5);
+  outline-offset: 2px;
+}
+
+.pf-advanced-toggle svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.pf-advanced-content {
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

@@ -1,0 +1,164 @@
+/**
+ * Control Panel styles.
+ */
+
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.pf-control-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 340px;
+  min-width: 300px;
+  max-width: 400px;
+  height: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: rgba(18, 18, 24, 0.97);
+  backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 100;
+  animation: pf-panel-slide-in 0.25s ease;
+  /* Prevent content overflow - use style instead of layout for scrolling */
+  contain: style;
+  /* Explicit flex constraints */
+  overflow: hidden;
+}
+
+@keyframes pf-panel-slide-in {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ============================================================================
+   Header
+   ============================================================================ */
+
+.pf-control-panel__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pf-control-panel__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pf-control-panel__title h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -0.5px;
+}
+
+.pf-control-panel__version {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ============================================================================
+   Content (Scrollable)
+   ============================================================================ */
+
+.pf-control-panel__content {
+  flex: 1 1 auto;
+  min-height: 0; /* Critical for flex child scrolling */
+  height: 0; /* Force flex item to shrink */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Smooth scrolling */
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  /* Ensure scrollbar is visible */
+  scrollbar-gutter: stable;
+}
+
+/* Custom scrollbar - more visible */
+.pf-control-panel__content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.pf-control-panel__content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.pf-control-panel__content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.pf-control-panel__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ============================================================================
+   Footer
+   ============================================================================ */
+
+.pf-control-panel__footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================================================
+   Responsive
+   ============================================================================ */
+
+@media (max-width: 900px) {
+  .pf-control-panel {
+    width: 320px;
+    min-width: 280px;
+  }
+}
+
+@media (max-width: 768px) {
+  .pf-control-panel {
+    width: 100%;
+    max-width: 380px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .pf-control-panel {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    border-right: none;
+    border-radius: 0;
+  }
+}

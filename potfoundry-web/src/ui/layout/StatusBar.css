@@ -1,0 +1,85 @@
+/**
+ * Status Bar styles.
+ */
+
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.pf-status-bar {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(18, 18, 24, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  color: rgba(255, 255, 255, 0.6);
+  z-index: 50;
+}
+
+/* ============================================================================
+   Sections
+   ============================================================================ */
+
+.pf-status-bar__section {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pf-status-bar__section svg {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.pf-status-bar__divider {
+  width: 1px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ============================================================================
+   Generating Indicator
+   ============================================================================ */
+
+.pf-status-bar__generating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #818cf8;
+  margin-left: 4px;
+}
+
+.pf-status-bar__spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(129, 140, 248, 0.3);
+  border-top-color: #818cf8;
+  border-radius: 50%;
+  animation: pf-status-spin 0.8s linear infinite;
+}
+
+@keyframes pf-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================================
+   Responsive
+   ============================================================================ */
+
+@media (max-width: 480px) {
+  .pf-status-bar {
+    left: 12px;
+    right: 12px;
+    bottom: 60px; /* Above mobile toolbar */
+    justify-content: center;
+  }
+}
