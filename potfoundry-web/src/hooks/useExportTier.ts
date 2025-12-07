@@ -7,7 +7,7 @@
  */
 
 import { useCallback } from 'react';
-import { useIsPro, useProfile } from '../context/AuthContext';
+import { useIsPro, useProfile, useAuthActions } from '../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export interface ExportTierCheck {
@@ -42,6 +42,7 @@ const FREE_TIER_MAX_N_Z = 42;
 export function useExportTier(): UseExportTierResult {
     const profile = useProfile();
     const isPro = useIsPro();
+    const { refreshProfile } = useAuthActions();
     const isAuthConfigured = isSupabaseConfigured();
 
     const exportsThisMonth = profile?.exportsThisMonth ?? 0;
@@ -124,11 +125,13 @@ export function useExportTier(): UseExportTierResult {
                 console.error('[ExportTier] Failed to record export:', error);
             } else {
                 console.log('[ExportTier] Export recorded successfully. New count:', data);
+                // Refresh profile to update the UI with new counts
+                await refreshProfile();
             }
         } catch (error) {
             console.error('[ExportTier] Failed to record export:', error);
         }
-    }, [isAuthConfigured, isPro, profile]);
+    }, [isAuthConfigured, profile, refreshProfile]);
 
     return {
         checkExportAllowed,

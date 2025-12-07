@@ -40,6 +40,7 @@ export interface AuthActions {
     signInWithGitHub: () => Promise<void>;
     signOut: () => Promise<void>;
     resetPassword: (email: string) => Promise<void>;
+    refreshProfile: () => Promise<void>;
     clearError: () => void;
 }
 
@@ -339,6 +340,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(s => ({ ...s, error: null }));
     }, []);
 
+    const refreshProfile = useCallback(async () => {
+        if (!state.user) return;
+        const profile = await fetchProfile(state.user.id);
+        if (profile) {
+            setState(s => ({ ...s, profile }));
+        }
+    }, [state.user, fetchProfile]);
+
     const actions = useMemo<AuthActions>(() => ({
         signInWithEmail,
         signUpWithEmail,
@@ -346,8 +355,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signInWithGitHub,
         signOut,
         resetPassword,
+        refreshProfile,
         clearError,
-    }), [signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithGitHub, signOut, resetPassword, clearError]);
+    }), [signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithGitHub, signOut, resetPassword, refreshProfile, clearError]);
 
     const value = useMemo<AuthContextValue>(() => ({
         state,
@@ -391,4 +401,9 @@ export const useIsAuthenticated = () => {
 export const useIsPro = () => {
     const { state } = useAuth();
     return state.profile?.subscriptionTier === 'pro';
+};
+
+export const useAuthActions = () => {
+    const { actions } = useAuth();
+    return actions;
 };
