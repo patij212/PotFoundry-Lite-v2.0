@@ -116,3 +116,38 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Revoke execute from public roles
 REVOKE EXECUTE ON FUNCTION public.reset_monthly_exports() FROM anon, authenticated;
+
+-- ============================================================================
+-- Service role access (for Stripe webhooks)
+-- ============================================================================
+
+-- Allow service role to update any profile (for webhook to set subscription_tier)
+-- Note: Service role already bypasses RLS, but this is explicit documentation
+CREATE POLICY "Service role can update all profiles"
+  ON public.profiles
+  FOR UPDATE
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- ============================================================================
+-- Increment exports function (for atomic increment)
+-- ============================================================================
+
+-- Function to safely increment exports_this_month
+CREATE OR REPLACE FUNCTION public.increment_exports(user_id UUID)
+RETURNS INTEGER AS $$
+DECLARE
+  new_count INTEGER;
+BEGIN
+  UPDATE public.profiles
+  SET exports_this_month = exports_this_month + 1
+  WHERE id = user_id
+  RETURNING exports_this_month INTO new_count;
+  
+  RETURN new_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Allow authenticated users to call this for themselves
+GRANT EXECUTE ON FUNCTION public.increment_exports(UUID) TO authenticated;

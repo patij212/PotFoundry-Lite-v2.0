@@ -12,6 +12,7 @@ import React, { useState, useCallback } from 'react';
 import { useExport, useExportTier, FREE_TIER_MONTHLY_LIMIT } from '../../hooks';
 import { useIsPro, useIsAuthenticated } from '../../context/AuthContext';
 import { PricingModal } from '../pricing';
+import { AuthModal } from '../auth';
 import { Button } from '../shared/Button';
 import { Section } from '../shared/Section';
 import './ExportPanel.css';
@@ -111,9 +112,6 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const isLoading = progress.status === 'generating';
   const hasError = progress.status === 'error';
   const hasStats = stats !== null;
-
-  // Import AuthModal lazily to avoid circular deps
-  const AuthModal = React.lazy(() => import('../auth/AuthModal').then(m => ({ default: m.AuthModal })));
 
   return (
     <div className="export-panel">
@@ -335,9 +333,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
       <PricingModal open={showPricingModal} onOpenChange={setShowPricingModal} />
 
       {/* Auth Modal */}
-      <React.Suspense fallback={null}>
-        <AuthModal open={showAuthModal} onOpenChange={setShowAuthModal} />
-      </React.Suspense>
+      <AuthModal open={showAuthModal} onOpenChange={setShowAuthModal} />
     </div>
   );
 };

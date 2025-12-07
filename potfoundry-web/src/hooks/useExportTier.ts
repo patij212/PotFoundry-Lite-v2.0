@@ -6,8 +6,8 @@
  * Pro tier: Unlimited exports, no watermark, max resolution
  */
 
-import { useCallback, useState } from 'react';
-import { useAuth, useIsPro, useProfile } from '../context/AuthContext';
+import { useCallback } from 'react';
+import { useIsPro, useProfile } from '../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 export interface ExportTierCheck {
@@ -100,17 +100,33 @@ export function useExportTier(): UseExportTierResult {
      * Record an export for the current user
      */
     const recordExport = useCallback(async (): Promise<void> => {
-        if (!isAuthConfigured || isPro || !profile) return;
+        // Skip if auth not configured, user is Pro, or no profile
+        if (!isAuthConfigured || isPro || !profile) {
+            console.log('[ExportTier] Skipping record:', { isAuthConfigured, isPro, hasProfile: !!profile });
+            return;
+        }
 
         try {
-            await supabase
+            console.log('[ExportTier] Recording export for user:', profile.id, 'Current count:', profile.exportsThisMonth);
+
+            // Use direct update with the new value
+            const newCount = (profile.exportsThisMonth ?? 0) + 1;
+
+            const { data, error } = await supabase
                 .from('profiles')
                 .update({
-                    exports_this_month: (profile.exportsThisMonth ?? 0) + 1
+                    exports_this_month: newCount
                 })
-                .eq('id', profile.id);
+                .eq('id', profile.id)
+                .select('exports_this_month');
+
+            if (error) {
+                console.error('[ExportTier] Failed to record export:', error);
+            } else {
+                console.log('[ExportTier] Export recorded successfully. New count:', data?.[0]?.exports_this_month);
+            }
         } catch (error) {
-            console.warn('[ExportTier] Failed to record export:', error);
+            console.error('[ExportTier] Failed to record export:', error);
         }
     }, [isAuthConfigured, isPro, profile]);
 
