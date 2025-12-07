@@ -24,6 +24,19 @@ export const PricingModal: React.FC<PricingModalProps> = ({ open, onOpenChange }
     const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('yearly');
     const [loading, setLoading] = useState(false);
 
+    // Stripe Payment Link URLs (create these in Stripe Dashboard → Payment Links)
+    // For now, we'll construct checkout URLs - replace with your Payment Links when ready
+    const getCheckoutUrl = () => {
+        // These are your actual Stripe Price IDs
+        const priceId = billingPeriod === 'monthly'
+            ? STRIPE_PRICES.PRO_MONTHLY
+            : STRIPE_PRICES.PRO_YEARLY;
+
+        // TODO: Replace with Stripe Payment Link URLs when you create them
+        // For now, this shows a placeholder message
+        return null;
+    };
+
     const handleUpgrade = async () => {
         if (!state.user) {
             // Should show auth modal first
@@ -33,26 +46,20 @@ export const PricingModal: React.FC<PricingModalProps> = ({ open, onOpenChange }
         setLoading(true);
 
         try {
-            // Call Cloudflare Worker to create Stripe Checkout session
-            const response = await fetch('/api/create-checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: state.user.id,
-                    email: state.user.email,
-                    priceId: billingPeriod === 'monthly'
-                        ? STRIPE_PRICES.PRO_MONTHLY
-                        : STRIPE_PRICES.PRO_YEARLY,
-                }),
-            });
+            const checkoutUrl = getCheckoutUrl();
 
-            const data = await response.json();
-
-            if (data.url) {
+            if (checkoutUrl) {
                 // Redirect to Stripe Checkout
-                window.location.href = data.url;
+                window.location.href = checkoutUrl;
             } else {
-                console.error('Failed to create checkout session:', data.error);
+                // Placeholder: Show instructions for setting up Payment Links
+                alert(
+                    'Stripe Payment Links not configured yet!\n\n' +
+                    'To enable payments:\n' +
+                    '1. Go to Stripe Dashboard → Payment Links\n' +
+                    '2. Create a Payment Link for each price\n' +
+                    '3. Add the URLs to the code'
+                );
             }
         } catch (error) {
             console.error('Upgrade error:', error);
