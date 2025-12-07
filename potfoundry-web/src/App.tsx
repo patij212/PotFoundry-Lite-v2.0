@@ -11,6 +11,8 @@ import { AppUI } from './ui';
 import { useRendererBridge, syncStoreFromParams, usePerformanceTracker, parseStatusMetrics } from './hooks';
 import { useUIActions } from './state';
 import { ControllerProvider, LibraryProvider } from './context';
+import { AuthProvider } from './context/AuthContext';
+import { UserMenu } from './ui/auth';
 import './WebGPUPreview.css';
 
 // ============================================================================
@@ -173,37 +175,44 @@ const App: React.FC = () => {
     }
 
     return (
-        <div className="pf-app">
-            <div
-                className="pf-wgpu-preview"
-                style={{
-                    height: '100vh',
-                    background: '#242B46',
-                }}
-            >
-                {/* Canvas Layer */}
-                <canvas
-                    ref={canvasRef}
-                    className="pf-wgpu-preview__canvas"
-                    id="pf-main-canvas"
-                    tabIndex={0}
-                    onClick={() => canvasRef.current?.focus()}
-                    onPointerDown={() => canvasRef.current?.focus()}
-                />
+        <AuthProvider>
+            <div className="pf-app">
+                {/* User Menu - Top Right */}
+                <div className="pf-app__header">
+                    <UserMenu />
+                </div>
 
-                {/* Embedded UI Overlay */}
-                <ControllerProvider
-                    controllerRef={controllerRef}
-                    isReady={controllerReady}
-                    canvasRef={canvasRef}
-                    localParamsLockRef={localParamsLockUntilRef}
+                <div
+                    className="pf-wgpu-preview"
+                    style={{
+                        height: '100vh',
+                        background: '#242B46',
+                    }}
                 >
-                    <LibraryProvider libraryData={null}>
-                        <AppUI />
-                    </LibraryProvider>
-                </ControllerProvider>
+                    {/* Canvas Layer */}
+                    <canvas
+                        ref={canvasRef}
+                        className="pf-wgpu-preview__canvas"
+                        id="pf-main-canvas"
+                        tabIndex={0}
+                        onClick={() => canvasRef.current?.focus()}
+                        onPointerDown={() => canvasRef.current?.focus()}
+                    />
+
+                    {/* Embedded UI Overlay */}
+                    <ControllerProvider
+                        controllerRef={controllerRef}
+                        isReady={controllerReady}
+                        canvasRef={canvasRef}
+                        localParamsLockRef={localParamsLockUntilRef}
+                    >
+                        <LibraryProvider libraryData={null}>
+                            <AppUI />
+                        </LibraryProvider>
+                    </ControllerProvider>
+                </div>
             </div>
-        </div>
+        </AuthProvider>
     );
 };
 

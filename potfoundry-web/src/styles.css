@@ -18,7 +18,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   overflow: hidden;
 }
@@ -36,6 +37,14 @@ body {
 .pf-app {
   height: 100%;
   width: 100%;
+  position: relative;
+}
+
+.pf-app__header {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
 }
 
 .pf-error {

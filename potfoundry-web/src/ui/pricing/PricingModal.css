@@ -1,0 +1,261 @@
+/* Pricing Modal Styles */
+
+.pricing-modal__overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(12px);
+    animation: fadeIn 150ms ease-out;
+    z-index: 1000;
+}
+
+.pricing-modal__content {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #1a1f2e 0%, #0f1218 100%);
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    border-radius: 20px;
+    padding: 36px;
+    box-shadow:
+        0 32px 64px rgba(0, 0, 0, 0.5),
+        0 0 120px rgba(251, 191, 36, 0.1),
+        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    animation: slideScale 250ms ease-out;
+    z-index: 1001;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideScale {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.pricing-modal__header {
+    position: relative;
+    text-align: center;
+    margin-bottom: 28px;
+}
+
+.pricing-modal__title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #fbbf24;
+    margin: 0 0 8px;
+}
+
+.pricing-modal__crown {
+    width: 28px;
+    height: 28px;
+}
+
+.pricing-modal__description {
+    font-size: 1rem;
+    color: #8b949e;
+    margin: 0;
+}
+
+.pricing-modal__close {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #6e7681;
+    cursor: pointer;
+    transition: all 150ms;
+}
+
+.pricing-modal__close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e6edf3;
+}
+
+/* Billing Toggle */
+.pricing-modal__billing-toggle {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+.pricing-modal__billing-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #8b949e;
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 150ms;
+}
+
+.pricing-modal__billing-btn:hover {
+    color: #e6edf3;
+}
+
+.pricing-modal__billing-btn.active {
+    color: #fff;
+    background: rgba(251, 191, 36, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.pricing-modal__discount-badge {
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #000;
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+    border-radius: 6px;
+}
+
+/* Price */
+.pricing-modal__price {
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.pricing-modal__price-amount {
+    font-size: 3.5rem;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.02em;
+}
+
+.pricing-modal__price-period {
+    font-size: 1.1rem;
+    color: #6e7681;
+}
+
+.pricing-modal__price-breakdown {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #8b949e;
+    margin: 0 0 24px;
+}
+
+/* Features */
+.pricing-modal__features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.pricing-modal__feature {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.95rem;
+    color: #e6edf3;
+}
+
+.pricing-modal__feature-icon {
+    flex-shrink: 0;
+    color: #34d399;
+}
+
+/* CTA */
+.pricing-modal__cta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 16px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #000;
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 200ms;
+}
+
+.pricing-modal__cta:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(251, 191, 36, 0.4);
+}
+
+.pricing-modal__cta:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.pricing-modal__spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.pricing-modal__current {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    border-radius: 12px;
+}
+
+/* Guarantee */
+.pricing-modal__guarantee {
+    text-align: center;
+    font-size: 0.8rem;
+    color: #6e7681;
+    margin: 16px 0 0;
+}

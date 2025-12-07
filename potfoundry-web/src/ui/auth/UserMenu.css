@@ -1,0 +1,201 @@
+/* User Menu Styles */
+
+.user-menu {
+    position: relative;
+    z-index: 100;
+}
+
+/* Login Button */
+.user-menu__login {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #e6edf3;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 150ms;
+}
+
+.user-menu__login:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.user-menu__login--disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Trigger Button (when logged in) */
+.user-menu__trigger {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: none;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 150ms;
+    overflow: visible;
+}
+
+.user-menu__trigger:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.user-menu__avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-menu__avatar-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    border-radius: 50%;
+}
+
+.user-menu__pro-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+    border: 2px solid #12151e;
+    border-radius: 50%;
+    color: #000;
+}
+
+/* Dropdown */
+.user-menu__dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 240px;
+    background: #1a1f2e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    animation: dropdownIn 150ms ease-out;
+}
+
+@keyframes dropdownIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.user-menu__user-info {
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.user-menu__display-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #e6edf3;
+}
+
+.user-menu__email {
+    font-size: 0.8rem;
+    color: #8b949e;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-menu__tier {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 6px;
+    margin-top: 8px;
+    width: fit-content;
+}
+
+.user-menu__tier--pro {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.15);
+}
+
+.user-menu__tier--free {
+    color: #8b949e;
+    background: rgba(139, 148, 158, 0.15);
+}
+
+.user-menu__divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.user-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 0.85rem;
+    color: #8b949e;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: all 150ms;
+    text-align: left;
+}
+
+.user-menu__item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #e6edf3;
+}
+
+.user-menu__item--upgrade {
+    color: #fbbf24;
+    font-weight: 500;
+}
+
+.user-menu__item--upgrade:hover {
+    background: rgba(251, 191, 36, 0.1);
+    color: #fbbf24;
+}
+
+.user-menu__item--danger {
+    color: #f87171;
+}
+
+.user-menu__item--danger:hover {
+    background: rgba(248, 113, 113, 0.1);
+    color: #f87171;
+}
