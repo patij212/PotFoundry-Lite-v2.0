@@ -106,9 +106,10 @@ export function useExportTier(): UseExportTierResult {
      * Record an export for the current user
      */
     const recordExport = useCallback(async (): Promise<void> => {
-        // Skip if auth not configured, user is Pro, or no profile
-        if (!isAuthConfigured || isPro || !profile) {
-            console.log('[ExportTier] Skipping record:', { isAuthConfigured, isPro, hasProfile: !!profile });
+        // Skip if auth not configured or no profile
+        // (We now track ALL users, including Pro, for stats)
+        if (!isAuthConfigured || !profile) {
+            console.log('[ExportTier] Skipping record:', { isAuthConfigured, hasProfile: !!profile });
             return;
         }
 
