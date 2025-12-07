@@ -5,10 +5,13 @@
  * - Viewing mesh statistics
  * - Downloading STL files
  * - Configuring export options
+ * - Tier-based export limits and upgrade prompts
  */
 
 import React, { useState, useCallback } from 'react';
-import { useExport } from '../../hooks';
+import { useExport, useExportTier, FREE_TIER_MONTHLY_LIMIT } from '../../hooks';
+import { useIsPro, useIsAuthenticated } from '../../context/AuthContext';
+import { PricingModal } from '../pricing';
 import { Button } from '../shared/Button';
 import { Section } from '../shared/Section';
 import './ExportPanel.css';
@@ -41,6 +44,20 @@ const CubeIcon = () => (
   </svg>
 );
 
+const CrownIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M2 16L5 8L8.5 11L12 4L15.5 11L19 8L22 16H2Z" />
+    <path d="M2 16H22V20H2V16Z" />
+  </svg>
+);
+
+const LockIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0110 0v4" />
+  </svg>
+);
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -57,12 +74,25 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   onExportComplete,
 }) => {
   const { progress, stats, exportSTL, generateMesh, reset } = useExport();
+  const { checkExportAllowed, recordExport, exportsThisMonth } = useExportTier();
+  const isPro = useIsPro();
+  const isAuthenticated = useIsAuthenticated();
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showPricingModal, setShowPricingModal] = useState(false);
+
+  const tierCheck = checkExportAllowed();
 
   const handleExport = useCallback(async () => {
+    // Check tier limits
+    if (!tierCheck.canExport) {
+      setShowPricingModal(true);
+      return;
+    }
+
     await exportSTL(defaultFilename);
+    await recordExport();
     onExportComplete?.();
-  }, [exportSTL, defaultFilename, onExportComplete]);
+  }, [exportSTL, defaultFilename, onExportComplete, tierCheck, recordExport]);
 
   const handlePreview = useCallback(async () => {
     await generateMesh();
@@ -75,18 +105,77 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   return (
     <div className="export-panel">
       <Section title="Export" icon={<CubeIcon />} defaultOpen>
+        {/* Tier Status Banner */}
+        <div className={`export-panel__tier-banner ${isPro ? 'pro' : 'free'}`}>
+          {isPro ? (
+            <>
+              <CrownIcon />
+              <span>Pro • Unlimited Exports</span>
+            </>
+          ) : (
+            <>
+              <span className="export-panel__tier-count">
+                {exportsThisMonth} / {FREE_TIER_MONTHLY_LIMIT} exports used
+              </span>
+              {tierCheck.exportsRemaining !== null && tierCheck.exportsRemaining <= 3 && tierCheck.exportsRemaining > 0 && (
+                <span className="export-panel__tier-warning">
+                  ⚠️ {tierCheck.exportsRemaining} left
+                </span>
+              )}
+              {!tierCheck.canExport && (
+                <span className="export-panel__tier-exhausted">
+                  <LockIcon /> Limit reached
+                </span>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Free tier restrictions notice */}
+        {!isPro && (
+          <div className="export-panel__restrictions">
+            <div className="export-panel__restriction-item">
+              <LockIcon />
+              <span>Standard resolution (84×42)</span>
+            </div>
+            <div className="export-panel__restriction-item">
+              <LockIcon />
+              <span>Watermark in STL header</span>
+            </div>
+            <button
+              className="export-panel__upgrade-link"
+              onClick={() => setShowPricingModal(true)}
+            >
+              <CrownIcon />
+              Upgrade for unlimited exports
+            </button>
+          </div>
+        )}
+
         {/* Main export button */}
         <div className="export-panel__actions">
-          <Button
-            variant="primary"
-            size="md"
-            onClick={handleExport}
-            disabled={isLoading}
-            className="export-panel__export-btn"
-          >
-            <DownloadIcon />
-            {isLoading ? 'Generating...' : 'Download STL'}
-          </Button>
+          {tierCheck.canExport ? (
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handleExport}
+              disabled={isLoading}
+              className="export-panel__export-btn"
+            >
+              <DownloadIcon />
+              {isLoading ? 'Generating...' : 'Download STL'}
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setShowPricingModal(true)}
+              className="export-panel__export-btn export-panel__export-btn--locked"
+            >
+              <LockIcon />
+              Export Limit Reached
+            </Button>
+          )}
 
           <Button
             variant="secondary"
@@ -104,7 +193,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
         {isLoading && (
           <div className="export-panel__progress">
             <div className="export-panel__progress-bar">
-              <div 
+              <div
                 className="export-panel__progress-fill"
                 style={{ width: `${progress.progress}%` }}
               />
@@ -171,6 +260,13 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
           </div>
         )}
 
+        {/* Sign in hint */}
+        {!isAuthenticated && (
+          <p className="export-panel__signin-hint">
+            Sign in to track exports and unlock Pro features
+          </p>
+        )}
+
         {/* Advanced options toggle */}
         <button
           className="export-panel__advanced-toggle"
@@ -192,6 +288,9 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
           </div>
         )}
       </Section>
+
+      {/* Pricing Modal */}
+      <PricingModal open={showPricingModal} onOpenChange={setShowPricingModal} />
     </div>
   );
 };

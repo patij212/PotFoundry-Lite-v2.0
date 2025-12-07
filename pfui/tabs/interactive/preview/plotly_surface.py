@@ -103,12 +103,8 @@ def render_quick_preview_surface(
         uirevision=True,
     )
 
-    # Always apply default camera - DO NOT try to persist
-    # (Plotly resets on new figure creation regardless)
-    scene_config["camera"] = dict(
-        up=dict(x=0, y=0, z=1),
-        projection=dict(type="orthographic"),
-    )
+    # NOTE: Do NOT set camera here - it overrides uirevision!
+    # Let Plotly preserve user's camera position via uirevision
 
     fig.update_layout(
         height=height_px,

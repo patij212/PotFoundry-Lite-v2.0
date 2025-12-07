@@ -46,12 +46,12 @@ def load_persisted_camera() -> dict[str, Any] | None:
 
 
 def render_camera_controls() -> None:
-    """Render UI info about camera behavior."""
-    get_st().info(
-        "ℹ️ **Known Limitation**: Camera angle resets when preview regenerates. "
-        "This is a Streamlit/Plotly limitation - the 3D view will return to default after parameter changes. "
-        "We're exploring solutions for future versions.",
-    )
+    """Render UI info about camera behavior.
+    
+    Camera persistence now works via Plotly's uirevision feature.
+    """
+    # uirevision handles camera persistence - no info needed
+    pass
 
 
 def apply_camera_to_scene(

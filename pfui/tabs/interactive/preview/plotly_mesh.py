@@ -452,8 +452,8 @@ def render_full_preview_mesh(
             zaxis=dict(visible=False, range=zlim),
             aspectmode="manual",
             aspectratio=dict(x=1, y=1, z=min(0.85, z_ratio)),
-            # Matching old code's camera and background exactly
-            camera=dict(up=dict(x=0, y=0, z=1), projection=dict(type='orthographic')),
+            # NOTE: Do NOT set camera here - it overrides uirevision!
+            # Let Plotly preserve user's camera position via uirevision
             bgcolor=ss.get("preview_bg_color", "#0E1117"),
             # CRITICAL: uirevision=True preserves camera/zoom state when data changes
             # We use True to be as aggressive as possible about keeping user state.

@@ -185,8 +185,128 @@
   .export-panel__actions {
     flex-direction: column;
   }
-  
+
   .export-panel__stats-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Tier Banner */
+.export-panel__tier-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.export-panel__tier-banner.pro {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 165, 0, 0.1) 100%);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  color: #ffd700;
+}
+
+.export-panel__tier-banner.pro svg {
+  color: #ffd700;
+}
+
+.export-panel__tier-banner.free {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary, #888);
+}
+
+.export-panel__tier-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.export-panel__tier-warning {
+  color: #ff9f43;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.export-panel__tier-exhausted {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #ff6b6b;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+/* Restrictions */
+.export-panel__restrictions {
+  background: rgba(255, 100, 100, 0.06);
+  border: 1px solid rgba(255, 100, 100, 0.15);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.export-panel__restriction-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+}
+
+.export-panel__restriction-item svg {
+  color: rgba(255, 100, 100, 0.6);
+  flex-shrink: 0;
+}
+
+.export-panel__upgrade-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
+  border: none;
+  border-radius: 4px;
+  color: #000;
+  font-weight: 600;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.export-panel__upgrade-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.3);
+}
+
+.export-panel__upgrade-link svg {
+  color: #000;
+}
+
+/* Locked Export Button */
+.export-panel__export-btn--locked {
+  background: rgba(255, 100, 100, 0.15) !important;
+  border: 1px solid rgba(255, 100, 100, 0.3) !important;
+  color: #ff6b6b !important;
+}
+
+.export-panel__export-btn--locked:hover {
+  background: rgba(255, 100, 100, 0.2) !important;
+}
+
+/* Sign in hint */
+.export-panel__signin-hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-tertiary, #666);
+  margin: 8px 0;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
 }
