@@ -106,101 +106,111 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         let isMounted = true;
+        let hasCompleted = false;
 
-        // Get initial session with error handling and recovery
-        const initSession = async () => {
-            try {
-                console.log('[Auth] Initializing session...');
-                const { data: { session }, error } = await supabase.auth.getSession();
-
-                if (error) {
-                    console.error('[Auth] Error getting session:', error);
-                    // Try to clear corrupted session and sign out
-                    try {
-                        await supabase.auth.signOut();
-                        console.log('[Auth] Cleared corrupted session');
-                    } catch (clearError) {
-                        console.warn('[Auth] Failed to clear session:', clearError);
-                    }
-                    if (isMounted) {
-                        setState(s => ({ ...s, loading: false, user: null, session: null, profile: null }));
-                    }
-                    return;
-                }
-
-                // If we have a session, try to refresh it to ensure it's valid
-                if (session) {
-                    console.log('[Auth] Session found, verifying...');
-                    const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
-
-                    if (refreshError) {
-                        console.warn('[Auth] Session refresh failed, clearing:', refreshError);
-                        await supabase.auth.signOut();
-                        if (isMounted) {
-                            setState(s => ({ ...s, loading: false, user: null, session: null, profile: null }));
-                        }
-                        return;
-                    }
-
-                    const user = refreshedSession?.user ?? null;
-                    const profile = user ? await fetchProfile(user.id) : null;
-                    console.log('[Auth] Session verified, user:', user?.email);
-
-                    if (isMounted) {
-                        setState(s => ({
-                            ...s,
-                            session: refreshedSession,
-                            user,
-                            profile,
-                            loading: false,
-                        }));
-                    }
-                } else {
-                    // No session
-                    console.log('[Auth] No session found');
-                    if (isMounted) {
-                        setState(s => ({ ...s, loading: false }));
-                    }
-                }
-            } catch (err) {
-                console.error('[Auth] Failed to initialize session:', err);
-                // Clear any corrupted state
-                try {
-                    await supabase.auth.signOut();
-                } catch {
-                    // Ignore signout errors
-                }
-                if (isMounted) {
-                    setState(s => ({ ...s, loading: false, user: null, session: null, profile: null }));
-                }
+        // Helper to set state only if still mounted and not yet completed
+        const safeSetState = (newState: Partial<AuthState>) => {
+            if (isMounted && !hasCompleted) {
+                hasCompleted = true;
+                setState(s => ({ ...s, ...newState }));
             }
         };
 
-        // Shorter timeout - 5 seconds
-        const timeoutId = setTimeout(() => {
-            if (isMounted) {
-                console.warn('[Auth] Session initialization timed out, clearing state');
+        // Timeout promise - wins if session check takes too long
+        const timeout = (ms: number) => new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout')), ms)
+        );
+
+        // Get initial session with GUARANTEED completion
+        const initSession = async () => {
+            try {
+                console.log('[Auth] Initializing session...');
+
+                // Use Promise.race to ensure we never hang
+                // If getSession takes more than 3 seconds, we timeout
+                const sessionResult = await Promise.race([
+                    supabase.auth.getSession(),
+                    timeout(3000)
+                ]).catch(() => ({ data: { session: null }, error: new Error('Timeout getting session') }));
+
+                const { data, error } = sessionResult as { data: { session: any }, error?: Error };
+                const session = data?.session;
+
+                if (error) {
+                    console.warn('[Auth] Session check failed/timed out:', error.message);
+                    safeSetState({ loading: false, user: null, session: null, profile: null });
+                    return;
+                }
+
+                if (!session) {
+                    console.log('[Auth] No session found');
+                    safeSetState({ loading: false });
+                    return;
+                }
+
+                console.log('[Auth] Session found for:', session.user?.email);
+
+                // Try to fetch profile, but don't block on it
+                let profile = null;
+                try {
+                    profile = await Promise.race([
+                        fetchProfile(session.user.id),
+                        timeout(2000)
+                    ]).catch(() => null);
+                } catch {
+                    console.warn('[Auth] Profile fetch timed out');
+                }
+
+                safeSetState({
+                    session,
+                    user: session.user,
+                    profile,
+                    loading: false,
+                });
+
+            } catch (err) {
+                console.error('[Auth] Session init error:', err);
+                safeSetState({ loading: false, user: null, session: null, profile: null });
+            }
+        };
+
+        // Absolute failsafe timeout - ensures loading ALWAYS stops within 4 seconds
+        const failsafeTimeout = setTimeout(() => {
+            if (isMounted && !hasCompleted) {
+                console.warn('[Auth] Failsafe timeout triggered');
+                hasCompleted = true;
                 setState(s => {
                     if (s.loading) {
-                        return { ...s, loading: false, user: null, session: null, profile: null };
+                        return { ...s, loading: false };
                     }
                     return s;
                 });
             }
-        }, 5000);
+        }, 4000);
 
         initSession();
 
-        // Listen for auth changes
+        // Listen for auth changes with similar robustness
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 console.log('[Auth] State changed:', event, session?.user?.email);
 
-                // Skip if not mounted
                 if (!isMounted) return;
 
                 const user = session?.user ?? null;
-                const profile = user ? await fetchProfile(user.id) : null;
+
+                // Fetch profile in background, don't block
+                let profile = null;
+                if (user) {
+                    try {
+                        profile = await Promise.race([
+                            fetchProfile(user.id),
+                            timeout(2000)
+                        ]).catch(() => null);
+                    } catch {
+                        // Profile fetch failed, continue anyway
+                    }
+                }
 
                 setState(s => ({
                     ...s,
@@ -214,7 +224,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         return () => {
             isMounted = false;
-            clearTimeout(timeoutId);
+            hasCompleted = true;
+            clearTimeout(failsafeTimeout);
             subscription.unsubscribe();
         };
     }, [fetchProfile]);
