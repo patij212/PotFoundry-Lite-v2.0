@@ -14,6 +14,7 @@ export interface ExportTierCheck {
     canExport: boolean;
     isPro: boolean;
     exportsRemaining: number | null; // null = unlimited (Pro)
+    totalExports: number;
     showUpgradePrompt: boolean;
     reason: string | null;
 }
@@ -44,6 +45,7 @@ export function useExportTier(): UseExportTierResult {
     const isAuthConfigured = isSupabaseConfigured();
 
     const exportsThisMonth = profile?.exportsThisMonth ?? 0;
+    const totalExports = profile?.totalExports ?? 0;
 
     /**
      * Check if user can export
@@ -55,6 +57,7 @@ export function useExportTier(): UseExportTierResult {
                 canExport: true,
                 isPro: false,
                 exportsRemaining: null,
+                totalExports: 0,
                 showUpgradePrompt: false,
                 reason: null,
             };
@@ -66,6 +69,7 @@ export function useExportTier(): UseExportTierResult {
                 canExport: true,
                 isPro: true,
                 exportsRemaining: null,
+                totalExports,
                 showUpgradePrompt: false,
                 reason: null,
             };
@@ -79,6 +83,7 @@ export function useExportTier(): UseExportTierResult {
                 canExport: false,
                 isPro: false,
                 exportsRemaining: 0,
+                totalExports,
                 showUpgradePrompt: true,
                 reason: 'You have reached your monthly export limit. Upgrade to Pro for unlimited exports!',
             };
@@ -89,12 +94,13 @@ export function useExportTier(): UseExportTierResult {
             canExport: true,
             isPro: false,
             exportsRemaining: remaining,
+            totalExports,
             showUpgradePrompt: remaining <= 3,
             reason: remaining <= 3
                 ? `Only ${remaining} exports remaining this month`
                 : null,
         };
-    }, [isAuthConfigured, isPro, exportsThisMonth]);
+    }, [isAuthConfigured, isPro, exportsThisMonth, totalExports]);
 
     /**
      * Record an export for the current user

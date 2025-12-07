@@ -20,6 +20,7 @@ export interface UserProfile {
     avatarUrl?: string;
     subscriptionTier: 'free' | 'pro';
     exportsThisMonth: number;
+    totalExports: number;
     createdAt: string;
 }
 
@@ -90,6 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 avatarUrl: data.avatar_url,
                 subscriptionTier: data.subscription_tier || 'free',
                 exportsThisMonth: data.exports_this_month || 0,
+                totalExports: data.total_exports || 0,
                 createdAt: data.created_at,
             };
         } catch (err) {

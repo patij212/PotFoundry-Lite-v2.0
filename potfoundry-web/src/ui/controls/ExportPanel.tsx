@@ -136,7 +136,9 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
             {isPro ? (
               <>
                 <CrownIcon />
-                <span>Pro • Unlimited Exports</span>
+                <span className="export-panel__pro-stats">
+                  <strong>Pro</strong> • {exportsThisMonth} this month • {tierCheck.totalExports ?? 0} total
+                </span>
               </>
             ) : (
               <>
