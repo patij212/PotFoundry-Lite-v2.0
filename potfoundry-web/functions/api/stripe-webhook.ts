@@ -99,19 +99,6 @@ async function updateUserTier(
     try {
         console.log(`[Webhook] Updating user ${email} to tier: ${tier}`);
 
-        const response = await fetch(`${supabaseUrl}/rest/v1/profiles`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': serviceKey,
-                'Authorization': `Bearer ${serviceKey}`,
-                'Prefer': 'return=minimal',
-            },
-            body: JSON.stringify({
-                subscription_tier: tier,
-            }),
-        });
-
         // Supabase REST API uses query params for filtering
         const updateResponse = await fetch(
             `${supabaseUrl}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}`,
@@ -131,13 +118,19 @@ async function updateUserTier(
 
         if (!updateResponse.ok) {
             const errorText = await updateResponse.text();
-            console.error('[Webhook] Supabase update failed:', errorText);
+            console.error('[Webhook] Supabase update failed:', updateResponse.status, errorText);
             return false;
         }
 
         const result = await updateResponse.json();
         console.log('[Webhook] Update result:', result);
-        return result.length > 0;
+
+        if (result.length === 0) {
+            console.warn('[Webhook] No profile found for email:', email);
+            return false;
+        }
+
+        return true;
     } catch (error) {
         console.error('[Webhook] Error updating user tier:', error);
         return false;

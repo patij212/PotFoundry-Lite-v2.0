@@ -107,58 +107,94 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         let isMounted = true;
 
-        // Get initial session with error handling
+        // Get initial session with error handling and recovery
         const initSession = async () => {
             try {
+                console.log('[Auth] Initializing session...');
                 const { data: { session }, error } = await supabase.auth.getSession();
 
                 if (error) {
                     console.error('[Auth] Error getting session:', error);
+                    // Try to clear corrupted session and sign out
+                    try {
+                        await supabase.auth.signOut();
+                        console.log('[Auth] Cleared corrupted session');
+                    } catch (clearError) {
+                        console.warn('[Auth] Failed to clear session:', clearError);
+                    }
                     if (isMounted) {
-                        setState(s => ({ ...s, loading: false, error: error.message }));
+                        setState(s => ({ ...s, loading: false, user: null, session: null, profile: null }));
                     }
                     return;
                 }
 
-                const user = session?.user ?? null;
-                const profile = user ? await fetchProfile(user.id) : null;
+                // If we have a session, try to refresh it to ensure it's valid
+                if (session) {
+                    console.log('[Auth] Session found, verifying...');
+                    const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
 
-                if (isMounted) {
-                    setState(s => ({
-                        ...s,
-                        session,
-                        user,
-                        profile,
-                        loading: false,
-                    }));
+                    if (refreshError) {
+                        console.warn('[Auth] Session refresh failed, clearing:', refreshError);
+                        await supabase.auth.signOut();
+                        if (isMounted) {
+                            setState(s => ({ ...s, loading: false, user: null, session: null, profile: null }));
+                        }
+                        return;
+                    }
+
+                    const user = refreshedSession?.user ?? null;
+                    const profile = user ? await fetchProfile(user.id) : null;
+                    console.log('[Auth] Session verified, user:', user?.email);
+
+                    if (isMounted) {
+                        setState(s => ({
+                            ...s,
+                            session: refreshedSession,
+                            user,
+                            profile,
+                            loading: false,
+                        }));
+                    }
+                } else {
+                    // No session
+                    console.log('[Auth] No session found');
+                    if (isMounted) {
+                        setState(s => ({ ...s, loading: false }));
+                    }
                 }
             } catch (err) {
                 console.error('[Auth] Failed to initialize session:', err);
+                // Clear any corrupted state
+                try {
+                    await supabase.auth.signOut();
+                } catch {
+                    // Ignore signout errors
+                }
                 if (isMounted) {
-                    setState(s => ({ ...s, loading: false }));
+                    setState(s => ({ ...s, loading: false, user: null, session: null, profile: null }));
                 }
             }
         };
 
-        // Add timeout to prevent infinite loading
+        // Shorter timeout - 5 seconds
         const timeoutId = setTimeout(() => {
             if (isMounted) {
-                console.warn('[Auth] Session initialization timed out');
+                console.warn('[Auth] Session initialization timed out, clearing state');
                 setState(s => {
                     if (s.loading) {
-                        return { ...s, loading: false };
+                        return { ...s, loading: false, user: null, session: null, profile: null };
                     }
                     return s;
                 });
             }
-        }, 10000); // 10 second timeout
+        }, 5000);
 
         initSession();
 
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                console.log('[Auth] State changed:', event);
+                console.log('[Auth] State changed:', event, session?.user?.email);
 
                 // Skip if not mounted
                 if (!isMounted) return;
