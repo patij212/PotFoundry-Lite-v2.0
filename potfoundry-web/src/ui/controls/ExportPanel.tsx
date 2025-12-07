@@ -79,10 +79,20 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const isAuthenticated = useIsAuthenticated();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const tierCheck = checkExportAllowed();
 
+  // Determine if export is allowed (must be authenticated AND within tier limits)
+  const canExport = isAuthenticated && tierCheck.canExport;
+
   const handleExport = useCallback(async () => {
+    // If not authenticated, show auth modal
+    if (!isAuthenticated) {
+      setShowAuthModal(true);
+      return;
+    }
+
     // Check tier limits
     if (!tierCheck.canExport) {
       setShowPricingModal(true);
@@ -92,7 +102,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     await exportSTL(defaultFilename);
     await recordExport();
     onExportComplete?.();
-  }, [exportSTL, defaultFilename, onExportComplete, tierCheck, recordExport]);
+  }, [exportSTL, defaultFilename, onExportComplete, tierCheck, recordExport, isAuthenticated]);
 
   const handlePreview = useCallback(async () => {
     await generateMesh();
@@ -102,37 +112,56 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const hasError = progress.status === 'error';
   const hasStats = stats !== null;
 
+  // Import AuthModal lazily to avoid circular deps
+  const AuthModal = React.lazy(() => import('../auth/AuthModal').then(m => ({ default: m.AuthModal })));
+
   return (
     <div className="export-panel">
       <Section title="Export" icon={<CubeIcon />} defaultOpen>
-        {/* Tier Status Banner */}
-        <div className={`export-panel__tier-banner ${isPro ? 'pro' : 'free'}`}>
-          {isPro ? (
-            <>
-              <CrownIcon />
-              <span>Pro • Unlimited Exports</span>
-            </>
-          ) : (
-            <>
-              <span className="export-panel__tier-count">
-                {exportsThisMonth} / {FREE_TIER_MONTHLY_LIMIT} exports used
-              </span>
-              {tierCheck.exportsRemaining !== null && tierCheck.exportsRemaining <= 3 && tierCheck.exportsRemaining > 0 && (
-                <span className="export-panel__tier-warning">
-                  ⚠️ {tierCheck.exportsRemaining} left
-                </span>
-              )}
-              {!tierCheck.canExport && (
-                <span className="export-panel__tier-exhausted">
-                  <LockIcon /> Limit reached
-                </span>
-              )}
-            </>
-          )}
-        </div>
+        {/* Auth Required Banner - Show when NOT signed in */}
+        {!isAuthenticated && (
+          <div className="export-panel__auth-required">
+            <LockIcon />
+            <span>Sign in required to export</span>
+            <button
+              className="export-panel__signin-btn"
+              onClick={() => setShowAuthModal(true)}
+            >
+              Sign In
+            </button>
+          </div>
+        )}
 
-        {/* Free tier restrictions notice */}
-        {!isPro && (
+        {/* Tier Status Banner - Only show when signed in */}
+        {isAuthenticated && (
+          <div className={`export-panel__tier-banner ${isPro ? 'pro' : 'free'}`}>
+            {isPro ? (
+              <>
+                <CrownIcon />
+                <span>Pro • Unlimited Exports</span>
+              </>
+            ) : (
+              <>
+                <span className="export-panel__tier-count">
+                  {exportsThisMonth} / {FREE_TIER_MONTHLY_LIMIT} exports used
+                </span>
+                {tierCheck.exportsRemaining !== null && tierCheck.exportsRemaining <= 3 && tierCheck.exportsRemaining > 0 && (
+                  <span className="export-panel__tier-warning">
+                    ⚠️ {tierCheck.exportsRemaining} left
+                  </span>
+                )}
+                {!tierCheck.canExport && (
+                  <span className="export-panel__tier-exhausted">
+                    <LockIcon /> Limit reached
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Free tier restrictions notice - Only show when signed in AND not Pro */}
+        {isAuthenticated && !isPro && (
           <div className="export-panel__restrictions">
             <div className="export-panel__restriction-item">
               <LockIcon />
@@ -154,7 +183,19 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
 
         {/* Main export button */}
         <div className="export-panel__actions">
-          {tierCheck.canExport ? (
+          {!isAuthenticated ? (
+            // Not signed in - show greyed out button that prompts sign in
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setShowAuthModal(true)}
+              className="export-panel__export-btn export-panel__export-btn--disabled"
+            >
+              <LockIcon />
+              Sign In to Export
+            </Button>
+          ) : canExport ? (
+            // Signed in and can export
             <Button
               variant="primary"
               size="md"
@@ -166,6 +207,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
               {isLoading ? 'Generating...' : 'Download STL'}
             </Button>
           ) : (
+            // Signed in but limit reached
             <Button
               variant="secondary"
               size="md"
@@ -291,6 +333,11 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
 
       {/* Pricing Modal */}
       <PricingModal open={showPricingModal} onOpenChange={setShowPricingModal} />
+
+      {/* Auth Modal */}
+      <React.Suspense fallback={null}>
+        <AuthModal open={showAuthModal} onOpenChange={setShowAuthModal} />
+      </React.Suspense>
     </div>
   );
 };
