@@ -134,20 +134,33 @@ CREATE POLICY "Service role can update all profiles"
 -- Increment exports function (for atomic increment)
 -- ============================================================================
 
--- Function to safely increment exports_this_month
-CREATE OR REPLACE FUNCTION public.increment_exports(user_id UUID)
+-- Function to safely increment exports_this_month for the current user
+-- Uses auth.uid() to prevent users from incrementing others' counts
+CREATE OR REPLACE FUNCTION public.increment_exports()
 RETURNS INTEGER AS $$
 DECLARE
   new_count INTEGER;
+  current_user_id UUID;
 BEGIN
+  -- Get the current authenticated user
+  current_user_id := (SELECT auth.uid());
+  
+  IF current_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+  
   UPDATE public.profiles
   SET exports_this_month = exports_this_month + 1
-  WHERE id = user_id
+  WHERE id = current_user_id
   RETURNING exports_this_month INTO new_count;
   
-  RETURN new_count;
+  -- Return 0 if no row was updated (profile doesn't exist)
+  RETURN COALESCE(new_count, 0);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Allow authenticated users to call this for themselves
-GRANT EXECUTE ON FUNCTION public.increment_exports(UUID) TO authenticated;
+-- Allow authenticated users to call this (they can only increment their own count)
+GRANT EXECUTE ON FUNCTION public.increment_exports() TO authenticated;
+
+-- Revoke from anon for security
+REVOKE EXECUTE ON FUNCTION public.increment_exports() FROM anon;

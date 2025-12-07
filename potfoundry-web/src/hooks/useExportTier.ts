@@ -109,21 +109,14 @@ export function useExportTier(): UseExportTierResult {
         try {
             console.log('[ExportTier] Recording export for user:', profile.id, 'Current count:', profile.exportsThisMonth);
 
-            // Use direct update with the new value
-            const newCount = (profile.exportsThisMonth ?? 0) + 1;
-
-            const { data, error } = await supabase
-                .from('profiles')
-                .update({
-                    exports_this_month: newCount
-                })
-                .eq('id', profile.id)
-                .select('exports_this_month');
+            // Use RPC call to secure increment_exports() function
+            // This function uses auth.uid() internally so users can only increment their own count
+            const { data, error } = await supabase.rpc('increment_exports');
 
             if (error) {
                 console.error('[ExportTier] Failed to record export:', error);
             } else {
-                console.log('[ExportTier] Export recorded successfully. New count:', data?.[0]?.exports_this_month);
+                console.log('[ExportTier] Export recorded successfully. New count:', data);
             }
         } catch (error) {
             console.error('[ExportTier] Failed to record export:', error);
