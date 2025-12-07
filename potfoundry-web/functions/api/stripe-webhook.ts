@@ -10,7 +10,7 @@
  * 
  * Required env vars:
  * - STRIPE_WEBHOOK_SECRET: Stripe webhook signing secret
- * - SUPABASE_URL: Supabase project URL
+ * - SUPABASE_URL or VITE_SUPABASE_URL: Supabase project URL
  * - SUPABASE_SERVICE_KEY: Supabase service role key (for bypassing RLS)
  */
 
@@ -45,7 +45,8 @@ async function verifyStripeSignature(
     secret: string
 ): Promise<boolean> {
     try {
-        // Parse the signature header
+        console.log('[Webhook] Verifying signature...');
+
         const parts = signature.split(',');
         const timestamp = parts.find(p => p.startsWith('t='))?.split('=')[1];
         const sig = parts.find(p => p.startsWith('v1='))?.split('=')[1];
@@ -55,7 +56,6 @@ async function verifyStripeSignature(
             return false;
         }
 
-        // Check timestamp is within 5 minutes
         const timestampNum = parseInt(timestamp, 10);
         const now = Math.floor(Date.now() / 1000);
         if (Math.abs(now - timestampNum) > 300) {
@@ -63,7 +63,6 @@ async function verifyStripeSignature(
             return false;
         }
 
-        // Compute expected signature
         const signedPayload = `${timestamp}.${payload}`;
         const encoder = new TextEncoder();
         const keyData = encoder.encode(secret);
@@ -82,9 +81,11 @@ async function verifyStripeSignature(
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
 
-        return expectedSig === sig;
+        const isValid = expectedSig === sig;
+        console.log('[Webhook] Signature valid:', isValid);
+        return isValid;
     } catch (error) {
-        console.error('[Webhook] Signature verification error:', error);
+        console.error('[Webhook] Signature error:', error);
         return false;
     }
 }
@@ -95,162 +96,135 @@ async function updateUserTier(
     tier: 'free' | 'pro',
     supabaseUrl: string,
     serviceKey: string
-): Promise<boolean> {
+): Promise<{ success: boolean; message: string }> {
     try {
-        console.log(`[Webhook] Updating user ${email} to tier: ${tier}`);
+        console.log('[Webhook] Updating', email, 'to', tier);
+        console.log('[Webhook] URL:', supabaseUrl);
 
-        // Supabase REST API uses query params for filtering
-        const updateResponse = await fetch(
-            `${supabaseUrl}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}`,
-            {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'apikey': serviceKey,
-                    'Authorization': `Bearer ${serviceKey}`,
-                    'Prefer': 'return=representation',
-                },
-                body: JSON.stringify({
-                    subscription_tier: tier,
-                }),
-            }
-        );
+        const url = `${supabaseUrl}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}`;
 
-        if (!updateResponse.ok) {
-            const errorText = await updateResponse.text();
-            console.error('[Webhook] Supabase update failed:', updateResponse.status, errorText);
-            return false;
+        const response = await fetch(url, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': serviceKey,
+                'Authorization': `Bearer ${serviceKey}`,
+                'Prefer': 'return=representation',
+            },
+            body: JSON.stringify({ subscription_tier: tier }),
+        });
+
+        console.log('[Webhook] Response:', response.status);
+        const text = await response.text();
+        console.log('[Webhook] Body:', text);
+
+        if (!response.ok) {
+            return { success: false, message: `HTTP ${response.status}: ${text}` };
         }
 
-        const result = await updateResponse.json();
-        console.log('[Webhook] Update result:', result);
-
-        if (result.length === 0) {
-            console.warn('[Webhook] No profile found for email:', email);
-            return false;
+        const result = JSON.parse(text);
+        if (!Array.isArray(result) || result.length === 0) {
+            return { success: false, message: `No profile for ${email}` };
         }
 
-        return true;
+        return { success: true, message: `Updated ${email} to ${tier}` };
     } catch (error) {
-        console.error('[Webhook] Error updating user tier:', error);
-        return false;
+        console.error('[Webhook] Error:', error);
+        return { success: false, message: String(error) };
     }
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const { request, env } = context;
 
-    // Get Supabase URL (try both env var names)
+    console.log('[Webhook] === POST REQUEST ===');
+    console.log('[Webhook] STRIPE_WEBHOOK_SECRET:', env.STRIPE_WEBHOOK_SECRET ? 'SET' : 'MISSING');
+    console.log('[Webhook] SUPABASE_URL:', env.SUPABASE_URL ? 'SET' : 'MISSING');
+    console.log('[Webhook] VITE_SUPABASE_URL:', env.VITE_SUPABASE_URL ? 'SET' : 'MISSING');
+    console.log('[Webhook] SUPABASE_SERVICE_KEY:', env.SUPABASE_SERVICE_KEY ? 'SET' : 'MISSING');
+
     const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
 
-    // Validate required env vars
     if (!env.STRIPE_WEBHOOK_SECRET) {
-        console.error('[Webhook] Missing STRIPE_WEBHOOK_SECRET');
-        return new Response('Webhook secret not configured', { status: 500 });
+        return new Response(JSON.stringify({ error: 'Missing STRIPE_WEBHOOK_SECRET' }), { status: 500 });
     }
-
     if (!supabaseUrl || !env.SUPABASE_SERVICE_KEY) {
-        console.error('[Webhook] Missing Supabase configuration');
-        return new Response('Supabase not configured', { status: 500 });
+        return new Response(JSON.stringify({ error: 'Missing Supabase config' }), { status: 500 });
     }
 
-    // Get the raw body and signature
     const payload = await request.text();
     const signature = request.headers.get('stripe-signature');
 
+    console.log('[Webhook] Payload length:', payload.length);
+
     if (!signature) {
-        console.error('[Webhook] Missing stripe-signature header');
-        return new Response('Missing signature', { status: 400 });
+        return new Response(JSON.stringify({ error: 'Missing signature' }), { status: 400 });
     }
 
-    // Verify signature
-    const isValid = await verifyStripeSignature(
-        payload,
-        signature,
-        env.STRIPE_WEBHOOK_SECRET
-    );
-
+    const isValid = await verifyStripeSignature(payload, signature, env.STRIPE_WEBHOOK_SECRET);
     if (!isValid) {
-        console.error('[Webhook] Invalid signature');
-        return new Response('Invalid signature', { status: 401 });
+        return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401 });
     }
 
-    // Parse the event
     let event: StripeEvent;
     try {
         event = JSON.parse(payload);
-    } catch (error) {
-        console.error('[Webhook] Failed to parse payload:', error);
-        return new Response('Invalid JSON', { status: 400 });
+    } catch {
+        return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
     }
 
-    console.log(`[Webhook] Received event: ${event.type}`);
+    console.log('[Webhook] Event:', event.type);
 
-    // Handle different event types
-    switch (event.type) {
-        case 'checkout.session.completed': {
-            // User completed checkout
-            const session = event.data.object;
-            const email = session.customer_email || session.customer_details?.email;
+    if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const email = session.customer_email || session.customer_details?.email;
 
-            if (!email) {
-                console.error('[Webhook] No email in checkout session');
-                return new Response('No email found', { status: 400 });
-            }
+        console.log('[Webhook] Email:', email);
 
-            const success = await updateUserTier(email, 'pro', supabaseUrl, env.SUPABASE_SERVICE_KEY);
-
-            if (success) {
-                console.log(`[Webhook] Successfully upgraded ${email} to Pro`);
-                return new Response(JSON.stringify({ received: true, upgraded: email }), {
-                    status: 200,
-                    headers: { 'Content-Type': 'application/json' },
-                });
-            } else {
-                console.error(`[Webhook] Failed to upgrade ${email}`);
-                return new Response('Failed to update user', { status: 500 });
-            }
+        if (!email) {
+            return new Response(JSON.stringify({ error: 'No email' }), { status: 400 });
         }
 
-        case 'customer.subscription.updated': {
-            // Subscription status changed
-            const subscription = event.data.object;
-            console.log('[Webhook] Subscription updated:', subscription.status);
-            // We'd need to look up the customer email from Stripe API
-            // For now, just acknowledge
-            return new Response(JSON.stringify({ received: true }), {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' },
-            });
-        }
+        const result = await updateUserTier(email, 'pro', supabaseUrl, env.SUPABASE_SERVICE_KEY);
 
-        case 'customer.subscription.deleted': {
-            // Subscription cancelled - would downgrade user
-            console.log('[Webhook] Subscription deleted');
-            return new Response(JSON.stringify({ received: true }), {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' },
-            });
-        }
-
-        default:
-            // Acknowledge other events
-            console.log(`[Webhook] Unhandled event type: ${event.type}`);
-            return new Response(JSON.stringify({ received: true }), {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' },
-            });
+        return new Response(JSON.stringify(result), {
+            status: result.success ? 200 : 500,
+            headers: { 'Content-Type': 'application/json' },
+        });
     }
-};
 
-// Also handle GET for testing
-export const onRequestGet: PagesFunction<Env> = async () => {
-    return new Response(JSON.stringify({
-        status: 'ok',
-        message: 'PotFoundry Stripe webhook endpoint',
-        timestamp: new Date().toISOString(),
-    }), {
+    return new Response(JSON.stringify({ received: true, event: event.type }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
     });
+};
+
+// GET for testing
+export const onRequestGet: PagesFunction<Env> = async (context) => {
+    const { env, request } = context;
+    const url = new URL(request.url);
+
+    // Manual test endpoint
+    const testEmail = url.searchParams.get('test_email');
+    const secret = url.searchParams.get('secret');
+
+    if (testEmail && secret === 'potfoundry2024') {
+        const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
+        if (!supabaseUrl || !env.SUPABASE_SERVICE_KEY) {
+            return new Response(JSON.stringify({ error: 'Missing config' }), { status: 500 });
+        }
+        const result = await updateUserTier(testEmail, 'pro', supabaseUrl, env.SUPABASE_SERVICE_KEY);
+        return new Response(JSON.stringify(result), { status: result.success ? 200 : 500 });
+    }
+
+    return new Response(JSON.stringify({
+        status: 'ok',
+        message: 'PotFoundry webhook',
+        env: {
+            STRIPE_WEBHOOK_SECRET: env.STRIPE_WEBHOOK_SECRET ? 'SET' : 'MISSING',
+            SUPABASE_URL: env.SUPABASE_URL ? 'SET' : 'MISSING',
+            VITE_SUPABASE_URL: env.VITE_SUPABASE_URL ? 'SET' : 'MISSING',
+            SUPABASE_SERVICE_KEY: env.SUPABASE_SERVICE_KEY ? 'SET' : 'MISSING',
+        }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 };
