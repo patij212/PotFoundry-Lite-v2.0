@@ -134,6 +134,9 @@ CREATE POLICY "Service role can update all profiles"
 -- Increment exports function (for atomic increment)
 -- ============================================================================
 
+-- Drop insecure old function if exists
+DROP FUNCTION IF EXISTS public.increment_exports(UUID);
+
 -- Function to safely increment exports_this_month for the current user
 -- Uses auth.uid() to prevent users from incrementing others' counts
 CREATE OR REPLACE FUNCTION public.increment_exports()

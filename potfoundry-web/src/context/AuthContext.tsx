@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { User, Session, AuthError } from '@supabase/supabase-js';
+import { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 // ============================================================================
@@ -105,24 +105,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
         }
 
-        // Get initial session
-        supabase.auth.getSession().then(async ({ data: { session } }) => {
-            const user = session?.user ?? null;
-            const profile = user ? await fetchProfile(user.id) : null;
+        let isMounted = true;
 
-            setState(s => ({
-                ...s,
-                session,
-                user,
-                profile,
-                loading: false,
-            }));
-        });
+        // Get initial session with error handling
+        const initSession = async () => {
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+
+                if (error) {
+                    console.error('[Auth] Error getting session:', error);
+                    if (isMounted) {
+                        setState(s => ({ ...s, loading: false, error: error.message }));
+                    }
+                    return;
+                }
+
+                const user = session?.user ?? null;
+                const profile = user ? await fetchProfile(user.id) : null;
+
+                if (isMounted) {
+                    setState(s => ({
+                        ...s,
+                        session,
+                        user,
+                        profile,
+                        loading: false,
+                    }));
+                }
+            } catch (err) {
+                console.error('[Auth] Failed to initialize session:', err);
+                if (isMounted) {
+                    setState(s => ({ ...s, loading: false }));
+                }
+            }
+        };
+
+        // Add timeout to prevent infinite loading
+        const timeoutId = setTimeout(() => {
+            if (isMounted) {
+                console.warn('[Auth] Session initialization timed out');
+                setState(s => {
+                    if (s.loading) {
+                        return { ...s, loading: false };
+                    }
+                    return s;
+                });
+            }
+        }, 10000); // 10 second timeout
+
+        initSession();
 
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 console.log('[Auth] State changed:', event);
+
+                // Skip if not mounted
+                if (!isMounted) return;
 
                 const user = session?.user ?? null;
                 const profile = user ? await fetchProfile(user.id) : null;
@@ -138,6 +177,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
 
         return () => {
+            isMounted = false;
+            clearTimeout(timeoutId);
             subscription.unsubscribe();
         };
     }, [fetchProfile]);
