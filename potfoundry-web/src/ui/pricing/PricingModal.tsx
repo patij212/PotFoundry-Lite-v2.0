@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Check, Crown, Zap, Loader2 } from 'lucide-react';
-import { PRICING_TIERS, STRIPE_PRICES } from '../../services/stripe';
+import { PRICING_TIERS } from '../../services/stripe';
 import { useAuth, useIsPro } from '../../context/AuthContext';
 import './PricingModal.css';
 
@@ -24,46 +24,31 @@ export const PricingModal: React.FC<PricingModalProps> = ({ open, onOpenChange }
     const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('yearly');
     const [loading, setLoading] = useState(false);
 
-    // Stripe Payment Link URLs (create these in Stripe Dashboard → Payment Links)
-    // For now, we'll construct checkout URLs - replace with your Payment Links when ready
-    const getCheckoutUrl = () => {
-        // These are your actual Stripe Price IDs
-        const priceId = billingPeriod === 'monthly'
-            ? STRIPE_PRICES.PRO_MONTHLY
-            : STRIPE_PRICES.PRO_YEARLY;
-
-        // TODO: Replace with Stripe Payment Link URLs when you create them
-        // For now, this shows a placeholder message
-        return null;
-    };
+    // Stripe Payment Link URL - Test mode product
+    // Product ID: prod_TYf3si1yBWyKYj
+    // Payment Link: https://buy.stripe.com/test_00w00j0Fvfo8chu2wtaEE00
+    const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/test_00w00j0Fvfo8chu2wtaEE00';
 
     const handleUpgrade = async () => {
         if (!state.user) {
-            // Should show auth modal first
+            // User needs to sign in first - show alert
+            alert('Please sign in first to upgrade to Pro!');
             return;
         }
 
         setLoading(true);
 
         try {
-            const checkoutUrl = getCheckoutUrl();
+            // Add customer email to the payment link for prefilling
+            const email = state.user.email || '';
+            const checkoutUrl = email
+                ? `${STRIPE_PAYMENT_LINK}?prefilled_email=${encodeURIComponent(email)}`
+                : STRIPE_PAYMENT_LINK;
 
-            if (checkoutUrl) {
-                // Redirect to Stripe Checkout
-                window.location.href = checkoutUrl;
-            } else {
-                // Placeholder: Show instructions for setting up Payment Links
-                alert(
-                    'Stripe Payment Links not configured yet!\n\n' +
-                    'To enable payments:\n' +
-                    '1. Go to Stripe Dashboard → Payment Links\n' +
-                    '2. Create a Payment Link for each price\n' +
-                    '3. Add the URLs to the code'
-                );
-            }
+            // Redirect to Stripe Checkout
+            window.location.href = checkoutUrl;
         } catch (error) {
             console.error('Upgrade error:', error);
-        } finally {
             setLoading(false);
         }
     };

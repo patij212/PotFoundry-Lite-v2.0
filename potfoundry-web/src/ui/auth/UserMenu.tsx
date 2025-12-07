@@ -92,14 +92,30 @@ export const UserMenu: React.FC = () => {
                     {!isPro && (
                         <button
                             className="user-menu__item user-menu__item--upgrade"
-                            onClick={() => setShowPricingModal(true)}
+                            onClick={() => {
+                                setShowDropdown(false);
+                                setShowPricingModal(true);
+                            }}
                         >
                             <CreditCard size={16} />
                             Upgrade to Pro
                         </button>
                     )}
 
-                    <button className="user-menu__item">
+                    <button
+                        className="user-menu__item"
+                        onClick={() => {
+                            setShowDropdown(false);
+                            alert(
+                                `Profile Settings\n\n` +
+                                `Email: ${state.user?.email}\n` +
+                                `Display Name: ${state.profile?.displayName || 'Not set'}\n` +
+                                `Tier: ${isPro ? 'Pro' : 'Free'}\n` +
+                                `Exports This Month: ${state.profile?.exportsThisMonth || 0}\n\n` +
+                                `(Full settings page coming soon!)`
+                            );
+                        }}
+                    >
                         <Settings size={16} />
                         Settings
                     </button>
@@ -108,7 +124,10 @@ export const UserMenu: React.FC = () => {
 
                     <button
                         className="user-menu__item user-menu__item--danger"
-                        onClick={actions.signOut}
+                        onClick={() => {
+                            setShowDropdown(false);
+                            actions.signOut();
+                        }}
                     >
                         <LogOut size={16} />
                         Sign Out
