@@ -19,6 +19,11 @@ export interface UserProfile {
     displayName?: string;
     avatarUrl?: string;
     subscriptionTier: 'free' | 'pro';
+    subscriptionStatus: 'none' | 'active' | 'past_due' | 'canceled' | 'paused' | 'trialing';
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    subscriptionPeriodEnd?: string;
+    cancelAtPeriodEnd: boolean;
     exportsThisMonth: number;
     totalExports: number;
     createdAt: string;
@@ -91,6 +96,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 displayName: data.display_name,
                 avatarUrl: data.avatar_url,
                 subscriptionTier: data.subscription_tier || 'free',
+                subscriptionStatus: data.subscription_status || 'none',
+                stripeCustomerId: data.stripe_customer_id,
+                stripeSubscriptionId: data.stripe_subscription_id,
+                subscriptionPeriodEnd: data.subscription_period_end,
+                cancelAtPeriodEnd: data.cancel_at_period_end || false,
                 exportsThisMonth: data.exports_this_month || 0,
                 totalExports: data.total_exports || 0,
                 createdAt: data.created_at,
