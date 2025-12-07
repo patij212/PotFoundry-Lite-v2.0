@@ -6,11 +6,44 @@
  */
 
 import React, { useState } from 'react';
-import { User, LogOut, Crown, Settings, CreditCard } from 'lucide-react';
+import { User, LogOut, Crown, Settings, CreditCard, ExternalLink, Calendar, AlertCircle } from 'lucide-react';
 import { useAuth, useIsAuthenticated, useIsPro } from '../../context/AuthContext';
 import { AuthModal } from './AuthModal';
 import { PricingModal } from '../pricing';
 import './UserMenu.css';
+
+// Format date for display
+function formatDate(dateString?: string): string {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Get subscription status display info
+function getStatusInfo(status: string, cancelAtPeriodEnd: boolean): { icon: React.ReactNode; label: string; className: string } {
+    if (cancelAtPeriodEnd) {
+        return {
+            icon: <AlertCircle size={12} />,
+            label: 'Cancels at period end',
+            className: 'warning',
+        };
+    }
+
+    switch (status) {
+        case 'active':
+            return { icon: null, label: 'Active', className: 'active' };
+        case 'trialing':
+            return { icon: null, label: 'Trial', className: 'trial' };
+        case 'past_due':
+            return { icon: <AlertCircle size={12} />, label: 'Payment failed', className: 'warning' };
+        case 'canceled':
+            return { icon: null, label: 'Canceled', className: 'canceled' };
+        case 'paused':
+            return { icon: null, label: 'Paused', className: 'paused' };
+        default:
+            return { icon: null, label: '', className: '' };
+    }
+}
 
 export const UserMenu: React.FC = () => {
     const { state, actions } = useAuth();
@@ -19,6 +52,38 @@ export const UserMenu: React.FC = () => {
     const [showAuthModal, setShowAuthModal] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
     const [showPricingModal, setShowPricingModal] = useState(false);
+    const [isLoadingPortal, setIsLoadingPortal] = useState(false);
+
+    // Open Stripe Customer Portal
+    const openCustomerPortal = async () => {
+        if (!state.user?.email) return;
+
+        setIsLoadingPortal(true);
+        try {
+            const response = await fetch('/api/create-portal-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: state.user.email,
+                    customerId: state.profile?.stripeCustomerId,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                console.error('Portal error:', data.error);
+                alert('Could not open subscription portal. Please try again.');
+            }
+        } catch (error) {
+            console.error('Portal error:', error);
+            alert('Could not open subscription portal. Please try again.');
+        } finally {
+            setIsLoadingPortal(false);
+        }
+    };
 
     // If Supabase is not configured, show a disabled indicator
     if (!state.isConfigured) {
@@ -49,6 +114,10 @@ export const UserMenu: React.FC = () => {
 
     const displayName = state.profile?.displayName || state.user?.email?.split('@')[0] || 'User';
     const avatarUrl = state.profile?.avatarUrl;
+    const subscriptionStatus = state.profile?.subscriptionStatus || 'none';
+    const cancelAtPeriodEnd = state.profile?.cancelAtPeriodEnd || false;
+    const periodEnd = state.profile?.subscriptionPeriodEnd;
+    const statusInfo = getStatusInfo(subscriptionStatus, cancelAtPeriodEnd);
 
     return (
         <div className="user-menu">
@@ -87,8 +156,33 @@ export const UserMenu: React.FC = () => {
                         )}
                     </div>
 
+                    {/* Subscription Status Section (for Pro users) */}
+                    {isPro && (
+                        <div className="user-menu__subscription">
+                            {statusInfo.label && (
+                                <div className={`user-menu__status user-menu__status--${statusInfo.className}`}>
+                                    {statusInfo.icon}
+                                    <span>{statusInfo.label}</span>
+                                </div>
+                            )}
+                            {periodEnd && !cancelAtPeriodEnd && (
+                                <div className="user-menu__period">
+                                    <Calendar size={12} />
+                                    <span>Renews {formatDate(periodEnd)}</span>
+                                </div>
+                            )}
+                            {periodEnd && cancelAtPeriodEnd && (
+                                <div className="user-menu__period user-menu__period--warning">
+                                    <Calendar size={12} />
+                                    <span>Ends {formatDate(periodEnd)}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="user-menu__divider" />
 
+                    {/* Upgrade button for free users */}
                     {!isPro && (
                         <button
                             className="user-menu__item user-menu__item--upgrade"
@@ -102,6 +196,22 @@ export const UserMenu: React.FC = () => {
                         </button>
                     )}
 
+                    {/* Manage Subscription button for Pro users */}
+                    {isPro && (
+                        <button
+                            className="user-menu__item user-menu__item--manage"
+                            onClick={() => {
+                                setShowDropdown(false);
+                                openCustomerPortal();
+                            }}
+                            disabled={isLoadingPortal}
+                        >
+                            <CreditCard size={16} />
+                            {isLoadingPortal ? 'Loading...' : 'Manage Subscription'}
+                            <ExternalLink size={12} className="user-menu__external-icon" />
+                        </button>
+                    )}
+
                     <button
                         className="user-menu__item"
                         onClick={() => {
@@ -111,7 +221,9 @@ export const UserMenu: React.FC = () => {
                                 `Email: ${state.user?.email}\n` +
                                 `Display Name: ${state.profile?.displayName || 'Not set'}\n` +
                                 `Tier: ${isPro ? 'Pro' : 'Free'}\n` +
-                                `Exports This Month: ${state.profile?.exportsThisMonth || 0}\n\n` +
+                                `Status: ${subscriptionStatus}\n` +
+                                `Exports This Month: ${state.profile?.exportsThisMonth || 0}\n` +
+                                `Total Exports: ${state.profile?.totalExports || 0}\n\n` +
                                 `(Full settings page coming soon!)`
                             );
                         }}
@@ -142,4 +254,3 @@ export const UserMenu: React.FC = () => {
 };
 
 export default UserMenu;
-

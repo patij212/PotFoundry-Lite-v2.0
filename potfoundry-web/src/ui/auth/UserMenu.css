@@ -199,3 +199,73 @@
     background: rgba(248, 113, 113, 0.1);
     color: #f87171;
 }
+
+/* Subscription Status Section */
+.user-menu__subscription {
+    padding: 8px 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.user-menu__status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.user-menu__status--active {
+    color: #4ade80;
+}
+
+.user-menu__status--trial {
+    color: #60a5fa;
+}
+
+.user-menu__status--warning {
+    color: #fbbf24;
+}
+
+.user-menu__status--canceled {
+    color: #f87171;
+}
+
+.user-menu__status--paused {
+    color: #8b949e;
+}
+
+.user-menu__period {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.user-menu__period--warning {
+    color: #fbbf24;
+}
+
+/* Manage Subscription Button */
+.user-menu__item--manage {
+    color: #60a5fa;
+    font-weight: 500;
+    justify-content: flex-start;
+}
+
+.user-menu__item--manage:hover {
+    background: rgba(96, 165, 250, 0.1);
+    color: #60a5fa;
+}
+
+.user-menu__item--manage:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.user-menu__external-icon {
+    margin-left: auto;
+    opacity: 0.5;
+}
