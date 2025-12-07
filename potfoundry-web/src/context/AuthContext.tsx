@@ -341,10 +341,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     const refreshProfile = useCallback(async () => {
-        if (!state.user) return;
-        const profile = await fetchProfile(state.user.id);
-        if (profile) {
-            setState(s => ({ ...s, profile }));
+        if (!state.user) {
+            console.log('[Auth] refreshProfile: No user, skipping');
+            return;
+        }
+
+        console.log('[Auth] refreshProfile: Fetching profile for', state.user.id);
+
+        try {
+            const profile = await fetchProfile(state.user.id);
+
+            if (profile) {
+                console.log('[Auth] refreshProfile: Got profile, tier:', profile.subscriptionTier);
+                setState(s => ({ ...s, profile }));
+            } else {
+                // Don't clear existing profile if fetch fails
+                console.warn('[Auth] refreshProfile: Failed to fetch, keeping existing profile');
+            }
+        } catch (err) {
+            console.error('[Auth] refreshProfile: Error, keeping existing profile:', err);
+            // Don't modify state on error - keep existing profile
         }
     }, [state.user, fetchProfile]);
 
