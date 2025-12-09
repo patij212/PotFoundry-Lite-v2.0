@@ -49,17 +49,17 @@ export const Toolbar: React.FC = () => {
   const { togglePanel, toggleFullscreen, openModal } = useUIActions();
   const controller = useControllerMaybe();
   const [helpOpen, setHelpOpen] = useState(false);
-  
+
   // Camera controls with controller
   const handleResetCamera = useCallback(() => {
     if (controller?.isReady) {
       controller.resetCamera();
     }
   }, [controller]);
-  
+
   const handleScreenshot = useCallback(async () => {
     if (!controller?.isReady) return;
-    
+
     const blob = await controller.takeScreenshot();
     if (blob) {
       // Create download link
@@ -73,35 +73,35 @@ export const Toolbar: React.FC = () => {
       URL.revokeObjectURL(url);
     }
   }, [controller]);
-  
+
   const handleToggleAutoRotate = useCallback(() => {
     if (controller?.isReady) {
       controller.toggleAutoRotate();
     }
   }, [controller]);
-  
+
   const handleToggleCameraMode = useCallback(() => {
     if (controller?.isReady) {
       controller.toggleCameraMode();
     }
   }, [controller]);
-  
+
   const handleToggleGrid = useCallback(() => {
     if (controller?.isReady) {
       controller.toggleGrid();
     }
   }, [controller]);
-  
+
   const handleToggleProjection = useCallback(() => {
     if (controller?.isReady) {
       controller.toggleProjection();
     }
   }, [controller]);
-  
+
   const handleSave = () => {
     openModal('presets');
   };
-  
+
   const handleLoad = () => {
     openModal('presets');
   };
@@ -121,7 +121,7 @@ export const Toolbar: React.FC = () => {
           />
         )}
       </div>
-      
+
       {/* Center group - Camera & View Controls */}
       <div className="pf-toolbar__group pf-toolbar__group--center">
         <IconButton
@@ -173,7 +173,7 @@ export const Toolbar: React.FC = () => {
           disabled={!isControllerReady}
         />
       </div>
-      
+
       {/* Right group - Actions */}
       <div className="pf-toolbar__group">
         <IconButton
@@ -200,12 +200,15 @@ export const Toolbar: React.FC = () => {
         <IconButton
           icon={ui.fullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           aria-label={ui.fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          onClick={toggleFullscreen}
+          onClick={() => {
+            console.log('[Toolbar] Fullscreen button clicked, calling toggleFullscreen');
+            toggleFullscreen();
+          }}
           variant="ghost"
           size="sm"
         />
       </div>
-      
+
       {/* Help Dialog */}
       <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
