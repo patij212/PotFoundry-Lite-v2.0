@@ -2032,9 +2032,23 @@ export const mount = async ({
   let currentAlphaMode: 'opaque' | 'premultiplied' = resolveAlphaMode(initialBgMode);
 
   const resize = (): void => {
-    const rect = canvas.getBoundingClientRect();
-    const cssWidth = Math.max(rect.width, 1);
-    const cssHeight = Math.max(rect.height, 1);
+    // In fullscreen mode, use window dimensions directly instead of parent container
+    const isFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+    let cssWidth: number;
+    let cssHeight: number;
+
+    if (isFullscreen) {
+      // Use window dimensions directly in fullscreen
+      cssWidth = window.innerWidth;
+      cssHeight = window.innerHeight;
+      console.log('[WebGPU] Fullscreen resize:', cssWidth, 'x', cssHeight);
+    } else {
+      // Normal mode: use canvas bounding rect
+      const rect = canvas.getBoundingClientRect();
+      cssWidth = Math.max(rect.width, 1);
+      cssHeight = Math.max(rect.height, 1);
+    }
+
     const nextDpr = window.devicePixelRatio || 1;
     if (Math.abs(nextDpr - devicePixelRatio) > 1e-3) {
       devicePixelRatio = nextDpr;
