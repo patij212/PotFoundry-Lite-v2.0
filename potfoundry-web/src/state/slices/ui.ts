@@ -133,24 +133,35 @@ export const createUISlice: StateCreator<
   toggleFullscreen: () => {
     set((state) => {
       const newFullscreen = !state.ui.fullscreen;
+      console.log('[Fullscreen] Toggle called, new state:', newFullscreen);
 
       // Attempt to use the browser fullscreen API
       if (typeof document !== 'undefined') {
         try {
           if (newFullscreen) {
             const elem = document.documentElement;
+            console.log('[Fullscreen] Requesting fullscreen on:', elem.tagName);
             if (elem.requestFullscreen) {
-              elem.requestFullscreen().catch((err) => {
+              elem.requestFullscreen().then(() => {
+                console.log('[Fullscreen] Entered fullscreen successfully');
+              }).catch((err) => {
                 console.warn('[Fullscreen] Request failed:', err);
               });
             } else if ((elem as any).webkitRequestFullscreen) {
               (elem as any).webkitRequestFullscreen();
+              console.log('[Fullscreen] Using webkit prefix');
             } else if ((elem as any).msRequestFullscreen) {
               (elem as any).msRequestFullscreen();
+              console.log('[Fullscreen] Using ms prefix');
+            } else {
+              console.warn('[Fullscreen] No fullscreen API available');
             }
           } else {
+            console.log('[Fullscreen] Exiting fullscreen');
             if (document.exitFullscreen) {
-              document.exitFullscreen().catch((err) => {
+              document.exitFullscreen().then(() => {
+                console.log('[Fullscreen] Exited fullscreen successfully');
+              }).catch((err) => {
                 console.warn('[Fullscreen] Exit failed:', err);
               });
             } else if ((document as any).webkitExitFullscreen) {
