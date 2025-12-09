@@ -4822,14 +4822,28 @@ export const mount = async ({
     }
   };
 
+  // Track fullscreen state to detect changes in the frame loop
+  let lastKnownFullscreen = false;
+
   const frame = (): void => {
     if (disposed) {
       return;
     }
+
+    // Per-frame fullscreen detection - bypass event listener issues
+    const currentFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+    if (currentFullscreen !== lastKnownFullscreen) {
+      console.log('[WebGPU] Frame detected fullscreen change:', lastKnownFullscreen, '->', currentFullscreen);
+      lastKnownFullscreen = currentFullscreen;
+      // Force resize to update canvas dimensions and aspect ratio
+      resize();
+    }
+
     if (!current) {
       rafHandle = requestAnimationFrame(frame);
       return;
     }
+
 
     const now = performance.now();
     const deltaMs = now - lastFrameTime;
