@@ -2076,6 +2076,8 @@ export const mount = async ({
       }, 0);
     }
     state.canvasAspect = height > 0 ? width / height : 1;
+    // Force projection matrix recalculation on next frame
+    state.cameraDirty = true;
     if (debugEnabled) {
       const signature = `${width}x${height}@${Math.round(devicePixelRatio * 100) / 100}`;
       if (signature !== lastResizeSignature) {
