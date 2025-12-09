@@ -292,21 +292,15 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
   const toggleGrid = useCallback(() => {
     const ctrl = controllerRef.current;
     if (!ctrl?.handleCameraCommand) return;
-
-    // Read directly from window state
-    const cc = (window as any).__pf_webgpu_camera_controller;
-    const current = cc?.state?.showGrid !== false;
-    ctrl.handleCameraCommand({ showGrid: !current });
+    // WebGPU expects toggleGrid: true, not showGrid: value
+    ctrl.handleCameraCommand({ toggleGrid: true });
   }, [controllerRef]);
 
   const toggleAxis = useCallback(() => {
     const ctrl = controllerRef.current;
     if (!ctrl?.handleCameraCommand) return;
-
-    // Read directly from window state
-    const cc = (window as any).__pf_webgpu_camera_controller;
-    const current = cc?.state?.showAxis !== false;
-    ctrl.handleCameraCommand({ showAxis: !current });
+    // WebGPU expects toggleAxis: true, not showAxis: value
+    ctrl.handleCameraCommand({ toggleAxis: true });
   }, [controllerRef]);
 
   const takeScreenshot = useCallback(async (): Promise<Blob | null> => {
