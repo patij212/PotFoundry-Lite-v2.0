@@ -2092,15 +2092,6 @@ export const mount = async ({
   };
 
   window.addEventListener('resize', resize);
-  // Trigger resize on fullscreen changes (browser fullscreen API doesn't fire resize events)
-  const handleFullscreenChange = (): void => {
-    // Small delay to let the browser complete the fullscreen transition
-    setTimeout(resize, 100);
-  };
-  document.addEventListener('fullscreenchange', handleFullscreenChange);
-  document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-  document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-  document.addEventListener('MSFullscreenChange', handleFullscreenChange);
   resize();
 
 
@@ -5085,10 +5076,6 @@ export const mount = async ({
     disposed = true;
     emitDiagnostic('component:dispose');
     window.removeEventListener('resize', resize);
-    document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-    document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
     canvas.removeEventListener('contextmenu', preventContextMenu);
     canvas.removeEventListener('pointerdown', handlePointerDown);
     canvas.removeEventListener('pointermove', handlePointerMove);
