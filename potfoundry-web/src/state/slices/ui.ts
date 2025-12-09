@@ -131,57 +131,60 @@ export const createUISlice: StateCreator<
   },
 
   toggleFullscreen: () => {
-    set((state) => {
-      const newFullscreen = !state.ui.fullscreen;
-      console.log('[Fullscreen] Toggle called, new state:', newFullscreen);
+    // IMPORTANT: Call fullscreen API SYNCHRONOUSLY before set() to preserve user gesture context.
+    // Use document.fullscreenElement to check current state instead of React state.
+    const isCurrentlyFullscreen = typeof document !== 'undefined' && !!document.fullscreenElement;
+    const newFullscreen = !isCurrentlyFullscreen;
 
-      // Attempt to use the browser fullscreen API
-      if (typeof document !== 'undefined') {
-        try {
-          if (newFullscreen) {
-            const elem = document.documentElement;
-            console.log('[Fullscreen] Requesting fullscreen on:', elem.tagName);
-            if (elem.requestFullscreen) {
-              elem.requestFullscreen().then(() => {
-                console.log('[Fullscreen] Entered fullscreen successfully');
-              }).catch((err) => {
-                console.warn('[Fullscreen] Request failed:', err);
-              });
-            } else if ((elem as any).webkitRequestFullscreen) {
-              (elem as any).webkitRequestFullscreen();
-              console.log('[Fullscreen] Using webkit prefix');
-            } else if ((elem as any).msRequestFullscreen) {
-              (elem as any).msRequestFullscreen();
-              console.log('[Fullscreen] Using ms prefix');
-            } else {
-              console.warn('[Fullscreen] No fullscreen API available');
-            }
+    console.log('[Fullscreen] Toggle called, current:', isCurrentlyFullscreen, 'new:', newFullscreen);
+
+    // Call browser fullscreen API FIRST (synchronously)
+    if (typeof document !== 'undefined') {
+      try {
+        if (newFullscreen) {
+          const elem = document.documentElement;
+          console.log('[Fullscreen] Requesting fullscreen on:', elem.tagName);
+          if (elem.requestFullscreen) {
+            elem.requestFullscreen().then(() => {
+              console.log('[Fullscreen] Entered fullscreen successfully');
+            }).catch((err) => {
+              console.warn('[Fullscreen] Request failed:', err);
+            });
+          } else if ((elem as any).webkitRequestFullscreen) {
+            (elem as any).webkitRequestFullscreen();
+            console.log('[Fullscreen] Using webkit prefix');
+          } else if ((elem as any).msRequestFullscreen) {
+            (elem as any).msRequestFullscreen();
+            console.log('[Fullscreen] Using ms prefix');
           } else {
-            console.log('[Fullscreen] Exiting fullscreen');
-            if (document.exitFullscreen) {
-              document.exitFullscreen().then(() => {
-                console.log('[Fullscreen] Exited fullscreen successfully');
-              }).catch((err) => {
-                console.warn('[Fullscreen] Exit failed:', err);
-              });
-            } else if ((document as any).webkitExitFullscreen) {
-              (document as any).webkitExitFullscreen();
-            } else if ((document as any).msExitFullscreen) {
-              (document as any).msExitFullscreen();
-            }
+            console.warn('[Fullscreen] No fullscreen API available');
           }
-        } catch (err) {
-          console.warn('[Fullscreen] Error:', err);
+        } else {
+          console.log('[Fullscreen] Exiting fullscreen');
+          if (document.exitFullscreen) {
+            document.exitFullscreen().then(() => {
+              console.log('[Fullscreen] Exited fullscreen successfully');
+            }).catch((err) => {
+              console.warn('[Fullscreen] Exit failed:', err);
+            });
+          } else if ((document as any).webkitExitFullscreen) {
+            (document as any).webkitExitFullscreen();
+          } else if ((document as any).msExitFullscreen) {
+            (document as any).msExitFullscreen();
+          }
         }
+      } catch (err) {
+        console.warn('[Fullscreen] Error:', err);
       }
+    }
 
-      return {
-        ui: {
-          ...state.ui,
-          fullscreen: newFullscreen,
-        },
-      };
-    });
+    // THEN update React state
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        fullscreen: newFullscreen,
+      },
+    }));
   },
 
   setFullscreen: (fullscreen) => {
