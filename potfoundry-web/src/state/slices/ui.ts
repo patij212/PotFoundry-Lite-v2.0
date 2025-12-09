@@ -138,6 +138,12 @@ export const createUISlice: StateCreator<
 
     console.log('[Fullscreen] Toggle called, current:', isCurrentlyFullscreen, 'new:', newFullscreen);
 
+    // Helper to force canvas resize - call multiple times with delays to handle browser timing
+    const forceCanvasResize = () => {
+      console.log('[Fullscreen] Forcing canvas resize via window event');
+      window.dispatchEvent(new Event('resize'));
+    };
+
     // Call browser fullscreen API FIRST (synchronously)
     if (typeof document !== 'undefined') {
       try {
@@ -147,15 +153,25 @@ export const createUISlice: StateCreator<
           if (elem.requestFullscreen) {
             elem.requestFullscreen().then(() => {
               console.log('[Fullscreen] Entered fullscreen successfully');
+              // Force resize after entering fullscreen with multiple delays
+              setTimeout(forceCanvasResize, 100);
+              setTimeout(forceCanvasResize, 200);
+              setTimeout(forceCanvasResize, 500);
             }).catch((err) => {
               console.warn('[Fullscreen] Request failed:', err);
             });
           } else if ((elem as any).webkitRequestFullscreen) {
             (elem as any).webkitRequestFullscreen();
             console.log('[Fullscreen] Using webkit prefix');
+            setTimeout(forceCanvasResize, 100);
+            setTimeout(forceCanvasResize, 200);
+            setTimeout(forceCanvasResize, 500);
           } else if ((elem as any).msRequestFullscreen) {
             (elem as any).msRequestFullscreen();
             console.log('[Fullscreen] Using ms prefix');
+            setTimeout(forceCanvasResize, 100);
+            setTimeout(forceCanvasResize, 200);
+            setTimeout(forceCanvasResize, 500);
           } else {
             console.warn('[Fullscreen] No fullscreen API available');
           }
@@ -164,13 +180,19 @@ export const createUISlice: StateCreator<
           if (document.exitFullscreen) {
             document.exitFullscreen().then(() => {
               console.log('[Fullscreen] Exited fullscreen successfully');
+              setTimeout(forceCanvasResize, 100);
+              setTimeout(forceCanvasResize, 200);
             }).catch((err) => {
               console.warn('[Fullscreen] Exit failed:', err);
             });
           } else if ((document as any).webkitExitFullscreen) {
             (document as any).webkitExitFullscreen();
+            setTimeout(forceCanvasResize, 100);
+            setTimeout(forceCanvasResize, 200);
           } else if ((document as any).msExitFullscreen) {
             (document as any).msExitFullscreen();
+            setTimeout(forceCanvasResize, 100);
+            setTimeout(forceCanvasResize, 200);
           }
         }
       } catch (err) {
