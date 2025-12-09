@@ -2078,8 +2078,21 @@ export const mount = async ({
     state.canvasAspect = height > 0 ? width / height : 1;
     // Force projection matrix recalculation on next frame
     state.cameraDirty = true;
-    // Invalidate cached camera rig so it's rebuilt with new aspect ratio
+    // Invalidate ALL cached camera rigs so they're rebuilt with new aspect ratio
+    // Module-level cache:
     lastCameraRig = null;
+    // Mount-closure cache (used by getCachedRig) - wrapped in try-catch because
+    // these variables are defined later in the file and may not exist during
+    // the initial resize() call at mount time
+    try {
+      // @ts-ignore - lastRigSignature/lastRigCached are defined later in mount()
+      if (typeof lastRigSignature !== 'undefined') lastRigSignature = null;
+      // @ts-ignore
+      if (typeof lastRigCached !== 'undefined') lastRigCached = null;
+    } catch (e) {
+      // Ignore - variables not yet defined during initial mount
+    }
+    console.log('[WebGPU] Resize complete - aspect:', state.canvasAspect, 'fullscreen:', isFullscreen);
     if (debugEnabled) {
       const signature = `${width}x${height}@${Math.round(devicePixelRatio * 100) / 100}`;
       if (signature !== lastResizeSignature) {
