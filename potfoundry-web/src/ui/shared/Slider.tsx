@@ -76,16 +76,18 @@ export const Slider: React.FC<SliderProps> = ({
   onChangeEnd,
 }) => {
   const id = useId();
-  
+  // Safe value with fallback to min to prevent undefined errors
+  const safeValue = value ?? min;
+
   // Calculate display decimals from step if not provided
   const displayDecimals = decimals ?? (step < 1 ? Math.ceil(-Math.log10(step)) : 0);
-  
-  // Format value for display
+
+  // Format value for display (guard against undefined/null)
   const formatValue = useCallback(
-    (v: number) => v.toFixed(displayDecimals),
+    (v: number) => (v != null ? v.toFixed(displayDecimals) : '0'),
     [displayDecimals]
   );
-  
+
   // Handle slider change
   const handleSliderChange = useCallback(
     (values: number[]) => {
@@ -93,7 +95,7 @@ export const Slider: React.FC<SliderProps> = ({
     },
     [onChange]
   );
-  
+
   // Handle slider commit (drag end)
   const handleSliderCommit = useCallback(
     (values: number[]) => {
@@ -101,7 +103,7 @@ export const Slider: React.FC<SliderProps> = ({
     },
     [onChangeEnd]
   );
-  
+
   // Handle input change
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,11 +115,11 @@ export const Slider: React.FC<SliderProps> = ({
     },
     [min, max, onChange]
   );
-  
+
   // Handle input blur for final commit
   const handleInputBlur = useCallback(() => {
-    onChangeEnd?.(value);
-  }, [onChangeEnd, value]);
+    onChangeEnd?.(safeValue);
+  }, [onChangeEnd, safeValue]);
 
   return (
     <div className={clsx('pf-slider', disabled && 'pf-slider--disabled', className)}>
@@ -134,7 +136,7 @@ export const Slider: React.FC<SliderProps> = ({
                 id={id}
                 type="number"
                 className="pf-slider__input"
-                value={formatValue(value)}
+                value={formatValue(safeValue)}
                 onChange={handleInputChange}
                 onBlur={handleInputBlur}
                 min={min}
@@ -147,10 +149,10 @@ export const Slider: React.FC<SliderProps> = ({
           )}
         </div>
       )}
-      
+
       <RadixSlider.Root
         className="pf-slider__root"
-        value={[value]}
+        value={[safeValue]}
         onValueChange={handleSliderChange}
         onValueCommit={handleSliderCommit}
         min={min}
@@ -163,7 +165,7 @@ export const Slider: React.FC<SliderProps> = ({
         </RadixSlider.Track>
         <RadixSlider.Thumb className="pf-slider__thumb" aria-label={label} />
       </RadixSlider.Root>
-      
+
       <div className="pf-slider__bounds">
         <span className="pf-slider__bound">{formatValue(min)}</span>
         <span className="pf-slider__bound">{formatValue(max)}</span>
