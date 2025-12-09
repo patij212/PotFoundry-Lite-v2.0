@@ -72,6 +72,10 @@ function geometryToParams(geometry: GeometryParams): Record<string, unknown> {
     t_bottom: geometry.t_bottom,
     r_drain: geometry.r_drain,
     expn: geometry.expn,
+    // Bell/bulge parameters
+    bellAmp: geometry.bellAmp,
+    bellCenter: geometry.bellCenter,
+    bellWidth: geometry.bellWidth,
     // Derived values
     Rt: geometry.top_od / 2,
     Rb: geometry.bottom_od / 2,
@@ -99,12 +103,12 @@ function styleToParams(style: StyleState): Record<string, unknown> {
   const styleId = STYLE_NAME_TO_ID[style.name] ?? 0;
   const styleParams = new Array(48).fill(0);
   const opts = style.opts;
-  
+
   // Set the activation flag (last element) to enable style params
   if (styleId >= 0) {
     styleParams[47] = 1.0; // style_params_active() checks this
   }
-  
+
   // Map parameters based on style type
   // Each style has its own parameter layout in the shader
   // Parameter names MUST match STYLE_SCHEMAS exactly
@@ -123,7 +127,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       const ripplePhaseDeg = getNum(opts.hr_ripple_phase_deg, 0);
       const rippleZgain = getNum(opts.hr_ripple_zgain, 1.0);
       const bell = getNum(opts.hr_bell, 0.05);
-      
+
       styleParams[0] = petals;                              // petals count
       styleParams[1] = petalAmp;                            // petal amplitude (0-0.4 range)
       styleParams[2] = petalPhaseDeg * Math.PI / 180;       // pet_ph (phase in radians)
@@ -135,7 +139,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       styleParams[8] = bell;                                // mid-height bell boost
       break;
     }
-      
+
     case 'SuperformulaBlossom': {
       // STYLE_SCHEMAS params: sf_strength, sf_m_base, sf_m_top, sf_n1, sf_n1_top
       // Advanced: sf_m_curve_exp, sf_a, sf_b, sf_n2, sf_n2_top, sf_n3, sf_n3_top
@@ -153,7 +157,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       const n3Top = getNum(opts.sf_n3_top, 0.8);
       const a = getNum(opts.sf_a, 1.0);
       const b = getNum(opts.sf_b, 1.0);
-      
+
       styleParams[0] = mBase;                              // m_base
       styleParams[1] = mTop;                               // m_top
       styleParams[2] = mCurve;                             // m_curve
@@ -168,7 +172,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       styleParams[11] = strength;                          // strength/blend
       break;
     }
-      
+
     case 'FourierBloom': {
       // STYLE_SCHEMAS params: fb_strength, fb_base_cos8_amp, fb_top_cos11_amp, fb_wobble_amp, fb_wobble_freq
       // Advanced: fb_base_cos8_phase, fb_base_sin4_amp/phase, fb_base_cos12_amp/phase,
@@ -192,7 +196,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       const wobbleAmp = getNum(opts.fb_wobble_amp, 0.06);
       const wobbleFreq = getNum(opts.fb_wobble_freq, 5);
       const wobbleZgain = getNum(opts.fb_wobble_zgain, 0.5);
-      
+
       styleParams[0] = baseCos8Amp;         // bc8 amplitude
       styleParams[1] = baseCos8Phase;       // bc8 phase
       styleParams[2] = baseSin4Amp;         // bs4 amplitude
@@ -211,7 +215,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       styleParams[15] = strength;           // overall strength
       break;
     }
-      
+
     case 'SpiralRidges': {
       // STYLE_SCHEMAS params: spiral_k, spiral_turns, spiral_amp_min, spiral_amp_max, spiral_groove_amp
       // Advanced: spiral_amp_curve, spiral_groove_mult, spiral_phase_mult
@@ -225,7 +229,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       const grooveAmp = getNum(opts.spiral_groove_amp, 0.04);
       const grooveMult = getNum(opts.spiral_groove_mult, 3.0);
       const phaseMult = getNum(opts.spiral_phase_mult, 1.7);
-      
+
       styleParams[0] = k;             // ridge count
       styleParams[1] = turns;         // helix turns
       styleParams[2] = ampMin;        // amplitude at base
@@ -236,7 +240,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       styleParams[7] = phaseMult;     // phase_mult
       break;
     }
-      
+
     case 'SuperellipseMorph': {
       // STYLE_SCHEMAS params: se_m_base, se_m_top, se_c4_amp, se_c4_phase_deg, se_c8_amp
       // Advanced: se_m_curve_exp, se_c8_phase_deg
@@ -249,7 +253,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       const c4PhaseDeg = getNum(opts.se_c4_phase_deg, 23);
       const c8Amp = getNum(opts.se_c8_amp, 0.03);
       const c8PhaseDeg = getNum(opts.se_c8_phase_deg, 0);
-      
+
       styleParams[0] = mBase;                           // m_base (Lamé exponent)
       styleParams[1] = mTop;                            // m_top
       styleParams[2] = mCurve;                          // m_curve
@@ -259,7 +263,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       styleParams[6] = c8PhaseDeg * Math.PI / 180;      // c8p (8-fold phase in radians)
       break;
     }
-    
+
     case 'LowPolyFacet': {
       // LowPolyFacet needs a dedicated shader implementation.
       // For now, we map to STYLE_HARMONIC (ID 4) with facet-like parameters
@@ -273,7 +277,7 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       const bevel = getNum(opts.lp_bevel, 0.15);
       const jitter = getNum(opts.lp_jitter, 0.15);
       const phaseDeg = getNum(opts.lp_phase_deg, 0);
-      
+
       // Map to harmonic shader (ID 4) for a faceted look:
       // petals = facets, with high z-gain to make facets uniform across height
       // ripple can add tier-like variation
@@ -288,13 +292,13 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       styleParams[8] = 0;                              // no bell
       break;
     }
-      
+
     default:
       // No style parameters - leave all zeros
       styleParams[47] = 0; // Disable style params
       break;
   }
-  
+
   return {
     styleId,
     styleParams,
@@ -319,9 +323,9 @@ function meshToParams(mesh: MeshQuality): Record<string, unknown> {
 function hexToRgba(hex: string): [number, number, number, number] {
   // Remove # prefix if present
   const h = hex.replace(/^#/, '');
-  
+
   let r = 0, g = 0, b = 0, a = 1;
-  
+
   if (h.length === 3) {
     // #RGB format
     r = parseInt(h[0] + h[0], 16) / 255;
@@ -339,7 +343,7 @@ function hexToRgba(hex: string): [number, number, number, number] {
     b = parseInt(h.slice(4, 6), 16) / 255;
     a = parseInt(h.slice(6, 8), 16) / 255;
   }
-  
+
   return [r, g, b, a];
 }
 
@@ -354,11 +358,11 @@ function appearanceToParams(appearance: AppearanceState): Record<string, unknown
   const preset = LIGHTING_PRESETS.find((p) => p.id === appearance.lightingPreset);
   const defaultPreset = LIGHTING_PRESETS[0]; // studio
   const lighting = preset || defaultPreset;
-  
+
   // Convert shininess to roughness (inverse relationship)
   // shininess 8 -> roughness ~0.8, shininess 128 -> roughness ~0.1
   const roughness = Math.max(0.02, Math.min(1.0, 1.0 - (lighting.shininess / 150)));
-  
+
   // Create pot color gradient from primary/mid/secondary colors
   // The shader expects 3 color stops: bottom (uC1), middle (uC2), top (uC3)
   const potGradient = [
@@ -366,11 +370,11 @@ function appearanceToParams(appearance: AppearanceState): Record<string, unknown
     appearance.midColor,
     appearance.secondaryColor,
   ];
-  
-  // Convert background gradient first color to RGBA for WebGPU clear color
-  // Note: WebGPU only supports solid backgrounds, so we use the first gradient color
-  const bgColor = hexToRgba(appearance.gradient[0]);
-  
+
+  // Background gradient colors (2 colors for vertical gradient)
+  const bgColor1 = hexToRgba(appearance.gradient[0]);
+  const bgColor2 = hexToRgba(appearance.gradient[1]);
+
   return {
     // Pot surface color gradient (maps to uC1, uC2, uC3 in shader)
     gradient: potGradient,
@@ -383,8 +387,10 @@ function appearanceToParams(appearance: AppearanceState): Record<string, unknown
     // NOTE: showWireframe and showInner are not yet implemented in the WebGPU shader
     showWireframe: appearance.showWireframe,
     showInner: appearance.showInner,
-    // Background color (solid) - WebGPU clear color expects [r,g,b,a] in 0-1 range
-    __pf_bg_rgba: bgColor,
+    // Background gradient - both colors for fullscreen gradient
+    __pf_bg_gradient: [bgColor1, bgColor2],
+    // Legacy: first color for clear color fallback
+    __pf_bg_rgba: bgColor1,
   };
 }
 
@@ -421,21 +427,21 @@ export function useRendererBridge(
   const styleDebounce = options.styleDebounce ?? DEFAULT_OPTIONS.styleDebounce;
   const appearanceDebounce = options.appearanceDebounce ?? DEFAULT_OPTIONS.appearanceDebounce;
   const debug = options.debug ?? DEFAULT_OPTIONS.debug;
-  
+
   // Use ref for debug to avoid recreating callbacks
   const debugRef = useRef(debug);
   debugRef.current = debug;
-  
+
   // Refs for debounce timers
   const geometryTimerRef = useRef<number | null>(null);
   const styleTimerRef = useRef<number | null>(null);
   const appearanceTimerRef = useRef<number | null>(null);
-  
+
   // Track last sent values to avoid redundant updates
   const lastGeometryRef = useRef<string>('');
   const lastStyleRef = useRef<string>('');
   const lastAppearanceRef = useRef<string>('');
-  
+
   // Debug logger - uses ref to avoid dependency issues
   const log = useCallback(
     (msg: string, data?: unknown) => {
@@ -445,7 +451,7 @@ export function useRendererBridge(
     },
     [] // Empty deps - uses ref
   );
-  
+
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
@@ -454,29 +460,29 @@ export function useRendererBridge(
       if (appearanceTimerRef.current) clearTimeout(appearanceTimerRef.current);
     };
   }, []);
-  
+
   // Subscribe to geometry changes
   useEffect(() => {
     if (!controller) return;
-    
+
     // Send initial geometry state immediately
     const initialGeometry = useAppStore.getState().geometry;
     const initialParams = geometryToParams(initialGeometry);
     log('geometry initial sync', initialParams);
     controller.updateParams(initialParams);
     lastGeometryRef.current = JSON.stringify(initialGeometry);
-    
+
     const unsubscribe = useAppStore.subscribe(
       (state) => state.geometry,
       (geometry) => {
         const json = JSON.stringify(geometry);
         if (json === lastGeometryRef.current) return;
-        
+
         // Clear existing timer
         if (geometryTimerRef.current) {
           clearTimeout(geometryTimerRef.current);
         }
-        
+
         // Debounce the update
         geometryTimerRef.current = window.setTimeout(() => {
           lastGeometryRef.current = json;
@@ -486,31 +492,31 @@ export function useRendererBridge(
         }, geometryDebounce);
       }
     );
-    
+
     return unsubscribe;
   }, [controller, geometryDebounce, log]);
-  
+
   // Subscribe to style changes
   useEffect(() => {
     if (!controller) return;
-    
+
     // Send initial style state immediately
     const initialStyle = useAppStore.getState().style;
     const initialParams = styleToParams(initialStyle);
     log('style initial sync', initialParams);
     controller.updateParams(initialParams);
     lastStyleRef.current = JSON.stringify(initialStyle);
-    
+
     const unsubscribe = useAppStore.subscribe(
       (state) => state.style,
       (style) => {
         const json = JSON.stringify(style);
         if (json === lastStyleRef.current) return;
-        
+
         if (styleTimerRef.current) {
           clearTimeout(styleTimerRef.current);
         }
-        
+
         styleTimerRef.current = window.setTimeout(() => {
           lastStyleRef.current = json;
           const params = styleToParams(style);
@@ -519,20 +525,20 @@ export function useRendererBridge(
         }, styleDebounce);
       }
     );
-    
+
     return unsubscribe;
   }, [controller, styleDebounce, log]);
-  
+
   // Subscribe to mesh quality changes
   useEffect(() => {
     if (!controller) return;
-    
+
     // Send initial mesh state immediately
     const initialMesh = useAppStore.getState().mesh;
     const initialParams = meshToParams(initialMesh);
     log('mesh initial sync', initialParams);
     controller.updateParams(initialParams);
-    
+
     const unsubscribe = useAppStore.subscribe(
       (state) => state.mesh,
       (mesh) => {
@@ -541,31 +547,31 @@ export function useRendererBridge(
         controller.updateParams(params);
       }
     );
-    
+
     return unsubscribe;
   }, [controller, log]);
-  
+
   // Subscribe to appearance changes
   useEffect(() => {
     if (!controller) return;
-    
+
     // Send initial appearance state immediately
     const initialAppearance = useAppStore.getState().appearance;
     const initialParams = appearanceToParams(initialAppearance);
     log('appearance initial sync', initialParams);
     controller.updateParams(initialParams);
     lastAppearanceRef.current = JSON.stringify(initialAppearance);
-    
+
     const unsubscribe = useAppStore.subscribe(
       (state) => state.appearance,
       (appearance) => {
         const json = JSON.stringify(appearance);
         if (json === lastAppearanceRef.current) return;
-        
+
         if (appearanceTimerRef.current) {
           clearTimeout(appearanceTimerRef.current);
         }
-        
+
         appearanceTimerRef.current = window.setTimeout(() => {
           lastAppearanceRef.current = json;
           const params = appearanceToParams(appearance);
@@ -574,7 +580,7 @@ export function useRendererBridge(
         }, appearanceDebounce);
       }
     );
-    
+
     return unsubscribe;
   }, [controller, appearanceDebounce, log]);
 }
@@ -603,13 +609,13 @@ const STYLE_ID_TO_NAME: Record<number, StyleName> = {
  */
 export function syncStoreFromParams(params: Record<string, unknown>): void {
   const store = useAppStore.getState();
-  
+
   // Sync geometry if present
   if (params.H !== undefined || params.top_od !== undefined) {
     // Convert from radius to diameter if needed
     const top_od = params.top_od as number ?? (params.Rt !== undefined ? (params.Rt as number) * 2 : store.geometry.top_od);
     const bottom_od = params.bottom_od as number ?? (params.Rb !== undefined ? (params.Rb as number) * 2 : store.geometry.bottom_od);
-    
+
     store.setGeometryParams({
       H: params.H as number ?? store.geometry.H,
       top_od,
@@ -620,7 +626,7 @@ export function syncStoreFromParams(params: Record<string, unknown>): void {
       expn: params.expn as number ?? store.geometry.expn,
     });
   }
-  
+
   // Sync mesh quality if present
   if (params.nTheta !== undefined || params.nZ !== undefined) {
     store.setMeshParams({
@@ -628,13 +634,13 @@ export function syncStoreFromParams(params: Record<string, unknown>): void {
       preview_n_z: params.nZ as number ?? store.mesh.preview_n_z,
     });
   }
-  
+
   // Sync style if present (from library design load)
   // Check for styleName (string) or styleId (number)
   const styleName = params.styleName as StyleName | undefined;
   const styleId = params.styleId as number | undefined;
   const styleOpts = params.styleOpts as Record<string, number | boolean> | undefined;
-  
+
   if (styleName !== undefined) {
     // Set the style name (this also resets opts to defaults)
     store.setStyle(styleName);

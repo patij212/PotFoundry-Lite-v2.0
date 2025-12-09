@@ -55,8 +55,8 @@ const ColorSwatch: React.FC<ColorSwatchProps> = ({
         background: midColor && secondaryColor
           ? `linear-gradient(135deg, ${color} 0%, ${midColor} 50%, ${secondaryColor} 100%)`
           : secondaryColor
-          ? `linear-gradient(135deg, ${color} 50%, ${secondaryColor} 50%)`
-          : color,
+            ? `linear-gradient(135deg, ${color} 50%, ${secondaryColor} 50%)`
+            : color,
       }}
     />
   </button>
@@ -123,7 +123,7 @@ const LightingChip: React.FC<LightingChipProps> = ({
       {LIGHTING_ICONS[presetId] || <Sun size={14} />}
     </span>
     <span className="pf-lighting-chip__label">{name}</span>
-    <span 
+    <span
       className="pf-lighting-chip__indicator"
       style={{
         // Visual indicator based on ambient/specular ratio
@@ -155,7 +155,7 @@ export const AppearanceControls: React.FC = () => {
     toggleWireframe,
     toggleInner,
   } = useAppearanceActions();
-  
+
   // Memoize current gradient ID lookup
   const currentGradientId = useMemo(() => {
     const found = BACKGROUND_GRADIENTS.find(
@@ -165,40 +165,40 @@ export const AppearanceControls: React.FC = () => {
     );
     return found?.id || 'dark_blue';
   }, [appearance.gradient]);
-  
+
   // Color scheme handlers
   const handleColorScheme = useCallback(
     (schemeId: string) => setColorScheme(schemeId),
     [setColorScheme]
   );
-  
+
   const handlePrimaryColor = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => setPrimaryColor(e.target.value),
     [setPrimaryColor]
   );
-  
+
   const handleMidColor = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => setMidColor(e.target.value),
     [setMidColor]
   );
-  
+
   const handleSecondaryColor = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => setSecondaryColor(e.target.value),
     [setSecondaryColor]
   );
-  
+
   // Lighting handler
   const handleLighting = useCallback(
     (value: string) => setLightingPreset(value),
     [setLightingPreset]
   );
-  
+
   // Background handler
   const handleBackground = useCallback(
     (value: string) => setBackgroundGradient(value),
     [setBackgroundGradient]
   );
-  
+
   // Custom background color handlers
   const handleBgColor1 = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -206,7 +206,7 @@ export const AppearanceControls: React.FC = () => {
     },
     [setCustomGradient, appearance.gradient]
   );
-  
+
   const handleBgColor2 = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setCustomGradient([appearance.gradient[0], e.target.value]);
@@ -231,39 +231,9 @@ export const AppearanceControls: React.FC = () => {
             />
           ))}
         </div>
-        
-        {/* Custom color pickers - 3 stops */}
+
+        {/* Custom color pickers - 3 stops (Top → Middle → Bottom) */}
         <div className="pf-appearance-color-pickers">
-          <div className="pf-appearance-color-row">
-            <label className="pf-appearance-color-label">Bottom</label>
-            <div className="pf-appearance-color-picker">
-              <input
-                type="color"
-                value={appearance.primaryColor}
-                onChange={handlePrimaryColor}
-                className="pf-appearance-color-input"
-              />
-              <span className="pf-appearance-color-value">
-                {appearance.primaryColor}
-              </span>
-            </div>
-          </div>
-          
-          <div className="pf-appearance-color-row">
-            <label className="pf-appearance-color-label">Middle</label>
-            <div className="pf-appearance-color-picker">
-              <input
-                type="color"
-                value={appearance.midColor}
-                onChange={handleMidColor}
-                className="pf-appearance-color-input"
-              />
-              <span className="pf-appearance-color-value">
-                {appearance.midColor}
-              </span>
-            </div>
-          </div>
-          
           <div className="pf-appearance-color-row">
             <label className="pf-appearance-color-label">Top</label>
             <div className="pf-appearance-color-picker">
@@ -278,20 +248,50 @@ export const AppearanceControls: React.FC = () => {
               </span>
             </div>
           </div>
+
+          <div className="pf-appearance-color-row">
+            <label className="pf-appearance-color-label">Middle</label>
+            <div className="pf-appearance-color-picker">
+              <input
+                type="color"
+                value={appearance.midColor}
+                onChange={handleMidColor}
+                className="pf-appearance-color-input"
+              />
+              <span className="pf-appearance-color-value">
+                {appearance.midColor}
+              </span>
+            </div>
+          </div>
+
+          <div className="pf-appearance-color-row">
+            <label className="pf-appearance-color-label">Bottom</label>
+            <div className="pf-appearance-color-picker">
+              <input
+                type="color"
+                value={appearance.primaryColor}
+                onChange={handlePrimaryColor}
+                className="pf-appearance-color-input"
+              />
+              <span className="pf-appearance-color-value">
+                {appearance.primaryColor}
+              </span>
+            </div>
+          </div>
         </div>
-        
+
         {/* Pot gradient preview */}
         <div className="pf-pot-gradient-preview">
           <div
             className="pf-pot-gradient-preview__bar"
             style={{
-              background: `linear-gradient(90deg, ${appearance.primaryColor} 0%, ${appearance.midColor} 50%, ${appearance.secondaryColor} 100%)`,
+              background: `linear-gradient(90deg, ${appearance.secondaryColor} 0%, ${appearance.midColor} 50%, ${appearance.primaryColor} 100%)`,
             }}
           />
-          <span className="pf-pot-gradient-preview__label">Pot gradient: bottom → top</span>
+          <span className="pf-pot-gradient-preview__label">Pot gradient: top → bottom</span>
         </div>
       </SectionGroup>
-      
+
       <SectionGroup label="Display">
         <div className="pf-appearance-toggles">
           <Button
@@ -304,7 +304,7 @@ export const AppearanceControls: React.FC = () => {
           >
             Wireframe
           </Button>
-          
+
           <Button
             variant={appearance.showInner ? 'primary' : 'ghost'}
             size="sm"
@@ -317,7 +317,7 @@ export const AppearanceControls: React.FC = () => {
           </Button>
         </div>
       </SectionGroup>
-      
+
       <SectionGroup label="Lighting">
         <div className="pf-lighting-chips">
           {LIGHTING_PRESETS.map((preset) => (
@@ -333,7 +333,7 @@ export const AppearanceControls: React.FC = () => {
           ))}
         </div>
       </SectionGroup>
-      
+
       <SectionGroup label="Background">
         <div className="pf-gradient-chips">
           {BACKGROUND_GRADIENTS.map((gradient) => (
@@ -355,7 +355,7 @@ export const AppearanceControls: React.FC = () => {
             </button>
           ))}
         </div>
-        
+
         {/* Custom background color pickers */}
         <div className="pf-appearance-color-pickers pf-bg-color-pickers">
           <div className="pf-appearance-color-row">
@@ -387,7 +387,7 @@ export const AppearanceControls: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="pf-current-gradient">
           <GradientPreview colors={appearance.gradient} />
           <span className="pf-current-gradient__label">

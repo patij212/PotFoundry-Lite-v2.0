@@ -46,13 +46,13 @@ export const ZOOM_SENSITIVITY = 0.002;  // How fast wheel zoom responds
 export const ZOOM_SMOOTH_FACTOR = 0.15; // For smooth zoom interpolation
 
 // Pan constants
-export const PAN_SENSITIVITY = 1.0;     // Base pan speed multiplier
+export const PAN_SENSITIVITY = 1.5;     // Base pan speed multiplier
 export const PAN_INERTIA_DECAY = 8.0;   // How fast pan inertia decays (higher = faster stop)
 export const PAN_INERTIA_MIN = 0.5;     // Minimum pan velocity to maintain inertia
 
 // Rotation constants  
-export const ORBIT_SENSITIVITY = 2.5;   // Radians per full canvas drag
-export const TURNTABLE_SENSITIVITY = 2.0;
+export const ORBIT_SENSITIVITY = 3.0;   // Radians per full canvas drag
+export const TURNTABLE_SENSITIVITY = 1.5;
 export const ROTATION_INERTIA_DECAY = 6.0;
 export const ROTATION_INERTIA_MIN = 0.02; // Minimum angular velocity (rad/s) to maintain inertia
 

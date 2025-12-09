@@ -5,7 +5,7 @@
  * with no Python/Streamlit dependencies.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { mount, WebGPUController } from './webgpu_core';
 import { AppUI } from './ui';
 import { useRendererBridge, syncStoreFromParams, usePerformanceTracker, parseStatusMetrics } from './hooks';

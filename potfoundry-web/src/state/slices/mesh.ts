@@ -23,7 +23,7 @@ import {
 export interface MeshSlice {
   /** Current mesh quality settings */
   mesh: MeshQuality;
-  
+
   /**
    * Update a single mesh quality parameter.
    * 
@@ -34,26 +34,26 @@ export interface MeshSlice {
     key: K,
     value: MeshQuality[K]
   ) => void;
-  
+
   /**
    * Update multiple mesh quality parameters.
    * 
    * @param params - Parameters to update
    */
   setMeshParams: (params: Partial<MeshQuality>) => void;
-  
+
   /**
    * Apply a preset quality level.
    * 
    * @param level - Quality preset ('draft', 'standard', 'high', 'ultra')
    */
   setQualityPreset: (level: QualityPreset) => void;
-  
+
   /**
    * Reset mesh quality to defaults.
    */
   resetMeshQuality: () => void;
-  
+
   /**
    * Estimate triangle count for current quality settings.
    * 
@@ -73,28 +73,28 @@ export type QualityPreset = 'draft' | 'standard' | 'high' | 'ultra';
  */
 export const QUALITY_PRESETS: Record<QualityPreset, MeshQuality> = {
   draft: {
-    preview_n_theta: 48,
-    preview_n_z: 24,
-    export_n_theta: 96,
-    export_n_z: 48,
+    preview_n_theta: 256,
+    preview_n_z: 128,
+    export_n_theta: 512,
+    export_n_z: 256,
   },
   standard: {
-    preview_n_theta: 168,
-    preview_n_z: 84,
-    export_n_theta: 336,
-    export_n_z: 168,
-  },
-  high: {
-    preview_n_theta: 336,
-    preview_n_z: 168,
-    export_n_theta: 672,
-    export_n_z: 336,
-  },
-  ultra: {
     preview_n_theta: 512,
     preview_n_z: 256,
     export_n_theta: 1024,
     export_n_z: 512,
+  },
+  high: {
+    preview_n_theta: 1024,
+    preview_n_z: 512,
+    export_n_theta: 2048,
+    export_n_z: 1024,
+  },
+  ultra: {
+    preview_n_theta: 2048,
+    preview_n_z: 1024,
+    export_n_theta: 2048,
+    export_n_z: 1024,
   },
 };
 
@@ -132,13 +132,13 @@ function clampMeshParam<K extends keyof typeof MESH_QUALITY_BOUNDS>(
  */
 function estimateTriangleCount(params: MeshQuality): number {
   const { preview_n_theta, preview_n_z } = params;
-  
+
   // Walls (outer + inner)
   const wallTriangles = preview_n_theta * preview_n_z * 2 * 2;
-  
+
   // Bottom and top surfaces
   const endTriangles = preview_n_theta * 6;
-  
+
   return wallTriangles + endTriangles;
 }
 
@@ -156,7 +156,7 @@ export const createMeshSlice: StateCreator<
   MeshSlice
 > = (set, get) => ({
   mesh: { ...DEFAULT_MESH_QUALITY },
-  
+
   setMeshParam: (key, value) => {
     set((state) => ({
       mesh: {
@@ -165,16 +165,16 @@ export const createMeshSlice: StateCreator<
       },
     }));
   },
-  
+
   setMeshParams: (params) => {
     set((state) => {
       const clampedParams: Partial<MeshQuality> = {};
-      
+
       for (const [key, value] of Object.entries(params)) {
         const paramKey = key as keyof MeshQuality;
         clampedParams[paramKey] = clampMeshParam(paramKey, value);
       }
-      
+
       return {
         mesh: {
           ...state.mesh,
@@ -183,15 +183,15 @@ export const createMeshSlice: StateCreator<
       };
     });
   },
-  
+
   setQualityPreset: (level) => {
     set({ mesh: { ...QUALITY_PRESETS[level] } });
   },
-  
+
   resetMeshQuality: () => {
     set({ mesh: { ...DEFAULT_MESH_QUALITY } });
   },
-  
+
   estimateTriangles: () => {
     return estimateTriangleCount(get().mesh);
   },

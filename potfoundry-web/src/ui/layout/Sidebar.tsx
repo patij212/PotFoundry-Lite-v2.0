@@ -1,13 +1,14 @@
 /**
- * Sidebar component with tabbed navigation.
+ * Sidebar component with tabbed navigation and resizable width.
  * 
  * Provides separate pages for Design controls and Public Library.
+ * Width is resizable by dragging the edge, with localStorage persistence.
  * 
  * @module ui/layout/Sidebar
  */
 
-import React, { useState, useCallback } from 'react';
-import { X, RotateCcw, Sliders, BookOpen } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { X, RotateCcw, Sliders, BookOpen, GripVertical } from 'lucide-react';
 import { IconButton, Button } from '../shared';
 import {
   DimensionControls,
@@ -23,6 +24,15 @@ import { useUI, useUIActions, useGeometryActions, useStyleActions } from '../../
 import './Sidebar.css';
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+const SIDEBAR_WIDTH_KEY = 'pf-sidebar-width';
+const DEFAULT_WIDTH = 340;
+const MIN_WIDTH = 280;
+const getMaxWidth = () => Math.min(800, window.innerWidth * 0.5); // 50% of viewport or 800px
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -33,7 +43,7 @@ type SidebarTab = 'design' | 'library';
 // ============================================================================
 
 /**
- * The main sidebar with tabbed navigation.
+ * The main sidebar with tabbed navigation and resizable width.
  * 
  * Contains two pages:
  * - Design: All pot configuration controls
@@ -45,20 +55,81 @@ export const Sidebar: React.FC = () => {
   const { resetGeometry } = useGeometryActions();
   const { resetStyleOpts } = useStyleActions();
   const [activeTab, setActiveTab] = useState<SidebarTab>('design');
-  
+
+  // Resizable width state
+  const [width, setWidth] = useState(() => {
+    const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    return saved ? Math.max(MIN_WIDTH, Math.min(getMaxWidth(), parseInt(saved, 10))) : DEFAULT_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+
   const handleClose = () => setPanelOpen(false);
-  
+
   const handleReset = () => {
     resetGeometry();
     resetStyleOpts();
   };
+
+  // Resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizing) return;
+
+    const newWidth = Math.max(MIN_WIDTH, Math.min(getMaxWidth(), e.clientX));
+    setWidth(newWidth);
+  }, [isResizing]);
+
+  const handleResizeEnd = useCallback(() => {
+    if (isResizing) {
+      setIsResizing(false);
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, width.toString());
+    }
+  }, [isResizing, width]);
+
+  // Attach global listeners for resize
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleResizeMove);
+      document.addEventListener('mouseup', handleResizeEnd);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, handleResizeMove, handleResizeEnd]);
+
+  // Update max width on window resize
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const maxW = getMaxWidth();
+      if (width > maxW) {
+        setWidth(maxW);
+      }
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, [width]);
 
   if (!ui.panelOpen) {
     return null;
   }
 
   return (
-    <aside className="pf-sidebar">
+    <aside
+      ref={sidebarRef}
+      className={`pf-sidebar ${isResizing ? 'pf-sidebar--resizing' : ''}`}
+      style={{ width: `${width}px` }}
+    >
       {/* Header */}
       <header className="pf-sidebar__header">
         <div className="pf-sidebar__title">
@@ -73,7 +144,7 @@ export const Sidebar: React.FC = () => {
           size="sm"
         />
       </header>
-      
+
       {/* Tab Navigation */}
       <nav className="pf-sidebar__tabs">
         <button
@@ -93,7 +164,7 @@ export const Sidebar: React.FC = () => {
           <span>Library</span>
         </button>
       </nav>
-      
+
       {/* Tab Content */}
       <div className="pf-sidebar__content">
         {activeTab === 'design' && (
@@ -107,14 +178,14 @@ export const Sidebar: React.FC = () => {
             <ExportPanel />
           </div>
         )}
-        
+
         {activeTab === 'library' && (
           <div className="pf-sidebar__page pf-sidebar__page--library">
             <LibraryPanel />
           </div>
         )}
       </div>
-      
+
       {/* Footer Actions - only show on Design tab */}
       {activeTab === 'design' && (
         <footer className="pf-sidebar__footer">
@@ -128,6 +199,15 @@ export const Sidebar: React.FC = () => {
           </Button>
         </footer>
       )}
+
+      {/* Resize Handle */}
+      <div
+        className="pf-sidebar__resize-handle"
+        onMouseDown={handleResizeStart}
+        title="Drag to resize"
+      >
+        <GripVertical size={12} />
+      </div>
     </aside>
   );
 };

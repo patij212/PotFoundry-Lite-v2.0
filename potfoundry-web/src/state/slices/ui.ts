@@ -20,50 +20,50 @@ import { UIState, DEFAULT_UI_STATE } from '../types';
 export interface UISlice {
   /** Current UI state */
   ui: UIState;
-  
+
   /**
    * Toggle the control panel visibility.
    */
   togglePanel: () => void;
-  
+
   /**
    * Set the control panel visibility.
    * 
    * @param open - Whether the panel should be open
    */
   setPanelOpen: (open: boolean) => void;
-  
+
   /**
    * Change the active tab in the control panel.
    * 
    * @param tab - Tab identifier
    */
   setActiveTab: (tab: UIState['activeTab']) => void;
-  
+
   /**
    * Open a modal dialog.
    * 
    * @param modal - Modal identifier to open
    */
   openModal: (modal: NonNullable<UIState['modalOpen']>) => void;
-  
+
   /**
    * Close the currently open modal.
    */
   closeModal: () => void;
-  
+
   /**
    * Toggle fullscreen mode.
    */
   toggleFullscreen: () => void;
-  
+
   /**
    * Set fullscreen mode.
    * 
    * @param fullscreen - Whether to enable fullscreen
    */
   setFullscreen: (fullscreen: boolean) => void;
-  
+
   /**
    * Reset UI to default state.
    */
@@ -84,7 +84,7 @@ export const createUISlice: StateCreator<
   UISlice
 > = (set) => ({
   ui: { ...DEFAULT_UI_STATE },
-  
+
   togglePanel: () => {
     set((state) => ({
       ui: {
@@ -93,7 +93,7 @@ export const createUISlice: StateCreator<
       },
     }));
   },
-  
+
   setPanelOpen: (open) => {
     set((state) => ({
       ui: {
@@ -102,7 +102,7 @@ export const createUISlice: StateCreator<
       },
     }));
   },
-  
+
   setActiveTab: (tab) => {
     set((state) => ({
       ui: {
@@ -111,7 +111,7 @@ export const createUISlice: StateCreator<
       },
     }));
   },
-  
+
   openModal: (modal) => {
     set((state) => ({
       ui: {
@@ -120,7 +120,7 @@ export const createUISlice: StateCreator<
       },
     }));
   },
-  
+
   closeModal: () => {
     set((state) => ({
       ui: {
@@ -129,20 +129,41 @@ export const createUISlice: StateCreator<
       },
     }));
   },
-  
+
   toggleFullscreen: () => {
     set((state) => {
       const newFullscreen = !state.ui.fullscreen;
-      
+
       // Attempt to use the browser fullscreen API
       if (typeof document !== 'undefined') {
-        if (newFullscreen) {
-          document.documentElement.requestFullscreen?.();
-        } else {
-          document.exitFullscreen?.();
+        try {
+          if (newFullscreen) {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+              elem.requestFullscreen().catch((err) => {
+                console.warn('[Fullscreen] Request failed:', err);
+              });
+            } else if ((elem as any).webkitRequestFullscreen) {
+              (elem as any).webkitRequestFullscreen();
+            } else if ((elem as any).msRequestFullscreen) {
+              (elem as any).msRequestFullscreen();
+            }
+          } else {
+            if (document.exitFullscreen) {
+              document.exitFullscreen().catch((err) => {
+                console.warn('[Fullscreen] Exit failed:', err);
+              });
+            } else if ((document as any).webkitExitFullscreen) {
+              (document as any).webkitExitFullscreen();
+            } else if ((document as any).msExitFullscreen) {
+              (document as any).msExitFullscreen();
+            }
+          }
+        } catch (err) {
+          console.warn('[Fullscreen] Error:', err);
         }
       }
-      
+
       return {
         ui: {
           ...state.ui,
@@ -151,7 +172,7 @@ export const createUISlice: StateCreator<
       };
     });
   },
-  
+
   setFullscreen: (fullscreen) => {
     set((state) => ({
       ui: {
@@ -160,7 +181,7 @@ export const createUISlice: StateCreator<
       },
     }));
   },
-  
+
   resetUI: () => {
     set({ ui: { ...DEFAULT_UI_STATE } });
   },

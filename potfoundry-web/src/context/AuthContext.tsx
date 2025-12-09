@@ -76,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Fetch user profile from database
     const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
-        if (!isSupabaseConfigured()) return null;
+        if (!isSupabaseConfigured() || !supabase) return null;
 
         try {
             const { data, error } = await supabase
@@ -113,7 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Initialize auth state on mount
     useEffect(() => {
-        if (!isSupabaseConfigured()) {
+        if (!isSupabaseConfigured() || !supabase) {
             setState(s => ({ ...s, loading: false }));
             return;
         }
@@ -141,8 +141,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                 // Use Promise.race to ensure we never hang
                 // If getSession takes more than 3 seconds, we timeout
+                // Note: supabase is guaranteed non-null here due to early return above
                 const sessionResult = await Promise.race([
-                    supabase.auth.getSession(),
+                    supabase!.auth.getSession(),
                     timeout(3000)
                 ]).catch(() => ({ data: { session: null }, error: new Error('Timeout getting session') }));
 
@@ -204,7 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         initSession();
 
         // Listen for auth changes with similar robustness
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        const { data: { subscription } } = supabase!.auth.onAuthStateChange(
             async (event, session) => {
                 console.log('[Auth] State changed:', event, session?.user?.email);
 
@@ -245,7 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Auth actions
     const signInWithEmail = useCallback(async (email: string, password: string) => {
-        if (!isSupabaseConfigured()) {
+        if (!isSupabaseConfigured() || !supabase) {
             setState(s => ({ ...s, error: 'Auth not configured' }));
             return;
         }
@@ -260,7 +261,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     const signUpWithEmail = useCallback(async (email: string, password: string) => {
-        if (!isSupabaseConfigured()) {
+        if (!isSupabaseConfigured() || !supabase) {
             setState(s => ({ ...s, error: 'Auth not configured' }));
             return;
         }
@@ -277,7 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     const signInWithGoogle = useCallback(async () => {
-        if (!isSupabaseConfigured()) return;
+        if (!isSupabaseConfigured() || !supabase) return;
 
         setState(s => ({ ...s, loading: true, error: null }));
 
@@ -294,7 +295,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     const signInWithGitHub = useCallback(async () => {
-        if (!isSupabaseConfigured()) return;
+        if (!isSupabaseConfigured() || !supabase) return;
 
         setState(s => ({ ...s, loading: true, error: null }));
 
@@ -311,7 +312,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     const signOut = useCallback(async () => {
-        if (!isSupabaseConfigured()) return;
+        if (!isSupabaseConfigured() || !supabase) return;
 
         setState(s => ({ ...s, loading: true }));
 
@@ -331,7 +332,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     const resetPassword = useCallback(async (email: string) => {
-        if (!isSupabaseConfigured()) return;
+        if (!isSupabaseConfigured() || !supabase) return;
 
         setState(s => ({ ...s, loading: true, error: null }));
 

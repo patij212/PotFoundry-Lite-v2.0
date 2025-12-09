@@ -9,9 +9,9 @@
   top: 0;
   left: 0;
   bottom: 0;
-  width: 340px;
-  min-width: 300px;
-  max-width: 400px;
+  /* Width is now controlled by inline style from React */
+  min-width: 280px;
+  /* Max width is controlled dynamically by JS (50% of viewport or 800px) */
   height: 100%;
   max-height: 100%;
   background: rgba(18, 18, 24, 0.97);
@@ -27,11 +27,44 @@
   pointer-events: auto;
 }
 
+.pf-sidebar--resizing {
+  transition: none !important;
+  user-select: none;
+}
+
+/* Resize Handle */
+.pf-sidebar__resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  z-index: 10;
+}
+
+.pf-sidebar__resize-handle:hover,
+.pf-sidebar--resizing .pf-sidebar__resize-handle {
+  opacity: 1;
+  background: rgba(99, 102, 241, 0.3);
+}
+
+.pf-sidebar__resize-handle svg {
+  color: rgba(255, 255, 255, 0.6);
+}
+
 @keyframes pf-sidebar-slide-in {
   from {
     transform: translateX(-100%);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -206,11 +239,11 @@
     min-width: 0;
     border-right: none;
   }
-  
+
   .pf-sidebar__tab span {
     display: none;
   }
-  
+
   .pf-sidebar__tab {
     padding: 12px;
   }

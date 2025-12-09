@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback } from 'react';
-import { Ruler, Circle, Square } from 'lucide-react';
+import { Ruler } from 'lucide-react';
 import { Slider } from '../shared/Slider';
 import { Section, SectionGroup } from '../shared/Section';
 import { useGeometry, useGeometryActions, GEOMETRY_BOUNDS } from '../../state';
@@ -29,44 +29,60 @@ import './DimensionControls.css';
  * - Bottom thickness
  * - Drain hole radius
  * - Flare exponent
+ * - Bulge/Dent controls
  */
 export const DimensionControls: React.FC = () => {
   const geometry = useGeometry();
   const { setGeometryParam } = useGeometryActions();
-  
+
   // Create memoized handlers to prevent re-renders
   const handleH = useCallback(
     (value: number) => setGeometryParam('H', value),
     [setGeometryParam]
   );
-  
+
   const handleTopOD = useCallback(
     (value: number) => setGeometryParam('top_od', value),
     [setGeometryParam]
   );
-  
+
   const handleBottomOD = useCallback(
     (value: number) => setGeometryParam('bottom_od', value),
     [setGeometryParam]
   );
-  
+
   const handleTWall = useCallback(
     (value: number) => setGeometryParam('t_wall', value),
     [setGeometryParam]
   );
-  
+
   const handleTBottom = useCallback(
     (value: number) => setGeometryParam('t_bottom', value),
     [setGeometryParam]
   );
-  
+
   const handleRDrain = useCallback(
     (value: number) => setGeometryParam('r_drain', value),
     [setGeometryParam]
   );
-  
+
   const handleExpn = useCallback(
     (value: number) => setGeometryParam('expn', value),
+    [setGeometryParam]
+  );
+
+  const handleBellAmp = useCallback(
+    (value: number) => setGeometryParam('bellAmp', value),
+    [setGeometryParam]
+  );
+
+  const handleBellCenter = useCallback(
+    (value: number) => setGeometryParam('bellCenter', value),
+    [setGeometryParam]
+  );
+
+  const handleBellWidth = useCallback(
+    (value: number) => setGeometryParam('bellWidth', value),
     [setGeometryParam]
   );
 
@@ -82,7 +98,7 @@ export const DimensionControls: React.FC = () => {
           step={GEOMETRY_BOUNDS.H.step}
           unit="mm"
         />
-        
+
         <div className="pf-dimension-row">
           <Slider
             label="Top ⌀"
@@ -93,7 +109,7 @@ export const DimensionControls: React.FC = () => {
             step={GEOMETRY_BOUNDS.top_od.step}
             unit="mm"
           />
-          
+
           <Slider
             label="Bottom ⌀"
             value={geometry.bottom_od}
@@ -105,7 +121,7 @@ export const DimensionControls: React.FC = () => {
           />
         </div>
       </SectionGroup>
-      
+
       <SectionGroup label="Thickness">
         <div className="pf-dimension-row">
           <Slider
@@ -118,7 +134,7 @@ export const DimensionControls: React.FC = () => {
             unit="mm"
             decimals={1}
           />
-          
+
           <Slider
             label="Bottom"
             value={geometry.t_bottom}
@@ -131,7 +147,7 @@ export const DimensionControls: React.FC = () => {
           />
         </div>
       </SectionGroup>
-      
+
       <SectionGroup label="Features">
         <Slider
           label="Drain Hole"
@@ -143,7 +159,7 @@ export const DimensionControls: React.FC = () => {
           unit="mm"
           decimals={1}
         />
-        
+
         <Slider
           label="Flare"
           value={geometry.expn}
@@ -153,6 +169,40 @@ export const DimensionControls: React.FC = () => {
           step={GEOMETRY_BOUNDS.expn.step}
           decimals={2}
         />
+      </SectionGroup>
+
+      <SectionGroup label="Bell">
+        <Slider
+          label="Amplitude"
+          value={geometry.bellAmp}
+          onChange={handleBellAmp}
+          min={GEOMETRY_BOUNDS.bellAmp.min}
+          max={GEOMETRY_BOUNDS.bellAmp.max}
+          step={GEOMETRY_BOUNDS.bellAmp.step}
+          decimals={2}
+        />
+
+        <div className="pf-dimension-row">
+          <Slider
+            label="Center"
+            value={geometry.bellCenter}
+            onChange={handleBellCenter}
+            min={GEOMETRY_BOUNDS.bellCenter.min}
+            max={GEOMETRY_BOUNDS.bellCenter.max}
+            step={GEOMETRY_BOUNDS.bellCenter.step}
+            decimals={2}
+          />
+
+          <Slider
+            label="Width"
+            value={geometry.bellWidth}
+            onChange={handleBellWidth}
+            min={GEOMETRY_BOUNDS.bellWidth.min}
+            max={GEOMETRY_BOUNDS.bellWidth.max}
+            step={GEOMETRY_BOUNDS.bellWidth.step}
+            decimals={2}
+          />
+        </div>
       </SectionGroup>
     </Section>
   );

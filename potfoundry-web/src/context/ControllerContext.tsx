@@ -33,11 +33,11 @@ export interface ControllerContextValue {
   controllerRef: RefObject<WebGPUController | null>;
   /** Whether the controller is ready */
   isReady: boolean;
-  
+
   // Camera state getters
   /** Current camera state for UI display */
   cameraState: CameraState;
-  
+
   // Camera controls
   /** Reset camera to default isometric view */
   resetCamera: () => void;
@@ -163,13 +163,22 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
     showGrid: true,
     showAxis: true,
   });
-  
+
   // Helper to read current state from window.__pf_webgpu_camera_controller
+  // NOTE: Returns a NEW state object, NOT derived from previous state to avoid circular deps
   const readCameraState = useCallback((): CameraState => {
     const cc = (window as unknown as { __pf_webgpu_camera_controller?: { state?: Record<string, unknown> } }).__pf_webgpu_camera_controller;
     const state = cc?.state;
-    if (!state) return cameraState;
-    
+    if (!state) {
+      return {
+        mode: 'turntable',
+        projection: 'ortho',
+        autoRotate: false,
+        showGrid: true,
+        showAxis: true,
+      };
+    }
+
     return {
       mode: (state.cameraMode as CameraState['mode']) ?? 'turntable',
       projection: (state.projectionMode as CameraState['projection']) ?? 'ortho',
@@ -177,28 +186,41 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
       showGrid: state.showGrid !== false,
       showAxis: state.showAxis !== false,
     };
-  }, [cameraState]);
-  
+  }, []); // No dependencies - reads from window, not React state
+
   // Sync state on mount and when isReady changes
   useEffect(() => {
     if (isReady) {
       // Initial sync
       setCameraState(readCameraState());
-      
+
       // Set up polling interval to sync state (simple approach)
       const interval = setInterval(() => {
-        setCameraState(readCameraState());
+        const newState = readCameraState();
+        setCameraState(prev => {
+          // Only update if state actually changed to avoid unnecessary renders
+          if (
+            prev.mode === newState.mode &&
+            prev.projection === newState.projection &&
+            prev.autoRotate === newState.autoRotate &&
+            prev.showGrid === newState.showGrid &&
+            prev.showAxis === newState.showAxis
+          ) {
+            return prev;
+          }
+          return newState;
+        });
       }, 250);
-      
+
       return () => clearInterval(interval);
     }
   }, [isReady, readCameraState]);
-  
+
   // Camera controls
   const resetCamera = useCallback(() => {
     const ctrl = controllerRef.current;
     if (!ctrl) return;
-    
+
     // Send camera command to reset to isometric view
     if (typeof ctrl.handleCameraCommand === 'function') {
       ctrl.handleCameraCommand({
@@ -209,114 +231,111 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
       });
     }
   }, [controllerRef]);
-  
+
   const setCameraMode = useCallback((mode: 'turntable' | 'arcball') => {
     const ctrl = controllerRef.current;
     if (!ctrl) return;
-    
+
     if (typeof ctrl.handleCameraCommand === 'function') {
       ctrl.handleCameraCommand({ cameraMode: mode });
     }
   }, [controllerRef]);
-  
+
   const toggleCameraMode = useCallback(() => {
-    // Access the internal camera controller through window for current mode
-    const cameraController = (window as unknown as { __pf_webgpu_camera_controller?: { state?: { cameraMode?: string } } }).__pf_webgpu_camera_controller;
-    const currentMode = cameraController?.state?.cameraMode ?? 'turntable';
-    const newMode = currentMode === 'turntable' ? 'arcball' : 'turntable';
-    setCameraMode(newMode);
-    setCameraState(prev => ({ ...prev, mode: newMode }));
-  }, [setCameraMode]);
-  
+    const ctrl = controllerRef.current;
+    if (!ctrl?.handleCameraCommand) return;
+
+    // Read directly from window state since controller owns the truth
+    const cc = (window as any).__pf_webgpu_camera_controller;
+    const current = cc?.state?.cameraMode ?? 'turntable';
+    const next = current === 'turntable' ? 'arcball' : 'turntable';
+    ctrl.handleCameraCommand({ cameraMode: next });
+  }, [controllerRef]);
+
   const setProjection = useCallback((mode: 'perspective' | 'ortho') => {
     const ctrl = controllerRef.current;
-    if (!ctrl) return;
-    
-    if (typeof ctrl.handleCameraCommand === 'function') {
-      ctrl.handleCameraCommand({ projectionMode: mode });
-    }
-    setCameraState(prev => ({ ...prev, projection: mode }));
+    if (!ctrl?.handleCameraCommand) return;
+    ctrl.handleCameraCommand({ projectionMode: mode });
   }, [controllerRef]);
-  
+
   const toggleProjection = useCallback(() => {
-    // Access the internal state through window for current projection
-    const cameraController = (window as unknown as { __pf_webgpu_camera_controller?: { state?: { projectionMode?: string } } }).__pf_webgpu_camera_controller;
-    const currentMode = cameraController?.state?.projectionMode ?? 'ortho';
-    const newMode = currentMode === 'perspective' ? 'ortho' : 'perspective';
-    setProjection(newMode);
-  }, [setProjection]);
-  
+    const ctrl = controllerRef.current;
+    if (!ctrl?.handleCameraCommand) return;
+
+    // Read directly from window state
+    const cc = (window as any).__pf_webgpu_camera_controller;
+    const current = cc?.state?.projectionMode ?? 'ortho';
+    const next = current === 'perspective' ? 'ortho' : 'perspective';
+    ctrl.handleCameraCommand({ projectionMode: next });
+  }, [controllerRef]);
+
   const setAutoRotate = useCallback((enabled: boolean) => {
     const ctrl = controllerRef.current;
     if (!ctrl) return;
-    
     if (typeof ctrl.setAutoRotate === 'function') {
       ctrl.setAutoRotate(enabled);
     }
   }, [controllerRef]);
-  
+
   const toggleAutoRotate = useCallback(() => {
     const ctrl = controllerRef.current;
     if (!ctrl) return;
-    
+
+    // Use controller's toggle method directly
     if (typeof ctrl.toggleAutoRotate === 'function') {
       ctrl.toggleAutoRotate();
     } else if (typeof ctrl.getAutoRotate === 'function' && typeof ctrl.setAutoRotate === 'function') {
       ctrl.setAutoRotate(!ctrl.getAutoRotate());
     }
-    // Update local state
-    setCameraState(prev => ({ ...prev, autoRotate: !prev.autoRotate }));
   }, [controllerRef]);
-  
+
   const toggleGrid = useCallback(() => {
     const ctrl = controllerRef.current;
-    if (!ctrl) return;
-    
-    // Grid toggle is handled via controls click in webgpu_core
-    // We can emit a click event or directly toggle the state
-    if (typeof ctrl.handleCameraCommand === 'function') {
-      ctrl.handleCameraCommand({ toggleGrid: true });
-    }
-    setCameraState(prev => ({ ...prev, showGrid: !prev.showGrid }));
+    if (!ctrl?.handleCameraCommand) return;
+
+    // Read directly from window state
+    const cc = (window as any).__pf_webgpu_camera_controller;
+    const current = cc?.state?.showGrid !== false;
+    ctrl.handleCameraCommand({ showGrid: !current });
   }, [controllerRef]);
-  
+
   const toggleAxis = useCallback(() => {
     const ctrl = controllerRef.current;
-    if (!ctrl) return;
-    
-    if (typeof ctrl.handleCameraCommand === 'function') {
-      ctrl.handleCameraCommand({ toggleAxis: true });
-    }
-    setCameraState(prev => ({ ...prev, showAxis: !prev.showAxis }));
+    if (!ctrl?.handleCameraCommand) return;
+
+    // Read directly from window state
+    const cc = (window as any).__pf_webgpu_camera_controller;
+    const current = cc?.state?.showAxis !== false;
+    ctrl.handleCameraCommand({ showAxis: !current });
   }, [controllerRef]);
-  
+
   const takeScreenshot = useCallback(async (): Promise<Blob | null> => {
     const canvas = canvasRef?.current;
     if (!canvas) return null;
-    
+
     return new Promise((resolve) => {
       canvas.toBlob((blob) => {
         resolve(blob);
       }, 'image/png');
     });
   }, [canvasRef]);
-  
+
   const applyViewPreset = useCallback((preset: 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso') => {
     const ctrl = controllerRef.current;
     if (!ctrl) return;
-    
+
     if (typeof ctrl.handleCameraCommand === 'function') {
       ctrl.handleCameraCommand({ viewPreset: preset });
     }
   }, [controllerRef]);
-  
+
   const updateParams = useCallback((params: Record<string, unknown>) => {
     const ctrl = controllerRef.current;
     if (!ctrl) {
       console.warn('[ControllerContext] updateParams called but controller not ready');
       return;
     }
-    
+
     if (typeof ctrl.updateParams === 'function') {
       console.log('[ControllerContext] updateParams:', params);
       ctrl.updateParams(params);
@@ -324,7 +343,7 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
       console.warn('[ControllerContext] controller.updateParams not available');
     }
   }, [controllerRef]);
-  
+
   // Set local params lock to prevent Python params from overwriting locally-loaded designs
   const setLocalParamsLock = useCallback((durationMs: number) => {
     if (localParamsLockRef) {
@@ -332,7 +351,7 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
       console.debug('[ControllerContext] Local params lock set for', durationMs, 'ms');
     }
   }, [localParamsLockRef]);
-  
+
   // Memoize context value
   const value = useMemo<ControllerContextValue>(
     () => ({
@@ -372,7 +391,7 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
       setLocalParamsLock,
     ]
   );
-  
+
   return (
     <ControllerContext.Provider value={value}>
       {children}

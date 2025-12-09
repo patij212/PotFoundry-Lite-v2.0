@@ -2110,19 +2110,99 @@ export const mount = async ({
   // Axis overlay canvas for small 2D axis gizmo in corner
   let axisCanvas: HTMLCanvasElement | null = null;
   let axisCtx: CanvasRenderingContext2D | null = null;
+  const AXIS_POS_KEY = 'pf-axis-position';
+
+  // Load saved position from localStorage
+  const loadAxisPosition = (): { left: number; bottom: number } | null => {
+    try {
+      const saved = localStorage.getItem(AXIS_POS_KEY);
+      if (saved) {
+        const pos = JSON.parse(saved);
+        if (typeof pos.left === 'number' && typeof pos.bottom === 'number') {
+          return pos;
+        }
+      }
+    } catch { /* ignore */ }
+    return null;
+  };
+
+  // Save position to localStorage
+  const saveAxisPosition = (left: number, bottom: number): void => {
+    try {
+      localStorage.setItem(AXIS_POS_KEY, JSON.stringify({ left, bottom }));
+    } catch { /* ignore */ }
+  };
+
   try {
     const parent = canvas.parentElement || document.body;
+
+    // Remove any existing axis overlay to prevent duplicates
+    const existingAxis = document.getElementById('wgpu-axis-overlay');
+    if (existingAxis) {
+      existingAxis.remove();
+    }
+
     axisCanvas = document.createElement('canvas');
     axisCanvas.id = 'wgpu-axis-overlay';
     axisCanvas.style.position = 'absolute';
-    axisCanvas.style.left = '8px';
-    axisCanvas.style.bottom = '8px';
-    axisCanvas.style.pointerEvents = 'none';
+    axisCanvas.style.cursor = 'move';
+    axisCanvas.style.pointerEvents = 'auto';
     axisCanvas.style.zIndex = '9998';
     axisCanvas.width = 96;
     axisCanvas.height = 96;
     axisCanvas.style.width = '96px';
     axisCanvas.style.height = '96px';
+
+    // Load saved position or use default
+    const savedPos = loadAxisPosition();
+    if (savedPos) {
+      axisCanvas.style.left = `${savedPos.left}px`;
+      axisCanvas.style.bottom = `${savedPos.bottom}px`;
+    } else {
+      axisCanvas.style.left = '8px';
+      axisCanvas.style.bottom = '8px';
+    }
+
+    // Drag state
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let startLeft = 0;
+    let startBottom = 0;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (!axisCanvas) return;
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      startLeft = parseInt(axisCanvas.style.left, 10) || 8;
+      startBottom = parseInt(axisCanvas.style.bottom, 10) || 8;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging || !axisCanvas) return;
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      const newLeft = Math.max(0, startLeft + dx);
+      const newBottom = Math.max(0, startBottom - dy);
+      axisCanvas.style.left = `${newLeft}px`;
+      axisCanvas.style.bottom = `${newBottom}px`;
+    };
+
+    const onMouseUp = () => {
+      if (!isDragging || !axisCanvas) return;
+      isDragging = false;
+      const left = parseInt(axisCanvas.style.left, 10) || 8;
+      const bottom = parseInt(axisCanvas.style.bottom, 10) || 8;
+      saveAxisPosition(left, bottom);
+    };
+
+    axisCanvas.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
     parent?.appendChild(axisCanvas);
     axisCtx = axisCanvas.getContext('2d');
   } catch (e) {

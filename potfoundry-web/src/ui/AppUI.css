@@ -26,10 +26,10 @@
 }
 
 /* Enable pointer events on UI overlays only (panel, toolbar, statusbar) */
-.pf-app-ui > .pf-control-panel,
-.pf-app-ui > .pf-toolbar,
-.pf-app-ui > .pf-status-bar,
-.pf-app-ui > .pf-help-dialog {
+.pf-app-ui>.pf-control-panel,
+.pf-app-ui>.pf-toolbar,
+.pf-app-ui>.pf-status-bar,
+.pf-app-ui>.pf-help-dialog {
   pointer-events: auto;
 }
 
@@ -60,41 +60,41 @@
   --pf-color-primary: #6366f1;
   --pf-color-primary-light: #818cf8;
   --pf-color-primary-dark: #4f46e5;
-  
+
   --pf-color-surface: rgba(18, 18, 24, 0.95);
   --pf-color-surface-light: rgba(255, 255, 255, 0.08);
   --pf-color-surface-lighter: rgba(255, 255, 255, 0.12);
-  
+
   --pf-color-border: rgba(255, 255, 255, 0.1);
   --pf-color-border-light: rgba(255, 255, 255, 0.15);
-  
+
   --pf-color-text: rgba(255, 255, 255, 0.9);
   --pf-color-text-secondary: rgba(255, 255, 255, 0.7);
   --pf-color-text-muted: rgba(255, 255, 255, 0.5);
-  
+
   /* Spacing */
   --pf-spacing-xs: 4px;
   --pf-spacing-sm: 8px;
   --pf-spacing-md: 12px;
   --pf-spacing-lg: 16px;
   --pf-spacing-xl: 24px;
-  
+
   /* Border Radius */
   --pf-radius-sm: 4px;
   --pf-radius-md: 6px;
   --pf-radius-lg: 8px;
   --pf-radius-xl: 12px;
-  
+
   /* Shadows */
   --pf-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
   --pf-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
   --pf-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
-  
+
   /* Transitions */
   --pf-transition-fast: 0.1s ease;
   --pf-transition-normal: 0.15s ease;
   --pf-transition-slow: 0.25s ease;
-  
+
   /* Z-Index Layers */
   --pf-z-viewport: 0;
   --pf-z-toolbar: 50;
@@ -119,4 +119,58 @@
 
 .pf-app-ui input {
   font-family: inherit;
+}
+
+/* ============================================================================
+   Fullscreen Mode
+   ============================================================================ */
+
+/* Fullscreen selectors for different browsers */
+:fullscreen .pf-app-ui,
+:-webkit-full-screen .pf-app-ui,
+:-moz-full-screen .pf-app-ui,
+:-ms-fullscreen .pf-app-ui {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+}
+
+:fullscreen .pf-wgpu-preview,
+:-webkit-full-screen .pf-wgpu-preview,
+:-moz-full-screen .pf-wgpu-preview,
+:-ms-fullscreen .pf-wgpu-preview {
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+:fullscreen .pf-wgpu-preview__canvas,
+:-webkit-full-screen .pf-wgpu-preview__canvas,
+:-moz-full-screen .pf-wgpu-preview__canvas,
+:-ms-fullscreen .pf-wgpu-preview__canvas {
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+/* Ensure the root container fills fullscreen */
+:fullscreen #root,
+:-webkit-full-screen #root,
+:-moz-full-screen #root,
+:-ms-fullscreen #root {
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Ensure body/html don't interfere */
+:fullscreen body,
+:-webkit-full-screen body,
+:-moz-full-screen body,
+:-ms-fullscreen body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
 }

@@ -29,6 +29,12 @@ export interface GeometryParams {
   r_drain: number;
   /** Flare exponent controlling curve shape (0.5-4.0) */
   expn: number;
+  /** Bulge amplitude: positive=outward bulge, negative=inward dent (-0.5 to 0.5) */
+  bellAmp: number;
+  /** Bulge center position along height (0-1, 0.5 = middle) */
+  bellCenter: number;
+  /** Bulge width factor (0.1-1.0, smaller = narrower band) */
+  bellWidth: number;
 }
 
 /** Default geometry values for a standard pot */
@@ -40,6 +46,9 @@ export const DEFAULT_GEOMETRY: GeometryParams = {
   t_bottom: 3.0,
   r_drain: 10.0,
   expn: 1.1,
+  bellAmp: 0.0,
+  bellCenter: 0.5,
+  bellWidth: 0.22,
 };
 
 /** Bounds for geometry parameter validation */
@@ -51,6 +60,9 @@ export const GEOMETRY_BOUNDS = {
   t_bottom: { min: 2.0, max: 30, step: 0.1 },
   r_drain: { min: 0, max: 50, step: 0.5 },
   expn: { min: 0.5, max: 4.0, step: 0.05 },
+  bellAmp: { min: -0.5, max: 0.5, step: 0.01 },
+  bellCenter: { min: 0.1, max: 0.9, step: 0.05 },
+  bellWidth: { min: 0.1, max: 1.0, step: 0.05 },
 } as const;
 
 // ============================================================================
@@ -186,7 +198,7 @@ export const DEFAULT_APPEARANCE: AppearanceState = {
   primaryColor: '#c75b39',
   midColor: '#cf7a5c',
   secondaryColor: '#d4a574',
-  showInner: false,
+  showInner: true,
   showWireframe: false,
   gradient: ['#1a1a2e', '#16213e'],
   lightingPreset: 'studio',
