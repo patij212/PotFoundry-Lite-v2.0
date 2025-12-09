@@ -25,11 +25,12 @@
   isolation: isolate;
 }
 
-/* Enable pointer events on UI overlays only (panel, toolbar, statusbar) */
-.pf-app-ui>.pf-control-panel,
-.pf-app-ui>.pf-toolbar,
-.pf-app-ui>.pf-status-bar,
-.pf-app-ui>.pf-help-dialog {
+/* Enable pointer events on UI overlays (may be wrapped in ErrorBoundary) */
+.pf-app-ui .pf-control-panel,
+.pf-app-ui .pf-toolbar,
+.pf-app-ui .pf-status-bar,
+.pf-app-ui .pf-help-dialog,
+.pf-app-ui .pf-sidebar {
   pointer-events: auto;
 }
 
