@@ -4377,7 +4377,8 @@ export const mount = async ({
       const sigRotY = state.displayRotY ?? state.rotY ?? 0;
       // Include geometry parameters in signature for immediate slider response
       // CRITICAL: Include canvasAspect so resize during grey mode triggers uniform write
-      const geoSig = `${f32[0]}_${f32[1]}_${f32[2]}_${f32[3]}_${f32[16]}_${f32[17]}_${f32[6]}_${f32[7]}_${f32[8]}`;
+      // CRITICAL: Include t_wall (f32[25]), t_bottom (f32[26]), drain (f32[13]) for live updates
+      const geoSig = `${f32[0]}_${f32[1]}_${f32[2]}_${f32[3]}_${f32[16]}_${f32[17]}_${f32[6]}_${f32[7]}_${f32[8]}_${f32[13]}_${f32[25]}_${f32[26]}`;
       const uniformSignature = `${sigRotX}_${sigRotY}_${state.zoom ?? 1}_${state.panX ?? 0}_${state.panY ?? 0}_${state.projectionMode}_${String(state.displayCamQuat ?? state.camQuat)}_${geoSig}_${state.canvasAspect}`;
       (globalThis as any).__lastUniformSignature = (globalThis as any).__lastUniformSignature ?? null;
       const lastUniformSignature = (globalThis as any).__lastUniformSignature;
