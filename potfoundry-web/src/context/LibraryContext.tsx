@@ -17,7 +17,7 @@ import { supabase, isSupabaseConfigured } from '../services/supabase';
 // ============================================================================
 
 export interface LibraryDesign {
-  id: string;
+  id: string;  // sha256 hash ID
   title: string;
   style: string;
   created_at: string;
@@ -35,6 +35,16 @@ export interface LibraryDesign {
     flare_exp?: number;
   };
   opts?: Record<string, unknown>;
+  mesh?: {
+    n_theta?: number;
+    n_z?: number;
+    twist?: number;
+  };
+  diagnostics?: {
+    vertex_count?: number;
+    triangle_count?: number;
+  };
+  app_commit?: string;
 }
 
 export interface LibraryState {
@@ -151,6 +161,9 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
         tags: d.tags || [],
         size: d.size || {},
         opts: d.opts || {},
+        mesh: d.mesh || {},
+        diagnostics: d.diagnostics || {},
+        app_commit: d.app_commit,
       }));
 
       setState(s => ({
