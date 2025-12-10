@@ -8,7 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { mount, WebGPUController } from './webgpu_core';
 import { AppUI } from './ui';
-import { useRendererBridge, syncStoreFromParams, usePerformanceTracker, parseStatusMetrics } from './hooks';
+import { useRendererBridge, syncStoreFromParams, sendFullStoreToController, usePerformanceTracker, parseStatusMetrics } from './hooks';
 import { useUIActions } from './state';
 import { ControllerProvider, LibraryProvider } from './context';
 import { AuthProvider } from './context/AuthContext';
@@ -53,7 +53,7 @@ const App: React.FC = () => {
     const localParamsLockUntilRef = useRef<number>(0);
 
     // UI actions
-    const { setPanelOpen } = useUIActions();
+    const { setPanelOpen, toggleFullscreen } = useUIActions();
 
     // Performance tracking
     const { updateMetrics, setGenerating } = usePerformanceTracker({ debug: false });
@@ -139,6 +139,9 @@ const App: React.FC = () => {
 
                 controllerRef.current = controller;
                 controller.updateParams(DEFAULT_PARAMS);
+                // IMMEDIATELY send all Zustand state - this eliminates the "grey state"
+                // by not waiting for React to re-render before useRendererBridge activates
+                sendFullStoreToController(controller);
                 setControllerReady(true);
                 setIsReady(true);
                 setGeneratingRef.current(false);
@@ -159,6 +162,19 @@ const App: React.FC = () => {
             controllerRef.current = null;
         };
     }, []);
+
+    // Intercept F11 to use our fullscreen toggle instead of browser's default
+    // This ensures F11 and the fullscreen button behave consistently
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'F11') {
+                e.preventDefault();
+                toggleFullscreen();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [toggleFullscreen]);
 
     // Error state
     if (error) {
@@ -184,6 +200,7 @@ const App: React.FC = () => {
 
                 <div
                     className="pf-wgpu-preview"
+                    data-embedded-ui="1"
                     style={{
                         height: '100vh',
                         background: '#242B46',

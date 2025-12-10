@@ -2028,38 +2028,67 @@ export const mount = async ({
 
   let lastResizeSignature: string | null = null;
 
+  // Track last resize dimensions to prevent redundant resize calls that could
+  // invalidate textures mid-render (causing WebGPU swapchain errors)
+  let lastResizeWidth = 0;
+  let lastResizeHeight = 0;
+  let lastFullscreenState = false;
+
   const initialBgMode = (initialParams as Record<string, unknown>).__pf_bg_mode;
   let currentAlphaMode: 'opaque' | 'premultiplied' = resolveAlphaMode(initialBgMode);
 
   const resize = (): void => {
-    // In fullscreen mode, use window dimensions directly instead of parent container
+    // Get the TARGET dimensions from the PARENT container
+    // The canvas has inline styles, so we can't query it directly
+    // The parent container uses CSS flex/grid and tells us the available space
     const isFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
     let cssWidth: number;
     let cssHeight: number;
 
     if (isFullscreen) {
-      // Use window dimensions directly in fullscreen
+      // Fullscreen: use full window dimensions
       cssWidth = window.innerWidth;
       cssHeight = window.innerHeight;
-      console.log('[WebGPU] Fullscreen resize:', cssWidth, 'x', cssHeight);
     } else {
-      // Normal mode: use canvas bounding rect
-      const rect = canvas.getBoundingClientRect();
-      cssWidth = Math.max(rect.width, 1);
-      cssHeight = Math.max(rect.height, 1);
+      // Normal mode: query PARENT container for available space
+      const parent = canvas.parentElement;
+      if (parent) {
+        const rect = parent.getBoundingClientRect();
+        cssWidth = rect.width;
+        cssHeight = rect.height;
+      } else {
+        // Fallback to window
+        cssWidth = window.innerWidth;
+        cssHeight = window.innerHeight;
+      }
     }
 
     const nextDpr = window.devicePixelRatio || 1;
+    const nextWidth = Math.max(1, Math.round(cssWidth * nextDpr));
+    const nextHeight = Math.max(1, Math.round(cssHeight * nextDpr));
+
+    // Track fullscreen state changes - force resize when fullscreen toggles
+    const fullscreenChanged = isFullscreen !== lastFullscreenState;
+    lastFullscreenState = isFullscreen;
+
+    // Skip if dimensions haven't changed AND fullscreen state is the same
+    // This prevents texture invalidation mid-render, but allows fullscreen transitions
+    if (nextWidth === lastResizeWidth && nextHeight === lastResizeHeight && !fullscreenChanged) {
+      return;
+    }
+    lastResizeWidth = nextWidth;
+    lastResizeHeight = nextHeight;
+
     if (Math.abs(nextDpr - devicePixelRatio) > 1e-3) {
       devicePixelRatio = nextDpr;
       if (debugEnabled) {
         emitDiagnostic('canvas:dpr-change', { dpr: devicePixelRatio });
       }
     }
-    width = Math.max(1, Math.round(cssWidth * devicePixelRatio));
-    height = Math.max(1, Math.round(cssHeight * devicePixelRatio));
-    canvas.style.width = `${cssWidth}px`;
-    canvas.style.height = `${cssHeight}px`;
+    width = nextWidth;
+    height = nextHeight;
+    // Don't set inline styles - CSS position:absolute with inset:0 controls display size
+    // Only set the pixel buffer to match the parent container dimensions
     canvas.width = width;
     canvas.height = height;
     context.configure({ device, format, alphaMode: currentAlphaMode });
@@ -2092,7 +2121,7 @@ export const mount = async ({
     } catch (e) {
       // Ignore - variables not yet defined during initial mount
     }
-    console.log('[WebGPU] Resize complete - aspect:', state.canvasAspect, 'fullscreen:', isFullscreen);
+    console.log('[WebGPU] Resize:', width, 'x', height, 'aspect:', state.canvasAspect.toFixed(3));
     if (debugEnabled) {
       const signature = `${width}x${height}@${Math.round(devicePixelRatio * 100) / 100}`;
       if (signature !== lastResizeSignature) {
@@ -2129,8 +2158,27 @@ export const mount = async ({
   };
   document.addEventListener('fullscreenchange', handleFullscreenChange);
   document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-  resize();
 
+  // Use ResizeObserver to detect parent container size changes
+  // We watch the parent because the canvas has inline pixel styles that don't change
+  // When the parent container resizes (e.g., sidebar toggle), we need to resize the canvas
+  let resizeObserver: ResizeObserver | null = null;
+  const parentContainer = canvas.parentElement;
+  if (parentContainer) {
+    try {
+      resizeObserver = new ResizeObserver(() => {
+        // Debounce to avoid excessive resize calls
+        requestAnimationFrame(resize);
+      });
+      resizeObserver.observe(parentContainer);
+      console.log('[WebGPU] ResizeObserver attached to parent container');
+    } catch (err) {
+      // ResizeObserver not supported, fall back to window resize only
+      console.warn('[WebGPU] ResizeObserver not available, using window resize only');
+    }
+  }
+
+  resize();
 
   try {
     const parent = canvas.parentElement || document.body;
@@ -2547,14 +2595,17 @@ export const mount = async ({
   const getCachedRig = (s: WebGPUState, paddingHint?: number | null, phw?: number | null, phh?: number | null): CameraRig => {
     const sig = computeRigSignature(s, paddingHint, phw, phh);
     if (sig === lastRigSignature && lastRigCached) {
+      // Cache hit - don't log every frame, just log when specifically debugging
       return lastRigCached;
     }
+    console.debug('[WebGPU] Rig cache MISS - aspect:', s.canvasAspect?.toFixed(3));
     const rig = buildCameraRig(s, paddingHint ?? CAMERA_PADDING, phw, phh);
     try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.rigRebuilds += 1); } catch (e) { /* ignore */ }
     lastRigSignature = sig;
     lastRigCached = rig;
     return rig;
   };
+
 
   const getMergedParams = (): WebGPUParams => {
     const merged: WebGPUParams = { ...(initialParams as WebGPUParams) };
@@ -4325,8 +4376,9 @@ export const mount = async ({
       const sigRotX = state.displayRotX ?? state.rotX ?? 0;
       const sigRotY = state.displayRotY ?? state.rotY ?? 0;
       // Include geometry parameters in signature for immediate slider response
+      // CRITICAL: Include canvasAspect so resize during grey mode triggers uniform write
       const geoSig = `${f32[0]}_${f32[1]}_${f32[2]}_${f32[3]}_${f32[16]}_${f32[17]}_${f32[6]}_${f32[7]}_${f32[8]}`;
-      const uniformSignature = `${sigRotX}_${sigRotY}_${state.zoom ?? 1}_${state.panX ?? 0}_${state.panY ?? 0}_${state.projectionMode}_${String(state.displayCamQuat ?? state.camQuat)}_${geoSig}`;
+      const uniformSignature = `${sigRotX}_${sigRotY}_${state.zoom ?? 1}_${state.panX ?? 0}_${state.panY ?? 0}_${state.projectionMode}_${String(state.displayCamQuat ?? state.camQuat)}_${geoSig}_${state.canvasAspect}`;
       (globalThis as any).__lastUniformSignature = (globalThis as any).__lastUniformSignature ?? null;
       const lastUniformSignature = (globalThis as any).__lastUniformSignature;
       const parityUniformPending = isUniformParityRewritePending(state);
@@ -4822,28 +4874,15 @@ export const mount = async ({
     }
   };
 
-  // Track fullscreen state to detect changes in the frame loop
-  let lastKnownFullscreen = false;
-
   const frame = (): void => {
     if (disposed) {
       return;
-    }
-
-    // Per-frame fullscreen detection - bypass event listener issues
-    const currentFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
-    if (currentFullscreen !== lastKnownFullscreen) {
-      console.log('[WebGPU] Frame detected fullscreen change:', lastKnownFullscreen, '->', currentFullscreen);
-      lastKnownFullscreen = currentFullscreen;
-      // Force resize to update canvas dimensions and aspect ratio
-      resize();
     }
 
     if (!current) {
       rafHandle = requestAnimationFrame(frame);
       return;
     }
-
 
     const now = performance.now();
     const deltaMs = now - lastFrameTime;
