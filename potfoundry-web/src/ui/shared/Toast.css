@@ -1,0 +1,123 @@
+/**
+ * Toast Notification Styles
+ */
+
+/* Container - positioned at bottom-right */
+.pf-toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 400px;
+    pointer-events: none;
+}
+
+/* Individual Toast */
+.pf-toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(30, 35, 55, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(255, 255, 255, 0.05);
+    pointer-events: auto;
+    animation: toast-slide-in 0.3s ease-out;
+}
+
+/* Toast Types */
+.pf-toast--success {
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.pf-toast--success .pf-toast__icon {
+    color: #22c55e;
+}
+
+.pf-toast--error {
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.pf-toast--error .pf-toast__icon {
+    color: #ef4444;
+}
+
+.pf-toast--warning {
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.pf-toast--warning .pf-toast__icon {
+    color: #f59e0b;
+}
+
+.pf-toast--info {
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.pf-toast--info .pf-toast__icon {
+    color: #6366f1;
+}
+
+/* Icon */
+.pf-toast__icon {
+    flex-shrink: 0;
+}
+
+/* Message */
+.pf-toast__message {
+    flex: 1;
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.4;
+}
+
+/* Close Button */
+.pf-toast__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.pf-toast__close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* Animation */
+@keyframes toast-slide-in {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .pf-toast-container {
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        max-width: none;
+    }
+}

@@ -22,7 +22,7 @@ import {
   Box,
   Orbit,
 } from 'lucide-react';
-import { IconButton } from '../shared';
+import { IconButton, useToast } from '../shared';
 import { HelpDialog } from '../shared/HelpDialog';
 import { useUI, useUIActions } from '../../state';
 import { useControllerMaybe } from '../../context';
@@ -44,6 +44,7 @@ export const Toolbar: React.FC = () => {
   const ui = useUI();
   const { togglePanel, toggleFullscreen } = useUIActions();
   const controller = useControllerMaybe();
+  const toast = useToast();
   const [helpOpen, setHelpOpen] = useState(false);
 
   // Camera controls with controller
@@ -151,7 +152,7 @@ export const Toolbar: React.FC = () => {
 
         // Validate it's a PotFoundry design file
         if (!designData.version || !designData.geometry || !designData.style) {
-          alert('Invalid design file format');
+          toast.error('Invalid design file format');
           return;
         }
 
@@ -194,7 +195,7 @@ export const Toolbar: React.FC = () => {
         }
       } catch (error) {
         console.error('Failed to load design:', error);
-        alert('Failed to load design file. Please check the file format.');
+        toast.error('Failed to load design file. Please check the file format.');
       }
     };
 

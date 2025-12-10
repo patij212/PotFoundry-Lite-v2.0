@@ -5,12 +5,13 @@
  * or a login button when logged out.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { User, LogOut, Crown, Settings, CreditCard, ExternalLink, Calendar, AlertCircle } from 'lucide-react';
 import { useAuth, useIsAuthenticated, useIsPro } from '../../context/AuthContext';
 import { AuthModal } from './AuthModal';
 import { SettingsModal } from './SettingsModal';
 import { PricingModal } from '../pricing';
+import { useToast } from '../shared';
 import './UserMenu.css';
 
 // Format date for display
@@ -55,6 +56,58 @@ export const UserMenu: React.FC = () => {
     const [showPricingModal, setShowPricingModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [isLoadingPortal, setIsLoadingPortal] = useState(false);
+    const [focusedIndex, setFocusedIndex] = useState(-1);
+    const toast = useToast();
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Handle keyboard navigation
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (!showDropdown) return;
+
+        const items = dropdownRef.current?.querySelectorAll<HTMLButtonElement>('.user-menu__item:not([disabled])');
+        if (!items || items.length === 0) return;
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                setFocusedIndex(prev => {
+                    const next = prev < items.length - 1 ? prev + 1 : 0;
+                    items[next]?.focus();
+                    return next;
+                });
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                setFocusedIndex(prev => {
+                    const next = prev > 0 ? prev - 1 : items.length - 1;
+                    items[next]?.focus();
+                    return next;
+                });
+                break;
+            case 'Escape':
+                e.preventDefault();
+                setShowDropdown(false);
+                setFocusedIndex(-1);
+                break;
+            case 'Tab':
+                // Close on tab-out
+                setShowDropdown(false);
+                setFocusedIndex(-1);
+                break;
+        }
+    }, [showDropdown]);
+
+    // Focus first item when dropdown opens
+    useEffect(() => {
+        if (showDropdown) {
+            setFocusedIndex(-1);
+            // Focus first item on open
+            const items = dropdownRef.current?.querySelectorAll<HTMLButtonElement>('.user-menu__item:not([disabled])');
+            if (items && items.length > 0) {
+                setTimeout(() => items[0]?.focus(), 0);
+            }
+        }
+    }, [showDropdown]);
 
     // Open Stripe Customer Portal
     const openCustomerPortal = async () => {
@@ -77,11 +130,11 @@ export const UserMenu: React.FC = () => {
                 window.location.href = data.url;
             } else {
                 console.error('Portal error:', data.error);
-                alert('Could not open subscription portal. Please try again.');
+                toast.error('Could not open subscription portal. Please try again.');
             }
         } catch (error) {
             console.error('Portal error:', error);
-            alert('Could not open subscription portal. Please try again.');
+            toast.error('Could not open subscription portal. Please try again.');
         } finally {
             setIsLoadingPortal(false);
         }
@@ -143,7 +196,13 @@ export const UserMenu: React.FC = () => {
             </button>
 
             {showDropdown && (
-                <div className="user-menu__dropdown">
+                <div
+                    className="user-menu__dropdown"
+                    ref={dropdownRef}
+                    role="menu"
+                    aria-label="User menu"
+                    onKeyDown={handleKeyDown}
+                >
                     <div className="user-menu__user-info">
                         <span className="user-menu__display-name">{displayName}</span>
                         <span className="user-menu__email">{state.user?.email}</span>

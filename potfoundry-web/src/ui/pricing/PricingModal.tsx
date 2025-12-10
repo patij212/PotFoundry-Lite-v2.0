@@ -9,6 +9,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { X, Check, Crown, Zap, Loader2 } from 'lucide-react';
 import { PRICING_TIERS } from '../../services/stripe';
 import { useAuth, useIsPro } from '../../context/AuthContext';
+import { useToast } from '../shared';
 import './PricingModal.css';
 
 interface PricingModalProps {
@@ -21,6 +22,7 @@ type BillingPeriod = 'monthly' | 'yearly';
 export const PricingModal: React.FC<PricingModalProps> = ({ open, onOpenChange }) => {
     const { state } = useAuth();
     const isPro = useIsPro();
+    const toast = useToast();
     const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('yearly');
     const [loading, setLoading] = useState(false);
 
@@ -32,8 +34,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ open, onOpenChange }
 
     const handleUpgrade = async () => {
         if (!state.user) {
-            // User needs to sign in first - show alert
-            alert('Please sign in first to upgrade to Pro!');
+            toast.warning('Please sign in first to upgrade to Pro!');
             return;
         }
 

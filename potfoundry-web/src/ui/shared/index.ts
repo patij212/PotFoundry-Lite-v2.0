@@ -12,3 +12,4 @@ export { Select, type SelectProps, type SelectOption } from './Select';
 export { Section, SectionDivider, SectionGroup, type SectionProps, type SectionGroupProps } from './Section';
 export { HelpDialog, InfoTooltip } from './HelpDialog';
 export { ErrorBoundary, InlineErrorBoundary, withErrorBoundary } from './ErrorBoundary';
+export { ToastProvider, useToast, useToastMaybe, type Toast, type ToastType, type ToastContextValue } from './Toast';
