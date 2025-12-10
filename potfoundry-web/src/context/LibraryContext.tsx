@@ -61,7 +61,7 @@ export interface LibraryState {
 
 export interface LibraryActions {
   fetchDesigns: (reset?: boolean, pageOverride?: number) => void;
-  loadDesign: (design: LibraryDesign) => void;
+  loadDesign: (design: LibraryDesign) => Promise<void>;
   downloadSTL: (design: LibraryDesign) => void;
   publish: (title: string, tags: string[], license: string) => void;
   setSearchQuery: (query: string) => void;
@@ -127,9 +127,11 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
+      // Only fetch columns needed for list view to minimize egress
+      // Full design data (opts, size, mesh, etc.) is fetched on-demand when loading
       let query = supabase
         .from('pots')
-        .select('*')
+        .select('id, title, style, created_at, thumb_url, license, tags')
         .order('created_at', { ascending: false })
         .range(from, to);
 
@@ -178,10 +180,27 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     }
   }, [state.page, state.searchQuery, state.styleFilter]);
 
-  const loadDesign = useCallback((design: LibraryDesign) => {
+  const loadDesign = useCallback(async (design: LibraryDesign) => {
+    if (!supabase) {
+      console.warn('[LibraryContext] Supabase not configured');
+      return;
+    }
+
+    // Fetch full design data on-demand (list view only has minimal fields)
+    const { data: fullDesign, error } = await supabase
+      .from('pots')
+      .select('*')
+      .eq('id', design.id)
+      .single();
+
+    if (error || !fullDesign) {
+      console.error('[LibraryContext] Failed to load design:', error);
+      return;
+    }
+
     // Build WebGPU params directly from the design data
-    const size = design.size || {};
-    const opts = design.opts || {};
+    const size = fullDesign.size || {};
+    const opts = fullDesign.opts || {};
 
     const H = size.height ?? 120;
     const top_od = size.top_od ?? 140;
@@ -198,7 +217,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     const bellCenter = (opts.bell_center as number) ?? 0.5;
     const bellWidth = (opts.bell_width as number) ?? 0.22;
 
-    const [styleId, styleParams] = buildStyleParamPayload(design.style, opts);
+    const [styleId, styleParams] = buildStyleParamPayload(fullDesign.style, opts);
 
     const baseRadius = Math.max(Rt, Rb, 1);
     const halfHeight = Math.max(H * 0.5, 1);
@@ -222,15 +241,27 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
       if (store) {
         const state = store.getState();
 
-        // Sync geometry including bell params
+        // Sync geometry
         state.setGeometryParams({
-          H, top_od, bottom_od, t_wall, t_bottom, r_drain, expn,
-          bellAmp, bellCenter, bellWidth,
+          H,
+          top_od,
+          bottom_od,
+          t_wall,
+          t_bottom,
+          r_drain,
+          expn,
+          bellAmp,
+          bellCenter,
+          bellWidth,
         });
 
         // Sync style
-        state.setStyle(design.style);
-        state.setStyleOpts(opts as Record<string, number | boolean>);
+        if (fullDesign.style) {
+          state.setStyle(fullDesign.style);
+          if (opts && typeof opts === 'object') {
+            state.setStyleOpts(opts as Record<string, number | boolean>);
+          }
+        }
       }
     }
   }, [controller]);
