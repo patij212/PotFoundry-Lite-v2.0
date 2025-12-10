@@ -3942,6 +3942,9 @@ export const mount = async ({
       f32[11] = clampNumber(cfg.sf_n2 ?? cfg.n2, 0.8);
       f32[12] = clampNumber(cfg.sf_n3 ?? cfg.n3, 0.8);
       f32[DRAIN_RADIUS_OFFSET] = Math.max(Math.abs(drainRadius), 0.5);
+      // Bell/bulge parameters (f32[14-15]) - applies to all styles
+      f32[14] = clampNumber(cfg.bellAmp, 0.0);  // Bell amplitude (-0.5 to 0.5)
+      f32[15] = clampNumber(cfg.bellCenter, 0.5); // Bell center position (0.1-0.9)
       current.r_drain = drainRadius;
       current.styleId = styleId;
 
@@ -4378,8 +4381,8 @@ export const mount = async ({
       const sigRotY = state.displayRotY ?? state.rotY ?? 0;
       // Include geometry parameters in signature for immediate slider response
       // CRITICAL: Include canvasAspect so resize during grey mode triggers uniform write
-      // CRITICAL: Include t_wall (f32[25]), t_bottom (f32[26]), drain (f32[13]) for live updates
-      const geoSig = `${f32[0]}_${f32[1]}_${f32[2]}_${f32[3]}_${f32[16]}_${f32[17]}_${f32[6]}_${f32[7]}_${f32[8]}_${f32[13]}_${f32[25]}_${f32[26]}`;
+      // CRITICAL: Include t_wall (f32[25]), t_bottom (f32[26]), drain (f32[13]), bell (f32[14-15]) for live updates
+      const geoSig = `${f32[0]}_${f32[1]}_${f32[2]}_${f32[3]}_${f32[16]}_${f32[17]}_${f32[6]}_${f32[7]}_${f32[8]}_${f32[13]}_${f32[25]}_${f32[26]}_${f32[14]}_${f32[15]}`;
       const uniformSignature = `${sigRotX}_${sigRotY}_${state.zoom ?? 1}_${state.panX ?? 0}_${state.panY ?? 0}_${state.projectionMode}_${String(state.displayCamQuat ?? state.camQuat)}_${geoSig}_${state.canvasAspect}`;
       (globalThis as any).__lastUniformSignature = (globalThis as any).__lastUniformSignature ?? null;
       const lastUniformSignature = (globalThis as any).__lastUniformSignature;

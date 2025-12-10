@@ -108,7 +108,20 @@ fn r_base(t: f32) -> f32 {
   let expn = getf(3u);
   let a = pow(max(t, 0.0), max(expn, 1e-4));
   let m = Rb + (Rt - Rb) * a;
-  return max(m, 0.5);
+  
+  // Bell/bulge deformation - applies to all styles
+  let bell_amp = getf(14u);    // Amplitude (-0.5 to 0.5)
+  let bell_center = getf(15u); // Center position (0.1 to 0.9)
+  let bell_width = 0.22;       // Fixed width for now
+  
+  // Gaussian bell curve centered at bell_center
+  let bell_dist = t - bell_center;
+  let bell_factor = bell_amp * exp(-(bell_dist * bell_dist) / (2.0 * bell_width * bell_width));
+  
+  // Apply bell as a multiplicative factor to the radius
+  let m_with_bell = m * (1.0 + bell_factor);
+  
+  return max(m_with_bell, 0.5);
 }
 
 fn twist_theta(theta: f32, t: f32) -> f32 {
