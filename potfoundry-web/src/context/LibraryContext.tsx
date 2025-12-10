@@ -9,7 +9,6 @@
 import React, { createContext, useContext, useCallback, useState, useMemo } from 'react';
 import { useControllerMaybe } from './ControllerContext';
 import { buildStyleParamPayload } from '../utils/styleParams';
-import { syncStoreFromParams } from '../hooks';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 // ============================================================================
@@ -194,6 +193,11 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     const r_drain = size.drain_radius ?? 10;
     const expn = size.flare_exp ?? 1.1;
 
+    // Extract bell parameters from opts (Python uses snake_case)
+    const bellAmp = (opts.bell_amp as number) ?? 0.0;
+    const bellCenter = (opts.bell_center as number) ?? 0.5;
+    const bellWidth = (opts.bell_width as number) ?? 0.22;
+
     const [styleId, styleParams] = buildStyleParamPayload(design.style, opts);
 
     const baseRadius = Math.max(Rt, Rb, 1);
@@ -202,6 +206,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
 
     const wgpuParams: Record<string, unknown> = {
       H, Rt, Rb, expn, t_wall, t_bottom, r_drain, drain: r_drain,
+      bellAmp, bellCenter, bellWidth,
       styleId, styleParams,
       sceneRadius: sceneRadius * 1.2,
       scenePadding: 1.2,
@@ -212,12 +217,21 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     if (controller?.updateParams) {
       controller.updateParams(wgpuParams);
 
-      syncStoreFromParams({
-        H, top_od, bottom_od, t_wall, t_bottom, r_drain, expn,
-        styleId,
-        styleName: design.style,
-        styleOpts: opts as Record<string, number | boolean>,
-      });
+      // Sync store with loaded design parameters
+      const store = (window as any).__POTFOUNDRY_STORE__;
+      if (store) {
+        const state = store.getState();
+
+        // Sync geometry including bell params
+        state.setGeometryParams({
+          H, top_od, bottom_od, t_wall, t_bottom, r_drain, expn,
+          bellAmp, bellCenter, bellWidth,
+        });
+
+        // Sync style
+        state.setStyle(design.style);
+        state.setStyleOpts(opts as Record<string, number | boolean>);
+      }
     }
   }, [controller]);
 
