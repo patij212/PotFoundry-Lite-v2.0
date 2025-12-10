@@ -60,9 +60,9 @@ export const GEOMETRY_BOUNDS = {
   t_bottom: { min: 2.0, max: 30, step: 0.1 },
   r_drain: { min: 0, max: 50, step: 0.5 },
   expn: { min: 0.5, max: 4.0, step: 0.05 },
-  bellAmp: { min: -0.5, max: 0.5, step: 0.01 },
-  bellCenter: { min: 0.1, max: 0.9, step: 0.05 },
-  bellWidth: { min: 0.1, max: 1.0, step: 0.05 },
+  bellAmp: { min: -1.0, max: 1.0, step: 0.01 },
+  bellCenter: { min: -0.1, max: 1.1, step: 0.05 },
+  bellWidth: { min: 0.01, max: 1.0, step: 0.01 },
 } as const;
 
 // ============================================================================
