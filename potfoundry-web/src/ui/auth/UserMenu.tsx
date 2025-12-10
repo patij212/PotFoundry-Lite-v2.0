@@ -101,12 +101,32 @@ export const UserMenu: React.FC = () => {
     useEffect(() => {
         if (showDropdown) {
             setFocusedIndex(-1);
-            // Focus first item on open
+            // Focus first item on open (after render)
             const items = dropdownRef.current?.querySelectorAll<HTMLButtonElement>('.user-menu__item:not([disabled])');
             if (items && items.length > 0) {
                 setTimeout(() => items[0]?.focus(), 0);
             }
         }
+    }, [showDropdown]);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        if (!showDropdown) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            const target = e.target as Node;
+            if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+                // Check if click was on the trigger button
+                const trigger = dropdownRef.current.previousElementSibling;
+                if (trigger && !trigger.contains(target)) {
+                    setShowDropdown(false);
+                    setFocusedIndex(-1);
+                }
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [showDropdown]);
 
     // Open Stripe Customer Portal
@@ -179,7 +199,6 @@ export const UserMenu: React.FC = () => {
             <button
                 className="user-menu__trigger"
                 onClick={() => setShowDropdown(!showDropdown)}
-                onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
             >
                 {avatarUrl ? (
                     <img src={avatarUrl} alt={displayName} className="user-menu__avatar" />
