@@ -1031,6 +1031,13 @@ export class CameraController {
   }
 
   onPointerRelease(): void {
+    // Guard: If pointer is already released, don't process again.
+    // This prevents double-firing since handlePointerRelease is attached to
+    // both canvas and window - when releasing inside canvas, both fire.
+    if (!this.pointer.active) {
+      return;
+    }
+
     // Transfer arcball inertia before releasing
     if (this.state.cameraMode === 'arcball') {
       this.transferArcballInertia();
