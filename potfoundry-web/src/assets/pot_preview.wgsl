@@ -112,7 +112,7 @@ fn r_base(t: f32) -> f32 {
   // Bell/bulge deformation - applies to all styles
   let bell_amp = getf(14u);    // Amplitude (-0.5 to 0.5)
   let bell_center = getf(15u); // Center position (0.1 to 0.9)
-  let bell_width = 0.22;       // Fixed width for now
+  let bell_width = max(getf(72u), 0.1); // Width from uniform (0.1-1.0)
   
   // Gaussian bell curve centered at bell_center
   let bell_dist = t - bell_center;

@@ -19,7 +19,7 @@ export const MIN_FOV = (20 * Math.PI) / 180;
 export const MAX_FOV = (75 * Math.PI) / 180;
 export const CAMERA_NEAR_EPS = 0.05;
 export const CAMERA_DISTANCE_FALLOFF = 2.2;
-export const UNIFORM_FLOAT_COUNT = 72;
+export const UNIFORM_FLOAT_COUNT = 76; // Increased from 72 to add bell params
 export const CAMERA_EYE_OFFSET = 36;
 export const CAMERA_MODE_OFFSET = 39;
 export const VP_MATRIX_OFFSET = 40;
@@ -32,6 +32,7 @@ export const BASIS_FLIP_DOT_THRESHOLD = -0.999;
 export const SPECULAR_GAIN_OFFSET = 69;
 export const ROUGHNESS_OFFSET = 70;
 export const SHOW_INNER_OFFSET = 71;
+export const BELL_WIDTH_OFFSET = 72; // Bell bulge width parameter
 
 export const INVALID_STATUS_COOLDOWN_MS = 750;
 
