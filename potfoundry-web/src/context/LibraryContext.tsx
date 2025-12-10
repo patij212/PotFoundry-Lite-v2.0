@@ -60,7 +60,7 @@ export interface LibraryState {
 }
 
 export interface LibraryActions {
-  fetchDesigns: (reset?: boolean) => void;
+  fetchDesigns: (reset?: boolean, pageOverride?: number) => void;
   loadDesign: (design: LibraryDesign) => void;
   downloadSTL: (design: LibraryDesign) => void;
   publish: (title: string, tags: string[], license: string) => void;
@@ -108,7 +108,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
   });
 
   // Fetch designs from Supabase
-  const fetchDesigns = useCallback(async (reset = false) => {
+  const fetchDesigns = useCallback(async (reset = false, pageOverride?: number) => {
     if (!supabase) {
       console.warn('[LibraryContext] Supabase not configured');
       return;
@@ -123,7 +123,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     }));
 
     try {
-      const currentPage = reset ? 1 : state.page;
+      const currentPage = reset ? 1 : (pageOverride ?? state.page);
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
@@ -305,10 +305,11 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
 
   const loadMore = useCallback(() => {
     if (!state.loading && state.hasMore) {
-      setState(s => ({ ...s, page: s.page + 1 }));
-      fetchDesigns(false);
+      const nextPage = state.page + 1;
+      setState(s => ({ ...s, page: nextPage }));
+      fetchDesigns(false, nextPage);
     }
-  }, [state.loading, state.hasMore, fetchDesigns]);
+  }, [state.loading, state.hasMore, state.page, fetchDesigns]);
 
   const actions = useMemo<LibraryActions>(() => ({
     fetchDesigns, loadDesign, downloadSTL, publish,
