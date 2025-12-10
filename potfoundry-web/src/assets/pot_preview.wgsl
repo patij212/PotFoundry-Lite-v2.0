@@ -1,5 +1,5 @@
 struct PreviewParamBlock {
-  values: array<vec4<f32>, 18>,
+  values: array<vec4<f32>, 19>, // 19 x 4 = 76 floats to match UNIFORM_FLOAT_COUNT
 };
 
 @group(0) @binding(0) var<uniform> PreviewParams : PreviewParamBlock;
@@ -63,7 +63,8 @@ fn style_params_active() -> bool {
 fn getf(i: u32) -> f32 {
   let elem = i / 4u;
   let comp = i % 4u;
-  if (elem >= 18u) {
+  // Support 76 floats = 19 vec4 elements (indices 0-75)
+  if (elem >= 19u) {
     return 0.0;
   }
   let v = PreviewParams.values[elem];
