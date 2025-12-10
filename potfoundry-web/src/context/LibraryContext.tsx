@@ -1,8 +1,7 @@
 /**
- * Library Context for PotFoundry Web (Standalone)
+ * Library Context for PotFoundry Web
  * 
- * This is a simplified version for the standalone app without Streamlit.
- * Library features will be implemented with Supabase in a later phase.
+ * Connects to Supabase to fetch and publish designs to the public library.
  * 
  * @module context/LibraryContext
  */
@@ -11,6 +10,7 @@ import React, { createContext, useContext, useCallback, useState, useMemo } from
 import { useControllerMaybe } from './ControllerContext';
 import { buildStyleParamPayload } from '../utils/styleParams';
 import { syncStoreFromParams } from '../hooks';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 // ============================================================================
 // Types
@@ -70,6 +70,8 @@ export interface LibraryProviderProps {
   libraryData?: unknown | null;
 }
 
+const PAGE_SIZE = 20;
+
 // ============================================================================
 // Context
 // ============================================================================
@@ -77,7 +79,7 @@ export interface LibraryProviderProps {
 const LibraryContext = createContext<LibraryContextValue | null>(null);
 
 // ============================================================================
-// Provider (Standalone - No Streamlit)
+// Provider
 // ============================================================================
 
 export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) => {
@@ -93,14 +95,76 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     styleFilter: null,
     publishing: false,
     publishSuccess: null,
-    ready: true, // Always ready in standalone mode
+    ready: isSupabaseConfigured(),
   });
 
-  // Placeholder implementations - will be connected to Supabase later
-  const fetchDesigns = useCallback((_reset = false) => {
-    console.log('[LibraryContext] fetchDesigns - will be implemented with Supabase');
-    // TODO: Fetch from Supabase
-  }, []);
+  // Fetch designs from Supabase
+  const fetchDesigns = useCallback(async (reset = false) => {
+    if (!supabase) {
+      console.warn('[LibraryContext] Supabase not configured');
+      return;
+    }
+
+    setState(s => ({
+      ...s,
+      loading: true,
+      error: null,
+      page: reset ? 1 : s.page,
+      designs: reset ? [] : s.designs
+    }));
+
+    try {
+      const currentPage = reset ? 1 : state.page;
+      const from = (currentPage - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let query = supabase
+        .from('designs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      // Apply filters
+      if (state.searchQuery) {
+        query = query.ilike('title', `%${state.searchQuery}%`);
+      }
+      if (state.styleFilter) {
+        query = query.eq('style', state.styleFilter);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('[LibraryContext] Fetch error:', error);
+        setState(s => ({ ...s, loading: false, error: error.message }));
+        return;
+      }
+
+      const designs: LibraryDesign[] = (data || []).map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        style: d.style,
+        created_at: d.created_at,
+        thumb_url: d.thumb_url,
+        stl_url: d.stl_url,
+        license: d.license,
+        tags: d.tags || [],
+        size: d.size || {},
+        opts: d.opts || {},
+      }));
+
+      setState(s => ({
+        ...s,
+        loading: false,
+        designs: reset ? designs : [...s.designs, ...designs],
+        hasMore: designs.length === PAGE_SIZE,
+        page: currentPage,
+      }));
+    } catch (err) {
+      console.error('[LibraryContext] Fetch error:', err);
+      setState(s => ({ ...s, loading: false, error: String(err) }));
+    }
+  }, [state.page, state.searchQuery, state.styleFilter]);
 
   const loadDesign = useCallback((design: LibraryDesign) => {
     // Build WebGPU params directly from the design data
@@ -150,10 +214,59 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     }
   }, []);
 
-  const publish = useCallback((_title: string, _tags: string[], _license: string) => {
-    console.log('[LibraryContext] publish - will be implemented with Supabase');
-    // TODO: Publish to Supabase
-  }, []);
+  const publish = useCallback(async (title: string, tags: string[], license: string) => {
+    if (!supabase) {
+      console.warn('[LibraryContext] Supabase not configured');
+      return;
+    }
+
+    setState(s => ({ ...s, publishing: true, publishSuccess: null }));
+
+    try {
+      // Get current pot state from store
+      const store = (window as any).__POTFOUNDRY_STORE__;
+      if (!store) {
+        throw new Error('Store not available');
+      }
+
+      const storeState = store.getState();
+
+      const designData = {
+        title,
+        style: storeState.style.name,
+        tags,
+        license,
+        size: {
+          height: storeState.geometry.H,
+          top_od: storeState.geometry.top_od,
+          bottom_od: storeState.geometry.bottom_od,
+          wall_thickness: storeState.geometry.t_wall,
+          bottom_thickness: storeState.geometry.t_bottom,
+          drain_radius: storeState.geometry.r_drain,
+          flare_exp: storeState.geometry.expn,
+        },
+        opts: storeState.style.opts,
+      };
+
+      const { error } = await supabase
+        .from('designs')
+        .insert([designData]);
+
+      if (error) {
+        console.error('[LibraryContext] Publish error:', error);
+        setState(s => ({ ...s, publishing: false, publishSuccess: false }));
+        return;
+      }
+
+      setState(s => ({ ...s, publishing: false, publishSuccess: true }));
+
+      // Refresh the list
+      fetchDesigns(true);
+    } catch (err) {
+      console.error('[LibraryContext] Publish error:', err);
+      setState(s => ({ ...s, publishing: false, publishSuccess: false }));
+    }
+  }, [fetchDesigns]);
 
   const setSearchQuery = useCallback((query: string) => {
     setState(s => ({ ...s, searchQuery: query }));
@@ -164,9 +277,11 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
   }, []);
 
   const loadMore = useCallback(() => {
-    console.log('[LibraryContext] loadMore - will be implemented with Supabase');
-    // TODO: Load more from Supabase
-  }, []);
+    if (!state.loading && state.hasMore) {
+      setState(s => ({ ...s, page: s.page + 1 }));
+      fetchDesigns(false);
+    }
+  }, [state.loading, state.hasMore, fetchDesigns]);
 
   const actions = useMemo<LibraryActions>(() => ({
     fetchDesigns, loadDesign, downloadSTL, publish,
