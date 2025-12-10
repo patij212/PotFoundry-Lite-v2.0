@@ -358,28 +358,28 @@ export class CameraController {
     try {
       const keys = this.helpers.freeKeyboard?.activeKeys;
       if (!keys || keys.size === 0) return false;
-      
+
       // Use constants for professional speed scaling
       const baseSpeed = (CameraConstants as any).FREE_MOVE_SPEED_BASE ?? 100.0;
       const boostMultiplier = (CameraConstants as any).FREE_MOVE_SPEED_BOOST ?? 3.0;
       const boost = this.helpers.freeKeyboard?.boost ? boostMultiplier : 1.0;
-      
+
       // Scale movement by scene radius for consistent feel regardless of object size
       const sceneScale = Math.max(this.state.sceneRadius / 100, 0.5);
       const speed = baseSpeed * sceneScale * (this.state.freeSpeed || 1) * boost;
       const s = (deltaMs / 1000) * speed;
-      
+
       if (this.state.cameraMode === 'free') {
         // FREE MODE: Full 3D movement
         const basis = this.ensureInteractiveBasis();
         const forward: Vec3 = basis.forward;
         const right: Vec3 = basis.right;
         const up: Vec3 = basis.up;
-        
+
         let dx = 0;
         let dy = 0;
         let dz = 0;
-        
+
         // Forward/backward (W/S)
         if (keys.has('w')) {
           dx += forward[0] * s; dy += forward[1] * s; dz += forward[2] * s;
@@ -401,7 +401,7 @@ export class CameraController {
         if (keys.has('e')) {
           dx += up[0] * s; dy += up[1] * s; dz += up[2] * s;
         }
-        
+
         if (dx === 0 && dy === 0 && dz === 0) return false;
         this.translateFreeCamera(this.state, [dx, dy, dz]);
         this.state.cameraDirty = true;
@@ -414,7 +414,7 @@ export class CameraController {
         let panRight = 0;  // Along camera right axis
         let panUp = 0;     // Along camera up axis
         let tiltDelta = 0;
-        
+
         // A/D = pan left/right (along camera right axis)
         if (keys.has('a')) panRight -= panSpeed;
         if (keys.has('d')) panRight += panSpeed;
@@ -424,12 +424,12 @@ export class CameraController {
         // Q/E = tilt camera (rotate around view axis)
         if (keys.has('q')) tiltDelta -= 0.03 * boost;
         if (keys.has('e')) tiltDelta += 0.03 * boost;
-        
+
         if (panRight === 0 && panUp === 0 && tiltDelta === 0) return false;
-        
+
         // Track if we need to mark interaction (only for tilt, not pan during drag)
         let shouldMarkInteraction = false;
-        
+
         // Apply pan along camera axes (project to XY plane)
         if (panRight !== 0 || panUp !== 0) {
           const basis = this.ensureInteractiveBasis();
@@ -454,7 +454,7 @@ export class CameraController {
           }
           this.updatePivotFromPan();
         }
-        
+
         // Apply tilt (camera roll around view axis) via rotZ
         // This smoothly tilts during autorotate without causing jumps
         if (tiltDelta !== 0) {
@@ -463,25 +463,25 @@ export class CameraController {
           const newRotZ = currentRotZ + tiltDelta;
           this.state.rotZ = newRotZ;
           (this.state as any).displayRotZ = newRotZ;
-          
+
           // Get current display angles (these are being continuously updated by autorotate)
           const rotX = (this.state.displayRotX ?? this.state.rotX) as number;
           const rotY = (this.state.displayRotY ?? this.state.rotY) as number;
-          
+
           // Rebuild DISPLAY basis only (don't touch committed cam* during autorotate)
           const newQuat = quaternionFromEuler(rotX, rotY, newRotZ);
           const newBasis = basisFromQuaternion(newQuat);
-          
+
           // Update display basis for rendering
           this.state.displayCamRight = [...newBasis.right];
           this.state.displayCamUp = [...newBasis.up];
           this.state.displayCamForward = [...newBasis.forward];
           this.state.displayCamQuat = [...newQuat] as Quaternion;
-          
+
           // Don't pause autorotate for Q/E - let it keep spinning with the new tilt
           // shouldMarkInteraction = true; // Removed to allow smooth tilt during autorotate
         }
-        
+
         this.state.cameraDirty = true;
         this.helpers.requestCameraEmitWhenStatic?.();
         return true;
@@ -683,15 +683,15 @@ export class CameraController {
     const hasDisplay = Boolean(this.state.displayCamForward && this.state.displayCamUp && this.state.displayCamRight);
     const sourceBasis: CameraBasis = hasDisplay
       ? {
-          right: [...(this.state.displayCamRight as Vec3)] as Vec3,
-          up: [...(this.state.displayCamUp as Vec3)] as Vec3,
-          forward: [...(this.state.displayCamForward as Vec3)] as Vec3,
-        }
+        right: [...(this.state.displayCamRight as Vec3)] as Vec3,
+        up: [...(this.state.displayCamUp as Vec3)] as Vec3,
+        forward: [...(this.state.displayCamForward as Vec3)] as Vec3,
+      }
       : {
-          right: [...(this.state.camRight as Vec3)] as Vec3,
-          up: [...(this.state.camUp as Vec3)] as Vec3,
-          forward: [...(this.state.camForward as Vec3)] as Vec3,
-        };
+        right: [...(this.state.camRight as Vec3)] as Vec3,
+        up: [...(this.state.camUp as Vec3)] as Vec3,
+        forward: [...(this.state.camForward as Vec3)] as Vec3,
+      };
     // Normalize via camera_basis helper; sync to state
     // We prefer using quaternion conversions and cbSyncAngles
     const normalized: CameraBasis = sourceBasis as CameraBasis;
@@ -805,7 +805,7 @@ export class CameraController {
       const clamped = Math.sign(raw) * Math.min(maxVal, Math.abs(raw));
       this.state.inertiaArcSpeed = clamped;
       // Expose debug snapshot for diagnostics
-      try { (this.state as any).recentInertia = { type: 'arc', raw: this.pointer.arcInertiaSpeed, clamped, axis: this.pointer.arcInertiaAxis, ts: Date.now() }; } catch (e) {/* best-effort */}
+      try { (this.state as any).recentInertia = { type: 'arc', raw: this.pointer.arcInertiaSpeed, clamped, axis: this.pointer.arcInertiaAxis, ts: Date.now() }; } catch (e) {/* best-effort */ }
     } else if (arcballDrag) {
       this.state.inertiaArcAxis = null;
       this.state.inertiaArcSpeed = 0;
@@ -836,13 +836,13 @@ export class CameraController {
     this.pointer.arcLastY = event.clientY;
     this.pointer.arcStartX = event.clientX;
     this.pointer.arcStartY = event.clientY;
-    
+
     // Capture starting quaternion from current display state
-    this.pointer.arcStartQuat = this.state.displayCamQuat 
-      ?? this.state.camQuat 
+    this.pointer.arcStartQuat = this.state.displayCamQuat
+      ?? this.state.camQuat
       ?? quaternionFromBasis(this.ensureInteractiveBasis());
     this.pointer.arcPrevQuat = [...this.pointer.arcStartQuat] as Quaternion;
-    
+
     // Reset inertia and hit tracking
     this.pointer.arcInertiaAxis = null;
     this.pointer.arcInertiaSpeed = 0;
@@ -861,44 +861,44 @@ export class CameraController {
   private processArcballOrbit(event: PointerEvent, dtSec: number): void {
     const vw = this.canvas.clientWidth || Math.max(1, this.canvas.width || 1);
     const vh = this.canvas.clientHeight || Math.max(1, this.canvas.height || 1);
-    
+
     const anchorX = this.pointer.arcStartX;
     const anchorY = this.pointer.arcStartY;
     const currentX = event.clientX;
     const currentY = event.clientY;
-    
+
     // Update tracking position
     this.pointer.arcLastX = currentX;
     this.pointer.arcLastY = currentY;
-    
+
     // Compute arcball rotation from start to current position
     const { axis: arcAxisCam, angle: arcAngle } = sharedArcballDelta(
       anchorX, anchorY, currentX, currentY, vw, vh
     );
-    
+
     // Skip tiny rotations to avoid numerical instability
     if (Math.abs(arcAngle) < 1e-6) return;
-    
+
     // Get base quaternion for rotation
     const baseQuat = this.pointer.arcStartQuat ?? quaternionFromBasis(this.ensureInteractiveBasis());
     const startBasis = basisFromQuaternion(baseQuat);
-    
+
     // Transform rotation axis from camera space to world space
     // Pure arcball rotation - no axis modification, no pivot shifting
     const axisWorld = cbCameraAxisToWorld(startBasis, arcAxisCam);
     if (!axisWorld) return;  // Invalid axis, skip
-    
+
     // Apply rotation: deltaQuat * baseQuat
     const deltaQuat = quaternionFromAxisAngle(axisWorld, arcAngle);
     const nextQuat = multiplyQuaternions(deltaQuat, baseQuat);
     const rotated = basisFromQuaternion(nextQuat);
-    
+
     // Update display state
     this.state.displayCamRight = [...rotated.right];
     this.state.displayCamUp = [...rotated.up];
     this.state.displayCamForward = [...rotated.forward];
     this.state.displayCamQuat = [...nextQuat] as Quaternion;
-    
+
     // Sync Euler angles for compatibility with other systems
     const { rotX, rotY } = cbSyncAnglesFromBasis({
       right: rotated.right,
@@ -907,10 +907,10 @@ export class CameraController {
     } as HelperCameraBasis);
     this.state.displayRotX = rotX;
     this.state.displayRotY = rotY;
-    
+
     // Calculate inertia from frame-to-frame rotation
     this.updateArcballInertia(nextQuat, dtSec);
-    
+
     this.state.cameraDirty = true;
   }
 
@@ -923,29 +923,37 @@ export class CameraController {
       this.pointer.arcPrevQuat = [...nextQuat] as Quaternion;
       return;
     }
-    
+
     const prevQuat = this.pointer.arcPrevQuat;
-    
+
     // Compute rotation delta from previous frame
     const deltaFrame = multiplyQuaternions(nextQuat, invertQuaternion(prevQuat));
     const { axis: inertiaAxis, angle: inertiaAngle } = axisAngleFromQuaternion(deltaFrame);
-    
+
     if (inertiaAngle > 1e-5 && dtSec > 1e-4) {
       this.pointer.arcInertiaAxis = inertiaAxis;
       // Convert frame rotation to angular velocity (rad/sec)
       const rawSpeed = inertiaAngle / dtSec;
-      // Apply damping for smoother feel (reduce by 50%)
-      this.pointer.arcInertiaSpeed = rawSpeed * 0.5;
+      // Blend with previous speed for smoother feel (exponential smoothing)
+      const prevSpeed = this.pointer.arcInertiaSpeed || 0;
+      this.pointer.arcInertiaSpeed = prevSpeed * 0.3 + rawSpeed * 0.7;
       // Clamp to prevent runaway inertia
       const maxSpeed = CameraController.MAX_ARC_INERTIA_SPEED;
       if (this.pointer.arcInertiaSpeed > maxSpeed) {
         this.pointer.arcInertiaSpeed = maxSpeed;
       }
     } else {
-      this.pointer.arcInertiaAxis = null;
-      this.pointer.arcInertiaSpeed = 0;
+      // Don't zero out inertia on small movements - just decay it slightly
+      // This preserves momentum from the last significant movement
+      if (this.pointer.arcInertiaSpeed) {
+        this.pointer.arcInertiaSpeed *= 0.9;
+        if (Math.abs(this.pointer.arcInertiaSpeed) < 0.01) {
+          this.pointer.arcInertiaSpeed = 0;
+          this.pointer.arcInertiaAxis = null;
+        }
+      }
     }
-    
+
     // Store current quat for next frame's delta calculation
     this.pointer.arcPrevQuat = [...nextQuat] as Quaternion;
   }
@@ -960,7 +968,7 @@ export class CameraController {
       this.state.inertiaArcSpeed = 0;
       return;
     }
-    
+
     this.state.inertiaArcAxis = [...this.pointer.arcInertiaAxis] as Vec3;
     this.state.inertiaArcSpeed = this.pointer.arcInertiaSpeed;
   }
@@ -974,10 +982,10 @@ export class CameraController {
         /* best-effort commit */
       }
     }
-    
+
     this.resetInertia();
     this.pointer.active = true;
-    
+
     // Determine interaction mode based on button and modifiers
     // Right-click = pan, Middle-click = dolly, Modifiers + left = pan
     let mode: PointerMode = 'orbit';
@@ -986,12 +994,12 @@ export class CameraController {
     } else if (event.button === 1) {
       mode = 'dolly';
     }
-    
+
     this.pointer.mode = mode;
     this.pointer.lastX = event.clientX;
     this.pointer.lastY = event.clientY;
     this.markInteraction();
-    
+
     // Initialize display basis from committed state
     this.state.displayCamRight = [...this.state.camRight];
     this.state.displayCamUp = [...this.state.camUp];
@@ -999,7 +1007,7 @@ export class CameraController {
     this.state.displayCamQuat = [...this.state.camQuat] as Quaternion;
     this.state.displayRotX = this.state.rotX;
     this.state.displayRotY = this.state.rotY;
-    
+
     // Initialize arcball-specific state if in arcball mode
     if (this.state.cameraMode === 'arcball') {
       this.initArcballDrag(event, mode);
@@ -1016,7 +1024,7 @@ export class CameraController {
       this.pointer.arcHit = null;
       this.pointer.arcHitNormal = null;
     }
-    
+
     // Reset state-level inertia
     this.state.inertiaArcAxis = null;
     this.state.inertiaArcSpeed = 0;
@@ -1027,7 +1035,7 @@ export class CameraController {
     if (this.state.cameraMode === 'arcball') {
       this.transferArcballInertia();
     }
-    
+
     this.releasePointer();
     this.markInteraction();
     this.helpers.requestCameraEmitWhenStatic();
@@ -1142,7 +1150,7 @@ export class CameraController {
           const maxRot = CameraController.MAX_ROT_INERTIA_SPEED;
           if (Math.abs(this.state.inertiaRotY) > maxRot) this.state.inertiaRotY = Math.sign(this.state.inertiaRotY) * maxRot;
           if (Math.abs(this.state.inertiaRotX) > maxRot) this.state.inertiaRotX = Math.sign(this.state.inertiaRotX) * maxRot;
-          try { (this.state as any).recentInertia = { type: 'turntable', inertiaRotX: this.state.inertiaRotX, inertiaRotY: this.state.inertiaRotY, displayRotX: this.state.displayRotX, displayRotY: this.state.displayRotY, dt: dtSec, ts: Date.now() }; } catch (e) {/* best-effort */}
+          try { (this.state as any).recentInertia = { type: 'turntable', inertiaRotX: this.state.inertiaRotX, inertiaRotY: this.state.inertiaRotY, displayRotX: this.state.displayRotX, displayRotY: this.state.displayRotY, dt: dtSec, ts: Date.now() }; } catch (e) {/* best-effort */ }
         } else {
           // Default turntable-like mapping for other modes (orbit)
           // Ensure transient display angles exist
