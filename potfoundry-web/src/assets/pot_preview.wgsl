@@ -368,6 +368,20 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
     }
     return vec3<f32>(dir * r, -BOTTOM_Z_OFFSET);
   }
+  // Segment 5: Drain hole cylinder wall (connects top and bottom drain holes)
+  if (seg == 5u) {
+    let H = getf(0u);
+    let bottom = clamp(getf(26u), 0.0, H);
+    let inner_base = inner_point(u, 0.0);
+    let r_inner_base = length(inner_base.xy);
+    let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.25);
+    let r_inner_cap = max(r_inner_base - 0.2, 0.25);
+    let r_drain = clamp(drain_raw, 0.25, r_inner_cap);
+    // v goes from 0 (bottom at z=0) to 1 (top at z=bottom)
+    let z = mix(0.0, bottom, clamp(v, 0.0, 1.0));
+    return vec3<f32>(dir * r_drain, z);
+  }
+  // Segment 4: Rim (top cap connecting outer to inner wall at z=H)
   let outer_top = outer_point(u, H);
   let inner_top = inner_point(u, H);
   let r_outer = length(outer_top.xy);
@@ -385,7 +399,8 @@ fn wrap_unit(value: f32) -> f32 {
 }
 
 fn sample_u(seg: u32, base: f32, delta: f32) -> f32 {
-  if (seg <= 4u) {
+  // Segments 0-5 are cylindrical (wrap around u), segment 6+ would need clamping
+  if (seg <= 5u) {
     return wrap_unit(base + delta);
   }
   return clamp(base + delta, 0.0, 1.0);
@@ -397,6 +412,11 @@ fn surface_normal(seg: u32, u: f32, v: f32, du: f32, dv: f32) -> vec3<f32> {
   }
   if (seg == 3u) {
     return vec3<f32>(0.0, 0.0, -1.0);
+  }
+  // Segment 5 (drain cylinder): normal points inward (toward center)
+  if (seg == 5u) {
+    let th = u * TAU;
+    return vec3<f32>(-cos(th), -sin(th), 0.0);
   }
   let p = surface_point(seg, u, v);
   let u_forward = sample_u(seg, u, du);
@@ -799,6 +819,7 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
   let cells_bottom_top = cells_x * bottom_rings;
   let cells_bottom_under = cells_x * bottom_rings;
   let cells_rim = cells_x * rim_rings;
+  let cells_drain = cells_x * bottom_rings; // Drain cylinder uses same ring count as bottom
 
   let verts_per_cell = 6;
   let cell = i32(local_vid) / verts_per_cell;
@@ -824,6 +845,11 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
           local_cell -= cells_bottom_under;
           segment = 4u;
           seg_cells_y = rim_rings;
+          if (local_cell >= cells_rim) {
+            local_cell -= cells_rim;
+            segment = 5u;
+            seg_cells_y = bottom_rings; // Drain cylinder height rings
+          }
         }
       }
     }

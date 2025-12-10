@@ -4257,8 +4257,9 @@ export const mount = async ({
       const cellsBottomTop = nTheta * bottomRings;
       const cellsBottomUnder = cellsBottomTop;
       const cellsRim = nTheta * rimRings;
+      const cellsDrain = nTheta * bottomRings; // Drain cylinder wall
       const totalCells =
-        cellsOuter + cellsInner + cellsBottomTop + cellsBottomUnder + cellsRim;
+        cellsOuter + cellsInner + cellsBottomTop + cellsBottomUnder + cellsRim + cellsDrain;
       const totalVerts = totalCells * 6;
       const desiredCounts: GeometrySnapshot = {
         nTheta,
