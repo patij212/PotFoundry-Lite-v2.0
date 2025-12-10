@@ -129,7 +129,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
       const to = from + PAGE_SIZE - 1;
 
       let query = supabase
-        .from('designs')
+        .from('pots')
         .select('*')
         .order('created_at', { ascending: false })
         .range(from, to);
@@ -262,7 +262,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
       };
 
       const { error } = await supabase
-        .from('designs')
+        .from('pots')
         .insert([designData]);
 
       if (error) {
