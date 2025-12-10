@@ -345,7 +345,9 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
   if (seg == 3u) {
     let outer_base = outer_point(u, 0.0);
     let r_outer = length(outer_base.xy);
-    let r_inner = length(inner_bottom.xy);
+    // Calculate inner radius at z=0 (where underside actually is), not at z=bottom
+    let inner_base = inner_point(u, 0.0);
+    let r_inner = length(inner_base.xy);
     let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.25);
     let r_inner_cap = max(r_inner - 0.2, 0.25);
     let r_drain = clamp(drain_raw, 0.25, r_inner_cap);
