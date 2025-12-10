@@ -659,3 +659,33 @@ export function syncStoreFromParams(params: Record<string, unknown>): void {
     }
   }
 }
+
+/**
+ * Immediately send ALL current Zustand store state to the WebGPU controller.
+ * 
+ * This function eliminates the "grey state" that occurs between mount() and
+ * useRendererBridge activation. Call this right after mount() completes.
+ * 
+ * @param controller - The WebGPU controller instance
+ */
+export function sendFullStoreToController(controller: WebGPUController): void {
+  const store = useAppStore.getState();
+
+  // Send geometry
+  const geometryParams = geometryToParams(store.geometry);
+  controller.updateParams(geometryParams);
+
+  // Send style  
+  const styleParams = styleToParams(store.style);
+  controller.updateParams(styleParams);
+
+  // Send appearance
+  const appearanceParams = appearanceToParams(store.appearance);
+  controller.updateParams(appearanceParams);
+
+  // Send mesh quality
+  const meshParams = meshToParams(store.mesh);
+  controller.updateParams(meshParams);
+
+  console.warn('[RendererBridge] Sent full store state immediately after mount');
+}

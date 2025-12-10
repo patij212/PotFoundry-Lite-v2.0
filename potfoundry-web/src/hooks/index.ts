@@ -5,7 +5,7 @@
  */
 
 export { useDebouncedMerge, type MergeCallback } from './useDebouncedMerge';
-export { useRendererBridge, syncStoreFromParams, type RendererBridgeOptions } from './useRendererBridge';
+export { useRendererBridge, syncStoreFromParams, sendFullStoreToController, type RendererBridgeOptions } from './useRendererBridge';
 export { usePerformanceTracker, parseStatusMetrics, type PerformanceMetrics, type PerformanceTrackerOptions } from './usePerformanceTracker';
 export { useExport, type UseExportResult, type ExportProgress, type ExportStats } from './useExport';
 export {
