@@ -29,20 +29,12 @@ import './LibraryPanel.css';
  */
 export const LibraryPanel: React.FC = () => {
   const library = useLibraryMaybe();
-  
+
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishTitle, setPublishTitle] = useState('');
   const [publishTags, setPublishTags] = useState('');
   const [publishLicense, setPublishLicense] = useState('CC BY-NC 4.0');
   const [hasFetched, setHasFetched] = useState(false);
-
-  // Debug: log received designs to understand what data we're getting
-  useEffect(() => {
-    if (library?.state.designs.length) {
-      console.log('[LibraryPanel] Received designs:', library.state.designs);
-      console.log('[LibraryPanel] Sample design fields:', Object.keys(library.state.designs[0]));
-    }
-  }, [library?.state.designs]);
 
   // Auto-fetch when the panel becomes visible AND the context is ready
   useEffect(() => {
@@ -50,7 +42,7 @@ export const LibraryPanel: React.FC = () => {
       setHasFetched(true);
       library.actions.fetchDesigns(true);
     }
-  }, [library, hasFetched]);
+  }, [library, library?.state.ready, library?.state.loading, hasFetched]);
 
   // Handle publish success
   useEffect(() => {
@@ -69,7 +61,7 @@ export const LibraryPanel: React.FC = () => {
 
   const handlePublish = useCallback(() => {
     if (!publishTitle.trim() || !library) return;
-    
+
     const tags = publishTags.split(',').map(t => t.trim()).filter(Boolean);
     library.actions.publish(publishTitle.trim(), tags, publishLicense);
   }, [library, publishTitle, publishTags, publishLicense]);
@@ -132,10 +124,7 @@ export const LibraryPanel: React.FC = () => {
 
       {/* Design Grid */}
       <div className="pf-library-panel__grid">
-        {state.designs.map(design => {
-          // Debug: log each design being rendered
-          console.log('[LibraryPanel] Rendering design:', design.id, 'thumb_url:', design.thumb_url, 'stl_url:', design.stl_url);
-          return (
+        {state.designs.map(design => (
           <div key={design.id} className="pf-library-panel__card">
             <div className="pf-library-panel__thumb">
               {design.thumb_url ? (
@@ -170,7 +159,7 @@ export const LibraryPanel: React.FC = () => {
               />
             </div>
           </div>
-        );})}
+        ))}
       </div>
 
       {/* Loading State */}
@@ -213,7 +202,7 @@ export const LibraryPanel: React.FC = () => {
         >
           {publishOpen ? 'Cancel' : 'Publish Your Design'}
         </Button>
-        
+
         {publishOpen && (
           <div className="pf-library-panel__publish-form">
             <input

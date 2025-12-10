@@ -8,7 +8,7 @@
 
 import React, { useMemo } from 'react';
 import { Activity, Triangle, Box } from 'lucide-react';
-import { usePerformance, useGeometry } from '../../state';
+import { usePerformance } from '../../state';
 import './StatusBar.css';
 
 // ============================================================================
@@ -50,11 +50,7 @@ function formatVolume(mm3: number): string {
  */
 export const StatusBar: React.FC = () => {
   const performance = usePerformance();
-  const geometry = useGeometry();
-  
-  // Estimated print height (same as pot height)
-  const printHeight = geometry.H;
-  
+
   // Format metrics
   const stats = useMemo(
     () => ({
@@ -72,19 +68,19 @@ export const StatusBar: React.FC = () => {
         <Triangle size={12} />
         <span>{stats.triangles} tris</span>
       </div>
-      
+
       <div className="pf-status-bar__section">
         <Box size={12} />
         <span>{stats.vertices} verts</span>
       </div>
-      
+
       <div className="pf-status-bar__divider" />
-      
+
       <div className="pf-status-bar__section">
         <Activity size={12} />
         <span>{stats.genTime}</span>
       </div>
-      
+
       {performance.volume > 0 && (
         <>
           <div className="pf-status-bar__divider" />
@@ -93,7 +89,7 @@ export const StatusBar: React.FC = () => {
           </div>
         </>
       )}
-      
+
       {performance.isGenerating && (
         <div className="pf-status-bar__generating">
           <span className="pf-status-bar__spinner" />

@@ -38,13 +38,19 @@ export interface AuthState {
     isConfigured: boolean;
 }
 
+/** Result returned from auth actions for modal handling */
+export interface AuthResult {
+    success: boolean;
+    error?: string;
+}
+
 export interface AuthActions {
-    signInWithEmail: (email: string, password: string) => Promise<void>;
-    signUpWithEmail: (email: string, password: string) => Promise<void>;
+    signInWithEmail: (email: string, password: string) => Promise<AuthResult>;
+    signUpWithEmail: (email: string, password: string) => Promise<AuthResult>;
     signInWithGoogle: () => Promise<void>;
     signInWithGitHub: () => Promise<void>;
     signOut: () => Promise<void>;
-    resetPassword: (email: string) => Promise<void>;
+    resetPassword: (email: string) => Promise<AuthResult>;
     refreshProfile: () => Promise<void>;
     clearError: () => void;
 }
@@ -245,10 +251,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [fetchProfile]);
 
     // Auth actions
-    const signInWithEmail = useCallback(async (email: string, password: string) => {
+    const signInWithEmail = useCallback(async (email: string, password: string): Promise<AuthResult> => {
         if (!isSupabaseConfigured() || !supabase) {
-            setState(s => ({ ...s, error: 'Auth not configured' }));
-            return;
+            const errorMsg = 'Auth not configured';
+            setState(s => ({ ...s, error: errorMsg }));
+            return { success: false, error: errorMsg };
         }
 
         setState(s => ({ ...s, loading: true, error: null }));
@@ -257,13 +264,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (error) {
             setState(s => ({ ...s, loading: false, error: error.message }));
+            return { success: false, error: error.message };
         }
+        return { success: true };
     }, []);
 
-    const signUpWithEmail = useCallback(async (email: string, password: string) => {
+    const signUpWithEmail = useCallback(async (email: string, password: string): Promise<AuthResult> => {
         if (!isSupabaseConfigured() || !supabase) {
-            setState(s => ({ ...s, error: 'Auth not configured' }));
-            return;
+            const errorMsg = 'Auth not configured';
+            setState(s => ({ ...s, error: errorMsg }));
+            return { success: false, error: errorMsg };
         }
 
         setState(s => ({ ...s, loading: true, error: null }));
@@ -272,9 +282,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (error) {
             setState(s => ({ ...s, loading: false, error: error.message }));
-        } else {
-            setState(s => ({ ...s, loading: false, error: null }));
+            return { success: false, error: error.message };
         }
+        setState(s => ({ ...s, loading: false, error: null }));
+        return { success: true };
     }, []);
 
     const signInWithGoogle = useCallback(async () => {
@@ -331,8 +342,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
-    const resetPassword = useCallback(async (email: string) => {
-        if (!isSupabaseConfigured() || !supabase) return;
+    const resetPassword = useCallback(async (email: string): Promise<AuthResult> => {
+        if (!isSupabaseConfigured() || !supabase) {
+            const errorMsg = 'Auth not configured';
+            return { success: false, error: errorMsg };
+        }
 
         setState(s => ({ ...s, loading: true, error: null }));
 
@@ -342,9 +356,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (error) {
             setState(s => ({ ...s, loading: false, error: error.message }));
-        } else {
-            setState(s => ({ ...s, loading: false }));
+            return { success: false, error: error.message };
         }
+        setState(s => ({ ...s, loading: false }));
+        return { success: true };
     }, []);
 
     const clearError = useCallback(() => {

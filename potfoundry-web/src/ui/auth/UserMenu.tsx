@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { User, LogOut, Crown, Settings, CreditCard, ExternalLink, Calendar, AlertCircle } from 'lucide-react';
 import { useAuth, useIsAuthenticated, useIsPro } from '../../context/AuthContext';
 import { AuthModal } from './AuthModal';
+import { SettingsModal } from './SettingsModal';
 import { PricingModal } from '../pricing';
 import './UserMenu.css';
 
@@ -52,6 +53,7 @@ export const UserMenu: React.FC = () => {
     const [showAuthModal, setShowAuthModal] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
     const [showPricingModal, setShowPricingModal] = useState(false);
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [isLoadingPortal, setIsLoadingPortal] = useState(false);
 
     // Open Stripe Customer Portal
@@ -216,16 +218,7 @@ export const UserMenu: React.FC = () => {
                         className="user-menu__item"
                         onClick={() => {
                             setShowDropdown(false);
-                            alert(
-                                `Profile Settings\n\n` +
-                                `Email: ${state.user?.email}\n` +
-                                `Display Name: ${state.profile?.displayName || 'Not set'}\n` +
-                                `Tier: ${isPro ? 'Pro' : 'Free'}\n` +
-                                `Status: ${subscriptionStatus}\n` +
-                                `Exports This Month: ${state.profile?.exportsThisMonth || 0}\n` +
-                                `Total Exports: ${state.profile?.totalExports || 0}\n\n` +
-                                `(Full settings page coming soon!)`
-                            );
+                            setShowSettingsModal(true);
                         }}
                     >
                         <Settings size={16} />
@@ -249,6 +242,9 @@ export const UserMenu: React.FC = () => {
 
             {/* Pricing Modal */}
             <PricingModal open={showPricingModal} onOpenChange={setShowPricingModal} />
+
+            {/* Settings Modal */}
+            <SettingsModal open={showSettingsModal} onOpenChange={setShowSettingsModal} />
         </div>
     );
 };

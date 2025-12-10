@@ -34,16 +34,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ open, onOpenChange }) => {
             return;
         }
 
+        let result;
         if (mode === 'signin') {
-            await actions.signInWithEmail(email, password);
+            result = await actions.signInWithEmail(email, password);
         } else if (mode === 'signup') {
-            await actions.signUpWithEmail(email, password);
+            result = await actions.signUpWithEmail(email, password);
         } else if (mode === 'forgot') {
-            await actions.resetPassword(email);
+            result = await actions.resetPassword(email);
         }
 
-        // Close modal on success
-        if (!state.error) {
+        // Close modal only on success (result.success is true)
+        if (result?.success) {
             onOpenChange(false);
         }
     };

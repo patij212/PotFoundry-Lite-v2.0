@@ -108,10 +108,15 @@ export const useAppStore = create<AppStore>()(
     ),
     {
       name: 'PotFoundry',
-      enabled: process.env.NODE_ENV === 'development',
+      enabled: import.meta.env.DEV,
     }
   )
 );
+
+// Expose store globally for save/load functionality
+if (typeof window !== 'undefined') {
+  (window as any).__POTFOUNDRY_STORE__ = useAppStore;
+}
 
 // ============================================================================
 // Selector Hooks

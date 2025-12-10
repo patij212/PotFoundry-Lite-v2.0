@@ -24,10 +24,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ open, onOpenChange }
     const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('yearly');
     const [loading, setLoading] = useState(false);
 
-    // Stripe Payment Link URL - Test mode product
-    // Product ID: prod_TYf3si1yBWyKYj
-    // Payment Link: https://buy.stripe.com/test_00w00j0Fvfo8chu2wtaEE00
-    const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/test_00w00j0Fvfo8chu2wtaEE00';
+    // Stripe Payment Link URLs for different billing periods
+    const STRIPE_PAYMENT_LINKS: Record<BillingPeriod, string> = {
+        yearly: 'https://buy.stripe.com/test_aFa5kD1Jzdg06Xa2wtaEE01',
+        monthly: 'https://buy.stripe.com/test_00w28rdshek46Xa2wtaEE02',
+    };
 
     const handleUpgrade = async () => {
         if (!state.user) {
@@ -39,11 +40,14 @@ export const PricingModal: React.FC<PricingModalProps> = ({ open, onOpenChange }
         setLoading(true);
 
         try {
+            // Get the correct payment link based on selected billing period
+            const paymentLink = STRIPE_PAYMENT_LINKS[billingPeriod];
+
             // Add customer email to the payment link for prefilling
             const email = state.user.email || '';
             const checkoutUrl = email
-                ? `${STRIPE_PAYMENT_LINK}?prefilled_email=${encodeURIComponent(email)}`
-                : STRIPE_PAYMENT_LINK;
+                ? `${paymentLink}?prefilled_email=${encodeURIComponent(email)}`
+                : paymentLink;
 
             // Redirect to Stripe Checkout
             window.location.href = checkoutUrl;
