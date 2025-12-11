@@ -440,9 +440,14 @@ fn surface_normal(seg: u32, u: f32, v: f32, du: f32, dv: f32) -> vec3<f32> {
   if (seg == 3u) {
     return vec3<f32>(0.0, 0.0, -1.0);
   }
-  // Segment 5 (drain cylinder): normal points inward (toward center)
+  // Segment 5 (drain cylinder): normal points inward (toward center) with twist
   if (seg == 5u) {
-    let th = u * TAU;
+    let H = getf(0u);
+    let bottom = clamp(getf(26u), 0.0, H);
+    // v goes from 0 (z=0) to 1 (z=bottom), so z = bottom * v
+    let z = bottom * clamp(v, 0.0, 1.0);
+    let t = clamp(z / H, 0.0, 1.0);
+    let th = twist_theta(u * TAU, t);
     return vec3<f32>(-cos(th), -sin(th), 0.0);
   }
   let p = surface_point(seg, u, v);
