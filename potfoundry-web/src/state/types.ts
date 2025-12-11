@@ -35,6 +35,12 @@ export interface GeometryParams {
   bellCenter: number;
   /** Bulge width factor (0.1-1.0, smaller = narrower band) */
   bellWidth: number;
+  /** Twist turns from base to rim (positive = counterclockwise) */
+  spinTurns: number;
+  /** Twist phase offset in degrees */
+  spinPhase: number;
+  /** Twist curve exponent (1=linear, <1=front-loaded, >1=back-loaded) */
+  spinCurve: number;
 }
 
 /** Default geometry values for a standard pot */
@@ -49,6 +55,9 @@ export const DEFAULT_GEOMETRY: GeometryParams = {
   bellAmp: 0.0,
   bellCenter: 0.5,
   bellWidth: 0.22,
+  spinTurns: 0.0,
+  spinPhase: 0.0,
+  spinCurve: 1.0,
 };
 
 /** Bounds for geometry parameter validation */
@@ -63,6 +72,9 @@ export const GEOMETRY_BOUNDS = {
   bellAmp: { min: -1.0, max: 1.0, step: 0.01 },
   bellCenter: { min: -0.1, max: 1.1, step: 0.05 },
   bellWidth: { min: 0.01, max: 1.0, step: 0.01 },
+  spinTurns: { min: -3.0, max: 3.0, step: 0.05 },
+  spinPhase: { min: 0, max: 360, step: 5 },
+  spinCurve: { min: 0.2, max: 3.0, step: 0.05 },
 } as const;
 
 // ============================================================================

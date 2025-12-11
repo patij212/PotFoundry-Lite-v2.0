@@ -76,6 +76,10 @@ function geometryToParams(geometry: GeometryParams): Record<string, unknown> {
     bellAmp: geometry.bellAmp,
     bellCenter: geometry.bellCenter,
     bellWidth: geometry.bellWidth,
+    // Spin/twist parameters  
+    spin_turns: geometry.spinTurns,
+    spin_phase: (geometry.spinPhase ?? 0) * Math.PI / 180, // Convert degrees to radians
+    spin_curve: geometry.spinCurve,
     // Derived values
     Rt: geometry.top_od / 2,
     Rb: geometry.bottom_od / 2,

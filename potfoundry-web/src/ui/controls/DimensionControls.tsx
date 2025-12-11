@@ -86,6 +86,21 @@ export const DimensionControls: React.FC = () => {
     [setGeometryParam]
   );
 
+  const handleSpinTurns = useCallback(
+    (value: number) => setGeometryParam('spinTurns', value),
+    [setGeometryParam]
+  );
+
+  const handleSpinPhase = useCallback(
+    (value: number) => setGeometryParam('spinPhase', value),
+    [setGeometryParam]
+  );
+
+  const handleSpinCurve = useCallback(
+    (value: number) => setGeometryParam('spinCurve', value),
+    [setGeometryParam]
+  );
+
   return (
     <Section title="Dimensions" icon={<Ruler size={16} />} defaultOpen>
       <SectionGroup label="Size">
@@ -200,6 +215,40 @@ export const DimensionControls: React.FC = () => {
             min={GEOMETRY_BOUNDS.bellWidth.min}
             max={GEOMETRY_BOUNDS.bellWidth.max}
             step={GEOMETRY_BOUNDS.bellWidth.step}
+            decimals={2}
+          />
+        </div>
+      </SectionGroup>
+
+      <SectionGroup label="Twist">
+        <Slider
+          label="Turns"
+          value={geometry.spinTurns}
+          onChange={handleSpinTurns}
+          min={GEOMETRY_BOUNDS.spinTurns.min}
+          max={GEOMETRY_BOUNDS.spinTurns.max}
+          step={GEOMETRY_BOUNDS.spinTurns.step}
+          decimals={2}
+        />
+
+        <div className="pf-dimension-row">
+          <Slider
+            label="Phase"
+            value={geometry.spinPhase}
+            onChange={handleSpinPhase}
+            min={GEOMETRY_BOUNDS.spinPhase.min}
+            max={GEOMETRY_BOUNDS.spinPhase.max}
+            step={GEOMETRY_BOUNDS.spinPhase.step}
+            unit="°"
+          />
+
+          <Slider
+            label="Curve"
+            value={geometry.spinCurve}
+            onChange={handleSpinCurve}
+            min={GEOMETRY_BOUNDS.spinCurve.min}
+            max={GEOMETRY_BOUNDS.spinCurve.max}
+            step={GEOMETRY_BOUNDS.spinCurve.step}
             decimals={2}
           />
         </div>
