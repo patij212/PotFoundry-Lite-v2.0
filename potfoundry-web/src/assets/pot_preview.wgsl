@@ -132,6 +132,12 @@ fn twist_theta(theta: f32, t: f32) -> f32 {
   return theta + TAU * turns * pow(t, curve) + phase;
 }
 
+// Get direction vector with twist applied at height ratio t
+fn twisted_theta_dir(u: f32, t: f32) -> vec2<f32> {
+  let th = twist_theta(u * TAU, t);
+  return vec2<f32>(cos(th), sin(th));
+}
+
 fn superformula_value(theta: f32, m: f32, n1: f32, n2: f32, n3: f32, a: f32, b: f32) -> f32 {
   let c = pow(abs_f32(cos(m * theta / 4.0) / max(a, 1e-4)), n2);
   let s = pow(abs_f32(sin(m * theta / 4.0) / max(b, 1e-4)), n3);
@@ -330,9 +336,12 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
     let z = mix(bottom, H, clamp(v, 0.0, 1.0));
     return inner_point(u, z);
   }
-  let dir = theta_dir(u);
+  // For bottom surfaces and drain, use twisted direction at appropriate height
+  let t_bottom = clamp(bottom / H, 0.0, 1.0);
   let inner_bottom = inner_point(u, bottom);
   if (seg == 2u) {
+    // Bottom top surface at z=bottom uses twist at t=bottom/H
+    let dir = twisted_theta_dir(u, t_bottom);
     let outer_bottom = outer_point(u, bottom);
     let r_outer = length(outer_bottom.xy);
     let r_inner = length(inner_bottom.xy);
@@ -357,6 +366,8 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
     return vec3<f32>(dir * r, bottom + BOTTOM_Z_OFFSET);
   }
   if (seg == 3u) {
+    // Underside at z=0 uses twist at t=0
+    let dir = twisted_theta_dir(u, 0.0);
     let outer_base = outer_point(u, 0.0);
     let r_outer = length(outer_base.xy);
     // Calculate inner radius at z=0 (where underside actually is), not at z=bottom
@@ -384,8 +395,6 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
   }
   // Segment 5: Drain hole cylinder wall (connects top and bottom drain holes)
   if (seg == 5u) {
-    let H = getf(0u);
-    let bottom = clamp(getf(26u), 0.0, H);
     let inner_base = inner_point(u, 0.0);
     let r_inner_base = length(inner_base.xy);
     let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.25);
@@ -393,15 +402,19 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
     let r_drain = clamp(drain_raw, 0.25, r_inner_cap);
     // v goes from 0 (bottom at z=0) to 1 (top at z=bottom)
     let z = mix(0.0, bottom, clamp(v, 0.0, 1.0));
+    // Use twist at interpolated height ratio
+    let t_z = clamp(z / H, 0.0, 1.0);
+    let dir = twisted_theta_dir(u, t_z);
     return vec3<f32>(dir * r_drain, z);
   }
   // Segment 4: Rim (top cap connecting outer to inner wall at z=H)
+  let dir_top = twisted_theta_dir(u, 1.0);
   let outer_top = outer_point(u, H);
   let inner_top = inner_point(u, H);
   let r_outer = length(outer_top.xy);
   let r_inner = length(inner_top.xy);
   let r = mix(r_inner, r_outer, clamp(v, 0.0, 1.0));
-  return vec3<f32>(dir * r, H);
+  return vec3<f32>(dir_top * r, H);
 }
 
 fn wrap_unit(value: f32) -> f32 {
