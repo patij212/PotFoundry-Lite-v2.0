@@ -200,6 +200,8 @@ export interface AppearanceState {
   showWireframe: boolean;
   /** Background color (solid) - first color used */
   gradient: [string, string];
+  /** Background gradient angle in degrees (0-360) */
+  gradientAngle: number;
   /** Lighting preset name */
   lightingPreset: string;
 }
@@ -213,6 +215,7 @@ export const DEFAULT_APPEARANCE: AppearanceState = {
   showInner: true,
   showWireframe: false,
   gradient: ['#1a1a2e', '#16213e'],
+  gradientAngle: 0,
   lightingPreset: 'studio',
 };
 

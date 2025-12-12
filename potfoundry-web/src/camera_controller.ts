@@ -1,3 +1,28 @@
+/**
+ * @fileoverview Camera Controller for PotFoundry WebGPU Renderer
+ * 
+ * This module provides the main camera interaction system for the 3D pot preview.
+ * It supports multiple camera modes and handles all pointer/keyboard input.
+ * 
+ * ## Camera Modes
+ * - **Turntable**: Classic orbit camera (yaw/pitch around center point)
+ * - **Arcball**: Natural 3D rotation with momentum (Shoemake algorithm)
+ * - **Free**: First-person WASD + mouse look navigation
+ * 
+ * ## Key Features
+ * - Smooth inertia for all camera movements
+ * - Focus tweening for double-click zoom
+ * - Configurable host camera accept policies
+ * - Cursor-anchored zooming
+ * - Q/E roll control in orbit modes
+ * 
+ * ## Architecture
+ * The controller operates on a WebGPUState object, modifying camera-related
+ * fields (rotX, rotY, zoom, panX, panY, etc.) which are then consumed by
+ * the renderer's uniform update system.
+ * 
+ * @module camera_controller
+ */
 import {
   buildCameraBasis,
   quaternionFromBasis,
@@ -90,11 +115,39 @@ export type ControllerHelpers = {
   writeUniformsImmediately?: () => void;
 };
 
+/**
+ * Main camera controller for 3D pot preview interactions.
+ * 
+ * This class handles all camera manipulation including:
+ * - Mouse drag for orbit/arcball rotation
+ * - Right-click drag for panning
+ * - Scroll wheel for zoom
+ * - Double-click for focus
+ * - Keyboard WASD navigation
+ * - Inertia and smooth animations
+ * 
+ * The controller operates on a shared WebGPUState object and coordinates
+ * with the WebGPU renderer through the ControllerHelpers interface.
+ * 
+ * @example
+ * ```typescript
+ * const controller = new CameraController(state, pointer, canvas, helpers);
+ * 
+ * canvas.addEventListener('pointerdown', (e) => controller.onPointerDown(e));
+ * canvas.addEventListener('pointermove', (e) => controller.onPointerMove(e));
+ * canvas.addEventListener('pointerup', () => controller.onPointerRelease());
+ * ```
+ */
 export class CameraController {
+  /** Shared WebGPU state containing camera parameters */
   state: WebGPUState;
+  /** Current pointer interaction state */
   pointer: PointerState;
+  /** Canvas element for coordinate calculations */
   canvas: HTMLCanvasElement;
+  /** Active focus animation (smooth zoom to point) */
   focusTween: FocusTween | null;
+  /** Helper functions provided by the WebGPU controller */
   helpers: ControllerHelpers;
   // Last seen camera nonce to detect forced host updates
   lastCameraNonce: number | null = null;

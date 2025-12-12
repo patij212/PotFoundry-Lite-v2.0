@@ -9,7 +9,7 @@ For all production use, use write_stl_binary. It produces smaller files,
 writes faster, and is universally supported by modern slicers and CAD tools.
 """
 
-__version__ = "2.1.0"
+__version__ = "3.1.0"
 
 from .core.geometry import (
     STYLES,

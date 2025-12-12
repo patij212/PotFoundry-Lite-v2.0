@@ -1,23 +1,39 @@
-# STL Export Migration Guide
+# STL Export Guide
 
-> Note: This document has moved to docs/guides/STL_EXPORT_GUIDE.md. This root copy remains only as a pointer to the canonical version.
+> This guide covers STL export for both the **web app** (potfoundry-web) and **Python core** (potfoundry).
 
 ## Overview
 
-PotFoundry has fully migrated to **binary STL** as the default and recommended export format. Binary STL files are:
+PotFoundry uses **binary STL** as the default export format. Binary STL files are:
 
 - **50-90% smaller** than ASCII STL files
 - **Much faster** to write and read
 - **Universally supported** by all modern slicers and CAD tools
 
-## For Users
+---
 
-All STL exports from PotFoundry are now in binary format by default:
-- Streamlit app exports → Binary STL
-- YAML batch builds → Binary STL
-- Python API → Binary STL (recommended)
+## Web App Export
 
-**No action required** - everything just works and produces smaller files!
+The potfoundry-web application exports STL directly in the browser:
+
+1. Adjust your pot parameters
+2. Click **Download STL** in the Export panel
+3. Choose quality level (Low/Medium/High/Ultra)
+4. Binary STL downloads automatically
+
+**Quality Levels:**
+| Level | Resolution | Triangles | Best For |
+|-------|------------|-----------|----------|
+| Low | 84×42 | ~14k | Quick preview |
+| Medium | 168×84 | ~56k | Standard prints |
+| High | 252×126 | ~127k | High detail |
+| Ultra | 336×168 | ~226k | Maximum quality |
+
+---
+
+## Python Export
+
+All Python STL exports use binary format by default:
 
 ## For Developers
 
@@ -134,4 +150,4 @@ Shows DeprecationWarning when called. Retained only for backward compatibility.
 
 ---
 
-**Last Updated:** 2024 - PotFoundry v2.0 Binary STL Migration
+**Last Updated:** December 2025 - PotFoundry v3.1.0

@@ -392,6 +392,8 @@ function appearanceToParams(appearance: AppearanceState): Record<string, unknown
     showWireframe: appearance.showWireframe,
     showInner: appearance.showInner,
     // Background gradient - both colors for fullscreen gradient
+    background_gradient: appearance.gradient,
+    gradient_angle: (appearance.gradientAngle ?? 0) * Math.PI / 180,
     __pf_bg_gradient: [bgColor1, bgColor2],
     // Legacy: first color for clear color fallback
     __pf_bg_rgba: bgColor1,

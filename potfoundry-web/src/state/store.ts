@@ -218,6 +218,7 @@ export const useAppearanceActions = () =>
       setShowInner: s.setShowInner,
       setBackgroundGradient: s.setBackgroundGradient,
       setCustomGradient: s.setCustomGradient,
+      setGradientAngle: s.setGradientAngle,
       setLightingPreset: s.setLightingPreset,
       resetAppearance: s.resetAppearance,
     }))

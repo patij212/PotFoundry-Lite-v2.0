@@ -1,4 +1,4 @@
-> Note: This document has moved to docs/guides/DEVELOPMENT.md. This root copy remains only as a pointer to the canonical version.
+> Note: This document covers development for both the web app (primary) and Python core.
 
 ## Pre-commit hooks & secret scanning
 
@@ -35,15 +35,84 @@ A lightweight custom hook (`potfoundry-forbid-service-role`) scans staged files 
 2. Rotate it in Supabase.
 3. Amend the commit after scrubbing (`git commit --amend`).
 
-Never rely solely on client-side hooks—CI should also enforce secret scanning (future improvement: add a GitHub Action).
+Never rely solely on client-side hooks—CI should also enforce secret scanning.
+
+---
 
 # Development Guide
 
-## Quick Start
+---
+
+## 🌐 Web App Development (Primary)
+
+The main product is the **potfoundry-web** React/TypeScript/WebGPU application.
 
 ### Prerequisites
 
-- Python 3.11–3.13 (NumPy 2.3.x does **not** publish wheels for Python 3.14 yet; using 3.14 results in `_multiarray_umath` import errors)
+- Node.js 18+
+- npm
+- Modern browser with WebGPU support (Chrome 113+, Edge 113+, Firefox Nightly)
+
+### Quick Start
+
+```bash
+# Navigate to web app
+cd potfoundry-web
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+Opens at **http://localhost:5173/**
+
+### Development Commands
+
+```bash
+npm run dev         # Start dev server with HMR
+npm run build       # Production build to dist/
+npm run preview     # Preview production build
+npm run lint        # Run ESLint
+npm run typecheck   # Run TypeScript compiler
+npm run format      # Format with Prettier
+npm run test        # Run Vitest tests
+```
+
+### Project Structure
+
+```
+potfoundry-web/src/
+├── App.tsx                 # Main component
+├── webgpu_core.ts          # WebGPU engine (5,200+ LOC)
+├── camera_controller.ts    # Camera system (1,240 LOC)
+├── state/                  # Zustand stores
+│   ├── store.ts            # Combined store
+│   └── slices/             # State slices
+├── hooks/                  # Custom React hooks
+├── ui/                     # UI components
+│   ├── controls/           # Control panels
+│   ├── auth/               # Auth components
+│   └── shared/             # Shared components
+├── context/                # React contexts
+└── services/               # External services
+```
+
+### Key Documentation
+
+- **[potfoundry-web/README.md](potfoundry-web/README.md)** — Full documentation
+- **[potfoundry-web/ARCHITECTURE.md](potfoundry-web/ARCHITECTURE.md)** — Technical architecture
+
+---
+
+## 🐍 Python Core Development
+
+The Python `potfoundry/` module provides the geometry engine and utilities.
+
+### Prerequisites
+
+- Python 3.11–3.13 (NumPy 2.3.x does **not** publish wheels for Python 3.14 yet)
 - pip
 - Git
 
@@ -62,11 +131,10 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Install development tools
-pip install pytest ruff
+pip install pytest ruff mypy
 
 # Verify installation
-pytest -v
-streamlit run app.py
+PYTHONPATH=. pytest -v
 ```
 
 ---

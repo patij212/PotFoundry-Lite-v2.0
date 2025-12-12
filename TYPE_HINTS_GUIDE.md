@@ -1,6 +1,6 @@
 # Type Hints Guide for PotFoundry
 
-> Note: This document has moved to docs/guides/TYPE_HINTS_GUIDE.md. This root copy remains only as a pointer to the canonical version.
+> This guide covers type hints for the **Python core** (potfoundry). For TypeScript standards in the web app, see [CODE_QUALITY_GUIDE.md](CODE_QUALITY_GUIDE.md).
 
 ## Overview
 
@@ -459,3 +459,8 @@ Type hints have been added to **~65 functions** across core modules, providing:
 **Tests:** All 275 tests passing ✅
 
 This establishes a solid foundation for ongoing type safety improvements.
+
+---
+
+**Last Updated:** December 2025  
+**Applies To:** PotFoundry v3.1.0+ (Python core)

@@ -8,7 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { mount, WebGPUController } from './webgpu_core';
 import { AppUI } from './ui';
-import { useRendererBridge, syncStoreFromParams, sendFullStoreToController, usePerformanceTracker, parseStatusMetrics } from './hooks';
+import { useRendererBridge, sendFullStoreToController, usePerformanceTracker } from './hooks';
 import { useUIActions } from './state';
 import { ControllerProvider, LibraryProvider } from './context';
 import { AuthProvider } from './context/AuthContext';
@@ -17,9 +17,14 @@ import { ToastProvider } from './ui/shared';
 import './WebGPUPreview.css';
 
 // ============================================================================
-// Default Parameters
+// Fallback Parameters (used only for WebGPU mount if no persisted state exists)
 // ============================================================================
 
+/**
+ * Fallback parameters for initial WebGPU mount.
+ * The actual pot state is loaded from localStorage by Zustand's persist middleware.
+ * These defaults are only used to initialize the shader before persisted state is applied.
+ */
 const DEFAULT_PARAMS = {
     H: 120,
     top_od: 140,
@@ -45,7 +50,6 @@ const App: React.FC = () => {
     const emitRef = useRef<(e: unknown) => void>(() => { });
 
     // State
-    const [status, setStatus] = useState('Initializing WebGPU preview...');
     const [isReady, setIsReady] = useState(false);
     const [controllerReady, setControllerReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -56,24 +60,12 @@ const App: React.FC = () => {
     // UI actions
     const { setPanelOpen, toggleFullscreen } = useUIActions();
 
-    // Performance tracking
-    const { updateMetrics, setGenerating } = usePerformanceTracker({ debug: false });
+    // Performance tracking - setGenerating shows loading indicator during mount
+    const { setGenerating } = usePerformanceTracker({ debug: false });
     const setGeneratingRef = useRef(setGenerating);
     setGeneratingRef.current = setGenerating;
 
-    // Status update handler
-    const handleStatusUpdate = useCallback((newStatus: string) => {
-        setStatus(newStatus);
-        const metrics = parseStatusMetrics(newStatus);
-        if (metrics) {
-            updateMetrics({
-                triangleCount: metrics.triangleCount ?? 0,
-                vertexCount: Math.round((metrics.triangleCount ?? 0) * 0.6),
-                generationTime: 0,
-                renderTime: metrics.renderTime,
-            });
-        }
-    }, [updateMetrics]);
+
 
     // Event emitter - standalone version just logs events
     const emitEvent = useCallback((e: unknown) => {
@@ -98,10 +90,9 @@ const App: React.FC = () => {
         setPanelOpen(true);
     }, [setPanelOpen]);
 
-    // Sync initial params to store
-    useEffect(() => {
-        syncStoreFromParams(DEFAULT_PARAMS);
-    }, []);
+    // NOTE: We removed syncStoreFromParams(DEFAULT_PARAMS) here because
+    // the Zustand persist middleware already loads saved state from localStorage.
+    // Calling syncStoreFromParams with defaults would overwrite user's saved pot.
 
     // Mount WebGPU renderer
     useEffect(() => {
@@ -139,9 +130,8 @@ const App: React.FC = () => {
                 }
 
                 controllerRef.current = controller;
-                controller.updateParams(DEFAULT_PARAMS);
-                // IMMEDIATELY send all Zustand state - this eliminates the "grey state"
-                // by not waiting for React to re-render before useRendererBridge activates
+                // IMMEDIATELY send all Zustand state (from localStorage persistence)
+                // This eliminates the "grey state" and respects user's saved pot
                 sendFullStoreToController(controller);
                 setControllerReady(true);
                 setIsReady(true);

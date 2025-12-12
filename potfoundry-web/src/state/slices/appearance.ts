@@ -226,59 +226,59 @@ export const BACKGROUND_GRADIENTS: BackgroundGradient[] = [
 export interface AppearanceSlice {
   /** Current appearance settings */
   appearance: AppearanceState;
-  
+
   /**
    * Apply a color scheme.
    * 
    * @param schemeId - Color scheme identifier
    */
   setColorScheme: (schemeId: string) => void;
-  
+
   /**
    * Set the primary mesh color directly (bottom of pot).
    * 
    * @param color - Hex color string
    */
   setPrimaryColor: (color: string) => void;
-  
+
   /**
    * Set the mid mesh color directly (middle of pot).
    * 
    * @param color - Hex color string
    */
   setMidColor: (color: string) => void;
-  
+
   /**
    * Set the secondary/accent color directly (top of pot).
    * 
    * @param color - Hex color string
    */
   setSecondaryColor: (color: string) => void;
-  
+
   /**
    * Toggle wireframe overlay visibility.
    */
   toggleWireframe: () => void;
-  
+
   /**
    * Set wireframe visibility.
    * 
    * @param show - Whether to show wireframe
    */
   setShowWireframe: (show: boolean) => void;
-  
+
   /**
    * Toggle inner surface visibility.
    */
   toggleInner: () => void;
-  
+
   /**
    * Set inner surface visibility.
    * 
    * @param show - Whether to show inner surface
    */
   setShowInner: (show: boolean) => void;
-  
+
   /**
    * Apply a background gradient preset.
    * Note: WebGPU only supports solid backgrounds; first color is used.
@@ -286,7 +286,7 @@ export interface AppearanceSlice {
    * @param gradientId - Gradient identifier
    */
   setBackgroundGradient: (gradientId: string) => void;
-  
+
   /**
    * Set custom background gradient colors.
    * Note: WebGPU only supports solid backgrounds; first color is used.
@@ -294,14 +294,21 @@ export interface AppearanceSlice {
    * @param colors - Tuple of two hex color strings
    */
   setCustomGradient: (colors: [string, string]) => void;
-  
+
+  /**
+   * Set background gradient angle.
+   * 
+   * @param angle - Angle in degrees (0-360)
+   */
+  setGradientAngle: (angle: number) => void;
+
   /**
    * Apply a lighting preset.
    * 
    * @param presetId - Lighting preset identifier
    */
   setLightingPreset: (presetId: string) => void;
-  
+
   /**
    * Reset appearance to defaults.
    */
@@ -322,11 +329,11 @@ export const createAppearanceSlice: StateCreator<
   AppearanceSlice
 > = (set) => ({
   appearance: { ...DEFAULT_APPEARANCE },
-  
+
   setColorScheme: (schemeId) => {
     const scheme = COLOR_SCHEMES.find((s) => s.id === schemeId);
     if (!scheme) return;
-    
+
     set((state) => ({
       appearance: {
         ...state.appearance,
@@ -337,7 +344,7 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   setPrimaryColor: (color) => {
     set((state) => ({
       appearance: {
@@ -347,7 +354,7 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   setMidColor: (color) => {
     set((state) => ({
       appearance: {
@@ -357,7 +364,7 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   setSecondaryColor: (color) => {
     set((state) => ({
       appearance: {
@@ -367,7 +374,7 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   toggleWireframe: () => {
     set((state) => ({
       appearance: {
@@ -376,7 +383,7 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   setShowWireframe: (show) => {
     set((state) => ({
       appearance: {
@@ -385,7 +392,7 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   toggleInner: () => {
     set((state) => ({
       appearance: {
@@ -394,7 +401,7 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   setShowInner: (show) => {
     set((state) => ({
       appearance: {
@@ -403,11 +410,11 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   setBackgroundGradient: (gradientId) => {
     const gradient = BACKGROUND_GRADIENTS.find((g) => g.id === gradientId);
     if (!gradient) return;
-    
+
     set((state) => ({
       appearance: {
         ...state.appearance,
@@ -415,7 +422,7 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   setCustomGradient: (colors) => {
     set((state) => ({
       appearance: {
@@ -424,11 +431,20 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
+  setGradientAngle: (angle) => {
+    set((state) => ({
+      appearance: {
+        ...state.appearance,
+        gradientAngle: angle,
+      },
+    }));
+  },
+
   setLightingPreset: (presetId) => {
     const preset = LIGHTING_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
-    
+
     set((state) => ({
       appearance: {
         ...state.appearance,
@@ -436,7 +452,7 @@ export const createAppearanceSlice: StateCreator<
       },
     }));
   },
-  
+
   resetAppearance: () => {
     set({ appearance: { ...DEFAULT_APPEARANCE } });
   },

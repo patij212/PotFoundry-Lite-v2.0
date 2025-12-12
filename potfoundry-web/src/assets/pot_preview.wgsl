@@ -6,6 +6,9 @@ struct PreviewParamBlock {
 @group(0) @binding(1) var<uniform> uC1 : vec4<f32>;
 @group(0) @binding(2) var<uniform> uC2 : vec4<f32>;
 @group(0) @binding(3) var<uniform> uC3 : vec4<f32>;
+@group(0) @binding(5) var<uniform> uBg1 : vec4<f32>;
+@group(0) @binding(6) var<uniform> uBg2 : vec4<f32>;
+@group(0) @binding(7) var<uniform> uBg3 : vec4<f32>;
 
 const TAU = 6.28318530718;
 const BOTTOM_Z_OFFSET = 1e-3;
@@ -126,16 +129,10 @@ fn r_base(t: f32) -> f32 {
 }
 
 fn twist_theta(theta: f32, t: f32) -> f32 {
-  let turns = getf(4u);
-  let phase = getf(5u);
-  let curve = max(getf(6u), 1e-4);
+  let turns = getf(4u); // spinTurns
+  let phase = getf(5u); // spinPhase
+  let curve = max(getf(6u), 1e-4); // spinCurve (exponent for non-linear twist)
   return theta + TAU * turns * pow(t, curve) + phase;
-}
-
-// Get direction vector with twist applied at height ratio t
-fn twisted_theta_dir(u: f32, t: f32) -> vec2<f32> {
-  let th = twist_theta(u * TAU, t);
-  return vec2<f32>(cos(th), sin(th));
 }
 
 fn superformula_value(theta: f32, m: f32, n1: f32, n2: f32, n3: f32, a: f32, b: f32) -> f32 {
@@ -293,10 +290,18 @@ fn surf(u: f32, v: f32) -> vec3<f32> {
   let t = clamp(v, 0.0, 1.0);
   let z = t * H;
   let r0 = r_base(t);
-  let th0 = u * TAU;
-  let th = twist_theta(th0, t);
+  // Calculate twist angle based on height (t)
+  let th0 = u * TAU; // Untwisted angle (reference)
+  let th = twist_theta(th0, t); // Twisted angle (for rotation)
+  
   let style_id = i32(getf(7u));
-  let r = style_radius(style_id, th, t, r0);
+  // CRITICAL: Use the UNTWISTED angle (th0) to sample the radius.
+  // This effectively defines the shape in a static frame and then rotates it by 'th'.
+  // If we used 'th' here, we would be sampling the shape at the twisted angle,
+  // which would result in the shape appearing static (no visual twist) with texture sliding.
+  let r = style_radius(style_id, th0, t, r0);
+  
+  // Rotate the point by the twisted angle 'th'
   return vec3<f32>(r * cos(th), r * sin(th), z);
 }
 
@@ -336,12 +341,14 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
     let z = mix(bottom, H, clamp(v, 0.0, 1.0));
     return inner_point(u, z);
   }
-  // For bottom surfaces and drain, use twisted direction at appropriate height
-  let t_bottom = clamp(bottom / H, 0.0, 1.0);
+  var t_twist = 0.0;
+  if (seg == 1u) { t_twist = clamp(v, 0.0, 1.0); }
+  if (seg == 2u) { t_twist = clamp(bottom / H, 0.0, 1.0); }
+  
+  // Calculate twisted direction for bottom/drain segments
+  var dir = theta_dir(u);
   let inner_bottom = inner_point(u, bottom);
   if (seg == 2u) {
-    // Bottom top surface at z=bottom uses twist at t=bottom/H
-    let dir = twisted_theta_dir(u, t_bottom);
     let outer_bottom = outer_point(u, bottom);
     let r_outer = length(outer_bottom.xy);
     let r_inner = length(inner_bottom.xy);
@@ -363,11 +370,13 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
       let local = clamp((t - seam_t) / denom, 0.0, 1.0);
       r = mix(r_drain, r_inner, 1.0 - local);
     }
-    return vec3<f32>(dir * r, bottom + BOTTOM_Z_OFFSET);
+    // Apply twist to segment 2 (bottom floor) at z=bottom height
+    let t_twist = clamp(bottom / max(H, 1e-4), 0.0, 1.0);
+    let th_twist = twist_theta(u * TAU, t_twist);
+    let dir_twist = vec2<f32>(cos(th_twist), sin(th_twist));
+    return vec3<f32>(dir_twist * r, bottom + BOTTOM_Z_OFFSET);
   }
   if (seg == 3u) {
-    // Underside at z=0 uses twist at t=0
-    let dir = twisted_theta_dir(u, 0.0);
     let outer_base = outer_point(u, 0.0);
     let r_outer = length(outer_base.xy);
     // Calculate inner radius at z=0 (where underside actually is), not at z=bottom
@@ -391,10 +400,17 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
       let local = clamp((t - seam_t) / denom, 0.0, 1.0);
       r = mix(r_drain, r_inner, 1.0 - local);
     }
-    return vec3<f32>(dir * r, -BOTTOM_Z_OFFSET);
+    // Apply twist to segment 3 (bottom underside) at z=0 (approx)
+    // Actually underside is at z=-offset. effectively t=0.
+    let t_twist = 0.0; 
+    let th_twist = twist_theta(u * TAU, t_twist);
+    let dir_twist = vec2<f32>(cos(th_twist), sin(th_twist));
+    return vec3<f32>(dir_twist * r, -BOTTOM_Z_OFFSET);
   }
   // Segment 5: Drain hole cylinder wall (connects top and bottom drain holes)
   if (seg == 5u) {
+    let H = getf(0u);
+    let bottom = clamp(getf(26u), 0.0, H);
     let inner_base = inner_point(u, 0.0);
     let r_inner_base = length(inner_base.xy);
     let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.25);
@@ -402,19 +418,28 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
     let r_drain = clamp(drain_raw, 0.25, r_inner_cap);
     // v goes from 0 (bottom at z=0) to 1 (top at z=bottom)
     let z = mix(0.0, bottom, clamp(v, 0.0, 1.0));
-    // Use twist at interpolated height ratio
-    let t_z = clamp(z / H, 0.0, 1.0);
-    let dir = twisted_theta_dir(u, t_z);
-    return vec3<f32>(dir * r_drain, z);
+    // Apply twist to drain cylinder at current z
+    let t_twist = clamp(z / max(H, 1e-4), 0.0, 1.0);
+    let th_twist = twist_theta(u * TAU, t_twist);
+    let dir_twist = vec2<f32>(cos(th_twist), sin(th_twist));
+    return vec3<f32>(dir_twist * r_drain, z);
   }
   // Segment 4: Rim (top cap connecting outer to inner wall at z=H)
-  let dir_top = twisted_theta_dir(u, 1.0);
-  let outer_top = outer_point(u, H);
-  let inner_top = inner_point(u, H);
-  let r_outer = length(outer_top.xy);
-  let r_inner = length(inner_top.xy);
-  let r = mix(r_inner, r_outer, clamp(v, 0.0, 1.0));
-  return vec3<f32>(dir_top * r, H);
+  if (seg == 4u) {
+    let outer_top = outer_point(u, H);
+    let inner_top = inner_point(u, H);
+    let r_outer = length(outer_top.xy);
+    let r_inner = length(inner_top.xy);
+    let r = mix(r_inner, r_outer, clamp(v, 0.0, 1.0));
+    
+    // Apply twist at top (t=1.0)
+    let t_twist = 1.0;
+    let th_twist = twist_theta(u * TAU, t_twist);
+    let dir_twist = vec2<f32>(cos(th_twist), sin(th_twist));
+    
+    return vec3<f32>(dir_twist * r, H);
+  }
+  return vec3<f32>(0.0, 0.0, 0.0);
 }
 
 fn wrap_unit(value: f32) -> f32 {
@@ -440,16 +465,7 @@ fn surface_normal(seg: u32, u: f32, v: f32, du: f32, dv: f32) -> vec3<f32> {
   if (seg == 3u) {
     return vec3<f32>(0.0, 0.0, -1.0);
   }
-  // Segment 5 (drain cylinder): normal points inward (toward center) with twist
-  if (seg == 5u) {
-    let H = getf(0u);
-    let bottom = clamp(getf(26u), 0.0, H);
-    // v goes from 0 (z=0) to 1 (z=bottom), so z = bottom * v
-    let z = bottom * clamp(v, 0.0, 1.0);
-    let t = clamp(z / H, 0.0, 1.0);
-    let th = twist_theta(u * TAU, t);
-    return vec3<f32>(-cos(th), -sin(th), 0.0);
-  }
+  // Segment 5 (drain cylinder): removed hardcoded normal to allow twist (falls through to finite diff)
   let p = surface_point(seg, u, v);
   let u_forward = sample_u(seg, u, du);
   let u_back = sample_u(seg, u, -du);
@@ -706,6 +722,7 @@ struct VSOut {
   @location(1) n_cam: vec3<f32>,
   @location(2) world_pos: vec3<f32>,
   @location(3) is_ground: f32,
+  @location(4) is_background: f32,
 };
 
 fn gradient_color(height_ratio: f32) -> vec3<f32> {
@@ -825,20 +842,36 @@ fn ground_plane(vid: u32) -> vec4<f32> {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
-  // Reserve the very first two triangles for a simple ground plane quad so the
-  // pot is visually anchored in space.
-  if (vid < 6u) {
+  // First 3 vertices: Fullscreen Quad for Background Gradient
+  if (vid < 3u) {
     var out: VSOut;
-    let ground_world = ground_plane(vid);
+    // Huge triangle covering the screen: (-1,-1), (3,-1), (-1,3)
+    var pos = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+    out.pos = vec4<f32>(pos[vid], 0.99, 1.0); // Far depth
+    out.col = vec3<f32>(0.0);
+    out.n_cam = vec3<f32>(0.0);
+    // Pass normalized Screen UV (0..1) in world_pos.xy
+    out.world_pos = vec3<f32>((pos[vid].x + 1.0) * 0.5, (pos[vid].y + 1.0) * 0.5, 0.0);
+    out.is_ground = 0.0;
+    out.is_background = 1.0;
+    return out;
+  }
+
+  // Next 6 vertices (3-8): Ground Plane
+  if (vid < 9u) {
+    var out: VSOut;
+    let ground_world = ground_plane(vid - 3u);
     out.pos = vp_matrix() * ground_world;
     out.col = vec3<f32>(0.95, 0.95, 0.95);
     out.is_ground = 1.0;
+    out.is_background = 0.0;
     out.n_cam = vec3<f32>(0.0, 0.0, 1.0);
     out.world_pos = ground_world.xyz;
     return out;
   }
 
-  let local_vid = vid - 6u;
+  // Remaining vertices: Pot Mesh
+  let local_vid = vid - 9u;
 
   let cells_x = max(i32(getf(16u)), 1);
   let cells_outer_y = max(i32(getf(17u)), 1);
@@ -895,6 +928,7 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
     out.pos = vec4<f32>(0.0, 0.0, -2.0, 1.0); // Behind near plane
     out.col = vec3<f32>(0.0, 0.0, 0.0);
     out.is_ground = 0.0;
+    out.is_background = 0.0;
     out.n_cam = vec3<f32>(0.0, 0.0, 1.0);
     out.world_pos = vec3<f32>(0.0, 0.0, 0.0);
     return out;
@@ -941,13 +975,50 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
   out.pos = vp_matrix() * world_centered;
   out.col = col;
   out.is_ground = 0.0;
+  out.is_background = 0.0;
   out.n_cam = n_local;
   out.world_pos = world_centered.xyz;
   return out;
 }
 
 @fragment
-fn fs_main(@location(0) col: vec3<f32>, @location(1) _n_cam: vec3<f32>, @location(2) world_pos: vec3<f32>, @location(3) is_ground: f32) -> @location(0) vec4<f32> {
+fn fs_main(@location(0) col: vec3<f32>, @location(1) _n_cam: vec3<f32>, @location(2) world_pos: vec3<f32>, @location(3) is_ground: f32, @location(4) is_background: f32) -> @location(0) vec4<f32> {
+  if (is_background > 0.5) {
+    // Gradient Background
+    // Mapping: world_pos.xy contains normalized screen UV (0..1)
+    let uv = world_pos.xy;
+    let angle = uBg1.w; // Angle in radians passed from CPU
+    
+    // Rotate UV around center (0.5, 0.5)
+    let center = vec2<f32>(0.5, 0.5);
+    let centered = uv - center;
+    let s = sin(-angle); // Negative for intuitive CW rotation
+    let c = cos(-angle);
+    let rotated = vec2<f32>(
+      centered.x * c - centered.y * s,
+      centered.x * s + centered.y * c
+    );
+    
+    let t = clamp(rotated.y + 0.5, 0.0, 1.0);
+    
+    // Multi-stop gradient: uC1 (bottom) -> uC2 (middle) -> uC3 (top)
+    // We can assume uC2 is the midpoint.
+    // mix(uC1, uC2, t*2) if t < 0.5
+    // mix(uC2, uC3, (t-0.5)*2) if t >= 0.5
+    
+    var finalCol: vec3<f32>;
+    if (t <= 0.5) {
+      let local = smoothstep(0.0, 0.5, t); // Smooth transition
+      finalCol = mix(uBg1.xyz, uBg2.xyz, local);
+    } else {
+      let local = smoothstep(0.5, 1.0, t);
+      finalCol = mix(uBg2.xyz, uBg3.xyz, local);
+    }
+    
+    
+    // Optional dithering to prevent banding could go here
+    return vec4<f32>(finalCol, 1.0);
+  }
   if (getf(18u) >= 0.5) {
     return vec4<f32>(1.0, 0.0, 0.0, 1.0);
   }
@@ -1059,6 +1130,16 @@ struct WireVSOut {
 // So wireframe_vid = solid_vid * 2
 @vertex
 fn vs_wireframe(@builtin(vertex_index) vid: u32) -> WireVSOut {
+  // We added 3 vertices for the background FSQ to the main draw call.
+  // The wireframe shader must ignore these and shift subsequent indices back.
+  if (vid < 3u) {
+    var out: WireVSOut;
+    out.pos = vec4<f32>(0.0); // Degenerate
+    out.col = vec3<f32>(0.0);
+    return out;
+  }
+  let shifted_vid = vid - 3u;
+
   // Wireframe draws 2 verts per solid vert (line-list topology)
   // Each solid triangle (3 verts) becomes 6 line verts (3 edges)
   // Each cell has 2 triangles = 6 solid verts = 12 line verts
@@ -1067,8 +1148,8 @@ fn vs_wireframe(@builtin(vertex_index) vid: u32) -> WireVSOut {
   // For each solid triangle, we draw 3 edges: v0-v1, v1-v2, v2-v0
   // That's 6 line verts per triangle: [v0,v1, v1,v2, v2,v0]
   
-  let solid_tri_vid = vid / 2u;  // Which solid vertex (as if triangle-list)
-  let line_endpoint = vid % 2u;   // 0=start, 1=end of line segment
+  let solid_tri_vid = shifted_vid / 2u;  // Which solid vertex (as if triangle-list)
+  let line_endpoint = shifted_vid % 2u;   // 0=start, 1=end of line segment
   
   // Within each triangle: vid%3 gives corner 0,1,2
   // Edge 0 (line verts 0,1): corner 0 -> corner 1

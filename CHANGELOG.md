@@ -1,9 +1,81 @@
 # Changelog
 
-All notable changes to PotFoundry Lite will be documented in this file.
+All notable changes to PotFoundry will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [2.2.0] - 2024-12 (Web App Release)
+
+### 🌐 Major: WebGPU Web Application
+
+The primary product is now a **complete WebGPU-powered web application** running entirely in the browser.
+
+#### Added
+- **WebGPU Rendering Engine** (`webgpu_core.ts`, 5,200+ LOC)
+  - GPU-accelerated mesh generation and rendering
+  - WGSL shader-based geometry computation
+  - Real-time parameter updates at 60+ FPS
+  - Performance metrics tracking
+
+- **Advanced Camera System** (`camera_controller.ts`, 1,240 LOC)
+  - Arcball rotation with natural tumbling motion
+  - Orbit mode with pan/zoom
+  - Free camera with WASD + mouse look
+  - Inertia and smooth tweening
+
+- **Complete UI Control Suite**
+  - DimensionControls: Height, diameter, wall, drain
+  - StyleControls: 5 styles with per-style parameters
+  - MeshControls: Resolution (n_theta × n_z)
+  - AppearanceControls: Colors, gradients, lighting, wireframe
+  - CameraControls: Mode selection, presets
+  - ExportPanel: STL download with quality tiers
+  - PresetPanel: Save/load configurations
+  - LibraryPanel: Browse/publish community designs
+
+- **State Management** (Zustand)
+  - Slice pattern with geometry, style, mesh, appearance, ui, performance
+  - LocalStorage persistence for user preferences
+  - Redux DevTools integration (dev mode)
+  - Efficient subscriptions with `subscribeWithSelector`
+
+- **Authentication** (Supabase)
+  - Email/password and magic link
+  - OAuth provider support
+  - Profile management
+  - Session persistence
+
+- **Payments** (Stripe)
+  - Free/Pro subscription tiers
+  - Feature gating (export quality)
+  - Customer portal integration
+  - Webhook processing
+
+- **Deployment**
+  - Cloudflare Pages hosting
+  - Edge functions for Stripe
+  - ~167KB gzipped bundle size
+
+#### Documentation
+- Created `potfoundry-web/README.md` - Comprehensive app documentation
+- Created `potfoundry-web/ARCHITECTURE.md` - Technical architecture guide
+- Updated root `README.md` - Web app focus
+- Updated root `ARCHITECTURE.md` - Overview of both systems
+- JSDoc comments throughout TypeScript codebase
+
+#### Technology Stack
+| Component | Version |
+|-----------|---------|
+| React | 18.3 |
+| TypeScript | 5.5 |
+| Vite | 5.4 |
+| Zustand | 5.0 |
+| Radix UI | 1.x |
+| Supabase | 2.45 |
+| Stripe | 14.0 |
 
 ---
 

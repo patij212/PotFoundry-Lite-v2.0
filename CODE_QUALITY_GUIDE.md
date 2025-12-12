@@ -1,6 +1,6 @@
 # Code Quality Guide for PotFoundry
 
-> Note: This document has moved to docs/guides/CODE_QUALITY_GUIDE.md. This root copy remains only as a pointer to the canonical version.
+> This guide covers code quality standards for both the **TypeScript web app** (potfoundry-web) and the **Python core** (potfoundry).
 
 ## Purpose
 
@@ -513,16 +513,25 @@ test: Add golden mesh regression tests
 
 Before submitting:
 
+**General:**
 - [ ] Code follows style guide
-- [ ] All functions have docstrings
-- [ ] Type hints added
+- [ ] All functions have docstrings/JSDoc
+- [ ] Type hints/types added
 - [ ] Tests added/updated
-- [ ] Tests pass: `pytest -v`
-- [ ] Linting clean: `ruff check .`
-- [ ] App runs: `streamlit run app.py`
-- [ ] No performance regressions
 - [ ] Documentation updated
 - [ ] CHANGELOG.md updated (if applicable)
+
+**Python (if applicable):**
+- [ ] Tests pass: `PYTHONPATH=. pytest -v`
+- [ ] Linting clean: `ruff check .`
+- [ ] Type check: `mypy potfoundry/`
+
+**TypeScript/Web (if applicable):**
+- [ ] Tests pass: `npm run test`
+- [ ] Linting clean: `npm run lint`
+- [ ] Type check: `npm run typecheck`
+- [ ] Dev server runs: `npm run dev`
+- [ ] Build succeeds: `npm run build`
 
 ---
 
@@ -561,6 +570,200 @@ Make it easy by:
 3. **Example usage** - LLM can verify against examples
 4. **Clear structure** - LLM can locate relevant code
 5. **Good test coverage** - LLM can verify changes don't break things
+
+---
+
+## TypeScript/React Standards (potfoundry-web)
+
+### JSDoc Comments for Key Functions
+
+```typescript
+/**
+ * Bridge Zustand state to WebGPU controller.
+ * 
+ * Subscribes to store changes and translates them to GPU parameters.
+ * Handles debouncing to prevent excessive updates during slider drags.
+ * 
+ * @param controller - The WebGPU controller instance (or null if not mounted)
+ * @param options - Configuration options for debounce timing
+ * 
+ * @example
+ * ```tsx
+ * function Renderer() {
+ *   const controllerRef = useRef<WebGPUController | null>(null);
+ *   useRendererBridge(controllerRef.current, { geometryDebounce: 16 });
+ * }
+ * ```
+ */
+export function useRendererBridge(
+  controller: WebGPUController | null,
+  options: RendererBridgeOptions = {}
+): void {
+  // ...
+}
+```
+
+### Interface Documentation
+
+```typescript
+/**
+ * State slice for pot geometry parameters.
+ * 
+ * All dimensions are in millimeters.
+ */
+export interface GeometryParams {
+  /** Total pot height (must be > 0) */
+  H: number;
+  /** Top outer diameter */
+  top_od: number;
+  /** Bottom outer diameter */
+  bottom_od: number;
+  /** Wall thickness (typically 2-5mm) */
+  t_wall: number;
+  /** Bottom thickness (must be >= 2mm) */
+  t_bottom: number;
+  /** Drainage hole radius */
+  r_drain: number;
+  /** Flare exponent (1.0 = linear, >1 = flares to top) */
+  expn: number;
+}
+```
+
+### Zustand Slice Pattern
+
+```typescript
+// ✅ Good: Focused slice with clear interface
+export interface GeometrySlice {
+  geometry: GeometryParams;
+  setGeometryParam: (key: keyof GeometryParams, value: number) => void;
+  setGeometryParams: (params: Partial<GeometryParams>) => void;
+  resetGeometry: () => void;
+}
+
+export const createGeometrySlice: StateCreator<GeometrySlice> = (set) => ({
+  geometry: DEFAULT_GEOMETRY,
+  
+  setGeometryParam: (key, value) => set((state) => ({
+    geometry: { ...state.geometry, [key]: value }
+  })),
+  
+  // ... other actions
+});
+```
+
+### React Component Structure
+
+```typescript
+/**
+ * Control panel for adjusting pot dimensions.
+ * 
+ * Displays sliders for height, diameter, and wall thickness.
+ * Updates propagate to WebGPU renderer via Zustand store.
+ */
+export function DimensionControls(): JSX.Element {
+  // 1. Hooks at top
+  const geometry = useGeometry();
+  const { setGeometryParam } = useGeometryActions();
+  
+  // 2. Callbacks memoized
+  const handleHeightChange = useCallback((value: number) => {
+    setGeometryParam('H', value);
+  }, [setGeometryParam]);
+  
+  // 3. Render
+  return (
+    <div className="dimension-controls">
+      <Slider label="Height" value={geometry.H} onChange={handleHeightChange} />
+    </div>
+  );
+}
+```
+
+### Type Safety
+
+```typescript
+// ✅ Good: Strict types prevent runtime errors
+type StyleName = 'SuperformulaBlossom' | 'FourierBloom' | 'SpiralRidges' | 'SuperellipseMorph' | 'HarmonicRipple';
+
+const STYLE_NAME_TO_ID: Record<StyleName, number> = {
+  SuperformulaBlossom: 0,
+  FourierBloom: 1,
+  SpiralRidges: 2,
+  SuperellipseMorph: 3,
+  HarmonicRipple: 4,
+};
+
+// ✅ Good: Exhaustive switch with TypeScript
+function styleToParams(styleName: StyleName): number {
+  switch (styleName) {
+    case 'SuperformulaBlossom': return 0;
+    case 'FourierBloom': return 1;
+    // ... TypeScript errors if case is missing
+  }
+}
+```
+
+### Custom Hooks
+
+```typescript
+/**
+ * Hook for exporting pot designs to STL.
+ * 
+ * Handles quality tier selection and file download.
+ * 
+ * @returns Export function and loading state
+ */
+export function useExport() {
+  const [isExporting, setIsExporting] = useState(false);
+  
+  const exportSTL = useCallback(async (quality: QualityLevel) => {
+    setIsExporting(true);
+    try {
+      const blob = await generateSTL(quality);
+      downloadBlob(blob, 'pot.stl');
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
+  
+  return { exportSTL, isExporting };
+}
+```
+
+### Performance Patterns
+
+```typescript
+// ✅ Good: Selective subscriptions prevent re-renders
+const height = useAppStore((state) => state.geometry.H);
+
+// ✅ Good: Shallow compare for object selections
+const { geometry, style } = useAppStore(
+  useShallow((state) => ({ geometry: state.geometry, style: state.style }))
+);
+
+// ✅ Good: Memoize expensive computations
+const triangleCount = useMemo(() => {
+  return mesh.n_theta * mesh.n_z * 4;
+}, [mesh.n_theta, mesh.n_z]);
+```
+
+### File Organization
+
+```
+src/
+├── state/              # Zustand stores
+│   ├── store.ts        # Combined store
+│   ├── types.ts        # State types
+│   └── slices/         # Individual slices
+├── hooks/              # Custom React hooks
+├── ui/                 # React components
+│   ├── controls/       # Control panels
+│   ├── layout/         # Layout components
+│   └── shared/         # Reusable primitives
+├── context/            # React contexts
+├── services/           # External service clients
+└── infra/              # Infrastructure utilities
+```
 
 ---
 
@@ -658,5 +861,5 @@ For every code file, ensure:
 
 ---
 
-**Last Updated:** 2024
-**Applies To:** PotFoundry v2.0+
+**Last Updated:** December 2025  
+**Applies To:** PotFoundry v3.1.0+ (Python core and TypeScript web app)

@@ -2,13 +2,15 @@
 
 This document tracks planned features, improvements, and technical debt for future versions of PotFoundry.
 
-**Last Updated:** December 2024
-**Current Version:** v2.1.0
-**Next Planned:** v2.2.0
+**Last Updated:** December 2025  
+**Current Version:** v3.1.0  
+**Primary Product:** potfoundry-web (WebGPU React Application)
+
+> **Note**: The web app (`potfoundry-web/`) is now the primary product. Legacy Streamlit UI tasks are deprioritized.
 
 ---
 
-## 🚀 v2.2.0 - Streamlit UX Enhancements (Q1 2025)
+## 🌐 v2.3.0 - Web App Enhancements (Q1 2025)
 
 ### High Priority
 

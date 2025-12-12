@@ -46,6 +46,7 @@ import manager from './infra/logging/MessageManager';
 import { installConsolePatch } from './infra/logging/ConsolePatch';
 import { resolveLoggingPreferences } from './infra/logging/loggingPreferences';
 import { installWebGpuCapture, withValidationScope, createShaderModule } from './infra/logging/WebGpuCapture';
+import { fillGeometryBuffer } from './webgpu_geometry';
 
 try {
   installConsolePatch();
@@ -2459,11 +2460,19 @@ export const mount = async ({
     c2: device.createBuffer({ label: 'component:color-buffer-2', size: 16, usage: uniformUsage | copyDstUsage }),
     c3: device.createBuffer({ label: 'component:color-buffer-3', size: 16, usage: uniformUsage | copyDstUsage }),
   };
+  const bgBuffers = {
+    c1: device.createBuffer({ label: 'component:bg-buffer-1', size: 16, usage: uniformUsage | copyDstUsage }),
+    c2: device.createBuffer({ label: 'component:bg-buffer-2', size: 16, usage: uniformUsage | copyDstUsage }),
+    c3: device.createBuffer({ label: 'component:bg-buffer-3', size: 16, usage: uniformUsage | copyDstUsage }),
+  };
   // Preallocated Float32Array scratch buffers used to avoid allocation in
   // the hot render path when updating gradient colors.
   const colorBufC1 = new Float32Array(4);
   const colorBufC2 = new Float32Array(4);
   const colorBufC3 = new Float32Array(4);
+  const bgBufC1 = new Float32Array(4);
+  const bgBufC2 = new Float32Array(4);
+  const bgBufC3 = new Float32Array(4);
   const writeGradient = (
     device: GPUDevice,
     buffers: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer },
@@ -2480,6 +2489,37 @@ export const mount = async ({
     device.queue.writeBuffer(buffers.c2, 0, colorBufC2.buffer);
     device.queue.writeBuffer(buffers.c3, 0, colorBufC3.buffer);
     try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.colorWrites += 3); } catch (e) { /* ignore */ }
+  };
+  const writeBackgroundGradient = (
+    device: GPUDevice,
+    buffers: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer },
+    gradient: unknown,
+    angleVal: unknown
+  ): void => {
+    const stops = Array.isArray(gradient) ? gradient : [];
+    const angle = typeof angleVal === 'number' ? angleVal : 0;
+    const c1 = hexToRgbNorm(stops[0]);
+    // If only 2 stops provided, interpolate the middle stop for smooth 3-point gradient
+    let c3 = hexToRgbNorm(stops[2] ?? stops[1] ?? stops[0]);
+    let c2: GradientColor;
+
+    if (stops.length === 2) {
+      // Interpolate middle
+      const end = hexToRgbNorm(stops[1]);
+      c3 = end;
+      c2 = [(c1[0] + end[0]) * 0.5, (c1[1] + end[1]) * 0.5, (c1[2] + end[2]) * 0.5];
+    } else {
+      c2 = hexToRgbNorm(stops[1] ?? stops[0]);
+    }
+
+    // Store angle in C1 alpha channel (uBg1.w)
+    bgBufC1[0] = c1[0]; bgBufC1[1] = c1[1]; bgBufC1[2] = c1[2]; bgBufC1[3] = angle;
+    bgBufC2[0] = c2[0]; bgBufC2[1] = c2[1]; bgBufC2[2] = c2[2]; bgBufC2[3] = 0;
+    bgBufC3[0] = c3[0]; bgBufC3[1] = c3[1]; bgBufC3[2] = c3[2]; bgBufC3[3] = 0;
+
+    device.queue.writeBuffer(buffers.c1, 0, bgBufC1.buffer);
+    device.queue.writeBuffer(buffers.c2, 0, bgBufC2.buffer);
+    device.queue.writeBuffer(buffers.c3, 0, bgBufC3.buffer);
   };
 
   const styleParamBuffer = device.createBuffer({
@@ -2514,6 +2554,9 @@ export const mount = async ({
       { binding: 2, resource: { buffer: colorBuffers.c2 } },
       { binding: 3, resource: { buffer: colorBuffers.c3 } },
       { binding: 4, resource: { buffer: styleParamBuffer } },
+      { binding: 5, resource: { buffer: bgBuffers.c1 } },
+      { binding: 6, resource: { buffer: bgBuffers.c2 } },
+      { binding: 7, resource: { buffer: bgBuffers.c3 } },
     ],
   });
   emitDiagnostic('webgpu:bind-group-ready', {
@@ -3817,6 +3860,8 @@ export const mount = async ({
   let totalDrawnVerts = 0;
   let totalDrawCalls = 0;
 
+  let lastBgSignature: string | null = null;
+
   const updateAndDraw = (payload?: WebGPUParams): void => {
     try {
       if (!pipeline) {
@@ -3909,13 +3954,19 @@ export const mount = async ({
         }
       }
 
-      // Resolve drain radius and style id from `cfg`/`current` similar to preview module
+      // Resolve drain radius and style id from `cfg`/`current` for local state updates
       const height = clampNumber(cfg.H, 120.0);
       const radiusTop = clampNumber(cfg.Rt ?? cfg.Rt, 70.0);
       const radiusBottom = clampNumber(cfg.Rb ?? cfg.Rb, 45.0);
+
+      const drainRadiusRaw =
+        cfg.r_drain ?? cfg.drain ?? cfg.drainRadius ?? (cfg as Record<string, unknown>)?.drain_radius ?? current.r_drain;
+      const drainRadius = clampNumber(drainRadiusRaw, 10.0);
+
       const safeHeight = Math.max(Math.abs(height), 1);
       const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
       const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
+
       const styleIdRaw =
         typeof cfg.styleId === 'number'
           ? Math.trunc(cfg.styleId)
@@ -3923,30 +3974,15 @@ export const mount = async ({
             ? Math.trunc(Number(current.styleId))
             : 0;
       const styleId = styleIdRaw < 0 ? 0 : styleIdRaw;
-      const drainRadiusRaw =
-        cfg.r_drain ?? cfg.drain ?? cfg.drainRadius ?? (cfg as Record<string, unknown>)?.drain_radius ?? current.r_drain;
-      const drainRadius = clampNumber(drainRadiusRaw, 10.0);
-      // Core geometry params - ensure WGSL receives the pot dimensions and style flags
-      f32[0] = height;
-      f32[1] = radiusTop;
-      f32[2] = radiusBottom;
-      f32[3] = clampNumber(cfg.expn, 1.0);
-      f32[4] = clampNumber(cfg.spin_turns ?? cfg.turns, 0.0);
-      f32[5] = clampNumber(cfg.spin_phase ?? cfg.phase, 0.0);
-      f32[6] = clampNumber(cfg.spin_curve ?? cfg.curve, 1.0);
-      f32[7] = styleId;
-      const sf_m_base_val = cfg.sf_m_base ?? (cfg as Record<string, any>).sf_m ?? cfg.sf_m ?? 6.0;
-      const sf_m_top_val = cfg.sf_m_top ?? sf_m_base_val ?? 10.0;
-      f32[8] = clampNumber(sf_m_base_val, 6.0);
-      f32[9] = clampNumber(sf_m_top_val, 10.0);
-      f32[10] = clampNumber(cfg.sf_n1 ?? cfg.n1, 0.35);
-      f32[11] = clampNumber(cfg.sf_n2 ?? cfg.n2, 0.8);
-      f32[12] = clampNumber(cfg.sf_n3 ?? cfg.n3, 0.8);
-      f32[DRAIN_RADIUS_OFFSET] = Math.max(Math.abs(drainRadius), 0.5);
-      // Bell/bulge parameters (f32[14-15, 72]) - applies to all styles
-      f32[14] = clampNumber(cfg.bellAmp, 0.0);  // Bell amplitude (-0.5 to 0.5)
-      f32[15] = clampNumber(cfg.bellCenter, 0.5); // Bell center position (0.1-0.9)
-      f32[BELL_WIDTH_OFFSET] = clampNumber(cfg.bellWidth, 0.22); // Bell width (0.1-1.0)
+
+      // Populate uniform buffer using shared helper (handles geometry, twist, resolution)
+      try {
+        fillGeometryBuffer(f32, cfg, current);
+      } catch (err) {
+        console.error('[WebGPU] fillGeometryBuffer failed:', err);
+      }
+
+      // Update local tracking state
       current.r_drain = drainRadius;
       current.styleId = styleId;
 
@@ -4353,7 +4389,7 @@ export const mount = async ({
       current.scenePadding = paddingHint;
       current.projection = state.projectionMode;
 
-      const drawVerts = resolvedCounts.totalVerts;
+      const drawVerts = resolvedCounts.totalVerts + 9;
       const safeDrawVerts = Math.max(0, Math.min(MAX_VERTS, Math.floor(drawVerts)));
       if (!Number.isFinite(safeDrawVerts) || safeDrawVerts <= 0) {
         emitDiagnostic('webgpu:skip-draw', {
@@ -4422,6 +4458,14 @@ export const mount = async ({
       if (gradientSignature !== lastGradientSignature) {
         writeGradient(device, colorBuffers, cfg.gradient);
         lastGradientSignature = gradientSignature;
+      }
+
+      const bg = cfg.background_gradient ?? cfg.background ?? (cfg as any).__pf_bg_gradient ?? null;
+      const bgAngle = cfg.gradient_angle ?? 0;
+      const bgSignature = JSON.stringify(bg) + '_' + bgAngle;
+      if (bgSignature !== lastBgSignature) {
+        writeBackgroundGradient(device, bgBuffers, bg, bgAngle);
+        lastBgSignature = bgSignature;
       }
 
       const desiredAlphaMode = resolveAlphaMode((cfg as Record<string, unknown>).__pf_bg_mode);
@@ -5202,6 +5246,9 @@ export const mount = async ({
     colorBuffers.c1.destroy();
     colorBuffers.c2.destroy();
     colorBuffers.c3.destroy();
+    bgBuffers.c1.destroy();
+    bgBuffers.c2.destroy();
+    bgBuffers.c3.destroy();
     styleParamBuffer.destroy();
     if (localControlResetTimer !== null) {
       window.clearTimeout(localControlResetTimer);

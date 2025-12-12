@@ -11,6 +11,7 @@ import React, { useCallback, useMemo } from 'react';
 import { Palette, Sun, Eye, EyeOff, Grid3x3, Sparkles, Moon, Lightbulb, CircleDot } from 'lucide-react';
 import { Section, SectionGroup } from '../shared/Section';
 import { Button } from '../shared/Button';
+import { Slider } from '../shared/Slider';
 import {
   useAppearance,
   useAppearanceActions,
@@ -68,13 +69,14 @@ const ColorSwatch: React.FC<ColorSwatchProps> = ({
 
 interface GradientPreviewProps {
   colors: [string, string];
+  angle?: number;
 }
 
-const GradientPreview: React.FC<GradientPreviewProps> = ({ colors }) => (
+const GradientPreview: React.FC<GradientPreviewProps> = ({ colors, angle = 135 }) => (
   <div
     className="pf-gradient-preview"
     style={{
-      background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`,
+      background: `linear-gradient(${angle}deg, ${colors[0]}, ${colors[1]})`,
     }}
   />
 );
@@ -151,10 +153,17 @@ export const AppearanceControls: React.FC = () => {
     setSecondaryColor,
     setLightingPreset,
     setBackgroundGradient,
+    setGradientAngle,
     setCustomGradient,
     toggleWireframe,
     toggleInner,
   } = useAppearanceActions();
+
+  // Angle handler
+  const handleAngle = useCallback(
+    (value: number) => setGradientAngle(value),
+    [setGradientAngle]
+  );
 
   // Memoize current gradient ID lookup
   const currentGradientId = useMemo(() => {
@@ -200,16 +209,19 @@ export const AppearanceControls: React.FC = () => {
   );
 
   // Custom background color handlers
-  const handleBgColor1 = useCallback(
+  // FLIPPED: Top (Color 1) sets gradient[1] (Top in shader)
+  //          Bottom (Color 2) sets gradient[0] (Bottom in shader)
+  // Because in Shader: 0 is start (bottom), 1 is end (top)
+  const handleBgColor1 = useCallback( // "Color 1 (Top)" in UI
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setCustomGradient([e.target.value, appearance.gradient[1]]);
+      setCustomGradient([appearance.gradient[0], e.target.value]); // Set Top
     },
     [setCustomGradient, appearance.gradient]
   );
 
-  const handleBgColor2 = useCallback(
+  const handleBgColor2 = useCallback( // "Color 2 (Bottom)" in UI
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setCustomGradient([appearance.gradient[0], e.target.value]);
+      setCustomGradient([e.target.value, appearance.gradient[1]]); // Set Bottom
     },
     [setCustomGradient, appearance.gradient]
   );
@@ -359,26 +371,12 @@ export const AppearanceControls: React.FC = () => {
         {/* Custom background color pickers */}
         <div className="pf-appearance-color-pickers pf-bg-color-pickers">
           <div className="pf-appearance-color-row">
-            <label className="pf-appearance-color-label">Color 1</label>
+            <label className="pf-appearance-color-label">Color 1 (Top)</label>
             <div className="pf-appearance-color-picker">
               <input
                 type="color"
-                value={appearance.gradient[0]}
+                value={appearance.gradient[1]} // Top
                 onChange={handleBgColor1}
-                className="pf-appearance-color-input"
-              />
-              <span className="pf-appearance-color-value">
-                {appearance.gradient[0]}
-              </span>
-            </div>
-          </div>
-          <div className="pf-appearance-color-row">
-            <label className="pf-appearance-color-label">Color 2</label>
-            <div className="pf-appearance-color-picker">
-              <input
-                type="color"
-                value={appearance.gradient[1]}
-                onChange={handleBgColor2}
                 className="pf-appearance-color-input"
               />
               <span className="pf-appearance-color-value">
@@ -386,10 +384,36 @@ export const AppearanceControls: React.FC = () => {
               </span>
             </div>
           </div>
+          <div className="pf-appearance-color-row">
+            <label className="pf-appearance-color-label">Color 2 (Bottom)</label>
+            <div className="pf-appearance-color-picker">
+              <input
+                type="color"
+                value={appearance.gradient[0]} // Bottom
+                onChange={handleBgColor2}
+                className="pf-appearance-color-input"
+              />
+              <span className="pf-appearance-color-value">
+                {appearance.gradient[0]}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="pf-control-row">
+          <Slider
+            label="Angle"
+            value={appearance.gradientAngle ?? 0}
+            min={0}
+            max={360}
+            step={1}
+            onChange={handleAngle}
+            unit="°"
+          />
         </div>
 
         <div className="pf-current-gradient">
-          <GradientPreview colors={appearance.gradient} />
+          <GradientPreview colors={appearance.gradient} angle={appearance.gradientAngle ?? 0} />
           <span className="pf-current-gradient__label">
             {BACKGROUND_GRADIENTS.find((g) => g.id === currentGradientId)?.name || 'Custom'}
           </span>
