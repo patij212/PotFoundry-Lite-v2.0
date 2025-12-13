@@ -1501,12 +1501,17 @@ export const mount = async ({
     label: string
   ): Promise<GPUAdapter | null> => {
     try {
+      console.log(`[WebGPU] Attempting adapter request: ${label}`, options);
       const adapterResult = await (navGpu as any).requestAdapter(options);
       if (!adapterResult) {
-        emitDiagnostic('webgpu:adapter-null', { ...baseDiagInfo, attempt: label });
+        console.warn(`[WebGPU] Adapter request '${label}' returned null`);
+        emitDiagnostic('webgpu:adapter-null', { ...baseDiagInfo, attempt: label, options });
+      } else {
+        console.log(`[WebGPU] Adapter request '${label}' succeeded!`);
       }
       return adapterResult as GPUAdapter | null;
     } catch (err) {
+      console.error(`[WebGPU] Adapter request '${label}' threw error:`, err);
       emitDiagnostic('webgpu:adapter-request-error', {
         ...baseDiagInfo,
         attempt: label,
