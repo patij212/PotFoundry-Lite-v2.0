@@ -2198,14 +2198,18 @@ export const mount = async ({
     let nextWidth = Math.max(1, Math.round(cssWidth * nextDpr));
     let nextHeight = Math.max(1, Math.round(cssHeight * nextDpr));
 
-    // Mobile GPU safety: clamp to device texture limits to prevent device invalidation
-    // This guard only activates on mobile (desktop limits are typically 16384+)
-    const maxDim = maxTextureDimension2D || 8192;
+    // Mobile GPU safety: use conservative limit to prevent memory exhaustion
+    // Even if GPU reports 8192, mobile devices often can't allocate textures that large
+    // Use 4096 as a safe maximum that works on most mobile GPUs
+    const gpuMaxDim = maxTextureDimension2D || 8192;
+    const conservativeMax = Math.min(gpuMaxDim, 4096); // Conservative mobile limit
+    const maxDim = conservativeMax;
+
     if (nextWidth > maxDim || nextHeight > maxDim) {
       const scale = Math.min(maxDim / nextWidth, maxDim / nextHeight);
       nextWidth = Math.max(1, Math.floor(nextWidth * scale));
       nextHeight = Math.max(1, Math.floor(nextHeight * scale));
-      console.warn(`[WebGPU] Canvas clamped to GPU limit: ${nextWidth}×${nextHeight} (max: ${maxDim})`);
+      console.warn(`[WebGPU] Canvas clamped to safe limit: ${nextWidth}×${nextHeight} (max: ${maxDim}, GPU reports: ${gpuMaxDim})`);
     }
 
     // Track fullscreen state changes - force resize when fullscreen toggles
