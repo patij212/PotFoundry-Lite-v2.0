@@ -135,6 +135,25 @@ export const Sidebar: React.FC = () => {
         <div className="pf-sidebar__title">
           <h2>PotFoundry</h2>
           <span className="pf-sidebar__version">v2.1</span>
+          {/* Renderer selector - inline in header for mobile visibility */}
+          <select
+            className="pf-sidebar__renderer-header-select"
+            value={typeof window !== 'undefined' ? (localStorage.getItem('pf-preferred-renderer') || 'auto') : 'auto'}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === 'auto') {
+                localStorage.removeItem('pf-preferred-renderer');
+              } else {
+                localStorage.setItem('pf-preferred-renderer', value);
+              }
+              window.location.reload();
+            }}
+            title="Change graphics renderer"
+          >
+            <option value="auto">Auto</option>
+            <option value="webgpu">GPU</option>
+            <option value="webgl">GL</option>
+          </select>
         </div>
         <IconButton
           icon={<X size={18} />}
@@ -197,6 +216,28 @@ export const Sidebar: React.FC = () => {
           >
             Reset All
           </Button>
+
+          {/* Renderer Toggle */}
+          <div className="pf-sidebar__renderer-toggle">
+            <select
+              className="pf-sidebar__renderer-select"
+              value={typeof window !== 'undefined' ? (localStorage.getItem('pf-preferred-renderer') || 'auto') : 'auto'}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === 'auto') {
+                  localStorage.removeItem('pf-preferred-renderer');
+                } else {
+                  localStorage.setItem('pf-preferred-renderer', value);
+                }
+                window.location.reload();
+              }}
+              title="Change graphics renderer"
+            >
+              <option value="auto">Auto</option>
+              <option value="webgpu">WebGPU</option>
+              <option value="webgl">WebGL</option>
+            </select>
+          </div>
         </footer>
       )}
 

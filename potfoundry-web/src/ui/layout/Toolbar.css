@@ -33,7 +33,7 @@
   gap: 4px;
 }
 
-.pf-toolbar__group + .pf-toolbar__group {
+.pf-toolbar__group+.pf-toolbar__group {
   padding-left: 8px;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -61,4 +61,37 @@
 /* When panel is open, shift toolbar right */
 .pf-toolbar--shifted {
   left: calc(50% + 160px);
+}
+
+/* ============================================================================
+   Renderer Indicator
+   ============================================================================ */
+
+.pf-toolbar__renderer-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: default;
+  user-select: none;
+}
+
+.pf-toolbar__renderer-icon--webgpu {
+  color: #22c55e;
+}
+
+.pf-toolbar__renderer-icon--webgl {
+  color: #f59e0b;
+}
+
+.pf-toolbar__renderer-label {
+  color: inherit;
 }

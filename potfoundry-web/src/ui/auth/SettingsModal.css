@@ -261,6 +261,43 @@
     text-align: center;
 }
 
+/* Select dropdown */
+.settings-modal__select {
+    flex: 1;
+    max-width: 200px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.settings-modal__select:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+}
+
+.settings-modal__select:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.settings-modal__select option {
+    background: #1a1f35;
+    color: #fff;
+}
+
+/* Hint text */
+.settings-modal__hint {
+    margin: 8px 0 0;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.4);
+    line-height: 1.4;
+}
+
 /* Footer */
 .settings-modal__footer {
     padding: 16px 24px 24px;

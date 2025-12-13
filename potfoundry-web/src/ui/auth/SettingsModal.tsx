@@ -265,6 +265,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange
                         )}
                     </section>
 
+                    {/* Renderer Section */}
+                    <section className="settings-modal__section">
+                        <h3 className="settings-modal__section-title">
+                            <Shield size={16} />
+                            Graphics
+                        </h3>
+                        <div className="settings-modal__field">
+                            <label className="settings-modal__label">Renderer Engine</label>
+                            <select
+                                className="settings-modal__select"
+                                value={typeof window !== 'undefined' ? (localStorage.getItem('pf-preferred-renderer') || 'auto') : 'auto'}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === 'auto') {
+                                        localStorage.removeItem('pf-preferred-renderer');
+                                    } else {
+                                        localStorage.setItem('pf-preferred-renderer', value);
+                                    }
+                                    // Reload to reinitialize with new renderer
+                                    window.location.reload();
+                                }}
+                            >
+                                <option value="auto">Auto (WebGPU → WebGL)</option>
+                                <option value="webgpu">WebGPU (High Performance)</option>
+                                <option value="webgl">WebGL (Compatibility)</option>
+                            </select>
+                        </div>
+                        <p className="settings-modal__hint">
+                            Use WebGL if experiencing graphics issues on mobile.
+                        </p>
+                    </section>
+
                     {/* Actions */}
                     <div className="settings-modal__footer">
                         <button

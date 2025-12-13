@@ -63,6 +63,10 @@ export interface ControllerContextValue {
   applyViewPreset: (preset: 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso') => void;
   /** Update renderer parameters directly (for library design loading) */
   updateParams: (params: Record<string, unknown>) => void;
+  /**
+   * Which renderer is being used
+   */
+  rendererType: 'webgpu' | 'webgl' | undefined;
   /** 
    * Set a local params lock to prevent Python params from overwriting locally-loaded designs.
    * The lock lasts for the specified duration in milliseconds.
@@ -163,6 +167,17 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
     showGrid: true,
     showAxis: true,
   });
+
+  // Renderer type for UI indicator - updated when controller becomes ready
+  const [rendererType, setRendererType] = useState<'webgpu' | 'webgl' | undefined>(undefined);
+
+  // Update rendererType when controller becomes ready
+  useEffect(() => {
+    if (isReady && controllerRef.current) {
+      const type = (controllerRef.current as any)?.rendererType;
+      setRendererType(type);
+    }
+  }, [isReady, controllerRef]);
 
   // Helper to read current state from window.__pf_webgpu_camera_controller
   // NOTE: Returns a NEW state object, NOT derived from previous state to avoid circular deps
@@ -365,6 +380,7 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
       applyViewPreset,
       updateParams,
       setLocalParamsLock,
+      rendererType,
     }),
     [
       controllerRef,
@@ -383,6 +399,7 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
       applyViewPreset,
       updateParams,
       setLocalParamsLock,
+      rendererType,
     ]
   );
 

@@ -1637,6 +1637,15 @@ export const mount = async ({
   let width = 1;
   let height = 1;
   let devicePixelRatio = window.devicePixelRatio || 1;
+
+  // Store device limits for mobile-safe canvas sizing
+  // Desktop GPUs typically have 16384+, mobile GPUs may be 4096-8192
+  let maxTextureDimension2D = 8192; // Safe default
+  try {
+    maxTextureDimension2D = device.limits?.maxTextureDimension2D ?? 8192;
+    console.log(`[WebGPU] Device maxTextureDimension2D: ${maxTextureDimension2D}`);
+  } catch (e) { /* ignore limit query errors */ }
+
   let depth = createDepthTexture(device, width, height);
 
   const initialAutoRotateRaw = (initialParams as Record<string, unknown>).autoRotate;
@@ -2151,6 +2160,10 @@ export const mount = async ({
   let lastResizeHeight = 0;
   let lastFullscreenState = false;
 
+  // Mobile GPU safety: prevent context.configure during async initialization
+  // to avoid destabilizing the GPU device during pipeline creation
+  let initializationComplete = false;
+
   const initialBgMode = (initialParams as Record<string, unknown>).__pf_bg_mode;
   let currentAlphaMode: 'opaque' | 'premultiplied' = resolveAlphaMode(initialBgMode);
 
@@ -2181,8 +2194,19 @@ export const mount = async ({
     }
 
     const nextDpr = window.devicePixelRatio || 1;
-    const nextWidth = Math.max(1, Math.round(cssWidth * nextDpr));
-    const nextHeight = Math.max(1, Math.round(cssHeight * nextDpr));
+    // Calculate raw dimensions from CSS size × devicePixelRatio
+    let nextWidth = Math.max(1, Math.round(cssWidth * nextDpr));
+    let nextHeight = Math.max(1, Math.round(cssHeight * nextDpr));
+
+    // Mobile GPU safety: clamp to device texture limits to prevent device invalidation
+    // This guard only activates on mobile (desktop limits are typically 16384+)
+    const maxDim = maxTextureDimension2D || 8192;
+    if (nextWidth > maxDim || nextHeight > maxDim) {
+      const scale = Math.min(maxDim / nextWidth, maxDim / nextHeight);
+      nextWidth = Math.max(1, Math.floor(nextWidth * scale));
+      nextHeight = Math.max(1, Math.floor(nextHeight * scale));
+      console.warn(`[WebGPU] Canvas clamped to GPU limit: ${nextWidth}×${nextHeight} (max: ${maxDim})`);
+    }
 
     // Track fullscreen state changes - force resize when fullscreen toggles
     const fullscreenChanged = isFullscreen !== lastFullscreenState;
@@ -2208,49 +2232,57 @@ export const mount = async ({
     // Only set the pixel buffer to match the parent container dimensions
     canvas.width = width;
     canvas.height = height;
-    context.configure({ device, format, alphaMode: currentAlphaMode });
-    const newDepth = createDepthTexture(device, width, height);
-    const oldDepth = depth;
-    depth = newDepth;
-    if (oldDepth) {
-      setTimeout(() => {
-        try {
-          oldDepth.destroy();
-        } catch (err) {
-          /* ignore */
-        }
-      }, 0);
-    }
-    state.canvasAspect = height > 0 ? width / height : 1;
-    // Force projection matrix recalculation on next frame
-    state.cameraDirty = true;
-    // Invalidate ALL cached camera rigs so they're rebuilt with new aspect ratio
-    // Module-level cache:
-    lastCameraRig = null;
-    // Mount-closure cache (used by getCachedRig) - wrapped in try-catch because
-    // these variables are defined later in the file and may not exist during
-    // the initial resize() call at mount time
-    try {
-      // @ts-ignore - lastRigSignature/lastRigCached are defined later in mount()
-      if (typeof lastRigSignature !== 'undefined') lastRigSignature = null;
-      // @ts-ignore
-      if (typeof lastRigCached !== 'undefined') lastRigCached = null;
-    } catch (e) {
-      // Ignore - variables not yet defined during initial mount
-    }
-    console.log('[WebGPU] Resize:', width, 'x', height, 'aspect:', state.canvasAspect.toFixed(3));
-    if (debugEnabled) {
-      const signature = `${width}x${height}@${Math.round(devicePixelRatio * 100) / 100}`;
-      if (signature !== lastResizeSignature) {
-        lastResizeSignature = signature;
-        emitDiagnostic('canvas:resize', {
-          width,
-          height,
-          cssWidth: Math.round(cssWidth),
-          cssHeight: Math.round(cssHeight),
-          dpr: devicePixelRatio,
-        });
+
+    // Mobile GPU safety: only reconfigure context and recreate depth texture after initialization
+    // During async pipeline creation, context.configure can destabilize the GPU device
+    if (initializationComplete) {
+      context.configure({ device, format, alphaMode: currentAlphaMode });
+      const newDepth = createDepthTexture(device, width, height);
+      const oldDepth = depth;
+      depth = newDepth;
+      if (oldDepth) {
+        setTimeout(() => {
+          try {
+            oldDepth.destroy();
+          } catch (err) {
+            /* ignore */
+          }
+        }, 0);
       }
+      state.canvasAspect = height > 0 ? width / height : 1;
+      // Force projection matrix recalculation on next frame
+      state.cameraDirty = true;
+      // Invalidate ALL cached camera rigs so they're rebuilt with new aspect ratio
+      // Module-level cache:
+      lastCameraRig = null;
+      // Mount-closure cache (used by getCachedRig) - wrapped in try-catch because
+      // these variables are defined later in the file and may not exist during
+      // the initial resize() call at mount time
+      try {
+        // @ts-ignore - lastRigSignature/lastRigCached are defined later in mount()
+        if (typeof lastRigSignature !== 'undefined') lastRigSignature = null;
+        // @ts-ignore
+        if (typeof lastRigCached !== 'undefined') lastRigCached = null;
+      } catch (e) {
+        // Ignore - variables not yet defined during initial mount
+      }
+      console.log('[WebGPU] Resize:', width, 'x', height, 'aspect:', state.canvasAspect.toFixed(3));
+      if (debugEnabled) {
+        const signature = `${width}x${height}@${Math.round(devicePixelRatio * 100) / 100}`;
+        if (signature !== lastResizeSignature) {
+          lastResizeSignature = signature;
+          emitDiagnostic('canvas:resize', {
+            width,
+            height,
+            cssWidth: Math.round(cssWidth),
+            cssHeight: Math.round(cssHeight),
+            dpr: devicePixelRatio,
+          });
+        }
+      }
+    } else {
+      // During initialization, just log dimensions without reconfiguring context
+      console.log('[WebGPU] Initial resize (pre-init):', width, 'x', height);
     }
     // Update axis overlay size to be crisp on DPR-scaled devices
     try {
@@ -2294,6 +2326,11 @@ export const mount = async ({
       console.warn('[WebGPU] ResizeObserver not available, using window resize only');
     }
   }
+
+  // Initial context configuration BEFORE any resize operations
+  // Configure with current dimensions to establish the context before pipeline creation
+  // This helps ensure the device is stable before async pipeline work begins
+  context.configure({ device, format, alphaMode: currentAlphaMode });
 
   resize();
 
@@ -2509,6 +2546,11 @@ export const mount = async ({
   }
   emitDiagnostic('webgpu:pipeline-ready');
   console.log('[WebGPU] Pipeline ready!');
+
+  // Mobile GPU safety: now safe to call context.configure in resize()
+  initializationComplete = true;
+  // Trigger a resize to properly configure context with actual dimensions
+  resize();
 
   // Create wireframe pipeline with line-list topology for triangle edges
   let wireframePipeline: GPURenderPipeline | null = null;

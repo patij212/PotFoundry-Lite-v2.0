@@ -54,6 +54,17 @@ function isGPUInstanceLossError(error: unknown): boolean {
 }
 
 /**
+ * Get user's saved renderer preference from localStorage
+ */
+function getSavedRendererPreference(): 'webgpu' | 'webgl' | null {
+    try {
+        const pref = localStorage.getItem('pf-preferred-renderer');
+        if (pref === 'webgpu' || pref === 'webgl') return pref;
+        return null;
+    } catch { return null; }
+}
+
+/**
  * Wrap the WebGPU controller to implement the RendererController interface
  */
 function wrapWebGPUController(
@@ -91,14 +102,18 @@ export async function createRenderer(
 ): Promise<RendererController | null> {
     const { forceRenderer, onFallback, ...mountOptions } = options;
 
-    // === Force specific renderer (for testing) ===
-    if (forceRenderer === 'webgl') {
-        console.log('[Renderer] Forcing WebGL mode');
+    // Check for user's saved renderer preference from Settings
+    const savedPref = getSavedRendererPreference();
+    const effectiveForce = forceRenderer ?? savedPref;
+
+    // === Force specific renderer (from API or user preference) ===
+    if (effectiveForce === 'webgl') {
+        console.log('[Renderer] Forcing WebGL mode' + (savedPref === 'webgl' ? ' (user preference)' : ''));
         return createWebGLRenderer(mountOptions, 'forced');
     }
 
     // === Try WebGPU first ===
-    if (forceRenderer !== 'webgl' && await isWebGPUAvailable()) {
+    if (effectiveForce !== 'webgl' && await isWebGPUAvailable()) {
         try {
             console.log('[Renderer] Attempting WebGPU...');
             const webgpuController = await mountWebGPU(mountOptions);

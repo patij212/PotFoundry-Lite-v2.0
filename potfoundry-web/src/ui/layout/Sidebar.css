@@ -104,6 +104,29 @@
   border-radius: 4px;
 }
 
+/* Renderer selector in header - always visible */
+.pf-sidebar__renderer-header-select {
+  font-size: 10px;
+  font-weight: 600;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.pf-sidebar__renderer-header-select:focus {
+  outline: none;
+  border-color: #f59e0b;
+}
+
+.pf-sidebar__renderer-header-select option {
+  background: #1a1f35;
+  color: #fff;
+}
+
 /* Tab Navigation */
 .pf-sidebar__tabs {
   flex: 0 0 auto;
@@ -186,11 +209,44 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 12px 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.2);
   pointer-events: auto;
+}
+
+/* Renderer Toggle */
+.pf-sidebar__renderer-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.pf-sidebar__renderer-select {
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pf-sidebar__renderer-select:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.pf-sidebar__renderer-select:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.pf-sidebar__renderer-select option {
+  background: #1a1f35;
+  color: #fff;
 }
 
 /* Scrollbar Styling */

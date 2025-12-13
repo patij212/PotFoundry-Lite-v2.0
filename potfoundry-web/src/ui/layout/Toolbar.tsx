@@ -21,6 +21,7 @@ import {
   Grid,
   Box,
   Orbit,
+  Cpu,
 } from 'lucide-react';
 import { IconButton, useToast } from '../shared';
 import { HelpDialog } from '../shared/HelpDialog';
@@ -270,7 +271,22 @@ export const Toolbar: React.FC = () => {
         />
       </div>
 
-      {/* Right group - Actions */}
+      {/* Renderer type indicator */}
+      {isControllerReady && controller?.rendererType && (
+        <div
+          className="pf-toolbar__renderer-indicator"
+          title={`Rendering with ${controller.rendererType === 'webgpu' ? 'WebGPU (High Performance)' : 'WebGL (Compatibility Mode)'}`}
+        >
+          {controller.rendererType === 'webgpu' ? (
+            <Cpu size={14} className="pf-toolbar__renderer-icon pf-toolbar__renderer-icon--webgpu" />
+          ) : (
+            <Box size={14} className="pf-toolbar__renderer-icon pf-toolbar__renderer-icon--webgl" />
+          )}
+          <span className="pf-toolbar__renderer-label">
+            {controller.rendererType === 'webgpu' ? 'GPU' : 'GL'}
+          </span>
+        </div>
+      )}
       <div className="pf-toolbar__group">
         <IconButton
           icon={<HelpCircle size={18} />}

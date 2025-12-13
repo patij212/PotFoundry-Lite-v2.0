@@ -350,7 +350,7 @@ Protocol: ${protocol}`}
                                 style={{
                                     position: 'absolute',
                                     bottom: '10px',
-                                    left: '10px',
+                                    right: '10px',
                                     padding: '4px 10px',
                                     backgroundColor: 'rgba(255, 193, 7, 0.9)',
                                     color: '#1a1a2e',
