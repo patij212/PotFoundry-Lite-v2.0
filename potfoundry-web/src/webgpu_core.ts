@@ -2168,6 +2168,12 @@ export const mount = async ({
   let currentAlphaMode: 'opaque' | 'premultiplied' = resolveAlphaMode(initialBgMode);
 
   const resize = (): void => {
+    // Mobile GPU safety: completely skip resize during async initialization
+    // Any resize operations during pipeline creation can destabilize the GPU device
+    if (!initializationComplete) {
+      return; // Total no-op during init
+    }
+
     // Get the TARGET dimensions from the PARENT container
     // The canvas has inline styles, so we can't query it directly
     // The parent container uses CSS flex/grid and tells us the available space
