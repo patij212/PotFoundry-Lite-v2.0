@@ -1524,13 +1524,38 @@ export const mount = async ({
   // Try various adapter options, including compatibilityMode for devices without Vulkan 1.1+
   // The compatibilityMode option (Chrome 127+) enables OpenGL ES backend on Android devices
   // that lack Vulkan support, which is common on many mobile devices.
-  const adapter =
-    (await attemptAdapterRequest(undefined, 'default')) ??
-    (await attemptAdapterRequest({ powerPreference: 'high-performance' }, 'high-performance')) ??
-    (await attemptAdapterRequest({ powerPreference: 'low-power' }, 'low-power')) ??
+
+  // Define adapter request strategies to try
+  const adapterStrategies: Array<{ options: GPURequestAdapterOptions | undefined; label: string }> = [
+    { options: undefined, label: 'default' },
+    { options: { powerPreference: 'high-performance' }, label: 'high-performance' },
+    { options: { powerPreference: 'low-power' }, label: 'low-power' },
     // Try compatibility mode for devices without Vulkan 1.1+ (uses OpenGL ES backend)
-    (await attemptAdapterRequest({ compatibilityMode: true } as GPURequestAdapterOptions, 'compatibility-mode')) ??
-    (await attemptAdapterRequest({ forceFallbackAdapter: true }, 'fallback'));
+    { options: { compatibilityMode: true } as GPURequestAdapterOptions, label: 'compatibility-mode' },
+    { options: { forceFallbackAdapter: true }, label: 'fallback' },
+  ];
+
+  // Retry adapter request with delays - GPU process may need time to recover from crashes
+  let adapter: GPUAdapter | null = null;
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 500;
+
+  for (let retry = 0; retry < MAX_RETRIES && !adapter; retry++) {
+    if (retry > 0) {
+      console.log(`[WebGPU] Retry ${retry}/${MAX_RETRIES} - waiting ${RETRY_DELAY_MS}ms before next attempt...`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+
+    for (const strategy of adapterStrategies) {
+      const result = await attemptAdapterRequest(strategy.options, strategy.label);
+      if (result) {
+        adapter = result;
+        console.log(`[WebGPU] Successfully obtained adapter with strategy '${strategy.label}' on retry ${retry}`);
+        break;
+      }
+    }
+  }
+
   if (!adapter) {
     // Provide platform-specific help for adapter failures
     const ua = navigator.userAgent.toLowerCase();
