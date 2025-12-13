@@ -598,6 +598,7 @@ const createPipeline = async (
       }
       // If all fallbacks fail, try a minimal shader module to determine
       // whether the failure is shader-specific or platform/driver-specific.
+      console.log('[WebGPU] All fallbacks failed. Trying minimal standalone shader test...');
       try {
         const minimalWgsl = `
           @vertex
@@ -608,25 +609,32 @@ const createPipeline = async (
           @fragment
           fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
         `;
+        console.log('[WebGPU] Creating minimal test shader module...');
         const testModule = await createShaderModule(device as any, minimalWgsl, 'minimal-test');
+        console.log('[WebGPU] Minimal test shader module:', testModule ? 'SUCCESS' : 'null');
         const testInfo = await ((testModule as any).getCompilationInfo?.() ?? Promise.resolve(undefined));
         if (testInfo && Array.isArray(testInfo.messages) && testInfo.messages.some((m: any) => m.type === 'error')) {
+          console.error('[WebGPU] Minimal shader compilation FAILED:', testInfo.messages);
           reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader test failed compile', messages: testInfo.messages });
         } else {
+          console.log('[WebGPU] Minimal shader compiled successfully. Creating pipeline directly (no wrapper)...');
           try {
+            // Direct call without withValidationScope to get raw error
             const testPipe = await device.createRenderPipelineAsync({
               layout: 'auto',
               vertex: { module: testModule, entryPoint: 'vs_main' },
               fragment: { module: testModule, entryPoint: 'fs_main', targets: [{ format }] },
               primitive: { topology: 'triangle-list', cullMode: 'none' },
             });
-            reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline succeeded; shader is likely the issue' });
-            try { testPipe; } catch (e) { /* no-op: just confirmation */ }
+            console.log('[WebGPU] MINIMAL TEST PIPELINE SUCCEEDED!', testPipe);
+            reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline succeeded; our shader has the issue' });
           } catch (testErr) {
-            reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline failed; likely platform/driver issue', error: testErr instanceof Error ? testErr.message : String(testErr) });
+            console.error('[WebGPU] Minimal test pipeline FAILED with raw error:', testErr);
+            reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline failed; platform/driver issue', error: testErr instanceof Error ? testErr.message : String(testErr) });
           }
         }
       } catch (testErr) {
+        console.error('[WebGPU] Minimal shader test completely FAILED:', testErr);
         reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader module creation check failed', error: testErr instanceof Error ? testErr.message : String(testErr) });
       }
       reportStatus('WebGPU • pipeline creation failed');
