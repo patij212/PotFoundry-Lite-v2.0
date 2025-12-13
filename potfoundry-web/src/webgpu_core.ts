@@ -2232,14 +2232,14 @@ export const mount = async ({
     }
     width = nextWidth;
     height = nextHeight;
-    // Don't set inline styles - CSS position:absolute with inset:0 controls display size
-    // Only set the pixel buffer to match the parent container dimensions
-    canvas.width = width;
-    canvas.height = height;
 
-    // Mobile GPU safety: only reconfigure context and recreate depth texture after initialization
-    // During async pipeline creation, context.configure can destabilize the GPU device
+    // Mobile GPU safety: only resize canvas and reconfigure context after initialization
+    // During async pipeline creation, large canvas dimensions can destabilize the GPU device
+    // Keep canvas at minimal dimensions (1x1) until pipeline is successfully created
     if (initializationComplete) {
+      // Now safe to set full canvas dimensions
+      canvas.width = width;
+      canvas.height = height;
       context.configure({ device, format, alphaMode: currentAlphaMode });
       const newDepth = createDepthTexture(device, width, height);
       const oldDepth = depth;
