@@ -181,7 +181,18 @@ const App: React.FC = () => {
                     restoreConsole();
                     // Include diagnostics AND captured logs in error message
                     const logOutput = logs.length > 0 ? `\n\nConsole Logs:\n${logs.join('\n')}` : '';
-                    setError(`WebGPU mount returned null.\n\nDiagnostics:\n${diagnostics.join('\n')}${logOutput}`);
+
+                    // Check for the known GPU instance loss bug
+                    const hasGpuInstanceLoss = logs.some(log =>
+                        log.includes('Instance reference no longer exists') ||
+                        log.includes('GPUPipelineError')
+                    );
+
+                    if (hasGpuInstanceLoss) {
+                        setError(`WebGPU GPU Process Crashed\n\nThis is a known Chrome/Android bug where the GPU process becomes unstable.\n\nTry these fixes:\n1. Close other browser tabs using the GPU\n2. Refresh the page (sometimes works after GPU stabilizes)\n3. Restart Chrome completely\n4. In Chrome, visit chrome://flags and enable "Unsafe WebGPU Support"\n5. If on Android, try using a different browser (Edge, Samsung Internet)\n\nTechnical Details: GPUPipelineError - The GPU instance became invalid during initialization.${logOutput}`);
+                    } else {
+                        setError(`WebGPU mount returned null.\n\nDiagnostics:\n${diagnostics.join('\n')}${logOutput}`);
+                    }
                     return;
                 }
 
