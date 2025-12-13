@@ -110,6 +110,35 @@ const App: React.FC = () => {
             try {
                 setGeneratingRef.current(true);
 
+                // Pre-mount WebGPU diagnostic check
+                const diagnostics: string[] = [];
+                diagnostics.push(`navigator.gpu exists: ${!!navigator.gpu}`);
+
+                if (navigator.gpu) {
+                    diagnostics.push('Attempting requestAdapter()...');
+                    try {
+                        const testAdapter = await navigator.gpu.requestAdapter();
+                        diagnostics.push(`requestAdapter() result: ${testAdapter ? 'SUCCESS' : 'null'}`);
+                        if (testAdapter) {
+                            const info = await testAdapter.requestAdapterInfo?.();
+                            diagnostics.push(`Adapter vendor: ${info?.vendor || 'unknown'}`);
+                            diagnostics.push(`Adapter device: ${info?.device || 'unknown'}`);
+                        }
+                    } catch (adapterErr) {
+                        diagnostics.push(`requestAdapter() error: ${adapterErr}`);
+                    }
+
+                    // Try with compatibility mode
+                    try {
+                        const compatAdapter = await navigator.gpu.requestAdapter({ compatibilityMode: true } as GPURequestAdapterOptions);
+                        diagnostics.push(`requestAdapter(compatibilityMode) result: ${compatAdapter ? 'SUCCESS' : 'null'}`);
+                    } catch (compatErr) {
+                        diagnostics.push(`requestAdapter(compatibilityMode) error: ${compatErr}`);
+                    }
+                }
+
+                console.log('[WebGPU Diagnostics]', diagnostics);
+
                 const controller = await mount({
                     canvas,
                     canvasId: 'pf-main-canvas',
@@ -125,7 +154,8 @@ const App: React.FC = () => {
                 }
 
                 if (!controller) {
-                    setError('WebGPU mount returned null - WebGPU may not be supported');
+                    // Include diagnostics in error message
+                    setError(`WebGPU mount returned null.\n\nDiagnostics:\n${diagnostics.join('\n')}`);
                     return;
                 }
 
