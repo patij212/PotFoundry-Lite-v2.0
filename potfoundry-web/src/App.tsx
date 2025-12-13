@@ -117,7 +117,8 @@ const App: React.FC = () => {
 
             const captureLog = (type: string, ...args: unknown[]) => {
                 const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-                if (msg.includes('[WebGPU]')) {
+                // Capture WebGPU, Renderer, and WebGL logs for diagnostics
+                if (msg.includes('[WebGPU]') || msg.includes('[Renderer]') || msg.includes('[WebGL]')) {
                     logs.push(`${type}: ${msg}`);
                 }
             };
