@@ -1576,6 +1576,7 @@ export const mount = async ({
     });
   }
   emitDiagnostic('webgpu:adapter-ready');
+  console.log('[WebGPU] Adapter obtained successfully, requesting device...');
   debugLog('adapter-ready');
   let device: GPUDevice;
   try {
@@ -1588,8 +1589,10 @@ export const mount = async ({
     });
   }
   emitDiagnostic('webgpu:device-ready');
+  console.log('[WebGPU] Device obtained, getting canvas context...');
   try { installWebGpuCapture(device); } catch (e) { /* best-effort; do not hard-fail */ }
   const context = canvas.getContext('webgpu') as unknown as GPUCanvasContext | null;
+  console.log('[WebGPU] Canvas context result:', context ? 'SUCCESS' : 'null');
   if (!context) {
     return fail('webgpu:context-unavailable', 'WebGPU context unavailable', undefined, {
       ...baseDiagInfo,
@@ -2456,10 +2459,15 @@ export const mount = async ({
   } catch (e) {
     /* ignore */
   }
+  console.log('[WebGPU] Creating shader module...');
   const shaderModule = await createShaderModule(device as any, wgsl, 'potfoundry-webgpu');
+  console.log('[WebGPU] Shader module created:', shaderModule ? 'SUCCESS' : 'null');
 
+  console.log('[WebGPU] Creating pipeline...');
   const pipeline = await createPipeline(device, format, shaderModule, setStatus, emitDiagnostic, wgsl);
+  console.log('[WebGPU] Pipeline result:', pipeline ? 'SUCCESS' : 'null');
   if (!pipeline) {
+    console.error('[WebGPU] PIPELINE CREATION FAILED - this is why mount() returns null!');
     emitErrorEvent({
       code: 'webgpu:pipeline-failed',
       message: 'WebGPU • pipeline creation failed',
@@ -2468,6 +2476,7 @@ export const mount = async ({
     return null;
   }
   emitDiagnostic('webgpu:pipeline-ready');
+  console.log('[WebGPU] Pipeline ready!');
 
   // Create wireframe pipeline with line-list topology for triangle edges
   let wireframePipeline: GPURenderPipeline | null = null;
