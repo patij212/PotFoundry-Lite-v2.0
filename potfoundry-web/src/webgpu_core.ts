@@ -419,6 +419,7 @@ const createPipeline = async (
 
   try {
     const pipelineLabel = 'component:pipeline-main';
+    console.log('[WebGPU] Attempting primary pipeline creation with depth24plus...');
     const pipe = await withValidationScope(device as any, pipelineLabel, () =>
       device.createRenderPipelineAsync({
         label: pipelineLabel,
@@ -445,6 +446,7 @@ const createPipeline = async (
         },
       })
     );
+    console.log('[WebGPU] Primary pipeline result:', pipe ? 'SUCCESS' : 'null');
     if (!pipe) {
       throw new Error('createRenderPipelineAsync returned undefined');
     }
@@ -452,10 +454,11 @@ const createPipeline = async (
     depthFormatUsed = 'depth24plus';
     return pipe;
   } catch (err) {
-    console.error('createRenderPipelineAsync failed', err);
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('[WebGPU] createRenderPipelineAsync PRIMARY FAILED:', errorMsg);
     // Emit the raw error for diagnostics and attempt a robust fallback.
     reportDiagnostic('webgpu:pipeline-create-error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMsg,
       shaderCodeSnippet: shaderCodeSnippet ? shaderCodeSnippet.slice(0, 1024) : null,
       compilationMessages: info?.messages ?? null,
       pipelineDescriptor: pipelineDescriptorSummary('depth24plus'),
@@ -465,6 +468,7 @@ const createPipeline = async (
     // Try fallback: explicitly create a bind group layout + pipeline layout that matches
     // the shader's expected group 0: four small uniform buffers and one read-only storage.
     try {
+      console.log('[WebGPU] Attempting fallback 1: explicit layout + depth24plus...');
       const bgl = device.createBindGroupLayout({
         label: 'component:bgl-default',
         entries: [
@@ -491,6 +495,7 @@ const createPipeline = async (
           depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' },
         })
       );
+      console.log('[WebGPU] Fallback 1 result:', fallback ? 'SUCCESS' : 'null');
       if (!fallback) {
         throw new Error('fallback pipeline creation returned undefined');
       }
@@ -498,85 +503,95 @@ const createPipeline = async (
       reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout' });
       return fallback;
     } catch (err2) {
-      console.error('createRenderPipelineAsync explicit-layout fallback failed', err2);
-      // If the failure mentions depth24plus, try a second fallback using depth32float
-      const errMsg = err2 instanceof Error ? err2.message : String(err2);
-      if (errMsg.toLowerCase().includes('depth24plus') || errMsg.toLowerCase().includes('depth_write')) {
-        try {
-          const bgl3 = device.createBindGroupLayout({
-            label: 'component:bgl-depth24plus-stencil8',
-            entries: [
-              { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-              { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-              { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-              { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-              { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-            ],
-          });
-          const layout3 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth24plus-stencil8', bindGroupLayouts: [bgl3] });
-          const fallbackLabel3 = 'component:pipeline-depth24plus-stencil8';
-          const fallback3 = await withValidationScope(device as any, fallbackLabel3, () =>
-            device.createRenderPipelineAsync({
-              label: fallbackLabel3,
-              layout: layout3,
-              vertex: { module: shaderModule, entryPoint: 'vs_main' },
-              fragment: {
-                module: shaderModule,
-                entryPoint: 'fs_main',
-                targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
-              },
-              primitive: { topology: 'triangle-list', cullMode: 'none' },
-              depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus-stencil8' },
-            })
-          );
-          if (!fallback3) {
-            throw new Error('depth24plus-stencil8 fallback returned undefined');
-          }
-          depthFormatUsed = 'depth24plus-stencil8' as unknown as GPUTextureFormat;
-          reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout + depth24plus-stencil8' });
-          return fallback3;
-        } catch (err4) {
-          console.error('createRenderPipelineAsync depth24plus-stencil8 fallback failed', err4);
+      const errMsg2 = err2 instanceof Error ? err2.message : String(err2);
+      console.error('[WebGPU] Fallback 1 FAILED:', errMsg2);
+      // Always try additional depth formats - don't depend on error message matching
+      // (some drivers don't include helpful messages)
+
+      // Try depth24plus-stencil8
+      try {
+        console.log('[WebGPU] Attempting fallback 2: depth24plus-stencil8...');
+        const bgl3 = device.createBindGroupLayout({
+          label: 'component:bgl-depth24plus-stencil8',
+          entries: [
+            { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+          ],
+        });
+        const layout3 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth24plus-stencil8', bindGroupLayouts: [bgl3] });
+        const fallbackLabel3 = 'component:pipeline-depth24plus-stencil8';
+        const fallback3 = await withValidationScope(device as any, fallbackLabel3, () =>
+          device.createRenderPipelineAsync({
+            label: fallbackLabel3,
+            layout: layout3,
+            vertex: { module: shaderModule, entryPoint: 'vs_main' },
+            fragment: {
+              module: shaderModule,
+              entryPoint: 'fs_main',
+              targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
+            },
+            primitive: { topology: 'triangle-list', cullMode: 'none' },
+            depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus-stencil8' },
+          })
+        );
+        console.log('[WebGPU] Fallback 2 result:', fallback3 ? 'SUCCESS' : 'null');
+        if (!fallback3) {
+          throw new Error('depth24plus-stencil8 fallback returned undefined');
         }
-        try {
-          const bgl2 = device.createBindGroupLayout({
-            label: 'component:bgl-depth32float',
-            entries: [
-              { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-              { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-              { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-              { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-              { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-            ],
-          });
-          const layout2 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth32float', bindGroupLayouts: [bgl2] });
-          const fallbackLabel2 = 'component:pipeline-depth32float';
-          const fallback2 = await withValidationScope(device as any, fallbackLabel2, () =>
-            device.createRenderPipelineAsync({
-              label: fallbackLabel2,
-              layout: layout2,
-              vertex: { module: shaderModule, entryPoint: 'vs_main' },
-              fragment: {
-                module: shaderModule,
-                entryPoint: 'fs_main',
-                targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
-              },
-              primitive: { topology: 'triangle-list', cullMode: 'none' },
-              depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth32float' },
-            })
-          );
-          if (!fallback2) {
-            throw new Error('depth32float fallback returned undefined');
-          }
-          depthFormatUsed = 'depth32float';
-          reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout + depth32float' });
-          return fallback2;
-        } catch (err3) {
-          console.error('createRenderPipelineAsync depth32float fallback failed', err3);
-        }
+        depthFormatUsed = 'depth24plus-stencil8' as unknown as GPUTextureFormat;
+        reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout + depth24plus-stencil8' });
+        return fallback3;
+      } catch (err4) {
+        console.error('[WebGPU] Fallback 2 FAILED:', err4 instanceof Error ? err4.message : String(err4));
       }
+
+      // Try depth32float
+      try {
+        console.log('[WebGPU] Attempting fallback 3: depth32float...');
+        const bgl2 = device.createBindGroupLayout({
+          label: 'component:bgl-depth32float',
+          entries: [
+            { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+          ],
+        });
+        const layout2 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth32float', bindGroupLayouts: [bgl2] });
+        const fallbackLabel2 = 'component:pipeline-depth32float';
+        const fallback2 = await withValidationScope(device as any, fallbackLabel2, () =>
+          device.createRenderPipelineAsync({
+            label: fallbackLabel2,
+            layout: layout2,
+            vertex: { module: shaderModule, entryPoint: 'vs_main' },
+            fragment: {
+              module: shaderModule,
+              entryPoint: 'fs_main',
+              targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
+            },
+            primitive: { topology: 'triangle-list', cullMode: 'none' },
+            depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth32float' },
+          })
+        );
+        console.log('[WebGPU] Fallback 3 result:', fallback2 ? 'SUCCESS' : 'null');
+        if (!fallback2) {
+          throw new Error('depth32float fallback returned undefined');
+        }
+        depthFormatUsed = 'depth32float';
+        reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout + depth32float' });
+        return fallback2;
+      } catch (err3) {
+        console.error('[WebGPU] Fallback 3 FAILED:', err3 instanceof Error ? err3.message : String(err3));
+      }
+
       // Try a minimal pipeline without depth or blending to check for hardware/driver limitations.
+      console.log('[WebGPU] Attempting fallback 4: minimal pipeline (no depth)...');
       const minimal = await attemptMinimalPipeline(device, format, shaderModule, reportDiagnostic);
+      console.log('[WebGPU] Fallback 4 (minimal) result:', minimal ? 'SUCCESS' : 'null');
       if (minimal) {
         depthFormatUsed = null;
         return minimal;
