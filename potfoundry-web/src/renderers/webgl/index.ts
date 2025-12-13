@@ -18,9 +18,9 @@ import { createPotMaterial } from './potMaterial';
 export async function mountWebGL(
     options: MountOptions
 ): Promise<RendererController | null> {
-    const { canvas, emit, statusEl } = options;
+    const { canvas: originalCanvas, emit, statusEl } = options;
 
-    if (!canvas) {
+    if (!originalCanvas) {
         console.error('[WebGL] No canvas provided');
         return null;
     }
@@ -31,6 +31,29 @@ export async function mountWebGL(
     };
 
     setStatus('WebGL • initializing...');
+
+    // The original canvas may have been claimed by WebGPU's getContext('webgpu').
+    // In that case, we can't use it for WebGL. Create a new canvas element instead.
+    console.log('[WebGL] Creating fresh canvas for WebGL (original may be claimed by WebGPU)...');
+    const canvas = document.createElement('canvas');
+
+    // Match the original canvas's attributes
+    canvas.id = originalCanvas.id + '-webgl';
+    canvas.className = originalCanvas.className;
+    canvas.style.cssText = originalCanvas.style.cssText || 'width: 100%; height: 100%;';
+    canvas.tabIndex = originalCanvas.tabIndex;
+    canvas.width = originalCanvas.width || originalCanvas.clientWidth || 800;
+    canvas.height = originalCanvas.height || originalCanvas.clientHeight || 600;
+
+    // Replace the original canvas with our new one
+    if (originalCanvas.parentElement) {
+        originalCanvas.parentElement.replaceChild(canvas, originalCanvas);
+        console.log('[WebGL] Replaced original canvas with fresh WebGL canvas');
+    } else {
+        // Fallback: append to body if no parent
+        document.body.appendChild(canvas);
+        console.warn('[WebGL] Original canvas had no parent, appended to body');
+    }
 
     try {
         // === Step 1: Create Three.js renderer ===
