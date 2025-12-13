@@ -2331,11 +2331,16 @@ export const mount = async ({
     }
   }
 
-  // Initial context configuration BEFORE any resize operations
-  // Configure with current dimensions to establish the context before pipeline creation
-  // This helps ensure the device is stable before async pipeline work begins
+  // Important: Configure context with MINIMAL dimensions before pipeline creation.
+  // On mobile, configuring with large dimensions can destabilize the GPU.
+  // We set canvas to 1x1, configure context, then let resize() set proper dimensions
+  // after pipeline is created (when initializationComplete = true).
+  canvas.width = 1;
+  canvas.height = 1;
   context.configure({ device, format, alphaMode: currentAlphaMode });
 
+  // resize() will set canvas dimensions but skip context.configure and createDepthTexture
+  // because initializationComplete is still false. This is intentional.
   resize();
 
   try {

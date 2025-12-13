@@ -102,13 +102,21 @@ export async function createRenderer(
 ): Promise<RendererController | null> {
     const { forceRenderer, onFallback, ...mountOptions } = options;
 
+    // Check URL parameter first (for emergency override when UI not accessible)
+    // Usage: ?renderer=webgl or ?renderer=webgpu
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlRenderer = urlParams.get('renderer');
+    if (urlRenderer === 'webgl' || urlRenderer === 'webgpu') {
+        console.log(`[Renderer] URL parameter override: ${urlRenderer}`);
+    }
+
     // Check for user's saved renderer preference from Settings
     const savedPref = getSavedRendererPreference();
-    const effectiveForce = forceRenderer ?? savedPref;
+    const effectiveForce = forceRenderer ?? urlRenderer ?? savedPref;
 
-    // === Force specific renderer (from API or user preference) ===
+    // === Force specific renderer (from API, URL, or user preference) ===
     if (effectiveForce === 'webgl') {
-        console.log('[Renderer] Forcing WebGL mode' + (savedPref === 'webgl' ? ' (user preference)' : ''));
+        console.log('[Renderer] Forcing WebGL mode' + (urlRenderer === 'webgl' ? ' (URL param)' : savedPref === 'webgl' ? ' (user preference)' : ''));
         return createWebGLRenderer(mountOptions, 'forced');
     }
 
