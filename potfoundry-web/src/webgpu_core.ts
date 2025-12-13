@@ -420,32 +420,32 @@ const createPipeline = async (
   try {
     const pipelineLabel = 'component:pipeline-main';
     console.log('[WebGPU] Attempting primary pipeline creation with depth24plus...');
-    const pipe = await withValidationScope(device as any, pipelineLabel, () =>
-      device.createRenderPipelineAsync({
-        label: pipelineLabel,
-        layout: 'auto',
-        vertex: { module: shaderModule, entryPoint: 'vs_main' },
-        fragment: {
-          module: shaderModule,
-          entryPoint: 'fs_main',
-          targets: [
-            {
-              format,
-              blend: {
-                color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-                alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-              },
+    // Use SYNCHRONOUS createRenderPipeline instead of async for mobile compatibility
+    // Some mobile GPUs have issues with async pipeline creation that causes device loss
+    const pipe = device.createRenderPipeline({
+      label: pipelineLabel,
+      layout: 'auto',
+      vertex: { module: shaderModule, entryPoint: 'vs_main' },
+      fragment: {
+        module: shaderModule,
+        entryPoint: 'fs_main',
+        targets: [
+          {
+            format,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
             },
-          ],
-        },
-        primitive: { topology: 'triangle-list', cullMode: 'none' },
-        depthStencil: {
-          depthWriteEnabled: true,
-          depthCompare: 'less',
-          format: 'depth24plus',
-        },
-      })
-    );
+          },
+        ],
+      },
+      primitive: { topology: 'triangle-list', cullMode: 'none' },
+      depthStencil: {
+        depthWriteEnabled: true,
+        depthCompare: 'less',
+        format: 'depth24plus',
+      },
+    });
     console.log('[WebGPU] Primary pipeline result:', pipe ? 'SUCCESS' : 'null');
     if (!pipe) {
       throw new Error('createRenderPipelineAsync returned undefined');
