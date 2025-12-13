@@ -33,29 +33,46 @@ export async function mountWebGL(
     setStatus('WebGL • initializing...');
 
     try {
-        // === Create Three.js renderer ===
-        const renderer = new THREE.WebGLRenderer({
-            canvas,
-            antialias: true,
-            alpha: true,
-            powerPreference: 'high-performance',
-        });
+        // === Step 1: Create Three.js renderer ===
+        console.log('[WebGL] Step 1: Creating WebGLRenderer...');
+        let renderer: THREE.WebGLRenderer;
+        try {
+            renderer = new THREE.WebGLRenderer({
+                canvas,
+                antialias: true,
+                alpha: true,
+                powerPreference: 'high-performance',
+            });
+            console.log('[WebGL] Step 1 SUCCESS: WebGLRenderer created');
+        } catch (rendererErr) {
+            console.error('[WebGL] Step 1 FAILED: WebGLRenderer creation error:', rendererErr);
+            console.error('[WebGL] Error type:', typeof rendererErr);
+            console.error('[WebGL] Error message:', (rendererErr as Error)?.message);
+            throw rendererErr;
+        }
 
+        console.log('[WebGL] Step 2: Configuring renderer...');
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.0;
+        console.log('[WebGL] Step 2 SUCCESS: Renderer configured');
 
-        // === Scene setup ===
+        // === Step 3: Scene setup ===
+        console.log('[WebGL] Step 3: Creating scene...');
         const scene = new THREE.Scene();
+        console.log('[WebGL] Step 3 SUCCESS: Scene created');
 
-        // === Camera ===
+        // === Step 4: Camera ===
+        console.log('[WebGL] Step 4: Creating camera...');
         const aspect = canvas.clientWidth / canvas.clientHeight || 1;
         const camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 10000);
         camera.position.set(0, 200, 400);
         camera.lookAt(0, 60, 0);
+        console.log('[WebGL] Step 4 SUCCESS: Camera created');
 
-        // === Controls (orbit) ===
+        // === Step 5: Controls (orbit) ===
+        console.log('[WebGL] Step 5: Creating OrbitControls...');
         const controls = new OrbitControls(camera, canvas);
         controls.enableDamping = true;
         controls.dampingFactor = 0.08;
@@ -66,8 +83,10 @@ export async function mountWebGL(
         controls.minDistance = 50;
         controls.maxDistance = 2000;
         controls.update();
+        console.log('[WebGL] Step 5 SUCCESS: OrbitControls created');
 
-        // === Lighting ===
+        // === Step 6: Lighting ===
+        console.log('[WebGL] Step 6: Creating lights...');
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         scene.add(ambientLight);
 
@@ -82,8 +101,10 @@ export async function mountWebGL(
         const rimLight = new THREE.DirectionalLight(0xffffff, 0.4);
         rimLight.position.set(0, -100, -200);
         scene.add(rimLight);
+        console.log('[WebGL] Step 6 SUCCESS: Lights created');
 
-        // === Initial pot parameters ===
+        // === Step 7: Initial pot parameters ===
+        console.log('[WebGL] Step 7: Setting pot parameters...');
         let currentParams: PotParams = {
             H: 120,
             Rt: 70,
@@ -102,19 +123,28 @@ export async function mountWebGL(
             colorMid: 0x5a9fe8,
             colorTop: 0x6aafff,
         };
+        console.log('[WebGL] Step 7 SUCCESS: Parameters set');
 
-        // === Materials ===
+        // === Step 8: Materials ===
+        console.log('[WebGL] Step 8: Creating material...');
         let potMaterial = createPotMaterial(currentParams);
+        console.log('[WebGL] Step 8 SUCCESS: Material created');
 
-        // === Pot mesh ===
+        // === Step 9: Pot mesh ===
+        console.log('[WebGL] Step 9: Generating pot geometry...');
         let potGeometry = generatePotGeometry(currentParams);
+        console.log('[WebGL] Step 9 SUCCESS: Geometry generated with', potGeometry.attributes.position?.count, 'vertices');
+
+        console.log('[WebGL] Step 10: Creating mesh...');
         let potMesh = new THREE.Mesh(potGeometry, potMaterial);
         scene.add(potMesh);
+        console.log('[WebGL] Step 10 SUCCESS: Mesh added to scene');
 
         // === Background gradient ===
+        console.log('[WebGL] Step 11: Setting background...');
         const bgColor1 = new THREE.Color(0x1a1a2e);
-        const bgColor2 = new THREE.Color(0x16213e);
         scene.background = bgColor1;
+        console.log('[WebGL] Step 11 SUCCESS: Background set');
 
         // === Animation state ===
         let disposed = false;
