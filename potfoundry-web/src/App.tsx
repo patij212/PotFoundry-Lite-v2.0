@@ -107,6 +107,29 @@ const App: React.FC = () => {
         mountedRef.current = true;
 
         const mountRenderer = async () => {
+            // Capture console logs for display on error page (since DevTools isn't accessible on mobile)
+            const logs: string[] = [];
+            const originalLog = console.log;
+            const originalWarn = console.warn;
+            const originalError = console.error;
+
+            const captureLog = (type: string, ...args: unknown[]) => {
+                const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+                if (msg.includes('[WebGPU]')) {
+                    logs.push(`${type}: ${msg}`);
+                }
+            };
+
+            console.log = (...args) => { captureLog('LOG', ...args); originalLog.apply(console, args); };
+            console.warn = (...args) => { captureLog('WARN', ...args); originalWarn.apply(console, args); };
+            console.error = (...args) => { captureLog('ERR', ...args); originalError.apply(console, args); };
+
+            const restoreConsole = () => {
+                console.log = originalLog;
+                console.warn = originalWarn;
+                console.error = originalError;
+            };
+
             try {
                 setGeneratingRef.current(true);
 
@@ -150,15 +173,19 @@ const App: React.FC = () => {
 
                 if (cancelled) {
                     controller?.dispose();
+                    restoreConsole();
                     return;
                 }
 
                 if (!controller) {
-                    // Include diagnostics in error message
-                    setError(`WebGPU mount returned null.\n\nDiagnostics:\n${diagnostics.join('\n')}`);
+                    restoreConsole();
+                    // Include diagnostics AND captured logs in error message
+                    const logOutput = logs.length > 0 ? `\n\nConsole Logs:\n${logs.join('\n')}` : '';
+                    setError(`WebGPU mount returned null.\n\nDiagnostics:\n${diagnostics.join('\n')}${logOutput}`);
                     return;
                 }
 
+                restoreConsole();
                 controllerRef.current = controller;
                 // IMMEDIATELY send all Zustand state (from localStorage persistence)
                 // This eliminates the "grey state" and respects user's saved pot
@@ -168,8 +195,10 @@ const App: React.FC = () => {
                 setGeneratingRef.current(false);
 
             } catch (err) {
+                restoreConsole();
+                const logOutput = logs.length > 0 ? `\n\nConsole Logs:\n${logs.join('\n')}` : '';
                 console.error('[PotFoundry] mount failed', err);
-                setError(err instanceof Error ? err.message : String(err));
+                setError((err instanceof Error ? err.message : String(err)) + logOutput);
                 setGeneratingRef.current(false);
             }
         };
