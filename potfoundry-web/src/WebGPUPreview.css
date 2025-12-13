@@ -26,6 +26,10 @@
   height: 100%;
   outline: none;
   cursor: grab;
+  /* Prevent browser default touch behaviors (scroll, zoom) to enable custom touch handling */
+  touch-action: none;
+  /* Improve mobile rendering */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .pf-wgpu-preview__canvas:active {

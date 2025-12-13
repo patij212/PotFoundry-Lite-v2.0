@@ -167,16 +167,85 @@ const App: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [toggleFullscreen]);
 
-    // Error state
+    // Error state - show detailed troubleshooting help
     if (error) {
+        const isAndroid = /android/i.test(navigator.userAgent);
+        const isIOS = /iphone|ipad/i.test(navigator.userAgent);
+        const isMobile = isAndroid || isIOS;
+        const isSecure = typeof window !== 'undefined' && window.isSecureContext;
+        const protocol = typeof window !== 'undefined' ? window.location?.protocol : '';
+
         return (
             <div className="pf-error">
                 <h1>WebGPU Not Available</h1>
-                <p>{error}</p>
-                <p>
-                    PotFoundry requires WebGPU support. Please use a modern browser like
-                    Chrome 113+, Edge 113+, or Firefox with WebGPU enabled.
-                </p>
+                <p style={{ whiteSpace: 'pre-line' }}>{error}</p>
+
+                {!isSecure && (
+                    <div style={{
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginBottom: '16px',
+                        textAlign: 'left'
+                    }}>
+                        <strong style={{ color: '#f87171' }}>🔒 HTTPS Required</strong>
+                        <p style={{ fontSize: '13px', marginTop: '8px' }}>
+                            WebGPU requires a secure connection. Current protocol: <code>{protocol}</code>
+                            <br />Please access the app via <strong>https://</strong>
+                        </p>
+                    </div>
+                )}
+
+                <div style={{
+                    background: 'rgba(99, 102, 241, 0.1)',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    textAlign: 'left',
+                    maxWidth: '500px',
+                    margin: '0 auto'
+                }}>
+                    <strong>Troubleshooting Steps:</strong>
+                    <ul style={{ marginTop: '12px', paddingLeft: '20px', lineHeight: '1.8' }}>
+                        {isAndroid && (
+                            <>
+                                <li>Ensure Chrome is version 121 or higher</li>
+                                <li>Verify Android 12+ is installed</li>
+                                <li>Try: <code style={{ fontSize: '11px' }}>chrome://flags</code> → enable "Unsafe WebGPU Support"</li>
+                                <li>Check <code style={{ fontSize: '11px' }}>chrome://gpu</code> for WebGPU status</li>
+                            </>
+                        )}
+                        {isIOS && (
+                            <>
+                                <li>Update to iOS 18.2+ (Safari)</li>
+                                <li>Settings → Safari → Advanced → Feature Flags → enable WebGPU</li>
+                            </>
+                        )}
+                        {!isMobile && (
+                            <>
+                                <li>Use Chrome 113+, Edge 113+, or Safari 18.2+</li>
+                                <li>For Firefox: enable in <code>about:config</code> → <code>dom.webgpu.enabled</code></li>
+                            </>
+                        )}
+                    </ul>
+                </div>
+
+                <details style={{ marginTop: '16px', textAlign: 'left', maxWidth: '500px', margin: '16px auto 0' }}>
+                    <summary style={{ cursor: 'pointer', color: '#8b949e' }}>Device Info</summary>
+                    <pre style={{
+                        fontSize: '11px',
+                        background: 'rgba(0,0,0,0.3)',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        marginTop: '8px',
+                        overflow: 'auto'
+                    }}>
+                        {`User Agent: ${navigator.userAgent}
+Platform: ${navigator.platform}
+Secure Context: ${isSecure ? 'Yes' : 'No'}
+Protocol: ${protocol}`}
+                    </pre>
+                </details>
             </div>
         );
     }

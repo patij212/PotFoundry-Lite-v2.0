@@ -1450,7 +1450,21 @@ export const mount = async ({
     userAgent: navigator.userAgent,
     platform: navigator.platform,
     language: navigator.language,
+    isSecureContext: typeof window !== 'undefined' ? window.isSecureContext : null,
+    protocol: typeof window !== 'undefined' ? window.location?.protocol : null,
+    host: typeof window !== 'undefined' ? window.location?.host : null,
   };
+
+  // Check for secure context first - WebGPU requires HTTPS
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    emitDiagnostic('webgpu:insecure-context', { ...baseDiagInfo });
+    return fail(
+      'webgpu:not-supported',
+      'WebGPU requires HTTPS',
+      'WebGPU is only available in secure contexts (HTTPS). Please access the app via https:// or localhost.',
+      { ...baseDiagInfo, reason: 'insecure-context' }
+    );
+  }
 
   const navGpu = (navigator as Navigator & { gpu?: unknown }).gpu as
     | {
@@ -1460,8 +1474,26 @@ export const mount = async ({
     | undefined;
 
   if (!navGpu) {
-    emitDiagnostic('webgpu:unsupported', { ...baseDiagInfo });
-    return fail('webgpu:not-supported', 'WebGPU not supported', undefined, baseDiagInfo);
+    // Provide more detailed error message based on user agent
+    const ua = navigator.userAgent.toLowerCase();
+    const isAndroid = ua.includes('android');
+    const isIOS = ua.includes('iphone') || ua.includes('ipad');
+    const isSafari = ua.includes('safari') && !ua.includes('chrome');
+    const isFirefox = ua.includes('firefox');
+
+    let helpMessage = 'WebGPU API not found in this browser.';
+    if (isAndroid) {
+      helpMessage = 'WebGPU not available. On Android, Chrome 121+ is required with Android 12+ and a supported GPU (Qualcomm/ARM).';
+    } else if (isIOS && !isSafari) {
+      helpMessage = 'WebGPU not available. On iOS, please use Safari 18.2+ with WebGPU enabled.';
+    } else if (isIOS && isSafari) {
+      helpMessage = 'WebGPU not available. Safari 18.2+ is required, or enable WebGPU in Safari Settings > Feature Flags.';
+    } else if (isFirefox) {
+      helpMessage = 'WebGPU not available. Firefox requires WebGPU to be enabled in about:config (dom.webgpu.enabled).';
+    }
+
+    emitDiagnostic('webgpu:unsupported', { ...baseDiagInfo, helpMessage });
+    return fail('webgpu:not-supported', helpMessage, undefined, { ...baseDiagInfo, helpMessage });
   }
 
   const attemptAdapterRequest = async (
@@ -1484,15 +1516,33 @@ export const mount = async ({
     }
   };
 
+  // Try various adapter options, including compatibilityMode for devices without Vulkan 1.1+
+  // The compatibilityMode option (Chrome 127+) enables OpenGL ES backend on Android devices
+  // that lack Vulkan support, which is common on many mobile devices.
   const adapter =
     (await attemptAdapterRequest(undefined, 'default')) ??
     (await attemptAdapterRequest({ powerPreference: 'high-performance' }, 'high-performance')) ??
     (await attemptAdapterRequest({ powerPreference: 'low-power' }, 'low-power')) ??
+    // Try compatibility mode for devices without Vulkan 1.1+ (uses OpenGL ES backend)
+    (await attemptAdapterRequest({ compatibilityMode: true } as GPURequestAdapterOptions, 'compatibility-mode')) ??
     (await attemptAdapterRequest({ forceFallbackAdapter: true }, 'fallback'));
   if (!adapter) {
-    emitDiagnostic('webgpu:adapter-missing', { ...baseDiagInfo, canvasId: mountCanvasId });
-    return fail('webgpu:adapter-unavailable', 'WebGPU adapter unavailable', undefined, {
+    // Provide platform-specific help for adapter failures
+    const ua = navigator.userAgent.toLowerCase();
+    const isAndroid = ua.includes('android');
+    const isIOS = ua.includes('iphone') || ua.includes('ipad');
+
+    let adapterHelpMessage = 'WebGPU adapter unavailable. Your GPU may not support WebGPU or may be blocklisted.';
+    if (isAndroid) {
+      adapterHelpMessage = 'WebGPU adapter unavailable. This usually means:\n• Android version is below 12\n• GPU (Qualcomm/ARM required) is not supported\n• GPU is blocklisted due to driver issues\nTry: chrome://flags → enable "Unsafe WebGPU Support" (for testing only)';
+    } else if (isIOS) {
+      adapterHelpMessage = 'WebGPU adapter unavailable. On iOS, ensure Safari 18.2+ is installed and WebGPU is enabled in Settings → Safari → Advanced → Feature Flags.';
+    }
+
+    emitDiagnostic('webgpu:adapter-missing', { ...baseDiagInfo, canvasId: mountCanvasId, adapterHelpMessage });
+    return fail('webgpu:adapter-unavailable', adapterHelpMessage, undefined, {
       ...baseDiagInfo,
+      adapterHelpMessage,
     });
   }
   emitDiagnostic('webgpu:adapter-ready');

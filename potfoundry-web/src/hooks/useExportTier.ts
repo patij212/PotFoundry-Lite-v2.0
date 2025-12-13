@@ -119,6 +119,10 @@ export function useExportTier(): UseExportTierResult {
 
             // Use RPC call to secure increment_exports() function
             // This function uses auth.uid() internally so users can only increment their own count
+            if (!supabase) {
+                console.warn('[ExportTier] Supabase client not available');
+                return;
+            }
             const { data, error } = await supabase.rpc('increment_exports');
 
             if (error) {
