@@ -54,7 +54,10 @@ const STYLE_ID_TO_NAME: Record<number, StyleId> = {
 /**
  * Generate pot geometry using the buildPotMesh function
  */
-export function generatePotGeometry(params: PotParams): THREE.BufferGeometry {
+export function generatePotGeometry(
+    params: PotParams,
+    additionalStyleOpts: Record<string, number | boolean> = {}
+): THREE.BufferGeometry {
     const {
         H,
         Rt,
@@ -98,6 +101,7 @@ export function generatePotGeometry(params: PotParams): THREE.BufferGeometry {
 
     const styleName = STYLE_ID_TO_NAME[styleId] || 'SuperformulaBlossom';
 
+    // Merge style options from params with additional options from bridge
     const styleOpts: StyleOptions = {
         spinTurns: spinTurns || 0,
         spinPhase: spinPhase || 0,
@@ -105,6 +109,7 @@ export function generatePotGeometry(params: PotParams): THREE.BufferGeometry {
         bellAmp: bellAmp || 0,
         bellCenter: bellCenter || 0.5,
         bellWidth: bellWidth || 0.22,
+        ...additionalStyleOpts,  // Override with any additional style-specific params
     };
 
     console.log('[WebGL] Generating mesh with buildPotMesh:', {

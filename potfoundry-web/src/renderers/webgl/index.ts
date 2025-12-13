@@ -133,7 +133,7 @@ export async function mountWebGL(
             Rt: 70,
             Rb: 45,
             tWall: 3,
-            tBottom: 3,
+            tBottom: 5,
             rDrain: 10,
             expn: 1.1,
             nTheta: 64,  // Lower resolution for WebGL (performance)
@@ -145,7 +145,15 @@ export async function mountWebGL(
             colorBottom: 0x4a90d9,
             colorMid: 0x5a9fe8,
             colorTop: 0x6aafff,
+            bellAmp: 0,
+            bellCenter: 0.5,
+            bellWidth: 0.22,
+            styleParams: [],
         };
+
+        // Store style options separately for passing to buildPotMesh
+        let currentStyleOpts: Record<string, number | boolean> = {};
+
         console.log('[WebGL] Step 7 SUCCESS: Parameters set');
 
         // === Step 8: Materials ===
@@ -155,7 +163,7 @@ export async function mountWebGL(
 
         // === Step 9: Pot mesh ===
         console.log('[WebGL] Step 9: Generating pot geometry...');
-        let potGeometry = generatePotGeometry(currentParams);
+        let potGeometry = generatePotGeometry(currentParams, currentStyleOpts);
         console.log('[WebGL] Step 9 SUCCESS: Geometry generated with', potGeometry.attributes.position?.count, 'vertices');
 
         console.log('[WebGL] Step 10: Creating mesh...');
@@ -165,8 +173,8 @@ export async function mountWebGL(
 
         // === Background gradient ===
         console.log('[WebGL] Step 11: Setting background...');
-        const bgColor1 = new THREE.Color(0x1a1a2e);
-        scene.background = bgColor1;
+        let bgColor = new THREE.Color(0x1a1a2e);
+        scene.background = bgColor;
         console.log('[WebGL] Step 11 SUCCESS: Background set');
 
         // === Animation state ===
@@ -213,8 +221,8 @@ export async function mountWebGL(
             // Dispose old geometry
             potGeometry.dispose();
 
-            // Generate new geometry
-            potGeometry = generatePotGeometry(currentParams);
+            // Generate new geometry with style options
+            potGeometry = generatePotGeometry(currentParams, currentStyleOpts);
             potMesh.geometry = potGeometry;
 
             // Update material colors
@@ -235,33 +243,176 @@ export async function mountWebGL(
         // === Create controller ===
         const controller: RendererController = {
             updateParams(params: Record<string, unknown>) {
-                // Map incoming params to our internal format
-                if (params.H !== undefined) currentParams.H = Number(params.H);
-                if (params.top_od !== undefined) currentParams.Rt = Number(params.top_od) / 2;
-                if (params.bottom_od !== undefined) currentParams.Rb = Number(params.bottom_od) / 2;
-                if (params.t_wall !== undefined) currentParams.tWall = Number(params.t_wall);
-                if (params.t_bottom !== undefined) currentParams.tBottom = Number(params.t_bottom);
-                if (params.r_drain !== undefined) currentParams.rDrain = Number(params.r_drain);
-                if (params.expn !== undefined) currentParams.expn = Number(params.expn);
-                if (params.n_theta !== undefined) currentParams.nTheta = Math.min(Number(params.n_theta), 128);
-                if (params.n_z !== undefined) currentParams.nZ = Math.min(Number(params.n_z), 64);
-                if (params.styleId !== undefined) currentParams.styleId = Number(params.styleId);
-                if (params.spin_turns !== undefined) currentParams.spinTurns = Number(params.spin_turns);
-                if (params.spin_phase !== undefined) currentParams.spinPhase = Number(params.spin_phase);
-                if (params.spin_curve !== undefined) currentParams.spinCurve = Number(params.spin_curve);
+                let hasChange = false;
 
-                // Colors
+                // === Geometry parameters ===
+                if (params.H !== undefined) {
+                    currentParams.H = Number(params.H);
+                    hasChange = true;
+                }
+                if (params.top_od !== undefined) {
+                    currentParams.Rt = Number(params.top_od) / 2;
+                    hasChange = true;
+                }
+                if (params.bottom_od !== undefined) {
+                    currentParams.Rb = Number(params.bottom_od) / 2;
+                    hasChange = true;
+                }
+                if (params.Rt !== undefined) {
+                    currentParams.Rt = Number(params.Rt);
+                    hasChange = true;
+                }
+                if (params.Rb !== undefined) {
+                    currentParams.Rb = Number(params.Rb);
+                    hasChange = true;
+                }
+                if (params.t_wall !== undefined) {
+                    currentParams.tWall = Number(params.t_wall);
+                    hasChange = true;
+                }
+                if (params.t_bottom !== undefined) {
+                    currentParams.tBottom = Number(params.t_bottom);
+                    hasChange = true;
+                }
+                if (params.r_drain !== undefined) {
+                    currentParams.rDrain = Number(params.r_drain);
+                    hasChange = true;
+                }
+                if (params.expn !== undefined) {
+                    currentParams.expn = Number(params.expn);
+                    hasChange = true;
+                }
+
+                // === Bell/bulge parameters ===
+                if (params.bellAmp !== undefined) {
+                    currentParams.bellAmp = Number(params.bellAmp);
+                    currentStyleOpts.bellAmp = currentParams.bellAmp;
+                    hasChange = true;
+                }
+                if (params.bellCenter !== undefined) {
+                    currentParams.bellCenter = Number(params.bellCenter);
+                    currentStyleOpts.bellCenter = currentParams.bellCenter;
+                    hasChange = true;
+                }
+                if (params.bellWidth !== undefined) {
+                    currentParams.bellWidth = Number(params.bellWidth);
+                    currentStyleOpts.bellWidth = currentParams.bellWidth;
+                    hasChange = true;
+                }
+
+                // === Spin/twist parameters ===
+                if (params.spin_turns !== undefined) {
+                    currentParams.spinTurns = Number(params.spin_turns);
+                    currentStyleOpts.spinTurns = currentParams.spinTurns;
+                    hasChange = true;
+                }
+                if (params.spin_phase !== undefined) {
+                    currentParams.spinPhase = Number(params.spin_phase);
+                    currentStyleOpts.spinPhase = currentParams.spinPhase;
+                    hasChange = true;
+                }
+                if (params.spin_curve !== undefined) {
+                    currentParams.spinCurve = Number(params.spin_curve);
+                    currentStyleOpts.spinCurve = currentParams.spinCurve;
+                    hasChange = true;
+                }
+
+                // === Style parameters ===
+                if (params.styleId !== undefined) {
+                    currentParams.styleId = Number(params.styleId);
+                    hasChange = true;
+                }
+                if (params.styleParams !== undefined && Array.isArray(params.styleParams)) {
+                    currentParams.styleParams = params.styleParams as number[];
+                    hasChange = true;
+                }
+
+                // === Style-specific options (passed directly from bridge) ===
+                // These are the individual style parameters like ridge count, amplitude, etc.
+                const styleOptKeys = [
+                    'ridgeCount', 'helixTurns', 'amplitude', 'amplitudeBase', 'amplitudeTop',
+                    'fineGrooveAmp', 'frequency', 'phase', 'asymmetry', 'noiseAmp',
+                    'sf_m', 'sf_m_base', 'sf_m_top', 'sf_n1', 'sf_n2', 'sf_n3',
+                    'petalCount', 'petalDepth', 'edgeSharpness', 'facetCount',
+                    'waveCount', 'waveDepth', 'spiralTightness', 'archCount', 'archDepth',
+                    'scaleCount', 'scaleDepth', 'honeycombSize', 'twistTightness',
+                    'fb_strength', 'fb_base_cos8_amp', 'fb_top_cos11_amp', 'fb_wobble_amp', 'fb_wobble_freq',
+                ];
+                for (const key of styleOptKeys) {
+                    if (params[key] !== undefined) {
+                        currentStyleOpts[key] = Number(params[key]);
+                        hasChange = true;
+                    }
+                }
+
+                // === Mesh quality parameters ===
+                if (params.nTheta !== undefined) {
+                    currentParams.nTheta = Math.max(8, Math.min(Number(params.nTheta), 128));
+                    hasChange = true;
+                }
+                if (params.nZ !== undefined) {
+                    currentParams.nZ = Math.max(4, Math.min(Number(params.nZ), 64));
+                    hasChange = true;
+                }
+                if (params.n_theta !== undefined) {
+                    currentParams.nTheta = Math.max(8, Math.min(Number(params.n_theta), 128));
+                    hasChange = true;
+                }
+                if (params.n_z !== undefined) {
+                    currentParams.nZ = Math.max(4, Math.min(Number(params.n_z), 64));
+                    hasChange = true;
+                }
+
+                // === Appearance / Colors ===
                 if (params.colorBottom !== undefined) {
                     currentParams.colorBottom = parseColor(params.colorBottom);
+                    hasChange = true;
                 }
                 if (params.colorMid !== undefined) {
                     currentParams.colorMid = parseColor(params.colorMid);
+                    hasChange = true;
                 }
                 if (params.colorTop !== undefined) {
                     currentParams.colorTop = parseColor(params.colorTop);
+                    hasChange = true;
                 }
 
-                needsUpdate = true;
+                // === Background colors ===
+                if (params.__pf_bg_gradient && Array.isArray(params.__pf_bg_gradient)) {
+                    const gradient = params.__pf_bg_gradient as [number, number, number, number][];
+                    if (gradient[0]) {
+                        bgColor.setRGB(gradient[0][0], gradient[0][1], gradient[0][2]);
+                        scene.background = bgColor;
+                    }
+                }
+                if (params.__pf_bg_rgba && Array.isArray(params.__pf_bg_rgba)) {
+                    const rgba = params.__pf_bg_rgba as number[];
+                    bgColor.setRGB(rgba[0], rgba[1], rgba[2]);
+                    scene.background = bgColor;
+                }
+
+                // === Lighting parameters (passed to material) ===
+                if (params.ambient !== undefined) {
+                    ambientLight.intensity = Number(params.ambient) * 0.5;
+                }
+                if (params.diffuse !== undefined) {
+                    keyLight.intensity = Number(params.diffuse);
+                }
+                if (params.specular !== undefined || params.roughness !== undefined) {
+                    // Material needs update for specular/roughness changes
+                    if (potMaterial instanceof THREE.MeshStandardMaterial) {
+                        if (params.roughness !== undefined) {
+                            potMaterial.roughness = Number(params.roughness);
+                        }
+                        if (params.specular !== undefined) {
+                            potMaterial.metalness = Number(params.specular) * 0.3;
+                        }
+                    }
+                }
+
+                if (hasChange) {
+                    needsUpdate = true;
+                }
             },
 
             dispose() {
