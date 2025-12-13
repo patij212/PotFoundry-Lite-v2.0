@@ -1,26 +1,28 @@
 /**
  * Pot Geometry Generator for WebGL Renderer
  * 
- * Generates Three.js BufferGeometry for the parametric pot shape.
- * Port of the WGSL vertex shader logic to CPU-based JavaScript.
+ * Uses the existing buildPotMesh function from geometry/meshBuilder.ts
+ * which is the same code used for STL export, ensuring visual parity.
  */
 
 import * as THREE from 'three';
+import { buildPotMesh } from '../../geometry/meshBuilder';
+import type { PotDimensions, MeshQuality, StyleId, StyleOptions } from '../../geometry/types';
 
 /**
- * Parameters for generating pot geometry
+ * Parameters for generating pot geometry - simplified interface
  */
 export interface PotParams {
     H: number;           // Height
-    Rt: number;          // Top radius
-    Rb: number;          // Bottom radius
+    Rt: number;          // Top radius (half of top_od)
+    Rb: number;          // Bottom radius (half of bottom_od)
     tWall: number;       // Wall thickness
     tBottom: number;     // Bottom thickness
     rDrain: number;      // Drain hole radius
     expn: number;        // Profile exponent
     nTheta: number;      // Angular resolution
     nZ: number;          // Vertical resolution
-    styleId: number;     // Style ID (0 = plain, 1-4 = various)
+    styleId: number;     // Style ID number
     spinTurns: number;   // Twist turns
     spinPhase: number;   // Twist phase
     spinCurve: number;   // Twist curve
@@ -28,10 +30,29 @@ export interface PotParams {
     colorMid: number;    // Mid color (hex)
     colorTop: number;    // Top color (hex)
     styleParams?: number[]; // Style-specific parameters
+    bellAmp?: number;    // Bell amplitude
+    bellCenter?: number; // Bell center
+    bellWidth?: number;  // Bell width
 }
 
+// Map numeric style IDs to style names
+const STYLE_ID_TO_NAME: Record<number, StyleId> = {
+    0: 'SuperformulaBlossom',
+    1: 'VerticalFlutes',
+    2: 'SpiralRidges',
+    3: 'OrganicWave',
+    4: 'HexagonFacets',
+    5: 'DiamondGrid',
+    6: 'RippleWaves',
+    7: 'TwistedHelix',
+    8: 'GothicArches',
+    9: 'ScallopShell',
+    10: 'LotusPetals',
+    11: 'Honeycomb',
+};
+
 /**
- * Generate pot geometry based on parameters
+ * Generate pot geometry using the buildPotMesh function
  */
 export function generatePotGeometry(params: PotParams): THREE.BufferGeometry {
     const {
@@ -44,326 +65,132 @@ export function generatePotGeometry(params: PotParams): THREE.BufferGeometry {
         expn,
         nTheta,
         nZ,
+        styleId,
         spinTurns,
         spinPhase,
         spinCurve,
+        bellAmp = 0,
+        bellCenter = 0.5,
+        bellWidth = 0.22,
     } = params;
 
+    // Convert params to the format expected by buildPotMesh
+    const dimensions: Partial<PotDimensions> = {
+        H: Math.max(H, 10),
+        Rt: Math.max(Rt, 5),
+        Rb: Math.max(Rb, 5),
+        tWall: Math.max(tWall, 1),
+        tBottom: Math.max(tBottom, 2),
+        rDrain: Math.max(rDrain, 0.5),
+        expn: Math.max(expn, 0.1),
+    };
+
+    // Validate drain radius doesn't exceed bounds
+    if (dimensions.rDrain! >= dimensions.Rb! - dimensions.tWall! - 2.0) {
+        dimensions.rDrain = dimensions.Rb! - dimensions.tWall! - 3.0;
+        if (dimensions.rDrain! < 0.5) dimensions.rDrain = 0.5;
+    }
+
+    const quality: Partial<MeshQuality> = {
+        nTheta: Math.max(nTheta, 8),
+        nZ: Math.max(nZ, 4),
+    };
+
+    const styleName = STYLE_ID_TO_NAME[styleId] || 'SuperformulaBlossom';
+
+    const styleOpts: StyleOptions = {
+        spinTurns: spinTurns || 0,
+        spinPhase: spinPhase || 0,
+        spinCurve: spinCurve || 1,
+        bellAmp: bellAmp || 0,
+        bellCenter: bellCenter || 0.5,
+        bellWidth: bellWidth || 0.22,
+    };
+
+    console.log('[WebGL] Generating mesh with buildPotMesh:', {
+        dimensions,
+        quality,
+        styleName,
+        styleOpts
+    });
+
+    // Build the mesh using the same function used for STL export
+    let result;
+    try {
+        result = buildPotMesh(dimensions, quality, styleName, styleOpts);
+    } catch (meshError) {
+        console.error('[WebGL] buildPotMesh failed:', meshError);
+        // Fall back to a simple cylinder if mesh generation fails
+        return createFallbackGeometry(H, Rt, Rb, nTheta, nZ);
+    }
+
+    const { mesh } = result;
+    const { vertices, indices } = mesh;
+
+    console.log('[WebGL] Mesh generated:', {
+        vertexCount: mesh.vertexCount,
+        triangleCount: mesh.triangleCount
+    });
+
+    // Convert to Three.js BufferGeometry
     const geometry = new THREE.BufferGeometry();
 
-    // Estimate vertex and index counts
-    const outerVerts = (nTheta + 1) * (nZ + 1);
-    const innerVerts = (nTheta + 1) * (nZ + 1);
-    const bottomVerts = (nTheta + 1) * 4; // Bottom rings
-    const rimVerts = (nTheta + 1) * 3;    // Rim
+    // The buildPotMesh outputs vertices as flat Float32Array [x,y,z, x,y,z, ...]
+    // and indices as Uint32Array
 
-    const totalVerts = outerVerts + innerVerts + bottomVerts + rimVerts;
-
-    const positions: number[] = [];
-    const normals: number[] = [];
-    const uvs: number[] = [];
-    const colors: number[] = [];
-    const indices: number[] = [];
-
-    let vertexIndex = 0;
-
-    // === Outer wall ===
-    const outerStartIndex = vertexIndex;
-    for (let iz = 0; iz <= nZ; iz++) {
-        const t = iz / nZ;
-        const y = t * H;
-
-        // Interpolate radius
-        const radius = Rb + (Rt - Rb) * Math.pow(t, expn);
-
-        for (let itheta = 0; itheta <= nTheta; itheta++) {
-            const u = itheta / nTheta;
-
-            // Apply twist
-            const twistAngle = spinTurns * 2 * Math.PI * Math.pow(t, spinCurve) + spinPhase * 2 * Math.PI;
-            const theta = u * 2 * Math.PI + twistAngle;
-
-            // Apply style modulation
-            const styleRadius = applyStyleModulation(radius, theta, t, params);
-
-            const x = Math.cos(theta) * styleRadius;
-            const z = Math.sin(theta) * styleRadius;
-
-            positions.push(x, y, z);
-
-            // Normal (approximate, will be smoothed)
-            const nx = Math.cos(theta);
-            const nz = Math.sin(theta);
-            const ny = (Rt - Rb) / H * 0.3; // Slight upward tilt for profile
-            const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-            normals.push(nx / len, ny / len, nz / len);
-
-            uvs.push(u, t);
-
-            // Vertex color based on height
-            const color = interpolateColor(
-                params.colorBottom,
-                params.colorMid,
-                params.colorTop,
-                t
-            );
-            colors.push(color.r, color.g, color.b);
-
-            vertexIndex++;
-        }
+    // buildPotMesh uses x,y for horizontal and z for vertical (height)
+    // Three.js convention is x,z for horizontal and y for vertical
+    // So we need to swap y and z
+    const positions = new Float32Array(vertices.length);
+    for (let i = 0; i < mesh.vertexCount; i++) {
+        positions[i * 3] = vertices[i * 3];         // x stays x
+        positions[i * 3 + 1] = vertices[i * 3 + 2]; // z becomes y (height)
+        positions[i * 3 + 2] = vertices[i * 3 + 1]; // y becomes z
     }
 
-    // Generate indices for outer wall
-    for (let iz = 0; iz < nZ; iz++) {
-        for (let itheta = 0; itheta < nTheta; itheta++) {
-            const i00 = outerStartIndex + iz * (nTheta + 1) + itheta;
-            const i01 = i00 + 1;
-            const i10 = i00 + (nTheta + 1);
-            const i11 = i10 + 1;
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
 
-            indices.push(i00, i01, i11);
-            indices.push(i00, i11, i10);
-        }
-    }
-
-    // === Inner wall ===
-    const innerStartIndex = vertexIndex;
-    const innerRadius = (r: number) => Math.max(r - tWall, 1);
-
-    for (let iz = 0; iz <= nZ; iz++) {
-        const t = iz / nZ;
-        const y = t * H + tBottom; // Start above bottom
-
-        const outerR = Rb + (Rt - Rb) * Math.pow(t, expn);
-        const radius = innerRadius(outerR);
-
-        for (let itheta = 0; itheta <= nTheta; itheta++) {
-            const u = itheta / nTheta;
-
-            const twistAngle = spinTurns * 2 * Math.PI * Math.pow(t, spinCurve) + spinPhase * 2 * Math.PI;
-            const theta = u * 2 * Math.PI + twistAngle;
-
-            const styleRadius = applyStyleModulation(radius, theta, t, params) - tWall;
-            const finalRadius = Math.max(styleRadius, 1);
-
-            const x = Math.cos(theta) * finalRadius;
-            const z = Math.sin(theta) * finalRadius;
-
-            positions.push(x, y, z);
-
-            // Normal points inward
-            const nx = -Math.cos(theta);
-            const nz = -Math.sin(theta);
-            normals.push(nx, 0, nz);
-
-            uvs.push(u, t);
-
-            const color = interpolateColor(
-                params.colorBottom,
-                params.colorMid,
-                params.colorTop,
-                t
-            );
-            colors.push(color.r, color.g, color.b);
-
-            vertexIndex++;
-        }
-    }
-
-    // Generate indices for inner wall (reversed winding)
-    for (let iz = 0; iz < nZ; iz++) {
-        for (let itheta = 0; itheta < nTheta; itheta++) {
-            const i00 = innerStartIndex + iz * (nTheta + 1) + itheta;
-            const i01 = i00 + 1;
-            const i10 = i00 + (nTheta + 1);
-            const i11 = i10 + 1;
-
-            indices.push(i00, i11, i01);
-            indices.push(i00, i10, i11);
-        }
-    }
-
-    // === Bottom surface ===
-    const bottomStartIndex = vertexIndex;
-
-    // Bottom outer edge
-    for (let itheta = 0; itheta <= nTheta; itheta++) {
-        const u = itheta / nTheta;
-        const theta = u * 2 * Math.PI;
-        const radius = Rb;
-
-        const x = Math.cos(theta) * radius;
-        const z = Math.sin(theta) * radius;
-
-        positions.push(x, 0, z);
-        normals.push(0, -1, 0);
-        uvs.push(u, 0);
-
-        const color = interpolateColor(
-            params.colorBottom,
-            params.colorMid,
-            params.colorTop,
-            0
-        );
-        colors.push(color.r, color.g, color.b);
-
-        vertexIndex++;
-    }
-
-    // Bottom inner edge (drain hole)
-    const bottomInnerStartIndex = vertexIndex;
-    for (let itheta = 0; itheta <= nTheta; itheta++) {
-        const u = itheta / nTheta;
-        const theta = u * 2 * Math.PI;
-        const radius = rDrain;
-
-        const x = Math.cos(theta) * radius;
-        const z = Math.sin(theta) * radius;
-
-        positions.push(x, 0, z);
-        normals.push(0, -1, 0);
-        uvs.push(u, 0);
-
-        const color = interpolateColor(
-            params.colorBottom,
-            params.colorMid,
-            params.colorTop,
-            0
-        );
-        colors.push(color.r, color.g, color.b);
-
-        vertexIndex++;
-    }
-
-    // Generate indices for bottom (ring between drain and outer edge)
-    for (let itheta = 0; itheta < nTheta; itheta++) {
-        const outerI = bottomStartIndex + itheta;
-        const outerI1 = bottomStartIndex + itheta + 1;
-        const innerI = bottomInnerStartIndex + itheta;
-        const innerI1 = bottomInnerStartIndex + itheta + 1;
-
-        indices.push(outerI, innerI, outerI1);
-        indices.push(outerI1, innerI, innerI1);
-    }
-
-    // === Rim (top edge) ===
-    const rimStartIndex = vertexIndex;
-
-    // Rim outer edge
-    for (let itheta = 0; itheta <= nTheta; itheta++) {
-        const u = itheta / nTheta;
-        const theta = u * 2 * Math.PI;
-
-        const x = Math.cos(theta) * Rt;
-        const z = Math.sin(theta) * Rt;
-
-        positions.push(x, H, z);
-        normals.push(0, 1, 0);
-        uvs.push(u, 1);
-
-        const color = interpolateColor(
-            params.colorBottom,
-            params.colorMid,
-            params.colorTop,
-            1
-        );
-        colors.push(color.r, color.g, color.b);
-
-        vertexIndex++;
-    }
-
-    // Rim inner edge
-    const rimInnerStartIndex = vertexIndex;
-    const innerRt = Rt - tWall;
-    for (let itheta = 0; itheta <= nTheta; itheta++) {
-        const u = itheta / nTheta;
-        const theta = u * 2 * Math.PI;
-
-        const x = Math.cos(theta) * innerRt;
-        const z = Math.sin(theta) * innerRt;
-
-        positions.push(x, H, z);
-        normals.push(0, 1, 0);
-        uvs.push(u, 1);
-
-        const color = interpolateColor(
-            params.colorBottom,
-            params.colorMid,
-            params.colorTop,
-            1
-        );
-        colors.push(color.r, color.g, color.b);
-
-        vertexIndex++;
-    }
-
-    // Generate indices for rim
-    for (let itheta = 0; itheta < nTheta; itheta++) {
-        const outerI = rimStartIndex + itheta;
-        const outerI1 = rimStartIndex + itheta + 1;
-        const innerI = rimInnerStartIndex + itheta;
-        const innerI1 = rimInnerStartIndex + itheta + 1;
-
-        indices.push(outerI, outerI1, innerI);
-        indices.push(outerI1, innerI1, innerI);
-    }
-
-    // === Set geometry attributes ===
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geometry.setIndex(indices);
-
-    // Compute proper normals
+    // Compute normals
     geometry.computeVertexNormals();
+
+    // Add vertex colors based on height
+    const colors = new Float32Array(mesh.vertexCount * 3);
+    for (let i = 0; i < mesh.vertexCount; i++) {
+        const height = positions[i * 3 + 1]; // y (height in Three.js space)
+        const t = Math.max(0, Math.min(1, height / H));
+
+        const color = interpolateColor(
+            params.colorBottom,
+            params.colorMid,
+            params.colorTop,
+            t
+        );
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+    }
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     return geometry;
 }
 
 /**
- * Apply style-specific radius modulation
+ * Create a simple fallback cylinder if mesh generation fails
  */
-function applyStyleModulation(
-    baseRadius: number,
-    theta: number,
-    t: number,
-    params: PotParams
-): number {
-    const { styleId } = params;
+function createFallbackGeometry(
+    H: number,
+    Rt: number,
+    Rb: number,
+    nTheta: number,
+    nZ: number
+): THREE.BufferGeometry {
+    console.warn('[WebGL] Using fallback cylinder geometry');
 
-    switch (styleId) {
-        case 0: // Plain cylinder
-            return baseRadius;
+    const geometry = new THREE.CylinderGeometry(Rt, Rb, H, nTheta, nZ, true);
+    geometry.translate(0, H / 2, 0);
 
-        case 1: // Fluted
-            const flutes = 8;
-            const fluteDepth = 0.08;
-            const fluteMod = 1 - fluteDepth * (0.5 + 0.5 * Math.cos(theta * flutes));
-            return baseRadius * fluteMod;
-
-        case 2: // Spiral
-            const spirals = 5;
-            const spiralDepth = 0.1;
-            const spiralPhase = t * Math.PI * 4;
-            const spiralMod = 1 - spiralDepth * (0.5 + 0.5 * Math.cos(theta * spirals + spiralPhase));
-            return baseRadius * spiralMod;
-
-        case 3: // Organic/Blob
-            const blobFreq = 6;
-            const blobAmp = 0.15;
-            const blobMod = 1 + blobAmp * Math.sin(theta * blobFreq) * Math.sin(t * Math.PI);
-            return baseRadius * blobMod;
-
-        case 4: // Faceted
-            const facets = 6;
-            const facetAngle = Math.floor((theta / (2 * Math.PI)) * facets) / facets * 2 * Math.PI;
-            const facetMod = Math.cos(theta - facetAngle - Math.PI / facets);
-            return baseRadius * (0.9 + 0.1 * facetMod);
-
-        default:
-            return baseRadius;
-    }
+    return geometry;
 }
 
 /**
