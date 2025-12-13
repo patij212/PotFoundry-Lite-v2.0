@@ -6,7 +6,8 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { mount, WebGPUController } from './webgpu_core';
+import { createRenderer, RendererController } from './renderers';
+import { WebGPUController } from './webgpu_core';
 import { AppUI } from './ui';
 import { useRendererBridge, sendFullStoreToController, usePerformanceTracker } from './hooks';
 import { useUIActions } from './state';
@@ -45,14 +46,15 @@ const DEFAULT_PARAMS = {
 const App: React.FC = () => {
     // Refs
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const controllerRef = useRef<WebGPUController | null>(null);
+    const controllerRef = useRef<RendererController | WebGPUController | null>(null);
     const mountedRef = useRef<boolean>(true);
     const emitRef = useRef<(e: unknown) => void>(() => { });
 
     // State
-    const [isReady, setIsReady] = useState(false);
+    const [, setIsReady] = useState(false);
     const [controllerReady, setControllerReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isCompatibilityMode, setIsCompatibilityMode] = useState(false);
 
     // Refs for callbacks
     const localParamsLockUntilRef = useRef<number>(0);
@@ -143,7 +145,7 @@ const App: React.FC = () => {
                         const testAdapter = await navigator.gpu.requestAdapter();
                         diagnostics.push(`requestAdapter() result: ${testAdapter ? 'SUCCESS' : 'null'}`);
                         if (testAdapter) {
-                            const info = await testAdapter.requestAdapterInfo?.();
+                            const info = await (testAdapter as any).requestAdapterInfo?.();
                             diagnostics.push(`Adapter vendor: ${info?.vendor || 'unknown'}`);
                             diagnostics.push(`Adapter device: ${info?.device || 'unknown'}`);
                         }
@@ -160,15 +162,20 @@ const App: React.FC = () => {
                     }
                 }
 
-                console.log('[WebGPU Diagnostics]', diagnostics);
+                console.log('[Renderer Diagnostics]', diagnostics);
 
-                const controller = await mount({
+                // Use the renderer factory which automatically falls back to WebGL
+                const controller = await createRenderer({
                     canvas,
                     canvasId: 'pf-main-canvas',
                     initialParams: DEFAULT_PARAMS,
                     emit: (e: unknown) => emitRef.current(e),
                     debugMode: false,
                     onAutoRotateChange: () => { },
+                    onFallback: (reason) => {
+                        console.log('[Renderer] Using fallback mode:', reason);
+                        setIsCompatibilityMode(true);
+                    },
                 });
 
                 if (cancelled) {
@@ -179,20 +186,9 @@ const App: React.FC = () => {
 
                 if (!controller) {
                     restoreConsole();
-                    // Include diagnostics AND captured logs in error message
+                    // Both WebGPU and WebGL failed
                     const logOutput = logs.length > 0 ? `\n\nConsole Logs:\n${logs.join('\n')}` : '';
-
-                    // Check for the known GPU instance loss bug
-                    const hasGpuInstanceLoss = logs.some(log =>
-                        log.includes('Instance reference no longer exists') ||
-                        log.includes('GPUPipelineError')
-                    );
-
-                    if (hasGpuInstanceLoss) {
-                        setError(`WebGPU GPU Process Crashed\n\nThis is a known Chrome/Android bug where the GPU process becomes unstable.\n\nTry these fixes:\n1. Close other browser tabs using the GPU\n2. Refresh the page (sometimes works after GPU stabilizes)\n3. Restart Chrome completely\n4. In Chrome, visit chrome://flags and enable "Unsafe WebGPU Support"\n5. If on Android, try using a different browser (Edge, Samsung Internet)\n\nTechnical Details: GPUPipelineError - The GPU instance became invalid during initialization.${logOutput}`);
-                    } else {
-                        setError(`WebGPU mount returned null.\n\nDiagnostics:\n${diagnostics.join('\n')}${logOutput}`);
-                    }
+                    setError(`Unable to initialize 3D renderer.\n\nNeither WebGPU nor WebGL could be initialized on your device.\n\nDiagnostics:\n${diagnostics.join('\n')}${logOutput}`);
                     return;
                 }
 
@@ -346,6 +342,28 @@ Protocol: ${protocol}`}
                             onClick={() => canvasRef.current?.focus()}
                             onPointerDown={() => canvasRef.current?.focus()}
                         />
+
+                        {/* Compatibility Mode Indicator */}
+                        {isCompatibilityMode && (
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    bottom: '10px',
+                                    left: '10px',
+                                    padding: '4px 10px',
+                                    backgroundColor: 'rgba(255, 193, 7, 0.9)',
+                                    color: '#1a1a2e',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: 500,
+                                    zIndex: 10,
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                }}
+                                title="Using WebGL renderer because WebGPU is not available on this device"
+                            >
+                                ⚠️ Compatibility Mode (WebGL)
+                            </div>
+                        )}
 
                         {/* Embedded UI Overlay */}
                         <ControllerProvider
