@@ -612,29 +612,38 @@ const createPipeline = async (
         console.log('[WebGPU] Creating minimal test shader module...');
         const testModule = await createShaderModule(device as any, minimalWgsl, 'minimal-test');
         console.log('[WebGPU] Minimal test shader module:', testModule ? 'SUCCESS' : 'null');
-        const testInfo = await ((testModule as any).getCompilationInfo?.() ?? Promise.resolve(undefined));
-        if (testInfo && Array.isArray(testInfo.messages) && testInfo.messages.some((m: any) => m.type === 'error')) {
-          console.error('[WebGPU] Minimal shader compilation FAILED:', testInfo.messages);
-          reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader test failed compile', messages: testInfo.messages });
-        } else {
-          console.log('[WebGPU] Minimal shader compiled successfully. Creating pipeline directly (no wrapper)...');
-          try {
-            // Direct call without withValidationScope to get raw error
-            const testPipe = await device.createRenderPipelineAsync({
-              layout: 'auto',
-              vertex: { module: testModule, entryPoint: 'vs_main' },
-              fragment: { module: testModule, entryPoint: 'fs_main', targets: [{ format }] },
-              primitive: { topology: 'triangle-list', cullMode: 'none' },
-            });
-            console.log('[WebGPU] MINIMAL TEST PIPELINE SUCCEEDED!', testPipe);
+
+        // Skip getCompilationInfo - it throws on some mobile WebGPU implementations
+        // Go directly to pipeline creation
+        console.log('[WebGPU] Creating pipeline directly (skipping getCompilationInfo)...');
+        try {
+          // Direct call without withValidationScope to get raw error
+          const testPipe = await device.createRenderPipelineAsync({
+            layout: 'auto',
+            vertex: { module: testModule, entryPoint: 'vs_main' },
+            fragment: { module: testModule, entryPoint: 'fs_main', targets: [{ format }] },
+            primitive: { topology: 'triangle-list', cullMode: 'none' },
+          });
+          console.log('[WebGPU] MINIMAL TEST PIPELINE SUCCEEDED!', testPipe ? 'YES' : 'null');
+          if (testPipe) {
             reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline succeeded; our shader has the issue' });
-          } catch (testErr) {
-            console.error('[WebGPU] Minimal test pipeline FAILED with raw error:', testErr);
-            reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline failed; platform/driver issue', error: testErr instanceof Error ? testErr.message : String(testErr) });
+          } else {
+            console.error('[WebGPU] Minimal test pipeline returned null (not an exception)');
           }
+        } catch (testErr) {
+          // Log the error in multiple formats to capture whatever info is available
+          console.error('[WebGPU] Minimal test pipeline FAILED. Error type:', typeof testErr);
+          console.error('[WebGPU] Minimal test pipeline FAILED. Error constructor:', (testErr as any)?.constructor?.name);
+          console.error('[WebGPU] Minimal test pipeline FAILED. Error message:', (testErr as Error)?.message);
+          console.error('[WebGPU] Minimal test pipeline FAILED. Error toString:', String(testErr));
+          console.error('[WebGPU] Minimal test pipeline FAILED. Error JSON:', JSON.stringify(testErr, null, 2));
+          reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline failed; platform/driver issue', error: testErr instanceof Error ? testErr.message : String(testErr) });
         }
       } catch (testErr) {
-        console.error('[WebGPU] Minimal shader test completely FAILED:', testErr);
+        console.error('[WebGPU] Minimal shader test outer catch. Error type:', typeof testErr);
+        console.error('[WebGPU] Minimal shader test outer catch. Error constructor:', (testErr as any)?.constructor?.name);
+        console.error('[WebGPU] Minimal shader test outer catch. Error message:', (testErr as Error)?.message);
+        console.error('[WebGPU] Minimal shader test outer catch. Error toString:', String(testErr));
         reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader module creation check failed', error: testErr instanceof Error ? testErr.message : String(testErr) });
       }
       reportStatus('WebGPU • pipeline creation failed');
