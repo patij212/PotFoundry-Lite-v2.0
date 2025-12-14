@@ -13,8 +13,8 @@ import { useState, useEffect, useCallback } from 'react';
 // Configuration - Easy to adjust
 // ============================================================================
 
-/** Default breakpoint for mobile detection (matches CSS) */
-export const MOBILE_BREAKPOINT = 480;
+/** Default breakpoint for mobile detection - 768px captures all phones and small tablets */
+export const MOBILE_BREAKPOINT = 768;
 
 /** Tablet breakpoint for intermediate layouts */
 export const TABLET_BREAKPOINT = 768;
