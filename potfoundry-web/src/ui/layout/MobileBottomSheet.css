@@ -1,0 +1,291 @@
+/**
+ * Mobile Bottom Sheet styles.
+ * 
+ * Uses CSS custom properties (variables) extensively for easy adjustment.
+ * Override these variables to customize sizing, colors, and animations.
+ */
+
+/* ============================================================================
+   CSS Variables - Adjust these to customize the sheet
+   ============================================================================ */
+
+:root {
+    /* Sizing - Easy to adjust */
+    --pf-sheet-handle-height: 56px;
+    --pf-sheet-border-radius: 20px;
+    --pf-sheet-handle-bar-width: 48px;
+    --pf-sheet-handle-bar-height: 4px;
+
+    /* Spacing */
+    --pf-sheet-padding-x: 16px;
+    --pf-sheet-padding-y: 12px;
+    --pf-sheet-content-gap: 16px;
+
+    /* Colors */
+    --pf-sheet-bg: rgba(18, 18, 24, 0.98);
+    --pf-sheet-handle-bg: rgba(255, 255, 255, 0.08);
+    --pf-sheet-handle-bar-color: rgba(255, 255, 255, 0.3);
+    --pf-sheet-border-color: rgba(255, 255, 255, 0.1);
+    --pf-sheet-backdrop-color: rgba(0, 0, 0, 0.4);
+
+    /* Typography */
+    --pf-sheet-title-size: 16px;
+    --pf-sheet-title-weight: 600;
+    --pf-sheet-subtitle-size: 12px;
+
+    /* Animations */
+    --pf-sheet-transition-duration: 0.3s;
+    --pf-sheet-transition-easing: cubic-bezier(0.32, 0.72, 0, 1);
+
+    /* Z-index */
+    --pf-sheet-z-backdrop: 150;
+    --pf-sheet-z-sheet: 160;
+}
+
+/* ============================================================================
+   Backdrop
+   ============================================================================ */
+
+.pf-mobile-sheet__backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--pf-sheet-backdrop-color);
+    z-index: var(--pf-sheet-z-backdrop);
+    opacity: 0;
+    animation: pf-sheet-backdrop-in var(--pf-sheet-transition-duration) var(--pf-sheet-transition-easing) forwards;
+}
+
+@keyframes pf-sheet-backdrop-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* ============================================================================
+   Sheet Container
+   ============================================================================ */
+
+.pf-mobile-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--pf-sheet-z-sheet);
+
+    display: flex;
+    flex-direction: column;
+
+    background: var(--pf-sheet-bg);
+    border-top-left-radius: var(--pf-sheet-border-radius);
+    border-top-right-radius: var(--pf-sheet-border-radius);
+    border: 1px solid var(--pf-sheet-border-color);
+    border-bottom: none;
+
+    box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.3);
+
+    /* Smooth transitions when not dragging */
+    transition: height var(--pf-sheet-transition-duration) var(--pf-sheet-transition-easing);
+
+    /* Safe area for notched devices */
+    padding-bottom: env(safe-area-inset-bottom, 0);
+
+    /* Prevent text selection during drag */
+    user-select: none;
+    touch-action: none;
+}
+
+/* Disable transitions during drag */
+.pf-mobile-sheet--dragging {
+    transition: none;
+}
+
+/* ============================================================================
+   Handle Bar
+   ============================================================================ */
+
+.pf-mobile-sheet__handle {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: var(--pf-sheet-handle-height);
+    padding: var(--pf-sheet-padding-y) var(--pf-sheet-padding-x);
+    cursor: grab;
+
+    /* Touch target - at least 48px */
+    min-height: 56px;
+}
+
+.pf-mobile-sheet__handle:active {
+    cursor: grabbing;
+}
+
+.pf-mobile-sheet__handle-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--pf-sheet-handle-bar-width);
+    height: 24px;
+    color: var(--pf-sheet-handle-bar-color);
+    margin-bottom: 4px;
+}
+
+.pf-mobile-sheet__handle-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 12px;
+}
+
+.pf-mobile-sheet__title-group {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.pf-mobile-sheet__title {
+    margin: 0;
+    font-size: var(--pf-sheet-title-size);
+    font-weight: var(--pf-sheet-title-weight);
+    color: rgba(255, 255, 255, 0.95);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pf-mobile-sheet__subtitle {
+    font-size: var(--pf-sheet-subtitle-size);
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+}
+
+.pf-mobile-sheet__handle-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pf-mobile-sheet__expand-hint {
+    color: rgba(255, 255, 255, 0.4);
+    animation: pf-sheet-bounce 2s ease-in-out infinite;
+}
+
+@keyframes pf-sheet-bounce {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-4px);
+    }
+}
+
+.pf-mobile-sheet__close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    border-radius: 50%;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pf-mobile-sheet__close-btn:hover,
+.pf-mobile-sheet__close-btn:active {
+    background: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.95);
+}
+
+/* ============================================================================
+   Content Area
+   ============================================================================ */
+
+.pf-mobile-sheet__content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 var(--pf-sheet-padding-x);
+    padding-bottom: var(--pf-sheet-padding-y);
+
+    /* Enable momentum scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
+
+    /* Scrollbar styling */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.pf-mobile-sheet__content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.pf-mobile-sheet__content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.pf-mobile-sheet__content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+/* Hide content when collapsed */
+.pf-mobile-sheet--collapsed .pf-mobile-sheet__content {
+    display: none;
+}
+
+/* ============================================================================
+   State Modifiers
+   ============================================================================ */
+
+/* Collapsed state - just shows handle */
+.pf-mobile-sheet--collapsed {
+    /* Height set via inline style */
+}
+
+/* Half-open state */
+.pf-mobile-sheet--half {
+    box-shadow: 0 -8px 48px rgba(0, 0, 0, 0.4);
+}
+
+/* Fully expanded state */
+.pf-mobile-sheet--full {
+    box-shadow: 0 -12px 64px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================================
+   Mobile Touch Improvements
+   ============================================================================ */
+
+/* Larger touch targets for control elements inside sheet */
+.pf-mobile-sheet .pf-control-group__header {
+    min-height: 48px;
+    padding: 12px 0;
+}
+
+.pf-mobile-sheet .pf-slider__thumb {
+    width: 28px;
+    height: 28px;
+}
+
+.pf-mobile-sheet .pf-slider__track {
+    height: 8px;
+}
+
+/* Better spacing for mobile */
+.pf-mobile-sheet .pf-control-group+.pf-control-group {
+    margin-top: var(--pf-sheet-content-gap);
+}

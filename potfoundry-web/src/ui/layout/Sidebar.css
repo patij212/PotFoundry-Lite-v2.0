@@ -240,35 +240,87 @@
   background-clip: padding-box;
 }
 
-/* Responsive */
+/* ============================================================================
+   Responsive - Desktop Sidebar
+   ============================================================================ */
+
 @media (max-width: 900px) {
-  .pf-sidebar {
+  .pf-sidebar--desktop {
     width: 320px;
     min-width: 280px;
   }
 }
 
 @media (max-width: 768px) {
-  .pf-sidebar {
+  .pf-sidebar--desktop {
     width: 100%;
     max-width: 380px;
     min-width: 0;
   }
 }
 
-@media (max-width: 480px) {
-  .pf-sidebar {
-    width: 100%;
-    max-width: none;
-    min-width: 0;
-    border-right: none;
-  }
+/* ============================================================================
+   Mobile Bottom Sheet - Additional Styles
+   ============================================================================ */
 
-  .pf-sidebar__tab span {
-    display: none;
-  }
+/* Mobile sidebar uses the MobileBottomSheet component */
+.pf-sidebar--mobile {
+  /* The sheet handles its own positioning */
+}
 
-  .pf-sidebar__tab {
-    padding: 12px;
-  }
+/* Tabs inside bottom sheet */
+.pf-sidebar--mobile .pf-sidebar__tabs {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.pf-sidebar--mobile .pf-sidebar__tab {
+  flex: 1;
+  justify-content: center;
+  border-radius: 8px;
+  min-height: 44px;
+  /* Touch-friendly */
+  font-size: 14px;
+}
+
+.pf-sidebar--mobile .pf-sidebar__tab span {
+  display: inline;
+  /* Always show labels on mobile */
+}
+
+/* Content inside bottom sheet */
+.pf-sidebar--mobile .pf-sidebar__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pf-sidebar--mobile .pf-sidebar__page {
+  padding: 0;
+  /* Sheet has its own padding */
+}
+
+/* Footer inside bottom sheet */
+.pf-sidebar--mobile .pf-sidebar__footer {
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 12px;
+}
+
+/* Touch-friendly control groups on mobile */
+.pf-sidebar--mobile .pf-control-group {
+  margin-bottom: 16px;
+}
+
+.pf-sidebar--mobile .pf-control-group__header {
+  min-height: 48px;
+  padding: 14px 0;
+}
+
+.pf-sidebar--mobile .pf-control-group__title {
+  font-size: 15px;
 }

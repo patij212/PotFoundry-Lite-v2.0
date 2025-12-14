@@ -9,3 +9,4 @@
 export { Sidebar } from './Sidebar';
 export { Toolbar } from './Toolbar';
 export { StatusBar } from './StatusBar';
+export { MobileBottomSheet, type SheetState, type MobileBottomSheetProps } from './MobileBottomSheet';

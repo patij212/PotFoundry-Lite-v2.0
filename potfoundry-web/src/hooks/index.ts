@@ -23,4 +23,11 @@ export {
   SHORTCUTS,
   type KeyboardShortcutHandlers,
 } from './useKeyboardShortcuts';
+export {
+  useMobile,
+  MOBILE_BREAKPOINT,
+  TABLET_BREAKPOINT,
+  type UseMobileOptions,
+  type UseMobileResult,
+} from './useMobile';
 

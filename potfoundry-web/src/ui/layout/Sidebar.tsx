@@ -1,8 +1,8 @@
 /**
  * Sidebar component with tabbed navigation and resizable width.
  * 
- * Provides separate pages for Design controls and Public Library.
- * Width is resizable by dragging the edge, with localStorage persistence.
+ * On mobile (≤480px), renders as a bottom sheet instead of a left sidebar.
+ * On desktop, provides a resizable left sidebar with localStorage persistence.
  * 
  * @module ui/layout/Sidebar
  */
@@ -21,6 +21,8 @@ import {
   LibraryPanel,
 } from '../controls';
 import { useUI, useUIActions, useGeometryActions, useStyleActions } from '../../state';
+import { useMobile } from '../../hooks';
+import { MobileBottomSheet } from './MobileBottomSheet';
 import './Sidebar.css';
 
 // ============================================================================
@@ -39,23 +41,100 @@ const getMaxWidth = () => Math.min(800, window.innerWidth * 0.5); // 50% of view
 type SidebarTab = 'design' | 'library';
 
 // ============================================================================
-// Component
+// Tab Navigation Component (shared)
 // ============================================================================
 
-/**
- * The main sidebar with tabbed navigation and resizable width.
- * 
- * Contains two pages:
- * - Design: All pot configuration controls
- * - Library: Public library browser and publish
- */
-export const Sidebar: React.FC = () => {
-  const ui = useUI();
-  const { setPanelOpen } = useUIActions();
-  const { resetGeometry } = useGeometryActions();
-  const { resetStyleOpts } = useStyleActions();
-  const [activeTab, setActiveTab] = useState<SidebarTab>('design');
+interface TabNavProps {
+  activeTab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
+}
 
+const TabNav: React.FC<TabNavProps> = ({ activeTab, onTabChange }) => (
+  <nav className="pf-sidebar__tabs">
+    <button
+      className={`pf-sidebar__tab ${activeTab === 'design' ? 'pf-sidebar__tab--active' : ''}`}
+      onClick={() => onTabChange('design')}
+      aria-selected={activeTab === 'design'}
+    >
+      <Sliders size={16} />
+      <span>Design</span>
+    </button>
+    <button
+      className={`pf-sidebar__tab ${activeTab === 'library' ? 'pf-sidebar__tab--active' : ''}`}
+      onClick={() => onTabChange('library')}
+      aria-selected={activeTab === 'library'}
+    >
+      <BookOpen size={16} />
+      <span>Library</span>
+    </button>
+  </nav>
+);
+
+// ============================================================================
+// Tab Content Component (shared)
+// ============================================================================
+
+interface TabContentProps {
+  activeTab: SidebarTab;
+  onReset: () => void;
+  showFooter?: boolean;
+}
+
+const TabContent: React.FC<TabContentProps> = ({ activeTab, onReset, showFooter = true }) => (
+  <>
+    <div className="pf-sidebar__content">
+      {activeTab === 'design' && (
+        <div className="pf-sidebar__page">
+          <PresetPanel />
+          <DimensionControls />
+          <StyleControls />
+          <CameraControls />
+          <MeshControls />
+          <AppearanceControls />
+          <ExportPanel />
+        </div>
+      )}
+
+      {activeTab === 'library' && (
+        <div className="pf-sidebar__page pf-sidebar__page--library">
+          <LibraryPanel />
+        </div>
+      )}
+    </div>
+
+    {/* Footer Actions - only show on Design tab */}
+    {showFooter && activeTab === 'design' && (
+      <footer className="pf-sidebar__footer">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onReset}
+          iconLeft={<RotateCcw size={14} />}
+        >
+          Reset All
+        </Button>
+      </footer>
+    )}
+  </>
+);
+
+// ============================================================================
+// Desktop Sidebar Component
+// ============================================================================
+
+interface DesktopSidebarProps {
+  activeTab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
+  onClose: () => void;
+  onReset: () => void;
+}
+
+const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
+  activeTab,
+  onTabChange,
+  onClose,
+  onReset,
+}) => {
   // Resizable width state
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
@@ -63,13 +142,6 @@ export const Sidebar: React.FC = () => {
   });
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
-
-  const handleClose = () => setPanelOpen(false);
-
-  const handleReset = () => {
-    resetGeometry();
-    resetStyleOpts();
-  };
 
   // Resize handlers
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -120,14 +192,10 @@ export const Sidebar: React.FC = () => {
     return () => window.removeEventListener('resize', handleWindowResize);
   }, [width]);
 
-  if (!ui.panelOpen) {
-    return null;
-  }
-
   return (
     <aside
       ref={sidebarRef}
-      className={`pf-sidebar ${isResizing ? 'pf-sidebar--resizing' : ''}`}
+      className={`pf-sidebar pf-sidebar--desktop ${isResizing ? 'pf-sidebar--resizing' : ''}`}
       style={{ width: `${width}px` }}
     >
       {/* Header */}
@@ -135,7 +203,7 @@ export const Sidebar: React.FC = () => {
         <div className="pf-sidebar__title">
           <h2>PotFoundry</h2>
           <span className="pf-sidebar__version">v2.1</span>
-          {/* Renderer selector - inline in header for mobile visibility */}
+          {/* Renderer selector */}
           <select
             className="pf-sidebar__renderer-header-select"
             value={typeof window !== 'undefined' ? (localStorage.getItem('pf-preferred-renderer') || 'auto') : 'auto'}
@@ -158,66 +226,17 @@ export const Sidebar: React.FC = () => {
         <IconButton
           icon={<X size={18} />}
           aria-label="Close panel"
-          onClick={handleClose}
+          onClick={onClose}
           variant="ghost"
           size="sm"
         />
       </header>
 
       {/* Tab Navigation */}
-      <nav className="pf-sidebar__tabs">
-        <button
-          className={`pf-sidebar__tab ${activeTab === 'design' ? 'pf-sidebar__tab--active' : ''}`}
-          onClick={() => setActiveTab('design')}
-          aria-selected={activeTab === 'design'}
-        >
-          <Sliders size={16} />
-          <span>Design</span>
-        </button>
-        <button
-          className={`pf-sidebar__tab ${activeTab === 'library' ? 'pf-sidebar__tab--active' : ''}`}
-          onClick={() => setActiveTab('library')}
-          aria-selected={activeTab === 'library'}
-        >
-          <BookOpen size={16} />
-          <span>Library</span>
-        </button>
-      </nav>
+      <TabNav activeTab={activeTab} onTabChange={onTabChange} />
 
       {/* Tab Content */}
-      <div className="pf-sidebar__content">
-        {activeTab === 'design' && (
-          <div className="pf-sidebar__page">
-            <PresetPanel />
-            <DimensionControls />
-            <StyleControls />
-            <CameraControls />
-            <MeshControls />
-            <AppearanceControls />
-            <ExportPanel />
-          </div>
-        )}
-
-        {activeTab === 'library' && (
-          <div className="pf-sidebar__page pf-sidebar__page--library">
-            <LibraryPanel />
-          </div>
-        )}
-      </div>
-
-      {/* Footer Actions - only show on Design tab */}
-      {activeTab === 'design' && (
-        <footer className="pf-sidebar__footer">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleReset}
-            iconLeft={<RotateCcw size={14} />}
-          >
-            Reset All
-          </Button>
-        </footer>
-      )}
+      <TabContent activeTab={activeTab} onReset={onReset} />
 
       {/* Resize Handle */}
       <div
@@ -228,5 +247,98 @@ export const Sidebar: React.FC = () => {
         <GripVertical size={12} />
       </div>
     </aside>
+  );
+};
+
+// ============================================================================
+// Mobile Sidebar Component (Bottom Sheet)
+// ============================================================================
+
+interface MobileSidebarProps {
+  activeTab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
+  onClose: () => void;
+  onReset: () => void;
+}
+
+const MobileSidebar: React.FC<MobileSidebarProps> = ({
+  activeTab,
+  onTabChange,
+  onClose,
+  onReset,
+}) => {
+  const tabLabel = activeTab === 'design' ? 'Design' : 'Library';
+
+  return (
+    <MobileBottomSheet
+      title="PotFoundry"
+      subtitle={tabLabel}
+      open={true}
+      onClose={onClose}
+      initialState="half"
+      className="pf-sidebar--mobile"
+    >
+      {/* Tab Navigation */}
+      <TabNav activeTab={activeTab} onTabChange={onTabChange} />
+
+      {/* Tab Content */}
+      <TabContent activeTab={activeTab} onReset={onReset} showFooter={true} />
+    </MobileBottomSheet>
+  );
+};
+
+// ============================================================================
+// Main Sidebar Component
+// ============================================================================
+
+/**
+ * The main sidebar with tabbed navigation.
+ * 
+ * On mobile: Renders as a bottom sheet
+ * On desktop: Renders as a resizable left sidebar
+ * 
+ * Contains two pages:
+ * - Design: All pot configuration controls
+ * - Library: Public library browser and publish
+ */
+export const Sidebar: React.FC = () => {
+  const ui = useUI();
+  const { setPanelOpen } = useUIActions();
+  const { resetGeometry } = useGeometryActions();
+  const { resetStyleOpts } = useStyleActions();
+  const [activeTab, setActiveTab] = useState<SidebarTab>('design');
+  const { isMobile } = useMobile();
+
+  const handleClose = useCallback(() => setPanelOpen(false), [setPanelOpen]);
+  const handleTabChange = useCallback((tab: SidebarTab) => setActiveTab(tab), []);
+  const handleReset = useCallback(() => {
+    resetGeometry();
+    resetStyleOpts();
+  }, [resetGeometry, resetStyleOpts]);
+
+  if (!ui.panelOpen) {
+    return null;
+  }
+
+  // Mobile: Bottom Sheet
+  if (isMobile) {
+    return (
+      <MobileSidebar
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        onClose={handleClose}
+        onReset={handleReset}
+      />
+    );
+  }
+
+  // Desktop: Left Sidebar
+  return (
+    <DesktopSidebar
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      onClose={handleClose}
+      onReset={handleReset}
+    />
   );
 };
