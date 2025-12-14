@@ -216,28 +216,6 @@ export const Sidebar: React.FC = () => {
           >
             Reset All
           </Button>
-
-          {/* Renderer Toggle */}
-          <div className="pf-sidebar__renderer-toggle">
-            <select
-              className="pf-sidebar__renderer-select"
-              value={typeof window !== 'undefined' ? (localStorage.getItem('pf-preferred-renderer') || 'auto') : 'auto'}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === 'auto') {
-                  localStorage.removeItem('pf-preferred-renderer');
-                } else {
-                  localStorage.setItem('pf-preferred-renderer', value);
-                }
-                window.location.reload();
-              }}
-              title="Change graphics renderer"
-            >
-              <option value="auto">Auto</option>
-              <option value="webgpu">WebGPU</option>
-              <option value="webgl">WebGL</option>
-            </select>
-          </div>
         </footer>
       )}
 

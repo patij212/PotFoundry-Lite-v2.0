@@ -2208,14 +2208,16 @@ export const mount = async ({
     // Even if GPU reports 8192, mobile devices often can't allocate textures that large
     // Use 4096 as a safe maximum that works on most mobile GPUs
     const gpuMaxDim = maxTextureDimension2D || 8192;
-    const conservativeMax = Math.min(gpuMaxDim, 4096); // Conservative mobile limit
-    const maxDim = conservativeMax;
+    // Mobile devices: use conservative 4096 limit to prevent memory issues
+    // Desktop: use full GPU reported limit (typically 16384+)
+    const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const maxDim = isMobile ? Math.min(gpuMaxDim, 4096) : gpuMaxDim;
 
     if (nextWidth > maxDim || nextHeight > maxDim) {
       const scale = Math.min(maxDim / nextWidth, maxDim / nextHeight);
       nextWidth = Math.max(1, Math.floor(nextWidth * scale));
       nextHeight = Math.max(1, Math.floor(nextHeight * scale));
-      console.warn(`[WebGPU] Canvas clamped to safe limit: ${nextWidth}×${nextHeight} (max: ${maxDim}, GPU reports: ${gpuMaxDim})`);
+      console.warn(`[WebGPU] Canvas clamped to ${isMobile ? 'mobile' : 'GPU'} limit: ${nextWidth}×${nextHeight} (max: ${maxDim})`);
     }
 
     // Track fullscreen state changes - force resize when fullscreen toggles
@@ -2239,60 +2241,53 @@ export const mount = async ({
     width = nextWidth;
     height = nextHeight;
 
-    // Mobile GPU safety: only resize canvas and reconfigure context after initialization
-    // During async pipeline creation, large canvas dimensions can destabilize the GPU device
-    // Keep canvas at minimal dimensions (1x1) until pipeline is successfully created
-    if (initializationComplete) {
-      // Now safe to set full canvas dimensions
-      canvas.width = width;
-      canvas.height = height;
-      context.configure({ device, format, alphaMode: currentAlphaMode });
-      const newDepth = createDepthTexture(device, width, height);
-      const oldDepth = depth;
-      depth = newDepth;
-      if (oldDepth) {
-        setTimeout(() => {
-          try {
-            oldDepth.destroy();
-          } catch (err) {
-            /* ignore */
-          }
-        }, 0);
-      }
-      state.canvasAspect = height > 0 ? width / height : 1;
-      // Force projection matrix recalculation on next frame
-      state.cameraDirty = true;
-      // Invalidate ALL cached camera rigs so they're rebuilt with new aspect ratio
-      // Module-level cache:
-      lastCameraRig = null;
-      // Mount-closure cache (used by getCachedRig) - wrapped in try-catch because
-      // these variables are defined later in the file and may not exist during
-      // the initial resize() call at mount time
-      try {
-        // @ts-ignore - lastRigSignature/lastRigCached are defined later in mount()
-        if (typeof lastRigSignature !== 'undefined') lastRigSignature = null;
-        // @ts-ignore
-        if (typeof lastRigCached !== 'undefined') lastRigCached = null;
-      } catch (e) {
-        // Ignore - variables not yet defined during initial mount
-      }
-      console.log('[WebGPU] Resize:', width, 'x', height, 'aspect:', state.canvasAspect.toFixed(3));
-      if (debugEnabled) {
-        const signature = `${width}x${height}@${Math.round(devicePixelRatio * 100) / 100}`;
-        if (signature !== lastResizeSignature) {
-          lastResizeSignature = signature;
-          emitDiagnostic('canvas:resize', {
-            width,
-            height,
-            cssWidth: Math.round(cssWidth),
-            cssHeight: Math.round(cssHeight),
-            dpr: devicePixelRatio,
-          });
+    // At this point we know initializationComplete is true (early return at start of function)
+    // Safe to set full canvas dimensions and reconfigure context
+    canvas.width = width;
+    canvas.height = height;
+    context.configure({ device, format, alphaMode: currentAlphaMode });
+    const newDepth = createDepthTexture(device, width, height);
+    const oldDepth = depth;
+    depth = newDepth;
+    if (oldDepth) {
+      setTimeout(() => {
+        try {
+          oldDepth.destroy();
+        } catch (err) {
+          /* ignore */
         }
+      }, 0);
+    }
+    state.canvasAspect = height > 0 ? width / height : 1;
+    // Force projection matrix recalculation on next frame
+    state.cameraDirty = true;
+    // Invalidate ALL cached camera rigs so they're rebuilt with new aspect ratio
+    // Module-level cache:
+    lastCameraRig = null;
+    // Mount-closure cache (used by getCachedRig) - wrapped in try-catch because
+    // these variables are defined later in the file and may not exist during
+    // the initial resize() call at mount time
+    try {
+      // @ts-ignore - lastRigSignature/lastRigCached are defined later in mount()
+      if (typeof lastRigSignature !== 'undefined') lastRigSignature = null;
+      // @ts-ignore
+      if (typeof lastRigCached !== 'undefined') lastRigCached = null;
+    } catch (e) {
+      // Ignore - variables not yet defined during initial mount
+    }
+    console.log('[WebGPU] Resize:', width, 'x', height, 'aspect:', state.canvasAspect.toFixed(3));
+    if (debugEnabled) {
+      const signature = `${width}x${height}@${Math.round(devicePixelRatio * 100) / 100}`;
+      if (signature !== lastResizeSignature) {
+        lastResizeSignature = signature;
+        emitDiagnostic('canvas:resize', {
+          width,
+          height,
+          cssWidth: Math.round(cssWidth),
+          cssHeight: Math.round(cssHeight),
+          dpr: devicePixelRatio,
+        });
       }
-    } else {
-      // During initialization, just log dimensions without reconfiguring context
-      console.log('[WebGPU] Initial resize (pre-init):', width, 'x', height);
     }
     // Update axis overlay size to be crisp on DPR-scaled devices
     try {
