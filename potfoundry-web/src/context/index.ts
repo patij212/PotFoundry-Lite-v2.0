@@ -23,3 +23,17 @@ export {
   type LibraryState,
   type LibraryActions,
 } from './LibraryContext';
+
+export {
+  AuthProvider,
+  useAuth,
+  useUser,
+  useProfile,
+  useIsAuthenticated,
+  useIsPro,
+  useAuthActions,
+  type AuthContextValue,
+  type UserProfile,
+  type AuthState,
+  type AuthActions,
+} from './AuthContext';
