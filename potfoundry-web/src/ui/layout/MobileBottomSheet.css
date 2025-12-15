@@ -294,3 +294,27 @@
 .pf-mobile-sheet .pf-control-group+.pf-control-group {
     margin-top: var(--pf-sheet-content-gap);
 }
+
+/* ============================================================================
+   CRITICAL: Global Touch Override for ALL Interactive Elements in Sheet
+   ============================================================================ */
+
+/* Override touch-action for ALL buttons and interactive elements inside sheet */
+.pf-mobile-sheet button,
+.pf-mobile-sheet [role="button"],
+.pf-mobile-sheet input[type="button"],
+.pf-mobile-sheet input[type="submit"],
+.pf-mobile-sheet .pf-button,
+.pf-mobile-sheet .pf-icon-button,
+.pf-mobile-sheet .pf-camera-preset-btn,
+.pf-mobile-sheet .pf-camera-toggle-btn,
+.pf-mobile-sheet .pf-section__trigger,
+.pf-mobile-sheet .pf-sidebar__tab,
+.pf-mobile-sheet .pf-slider,
+.pf-mobile-sheet .pf-color-input,
+.pf-mobile-sheet .pf-select {
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent;
+    pointer-events: auto !important;
+    cursor: pointer;
+}
