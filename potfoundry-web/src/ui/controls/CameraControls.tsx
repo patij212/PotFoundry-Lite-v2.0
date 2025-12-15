@@ -141,6 +141,10 @@ export const CameraControls: React.FC = () => {
 
   return (
     <Section title="Camera" icon={<Video size={16} />} defaultOpen={false}>
+      {/* DEBUG: Visible status indicator */}
+      <div style={{ padding: '8px', background: isReady ? 'green' : 'red', color: 'white', marginBottom: '8px', borderRadius: '4px', fontSize: '12px' }}>
+        DEBUG: isReady={String(isReady)} | controller={String(!!controller)}
+      </div>
       {/* View Presets */}
       <SectionGroup label="View Presets">
         <div className="pf-camera-presets-grid">
