@@ -106,15 +106,20 @@ export const CameraControls: React.FC = () => {
   const isReady = controller?.isReady ?? false;
   const cameraState = controller?.cameraState;
 
+  // DEBUG: Log controller state
+  console.log('[CameraControls] isReady:', isReady, 'controller:', !!controller, 'cameraState:', cameraState);
+
   // View preset handlers
   const handleViewPreset = useCallback(
     (preset: 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso') => {
+      console.log('[CameraControls] handleViewPreset called:', preset, 'controller:', !!controller);
       controller?.applyViewPreset(preset);
     },
     [controller]
   );
 
   const handleReset = useCallback(() => {
+    console.log('[CameraControls] handleReset called, controller:', !!controller);
     controller?.resetCamera();
   }, [controller]);
 
