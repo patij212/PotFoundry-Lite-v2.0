@@ -295,6 +295,8 @@
 .pf-sidebar--mobile .pf-sidebar__content {
   flex: 1;
   min-height: 0;
+  height: auto;
+  /* CRITICAL: Override height: 0 from desktop styles */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
