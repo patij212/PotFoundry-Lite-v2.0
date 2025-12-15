@@ -47,10 +47,12 @@ const ViewPresetButton: React.FC<ViewPresetButtonProps> = ({
   disabled,
 }) => (
   <button
+    type="button"
     className="pf-camera-preset-btn"
     onClick={onClick}
     disabled={disabled}
     title={label}
+    style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
   >
     {icon}
     <span>{label}</span>
@@ -77,10 +79,12 @@ const ToggleButton: React.FC<ToggleButtonProps> = ({
   disabled,
 }) => (
   <button
+    type="button"
     className={`pf-camera-toggle-btn ${active ? 'pf-camera-toggle-btn--active' : ''}`}
     onClick={onClick}
     disabled={disabled}
     title={label}
+    style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
   >
     {icon}
     <span>{label}</span>
