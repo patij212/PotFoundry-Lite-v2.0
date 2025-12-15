@@ -180,7 +180,7 @@ export const CameraControls: React.FC = () => {
             preset="front"
             label="Front"
             icon={<ArrowUp size={14} />}
-            onClick={() => handleViewPreset('front')}
+            onClick={() => { alert('Front clicked!'); handleViewPreset('front'); }}
             disabled={!isReady}
           />
           <ViewPresetButton
