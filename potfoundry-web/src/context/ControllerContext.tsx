@@ -330,11 +330,22 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
   }, [canvasRef]);
 
   const applyViewPreset = useCallback((preset: 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso') => {
+    console.log('[ControllerContext] applyViewPreset called with:', preset);
     const ctrl = controllerRef.current;
-    if (!ctrl) return;
+    console.log('[ControllerContext] ctrl:', ctrl);
+    console.log('[ControllerContext] ctrl.handleCameraCommand:', ctrl?.handleCameraCommand);
+    console.log('[ControllerContext] typeof handleCameraCommand:', typeof ctrl?.handleCameraCommand);
+    if (!ctrl) {
+      console.log('[ControllerContext] ERROR: ctrl is null/undefined!');
+      return;
+    }
 
     if (typeof ctrl.handleCameraCommand === 'function') {
+      console.log('[ControllerContext] Calling handleCameraCommand with:', { viewPreset: preset });
       ctrl.handleCameraCommand({ viewPreset: preset });
+    } else {
+      console.log('[ControllerContext] ERROR: handleCameraCommand is not a function!');
+      console.log('[ControllerContext] Available ctrl methods:', Object.keys(ctrl));
     }
   }, [controllerRef]);
 
