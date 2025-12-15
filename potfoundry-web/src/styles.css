@@ -45,6 +45,8 @@ body {
   top: 16px;
   right: 16px;
   z-index: 100;
+  /* Ensure header elements are clickable/tappable */
+  pointer-events: auto;
 }
 
 .pf-error {

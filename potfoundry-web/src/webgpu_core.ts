@@ -2454,9 +2454,49 @@ export const mount = async ({
       saveAxisPosition(left, top);
     };
 
+    // Touch event handlers for mobile
+    const onTouchStart = (e: TouchEvent) => {
+      if (!axisCanvas || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      isDragging = true;
+      dragStartX = touch.clientX;
+      dragStartY = touch.clientY;
+      startLeft = parseInt(axisCanvas.style.left, 10) || 12;
+      startTop = parseInt(axisCanvas.style.top, 10) || 12;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDragging || !axisCanvas || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - dragStartX;
+      const dy = touch.clientY - dragStartY;
+      const newLeft = Math.max(0, startLeft + dx);
+      const newTop = Math.max(0, startTop + dy);
+      axisCanvas.style.left = `${newLeft}px`;
+      axisCanvas.style.top = `${newTop}px`;
+      e.preventDefault();
+    };
+
+    const onTouchEnd = () => {
+      if (!isDragging || !axisCanvas) return;
+      isDragging = false;
+      const left = parseInt(axisCanvas.style.left, 10) || 12;
+      const top = parseInt(axisCanvas.style.top, 10) || 12;
+      saveAxisPosition(left, top);
+    };
+
+    // Mouse events (desktop)
     axisCanvas.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+
+    // Touch events (mobile)
+    axisCanvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+    document.addEventListener('touchcancel', onTouchEnd);
 
     parent?.appendChild(axisCanvas);
     axisCtx = axisCanvas.getContext('2d');
