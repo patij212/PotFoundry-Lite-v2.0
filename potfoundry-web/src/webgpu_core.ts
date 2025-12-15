@@ -2361,13 +2361,13 @@ export const mount = async ({
   let axisCtx: CanvasRenderingContext2D | null = null;
   const AXIS_POS_KEY = 'pf-axis-position';
 
-  // Load saved position from localStorage
-  const loadAxisPosition = (): { left: number; bottom: number } | null => {
+  // Load saved position from localStorage - now uses top instead of bottom
+  const loadAxisPosition = (): { left: number; top: number } | null => {
     try {
       const saved = localStorage.getItem(AXIS_POS_KEY);
       if (saved) {
         const pos = JSON.parse(saved);
-        if (typeof pos.left === 'number' && typeof pos.bottom === 'number') {
+        if (typeof pos.left === 'number' && typeof pos.top === 'number') {
           return pos;
         }
       }
@@ -2376,10 +2376,19 @@ export const mount = async ({
   };
 
   // Save position to localStorage
-  const saveAxisPosition = (left: number, bottom: number): void => {
+  const saveAxisPosition = (left: number, top: number): void => {
     try {
-      localStorage.setItem(AXIS_POS_KEY, JSON.stringify({ left, bottom }));
+      localStorage.setItem(AXIS_POS_KEY, JSON.stringify({ left, top }));
     } catch { /* ignore */ }
+  };
+
+  // Default position - top left with offset for sidebar on desktop (>768px)
+  const getDefaultAxisPosition = (): { left: number; top: number } => {
+    const isMobileDevice = window.innerWidth <= 768;
+    // On desktop, offset by sidebar width (~360px) + margin
+    // On mobile, just a small margin since sidebar is bottom sheet
+    const leftOffset = isMobileDevice ? 12 : 360;
+    return { left: leftOffset, top: 12 };
   };
 
   try {
@@ -2402,30 +2411,27 @@ export const mount = async ({
     axisCanvas.style.width = '96px';
     axisCanvas.style.height = '96px';
 
-    // Load saved position or use default
+    // Load saved position or use default (top-left with sidebar offset)
     const savedPos = loadAxisPosition();
-    if (savedPos) {
-      axisCanvas.style.left = `${savedPos.left}px`;
-      axisCanvas.style.bottom = `${savedPos.bottom}px`;
-    } else {
-      axisCanvas.style.left = '8px';
-      axisCanvas.style.bottom = '8px';
-    }
+    const defaultPos = getDefaultAxisPosition();
+    const posToUse = savedPos || defaultPos;
+    axisCanvas.style.left = `${posToUse.left}px`;
+    axisCanvas.style.top = `${posToUse.top}px`;
 
     // Drag state
     let isDragging = false;
     let dragStartX = 0;
     let dragStartY = 0;
     let startLeft = 0;
-    let startBottom = 0;
+    let startTop = 0;
 
     const onMouseDown = (e: MouseEvent) => {
       if (!axisCanvas) return;
       isDragging = true;
       dragStartX = e.clientX;
       dragStartY = e.clientY;
-      startLeft = parseInt(axisCanvas.style.left, 10) || 8;
-      startBottom = parseInt(axisCanvas.style.bottom, 10) || 8;
+      startLeft = parseInt(axisCanvas.style.left, 10) || 12;
+      startTop = parseInt(axisCanvas.style.top, 10) || 12;
       e.preventDefault();
       e.stopPropagation();
     };
@@ -2435,17 +2441,17 @@ export const mount = async ({
       const dx = e.clientX - dragStartX;
       const dy = e.clientY - dragStartY;
       const newLeft = Math.max(0, startLeft + dx);
-      const newBottom = Math.max(0, startBottom - dy);
+      const newTop = Math.max(0, startTop + dy);
       axisCanvas.style.left = `${newLeft}px`;
-      axisCanvas.style.bottom = `${newBottom}px`;
+      axisCanvas.style.top = `${newTop}px`;
     };
 
     const onMouseUp = () => {
       if (!isDragging || !axisCanvas) return;
       isDragging = false;
-      const left = parseInt(axisCanvas.style.left, 10) || 8;
-      const bottom = parseInt(axisCanvas.style.bottom, 10) || 8;
-      saveAxisPosition(left, bottom);
+      const left = parseInt(axisCanvas.style.left, 10) || 12;
+      const top = parseInt(axisCanvas.style.top, 10) || 12;
+      saveAxisPosition(left, top);
     };
 
     axisCanvas.addEventListener('mousedown', onMouseDown);
