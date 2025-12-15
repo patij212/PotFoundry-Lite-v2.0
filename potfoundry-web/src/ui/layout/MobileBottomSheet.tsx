@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { GripHorizontal, X, ChevronUp } from 'lucide-react';
+import { GripHorizontal, X, ChevronUp, ChevronDown } from 'lucide-react';
 import './MobileBottomSheet.css';
 
 // ============================================================================
@@ -17,19 +17,16 @@ import './MobileBottomSheet.css';
 // ============================================================================
 
 /** Height of the collapsed sheet showing just the handle */
-export const HANDLE_HEIGHT = 56;
+export const HANDLE_HEIGHT = 72;
 
 /** Height when half-open (percentage of viewport) */
-export const HALF_HEIGHT_PERCENT = 45;
+export const HALF_HEIGHT_PERCENT = 50;
 
 /** Maximum height when fully expanded (percentage of viewport) */
-export const MAX_HEIGHT_PERCENT = 90;
-
-/** Velocity threshold for swipe gestures (px/ms) */
-const SWIPE_VELOCITY_THRESHOLD = 0.3;
+export const MAX_HEIGHT_PERCENT = 85;
 
 /** Minimum swipe distance to trigger state change (px) */
-const MIN_SWIPE_DISTANCE = 30;
+const MIN_SWIPE_DISTANCE = 40;
 
 // ============================================================================
 // Types
@@ -58,22 +55,6 @@ export interface MobileBottomSheetProps {
 // Component
 // ============================================================================
 
-/**
- * Bottom sheet component for mobile interfaces.
- * 
- * Features:
- * - Three states: collapsed (handle only), half, full
- * - Swipe up/down gestures
- * - Tap on handle to toggle
- * - Backdrop when expanded
- * 
- * @example
- * ```tsx
- * <MobileBottomSheet title="Controls" open={panelOpen}>
- *   <ControlPanels />
- * </MobileBottomSheet>
- * ```
- */
 export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
     children,
     title = 'Controls',
@@ -85,16 +66,14 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
 }) => {
     // Sheet state
     const [state, setState] = useState<SheetState>(initialState);
-    const [isDragging, setIsDragging] = useState(false);
-    const [dragDelta, setDragDelta] = useState(0);
+    const [currentHeight, setCurrentHeight] = useState<number | null>(null);
 
-    // Refs for gesture handling
-    const sheetRef = useRef<HTMLDivElement>(null);
-    const startYRef = useRef(0);
-    const startTimeRef = useRef(0);
-    const lastStateRef = useRef<SheetState>(initialState);
+    // Touch tracking refs
+    const touchStartY = useRef(0);
+    const touchStartHeight = useRef(0);
+    const isDragging = useRef(false);
 
-    // Calculate actual heights
+    // Calculate heights
     const getStateHeight = useCallback((s: SheetState): number => {
         if (typeof window === 'undefined') return HANDLE_HEIGHT;
         const vh = window.innerHeight;
@@ -105,73 +84,91 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
         }
     }, []);
 
-    // Gesture handlers
-    const handleTouchStart = useCallback((e: React.TouchEvent) => {
-        // Only handle touches on the handle area
-        const target = e.target as HTMLElement;
-        if (!target.closest('.pf-mobile-sheet__handle')) return;
+    // Recalculate on state change
+    useEffect(() => {
+        setCurrentHeight(getStateHeight(state));
+    }, [state, getStateHeight]);
 
-        setIsDragging(true);
-        startYRef.current = e.touches[0].clientY;
-        startTimeRef.current = Date.now();
-        lastStateRef.current = state;
+    // Handle touch start on the drag handle
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+        // Get first touch
+        const touch = e.touches[0];
+        touchStartY.current = touch.clientY;
+        touchStartHeight.current = currentHeight ?? getStateHeight(state);
+        isDragging.current = true;
+
+        console.log('[Sheet] Touch start at Y:', touch.clientY, 'height:', touchStartHeight.current);
+    }, [currentHeight, state, getStateHeight]);
+
+    // Handle touch move
+    const handleTouchMove = useCallback((e: React.TouchEvent) => {
+        if (!isDragging.current) return;
+
+        const touch = e.touches[0];
+        const deltaY = touchStartY.current - touch.clientY; // Positive = moving finger up = expanding sheet
+        const newHeight = touchStartHeight.current + deltaY;
+
+        // Clamp to valid range
+        const minH = HANDLE_HEIGHT;
+        const maxH = getStateHeight('full');
+        const clampedHeight = Math.max(minH, Math.min(maxH, newHeight));
+
+        setCurrentHeight(clampedHeight);
+    }, [getStateHeight]);
+
+    // Handle touch end - snap to nearest state
+    const handleTouchEnd = useCallback(() => {
+        if (!isDragging.current) return;
+        isDragging.current = false;
+
+        const height = currentHeight ?? getStateHeight(state);
+        const halfH = getStateHeight('half');
+        const fullH = getStateHeight('full');
+        const collapsedH = HANDLE_HEIGHT;
+
+        // Calculate distance moved
+        const deltaY = touchStartY.current - (currentHeight ?? 0);
+
+        console.log('[Sheet] Touch end, height:', height, 'delta:', deltaY);
+
+        // Determine which state to snap to based on current height
+        // Use thresholds for snapping
+        let newState: SheetState;
+
+        if (height < (collapsedH + halfH) / 2) {
+            newState = 'collapsed';
+        } else if (height < (halfH + fullH) / 2) {
+            newState = 'half';
+        } else {
+            newState = 'full';
+        }
+
+        console.log('[Sheet] Snapping to:', newState);
+        setState(newState);
+        setCurrentHeight(null); // Let CSS transition take over
+    }, [currentHeight, state, getStateHeight]);
+
+    // Toggle state on tap
+    const handleToggle = useCallback(() => {
+        console.log('[Sheet] Toggle, current state:', state);
+        setState(prev => {
+            if (prev === 'collapsed') return 'half';
+            if (prev === 'half') return 'full';
+            return 'collapsed';
+        });
     }, [state]);
 
-    const handleTouchMove = useCallback((e: React.TouchEvent) => {
-        if (!isDragging) return;
-
-        const currentY = e.touches[0].clientY;
-        const delta = startYRef.current - currentY; // Positive = swiping up
-        setDragDelta(delta);
-    }, [isDragging]);
-
-    const handleTouchEnd = useCallback(() => {
-        if (!isDragging) return;
-
-        const elapsed = Date.now() - startTimeRef.current;
-        const velocity = dragDelta / elapsed;
-
-        // Determine new state based on gesture
-        let newState = lastStateRef.current;
-
-        if (Math.abs(dragDelta) > MIN_SWIPE_DISTANCE || Math.abs(velocity) > SWIPE_VELOCITY_THRESHOLD) {
-            if (dragDelta > 0) {
-                // Swiping up - expand
-                newState = lastStateRef.current === 'collapsed' ? 'half' : 'full';
-            } else {
-                // Swiping down - collapse
-                newState = lastStateRef.current === 'full' ? 'half' : 'collapsed';
-            }
+    // Handle close button
+    const handleClose = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+        console.log('[Sheet] Close button pressed');
+        e.preventDefault();
+        e.stopPropagation();
+        if (onClose) {
+            onClose();
+        } else {
+            setState('collapsed');
         }
-
-        setState(newState);
-        setIsDragging(false);
-        setDragDelta(0);
-    }, [isDragging, dragDelta]);
-
-    // Handle tap on collapsed state
-    const handleHandleTap = useCallback(() => {
-        if (!isDragging && Math.abs(dragDelta) < 5) {
-            // Cycle through states on tap
-            setState(prev => {
-                if (prev === 'collapsed') return 'half';
-                if (prev === 'half') return 'full';
-                return 'collapsed';
-            });
-        }
-    }, [isDragging, dragDelta]);
-
-    // Calculate current height during drag
-    const getCurrentHeight = useCallback(() => {
-        const baseHeight = getStateHeight(state);
-        if (isDragging) {
-            const newHeight = baseHeight + dragDelta;
-            const maxH = getStateHeight('full');
-            const minH = HANDLE_HEIGHT;
-            return Math.max(minH, Math.min(maxH, newHeight));
-        }
-        return baseHeight;
-    }, [state, isDragging, dragDelta, getStateHeight]);
+    }, [onClose]);
 
     // Keyboard escape handling
     useEffect(() => {
@@ -186,8 +183,9 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
 
     if (!open) return null;
 
-    const height = getCurrentHeight();
+    const displayHeight = currentHeight ?? getStateHeight(state);
     const showBackdrop = state === 'full';
+    const isAnimating = currentHeight === null;
 
     return (
         <>
@@ -202,60 +200,57 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
 
             {/* Sheet container */}
             <div
-                ref={sheetRef}
-                className={`pf-mobile-sheet pf-mobile-sheet--${state} ${isDragging ? 'pf-mobile-sheet--dragging' : ''} ${className}`}
-                style={{
-                    height: `${height}px`,
-                    '--sheet-handle-height': `${HANDLE_HEIGHT}px`,
-                } as React.CSSProperties}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
+                className={`pf-mobile-sheet pf-mobile-sheet--${state} ${!isAnimating ? 'pf-mobile-sheet--dragging' : ''} ${className}`}
+                style={{ height: `${displayHeight}px` }}
                 role="dialog"
                 aria-modal={state === 'full'}
                 aria-label={title}
             >
-                {/* Handle bar */}
+                {/* Drag Handle Area */}
                 <div
                     className="pf-mobile-sheet__handle"
-                    onClick={handleHandleTap}
-                    role="button"
-                    aria-label={`Toggle ${title} panel`}
-                    tabIndex={0}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchCancel={handleTouchEnd}
                 >
-                    <div className="pf-mobile-sheet__handle-bar">
-                        <GripHorizontal size={20} />
+                    {/* Visual grip indicator */}
+                    <div className="pf-mobile-sheet__grip">
+                        <div className="pf-mobile-sheet__grip-bar" />
                     </div>
 
-                    <div className="pf-mobile-sheet__handle-content">
-                        <div className="pf-mobile-sheet__title-group">
+                    {/* Title row */}
+                    <div className="pf-mobile-sheet__header">
+                        <div className="pf-mobile-sheet__title-area" onClick={handleToggle}>
                             <h2 className="pf-mobile-sheet__title">{title}</h2>
-                            {subtitle && (
-                                <span className="pf-mobile-sheet__subtitle">{subtitle}</span>
-                            )}
+                            {subtitle && <span className="pf-mobile-sheet__subtitle">{subtitle}</span>}
                         </div>
 
-                        <div className="pf-mobile-sheet__handle-actions">
-                            {state === 'collapsed' && (
-                                <ChevronUp size={20} className="pf-mobile-sheet__expand-hint" />
-                            )}
-                            {state !== 'collapsed' && onClose && (
-                                <button
-                                    className="pf-mobile-sheet__close-btn"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onClose();
-                                    }}
-                                    aria-label="Close panel"
-                                >
-                                    <X size={20} />
-                                </button>
-                            )}
+                        {/* Action buttons */}
+                        <div className="pf-mobile-sheet__actions">
+                            {/* Expand/collapse hint */}
+                            <button
+                                className="pf-mobile-sheet__action-btn"
+                                onClick={handleToggle}
+                                aria-label={state === 'full' ? 'Collapse panel' : 'Expand panel'}
+                            >
+                                {state === 'collapsed' ? <ChevronUp size={22} /> : <ChevronDown size={22} />}
+                            </button>
+
+                            {/* Close button */}
+                            <button
+                                className="pf-mobile-sheet__action-btn pf-mobile-sheet__close-btn"
+                                onClick={handleClose}
+                                onTouchEnd={handleClose}
+                                aria-label="Close panel"
+                            >
+                                <X size={22} />
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                {/* Content area */}
+                {/* Content area - scrollable */}
                 <div className="pf-mobile-sheet__content">
                     {children}
                 </div>

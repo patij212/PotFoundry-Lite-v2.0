@@ -11,10 +11,10 @@
 
 :root {
     /* Sizing - Easy to adjust */
-    --pf-sheet-handle-height: 56px;
+    --pf-sheet-handle-height: 72px;
     --pf-sheet-border-radius: 20px;
-    --pf-sheet-handle-bar-width: 48px;
-    --pf-sheet-handle-bar-height: 4px;
+    --pf-sheet-grip-width: 40px;
+    --pf-sheet-grip-height: 4px;
 
     /* Spacing */
     --pf-sheet-padding-x: 16px;
@@ -23,18 +23,18 @@
 
     /* Colors */
     --pf-sheet-bg: rgba(18, 18, 24, 0.98);
-    --pf-sheet-handle-bg: rgba(255, 255, 255, 0.08);
-    --pf-sheet-handle-bar-color: rgba(255, 255, 255, 0.3);
+    --pf-sheet-handle-bg: transparent;
+    --pf-sheet-grip-color: rgba(255, 255, 255, 0.4);
     --pf-sheet-border-color: rgba(255, 255, 255, 0.1);
-    --pf-sheet-backdrop-color: rgba(0, 0, 0, 0.4);
+    --pf-sheet-backdrop-color: rgba(0, 0, 0, 0.5);
 
     /* Typography */
-    --pf-sheet-title-size: 16px;
+    --pf-sheet-title-size: 17px;
     --pf-sheet-title-weight: 600;
-    --pf-sheet-subtitle-size: 12px;
+    --pf-sheet-subtitle-size: 13px;
 
     /* Animations */
-    --pf-sheet-transition-duration: 0.3s;
+    --pf-sheet-transition-duration: 0.25s;
     --pf-sheet-transition-easing: cubic-bezier(0.32, 0.72, 0, 1);
 
     /* Z-index */
@@ -51,8 +51,7 @@
     inset: 0;
     background: var(--pf-sheet-backdrop-color);
     z-index: var(--pf-sheet-z-backdrop);
-    opacity: 0;
-    animation: pf-sheet-backdrop-in var(--pf-sheet-transition-duration) var(--pf-sheet-transition-easing) forwards;
+    animation: pf-sheet-backdrop-in 0.2s ease forwards;
 }
 
 @keyframes pf-sheet-backdrop-in {
@@ -85,7 +84,7 @@
     border: 1px solid var(--pf-sheet-border-color);
     border-bottom: none;
 
-    box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.4);
 
     /* Smooth transitions when not dragging */
     transition: height var(--pf-sheet-transition-duration) var(--pf-sheet-transition-easing);
@@ -93,61 +92,64 @@
     /* Safe area for notched devices */
     padding-bottom: env(safe-area-inset-bottom, 0);
 
-    /* Prevent text selection during drag */
-    user-select: none;
-    touch-action: none;
+    /* Allow scrolling in content area */
+    overflow: hidden;
 }
 
 /* Disable transitions during drag */
 .pf-mobile-sheet--dragging {
-    transition: none;
+    transition: none !important;
 }
 
 /* ============================================================================
-   Handle Bar
+   Drag Handle Area
    ============================================================================ */
 
 .pf-mobile-sheet__handle {
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
-    align-items: center;
     min-height: var(--pf-sheet-handle-height);
-    padding: var(--pf-sheet-padding-y) var(--pf-sheet-padding-x);
-    cursor: grab;
+    padding: 8px var(--pf-sheet-padding-x) 12px;
 
-    /* Touch target - at least 48px */
-    min-height: 56px;
+    /* Touch handling - allow vertical dragging */
+    touch-action: pan-x;
+    cursor: grab;
+    user-select: none;
 }
 
 .pf-mobile-sheet__handle:active {
     cursor: grabbing;
 }
 
-.pf-mobile-sheet__handle-bar {
+/* Grip indicator */
+.pf-mobile-sheet__grip {
     display: flex;
-    align-items: center;
     justify-content: center;
-    width: var(--pf-sheet-handle-bar-width);
-    height: 24px;
-    color: var(--pf-sheet-handle-bar-color);
-    margin-bottom: 4px;
+    padding: 8px 0;
 }
 
-.pf-mobile-sheet__handle-content {
+.pf-mobile-sheet__grip-bar {
+    width: var(--pf-sheet-grip-width);
+    height: var(--pf-sheet-grip-height);
+    background: var(--pf-sheet-grip-color);
+    border-radius: 2px;
+}
+
+/* Header row with title and actions */
+.pf-mobile-sheet__header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    width: 100%;
     gap: 12px;
 }
 
-.pf-mobile-sheet__title-group {
+.pf-mobile-sheet__title-area {
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: baseline;
     gap: 8px;
-    flex: 1;
-    min-width: 0;
 }
 
 .pf-mobile-sheet__title {
@@ -166,48 +168,55 @@
     white-space: nowrap;
 }
 
-.pf-mobile-sheet__handle-actions {
+/* Action buttons container */
+.pf-mobile-sheet__actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
+    flex-shrink: 0;
 }
 
-.pf-mobile-sheet__expand-hint {
-    color: rgba(255, 255, 255, 0.4);
-    animation: pf-sheet-bounce 2s ease-in-out infinite;
-}
-
-@keyframes pf-sheet-bounce {
-
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-
-    50% {
-        transform: translateY(-4px);
-    }
-}
-
-.pf-mobile-sheet__close-btn {
+/* Action buttons */
+.pf-mobile-sheet__action-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     padding: 0;
+    margin: 0;
     background: rgba(255, 255, 255, 0.08);
     border: none;
     border-radius: 50%;
     color: rgba(255, 255, 255, 0.7);
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+
+    /* Ensure button is clickable */
+    pointer-events: auto;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.pf-mobile-sheet__action-btn:hover,
+.pf-mobile-sheet__action-btn:focus {
+    background: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.pf-mobile-sheet__action-btn:active {
+    transform: scale(0.95);
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.pf-mobile-sheet__close-btn {
+    background: rgba(239, 68, 68, 0.15);
 }
 
 .pf-mobile-sheet__close-btn:hover,
-.pf-mobile-sheet__close-btn:active {
-    background: rgba(255, 255, 255, 0.15);
-    color: rgba(255, 255, 255, 0.95);
+.pf-mobile-sheet__close-btn:focus {
+    background: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
 }
 
 /* ============================================================================
@@ -223,6 +232,9 @@
 
     /* Enable momentum scrolling on iOS */
     -webkit-overflow-scrolling: touch;
+
+    /* Allow normal touch in content */
+    touch-action: pan-y;
 
     /* Scrollbar styling */
     scrollbar-width: thin;
@@ -251,29 +263,22 @@
    State Modifiers
    ============================================================================ */
 
-/* Collapsed state - just shows handle */
-.pf-mobile-sheet--collapsed {
-    /* Height set via inline style */
-}
-
-/* Half-open state */
 .pf-mobile-sheet--half {
     box-shadow: 0 -8px 48px rgba(0, 0, 0, 0.4);
 }
 
-/* Fully expanded state */
 .pf-mobile-sheet--full {
     box-shadow: 0 -12px 64px rgba(0, 0, 0, 0.5);
 }
 
 /* ============================================================================
-   Mobile Touch Improvements
+   Mobile Touch & Sidebar Overrides
    ============================================================================ */
 
 /* Larger touch targets for control elements inside sheet */
 .pf-mobile-sheet .pf-control-group__header {
     min-height: 48px;
-    padding: 12px 0;
+    padding: 14px 0;
 }
 
 .pf-mobile-sheet .pf-slider__thumb {
