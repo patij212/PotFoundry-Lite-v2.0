@@ -327,12 +327,8 @@ Protocol: ${protocol}`}
                     </div>
 
                     <div
-                        className="pf-wgpu-preview"
+                        className="pf-wgpu-preview pf-wgpu-preview--fullscreen"
                         data-embedded-ui="1"
-                        style={{
-                            height: '100vh',
-                            background: '#242B46',
-                        }}
                     >
                         {/* Canvas Layer */}
                         <canvas

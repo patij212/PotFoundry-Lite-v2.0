@@ -101,3 +101,26 @@
   width: 100%;
   height: 100%;
 }
+
+/* ============================================================================
+   Fullscreen Mode - Proper Mobile Viewport Handling
+   ============================================================================ */
+
+.pf-wgpu-preview--fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Use dvh for dynamic viewport height on mobile */
+  /* Falls back to vh for older browsers */
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  /* Handle bottom safe area for notched devices */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  /* Background color */
+  background: #242B46;
+  /* Prevent overflow */
+  overflow: hidden;
+}
