@@ -30,7 +30,9 @@
 .pf-app-ui .pf-toolbar,
 .pf-app-ui .pf-status-bar,
 .pf-app-ui .pf-help-dialog,
-.pf-app-ui .pf-sidebar {
+.pf-app-ui .pf-sidebar,
+.pf-app-ui .pf-mobile-sheet,
+.pf-app-ui .pf-mobile-sheet__backdrop {
   pointer-events: auto;
 }
 
