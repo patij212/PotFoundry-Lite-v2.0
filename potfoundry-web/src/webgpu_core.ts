@@ -3607,6 +3607,8 @@ export const mount = async ({
   };
 
   const handleCameraCommand = (raw: unknown): void => {
+    // DEBUG: Log every camera command
+    console.log('[handleCameraCommand] called with:', raw);
     if (raw === null || raw === undefined) {
       return;
     }
