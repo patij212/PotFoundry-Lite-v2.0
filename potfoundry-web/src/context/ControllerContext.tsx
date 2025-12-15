@@ -9,6 +9,7 @@
 
 import React, { createContext, useContext, useCallback, useMemo, RefObject, useState, useEffect } from 'react';
 import type { WebGPUController } from '../types';
+import manager from '../infra/logging/MessageManager';
 
 // ============================================================================
 // Types
@@ -330,22 +331,23 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
   }, [canvasRef]);
 
   const applyViewPreset = useCallback((preset: 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso') => {
-    console.log('[ControllerContext] applyViewPreset called with:', preset);
+    manager.warn('CTRL_DEBUG', `applyViewPreset called with: ${preset}`);
     const ctrl = controllerRef.current;
-    console.log('[ControllerContext] ctrl:', ctrl);
-    console.log('[ControllerContext] ctrl.handleCameraCommand:', ctrl?.handleCameraCommand);
-    console.log('[ControllerContext] typeof handleCameraCommand:', typeof ctrl?.handleCameraCommand);
+    manager.warn('CTRL_DEBUG', `ctrl exists: ${!!ctrl}`);
+    if (ctrl) {
+      manager.warn('CTRL_DEBUG', `handleCameraCommand type: ${typeof ctrl.handleCameraCommand}`);
+      manager.warn('CTRL_DEBUG', `Available methods: ${Object.keys(ctrl).join(', ')}`);
+    }
     if (!ctrl) {
-      console.log('[ControllerContext] ERROR: ctrl is null/undefined!');
+      manager.error('CTRL_DEBUG', 'ERROR: ctrl is null/undefined!');
       return;
     }
 
     if (typeof ctrl.handleCameraCommand === 'function') {
-      console.log('[ControllerContext] Calling handleCameraCommand with:', { viewPreset: preset });
+      manager.warn('CTRL_DEBUG', `Calling handleCameraCommand with viewPreset: ${preset}`);
       ctrl.handleCameraCommand({ viewPreset: preset });
     } else {
-      console.log('[ControllerContext] ERROR: handleCameraCommand is not a function!');
-      console.log('[ControllerContext] Available ctrl methods:', Object.keys(ctrl));
+      manager.error('CTRL_DEBUG', 'ERROR: handleCameraCommand is not a function!');
     }
   }, [controllerRef]);
 
