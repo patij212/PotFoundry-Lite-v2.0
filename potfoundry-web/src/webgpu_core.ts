@@ -1056,6 +1056,8 @@ const computePanFactor = (state: WebGPUState, canvas: HTMLCanvasElement): number
 // defined later to avoid use-before-assignment.
 
 const applyViewPreset = (state: WebGPUState, preset: string): void => {
+  // Disable auto-rotate when applying a view preset
+  state.autoRotate = false;
   switch (preset) {
     case 'top':
       applyCameraEuler(state, Math.PI / 2 - 1e-3, 0);
