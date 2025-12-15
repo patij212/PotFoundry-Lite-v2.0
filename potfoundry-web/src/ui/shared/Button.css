@@ -21,6 +21,10 @@
   transition: all 0.15s ease;
   white-space: nowrap;
   outline: none;
+  /* Touch support */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
 }
 
 .pf-button:focus-visible {
@@ -182,6 +186,7 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -202,6 +207,10 @@
   outline: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.7);
+  /* Touch support */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
 }
 
 .pf-icon-button:focus-visible {
