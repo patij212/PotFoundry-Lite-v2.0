@@ -29,6 +29,10 @@
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
+  /* Touch support */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
 }
 
 .pf-camera-preset-btn:hover:not(:disabled) {
@@ -79,6 +83,10 @@
   cursor: pointer;
   transition: all 0.15s ease;
   min-height: 40px;
+  /* Touch support */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
 }
 
 .pf-camera-toggle-btn:hover:not(:disabled) {
