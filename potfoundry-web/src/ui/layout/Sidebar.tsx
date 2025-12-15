@@ -307,7 +307,10 @@ export const Sidebar: React.FC = () => {
   const { resetGeometry } = useGeometryActions();
   const { resetStyleOpts } = useStyleActions();
   const [activeTab, setActiveTab] = useState<SidebarTab>('design');
-  const { isMobile } = useMobile();
+  const { isMobile, viewportWidth } = useMobile();
+
+  // Debug mobile detection
+  console.log('[Sidebar] isMobile:', isMobile, 'viewportWidth:', viewportWidth);
 
   const handleClose = useCallback(() => setPanelOpen(false), [setPanelOpen]);
   const handleTabChange = useCallback((tab: SidebarTab) => setActiveTab(tab), []);
