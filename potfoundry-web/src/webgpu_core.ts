@@ -1109,6 +1109,8 @@ const applyViewPreset = (state: WebGPUState, preset: string): void => {
   state.displayCamQuat = [...state.camQuat] as Quaternion;
   state.displayRotX = state.rotX;
   state.displayRotY = state.rotY;
+  // Briefly pause auto-rotate so the new preset position takes effect before rotation resumes
+  state.autoRotateResumeAt = performance.now() + 100; // 100ms delay
   state.cameraDirty = true;
   // Immediately commit presets to canonicalized basis and parity-aligned state
   if (typeof commitDisplayBasisToState === 'function') {
