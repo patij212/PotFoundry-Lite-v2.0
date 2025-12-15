@@ -30,6 +30,8 @@
   touch-action: none;
   /* Improve mobile rendering */
   -webkit-tap-highlight-color: transparent;
+  /* Ensure canvas receives pointer events */
+  pointer-events: auto;
 }
 
 .pf-wgpu-preview__canvas:active {
