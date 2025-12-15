@@ -145,34 +145,6 @@ export const CameraControls: React.FC = () => {
 
   return (
     <Section title="Camera" icon={<Video size={16} />} defaultOpen={false}>
-      {/* DEBUG: Visible status indicator */}
-      <div style={{ padding: '8px', background: isReady ? 'green' : 'red', color: 'white', marginBottom: '8px', borderRadius: '4px', fontSize: '12px' }}>
-        DEBUG: isReady={String(isReady)} | controller={String(!!controller)}
-      </div>
-      {/* DEBUG: Test button with alert */}
-      <button
-        type="button"
-        style={{
-          padding: '12px 24px',
-          background: '#3b82f6',
-          color: 'white',
-          border: 'none',
-          borderRadius: '6px',
-          marginBottom: '12px',
-          width: '100%',
-          fontSize: '14px',
-          fontWeight: 'bold',
-          cursor: 'pointer',
-          touchAction: 'manipulation',
-          WebkitTapHighlightColor: 'transparent',
-        }}
-        onClick={() => {
-          alert('Button click works!');
-          controller?.resetCamera();
-        }}
-      >
-        TEST: Tap to Check Click Works
-      </button>
       {/* View Presets */}
       <SectionGroup label="View Presets">
         <div className="pf-camera-presets-grid">
@@ -180,7 +152,7 @@ export const CameraControls: React.FC = () => {
             preset="front"
             label="Front"
             icon={<ArrowUp size={14} />}
-            onClick={() => { alert('Front clicked!'); handleViewPreset('front'); }}
+            onClick={() => handleViewPreset('front')}
             disabled={!isReady}
           />
           <ViewPresetButton

@@ -9,7 +9,6 @@
 
 import React, { createContext, useContext, useCallback, useMemo, RefObject, useState, useEffect } from 'react';
 import type { WebGPUController } from '../types';
-import manager from '../infra/logging/MessageManager';
 
 // ============================================================================
 // Types
@@ -331,23 +330,11 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
   }, [canvasRef]);
 
   const applyViewPreset = useCallback((preset: 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso') => {
-    manager.warn('CTRL_DEBUG', `applyViewPreset called with: ${preset}`);
     const ctrl = controllerRef.current;
-    manager.warn('CTRL_DEBUG', `ctrl exists: ${!!ctrl}`);
-    if (ctrl) {
-      manager.warn('CTRL_DEBUG', `handleCameraCommand type: ${typeof ctrl.handleCameraCommand}`);
-      manager.warn('CTRL_DEBUG', `Available methods: ${Object.keys(ctrl).join(', ')}`);
-    }
-    if (!ctrl) {
-      manager.error('CTRL_DEBUG', 'ERROR: ctrl is null/undefined!');
-      return;
-    }
+    if (!ctrl) return;
 
     if (typeof ctrl.handleCameraCommand === 'function') {
-      manager.warn('CTRL_DEBUG', `Calling handleCameraCommand with viewPreset: ${preset}`);
       ctrl.handleCameraCommand({ viewPreset: preset });
-    } else {
-      manager.error('CTRL_DEBUG', 'ERROR: handleCameraCommand is not a function!');
     }
   }, [controllerRef]);
 

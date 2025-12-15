@@ -1067,9 +1067,21 @@ const applyViewPreset = (state: WebGPUState, preset: string): void => {
         applyCameraEuler(state, state.rotX, state.rotY);
       }
       break;
+    case 'bottom':
+      applyCameraEuler(state, -Math.PI / 2 + 1e-3, 0);
+      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
+      break;
     case 'front':
       applyCameraEuler(state, 0, 0);
       // Commit the transient display basis to ensure canonicalization
+      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
+      break;
+    case 'back':
+      applyCameraEuler(state, 0, Math.PI);
+      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
+      break;
+    case 'left':
+      applyCameraEuler(state, 0, Math.PI / 2);
       if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'right':
@@ -3607,8 +3619,6 @@ export const mount = async ({
   };
 
   const handleCameraCommand = (raw: unknown): void => {
-    // DEBUG: Log every camera command
-    console.log('[handleCameraCommand] called with:', raw);
     if (raw === null || raw === undefined) {
       return;
     }
