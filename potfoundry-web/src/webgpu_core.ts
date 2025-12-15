@@ -1104,14 +1104,8 @@ const applyViewPreset = (state: WebGPUState, preset: string): void => {
   const pivotZ = state.pivot?.[2] ?? 0;
   state.pivot = [state.panX, state.panY, pivotZ];
   state.cameraDirty = true;
-  // First, commit the new camera basis to the persistent state
-  // This also clears display angles, so we'll set them fresh after
-  if (typeof commitDisplayBasisToState === 'function') {
-    manager.info('applyViewPreset:commit', 'applyViewPreset: committing display basis');
-    commitDisplayBasisToState(state);
-  }
-  // Now set display state AFTER commit so auto-rotate uses these values
-  // (commitDisplayBasisToState nullifies display angles, so we must set them after)
+  // Set display state from the committed cam* values
+  // Auto-rotate will use these display values as its starting position
   state.displayCamRight = [...state.camRight];
   state.displayCamUp = [...state.camUp];
   state.displayCamForward = [...state.camForward];
