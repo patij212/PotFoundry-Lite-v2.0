@@ -58,6 +58,26 @@ export interface RendererController {
      */
     resetCamera(): void;
 
+    /**
+     * Handle camera commands (view presets, mode changes, etc.)
+     */
+    handleCameraCommand?(payload: Record<string, unknown>): void;
+
+    /**
+     * Set auto-rotate state
+     */
+    setAutoRotate?(value: boolean): void;
+
+    /**
+     * Toggle auto-rotate
+     */
+    toggleAutoRotate?(): void;
+
+    /**
+     * Get current auto-rotate state
+     */
+    getAutoRotate?(): boolean;
+
     // === Info ===
 
     /**

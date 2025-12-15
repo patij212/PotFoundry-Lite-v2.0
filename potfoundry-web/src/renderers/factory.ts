@@ -82,6 +82,10 @@ function wrapWebGPUController(
         exportOBJ: (options) => ctrl.exportOBJ?.(options) ?? null,
         focusOnPot: () => ctrl.focusOnPot?.(),
         resetCamera: () => ctrl.resetCamera?.(),
+        handleCameraCommand: (payload) => ctrl.handleCameraCommand?.(payload),
+        setAutoRotate: (value) => ctrl.setAutoRotate?.(value),
+        toggleAutoRotate: () => ctrl.toggleAutoRotate?.(),
+        getAutoRotate: () => ctrl.getAutoRotate?.(),
         get rendererType() { return 'webgpu' as const; },
         get isCompatibilityMode() { return false; },
     };
