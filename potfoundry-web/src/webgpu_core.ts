@@ -1069,28 +1069,21 @@ const applyViewPreset = (state: WebGPUState, preset: string): void => {
       break;
     case 'bottom':
       applyCameraEuler(state, -Math.PI / 2 + 1e-3, 0);
-      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'front':
       applyCameraEuler(state, 0, 0);
-      // Commit the transient display basis to ensure canonicalization
-      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'back':
       applyCameraEuler(state, 0, Math.PI);
-      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'left':
       applyCameraEuler(state, 0, Math.PI / 2);
-      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'right':
       applyCameraEuler(state, 0, -Math.PI / 2);
-      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'iso':
       applyCameraEuler(state, 0.9, -Math.PI / 4);
-      if (typeof commitDisplayBasisToState === 'function') commitDisplayBasisToState(state);
       break;
     case 'fit':
     default:
@@ -1113,7 +1106,7 @@ const applyViewPreset = (state: WebGPUState, preset: string): void => {
   state.displayRotX = state.rotX;
   state.displayRotY = state.rotY;
   // Pause auto-rotate briefly so the new preset position takes effect
-  state.autoRotateResumeAt = performance.now() + 200; // 200ms delay
+  state.autoRotateResumeAt = performance.now() + 500; // 500ms delay for visual feedback
 };
 export { applyViewPreset };
 export { buildCameraRig };
@@ -3719,9 +3712,14 @@ export const mount = async ({
     }
 
     // Handle viewPreset (alias for preset)
+    // Note: viewPreset changes are handled specially - applyViewPreset already sets
+    // autoRotateResumeAt appropriately, so we don't call markInteraction for presets
+    // to avoid overwriting the intended 500ms delay with a 3000ms delay.
+    let wasPresetApplied = false;
     if (typeof payload.viewPreset === 'string') {
       applyViewPreset(state, payload.viewPreset);
       cameraMutated = true;
+      wasPresetApplied = true;
     }
 
     // Handle cameraMode (turntable/arcball/free)
@@ -3746,7 +3744,9 @@ export const mount = async ({
       state.cameraDirty = true;
     }
 
-    if (cameraMutated) {
+    // Only call markInteraction for non-preset camera mutations
+    // View presets handle their own timing via autoRotateResumeAt
+    if (cameraMutated && !wasPresetApplied) {
       markInteraction();
     }
   };

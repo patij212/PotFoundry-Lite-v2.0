@@ -45,6 +45,8 @@ export interface MobileBottomSheetProps {
     open?: boolean;
     /** Callback when sheet is closed */
     onClose?: () => void;
+    /** Callback when sheet state changes */
+    onStateChange?: (state: SheetState) => void;
     /** Initial state of the sheet */
     initialState?: SheetState;
     /** Class name for additional styling */
@@ -61,6 +63,7 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
     subtitle,
     open = true,
     onClose,
+    onStateChange,
     initialState = 'half',
     className = '',
 }) => {
@@ -84,10 +87,11 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
         }
     }, []);
 
-    // Recalculate on state change
+    // Recalculate on state change and notify parent
     useEffect(() => {
         setCurrentHeight(getStateHeight(state));
-    }, [state, getStateHeight]);
+        onStateChange?.(state);
+    }, [state, getStateHeight, onStateChange]);
 
     // Handle touch start on the drag handle
     const handleTouchStart = useCallback((e: React.TouchEvent) => {

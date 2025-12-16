@@ -269,12 +269,26 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
 }) => {
   const tabLabel = activeTab === 'design' ? 'Design' : 'Library';
 
+  // Handle sheet state changes to offset the pot when sidebar is deployed
+  const handleSheetStateChange = useCallback((state: 'collapsed' | 'half' | 'full') => {
+    // Set a data attribute on body so CSS can offset the canvas
+    document.body.setAttribute('data-mobile-sheet-state', state);
+  }, []);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      document.body.removeAttribute('data-mobile-sheet-state');
+    };
+  }, []);
+
   return (
     <MobileBottomSheet
       title="PotFoundry"
       subtitle={tabLabel}
       open={true}
       onClose={onClose}
+      onStateChange={handleSheetStateChange}
       initialState="half"
       className="pf-sidebar--mobile"
     >

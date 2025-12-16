@@ -126,3 +126,29 @@
   /* Prevent overflow */
   overflow: hidden;
 }
+
+/* ============================================================================
+   Mobile Canvas Offset - Shift pot to top half when sidebar is deployed
+   ============================================================================ */
+
+/* On mobile, when the bottom sheet is in half or full state, offset the canvas
+   so the pot renders in the top half of the screen above the sheet. 
+   Uses CSS transform to shift the canvas content upward. */
+
+@media (max-width: 768px) {
+
+  /* Half state - sheet takes 50% of viewport, offset canvas by ~20% */
+  body[data-mobile-sheet-state="half"] .pf-wgpu-preview__canvas {
+    transform: translateY(-20%);
+  }
+
+  /* Full state - sheet takes 85% of viewport, offset more */
+  body[data-mobile-sheet-state="full"] .pf-wgpu-preview__canvas {
+    transform: translateY(-35%);
+  }
+
+  /* Smooth transition when state changes */
+  .pf-wgpu-preview__canvas {
+    transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+}
