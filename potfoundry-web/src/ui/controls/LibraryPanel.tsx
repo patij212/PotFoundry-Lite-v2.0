@@ -41,11 +41,11 @@ export const LibraryPanel: React.FC = () => {
   const [hasFetched, setHasFetched] = useState(false);
   const [confirmLoad, setConfirmLoad] = useState<{ design: any } | null>(null);
 
-  // Auto-fetch when the panel becomes visible AND the context is ready
+  // Auto-fetch when the panel becomes visible AND the context is ready (uses cache)
   useEffect(() => {
     if (library && library.state.ready && !hasFetched && !library.state.loading) {
       setHasFetched(true);
-      library.actions.fetchDesigns(true);
+      library.actions.fetchDesigns(true); // Uses cache if available
     }
   }, [library, library?.state.ready, library?.state.loading, hasFetched]);
 
@@ -56,16 +56,16 @@ export const LibraryPanel: React.FC = () => {
       setPublishTitle('');
       setPublishTags('');
       toast?.addToast('success', 'Design published successfully!');
-      library.actions.fetchDesigns(true);
+      // Publish handler already clears cache and force-refreshes
     } else if (library?.state.publishSuccess === false && library?.state.publishError) {
       toast?.addToast('error', library.state.publishError);
     }
   }, [library?.state.publishSuccess, library?.state.publishError, toast]);
 
-  // Re-fetch when My Designs filter changes
+  // Re-fetch when My Designs filter changes (uses cache)
   useEffect(() => {
     if (library && hasFetched) {
-      library.actions.fetchDesigns(true);
+      library.actions.fetchDesigns(true); // Uses cache if available
     }
   }, [library?.state.filterMyDesigns]);
 
@@ -144,7 +144,7 @@ export const LibraryPanel: React.FC = () => {
         <IconButton
           icon={<RefreshCw size={14} />}
           aria-label="Refresh"
-          onClick={() => actions.fetchDesigns(true)}
+          onClick={() => actions.fetchDesigns(true, undefined, true)}
           variant="ghost"
           size="sm"
         />

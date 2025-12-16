@@ -47,6 +47,7 @@ import { installConsolePatch } from './infra/logging/ConsolePatch';
 import { resolveLoggingPreferences } from './infra/logging/loggingPreferences';
 import { installWebGpuCapture, withValidationScope, createShaderModule } from './infra/logging/WebGpuCapture';
 import { fillGeometryBuffer } from './webgpu_geometry';
+import { createIdleDetector, type IdleDetector } from './utils/idleDetection';
 
 try {
   installConsolePatch();
@@ -5053,6 +5054,19 @@ export const mount = async ({
   let rafHandle: number | null = null;
   let disposed = false;
 
+  // Idle detection for resource savings
+  const idleDetector = createIdleDetector({
+    idleTimeoutMs: 30_000, // 30 seconds of inactivity
+    onVisibilityChange: (isVisible) => {
+      if (isVisible) {
+        // Resume immediately when tab becomes visible
+        console.debug('[WebGPU] Tab visible, resuming full render rate');
+      } else {
+        console.debug('[WebGPU] Tab hidden, pausing render');
+      }
+    },
+  });
+
   const applyParamPayload = (payload?: WebGPUParams | null): void => {
     if (!payload) {
       return;
@@ -5161,6 +5175,23 @@ export const mount = async ({
     }
 
     if (!current) {
+      rafHandle = requestAnimationFrame(frame);
+      return;
+    }
+
+    // Force active mode when auto-rotate or animations are running
+    const hasActiveAnimations = state.autoRotate ||
+      (cameraController && cameraController.focusTween) ||
+      Math.abs(state.inertiaRotY) > 1e-6 ||
+      Math.abs(state.inertiaRotX) > 1e-6 ||
+      Math.abs(state.inertiaPanX) > 1e-4 ||
+      Math.abs(state.inertiaPanY) > 1e-4 ||
+      Math.abs(state.inertiaArcSpeed as number || 0) > 1e-6;
+
+    idleDetector.setForceActive(hasActiveAnimations);
+
+    // Skip frame if idle (throttles to ~2 FPS when user inactive)
+    if (!idleDetector.shouldRenderFrame()) {
       rafHandle = requestAnimationFrame(frame);
       return;
     }
@@ -5471,6 +5502,8 @@ export const mount = async ({
       cancelAnimationFrame(rafHandle);
       rafHandle = null;
     }
+    // Clean up idle detector
+    idleDetector.dispose();
     if (depth) depth.destroy();
     uniformBuffer.destroy();
     colorBuffers.c1.destroy();

@@ -6,10 +6,72 @@
  * @module context/LibraryContext
  */
 
-import React, { createContext, useContext, useCallback, useState, useMemo } from 'react';
+import React, { createContext, useContext, useCallback, useState, useMemo, useRef } from 'react';
 import { useControllerMaybe } from './ControllerContext';
 import { buildStyleParamPayload } from '../utils/styleParams';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
+
+// ============================================================================
+// Caching Configuration - Reduces Supabase egress by caching API responses
+// ============================================================================
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
+const CACHE_KEY_PREFIX = 'pf_lib_cache_';
+
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
+/**
+ * Generate cache key based on query parameters
+ */
+function getCacheKey(page: number, search: string, style: string | null, myDesigns: boolean): string {
+  return `${CACHE_KEY_PREFIX}${page}_${search}_${style ?? 'all'}_${myDesigns}`;
+}
+
+/**
+ * Get cached data from sessionStorage if still valid
+ */
+function getCachedData(key: string): any | null {
+  try {
+    const cached = sessionStorage.getItem(key);
+    if (!cached) return null;
+
+    const entry: CacheEntry = JSON.parse(cached);
+    if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    return entry.data;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Store data in sessionStorage cache
+ */
+function setCachedData(key: string, data: any): void {
+  try {
+    const entry: CacheEntry = { data, timestamp: Date.now() };
+    sessionStorage.setItem(key, JSON.stringify(entry));
+  } catch {
+    // Ignore storage errors (quota exceeded, etc.)
+  }
+}
+
+/**
+ * Clear all library cache entries
+ */
+function clearLibraryCache(): void {
+  try {
+    const keys = Object.keys(sessionStorage).filter(k => k.startsWith(CACHE_KEY_PREFIX));
+    keys.forEach(k => sessionStorage.removeItem(k));
+  } catch {
+    // Ignore errors
+  }
+}
 
 // ============================================================================
 // Types
@@ -63,7 +125,7 @@ export interface LibraryState {
 }
 
 export interface LibraryActions {
-  fetchDesigns: (reset?: boolean, pageOverride?: number) => void;
+  fetchDesigns: (reset?: boolean, pageOverride?: number, forceRefresh?: boolean) => void;
   loadDesign: (design: LibraryDesign) => Promise<void>;
   downloadSTL: (design: LibraryDesign) => void;
   publish: (title: string, tags: string[], license: string) => void;
@@ -113,11 +175,30 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     ready: isSupabaseConfigured(),
   });
 
-  // Fetch designs from Supabase
-  const fetchDesigns = useCallback(async (reset = false, pageOverride?: number) => {
+  // Fetch designs from Supabase with caching to minimize egress
+  const fetchDesigns = useCallback(async (reset = false, pageOverride?: number, forceRefresh = false) => {
     if (!supabase) {
       console.warn('[LibraryContext] Supabase not configured');
       return;
+    }
+
+    const currentPage = reset ? 1 : (pageOverride ?? state.page);
+    const cacheKey = getCacheKey(currentPage, state.searchQuery, state.styleFilter, state.filterMyDesigns);
+
+    // Check cache first (unless forcing refresh)
+    if (!forceRefresh && !reset) {
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        console.debug('[LibraryContext] Cache hit, skipping API call');
+        setState(s => ({
+          ...s,
+          loading: false,
+          designs: currentPage === 1 ? cached.designs : [...s.designs, ...cached.designs],
+          hasMore: cached.hasMore,
+          page: currentPage,
+        }));
+        return;
+      }
     }
 
     setState(s => ({
@@ -129,7 +210,6 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     }));
 
     try {
-      const currentPage = reset ? 1 : (pageOverride ?? state.page);
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
@@ -182,18 +262,23 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
         app_commit: d.app_commit,
       }));
 
+      const hasMore = designs.length === PAGE_SIZE;
+
+      // Cache the response
+      setCachedData(cacheKey, { designs, hasMore });
+
       setState(s => ({
         ...s,
         loading: false,
         designs: reset ? designs : [...s.designs, ...designs],
-        hasMore: designs.length === PAGE_SIZE,
+        hasMore,
         page: currentPage,
       }));
     } catch (err) {
       console.error('[LibraryContext] Fetch error:', err);
       setState(s => ({ ...s, loading: false, error: String(err) }));
     }
-  }, [state.page, state.searchQuery, state.styleFilter]);
+  }, [state.page, state.searchQuery, state.styleFilter, state.filterMyDesigns]);
 
   const loadDesign = useCallback(async (design: LibraryDesign) => {
     if (!supabase) {
@@ -345,8 +430,9 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
 
       setState(s => ({ ...s, publishing: false, publishSuccess: true, publishError: null }));
 
-      // Refresh the list
-      fetchDesigns(true);
+      // Clear cache and refresh the list
+      clearLibraryCache();
+      fetchDesigns(true, undefined, true);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error('[LibraryContext] Publish error:', err);
