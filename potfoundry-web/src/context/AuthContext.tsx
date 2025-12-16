@@ -118,6 +118,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     // Initialize auth state on mount
+    // CRITICAL FIX: Use onAuthStateChange as single source of truth
+    // This eliminates the race condition that caused mobile OAuth failures.
+    // The listener fires INITIAL_SESSION immediately with current session from storage/URL.
     useEffect(() => {
         if (!isSupabaseConfigured() || !supabase) {
             setState(s => ({ ...s, loading: false }));
@@ -125,80 +128,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         let isMounted = true;
-        let hasCompleted = false;
+        let initialEventReceived = false;
 
-        // Helper to set state only if still mounted and not yet completed
-        const safeSetState = (newState: Partial<AuthState>) => {
-            if (isMounted && !hasCompleted) {
-                hasCompleted = true;
-                setState(s => ({ ...s, ...newState }));
-            }
-        };
+        // Timeout helper for profile fetches
+        const timeout = <T,>(ms: number, promise: Promise<T>): Promise<T | null> =>
+            Promise.race([
+                promise,
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))
+            ]);
 
-        // Timeout promise - wins if session check takes too long
-        const timeout = (ms: number) => new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout')), ms)
-        );
-
-        // Get initial session with GUARANTEED completion
-        const initSession = async () => {
-            try {
-                console.log('[Auth] Initializing session...');
-
-                // Use Promise.race to ensure we never hang
-                // If getSession takes more than 3 seconds, we timeout
-                // Note: supabase is guaranteed non-null here due to early return above
-                const sessionResult = await Promise.race([
-                    supabase!.auth.getSession(),
-                    timeout(3000)
-                ]).catch(() => ({ data: { session: null }, error: new Error('Timeout getting session') }));
-
-                const { data, error } = sessionResult as { data: { session: any }, error?: Error };
-                const session = data?.session;
-
-                if (error) {
-                    console.warn('[Auth] Session check failed/timed out:', error.message);
-                    safeSetState({ loading: false, user: null, session: null, profile: null });
-                    return;
-                }
-
-                if (!session) {
-                    console.log('[Auth] No session found');
-                    safeSetState({ loading: false });
-                    return;
-                }
-
-                console.log('[Auth] Session found for:', session.user?.email);
-
-                // Try to fetch profile, but don't block on it
-                let profile = null;
-                try {
-                    profile = await Promise.race([
-                        fetchProfile(session.user.id),
-                        timeout(2000)
-                    ]).catch(() => null);
-                } catch {
-                    console.warn('[Auth] Profile fetch timed out');
-                }
-
-                safeSetState({
-                    session,
-                    user: session.user,
-                    profile,
-                    loading: false,
-                });
-
-            } catch (err) {
-                console.error('[Auth] Session init error:', err);
-                safeSetState({ loading: false, user: null, session: null, profile: null });
-            }
-        };
-
-        // Absolute failsafe timeout - ensures loading ALWAYS stops within 4 seconds
+        // Failsafe timeout - ensures loading ALWAYS stops within 5 seconds
+        // This only triggers if onAuthStateChange never fires (shouldn't happen)
         const failsafeTimeout = setTimeout(() => {
-            if (isMounted && !hasCompleted) {
-                console.warn('[Auth] Failsafe timeout triggered');
-                hasCompleted = true;
+            if (isMounted && !initialEventReceived) {
+                console.warn('[Auth] Failsafe timeout triggered - no auth event received');
                 setState(s => {
                     if (s.loading) {
                         return { ...s, loading: false };
@@ -206,29 +149,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     return s;
                 });
             }
-        }, 4000);
+        }, 5000);
 
-        initSession();
+        // CRITICAL: Set up auth listener FIRST, before any other auth operations
+        // Per Supabase docs, onAuthStateChange fires INITIAL_SESSION immediately
+        // with current session from localStorage or URL fragments (OAuth callback)
+        console.log('[Auth] Setting up auth state listener...');
 
-        // Listen for auth changes with similar robustness
-        const { data: { subscription } } = supabase!.auth.onAuthStateChange(
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                console.log('[Auth] State changed:', event, session?.user?.email);
+                console.log('[Auth] Auth event:', event, session?.user?.email);
 
                 if (!isMounted) return;
 
+                // Mark that we received an event (for failsafe timeout)
+                initialEventReceived = true;
+
                 const user = session?.user ?? null;
 
-                // Fetch profile in background, don't block
+                // Fetch profile in background, don't block UI
                 let profile = null;
                 if (user) {
                     try {
-                        profile = await Promise.race([
-                            fetchProfile(user.id),
-                            timeout(2000)
-                        ]).catch(() => null);
+                        profile = await timeout(2000, fetchProfile(user.id));
                     } catch {
-                        // Profile fetch failed, continue anyway
+                        console.warn('[Auth] Profile fetch failed, continuing without profile');
                     }
                 }
 
@@ -238,13 +183,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     user,
                     profile,
                     loading: false,
+                    error: null,
                 }));
+
+                // Log successful auth for debugging mobile issues
+                if (event === 'SIGNED_IN') {
+                    console.log('[Auth] Sign-in complete for:', user?.email);
+                } else if (event === 'INITIAL_SESSION') {
+                    console.log('[Auth] Initial session loaded:', user ? user.email : 'no session');
+                }
             }
         );
 
         return () => {
             isMounted = false;
-            hasCompleted = true;
             clearTimeout(failsafeTimeout);
             subscription.unsubscribe();
         };
