@@ -56,11 +56,14 @@ export const LibraryPanel: React.FC = () => {
       setPublishTitle('');
       setPublishTags('');
       toast?.addToast('success', 'Design published successfully!');
-      // Publish handler already clears cache and force-refreshes
+      // Clear status to prevent duplicate toasts on re-renders
+      library.actions.clearPublishStatus();
     } else if (library?.state.publishSuccess === false && library?.state.publishError) {
       toast?.addToast('error', library.state.publishError);
+      // Clear status to prevent duplicate toasts on re-renders
+      library.actions.clearPublishStatus();
     }
-  }, [library?.state.publishSuccess, library?.state.publishError, toast]);
+  }, [library?.state.publishSuccess, library?.state.publishError, toast, library?.actions]);
 
   // Re-fetch when My Designs filter changes (uses cache)
   useEffect(() => {

@@ -129,6 +129,7 @@ export interface LibraryActions {
   loadDesign: (design: LibraryDesign) => Promise<void>;
   downloadSTL: (design: LibraryDesign) => void;
   publish: (title: string, tags: string[], license: string) => void;
+  clearPublishStatus: () => void;
   setSearchQuery: (query: string) => void;
   setStyleFilter: (style: string | null) => void;
   setFilterMyDesigns: (filter: boolean) => void;
@@ -448,6 +449,11 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     setState(s => ({ ...s, styleFilter: style }));
   }, []);
 
+  // Clear publish status after toast is shown (prevents duplicate toasts)
+  const clearPublishStatus = useCallback(() => {
+    setState(s => ({ ...s, publishSuccess: null, publishError: null }));
+  }, []);
+
   const setFilterMyDesigns = useCallback((filter: boolean) => {
     setState(s => ({ ...s, filterMyDesigns: filter }));
   }, []);
@@ -461,9 +467,9 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
   }, [state.loading, state.hasMore, state.page, fetchDesigns]);
 
   const actions = useMemo<LibraryActions>(() => ({
-    fetchDesigns, loadDesign, downloadSTL, publish,
+    fetchDesigns, loadDesign, downloadSTL, publish, clearPublishStatus,
     setSearchQuery, setStyleFilter, setFilterMyDesigns, loadMore,
-  }), [fetchDesigns, loadDesign, downloadSTL, publish, setSearchQuery, setStyleFilter, setFilterMyDesigns, loadMore]);
+  }), [fetchDesigns, loadDesign, downloadSTL, publish, clearPublishStatus, setSearchQuery, setStyleFilter, setFilterMyDesigns, loadMore]);
 
   const value = useMemo<LibraryContextValue>(() => ({
     state,
