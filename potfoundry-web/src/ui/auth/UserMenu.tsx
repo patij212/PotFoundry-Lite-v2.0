@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { User, LogOut, Crown, Settings, CreditCard, ExternalLink, Calendar, AlertCircle } from 'lucide-react';
+import { User, LogOut, Crown, Settings, CreditCard, ExternalLink, Calendar, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth, useIsAuthenticated, useIsPro } from '../../context/AuthContext';
 import { AuthModal } from './AuthModal';
 import { SettingsModal } from './SettingsModal';
@@ -176,11 +176,21 @@ export const UserMenu: React.FC = () => {
         return (
             <div className="user-menu">
                 <button
-                    className="user-menu__login"
+                    className={`user-menu__login ${state.loading ? 'user-menu__login--loading' : ''}`}
                     onClick={() => setShowAuthModal(true)}
+                    disabled={state.loading}
                 >
-                    <User size={18} />
-                    Sign In
+                    {state.loading ? (
+                        <>
+                            <Loader2 size={18} className="user-menu__spinner" />
+                            Signing in...
+                        </>
+                    ) : (
+                        <>
+                            <User size={18} />
+                            Sign In
+                        </>
+                    )}
                 </button>
                 <AuthModal open={showAuthModal} onOpenChange={setShowAuthModal} />
             </div>

@@ -31,6 +31,32 @@
     cursor: not-allowed;
 }
 
+/* Loading state */
+.user-menu__login--loading {
+    cursor: wait;
+    opacity: 0.8;
+}
+
+.user-menu__login--loading:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Spinner animation */
+.user-menu__spinner {
+    animation: user-menu-spin 1s linear infinite;
+}
+
+@keyframes user-menu-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* Trigger Button (when logged in) */
 .user-menu__trigger {
     position: relative;
