@@ -152,6 +152,79 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
         setCurrentHeight(null); // Let CSS transition take over
     }, [currentHeight, state, getStateHeight]);
 
+    // ========================================
+    // Mouse event handlers for desktop support
+    // ========================================
+
+    // Handle mouse down on the drag handle
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        // Only handle left mouse button
+        if (e.button !== 0) return;
+
+        e.preventDefault(); // Prevent text selection
+        touchStartY.current = e.clientY;
+        touchStartHeight.current = currentHeight ?? getStateHeight(state);
+        isDragging.current = true;
+
+        console.log('[Sheet] Mouse down at Y:', e.clientY, 'height:', touchStartHeight.current);
+    }, [currentHeight, state, getStateHeight]);
+
+    // Handle mouse move (attached to window for smooth tracking)
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (!isDragging.current) return;
+
+        const deltaY = touchStartY.current - e.clientY; // Positive = moving up = expanding sheet
+        const newHeight = touchStartHeight.current + deltaY;
+
+        // Clamp to valid range
+        const minH = HANDLE_HEIGHT;
+        const maxH = getStateHeight('full');
+        const clampedHeight = Math.max(minH, Math.min(maxH, newHeight));
+
+        setCurrentHeight(clampedHeight);
+    }, [getStateHeight]);
+
+    // Handle mouse up - snap to nearest state
+    const handleMouseUp = useCallback(() => {
+        if (!isDragging.current) return;
+        isDragging.current = false;
+
+        const height = currentHeight ?? getStateHeight(state);
+        const halfH = getStateHeight('half');
+        const fullH = getStateHeight('full');
+        const collapsedH = HANDLE_HEIGHT;
+
+        console.log('[Sheet] Mouse up, height:', height);
+
+        // Determine which state to snap to based on current height
+        let newState: SheetState;
+
+        if (height < (collapsedH + halfH) / 2) {
+            newState = 'collapsed';
+        } else if (height < (halfH + fullH) / 2) {
+            newState = 'half';
+        } else {
+            newState = 'full';
+        }
+
+        console.log('[Sheet] Snapping to:', newState);
+        setState(newState);
+        setCurrentHeight(null); // Let CSS transition take over
+    }, [currentHeight, state, getStateHeight]);
+
+    // Attach window-level mouse events when dragging
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [handleMouseMove, handleMouseUp]);
+
     // Toggle state on tap
     const handleToggle = useCallback(() => {
         console.log('[Sheet] Toggle, current state:', state);
@@ -217,6 +290,7 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     onTouchCancel={handleTouchEnd}
+                    onMouseDown={handleMouseDown}
                 >
                     {/* Visual grip indicator */}
                     <div className="pf-mobile-sheet__grip">
