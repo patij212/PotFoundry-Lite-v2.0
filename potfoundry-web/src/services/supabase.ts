@@ -27,6 +27,10 @@ if (isSupabaseConfigured()) {
             autoRefreshToken: true,
             persistSession: true,
             detectSessionInUrl: true,
+            // CRITICAL: Use PKCE flow for mobile OAuth support
+            // This stores a code_verifier in localStorage that's required for
+            // exchanging the authorization code after OAuth redirect
+            flowType: 'pkce',
         },
     });
 } else {
