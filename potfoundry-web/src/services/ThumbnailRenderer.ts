@@ -436,17 +436,28 @@ class ThumbnailRenderer {
         uniforms[33] = Math.max(Rt, H) * 2;
 
         // Camera setup - position camera for good thumbnail view
+        // Note: WGSL shader centers pot at origin (z goes from -H/2 to +H/2)
         const aspect = width / height;
         const fov = 35 * Math.PI / 180;
         const near = 1;
         const far = 1000;
 
-        // Camera position: slightly above and in front
-        const cameraDistance = Math.max(Rt, H) * 2.5;
-        const cameraAngle = Math.PI / 5; // ~36 degrees
-        const eyeX = Math.sin(cameraAngle) * cameraDistance;
-        const eyeY = -Math.cos(cameraAngle) * cameraDistance;
-        const eyeZ = H * 0.6;
+        // Camera distance based on pot size
+        const maxDim = Math.max(Rt * 2, H);
+        const cameraDistance = maxDim * 2.2;
+
+        // Camera at 30 degrees from front, slightly above
+        const cameraAngle = Math.PI / 6; // 30 degrees
+        const elevation = Math.PI / 8;   // ~22 degrees above
+
+        const eyeX = Math.sin(cameraAngle) * Math.cos(elevation) * cameraDistance;
+        const eyeY = -Math.cos(cameraAngle) * Math.cos(elevation) * cameraDistance;
+        const eyeZ = Math.sin(elevation) * cameraDistance;
+
+        // Target at pot center (origin, since shader centers the pot)
+        const targetX = 0;
+        const targetY = 0;
+        const targetZ = 0;
 
         // Eye position (indices 36-38)
         uniforms[36] = eyeX;
@@ -459,7 +470,7 @@ class ThumbnailRenderer {
         // Build view-projection matrix (indices 40-55)
         const vpMatrix = this.buildViewProjectionMatrix(
             eyeX, eyeY, eyeZ,
-            0, 0, H * 0.4, // look at center of pot
+            targetX, targetY, targetZ,
             aspect, fov, near, far
         );
         for (let i = 0; i < 16; i++) {
@@ -467,15 +478,18 @@ class ThumbnailRenderer {
         }
 
         // Camera basis vectors (indices 56-67)
+        // Calculate proper basis from forward direction
+        const forward = this.normalize([targetX - eyeX, targetY - eyeY, targetZ - eyeZ]);
+        const worldUp = [0, 0, 1];
+        const right = this.normalize(this.cross(worldUp, forward));
+        const up = this.cross(forward, right);
+
         // Right vector
-        uniforms[56] = 1; uniforms[57] = 0; uniforms[58] = 0; uniforms[59] = 0;
+        uniforms[56] = right[0]; uniforms[57] = right[1]; uniforms[58] = right[2]; uniforms[59] = 0;
         // Up vector  
-        uniforms[60] = 0; uniforms[61] = 0; uniforms[62] = 1; uniforms[63] = 0;
+        uniforms[60] = up[0]; uniforms[61] = up[1]; uniforms[62] = up[2]; uniforms[63] = 0;
         // Forward vector
-        uniforms[64] = -eyeX / cameraDistance;
-        uniforms[65] = -eyeY / cameraDistance;
-        uniforms[66] = (H * 0.4 - eyeZ) / cameraDistance;
-        uniforms[67] = 0;
+        uniforms[64] = forward[0]; uniforms[65] = forward[1]; uniforms[66] = forward[2]; uniforms[67] = 0;
 
         // Grid flag (index 68) - 0 = no grid
         uniforms[68] = 0;
