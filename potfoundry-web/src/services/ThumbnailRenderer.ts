@@ -478,12 +478,16 @@ class ThumbnailRenderer {
         // Note: WGSL shader centers pot at origin (z goes from -H/2 to +H/2)
         const aspect = width / height;
         const fov = 35 * Math.PI / 180;
-        const near = 1;
-        const far = 1000;
 
         // Camera distance based on pot size
         const maxDim = Math.max(Rt * 2, H);
         const cameraDistance = maxDim * 2.2;
+
+        // CRITICAL: Set near/far planes so pot projects AHEAD of background (Z=0.99)
+        // Using tight near/far around the pot ensures good depth precision
+        // and places pot geometry at NDC Z ≈ 0.5 (well in front of 0.99 background)
+        const near = Math.max(cameraDistance - maxDim * 2, 1);
+        const far = cameraDistance + maxDim * 2;
 
         // Camera at 30 degrees from front, slightly above
         const cameraAngle = Math.PI / 6; // 30 degrees
