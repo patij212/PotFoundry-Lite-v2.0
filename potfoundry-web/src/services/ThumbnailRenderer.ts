@@ -508,46 +508,64 @@ class ThumbnailRenderer {
     }
 
     /**
-     * Build a view-projection matrix
+     * Build a view-projection matrix using LEFT-HANDED convention matching main renderer
+     * WebGPU NDC: X left-to-right, Y bottom-to-top, Z from 0 (near) to 1 (far)
      */
     private buildViewProjectionMatrix(
         eyeX: number, eyeY: number, eyeZ: number,
         targetX: number, targetY: number, targetZ: number,
         aspect: number, fov: number, near: number, far: number
     ): Float32Array {
-        // Build view matrix (lookAt)
-        const zAxis = this.normalize([eyeX - targetX, eyeY - targetY, eyeZ - targetZ]);
-        const xAxis = this.normalize(this.cross([0, 0, 1], zAxis));
+        // Build left-handed view matrix (lookAt LH)
+        const eye: [number, number, number] = [eyeX, eyeY, eyeZ];
+        const target: [number, number, number] = [targetX, targetY, targetZ];
+
+        // Forward = normalize(target - eye) for LEFT-HANDED
+        const zAxis = this.normalize([targetX - eyeX, targetY - eyeY, targetZ - eyeZ]);
+
+        // Right = normalize(cross(worldUp, forward))
+        const worldUp: [number, number, number] = [0, 0, 1];
+        let xAxis = this.normalize(this.cross(worldUp, zAxis));
+        if (this.length(xAxis) < 1e-6) {
+            xAxis = [1, 0, 0]; // Fallback
+        }
+
+        // Up = cross(forward, right)
         const yAxis = this.cross(zAxis, xAxis);
 
-        const view = new Float32Array([
-            xAxis[0], yAxis[0], zAxis[0], 0,
-            xAxis[1], yAxis[1], zAxis[1], 0,
-            xAxis[2], yAxis[2], zAxis[2], 0,
-            -this.dot(xAxis, [eyeX, eyeY, eyeZ]),
-            -this.dot(yAxis, [eyeX, eyeY, eyeZ]),
-            -this.dot(zAxis, [eyeX, eyeY, eyeZ]),
-            1,
-        ]);
+        // View matrix: camera axes form ROWS of rotation part (stored column-major)
+        const view = new Float32Array(16);
+        view[0] = xAxis[0]; view[1] = yAxis[0]; view[2] = zAxis[0]; view[3] = 0;
+        view[4] = xAxis[1]; view[5] = yAxis[1]; view[6] = zAxis[1]; view[7] = 0;
+        view[8] = xAxis[2]; view[9] = yAxis[2]; view[10] = zAxis[2]; view[11] = 0;
+        view[12] = -this.dot(xAxis, eye);
+        view[13] = -this.dot(yAxis, eye);
+        view[14] = -this.dot(zAxis, eye);
+        view[15] = 1;
 
-        // Build perspective projection matrix
-        const f = 1 / Math.tan(fov / 2);
-        const rangeInv = 1 / (near - far);
-
-        const proj = new Float32Array([
-            f / aspect, 0, 0, 0,
-            0, f, 0, 0,
-            0, 0, (far + near) * rangeInv, -1,
-            0, 0, 2 * far * near * rangeInv, 0,
-        ]);
+        // Build LEFT-HANDED perspective projection (matching main renderer)
+        // WebGPU NDC: Z from 0 (near) to 1 (far)
+        const proj = new Float32Array(16);
+        const f = 1 / Math.tan(Math.max(fov * 0.5, 1e-4));
+        const range = 1 / (far - near || 1);
+        proj[0] = f / Math.max(aspect, 1e-4);
+        proj[5] = f;
+        proj[10] = far * range;
+        proj[11] = 1;  // Positive 1 for left-handed
+        proj[14] = -near * far * range;
+        // Other elements are 0 (default)
 
         // Multiply: proj * view
         return this.multiplyMatrices(proj, view);
     }
 
     // Vector math helpers
+    private length(v: number[]): number {
+        return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    }
+
     private normalize(v: number[]): number[] {
-        const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        const len = this.length(v);
         if (len < 1e-6) return [0, 0, 1];
         return [v[0] / len, v[1] / len, v[2] / len];
     }
