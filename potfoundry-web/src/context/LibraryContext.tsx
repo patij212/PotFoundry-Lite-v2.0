@@ -415,7 +415,18 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
           drain_radius: storeState.geometry.r_drain,
           flare_exp: storeState.geometry.expn,
         },
-        opts: storeState.style.opts,
+        // Include both style-specific opts AND spin/bell from geometry
+        opts: {
+          ...storeState.style.opts,
+          // Spin parameters from geometry
+          spin_turns: storeState.geometry.spinTurns,
+          spin_phase: storeState.geometry.spinPhase,
+          spin_curve: storeState.geometry.spinCurve,
+          // Bell parameters from geometry
+          bell_amp: storeState.geometry.bellAmp,
+          bell_center: storeState.geometry.bellCenter,
+          bell_width: storeState.geometry.bellWidth,
+        },
       };
 
       const { error } = await supabase
