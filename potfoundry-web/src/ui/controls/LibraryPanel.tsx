@@ -10,6 +10,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { BookOpen, Download, ExternalLink, Search, RefreshCw, Upload, User, LogIn } from 'lucide-react';
 import { Button, IconButton } from '../shared';
+import { DesignThumbnail } from '../shared/DesignThumbnail';
 import { useLibraryMaybe, useAuth } from '../../context';
 import { useToastMaybe } from '../shared/Toast';
 import './LibraryPanel.css';
@@ -179,13 +180,7 @@ export const LibraryPanel: React.FC = () => {
         {state.designs.map(design => (
           <div key={design.id} className="pf-library-panel__card">
             <div className="pf-library-panel__thumb">
-              {design.thumb_url ? (
-                <img src={design.thumb_url} alt={design.title} />
-              ) : (
-                <div className="pf-library-panel__thumb-placeholder">
-                  <BookOpen size={24} />
-                </div>
-              )}
+              <DesignThumbnail design={design} width={180} height={140} />
             </div>
             <div className="pf-library-panel__card-info">
               <span className="pf-library-panel__card-title">{design.title}</span>

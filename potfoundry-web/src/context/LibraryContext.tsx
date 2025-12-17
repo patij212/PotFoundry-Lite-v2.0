@@ -6,7 +6,7 @@
  * @module context/LibraryContext
  */
 
-import React, { createContext, useContext, useCallback, useState, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useCallback, useState, useMemo } from 'react';
 import { useControllerMaybe } from './ControllerContext';
 import { buildStyleParamPayload } from '../utils/styleParams';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
@@ -214,11 +214,10 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      // Only fetch columns needed for list view to minimize egress
-      // Full design data (opts, size, mesh, etc.) is fetched on-demand when loading
+      // Fetch columns needed for list view including size/opts for thumbnail rendering
       let query = supabase
         .from('designs')
-        .select('id, title, style, created_at, thumb_url, license, tags, user_id')
+        .select('id, title, style, created_at, license, tags, user_id, size, opts')
         .order('created_at', { ascending: false })
         .range(from, to);
 
