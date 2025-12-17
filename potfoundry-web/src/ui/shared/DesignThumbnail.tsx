@@ -133,12 +133,6 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isVisible, setIsVisible] = useState(false);
     const [hasRendered, setHasRendered] = useState(false);
-    const sceneRef = useRef<{
-        scene: THREE.Scene;
-        camera: THREE.PerspectiveCamera;
-        renderer: THREE.WebGLRenderer;
-        mesh: THREE.Mesh;
-    } | null>(null);
 
     // IntersectionObserver for lazy loading
     useEffect(() => {
@@ -281,25 +275,24 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
             // Render once
             renderer.render(scene, camera);
 
-            // Store refs for cleanup
-            sceneRef.current = { scene, camera, renderer, mesh };
+            // IMMEDIATELY dispose WebGL resources to prevent context accumulation
+            // The canvas retains the rendered pixels even after WebGL is disposed
+            mesh.geometry.dispose();
+            (mesh.material as THREE.Material).dispose();
+            scene.clear();
+            renderer.dispose();
+            // Force loss of context to free GPU resources
+            const gl = renderer.getContext();
+            const ext = gl.getExtension('WEBGL_lose_context');
+            if (ext) ext.loseContext();
+
             setHasRendered(true);
 
         } catch (error) {
             console.error('[DesignThumbnail] Failed to render:', error);
         }
 
-        // Cleanup
-        return () => {
-            if (sceneRef.current) {
-                const { scene, renderer, mesh } = sceneRef.current;
-                mesh.geometry.dispose();
-                (mesh.material as THREE.Material).dispose();
-                scene.clear();
-                renderer.dispose();
-                sceneRef.current = null;
-            }
-        };
+        // No cleanup needed - we dispose immediately after render
     }, [isVisible, hasRendered, design, width, height]);
 
     return (
