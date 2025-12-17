@@ -84,6 +84,13 @@ export type PointerState = {
   arcHit?: Vec3 | null;
   arcHitNormal?: Vec3 | null;
   arcPendingPivot?: Vec3 | null;  // Pending pivot from click - applied only after drag starts
+  // Touch/pinch tracking
+  activeTouches: Map<number, { x: number; y: number }>;  // Track active touch points by identifier
+  pinchStartDistance: number | null;  // Distance between fingers at pinch start
+  pinchStartZoom: number | null;      // Zoom level when pinch started
+  pinchCenterX: number | null;        // Center X of pinch gesture (for cursor-anchored zoom)
+  pinchCenterY: number | null;        // Center Y of pinch gesture
+  isPinching: boolean;                // True when 2+ fingers are active
 };
 
 export type ControllerHelpers = {
@@ -1287,6 +1294,201 @@ export class CameraController {
     this.markInteraction();
     this.helpers.requestCameraEmitWhenStatic();
   }
+
+  /**
+   * Helper to calculate distance between two touch points.
+   */
+  private getTouchDistance(touch1: { x: number; y: number }, touch2: { x: number; y: number }): number {
+    const dx = touch2.x - touch1.x;
+    const dy = touch2.y - touch1.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /**
+   * Helper to get center point between two touches.
+   */
+  private getTouchCenter(touch1: { x: number; y: number }, touch2: { x: number; y: number }): { x: number; y: number } {
+    return {
+      x: (touch1.x + touch2.x) / 2,
+      y: (touch1.y + touch2.y) / 2,
+    };
+  }
+
+  /**
+   * Handle touch start event for pinch-to-zoom.
+   * Tracks multiple touch points and initializes pinch gesture when 2+ fingers are detected.
+   */
+  onTouchStart(event: TouchEvent): void {
+    // Update active touches map
+    for (let i = 0; i < event.changedTouches.length; i++) {
+      const touch = event.changedTouches[i];
+      this.pointer.activeTouches.set(touch.identifier, {
+        x: touch.clientX,
+        y: touch.clientY,
+      });
+    }
+
+    // If we have 2+ touches, start/continue pinch gesture
+    if (this.pointer.activeTouches.size >= 2) {
+      const touches = Array.from(this.pointer.activeTouches.values());
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+
+      // Initialize pinch if not already pinching
+      if (!this.pointer.isPinching) {
+        this.pointer.isPinching = true;
+        this.pointer.pinchStartDistance = this.getTouchDistance(touch1, touch2);
+        this.pointer.pinchStartZoom = this.state.zoom;
+
+        const center = this.getTouchCenter(touch1, touch2);
+        this.pointer.pinchCenterX = center.x;
+        this.pointer.pinchCenterY = center.y;
+
+        // Clear any single-touch state
+        this.pointer.active = false;
+        this.resetInertia();
+      }
+
+      this.markInteraction();
+    }
+  }
+
+  /**
+   * Handle touch move event for pinch-to-zoom.
+   * Calculates the zoom factor based on finger distance change.
+   */
+  onTouchMove(event: TouchEvent): void {
+    // Update touch positions
+    for (let i = 0; i < event.changedTouches.length; i++) {
+      const touch = event.changedTouches[i];
+      if (this.pointer.activeTouches.has(touch.identifier)) {
+        this.pointer.activeTouches.set(touch.identifier, {
+          x: touch.clientX,
+          y: touch.clientY,
+        });
+      }
+    }
+
+    // Process pinch gesture
+    if (this.pointer.isPinching && this.pointer.activeTouches.size >= 2) {
+      const touches = Array.from(this.pointer.activeTouches.values());
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+
+      const currentDistance = this.getTouchDistance(touch1, touch2);
+      const startDistance = this.pointer.pinchStartDistance;
+      const startZoom = this.pointer.pinchStartZoom;
+
+      if (startDistance && startZoom && currentDistance > 0) {
+        // Calculate zoom ratio: larger distance = zoom in, smaller = zoom out
+        const pinchRatio = currentDistance / startDistance;
+        const newZoom = startZoom * pinchRatio;
+
+        // Apply zoom with center anchor
+        const center = this.getTouchCenter(touch1, touch2);
+
+        // Use cursor-anchored zoom for better UX
+        if (this.state.cameraMode === 'free') {
+          // In free mode, dolly instead of zoom
+          const delta = (pinchRatio - 1) * 200;
+          this.applyFreeLookDolly(delta);
+        } else {
+          // Clamp zoom value
+          const clampedZoom = this.helpers.clampZoomValue?.(newZoom) ?? newZoom;
+
+          if (Math.abs(clampedZoom - this.state.zoom) > 1e-6) {
+            // For anchored zoom, we need to adjust pan to keep the pinch center fixed
+            const { extents, rig } = this.helpers.resolveInteractionRig();
+            const rayBefore = this.helpers.worldRayFromCanvas?.(rig as any, this.canvas, center.x, center.y);
+            const pivotZ = this.state.pivot?.[2] ?? 0;
+            const anchorBefore = rayBefore ? this.helpers.intersectRayZPlane?.(rayBefore, pivotZ) : null;
+
+            // Apply new zoom
+            this.state.zoom = clampedZoom;
+
+            // Adjust pan to keep anchor point fixed
+            if (anchorBefore) {
+              const rigAfter = this.helpers.buildCameraRig?.(this.state, extents.paddingHint ?? 0, extents.paddedHalfWidth, extents.paddedHalfHeight);
+              const rayAfter = this.helpers.worldRayFromCanvas?.(rigAfter as any, this.canvas, center.x, center.y);
+              if (rayAfter) {
+                const anchorAfter = this.helpers.intersectRayZPlane?.(rayAfter, pivotZ);
+                if (anchorAfter) {
+                  this.state.panX += anchorBefore[0] - anchorAfter[0];
+                  this.state.panY += anchorBefore[1] - anchorAfter[1];
+                  this.updatePivotFromPan();
+                }
+              }
+            }
+          }
+        }
+
+        // Update pinch center for potential pan during pinch
+        this.pointer.pinchCenterX = center.x;
+        this.pointer.pinchCenterY = center.y;
+
+        this.state.cameraDirty = true;
+        this.markInteraction();
+        this.helpers.requestCameraEmitWhenStatic();
+      }
+
+      event.preventDefault();
+    }
+  }
+
+  /**
+   * Handle touch end event.
+   * Cleans up touch tracking and ends pinch gesture when fewer than 2 fingers remain.
+   */
+  onTouchEnd(event: TouchEvent): void {
+    // Remove ended touches from tracking
+    for (let i = 0; i < event.changedTouches.length; i++) {
+      const touch = event.changedTouches[i];
+      this.pointer.activeTouches.delete(touch.identifier);
+    }
+
+    // End pinch if fewer than 2 touches remain
+    if (this.pointer.activeTouches.size < 2) {
+      if (this.pointer.isPinching) {
+        this.pointer.isPinching = false;
+        this.pointer.pinchStartDistance = null;
+        this.pointer.pinchStartZoom = null;
+        this.pointer.pinchCenterX = null;
+        this.pointer.pinchCenterY = null;
+
+        this.helpers.requestCameraEmitWhenStatic();
+      }
+    } else {
+      // Still have 2+ fingers, reinitialize pinch with current positions
+      const touches = Array.from(this.pointer.activeTouches.values());
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+
+      this.pointer.pinchStartDistance = this.getTouchDistance(touch1, touch2);
+      this.pointer.pinchStartZoom = this.state.zoom;
+
+      const center = this.getTouchCenter(touch1, touch2);
+      this.pointer.pinchCenterX = center.x;
+      this.pointer.pinchCenterY = center.y;
+    }
+
+    // If no touches remaining, clean up completely
+    if (this.pointer.activeTouches.size === 0) {
+      this.releasePointer();
+    }
+  }
+
+  /**
+   * Reset touch state. Called when touch interaction is cancelled.
+   */
+  resetTouchState(): void {
+    this.pointer.activeTouches.clear();
+    this.pointer.isPinching = false;
+    this.pointer.pinchStartDistance = null;
+    this.pointer.pinchStartZoom = null;
+    this.pointer.pinchCenterX = null;
+    this.pointer.pinchCenterY = null;
+  }
 }
 
 export default CameraController;
+

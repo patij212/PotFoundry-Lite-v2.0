@@ -2832,6 +2832,13 @@ export const mount = async ({
     arcPrevQuat: null as Quaternion | null,
     arcInertiaAxis: null as Vec3 | null,
     arcInertiaSpeed: 0,
+    // Touch/pinch tracking
+    activeTouches: new Map(),
+    pinchStartDistance: null,
+    pinchStartZoom: null,
+    pinchCenterX: null,
+    pinchCenterY: null,
+    isPinching: false,
   };
 
   // Instantiate controller after pointer and state are created
@@ -3821,6 +3828,37 @@ export const mount = async ({
     event.preventDefault();
     focusCameraAtCursor(event.clientX, event.clientY);
   };
+
+  // Touch event handlers for pinch-to-zoom
+  const handleTouchStart = (event: TouchEvent): void => {
+    // For single touch, let pointer events handle it
+    // For multi-touch (2+ fingers), handle as pinch gesture
+    if (event.touches.length >= 2) {
+      event.preventDefault(); // Prevent browser zoom
+      cameraController?.onTouchStart?.(event);
+    } else if (event.touches.length === 1) {
+      // Track single touches for potential pinch gesture
+      cameraController?.onTouchStart?.(event);
+    }
+  };
+
+  const handleTouchMove = (event: TouchEvent): void => {
+    // Only handle multi-touch (pinch) moves
+    if (cameraController?.pointer?.isPinching) {
+      event.preventDefault(); // Prevent browser scroll/zoom
+      cameraController?.onTouchMove?.(event);
+    }
+  };
+
+  const handleTouchEnd = (event: TouchEvent): void => {
+    cameraController?.onTouchEnd?.(event);
+  };
+
+  // Add touch event listeners with passive:false to allow preventDefault
+  canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+  canvas.addEventListener('touchend', handleTouchEnd);
+  canvas.addEventListener('touchcancel', handleTouchEnd);
 
   const handleControlsClick = (event: MouseEvent): void => {
     const target = event.target;
@@ -5486,6 +5524,11 @@ export const mount = async ({
     canvas.removeEventListener('pointerup', handlePointerRelease);
     canvas.removeEventListener('pointercancel', handlePointerRelease);
     window.removeEventListener('pointerup', handlePointerRelease);
+    // Remove touch event listeners for pinch-to-zoom
+    canvas.removeEventListener('touchstart', handleTouchStart);
+    canvas.removeEventListener('touchmove', handleTouchMove);
+    canvas.removeEventListener('touchend', handleTouchEnd);
+    canvas.removeEventListener('touchcancel', handleTouchEnd);
     canvas.removeEventListener('dblclick', handleDoubleClick);
     canvas.removeEventListener('wheel', handleWheel, wheelOptions);
     if (controlsRoot) {
