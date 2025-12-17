@@ -254,6 +254,14 @@ class ThumbnailRenderer {
 
         // Build uniforms from design
         const uniforms = this.buildUniforms(design, width, height);
+
+        // DEBUG: Log key uniform values
+        console.log('[ThumbnailRenderer] Design:', design.title, design.style);
+        console.log('[ThumbnailRenderer] Geometry: H=', uniforms[0], 'Rt=', uniforms[1], 'Rb=', uniforms[2], 'expn=', uniforms[3]);
+        console.log('[ThumbnailRenderer] Camera eye:', uniforms[36], uniforms[37], uniforms[38]);
+        console.log('[ThumbnailRenderer] cells_x=', uniforms[16], 'cells_outer_y=', uniforms[17]);
+        console.log('[ThumbnailRenderer] VP matrix[0-3]:', uniforms[40], uniforms[41], uniforms[42], uniforms[43]);
+
         device.queue.writeBuffer(uniformBuffer, 0, uniforms.buffer);
 
         // Build style params
@@ -322,6 +330,7 @@ class ThumbnailRenderer {
         const cells_x = 120;      // matches uniforms[16]
         const cells_outer_y = 60; // matches uniforms[17]
         const vertexCount = this.calculateVertexCount(cells_x, cells_outer_y);
+        console.log('[ThumbnailRenderer] Drawing', vertexCount, 'vertices');
         renderPass.draw(vertexCount);
         renderPass.end();
 
@@ -518,7 +527,6 @@ class ThumbnailRenderer {
     ): Float32Array {
         // Build left-handed view matrix (lookAt LH)
         const eye: [number, number, number] = [eyeX, eyeY, eyeZ];
-        const target: [number, number, number] = [targetX, targetY, targetZ];
 
         // Forward = normalize(target - eye) for LEFT-HANDED
         const zAxis = this.normalize([targetX - eyeX, targetY - eyeY, targetZ - eyeZ]);
