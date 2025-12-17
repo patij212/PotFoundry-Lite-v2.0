@@ -14,6 +14,7 @@
 import potPreviewWgsl from '../assets/pot_preview.wgsl?raw';
 import { buildStyleParamPayload } from '../utils/styleParams';
 import type { LibraryDesign } from '../context/LibraryContext';
+import { manager } from '../infra/logging/MessageManager';
 
 // Constants matching webgpu_core.ts
 const UNIFORM_FLOAT_COUNT = 76;
@@ -255,12 +256,12 @@ class ThumbnailRenderer {
         // Build uniforms from design
         const uniforms = this.buildUniforms(design, width, height);
 
-        // DEBUG: Log key uniform values
-        console.log('[ThumbnailRenderer] Design:', design.title, design.style);
-        console.log('[ThumbnailRenderer] Geometry: H=', uniforms[0], 'Rt=', uniforms[1], 'Rb=', uniforms[2], 'expn=', uniforms[3]);
-        console.log('[ThumbnailRenderer] Camera eye:', uniforms[36], uniforms[37], uniforms[38]);
-        console.log('[ThumbnailRenderer] cells_x=', uniforms[16], 'cells_outer_y=', uniforms[17]);
-        console.log('[ThumbnailRenderer] VP matrix[0-3]:', uniforms[40], uniforms[41], uniforms[42], uniforms[43]);
+        // DEBUG: Log key uniform values using MessageManager for visibility
+        manager.warn('THUMB_DEBUG', 'Design: ' + design.title + ' style=' + design.style);
+        manager.warn('THUMB_DEBUG', `Geometry: H=${uniforms[0]} Rt=${uniforms[1]} Rb=${uniforms[2]} expn=${uniforms[3]}`);
+        manager.warn('THUMB_DEBUG', `Camera eye: ${uniforms[36]}, ${uniforms[37]}, ${uniforms[38]}`);
+        manager.warn('THUMB_DEBUG', `cells_x=${uniforms[16]} cells_outer_y=${uniforms[17]}`);
+        manager.warn('THUMB_DEBUG', `VP matrix[0-3]: ${uniforms[40]}, ${uniforms[41]}, ${uniforms[42]}, ${uniforms[43]}`);
 
         device.queue.writeBuffer(uniformBuffer, 0, uniforms.buffer);
 
@@ -330,7 +331,7 @@ class ThumbnailRenderer {
         const cells_x = 120;      // matches uniforms[16]
         const cells_outer_y = 60; // matches uniforms[17]
         const vertexCount = this.calculateVertexCount(cells_x, cells_outer_y);
-        console.log('[ThumbnailRenderer] Drawing', vertexCount, 'vertices');
+        manager.warn('THUMB_DEBUG', `Drawing ${vertexCount} vertices`);
         renderPass.draw(vertexCount);
         renderPass.end();
 
