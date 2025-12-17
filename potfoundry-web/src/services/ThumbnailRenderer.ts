@@ -10,6 +10,7 @@
  * - Immediate disposal of per-render resources
  */
 
+/// <reference types="vite/client" />
 import potPreviewWgsl from '../assets/pot_preview.wgsl?raw';
 import { buildStyleParamPayload } from '../utils/styleParams';
 import type { LibraryDesign } from '../context/LibraryContext';
@@ -257,15 +258,15 @@ class ThumbnailRenderer {
 
         // Build uniforms from design
         const uniforms = this.buildUniforms(design, width, height);
-        device.queue.writeBuffer(uniformBuffer, 0, uniforms);
+        device.queue.writeBuffer(uniformBuffer, 0, uniforms.buffer);
 
         // Build style params
-        const [styleId, styleParams] = buildStyleParamPayload(design.style, design.opts as Record<string, unknown>);
+        const [, styleParams] = buildStyleParamPayload(design.style, design.opts as Record<string, unknown>);
         const styleData = new Float32Array(STYLE_PARAM_CAPACITY);
         for (let i = 0; i < styleParams.length && i < STYLE_PARAM_CAPACITY; i++) {
             styleData[i] = styleParams[i];
         }
-        device.queue.writeBuffer(styleParamBuffer, 0, styleData);
+        device.queue.writeBuffer(styleParamBuffer, 0, styleData.buffer);
 
         // Write color uniforms (terracotta gradient)
         const c1 = new Float32Array([0.78, 0.36, 0.22, 1.0]); // Bottom
@@ -321,10 +322,10 @@ class ThumbnailRenderer {
         renderPass.setBindGroup(0, bindGroup);
 
         // Draw the pot (vertex shader generates vertices procedurally)
-        // We need to calculate vertex count based on resolution
-        const nTheta = 120;
-        const nZ = 60;
-        const vertexCount = this.calculateVertexCount(nTheta, nZ);
+        // Resolution must match uniforms[16] (cells_x) and uniforms[17] (cells_outer_y)
+        const cells_x = 120;      // matches uniforms[16]
+        const cells_outer_y = 60; // matches uniforms[17]
+        const vertexCount = this.calculateVertexCount(cells_x, cells_outer_y);
         renderPass.draw(vertexCount);
         renderPass.end();
 
@@ -541,21 +542,30 @@ class ThumbnailRenderer {
 
     /**
      * Calculate total vertex count for all segments
+     * Must match the WGSL shader's vertex generation logic
      */
-    private calculateVertexCount(nTheta: number, nZ: number): number {
-        // Outer wall: nTheta * nZ * 2 triangles * 3 vertices
-        // Inner wall: same
-        // Bottom: nTheta * bottomRings * 2 * 3
-        // Rim: nTheta * rimRings * 2 * 3
-        // Drain: nTheta * 2 * 2 * 3
-        const bottomRings = 20;
-        const rimRings = 10;
-        const outer = nTheta * nZ * 6;
-        const inner = nTheta * nZ * 6;
-        const bottom = nTheta * bottomRings * 6 * 2; // top and bottom
-        const rim = nTheta * rimRings * 6;
-        const drain = nTheta * 6 * 2;
-        return outer + inner + bottom + rim + drain;
+    private calculateVertexCount(cells_x: number, cells_outer_y: number): number {
+        // Matching shader logic from vs_main:
+        // - 3 vertices for background fullscreen triangle
+        // - 6 vertices for ground plane (2 triangles)
+        // - Pot mesh segments (each cell = 6 vertices for 2 triangles)
+
+        const inner_y = 60;       // Must match uniforms[27]
+        const bottom_rings = 20;  // Must match uniforms[28]
+        const rim_rings = 10;     // Must match uniforms[30]
+
+        const cells_outer = cells_x * cells_outer_y;
+        const cells_inner = cells_x * inner_y;
+        const cells_bottom_top = cells_x * bottom_rings;
+        const cells_bottom_under = cells_x * bottom_rings;
+        const cells_rim = cells_x * rim_rings;
+        const cells_drain = cells_x * bottom_rings;
+
+        const total_pot_cells = cells_outer + cells_inner + cells_bottom_top +
+            cells_bottom_under + cells_rim + cells_drain;
+
+        // 3 background + 6 ground + pot mesh vertices (6 per cell)
+        return 3 + 6 + (total_pot_cells * 6);
     }
 
     /**
