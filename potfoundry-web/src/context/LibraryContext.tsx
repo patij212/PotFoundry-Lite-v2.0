@@ -97,6 +97,15 @@ export interface LibraryDesign {
     flare_exp?: number;
   };
   opts?: Record<string, unknown>;
+  // Appearance/color settings
+  appearance?: {
+    primaryColor?: string;    // Bottom of pot gradient (hex)
+    midColor?: string;        // Middle of pot gradient (hex)
+    secondaryColor?: string;  // Top of pot gradient (hex)
+    gradient?: [string, string]; // Background gradient colors
+    gradientAngle?: number;   // Background gradient angle in degrees
+    lightingPreset?: string;  // Lighting preset name
+  };
   mesh?: {
     n_theta?: number;
     n_z?: number;
@@ -374,6 +383,17 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
             state.setStyleOpts(opts as Record<string, number | boolean>);
           }
         }
+
+        // Sync appearance (colors) if available
+        const appearance = fullDesign.appearance;
+        if (appearance) {
+          if (appearance.primaryColor) state.setPrimaryColor(appearance.primaryColor);
+          if (appearance.midColor) state.setMidColor(appearance.midColor);
+          if (appearance.secondaryColor) state.setSecondaryColor(appearance.secondaryColor);
+          if (appearance.gradient) state.setBackgroundGradient(appearance.gradient);
+          if (appearance.gradientAngle !== undefined) state.setGradientAngle(appearance.gradientAngle);
+          if (appearance.lightingPreset) state.setLightingPreset(appearance.lightingPreset);
+        }
       }
     }
   }, [controller]);
@@ -438,6 +458,15 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
           bell_amp: storeState.geometry.bellAmp,
           bell_center: storeState.geometry.bellCenter,
           bell_width: storeState.geometry.bellWidth,
+        },
+        // Store appearance/color settings
+        appearance: {
+          primaryColor: storeState.appearance.primaryColor,
+          midColor: storeState.appearance.midColor,
+          secondaryColor: storeState.appearance.secondaryColor,
+          gradient: storeState.appearance.gradient,
+          gradientAngle: storeState.appearance.gradientAngle,
+          lightingPreset: storeState.appearance.lightingPreset,
         },
       };
 

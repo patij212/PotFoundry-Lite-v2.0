@@ -268,18 +268,46 @@ class ThumbnailRenderer {
         }
         device.queue.writeBuffer(styleParamBuffer, 0, styleData.buffer);
 
-        // Write color uniforms (terracotta gradient)
-        const c1 = new Float32Array([0.78, 0.36, 0.22, 1.0]); // Bottom
-        const c2 = new Float32Array([0.81, 0.48, 0.36, 1.0]); // Mid
-        const c3 = new Float32Array([0.83, 0.65, 0.45, 1.0]); // Top
+        // Helper: convert hex color to linear RGB (with gamma correction)
+        const hexToLinear = (hex: string, fallback: [number, number, number]): [number, number, number] => {
+            if (!hex || typeof hex !== 'string') return fallback;
+            const h = hex.replace('#', '');
+            if (h.length !== 6) return fallback;
+            const r = parseInt(h.slice(0, 2), 16) / 255;
+            const g = parseInt(h.slice(2, 4), 16) / 255;
+            const b = parseInt(h.slice(4, 6), 16) / 255;
+            // Apply gamma correction (sRGB to linear)
+            return [Math.pow(r, 2.2), Math.pow(g, 2.2), Math.pow(b, 2.2)];
+        };
+
+        // Use design colors if available, otherwise fallback to terracotta
+        const appearance = design.appearance || {};
+        const primaryRgb = hexToLinear(appearance.primaryColor || '', [0.78, 0.36, 0.22]);
+        const midRgb = hexToLinear(appearance.midColor || '', [0.81, 0.48, 0.36]);
+        const secondaryRgb = hexToLinear(appearance.secondaryColor || '', [0.83, 0.65, 0.45]);
+
+        const c1 = new Float32Array([primaryRgb[0], primaryRgb[1], primaryRgb[2], 1.0]); // Bottom
+        const c2 = new Float32Array([midRgb[0], midRgb[1], midRgb[2], 1.0]); // Mid
+        const c3 = new Float32Array([secondaryRgb[0], secondaryRgb[1], secondaryRgb[2], 1.0]); // Top
         device.queue.writeBuffer(colorBuffers.c1, 0, c1);
         device.queue.writeBuffer(colorBuffers.c2, 0, c2);
         device.queue.writeBuffer(colorBuffers.c3, 0, c3);
 
-        // Write background gradient (dark blue)
-        const bg1 = new Float32Array([0.10, 0.10, 0.18, 0.0]); // Bottom + angle
-        const bg2 = new Float32Array([0.09, 0.13, 0.24, 0.0]); // Mid
-        const bg3 = new Float32Array([0.08, 0.10, 0.20, 0.0]); // Top
+        // Use design background gradient if available
+        const bgGradient = appearance.gradient || ['#1a1a2e', '#16213e'];
+        const bgAngle = (appearance.gradientAngle || 0) * Math.PI / 180;
+        const bg1Rgb = hexToLinear(bgGradient[0], [0.10, 0.10, 0.18]);
+        const bg2Rgb = hexToLinear(bgGradient[1] || bgGradient[0], [0.09, 0.13, 0.24]);
+        // Interpolate middle color
+        const bg3Rgb: [number, number, number] = [
+            (bg1Rgb[0] + bg2Rgb[0]) * 0.5,
+            (bg1Rgb[1] + bg2Rgb[1]) * 0.5,
+            (bg1Rgb[2] + bg2Rgb[2]) * 0.5,
+        ];
+
+        const bg1 = new Float32Array([bg1Rgb[0], bg1Rgb[1], bg1Rgb[2], bgAngle]); // Bottom + angle
+        const bg2 = new Float32Array([bg3Rgb[0], bg3Rgb[1], bg3Rgb[2], 0.0]); // Mid (interpolated)
+        const bg3 = new Float32Array([bg2Rgb[0], bg2Rgb[1], bg2Rgb[2], 0.0]); // Top
         device.queue.writeBuffer(bgBuffers.c1, 0, bg1);
         device.queue.writeBuffer(bgBuffers.c2, 0, bg2);
         device.queue.writeBuffer(bgBuffers.c3, 0, bg3);
