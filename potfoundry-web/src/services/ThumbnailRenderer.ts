@@ -125,13 +125,14 @@ class ThumbnailRenderer {
             };
 
             // Create bind group layout
+            // Note: Color buffers (1-3) need VERTEX visibility because gradient_color() is called from vs_main
             const bindGroupLayout = device.createBindGroupLayout({
                 label: 'thumbnail-bind-group-layout',
                 entries: [
                     { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-                    { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-                    { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-                    { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                     { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
                     { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                     { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
