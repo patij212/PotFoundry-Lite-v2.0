@@ -5,15 +5,24 @@
 
 .pf-design-thumbnail {
     position: relative;
-    background: var(--pf-surface-1, rgba(0, 0, 0, 0.25));
-    border-radius: 4px;
+    background: linear-gradient(145deg, #1a1a2e, #16162a);
+    border-radius: 8px;
     overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pf-design-thumbnail:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
 }
 
 .pf-design-thumbnail__canvas {
     display: block;
     width: 100%;
     height: 100%;
+    border-radius: 7px;
 }
 
 .pf-design-thumbnail__placeholder {
@@ -25,12 +34,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+    background: linear-gradient(145deg, #1a1a2e, #16162a);
 }
 
 .pf-design-thumbnail__loader {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border: 2px solid rgba(255, 255, 255, 0.1);
     border-top-color: var(--pf-accent, #6366f1);
     border-radius: 50%;

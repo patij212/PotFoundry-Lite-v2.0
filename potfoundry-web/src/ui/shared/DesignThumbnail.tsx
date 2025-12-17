@@ -158,14 +158,6 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
             // Convert snake_case database opts to camelCase for style functions
             const styleOpts = convertOptsToStyleParams(rawOpts);
 
-            console.log('[DesignThumbnail] Rendering design:', {
-                title: design.title,
-                style: design.style,
-                size,
-                rawOpts,
-                styleOpts
-            });
-
             const H = size.height || 120;
             const topOd = size.top_od || 140;
             const bottomOd = size.bottom_od || 90;
@@ -200,17 +192,14 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
                 bellWidth: (styleOpts.bellWidth as number) || 0.22,
             };
 
-            console.log('[DesignThumbnail] potParams:', potParams);
-            console.log('[DesignThumbnail] styleId:', styleId, 'style:', design.style);
-
             // Generate geometry - pass converted styleOpts for style-specific parameters
             const geometry = generatePotGeometry(potParams, styleOpts);
 
-            // Create material
+            // Create material - slightly more metallic for visual appeal
             const material = new THREE.MeshStandardMaterial({
                 vertexColors: true,
-                roughness: 0.6,
-                metalness: 0.1,
+                roughness: 0.45,
+                metalness: 0.15,
                 side: THREE.DoubleSide,
             });
 
@@ -218,26 +207,44 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
             const mesh = new THREE.Mesh(geometry, material);
             scene.add(mesh);
 
-            // Add lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            // === Enhanced 3-point lighting setup ===
+            // Ambient - soft fill for shadows
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
             scene.add(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(1, 2, 2);
-            scene.add(directionalLight);
+            // Key light - main light from upper right
+            const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            keyLight.position.set(100, 200, 150);
+            scene.add(keyLight);
 
-            // Position camera to frame the pot
+            // Fill light - softer from left
+            const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+            fillLight.position.set(-100, 100, -50);
+            scene.add(fillLight);
+
+            // Rim light - from behind for edge definition
+            const rimLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            rimLight.position.set(0, -50, -150);
+            scene.add(rimLight);
+
+            // === Gradient background ===
+            scene.background = new THREE.Color(0x1a1a2e);
+
+            // === Camera positioning - 3/4 view from slightly above ===
             const boundingBox = new THREE.Box3().setFromObject(mesh);
             const center = boundingBox.getCenter(new THREE.Vector3());
             const size3 = boundingBox.getSize(new THREE.Vector3());
             const maxDim = Math.max(size3.x, size3.y, size3.z);
 
+            // Position: front-right, slightly above, looking at center
+            const cameraDistance = maxDim * 1.5;
+            const cameraAngle = Math.PI / 5; // ~36 degrees from front
             camera.position.set(
-                center.x + maxDim * 0.8,
-                center.y + maxDim * 0.3,
-                center.z + maxDim * 0.8
+                center.x + Math.sin(cameraAngle) * cameraDistance,
+                center.y + maxDim * 0.4, // Slightly above
+                center.z + Math.cos(cameraAngle) * cameraDistance
             );
-            camera.lookAt(center);
+            camera.lookAt(center.x, center.y + maxDim * 0.1, center.z);
 
             // Render once
             renderer.render(scene, camera);
