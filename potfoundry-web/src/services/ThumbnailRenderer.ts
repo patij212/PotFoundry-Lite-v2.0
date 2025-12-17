@@ -236,22 +236,17 @@ class ThumbnailRenderer {
         const { design, width, height } = request;
         const { device, pipeline, uniformBuffer, styleParamBuffer, colorBuffers, bgBuffers, bindGroupLayout } = this.resources!;
 
-        // Create offscreen canvas
-        const canvas = new OffscreenCanvas(width, height);
-        const context = canvas.getContext('webgpu');
-        if (!context) {
-            console.error('[ThumbnailRenderer] Failed to get WebGPU context');
-            return null;
-        }
-
-        context.configure({
-            device,
+        // Create intermediate render target texture (with COPY_SRC for pixel readback)
+        const renderTexture = device.createTexture({
+            label: 'thumbnail-render-target',
+            size: [width, height],
             format: 'rgba8unorm',
-            alphaMode: 'premultiplied',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
         });
 
         // Create depth texture for this render
         const depthTexture = device.createTexture({
+            label: 'thumbnail-depth',
             size: [width, height],
             format: 'depth24plus',
             usage: GPUTextureUsage.RENDER_ATTACHMENT,
@@ -300,13 +295,13 @@ class ThumbnailRenderer {
             ],
         });
 
-        // Encode and submit render
-        const commandEncoder = device.createCommandEncoder();
-        const textureView = context.getCurrentTexture().createView();
+        // Encode and submit render to intermediate texture
+        const commandEncoder = device.createCommandEncoder({ label: 'thumbnail-render' });
+        const renderTextureView = renderTexture.createView();
 
         const renderPass = commandEncoder.beginRenderPass({
             colorAttachments: [{
-                view: textureView,
+                view: renderTextureView,
                 clearValue: { r: 0.1, g: 0.1, b: 0.18, a: 1.0 },
                 loadOp: 'clear',
                 storeOp: 'store',
@@ -330,18 +325,46 @@ class ThumbnailRenderer {
         renderPass.draw(vertexCount);
         renderPass.end();
 
+        // Copy from render texture to buffer for pixel readback
+        const bytesPerRow = Math.ceil(width * 4 / 256) * 256;
+        const bufferSize = bytesPerRow * height;
+        const readBuffer = device.createBuffer({
+            label: 'thumbnail-read-buffer',
+            size: bufferSize,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+
+        commandEncoder.copyTextureToBuffer(
+            { texture: renderTexture },
+            { buffer: readBuffer, bytesPerRow },
+            { width, height }
+        );
+
         device.queue.submit([commandEncoder.finish()]);
 
         // Wait for GPU to finish
         await device.queue.onSubmittedWorkDone();
 
-        // Read pixels back
-        const imageData = await this.readPixels(device, context, width, height);
+        // Read pixels from buffer
+        await readBuffer.mapAsync(GPUMapMode.READ);
+        const data = new Uint8ClampedArray(readBuffer.getMappedRange());
+
+        // Copy to properly-sized array (remove padding)
+        const pixels = new Uint8ClampedArray(width * height * 4);
+        for (let y = 0; y < height; y++) {
+            const srcOffset = y * bytesPerRow;
+            const dstOffset = y * width * 4;
+            pixels.set(data.subarray(srcOffset, srcOffset + width * 4), dstOffset);
+        }
+
+        readBuffer.unmap();
 
         // Cleanup per-render resources
+        readBuffer.destroy();
+        renderTexture.destroy();
         depthTexture.destroy();
 
-        return imageData;
+        return new ImageData(pixels, width, height);
     }
 
     /**
@@ -564,52 +587,8 @@ class ThumbnailRenderer {
 
         const total_pot_cells = cells_outer + cells_inner + cells_bottom_top +
             cells_bottom_under + cells_rim + cells_drain;
-
         // 3 background + 6 ground + pot mesh vertices (6 per cell)
         return 3 + 6 + (total_pot_cells * 6);
-    }
-
-    /**
-     * Read pixels from the rendered texture
-     */
-    private async readPixels(
-        device: GPUDevice,
-        context: GPUCanvasContext,
-        width: number,
-        height: number
-    ): Promise<ImageData | null> {
-        const texture = context.getCurrentTexture();
-        const bytesPerRow = Math.ceil(width * 4 / 256) * 256;
-        const bufferSize = bytesPerRow * height;
-
-        const readBuffer = device.createBuffer({
-            size: bufferSize,
-            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-        });
-
-        const commandEncoder = device.createCommandEncoder();
-        commandEncoder.copyTextureToBuffer(
-            { texture },
-            { buffer: readBuffer, bytesPerRow },
-            { width, height }
-        );
-        device.queue.submit([commandEncoder.finish()]);
-
-        await readBuffer.mapAsync(GPUMapMode.READ);
-        const data = new Uint8ClampedArray(readBuffer.getMappedRange());
-
-        // Copy to properly-sized array (remove padding)
-        const pixels = new Uint8ClampedArray(width * height * 4);
-        for (let y = 0; y < height; y++) {
-            const srcOffset = y * bytesPerRow;
-            const dstOffset = y * width * 4;
-            pixels.set(data.subarray(srcOffset, srcOffset + width * 4), dstOffset);
-        }
-
-        readBuffer.unmap();
-        readBuffer.destroy();
-
-        return new ImageData(pixels, width, height);
     }
 
     /**
