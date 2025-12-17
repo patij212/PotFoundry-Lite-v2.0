@@ -261,7 +261,36 @@ class ThumbnailRenderer {
         manager.warn('THUMB_DEBUG', `Geometry: H=${uniforms[0]} Rt=${uniforms[1]} Rb=${uniforms[2]} expn=${uniforms[3]}`);
         manager.warn('THUMB_DEBUG', `Camera eye: ${uniforms[36]}, ${uniforms[37]}, ${uniforms[38]}`);
         manager.warn('THUMB_DEBUG', `cells_x=${uniforms[16]} cells_outer_y=${uniforms[17]}`);
-        manager.warn('THUMB_DEBUG', `VP matrix[0-3]: ${uniforms[40]}, ${uniforms[41]}, ${uniforms[42]}, ${uniforms[43]}`);
+
+        // Check for NaN in critical values
+        const criticalIndices = [0, 1, 2, 3, 16, 17, 36, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47];
+        const nanIndices = criticalIndices.filter(i => !Number.isFinite(uniforms[i]));
+        if (nanIndices.length > 0) {
+            manager.warn('THUMB_DEBUG', `WARNING: NaN/Inf at indices: ${nanIndices.join(', ')}`);
+        }
+
+        // Log full VP matrix (indices 40-55)
+        manager.warn('THUMB_DEBUG', `VP matrix col0: ${uniforms[40]}, ${uniforms[41]}, ${uniforms[42]}, ${uniforms[43]}`);
+        manager.warn('THUMB_DEBUG', `VP matrix col1: ${uniforms[44]}, ${uniforms[45]}, ${uniforms[46]}, ${uniforms[47]}`);
+        manager.warn('THUMB_DEBUG', `VP matrix col2: ${uniforms[48]}, ${uniforms[49]}, ${uniforms[50]}, ${uniforms[51]}`);
+        manager.warn('THUMB_DEBUG', `VP matrix col3: ${uniforms[52]}, ${uniforms[53]}, ${uniforms[54]}, ${uniforms[55]}`);
+
+        // Test: project a sample point at origin (where pot center should be)
+        // out = VP * [0, 0, 0, 1]
+        const testX = uniforms[52]; // col3.x = translation.x after VP
+        const testY = uniforms[53]; // col3.y = translation.y after VP
+        const testZ = uniforms[54]; // col3.z = translation.z after VP
+        const testW = uniforms[55]; // col3.w
+        manager.warn('THUMB_DEBUG', `Origin projects to clip: x=${testX}, y=${testY}, z=${testZ}, w=${testW}`);
+        if (testW !== 0) {
+            const ndcX = testX / testW;
+            const ndcY = testY / testW;
+            const ndcZ = testZ / testW;
+            manager.warn('THUMB_DEBUG', `Origin NDC: x=${ndcX.toFixed(3)}, y=${ndcY.toFixed(3)}, z=${ndcZ.toFixed(3)}`);
+            if (ndcZ < 0 || ndcZ > 1) {
+                manager.warn('THUMB_DEBUG', 'WARNING: Origin Z outside [0,1] - pot may be clipped!');
+            }
+        }
 
         device.queue.writeBuffer(uniformBuffer, 0, uniforms.buffer);
 
