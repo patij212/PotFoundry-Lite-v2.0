@@ -111,6 +111,13 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
             const size = design.size || {};
             const opts = (design.opts || {}) as Record<string, number | boolean>;
 
+            console.log('[DesignThumbnail] Rendering design:', {
+                title: design.title,
+                style: design.style,
+                size,
+                opts
+            });
+
             const H = size.height || 120;
             const topOd = size.top_od || 140;
             const bottomOd = size.bottom_od || 90;
@@ -122,7 +129,7 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
             // Get style ID
             const styleId = STYLE_NAME_TO_ID[design.style] ?? 0;
 
-            // Build pot params - low poly for performance
+            // Build pot params - need sufficient resolution for style patterns
             const potParams: PotParams = {
                 H,
                 Rt: topOd / 2,
@@ -131,7 +138,7 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
                 tBottom,
                 rDrain,
                 expn,
-                nTheta: 24,  // Low poly for thumbnails
+                nTheta: 120,  // High resolution for style patterns
                 nZ: 20,
                 styleId,
                 spinTurns: (opts.spinTurns as number) || 0,
@@ -145,7 +152,10 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
                 bellWidth: (opts.bellWidth as number) || 0.22,
             };
 
-            // Generate geometry
+            console.log('[DesignThumbnail] potParams:', potParams);
+            console.log('[DesignThumbnail] styleId:', styleId, 'style:', design.style);
+
+            // Generate geometry - pass all opts for style-specific parameters
             const geometry = generatePotGeometry(potParams, opts as Record<string, number | boolean>);
 
             // Create material
