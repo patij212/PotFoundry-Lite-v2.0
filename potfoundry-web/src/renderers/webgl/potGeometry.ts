@@ -35,20 +35,13 @@ export interface PotParams {
     bellWidth?: number;  // Bell width
 }
 
-// Map numeric style IDs to style names
+// Map numeric style IDs to style names - must match STYLE_ID_MAP in utils/styleParams.ts
 const STYLE_ID_TO_NAME: Record<number, StyleId> = {
     0: 'SuperformulaBlossom',
-    1: 'VerticalFlutes',
+    1: 'FourierBloom',
     2: 'SpiralRidges',
-    3: 'OrganicWave',
-    4: 'HexagonFacets',
-    5: 'DiamondGrid',
-    6: 'RippleWaves',
-    7: 'TwistedHelix',
-    8: 'GothicArches',
-    9: 'ScallopShell',
-    10: 'LotusPetals',
-    11: 'Honeycomb',
+    3: 'SuperellipseMorph',
+    4: 'HarmonicRipple',
 };
 
 /**

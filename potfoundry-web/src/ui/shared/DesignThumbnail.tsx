@@ -13,24 +13,13 @@ import type { LibraryDesign } from '../../context/LibraryContext';
 import { generatePotGeometry, PotParams } from '../../renderers/webgl/potGeometry';
 import './DesignThumbnail.css';
 
-// Style name to ID mapping (inverse of STYLE_ID_TO_NAME in potGeometry.ts)
+// Style name to ID mapping - must match STYLE_IDS from geometry/types.ts
 const STYLE_NAME_TO_ID: Record<string, number> = {
     'SuperformulaBlossom': 0,
-    'VerticalFlutes': 1,
+    'FourierBloom': 1,        // Correct: was incorrectly 0
     'SpiralRidges': 2,
-    'OrganicWave': 3,
-    'HexagonFacets': 4,
-    'DiamondGrid': 5,
-    'RippleWaves': 6,
-    'TwistedHelix': 7,
-    'GothicArches': 8,
-    'ScallopShell': 9,
-    'LotusPetals': 10,
-    'Honeycomb': 11,
-    'HarmonicRipple': 6, // Maps to RippleWaves
-    'FourierBloom': 0,   // Maps to SuperformulaBlossom
-    'SuperellipseMorph': 0,
-    'LowPolyFacet': 4,   // Maps to HexagonFacets
+    'SuperellipseMorph': 3,   // Correct: was incorrectly 0
+    'HarmonicRipple': 4,      // Correct: was incorrectly 6
 };
 
 // Map database snake_case opts to camelCase expected by style functions
@@ -289,6 +278,11 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
             )}
         </div>
     );
+}, (prevProps, nextProps) => {
+    // Only skip re-render if same design ID - ensures each design gets its own thumbnail
+    return prevProps.design.id === nextProps.design.id &&
+        prevProps.width === nextProps.width &&
+        prevProps.height === nextProps.height;
 });
 
 DesignThumbnail.displayName = 'DesignThumbnail';
