@@ -275,16 +275,12 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
             // Render once
             renderer.render(scene, camera);
 
-            // IMMEDIATELY dispose WebGL resources to prevent context accumulation
-            // The canvas retains the rendered pixels even after WebGL is disposed
+            // Dispose WebGL resources to limit context accumulation
+            // Note: We do NOT call loseContext() as that clears the canvas pixels
             mesh.geometry.dispose();
             (mesh.material as THREE.Material).dispose();
             scene.clear();
             renderer.dispose();
-            // Force loss of context to free GPU resources
-            const gl = renderer.getContext();
-            const ext = gl.getExtension('WEBGL_lose_context');
-            if (ext) ext.loseContext();
 
             setHasRendered(true);
 
