@@ -223,8 +223,8 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
                 bellWidth: (styleOpts.bellWidth as number) || 0.22,
             };
 
-            // DEBUG: Log what each thumbnail is rendering
-            manager.info('THUMB_RENDER', `Rendering ${design.title}`, {
+            // DEBUG: Log what each thumbnail is rendering (using WARN level for visibility)
+            manager.warn('THUMB_RENDER', `Rendering ${design.title}`, {
                 designId: design.id,
                 style: design.style,
                 styleId,
