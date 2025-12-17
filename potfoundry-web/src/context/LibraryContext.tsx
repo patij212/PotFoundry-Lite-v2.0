@@ -317,9 +317,9 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     const bellCenter = (opts.bell_center as number) ?? 0.5;
     const bellWidth = (opts.bell_width as number) ?? 0.22;
 
-    // Extract spin/twist parameters from opts (stored in snake_case)
+    // Extract spin/twist parameters from opts (stored in snake_case, degrees for phase)
     const spinTurns = (opts.spin_turns as number) ?? 0;
-    const spinPhase = (opts.spin_phase as number) ?? 0; // Already in radians from DB
+    const spinPhaseDeg = (opts.spin_phase as number) ?? 0; // Stored in DEGREES (like UI)
     const spinCurve = (opts.spin_curve as number) ?? 1;
 
     const [styleId, styleParams] = buildStyleParamPayload(fullDesign.style, opts);
@@ -332,7 +332,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
       H, Rt, Rb, expn, t_wall, t_bottom, r_drain, drain: r_drain,
       bellAmp, bellCenter, bellWidth,
       spin_turns: spinTurns,
-      spin_phase: spinPhase,
+      spin_phase: spinPhaseDeg * Math.PI / 180, // Convert degrees to radians for WebGPU
       spin_curve: spinCurve,
       styleId, styleParams,
       sceneRadius: sceneRadius * 1.2,
@@ -361,9 +361,9 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
           bellAmp,
           bellCenter,
           bellWidth,
-          // Spin/twist params - convert spinPhase from radians to degrees for UI slider
+          // Spin/twist params - pass degrees directly (UI stores degrees)
           spinTurns,
-          spinPhase: spinPhase * 180 / Math.PI,
+          spinPhase: spinPhaseDeg,
           spinCurve,
         });
 
