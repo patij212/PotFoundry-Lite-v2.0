@@ -11,6 +11,7 @@ import React, { useRef, useEffect, useState, memo } from 'react';
 import * as THREE from 'three';
 import type { LibraryDesign } from '../../context/LibraryContext';
 import { generatePotGeometry, PotParams } from '../../renderers/webgl/potGeometry';
+import manager from '../../infra/logging/MessageManager';
 import './DesignThumbnail.css';
 
 // Style name to ID mapping - must match STYLE_IDS from geometry/types.ts
@@ -221,6 +222,15 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
                 bellCenter: (styleOpts.bellCenter as number) || 0.5,
                 bellWidth: (styleOpts.bellWidth as number) || 0.22,
             };
+
+            // DEBUG: Log what each thumbnail is rendering
+            manager.info('THUMB_RENDER', `Rendering ${design.title}`, {
+                designId: design.id,
+                style: design.style,
+                styleId,
+                rawOpts: JSON.stringify(rawOpts),
+                styleOpts: JSON.stringify(styleOpts),
+            });
 
             // Generate geometry - pass converted styleOpts for style-specific parameters
             const geometry = generatePotGeometry(potParams, styleOpts);
