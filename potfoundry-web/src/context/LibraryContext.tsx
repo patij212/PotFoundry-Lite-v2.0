@@ -317,6 +317,11 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     const bellCenter = (opts.bell_center as number) ?? 0.5;
     const bellWidth = (opts.bell_width as number) ?? 0.22;
 
+    // Extract spin/twist parameters from opts (stored in snake_case)
+    const spinTurns = (opts.spin_turns as number) ?? 0;
+    const spinPhase = (opts.spin_phase as number) ?? 0; // Already in radians from DB
+    const spinCurve = (opts.spin_curve as number) ?? 1;
+
     const [styleId, styleParams] = buildStyleParamPayload(fullDesign.style, opts);
 
     const baseRadius = Math.max(Rt, Rb, 1);
@@ -326,6 +331,9 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
     const wgpuParams: Record<string, unknown> = {
       H, Rt, Rb, expn, t_wall, t_bottom, r_drain, drain: r_drain,
       bellAmp, bellCenter, bellWidth,
+      spin_turns: spinTurns,
+      spin_phase: spinPhase,
+      spin_curve: spinCurve,
       styleId, styleParams,
       sceneRadius: sceneRadius * 1.2,
       scenePadding: 1.2,
@@ -341,7 +349,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
       if (store) {
         const state = store.getState();
 
-        // Sync geometry
+        // Sync geometry (including spin/twist params for UI sliders)
         state.setGeometryParams({
           H,
           top_od,
@@ -353,6 +361,10 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
           bellAmp,
           bellCenter,
           bellWidth,
+          // Spin/twist params - convert spinPhase from radians to degrees for UI slider
+          spinTurns,
+          spinPhase: spinPhase * 180 / Math.PI,
+          spinCurve,
         });
 
         // Sync style
