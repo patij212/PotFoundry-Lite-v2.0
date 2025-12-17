@@ -33,6 +33,51 @@ const STYLE_NAME_TO_ID: Record<string, number> = {
     'LowPolyFacet': 4,   // Maps to HexagonFacets
 };
 
+// Map database snake_case opts to camelCase expected by style functions
+const OPTS_KEY_MAP: Record<string, string> = {
+    // Superformula Blossom parameters
+    'sf_m_base': 'sfMBase',
+    'sf_m_top': 'sfMTop',
+    'sf_m_curve_exp': 'sfMCurveExp',
+    'sf_n1': 'sfN1',
+    'sf_n1_top': 'sfN1Top',
+    'sf_n2': 'sfN2',
+    'sf_n2_top': 'sfN2Top',
+    'sf_n3': 'sfN3',
+    'sf_n3_top': 'sfN3Top',
+    'sf_a': 'sfA',
+    'sf_b': 'sfB',
+    'sf_strength': 'sfStrength',
+    // Fourier Bloom parameters
+    'fb_strength': 'fbStrength',
+    'fb_base_cos8_amp': 'fbBaseCos8Amp',
+    'fb_top_cos11_amp': 'fbTopCos11Amp',
+    'fb_wobble_amp': 'fbWobbleAmp',
+    'fb_wobble_freq': 'fbWobbleFreq',
+    // Spiral parameters
+    'spiral_k': 'spiralK',
+    'spiral_turns': 'spiralTurns',
+    // Generic parameters (pass through)
+    'spinTurns': 'spinTurns',
+    'spinPhase': 'spinPhase',
+    'spinCurve': 'spinCurve',
+    'bellAmp': 'bellAmp',
+    'bellCenter': 'bellCenter',
+    'bellWidth': 'bellWidth',
+};
+
+// Convert database opts (snake_case) to style function opts (camelCase)
+function convertOptsToStyleParams(opts: Record<string, unknown>): Record<string, number | boolean> {
+    const result: Record<string, number | boolean> = {};
+    for (const [key, value] of Object.entries(opts)) {
+        const mappedKey = OPTS_KEY_MAP[key] || key;
+        if (typeof value === 'number' || typeof value === 'boolean') {
+            result[mappedKey] = value;
+        }
+    }
+    return result;
+}
+
 // Default colors for pot gradient
 const DEFAULT_COLORS = {
     bottom: 0x8B7355,  // Terracotta brown
@@ -109,13 +154,16 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
 
             // Extract params from design
             const size = design.size || {};
-            const opts = (design.opts || {}) as Record<string, number | boolean>;
+            const rawOpts = (design.opts || {}) as Record<string, unknown>;
+            // Convert snake_case database opts to camelCase for style functions
+            const styleOpts = convertOptsToStyleParams(rawOpts);
 
             console.log('[DesignThumbnail] Rendering design:', {
                 title: design.title,
                 style: design.style,
                 size,
-                opts
+                rawOpts,
+                styleOpts
             });
 
             const H = size.height || 120;
@@ -141,22 +189,22 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
                 nTheta: 120,  // High resolution for style patterns
                 nZ: 20,
                 styleId,
-                spinTurns: (opts.spinTurns as number) || 0,
-                spinPhase: (opts.spinPhase as number) || 0,
-                spinCurve: (opts.spinCurve as number) || 1,
+                spinTurns: (styleOpts.spinTurns as number) || 0,
+                spinPhase: (styleOpts.spinPhase as number) || 0,
+                spinCurve: (styleOpts.spinCurve as number) || 1,
                 colorBottom: DEFAULT_COLORS.bottom,
                 colorMid: DEFAULT_COLORS.mid,
                 colorTop: DEFAULT_COLORS.top,
-                bellAmp: (opts.bellAmp as number) || 0,
-                bellCenter: (opts.bellCenter as number) || 0.5,
-                bellWidth: (opts.bellWidth as number) || 0.22,
+                bellAmp: (styleOpts.bellAmp as number) || 0,
+                bellCenter: (styleOpts.bellCenter as number) || 0.5,
+                bellWidth: (styleOpts.bellWidth as number) || 0.22,
             };
 
             console.log('[DesignThumbnail] potParams:', potParams);
             console.log('[DesignThumbnail] styleId:', styleId, 'style:', design.style);
 
-            // Generate geometry - pass all opts for style-specific parameters
-            const geometry = generatePotGeometry(potParams, opts as Record<string, number | boolean>);
+            // Generate geometry - pass converted styleOpts for style-specific parameters
+            const geometry = generatePotGeometry(potParams, styleOpts);
 
             // Create material
             const material = new THREE.MeshStandardMaterial({
