@@ -1,0 +1,624 @@
+/**
+ * WebGPU Thumbnail Renderer Service
+ * 
+ * A singleton service that renders pot thumbnails using WebGPU.
+ * Uses the same shader as the main renderer but renders to offscreen canvases.
+ * 
+ * Features:
+ * - Single shared WebGPU device to avoid context limits
+ * - Queue-based processing to prevent GPU conflicts
+ * - Immediate disposal of per-render resources
+ */
+
+import potPreviewWgsl from '../assets/pot_preview.wgsl?raw';
+import { buildStyleParamPayload } from '../utils/styleParams';
+import type { LibraryDesign } from '../context/LibraryContext';
+
+// Constants matching webgpu_core.ts
+const UNIFORM_FLOAT_COUNT = 76;
+const STYLE_PARAM_CAPACITY = 48;
+
+interface ThumbnailRequest {
+    design: LibraryDesign;
+    width: number;
+    height: number;
+    resolve: (imageData: ImageData | null) => void;
+}
+
+interface RenderResources {
+    device: GPUDevice;
+    pipeline: GPURenderPipeline;
+    uniformBuffer: GPUBuffer;
+    styleParamBuffer: GPUBuffer;
+    colorBuffers: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer };
+    bgBuffers: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer };
+    bindGroupLayout: GPUBindGroupLayout;
+}
+
+class ThumbnailRenderer {
+    private static instance: ThumbnailRenderer | null = null;
+    private resources: RenderResources | null = null;
+    private queue: ThumbnailRequest[] = [];
+    private processing = false;
+    private initPromise: Promise<boolean> | null = null;
+
+    private constructor() { }
+
+    /**
+     * Get the singleton instance
+     */
+    static getInstance(): ThumbnailRenderer {
+        if (!ThumbnailRenderer.instance) {
+            ThumbnailRenderer.instance = new ThumbnailRenderer();
+        }
+        return ThumbnailRenderer.instance;
+    }
+
+    /**
+     * Initialize WebGPU resources (called once)
+     */
+    private async initialize(): Promise<boolean> {
+        if (this.resources) return true;
+        if (this.initPromise) return this.initPromise;
+
+        this.initPromise = this._doInit();
+        return this.initPromise;
+    }
+
+    private async _doInit(): Promise<boolean> {
+        try {
+            // Check WebGPU support
+            if (!navigator.gpu) {
+                console.warn('[ThumbnailRenderer] WebGPU not supported');
+                return false;
+            }
+
+            const adapter = await navigator.gpu.requestAdapter();
+            if (!adapter) {
+                console.warn('[ThumbnailRenderer] No GPU adapter available');
+                return false;
+            }
+
+            const device = await adapter.requestDevice();
+            if (!device) {
+                console.warn('[ThumbnailRenderer] No GPU device available');
+                return false;
+            }
+
+            // Create shader module
+            const shaderModule = device.createShaderModule({
+                label: 'thumbnail-shader',
+                code: potPreviewWgsl,
+            });
+
+            // Create buffers
+            const uniformBuffer = device.createBuffer({
+                label: 'thumbnail-uniforms',
+                size: UNIFORM_FLOAT_COUNT * 4,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            });
+
+            const styleParamBuffer = device.createBuffer({
+                label: 'thumbnail-style-params',
+                size: STYLE_PARAM_CAPACITY * 4,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+
+            const createColorBuffer = (label: string) =>
+                device.createBuffer({
+                    label,
+                    size: 16, // vec4<f32>
+                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                });
+
+            const colorBuffers = {
+                c1: createColorBuffer('thumbnail-c1'),
+                c2: createColorBuffer('thumbnail-c2'),
+                c3: createColorBuffer('thumbnail-c3'),
+            };
+
+            const bgBuffers = {
+                c1: createColorBuffer('thumbnail-bg1'),
+                c2: createColorBuffer('thumbnail-bg2'),
+                c3: createColorBuffer('thumbnail-bg3'),
+            };
+
+            // Create bind group layout
+            const bindGroupLayout = device.createBindGroupLayout({
+                label: 'thumbnail-bind-group-layout',
+                entries: [
+                    { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+                    { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 7, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                ],
+            });
+
+            // Create pipeline
+            const pipelineLayout = device.createPipelineLayout({
+                label: 'thumbnail-pipeline-layout',
+                bindGroupLayouts: [bindGroupLayout],
+            });
+
+            const pipeline = await device.createRenderPipelineAsync({
+                label: 'thumbnail-pipeline',
+                layout: pipelineLayout,
+                vertex: {
+                    module: shaderModule,
+                    entryPoint: 'vs_main',
+                },
+                fragment: {
+                    module: shaderModule,
+                    entryPoint: 'fs_main',
+                    targets: [{ format: 'rgba8unorm' }],
+                },
+                primitive: {
+                    topology: 'triangle-list',
+                    cullMode: 'none',
+                },
+                depthStencil: {
+                    depthWriteEnabled: true,
+                    depthCompare: 'less',
+                    format: 'depth24plus',
+                },
+            });
+
+            this.resources = {
+                device,
+                pipeline,
+                uniformBuffer,
+                styleParamBuffer,
+                colorBuffers,
+                bgBuffers,
+                bindGroupLayout,
+            };
+
+            console.log('[ThumbnailRenderer] Initialized successfully');
+            return true;
+        } catch (err) {
+            console.error('[ThumbnailRenderer] Initialization failed:', err);
+            return false;
+        }
+    }
+
+    /**
+     * Request a thumbnail render
+     */
+    async renderThumbnail(design: LibraryDesign, width: number, height: number): Promise<ImageData | null> {
+        return new Promise((resolve) => {
+            this.queue.push({ design, width, height, resolve });
+            this.processQueue();
+        });
+    }
+
+    /**
+     * Process the render queue (one at a time)
+     */
+    private async processQueue(): Promise<void> {
+        if (this.processing || this.queue.length === 0) return;
+        this.processing = true;
+
+        const initialized = await this.initialize();
+        if (!initialized || !this.resources) {
+            // Fail all pending requests
+            while (this.queue.length > 0) {
+                const req = this.queue.shift()!;
+                req.resolve(null);
+            }
+            this.processing = false;
+            return;
+        }
+
+        while (this.queue.length > 0) {
+            const request = this.queue.shift()!;
+            try {
+                const imageData = await this.doRender(request);
+                request.resolve(imageData);
+            } catch (err) {
+                console.error('[ThumbnailRenderer] Render failed:', err);
+                request.resolve(null);
+            }
+        }
+
+        this.processing = false;
+    }
+
+    /**
+     * Perform a single render
+     */
+    private async doRender(request: ThumbnailRequest): Promise<ImageData | null> {
+        const { design, width, height } = request;
+        const { device, pipeline, uniformBuffer, styleParamBuffer, colorBuffers, bgBuffers, bindGroupLayout } = this.resources!;
+
+        // Create offscreen canvas
+        const canvas = new OffscreenCanvas(width, height);
+        const context = canvas.getContext('webgpu');
+        if (!context) {
+            console.error('[ThumbnailRenderer] Failed to get WebGPU context');
+            return null;
+        }
+
+        context.configure({
+            device,
+            format: 'rgba8unorm',
+            alphaMode: 'premultiplied',
+        });
+
+        // Create depth texture for this render
+        const depthTexture = device.createTexture({
+            size: [width, height],
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+
+        // Build uniforms from design
+        const uniforms = this.buildUniforms(design, width, height);
+        device.queue.writeBuffer(uniformBuffer, 0, uniforms);
+
+        // Build style params
+        const [styleId, styleParams] = buildStyleParamPayload(design.style, design.opts as Record<string, unknown>);
+        const styleData = new Float32Array(STYLE_PARAM_CAPACITY);
+        for (let i = 0; i < styleParams.length && i < STYLE_PARAM_CAPACITY; i++) {
+            styleData[i] = styleParams[i];
+        }
+        device.queue.writeBuffer(styleParamBuffer, 0, styleData);
+
+        // Write color uniforms (terracotta gradient)
+        const c1 = new Float32Array([0.78, 0.36, 0.22, 1.0]); // Bottom
+        const c2 = new Float32Array([0.81, 0.48, 0.36, 1.0]); // Mid
+        const c3 = new Float32Array([0.83, 0.65, 0.45, 1.0]); // Top
+        device.queue.writeBuffer(colorBuffers.c1, 0, c1);
+        device.queue.writeBuffer(colorBuffers.c2, 0, c2);
+        device.queue.writeBuffer(colorBuffers.c3, 0, c3);
+
+        // Write background gradient (dark blue)
+        const bg1 = new Float32Array([0.10, 0.10, 0.18, 0.0]); // Bottom + angle
+        const bg2 = new Float32Array([0.09, 0.13, 0.24, 0.0]); // Mid
+        const bg3 = new Float32Array([0.08, 0.10, 0.20, 0.0]); // Top
+        device.queue.writeBuffer(bgBuffers.c1, 0, bg1);
+        device.queue.writeBuffer(bgBuffers.c2, 0, bg2);
+        device.queue.writeBuffer(bgBuffers.c3, 0, bg3);
+
+        // Create bind group
+        const bindGroup = device.createBindGroup({
+            layout: bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: uniformBuffer } },
+                { binding: 1, resource: { buffer: colorBuffers.c1 } },
+                { binding: 2, resource: { buffer: colorBuffers.c2 } },
+                { binding: 3, resource: { buffer: colorBuffers.c3 } },
+                { binding: 4, resource: { buffer: styleParamBuffer } },
+                { binding: 5, resource: { buffer: bgBuffers.c1 } },
+                { binding: 6, resource: { buffer: bgBuffers.c2 } },
+                { binding: 7, resource: { buffer: bgBuffers.c3 } },
+            ],
+        });
+
+        // Encode and submit render
+        const commandEncoder = device.createCommandEncoder();
+        const textureView = context.getCurrentTexture().createView();
+
+        const renderPass = commandEncoder.beginRenderPass({
+            colorAttachments: [{
+                view: textureView,
+                clearValue: { r: 0.1, g: 0.1, b: 0.18, a: 1.0 },
+                loadOp: 'clear',
+                storeOp: 'store',
+            }],
+            depthStencilAttachment: {
+                view: depthTexture.createView(),
+                depthClearValue: 1.0,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+            },
+        });
+
+        renderPass.setPipeline(pipeline);
+        renderPass.setBindGroup(0, bindGroup);
+
+        // Draw the pot (vertex shader generates vertices procedurally)
+        // We need to calculate vertex count based on resolution
+        const nTheta = 120;
+        const nZ = 60;
+        const vertexCount = this.calculateVertexCount(nTheta, nZ);
+        renderPass.draw(vertexCount);
+        renderPass.end();
+
+        device.queue.submit([commandEncoder.finish()]);
+
+        // Wait for GPU to finish
+        await device.queue.onSubmittedWorkDone();
+
+        // Read pixels back
+        const imageData = await this.readPixels(device, context, width, height);
+
+        // Cleanup per-render resources
+        depthTexture.destroy();
+
+        return imageData;
+    }
+
+    /**
+     * Build uniform buffer data for thumbnail rendering
+     */
+    private buildUniforms(design: LibraryDesign, width: number, height: number): Float32Array {
+        const uniforms = new Float32Array(UNIFORM_FLOAT_COUNT);
+        const size = design.size || {};
+        const opts = (design.opts || {}) as Record<string, unknown>;
+
+        // Core geometry (indices 0-3)
+        const H = (size.height as number) || 120;
+        const topOd = (size.top_od as number) || 140;
+        const bottomOd = (size.bottom_od as number) || 90;
+        const Rt = topOd * 0.5;
+        const Rb = bottomOd * 0.5;
+        const expn = (size.flare_exp as number) || 1.1;
+
+        uniforms[0] = H;
+        uniforms[1] = Rt;
+        uniforms[2] = Rb;
+        uniforms[3] = expn;
+
+        // Spin/twist (indices 4-6)
+        uniforms[4] = (opts.spin_turns as number) || 0;
+        uniforms[5] = (opts.spin_phase as number) || 0;
+        uniforms[6] = (opts.spin_curve as number) || 1;
+
+        // Style ID (index 7)
+        const [styleId] = buildStyleParamPayload(design.style, opts);
+        uniforms[7] = styleId;
+
+        // Superformula base params (indices 8-12)
+        uniforms[8] = 6;   // sf_m_base
+        uniforms[9] = 10;  // sf_m_top
+        uniforms[10] = 0.35; // sf_n1
+        uniforms[11] = 0.8;  // sf_n2
+        uniforms[12] = 0.8;  // sf_n3
+
+        // Drain radius (index 13)
+        const rDrain = (size.drain_radius as number) || 10;
+        uniforms[13] = Math.max(rDrain, 0.5);
+
+        // Bell params (indices 14, 15, 72)
+        uniforms[14] = (opts.bell_amp as number) || 0;
+        uniforms[15] = (opts.bell_center as number) || 0.5;
+
+        // Resolution (indices 16-17)
+        uniforms[16] = 120; // cells_x (nTheta)
+        uniforms[17] = 60;  // cells_outer_y (nZ)
+
+        // Lighting params (indices 22-24)
+        uniforms[22] = 0.3; // ambient
+        uniforms[23] = 0.7; // diffuse
+        uniforms[24] = 0.2; // fresnel
+
+        // Wall/bottom thickness (indices 25-26)
+        const tWall = (size.wall_thickness as number) || 3;
+        const tBottom = (size.bottom_thickness as number) || 3;
+        uniforms[25] = tWall;
+        uniforms[26] = tBottom;
+
+        // Mesh resolution (indices 27-30)
+        uniforms[27] = 60;  // inner_y
+        uniforms[28] = 20;  // bottom_rings
+        uniforms[30] = 10;  // rim_rings
+
+        // Scene radius (index 33)
+        uniforms[33] = Math.max(Rt, H) * 2;
+
+        // Camera setup - position camera for good thumbnail view
+        const aspect = width / height;
+        const fov = 35 * Math.PI / 180;
+        const near = 1;
+        const far = 1000;
+
+        // Camera position: slightly above and in front
+        const cameraDistance = Math.max(Rt, H) * 2.5;
+        const cameraAngle = Math.PI / 5; // ~36 degrees
+        const eyeX = Math.sin(cameraAngle) * cameraDistance;
+        const eyeY = -Math.cos(cameraAngle) * cameraDistance;
+        const eyeZ = H * 0.6;
+
+        // Eye position (indices 36-38)
+        uniforms[36] = eyeX;
+        uniforms[37] = eyeY;
+        uniforms[38] = eyeZ;
+
+        // Camera mode (index 39) - 0 = perspective
+        uniforms[39] = 0;
+
+        // Build view-projection matrix (indices 40-55)
+        const vpMatrix = this.buildViewProjectionMatrix(
+            eyeX, eyeY, eyeZ,
+            0, 0, H * 0.4, // look at center of pot
+            aspect, fov, near, far
+        );
+        for (let i = 0; i < 16; i++) {
+            uniforms[40 + i] = vpMatrix[i];
+        }
+
+        // Camera basis vectors (indices 56-67)
+        // Right vector
+        uniforms[56] = 1; uniforms[57] = 0; uniforms[58] = 0; uniforms[59] = 0;
+        // Up vector  
+        uniforms[60] = 0; uniforms[61] = 0; uniforms[62] = 1; uniforms[63] = 0;
+        // Forward vector
+        uniforms[64] = -eyeX / cameraDistance;
+        uniforms[65] = -eyeY / cameraDistance;
+        uniforms[66] = (H * 0.4 - eyeZ) / cameraDistance;
+        uniforms[67] = 0;
+
+        // Grid flag (index 68) - 0 = no grid
+        uniforms[68] = 0;
+
+        // Specular/roughness (indices 69-70)
+        uniforms[69] = 0.5; // specular
+        uniforms[70] = 0.4; // roughness
+
+        // Show inner (index 71)
+        uniforms[71] = 1;
+
+        // Bell width (index 72)
+        uniforms[72] = (opts.bell_width as number) || 0.22;
+
+        return uniforms;
+    }
+
+    /**
+     * Build a view-projection matrix
+     */
+    private buildViewProjectionMatrix(
+        eyeX: number, eyeY: number, eyeZ: number,
+        targetX: number, targetY: number, targetZ: number,
+        aspect: number, fov: number, near: number, far: number
+    ): Float32Array {
+        // Build view matrix (lookAt)
+        const zAxis = this.normalize([eyeX - targetX, eyeY - targetY, eyeZ - targetZ]);
+        const xAxis = this.normalize(this.cross([0, 0, 1], zAxis));
+        const yAxis = this.cross(zAxis, xAxis);
+
+        const view = new Float32Array([
+            xAxis[0], yAxis[0], zAxis[0], 0,
+            xAxis[1], yAxis[1], zAxis[1], 0,
+            xAxis[2], yAxis[2], zAxis[2], 0,
+            -this.dot(xAxis, [eyeX, eyeY, eyeZ]),
+            -this.dot(yAxis, [eyeX, eyeY, eyeZ]),
+            -this.dot(zAxis, [eyeX, eyeY, eyeZ]),
+            1,
+        ]);
+
+        // Build perspective projection matrix
+        const f = 1 / Math.tan(fov / 2);
+        const rangeInv = 1 / (near - far);
+
+        const proj = new Float32Array([
+            f / aspect, 0, 0, 0,
+            0, f, 0, 0,
+            0, 0, (far + near) * rangeInv, -1,
+            0, 0, 2 * far * near * rangeInv, 0,
+        ]);
+
+        // Multiply: proj * view
+        return this.multiplyMatrices(proj, view);
+    }
+
+    // Vector math helpers
+    private normalize(v: number[]): number[] {
+        const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        if (len < 1e-6) return [0, 0, 1];
+        return [v[0] / len, v[1] / len, v[2] / len];
+    }
+
+    private cross(a: number[], b: number[]): number[] {
+        return [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ];
+    }
+
+    private dot(a: number[], b: number[]): number {
+        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    }
+
+    private multiplyMatrices(a: Float32Array, b: Float32Array): Float32Array {
+        const result = new Float32Array(16);
+        for (let i = 0; i < 4; i++) {
+            for (let j = 0; j < 4; j++) {
+                let sum = 0;
+                for (let k = 0; k < 4; k++) {
+                    sum += a[i + k * 4] * b[k + j * 4];
+                }
+                result[i + j * 4] = sum;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Calculate total vertex count for all segments
+     */
+    private calculateVertexCount(nTheta: number, nZ: number): number {
+        // Outer wall: nTheta * nZ * 2 triangles * 3 vertices
+        // Inner wall: same
+        // Bottom: nTheta * bottomRings * 2 * 3
+        // Rim: nTheta * rimRings * 2 * 3
+        // Drain: nTheta * 2 * 2 * 3
+        const bottomRings = 20;
+        const rimRings = 10;
+        const outer = nTheta * nZ * 6;
+        const inner = nTheta * nZ * 6;
+        const bottom = nTheta * bottomRings * 6 * 2; // top and bottom
+        const rim = nTheta * rimRings * 6;
+        const drain = nTheta * 6 * 2;
+        return outer + inner + bottom + rim + drain;
+    }
+
+    /**
+     * Read pixels from the rendered texture
+     */
+    private async readPixels(
+        device: GPUDevice,
+        context: GPUCanvasContext,
+        width: number,
+        height: number
+    ): Promise<ImageData | null> {
+        const texture = context.getCurrentTexture();
+        const bytesPerRow = Math.ceil(width * 4 / 256) * 256;
+        const bufferSize = bytesPerRow * height;
+
+        const readBuffer = device.createBuffer({
+            size: bufferSize,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+
+        const commandEncoder = device.createCommandEncoder();
+        commandEncoder.copyTextureToBuffer(
+            { texture },
+            { buffer: readBuffer, bytesPerRow },
+            { width, height }
+        );
+        device.queue.submit([commandEncoder.finish()]);
+
+        await readBuffer.mapAsync(GPUMapMode.READ);
+        const data = new Uint8ClampedArray(readBuffer.getMappedRange());
+
+        // Copy to properly-sized array (remove padding)
+        const pixels = new Uint8ClampedArray(width * height * 4);
+        for (let y = 0; y < height; y++) {
+            const srcOffset = y * bytesPerRow;
+            const dstOffset = y * width * 4;
+            pixels.set(data.subarray(srcOffset, srcOffset + width * 4), dstOffset);
+        }
+
+        readBuffer.unmap();
+        readBuffer.destroy();
+
+        return new ImageData(pixels, width, height);
+    }
+
+    /**
+     * Dispose of resources (typically not called unless app unmounts)
+     */
+    dispose(): void {
+        if (this.resources) {
+            const { uniformBuffer, styleParamBuffer, colorBuffers, bgBuffers } = this.resources;
+            uniformBuffer.destroy();
+            styleParamBuffer.destroy();
+            colorBuffers.c1.destroy();
+            colorBuffers.c2.destroy();
+            colorBuffers.c3.destroy();
+            bgBuffers.c1.destroy();
+            bgBuffers.c2.destroy();
+            bgBuffers.c3.destroy();
+            this.resources = null;
+        }
+        ThumbnailRenderer.instance = null;
+    }
+}
+
+export default ThumbnailRenderer;
