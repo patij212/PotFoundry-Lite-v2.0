@@ -95,10 +95,11 @@ export function generatePotGeometry(
     const styleName = STYLE_ID_TO_NAME[styleId] || 'SuperformulaBlossom';
 
     // Merge style options from params with additional options from bridge
+    // Note: profile.ts expects spinPhaseDeg (degrees) and spinCurveExp (exponent)
     const styleOpts: StyleOptions = {
         spinTurns: spinTurns || 0,
-        spinPhase: spinPhase || 0,
-        spinCurve: spinCurve || 1,
+        spinPhaseDeg: spinPhase || 0,   // profile.ts expects spinPhaseDeg, not spinPhase
+        spinCurveExp: spinCurve || 1,   // profile.ts expects spinCurveExp, not spinCurve
         bellAmp: bellAmp || 0,
         bellCenter: bellCenter || 0.5,
         bellWidth: bellWidth || 0.22,

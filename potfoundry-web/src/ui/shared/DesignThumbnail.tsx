@@ -81,10 +81,16 @@ const OPTS_KEY_MAP: Record<string, string> = {
     'hr_ripple_phase_deg': 'hrRipplePhaseDeg',
     'hr_ripple_zgain': 'hrRippleZgain',
     'hr_bell': 'hrBell',
-    // Generic parameters (pass through)
+    // Generic spin/bell parameters (both camelCase and snake_case for database compatibility)
+    'spin_turns': 'spinTurns',
+    'spin_phase': 'spinPhase',
+    'spin_curve': 'spinCurve',
     'spinTurns': 'spinTurns',
     'spinPhase': 'spinPhase',
     'spinCurve': 'spinCurve',
+    'bell_amp': 'bellAmp',
+    'bell_center': 'bellCenter',
+    'bell_width': 'bellWidth',
     'bellAmp': 'bellAmp',
     'bellCenter': 'bellCenter',
     'bellWidth': 'bellWidth',
