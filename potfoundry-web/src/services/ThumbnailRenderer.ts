@@ -19,6 +19,10 @@ import type { LibraryDesign } from '../context/LibraryContext';
 const UNIFORM_FLOAT_COUNT = 76;
 const STYLE_PARAM_CAPACITY = 48;
 
+// Mesh Resolution Constants - higher than simplified default to handle twist/styles better
+const CELLS_X = 200;      // Was 120 (nTheta)
+const CELLS_OUTER_Y = 150; // Was 60  (nZ)
+
 interface ThumbnailRequest {
     design: LibraryDesign;
     width: number;
@@ -319,9 +323,7 @@ class ThumbnailRenderer {
 
         // Draw the pot (vertex shader generates vertices procedurally)
         // Resolution must match uniforms[16] (cells_x) and uniforms[17] (cells_outer_y)
-        const cells_x = 120;      // matches uniforms[16]
-        const cells_outer_y = 60; // matches uniforms[17]
-        const vertexCount = this.calculateVertexCount(cells_x, cells_outer_y);
+        const vertexCount = this.calculateVertexCount(CELLS_X, CELLS_OUTER_Y);
         renderPass.draw(vertexCount);
         renderPass.end();
 
@@ -376,9 +378,11 @@ class ThumbnailRenderer {
         const opts = (design.opts || {}) as Record<string, unknown>;
 
         // Core geometry (indices 0-3)
-        const H = (size.height as number) || 120;
-        const topOd = (size.top_od as number) || 140;
-        const bottomOd = (size.bottom_od as number) || 90;
+        // Core geometry (indices 0-3)
+        // Ensure robust parsing of numeric values, handling potential string types from DB
+        const H = Math.max(Number(size.height) || 120, 10); // Enforce min height 10mm
+        const topOd = Math.max(Number(size.top_od) || 140, 10);
+        const bottomOd = Math.max(Number(size.bottom_od) || 90, 10);
         const Rt = topOd * 0.5;
         const Rb = bottomOd * 0.5;
         const expn = (size.flare_exp as number) || 1.1;
@@ -389,9 +393,12 @@ class ThumbnailRenderer {
         uniforms[3] = expn;
 
         // Spin/twist (indices 4-6)
-        uniforms[4] = (opts.spin_turns as number) || 0;
-        uniforms[5] = (opts.spin_phase as number) || 0;
-        uniforms[6] = (opts.spin_curve as number) || 1;
+        // Spin/twist (indices 4-6)
+        uniforms[4] = Number(opts.spin_turns) || 0;
+        uniforms[5] = Number(opts.spin_phase) || 0;
+        const spinCurve = Number(opts.spin_curve) || 1;
+        // Avoid potentially unstable twist near t=0 if curve is excessively small
+        uniforms[6] = Math.max(spinCurve, 0.1);
 
         // Style ID (index 7)
         const [styleId] = buildStyleParamPayload(design.style, opts);
@@ -413,8 +420,9 @@ class ThumbnailRenderer {
         uniforms[15] = (opts.bell_center as number) || 0.5;
 
         // Resolution (indices 16-17)
-        uniforms[16] = 120; // cells_x (nTheta)
-        uniforms[17] = 60;  // cells_outer_y (nZ)
+        // Resolution (indices 16-17)
+        uniforms[16] = CELLS_X;       // cells_x (nTheta)
+        uniforms[17] = CELLS_OUTER_Y; // cells_outer_y (nZ)
 
         // Lighting params (indices 22-24)
         uniforms[22] = 0.3; // ambient
