@@ -62,7 +62,7 @@ const PRESET_OPTIONS: SelectOption[] = [
 export const MeshControls: React.FC = () => {
   const mesh = useMesh();
   const { setMeshParam, setQualityPreset, estimateTriangles } = useMeshActions();
-  
+
   // Determine current preset (or 'custom' if manual)
   const currentPreset = useMemo(() => {
     for (const [key, preset] of Object.entries(QUALITY_PRESETS)) {
@@ -77,10 +77,10 @@ export const MeshControls: React.FC = () => {
     }
     return 'custom';
   }, [mesh]);
-  
+
   // Triangle count estimate
   const triangleCount = useMemo(() => estimateTriangles(), [mesh, estimateTriangles]);
-  
+
   // Handle preset change
   const handlePresetChange = useCallback(
     (value: string) => {
@@ -90,28 +90,28 @@ export const MeshControls: React.FC = () => {
     },
     [setQualityPreset]
   );
-  
+
   // Individual slider handlers
   const handlePreviewTheta = useCallback(
     (value: number) => setMeshParam('preview_n_theta', value),
     [setMeshParam]
   );
-  
+
   const handlePreviewZ = useCallback(
     (value: number) => setMeshParam('preview_n_z', value),
     [setMeshParam]
   );
-  
+
   const handleExportTheta = useCallback(
     (value: number) => setMeshParam('export_n_theta', value),
     [setMeshParam]
   );
-  
+
   const handleExportZ = useCallback(
     (value: number) => setMeshParam('export_n_z', value),
     [setMeshParam]
   );
-  
+
   const isCustom = currentPreset === 'custom';
 
   return (
@@ -122,12 +122,12 @@ export const MeshControls: React.FC = () => {
         onChange={handlePresetChange}
         options={PRESET_OPTIONS}
       />
-      
+
       <div className="pf-mesh-stats">
         <Zap size={14} />
         <span>~{triangleCount.toLocaleString()} triangles (preview)</span>
       </div>
-      
+
       <SectionGroup label="Preview Resolution">
         <div className="pf-mesh-row">
           <Slider
@@ -138,7 +138,7 @@ export const MeshControls: React.FC = () => {
             max={MESH_QUALITY_BOUNDS.preview_n_theta.max}
             step={MESH_QUALITY_BOUNDS.preview_n_theta.step}
           />
-          
+
           <Slider
             label="Z segments"
             value={mesh.preview_n_z}
@@ -149,7 +149,7 @@ export const MeshControls: React.FC = () => {
           />
         </div>
       </SectionGroup>
-      
+
       <SectionGroup label="Export Resolution">
         <div className="pf-mesh-row">
           <Slider
@@ -160,7 +160,7 @@ export const MeshControls: React.FC = () => {
             max={MESH_QUALITY_BOUNDS.export_n_theta.max}
             step={MESH_QUALITY_BOUNDS.export_n_theta.step}
           />
-          
+
           <Slider
             label="Z segments"
             value={mesh.export_n_z}
@@ -168,6 +168,28 @@ export const MeshControls: React.FC = () => {
             min={MESH_QUALITY_BOUNDS.export_n_z.min}
             max={MESH_QUALITY_BOUNDS.export_n_z.max}
             step={MESH_QUALITY_BOUNDS.export_n_z.step}
+          />
+        </div>
+      </SectionGroup>
+
+      <SectionGroup label="Seam Controls">
+        <div className="pf-mesh-row">
+          <Slider
+            label="Seam Overlap (%)"
+            value={mesh.seam_overlap}
+            onChange={(v) => setMeshParam('seam_overlap', v)}
+            min={MESH_QUALITY_BOUNDS.seam_overlap.min}
+            max={MESH_QUALITY_BOUNDS.seam_overlap.max}
+            step={MESH_QUALITY_BOUNDS.seam_overlap.step}
+          />
+
+          <Slider
+            label="Seam Blend Width (%)"
+            value={mesh.seam_blend_width}
+            onChange={(v) => setMeshParam('seam_blend_width', v)}
+            min={MESH_QUALITY_BOUNDS.seam_blend_width.min}
+            max={MESH_QUALITY_BOUNDS.seam_blend_width.max}
+            step={MESH_QUALITY_BOUNDS.seam_blend_width.step}
           />
         </div>
       </SectionGroup>

@@ -299,7 +299,27 @@ fn surf(u: f32, v: f32) -> vec3<f32> {
   // This effectively defines the shape in a static frame and then rotates it by 'th'.
   // If we used 'th' here, we would be sampling the shape at the twisted angle,
   // which would result in the shape appearing static (no visual twist) with texture sliding.
-  let r = style_radius(style_id, th0, t, r0);
+  var r = style_radius(style_id, th0, t, r0);
+  
+  // Seam blending for watertight mesh at θ=0/360° joint
+  // seam_overlap (slot 73): extra overlap at seam joint
+  // seam_blend_width (slot 74): how far the blend extends into wall
+  let seam_overlap = getf(73u);
+  let seam_blend = getf(74u);
+  
+  if (seam_blend > 1e-4) {
+    // Near u=0 or u=1, blend radius toward the reference value at u=0
+    // This ensures vertices at the seam produce matching positions
+    let dist_from_seam = min(u, 1.0 - u);  // Distance from nearest seam edge
+    if (dist_from_seam < seam_blend) {
+      // Get reference radius at u=0 (the seam)
+      let r_seam = style_radius(style_id, 0.0, t, r0);
+      // Smooth blend factor: 1 at seam, 0 at blend edge
+      let blend_factor = 1.0 - smoothstep(0.0, seam_blend, dist_from_seam);
+      // Blend toward seam radius
+      r = mix(r, r_seam, blend_factor * seam_overlap * 20.0);
+    }
+  }
   
   // Rotate the point by the twisted angle 'th'
   return vec3<f32>(r * cos(th), r * sin(th), z);

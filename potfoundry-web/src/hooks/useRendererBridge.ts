@@ -316,6 +316,8 @@ function meshToParams(mesh: MeshQuality): Record<string, unknown> {
   return {
     nTheta: mesh.preview_n_theta,
     nZ: mesh.preview_n_z,
+    seam_overlap: mesh.seam_overlap,
+    seam_blend_width: mesh.seam_blend_width,
     // Export values are handled separately during STL export
   };
 }
