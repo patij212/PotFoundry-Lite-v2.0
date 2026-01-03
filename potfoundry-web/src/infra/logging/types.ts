@@ -7,6 +7,7 @@ export interface LogMessage {
   ts: number;
   context?: Record<string, unknown>;
   signature?: string;
+  repeat?: number; // Backend deduplication count
 }
 
 export interface MessageManagerConfig {

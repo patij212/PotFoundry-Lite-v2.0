@@ -63,12 +63,14 @@ export class MessageManager {
   log(level: LogLevel, code: string, message: string, context?: Record<string, unknown>, signature?: string) {
     const ts = Date.now();
     const msg: LogMessage = { level, code, message, ts, context, signature };
-    this.bufferPush(msg);
+
+    // Push returns the canonical message (either new msg or updated tail)
+    const canonicalMsg = this.bufferPush(msg);
     this.counters[level]++;
 
     // Notify listeners immediately (for UI console)
     if (this.listeners.size > 0) {
-      this.listeners.forEach(l => l(msg));
+      this.listeners.forEach(l => l(canonicalMsg));
     }
 
     // Mode routing
@@ -183,9 +185,27 @@ export class MessageManager {
     );
   }
 
-  private bufferPush(m: LogMessage) {
+  private bufferPush(m: LogMessage): LogMessage {
+    // Backend Logic: Consecutive Deduplication
+    const last = this.buffer.length > 0 ? this.buffer[this.buffer.length - 1] : null;
+    const isSame = last &&
+      last.level === m.level &&
+      last.code === m.code &&
+      (m.signature ? last.signature === m.signature : last.message === m.message);
+
+    if (isSame && last) {
+      // It's a duplicate of the tail! Just increment counter
+      last.repeat = (last.repeat || 1) + 1;
+      last.ts = m.ts; // Update timestamp to latest
+      // Important: Notify listeners of the *update*, not a new message
+      // Note: We might need to change how we notify. 
+      // Current notify logic is outside this function.
+      return last;
+    }
+
     this.buffer.push(m);
     if (this.buffer.length > this.cfg.bufferSize) this.buffer.shift();
+    return m;
   }
 
   private isDeduped(m: LogMessage): boolean {

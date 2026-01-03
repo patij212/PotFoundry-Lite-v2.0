@@ -75,7 +75,7 @@ export const ConsoleOverlay: React.FC<ConsoleOverlayProps> = () => {
             return true;
         });
 
-        if (!groupDuplicates) return filtered.map(l => ({ ...l, count: 1 }));
+        if (!groupDuplicates) return filtered.map(l => ({ ...l, count: l.repeat || 1 }));
 
         const grouped: (LogMessage & { count: number })[] = [];
         let last: (LogMessage & { count: number }) | null = null;
@@ -89,14 +89,14 @@ export const ConsoleOverlay: React.FC<ConsoleOverlayProps> = () => {
 
             if (sameBroad && (sameSig || sameMsg)) {
                 if (last) {
-                    last.count++;
+                    last.count += (log.repeat || 1);
                     last.ts = log.ts;
                     // Update the displayed message/context to the latest one
                     last.message = log.message;
                     last.context = log.context;
                 }
             } else {
-                last = { ...log, count: 1 };
+                last = { ...log, count: log.repeat || 1 };
                 grouped.push(last);
             }
         }
@@ -156,6 +156,12 @@ export const ConsoleOverlay: React.FC<ConsoleOverlayProps> = () => {
         setLogs(manager.dumpRecent());
         const unsubscribe = manager.subscribe((msg) => {
             setLogs(prev => {
+                // Backend deduplication sends the updated object reference.
+                // If it's the exact same object as the tail, we force a re-render 
+                // spread but DO NOT append it again.
+                if (prev.length > 0 && prev[prev.length - 1] === msg) {
+                    return [...prev];
+                }
                 const next = [...prev, msg];
                 if (next.length > 2000) return next.slice(-1000); // Cap buffer
                 return next;

@@ -5505,7 +5505,7 @@ export const mount = async ({
 
     updateAndDraw(current);
     fpsFrames += 1;
-    if (now - fpsStart > 600) {
+    if (now - fpsStart > 30000) {
       const fps = (fpsFrames * 1000) / (now - fpsStart);
       const nTheta = Number(current.nTheta) || 0;
       const nZ = Number(current.nZ) || 0;
