@@ -59,9 +59,9 @@ export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current
     f32[12] = clampNumber(c.sf_n3 ?? c.n3, 0.8);
     f32[DRAIN_RADIUS_OFFSET] = Math.max(Math.abs(drainRadius), 0.5);
 
-    // Resolution parameters - CRITICAL FIX
+    // Ray - CRITICAL FIX
     // Cap resolution to avoid TDR (Timeout Detection Recovery) crashes on high-vertex meshes
-    const MAX_RES = 1024.0;
+    const MAX_RES = 600.0;
     f32[16] = Math.min(clampNumber(c.cells_x ?? c.cellsX, 200.0), MAX_RES);       // default 200
     f32[17] = Math.min(clampNumber(c.cells_outer_y ?? c.cellsOuterY, 100.0), MAX_RES); // default 100
 

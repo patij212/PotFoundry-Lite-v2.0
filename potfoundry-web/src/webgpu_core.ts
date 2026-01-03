@@ -119,6 +119,8 @@ const {
   GRID_FLAG_OFFSET,
   SPECULAR_GAIN_OFFSET,
   ROUGHNESS_OFFSET,
+  SEAM_BLEND_WIDTH_OFFSET,
+  SEAM_OVERLAP_OFFSET,
   SHOW_INNER_OFFSET,
   BELL_WIDTH_OFFSET,
   DRAIN_RADIUS_OFFSET,
@@ -477,7 +479,7 @@ const createPipeline = async (
           { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
           { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
           { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+          { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         ],
       });
       const layout = device.createPipelineLayout({ label: 'component:pipeline-layout-default', bindGroupLayouts: [bgl] });
@@ -519,7 +521,7 @@ const createPipeline = async (
             { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
             { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
             { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+            { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
           ],
         });
         const layout3 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth24plus-stencil8', bindGroupLayouts: [bgl3] });
@@ -559,7 +561,7 @@ const createPipeline = async (
             { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
             { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
             { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+            { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
           ],
         });
         const layout2 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth32float', bindGroupLayouts: [bgl2] });
@@ -1645,7 +1647,10 @@ export const mount = async ({
 
   // Store device limits for mobile-safe canvas sizing
   // Desktop GPUs typically have 16384+, mobile GPUs may be 4096-8192
+  // Store device limits for mobile-safe canvas sizing
+  // Desktop GPUs typically have 16384+, mobile GPUs may be 4096-8192
   let maxTextureDimension2D = 8192; // Safe default
+  let disposed = false; // Declared early to avoid Temporal Dead Zone errors in helper functions
   try {
     maxTextureDimension2D = device.limits?.maxTextureDimension2D ?? 8192;
     console.log(`[WebGPU] Device maxTextureDimension2D: ${maxTextureDimension2D}`);
@@ -2709,10 +2714,12 @@ export const mount = async ({
     colorBufC1[0] = c1[0]; colorBufC1[1] = c1[1]; colorBufC1[2] = c1[2]; colorBufC1[3] = 0;
     colorBufC2[0] = c2[0]; colorBufC2[1] = c2[1]; colorBufC2[2] = c2[2]; colorBufC2[3] = 0;
     colorBufC3[0] = c3[0]; colorBufC3[1] = c3[1]; colorBufC3[2] = c3[2]; colorBufC3[3] = 0;
-    device.queue.writeBuffer(buffers.c1, 0, colorBufC1.buffer);
-    device.queue.writeBuffer(buffers.c2, 0, colorBufC2.buffer);
-    device.queue.writeBuffer(buffers.c3, 0, colorBufC3.buffer);
-    try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.colorWrites += 3); } catch (e) { /* ignore */ }
+    if (!disposed) {
+      device.queue.writeBuffer(buffers.c1, 0, colorBufC1.buffer);
+      device.queue.writeBuffer(buffers.c2, 0, colorBufC2.buffer);
+      device.queue.writeBuffer(buffers.c3, 0, colorBufC3.buffer);
+      try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.colorWrites += 3); } catch (e) { /* ignore */ }
+    }
   };
   const writeBackgroundGradient = (
     device: GPUDevice,
@@ -2741,15 +2748,17 @@ export const mount = async ({
     bgBufC2[0] = c2[0]; bgBufC2[1] = c2[1]; bgBufC2[2] = c2[2]; bgBufC2[3] = 0;
     bgBufC3[0] = c3[0]; bgBufC3[1] = c3[1]; bgBufC3[2] = c3[2]; bgBufC3[3] = 0;
 
-    device.queue.writeBuffer(buffers.c1, 0, bgBufC1.buffer);
-    device.queue.writeBuffer(buffers.c2, 0, bgBufC2.buffer);
-    device.queue.writeBuffer(buffers.c3, 0, bgBufC3.buffer);
+    if (!disposed) {
+      device.queue.writeBuffer(buffers.c1, 0, bgBufC1.buffer);
+      device.queue.writeBuffer(buffers.c2, 0, bgBufC2.buffer);
+      device.queue.writeBuffer(buffers.c3, 0, bgBufC3.buffer);
+    }
   };
 
   const styleParamBuffer = device.createBuffer({
     label: 'component:style-params',
     size: STYLE_PARAM_CAPACITY * 4,
-    usage: storageUsage | copyDstUsage,
+    usage: uniformUsage | copyDstUsage,
   });
   const styleParamCache = new Float32Array(STYLE_PARAM_CAPACITY);
   const syncStyleParams = (values: unknown): void => {
@@ -2763,7 +2772,7 @@ export const mount = async ({
         changed = true;
       }
     }
-    if (changed) {
+    if (changed && !disposed) {
       device.queue.writeBuffer(styleParamBuffer, 0, styleParamCache.buffer);
       try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.styleParamWrites += 1); } catch (e) { /* ignore */ }
     }
@@ -4132,6 +4141,9 @@ export const mount = async ({
   let lastBgSignature: string | null = null;
 
   const updateAndDraw = (payload?: WebGPUParams): void => {
+    if (disposed) {
+      return;
+    }
     try {
       if (!pipeline) {
         return;
@@ -4400,6 +4412,14 @@ export const mount = async ({
       const roughness = Math.min(Math.max(clampNumber(cfg.roughness, 0.45), 0.02), 1);
       f32[SPECULAR_GAIN_OFFSET] = specular;
       f32[ROUGHNESS_OFFSET] = roughness;
+      // Index 71 used for SHOW_INNER_OFFSET (not currently populated but reserved)
+
+      // Seam blending parameters (indices 73, 74) - Strict clamping for safety
+      const seamBlendWidth = clampNumber(cfg.seam_blend_width ?? 0, 0);
+      const seamOverlap = clampNumber(cfg.seam_overlap ?? 0, 0);
+      f32[SEAM_BLEND_WIDTH_OFFSET] = Math.max(0.0, Math.min(0.25, seamBlendWidth));
+      f32[SEAM_OVERLAP_OFFSET] = Math.max(-0.1, Math.min(0.1, seamOverlap));
+
       // Show inner surface toggle - default to true (show inner)
       const showInner = cfg.showInner !== false;
       f32[SHOW_INNER_OFFSET] = showInner ? 1 : 0;
@@ -5090,7 +5110,7 @@ export const mount = async ({
   let fpsStart = performance.now();
   let lastFrameTime = performance.now();
   let rafHandle: number | null = null;
-  let disposed = false;
+  // let disposed = false; // Moved to top of scope
 
   // Idle detection for resource savings
   const idleDetector = createIdleDetector({
@@ -5106,6 +5126,9 @@ export const mount = async ({
   });
 
   const applyParamPayload = (payload?: WebGPUParams | null): void => {
+    if (disposed) {
+      return;
+    }
     if (!payload) {
       return;
     }
@@ -5226,7 +5249,7 @@ export const mount = async ({
       Math.abs(state.inertiaPanY) > 1e-4 ||
       Math.abs(state.inertiaArcSpeed as number || 0) > 1e-6;
 
-    idleDetector.setForceActive(hasActiveAnimations);
+    idleDetector.setForceActive(Boolean(hasActiveAnimations));
 
     // Skip frame if idle (throttles to ~2 FPS when user inactive)
     if (!idleDetector.shouldRenderFrame()) {
@@ -5545,8 +5568,16 @@ export const mount = async ({
       cancelAnimationFrame(rafHandle);
       rafHandle = null;
     }
+
+    // CRITICAL: Set disposed flag BEFORE destroying buffers to prevent race conditions
+    // where pending writes might try to access destroyed buffers.
+    disposed = true;
+
     // Clean up idle detector
     idleDetector.dispose();
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+    }
     if (depth) depth.destroy();
     uniformBuffer.destroy();
     colorBuffers.c1.destroy();

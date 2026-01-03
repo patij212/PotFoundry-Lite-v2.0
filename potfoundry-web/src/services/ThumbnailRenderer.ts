@@ -15,8 +15,9 @@ import potPreviewWgsl from '../assets/pot_preview.wgsl?raw';
 import { buildStyleParamPayload } from '../utils/styleParams';
 import type { LibraryDesign } from '../context/LibraryContext';
 
+import { UNIFORM_FLOAT_COUNT } from '../camera_constants';
+
 // Constants matching webgpu_core.ts
-const UNIFORM_FLOAT_COUNT = 76;
 const STYLE_PARAM_CAPACITY = 48;
 
 // Mesh Resolution Constants - higher than simplified default to handle twist/styles better

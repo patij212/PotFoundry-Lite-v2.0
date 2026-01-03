@@ -6,10 +6,9 @@
  * @module ui/controls/CameraControls
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   Video,
-  RotateCcw,
   RefreshCw,
   Grid,
   Box,
@@ -21,7 +20,6 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
-  RotateCw,
 } from 'lucide-react';
 import { Section, SectionGroup } from '../shared/Section';
 import { Button } from '../shared/Button';
@@ -111,7 +109,10 @@ export const CameraControls: React.FC = () => {
   const cameraState = controller?.cameraState;
 
   // DEBUG: Log controller state
-  console.log('[CameraControls] isReady:', isReady, 'controller:', !!controller, 'cameraState:', cameraState);
+  // DEBUG: Log controller state
+  useEffect(() => {
+    console.log('[CameraControls] isReady:', isReady, 'controller:', !!controller, 'cameraState:', cameraState);
+  }, [isReady, controller, cameraState]);
 
   // View preset handlers
   const handleViewPreset = useCallback(

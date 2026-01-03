@@ -13,6 +13,7 @@ export class MessageManager {
   private lastHeartbeat = performance.now();
   private hadProblem = false;
   private dedupe: Map<string, number> = new Map();
+  private listeners: Set<(msg: LogMessage) => void> = new Set();
   private frameWindow = 0;
   private drawWindow = 0;
   private vertWindow = 0;
@@ -24,7 +25,7 @@ export class MessageManager {
 
   constructor(cfg?: MessageManagerConfig) {
     this.cfg = {
-      heartbeatMs: cfg?.heartbeatMs ?? 60000,
+      heartbeatMs: cfg?.heartbeatMs ?? 120000,
       bufferSize: cfg?.bufferSize ?? 2000,
       mode: cfg?.mode ?? "smart",
       dedupeEveryN: cfg?.dedupeEveryN ?? 0,
@@ -50,11 +51,25 @@ export class MessageManager {
     this.vertWindow += this.consumeCounterSample(verts, 'vert');
   }
 
+  /**
+   * Subscribe to receive new log messages in real-time.
+   * Returns an unsubscribe function.
+   */
+  subscribe(listener: (msg: LogMessage) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   log(level: LogLevel, code: string, message: string, context?: Record<string, unknown>, signature?: string) {
     const ts = Date.now();
     const msg: LogMessage = { level, code, message, ts, context, signature };
     this.bufferPush(msg);
     this.counters[level]++;
+
+    // Notify listeners immediately (for UI console)
+    if (this.listeners.size > 0) {
+      this.listeners.forEach(l => l(msg));
+    }
 
     // Mode routing
     if (this.cfg.mode === "verbose") return this.emitNow(msg);
@@ -75,14 +90,14 @@ export class MessageManager {
   }
 
   debug(code: string, message: string, ctx?: Record<string, unknown>, sig?: string) { this.log("DEBUG", code, message, ctx, sig); }
-  info(code: string, message: string, ctx?: Record<string, unknown>, sig?: string)  { this.log("INFO", code, message, ctx, sig); }
-  warn(code: string, message: string, ctx?: Record<string, unknown>, sig?: string)  { this.log("WARN", code, message, ctx, sig); }
+  info(code: string, message: string, ctx?: Record<string, unknown>, sig?: string) { this.log("INFO", code, message, ctx, sig); }
+  warn(code: string, message: string, ctx?: Record<string, unknown>, sig?: string) { this.log("WARN", code, message, ctx, sig); }
   error(code: string, message: string, ctx?: Record<string, unknown>, sig?: string) { this.log("ERROR", code, message, ctx, sig); }
   critical(code: string, message: string, ctx?: Record<string, unknown>, sig?: string) { this.log("CRITICAL", code, message, ctx, sig); }
 
   dumpRecent(): LogMessage[] { return [...this.buffer]; }
   resetWindow() {
-    ( ["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"] as LogLevel[]).forEach(l => this.counters[l] = 0);
+    (["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"] as LogLevel[]).forEach(l => this.counters[l] = 0);
     this.hadProblem = false;
     this.dedupe.clear();
     this.suppressedDuplicates = 0;
@@ -115,6 +130,7 @@ export class MessageManager {
       window.clearInterval(this.intervalId);
       this.intervalId = null;
     }
+    this.listeners.clear();
   }
 
   getLastHeartbeatStats(): HeartbeatStats | null {

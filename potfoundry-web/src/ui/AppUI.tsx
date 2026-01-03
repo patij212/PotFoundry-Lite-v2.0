@@ -13,6 +13,7 @@ import { HelpDialog, ErrorBoundary } from './shared';
 import { useKeyboardShortcuts } from '../hooks';
 import { useUIActions, useGeometryActions, useStyleActions } from '../state';
 import { useExport } from '../hooks/useExport';
+import { ConsoleOverlay } from './debug/ConsoleOverlay';
 import './AppUI.css';
 
 // ============================================================================
@@ -48,34 +49,34 @@ export interface AppUIProps {
  */
 export const AppUI: React.FC<AppUIProps> = ({ children }) => {
   const [helpOpen, setHelpOpen] = useState(false);
-  
+
   const { togglePanel } = useUIActions();
   const { resetGeometry } = useGeometryActions();
   const { resetStyleOpts } = useStyleActions();
   const { exportSTL } = useExport();
-  
+
   // Keyboard shortcut handlers
   const handleExport = useCallback(() => {
     exportSTL('binary');
   }, [exportSTL]);
-  
+
   const handleReset = useCallback(() => {
     resetGeometry();
     resetStyleOpts();
   }, [resetGeometry, resetStyleOpts]);
-  
+
   const handleTogglePanel = useCallback(() => {
     togglePanel();
   }, [togglePanel]);
-  
+
   const handleShowHelp = useCallback(() => {
     setHelpOpen(true);
   }, []);
-  
+
   const handleEscape = useCallback(() => {
     setHelpOpen(false);
   }, []);
-  
+
   // Register keyboard shortcuts
   useKeyboardShortcuts({
     onExport: handleExport,
@@ -85,7 +86,7 @@ export const AppUI: React.FC<AppUIProps> = ({ children }) => {
     onEscape: handleEscape,
     enabled: true,
   });
-  
+
   return (
     <ErrorBoundary name="AppUI">
       <div className="pf-app-ui">
@@ -97,7 +98,7 @@ export const AppUI: React.FC<AppUIProps> = ({ children }) => {
             </ErrorBoundary>
           </div>
         )}
-        
+
         {/* UI Overlays */}
         <ErrorBoundary name="Sidebar">
           <Sidebar />
@@ -106,9 +107,13 @@ export const AppUI: React.FC<AppUIProps> = ({ children }) => {
           <Toolbar />
         </ErrorBoundary>
         <StatusBar />
-        
+
+
         {/* Help Dialog */}
         <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+
+        {/* Debug Console */}
+        <ConsoleOverlay />
       </div>
     </ErrorBoundary>
   );

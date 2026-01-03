@@ -30,18 +30,18 @@ const ROUGHNESS_OFFSET : u32 = 70u;
 const SHOW_INNER_OFFSET : u32 = 71u;
 const DRAIN_RADIUS_OFFSET : u32 = 13u;
 
+const SEAM_BLEND_WIDTH_OFFSET : u32 = 73u;
+const SEAM_OVERLAP_OFFSET : u32 = 74u;
+
 struct StyleParamBlock {
-  @align(16) values: array<vec4<f32>, 12>,
+  // Uniform buffer alignment: array<vec4<f32>, 12> fits significantly within limit
+  values: array<vec4<f32>, 12>,
 };
 
-fn abs_f32(value: f32) -> f32 {
-  if (value < 0.0) {
-    return -value;
-  }
-  return value;
-}
 
-@group(0) @binding(4) var<storage, read> StyleParams : StyleParamBlock;
+
+// OPTIMIZATION: Use uniform buffer instead of storage buffer for speed
+@group(0) @binding(4) var<uniform> StyleParams : StyleParamBlock;
 
 fn style_param(i: u32) -> f32 {
   if (i >= STYLE_PARAM_CAPACITY) {
@@ -136,8 +136,8 @@ fn twist_theta(theta: f32, t: f32) -> f32 {
 }
 
 fn superformula_value(theta: f32, m: f32, n1: f32, n2: f32, n3: f32, a: f32, b: f32) -> f32 {
-  let c = pow(abs_f32(cos(m * theta / 4.0) / max(a, 1e-4)), n2);
-  let s = pow(abs_f32(sin(m * theta / 4.0) / max(b, 1e-4)), n3);
+  let c = pow(abs(cos(m * theta / 4.0) / max(a, 1e-4)), n2);
+  let s = pow(abs(sin(m * theta / 4.0) / max(b, 1e-4)), n3);
   let denom = pow(c + s, 1.0 / max(n1, 1e-4));
   if (denom <= 1e-4) {
     return 0.0;
@@ -176,6 +176,83 @@ fn sf_radius(theta: f32, t: f32, r0: f32) -> f32 {
   let n2 = mix(n2_base, n2_top, t);
   let n3 = mix(n3_base, n3_top, t);
   let rf = superformula_value(theta, m, n1, n2, n3, a, b);
+  return r0 * (0.90 + 0.35 * rf);
+}
+
+// Optimized: Superformula radius at theta = 0
+// Reduces calculation: cos(0)=1, sin(0)=0.
+// rf = 1.0 / pow(pow(1.0/a, n2), 1.0/n1) = a^(n2/n1) if a is positive.
+fn sf_radius_zero(t: f32, r0: f32) -> f32 {
+  let has_params = style_params_active();
+  var n1 = getf(10u);
+  var n2 = getf(11u);
+  var a = 1.0;
+  if (has_params) {
+    // Interpolate n1, n2 based on t
+    let n1_base = style_param(3u);
+    let n1_top = style_param(4u);
+    let n2_base = style_param(5u);
+    let n2_top = style_param(6u);
+    n1 = mix(n1_base, n1_top, t);
+    n2 = mix(n2_base, n2_top, t);
+    a = max(style_param(9u), 1e-4);
+  } else {
+    // Default interpolation if no params active
+    let n1_top = getf(10u);
+    let n2_top = getf(11u);
+    n1 = mix(n1, n1_top, t);
+    n2 = mix(n2, n2_top, t);
+  }
+  
+  // rf = 1 / ( (1/a^n2)^(1/n1) ) = 1 / (1/a)^(n2/n1) = a^(n2/n1)
+  // Ensure strict positivity for pow and clamp exponent to prevent overflow
+  let exponent = clamp(n2 / max(n1, 1e-4), -100.0, 100.0);
+  let rf = pow(max(a, 1e-4), exponent);
+  return r0 * (0.90 + 0.35 * clamp(rf, 0.0, 4.0));
+}
+
+// Optimized: Superformula radius at theta = 2PI
+// At 2PI, theta = 2PI. Argument phi = m * 2PI / 4 = m * PI / 2.
+fn sf_radius_tau(t: f32, r0: f32) -> f32 {
+  let has_params = style_params_active();
+  var m_base = getf(8u);
+  var m_top = getf(9u);
+  var m_curve = 1.2;
+  var n1_base = getf(10u);
+  var n1_top = n1_base;
+  var n2_base = getf(11u);
+  var n2_top = n2_base;
+  var n3_base = getf(12u);
+  var n3_top = n3_base;
+  var a = 1.0;
+  var b = 1.0;
+  if (has_params) {
+    m_base = style_param(0u);
+    m_top = style_param(1u);
+    m_curve = max(style_param(2u), 1e-4);
+    n1_base = style_param(3u);
+    n1_top = style_param(4u);
+    n2_base = style_param(5u);
+    n2_top = style_param(6u);
+    n3_base = style_param(7u);
+    n3_top = style_param(8u);
+    a = max(style_param(9u), 1e-4);
+    b = max(style_param(10u), 1e-4);
+  }
+  let m = mix(m_base, m_top, pow(t, m_curve));
+  let n1 = mix(n1_base, n1_top, t);
+  let n2 = mix(n2_base, n2_top, t);
+  let n3 = mix(n3_base, n3_top, t);
+  
+  // Calculate directly for m * PI / 2
+  let phi = m * 1.57079632679;
+  let c = pow(abs(cos(phi) / max(a, 1e-4)), n2);
+  let s = pow(abs(sin(phi) / max(b, 1e-4)), n3);
+  let denom = pow(c + s, 1.0 / max(n1, 1e-4));
+  var rf = 0.0;
+  if (denom > 1e-4) {
+    rf = clamp(1.0 / denom, 0.0, 4.0);
+  }
   return r0 * (0.90 + 0.35 * rf);
 }
 
@@ -243,8 +320,8 @@ fn superellipse_radius(theta: f32, t: f32, r0: f32) -> f32 {
   let c4p = style_param(4u);
   let c8a = style_param(5u);
   let c8p = style_param(6u);
-  let c = pow(abs_f32(cos(theta)), m_exp);
-  let s = pow(abs_f32(sin(theta)), m_exp);
+  let c = pow(abs(cos(theta)), m_exp);
+  let s = pow(abs(sin(theta)), m_exp);
   let base = pow(c + s, -1.0 / max(m_exp, 1e-4));
   let rf = base * (1.0 + c4a * cos(4.0 * theta + c4p) + c8a * cos(8.0 * theta + c8p));
   return r0 * rf;
@@ -285,21 +362,91 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
   return sf_radius(theta, t, r0);
 }
 
+fn style_radius_zero(style_id: i32, t: f32, r0: f32) -> f32 {
+  // For most styles, f(0) is a simplified calculation
+  if (style_id == STYLE_FOURIER) {
+    // Fourier at 0: base = 1 + bc8 + bc12. top = 1 + tc11 + tc22. sin terms are 0.
+    // We can just call the normal function with theta=0 if simplification isn't manual
+    // But direct implementation avoids trig calls.
+    return fourier_radius(0.0, t, r0); 
+  }
+  if (style_id == STYLE_SPIRAL) {
+    // Spiral at 0: sin(phase). phase = TAU * turns * t.
+    return spiral_radius(0.0, t, r0);
+  }
+  if (style_id == STYLE_SUPERELLIPSE) {
+    // Superellipse at 0: cos(0)=1, sin(0)=0. c=1, s=0. base=1. rf = 1 + c4a + c8a.
+    // Very cheap.
+    return superellipse_radius(0.0, t, r0);
+  }
+  if (style_id == STYLE_HARMONIC) {
+    return harmonic_radius(0.0, t, r0);
+  }
+  // Superformula: Use highly optimized version
+  return sf_radius_zero(t, r0);
+}
+
+fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
+  // For periodic functions (Fourier, Superellipse, Harmonic), f(2PI) == f(0).
+  if (style_id == STYLE_FOURIER) {
+    return fourier_radius(0.0, t, r0); // Periodic
+  }
+  if (style_id == STYLE_SUPERELLIPSE) {
+    return superellipse_radius(0.0, t, r0); // Periodic assumption (period PI/2 usually)
+  }
+  if (style_id == STYLE_HARMONIC) {
+    return harmonic_radius(0.0, t, r0); // Periodic
+  }
+  
+  if (style_id == STYLE_SPIRAL) {
+    // Spiral is NOT periodic if turns is not integer.
+    // We must evaluate at theta = 2PI (TAU)
+    // spiral_radius handles theta input, it calculates phase + k*theta.
+    // If we pass 2PI, it calculates sin(k*2PI + phase).
+    return spiral_radius(6.2831853, t, r0);
+  }
+  
+  // Superformula: Use optimized version for 2PI
+  return sf_radius_tau(t, r0);
+}
+
 fn surf(u: f32, v: f32) -> vec3<f32> {
   let H = getf(0u);
   let t = clamp(v, 0.0, 1.0);
   let z = t * H;
   let r0 = r_base(t);
+  
   // Calculate twist angle based on height (t)
   let th0 = u * TAU; // Untwisted angle (reference)
   let th = twist_theta(th0, t); // Twisted angle (for rotation)
   
+  // Seam blending Logic (now safe with Uniform buffer)
+  let blend_width = clamp(getf(SEAM_BLEND_WIDTH_OFFSET), 0.0, 0.25);
+  let overlap = clamp(getf(SEAM_OVERLAP_OFFSET), -0.1, 0.1);
+
   let style_id = i32(getf(7u));
-  // CRITICAL: Use the UNTWISTED angle (th0) to sample the radius.
-  // This effectively defines the shape in a static frame and then rotates it by 'th'.
-  // If we used 'th' here, we would be sampling the shape at the twisted angle,
-  // which would result in the shape appearing static (no visual twist) with texture sliding.
-  let r = style_radius(style_id, th0, t, r0);
+  var r = style_radius(style_id, th0, t, r0);
+
+  // Apply smooth blending at U=0 / U=1 boundary to prevent sharp seams
+  // Apply smooth blending at U=0 / U=1 boundary to prevent sharp seams
+  // Apply smooth blending at U=0 / U=1 boundary to prevent sharp seams
+  // Apply smooth blending at U=0 / U=1 boundary to prevent sharp seams
+  // if (blend_width > 1e-4) {
+  //   // Check if we are near the seam
+  //   if (u < blend_width) {
+  //     // Near 0: Blend with geometry from u=1 (wrapped) -> theta = 2PI (Tau)
+  //     // Optimized: Use pre-calculated end point (ignoring overlap shift for stability)
+  //     let r_target = style_radius_tau(style_id, t, r0);
+  //     let alpha = smoothstep(0.0, blend_width, u);
+  //     r = mix(r_target, r, alpha);
+  //   } else if (u > 1.0 - blend_width) {
+  //     // Near 1: Blend with geometry from u=0 (wrapped) -> theta = 0
+  //     // Optimized: Use pre-calculated start point
+  //     let r_target = style_radius_zero(style_id, t, r0);
+  //     let alpha = smoothstep(1.0, 1.0 - blend_width, u); // 1 at seam -> 0 at blend edge
+  //     r = mix(r, r_target, 1.0 - alpha);
+  //   }
+  // }
   
   // Rotate the point by the twisted angle 'th'
   return vec3<f32>(r * cos(th), r * sin(th), z);

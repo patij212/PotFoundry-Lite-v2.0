@@ -32,7 +32,8 @@
 .pf-app-ui .pf-help-dialog,
 .pf-app-ui .pf-sidebar,
 .pf-app-ui .pf-mobile-sheet,
-.pf-app-ui .pf-mobile-sheet__backdrop {
+.pf-app-ui .pf-mobile-sheet__backdrop,
+.pf-app-ui .pf-console-overlay {
   pointer-events: auto;
 }
 
