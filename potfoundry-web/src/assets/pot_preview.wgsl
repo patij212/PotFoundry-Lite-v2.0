@@ -291,8 +291,7 @@ fn surf(u: f32, v: f32) -> vec3<f32> {
   let z = t * H;
   let r0 = r_base(t);
   // Calculate twist angle based on height (t)
-  // Use fract(u) to ensure u=1.0 wraps to u=0.0 for watertight seam at θ=0/360° boundary
-  let th0 = fract(u) * TAU; // Untwisted angle (reference), wrapped to [0, TAU)
+  let th0 = u * TAU; // Untwisted angle (reference)
   let th = twist_theta(th0, t); // Twisted angle (for rotation)
   
   let style_id = i32(getf(7u));

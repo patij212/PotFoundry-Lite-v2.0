@@ -1,3 +1,5 @@
+/// <reference types="@cloudflare/workers-types" />
+
 /**
  * Create Stripe Customer Portal Session
  * 
@@ -39,7 +41,7 @@ async function getCustomerIdFromEmail(
 
         if (!response.ok) return null;
 
-        const data = await response.json();
+        const data: any = await response.json();
         if (Array.isArray(data) && data.length > 0) {
             return data[0].stripe_customer_id || null;
         }
@@ -66,7 +68,7 @@ async function getOrCreateStripeCustomer(
         );
 
         if (searchResponse.ok) {
-            const searchData = await searchResponse.json();
+            const searchData: any = await searchResponse.json();
             if (searchData.data && searchData.data.length > 0) {
                 return searchData.data[0].id;
             }
@@ -83,7 +85,7 @@ async function getOrCreateStripeCustomer(
         });
 
         if (createResponse.ok) {
-            const customer = await createResponse.json();
+            const customer: any = await createResponse.json();
             return customer.id;
         }
 
@@ -133,7 +135,7 @@ async function createPortalSession(
             body: `customer=${encodeURIComponent(customerId)}&return_url=${encodeURIComponent(returnUrl)}`,
         });
 
-        const data = await response.json();
+        const data: any = await response.json();
 
         if (!response.ok) {
             console.error('[Portal] Stripe error:', data);
@@ -177,35 +179,35 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     // Get or create Stripe customer ID
-    let customerId = providedCustomerId;
+    let finalCustomerId: string | null | undefined = providedCustomerId;
 
-    if (!customerId && email) {
+    if (!finalCustomerId && email) {
         // First check our database
-        customerId = await getCustomerIdFromEmail(email, supabaseUrl, env.SUPABASE_SERVICE_KEY);
+        finalCustomerId = await getCustomerIdFromEmail(email, supabaseUrl, env.SUPABASE_SERVICE_KEY);
 
         // If not in database, search/create in Stripe
-        if (!customerId) {
-            customerId = await getOrCreateStripeCustomer(email, env.STRIPE_SECRET_KEY);
+        if (!finalCustomerId) {
+            finalCustomerId = await getOrCreateStripeCustomer(email, env.STRIPE_SECRET_KEY);
 
             // Save to our database for future lookups
-            if (customerId) {
-                await saveCustomerIdToProfile(email, customerId, supabaseUrl, env.SUPABASE_SERVICE_KEY);
+            if (finalCustomerId) {
+                await saveCustomerIdToProfile(email, finalCustomerId, supabaseUrl, env.SUPABASE_SERVICE_KEY);
             }
         }
     }
 
-    if (!customerId) {
+    if (!finalCustomerId) {
         return jsonResponse({ error: 'Could not find or create customer' }, 404);
     }
 
-    console.log('[Portal] Customer ID:', customerId);
+    console.log('[Portal] Customer ID:', finalCustomerId);
 
     // Determine return URL
     const origin = request.headers.get('origin') || 'https://potfoundry-pro.pages.dev';
     const returnUrl = `${origin}/`;
 
     // Create portal session
-    const result = await createPortalSession(customerId, env.STRIPE_SECRET_KEY, returnUrl);
+    const result = await createPortalSession(finalCustomerId, env.STRIPE_SECRET_KEY, returnUrl);
 
     if ('error' in result) {
         return jsonResponse(result, 400);
