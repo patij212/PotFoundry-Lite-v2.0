@@ -162,8 +162,8 @@ export interface MeshQuality {
   export_n_z: number;
   /** Seam overlap for advanced watertight control (0-0.05) - reserved for future use */
   seam_overlap: number;
-  /** Seam blend width for advanced control (0-0.10) - reserved for future use */
-  seam_blend_width: number;
+  /** Seam blend angle in degrees (0-30) - controls width of seam blending zone */
+  seamAngle: number;
 }
 
 /** Default mesh quality settings */
@@ -173,7 +173,7 @@ export const DEFAULT_MESH_QUALITY: MeshQuality = {
   export_n_theta: 336,
   export_n_z: 168,
   seam_overlap: 0,
-  seam_blend_width: 0,
+  seamAngle: 0,
 };
 
 /** Bounds for mesh quality parameters */
@@ -183,7 +183,7 @@ export const MESH_QUALITY_BOUNDS = {
   export_n_theta: { min: 48, max: 2048, step: 24 },
   export_n_z: { min: 16, max: 1024, step: 8 },
   seam_overlap: { min: 0, max: 0.05, step: 0.001 },
-  seam_blend_width: { min: 0, max: 0.10, step: 0.005 },
+  seamAngle: { min: 0, max: 30, step: 1 },
 } as const;
 
 // ============================================================================

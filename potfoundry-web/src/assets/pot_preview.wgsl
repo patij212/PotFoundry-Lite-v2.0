@@ -420,33 +420,38 @@ fn surf(u: f32, v: f32) -> vec3<f32> {
   let th0 = u * TAU; // Untwisted angle (reference)
   let th = twist_theta(th0, t); // Twisted angle (for rotation)
   
-  // Seam blending Logic (now safe with Uniform buffer)
-  let blend_width = clamp(getf(SEAM_BLEND_WIDTH_OFFSET), 0.0, 0.25);
-  let overlap = clamp(getf(SEAM_OVERLAP_OFFSET), -0.1, 0.1);
-
   let style_id = i32(getf(7u));
   var r = style_radius(style_id, th0, t, r0);
-
-  // Apply smooth blending at U=0 / U=1 boundary to prevent sharp seams
-  // Apply smooth blending at U=0 / U=1 boundary to prevent sharp seams
-  // Apply smooth blending at U=0 / U=1 boundary to prevent sharp seams
-  // Apply smooth blending at U=0 / U=1 boundary to prevent sharp seams
-  // if (blend_width > 1e-4) {
-  //   // Check if we are near the seam
-  //   if (u < blend_width) {
-  //     // Near 0: Blend with geometry from u=1 (wrapped) -> theta = 2PI (Tau)
-  //     // Optimized: Use pre-calculated end point (ignoring overlap shift for stability)
-  //     let r_target = style_radius_tau(style_id, t, r0);
-  //     let alpha = smoothstep(0.0, blend_width, u);
-  //     r = mix(r_target, r, alpha);
-  //   } else if (u > 1.0 - blend_width) {
-  //     // Near 1: Blend with geometry from u=0 (wrapped) -> theta = 0
-  //     // Optimized: Use pre-calculated start point
-  //     let r_target = style_radius_zero(style_id, t, r0);
-  //     let alpha = smoothstep(1.0, 1.0 - blend_width, u); // 1 at seam -> 0 at blend edge
-  //     r = mix(r, r_target, 1.0 - alpha);
-  //   }
-  // }
+  
+  // Seam blending v3.2: Uses CPU-precomputed seam factors (no function calls!)
+  // Index 73 = seam_angle (radians)
+  // Index 74 = seam_factor_bottom (ratio at t=0)
+  // Index 75 = seam_factor_top (ratio at t=1)
+  let seam_angle = getf(73u);
+  if (seam_angle > 0.001) {
+    // Distance from theta=0 or theta=TAU (whichever is closer)
+    let dist_from_seam = min(th0, TAU - th0);
+    if (dist_from_seam < seam_angle) {
+      // Read seam factors from uniforms
+      let raw_bottom = getf(74u);
+      let raw_top = getf(75u);
+      
+      // Safety check: treat 0 or near-0 as uninitialized (use 1.0 = no change)
+      // Clamp to reasonable range [0.5, 2.0] to prevent extreme geometry
+      let seam_factor_bottom = clamp(select(1.0, raw_bottom, raw_bottom > 0.1), 0.5, 2.0);
+      let seam_factor_top = clamp(select(1.0, raw_top, raw_top > 0.1), 0.5, 2.0);
+      
+      // Interpolate seam factor based on height (t)
+      let seam_factor = mix(seam_factor_bottom, seam_factor_top, t);
+      
+      // Compute seam radius: r0 * interpolated factor
+      let r_seam = r0 * seam_factor;
+      
+      // Smooth blend using smoothstep for better visual quality
+      let alpha = smoothstep(0.0, seam_angle, dist_from_seam);
+      r = mix(r_seam, r, alpha);
+    }
+  }
   
   // Rotate the point by the twisted angle 'th'
   return vec3<f32>(r * cos(th), r * sin(th), z);

@@ -316,8 +316,7 @@ function meshToParams(mesh: MeshQuality): Record<string, unknown> {
   return {
     nTheta: mesh.preview_n_theta,
     nZ: mesh.preview_n_z,
-    seam_overlap: mesh.seam_overlap ?? 0,
-    seam_blend_width: mesh.seam_blend_width ?? 0,
+    seamAngle: mesh.seamAngle ?? 0, // Seam blend angle in degrees
     // Export values are handled separately during STL export
   };
 }

@@ -175,21 +175,12 @@ export const MeshControls: React.FC = () => {
       <SectionGroup label="Seam Controls (Advanced)">
         <div className="pf-mesh-row">
           <Slider
-            label="Seam Overlap"
-            value={mesh.seam_overlap ?? 0}
-            onChange={(v) => setMeshParam('seam_overlap', v)}
-            min={MESH_QUALITY_BOUNDS.seam_overlap.min}
-            max={MESH_QUALITY_BOUNDS.seam_overlap.max}
-            step={MESH_QUALITY_BOUNDS.seam_overlap.step}
-          />
-
-          <Slider
-            label="Seam Blend Width"
-            value={mesh.seam_blend_width ?? 0}
-            onChange={(v) => setMeshParam('seam_blend_width', v)}
-            min={MESH_QUALITY_BOUNDS.seam_blend_width.min}
-            max={MESH_QUALITY_BOUNDS.seam_blend_width.max}
-            step={MESH_QUALITY_BOUNDS.seam_blend_width.step}
+            label="Seam Blend Angle"
+            value={mesh.seamAngle ?? 0}
+            onChange={(v) => setMeshParam('seamAngle', v)}
+            min={MESH_QUALITY_BOUNDS.seamAngle.min}
+            max={MESH_QUALITY_BOUNDS.seamAngle.max}
+            step={MESH_QUALITY_BOUNDS.seamAngle.step}
           />
         </div>
       </SectionGroup>
