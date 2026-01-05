@@ -151,6 +151,7 @@ export function useExport(): UseExportResult {
       const quality = {
         nTheta: mesh.export_n_theta,  // Use export quality for STL
         nZ: mesh.export_n_z,
+        seamAngle: mesh.seamAngle,  // Include seam blending
       };
 
       // Map style name to StyleId
@@ -241,7 +242,7 @@ export function useExport(): UseExportResult {
 
       // Generate filename with style name
       const styleName = style.name ?? 'Pot';
-      const finalFilename = filename === 'pot.stl' 
+      const finalFilename = filename === 'pot.stl'
         ? `PotFoundry_${styleName}_${Date.now()}.stl`
         : filename;
 

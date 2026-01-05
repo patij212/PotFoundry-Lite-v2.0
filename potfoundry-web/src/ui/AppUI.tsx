@@ -13,7 +13,7 @@ import { HelpDialog, ErrorBoundary } from './shared';
 import { useKeyboardShortcuts } from '../hooks';
 import { useUIActions, useGeometryActions, useStyleActions } from '../state';
 import { useExport } from '../hooks/useExport';
-import { ConsoleOverlay } from './debug/ConsoleOverlay';
+import { ConsoleOverlay } from './debug/ConsoleOverlayV2';
 import './AppUI.css';
 
 // ============================================================================

@@ -64,6 +64,8 @@ export interface MeshQuality {
   nTheta: number;
   /** Vertical divisions along the height */
   nZ: number;
+  /** Seam blend zone in degrees (0 = disabled) */
+  seamAngle?: number;
 }
 
 /**
@@ -99,7 +101,7 @@ export interface ProfileParams {
 // ============================================================================
 
 /** Available style identifiers matching WGSL shader constants */
-export type StyleId = 
+export type StyleId =
   | 'SuperformulaBlossom'
   | 'FourierBloom'
   | 'SpiralRidges'
@@ -202,7 +204,7 @@ export interface HarmonicRippleParams {
 }
 
 /** Union type for all style parameters */
-export type StyleParams = 
+export type StyleParams =
   | SuperformulaBlossomParams
   | FourierBloomParams
   | SpiralRidgesParams

@@ -1,35 +1,113 @@
+/* DevConsole V2 Styles */
+
+/* ============================================================================
+   Base Overlay
+   ============================================================================ */
+
 .pf-console-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(10, 10, 12, 0.95);
+    background: var(--console-bg, rgba(10, 10, 12, 0.95));
     backdrop-filter: blur(8px);
     z-index: 9999;
     display: flex;
     flex-direction: column;
-    color: #e0e0e0;
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 13px;
+    color: var(--console-text, #e0e0e0);
+    font-family: 'Consolas', 'Monaco', 'Fira Code', monospace;
+    font-size: var(--console-font-size, 13px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
+/* Dock Positions */
+.pf-console-overlay--bottom {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 400px;
+}
+
+.pf-console-overlay--right {
+    top: 0;
+    left: auto;
+    right: 0;
+    bottom: 0;
+    width: 500px;
+}
+
+.pf-console-overlay--float {
+    top: 100px;
+    left: 100px;
+    right: auto;
+    bottom: auto;
+    width: 700px;
+    height: 500px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .pf-console-overlay--hidden {
-    transform: translateY(-100%);
+    transform: translateY(100%);
     opacity: 0;
     pointer-events: none !important;
 }
 
+.pf-console-overlay--right.pf-console-overlay--hidden {
+    transform: translateX(100%);
+}
+
+.pf-console-overlay--float.pf-console-overlay--hidden {
+    transform: scale(0.9);
+}
+
+/* Themes */
+.pf-console-overlay--dark {
+    --console-bg: rgba(10, 10, 12, 0.95);
+    --console-text: #e0e0e0;
+    --console-border: #333;
+    --console-hover: rgba(255, 255, 255, 0.05);
+}
+
+.pf-console-overlay--light {
+    --console-bg: rgba(250, 250, 252, 0.95);
+    --console-text: #222;
+    --console-border: #ddd;
+    --console-hover: rgba(0, 0, 0, 0.05);
+}
+
+/* Font Sizes */
+.pf-console-overlay--font-sm {
+    --console-font-size: 11px;
+}
+
+.pf-console-overlay--font-md {
+    --console-font-size: 13px;
+}
+
+.pf-console-overlay--font-lg {
+    --console-font-size: 15px;
+}
+
+/* ============================================================================
+   Header
+   ============================================================================ */
+
 .pf-console-header {
     height: 40px;
-    background: #1a1a1f;
-    border-bottom: 1px solid #333;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid var(--console-border, #333);
     display: flex;
     align-items: center;
-    padding: 0 16px;
+    padding: 0 12px;
     flex-shrink: 0;
+    gap: 4px;
+}
+
+.pf-console-title {
+    font-weight: bold;
+    color: #fff;
+    margin-right: 12px;
+    font-size: 14px;
 }
 
 .pf-console-tab {
@@ -39,14 +117,17 @@
     padding: 6px 12px;
     cursor: pointer;
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12px;
     border-radius: 4px;
     transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .pf-console-tab:hover {
     color: #ccc;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--console-hover, rgba(255, 255, 255, 0.05));
 }
 
 .pf-console-tab--active {
@@ -54,8 +135,37 @@
     background: rgba(255, 255, 255, 0.1);
 }
 
+.pf-console-tab-icon {
+    font-size: 14px;
+}
+
 .pf-console-spacer {
     flex: 1;
+}
+
+.pf-console-settings-btn {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.pf-console-settings-btn:hover {
+    color: #fff;
+    background: var(--console-hover);
+}
+
+.pf-console-dock-select {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--console-border);
+    color: var(--console-text);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
 }
 
 .pf-console-close {
@@ -66,56 +176,73 @@
     cursor: pointer;
     padding: 0 8px;
     line-height: 1;
+    margin-left: 8px;
 }
 
 .pf-console-close:hover {
     color: #fff;
 }
 
+/* ============================================================================
+   Content & Toolbar
+   ============================================================================ */
+
 .pf-console-content {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
-    /* Important for scroll */
     position: relative;
 }
 
 .pf-console-toolbar {
-    height: 36px;
-    border-bottom: 1px solid #2a2a30;
+    height: 40px;
+    border-bottom: 1px solid var(--console-border, #2a2a30);
     display: flex;
     align-items: center;
     padding: 0 8px;
     flex-shrink: 0;
+    gap: 4px;
 }
 
 .pf-console-search {
-    background: #000;
-    border: 1px solid #333;
-    color: #ccc;
-    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--console-border, #333);
+    color: var(--console-text, #ccc);
+    padding: 6px 10px;
     border-radius: 4px;
     font-family: inherit;
     font-size: 12px;
     width: 200px;
 }
 
+.pf-console-search:focus {
+    outline: none;
+    border-color: #4a9eff;
+}
+
+.pf-console-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--console-border, rgba(255, 255, 255, 0.1));
+    margin: 0 4px;
+}
+
 .pf-console-btn {
     background: transparent;
     border: 1px solid transparent;
     color: #888;
-    padding: 2px 8px;
+    padding: 4px 8px;
     font-size: 11px;
     cursor: pointer;
-    border-radius: 3px;
-    margin-right: 4px;
+    border-radius: 4px;
     text-transform: uppercase;
-    transition: all 0.1s;
+    transition: all 0.15s;
+    font-family: inherit;
 }
 
 .pf-console-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--console-hover, rgba(255, 255, 255, 0.05));
     color: #ccc;
 }
 
@@ -125,43 +252,172 @@
     border-color: rgba(255, 255, 255, 0.2);
 }
 
+.pf-console-btn--regex {
+    font-family: monospace;
+    font-weight: bold;
+}
+
+/* Level Button Colors */
+.pf-console-btn--debug.pf-console-btn--active {
+    background: rgba(100, 100, 100, 0.3);
+    color: #aaa;
+}
+
+.pf-console-btn--info.pf-console-btn--active {
+    background: rgba(50, 150, 255, 0.2);
+    color: #8cf;
+}
+
+.pf-console-btn--warn.pf-console-btn--active {
+    background: rgba(255, 180, 50, 0.2);
+    color: #fc8;
+}
+
+.pf-console-btn--error.pf-console-btn--active {
+    background: rgba(255, 50, 50, 0.2);
+    color: #f88;
+}
+
+.pf-console-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+.pf-console-checkbox-label input {
+    margin: 0;
+}
+
+/* Export Menu */
+.pf-console-export-wrapper {
+    position: relative;
+}
+
+.pf-console-export-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: rgba(30, 30, 35, 0.98);
+    border: 1px solid var(--console-border);
+    border-radius: 6px;
+    padding: 4px 0;
+    min-width: 160px;
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.pf-console-export-menu button {
+    display: block;
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--console-text);
+    padding: 8px 12px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.pf-console-export-menu button:hover {
+    background: var(--console-hover);
+}
+
+/* ============================================================================
+   Logs
+   ============================================================================ */
+
 .pf-console-logs {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
+    padding: 4px;
     scroll-behavior: smooth;
+}
+
+.pf-console-pinned {
+    background: rgba(255, 200, 50, 0.05);
+    border-bottom: 1px solid rgba(255, 200, 50, 0.2);
+    padding: 4px;
+}
+
+.pf-console-pinned-header {
+    font-size: 11px;
+    color: #fc8;
+    padding: 4px 8px;
+    font-weight: bold;
 }
 
 .pf-console-row {
     display: flex;
-    padding: 2px 4px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    line-height: 1.4;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-bottom: 2px;
+    line-height: 1.5;
     align-items: flex-start;
+    position: relative;
+    transition: background 0.15s;
 }
 
 .pf-console-row:hover {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--console-hover, rgba(255, 255, 255, 0.03));
+}
+
+.pf-console-row--selected {
+    background: rgba(74, 158, 255, 0.1);
+    outline: 1px solid rgba(74, 158, 255, 0.3);
+}
+
+.pf-console-row--new {
+    animation: logFadeIn 0.3s ease;
+}
+
+@keyframes logFadeIn {
+    from {
+        opacity: 0.3;
+        transform: translateX(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }
 
 .pf-console-ts {
-    color: #555;
+    color: #666;
     font-size: 11px;
     margin-right: 8px;
     flex-shrink: 0;
     user-select: none;
-    width: 80px;
+    min-width: 75px;
 }
 
 .pf-console-level {
     font-size: 10px;
     margin-right: 8px;
-    padding: 1px 4px;
-    border-radius: 2px;
+    padding: 2px 6px;
+    border-radius: 3px;
     flex-shrink: 0;
-    width: 40px;
+    min-width: 50px;
     text-align: center;
-    font-weight: bold;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.pf-console-level-icon {
+    font-size: 12px;
+}
+
+.pf-console-level-text {
+    font-size: 10px;
+}
+
+/* Level Colors */
+.pf-console-row--debug .pf-console-level {
+    background: rgba(100, 100, 100, 0.2);
+    color: #888;
 }
 
 .pf-console-row--info .pf-console-level {
@@ -184,29 +440,66 @@
     color: #fff;
 }
 
-.pf-console-row--debug .pf-console-level {
-    background: rgba(100, 100, 100, 0.2);
-    color: #888;
+.pf-console-msg-wrapper {
+    flex: 1;
+    min-width: 0;
 }
 
 .pf-console-msg {
-    color: #ccc;
+    color: var(--console-text, #ccc);
     word-break: break-word;
     white-space: pre-wrap;
-    flex: 1;
 }
 
 .pf-console-count {
     display: inline-block;
-    background: #333;
+    background: rgba(74, 158, 255, 0.3);
     color: #fff;
     font-size: 10px;
-    padding: 0 4px;
-    border-radius: 8px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    margin-left: 8px;
+    font-weight: 600;
+}
+
+/* Search Highlighting */
+.pf-search-match {
+    background: rgba(255, 220, 0, 0.4);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 2px;
+}
+
+/* Row Actions */
+.pf-console-row-actions {
+    display: none;
+    gap: 4px;
     margin-left: 8px;
 }
 
-/* Updated Context Styles */
+.pf-console-row:hover .pf-console-row-actions {
+    display: flex;
+}
+
+.pf-console-action-btn {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0.5;
+    padding: 2px;
+    transition: opacity 0.15s;
+}
+
+.pf-console-action-btn:hover {
+    opacity: 1;
+}
+
+.pf-console-action-btn--active {
+    opacity: 1;
+}
+
+/* Context Details */
 .pf-console-context-details {
     margin-top: 4px;
 }
@@ -232,57 +525,143 @@
     overflow-x: auto;
 }
 
+/* ============================================================================
+   Command Input
+   ============================================================================ */
+
 .pf-console-input-area {
-    height: 32px;
-    border-top: 1px solid #333;
+    height: 36px;
+    border-top: 1px solid var(--console-border, #333);
     display: flex;
     align-items: center;
-    padding: 0 8px;
-    background: #111;
+    padding: 0 12px;
+    background: rgba(0, 0, 0, 0.2);
     flex-shrink: 0;
 }
 
 .pf-console-prompt {
-    color: #8cf;
+    color: #4a9eff;
     margin-right: 8px;
     font-weight: bold;
+    font-size: 16px;
 }
 
 .pf-console-input {
     flex: 1;
     background: transparent;
     border: none;
-    color: #fff;
+    color: var(--console-text, #fff);
     font-family: inherit;
-    font-size: 13px;
+    font-size: var(--console-font-size, 13px);
     outline: none;
 }
 
-/* Health Stats */
+.pf-console-input::placeholder {
+    color: #666;
+}
+
+/* ============================================================================
+   Resize Handle
+   ============================================================================ */
+
+.pf-resize-handle {
+    position: absolute;
+    z-index: 10;
+    transition: background 0.15s;
+}
+
+.pf-resize-handle--vertical {
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    cursor: ns-resize;
+}
+
+.pf-resize-handle--horizontal {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 6px;
+    cursor: ew-resize;
+}
+
+.pf-resize-handle:hover,
+.pf-resize-handle--active {
+    background: rgba(74, 158, 255, 0.3);
+}
+
+.pf-resize-handle-grip {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #666;
+    font-size: 10px;
+    user-select: none;
+}
+
+/* ============================================================================
+   Health / Metrics
+   ============================================================================ */
+
+.pf-console-health {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+}
+
 .pf-console-metrics {
-    padding: 16px;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 16px;
+    gap: 12px;
 }
 
 .pf-metric-card {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.03);
     padding: 12px;
-    border-radius: 6px;
+    border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pf-metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
 }
 
 .pf-metric-label {
     color: #888;
     font-size: 11px;
     text-transform: uppercase;
-    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+}
+
+.pf-metric-trend {
+    font-size: 12px;
+}
+
+.pf-metric-trend--up {
+    color: #4ade80;
+}
+
+.pf-metric-trend--down {
+    color: #f87171;
+}
+
+.pf-metric-trend--stable {
+    color: #888;
+}
+
+.pf-metric-body {
+    display: flex;
+    align-items: baseline;
 }
 
 .pf-metric-value {
     color: #fff;
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 300;
 }
 
@@ -290,4 +669,367 @@
     font-size: 12px;
     color: #666;
     margin-left: 4px;
+}
+
+.pf-metric-sparkline {
+    margin-top: 8px;
+}
+
+/* ============================================================================
+   Network Tab
+   ============================================================================ */
+
+.pf-net-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.pf-net-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    gap: 8px;
+    border-bottom: 1px solid var(--console-border);
+}
+
+.pf-net-count {
+    color: #888;
+    font-size: 12px;
+}
+
+.pf-net-table-wrapper {
+    flex: 1;
+    overflow: auto;
+}
+
+.pf-net-empty {
+    padding: 40px;
+    text-align: center;
+    color: #666;
+}
+
+.pf-net-empty-hint {
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.pf-net-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.pf-net-th {
+    text-align: left;
+    padding: 8px;
+    color: #888;
+    font-weight: 600;
+    border-bottom: 1px solid var(--console-border);
+    cursor: pointer;
+    user-select: none;
+}
+
+.pf-net-th:hover {
+    color: #ccc;
+}
+
+.pf-net-th--sorted {
+    color: #4a9eff;
+}
+
+.pf-net-sort-indicator {
+    margin-left: 4px;
+}
+
+.pf-net-row {
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.pf-net-row:hover {
+    background: var(--console-hover);
+}
+
+.pf-net-row--selected {
+    background: rgba(74, 158, 255, 0.1);
+}
+
+.pf-net-row--error {
+    color: #f88;
+}
+
+.pf-net-row td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pf-net-method {
+    font-weight: 600;
+    min-width: 60px;
+}
+
+.pf-net-method--get {
+    color: #4ade80;
+}
+
+.pf-net-method--post {
+    color: #60a5fa;
+}
+
+.pf-net-method--put {
+    color: #fbbf24;
+}
+
+.pf-net-method--delete {
+    color: #f87171;
+}
+
+.pf-net-method--patch {
+    color: #c084fc;
+}
+
+.pf-net-url {
+    max-width: 400px;
+}
+
+.pf-net-status--success {
+    color: #4ade80;
+}
+
+.pf-net-status--redirect {
+    color: #60a5fa;
+}
+
+.pf-net-status--client-error {
+    color: #fbbf24;
+}
+
+.pf-net-status--server-error {
+    color: #f87171;
+}
+
+.pf-net-status--error {
+    color: #f87171;
+}
+
+.pf-net-details {
+    border-top: 1px solid var(--console-border);
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.pf-net-details-header {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.pf-net-details-url {
+    color: var(--console-text);
+    word-break: break-all;
+}
+
+.pf-net-detail-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 12px;
+}
+
+.pf-net-detail-label {
+    color: #888;
+    min-width: 80px;
+}
+
+.pf-net-detail-row--error {
+    color: #f88;
+}
+
+/* ============================================================================
+   State Tab
+   ============================================================================ */
+
+.pf-console-state {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.pf-console-state-placeholder {
+    text-align: center;
+    color: #888;
+    padding: 40px;
+}
+
+.pf-console-state-placeholder code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #4a9eff;
+}
+
+.pf-console-state-hint {
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+/* ============================================================================
+   Modal
+   ============================================================================ */
+
+.pf-console-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.pf-console-modal {
+    background: rgba(30, 30, 35, 0.98);
+    border: 1px solid var(--console-border);
+    border-radius: 8px;
+    padding: 20px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.pf-console-modal h3 {
+    margin: 0 0 16px 0;
+    color: #fff;
+    font-size: 18px;
+}
+
+.pf-console-modal h4 {
+    margin: 16px 0 8px 0;
+    color: #888;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.pf-shortcuts-table {
+    width: 100%;
+    font-size: 13px;
+}
+
+.pf-shortcuts-table td {
+    padding: 6px 0;
+}
+
+.pf-shortcuts-table td:first-child {
+    width: 100px;
+}
+
+.pf-shortcuts-table kbd {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 12px;
+}
+
+.pf-shortcuts-table code {
+    color: #4a9eff;
+}
+
+.pf-console-modal .pf-console-btn {
+    margin-top: 16px;
+}
+
+/* ============================================================================
+   State Inspector
+   ============================================================================ */
+
+.pf-state-inspector {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.pf-state-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    gap: 8px;
+    border-bottom: 1px solid var(--console-border);
+}
+
+.pf-state-count {
+    color: #888;
+    font-size: 12px;
+}
+
+.pf-state-tree {
+    flex: 1;
+    overflow: auto;
+    padding: 8px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+}
+
+.pf-state-empty {
+    padding: 40px;
+    text-align: center;
+    color: #666;
+}
+
+.pf-state-tree-node {
+    line-height: 1.6;
+}
+
+.pf-state-tree-row {
+    display: flex;
+    align-items: center;
+    padding: 2px 4px;
+    border-radius: 3px;
+    gap: 4px;
+}
+
+.pf-state-tree-row--expandable {
+    cursor: pointer;
+}
+
+.pf-state-tree-row--expandable:hover {
+    background: var(--console-hover, rgba(255, 255, 255, 0.05));
+}
+
+.pf-state-tree-arrow {
+    width: 12px;
+    color: #666;
+    font-size: 10px;
+    flex-shrink: 0;
+}
+
+.pf-state-tree-key {
+    color: #c586c0;
+    font-weight: 500;
+}
+
+.pf-state-tree-colon {
+    color: #888;
+}
+
+.pf-state-tree-type {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-right: 8px;
+}
+
+.pf-state-tree-value {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

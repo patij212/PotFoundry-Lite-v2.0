@@ -78,7 +78,7 @@ function superformulaValue(
   const c = Math.pow(Math.abs(Math.cos(m * theta / 4.0) / Math.max(a, EPSILON)), n2);
   const s = Math.pow(Math.abs(Math.sin(m * theta / 4.0) / Math.max(b, EPSILON)), n3);
   const denom = Math.pow(c + s, 1.0 / Math.max(n1, EPSILON));
-  
+
   if (denom <= EPSILON) {
     return 0.0;
   }
@@ -121,7 +121,27 @@ export function rOuterSuperformulaBlossom(
   const a = params.sfA ?? DEFAULT_SUPERFORMULA.sfA;
   const b = params.sfB ?? DEFAULT_SUPERFORMULA.sfB;
 
-  const rf = superformulaValue(theta, m, n1, n2, n3, a, b);
+  // Seam phase offset: shift theta by half a petal width so theta=0 falls 
+  // on a smooth slope instead of a petal tip/valley.
+  const seamOffset = Math.PI / Math.max(m, 1.0);
+  const thetaAdj = theta + seamOffset;
+
+  const rf = superformulaValue(thetaAdj, m, n1, n2, n3, a, b);
+
+  // Seam amplitude blending: gradually reduce petal amplitude near the seam
+  // This makes peaks gently lower to valley level for a smooth transition
+  const seamAngleDeg = (opts as any).seamAngle ?? 0;
+  if (seamAngleDeg > 0) {
+    const seamSpread = (seamAngleDeg * Math.PI) / 180;
+    const distFromSeam = Math.min(theta, TAU - theta);
+    if (distFromSeam < seamSpread) {
+      const x = distFromSeam / seamSpread;
+      const alpha = x * x * (3 - 2 * x); // smoothstep
+      const rfBlend = rf * alpha;
+      return r0 * (0.90 + 0.35 * rfBlend);
+    }
+  }
+
   return r0 * (0.90 + 0.35 * rf);
 }
 
@@ -145,17 +165,39 @@ export function rOuterSuperformulaBlossomVec(
   const mCurve = params.sfMCurveExp ?? DEFAULT_SUPERFORMULA.sfMCurveExp;
   const m = mBase + (mTop - mBase) * Math.pow(t, mCurve);
 
-  const n1 = (params.sfN1 ?? DEFAULT_SUPERFORMULA.sfN1) + 
-             ((params.sfN1Top ?? DEFAULT_SUPERFORMULA.sfN1Top) - (params.sfN1 ?? DEFAULT_SUPERFORMULA.sfN1)) * t;
-  const n2 = (params.sfN2 ?? DEFAULT_SUPERFORMULA.sfN2) + 
-             ((params.sfN2Top ?? DEFAULT_SUPERFORMULA.sfN2Top) - (params.sfN2 ?? DEFAULT_SUPERFORMULA.sfN2)) * t;
-  const n3 = (params.sfN3 ?? DEFAULT_SUPERFORMULA.sfN3) + 
-             ((params.sfN3Top ?? DEFAULT_SUPERFORMULA.sfN3Top) - (params.sfN3 ?? DEFAULT_SUPERFORMULA.sfN3)) * t;
+  const n1 = (params.sfN1 ?? DEFAULT_SUPERFORMULA.sfN1) +
+    ((params.sfN1Top ?? DEFAULT_SUPERFORMULA.sfN1Top) - (params.sfN1 ?? DEFAULT_SUPERFORMULA.sfN1)) * t;
+  const n2 = (params.sfN2 ?? DEFAULT_SUPERFORMULA.sfN2) +
+    ((params.sfN2Top ?? DEFAULT_SUPERFORMULA.sfN2Top) - (params.sfN2 ?? DEFAULT_SUPERFORMULA.sfN2)) * t;
+  const n3 = (params.sfN3 ?? DEFAULT_SUPERFORMULA.sfN3) +
+    ((params.sfN3Top ?? DEFAULT_SUPERFORMULA.sfN3Top) - (params.sfN3 ?? DEFAULT_SUPERFORMULA.sfN3)) * t;
   const a = params.sfA ?? DEFAULT_SUPERFORMULA.sfA;
   const b = params.sfB ?? DEFAULT_SUPERFORMULA.sfB;
 
+  // Seam phase offset: shift theta by half a petal width for smooth seam
+  const seamOffset = Math.PI / Math.max(m, 1.0);
+
+  // Seam amplitude blending parameters
+  const seamAngleDeg = (opts as any).seamAngle ?? 0;
+  const seamSpread = seamAngleDeg > 0 ? (seamAngleDeg * Math.PI) / 180 : 0;
+
   for (let i = 0; i < n; i++) {
-    const rf = superformulaValue(thetas[i], m, n1, n2, n3, a, b);
+    const theta = thetas[i];
+    const thetaAdj = theta + seamOffset;
+    const rf = superformulaValue(thetaAdj, m, n1, n2, n3, a, b);
+
+    // Apply seam amplitude blending if enabled
+    if (seamSpread > 0) {
+      const distFromSeam = Math.min(theta, TAU - theta);
+      if (distFromSeam < seamSpread) {
+        const x = distFromSeam / seamSpread;
+        const alpha = x * x * (3 - 2 * x); // smoothstep
+        const rfBlend = rf * alpha;
+        result[i] = r0 * (0.90 + 0.35 * rfBlend);
+        continue;
+      }
+    }
+
     result[i] = r0 * (0.90 + 0.35 * rf);
   }
 
@@ -205,14 +247,14 @@ export function rOuterFourierBloom(
   const strength = params.fbStrength ?? DEFAULT_FOURIER.fbStrength;
 
   // Compute base and top profiles
-  const base = 1.0 + 
-    bc8 * Math.cos(8 * theta + bc8p) + 
-    bs4 * Math.sin(4 * theta + bs4p) + 
+  const base = 1.0 +
+    bc8 * Math.cos(8 * theta + bc8p) +
+    bs4 * Math.sin(4 * theta + bs4p) +
     bc12 * Math.cos(12 * theta + bc12p);
 
-  const top = 1.0 + 
-    tc11 * Math.cos(11 * theta + tc11p) + 
-    ts7 * Math.sin(7 * theta + ts7p) + 
+  const top = 1.0 +
+    tc11 * Math.cos(11 * theta + tc11p) +
+    ts7 * Math.sin(7 * theta + ts7p) +
     tc22 * Math.cos(22 * theta + tc22p);
 
   // Blend and apply wobble
@@ -297,7 +339,7 @@ export function rOuterSpiralRidges(
 
   const phase = TAU * turns * t;
   const amp = ampMin + (ampMax - ampMin) * Math.pow(t, ampCurve);
-  
+
   let f = 1.0 + amp * Math.sin(k * theta + phase);
   f += grooveAmp * Math.sin(grooveMult * k * theta + phaseMult * phase);
 

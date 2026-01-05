@@ -175,7 +175,39 @@ fn sf_radius(theta: f32, t: f32, r0: f32) -> f32 {
   let n1 = mix(n1_base, n1_top, t);
   let n2 = mix(n2_base, n2_top, t);
   let n3 = mix(n3_base, n3_top, t);
-  let rf = superformula_value(theta, m, n1, n2, n3, a, b);
+  
+  // Seam phase offset: shift theta by half a petal width so theta=0 falls 
+  // on a smooth slope instead of a petal tip/valley.
+  let seam_offset = (TAU / 2.0) / max(m, 1.0);
+  let theta_adj = theta + seam_offset;
+  
+  // Calculate the styled radius value at this position
+  let rf = superformula_value(theta_adj, m, n1, n2, n3, a, b);
+  
+  // Seam Amplitude Reduction: Reduce the VARIATION in rf near the seam
+  // This lower the peaks while raising the valleys, making them meet smoothly
+  // Key: blend towards a MIDPOINT (not zero) to avoid creating a dip
+  let seam_spread = getf(73u);  // Blend zone width in radians
+  if (seam_spread > 0.001) {
+    let dist_from_seam = min(theta, TAU - theta);
+    
+    if (dist_from_seam < seam_spread) {
+      // Blend factor: 0 at seam center, 1 at edge of zone
+      let x = dist_from_seam / seam_spread;
+      let blend = smoothstep(0.0, 1.0, x);
+      
+      // rf_mid is the approximate midpoint value where peaks and valleys would meet
+      // For superformula, rf typically ranges from ~0.3 to ~1.5, so ~0.7-0.8 is a good midpoint
+      let rf_mid = 0.75;
+      
+      // Blend rf towards rf_mid: at seam center, rf = rf_mid (no variation)
+      // At edge of zone, rf = original value (full variation)
+      let rf_blended = mix(rf_mid, rf, blend);
+      
+      return r0 * (0.90 + 0.35 * rf_blended);
+    }
+  }
+  
   return r0 * (0.90 + 0.35 * rf);
 }
 
@@ -347,19 +379,24 @@ fn harmonic_radius(theta: f32, t: f32, r0: f32) -> f32 {
 }
 
 fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
+  // Normalize theta to [0, TAU) for perfect periodicity
+  // This ensures theta=TAU produces identical result to theta=0
+  // Eliminates seam discontinuity at the u=0/u=1 boundary
+  let th = theta - floor(theta / TAU) * TAU;
+  
   if (style_id == STYLE_FOURIER) {
-    return fourier_radius(theta, t, r0);
+    return fourier_radius(th, t, r0);
   }
   if (style_id == STYLE_SPIRAL) {
-    return spiral_radius(theta, t, r0);
+    return spiral_radius(th, t, r0);
   }
   if (style_id == STYLE_SUPERELLIPSE) {
-    return superellipse_radius(theta, t, r0);
+    return superellipse_radius(th, t, r0);
   }
   if (style_id == STYLE_HARMONIC) {
-    return harmonic_radius(theta, t, r0);
+    return harmonic_radius(th, t, r0);
   }
-  return sf_radius(theta, t, r0);
+  return sf_radius(th, t, r0);
 }
 
 fn style_radius_zero(style_id: i32, t: f32, r0: f32) -> f32 {
@@ -410,48 +447,22 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
   return sf_radius_tau(t, r0);
 }
 
+
 fn surf(u: f32, v: f32) -> vec3<f32> {
   let H = getf(0u);
   let t = clamp(v, 0.0, 1.0);
   let z = t * H;
   let r0 = r_base(t);
-  
-  // Calculate twist angle based on height (t)
-  let th0 = u * TAU; // Untwisted angle (reference)
-  let th = twist_theta(th0, t); // Twisted angle (for rotation)
-  
   let style_id = i32(getf(7u));
-  var r = style_radius(style_id, th0, t, r0);
   
-  // Seam blending v3.2: Uses CPU-precomputed seam factors (no function calls!)
-  // Index 73 = seam_angle (radians)
-  // Index 74 = seam_factor_bottom (ratio at t=0)
-  // Index 75 = seam_factor_top (ratio at t=1)
-  let seam_angle = getf(73u);
-  if (seam_angle > 0.001) {
-    // Distance from theta=0 or theta=TAU (whichever is closer)
-    let dist_from_seam = min(th0, TAU - th0);
-    if (dist_from_seam < seam_angle) {
-      // Read seam factors from uniforms
-      let raw_bottom = getf(74u);
-      let raw_top = getf(75u);
-      
-      // Safety check: treat 0 or near-0 as uninitialized (use 1.0 = no change)
-      // Clamp to reasonable range [0.5, 2.0] to prevent extreme geometry
-      let seam_factor_bottom = clamp(select(1.0, raw_bottom, raw_bottom > 0.1), 0.5, 2.0);
-      let seam_factor_top = clamp(select(1.0, raw_top, raw_top > 0.1), 0.5, 2.0);
-      
-      // Interpolate seam factor based on height (t)
-      let seam_factor = mix(seam_factor_bottom, seam_factor_top, t);
-      
-      // Compute seam radius: r0 * interpolated factor
-      let r_seam = r0 * seam_factor;
-      
-      // Smooth blend using smoothstep for better visual quality
-      let alpha = smoothstep(0.0, seam_angle, dist_from_seam);
-      r = mix(r_seam, r, alpha);
-    }
-  }
+  // Simple linear theta - no seam blending to avoid device lost
+  let th0 = u * TAU;
+  
+  // Calculate styled radius
+  let r = style_radius(style_id, th0, t, r0);
+  
+  // Apply twist for rotation
+  let th = twist_theta(th0, t);
   
   // Rotate the point by the twisted angle 'th'
   return vec3<f32>(r * cos(th), r * sin(th), z);

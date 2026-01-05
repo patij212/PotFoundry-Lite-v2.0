@@ -273,7 +273,7 @@ type WebGPUErrorCode =
 const postToHost = (emit: WebGPUEmitter | null, message: WebGPUEvent): void => {
   try {
     emit?.(message);
-    console.log('[WebGPU] commitDisplayBasisToState invoked');
+
   } catch (err) {
     console.warn('WebGPU emit error', err);
     return;

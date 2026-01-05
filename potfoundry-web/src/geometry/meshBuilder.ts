@@ -87,16 +87,22 @@ export function buildPotMesh(
   // Get style function
   const styleFn = getStyleFunctionVec(styleId);
 
+  // Inject seam angle into style options so the style function can handle 
+  // phase offset and amplitude blending correctly
+  if (qual.seamAngle !== undefined) {
+    styleOpts.seamAngle = qual.seamAngle;
+  }
+
   // Compute outer radii at each z level (with style modulation)
   const outerRadii: Float32Array[] = [];
   const twistOuter: number[] = [];
-  
+
   for (let i = 0; i < nZOuter; i++) {
     const z = zOuter[i];
     const r0 = baseRadius(z, H, Rb, Rt, expn, styleOpts);
     const twist = spinTwistRadians(z, H, styleOpts);
     twistOuter.push(twist);
-    
+
     // Apply twist to thetas and compute styled radii
     const twistedThetas = new Float32Array(nTheta);
     for (let j = 0; j < nTheta; j++) {
@@ -123,7 +129,7 @@ export function buildPotMesh(
     }
     const outerR = styleFn(twistedThetas, z, r0, H, styleOpts);
     const innerR = new Float32Array(nTheta);
-    
+
     for (let j = 0; j < nTheta; j++) {
       let r = outerR[j] - tWall;
       if (r < minAllowed) {
@@ -133,6 +139,68 @@ export function buildPotMesh(
       innerR[j] = r;
     }
     innerRadii.push(innerR);
+  }
+
+  // =========================================================================
+  // Seam Blending: Smooth the radius transition at the seam (j=0 and j=nTheta-1)
+  // This fills in the sharp "V" valley where the walls meet
+  // =========================================================================
+  const seamAngleDeg = qual.seamAngle ?? 0;
+  // logic handled by style function now
+  if (false) {
+    const seamSpreadRad = (seamAngleDeg * Math.PI) / 180;
+    const deltaTheta = TAU / nTheta;
+    const seamVertexCount = Math.ceil(seamSpreadRad / deltaTheta);
+
+    // Smoothstep function for smooth blending
+    const smoothstep = (t: number): number => {
+      const x = Math.max(0, Math.min(1, t));
+      return x * x * (3 - 2 * x);
+    };
+
+    // Apply seam blending to outer radii
+    for (let i = 0; i < nZOuter; i++) {
+      const radii = outerRadii[i];
+
+      // Get radius at edge of blend zone as the target
+      const targetIdx = Math.min(seamVertexCount, Math.floor(nTheta / 4));
+      const rTarget = radii[targetIdx];
+
+      // Blend vertices near j=0 (start of ring)
+      for (let j = 0; j < targetIdx; j++) {
+        const t = j / Math.max(1, targetIdx);
+        const alpha = smoothstep(t);
+        radii[j] = rTarget * (1 - alpha) + radii[j] * alpha;
+      }
+
+      // Blend vertices near j=nTheta-1 (end of ring, wrapping back)
+      for (let j = nTheta - targetIdx; j < nTheta; j++) {
+        const dist = nTheta - 1 - j;
+        const t = dist / Math.max(1, targetIdx);
+        const alpha = smoothstep(t);
+        radii[j] = rTarget * (1 - alpha) + radii[j] * alpha;
+      }
+    }
+
+    // Apply same blending to inner radii
+    for (let i = 0; i < nZInner; i++) {
+      const radii = innerRadii[i];
+      const targetIdx = Math.min(seamVertexCount, Math.floor(nTheta / 4));
+      const rTarget = radii[targetIdx];
+
+      for (let j = 0; j < targetIdx; j++) {
+        const t = j / Math.max(1, targetIdx);
+        const alpha = smoothstep(t);
+        radii[j] = rTarget * (1 - alpha) + radii[j] * alpha;
+      }
+
+      for (let j = nTheta - targetIdx; j < nTheta; j++) {
+        const dist = nTheta - 1 - j;
+        const t = dist / Math.max(1, targetIdx);
+        const alpha = smoothstep(t);
+        radii[j] = rTarget * (1 - alpha) + radii[j] * alpha;
+      }
+    }
   }
 
   // Calculate vertex and face counts
@@ -427,7 +495,7 @@ export function getMeshBounds(mesh: MeshData): {
   size: [number, number, number];
 } {
   const { vertices, vertexCount } = mesh;
-  
+
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
