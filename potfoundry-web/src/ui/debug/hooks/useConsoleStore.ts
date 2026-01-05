@@ -134,7 +134,7 @@ type ConsoleStore = ConsoleState & ConsoleActions;
 // Constants
 // ============================================================================
 
-const MAX_LOGS = 2000;
+const MAX_LOGS = 500;
 const MAX_NETWORK_ENTRIES = 500;
 const MAX_PERF_SAMPLES = 120; // 2 hours at 1 sample/min
 const MAX_COMMAND_HISTORY = 100;
@@ -179,8 +179,10 @@ export const useConsoleStore = create<ConsoleStore>()(
 
                 // Backend deduplication: Check if same reference (already handled by MessageManager)
                 if (lastLog && lastLog === log) {
-                    // Force re-render by creating new array reference
-                    return { logs: [...existingLogs] };
+                    // CRITICAL FIX: Do NOT create a new array if the reference is identical
+                    // This prevents React state updates/re-renders when MessageManager updates the tail log
+                    // returning partial state {} or null/undefined in zustand prevents update
+                    return {};
                 }
 
                 const newLogs = [...existingLogs, log];

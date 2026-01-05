@@ -326,7 +326,7 @@ export const Sidebar: React.FC = () => {
   // Debug mobile detection
   // Debug mobile detection
   useEffect(() => {
-    console.log('[Sidebar] isMobile:', isMobile, 'viewportWidth:', viewportWidth);
+    // console.log('[Sidebar] isMobile:', isMobile, 'viewportWidth:', viewportWidth);
   }, [isMobile, viewportWidth]);
 
   const handleClose = useCallback(() => setPanelOpen(false), [setPanelOpen]);

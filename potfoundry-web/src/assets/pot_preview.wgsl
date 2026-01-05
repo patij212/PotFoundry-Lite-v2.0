@@ -30,8 +30,7 @@ const ROUGHNESS_OFFSET : u32 = 70u;
 const SHOW_INNER_OFFSET : u32 = 71u;
 const DRAIN_RADIUS_OFFSET : u32 = 13u;
 
-const SEAM_BLEND_WIDTH_OFFSET : u32 = 73u;
-const SEAM_OVERLAP_OFFSET : u32 = 74u;
+
 
 struct StyleParamBlock {
   // Uniform buffer alignment: array<vec4<f32>, 12> fits significantly within limit

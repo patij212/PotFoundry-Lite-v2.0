@@ -17,11 +17,20 @@ export class MessageManager {
   private frameWindow = 0;
   private drawWindow = 0;
   private vertWindow = 0;
+  // UI-specific short-term windows (reset on every getUiStats call)
+  private uiFrameWindow = 0;
+  private uiDrawWindow = 0;
+  private uiVertWindow = 0;
+  private lastUiSampleTime = performance.now();
+
   private lastFrameSample = 0;
   private lastDrawSample = 0;
   private lastVertSample = 0;
   private intervalId: number | null = null;
   private lastHeartbeatStats: HeartbeatStats | null = null;
+  // Time-window deduplication: maps signature -> {msg, ts}
+  private recentLogs: Map<string, { msg: LogMessage; ts: number }> = new Map();
+  private readonly DEDUP_WINDOW_MS = 10000; // 10 second window for deduplication (balance between grouping and visibility)
 
   constructor(cfg?: MessageManagerConfig) {
     this.cfg = {
@@ -32,6 +41,7 @@ export class MessageManager {
       consoleSink: cfg?.consoleSink ?? ((line, lvl) => {
         if (lvl === "ERROR" || lvl === "CRITICAL") console.error(line);
         else if (lvl === "WARN") console.warn(line);
+        else if (lvl === "DEBUG") console.debug(line);
         else console.log(line);
       }),
     };
@@ -49,6 +59,32 @@ export class MessageManager {
     this.frameWindow += this.consumeCounterSample(frames, 'frame');
     this.drawWindow += this.consumeCounterSample(draws, 'draw');
     this.vertWindow += this.consumeCounterSample(verts, 'vert');
+  }
+
+  /**
+   * Get short-term stats for UI updates (e.g. 1Hz) without affecting the main heartbeat cycle.
+   * Resets the UI-specific counters.
+   */
+  getUiStats(): HeartbeatStats {
+    const now = performance.now();
+    const elapsed = now - this.lastUiSampleTime;
+    this.lastUiSampleTime = now;
+
+    const stats: HeartbeatStats = {
+      windowMs: elapsed,
+      counts: { ...this.counters }, // Share log counters (accumulative)
+      frames: this.uiFrameWindow,
+      draws: this.uiDrawWindow,
+      verts: this.uiVertWindow,
+      suppressedDuplicates: this.suppressedDuplicates
+    };
+
+    // Reset UI windows
+    this.uiFrameWindow = 0;
+    this.uiDrawWindow = 0;
+    this.uiVertWindow = 0;
+
+    return stats;
   }
 
   /**
@@ -186,25 +222,47 @@ export class MessageManager {
   }
 
   private bufferPush(m: LogMessage): LogMessage {
-    // Backend Logic: Consecutive Deduplication
-    const last = this.buffer.length > 0 ? this.buffer[this.buffer.length - 1] : null;
-    const isSame = last &&
-      last.level === m.level &&
-      last.code === m.code &&
-      (m.signature ? last.signature === m.signature : last.message === m.message);
+    // Build a signature for deduplication
+    const sig = `${m.level}|${m.code}|${m.signature ?? m.message}`;
+    const now = performance.now();
 
-    if (isSame && last) {
-      // It's a duplicate of the tail! Just increment counter
-      last.repeat = (last.repeat || 1) + 1;
-      last.ts = m.ts; // Update timestamp to latest
-      // Important: Notify listeners of the *update*, not a new message
-      // Note: We might need to change how we notify. 
-      // Current notify logic is outside this function.
-      return last;
+    // Time-window deduplication: if we've seen this signature recently, merge it
+    const recent = this.recentLogs.get(sig);
+    if (recent && (now - recent.ts) < this.DEDUP_WINDOW_MS) {
+      // Update existing entry
+      recent.msg.repeat = (recent.msg.repeat || 1) + 1;
+      recent.msg.ts = m.ts;
+      recent.msg.context = m.context; // Update context to latest
+      recent.ts = now;
+      this.suppressedDuplicates++;
+      return recent.msg;
     }
 
+    // No recent match - add as new
+    m.repeat = 1;
     this.buffer.push(m);
-    if (this.buffer.length > this.cfg.bufferSize) this.buffer.shift();
+    if (this.buffer.length > this.cfg.bufferSize) {
+      // Remove oldest and also clean its entry from recentLogs
+      const removed = this.buffer.shift();
+      if (removed) {
+        const removedSig = `${removed.level}|${removed.code}|${removed.signature ?? removed.message}`;
+        this.recentLogs.delete(removedSig);
+      }
+    }
+
+    // Track this log for future deduplication
+    this.recentLogs.set(sig, { msg: m, ts: now });
+
+    // Clean old entries from recentLogs periodically (every 100 logs)
+    if (this.buffer.length % 100 === 0) {
+      const cutoff = now - this.DEDUP_WINDOW_MS * 2;
+      for (const [key, val] of this.recentLogs) {
+        if (val.ts < cutoff) {
+          this.recentLogs.delete(key);
+        }
+      }
+    }
+
     return m;
   }
 
@@ -227,17 +285,20 @@ export class MessageManager {
       delta = sanitized - this.lastFrameSample;
       if (delta < 0) delta = sanitized;
       this.lastFrameSample = sanitized;
+      this.uiFrameWindow += delta;
       return delta;
     }
     if (type === 'draw') {
       delta = sanitized - this.lastDrawSample;
       if (delta < 0) delta = sanitized;
       this.lastDrawSample = sanitized;
+      this.uiDrawWindow += delta;
       return delta;
     }
     delta = sanitized - this.lastVertSample;
     if (delta < 0) delta = sanitized;
     this.lastVertSample = sanitized;
+    this.uiVertWindow += delta;
     return delta;
   }
 }

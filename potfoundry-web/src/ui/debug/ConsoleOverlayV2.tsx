@@ -16,7 +16,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import manager from '../../infra/logging/MessageManager';
-import { LogLevel } from '../../infra/logging/types';
+import { LogLevel, LogMessage } from '../../infra/logging/types';
 import { useConsoleStore, ConsoleTab, ProcessedLog } from './hooks/useConsoleStore';
 import { installNetworkMonitor } from './utils/NetworkMonitor';
 import { executeCommand } from './utils/CommandRegistry';
@@ -45,12 +45,13 @@ const TABS: { id: ConsoleTab; label: string; icon: string }[] = [
 
 export const ConsoleOverlayV2: React.FC = () => {
     // Store state
-    const isVisible = useConsoleStore(s => s.isVisible);
+    const timestampFormat = useConsoleStore(s => s.timestampFormat);
     const activeTab = useConsoleStore(s => s.activeTab);
     const logs = useConsoleStore(s => s.logs);
     const filterLevels = useConsoleStore(s => s.filterLevels);
     const search = useConsoleStore(s => s.search);
     const isRegexSearch = useConsoleStore(s => s.isRegexSearch);
+    const isVisible = useConsoleStore(s => s.isVisible);
     const groupDuplicates = useConsoleStore(s => s.groupDuplicates);
     const pinnedIds = useConsoleStore(s => s.pinnedIds);
     const bookmarkedIds = useConsoleStore(s => s.bookmarkedIds);
@@ -59,8 +60,6 @@ export const ConsoleOverlayV2: React.FC = () => {
     const dockPosition = useConsoleStore(s => s.dockPosition);
     const fontSize = useConsoleStore(s => s.fontSize);
     const theme = useConsoleStore(s => s.theme);
-    const timestampFormat = useConsoleStore(s => s.timestampFormat);
-    const perfSamples = useConsoleStore(s => s.perfSamples);
 
     // Store actions
     const {
@@ -78,7 +77,6 @@ export const ConsoleOverlayV2: React.FC = () => {
         addToHistory,
         setHistoryIndex,
         addNetworkEntry,
-        addPerfSample,
         setDockPosition,
     } = useConsoleStore.getState();
 
@@ -87,6 +85,14 @@ export const ConsoleOverlayV2: React.FC = () => {
     const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
     const [showShortcuts, setShowShortcuts] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
+
+    // Local state for health metrics (aggregated from store/manager)
+    const [healthMetrics, setHealthMetrics] = useState({
+        errors: 0, warns: 0, info: 0, fps: 0, draws: 0, verts: 0, suppressed: 0, windowMs: 0
+    });
+    const [fpsHistory, setFpsHistory] = useState<number[]>([]);
+    const [drawsHistory, setDrawsHistory] = useState<number[]>([]);
+    const [vertsHistory, setVertsHistory] = useState<number[]>([]);
 
     // Refs
     const logsEndRef = useRef<HTMLDivElement>(null);
@@ -101,9 +107,6 @@ export const ConsoleOverlayV2: React.FC = () => {
         persist: 'pf-console-height',
     });
 
-    // Performance data for sparklines
-    const fpsData = useMemo(() => perfSamples.map(s => s.fps ?? 0), [perfSamples]);
-    const drawsData = useMemo(() => perfSamples.map(s => s.draws ?? 0), [perfSamples]);
 
     // Process logs (filter, group, search)
     const processedLogs = useMemo((): ProcessedLog[] => {
@@ -158,8 +161,6 @@ export const ConsoleOverlayV2: React.FC = () => {
         return { pinnedLogs: pinned, unpinnedLogs: unpinned };
     }, [processedLogs, pinnedIds]);
 
-    // Heartbeat stats
-    const [stats, setStats] = useState(manager.getLastHeartbeatStats());
 
     // ============================================================================
     // Effects
@@ -196,27 +197,46 @@ export const ConsoleOverlayV2: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isVisible, toggleVisible, setVisible]);
 
-    // Subscribe to logs
+    // Subscribe to logs - BATCHED to prevent performance issues
     useEffect(() => {
-        setLogs(manager.dumpRecent());
+        // Load recent logs on mount (balanced - not too few, not too many)
+        const recent = manager.dumpRecent();
+        setLogs(recent.slice(-100));
 
-        const unsubscribe = manager.subscribe((msg) => {
+        // Queue for batching incoming logs
+        let logQueue: LogMessage[] = [];
+        let batchTimeout: number | null = null;
+
+        const flushQueue = () => {
+            if (logQueue.length === 0) {
+                batchTimeout = null;
+                return;
+            }
+
             const state = useConsoleStore.getState();
             const prevLogs = state.logs;
+            const newLogs = [...prevLogs, ...logQueue];
+            // Keep buffer reasonable (200 max, trim to 100)
+            const trimmed = newLogs.length > 200 ? newLogs.slice(-100) : newLogs;
+            useConsoleStore.setState({ logs: trimmed });
+            logQueue = [];
+            batchTimeout = null;
+        };
 
-            if (prevLogs.length > 0 && prevLogs[prevLogs.length - 1] === msg) {
-                useConsoleStore.setState({ logs: [...prevLogs] });
-            } else {
-                const newLogs = [...prevLogs, msg];
-                if (newLogs.length > 2000) {
-                    useConsoleStore.setState({ logs: newLogs.slice(-1000) });
-                } else {
-                    useConsoleStore.setState({ logs: newLogs });
-                }
+        const unsubscribe = manager.subscribe((msg) => {
+            logQueue.push(msg);
+            // Batch updates every 1 second to reduce React work
+            if (batchTimeout === null) {
+                batchTimeout = window.setTimeout(flushQueue, 1000);
             }
         });
 
-        return unsubscribe;
+        return () => {
+            unsubscribe();
+            if (batchTimeout !== null) {
+                window.clearTimeout(batchTimeout);
+            }
+        };
     }, [setLogs]);
 
     // Install network monitor
@@ -227,29 +247,37 @@ export const ConsoleOverlayV2: React.FC = () => {
         return cleanup;
     }, [addNetworkEntry]);
 
-    // Update stats periodically
+    // Update health/metrics every second
     useEffect(() => {
         if (!isVisible) return;
-
         const interval = setInterval(() => {
-            const newStats = manager.getLastHeartbeatStats();
-            setStats(newStats);
-
-            if (newStats) {
-                const fps = newStats.frames
-                    ? (newStats.frames / (newStats.windowMs / 1000))
-                    : undefined;
-                addPerfSample({
-                    ts: Date.now(),
-                    fps,
-                    draws: newStats.draws,
-                    verts: newStats.verts,
+            // Get fresh short-term stats for the UI without flushing global heartbeat
+            const freshStats = manager.getUiStats();
+            const currentStats = freshStats;
+            if (currentStats) {
+                setHealthMetrics({
+                    errors: currentStats.counts.ERROR + currentStats.counts.CRITICAL,
+                    warns: currentStats.counts.WARN,
+                    info: currentStats.counts.INFO + currentStats.counts.DEBUG, // grouping info/debug
+                    fps: Math.round(1000 / (currentStats.windowMs / (currentStats.frames || 1))), // approximate
+                    draws: currentStats.draws || 0,
+                    verts: currentStats.verts || 0,
+                    suppressed: currentStats.suppressedDuplicates || 0,
+                    windowMs: currentStats.windowMs
                 });
+
+                // Update sparkline history
+                const SPARKLINE_HISTORY = 60; // Assuming this constant is defined elsewhere or needs to be added
+                setFpsHistory(prev => {
+                    const val = Math.round(1000 / (currentStats.windowMs / (currentStats.frames || 1))) || 0;
+                    return [...prev.slice(-(SPARKLINE_HISTORY - 1)), val];
+                });
+                setDrawsHistory(prev => [...prev.slice(-(SPARKLINE_HISTORY - 1)), currentStats.draws || 0]);
+                setVertsHistory(prev => [...prev.slice(-(SPARKLINE_HISTORY - 1)), currentStats.verts || 0]);
             }
         }, 1000);
-
         return () => clearInterval(interval);
-    }, [isVisible, addPerfSample]);
+    }, [isVisible]);
 
     // Auto-scroll
     useEffect(() => {
@@ -465,9 +493,24 @@ export const ConsoleOverlayV2: React.FC = () => {
                                     {timestampFormat === 'absolute' ? '🕐' : '⏱️'}
                                 </button>
 
-                                <div className="pf-console-spacer" />
-
-                                {/* Export Menu */}
+                                <div className="pf-console-divider" />
+                                <button
+                                    className="pf-console-btn"
+                                    onClick={clearLogs}
+                                    title="Clear logs (Ctrl+K)"
+                                >
+                                    Clear
+                                </button>
+                                <button
+                                    className="pf-console-btn"
+                                    onClick={() => {
+                                        const allText = processedLogs.map(l => `${l.ts} [${l.level}] ${l.message}`).join('\n');
+                                        navigator.clipboard.writeText(allText);
+                                    }}
+                                    title="Copy all logs to clipboard"
+                                >
+                                    Copy
+                                </button>
                                 <div className="pf-console-export-wrapper">
                                     <button
                                         className="pf-console-btn"
@@ -493,9 +536,9 @@ export const ConsoleOverlayV2: React.FC = () => {
                             {pinnedLogs.length > 0 && (
                                 <div className="pf-console-pinned">
                                     <div className="pf-console-pinned-header">📌 Pinned</div>
-                                    {pinnedLogs.map((log, i) => (
+                                    {pinnedLogs.map((log) => (
                                         <LogRow
-                                            key={`pinned-${i}-${log.id}`}
+                                            key={log.id}
                                             log={log}
                                             search={search}
                                             isRegex={isRegexSearch}
@@ -513,7 +556,7 @@ export const ConsoleOverlayV2: React.FC = () => {
                             <div className="pf-console-logs" role="log">
                                 {unpinnedLogs.map((log, i) => (
                                     <LogRow
-                                        key={`log-${i}-${log.id}`}
+                                        key={log.id}
                                         log={log}
                                         search={search}
                                         isRegex={isRegexSearch}
@@ -555,19 +598,21 @@ export const ConsoleOverlayV2: React.FC = () => {
                             <div className="pf-console-metrics">
                                 <MetricCard
                                     label="FPS"
-                                    value={stats?.frames ? Math.round(stats.frames / (stats.windowMs / 1000)) : '-'}
-                                    data={fpsData}
+                                    value={healthMetrics.fps ?? '-'}
+                                    data={fpsHistory}
                                     color="#4ade80"
                                 />
                                 <MetricCard
                                     label="Draw Calls"
-                                    value={stats?.draws ?? '-'}
-                                    data={drawsData}
+                                    value={healthMetrics.draws ?? '-'}
+                                    data={drawsHistory}
                                     color="#60a5fa"
                                 />
                                 <MetricCard
                                     label="Vertices"
-                                    value={stats?.verts?.toLocaleString() ?? '-'}
+                                    value={healthMetrics.verts?.toLocaleString() ?? '-'}
+                                    data={vertsHistory}
+                                    color="#f472b6"
                                 />
                                 <MetricCard
                                     label="Log Buffer"
@@ -576,7 +621,7 @@ export const ConsoleOverlayV2: React.FC = () => {
                                 />
                                 <MetricCard
                                     label="Suppressed"
-                                    value={stats?.suppressedDuplicates ?? 0}
+                                    value={healthMetrics.suppressed ?? 0}
                                 />
                                 <MetricCard
                                     label="Network Requests"

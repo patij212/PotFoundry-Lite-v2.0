@@ -160,8 +160,7 @@ export interface MeshQuality {
   export_n_theta: number;
   /** Vertical resolution for export (16-1024) */
   export_n_z: number;
-  /** Seam overlap for advanced watertight control (0-0.05) - reserved for future use */
-  seam_overlap: number;
+
   /** Seam blend angle in degrees (0-30) - controls width of seam blending zone */
   seamAngle: number;
 }
@@ -172,7 +171,7 @@ export const DEFAULT_MESH_QUALITY: MeshQuality = {
   preview_n_z: 84,
   export_n_theta: 336,
   export_n_z: 168,
-  seam_overlap: 0,
+
   seamAngle: 30,
 };
 
@@ -182,7 +181,7 @@ export const MESH_QUALITY_BOUNDS = {
   preview_n_z: { min: 8, max: 1024, step: 4 },
   export_n_theta: { min: 48, max: 4096, step: 24 },
   export_n_z: { min: 16, max: 2048, step: 8 },
-  seam_overlap: { min: 0, max: 0.05, step: 0.001 },
+
   seamAngle: { min: 0, max: 60, step: 1 },
 } as const;
 

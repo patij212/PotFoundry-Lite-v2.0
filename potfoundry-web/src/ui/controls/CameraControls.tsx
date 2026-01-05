@@ -6,7 +6,7 @@
  * @module ui/controls/CameraControls
  */
 
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import {
   Video,
   RefreshCw,
@@ -108,16 +108,15 @@ export const CameraControls: React.FC = () => {
   const isReady = controller?.isReady ?? false;
   const cameraState = controller?.cameraState;
 
-  // DEBUG: Log controller state
-  // DEBUG: Log controller state
-  useEffect(() => {
-    console.log('[CameraControls] isReady:', isReady, 'controller:', !!controller, 'cameraState:', cameraState);
-  }, [isReady, controller, cameraState]);
+  // DEBUG: Log controller state (disabled - too verbose)
+  // useEffect(() => {
+  //   console.log('[CameraControls] isReady:', isReady, 'controller:', !!controller, 'cameraState:', cameraState);
+  // }, [isReady, controller, cameraState]);
 
   // View preset handlers
   const handleViewPreset = useCallback(
     (preset: 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso') => {
-      console.log('[CameraControls] handleViewPreset called:', preset, 'controller:', !!controller);
+      // console.log('[CameraControls] handleViewPreset called:', preset, 'controller:', !!controller);
       controller?.applyViewPreset(preset);
     },
     [controller]

@@ -119,8 +119,7 @@ const {
   GRID_FLAG_OFFSET,
   SPECULAR_GAIN_OFFSET,
   ROUGHNESS_OFFSET,
-  SEAM_BLEND_WIDTH_OFFSET,
-  SEAM_OVERLAP_OFFSET,
+
   SHOW_INNER_OFFSET,
   BELL_WIDTH_OFFSET,
   DRAIN_RADIUS_OFFSET,
@@ -1166,7 +1165,7 @@ const buildCameraRig = (
         const ov_basis_len = Math.hypot(ov_basis_unit[0], ov_basis_unit[1]);
         if (ov_basis_len > 1e-9) {
           const dotAlign = ov_basis_unit[0] * ov_proj_unit[0] + ov_basis_unit[1] * ov_proj_unit[1];
-          console.log('[WebGPU] buildCameraRig parity_check', { preset: 'free', ov_basis_unit, ov_proj_unit, dotAlign });
+          // console.log('[WebGPU] buildCameraRig parity_check', { preset: 'free', ov_basis_unit, ov_proj_unit, dotAlign });
           if (dotAlign < BASIS_FLIP_DOT_THRESHOLD && !state.interacting && !state.disableAutoFlip) {
             basis.right = vec3Scale(basis.right, -1);
             basis.up = vec3Scale(basis.up, -1);
@@ -1265,7 +1264,7 @@ const buildCameraRig = (
         const ov_basis_len = Math.hypot(ov_basis_unit[0], ov_basis_unit[1]);
         if (ov_basis_len > 1e-9) {
           const dotAlign = ov_basis_unit[0] * ov_proj_unit[0] + ov_basis_unit[1] * ov_proj_unit[1];
-          console.log('[WebGPU] buildCameraRig parity_check (non-free)', { ov_basis_unit, ov_proj_unit, dotAlign });
+          // console.log('[WebGPU] buildCameraRig parity_check (non-free)', { ov_basis_unit, ov_proj_unit, dotAlign });
           if (dotAlign < BASIS_FLIP_DOT_THRESHOLD && !state.interacting && !state.disableAutoFlip) {
             basis.right = vec3Scale(basis.right, -1);
             basis.up = vec3Scale(basis.up, -1);
@@ -1375,10 +1374,12 @@ export const mount = async ({
       return;
     }
     if (debugEnabled) {
+      // Use message as signature to group same-type diagnostics
+      // unique details (timestamps) won't prevent grouping, but recent detail will be updated
       if (Object.keys(detail).length) {
-        manager.debug('diag:' + message, message, detail);
+        manager.debug('diag:' + message, message, detail, message);
       } else {
-        manager.debug('diag:' + message, message);
+        manager.debug('diag:' + message, message, undefined, message);
       }
     }
     postToHost(emit, {
@@ -1998,9 +1999,13 @@ export const mount = async ({
           /* best-effort */
         }
       }
-      // Emit diagnostic if enabled
+      // Emit diagnostic if enabled (throttled)
       try {
-        emitDiagnostic('component:axis-overlay-compare', { axes: diagAxes, ts: Date.now(), camSeq: cameraSequence });
+        const now = performance.now();
+        if (now - lastAxisEmit >= DEBUG_THROTTLE_MS) {
+          lastAxisEmit = now;
+          emitDiagnostic('component:axis-overlay-compare', { axes: diagAxes, ts: Date.now(), camSeq: cameraSequence });
+        }
       } catch (err) {/* ignore */ }
     } catch (err) {
       /* ignore drawing errors */
@@ -2031,6 +2036,11 @@ export const mount = async ({
   };
 
   let lastCameraSnapshot: CameraSnapshot | null = null;
+  let lastAxisEmit = 0;
+  let lastDrawEmit = 0;
+  let lastUniformEmit = 0;
+  let lastCameraEmit = 0;
+  let lastFitEmit = 0;
   let cameraSequence = 0;
   let pendingStaticCameraEmit = false;
 
@@ -2056,14 +2066,18 @@ export const mount = async ({
     cameraSequence += 1;
     // Emit a compact diagnostic snapshot for correlation with uniform writes and overlay draws
     try {
-      emitDiagnostic('component:camera-state', {
-        ts: Date.now(),
-        seq: cameraSequence,
-        rotX: snapshot.rotX,
-        rotY: snapshot.rotY,
-        zoom: snapshot.zoom,
-        canvasId: mountCanvasId,
-      });
+      const now = performance.now();
+      if (now - lastCameraEmit >= 500) {
+        lastCameraEmit = now;
+        emitDiagnostic('component:camera-state', {
+          ts: Date.now(),
+          seq: cameraSequence,
+          rotX: snapshot.rotX,
+          rotY: snapshot.rotY,
+          zoom: snapshot.zoom,
+          canvasId: mountCanvasId,
+        });
+      }
     } catch (err) {/* best-effort */ }
     pendingStaticCameraEmit = false;
     postToHost(emit, {
@@ -2285,7 +2299,7 @@ export const mount = async ({
     } catch (e) {
       // Ignore - variables not yet defined during initial mount
     }
-    console.log('[WebGPU] Resize:', width, 'x', height, 'aspect:', state.canvasAspect.toFixed(3));
+    // console.log('[WebGPU] Resize:', width, 'x', height, 'aspect:', state.canvasAspect.toFixed(3));
     if (debugEnabled) {
       const signature = `${width}x${height}@${Math.round(devicePixelRatio * 100) / 100}`;
       if (signature !== lastResizeSignature) {
@@ -2532,6 +2546,7 @@ export const mount = async ({
   const hasBinding2 = wgsl.indexOf('@group(0) @binding(2)') >= 0 || wgsl.indexOf('@binding(2)') >= 0;
   const hasBinding3 = wgsl.indexOf('@group(0) @binding(3)') >= 0 || wgsl.indexOf('@binding(3)') >= 0;
   const hasBinding4 = wgsl.indexOf('@group(0) @binding(4)') >= 0 || wgsl.indexOf('@binding(4)') >= 0;
+  // shader-sniff diagnostic is one-time, no signature needed
   emitDiagnostic('webgpu:shader-sniff', { length: (wgsl ?? '').length, hasVs, hasFs, hasBinding0, hasBinding1, hasBinding2, hasBinding3, hasBinding4, snippet: wgslSnippet, canvasId: mountCanvasId });
   if (wgsl.startsWith('[object Object]') || wgsl.includes('<!DOCTYPE') || wgsl.trim().startsWith('<html')) {
     emitDiagnostic('webgpu:shader-import-looks-like-html', { snippet: wgslSnippet, canvasId: mountCanvasId });
@@ -2882,7 +2897,8 @@ export const mount = async ({
       // Cache hit - don't log every frame, just log when specifically debugging
       return lastRigCached;
     }
-    console.debug('[WebGPU] Rig cache MISS - aspect:', s.canvasAspect?.toFixed(3));
+    // Rig cache miss logging disabled - too verbose
+    // manager.debug('webgpu:rig-cache-miss', 'Rig cache MISS - aspect: ' + s.canvasAspect?.toFixed(3), undefined, 'rig-cache-miss');
     const rig = buildCameraRig(s, paddingHint ?? CAMERA_PADDING, phw, phh);
     try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.rigRebuilds += 1); } catch (e) { /* ignore */ }
     lastRigSignature = sig;
@@ -2984,7 +3000,7 @@ export const mount = async ({
 
   // Assign the real implementation to the forward-declared variable
   commitDisplayBasisToState = function (state: WebGPUState): boolean {
-    console.log('[WebGPU] commitDisplayBasisToState invoked');
+    // console.log('[WebGPU] commitDisplayBasisToState invoked');
     if (typeof cameraController !== 'undefined' && cameraController) {
       return cameraController.commitDisplayBasisToState();
     }
@@ -3036,12 +3052,12 @@ export const mount = async ({
           if (ov_basis_len > 1e-9) {
             // ov_basis_unit already normalized by helper
             const dotAlign = ov_basis_unit[0] * ov_proj_unit[0] + ov_basis_unit[1] * ov_proj_unit[1];
-            console.debug('[WebGPU] parity_check pre-commit', { ov_basis_unit, ov_proj_unit, dotAlign });
+            // console.debug('[WebGPU] parity_check pre-commit', { ov_basis_unit, ov_proj_unit, dotAlign });
             if (dotAlign < BASIS_FLIP_DOT_THRESHOLD && !state.interacting && !state.disableAutoFlip) {
               state.displayCamRight = vec3Scale(state.displayCamRight, -1);
               state.displayCamUp = vec3Scale(state.displayCamUp, -1);
               emitDiagnostic('component:display-basis-parity_flip', { dotAlign });
-              console.debug('[WebGPU] display-basis-parity_flip performed', { displayCamRight: state.displayCamRight, displayCamUp: state.displayCamUp });
+              // console.debug('[WebGPU] display-basis-parity_flip performed', { displayCamRight: state.displayCamRight, displayCamUp: state.displayCamUp });
               flipped = true;
             }
           }
@@ -3086,12 +3102,12 @@ export const mount = async ({
         if (ov_basis_len > 1e-9) {
           // ov_basis_unit already normalized by helper
           const dotAlign = ov_basis_unit[0] * ov_proj_unit[0] + ov_basis_unit[1] * ov_proj_unit[1];
-          console.debug('[WebGPU] parity_check pre-commit-final', { ov_basis_unit, ov_proj_unit, dotAlign });
+          // console.debug('[WebGPU] parity_check pre-commit-final', { ov_basis_unit, ov_proj_unit, dotAlign });
           if (dotAlign < BASIS_FLIP_DOT_THRESHOLD && !state.interacting && !state.disableAutoFlip) {
             committedBasis.right = vec3Scale(committedBasis.right, -1);
             committedBasis.up = vec3Scale(committedBasis.up, -1);
             emitDiagnostic('component:committed-basis-parity_flip', { dotAlign });
-            console.debug('[WebGPU] committed-basis-parity_flip performed', { committedBasisRight: committedBasis.right, committedBasisUp: committedBasis.up });
+            // console.debug('[WebGPU] committed-basis-parity_flip performed', { committedBasisRight: committedBasis.right, committedBasisUp: committedBasis.up });
             flipped = true;
           }
         }
@@ -4328,32 +4344,7 @@ export const mount = async ({
       }
       const debugActive = Boolean(cfg.debug) || state.debugOverlay;
 
-      // If debug is active, emit lookAt basis diagnostics so we can inspect
-      // whether axes are degenerating near vertical camera orientations.
-      if (debugActive && lastLookAtBasis) {
-        emitDiagnostic('webgpu:lookat-basis', {
-          basis: lastLookAtBasis,
-          rotX: state.rotX,
-          rotY: state.rotY,
-          eye: cameraRig.eye,
-          canvasId: mountCanvasId,
-        });
-        // Also emit VP column norms so we can detect if projection is collapsing X/Y
-        try {
-          const colNorms: number[] = [];
-          for (let c = 0; c < 3; c += 1) {
-            let s = 0;
-            for (let r = 0; r < 4; r += 1) {
-              const v = Number(f32[VP_MATRIX_OFFSET + c * 4 + r] ?? 0);
-              s += v * v;
-            }
-            colNorms.push(Math.sqrt(s));
-          }
-          emitDiagnostic('webgpu:vp-columns', { norms: colNorms, canvasId: mountCanvasId });
-        } catch (err) {
-          /* ignore */
-        }
-      }
+
 
       const baseNTheta = sanitizeInt(cfg.nTheta ?? cfg.n_theta, 64, 3);
       const baseNZ = sanitizeInt(cfg.nZ ?? cfg.n_z, 32, 2);
@@ -4423,63 +4414,9 @@ export const mount = async ({
 
       for (let i = 0; i < 16; i += 1) {
         f32[VP_MATRIX_OFFSET + i] = cameraRig.viewProjection[i];
-        // Emit camera fit diagnostics with per-axis distances
-        try {
-          const halfFovY = cameraRig.fov * 0.5;
-          const halfFovX = Math.atan(Math.tan(halfFovY) * (state.canvasAspect || 1));
-          const dV = paddedHalfHeight / Math.max(Math.tan(halfFovY), 1e-6);
-          const dH = paddedHalfWidth / Math.max(Math.tan(halfFovX), 1e-6);
-          emitDiagnostic('webgpu:camera-fit', {
-            halfWidth: paddedHalfWidth,
-            halfHeight: paddedHalfHeight,
-            dV,
-            dH,
-            chosenDistance: vec3Length(cameraRig.eye),
-            fov: cameraRig.fov,
-            aspect: state.canvasAspect,
-            near: cameraRig.near,
-            far: cameraRig.far,
-            canvasId: mountCanvasId,
-          });
-        } catch (err) {
-          /* ignore */
-        }
-
-        // Emit NDC extents of bounding box corners so we can confirm fit
-        try {
-          const mulMat4Vec4 = (m: Mat4, x: number, y: number, z: number) => {
-            const cx = m[0] * x + m[4] * y + m[8] * z + m[12] * 1;
-            const cy = m[1] * x + m[5] * y + m[9] * z + m[13] * 1;
-            const cz = m[2] * x + m[6] * y + m[10] * z + m[14] * 1;
-            const cw = m[3] * x + m[7] * y + m[11] * z + m[15] * 1;
-            return { x: cx, y: cy, z: cz, w: cw };
-          };
-          const corners: Array<Vec3> = [
-            [paddedHalfWidth, paddedHalfWidth, paddedHalfHeight],
-            [-paddedHalfWidth, paddedHalfWidth, paddedHalfHeight],
-            [paddedHalfWidth, -paddedHalfWidth, paddedHalfHeight],
-            [-paddedHalfWidth, -paddedHalfWidth, paddedHalfHeight],
-            [paddedHalfWidth, paddedHalfWidth, -paddedHalfHeight],
-            [-paddedHalfWidth, paddedHalfWidth, -paddedHalfHeight],
-            [paddedHalfWidth, -paddedHalfWidth, -paddedHalfHeight],
-            [-paddedHalfWidth, -paddedHalfWidth, -paddedHalfHeight],
-          ];
-          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-          for (const c of corners) {
-            const clip = mulMat4Vec4(cameraRig.viewProjection, c[0], c[1], c[2]);
-            if (!Number.isFinite(clip.w) || Math.abs(clip.w) < 1e-6) continue;
-            const ndcX = clip.x / clip.w;
-            const ndcY = clip.y / clip.w;
-            minX = Math.min(minX, ndcX);
-            maxX = Math.max(maxX, ndcX);
-            minY = Math.min(minY, ndcY);
-            maxY = Math.max(maxY, ndcY);
-          }
-          emitDiagnostic('webgpu:camera-fit-ndc', { ndc: { minX, maxX, minY, maxY }, canvasId: mountCanvasId });
-        } catch (err) {
-          /* ignore */
-        }
       }
+
+
 
       // Sanity check: ensure the viewProjection matrix and camera eye are finite.
       const isFiniteMat = (m: Mat4) => {
@@ -4528,6 +4465,91 @@ export const mount = async ({
       if (debugActive) {
         if (now - lastDebugOverlayUpdate >= DEBUG_THROTTLE_MS) {
           lastDebugOverlayUpdate = now;
+
+          // If debug is active, emit lookAt basis diagnostics so we can inspect
+          // whether axes are degenerating near vertical camera orientations.
+          if (lastLookAtBasis) {
+            emitDiagnostic('webgpu:lookat-basis', {
+              basis: lastLookAtBasis,
+              rotX: state.rotX,
+              rotY: state.rotY,
+              eye: cameraRig.eye,
+              canvasId: mountCanvasId,
+            });
+            // Also emit VP column norms so we can detect if projection is collapsing X/Y
+            try {
+              const colNorms: number[] = [];
+              for (let c = 0; c < 3; c += 1) {
+                let s = 0;
+                for (let r = 0; r < 4; r += 1) {
+                  const v = Number(f32[VP_MATRIX_OFFSET + c * 4 + r] ?? 0);
+                  s += v * v;
+                }
+                colNorms.push(Math.sqrt(s));
+              }
+              emitDiagnostic('webgpu:vp-columns', { norms: colNorms, canvasId: mountCanvasId });
+            } catch (err) {
+              /* ignore */
+            }
+          }
+          // Emit camera fit diagnostics with per-axis distances
+          try {
+            const halfFovY = cameraRig.fov * 0.5;
+            const halfFovX = Math.atan(Math.tan(halfFovY) * (state.canvasAspect || 1));
+            const dV = paddedHalfHeight / Math.max(Math.tan(halfFovY), 1e-6);
+            const dH = paddedHalfWidth / Math.max(Math.tan(halfFovX), 1e-6);
+            emitDiagnostic('webgpu:camera-fit', {
+              halfWidth: paddedHalfWidth,
+              halfHeight: paddedHalfHeight,
+              dV,
+              dH,
+              chosenDistance: vec3Length(cameraRig.eye),
+              fov: cameraRig.fov,
+              aspect: state.canvasAspect,
+              near: cameraRig.near,
+              far: cameraRig.far,
+              canvasId: mountCanvasId,
+            });
+          } catch (err) {
+            /* ignore */
+          }
+          // Emit NDC extents of bounding box corners so we can confirm fit
+          try {
+            const mulMat4Vec4 = (m: Mat4, x: number, y: number, z: number) => {
+              const cx = m[0] * x + m[4] * y + m[8] * z + m[12] * 1;
+              const cy = m[1] * x + m[5] * y + m[9] * z + m[13] * 1;
+              const cz = m[2] * x + m[6] * y + m[10] * z + m[14] * 1;
+              const cw = m[3] * x + m[7] * y + m[11] * z + m[15] * 1;
+              return { x: cx, y: cy, z: cz, w: cw };
+            };
+            const corners: Array<Vec3> = [
+              [paddedHalfWidth, paddedHalfWidth, paddedHalfHeight],
+              [-paddedHalfWidth, paddedHalfWidth, paddedHalfHeight],
+              [paddedHalfWidth, -paddedHalfWidth, paddedHalfHeight],
+              [-paddedHalfWidth, -paddedHalfWidth, paddedHalfHeight],
+              [paddedHalfWidth, paddedHalfWidth, -paddedHalfHeight],
+              [-paddedHalfWidth, paddedHalfWidth, -paddedHalfHeight],
+              [paddedHalfWidth, -paddedHalfWidth, -paddedHalfHeight],
+              [-paddedHalfWidth, -paddedHalfWidth, -paddedHalfHeight],
+            ];
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            for (const c of corners) {
+              const clip = mulMat4Vec4(cameraRig.viewProjection, c[0], c[1], c[2]);
+              if (!Number.isFinite(clip.w) || Math.abs(clip.w) < 1e-6) continue;
+              const ndcX = clip.x / clip.w;
+              const ndcY = clip.y / clip.w;
+              minX = Math.min(minX, ndcX);
+              maxX = Math.max(maxX, ndcX);
+              minY = Math.min(minY, ndcY);
+              maxY = Math.max(maxY, ndcY);
+            }
+            if (performance.now() - lastFitEmit >= 1000) {
+              lastFitEmit = performance.now();
+              emitDiagnostic('webgpu:camera-fit-ndc', { ndc: { minX, maxX, minY, maxY }, canvasId: mountCanvasId });
+            }
+          } catch (err) {
+            /* ignore */
+          }
           const debugPayload = {
             H: height,
             Rt: radiusTop,
@@ -4707,7 +4729,7 @@ export const mount = async ({
       // Include geometry parameters in signature for immediate slider response
       // CRITICAL: Include canvasAspect so resize during grey mode triggers uniform write
       // CRITICAL: Include spin (f32[4-6]), drain (f32[13]), bell (f32[14-15,72]), wall/bottom (f32[25-26]) for live updates
-      const geoSig = `${f32[0]}_${f32[1]}_${f32[2]}_${f32[3]}_${f32[4]}_${f32[5]}_${f32[6]}_${f32[16]}_${f32[17]}_${f32[7]}_${f32[8]}_${f32[13]}_${f32[25]}_${f32[26]}_${f32[14]}_${f32[15]}_${f32[72]}`;
+      const geoSig = `${f32[0]}_${f32[1]}_${f32[2]}_${f32[3]}_${f32[4]}_${f32[5]}_${f32[6]}_${f32[16]}_${f32[17]}_${f32[7]}_${f32[8]}_${f32[13]}_${f32[25]}_${f32[26]}_${f32[14]}_${f32[15]}_${f32[72]}_${f32[73]}`;
       const uniformSignature = `${sigRotX}_${sigRotY}_${state.zoom ?? 1}_${state.panX ?? 0}_${state.panY ?? 0}_${state.projectionMode}_${String(state.displayCamQuat ?? state.camQuat)}_${geoSig}_${state.canvasAspect}`;
       (globalThis as any).__lastUniformSignature = (globalThis as any).__lastUniformSignature ?? null;
       const lastUniformSignature = (globalThis as any).__lastUniformSignature;
@@ -4726,17 +4748,23 @@ export const mount = async ({
         const __lastUniform = (globalThis as any).__lastUniformEmitMs ?? 0;
         if (__now - __lastUniform > 250) {
           (globalThis as any).__lastUniformEmitMs = __now;
-          emitDiagnostic('webgpu:uniform-write', {
-            H: Hval,
-            Rt: Rtval,
-            Rb: Rbval,
-            panX: state.panX,
-            panY: state.panY,
-            zoom: state.zoom,
-            canvasId: mountCanvasId,
-            ts: Date.now(),
-            cameraSeq: cameraSequence,
-          });
+          // Throttled debug log for uniform writes
+          try {
+            const now = performance.now();
+            if (debugEnabled && now - lastUniformEmit >= 2000) {
+              lastUniformEmit = now;
+              emitDiagnostic('webgpu:uniform-write', {
+                H: height,
+                Rt: state.t_wall,
+                Rb: state.t_bottom,
+                panX: state.panX,
+                panY: state.panY,
+                zoom: state.zoom,
+                canvasId: mountCanvasId,
+                cameraSeq: cameraSequence,
+              });
+            }
+          } catch (err) { /* ignore */ }
           if (debugEnabled) console.debug('[WebGPU:diag] uniforms', { H: Hval, Rt: Rtval, Rb: Rbval, panX: state.panX, panY: state.panY, zoom: state.zoom });
         }
       }
@@ -4947,7 +4975,19 @@ export const mount = async ({
       // Check wireframe state before starting render pass
       const showWireframe = cfg.showWireframe === true && wireframePipeline && wireframeBindGroup;
 
-      console.debug('[WebGPU:diag] draw-call', { drawCount: safeDrawVerts, cameraEye: cameraRig.eye, pivot: state.pivot });
+      // Emit diagnostic if enabled (throttled)
+      try {
+        const now = performance.now();
+        if (debugEnabled && now - lastDrawEmit >= 2000) {
+          lastDrawEmit = now;
+          manager.debug('webgpu:draw-call', `Draw call: ${safeDrawVerts} tris`, {
+            drawCount: safeDrawVerts,
+            cameraEye: cameraRig.eye,
+            pivot: state.pivot ?? [0, 0, 0]
+          }, 'draw-call');
+        }
+      } catch (err) {/* ignore */ }
+
       const pass = encoder.beginRenderPass(renderPassDesc);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);

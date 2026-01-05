@@ -26,10 +26,13 @@ export function formatTime(ts: number, format: 'absolute' | 'relative' = 'absolu
 
 /**
  * Generate a stable ID for a log message.
+ * Uses a counter to ensure uniqueness even for deduplicated logs with same timestamp.
  */
+let logIdCounter = 0;
 export function generateLogId(log: LogMessage): string {
+    logIdCounter++;
     const hash = simpleHash(log.message);
-    return `${log.ts}-${log.code}-${hash.slice(0, 8)}`;
+    return `${log.ts}-${log.code}-${hash.slice(0, 6)}-${logIdCounter}`;
 }
 
 /**

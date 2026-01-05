@@ -86,8 +86,7 @@ export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current
     // Uses cubic offset function for smooth thickening transition.
     // Relies only on seamAngle and style periodicity.
     // No extra precomputed factors needed.
-    f32[74] = 1.0;
-    f32[75] = 1.0;
+
 
     // Other topology counts (no caps)
     f32[27] = clampNumber(c.inner_y ?? c.innerY, 100.0);       // default 100

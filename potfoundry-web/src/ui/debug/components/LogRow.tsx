@@ -125,6 +125,20 @@ export const LogRow: React.FC<LogRowProps> = memo(({
             </div>
         </div>
     );
+}, (prev, next) => {
+    // Custom comparison function for React.memo
+    // Only re-render if specific props change
+    return (
+        prev.log.id === next.log.id &&
+        prev.log.count === next.log.count &&
+        prev.search === next.search &&
+        prev.isRegex === next.isRegex &&
+        prev.isSelected === next.isSelected &&
+        prev.isPinned === next.isPinned &&
+        prev.isBookmarked === next.isBookmarked &&
+        prev.isNew === next.isNew &&
+        prev.timestampFormat === next.timestampFormat
+    );
 });
 
 LogRow.displayName = 'LogRow';

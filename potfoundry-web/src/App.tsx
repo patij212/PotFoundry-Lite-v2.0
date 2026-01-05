@@ -79,8 +79,8 @@ const App: React.FC = () => {
             return;
         }
 
-        // Log events for debugging
-        console.debug('[PotFoundry] event', eventType, event);
+        // Log events for debugging (disabled - too verbose)
+        // console.debug('[PotFoundry] event', eventType, event);
     }, []);
     emitRef.current = emitEvent;
 

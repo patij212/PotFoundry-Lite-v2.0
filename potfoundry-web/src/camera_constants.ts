@@ -34,7 +34,7 @@ export const ROUGHNESS_OFFSET = 70;
 export const SHOW_INNER_OFFSET = 71;
 export const BELL_WIDTH_OFFSET = 72; // Bell bulge width parameter
 export const SEAM_ANGLE_OFFSET = 73; // Seam blend angle in radians (v2)
-export const SEAM_OVERLAP_OFFSET = 74;
+
 export const SEAM_RADIUS_OFFSET = 75; // Precomputed seam radius (CPU-side)
 
 export const INVALID_STATUS_COOLDOWN_MS = 750;
