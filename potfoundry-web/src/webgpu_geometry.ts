@@ -79,6 +79,7 @@ export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current
     const seamAngleDeg = rawSeamAngle;
 
     const seamAngleRad = (seamAngleDeg * Math.PI) / 180.0;
+    // console.log('[WebGPU Debug] Seam Angle:', seamAngleDeg, 'Radians:', seamAngleRad);
     f32[73] = seamAngleRad; // SEAM_ANGLE_OFFSET (radians)
 
     // Verify seam blending logic in shader:

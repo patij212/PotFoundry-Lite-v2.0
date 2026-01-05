@@ -187,8 +187,12 @@ fn sf_radius(theta: f32, t: f32, r0: f32) -> f32 {
   // Seam Amplitude Reduction: Reduce the VARIATION in rf near the seam
   // This lower the peaks while raising the valleys, making them meet smoothly
   // Key: blend towards a MIDPOINT (not zero) to avoid creating a dip
-  let seam_spread = getf(73u);  // Blend zone width in radians
-  if (seam_spread > 0.001) {
+  // DEBUG: Hardcoded to verify logic vs parameter issue. Reverting to parameter.
+  // Robustness: buffer might default to 0. Force 30 degrees (0.52 rad) if 0 to ensure seam is smoothed.
+  // User can still set near-zero value (e.g. 0.001) if they really want sharp edge.
+  let seam_spread_raw = getf(73u);
+  let seam_spread = select(seam_spread_raw, 0.523, seam_spread_raw < 0.0001);
+  if (seam_spread > 0.0001) {
     let dist_from_seam = min(theta, TAU - theta);
     
     if (dist_from_seam < seam_spread) {
@@ -460,7 +464,6 @@ fn surf(u: f32, v: f32) -> vec3<f32> {
   
   // Calculate styled radius
   let r = style_radius(style_id, th0, t, r0);
-
   
   // Apply twist for rotation
   let th = twist_theta(th0, t);

@@ -184,6 +184,6 @@ export const MeshControls: React.FC = () => {
           />
         </div>
       </SectionGroup>
-    </Section>
+    </Section >
   );
 };
