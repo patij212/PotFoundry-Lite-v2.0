@@ -4423,6 +4423,9 @@ export const mount = async ({
       // Show inner surface toggle - default to true (show inner)
       const showInner = cfg.showInner !== false;
       f32[SHOW_INNER_OFFSET] = showInner ? 1 : 0;
+      // Seam blending controls for watertight radial seam (θ=0/360° joint)
+      f32[73] = clampNumber(cfg.seam_overlap, 0.005);     // Overlap at seam
+      f32[74] = clampNumber(cfg.seam_blend_width, 0.02);  // Blend width into wall
       for (let i = 0; i < 16; i += 1) {
         f32[VP_MATRIX_OFFSET + i] = cameraRig.viewProjection[i];
         // Emit camera fit diagnostics with per-axis distances

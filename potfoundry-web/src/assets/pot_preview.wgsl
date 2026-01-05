@@ -460,6 +460,7 @@ fn surf(u: f32, v: f32) -> vec3<f32> {
   
   // Calculate styled radius
   let r = style_radius(style_id, th0, t, r0);
+
   
   // Apply twist for rotation
   let th = twist_theta(th0, t);
