@@ -53,6 +53,7 @@ const STYLE_NAME_TO_ID: Record<string, number> = {
   SuperellipseMorph: 3,    // STYLE_SUPERELLIPSE
   HarmonicRipple: 4,       // STYLE_HARMONIC
   LowPolyFacet: 4,         // Maps to HARMONIC (uses petals as facets)
+  GothicArches: 5,         // STYLE_GOTHIC_ARCHES
 };
 
 // ============================================================================
@@ -294,6 +295,38 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       styleParams[6] = 0;                              // ripple phase
       styleParams[7] = tiers > 1 ? 1.0 : 0.0;          // ripple z-gain if tiers > 1
       styleParams[8] = 0;                              // no bell
+      break;
+    }
+
+    case 'GothicArches': {
+      // Gothic Arches v2 - watertight relief with true tracery
+      // 12 parameters: counts, amp, z0, zh, pointiness, ribWidth, colWidth,
+      //                sharpness, overlap, band, bandWidth, tracery
+      const counts = getNum(opts.ga_counts, 8);
+      const amp = getNum(opts.ga_amp, 2.5);
+      const z0 = getNum(opts.ga_z0, 0.12);
+      const zh = getNum(opts.ga_zh, 0.75);
+      const pointiness = getNum(opts.ga_pointiness, 1.2);
+      const ribWidth = getNum(opts.ga_rib_width, 0.035);
+      const colWidth = getNum(opts.ga_col_width, 0.15);
+      const sharpness = getNum(opts.ga_sharpness, 4.0);
+      const overlap = getNum(opts.ga_overlap, 0.6);
+      const band = getNum(opts.ga_band, 0.5);
+      const bandWidth = getNum(opts.ga_band_width, 0.05);
+      const tracery = getNum(opts.ga_tracery, 0.4);
+
+      styleParams[0] = counts;           // [0] Arches count
+      styleParams[1] = amp;              // [1] Relief amplitude (mm)
+      styleParams[2] = z0;               // [2] Spring line
+      styleParams[3] = zh;               // [3] Arch height fraction
+      styleParams[4] = pointiness;       // [4] Superellipse exponent
+      styleParams[5] = ribWidth;         // [5] Rib thickness
+      styleParams[6] = colWidth;         // [6] Column width
+      styleParams[7] = sharpness;        // [7] Ridge sharpness
+      styleParams[8] = overlap;          // [8] Ogive overlap
+      styleParams[9] = band;             // [9] Band strength
+      styleParams[10] = bandWidth;       // [10] Band width
+      styleParams[11] = tracery;         // [11] X-tracery strength
       break;
     }
 

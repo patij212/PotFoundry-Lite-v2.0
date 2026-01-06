@@ -15,11 +15,13 @@ import {
   SpiralRidgesParams,
   SuperellipseMorphParams,
   HarmonicRippleParams,
+  GothicArchesParams,
   DEFAULT_SUPERFORMULA,
   DEFAULT_FOURIER,
   DEFAULT_SPIRAL,
   DEFAULT_SUPERELLIPSE,
   DEFAULT_HARMONIC,
+  DEFAULT_GOTHIC_ARCHES,
 } from './types';
 
 // ============================================================================
@@ -536,6 +538,220 @@ export function rOuterHarmonicRippleVec(
 }
 
 // ============================================================================
+// Gothic Arches v2 Functions
+// ============================================================================
+
+// Helper functions for Gothic Arches v2
+const sat = (x: number): number => Math.min(1, Math.max(0, x));
+const ridge = (d: number, wIn: number, sharp: number): number => {
+  const w = Math.max(EPSILON, wIn);
+  return Math.pow(Math.max(0, 1 - Math.abs(d) / w), sharp);
+};
+
+/**
+ * Gothic Arches v2 - watertight relief-based Gothic cathedral architecture
+ * 
+ * Key improvements over v1:
+ * - No seam artifacts: uses trig-based per-panel coordinates (periodic + smooth)
+ * - Real tracery: dual half-offset ogive sets create natural diamond intersections
+ * - Optional in-panel X-tracery: diagonal ribs inside each arch bay
+ * 
+ * Mathematical approach:
+ * - Bay coordinates without fract() tiling (no seams)
+ * - Pointed arch via superellipse curves
+ * - Two ogive rib sets (main + offset) for diamond patterns
+ * - Columns gated between spring line and arch apex
+ * - Optional X-tracery inside bays
+ * 
+ * @param theta - Angular position around pot (radians)
+ * @param z - Height position (mm)
+ * @param r0 - Base radius at this height (mm)
+ * @param H - Total pot height (mm)
+ * @param opts - Style parameters (GothicArchesParams v2)
+ * @returns Modified radius (mm) = r0 + amp * pattern
+ */
+export function rOuterGothicArches(
+  theta: number,
+  z: number,
+  r0: number,
+  H: number,
+  opts: StyleOptions
+): number {
+  const params = opts as Partial<GothicArchesParams>;
+
+  // --- Parameters (must match WGSL indexing/meaning exactly)
+  const counts = Math.max(1, Math.floor((params.gaCounts ?? DEFAULT_GOTHIC_ARCHES.gaCounts) + 0.5));
+  const amp = params.gaAmp ?? DEFAULT_GOTHIC_ARCHES.gaAmp;
+  
+  const z0 = sat(params.gaZ0 ?? DEFAULT_GOTHIC_ARCHES.gaZ0);
+  const zh = sat(params.gaZH ?? DEFAULT_GOTHIC_ARCHES.gaZH) * (1 - z0);
+  
+  const p = Math.max(0.25, params.gaPointiness ?? DEFAULT_GOTHIC_ARCHES.gaPointiness);
+  const wZ = Math.max(EPSILON, params.gaRibWidth ?? DEFAULT_GOTHIC_ARCHES.gaRibWidth);
+  const wX = Math.max(EPSILON, params.gaColWidth ?? DEFAULT_GOTHIC_ARCHES.gaColWidth);
+  const sharp = Math.max(1, params.gaSharpness ?? DEFAULT_GOTHIC_ARCHES.gaSharpness);
+  
+  const overlap = sat(params.gaOverlap ?? DEFAULT_GOTHIC_ARCHES.gaOverlap);
+  const band = sat(params.gaBand ?? DEFAULT_GOTHIC_ARCHES.gaBand);
+  const bandW = Math.max(EPSILON, params.gaBandWidth ?? DEFAULT_GOTHIC_ARCHES.gaBandWidth);
+  
+  const tracery = sat(params.gaTracery ?? DEFAULT_GOTHIC_ARCHES.gaTracery);
+
+  // Normalized height
+  const t = sat(z / Math.max(EPSILON, H));
+
+  // --- Bay coordinate without seams (periodic + smooth)
+  // a advances 2π per bay
+  const a = theta * counts;
+
+  // xSigned in [-1,1] across a bay; xAbs is 0 at center, 1 at edges
+  const xSigned = Math.cos(0.5 * a);
+  const xAbs = Math.abs(xSigned);
+
+  // Half-bay offset (for crossing ogives / tracery diamonds)
+  const xAbs2 = Math.abs(Math.sin(0.5 * a));
+
+  // Bay coordinate in [0,1] (used for diagonal tracery)
+  const x01 = sat(0.5 * (xSigned + 1.0));
+
+  // --- Pointed arch curve (superellipse)
+  const archY = Math.pow(Math.max(0, 1 - Math.pow(xAbs, p)), 1 / p);
+  const archY2 = Math.pow(Math.max(0, 1 - Math.pow(xAbs2, p)), 1 / p);
+
+  const archZ = z0 + zh * archY;
+  const archZ2 = z0 + zh * archY2;
+
+  // --- Ogive ribs (two sets -> diamond intersections)
+  const rib1 = ridge(t - archZ, wZ, sharp);
+  const rib2 = ridge(t - archZ2, wZ, sharp);
+  const rib = rib1 + overlap * rib2;
+
+  // --- Columns gated between z0 and archZ
+  const wGate = 2.0 * wZ;
+  const gate = sat((t - z0) / wGate) * sat((archZ - t) / wGate);
+
+  // Strong near bay edges (xAbs ≈ 1)
+  const colEdge = Math.pow(Math.max(0, 1 - (1 - xAbs) / wX), sharp);
+  const column = colEdge * gate;
+
+  // Center mullion (xAbs ≈ 0)
+  const mull = Math.pow(Math.max(0, 1 - xAbs / (0.6 * wX)), sharp) * gate;
+
+  // --- Optional in-bay "X" tracery inside the arch panel
+  // Map height within bay: s=0 at spring, s=1 at apex (per-theta)
+  const denom = Math.max(EPSILON, archZ - z0);
+  const s = sat((t - z0) / denom);
+
+  // Tracery width derived from column width (no extra params needed)
+  const wT = 0.45 * wX;
+  const diag = gate * (
+    ridge(s - x01, wT, sharp) +
+    ridge(s - (1 - x01), wT, sharp)
+  );
+
+  // --- Base + rim bands (plinth + cornice)
+  const bands = ridge(t - 0.0, bandW, sharp) + ridge(t - 1.0, bandW, sharp);
+
+  // Gentle fade-in above the base
+  const fade = sat((t - 0.02) / 0.08);
+
+  const pattern = fade * (rib + 0.65 * column + 0.35 * mull + tracery * diag) + band * bands;
+  return r0 + amp * pattern;
+}
+
+/**
+ * Vectorized Gothic Arches v2 for GPU-like parallelism and performance
+ * 
+ * @param thetas - Array of angular positions (radians)
+ * @param z - Height position (mm)
+ * @param r0 - Base radius at this height (mm)
+ * @param H - Total pot height (mm)
+ * @param opts - Style parameters (GothicArchesParams v2)
+ * @returns Float32Array of modified radii (mm)
+ */
+export function rOuterGothicArchesVec(
+  thetas: Float32Array,
+  z: number,
+  r0: number,
+  H: number,
+  opts: StyleOptions
+): Float32Array {
+  const n = thetas.length;
+  const result = new Float32Array(n);
+  const params = opts as Partial<GothicArchesParams>;
+
+  // --- Parameters (must match WGSL indexing/meaning exactly)
+  const counts = Math.max(1, Math.floor((params.gaCounts ?? DEFAULT_GOTHIC_ARCHES.gaCounts) + 0.5));
+  const amp = params.gaAmp ?? DEFAULT_GOTHIC_ARCHES.gaAmp;
+  
+  const z0 = sat(params.gaZ0 ?? DEFAULT_GOTHIC_ARCHES.gaZ0);
+  const zh = sat(params.gaZH ?? DEFAULT_GOTHIC_ARCHES.gaZH) * (1 - z0);
+  
+  const p = Math.max(0.25, params.gaPointiness ?? DEFAULT_GOTHIC_ARCHES.gaPointiness);
+  const wZ = Math.max(EPSILON, params.gaRibWidth ?? DEFAULT_GOTHIC_ARCHES.gaRibWidth);
+  const wX = Math.max(EPSILON, params.gaColWidth ?? DEFAULT_GOTHIC_ARCHES.gaColWidth);
+  const sharp = Math.max(1, params.gaSharpness ?? DEFAULT_GOTHIC_ARCHES.gaSharpness);
+  
+  const overlap = sat(params.gaOverlap ?? DEFAULT_GOTHIC_ARCHES.gaOverlap);
+  const band = sat(params.gaBand ?? DEFAULT_GOTHIC_ARCHES.gaBand);
+  const bandW = Math.max(EPSILON, params.gaBandWidth ?? DEFAULT_GOTHIC_ARCHES.gaBandWidth);
+  
+  const tracery = sat(params.gaTracery ?? DEFAULT_GOTHIC_ARCHES.gaTracery);
+
+  // Normalized height (pre-compute)
+  const t = sat(z / Math.max(EPSILON, H));
+
+  // Pre-compute height-invariant values
+  const wGate = 2.0 * wZ;
+  const wT = 0.45 * wX;
+  const fade = sat((t - 0.02) / 0.08);
+  const bands = ridge(t - 0.0, bandW, sharp) + ridge(t - 1.0, bandW, sharp);
+  const invP = 1 / p;
+
+  for (let i = 0; i < n; i++) {
+    const theta = thetas[i];
+    
+    // Bay coordinate without seams
+    const a = theta * counts;
+    const xSigned = Math.cos(0.5 * a);
+    const xAbs = Math.abs(xSigned);
+    const xAbs2 = Math.abs(Math.sin(0.5 * a));
+    const x01 = sat(0.5 * (xSigned + 1.0));
+
+    // Pointed arch curve (superellipse)
+    const archY = Math.pow(Math.max(0, 1 - Math.pow(xAbs, p)), invP);
+    const archY2 = Math.pow(Math.max(0, 1 - Math.pow(xAbs2, p)), invP);
+
+    const archZ = z0 + zh * archY;
+    const archZ2 = z0 + zh * archY2;
+
+    // Ogive ribs (two sets)
+    const rib1 = ridge(t - archZ, wZ, sharp);
+    const rib2 = ridge(t - archZ2, wZ, sharp);
+    const rib = rib1 + overlap * rib2;
+
+    // Columns gated between z0 and archZ
+    const gate = sat((t - z0) / wGate) * sat((archZ - t) / wGate);
+    const colEdge = Math.pow(Math.max(0, 1 - (1 - xAbs) / wX), sharp);
+    const column = colEdge * gate;
+    const mull = Math.pow(Math.max(0, 1 - xAbs / (0.6 * wX)), sharp) * gate;
+
+    // In-bay X-tracery
+    const denom = Math.max(EPSILON, archZ - z0);
+    const s = sat((t - z0) / denom);
+    const diag = gate * (
+      ridge(s - x01, wT, sharp) +
+      ridge(s - (1 - x01), wT, sharp)
+    );
+
+    const pattern = fade * (rib + 0.65 * column + 0.35 * mull + tracery * diag) + band * bands;
+    result[i] = r0 + amp * pattern;
+  }
+
+  return result;
+}
+
+// ============================================================================
 // Style Registry
 // ============================================================================
 
@@ -546,6 +762,7 @@ export const STYLE_FUNCTIONS: Record<StyleId, StyleFunction> = {
   SpiralRidges: rOuterSpiralRidges,
   SuperellipseMorph: rOuterSuperellipseMorph,
   HarmonicRipple: rOuterHarmonicRipple,
+  GothicArches: rOuterGothicArches,
 };
 
 /** Map of style IDs to their vectorized functions */
@@ -555,6 +772,7 @@ export const STYLE_FUNCTIONS_VEC: Record<StyleId, VectorizedStyleFunction> = {
   SpiralRidges: rOuterSpiralRidgesVec,
   SuperellipseMorph: rOuterSuperellipseMorphVec,
   HarmonicRipple: rOuterHarmonicRippleVec,
+  GothicArches: rOuterGothicArchesVec,
 };
 
 /** Style descriptions for UI */
@@ -564,6 +782,7 @@ export const STYLE_DESCRIPTIONS: Record<StyleId, string> = {
   SpiralRidges: 'Rising helical ribs with fine grooves.',
   SuperellipseMorph: 'Circle → rounded square → soft diamond vs height.',
   HarmonicRipple: 'Petals + ripples + gentle mid-height bell.',
+  GothicArches: 'Cathedral-inspired pointed arches, buttresses, tracery & rose windows.',
 };
 
 /**

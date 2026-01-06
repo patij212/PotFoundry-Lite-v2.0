@@ -106,7 +106,8 @@ export type StyleId =
   | 'FourierBloom'
   | 'SpiralRidges'
   | 'SuperellipseMorph'
-  | 'HarmonicRipple';
+  | 'HarmonicRipple'
+  | 'GothicArches';
 
 /** Style ID numeric values matching shader */
 export const STYLE_IDS: Record<StyleId, number> = {
@@ -115,6 +116,7 @@ export const STYLE_IDS: Record<StyleId, number> = {
   SpiralRidges: 2,
   SuperellipseMorph: 3,
   HarmonicRipple: 4,
+  GothicArches: 5,
 };
 
 /**
@@ -203,13 +205,36 @@ export interface HarmonicRippleParams {
   hrBell: number;           // Bell amplitude at mid-height
 }
 
+/**
+ * Gothic Arches v2 style parameters
+ * Watertight relief-based Gothic cathedral architecture
+ * 
+ * Uses trig-based bay coordinates (no seam artifacts) and dual-ogive sets
+ * for natural diamond intersections like cathedral window tracery.
+ */
+export interface GothicArchesParams {
+  gaCounts: number;         // [0] Arches around circumference (integer, 6-20)
+  gaAmp: number;            // [1] Relief amplitude in mm (0-4)
+  gaZ0: number;             // [2] Spring line (start height), normalized (0.05-0.30)
+  gaZH: number;             // [3] Arch height fraction of remaining height (0.4-1.0)
+  gaPointiness: number;     // [4] Superellipse exponent p (0.6-2.0, lower=pointier)
+  gaRibWidth: number;       // [5] Rib thickness in height-space (0.01-0.06)
+  gaColWidth: number;       // [6] Column width in bay-space (0.08-0.25)
+  gaSharpness: number;      // [7] Ridge sharpness exponent (2-8)
+  gaOverlap: number;        // [8] Weight of half-offset ogive set (0-1)
+  gaBand: number;           // [9] Base/rim band strength (0-1)
+  gaBandWidth: number;      // [10] Base/rim band width (0.02-0.12)
+  gaTracery: number;        // [11] In-bay diagonal X tracery strength (0-1)
+}
+
 /** Union type for all style parameters */
 export type StyleParams =
   | SuperformulaBlossomParams
   | FourierBloomParams
   | SpiralRidgesParams
   | SuperellipseMorphParams
-  | HarmonicRippleParams;
+  | HarmonicRippleParams
+  | GothicArchesParams;
 
 /**
  * Combined style options passed to mesh generation
@@ -396,6 +421,22 @@ export const DEFAULT_HARMONIC: HarmonicRippleParams = {
   hrBell: 0.05,
 };
 
+/** Default Gothic Arches v2 parameters */
+export const DEFAULT_GOTHIC_ARCHES: GothicArchesParams = {
+  gaCounts: 8,          // [0] 8 arches around (cathedral-like)
+  gaAmp: 2.5,           // [1] 2.5mm relief amplitude
+  gaZ0: 0.12,           // [2] Spring line at 12% height
+  gaZH: 0.75,           // [3] Arches fill 75% of remaining height
+  gaPointiness: 1.2,    // [4] Slightly pointed (equilateral-ish)
+  gaRibWidth: 0.035,    // [5] Medium rib thickness
+  gaColWidth: 0.15,     // [6] Column width
+  gaSharpness: 4.0,     // [7] Ridge sharpness
+  gaOverlap: 0.6,       // [8] 60% overlap for diamond tracery
+  gaBand: 0.5,          // [9] Visible base/rim bands
+  gaBandWidth: 0.05,    // [10] Medium band width
+  gaTracery: 0.4,       // [11] Subtle in-bay X tracery
+};
+
 /** Map of style IDs to their default parameters */
 export const DEFAULT_STYLE_PARAMS: Record<StyleId, StyleParams> = {
   SuperformulaBlossom: DEFAULT_SUPERFORMULA,
@@ -403,4 +444,5 @@ export const DEFAULT_STYLE_PARAMS: Record<StyleId, StyleParams> = {
   SpiralRidges: DEFAULT_SPIRAL,
   SuperellipseMorph: DEFAULT_SUPERELLIPSE,
   HarmonicRipple: DEFAULT_HARMONIC,
+  GothicArches: DEFAULT_GOTHIC_ARCHES,
 };

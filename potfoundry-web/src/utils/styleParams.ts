@@ -29,6 +29,7 @@ export const STYLE_ID_MAP: Record<string, number> = {
   SuperellipseMorph: 3,
   HarmonicRipple: 4,
   LowPolyFacet: 4, // Alias for HarmonicRipple
+  GothicArches: 5,
 };
 
 // ============================================================================
@@ -161,6 +162,29 @@ function packHarmonic(opts: Record<string, unknown>): number[] {
   ]));
 }
 
+/**
+ * Pack Gothic Arches v2 parameters.
+ * 
+ * Cathedral-inspired relief with true tracery and seamless wrap.
+ * 12 parameters packed in order matching WGSL shader expectations.
+ */
+function packGothicArches(opts: Record<string, unknown>): number[] {
+  return pad(clamp([
+    getOpt(opts, 'ga_counts', 8),           // [0] Arches around circumference
+    getOpt(opts, 'ga_amp', 2.5),            // [1] Relief amplitude (mm)
+    getOpt(opts, 'ga_z0', 0.12),            // [2] Spring line (normalized height)
+    getOpt(opts, 'ga_zh', 0.75),            // [3] Arch height fraction
+    getOpt(opts, 'ga_pointiness', 1.2),     // [4] Superellipse exponent p
+    getOpt(opts, 'ga_rib_width', 0.035),    // [5] Rib thickness
+    getOpt(opts, 'ga_col_width', 0.15),     // [6] Column width
+    getOpt(opts, 'ga_sharpness', 4.0),      // [7] Ridge sharpness
+    getOpt(opts, 'ga_overlap', 0.6),        // [8] Half-offset ogive weight
+    getOpt(opts, 'ga_band', 0.5),           // [9] Base/rim band strength
+    getOpt(opts, 'ga_band_width', 0.05),    // [10] Band width
+    getOpt(opts, 'ga_tracery', 0.4),        // [11] In-bay X tracery
+  ]));
+}
+
 // ============================================================================
 // Packer Registry
 // ============================================================================
@@ -172,6 +196,7 @@ const PACKERS: Record<number, (opts: Record<string, unknown>) => number[]> = {
   2: packSpiral,
   3: packSuperellipse,
   4: packHarmonic,
+  5: packGothicArches,
 };
 
 // ============================================================================

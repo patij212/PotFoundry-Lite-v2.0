@@ -18,6 +18,7 @@ const STYLE_FOURIER = 1;
 const STYLE_SPIRAL = 2;
 const STYLE_SUPERELLIPSE = 3;
 const STYLE_HARMONIC = 4;
+const STYLE_GOTHIC_ARCHES = 5;
 const CAMERA_EYE_OFFSET : u32 = 36u;
 const CAMERA_MODE_OFFSET : u32 = 39u;
 const VP_MATRIX_OFFSET : u32 = 40u;
@@ -381,6 +382,97 @@ fn harmonic_radius(theta: f32, t: f32, r0: f32) -> f32 {
   return r0 * f;
 }
 
+// ============================================================================
+// Gothic Arches v2 - watertight relief with true tracery
+// ============================================================================
+
+// Helper: saturate to [0,1]
+fn ga_sat(x: f32) -> f32 {
+  return min(1.0, max(0.0, x));
+}
+
+// Helper: ridge function for crisp raised lines
+fn ga_ridge(d: f32, w_in: f32, sharp: f32) -> f32 {
+  let w = max(1e-6, w_in);
+  return pow(max(0.0, 1.0 - abs(d) / w), sharp);
+}
+
+// Gothic Arches v2: watertight cathedral relief
+// Key improvements: no seam artifacts, true diamond tracery, X-tracery
+fn gothic_arches_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
+  if (!style_params_active()) {
+    return r0;
+  }
+  
+  // --- Parameters (must match TS mapping exactly)
+  let counts  = max(1.0, floor(style_param(0u) + 0.5));  // [0] gaCounts
+  let amp     = style_param(1u);                          // [1] gaAmp (mm)
+  
+  let z0      = ga_sat(style_param(2u));                  // [2] gaZ0 (spring line)
+  let zh      = ga_sat(style_param(3u)) * (1.0 - z0);     // [3] gaZH (arch height)
+  
+  let p       = max(0.25, style_param(4u));               // [4] gaPointiness
+  let wZ      = max(1e-6, style_param(5u));               // [5] gaRibWidth
+  let wX      = max(1e-6, style_param(6u));               // [6] gaColWidth
+  let sharp   = max(1.0, style_param(7u));                // [7] gaSharpness
+  
+  let overlap = ga_sat(style_param(8u));                  // [8] gaOverlap
+  let band    = ga_sat(style_param(9u));                  // [9] gaBand
+  let bandW   = max(1e-6, style_param(10u));              // [10] gaBandWidth
+  
+  let tracery = ga_sat(style_param(11u));                 // [11] gaTracery
+
+  let t = ga_sat(t_in);
+
+  // --- Bay coordinate without seams (periodic + smooth)
+  let a = theta * counts;
+
+  let xSigned = cos(0.5 * a);
+  let xAbs    = abs(xSigned);
+  let xAbs2   = abs(sin(0.5 * a));
+  let x01     = ga_sat(0.5 * (xSigned + 1.0));
+
+  // --- Pointed arch curve (superellipse)
+  let archY  = pow(max(0.0, 1.0 - pow(xAbs,  p)), 1.0 / p);
+  let archY2 = pow(max(0.0, 1.0 - pow(xAbs2, p)), 1.0 / p);
+
+  let archZ  = z0 + zh * archY;
+  let archZ2 = z0 + zh * archY2;
+
+  // --- Ogive ribs (two sets -> diamond intersections)
+  let rib1 = ga_ridge(t - archZ,  wZ, sharp);
+  let rib2 = ga_ridge(t - archZ2, wZ, sharp);
+  let rib  = rib1 + overlap * rib2;
+
+  // --- Columns gated between z0 and archZ
+  let wGate = 2.0 * wZ;
+  let gate  = ga_sat((t - z0) / wGate) * ga_sat((archZ - t) / wGate);
+
+  let colEdge = pow(max(0.0, 1.0 - (1.0 - xAbs) / wX), sharp);
+  let column  = colEdge * gate;
+
+  let mull = pow(max(0.0, 1.0 - xAbs / (0.6 * wX)), sharp) * gate;
+
+  // --- Optional in-bay X-tracery
+  let denom = max(1e-6, archZ - z0);
+  let s     = ga_sat((t - z0) / denom);
+  let wT    = 0.45 * wX;
+
+  let diag = gate * (
+    ga_ridge(s - x01, wT, sharp) +
+    ga_ridge(s - (1.0 - x01), wT, sharp)
+  );
+
+  // --- Base + rim bands (plinth + cornice)
+  let bands = ga_ridge(t - 0.0, bandW, sharp) + ga_ridge(t - 1.0, bandW, sharp);
+
+  // Gentle fade-in above the base
+  let fade = ga_sat((t - 0.02) / 0.08);
+
+  let pattern = fade * (rib + 0.65 * column + 0.35 * mull + tracery * diag) + band * bands;
+  return r0 + amp * pattern;
+}
+
 fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
   // Normalize theta to [0, TAU) for perfect periodicity
   // This ensures theta=TAU produces identical result to theta=0
@@ -398,6 +490,9 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
   }
   if (style_id == STYLE_HARMONIC) {
     return harmonic_radius(th, t, r0);
+  }
+  if (style_id == STYLE_GOTHIC_ARCHES) {
+    return gothic_arches_radius(th, t, r0);
   }
   return sf_radius(th, t, r0);
 }
@@ -422,12 +517,15 @@ fn style_radius_zero(style_id: i32, t: f32, r0: f32) -> f32 {
   if (style_id == STYLE_HARMONIC) {
     return harmonic_radius(0.0, t, r0);
   }
+  if (style_id == STYLE_GOTHIC_ARCHES) {
+    return gothic_arches_radius(0.0, t, r0);
+  }
   // Superformula: Use highly optimized version
   return sf_radius_zero(t, r0);
 }
 
 fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
-  // For periodic functions (Fourier, Superellipse, Harmonic), f(2PI) == f(0).
+  // For periodic functions (Fourier, Superellipse, Harmonic, GothicArches), f(2PI) == f(0).
   if (style_id == STYLE_FOURIER) {
     return fourier_radius(0.0, t, r0); // Periodic
   }
@@ -436,6 +534,9 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
   }
   if (style_id == STYLE_HARMONIC) {
     return harmonic_radius(0.0, t, r0); // Periodic
+  }
+  if (style_id == STYLE_GOTHIC_ARCHES) {
+    return gothic_arches_radius(0.0, t, r0); // Periodic
   }
   
   if (style_id == STYLE_SPIRAL) {

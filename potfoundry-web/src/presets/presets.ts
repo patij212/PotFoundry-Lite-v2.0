@@ -12,6 +12,7 @@ import {
   DEFAULT_SPIRAL,
   DEFAULT_SUPERELLIPSE,
   DEFAULT_HARMONIC,
+  DEFAULT_GOTHIC_ARCHES,
 } from '../geometry';
 
 // ============================================================================
@@ -362,6 +363,84 @@ export const PRESETS: PotPreset[] = [
       },
     },
   },
+  {
+    id: 'crystal-quartz',
+    name: 'Crystal Quartz',
+    description: 'Faceted crystal geometry with prismatic edges',
+    category: 'decorative',
+    color: '#4A3B31',
+    config: {
+      geometry: {
+        H: 130,
+        topOd: 140,
+        bottomOd: 80,
+        tWall: 3.0,
+        tBottom: 3.5,
+        rDrain: 10,
+        expn: 1.3,
+      },
+      style: {
+        type: 'GothicArches',
+        params: {
+          ga_counts: 8,
+          ga_amp: 2.5,
+          ga_z0: 0.12,
+          ga_zh: 0.75,
+          ga_pointiness: 1.2,
+          ga_rib_width: 0.035,
+          ga_col_width: 0.15,
+          ga_sharpness: 4.0,
+          ga_overlap: 0.6,
+          ga_band: 0.5,
+          ga_band_width: 0.05,
+          ga_tracery: 0.4,
+        },
+      },
+      appearance: {
+        primaryColor: '#4A3B31',
+        gradient: ['#2C1810', '#4A3B31', '#6B5344'],
+      },
+    },
+  },
+  {
+    id: 'gothic-lancet',
+    name: 'Gothic Lancet',
+    description: 'Tall elegant pot with sharp lancet arches',
+    category: 'decorative',
+    color: '#1E3A5F',
+    config: {
+      geometry: {
+        H: 150,
+        topOd: 120,
+        bottomOd: 70,
+        tWall: 2.5,
+        tBottom: 3.0,
+        rDrain: 10,
+        expn: 1.4,
+      },
+      style: {
+        type: 'GothicArches',
+        params: {
+          ga_counts: 6,
+          ga_amp: 3.0,
+          ga_z0: 0.10,
+          ga_zh: 0.85,
+          ga_pointiness: 0.8,    // Lower = pointier lancet arches
+          ga_rib_width: 0.04,
+          ga_col_width: 0.12,
+          ga_sharpness: 5.0,
+          ga_overlap: 0.7,
+          ga_band: 0.6,
+          ga_band_width: 0.04,
+          ga_tracery: 0.5,
+        },
+      },
+      appearance: {
+        primaryColor: '#1E3A5F',
+        gradient: ['#0D1B2A', '#1E3A5F', '#3A5A7C'],
+      },
+    },
+  },
 
   // Minimal Category
   {
@@ -511,6 +590,8 @@ export function presetStyleToId(presetType: string): StyleId {
     spiral_ridges: 'SpiralRidges',
     superellipse_morph: 'SuperellipseMorph',
     harmonic_ripple: 'HarmonicRipple',
+    GothicArches: 'GothicArches',
+    gothic_arches: 'GothicArches',
   };
   return mapping[presetType] ?? 'SuperformulaBlossom';
 }
