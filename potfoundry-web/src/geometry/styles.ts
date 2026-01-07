@@ -16,12 +16,14 @@ import {
   SuperellipseMorphParams,
   HarmonicRippleParams,
   GothicArchesParams,
+  WaveInterferenceParams,
   DEFAULT_SUPERFORMULA,
   DEFAULT_FOURIER,
   DEFAULT_SPIRAL,
   DEFAULT_SUPERELLIPSE,
   DEFAULT_HARMONIC,
   DEFAULT_GOTHIC_ARCHES,
+  DEFAULT_WAVE_INTERFERENCE,
 } from './types';
 
 // ============================================================================
@@ -823,6 +825,183 @@ export function rOuterGothicArchesVec(
 }
 
 // ============================================================================
+// Wave Interference - Moiré-style helical wave superposition
+// ============================================================================
+
+/**
+ * Wave Interference style - organic moiré patterns from helical wave superposition
+ * 
+ * Creates complex, organic-looking surface patterns by superimposing
+ * multiple helical waves with domain warping. The result resembles
+ * fingerprints, wood grain, or topographic contours.
+ * 
+ * @param theta - Angular position around pot (radians)
+ * @param z - Height position (mm)
+ * @param r0 - Base radius at this height (mm)
+ * @param H - Total pot height (mm)
+ * @param opts - Style parameters (WaveInterferenceParams)
+ * @returns Modified radius (mm)
+ */
+export function rOuterWaveInterference(
+  theta: number,
+  z: number,
+  r0: number,
+  H: number,
+  opts: StyleOptions
+): number {
+  const EPS = 1e-6;
+  const params = opts as Partial<WaveInterferenceParams>;
+
+  const sat = (x: number) => Math.min(1, Math.max(0, x));
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const sgnNZ = (x: number) => x / Math.max(EPS, Math.abs(x));
+
+  const t = sat(z / Math.max(EPS, H)); // 0..1
+
+  // Map parameters from 0..1 controls to useful ranges
+  const count01 = sat(params.wiCount ?? DEFAULT_WAVE_INTERFERENCE.wiCount);
+  const m = Math.floor(lerp(16, 90, count01) + 0.5);
+
+  const det01 = sat(params.wiDetune ?? DEFAULT_WAVE_INTERFERENCE.wiDetune);
+  const dm = Math.max(1, Math.floor(lerp(1, 12, det01) + 0.5));
+  const m2 = m + dm;
+
+  const pitch = lerp(0.5, 6.0, sat(params.wiPitch ?? DEFAULT_WAVE_INTERFERENCE.wiPitch));
+  const twist = lerp(-0.35, 0.35, sat(params.wiTwist ?? DEFAULT_WAVE_INTERFERENCE.wiTwist));
+  const pitch2 = pitch * (1.0 + twist);
+
+  const warp = lerp(0.0, 0.35, sat(params.wiWarp ?? DEFAULT_WAVE_INTERFERENCE.wiWarp));
+  const warpScale = lerp(0.3, 3.0, sat(params.wiWarpScale ?? DEFAULT_WAVE_INTERFERENCE.wiWarpScale));
+
+  const lineDen = lerp(1.0, 6.0, sat(params.wiLineDensity ?? DEFAULT_WAVE_INTERFERENCE.wiLineDensity));
+  const blend = sat(params.wiBlend ?? DEFAULT_WAVE_INTERFERENCE.wiBlend);
+
+  const contrast = lerp(0.80, 1.60, sat(params.wiContrast ?? DEFAULT_WAVE_INTERFERENCE.wiContrast));
+  const edge = lerp(0.03, 0.18, sat(params.wiEdgeFade ?? DEFAULT_WAVE_INTERFERENCE.wiEdgeFade));
+
+  const phase = TAU * sat(params.wiPhase ?? DEFAULT_WAVE_INTERFERENCE.wiPhase);
+  const depth = params.wiDepth ?? DEFAULT_WAVE_INTERFERENCE.wiDepth;
+
+  // Seam-safe domain warp (warp uses integer multiples of theta)
+  const mw1 = Math.max(1, Math.floor(0.22 * m + 0.5));
+  const mw2 = Math.max(1, Math.floor(0.17 * m + 0.5));
+
+  const y = t; // normalized height coordinate
+
+  const dTheta =
+    warp * (0.70 * Math.sin(mw1 * theta + TAU * (warpScale * y) + phase) +
+            0.30 * Math.sin(mw2 * theta - TAU * (warpScale * y) + 1.7 + phase));
+
+  const dy = warp * 0.12 * Math.sin(mw2 * theta + 0.9 + phase);
+
+  const thetaW = theta + dTheta;
+  const yW = y + dy;
+
+  // Two crossing helical waves + a small third component (adds realism)
+  const w1 = Math.sin(m * thetaW + TAU * (pitch * yW) + phase);
+  const w2 = Math.sin(m2 * thetaW - TAU * (pitch2 * yW) + 1.3 + 0.7 * phase);
+
+  const m3 = Math.max(1, Math.floor(0.50 * m + 0.5));
+  const w3 = Math.sin(m3 * thetaW + TAU * (0.30 * pitch * yW) + 2.4);
+
+  const F = w1 + w2 + 0.35 * w3; // ~[-2.35..2.35]
+
+  // "Contour line" moiré: stripes along level sets of F
+  const stripes = Math.sin(TAU * (lineDen * F) + 0.2 * phase);
+
+  // Keep base in [-1,1] and blend
+  const base = Math.max(-1, Math.min(1, 0.45 * F));
+  let ptn = (1 - blend) * base + blend * stripes;
+
+  // Shape without spikes
+  ptn = sgnNZ(ptn) * Math.pow(Math.abs(ptn), contrast);
+
+  // Fade near top/bottom so rims stay clean
+  const fade = sat(t / Math.max(EPS, edge)) * sat((1 - t) / Math.max(EPS, edge));
+
+  return r0 + depth * ptn * fade;
+}
+
+/**
+ * Vectorized Wave Interference for performance
+ */
+export function rOuterWaveInterferenceVec(
+  thetas: Float32Array,
+  z: number,
+  r0: number,
+  H: number,
+  opts: StyleOptions
+): Float32Array {
+  const n = thetas.length;
+  const result = new Float32Array(n);
+  const EPS = 1e-6;
+  const params = opts as Partial<WaveInterferenceParams>;
+
+  const sat = (x: number) => Math.min(1, Math.max(0, x));
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const sgnNZ = (x: number) => x / Math.max(EPS, Math.abs(x));
+
+  const t = sat(z / Math.max(EPS, H));
+
+  // Pre-compute parameters
+  const count01 = sat(params.wiCount ?? DEFAULT_WAVE_INTERFERENCE.wiCount);
+  const m = Math.floor(lerp(16, 90, count01) + 0.5);
+
+  const det01 = sat(params.wiDetune ?? DEFAULT_WAVE_INTERFERENCE.wiDetune);
+  const dm = Math.max(1, Math.floor(lerp(1, 12, det01) + 0.5));
+  const m2 = m + dm;
+
+  const pitch = lerp(0.5, 6.0, sat(params.wiPitch ?? DEFAULT_WAVE_INTERFERENCE.wiPitch));
+  const twist = lerp(-0.35, 0.35, sat(params.wiTwist ?? DEFAULT_WAVE_INTERFERENCE.wiTwist));
+  const pitch2 = pitch * (1.0 + twist);
+
+  const warp = lerp(0.0, 0.35, sat(params.wiWarp ?? DEFAULT_WAVE_INTERFERENCE.wiWarp));
+  const warpScale = lerp(0.3, 3.0, sat(params.wiWarpScale ?? DEFAULT_WAVE_INTERFERENCE.wiWarpScale));
+
+  const lineDen = lerp(1.0, 6.0, sat(params.wiLineDensity ?? DEFAULT_WAVE_INTERFERENCE.wiLineDensity));
+  const blend = sat(params.wiBlend ?? DEFAULT_WAVE_INTERFERENCE.wiBlend);
+
+  const contrast = lerp(0.80, 1.60, sat(params.wiContrast ?? DEFAULT_WAVE_INTERFERENCE.wiContrast));
+  const edge = lerp(0.03, 0.18, sat(params.wiEdgeFade ?? DEFAULT_WAVE_INTERFERENCE.wiEdgeFade));
+
+  const phase = TAU * sat(params.wiPhase ?? DEFAULT_WAVE_INTERFERENCE.wiPhase);
+  const depth = params.wiDepth ?? DEFAULT_WAVE_INTERFERENCE.wiDepth;
+
+  const mw1 = Math.max(1, Math.floor(0.22 * m + 0.5));
+  const mw2 = Math.max(1, Math.floor(0.17 * m + 0.5));
+  const m3 = Math.max(1, Math.floor(0.50 * m + 0.5));
+
+  const y = t;
+  const fade = sat(t / Math.max(EPS, edge)) * sat((1 - t) / Math.max(EPS, edge));
+
+  for (let i = 0; i < n; i++) {
+    const theta = thetas[i];
+
+    const dTheta =
+      warp * (0.70 * Math.sin(mw1 * theta + TAU * (warpScale * y) + phase) +
+              0.30 * Math.sin(mw2 * theta - TAU * (warpScale * y) + 1.7 + phase));
+    const dy = warp * 0.12 * Math.sin(mw2 * theta + 0.9 + phase);
+
+    const thetaW = theta + dTheta;
+    const yW = y + dy;
+
+    const w1 = Math.sin(m * thetaW + TAU * (pitch * yW) + phase);
+    const w2 = Math.sin(m2 * thetaW - TAU * (pitch2 * yW) + 1.3 + 0.7 * phase);
+    const w3 = Math.sin(m3 * thetaW + TAU * (0.30 * pitch * yW) + 2.4);
+
+    const F = w1 + w2 + 0.35 * w3;
+    const stripes = Math.sin(TAU * (lineDen * F) + 0.2 * phase);
+    const base = Math.max(-1, Math.min(1, 0.45 * F));
+    let ptn = (1 - blend) * base + blend * stripes;
+    ptn = sgnNZ(ptn) * Math.pow(Math.abs(ptn), contrast);
+
+    result[i] = r0 + depth * ptn * fade;
+  }
+
+  return result;
+}
+
+// ============================================================================
 // Style Registry
 // ============================================================================
 
@@ -834,6 +1013,7 @@ export const STYLE_FUNCTIONS: Record<StyleId, StyleFunction> = {
   SuperellipseMorph: rOuterSuperellipseMorph,
   HarmonicRipple: rOuterHarmonicRipple,
   GothicArches: rOuterGothicArches,
+  WaveInterference: rOuterWaveInterference,
 };
 
 /** Map of style IDs to their vectorized functions */
@@ -844,6 +1024,7 @@ export const STYLE_FUNCTIONS_VEC: Record<StyleId, VectorizedStyleFunction> = {
   SuperellipseMorph: rOuterSuperellipseMorphVec,
   HarmonicRipple: rOuterHarmonicRippleVec,
   GothicArches: rOuterGothicArchesVec,
+  WaveInterference: rOuterWaveInterferenceVec,
 };
 
 /** Style descriptions for UI */
@@ -854,6 +1035,7 @@ export const STYLE_DESCRIPTIONS: Record<StyleId, string> = {
   SuperellipseMorph: 'Circle → rounded square → soft diamond vs height.',
   HarmonicRipple: 'Petals + ripples + gentle mid-height bell.',
   GothicArches: 'Cathedral-inspired pointed arches, buttresses, tracery & rose windows.',
+  WaveInterference: 'Organic moiré patterns from helical wave superposition.',
 };
 
 /**

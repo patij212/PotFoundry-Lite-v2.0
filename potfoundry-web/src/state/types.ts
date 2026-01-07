@@ -131,7 +131,8 @@ export type StyleName =
   | 'SuperellipseMorph'
   | 'HarmonicRipple'
   | 'LowPolyFacet'
-  | 'GothicArches';
+  | 'GothicArches'
+  | 'WaveInterference';
 
 /** Default style - uses STYLE_SCHEMAS parameter names */
 export const DEFAULT_STYLE: StyleState = {

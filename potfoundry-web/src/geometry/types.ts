@@ -107,7 +107,8 @@ export type StyleId =
   | 'SpiralRidges'
   | 'SuperellipseMorph'
   | 'HarmonicRipple'
-  | 'GothicArches';
+  | 'GothicArches'
+  | 'WaveInterference';
 
 /** Style ID numeric values matching shader */
 export const STYLE_IDS: Record<StyleId, number> = {
@@ -117,6 +118,7 @@ export const STYLE_IDS: Record<StyleId, number> = {
   SuperellipseMorph: 3,
   HarmonicRipple: 4,
   GothicArches: 5,
+  WaveInterference: 6,
 };
 
 /**
@@ -230,6 +232,28 @@ export interface GothicArchesParams {
   gaRecess: number;         // [11] Panel Recess - carved panel depth (0-1)
 }
 
+/**
+ * Wave Interference style parameters
+ * Organic moiré patterns from helical wave superposition with domain warping.
+ * 
+ * Creates complex, fingerprint-like or wood-grain patterns by superimposing
+ * multiple helical waves and applying contour-line visualization.
+ */
+export interface WaveInterferenceParams {
+  wiCount: number;        // [0] Feature Count - main cycle count (0..1 → 16..90)
+  wiDepth: number;        // [1] Relief Depth in mm
+  wiLineDensity: number;  // [2] Contour Density - ripple density (0..1 → 1..6)
+  wiDetune: number;       // [3] Moiré Strength - wave frequency difference (0..1 → Δm 1..12)
+  wiPitch: number;        // [4] Helix Pitch - vertical cycles (0..1 → 0.5..6)
+  wiTwist: number;        // [5] Pitch Mismatch - twist between helices (0..1 → ±35%)
+  wiWarp: number;         // [6] Domain Warp - warp strength (0..1 → 0..0.35)
+  wiWarpScale: number;    // [7] Warp Frequency - warp scale (0..1 → 0.3..3.0)
+  wiBlend: number;        // [8] Pattern Blend - smooth ↔ contour-lines (0..1)
+  wiContrast: number;     // [9] Ridge Shaping - contrast exponent (0..1 → 0.8..1.6)
+  wiEdgeFade: number;     // [10] Edge Fade - fade near top/bottom (0..1 → 0.03..0.18)
+  wiPhase: number;        // [11] Phase - pattern rotation (0..1 → 0..2π)
+}
+
 /** Union type for all style parameters */
 export type StyleParams =
   | SuperformulaBlossomParams
@@ -237,7 +261,8 @@ export type StyleParams =
   | SpiralRidgesParams
   | SuperellipseMorphParams
   | HarmonicRippleParams
-  | GothicArchesParams;
+  | GothicArchesParams
+  | WaveInterferenceParams;
 
 /**
  * Combined style options passed to mesh generation
@@ -440,6 +465,22 @@ export const DEFAULT_GOTHIC_ARCHES: GothicArchesParams = {
   gaRecess: 0.28,       // [11] Panel Recess depth
 };
 
+/** Default Wave Interference parameters - organic moiré patterns */
+export const DEFAULT_WAVE_INTERFERENCE: WaveInterferenceParams = {
+  wiCount: 0.55,        // [0] ~55 cycles around (nice moiré range)
+  wiDepth: 2.5,         // [1] 2.5mm relief depth
+  wiLineDensity: 0.75,  // [2] Medium-high contour density
+  wiDetune: 0.25,       // [3] Moderate moiré strength
+  wiPitch: 0.65,        // [4] Medium vertical cycles
+  wiTwist: 0.50,        // [5] Centered twist (no bias)
+  wiWarp: 0.45,         // [6] Medium domain warp
+  wiWarpScale: 0.50,    // [7] Medium warp frequency
+  wiBlend: 0.85,        // [8] Mostly contour-lines look
+  wiContrast: 0.45,     // [9] Smooth ridges
+  wiEdgeFade: 0.50,     // [10] Medium edge fade
+  wiPhase: 0.0,         // [11] No phase offset
+};
+
 /** Map of style IDs to their default parameters */
 export const DEFAULT_STYLE_PARAMS: Record<StyleId, StyleParams> = {
   SuperformulaBlossom: DEFAULT_SUPERFORMULA,
@@ -448,4 +489,5 @@ export const DEFAULT_STYLE_PARAMS: Record<StyleId, StyleParams> = {
   SuperellipseMorph: DEFAULT_SUPERELLIPSE,
   HarmonicRipple: DEFAULT_HARMONIC,
   GothicArches: DEFAULT_GOTHIC_ARCHES,
+  WaveInterference: DEFAULT_WAVE_INTERFERENCE,
 };

@@ -30,6 +30,7 @@ export const STYLE_ID_MAP: Record<string, number> = {
   HarmonicRipple: 4,
   LowPolyFacet: 4, // Alias for HarmonicRipple
   GothicArches: 5,
+  WaveInterference: 6,
 };
 
 // ============================================================================
@@ -190,6 +191,29 @@ function packGothicArches(opts: Record<string, unknown>): number[] {
   ]));
 }
 
+/**
+ * Pack Wave Interference parameters.
+ * 
+ * Organic moiré patterns from helical wave superposition.
+ * 12 parameters packed in order matching WGSL shader expectations.
+ */
+function packWaveInterference(opts: Record<string, unknown>): number[] {
+  return pad(clamp([
+    getOpt(opts, 'wi_count', 0.55),         // [0] Feature Count (0..1)
+    getOpt(opts, 'wi_depth', 2.5),          // [1] Relief Depth (mm)
+    getOpt(opts, 'wi_line_density', 0.75),  // [2] Contour Density (0..1)
+    getOpt(opts, 'wi_detune', 0.25),        // [3] Moiré Strength (0..1)
+    getOpt(opts, 'wi_pitch', 0.65),         // [4] Helix Pitch (0..1)
+    getOpt(opts, 'wi_twist', 0.50),         // [5] Pitch Mismatch (0..1)
+    getOpt(opts, 'wi_warp', 0.45),          // [6] Domain Warp (0..1)
+    getOpt(opts, 'wi_warp_scale', 0.50),    // [7] Warp Scale (0..1)
+    getOpt(opts, 'wi_blend', 0.85),         // [8] Pattern Blend (0..1)
+    getOpt(opts, 'wi_contrast', 0.45),      // [9] Ridge Contrast (0..1)
+    getOpt(opts, 'wi_edge_fade', 0.50),     // [10] Edge Fade (0..1)
+    getOpt(opts, 'wi_phase', 0.0),          // [11] Phase (0..1)
+  ]));
+}
+
 // ============================================================================
 // Packer Registry
 // ============================================================================
@@ -202,6 +226,7 @@ const PACKERS: Record<number, (opts: Record<string, unknown>) => number[]> = {
   3: packSuperellipse,
   4: packHarmonic,
   5: packGothicArches,
+  6: packWaveInterference,
 };
 
 // ============================================================================

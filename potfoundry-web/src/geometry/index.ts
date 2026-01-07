@@ -34,6 +34,7 @@ export type {
   SuperellipseMorphParams,
   HarmonicRippleParams,
   GothicArchesParams,
+  WaveInterferenceParams,
   MeshData,
   MeshDiagnostics,
   MeshResult,
@@ -58,6 +59,7 @@ export {
   DEFAULT_SUPERELLIPSE,
   DEFAULT_HARMONIC,
   DEFAULT_GOTHIC_ARCHES,
+  DEFAULT_WAVE_INTERFERENCE,
   DEFAULT_STYLE_PARAMS,
 } from './types';
 

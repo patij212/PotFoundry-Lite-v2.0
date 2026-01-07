@@ -19,6 +19,7 @@ const STYLE_SPIRAL = 2;
 const STYLE_SUPERELLIPSE = 3;
 const STYLE_HARMONIC = 4;
 const STYLE_GOTHIC_ARCHES = 5;
+const STYLE_WAVE_INTERFERENCE = 6;
 const CAMERA_EYE_OFFSET : u32 = 36u;
 const CAMERA_MODE_OFFSET : u32 = 39u;
 const VP_MATRIX_OFFSET : u32 = 40u;
@@ -593,6 +594,91 @@ fn gothic_arches_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
   return r0 + amp * disp;
 }
 
+// ============================================================================
+// Wave Interference - Moiré-style helical wave superposition
+// ============================================================================
+// Creates organic moiré patterns from crossing helical waves with domain warping.
+// Parameters (12 slots):
+// 0 wiCount, 1 wiDepth(mm), 2 wiLineDensity, 3 wiDetune,
+// 4 wiPitch, 5 wiTwist, 6 wiWarp, 7 wiWarpScale,
+// 8 wiBlend, 9 wiContrast, 10 wiEdgeFade, 11 wiPhase
+
+const WI_EPS: f32 = 1e-6;
+
+fn wi_sat(x: f32) -> f32 { return min(1.0, max(0.0, x)); }
+fn wi_lerp(a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+fn wi_sgn_nz(x: f32) -> f32 { return x / max(WI_EPS, abs(x)); }
+
+fn wave_interference_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
+  if (!style_params_active()) {
+    return r0;
+  }
+
+  let t = wi_sat(t_in);
+
+  // Map parameters from 0..1 controls to useful ranges
+  let count01 = wi_sat(style_param(0u));
+  let m = floor(wi_lerp(16.0, 90.0, count01) + 0.5);
+
+  let det01 = wi_sat(style_param(3u));
+  let dm = max(1.0, floor(wi_lerp(1.0, 12.0, det01) + 0.5));
+  let m2 = m + dm;
+
+  let pitch = wi_lerp(0.5, 6.0, wi_sat(style_param(4u)));
+  let twist = wi_lerp(-0.35, 0.35, wi_sat(style_param(5u)));
+  let pitch2 = pitch * (1.0 + twist);
+
+  let warp = wi_lerp(0.0, 0.35, wi_sat(style_param(6u)));
+  let warpScale = wi_lerp(0.3, 3.0, wi_sat(style_param(7u)));
+
+  let lineDen = wi_lerp(1.0, 6.0, wi_sat(style_param(2u)));
+  let blend = wi_sat(style_param(8u));
+
+  let contrast = wi_lerp(0.80, 1.60, wi_sat(style_param(9u)));
+  let edge = wi_lerp(0.03, 0.18, wi_sat(style_param(10u)));
+
+  let phase = TAU * wi_sat(style_param(11u));
+
+  // Seam-safe domain warp (warp uses integer multiples of theta)
+  let mw1 = max(1.0, floor(0.22 * m + 0.5));
+  let mw2 = max(1.0, floor(0.17 * m + 0.5));
+
+  let y: f32 = t; // normalized height coordinate
+
+  let dTheta =
+    warp * (0.70 * sin(mw1 * theta + TAU * (warpScale * y) + phase) +
+            0.30 * sin(mw2 * theta - TAU * (warpScale * y) + 1.7 + phase));
+
+  let dy = warp * 0.12 * sin(mw2 * theta + 0.9 + phase);
+
+  let thetaW = theta + dTheta;
+  let yW = y + dy;
+
+  // Two crossing helical waves + a small third component (adds realism)
+  let w1 = sin(m  * thetaW + TAU * (pitch  * yW) + phase);
+  let w2 = sin(m2 * thetaW - TAU * (pitch2 * yW) + 1.3 + 0.7 * phase);
+
+  let m3 = max(1.0, floor(0.50 * m + 0.5));
+  let w3 = sin(m3 * thetaW + TAU * (0.30 * pitch * yW) + 2.4);
+
+  let F = w1 + w2 + 0.35 * w3; // ~[-2.35..2.35]
+
+  // "Contour line" moiré: stripes along level sets of F
+  let stripes = sin(TAU * (lineDen * F) + 0.2 * phase);
+
+  // Keep base in [-1,1] and blend
+  let base = max(-1.0, min(1.0, 0.45 * F));
+  var ptn = (1.0 - blend) * base + blend * stripes;
+
+  // Shape without spikes
+  ptn = wi_sgn_nz(ptn) * pow(abs(ptn), contrast);
+
+  // Fade near top/bottom so rims stay clean
+  let fade = wi_sat(t / max(WI_EPS, edge)) * wi_sat((1.0 - t) / max(WI_EPS, edge));
+
+  return r0 + style_param(1u) * ptn * fade;
+}
+
 fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
   // Normalize theta to [0, TAU) for perfect periodicity
   // This ensures theta=TAU produces identical result to theta=0
@@ -613,6 +699,9 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
   }
   if (style_id == STYLE_GOTHIC_ARCHES) {
     return gothic_arches_radius(th, t, r0);
+  }
+  if (style_id == STYLE_WAVE_INTERFERENCE) {
+    return wave_interference_radius(th, t, r0);
   }
   return sf_radius(th, t, r0);
 }
@@ -640,6 +729,9 @@ fn style_radius_zero(style_id: i32, t: f32, r0: f32) -> f32 {
   if (style_id == STYLE_GOTHIC_ARCHES) {
     return gothic_arches_radius(0.0, t, r0);
   }
+  if (style_id == STYLE_WAVE_INTERFERENCE) {
+    return wave_interference_radius(0.0, t, r0);
+  }
   // Superformula: Use highly optimized version
   return sf_radius_zero(t, r0);
 }
@@ -657,6 +749,9 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
   }
   if (style_id == STYLE_GOTHIC_ARCHES) {
     return gothic_arches_radius(0.0, t, r0); // Periodic
+  }
+  if (style_id == STYLE_WAVE_INTERFERENCE) {
+    return wave_interference_radius(0.0, t, r0); // Periodic (integer m)
   }
   
   if (style_id == STYLE_SPIRAL) {

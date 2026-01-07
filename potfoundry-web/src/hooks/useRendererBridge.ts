@@ -54,6 +54,7 @@ const STYLE_NAME_TO_ID: Record<string, number> = {
   HarmonicRipple: 4,       // STYLE_HARMONIC
   LowPolyFacet: 4,         // Maps to HARMONIC (uses petals as facets)
   GothicArches: 5,         // STYLE_GOTHIC_ARCHES
+  WaveInterference: 6,     // STYLE_WAVE_INTERFERENCE
 };
 
 // ============================================================================
@@ -327,6 +328,38 @@ function styleToParams(style: StyleState): Record<string, unknown> {
       styleParams[9] = traceryThick;     // [9] Tracery Thickness (NEW!)
       styleParams[10] = topStart;        // [10] Tracery Start
       styleParams[11] = recess;          // [11] Panel Recess
+      break;
+    }
+
+    case 'WaveInterference': {
+      // Wave Interference - organic moiré patterns
+      // 12 parameters: count, depth, lineDensity, detune, pitch, twist,
+      //                warp, warpScale, blend, contrast, edgeFade, phase
+      const count = getNum(opts.wi_count, 0.55);
+      const depth = getNum(opts.wi_depth, 2.5);
+      const lineDensity = getNum(opts.wi_line_density, 0.75);
+      const detune = getNum(opts.wi_detune, 0.25);
+      const pitch = getNum(opts.wi_pitch, 0.65);
+      const twist = getNum(opts.wi_twist, 0.50);
+      const warp = getNum(opts.wi_warp, 0.45);
+      const warpScale = getNum(opts.wi_warp_scale, 0.50);
+      const blend = getNum(opts.wi_blend, 0.85);
+      const contrast = getNum(opts.wi_contrast, 0.45);
+      const edgeFade = getNum(opts.wi_edge_fade, 0.50);
+      const phase = getNum(opts.wi_phase, 0.0);
+
+      styleParams[0] = count;            // [0] Feature Count (0..1)
+      styleParams[1] = depth;            // [1] Relief Depth (mm)
+      styleParams[2] = lineDensity;      // [2] Contour Density (0..1)
+      styleParams[3] = detune;           // [3] Moiré Strength (0..1)
+      styleParams[4] = pitch;            // [4] Helix Pitch (0..1)
+      styleParams[5] = twist;            // [5] Pitch Mismatch (0..1)
+      styleParams[6] = warp;             // [6] Domain Warp (0..1)
+      styleParams[7] = warpScale;        // [7] Warp Scale (0..1)
+      styleParams[8] = blend;            // [8] Pattern Blend (0..1)
+      styleParams[9] = contrast;         // [9] Ridge Contrast (0..1)
+      styleParams[10] = edgeFade;        // [10] Edge Fade (0..1)
+      styleParams[11] = phase;           // [11] Phase (0..1)
       break;
     }
 

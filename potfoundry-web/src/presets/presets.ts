@@ -13,6 +13,7 @@ import {
   DEFAULT_SUPERELLIPSE,
   DEFAULT_HARMONIC,
   DEFAULT_GOTHIC_ARCHES,
+  DEFAULT_WAVE_INTERFERENCE,
 } from '../geometry';
 
 // ============================================================================
@@ -441,6 +442,117 @@ export const PRESETS: PotPreset[] = [
       },
     },
   },
+  {
+    id: 'moire-drift',
+    name: 'Moiré Drift',
+    description: 'Organic fingerprint-like wave interference patterns',
+    category: 'organic',
+    color: '#8B4513',
+    config: {
+      geometry: {
+        H: 110,
+        topOd: 130,
+        bottomOd: 80,
+        tWall: 2.8,
+        tBottom: 3.0,
+        rDrain: 10,
+        expn: 1.2,
+      },
+      style: {
+        type: 'WaveInterference',
+        params: {
+          ...DEFAULT_WAVE_INTERFERENCE,
+          wiCount: 0.55,
+          wiDepth: 2.5,
+          wiLineDensity: 0.75,
+          wiDetune: 0.25,
+          wiBlend: 0.85,
+          wiWarp: 0.45,
+          wiContrast: 0.45,
+        },
+      },
+      appearance: {
+        primaryColor: '#8B4513',
+        gradient: ['#5C3317', '#8B4513', '#A0522D'],
+      },
+    },
+  },
+  {
+    id: 'woodgrain-flow',
+    name: 'Woodgrain Flow',
+    description: 'Natural wood grain texture with flowing lines',
+    category: 'organic',
+    color: '#CD853F',
+    config: {
+      geometry: {
+        H: 100,
+        topOd: 120,
+        bottomOd: 85,
+        tWall: 3.0,
+        tBottom: 3.0,
+        rDrain: 10,
+        expn: 1.1,
+      },
+      style: {
+        type: 'WaveInterference',
+        params: {
+          ...DEFAULT_WAVE_INTERFERENCE,
+          wiCount: 0.45,
+          wiDepth: 1.8,
+          wiLineDensity: 0.85,
+          wiDetune: 0.15,
+          wiPitch: 0.6,
+          wiTwist: 0.3,
+          wiWarp: 0.55,
+          wiWarpScale: 0.4,
+          wiBlend: 0.9,
+          wiContrast: 0.5,
+        },
+      },
+      appearance: {
+        primaryColor: '#CD853F',
+        gradient: ['#8B4513', '#CD853F', '#DEB887'],
+      },
+    },
+  },
+  {
+    id: 'zen-ripples',
+    name: 'Zen Ripples',
+    description: 'Subtle concentric interference for meditative calm',
+    category: 'minimal',
+    color: '#E8E8E8',
+    config: {
+      geometry: {
+        H: 80,
+        topOd: 140,
+        bottomOd: 100,
+        tWall: 3.5,
+        tBottom: 4.0,
+        rDrain: 12,
+        expn: 0.9,
+      },
+      style: {
+        type: 'WaveInterference',
+        params: {
+          ...DEFAULT_WAVE_INTERFERENCE,
+          wiCount: 0.35,
+          wiDepth: 1.2,
+          wiLineDensity: 0.5,
+          wiDetune: 0.1,
+          wiPitch: 0.3,
+          wiTwist: 0.15,
+          wiWarp: 0.2,
+          wiBlend: 0.7,
+          wiContrast: 0.3,
+          wiEdgeFade: 0.9,
+        },
+      },
+      appearance: {
+        primaryColor: '#E8E8E8',
+        gradient: ['#D3D3D3', '#E8E8E8', '#F5F5F5'],
+      },
+    },
+  },
 
   // Minimal Category
   {
@@ -592,6 +704,8 @@ export function presetStyleToId(presetType: string): StyleId {
     harmonic_ripple: 'HarmonicRipple',
     GothicArches: 'GothicArches',
     gothic_arches: 'GothicArches',
+    WaveInterference: 'WaveInterference',
+    wave_interference: 'WaveInterference',
   };
   return mapping[presetType] ?? 'SuperformulaBlossom';
 }
