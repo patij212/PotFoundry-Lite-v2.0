@@ -597,16 +597,19 @@ fn gothic_arches_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
 // ============================================================================
 // Wave Interference - Moiré-style helical wave superposition
 // ============================================================================
-// Creates organic moiré patterns from crossing helical waves with domain warping.
+// Wave Interference v2 (groomed) - organic moiré patterns
+// Creates fingerprint/woodgrain patterns from crossing helical waves with domain warping.
+// Built-in grooming prevents "noisy velvet" at high settings.
 // Parameters (12 slots):
-// 0 wiCount, 1 wiDepth(mm), 2 wiLineDensity, 3 wiDetune,
-// 4 wiPitch, 5 wiTwist, 6 wiWarp, 7 wiWarpScale,
-// 8 wiBlend, 9 wiContrast, 10 wiEdgeFade, 11 wiPhase
+// 0 FeatureCount, 1 ReliefDepth(mm), 2 ContourDensity, 3 MoireStrength, 4 PatternStyle,
+// 5 HelixPitch, 6 PitchMismatch, 7 DomainWarp, 8 WarpScale,
+// 9 RidgeContrast, 10 EdgeFade, 11 Phase
 
 const WI_EPS: f32 = 1e-6;
 
 fn wi_sat(x: f32) -> f32 { return min(1.0, max(0.0, x)); }
 fn wi_lerp(a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+fn wi_smooth01(x: f32) -> f32 { return x * x * (3.0 - 2.0 * x); }
 fn wi_sgn_nz(x: f32) -> f32 { return x / max(WI_EPS, abs(x)); }
 
 fn wave_interference_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
@@ -616,64 +619,96 @@ fn wave_interference_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
 
   let t = wi_sat(t_in);
 
-  // Map parameters from 0..1 controls to useful ranges
-  let count01 = wi_sat(style_param(0u));
-  let m = floor(wi_lerp(16.0, 90.0, count01) + 0.5);
+  // Read slider values (all 0..1)
+  let fc = wi_sat(style_param(0u));    // Feature Count
+  let cd = wi_sat(style_param(2u));    // Contour Density
+  let ms = wi_sat(style_param(3u));    // Moiré Strength
+  let style = wi_sat(style_param(4u)); // Pattern Style
 
-  let det01 = wi_sat(style_param(3u));
-  let dm = max(1.0, floor(wi_lerp(1.0, 12.0, det01) + 0.5));
-  let m2 = m + dm;
+  let hp = wi_sat(style_param(5u));    // Helix Pitch
+  let pm = wi_sat(style_param(6u));    // Pitch Mismatch
 
-  let pitch = wi_lerp(0.5, 6.0, wi_sat(style_param(4u)));
-  let twist = wi_lerp(-0.35, 0.35, wi_sat(style_param(5u)));
-  let pitch2 = pitch * (1.0 + twist);
+  let dw = wi_sat(style_param(7u));    // Domain Warp
+  let ws = wi_sat(style_param(8u));    // Warp Scale
 
-  let warp = wi_lerp(0.0, 0.35, wi_sat(style_param(6u)));
-  let warpScale = wi_lerp(0.3, 3.0, wi_sat(style_param(7u)));
-
-  let lineDen = wi_lerp(1.0, 6.0, wi_sat(style_param(2u)));
-  let blend = wi_sat(style_param(8u));
-
-  let contrast = wi_lerp(0.80, 1.60, wi_sat(style_param(9u)));
-  let edge = wi_lerp(0.03, 0.18, wi_sat(style_param(10u)));
+  let rc = wi_sat(style_param(9u));    // Ridge Contrast
+  let ef = wi_sat(style_param(10u));   // Edge Fade
 
   let phase = TAU * wi_sat(style_param(11u));
 
-  // Seam-safe domain warp (warp uses integer multiples of theta)
-  let mw1 = max(1.0, floor(0.22 * m + 0.5));
-  let mw2 = max(1.0, floor(0.17 * m + 0.5));
+  // === Groomed mappings (key to preventing noise) ===
 
-  let y: f32 = t; // normalized height coordinate
+  // Feature Count: non-linear curve, capped max frequency
+  let fcCurve = pow(fc, 2.2);
+  let m = floor(wi_lerp(16.0, 64.0, fcCurve) + 0.5);
 
+  // Moiré: detune + amplitude (amplitude does most work, detune stays sane)
+  let msCurve = pow(ms, 1.25);
+  let dm = max(1.0, floor(wi_lerp(1.0, 8.0, msCurve) + 0.5));
+  let m2 = m + dm;
+  let a2 = ms; // moiré strength mostly as amplitude
+
+  // Contours: gentler range + auto-reduced at high Feature Count
+  let cdCurve = pow(cd, 1.8);
+  var lineDen = wi_lerp(0.60, 2.40, cdCurve);
+  lineDen = lineDen / (1.0 + 0.018 * m * fc); // grooming
+
+  // Helix controls
+  let pitch = wi_lerp(0.0, 3.5, pow(hp, 1.2));
+  let pitch2 = pitch * (1.0 + 0.25 * pm);
+
+  // Domain warp grooming: scale down with Feature Count + Contour Density
+  var warp = 0.35 * dw;
+  warp = warp * (1.0 / (1.0 + 0.028 * m * fc));
+  warp = warp * (1.0 - 0.55 * cd);
+
+  var warpFreq = wi_lerp(0.15, 1.8, pow(ws, 1.3));
+  warpFreq = warpFreq * (1.0 / (1.0 + 0.8 * fc));
+  warpFreq = warpFreq * (1.0 - 0.35 * cd);
+
+  // Warp field frequencies capped (prevents high-freq static)
+  let mw1 = max(1.0, min(24.0, floor(0.18 * m + 0.5)));
+  let mw2 = max(1.0, min(18.0, floor(0.13 * m + 0.5)));
+
+  let y = t;
+
+  // Seam-safe domain warp (integer multiples of theta)
   let dTheta =
-    warp * (0.70 * sin(mw1 * theta + TAU * (warpScale * y) + phase) +
-            0.30 * sin(mw2 * theta - TAU * (warpScale * y) + 1.7 + phase));
-
-  let dy = warp * 0.12 * sin(mw2 * theta + 0.9 + phase);
+    warp * (0.65 * sin(mw1 * theta + TAU * (warpFreq * y) + phase) +
+            0.35 * sin(mw2 * theta - TAU * (warpFreq * y) + 1.7 + phase));
+  let dy = warp * 0.10 * sin(mw2 * theta + 0.9 + phase);
 
   let thetaW = theta + dTheta;
   let yW = y + dy;
 
-  // Two crossing helical waves + a small third component (adds realism)
+  // === Interference field ===
   let w1 = sin(m  * thetaW + TAU * (pitch  * yW) + phase);
   let w2 = sin(m2 * thetaW - TAU * (pitch2 * yW) + 1.3 + 0.7 * phase);
 
-  let m3 = max(1.0, floor(0.50 * m + 0.5));
+  // Extra richness, auto-fades when it would become noise
+  let m3 = max(1.0, min(32.0, floor(0.35 * m + 0.5)));
+  let a3 = 0.35 * (1.0 - 0.55 * fc) * (1.0 - 0.65 * cd);
   let w3 = sin(m3 * thetaW + TAU * (0.30 * pitch * yW) + 2.4);
 
-  let F = w1 + w2 + 0.35 * w3; // ~[-2.35..2.35]
+  var F = w1 + a2 * w2 + a3 * w3;
 
-  // "Contour line" moiré: stripes along level sets of F
-  let stripes = sin(TAU * (lineDen * F) + 0.2 * phase);
+  // Soft-clip BEFORE contouring (huge anti-noise improvement)
+  let Fc = F / (1.0 + 0.55 * abs(F)); // ~[-1..1]
 
-  // Keep base in [-1,1] and blend
-  let base = max(-1.0, min(1.0, 0.45 * F));
-  var ptn = (1.0 - blend) * base + blend * stripes;
+  // === Pattern style ===
+  let base = 0.75 * Fc; // smooth "flow field"
+  let stripes = sin(TAU * (lineDen * Fc) + 0.2 * phase); // moiré contours
 
-  // Shape without spikes
+  // If contour density near 0, don't force stripes even if style=1
+  let stripeMix = style * wi_smooth01(wi_sat((cd - 0.05) / 0.95));
+  var ptn = (1.0 - stripeMix) * base + stripeMix * stripes;
+
+  // Ridge shaping (realistic, avoid spiky cliffs)
+  let contrast = wi_lerp(0.85, 1.55, rc);
   ptn = wi_sgn_nz(ptn) * pow(abs(ptn), contrast);
 
-  // Fade near top/bottom so rims stay clean
+  // Fade near top/bottom
+  let edge = wi_lerp(0.03, 0.18, ef);
   let fade = wi_sat(t / max(WI_EPS, edge)) * wi_sat((1.0 - t) / max(WI_EPS, edge));
 
   return r0 + style_param(1u) * ptn * fade;

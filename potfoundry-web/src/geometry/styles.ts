@@ -829,11 +829,16 @@ export function rOuterGothicArchesVec(
 // ============================================================================
 
 /**
- * Wave Interference style - organic moiré patterns from helical wave superposition
+ * Wave Interference v2 (groomed) - organic moiré patterns from helical wave superposition
  * 
  * Creates complex, organic-looking surface patterns by superimposing
  * multiple helical waves with domain warping. The result resembles
  * fingerprints, wood grain, or topographic contours.
+ * 
+ * Built-in grooming prevents "noisy velvet" at high settings:
+ * - Non-linear slider mapping for usable range
+ * - Busy limiter: high feature count/density auto-reduces warp
+ * - Soft-clip before contouring keeps ridges coherent
  * 
  * @param theta - Angular position around pot (radians)
  * @param z - Height position (mm)
@@ -854,76 +859,109 @@ export function rOuterWaveInterference(
 
   const sat = (x: number) => Math.min(1, Math.max(0, x));
   const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const smooth01 = (x: number) => x * x * (3 - 2 * x);
   const sgnNZ = (x: number) => x / Math.max(EPS, Math.abs(x));
 
   const t = sat(z / Math.max(EPS, H)); // 0..1
 
-  // Map parameters from 0..1 controls to useful ranges
-  const count01 = sat(params.wiCount ?? DEFAULT_WAVE_INTERFERENCE.wiCount);
-  const m = Math.floor(lerp(16, 90, count01) + 0.5);
+  // Read slider values (all 0..1)
+  const fc = sat(params.wiCount ?? DEFAULT_WAVE_INTERFERENCE.wiCount);
+  const cd = sat(params.wiLineDensity ?? DEFAULT_WAVE_INTERFERENCE.wiLineDensity);
+  const ms = sat(params.wiDetune ?? DEFAULT_WAVE_INTERFERENCE.wiDetune);
+  const style = sat(params.wiBlend ?? DEFAULT_WAVE_INTERFERENCE.wiBlend);
 
-  const det01 = sat(params.wiDetune ?? DEFAULT_WAVE_INTERFERENCE.wiDetune);
-  const dm = Math.max(1, Math.floor(lerp(1, 12, det01) + 0.5));
-  const m2 = m + dm;
+  const hp = sat(params.wiPitch ?? DEFAULT_WAVE_INTERFERENCE.wiPitch);
+  const pm = sat(params.wiTwist ?? DEFAULT_WAVE_INTERFERENCE.wiTwist);
 
-  const pitch = lerp(0.5, 6.0, sat(params.wiPitch ?? DEFAULT_WAVE_INTERFERENCE.wiPitch));
-  const twist = lerp(-0.35, 0.35, sat(params.wiTwist ?? DEFAULT_WAVE_INTERFERENCE.wiTwist));
-  const pitch2 = pitch * (1.0 + twist);
+  const dw = sat(params.wiWarp ?? DEFAULT_WAVE_INTERFERENCE.wiWarp);
+  const ws = sat(params.wiWarpScale ?? DEFAULT_WAVE_INTERFERENCE.wiWarpScale);
 
-  const warp = lerp(0.0, 0.35, sat(params.wiWarp ?? DEFAULT_WAVE_INTERFERENCE.wiWarp));
-  const warpScale = lerp(0.3, 3.0, sat(params.wiWarpScale ?? DEFAULT_WAVE_INTERFERENCE.wiWarpScale));
-
-  const lineDen = lerp(1.0, 6.0, sat(params.wiLineDensity ?? DEFAULT_WAVE_INTERFERENCE.wiLineDensity));
-  const blend = sat(params.wiBlend ?? DEFAULT_WAVE_INTERFERENCE.wiBlend);
-
-  const contrast = lerp(0.80, 1.60, sat(params.wiContrast ?? DEFAULT_WAVE_INTERFERENCE.wiContrast));
-  const edge = lerp(0.03, 0.18, sat(params.wiEdgeFade ?? DEFAULT_WAVE_INTERFERENCE.wiEdgeFade));
+  const rc = sat(params.wiContrast ?? DEFAULT_WAVE_INTERFERENCE.wiContrast);
+  const ef = sat(params.wiEdgeFade ?? DEFAULT_WAVE_INTERFERENCE.wiEdgeFade);
 
   const phase = TAU * sat(params.wiPhase ?? DEFAULT_WAVE_INTERFERENCE.wiPhase);
   const depth = params.wiDepth ?? DEFAULT_WAVE_INTERFERENCE.wiDepth;
 
-  // Seam-safe domain warp (warp uses integer multiples of theta)
-  const mw1 = Math.max(1, Math.floor(0.22 * m + 0.5));
-  const mw2 = Math.max(1, Math.floor(0.17 * m + 0.5));
+  // === Groomed mappings (key to preventing noise) ===
 
-  const y = t; // normalized height coordinate
+  // Feature Count: non-linear curve, capped max frequency
+  const fcCurve = Math.pow(fc, 2.2);
+  const m = Math.floor(lerp(16, 64, fcCurve) + 0.5);
 
+  // Moiré: detune + amplitude (amplitude does most work, detune stays sane)
+  const msCurve = Math.pow(ms, 1.25);
+  const dm = Math.max(1, Math.floor(lerp(1, 8, msCurve) + 0.5));
+  const m2 = m + dm;
+  const a2 = ms; // moiré strength mostly as amplitude
+
+  // Contours: gentler range + auto-reduced at high Feature Count
+  const cdCurve = Math.pow(cd, 1.8);
+  let lineDen = lerp(0.60, 2.40, cdCurve);
+  lineDen = lineDen / (1.0 + 0.018 * m * fc); // grooming
+
+  // Helix controls
+  const pitch = lerp(0.0, 3.5, Math.pow(hp, 1.2));
+  const pitch2 = pitch * (1.0 + 0.25 * pm);
+
+  // Domain warp grooming: scale down with Feature Count + Contour Density
+  let warp = 0.35 * dw;
+  warp *= 1.0 / (1.0 + 0.028 * m * fc);
+  warp *= (1.0 - 0.55 * cd);
+
+  let warpFreq = lerp(0.15, 1.8, Math.pow(ws, 1.3));
+  warpFreq *= 1.0 / (1.0 + 0.8 * fc);
+  warpFreq *= (1.0 - 0.35 * cd);
+
+  // Warp field frequencies capped (prevents high-freq static)
+  const mw1 = Math.max(1, Math.min(24, Math.floor(0.18 * m + 0.5)));
+  const mw2 = Math.max(1, Math.min(18, Math.floor(0.13 * m + 0.5)));
+
+  const y = t;
+
+  // Seam-safe domain warp (integer multiples of theta)
   const dTheta =
-    warp * (0.70 * Math.sin(mw1 * theta + TAU * (warpScale * y) + phase) +
-            0.30 * Math.sin(mw2 * theta - TAU * (warpScale * y) + 1.7 + phase));
-
-  const dy = warp * 0.12 * Math.sin(mw2 * theta + 0.9 + phase);
+    warp * (0.65 * Math.sin(mw1 * theta + TAU * (warpFreq * y) + phase) +
+            0.35 * Math.sin(mw2 * theta - TAU * (warpFreq * y) + 1.7 + phase));
+  const dy = warp * 0.10 * Math.sin(mw2 * theta + 0.9 + phase);
 
   const thetaW = theta + dTheta;
   const yW = y + dy;
 
-  // Two crossing helical waves + a small third component (adds realism)
+  // === Interference field ===
   const w1 = Math.sin(m * thetaW + TAU * (pitch * yW) + phase);
   const w2 = Math.sin(m2 * thetaW - TAU * (pitch2 * yW) + 1.3 + 0.7 * phase);
 
-  const m3 = Math.max(1, Math.floor(0.50 * m + 0.5));
+  // Extra richness, auto-fades when it would become noise
+  const m3 = Math.max(1, Math.min(32, Math.floor(0.35 * m + 0.5)));
+  const a3 = 0.35 * (1.0 - 0.55 * fc) * (1.0 - 0.65 * cd);
   const w3 = Math.sin(m3 * thetaW + TAU * (0.30 * pitch * yW) + 2.4);
 
-  const F = w1 + w2 + 0.35 * w3; // ~[-2.35..2.35]
+  let F = w1 + a2 * w2 + a3 * w3;
 
-  // "Contour line" moiré: stripes along level sets of F
-  const stripes = Math.sin(TAU * (lineDen * F) + 0.2 * phase);
+  // Soft-clip BEFORE contouring (huge anti-noise improvement)
+  const Fc = F / (1.0 + 0.55 * Math.abs(F)); // ~[-1..1]
 
-  // Keep base in [-1,1] and blend
-  const base = Math.max(-1, Math.min(1, 0.45 * F));
-  let ptn = (1 - blend) * base + blend * stripes;
+  // === Pattern style ===
+  const base = 0.75 * Fc; // smooth "flow field"
+  const stripes = Math.sin(TAU * (lineDen * Fc) + 0.2 * phase); // moiré contours
 
-  // Shape without spikes
+  // If contour density near 0, don't force stripes even if style=1
+  const stripeMix = style * smooth01(sat((cd - 0.05) / 0.95));
+  let ptn = (1 - stripeMix) * base + stripeMix * stripes;
+
+  // Ridge shaping (realistic, avoid spiky cliffs)
+  const contrast = lerp(0.85, 1.55, rc);
   ptn = sgnNZ(ptn) * Math.pow(Math.abs(ptn), contrast);
 
-  // Fade near top/bottom so rims stay clean
+  // Fade near top/bottom
+  const edge = lerp(0.03, 0.18, ef);
   const fade = sat(t / Math.max(EPS, edge)) * sat((1 - t) / Math.max(EPS, edge));
 
   return r0 + depth * ptn * fade;
 }
 
 /**
- * Vectorized Wave Interference for performance
+ * Vectorized Wave Interference v2 (groomed) for performance
  */
 export function rOuterWaveInterferenceVec(
   thetas: Float32Array,
@@ -939,48 +977,71 @@ export function rOuterWaveInterferenceVec(
 
   const sat = (x: number) => Math.min(1, Math.max(0, x));
   const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const smooth01 = (x: number) => x * x * (3 - 2 * x);
   const sgnNZ = (x: number) => x / Math.max(EPS, Math.abs(x));
 
   const t = sat(z / Math.max(EPS, H));
 
-  // Pre-compute parameters
-  const count01 = sat(params.wiCount ?? DEFAULT_WAVE_INTERFERENCE.wiCount);
-  const m = Math.floor(lerp(16, 90, count01) + 0.5);
+  // Read slider values
+  const fc = sat(params.wiCount ?? DEFAULT_WAVE_INTERFERENCE.wiCount);
+  const cd = sat(params.wiLineDensity ?? DEFAULT_WAVE_INTERFERENCE.wiLineDensity);
+  const ms = sat(params.wiDetune ?? DEFAULT_WAVE_INTERFERENCE.wiDetune);
+  const style = sat(params.wiBlend ?? DEFAULT_WAVE_INTERFERENCE.wiBlend);
 
-  const det01 = sat(params.wiDetune ?? DEFAULT_WAVE_INTERFERENCE.wiDetune);
-  const dm = Math.max(1, Math.floor(lerp(1, 12, det01) + 0.5));
-  const m2 = m + dm;
+  const hp = sat(params.wiPitch ?? DEFAULT_WAVE_INTERFERENCE.wiPitch);
+  const pm = sat(params.wiTwist ?? DEFAULT_WAVE_INTERFERENCE.wiTwist);
 
-  const pitch = lerp(0.5, 6.0, sat(params.wiPitch ?? DEFAULT_WAVE_INTERFERENCE.wiPitch));
-  const twist = lerp(-0.35, 0.35, sat(params.wiTwist ?? DEFAULT_WAVE_INTERFERENCE.wiTwist));
-  const pitch2 = pitch * (1.0 + twist);
+  const dw = sat(params.wiWarp ?? DEFAULT_WAVE_INTERFERENCE.wiWarp);
+  const ws = sat(params.wiWarpScale ?? DEFAULT_WAVE_INTERFERENCE.wiWarpScale);
 
-  const warp = lerp(0.0, 0.35, sat(params.wiWarp ?? DEFAULT_WAVE_INTERFERENCE.wiWarp));
-  const warpScale = lerp(0.3, 3.0, sat(params.wiWarpScale ?? DEFAULT_WAVE_INTERFERENCE.wiWarpScale));
-
-  const lineDen = lerp(1.0, 6.0, sat(params.wiLineDensity ?? DEFAULT_WAVE_INTERFERENCE.wiLineDensity));
-  const blend = sat(params.wiBlend ?? DEFAULT_WAVE_INTERFERENCE.wiBlend);
-
-  const contrast = lerp(0.80, 1.60, sat(params.wiContrast ?? DEFAULT_WAVE_INTERFERENCE.wiContrast));
-  const edge = lerp(0.03, 0.18, sat(params.wiEdgeFade ?? DEFAULT_WAVE_INTERFERENCE.wiEdgeFade));
+  const rc = sat(params.wiContrast ?? DEFAULT_WAVE_INTERFERENCE.wiContrast);
+  const ef = sat(params.wiEdgeFade ?? DEFAULT_WAVE_INTERFERENCE.wiEdgeFade);
 
   const phase = TAU * sat(params.wiPhase ?? DEFAULT_WAVE_INTERFERENCE.wiPhase);
   const depth = params.wiDepth ?? DEFAULT_WAVE_INTERFERENCE.wiDepth;
 
-  const mw1 = Math.max(1, Math.floor(0.22 * m + 0.5));
-  const mw2 = Math.max(1, Math.floor(0.17 * m + 0.5));
-  const m3 = Math.max(1, Math.floor(0.50 * m + 0.5));
+  // Groomed mappings
+  const fcCurve = Math.pow(fc, 2.2);
+  const m = Math.floor(lerp(16, 64, fcCurve) + 0.5);
+
+  const msCurve = Math.pow(ms, 1.25);
+  const dm = Math.max(1, Math.floor(lerp(1, 8, msCurve) + 0.5));
+  const m2 = m + dm;
+  const a2 = ms;
+
+  const cdCurve = Math.pow(cd, 1.8);
+  let lineDen = lerp(0.60, 2.40, cdCurve);
+  lineDen = lineDen / (1.0 + 0.018 * m * fc);
+
+  const pitch = lerp(0.0, 3.5, Math.pow(hp, 1.2));
+  const pitch2 = pitch * (1.0 + 0.25 * pm);
+
+  let warp = 0.35 * dw;
+  warp *= 1.0 / (1.0 + 0.028 * m * fc);
+  warp *= (1.0 - 0.55 * cd);
+
+  let warpFreq = lerp(0.15, 1.8, Math.pow(ws, 1.3));
+  warpFreq *= 1.0 / (1.0 + 0.8 * fc);
+  warpFreq *= (1.0 - 0.35 * cd);
+
+  const mw1 = Math.max(1, Math.min(24, Math.floor(0.18 * m + 0.5)));
+  const mw2 = Math.max(1, Math.min(18, Math.floor(0.13 * m + 0.5)));
+  const m3 = Math.max(1, Math.min(32, Math.floor(0.35 * m + 0.5)));
+  const a3 = 0.35 * (1.0 - 0.55 * fc) * (1.0 - 0.65 * cd);
 
   const y = t;
+  const edge = lerp(0.03, 0.18, ef);
   const fade = sat(t / Math.max(EPS, edge)) * sat((1 - t) / Math.max(EPS, edge));
+  const stripeMix = style * smooth01(sat((cd - 0.05) / 0.95));
+  const contrast = lerp(0.85, 1.55, rc);
 
   for (let i = 0; i < n; i++) {
     const theta = thetas[i];
 
     const dTheta =
-      warp * (0.70 * Math.sin(mw1 * theta + TAU * (warpScale * y) + phase) +
-              0.30 * Math.sin(mw2 * theta - TAU * (warpScale * y) + 1.7 + phase));
-    const dy = warp * 0.12 * Math.sin(mw2 * theta + 0.9 + phase);
+      warp * (0.65 * Math.sin(mw1 * theta + TAU * (warpFreq * y) + phase) +
+              0.35 * Math.sin(mw2 * theta - TAU * (warpFreq * y) + 1.7 + phase));
+    const dy = warp * 0.10 * Math.sin(mw2 * theta + 0.9 + phase);
 
     const thetaW = theta + dTheta;
     const yW = y + dy;
@@ -989,10 +1050,12 @@ export function rOuterWaveInterferenceVec(
     const w2 = Math.sin(m2 * thetaW - TAU * (pitch2 * yW) + 1.3 + 0.7 * phase);
     const w3 = Math.sin(m3 * thetaW + TAU * (0.30 * pitch * yW) + 2.4);
 
-    const F = w1 + w2 + 0.35 * w3;
-    const stripes = Math.sin(TAU * (lineDen * F) + 0.2 * phase);
-    const base = Math.max(-1, Math.min(1, 0.45 * F));
-    let ptn = (1 - blend) * base + blend * stripes;
+    let F = w1 + a2 * w2 + a3 * w3;
+    const Fc = F / (1.0 + 0.55 * Math.abs(F));
+
+    const base = 0.75 * Fc;
+    const stripes = Math.sin(TAU * (lineDen * Fc) + 0.2 * phase);
+    let ptn = (1 - stripeMix) * base + stripeMix * stripes;
     ptn = sgnNZ(ptn) * Math.pow(Math.abs(ptn), contrast);
 
     result[i] = r0 + depth * ptn * fade;
