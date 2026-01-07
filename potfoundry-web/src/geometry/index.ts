@@ -33,6 +33,7 @@ export type {
   SpiralRidgesParams,
   SuperellipseMorphParams,
   HarmonicRippleParams,
+  GothicArchesParams,
   MeshData,
   MeshDiagnostics,
   MeshResult,
@@ -56,6 +57,7 @@ export {
   DEFAULT_SPIRAL,
   DEFAULT_SUPERELLIPSE,
   DEFAULT_HARMONIC,
+  DEFAULT_GOTHIC_ARCHES,
   DEFAULT_STYLE_PARAMS,
 } from './types';
 

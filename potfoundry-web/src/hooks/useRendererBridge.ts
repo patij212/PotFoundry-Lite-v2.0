@@ -299,34 +299,34 @@ function styleToParams(style: StyleState): Record<string, unknown> {
     }
 
     case 'GothicArches': {
-      // Gothic Arches v2 - watertight relief with true tracery
-      // 12 parameters: counts, amp, z0, zh, pointiness, ribWidth, colWidth,
-      //                sharpness, overlap, band, bandWidth, tracery
-      const counts = getNum(opts.ga_counts, 8);
-      const amp = getNum(opts.ga_amp, 2.5);
-      const z0 = getNum(opts.ga_z0, 0.12);
-      const zh = getNum(opts.ga_zh, 0.75);
-      const pointiness = getNum(opts.ga_pointiness, 1.2);
-      const ribWidth = getNum(opts.ga_rib_width, 0.035);
-      const colWidth = getNum(opts.ga_col_width, 0.15);
-      const sharpness = getNum(opts.ga_sharpness, 4.0);
-      const overlap = getNum(opts.ga_overlap, 0.6);
-      const band = getNum(opts.ga_band, 0.5);
-      const bandWidth = getNum(opts.ga_band_width, 0.05);
-      const tracery = getNum(opts.ga_tracery, 0.4);
+      // Gothic Arches v5 - recessed top panel + independent tracery thickness
+      // 12 parameters: counts, relief, pointiness, diamond, x, spring, archHeight,
+      //                rib, col, traceryThick (NEW), topStart, recess
+      const counts = getNum(opts.ga_counts, 12);
+      const relief = getNum(opts.ga_relief, 2.5);
+      const pointiness = getNum(opts.ga_pointiness, 1.3);
+      const diamond = getNum(opts.ga_diamond, 0.55);
+      const xTracery = getNum(opts.ga_x, 0.65);
+      const spring = getNum(opts.ga_spring, 0.12);
+      const archHeight = getNum(opts.ga_arch_height, 0.90);
+      const rib = getNum(opts.ga_rib, 0.08);
+      const col = getNum(opts.ga_col, 0.16);
+      const traceryThick = getNum(opts.ga_tracery_thick, 0.5);  // NEW: was ga_sharpness
+      const topStart = getNum(opts.ga_top_start, 0.6);
+      const recess = getNum(opts.ga_recess, 0.25);
 
-      styleParams[0] = counts;           // [0] Arches count
-      styleParams[1] = amp;              // [1] Relief amplitude (mm)
-      styleParams[2] = z0;               // [2] Spring line
-      styleParams[3] = zh;               // [3] Arch height fraction
-      styleParams[4] = pointiness;       // [4] Superellipse exponent
-      styleParams[5] = ribWidth;         // [5] Rib thickness
-      styleParams[6] = colWidth;         // [6] Column width
-      styleParams[7] = sharpness;        // [7] Ridge sharpness
-      styleParams[8] = overlap;          // [8] Ogive overlap
-      styleParams[9] = band;             // [9] Band strength
-      styleParams[10] = bandWidth;       // [10] Band width
-      styleParams[11] = tracery;         // [11] X-tracery strength
+      styleParams[0] = counts;           // [0] Arch Count
+      styleParams[1] = relief;           // [1] Relief Depth (mm)
+      styleParams[2] = pointiness;       // [2] Pointiness
+      styleParams[3] = diamond;          // [3] Top Tracery
+      styleParams[4] = xTracery;         // [4] In-Arch X
+      styleParams[5] = spring;           // [5] Spring Line
+      styleParams[6] = archHeight;       // [6] Arch Height
+      styleParams[7] = rib;              // [7] Rib Thickness
+      styleParams[8] = col;              // [8] Column Width
+      styleParams[9] = traceryThick;     // [9] Tracery Thickness (NEW!)
+      styleParams[10] = topStart;        // [10] Tracery Start
+      styleParams[11] = recess;          // [11] Panel Recess
       break;
     }
 

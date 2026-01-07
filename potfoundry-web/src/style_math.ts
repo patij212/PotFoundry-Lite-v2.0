@@ -195,79 +195,125 @@ function harmonicRadiusZero(ctx: StyleMathContext, t: number, r0: number): numbe
 }
 
 /**
- * Gothic Arches v2 radius at theta=0.
- * Uses the same watertight relief math as the shader.
+ * Gothic Arches v3 radius at theta=0.
+ * Two-tier cathedral relief with plateau ridges and saturating union.
  */
 function gothicArchesRadiusZero(ctx: StyleMathContext, t: number, r0: number): number {
     const params = ctx.styleParams;
     if (params[47] < 0.5) return r0;
 
-    // --- Parameters (must match WGSL indexing exactly)
-    const counts = Math.max(1, Math.floor((params[0] || 8) + 0.5));
+    const EPS = 1e-6;
+
+    // --- Parameters (indices 0-11 match v3 mapping)
+    const _N = Math.max(1, Math.floor((params[0] || 12) + 0.5));
     const amp = params[1] || 2.5;
     
-    const z0 = Math.min(1, Math.max(0, params[2] || 0.12));
-    const zh = Math.min(1, Math.max(0, params[3] || 0.75)) * (1 - z0);
+    const p = Math.max(0.25, params[2] || 1.4);
+    const topAmt = Math.min(1, Math.max(0, params[3] || 0.5));
+    const xAmt = Math.min(1, Math.max(0, params[4] || 0.6));
     
-    const p = Math.max(0.25, params[4] || 1.2);
-    const wZ = Math.max(1e-6, params[5] || 0.035);
-    const wX = Math.max(1e-6, params[6] || 0.15);
-    const sharp = Math.max(1, params[7] || 4.0);
+    const z0 = Math.min(1, Math.max(0, params[5] || 0.12));
+    const zh = Math.min(1, Math.max(0, params[6] || 0.85)) * (1 - z0);
     
-    const overlap = Math.min(1, Math.max(0, params[8] || 0.6));
-    const band = Math.min(1, Math.max(0, params[9] || 0.5));
-    const bandW = Math.max(1e-6, params[10] || 0.05);
+    const wZ = Math.max(EPS, params[7] || 0.06);
+    const wX = Math.max(EPS, params[8] || 0.20);
+    const firm = Math.min(2.0, Math.max(1.0, params[9] || 1.4));
     
-    const tracery = Math.min(1, Math.max(0, params[11] || 0.4));
+    const topStart = Math.min(1, Math.max(0, params[10] || 0.58));
+    const recess = Math.min(1, Math.max(0, params[11] || 0.28)) * 0.6;
 
     const tNorm = Math.min(1, Math.max(0, t));
 
-    // At theta=0: bay coordinate without seams
-    const a = 0 * counts; // theta=0
-    const xSigned = Math.cos(0.5 * a); // cos(0) = 1
-    const xAbs = Math.abs(xSigned);    // 1
-    const xAbs2 = Math.abs(Math.sin(0.5 * a)); // sin(0) = 0
-    const x01 = Math.min(1, Math.max(0, 0.5 * (xSigned + 1.0))); // 1
-
-    // Ridge helper
-    const ridge = (d: number, w: number, s: number) => 
-        Math.pow(Math.max(0, 1 - Math.abs(d) / Math.max(1e-6, w)), s);
-
-    // Pointed arch curve (superellipse)
-    const archY = Math.pow(Math.max(0, 1 - Math.pow(xAbs, p)), 1 / p);   // At edge: ~0
-    const archY2 = Math.pow(Math.max(0, 1 - Math.pow(xAbs2, p)), 1 / p); // At center: 1
-
-    const archZ = z0 + zh * archY;   // archZ ≈ z0 (at edge)
-    const archZ2 = z0 + zh * archY2; // archZ2 ≈ z0 + zh (at center)
-
-    // Ogive ribs
-    const rib1 = ridge(tNorm - archZ, wZ, sharp);
-    const rib2 = ridge(tNorm - archZ2, wZ, sharp);
-    const rib = rib1 + overlap * rib2;
-
-    // Columns gated between z0 and archZ
-    const wGate = 2.0 * wZ;
-    const gate = Math.min(1, Math.max(0, (tNorm - z0) / wGate)) * 
-                 Math.min(1, Math.max(0, (archZ - tNorm) / wGate));
+    // Helpers
+    const sat = (x: number) => Math.min(1, Math.max(0, x));
+    const bump = (x: number) => x * x * (3 - 2 * x);
+    const smoothstep = (e0: number, e1: number, x: number) => {
+        const tt = sat((x - e0) / Math.max(EPS, e1 - e0));
+        return tt * tt * (3 - 2 * tt);
+    };
+    const uni = (a: number, b: number) => a + b - a * b;
     
-    const colEdge = Math.pow(Math.max(0, 1 - (1 - xAbs) / wX), sharp);
-    const column = colEdge * gate;
+    // Plateau ridge
+    const ridgePlateau = (d: number, w: number, f: number) => {
+        const wSafe = Math.max(EPS, w);
+        const core = 0.55 * wSafe;
+        const u = (Math.abs(d) - core) / Math.max(EPS, wSafe - core);
+        const s = 1 - bump(sat(u));
+        return Math.pow(s, f);
+    };
     
-    const mull = Math.pow(Math.max(0, 1 - xAbs / (0.6 * wX)), sharp) * gate;
+    const ridgeSinPlateau = (phi: number, w: number, f: number) => {
+        const d = Math.abs(Math.sin(phi));
+        const wSafe = Math.max(EPS, w);
+        const core = 0.35 * wSafe;
+        const u = (d - core) / Math.max(EPS, wSafe - core);
+        const s = 1 - bump(sat(u));
+        return Math.pow(s, f);
+    };
 
-    // In-bay X-tracery
-    const denom = Math.max(1e-6, archZ - z0);
-    const s = Math.min(1, Math.max(0, (tNorm - z0) / denom));
-    const wT = 0.45 * wX;
-    const diag = gate * (ridge(s - x01, wT, sharp) + ridge(s - (1 - x01), wT, sharp));
+    // At theta=0: robust bay coordinate
+    // f = 0, xSigned = -1, xAbs = 1, x01 = 0
+    const xAbs = 1.0;
+    const x01 = 0.0;
 
-    // Base + rim bands
-    const bands = ridge(tNorm - 0.0, bandW, sharp) + ridge(tNorm - 1.0, bandW, sharp);
+    // --- Two-tier system
+    const blendW = Math.max(0.02, 1.5 * wZ);
+    const topMask = smoothstep(topStart - blendW, topStart + blendW, tNorm);
+    const botMask = 1 - topMask;
 
-    // Fade-in
-    const fade = Math.min(1, Math.max(0, (tNorm - 0.02) / 0.08));
+    // === LOWER TIER ===
+    const archApex = Math.min(z0 + zh, topStart - 0.6 * wZ);
+    const archH = Math.max(EPS, archApex - z0);
 
-    const pattern = fade * (rib + 0.65 * column + 0.35 * mull + tracery * diag) + band * bands;
+    const archY = Math.pow(Math.max(0, 1 - Math.pow(xAbs, p)), 1 / p);
+    const archZ = z0 + archH * archY;
+
+    const gateW = 2.0 * wZ;
+    const gate = sat((tNorm - z0) / gateW) * sat((archZ - tNorm) / gateW);
+
+    const ribArch = ridgePlateau(tNorm - archZ, wZ, firm);
+    const colEdge = ridgePlateau(1 - xAbs, wX, firm) * gate;
+    const mullion = ridgePlateau(xAbs, 0.65 * wX, firm) * gate;
+
+    const denom = Math.max(EPS, archZ - z0);
+    const s = sat((tNorm - z0) / denom);
+    const wT = 0.75 * wX;
+    const xDiag = gate * uni(
+        ridgePlateau(s - x01, wT, firm),
+        ridgePlateau(s - (1 - x01), wT, firm)
+    );
+
+    let lower = 0.0;
+    lower = uni(lower, ribArch);
+    lower = uni(lower, 0.90 * colEdge);
+    lower = uni(lower, 0.45 * mullion);
+    lower = uni(lower, xAmt * 0.65 * xDiag);
+
+    const panel = gate * Math.pow(Math.max(0, 1 - xAbs / 0.95), 2);
+    lower = Math.max(0, lower - recess * panel * (1 - lower));
+
+    const midBand = ridgePlateau(tNorm - topStart, 2.2 * wZ, firm);
+    lower = uni(lower, 0.55 * midBand);
+
+    // === UPPER TIER ===
+    const v = sat((tNorm - topStart) / Math.max(EPS, 1 - topStart));
+    const rows = 1.0 + 2.0 * topAmt;
+    const wL = Math.max(0.08, 1.8 * wZ);
+
+    const phi1 = Math.PI * (rows * v - x01);
+    const phi2 = Math.PI * (rows * v + x01);
+
+    let lattice = 0.0;
+    lattice = uni(lattice, ridgeSinPlateau(phi1, wL, firm));
+    lattice = uni(lattice, ridgeSinPlateau(phi2, wL, firm));
+
+    const cell = Math.pow(Math.abs(Math.sin(phi1)) * Math.abs(Math.sin(phi2)), 2);
+    lattice = uni(lattice, 0.25 * cell);
+
+    let upper = topAmt * lattice;
+    upper = uni(upper, 0.60 * midBand);
+
+    const pattern = sat(botMask * lower + topMask * upper);
     return r0 + amp * pattern;
 }
 

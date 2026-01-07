@@ -4284,7 +4284,11 @@ export const mount = async ({
       current.styleId = styleId;
 
       syncStyleParams(cfg.styleParams ?? current.styleParams);
-      current.styleParams = cfg.styleParams;
+      // Only update current.styleParams if a new value was provided
+      // (don't clobber it with undefined from geometry/appearance updates)
+      if (cfg.styleParams !== undefined) {
+        current.styleParams = cfg.styleParams;
+      }
 
       const computedMaxWithHeight = Math.max(safeHeight, safeRadiusTop, safeRadiusBottom);
       const sceneRadiusProvided = cfg.sceneRadius !== undefined && cfg.sceneRadius !== null;

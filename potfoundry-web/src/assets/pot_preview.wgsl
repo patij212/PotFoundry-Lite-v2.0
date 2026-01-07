@@ -383,94 +383,214 @@ fn harmonic_radius(theta: f32, t: f32, r0: f32) -> f32 {
 }
 
 // ============================================================================
-// Gothic Arches v2 - watertight relief with true tracery
+// Gothic Arches v5 - Recessed Top Panel + Independent Tracery Thickness
 // ============================================================================
+// Improvements over v4:
+// - "Edge Firmness" repurposed to "Tracery Thickness" (firmness now auto)
+// - Top panel mask: kills tracery on columns (no amplification)
+// - Top panel recess: makes tracery pop with contrast
+// - Tracery fade-in: prevents blend artifacts at tier boundary
+// - Auto-firmness: thick ribs = softer edges automatically
 
-// Helper: saturate to [0,1]
+const GA_PI: f32  = 3.141592653589793;
+const GA_EPS: f32 = 1e-6;
+
 fn ga_sat(x: f32) -> f32 {
   return min(1.0, max(0.0, x));
 }
 
-// Helper: ridge function for crisp raised lines
-fn ga_ridge(d: f32, w_in: f32, sharp: f32) -> f32 {
-  let w = max(1e-6, w_in);
-  return pow(max(0.0, 1.0 - abs(d) / w), sharp);
+fn ga_bump(x: f32) -> f32 {
+  return x * x * (3.0 - 2.0 * x);
 }
 
-// Gothic Arches v2: watertight cathedral relief
-// Key improvements: no seam artifacts, true diamond tracery, X-tracery
+fn ga_smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+  let t = ga_sat((x - e0) / max(GA_EPS, e1 - e0));
+  return t * t * (3.0 - 2.0 * t);
+}
+
+fn ga_uni(a: f32, b: f32) -> f32 {
+  return a + b - a * b;
+}
+
+fn ga_fract(x: f32) -> f32 {
+  return x - floor(x);
+}
+
+fn ga_ridge_plateau(d: f32, w_in: f32, firm: f32) -> f32 {
+  let w = max(GA_EPS, w_in);
+  let core = 0.55 * w;
+  let u = (abs(d) - core) / max(GA_EPS, w - core);
+  let s = 1.0 - ga_bump(ga_sat(u));
+  return pow(s, firm);
+}
+
+fn ga_ridge_sin_plateau(phi: f32, w_in: f32, firm: f32) -> f32 {
+  let d = abs(sin(phi));
+  let w = max(GA_EPS, w_in);
+  let core = 0.35 * w;
+  let u = (d - core) / max(GA_EPS, w - core);
+  let s = 1.0 - ga_bump(ga_sat(u));
+  return pow(s, firm);
+}
+
+// Gothic Arches v5: Recessed top panel with readable tracery
+// Parameter mapping:
+// 0 Count, 1 Relief(mm), 2 Pointiness, 3 TopTracery, 4 InArchX,
+// 5 Spring, 6 ArchHeight, 7 RibThick, 8 ColWidth,
+// 9 TraceryThickness (NEW - was EdgeFirmness), 10 TraceryStart, 11 PanelRecess
 fn gothic_arches_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
   }
   
-  // --- Parameters (must match TS mapping exactly)
-  let counts  = max(1.0, floor(style_param(0u) + 0.5));  // [0] gaCounts
-  let amp     = style_param(1u);                          // [1] gaAmp (mm)
-  
-  let z0      = ga_sat(style_param(2u));                  // [2] gaZ0 (spring line)
-  let zh      = ga_sat(style_param(3u)) * (1.0 - z0);     // [3] gaZH (arch height)
-  
-  let p       = max(0.25, style_param(4u));               // [4] gaPointiness
-  let wZ      = max(1e-6, style_param(5u));               // [5] gaRibWidth
-  let wX      = max(1e-6, style_param(6u));               // [6] gaColWidth
-  let sharp   = max(1.0, style_param(7u));                // [7] gaSharpness
-  
-  let overlap = ga_sat(style_param(8u));                  // [8] gaOverlap
-  let band    = ga_sat(style_param(9u));                  // [9] gaBand
-  let bandW   = max(1e-6, style_param(10u));              // [10] gaBandWidth
-  
-  let tracery = ga_sat(style_param(11u));                 // [11] gaTracery
+  let N = max(1.0, floor(style_param(0u) + 0.5));   // [0] Arch Count
+  let amp = style_param(1u);                         // [1] Relief Depth (mm)
+
+  let p = max(0.25, style_param(2u));                // [2] Pointiness
+  let topAmt = ga_sat(style_param(3u));              // [3] Top Tracery
+  let xAmt = ga_sat(style_param(4u));                // [4] In-Arch X
+
+  let z0 = ga_sat(style_param(5u));                  // [5] Spring Line
+  let zh = ga_sat(style_param(6u)) * (1.0 - z0);     // [6] Arch Height
+
+  // Auto-scale widths based on arch count
+  let nScale = min(1.35, max(0.75, 12.0 / N));
+  let wZ = max(GA_EPS, style_param(7u) * nScale);    // [7] Rib Thickness (scaled)
+  let wX = max(GA_EPS, style_param(8u) * nScale);    // [8] Column Width (scaled)
+
+  // Auto-firmness: thick ribs = softer edges (1.0..1.8 range)
+  let firm = 1.0 + 0.8 * ga_sat((0.10 - wZ) / 0.06);
+
+  // NEW: Tracery Thickness control (index 9, was Edge Firmness)
+  let trThick = ga_sat(style_param(9u));             // [9] Tracery Thickness (0..1)
+  let wL = max(0.06, wZ * (0.8 + 2.4 * trThick));    // top lattice line width
+
+  // Tracery Start mapped relative to arch span
+  let sTop = ga_sat(style_param(10u));               // [10] Tracery Start control
+  let topStart = z0 + (0.55 + 0.30 * sTop) * zh;
+
+  let recess = ga_sat(style_param(11u)) * 0.60;      // [11] Panel Recess
 
   let t = ga_sat(t_in);
 
-  // --- Bay coordinate without seams (periodic + smooth)
-  let a = theta * counts;
+  // Edge fade near rim/base (global rims stay clean)
+  let edgeFade = ga_sat(t / (2.5 * wZ)) * ga_sat((1.0 - t) / (2.5 * wZ));
 
-  let xSigned = cos(0.5 * a);
-  let xAbs    = abs(xSigned);
-  let xAbs2   = abs(sin(0.5 * a));
-  let x01     = ga_sat(0.5 * (xSigned + 1.0));
+  // Bay coordinates
+  let u = (theta * N) / TAU;
+  let f = ga_fract(u);
+  let x01 = f;
+  let xAbs = abs(cos(GA_PI * f));   // 0 center, 1 edges (smooth)
 
-  // --- Pointed arch curve (superellipse)
-  let archY  = pow(max(0.0, 1.0 - pow(xAbs,  p)), 1.0 / p);
-  let archY2 = pow(max(0.0, 1.0 - pow(xAbs2, p)), 1.0 / p);
+  // Tier blend
+  let blendW = max(0.02, 1.25 * wZ);
+  let topMask = ga_smoothstep(topStart - blendW, topStart + blendW, t);
+  let botMask = 1.0 - topMask;
 
-  let archZ  = z0 + zh * archY;
-  let archZ2 = z0 + zh * archY2;
+  // ============================================================
+  // LOWER TIER: framed lancet arches + columns + optional X + recess
+  // ============================================================
+  let archApex = min(z0 + zh, topStart - 0.22 * wZ);
+  let archH = max(GA_EPS, archApex - z0);
 
-  // --- Ogive ribs (two sets -> diamond intersections)
-  let rib1 = ga_ridge(t - archZ,  wZ, sharp);
-  let rib2 = ga_ridge(t - archZ2, wZ, sharp);
-  let rib  = rib1 + overlap * rib2;
+  let archY = pow(max(0.0, 1.0 - pow(xAbs, p)), 1.0 / p);
+  let archZ = z0 + archH * archY;
 
-  // --- Columns gated between z0 and archZ
-  let wGate = 2.0 * wZ;
-  let gate  = ga_sat((t - z0) / wGate) * ga_sat((archZ - t) / wGate);
+  let gateW = 2.0 * wZ;
+  let gate = ga_sat((t - z0) / gateW) * ga_sat((archZ - t) / gateW);
 
-  let colEdge = pow(max(0.0, 1.0 - (1.0 - xAbs) / wX), sharp);
-  let column  = colEdge * gate;
+  // Framed arch (double-outline + subtle groove)
+  let inset = 0.85 * wZ;
+  var ribArch = ga_ridge_plateau(t - archZ, wZ, firm);
+  ribArch = ga_uni(ribArch, 0.75 * ga_ridge_plateau(t - (archZ - inset), 0.65 * wZ, firm));
+  ribArch = max(0.0, ribArch - 0.18 * ga_ridge_plateau(t - archZ, 0.22 * wZ, firm));
 
-  let mull = pow(max(0.0, 1.0 - xAbs / (0.6 * wX)), sharp) * gate;
+  // Columns + mullion
+  let colEdge = ga_ridge_plateau(1.0 - xAbs, wX, firm) * gate;
+  let mullion = ga_ridge_plateau(xAbs, 0.65 * wX, firm) * gate;
 
-  // --- Optional in-bay X-tracery
-  let denom = max(1e-6, archZ - z0);
-  let s     = ga_sat((t - z0) / denom);
-  let wT    = 0.45 * wX;
-
-  let diag = gate * (
-    ga_ridge(s - x01, wT, sharp) +
-    ga_ridge(s - (1.0 - x01), wT, sharp)
+  // In-arch X
+  let denom = max(GA_EPS, archZ - z0);
+  let s = ga_sat((t - z0) / denom);
+  let wT = 0.80 * wX;
+  let xDiag = gate * ga_uni(
+    ga_ridge_plateau(s - x01, wT, firm),
+    ga_ridge_plateau(s - (1.0 - x01), wT, firm)
   );
 
-  // --- Base + rim bands (plinth + cornice)
-  let bands = ga_ridge(t - 0.0, bandW, sharp) + ga_ridge(t - 1.0, bandW, sharp);
+  // Combine lower tier
+  var lower: f32 = 0.0;
+  lower = ga_uni(lower, ribArch);
+  lower = ga_uni(lower, 0.95 * colEdge);
+  lower = ga_uni(lower, 0.45 * mullion);
+  lower = ga_uni(lower, xAmt * 0.70 * xDiag);
 
-  // Gentle fade-in above the base
-  let fade = ga_sat((t - 0.02) / 0.08);
+  // Recessed panel behind ribs
+  let panel = gate * pow(max(0.0, 1.0 - xAbs / 0.95), 2.0);
+  lower = max(0.0, lower - recess * panel * (1.0 - lower));
 
-  let pattern = fade * (rib + 0.65 * column + 0.35 * mull + tracery * diag) + band * bands;
-  return r0 + amp * pattern;
+  // Separator band at tier boundary
+  let midBand = ga_ridge_plateau(t - topStart, 2.0 * wZ, firm);
+  lower = ga_uni(lower, 0.55 * midBand);
+
+  // ============================================================
+  // UPPER TIER: recessed panel + raised tracery ribs (continuous trellis)
+  // ============================================================
+  let v = ga_sat((t - topStart) / max(GA_EPS, 1.0 - topStart));
+
+  // Fade-in so lattice doesn't fight transition band / columns
+  let latticeFade = ga_smoothstep(0.12, 0.35, v);
+
+  // Gentler column mask - scales with column width (no brutal squaring)
+  let colMaskTop = ga_ridge_plateau(1.0 - xAbs, 1.25 * wX, firm);
+  let maskK = ga_sat(0.35 + 2.0 * wX);  // wider columns => stronger masking
+  let panelMaskTop = ga_sat(1.0 - maskK * colMaskTop);
+
+  // Base recess behind tracery (contrast!)
+  let topRecess = 0.55 * recess;
+  let upperBase = -topRecess * panelMaskTop;
+
+  // Bigger diamonds (closer to reference)
+  let rows = 0.85 + 1.35 * topAmt;
+
+  // Use UNWRAPPED coordinate for continuous trellis across bays
+  let xU = u + 0.5;  // unwrapped angular coord (not fract!) + phase for centering
+
+  let phi1 = GA_PI * (rows * v - xU);
+  let phi2 = GA_PI * (rows * v + xU);
+
+  // Compute line ridges separately for intersection nodes
+  let line1 = ga_ridge_sin_plateau(phi1, wL, firm);
+  let line2 = ga_ridge_sin_plateau(phi2, wL, firm);
+
+  // Union the two diagonal lines
+  var lattice: f32 = ga_uni(line1, line2);
+
+  // Add thicker nodes at intersections (reference joint look)
+  let node = line1 * line2;
+  lattice = ga_uni(lattice, 0.45 * node);
+
+  // Small diamond row near rim (reference vibe) - also unwrapped
+  let xU2 = 2.0 * xU;
+  let rows2 = rows * 2.2;
+  let phi1s = GA_PI * (rows2 * v - xU2);
+  let phi2s = GA_PI * (rows2 * v + xU2);
+
+  let lineS1 = ga_ridge_sin_plateau(phi1s, 0.85 * wL, firm);
+  let lineS2 = ga_ridge_sin_plateau(phi2s, 0.85 * wL, firm);
+  var latticeSmall: f32 = ga_uni(lineS1, lineS2);
+  latticeSmall = ga_uni(latticeSmall, 0.35 * lineS1 * lineS2);  // small nodes too
+  lattice = ga_uni(lattice, 0.55 * ga_smoothstep(0.55, 1.0, v) * latticeSmall);
+
+  // Apply mask + fade so tracery lives on the "face" only
+  let latticeRibs = topAmt * latticeFade * panelMaskTop * lattice;
+
+  // Upper combines: base recess + raised ribs + separator band
+  let upper = max(-topRecess, min(1.0, upperBase + latticeRibs + 0.60 * midBand));
+
+  // Final blend with edge fade
+  let disp = edgeFade * (botMask * lower + topMask * upper);
+  return r0 + amp * disp;
 }
 
 fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {

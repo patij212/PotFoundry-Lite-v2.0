@@ -538,36 +538,54 @@ export function rOuterHarmonicRippleVec(
 }
 
 // ============================================================================
-// Gothic Arches v2 Functions
+// Gothic Arches v3 - Tiered Cathedral Relief with Plateau Ridges
 // ============================================================================
 
-// Helper functions for Gothic Arches v2
+// Helper functions for Gothic Arches v3
 const sat = (x: number): number => Math.min(1, Math.max(0, x));
-const ridge = (d: number, wIn: number, sharp: number): number => {
+const bump = (x: number): number => x * x * (3 - 2 * x);
+
+const smoothstep = (e0: number, e1: number, x: number): number => {
+  const t = sat((x - e0) / Math.max(EPSILON, e1 - e0));
+  return t * t * (3 - 2 * t);
+};
+
+// Saturating union - prevents peak stacking at intersections
+const uni = (a: number, b: number): number => a + b - a * b;
+
+// Flat-top ridge: wide printable ribs, no needle peaks
+const ridgePlateau = (d: number, wIn: number, firm: number): number => {
   const w = Math.max(EPSILON, wIn);
-  return Math.pow(Math.max(0, 1 - Math.abs(d) / w), sharp);
+  const core = 0.55 * w; // plateau half-width
+  const u = (Math.abs(d) - core) / Math.max(EPSILON, w - core);
+  const s = 1 - bump(sat(u));
+  return Math.pow(s, firm);
+};
+
+// Plateau ridge around sin(phi)=0 lines (for lattice diagonals)
+const ridgeSinPlateau = (phi: number, wIn: number, firm: number): number => {
+  const d = Math.abs(Math.sin(phi));
+  const w = Math.max(EPSILON, wIn);
+  const core = 0.35 * w;
+  const u = (d - core) / Math.max(EPSILON, w - core);
+  const s = 1 - bump(sat(u));
+  return Math.pow(s, firm);
 };
 
 /**
- * Gothic Arches v2 - watertight relief-based Gothic cathedral architecture
+ * Gothic Arches v3 - Two-tier cathedral relief with plateau ridges
  * 
- * Key improvements over v1:
- * - No seam artifacts: uses trig-based per-panel coordinates (periodic + smooth)
- * - Real tracery: dual half-offset ogive sets create natural diamond intersections
- * - Optional in-panel X-tracery: diagonal ribs inside each arch bay
- * 
- * Mathematical approach:
- * - Bay coordinates without fract() tiling (no seams)
- * - Pointed arch via superellipse curves
- * - Two ogive rib sets (main + offset) for diamond patterns
- * - Columns gated between spring line and arch apex
- * - Optional X-tracery inside bays
+ * Key improvements over v2:
+ * - Plateau ridges: flat-topped ribs, no needle peaks with thick ribs
+ * - Saturating union: prevents intersection peak stacking
+ * - Explicit tier separation: Tracery Start control for clean division
+ * - Panel recess: "finished" look even with soft edges
  * 
  * @param theta - Angular position around pot (radians)
  * @param z - Height position (mm)
  * @param r0 - Base radius at this height (mm)
  * @param H - Total pot height (mm)
- * @param opts - Style parameters (GothicArchesParams v2)
+ * @param opts - Style parameters (GothicArchesParams v3)
  * @returns Modified radius (mm) = r0 + amp * pattern
  */
 export function rOuterGothicArches(
@@ -577,96 +595,125 @@ export function rOuterGothicArches(
   H: number,
   opts: StyleOptions
 ): number {
+  const PI = Math.PI;
   const params = opts as Partial<GothicArchesParams>;
 
-  // --- Parameters (must match WGSL indexing/meaning exactly)
-  const counts = Math.max(1, Math.floor((params.gaCounts ?? DEFAULT_GOTHIC_ARCHES.gaCounts) + 0.5));
-  const amp = params.gaAmp ?? DEFAULT_GOTHIC_ARCHES.gaAmp;
-  
-  const z0 = sat(params.gaZ0 ?? DEFAULT_GOTHIC_ARCHES.gaZ0);
-  const zh = sat(params.gaZH ?? DEFAULT_GOTHIC_ARCHES.gaZH) * (1 - z0);
+  // --- Parameters (indices 0-11 match UI/packer/shader v3)
+  const N = Math.max(1, Math.floor((params.gaCounts ?? DEFAULT_GOTHIC_ARCHES.gaCounts) + 0.5));
+  const amp = params.gaRelief ?? DEFAULT_GOTHIC_ARCHES.gaRelief;
   
   const p = Math.max(0.25, params.gaPointiness ?? DEFAULT_GOTHIC_ARCHES.gaPointiness);
-  const wZ = Math.max(EPSILON, params.gaRibWidth ?? DEFAULT_GOTHIC_ARCHES.gaRibWidth);
-  const wX = Math.max(EPSILON, params.gaColWidth ?? DEFAULT_GOTHIC_ARCHES.gaColWidth);
-  const sharp = Math.max(1, params.gaSharpness ?? DEFAULT_GOTHIC_ARCHES.gaSharpness);
+  const topAmt = sat(params.gaDiamond ?? DEFAULT_GOTHIC_ARCHES.gaDiamond);
+  const xAmt = sat(params.gaX ?? DEFAULT_GOTHIC_ARCHES.gaX);
   
-  const overlap = sat(params.gaOverlap ?? DEFAULT_GOTHIC_ARCHES.gaOverlap);
-  const band = sat(params.gaBand ?? DEFAULT_GOTHIC_ARCHES.gaBand);
-  const bandW = Math.max(EPSILON, params.gaBandWidth ?? DEFAULT_GOTHIC_ARCHES.gaBandWidth);
+  const z0 = sat(params.gaSpring ?? DEFAULT_GOTHIC_ARCHES.gaSpring);
+  const zh = sat(params.gaArchHeight ?? DEFAULT_GOTHIC_ARCHES.gaArchHeight) * (1 - z0);
   
-  const tracery = sat(params.gaTracery ?? DEFAULT_GOTHIC_ARCHES.gaTracery);
+  const wZ = Math.max(EPSILON, params.gaRib ?? DEFAULT_GOTHIC_ARCHES.gaRib);
+  const wX = Math.max(EPSILON, params.gaCol ?? DEFAULT_GOTHIC_ARCHES.gaCol);
+  
+  // Keep edge firmness LOW as requested (1-2 range)
+  const firm = Math.min(2.0, Math.max(1.0, params.gaSharp ?? DEFAULT_GOTHIC_ARCHES.gaSharp));
+  
+  // New v3: explicit tier split + panel recess
+  const topStart = sat(params.gaTopStart ?? DEFAULT_GOTHIC_ARCHES.gaTopStart);
+  const recess = sat(params.gaRecess ?? DEFAULT_GOTHIC_ARCHES.gaRecess) * 0.6; // scale so 1.0 isn't insane
 
-  // Normalized height
   const t = sat(z / Math.max(EPSILON, H));
 
-  // --- Bay coordinate without seams (periodic + smooth)
-  // a advances 2π per bay
-  const a = theta * counts;
+  // --- Robust bay coordinate (perfect "N arches" control)
+  // f is 0..1 within each bay
+  const u = (theta * N) / TAU;
+  const f = u - Math.floor(u);
+  const xSigned = 2 * f - 1;      // -1..1
+  const xAbs = Math.abs(xSigned); // 0 center, 1 edges
+  const x01 = f;                  // 0..1 across bay
 
-  // xSigned in [-1,1] across a bay; xAbs is 0 at center, 1 at edges
-  const xSigned = Math.cos(0.5 * a);
-  const xAbs = Math.abs(xSigned);
+  // Blend width tied to thickness (keeps chunky)
+  const blendW = Math.max(0.02, 1.5 * wZ);
+  const topMask = smoothstep(topStart - blendW, topStart + blendW, t);
+  const botMask = 1 - topMask;
 
-  // Half-bay offset (for crossing ogives / tracery diamonds)
-  const xAbs2 = Math.abs(Math.sin(0.5 * a));
+  // ============================================================
+  // LOWER TIER: lancet arches + columns + recessed panel
+  // ============================================================
+  const archApex = Math.min(z0 + zh, topStart - 0.6 * wZ);
+  const archH = Math.max(EPSILON, archApex - z0);
 
-  // Bay coordinate in [0,1] (used for diagonal tracery)
-  const x01 = sat(0.5 * (xSigned + 1.0));
-
-  // --- Pointed arch curve (superellipse)
   const archY = Math.pow(Math.max(0, 1 - Math.pow(xAbs, p)), 1 / p);
-  const archY2 = Math.pow(Math.max(0, 1 - Math.pow(xAbs2, p)), 1 / p);
+  const archZ = z0 + archH * archY;
 
-  const archZ = z0 + zh * archY;
-  const archZ2 = z0 + zh * archY2;
+  const gateW = 2.0 * wZ;
+  const gate = sat((t - z0) / gateW) * sat((archZ - t) / gateW);
 
-  // --- Ogive ribs (two sets -> diamond intersections)
-  const rib1 = ridge(t - archZ, wZ, sharp);
-  const rib2 = ridge(t - archZ2, wZ, sharp);
-  const rib = rib1 + overlap * rib2;
+  const ribArch = ridgePlateau(t - archZ, wZ, firm);
 
-  // --- Columns gated between z0 and archZ
-  const wGate = 2.0 * wZ;
-  const gate = sat((t - z0) / wGate) * sat((archZ - t) / wGate);
+  // Big readable columns / mullion
+  const colEdge = ridgePlateau(1 - xAbs, wX, firm) * gate;
+  const mullion = ridgePlateau(xAbs, 0.65 * wX, firm) * gate;
 
-  // Strong near bay edges (xAbs ≈ 1)
-  const colEdge = Math.pow(Math.max(0, 1 - (1 - xAbs) / wX), sharp);
-  const column = colEdge * gate;
-
-  // Center mullion (xAbs ≈ 0)
-  const mull = Math.pow(Math.max(0, 1 - xAbs / (0.6 * wX)), sharp) * gate;
-
-  // --- Optional in-bay "X" tracery inside the arch panel
-  // Map height within bay: s=0 at spring, s=1 at apex (per-theta)
+  // In-arch X tracery (confined inside the arch)
   const denom = Math.max(EPSILON, archZ - z0);
   const s = sat((t - z0) / denom);
-
-  // Tracery width derived from column width (no extra params needed)
-  const wT = 0.45 * wX;
-  const diag = gate * (
-    ridge(s - x01, wT, sharp) +
-    ridge(s - (1 - x01), wT, sharp)
+  const wT = 0.75 * wX;
+  const xDiag = gate * uni(
+    ridgePlateau(s - x01, wT, firm),
+    ridgePlateau(s - (1 - x01), wT, firm)
   );
 
-  // --- Base + rim bands (plinth + cornice)
-  const bands = ridge(t - 0.0, bandW, sharp) + ridge(t - 1.0, bandW, sharp);
+  // Combine without peak stacking
+  let lower = 0.0;
+  lower = uni(lower, ribArch);
+  lower = uni(lower, 0.90 * colEdge);
+  lower = uni(lower, 0.45 * mullion);
+  lower = uni(lower, xAmt * 0.65 * xDiag);
 
-  // Gentle fade-in above the base
-  const fade = sat((t - 0.02) / 0.08);
+  // Recess panel behind ribs (keeps it "finished")
+  const panel = gate * Math.pow(Math.max(0, 1 - xAbs / 0.95), 2.0);
+  lower = Math.max(0, lower - recess * panel * (1 - lower));
 
-  const pattern = fade * (rib + 0.65 * column + 0.35 * mull + tracery * diag) + band * bands;
+  // Strong separator band at tier boundary (matches picture)
+  const midBand = ridgePlateau(t - topStart, 2.2 * wZ, firm);
+  lower = uni(lower, 0.55 * midBand);
+
+  // ============================================================
+  // UPPER TIER: big X / diamond tracery confined to top
+  // ============================================================
+  const v = sat((t - topStart) / Math.max(EPSILON, 1 - topStart));
+
+  // Make density grow with Top Tracery slider
+  const rows = 1.0 + 2.0 * topAmt;
+
+  // Lattice width derived from rib thickness (print-safe)
+  const wL = Math.max(0.08, 1.8 * wZ);
+
+  const phi1 = PI * (rows * v - x01);
+  const phi2 = PI * (rows * v + x01);
+
+  let lattice = 0.0;
+  lattice = uni(lattice, ridgeSinPlateau(phi1, wL, firm));
+  lattice = uni(lattice, ridgeSinPlateau(phi2, wL, firm));
+
+  // Soft "cell fill" (gives the ornamental look without tiny details)
+  const cell = Math.pow(Math.abs(Math.sin(phi1)) * Math.abs(Math.sin(phi2)), 2.0);
+  lattice = uni(lattice, 0.25 * cell);
+
+  let upper = topAmt * lattice;
+  upper = uni(upper, 0.60 * midBand);
+
+  // Final blend + clamp
+  const pattern = sat(botMask * lower + topMask * upper);
   return r0 + amp * pattern;
 }
 
 /**
- * Vectorized Gothic Arches v2 for GPU-like parallelism and performance
+ * Vectorized Gothic Arches v3 for GPU-like parallelism and performance
  * 
  * @param thetas - Array of angular positions (radians)
  * @param z - Height position (mm)
  * @param r0 - Base radius at this height (mm)
  * @param H - Total pot height (mm)
- * @param opts - Style parameters (GothicArchesParams v2)
+ * @param opts - Style parameters (GothicArchesParams v3)
  * @returns Float32Array of modified radii (mm)
  */
 export function rOuterGothicArchesVec(
@@ -678,73 +725,97 @@ export function rOuterGothicArchesVec(
 ): Float32Array {
   const n = thetas.length;
   const result = new Float32Array(n);
+  const PI = Math.PI;
   const params = opts as Partial<GothicArchesParams>;
 
-  // --- Parameters (must match WGSL indexing/meaning exactly)
-  const counts = Math.max(1, Math.floor((params.gaCounts ?? DEFAULT_GOTHIC_ARCHES.gaCounts) + 0.5));
-  const amp = params.gaAmp ?? DEFAULT_GOTHIC_ARCHES.gaAmp;
-  
-  const z0 = sat(params.gaZ0 ?? DEFAULT_GOTHIC_ARCHES.gaZ0);
-  const zh = sat(params.gaZH ?? DEFAULT_GOTHIC_ARCHES.gaZH) * (1 - z0);
+  // --- Parameters (indices 0-11 match UI/packer/shader v3)
+  const N = Math.max(1, Math.floor((params.gaCounts ?? DEFAULT_GOTHIC_ARCHES.gaCounts) + 0.5));
+  const amp = params.gaRelief ?? DEFAULT_GOTHIC_ARCHES.gaRelief;
   
   const p = Math.max(0.25, params.gaPointiness ?? DEFAULT_GOTHIC_ARCHES.gaPointiness);
-  const wZ = Math.max(EPSILON, params.gaRibWidth ?? DEFAULT_GOTHIC_ARCHES.gaRibWidth);
-  const wX = Math.max(EPSILON, params.gaColWidth ?? DEFAULT_GOTHIC_ARCHES.gaColWidth);
-  const sharp = Math.max(1, params.gaSharpness ?? DEFAULT_GOTHIC_ARCHES.gaSharpness);
+  const topAmt = sat(params.gaDiamond ?? DEFAULT_GOTHIC_ARCHES.gaDiamond);
+  const xAmt = sat(params.gaX ?? DEFAULT_GOTHIC_ARCHES.gaX);
   
-  const overlap = sat(params.gaOverlap ?? DEFAULT_GOTHIC_ARCHES.gaOverlap);
-  const band = sat(params.gaBand ?? DEFAULT_GOTHIC_ARCHES.gaBand);
-  const bandW = Math.max(EPSILON, params.gaBandWidth ?? DEFAULT_GOTHIC_ARCHES.gaBandWidth);
+  const z0 = sat(params.gaSpring ?? DEFAULT_GOTHIC_ARCHES.gaSpring);
+  const zh = sat(params.gaArchHeight ?? DEFAULT_GOTHIC_ARCHES.gaArchHeight) * (1 - z0);
   
-  const tracery = sat(params.gaTracery ?? DEFAULT_GOTHIC_ARCHES.gaTracery);
+  const wZ = Math.max(EPSILON, params.gaRib ?? DEFAULT_GOTHIC_ARCHES.gaRib);
+  const wX = Math.max(EPSILON, params.gaCol ?? DEFAULT_GOTHIC_ARCHES.gaCol);
+  
+  const firm = Math.min(2.0, Math.max(1.0, params.gaSharp ?? DEFAULT_GOTHIC_ARCHES.gaSharp));
+  
+  const topStart = sat(params.gaTopStart ?? DEFAULT_GOTHIC_ARCHES.gaTopStart);
+  const recess = sat(params.gaRecess ?? DEFAULT_GOTHIC_ARCHES.gaRecess) * 0.6;
 
-  // Normalized height (pre-compute)
   const t = sat(z / Math.max(EPSILON, H));
 
-  // Pre-compute height-invariant values
-  const wGate = 2.0 * wZ;
-  const wT = 0.45 * wX;
-  const fade = sat((t - 0.02) / 0.08);
-  const bands = ridge(t - 0.0, bandW, sharp) + ridge(t - 1.0, bandW, sharp);
+  // Pre-compute height-dependent values
+  const blendW = Math.max(0.02, 1.5 * wZ);
+  const topMask = smoothstep(topStart - blendW, topStart + blendW, t);
+  const botMask = 1 - topMask;
+
+  const archApex = Math.min(z0 + zh, topStart - 0.6 * wZ);
+  const archH = Math.max(EPSILON, archApex - z0);
+  const gateW = 2.0 * wZ;
+  const wT = 0.75 * wX;
+  const rows = 1.0 + 2.0 * topAmt;
+  const wL = Math.max(0.08, 1.8 * wZ);
+  const midBand = ridgePlateau(t - topStart, 2.2 * wZ, firm);
+  const v = sat((t - topStart) / Math.max(EPSILON, 1 - topStart));
   const invP = 1 / p;
 
   for (let i = 0; i < n; i++) {
     const theta = thetas[i];
     
-    // Bay coordinate without seams
-    const a = theta * counts;
-    const xSigned = Math.cos(0.5 * a);
+    // Robust bay coordinate
+    const u = (theta * N) / TAU;
+    const f = u - Math.floor(u);
+    const xSigned = 2 * f - 1;
     const xAbs = Math.abs(xSigned);
-    const xAbs2 = Math.abs(Math.sin(0.5 * a));
-    const x01 = sat(0.5 * (xSigned + 1.0));
+    const x01 = f;
 
-    // Pointed arch curve (superellipse)
+    // LOWER TIER
     const archY = Math.pow(Math.max(0, 1 - Math.pow(xAbs, p)), invP);
-    const archY2 = Math.pow(Math.max(0, 1 - Math.pow(xAbs2, p)), invP);
+    const archZ = z0 + archH * archY;
+    const gate = sat((t - z0) / gateW) * sat((archZ - t) / gateW);
 
-    const archZ = z0 + zh * archY;
-    const archZ2 = z0 + zh * archY2;
+    const ribArch = ridgePlateau(t - archZ, wZ, firm);
+    const colEdge = ridgePlateau(1 - xAbs, wX, firm) * gate;
+    const mullion = ridgePlateau(xAbs, 0.65 * wX, firm) * gate;
 
-    // Ogive ribs (two sets)
-    const rib1 = ridge(t - archZ, wZ, sharp);
-    const rib2 = ridge(t - archZ2, wZ, sharp);
-    const rib = rib1 + overlap * rib2;
-
-    // Columns gated between z0 and archZ
-    const gate = sat((t - z0) / wGate) * sat((archZ - t) / wGate);
-    const colEdge = Math.pow(Math.max(0, 1 - (1 - xAbs) / wX), sharp);
-    const column = colEdge * gate;
-    const mull = Math.pow(Math.max(0, 1 - xAbs / (0.6 * wX)), sharp) * gate;
-
-    // In-bay X-tracery
     const denom = Math.max(EPSILON, archZ - z0);
     const s = sat((t - z0) / denom);
-    const diag = gate * (
-      ridge(s - x01, wT, sharp) +
-      ridge(s - (1 - x01), wT, sharp)
+    const xDiag = gate * uni(
+      ridgePlateau(s - x01, wT, firm),
+      ridgePlateau(s - (1 - x01), wT, firm)
     );
 
-    const pattern = fade * (rib + 0.65 * column + 0.35 * mull + tracery * diag) + band * bands;
+    // Combine with saturating union
+    let lower = 0.0;
+    lower = uni(lower, ribArch);
+    lower = uni(lower, 0.90 * colEdge);
+    lower = uni(lower, 0.45 * mullion);
+    lower = uni(lower, xAmt * 0.65 * xDiag);
+
+    const panel = gate * Math.pow(Math.max(0, 1 - xAbs / 0.95), 2.0);
+    lower = Math.max(0, lower - recess * panel * (1 - lower));
+    lower = uni(lower, 0.55 * midBand);
+
+    // UPPER TIER
+    const phi1 = PI * (rows * v - x01);
+    const phi2 = PI * (rows * v + x01);
+
+    let lattice = 0.0;
+    lattice = uni(lattice, ridgeSinPlateau(phi1, wL, firm));
+    lattice = uni(lattice, ridgeSinPlateau(phi2, wL, firm));
+
+    const cell = Math.pow(Math.abs(Math.sin(phi1)) * Math.abs(Math.sin(phi2)), 2.0);
+    lattice = uni(lattice, 0.25 * cell);
+
+    let upper = topAmt * lattice;
+    upper = uni(upper, 0.60 * midBand);
+
+    const pattern = sat(botMask * lower + topMask * upper);
     result[i] = r0 + amp * pattern;
   }
 
