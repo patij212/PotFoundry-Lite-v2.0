@@ -1,0 +1,256 @@
+Yes — you can push this *much* further while staying “height-map / watertight” and still meeting the **two-brain constraint**.
+
+Below is an upgraded **Gothic Arches v2** that improves on the simple rib idea in 3 big ways (still pure + standard math):
+
+1. **No seam artifacts**: avoids `fract()` tiling by using a trig-based per-panel coordinate (periodic + smooth).
+2. **Real “tracery”**: adds a **second, half-offset ogive** set → creates natural diamond intersections near the top like cathedral window tracery.
+3. **Optional in-panel X-tracery**: diagonal ribs inside each arch bay (still watertight, just relief).
+
+---
+
+## Parameter mapping (StyleParamBlock indices)
+
+Use these in both engines **exactly**:
+
+| Index | Name (TS `opts`) | Meaning                                      | Suggested range |
+| ----: | ---------------- | -------------------------------------------- | --------------- |
+|     0 | `gaCounts`       | arches around circumference (integer)        | 6–20            |
+|     1 | `gaAmp`          | relief amplitude (mm)                        | 0–4             |
+|     2 | `gaZ0`           | spring line (start height), normalized       | 0.05–0.30       |
+|     3 | `gaZH`           | arch height fraction of remaining height     | 0.4–1.0         |
+|     4 | `gaPointiness`   | superellipse exponent `p` (lower = pointier) | 0.6–2.0         |
+|     5 | `gaRibWidth`     | rib thickness in height-space (normalized)   | 0.01–0.06       |
+|     6 | `gaColWidth`     | column width in bay-space (0..1)             | 0.08–0.25       |
+|     7 | `gaSharpness`    | ridge sharpness exponent                     | 2–8             |
+|     8 | `gaOverlap`      | weight of half-offset ogive set              | 0–1             |
+|     9 | `gaBand`         | base/rim band strength                       | 0–1             |
+|    10 | `gaBandWidth`    | base/rim band width (normalized)             | 0.02–0.12       |
+|    11 | `gaTracery`      | in-bay diagonal “X” tracery strength         | 0–1             |
+
+> Notes
+>
+> * `gaZH` is automatically clamped to `(1 - gaZ0)` in code.
+> * `gaAmp` is **additive mm**: final radius = `r0 + gaAmp * (pattern)`.
+
+---
+
+# TypeScript (CPU / `src/geometry/styles.ts`)
+
+```ts
+// Gothic Arches v2 (watertight relief) — CPU/export math
+// Inputs: theta (rad), z (mm), r0 (mm), H (mm), opts (style params)
+export function rOuterGothicArches(
+  theta: number,
+  z: number,
+  r0: number,
+  H: number,
+  opts: {
+    gaCounts: number;
+    gaAmp: number;
+    gaZ0: number;
+    gaZH: number;
+    gaPointiness: number;
+    gaRibWidth: number;
+    gaColWidth: number;
+    gaSharpness: number;
+    gaOverlap: number;
+    gaBand: number;
+    gaBandWidth: number;
+    gaTracery: number;
+  }
+): number {
+  // Keep constants explicit (avoid Math.PI mismatches vs shader constants)
+  const TAU = 6.283185307179586;
+  const EPS = 1e-6;
+
+  const sat = (x: number) => Math.min(1, Math.max(0, x));
+  const ridge = (d: number, wIn: number, sharp: number) => {
+    const w = Math.max(EPS, wIn);
+    return Math.pow(Math.max(0, 1 - Math.abs(d) / w), sharp);
+  };
+
+  // --- Parameters (must match WGSL indexing/meaning)
+  const counts = Math.max(1, Math.floor(opts.gaCounts + 0.5));
+  const amp = opts.gaAmp;
+
+  const z0 = sat(opts.gaZ0);
+  const zh = sat(opts.gaZH) * (1 - z0);
+
+  const p = Math.max(0.25, opts.gaPointiness);
+  const wZ = Math.max(EPS, opts.gaRibWidth);
+  const wX = Math.max(EPS, opts.gaColWidth);
+  const sharp = Math.max(1, opts.gaSharpness);
+
+  const overlap = sat(opts.gaOverlap);
+  const band = sat(opts.gaBand);
+  const bandW = Math.max(EPS, opts.gaBandWidth);
+
+  const tracery = sat(opts.gaTracery);
+
+  // Normalized height
+  const t = sat(z / Math.max(EPS, H));
+
+  // --- Bay coordinate without seams (periodic + smooth)
+  // a advances 2π per bay
+  const a = theta * counts;
+
+  // xSigned in [-1,1] across a bay; xAbs is 0 at center, 1 at edges
+  const xSigned = Math.cos(0.5 * a);
+  const xAbs = Math.abs(xSigned);
+
+  // Half-bay offset (for crossing ogives / tracery diamonds)
+  const xAbs2 = Math.abs(Math.sin(0.5 * a));
+
+  // Bay coordinate in [0,1] (used for diagonal tracery)
+  const x01 = sat(0.5 * (xSigned + 1.0));
+
+  // --- Pointed arch curve (superellipse)
+  const archY = Math.pow(Math.max(0, 1 - Math.pow(xAbs, p)), 1 / p);
+  const archY2 = Math.pow(Math.max(0, 1 - Math.pow(xAbs2, p)), 1 / p);
+
+  const archZ = z0 + zh * archY;
+  const archZ2 = z0 + zh * archY2;
+
+  // --- Ogive ribs (two sets -> diamond intersections)
+  const rib1 = ridge(t - archZ, wZ, sharp);
+  const rib2 = ridge(t - archZ2, wZ, sharp);
+  const rib = rib1 + overlap * rib2;
+
+  // --- Columns gated between z0 and archZ
+  const wGate = 2.0 * wZ;
+  const gate = sat((t - z0) / wGate) * sat((archZ - t) / wGate);
+
+  // Strong near bay edges (xAbs ≈ 1)
+  const colEdge = Math.pow(Math.max(0, 1 - (1 - xAbs) / wX), sharp);
+  const column = colEdge * gate;
+
+  // Center mullion (xAbs ≈ 0)
+  const mull = Math.pow(Math.max(0, 1 - xAbs / (0.6 * wX)), sharp) * gate;
+
+  // --- Optional in-bay "X" tracery inside the arch panel
+  // Map height within bay: s=0 at spring, s=1 at apex (per-theta)
+  const denom = Math.max(EPS, archZ - z0);
+  const s = sat((t - z0) / denom);
+
+  // Tracery width derived from column width (no extra params needed)
+  const wT = 0.45 * wX;
+  const diag = gate * (
+    ridge(s - x01, wT, sharp) +
+    ridge(s - (1 - x01), wT, sharp)
+  );
+
+  // --- Base + rim bands (plinth + cornice)
+  const bands = ridge(t - 0.0, bandW, sharp) + ridge(t - 1.0, bandW, sharp);
+
+  // Gentle fade-in above the base
+  const fade = sat((t - 0.02) / 0.08);
+
+  const pattern = fade * (rib + 0.65 * column + 0.35 * mull + tracery * diag) + band * bands;
+  return r0 + amp * pattern;
+}
+```
+
+---
+
+# WGSL (GPU / `src/assets/pot_preview.wgsl`)
+
+```wgsl
+// Gothic Arches v2 (watertight relief) — GPU/preview math
+// Must match TypeScript exactly (same constants + same ops order).
+
+const TAU: f32 = 6.283185307179586;
+const EPS: f32 = 1e-6;
+
+fn sat(x: f32) -> f32 {
+  return min(1.0, max(0.0, x));
+}
+
+fn ridge(d: f32, w_in: f32, sharp: f32) -> f32 {
+  let w = max(EPS, w_in);
+  return pow(max(0.0, 1.0 - abs(d) / w), sharp);
+}
+
+// style_param(i) is assumed to exist in your shader code and return f32
+// style_param(0u)=gaCounts, 1u=gaAmp, ..., 11u=gaTracery
+fn gothic_arches_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
+  // --- Parameters (must match TS mapping)
+  let counts  = max(1.0, floor(style_param(0u) + 0.5));
+  let amp     = style_param(1u);
+
+  let z0      = sat(style_param(2u));
+  let zh      = sat(style_param(3u)) * (1.0 - z0);
+
+  let p       = max(0.25, style_param(4u));
+  let wZ      = max(EPS, style_param(5u));
+  let wX      = max(EPS, style_param(6u));
+  let sharp   = max(1.0, style_param(7u));
+
+  let overlap = sat(style_param(8u));
+  let band    = sat(style_param(9u));
+  let bandW   = max(EPS, style_param(10u));
+
+  let tracery = sat(style_param(11u));
+
+  let t = sat(t_in);
+
+  // --- Bay coordinate without seams
+  let a = theta * counts;
+
+  let xSigned = cos(0.5 * a);
+  let xAbs    = abs(xSigned);
+  let xAbs2   = abs(sin(0.5 * a));
+  let x01     = sat(0.5 * (xSigned + 1.0));
+
+  // --- Pointed arch curve (superellipse)
+  let archY  = pow(max(0.0, 1.0 - pow(xAbs,  p)), 1.0 / p);
+  let archY2 = pow(max(0.0, 1.0 - pow(xAbs2, p)), 1.0 / p);
+
+  let archZ  = z0 + zh * archY;
+  let archZ2 = z0 + zh * archY2;
+
+  // --- Ogive ribs (two sets)
+  let rib1 = ridge(t - archZ,  wZ, sharp);
+  let rib2 = ridge(t - archZ2, wZ, sharp);
+  let rib  = rib1 + overlap * rib2;
+
+  // --- Columns gated between z0 and archZ
+  let wGate = 2.0 * wZ;
+  let gate  = sat((t - z0) / wGate) * sat((archZ - t) / wGate);
+
+  let colEdge = pow(max(0.0, 1.0 - (1.0 - xAbs) / wX), sharp);
+  let column  = colEdge * gate;
+
+  let mull = pow(max(0.0, 1.0 - xAbs / (0.6 * wX)), sharp) * gate;
+
+  // --- Optional in-bay X-tracery
+  let denom = max(EPS, archZ - z0);
+  let s     = sat((t - z0) / denom);
+  let wT    = 0.45 * wX;
+
+  let diag = gate * (
+    ridge(s - x01, wT, sharp) +
+    ridge(s - (1.0 - x01), wT, sharp)
+  );
+
+  // --- Base + rim bands
+  let bands = ridge(t - 0.0, bandW, sharp) + ridge(t - 1.0, bandW, sharp);
+
+  let fade = sat((t - 0.02) / 0.08);
+
+  let pattern = fade * (rib + 0.65 * column + 0.35 * mull + tracery * diag) + band * bands;
+  return r0 + amp * pattern;
+}
+```
+
+---
+
+## Quick “enhance further” ideas (still within your rules)
+
+If you want a v3 later, these are the highest-value upgrades that still keep it watertight + pure:
+
+* **Arch taxonomy toggle** (Lancet / Equilateral / Depressed) by mapping `(p, zh)` presets behind a single param.
+* **Buttress fluting**: add a small vertical sine ripple *only inside column mask*.
+* **Rim cornice profile**: make the top band stepped (Art-Deco-ish) using 2–3 stacked ridges.
+* **Automatic print-safety**: clamp `amp` by `wallThickness` (if you have access) so relief never exceeds a safe fraction.
+
+If you paste your current `gothic_arches_radius()` and `rOuterGothicArches()` stubs (or just their parameter list), I can tailor the snippets to match your exact naming and wiring with minimal diffs.

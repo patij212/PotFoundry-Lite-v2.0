@@ -6,18 +6,7 @@
  * potfoundry/geometry.py.
  */
 
-import { TAU, EPSILON, StyleOptions } from './types';
-
-// ============================================================================
-// Logistic/Sigmoid Helper
-// ============================================================================
-
-/**
- * Sigmoid function for smooth transitions
- */
-function sigmoid(x: number, k: number, c: number): number {
-  return 1.0 / (1.0 + Math.exp(-k * (x - c)));
-}
+import { TAU, StyleOptions } from './types';
 
 // ============================================================================
 // Base Radius Profile
@@ -54,22 +43,16 @@ export function baseRadius(
   const t = Math.max(0.0, Math.min(1.0, z / H));
 
   // Flare center warp using logistic sigmoid remap
-  const c = opts.flareCenter ?? 0.5;
-  const k = opts.flareSharp ?? 6.0;
-
-  const s0 = sigmoid(0.0, k, c);
-  const s1 = sigmoid(1.0, k, c);
-  const tw = (sigmoid(t, k, c) - s0) / (s1 - s0 + EPSILON);
-
-  // Base radius with flare exponent
-  let r = Rb + (Rt - Rb) * Math.pow(tw, expn);
+  // GPU UPDATE: The current shader uses simple power law, not sigmoid.
+  // Matching GPU logic: r = Rb + (Rt - Rb) * pow(t, expn)
+  let r = Rb + (Rt - Rb) * Math.pow(t, expn);
 
   // Optional mid-height bell modification
   const bellAmp = opts.bellAmp ?? 0.0;
   if (bellAmp !== 0.0) {
     const mu = opts.bellCenter ?? 0.5;
     const width = Math.max(0.05, opts.bellWidth ?? 0.22);
-    const sigma = Math.max(1e-3, width * 0.5);
+    const sigma = Math.max(1e-3, width); // Match GPU: sigma = width (was width * 0.5)
     const g = Math.exp(-0.5 * Math.pow((t - mu) / sigma, 2));
     r *= 1.0 + bellAmp * g;
   }
@@ -131,7 +114,9 @@ export function spinTwistRadians(
   }
 
   const t = Math.max(0.0, Math.min(1.0, z / H));
-  return (phaseDeg * Math.PI / 180.0) + (turns * TAU) * Math.pow(t, curve);
+  // Calculate the twist angle (in radians) at height z.
+  // Negated to match WebGPU preview direction
+  return -((phaseDeg * Math.PI / 180.0) + (turns * TAU) * Math.pow(t, curve));
 }
 
 // ============================================================================
@@ -165,22 +150,16 @@ export function baseRadiusArray(
     return result;
   }
 
-  const c = opts.flareCenter ?? 0.5;
-  const k = opts.flareSharp ?? 6.0;
   const bellAmp = opts.bellAmp ?? 0.0;
   const mu = opts.bellCenter ?? 0.5;
   const width = Math.max(0.05, opts.bellWidth ?? 0.22);
-  const sigma = Math.max(1e-3, width * 0.5);
-
-  const s0 = sigmoid(0.0, k, c);
-  const s1 = sigmoid(1.0, k, c);
-  const denom = s1 - s0 + EPSILON;
+  const sigma = Math.max(1e-3, width); // Match GPU: sigma = width
 
   for (let i = 0; i < n; i++) {
     const z = zArray[i];
     const t = Math.max(0.0, Math.min(1.0, z / H));
-    const tw = (sigmoid(t, k, c) - s0) / denom;
-    let r = Rb + (Rt - Rb) * Math.pow(tw, expn);
+    // GPU match: simple power law
+    let r = Rb + (Rt - Rb) * Math.pow(t, expn);
 
     if (bellAmp !== 0.0) {
       const g = Math.exp(-0.5 * Math.pow((t - mu) / sigma, 2));
@@ -228,7 +207,8 @@ export function spinTwistArray(
   for (let i = 0; i < n; i++) {
     const z = zArray[i];
     const t = Math.max(0.0, Math.min(1.0, z / H));
-    result[i] = phaseRad + (turns * TAU) * Math.pow(t, curve);
+    // Negated to match WebGPU preview direction
+    result[i] = -((phaseRad) + (turns * TAU) * Math.pow(t, curve));
   }
 
   return result;

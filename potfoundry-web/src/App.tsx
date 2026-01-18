@@ -10,7 +10,7 @@ import { createRenderer, RendererController } from './renderers';
 import { WebGPUController } from './webgpu_core';
 import { AppUI } from './ui';
 import { useRendererBridge, sendFullStoreToController, usePerformanceTracker } from './hooks';
-import { useUIActions } from './state';
+import { useUIActions, useAppStore } from './state';
 import { ControllerProvider, LibraryProvider } from './context';
 import { AuthProvider } from './context/AuthContext';
 import { UserMenu } from './ui/auth';
@@ -43,6 +43,13 @@ const DEFAULT_PARAMS = {
 // App Component
 // ============================================================================
 
+// Define style name to ID mapping matching registry
+import { STYLE_IDS } from './styles/registry';
+
+// Re-export or alias for local usage compatibility
+const STYLE_NAME_TO_ID = STYLE_IDS;
+
+
 const App: React.FC = () => {
     // Refs
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -51,10 +58,13 @@ const App: React.FC = () => {
     const emitRef = useRef<(e: unknown) => void>(() => { });
 
     // State
-    const [, setIsReady] = useState(false);
+    const [isReady, setIsReady] = useState(false);
     const [controllerReady, setControllerReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isCompatibilityMode, setIsCompatibilityMode] = useState(false);
+    // Force renderer remount on crash
+    const [remountKey, setRemountKey] = useState(0);
+    const [forcedRenderer, setForcedRenderer] = useState<'webgl' | 'webgpu' | undefined>(undefined);
 
     // Refs for callbacks
     const localParamsLockUntilRef = useRef<number>(0);
@@ -76,6 +86,23 @@ const App: React.FC = () => {
 
         if (eventType === 'ready') {
             setIsReady(true);
+            return;
+        }
+
+        // Handle runtime device loss (crash)
+        if (eventType === 'device-lost') {
+            const reason = (event?.payload as any)?.reason || 'Unknown driver crash';
+            console.warn('[PotFoundry] Runtime device loss detected:', reason);
+
+            // If not already in compatibility mode, force fallback to WebGL
+            if (!isCompatibilityMode && forcedRenderer !== 'webgl') {
+                console.log('[PotFoundry] Triggering emergency fallback to WebGL...');
+                setForcedRenderer('webgl');
+                setRemountKey(k => k + 1);
+                // Badge will be shown when WebGL renderer initializes and calls onFallback? 
+                // Or we can set it now.
+                setIsCompatibilityMode(true);
+            }
             return;
         }
 
@@ -136,42 +163,52 @@ const App: React.FC = () => {
             try {
                 setGeneratingRef.current(true);
 
-                // Pre-mount WebGPU diagnostic check
-                const diagnostics: string[] = [];
-                diagnostics.push(`navigator.gpu exists: ${!!navigator.gpu}`);
+                // DISABLED: Pre-mount WebGPU diagnostic checks crash Windows Dawn backends.
+                // The initial requestAdapter() destabilizes the GPU, causing subsequent operations to fail.
+                // const diagnostics: string[] = [];
+                // diagnostics.push(`navigator.gpu exists: ${!!navigator.gpu}`);
+                // if (navigator.gpu) {
+                //     diagnostics.push('Attempting requestAdapter()...');
+                //     try {
+                //         const testAdapter = await navigator.gpu.requestAdapter();
+                //         diagnostics.push(`requestAdapter() result: ${testAdapter ? 'SUCCESS' : 'null'}`);
+                //         if (testAdapter) {
+                //             const info = await (testAdapter as any).requestAdapterInfo?.();
+                //             diagnostics.push(`Adapter vendor: ${info?.vendor || 'unknown'}`);
+                //             diagnostics.push(`Adapter device: ${info?.device || 'unknown'}`);
+                //         }
+                //     } catch (adapterErr) {
+                //         diagnostics.push(`requestAdapter() error: ${adapterErr}`);
+                //     }
+                // }
+                // console.log('[Renderer Diagnostics]', diagnostics);
 
-                if (navigator.gpu) {
-                    diagnostics.push('Attempting requestAdapter()...');
-                    try {
-                        const testAdapter = await navigator.gpu.requestAdapter();
-                        diagnostics.push(`requestAdapter() result: ${testAdapter ? 'SUCCESS' : 'null'}`);
-                        if (testAdapter) {
-                            const info = await (testAdapter as any).requestAdapterInfo?.();
-                            diagnostics.push(`Adapter vendor: ${info?.vendor || 'unknown'}`);
-                            diagnostics.push(`Adapter device: ${info?.device || 'unknown'}`);
-                        }
-                    } catch (adapterErr) {
-                        diagnostics.push(`requestAdapter() error: ${adapterErr}`);
-                    }
-
-                    // Try with compatibility mode
-                    try {
-                        const compatAdapter = await navigator.gpu.requestAdapter({ compatibilityMode: true } as GPURequestAdapterOptions);
-                        diagnostics.push(`requestAdapter(compatibilityMode) result: ${compatAdapter ? 'SUCCESS' : 'null'}`);
-                    } catch (compatErr) {
-                        diagnostics.push(`requestAdapter(compatibilityMode) error: ${compatErr}`);
-                    }
-                }
-
-                console.log('[Renderer Diagnostics]', diagnostics);
 
                 // Use the renderer factory which automatically falls back to WebGL
+                // Merge persisted state into initialParams to prevent double-compilation on startup
+                const storeState = useAppStore.getState();
+                const currentStyleName = storeState.style.name;
+                // @ts-ignore - indexing by string/StyleName into StyleId record
+                const currentStyleId = STYLE_NAME_TO_ID[currentStyleName] ?? 0;
+                console.log(`[App] Mount resolving style: '${currentStyleName}' -> ${currentStyleId}`);
+                const styleOpts = storeState.style.opts || {};
+
+                const initialParams = {
+                    ...DEFAULT_PARAMS,
+                    ...storeState.geometry,
+                    style: currentStyleId,
+                    ...styleOpts,
+                    // Ensure snake_case keys are present if webgpu_core prefers them, 
+                    // though it handles both.
+                };
+
                 const controller = await createRenderer({
                     canvas,
                     canvasId: 'pf-main-canvas',
-                    initialParams: DEFAULT_PARAMS,
+                    initialParams,
                     emit: (e: unknown) => emitRef.current(e),
                     debugMode: false,
+                    forceRenderer: forcedRenderer, // Use forced renderer if set (e.g. after crash)
                     onAutoRotateChange: () => { },
                     onFallback: (reason) => {
                         console.log('[Renderer] Using fallback mode:', reason);
@@ -189,7 +226,7 @@ const App: React.FC = () => {
                     restoreConsole();
                     // Both WebGPU and WebGL failed
                     const logOutput = logs.length > 0 ? `\n\nConsole Logs:\n${logs.join('\n')}` : '';
-                    setError(`Unable to initialize 3D renderer.\n\nNeither WebGPU nor WebGL could be initialized on your device.\n\nDiagnostics:\n${diagnostics.join('\n')}${logOutput}`);
+                    setError(`Unable to initialize 3D renderer.\n\nNeither WebGPU nor WebGL could be initialized on your device.${logOutput}`);
                     return;
                 }
 
@@ -219,7 +256,7 @@ const App: React.FC = () => {
             controllerRef.current?.dispose();
             controllerRef.current = null;
         };
-    }, []);
+    }, [remountKey, forcedRenderer]);
 
     // Intercept F11 to use our fullscreen toggle instead of browser's default
     // This ensures F11 and the fullscreen button behave consistently
@@ -329,6 +366,7 @@ Protocol: ${protocol}`}
                     <div
                         className="pf-wgpu-preview pf-wgpu-preview--fullscreen"
                         data-embedded-ui="1"
+                        data-ready={isReady}
                     >
                         {/* Canvas Layer */}
                         <canvas

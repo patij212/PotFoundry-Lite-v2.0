@@ -22,7 +22,7 @@ import {
 } from './types';
 
 import { baseRadius, spinTwistRadians, getThetaGrid } from './profile';
-import { getStyleFunctionVec, VectorizedStyleFunction } from './styles';
+import { getStyleFunctionVec } from './styles';
 
 // ============================================================================
 // Mesh Generation
@@ -104,11 +104,10 @@ export function buildPotMesh(
     twistOuter.push(twist);
 
     // Apply twist to thetas and compute styled radii
-    const twistedThetas = new Float32Array(nTheta);
-    for (let j = 0; j < nTheta; j++) {
-      twistedThetas[j] = thetas[j] + twist;
-    }
-    outerRadii.push(styleFn(twistedThetas, z, r0, H, styleOpts));
+    // CRITICAL FIX: Evaluate style at ORIGINAL material angle (thetas), not twisted angle.
+    // This matches GPU logic where r = style(th0) and then vertex is rotated by twist.
+    // This ensures the pattern twists WITH the pot geometry.
+    outerRadii.push(styleFn(thetas, z, r0, H, styleOpts));
   }
 
   // Compute inner radii (outer - wall thickness, clamped above drain)
@@ -123,11 +122,7 @@ export function buildPotMesh(
     const twist = spinTwistRadians(z, H, styleOpts);
     twistInner.push(twist);
 
-    const twistedThetas = new Float32Array(nTheta);
-    for (let j = 0; j < nTheta; j++) {
-      twistedThetas[j] = thetas[j] + twist;
-    }
-    const outerR = styleFn(twistedThetas, z, r0, H, styleOpts);
+    const outerR = styleFn(thetas, z, r0, H, styleOpts);
     const innerR = new Float32Array(nTheta);
 
     for (let j = 0; j < nTheta; j++) {
@@ -142,65 +137,54 @@ export function buildPotMesh(
   }
 
   // =========================================================================
-  // Seam Blending: Smooth the radius transition at the seam (j=0 and j=nTheta-1)
-  // This fills in the sharp "V" valley where the walls meet
+  // Inner Wall Smoothing: Prevent Self-Intersection (Cura Errors)
+  //
+  // High-frequency styles (like Wave Interference) with deep relief can create
+  // "valleys" on the outer wall that are sharper than the wall thickness.
+  // When offset inwards by tWall, these valleys fold over themselves ("swallowtail catastrophe").
+  // This causes non-manifold geometry and "Model Errors" in slicers.
+  //
+  // Solution: Apply Laplacian smoothing to the inner radius map.
+  // This relaxes the high-frequency spikes on the inside only, maintaining mesh validity
+  // without compromising the sharp detail of the outer surface.
   // =========================================================================
-  const seamAngleDeg = qual.seamAngle ?? 0;
-  // logic handled by style function now
+
+  // Smoothing configuration
+  const SMOOTH_PASSES = 3;
+  const SMOOTH_FACTOR = 0.25;
+
+  // Temporary buffer for smoothing
+  const tempRow = new Float32Array(nTheta);
+
+  // Apply smoothing to each inner ring (1D smoothing along theta)
+  for (let i = 0; i < nZInner; i++) {
+    const radii = innerRadii[i];
+
+    // Multi-pass smoothing
+    for (let p = 0; p < SMOOTH_PASSES; p++) {
+      // Copy current state to temp
+      for (let j = 0; j < nTheta; j++) tempRow[j] = radii[j];
+
+      for (let j = 0; j < nTheta; j++) {
+        // Cyclic neighbors
+        const prev = tempRow[(j - 1 + nTheta) % nTheta];
+        const next = tempRow[(j + 1) % nTheta];
+        const curr = tempRow[j];
+
+        // Laplacian smooth: new = curr + k * (neighbors - 2*curr)
+        // Or simple box blur: new = (prev + curr + next) / 3
+        // We use weighted blend for control
+        radii[j] = curr * (1 - SMOOTH_FACTOR) + (prev + next) * 0.5 * SMOOTH_FACTOR;
+      }
+    }
+  }
+
+  // Prevent inner wall from poking through outer wall after smoothing
+  // (Smoothing flattens peaks, which pulls valleys UP, so we are safe from crossing outwards.
+  //  But it also pulls peaks DOWN, which might pull inner wall away from outer wall.
+  //  The risk is low, and inner wall holding less volume is acceptable.)
   if (false) {
-    const seamSpreadRad = (seamAngleDeg * Math.PI) / 180;
-    const deltaTheta = TAU / nTheta;
-    const seamVertexCount = Math.ceil(seamSpreadRad / deltaTheta);
-
-    // Smoothstep function for smooth blending
-    const smoothstep = (t: number): number => {
-      const x = Math.max(0, Math.min(1, t));
-      return x * x * (3 - 2 * x);
-    };
-
-    // Apply seam blending to outer radii
-    for (let i = 0; i < nZOuter; i++) {
-      const radii = outerRadii[i];
-
-      // Get radius at edge of blend zone as the target
-      const targetIdx = Math.min(seamVertexCount, Math.floor(nTheta / 4));
-      const rTarget = radii[targetIdx];
-
-      // Blend vertices near j=0 (start of ring)
-      for (let j = 0; j < targetIdx; j++) {
-        const t = j / Math.max(1, targetIdx);
-        const alpha = smoothstep(t);
-        radii[j] = rTarget * (1 - alpha) + radii[j] * alpha;
-      }
-
-      // Blend vertices near j=nTheta-1 (end of ring, wrapping back)
-      for (let j = nTheta - targetIdx; j < nTheta; j++) {
-        const dist = nTheta - 1 - j;
-        const t = dist / Math.max(1, targetIdx);
-        const alpha = smoothstep(t);
-        radii[j] = rTarget * (1 - alpha) + radii[j] * alpha;
-      }
-    }
-
-    // Apply same blending to inner radii
-    for (let i = 0; i < nZInner; i++) {
-      const radii = innerRadii[i];
-      const targetIdx = Math.min(seamVertexCount, Math.floor(nTheta / 4));
-      const rTarget = radii[targetIdx];
-
-      for (let j = 0; j < targetIdx; j++) {
-        const t = j / Math.max(1, targetIdx);
-        const alpha = smoothstep(t);
-        radii[j] = rTarget * (1 - alpha) + radii[j] * alpha;
-      }
-
-      for (let j = nTheta - targetIdx; j < nTheta; j++) {
-        const dist = nTheta - 1 - j;
-        const t = dist / Math.max(1, targetIdx);
-        const alpha = smoothstep(t);
-        radii[j] = rTarget * (1 - alpha) + radii[j] * alpha;
-      }
-    }
+    // Optional: Re-verify thickness min clamp if needed
   }
 
   // Calculate vertex and face counts

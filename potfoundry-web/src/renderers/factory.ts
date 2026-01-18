@@ -110,6 +110,8 @@ export async function createRenderer(
     // Usage: ?renderer=webgl or ?renderer=webgpu
     const urlParams = new URLSearchParams(window.location.search);
     const urlRenderer = urlParams.get('renderer');
+
+    console.log(`[Renderer] URL search: "${window.location.search}", urlRenderer: "${urlRenderer}"`);
     if (urlRenderer === 'webgl' || urlRenderer === 'webgpu') {
         console.log(`[Renderer] URL parameter override: ${urlRenderer}`);
     }
@@ -117,6 +119,7 @@ export async function createRenderer(
     // Check for user's saved renderer preference from Settings
     const savedPref = getSavedRendererPreference();
     const effectiveForce = forceRenderer ?? urlRenderer ?? savedPref;
+    console.log(`[Renderer] forceRenderer=${forceRenderer}, urlRenderer=${urlRenderer}, savedPref=${savedPref}, effectiveForce=${effectiveForce}`);
 
     // === Force specific renderer (from API, URL, or user preference) ===
     if (effectiveForce === 'webgl') {

@@ -12,7 +12,6 @@ import {
   downloadSTL,
   calculateMeshVolume,
   calculateMeshSurfaceArea,
-  getMeshBounds,
   estimateSTLSize,
   formatFileSize,
   StyleId,
@@ -99,31 +98,46 @@ export function useExport(): UseExportResult {
   const buildStyleOptions = useCallback((): StyleOptions => {
     const opts: StyleOptions = {};
 
-    // Add spin parameters
-    opts.spinTurns = 0; // Default, could be added to geometry state
-    opts.spinPhaseDeg = 0;
-    opts.spinCurveExp = 1.0;
+    // Add spin parameters from geometry state
+    opts.spinTurns = geometry.spinTurns;
+    opts.spinPhaseDeg = geometry.spinPhase;
+    opts.spinCurveExp = geometry.spinCurve;
 
-    // Add profile parameters
+    // Add profile parameters from geometry state
+    // Note: profile params like flareCenter might be available in styles but not currently in geometry state
+    // We use defaults for now if not in state, or map if available.
+    // Based on types.ts, GeometryParams has bellAmp/Center/Width but not flareCenter/Sharp.
+    opts.bellAmp = geometry.bellAmp;
+    opts.bellCenter = geometry.bellCenter;
+    opts.bellWidth = geometry.bellWidth;
+
+    // Use defaults for non-state profile params
     opts.flareCenter = 0.5;
     opts.flareSharp = 6.0;
-    opts.bellAmp = 0;
-    opts.bellCenter = 0.5;
-    opts.bellWidth = 0.22;
 
     // Add style-specific parameters from current style state
     const styleOpts = style.opts;
     if (styleOpts) {
-      // Copy all style parameters to options
+      // Copy all style parameters to options, converting snake_case to camelCase
+      // The geometry functions expect camelCase (e.g. wiFeatureCount), but state has snake_case (wi_feature_count)
+      const toCamel = (s: string) => {
+        return s.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+      };
+
       Object.entries(styleOpts).forEach(([key, value]) => {
         if (typeof value === 'number') {
           opts[key] = value;
+          // Also set the camelCase version
+          const camelKey = toCamel(key);
+          if (camelKey !== key) {
+            opts[camelKey] = value;
+          }
         }
       });
     }
 
     return opts;
-  }, [style]);
+  }, [style, geometry]);
 
   /**
    * Generate mesh from current parameters
@@ -161,14 +175,32 @@ export function useExport(): UseExportResult {
         FourierBloom: 'FourierBloom',
         SpiralRidges: 'SpiralRidges',
         SuperellipseMorph: 'SuperellipseMorph',
+        GothicArches: 'GothicArches',
+        WaveInterference: 'WaveInterference',
+        Crystalline: 'Crystalline',
+        ArtDeco: 'ArtDeco',
+        DragonScales: 'DragonScales',
+        BambooSegments: 'BambooSegments',
+        RippleInterference: 'RippleInterference',
+        LowPolyFacet: 'LowPolyFacet',
         // Legacy snake_case mappings
         superformula_blossom: 'SuperformulaBlossom',
         fourier_bloom: 'FourierBloom',
         spiral_ridges: 'SpiralRidges',
         superellipse_morph: 'SuperellipseMorph',
         harmonic_ripple: 'HarmonicRipple',
+        gothic_arches: 'GothicArches',
+        wave_interference: 'WaveInterference',
+        crystalline: 'Crystalline',
+        art_deco: 'ArtDeco',
+        dragon_scales: 'DragonScales',
+        bamboo_segments: 'BambooSegments',
+        ripple_interference: 'RippleInterference',
       };
-      const styleId = styleIdMap[style.name] ?? 'SuperformulaBlossom';
+
+      // Try exact match, then legacy map, then name itself if it's a valid ID (as a fallback cast)
+      const mappedId = styleIdMap[style.name];
+      const styleId = mappedId ?? (style.name as StyleId);
 
       // Build style options
       const styleOpts = buildStyleOptions();
@@ -179,8 +211,46 @@ export function useExport(): UseExportResult {
         message: 'Computing vertices...',
       });
 
+      // Map state-specific mesh quality to geometry-expected format
+      // CRITICAL FIX: state uses export_n_theta, geometry expects nTheta
+      // CRITICAL FIX: state uses export_n_theta, geometry expects nTheta
+      const baseQuality = {
+        nTheta: mesh.export_n_theta,
+        nZ: mesh.export_n_z,
+        seamAngle: mesh.seamAngle,
+      };
+
+      // Auto-Quality Override:
+      // High-frequency styles (like Wave Interference with featureCount=3) need drastically higher resolution
+      // to avoid aliasing and "Model Errors" (self-intersection) in slicers.
+      // Nyquist limit: Freq 100 needs >200 samples. For smooth curvature, we need >1000 samples.
+      if (styleId === 'WaveInterference' || styleId === 'DragonScales') {
+        // Boost resolution if default is too low
+        if (baseQuality.nTheta < 1200) {
+          baseQuality.nTheta = 1200;
+        }
+        if (baseQuality.nZ < 600) {
+          baseQuality.nZ = 600;
+        }
+      }
+
+      // Safety Caps: RE-ENABLED at "Cura-Safe" Limits (User reported 1.6GB crashes)
+      // Limit to ~2500 segments.
+      // 2500 * 1250 * 2 = 6.25M triangles = ~312MB STL binary.
+      // This is the "Goldilocks" zone: Ultra-high detail, but won't crash 16GB RAM slicers.
+      if (baseQuality.nTheta > 2500) baseQuality.nTheta = 2500;
+      if (baseQuality.nZ > 2500) baseQuality.nZ = 2500;
+
+      // Aspect Ratio Enforcement
+      // Ensure nZ is sufficient relative to nTheta to avoid tall "sliver" triangles 
+      // which can become "bowtie" self-intersections when twisted.
+      const minZ = Math.floor(baseQuality.nTheta * 0.5);
+      if (baseQuality.nZ < minZ) {
+        baseQuality.nZ = minZ;
+      }
+
       // Generate mesh
-      const result = buildPotMesh(dimensions, quality, styleId, styleOpts);
+      const result = buildPotMesh(dimensions, baseQuality, styleId, styleOpts);
 
       setProgress({
         status: 'generating',

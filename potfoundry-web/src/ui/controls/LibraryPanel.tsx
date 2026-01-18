@@ -107,7 +107,6 @@ export const LibraryPanel: React.FC = () => {
   }
 
   const { state, actions } = library;
-
   return (
     <div className="pf-library-panel">
       {/* Search & Filter Bar */}

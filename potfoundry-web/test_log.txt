@@ -1,0 +1,13 @@
+
+> potfoundry-web@3.1.0 test
+> vitest run e2e/webgpu-init
+
+
+[1m[46m RUN [49m[22m [36mv4.0.17 [39m[90mC:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web[39m
+
+[31mNo test files found, exiting with code 1
+[39m
+[2mfilter: [22m[33me2e/webgpu-init[39m
+[2minclude: [22m[33msrc/**/*.test.{ts,tsx}[39m
+[2mexclude:  [22m[33m**/node_modules/**[2m, [22m**/.git/**[39m
+

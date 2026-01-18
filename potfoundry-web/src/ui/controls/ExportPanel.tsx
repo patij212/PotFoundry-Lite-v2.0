@@ -82,20 +82,22 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  const isDev = import.meta.env.DEV;
   const tierCheck = checkExportAllowed();
 
   // Determine if export is allowed (must be authenticated AND within tier limits)
-  const canExport = isAuthenticated && tierCheck.canExport;
+  // In DEV mode, bypass all restrictions.
+  const canExport = (isAuthenticated || isDev) && (tierCheck.canExport || isDev);
 
   const handleExport = useCallback(async () => {
-    // If not authenticated, show auth modal
-    if (!isAuthenticated) {
+    // If not authenticated, show auth modal (unless in dev mode)
+    if (!isAuthenticated && !isDev) {
       setShowAuthModal(true);
       return;
     }
 
-    // Check tier limits
-    if (!tierCheck.canExport) {
+    // Check tier limits (unless in dev mode)
+    if (!tierCheck.canExport && !isDev) {
       setShowPricingModal(true);
       return;
     }
@@ -116,8 +118,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   return (
     <div className="export-panel">
       <Section title="Export" icon={<CubeIcon />} defaultOpen>
-        {/* Auth Required Banner - Show when NOT signed in */}
-        {!isAuthenticated && (
+        {/* Auth Required Banner - Show when NOT signed in (and not in dev mode) */}
+        {!isAuthenticated && !isDev && (
           <div className="export-panel__auth-required">
             <LockIcon />
             <span>Sign in required to export</span>
@@ -160,6 +162,15 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
           </div>
         )}
 
+        {/* Dev Mode Banner */}
+        {isDev && !isAuthenticated && (
+          <div className="export-panel__tier-banner pro" style={{ background: '#333', borderColor: '#666' }}>
+            <span className="export-panel__pro-stats" style={{ color: '#aaa' }}>
+              <strong>DEV MODE</strong> • Authentication bypassed
+            </span>
+          </div>
+        )}
+
         {/* Free tier restrictions notice - Only show when signed in AND not Pro */}
         {isAuthenticated && !isPro && (
           <div className="export-panel__restrictions">
@@ -183,7 +194,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
 
         {/* Main export button */}
         <div className="export-panel__actions">
-          {!isAuthenticated ? (
+          {!isAuthenticated && !isDev ? (
             // Not signed in - show greyed out button that prompts sign in
             <Button
               variant="secondary"

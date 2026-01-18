@@ -1,0 +1,98 @@
+src/camera_basis.ts(429,9): error TS6133: 'pitched' is declared but its value is never read.
+src/camera_basis.ts(476,9): error TS6133: 'rotatedRight' is declared but its value is never read.
+src/camera_controller.test.ts(97,9): error TS2353: Object literal may only specify known properties, and 'x' does not exist in type 'PointerState'.
+src/camera_controller.ts(40,11): error TS6133: 'HelperVec3' is declared but its value is never read.
+src/camera_controller.ts(44,15): error TS6133: 'cbWORLD_UP' is declared but its value is never read.
+src/camera_controller.ts(491,13): error TS6133: 'shouldMarkInteraction' is declared but its value is never read.
+src/camera_helpers.ts(12,7): error TS6133: 'vec3Dot' is declared but its value is never read.
+src/camera_helpers.ts(13,7): error TS6133: 'vec3Scale' is declared but its value is never read.
+src/camera_helpers.ts(14,7): error TS6133: 'vec3Add' is declared but its value is never read.
+src/geometry/meshBuilder.ts(12,3): error TS6133: 'TAU' is declared but its value is never read.
+src/geometry/styles.test.ts(16,1): error TS6133: 'TAU' is declared but its value is never read.
+src/hooks/useExport.ts(165,13): error TS6133: 'quality' is declared but its value is never read.
+src/infra/logging/loggingPreferences.ts(95,18): error TS2352: Conversion of type 'Window & typeof globalThis' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Window & typeof globalThis'.
+src/renderers/webgl/potMaterial.ts(13,35): error TS6133: 'params' is declared but its value is never read.
+src/renderers/webgl/potMaterial.ts(29,41): error TS6133: 'params' is declared but its value is never read.
+src/state/slices/appearance.ts(20,10): error TS6133: 'blendHexColors' is declared but its value is never read.
+src/state/slices/mesh.ts(75,3): error TS2741: Property 'seamAngle' is missing in type '{ preview_n_theta: number; preview_n_z: number; export_n_theta: number; export_n_z: number; }' but required in type 'MeshQuality'.
+src/state/slices/mesh.ts(81,3): error TS2741: Property 'seamAngle' is missing in type '{ preview_n_theta: number; preview_n_z: number; export_n_theta: number; export_n_z: number; }' but required in type 'MeshQuality'.
+src/state/slices/mesh.ts(87,3): error TS2741: Property 'seamAngle' is missing in type '{ preview_n_theta: number; preview_n_z: number; export_n_theta: number; export_n_z: number; }' but required in type 'MeshQuality'.
+src/state/slices/mesh.ts(93,3): error TS2741: Property 'seamAngle' is missing in type '{ preview_n_theta: number; preview_n_z: number; export_n_theta: number; export_n_z: number; }' but required in type 'MeshQuality'.
+src/state/slices/style.test.ts(70,44): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number | bigint'.
+  Type 'undefined' is not assignable to type 'number | bigint'.
+src/state/slices/style.test.ts(75,58): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number | bigint'.
+  Type 'undefined' is not assignable to type 'number | bigint'.
+src/state/slices/style.test.ts(76,55): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number | bigint'.
+  Type 'undefined' is not assignable to type 'number | bigint'.
+src/state/slices/ui.test.ts(33,37): error TS1355: A 'const' assertions can only be applied to references to enum members, or string, number, boolean, array, or object literals.
+src/style_math.ts(178,11): error TS6133: '_petals' is declared but its value is never read.
+src/style_math.ts(182,11): error TS6133: '_ripFreq' is declared but its value is never read.
+src/test/setup.ts(9,1): error TS2304: Cannot find name 'global'.
+src/test/webgpu-mock.ts(109,13): error TS6133: '_destroyed' is declared but its value is never read.
+src/ui/auth/AuthModal.tsx(9,25): error TS6133: 'User' is declared but its value is never read.
+src/ui/auth/UserMenu.tsx(59,12): error TS6133: 'focusedIndex' is declared but its value is never read.
+src/ui/controls/ExportPanel.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/controls/LibraryPanel.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/controls/LibraryPanel.test.tsx(7,37): error TS6133: 'waitFor' is declared but its value is never read.
+src/ui/controls/MeshControls.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/controls/MeshControls.tsx(115,9): error TS6133: 'isCustom' is declared but its value is never read.
+src/ui/debug/components/ResizeHandle.tsx(85,32): error TS6133: 'direction' is declared but its value is never read.
+src/ui/debug/components/Sparkline.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/debug/hooks/useConsoleStore.ts(148,15): error TS6133: 'get' is declared but its value is never read.
+src/ui/debug/utils/CommandRegistry.ts(167,37): error TS2591: Cannot find name 'require'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/ui/debug/utils/CommandRegistry.ts(183,37): error TS2591: Cannot find name 'require'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/ui/debug/utils/CommandRegistry.ts(222,37): error TS2591: Cannot find name 'require'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/ui/debug/utils/CommandRegistry.ts(261,37): error TS2591: Cannot find name 'require'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/ui/layout/MobileBottomSheet.tsx(12,10): error TS6133: 'GripHorizontal' is declared but its value is never read.
+src/ui/layout/MobileBottomSheet.tsx(29,7): error TS6133: 'MIN_SWIPE_DISTANCE' is declared but its value is never read.
+src/ui/layout/StatusBar.test.tsx(8,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/shared/Button.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/shared/Button.test.tsx(69,15): error TS6133: 'container' is declared but its value is never read.
+src/ui/shared/Button.test.tsx(76,15): error TS6133: 'container' is declared but its value is never read.
+src/ui/shared/ErrorBoundary.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/shared/ErrorBoundary.test.tsx(7,26): error TS6133: 'fireEvent' is declared but its value is never read.
+src/ui/shared/ErrorBoundary.test.tsx(104,46): error TS6133: 'reset' is declared but its value is never read.
+src/ui/shared/ErrorBoundary.tsx(186,18): error TS6133: 'error' is declared but its value is never read.
+src/ui/shared/HelpDialog.tsx(12,10): error TS6133: 'SHORTCUTS' is declared but its value is never read.
+src/ui/shared/Section.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/shared/Select.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/shared/Select.test.tsx(6,32): error TS6133: 'vi' is declared but its value is never read.
+src/ui/shared/Slider.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/shared/Toast.test.tsx(5,1): error TS6133: 'React' is declared but its value is never read.
+src/ui/shared/Toast.test.tsx(7,37): error TS6133: 'act' is declared but its value is never read.
+src/webgpu/webgpu_core.test.ts(49,15): error TS6133: 'buffer2' is declared but its value is never read.
+src/webgpu/webgpu_core.test.ts(80,15): error TS6133: 'buffer' is declared but its value is never read.
+src/webgpu/webgpu_device_loss.test.ts(47,13): error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/webgpu/webgpu_device_loss.test.ts(49,13): error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '((e: unknown) => void) | null | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '((e: unknown) => void) | null | undefined'.
+src/webgpu/webgpu_device_loss.test.ts(68,13): error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/webgpu/webgpu_device_loss.test.ts(70,13): error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '((e: unknown) => void) | null | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '((e: unknown) => void) | null | undefined'.
+src/webgpu/webgpu_device_loss.test.ts(85,13): error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/webgpu/webgpu_device_loss.test.ts(87,13): error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '((e: unknown) => void) | null | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '((e: unknown) => void) | null | undefined'.
+src/webgpu/webgpu_device_loss.test.ts(104,13): error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/webgpu_core.ts(17,3): error TS6133: 'rotateCameraBasisForState' is declared but its value is never read.
+src/webgpu_core.ts(19,29): error TS6133: 'cbRotateVectorAroundAxis' is declared but its value is never read.
+src/webgpu_core.ts(32,3): error TS6133: 'WORLD_UP' is declared but its value is never read.
+src/webgpu_core.ts(796,7): error TS6133: 'vec3Cross' is declared but its value is never read.
+src/webgpu_core.ts(820,7): error TS6133: 'syncAnglesFromBasis' is declared but its value is never read.
+src/webgpu_core.ts(1466,9): error TS6133: 'setDebugOverlayMessage' is declared but its value is never read.
+src/webgpu_core.ts(2754,15): error TS6133: 'tStart' is declared but its value is never read.
+src/webgpu_core.ts(2831,15): error TS6133: 'tStrip' is declared but its value is never read.
+src/webgpu_core.ts(3023,9): error TS6133: 'storageUsage' is declared but its value is never read.
+src/webgpu_core.ts(3256,11): error TS6133: 'basis' is declared but its value is never read.
+src/webgpu_core.ts(3548,12): error TS6133: 'applyFreeLookRotation' is declared but its value is never read.
+src/webgpu_core.ts(3554,12): error TS6133: 'applyFreeLookPan' is declared but its value is never read.
+src/webgpu_core.ts(3831,19): error TS6133: 'baseDistance' is declared but its value is never read.
+src/webgpu_core.ts(4155,9): error TS6133: 'releasePointer' is declared but its value is never read.
+src/webgpu_core.ts(4305,13): error TS6133: 'baseDistance' is declared but its value is never read.

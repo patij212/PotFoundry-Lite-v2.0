@@ -48,7 +48,9 @@ export async function mountWebGL(
     // Replace the original canvas with our new one
     if (originalCanvas.parentElement) {
         originalCanvas.parentElement.replaceChild(canvas, originalCanvas);
-        console.log('[WebGL] Replaced original canvas with fresh WebGL canvas');
+        console.log('[WebGL] Replaced original canvas. Parent:', canvas.parentElement?.tagName);
+        console.log('[WebGL] New canvas dims:', canvas.width, 'x', canvas.height);
+        console.log('[WebGL] New canvas clientDims:', canvas.clientWidth, 'x', canvas.clientHeight);
     } else {
         // Fallback: append to body if no parent
         document.body.appendChild(canvas);
@@ -347,19 +349,19 @@ export async function mountWebGL(
 
                 // === Mesh quality parameters ===
                 if (params.nTheta !== undefined) {
-                    currentParams.nTheta = Math.max(8, Math.min(Number(params.nTheta), 128));
+                    currentParams.nTheta = Math.max(8, Math.min(Number(params.nTheta), 1024));
                     hasChange = true;
                 }
                 if (params.nZ !== undefined) {
-                    currentParams.nZ = Math.max(4, Math.min(Number(params.nZ), 64));
+                    currentParams.nZ = Math.max(4, Math.min(Number(params.nZ), 1024));
                     hasChange = true;
                 }
                 if (params.n_theta !== undefined) {
-                    currentParams.nTheta = Math.max(8, Math.min(Number(params.n_theta), 128));
+                    currentParams.nTheta = Math.max(8, Math.min(Number(params.n_theta), 1024));
                     hasChange = true;
                 }
                 if (params.n_z !== undefined) {
-                    currentParams.nZ = Math.max(4, Math.min(Number(params.n_z), 64));
+                    currentParams.nZ = Math.max(4, Math.min(Number(params.n_z), 1024));
                     hasChange = true;
                 }
 

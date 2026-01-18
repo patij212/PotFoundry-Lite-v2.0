@@ -46,7 +46,6 @@ export {
   EPSILON,
   DEFAULT_N_THETA,
   DEFAULT_N_Z,
-  STYLE_IDS,
   DEFAULT_DIMENSIONS,
   DEFAULT_QUALITY,
   DEFAULT_SPIN,
@@ -58,6 +57,8 @@ export {
   DEFAULT_HARMONIC,
   DEFAULT_STYLE_PARAMS,
 } from './types';
+
+export { STYLE_IDS } from '../styles/registry';
 
 // Profile functions
 export {

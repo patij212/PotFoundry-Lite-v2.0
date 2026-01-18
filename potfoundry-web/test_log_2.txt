@@ -1,0 +1,21 @@
+
+Running 12 tests using 8 workers
+
+[1A[2K[1/12] [chromium] › e2e\webgpu-init.spec.ts:15:5 › WebGPU Initialization › should render the main canvas
+[1A[2K[2/12] [chromium] › e2e\webgpu-init.spec.ts:29:5 › WebGPU Initialization › should show the sidebar with controls
+[1A[2K[3/12] [chromium] › e2e\webgpu-init.spec.ts:53:5 › WebGPU Initialization › should have renderer selector
+[1A[2K[4/12] [chromium] › e2e\webgpu-init.spec.ts:8:5 › WebGPU Initialization › should load the application
+[1A[2K[5/12] [edge] › e2e\webgpu-init.spec.ts:15:5 › WebGPU Initialization › should render the main canvas
+[1A[2K[6/12] [chromium] › e2e\webgpu-init.spec.ts:41:5 › WebGPU Initialization › should have sliders in Design tab
+[1A[2K[7/12] [edge] › e2e\webgpu-init.spec.ts:8:5 › WebGPU Initialization › should load the application
+[1A[2K[8/12] [chromium] › e2e\webgpu-init.spec.ts:69:5 › Canvas Rendering › canvas should not be empty
+[1A[2K[9/12] [edge] › e2e\webgpu-init.spec.ts:29:5 › WebGPU Initialization › should show the sidebar with controls
+[1A[2K[10/12] [edge] › e2e\webgpu-init.spec.ts:69:5 › Canvas Rendering › canvas should not be empty
+[1A[2K[11/12] [edge] › e2e\webgpu-init.spec.ts:53:5 › WebGPU Initialization › should have renderer selector
+[1A[2K[12/12] [edge] › e2e\webgpu-init.spec.ts:41:5 › WebGPU Initialization › should have sliders in Design tab
+[1A[2K  12 passed (45.4s)
+
+To open last HTML report run:
+[36m[39m
+[36m  npx playwright show-report[39m
+[36m[39m

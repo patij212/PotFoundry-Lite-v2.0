@@ -130,7 +130,16 @@ export type StyleName =
   | 'SpiralRidges'
   | 'SuperellipseMorph'
   | 'HarmonicRipple'
-  | 'LowPolyFacet';
+  | 'LowPolyFacet'
+  | 'GothicArches'
+  | 'WaveInterference'
+  | 'Crystalline'
+  | 'ArtDeco'
+  | 'DragonScales'
+  | 'BambooSegments'
+  | 'RippleInterference'
+  | 'GyroidManifold'
+  | 'Voronoi';
 
 /** Default style - uses STYLE_SCHEMAS parameter names */
 export const DEFAULT_STYLE: StyleState = {

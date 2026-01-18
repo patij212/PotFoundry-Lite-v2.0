@@ -1,5 +1,7 @@
 import { WebGPUParams } from './types';
 import * as CameraConstants from './camera_constants';
+import { type StyleId } from './geometry/types';
+import { STYLE_IDS } from './styles/registry';
 
 
 const {
@@ -29,8 +31,22 @@ export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current
             ? Math.trunc(c.styleId)
             : typeof cur.styleId === 'number'
                 ? Math.trunc(Number(cur.styleId))
-                : 0;
-    const styleId = styleIdRaw < 0 ? 0 : styleIdRaw;
+                : (typeof c.style === 'string' && c.style in STYLE_IDS)
+                    ? STYLE_IDS[c.style as StyleId]
+                    : 0;
+
+    // Hardcoded fallback for debug: Force Voronoi ID if string matches
+    let styleId = styleIdRaw < 0 ? 0 : styleIdRaw;
+    if (styleId === 0 && (c.style === 'Voronoi' || cur.style === 'Voronoi')) {
+        console.warn('[WebGPU] Forced Voronoi Style ID 13 (Lookup Failed)');
+        styleId = 13;
+    }
+
+    // Debug logging for style resolution
+    if (styleId === 13 || c.style === 'Voronoi') {
+        // console.log(`[GeoDebug] StyleID: ${styleId} (Raw: ${styleIdRaw}), c.style: ${c.style}, c.id: ${c.styleId}`);
+    }
+
     const drainRadiusRaw =
         c.r_drain ?? c.drain ?? c.drainRadius ?? c.drain_radius ?? cur.r_drain;
     const drainRadius = clampNumber(drainRadiusRaw, 10.0);
@@ -42,9 +58,9 @@ export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current
     f32[3] = clampNumber(c.expn, 1.0);
 
     // Spin/twist parameters - support both formats
-    const spinTurnsVal = clampNumber(c.spinTurns ?? c.spin_turns, 0.0);
-    const spinPhaseVal = clampNumber(c.spinPhase ?? c.spin_phase, 0.0);
-    const spinCurveVal = clampNumber(c.spinCurve ?? c.spin_curve, 1.0);
+    const spinTurnsVal = clampNumber(c.spinTurns !== undefined ? c.spinTurns : c.spin_turns, 0.0);
+    const spinPhaseVal = clampNumber(c.spinPhase !== undefined ? c.spinPhase : c.spin_phase, 0.0);
+    const spinCurveVal = clampNumber(c.spinCurve !== undefined ? c.spinCurve : c.spin_curve, 1.0);
 
     f32[4] = spinTurnsVal;
     f32[5] = spinPhaseVal;
@@ -95,4 +111,48 @@ export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current
 
     // Scene radius
     f32[33] = clampNumber(c.sceneRadius, 200.0);
+
+    // Style Parameters (Indices 37-52)
+    // Clear first to ensure clean state
+    for (let i = 37; i <= 52; i++) f32[i] = 0.0;
+
+    if (styleId === 5) { // Gothic Arches
+        const ga = c as any;
+        // 0: Counts
+        f32[37] = clampNumber(ga.gaCounts, 12.0);
+        // 1: Relief (mm)
+        f32[38] = clampNumber(ga.gaRelief, 1.5);
+        // 2: Pointiness (0.25-2.0)
+        f32[39] = clampNumber(ga.gaPointiness, 1.2);
+        // 3: Diamond Tracery (0-1)
+        f32[40] = clampNumber(ga.gaDiamond, 0.5);
+        // 4: X-Tracery (0-1)
+        f32[41] = clampNumber(ga.gaX, 0.0);
+        // 5: Spring Line (0-1)
+        f32[42] = clampNumber(ga.gaSpring, 0.15);
+        // 6: Arch Height (0-1)
+        f32[43] = clampNumber(ga.gaArchHeight, 0.7);
+        // 7: Rib Width (0-1)
+        f32[44] = clampNumber(ga.gaRib, 0.04);
+        // 8: Column Width (0-1)
+        f32[45] = clampNumber(ga.gaCol, 0.15);
+        // 9: Sharpness
+        f32[46] = clampNumber(ga.gaSharp, 4.0);
+        // 10: Bands
+        f32[47] = clampNumber(ga.gaBands, 1.0);
+        // 11: Band Width
+        f32[48] = clampNumber(ga.gaBandW, 0.04);
+    } else {
+        // ... mappings for other styles (Superformula, etc) would go here ...
+        // For now, these are likely handled by the specific style functions 
+        // reading from c properties directly if they were ported, 
+        // but since we are focusing on Gothic Arches GPU port:
+
+        // Preserve existing mappings if any (conceptually)
+        // In the current codebase, other styles might rely on specific indices 
+        // if they were fully GPU-ported. 
+        // Start indices: 
+        // Superformula (0): uses sf_* params packed elsewhere? 
+        // Actually, looking at previous code, only Gothic Arches v2 is strictly using this block for now.
+    }
 };

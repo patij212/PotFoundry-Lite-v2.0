@@ -53,7 +53,7 @@ export interface PresetConfig {
   };
 }
 
-export type PresetCategory = 
+export type PresetCategory =
   | 'classic'      // Traditional pot shapes
   | 'organic'      // Natural, flowing forms
   | 'geometric'    // Clean, mathematical patterns
@@ -493,7 +493,7 @@ export function getCategories(): Array<{ category: PresetCategory; count: number
   };
 
   const categories: PresetCategory[] = ['classic', 'organic', 'geometric', 'decorative', 'minimal'];
-  
+
   return categories.map((category) => ({
     category,
     count: PRESETS.filter((p) => p.category === category).length,

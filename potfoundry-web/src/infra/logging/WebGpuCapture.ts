@@ -44,13 +44,19 @@ function installGlobalErrorCapture() {
 export function installWebGpuCapture(device: GPUDevice) {
   installGlobalErrorCapture();
   // Device lost
+  // Device lost
   device.lost.then((info) => {
     try {
-      manager.critical('WGPU_DEVICE_LOST', `Device lost: ${info?.message ?? info?.reason ?? 'unknown'}`, { reason: (info as any)?.reason });
+      const reason = (info as any)?.reason;
+      if (reason === 'destroyed') {
+        manager.debug('WGPU_DEVICE_DESTROYED', 'Device destroyed intentionally');
+      } else {
+        manager.critical('WGPU_DEVICE_LOST', `Device lost: ${info?.message ?? reason ?? 'unknown'}`, { reason });
+      }
     } catch (e) {
       // ignore
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   // uncaptured errors
   device.addEventListener('uncapturederror', (ev: GPUUncapturedErrorEvent) => {
@@ -76,7 +82,7 @@ export async function withValidationScope<T>(device: GPUDevice, label: string, f
     }
     return r;
   } catch (e) {
-    try { await device.popErrorScope(); } catch {};
+    try { await device.popErrorScope(); } catch { };
     manager.error('WGPU_VALIDATE_THROW', `[${label}] ${String((e as any)?.message ?? e)}`);
     return undefined;
   }
@@ -93,6 +99,10 @@ export async function createShaderModule(device: GPUDevice, code: string, label?
         if (m.type === 'error') {
           manager.error('WGPU_SHADER_ERROR', fmtShaderMsg(label, m), { stageLabel: label, line: m.lineNum, pos: m.linePos });
         } else if (m.type === 'warning') {
+          // Skip known-harmless "unreachable code" warnings from shader optimization
+          if (m.message && m.message.includes('code is unreachable')) {
+            continue;
+          }
           warnCount++;
           manager.info('WGPU_SHADER_WARN', fmtShaderMsg(label, m), undefined, sig);
         } else {

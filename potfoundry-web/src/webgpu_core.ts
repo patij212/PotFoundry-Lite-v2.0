@@ -10,18 +10,13 @@
 /// <reference types="@webgpu/types" />
 
 import potPreviewWgsl from './assets/pot_preview.wgsl?raw';
+import { generateStyleConstants } from './utils/shaderGenerator';
 import {
   buildCameraBasis,
   normalizeCameraBasis as cbNormalizeCameraBasis,
   applyCameraEulerToBasis,
-  rotateCameraBasisForState,
   syncAnglesFromBasis as cbSyncAnglesFromBasis,
-  rotateVectorAroundAxis as cbRotateVectorAroundAxis,
-  arcballDelta as sharedArcballDelta,
   cameraAxisToWorld as cbCameraAxisToWorld,
-  rotateBasisAboutAxisFull,
-  turntableStep,
-  PITCH_SOFT_LIMIT,
   Vec3 as HelperVec3,
   CameraBasis as HelperCameraBasis,
   Quaternion as HelperQuaternion,
@@ -33,7 +28,6 @@ import {
   invertQuaternion,
   axisAngleFromQuaternion,
   quaternionFromEuler,
-  WORLD_UP,
 } from './camera_basis';
 import { cameraPayloadDiffers as sharedCameraPayloadDiffers } from './camera_basis';
 import { worldRayFromCanvas, intersectRayZPlane, intersectRayCylinder } from './camera_helpers';
@@ -45,9 +39,11 @@ import { DEBUG_PARAM_FLAG, ALWAYS_ON_DIAGNOSTICS, isCameraMode, lerp, easeOutCub
 import manager from './infra/logging/MessageManager';
 import { installConsolePatch } from './infra/logging/ConsolePatch';
 import { resolveLoggingPreferences } from './infra/logging/loggingPreferences';
-import { installWebGpuCapture, withValidationScope, createShaderModule } from './infra/logging/WebGpuCapture';
+import { withValidationScope, createShaderModule } from './infra/logging/WebGpuCapture';
 import { fillGeometryBuffer } from './webgpu_geometry';
-import { createIdleDetector, type IdleDetector } from './utils/idleDetection';
+import { createIdleDetector } from './utils/idleDetection';
+import { type StyleId } from './geometry/types';
+import { STYLE_FUNCTION_MAP, STYLE_IDS } from './styles/registry';
 
 try {
   installConsolePatch();
@@ -77,26 +73,67 @@ try {
 
 // Canonical constants moved to `camera_constants.ts`.
 // Ensure the imported WGSL is handled robustly and not coerced from an object.
+const styleConstants = generateStyleConstants();
 let WGSL_SOURCE: string = '';
 if (typeof potPreviewWgsl === 'string') {
-  WGSL_SOURCE = potPreviewWgsl;
+  WGSL_SOURCE = styleConstants + '\n' + potPreviewWgsl;
 } else if (potPreviewWgsl && typeof (potPreviewWgsl as any).default === 'string') {
-  WGSL_SOURCE = (potPreviewWgsl as any).default;
+  WGSL_SOURCE = styleConstants + '\n' + (potPreviewWgsl as any).default;
 } else {
   console.warn('[WebGPU] potPreviewWgsl is not a string; import:', potPreviewWgsl);
   WGSL_SOURCE = '';
 }
+
+// OPTIMIZATION: Pre-compute function locations to avoid expensive Regex in compile loops.
+// This takes O(N) time once at startup, replacing O(MxN) regex passes during warmup.
+const FUNCTION_LOCATIONS = new Map<string, { start: number, end: number }>();
+
+const setupFunctionStripper = () => {
+  if (!WGSL_SOURCE) return;
+  const signatureRegex = /fn\s+(\w+)\s*\(/g;
+  let match;
+  while ((match = signatureRegex.exec(WGSL_SOURCE)) !== null) {
+    const funcName = match[1];
+    const startIdx = match.index;
+    let idx = startIdx;
+    let braceDepth = 0;
+    let foundOpen = false;
+    let endIdx = -1;
+
+    // Scan forward to find the block end
+    while (idx < WGSL_SOURCE.length) {
+      const char = WGSL_SOURCE[idx];
+      if (char === '{') {
+        braceDepth++;
+        foundOpen = true;
+      } else if (char === '}') {
+        braceDepth--;
+        if (foundOpen && braceDepth === 0) {
+          endIdx = idx + 1;
+          break;
+        }
+      }
+      idx++;
+    }
+    if (endIdx !== -1) {
+      FUNCTION_LOCATIONS.set(funcName, { start: startIdx, end: endIdx });
+    }
+  }
+  console.log(`[WebGPU] Optimized stripper ready. Indexed ${FUNCTION_LOCATIONS.size} functions.`);
+};
+setupFunctionStripper();
+
+
+
 const MAX_VERTS = 0xffffffff;
 const STYLE_PARAM_CAPACITY = 48;
 const {
   DEFAULT_INTERACTIVE_LOD,
   MIN_INTERACTIVE_LOD,
-  INTERACTIVE_THETA_RATIO_FLOOR,
-  INTERACTIVE_Z_RATIO_FLOOR,
+  INTERACTIVE_THETA_RATIO_FLOOR: _unused_itr_floor,
+  INTERACTIVE_Z_RATIO_FLOOR: _unused_izr_floor,
   MIN_THETA_STATIC,
   MIN_Z_STATIC,
-  MIN_THETA_INTERACTIVE,
-  MIN_Z_INTERACTIVE,
   PARAM_UPDATE_TIMEOUT_MS,
   CAMERA_BROADCAST_MS,
   CAMERA_EPSILON,
@@ -121,11 +158,12 @@ const {
   ROUGHNESS_OFFSET,
 
   SHOW_INNER_OFFSET,
-  BELL_WIDTH_OFFSET,
+  // BELL_WIDTH_OFFSET, // Moved to geometry
   DRAIN_RADIUS_OFFSET,
   INVALID_STATUS_COOLDOWN_MS,
   DEFAULT_CLEAR_COLOR,
   // Professional camera constants
+  /*
   MIN_ZOOM,
   MAX_ZOOM,
   ZOOM_SENSITIVITY,
@@ -133,12 +171,13 @@ const {
   PAN_INERTIA_DECAY,
   ROTATION_INERTIA_DECAY,
   ROTATION_INERTIA_MIN,
+  */
   AUTOROTATE_SPEED_DEFAULT,
+  /*
   AUTOROTATE_RESUME_DELAY_MS,
-  FOCUS_TWEEN_DURATION_MS,
-  FOCUS_ZOOM_FACTOR,
-  FREE_MOVE_SPEED_BASE,
-  FREE_MOVE_SPEED_BOOST,
+  */
+  FOCUS_TWEEN_DURATION_MS: _unused_ftd,
+  FOCUS_ZOOM_FACTOR: _unused_fzf,
   PIVOT_LERP_SPEED,
   PIVOT_SNAP_THRESHOLD,
 } = CameraConstants as any;
@@ -242,13 +281,7 @@ function resetInertia(state: WebGPUState): void {
   state.inertiaArcSpeed = 0;
 }
 
-function cancelFocusTween(): void {
-  cameraController?.cancelFocusTween?.();
-}
 
-function markInteraction(shouldCancel = true): void {
-  cameraController?.markInteraction?.(shouldCancel);
-}
 
 type GeometrySnapshot = {
   nTheta: number;
@@ -384,10 +417,10 @@ const resolveAlphaMode = (mode: unknown): 'opaque' | 'premultiplied' => {
 
 const sanitizeInt = (value: unknown, fallback: number, minimum: number): number => {
   const parsed = Math.floor(Number(value));
-  if (!Number.isFinite(parsed) || parsed < minimum) {
-    return minimum;
+  if (!Number.isFinite(parsed)) {
+    return fallback;
   }
-  return parsed;
+  return Math.max(parsed, minimum);
 };
 
 const createPipeline = async (
@@ -396,7 +429,8 @@ const createPipeline = async (
   shaderModule: GPUShaderModule,
   reportStatus: (msg: string) => void,
   reportDiagnostic: (message: string, detail?: Record<string, unknown>) => void,
-  shaderCodeSnippet?: string | null
+  shaderCodeSnippet?: string | null,
+  explicitLayout?: GPUPipelineLayout
 ): Promise<GPURenderPipeline | null> => {
   // Use a loose cast to avoid cross-definition incompatibilities in
   // the local GPUCompilationInfo vs ambient types (some environments
@@ -411,7 +445,7 @@ const createPipeline = async (
     return null;
   }
   const pipelineDescriptorSummary = (depthFmt: string) => ({
-    layout: 'auto',
+    layout: explicitLayout ? 'explicit' : 'auto',
     vertexEntry: 'vs_main',
     fragmentEntry: 'fs_main',
     targets: [{ format }],
@@ -422,11 +456,10 @@ const createPipeline = async (
   try {
     const pipelineLabel = 'component:pipeline-main';
     console.log('[WebGPU] Attempting primary pipeline creation with depth24plus...');
-    // Use SYNCHRONOUS createRenderPipeline instead of async for mobile compatibility
-    // Some mobile GPUs have issues with async pipeline creation that causes device loss
-    const pipe = device.createRenderPipeline({
+    // Switch to ASYNC pipeline creation to prevent UI freezing during compilation (can take ~10s on Windows)
+    const pipe = await device.createRenderPipelineAsync({
       label: pipelineLabel,
-      layout: 'auto',
+      layout: explicitLayout || 'auto',
       vertex: { module: shaderModule, entryPoint: 'vs_main' },
       fragment: {
         module: shaderModule,
@@ -759,7 +792,7 @@ const vec3Normalize = (v: Vec3): Vec3 => {
   return [v[0] / len, v[1] / len, v[2] / len];
 };
 const vec3Subtract = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const vec3Add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+// const vec3Add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const vec3Scale = (v: Vec3, s: number): Vec3 => [v[0] * s, v[1] * s, v[2] * s];
 const vec3Cross = (a: Vec3, b: Vec3): Vec3 => [
   a[1] * b[2] - a[2] * b[1],
@@ -768,7 +801,7 @@ const vec3Cross = (a: Vec3, b: Vec3): Vec3 => [
 ];
 const vec3Dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
-const rotateVectorAroundAxis = cbRotateVectorAroundAxis;
+// const rotateVectorAroundAxis = cbRotateVectorAroundAxis;
 
 const applyCameraEuler = (state: WebGPUState, rotX: number, rotY: number): void => {
   const basis = applyCameraEulerToBasis(rotX, rotY);
@@ -795,10 +828,10 @@ const syncAnglesFromBasis = (state: WebGPUState): void => {
   state.rotY = wrapAngle(prevY + delta);
 };
 
-const rotateCameraBasis = (state: WebGPUState, axis: Vec3, angle: number): void => {
-  rotateCameraBasisForState(state, axis, angle);
-  syncAnglesFromBasis(state);
-};
+// const rotateCameraBasis = (state: WebGPUState, axis: Vec3, angle: number): void => {
+//   rotateCameraBasisForState(state, axis, angle);
+//   syncAnglesFromBasis(state);
+// };
 
 // rotateBasisInPlace is imported from shared helpers and used directly.
 
@@ -928,6 +961,7 @@ const matrixIsFinite = (m: Mat4): boolean => {
   return true;
 };
 
+/*
 const mat4LookAtLH = (eye: Vec3, target: Vec3, up: Vec3): Mat4 => {
   // Compute forward vector (zAxis). If the camera looks exactly along the
   // up vector, the cross product will be zero length and produce NaNs.
@@ -973,6 +1007,7 @@ const mat4LookAtLH = (eye: Vec3, target: Vec3, up: Vec3): Mat4 => {
   out[15] = 1;
   return out;
 };
+*/
 
 const mat4OrthoLH = (
   left: number,
@@ -1031,10 +1066,10 @@ const BASIS_FLIP_DOT_THRESHOLD = CameraConstants.BASIS_FLIP_DOT_THRESHOLD; // do
 // codebase for the standard invert-orbit sign semantics.  These are
 // simple helpers that map a boolean invert flag into +/-1 multipliers
 // used when converting pointer drags to yaw/pitch deltas.
-const invertOrbitX = true;
-const invertOrbitY = false;
-const invertOrbitXSign = invertOrbitX ? +1 : -1;
-const invertOrbitYSign = invertOrbitY ? +1 : -1;
+// const invertOrbitX = true;
+// const invertOrbitY = false;
+// const invertOrbitXSign = invertOrbitX ? +1 : -1;
+// const invertOrbitYSign = invertOrbitY ? +1 : -1;
 // Convert per-frame decay factor (e.g., 0.92 per 1/60s frame) to an exponential
 // decay lambda such that factor(dt) = exp(-INERTIA_LAMBDA * dt)
 const INERTIA_LAMBDA = -Math.log(INERTIA_DECAY) * 60; // per-second decay rate
@@ -1304,6 +1339,37 @@ const buildCameraRig = (
   return fallbackRig;
 };
 
+export const handleDeviceLost = (
+  info: GPUDeviceLostInfo,
+  context: {
+    getInitializationComplete: () => boolean;
+    setDeviceLostDuringInit: () => void;
+    getLastOperation: () => string;
+    emit: MountOptions['emit'];
+  }
+) => {
+  // If usage of 'destroyed', it's intentional (e.g. from destroy()), so ignore it.
+  if (info.reason === 'destroyed') return;
+
+  const currentOp = context.getLastOperation();
+  console.error(`[CRITICAL] WGPU_DEVICE_LOST — Device lost: ${info.message} | ${JSON.stringify(info)} | lastOp: ${currentOp}`);
+
+  // If not initialized yet, we mark it so mount() can fail gracefully
+  if (!context.getInitializationComplete()) {
+    context.setDeviceLostDuringInit();
+  } else {
+    // If runtime crash, we must signal the app to fallback
+    // Uses the emit callback passed in mount options
+    if (context.emit) {
+      context.emit({
+        type: 'device-lost',
+        reason: info.message || 'Unknown device loss',
+        info
+      });
+    }
+  }
+};
+
 export const mount = async ({
   canvas,
   canvasId,
@@ -1319,6 +1385,14 @@ export const mount = async ({
   // repeated null-checks. This quiets TypeScript diagnostics and is safe
   // because we only read optional initial params.
   initialParams = initialParams ?? {};
+
+  // Verify Shader Source Integrity (Hot-Patch Check)
+  if (!WGSL_SOURCE.includes('const STYLE_VORONOI = 13')) {
+    console.error('[WebGPU CRITICAL] Shader source is STALE! Missing STYLE_VORONOI constant. Try manual reload.');
+  } else {
+    console.log('[WebGPU] Shader source verified: Contains Voronoi definitions.');
+  }
+
   applyLoggingPreferences(initialParams as Record<string, unknown>);
   let statusReady = false;
   // Attach manager to window for debug/test introspection; harmless in production.
@@ -1570,8 +1644,9 @@ export const mount = async ({
     { options: undefined, label: 'default' },
     { options: { powerPreference: 'high-performance' }, label: 'high-performance' },
     { options: { powerPreference: 'low-power' }, label: 'low-power' },
-    // Try compatibility mode for devices without Vulkan 1.1+ (uses OpenGL ES backend)
-    { options: { compatibilityMode: true } as GPURequestAdapterOptions, label: 'compatibility-mode' },
+    // DISABLED: compatibilityMode causes "Instance reference no longer exists" crashes on Windows
+    // after ~30-60 seconds due to Dawn OpenGL ES backend instability.
+    // { options: { compatibilityMode: true } as GPURequestAdapterOptions, label: 'compatibility-mode' },
     { options: { forceFallbackAdapter: true }, label: 'fallback' },
   ];
 
@@ -1630,7 +1705,29 @@ export const mount = async ({
   }
   emitDiagnostic('webgpu:device-ready');
   console.log('[WebGPU] Device obtained, getting canvas context...');
-  try { installWebGpuCapture(device); } catch (e) { /* best-effort; do not hard-fail */ }
+
+  // Track device loss during initialization AND runtime
+  let deviceLostDuringInit = false;
+  let lastOperation = 'init'; // Track last operation for debugging
+
+  // CRITICAL: Defer device.lost handler attachment to allow GPU instance to stabilize.
+  // On some Windows Dawn/Chrome drivers, immediately attaching a .then() handler to
+  // device.lost causes "Instance reference no longer exists" crash.
+  setTimeout(() => {
+    if (disposed) return;
+    device.lost.then((info) => {
+      handleDeviceLost(info, {
+        getInitializationComplete: () => initializationComplete,
+        setDeviceLostDuringInit: () => { deviceLostDuringInit = true; },
+        getLastOperation: () => lastOperation,
+        emit
+      });
+    });
+  }, 500);
+
+  // DISABLED: installWebGpuCapture causes "Instance reference no longer exists" crash on some Windows drivers.
+  // The capture layer's device.lost.then() handler appears to destabilize the GPU instance.
+  // try { installWebGpuCapture(device); } catch (e) { /* best-effort; do not hard-fail */ }
   const context = canvas.getContext('webgpu') as unknown as GPUCanvasContext | null;
   console.log('[WebGPU] Canvas context result:', context ? 'SUCCESS' : 'null');
   if (!context) {
@@ -1640,6 +1737,9 @@ export const mount = async ({
     });
   }
   emitDiagnostic('webgpu:context-ready');
+  if (deviceLostDuringInit) {
+    return fail('webgpu:adapter-unavailable', 'WebGPU device lost during initialization', undefined, { ...baseDiagInfo });
+  }
 
   const format = navGpu.getPreferredCanvasFormat();
   let width = 1;
@@ -1656,6 +1756,14 @@ export const mount = async ({
     maxTextureDimension2D = device.limits?.maxTextureDimension2D ?? 8192;
     console.log(`[WebGPU] Device maxTextureDimension2D: ${maxTextureDimension2D}`);
   } catch (e) { /* ignore limit query errors */ }
+
+  // CRITICAL: Add stabilization delay before first GPU operation.
+  // Windows Dawn WebGPU backend crashes with "Instance reference no longer exists" if GPU
+  // operations (like createTexture) happen too soon after device creation.
+  // Reduced stabilization delay for faster startup
+  console.log('[WebGPU] Waiting 50ms for GPU device stabilization...');
+  await new Promise(resolve => setTimeout(resolve, 50));
+  console.log('[WebGPU] Device stabilization complete, proceeding with initialization...');
 
   let depth = createDepthTexture(device, width, height);
 
@@ -2262,8 +2370,10 @@ export const mount = async ({
         emitDiagnostic('canvas:dpr-change', { dpr: devicePixelRatio });
       }
     }
-    width = nextWidth;
-    height = nextHeight;
+    // Enforce 1x1 minimum to prevent driver crashes with 0-sized textures
+    width = Math.max(1, nextWidth);
+    height = Math.max(1, nextHeight);
+    lastOperation = 'resize';
 
     // At this point we know initializationComplete is true (early return at start of function)
     // Safe to set full canvas dimensions and reconfigure context
@@ -2613,10 +2723,208 @@ export const mount = async ({
   const shaderModule = await createShaderModule(device as any, wgsl, 'potfoundry-webgpu');
   console.log('[WebGPU] Shader module created:', shaderModule ? 'SUCCESS' : 'null');
 
-  console.log('[WebGPU] Creating pipeline...');
-  const pipeline = await createPipeline(device, format, shaderModule, setStatus, emitDiagnostic, wgsl);
-  console.log('[WebGPU] Pipeline result:', pipeline ? 'SUCCESS' : 'null');
-  if (!pipeline) {
+  // Lazy Pipeline Cache Implementation
+  // Lazy Pipeline Cache Implementation
+  const CACHED_PIPELINES = new Map<number, GPURenderPipeline>();
+
+
+
+  // Pipeline Promise Cache to prevent double-compilation race conditions
+  const PENDING_PIPELINES = new Map<number, Promise<GPURenderPipeline | null>>();
+
+  const getOrCreatePipeline = async (styleId: number): Promise<GPURenderPipeline | null> => {
+    // 1. Check Cache
+    if (CACHED_PIPELINES.has(styleId)) {
+      // console.log(`[WebGPU] Cache HIT for style ${styleId}`);
+      return CACHED_PIPELINES.get(styleId) as GPURenderPipeline;
+    }
+    // 2. Check Pending - deduplicate requests
+    if (PENDING_PIPELINES.has(styleId)) {
+      console.log(`[WebGPU] Joining pending compilation for style ${styleId}...`);
+      return PENDING_PIPELINES.get(styleId) as Promise<GPURenderPipeline | null>;
+    }
+
+    console.log(`[WebGPU] Cache MISS for style ${styleId}. initiating compilation.`);
+    const compileTask = (async () => {
+      try {
+        // Prepare specialized shader source
+        const tStart = performance.now();
+        const targetFunction = STYLE_FUNCTION_MAP[styleId] || 'sf_radius';
+        console.log(`[WebGPU] Compiling style ${styleId} (OptV3)...`);
+
+        // OPTIMIZATION: CONSTRUCTIVE STRIPPING
+        // Instead of repeated Regex cutting (expensive), we build the string from chunks.
+        // 1. Identify all functions to exclude
+        const exclusions: { start: number, end: number }[] = [];
+        const toStrip = new Set<string>();
+
+        Object.values(STYLE_FUNCTION_MAP).forEach((name) => {
+          if (name !== targetFunction) toStrip.add(name);
+        });
+
+        // Deep stripping helpers
+        if (targetFunction !== 'sf_radius') {
+          toStrip.add('superformula_value');
+          toStrip.add('sf_radius_zero');
+          toStrip.add('sf_radius_tau');
+        }
+        if (targetFunction !== 'gothic_arches_radius') {
+          toStrip.add('sat');
+          toStrip.add('smoothstep2');
+          toStrip.add('ridge');
+          toStrip.add('ridge_sin');
+        }
+
+        // 2. Map to ranges
+        toStrip.forEach(name => {
+          const loc = FUNCTION_LOCATIONS.get(name);
+          if (loc) exclusions.push(loc);
+        });
+
+        // 3. Sort ranges
+        exclusions.sort((a, b) => a.start - b.start);
+
+        // 4. Build string
+        let strippedWgsl = '';
+        let currentIdx = 0;
+        for (const ex of exclusions) {
+          if (ex.start > currentIdx) {
+            strippedWgsl += WGSL_SOURCE.substring(currentIdx, ex.start);
+          }
+          currentIdx = Math.max(currentIdx, ex.end); // Skip excluded block
+        }
+        if (currentIdx < WGSL_SOURCE.length) {
+          strippedWgsl += WGSL_SOURCE.substring(currentIdx);
+        }
+
+        // Note: Regex will run faster on the smaller string.
+        strippedWgsl = strippedWgsl.replace(
+          /\s*\/\/\s*DYNAMIC_STYLE_DISPATCH[\s\S]*?return\s+sf_radius\s*\([^\)]*\)\s*;/g,
+          `let force_layout = StyleParams.values[11].x;
+          return ${targetFunction}(th, t, r0) + force_layout * 0.0000001;`
+        );
+
+        strippedWgsl = strippedWgsl.replace(
+          /fn\s+style_params_active\s*\(\s*\)\s*->\s*bool\s*\{[^}]+\}/,
+          'fn style_params_active() -> bool { return true; }'
+        );
+
+        // 5b. Remove Comments & Wireframe AFTER functional replacements
+        // (Function replacements rely on matching specific comments or code structures)
+        strippedWgsl = strippedWgsl.replace(/\/\/ Wireframe Shader Entry Points[\s\S]*$/, '');
+        strippedWgsl = strippedWgsl.replace(/\/\/[^\n]*\n/g, '\n');
+
+        // Replace helpers (still needed for 'unresolved call target' fix in specialized functions)
+        // But we only need to patch the ones that EXIST in the stripped source.
+        const replaceHelper = (funcName: string, thetaVal: string) => {
+          const regex = new RegExp(`fn\\s+${funcName}\\s*\\([^\\)]*\\)\\s*->\\s*f32\\s*\\{[\\s\\S]*?\\n\\}`, 'g');
+          strippedWgsl = strippedWgsl.replace(regex,
+            `fn ${funcName}(style_id: i32, t: f32, r0: f32) -> f32 { return ${targetFunction}(${thetaVal}, t, r0); }`
+          );
+        };
+        replaceHelper('style_radius_zero', '0.0');
+        replaceHelper('style_radius_tau', '6.2831853'); // TAU
+
+        const tStrip = performance.now();
+        // console.debug(`[WebGPU] Stripping took ${(tStrip - tStart).toFixed(2)}ms. Size: ${(WGSL_SOURCE.length / 1024).toFixed(1)}KB -> ${(strippedWgsl.length / 1024).toFixed(1)}KB`);
+
+
+        // 3. Create Shader Module
+        const sm = await createShaderModule(device as any, strippedWgsl, `potfoundry-style-${styleId}`);
+        if (!sm) {
+          console.error(`[WebGPU] Failed to create shader module for style ${styleId}`);
+          return null;
+        }
+
+        // 4. Create Pipeline using Shared Layout to avoid re-validation overhead
+        const p = await createPipeline(device, format, sm, setStatus, emitDiagnostic, strippedWgsl, globalPipelineLayout);
+        if (p) {
+          CACHED_PIPELINES.set(styleId, p);
+          console.log(`[WebGPU] Pipeline for style ${styleId} ready.`);
+          return p;
+        }
+        return null;
+      } catch (err) {
+        console.error(`[WebGPU] Failed to create pipeline for style ${styleId}`, err);
+        // Only delete from pending on error so we can retry later. 
+        // On success, we keep the resolved promise to act as a permanent cache.
+        PENDING_PIPELINES.delete(styleId);
+        return null;
+      }
+    })();
+
+    PENDING_PIPELINES.set(styleId, compileTask);
+    return compileTask;
+  };
+
+  // Create Shared Pipeline Layout ONCE
+  // This saves the driver from deducing the layout from the shader every time.
+  console.log('[WebGPU] Creating shared pipeline layout...');
+  const sharedBGL = device.createBindGroupLayout({
+    label: 'component:bgl-shared',
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // PreviewParams
+      { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // C1
+      { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // C2
+      { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // C3
+      { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // StyleParams
+      { binding: 5, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // Bg1
+      { binding: 6, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // Bg2
+      { binding: 7, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // Bg3
+    ],
+  });
+  const globalPipelineLayout = device.createPipelineLayout({
+    label: 'component:pipeline-layout-shared',
+    bindGroupLayouts: [sharedBGL]
+  });
+
+  // Background Pipeline Warmup
+  // Pre-compiles all style shaders so switching styles later is instant.
+  const warmupPipelineCache = async () => {
+    // PARALLEL WARMUP: Dispatch all compilation tasks quickly, let driver schedule them.
+    // This achieves ~15s total completion vs 80s for serial.
+    console.debug('[WebGPU] Starting PARALLEL background pipeline warmup...');
+    const styleIds = Object.keys(STYLE_FUNCTION_MAP).map(Number);
+
+    for (const styleId of styleIds) {
+      if (disposed) return;
+      if (styleId === initialStyleId) continue;
+      if (CACHED_PIPELINES.has(styleId) || PENDING_PIPELINES.has(styleId)) continue;
+
+      // Fire-and-forget: Start compilation but don't wait for it
+      getOrCreatePipeline(styleId).catch(e => {
+        console.warn(`[WebGPU] Warmup failed for style ${styleId}`, e);
+      });
+
+      // Stagger dispatch by 1 frame (16ms) to keep UI interaction fluid
+      await new Promise(resolve => setTimeout(resolve, 16));
+    }
+    console.debug('[WebGPU] All compilation tasks dispatched.');
+  };
+
+  // Trigger warmup MOVED to after initial render to prioritize first frame
+  // warmupPipelineCache();
+
+  // Initialize with the requested style from config, or default to 0 if missing
+  console.log('[WebGPU] mount() received style:', (initialParams as any).style);
+  const initialStyleId = Number((initialParams as any).style) || 0;
+  console.log(`[WebGPU] Initializing pipeline for requested style ${initialStyleId}...`);
+
+  // HYBRID APPROACH: Start warmup 2s after dispatching initial style
+  // This gives initial a head start while overlapping most compilation
+  // Expected: ~10s first frame, ~12s total (best of both worlds)
+  setTimeout(() => warmupPipelineCache(), 2000);
+
+  let activePipeline = await getOrCreatePipeline(initialStyleId);
+  let activePipelineStyleId = initialStyleId;
+  let pendingPipelineStyleId: number | null = null;
+
+  // Keep a reference to the layout validation pipeline (variable renamed to 'pipeline' to minimize diff churn if any)
+  // But strictly we use activePipeline for rendering.
+  const pipeline = activePipeline;
+
+  console.log('[WebGPU] Default pipeline result:', activePipeline ? 'SUCCESS' : 'null');
+  if (!activePipeline) {
     console.error('[WebGPU] PIPELINE CREATION FAILED - this is why mount() returns null!');
     emitErrorEvent({
       code: 'webgpu:pipeline-failed',
@@ -2633,38 +2941,56 @@ export const mount = async ({
   // Trigger a resize to properly configure context with actual dimensions
   resize();
 
+  // NOTE: Warmup is now triggered 2s after dispatching initial style (line ~2919)
+  // to give initial a head start while overlapping most compilation work.
+
+
   // Create wireframe pipeline with line-list topology for triangle edges
   let wireframePipeline: GPURenderPipeline | null = null;
-  try {
-    wireframePipeline = await device.createRenderPipelineAsync({
-      label: 'component:pipeline-wireframe',
-      layout: 'auto',
-      vertex: { module: shaderModule, entryPoint: 'vs_wireframe' },
-      fragment: {
-        module: shaderModule,
-        entryPoint: 'fs_wireframe',
-        targets: [
-          {
-            format,
-            blend: {
-              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+
+  // NOTE: Disabling wireframe pipeline creation to prevent "Device lost" errors on some drivers.
+  // The async compilation of this secondary pipeline seems to trigger a timeout/hang.
+  if (false) {
+    try {
+      wireframePipeline = await device.createRenderPipelineAsync({
+        label: 'component:pipeline-wireframe',
+        layout: 'auto',
+        vertex: { module: shaderModule, entryPoint: 'vs_wireframe' },
+        fragment: {
+          module: shaderModule,
+          entryPoint: 'fs_wireframe',
+          targets: [
+            {
+              format,
+              blend: {
+                color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              },
             },
-          },
-        ],
-      },
-      primitive: { topology: 'line-list', cullMode: 'none' },
-      depthStencil: {
-        depthWriteEnabled: false, // Don't write depth so wireframe doesn't occlude
-        depthCompare: 'less-equal', // Use less-equal so lines draw on top of triangles
-        format: 'depth24plus',
-      },
-    });
-    emitDiagnostic('webgpu:wireframe-pipeline-ready');
-  } catch (err) {
-    console.warn('Failed to create wireframe pipeline:', err);
-    emitDiagnostic('webgpu:wireframe-pipeline-failed', { error: err instanceof Error ? err.message : String(err) });
-    // Continue without wireframe - it's optional
+          ],
+        },
+        primitive: { topology: 'line-list', cullMode: 'none' },
+        depthStencil: {
+          depthWriteEnabled: false, // Don't write depth so wireframe doesn't occlude
+          depthCompare: 'less-equal', // Use less-equal so lines draw on top of triangles
+          format: 'depth24plus',
+        },
+      });
+      emitDiagnostic('webgpu:wireframe-pipeline-ready');
+    } catch (err: any) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to create wireframe pipeline:', errorMsg);
+      // emitDiagnostic('webgpu:wireframe-pipeline-failed', { error: errorMsg });
+
+      // CRITICAL: If failure is due to device loss, we must NOT continue.
+      // Return null to trigger renderer fallback to WebGL.
+      if (errorMsg.includes('Device lost') || errorMsg.includes('Instance reference no longer exists')) {
+        return fail('webgpu:adapter-unavailable', 'WebGPU device lost during pipeline creation', undefined, { ...baseDiagInfo });
+      }
+      // Otherwise continue without wireframe - it's optional
+    }
+  } else {
+    // console.warn('[WebGPU] Wireframe pipeline disabled for stability');
   }
 
   // Ensure the depth texture matches the pipeline's expected depth format
@@ -2781,32 +3107,71 @@ export const mount = async ({
     const source = Array.isArray(values) ? values : [];
     const limit = Math.min(source.length, STYLE_PARAM_CAPACITY);
     for (let i = 0; i < STYLE_PARAM_CAPACITY; i += 1) {
-      const next = i < limit ? Number(source[i]) || 0 : 0;
-      if (styleParamCache[i] !== next) {
+      let next = i < limit ? Number(source[i]) || 0 : 0;
+
+      // CRITICAL FIX: The shader expects the last float (index 47) to be > 0.5.
+      // We respect the input source if provided (e.g. styleId + 1), otherwise force 1.0
+      // only if we have data but index 47 was left as 0.
+      if (i === STYLE_PARAM_CAPACITY - 1 && source.length > 0 && next === 0) {
+        next = 1.0;
+      }
+
+      // Temporary Debug: Log params for Gyroid (Style 12)
+      if (i === 0 && source.length > 0) {
+        const sentinel = source[STYLE_PARAM_CAPACITY - 1];
+        if (sentinel === 13 || sentinel === 12) {
+          console.log(`[WebGPU] Sync Gyroid: Sent=${sentinel} Len=${source.length} P0=${source[0]} P1=${source[1]}`);
+        } else if (sentinel === 0 || sentinel === undefined) {
+          console.warn(`[WebGPU] Sync Gyroid: SENTINEL MISSING! Sent=${sentinel} Len=${source.length}`);
+        }
+      }
+
+      // Use epsilon for float comparison to avoid cache thrashing and infinite buffer writes
+      if (Math.abs(styleParamCache[i] - next) > 1e-6) {
         styleParamCache[i] = next;
         changed = true;
       }
     }
+
     if (changed && !disposed) {
-      device.queue.writeBuffer(styleParamBuffer, 0, styleParamCache.buffer);
-      try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.styleParamWrites += 1); } catch (e) { /* ignore */ }
+
+      try {
+        device.queue.writeBuffer(styleParamBuffer, 0, styleParamCache.buffer);
+        // try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.styleParamWrites += 1); } catch (e) { /* ignore */ }
+
+        // Debug Log to enable diagnosing thrashing (throttled)
+        if (Math.random() < 0.005) {
+          console.log(`[WebGPU] Writing StyleBuffer (Sampled)`);
+        }
+      } catch (err) {
+        console.error('[WebGPU] syncStyleParams buffer write failed:', err);
+        emitDiagnostic('webgpu:buffer-write-failed', { buffer: 'style-params', error: String(err) });
+      }
+    } else if (changed && disposed) {
+      console.warn('[WebGPU] syncStyleParams SKIPPED (disposed)');
     }
   };
 
-  const bindGroup = device.createBindGroup({
-    label: 'component:bind-group-main',
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: uniformBuffer } },
-      { binding: 1, resource: { buffer: colorBuffers.c1 } },
-      { binding: 2, resource: { buffer: colorBuffers.c2 } },
-      { binding: 3, resource: { buffer: colorBuffers.c3 } },
-      { binding: 4, resource: { buffer: styleParamBuffer } },
-      { binding: 5, resource: { buffer: bgBuffers.c1 } },
-      { binding: 6, resource: { buffer: bgBuffers.c2 } },
-      { binding: 7, resource: { buffer: bgBuffers.c3 } },
-    ],
-  });
+  const createMainBindGroup = (p: GPURenderPipeline) => {
+    return device.createBindGroup({
+      label: 'component:bind-group-main',
+      layout: p.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniformBuffer } },
+        { binding: 1, resource: { buffer: colorBuffers.c1 } },
+        { binding: 2, resource: { buffer: colorBuffers.c2 } },
+        { binding: 3, resource: { buffer: colorBuffers.c3 } },
+        { binding: 4, resource: { buffer: styleParamBuffer } },
+        { binding: 5, resource: { buffer: bgBuffers.c1 } },
+        { binding: 6, resource: { buffer: bgBuffers.c2 } },
+        { binding: 7, resource: { buffer: bgBuffers.c3 } },
+      ],
+    });
+  };
+
+  if (!pipeline) return null;
+  let bindGroup = createMainBindGroup(pipeline);
+
   emitDiagnostic('webgpu:bind-group-ready', {
     layoutEntries: pipeline.getBindGroupLayout(0) ? 'ok' : 'missing',
     canvasId: mountCanvasId,
@@ -2822,7 +3187,7 @@ export const mount = async ({
     try {
       wireframeBindGroup = device.createBindGroup({
         label: 'component:bind-group-wireframe',
-        layout: wireframePipeline.getBindGroupLayout(0),
+        layout: (wireframePipeline as any).getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: uniformBuffer } },
           { binding: 4, resource: { buffer: styleParamBuffer } },
@@ -2960,7 +3325,7 @@ export const mount = async ({
         device.queue.writeBuffer(uniformBuffer, 0, uniform.buffer as ArrayBuffer);
         emitDiagnostic('component:write-uniforms-immediate', { afterCommit: true });
       } catch (err) {
-        /* best-effort */
+        console.error('[WebGPU] writeUniformsImmediately buffer write failed:', err);
       }
     },
   };
@@ -3925,7 +4290,7 @@ export const mount = async ({
       const radiusBottom = clampNumber(cfg.Rb ?? cfg.Rb, 45.0);
       const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
       const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
-      const computedMaxWithHeight = Math.max(safeHeight, safeRadiusTop, safeRadiusBottom);
+
       const rawPadding = typeof cfg.scenePadding === 'number' ? clampNumber(cfg.scenePadding, CAMERA_PADDING) : CAMERA_PADDING;
       const paddingHint = sanitizePadding(rawPadding);
       const halfHeight = Math.max(safeHeight * 0.5, 1);
@@ -4157,6 +4522,7 @@ export const mount = async ({
   let lastBgSignature: string | null = null;
 
   const updateAndDraw = (payload?: WebGPUParams): void => {
+    lastOperation = 'draw';
     if (disposed) {
       return;
     }
@@ -4269,19 +4635,38 @@ export const mount = async ({
           ? Math.trunc(cfg.styleId)
           : typeof current.styleId === 'number'
             ? Math.trunc(Number(current.styleId))
-            : 0;
+            : (typeof (cfg as any).style === 'string' && (cfg as any).style in STYLE_IDS)
+              ? STYLE_IDS[(cfg as any).style as StyleId]
+              : typeof (cfg as any).style === 'number'
+                ? Math.trunc(Number((cfg as any).style))
+                : typeof (cfg as any).style === 'string' && !isNaN(Number((cfg as any).style))
+                  ? Math.trunc(Number((cfg as any).style))
+                  : 0;
       const styleId = styleIdRaw < 0 ? 0 : styleIdRaw;
+
+      // Debug: Trace Voronoi Style Resolution
+      if (styleId === 13 || (cfg as any).style === 'Voronoi') {
+        console.log(`[WebGPU Debug] StyleRes: raw=${styleIdRaw} resolved=${styleId} cfg.style=${(cfg as any).style} inConfig=${(cfg as any).styleId}`);
+      }
 
       // Populate uniform buffer using shared helper (handles geometry, twist, resolution)
       try {
         fillGeometryBuffer(f32, cfg, current);
+
+        // Debug: Verify buffer content
+        if (styleId === 13) {
+          console.log(`[WebGPU Debug] Buffer[7] (StyleID): ${f32[7]}`);
+        }
       } catch (err) {
         console.error('[WebGPU] fillGeometryBuffer failed:', err);
+        emitDiagnostic('webgpu:fill-geometry-failed', { error: String(err) });
       }
 
       // Update local tracking state
       current.r_drain = drainRadius;
       current.styleId = styleId;
+
+
 
       syncStyleParams(cfg.styleParams ?? current.styleParams);
       current.styleParams = cfg.styleParams;
@@ -4360,8 +4745,9 @@ export const mount = async ({
       // LOD fully disabled - WebGPU handles 1M+ triangles at 120FPS
       const lodActive = false;
 
-      const nTheta = Math.max(MIN_THETA_STATIC, baseNTheta);
-      const nZ = Math.max(MIN_Z_STATIC, baseNZ);
+      const nTheta = Math.min(1024, Math.max(MIN_THETA_STATIC, baseNTheta));
+      const nZ = Math.min(1024, Math.max(MIN_Z_STATIC, baseNZ));
+
       const innerSeg = Math.max(1, baseInner);
       const bottomRings = Math.max(2, Math.min(24, baseBottom));
       const rimRings = Math.max(1, Math.min(8, baseRim));
@@ -4682,9 +5068,9 @@ export const mount = async ({
         f32[30] = resolvedCounts.rimRings;
       }
 
-      current.nTheta = resolvedCounts.nTheta;
-      current.nZ = resolvedCounts.nZ;
-      current.innerSegments = resolvedCounts.innerSeg;
+      current.nTheta = Math.max(3, Math.min(resolvedCounts.nTheta, 4096));
+      current.nZ = Math.max(3, Math.min(resolvedCounts.nZ, 2048));
+      current.innerSegments = Math.max(1, Math.min(resolvedCounts.innerSeg, 2048));
       current.bottom_rings = resolvedCounts.bottomRings;
       current.rim_rings = resolvedCounts.rimRings;
       current.t_wall = cfg.t_wall;
@@ -4736,6 +5122,7 @@ export const mount = async ({
       const parityUniformPending = isUniformParityRewritePending(state);
       const shouldWriteUniforms = parityUniformPending || (uniformDirty && uniformSignature !== lastUniformSignature);
       if (shouldWriteUniforms) {
+        lastOperation = 'write-uniforms';
         (globalThis as any).__lastUniformSignature = uniformSignature;
         device.queue.writeBuffer(uniformBuffer, 0, uniform.buffer as ArrayBuffer);
         clearUniformParityRewriteFlag(state);
@@ -4771,6 +5158,7 @@ export const mount = async ({
 
       const gradientSignature = JSON.stringify(cfg.gradient ?? null);
       if (gradientSignature !== lastGradientSignature) {
+        lastOperation = 'write-gradient';
         writeGradient(device, colorBuffers, cfg.gradient);
         lastGradientSignature = gradientSignature;
       }
@@ -4800,6 +5188,7 @@ export const mount = async ({
       const clearTuple = parseClearColor((cfg as Record<string, unknown>).__pf_bg_rgba);
       const clearValue = { r: clearTuple[0], g: clearTuple[1], b: clearTuple[2], a: clearTuple[3] };
 
+      lastOperation = 'create-encoder';
       const encoder = device.createCommandEncoder({ label: 'component:frame-encoder' });
       let textureView: GPUTextureView | null = null;
       try {
@@ -4820,6 +5209,7 @@ export const mount = async ({
           textureView = null;
         }
         if (!textureView) {
+          console.error('[WebGPU] textureView creation failed (null view)');
           emitDiagnostic('webgpu:get-current-texture-retry-failed', {
             canvasId: mountCanvasId,
           });
@@ -4988,9 +5378,66 @@ export const mount = async ({
         }
       } catch (err) {/* ignore */ }
 
+      lastOperation = 'begin-pass';
+
+      // Dynamic Pipeline Update logic
+      // CRITICAL FIX: Use current.styleId (updated by React) instead of cfg.style (stale initial config)
+      const reqStyleId = typeof current.styleId === 'number' ? current.styleId : (Number(cfg.style) || 0);
+
+      // Debug log only when style changes or is pending
+      if (reqStyleId !== activePipelineStyleId || pendingPipelineStyleId !== null) {
+        if (frameCounter % 60 === 0) {
+          console.log(`[WebGPU] Pipeline State: req=${reqStyleId}, active=${activePipelineStyleId}, pending=${pendingPipelineStyleId}`);
+        }
+      }
+
+      if (reqStyleId !== activePipelineStyleId) {
+        // If we haven't requested this style yet, start compilation
+        if (reqStyleId !== pendingPipelineStyleId) {
+          console.log(`[WebGPU] Style change detected! ${activePipelineStyleId} -> ${reqStyleId}. Initiating compilation...`);
+          pendingPipelineStyleId = reqStyleId;
+          getOrCreatePipeline(reqStyleId).then((p) => {
+            if (p) {
+              console.log(`[WebGPU] Pipeline for style ${reqStyleId} ready. Swapping now.`);
+              activePipeline = p;
+              activePipelineStyleId = reqStyleId;
+              pendingPipelineStyleId = null;
+              // CRITICAL: Recreate bind group to match new pipeline layout
+              try {
+                // Ensure bindGroup is updated to match the new pipeline's layout
+                bindGroup = createMainBindGroup(activePipeline);
+              } catch (e) { console.error('[WebGPU] Failed to recreate BG', e); }
+              // Force a redraw to show new style immediately
+              state.cameraDirty = true;
+            } else {
+              console.error(`[WebGPU] Failed to load pipeline for style ${reqStyleId}. Retaining current.`);
+              // Failed? Reset pending so we can retry or fallback
+              pendingPipelineStyleId = null;
+            }
+          });
+        }
+        // Optimization: Do NOT render this frame if we are mismatched style/pipeline.
+        // Rendering style A parameters with style B pipeline produces "jumbled geometry".
+        // Just return and wait for next frame (or show loading spinner overlay if needed).
+        if (!activePipeline) {
+          // Throttle loop if no pipeline is ready to avoid 100% CPU/GPU usage
+          // FIX: Do NOT schedule a new frame here; the main frame loop handles it.
+          // Just return early.
+          return;
+        }
+        // Optionally, one could continue rendering the OLD style (to avoid flickering black)
+        // BUT if the parameters have already updated to the NEW style, it will look broken.
+        // Current behavior: State parameters update instantly, pipeline updates async.
+        // Fix: Use the ACTIVE pipeline style for parameter synchronization, or skip draw.
+        // Here we choose to skip the draw pass to avoid the "broken cylinder" flash.
+        // FIX: Do NOT schedule a new frame here.
+        return;
+      }
+
       const pass = encoder.beginRenderPass(renderPassDesc);
-      pass.setPipeline(pipeline);
+      pass.setPipeline(activePipeline || pipeline); // Fallback to initial pipeline if active is somehow null
       pass.setBindGroup(0, bindGroup);
+      lastOperation = 'draw-main';
       pass.draw(safeDrawVerts);
       totalDrawCalls += 1;
 
@@ -5000,6 +5447,7 @@ export const mount = async ({
         pass.setBindGroup(0, wireframeBindGroup!);
         // Each solid vertex becomes 2 wireframe verts (line endpoints)
         const wireframeVerts = safeDrawVerts * 2;
+        lastOperation = 'draw-wireframe';
         pass.draw(wireframeVerts);
         totalDrawCalls += 1;
         console.debug('[WebGPU:diag] wireframe-draw', { wireframeVerts, solidVerts: safeDrawVerts });
@@ -5008,8 +5456,12 @@ export const mount = async ({
       pass.end();
 
       const commandBuffer = encoder.finish({ label: 'component:frame-command-buffer' });
+      lastOperation = 'submit';
       device.queue.submit([commandBuffer]);
       frameCounter += 1;
+      if (frameCounter === 1) {
+        console.info(`[WebGPU] First Frame Drawn at ${(performance.now() / 1000).toFixed(3)}s`);
+      }
       try {
         manager.setFrameCounters({ frames: frameCounter, draws: totalDrawCalls, verts: totalDrawnVerts });
       } catch (err) {
@@ -5142,7 +5594,10 @@ export const mount = async ({
 
   const bootPayload = { ...initialParams };
   current = mergeParams(current, bootPayload);
-  updateAndDraw(current ?? {});
+  // REMOVED: updateAndDraw(current ?? {});
+  // This immediate draw call bypasses the 500ms device stabilization delay and 200ms RAF delay,
+  // causing device.queue.submit() before the Windows Dawn driver is stable.
+  // The first render will happen via requestAnimationFrame after the delays complete.
 
   let fpsFrames = 0;
   let fpsStart = performance.now();
@@ -5151,17 +5606,27 @@ export const mount = async ({
   // let disposed = false; // Moved to top of scope
 
   // Idle detection for resource savings
-  const idleDetector = createIdleDetector({
-    idleTimeoutMs: 30_000, // 30 seconds of inactivity
-    onVisibilityChange: (isVisible) => {
-      if (isVisible) {
-        // Resume immediately when tab becomes visible
-        console.debug('[WebGPU] Tab visible, resuming full render rate');
-      } else {
-        console.debug('[WebGPU] Tab hidden, pausing render');
-      }
-    },
-  });
+  // DEFER creation until after first animation frame to prevent
+  // visibility change events from destabilizing GPU initialization.
+  let idleDetector: ReturnType<typeof createIdleDetector> | null = null;
+  let idleDetectorInitialized = false;
+
+  const ensureIdleDetector = () => {
+    if (idleDetectorInitialized || disposed) return;
+    idleDetectorInitialized = true;
+    idleDetector = createIdleDetector({
+      idleTimeoutMs: 30_000, // 30 seconds of inactivity
+      onVisibilityChange: (isVisible) => {
+        if (disposed) return;
+        if (isVisible) {
+          // Resume immediately when tab becomes visible
+          console.debug('[WebGPU] Tab visible, resuming full render rate');
+        } else {
+          console.debug('[WebGPU] Tab hidden, pausing render');
+        }
+      },
+    });
+  };
 
   const applyParamPayload = (payload?: WebGPUParams | null): void => {
     if (disposed) {
@@ -5278,6 +5743,9 @@ export const mount = async ({
       return;
     }
 
+    // Initialize idle detector on first frame (deferred to avoid visibility race during boot)
+    ensureIdleDetector();
+
     // Force active mode when auto-rotate or animations are running
     const hasActiveAnimations = state.autoRotate ||
       (cameraController && cameraController.focusTween) ||
@@ -5287,10 +5755,11 @@ export const mount = async ({
       Math.abs(state.inertiaPanY) > 1e-4 ||
       Math.abs(state.inertiaArcSpeed as number || 0) > 1e-6;
 
-    idleDetector.setForceActive(Boolean(hasActiveAnimations));
+    idleDetector?.setForceActive(Boolean(hasActiveAnimations));
 
     // Skip frame if idle (throttles to ~2 FPS when user inactive)
-    if (!idleDetector.shouldRenderFrame()) {
+    // Only check if idleDetector is initialized; before that, render at full rate
+    if (idleDetector && !idleDetector.shouldRenderFrame()) {
       rafHandle = requestAnimationFrame(frame);
       return;
     }
@@ -5563,8 +6032,16 @@ export const mount = async ({
     }
     rafHandle = requestAnimationFrame(frame);
   };
+  // CRITICAL: Delay the first frame to allow GPU driver to stabilize after device creation.
+  // Without this delay, some Windows drivers crash with "Instance reference no longer exists".
+  // The 200ms delay is conservative; may be reduced on stable systems.
+  // Reduced first-frame delay
+  setTimeout(() => {
+    if (!disposed) {
+      rafHandle = requestAnimationFrame(frame);
+    }
+  }, 10);
 
-  rafHandle = requestAnimationFrame(frame);
   markStatusReady();
   emitDiagnostic('component:ready');
   console.info('[WebGPU] component:ready', { canvasId: mountCanvasId });
@@ -5612,27 +6089,52 @@ export const mount = async ({
     disposed = true;
 
     // Clean up idle detector
-    idleDetector.dispose();
+    try {
+      if (idleDetector) {
+        idleDetector.dispose();
+      }
+    } catch (e) { /* ignore cleanup errors */ }
+
     if (resizeObserver) {
-      resizeObserver.disconnect();
+      try { resizeObserver.disconnect(); } catch (e) { /* ignore */ }
     }
-    if (depth) depth.destroy();
-    uniformBuffer.destroy();
-    colorBuffers.c1.destroy();
-    colorBuffers.c2.destroy();
-    colorBuffers.c3.destroy();
-    bgBuffers.c1.destroy();
-    bgBuffers.c2.destroy();
-    bgBuffers.c3.destroy();
-    styleParamBuffer.destroy();
+    try { if (depth) depth.destroy(); } catch (e) { /* ignore */ }
+    try { if (uniformBuffer) uniformBuffer.destroy(); } catch (e) { /* ignore */ }
+    try { if (colorBuffers?.c1) colorBuffers.c1.destroy(); } catch (e) { /* ignore */ }
+    try { if (colorBuffers?.c2) colorBuffers.c2.destroy(); } catch (e) { /* ignore */ }
+    try { if (colorBuffers?.c3) colorBuffers.c3.destroy(); } catch (e) { /* ignore */ }
+    try { if (bgBuffers?.c1) bgBuffers.c1.destroy(); } catch (e) { /* ignore */ }
+    try { if (bgBuffers?.c2) bgBuffers.c2.destroy(); } catch (e) { /* ignore */ }
+    try { if (bgBuffers?.c3) bgBuffers.c3.destroy(); } catch (e) { /* ignore */ }
+    try { if (styleParamBuffer) styleParamBuffer.destroy(); } catch (e) { /* ignore */ }
     if (localControlResetTimer !== null) {
       window.clearTimeout(localControlResetTimer);
       localControlResetTimer = null;
     }
+    try { if (device) device.destroy(); } catch (e) { /* ignore */ }
   };
+
+
+  if (deviceLostDuringInit) {
+    dispose();
+    return fail('webgpu:adapter-unavailable', 'WebGPU device lost during initialization (final check)', undefined, { ...baseDiagInfo });
+  }
+
+  let paramUpdateCount = 0;
+  let paramUpdateLastFn = performance.now();
 
   const controller: WebGPUController = {
     updateParams: (payload: any) => {
+      // Loop detection: warn if updates exceed 60Hz
+      paramUpdateCount++;
+      const now = performance.now();
+      if (now - paramUpdateLastFn > 1000) {
+        if (paramUpdateCount > 60) {
+          console.warn(`[WebGPU] High frequency param updates detected: ${paramUpdateCount}/sec. work=applyParamPayload`);
+        }
+        paramUpdateCount = 0;
+        paramUpdateLastFn = now;
+      }
       applyParamPayload(payload);
     },
     handleCameraCommand: (payload: any) => {

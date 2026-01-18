@@ -95,3 +95,4 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Grant execute to service role only (webhook uses service key)
 REVOKE EXECUTE ON FUNCTION public.update_subscription_status FROM anon, authenticated;
+

@@ -432,28 +432,6 @@ if (inertiaSpeed > 0) {
 └──────────────┘    └─────────────┘    └──────────────┘
 ```
 
-### Feature Gating
-
-Export quality is tied to subscription tier:
-
-```typescript
-// hooks/useExportTier.ts
-export function useExportTier() {
-  const { profile } = useAuth();
-  
-  const maxResolution = useMemo(() => {
-    switch (profile?.subscription_status) {
-      case 'active': return { n_theta: 336, n_z: 168 }; // Pro
-      default:       return { n_theta: 168, n_z: 84 };  // Free
-    }
-  }, [profile]);
-  
-  return { maxResolution, isPro: profile?.subscription_status === 'active' };
-}
-```
-
----
-
 ## Data Flow
 
 ### Parameter Update Flow
@@ -656,5 +634,5 @@ Available in UI via `usePerformance()` hook.
 
 ---
 
-*Last Updated: December 2024*
-*Version: 1.0*
+*Last Updated: December 2025*
+*Version: 3.0*
