@@ -18,7 +18,7 @@ import {
 } from '../geometry';
 import { ConstrainedTriangulator } from '../utils/geometry/ConstrainedTriangulator';
 import { AdaptiveExportComputer, type AdaptiveExportParams } from '../renderers/webgpu/AdaptiveExportComputer';
-import { FeatureExtractionComputer } from '../renderers/webgpu/FeatureExtractionComputer';
+import { FeatureExtractionComputer, type FeaturePoint } from '../renderers/webgpu/FeatureExtractionComputer';
 import { STYLE_IDS, STYLE_FUNCTION_MAP, STYLE_REGISTRY } from '../styles/registry';
 import { stripShaderCode } from '../utils/shaderStripper';
 
@@ -111,6 +111,7 @@ export function useAdaptiveExport(): UseAdaptiveExportResult {
                         requiredLimits: {
                             maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
                             maxBufferSize: adapter.limits.maxBufferSize,
+                            maxStorageBuffersPerShaderStage: 10,
                         },
                     });
 
@@ -224,6 +225,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
 
             // --- FEATURE EXTRACTION & TOPOLOGY ---
             let baseMesh: { vertices: Float32Array, indices: Uint32Array } | undefined = undefined;
+            let features: FeaturePoint[] = [];
 
             const dimensions = {
                 H: geometry.H,
@@ -256,7 +258,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             if (featureComputerRef.current) {
                 console.log('[useAdaptiveExport] 1. Extraction: Running...');
                 try {
-                    const features = await featureComputerRef.current.compute({
+                    features = await featureComputerRef.current.compute({
                         styleId,
                         styleOpts,
                         styleIndex,
@@ -291,7 +293,8 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 targetTriangles: 2_000_000,
                 subdivThreshold: 0.05,
                 maxDepth: 0,
-                baseMesh: baseMesh
+                baseMesh: baseMesh,
+                features: features
             };
 
             setProgress({
