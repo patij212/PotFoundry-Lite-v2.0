@@ -1,0 +1,87 @@
+{
+  "generatedAt": "2026-01-19T01:10:38.658Z",
+  "version": "1.0.0",
+  "dimensions": {
+    "H": 100,
+    "Rt": 50,
+    "Rb": 35,
+    "tWall": 3,
+    "tBottom": 3,
+    "rDrain": 8,
+    "expn": 1
+  },
+  "quality": {
+    "nTheta": 48,
+    "nZ": 24
+  },
+  "snapshots": {
+    "SuperformulaBlossom": {
+      "styleId": "SuperformulaBlossom",
+      "vertexCount": 2496,
+      "triangleCount": 4992,
+      "indexBufferHash": "9793e6e7c5bb6720452e0002e5df1de6",
+      "volumeMm3": 89094.89,
+      "boundsMin": [
+        -59.54100036621094,
+        -62.49996566772461,
+        0
+      ],
+      "boundsMax": [
+        58.77091979980469,
+        62.5,
+        100
+      ]
+    },
+    "GothicArches": {
+      "styleId": "GothicArches",
+      "vertexCount": 2496,
+      "triangleCount": 4992,
+      "indexBufferHash": "9793e6e7c5bb6720452e0002e5df1de6",
+      "volumeMm3": 80471.72,
+      "boundsMin": [
+        -50.525001525878906,
+        -50.525001525878906,
+        0
+      ],
+      "boundsMax": [
+        50.525001525878906,
+        50.525001525878906,
+        100
+      ]
+    },
+    "SpiralRidges": {
+      "styleId": "SpiralRidges",
+      "vertexCount": 2496,
+      "triangleCount": 4992,
+      "indexBufferHash": "9793e6e7c5bb6720452e0002e5df1de6",
+      "volumeMm3": 82553.63,
+      "boundsMin": [
+        -61.91461181640625,
+        -61.91460418701172,
+        0
+      ],
+      "boundsMax": [
+        61.41410827636719,
+        63.170387268066406,
+        100
+      ]
+    },
+    "CelticKnot": {
+      "styleId": "CelticKnot",
+      "vertexCount": 2496,
+      "triangleCount": 4992,
+      "indexBufferHash": "9793e6e7c5bb6720452e0002e5df1de6",
+      "volumeMm3": 81791.25,
+      "boundsMin": [
+        -52,
+        -50,
+        0
+      ],
+      "boundsMax": [
+        50,
+        50,
+        100
+      ]
+    }
+  }
+}
