@@ -66,6 +66,8 @@ export interface MeshQuality {
   nZ: number;
   /** Seam blend zone in degrees (0 = disabled) */
   seamAngle?: number;
+  /** Whether to apply adaptive mesh optimization (GPU) */
+  optimize?: boolean;
 }
 
 /**

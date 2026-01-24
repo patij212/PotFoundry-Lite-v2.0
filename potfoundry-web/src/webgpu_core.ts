@@ -9,8 +9,15 @@
 /// <reference lib="dom" />
 /// <reference types="@webgpu/types" />
 
-import potPreviewWgsl from './assets/pot_preview.wgsl?raw';
-import { generateStyleConstants } from './utils/shaderGenerator';
+
+// Modular Shader Imports
+
+
+
+import { ShaderManager } from './renderers/webgpu/ShaderManager';
+import { WebGPURenderer } from './renderers/webgpu/WebGPURenderer';
+import { SceneManager } from './renderers/webgpu/SceneManager';
+
 import {
   buildCameraBasis,
   normalizeCameraBasis as cbNormalizeCameraBasis,
@@ -40,10 +47,12 @@ import manager from './infra/logging/MessageManager';
 import { installConsolePatch } from './infra/logging/ConsolePatch';
 import { resolveLoggingPreferences } from './infra/logging/loggingPreferences';
 import { withValidationScope, createShaderModule } from './infra/logging/WebGpuCapture';
-import { fillGeometryBuffer } from './webgpu_geometry';
+
 import { createIdleDetector } from './utils/idleDetection';
-import { type StyleId } from './geometry/types';
+import { fillGeometryBuffer } from './webgpu_geometry';
 import { STYLE_FUNCTION_MAP, STYLE_IDS } from './styles/registry';
+import { type StyleId } from './geometry/types';
+
 
 try {
   installConsolePatch();
@@ -71,57 +80,7 @@ try {
   /* ignore attach errors */
 }
 
-// Canonical constants moved to `camera_constants.ts`.
-// Ensure the imported WGSL is handled robustly and not coerced from an object.
-const styleConstants = generateStyleConstants();
-let WGSL_SOURCE: string = '';
-if (typeof potPreviewWgsl === 'string') {
-  WGSL_SOURCE = styleConstants + '\n' + potPreviewWgsl;
-} else if (potPreviewWgsl && typeof (potPreviewWgsl as any).default === 'string') {
-  WGSL_SOURCE = styleConstants + '\n' + (potPreviewWgsl as any).default;
-} else {
-  console.warn('[WebGPU] potPreviewWgsl is not a string; import:', potPreviewWgsl);
-  WGSL_SOURCE = '';
-}
-
-// OPTIMIZATION: Pre-compute function locations to avoid expensive Regex in compile loops.
-// This takes O(N) time once at startup, replacing O(MxN) regex passes during warmup.
-const FUNCTION_LOCATIONS = new Map<string, { start: number, end: number }>();
-
-const setupFunctionStripper = () => {
-  if (!WGSL_SOURCE) return;
-  const signatureRegex = /fn\s+(\w+)\s*\(/g;
-  let match;
-  while ((match = signatureRegex.exec(WGSL_SOURCE)) !== null) {
-    const funcName = match[1];
-    const startIdx = match.index;
-    let idx = startIdx;
-    let braceDepth = 0;
-    let foundOpen = false;
-    let endIdx = -1;
-
-    // Scan forward to find the block end
-    while (idx < WGSL_SOURCE.length) {
-      const char = WGSL_SOURCE[idx];
-      if (char === '{') {
-        braceDepth++;
-        foundOpen = true;
-      } else if (char === '}') {
-        braceDepth--;
-        if (foundOpen && braceDepth === 0) {
-          endIdx = idx + 1;
-          break;
-        }
-      }
-      idx++;
-    }
-    if (endIdx !== -1) {
-      FUNCTION_LOCATIONS.set(funcName, { start: startIdx, end: endIdx });
-    }
-  }
-  console.log(`[WebGPU] Optimized stripper ready. Indexed ${FUNCTION_LOCATIONS.size} functions.`);
-};
-setupFunctionStripper();
+// WGSL source generation logic moved to ShaderManager
 
 
 
@@ -1387,11 +1346,7 @@ export const mount = async ({
   initialParams = initialParams ?? {};
 
   // Verify Shader Source Integrity (Hot-Patch Check)
-  if (!WGSL_SOURCE.includes('const STYLE_VORONOI = 13')) {
-    console.error('[WebGPU CRITICAL] Shader source is STALE! Missing STYLE_VORONOI constant. Try manual reload.');
-  } else {
-    console.log('[WebGPU] Shader source verified: Contains Voronoi definitions.');
-  }
+  // WGSL validation replaced by ShaderManager checks
 
   applyLoggingPreferences(initialParams as Record<string, unknown>);
   let statusReady = false;
@@ -1580,140 +1535,30 @@ export const mount = async ({
     );
   }
 
-  const navGpu = (navigator as Navigator & { gpu?: unknown }).gpu as
-    | {
-      requestAdapter: () => Promise<unknown>;
-      getPreferredCanvasFormat: () => GPUTextureFormat;
-    }
-    | undefined;
 
-  if (!navGpu) {
-    // Provide more detailed error message based on user agent
-    const ua = navigator.userAgent.toLowerCase();
-    const isAndroid = ua.includes('android');
-    const isIOS = ua.includes('iphone') || ua.includes('ipad');
-    const isSafari = ua.includes('safari') && !ua.includes('chrome');
-    const isFirefox = ua.includes('firefox');
-
-    let helpMessage = 'WebGPU API not found in this browser.';
-    if (isAndroid) {
-      helpMessage = 'WebGPU not available. On Android, Chrome 121+ is required with Android 12+ and a supported GPU (Qualcomm/ARM).';
-    } else if (isIOS && !isSafari) {
-      helpMessage = 'WebGPU not available. On iOS, please use Safari 18.2+ with WebGPU enabled.';
-    } else if (isIOS && isSafari) {
-      helpMessage = 'WebGPU not available. Safari 18.2+ is required, or enable WebGPU in Safari Settings > Feature Flags.';
-    } else if (isFirefox) {
-      helpMessage = 'WebGPU not available. Firefox requires WebGPU to be enabled in about:config (dom.webgpu.enabled).';
-    }
-
-    emitDiagnostic('webgpu:unsupported', { ...baseDiagInfo, helpMessage });
-    return fail('webgpu:not-supported', helpMessage, undefined, { ...baseDiagInfo, helpMessage });
+  const renderer = new WebGPURenderer(canvas);
+  if (!await renderer.init()) {
+    // Fallback error handling if renderer init fails
+    return fail('webgpu:adapter-unavailable', 'WebGPU initialization failed - check console for details');
   }
 
-  const attemptAdapterRequest = async (
-    options: GPURequestAdapterOptions | undefined,
-    label: string
-  ): Promise<GPUAdapter | null> => {
-    try {
-      console.log(`[WebGPU] Attempting adapter request: ${label}`, options);
-      const adapterResult = await (navGpu as any).requestAdapter(options);
-      if (!adapterResult) {
-        console.warn(`[WebGPU] Adapter request '${label}' returned null`);
-        emitDiagnostic('webgpu:adapter-null', { ...baseDiagInfo, attempt: label, options });
-      } else {
-        console.log(`[WebGPU] Adapter request '${label}' succeeded!`);
-      }
-      return adapterResult as GPUAdapter | null;
-    } catch (err) {
-      console.error(`[WebGPU] Adapter request '${label}' threw error:`, err);
-      emitDiagnostic('webgpu:adapter-request-error', {
-        ...baseDiagInfo,
-        attempt: label,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return null;
-    }
-  };
+  const device = renderer.device!;
+  const context = renderer.context!;
+  const format = renderer.presentationFormat;
+  const adapter = renderer.adapter!;
 
-  // Try various adapter options, including compatibilityMode for devices without Vulkan 1.1+
-  // The compatibilityMode option (Chrome 127+) enables OpenGL ES backend on Android devices
-  // that lack Vulkan support, which is common on many mobile devices.
-
-  // Define adapter request strategies to try
-  const adapterStrategies: Array<{ options: GPURequestAdapterOptions | undefined; label: string }> = [
-    { options: undefined, label: 'default' },
-    { options: { powerPreference: 'high-performance' }, label: 'high-performance' },
-    { options: { powerPreference: 'low-power' }, label: 'low-power' },
-    // DISABLED: compatibilityMode causes "Instance reference no longer exists" crashes on Windows
-    // after ~30-60 seconds due to Dawn OpenGL ES backend instability.
-    // { options: { compatibilityMode: true } as GPURequestAdapterOptions, label: 'compatibility-mode' },
-    { options: { forceFallbackAdapter: true }, label: 'fallback' },
-  ];
-
-  // Retry adapter request with delays - GPU process may need time to recover from crashes
-  let adapter: GPUAdapter | null = null;
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY_MS = 500;
-
-  for (let retry = 0; retry < MAX_RETRIES && !adapter; retry++) {
-    if (retry > 0) {
-      console.log(`[WebGPU] Retry ${retry}/${MAX_RETRIES} - waiting ${RETRY_DELAY_MS}ms before next attempt...`);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-    }
-
-    for (const strategy of adapterStrategies) {
-      const result = await attemptAdapterRequest(strategy.options, strategy.label);
-      if (result) {
-        adapter = result;
-        console.log(`[WebGPU] Successfully obtained adapter with strategy '${strategy.label}' on retry ${retry}`);
-        break;
-      }
-    }
-  }
-
-  if (!adapter) {
-    // Provide platform-specific help for adapter failures
-    const ua = navigator.userAgent.toLowerCase();
-    const isAndroid = ua.includes('android');
-    const isIOS = ua.includes('iphone') || ua.includes('ipad');
-
-    let adapterHelpMessage = 'WebGPU adapter unavailable. Your GPU may not support WebGPU or may be blocklisted.';
-    if (isAndroid) {
-      adapterHelpMessage = 'WebGPU adapter unavailable. This usually means:\n• Android version is below 12\n• GPU (Qualcomm/ARM required) is not supported\n• GPU is blocklisted due to driver issues\nTry: chrome://flags → enable "Unsafe WebGPU Support" (for testing only)';
-    } else if (isIOS) {
-      adapterHelpMessage = 'WebGPU adapter unavailable. On iOS, ensure Safari 18.2+ is installed and WebGPU is enabled in Settings → Safari → Advanced → Feature Flags.';
-    }
-
-    emitDiagnostic('webgpu:adapter-missing', { ...baseDiagInfo, canvasId: mountCanvasId, adapterHelpMessage });
-    return fail('webgpu:adapter-unavailable', adapterHelpMessage, undefined, {
-      ...baseDiagInfo,
-      adapterHelpMessage,
-    });
-  }
   emitDiagnostic('webgpu:adapter-ready');
-  console.log('[WebGPU] Adapter obtained successfully, requesting device...');
-  debugLog('adapter-ready');
-  let device: GPUDevice;
-  try {
-    device = await (adapter as any).requestDevice();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    emitDiagnostic('webgpu:device-request-failed', { message, ...baseDiagInfo });
-    return fail('webgpu:adapter-unavailable', 'WebGPU device request failed', message, {
-      ...baseDiagInfo,
-    });
-  }
   emitDiagnostic('webgpu:device-ready');
-  console.log('[WebGPU] Device obtained, getting canvas context...');
+  emitDiagnostic('webgpu:context-ready');
 
   // Track device loss during initialization AND runtime
   let deviceLostDuringInit = false;
   let lastOperation = 'init'; // Track last operation for debugging
 
   // CRITICAL: Defer device.lost handler attachment to allow GPU instance to stabilize.
-  // On some Windows Dawn/Chrome drivers, immediately attaching a .then() handler to
-  // device.lost causes "Instance reference no longer exists" crash.
   setTimeout(() => {
+    // We access disposed variable which is defined further down. 
+    // In lambda it should be fine as it runs later.
     if (disposed) return;
     device.lost.then((info) => {
       handleDeviceLost(info, {
@@ -1725,23 +1570,6 @@ export const mount = async ({
     });
   }, 500);
 
-  // DISABLED: installWebGpuCapture causes "Instance reference no longer exists" crash on some Windows drivers.
-  // The capture layer's device.lost.then() handler appears to destabilize the GPU instance.
-  // try { installWebGpuCapture(device); } catch (e) { /* best-effort; do not hard-fail */ }
-  const context = canvas.getContext('webgpu') as unknown as GPUCanvasContext | null;
-  console.log('[WebGPU] Canvas context result:', context ? 'SUCCESS' : 'null');
-  if (!context) {
-    return fail('webgpu:context-unavailable', 'WebGPU context unavailable', undefined, {
-      ...baseDiagInfo,
-      canvasId: mountCanvasId,
-    });
-  }
-  emitDiagnostic('webgpu:context-ready');
-  if (deviceLostDuringInit) {
-    return fail('webgpu:adapter-unavailable', 'WebGPU device lost during initialization', undefined, { ...baseDiagInfo });
-  }
-
-  const format = navGpu.getPreferredCanvasFormat();
   let width = 1;
   let height = 1;
   let devicePixelRatio = window.devicePixelRatio || 1;
@@ -1764,6 +1592,36 @@ export const mount = async ({
   console.log('[WebGPU] Waiting 50ms for GPU device stabilization...');
   await new Promise(resolve => setTimeout(resolve, 50));
   console.log('[WebGPU] Device stabilization complete, proceeding with initialization...');
+
+  // Initialize SceneManager
+  const sceneManager = new SceneManager(renderer);
+  const reqInitStyleId = typeof initialParams.style === 'number' ? initialParams.style : 0;
+  try {
+    if (!await sceneManager.init(reqInitStyleId)) {
+      console.error('[WebGPU] SceneManager.init returned false');
+      return fail('webgpu:pipeline-failed', 'SceneManager initialization failed');
+    }
+  } catch (err) {
+    console.error('[WebGPU] SceneManager.init threw:', err);
+    return fail('webgpu:pipeline-failed', `SceneManager initialization crashed: ${err}`);
+  }
+
+  // Extract buffers for legacy code compatibility
+  const uniformBuffer = sceneManager.uniformBuffer!;
+  const styleParamBuffer = sceneManager.styleParamBuffer!;
+
+  const colorBuffers = {
+    c1: sceneManager.bgBuffers.c1,
+    c2: sceneManager.bgBuffers.c2,
+    c3: sceneManager.bgBuffers.c3
+  };
+
+  // Legacy code maps bgBuffers.c1 to binding 5 (bg1)
+  const bgBuffers = {
+    c1: sceneManager.bgBuffers.bg1,
+    c2: sceneManager.bgBuffers.bg2,
+    c3: sceneManager.bgBuffers.bg3
+  };
 
   let depth = createDepthTexture(device, width, height);
 
@@ -2639,15 +2497,8 @@ export const mount = async ({
     axisCtx = null;
   }
 
-  let wgsl = WGSL_SOURCE ?? '';
-  if (typeof wgsl !== 'string') {
-    console.warn('[WebGPU] WGSL import not a string; coercing to string', wgsl);
-    try {
-      wgsl = String(wgsl);
-    } catch (err) {
-      wgsl = '';
-    }
-  }
+  let wgsl = ShaderManager.getInstance().getWGSL();
+  // Validation logic removed as ShaderManager ensures validity
   const wgslSnippet = (wgsl ?? '').slice(0, 512).replace(/\n/g, ' ');
   const hasVs = wgsl.indexOf('fn vs_main(') >= 0 || wgsl.indexOf('@vertex') >= 0;
   const hasFs = wgsl.indexOf('fn fs_main(') >= 0 || wgsl.indexOf('@fragment') >= 0;
@@ -2725,136 +2576,17 @@ export const mount = async ({
 
   // Lazy Pipeline Cache Implementation
   // Lazy Pipeline Cache Implementation
-  const CACHED_PIPELINES = new Map<number, GPURenderPipeline>();
+
 
 
 
   // Pipeline Promise Cache to prevent double-compilation race conditions
-  const PENDING_PIPELINES = new Map<number, Promise<GPURenderPipeline | null>>();
+
 
   const getOrCreatePipeline = async (styleId: number): Promise<GPURenderPipeline | null> => {
-    // 1. Check Cache
-    if (CACHED_PIPELINES.has(styleId)) {
-      // console.log(`[WebGPU] Cache HIT for style ${styleId}`);
-      return CACHED_PIPELINES.get(styleId) as GPURenderPipeline;
-    }
-    // 2. Check Pending - deduplicate requests
-    if (PENDING_PIPELINES.has(styleId)) {
-      console.log(`[WebGPU] Joining pending compilation for style ${styleId}...`);
-      return PENDING_PIPELINES.get(styleId) as Promise<GPURenderPipeline | null>;
-    }
-
-    console.log(`[WebGPU] Cache MISS for style ${styleId}. initiating compilation.`);
-    const compileTask = (async () => {
-      try {
-        // Prepare specialized shader source
-        const tStart = performance.now();
-        const targetFunction = STYLE_FUNCTION_MAP[styleId] || 'sf_radius';
-        console.log(`[WebGPU] Compiling style ${styleId} (OptV3)...`);
-
-        // OPTIMIZATION: CONSTRUCTIVE STRIPPING
-        // Instead of repeated Regex cutting (expensive), we build the string from chunks.
-        // 1. Identify all functions to exclude
-        const exclusions: { start: number, end: number }[] = [];
-        const toStrip = new Set<string>();
-
-        Object.values(STYLE_FUNCTION_MAP).forEach((name) => {
-          if (name !== targetFunction) toStrip.add(name);
-        });
-
-        // Deep stripping helpers
-        if (targetFunction !== 'sf_radius') {
-          toStrip.add('superformula_value');
-          toStrip.add('sf_radius_zero');
-          toStrip.add('sf_radius_tau');
-        }
-        if (targetFunction !== 'gothic_arches_radius') {
-          toStrip.add('sat');
-          toStrip.add('smoothstep2');
-          toStrip.add('ridge');
-          toStrip.add('ridge_sin');
-        }
-
-        // 2. Map to ranges
-        toStrip.forEach(name => {
-          const loc = FUNCTION_LOCATIONS.get(name);
-          if (loc) exclusions.push(loc);
-        });
-
-        // 3. Sort ranges
-        exclusions.sort((a, b) => a.start - b.start);
-
-        // 4. Build string
-        let strippedWgsl = '';
-        let currentIdx = 0;
-        for (const ex of exclusions) {
-          if (ex.start > currentIdx) {
-            strippedWgsl += WGSL_SOURCE.substring(currentIdx, ex.start);
-          }
-          currentIdx = Math.max(currentIdx, ex.end); // Skip excluded block
-        }
-        if (currentIdx < WGSL_SOURCE.length) {
-          strippedWgsl += WGSL_SOURCE.substring(currentIdx);
-        }
-
-        // Note: Regex will run faster on the smaller string.
-        strippedWgsl = strippedWgsl.replace(
-          /\s*\/\/\s*DYNAMIC_STYLE_DISPATCH[\s\S]*?return\s+sf_radius\s*\([^\)]*\)\s*;/g,
-          `let force_layout = StyleParams.values[11].x;
-          return ${targetFunction}(th, t, r0) + force_layout * 0.0000001;`
-        );
-
-        strippedWgsl = strippedWgsl.replace(
-          /fn\s+style_params_active\s*\(\s*\)\s*->\s*bool\s*\{[^}]+\}/,
-          'fn style_params_active() -> bool { return true; }'
-        );
-
-        // 5b. Remove Comments & Wireframe AFTER functional replacements
-        // (Function replacements rely on matching specific comments or code structures)
-        strippedWgsl = strippedWgsl.replace(/\/\/ Wireframe Shader Entry Points[\s\S]*$/, '');
-        strippedWgsl = strippedWgsl.replace(/\/\/[^\n]*\n/g, '\n');
-
-        // Replace helpers (still needed for 'unresolved call target' fix in specialized functions)
-        // But we only need to patch the ones that EXIST in the stripped source.
-        const replaceHelper = (funcName: string, thetaVal: string) => {
-          const regex = new RegExp(`fn\\s+${funcName}\\s*\\([^\\)]*\\)\\s*->\\s*f32\\s*\\{[\\s\\S]*?\\n\\}`, 'g');
-          strippedWgsl = strippedWgsl.replace(regex,
-            `fn ${funcName}(style_id: i32, t: f32, r0: f32) -> f32 { return ${targetFunction}(${thetaVal}, t, r0); }`
-          );
-        };
-        replaceHelper('style_radius_zero', '0.0');
-        replaceHelper('style_radius_tau', '6.2831853'); // TAU
-
-        const tStrip = performance.now();
-        // console.debug(`[WebGPU] Stripping took ${(tStrip - tStart).toFixed(2)}ms. Size: ${(WGSL_SOURCE.length / 1024).toFixed(1)}KB -> ${(strippedWgsl.length / 1024).toFixed(1)}KB`);
-
-
-        // 3. Create Shader Module
-        const sm = await createShaderModule(device as any, strippedWgsl, `potfoundry-style-${styleId}`);
-        if (!sm) {
-          console.error(`[WebGPU] Failed to create shader module for style ${styleId}`);
-          return null;
-        }
-
-        // 4. Create Pipeline using Shared Layout to avoid re-validation overhead
-        const p = await createPipeline(device, format, sm, setStatus, emitDiagnostic, strippedWgsl, globalPipelineLayout);
-        if (p) {
-          CACHED_PIPELINES.set(styleId, p);
-          console.log(`[WebGPU] Pipeline for style ${styleId} ready.`);
-          return p;
-        }
-        return null;
-      } catch (err) {
-        console.error(`[WebGPU] Failed to create pipeline for style ${styleId}`, err);
-        // Only delete from pending on error so we can retry later. 
-        // On success, we keep the resolved promise to act as a permanent cache.
-        PENDING_PIPELINES.delete(styleId);
-        return null;
-      }
-    })();
-
-    PENDING_PIPELINES.set(styleId, compileTask);
-    return compileTask;
+    // Call SceneManager to switch pipeline using the optimized per-style shader
+    await sceneManager.activateStyle(styleId);
+    return sceneManager.pipeline;
   };
 
   // Create Shared Pipeline Layout ONCE
@@ -2873,33 +2605,12 @@ export const mount = async ({
       { binding: 7, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // Bg3
     ],
   });
-  const globalPipelineLayout = device.createPipelineLayout({
-    label: 'component:pipeline-layout-shared',
-    bindGroupLayouts: [sharedBGL]
-  });
+
 
   // Background Pipeline Warmup
   // Pre-compiles all style shaders so switching styles later is instant.
   const warmupPipelineCache = async () => {
-    // PARALLEL WARMUP: Dispatch all compilation tasks quickly, let driver schedule them.
-    // This achieves ~15s total completion vs 80s for serial.
-    console.debug('[WebGPU] Starting PARALLEL background pipeline warmup...');
-    const styleIds = Object.keys(STYLE_FUNCTION_MAP).map(Number);
-
-    for (const styleId of styleIds) {
-      if (disposed) return;
-      if (styleId === initialStyleId) continue;
-      if (CACHED_PIPELINES.has(styleId) || PENDING_PIPELINES.has(styleId)) continue;
-
-      // Fire-and-forget: Start compilation but don't wait for it
-      getOrCreatePipeline(styleId).catch(e => {
-        console.warn(`[WebGPU] Warmup failed for style ${styleId}`, e);
-      });
-
-      // Stagger dispatch by 1 frame (16ms) to keep UI interaction fluid
-      await new Promise(resolve => setTimeout(resolve, 16));
-    }
-    console.debug('[WebGPU] All compilation tasks dispatched.');
+    // No-op for legacy warmup
   };
 
   // Trigger warmup MOVED to after initial render to prioritize first frame
@@ -3019,22 +2730,7 @@ export const mount = async ({
   const copyDstUsage = bufferUsage.COPY_DST ?? 0x08;
   const storageUsage = bufferUsage.STORAGE ?? 0x20;
 
-  const uniformBuffer = device.createBuffer({
-    label: 'component:uniform-buffer',
-    size: uniformSize,
-    usage: uniformUsage | copyDstUsage,
-  });
-
-  const colorBuffers = {
-    c1: device.createBuffer({ label: 'component:color-buffer-1', size: 16, usage: uniformUsage | copyDstUsage }),
-    c2: device.createBuffer({ label: 'component:color-buffer-2', size: 16, usage: uniformUsage | copyDstUsage }),
-    c3: device.createBuffer({ label: 'component:color-buffer-3', size: 16, usage: uniformUsage | copyDstUsage }),
-  };
-  const bgBuffers = {
-    c1: device.createBuffer({ label: 'component:bg-buffer-1', size: 16, usage: uniformUsage | copyDstUsage }),
-    c2: device.createBuffer({ label: 'component:bg-buffer-2', size: 16, usage: uniformUsage | copyDstUsage }),
-    c3: device.createBuffer({ label: 'component:bg-buffer-3', size: 16, usage: uniformUsage | copyDstUsage }),
-  };
+  // Uniform/color buffers managed by SceneManager, removed local declaration
   // Preallocated Float32Array scratch buffers used to avoid allocation in
   // the hot render path when updating gradient colors.
   const colorBufC1 = new Float32Array(4);
@@ -3096,11 +2792,7 @@ export const mount = async ({
     }
   };
 
-  const styleParamBuffer = device.createBuffer({
-    label: 'component:style-params',
-    size: STYLE_PARAM_CAPACITY * 4,
-    usage: uniformUsage | copyDstUsage,
-  });
+  // styleParamBuffer managed by SceneManager, removed local declaration
   const styleParamCache = new Float32Array(STYLE_PARAM_CAPACITY);
   const syncStyleParams = (values: unknown): void => {
     let changed = false;

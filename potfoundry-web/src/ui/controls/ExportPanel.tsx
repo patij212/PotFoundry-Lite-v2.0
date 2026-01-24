@@ -1,20 +1,24 @@
 /**
- * ExportPanel - UI for mesh generation and STL export
+ * ExportPanel - UI for mesh generation and file export
  * 
  * Provides a clean interface for:
  * - Viewing mesh statistics
- * - Downloading STL files
- * - Configuring export options
+ * - Downloading STL or 3MF files
+ * - Configuring export options (format, GPU, optimization)
  * - Tier-based export limits and upgrade prompts
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useAppStore } from '../../state';
 import { useExport, useExportTier, FREE_TIER_MONTHLY_LIMIT } from '../../hooks';
+import useGPUExport from '../../hooks/useGPUExport';
+import useAdaptiveExport from '../../hooks/useAdaptiveExport';
 import { useIsPro, useIsAuthenticated } from '../../context/AuthContext';
 import { PricingModal } from '../pricing';
 import { AuthModal } from '../auth';
 import { Button } from '../shared/Button';
 import { Section } from '../shared/Section';
+import type { ExportFormat } from '../../geometry/stlExport';
 import './ExportPanel.css';
 
 // ============================================================================
@@ -74,13 +78,40 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   defaultFilename = 'pot.stl',
   onExportComplete,
 }) => {
-  const { progress, stats, exportSTL, generateMesh, reset } = useExport();
+  // Always call all hooks
+  const cpuExport = useExport();
+  const gpuExport = useGPUExport();
+  const adaptiveExport = useAdaptiveExport();
+  const mesh = useAppStore(state => state.mesh);
+  const style = useAppStore(state => state.style);
+  const setMeshParam = useAppStore(state => state.setMeshParam);
+
+  // State for GPU preference, adaptive mode, and format
+  const [useGPU, setUseGPU] = useState(true);
+  const [useAdaptive, setUseAdaptive] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('stl');
+
+  // Determine active exporter (adaptive takes priority if enabled)
+  const activeExport = useAdaptive && adaptiveExport.isAvailable
+    ? adaptiveExport
+    : (useGPU && gpuExport.isGPUAvailable)
+      ? gpuExport
+      : cpuExport;
+  const { progress, stats, generateMesh, reset } = activeExport;
+
   const { checkExportAllowed, recordExport, exportsThisMonth } = useExportTier();
   const isPro = useIsPro();
   const isAuthenticated = useIsAuthenticated();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Auto-disable GPU if unavailable
+  useEffect(() => {
+    if (!gpuExport.isGPUAvailable && useGPU) {
+      setUseGPU(false);
+    }
+  }, [gpuExport.isGPUAvailable, useGPU]);
 
   const isDev = import.meta.env.DEV;
   const tierCheck = checkExportAllowed();
@@ -102,10 +133,39 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
       return;
     }
 
-    await exportSTL(defaultFilename);
-    await recordExport();
-    onExportComplete?.();
-  }, [exportSTL, defaultFilename, onExportComplete, tierCheck, recordExport, isAuthenticated]);
+    // Generate mesh using the active exporter
+    // Note: CPU exporter returns MeshResult { mesh, diagnostics }
+    //       GPU exporter returns MeshData directly
+    const result = await generateMesh();
+    if (!result) {
+      return; // Error already handled
+    }
+
+    // Extract mesh data - handle both return types
+    let meshData = 'mesh' in result ? result.mesh : result;
+
+    // Mesh is already capped to safe sizes in useExport/useGPUExport
+    // No need for decimation here
+
+    // Determine filename with correct extension
+    const styleName = style.name ?? 'Pot';
+    const extension = exportFormat === '3mf' ? '3mf' : 'stl';
+    const filename = `PotFoundry_${styleName}_${Date.now()}.${extension}`;
+
+    try {
+      // Import and use downloadMesh for format-aware export
+      const { downloadMesh } = await import('../../geometry/stlExport');
+      await downloadMesh(meshData, filename, { format: exportFormat });
+
+      await recordExport();
+      onExportComplete?.();
+    } catch (error) {
+      console.error('[ExportPanel] Export failed:', error);
+      // Show error to user via reset/progress
+      reset();
+      alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}. Try reducing the resolution.`);
+    }
+  }, [generateMesh, exportFormat, tierCheck, recordExport, isAuthenticated, style.name, onExportComplete, isDev, reset]);
 
   const handlePreview = useCallback(async () => {
     await generateMesh();
@@ -215,7 +275,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
               className="export-panel__export-btn"
             >
               <DownloadIcon />
-              {isLoading ? 'Generating...' : 'Download STL'}
+              {isLoading ? 'Generating...' : `Download ${exportFormat.toUpperCase()}`}
             </Button>
           ) : (
             // Signed in but limit reached
@@ -291,6 +351,9 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                 <span className="export-panel__stat-label">Gen Time</span>
                 <span className="export-panel__stat-value">
                   {stats.generationTimeMs.toFixed(1)}ms
+                  {'gpuAccelerated' in stats && stats.gpuAccelerated && (
+                    <span className="export-panel__tag-gpu" title="Generated on GPU">GPU</span>
+                  )}
                 </span>
               </div>
             </div>
@@ -334,9 +397,95 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
               Binary STL format is used by default. This produces smaller files
               that are faster to process and universally supported by all slicers.
             </p>
+
+            {/* GPU Toggle - Only show if GPU is available or forced in dev */}
+            <div className="export-panel__option-toggle">
+              <label className="export-panel__checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={useGPU}
+                  onChange={(e) => setUseGPU(e.target.checked)}
+                  disabled={!gpuExport.isGPUAvailable}
+                />
+                <span className="export-panel__checkbox-text">
+                  Use GPU Acceleration
+                  {!gpuExport.isGPUAvailable && <span className="export-panel__tag-unavailable">Unavailable</span>}
+                </span>
+              </label>
+            </div>
+
+            {/* Optimization Toggle */}
+            <div className="export-panel__option-toggle">
+              <label className="export-panel__checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={mesh.optimize ?? false}
+                  onChange={(e) => setMeshParam('optimize', e.target.checked)}
+                  disabled={!useGPU || !gpuExport.isGPUAvailable || useAdaptive}
+                />
+                <span className="export-panel__checkbox-text">
+                  Optimize Mesh (Experimental)
+                  <span className="export-panel__tag-experimental" title="Reduces triangle count in flat areas">Beta</span>
+                </span>
+              </label>
+            </div>
+
+            {/* Adaptive Export Toggle */}
+            <div className="export-panel__option-toggle">
+              <label className="export-panel__checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={useAdaptive}
+                  onChange={(e) => setUseAdaptive(e.target.checked)}
+                  disabled={!adaptiveExport.isAvailable}
+                />
+                <span className="export-panel__checkbox-text">
+                  Adaptive Resolution
+                  {adaptiveExport.isAvailable
+                    ? <span className="export-panel__tag-new" title="Variable mesh density based on curvature">NEW</span>
+                    : <span className="export-panel__tag-unavailable">Unavailable</span>
+                  }
+                </span>
+              </label>
+              {useAdaptive && (
+                <p className="export-panel__hint" style={{ marginTop: '4px', fontSize: '11px' }}>
+                  More triangles where detail matters. Target: 20M triangles.
+                </p>
+              )}
+            </div>
+
+            {/* Format Selector */}
+            <div className="export-panel__option-toggle">
+              <label className="export-panel__checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="export-panel__checkbox-text">Export Format:</span>
+                <select
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                  className="export-panel__format-select"
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-bg-secondary)',
+                    color: 'var(--color-text)',
+                    fontSize: '13px'
+                  }}
+                >
+                  <option value="stl">STL (Binary)</option>
+                  <option value="3mf">3MF (Compressed)</option>
+                </select>
+              </label>
+            </div>
+
             <div className="export-panel__format-info">
-              <span className="export-panel__format-badge">Binary STL</span>
-              <span className="export-panel__format-desc">80% smaller than ASCII</span>
+              <span className="export-panel__format-badge">
+                {exportFormat === '3mf' ? '3MF' : 'Binary STL'}
+              </span>
+              <span className="export-panel__format-desc">
+                {exportFormat === '3mf'
+                  ? '50% smaller than STL, ZIP compressed'
+                  : '80% smaller than ASCII STL'}
+              </span>
             </div>
           </div>
         )}

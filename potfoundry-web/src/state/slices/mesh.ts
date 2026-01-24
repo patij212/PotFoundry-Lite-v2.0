@@ -77,24 +77,32 @@ export const QUALITY_PRESETS: Record<QualityPreset, MeshQuality> = {
     preview_n_z: 128,
     export_n_theta: 512,
     export_n_z: 256,
+    seamAngle: 0,
+    optimize: false,
   },
   standard: {
     preview_n_theta: 512,
     preview_n_z: 256,
     export_n_theta: 1024,
     export_n_z: 512,
+    seamAngle: 0,
+    optimize: false,
   },
   high: {
     preview_n_theta: 1024,
     preview_n_z: 512,
     export_n_theta: 2048,
     export_n_z: 1024,
+    seamAngle: 0,
+    optimize: true, // Default high to optimized?
   },
   ultra: {
     preview_n_theta: 2048,
     preview_n_z: 1024,
     export_n_theta: 2048,
     export_n_z: 1024,
+    seamAngle: 0,
+    optimize: true,
   },
 };
 
@@ -161,7 +169,9 @@ export const createMeshSlice: StateCreator<
     set((state) => ({
       mesh: {
         ...state.mesh,
-        [key]: clampMeshParam(key, value),
+        [key]: typeof value === 'number' && key in MESH_QUALITY_BOUNDS
+          ? clampMeshParam(key as any, value)
+          : value,
       },
     }));
   },
@@ -172,7 +182,13 @@ export const createMeshSlice: StateCreator<
 
       for (const [key, value] of Object.entries(params)) {
         const paramKey = key as keyof MeshQuality;
-        clampedParams[paramKey] = clampMeshParam(paramKey, value);
+        // Only clamp numeric values that have bounds defined
+        if (typeof value === 'number' && paramKey in MESH_QUALITY_BOUNDS) {
+          clampedParams[paramKey] = clampMeshParam(paramKey as keyof typeof MESH_QUALITY_BOUNDS, value) as any;
+        } else {
+          // Pass through boolean/other values unchanged
+          clampedParams[paramKey] = value as any;
+        }
       }
 
       return {

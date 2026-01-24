@@ -10,7 +10,7 @@ This document tracks planned features, improvements, and technical debt for futu
 
 ---
 
-## 🌐 v2.3.0 - Web App Enhancements (Q1 2025)
+## 🌐 v3.2.0 - Web App Enhancements (Q4 2025)
 
 ### High Priority
 
@@ -73,7 +73,7 @@ This document tracks planned features, improvements, and technical debt for futu
 
 ---
 
-## 🎯 v2.3.0 - Advanced Features (Q2 2025)
+## 🎯 v3.3.0 - Advanced Features (Q1 2026)
 
 ### Style System Enhancements
 - [ ] Add 3-5 new decorative styles
@@ -104,7 +104,7 @@ This document tracks planned features, improvements, and technical debt for futu
 
 ---
 
-## 🖥️ v2.5.0 - Qt Desktop Prototype (Q3 2025)
+## 🖥️ v3.4.0 - Qt Desktop Prototype (Q1 2026)
 
 See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 
@@ -130,7 +130,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 
 ---
 
-## 🏗️ v3.0.0 - Production Desktop App (Q4 2025)
+## 🏗️ v3.5.0 - Production Desktop App (Q1 2026)
 
 ### Deployment
 - [ ] PyInstaller packaging (Windows, macOS, Linux)
@@ -155,9 +155,9 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 
 ---
 
-## 🔧 Technical Debt & Code Quality
+## 🔧 Technical Debt & Code Quality (Q1 2026)
 
-### Repository Refactoring (NEW - January 2025) 🏗️
+### Repository Refactoring (NEW - January 2026) 🏗️
 - [ ] **Execute comprehensive repository refactoring plan** - See [REFACTORING_INDEX.md](REFACTORING_INDEX.md)
   - [ ] Phase 1: Documentation & File Organization (2-3h, Low Risk) ⭐ **READY TO EXECUTE**
     - Archive historical documents (13+ files)
@@ -417,14 +417,14 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 
 ## 🎯 Success Metrics
 
-### v2.2 Goals
+### v3.2 Goals
 - [ ] 100 active users
 - [ ] <5 critical bugs reported
 - [ ] >95% test coverage
 - [ ] <1s average mesh generation time
 - [ ] 50+ GitHub stars
 
-### v3.0 Goals
+### v4.0 Goals
 - [ ] 1000+ active users
 - [ ] Desktop app downloads across all platforms
 - [ ] Commercial license sales

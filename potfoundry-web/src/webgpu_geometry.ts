@@ -112,6 +112,9 @@ export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current
     // Scene radius
     f32[33] = clampNumber(c.sceneRadius, 200.0);
 
+    // Show Inner (Index 71) - Default to 1 (Show)
+    f32[71] = 1.0;
+
     // Style Parameters (Indices 37-52)
     // Clear first to ensure clean state
     for (let i = 37; i <= 52; i++) f32[i] = 0.0;

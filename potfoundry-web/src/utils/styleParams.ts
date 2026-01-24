@@ -77,20 +77,22 @@ function getOpt(opts: Record<string, unknown>, key: string, defaultValue: number
 
 /**
  * Pack SuperformulaBlossom parameters.
+ * Order must match shader's style_param() indices in sf_radius()
  */
 function packSuperformula(opts: Record<string, unknown>): number[] {
   return pad(clamp([
-    getOpt(opts, 'sf_m_base', 6.0),
-    getOpt(opts, 'sf_m_top', 10.0),
-    getOpt(opts, 'sf_m_curve_exp', 1.2),
-    getOpt(opts, 'sf_n1', 0.35),
-    getOpt(opts, 'sf_n1_top', 0.50),
-    getOpt(opts, 'sf_n2', 0.8),
-    getOpt(opts, 'sf_n2_top', 1.4),
-    getOpt(opts, 'sf_n3', 0.8),
-    getOpt(opts, 'sf_n3_top', 0.8),
-    getOpt(opts, 'sf_a', 1.0),
-    getOpt(opts, 'sf_b', 1.0),
+    getOpt(opts, 'sf_strength', 0.0),     // 0: Blend strength (0=no effect, 1=full)
+    getOpt(opts, 'sf_m_base', 6.0),       // 1: Symmetry @ base
+    getOpt(opts, 'sf_m_top', 10.0),       // 2: Symmetry @ top
+    getOpt(opts, 'sf_m_curve_exp', 1.2),  // 3: Symmetry morph curve
+    getOpt(opts, 'sf_n1', 0.35),          // 4: Sharpness @ base
+    getOpt(opts, 'sf_n1_top', 0.50),      // 5: Sharpness @ top
+    getOpt(opts, 'sf_n2', 0.8),           // 6: Cos power @ base
+    getOpt(opts, 'sf_n2_top', 1.4),       // 7: Cos power @ top
+    getOpt(opts, 'sf_n3', 0.8),           // 8: Sin power @ base
+    getOpt(opts, 'sf_n3_top', 0.8),       // 9: Sin power @ top
+    getOpt(opts, 'sf_a', 1.0),            // 10: Radius scale a
+    getOpt(opts, 'sf_b', 1.0),            // 11: Radius scale b
   ]));
 }
 

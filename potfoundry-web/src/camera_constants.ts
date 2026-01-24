@@ -20,6 +20,8 @@ export const MAX_FOV = (75 * Math.PI) / 180;
 export const CAMERA_NEAR_EPS = 0.05;
 export const CAMERA_DISTANCE_FALLOFF = 2.2;
 export const UNIFORM_FLOAT_COUNT = 76; // Increased from 72 to add bell params
+export const UNIFORM_BUFFER_SIZE = UNIFORM_FLOAT_COUNT * 4;
+
 export const CAMERA_EYE_OFFSET = 36;
 export const CAMERA_MODE_OFFSET = 39;
 export const VP_MATRIX_OFFSET = 40;
@@ -101,6 +103,8 @@ export default {
   CAMERA_NEAR_EPS,
   CAMERA_DISTANCE_FALLOFF,
   UNIFORM_FLOAT_COUNT,
+  UNIFORM_BUFFER_SIZE,
+
   CAMERA_EYE_OFFSET,
   CAMERA_MODE_OFFSET,
   VP_MATRIX_OFFSET,

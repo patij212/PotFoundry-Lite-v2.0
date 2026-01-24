@@ -172,6 +172,9 @@ export interface MeshQuality {
 
   /** Seam blend angle in degrees (0-30) - controls width of seam blending zone */
   seamAngle: number;
+
+  /** Whether to use GPU optimization (2x2/4x4 block merging) for export */
+  optimize: boolean;
 }
 
 /** Default mesh quality settings */
@@ -182,14 +185,20 @@ export const DEFAULT_MESH_QUALITY: MeshQuality = {
   export_n_z: 168,
 
   seamAngle: 30,
+  optimize: true, // Default to optimized exports
 };
 
-/** Bounds for mesh quality parameters */
+/** 
+ * Bounds for mesh quality parameters
+ * 
+ * Note: Export resolution up to 8192x8192 is supported via tiled GPU export.
+ * The tiled export system automatically splits large meshes into GPU-sized chunks.
+ */
 export const MESH_QUALITY_BOUNDS = {
-  preview_n_theta: { min: 24, max: 1024, step: 12 },
-  preview_n_z: { min: 8, max: 1024, step: 4 },
-  export_n_theta: { min: 48, max: 4096, step: 24 },
-  export_n_z: { min: 16, max: 2048, step: 8 },
+  preview_n_theta: { min: 24, max: 2048, step: 12 },
+  preview_n_z: { min: 8, max: 2048, step: 4 },
+  export_n_theta: { min: 48, max: 8192, step: 24 },  // Tiled export for >4096
+  export_n_z: { min: 16, max: 8192, step: 8 },       // Tiled export for >4096
 
   seamAngle: { min: 0, max: 60, step: 1 },
 } as const;

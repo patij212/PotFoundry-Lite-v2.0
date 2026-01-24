@@ -40,10 +40,6 @@ Design beautiful, customizable flower pots in your browser. Adjust dimensions, c
 - **Free Mode**: WASD + mouse for first-person navigation
 - **Smooth Inertia**: Momentum-based animations
 
-### 💳 Built-In Monetization
-- **Supabase Auth**: Email, magic links, OAuth
-- **Stripe Subscriptions**: Free/Pro tiers with feature gating
-- **Design Library**: Save, share, and publish designs
 
 ### 📦 Export
 - **STL Export**: Binary format optimized for 3D printing
@@ -205,39 +201,22 @@ mypy potfoundry/
 
 ---
 
-## 🚀 Deployment
-
-### Cloudflare Pages (Recommended)
-
-1. Connect GitHub repository
-2. Configure:
-   - **Build command**: `npm run build`
-   - **Output directory**: `dist`
-   - **Root directory**: `potfoundry-web`
-3. Set environment variables:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-   - `VITE_STRIPE_PUBLISHABLE_KEY`
-4. Deploy!
-
----
 
 ## 🔮 Roadmap
 
-### Current (v2.1)
+### Current (v3.0)
 - ✅ WebGPU-powered web application
 - ✅ 5 artistic styles with live control
 - ✅ Supabase auth + Stripe subscriptions
 - ✅ STL export with quality options
 
-### Near-term (v2.2-2.5)
+### Near-term (v3.2-3.5)
 - [ ] Additional export formats (OBJ, 3MF)
 - [ ] Design marketplace
 - [ ] Mobile optimization
 - [ ] More artistic styles
 
-### Long-term (v3.0)
-- [ ] Qt desktop application
+### Long-term (v4.0)
 - [ ] Plugin system
 - [ ] Community features
 
@@ -264,4 +243,4 @@ Built with:
 
 ---
 
-*Last Updated: December 2024*
+*Last Updated: December 2025*

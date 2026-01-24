@@ -401,5 +401,5 @@ mypy potfoundry/
 
 ---
 
-*Last Updated: December 2024*
-*Version: 2.0*
+*Last Updated: December 2025*
+*Version: 3.0*

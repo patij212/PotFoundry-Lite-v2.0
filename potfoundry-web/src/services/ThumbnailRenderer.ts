@@ -11,7 +11,7 @@
  */
 
 /// <reference types="vite/client" />
-import potPreviewWgsl from '../assets/pot_preview.wgsl?raw';
+import { ShaderManager } from '../renderers/webgpu/ShaderManager';
 import { buildStyleParamPayload } from '../utils/styleParams';
 import type { LibraryDesign } from '../context/LibraryContext';
 
@@ -94,7 +94,7 @@ class ThumbnailRenderer {
             // Create shader module
             const shaderModule = device.createShaderModule({
                 label: 'thumbnail-shader',
-                code: potPreviewWgsl,
+                code: ShaderManager.getInstance().getWGSL(),
             });
 
             // Create buffers

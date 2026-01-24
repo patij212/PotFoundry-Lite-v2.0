@@ -161,12 +161,8 @@ export function useExport(): UseExportResult {
         expn: geometry.expn,
       };
 
-      // Get mesh quality (use correct property names)
-      const quality = {
-        nTheta: mesh.export_n_theta,  // Use export quality for STL
-        nZ: mesh.export_n_z,
-        seamAngle: mesh.seamAngle,  // Include seam blending
-      };
+      // Quality will be built separately with safety caps applied
+      // const quality = { nTheta, nZ, seamAngle } is in baseQuality below
 
       // Map style name to StyleId
       const styleIdMap: Record<string, StyleId> = {
@@ -234,12 +230,18 @@ export function useExport(): UseExportResult {
         }
       }
 
-      // Safety Caps: RE-ENABLED at "Cura-Safe" Limits (User reported 1.6GB crashes)
-      // Limit to ~2500 segments.
-      // 2500 * 1250 * 2 = 6.25M triangles = ~312MB STL binary.
-      // This is the "Goldilocks" zone: Ultra-high detail, but won't crash 16GB RAM slicers.
-      if (baseQuality.nTheta > 2500) baseQuality.nTheta = 2500;
-      if (baseQuality.nZ > 2500) baseQuality.nZ = 2500;
+      // Safety caps: Limit CPU export resolution
+      // With streaming STL export, we can handle up to 8192 resolution
+      // 8192×4096 = ~134M triangles = ~6.7GB STL (handled via streaming chunks)
+      const SAFETY_CAP = 8192;
+      if (baseQuality.nTheta > SAFETY_CAP) {
+        console.warn(`[useExport] Clamping nTheta from ${baseQuality.nTheta} to ${SAFETY_CAP}`);
+        baseQuality.nTheta = SAFETY_CAP;
+      }
+      if (baseQuality.nZ > SAFETY_CAP) {
+        console.warn(`[useExport] Clamping nZ from ${baseQuality.nZ} to ${SAFETY_CAP}`);
+        baseQuality.nZ = SAFETY_CAP;
+      }
 
       // Aspect Ratio Enforcement
       // Ensure nZ is sufficient relative to nTheta to avoid tall "sliver" triangles 

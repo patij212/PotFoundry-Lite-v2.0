@@ -112,6 +112,9 @@
   font-weight: 500;
   color: var(--text-primary, #fff);
   font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .export-panel__volume {
@@ -154,6 +157,71 @@
   color: var(--text-secondary, #888);
   line-height: 1.5;
   margin: 0 0 10px 0;
+}
+
+/* Option Toggle (Checkbox) */
+.export-panel__option-toggle {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle, #333);
+}
+
+.export-panel__checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.export-panel__checkbox-text {
+  font-size: 11px;
+  color: var(--text-primary, #fff);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Tags */
+.export-panel__tag-gpu {
+  font-size: 9px;
+  font-weight: 700;
+  color: #000;
+  background: #fcd34d;
+  /* yellow-300 */
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.export-panel__tag-unavailable {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-tertiary, #666);
+  background: var(--bg-primary, #1a1a1a);
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.export-panel__tag-experimental {
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  background: #9333ea;
+  /* purple-600 */
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.export-panel__tag-new {
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #22c55e 0%, #10b981 100%);
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
 }
 
 .export-panel__format-info {

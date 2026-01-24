@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.2.0] - 2024-12 (Web App Release)
+## [3.0.0] - 2025-12 (Web App Release)
 
 ### 🌐 Major: WebGPU Web Application
 
@@ -79,7 +79,7 @@ The primary product is now a **complete WebGPU-powered web application** running
 
 ---
 
-## [2.1.0] - 2024-12 (In Development)
+## [3.1.0] - 2025-12 (In Development)
 
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
@@ -163,7 +163,7 @@ The primary product is now a **complete WebGPU-powered web application** running
 
 ---
 
-## [2.0.0] - 2024
+## [2.0.0] - 2025
 
 ### Major Changes
 
