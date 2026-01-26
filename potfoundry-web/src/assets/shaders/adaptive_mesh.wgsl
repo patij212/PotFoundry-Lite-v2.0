@@ -797,23 +797,47 @@ fn evaluate_vertices(@builtin(global_invocation_id) gid: vec3<u32>) {
         x = r * cos(th);
         y = r * sin(th);
     } else if (surface < 2.5) { // RIM
-        // t is 0..1 (radial?)
-        // Wait, standard grid is 0..1 t
-        // emit_rim_vertex expects (theta, t=0..1 crossing?)
-        // Actually rim is narrow. 
-        // Let's assume ConstrainedTriangulator only produces OUTER.
-        // For others, we might use simple logic.
+        // t is radial: 0=Inner, 1=Outer (or vice versa depending on triangulation, let's assume 0->1 Inner->Outer)
+        // Wait, typical rim triangulation might be 0=Inner, 1=Outer. 
+        // Let's use mix.
+        let r_inner = compute_inner_radius(theta, 1.0);
+        let r_outer = compute_outer_radius(theta, 1.0);
         
-        // Placeholder for now: simple ring
-        let r = compute_outer_radius(theta, 1.0);
-        x = r * cos(theta); y = r * sin(theta); z = H;
-    } else {
-        // Others...
-        // For this task, user cares about OUTER Ridge Jaggedness.
-        // We focus on Outer.
-        let r = compute_outer_radius(theta, t);
-        let th = compute_twist(theta, t);
-        z = t * H;
+        let r = mix(r_inner, r_outer, t);
+        let th = compute_twist(theta, 1.0);
+        z = H;
+        x = r * cos(th);
+        y = r * sin(th);
+    } else if (surface < 3.5) { // BOTTOM_UNDER
+        // t is radial: 0=Drain, 1=Outer
+        let r_outer = compute_outer_radius(theta, 0.0);
+        let r_drain = get_rDrain();
+        let r = mix(r_drain, r_outer, t);
+        
+        let th = compute_twist(theta, 0.0);
+        z = 0.0;
+        x = r * cos(th);
+        y = r * sin(th);
+    } else if (surface < 4.5) { // BOTTOM_TOP
+        // t is radial: 0=Drain, 1=Inner
+        let tBottom = get_tBottom();
+        // Inner wall starts at tBottom/H?
+        let t_start = tBottom / H;
+        let r_inner = compute_inner_radius(theta, t_start);
+        let r_drain = get_rDrain();
+        let r = mix(r_drain, r_inner, t);
+        
+        let th = compute_twist(theta, t_start);
+        z = tBottom;
+        x = r * cos(th);
+        y = r * sin(th);
+    } else { // DRAIN
+        // t is height fraction: 0..1 from z=0 to z=tBottom
+        let tBottom = get_tBottom();
+        z = t * tBottom;
+        let t_twist = z / max(H, 0.001);
+        let r = get_rDrain();
+        let th = compute_twist(theta, t_twist);
         x = r * cos(th);
         y = r * sin(th);
     }

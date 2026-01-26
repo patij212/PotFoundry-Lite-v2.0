@@ -292,7 +292,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 styleIndex,
                 targetTriangles: 2_000_000,
                 subdivThreshold: 0.05,
-                maxDepth: 0,
+                maxDepth: 6,
                 baseMesh: baseMesh,
                 features: features
             };

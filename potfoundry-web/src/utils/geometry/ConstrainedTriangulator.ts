@@ -12,7 +12,7 @@ export class ConstrainedTriangulator {
 
     /**
      * Generates a topology where feature chains are enforced as explicit edges.
-     * Uses robust intersection culling and uniform boundary constraints.
+     * Uses Aggressive Cleaning and Tube-Based Intersection Culling.
      */
     static triangulate(features: FeaturePoint[], gridSizeX: number = 720, gridSizeY: number = 720): TriangulatedMesh {
         const points: [number, number][] = [];
@@ -21,9 +21,8 @@ export class ConstrainedTriangulator {
 
         // --- 1. Helpers for Robustness ---
 
-        // Spatial Hash for Points (Merge close vertices)
-        // Must be finer than grid resolution (2PI/720 ~= 0.0087)
-        const PT_EPS = 0.0001;
+        // Spatial Hash: Merge very close points
+        const PT_EPS = 0.0002; // Reduced precision slightly to encourage merging
         const ptMap = new Map<string, number>();
         const getPtKey = (x: number, y: number) => `${Math.round(x / PT_EPS)}_${Math.round(y / PT_EPS)}`;
 
@@ -36,7 +35,7 @@ export class ConstrainedTriangulator {
             return idx;
         };
 
-        // Spatial Hash for Edges (Intersection Check)
+        // Edge Grid for spatial queries
         const EDGE_BUCKET = 0.05;
         const edgeGrid = new Map<string, number[]>();
 
@@ -58,18 +57,59 @@ export class ConstrainedTriangulator {
             return Array.from(cells);
         };
 
+        // Distance from point p to segment ab
+        const distToSegmentSq = (p: [number, number], a: [number, number], b: [number, number]) => {
+            const l2 = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2;
+            if (l2 === 0) return (p[0] - a[0]) ** 2 + (p[1] - a[1]) ** 2;
+            let t = ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / l2;
+            t = Math.max(0, Math.min(1, t));
+            const px = a[0] + t * (b[0] - a[0]);
+            const py = a[1] + t * (b[1] - a[1]);
+            return (p[0] - px) ** 2 + (p[1] - py) ** 2;
+        };
+
         const ccw = (a: [number, number], b: [number, number], c: [number, number]) => {
             return (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
         };
 
-        const intersects = (a: [number, number], b: [number, number], c: [number, number], d: [number, number]) => {
-            // Shared endpoints are OK
-            if ((Math.abs(a[0] - c[0]) < 1e-5 && Math.abs(a[1] - c[1]) < 1e-5) ||
-                (Math.abs(a[0] - d[0]) < 1e-5 && Math.abs(a[1] - d[1]) < 1e-5) ||
-                (Math.abs(b[0] - c[0]) < 1e-5 && Math.abs(b[1] - c[1]) < 1e-5) ||
-                (Math.abs(b[0] - d[0]) < 1e-5 && Math.abs(b[1] - d[1]) < 1e-5)) return false;
+        // Strict Check: Intersection OR Proximity
+        const isConflict = (a: [number, number], b: [number, number]) => {
+            const neighbors = getEdgeCells(a, b);
+            // "Tube" radius squared. 
+            // If a new edge passes within 0.002 of an existing edge, reject it.
+            // This prevents "Parallel Ridge" artifacts.
+            const TUBE_RAD_SQ = 0.002 * 0.002;
 
-            return (ccw(a, b, c) * ccw(a, b, d) < 0) && (ccw(c, d, a) * ccw(c, d, b) < 0);
+            for (const key of neighbors) {
+                const cellEdges = edgeGrid.get(key);
+                if (!cellEdges) continue;
+
+                for (const eIdx of cellEdges) {
+                    const e = edges[eIdx];
+                    const c = points[e[0]];
+                    const d = points[e[1]];
+
+                    // 1. Strict Intersection
+                    // Ignore shared endpoints
+                    const shareEndpoint = (Math.abs(a[0] - c[0]) < 1e-5 && Math.abs(a[1] - c[1]) < 1e-5) ||
+                        (Math.abs(a[0] - d[0]) < 1e-5 && Math.abs(a[1] - d[1]) < 1e-5) ||
+                        (Math.abs(b[0] - c[0]) < 1e-5 && Math.abs(b[1] - c[1]) < 1e-5) ||
+                        (Math.abs(b[0] - d[0]) < 1e-5 && Math.abs(b[1] - d[1]) < 1e-5);
+
+                    if (!shareEndpoint) {
+                        const cross = (ccw(a, b, c) * ccw(a, b, d) < 0) && (ccw(c, d, a) * ccw(c, d, b) < 0);
+                        if (cross) return true;
+
+                        // 2. Proximity (Tube)
+                        // Check distance from a to cd, b to cd, c to ab, d to ab
+                        // If any is small, reject.
+                        if (distToSegmentSq(a, c, d) < TUBE_RAD_SQ) return true;
+                        if (distToSegmentSq(b, c, d) < TUBE_RAD_SQ) return true;
+                        // (Checking endpoints against segment is usually enough for crossed tubes)
+                    }
+                }
+            }
+            return false;
         };
 
         const tryAddEdge = (idx1: number, idx2: number) => {
@@ -77,23 +117,11 @@ export class ConstrainedTriangulator {
             const p1 = points[idx1];
             const p2 = points[idx2];
 
-            // Check intersection against existing edges
-            const cells = getEdgeCells(p1, p2);
-            for (const key of cells) {
-                const neighbors = edgeGrid.get(key);
-                if (!neighbors) continue;
-                for (const eIdx of neighbors) {
-                    const e = edges[eIdx];
-                    const ep1 = points[e[0]];
-                    const ep2 = points[e[1]];
-                    if (intersects(p1, p2, ep1, ep2)) {
-                        return; // Reject intersection
-                    }
-                }
-            }
+            if (isConflict(p1, p2)) return;
 
             edges.push([idx1, idx2]);
             const newEIdx = edges.length - 1;
+            const cells = getEdgeCells(p1, p2);
             for (const key of cells) {
                 if (!edgeGrid.has(key)) edgeGrid.set(key, []);
                 edgeGrid.get(key)!.push(newEIdx);
@@ -101,8 +129,7 @@ export class ConstrainedTriangulator {
         };
 
         // --- 2. Process Features ---
-        // CLAMP features away from boundary to preserve Uniform Boundary Vertices
-        const BOUNDARY_MARGIN = 0.005; // Sufficient margin
+        const BOUNDARY_MARGIN = 0.01; // Increase margin
 
         const chains = this.extractChains(features);
         const simplifiedChains = chains.map(chain => {
@@ -111,8 +138,11 @@ export class ConstrainedTriangulator {
                 x: Math.max(BOUNDARY_MARGIN, Math.min(Math.PI * 2 - BOUNDARY_MARGIN, fp.theta)),
                 y: Math.max(BOUNDARY_MARGIN, Math.min(1.0 - BOUNDARY_MARGIN, fp.t))
             }));
-            return simplify(pts, 0.002, true);
+            return simplify(pts, 0.003, true); // Slightly coarser simplify to reduce node count
         });
+
+        // Sort chains by length (longer = more important)
+        simplifiedChains.sort((a, b) => b.length - a.length);
 
         simplifiedChains.forEach(chain => {
             if (chain.length < 2) return;
@@ -125,65 +155,93 @@ export class ConstrainedTriangulator {
         });
 
         // --- 3. Uniform Boundary Box ---
-        // Must match the resolution of adjacent surfaces (Rim/Bottom)
-        // Rim/Bottom use gridSizeX (720) and gridSizeY (720) or similar.
-        // We strictly enforce 720 steps for Top/Bottom to match Rim.
-
         const STEPS_X = gridSizeX; // 720
         const STEPS_Y = gridSizeY; // 720
 
-        // Reuse corner indices?
-        // Actually, we generate the loop sequentially.
-
-        // Points:
-        // Bottom: (0,0) -> (2PI, 0)
-        // Right:  (2PI, 0) -> (2PI, 1)
-        // Top:    (2PI, 1) -> (0, 1)  (Reversed? No, cdt2d doesn't care about winding for edges, but consistency helps)
-        // Left:   (0, 1) -> (0, 0)
-
-        let firstIdx = -1;
         let prevIdx = -1;
 
-        // Helper to add chain of edges
-        const addChain = (xFrom: number, yFrom: number, xTo: number, yTo: number, steps: number) => {
-            if (prevIdx === -1) {
-                prevIdx = addNode(xFrom, yFrom);
-                firstIdx = prevIdx;
-            }
+        // We use tryAddEdge to protect boundary too? 
+        // No, boundary MUST exist. We should add boundary FIRST?
+        // Actually, if a feature crosses boundary, we want feature clipped.
+        // But we clamped features.
+        // So checking conflict for boundary is just a sanity check. 
+        // We FORCE boundary.
 
+        const addChainForce = (xFrom: number, yFrom: number, xTo: number, yTo: number, steps: number) => {
+            if (prevIdx === -1) prevIdx = addNode(xFrom, yFrom);
             for (let i = 1; i <= steps; i++) {
                 const t = i / steps;
                 const x = xFrom + (xTo - xFrom) * t;
                 const y = yFrom + (yTo - yFrom) * t;
-                const curr = addNode(x, y); // Spatial hash handles closing the loop at the end
-                tryAddEdge(prevIdx, curr);
+                const curr = addNode(x, y);
+                // We add edge directly to array, bypassing conflict check (Boundary is Supreme)
+                edges.push([prevIdx, curr]);
+                // But we must regiser it in grid so internal features don't cross it
+                const cells = getEdgeCells(points[prevIdx], points[curr]);
+                for (const key of cells) {
+                    if (!edgeGrid.has(key)) edgeGrid.set(key, []);
+                    edgeGrid.get(key)!.push(edges.length - 1);
+                }
                 prevIdx = curr;
             }
         };
 
-        addChain(0, 0, Math.PI * 2, 0, STEPS_X);       // Bottom
-        addChain(Math.PI * 2, 0, Math.PI * 2, 1, STEPS_Y); // Right
-        addChain(Math.PI * 2, 1, 0, 1, STEPS_X);       // Top
-        addChain(0, 1, 0, 0, STEPS_Y);               // Left
+        // Reset everything to add boundary FIRST?
+        // Yes, good practice. Features should respect boundary.
+        // Let's clear and restart pIdx? No, just reorder.
+        // Can't easily reorder entire function.
+        // But features are clamped, so they won't conflict. 
+        // The only conflict is parallel features.
+
+        // let's just add boundary now. It fits the loop flow.
+        addChainForce(0, 0, Math.PI * 2, 0, STEPS_X);       // Bottom
+        addChainForce(Math.PI * 2, 0, Math.PI * 2, 1, STEPS_Y); // Right
+        addChainForce(Math.PI * 2, 1, 0, 1, STEPS_X);       // Top
+        addChainForce(0, 1, 0, 0, STEPS_Y);               // Left
 
         // --- 4. background Grid ---
         const OCC_W = 360;
         const OCC_H = 360;
         const occupied = new Uint8Array(OCC_W * OCC_H);
 
-        // Mark occupied...
-        for (const p of points) {
-            const ix = Math.floor(p[0] / (Math.PI * 2) * OCC_W);
-            const iy = Math.floor(p[1] * OCC_H);
-            for (let dy = -2; dy <= 2; dy++) {
-                for (let dx = -2; dx <= 2; dx++) {
-                    const nx = ix + dx, ny = iy + dy;
-                    if (nx >= 0 && nx < OCC_W && ny >= 0 && ny < OCC_H) occupied[ny * OCC_W + nx] = 1;
+        // Mark occupied - AGGRESSIVE RADIUS
+        // 5x5 was ~1.4%. 
+        // Let's use Radius based on coordinate distance.
+        // Radius 0.02 (Tube radius * 10).
+        const EXCLUSION_RAD = 0.02;
+        const EXCLUSION_RAD_SQ = EXCLUSION_RAD * EXCLUSION_RAD;
+
+        // Iterate all points added so far (Features + Boundary)
+        for (let k = 0; k < points.length; k++) {
+            const p = points[k];
+            // Convert to grid coords
+            const gx = (p[0] / (Math.PI * 2)) * OCC_W;
+            const gy = p[1] * OCC_H;
+
+            // Search range
+            const range = Math.ceil(EXCLUSION_RAD * OCC_W); // e.g. 0.02 * 360 = 7 cells
+            const ix = Math.floor(gx);
+            const iy = Math.floor(gy);
+
+            for (let dy = -range; dy <= range; dy++) {
+                for (let dx = -range; dx <= range; dx++) {
+                    const nx = ix + dx;
+                    const ny = iy + dy;
+                    if (nx >= 0 && nx < OCC_W && ny >= 0 && ny < OCC_H) {
+                        // Check exact distance to be precise
+                        // cell center
+                        const cx = (nx + 0.5) / OCC_W * Math.PI * 2;
+                        const cy = (ny + 0.5) / OCC_H;
+
+                        const d2 = (cx - p[0]) ** 2 + (cy - p[1]) ** 2;
+                        if (d2 < EXCLUSION_RAD_SQ) {
+                            occupied[ny * OCC_W + nx] = 1;
+                        }
+                    }
                 }
             }
         }
 
-        // Use 360x360 for background Steiner points (balanced density)
         const BG_W = 360;
         const BG_H = 360;
 
@@ -192,8 +250,10 @@ export class ConstrainedTriangulator {
             for (let i = 0; i <= BG_W; i++) {
                 const ix = Math.floor((i / BG_W) * OCC_W);
                 const iy = Math.floor((j / BG_H) * OCC_H);
+                // Safety clamp
                 const safeIx = Math.max(0, Math.min(OCC_W - 1, ix));
                 const safeIy = Math.max(0, Math.min(OCC_H - 1, iy));
+
                 if (occupied[safeIy * OCC_W + safeIx]) continue;
 
                 const theta = (i / BG_W) * Math.PI * 2;
@@ -226,31 +286,16 @@ export class ConstrainedTriangulator {
     }
 
     static generateFullPot(features: FeaturePoint[]): TriangulatedMesh {
-        // 1. Generate Constrained Outer Wall (Surface 0)
-        // Uses 720 steps for Top/Bottom boundary to match Rim/Bottom
         const outer = this.triangulate(features, 720, 720);
 
-        // 2. Generate other surfaces
         const otherSurfaces = [
-            { id: 1, w: 360, h: 360 }, // Inner
-            { id: 2, w: 720, h: 16 },  // Rim (Matches Outer X=720)
-            { id: 3, w: 360, h: 64 },  // Bottom Under (Outer edge matches 720?) 
-            // Wait, Standard grid w=360. 
-            // PROBLEM: Bottom Under W=360, but Outer W=720.
-            // Vertices won't match. 
-            // We should upgrade Bottom Under to 720? Or downgrade Outer?
-            // Rim is 720. So Outer must be 720.
-            // Bottom Under should probably be 720 at the edge. 
-            // generateGrid is uniform density. If we change W, we change density.
-            // Let's bump Bottom Under to 720 for watertightness.
-            { id: 4, w: 360, h: 64 },  // Bottom Top 
-            { id: 5, w: 128, h: 64 }   // Drain
+            { id: 1, w: 360, h: 360 },
+            { id: 2, w: 720, h: 16 },
+            { id: 3, w: 720, h: 64 },  // Upgraded to match Outer
+            { id: 4, w: 360, h: 64 },
+            { id: 5, w: 128, h: 64 }
         ];
 
-        // Fix: Make BottomUnder match Outer (720)
-        otherSurfaces[2].w = 720;
-
-        // Merge logic
         const allVertices: number[] = Array.from(outer.vertices);
         const allIndices: number[] = Array.from(outer.indices);
         let vertexOffset = outer.vertices.length / 3;

@@ -122,21 +122,18 @@ export class AdaptiveExportComputer {
         });
 
         // NEW: Triangle Pipelines
-        try {
-            this.subdivideTrianglesPipeline = await this.device.createComputePipelineAsync({
-                label: 'subdivide_triangles',
-                layout: this.pipelineLayout,
-                compute: { module: shaderModule, entryPoint: 'subdivide_triangles' },
-            });
+        // Remove try-catch to expose shader errors
+        this.subdivideTrianglesPipeline = await this.device.createComputePipelineAsync({
+            label: 'subdivide_triangles',
+            layout: this.pipelineLayout,
+            compute: { module: shaderModule, entryPoint: 'subdivide_triangles' },
+        });
 
-            this.emitFinalTrianglesPipeline = await this.device.createComputePipelineAsync({
-                label: 'emit_final_triangles',
-                layout: this.pipelineLayout,
-                compute: { module: shaderModule, entryPoint: 'emit_final_triangles' },
-            });
-        } catch (e) {
-            console.warn('[AdaptiveExportComputer] Triangle pipelines skipped (shader mismatch?)', e);
-        }
+        this.emitFinalTrianglesPipeline = await this.device.createComputePipelineAsync({
+            label: 'emit_final_triangles',
+            layout: this.pipelineLayout,
+            compute: { module: shaderModule, entryPoint: 'emit_final_triangles' },
+        });
 
         this.initialized = true;
     }
@@ -147,6 +144,7 @@ export class AdaptiveExportComputer {
     async compute(params: AdaptiveExportParams): Promise<AdaptiveExportResult> {
         if (!this.initialized) throw new Error('Not initialized');
         const startTime = performance.now();
+        console.log('[AdaptiveExport] Compute started. BaseMesh:', !!params.baseMesh, 'Features:', params.features?.length);
 
         const maxQuadBytes = MAX_QUADS * 16;
         const maxVertexBytes = MAX_VERTICES * 12; // vec3<f32>
@@ -204,27 +202,7 @@ export class AdaptiveExportComputer {
         let featureBuffer: GPUBuffer;
         if (params.features && params.features.length > 0) {
             const fCount = params.features.length;
-            const fData = new Float32Array(fCount * 4);
-            for (let i = 0; i < fCount; i++) {
-                fData[i * 4] = params.features[i].theta;
-                fData[i * 4 + 1] = params.features[i].t;
-                // Type handling: Shader FeaturePoint has (theta, t, type, strength)
-                // params.features[i].type is number (1,2,3).
-                // We store it as float? type (u32) in struct.
-                // WE MUST BE CAREFUL. Shader struct:
-                // struct FeaturePoint { theta: f32, t: f32, featureType: u32, strength: f32 }
-                // WGSL layout: 0:f32, 4:f32, 8:u32, 12:f32.
-                // We are writing a Float32Array.
-                // fData[i*4+2] will interpret the u32 bits as float?
-                // NO. We must use a DataView or ArrayBuffer to mix types.
-                // OR cast u32 to f32 if the value is small integers.
-                // 1.0, 2.0, 3.0 as floats are fine if we read them as u32?
-                // No. 1.0 float is 0x3F800000. Read as u32 it is huge.
-                // We need to write RAW BITS.
-
-                // Let's use ArrayBuffer.
-            }
-            // Buffer Creation with mixed types
+            // Mixed Types! use ArrayBuffer
             const fBytes = new ArrayBuffer(fCount * 16);
             const fFloats = new Float32Array(fBytes);
             const fUints = new Uint32Array(fBytes);
@@ -272,10 +250,12 @@ export class AdaptiveExportComputer {
 
         // Mode Switching
         if (params.baseMesh && this.subdivideTrianglesPipeline) {
+            console.log('[AdaptiveExport] Base Mesh Mode Active. Uploading topology...');
             // --- TRIANGLE SUBDIVISION MODE ---
             const { vertices: baseVerts, indices: baseIndices } = params.baseMesh;
             const vertexCount = baseVerts.length / 3;
             const triCount = baseIndices.length / 3;
+            console.log(`[AdaptiveExport] Base Params: ${vertexCount} verts, ${triCount} tris`);
 
             // 1. Pack Initial Triangles (v0, v1, v2, surface)
             const packedTriangles = new Uint32Array(triCount * 4);
