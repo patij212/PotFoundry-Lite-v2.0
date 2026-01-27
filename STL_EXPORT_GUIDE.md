@@ -150,13 +150,20 @@ Shows DeprecationWarning when called. Retained only for backward compatibility.
 
 ## Mesh Fidelity & Quality
 
-For information about achieving highest-fidelity STL output, including:
-- Feature-aware tessellation
-- Constrained Delaunay Triangulation (CDT)
-- Anisotropic mesh refinement
-- Style-specific optimizations
+PotFoundry has two mesh generation paths with different capabilities:
 
-See the **[STL Fidelity Review](docs/STL_FIDELITY_REVIEW.md)** for comprehensive technical analysis and recommendations.
+**Web App (potfoundry-web)** - State-of-the-art mesh generation:
+- ✅ Constrained Delaunay Triangulation (CDT)
+- ✅ GPU-based feature extraction
+- ✅ Adaptive mesh refinement
+- ✅ Feature polyline constraints
+
+**Python Core (potfoundry)** - Traditional approach:
+- Regular grid tessellation
+- Post-hoc edge flow reconstruction
+- Fixed resolution (n_theta × n_z)
+
+For detailed technical analysis and architecture comparison, see the **[STL Fidelity Review](docs/STL_FIDELITY_REVIEW.md)**.
 
 ---
 
