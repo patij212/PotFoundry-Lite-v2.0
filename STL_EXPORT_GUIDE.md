@@ -148,6 +148,16 @@ Shows DeprecationWarning when called. Retained only for backward compatibility.
 - **Need debugging?** → Binary STL can be opened in any slicer for visual inspection.
 - **Version control?** → STL files (binary or ASCII) are not ideal for VCS. Consider versioning parameters instead.
 
+## Mesh Fidelity & Quality
+
+For information about achieving highest-fidelity STL output, including:
+- Feature-aware tessellation
+- Constrained Delaunay Triangulation (CDT)
+- Anisotropic mesh refinement
+- Style-specific optimizations
+
+See the **[STL Fidelity Review](docs/STL_FIDELITY_REVIEW.md)** for comprehensive technical analysis and recommendations.
+
 ---
 
-**Last Updated:** December 2025 - PotFoundry v3.1.0
+**Last Updated:** January 2026 - PotFoundry v3.1.0
