@@ -148,6 +148,23 @@ Shows DeprecationWarning when called. Retained only for backward compatibility.
 - **Need debugging?** → Binary STL can be opened in any slicer for visual inspection.
 - **Version control?** → STL files (binary or ASCII) are not ideal for VCS. Consider versioning parameters instead.
 
+## Mesh Fidelity & Quality
+
+PotFoundry has two mesh generation paths with different capabilities:
+
+**Web App (potfoundry-web)** - State-of-the-art mesh generation:
+- ✅ Constrained Delaunay Triangulation (CDT)
+- ✅ GPU-based feature extraction
+- ✅ Adaptive mesh refinement
+- ✅ Feature polyline constraints
+
+**Python Core (potfoundry)** - Traditional approach:
+- Regular grid tessellation
+- Post-hoc edge flow reconstruction
+- Fixed resolution (n_theta × n_z)
+
+For detailed technical analysis and architecture comparison, see the **[STL Fidelity Review](docs/STL_FIDELITY_REVIEW.md)**.
+
 ---
 
-**Last Updated:** December 2025 - PotFoundry v3.1.0
+**Last Updated:** January 2026 - PotFoundry v3.1.0
