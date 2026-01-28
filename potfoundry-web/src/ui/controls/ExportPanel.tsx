@@ -12,7 +12,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useAppStore } from '../../state';
 import { useExport, useExportTier, FREE_TIER_MONTHLY_LIMIT } from '../../hooks';
 import useGPUExport from '../../hooks/useGPUExport';
-import useAdaptiveExport from '../../hooks/useAdaptiveExport';
+import useAdaptiveExport, { type AdaptiveExportQuality } from '../../hooks/useAdaptiveExport';
 import { useIsPro, useIsAuthenticated } from '../../context/AuthContext';
 import { PricingModal } from '../pricing';
 import { AuthModal } from '../auth';
@@ -90,6 +90,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const [useGPU, setUseGPU] = useState(true);
   const [useAdaptive, setUseAdaptive] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('stl');
+  const [adaptiveQuality, setAdaptiveQuality] = useState<AdaptiveExportQuality>('high');
 
   // Determine active exporter (adaptive takes priority if enabled)
   const activeExport = useAdaptive && adaptiveExport.isAvailable
@@ -136,7 +137,10 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     // Generate mesh using the active exporter
     // Note: CPU exporter returns MeshResult { mesh, diagnostics }
     //       GPU exporter returns MeshData directly
-    const result = await generateMesh();
+    const result = useAdaptive && adaptiveExport.isAvailable
+      ? await adaptiveExport.generateMesh(adaptiveQuality)
+      : await generateMesh();
+
     if (!result) {
       return; // Error already handled
     }
@@ -447,10 +451,35 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                   }
                 </span>
               </label>
+
               {useAdaptive && (
-                <p className="export-panel__hint" style={{ marginTop: '4px', fontSize: '11px' }}>
-                  More triangles where detail matters. Target: 20M triangles.
-                </p>
+                <div className="export-panel__adaptive-settings" style={{ marginLeft: '24px', marginTop: '8px' }}>
+                  <div className="export-panel__quality-slider">
+                    <label style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      Quality: <strong>{adaptiveQuality.toUpperCase()}</strong>
+                    </label>
+                    <input
+                      type="range"
+                      min="0" max="3" step="1"
+                      value={['low', 'medium', 'high', 'ultra'].indexOf(adaptiveQuality)}
+                      onChange={(e) => {
+                        const qualities: AdaptiveExportQuality[] = ['low', 'medium', 'high', 'ultra'];
+                        setAdaptiveQuality(qualities[parseInt(e.target.value)]);
+                      }}
+                      style={{ width: '100%', accentColor: 'var(--color-primary)' }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#94a3b8' }}>
+                      <span>Low</span>
+                      <span>Med</span>
+                      <span>High</span>
+                      <span>Ultra</span>
+                    </div>
+                  </div>
+                  <p className="export-panel__hint" style={{ marginTop: '8px', fontSize: '11px' }}>
+                    More triangles where detail matters. <br />
+                    Target: {adaptiveQuality === 'low' ? '0.5M' : adaptiveQuality === 'medium' ? '1.5M' : adaptiveQuality === 'high' ? '4M' : '8M'} triangles.
+                  </p>
+                </div>
               )}
             </div>
 

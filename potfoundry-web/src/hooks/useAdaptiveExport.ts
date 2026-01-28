@@ -28,9 +28,12 @@ import stylesWgsl from '../assets/shaders/styles.wgsl?raw';
 import adaptiveMeshWgsl from '../assets/shaders/adaptive_mesh.wgsl?raw';
 import featureExtractWgsl from '../assets/shaders/feature_extract.wgsl?raw';
 
+
 // ============================================================================
 // Types
 // ============================================================================
+
+export type AdaptiveExportQuality = 'low' | 'medium' | 'high' | 'ultra';
 
 export interface AdaptiveExportProgress {
     status: 'idle' | 'initializing' | 'generating' | 'complete' | 'error';
@@ -49,9 +52,10 @@ export interface AdaptiveExportStats {
     surfaceAreaMm2: number;
     generationTimeMs: number;
     subdivisionStats: {
-        initialQuads: number;
-        finalQuads: number;
+        initialTriangles: number;
+        finalTriangles: number;
         maxDepthReached: number;
+        overflowDetected: boolean;
     };
 }
 
@@ -59,10 +63,20 @@ export interface UseAdaptiveExportResult {
     progress: AdaptiveExportProgress;
     stats: AdaptiveExportStats | null;
     isAvailable: boolean;
-    exportSTL: (filename?: string) => Promise<void>;
-    generateMesh: () => Promise<MeshData | null>;
+    exportSTL: (filename?: string, quality?: AdaptiveExportQuality) => Promise<void>;
+    generateMesh: (quality?: AdaptiveExportQuality) => Promise<MeshData | null>;
     reset: () => void;
 }
+
+const QUALITY_SETTINGS: Record<AdaptiveExportQuality, Partial<AdaptiveExportParams>> = {
+    // Negative threshold forces uniform subdivision (robust against T-junction cracks)
+    // We now switch to Adaptive (Positive) to prevent overflow on complex pots.
+    // Cracks are handled by the new ConstrainedTriangulator topology.
+    low: { targetTriangles: 500_000, maxDepth: 4, subdivThreshold: 0.05 },
+    medium: { targetTriangles: 3_000_000, maxDepth: 5, subdivThreshold: 0.02 },
+    high: { targetTriangles: 6_000_000, maxDepth: 6, subdivThreshold: 0.01 },
+    ultra: { targetTriangles: 8_000_000, maxDepth: 7, subdivThreshold: 0.005 }, // Allow deeper recursion for ultra
+};
 
 // ============================================================================
 // Hook Implementation
@@ -89,7 +103,11 @@ export function useAdaptiveExport(): UseAdaptiveExportResult {
 
     // Initialize GPU
     useEffect(() => {
+        console.log('[useAdaptiveExport] Mounting and initializing GPU...');
         let isMounted = true;
+        let device: GPUDevice | null = null;
+        let computer: AdaptiveExportComputer | null = null;
+        let featureComputer: FeatureExtractionComputer | null = null;
 
         const initGPU = async () => {
             try {
@@ -99,29 +117,31 @@ export function useAdaptiveExport(): UseAdaptiveExportResult {
                     return;
                 }
 
-                if (!deviceRef.current) {
-                    const adapter = await navigator.gpu.requestAdapter();
-                    if (!adapter) {
-                        console.warn('[useAdaptiveExport] No GPU adapter');
-                        if (isMounted) setIsAvailable(false);
-                        return;
-                    }
-
-                    const device = await adapter.requestDevice({
-                        requiredLimits: {
-                            maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-                            maxBufferSize: adapter.limits.maxBufferSize,
-                            maxStorageBuffersPerShaderStage: 10,
-                        },
-                    });
-
-                    deviceRef.current = device;
-                    deviceRef.current = device;
-                    computerRef.current = new AdaptiveExportComputer(device);
-                    featureComputerRef.current = new FeatureExtractionComputer(device);
+                const adapter = await navigator.gpu.requestAdapter();
+                if (!adapter) {
+                    console.warn('[useAdaptiveExport] No GPU adapter');
+                    if (isMounted) setIsAvailable(false);
+                    return;
                 }
 
-                if (!computerRef.current || !featureComputerRef.current) return;
+                device = await adapter.requestDevice({
+                    requiredLimits: {
+                        maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+                        maxBufferSize: adapter.limits.maxBufferSize,
+                        maxStorageBuffersPerShaderStage: 10,
+                    },
+                });
+
+                device.lost.then((info) => {
+                    console.error(`[useAdaptiveExport] Device lost: ${info.reason}`);
+                    if (isMounted) {
+                        setIsAvailable(false);
+                        setProgress(p => ({ ...p, status: 'error', message: 'GPU Device Lost. Please reload.' }));
+                    }
+                });
+
+                computer = new AdaptiveExportComputer(device);
+                featureComputer = new FeatureExtractionComputer(device);
 
                 // Build shader with style dispatch - same pattern as useGPUExport
                 const styleIdVal = (style.name as StyleId) ?? 'SuperformulaBlossom';
@@ -140,41 +160,39 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
 }
 `;
 
-                // Concatenate shaders in proper order:
-                // 1. common.wgsl - math helpers, constants
-                // 2. strippedStyles - style functions that use getf(), style_param()
-                // 3. dispatchCode - style_radius dispatch
-                // 4. adaptive_mesh.wgsl - defines bindings, getf(), style_param() overrides, kernels
-                // Note: adaptive_mesh.wgsl's getf()/style_param() override common.wgsl's versions
                 const fullShaderSource = [commonWgsl, strippedStyles, dispatchCode, adaptiveMeshWgsl].join('\n');
+                await computer.init(fullShaderSource);
 
-                console.log(`[useAdaptiveExport] Compiling adaptive shader for style ${styleIndex} (${functionName})...`);
-                await computerRef.current.init(fullShaderSource);
-
-                // Initialize Feature Extraction Computer (reusing same shader concatenation logic)
-                // We need common + styles + feature_extract
-                // But feature_extract needs the SAME 'style_radius' dispatch function.
                 const featureShaderSource = [commonWgsl, strippedStyles, dispatchCode, featureExtractWgsl].join('\n');
-                await featureComputerRef.current.init(featureShaderSource);
+                await featureComputer.init(featureShaderSource);
 
                 if (isMounted) {
+                    computerRef.current = computer;
+                    featureComputerRef.current = featureComputer;
+                    deviceRef.current = device;
                     setIsAvailable(true);
                     console.log('[useAdaptiveExport] Adaptive export ready');
+                } else {
+                    // Cleanup if unmounted during init
+                    computer.destroy();
+                    featureComputer.destroy();
+                    device.destroy();
                 }
             } catch (error) {
                 console.error('[useAdaptiveExport] Init failed:', error);
                 if (isMounted) setIsAvailable(false);
+                // Cleanup partial
+                computer?.destroy();
+                featureComputer?.destroy();
+                device?.destroy();
             }
         };
 
         initGPU();
 
-        return () => { isMounted = false; };
-    }, [style.name]);
-
-    // Cleanup
-    useEffect(() => {
         return () => {
+            isMounted = false;
+            // Cleanup on unmount or re-effect
             computerRef.current?.destroy();
             featureComputerRef.current?.destroy();
             deviceRef.current?.destroy();
@@ -182,7 +200,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             featureComputerRef.current = null;
             deviceRef.current = null;
         };
-    }, []);
+    }, [style.name]); // Re-init when style (shader) changes
 
     const buildStyleOptions = useCallback(() => {
         const opts: Record<string, number> = {};
@@ -206,7 +224,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         return opts;
     }, [style, geometry, mesh]);
 
-    const generateMesh = useCallback(async (): Promise<MeshData | null> => {
+    const generateMesh = useCallback(async (quality: AdaptiveExportQuality = 'high'): Promise<MeshData | null> => {
         if (!computerRef.current?.isReady()) {
             setProgress({
                 status: 'error',
@@ -220,12 +238,17 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             setProgress({
                 status: 'generating',
                 progress: 10,
-                message: 'Starting adaptive mesh generation...',
+                message: `Starting adaptive mesh generation (${quality})...`,
             });
+
+            // Wait for next frame to update UI
+            await new Promise(r => setTimeout(r, 0));
 
             // --- FEATURE EXTRACTION & TOPOLOGY ---
             let baseMesh: { vertices: Float32Array, indices: Uint32Array } | undefined = undefined;
-            let features: FeaturePoint[] = [];
+            let features: FeaturePoint[] = []; // Sparse for params (Legacy view)
+            let featureSegments: Float32Array | undefined = undefined;
+            let featureGridOffsets: Uint32Array | undefined = undefined;
 
             const dimensions = {
                 H: geometry.H,
@@ -256,56 +279,143 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             const styleOpts = buildStyleOptions();
 
             if (featureComputerRef.current) {
-                console.log('[useAdaptiveExport] 1. Extraction: Running...');
+                setProgress({ status: 'generating', progress: 20, message: 'Analyzing features...' });
+
+                // Sensitivity adjustments based on quality? Use robust defaults for now.
+                const extractionThreshold = quality === 'ultra' ? 0.05 : 0.1;
+
+                console.log(`[useAdaptiveExport] 1. Extraction: quality=${quality}, threshold=${extractionThreshold}`);
                 try {
-                    features = await featureComputerRef.current.compute({
+                    const rawFeatures = await featureComputerRef.current.compute({
                         styleId,
                         styleOpts,
                         styleIndex,
                         dimensions,
                         gridSizeX: 1024,
                         gridSizeY: 512,
-                        threshold: 1.0 // Very sensitive to catch all ridges
+                        threshold: extractionThreshold
                     });
 
-                    console.log(`[useAdaptiveExport] 2. Analysis: Found ${features.length} features.`);
+                    console.log(`[useAdaptiveExport] 2. Analysis: Found ${rawFeatures.length} raw candidates.`);
+
+                    // FIX: CPU-side filtering to remove noise but keep significant features
+                    // Sort by strength descending
+                    rawFeatures.sort((a, b) => b.strength - a.strength);
+
+                    // 1. Sparse List for CPU Triangulation (Limit 5k to prevent crash)
+                    const triangulationFeatures = rawFeatures.filter(f => f.strength > extractionThreshold).slice(0, 5000);
+
+                    // 2. Dense List for GPU Snapping (Limit 50k for performance, but much higher fidelity)
+                    const snappingFeatures = rawFeatures.filter(f => f.strength > extractionThreshold).slice(0, 50000);
+
+                    console.log(`[useAdaptiveExport]    - Triangulation Features: ${triangulationFeatures.length}`);
+                    console.log(`[useAdaptiveExport]    - Snapping Features: ${snappingFeatures.length} (feeding GPU)`);
 
                     // --- TOPOLOGY GENERATION (CPU) ---
+                    setProgress({ status: 'generating', progress: 30, message: 'Generating base topology...' });
+                    await new Promise(r => setTimeout(r, 0));
+
                     console.log('[useAdaptiveExport] 3. Topology: Generating Constrained Mesh...');
-                    baseMesh = ConstrainedTriangulator.generateFullPot(features);
+                    baseMesh = ConstrainedTriangulator.generateFullPot(triangulationFeatures);
                     console.log(`[useAdaptiveExport]    - Base Mesh: ${baseMesh.vertices.length / 3} verts, ${baseMesh.indices.length / 3} tris.`);
+
+                    // --- GENERATE GPU SNAPPING DATA (Segments + Grid) ---
+                    // Extract chains from the HIGH FIDELITY set
+                    const { chains } = ConstrainedTriangulator.extractChains(snappingFeatures);
+
+                    // Binning Config
+                    const GRID_BINS = 64;
+                    const binLists: number[][] = Array.from({ length: GRID_BINS }, () => []);
+                    const allSegments: number[] = []; // [p1x, p1y, p2x, p2y]
+
+                    // Flatten Chains -> Segments & Bin
+                    chains.forEach(chain => {
+                        for (let i = 0; i < chain.length - 1; i++) {
+                            const p1 = chain[i];
+                            const p2 = chain[i + 1];
+
+                            // Store raw segment (x,y are 0..1 normalized)
+                            const segIdx = allSegments.length / 4;
+                            allSegments.push(p1.x, p1.y, p2.x, p2.y);
+
+                            // Binning
+                            const b1 = Math.floor(p1.x * GRID_BINS);
+                            const b2 = Math.floor(p2.x * GRID_BINS);
+
+                            const dx = Math.abs(p1.x - p2.x);
+                            // Detect Wrap (e.g. 0.99 -> 0.01)
+                            if (dx > 0.5) {
+                                const minB = Math.min(b1, b2);
+                                const maxB = Math.max(b1, b2);
+                                for (let b = maxB; b < GRID_BINS; b++) binLists[b].push(segIdx);
+                                for (let b = 0; b <= minB; b++) binLists[b].push(segIdx);
+                            } else {
+                                const minB = Math.min(b1, b2);
+                                const maxB = Math.max(b1, b2);
+                                for (let b = minB; b <= maxB; b++) binLists[b].push(segIdx);
+                            }
+                        }
+                    });
+
+                    // Build Final Sorted Buffers
+                    const sortedSegments: number[] = [];
+                    const gridOffsets = new Uint32Array(GRID_BINS + 1);
+                    let offset = 0;
+
+                    for (let b = 0; b < GRID_BINS; b++) {
+                        gridOffsets[b] = offset;
+                        const indices = binLists[b];
+                        for (const idx of indices) {
+                            const base = idx * 4;
+                            // Copy segment (4 floats)
+                            sortedSegments.push(allSegments[base], allSegments[base + 1], allSegments[base + 2], allSegments[base + 3]);
+                            offset++;
+                        }
+                    }
+                    gridOffsets[GRID_BINS] = offset;
+
+                    // Assign to variables for params
+                    featureSegments = new Float32Array(sortedSegments);
+                    featureGridOffsets = gridOffsets;
+
+                    console.log(`[useAdaptiveExport]    - Generated ${allSegments.length / 4} unique segments.`);
+                    console.log(`[useAdaptiveExport]    - Binned into ${sortedSegments.length / 4} GPU references.`);
+
 
                 } catch (e) {
                     console.warn('Feature extraction failure:', e);
                 }
             }
 
-            // Fallback if extraction failed
+            // Fallback if extraction failed or returned no features
             if (!baseMesh) {
+                console.warn('[useAdaptiveExport] Using unconstrained fallback mesh.');
                 baseMesh = ConstrainedTriangulator.generateFullPot([]);
             }
+
+            const qSettings = QUALITY_SETTINGS[quality];
 
             const params: AdaptiveExportParams = {
                 dimensions,
                 styleId,
                 styleOpts,
                 styleIndex,
-                targetTriangles: 2_000_000,
-                subdivThreshold: 0.05,
-                maxDepth: 6,
+                targetTriangles: qSettings.targetTriangles,
+                subdivThreshold: qSettings.subdivThreshold,
+                maxDepth: qSettings.maxDepth,
                 baseMesh: baseMesh,
-                features: features
+                features: features,
+                featureSegments: featureSegments,
+                featureGridOffsets: featureGridOffsets
             };
 
             setProgress({
                 status: 'generating',
-                progress: 30,
-                message: 'Running adaptive subdivision...',
+                progress: 40,
+                message: 'Refining mesh on GPU...',
             });
 
             const result = await computerRef.current.compute(params);
-
-            // Cleanup feature buffer if we created it (Removed)
 
             const volume = calculateMeshVolume(result.mesh);
             const surfaceArea = calculateMeshSurfaceArea(result.mesh);
@@ -328,7 +438,8 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             setProgress({
                 status: 'complete',
                 progress: 100,
-                message: `Generated ${result.mesh.triangleCount.toLocaleString()} triangles`,
+                message: `Generated ${result.mesh.triangleCount.toLocaleString()} triangles` +
+                    (result.subdivisionStats.overflowDetected ? ' (Capacity Limit)' : ''),
                 subdivisionDepth: result.subdivisionStats.maxDepthReached,
             });
 
@@ -344,8 +455,8 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         }
     }, [geometry, style, mesh, buildStyleOptions]);
 
-    const exportSTL = useCallback(async (filename: string = 'pot.stl'): Promise<void> => {
-        const meshData = await generateMesh();
+    const exportSTL = useCallback(async (filename: string = 'pot.stl', quality: AdaptiveExportQuality = 'high'): Promise<void> => {
+        const meshData = await generateMesh(quality);
         if (!meshData) return;
 
         setProgress({
@@ -356,11 +467,11 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
 
         const styleName = style.name ?? 'Pot';
         const finalFilename = filename === 'pot.stl'
-            ? `PotFoundry_${styleName}_Adaptive_${Date.now()}.stl`
+            ? `PotFoundry_${styleName}_Adaptive_${quality}_${Date.now()}.stl`
             : filename;
 
         downloadSTL(meshData, finalFilename, {
-            name: `PotFoundry ${style.name} (Adaptive)`,
+            name: `PotFoundry ${style.name} (Adaptive ${quality})`,
             binary: true,
         });
 

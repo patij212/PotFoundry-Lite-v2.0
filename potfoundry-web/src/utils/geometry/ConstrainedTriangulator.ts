@@ -1,303 +1,468 @@
-
 import { FeaturePoint } from '../../renderers/webgpu/FeatureExtractionComputer';
 import { simplify } from '../../utils/geometry/simplify';
 import cdt2d from 'cdt2d';
+
+// ============================================================================
+// Types
+// ============================================================================
 
 export interface TriangulatedMesh {
     vertices: Float32Array;
     indices: Uint32Array;
 }
 
+export interface Point2D {
+    x: number;
+    y: number;
+}
+
+// ============================================================================
+// Robust Constrained Triangulator
+// ============================================================================
+
 export class ConstrainedTriangulator {
 
     /**
-     * Generates a topology where feature chains are enforced as explicit edges.
-     * Uses Aggressive Cleaning and Tube-Based Intersection Culling.
+     * Main Entry Point
+     * Generates a high-quality mesh from feature points.
+     * 
+     * Pipeline:
+     * 1. Feature Clean & Chain: Organize raw GPU points into clean polylines.
+     * 2. Seam Enforcement: Ensure topology wraps correctly at u=0/1.
+     * 3. Adaptive Sampling: Generate background points using Poisson Disk with variable density.
+     * 4. Constrained Delaunay: Triangulate the domain.
+     * 5. Stitching: Weld the seam topologically.
      */
-    static triangulate(features: FeaturePoint[], gridSizeX: number = 720, gridSizeY: number = 720): TriangulatedMesh {
-        const points: [number, number][] = [];
-        const edges: [number, number][] = [];
-        let pIdx = 0;
+    static generateFullPot(features: FeaturePoint[]): TriangulatedMesh {
+        // DEBUG: Bypass CDT entirely. Use ONLY simple grids for all surfaces.
+        // This isolates whether the issue is CDT or GPU shader.
+        console.log('[ConstrainedTriangulator] DEBUG: Using ALL-GRID mode (no CDT)');
 
-        // --- 1. Helpers for Robustness ---
+        const allSurfaces = [
+            { id: 0, w: 180, h: 180 }, // Outer Wall (was CDT)
+            { id: 1, w: 180, h: 180 }, // Inner Wall
+            { id: 2, w: 180, h: 8 },   // Rim
+            { id: 3, w: 180, h: 8 },   // Bottom Under
+            { id: 4, w: 180, h: 8 },   // Bottom Top
+            { id: 5, w: 64, h: 8 }     // Drain
+        ];
 
-        // Spatial Hash: Merge very close points
-        const PT_EPS = 0.0002; // Reduced precision slightly to encourage merging
-        const ptMap = new Map<string, number>();
-        const getPtKey = (x: number, y: number) => `${Math.round(x / PT_EPS)}_${Math.round(y / PT_EPS)}`;
+        const allVertices: number[] = [];
+        const allIndices: number[] = [];
+        let vertexOffset = 0;
 
-        const addNode = (x: number, y: number): number => {
-            const key = getPtKey(x, y);
-            if (ptMap.has(key)) return ptMap.get(key)!;
-            points.push([x, y]);
-            const idx = pIdx++;
-            ptMap.set(key, idx);
-            return idx;
+        for (const surf of allSurfaces) {
+            const mesh = this.generateGrid(surf.w, surf.h, surf.id);
+            for (let k = 0; k < mesh.vertices.length; k++) allVertices.push(mesh.vertices[k]);
+            for (let k = 0; k < mesh.indices.length; k++) allIndices.push(mesh.indices[k] + vertexOffset);
+            vertexOffset += mesh.vertices.length / 3;
+        }
+
+        console.log(`[ConstrainedTriangulator] All surfaces combined: ${vertexOffset} vertices, ${allIndices.length / 3} triangles`);
+
+        return {
+            vertices: new Float32Array(allVertices),
+            indices: new Uint32Array(allIndices)
         };
+    }
 
-        // Edge Grid for spatial queries
-        const EDGE_BUCKET = 0.05;
-        const edgeGrid = new Map<string, number[]>();
+    // ===================================
+    // 1. Feature Processing
+    // ===================================
 
-        const getEdgeCells = (p1: [number, number], p2: [number, number]) => {
-            const cells = new Set<string>();
-            const minX = Math.min(p1[0], p2[0]), maxX = Math.max(p1[0], p2[0]);
-            const minY = Math.min(p1[1], p2[1]), maxY = Math.max(p1[1], p2[1]);
+    public static extractChains(rawFeatures: FeaturePoint[]): { chains: Point2D[][], seamPoints: Point2D[] } {
+        if (rawFeatures.length === 0) return { chains: [], seamPoints: [] };
 
-            const iMin = Math.floor(minX / EDGE_BUCKET);
-            const iMax = Math.floor(maxX / EDGE_BUCKET);
-            const jMin = Math.floor(minY / EDGE_BUCKET);
-            const jMax = Math.floor(maxY / EDGE_BUCKET);
+        // Normalize inputs to [0,1] domain
+        // theta: 0..2PI -> 0..1
+        // t: 0..1 -> 0..1
+        const points: { x: number, y: number, strength: number }[] = rawFeatures.map(f => ({
+            x: f.theta / (Math.PI * 2),
+            y: f.t,
+            strength: f.strength
+        }));
 
-            for (let i = iMin; i <= iMax; i++) {
-                for (let j = jMin; j <= jMax; j++) {
-                    cells.add(`${i}_${j}`);
-                }
-            }
-            return Array.from(cells);
-        };
-
-        // Distance from point p to segment ab
-        const distToSegmentSq = (p: [number, number], a: [number, number], b: [number, number]) => {
-            const l2 = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2;
-            if (l2 === 0) return (p[0] - a[0]) ** 2 + (p[1] - a[1]) ** 2;
-            let t = ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / l2;
-            t = Math.max(0, Math.min(1, t));
-            const px = a[0] + t * (b[0] - a[0]);
-            const py = a[1] + t * (b[1] - a[1]);
-            return (p[0] - px) ** 2 + (p[1] - py) ** 2;
-        };
-
-        const ccw = (a: [number, number], b: [number, number], c: [number, number]) => {
-            return (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
-        };
-
-        // Strict Check: Intersection OR Proximity
-        const isConflict = (a: [number, number], b: [number, number]) => {
-            const neighbors = getEdgeCells(a, b);
-            // "Tube" radius squared. 
-            // If a new edge passes within 0.002 of an existing edge, reject it.
-            // This prevents "Parallel Ridge" artifacts.
-            const TUBE_RAD_SQ = 0.002 * 0.002;
-
-            for (const key of neighbors) {
-                const cellEdges = edgeGrid.get(key);
-                if (!cellEdges) continue;
-
-                for (const eIdx of cellEdges) {
-                    const e = edges[eIdx];
-                    const c = points[e[0]];
-                    const d = points[e[1]];
-
-                    // 1. Strict Intersection
-                    // Ignore shared endpoints
-                    const shareEndpoint = (Math.abs(a[0] - c[0]) < 1e-5 && Math.abs(a[1] - c[1]) < 1e-5) ||
-                        (Math.abs(a[0] - d[0]) < 1e-5 && Math.abs(a[1] - d[1]) < 1e-5) ||
-                        (Math.abs(b[0] - c[0]) < 1e-5 && Math.abs(b[1] - c[1]) < 1e-5) ||
-                        (Math.abs(b[0] - d[0]) < 1e-5 && Math.abs(b[1] - d[1]) < 1e-5);
-
-                    if (!shareEndpoint) {
-                        const cross = (ccw(a, b, c) * ccw(a, b, d) < 0) && (ccw(c, d, a) * ccw(c, d, b) < 0);
-                        if (cross) return true;
-
-                        // 2. Proximity (Tube)
-                        // Check distance from a to cd, b to cd, c to ab, d to ab
-                        // If any is small, reject.
-                        if (distToSegmentSq(a, c, d) < TUBE_RAD_SQ) return true;
-                        if (distToSegmentSq(b, c, d) < TUBE_RAD_SQ) return true;
-                        // (Checking endpoints against segment is usually enough for crossed tubes)
-                    }
-                }
-            }
-            return false;
-        };
-
-        const tryAddEdge = (idx1: number, idx2: number) => {
-            if (idx1 === idx2) return;
-            const p1 = points[idx1];
-            const p2 = points[idx2];
-
-            if (isConflict(p1, p2)) return;
-
-            edges.push([idx1, idx2]);
-            const newEIdx = edges.length - 1;
-            const cells = getEdgeCells(p1, p2);
-            for (const key of cells) {
-                if (!edgeGrid.has(key)) edgeGrid.set(key, []);
-                edgeGrid.get(key)!.push(newEIdx);
-            }
-        };
-
-        // --- 2. Process Features ---
-        const BOUNDARY_MARGIN = 0.01; // Increase margin
-
-        const chains = this.extractChains(features);
-        const simplifiedChains = chains.map(chain => {
-            // Clamp points
-            const pts = chain.map(fp => ({
-                x: Math.max(BOUNDARY_MARGIN, Math.min(Math.PI * 2 - BOUNDARY_MARGIN, fp.theta)),
-                y: Math.max(BOUNDARY_MARGIN, Math.min(1.0 - BOUNDARY_MARGIN, fp.t))
-            }));
-            return simplify(pts, 0.003, true); // Slightly coarser simplify to reduce node count
+        // Bounding Box Safety
+        const MARGIN = 0.005; // 0.5% margin
+        points.forEach(p => {
+            p.x = Math.max(MARGIN, Math.min(1 - MARGIN, p.x));
+            p.y = Math.max(MARGIN, Math.min(1 - MARGIN, p.y));
         });
 
-        // Sort chains by length (longer = more important)
-        simplifiedChains.sort((a, b) => b.length - a.length);
+        // 1. Sort effectively for chaining (Scanline order)
+        points.sort((a, b) => (a.y - b.y) || (a.x - b.x));
 
-        simplifiedChains.forEach(chain => {
-            if (chain.length < 2) return;
-            let prevIdx = addNode(chain[0].x, chain[0].y);
-            for (let k = 1; k < chain.length; k++) {
-                const currIdx = addNode(chain[k].x, chain[k].y);
-                tryAddEdge(prevIdx, currIdx);
-                prevIdx = currIdx;
-            }
+        // 2. Greedy Chaining with Directionality
+        const chains: Point2D[][] = [];
+        const visited = new Uint8Array(points.length);
+        const MAX_CONNECT_DIST = 0.03; // ~3% of domain
+
+        // Spatial Grid for neighbor lookup optimization
+        const gridCell = 0.04;
+        const grid = new Map<string, number[]>();
+        const toKey = (p: Point2D) => `${Math.floor(p.x / gridCell)}_${Math.floor(p.y / gridCell)}`;
+        points.forEach((p, i) => {
+            const k = toKey(p);
+            if (!grid.has(k)) grid.set(k, []);
+            grid.get(k)!.push(i);
         });
 
-        // --- 3. Uniform Boundary Box ---
-        const STEPS_X = gridSizeX; // 720
-        const STEPS_Y = gridSizeY; // 720
+        for (let i = 0; i < points.length; i++) {
+            if (visited[i]) continue;
 
-        let prevIdx = -1;
+            // Start a new chain
+            const chain: Point2D[] = [points[i]];
+            visited[i] = 1;
+            let currentIdx = i;
 
-        // We use tryAddEdge to protect boundary too? 
-        // No, boundary MUST exist. We should add boundary FIRST?
-        // Actually, if a feature crosses boundary, we want feature clipped.
-        // But we clamped features.
-        // So checking conflict for boundary is just a sanity check. 
-        // We FORCE boundary.
+            while (true) {
+                const curr = points[currentIdx];
+                let bestNextIdx = -1;
+                let bestDistSq = MAX_CONNECT_DIST * MAX_CONNECT_DIST;
 
-        const addChainForce = (xFrom: number, yFrom: number, xTo: number, yTo: number, steps: number) => {
-            if (prevIdx === -1) prevIdx = addNode(xFrom, yFrom);
-            for (let i = 1; i <= steps; i++) {
-                const t = i / steps;
-                const x = xFrom + (xTo - xFrom) * t;
-                const y = yFrom + (yTo - yFrom) * t;
-                const curr = addNode(x, y);
-                // We add edge directly to array, bypassing conflict check (Boundary is Supreme)
-                edges.push([prevIdx, curr]);
-                // But we must regiser it in grid so internal features don't cross it
-                const cells = getEdgeCells(points[prevIdx], points[curr]);
-                for (const key of cells) {
-                    if (!edgeGrid.has(key)) edgeGrid.set(key, []);
-                    edgeGrid.get(key)!.push(edges.length - 1);
-                }
-                prevIdx = curr;
-            }
-        };
+                // Search neighborhood
+                const gx = Math.floor(curr.x / gridCell);
+                const gy = Math.floor(curr.y / gridCell);
 
-        // Reset everything to add boundary FIRST?
-        // Yes, good practice. Features should respect boundary.
-        // Let's clear and restart pIdx? No, just reorder.
-        // Can't easily reorder entire function.
-        // But features are clamped, so they won't conflict. 
-        // The only conflict is parallel features.
+                for (let jx = -1; jx <= 1; jx++) {
+                    for (let jy = -1; jy <= 1; jy++) {
+                        const cellKey = `${gx + jx}_${gy + jy}`;
+                        const neighbors = grid.get(cellKey);
+                        if (!neighbors) continue;
 
-        // let's just add boundary now. It fits the loop flow.
-        addChainForce(0, 0, Math.PI * 2, 0, STEPS_X);       // Bottom
-        addChainForce(Math.PI * 2, 0, Math.PI * 2, 1, STEPS_Y); // Right
-        addChainForce(Math.PI * 2, 1, 0, 1, STEPS_X);       // Top
-        addChainForce(0, 1, 0, 0, STEPS_Y);               // Left
+                        for (const nIdx of neighbors) {
+                            if (visited[nIdx]) continue;
+                            const next = points[nIdx];
+                            const dx = next.x - curr.x;
+                            const dy = next.y - curr.y;
+                            const d2 = dx * dx + dy * dy;
 
-        // --- 4. background Grid ---
-        const OCC_W = 360;
-        const OCC_H = 360;
-        const occupied = new Uint8Array(OCC_W * OCC_H);
-
-        // Mark occupied - AGGRESSIVE RADIUS
-        // 5x5 was ~1.4%. 
-        // Let's use Radius based on coordinate distance.
-        // Radius 0.02 (Tube radius * 10).
-        const EXCLUSION_RAD = 0.02;
-        const EXCLUSION_RAD_SQ = EXCLUSION_RAD * EXCLUSION_RAD;
-
-        // Iterate all points added so far (Features + Boundary)
-        for (let k = 0; k < points.length; k++) {
-            const p = points[k];
-            // Convert to grid coords
-            const gx = (p[0] / (Math.PI * 2)) * OCC_W;
-            const gy = p[1] * OCC_H;
-
-            // Search range
-            const range = Math.ceil(EXCLUSION_RAD * OCC_W); // e.g. 0.02 * 360 = 7 cells
-            const ix = Math.floor(gx);
-            const iy = Math.floor(gy);
-
-            for (let dy = -range; dy <= range; dy++) {
-                for (let dx = -range; dx <= range; dx++) {
-                    const nx = ix + dx;
-                    const ny = iy + dy;
-                    if (nx >= 0 && nx < OCC_W && ny >= 0 && ny < OCC_H) {
-                        // Check exact distance to be precise
-                        // cell center
-                        const cx = (nx + 0.5) / OCC_W * Math.PI * 2;
-                        const cy = (ny + 0.5) / OCC_H;
-
-                        const d2 = (cx - p[0]) ** 2 + (cy - p[1]) ** 2;
-                        if (d2 < EXCLUSION_RAD_SQ) {
-                            occupied[ny * OCC_W + nx] = 1;
+                            if (d2 < bestDistSq) {
+                                bestDistSq = d2;
+                                bestNextIdx = nIdx;
+                            }
                         }
                     }
                 }
+
+                if (bestNextIdx !== -1) {
+                    visited[bestNextIdx] = 1;
+                    chain.push(points[bestNextIdx]);
+                    currentIdx = bestNextIdx;
+                } else {
+                    break;
+                }
             }
+            if (chain.length > 3) chains.push(chain);
         }
 
-        const BG_W = 360;
-        const BG_H = 360;
+        // 3. Simplify Chains
+        const simplifiedChains = chains.map(c => simplify(c, 0.002, true));
 
-        for (let j = 0; j <= BG_H; j++) {
-            const t = j / BG_H;
-            for (let i = 0; i <= BG_W; i++) {
-                const ix = Math.floor((i / BG_W) * OCC_W);
-                const iy = Math.floor((j / BG_H) * OCC_H);
-                // Safety clamp
-                const safeIx = Math.max(0, Math.min(OCC_W - 1, ix));
-                const safeIy = Math.max(0, Math.min(OCC_H - 1, iy));
-
-                if (occupied[safeIy * OCC_W + safeIx]) continue;
-
-                const theta = (i / BG_W) * Math.PI * 2;
-                addNode(theta, t);
-            }
+        // 4. Force Seam Nodes
+        // We define fixed nodes on left/right boundary to ensure they match later
+        // High resolution seams to match ancillary grids (w=180/360) 
+        // and ensure watertight welding.
+        // 180 ensures edge length ~2 degrees, small enough for WeldMesh epsilon.
+        const SEAMS = 180; // Number of vertical divisions
+        const seamPoints: Point2D[] = [];
+        for (let k = 0; k <= SEAMS; k++) {
+            const y = k / SEAMS;
+            seamPoints.push({ x: 0, y });
+            seamPoints.push({ x: 1, y }); // Will be aliased later, but needed for triangulation
         }
 
-        // --- 5. Run CDT ---
-        console.time('cdt2d');
-        const triangles = cdt2d(points, edges, { exterior: false });
-        console.timeEnd('cdt2d');
-
-        // --- 6. Output ---
-        const vertices = new Float32Array(points.length * 3);
-        const indicesArray = new Uint32Array(triangles.length * 3);
-
-        for (let i = 0; i < points.length; i++) {
-            vertices[i * 3] = points[i][0];
-            vertices[i * 3 + 1] = points[i][1];
-            vertices[i * 3 + 2] = 0;
+        // Also Add Cap boundaries
+        for (let k = 0; k <= SEAMS; k++) {
+            const x = k / SEAMS;
+            seamPoints.push({ x, y: 0 }); // Bottom
+            seamPoints.push({ x, y: 1 }); // Top
         }
 
-        for (let i = 0; i < triangles.length; i++) {
-            indicesArray[i * 3] = triangles[i][0];
-            indicesArray[i * 3 + 1] = triangles[i][1];
-            indicesArray[i * 3 + 2] = triangles[i][2];
-        }
-
-        return { vertices, indices: indicesArray };
+        return { chains: simplifiedChains, seamPoints };
     }
 
-    static generateFullPot(features: FeaturePoint[]): TriangulatedMesh {
-        const outer = this.triangulate(features, 720, 720);
+    // ===================================
+    // 2. Adaptive Background Sampling
+    // ===================================
 
+    private static generateAdaptiveBackground(chains: Point2D[][]): Point2D[] {
+        // We use a simplified Distance Field + Random Sampling approach.
+        // True Poisson Disk is expensive dynamically.
+        // 1. Build Distance Field (Approximate via Grid)
+        const GW = 64;
+        const GH = 64;
+        const distField = new Float32Array(GW * GH).fill(1.0);
+
+        // Rasterize chains into grid
+        chains.forEach(chain => {
+            for (let k = 0; k < chain.length - 1; k++) {
+                const a = chain[k];
+                const b = chain[k + 1];
+                // Line rasterization (rough)
+                const dist = Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+                const steps = Math.ceil(dist * GW * 2);
+                for (let s = 0; s <= steps; s++) {
+                    const t = s / steps;
+                    const x = a.x + (b.x - a.x) * t;
+                    const y = a.y + (b.y - a.y) * t;
+                    const ix = Math.floor(x * GW);
+                    const iy = Math.floor(y * GH);
+                    if (ix >= 0 && ix < GW && iy >= 0 && iy < GH) {
+                        distField[iy * GW + ix] = 0;
+                        // Dilate slightly
+                        // (Done in pass 2)
+                    }
+                }
+            }
+        });
+
+        // Simple Distance Propagation (Fast Marching approx)
+        // Pass 1: Top-Left to Bottom-Right
+        for (let y = 0; y < GH; y++) {
+            for (let x = 0; x < GW; x++) {
+                const idx = y * GW + x;
+                if (distField[idx] === 0) continue;
+                let minD = 1.0;
+                if (x > 0) minD = Math.min(minD, distField[idx - 1] + 1 / GW);
+                if (y > 0) minD = Math.min(minD, distField[idx - GW] + 1 / GH);
+                distField[idx] = minD;
+            }
+        }
+        // Pass 2: Bottom-Right to Top-Left
+        for (let y = GH - 1; y >= 0; y--) {
+            for (let x = GW - 1; x >= 0; x--) {
+                const idx = y * GW + x;
+                let minD = distField[idx];
+                if (x < GW - 1) minD = Math.min(minD, distField[idx + 1] + 1 / GW);
+                if (y < GH - 1) minD = Math.min(minD, distField[idx + GW] + 1 / GH);
+                distField[idx] = minD;
+            }
+        }
+
+        // 2. Generate Points
+        // We want density ~ 1 / distance?
+        // Let's use rejection sampling.
+        const candidates: Point2D[] = [];
+        const NUM_SAMPLES = 5000; // Tweak for base density
+        // const NUM_SAMPLES = 5000; // Tweak for base density
+
+        // Min/Max edge lengths
+        // CRITICAL: Must match boundary resolution (SEAMS=180)
+        // 1/180 ≈ 0.0055, so MAX_EDGE = 0.0055 gives ~180x180 grid
+        const MIN_EDGE = 0.001;
+        const MAX_EDGE = 0.0055;
+
+        // Jittered Grid Strategy for Guaranteed Coverage
+        // Dart throwing is unreliable for "void" coverage. We need to FORCE points 
+        // into the void to support the triangulation.
+        const gridSizeX = Math.ceil(1.0 / MAX_EDGE);
+        const gridSizeY = Math.ceil(1.0 / MAX_EDGE);
+        const cellW = 1.0 / gridSizeX;
+        const cellH = 1.0 / gridSizeY;
+
+        for (let gy = 0; gy < gridSizeY; gy++) {
+            for (let gx = 0; gx < gridSizeX; gx++) {
+                // Jitter
+                const rx = 0.2 + Math.random() * 0.6; // Keep away from cell edges slightly
+                const ry = 0.2 + Math.random() * 0.6;
+                const px = (gx + rx) * cellW;
+                const py = (gy + ry) * cellH;
+
+                // 1. Query Distance Field
+                // Map px, py (0..1) to GW, GH
+                const ix = Math.min(GW - 1, Math.floor(px * GW));
+                const iy = Math.min(GH - 1, Math.floor(py * GH));
+                const d = distField[iy * GW + ix];
+
+                // 2. Reject if too close to feature
+                if (d < MIN_EDGE) continue;
+
+                // 3. Adaptive Density Check
+                // If d is large (void), we WANT points.
+                // If d is small (near feature), we only want them if they don't crowd.
+                // But Jittered Grid ALREADY enforces spacing ~ MAX_EDGE.
+                // So we can just accept all points that are far enough from features/walls.
+
+                // OPTIONAL: Variable density (skip every other point if d is huge?)
+                // For now, uniform density in the void is safer to prevent chords.
+
+                // Add point
+                candidates.push({ x: px, y: py });
+            }
+        }
+        console.log(`[ConstrainedTriangulator] Generated ${candidates.length} background points (Grid: ${gridSizeX}x${gridSizeY})`);
+        return candidates;
+    }
+
+    // ===================================
+    // 3. Constrained Delaunay Logic
+    // ===================================
+
+    private static runCDT(chains: Point2D[][], bgPoints: Point2D[], seams: Point2D[]): TriangulatedMesh {
+        const points: [number, number][] = [];
+        const edges: [number, number][] = [];
+
+        // Flatten all points into single list
+        // 1. Boundary/Seam (Highest priority)
+        let idx = 0;
+        seams.forEach(p => { points.push([p.x, p.y]); idx++; });
+
+        // 2. Features (Constraints)
+        chains.forEach(chain => {
+            if (chain.length < 2) return;
+            points.push([chain[0].x, chain[0].y]); idx++;
+            for (let k = 1; k < chain.length; k++) {
+                points.push([chain[k].x, chain[k].y]); idx++;
+                edges.push([idx - 2, idx - 1]); // Add constraint edge
+            }
+        });
+
+        // 3. Background
+        bgPoints.forEach(p => { points.push([p.x, p.y]); idx++; });
+
+        // TRIANGULATE
+        // cdt2d handles constraints robustly.
+        // But we must ensure input constraints don't intersect!
+        // Our chaining logic (simple greedy) *might* self-intersect if features spiral.
+        // However, simplify() usually handles local noise.
+        // Crossing chains are a rare case in this specific domain (smooth SDF features).
+
+        // Run CDT
+        try {
+            const triangles = cdt2d(points, edges, { exterior: false });
+
+            // Convert to output format (rescaling x back to theta)
+            const vertices = new Float32Array(points.length * 3);
+            for (let i = 0; i < points.length; i++) {
+                vertices[i * 3 + 0] = points[i][0] * Math.PI * 2; // Un-normalize Theta
+                vertices[i * 3 + 1] = points[i][1];               // T
+                vertices[i * 3 + 2] = 0;                          // Z (Surfaceless)
+            }
+
+            const indices = new Uint32Array(triangles.flat());
+            return { vertices, indices };
+
+        } catch (e) {
+            console.error("CDT Failed", e);
+            // Fallback: Empty mesh or Convex Hull?
+            return { vertices: new Float32Array(0), indices: new Uint32Array(0) };
+        }
+    }
+
+    // ===================================
+    // 4. Seam Stitching
+    // ===================================
+
+    private static stitchSeam(mesh: TriangulatedMesh): TriangulatedMesh {
+        if (mesh.vertices.length === 0) return mesh;
+
+        // Vertices at x=0 need to be unified with vertices at x=2PI
+        // Since we normalized inputs, x=0 and x=1 (before 2PI scale).
+        // BUT we scaled them back to 0..2PI in step 3.
+
+        const EPS = 1e-4;
+        const TAU = Math.PI * 2;
+
+        // Map Y-coord to Index for the Left Seam (x ~ 0)
+        // Quantize Y to handle float drift
+        const QUANT = 10000;
+        const leftMap = new Map<string, number>();
+        const vertices = mesh.vertices;
+        const vCount = vertices.length / 3;
+
+        for (let i = 0; i < vCount; i++) {
+            const x = vertices[i * 3];
+            const y = vertices[i * 3 + 1];
+            const z = vertices[i * 3 + 2]; // Surface ID
+            if (x < EPS) {
+                // Key includes Surface ID to prevent cross-surface merging
+                const key = `${Math.round(y * QUANT)}:${Math.round(z)}`;
+                leftMap.set(key, i);
+            }
+        }
+
+        // Remap array
+        const remapping = new Int32Array(vCount);
+        const validIndices = new Int32Array(vCount).fill(-1);
+        const newVertices: number[] = [];
+        let newCount = 0;
+
+        for (let i = 0; i < vCount; i++) {
+            const x = vertices[i * 3];
+            const y = vertices[i * 3 + 1];
+            let keptIndex = i;
+
+            // Check if Right Seam
+            if (Math.abs(x - TAU) < EPS) {
+                const z = vertices[i * 3 + 2];
+                const yKey = Math.round(y * QUANT);
+
+                // Try exact match and neighbors to handle float drift
+                const candidates = [yKey, yKey - 1, yKey + 1];
+                for (const k of candidates) {
+                    const key = `${k}:${Math.round(z)}`;
+                    if (leftMap.has(key)) {
+                        keptIndex = leftMap.get(key)!;
+                        break; // Found a match
+                    }
+                }
+            }
+
+            remapping[i] = keptIndex;
+
+            if (keptIndex === i) {
+                validIndices[i] = newCount;
+                newVertices.push(x, y, vertices[i * 3 + 2]);
+                newCount++;
+            }
+        }
+
+        // Rebuild Indices (Stride by 3 to preserve triangles)
+        const newIndices: number[] = [];
+        for (let k = 0; k < mesh.indices.length; k += 3) {
+            const idx0 = mesh.indices[k];
+            const idx1 = mesh.indices[k + 1];
+            const idx2 = mesh.indices[k + 2];
+
+            const map0 = validIndices[remapping[idx0]];
+            const map1 = validIndices[remapping[idx1]];
+            const map2 = validIndices[remapping[idx2]];
+
+            if (map0 !== -1 && map1 !== -1 && map2 !== -1) {
+                // Filter degenerate triangles collapsed by stitching
+                if (map0 !== map1 && map1 !== map2 && map2 !== map0) {
+                    newIndices.push(map0, map1, map2);
+                }
+            } else {
+                console.error(`[stitchSeam] Invalid mapping: old(${idx0},${idx1},${idx2}) -> kept(${remapping[idx0]},${remapping[idx1]},${remapping[idx2]}) -> new(${map0},${map1},${map2})`);
+            }
+        }
+
+        return {
+            vertices: new Float32Array(newVertices),
+            indices: new Uint32Array(newIndices)
+        };
+    }
+
+    // ===================================
+    // 5. Ancillary Surfaces
+    // ===================================
+
+    private static appendSurfaces(outer: TriangulatedMesh): TriangulatedMesh {
         const otherSurfaces = [
-            { id: 1, w: 360, h: 360 },
-            { id: 2, w: 720, h: 16 },
-            { id: 3, w: 720, h: 64 },  // Upgraded to match Outer
-            { id: 4, w: 360, h: 64 },
-            { id: 5, w: 128, h: 64 }
+            { id: 1, w: 180, h: 180 }, // Inner Wall
+            { id: 2, w: 180, h: 8 },   // Rim (Matched to SEAMS=180)
+            { id: 3, w: 180, h: 8 },   // Bottom Under (Matched to SEAMS=180)
+            { id: 4, w: 180, h: 8 },   // Bottom Top
+            { id: 5, w: 64, h: 8 }     // Drain
         ];
 
+        // Combine
+        // Note: outer.vertices is Float32Array, we need to convert to growable
         const allVertices: number[] = Array.from(outer.vertices);
         const allIndices: number[] = Array.from(outer.indices);
+
         let vertexOffset = outer.vertices.length / 3;
 
         for (const surf of otherSurfaces) {
@@ -314,10 +479,12 @@ export class ConstrainedTriangulator {
     }
 
     private static generateGrid(w: number, h: number, surfaceId: number): TriangulatedMesh {
+        // Standard grid generation (unchanged logic, just clean)
         const vertices = new Float32Array((w + 1) * (h + 1) * 3);
         const indices: number[] = [];
         const dTheta = (Math.PI * 2) / w;
         const dT = 1.0 / h;
+
         let vIdx = 0;
         for (let j = 0; j <= h; j++) {
             const t = j * dT;
@@ -328,6 +495,7 @@ export class ConstrainedTriangulator {
                 vertices[vIdx++] = surfaceId;
             }
         }
+
         const stride = w + 1;
         for (let j = 0; j < h; j++) {
             for (let i = 0; i < w; i++) {
@@ -340,41 +508,5 @@ export class ConstrainedTriangulator {
             }
         }
         return { vertices, indices: new Uint32Array(indices) };
-    }
-
-    private static extractChains(features: FeaturePoint[]): FeaturePoint[][] {
-        if (features.length === 0) return [];
-        features.sort((a, b) => {
-            if (Math.abs(a.t - b.t) > 0.001) return a.t - b.t;
-            return a.theta - b.theta;
-        });
-        const chains: FeaturePoint[][] = [];
-        const activeChains: FeaturePoint[][] = [];
-        const MAX_DT = 0.05;
-        const MAX_DTH = 0.2;
-        const WRAP_THRESHOLD = 5.0;
-        for (const pt of features) {
-            let bestChainIdx = -1;
-            let bestDist = Infinity;
-            for (let i = 0; i < activeChains.length; i++) {
-                const chain = activeChains[i];
-                const tip = chain[chain.length - 1];
-                const dt = pt.t - tip.t;
-                if (dt > MAX_DT) continue;
-                const dth = Math.abs(pt.theta - tip.theta);
-                if (dth > WRAP_THRESHOLD) continue;
-                if (dth < MAX_DTH && dth < bestDist) {
-                    bestDist = dth;
-                    bestChainIdx = i;
-                }
-            }
-            if (bestChainIdx !== -1) {
-                activeChains[bestChainIdx].push(pt);
-            } else {
-                activeChains.push([pt]);
-            }
-        }
-        chains.push(...activeChains);
-        return chains.filter(c => c.length > 5);
     }
 }

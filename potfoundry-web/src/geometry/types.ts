@@ -122,6 +122,7 @@ export type StyleId =
   | 'GeometricStar'
   | 'HexagonalHive'
   | 'CelticKnot'
+  | 'CelticTriquetra'
   | 'LowPolyFacet';
 
 
@@ -426,6 +427,7 @@ export type StyleParams =
   | GeometricStarParams
   | HexagonalHiveParams
   | CelticKnotParams
+  | CelticTriquetraParams
   | LowPolyFacetParams;
 
 /**
@@ -779,6 +781,26 @@ export const DEFAULT_CELTIC_KNOT: CelticKnotParams = {
   ckStrands: 3,
 };
 
+export interface CelticTriquetraParams {
+  ctScaleX: number;
+  ctRows: number;
+  ctWidth: number;
+  ctRelief: number;
+  ctMedScale: number;
+  ctMedY: number;
+  ctGap: number;
+}
+
+export const DEFAULT_CELTIC_TRIQUETRA: CelticTriquetraParams = {
+  ctScaleX: 14.0,
+  ctRows: 6,
+  ctWidth: 0.18,
+  ctRelief: 2.5,
+  ctMedScale: 0.22,
+  ctMedY: 0.69,
+  ctGap: 0.05,
+};
+
 /** Map of style IDs to their default parameters */
 export const DEFAULT_STYLE_PARAMS: Record<StyleId, StyleParams> = {
   SuperformulaBlossom: DEFAULT_SUPERFORMULA,
@@ -799,5 +821,6 @@ export const DEFAULT_STYLE_PARAMS: Record<StyleId, StyleParams> = {
   GeometricStar: DEFAULT_GEOMETRIC_STAR,
   HexagonalHive: DEFAULT_HEXAGONAL_HIVE,
   CelticKnot: DEFAULT_CELTIC_KNOT,
+  CelticTriquetra: DEFAULT_CELTIC_TRIQUETRA,
   LowPolyFacet: DEFAULT_LOW_POLY_FACET,
 };

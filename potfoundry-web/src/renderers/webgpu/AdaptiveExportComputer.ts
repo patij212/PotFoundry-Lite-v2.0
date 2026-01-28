@@ -3,12 +3,14 @@
  * AdaptiveExportComputer.ts
  * 
  * GPU-based Adaptive Refinement.
- * Now accepts an explicit "Base Mesh" from the host.
+ * Now exclusively uses "Base Mesh" mode with robust triangle-based feature-preserving subdivision.
+ * Legacy Quad mode has been removed.
  */
 
 import { MeshData, PotDimensions, StyleOptions, StyleId } from '../../geometry/types';
 import { buildStyleParamPayload } from '../../utils/styleParams';
 import { FeaturePoint } from './FeatureExtractionComputer';
+import { weldMesh } from '../../utils/geometry/weldMesh';
 
 export interface AdaptiveExportParams {
     dimensions: PotDimensions;
@@ -18,56 +20,57 @@ export interface AdaptiveExportParams {
     targetTriangles?: number;
     subdivThreshold?: number;
     maxDepth?: number;
-    // Base Mesh Injection for Feature-Constrained Mode
-    baseMesh?: { vertices: Float32Array, indices: Uint32Array };
-    features?: FeaturePoint[];
+    // Base Mesh Injection is now REQUIRED for Feature-Constrained Mode
+    baseMesh: { vertices: Float32Array, indices: Uint32Array };
+    features?: FeaturePoint[]; // Legacy: For CPU viz if needed
+    featureSegments?: Float32Array; // Flattened [p1x, p1y, p2x, p2y]
+    featureGridOffsets?: Uint32Array; // Spatial Grid Offsets
 }
+
+// ... (weldMesh code)
+
+// ...
 
 export interface AdaptiveExportResult {
     mesh: MeshData;
     computeTimeMs: number;
     finalTriangleCount: number;
     subdivisionStats: {
-        initialQuads: number;
-        finalQuads: number;
+        initialTriangles: number;
+        finalTriangles: number;
         maxDepthReached: number;
+        overflowDetected: boolean;
     };
 }
 
-const WORKGROUP_SIZE = 64;
-const INITIAL_GRID_SIZE = 360; // Matches Shader (High Res Uniform)
-const NUM_SURFACES = 6;
-const MAX_QUADS = 2_000_000; // Hard limit to prevent memory explosion (was 8M)
-const MAX_VERTICES = 100_000_000;
-const MAX_INDICES = 300_000_000;
-const MAX_DISPATCH_X = 65535;
-
-function packStyleParams(opts: StyleOptions, styleId: string): Float32Array {
-    const [_, paramArray] = buildStyleParamPayload(styleId, opts as Record<string, unknown>);
-    return new Float32Array(paramArray);
+function packStyleParams(opts: StyleOptions, id: StyleId): Float32Array {
+    const [_, data] = buildStyleParamPayload(id, opts as any);
+    return new Float32Array(data);
 }
 
-function dispatchWorkgroups2D(pass: GPUComputePassEncoder, totalItems: number) {
-    const totalWorkgroups = Math.ceil(totalItems / WORKGROUP_SIZE);
-    if (totalWorkgroups <= MAX_DISPATCH_X) {
-        pass.dispatchWorkgroups(totalWorkgroups, 1, 1);
+const STATUS_OK = 0;
+
+function dispatchWorkgroups2D(pass: GPUComputePassEncoder, count: number) {
+    const workgroupSize = 64;
+    const totalWorkgroups = Math.ceil(count / workgroupSize);
+    const maxDim = 65535;
+    if (totalWorkgroups <= maxDim) {
+        pass.dispatchWorkgroups(totalWorkgroups, 1);
     } else {
-        const x = MAX_DISPATCH_X;
-        const y = Math.ceil(totalWorkgroups / MAX_DISPATCH_X);
-        pass.dispatchWorkgroups(x, y, 1);
+        pass.dispatchWorkgroups(maxDim, Math.ceil(totalWorkgroups / maxDim));
     }
 }
 
 export class AdaptiveExportComputer {
     private device: GPUDevice;
     private initialized = false;
-
-    private initGridPipeline: GPUComputePipeline | null = null;
-    private emitPipeline: GPUComputePipeline | null = null;
-    private evaluatePipeline: GPUComputePipeline | null = null;
-
     private bindGroupLayout: GPUBindGroupLayout | null = null;
     private pipelineLayout: GPUPipelineLayout | null = null;
+
+    // Pipelines
+    private evaluatePipeline: GPUComputePipeline | null = null;
+    private subdivideTrianglesPipeline: GPUComputePipeline | null = null;
+    private emitFinalTrianglesPipeline: GPUComputePipeline | null = null;
 
     constructor(device: GPUDevice) {
         this.device = device;
@@ -86,14 +89,15 @@ export class AdaptiveExportComputer {
             entries: [
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
                 { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // quads_current
-                { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // quads_next
-                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // features
-                { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // triangles_current (vec4<u32>)
-                { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // triangles_next (vec4<u32>)
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // Vertices
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // Indices
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // Counters
+                // { binding: 5, ... } Removed legacy Quads buffers
+                // { binding: 6, ... }
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // Features/Segments
+                { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // Triangles Current (was 8)
+                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // Triangles Next (was 9)
+                { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // Grid Offsets
             ],
         });
 
@@ -101,338 +105,524 @@ export class AdaptiveExportComputer {
             bindGroupLayouts: [this.bindGroupLayout!],
         });
 
-        this.initGridPipeline = await this.device.createComputePipelineAsync({
-            label: 'init_coarse_grid',
-            layout: this.pipelineLayout,
-            compute: { module: shaderModule, entryPoint: 'init_coarse_grid' },
-        });
-
-
-
-        this.emitPipeline = await this.device.createComputePipelineAsync({
-            label: 'emit_remaining_quads',
-            layout: this.pipelineLayout,
-            compute: { module: shaderModule, entryPoint: 'emit_remaining_quads' },
-        });
-
-        this.evaluatePipeline = await this.device.createComputePipelineAsync({
-            label: 'evaluate_vertices',
-            layout: this.pipelineLayout,
-            compute: { module: shaderModule, entryPoint: 'evaluate_vertices' },
-        });
-
-        // NEW: Triangle Pipelines
-        // Remove try-catch to expose shader errors
-        this.subdivideTrianglesPipeline = await this.device.createComputePipelineAsync({
-            label: 'subdivide_triangles',
-            layout: this.pipelineLayout,
-            compute: { module: shaderModule, entryPoint: 'subdivide_triangles' },
-        });
-
-        this.emitFinalTrianglesPipeline = await this.device.createComputePipelineAsync({
-            label: 'emit_final_triangles',
-            layout: this.pipelineLayout,
-            compute: { module: shaderModule, entryPoint: 'emit_final_triangles' },
-        });
+        // Initialize pipelines in parallel
+        [
+            this.evaluatePipeline,
+            this.subdivideTrianglesPipeline,
+            this.emitFinalTrianglesPipeline
+        ] = await Promise.all([
+            this.device.createComputePipelineAsync({
+                label: 'evaluate_vertices',
+                layout: this.pipelineLayout,
+                compute: { module: shaderModule, entryPoint: 'evaluate_vertices' },
+            }),
+            this.device.createComputePipelineAsync({
+                label: 'subdivide_triangles',
+                layout: this.pipelineLayout,
+                compute: { module: shaderModule, entryPoint: 'subdivide_triangles' },
+            }),
+            this.device.createComputePipelineAsync({
+                label: 'emit_final_triangles',
+                layout: this.pipelineLayout,
+                compute: { module: shaderModule, entryPoint: 'emit_final_triangles' },
+            })
+        ]);
 
         this.initialized = true;
     }
 
-    private subdivideTrianglesPipeline: GPUComputePipeline | null = null;
-    private emitFinalTrianglesPipeline: GPUComputePipeline | null = null;
-
     async compute(params: AdaptiveExportParams): Promise<AdaptiveExportResult> {
         if (!this.initialized) throw new Error('Not initialized');
+        if (!params.baseMesh) throw new Error("Base Mesh is required for robust execution.");
+
         const startTime = performance.now();
-        console.log('[AdaptiveExport] Compute started. BaseMesh:', !!params.baseMesh, 'Features:', params.features?.length);
+        console.log('[AdaptiveExport] Compute started. BaseMesh:', params.baseMesh.vertices.length / 3, 'verts, Features:', params.features?.length);
 
-        const maxQuadBytes = MAX_QUADS * 16;
-        const maxVertexBytes = MAX_VERTICES * 12; // vec3<f32>
-        const maxIndexBytes = MAX_INDICES * 4;   // u32
+        // --- 1. Dynamic Buffer Sizing ---
+        const maxStorageSize = this.device.limits.maxStorageBufferBindingSize || 134217728; // Default 128MB
 
-        // Triangle Buffers (Indices + SurfaceID)
-        // 4M Triangles max? 4M * 16 bytes = 64MB. Reasonable.
-        const MAX_TRIANGLES = 4_000_000;
-        const maxTriangleBytes = MAX_TRIANGLES * 16; // vec4<u32>
+        // Strategy: Maximize available GPU memory
+        // 12 bytes per vertex (3x float32)
+        const MAX_VERTICES = Math.floor((maxStorageSize * 0.8) / 12);
+        // 4 bytes per index (1x uint32)
+        const MAX_INDICES = Math.floor((maxStorageSize * 0.8) / 4);
 
-        // Buffers
-        const uniformBuffer = this.device.createBuffer({
-            size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
-        const styleParamBuffer = this.device.createBuffer({
-            size: 48 * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-        const vertexBuffer = this.device.createBuffer({
-            size: maxVertexBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-        });
-        const indexBuffer = this.device.createBuffer({
-            size: maxIndexBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-        });
-        const countersBuffer = this.device.createBuffer({
-            size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, // Enlarged for Triangle Counters
-        });
-        const quadsCurrentBuffer = this.device.createBuffer({
-            size: maxQuadBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-        });
-        const quadsNextBuffer = this.device.createBuffer({
-            size: maxQuadBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-        });
-        const trianglesCurrentBuffer = this.device.createBuffer({
-            size: maxTriangleBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-        });
-        const trianglesNextBuffer = this.device.createBuffer({
-            size: maxTriangleBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-        });
+        // Triangle State: 16 bytes per triangle (4x uint32)
+        // We need 2 buffers (Ping-Pong), so each gets half of the remaining budget? 
+        // Or we limit based on target triangles.
+        const targetTris = params.targetTriangles || 4_000_000;
+        const TRIANGLE_HEADROOM = 1.5;
+        // Limit max triangles effectively by buffer size or target
+        const MAX_TRIANGLES = Math.min(
+            Math.floor(targetTris * TRIANGLE_HEADROOM),
+            Math.floor((maxStorageSize * 0.9) / 16)
+        );
 
+        console.log(`[AdaptiveExport] Buffers: MaxVerts=${MAX_VERTICES.toLocaleString()}, MaxTris=${MAX_TRIANGLES.toLocaleString()}`);
 
-        // Write Uniforms & Style Params
-        const { dimensions, styleOpts, maxDepth = 6, subdivThreshold = 0.05, targetTriangles = 4_000_000 } = params;
-        const uniformData = new Float32Array([
-            dimensions.H, dimensions.Rt, dimensions.Rb, dimensions.tWall,
-            dimensions.tBottom, dimensions.rDrain, dimensions.expn, params.styleIndex,
-            styleOpts.spinTurns ?? 0, ((styleOpts.spinPhaseDeg ?? 0) * Math.PI) / 180, styleOpts.spinCurveExp ?? 1, styleOpts.seamAngle ?? 0,
-            styleOpts.bellAmp ?? 0, styleOpts.bellCenter ?? 0.5, styleOpts.bellWidth ?? 0.22, maxDepth,
-            subdivThreshold, 0.0000001, targetTriangles, 0,
-        ]);
-        this.device.queue.writeBuffer(uniformBuffer, 0, uniformData as any);
-        this.device.queue.writeBuffer(styleParamBuffer, 0, packStyleParams(styleOpts, params.styleId) as any);
+        const maxVertexBytes = MAX_VERTICES * 12;
+        const maxIndexBytes = MAX_INDICES * 4;
+        const maxTriangleBytes = MAX_TRIANGLES * 16;
+        console.log(`[AdaptiveExport] v3.0 (Theta Wrap Fix)`);
 
-        // Feature Buffer
-        // If features provided, upload them. Else dummy.
-        let featureBuffer: GPUBuffer;
-        if (params.features && params.features.length > 0) {
-            const fCount = params.features.length;
-            // Mixed Types! use ArrayBuffer
-            const fBytes = new ArrayBuffer(fCount * 16);
-            const fFloats = new Float32Array(fBytes);
-            const fUints = new Uint32Array(fBytes);
+        // --- 2. Create Buffers ---
+        const buffers: GPUBuffer[] = [];
+        const track = (b: GPUBuffer) => { buffers.push(b); return b; };
 
-            for (let i = 0; i < fCount; i++) {
-                fFloats[i * 4] = params.features[i].theta;
-                fFloats[i * 4 + 1] = params.features[i].t;
-                fUints[i * 4 + 2] = params.features[i].type; // Type
-                fFloats[i * 4 + 3] = params.features[i].strength;
+        try {
+            const uniformBuffer = track(this.device.createBuffer({
+                size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                label: 'Uniforms'
+            }));
+            const styleParamBuffer = track(this.device.createBuffer({
+                size: 48 * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                label: 'StyleParams'
+            }));
+            const vertexBuffer = track(this.device.createBuffer({
+                size: maxVertexBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+                label: 'Vertices'
+            }));
+            const indexBuffer = track(this.device.createBuffer({
+                size: maxIndexBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+                label: 'Indices'
+            }));
+            // Counters: [VertexCount, IndexCount, TriCount_Current, TriCount_Next, Status, Padding...]
+            const countersBuffer = track(this.device.createBuffer({
+                size: 64, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+                label: 'Counters'
+            }));
+
+            const trianglesCurrentBuffer = track(this.device.createBuffer({
+                size: maxTriangleBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+                label: 'TrisCurr'
+            }));
+            const trianglesNextBuffer = track(this.device.createBuffer({
+                size: maxTriangleBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+                label: 'TrisNext'
+            }));
+
+            // Write Uniforms & Style Params
+            const { dimensions, styleOpts, maxDepth = 6, subdivThreshold = 0.05 } = params;
+            // Uniform Layout Match:
+            // chunk0: H, Rt, Rb, tWall
+            // chunk1: tBottom, rDrain, expn, styleId
+            // chunk2: spinTurns, spinPhase, spinCurve, seamAngle
+            // chunk3: bellAmp, bellCenter, bellWidth, maxDepth
+            // chunk4: subdivThreshold, minQuadSize (unused), targetTris, reserved
+            const uniformData = new Float32Array([
+                dimensions.H, dimensions.Rt, dimensions.Rb, dimensions.tWall,
+                dimensions.tBottom, dimensions.rDrain, dimensions.expn, params.styleIndex,
+                styleOpts.spinTurns ?? 0, ((styleOpts.spinPhaseDeg ?? 0) * Math.PI) / 180, styleOpts.spinCurveExp ?? 1, styleOpts.seamAngle ?? 0,
+                styleOpts.bellAmp ?? 0, styleOpts.bellCenter ?? 0.5, styleOpts.bellWidth ?? 0.22, maxDepth,
+                subdivThreshold, 0.0000001, targetTris, 0,
+            ]);
+            this.device.queue.writeBuffer(uniformBuffer, 0, uniformData as any);
+            this.device.queue.writeBuffer(styleParamBuffer, 0, packStyleParams(styleOpts, params.styleId) as any);
+
+            // Feature Segments Buffer (Binding 5)
+            let featureBuffer: GPUBuffer;
+            if (params.featureSegments && params.featureSegments.length > 0) {
+                featureBuffer = track(this.device.createBuffer({
+                    size: params.featureSegments.byteLength,
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                    mappedAtCreation: true,
+                    label: 'FeatureSegments'
+                }));
+                new Float32Array(featureBuffer.getMappedRange()).set(params.featureSegments);
+                featureBuffer.unmap();
+            } else {
+                featureBuffer = track(this.device.createBuffer({
+                    size: 16, usage: GPUBufferUsage.STORAGE,
+                    label: 'FeaturesDummy'
+                }));
             }
 
-            featureBuffer = this.device.createBuffer({
-                size: fBytes.byteLength,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-                mappedAtCreation: true
-            });
-            new Uint8Array(featureBuffer.getMappedRange()).set(new Uint8Array(fBytes));
-            featureBuffer.unmap();
+            // Grid Offsets Buffer (Binding 8)
+            let gridOffsetsBuffer: GPUBuffer;
+            if (params.featureGridOffsets && params.featureGridOffsets.length > 0) {
+                gridOffsetsBuffer = track(this.device.createBuffer({
+                    size: params.featureGridOffsets.byteLength,
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                    mappedAtCreation: true,
+                    label: 'GridOffsets'
+                }));
+                new Uint32Array(gridOffsetsBuffer.getMappedRange()).set(params.featureGridOffsets);
+                gridOffsetsBuffer.unmap();
+            } else {
+                gridOffsetsBuffer = track(this.device.createBuffer({
+                    size: 16, usage: GPUBufferUsage.STORAGE,
+                    label: 'GridOffsetsDummy'
+                }));
+            }
 
-        } else {
-            featureBuffer = this.device.createBuffer({
-                size: 16, usage: GPUBufferUsage.STORAGE,
-            });
-        }
+            // Create Bind Groups (We swap binding 6 and 7 for Ping-Pong)
+            const createBindGroup = (trisCurr: GPUBuffer, trisNext: GPUBuffer) => {
+                return this.device.createBindGroup({
+                    layout: this.bindGroupLayout!,
+                    entries: [
+                        { binding: 0, resource: { buffer: uniformBuffer } },
+                        { binding: 1, resource: { buffer: styleParamBuffer } },
+                        { binding: 2, resource: { buffer: vertexBuffer } },
+                        { binding: 3, resource: { buffer: indexBuffer } },
+                        { binding: 4, resource: { buffer: countersBuffer } },
+                        { binding: 5, resource: { buffer: featureBuffer } },
+                        { binding: 6, resource: { buffer: trisCurr } },
+                        { binding: 7, resource: { buffer: trisNext } },
+                        { binding: 8, resource: { buffer: gridOffsetsBuffer } },
+                    ]
+                });
+            };
 
-        const bindGroup = this.device.createBindGroup({
-            layout: this.bindGroupLayout!,
-            entries: [
-                { binding: 0, resource: { buffer: uniformBuffer } },
-                { binding: 1, resource: { buffer: styleParamBuffer } },
-                { binding: 2, resource: { buffer: vertexBuffer } },
-                { binding: 3, resource: { buffer: indexBuffer } },
-                { binding: 4, resource: { buffer: countersBuffer } },
-                { binding: 5, resource: { buffer: quadsCurrentBuffer } },
-                { binding: 6, resource: { buffer: quadsNextBuffer } },
-                { binding: 7, resource: { buffer: featureBuffer } },
-                { binding: 8, resource: { buffer: trianglesCurrentBuffer } },
-                { binding: 9, resource: { buffer: trianglesNextBuffer } },
-            ]
-        });
+            const bgA = createBindGroup(trianglesCurrentBuffer, trianglesNextBuffer);
+            const bgB = createBindGroup(trianglesNextBuffer, trianglesCurrentBuffer);
 
-        let currentQuadCount = 0;
-        let currentTriCount = 0;
-        let depth = 0;
-
-        // Mode Switching
-        if (params.baseMesh && this.subdivideTrianglesPipeline) {
-            console.log('[AdaptiveExport] Base Mesh Mode Active. Uploading topology...');
-            // --- TRIANGLE SUBDIVISION MODE ---
+            // --- 3. Initial State Setup ---
             const { vertices: baseVerts, indices: baseIndices } = params.baseMesh;
             const vertexCount = baseVerts.length / 3;
             const triCount = baseIndices.length / 3;
-            console.log(`[AdaptiveExport] Base Params: ${vertexCount} verts, ${triCount} tris`);
 
-            // 1. Pack Initial Triangles (v0, v1, v2, surface)
+            // Validate inputs
+            if (vertexCount > MAX_VERTICES) throw new Error(`Base mesh too large: ${vertexCount} > ${MAX_VERTICES} vertices`);
+            if (triCount > MAX_TRIANGLES) throw new Error(`Base mesh too large: ${triCount} > ${MAX_TRIANGLES} triangles`);
+
+            // Pack Initial Triangles (v0, v1, v2, surfaceID)
             const packedTriangles = new Uint32Array(triCount * 4);
             for (let i = 0; i < triCount; i++) {
                 const v0 = baseIndices[i * 3];
                 const v1 = baseIndices[i * 3 + 1];
                 const v2 = baseIndices[i * 3 + 2];
-                // Surface stored in Z of vertex (index 2)
+                // Detect surface from Z if encoded, else 0
                 const surf = Math.round(baseVerts[v0 * 3 + 2]);
+
                 packedTriangles[i * 4] = v0;
                 packedTriangles[i * 4 + 1] = v1;
                 packedTriangles[i * 4 + 2] = v2;
                 packedTriangles[i * 4 + 3] = surf;
             }
 
-            // 2. Upload
             this.device.queue.writeBuffer(vertexBuffer, 0, baseVerts as any);
             this.device.queue.writeBuffer(trianglesCurrentBuffer, 0, packedTriangles as any);
 
-            // 3. Init Counters: [vertexCount, indexCount, quadCount, quadNext, TRI_CURRENT, TRI_NEXT]
-            // We use indices 4 and 5 for triangles.
-            const initialCounters = new Uint32Array([vertexCount, 0, 0, 0, triCount, 0]);
+            // Counters: [VertexCount, IndexCount, TriCount_Current, TriCount_Next, STATUS, ...]
+            const initialCounters = new Uint32Array([vertexCount, 0, triCount, 0, STATUS_OK, 0]);
             this.device.queue.writeBuffer(countersBuffer, 0, initialCounters as any);
 
-            currentTriCount = triCount;
+            let currentTriCount = triCount;
+            let depth = 0;
+            let overflow = false;
 
-            // 4. Subdivision Loop
+            // --- DEBUG: Skip GPU Subdivision Entirely ---
+            const DEBUG_BYPASS_GPU = false; // DISABLED: GPU fix applied
+            if (DEBUG_BYPASS_GPU) {
+                console.log('[AdaptiveExport] DEBUG: Bypassing GPU subdivision! Emitting base mesh directly.');
+                // Evaluate vertices on CPU
+                const TAU = Math.PI * 2;
+                const H = dimensions.H;
+                const Rt = dimensions.Rt;
+                const Rb = dimensions.Rb;
+                const tWall = dimensions.tWall;
+                const tBottom = dimensions.tBottom;
+                const rDrain = dimensions.rDrain;
+                const n = dimensions.expn;
+
+                const evalVerts = new Float32Array(vertexCount * 3);
+                for (let i = 0; i < vertexCount; i++) {
+                    const theta = baseVerts[i * 3];
+                    const t = baseVerts[i * 3 + 1];
+                    const surface = Math.round(baseVerts[i * 3 + 2]);
+
+                    let x = 0, y = 0, z = 0;
+
+                    // Basic radius function (no style for debug)
+                    const r_base = (t_param: number) => Rb + (Rt - Rb) * Math.pow(t_param, n);
+                    const r_inner = (t_param: number) => Math.max(r_base(t_param) - tWall, 0.5);
+
+                    if (surface === 0) { // OUTER
+                        const r = r_base(t);
+                        z = t * H;
+                        x = r * Math.cos(theta);
+                        y = r * Math.sin(theta);
+                    } else if (surface === 1) { // INNER
+                        const z_height = tBottom + t * (H - tBottom);
+                        const t_radius = z_height / H;
+                        const r = r_inner(t_radius);
+                        z = z_height;
+                        x = r * Math.cos(theta);
+                        y = r * Math.sin(theta);
+                    } else if (surface === 2) { // RIM
+                        const r_i = r_inner(1.0);
+                        const r_o = r_base(1.0);
+                        const r = r_i + (r_o - r_i) * t;
+                        z = H;
+                        x = r * Math.cos(theta);
+                        y = r * Math.sin(theta);
+                    } else if (surface === 3) { // BOTTOM UNDER
+                        const r_o = r_base(0);
+                        const r = r_o + (rDrain - r_o) * t;
+                        z = 0;
+                        x = r * Math.cos(theta);
+                        y = r * Math.sin(theta);
+                    } else if (surface === 4) { // BOTTOM TOP
+                        const t_radius_bot = tBottom / H;
+                        const r_i = r_inner(t_radius_bot);
+                        const r = r_i + (rDrain - r_i) * t;
+                        z = tBottom;
+                        x = r * Math.cos(theta);
+                        y = r * Math.sin(theta);
+                    } else if (surface === 5) { // DRAIN
+                        const r = rDrain;
+                        z = t * tBottom;
+                        x = r * Math.cos(theta);
+                        y = r * Math.sin(theta);
+                    }
+
+                    evalVerts[i * 3] = x;
+                    evalVerts[i * 3 + 1] = y;
+                    evalVerts[i * 3 + 2] = z;
+                }
+
+                console.log(`[AdaptiveExport] DEBUG: Emitting ${vertexCount} vertices, ${triCount} triangles (no subdivision)`);
+
+                return {
+                    mesh: {
+                        vertices: evalVerts,
+                        indices: new Uint32Array(baseIndices),
+                        vertexCount: vertexCount,
+                        triangleCount: triCount
+                    },
+                    computeTimeMs: 0,
+                    finalTriangleCount: triCount,
+                    subdivisionStats: {
+                        initialTriangles: triCount,
+                        finalTriangles: triCount,
+                        maxDepthReached: 0,
+                        overflowDetected: false
+                    }
+                };
+            }
+
+            // --- 4. Subdivision Loop ---
             for (let d = 0; d < maxDepth; d++) {
-                // Reset Next Counter
-                this.device.queue.writeBuffer(countersBuffer, 20, new Uint32Array([0])); // Index 5 * 4 bytes = 20
+                // Reset Next Counter (index 3)
+                this.device.queue.writeBuffer(countersBuffer, 12, new Uint32Array([0]));
 
                 const encoder = this.device.createCommandEncoder();
                 const pass = encoder.beginComputePass();
-                pass.setPipeline(this.subdivideTrianglesPipeline);
-                pass.setBindGroup(0, bindGroup);
+                pass.setPipeline(this.subdivideTrianglesPipeline!);
+                // Swap bind groups based on depth even/odd
+                // d=0: Read Curr, Write Next.
+                pass.setBindGroup(0, d % 2 === 0 ? bgA : bgB);
                 dispatchWorkgroups2D(pass, currentTriCount);
                 pass.end();
 
-                // Copy Next -> Current for next iteration
-                // Readback count first?
-                // Efficiency: We can copy buffer blindly, but we need the count for dispatch.
-                // We MUST readback count to know if we are done or overflowing.
-                // Actually, just copy the buffer. For count, we can do a small readback.
-                encoder.copyBufferToBuffer(trianglesNextBuffer, 0, trianglesCurrentBuffer, 0, maxTriangleBytes);
-                // Copy Next Counter -> Current Counter
-                encoder.copyBufferToBuffer(countersBuffer, 20, countersBuffer, 16, 4); // Index 5 -> 4
-
+                // Submit compute
                 this.device.queue.submit([encoder.finish()]);
 
-                // Readback count (blocking for loop control?)
-                // To keep it fully GPU, we would need indirect dispatch.
-                // For simplicity/safety, let's await count to prevent runaway or empty dispatches.
-                const countStaging = this.device.createBuffer({ size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-                const countEncoder = this.device.createCommandEncoder();
-                countEncoder.copyBufferToBuffer(countersBuffer, 16, countStaging, 0, 4); // Read Index 4 (Current)
-                this.device.queue.submit([countEncoder.finish()]);
+                // Readback Next Count & Status
+                const readStaging = track(this.device.createBuffer({ size: 32, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }));
+                const readEncoder = this.device.createCommandEncoder();
+                readEncoder.copyBufferToBuffer(countersBuffer, 0, readStaging, 0, 32);
+                this.device.queue.submit([readEncoder.finish()]);
 
-                await countStaging.mapAsync(GPUMapMode.READ);
-                const nextCount = new Uint32Array(countStaging.getMappedRange())[0];
-                countStaging.unmap();
-                countStaging.destroy();
+                await readStaging.mapAsync(GPUMapMode.READ);
+                const readData = new Uint32Array(readStaging.getMappedRange());
+                const nextCount = readData[3]; // TriCount_Next
+                const status = readData[4];    // Status
 
-                if (nextCount === currentTriCount) {
-                    // No new triangles created, convergence reached.
+                readStaging.unmap();
+                const idx = buffers.indexOf(readStaging);
+                if (idx > -1) buffers.splice(idx, 1);
+                readStaging.destroy();
+
+                if (status !== STATUS_OK) {
+                    console.warn(`[AdaptiveExport] GPU Status Error: ${status}. Stopping subdivision.`);
+                    overflow = true;
                     break;
                 }
+
+                if (nextCount > targetTris) {
+                    console.log(`[AdaptiveExport] Budget reached: ${nextCount} > ${targetTris}.`);
+                    // If we exceeded budget, we typically accept the result if it fits in buffer, 
+                    // or we revert to previous level. 
+                    // Since we already wrote to 'Next', let's use it but stop.
+                    currentTriCount = nextCount;
+                    depth = d + 1;
+                    break;
+                }
+
+                // If no new triangles were created (all kept), count stays same?
+                // Actually if all kept, nextCount == currentTriCount.
+                if (nextCount === currentTriCount) {
+                    // Converged
+                    break;
+                }
+
                 currentTriCount = nextCount;
                 depth = d + 1;
 
-                if (currentTriCount >= MAX_TRIANGLES * 0.95) {
-                    console.warn('[AdaptiveExport] Max triangles reached during subdivision.');
-                    break;
-                }
+                // Move Next -> Current for next iteration
+                // We physically swap usage by swapping bind groups.
+                // But we must update 'Current' counter (index 2) with 'Next' count for the next pass.
+                // So: counters[2] = counters[3].
+                const updateEncoder = this.device.createCommandEncoder();
+                const scratch = track(this.device.createBuffer({ size: 4, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST }));
+                // Copy Next(3) -> Scratch
+                updateEncoder.copyBufferToBuffer(countersBuffer, 12, scratch, 0, 4);
+                // Copy Scratch -> Current(2)
+                updateEncoder.copyBufferToBuffer(scratch, 0, countersBuffer, 8, 4);
+                this.device.queue.submit([updateEncoder.finish()]);
+
+                // Note: On next loop, we use bgB which reads from 'Next' buffer (now acting as current source)
+                // and writes to 'Current' buffer (now acting as next destination).
             }
 
-            // 5. Final Emission
+            // --- 5. Final Emission ---
+            // We need to perform emit from the buffer that holds the FINAL triangles.
+            // If depth is even (0, 2...), the result is in 'Next' (bgA wrote to Next).
+            // If depth is odd (1, 3...), the result is in 'Current' (bgB wrote to Current).
+            // Actually, wait. 
+            // d=0: In=Curr, Out=Next. End of loop, we set depth=1.
+            // If we break, result is in Out.
+            // So if `depth % 2 !== 0`, result is in NextBuffer.
+            // If `depth % 2 === 0`, result is in CurrentBuffer.
+
+            // Correction:
+            // Loop d=0: BgA. Read Curr, Write Next. Result in Next. Depth becomes 1.
+            // Loop d=1: BgB. Read Next, Write Curr. Result in Curr. Depth becomes 2.
+            // So if depth is ODD, result is in Next.
+            // If depth is EVEN, result is in Curr.
+
+            const finalBindGroup = (depth % 2 !== 0) ?
+                createBindGroup(trianglesNextBuffer, trianglesCurrentBuffer) : // Read Next
+                createBindGroup(trianglesCurrentBuffer, trianglesNextBuffer);  // Read Curr
+
+            // We also need to ensure COUNTER_TRI_CURRENT (index 2) matches the count in the buffer we are reading.
+            // If result is in Next, we need index 2 to hold NextCount? 
+            // The shader 'emit_final_triangles' reads counters[2] (TriCount_Current).
+            // But if we are reading from NextBuffer (via binding 6 alias), we need the count to be correct.
+            // Logic above: `counters[2] = counters[3]` was done at end of loop.
+            // So counters[2] always holds the count of the 'input' for the NEXT pass.
+            // Since we finished the loop, counters[2] holds the count of the most recently generated triangles.
+            // So we just need to bind the Correct Buffer to Slot 6 (Triangles Current).
+
+            // If depth is ODD (1), last pass was d=0 (BgA). Result in Next. 
+            // We moved NextCount -> CountCurrent.
+            // We need to bind NextBuffer to Slot 6.
+            // createBindGroup(trisCurr, trisNext) binds trisCurr to Slot 6.
+            // So if depth is ODD, we use createBindGroup(trianglesNextBuffer, ...). Correct.
+
+            // If depth is ODD, we use createBindGroup(trianglesNextBuffer, ...). Correct.
+
+            // CRITICAL FIX: Ensure counters[2] (TRI_CURRENT) held by the GPU matches the actual count 
+            // of the buffer we are about to read from.
+            // If we broke early (budget reached), counters[2] might still hold the OLD count.
+            // We tracked the real count in `currentTriCount`.
+
+            // SECURITY: Clamp to MAX_TRIANGLES. 
+            // The atomic counter 'nextCount' continues to increment even if we run out of buffer space.
+            // If we tell the emit shader to read 'nextCount' triangles, it will read uninitialized 
+            // memory (zeros) for the indices beyond MAX_TRIANGLES, creating garbage geometry (spikes to v0).
+            const safeEmitCount = Math.min(currentTriCount, MAX_TRIANGLES);
+
+            this.device.queue.writeBuffer(countersBuffer, 8, new Uint32Array([safeEmitCount]));
+
             const finalEncoder = this.device.createCommandEncoder();
             const finalPass = finalEncoder.beginComputePass();
             finalPass.setPipeline(this.emitFinalTrianglesPipeline!);
-            finalPass.setBindGroup(0, bindGroup);
-            dispatchWorkgroups2D(finalPass, currentTriCount);
+            finalPass.setBindGroup(0, finalBindGroup);
+            dispatchWorkgroups2D(finalPass, safeEmitCount);
             finalPass.end();
             this.device.queue.submit([finalEncoder.finish()]);
 
-            // 6. Evaluate Vertices (Transform from Parametric to World)
-            // Dispatched for ALL vertices (Base + Subdivided)
-            const vCountStaging = this.device.createBuffer({ size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+            // --- 6. Vertex Evaluation ---
+            // Now we have Final Indices in `indexBuffer`. 
+            // Vertices are still parametric. Run `evaluate_vertices`.
+            // Update vertex count first.
+            const vCountStaging = track(this.device.createBuffer({ size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }));
             const vCountEncoder = this.device.createCommandEncoder();
-            vCountEncoder.copyBufferToBuffer(countersBuffer, 0, vCountStaging, 0, 4); // Index 0: Total Vertices
+            vCountEncoder.copyBufferToBuffer(countersBuffer, 0, vCountStaging, 0, 4);
             this.device.queue.submit([vCountEncoder.finish()]);
             await vCountStaging.mapAsync(GPUMapMode.READ);
             const totalVertices = new Uint32Array(vCountStaging.getMappedRange())[0];
             vCountStaging.unmap();
+            const idxV = buffers.indexOf(vCountStaging);
+            if (idxV > -1) buffers.splice(idxV, 1);
             vCountStaging.destroy();
 
             if (this.evaluatePipeline && totalVertices > 0) {
                 const evalEncoder = this.device.createCommandEncoder();
                 const evalPass = evalEncoder.beginComputePass();
                 evalPass.setPipeline(this.evaluatePipeline);
-                evalPass.setBindGroup(0, bindGroup);
-                const workgroups = Math.ceil(totalVertices / 64);
-                evalPass.dispatchWorkgroups(workgroups);
+                // Bind normal group (buffers don't swap for evaluation, just vertices)
+                // eval uses binding 2 (Vertices), which is fixed.
+                evalPass.setBindGroup(0, bgA);
+                dispatchWorkgroups2D(evalPass, totalVertices);
                 evalPass.end();
                 this.device.queue.submit([evalEncoder.finish()]);
             }
 
-        } else {
-            // --- LEGACY QUAD MODE (Fallback) ---
-            const initialQuadCount = INITIAL_GRID_SIZE * INITIAL_GRID_SIZE * NUM_SURFACES;
-            const initialCounters = new Uint32Array([0, 0, initialQuadCount, 0]);
-            this.device.queue.writeBuffer(countersBuffer, 0, initialCounters as any);
+            // --- 7. Readback ---
+            const vertexStaging = track(this.device.createBuffer({ size: maxVertexBytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST, label: 'StagingVert' }));
+            const indexStaging = track(this.device.createBuffer({ size: maxIndexBytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST, label: 'StagingIdx' }));
+            const countStaging = track(this.device.createBuffer({ size: 64, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST, label: 'StagingCnt' }));
 
-            currentQuadCount = initialQuadCount;
+            const readBackEncoder = this.device.createCommandEncoder();
+            readBackEncoder.copyBufferToBuffer(vertexBuffer, 0, vertexStaging, 0, maxVertexBytes);
+            readBackEncoder.copyBufferToBuffer(indexBuffer, 0, indexStaging, 0, maxIndexBytes);
+            readBackEncoder.copyBufferToBuffer(countersBuffer, 0, countStaging, 0, 64);
+            this.device.queue.submit([readBackEncoder.finish()]);
 
-            const encoder = this.device.createCommandEncoder();
-            const pass = encoder.beginComputePass();
-            pass.setPipeline(this.initGridPipeline!);
-            pass.setBindGroup(0, bindGroup);
-            dispatchWorkgroups2D(pass, initialQuadCount);
-            pass.end();
-            this.device.queue.submit([encoder.finish()]);
+            await Promise.all([
+                vertexStaging.mapAsync(GPUMapMode.READ),
+                indexStaging.mapAsync(GPUMapMode.READ),
+                countStaging.mapAsync(GPUMapMode.READ),
+            ]);
 
-            // Loop for Quads? (Implementation skipped as we focus on Triangles, but keeping emit)
-            if (currentQuadCount > 0) {
-                // this.device.queue.writeBuffer(countersBuffer, 8, new Uint32Array([currentQuadCount]) as any);
-                const finalEncoder = this.device.createCommandEncoder();
-                const finalPass = finalEncoder.beginComputePass();
-                finalPass.setPipeline(this.emitPipeline!);
-                finalPass.setBindGroup(0, bindGroup);
-                dispatchWorkgroups2D(finalPass, currentQuadCount);
-                finalPass.end();
-                this.device.queue.submit([finalEncoder.finish()]);
-            }
+            const finalCounts = new Uint32Array(countStaging.getMappedRange());
+            const finalVCount = finalCounts[0];
+            const finalICount = finalCounts[1];
+
+            // Extract data BEFORE unmapping
+            // Slice the mapped range directly to get a copy of the bytes
+            // finalVCount * 12 bytes (3 floats per vertex * 4 bytes/float)
+            const vBytes = vertexStaging.getMappedRange().slice(0, finalVCount * 12);
+            // finalICount * 4 bytes (1 uint32 per index * 4 bytes/uint32)
+            const iBytes = indexStaging.getMappedRange().slice(0, finalICount * 4);
+
+            vertexStaging.unmap(); indexStaging.unmap(); countStaging.unmap();
+
+            // --- 8. WELDING (CPU Fix) ---
+            // Now that Ancillary Distortion is fixed (via shader), we can safely weld.
+            // This merges the High-Res Seam (SEAMS=180) with the Ancillary Grids (w=360/180).
+            const welded = weldMesh(
+                new Float32Array(vBytes),
+                new Uint32Array(iBytes)
+            );
+
+            const rawV = welded.vertices;
+            const rawI = welded.indices;
+            const debugTriCount = rawI.length / 3;
+
+            return {
+                mesh: {
+                    vertices: rawV,
+                    indices: rawI,
+                    vertexCount: rawV.length / 3,
+                    triangleCount: debugTriCount
+                },
+                computeTimeMs: performance.now() - startTime,
+                finalTriangleCount: finalICount / 3,
+                subdivisionStats: {
+                    initialTriangles: triCount,
+                    finalTriangles: currentTriCount,
+                    maxDepthReached: depth,
+                    overflowDetected: overflow
+                },
+            };
+
+        } finally {
+            buffers.forEach(b => b.destroy());
         }
-
-
-        // Readback
-        const vertexStaging = this.device.createBuffer({ size: maxVertexBytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-        const indexStaging = this.device.createBuffer({ size: maxIndexBytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-        const countStaging = this.device.createBuffer({ size: 32, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-
-        const readEncoder = this.device.createCommandEncoder();
-        readEncoder.copyBufferToBuffer(vertexBuffer, 0, vertexStaging, 0, maxVertexBytes);
-        readEncoder.copyBufferToBuffer(indexBuffer, 0, indexStaging, 0, maxIndexBytes);
-        readEncoder.copyBufferToBuffer(countersBuffer, 0, countStaging, 0, 32);
-        this.device.queue.submit([readEncoder.finish()]);
-
-        await Promise.all([
-            vertexStaging.mapAsync(GPUMapMode.READ),
-            indexStaging.mapAsync(GPUMapMode.READ),
-            countStaging.mapAsync(GPUMapMode.READ),
-        ]);
-
-        const counts = new Uint32Array(countStaging.getMappedRange());
-        const vertexCount = counts[0];
-        const indexCount = counts[1]; // Indices generated by emit
-
-        const vertices = new Float32Array(vertexStaging.getMappedRange().slice(0, vertexCount * 12)); // * 4 bytes * 3 floats ? No, slice size is in BYTES. 
-        // vertexCount is number of vertices. Each is 3 floats (12 bytes).
-        // slice(start, end). end is byte index.
-
-        const indices = new Uint32Array(indexStaging.getMappedRange().slice(0, indexCount * 4));
-
-        vertexStaging.unmap(); indexStaging.unmap(); countStaging.unmap();
-
-        uniformBuffer.destroy(); styleParamBuffer.destroy(); vertexBuffer.destroy(); indexBuffer.destroy();
-        countersBuffer.destroy(); quadsCurrentBuffer.destroy(); quadsNextBuffer.destroy();
-        trianglesCurrentBuffer.destroy(); trianglesNextBuffer.destroy();
-        vertexStaging.destroy(); indexStaging.destroy(); countStaging.destroy();
-        if (featureBuffer) featureBuffer.destroy();
-
-        return {
-            mesh: { vertices, indices, vertexCount, triangleCount: indexCount / 3 },
-            computeTimeMs: performance.now() - startTime,
-            finalTriangleCount: indexCount / 3,
-            subdivisionStats: { initialQuads: currentQuadCount, finalQuads: currentTriCount, maxDepthReached: depth },
-        };
     }
 
     isReady(): boolean { return this.initialized; }

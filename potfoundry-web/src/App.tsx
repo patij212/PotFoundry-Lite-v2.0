@@ -50,7 +50,29 @@ import { STYLE_IDS } from './styles/registry';
 const STYLE_NAME_TO_ID = STYLE_IDS;
 
 
+import { AdaptiveExportVerifier } from './debug/AdaptiveExportVerifier';
+import { TriangulatorVerifier } from './debug/TriangulatorVerifier';
+
 const App: React.FC = () => {
+    // Check for verification mode
+    const [isVerifyMode, setIsVerifyMode] = useState<false | 'adaptive' | 'triangulator'>(false);
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            if (window.location.pathname.includes('/verify/adaptive')) {
+                setIsVerifyMode('adaptive');
+            } else if (window.location.pathname.includes('/verify/triangulator')) {
+                setIsVerifyMode('triangulator');
+            }
+        }
+    }, []);
+
+    if (isVerifyMode === 'adaptive') {
+        return <AdaptiveExportVerifier />;
+    }
+    if (isVerifyMode === 'triangulator') {
+        return <TriangulatorVerifier />;
+    }
+
     // Refs
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const controllerRef = useRef<RendererController | WebGPUController | null>(null);

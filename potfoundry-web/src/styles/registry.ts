@@ -126,17 +126,7 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     },
 
     LowPolyFacet: {
-        id: 4, // Alias to HarmonicRipple in shader, but unique in UI? No, usually unique ID. Wait, styleParams.ts said alias. Let's check shader. In shader, STYLE_HARMONIC=4. LowPolyFacet doesn't seem to have its own ID in shader?
-        // Wait, styleParams.ts: LowPolyFacet: 4. So it maps to HarmonicRipple? 
-        // This seems like a legacy alias. But looking at schema, it has totally different params (lp_facets vs hr_petals).
-        // If they share ID 4, they share the shader function. 
-        // In shader: harmonic_radius uses hr_petals etc.
-        // LowPoly params in styles.ts: lp_facets -> (handled as hr_petals?). 
-        // This implies LowPoly is just a preset of HarmonicRipple? 
-        // Let's check packHarmonic in styleParams.ts. 
-        // Yes, if I look at styleParams.ts (which I didn't fully read), I bet packHarmonic handles both or packLowPoly calls packHarmonic.
-        // For registry, if they are conceptually different, we can keep them separate here, but they must map to ID 4.
-        // However, if they map to ID 4, the shader only sees ID 4.
+        id: 19,
         shaderName: 'harmonic_radius',
         name: 'Low Poly Facet',
         description: 'Piecewise-flat facets for low-poly aesthetic.',
