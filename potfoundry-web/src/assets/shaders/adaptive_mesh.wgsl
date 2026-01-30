@@ -11,7 +11,7 @@
 struct AdaptiveUniforms {
   chunk0: vec4<f32>, // x:H, y:Rt, z:Rb, w:tWall
   chunk1: vec4<f32>, // x:tBottom, y:rDrain, z:expn, w:styleId
-  chunk2: vec4<f32>, // x:spinTurns, y:spinPhase, z:spinCurve, w:seamAngle
+  chunk2: vec4<f32>, // x:spinTurns, y:spinPhase, z:spinCurve, w:reserved_seam
   chunk3: vec4<f32>, // x:bellAmp, y:bellCenter, z:bellWidth, w:maxDepth
   chunk4: vec4<f32>, // x:subdivThreshold, y:minQuadSize, z:targetTris, w:reserved
 }
@@ -63,7 +63,7 @@ fn getf(idx: u32) -> f32 {
     case 14u: { return uniforms.chunk3.x; }  // bellAmp
     case 15u: { return uniforms.chunk3.y; }  // bellCenter
     case 72u: { return uniforms.chunk3.z; }  // bellWidth
-    case 73u: { return uniforms.chunk2.w; }  // seamAngle
+    case 73u: { return uniforms.chunk2.w; }  // reserved_seam (formerly seamAngle)
     default: { return 0.0; }
   }
 }
@@ -158,53 +158,46 @@ fn closest_point_segment(p: vec2<f32>, s: Segment) -> vec2<f32> {
     return s.p1 + ba * h;
 }
 
-fn snap_vertex(theta: f32, t: f32, limit_box: vec2<f32>) -> vec2<f32> {
+fn snap_vertex_uv(u_in: f32, v_in: f32, limit_box: vec2<f32>, threshold_sq: f32) -> vec2<f32> {
     // Only snap if we have segments
-    if (arrayLength(&feature_segments) == 0u) { return vec2<f32>(theta, t); }
+    if (arrayLength(&feature_segments) == 0u) { return vec2<f32>(u_in, v_in); }
     
-    // Convert Theta/T to UV space (0..1)
-    let TAU = 6.28318530718;
-    // Normalize theta to 0..1
-    var u = (theta % TAU);
-    if (u < 0.0) { u += TAU; }
-    u = u / TAU;
-    let v = t; // t is already 0..1
-    
+    // Binning logic works on normalized u (0..1)
+    var u = u_in - floor(u_in);
+    let v = v_in;
     let uv_p = vec2<f32>(u, v);
     
     // Bin Lookup
     let bin_idx = u32(floor(u * f32(GRID_BINS))) % GRID_BINS;
     
-    var best_dist_sq = 100.0; // Large init
+    var best_dist_sq = 100.0;
     var best_uv = uv_p;
     
     // Search Current + Neighbor Bins (Wrap)
     for (var i = -1; i <= 1; i++) {
-        // Handle negative wrap properly in WGSL
         let b_raw = i32(bin_idx) + i;
         var b = u32((b_raw + i32(GRID_BINS)) % i32(GRID_BINS));
         
-        // Access Grid
-        // grid_offsets has size 65 (64 bins + 1 end)
-        if (b >= GRID_BINS) { continue; } // Safety
+        // Handle Seam Wrapping: Shift segment into local space
+        // If we wrapped right (b_raw >= bins), segments in bin 0 are effectively at u+1.0
+        // If we wrapped left (b_raw < 0), segments in bin 63 are effectively at u-1.0
+        var offset_x = 0.0;
+        if (b_raw < 0) { offset_x = -1.0; }
+        else if (b_raw >= i32(GRID_BINS)) { offset_x = 1.0; }
+        let offset = vec2<f32>(offset_x, 0.0);
+        
+        if (b >= GRID_BINS) { continue; } 
         
         let start = grid_offsets[b];
         let end = grid_offsets[b+1u];
         
         for (var k = start; k < end; k++) {
             let seg = get_segment(k);
-            let p_seg = closest_point_segment(uv_p, seg);
+            let seg_shifted = Segment(seg.p1 + offset, seg.p2 + offset);
+            let p_seg = closest_point_segment(uv_p, seg_shifted);
             
-            // Distance Check
+            // Euclidean check works correctly in shifted space
             let diff = uv_p - p_seg;
-            // X-wrap distance fix? 
-            // Our segments are in 0..1. The point is 0..1.
-            // If we are close to edge, the segment might be "0.99 -> 0.01".
-            // The segment itself doesn't wrap (we split it).
-            // But distance calculation across 0/1 boundary?
-            // If bin check handles neighbors, and segments are duplicated in bins...
-            // We just need standard Euclidean distance to the *segment instance*.
-            
             let d2 = dot(diff, diff);
             
             if (d2 < best_dist_sq) {
@@ -214,106 +207,116 @@ fn snap_vertex(theta: f32, t: f32, limit_box: vec2<f32>) -> vec2<f32> {
         }
     }
     
-    // Threshold in UV space
-    // 0.05 * 0.05 is HUGE in UV (whole object is 1.0).
-    // Corresponds to ~5% of circumference or height.
-    // Let's use smaller threshold. 0.01 (~3.6 degrees / 1mm on 100mm pot)
-    let snap_thresh_uv = 0.005 * 0.005; 
-    
-    if (best_dist_sq < snap_thresh_uv) {
-        // Convert back to Theta/T
-        // u -> theta
-        // We need to be careful about wrapping if best_u crossed boundary.
-        // best_uv is in 0..1
-        // theta is unbounded (-inf..inf). We want to stay *near* input theta.
+    if (best_dist_sq < threshold_sq) {
+        // Reconstruction
+        // best_uv is in shifted space, so (best_uv.x - u) gives the correct signed delta
+        let diff_u = best_uv.x - u;
+        let diff_v = best_uv.y - v;
         
-        // Reconstruct Theta:
-        // theta_base = floor(theta / TAU) * TAU;
-        // theta_new = theta_base + best_uv.x * TAU;
+        // Limit clamping to prevents wild jumps
+        let d_u_clamped = clamp(diff_u, -limit_box.x, limit_box.x);
+        let d_v_clamped = clamp(diff_v, -limit_box.y, limit_box.y);
         
-        // But if we wrapped, best_uv.x might be far from u.
-        // e.g. u=0.99, best=0.01.
-        // diff = -0.98. But actual diff is +0.02.
-        
-        var diff_u = best_uv.x - u;
-        if (diff_u > 0.5) { diff_u -= 1.0; }
-        else if (diff_u < -0.5) { diff_u += 1.0; }
-        
-        let snapped_theta = theta + diff_u * TAU;
-        let snapped_t = best_uv.y; // t doesn't wrap
-        
-        let d_th_clamped = clamp(snapped_theta - theta, -limit_box.x, limit_box.x);
-        let d_t_clamped = clamp(snapped_t - t, -limit_box.y, limit_box.y);
-        
-        return vec2<f32>(theta + d_th_clamped, t + d_t_clamped);
+        let final_u = u_in + d_u_clamped;
+        // Safety Normalize: Force 0..1 range
+        let val = final_u - floor(final_u);
+        return vec2<f32>(val, v_in + d_v_clamped);
     }
 
-    return vec2<f32>(theta, t);
+    return vec2<f32>(u_in, v_in);
 }
+
+// ... in create_midpoint ...
+// let snap_thresh_uv = 0.001 * 0.001;
+// let snapped = snap_vertex(mid.x, mid.y, limits, snap_thresh_uv);
+
+// ... in snap_initial_vertices ...
+// let limits = vec2<f32>(0.05, 0.05);
+// let snapped = snap_vertex(theta, t, limits, 0.01); // 0.1^2 loose threshold
 
 // ============================================================================
 // Evaluation
 // ============================================================================
 
-fn compute_importance(theta: f32, t: f32, surfaceType: f32, scale: vec2<f32>) -> f32 {
-    var base_imp = 0.0;
+fn compute_importance(u: f32, t: f32, surfaceType: f32, scale: vec2<f32>) -> f32 {
+    // Non-wall surfaces get no adaptive subdivision
+    if (surfaceType > 2.5) { return 0.0; }
     
-    // Only adaptive on walls for now
-    if (surfaceType < 2.5) { 
-         // Sagitta
-         let r_c = compute_outer_radius(theta, t);
-         let eps_theta = max(scale.x * 0.5, 0.0001);
-         let eps_t     = max(scale.y * 0.5, 0.0001);
-
-         let r_tp = compute_outer_radius(theta + eps_theta, t);
-         let r_tm = compute_outer_radius(theta - eps_theta, t);
-         let mid_theta = (r_tp + r_tm) * 0.5;
-         let sag_theta = abs(r_c - mid_theta);
-
-         let t_pp = clamp(t + eps_t, 0.0, 1.0);
-         let t_pm = clamp(t - eps_t, 0.0, 1.0);
-         let r_pp = compute_outer_radius(theta, t_pp);
-         let r_pm = compute_outer_radius(theta, t_pm);
-         let mid_t = (r_pp + r_pm) * 0.5;
-         let sag_t = abs(r_c - mid_t);
-         
-         let sag = max(sag_theta, sag_t);
-
-         // Feature Bonus (Spatial Grid) - ONLY for Outer Wall (Surface 0)
-         var feature_bonus = 0.0;
-         if (surfaceType < 0.5 && arrayLength(&feature_segments) > 0u) {
-            let TAU = 6.2831853;
-            var u = (theta % TAU);
-            if (u < 0.0) { u += TAU; }
-            u = u / TAU;
-            let uv_p = vec2<f32>(u, t);
-            let bin_idx = u32(floor(u * f32(GRID_BINS))) % GRID_BINS;
-            
-            // Check Bins
-            for (var i = -1; i <= 1; i++) {
-                let b_raw = i32(bin_idx) + i;
-                let b = u32((b_raw + i32(GRID_BINS)) % i32(GRID_BINS));
-                let start = grid_offsets[b];
-                let end = grid_offsets[b+1u];
-                
-                for (var k = start; k < end; k++) {
-                    let seg = get_segment(k);
-                    let p_seg = closest_point_segment(uv_p, seg);
-                    let diff = uv_p - p_seg;
-                    if (dot(diff, diff) < 0.005 * 0.005) { // Close to feature
-                         feature_bonus = 0.5;
-                         break;
-                    }
-                }
-                if (feature_bonus > 0.0) { break; }
-            }
-         }
-
-         let damp = max(max(scale.x, scale.y), 0.001);
-         base_imp = (sag + feature_bonus) / damp;
-    } 
+    let TAU = 6.28318530718;
+    // CONVERSION: Input is normalized UV (u), logic usually expects Radians (theta)
+    let theta = u * TAU;
     
-    return base_imp;
+    let r_c = compute_outer_radius(theta, t);
+    
+    // ==========================================================
+    // 1. COARSE SAGITTA (geometric fidelity at triangle scale)
+    // ==========================================================
+    // scale.x is in u units (0..1). eps must be converted for radius calculation.
+    let eps_u     = max(scale.x * 0.5, 0.0001);
+    let eps_theta = eps_u * TAU;
+    let eps_t     = max(scale.y * 0.5, 0.0001);
+    
+    // Theta direction
+    let r_tp_coarse = compute_outer_radius(theta + eps_theta, t);
+    let r_tm_coarse = compute_outer_radius(theta - eps_theta, t);
+    let mid_theta_coarse = (r_tp_coarse + r_tm_coarse) * 0.5;
+    let sag_theta_coarse = abs(r_c - mid_theta_coarse);
+    
+    // T direction
+    let t_pp = clamp(t + eps_t, 0.0, 1.0);
+    let t_pm = clamp(t - eps_t, 0.0, 1.0);
+    let r_pp_coarse = compute_outer_radius(theta, t_pp);
+    let r_pm_coarse = compute_outer_radius(theta, t_pm);
+    let mid_t_coarse = (r_pp_coarse + r_pm_coarse) * 0.5;
+    let sag_t_coarse = abs(r_c - mid_t_coarse);
+    
+    let sag_coarse = max(sag_theta_coarse, sag_t_coarse);
+    
+    // ==========================================================
+    // 2. FINE SAGITTA (ridge/feature detection at fixed scale)
+    // ==========================================================
+    // 0.002 in u (0.2%) is reasonable min scale
+    let eps_fine_u = min(0.002, eps_u);
+    let eps_fine_theta = eps_fine_u * TAU;
+    
+    let r_tp_fine = compute_outer_radius(theta + eps_fine_theta, t);
+    let r_tm_fine = compute_outer_radius(theta - eps_fine_theta, t);
+    let mid_theta_fine = (r_tp_fine + r_tm_fine) * 0.5;
+    let sag_fine = abs(r_c - mid_theta_fine);
+    
+    // ==========================================================
+    // 3. CYLINDER CHORD ERROR (per design spec line 574)
+    //    Geometric error from approximating a circle with a chord
+    //    This is CONSTANT for a cylinder, explaining uniform subdivision
+    //    when only this metric is used. But it provides a baseline.
+    // ==========================================================
+    let half_angle = scale.x * TAU * 0.5; // Convert u-scale to radians
+    let sag_circle = r_c * (1.0 - cos(half_angle));
+    
+    // ==========================================================
+    // 4. NORMAL DEVIATION (per design spec lines 577-579)
+    //    CAD-grade check: how much does normal change across triangle?
+    //    High deviation = feature edge = needs subdivision
+    // ==========================================================
+    // compute_approx_normal takes theta (radians) and uses internal eps (radians). 
+    // scale arg is unused for eps.
+    let n_c = compute_approx_normal(theta, t, scale);
+    let n_corner = compute_approx_normal(theta + eps_theta, t + eps_t, scale);
+    let normal_err = max(0.0, 1.0 - dot(n_c, n_corner));
+    
+    // ==========================================================
+    // 5. COMBINE WITH LINEARIZATION (per design spec lines 582-583)
+    //    Features have high sagitta relative to triangle size
+    //    Smooth areas have low sagitta relative to triangle size
+    //    NOTE: sag_circle removed - it's constant for a cylinder
+    //    and causes uniform subdivision. Feature detection relies
+    //    on sag_coarse, sag_fine, and normal_err which are sensitive
+    //    to actual surface curvature changes (style features).
+    // ==========================================================
+    let error = max(max(sag_coarse, sag_fine), normal_err * 0.5);
+    let linear_scale = max(scale.x, scale.y);
+    
+    return error / max(linear_scale, 0.0001);
 }
 
 // ============================================================================
@@ -344,34 +347,48 @@ fn create_midpoint(vA: u32, vB: u32, surface: f32) -> u32 {
     
     // CRITICAL FIX: Handle theta wrap-around at 0/2π boundary
     // If theta values span the seam, adjust before averaging
-    let TAU = 6.28318530718;
-    var thetaA = pA.x;
-    var thetaB = pB.x;
+    // CRITICAL FIX: Handle wrap-around in normalized UV coordinates (0..1)
+    var uA = pA.x;
+    var uB = pB.x;
     
-    // If difference is > π, one of them crossed the seam
-    let diff = thetaB - thetaA;
-    if (diff > 3.14159) {
-        // B is near 0, A is near 2π -> wrap B up
-        thetaB += TAU;
-    } else if (diff < -3.14159) {
-        // A is near 0, B is near 2π -> wrap A up
-        thetaA += TAU;
+    // If difference is > 0.5, one of them crossed the seam
+    let diff = uB - uA;
+    if (diff > 0.5) {
+        // B is near 0, A is near 1 -> wrap B up
+        uB += 1.0;
+    } else if (diff < -0.5) {
+        // A is near 0, B is near 1 -> wrap A up
+        uA += 1.0;
     }
     
-    var mid = vec2<f32>((thetaA + thetaB) * 0.5, (pA.y + pB.y) * 0.5);
+    var mid = vec2<f32>((uA + uB) * 0.5, (pA.y + pB.y) * 0.5);
     
-    // Normalize theta back to 0..TAU range
-    mid.x = mid.x - floor(mid.x / TAU) * TAU;
+    // Normalize u back to 0..1 range
+    mid.x = mid.x - floor(mid.x);
     
-    let limits = vec2<f32>(abs(pA.x - pB.x) * 0.5, abs(pA.y - pB.y) * 0.5);
+    // Relaxed limits to allow snapping even on vertical/horizontal edges
+    // min 0.002 (0.2%) allows small wiggles. 0.6 allow 20% bulging.
+    let limits = vec2<f32>(
+        max(abs(pA.x - pB.x) * 0.6, 0.002), 
+        max(abs(pA.y - pB.y) * 0.6, 0.002)
+    );
     
-    // CRITICAL FIX: Only snap vertices for Surface 0 (Outer Wall).
-    // Other surfaces (Inner, Rim, etc.) use 't' differently (e.g. for radial interpolation)
-    // and should NOT snap to outer wall feature segments.
+    // RE-ENABLED: Segment snapping now uses Simplified & Densified chains
+    // from ConstrainedTriangulator, resolving the "sparse/staircase" issues.
     var snapped = mid;
+    // DISABLE SNAPPING for CDT Mode:
+    // The ConstrainedTriangulator provides exact topology with buffer ribbons.
+    // Snapping midpoints collapses these ribbons, causing degenerate geometry ("stripes").
+    // We trust the CDT mesh density to hold the shape.
+    /*
+    // Only snap for Outer Wall (0) for now, or others if features exist there.
+    // Features are primarily on surface 0 (Side) and maybe 2/3/4.
     if (surface < 0.5) {
-        snapped = snap_vertex(mid.x, mid.y, limits);
+        // Tight threshold for subdivision midpoints (magnet effect)
+        let snap_thresh_uv = 0.001 * 0.001; 
+        snapped = snap_vertex_uv(mid.x, mid.y, limits, snap_thresh_uv);
     }
+    */
     
     let vNew = atomicAdd(&counters[COUNTER_VERTEX], 1u);
     
@@ -408,7 +425,18 @@ fn subdivide_triangles(@builtin(global_invocation_id) gid: vec3<u32>) {
     let maxP = max(max(p0, p1), p2);
     let scale = maxP - minP;
     
-    let importance = compute_importance(center.x, center.y, surface, scale);
+    // MULTI-POINT PROBING: Check importance at center AND edge midpoints
+    // This ensures large triangles detect features even if center is on flat area
+    let mid01 = (p0 + p1) * 0.5;
+    let mid12 = (p1 + p2) * 0.5;
+    let mid20 = (p2 + p0) * 0.5;
+    
+    let imp_center = compute_importance(center.x, center.y, surface, scale);
+    let imp_m01 = compute_importance(mid01.x, mid01.y, surface, scale);
+    let imp_m12 = compute_importance(mid12.x, mid12.y, surface, scale);
+    let imp_m20 = compute_importance(mid20.x, mid20.y, surface, scale);
+    
+    let importance = max(max(imp_center, imp_m01), max(imp_m12, imp_m20));
     
     let threshold = uniforms.chunk4.x;
     let targetTriangles = u32(uniforms.chunk4.z);
@@ -501,7 +529,8 @@ fn evaluate_vertices(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (idx * 3u >= arrayLength(&vertices)) { return; }
     
     let base = idx * 3u;
-    let theta = vertices[base];
+    let u = vertices[base];
+    let theta = u * 6.28318530718;
     let t = vertices[base + 1u];
     let surface = vertices[base + 2u];
     
@@ -593,4 +622,38 @@ fn evaluate_vertices(@builtin(global_invocation_id) gid: vec3<u32>) {
     vertices[base] = x;
     vertices[base + 1u] = y;
     vertices[base + 2u] = z;
+}
+
+// ============================================================================
+// Pre-Snap Pass: Snap Initial Base Mesh Vertices to Feature Lines
+// This runs BEFORE subdivision to ensure all vertices (not just midpoints)
+// are aligned to feature curves.
+// ============================================================================
+
+@compute @workgroup_size(64)
+fn snap_initial_vertices(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let idx = get_global_idx(gid);
+    
+    // Each vertex is 3 floats: theta, t, surface
+    if (idx * 3u + 2u >= arrayLength(&vertices)) { return; }
+
+    let base = idx * 3u;
+    let u = vertices[base];
+    let t = vertices[base + 1u];
+    let surface = vertices[base + 2u];
+
+    // Only snap outer wall vertices (surface == 0)
+    // Inner wall, rim, bottom, drain vertices should not be snapped to outer wall features
+    if (surface > 0.5) { return; }
+
+    // Use conservative limits for initial snap - don't destroy curvature
+    // Allow up to 0.5% movement (was 5% which flattened features)
+    let limits = vec2<f32>(0.005, 0.005); 
+    // Threshold ~ 0.01 (1%) in UV distance squared => 0.0001
+    let snapped = snap_vertex_uv(u, t, limits, 0.0001);
+
+    // Write back the snapped coordinates
+    vertices[base] = snapped.x;
+    vertices[base + 1u] = snapped.y;
+    // surface remains unchanged
 }

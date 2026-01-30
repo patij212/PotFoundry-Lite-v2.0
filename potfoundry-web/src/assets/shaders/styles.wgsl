@@ -90,32 +90,9 @@ fn sf_radius(theta: f32, t: f32, r0: f32) -> f32 {
   // Calculate the styled radius value at this position
   let rf = superformula_value(theta_adj, m, n1, n2, n3, a, b);
   
-  // Seam Amplitude Reduction: Reduce the VARIATION in rf near the seam
-  // This lower the peaks while raising the valleys, making them meet smoothly
-  // Key: blend towards a MIDPOINT (not zero) to avoid creating a dip
-  // DEBUG: Hardcoded to verify logic vs parameter issue. Reverting to parameter.
-  // Robustness: buffer might default to 0. Force 30 degrees (0.52 rad) if 0 to ensure seam is smoothed.
-  // User can still set near-zero value (e.g. 0.001) if they really want sharp edge.
-  let seam_spread_raw = getf(73u);
-  let seam_spread = select(seam_spread_raw, 0.523, seam_spread_raw < 0.0001);
-  var rf_final = rf;
-  if (seam_spread > 0.0001) {
-    let dist_from_seam = min(theta, TAU - theta);
-    
-    if (dist_from_seam < seam_spread) {
-      // Blend factor: 0 at seam center, 1 at edge of zone
-      let x = dist_from_seam / seam_spread;
-      let blend = smoothstep(0.0, 1.0, x);
-      
-      // rf_mid is the approximate midpoint value where peaks and valleys would meet
-      // For superformula, rf typically ranges from ~0.3 to ~1.5, so ~0.7-0.8 is a good midpoint
-      let rf_mid = 0.75;
-      
-      // Blend rf towards rf_mid: at seam center, rf = rf_mid (no variation)
-      // At edge of zone, rf = original value (full variation)
-      rf_final = mix(rf_mid, rf, blend);
-    }
-  }
+  // Seam Amplitude Reduction REMOVED for Phase 1 "Honest Seam"
+  // We trust the periodicity of the superformula (m=integer).
+  let rf_final = rf;
   
   // Apply strength: blend between smooth pot (rf=0.75) and full superformula modulation
   // At strength=0: return r0 (unmodified base radius)

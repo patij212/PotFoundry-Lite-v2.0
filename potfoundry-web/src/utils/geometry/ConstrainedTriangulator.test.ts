@@ -290,8 +290,105 @@ describe('ConstrainedTriangulator Adaptive Density', () => {
 });
 
 // ============================================================================
-// Test: Chaos/Noise Robustness
+// Phase 2: Zero-Gap Topology Audits (New Tests)
 // ============================================================================
+
+describe('ConstrainedTriangulator Zero-Gap Topology', () => {
+
+    // Test 1: Verify MARGIN Removal
+    it('should respect exact boundary points without clamping (No MARGIN)', () => {
+        const features: FeaturePoint[] = [
+            { theta: 0.0, t: 0.5, type: 1, strength: 1.0 },       // Exact 0
+            { theta: Math.PI * 2, t: 0.5, type: 1, strength: 1.0 } // Exact 2PI
+        ];
+
+        // We need to inspect the deduplicated points inside extractChains, 
+        // but that's private. We can infer from the output mesh vertices.
+        // If MARGIN=0.005 exists, input 0.0 becomes 0.005.
+        // If removed, input 0.0 remains 0.0.
+
+        const mesh = ConstrainedTriangulator.generateFullPot(features);
+
+        // Find vertices with u=0
+        let hasExactZero = false;
+        let hasExactOne = false;
+        const EPS = 1e-9;
+
+        for (let i = 0; i < mesh.vertices.length; i += 3) {
+            const u = mesh.vertices[i]; // Normalized 0..1
+            if (u < EPS) hasExactZero = true;
+            if (u > 1.0 - EPS) hasExactOne = true;
+        }
+
+        expect(hasExactZero).toBe(true);
+        expect(hasExactOne).toBe(true);
+    });
+
+    // Test 2: Ghost Segments (Seam Crossing)
+    it('should split seam-crossing features into two chains (Ghost Segments)', () => {
+        // Define two points that are close across the seam
+        const thetaA = (Math.PI * 2) * 0.99; // 0.99
+        const thetaB = (Math.PI * 2) * 0.01; // 0.01
+
+        const features: FeaturePoint[] = [
+            { theta: thetaA, t: 0.5, type: 1, strength: 1.0 },
+            { theta: thetaB, t: 0.5, type: 1, strength: 1.0 }
+        ];
+
+        // In the old system, this would either be ignored (too far linear distance) 
+        // or connected via long line across the middle.
+        // In validity check, we want it to be handled as a "Wrap".
+        // The ConstrainedTriangulator logic for "Ghost Segments" splits this into:
+        // Chain 1: 0.99 -> 1.0
+        // Chain 2: 0.0 -> 0.01
+
+        // Use a spy or just check connectivity?
+        // Since we can't inspect internal 'chains' variable easily, we check edges.
+        // We expect an edge from 0.99 to 1.0
+        // And an edge from 0.0 to 0.01
+
+        const mesh = ConstrainedTriangulator.generateFullPot(features);
+
+        const edges = new Set<string>();
+        for (let i = 0; i < mesh.indices.length; i += 3) {
+            const a = mesh.indices[i];
+            const b = mesh.indices[i + 1];
+            const c = mesh.indices[i + 2];
+            // Add all edges
+            edges.add([a, b].sort().join(','));
+            edges.add([b, c].sort().join(','));
+            edges.add([c, a].sort().join(','));
+        }
+
+        // Find vertex indices for our feature points
+        const findVertex = (uTarget: number) => {
+            for (let i = 0; i < mesh.vertices.length / 3; i++) {
+                if (Math.abs(mesh.vertices[i * 3] - uTarget) < 0.0001 &&
+                    Math.abs(mesh.vertices[i * 3 + 1] - 0.5) < 0.0001) {
+                    return i;
+                }
+            }
+            return -1;
+        };
+
+        const idx99 = findVertex(0.99);
+        const idx01 = findVertex(0.01);
+        const idx00 = findVertex(0.0);
+        const idx10 = findVertex(1.0);
+
+        expect(idx99).not.toBe(-1);
+        expect(idx01).not.toBe(-1);
+
+        // If ghost segments worked, we should see connection 0.99 <-> 1.0
+        // AND 0.0 <-> 0.01
+        const hasLeft = edges.has([Math.min(idx00, idx01), Math.max(idx00, idx01)].join(','));
+        const hasRight = edges.has([Math.min(idx99, idx10), Math.max(idx99, idx10)].join(','));
+
+        expect(hasLeft).toBe(true);
+        expect(hasRight).toBe(true);
+    });
+
+});
 
 describe('ConstrainedTriangulator Robustness', () => {
     it('should handle noisy/chaotic inputs without crashing', () => {

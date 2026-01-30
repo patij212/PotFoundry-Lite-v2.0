@@ -49,6 +49,17 @@ function packStyleParams(opts: StyleOptions, id: StyleId): Float32Array {
 }
 
 const STATUS_OK = 0;
+const STATUS_VERTEX_OVERFLOW = 1;
+const STATUS_TRIANGLE_OVERFLOW = 2;
+
+function getStatusName(status: number): string {
+    switch (status) {
+        case STATUS_OK: return 'OK';
+        case STATUS_VERTEX_OVERFLOW: return 'VERTEX_OVERFLOW';
+        case STATUS_TRIANGLE_OVERFLOW: return 'TRIANGLE_OVERFLOW';
+        default: return `UNKNOWN_ERROR(${status})`;
+    }
+}
 
 function dispatchWorkgroups2D(pass: GPUComputePassEncoder, count: number) {
     const workgroupSize = 64;
@@ -71,6 +82,7 @@ export class AdaptiveExportComputer {
     private evaluatePipeline: GPUComputePipeline | null = null;
     private subdivideTrianglesPipeline: GPUComputePipeline | null = null;
     private emitFinalTrianglesPipeline: GPUComputePipeline | null = null;
+    private snapInitialVerticesPipeline: GPUComputePipeline | null = null;
 
     constructor(device: GPUDevice) {
         this.device = device;
@@ -109,7 +121,8 @@ export class AdaptiveExportComputer {
         [
             this.evaluatePipeline,
             this.subdivideTrianglesPipeline,
-            this.emitFinalTrianglesPipeline
+            this.emitFinalTrianglesPipeline,
+            this.snapInitialVerticesPipeline
         ] = await Promise.all([
             this.device.createComputePipelineAsync({
                 label: 'evaluate_vertices',
@@ -125,6 +138,11 @@ export class AdaptiveExportComputer {
                 label: 'emit_final_triangles',
                 layout: this.pipelineLayout,
                 compute: { module: shaderModule, entryPoint: 'emit_final_triangles' },
+            }),
+            this.device.createComputePipelineAsync({
+                label: 'snap_initial_vertices',
+                layout: this.pipelineLayout,
+                compute: { module: shaderModule, entryPoint: 'snap_initial_vertices' },
             })
         ]);
 
@@ -151,7 +169,7 @@ export class AdaptiveExportComputer {
         // We need 2 buffers (Ping-Pong), so each gets half of the remaining budget? 
         // Or we limit based on target triangles.
         const targetTris = params.targetTriangles || 4_000_000;
-        const TRIANGLE_HEADROOM = 1.5;
+        const TRIANGLE_HEADROOM = 4.0; // Allow 4x overshoot (worst case 1->4 split) to prevent overflow before check
         // Limit max triangles effectively by buffer size or target
         const MAX_TRIANGLES = Math.min(
             Math.floor(targetTris * TRIANGLE_HEADROOM),
@@ -159,11 +177,12 @@ export class AdaptiveExportComputer {
         );
 
         console.log(`[AdaptiveExport] Buffers: MaxVerts=${MAX_VERTICES.toLocaleString()}, MaxTris=${MAX_TRIANGLES.toLocaleString()}`);
+        console.log(`[AdaptiveExport] Enforcing Physical Limit: ${MAX_TRIANGLES} (Target: ${targetTris})`);
 
         const maxVertexBytes = MAX_VERTICES * 12;
         const maxIndexBytes = MAX_INDICES * 4;
         const maxTriangleBytes = MAX_TRIANGLES * 16;
-        console.log(`[AdaptiveExport] v3.0 (Theta Wrap Fix)`);
+        console.log(`[AdaptiveExport] v3.7 (Feature-Only Subdivision)`);
 
         // --- 2. Create Buffers ---
         const buffers: GPUBuffer[] = [];
@@ -214,10 +233,13 @@ export class AdaptiveExportComputer {
                 dimensions.tBottom, dimensions.rDrain, dimensions.expn, params.styleIndex,
                 styleOpts.spinTurns ?? 0, ((styleOpts.spinPhaseDeg ?? 0) * Math.PI) / 180, styleOpts.spinCurveExp ?? 1, styleOpts.seamAngle ?? 0,
                 styleOpts.bellAmp ?? 0, styleOpts.bellCenter ?? 0.5, styleOpts.bellWidth ?? 0.22, maxDepth,
-                subdivThreshold, 0.0000001, targetTris, 0,
+                subdivThreshold, 0.0000001, MAX_TRIANGLES, 0,
             ]);
             this.device.queue.writeBuffer(uniformBuffer, 0, uniformData as any);
-            this.device.queue.writeBuffer(styleParamBuffer, 0, packStyleParams(styleOpts, params.styleId) as any);
+            const packedStyleParams = packStyleParams(styleOpts, params.styleId);
+            console.log(`[AdaptiveExport] StyleId: ${params.styleId}, Index: ${params.styleIndex}`);
+            console.log(`[AdaptiveExport] StyleParams[0-8]:`, packedStyleParams.slice(0, 8));
+            this.device.queue.writeBuffer(styleParamBuffer, 0, packedStyleParams as any);
 
             // Feature Segments Buffer (Binding 5)
             let featureBuffer: GPUBuffer;
@@ -401,6 +423,26 @@ export class AdaptiveExportComputer {
                 };
             }
 
+            // --- PRE-SNAP PASS: DISABLED for CDT ---
+            // The ConstrainedTriangulator already places vertices exactly on features.
+            // Running Pre-Snap risks collapsing the explicit buffer ribbons (0.003 offset) 
+            // onto the features, creating degenerate geometry and "stripes".
+            /*
+            if (params.featureSegments && params.featureSegments.length > 0) {
+                console.log(`[AdaptiveExport] Running Pre-Snap Pass. Vertices: ${vertexCount}, Features: ${params.featureSegments.length / 4} segments`);
+                console.log(`[AdaptiveExport] Dispatching ${Math.ceil(vertexCount / 64)} workgroups for Pre-Snap.`);
+                const preSnapEncoder = this.device.createCommandEncoder();
+                const preSnapPass = preSnapEncoder.beginComputePass();
+                preSnapPass.setPipeline(this.snapInitialVerticesPipeline!);
+                preSnapPass.setBindGroup(0, bgA); // Use bind group A (current)
+                dispatchWorkgroups2D(preSnapPass, vertexCount);
+                preSnapPass.end();
+                this.device.queue.submit([preSnapEncoder.finish()]);
+                await this.device.queue.onSubmittedWorkDone();
+                console.log('[AdaptiveExport] Pre-Snap Pass complete.');
+            }
+            */
+
             // --- 4. Subdivision Loop ---
             for (let d = 0; d < maxDepth; d++) {
                 // Reset Next Counter (index 3)
@@ -435,7 +477,7 @@ export class AdaptiveExportComputer {
                 readStaging.destroy();
 
                 if (status !== STATUS_OK) {
-                    console.warn(`[AdaptiveExport] GPU Status Error: ${status}. Stopping subdivision.`);
+                    console.warn(`[AdaptiveExport] GPU Status Error: ${getStatusName(status)}. Stopping subdivision.`);
                     overflow = true;
                     break;
                 }

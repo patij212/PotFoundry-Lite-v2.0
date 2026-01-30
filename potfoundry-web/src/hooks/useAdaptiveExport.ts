@@ -339,8 +339,8 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                             allSegments.push(p1.x, p1.y, p2.x, p2.y);
 
                             // Binning
-                            const b1 = Math.floor(p1.x * GRID_BINS);
-                            const b2 = Math.floor(p2.x * GRID_BINS);
+                            const b1 = Math.min(GRID_BINS - 1, Math.floor(p1.x * GRID_BINS));
+                            const b2 = Math.min(GRID_BINS - 1, Math.floor(p2.x * GRID_BINS));
 
                             const dx = Math.abs(p1.x - p2.x);
                             // Detect Wrap (e.g. 0.99 -> 0.01)
