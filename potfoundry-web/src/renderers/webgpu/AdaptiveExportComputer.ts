@@ -27,9 +27,7 @@ export interface AdaptiveExportParams {
     featureGridOffsets?: Uint32Array; // Spatial Grid Offsets
 }
 
-// ... (weldMesh code)
 
-// ...
 
 export interface AdaptiveExportResult {
     mesh: MeshData;

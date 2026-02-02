@@ -53,22 +53,29 @@ struct StyleUniforms {
 
 fn getf(idx: u32) -> f32 {
   switch idx {
-     case 0u: { return style_uniforms.chunk0.x; }
-     case 1u: { return style_uniforms.chunk0.y; }
-     case 2u: { return style_uniforms.chunk0.z; }
-     case 3u: { return style_uniforms.chunk1.z; }
-     case 4u: { return style_uniforms.chunk2.x; }
-     case 5u: { return style_uniforms.chunk2.y; }
-     case 6u: { return style_uniforms.chunk2.z; }
-     case 8u: { return 5.0; }
-     case 9u: { return 5.0; }
-     case 10u: { return 1.0; }
-     case 11u: { return 1.0; }
-     case 12u: { return 1.0; }
-     case 14u: { return style_uniforms.chunk3.x; }
-     case 15u: { return style_uniforms.chunk3.y; }
-     case 72u: { return style_uniforms.chunk3.z; }
-     case 73u: { return style_uniforms.chunk2.w; }
+     case 0u: { return style_uniforms.chunk0.x; } // H
+     case 1u: { return style_uniforms.chunk0.y; } // Rt
+     case 2u: { return style_uniforms.chunk0.z; } // Rb
+     case 3u: { return style_uniforms.chunk0.w; } // tWall (Wait, check TS packing)
+     
+     // Chunk1: tBottom, rDrain, expn, styleId
+     case 4u: { return style_uniforms.chunk1.x; } // tBottom
+     case 5u: { return style_uniforms.chunk1.y; } // rDrain
+     case 6u: { return style_uniforms.chunk1.z; } // expn (Radius Exponent)
+     
+     // Chunk2: Spin
+     case 8u: { return style_uniforms.chunk2.x; } // SpinTurns
+     case 9u: { return style_uniforms.chunk2.y; } // SpinPhase
+     case 10u: { return style_uniforms.chunk2.z; } // SpinCurveExp
+     case 11u: { return style_uniforms.chunk2.w; } // SeamAngle
+
+     // Chunk3: Bell
+     case 12u: { return style_uniforms.chunk3.x; } // BellAmp (ID 12 matches Offset 12?)
+     case 14u: { return style_uniforms.chunk3.x; } // BellAmp (Alias for legacy?)
+     case 15u: { return style_uniforms.chunk3.y; } // BellCenter
+     case 72u: { return style_uniforms.chunk3.z; } // BellWidth
+     case 73u: { return style_uniforms.chunk2.w; } // Seam ?
+
      default: { return 0.0; }
    }
 }
@@ -186,18 +193,9 @@ fn detect_features(@builtin(global_invocation_id) gid: vec3<u32>) {
     let l2 = (trace - root) * 0.5; // Minor eigenvalue
     
     // Choose dominant curvature direction
-    // If |l1| > |l2|, principal curvature is L1.
-    // Eigenvector for L1?
-    // M * v = L * v  => (H - L*I)v = 0
-    // [ f_uu - L   f_uv    ] [ vx ] = 0
-    // [ f_uv       f_vv - L] [ vy ] = 0
-    // => (f_uu - L)vx + f_uv*vy = 0
-    // => vy/vx = -(f_uu - L) / f_uv
-    // OR vy/vx = -f_uv / (f_vv - L)
-    
     var K_max = 0.0;
     var dir = vec2<f32>(1.0, 0.0);
-    
+
     // Compare magnitudes
     if (abs(l1) > abs(l2)) {
         K_max = l1;
@@ -205,6 +203,16 @@ fn detect_features(@builtin(global_invocation_id) gid: vec3<u32>) {
         K_max = l2;
     }
     
+    // FILTER: Anisotropy check (Enforces "Line-like" features)
+    // For a ridge/valley, one eigenvalue should be much larger than the other.
+    // If they are similar, it's a dome/pit (isotropic) which leads to noisy "false peaks".
+    let minCurv = min(abs(l1), abs(l2));
+    let maxCurv = max(abs(l1), abs(l2));
+    // If the feature is too isotropic (ratio > 0.6), reject it as a point-feature/noise
+    if (maxCurv > 1e-4 && (minCurv / maxCurv) > 0.6) {
+        return;
+    }
+
     // Identification
     var featureType = 0u;
     var strength = 0.0;
@@ -234,65 +242,76 @@ fn detect_features(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Principal Direction in UV space
     let v_norm = dir / dir_len;
     
-    // 3. Non-Maximum Suppression (NMS)
+    // 3. Non-Maximum Suppression (NMS) & Sub-Pixel Refinement
     // We check if current pixel is indeed the "Peak" of the ridge.
-    // We step ALONG the curvature gradient?
-    // NO. The Eigenvector 'v' is the direction of PRINCIPAL CURVATURE.
-    // i.e. the surface bends MOST along 'v'.
-    // So to find the Ridge Peak, we must walk along 'v'.
-    // Check R(p + v) and R(p - v).
-    // If K_max < 0 (Concave, Hill), we expect R(p) > R(neighbors).
-    // If K_max > 0 (Convex, Valley), we expect R(p) < R(neighbors).
+    // We step ALONG the curvature gradient (v_norm).
     
     // Scale step by grid size (1 pixel step)
-    // We used normalized U,V for coords.
-    // We need step in U and V.
-    // v_norm is just a direction vector.
-    // Scale it to pixel size?
-    // We want to check exact neighbor pixels? No, subpixel sample is better.
     let step_vec = v_norm * vec2<f32>(eps_u, eps_v);
     
     // Sample neighbors
-    // Note: theta involves 2PI scaling. eps_u is 1/W.
-    // eval_r takes (theta, t).
-    // step_vec.x is delta_u.
     let theta_n = (u + step_vec.x) * 6.283185;
     let t_n     = v + step_vec.y;
     
-    let theta_p = (u - step_vec.x) * 6.283185; // Opposite direction
+    let theta_p = (u - step_vec.x) * 6.283185;
     let t_p     = v - step_vec.y;
     
     let r_n = eval_r_wrapped(theta_n, t_n);
     let r_p = eval_r_wrapped(theta_p, t_p);
     
     var is_feature = false;
+    var delta = 0.0; // Sub-pixel offset (-0.5 to 0.5)
     
-    if (K_max < -thresh) { // Ridge (Convex Hull? No, Convex usually means + curvature? Convention varies)
-         // Our H = -d2.
-         // If d2u < -thresh (Code above said Ridge).
-         // d2u = (r-2c+l). If Peak (c > l,r), d2u is Negative.
-         // So Negative Curvature = Ridge.
-         
-         // NMS: Peak Condition
-         // Use strict inequality to avoid flat plateaus?
+    if (K_max < -thresh) { 
+         // Ridge (Convex Peak) -> Current C should be > neighbors
          if (c > r_n && c > r_p) {
              featureType = 1u; // Ridge
              strength = abs(K_max);
              is_feature = true;
+             
+             // Parabolic Fit for Sub-Pixel Offset
+             // y = ax^2 + bx + c
+             // Peak at x = (L - R) / 2(L - 2C + R)
+             // Here L=r_p, C=c, R=r_n
+             let num = r_p - r_n;
+             let den = 2.0 * (r_p - 2.0 * c + r_n);
+             if (abs(den) > 1e-6) {
+                 delta = num / den;
+             }
          }
-    } else if (K_max > thresh) { // Valley
-         // NMS: Pit Condition
+    } else if (K_max > thresh) { 
+         // Valley (Concave Pit) -> Current C should be < neighbors
          if (c < r_n && c < r_p) {
              featureType = 2u; // Valley
              strength = abs(K_max);
              is_feature = true;
+             
+             // Parabolic Fit (Same formula works for minima too)
+             let num = r_p - r_n;
+             let den = 2.0 * (r_p - 2.0 * c + r_n);
+             if (abs(den) > 1e-6) {
+                 delta = num / den;
+             }
          }
     }
     
     if (is_feature) {
+        // Clamp delta for safety
+        delta = clamp(delta, -0.5, 0.5);
+        
+        // Apply Sub-Pixel Offset
+        // Offset is along the principal direction (step_vec)
+        // Coords = Original + Delta * StepVector
+        let u_final = u + delta * step_vec.x; // u is 0..1
+        let v_final = v + delta * step_vec.y;
+        
+        let theta_final = u_final * 6.28318530718;
+        let t_final = v_final;
+
         let outIdx = atomicAdd(&counter, 1u);
         if (outIdx < arrayLength(&feature_points)) {
-            feature_points[outIdx] = FeaturePoint(theta, t, featureType, strength);
+            // Write High-Precision Coordinates
+            feature_points[outIdx] = FeaturePoint(theta_final, t_final, featureType, strength);
         }
     }
 }

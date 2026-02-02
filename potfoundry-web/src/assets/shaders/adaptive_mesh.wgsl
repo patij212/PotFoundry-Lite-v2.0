@@ -238,9 +238,9 @@ fn snap_vertex_uv(u_in: f32, v_in: f32, limit_box: vec2<f32>, threshold_sq: f32)
 // Evaluation
 // ============================================================================
 
-fn compute_importance(u: f32, t: f32, surfaceType: f32, scale: vec2<f32>) -> f32 {
+fn compute_importance(u: f32, t: f32, surfaceType: f32, scale: vec2<f32>) -> vec2<f32> {
     // Non-wall surfaces get no adaptive subdivision
-    if (surfaceType > 2.5) { return 0.0; }
+    if (surfaceType > 2.5) { return vec2<f32>(0.0); }
     
     let TAU = 6.28318530718;
     // CONVERSION: Input is normalized UV (u), logic usually expects Radians (theta)
@@ -300,23 +300,37 @@ fn compute_importance(u: f32, t: f32, surfaceType: f32, scale: vec2<f32>) -> f32
     // ==========================================================
     // compute_approx_normal takes theta (radians) and uses internal eps (radians). 
     // scale arg is unused for eps.
+    // ==========================================================
+    // 4. NORMAL DEVIATION (Directional)
+    // ==========================================================
     let n_c = compute_approx_normal(theta, t, scale);
-    let n_corner = compute_approx_normal(theta + eps_theta, t + eps_t, scale);
-    let normal_err = max(0.0, 1.0 - dot(n_c, n_corner));
+    
+    // Check U-direction normal change
+    let n_u = compute_approx_normal(theta + eps_theta, t, scale);
+    let normal_err_u = max(0.0, 1.0 - dot(n_c, n_u));
+
+    // Check V-direction normal change
+    let n_v = compute_approx_normal(theta, t + eps_t, scale);
+    let normal_err_v = max(0.0, 1.0 - dot(n_c, n_v));
     
     // ==========================================================
-    // 5. COMBINE WITH LINEARIZATION (per design spec lines 582-583)
-    //    Features have high sagitta relative to triangle size
-    //    Smooth areas have low sagitta relative to triangle size
-    //    NOTE: sag_circle removed - it's constant for a cylinder
-    //    and causes uniform subdivision. Feature detection relies
-    //    on sag_coarse, sag_fine, and normal_err which are sensitive
-    //    to actual surface curvature changes (style features).
+    // 5. COMBINE (Anisotropic)
     // ==========================================================
-    let error = max(max(sag_coarse, sag_fine), normal_err * 0.5);
-    let linear_scale = max(scale.x, scale.y);
+    // U-Error: Driven by sag_theta and normal_err_u
+    // V-Error: Driven by sag_t and normal_err_v
     
-    return error / max(linear_scale, 0.0001);
+    let err_u = max(sag_theta_coarse, normal_err_u * 0.5);
+    let err_v = max(sag_t_coarse, normal_err_v * 0.5);
+    
+    // Normalize by scale to get "Error per Unit Length" density requirement
+    // or just return absolute error implies "Split if error triggers"
+    // Current logic uses `error / scale`.
+    
+    // We return the raw error normalized by the dimension of that axis
+    let density_u = err_u / max(scale.x, 0.0001);
+    let density_v = err_v / max(scale.y, 0.0001);
+    
+    return vec2<f32>(density_u, density_v);
 }
 
 // ============================================================================
@@ -345,8 +359,6 @@ fn create_midpoint(vA: u32, vB: u32, surface: f32) -> u32 {
     let pA = get_vertex_params(vA);
     let pB = get_vertex_params(vB);
     
-    // CRITICAL FIX: Handle theta wrap-around at 0/2π boundary
-    // If theta values span the seam, adjust before averaging
     // CRITICAL FIX: Handle wrap-around in normalized UV coordinates (0..1)
     var uA = pA.x;
     var uB = pB.x;
@@ -354,10 +366,8 @@ fn create_midpoint(vA: u32, vB: u32, surface: f32) -> u32 {
     // If difference is > 0.5, one of them crossed the seam
     let diff = uB - uA;
     if (diff > 0.5) {
-        // B is near 0, A is near 1 -> wrap B up
         uB += 1.0;
     } else if (diff < -0.5) {
-        // A is near 0, B is near 1 -> wrap A up
         uA += 1.0;
     }
     
@@ -367,35 +377,23 @@ fn create_midpoint(vA: u32, vB: u32, surface: f32) -> u32 {
     mid.x = mid.x - floor(mid.x);
     
     // Relaxed limits to allow snapping even on vertical/horizontal edges
-    // min 0.002 (0.2%) allows small wiggles. 0.6 allow 20% bulging.
     let limits = vec2<f32>(
         max(abs(pA.x - pB.x) * 0.6, 0.002), 
         max(abs(pA.y - pB.y) * 0.6, 0.002)
     );
     
-    // RE-ENABLED: Segment snapping now uses Simplified & Densified chains
-    // from ConstrainedTriangulator, resolving the "sparse/staircase" issues.
+    // Threshold reduced to 0.0005^2 to prevent "Rib Edges" (len > 0.002) from snapping
     var snapped = mid;
-    // DISABLE SNAPPING for CDT Mode:
-    // The ConstrainedTriangulator provides exact topology with buffer ribbons.
-    // Snapping midpoints collapses these ribbons, causing degenerate geometry ("stripes").
-    // We trust the CDT mesh density to hold the shape.
-    /*
-    // Only snap for Outer Wall (0) for now, or others if features exist there.
-    // Features are primarily on surface 0 (Side) and maybe 2/3/4.
+    // Only snap OUTER WALL (surface < 0.5). Inner wall is a grid and shouldn't snap to outer features.
     if (surface < 0.5) {
-        // Tight threshold for subdivision midpoints (magnet effect)
-        let snap_thresh_uv = 0.001 * 0.001; 
-        snapped = snap_vertex_uv(mid.x, mid.y, limits, snap_thresh_uv);
+        snapped = snap_vertex_uv(mid.x, mid.y, limits, 0.00000025);
     }
-    */
     
     let vNew = atomicAdd(&counters[COUNTER_VERTEX], 1u);
     
-    // SAFETY: Check Vertex Buffer Capacity
     if (vNew * 3u + 2u >= arrayLength(&vertices)) {
         atomicStore(&counters[COUNTER_STATUS], STATUS_VERTEX_OVERFLOW);
-        return vA; // Fail gracefully by returning parent
+        return vA; 
     }
     
     write_vertex_params(vNew, snapped, surface);
@@ -425,8 +423,6 @@ fn subdivide_triangles(@builtin(global_invocation_id) gid: vec3<u32>) {
     let maxP = max(max(p0, p1), p2);
     let scale = maxP - minP;
     
-    // MULTI-POINT PROBING: Check importance at center AND edge midpoints
-    // This ensures large triangles detect features even if center is on flat area
     let mid01 = (p0 + p1) * 0.5;
     let mid12 = (p1 + p2) * 0.5;
     let mid20 = (p2 + p0) * 0.5;
@@ -436,18 +432,28 @@ fn subdivide_triangles(@builtin(global_invocation_id) gid: vec3<u32>) {
     let imp_m12 = compute_importance(mid12.x, mid12.y, surface, scale);
     let imp_m20 = compute_importance(mid20.x, mid20.y, surface, scale);
     
-    let importance = max(max(imp_center, imp_m01), max(imp_m12, imp_m20));
+    // Anisotropic Max: Take max U and max V independently
+    let max_u = max(max(imp_center.x, imp_m01.x), max(imp_m12.x, imp_m20.x));
+    let max_v = max(max(imp_center.y, imp_m01.y), max(imp_m12.y, imp_m20.y));
     
     let threshold = uniforms.chunk4.x;
-    let targetTriangles = u32(uniforms.chunk4.z);
+    
+    // For now, Isotropic Split if EITHER triggers (OR logic)
+    // This maintains 1-to-4 topology but respects the new metric headers
+    let importance = max(max_u, max_v);
     
     let area = abs((p1.x - p0.x)*(p2.y - p0.y) - (p2.x - p0.x)*(p1.y - p0.y)) * 0.5;
     let minArea = 0.000000001; 
 
     // Budget Check: Check if we have space in Next Buffer
     // This is approximate as atomicAdd is resolving simultaneously
-    
-    if (importance > threshold && area > minArea) {
+
+    // CRITICAL FIX: Prevent micro-subdivision of already-dense feature triangles to avoid T-Junction cracks.
+    // Base mesh features are densified to 0.001. We stop splitting below 0.0005 to ensure we capture them.
+    let max_dim = max(scale.x, scale.y);
+    let min_dim_allowed = 0.0005;
+
+    if (importance > threshold && area > minArea && max_dim > min_dim_allowed) {
         // Prepare to split
         let baseIdx = atomicAdd(&counters[COUNTER_TRI_NEXT], 4u);
         
