@@ -105,9 +105,9 @@ export class ConstrainedTriangulator {
         // PHASE 1: Normalize and Deduplicate Points
         // ===========================================
         // MARGIN REMOVED for "Zero-Gap" topology. Exact [0,1] range used.
-        // TUNED FOR HIGH FIDELITY: 0.00005 = 0.005% of domain = ~0.1 pixels at 2048 res
-        const DEDUP_EPSILON = 0.00005;
-        const MIN_SEGMENT_LENGTH = 0.0001; // Reduced to match dedup scale
+        // ULTRA FIDELITY: 0.00001 = 0.02 pixels at 2048 res
+        const DEDUP_EPSILON = 0.00001;
+        const MIN_SEGMENT_LENGTH = 0.00005; // 0.05px
 
         // Normalize to [0,1] exactly
         const rawPoints = rawFeatures.map(f => ({
@@ -316,10 +316,10 @@ export class ConstrainedTriangulator {
         // 1. Simplify: Remove noise from raw GPU pixels (Ramer-Douglas-Peucker)
         // 2. Densify: Add interpolated points so CDT edges follow curves precisely
         // ===========================================
-        // TUNED FOR HIGH FIDELITY: 0.00005 = 0.005% = ~0.1 pixel tolerance for simplification
-        const SIMPLIFY_TOLERANCE = 0.00005;
-        // 0.2% of domain = ~500 segments per full chain. Tighter curve tracking.
-        const MAX_SEGMENT_LENGTH = 0.002;
+        // ULTRA FIDELITY: 0.00001 = 0.02 pixel tolerance.
+        const SIMPLIFY_TOLERANCE = 0.00001;
+        // 0.1% of domain = ~1000 segments per full chain. Extremely dense.
+        const MAX_SEGMENT_LENGTH = 0.001;
 
         const densifyChain = (chain: Point2D[]): Point2D[] => {
             if (chain.length < 2) return chain;

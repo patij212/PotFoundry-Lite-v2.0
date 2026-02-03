@@ -221,3 +221,30 @@ The "Razor Sharp" cusps are no longer exploding. The lines are stable.
 **🏁 Sign-off:**
 - **Status**: Sub-pixel refinement is SOLVED.
 - **Next Up**: Tuning the Chaining/Simplification parameters to unlock the full resolution of these new high-quality points.
+
+---
+
+## [2026-02-03] Extreme Fidelity Tuning
+**Author:** Antigravity (Agent)
+**Mood:** 🧠 Precision Mode
+
+**👋 Check-in:**
+User requested "even finer" tuning. "Highest fidelity".
+
+**💭 Scratchpad:**
+- **The Bottleneck**: GSS iteration count.
+    - 6 iterations = 0.09px error.
+    - CPU is now tuned to 0.10px.
+    - We can go deeper.
+- **The Plan**:
+    1.  **GSS**: Increase iterations to **10**.
+        - $0.618^{10} \approx 0.008$.
+        - Precision: ~0.012 pixels (~1% of a pixel).
+    2.  **CPU Deduplication**: `0.00001` (1/50th of a pixel).
+    3.  **Simplification**: `0.00001`.
+
+**🏁 Sign-off:**
+- **Changes**: 
+    - `feature_extract.wgsl`: `k < 10`.
+    - `ConstrainedTriangulator.ts`: Epsilon `0.00001`.
+- **Real Talk**: This is possibly overkill, but if the GPU can handle the loop (it's cheap ALU work), the results will be razor sharp.

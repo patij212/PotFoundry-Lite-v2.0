@@ -315,7 +315,8 @@ fn detect_features(@builtin(global_invocation_id) gid: vec3<u32>) {
          var v2 = v + c2 * step_vec.y;
          var val2 = eval_r_wrapped(u2 * 6.2831853, v2);
          
-         for (var k = 0; k < 6; k++) {
+         // 10 Iterations: 0.618^10 ~ 0.008. Initial 1.6 -> Final ~0.012 pixel width.
+         for (var k = 0; k < 10; k++) {
              var swap = false;
              if (featureType == 1u) {
                  if (val1 < val2) { swap = true; }
