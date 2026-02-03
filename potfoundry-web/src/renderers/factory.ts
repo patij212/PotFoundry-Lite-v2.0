@@ -87,6 +87,7 @@ function wrapWebGPUController(
         toggleAutoRotate: () => ctrl.toggleAutoRotate?.(),
         getAutoRotate: () => ctrl.getAutoRotate?.(),
         get rendererType() { return 'webgpu' as const; },
+        setDebugSegments: (segments) => ctrl.setDebugSegments?.(segments),
         get isCompatibilityMode() { return false; },
     };
 }

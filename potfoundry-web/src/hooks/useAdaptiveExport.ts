@@ -21,6 +21,7 @@ import { AdaptiveExportComputer, type AdaptiveExportParams } from '../renderers/
 import { FeatureExtractionComputer, type FeaturePoint } from '../renderers/webgpu/FeatureExtractionComputer';
 import { STYLE_IDS, STYLE_FUNCTION_MAP, STYLE_REGISTRY } from '../styles/registry';
 import { stripShaderCode } from '../utils/shaderStripper';
+import { useControllerMaybe } from '../context/ControllerContext';
 
 // Import shader sources
 import commonWgsl from '../assets/shaders/common.wgsl?raw';
@@ -75,7 +76,7 @@ const QUALITY_SETTINGS: Record<AdaptiveExportQuality, Partial<AdaptiveExportPara
     low: { targetTriangles: 500_000, maxDepth: 4, subdivThreshold: 0.05 },
     medium: { targetTriangles: 3_000_000, maxDepth: 5, subdivThreshold: 0.02 },
     high: { targetTriangles: 6_000_000, maxDepth: 6, subdivThreshold: 0.01 },
-    ultra: { targetTriangles: 8_000_000, maxDepth: 7, subdivThreshold: 0.005 }, // Allow deeper recursion for ultra
+    ultra: { targetTriangles: 10_000_000, maxDepth: 7, subdivThreshold: 0.01 }, // Stabilized
 };
 
 // ============================================================================
@@ -100,6 +101,7 @@ export function useAdaptiveExport(): UseAdaptiveExportResult {
     const geometry = useAppStore((state) => state.geometry);
     const style = useAppStore((state) => state.style);
     const mesh = useAppStore((state) => state.mesh);
+    const ctrl = useControllerMaybe();
 
     // Initialize GPU
     useEffect(() => {
@@ -224,6 +226,14 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         return opts;
     }, [style, geometry, mesh]);
 
+    // Helper to calculate twist (matches WGSL)
+    const twistTheta = (theta: number, t: number, opts: Record<string, number>): number => {
+        const turns = opts.spinTurns ?? 0;
+        const phase = (opts.spinPhaseDeg ?? 0) * (Math.PI / 180);
+        const curve = Math.max(opts.spinCurveExp ?? 1, 0.0001);
+        return theta + 2 * Math.PI * turns * Math.pow(t, curve) + phase;
+    };
+
     const generateMesh = useCallback(async (quality: AdaptiveExportQuality = 'high'): Promise<MeshData | null> => {
         if (!computerRef.current?.isReady()) {
             setProgress({
@@ -282,7 +292,9 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 setProgress({ status: 'generating', progress: 20, message: 'Analyzing features...' });
 
                 // Sensitivity adjustments based on quality? Use robust defaults for now.
-                const extractionThreshold = quality === 'ultra' ? 0.05 : 0.1;
+                // Sensitivity adjustments: moderately sensitive to filter out surface ripple noise
+                const extractionThreshold = quality === 'ultra' ? 0.02 :
+                    quality === 'high' ? 0.03 : 0.06;
 
                 console.log(`[useAdaptiveExport] 1. Extraction: quality=${quality}, threshold=${extractionThreshold}`);
                 try {
@@ -308,6 +320,9 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                     // 2. Dense List for GPU Snapping (Limit 50k for performance, but much higher fidelity)
                     const snappingFeatures = rawFeatures.filter(f => f.strength > extractionThreshold).slice(0, 50000);
 
+                    // CRITICAL FIX: Assign features so params are valid
+                    features = triangulationFeatures;
+
                     console.log(`[useAdaptiveExport]    - Triangulation Features: ${triangulationFeatures.length}`);
                     console.log(`[useAdaptiveExport]    - Snapping Features: ${snappingFeatures.length} (feeding GPU)`);
 
@@ -320,70 +335,94 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                     console.log(`[useAdaptiveExport]    - Base Mesh: ${baseMesh.vertices.length / 3} verts, ${baseMesh.indices.length / 3} tris.`);
 
                     // --- GENERATE GPU SNAPPING DATA (Segments + Grid) ---
-                    // Extract chains from the HIGH FIDELITY set
-                    const { chains } = ConstrainedTriangulator.extractChains(snappingFeatures);
+                    try {
+                        // Extract chains from the HIGH FIDELITY set
+                        const { chains } = ConstrainedTriangulator.extractChains(snappingFeatures);
+                        console.log(`[useAdaptiveExport]    - Extracted Chains: ${chains.length}. First Chain Length: ${chains[0]?.length || 0}`);
 
-                    // Binning Config
-                    const GRID_BINS = 64;
-                    const binLists: number[][] = Array.from({ length: GRID_BINS }, () => []);
-                    const allSegments: number[] = []; // [p1x, p1y, p2x, p2y]
+                        // Binning Config
+                        const GRID_BINS = 64;
+                        const binLists: number[][] = Array.from({ length: GRID_BINS }, () => []);
+                        const allSegments: number[] = []; // [p1x, p1y, p2x, p2y]
 
-                    // Flatten Chains -> Segments & Bin
-                    chains.forEach(chain => {
-                        for (let i = 0; i < chain.length - 1; i++) {
-                            const p1 = chain[i];
-                            const p2 = chain[i + 1];
+                        // Flatten Chains -> Segments & Bin
+                        let totalPoints = 0;
+                        chains.forEach((chain, cIdx) => {
+                            if (!chain || chain.length < 2) return;
+                            for (let i = 0; i < chain.length - 1; i++) {
+                                const p1 = chain[i];
+                                const p2 = chain[i + 1];
+                                if (!p1 || !p2) continue;
 
-                            // Store raw segment (x,y are 0..1 normalized)
-                            const segIdx = allSegments.length / 4;
-                            allSegments.push(p1.x, p1.y, p2.x, p2.y);
+                                // Store raw segment (x,y are 0..1 normalized)
+                                const segIdx = allSegments.length / 4;
+                                allSegments.push(p1.x, p1.y, p2.x, p2.y);
+                                totalPoints += 2;
 
-                            // Binning
-                            const b1 = Math.min(GRID_BINS - 1, Math.floor(p1.x * GRID_BINS));
-                            const b2 = Math.min(GRID_BINS - 1, Math.floor(p2.x * GRID_BINS));
+                                // Binning
+                                const b1 = Math.max(0, Math.min(GRID_BINS - 1, Math.floor(p1.x * GRID_BINS)));
+                                const b2 = Math.max(0, Math.min(GRID_BINS - 1, Math.floor(p2.x * GRID_BINS)));
 
-                            const dx = Math.abs(p1.x - p2.x);
-                            // Detect Wrap (e.g. 0.99 -> 0.01)
-                            if (dx > 0.5) {
-                                const minB = Math.min(b1, b2);
-                                const maxB = Math.max(b1, b2);
-                                for (let b = maxB; b < GRID_BINS; b++) binLists[b].push(segIdx);
-                                for (let b = 0; b <= minB; b++) binLists[b].push(segIdx);
+                                const dx = Math.abs(p1.x - p2.x);
+                                // Detect Wrap (e.g. 0.99 -> 0.01)
+                                if (dx > 0.5) {
+                                    const minB = Math.min(b1, b2);
+                                    const maxB = Math.max(b1, b2);
+                                    for (let b = maxB; b < GRID_BINS; b++) binLists[b]?.push(segIdx);
+                                    for (let b = 0; b <= minB; b++) binLists[b]?.push(segIdx);
+                                } else {
+                                    const minB = Math.min(b1, b2);
+                                    const maxB = Math.max(b1, b2);
+                                    for (let b = minB; b <= maxB; b++) binLists[b]?.push(segIdx);
+                                }
+                            }
+                        });
+
+                        // --- DEBUG VISUALIZATION ---
+                        console.log(`[useAdaptiveExport] DebugVis: Segments=${allSegments.length}, Ctrl=${!!ctrl}, Ref=${!!ctrl?.controllerRef.current}`);
+                        if (ctrl?.controllerRef.current) {
+                            const renderer = ctrl.controllerRef.current;
+                            console.log(`[useAdaptiveExport] DebugVis: Renderer found. setDebugSegments=${typeof renderer.setDebugSegments}`);
+                            if (renderer.setDebugSegments) {
+                                console.log(`[useAdaptiveExport] Calling setDebugSegments with ${allSegments.length} floats.`);
+                                renderer.setDebugSegments(new Float32Array(allSegments));
                             } else {
-                                const minB = Math.min(b1, b2);
-                                const maxB = Math.max(b1, b2);
-                                for (let b = minB; b <= maxB; b++) binLists[b].push(segIdx);
+                                console.warn('[useAdaptiveExport] DebugVis: Wrapper has no setDebugSegments method!');
+                            }
+                        } else {
+                            console.warn('[useAdaptiveExport] DebugVis: Controller Ref is missing! Cannot visualize.');
+                        }
+
+                        // Build Final Sorted Buffers
+                        const sortedSegments: number[] = [];
+                        const gridOffsets = new Uint32Array(GRID_BINS + 1);
+                        let offset = 0;
+
+                        for (let b = 0; b < GRID_BINS; b++) {
+                            gridOffsets[b] = offset;
+                            const indices = binLists[b];
+                            for (const idx of indices) {
+                                const base = idx * 4;
+                                // Copy segment (4 floats)
+                                sortedSegments.push(allSegments[base], allSegments[base + 1], allSegments[base + 2], allSegments[base + 3]);
+                                offset++;
                             }
                         }
-                    });
+                        gridOffsets[GRID_BINS] = offset;
 
-                    // Build Final Sorted Buffers
-                    const sortedSegments: number[] = [];
-                    const gridOffsets = new Uint32Array(GRID_BINS + 1);
-                    let offset = 0;
+                        // Assign to variables for params
+                        featureSegments = new Float32Array(sortedSegments);
+                        featureGridOffsets = gridOffsets;
 
-                    for (let b = 0; b < GRID_BINS; b++) {
-                        gridOffsets[b] = offset;
-                        const indices = binLists[b];
-                        for (const idx of indices) {
-                            const base = idx * 4;
-                            // Copy segment (4 floats)
-                            sortedSegments.push(allSegments[base], allSegments[base + 1], allSegments[base + 2], allSegments[base + 3]);
-                            offset++;
-                        }
+                        console.log(`[useAdaptiveExport]    - Generated ${allSegments.length / 4} unique segments.`);
+                        console.log(`[useAdaptiveExport]    - Binned into ${sortedSegments.length / 4} GPU references.`);
+
+                    } catch (err) {
+                        console.error('[useAdaptiveExport] CRITICAL ERROR IN SEGMENTATION LOOP:', err);
                     }
-                    gridOffsets[GRID_BINS] = offset;
-
-                    // Assign to variables for params
-                    featureSegments = new Float32Array(sortedSegments);
-                    featureGridOffsets = gridOffsets;
-
-                    console.log(`[useAdaptiveExport]    - Generated ${allSegments.length / 4} unique segments.`);
-                    console.log(`[useAdaptiveExport]    - Binned into ${sortedSegments.length / 4} GPU references.`);
-
 
                 } catch (e) {
-                    console.warn('Feature extraction failure:', e);
+                    console.error('Feature extraction root failure:', e);
                 }
             }
 
@@ -453,7 +492,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             });
             return null;
         }
-    }, [geometry, style, mesh, buildStyleOptions]);
+    }, [geometry, style, mesh, buildStyleOptions, ctrl]);
 
     const exportSTL = useCallback(async (filename: string = 'pot.stl', quality: AdaptiveExportQuality = 'high'): Promise<void> => {
         const meshData = await generateMesh(quality);

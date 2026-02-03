@@ -129,9 +129,35 @@ fn compute_approx_normal(theta: f32, t: f32, scale: vec2<f32>) -> vec3<f32> {
     return normalize(cross(dP_dth, dP_dt));
 }
 
-
-
 // ============================================================================
+// Physical Metric Tensor
+// ============================================================================
+
+struct Metric {
+    h_theta: f32, // Physical distance for 1 radian in theta direction (r)
+    h_t: f32,     // Physical distance for 1 unit in t (height) direction
+}
+
+fn get_metric(theta: f32, t: f32) -> Metric {
+    let r = compute_outer_radius(theta, t);
+    let H = get_H();
+    
+    // dr/dt contribution to arch length:
+    // ds^2 = (r dtheta)^2 + (dr/dt dt)^2 + (H dt)^2? No.
+    // ds^2 = (r dtheta)^2 + (dz)^2 + (dr)^2
+    // For theta direction: ds = r * dtheta (approx)
+    // For t direction: ds = sqrt(H^2 + (dr/dt)^2) * dt
+    
+    let eps_t = 0.001;
+    let r1 = compute_outer_radius(theta, t);
+    let r2 = compute_outer_radius(theta, t + eps_t);
+    let dr_dt = (r2 - r1) / eps_t;
+    
+    let h_theta = r;
+    let h_t = sqrt(H * H + dr_dt * dr_dt);
+    
+    return Metric(max(0.1, h_theta), max(0.1, h_t));
+}
 // Segment Snapping (Spatial Grid)
 // ============================================================================
 
@@ -314,21 +340,22 @@ fn compute_importance(u: f32, t: f32, surfaceType: f32, scale: vec2<f32>) -> vec
     let normal_err_v = max(0.0, 1.0 - dot(n_c, n_v));
     
     // ==========================================================
-    // 5. COMBINE (Anisotropic)
+    // 5. COMBINE (Anisotropic & Physically Normalized)
     // ==========================================================
-    // U-Error: Driven by sag_theta and normal_err_u
-    // V-Error: Driven by sag_t and normal_err_v
+    let metric = get_metric(theta, t);
     
-    let err_u = max(sag_theta_coarse, normal_err_u * 0.5);
+    // Scale error by Chord Error and Sagitta
+    // We also include Chord Error (sag_circle) to ensure smooth cylinders
+    let err_u = max(max(sag_theta_coarse, sag_circle), normal_err_u * 0.5);
     let err_v = max(sag_t_coarse, normal_err_v * 0.5);
     
-    // Normalize by scale to get "Error per Unit Length" density requirement
-    // or just return absolute error implies "Split if error triggers"
-    // Current logic uses `error / scale`.
+    // Convert parametric scale to physical scale [mm]
+    let scale_u_phys = scale.x * metric.h_theta * TAU; 
+    let scale_v_phys = scale.y * metric.h_t;
     
-    // We return the raw error normalized by the dimension of that axis
-    let density_u = err_u / max(scale.x, 0.0001);
-    let density_v = err_v / max(scale.y, 0.0001);
+    // Density is "Error per unit physical length"
+    let density_u = err_u / max(scale_u_phys, 0.001);
+    let density_v = err_v / max(scale_v_phys, 0.001);
     
     return vec2<f32>(density_u, density_v);
 }

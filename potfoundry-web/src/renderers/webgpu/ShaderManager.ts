@@ -47,7 +47,11 @@ export class ShaderManager {
      * Generates WGSL with a specific style hardcoded, enabling compiler optimization (DCE).
      * @param styleId The ID of the style to compile for.
      */
-    public getStyleWGSL(styleId: number): string {
+    /**
+     * Generates the common environment (Constants + Common + Style + Dispatch).
+     * Useful for Compute Shaders (Adaptive Export, Feature Extraction).
+     */
+    public getStyleEnvironmentWGSL(styleId: number): string {
         const functionName = STYLE_FUNCTION_MAP[styleId] || 'sf_radius';
 
         // Strip functions from other styles to reduce compilation weight
@@ -75,9 +79,19 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
         return [
             this.constantsWgsl,
             this.commonWgsl,
-            this.uniformsWgsl,
             optimizedStylesWgsl,
-            dispatchCode,
+            dispatchCode
+        ].join('\n');
+    }
+
+    /**
+     * Generates WGSL for the Preview Renderer (Vertex/Fragment).
+     * Includes Preview Uniforms and Main logic.
+     */
+    public getStyleWGSL(styleId: number): string {
+        return [
+            this.getStyleEnvironmentWGSL(styleId),
+            this.uniformsWgsl,
             this.mainWgsl
         ].join('\n');
     }
@@ -85,5 +99,31 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
     // Legacy support (defaults to ID 0)
     public getWGSL(): string {
         return this.getStyleWGSL(0);
+    }
+
+    /**
+     * Generates Vertex/Fragment shader for Debug Lines (magenta).
+     * Projects 2D (u,v) segments onto the 3D pot surface.
+     */
+    public getDebugLinesWGSL(styleId: number): string {
+        const env = this.getStyleEnvironmentWGSL(styleId);
+
+        const main = `
+@vertex
+fn vs_main(@location(0) uv: vec2<f32>) -> @builtin(position) vec4<f32> {
+            let H = getf(0u);
+            let p = surface_point(0u, uv.x, uv.y);
+            let p_center = vec3<f32>(p.x, p.y, p.z - 0.5 * H);
+            var pos = vp_matrix() * vec4<f32>(p_center, 1.0);
+            pos.z -= 0.0001 * pos.w; // Bring slightly forward to prevent z-fighting
+            return pos;
+        }
+
+        @fragment
+fn fs_main() -> @location(0) vec4<f32> {
+            return vec4<f32>(1.0, 0.0, 1.0, 1.0); // Magenta Color
+        }
+            `;
+        return [env, this.uniformsWgsl, main].join('\n');
     }
 }

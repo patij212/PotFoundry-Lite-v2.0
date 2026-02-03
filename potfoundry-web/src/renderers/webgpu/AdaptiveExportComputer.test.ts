@@ -52,6 +52,106 @@ describe('Curvature Computation', () => {
         const importance = computeImportance(stepProfile, Math.PI, 0.5);
         expect(importance).toBeGreaterThan(10);
     });
+
+    describe('Newton-Raphson Snapping (Math Mirror)', () => {
+        // Mirror of snap_to_peak from feature_extract.wgsl
+        function snapToPeak(
+            radiusFn: (theta: number, t: number) => number,
+            uStart: number,
+            vStart: number,
+            gridSizeX: number,
+            gridSizeY: number
+        ): { u: number, v: number } {
+            let u = uStart;
+            let v = vStart;
+            const du = 1.0 / gridSizeX;
+            const dv = 1.0 / gridSizeY;
+            const TAU = 2 * Math.PI;
+
+            for (let i = 0; i < 5; i++) {
+                const theta = u * TAU;
+                const step_th = du * TAU;
+                const step_v = dv;
+
+                const c = radiusFn(theta, v);
+                const l = radiusFn(theta - step_th, v);
+                const r = radiusFn(theta + step_th, v);
+                const b = radiusFn(theta, v - step_v);
+                const t = radiusFn(theta, v + step_v);
+                const tl = radiusFn(theta - step_th, v + step_v);
+                const tr = radiusFn(theta + step_th, v + step_v);
+                const bl = radiusFn(theta - step_th, v - step_v);
+                const br = radiusFn(theta + step_th, v - step_v);
+
+                const g1 = (r - l) / (2.0 * step_th);
+                const g2 = (t - b) / (2.0 * step_v);
+
+                const h11 = (r - 2.0 * c + l) / (step_th * step_th);
+                const h22 = (t - 2.0 * c + b) / (step_v * step_v);
+                const h12 = (tr + bl - tl - br) / (4.0 * step_th * step_v);
+
+                const det = h11 * h22 - h12 * h12;
+                let d1 = 0, d2 = 0;
+
+                if (Math.abs(det) > 1e-12) {
+                    d1 = -(h22 * g1 - h12 * g2) / det;
+                    d2 = -(-h12 * g1 + h11 * g2) / det;
+                } else {
+                    if (Math.abs(h11) > 1e-9) d1 = -g1 / h11;
+                    if (Math.abs(h22) > 1e-9) d2 = -g2 / h22;
+                }
+
+                u += Math.max(-0.7 * du, Math.min(0.7 * du, 0.8 * d1 / TAU));
+                v += Math.max(-0.7 * dv, Math.min(0.7 * dv, 0.8 * d2));
+            }
+            return { u, v };
+        }
+
+        it('should snap a grid point to a mathematical ridge maximum', () => {
+            // Ridge at theta = PI (u = 0.5)
+            const ridgeFn = (theta: number, t: number) => 50 + 5 * Math.cos(theta - Math.PI);
+
+            const du = 1.0 / 2048;
+            // Start 0.4 pixels off-center
+            const uStart = 0.5 + 0.4 * du;
+            const result = snapToPeak(ridgeFn, uStart, 0.5, 2048, 1024);
+
+            // Should converge to 0.5 (PI) very closely
+            expect(result.u).toBeCloseTo(0.5, 6);
+        });
+
+        it('should handle ridge offset in V direction', () => {
+            // Ridge at t = 0.5
+            const ridgeFn = (theta: number, t: number) => 50 + 5 * Math.cos((t - 0.5) * 10);
+            const dv = 1.0 / 1024;
+            // Start 0.4 pixels off-center
+            const vStart = 0.5 + 0.4 * dv;
+            const result = snapToPeak(ridgeFn, 0.5, vStart, 2048, 1024);
+            expect(result.v).toBeCloseTo(0.5, 6);
+        });
+
+        it('should handle diagonal ridge with UV-coupling (Twisted Rib)', () => {
+            // Ridge at theta = PI + (t - 0.5) * 5.0 (Coupled UV)
+            const ridgeFn = (theta: number, t: number) => {
+                const centerTheta = Math.PI + (t - 0.5) * 5.0;
+                return 50 + 5 * Math.cos(theta - centerTheta);
+            };
+
+            const du = 1.0 / 2048;
+            const dv = 1.0 / 1024;
+
+            const vBase = 0.4;
+            // Target U at v=0.4 is (PI + (0.4 - 0.5) * 5.0) / (2*PI)
+            const targetTheta = Math.PI + (vBase - 0.5) * 5.0;
+            const targetU = targetTheta / (2 * Math.PI);
+
+            // Start 0.4 pixels off-center
+            const result = snapToPeak(ridgeFn, targetU + 0.4 * du, vBase, 2048, 1024);
+
+            // This should converge to targetU (within 0.7 pixel clamp per iteration)
+            expect(result.u).toBeCloseTo(targetU, 6);
+        });
+    });
 });
 
 // ============================================================================
@@ -164,7 +264,7 @@ describe('Buffer Size Calculations', () => {
 });
 // ... existing tests ...
 
-import { weldMesh } from './AdaptiveExportComputer';
+import { weldMesh } from '../../utils/geometry/weldMesh';
 
 describe('Vertex Welding (weldMesh)', () => {
     it('should merge coincident vertices (Triangle Soup -> Mesh)', () => {
@@ -202,12 +302,13 @@ describe('Vertex Welding (weldMesh)', () => {
 
         const welded = weldMesh(vertices, indices);
 
-        // T1 collapses to 1 vertex. T2 has 3. Total 4.
+        // T1 collapses and should be removed. T2 remains.
         expect(welded.vertices.length / 3).toBe(4);
 
-        // Indices for T1 should all point to the same vertex index
-        expect(welded.indices[0]).toBe(welded.indices[1]);
-        expect(welded.indices[1]).toBe(welded.indices[2]);
+        // Indices should only contain T2 (3 indices total)
+        expect(welded.indices.length).toBe(3);
+        // T2 vertices (1,2,3 mapped) are unique
+        expect(welded.indices[0]).not.toBe(welded.indices[1]);
     });
 
     it('should respect precision tolerance', () => {

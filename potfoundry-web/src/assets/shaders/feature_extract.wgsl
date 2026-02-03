@@ -56,25 +56,42 @@ fn getf(idx: u32) -> f32 {
      case 0u: { return style_uniforms.chunk0.x; } // H
      case 1u: { return style_uniforms.chunk0.y; } // Rt
      case 2u: { return style_uniforms.chunk0.z; } // Rb
-     case 3u: { return style_uniforms.chunk0.w; } // tWall (Wait, check TS packing)
+     case 3u: { return style_uniforms.chunk1.z; } // expn (Index 3 mapped to expn in FeatureExtractionComputer.ts? Wait, let's check packing)
      
-     // Chunk1: tBottom, rDrain, expn, styleId
-     case 4u: { return style_uniforms.chunk1.x; } // tBottom
-     case 5u: { return style_uniforms.chunk1.y; } // rDrain
-     case 6u: { return style_uniforms.chunk1.z; } // expn (Radius Exponent)
-     
-     // Chunk2: Spin
-     case 8u: { return style_uniforms.chunk2.x; } // SpinTurns
-     case 9u: { return style_uniforms.chunk2.y; } // SpinPhase
-     case 10u: { return style_uniforms.chunk2.z; } // SpinCurveExp
-     case 11u: { return style_uniforms.chunk2.w; } // SeamAngle
+     // CRITICAL FIX: Spin Params (Indices 4, 5, 6)
+     // styles.wgsl expects: 4=Turns, 5=Phase, 6=Curve
+     case 4u: { return style_uniforms.chunk2.x; } // spinTurns
+     case 5u: { return style_uniforms.chunk2.y; } // spinPhase
+     case 6u: { return style_uniforms.chunk2.z; } // spinCurveExp
 
-     // Chunk3: Bell
-     case 12u: { return style_uniforms.chunk3.x; } // BellAmp (ID 12 matches Offset 12?)
-     case 14u: { return style_uniforms.chunk3.x; } // BellAmp (Alias for legacy?)
+     // Style ID
+     case 7u: { return style_uniforms.chunk1.w; } // styleIndex (packed in chunk1.w in FeatureExtractionComputer)
+
+     // Dimensions (continued)
+     case 25u: { return style_uniforms.chunk0.w; } // tWall (Index 25 in styles.wgsl usually?)
+     case 26u: { return style_uniforms.chunk1.x; } // tBottom
+
+     // Chunk1: rDrain, expn...
+     // Note: FeatureExtractionComputer packs: 
+     // Chunk0: H, Rt, Rb, 0.0 (Wait, chunk0.w is 0.0 in FeatureExtractionComputer?)
+     // Let's verify packing in FeatureExtractionComputer.ts first.
+     
+     // Adjusted based on Standard Packing:
+     // Chunk0: H, Rt, Rb, tWall
+     // Chunk1: tBottom, rDrain, expn, index
+     
+     // Redistributing to match styles.wgsl expectations:
+     // If styles.wgsl uses getf(3) for expn, we must ensure chunk1.z is returned.
+     // If styles.wgsl uses getf(25) for tWall, we return chunk0.w.
+
+     case 13u: { return style_uniforms.chunk1.y; } // rDrain
+
+     // Bell (Chunk 3)
+     case 12u: { return style_uniforms.chunk3.x; } // BellAmp
+     case 14u: { return style_uniforms.chunk3.x; } // BellAmp (Alias)
      case 15u: { return style_uniforms.chunk3.y; } // BellCenter
      case 72u: { return style_uniforms.chunk3.z; } // BellWidth
-     case 73u: { return style_uniforms.chunk2.w; } // Seam ?
+     case 73u: { return style_uniforms.chunk2.w; } // SeamAngle
 
      default: { return 0.0; }
    }
@@ -265,53 +282,80 @@ fn detect_features(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (K_max < -thresh) { 
          // Ridge (Convex Peak) -> Current C should be > neighbors
          if (c > r_n && c > r_p) {
-             featureType = 1u; // Ridge
+             // Ridge Detected
+             featureType = 1u; 
              strength = abs(K_max);
              is_feature = true;
-             
-             // Parabolic Fit for Sub-Pixel Offset
-             // y = ax^2 + bx + c
-             // Peak at x = (L - R) / 2(L - 2C + R)
-             // Here L=r_p, C=c, R=r_n
-             let num = r_p - r_n;
-             let den = 2.0 * (r_p - 2.0 * c + r_n);
-             if (abs(den) > 1e-6) {
-                 delta = num / den;
-             }
          }
     } else if (K_max > thresh) { 
-         // Valley (Concave Pit) -> Current C should be < neighbors
+         // Valley Detected
          if (c < r_n && c < r_p) {
-             featureType = 2u; // Valley
+             featureType = 2u; 
              strength = abs(K_max);
              is_feature = true;
-             
-             // Parabolic Fit (Same formula works for minima too)
-             let num = r_p - r_n;
-             let den = 2.0 * (r_p - 2.0 * c + r_n);
-             if (abs(den) > 1e-6) {
-                 delta = num / den;
-             }
          }
     }
     
+    // Refinement Shared Block: Golden Section Search (Derivative-Free)
     if (is_feature) {
-        // Clamp delta for safety
-        delta = clamp(delta, -0.5, 0.5);
-        
-        // Apply Sub-Pixel Offset
-        // Offset is along the principal direction (step_vec)
-        // Coords = Original + Delta * StepVector
-        let u_final = u + delta * step_vec.x; // u is 0..1
-        let v_final = v + delta * step_vec.y;
-        
-        let theta_final = u_final * 6.28318530718;
-        let t_final = v_final;
+         let phi = 0.61803398875;
+         let inv_phi = 1.0 - phi;
+         
+         var a = -0.8;
+         var b = 0.8;
+         
+         var c1 = a + inv_phi * (b - a);
+         var c2 = b - inv_phi * (b - a);
+         
+         var u1 = u + c1 * step_vec.x;
+         var v1 = v + c1 * step_vec.y;
+         var val1 = eval_r_wrapped(u1 * 6.2831853, v1);
+         
+         var u2 = u + c2 * step_vec.x;
+         var v2 = v + c2 * step_vec.y;
+         var val2 = eval_r_wrapped(u2 * 6.2831853, v2);
+         
+         for (var k = 0; k < 6; k++) {
+             var swap = false;
+             if (featureType == 1u) {
+                 if (val1 < val2) { swap = true; }
+             } else {
+                 if (val1 > val2) { swap = true; } 
+             }
+             
+             if (swap) {
+                 a = c1;
+                 c1 = c2;
+                 val1 = val2;
+                 
+                 c2 = b - inv_phi * (b - a);
+                 u2 = u + c2 * step_vec.x;
+                 v2 = v + c2 * step_vec.y;
+                 val2 = eval_r_wrapped(u2 * 6.2831853, v2);
+             } else {
+                 b = c2;
+                 c2 = c1;
+                 val2 = val1;
+                 
+                 c1 = a + inv_phi * (b - a);
+                 u1 = u + c1 * step_vec.x;
+                 v1 = v + c1 * step_vec.y;
+                 val1 = eval_r_wrapped(u1 * 6.2831853, v1);
+             }
+         }
+         
+         delta = (a + b) * 0.5;
 
-        let outIdx = atomicAdd(&counter, 1u);
-        if (outIdx < arrayLength(&feature_points)) {
-            // Write High-Precision Coordinates
-            feature_points[outIdx] = FeaturePoint(theta_final, t_final, featureType, strength);
-        }
+         // Output Logic (Must be inside is_feature!)
+         let u_final = u + delta * step_vec.x;
+         let v_final = v + delta * step_vec.y;
+         
+         let theta_final = u_final * 6.28318530718;
+         let t_final = v_final;
+
+         let outIdx = atomicAdd(&counter, 1u);
+         if (outIdx < arrayLength(&feature_points)) {
+             feature_points[outIdx] = FeaturePoint(theta_final, t_final, featureType, strength);
+         }
     }
 }

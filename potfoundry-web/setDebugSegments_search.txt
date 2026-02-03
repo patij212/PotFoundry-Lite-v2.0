@@ -1,0 +1,4 @@
+﻿C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\potfoundry-web\src\webgpu_core.ts:5523:    setDebugSegments: (segments: Float32Array) => {
+C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\potfoundry-web\src\hooks\useAdaptiveExport.ts:365:                            controllerCtx?.controllerRef.current?.setDebugSegments?.(new Float32Array(allSegments));
+C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\potfoundry-web\src\renderers\factory.ts:90:        setDebugSegments: (segments) => ctrl.setDebugSegments?.(segments),
+C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\potfoundry-web\src\renderers\types.ts:95:    setDebugSegments?(segments: Float32Array): void;

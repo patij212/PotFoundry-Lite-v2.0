@@ -1,5 +1,5 @@
-
-import { ConstrainedTriangulator, Point2D } from '../ConstrainedTriangulator';
+import { describe, it, expect } from 'vitest';
+import { ConstrainedTriangulator } from '../ConstrainedTriangulator';
 import { FeaturePoint } from '../../../renderers/webgpu/FeatureExtractionComputer';
 
 describe('ConstrainedTriangulator Simplification', () => {
@@ -30,7 +30,8 @@ describe('ConstrainedTriangulator Simplification', () => {
         const { chains } = ConstrainedTriangulator.extractChains(rawFeatures);
 
         expect(chains.length).toBeGreaterThan(0);
-        const chain = chains[0];
+        // Pick the longest chain to be robust against noisy segmentation
+        const chain = chains.sort((a, b) => b.length - a.length)[0];
 
         // Original has 100 points
         // Simplified line should have much fewer points (ideally 2 for start/end, but densification adds back)

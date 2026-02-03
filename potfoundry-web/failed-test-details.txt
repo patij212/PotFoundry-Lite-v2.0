@@ -1,0 +1,39 @@
+FAIL: creates chains from connected features
+AssertionError: expected 0 to be greater than or equal to 1
+    at C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/utils/geometry/__tests__/extractChains.test.ts:102:42
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1653:12)
+
+FAIL: simplifies chains while preserving shape
+AssertionError: expected 991 to be less than 50
+    at C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/utils/geometry/__tests__/extractChains.test.ts:150:33
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1653:12)
+
+FAIL: generates correct number of seam points
+AssertionError: expected 1444 to be 724 // Object.is equality
+    at C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/utils/geometry/__tests__/extractChains.test.ts:164:46
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/node_modules/@vitest/runner/dist/index.js:1653:12)
+

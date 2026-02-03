@@ -6,7 +6,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ConstrainedTriangulator, FeaturePoint, Point2D } from '../ConstrainedTriangulator';
+import { ConstrainedTriangulator, Point2D } from '../ConstrainedTriangulator';
+import { FeaturePoint } from '../../../renderers/webgpu/FeatureExtractionComputer';
 
 // Helper to create feature points
 const makeFeature = (theta: number, t: number, strength = 1.0): FeaturePoint => ({
@@ -45,13 +46,14 @@ describe('extractChains', () => {
                 makeFeature(0.5, 0.7),
             ];
             const result = ConstrainedTriangulator.extractChains(features);
-            // Verify all chain points are within margin
+            // Verify all chain points are within [0, 1] range
+            // (Previous margin check removed as we now support full zero-gap topology)
             for (const chain of result.chains) {
                 for (const p of chain) {
-                    expect(p.x).toBeGreaterThanOrEqual(0.005);
-                    expect(p.x).toBeLessThanOrEqual(0.995);
-                    expect(p.y).toBeGreaterThanOrEqual(0.005);
-                    expect(p.y).toBeLessThanOrEqual(0.995);
+                    expect(p.x).toBeGreaterThanOrEqual(0.0);
+                    expect(p.x).toBeLessThanOrEqual(1.0);
+                    expect(p.y).toBeGreaterThanOrEqual(0.0);
+                    expect(p.y).toBeLessThanOrEqual(1.0);
                 }
             }
         });
@@ -143,9 +145,10 @@ describe('extractChains', () => {
             }
 
             const result = ConstrainedTriangulator.extractChains(features);
-            // After Douglas-Peucker simplification, should have fewer points
+            // After Douglas-Peucker simplification followed by high-res densification (0.0005 increments)
+            // our total point count will be high.
             const totalPoints = result.chains.reduce((a, c) => a + c.length, 0);
-            expect(totalPoints).toBeLessThan(50); // Should be heavily simplified
+            expect(totalPoints).toBeGreaterThan(800);
         });
     });
 
@@ -157,9 +160,37 @@ describe('extractChains', () => {
             }
 
             const result = ConstrainedTriangulator.extractChains(features);
-            // SEAMS = 180, left + right + top + bottom boundaries
-            // (181 * 2) for left/right + (181 * 2) for top/bottom = 724
-            expect(result.seamPoints.length).toBe(724);
+            // SEAMS = 360 (Current Setting)
+            // (361 * 2) for left/right + (361 * 2) for top/bottom = 1444
+            expect(result.seamPoints.length).toBe(1444);
+        });
+    });
+
+    describe('Anti-Sawtooth (Inertia & Physical Scaling)', () => {
+        it('should follow a single ridge without jumping to a parallel one', () => {
+            // Two parallel ridges, very close in UV space (0.01 apart)
+            // But crawler starts on Ridge A.
+            const features: FeaturePoint[] = [];
+
+            // Ridge A (at t=0.5)
+            for (let i = 0; i < 20; i++) {
+                features.push({ theta: (0.1 + i * 0.02) * Math.PI * 2, t: 0.5, type: 1, strength: 0.9 });
+            }
+
+            // Ridge B (at t=0.51) - Parallel, slightly weaker
+            for (let i = 0; i < 20; i++) {
+                features.push({ theta: (0.11 + i * 0.02) * Math.PI * 2, t: 0.51, type: 1, strength: 0.8 });
+            }
+
+            const result = ConstrainedTriangulator.extractChains(features, 1.0);
+
+            // Should produce at least 2 distinct chains (or the crawler on one ridge)
+            // It should NOT zigzag between them.
+            for (const chain of result.chains) {
+                // If it followed a ridge, it should be mostly horizontal
+                const dy = Math.abs(chain[chain.length - 1].y - chain[0].y);
+                expect(dy).toBeLessThan(0.05); // Should not have jumped back and forth
+            }
         });
     });
 });

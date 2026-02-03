@@ -88,6 +88,16 @@ export interface RendererController {
     /**
      * True if using fallback mode (WebGL when WebGPU is available but crashed)
      */
+    /**
+     * Set debug segments to visualize (e.g. feature polylines)
+     * @param segments Float32Array of 2D points [u0, v0, u1, v1, ...]
+     */
+    setDebugSegments?(segments: Float32Array): void;
+
+    /**
+     * True if using fallback mode (WebGL when WebGPU is available but crashed)
+     * @returns boolean
+     */
     readonly isCompatibilityMode: boolean;
 }
 

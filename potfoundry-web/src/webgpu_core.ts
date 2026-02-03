@@ -46,11 +46,11 @@ import { DEBUG_PARAM_FLAG, ALWAYS_ON_DIAGNOSTICS, isCameraMode, lerp, easeOutCub
 import manager from './infra/logging/MessageManager';
 import { installConsolePatch } from './infra/logging/ConsolePatch';
 import { resolveLoggingPreferences } from './infra/logging/loggingPreferences';
-import { withValidationScope, createShaderModule } from './infra/logging/WebGpuCapture';
+import { createShaderModule } from './infra/logging/WebGpuCapture';
 
 import { createIdleDetector } from './utils/idleDetection';
 import { fillGeometryBuffer } from './webgpu_geometry';
-import { STYLE_FUNCTION_MAP, STYLE_IDS } from './styles/registry';
+import { STYLE_IDS } from './styles/registry';
 import { type StyleId } from './geometry/types';
 
 
@@ -89,8 +89,6 @@ const STYLE_PARAM_CAPACITY = 48;
 const {
   DEFAULT_INTERACTIVE_LOD,
   MIN_INTERACTIVE_LOD,
-  INTERACTIVE_THETA_RATIO_FLOOR: _unused_itr_floor,
-  INTERACTIVE_Z_RATIO_FLOOR: _unused_izr_floor,
   MIN_THETA_STATIC,
   MIN_Z_STATIC,
   PARAM_UPDATE_TIMEOUT_MS,
@@ -135,8 +133,6 @@ const {
   /*
   AUTOROTATE_RESUME_DELAY_MS,
   */
-  FOCUS_TWEEN_DURATION_MS: _unused_ftd,
-  FOCUS_ZOOM_FACTOR: _unused_fzf,
   PIVOT_LERP_SPEED,
   PIVOT_SNAP_THRESHOLD,
 } = CameraConstants as any;
@@ -273,7 +269,7 @@ const postToHost = (emit: WebGPUEmitter | null, message: WebGPUEvent): void => {
 
 const decodeHex = (hex: string): number => parseInt(hex, 16) / 255;
 
-const hexToRgbNorm = (input: unknown): GradientColor => {
+const hexToRgbNorm = (input: unknown): [number, number, number] => {
   if (Array.isArray(input) && input.length >= 3) {
     return [Number(input[0]) || 0, Number(input[1]) || 0, Number(input[2]) || 0];
   }
@@ -305,17 +301,6 @@ const mergeParams = (target: WebGPUParams | null, incoming: WebGPUParams): WebGP
     }
   }
   return target;
-};
-
-const clampUnit = (value: unknown): number => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 0;
-  }
-  if (parsed >= 1) {
-    return 1;
-  }
-  return parsed;
 };
 
 const clampZoomValue = (v: number): number => {
@@ -360,10 +345,10 @@ const wrapTau = (v: number): number => {
 const parseClearColor = (source: unknown): ClearColor => {
   if (Array.isArray(source) && source.length >= 4) {
     return [
-      clampUnit(source[0]),
-      clampUnit(source[1]),
-      clampUnit(source[2]),
-      clampUnit(source[3]),
+      clampNumber(source[0], 0),
+      clampNumber(source[1], 0),
+      clampNumber(source[2], 0),
+      clampNumber(source[3], 0),
     ];
   }
   return DEFAULT_CLEAR_COLOR;
@@ -382,322 +367,6 @@ const sanitizeInt = (value: unknown, fallback: number, minimum: number): number 
   return Math.max(parsed, minimum);
 };
 
-const createPipeline = async (
-  device: GPUDevice,
-  format: GPUTextureFormat,
-  shaderModule: GPUShaderModule,
-  reportStatus: (msg: string) => void,
-  reportDiagnostic: (message: string, detail?: Record<string, unknown>) => void,
-  shaderCodeSnippet?: string | null,
-  explicitLayout?: GPUPipelineLayout
-): Promise<GPURenderPipeline | null> => {
-  // Use a loose cast to avoid cross-definition incompatibilities in
-  // the local GPUCompilationInfo vs ambient types (some environments
-  // expose a readonly messages array). The runtime call is unchanged.
-  const info = await ((shaderModule as any).getCompilationInfo?.() ?? Promise.resolve(undefined));
-  if (info && Array.isArray(info.messages) && info.messages.some((m: any) => m.type === 'error')) {
-    for (const message of info.messages) {
-      console.warn('WGSL', message);
-    }
-    reportDiagnostic('webgpu:shader-compile-error', { messages: info.messages });
-    reportStatus('WebGPU • shader compile failed (see console)');
-    return null;
-  }
-  const pipelineDescriptorSummary = (depthFmt: string) => ({
-    layout: explicitLayout ? 'explicit' : 'auto',
-    vertexEntry: 'vs_main',
-    fragmentEntry: 'fs_main',
-    targets: [{ format }],
-    primitive: { topology: 'triangle-list', cullMode: 'none' },
-    depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: depthFmt },
-  });
-
-  try {
-    const pipelineLabel = 'component:pipeline-main';
-    console.log('[WebGPU] Attempting primary pipeline creation with depth24plus...');
-    // Switch to ASYNC pipeline creation to prevent UI freezing during compilation (can take ~10s on Windows)
-    const pipe = await device.createRenderPipelineAsync({
-      label: pipelineLabel,
-      layout: explicitLayout || 'auto',
-      vertex: { module: shaderModule, entryPoint: 'vs_main' },
-      fragment: {
-        module: shaderModule,
-        entryPoint: 'fs_main',
-        targets: [
-          {
-            format,
-            blend: {
-              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-            },
-          },
-        ],
-      },
-      primitive: { topology: 'triangle-list', cullMode: 'none' },
-      depthStencil: {
-        depthWriteEnabled: true,
-        depthCompare: 'less',
-        format: 'depth24plus',
-      },
-    });
-    console.log('[WebGPU] Primary pipeline result:', pipe ? 'SUCCESS' : 'null');
-    if (!pipe) {
-      throw new Error('createRenderPipelineAsync returned undefined');
-    }
-    // pipeline succeeded with the default depth format
-    depthFormatUsed = 'depth24plus';
-    return pipe;
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('[WebGPU] createRenderPipelineAsync PRIMARY FAILED:', errorMsg);
-    // Emit the raw error for diagnostics and attempt a robust fallback.
-    reportDiagnostic('webgpu:pipeline-create-error', {
-      error: errorMsg,
-      shaderCodeSnippet: shaderCodeSnippet ? shaderCodeSnippet.slice(0, 1024) : null,
-      compilationMessages: info?.messages ?? null,
-      pipelineDescriptor: pipelineDescriptorSummary('depth24plus'),
-      deviceLimits: (device as any)?.limits ?? null,
-      deviceFeatures: Array.from(((device as any)?.features as Iterable<string>) ?? []),
-    });
-    // Try fallback: explicitly create a bind group layout + pipeline layout that matches
-    // the shader's expected group 0: four small uniform buffers and one read-only storage.
-    try {
-      console.log('[WebGPU] Attempting fallback 1: explicit layout + depth24plus...');
-      const bgl = device.createBindGroupLayout({
-        label: 'component:bgl-default',
-        entries: [
-          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-        ],
-      });
-      const layout = device.createPipelineLayout({ label: 'component:pipeline-layout-default', bindGroupLayouts: [bgl] });
-      const fallbackLabel = 'component:pipeline-fallback-depth24';
-      const fallback = await withValidationScope(device as any, fallbackLabel, () =>
-        device.createRenderPipelineAsync({
-          label: fallbackLabel,
-          layout,
-          vertex: { module: shaderModule, entryPoint: 'vs_main' },
-          fragment: {
-            module: shaderModule,
-            entryPoint: 'fs_main',
-            targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
-          },
-          primitive: { topology: 'triangle-list', cullMode: 'none' },
-          depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' },
-        })
-      );
-      console.log('[WebGPU] Fallback 1 result:', fallback ? 'SUCCESS' : 'null');
-      if (!fallback) {
-        throw new Error('fallback pipeline creation returned undefined');
-      }
-      depthFormatUsed = 'depth24plus';
-      reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout' });
-      return fallback;
-    } catch (err2) {
-      const errMsg2 = err2 instanceof Error ? err2.message : String(err2);
-      console.error('[WebGPU] Fallback 1 FAILED:', errMsg2);
-      // Always try additional depth formats - don't depend on error message matching
-      // (some drivers don't include helpful messages)
-
-      // Try depth24plus-stencil8
-      try {
-        console.log('[WebGPU] Attempting fallback 2: depth24plus-stencil8...');
-        const bgl3 = device.createBindGroupLayout({
-          label: 'component:bgl-depth24plus-stencil8',
-          entries: [
-            { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          ],
-        });
-        const layout3 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth24plus-stencil8', bindGroupLayouts: [bgl3] });
-        const fallbackLabel3 = 'component:pipeline-depth24plus-stencil8';
-        const fallback3 = await withValidationScope(device as any, fallbackLabel3, () =>
-          device.createRenderPipelineAsync({
-            label: fallbackLabel3,
-            layout: layout3,
-            vertex: { module: shaderModule, entryPoint: 'vs_main' },
-            fragment: {
-              module: shaderModule,
-              entryPoint: 'fs_main',
-              targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
-            },
-            primitive: { topology: 'triangle-list', cullMode: 'none' },
-            depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus-stencil8' },
-          })
-        );
-        console.log('[WebGPU] Fallback 2 result:', fallback3 ? 'SUCCESS' : 'null');
-        if (!fallback3) {
-          throw new Error('depth24plus-stencil8 fallback returned undefined');
-        }
-        depthFormatUsed = 'depth24plus-stencil8' as unknown as GPUTextureFormat;
-        reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout + depth24plus-stencil8' });
-        return fallback3;
-      } catch (err4) {
-        console.error('[WebGPU] Fallback 2 FAILED:', err4 instanceof Error ? err4.message : String(err4));
-      }
-
-      // Try depth32float
-      try {
-        console.log('[WebGPU] Attempting fallback 3: depth32float...');
-        const bgl2 = device.createBindGroupLayout({
-          label: 'component:bgl-depth32float',
-          entries: [
-            { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          ],
-        });
-        const layout2 = device.createPipelineLayout({ label: 'component:pipeline-layout-depth32float', bindGroupLayouts: [bgl2] });
-        const fallbackLabel2 = 'component:pipeline-depth32float';
-        const fallback2 = await withValidationScope(device as any, fallbackLabel2, () =>
-          device.createRenderPipelineAsync({
-            label: fallbackLabel2,
-            layout: layout2,
-            vertex: { module: shaderModule, entryPoint: 'vs_main' },
-            fragment: {
-              module: shaderModule,
-              entryPoint: 'fs_main',
-              targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }],
-            },
-            primitive: { topology: 'triangle-list', cullMode: 'none' },
-            depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth32float' },
-          })
-        );
-        console.log('[WebGPU] Fallback 3 result:', fallback2 ? 'SUCCESS' : 'null');
-        if (!fallback2) {
-          throw new Error('depth32float fallback returned undefined');
-        }
-        depthFormatUsed = 'depth32float';
-        reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout + depth32float' });
-        return fallback2;
-      } catch (err3) {
-        console.error('[WebGPU] Fallback 3 FAILED:', err3 instanceof Error ? err3.message : String(err3));
-      }
-
-      // Try a minimal pipeline without depth or blending to check for hardware/driver limitations.
-      console.log('[WebGPU] Attempting fallback 4: minimal pipeline (no depth)...');
-      const minimal = await attemptMinimalPipeline(device, format, shaderModule, reportDiagnostic);
-      console.log('[WebGPU] Fallback 4 (minimal) result:', minimal ? 'SUCCESS' : 'null');
-      if (minimal) {
-        depthFormatUsed = null;
-        return minimal;
-      }
-      // If all fallbacks fail, try a minimal shader module to determine
-      // whether the failure is shader-specific or platform/driver-specific.
-      console.log('[WebGPU] All fallbacks failed. Trying minimal standalone shader test...');
-      try {
-        const minimalWgsl = `
-          @vertex
-          fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
-            var pos = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
-            return vec4<f32>(pos[vid], 0.0, 1.0);
-          }
-          @fragment
-          fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
-        `;
-        console.log('[WebGPU] Creating minimal test shader module...');
-        const testModule = await createShaderModule(device as any, minimalWgsl, 'minimal-test');
-        console.log('[WebGPU] Minimal test shader module:', testModule ? 'SUCCESS' : 'null');
-
-        // Skip getCompilationInfo - it throws on some mobile WebGPU implementations
-        // Go directly to pipeline creation
-        console.log('[WebGPU] Creating pipeline directly (skipping getCompilationInfo)...');
-        try {
-          // Direct call without withValidationScope to get raw error
-          const testPipe = await device.createRenderPipelineAsync({
-            layout: 'auto',
-            vertex: { module: testModule, entryPoint: 'vs_main' },
-            fragment: { module: testModule, entryPoint: 'fs_main', targets: [{ format }] },
-            primitive: { topology: 'triangle-list', cullMode: 'none' },
-          });
-          console.log('[WebGPU] MINIMAL TEST PIPELINE SUCCEEDED!', testPipe ? 'YES' : 'null');
-          if (testPipe) {
-            reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline succeeded; our shader has the issue' });
-          } else {
-            console.error('[WebGPU] Minimal test pipeline returned null (not an exception)');
-          }
-        } catch (testErr) {
-          // Log the error in multiple formats to capture whatever info is available
-          console.error('[WebGPU] Minimal test pipeline FAILED. Error type:', typeof testErr);
-          console.error('[WebGPU] Minimal test pipeline FAILED. Error constructor:', (testErr as any)?.constructor?.name);
-          console.error('[WebGPU] Minimal test pipeline FAILED. Error message:', (testErr as Error)?.message);
-          console.error('[WebGPU] Minimal test pipeline FAILED. Error toString:', String(testErr));
-          console.error('[WebGPU] Minimal test pipeline FAILED. Error JSON:', JSON.stringify(testErr, null, 2));
-          reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader pipeline failed; platform/driver issue', error: testErr instanceof Error ? testErr.message : String(testErr) });
-        }
-      } catch (testErr) {
-        console.error('[WebGPU] Minimal shader test outer catch. Error type:', typeof testErr);
-        console.error('[WebGPU] Minimal shader test outer catch. Error constructor:', (testErr as any)?.constructor?.name);
-        console.error('[WebGPU] Minimal shader test outer catch. Error message:', (testErr as Error)?.message);
-        console.error('[WebGPU] Minimal shader test outer catch. Error toString:', String(testErr));
-        reportDiagnostic('webgpu:pipeline-failed', { message: 'Minimal shader module creation check failed', error: testErr instanceof Error ? testErr.message : String(testErr) });
-      }
-      reportStatus('WebGPU • pipeline creation failed');
-      reportDiagnostic('webgpu:pipeline-failed', {
-        error: err2 instanceof Error ? err2.message : String(err2),
-      });
-      return null;
-    }
-  }
-};
-// Attempt a minimal pipeline without depth/stencil or blending as a final fallback
-const attemptMinimalPipeline = async (
-  device: GPUDevice,
-  format: GPUTextureFormat,
-  shaderModule: GPUShaderModule,
-  reportDiagnostic: (message: string, detail?: Record<string, unknown>) => void
-): Promise<GPURenderPipeline | null> => {
-  try {
-    const minimalLabel = 'component:pipeline-minimal';
-    const pipe = await withValidationScope(device as any, minimalLabel, () =>
-      device.createRenderPipelineAsync({
-        label: minimalLabel,
-        layout: 'auto',
-        vertex: { module: shaderModule, entryPoint: 'vs_main' },
-        fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
-        primitive: { topology: 'triangle-list', cullMode: 'none' },
-      })
-    );
-    if (!pipe) {
-      throw new Error('minimal pipeline creation returned undefined');
-    }
-    reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with minimal pipeline (no depth, no blend)' });
-    return pipe;
-  } catch (err) {
-    try {
-      // Try explicit layout with minimal features
-      const bgl = device.createBindGroupLayout({
-        entries: [
-          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-          { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-        ],
-      });
-      const layout = device.createPipelineLayout({ bindGroupLayouts: [bgl] });
-      const pipe2 = await device.createRenderPipelineAsync({
-        layout,
-        vertex: { module: shaderModule, entryPoint: 'vs_main' },
-        fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
-        primitive: { topology: 'triangle-list', cullMode: 'none' },
-      });
-      reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync succeeded with explicit layout minimal pipeline' });
-      return pipe2;
-    } catch (err2) {
-      reportDiagnostic('webgpu:pipeline-create-fallback', { message: 'createRenderPipelineAsync minimal fallbacks failed', error: err2 instanceof Error ? err2.message : String(err2) });
-      return null;
-    }
-  }
-};
 
 // Depth format is configurable depending on the pipeline fallback that succeeds.
 let depthFormatUsed: GPUTextureFormat | null = 'depth24plus';
@@ -751,16 +420,8 @@ const vec3Normalize = (v: Vec3): Vec3 => {
   return [v[0] / len, v[1] / len, v[2] / len];
 };
 const vec3Subtract = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-// const vec3Add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const vec3Scale = (v: Vec3, s: number): Vec3 => [v[0] * s, v[1] * s, v[2] * s];
-const vec3Cross = (a: Vec3, b: Vec3): Vec3 => [
-  a[1] * b[2] - a[2] * b[1],
-  a[2] * b[0] - a[0] * b[2],
-  a[0] * b[1] - a[1] * b[0],
-];
 const vec3Dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-
-// const rotateVectorAroundAxis = cbRotateVectorAroundAxis;
 
 const applyCameraEuler = (state: WebGPUState, rotX: number, rotY: number): void => {
   const basis = applyCameraEulerToBasis(rotX, rotY);
@@ -777,20 +438,6 @@ const applyCameraEuler = (state: WebGPUState, rotX: number, rotY: number): void 
   state.rotZ = 0;
 };
 
-const syncAnglesFromBasis = (state: WebGPUState): void => {
-  const { rotX, rotY } = cbSyncAnglesFromBasis({ forward: [...(state.camForward as Vec3)] as Vec3, up: [...(state.camUp as Vec3)] as Vec3, right: [...(state.camRight as Vec3)] as Vec3 });
-  const prevY = Number.isFinite(state.rotY) ? state.rotY : 0;
-  let delta = rotY - prevY;
-  while (delta > Math.PI) delta -= 2 * Math.PI;
-  while (delta < -Math.PI) delta += 2 * Math.PI;
-  state.rotX = wrapAngle(rotX);
-  state.rotY = wrapAngle(prevY + delta);
-};
-
-// const rotateCameraBasis = (state: WebGPUState, axis: Vec3, angle: number): void => {
-//   rotateCameraBasisForState(state, axis, angle);
-//   syncAnglesFromBasis(state);
-// };
 
 // rotateBasisInPlace is imported from shared helpers and used directly.
 
@@ -920,54 +567,6 @@ const matrixIsFinite = (m: Mat4): boolean => {
   return true;
 };
 
-/*
-const mat4LookAtLH = (eye: Vec3, target: Vec3, up: Vec3): Mat4 => {
-  // Compute forward vector (zAxis). If the camera looks exactly along the
-  // up vector, the cross product will be zero length and produce NaNs.
-  // Defend by choosing a fallback up vector when collinear.
-  const zAxis = vec3Normalize(vec3Subtract(target, eye));
-  let upVec: Vec3 = up;
-  let dotUp = Math.abs(vec3Dot(zAxis, upVec));
-  if (dotUp > 0.9999) {
-    // Prefer world up when possible so the view basis stays aligned with the
-    // Z-up scene; if that is also collinear, fall back to a horizontal axis.
-    upVec = WORLD_UP;
-    dotUp = Math.abs(vec3Dot(zAxis, upVec));
-  }
-  if (dotUp > 0.9999) {
-    upVec = Math.abs(zAxis[2]) < 0.9 ? WORLD_UP : [1, 0, 0];
-  }
-  let xAxis = vec3Cross(upVec, zAxis);
-  // If cross produced a near-zero vector, fall back to a stable axis.
-  const xLen = vec3Length(xAxis);
-  if (!Number.isFinite(xLen) || xLen < 1e-6) {
-    xAxis = [1, 0, 0];
-  } else {
-    xAxis = vec3Scale(xAxis, 1 / xLen);
-  }
-  const yAxis = vec3Cross(zAxis, xAxis);
-  // View matrix: camera axes form ROWS of rotation part (stored column-major).
-  const out = new Float32Array(16);
-  out[0] = xAxis[0];
-  out[1] = yAxis[0];
-  out[2] = zAxis[0];
-  out[3] = 0;
-  out[4] = xAxis[1];
-  out[5] = yAxis[1];
-  out[6] = zAxis[1];
-  out[7] = 0;
-  out[8] = xAxis[2];
-  out[9] = yAxis[2];
-  out[10] = zAxis[2];
-  out[11] = 0;
-  out[12] = -vec3Dot(xAxis, eye);
-  out[13] = -vec3Dot(yAxis, eye);
-  out[14] = -vec3Dot(zAxis, eye);
-  out[15] = 1;
-  return out;
-};
-*/
-
 const mat4OrthoLH = (
   left: number,
   right: number,
@@ -1007,12 +606,6 @@ const mat4PerspectiveFovLH = (
   return out;
 };
 
-// Ray type imported from './types' above, avoid re-declaration
-
-// invertMat4 moved to shared helpers (camera_helpers.ts)
-
-// world-ray and intersection helpers moved to `camera_helpers.ts` and imported.
-
 const INTERACTION_TIMEOUT_MS = 240;
 const INERTIA_DECAY = 0.92;
 // Choose a tight threshold to avoid accidental 180° flips when committing transient
@@ -1021,14 +614,6 @@ const INERTIA_DECAY = 0.92;
 // the new right vector is nearly inverted relative to the previous right.
 const BASIS_FLIP_DOT_THRESHOLD = CameraConstants.BASIS_FLIP_DOT_THRESHOLD; // dot threshold used when deciding whether to flip basis
 
-// Backwards-compatible aliases used by static tests that inspect the
-// codebase for the standard invert-orbit sign semantics.  These are
-// simple helpers that map a boolean invert flag into +/-1 multipliers
-// used when converting pointer drags to yaw/pitch deltas.
-// const invertOrbitX = true;
-// const invertOrbitY = false;
-// const invertOrbitXSign = invertOrbitX ? +1 : -1;
-// const invertOrbitYSign = invertOrbitY ? +1 : -1;
 // Convert per-frame decay factor (e.g., 0.92 per 1/60s frame) to an exponential
 // decay lambda such that factor(dt) = exp(-INERTIA_LAMBDA * dt)
 const INERTIA_LAMBDA = -Math.log(INERTIA_DECAY) * 60; // per-second decay rate
@@ -1047,9 +632,6 @@ const computePanFactor = (state: WebGPUState, canvas: HTMLCanvasElement): number
   const zoom = Math.max(state.zoom, 1e-3);
   return (scene / reference) * (2 / zoom);
 };
-
-// `resetInertia` is delegated to CameraController; function wrapper
-// defined later to avoid use-before-assignment.
 
 const applyViewPreset = (state: WebGPUState, preset: string): void => {
   switch (preset) {
@@ -1427,16 +1009,6 @@ export const mount = async ({
   // diagnose rendering problems on systems where the console is harder
   // to inspect (e.g., remote or embedded hosts). This prints the last
   // diagnostic message and detail to the overlay when present.
-  const setDebugOverlayMessage = (message: string, detail?: Record<string, unknown>) => {
-    if (!debugOverlayEl) return;
-    try {
-      debugOverlayEl.style.display = 'block';
-      const t = new Date().toISOString();
-      debugOverlayEl.textContent = `${t} ${message}\n${detail ? JSON.stringify(detail, null, 2) : ''}`;
-    } catch (e) {
-      /* ignore DOM errors */
-    }
-  };
 
   const debugLog = (message: string, detail?: Record<string, unknown>): void => {
     if (!debugEnabled) return;
@@ -1545,7 +1117,6 @@ export const mount = async ({
   const device = renderer.device!;
   const context = renderer.context!;
   const format = renderer.presentationFormat;
-  const adapter = renderer.adapter!;
 
   emitDiagnostic('webgpu:adapter-ready');
   emitDiagnostic('webgpu:device-ready');
@@ -2592,7 +2163,7 @@ export const mount = async ({
   // Create Shared Pipeline Layout ONCE
   // This saves the driver from deducing the layout from the shader every time.
   console.log('[WebGPU] Creating shared pipeline layout...');
-  const sharedBGL = device.createBindGroupLayout({
+  device.createBindGroupLayout({
     label: 'component:bgl-shared',
     entries: [
       { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // PreviewParams
@@ -2723,12 +2294,6 @@ export const mount = async ({
   }
 
   const uniformSize = 4 * UNIFORM_FLOAT_COUNT;
-  const bufferUsage = ((globalThis as Record<string, unknown>).GPUBufferUsage as
-    | { UNIFORM?: number; COPY_DST?: number; STORAGE?: number }
-    | undefined) ?? { UNIFORM: 0x40, COPY_DST: 0x08, STORAGE: 0x20 };
-  const uniformUsage = bufferUsage.UNIFORM ?? 0x40;
-  const copyDstUsage = bufferUsage.COPY_DST ?? 0x08;
-  const storageUsage = bufferUsage.STORAGE ?? 0x20;
 
   // Uniform/color buffers managed by SceneManager, removed local declaration
   // Preallocated Float32Array scratch buffers used to avoid allocation in
@@ -2861,6 +2426,17 @@ export const mount = async ({
     });
   };
 
+  const createDebugBindGroup = (p: GPURenderPipeline) => {
+    return device.createBindGroup({
+      label: 'component:bind-group-debug',
+      layout: p.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniformBuffer } },
+        { binding: 4, resource: { buffer: styleParamBuffer } },
+      ],
+    });
+  };
+
   if (!pipeline) return null;
   let bindGroup = createMainBindGroup(pipeline);
 
@@ -2942,7 +2518,6 @@ export const mount = async ({
   let lastRigSignature: string | null = null;
   let lastRigCached: CameraRig | null = null;
   const computeRigSignature = (s: WebGPUState, paddingHint?: number | null, phw?: number | null, phh?: number | null): string => {
-    const basis = (s.displayCamQuat ?? s.camQuat) as any;
     const rotHash = s.displayRotX != null && s.displayRotY != null ? `${s.displayRotX}_${s.displayRotY}` : `${s.rotX}_${s.rotY}`;
     const mode = s.projectionMode || 'ortho';
     const parts = [rotHash, `${s.zoom}`, `${s.panX}`, `${s.panY}`, `${mode}`, `${paddingHint}`, `${phw ?? ''}`, `${phh ?? ''}`, `${s.canvasAspect}`];
@@ -3234,18 +2809,6 @@ export const mount = async ({
     }
     return;
   }
-  function applyFreeLookRotation(dx: number, dy: number): void {
-    if (typeof cameraController !== 'undefined' && cameraController) {
-      return cameraController.applyFreeLookRotation(dx, dy);
-    }
-    return;
-  }
-  function applyFreeLookPan(dx: number, dy: number): void {
-    if (typeof cameraController !== 'undefined' && cameraController) {
-      return cameraController.applyFreeLookPan(dx, dy);
-    }
-    return;
-  }
   function applyFreeLookDolly(delta: number): void {
     if (typeof cameraController !== 'undefined' && cameraController) {
       return cameraController.applyFreeLookDolly(delta);
@@ -3516,11 +3079,9 @@ export const mount = async ({
             const halfWidth = Math.max(outerRadius, 1);
             const paddedHalfWidth = Math.max(1, halfWidth * paddingHint);
             const paddedHalfHeight = Math.max(1, halfHeight * paddingHint);
-            const paddedMax = Math.max(paddedHalfWidth, paddedHalfHeight, 1);
-            const baseDistance = paddedMax * CAMERA_DISTANCE_FALLOFF;
+            const aspect = Math.max(state.canvasAspect || 1, 1e-3);
             const currentRig = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
             if (state.projectionMode === 'perspective' && nextMode === 'ortho') {
-              const aspect = Math.max(state.canvasAspect || 1, 1e-3);
               const halfFovY = Math.max(BASE_FOV * 0.5, 1e-4);
               const halfFovX = Math.atan(Math.tan(halfFovY) * aspect);
               const targetVec: Vec3 = [state.panX, state.panY, state.pivot?.[2] ?? 0];
@@ -3571,7 +3132,6 @@ export const mount = async ({
 
               }
             } else if (state.projectionMode === 'ortho' && nextMode === 'perspective') {
-              const aspect = Math.max(state.canvasAspect || 1, 1e-3);
               const halfFovY = Math.max(BASE_FOV * 0.5, 1e-4);
               const halfFovX = Math.atan(Math.tan(halfFovY) * aspect);
               const halfHeightOrtho = paddedHalfHeight / Math.max(state.zoom, 1e-3);
@@ -3841,7 +3401,6 @@ export const mount = async ({
     }
   };
 
-  const releasePointer = (): void => cameraController?.releasePointer?.();
 
   const preventContextMenu = (event: Event): void => {
     event.preventDefault();
@@ -3990,10 +3549,7 @@ export const mount = async ({
       const halfWidth = Math.max(outerRadius, 1);
       const paddedHalfWidth = Math.max(1, halfWidth * paddingHint);
       const paddedHalfHeight = Math.max(1, halfHeight * paddingHint);
-      const paddedMax = Math.max(paddedHalfWidth, paddedHalfHeight, 1);
-      const baseDistance = paddedMax * CAMERA_DISTANCE_FALLOFF;
       const oldMode = state.projectionMode;
-      // Build current camera rig to extract fov/distance for mapping
       const currentRig = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
       const nextMode = oldMode === 'ortho' ? 'perspective' : 'ortho';
       if (oldMode === 'perspective' && nextMode === 'ortho') {
@@ -5142,7 +4698,39 @@ export const mount = async ({
         lastOperation = 'draw-wireframe';
         pass.draw(wireframeVerts);
         totalDrawCalls += 1;
+        pass.draw(wireframeVerts);
+        totalDrawCalls += 1;
         console.debug('[WebGPU:diag] wireframe-draw', { wireframeVerts, solidVerts: safeDrawVerts });
+      }
+
+      if (debugSegmentsBuffer && debugSegmentsCount > 0) {
+        if (!debugLinePipeline || debugPipelineStyleId !== activePipelineStyleId) {
+          console.log(`[WebGPU] Creating debug pipeline for style ${activePipelineStyleId}...`);
+          const styleToLoad = activePipelineStyleId;
+          createDebugPipeline(styleToLoad).then(p => {
+            if (p && !disposed) {
+              debugLinePipeline = p;
+              debugPipelineStyleId = styleToLoad;
+              // Create bind group with only the bindings used by the debug shader (0 and 4)
+              try {
+                debugBindGroup = createDebugBindGroup(p);
+              } catch (e) { console.warn('[WebGPU] Debug BG failed', e); }
+            }
+          });
+        }
+
+        if (debugLinePipeline && debugBindGroup && debugPipelineStyleId === activePipelineStyleId) {
+          /* if (frameCounter % 120 === 0) {
+            console.log(`[WebGPU] RENDER: Drawing ${debugSegmentsCount} debug verts (Style: ${debugPipelineStyleId})`);
+          } */
+          pass.setPipeline(debugLinePipeline);
+          pass.setBindGroup(0, debugBindGroup);
+          pass.setVertexBuffer(0, debugSegmentsBuffer!);
+          pass.draw(debugSegmentsCount);
+          totalDrawCalls += 1;
+        } else if (debugSegmentsCount > 0 && frameCounter % 120 === 0) {
+          console.log(`[WebGPU] RENDER SKIP: pipeline=${!!debugLinePipeline}, bg=${!!debugBindGroup}, styleMatch=${debugPipelineStyleId === activePipelineStyleId} (Debug: ${debugPipelineStyleId}, Active: ${activePipelineStyleId})`);
+        }
       }
 
       pass.end();
@@ -5297,6 +4885,53 @@ export const mount = async ({
   let rafHandle: number | null = null;
   // let disposed = false; // Moved to top of scope
 
+  // --- DEBUG LINES STATE ---
+  let debugSegmentsBuffer: GPUBuffer | null = null;
+  let debugSegmentsCount: number = 0;
+  let debugLinePipeline: GPURenderPipeline | null = null;
+  let debugBindGroup: GPUBindGroup | null = null;
+  let debugPipelineStyleId: number | null = null;
+
+  const createDebugPipeline = async (styleId: number): Promise<GPURenderPipeline | null> => {
+    const code = ShaderManager.getInstance().getDebugLinesWGSL(styleId);
+    const module = await createShaderModule(device, code, 'debug-lines');
+    if (!module) return null;
+
+    try {
+      return await device.createRenderPipelineAsync({
+        label: 'debug-lines',
+        layout: 'auto',
+        vertex: {
+          module,
+          entryPoint: 'vs_main',
+          buffers: [{
+            arrayStride: 8, // 2 floats (u,v)
+            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }]
+          }]
+        },
+        fragment: {
+          module,
+          entryPoint: 'fs_main',
+          targets: [{
+            format: format,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' }
+            }
+          }]
+        },
+        primitive: { topology: 'line-list' }, // Segments are lines
+        depthStencil: {
+          depthWriteEnabled: true,
+          depthCompare: 'less-equal',
+          format: depthFormatUsed || 'depth24plus',
+        }
+      });
+    } catch (e) {
+      console.error('[WebGPU] Failed to create debug pipeline', e);
+      return null;
+    }
+  };
   // Idle detection for resource savings
   // DEFER creation until after first animation frame to prevent
   // visibility change events from destabilizing GPU initialization.
@@ -5843,6 +5478,26 @@ export const mount = async ({
     toggleAutoPivot: () => toggleAutoPivot(),
     getAutoPivot: () => Boolean(state.autoPivotFromCamera),
     dispose,
+    setDebugSegments: (segments: Float32Array) => {
+      if (disposed) return;
+      console.log(`[WebGPU] setDebugSegments: ${segments.length} floats (${segments.length / 4} segments)`);
+      if (debugSegmentsBuffer) {
+        debugSegmentsBuffer.destroy();
+        debugSegmentsBuffer = null;
+      }
+      debugSegmentsCount = segments.length / 2;
+      if (debugSegmentsCount > 0) {
+        debugSegmentsBuffer = device.createBuffer({
+          size: segments.byteLength,
+          usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          mappedAtCreation: true,
+          label: 'debug-segments'
+        });
+        new Float32Array(debugSegmentsBuffer.getMappedRange()).set(segments);
+        debugSegmentsBuffer.unmap();
+      }
+      state.cameraDirty = true;
+    },
   };
 
   return controller;

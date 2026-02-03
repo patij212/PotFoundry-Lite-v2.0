@@ -661,3 +661,73 @@ describe('Staging Buffer Size', () => {
         expect(counterSize).toBe(4);
     });
 });
+
+// ============================================================================
+// Test: Newton-Raphson Refinement Simulation
+// ============================================================================
+
+describe('Newton-Raphson Refinement Simulation', () => {
+    // Simulate the scalar field R(u) along the principal direction
+    // For testing, we use a simple inverted parabola: y = -(x - target)^2 + 1
+    // Peak is at x = target.
+    // First Derivative: y' = -2(x - target)
+    // Second Derivative: y'' = -2
+
+    const TARGET = 0.54321; // Sub-pixel peak location
+
+    function eval_r_mock(x: number): number {
+        return -Math.pow(x - TARGET, 2) + 1.0;
+    }
+
+    // Finite Difference Derivatives (mimicking shader)
+    function get_derivatives(x: number, eps: number) {
+        const c = eval_r_mock(x);
+        const l = eval_r_mock(x - eps);
+        const r = eval_r_mock(x + eps);
+
+        // Central Difference for 1st Deriv
+        const d1 = (r - l) / (2 * eps);
+
+        // Central Difference for 2nd Deriv
+        const d2 = (r - 2 * c + l) / (eps * eps);
+
+        return { d1, d2 };
+    }
+
+    function solveNewton(initialGuess: number, iterations: number, eps: number): number {
+        let x = initialGuess;
+        for (let i = 0; i < iterations; i++) {
+            const { d1, d2 } = get_derivatives(x, eps);
+            
+            // Newton Step: x_new = x - f'(x) / f''(x)
+            // Here we want to MAXIMIZE f(x), so we find zero of f'(x).
+            // So we apply Newton to f'(x).
+            // delta = -d1 / d2
+            
+            if (Math.abs(d2) < 1e-6) break; // Avoid divide by zero
+
+            const delta = -d1 / d2;
+            x += delta;
+        }
+        return x;
+    }
+
+    it('should converge to the peak from the left', () => {
+        const start = 0.4;
+        const result = solveNewton(start, 5, 0.001);
+        expect(result).toBeCloseTo(TARGET, 4);
+    });
+
+    it('should converge to the peak from the right', () => {
+        const start = 0.6;
+        const result = solveNewton(start, 5, 0.001);
+        expect(result).toBeCloseTo(TARGET, 4);
+    });
+
+    it('should converge within 3 iterations for quadratic', () => {
+        // Newton is quadratic convergence, should be exact for quadratic function in 1 step theoretically
+        const start = 0.8; 
+        const result = solveNewton(start, 3, 0.001);
+        expect(result).toBeCloseTo(TARGET, 5);
+    });
+});

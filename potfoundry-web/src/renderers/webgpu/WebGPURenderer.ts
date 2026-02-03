@@ -1,5 +1,4 @@
 
-import { WebGPUState } from '../../types';
 
 export class WebGPURenderer {
     public device: GPUDevice | null = null;
@@ -9,7 +8,6 @@ export class WebGPURenderer {
     public canvas: HTMLCanvasElement;
 
     private depthTexture: GPUTexture | null = null;
-    private msaaTexture: GPUTexture | null = null; // If we use MSAA
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;

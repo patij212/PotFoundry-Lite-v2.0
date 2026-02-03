@@ -8,9 +8,11 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 
 **Future Vision (v4.0):** Enhanced web platform with marketplace, mobile optimization, and community features.
 
+> **Note**: The legacy Python/Streamlit UI and Qt Desktop plans have been archived. The project is effectively a "Web Platform" now.
+
 ---
 
-## Current State (v3.1.0 - December 2025)
+## Current State (v3.1.0 - Feb 2026)
 
 ### ✅ Production Web Application
 
@@ -50,17 +52,11 @@ This document outlines the evolution of PotFoundry from its origins to the curre
    - Design presets and library
    - Cloudflare Pages deployment
 
-7. **Python Core Library**
-   - UI-agnostic geometry engine
-   - Pydantic v2 validation
-   - YAML batch processing
-   - 99 passing tests
-
 ---
 
 ## Near-Term Roadmap (v3.2 - v3.5)
 
-### v3.2 - Export Enhancements (Q1 2025)
+### v3.2 - Export Enhancements (Q1 2026)
 
 | Feature | Priority | Effort |
 |---------|----------|--------|
@@ -69,7 +65,7 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 | Export preview dimensions | Medium | 1 day |
 | Batch export | Medium | 2 days |
 
-### v3.3 - UI/UX Improvements (Q1 2025)
+### v3.3 - UI/UX Improvements (Q1 2026)
 
 | Feature | Priority | Effort |
 |---------|----------|--------|
@@ -79,7 +75,7 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 | Undo/redo support | Medium | 3 days |
 | Parameter locking | Low | 1 day |
 
-### v3.4 - Advanced Styles (Q2 2025)
+### v3.4 - Advanced Styles (Q2 2026)
 
 | Feature | Priority | Effort |
 |---------|----------|--------|
@@ -88,7 +84,7 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 | User-defined style parameters | Medium | 3 days |
 | Style blending | Low | 2 days |
 
-### v3.5 - Community Features (Q2 2025)
+### v3.5 - Community Features (Q2 2026)
 
 | Feature | Priority | Effort |
 |---------|----------|--------|
@@ -101,7 +97,7 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 
 ## Long-Term Roadmap (v4.0)
 
-### v4.0 - Platform Evolution (2025-2026)
+### v4.0 - Platform Evolution (2026-2027)
 
 #### Marketplace
 - [ ] Design marketplace for selling/buying designs
@@ -140,6 +136,7 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 ### Documentation
 - [x] Web app README.md
 - [x] Web app ARCHITECTURE.md
+- [/] Consolidated Agents Guide (`agents.md`)
 - [ ] API documentation
 - [ ] User guide / tutorial
 
@@ -151,28 +148,18 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 
 ---
 
-## Legacy Components
-
-### Streamlit UI (Deprecated)
-The original Streamlit/Python UI (`pfui/`, `app.py`) is deprecated in favor of the WebGPU web app. These files remain for reference but are not actively maintained.
-
-### Qt Desktop App (On Hold)
-The original Qt desktop evolution plan has been superseded by the web-first approach. A future desktop app may be considered using Electron or Tauri if there's demand.
-
----
-
 ## Version History
 
 | Version | Date | Focus |
 |---------|------|-------|
-| v1.0 | 2024 | Initial Streamlit app |
+| v1.0 | 2024 | Initial Streamlit app (Archived) |
 | v2.0 | 2025 | Binary STL, schema validation |
 | v3.0 | 2025 | WebGPU React web app |
-| v3.1 | 2025 | Documentation cleanup, polish |
-| v3.2+ | 2025 | Enhanced exports, community |
-| v4.0 | 2026 | Marketplace, mobile, plugins |
+| v3.1 | 2026 | Documentation cleanup, Polish |
+| v3.2+ | 2026 | Enhanced export, Community |
+| v4.0 | 2027 | Marketplace, Mobile, Plugins |
 
 ---
 
-*Last Updated: December 2025*
+*Last Updated: February 2026*
 *Version: 3.1.0*

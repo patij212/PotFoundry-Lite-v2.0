@@ -1,16 +1,16 @@
 # TODO - PotFoundry Development Roadmap
 
-This document tracks planned features, improvements, and technical debt for future versions of PotFoundry.
+This document tracks planned features, improvements, and technical debt for the **PotFoundry Web Application**.
 
-**Last Updated:** December 2025  
-**Current Version:** v3.1.0  
+**Last Updated:** February 2026
+**Current Version:** v3.1.0 (WebGPU)
 **Primary Product:** potfoundry-web (WebGPU React Application)
 
-> **Note**: The web app (`potfoundry-web/`) is now the primary product. Legacy Streamlit UI tasks are deprioritized.
+> **Note**: The legacy Python/Streamlit UI has been archived. All development is now focused on the WebGPU web application.
 
 ---
 
-## 🌐 v3.2.0 - Web App Enhancements (Q4 2025)
+## 🌐 v3.2.0 - Web App Enhancements (Q1 2026)
 
 ### High Priority
 
@@ -46,13 +46,13 @@ This document tracks planned features, improvements, and technical debt for futu
 - [ ] Implement progressive mesh refinement for preview
 - [ ] Add mesh simplification option for faster preview
 - [ ] Cache more aggressively with smarter invalidation
-- [ ] Profile and optimize hot paths
+- [ ] Profile and optimize hot paths (WASM candidates?)
 - [ ] Add performance metrics dashboard
 
 #### Export & Integration
-- [ ] Add OBJ export format
-- [ ] Add 3MF export format (with metadata)
-- [ ] Add STEP/IGES export (if feasible)
+- [ ] Add OBJ export format (Client-side)
+- [ ] Add 3MF export format (Client-side, with metadata)
+- [ ] Add STEP/IGES export (if feasible via WASM)
 - [ ] Slicer integration (PrusaSlicer, Cura)
 - [ ] Export with embedded settings/metadata
 
@@ -73,7 +73,7 @@ This document tracks planned features, improvements, and technical debt for futu
 
 ---
 
-## 🎯 v3.3.0 - Advanced Features (Q1 2026)
+## 🎯 v3.3.0 - Advanced Features (Q2 2026)
 
 ### Style System Enhancements
 - [ ] Add 3-5 new decorative styles
@@ -104,139 +104,17 @@ This document tracks planned features, improvements, and technical debt for futu
 
 ---
 
-## 🖥️ v3.4.0 - Qt Desktop Prototype (Q1 2026)
+## 🔧 Technical Debt & Code Quality
 
-See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
+### WebGPU / TypeScript
+- [ ] **Strict Typing**: Achieve 100% strict mode compliance in `potfoundry-web`.
+- [ ] **Refactor `webgpu_core.ts`**: Break down the monolithic file into `Renderer`, `Scene`, `Geometry` modules.
+- [ ] **Test Coverage**: Increase unit test coverage for `AdaptiveExportComputer` and `ConstrainedTriangulator`.
+- [ ] **WASM Integration**: Explore moving heavy geometric computations (welding, triangulation) to Rust/WASM.
 
-### Phase 1: Core Qt Application
-- [ ] Set up Qt project structure (PySide6)
-- [ ] Port basic parameter controls
-- [ ] Implement VTK 3D preview
-- [ ] Basic file operations (open, save, export)
-- [ ] Settings management
-
-### Phase 2: Feature Parity
-- [ ] Port all Streamlit features to Qt
-- [ ] Improve performance with Qt threading
-- [ ] Better file handling and project management
-- [ ] Enhanced keyboard/mouse interaction
-
-### Phase 3: Desktop-Specific Features
-- [ ] Multi-window support
-- [ ] Tabbed interface for multiple designs
-- [ ] Native file dialogs and system integration
-- [ ] GPU-accelerated rendering
-- [ ] Offline mode with full functionality
-
----
-
-## 🏗️ v3.5.0 - Production Desktop App (Q1 2026)
-
-### Deployment
-- [ ] PyInstaller packaging (Windows, macOS, Linux)
-- [ ] Auto-update mechanism
-- [ ] Crash reporting and telemetry (opt-in)
-- [ ] Installer/DMG/AppImage creation
-- [ ] Code signing and notarization
-
-### Professional Features
-- [ ] Project management (save, load, organize)
-- [ ] Version control integration
-- [ ] Plugin system for extensions
-- [ ] Scripting API (Python, JavaScript)
-- [ ] Professional licensing system
-
-### Performance & Scalability
-- [ ] Multi-threaded mesh generation
-- [ ] GPU-accelerated preview
-- [ ] Large mesh handling (millions of triangles)
-- [ ] Memory optimization
-- [ ] Startup time optimization
-
----
-
-## 🔧 Technical Debt & Code Quality (Q1 2026)
-
-### Repository Refactoring (NEW - January 2026) 🏗️
-- [ ] **Execute comprehensive repository refactoring plan** - See [REFACTORING_INDEX.md](REFACTORING_INDEX.md)
-  - [ ] Phase 1: Documentation & File Organization (2-3h, Low Risk) ⭐ **READY TO EXECUTE**
-    - Archive historical documents (13+ files)
-    - Reorganize docs/ with guides/ subdirectory
-    - Delete temporary files, update .gitignore
-    - Create CONTRIBUTING.md
-    - **Result:** Clean root directory (~20 files vs 58)
-  - [ ] Phase 2: Code Structure Refactoring (8-12h, Medium Risk)
-    - Split app.py: 3015 LOC → ~500 LOC
-    - Refactor pfui/schemas.py: 2335 LOC → ~800 LOC
-    - Refactor pfui/preview.py: 1141 LOC → ~600 LOC
-    - Consolidate dual geometry implementations
-  - [ ] Phase 3: Component Extraction (6-8h, Medium Risk)
-    - Create pfui/widgets/ package
-    - Create potfoundry/validators/ package
-  - [ ] Phase 4: Testing Infrastructure (4-6h, Low Risk)
-    - Reorganize tests by category
-    - Add property-based tests
-  - [ ] Phase 5: CI/CD & Automation (3-4h, Low Risk)
-    - GitHub Actions workflows
-    - Automated testing and coverage
-  - 📚 **Planning Documents:**
-    - [REFACTORING_EXECUTIVE_SUMMARY.md](REFACTORING_EXECUTIVE_SUMMARY.md) - Overview for stakeholders
-    - [REFACTORING_PLAN.md](REFACTORING_PLAN.md) - Comprehensive 5-phase strategy
-    - [REFACTORING_ANALYSIS.md](REFACTORING_ANALYSIS.md) - Pros/cons analysis
-    - [MIGRATION_GUIDE_PHASE1.md](MIGRATION_GUIDE_PHASE1.md) - Step-by-step Phase 1 guide
-  - **Status:** Planning complete, scaffolding ready, awaiting execution approval
-
-### High Priority
-- [x] ~~Reduce remaining 125 semicolon linting warnings (refactor to multi-line)~~ ✅ **COMPLETED** - Fixed all 124 E702 warnings
-- [x] ~~Fix unused variable warnings (F841)~~ ✅ **COMPLETED** - Fixed all 10 F841 warnings
-- [ ] **Add type hints to all remaining functions** ✅ **Phase 3 COMPLETE - 80% codebase coverage!**
-  - ✅ Created mypy.ini configuration
-  - ✅ Added TYPE_HINTS_GUIDE.md documentation
-  - ✅ Phase 1: Core modules (~65 functions)
-    - ✅ potfoundry/geometry.py (~25 functions)
-    - ✅ potfoundry/core/geometry.py (~20 functions)
-    - ✅ potfoundry/yaml_api.py (~10 functions)
-    - ✅ pfui/colors.py (~5 functions)
-    - ✅ pfui/deeplink.py (~5 functions)
-  - ✅ Phase 2: Support modules (~12 functions) ✅
-    - ✅ potfoundry/core/io/stl.py (~4 functions)
-    - ✅ pfui/state.py (~6 functions)
-    - ✅ pfui/exporters.py (~2 functions)
-  - ✅ Phase 3: UI layer key functions (~13 functions) **NEW - JUST COMPLETED** ✅
-    - ✅ pfui/controls.py (~2 functions)
-    - ✅ pfui/preview.py (~2 functions)
-    - ✅ pfui/presets.py (~3 functions)
-    - ✅ app.py (~2 utility functions)
-  - 📋 Phase 4 (Optional): Remaining UI functions (~20 functions)
-  - 📋 Phase 5 (Optional): Strict mode
-    - [ ] Enable disallow_untyped_defs
-    - [ ] Resolve all mypy warnings
-    - [ ] 100% type coverage
-  - ✅ **Total: ~90 functions with type hints (80% of codebase)**
-  - ✅ **100% coverage on core and support modules**
-  - ✅ **Key UI layer functions covered**
-- [x] **Improve test coverage to >90%** ✅ **COMPLETED** - All phases complete!
-  - ✅ Phase 1: potfoundry/geometry.py coverage improved 57% → 81% (+24%)
-  - ✅ Phase 2: potfoundry/core/geometry.py coverage improved 86% → 87% (+1%)
-  - ✅ Phase 3: potfoundry/schema.py coverage improved 68% → **99%** (+31%) 🎉
-  - ✅ Phase 4: potfoundry/yaml_api.py coverage improved 17% → **90%** (+73%) 🎉
-  - ✅ UX Tests: Added comprehensive pfui module testing (+33 tests)
-- [ ] Add property-based testing (Hypothesis)
-- [ ] Set up CI/CD pipeline (GitHub Actions)
-
-### Medium Priority
-- [ ] Refactor large functions (>100 lines)
-- [ ] Extract magic numbers to constants
-- [ ] Improve error handling consistency
-- [ ] Add logging framework (structured logging)
-- [ ] Performance regression tests
-
-### Low Priority
-- [ ] Migrate to pyproject.toml (from requirements.txt)
-- [ ] Add mypy strict mode
-- [ ] Add security scanning (Bandit, Safety)
-- [ ] Improve docstring coverage to 100%
-- [ ] Add dependency management (Poetry/PDM)
+### Data Validation
+- [ ] Unify validation logic between UI (React) and Core (if used).
+- [ ] Add runtime schema validation for imported presets.
 
 ---
 
@@ -245,8 +123,8 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 ### Test Coverage
 - [ ] Add UI tests (Playwright/Selenium)
 - [ ] Add visual regression tests for previews
-- [ ] Add load tests for large meshes
-- [ ] Add mutation testing (mutmut)
+- [ ] Add load tests for large meshes (8k resolution)
+- [ ] Add mutation testing
 - [ ] Improve edge case coverage
 
 ### Test Infrastructure
@@ -268,25 +146,20 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 - [ ] Create example gallery
 
 ### Developer Documentation
+- [/] **Consolidated Agents Guide**: `agents.md` (In Progress)
 - [ ] Add architecture decision records (ADRs)
 - [ ] Create contribution guide
 - [ ] Add plugin development guide
 - [ ] Document release process
 - [ ] Add performance optimization guide
 
-### API Documentation
-- [ ] Generate API docs (Sphinx)
-- [ ] Add more code examples
-- [ ] Create integration examples
-- [ ] Document all public APIs
-- [ ] Add migration guides for breaking changes
-
 ---
 
 ## 🐛 Known Issues & Bug Fixes
 
 ### Critical
-- None currently identified ✅
+- [ ] **Seam Flattening**: The mesh pipeline has a known issue where the seam (0/360 degrees) is flattened, causing a visible artifact. (See `mesh_pipeline_audit_comprehensive.md.resolved`)
+- [ ] **Memory Bounds**: High-resolution exports (8k) can hit WebGPU buffer limits or browser memory caps.
 
 ### High Priority
 - [ ] Investigate occasional cache invalidation issues
@@ -302,26 +175,6 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 - [ ] Improve Windows path handling edge cases
 - [ ] Better error messages for network issues (library features)
 - [ ] Improve handling of very small/large parameter values
-
----
-
-## 🎨 New Style Ideas
-
-### Planned Styles
-- [ ] **GothicArches** - Medieval arch patterns
-- [ ] **WaveInterference** - Moiré patterns from wave interference
-- [ ] **Crystalline** - Faceted, crystal-like surfaces
-- [ ] **Cellular** - Voronoi/cellular patterns
-- [ ] **TribalPattern** - Geometric tribal designs
-- [ ] **ArtDeco** - 1920s Art Deco styling
-- [ ] **BambooSegments** - Bamboo-inspired segments
-- [ ] **DragonScales** - Overlapping scale pattern
-
-### Style System Improvements
-- [ ] Style preview generator
-- [ ] Style blending/morphing
-- [ ] Style parameters auto-tuning
-- [ ] Style collections/themes
 
 ---
 
@@ -426,7 +279,6 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 
 ### v4.0 Goals
 - [ ] 1000+ active users
-- [ ] Desktop app downloads across all platforms
 - [ ] Commercial license sales
 - [ ] <0.1% crash rate
 - [ ] Active community (forum, Discord)

@@ -191,9 +191,9 @@ export class FeatureExtractionComputer {
             const { dimensions: dim, styleOpts } = params;
             const styleUniformData = new Float32Array([
                 // Chunk 0 (0-3)
-                dim.H, dim.Rt, dim.Rb, 0.0,
+                dim.H, dim.Rt, dim.Rb, dim.tWall ?? 0.0,
                 // Chunk 1 (4-7)
-                0.0, 0.0, dim.expn, params.styleIndex,
+                dim.tBottom ?? 0.0, dim.rDrain ?? 0.0, dim.expn, params.styleIndex,
                 // Chunk 2 (8-11)
                 styleOpts.spinTurns ?? 0,
                 ((styleOpts.spinPhaseDeg ?? 0) * Math.PI) / 180, // Radians
