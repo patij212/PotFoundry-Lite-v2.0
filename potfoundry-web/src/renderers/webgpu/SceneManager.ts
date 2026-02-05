@@ -23,21 +23,30 @@ export class SceneManager {
     }
 
     public async init(initialStyleId: number = 0) {
-        if (!this.renderer.device) return false;
+        try {
+            if (!this.renderer.device) return false;
 
-        this.initStartTime = performance.now();
-        console.log(`[SceneManager] Init started. Prioritizing request for Style ${initialStyleId}`);
-        this.createBuffers();
+            this.initStartTime = performance.now();
+            console.log(`[SceneManager] Init started. Prioritizing request for Style ${initialStyleId}`);
 
-        // 1. Compile ONLY the requested style first.
-        // This ensures the user gets a result ASAP without competing with 17 other compilations.
-        await this.activateStyle(initialStyleId);
+            this.createBuffers();
+            console.log('[SceneManager] Buffers created successfully.');
 
-        // 2. Start background compilation of remaining styles AFTER we have a result.
-        // We run these SEQUENTIALLY to avoid choking the GPU driver with 18 concurrent requests.
-        this.warmupPipelines(initialStyleId);
+            // 1. Compile ONLY the requested style first.
+            await this.activateStyle(initialStyleId);
 
-        return !!this.pipeline;
+            // 2. Start background compilation of remaining styles
+            this.warmupPipelines(initialStyleId);
+
+            return !!this.pipeline;
+        } catch (err) {
+            console.error('[SceneManager] CRITICAL INIT FAILURE:', err);
+            // If it's not an Error object, try to stringify it
+            if (typeof err === 'object') {
+                try { console.error('[SceneManager] Error Details:', JSON.stringify(err)); } catch (e) { }
+            }
+            return false;
+        }
     }
 
     private async warmupPipelines(excludeId: number) {

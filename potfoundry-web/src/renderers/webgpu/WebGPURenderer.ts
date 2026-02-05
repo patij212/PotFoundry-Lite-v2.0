@@ -84,9 +84,15 @@ export class WebGPURenderer {
         if (!this.context || !this.device) return;
 
         // Handle High-DPI
-        const dpr = Math.min(window.devicePixelRatio || 1, 2); // Cap at 2x
+        // Mobile optimization: Cap at 1.5x on mobile to save memory (7MP -> 4MP)
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const maxDpr = isMobile ? 1.5 : 2.0;
+        const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
+
         const width = Math.max(1, Math.floor(this.canvas.clientWidth * dpr));
         const height = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
+
+        console.log(`[WebGPURenderer] Configuring Context. Mobile: ${isMobile}, DPR: ${dpr}, Size: ${width}x${height}`);
 
         if (this.canvas.width !== width || this.canvas.height !== height) {
             this.canvas.width = width;
