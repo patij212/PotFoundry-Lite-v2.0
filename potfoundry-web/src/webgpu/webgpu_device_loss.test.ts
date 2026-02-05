@@ -44,9 +44,9 @@ describe('WebGPU Device Loss Handling', () => {
 
         handleDeviceLost(info, {
             getInitializationComplete: () => true,
-            setDeviceLostDuringInit: mockSetDeviceLostDuringInit,
-            lastOperation: 'render_frame',
-            emit: mockEmit
+            setDeviceLostDuringInit: mockSetDeviceLostDuringInit as any,
+            getLastOperation: () => 'render_frame',
+            emit: mockEmit as any
         });
 
         expect(console.error).toHaveBeenCalledWith(expect.stringContaining('[CRITICAL] WGPU_DEVICE_LOST'));
@@ -65,9 +65,9 @@ describe('WebGPU Device Loss Handling', () => {
 
         handleDeviceLost(info, {
             getInitializationComplete: () => false, // Not initialized yet
-            setDeviceLostDuringInit: mockSetDeviceLostDuringInit,
-            lastOperation: 'init_device',
-            emit: mockEmit
+            setDeviceLostDuringInit: mockSetDeviceLostDuringInit as any,
+            getLastOperation: () => 'init_device',
+            emit: mockEmit as any
         });
 
         expect(mockSetDeviceLostDuringInit).toHaveBeenCalled();
@@ -82,9 +82,9 @@ describe('WebGPU Device Loss Handling', () => {
 
         handleDeviceLost(info, {
             getInitializationComplete: () => true,
-            setDeviceLostDuringInit: mockSetDeviceLostDuringInit,
-            lastOperation: 'cleanup',
-            emit: mockEmit
+            setDeviceLostDuringInit: mockSetDeviceLostDuringInit as any,
+            getLastOperation: () => 'cleanup',
+            emit: mockEmit as any
         });
 
         expect(console.error).not.toHaveBeenCalled();
@@ -101,8 +101,8 @@ describe('WebGPU Device Loss Handling', () => {
         // No emit passed
         handleDeviceLost(info, {
             getInitializationComplete: () => true,
-            setDeviceLostDuringInit: mockSetDeviceLostDuringInit,
-            lastOperation: 'render',
+            setDeviceLostDuringInit: mockSetDeviceLostDuringInit as any,
+            getLastOperation: () => 'render',
             emit: undefined
         });
 

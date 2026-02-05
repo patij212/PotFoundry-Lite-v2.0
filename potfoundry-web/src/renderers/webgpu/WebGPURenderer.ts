@@ -20,9 +20,16 @@ export class WebGPURenderer {
         }
 
         try {
+            // Try high-performance first (preferred for desktop)
             this.adapter = await navigator.gpu.requestAdapter({
                 powerPreference: 'high-performance'
             });
+
+            // Fallback to default if high-performance fails (common on mobile)
+            if (!this.adapter) {
+                console.warn('[WebGPURenderer] High-performance adapter not found, trying default...');
+                this.adapter = await navigator.gpu.requestAdapter();
+            }
 
             if (!this.adapter) {
                 console.error('[WebGPURenderer] No adapter found');
