@@ -87,7 +87,10 @@ export async function mountWebGL(
         }
 
         console.log('[WebGL] Step 2: Configuring renderer...');
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const maxDpr = isMobile ? 1.5 : 2.0;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDpr));
+        console.log(`[WebGL] PixelRatio set. Mobile: ${isMobile}, MaxDPR: ${maxDpr}`);
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.0;

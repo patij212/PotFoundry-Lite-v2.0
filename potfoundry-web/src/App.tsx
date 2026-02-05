@@ -54,6 +54,11 @@ import { AdaptiveExportVerifier } from './debug/AdaptiveExportVerifier';
 import { TriangulatorVerifier } from './debug/TriangulatorVerifier';
 
 const App: React.FC = () => {
+    // Version Check for Debugging
+    useEffect(() => {
+        console.log('%c PotFoundry Web v5.1 (Mobile Fixes) ', 'background: #222; color: #bada55; font-size: 16px');
+    }, []);
+
     // Check for verification mode
     const [isVerifyMode, setIsVerifyMode] = useState<false | 'adaptive' | 'triangulator'>(false);
     useEffect(() => {
