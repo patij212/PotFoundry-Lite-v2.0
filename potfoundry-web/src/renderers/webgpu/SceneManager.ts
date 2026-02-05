@@ -158,7 +158,20 @@ export class SceneManager {
             };
 
             const start = performance.now();
-            const pipeline = await device.createRenderPipelineAsync(pipelineDescriptor);
+            const pipeline = await device.createRenderPipelineAsync(pipelineDescriptor).catch(async (err) => {
+                console.error(`[SceneManager] createRenderPipelineAsync failed for Style ${styleId}`, err);
+
+                // Retrieve detailed compilation info
+                const info = await module.getCompilationInfo();
+                if (info.messages.length > 0) {
+                    console.error(`[SceneManager] Shader Compilation Errors for Style ${styleId}:`);
+                    for (const msg of info.messages) {
+                        console.error(`Line ${msg.lineNum}:${msg.linePos} - ${msg.message}`);
+                    }
+                }
+                throw err;
+            });
+
             const duration = performance.now() - start;
 
             // Commit to cache
@@ -176,8 +189,15 @@ export class SceneManager {
         this.compilationPromises.set(styleId, compileTask);
 
         // Catch errors to cleanup map if failed
-        compileTask.catch(() => {
+        compileTask.catch(async (err) => {
             this.compilationPromises.delete(styleId);
+            console.error(`[SceneManager] Pipeline compilation failed for Style ${styleId}:`, err);
+
+            // Attempt to get detailed compilation info
+            try {
+                // accessing 'module' from the closure scope of the async IIFE above isn't easy here.
+                // We need to move the logging INSIDE the async task.
+            } catch (e) { /* ignore */ }
         });
 
         return compileTask;
