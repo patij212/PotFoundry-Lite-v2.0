@@ -68,12 +68,22 @@ export async function mountWebGL(
                 alpha: true,
                 powerPreference: 'high-performance',
             });
-            console.log('[WebGL] Step 1 SUCCESS: WebGLRenderer created');
-        } catch (rendererErr) {
-            console.error('[WebGL] Step 1 FAILED: WebGLRenderer creation error:', rendererErr);
-            console.error('[WebGL] Error type:', typeof rendererErr);
-            console.error('[WebGL] Error message:', (rendererErr as Error)?.message);
-            throw rendererErr;
+            console.log('[WebGL] Step 1 SUCCESS: WebGLRenderer created (High Performance)');
+        } catch (highPerfErr) {
+            console.warn('[WebGL] High-performance context failed, trying default...', highPerfErr);
+            try {
+                renderer = new THREE.WebGLRenderer({
+                    canvas,
+                    antialias: true,
+                    alpha: true
+                });
+                console.log('[WebGL] Step 1 SUCCESS: WebGLRenderer created (Default)');
+            } catch (defaultErr) {
+                console.error('[WebGL] Step 1 FAILED: WebGLRenderer creation error:', defaultErr);
+                console.error('[WebGL] Error type:', typeof defaultErr);
+                console.error('[WebGL] Error message:', (defaultErr as Error)?.message);
+                throw defaultErr;
+            }
         }
 
         console.log('[WebGL] Step 2: Configuring renderer...');
