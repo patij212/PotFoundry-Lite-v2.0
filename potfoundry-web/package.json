@@ -5,8 +5,10 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
+        "dev:wrangler": "wrangler pages dev -- npm run dev",
         "build": "vite build",
         "preview": "vite preview",
+        "deploy": "npm run build && wrangler pages deploy dist",
         "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx}\"",

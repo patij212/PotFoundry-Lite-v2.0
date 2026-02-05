@@ -1,0 +1,7 @@
+name = "potfoundry-web"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-01-01"
+
+[vars]
+# Environment variables will be populated from the Cloudflare Dashboard
+# but you can define defaults here if safe/non-secret
