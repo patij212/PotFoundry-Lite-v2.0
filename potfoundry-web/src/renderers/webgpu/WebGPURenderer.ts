@@ -13,6 +13,35 @@ export class WebGPURenderer {
         this.canvas = canvas;
     }
 
+    private async getBestAdapter(): Promise<GPUAdapter | null> {
+        // Option 1: High Performance
+        try {
+            const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+            if (adapter) return adapter;
+        } catch (e) {
+            console.warn('[WebGPURenderer] High-performance adapter request failed:', e);
+        }
+
+        // Option 2: Default
+        try {
+            const adapter = await navigator.gpu.requestAdapter();
+            if (adapter) return adapter;
+        } catch (e) {
+            console.warn('[WebGPURenderer] Default adapter request failed:', e);
+        }
+
+        // Option 3: Compatibility Mode
+        try {
+            console.warn('[WebGPURenderer] Trying compatibility mode...');
+            const adapter = await navigator.gpu.requestAdapter({ compatibilityMode: true } as any);
+            if (adapter) return adapter;
+        } catch (e) {
+            console.warn('[WebGPURenderer] Compatibility mode adapter request failed:', e);
+        }
+
+        return null;
+    }
+
     public async init(): Promise<boolean> {
         if (!navigator.gpu) {
             console.error('[WebGPURenderer] WebGPU not supported');
@@ -20,25 +49,10 @@ export class WebGPURenderer {
         }
 
         try {
-            // Try high-performance first (preferred for desktop)
-            this.adapter = await navigator.gpu.requestAdapter({
-                powerPreference: 'high-performance'
-            });
-
-            // Fallback to default if high-performance fails (common on mobile)
-            if (!this.adapter) {
-                console.warn('[WebGPURenderer] High-performance adapter not found, trying default...');
-                this.adapter = await navigator.gpu.requestAdapter();
-            }
-
-            // Fallback to compatibility mode (Android/Chrome specific)
-            if (!this.adapter) {
-                console.warn('[WebGPURenderer] Default adapter not found, trying compatibility mode...');
-                this.adapter = await navigator.gpu.requestAdapter({ compatibilityMode: true } as any);
-            }
+            this.adapter = await this.getBestAdapter();
 
             if (!this.adapter) {
-                console.error('[WebGPURenderer] No adapter found');
+                console.error('[WebGPURenderer] No WebGPU adapter found after all attempts');
                 return false;
             }
 
@@ -61,7 +75,7 @@ export class WebGPURenderer {
 
             return true;
         } catch (err) {
-            console.error('[WebGPURenderer] Initialization failed', err);
+            console.error('[WebGPURenderer] Initialization failed (device/context creation):', err);
             return false;
         }
     }
