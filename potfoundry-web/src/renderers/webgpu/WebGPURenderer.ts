@@ -31,6 +31,12 @@ export class WebGPURenderer {
                 this.adapter = await navigator.gpu.requestAdapter();
             }
 
+            // Fallback to compatibility mode (Android/Chrome specific)
+            if (!this.adapter) {
+                console.warn('[WebGPURenderer] Default adapter not found, trying compatibility mode...');
+                this.adapter = await navigator.gpu.requestAdapter({ compatibilityMode: true } as any);
+            }
+
             if (!this.adapter) {
                 console.error('[WebGPURenderer] No adapter found');
                 return false;

@@ -25,7 +25,14 @@ async function isWebGPUAvailable(): Promise<boolean> {
 
     // Try to get an adapter to confirm WebGPU actually works
     try {
-        const adapter = await (gpu as GPU).requestAdapter();
+        let adapter = await (gpu as GPU).requestAdapter();
+
+        // Fallback: Try compatibility mode (required for some Android devices)
+        if (!adapter) {
+            console.log('[Renderer] Standard WebGPU adapter not found, trying compatibility mode...');
+            adapter = await (gpu as GPU).requestAdapter({ compatibilityMode: true } as any);
+        }
+
         if (!adapter) {
             console.log('[Renderer] WebGPU adapter not available');
             return false;
