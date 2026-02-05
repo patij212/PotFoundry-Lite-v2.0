@@ -27,10 +27,10 @@ export class SceneManager {
             if (!this.renderer.device) return false;
 
             this.initStartTime = performance.now();
-            console.log(`[SceneManager] Init started. Prioritizing request for Style ${initialStyleId}`);
+            console.log(`[WebGPU] [SceneManager] Init started. Prioritizing request for Style ${initialStyleId}`);
 
             this.createBuffers();
-            console.log('[SceneManager] Buffers created successfully.');
+            console.log('[WebGPU] [SceneManager] Buffers created successfully.');
 
             // 1. Compile ONLY the requested style first.
             await this.activateStyle(initialStyleId);
@@ -40,17 +40,17 @@ export class SceneManager {
 
             return !!this.pipeline;
         } catch (err) {
-            console.error('[SceneManager] CRITICAL INIT FAILURE:', err);
+            console.error('[WebGPU] [SceneManager] CRITICAL INIT FAILURE:', err);
             // If it's not an Error object, try to stringify it
             if (typeof err === 'object') {
-                try { console.error('[SceneManager] Error Details:', JSON.stringify(err)); } catch (e) { }
+                try { console.error('[WebGPU] [SceneManager] Error Details:', JSON.stringify(err)); } catch (e) { }
             }
             return false;
         }
     }
 
     private async warmupPipelines(excludeId: number) {
-        console.log('[SceneManager] Starting background shader warmup (Parallel Blast)...');
+        console.log('[WebGPU] [SceneManager] Starting background shader warmup (Parallel Blast)...');
 
         const idsToWarm = Object.keys(STYLE_FUNCTION_MAP).map(Number).filter(id => id !== excludeId);
 
@@ -58,12 +58,12 @@ export class SceneManager {
         // Browsers/Drivers are generally smart enough to queue these internally.
         // This avoids artificial delays where fast shaders wait for a batch to finish.
         const promises = idsToWarm.map(id => {
-            return this.compilePipeline(id).catch(e => console.warn(`[SceneManager] Warmup warning for Style ${id}`, e));
+            return this.compilePipeline(id).catch(e => console.warn(`[WebGPU] [SceneManager] Warmup warning for Style ${id}`, e));
         });
 
         // We don't await the result to block UI, but we log when everything is done.
         Promise.allSettled(promises).then(() => {
-            console.log('[SceneManager] Background shader warmup complete.');
+            console.log('[WebGPU] [SceneManager] Background shader warmup complete.');
         });
     }
 
@@ -73,7 +73,7 @@ export class SceneManager {
         let newPipeline = this.pipelineCache.get(styleId);
 
         if (!newPipeline) {
-            console.log(`[SceneManager] Cache miss for Style ID ${styleId}. Compiling/Joining...`);
+            console.log(`[WebGPU] [SceneManager] Cache miss for Style ID ${styleId}. Compiling/Joining...`);
             newPipeline = await this.compilePipeline(styleId);
         }
 
@@ -168,14 +168,14 @@ export class SceneManager {
 
             const start = performance.now();
             const pipeline = await device.createRenderPipelineAsync(pipelineDescriptor).catch(async (err) => {
-                console.error(`[SceneManager] createRenderPipelineAsync failed for Style ${styleId}`, err);
+                console.error(`[WebGPU] [SceneManager] createRenderPipelineAsync failed for Style ${styleId}`, err);
 
                 // Retrieve detailed compilation info
                 const info = await module.getCompilationInfo();
                 if (info.messages.length > 0) {
-                    console.error(`[SceneManager] Shader Compilation Errors for Style ${styleId}:`);
+                    console.error(`[WebGPU] [SceneManager] Shader Compilation Errors for Style ${styleId}:`);
                     for (const msg of info.messages) {
-                        console.error(`Line ${msg.lineNum}:${msg.linePos} - ${msg.message}`);
+                        console.error(`[WebGPU] Line ${msg.lineNum}:${msg.linePos} - ${msg.message}`);
                     }
                 }
                 throw err;
@@ -189,7 +189,7 @@ export class SceneManager {
             this.compilationPromises.delete(styleId);
 
             const totalTime = performance.now() - this.initStartTime;
-            console.log(`[SceneManager] Style ${styleId} compiled in ${duration.toFixed(0)}ms. (Ready at ${totalTime.toFixed(0)}ms)`);
+            console.log(`[WebGPU] [SceneManager] Style ${styleId} compiled in ${duration.toFixed(0)}ms. (Ready at ${totalTime.toFixed(0)}ms)`);
 
             return pipeline;
         })();
@@ -200,7 +200,7 @@ export class SceneManager {
         // Catch errors to cleanup map if failed
         compileTask.catch(async (err) => {
             this.compilationPromises.delete(styleId);
-            console.error(`[SceneManager] Pipeline compilation failed for Style ${styleId}:`, err);
+            console.error(`[WebGPU] [SceneManager] Pipeline compilation failed for Style ${styleId}:`, err);
 
             // Attempt to get detailed compilation info
             try {
