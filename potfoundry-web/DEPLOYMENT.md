@@ -31,7 +31,10 @@ npm run deploy
 
 The following environment variables must be configured in the Cloudflare Pages Project Settings > Environment variables:
 
--   `STRIPE_SECRET_KEY`
--   `SUPABASE_URL`
--   `SUPABASE_SERVICE_KEY`
--   `STRIPE_WEBHOOK_SECRET` (if using webhooks)
+-   `STRIPE_SECRET_KEY` (Backend/Functions)
+-   `STRIPE_WEBHOOK_SECRET` (Backend/Functions - if using webhooks)
+-   `SUPABASE_SERVICE_KEY` (Backend/Functions)
+-   `VITE_SUPABASE_URL` (Frontend - Required)
+-   `VITE_SUPABASE_ANON_KEY` (Frontend - Required)
+
+> **Note:** The backend functions will also accept `SUPABASE_URL`, but the Frontend *specifically* requires `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Ensure both are set or aliased. Do **NOT** use the Service Key for the `VITE_SUPABASE_ANON_KEY`.
