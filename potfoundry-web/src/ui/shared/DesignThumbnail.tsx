@@ -32,6 +32,11 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
     const [hasRendered, setHasRendered] = useState(false);
     const [renderError, setRenderError] = useState(false);
 
+    // Scale for device pixel ratio
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const renderWidth = Math.floor(width * dpr);
+    const renderHeight = Math.floor(height * dpr);
+
     // IntersectionObserver for lazy loading
     useEffect(() => {
         if (hasRendered) return;
@@ -66,7 +71,7 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
 
         // Request render from ThumbnailRenderer service
         const renderer = ThumbnailRenderer.getInstance();
-        renderer.renderThumbnail(design, width, height)
+        renderer.renderThumbnail(design, renderWidth, renderHeight)
             .then((imageData) => {
                 if (imageData && canvasRef.current) {
                     const ctx2d = canvasRef.current.getContext('2d');
@@ -89,13 +94,14 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
         <div
             ref={containerRef}
             className="pf-design-thumbnail"
-            style={{ width, height }}
+            style={{ width: '100%', height: '100%' }}
         >
             <canvas
                 ref={canvasRef}
-                width={width}
-                height={height}
+                width={renderWidth}
+                height={renderHeight}
                 className="pf-design-thumbnail__canvas"
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
             {!hasRendered && (
                 <div className="pf-design-thumbnail__placeholder">

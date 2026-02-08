@@ -8,52 +8,43 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { Search, Filter, Grid, List, Check, Sparkles } from 'lucide-react';
+import { Search, Sparkles, Star } from 'lucide-react';
 import { useGeometry, useStyle, useGeometryActions, useStyleActions, useAppearanceActions } from '../../state';
+import type { StyleName } from '../../state/types';
 import {
   PRESETS,
   getPresetsByCategory,
   getCategories,
-  presetStyleToId,
   type PotPreset,
   type PresetCategory,
 } from '../../presets';
 import { Section } from '../shared/Section';
+import { DesignThumbnail } from '../shared/DesignThumbnail';
+import type { LibraryDesign } from '../../context/LibraryContext';
 import './PresetPanel.css';
 
-/** View mode for preset display */
-type ViewMode = 'grid' | 'list';
+// ============================================================================
+// Helpers
+// ============================================================================
 
 /**
- * Preview thumbnail for a preset
- * Uses CSS-based visual representation of the pot shape
+ * Convert PotPreset to LibraryDesign for ThumbnailRenderer
  */
-function PresetThumbnail({ preset }: { preset: PotPreset }) {
-  const { geometry } = preset.config;
-
-  // Calculate shape characteristics for CSS visualization
-  const taperRatio = geometry.bottomOd / geometry.topOd;
-  const aspectRatio = geometry.H / geometry.topOd;
-
-  // Derive visual properties from preset
-  const borderRadius = taperRatio > 0.8 ? '8px' : taperRatio > 0.5 ? '4px 4px 12px 12px' : '4px 4px 20px 20px';
-
-  return (
-    <div
-      className="preset-thumbnail"
-      style={{
-        '--preset-color': preset.color,
-        '--preset-aspect': aspectRatio,
-        '--preset-taper': taperRatio,
-        borderRadius,
-      } as React.CSSProperties}
-    >
-      <div className="preset-thumbnail-inner">
-        <div className="preset-thumbnail-pattern" />
-      </div>
-    </div>
-  );
+function presetToDesign(preset: PotPreset): LibraryDesign {
+  return {
+    id: preset.id,
+    title: preset.title,
+    style: preset.style,
+    created_at: new Date().toISOString(), // Dummy date
+    size: preset.size,
+    opts: preset.opts,
+    appearance: preset.appearance,
+  };
 }
+
+// ============================================================================
+// Sub-components
+// ============================================================================
 
 /**
  * Individual preset card component
@@ -61,30 +52,34 @@ function PresetThumbnail({ preset }: { preset: PotPreset }) {
 function PresetCard({
   preset,
   isActive,
-  viewMode,
   onApply,
+  featured = false,
 }: {
   preset: PotPreset;
   isActive: boolean;
-  viewMode: ViewMode;
   onApply: () => void;
+  featured?: boolean;
 }) {
+  // Convert to LibraryDesign for thumbnail
+  const design = useMemo(() => presetToDesign(preset), [preset]);
+
   return (
     <button
-      className={`preset-card preset-card--${viewMode} ${isActive ? 'preset-card--active' : ''}`}
+      className={`preset-card ${isActive ? 'preset-card--active' : ''} ${featured ? 'preset-card--featured' : ''}`}
       onClick={onApply}
       title={preset.description}
     >
-      <PresetThumbnail preset={preset} />
-      <div className="preset-card-info">
-        <span className="preset-card-name">{preset.name}</span>
-        <span className="preset-card-category">{preset.category}</span>
+      <div className="preset-card-thumb">
+        <DesignThumbnail design={design} width={140} height={105} />
       </div>
-      {isActive && (
-        <div className="preset-card-active-indicator">
-          <Check size={14} />
+
+      <div className="preset-card-info">
+        <div className="preset-card-header">
+          <span className="preset-card-title">{preset.title}</span>
+          {featured && <Star size={12} className="preset-card-star" fill="currentColor" />}
         </div>
-      )}
+        <span className="preset-card-desc">{preset.category}</span>
+      </div>
     </button>
   );
 }
@@ -122,22 +117,17 @@ function CategoryFilters({
   );
 }
 
+// ============================================================================
+// Main Component
+// ============================================================================
+
 /**
  * PresetPanel Component
- *
- * Features:
- * - Visual preset gallery with thumbnails
- * - Category filtering
- * - Search functionality
- * - Grid/list view toggle
- * - One-click preset application
- * - Active preset highlighting
  */
 export function PresetPanel() {
   // Local UI state
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<PresetCategory | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   // Store state
   const currentGeometry = useGeometry();
@@ -146,7 +136,7 @@ export function PresetPanel() {
   // Store actions
   const { setGeometryParams } = useGeometryActions();
   const { setStyle, setStyleOpts } = useStyleActions();
-  const { setPrimaryColor, setCustomGradient } = useAppearanceActions();
+  const { setPrimaryColor, setMidColor, setSecondaryColor, setCustomGradient, setGradientAngle, setLightingPreset } = useAppearanceActions();
 
   // Get available categories
   const categories = useMemo(() => getCategories(), []);
@@ -159,7 +149,7 @@ export function PresetPanel() {
       const query = searchQuery.toLowerCase();
       result = result.filter(
         (preset) =>
-          preset.name.toLowerCase().includes(query) ||
+          preset.title.toLowerCase().includes(query) ||
           preset.description.toLowerCase().includes(query)
       );
     }
@@ -167,54 +157,91 @@ export function PresetPanel() {
     return result;
   }, [activeCategory, searchQuery]);
 
-  // Check if a preset matches current state (simplified check)
+  // Featured presets (Top 3)
+  const featuredPresets = useMemo(() => {
+    // Only show featured if no search/filter is active
+    if (searchQuery || activeCategory) return [];
+
+    // Pick specific highlighted presets
+    return PRESETS.filter(p =>
+      ['geo-spiral', 'organic-ripple', 'exp-celtic'].includes(p.id)
+    );
+  }, [searchQuery, activeCategory]);
+
+  // Remaining presets (excluding featured if showing featured)
+  const listPresets = useMemo(() => {
+    if (featuredPresets.length > 0) {
+      return filteredPresets.filter(p => !featuredPresets.includes(p));
+    }
+    return filteredPresets;
+  }, [filteredPresets, featuredPresets]);
+
+  // Check if a preset matches current state
   const isPresetActive = useCallback(
     (preset: PotPreset): boolean => {
-      const { geometry, style } = preset.config;
-      const styleName = presetStyleToId(style.type);
-
+      // Simple heuristic: match style and height
+      // Exact geometry match is too brittle for floats
       return (
-        currentGeometry.H === geometry.H &&
-        currentGeometry.top_od === geometry.topOd &&
-        currentGeometry.bottom_od === geometry.bottomOd &&
-        currentStyle.name === styleName
+        currentStyle.name === preset.style &&
+        Math.abs(currentGeometry.H - preset.size.height) < 0.1
       );
     },
-    [currentGeometry, currentStyle.name]
+    [currentGeometry.H, currentStyle.name]
   );
 
   // Apply a preset to the store
   const applyPreset = useCallback(
     (preset: PotPreset) => {
-      const { geometry, style, appearance } = preset.config;
-
-      // Convert style type to style name
-      const styleName = presetStyleToId(style.type);
-
-      // Apply geometry
+      // 1. Geometry
       setGeometryParams({
-        H: geometry.H,
-        top_od: geometry.topOd,
-        bottom_od: geometry.bottomOd,
-        t_wall: geometry.tWall,
-        t_bottom: geometry.tBottom,
-        r_drain: geometry.rDrain,
-        expn: geometry.expn,
+        H: preset.size.height,
+        top_od: preset.size.top_od,
+        bottom_od: preset.size.bottom_od,
+        t_wall: preset.size.wall_thickness,
+        t_bottom: preset.size.bottom_thickness,
+        r_drain: preset.size.drain_radius,
+        expn: preset.size.flare_exp,
+        // Extract extra Geometry modifiers from opts (spin/bell)
+        spinTurns: (preset.opts.spin_turns as number) || 0,
+        spinPhase: (preset.opts.spin_phase as number) || 0,
+        spinCurve: (preset.opts.spin_curve as number) || 1,
+        bellAmp: (preset.opts.bell_amp as number) || 0,
+        bellCenter: (preset.opts.bell_center as number) || 0.5,
+        bellWidth: (preset.opts.bell_width as number) || 0.22,
       });
 
-      // Apply style
-      setStyle(styleName);
-      setStyleOpts(style.params);
+      // 2. Style
+      setStyle(preset.style as StyleName);
+      // Filter out geometry modifiers from opts before passing to style opts
+      // (This prevents warnings, though extra props are usually harmless)
+      const styleParams: Record<string, number | boolean> = {};
+      const geoKeys = ['spin_turns', 'spin_phase', 'spin_curve', 'bell_amp', 'bell_center', 'bell_width'];
 
-      // Apply appearance if available
-      if (appearance?.primaryColor) {
-        setPrimaryColor(appearance.primaryColor);
-      }
-      if (appearance?.gradient && appearance.gradient.length >= 2) {
-        setCustomGradient([appearance.gradient[0], appearance.gradient[1]]);
+      Object.entries(preset.opts).forEach(([key, value]) => {
+        if (!geoKeys.includes(key)) {
+          styleParams[key] = value;
+        }
+      });
+      setStyleOpts(styleParams);
+
+      // 3. Appearance
+      if (preset.appearance) {
+        setPrimaryColor(preset.appearance.primaryColor);
+        setMidColor(preset.appearance.midColor);
+        setSecondaryColor(preset.appearance.secondaryColor);
+
+        // if (preset.appearance.gradient) {
+        //   setCustomGradient(preset.appearance.gradient);
+        // }
+        // if (preset.appearance.gradientAngle !== undefined) {
+        //   setGradientAngle(preset.appearance.gradientAngle);
+        // }
+        // if (preset.appearance.lightingPreset) {
+        //   setLightingPreset(preset.appearance.lightingPreset);
+        // }
       }
     },
-    [setGeometryParams, setStyle, setStyleOpts, setPrimaryColor, setCustomGradient]
+    [setGeometryParams, setStyle, setStyleOpts, setPrimaryColor, setMidColor, setSecondaryColor, setCustomGradient, setGradientAngle, setLightingPreset]
   );
 
   return (
@@ -224,7 +251,7 @@ export function PresetPanel() {
       defaultOpen={false}
       className="preset-panel"
     >
-      {/* Search and view controls */}
+      {/* Search Bar */}
       <div className="preset-toolbar">
         <div className="preset-search">
           <Search size={14} className="preset-search-icon" />
@@ -236,57 +263,58 @@ export function PresetPanel() {
             className="preset-search-input"
           />
         </div>
-        <div className="preset-view-toggle">
-          <button
-            className={`preset-view-btn ${viewMode === 'grid' ? 'preset-view-btn--active' : ''}`}
-            onClick={() => setViewMode('grid')}
-            title="Grid view"
-          >
-            <Grid size={14} />
-          </button>
-          <button
-            className={`preset-view-btn ${viewMode === 'list' ? 'preset-view-btn--active' : ''}`}
-            onClick={() => setViewMode('list')}
-            title="List view"
-          >
-            <List size={14} />
-          </button>
-        </div>
       </div>
 
-      {/* Category filters */}
+      {/* Category Filters */}
       <CategoryFilters
         categories={categories}
         activeCategory={activeCategory}
         onSelect={setActiveCategory}
       />
 
-      {/* Preset grid/list */}
-      <div className={`preset-gallery preset-gallery--${viewMode}`}>
-        {filteredPresets.length > 0 ? (
-          filteredPresets.map((preset) => (
+      {/* Featured Section (only when no filter) */}
+      {featuredPresets.length > 0 && (
+        <div className="preset-featured">
+          <div className="preset-section-label">Featured</div>
+          <div className="preset-grid">
+            {featuredPresets.map(preset => (
+              <PresetCard
+                key={preset.id}
+                preset={preset}
+                isActive={isPresetActive(preset)}
+                onApply={() => applyPreset(preset)}
+                featured={true}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Main Grid */}
+      <div className="preset-grid">
+        {featuredPresets.length > 0 && listPresets.length > 0 && (
+          <div className="preset-section-label" style={{ marginTop: '12px' }}>Collection</div>
+        )}
+
+        {listPresets.length > 0 ? (
+          listPresets.map((preset) => (
             <PresetCard
               key={preset.id}
               preset={preset}
               isActive={isPresetActive(preset)}
-              viewMode={viewMode}
               onApply={() => applyPreset(preset)}
             />
           ))
         ) : (
-          <div className="preset-empty">
-            <Filter size={24} />
-            <span>No presets match your search</span>
-          </div>
+          /* Empty State (if no featured items either) */
+          featuredPresets.length === 0 && (
+            <div className="preset-empty">
+              <span>No presets match your search</span>
+            </div>
+          )
         )}
       </div>
 
-      {/* Preset count */}
-      <div className="preset-footer">
-        <span className="preset-count">
-          {filteredPresets.length} of {PRESETS.length} presets
-        </span>
-      </div>
     </Section>
   );
 }

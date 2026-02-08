@@ -150,6 +150,12 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 const scanShaderSource = [commonWgsl, strippedStyles, dispatchCode, scanProfileWgsl].join('\n');
 
                 console.log(`[useGPUExport] Compiling shader for style ${styleIndex} (${functionName})...`);
+
+                // Force cleanup of previous shader pipelines to allow re-init with new source
+                if (computerRef.current.isReady()) {
+                    computerRef.current.destroy();
+                }
+
                 await computerRef.current.init(fullShaderSource, scanShaderSource);
 
                 if (isMounted) {

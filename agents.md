@@ -102,6 +102,7 @@ The biggest technical debt is the **Seam (0°/360°)**.
 *   **`webgpu_core.ts`**: It's a 5000-line monster. Refactor with extreme caution.
 *   **Memory Limits**: 8k resolution exports create massive arrays (~500MB). Browser tabs will crash.
 *   **Vertex Welding**: Currently done via spatial hashing (custom integer sort). Previous string-hashing caused V8 crashes.
+*   **Housekeeping**: Leave the campsite cleaner than you found it. If you create `debug_foo.js`, DELETE IT before you leave.
 
 ---
 

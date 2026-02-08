@@ -192,21 +192,31 @@ fn spec_power_from_roughness(roughness: f32) -> f32 {
 // Professional studio lighting setup - surrounds the object for beautiful highlights
 fn build_camera_rig() -> LightingRig {
   // Key light: front-top-right (main illumination)
-  let key = normalize(vec3<f32>(0.3, -0.4, 0.85));
+  // FIX: +Y for top, -Z for front (Camera looks down +Z, so -Z points back to camera)
+  let key = normalize(vec3<f32>(0.3, 0.5, -0.85));
+  
   // Fill light: front-left (softer, fills shadows)
-  let fill = normalize(vec3<f32>(-0.6, -0.3, 0.6));
+  let fill = normalize(vec3<f32>(-0.6, 0.3, -0.6));
+  
   // Back light: behind and above (rim lighting)
+  // FIX: +Z for back (behind object relative to camera)
   let back = normalize(vec3<f32>(0.0, 0.9, 0.35));
+  
   // Left rim/kicker: side accent
   let rim_left = normalize(vec3<f32>(-0.85, 0.2, 0.4));
   // Right rim/kicker: side accent
   let rim_right = normalize(vec3<f32>(0.85, 0.2, 0.4));
   // Bottom bounce: subtle upward fill
-  let bottom = normalize(vec3<f32>(0.0, 0.1, -0.95));
+  let bottom = normalize(vec3<f32>(0.0, 0.1, -0.95)); // Keep bottom mostly front?
   // Top soft light: overall ambient direction
-  let top = normalize(vec3<f32>(0.0, 0.0, 1.0));
+  let top = normalize(vec3<f32>(0.0, 0.0, 1.0)); // Top is aligned with Up/Forward? Z is Forward. -Y is Down.
+                                                 // Wait, Camera Basis: Up is +Y.
+                                                 // So Top light should be +Y.
+                                                 // Vector (0,0,1) is Forward.
+                                                 // Let's make Top explicitly +Y.
+  let top_real = normalize(vec3<f32>(0.0, 1.0, 0.0));
   
-  return LightingRig(key, fill, back, rim_left, rim_right, bottom, top);
+  return LightingRig(key, fill, back, rim_left, rim_right, bottom, top_real);
 }
 
 fn lambert(N: vec3<f32>, L: vec3<f32>) -> f32 {

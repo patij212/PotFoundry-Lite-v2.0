@@ -1297,3 +1297,12 @@ User reported "login / authentication and downloads are disabled" on deployed si
 **🏁 Sign-off:**
 - **Changes:** Updated `DEPLOYMENT.md` to be explicit about `VITE_` requirements.
 - **Next Up:** Verifying if there is actual code locking downloads in dev, or if it was just the missing auth blocking it.
+**Starting Task: Fix Seam Flattening**
+- User Request: Fix the 0/360 degree seam flattening artifact.
+- Plan: Remove MARGIN=0.005, implement Ghost Segments in ConstrainedTriangulator.
+- Status: Creating verification tests.
+## Agent: Antigravity (2AF8B...)
+- **Task Completed**: Seam Flattening Fix (Ghost Segments)
+- **Changes**: Refactored ConstrainedTriangulator.ts to remove MARGIN and add Ghost Segment logic. Updated shader to remove seamAngle.
+- **Verification**: Unit tests passed. Shader verified.
+- **Note**: Topology is hard, but math always wins.

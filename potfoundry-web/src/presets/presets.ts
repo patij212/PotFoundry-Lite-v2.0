@@ -2,464 +2,462 @@
  * Presets Module - Pre-configured pot designs
  * 
  * Provides curated preset configurations for quick starting points.
- * Each preset includes geometry, style, and appearance settings.
+ * Each preset is structured to be compatible with the LibraryDesign interface
+ * for easy reuse of the WebGPU thumbnail renderer.
  */
 
 import {
   StyleId,
   DEFAULT_SUPERFORMULA,
-  DEFAULT_FOURIER,
   DEFAULT_SPIRAL,
   DEFAULT_SUPERELLIPSE,
   DEFAULT_HARMONIC,
+  DEFAULT_WAVE_INTERFERENCE,
+  DEFAULT_CRYSTALLINE,
+  DEFAULT_BAMBOO_SEGMENTS,
+  DEFAULT_LOW_POLY_FACET,
+  DEFAULT_GYROID_MANIFOLD,
+  DEFAULT_VORONOI,
+  DEFAULT_CELTIC_KNOT,
+
 } from '../geometry';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface PotPreset {
-  /** Unique identifier */
-  id: string;
-  /** Display name */
-  name: string;
-  /** Short description */
-  description: string;
-  /** Category for grouping */
-  category: PresetCategory;
-  /** Thumbnail color for visual identification */
-  color: string;
-  /** Configuration */
-  config: PresetConfig;
-}
-
-export interface PresetConfig {
-  geometry: {
-    H: number;
-    topOd: number;
-    bottomOd: number;
-    tWall: number;
-    tBottom: number;
-    rDrain: number;
-    expn: number;
-  };
-  style: {
-    type: string;
-    params: Record<string, number>;
-  };
-  appearance?: {
-    primaryColor?: string;
-    gradient?: string[];
-  };
-}
-
 export type PresetCategory =
-  | 'classic'      // Traditional pot shapes
-  | 'organic'      // Natural, flowing forms
-  | 'geometric'    // Clean, mathematical patterns
-  | 'decorative'   // Ornate, detailed designs
-  | 'minimal';     // Simple, elegant forms
+  | 'Classic'
+  | 'Modern'
+  | 'Organic'
+  | 'Geometric'
+  | 'Experimental';
+
+/**
+ * PotPreset definition.
+ * 
+ * Intentionally designed to share structure with LibraryDesign
+ * from LibraryContext.tsx to allow sharing the ThumbnailRenderer.
+ */
+export interface PotPreset {
+  id: string;
+  title: string;
+  description: string;
+  category: PresetCategory;
+
+  // Core Design Properties (Matches LibraryDesign structure)
+  style: StyleId;
+
+  /** Dimensions in mm - Snake_case to match LibraryDesign/Python backend */
+  size: {
+    height: number;
+    top_od: number;
+    bottom_od: number;
+    wall_thickness: number;
+    bottom_thickness: number;
+    drain_radius: number;
+    flare_exp: number;
+  };
+
+  /** Style-specific parameters + spin/bell modifiers */
+  opts: Record<string, number | boolean>;
+
+  /** Visual appearance settings */
+  appearance: {
+    primaryColor: string;
+    midColor: string;
+    secondaryColor: string;
+    gradient: [string, string];
+    gradientAngle?: number;
+    lightingPreset?: string;
+  };
+}
+
+// ============================================================================
+// Helper: Configuration Builder
+// ============================================================================
+
+/**
+ * Type-safe helper to build opts object
+ */
+function buildOpts(
+  styleParams: Record<string, number | boolean>,
+  modifiers: {
+    spin_turns?: number;
+    spin_phase?: number;
+    spin_curve?: number;
+    bell_amp?: number;
+    bell_center?: number;
+    bell_width?: number;
+  } = {}
+): Record<string, number | boolean> {
+  return { ...styleParams, ...modifiers };
+}
 
 // ============================================================================
 // Preset Definitions
 // ============================================================================
 
 export const PRESETS: PotPreset[] = [
-  // Classic Category
+  // --------------------------------------------------------------------------
+  // CLASSIC
+  // --------------------------------------------------------------------------
   {
-    id: 'classic-round',
-    name: 'Classic Round',
-    description: 'Traditional rounded pot with gentle flare',
-    category: 'classic',
-    color: '#8B7355',
-    config: {
-      geometry: {
-        H: 100,
-        topOd: 120,
-        bottomOd: 80,
-        tWall: 3.0,
-        tBottom: 3.0,
-        rDrain: 10,
-        expn: 1.2,
-      },
-      style: {
-        type: 'superformula_blossom',
-        params: {
-          sfMBase: 0,
-          sfMTop: 0,
-          sfN1: 1,
-          sfN2: 1,
-          sfN3: 1,
-        },
-      },
-      appearance: {
-        primaryColor: '#8B7355',
-        gradient: ['#8B7355', '#A0826D', '#B5917F'],
-      },
+    id: 'classic-terracotta',
+    title: 'Terracotta Classic',
+    description: 'Timeless garden pot design',
+    category: 'Classic',
+    style: 'SuperformulaBlossom',
+    size: {
+      height: 120, top_od: 160, bottom_od: 90,
+      wall_thickness: 4, bottom_thickness: 4, drain_radius: 12, flare_exp: 1.1
     },
+    opts: buildOpts({
+      ...DEFAULT_SUPERFORMULA,
+      sfMBase: 0, sfMTop: 0, // Perfectly round
+    }),
+    appearance: {
+      primaryColor: '#8B4513',
+      midColor: '#CD853F',
+      secondaryColor: '#DEB887',
+      gradient: ['#2F1B10', '#5D4037'],
+    }
   },
   {
-    id: 'terracotta-tall',
-    name: 'Terracotta Tall',
-    description: 'Tall classic terracotta style',
-    category: 'classic',
-    color: '#CD853F',
-    config: {
-      geometry: {
-        H: 150,
-        topOd: 100,
-        bottomOd: 70,
-        tWall: 3.5,
-        tBottom: 4.0,
-        rDrain: 12,
-        expn: 1.0,
-      },
-      style: {
-        type: 'superformula_blossom',
-        params: {
-          sfMBase: 0,
-          sfMTop: 0,
-          sfN1: 1,
-          sfN2: 1,
-          sfN3: 1,
-        },
-      },
-      appearance: {
-        primaryColor: '#CD853F',
-        gradient: ['#8B4513', '#CD853F', '#DEB887'],
-      },
+    id: 'classic-planter',
+    title: 'Round Planter',
+    description: 'Simple, stout planter for easy potting',
+    category: 'Classic',
+    style: 'SuperformulaBlossom',
+    size: {
+      height: 100, top_od: 140, bottom_od: 100,
+      wall_thickness: 3.5, bottom_thickness: 4, drain_radius: 10, flare_exp: 1.05
     },
-  },
-
-  // Organic Category
-  {
-    id: 'flower-blossom',
-    name: 'Flower Blossom',
-    description: '8-petal flower shape that blooms at the rim',
-    category: 'organic',
-    color: '#FF69B4',
-    config: {
-      geometry: {
-        H: 110,
-        topOd: 140,
-        bottomOd: 70,
-        tWall: 2.5,
-        tBottom: 3.0,
-        rDrain: 10,
-        expn: 1.4,
-      },
-      style: {
-        type: 'superformula_blossom',
-        params: {
-          ...DEFAULT_SUPERFORMULA,
-          sfMBase: 4,
-          sfMTop: 8,
-          sfMCurveExp: 1.5,
-          sfN1: 0.3,
-          sfN1Top: 0.5,
-        },
-      },
-      appearance: {
-        primaryColor: '#FF69B4',
-        gradient: ['#FF1493', '#FF69B4', '#FFB6C1'],
-      },
-    },
+    opts: buildOpts({
+      ...DEFAULT_SUPERFORMULA,
+      sfMBase: 0, sfMTop: 0,
+    }),
+    appearance: {
+      primaryColor: '#5D4037',
+      midColor: '#8D6E63',
+      secondaryColor: '#BCAAA4',
+      gradient: ['#1A1A1A', '#2C2C2C'],
+    }
   },
   {
-    id: 'ocean-wave',
-    name: 'Ocean Wave',
-    description: 'Flowing wave patterns inspired by the sea',
-    category: 'organic',
-    color: '#20B2AA',
-    config: {
-      geometry: {
-        H: 120,
-        topOd: 130,
-        bottomOd: 85,
-        tWall: 2.8,
-        tBottom: 3.0,
-        rDrain: 10,
-        expn: 1.1,
-      },
-      style: {
-        type: 'harmonic_ripple',
-        params: {
-          ...DEFAULT_HARMONIC,
-          hrPetals: 5,
-          hrPetalAmp: 0.12,
-          hrRippleFreq: 25,
-          hrRippleAmp: 0.04,
-          hrBell: 0.08,
-        },
-      },
-      appearance: {
-        primaryColor: '#20B2AA',
-        gradient: ['#008B8B', '#20B2AA', '#48D1CC'],
-      },
+    id: 'classic-vase',
+    title: 'Elegant Vase',
+    description: 'Tall, slender form for floral arrangements',
+    category: 'Classic',
+    style: 'HarmonicRipple',
+    size: {
+      height: 180, top_od: 90, bottom_od: 70,
+      wall_thickness: 2.5, bottom_thickness: 3, drain_radius: 8, flare_exp: 1.0
     },
-  },
-  {
-    id: 'spiral-shell',
-    name: 'Spiral Shell',
-    description: 'Nautilus-inspired spiral ridges',
-    category: 'organic',
-    color: '#DEB887',
-    config: {
-      geometry: {
-        H: 100,
-        topOd: 110,
-        bottomOd: 75,
-        tWall: 3.0,
-        tBottom: 3.0,
-        rDrain: 10,
-        expn: 1.2,
-      },
-      style: {
-        type: 'spiral_ridges',
-        params: {
-          ...DEFAULT_SPIRAL,
-          spiralK: 7,
-          spiralTurns: 1.5,
-          spiralAmpMin: 0.10,
-          spiralAmpMax: 0.20,
-        },
-      },
-      appearance: {
-        primaryColor: '#DEB887',
-        gradient: ['#D2B48C', '#DEB887', '#F5DEB3'],
-      },
-    },
+    opts: buildOpts({
+      ...DEFAULT_HARMONIC,
+      hrPetals: 0, // Disable petals for smooth roundness
+      hrRippleAmp: 0.01, // Very subtle texture
+      hrBell: 0.15, // Nice curve
+    }, { bell_amp: 0.1, bell_center: 0.6 }),
+    appearance: {
+      primaryColor: '#1A237E',
+      midColor: '#303F9F',
+      secondaryColor: '#3949AB',
+      gradient: ['#000000', '#1A237E'],
+    }
   },
 
-  // Geometric Category
+  // --------------------------------------------------------------------------
+  // MODERN
+  // --------------------------------------------------------------------------
   {
-    id: 'hex-morph',
-    name: 'Hexagonal Morph',
-    description: 'Circle to hexagon transition',
-    category: 'geometric',
-    color: '#4169E1',
-    config: {
-      geometry: {
-        H: 90,
-        topOd: 120,
-        bottomOd: 90,
-        tWall: 3.0,
-        tBottom: 3.0,
-        rDrain: 10,
-        expn: 1.0,
-      },
-      style: {
-        type: 'superellipse_morph',
-        params: {
-          ...DEFAULT_SUPERELLIPSE,
-          seMBase: 2.0,
-          seMTop: 4.0,
-          seC4Amp: 0.0,
-        },
-      },
-      appearance: {
-        primaryColor: '#4169E1',
-        gradient: ['#1E90FF', '#4169E1', '#6495ED'],
-      },
+    id: 'modern-cylinder',
+    title: 'Minimal Cylinder',
+    description: 'Clean straight lines, perfect for modern interiors',
+    category: 'Modern',
+    style: 'SuperellipseMorph',
+    size: {
+      height: 140, top_od: 120, bottom_od: 120,
+      wall_thickness: 3, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.0
     },
+    opts: buildOpts({
+      ...DEFAULT_SUPERELLIPSE,
+      seMBase: 2, seMTop: 2, // Circle
+      seC4Amp: 0,
+    }),
+    appearance: {
+      primaryColor: '#212121',
+      midColor: '#424242',
+      secondaryColor: '#616161',
+      gradient: ['#ECEFF1', '#CFD8DC'],
+      gradientAngle: 45
+    }
   },
   {
-    id: 'star-burst',
-    name: 'Star Burst',
-    description: '6-point star pattern',
-    category: 'geometric',
-    color: '#FFD700',
-    config: {
-      geometry: {
-        H: 100,
-        topOd: 130,
-        bottomOd: 80,
-        tWall: 2.5,
-        tBottom: 3.0,
-        rDrain: 10,
-        expn: 1.3,
-      },
-      style: {
-        type: 'superformula_blossom',
-        params: {
-          ...DEFAULT_SUPERFORMULA,
-          sfMBase: 3,
-          sfMTop: 6,
-          sfN1: 0.25,
-          sfN2: 1.2,
-          sfN3: 1.2,
-        },
-      },
-      appearance: {
-        primaryColor: '#FFD700',
-        gradient: ['#FFA500', '#FFD700', '#FFFF00'],
-      },
+    id: 'modern-twist',
+    title: 'Architectural Twist',
+    description: 'Square profile with a sharp 90-degree twist',
+    category: 'Modern',
+    style: 'SuperellipseMorph',
+    size: {
+      height: 150, top_od: 110, bottom_od: 110,
+      wall_thickness: 3, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.0
     },
-  },
-
-  // Decorative Category
-  {
-    id: 'baroque-bloom',
-    name: 'Baroque Bloom',
-    description: 'Ornate multi-frequency floral pattern',
-    category: 'decorative',
-    color: '#800080',
-    config: {
-      geometry: {
-        H: 130,
-        topOd: 150,
-        bottomOd: 90,
-        tWall: 2.5,
-        tBottom: 3.0,
-        rDrain: 12,
-        expn: 1.5,
-      },
-      style: {
-        type: 'fourier_bloom',
-        params: {
-          ...DEFAULT_FOURIER,
-          fbBaseCos8Amp: 0.15,
-          fbTopCos11Amp: 0.22,
-          fbWobbleAmp: 0.08,
-          fbStrength: 1.2,
-        },
-      },
-      appearance: {
-        primaryColor: '#800080',
-        gradient: ['#4B0082', '#800080', '#9932CC'],
-      },
-    },
+    opts: buildOpts({
+      ...DEFAULT_SUPERELLIPSE,
+      seMBase: 10, seMTop: 10, // Square-ish
+      seC4Amp: 0,
+    }, { spin_turns: 0.25, spin_curve: 1.0 }), // 90 degree twist
+    appearance: {
+      primaryColor: '#263238',
+      midColor: '#37474F',
+      secondaryColor: '#455A64',
+      gradient: ['#FFFFFF', '#ECEFF1'],
+    }
   },
   {
-    id: 'art-deco',
-    name: 'Art Deco',
-    description: 'Geometric patterns with clean lines',
-    category: 'decorative',
-    color: '#C0C0C0',
-    config: {
-      geometry: {
-        H: 120,
-        topOd: 110,
-        bottomOd: 100,
-        tWall: 3.5,
-        tBottom: 4.0,
-        rDrain: 10,
-        expn: 0.9,
-      },
-      style: {
-        type: 'superellipse_morph',
-        params: {
-          ...DEFAULT_SUPERELLIPSE,
-          seMBase: 3.0,
-          seMTop: 6.0,
-          seC4Amp: 0.06,
-          seC8Amp: 0.03,
-        },
-      },
-      appearance: {
-        primaryColor: '#C0C0C0',
-        gradient: ['#808080', '#C0C0C0', '#D3D3D3'],
-      },
+    id: 'modern-hex',
+    title: 'Hexagonal Tower',
+    description: 'Sharp hexagonal geometry',
+    category: 'Modern',
+    style: 'Crystalline',
+    size: {
+      height: 130, top_od: 120, bottom_od: 100,
+      wall_thickness: 2.5, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.0
     },
+    opts: buildOpts({
+      ...DEFAULT_CRYSTALLINE,
+      crFacetCount: 6,
+      crFacetDepth: 0.2,
+      crEdgeSharpness: 4.0,
+      crSubFacets: 1,
+    }),
+    appearance: {
+      primaryColor: '#1B5E20',
+      midColor: '#2E7D32',
+      secondaryColor: '#388E3C',
+      gradient: ['#E8F5E9', '#C8E6C9'],
+    }
   },
 
-  // Minimal Category
+  // --------------------------------------------------------------------------
+  // ORGANIC
+  // --------------------------------------------------------------------------
   {
-    id: 'zen-bowl',
-    name: 'Zen Bowl',
-    description: 'Simple, wide bowl shape',
-    category: 'minimal',
-    color: '#F5F5DC',
-    config: {
-      geometry: {
-        H: 60,
-        topOd: 160,
-        bottomOd: 100,
-        tWall: 4.0,
-        tBottom: 4.0,
-        rDrain: 15,
-        expn: 0.8,
-      },
-      style: {
-        type: 'superformula_blossom',
-        params: {
-          sfMBase: 0,
-          sfMTop: 0,
-          sfN1: 1,
-          sfN2: 1,
-          sfN3: 1,
-        },
-      },
-      appearance: {
-        primaryColor: '#F5F5DC',
-        gradient: ['#EEE8CD', '#F5F5DC', '#FFFACD'],
-      },
+    id: 'organic-ripple',
+    title: 'Ripple Vase',
+    description: 'Flowing water ripples frozen in time',
+    category: 'Organic',
+    style: 'HarmonicRipple',
+    size: {
+      height: 140, top_od: 130, bottom_od: 80,
+      wall_thickness: 2.5, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.1
     },
+    opts: buildOpts({
+      ...DEFAULT_HARMONIC,
+      hrPetals: 7,
+      hrPetalAmp: 0.15,
+      hrRippleFreq: 15,
+      hrRippleAmp: 0.05,
+      hrBell: 0.1,
+    }),
+    appearance: {
+      primaryColor: '#006064',
+      midColor: '#00838F',
+      secondaryColor: '#0097A7',
+      gradient: ['#E0F7FA', '#B2EBF2'],
+    }
   },
   {
-    id: 'cylinder',
-    name: 'Pure Cylinder',
-    description: 'Clean cylindrical form',
-    category: 'minimal',
-    color: '#2F4F4F',
-    config: {
-      geometry: {
-        H: 140,
-        topOd: 100,
-        bottomOd: 100,
-        tWall: 3.0,
-        tBottom: 3.0,
-        rDrain: 10,
-        expn: 1.0,
-      },
-      style: {
-        type: 'superformula_blossom',
-        params: {
-          sfMBase: 0,
-          sfMTop: 0,
-          sfN1: 1,
-          sfN2: 1,
-          sfN3: 1,
-        },
-      },
-      appearance: {
-        primaryColor: '#2F4F4F',
-        gradient: ['#1C3030', '#2F4F4F', '#3D6666'],
-      },
+    id: 'organic-bloom',
+    title: 'Tulip Bloom',
+    description: 'Opens up like a flower at the rim',
+    category: 'Organic',
+    style: 'SuperformulaBlossom',
+    size: {
+      height: 120, top_od: 150, bottom_od: 70,
+      wall_thickness: 2.5, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.4
     },
+    opts: buildOpts({
+      ...DEFAULT_SUPERFORMULA,
+      sfMBase: 3, sfMTop: 6,
+      sfN1: 0.3, sfN1Top: 0.5,
+    }),
+    appearance: {
+      primaryColor: '#880E4F',
+      midColor: '#AD1457',
+      secondaryColor: '#C2185B',
+      gradient: ['#FCE4EC', '#F8BBD0'],
+    }
   },
   {
-    id: 'tapered-modern',
-    name: 'Tapered Modern',
-    description: 'Contemporary tapered design',
-    category: 'minimal',
-    color: '#696969',
-    config: {
-      geometry: {
-        H: 110,
-        topOd: 80,
-        bottomOd: 120,
-        tWall: 3.0,
-        tBottom: 3.0,
-        rDrain: 10,
-        expn: 1.0,
-      },
-      style: {
-        type: 'superformula_blossom',
-        params: {
-          sfMBase: 0,
-          sfMTop: 0,
-          sfN1: 1,
-          sfN2: 1,
-          sfN3: 1,
-        },
-      },
-      appearance: {
-        primaryColor: '#696969',
-        gradient: ['#505050', '#696969', '#808080'],
-      },
+    id: 'organic-bamboo',
+    title: 'Bamboo Stalk',
+    description: 'Segmented natural growth pattern',
+    category: 'Organic',
+    style: 'BambooSegments',
+    size: {
+      height: 160, top_od: 90, bottom_od: 85,
+      wall_thickness: 3, bottom_thickness: 3, drain_radius: 8, flare_exp: 1.0
     },
+    opts: buildOpts({
+      ...DEFAULT_BAMBOO_SEGMENTS,
+      bsNodeCount: 5,
+      bsNodeProminence: 0.1,
+    }),
+    appearance: {
+      primaryColor: '#33691E',
+      midColor: '#558B2F',
+      secondaryColor: '#689F38',
+      gradient: ['#F1F8E9', '#DCEDC8'],
+    }
   },
+
+  // --------------------------------------------------------------------------
+  // GEOMETRIC
+  // --------------------------------------------------------------------------
+  {
+    id: 'geo-lowpoly',
+    title: 'Low Poly Gem',
+    description: 'Faceted, crystalline aesthetic',
+    category: 'Geometric',
+    style: 'LowPolyFacet',
+    size: {
+      height: 110, top_od: 130, bottom_od: 90,
+      wall_thickness: 2.8, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.1
+    },
+    opts: buildOpts({
+      ...DEFAULT_LOW_POLY_FACET,
+      lpFacets: 8,
+      lpTiers: 2,
+      lpAmp: 0.15,
+      lpJitter: 0.05
+    }),
+    appearance: {
+      primaryColor: '#4A148C',
+      midColor: '#6A1B9A',
+      secondaryColor: '#7B1FA2',
+      gradient: ['#F3E5F5', '#E1BEE7'],
+    }
+  },
+  {
+    id: 'geo-voronoi',
+    title: 'Voronoi Lantern',
+    description: 'Cellular organic pattern (Requires performance check)',
+    category: 'Geometric',
+    style: 'Voronoi',
+    size: {
+      height: 130, top_od: 110, bottom_od: 110,
+      wall_thickness: 2.5, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.0
+    },
+    opts: buildOpts({
+      ...DEFAULT_VORONOI,
+      vScale: 6,
+      vRelief: 2.5,
+      vThickness: 0.15,
+    }),
+    appearance: {
+      primaryColor: '#BF360C',
+      midColor: '#D84315',
+      secondaryColor: '#E64A19',
+      gradient: ['#FFF3E0', '#FFE0B2'],
+    }
+  },
+  {
+    id: 'geo-spiral',
+    title: 'Extreme Twist',
+    description: 'Aggressive spiral ridges',
+    category: 'Geometric',
+    style: 'SpiralRidges',
+    size: {
+      height: 140, top_od: 100, bottom_od: 80,
+      wall_thickness: 3, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.1
+    },
+    opts: buildOpts({
+      ...DEFAULT_SPIRAL,
+      spiralK: 6,
+      spiralTurns: 1.5,
+      spiralAmpMin: 0.2,
+      spiralAmpMax: 0.3,
+    }),
+    appearance: {
+      primaryColor: '#0D47A1',
+      midColor: '#1565C0',
+      secondaryColor: '#1976D2',
+      gradient: ['#E3F2FD', '#BBDEFB'],
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // EXPERIMENTAL
+  // --------------------------------------------------------------------------
+  {
+    id: 'exp-gyroid',
+    title: 'Gyroid Structure',
+    description: 'Mathematical minimal surface',
+    category: 'Experimental',
+    style: 'GyroidManifold',
+    size: {
+      height: 120, top_od: 120, bottom_od: 120,
+      wall_thickness: 3, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.0
+    },
+    opts: buildOpts({
+      ...DEFAULT_GYROID_MANIFOLD,
+      gmScale: 3,
+      gmRelief: 2,
+    }),
+    appearance: {
+      primaryColor: '#004D40',
+      midColor: '#00695C',
+      secondaryColor: '#00796B',
+      gradient: ['#E0F2F1', '#B2DFDB'],
+    }
+  },
+  {
+    id: 'exp-celtic',
+    title: 'Celtic Chalice',
+    description: 'Interwoven knotwork patterns',
+    category: 'Experimental',
+    style: 'CelticKnot',
+    size: {
+      height: 140, top_od: 100, bottom_od: 80,
+      wall_thickness: 3, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.2
+    },
+    opts: buildOpts({
+      ...DEFAULT_CELTIC_KNOT,
+      ckScale: 3,
+      ckRelief: 1.5,
+    }),
+    appearance: {
+      primaryColor: '#3E2723',
+      midColor: '#4E342E',
+      secondaryColor: '#5D4037',
+      gradient: ['#EFEBE9', '#D7CCC8'],
+    }
+  },
+  {
+    id: 'exp-interference',
+    title: 'Wave Interference',
+    description: 'Complex moire patterns',
+    category: 'Experimental',
+    style: 'WaveInterference',
+    size: {
+      height: 130, top_od: 110, bottom_od: 90,
+      wall_thickness: 3, bottom_thickness: 3, drain_radius: 10, flare_exp: 1.1
+    },
+    opts: buildOpts({
+      ...DEFAULT_WAVE_INTERFERENCE,
+      wiReliefDepth: 2,
+      wiMoireStrength: 0.8,
+    }),
+    appearance: {
+      primaryColor: '#1A237E',
+      midColor: '#283593',
+      secondaryColor: '#303F9F',
+      gradient: ['#E8EAF6', '#C5CAE9'],
+    }
+  }
 ];
 
 // ============================================================================
@@ -484,33 +482,12 @@ export function getPresetById(id: string): PotPreset | undefined {
  * Get all categories with counts
  */
 export function getCategories(): Array<{ category: PresetCategory; count: number; label: string }> {
-  const categoryLabels: Record<PresetCategory, string> = {
-    classic: 'Classic',
-    organic: 'Organic',
-    geometric: 'Geometric',
-    decorative: 'Decorative',
-    minimal: 'Minimal',
-  };
-
-  const categories: PresetCategory[] = ['classic', 'organic', 'geometric', 'decorative', 'minimal'];
+  // Ordered list of categories for the UI
+  const categories: PresetCategory[] = ['Classic', 'Modern', 'Organic', 'Geometric', 'Experimental'];
 
   return categories.map((category) => ({
     category,
     count: PRESETS.filter((p) => p.category === category).length,
-    label: categoryLabels[category],
+    label: category, // Category name is already user-friendly
   }));
-}
-
-/**
- * Convert preset style type to StyleId
- */
-export function presetStyleToId(presetType: string): StyleId {
-  const mapping: Record<string, StyleId> = {
-    superformula_blossom: 'SuperformulaBlossom',
-    fourier_bloom: 'FourierBloom',
-    spiral_ridges: 'SpiralRidges',
-    superellipse_morph: 'SuperellipseMorph',
-    harmonic_ripple: 'HarmonicRipple',
-  };
-  return mapping[presetType] ?? 'SuperformulaBlossom';
 }

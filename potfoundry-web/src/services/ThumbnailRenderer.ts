@@ -33,7 +33,8 @@ interface ThumbnailRequest {
 
 interface RenderResources {
     device: GPUDevice;
-    pipeline: GPURenderPipeline;
+    pipelineLayout: GPUPipelineLayout;
+    pipelineCache: Map<number, GPURenderPipeline>;
     uniformBuffer: GPUBuffer;
     styleParamBuffer: GPUBuffer;
     colorBuffers: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer };
@@ -91,11 +92,7 @@ class ThumbnailRenderer {
                 return false;
             }
 
-            // Create shader module
-            const shaderModule = device.createShaderModule({
-                label: 'thumbnail-shader',
-                code: ShaderManager.getInstance().getWGSL(),
-            });
+            // Create buffers
 
             // Create buffers
             const uniformBuffer = device.createBuffer({
@@ -107,7 +104,7 @@ class ThumbnailRenderer {
             const styleParamBuffer = device.createBuffer({
                 label: 'thumbnail-style-params',
                 size: STYLE_PARAM_CAPACITY * 4,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             });
 
             const createColorBuffer = (label: string) =>
@@ -138,7 +135,7 @@ class ThumbnailRenderer {
                     { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                     { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                     { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-                    { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+                    { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                     { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                     { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                     { binding: 7, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
@@ -151,32 +148,12 @@ class ThumbnailRenderer {
                 bindGroupLayouts: [bindGroupLayout],
             });
 
-            const pipeline = await device.createRenderPipelineAsync({
-                label: 'thumbnail-pipeline',
-                layout: pipelineLayout,
-                vertex: {
-                    module: shaderModule,
-                    entryPoint: 'vs_main',
-                },
-                fragment: {
-                    module: shaderModule,
-                    entryPoint: 'fs_main',
-                    targets: [{ format: 'rgba8unorm' }],
-                },
-                primitive: {
-                    topology: 'triangle-list',
-                    cullMode: 'none',
-                },
-                depthStencil: {
-                    depthWriteEnabled: true,
-                    depthCompare: 'less',
-                    format: 'depth24plus',
-                },
-            });
+            const pipelineCache = new Map<number, GPURenderPipeline>();
 
             this.resources = {
                 device,
-                pipeline,
+                pipelineLayout,
+                pipelineCache,
                 uniformBuffer,
                 styleParamBuffer,
                 colorBuffers,
@@ -239,7 +216,39 @@ class ThumbnailRenderer {
      */
     private async doRender(request: ThumbnailRequest): Promise<ImageData | null> {
         const { design, width, height } = request;
-        const { device, pipeline, uniformBuffer, styleParamBuffer, colorBuffers, bgBuffers, bindGroupLayout } = this.resources!;
+        const { device, pipelineLayout, pipelineCache, uniformBuffer, styleParamBuffer, colorBuffers, bgBuffers, bindGroupLayout } = this.resources!;
+
+        // Determine style ID for pipeline selection
+        const [styleId] = buildStyleParamPayload(design.style, design.opts as Record<string, unknown>);
+
+        // Get or create pipeline for this style
+        let pipeline = pipelineCache.get(styleId);
+        if (!pipeline) {
+            console.log(`[ThumbnailRenderer] Compiling pipeline for Style ID ${styleId}...`);
+            const code = ShaderManager.getInstance().getStyleWGSL(styleId);
+            const shaderModule = device.createShaderModule({
+                label: `thumbnail-shader-${styleId}`,
+                code,
+            });
+
+            pipeline = await device.createRenderPipelineAsync({
+                label: `thumbnail-pipeline-${styleId}`,
+                layout: pipelineLayout,
+                vertex: { module: shaderModule, entryPoint: 'vs_main' },
+                fragment: {
+                    module: shaderModule,
+                    entryPoint: 'fs_main',
+                    targets: [{ format: 'rgba8unorm' }],
+                },
+                primitive: { topology: 'triangle-list', cullMode: 'none' },
+                depthStencil: {
+                    depthWriteEnabled: true,
+                    depthCompare: 'less',
+                    format: 'depth24plus',
+                },
+            });
+            pipelineCache.set(styleId, pipeline);
+        }
 
         // Create intermediate render target texture (with COPY_SRC for pixel readback)
         const renderTexture = device.createTexture({
@@ -278,7 +287,10 @@ class ThumbnailRenderer {
             const g = parseInt(h.slice(2, 4), 16) / 255;
             const b = parseInt(h.slice(4, 6), 16) / 255;
             // Apply gamma correction (sRGB to linear)
-            return [Math.pow(r, 2.2), Math.pow(g, 2.2), Math.pow(b, 2.2)];
+            // UPDATE: Removed gamma correction (2.2) because the shader output is not tone-mapped.
+            // Sending sRGB values directly as linear results in much better visibility for dark presets.
+            // return [Math.pow(r, 2.2), Math.pow(g, 2.2), Math.pow(b, 2.2)];
+            return [r, g, b];
         };
 
         // Use design colors if available, otherwise fallback to terracotta
@@ -454,9 +466,9 @@ class ThumbnailRenderer {
         uniforms[17] = CELLS_OUTER_Y; // cells_outer_y (nZ)
 
         // Lighting params (indices 22-24)
-        uniforms[22] = 0.3; // ambient
-        uniforms[23] = 0.7; // diffuse
-        uniforms[24] = 0.2; // fresnel
+        uniforms[22] = 0.6; // ambient (Increased for visibility)
+        uniforms[23] = 0.9; // diffuse
+        uniforms[24] = 0.3; // fresnel
 
         // Wall/bottom thickness (indices 25-26)
         const tWall = (size.wall_thickness as number) || 3;

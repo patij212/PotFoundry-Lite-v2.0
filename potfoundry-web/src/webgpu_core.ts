@@ -1159,9 +1159,9 @@ export const mount = async ({
   // CRITICAL: Add stabilization delay before first GPU operation.
   // Windows Dawn WebGPU backend crashes with "Instance reference no longer exists" if GPU
   // operations (like createTexture) happen too soon after device creation.
-  // Reduced stabilization delay for faster startup
-  console.log('[WebGPU] Waiting 50ms for GPU device stabilization...');
-  await new Promise(resolve => setTimeout(resolve, 50));
+  // Increased stabilization delay to 200ms based on user reports of crashes at 50ms
+  console.log('[WebGPU] Waiting 200ms for GPU device stabilization...');
+  await new Promise(resolve => setTimeout(resolve, 200));
   console.log('[WebGPU] Device stabilization complete, proceeding with initialization...');
 
   // Initialize SceneManager

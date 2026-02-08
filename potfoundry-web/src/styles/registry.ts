@@ -127,7 +127,7 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
 
     LowPolyFacet: {
         id: 19,
-        shaderName: 'harmonic_radius',
+        shaderName: 'low_poly_facet_radius',
         name: 'Low Poly Facet',
         description: 'Piecewise-flat facets for low-poly aesthetic.',
         params: {

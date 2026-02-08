@@ -32,6 +32,17 @@ export class SceneManager {
             this.createBuffers();
             console.log('[WebGPU] [SceneManager] Buffers created successfully.');
 
+            // Diagnostic Smoke Test
+            const smokeTestPassed = await this.smokeTest();
+            if (!smokeTestPassed) {
+                console.error('[WebGPU] [SceneManager] Aborting Init: Smoke Test Failed. Device likely incompatible or driver broken.');
+                // Throwing specific error to communicate to UI if needed, or simply return false
+                return false;
+            }
+
+            // Yield to event loop to allow driver to reset after smoke test
+            await new Promise(r => setTimeout(r, 50));
+
             // 1. Compile ONLY the requested style first.
             await this.activateStyle(initialStyleId);
 
@@ -39,11 +50,22 @@ export class SceneManager {
             this.warmupPipelines(initialStyleId);
 
             return !!this.pipeline;
-        } catch (err) {
+        } catch (err: any) {
             console.error('[WebGPU] [SceneManager] CRITICAL INIT FAILURE:', err);
-            // If it's not an Error object, try to stringify it
+
+            // Explicitly log known properties for better debugging
+            if (err) {
+                console.error('[WebGPU] [SceneManager] Error Details:', {
+                    name: err.name,
+                    message: err.message,
+                    stack: err.stack,
+                    code: err.code
+                });
+            }
+
+            // Fallback stringify
             if (typeof err === 'object') {
-                try { console.error('[WebGPU] [SceneManager] Error Details:', JSON.stringify(err)); } catch (e) { }
+                try { console.error('[WebGPU] [SceneManager] Full Error Object:', JSON.stringify(err, Object.getOwnPropertyNames(err))); } catch (e) { }
             }
             return false;
         }
@@ -168,15 +190,27 @@ export class SceneManager {
 
             const start = performance.now();
             const pipeline = await device.createRenderPipelineAsync(pipelineDescriptor).catch(async (err) => {
-                console.error(`[WebGPU] [SceneManager] createRenderPipelineAsync failed for Style ${styleId}`, err);
+                console.error(`[WebGPU] [SceneManager] createRenderPipelineAsync failed for Style ${styleId}`);
+                console.error('[WebGPU] [SceneManager] Raw Error:', err);
+                if (err instanceof Error) {
+                    console.error('[WebGPU] [SceneManager] Error Name:', err.name);
+                    console.error('[WebGPU] [SceneManager] Error Message:', err.message);
+                }
 
                 // Retrieve detailed compilation info
-                const info = await module.getCompilationInfo();
-                if (info.messages.length > 0) {
-                    console.error(`[WebGPU] [SceneManager] Shader Compilation Errors for Style ${styleId}:`);
-                    for (const msg of info.messages) {
-                        console.error(`[WebGPU] Line ${msg.lineNum}:${msg.linePos} - ${msg.message}`);
+                try {
+                    const info = await module.getCompilationInfo();
+                    if (info.messages.length > 0) {
+                        console.error(`[WebGPU] [SceneManager] Shader Compilation Messages for Style ${styleId}:`);
+                        for (const msg of info.messages) {
+                            const type = msg.type === 'error' ? 'ERR' : 'WARN';
+                            console.error(`[WebGPU] [${type}] Line ${msg.lineNum}:${msg.linePos} - ${msg.message}`);
+                        }
+                    } else {
+                        console.log(`[WebGPU] [SceneManager] No compilation messages found for Style ${styleId}.`);
                     }
+                } catch (infoErr) {
+                    console.error('[WebGPU] [SceneManager] Failed to retrieve compilation info:', infoErr);
                 }
                 throw err;
             });
@@ -258,6 +292,65 @@ export class SceneManager {
             pass.draw(vertexCount);
             pass.end();
             this.renderer.device!.queue.submit([commandEncoder.finish()]);
+        }
+    }
+
+    // Diagnostic: Simple minimal shader to test if device is capable of compiling ANYTHING
+    private async smokeTest(): Promise<boolean> {
+        if (!this.renderer.device) return false;
+
+        console.log('[WebGPU] [SceneManager] Starting Smoke Test (Minimal Shader Compile)...');
+        const minimalWGSL = `
+        @vertex
+        fn vs_main(@builtin(vertex_index) VertexIndex : u32) -> @builtin(position) vec4<f32> {
+            var pos = array<vec2<f32>, 3>(
+                vec2<f32>(0.0, 0.5),
+                vec2<f32>(-0.5, -0.5),
+                vec2<f32>(0.5, -0.5)
+            );
+            return vec4<f32>(pos[VertexIndex], 0.0, 1.0);
+        }
+        @fragment
+        fn fs_main() -> @location(0) vec4<f32> {
+            return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+        }
+        `;
+
+        try {
+            const module = this.renderer.device.createShaderModule({
+                label: 'smoke_test_shader',
+                code: minimalWGSL
+            });
+
+            const info = await module.getCompilationInfo();
+            if (info.messages.some(m => m.type === 'error')) {
+                console.error('[WebGPU] [SceneManager] Smoke Test Failed: Shader Compilation Error', info);
+                return false;
+            }
+
+            const pipelineDescriptor: GPURenderPipelineDescriptor = {
+                layout: 'auto',
+                vertex: { module, entryPoint: 'vs_main' },
+                fragment: {
+                    module, entryPoint: 'fs_main',
+                    targets: [{ format: this.renderer.presentationFormat }]
+                },
+                primitive: { topology: 'triangle-list' }
+            };
+
+            await this.renderer.device.createRenderPipelineAsync(pipelineDescriptor);
+            console.log('[WebGPU] [SceneManager] Smoke Test PASSED. Device is capable of basic rendering.');
+            return true;
+        } catch (err: any) {
+            console.error('[WebGPU] [SceneManager] Smoke Test FAILED (Critical).', err);
+            if (err) {
+                console.error('[WebGPU] [SceneManager] Smoke Test Error Details:', {
+                    name: err.name,
+                    message: err.message,
+                    code: err.code
+                });
+            }
+            return false;
         }
     }
 }

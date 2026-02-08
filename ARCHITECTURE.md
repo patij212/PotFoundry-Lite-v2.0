@@ -68,20 +68,12 @@ While the preview is purely GPU-based, the Export process currently uses a separ
 
 ## 4. Directory Structure
 
-```
-PotFoundry/
-├── potfoundry-web/      # THE APP (React + WebGPU)
-│   ├── src/
-│   │   ├── renderers/   # WebGPU/WGSL logic
-│   │   ├── components/  # React UI
-│   │   └── state/       # Zustand stores
-│   └── public/
-├── potfoundry/          # REFERENCE (Python Core)
-│   ├── core/            # Geometric math
-│   └── tests/           # Verification tests
-├── archive/             # LEGACY stuff (Streamlit, etc)
-└── tests/               # Integration tests
-```
+### Primary Component: `potfoundry-web/`
+The **React + TypeScript + WebGPU** application. This is the entire product.
+
+### Archived Reference: `archive/legacy_python/`
+The original Python Core (`potfoundry/`) and its tests (`tests/`). This code is **not used by the app**. It is kept purely for mathematical reference if needed.
+
 
 ---
 

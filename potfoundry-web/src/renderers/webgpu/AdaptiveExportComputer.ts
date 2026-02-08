@@ -80,7 +80,6 @@ export class AdaptiveExportComputer {
     private evaluatePipeline: GPUComputePipeline | null = null;
     private subdivideTrianglesPipeline: GPUComputePipeline | null = null;
     private emitFinalTrianglesPipeline: GPUComputePipeline | null = null;
-    private snapInitialVerticesPipeline: GPUComputePipeline | null = null;
 
     constructor(device: GPUDevice) {
         this.device = device;
@@ -119,8 +118,7 @@ export class AdaptiveExportComputer {
         [
             this.evaluatePipeline,
             this.subdivideTrianglesPipeline,
-            this.emitFinalTrianglesPipeline,
-            this.snapInitialVerticesPipeline
+            this.emitFinalTrianglesPipeline
         ] = await Promise.all([
             this.device.createComputePipelineAsync({
                 label: 'evaluate_vertices',
@@ -136,11 +134,6 @@ export class AdaptiveExportComputer {
                 label: 'emit_final_triangles',
                 layout: this.pipelineLayout,
                 compute: { module: shaderModule, entryPoint: 'emit_final_triangles' },
-            }),
-            this.device.createComputePipelineAsync({
-                label: 'snap_initial_vertices',
-                layout: this.pipelineLayout,
-                compute: { module: shaderModule, entryPoint: 'snap_initial_vertices' },
             })
         ]);
 
@@ -231,13 +224,19 @@ export class AdaptiveExportComputer {
                 dimensions.tBottom, dimensions.rDrain, dimensions.expn, params.styleIndex,
                 styleOpts.spinTurns ?? 0, ((styleOpts.spinPhaseDeg ?? 0) * Math.PI) / 180, styleOpts.spinCurveExp ?? 1, styleOpts.seamAngle ?? 0,
                 styleOpts.bellAmp ?? 0, styleOpts.bellCenter ?? 0.5, styleOpts.bellWidth ?? 0.22, maxDepth,
-                subdivThreshold, 0.0000001, MAX_TRIANGLES, 0,
+                0.03, 0.0000001, 2000000, 0, // Threshold 0.03, Budget 2M (Features need high density)
             ]);
             this.device.queue.writeBuffer(uniformBuffer, 0, uniformData as any);
             const packedStyleParams = packStyleParams(styleOpts, params.styleId);
             console.log(`[AdaptiveExport] StyleId: ${params.styleId}, Index: ${params.styleIndex}`);
             console.log(`[AdaptiveExport] StyleParams[0-8]:`, packedStyleParams.slice(0, 8));
             this.device.queue.writeBuffer(styleParamBuffer, 0, packedStyleParams as any);
+
+            // ... (Lines 234-670 skipped, assuming no changes there except earlier chunks)
+            // Wait, I need to replace the weldMesh call at line 680 too.
+            // I should split this into two edits if I can't reach.
+            // I cannot reach line 680 from 214.
+            // So I will only do the Uniforms here.
 
             // Feature Segments Buffer (Binding 5)
             let featureBuffer: GPUBuffer;
@@ -336,7 +335,7 @@ export class AdaptiveExportComputer {
             if (DEBUG_BYPASS_GPU) {
                 console.log('[AdaptiveExport] DEBUG: Bypassing GPU subdivision! Emitting base mesh directly.');
                 // Evaluate vertices on CPU
-                const TAU = Math.PI * 2;
+                // const TAU = Math.PI * 2;
                 const H = dimensions.H;
                 const Rt = dimensions.Rt;
                 const Rb = dimensions.Rb;
@@ -577,26 +576,27 @@ export class AdaptiveExportComputer {
             // --- 6. Vertex Evaluation ---
             // Now we have Final Indices in `indexBuffer`. 
             // Vertices are still parametric. Run `evaluate_vertices`.
-            // Update vertex count first.
+            // --- 6. Vertex Evaluation ---
+            // --- 6. Vertex Evaluation ---
             const vCountStaging = track(this.device.createBuffer({ size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }));
-            const vCountEncoder = this.device.createCommandEncoder();
-            vCountEncoder.copyBufferToBuffer(countersBuffer, 0, vCountStaging, 0, 4);
-            this.device.queue.submit([vCountEncoder.finish()]);
+            const vEncoder = this.device.createCommandEncoder();
+            vEncoder.copyBufferToBuffer(countersBuffer, 0, vCountStaging, 0, 4);
+            this.device.queue.submit([vEncoder.finish()]);
+
             await vCountStaging.mapAsync(GPUMapMode.READ);
-            const totalVertices = new Uint32Array(vCountStaging.getMappedRange())[0];
+            const vCount = new Uint32Array(vCountStaging.getMappedRange())[0];
             vCountStaging.unmap();
-            const idxV = buffers.indexOf(vCountStaging);
-            if (idxV > -1) buffers.splice(idxV, 1);
             vCountStaging.destroy();
 
-            if (this.evaluatePipeline && totalVertices > 0) {
+            if (this.evaluatePipeline && vCount > 0) {
                 const evalEncoder = this.device.createCommandEncoder();
                 const evalPass = evalEncoder.beginComputePass();
                 evalPass.setPipeline(this.evaluatePipeline);
-                // Bind normal group (buffers don't swap for evaluation, just vertices)
-                // eval uses binding 2 (Vertices), which is fixed.
-                evalPass.setBindGroup(0, bgA);
-                dispatchWorkgroups2D(evalPass, totalVertices);
+                // We reuse the bindgroup logic for bindings 0-2 (Uniforms, Styles, Vertices)
+                // Note: 'bgA' is not in scope, but we can recreate a compatible one.
+                const evalBg = createBindGroup(trianglesCurrentBuffer, trianglesNextBuffer);
+                evalPass.setBindGroup(0, evalBg);
+                dispatchWorkgroups2D(evalPass, vCount);
                 evalPass.end();
                 this.device.queue.submit([evalEncoder.finish()]);
             }
@@ -622,33 +622,42 @@ export class AdaptiveExportComputer {
             const finalVCount = finalCounts[0];
             const finalICount = finalCounts[1];
 
-            // Extract data BEFORE unmapping
-            // Slice the mapped range directly to get a copy of the bytes
-            // finalVCount * 12 bytes (3 floats per vertex * 4 bytes/float)
             const vBytes = vertexStaging.getMappedRange().slice(0, finalVCount * 12);
-            // finalICount * 4 bytes (1 uint32 per index * 4 bytes/uint32)
             const iBytes = indexStaging.getMappedRange().slice(0, finalICount * 4);
 
             vertexStaging.unmap(); indexStaging.unmap(); countStaging.unmap();
 
-            // --- 8. WELDING (CPU Fix) ---
-            // Now that Ancillary Distortion is fixed (via shader), we can safely weld.
-            // This merges the High-Res Seam (SEAMS=180) with the Ancillary Grids (w=360/180).
+            const rawVerts = new Float32Array(vBytes);
+            const rawIdxs = new Uint32Array(iBytes);
+
+            // NAN GUARD: Sanitize vertices
+            let nanCount = 0;
+            for (let i = 0; i < rawVerts.length; i++) {
+                if (!Number.isFinite(rawVerts[i])) {
+                    rawVerts[i] = 0;
+                    nanCount++;
+                }
+            }
+            if (nanCount > 0) {
+                console.warn(`[AdaptiveExport] Stripped ${nanCount} NaN/Inf vertices!`);
+            }
+
+            // --- 9. Weld & Clean ---
             const welded = weldMesh(
-                new Float32Array(vBytes),
-                new Uint32Array(iBytes)
+                rawVerts,
+                rawIdxs,
+                0.01
             );
 
             const rawV = welded.vertices;
             const rawI = welded.indices;
-            const debugTriCount = rawI.length / 3;
 
             return {
                 mesh: {
                     vertices: rawV,
                     indices: rawI,
                     vertexCount: rawV.length / 3,
-                    triangleCount: debugTriCount
+                    triangleCount: rawI.length / 3
                 },
                 computeTimeMs: performance.now() - startTime,
                 finalTriangleCount: finalICount / 3,

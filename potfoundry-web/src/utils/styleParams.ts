@@ -382,6 +382,20 @@ function packCelticTriquetra(opts: Record<string, unknown>): number[] {
   ]));
 }
 
+/**
+ * Pack LowPolyFacet parameters.
+ */
+function packLowPolyFacet(opts: Record<string, unknown>): number[] {
+  return pad(clamp([
+    getOpt(opts, 'lp_facets', 12),       // 0: Facet Count
+    getOpt(opts, 'lp_tiers', 1),         // 1: Tiers
+    getOpt(opts, 'lp_amp', 0.12),        // 2: Amplitude
+    getOpt(opts, 'lp_bevel', 0.15),      // 3: Bevel
+    getOpt(opts, 'lp_jitter', 0.15),     // 4: Jitter
+    getOpt(opts, 'lp_phase_deg', 0) * DEG2RAD, // 5: Phase
+  ]));
+}
+
 // ============================================================================
 // Packer Registry
 // ============================================================================
@@ -407,6 +421,7 @@ const PACKERS: Record<number, (opts: Record<string, unknown>) => number[]> = {
   16: packHexagonalHive,
   17: packCelticKnot,
   18: packCelticTriquetra,
+  19: packLowPolyFacet,
 };
 
 // ============================================================================

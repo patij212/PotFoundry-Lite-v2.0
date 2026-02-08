@@ -19,6 +19,7 @@ import {
 import { ConstrainedTriangulator } from '../utils/geometry/ConstrainedTriangulator';
 import { AdaptiveExportComputer, type AdaptiveExportParams } from '../renderers/webgpu/AdaptiveExportComputer';
 import { FeatureExtractionComputer, type FeaturePoint } from '../renderers/webgpu/FeatureExtractionComputer';
+import { ImportanceMapComputer } from '../renderers/webgpu/ImportanceMapComputer';
 import { STYLE_IDS, STYLE_FUNCTION_MAP, STYLE_REGISTRY } from '../styles/registry';
 import { stripShaderCode } from '../utils/shaderStripper';
 import { useControllerMaybe } from '../context/ControllerContext';
@@ -28,6 +29,7 @@ import commonWgsl from '../assets/shaders/common.wgsl?raw';
 import stylesWgsl from '../assets/shaders/styles.wgsl?raw';
 import adaptiveMeshWgsl from '../assets/shaders/adaptive_mesh.wgsl?raw';
 import featureExtractWgsl from '../assets/shaders/feature_extract.wgsl?raw';
+import importanceMapWgsl from '../assets/shaders/importance_map.wgsl?raw';
 
 
 // ============================================================================
@@ -73,10 +75,11 @@ const QUALITY_SETTINGS: Record<AdaptiveExportQuality, Partial<AdaptiveExportPara
     // Negative threshold forces uniform subdivision (robust against T-junction cracks)
     // We now switch to Adaptive (Positive) to prevent overflow on complex pots.
     // Cracks are handled by the new ConstrainedTriangulator topology.
-    low: { targetTriangles: 500_000, maxDepth: 4, subdivThreshold: 0.05 },
-    medium: { targetTriangles: 3_000_000, maxDepth: 5, subdivThreshold: 0.02 },
-    high: { targetTriangles: 6_000_000, maxDepth: 6, subdivThreshold: 0.01 },
-    ultra: { targetTriangles: 10_000_000, maxDepth: 7, subdivThreshold: 0.01 }, // Stabilized
+    // Quality Presets
+    low: { targetTriangles: 2_000_000, maxDepth: 4, subdivThreshold: 0.05 },
+    medium: { targetTriangles: 4_000_000, maxDepth: 5, subdivThreshold: 0.02 },
+    high: { targetTriangles: 8_000_000, maxDepth: 6, subdivThreshold: 0.01 },
+    ultra: { targetTriangles: 12_000_000, maxDepth: 7, subdivThreshold: 0.01 }, // Stabilized
 };
 
 // ============================================================================
@@ -96,6 +99,7 @@ export function useAdaptiveExport(): UseAdaptiveExportResult {
 
     const computerRef = useRef<AdaptiveExportComputer | null>(null);
     const featureComputerRef = useRef<FeatureExtractionComputer | null>(null);
+    const importanceMapRef = useRef<ImportanceMapComputer | null>(null);
     const deviceRef = useRef<GPUDevice | null>(null);
 
     const geometry = useAppStore((state) => state.geometry);
@@ -135,6 +139,9 @@ export function useAdaptiveExport(): UseAdaptiveExportResult {
                 });
 
                 device.lost.then((info) => {
+                    // Ignore intentional destruction
+                    if (info.reason === 'destroyed') return;
+
                     console.error(`[useAdaptiveExport] Device lost: ${info.reason}`);
                     if (isMounted) {
                         setIsAvailable(false);
@@ -168,16 +175,24 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 const featureShaderSource = [commonWgsl, strippedStyles, dispatchCode, featureExtractWgsl].join('\n');
                 await featureComputer.init(featureShaderSource);
 
+                // Initialize ImportanceMapComputer for style-aware point density
+                const importanceMapComputer = new ImportanceMapComputer(device);
+                // IMPORTANT: importanceMapWgsl defines getf/style_param, must come BEFORE strippedStyles which uses them
+                const importanceShaderSource = [commonWgsl, importanceMapWgsl, strippedStyles, dispatchCode].join('\n');
+                await importanceMapComputer.init(importanceShaderSource);
+
                 if (isMounted) {
                     computerRef.current = computer;
                     featureComputerRef.current = featureComputer;
+                    importanceMapRef.current = importanceMapComputer;
                     deviceRef.current = device;
                     setIsAvailable(true);
-                    console.log('[useAdaptiveExport] Adaptive export ready');
+                    console.log('[useAdaptiveExport] Adaptive export ready (with importance map)');
                 } else {
                     // Cleanup if unmounted during init
                     computer.destroy();
                     featureComputer.destroy();
+                    importanceMapComputer.destroy();
                     device.destroy();
                 }
             } catch (error) {
@@ -227,12 +242,12 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
     }, [style, geometry, mesh]);
 
     // Helper to calculate twist (matches WGSL)
-    const twistTheta = (theta: number, t: number, opts: Record<string, number>): number => {
-        const turns = opts.spinTurns ?? 0;
-        const phase = (opts.spinPhaseDeg ?? 0) * (Math.PI / 180);
-        const curve = Math.max(opts.spinCurveExp ?? 1, 0.0001);
-        return theta + 2 * Math.PI * turns * Math.pow(t, curve) + phase;
-    };
+    // const twistTheta = (theta: number, t: number, opts: Record<string, number>): number => {
+    //    const turns = opts.spinTurns ?? 0;
+    //    const phase = (opts.spinPhaseDeg ?? 0) * (Math.PI / 180);
+    //    const curve = Math.max(opts.spinCurveExp ?? 1, 0.0001);
+    //    return theta + 2 * Math.PI * turns * Math.pow(t, curve) + phase;
+    // };
 
     const generateMesh = useCallback(async (quality: AdaptiveExportQuality = 'high'): Promise<MeshData | null> => {
         if (!computerRef.current?.isReady()) {
@@ -330,14 +345,46 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                     setProgress({ status: 'generating', progress: 30, message: 'Generating base topology...' });
                     await new Promise(r => setTimeout(r, 0));
 
+                    // Map UI GeometryParams to PotDimensions for Triangulator
+                    const potDims = {
+                        H: geometry.H,
+                        Rt: geometry.top_od / 2,
+                        Rb: geometry.bottom_od / 2,
+                        tWall: geometry.t_wall,
+                        tBottom: geometry.t_bottom,
+                        rDrain: geometry.r_drain,
+                        expn: geometry.expn
+                    };
+
+                    // --- COMPUTE IMPORTANCE MAP (GPU) ---
+                    let importanceMap: Float32Array | undefined;
+                    const IMPORTANCE_GRID_SIZE = 64;
+                    if (importanceMapRef.current) {
+                        try {
+                            console.log('[useAdaptiveExport] 2.5. Computing importance map...');
+                            const importanceResult = await importanceMapRef.current.compute({
+                                dimensions: potDims,
+                                styleId: styleId,
+                                styleOpts: styleOpts,
+                                styleIndex: styleIndex,
+                                gridSize: IMPORTANCE_GRID_SIZE
+                            });
+                            importanceMap = importanceResult.importanceMap;
+                            console.log(`[useAdaptiveExport]    - Importance map: ${importanceMap.length} values, computed in ${importanceResult.computeTimeMs.toFixed(1)}ms`);
+                        } catch (importanceError) {
+                            console.warn('[useAdaptiveExport] Importance map failed, using uniform density:', importanceError);
+                        }
+                    }
+
                     console.log('[useAdaptiveExport] 3. Topology: Generating Constrained Mesh...');
-                    baseMesh = ConstrainedTriangulator.generateFullPot(triangulationFeatures);
+                    baseMesh = ConstrainedTriangulator.generateFullPot(triangulationFeatures, potDims, importanceMap, IMPORTANCE_GRID_SIZE);
                     console.log(`[useAdaptiveExport]    - Base Mesh: ${baseMesh.vertices.length / 3} verts, ${baseMesh.indices.length / 3} tris.`);
 
                     // --- GENERATE GPU SNAPPING DATA (Segments + Grid) ---
                     try {
                         // Extract chains from the HIGH FIDELITY set
-                        const { chains } = ConstrainedTriangulator.extractChains(snappingFeatures);
+                        const avgRadius = (potDims.Rt + potDims.Rb) * 0.5;
+                        const { chains } = ConstrainedTriangulator.extractChains(snappingFeatures, avgRadius * 6.283185, potDims.H);
                         console.log(`[useAdaptiveExport]    - Extracted Chains: ${chains.length}. First Chain Length: ${chains[0]?.length || 0}`);
 
                         // Binning Config
@@ -347,7 +394,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
 
                         // Flatten Chains -> Segments & Bin
                         let totalPoints = 0;
-                        chains.forEach((chain, cIdx) => {
+                        chains.forEach((chain) => {
                             if (!chain || chain.length < 2) return;
                             for (let i = 0; i < chain.length - 1; i++) {
                                 const p1 = chain[i];

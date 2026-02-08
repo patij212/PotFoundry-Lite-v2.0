@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ConstrainedTriangulator, Point2D } from '../ConstrainedTriangulator';
+import { ConstrainedTriangulator } from '../ConstrainedTriangulator';
 import { FeaturePoint } from '../../../renderers/webgpu/FeatureExtractionComputer';
 
 // Helper to create feature points
@@ -182,7 +182,7 @@ describe('extractChains', () => {
                 features.push({ theta: (0.11 + i * 0.02) * Math.PI * 2, t: 0.51, type: 1, strength: 0.8 });
             }
 
-            const result = ConstrainedTriangulator.extractChains(features, 1.0);
+            const result = ConstrainedTriangulator.extractChains(features);
 
             // Should produce at least 2 distinct chains (or the crawler on one ridge)
             // It should NOT zigzag between them.

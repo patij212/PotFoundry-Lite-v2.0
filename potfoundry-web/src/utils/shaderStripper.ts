@@ -1,5 +1,4 @@
 
-import { STYLE_FUNCTION_MAP } from '../styles/registry';
 
 /**
  * Strips unused style functions from the raw WGSL string.
@@ -9,55 +8,57 @@ import { STYLE_FUNCTION_MAP } from '../styles/registry';
  * It uses a brace-counting parser to safely remove the entire function body.
  */
 export function stripShaderCode(wgsl: string, activeFunctionName: string): string {
-    let stripped = wgsl;
-    const allFunctions = Object.values(STYLE_FUNCTION_MAP);
+    const lines = wgsl.split('\n');
+    const output: string[] = [];
 
-    // Helper to remove a specific function block handling nested braces
-    const removeFunction = (code: string, funcName: string): string => {
-        // Find "fn funcName" start
-        const fnStartRegex = new RegExp(`fn\\s+${funcName}\\b`);
-        const match = code.match(fnStartRegex);
-        if (!match || match.index === undefined) return code;
+    let insideRegion = false;
+    let keepCurrentRegion = false;
 
-        const startIndex = match.index;
+    // We assume that the region name matches the active function name
+    // OR matches a special "Shared" tag (though currently shared code is just outside regions).
 
-        // Find the opening bracket '{' after declaration
-        let openBraceIndex = code.indexOf('{', startIndex);
-        if (openBraceIndex === -1) return code; // Should not happen in valid code
+    for (const line of lines) {
+        const trimmed = line.trim();
 
-        // Walk forward counting braces
-        let balance = 1;
-        let currentIndex = openBraceIndex + 1;
+        // Check for start of region
+        if (trimmed.startsWith('// #region')) {
+            insideRegion = true;
+            const regionName = trimmed.replace('// #region', '').trim();
 
-        while (currentIndex < code.length && balance > 0) {
-            const char = code[currentIndex];
-            if (char === '{') {
-                balance++;
-            } else if (char === '}') {
-                balance--;
+            // Keep if it matches the active function
+            // We use simple string inclusion check so "#region style_celtic" matches "style_celtic_knot" if needed,
+            // but exact match is safer:
+            keepCurrentRegion = (regionName === activeFunctionName);
+
+            // Validate: If we are meant to strip, we skip adding this line (and subsequent ones)
+            // But we might want to keep the region markers for debugging? No, strip them to save bytes/confusion.
+            if (keepCurrentRegion) {
+                output.push(line);
             }
-            currentIndex++;
+            continue;
         }
 
-        if (balance === 0) {
-            // Remove from startIndex to currentIndex (inclusive of closing brace)
-            // We keep a newline to preserve line separation
-            return code.substring(0, startIndex) + "\n" + code.substring(currentIndex);
+        // Check for end of region
+        if (trimmed.startsWith('// #endregion')) {
+            if (keepCurrentRegion) {
+                output.push(line);
+            }
+            insideRegion = false;
+            keepCurrentRegion = false;
+            continue;
         }
 
-        return code; // Fallback if braces didn't balance (malformed?)
-    };
-
-    for (const func of allFunctions) {
-        // Skip the active function
-        if (func === activeFunctionName) continue;
-
-        // Remove main variant
-        stripped = removeFunction(stripped, func);
-        // Remove _zero variant
-        stripped = removeFunction(stripped, `${func}_zero`);
-        // Remove _tau variant
-        stripped = removeFunction(stripped, `${func}_tau`);
+        // Logic for content lines
+        if (insideRegion) {
+            if (keepCurrentRegion) {
+                output.push(line);
+            }
+            // Else: discard line (stripping)
+        } else {
+            // Outside logic: Keep everything (Shared Code)
+            output.push(line);
+        }
     }
-    return stripped;
+
+    return output.join('\n');
 }

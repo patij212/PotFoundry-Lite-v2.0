@@ -14,18 +14,30 @@ export class WebGPURenderer {
     }
 
     private async getBestAdapter(): Promise<GPUAdapter | null> {
-        // Option 1: High Performance
-        try {
-            const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-            if (adapter) return adapter;
-        } catch (e) {
-            console.warn('[WebGPURenderer] High-performance adapter request failed:', e);
+        // Detect Mobile
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        console.log(`[WebGPURenderer] Adapter Strategy: ${isMobile ? 'Mobile (Default)' : 'Desktop (High-Performance)'}`);
+
+        // Option 1: High Performance (Desktop Only)
+        if (!isMobile) {
+            try {
+                const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+                if (adapter) {
+                    console.log('[WebGPURenderer] Acquired High-Performance Adapter');
+                    return adapter;
+                }
+            } catch (e) {
+                console.warn('[WebGPURenderer] High-performance adapter request failed:', e);
+            }
         }
 
-        // Option 2: Default
+        // Option 2: Default (Preferred for Mobile to avoid instability)
         try {
             const adapter = await navigator.gpu.requestAdapter();
-            if (adapter) return adapter;
+            if (adapter) {
+                console.log('[WebGPURenderer] Acquired Default Adapter');
+                return adapter;
+            }
         } catch (e) {
             console.warn('[WebGPURenderer] Default adapter request failed:', e);
         }
@@ -34,7 +46,10 @@ export class WebGPURenderer {
         try {
             console.warn('[WebGPURenderer] Trying compatibility mode...');
             const adapter = await navigator.gpu.requestAdapter({ compatibilityMode: true } as any);
-            if (adapter) return adapter;
+            if (adapter) {
+                console.log('[WebGPURenderer] Acquired Compatibility Adapter');
+                return adapter;
+            }
         } catch (e) {
             console.warn('[WebGPURenderer] Compatibility mode adapter request failed:', e);
         }
@@ -56,7 +71,40 @@ export class WebGPURenderer {
                 return false;
             }
 
-            const deviceDescriptor: GPUDeviceDescriptor = {};
+            // Diagnostic Logging
+            try {
+                // Use standard property if available (latest spec), fallback to async method
+                const info = (this.adapter as any).info || await (this.adapter as any).requestAdapterInfo?.();
+
+                if (info) {
+                    console.log('[WebGPURenderer] Adapter Info:', {
+                        vendor: info.vendor,
+                        architecture: info.architecture,
+                        device: info.device,
+                        description: info.description
+                    });
+                }
+
+                console.log('[WebGPURenderer] Adapter Limits:', {
+                    maxTextureDimension2D: this.adapter.limits.maxTextureDimension2D,
+                    maxBufferSize: this.adapter.limits.maxBufferSize,
+                    maxStorageBufferBindingSize: this.adapter.limits.maxStorageBufferBindingSize,
+                    maxComputeWorkgroupStorageSize: this.adapter.limits.maxComputeWorkgroupStorageSize,
+                });
+                console.log('[WebGPURenderer] Is Fallback:', (this.adapter as any).isFallbackAdapter);
+            } catch (e) {
+                console.warn('[WebGPURenderer] Failed to log adapter details (non-critical):', e);
+            }
+
+            const deviceDescriptor: GPUDeviceDescriptor = {
+                requiredLimits: {
+                    // Request limits that match the adapter to avoid "exceeds default" errors
+                    // especially on mobile where defaults might be conservative
+                    maxTextureDimension2D: this.adapter.limits.maxTextureDimension2D,
+                    maxStorageBufferBindingSize: this.adapter.limits.maxStorageBufferBindingSize,
+                    maxBufferSize: this.adapter.limits.maxBufferSize,
+                }
+            };
             this.device = await this.adapter.requestDevice(deviceDescriptor);
 
             this.context = this.canvas.getContext('webgpu');

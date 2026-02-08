@@ -1,16 +1,11 @@
-/**
- * Presets Module
- * 
- * @module presets
- */
-
 export {
   PRESETS,
-  getPresetsByCategory,
-  getPresetById,
   getCategories,
-  presetStyleToId,
-  type PotPreset,
-  type PresetConfig,
-  type PresetCategory,
+  getPresetById,
+  getPresetsByCategory,
+} from './presets';
+
+export type {
+  PotPreset,
+  PresetCategory,
 } from './presets';

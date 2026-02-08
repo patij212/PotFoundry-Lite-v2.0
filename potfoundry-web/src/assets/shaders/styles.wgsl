@@ -43,6 +43,7 @@ fn superformula_value(theta: f32, m: f32, n1: f32, n2: f32, n3: f32, a: f32, b: 
   return clamp(1.0 / denom, 0.0, 4.0);
 }
 
+// #region sf_radius
 fn sf_radius(theta: f32, t: f32, r0: f32) -> f32 {
   let has_params = style_params_active();
   
@@ -194,7 +195,9 @@ fn sf_radius_tau(t: f32, r0: f32) -> f32 {
   let sf_result = r0 * (0.90 + 0.35 * rf);
   return mix(r0, sf_result, strength);
 }
+// #endregion
 
+// #region fourier_radius
 fn fourier_radius(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -227,7 +230,9 @@ fn fourier_radius(theta: f32, t: f32, r0: f32) -> f32 {
   f *= 1.0 + wob_amp * sin(wob_freq * theta + TAU * wob_zgain * t);
   return r0 * (1.0 + (f - 1.0) * strength);
 }
+// #endregion
 
+// #region spiral_radius
 fn spiral_radius(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -246,7 +251,9 @@ fn spiral_radius(theta: f32, t: f32, r0: f32) -> f32 {
   f += groove_amp * sin(groove_mult * k * theta + phase_mult * phase);
   return r0 * f;
 }
+// #endregion
 
+// #region superellipse_radius
 fn superellipse_radius(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -265,7 +272,9 @@ fn superellipse_radius(theta: f32, t: f32, r0: f32) -> f32 {
   let rf = base * (1.0 + c4a * cos(4.0 * theta + c4p) + c8a * cos(8.0 * theta + c8p));
   return r0 * rf;
 }
+// #endregion
 
+// #region harmonic_radius
 fn harmonic_radius(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -284,10 +293,12 @@ fn harmonic_radius(theta: f32, t: f32, r0: f32) -> f32 {
   f *= 1.0 + bell * exp(-((t - 0.5) * (t - 0.5)) / 0.04);
   return r0 * f;
 }
+// #endregion
 
 // ============================================================================
 // Gothic Arches (Architectural Rewrite - V2)
 // ============================================================================
+// #region gothic_arches_radius
 fn gothic_arches_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -371,11 +382,13 @@ fn gothic_arches_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
   let pattern = botMask * lower + topMask * upper + bands * 0.25 * bandBase;
   return r0 + amp * pattern;
 }
+// #endregion
 
 // ============================================================================
 // Wave Interference - Moire patterns from wave superposition
 // ============================================================================
 
+// #region wave_interference_radius
 // Helper function to compute wave interference pattern at arbitrary theta
 fn wi_compute_pattern(th: f32, t_val: f32, feature_count: f32, moire_strength: f32, 
                        pattern_style: f32, helix_pitch: f32, pitch_mismatch: f32,
@@ -473,11 +486,13 @@ fn wave_interference_radius(theta: f32, t: f32, r0: f32) -> f32 {
 
   return max(0.1, r0 + displacement);
 }
+// #endregion
 
 // ============================================================================
 // Ripple Interference - Physics-based wave interference from multiple sources
 // Creates true interference patterns like ripples in water from multiple stones
 // ============================================================================
+// #region ripple_interference_radius
 fn ripple_interference_radius(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -549,10 +564,12 @@ fn ripple_interference_radius(theta: f32, t: f32, r0: f32) -> f32 {
   
   return max(0.1, r0 + displacement);
 }
+// #endregion
 
 // ============================================================================
 // Crystalline - Faceted crystal surfaces
 // ============================================================================
+// #region crystalline_radius
 fn crystalline_radius(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -586,10 +603,12 @@ fn crystalline_radius(theta: f32, t: f32, r0: f32) -> f32 {
   
   return r0 * clamp(modulation, 0.5, 2.0);
 }
+// #endregion
 
 // ============================================================================
 // Art Deco - 1920s geometric styling
 // ============================================================================
+// #region art_deco_radius
 fn art_deco_radius(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -623,10 +642,12 @@ fn art_deco_radius(theta: f32, t: f32, r0: f32) -> f32 {
   
   return r0 * clamp(fan_mod * step_factor * (1.0 + chevron_mod), 0.5, 2.0);
 }
+// #endregion
 
 // ============================================================================
 // Dragon Scales - Overlapping scale patterns
 // ============================================================================
+// #region dragon_scales_radius
 fn dragon_scales_radius(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -670,10 +691,12 @@ fn dragon_scales_radius(theta: f32, t: f32, r0: f32) -> f32 {
   
   return r0 * clamp(modulation, 0.5, 2.0);
 }
+// #endregion
 
 // ============================================================================
 // Bamboo Segments - Bamboo-inspired node patterns
 // ============================================================================
+// #region bamboo_segments_radius
 fn bamboo_segments_radius(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -711,10 +734,12 @@ fn bamboo_segments_radius(theta: f32, t: f32, r0: f32) -> f32 {
   
   return r0 * clamp(modulation, 0.5, 2.0);
 }
+// #endregion
 
 // ----------------------------------------------------------------------------
 // Gyroid Manifold Style
 // ----------------------------------------------------------------------------
+// #region style_gyroid_manifold
 fn style_gyroid_manifold(theta: f32, t: f32, r0: f32) -> f32 {
   if (!style_params_active()) {
     return r0;
@@ -807,11 +832,14 @@ fn style_gyroid_manifold(theta: f32, t: f32, r0: f32) -> f32 {
 
   return r0 + relief * final_shape * fade_factor;
 }
+// #endregion
 
 // ========================================================================
 // VORONOI / CELLULAR NOISE
 // ========================================================================
 
+// 2D Hash for periodic noise
+// #region style_voronoi
 // 2D Hash for periodic noise
 fn hash22(p: vec2<f32>) -> vec2<f32> {
   var p3 = fract(vec3<f32>(p.xyx) * vec3<f32>(0.1031, 0.1030, 0.0973));
@@ -987,7 +1015,9 @@ fn style_voronoi(theta: f32, t: f32, r0: f32) -> f32 {
   
   return r0 + relief * pattern * fade_factor;
 }
+// #endregion
 
+// #region style_geometric_star
 fn style_geometric_star(theta: f32, t: f32, r0: f32) -> f32 {
   // Params:
   // 0: Points
@@ -1097,11 +1127,13 @@ fn style_geometric_star(theta: f32, t: f32, r0: f32) -> f32 {
   
   return r0 + h_mod * relief * v_fade;
 }
+// #endregion
 
 // ============================================================================
 // Hexagonal Hive
 // ============================================================================
 
+// #region style_hexagonal_hive
 fn hex_dist(p: vec2<f32>) -> f32 {
   // Hexagon SDF (pointy topped)
   let p_abs = abs(p);
@@ -1230,12 +1262,14 @@ fn request_cell_id(a: vec2<f32>, b: vec2<f32>, la: f32, lb: f32) -> vec2<f32> {
     if (la < lb) { return a; }
     return b + vec2<f32>(0.5, 0.5); // Offset ID
 }
+// #endregion
 
 // ============================================================================
 // Celtic Knot - Multi-Strand Braid with Robust Over/Under Detection
 // Uses crossing-index algorithm for proper alternation
 // ============================================================================
 
+// #region style_celtic_knot
 // Helper: distance from point to a sine wave strand
 fn celtic_dist(u: f32, v: f32, phase: f32, amp: f32, frq: f32) -> f32 {
   return abs(u - amp * sin(v * frq + phase));
@@ -1366,7 +1400,9 @@ fn style_celtic_knot(theta: f32, t: f32, r0: f32) -> f32 {
   
   return r0 + profile * relief * depth_factor;
 }
+// #endregion
 
+// #region style_basket_weave
 fn style_basket_weave(theta: f32, t: f32, r0: f32) -> f32 {
   // Params:
   // 0: Strands
@@ -1455,11 +1491,13 @@ fn style_basket_weave(theta: f32, t: f32, r0: f32) -> f32 {
   
   return r0 + h * depth;
 }
+// #endregion
 
 // ============================================================================
 // Celtic Triquetra Utilities
 // ============================================================================
 
+// #region style_celtic_triquetra
 fn braid_tile_id(ix: i32, iy: i32) -> u32 {
   let xodd = (ix & 1) != 0;
   let yodd = (iy & 1) != 0;
@@ -1666,7 +1704,7 @@ fn style_celtic_triquetra(theta: f32, t: f32, r0: f32) -> f32 {
   let med_r = style_param(4u);                             // Medallion radius
   let med_y = style_param(5u);                             // Medallion Y position
   let gap = style_param(6u);                               // Gap at crossings
-
+  
   let roundness = 0.85;
   let feather = 0.02;
   
@@ -1682,8 +1720,6 @@ fn style_celtic_triquetra(theta: f32, t: f32, r0: f32) -> f32 {
   
   var h = 0.0;
   let u = fract(theta / TAU);
-
-
 
   // Upper Braid Band
   if (upper > 0.0) {
@@ -1722,6 +1758,59 @@ fn style_celtic_triquetra(theta: f32, t: f32, r0: f32) -> f32 {
   let base = r0 - relief * 0.15;
   return base + h * relief;
 }
+// #endregion
+
+// ============================================================================
+// Low Poly Facet
+// ============================================================================
+// #region low_poly_facet_radius
+fn low_poly_facet_radius(theta: f32, t: f32, r0: f32) -> f32 {
+  if (!style_params_active()) { return r0; }
+  
+  // Params:
+  // 0: Facet Count
+  // 1: Tiers
+  // 2: Amplitude
+  // 3: Bevel
+  // 4: Jitter
+  // 5: Phase (Axis rotation)
+  
+  let N = max(3.0, floor(style_param(0u) + 0.5));
+  let tiers = max(1.0, floor(style_param(1u) + 0.5));
+  let amp = style_param(2u);
+  let bevel = style_param(3u);
+  let jitter = style_param(4u);
+  let phase_offset = style_param(5u); 
+  
+  // Tier logic
+  let tier_idx = floor(t * tiers);
+  let tier_phase = tier_idx * jitter * (TAU / N);
+  let th = theta + tier_phase + phase_offset;
+  
+  // Sector Angle
+  let alpha = TAU / N;
+  
+  // Local angle in sector [-alpha/2, alpha/2]
+  let angle = wrap_dist_u(th / alpha, 0.0) * alpha;
+
+  // Distance to flat face (secant)
+  // intersection of ray at 'angle' with line at distance D=r0*(1-amp) orthogonal to angle=0
+  // r * cos(angle) = D
+  let D = r0 * (1.0 - amp);
+  let r_face = D / max(cos(angle), 0.001);
+  
+  // Smooth intersection (min) of Circle(r0) and Polygon(r_face)
+  let k = max(0.001, bevel * 0.2 * r0);
+  let a = r0;
+  let b = r_face;
+  
+  // smin(a, b, k)
+  let h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+  let r_final = mix(b, a, h) - k * h * (1.0 - h);
+  
+  return r_final;
+}
+// #endregion
 
 // ============================================================================
 // Main Dispatch Functions

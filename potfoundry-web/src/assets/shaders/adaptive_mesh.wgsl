@@ -185,16 +185,21 @@ fn closest_point_segment(p: vec2<f32>, s: Segment) -> vec2<f32> {
 }
 
 fn snap_vertex_uv(u_in: f32, v_in: f32, limit_box: vec2<f32>, threshold_sq: f32) -> vec2<f32> {
+    // NaN guard: If inputs are invalid, return unchanged
+    if (u_in != u_in || v_in != v_in) { return vec2<f32>(u_in, v_in); } // NaN check
+    
     // Only snap if we have segments
-    if (arrayLength(&feature_segments) == 0u) { return vec2<f32>(u_in, v_in); }
+    let seg_len = arrayLength(&feature_segments);
+    if (seg_len == 0u) { return vec2<f32>(u_in, v_in); }
+    let max_seg_idx = seg_len / 4u;
     
     // Binning logic works on normalized u (0..1)
     var u = u_in - floor(u_in);
     let v = v_in;
     let uv_p = vec2<f32>(u, v);
     
-    // Bin Lookup
-    let bin_idx = u32(floor(u * f32(GRID_BINS))) % GRID_BINS;
+    // Bin Lookup - ensure valid range
+    let bin_idx = u32(clamp(floor(u * f32(GRID_BINS)), 0.0, f32(GRID_BINS - 1u)));
     
     var best_dist_sq = 100.0;
     var best_uv = uv_p;
@@ -218,7 +223,14 @@ fn snap_vertex_uv(u_in: f32, v_in: f32, limit_box: vec2<f32>, threshold_sq: f32)
         let end = grid_offsets[b+1u];
         
         for (var k = start; k < end; k++) {
+            // CRITICAL: Bounds check segment index to prevent garbage reads
+            if (k >= max_seg_idx) { break; }
+            
             let seg = get_segment(k);
+            
+            // NaN guard: Skip if segment contains NaN
+            if (seg.p1.x != seg.p1.x || seg.p2.x != seg.p2.x) { continue; }
+            
             let seg_shifted = Segment(seg.p1 + offset, seg.p2 + offset);
             let p_seg = closest_point_segment(uv_p, seg_shifted);
             
@@ -386,6 +398,11 @@ fn create_midpoint(vA: u32, vB: u32, surface: f32) -> u32 {
     let pA = get_vertex_params(vA);
     let pB = get_vertex_params(vB);
     
+    // NaN guard: If input params are invalid, return first vertex unchanged
+    if (pA.x != pA.x || pB.x != pB.x || pA.y != pA.y || pB.y != pB.y) {
+        return vA; // Fallback to original vertex
+    }
+    
     // CRITICAL FIX: Handle wrap-around in normalized UV coordinates (0..1)
     var uA = pA.x;
     var uB = pB.x;
@@ -411,7 +428,7 @@ fn create_midpoint(vA: u32, vB: u32, surface: f32) -> u32 {
     
     // Threshold reduced to 0.0005^2 to prevent "Rib Edges" (len > 0.002) from snapping
     var snapped = mid;
-    // Only snap OUTER WALL (surface < 0.5). Inner wall is a grid and shouldn't snap to outer features.
+    // Re-enabled: Edge-Based Subdivision guarantees both neighbors snap identically.
     if (surface < 0.5) {
         snapped = snap_vertex_uv(mid.x, mid.y, limits, 0.00000025);
     }
@@ -427,6 +444,36 @@ fn create_midpoint(vA: u32, vB: u32, surface: f32) -> u32 {
     return vNew;
 }
 
+// ============================================================================
+// Edge-Based Subdivision Logic (T-Junction Free)
+// ============================================================================
+
+fn check_edge_split(vA: u32, vB: u32, surface: f32) -> bool {
+    let pA = get_vertex_params(vA);
+    let pB = get_vertex_params(vB);
+    
+    // Edge properties
+    let mid = (pA + pB) * 0.5;
+    
+    // Scale for importance: Use edge length
+    // This ensures neighbor agreement (Scale depends only on the edge)
+    let d = abs(pA - pB);
+    let scale = vec2<f32>(max(d.x, 0.0001), max(d.y, 0.0001));
+    
+    // Check importance at midpoint
+    let imp = compute_importance(mid.x, mid.y, surface, scale);
+    
+    // Metric: Max of U and V importance
+    let val = max(imp.x, imp.y);
+    let threshold = uniforms.chunk4.x;
+    
+    // Stop splitting if edge is too small (Micro-feature prevention)
+    let max_len = max(scale.x, scale.y);
+    if (max_len < 0.0005) { return false; }
+    
+    return val > threshold;
+}
+
 @compute @workgroup_size(64)
 fn subdivide_triangles(@builtin(global_invocation_id) gid: vec3<u32>) {
     let triIdx = get_global_idx(gid);
@@ -440,77 +487,122 @@ fn subdivide_triangles(@builtin(global_invocation_id) gid: vec3<u32>) {
     let v2 = tri.z;
     let surf = tri.w;
     let surface = f32(surf);
-    
-    let p0 = get_vertex_params(v0);
-    let p1 = get_vertex_params(v1);
-    let p2 = get_vertex_params(v2);
-    
-    let center = (p0 + p1 + p2) * 0.333333;
-    let minP = min(min(p0, p1), p2);
-    let maxP = max(max(p0, p1), p2);
-    let scale = maxP - minP;
-    
-    let mid01 = (p0 + p1) * 0.5;
-    let mid12 = (p1 + p2) * 0.5;
-    let mid20 = (p2 + p0) * 0.5;
-    
-    let imp_center = compute_importance(center.x, center.y, surface, scale);
-    let imp_m01 = compute_importance(mid01.x, mid01.y, surface, scale);
-    let imp_m12 = compute_importance(mid12.x, mid12.y, surface, scale);
-    let imp_m20 = compute_importance(mid20.x, mid20.y, surface, scale);
-    
-    // Anisotropic Max: Take max U and max V independently
-    let max_u = max(max(imp_center.x, imp_m01.x), max(imp_m12.x, imp_m20.x));
-    let max_v = max(max(imp_center.y, imp_m01.y), max(imp_m12.y, imp_m20.y));
-    
-    let threshold = uniforms.chunk4.x;
-    
-    // For now, Isotropic Split if EITHER triggers (OR logic)
-    // This maintains 1-to-4 topology but respects the new metric headers
-    let importance = max(max_u, max_v);
-    
-    let area = abs((p1.x - p0.x)*(p2.y - p0.y) - (p2.x - p0.x)*(p1.y - p0.y)) * 0.5;
-    let minArea = 0.000000001; 
 
-    // Budget Check: Check if we have space in Next Buffer
-    // This is approximate as atomicAdd is resolving simultaneously
-
-    // CRITICAL FIX: Prevent micro-subdivision of already-dense feature triangles to avoid T-Junction cracks.
-    // Base mesh features are densified to 0.001. We stop splitting below 0.0005 to ensure we capture them.
-    let max_dim = max(scale.x, scale.y);
-    let min_dim_allowed = 0.0005;
-
-    if (importance > threshold && area > minArea && max_dim > min_dim_allowed) {
-        // Prepare to split
-        let baseIdx = atomicAdd(&counters[COUNTER_TRI_NEXT], 4u);
-        
-        if (baseIdx + 3u < arrayLength(&triangles_next)) {
-            let m0 = create_midpoint(v0, v1, surface);
-            let m1 = create_midpoint(v1, v2, surface);
-            let m2 = create_midpoint(v2, v0, surface);
-            
-            // T0: v0, m0, m2
-            triangles_next[baseIdx]      = vec4<u32>(v0, m0, m2, surf);
-            // T1: m0, v1, m1
-            triangles_next[baseIdx + 1u] = vec4<u32>(m0, v1, m1, surf);
-            // T2: m1, v2, m2
-            triangles_next[baseIdx + 2u] = vec4<u32>(m1, v2, m2, surf);
-            // T3: m0, m1, m2 (Central)
-            triangles_next[baseIdx + 3u] = vec4<u32>(m0, m1, m2, surf);
-        } else {
-             atomicStore(&counters[COUNTER_STATUS], STATUS_TRIANGLE_OVERFLOW);
-             // Best effort fallback: try to just copy original?
-             // If we reserved 4 slots but overflowed, we can't clean up easily.
-             // Just mark overflow and hope validation catches it.
-        }
-    } else {
-        // Keep original
-        let baseIdx = atomicAdd(&counters[COUNTER_TRI_NEXT], 1u);
-        if (baseIdx < arrayLength(&triangles_next)) {
-            triangles_next[baseIdx] = tri;
-        } else {
-            atomicStore(&counters[COUNTER_STATUS], STATUS_TRIANGLE_OVERFLOW);
-        }
+    // 1. Evaluate Edges Independently
+    // E0: v0 -> v1
+    // E1: v1 -> v2
+    // E2: v2 -> v0
+    let split0 = check_edge_split(v0, v1, surface);
+    let split1 = check_edge_split(v1, v2, surface);
+    let split2 = check_edge_split(v2, v0, surface);
+    
+    // 2. Formulate Case Mask
+    // Bit 0: Edge 0 (v0-v1)
+    // Bit 1: Edge 1 (v1-v2)
+    // Bit 2: Edge 2 (v2-v0)
+    var mask = 0u;
+    if (split0) { mask = mask | 1u; }
+    if (split1) { mask = mask | 2u; }
+    if (split2) { mask = mask | 4u; }
+    
+    // Reserve space based on case
+    // Case 0: 1 tri (Reuse slot? No, strict append to Next)
+    // Case 1,2,4: 2 tris
+    // Case 3,5,6: 3 tris
+    // Case 7: 4 tris
+    
+    var count_needed = 1u;
+    if (mask == 0u) { count_needed = 1u; }
+    else if (mask == 1u || mask == 2u || mask == 4u) { count_needed = 2u; }
+    else if (mask == 3u || mask == 5u || mask == 6u) { count_needed = 3u; }
+    else { count_needed = 4u; } // mask == 7
+    
+    let baseIdx = atomicAdd(&counters[COUNTER_TRI_NEXT], count_needed);
+    
+    if (baseIdx + count_needed > arrayLength(&triangles_next)) {
+        atomicStore(&counters[COUNTER_STATUS], STATUS_TRIANGLE_OVERFLOW);
+        return;
+    }
+    
+    // 3. Generate Geometry
+    // Helper to create midpoints only if needed (Atomic cost)
+    // We already evaluated check_edge_split, so we know we need them.
+    // Ideally we cache them? No, create_midpoint creates a vertex.
+    // If neighbor creates same midpoint, we rely on WeldMesh to merge later.
+    // (GPU Topological Merge is Hard).
+    // The T-Junction fix is ensuring the VERTEX EXISTS on the edge.
+    
+    var m0 = 0u; var m1 = 0u; var m2 = 0u;
+    if (split0) { m0 = create_midpoint(v0, v1, surface); }
+    if (split1) { m1 = create_midpoint(v1, v2, surface); }
+    if (split2) { m2 = create_midpoint(v2, v0, surface); }
+    
+    // 4. Emit Triangles
+    if (mask == 0u) {
+        // --- 1 Triangle (Keep) ---
+        triangles_next[baseIdx] = tri;
+    }
+    else if (mask == 1u) { // Split E0
+        // v0-m0-v2, m0-v1-v2
+        triangles_next[baseIdx]    = vec4<u32>(v0, m0, v2, surf);
+        triangles_next[baseIdx+1u] = vec4<u32>(m0, v1, v2, surf);
+    }
+    else if (mask == 2u) { // Split E1
+        // v1-m1-v0, m1-v2-v0
+        triangles_next[baseIdx]    = vec4<u32>(v1, m1, v0, surf);
+        triangles_next[baseIdx+1u] = vec4<u32>(m1, v2, v0, surf);            
+    }
+    else if (mask == 4u) { // Split E2
+        // v2-m2-v1, m2-v0-v1
+        triangles_next[baseIdx]    = vec4<u32>(v2, m2, v1, surf);
+        triangles_next[baseIdx+1u] = vec4<u32>(m2, v0, v1, surf);
+    }
+    else if (mask == 3u) { // Split E0 & E1 (v0-v1, v1-v2)
+        // Quad (v0, m0, m1, v2) + Tri (m0, v1, m1)? No.
+        // Fan from common vertex v1?
+        // Tris: v0-m0-v2 ?? No.
+        // Neighbors of split edges (mask 3):
+        // E0 splits (m0), E1 splits (m1). E2 (v2-v0) intact.
+        // Connect m0-m1.
+        // T1: m0, v1, m1 (Corner tip)
+        // T2: v0, m0, m1 ?? No, Quad: v0, m0, m1, v2.
+        // Split Quad (v0, m0, v2) ? No m0 is on v0-v1.
+        // Ear clipping:
+        // T1: m0, v1, m1
+        // T2: v0, m0, v2
+        // T3: m0, m1, v2
+        triangles_next[baseIdx]    = vec4<u32>(m0, v1, m1, surf);
+        triangles_next[baseIdx+1u] = vec4<u32>(v0, m0, v2, surf);
+        triangles_next[baseIdx+2u] = vec4<u32>(m0, m1, v2, surf);
+    }
+    else if (mask == 6u) { // Split E1 & E2 (v1-v2, v2-v0)
+        // Common vertex v2.
+        // T1: m1, v2, m2 (Tip)
+        // T2: v1, m1, v0
+        // T3: m1, m2, v0
+        triangles_next[baseIdx]    = vec4<u32>(m1, v2, m2, surf);
+        triangles_next[baseIdx+1u] = vec4<u32>(v1, m1, v0, surf);
+        triangles_next[baseIdx+2u] = vec4<u32>(m1, m2, v0, surf);
+    }
+    else if (mask == 5u) { // Split E0 & E2 (v0-v1, v2-v0)
+        // Common vertex v0.
+        // T1: m2, v0, m0 (Tip)
+        // T2: v2, m2, v1
+        // T3: m2, m0, v1
+        triangles_next[baseIdx]    = vec4<u32>(m2, v0, m0, surf);
+        triangles_next[baseIdx+1u] = vec4<u32>(v2, m2, v1, surf);
+        triangles_next[baseIdx+2u] = vec4<u32>(m2, m0, v1, surf);
+    }
+    else { // Mask 7 (All Split)
+        // Standard 1-to-4
+        // T0: v0, m0, m2
+        // T1: m0, v1, m1
+        // T2: m1, v2, m2
+        // T3: m0, m1, m2
+        triangles_next[baseIdx]    = vec4<u32>(v0, m0, m2, surf);
+        triangles_next[baseIdx+1u] = vec4<u32>(m0, v1, m1, surf);
+        triangles_next[baseIdx+2u] = vec4<u32>(m1, v2, m2, surf);
+        triangles_next[baseIdx+3u] = vec4<u32>(m0, m1, m2, surf);
     }
 }
 
@@ -640,8 +732,11 @@ fn evaluate_vertices(@builtin(global_invocation_id) gid: vec3<u32>) {
         // Cylinder at r=rDrain
         // t=0 -> Bottom Under (z=0), t=1 -> Bottom Top (z=tBottom)
         let r = get_rDrain();
-        // Twist? Use average or bottom twist
-        let th = compute_twist(theta, 0.0); 
+        // Twist must interpolate from z=0 to z=tBottom to match connecting surfaces!
+        let H = get_H();
+        let tBottom = get_tBottom();
+        let t_ratio = t * (tBottom / H);
+        let th = compute_twist(theta, t_ratio); 
         
         z = t * get_tBottom();
         x = r * cos(th);
@@ -650,6 +745,12 @@ fn evaluate_vertices(@builtin(global_invocation_id) gid: vec3<u32>) {
     } else {
         // Just fail safe
         x = 0.0; y = 0.0; z = 0.0;
+    }
+    
+    // NaN Guard: If any coordinate is NaN, output a tiny valid vertex
+    // This prevents spikes and allows mesh post-processing to filter it
+    if (x != x || y != y || z != z) {
+        x = 0.001; y = 0.001; z = 0.001;
     }
     
     vertices[base] = x;
@@ -678,6 +779,11 @@ fn snap_initial_vertices(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Only snap outer wall vertices (surface == 0)
     // Inner wall, rim, bottom, drain vertices should not be snapped to outer wall features
     if (surface > 0.5) { return; }
+
+    // CRITICAL FIX: Do NOT snap top/bottom boundary vertices!
+    // They must align perfectly with Rim/Bottom surfaces (which are not snapped).
+    // Snapping them creates gaps/holes in the mesh.
+    if (t < 0.001 || t > 0.999) { return; }
 
     // Use conservative limits for initial snap - don't destroy curvature
     // Allow up to 0.5% movement (was 5% which flattened features)

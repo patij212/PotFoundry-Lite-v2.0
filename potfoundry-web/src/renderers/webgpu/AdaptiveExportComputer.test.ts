@@ -9,11 +9,8 @@ import { describe, it, expect } from 'vitest';
 // Mock GPU Types (since we can't run WebGPU in Node)
 // ============================================================================
 
-interface MockBuffer {
-    label: string;
-    size: number;
-    destroy: () => void;
-}
+// MockBuffer Removed
+
 
 // ============================================================================
 // Test: Curvature Computation Logic (Still valid for validation)
@@ -40,14 +37,14 @@ describe('Curvature Computation', () => {
     }
 
     it('should detect flat surfaces with low curvature', () => {
-        const flatCylinder = (theta: number, t: number) => 50;
+        const flatCylinder = (_theta: number, _t: number) => 50;
         const importance = computeImportance(flatCylinder, Math.PI, 0.5);
         expect(importance).toBeLessThan(0.1);
     });
 
     it('should detect sharp edges with very high curvature', () => {
         // Step function 
-        const stepProfile = (theta: number, t: number) => theta < Math.PI ? 50 : 60;
+        const stepProfile = (theta: number, _t: number) => theta < Math.PI ? 50 : 60;
         // Check near transition
         const importance = computeImportance(stepProfile, Math.PI, 0.5);
         expect(importance).toBeGreaterThan(10);
@@ -109,7 +106,7 @@ describe('Curvature Computation', () => {
 
         it('should snap a grid point to a mathematical ridge maximum', () => {
             // Ridge at theta = PI (u = 0.5)
-            const ridgeFn = (theta: number, t: number) => 50 + 5 * Math.cos(theta - Math.PI);
+            const ridgeFn = (theta: number, _t: number) => 50 + 5 * Math.cos(theta - Math.PI);
 
             const du = 1.0 / 2048;
             // Start 0.4 pixels off-center
@@ -122,7 +119,7 @@ describe('Curvature Computation', () => {
 
         it('should handle ridge offset in V direction', () => {
             // Ridge at t = 0.5
-            const ridgeFn = (theta: number, t: number) => 50 + 5 * Math.cos((t - 0.5) * 10);
+            const ridgeFn = (_theta: number, t: number) => 50 + 5 * Math.cos((t - 0.5) * 10);
             const dv = 1.0 / 1024;
             // Start 0.4 pixels off-center
             const vStart = 0.5 + 0.4 * dv;
@@ -138,7 +135,6 @@ describe('Curvature Computation', () => {
             };
 
             const du = 1.0 / 2048;
-            const dv = 1.0 / 1024;
 
             const vBase = 0.4;
             // Target U at v=0.4 is (PI + (0.4 - 0.5) * 5.0) / (2*PI)
@@ -400,7 +396,7 @@ describe('Shader Evaluation Logic (Simulated)', () => {
     const rDrain = 10; // drain radius mm
     const expn = 2; // profile exponent
 
-    function computeOuterRadius(theta: number, t: number): number {
+    function computeOuterRadius(_theta: number, t: number): number {
         // Simple polynomial profile (no style)
         return Rb + (Rt - Rb) * Math.pow(t, 1 / expn);
     }
@@ -1114,7 +1110,7 @@ describe('Buffer Edge Cases - Depth Limits', () => {
     });
 
     it('should handle maxDepth = 1 (single subdivision)', () => {
-        const maxDepth = 1;
+        // maxDepth = 1 means single subdivision
         const initialTris = 100;
         const finalTris = initialTris * 4;
 
