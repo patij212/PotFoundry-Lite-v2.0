@@ -13,6 +13,7 @@ import { useAppStore } from '../../state';
 import { useExport, useExportTier, FREE_TIER_MONTHLY_LIMIT } from '../../hooks';
 import useGPUExport from '../../hooks/useGPUExport';
 import useAdaptiveExport, { type AdaptiveExportQuality } from '../../hooks/useAdaptiveExport';
+import useParametricExport, { fileSizeToTriangles } from '../../hooks/useParametricExport';
 import { useIsPro, useIsAuthenticated } from '../../context/AuthContext';
 import { PricingModal } from '../pricing';
 import { AuthModal } from '../auth';
@@ -82,23 +83,33 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const cpuExport = useExport();
   const gpuExport = useGPUExport();
   const adaptiveExport = useAdaptiveExport();
+  const parametricExport = useParametricExport();
   const mesh = useAppStore(state => state.mesh);
   const style = useAppStore(state => state.style);
   const setMeshParam = useAppStore(state => state.setMeshParam);
 
-  // State for GPU preference, adaptive mode, and format
+  // State for GPU preference, adaptive mode, format, and parametric mode
   const [useGPU, setUseGPU] = useState(true);
   const [useAdaptive, setUseAdaptive] = useState(false);
+  const [useParametric, setUseParametric] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('stl');
   const [adaptiveQuality, setAdaptiveQuality] = useState<AdaptiveExportQuality>('high');
+  const [parametricBudgetMB, setParametricBudgetMB] = useState(250); // Default 250MB
 
-  // Determine active exporter (adaptive takes priority if enabled)
-  const activeExport = useAdaptive && adaptiveExport.isAvailable
-    ? adaptiveExport
-    : (useGPU && gpuExport.isGPUAvailable)
-      ? gpuExport
-      : cpuExport;
-  const { progress, stats, generateMesh, reset } = activeExport;
+  // Determine active exporter (parametric > adaptive > GPU > CPU)
+  const activeExport = useParametric && parametricExport.isAvailable
+    ? parametricExport
+    : useAdaptive && adaptiveExport.isAvailable
+      ? adaptiveExport
+      : (useGPU && gpuExport.isGPUAvailable)
+        ? gpuExport
+        : cpuExport;
+  const { progress, stats, generateMesh: baseGenerateMesh, reset } = activeExport;
+
+  // Wrap generateMesh to pass budget for parametric
+  const generateMesh = useParametric && parametricExport.isAvailable
+    ? () => parametricExport.generateMesh(fileSizeToTriangles(parametricBudgetMB))
+    : baseGenerateMesh;
 
   const { checkExportAllowed, recordExport, exportsThisMonth } = useExportTier();
   const isPro = useIsPro();
@@ -137,9 +148,11 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     // Generate mesh using the active exporter
     // Note: CPU exporter returns MeshResult { mesh, diagnostics }
     //       GPU exporter returns MeshData directly
-    const result = useAdaptive && adaptiveExport.isAvailable
-      ? await adaptiveExport.generateMesh(adaptiveQuality)
-      : await generateMesh();
+    const result = useParametric && parametricExport.isAvailable
+      ? await parametricExport.generateMesh(fileSizeToTriangles(parametricBudgetMB))
+      : useAdaptive && adaptiveExport.isAvailable
+        ? await adaptiveExport.generateMesh(adaptiveQuality)
+        : await generateMesh();
 
     if (!result) {
       return; // Error already handled
@@ -169,7 +182,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
       reset();
       alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}. Try reducing the resolution.`);
     }
-  }, [generateMesh, exportFormat, tierCheck, recordExport, isAuthenticated, style.name, onExportComplete, isDev, reset]);
+  }, [generateMesh, exportFormat, tierCheck, recordExport, isAuthenticated, style.name, onExportComplete, isDev, reset, useParametric, parametricExport, parametricBudgetMB, useAdaptive, adaptiveExport, adaptiveQuality]);
 
   const handlePreview = useCallback(async () => {
     await generateMesh();
@@ -434,19 +447,93 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
               </label>
             </div>
 
-            {/* Adaptive Export Toggle */}
+            {/* Parametric Export Toggle (v4.0 — NEW PIPELINE) */}
+            <div className="export-panel__option-toggle">
+              <label className="export-panel__checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={useParametric}
+                  onChange={(e) => {
+                    setUseParametric(e.target.checked);
+                    if (e.target.checked) setUseAdaptive(false); // Mutually exclusive
+                  }}
+                  disabled={!parametricExport.isAvailable}
+                />
+                <span className="export-panel__checkbox-text">
+                  Parametric v4
+                  {parametricExport.isAvailable
+                    ? <span className="export-panel__tag-new" title="Direct parametric tessellation — 10-20× faster, no CDT artifacts">⚡ FAST</span>
+                    : <span className="export-panel__tag-unavailable">Unavailable</span>
+                  }
+                </span>
+              </label>
+
+              {useParametric && (
+                <div className="export-panel__adaptive-settings" style={{ marginLeft: '24px', marginTop: '8px' }}>
+                  <div className="export-panel__quality-slider">
+                    <label style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      STL Budget: <strong>{parametricBudgetMB >= 1000 ? `${(parametricBudgetMB / 1000).toFixed(1)}GB` : `${parametricBudgetMB}MB`}</strong>
+                    </label>
+                    <input
+                      type="range"
+                      min="25" max="2000" step="25"
+                      value={parametricBudgetMB}
+                      onChange={(e) => setParametricBudgetMB(parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: 'var(--color-primary)' }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#94a3b8' }}>
+                      <span>25MB</span>
+                      <span>500MB</span>
+                      <span>1GB</span>
+                      <span>2GB</span>
+                    </div>
+                  </div>
+
+                  {/* v15.0: Debug overlay toggles */}
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={parametricExport.showChainOverlay}
+                        onChange={(e) => parametricExport.setShowChainOverlay(e.target.checked)}
+                      />
+                      <span style={{ color: '#e879f9' }}>■</span> Chain Lines (magenta)
+                    </label>
+                    <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={parametricExport.showPeakOverlay}
+                        onChange={(e) => parametricExport.setShowPeakOverlay(e.target.checked)}
+                      />
+                      <span style={{ color: '#4ade80' }}>●</span> Peaks <span style={{ color: '#60a5fa' }}>●</span> Valleys
+                    </label>
+                  </div>
+
+                  <p className="export-panel__hint" style={{ marginTop: '8px', fontSize: '11px' }}>
+                    Direct GPU tessellation — no CDT artifacts.<br />
+                    ~{(fileSizeToTriangles(parametricBudgetMB) / 1_000_000).toFixed(1)}M triangles.
+                    {parametricBudgetMB >= 800 && <><br /><strong style={{ color: '#f59e0b' }}>⚠️ Large files may slow slicers.</strong></>}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Adaptive Export Toggle (Legacy CDT pipeline) */}
             <div className="export-panel__option-toggle">
               <label className="export-panel__checkbox-label">
                 <input
                   type="checkbox"
                   checked={useAdaptive}
-                  onChange={(e) => setUseAdaptive(e.target.checked)}
+                  onChange={(e) => {
+                    setUseAdaptive(e.target.checked);
+                    if (e.target.checked) setUseParametric(false); // Mutually exclusive
+                  }}
                   disabled={!adaptiveExport.isAvailable}
                 />
                 <span className="export-panel__checkbox-text">
                   Adaptive Resolution
                   {adaptiveExport.isAvailable
-                    ? <span className="export-panel__tag-new" title="Variable mesh density based on curvature">NEW</span>
+                    ? <span className="export-panel__tag-new" title="Variable mesh density based on curvature">CDT</span>
                     : <span className="export-panel__tag-unavailable">Unavailable</span>
                   }
                 </span>

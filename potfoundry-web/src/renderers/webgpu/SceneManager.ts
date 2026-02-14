@@ -153,12 +153,30 @@ export class SceneManager {
             const wgsl = ShaderManager.getInstance().getStyleWGSL(styleId);
             const device = this.renderer.device!;
 
+            console.log(`[WebGPU] [SceneManager] Compiling Style ${styleId}. Size: ${(wgsl.length / 1024).toFixed(2)} KB, Lines: ${wgsl.split('\n').length}`);
+
+            // const moduleStart = performance.now();
             const module = device.createShaderModule({
                 label: `pot_preview_style_${styleId}.wgsl`,
                 code: wgsl,
             });
+            // const moduleTime = performance.now() - moduleStart;
+            // console.log(`[WebGPU] [SceneManager] ShaderModule created in ${(performance.now() - moduleStart).toFixed(1)}ms`);
 
-            // Optional: check compilation info, but we skip to avoid noise unless needed
+            // Check for shader syntax errors (async)
+            try {
+                const info = await module.getCompilationInfo();
+                if (info.messages.length > 0) {
+                    const errs = info.messages.filter(m => m.type === 'error');
+                    if (errs.length > 0) {
+                        console.error(`[WebGPU] [SceneManager] Style ${styleId} Shader Errors:`, errs);
+                    } else {
+                        // console.warn(`[WebGPU] [SceneManager] Style ${styleId} Shader Warnings:`, info.messages);
+                    }
+                }
+            } catch (e) {
+                console.warn('[WebGPU] [SceneManager] Could not retrieve compilation info (driver might have crashed already).');
+            }
 
             const pipelineDescriptor: GPURenderPipelineDescriptor = {
                 layout: 'auto',
@@ -188,34 +206,30 @@ export class SceneManager {
                 },
             };
 
-            const start = performance.now();
+            const pipelineStart = performance.now();
+            // console.log(`[WebGPU] [SceneManager] Starting Async Pipeline Compilation for Style ${styleId}...`);
+
             const pipeline = await device.createRenderPipelineAsync(pipelineDescriptor).catch(async (err) => {
-                console.error(`[WebGPU] [SceneManager] createRenderPipelineAsync failed for Style ${styleId}`);
+                const duration = performance.now() - pipelineStart;
+                console.error(`[WebGPU] [SceneManager] createRenderPipelineAsync failed for Style ${styleId} after ${duration.toFixed(0)}ms`);
                 console.error('[WebGPU] [SceneManager] Raw Error:', err);
-                if (err instanceof Error) {
-                    console.error('[WebGPU] [SceneManager] Error Name:', err.name);
-                    console.error('[WebGPU] [SceneManager] Error Message:', err.message);
+                if (typeof err === 'object') {
+                    console.error('[WebGPU] [SceneManager] Error Object Keys:', Object.keys(err));
+                    console.error('[WebGPU] [SceneManager] Error Details:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
                 }
 
-                // Retrieve detailed compilation info
-                try {
-                    const info = await module.getCompilationInfo();
-                    if (info.messages.length > 0) {
-                        console.error(`[WebGPU] [SceneManager] Shader Compilation Messages for Style ${styleId}:`);
-                        for (const msg of info.messages) {
-                            const type = msg.type === 'error' ? 'ERR' : 'WARN';
-                            console.error(`[WebGPU] [${type}] Line ${msg.lineNum}:${msg.linePos} - ${msg.message}`);
-                        }
-                    } else {
-                        console.log(`[WebGPU] [SceneManager] No compilation messages found for Style ${styleId}.`);
-                    }
-                } catch (infoErr) {
-                    console.error('[WebGPU] [SceneManager] Failed to retrieve compilation info:', infoErr);
+                // If it was a TDR, the device is likely lost now.
+                if (this.renderer.device) {
+                    await this.renderer.device.lost.then((info) => {
+                        console.error('[WebGPU] [SceneManager] Device Lost Reason:', info.reason);
+                        console.error('[WebGPU] [SceneManager] Device Lost Message:', info.message);
+                    }).catch(() => { });
                 }
+
                 throw err;
             });
 
-            const duration = performance.now() - start;
+            const duration = performance.now() - pipelineStart;
 
             // Commit to cache
             this.pipelineCache.set(styleId, pipeline);
@@ -223,7 +237,7 @@ export class SceneManager {
             this.compilationPromises.delete(styleId);
 
             const totalTime = performance.now() - this.initStartTime;
-            console.log(`[WebGPU] [SceneManager] Style ${styleId} compiled in ${duration.toFixed(0)}ms. (Ready at ${totalTime.toFixed(0)}ms)`);
+            console.log(`[WebGPU] [SceneManager] Style ${styleId} compiled in ${duration.toFixed(0)}ms. (Total Init: ${totalTime.toFixed(0)}ms)`);
 
             return pipeline;
         })();
@@ -232,15 +246,10 @@ export class SceneManager {
         this.compilationPromises.set(styleId, compileTask);
 
         // Catch errors to cleanup map if failed
-        compileTask.catch(async (err) => {
+        compileTask.catch(async () => {
             this.compilationPromises.delete(styleId);
-            console.error(`[WebGPU] [SceneManager] Pipeline compilation failed for Style ${styleId}:`, err);
-
-            // Attempt to get detailed compilation info
-            try {
-                // accessing 'module' from the closure scope of the async IIFE above isn't easy here.
-                // We need to move the logging INSIDE the async task.
-            } catch (e) { /* ignore */ }
+            // Error logged inside
+            // console.error(err); // Prevent unused variable warning
         });
 
         return compileTask;
@@ -276,7 +285,8 @@ export class SceneManager {
         }
     }
 
-    public updateColors(colors: any) { // Type to be defined
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    public updateColors(_colors: any) { // Type to be defined
         // Implementation needed based on input structure
     }
 
@@ -340,7 +350,9 @@ export class SceneManager {
 
             await this.renderer.device.createRenderPipelineAsync(pipelineDescriptor);
             console.log('[WebGPU] [SceneManager] Smoke Test PASSED. Device is capable of basic rendering.');
-            return true;
+
+            // Now run the Intermediate Test
+            return await this.intermediateLightingTest();
         } catch (err: any) {
             console.error('[WebGPU] [SceneManager] Smoke Test FAILED (Critical).', err);
             if (err) {
@@ -351,6 +363,73 @@ export class SceneManager {
                 });
             }
             return false;
+        }
+    }
+
+    // Diagnostic: Check if we can compile a shader with basic lighting (no PBR, no textures)
+    // If this passes but full styles fail, it confirms complexity/PBR is the issue.
+    private async intermediateLightingTest(): Promise<boolean> {
+        console.log('[WebGPU] [SceneManager] Starting Intermediate Lighting Test...');
+        const mediumWGSL = `
+        struct Uniforms {
+            modelViewProjectionMatrix : mat4x4<f32>,
+        };
+        @binding(0) @group(0) var<uniform> uniforms : Uniforms;
+
+        struct VertexOutput {
+            @builtin(position) Position : vec4<f32>,
+            @location(0) vNormal : vec3<f32>
+        };
+
+        @vertex
+        fn vs_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
+            var pos = array<vec2<f32>, 3>(
+                vec2<f32>(0.0, 0.5),
+                vec2<f32>(-0.5, -0.5),
+                vec2<f32>(0.5, -0.5)
+            );
+            // Mock normal
+            var output : VertexOutput;
+            output.Position = vec4<f32>(pos[VertexIndex], 0.0, 1.0);
+            output.vNormal = vec3<f32>(0.0, 0.0, 1.0);
+            return output;
+        }
+
+        @fragment
+        fn fs_main(@location(0) vNormal: vec3<f32>) -> @location(0) vec4<f32> {
+            // Simple Lambert
+            let lightDir = normalize(vec3<f32>(0.5, 0.5, 1.0));
+            let diffuse = max(dot(normalize(vNormal), lightDir), 0.0);
+            return vec4<f32>(vec3<f32>(1.0, 0.0, 0.0) * (diffuse + 0.2), 1.0);
+        }
+        `;
+
+        try {
+            const module = this.renderer.device!.createShaderModule({
+                label: 'intermediate_test_shader',
+                code: mediumWGSL
+            });
+
+            const pipelineDescriptor: GPURenderPipelineDescriptor = {
+                layout: 'auto',
+                vertex: { module, entryPoint: 'vs_main' },
+                fragment: {
+                    module, entryPoint: 'fs_main',
+                    targets: [{ format: this.renderer.presentationFormat }]
+                },
+                primitive: { topology: 'triangle-list' }
+            };
+
+            const start = performance.now();
+            await this.renderer.device!.createRenderPipelineAsync(pipelineDescriptor);
+            console.log(`[WebGPU] [SceneManager] Intermediate Lighting Test PASSED in ${(performance.now() - start).toFixed(1)}ms`);
+            return true;
+        } catch (err) {
+            console.error('[WebGPU] [SceneManager] Intermediate Lighting Test FAILED. Issue is likely basic shader compiler infrastructure, not just complexity.', err);
+            // We still return true because "Smoke Test" passed, so we strictly *can* render, just maybe not lighting.
+            // But actually, if this fails, the main app will definitely fail.
+            // Let's return true to allow the main app to *try* and fail with better logs.
+            return true;
         }
     }
 }

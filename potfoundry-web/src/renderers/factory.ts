@@ -95,6 +95,7 @@ function wrapWebGPUController(
         getAutoRotate: () => ctrl.getAutoRotate?.(),
         get rendererType() { return 'webgpu' as const; },
         setDebugSegments: (segments) => ctrl.setDebugSegments?.(segments),
+        setDebugPoints: (points) => ctrl.setDebugPoints?.(points),
         get isCompatibilityMode() { return false; },
     };
 }
@@ -165,7 +166,36 @@ export async function createRenderer(
     }
 
     // === Fall back to WebGL ===
-    return createWebGLRenderer(mountOptions, forceRenderer ? 'forced' : 'fallback');
+    // If we just crashed the GPU process, give it a moment to recover before trying WebGL
+    if (effectiveForce !== 'webgl' && (await isWebGPUAvailable())) {
+        await new Promise(r => setTimeout(r, 100)); // Brief pause for browser process recovery
+    }
+
+    const webglRenderer = await createWebGLRenderer(mountOptions, forceRenderer ? 'forced' : 'fallback');
+
+    // AUTO-RECOVERY: If WebGPU crashed AND WebGL failed, the GPU process is likely dead.
+    // We must reload the page to get a fresh GPU process.
+    if (!webglRenderer && !forceRenderer) {
+        // Check if we already tried to recover to avoid infinite loops
+        const isRecovery = sessionStorage.getItem('pf-gpu-recovery');
+        if (!isRecovery) {
+            console.warn('[Renderer] Critical GPU failure (WebGPU crashed + WebGL failed). Triggering auto-recovery...');
+            sessionStorage.setItem('pf-gpu-recovery', 'true');
+            // Force WebGL on next load via localStorage preference (so it persists)
+            // But usually we just want to try once. Let's use the URL param or just rely on the session flag?
+            // Safer: Set a temporary "force webgl" preference that expires? 
+            // Simplest: Reload with ?renderer=webgl
+            const url = new URL(window.location.href);
+            url.searchParams.set('renderer', 'webgl');
+            window.location.href = url.toString();
+            return null; // Page will reload
+        } else {
+            console.error('[Renderer] Auto-recovery failed. GPU is completely unusable.');
+            sessionStorage.removeItem('pf-gpu-recovery'); // Reset for next time user manual reloads
+        }
+    }
+
+    return webglRenderer;
 }
 
 /**

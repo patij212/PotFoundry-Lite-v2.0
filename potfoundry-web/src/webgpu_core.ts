@@ -4733,6 +4733,37 @@ export const mount = async ({
         }
       }
 
+      // --- DEBUG POINTS (green peak point cloud, v15.0) ---
+      if (debugPointsBuffer && debugPointsCount > 0) {
+        if (!debugPointsPipeline || debugPointsPipelineStyleId !== activePipelineStyleId) {
+          const styleToLoad = activePipelineStyleId;
+          createDebugPointsPipeline(styleToLoad).then(p => {
+            if (p && !disposed) {
+              debugPointsPipeline = p;
+              debugPointsPipelineStyleId = styleToLoad;
+              try {
+                debugPointsBindGroup = device.createBindGroup({
+                  label: 'component:bind-group-debug-points',
+                  layout: p.getBindGroupLayout(0),
+                  entries: [
+                    { binding: 0, resource: { buffer: uniformBuffer } },
+                    { binding: 4, resource: { buffer: styleParamBuffer } },
+                  ],
+                });
+              } catch (e) { console.warn('[WebGPU] Debug points BG failed', e); }
+            }
+          });
+        }
+
+        if (debugPointsPipeline && debugPointsBindGroup && debugPointsPipelineStyleId === activePipelineStyleId) {
+          pass.setPipeline(debugPointsPipeline);
+          pass.setBindGroup(0, debugPointsBindGroup);
+          pass.setVertexBuffer(0, debugPointsBuffer!);
+          pass.draw(debugPointsCount);
+          totalDrawCalls += 1;
+        }
+      }
+
       pass.end();
 
       const commandBuffer = encoder.finish({ label: 'component:frame-command-buffer' });
@@ -4892,6 +4923,13 @@ export const mount = async ({
   let debugBindGroup: GPUBindGroup | null = null;
   let debugPipelineStyleId: number | null = null;
 
+  // --- DEBUG POINTS STATE (v15.0 — green peak point cloud) ---
+  let debugPointsBuffer: GPUBuffer | null = null;
+  let debugPointsCount: number = 0;
+  let debugPointsPipeline: GPURenderPipeline | null = null;
+  let debugPointsBindGroup: GPUBindGroup | null = null;
+  let debugPointsPipelineStyleId: number | null = null;
+
   const createDebugPipeline = async (styleId: number): Promise<GPURenderPipeline | null> => {
     const code = ShaderManager.getInstance().getDebugLinesWGSL(styleId);
     const module = await createShaderModule(device, code, 'debug-lines');
@@ -4932,6 +4970,48 @@ export const mount = async ({
       return null;
     }
   };
+
+  const createDebugPointsPipeline = async (styleId: number): Promise<GPURenderPipeline | null> => {
+    const code = ShaderManager.getInstance().getDebugPointsWGSL(styleId);
+    const module = await createShaderModule(device, code, 'debug-points');
+    if (!module) return null;
+
+    try {
+      return await device.createRenderPipelineAsync({
+        label: 'debug-points',
+        layout: 'auto',
+        vertex: {
+          module,
+          entryPoint: 'vs_main',
+          buffers: [{
+            arrayStride: 12, // 3 floats (u, t, kind)
+            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' as GPUVertexFormat }]
+          }]
+        },
+        fragment: {
+          module,
+          entryPoint: 'fs_main',
+          targets: [{
+            format: format,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' }
+            }
+          }]
+        },
+        primitive: { topology: 'point-list' },
+        depthStencil: {
+          depthWriteEnabled: true,
+          depthCompare: 'less-equal',
+          format: depthFormatUsed || 'depth24plus',
+        }
+      });
+    } catch (e) {
+      console.error('[WebGPU] Failed to create debug points pipeline', e);
+      return null;
+    }
+  };
+
   // Idle detection for resource savings
   // DEFER creation until after first animation frame to prevent
   // visibility change events from destabilizing GPU initialization.
@@ -5495,6 +5575,26 @@ export const mount = async ({
         });
         new Float32Array(debugSegmentsBuffer.getMappedRange()).set(segments);
         debugSegmentsBuffer.unmap();
+      }
+      state.cameraDirty = true;
+    },
+    setDebugPoints: (points: Float32Array) => {
+      if (disposed) return;
+      console.log(`[WebGPU] setDebugPoints: ${points.length} floats (${points.length / 3} points)`);
+      if (debugPointsBuffer) {
+        debugPointsBuffer.destroy();
+        debugPointsBuffer = null;
+      }
+      debugPointsCount = points.length / 3; // 3 floats per point: u, t, kind
+      if (debugPointsCount > 0) {
+        debugPointsBuffer = device.createBuffer({
+          size: points.byteLength,
+          usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          mappedAtCreation: true,
+          label: 'debug-points'
+        });
+        new Float32Array(debugPointsBuffer.getMappedRange()).set(points);
+        debugPointsBuffer.unmap();
       }
       state.cameraDirty = true;
     },

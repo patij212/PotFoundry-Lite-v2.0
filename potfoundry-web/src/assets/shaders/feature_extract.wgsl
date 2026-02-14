@@ -351,8 +351,29 @@ fn detect_features(@builtin(global_invocation_id) gid: vec3<u32>) {
          let u_final = u + delta * step_vec.x;
          let v_final = v + delta * step_vec.y;
          
-         let theta_final = u_final * 6.28318530718;
-         let t_final = v_final;
+         // STABILITY CHECK: Did we actually improve?
+         // If not, revert to the pixel center (delta = 0).
+         // This pins the feature to the NMS-detected extrema if the sub-pixel search wanders off.
+         let val_final = eval_r_wrapped(u_final * 6.2831853, v_final);
+         
+         var refined_is_better = false;
+         if (featureType == 1u) { // Ridge (Max)
+             if (val_final >= c) { refined_is_better = true; }
+         } else { // Valley (Min)
+             if (val_final <= c) { refined_is_better = true; }
+         }
+         
+         var theta_final: f32;
+         var t_final: f32;
+         
+         if (refined_is_better) {
+             theta_final = u_final * 6.28318530718;
+             t_final = v_final;
+         } else {
+             // Revert to center
+             theta_final = theta;
+             t_final = t;
+         }
 
          let outIdx = atomicAdd(&counter, 1u);
          if (outIdx < arrayLength(&feature_points)) {

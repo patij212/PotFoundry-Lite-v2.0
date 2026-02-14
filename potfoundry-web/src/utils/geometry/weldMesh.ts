@@ -136,6 +136,20 @@ export function weldMesh(vertices: Float32Array, indices: Uint32Array, epsilon =
             continue;
         }
 
+        // Aspect ratio filter: catch pathologically thin triangles
+        // Ratio = longest_edge / shortest_altitude. If > 50, triangle is a sliver.
+        // (Equilateral = 1.15, reasonable = < 10, pathological = > 50)
+        const d01sq = abx * abx + aby * aby + abz * abz;
+        const d12sq = (cx - bx) ** 2 + (cy - by) ** 2 + (cz - bz) ** 2;
+        const d20sq = acx * acx + acy * acy + acz * acz;
+        const maxEdgeSq = Math.max(d01sq, d12sq, d20sq);
+        // ratio = maxEdge / (2 * area / maxEdge) = maxEdge² / (2 * area)
+        const ratioSq = (maxEdgeSq * maxEdgeSq) / (4.0 * areaSq);
+        if (ratioSq > 50.0 * 50.0) {
+            sliverCount++;
+            continue;
+        }
+
         newIndices.push(a, b, c);
     }
 

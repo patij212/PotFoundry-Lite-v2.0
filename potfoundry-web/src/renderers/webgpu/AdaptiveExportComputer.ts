@@ -212,7 +212,7 @@ export class AdaptiveExportComputer {
             }));
 
             // Write Uniforms & Style Params
-            const { dimensions, styleOpts, maxDepth = 6, subdivThreshold = 0.05 } = params;
+            const { dimensions, styleOpts, maxDepth = 6, subdivThreshold: _subdivThreshold = 0.05 } = params;
             // Uniform Layout Match:
             // chunk0: H, Rt, Rb, tWall
             // chunk1: tBottom, rDrain, expn, styleId

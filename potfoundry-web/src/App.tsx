@@ -53,6 +53,13 @@ const STYLE_NAME_TO_ID = STYLE_IDS;
 import { AdaptiveExportVerifier } from './debug/AdaptiveExportVerifier';
 import { TriangulatorVerifier } from './debug/TriangulatorVerifier';
 
+interface ChainDebugOverlayData {
+    createdAt: number;
+    chainCount: number;
+    lineCount: number;
+    lines: Array<{ points: Array<[number, number]> }>;
+}
+
 const App: React.FC = () => {
     // Version Check for Debugging
     useEffect(() => {
@@ -92,6 +99,7 @@ const App: React.FC = () => {
     // Force renderer remount on crash
     const [remountKey, setRemountKey] = useState(0);
     const [forcedRenderer, setForcedRenderer] = useState<'webgl' | 'webgpu' | undefined>(undefined);
+    const [chainDebugOverlay, setChainDebugOverlay] = useState<ChainDebugOverlayData | null>(null);
 
     // Refs for callbacks
     const localParamsLockUntilRef = useRef<number>(0);
@@ -137,6 +145,17 @@ const App: React.FC = () => {
         // console.debug('[PotFoundry] event', eventType, event);
     }, []);
     emitRef.current = emitEvent;
+
+    useEffect(() => {
+        const onChainDebug = (evt: Event) => {
+            const detail = (evt as CustomEvent<ChainDebugOverlayData>).detail;
+            if (!detail || !Array.isArray(detail.lines)) return;
+            setChainDebugOverlay(detail);
+        };
+
+        window.addEventListener('pf:chain-debug', onChainDebug as EventListener);
+        return () => window.removeEventListener('pf:chain-debug', onChainDebug as EventListener);
+    }, []);
 
     // Bridge Zustand state to controller
     useRendererBridge(controllerReady ? controllerRef.current : null, { debug: false });
@@ -424,6 +443,77 @@ Protocol: ${protocol}`}
                                 title="Using WebGL renderer because WebGPU is not available on this device"
                             >
                                 ⚠️ Compatibility Mode (WebGL)
+                            </div>
+                        )}
+
+                        {chainDebugOverlay && (
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    left: '14px',
+                                    bottom: '14px',
+                                    width: '320px',
+                                    height: '190px',
+                                    background: 'rgba(0,0,0,0.72)',
+                                    border: '1px solid rgba(80,255,160,0.6)',
+                                    borderRadius: '8px',
+                                    zIndex: 11,
+                                    pointerEvents: 'auto',
+                                    padding: '8px',
+                                    boxSizing: 'border-box',
+                                }}
+                                title="Chain debug overlay (UV-space)"
+                            >
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: '6px',
+                                    color: '#9ef5c2',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                }}>
+                                    <span>Chain Lines (UV)</span>
+                                    <button
+                                        onClick={() => setChainDebugOverlay(null)}
+                                        style={{
+                                            border: 'none',
+                                            background: 'rgba(255,255,255,0.12)',
+                                            color: '#fff',
+                                            borderRadius: '4px',
+                                            fontSize: '11px',
+                                            cursor: 'pointer',
+                                            padding: '2px 6px',
+                                        }}
+                                    >
+                                        hide
+                                    </button>
+                                </div>
+
+                                <svg width="100%" height="140" viewBox="0 0 1 1" preserveAspectRatio="none" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                                    {chainDebugOverlay.lines.map((line, idx) => {
+                                        const points = line.points
+                                            .map(([u, t]) => {
+                                                const uu = Math.max(0, Math.min(1, u));
+                                                const tt = Math.max(0, Math.min(1, t));
+                                                return `${uu},${1 - tt}`;
+                                            })
+                                            .join(' ');
+                                        return (
+                                            <polyline
+                                                key={idx}
+                                                points={points}
+                                                fill="none"
+                                                stroke="rgba(80,255,160,0.65)"
+                                                strokeWidth={0.0022}
+                                            />
+                                        );
+                                    })}
+                                </svg>
+
+                                <div style={{ marginTop: '4px', color: '#b7f5d4', fontSize: '10px' }}>
+                                    chains: {chainDebugOverlay.chainCount} · lines: {chainDebugOverlay.lineCount}
+                                </div>
                             </div>
                         )}
 

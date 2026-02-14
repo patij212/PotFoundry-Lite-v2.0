@@ -179,6 +179,13 @@ export function useExport(): UseExportResult {
         BambooSegments: 'BambooSegments',
         RippleInterference: 'RippleInterference',
         LowPolyFacet: 'LowPolyFacet',
+        GyroidManifold: 'GyroidManifold',
+        Voronoi: 'Voronoi',
+        BasketWeave: 'BasketWeave',
+        GeometricStar: 'GeometricStar',
+        HexagonalHive: 'HexagonalHive',
+        CelticKnot: 'CelticKnot',
+        CelticTriquetra: 'CelticTriquetra',
         // Legacy snake_case mappings
         superformula_blossom: 'SuperformulaBlossom',
         fourier_bloom: 'FourierBloom',

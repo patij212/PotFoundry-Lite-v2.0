@@ -1,4 +1,5 @@
 import { FeaturePoint } from '../../renderers/webgpu/FeatureExtractionComputer';
+export type { FeaturePoint };
 import { simplify } from '../../utils/geometry/simplify';
 import { PotDimensions, TAU } from '../../geometry/types';
 import cdt2d from 'cdt2d';
@@ -10,6 +11,12 @@ import cdt2d from 'cdt2d';
 export interface TriangulatedMesh {
     vertices: Float32Array;
     indices: Uint32Array;
+    ranges?: {
+        boundary: number;
+        feature: number;
+        buffer: number;
+        background: number;
+    };
 }
 
 export interface Point2D {
@@ -114,6 +121,283 @@ export class ConstrainedTriangulator {
         return false;
     }
 
+    // Helper: Calculate intersection point of two segments AB and CD
+    // Returns null if no intersection or parallel
+    private static getSegmentIntersection(p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D): Point2D | null {
+        const s1_x = p1.x - p0.x;
+        const s1_y = p1.y - p0.y;
+        const s2_x = p3.x - p2.x;
+        const s2_y = p3.y - p2.y;
+
+        const s = (-s1_y * (p0.x - p2.x) + s1_x * (p0.y - p2.y)) / (-s2_x * s1_y + s1_x * s2_y);
+        const t = (s2_x * (p0.y - p2.y) - s2_y * (p0.x - p2.x)) / (-s2_x * s1_y + s1_x * s2_y);
+
+        if (s >= 0.001 && s <= 0.999 && t >= 0.001 && t <= 0.999) {
+            return {
+                x: p0.x + (t * s1_x),
+                y: p0.y + (t * s1_y)
+            };
+        }
+        return null;
+    }
+
+    private static planarizeSegments<T extends { p0: Point2D, p1: Point2D }>(segments: T[], points: Point2D[] = [], aspectRatio: number = 1.0): T[] {
+        // Wrapper to track validity without array splicing
+        interface SegmentPacket<U> {
+            data: U;
+            dead: boolean;
+            id: number;
+        }
+
+        let nextId = 0;
+        // const packets: SegmentPacket<T>[] = []; // Unused
+
+        // Stack contains packets that need to be tested and added
+        const stack: SegmentPacket<T>[] = segments.map(s => ({ data: s, dead: false, id: nextId++ }));
+
+        // Final list of valid packets
+        const processed: SegmentPacket<T>[] = [];
+
+        // Uniform Grid for Spatial Indexing
+        // ADAPTIVE GRID: Scale X resolution by Aspect Ratio to keep cells roughly square
+        const GRID_RES_Y = 64;
+        const GRID_RES_X = Math.ceil(GRID_RES_Y * aspectRatio);
+
+        // Total cells: Y * X
+        const grid: SegmentPacket<T>[][] = new Array(GRID_RES_X * GRID_RES_Y).fill(null).map(() => []);
+
+        const getGridIndices = (p0: Point2D, p1: Point2D) => {
+            const minX = Math.min(p0.x, p1.x);
+            const maxX = Math.max(p0.x, p1.x);
+            const minY = Math.min(p0.y, p1.y);
+            const maxY = Math.max(p0.y, p1.y);
+
+            // X is in [0, aspectRatio], Y is in [0, 1]
+            // We clamp indices to [0, RES-1]
+            const i0 = Math.floor(Math.max(0, Math.min(GRID_RES_X - 1, (minX / aspectRatio) * GRID_RES_X)));
+            const i1 = Math.floor(Math.max(0, Math.min(GRID_RES_X - 1, (maxX / aspectRatio) * GRID_RES_X)));
+
+            const j0 = Math.floor(Math.max(0, Math.min(GRID_RES_Y - 1, minY * GRID_RES_Y)));
+            const j1 = Math.floor(Math.max(0, Math.min(GRID_RES_Y - 1, maxY * GRID_RES_Y)));
+
+            const indices: number[] = [];
+            for (let j = j0; j <= j1; j++) {
+                for (let i = i0; i <= i1; i++) {
+                    indices.push(j * GRID_RES_X + i); // Row-major: y*W + x
+                }
+            }
+            return indices;
+        };
+
+        const getPointGridIndex = (p: Point2D) => {
+            const i = Math.floor(Math.max(0, Math.min(GRID_RES_X - 1, (p.x / aspectRatio) * GRID_RES_X)));
+            const j = Math.floor(Math.max(0, Math.min(GRID_RES_Y - 1, p.y * GRID_RES_Y)));
+            return j * GRID_RES_X + i;
+        };
+
+        // Helper: is point P on segment AB? (Exclusive of endpoints)
+        const isPointOnSegment = (p: Point2D, a: Point2D, b: Point2D): boolean => {
+            const TOL = 1e-10;
+            // Bounding Box fast check
+            if (p.x < Math.min(a.x, b.x) - TOL || p.x > Math.max(a.x, b.x) + TOL ||
+                p.y < Math.min(a.y, b.y) - TOL || p.y > Math.max(a.y, b.y) + TOL) return false;
+
+            // Distance check
+            const dSq = ConstrainedTriangulator.distToSegmentSq([p.x, p.y], [a.x, a.y], [b.x, b.y]);
+            if (dSq > TOL) return false;
+
+            // Endpoint check (Exclusive)
+            const d0 = (p.x - a.x) ** 2 + (p.y - a.y) ** 2;
+            const d1 = (p.x - b.x) ** 2 + (p.y - b.y) ** 2;
+            if (d0 < TOL || d1 < TOL) return false; // Is endpoint
+
+            return true;
+        };
+
+        let operations = 0;
+        const MAX_OPS = 5000000; // Increased to 5M for complex pots
+
+        // Phase 1: Segment-Segment Intersections + Grid Building
+        while (stack.length > 0 && operations < MAX_OPS) {
+            const s1 = stack.pop()!;
+            if (s1.dead) continue; // Should not happen if we don't push dead, but safety
+
+            const gridIndices = getGridIndices(s1.data.p0, s1.data.p1);
+            let intersected = false;
+
+            // Collect candidates from grid (deduplicate by ID for performance if segment spans many cells)
+            // Using a small Set for dedup
+            const candidates = new Set<SegmentPacket<T>>();
+            for (const idx of gridIndices) {
+                const cell = grid[idx];
+                for (const other of cell) {
+                    if (!other.dead) candidates.add(other);
+                }
+            }
+
+            for (const s2 of candidates) {
+                operations++;
+                // Skip connected
+                if (Math.abs(s1.data.p0.x - s2.data.p0.x) < 1e-9 && Math.abs(s1.data.p0.y - s2.data.p0.y) < 1e-9) continue;
+                if (Math.abs(s1.data.p0.x - s2.data.p1.x) < 1e-9 && Math.abs(s1.data.p0.y - s2.data.p1.y) < 1e-9) continue;
+                if (Math.abs(s1.data.p1.x - s2.data.p0.x) < 1e-9 && Math.abs(s1.data.p1.y - s2.data.p0.y) < 1e-9) continue;
+                if (Math.abs(s1.data.p1.x - s2.data.p1.x) < 1e-9 && Math.abs(s1.data.p1.y - s2.data.p1.y) < 1e-9) continue;
+
+                // 1. Strict Intersection Check (Crossing)
+                const hit = this.getSegmentIntersection(s1.data.p0, s1.data.p1, s2.data.p0, s2.data.p1);
+
+                if (hit) {
+                    // Split BOTH at intersection
+                    s2.dead = true;
+                    intersected = true;
+
+                    const split = (s: SegmentPacket<T>, p: Point2D) => {
+                        const dx = s.data.p1.x - s.data.p0.x;
+                        const dy = s.data.p1.y - s.data.p0.y;
+                        // Verify p is strictly inside (not endpoint) - getSegmentIntersection guarantees this for 'hit'
+                        // but we double check length
+                        if (dx * dx + dy * dy < 1e-12) return; // Degenerate signal
+
+                        stack.push({ data: { ...s.data, p0: s.data.p0, p1: p }, dead: false, id: nextId++ });
+                        stack.push({ data: { ...s.data, p0: p, p1: s.data.p1 }, dead: false, id: nextId++ });
+                    };
+
+                    split(s1, hit);
+                    split(s2, hit);
+                    break;
+                }
+
+                // 2. Check for Collinear Overlap (Vertex on Segment)
+                // Even if endpoints match, one might contain the other's endpoint in its interior?
+                // No, if endpoints match, we skipped above logic?
+                // Wait, logic above skipped if *any* endpoint matches.
+                // We need to check if s2.p0 is on s1, or s2.p1 is on s1, or s1.p0 on s2, s1.p1 on s2.
+                // But we must be careful not to trigger on shared endpoints (distance ~ 0).
+
+                // Case A: S2 endpoint on S1
+                let splitPoint: Point2D | null = null;
+                let target: SegmentPacket<T> | null = null; // Which segment to split?
+
+                if (isPointOnSegment(s2.data.p0, s1.data.p0, s1.data.p1)) {
+                    splitPoint = s2.data.p0; target = s1;
+                } else if (isPointOnSegment(s2.data.p1, s1.data.p0, s1.data.p1)) {
+                    splitPoint = s2.data.p1; target = s1;
+                }
+                // Case B: S1 endpoint on S2
+                else if (isPointOnSegment(s1.data.p0, s2.data.p0, s2.data.p1)) {
+                    splitPoint = s1.data.p0; target = s2;
+                } else if (isPointOnSegment(s1.data.p1, s2.data.p0, s2.data.p1)) {
+                    splitPoint = s1.data.p1; target = s2;
+                }
+
+                if (splitPoint && target) {
+                    // Split 'target' at 'splitPoint'
+                    // If target is s1: s1 becomes dead, we push 2 parts. S2 remains in processed (untouched).
+                    // If target is s2: s2 becomes dead (removed from processing/grid), we push 2 parts. S1 remains active in stack (will be re-evaluated).
+
+                    if (target === s1) {
+                        intersected = true; // s1 matches
+                        // s1 naturally handled by loop break (it wasn't added to processed)
+                        // We just push its children
+                        stack.push({ data: { ...s1.data, p0: s1.data.p0, p1: splitPoint }, dead: false, id: nextId++ });
+                        stack.push({ data: { ...s1.data, p0: splitPoint, p1: s1.data.p1 }, dead: false, id: nextId++ });
+                        break;
+                    } else {
+                        // target is s2 (in processed/grid)
+                        s2.dead = true;
+                        // s2 is removed. s1 is still pending checks.
+                        // We must add s2's children to stack to be checked against s1 (and others)
+                        stack.push({ data: { ...s2.data, p0: s2.data.p0, p1: splitPoint }, dead: false, id: nextId++ });
+                        stack.push({ data: { ...s2.data, p0: splitPoint, p1: s2.data.p1 }, dead: false, id: nextId++ });
+
+                        // s1 needs to restart its check? 
+                        // Actually, s1 might have more intersections. The loop continues for s1.
+                        // But we removed s2 from the candidate set (logically via dead flag).
+                        // So we continue.
+                    }
+                }
+
+                if (operations > MAX_OPS) break;
+            }
+
+            if (!intersected) {
+                // Add to processed and Grid
+                processed.push(s1);
+                for (const idx of gridIndices) {
+                    grid[idx].push(s1);
+                }
+            }
+        }
+
+        // Phase 2: Point-Segment Conflicts ("Intruders")
+        // Check if any free point lies on a segment
+        if (points.length > 0) {
+            console.log(`[CDT] Checking ${points.length} points against constraints...`);
+            // We iterate segments in 'processed' (which are final from Phase 1)
+            // But if we split a segment, we must remove it and add children.
+            // Using a queue for points might be safer, but just iterating points against grid segments is easier.
+            // But if we split a segment, we need to update the grid.
+
+            // Simpler: iterate points. Check grid. If hit, split segment.
+            // Remove segment from processed/grid. Add children to processed/grid.
+            // BUT children might be hit by OTHER points?
+            // Yes. So children must be checked also?
+            // Actually, if we split segment S at P, we get S1, S2 meeting at P.
+            // P is now an endpoint.
+            // Subsequent points won't trigger on P (endpoint exclusive).
+            // So we just need to add S1, S2 back to the pool.
+
+            // Note: Since 'processed' is an array, splicing is slow.
+            // We can use the 'dead' flag again.
+
+            for (const p of points) {
+                const idx = getPointGridIndex(p);
+                // Grid cell might contain candidates.
+                // Also check neighbors? Segments span multiple cells. 
+                // The segment is stored in all cells it overlaps. 
+                // So checking cell 'idx' is sufficient to find all segments covering P.
+                const cell = grid[idx];
+                if (!cell || cell.length === 0) continue;
+
+                // Copy cell to avoid modification issues during iteration
+                const candidates = [...cell];
+
+                for (const s of candidates) {
+                    if (s.dead) continue;
+
+                    if (isPointOnSegment(p, s.data.p0, s.data.p1)) {
+                        // Split!
+                        s.dead = true; // Logically removed
+
+                        // Create children
+                        const pushChild = (start: Point2D, end: Point2D) => {
+                            const dx = end.x - start.x;
+                            const dy = end.y - start.y;
+                            if (dx * dx + dy * dy < 1e-12) return;
+
+                            const newSeg = { data: { ...s.data, p0: start, p1: end }, dead: false, id: nextId++ };
+                            processed.push(newSeg);
+
+                            // Re-inject into grid
+                            const newIndices = getGridIndices(start, end);
+                            for (const gIdx of newIndices) {
+                                grid[gIdx].push(newSeg);
+                            }
+                        };
+
+                        pushChild(s.data.p0, p);
+                        pushChild(p, s.data.p1);
+                    }
+                }
+            }
+        }
+
+        if (operations >= MAX_OPS) console.warn('[ConstrainedTriangulator] Planarization hit safety limit (Grid)!');
+
+        // Filter dead packets from processed (some might have been killed after adding)
+        return processed.filter(p => !p.dead).map(p => p.data);
+    }
+
     /**
      * Main Entry Point
      * Generates a high-quality mesh from feature points.
@@ -179,41 +463,37 @@ export class ConstrainedTriangulator {
         // 1.5 DECIMATION
         // Background max subdivision is 3x (1/192).
         // To ensure feature edges are finer than the background, we need smaller spacing.
-        // User requested "very fine" edge triangles.
-        const TARGET_SPACING = 1.0 / 256; // High density features
+        // User requested "very fine" edge triangles (much smaller than 1.5mm).
+        // Increasing density to 1/1024 (~0.001) to reduce aspect ratio against 0.00025 buffer.
+        const TARGET_SPACING = 1.0 / 1024; // High density features
 
         const decimatedChains = chains.map(chain => this.decimateChain(chain, TARGET_SPACING));
         const decimatedPointCount = decimatedChains.reduce((sum, c) => sum + c.length, 0);
         console.log(`[ConstrainedTriangulator] Decimated chains: ${decimatedPointCount} points (from ${chains.reduce((s, c) => s + c.length, 0)})`);
 
-        // 1.6 Generate BUFFER ZONE points - DISABLED due to causing "shard" artifacts
-        // around sharp corners. Adaptive background grid is sufficient.
+        // 1.6 Generate BUFFER ZONE points - DISABLED (v3.7 Feature-Only Subdivision)
+        // Buffers cause artifacts at sharp corners. We rely on refinement (step 3.5).
         const bufferPoints: Point2D[] = [];
-        /* 
-        const BUFFER_OFFSET = TARGET_SPACING * 0.5;
+
+        /* v3.7 - Disable Structured Buffer
+        const BUFFER_OFFSET = TARGET_SPACING * 1.5; 
         for (const chain of decimatedChains) {
-            // ... (disabled code)
+             ... (loop code) ...
         }
+        console.log(`[ConstrainedTriangulator] Generated ${bufferPoints.length} structured buffer points.`);
         */
-        console.log(`[ConstrainedTriangulator] Buffer generation DISABLED to prevent shards.`);
+        console.log(`[ConstrainedTriangulator] Structured Buffer: DISABLED (v3.7 mode)`);
 
         // 2. Generate adaptive background points
         // Must pass AR to fill [0, AR] domain
         const bgPoints = this.generateAdaptiveBackground(decimatedChains, aspectRatio, importanceMap, importanceGridSize);
         console.log(`[ConstrainedTriangulator] Generated ${bgPoints.length} background points`);
 
-        // 3. Run Constrained Delaunay Triangulation with decimated chains
-        // Include buffer points as curve support (no constraint edges)
-        // Note: runCDT logic handles the boundary. We must tell it valid domain if needed?
-        // runCDT calculates boundary from SEAMS. SEAMS points are already scaled above.
-        // But runCDT *re-adds* boundary internally at lines 615-640.
-        // We must update runCDT or pass the scaled boundary?
-        // runCDT is internal. We should update runCDT to respect AR or pass it.
-        // EASIER: Pass `seamPoints` explicitly as the boundary definition to runCDT?
-        // Current runCDT ignores `seamPoints` arg?? No, it doesn't take seamPoints arg!
-        // It regenerates boundary.
-        // FIX: Update runCDT to take aspectRatio argument.
-        const outerMesh = this.runCDT(decimatedChains, bgPoints, [...curveBufferPoints, ...bufferPoints], aspectRatio);
+        // 3. Run Constrained Delaunay Triangulation
+        // Pass seamPoints to ensure boundary vertices exist for stitching
+        // MERGE into a single buffer array to ensure they persist through refinement
+        const allBufferPoints = [...curveBufferPoints, ...bufferPoints, ...seamPoints];
+        const outerMesh = this.runCDT(decimatedChains, bgPoints, allBufferPoints, aspectRatio);
 
         // =========================================================
         // UNSCALE: Transform Physical-ish -> UV Space
@@ -226,15 +506,14 @@ export class ConstrainedTriangulator {
 
         console.log(`[ConstrainedTriangulator] CDT: ${outerMesh.vertices.length / 3} vertices, ${outerMesh.indices.length / 3} triangles`);
 
-        // 3.5. Refine triangle quality - DISABLED
-        // With Anisotropic Scaling, physical 1:1 triangles look like 1:3 slivers in UV space.
-        // This refinement step sees them as "bad" and shatters them into shards.
-        // Since CDT now produces good physical topology, we skip this.
-        // const refinedMesh = this.refineTriangleQuality(outerMesh, 3.0, 2);
+        // 3.5. CPU Refinement DISABLED (v3.9):
+        // refineTriangleQuality re-triangulates bad triangles, but near features this creates
+        // OVERLAPPING geometry (NM Count 4 edges) and 3.5× MORE degenerates (32K→112K).
+        // The GPU subdivision + feature proximity boost handles feature-adjacent refinement better.
         const refinedMesh = outerMesh;
 
         // 4. Stitch the seam at theta=0/2π
-        const stitched = this.stitchSeam(refinedMesh);
+        const stitched = this.stitchSeam(refinedMesh, aspectRatio);
 
         // 5. Append other surfaces (inner wall, rim, bottom, drain)
         const fullMesh = this.appendSurfaces(stitched);
@@ -317,29 +596,17 @@ export class ConstrainedTriangulator {
 
         console.log(`[ConstrainedTriangulator] Deduplicated: ${rawPoints.length} -> ${points.length} unique points`);
 
-        if (points.length < 4) {
-            // Return empty chains but with seam points for boundary stability
-            const SEAMS = 180;
-            const seamPoints: Point2D[] = [];
-            for (let k = 0; k <= SEAMS; k++) {
-                const y = k / SEAMS;
-                seamPoints.push({ x: 0, y }, { x: 1, y });
-            }
-            for (let k = 0; k <= SEAMS; k++) {
-                const x = k / SEAMS;
-                seamPoints.push({ x, y: 0 }, { x, y: 1 });
-            }
-            return { chains: [], seamPoints, curveBufferPoints: [] };
-        }
-
         // ===========================================
         // PHASE 2: Greedy Chaining BY FEATURE TYPE
         // Ridges and valleys must be chained separately!
         // Previous bug: mixing types caused valleys to jump to ridges
         // ===========================================
 
-        const MAX_CONNECT_DIST = 0.08; // ~8% of domain - TESTED VALUE
-        const gridCell = 0.1;
+        // Relaxed constraints for robustness with sparse user input?
+        // NO. "Wild" jumps are caused by too loose constraints.
+        // If density is high (as user claims), we should restrain this.
+        const MAX_CONNECT_DIST = 0.05; // Reduced from 0.2 to 5% of domain (prevent cross-feature jumps)
+        const gridCell = 0.05; // Match connect dist
         const chains: Point2D[][] = [];
 
         // Get unique feature types present
@@ -396,6 +663,7 @@ export class ConstrainedTriangulator {
                             else if (nx >= GRID_W) nx -= GRID_W;
 
                             const cellKey = `${nx}_${gy + jy}`;
+                            // console.log(`[Loop Key] checking ${cellKey} for (${curr.x}, ${curr.y})`);
                             const neighbors = grid.get(cellKey);
                             if (!neighbors) continue;
 
@@ -430,9 +698,14 @@ export class ConstrainedTriangulator {
                                     const candDirX = dx / dist;
                                     const candDirY = dy / dist;
                                     const dot = prevDirX * candDirX + prevDirY * candDirY;
-                                    const directionPenalty = dist * (1 - dot) * 0.5;
+
+                                    // STRICTER TURN PENALTY
+                                    // If dot < 0 (angle > 90 deg), forbid it.
+                                    // Valleys/Ridges don't turn 90 degrees instantly.
+                                    if (dot < 0.0) continue;
+
+                                    const directionPenalty = dist * (1 - dot) * 2.0; // Stronger penalty for turns
                                     score += directionPenalty;
-                                    if (dot < -0.5) continue;
                                 }
 
                                 if (score < bestScore) {
@@ -496,7 +769,7 @@ export class ConstrainedTriangulator {
                         break;
                     }
                 }
-                if (chain.length > 3) chains.push(chain);
+                if (chain.length >= 2) chains.push(chain);
             }
 
             console.log(`[ConstrainedTriangulator] Type ${featureType}: ${chains.length} chains built`);
@@ -510,6 +783,8 @@ export class ConstrainedTriangulator {
         // 2. Densify: Add interpolated points so CDT edges follow curves precisely
         // ===========================================
         // ULTRA FIDELITY: 0.00001 = 0.02 pixel tolerance.
+        // SIGNAL RECONSTRUCTION: Set to 0.00001 (High Fidelity) to preserve the
+        // smooth vertices generated by smoothChain, avoiding polygonal artifacts.
         const SIMPLIFY_TOLERANCE = 0.00001;
         // 0.1% of domain = ~1000 segments per full chain. Extremely dense.
         const MAX_SEGMENT_LENGTH = 0.001;
@@ -517,8 +792,13 @@ export class ConstrainedTriangulator {
         const densifyChain = (chain: Point2D[]): Point2D[] => {
             if (chain.length < 2) return chain;
 
+            // Step 0: Signal Restoration (Smoothing) - NEW
+            // Melt jitter/noise into a physical curve
+            // 10 Iterations for ultra-smooth signal recovery
+            const smoothed = ConstrainedTriangulator.smoothChain(chain);
+
             // Step 1: Simplify
-            const simplified = simplify(chain, SIMPLIFY_TOLERANCE, true);
+            const simplified = simplify(smoothed, SIMPLIFY_TOLERANCE, true);
 
             // Step 2: Densify (UV-space distance, not physical)
             if (simplified.length < 2) return simplified;
@@ -556,19 +836,163 @@ export class ConstrainedTriangulator {
         const totalDensifiedPoints = densifiedChains.reduce((a, c) => a + c.length, 0);
         console.log(`[ConstrainedTriangulator] Densified: ${chains.length} chains -> ${totalDensifiedPoints} total points`);
 
-        // PHASE 4: Buffer zones DISABLED - too heavy
-        // GPU adaptive subdivision handles density transitions
+        // PHASE 4: Corner Support Buffer (Determinisitc)
+        // Adds "magnet" points inside sharp corners to break huge fan triangles.
         const curveBufferPoints: Point2D[] = [];
-        void scaleW; void scaleH; void densifiedChains;
-        console.log(`[ConstrainedTriangulator] Buffer DISABLED - minimal base mesh`);
+
+        const CORNER_THRESHOLD = 2.6; // Radians (approx 150 degrees). Anything sharper gets a point.
+        // We want to support turns involved in "features".
+        // If angle is < 150 deg, put a point.
+        // Straight line = PI (3.14). 90 deg = PI/2 (1.57).
+
+        // Offset distance: needs to be close enough to be the "nearest neighbor" for the corner vertex
+        // Safe to use tight offset because create_midpoint snap is DISABLED
+        const CORNER_OFFSET = 0.0005;
+
+        for (const chain of densifiedChains) {
+            if (chain.length < 3) continue;
+
+            for (let i = 1; i < chain.length - 1; i++) {
+                const prev = chain[i - 1];
+                const curr = chain[i];
+                const next = chain[i + 1];
+
+                // Vectors
+                const v1x = curr.x - prev.x;
+                const v1y = curr.y - prev.y;
+                const len1 = Math.sqrt(v1x * v1x + v1y * v1y);
+
+                const v2x = next.x - curr.x;
+                const v2y = next.y - curr.y;
+                const len2 = Math.sqrt(v2x * v2x + v2y * v2y);
+
+                if (len1 < 1e-9 || len2 < 1e-9) continue;
+
+                // Normalize
+                const dir1x = v1x / len1;
+                const dir1y = v1y / len1;
+                const dir2x = v2x / len2;
+                const dir2y = v2y / len2;
+
+                // Dot product for angle
+                // dot = cos(theta). theta is angle *change*? No, angle between vectors.
+                // We want interior angle.
+                // Vector 1 is prev->curr. Vector 2 is curr->next.
+                // Interior angle requires reversing V1: curr->prev.
+                const dot = (-dir1x * dir2x) + (-dir1y * dir2y);
+                const angle = Math.acos(Math.max(-1, Math.min(1, dot))); // 0..PI
+
+                if (angle < CORNER_THRESHOLD) {
+                    // Calculate Bisector
+                    // bisector = normalize(normalize(curr->prev) + normalize(curr->next))
+                    // vLeft = (-dir1x, -dir1y)
+                    // vRight = (dir2x, dir2y)
+                    const bx = -dir1x + dir2x;
+                    const by = -dir1y + dir2y;
+                    const bLen = Math.sqrt(bx * bx + by * by);
+
+                    if (bLen > 1e-9) {
+                        const bnx = bx / bLen;
+                        const bny = by / bLen;
+
+                        // Add support point
+                        const px = curr.x + bnx * CORNER_OFFSET;
+                        const py = curr.y + bny * CORNER_OFFSET;
+
+                        // Bounds check
+                        if (px > 0.001 && px < scaleW / scaleH - 0.001 && py > 0.001 && py < 0.999) {
+                            curveBufferPoints.push({ x: px, y: py });
+                        }
+                    }
+                }
+            }
+        }
+        console.log(`[ConstrainedTriangulator] Generated ${curveBufferPoints.length} Corner Support points`);
+
+        // 4b. Parallel Feature Buffer
+        // v3.10: Tight ring REMOVED — 0.0005 UV creates Feature Shield triangles that
+        // span the curvature maximum at ridges. Their face normals are irrecoverably bad.
+        // The GPU proximity boost (5% UV influence zone) now handles near-feature subdivision.
+        // Wide ring (0.002 UV) is the closest buffer — far enough that CDT triangles
+        // don't span extreme curvature, close enough to prevent "reaching" artifacts.
+        const PARALLEL_OFFSET_WIDE = 0.002;   // ~0.72° — closest ring to feature
+        const PARALLEL_OFFSET_EXTRA = 0.005;  // ~1.8° extra ring (bridges to background grid)
+        let parallelCount = 0;
+
+        for (const chain of densifiedChains) {
+            if (chain.length < 2) continue;
+
+            for (let i = 0; i < chain.length - 1; i++) {
+                const p1 = chain[i];
+                const p2 = chain[i + 1];
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+
+                if (len < 1e-9) continue;
+
+                // Segment Normal (-dy, dx) - perpendicular to segment
+                const nx = -dy / len;
+                const ny = dx / len;
+
+                // WIDE RING: Full coverage (midpoint + endpoints) — closest ring needs no gaps
+                const wideSamples = [
+                    { x: (p1.x + p2.x) * 0.5, y: (p1.y + p2.y) * 0.5 },
+                    p1, p2
+                ];
+                for (const pt of wideSamples) {
+                    for (const sign of [1, -1]) {
+                        const px = pt.x + nx * PARALLEL_OFFSET_WIDE * sign;
+                        const py = pt.y + ny * PARALLEL_OFFSET_WIDE * sign;
+                        if (px > 1e-5 && px < 1.0 - 1e-5 && py > 1e-5 && py < 1.0 - 1e-5) {
+                            curveBufferPoints.push({ x: px, y: py });
+                            parallelCount++;
+                        }
+                    }
+                }
+
+                // EXTRA RING: Midpoint-only — bridges to background grid
+                const mid = { x: (p1.x + p2.x) * 0.5, y: (p1.y + p2.y) * 0.5 };
+                for (const sign of [1, -1]) {
+                    const px = mid.x + nx * PARALLEL_OFFSET_EXTRA * sign;
+                    const py = mid.y + ny * PARALLEL_OFFSET_EXTRA * sign;
+                    if (px > 1e-5 && px < 1.0 - 1e-5 && py > 1e-5 && py < 1.0 - 1e-5) {
+                        curveBufferPoints.push({ x: px, y: py });
+                        parallelCount++;
+                    }
+                }
+            }
+
+            // Add End Caps (Circle around endpoints)
+            // Prevents huge triangles from hooking onto the exposed feature tips.
+            const endpoints = [chain[0], chain[chain.length - 1]];
+            for (const ep of endpoints) {
+                const offsets = [
+                    { x: PARALLEL_OFFSET_WIDE, y: 0 },
+                    { x: -PARALLEL_OFFSET_WIDE, y: 0 },
+                    { x: 0, y: PARALLEL_OFFSET_WIDE },
+                    { x: 0, y: -PARALLEL_OFFSET_WIDE }
+                ];
+                for (const off of offsets) {
+                    const px = ep.x + off.x;
+                    const py = ep.y + off.y;
+                    if (px > 1e-5 && px < 1.0 - 1e-5 && py > 1e-5 && py < 1.0 - 1e-5) {
+                        curveBufferPoints.push({ x: px, y: py });
+                        parallelCount++;
+                    }
+                }
+            }
+        }
+        console.log(`[ConstrainedTriangulator] Generated ${parallelCount} Parallel Buffer points`);
 
         // 5. Force Seam Nodes
         // We define fixed nodes on left/right boundary to ensure they match later
         // High resolution seams to match ancillary grids (w=180/360) 
         // and ensure watertight welding.
         // 180 ensures edge length ~2 degrees, small enough for WeldMesh epsilon.
-        // INCREASED to 360 to match feature density (0.002) and prevent low-res patches.
-        const SEAMS = 360; // Number of vertical divisions
+        // INCREASED to 1024 to ensure boundary edges are < 0.001 (Safety Cap).
+        // If boundary edges are > Safety Cap, they get split, causing asymmetric T-Junctions.
+        const SEAMS = 1024; // Number of vertical divisions (~0.001 spacing)
         const seamPoints: Point2D[] = [];
         for (let k = 0; k <= SEAMS; k++) {
             const y = k / SEAMS;
@@ -584,6 +1008,90 @@ export class ConstrainedTriangulator {
         }
 
         return { chains: densifiedChains, seamPoints, curveBufferPoints };
+    }
+
+    /**
+     * Signal Reconstruction: Two-Pass Smoothing
+     * 
+     * Pass 1: Gaussian blur (radius R) — directly removes oscillations with wavelength < ~2R.
+     *         This is a one-shot filter, unlike Laplacian which needs O(λ²) iterations.
+     *         Endpoints are pinned (not smoothed).
+     * 
+     * Pass 2: Ohtake Laplacian polish — regularizes vertex spacing along the curve.
+     *         Light (10 iterations, lambda=0.3) since the heavy lifting is done by Gaussian.
+     */
+    private static smoothChain(chain: Point2D[]): Point2D[] {
+        if (chain.length < 3) return [...chain];
+
+        // =============================================
+        // PASS 1: Gaussian Blur (Low-frequency killer)
+        // =============================================
+        // Radius 15 removes oscillations with wavelength < ~30 points.
+        // For a chain of 1000+ points over the circumference, this removes
+        // wobble shorter than ~3% of domain (~11°) — the user-reported oscillations.
+        const GAUSS_RADIUS = 15;
+        const gaussed = chain.map(p => ({ ...p }));
+
+        for (let i = 1; i < chain.length - 1; i++) {
+            let sumX = 0, sumY = 0, sumW = 0;
+            const lo = Math.max(1, i - GAUSS_RADIUS);
+            const hi = Math.min(chain.length - 2, i + GAUSS_RADIUS);
+
+            for (let j = lo; j <= hi; j++) {
+                const d = (j - i) / GAUSS_RADIUS;
+                const w = Math.exp(-2.0 * d * d);
+                sumX += chain[j].x * w;
+                sumY += chain[j].y * w;
+                sumW += w;
+            }
+            gaussed[i] = { x: sumX / sumW, y: sumY / sumW };
+        }
+
+        // =============================================
+        // PASS 2: Ohtake Laplacian Polish (Regularize spacing)
+        // =============================================
+        const ITERATIONS = 10;
+        const LAMBDA = 0.3;    // Normal smoothing
+        const MU = 0.5;        // Tangential regularization
+
+        let current = gaussed;
+
+        for (let it = 0; it < ITERATIONS; it++) {
+            const next = current.map(p => ({ ...p }));
+
+            for (let i = 1; i < current.length - 1; i++) {
+                const prev = current[i - 1];
+                const curr = current[i];
+                const nextP = current[i + 1];
+
+                const lx = 0.5 * (prev.x + nextP.x) - curr.x;
+                const ly = 0.5 * (prev.y + nextP.y) - curr.y;
+
+                let tx = nextP.x - prev.x;
+                let ty = nextP.y - prev.y;
+                const tLen = Math.sqrt(tx * tx + ty * ty);
+
+                if (tLen < 1e-9) {
+                    next[i].x = curr.x + lx * LAMBDA;
+                    next[i].y = curr.y + ly * LAMBDA;
+                    continue;
+                }
+
+                tx /= tLen;
+                ty /= tLen;
+
+                const dot = lx * tx + ly * ty;
+                const ltx = dot * tx;
+                const lty = dot * ty;
+                const lnx = lx - ltx;
+                const lny = ly - lty;
+
+                next[i].x = curr.x + lnx * LAMBDA + ltx * MU;
+                next[i].y = curr.y + lny * LAMBDA + lty * MU;
+            }
+            current = next;
+        }
+        return current;
     }
 
     // ===================================
@@ -654,9 +1162,10 @@ export class ConstrainedTriangulator {
                     }
 
                     let subdiv = 1;
-                    if (importance > 0.75) subdiv = 3;
+                    // HARMONIZATION: Increase max density to 4 (approx 0.004 spacing) to match features (0.004)
+                    if (importance >= 1.0) subdiv = 4;      // Near features
+                    else if (importance > 0.75) subdiv = 3;
                     else if (importance > 0.5) subdiv = 2;
-                    else if (importance > 0.25) subdiv = 1;
                     else subdiv = 1;
 
                     // Skip very low importance
@@ -677,44 +1186,12 @@ export class ConstrainedTriangulator {
                 }
             }
 
-            // 3. Stochastic Feature Buffer (Cloud)
-            // The importance map might miss fine feature lines due to 64x64 resolution.
-            // We explicitly add random points near the known chains to ensure high density.
-            // This prevents "large fan triangles" connecting fine features to coarse background.
-            // (Approximating 3D metric density in 2D CDT)
-            if (false) {
-                const CLOUD_RADIUS = 0.05; // Physical-ish distance (AR scaled)
-                const CLOUD_DENSITY = 4; // Points per segment
+            // NOTE: Stochastic Feature Buffer Cloud removed (v3.9).
+            // Was permanently disabled (`if (false)`). The importance map's 3x3 neighborhood
+            // marking + adaptive grid subdivision handles feature-adjacent density better
+            // without the non-determinism of random point clouds.
 
-                for (const chain of _chains) {
-                    for (let i = 0; i < chain.length - 1; i++) {
-                        const p0 = chain[i];
-                        const p1 = chain[i + 1];
-                        const segLen = Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2);
-                        const segments = Math.max(1, Math.ceil(segLen / 0.01));
-
-                        // Add random points along the segment
-                        for (let d = 0; d < CLOUD_DENSITY * segments; d++) {
-                            const t = Math.random();
-                            const cx = p0.x + (p1.x - p0.x) * t;
-                            const cy = p0.y + (p1.y - p0.y) * t;
-
-                            // Random offset in circle
-                            const ang = Math.random() * Math.PI * 2;
-                            const rad = Math.random() * CLOUD_RADIUS;
-
-                            const px = cx + Math.cos(ang) * rad;
-                            const py = cy + Math.sin(ang) * rad;
-
-                            // Bounds check (scaled domain [0, AR] x [0, 1])
-                            if (px > 0.01 && px < aspectRatio - 0.01 && py > 0.01 && py < 0.99) {
-                                candidates.push({ x: px, y: py });
-                            }
-                        }
-                    }
-                }
-
-            } console.log(`[ConstrainedTriangulator] Background: ${candidates.length} points (AR=${aspectRatio.toFixed(2)})`);
+            console.log(`[ConstrainedTriangulator] Background: ${candidates.length} points (AR=${aspectRatio.toFixed(2)})`);
         } else {
             // Fallback: Anisotropic Uniform Grid
             const GRID_Y = 64;
@@ -727,7 +1204,15 @@ export class ConstrainedTriangulator {
                 for (let gx = 0; gx < GRID_X; gx++) {
                     const rx = 0.2 + Math.random() * 0.6;
                     const ry = 0.2 + Math.random() * 0.6;
-                    candidates.push({ x: (gx + rx) * cellW, y: (gy + ry) * cellH });
+                    const px = (gx + rx) * cellW;
+                    const py = (gy + ry) * cellH;
+
+                    // SAFETY ZONE:
+                    // Prevent background points from spawning too close to the Dense Periodic Boundary (stepsH=32).
+                    // If points are too close (< 0.02), CDT creates slivers that trigger infinite refinement.
+                    if (px > 0.02 && px < aspectRatio - 0.02) {
+                        candidates.push({ x: px, y: py });
+                    }
                 }
             }
 
@@ -742,329 +1227,227 @@ export class ConstrainedTriangulator {
     // ===================================
 
     private static runCDT(chains: Point2D[][], bgPoints: Point2D[], curveBufferPoints: Point2D[] = [], aspectRatio: number = 1.0): TriangulatedMesh {
-        const points: [number, number][] = [];
-        const edges: [number, number][] = [];
+        // =========================================================================================
+        // NEW PIPELINE: Segment Collection -> Planarization -> Deduplication -> CDT
+        // =========================================================================================
 
-        // ===================================
-        // 1. Add Boundary Box with Constraints
-        //    The domain is [0, AR] x [0, 1] (Scaled Space)
-        // ===================================
-        const SEAMS = 360; // Must match extractChains and appendSurfaces grid resolution
-        const boundaryIndices = {
-            left: [] as number[],   // x = 0
-            right: [] as number[],  // x = AR
-            bottom: [] as number[], // y = 0
-            top: [] as number[]     // y = 1
-        };
+        interface TaggedSegment { p0: Point2D, p1: Point2D, type: 'boundary' | 'feature' }
+        const segments: TaggedSegment[] = [];
 
-        // Add boundary points in order
-        let idx = 0;
+        // 1. Generate Boundary Segments
+        // -----------------------------
+        // We replicate the boundary point generation logic but turn it into segments immediately.
+        const stepsW = Math.ceil(4 * aspectRatio); // sparse boundary
+        const stepsH = 32; // Dense periodic boundary to match background grid
 
-        // Left boundary (x = 0, y = 0 to 1)
-        for (let k = 0; k <= SEAMS; k++) {
-            const y = k / SEAMS;
-            points.push([0, y]);
-            boundaryIndices.left.push(idx++);
+        const topPoints: Point2D[] = [];
+        const bottomPoints: Point2D[] = [];
+        const leftPoints: Point2D[] = [];
+        const rightPoints: Point2D[] = [];
+
+        // Corners
+        const c00 = { x: 0, y: 0 };
+        const c10 = { x: aspectRatio, y: 0 };
+        const c11 = { x: aspectRatio, y: 1 };
+        const c01 = { x: 0, y: 1 };
+
+        // Edges
+        for (let i = 1; i < stepsW; i++) {
+            const t = i / stepsW;
+            bottomPoints.push({ x: t * aspectRatio, y: 0 });
+            topPoints.push({ x: t * aspectRatio, y: 1 });
+        }
+        for (let i = 1; i < stepsH; i++) {
+            const t = i / stepsH;
+            leftPoints.push({ x: 0, y: t });
+            rightPoints.push({ x: aspectRatio, y: t });
         }
 
-        // Right boundary (x = AR, y = 0 to 1)
-        for (let k = 0; k <= SEAMS; k++) {
-            const y = k / SEAMS;
-            points.push([aspectRatio, y]);
-            boundaryIndices.right.push(idx++);
-        }
+        // Create Segments (CCW Loop: Bottom -> Right -> Top -> Left)
+        // Bottom: c00 -> bottom -> c10
+        let prev = c00;
+        bottomPoints.forEach(p => { segments.push({ p0: prev, p1: p, type: 'boundary' }); prev = p; });
+        segments.push({ p0: prev, p1: c10, type: 'boundary' });
 
-        // Top boundary (x = 0 to AR, y = 1) - skip corners (already added)
-        for (let k = 1; k < SEAMS; k++) {
-            const x = (k / SEAMS) * aspectRatio;
-            points.push([x, 1]);
-            boundaryIndices.top.push(idx++);
-        }
+        // Right: c10 -> right -> c11
+        prev = c10;
+        rightPoints.forEach(p => { segments.push({ p0: prev, p1: p, type: 'boundary' }); prev = p; });
+        segments.push({ p0: prev, p1: c11, type: 'boundary' });
 
-        // Bottom boundary (x = 0 to AR, y = 0) - skip corners (already added)
-        for (let k = 1; k < SEAMS; k++) {
-            const x = (k / SEAMS) * aspectRatio;
-            points.push([x, 0]);
-            boundaryIndices.bottom.push(idx++);
-        }
+        // Top: c11 -> top (reversed) -> c01
+        prev = c11;
+        [...topPoints].reverse().forEach(p => { segments.push({ p0: prev, p1: p, type: 'boundary' }); prev = p; });
+        segments.push({ p0: prev, p1: c01, type: 'boundary' });
 
-        // Add boundary EDGES (connect adjacent points)
-        // Left seam edges
-        for (let k = 0; k < SEAMS; k++) {
-            edges.push([boundaryIndices.left[k], boundaryIndices.left[k + 1]]);
-        }
-        // Right seam edges
-        for (let k = 0; k < SEAMS; k++) {
-            edges.push([boundaryIndices.right[k], boundaryIndices.right[k + 1]]);
-        }
-        // Top edges (connect left top corner -> top points -> right top corner)
-        const leftTop = boundaryIndices.left[SEAMS];  // (0, 1)
-        const rightTop = boundaryIndices.right[SEAMS]; // (1, 1)
-        if (boundaryIndices.top.length > 0) {
-            edges.push([leftTop, boundaryIndices.top[0]]);
-            for (let k = 0; k < boundaryIndices.top.length - 1; k++) {
-                edges.push([boundaryIndices.top[k], boundaryIndices.top[k + 1]]);
-            }
-            edges.push([boundaryIndices.top[boundaryIndices.top.length - 1], rightTop]);
-        } else {
-            edges.push([leftTop, rightTop]);
-        }
-        // Bottom edges (connect left bottom corner -> bottom points -> right bottom corner)
-        const leftBottom = boundaryIndices.left[0];  // (0, 0)
-        const rightBottom = boundaryIndices.right[0]; // (1, 0)
-        if (boundaryIndices.bottom.length > 0) {
-            edges.push([leftBottom, boundaryIndices.bottom[0]]);
-            for (let k = 0; k < boundaryIndices.bottom.length - 1; k++) {
-                edges.push([boundaryIndices.bottom[k], boundaryIndices.bottom[k + 1]]);
-            }
-            edges.push([boundaryIndices.bottom[boundaryIndices.bottom.length - 1], rightBottom]);
-        } else {
-            edges.push([leftBottom, rightBottom]);
-        }
+        // Left: c01 -> left (reversed) -> c00
+        prev = c01;
+        [...leftPoints].reverse().forEach(p => { segments.push({ p0: prev, p1: p, type: 'boundary' }); prev = p; });
+        segments.push({ p0: prev, p1: c00, type: 'boundary' });
 
-        console.log(`[CDT] Boundary: ${idx} points, ${edges.length} edges`);
-
-        // ===================================
-        // 2. Add Feature Chain Constraints
-        // ===================================
-        const featureEdgeStart = edges.length;
+        // 2. Generate Feature Segments
+        // ----------------------------
         chains.forEach(chain => {
             if (chain.length < 2) return;
+            for (let k = 0; k < chain.length - 1; k++) {
+                // Snap to bounds for robustness
+                let p0 = chain[k];
+                let p1 = chain[k + 1];
 
-            // Snap first point - precision snap only
-            let x0 = chain[0].x;
-            if (x0 < 0.000001) x0 = 0;
-            if (x0 > aspectRatio - 0.000001) x0 = aspectRatio; // Snap to AR
-            points.push([x0, chain[0].y]); idx++;
+                // Helper to clamp
+                const clamp = (p: Point2D) => ({
+                    x: Math.max(0, Math.min(aspectRatio, p.x)),
+                    y: Math.max(0, Math.min(1.0, p.y))
+                });
+                p0 = clamp(p0);
+                p1 = clamp(p1);
 
-            for (let k = 1; k < chain.length; k++) {
-                let xk = chain[k].x;
-                if (xk < 0.000001) xk = 0;
-                if (xk > aspectRatio - 0.000001) xk = aspectRatio; // Snap to AR
-
-                points.push([xk, chain[k].y]); idx++;
-                edges.push([idx - 2, idx - 1]);
+                segments.push({ p0, p1, type: 'feature' });
             }
         });
 
-        console.log(`[CDT] After features: ${idx} points, ${edges.length} edges`);
+        console.log(`[CDT] Planarizing ${segments.length} constraint segments...`);
 
-        // ===================================
-        // 3. Validate and Clean Edges
-        // ===================================
-        // const cleanEdges = (edgeList: number[][]): number[][] => { ... } // Unused
+        // 3. Planarize (Segments vs Segments AND Segments vs Points)
+        // ------------
+        // Gather ALL points that will be constraint-ob aware.
+        // We EXCLUDE bgPoints because they are random/grid and unlikely to intersect lines.
+        // Including them (2000+) vs segments (200+) causes massive N*M slowdown or grid clamping issues.
+        // Only *Buffer Points* (which track features) must strictly split segments.
+        const allIntruderPoints = [...curveBufferPoints];
 
-        const isConflict = ConstrainedTriangulator.isConflict;
+        const planarized = this.planarizeSegments(segments, allIntruderPoints, aspectRatio);
+        console.log(`[CDT] Planarization complete: ${segments.length} -> ${planarized.length} segments`);
 
-        // Remove feature edges that intersect boundary edges OR other feature edges
-        const boundaryEdges = edges.slice(0, featureEdgeStart);
-        let featureEdges = edges.slice(featureEdgeStart);
+        // 4. Build Clean Inputs for CDT
+        // -----------------------------
+        // Sort: Boundary first for range tracking
+        planarized.sort((a, b) => {
+            if (a.type === b.type) return 0;
+            return a.type === 'boundary' ? -1 : 1;
+        });
 
-        // First pass: remove edges intersecting boundary
-        let safeFeatureEdges: number[][] = [];
-        for (const [a, b] of featureEdges) {
-            let intersects = false;
-            for (const [c, d] of boundaryEdges) {
-                if (a === c || a === d || b === c || b === d) continue;
-                if (isConflict(points[a], points[b], points[c], points[d])) {
-                    intersects = true;
-                    break;
-                }
-            }
-            if (!intersects) {
-                safeFeatureEdges.push([a, b]);
-            }
-        }
-
-        // Second pass: remove edges that intersect other feature edges (self-intersection)
-        // Use greedy approach: keep edges in order, skip if intersects with already-kept edges
-        const finalFeatureEdges: number[][] = [];
-        // Safety cap increased to 20k to allow full resolution while preventing infinite loops
-        const MAX_SAFE_EDGES = 20000;
-
-        for (const edge of safeFeatureEdges) {
-            if (finalFeatureEdges.length >= MAX_SAFE_EDGES) {
-                console.warn(`[CDT] Hit safety cap of ${MAX_SAFE_EDGES} edges. Some features may be lost.`);
-                break;
-            }
-
-            const [a, b] = edge;
-            let intersects = false;
-
-            // Only check against already accepted edges (greedy)
-            for (const [c, d] of finalFeatureEdges) {
-                // Skip if they share a vertex (adjacent edges in a chain are valid)
-                if (a === c || a === d || b === c || b === d) continue;
-
-                // Real conflict: improper intersection (crossing)
-                if (isConflict(points[a], points[b], points[c], points[d])) {
-                    intersects = true;
-                    // Debug log for tricky cases
-                    // console.log(`[CDT] Conflict: Edge ${a}-${b} crosses ${c}-${d}`);
-                    break;
-                }
-            }
-
-            if (!intersects) {
-                finalFeatureEdges.push(edge);
-            }
-        }
-
-        const rejectedCount = featureEdges.length - finalFeatureEdges.length;
-        if (rejectedCount > 0) {
-            console.warn(`[CDT] REJECTED ${rejectedCount} feature edges due to conflicts! This causes jagged artifacts.`);
-        }
-        console.log(`[CDT] Safe edges: ${finalFeatureEdges.length} / ${featureEdges.length} feature edges kept (after self-intersection check)`);
-
-        // ===================================
-        // 4. Add Curve Buffer Points (no constraint edges - just symmetric support)
-        // ===================================
-        curveBufferPoints.forEach(p => { points.push([p.x, p.y]); idx++; });
-        console.log(`[CDT] Added ${curveBufferPoints.length} curve buffer points`);
-
-        // ===================================
-        // 5. Add Background Points
-        // ===================================
-        bgPoints.forEach(p => { points.push([p.x, p.y]); idx++; });
-
-        // ===================================
-        // 5. Deduplicate All Points Before CDT
-        //    Merging overlapping points (boundary, feature, buffer, bg) is crucial
-        //    to prevent degenerate "sliver" triangles and NaN normals on GPU.
-        // ===================================
-        const DEDUP_TOL = 1e-5; // Very tight tolerance, just for coincident points
+        const DEDUP_TOL = 1e-5;
         const uniquePoints: Point2D[] = [];
-        const pointMap = new Map<string, number>(); // quantization key -> new index
+        const pointMap = new Map<string, number>();
 
-        // Helper to add point and getting unique index
         const addPoint = (x: number, y: number): number => {
+            // SAFETY NET: Snap to exact boundary if close (fixes Steiner point drift)
+            if (x < 0.01) x = 0;
+            if (Math.abs(x - aspectRatio) < 0.01) x = aspectRatio;
+
             const key = `${Math.round(x / DEDUP_TOL)}_${Math.round(y / DEDUP_TOL)}`;
             if (pointMap.has(key)) return pointMap.get(key)!;
-
             const idx = uniquePoints.length;
             uniquePoints.push({ x, y });
             pointMap.set(key, idx);
             return idx;
         };
 
-        // Rebuild clean data structures
-        const cleanPoints: [number, number][] = [];
-        const dedupEdges: [number, number][] = [];
+        const finalEdges: [number, number][] = [];
 
-        // 1. Process Points & Remap Indices
-        //    We must process original 'points' array which contains:
-        //    [Boundary... FeaturePoints... BufferPoints... BgPoints...]
-        //    BUT 'edges' refer to indices in the ORIGINAL 'points' array.
-        //    So we must iterate original 'points', add to unique, and build a remapping table.
-
-        const oldIndexToNewIndex = new Int32Array(points.length).fill(-1);
-
-        for (let i = 0; i < points.length; i++) {
-            const [x, y] = points[i];
-            const newIdx = addPoint(x, y);
-            oldIndexToNewIndex[i] = newIdx;
+        // Add Constraints
+        for (const s of planarized) {
+            const i0 = addPoint(s.p0.x, s.p0.y);
+            const i1 = addPoint(s.p1.x, s.p1.y);
+            if (i0 !== i1) finalEdges.push([i0, i1]);
         }
 
-        // 2. Build Clean Point Array
-        for (const p of uniquePoints) {
-            cleanPoints.push([p.x, p.y]);
-        }
+        // Count Boundary / Feature ranges (approximate but sufficient for protection)
+        // We scan planarized to see where the transition happened?
+        // Actually, just relying on the fact that we sorted them.
+        // We can just assume that ALL points generated so far are "protected constraints".
+        // refineTriangleQuality expects 'boundary', 'feature', 'buffer'.
+        // We can lump boundary+feature into 'feature'.
+        // Let's iterate and count carefully if needed, or just grab current count.
+        const countConstraints = uniquePoints.length;
 
-        // 3. Remap Edges
-        const processEdges = (sourceEdges: number[][]) => {
-            for (const [a, b] of sourceEdges) {
-                const newA = oldIndexToNewIndex[a];
-                const newB = oldIndexToNewIndex[b];
-                if (newA !== newB) { // Filter zero-length edges
-                    dedupEdges.push([newA, newB]);
-                }
-            }
-        };
+        console.log(`[runCDT] AR=${aspectRatio}, Constraints=${countConstraints}`);
 
-        processEdges(boundaryEdges);
-        processEdges(finalFeatureEdges);
+        // 5. Add Buffers
+        // --------------
+        curveBufferPoints.forEach(p => addPoint(p.x, p.y));
+        const countBuffer = uniquePoints.length - countConstraints;
 
-        console.log(`[CDT] Deduplicated Input: ${points.length} -> ${cleanPoints.length} points.`);
-        console.log(`[CDT] Cleaned Edges: ${boundaryEdges.length + finalFeatureEdges.length} -> ${dedupEdges.length} edges.`);
+        // 6. Add Background
+        // -----------------
+        bgPoints.forEach(p => addPoint(p.x, p.y));
+        const countBackground = uniquePoints.length - (countConstraints + countBuffer);
 
-        // Update local variables for CDT call
-        // We override the previous 'points' logic just for the CDT input
-        // But 'runCDT' returns 'vertices'. We need to make sure we return the CLEAN vertices.
 
-        // ===================================
-        // 6. Run CDT with Progressive Fallback
-        // ===================================
-        const runCDTWithEdges = (pts: number[][], edgeList: number[][]): number[][] | null => {
+        // 7. Run CDT
+        // ----------
+        // Convert to array format for cdt2d
+        const ptArray = uniquePoints.map(p => [p.x, p.y] as [number, number]);
+
+        let resultTriangles: number[][] | null = null;
+        try {
+            resultTriangles = cdt2d(ptArray, finalEdges);
+        } catch (e) {
+            console.error('[CDT] Primary triangulation failed!', e);
+            // Fallback: Try without constraints?
             try {
-                // cdt2d expects [x, y] arrays
-                // We use our cleanPoints and dedupEdges
-                // Note: dedupEdges are already unique indices into cleanPoints
-                return cdt2d(pts as [number, number][], edgeList as [number, number][]);
-            } catch (e) {
-                console.warn('[CDT] Triangulation error:', e);
-                return null;
+                resultTriangles = cdt2d(ptArray, []);
+            } catch (e2) {
+                console.error('[CDT] Fallback triangulation failed!', e2);
             }
-        };
-
-        // Try 1: Full CDT with all edges
-        let triangles = runCDTWithEdges(cleanPoints, dedupEdges);
-
-        // Try 2: Boundary only (no feature edges) - Filter dedupEdges to only boundary?
-        // Hard to distinguish now. But failures are rare with clean data.
-        if (!triangles) {
-            console.warn('[CDT] Full CDT failed, trying fallback (Boundary Only approach logic requires re-separation or tagging, skipping to pure Delaunay for safety)');
-            triangles = runCDTWithEdges(cleanPoints, []); // Unconstrained
         }
 
-        if (!triangles) {
-            console.error('[CDT] All triangulation attempts failed');
+        if (!resultTriangles) {
             return { vertices: new Float32Array(0), indices: new Uint32Array(0) };
         }
 
-        // ===================================
-        // 7. Filter & Validate Triangles
-        // ===================================
+        // 8. Filter & Format
+        // ------------------
         const validTriangles: number[][] = [];
-        for (const tri of triangles) {
-            // Mapping tri indices (which are into cleanPoints)
-            // back to geometry.
-            const p0 = cleanPoints[tri[0]];
-            const p1 = cleanPoints[tri[1]];
-            const p2 = cleanPoints[tri[2]];
+        for (const tri of resultTriangles) {
+            const p0 = uniquePoints[tri[0]];
+            const p1 = uniquePoints[tri[1]];
+            const p2 = uniquePoints[tri[2]];
 
-            // Filter exterior triangles (centroid outside [0,AR]x[0,1])
-            const cx = (p0[0] + p1[0] + p2[0]) / 3;
-            const cy = (p0[1] + p1[1] + p2[1]) / 3;
-            // X bound uses aspectRatio, Y bound is 1.0
+            // Filter exterior
+            const cx = (p0.x + p1.x + p2.x) / 3;
+            const cy = (p0.y + p1.y + p2.y) / 3;
             if (cx < -1e-4 || cx > aspectRatio + 1e-4 || cy < -1e-4 || cy > 1 + 1e-4) continue;
 
-            // Validate winding order (CCW in UV space = positive cross product)
-            const cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1]);
-            if (cross > 0) {
-                validTriangles.push(tri);
-            } else if (cross < 0) {
-                // Flip winding
-                validTriangles.push([tri[0], tri[2], tri[1]]);
-            }
-            // Skip degenerate (cross == 0)
+            const cross = (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
+            if (cross > 0) validTriangles.push(tri);
+            else if (cross < 0) validTriangles.push([tri[0], tri[2], tri[1]]);
         }
 
-        console.log(`[CDT] Triangles: ${triangles.length} -> ${validTriangles.length} valid`);
-
-        // ===================================
-        // 8. Convert to Output Format
-        // ===================================
-        // Use CLEAN points
-        const vertices = new Float32Array(cleanPoints.length * 3);
-        for (let i = 0; i < cleanPoints.length; i++) {
-            vertices[i * 3 + 0] = cleanPoints[i][0];       // Normalized U
-            vertices[i * 3 + 1] = cleanPoints[i][1];       // T
-            vertices[i * 3 + 2] = 0;                       // Surface ID
-        }
-
+        const vertices = new Float32Array(uniquePoints.length * 3);
         const indices = new Uint32Array(validTriangles.flat());
-        return { vertices, indices };
 
+        for (let i = 0; i < uniquePoints.length; i++) {
+            vertices[i * 3 + 0] = uniquePoints[i].x;
+            vertices[i * 3 + 1] = uniquePoints[i].y;
+            vertices[i * 3 + 2] = 0;
+        }
+
+        console.log(`[CDT] Success. Vertices: ${uniquePoints.length}, Triangles: ${validTriangles.length}`);
+
+        // POST-CDT SNAP: Force boundary alignment for Steiner points
+        // runCDT is in Physical Space [0, AR].
+        for (let i = 0; i < vertices.length; i += 3) {
+            const vx = vertices[i];
+            // Snap Left
+            if (vx < 0.01 && vx > 0) vertices[i] = 0;
+            // Snap Right (AR)
+            else if (Math.abs(vx - aspectRatio) < 0.01) {
+                if (Math.abs(vx - aspectRatio) > 1e-9) console.log(`[CDT] Post-Snap Right: ${vx} -> ${aspectRatio}`);
+                vertices[i] = aspectRatio;
+            }
+        }
+
+        return {
+            vertices,
+            indices,
+            ranges: {
+                boundary: 0, // Lumped into feature for simplicity, protection works based on sum
+                feature: countConstraints,
+                buffer: countBuffer,
+                background: countBackground
+            }
+        };
         /* 
            Legacy Block Removed:
            - Try 1/2/3 logic replaced by robust dedup + single fallback
@@ -1072,182 +1455,205 @@ export class ConstrainedTriangulator {
         */
     }
 
-    // ===================================
-    // 3.5 Post-CDT Triangle Quality Refinement
-    // ===================================
 
     /**
-     * Refines mesh quality by splitting triangles with poor aspect ratios.
+     * Refines mesh quality by splitting long edges of skinny triangles.
+     * Naive implementation: Finds bad triangles, adds midpoints of long edges, and re-triangulates.
      * 
-     * Uses LONGEST-EDGE BISECTION (not centroid insertion):
-     * - Find the longest edge of bad triangles
-     * - Insert midpoint vertex on that edge
-     * - Split triangle into 2 (not 3) triangles
+     * DISABLED (v3.9): Caused 3.5× more degenerates. Kept for future re-evaluation.
      * 
-     * This guarantees each child triangle has edges at most half the parent's
-     * longest edge, ensuring convergence.
-     * 
-     * @param mesh - Input mesh from CDT
-     * @param maxEdgeRatio - Triangles with edge ratio above this are split (default 3.0)
-     * @param maxIterations - Number of refinement passes (default 4)
+     * @param mesh The input mesh
+     * @param maxRatio Maximum allowed Aspect Ratio (Longest Edge / Shortest Altitude)
+     * @param maxIterations Number of refinement passes
      */
+    // @ts-expect-error Intentionally unused - disabled in v3.9, kept for future re-evaluation
     private static refineTriangleQuality(
         mesh: TriangulatedMesh,
-        maxEdgeRatio: number = 3.0,
-        maxIterations: number = 4
+        chains: Point2D[][],
+        bufferPoints: Point2D[],
+        aspectRatio: number,
+        maxRatio: number = 3.0,
+        maxIterations: number = 2
     ): TriangulatedMesh {
-        if (mesh.indices.length === 0) return mesh;
+        let currentMesh = mesh;
 
-        // DISABLE REFINEMENT - Buggy on shared edges (T-junctions)
-        console.warn("[ConstrainedTriangulator] CPU Refinement DISABLED (Fixing Bad Triangles)");
-        return mesh;
+        // Ensure we have something to work with
+        if (currentMesh.vertices.length < 3) return currentMesh;
 
-        // Work with mutable arrays
-        let vertices: number[] = Array.from(mesh.vertices);
-        let indices: number[] = Array.from(mesh.indices);
+        // Refinement Loop (Re-enabled: skinny triangle shards need splitting)
+        for (let it = 0; it < maxIterations; it++) {
+            console.log(`[ConstrainedTriangulator] Refine Pass ${it + 1}/${maxIterations} starting...`);
+            const vertices = currentMesh.vertices;
+            const indices = currentMesh.indices;
+            const newPoints: Point2D[] = [];
+            const edgesToSplit = new Set<string>();
 
-        // Track edge midpoints to avoid duplicates (key: "minIdx_maxIdx" -> midpoint vertex index)
-        let edgeMidpoints = new Map<string, number>();
+            // Safety Cap (vertices is Float32Array, 3 floats per vertex)
+            if (vertices.length > 1500000) {
+                console.warn('[ConstrainedTriangulator] Refinement aborted: Vertex count exceeded 500k safety limit.');
+                break;
+            }
 
-        for (let iter = 0; iter < maxIterations; iter++) {
-            const newIndices: number[] = [];
-            let splitCount = 0;
-
-            // Clear edge map each iteration (vertices array grows)
-            edgeMidpoints = new Map<string, number>();
+            let badTriangles = 0;
 
             for (let i = 0; i < indices.length; i += 3) {
                 const i0 = indices[i];
                 const i1 = indices[i + 1];
                 const i2 = indices[i + 2];
 
-                // Get vertex positions
-                const x0 = vertices[i0 * 3], y0 = vertices[i0 * 3 + 1];
-                const x1 = vertices[i1 * 3], y1 = vertices[i1 * 3 + 1];
-                const x2 = vertices[i2 * 3], y2 = vertices[i2 * 3 + 1];
-                const z = vertices[i0 * 3 + 2]; // Surface ID
-
-                // Calculate edge lengths squared
-                const e01sq = (x1 - x0) ** 2 + (y1 - y0) ** 2; // edge i0-i1
-                const e12sq = (x2 - x1) ** 2 + (y2 - y1) ** 2; // edge i1-i2
-                const e20sq = (x0 - x2) ** 2 + (y0 - y2) ** 2; // edge i2-i0
-
-                const maxEdgeSq = Math.max(e01sq, e12sq, e20sq);
-                const minEdgeSq = Math.min(e01sq, e12sq, e20sq);
-                const edgeRatio = Math.sqrt(maxEdgeSq / (minEdgeSq + 1e-12));
-
-                // Check if longest edge is on boundary
-                let isBoundary = false;
-                const EPS = 1e-4;
-                if (e01sq >= e12sq && e01sq >= e20sq) {
-                    if ((Math.abs(x0) < EPS && Math.abs(x1) < EPS) || (Math.abs(x0 - 1) < EPS && Math.abs(x1 - 1) < EPS) ||
-                        (Math.abs(y0) < EPS && Math.abs(y1) < EPS) || (Math.abs(y0 - 1) < EPS && Math.abs(y1 - 1) < EPS)) isBoundary = true;
-                } else if (e12sq >= e01sq && e12sq >= e20sq) {
-                    if ((Math.abs(x1) < EPS && Math.abs(x2) < EPS) || (Math.abs(x1 - 1) < EPS && Math.abs(x2 - 1) < EPS) ||
-                        (Math.abs(y1) < EPS && Math.abs(y2) < EPS) || (Math.abs(y1 - 1) < EPS && Math.abs(y2 - 1) < EPS)) isBoundary = true;
-                } else {
-                    if ((Math.abs(x2) < EPS && Math.abs(x0) < EPS) || (Math.abs(x2 - 1) < EPS && Math.abs(x0 - 1) < EPS) ||
-                        (Math.abs(y2) < EPS && Math.abs(y0) < EPS) || (Math.abs(y2 - 1) < EPS && Math.abs(y0 - 1) < EPS)) isBoundary = true;
-                }
-
-                if (edgeRatio > maxEdgeRatio && !isBoundary) {
-                    // Find which edge is longest and split it
-                    // IMPORTANT: Must preserve CCW winding order!
-                    // Original triangle is (i0, i1, i2) in CCW order
-                    let midX: number, midY: number;
-                    let edgeKey: string;
-                    let midIdx: number;
-
-                    if (e01sq >= e12sq && e01sq >= e20sq) {
-                        // Edge i0-i1 is longest
-                        midX = (x0 + x1) / 2; midY = (y0 + y1) / 2;
-                        edgeKey = i0 < i1 ? `${i0}_${i1}` : `${i1}_${i0}`;
-
-                        if (edgeMidpoints.has(edgeKey)) {
-                            midIdx = edgeMidpoints.get(edgeKey)!;
-                        } else {
-                            midIdx = vertices.length / 3;
-                            vertices.push(midX, midY, z);
-                            edgeMidpoints.set(edgeKey, midIdx);
-                        }
-
-                        // Split: (i0, M, i2) and (M, i1, i2) - both CCW
-                        newIndices.push(i0, midIdx, i2);
-                        newIndices.push(midIdx, i1, i2);
-
-                    } else if (e12sq >= e01sq && e12sq >= e20sq) {
-                        // Edge i1-i2 is longest
-                        midX = (x1 + x2) / 2; midY = (y1 + y2) / 2;
-                        edgeKey = i1 < i2 ? `${i1}_${i2}` : `${i2}_${i1}`;
-
-                        if (edgeMidpoints.has(edgeKey)) {
-                            midIdx = edgeMidpoints.get(edgeKey)!;
-                        } else {
-                            midIdx = vertices.length / 3;
-                            vertices.push(midX, midY, z);
-                            edgeMidpoints.set(edgeKey, midIdx);
-                        }
-
-                        // Split: (i0, i1, M) and (i0, M, i2) - both CCW
-                        newIndices.push(i0, i1, midIdx);
-                        newIndices.push(i0, midIdx, i2);
-
-                    } else {
-                        // Edge i2-i0 is longest
-                        midX = (x2 + x0) / 2; midY = (y2 + y0) / 2;
-                        edgeKey = i2 < i0 ? `${i2}_${i0}` : `${i0}_${i2}`;
-
-                        if (edgeMidpoints.has(edgeKey)) {
-                            midIdx = edgeMidpoints.get(edgeKey)!;
-                        } else {
-                            midIdx = vertices.length / 3;
-                            vertices.push(midX, midY, z);
-                            edgeMidpoints.set(edgeKey, midIdx);
-                        }
-
-                        // Split: (i0, i1, M) and (M, i1, i2) - both CCW
-                        newIndices.push(i0, i1, midIdx);
-                        newIndices.push(midIdx, i1, i2);
+                // PROTECT BUFFER ZONE:
+                // If the triangle is composed entirely of Boundary, Feature, or Buffer points,
+                // it is part of the "Feature Shield". These triangles are INTENTIONALLY skinny.
+                // Refining them destroys the shield and breaks constraints.
+                // We use the 'ranges' metadata to identify these points.
+                let protectedTri = false;
+                if (currentMesh.ranges) {
+                    const r = currentMesh.ranges;
+                    const protectedCount = r.boundary + r.feature + r.buffer;
+                    if (i0 < protectedCount && i1 < protectedCount && i2 < protectedCount) {
+                        protectedTri = true;
                     }
+                }
 
-                    splitCount++;
-                } else {
-                    // Keep original triangle
-                    newIndices.push(i0, i1, i2);
+                const p0 = { x: vertices[i0 * 3], y: vertices[i0 * 3 + 1] };
+                const p1 = { x: vertices[i1 * 3], y: vertices[i1 * 3 + 1] };
+                const p2 = { x: vertices[i2 * 3], y: vertices[i2 * 3 + 1] };
+
+                // Apply aspect ratio scaling for metric calculation
+                const x0 = p0.x * aspectRatio, y0 = p0.y;
+                const x1 = p1.x * aspectRatio, y1 = p1.y;
+                const x2 = p2.x * aspectRatio, y2 = p2.y;
+
+                const d01 = Math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2);
+                const d12 = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+                const d20 = Math.sqrt((x0 - x2) ** 2 + (y0 - y2) ** 2);
+
+                const maxLen = Math.max(d01, d12, d20);
+
+                // PROTECTION CHECK:
+                // Only protect if the triangle is reasonably small. 
+                // If a "protected" triangle spans a large distance (> 0.001, approx 0.3mm), it is a defect (Bridge).
+                // We force refinement in that case.
+                if (protectedTri && maxLen < 0.001) {
+                    continue;
+                }
+                const s = (d01 + d12 + d20) / 2;
+                const area = Math.sqrt(Math.max(0, s * (s - d01) * (s - d12) * (s - d20)));
+
+                if (area < 1e-9) continue; // Degenerate
+
+                // Aspect Ratio = Longest Edge / Shortest Altitude 
+                // Shortest Altitude = 2 * Area / Longest Edge
+                // Ratio = Longest^2 / (2 * Area)
+                // Using simplified metric: R = abc / 4A / s (Circumradius/Inradius?)
+                // Let's use simple Longest / Shortest Altitude
+                const shortestAlt = (2 * area) / maxLen;
+                const ratio = maxLen / shortestAlt;
+
+                if (ratio > maxRatio) {
+                    badTriangles++;
+
+                    // Split the longest edge(s)
+                    const splitEdge = (idxA: number, idxB: number) => {
+                        const vA = { x: vertices[idxA * 3], y: vertices[idxA * 3 + 1] };
+                        const vB = { x: vertices[idxB * 3], y: vertices[idxB * 3 + 1] };
+
+                        // SEAM PROTECTION:
+                        // Do NOT split edges that lie on the Seam Boundaries (x=0 or x=1.0).
+                        // Splitting one side independently breaks symmetry and makes stitching impossible.
+                        const EPS = 1e-4;
+                        const isLeft = Math.abs(vA.x) < EPS && Math.abs(vB.x) < EPS;
+                        // MESH IS IN UV SPACE [0,1] HERE. Check against 1.0, not AR.
+                        const isRight = Math.abs(vA.x - 1.0) < EPS && Math.abs(vB.x - 1.0) < EPS;
+
+                        // Also protect Top/Bottom to keep the rect clean? (Optional, but safe)
+                        // const isTop = Math.abs(vA.y) < EPS && Math.abs(vB.y) < EPS;
+                        // const isBottom = Math.abs(vA.y - 1.0) < EPS && Math.abs(vB.y - 1.0) < EPS;
+
+                        if (isLeft || isRight) return;
+
+                        const key = idxA < idxB ? `${idxA}_${idxB}` : `${idxB}_${idxA}`;
+                        if (!edgesToSplit.has(key)) {
+                            edgesToSplit.add(key);
+                            newPoints.push({ x: (vA.x + vB.x) * 0.5, y: (vA.y + vB.y) * 0.5 });
+                        }
+                    };
+
+                    if (d01 >= maxLen * 0.99) splitEdge(i0, i1);
+                    if (d12 >= maxLen * 0.99) splitEdge(i1, i2);
+                    if (d20 >= maxLen * 0.99) splitEdge(i2, i0);
                 }
             }
 
-            indices = newIndices;
+            if (badTriangles === 0 || newPoints.length === 0) break;
 
-            console.log(`[TriangleRefinement] Pass ${iter + 1}: split ${splitCount} triangles(ratio > ${maxEdgeRatio})`);
+            console.log(`[ConstrainedTriangulator] Refinement Pass ${it + 1}: Found ${badTriangles} bad triangles. Adding ${newPoints.length} steiner points.`);
 
-            if (splitCount === 0) {
-                // No more bad triangles, early exit
-                break;
+            // Re-triangulate:
+            // CRITICAL FIX: Do NOT include original features/buffers in 'bgPoints' for next pass.
+            // If we do, they become unconstrained duplicates, causing "Large Triangle" artifacts.
+            // We must extract ONLY the background points from the previous mesh.
+
+            const bgPointsForNextPass: Point2D[] = [];
+
+            if (currentMesh.ranges) {
+                // We have metadata to cleanly extract strict background points
+                const r = currentMesh.ranges;
+                const offset = r.boundary + r.feature + r.buffer;
+                const count = r.background;
+
+                // Extract original background points
+                for (let k = 0; k < count; k++) {
+                    const idx = offset + k;
+                    bgPointsForNextPass.push({
+                        x: vertices[idx * 3],
+                        y: vertices[idx * 3 + 1]
+                    });
+                }
+            } else {
+                // Fallback (should not happen with updated runCDT): use all points
+                // This preserves old behavior but risks bugs.
+                for (let k = 0; k < vertices.length / 3; k++) {
+                    bgPointsForNextPass.push({ x: vertices[k * 3], y: vertices[k * 3 + 1] });
+                }
             }
+
+            // Add the NEW Steiner points from this refinement pass
+            newPoints.forEach(p => bgPointsForNextPass.push(p));
+
+            // Scale for CDT (Aspect Ratio)
+            const scaledBgPoints = bgPointsForNextPass.map(p => ({ x: p.x * aspectRatio, y: p.y }));
+
+            // Run CDT with CLEAN inputs:
+            // 1. Chains (Constraints)
+            // 2. Buffer Points (Support)
+            // 3. Background + Steiner (Fill)
+            const nextMesh = this.runCDT(chains, scaledBgPoints, bufferPoints, aspectRatio);
+
+            if (aspectRatio !== 1.0) {
+                for (let k = 0; k < nextMesh.vertices.length; k += 3) {
+                    nextMesh.vertices[k] /= aspectRatio;
+                }
+            }
+
+            currentMesh = nextMesh;
         }
-
-        console.log(`[TriangleRefinement] Final: ${vertices.length / 3} vertices, ${indices.length / 3} triangles`);
-
-        return {
-            vertices: new Float32Array(vertices),
-            indices: new Uint32Array(indices)
-        };
+        return currentMesh;
     }
 
-    // ===================================
     // 4. Seam Stitching
     // ===================================
 
-    private static stitchSeam(mesh: TriangulatedMesh): TriangulatedMesh {
+    private static stitchSeam(mesh: TriangulatedMesh, _aspectRatio: number = 1.0): TriangulatedMesh {
         if (mesh.vertices.length === 0) return mesh;
 
         // Vertices at x=0 need to be unified with vertices at x=2PI
         // Since we normalized inputs, x=0 and x=1 (before 2PI scale).
         // BUT we scaled them back to 0..2PI in step 3.
 
-        const EPS = 1e-4;
-        const TAU = 1.0; // Normalized wrapping domain
+        const EPS = 1e-3; // Relaxed to handle float drift
+        // MESH IS IN UV SPACE [0, 1] HERE (unscaled in generateFullPot).
+        const TAU = 1.0;
 
         // Map Y-coord to Index for the Left Seam (x ~ 0)
         // Quantize Y to handle float drift. Relaxed to 1000 (1e-3) to catch all matching pairs.
@@ -1262,10 +1668,12 @@ export class ConstrainedTriangulator {
             const z = vertices[i * 3 + 2]; // Surface ID
             if (x < EPS) {
                 // Key includes Surface ID to prevent cross-surface merging
-                const key = `${Math.round(y * QUANT)}:${Math.round(z)} `;
+                const key = `${Math.round(y * QUANT)}:${Math.round(z)}`;
                 leftMap.set(key, i);
             }
         }
+
+
 
         // Remap array
         const remapping = new Int32Array(vCount);
@@ -1286,11 +1694,15 @@ export class ConstrainedTriangulator {
                 // Try exact match and extended neighbors (2 steps) to handle float drift/clamping
                 const candidates = [yKey, yKey - 1, yKey + 1, yKey - 2, yKey + 2];
                 for (const k of candidates) {
-                    const key = `${k}:${Math.round(z)} `;
+                    const key = `${k}:${Math.round(z)}`;
                     if (leftMap.has(key)) {
                         keptIndex = leftMap.get(key)!;
-                        break; // Found a match
+                        break;
                     }
+                }
+                if (keptIndex === i) {
+                    // DEBUG: Log failure
+                    console.log(`[stitchSeam] Failed to match right vertex at x=${x.toFixed(6)}. Keys tried: ${candidates.map(k => `'${k}:${Math.round(z)}'`).join(',')}`);
                 }
             }
 
@@ -1336,11 +1748,11 @@ export class ConstrainedTriangulator {
 
     private static appendSurfaces(outer: TriangulatedMesh): TriangulatedMesh {
         const otherSurfaces = [
-            { id: 1, w: 360, h: 180 }, // Inner Wall
-            { id: 2, w: 360, h: 8 },   // Rim (Matched to SEAMS=360)
-            { id: 3, w: 360, h: 8 },   // Bottom Under (Matched to SEAMS=360)
-            { id: 4, w: 360, h: 8 },   // Bottom Top
-            { id: 5, w: 360, h: 8 }    // Drain (Matched to Bottom)
+            { id: 1, w: 180, h: 90 },  // Inner Wall (Reduced from 360x180 per user request)
+            { id: 2, w: 360, h: 8 },   // Rim (Matched to Outer SEAMS=360)
+            { id: 3, w: 180, h: 8 },   // Bottom Under (Reduced)
+            { id: 4, w: 180, h: 8 },   // Bottom Top (Reduced)
+            { id: 5, w: 180, h: 8 }    // Drain (Matched to Bottom)
         ];
 
         // Combine
@@ -1380,8 +1792,10 @@ export class ConstrainedTriangulator {
     }
 
     private static generateGrid(w: number, h: number, surfaceId: number): TriangulatedMesh {
-        // Standard grid generation
-        const vertices = new Float32Array((w + 1) * (h + 1) * 3);
+        // PERIODIC grid: Only w columns (not w+1). Last column wraps to column 0.
+        // This ensures zero vertices at u=1.0, giving watertight seam topology.
+        const vertCount = w * (h + 1);
+        const vertices = new Float32Array(vertCount * 3);
         const indices: number[] = [];
         const dU = 1.0 / w;
         const dT = 1.0 / h;
@@ -1389,36 +1803,30 @@ export class ConstrainedTriangulator {
         let vIdx = 0;
         for (let j = 0; j <= h; j++) {
             const t = j * dT;
-            for (let i = 0; i <= w; i++) {
+            for (let i = 0; i < w; i++) {  // NOTE: < w, not <= w
                 const u = i * dU;
-                vertices[vIdx++] = u; // Normalized U
+                vertices[vIdx++] = u; // Normalized U [0, 1)
                 vertices[vIdx++] = t;
                 vertices[vIdx++] = surfaceId;
             }
         }
 
-        const stride = w + 1;
+        const stride = w; // w columns per row (not w+1)
 
         // Determine winding order based on surface type
-        // Surfaces that need normals pointing "inward" (toward center or down) should be CW
-        // Surface 1 (Inner Wall): normals should face inward
-        // Surface 3 (Bottom Under): normals should face down
-        // Surface 5 (Drain): normals should face inward
         const invertWinding = (surfaceId === 1 || surfaceId === 3 || surfaceId === 5);
 
         for (let j = 0; j < h; j++) {
             for (let i = 0; i < w; i++) {
                 const i0 = j * stride + i;
-                const i1 = i0 + 1;
+                const i1 = j * stride + ((i + 1) % w);       // Wrap!
                 const i2 = (j + 1) * stride + i;
-                const i3 = i2 + 1;
+                const i3 = (j + 1) * stride + ((i + 1) % w); // Wrap!
 
                 if (invertWinding) {
-                    // CW winding for inward-facing normals
                     indices.push(i0, i2, i1);
                     indices.push(i1, i2, i3);
                 } else {
-                    // CCW winding for outward-facing normals
                     indices.push(i0, i1, i2);
                     indices.push(i1, i3, i2);
                 }

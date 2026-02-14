@@ -229,4 +229,67 @@ fn fs_main() -> @location(0) vec4<f32> {
             main
         ].join('\n');
     }
+
+    /**
+     * Generates Vertex/Fragment shader for Debug Points (green).
+     * Projects 2D (u,v) points onto the 3D pot surface as point-list.
+     */
+    public getDebugPointsWGSL(styleId: number): string {
+        const functionName = STYLE_FUNCTION_MAP[styleId] || 'sf_radius';
+        const optimizedStylesWgsl = stripShaderCode(this.stylesWgsl, functionName);
+
+        const dispatchCode = `
+// DYNAMICALLY GENERATED DISPATCH FOR STYLE ID ${styleId} (${functionName})
+fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
+    let th = theta - floor(theta / TAU) * TAU;
+    return ${functionName}(th, t, r0);
+}
+
+fn style_radius_zero(style_id: i32, t: f32, r0: f32) -> f32 {
+    return ${functionName}(0.0, t, r0);
+}
+
+fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
+    return ${functionName}(TAU, t, r0);
+}
+`;
+
+        const main = `
+struct PointVsOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) kind: f32,
+}
+
+@vertex
+fn vs_main(@location(0) utk: vec3<f32>) -> PointVsOut {
+            var out: PointVsOut;
+            let H = getf(0u);
+            let p = surface_point(0u, utk.x, utk.y);
+            let p_center = vec3<f32>(p.x, p.y, p.z - 0.5 * H);
+            var pos = vp_matrix() * vec4<f32>(p_center, 1.0);
+            pos.z -= 0.0002 * pos.w; // Bring slightly forward (above debug lines)
+            out.pos = pos;
+            out.kind = utk.z; // 0 = peak, 1 = valley
+            return out;
+        }
+
+        @fragment
+fn fs_main(@location(0) kind: f32) -> @location(0) vec4<f32> {
+            // Peaks = green, Valleys = cyan-blue
+            if (kind > 0.5) {
+                return vec4<f32>(0.2, 0.6, 1.0, 1.0); // Blue for valleys
+            }
+            return vec4<f32>(0.0, 1.0, 0.0, 1.0); // Green for peaks
+        }
+            `;
+
+        return [
+            this.constantsWgsl,
+            this.commonWgsl,
+            this.uniformsWgsl,
+            optimizedStylesWgsl,
+            dispatchCode,
+            main
+        ].join('\n');
+    }
 }

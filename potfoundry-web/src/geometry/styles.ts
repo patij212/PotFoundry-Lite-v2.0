@@ -45,6 +45,8 @@ import {
   DEFAULT_HEXAGONAL_HIVE,
   CelticKnotParams,
   DEFAULT_CELTIC_KNOT,
+  CelticTriquetraParams,
+  DEFAULT_CELTIC_TRIQUETRA,
 } from './types';
 
 // ============================================================================
@@ -1801,35 +1803,15 @@ export function rOuterHexagonalHive(
   const noise = params.hhNoise ?? DEFAULT_HEXAGONAL_HIVE.hhNoise;
 
   const t = Math.max(0, Math.min(1, z / Math.max(H, 1e-4)));
-  const PI = Math.PI;
-  const TAU = 2 * PI;
 
   // Coordinates
   const u = theta * scale;
   const v = t * scale * (H / 40.0); // Rough aspect
 
-  const r = 1.7320508;
   const uvX = u;
-  const uvY = v * r;
+  const uvY = v * 1.7320508; // sqrt(3)
 
-  const sX = 1.0;
-  const sY = 1.7320508;
-  const hX = 0.5;
-  const hY = 1.7320508 * 0.5;
-
-  const aX = Math.floor(uvX / sX);
-  const aY = Math.floor(uvY / sY);
-
-  const bX = Math.floor((uvX - hX) / sX);
-  const bY = Math.floor((uvY - hY) / sY);
-
-  const guvAX = uvX - (aX * sX + hX);
-  const guvAY = uvY - (aY * sY + hX); // Incorrect matching shader?
-  // Shader: guv_a = uv - (a * s + h);
-  // h is (0.5, 0.866)
-  // Let's stick closer to the shader vec2 logic
-
-  // Re-implement vector math manually
+  // Hex grid constants matching WGSL shader
   const sh_sX = 1.0;
   const sh_sY = 1.7320508;
   const sh_hX = 0.5;
@@ -1844,23 +1826,8 @@ export function rOuterHexagonalHive(
   // Grid B
   const gridB_X = Math.floor((uvX - sh_hX) / sh_sX);
   const gridB_Y = Math.floor((uvY - sh_hY) / sh_sY);
-  const guvB_X = uvX - (gridB_X * sh_sX + sh_hX + sh_sX * 0.0); // Logic check?
-  // Shader: guv_b = uv - (b * s + h * 2.0); h*2 = s.
-  // Wait, shader says: let guv_b = uv - (b * s + h * 2.0);
-  // h * 2.0 is s. So it's b*s + s = (b+1)*s.
-  // Re-read shadertoy logic carefully.
-  // Actually simpler TS logic for Hex Grid from redblobgames or similar might be safer but must match visuals.
-  // Let's rely on standard hex logic:
 
-  // Simple check for nearest center
-  // 1. Grid coords
-
-  // Pointy top
-  // x = sqrt(3)/3 * x - 1/3 * y
-  // z = 2/3 * y
-  // y = -x-z
-  // Round to nearest cube coord
-
+  // Shader: guv_b = uv - (b * s + h * 2.0); h*2 = s. So (b+1)*s.
   // Backtrack to shader implementation
   // let guv_a = uv - (a * s + h);
   // let guv_b = uv - (b * s + h * 2.0);
@@ -2024,6 +1991,296 @@ export function rOuterCelticKnotVec(
   return rs;
 }
 
+// ============================================================================
+// Celtic Triquetra Style (CPU port of WGSL style_celtic_triquetra)
+// ============================================================================
+
+const CT_PI = Math.PI;
+const CT_TAU = 2 * CT_PI;
+const CT_PI_OVER_2 = CT_PI / 2;
+
+/** Smooth ribbon height profile: linear-cosine blend */
+function ctRibbonHeight(d: number, halfW: number, roundness: number): number {
+  const x = Math.min(Math.max(d / Math.max(halfW, 1e-5), 0), 1);
+  const hLin = 1 - x;
+  const hCos = Math.cos(x * CT_PI_OVER_2);
+  return hLin * (1 - roundness) + hCos * roundness;
+}
+
+/** Anti-aliasing edge width */
+function ctEdgeAA(halfW: number): number {
+  return Math.max(0.006, halfW * 0.25);
+}
+
+/** Ribbon presence mask (smoothstep) */
+function ctRibbonPresence(d: number, w: number, aa: number): number {
+  if (d >= w + aa) return 0;
+  if (d <= w - aa) return 1;
+  const t = (d - (w - aa)) / (2 * aa);
+  return 1 - (t * t * (3 - 2 * t));
+}
+
+/** Band visibility mask with feathered edges */
+function ctBandMask(t: number, y0: number, y1: number, feather: number): number {
+  let a = 0;
+  if (t >= y0 + feather) a = 1;
+  else if (t > y0) { const x = (t - y0) / feather; a = x * x * (3 - 2 * x); }
+
+  let b = 1;
+  if (t >= y1) b = 0;
+  else if (t > y1 - feather) { const x = (t - (y1 - feather)) / feather; b = 1 - x * x * (3 - 2 * x); }
+
+  return a * b;
+}
+
+/** Wrapped distance on unit interval */
+function ctWrapDistU(u: number, u0: number): number {
+  return ((u - u0 + 0.5) % 1 + 1) % 1 - 0.5;
+}
+
+/** Smooth maximum */
+function ctSMax(a: number, b: number, k: number): number {
+  const h = Math.min(Math.max(0.5 + 0.5 * (a - b) / k, 0), 1);
+  return b * (1 - h) + a * h + k * h * (1 - h);
+}
+
+/** Braid tile ID for Celtic grid */
+function ctBraidTileId(ix: number, iy: number): number {
+  const xodd = (ix & 1) !== 0;
+  const yodd = (iy & 1) !== 0;
+  if (!yodd) return xodd ? 2 : 0;
+  return xodd ? 1 : 2;
+}
+
+/** Height at a crossing tile */
+function ctCrossingHeight(
+  px: number, py: number,
+  halfW: number, verticalOnTop: boolean,
+  gap: number, roundness: number, vBand: number
+): number {
+  const dV = Math.abs(px - 0.5);
+  const dH = Math.abs(py - 0.5);
+
+  let hV = ctRibbonHeight(dV, halfW, roundness);
+  let hH = ctRibbonHeight(dH, halfW, roundness);
+
+  const edgeMargin = 0.45;
+  const distToEdge = Math.min(vBand, 1 - vBand);
+  const ef = distToEdge < edgeMargin ? 1 - (distToEdge / edgeMargin) * (distToEdge / edgeMargin) * (3 - 2 * distToEdge / edgeMargin) : 0;
+
+  const aa = ctEdgeAA(halfW);
+  const mV = ctRibbonPresence(dV, halfW, aa);
+  const mH = ctRibbonPresence(dH, halfW, aa);
+
+  const coreW = Math.min(Math.max(halfW * (0.55 + gap * 1.5), halfW * 0.45), halfW * 0.90);
+  const carve = Math.min(Math.max(gap * 35, 0), 1) * (1 - ef);
+
+  if (verticalOnTop) {
+    const coreTop = ctRibbonPresence(dV, coreW, aa);
+    hH *= 1 - carve * mH * coreTop;
+  } else {
+    const coreTop = ctRibbonPresence(dH, coreW, aa);
+    hV *= 1 - carve * mV * coreTop;
+  }
+
+  return Math.max(hV, hH);
+}
+
+/** Evaluate celtic tile height (bend arcs or crossing) */
+function ctEvalTileHeight(
+  tileId: number, tx: number, ty: number,
+  ix: number, iy: number,
+  halfW: number, gap: number, roundness: number, vBand: number
+): number {
+  if (tileId === 0) {
+    const dTR = Math.abs(Math.hypot(tx - 1, ty - 1) - 0.5);
+    const dBL = Math.abs(Math.hypot(tx, ty) - 0.5);
+    return Math.max(ctRibbonHeight(dTR, halfW, roundness), ctRibbonHeight(dBL, halfW, roundness));
+  }
+  if (tileId === 1) {
+    const dTL = Math.abs(Math.hypot(tx, ty - 1) - 0.5);
+    const dBR = Math.abs(Math.hypot(tx - 1, ty) - 0.5);
+    return Math.max(ctRibbonHeight(dTL, halfW, roundness), ctRibbonHeight(dBR, halfW, roundness));
+  }
+  // Crossing tile
+  const verticalTop = ((ix + iy) & 1) === 0;
+  return ctCrossingHeight(tx, ty, halfW, verticalTop, gap, roundness, vBand);
+}
+
+/** Triquetra (trefoil knot) height for medallion */
+function ctTriquetraHeight(px: number, py: number, halfW: number, _gap: number, roundness: number): number {
+  const rCircle = 0.55;
+  const centerDist = 0.35;
+
+  const angle = Math.atan2(py, -px) + CT_PI;
+  const sector = Math.floor(angle / (CT_TAU / 3));
+  const c = Math.cos(sector * (CT_TAU / 3));
+  const s = Math.sin(sector * (CT_TAU / 3));
+  const prX = px * c - py * s;
+  const prY = px * s + py * c;
+
+  const dArc = Math.abs(Math.hypot(prX, prY - centerDist) - rCircle);
+  return ctRibbonHeight(dArc, halfW, roundness);
+}
+
+/** Edge caps at top/bottom of band */
+function ctEdgeCaps(hBandIn: number, vBand: number, Ny: number, halfW: number, roundness: number): number {
+  let hBand = hBandIn;
+  const edgeCapMargin = 0.15;
+  const capHalfW = halfW * 1.1;
+
+  if (vBand < edgeCapMargin * 2) {
+    const dBottom = Math.abs(vBand * Ny);
+    const hBottomCap = ctRibbonHeight(dBottom, capHalfW, roundness);
+    const blend = vBand < edgeCapMargin * 0.5 ? 1 : 1 - ((vBand - edgeCapMargin * 0.5) / (edgeCapMargin * 1.5)) * ((vBand - edgeCapMargin * 0.5) / (edgeCapMargin * 1.5)) * (3 - 2 * (vBand - edgeCapMargin * 0.5) / (edgeCapMargin * 1.5));
+    hBand = ctSMax(hBand, hBottomCap * Math.max(0, Math.min(1, blend)), 0.1);
+  }
+
+  if (vBand > 1 - edgeCapMargin * 2) {
+    const dTop = Math.abs((1 - vBand) * Ny);
+    const hTopCap = ctRibbonHeight(dTop, capHalfW, roundness);
+    const blend = vBand > 1 - edgeCapMargin * 0.5 ? 1 : ((vBand - (1 - edgeCapMargin * 2)) / (edgeCapMargin * 1.5));
+    const blendSmooth = Math.min(1, Math.max(0, blend)) ** 2 * (3 - 2 * Math.min(1, Math.max(0, blend)));
+    hBand = ctSMax(hBand, hTopCap * blendSmooth, 0.1);
+  }
+
+  return hBand;
+}
+
+/** Evaluate a single celtic band (upper or lower) */
+function ctEvalBand(
+  t: number, u: number,
+  y0: number, y1: number,
+  Nx: number, Ny: number,
+  offsetX: number,
+  halfW: number, gap: number, roundness: number
+): number {
+  const vBand = (t - y0) / (y1 - y0);
+  if (vBand < 0 || vBand > 1) return 0;
+
+  const pX = u * Nx + offsetX;
+  const pY = vBand * Ny;
+
+  // 45-degree rotation for diamond grid
+  const qx = pX + pY;
+  const qy = -pX + pY;
+
+  const ix = Math.floor(qx);
+  const iy = Math.floor(qy);
+  const tx = qx - ix;
+  const ty = qy - iy;
+
+  const tileId = ctBraidTileId(ix, iy);
+  let hBand = ctEvalTileHeight(tileId, tx, ty, ix, iy, halfW, gap, roundness, vBand);
+  hBand = ctEdgeCaps(hBand, vBand, Ny, halfW, roundness);
+
+  return hBand;
+}
+
+/**
+ * Celtic Triquetra style function (CPU implementation).
+ * Authentic Celtic knotwork with continuous braided strands and woven medallions.
+ *
+ * Ported from WGSL style_celtic_triquetra shader function.
+ *
+ * @param theta - Angle around the pot (radians)
+ * @param z - Height position (mm)
+ * @param r0 - Base radius at this height (mm)
+ * @param H - Total pot height (mm)
+ * @param opts - Style parameters (CelticTriquetraParams)
+ * @returns Styled outer radius (mm)
+ */
+export function rOuterCelticTriquetra(
+  theta: number,
+  z: number,
+  r0: number,
+  H: number,
+  opts: StyleOptions
+): number {
+  const params = opts as Partial<CelticTriquetraParams>;
+
+  const Nx = Math.max(1, Math.floor((params.ctScaleX ?? DEFAULT_CELTIC_TRIQUETRA.ctScaleX) + 0.5));
+  const Ny = Math.max(2, Math.floor((params.ctRows ?? DEFAULT_CELTIC_TRIQUETRA.ctRows) + 0.5));
+  const halfW = params.ctWidth ?? DEFAULT_CELTIC_TRIQUETRA.ctWidth;
+  const relief = params.ctRelief ?? DEFAULT_CELTIC_TRIQUETRA.ctRelief;
+  const medR = params.ctMedScale ?? DEFAULT_CELTIC_TRIQUETRA.ctMedScale;
+  const medY = params.ctMedY ?? DEFAULT_CELTIC_TRIQUETRA.ctMedY;
+  const gap = params.ctGap ?? DEFAULT_CELTIC_TRIQUETRA.ctGap;
+
+  const roundness = 0.85;
+  const feather = 0.02;
+
+  const t = Math.max(0, Math.min(1, z / Math.max(H, 1e-4)));
+
+  // Band regions
+  const upperY0 = 0.55, upperY1 = 0.88;
+  const lowerY0 = 0.18, lowerY1 = 0.48;
+
+  const upper = ctBandMask(t, upperY0, upperY1, feather);
+  const lower = ctBandMask(t, lowerY0, lowerY1, feather);
+
+  let h = 0;
+  const u = ((theta / CT_TAU) % 1 + 1) % 1;
+
+  // Upper braid band
+  if (upper > 0) {
+    const hBand = ctEvalBand(t, u, upperY0, upperY1, Nx, Ny, 0, halfW, gap, roundness);
+    h = Math.max(h, upper * hBand);
+  }
+
+  // Lower braid band
+  if (lower > 0) {
+    const NyL = Math.max(2, Ny - 2);
+    const hBand = ctEvalBand(t, u, lowerY0, lowerY1, Nx, NyL, 0.5, halfW, gap, roundness);
+    h = Math.max(h, lower * hBand);
+  }
+
+  // Medallion
+  const du = ctWrapDistU(u, 0.5);
+  const dv = t - medY;
+  const px = du / medR;
+  const py = dv / medR;
+  const pLen = Math.hypot(px, py);
+
+  let inside = 0;
+  if (pLen < 1.1) {
+    inside = pLen >= 1 ? 1 - ((pLen - 1) / 0.1) * ((pLen - 1) / 0.1) * (3 - 2 * (pLen - 1) / 0.1) : 1;
+  }
+  if (inside > 0) {
+    const halfWMed = (halfW * 0.55) / Math.max(medR, 1e-4);
+    const hm = ctTriquetraHeight(px, py, halfWMed, gap, roundness);
+    h = Math.max(h, inside * hm);
+  }
+
+  // Rim lines
+  const rimW = 0.008;
+  const rimTop = Math.max(0, 1 - Math.abs(t - 0.90) / rimW) * 0.6;
+  const rimMid = Math.max(0, 1 - Math.abs(t - 0.52) / rimW) * 0.4;
+  const rimBot = Math.max(0, 1 - Math.abs(t - 0.15) / rimW) * 0.4;
+  h = Math.max(h, rimTop, rimMid, rimBot);
+
+  const base = r0 - relief * 0.15;
+  return base + h * relief;
+}
+
+/**
+ * Vectorized Celtic Triquetra style function.
+ */
+export function rOuterCelticTriquetraVec(
+  thetas: Float32Array,
+  z: number,
+  r0: number,
+  H: number,
+  opts: StyleOptions
+): Float32Array {
+  const n = thetas.length;
+  const rs = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    rs[i] = rOuterCelticTriquetra(thetas[i], z, r0, H, opts);
+  }
+  return rs;
+}
+
 /** Map of style IDs to their functions */
 export const STYLE_FUNCTIONS: Record<StyleId, StyleFunction> = {
   SuperformulaBlossom: rOuterSuperformulaBlossom,
@@ -2044,6 +2301,7 @@ export const STYLE_FUNCTIONS: Record<StyleId, StyleFunction> = {
   GeometricStar: rOuterGeometricStar,
   HexagonalHive: rOuterHexagonalHive,
   CelticKnot: rOuterCelticKnot,
+  CelticTriquetra: rOuterCelticTriquetra,
   LowPolyFacet: rOuterLowPolyFacet,
 };
 
@@ -2067,6 +2325,7 @@ export const STYLE_FUNCTIONS_VEC: Record<StyleId, VectorizedStyleFunction> = {
   GeometricStar: rOuterGeometricStarVec,
   HexagonalHive: rOuterHexagonalHiveVec,
   CelticKnot: rOuterCelticKnotVec,
+  CelticTriquetra: rOuterCelticTriquetraVec,
   LowPolyFacet: rOuterLowPolyFacetVec,
 };
 
@@ -2090,6 +2349,7 @@ export const STYLE_DESCRIPTIONS: Record<StyleId, string> = {
   GeometricStar: 'Complex geometric star pattern with interlaced strapwork.',
   HexagonalHive: 'Tech-inspired hexagonal grid with volumetric control.',
   CelticKnot: 'Interlacing bands forming continuous knot patterns.',
+  CelticTriquetra: 'Authentic Celtic knotwork with continuous braided strands and woven medallions.',
   LowPolyFacet: 'piecewise-flat facets for low-poly aesthetic.',
 };
 

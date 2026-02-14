@@ -95,6 +95,12 @@ export interface RendererController {
     setDebugSegments?(segments: Float32Array): void;
 
     /**
+     * Set debug points to visualize as a green point cloud (e.g. raw peak positions)
+     * @param points Float32Array of 2D points [u0, v0, u1, v1, ...]
+     */
+    setDebugPoints?(points: Float32Array): void;
+
+    /**
      * True if using fallback mode (WebGL when WebGPU is available but crashed)
      * @returns boolean
      */
