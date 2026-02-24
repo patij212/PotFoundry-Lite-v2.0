@@ -42,7 +42,6 @@
  *   - No external CDT library dependency for the hot path
  */
 
-import { MeshData, PotDimensions, StyleOptions, StyleId } from '../../geometry/types';
 import { buildStyleParamPayload } from '../../utils/styleParams';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
 import {
@@ -52,12 +51,10 @@ import {
     detectAndMergeColumnFeatures,
 } from './parametric/FeatureDetection';
 import {
-    CHAIN_LINK_RADIUS,
     linkFeatureChainsByKind,
     insertChainGuidedRows,
 } from './parametric/ChainLinker';
 import {
-    bsearchFloor,
     mergeFeaturePositions,
     generateAdaptiveGrid,
     buildUnionFeatureGrid,
@@ -65,7 +62,7 @@ import {
     downsampleSortedPositions,
 } from './parametric/GridBuilder';
 import { buildCDTOuterWall } from './parametric/OuterWallTessellator';
-import { chainDirectedFlip, flipEdges3D, STITCH_BAND_HALF_WIDTH, CHAIN_LOCK_BAND_HALF_WIDTH } from './parametric/MeshOptimizer';
+import { chainDirectedFlip, flipEdges3D } from './parametric/MeshOptimizer';
 import { subdivideLongEdges } from './parametric/MeshSubdivision';
 import {
     buildConstraintEdgeSet,
@@ -74,83 +71,27 @@ import {
     computeBoundaryDiagnostic,
     computeMeshDiagnostics,
 } from './parametric/ChainStripOptimizer';
-import type { FeatureChain } from './parametric/types';
-// NOTE: cdt2d import removed in v11.1 â€” no longer needed on the hot path.
-// The grid-native approach eliminates the O(nÂ²) CDT library dependency.
+import {
+    SURFACE_CONFIG,
+    CURVATURE_SAMPLES,
+    NUM_STRIPS,
+} from './parametric/types';
+
+// Re-export types for backward compatibility (used by useParametricExport.ts)
+// Re-export types for backward compatibility (used by useParametricExport.ts)
+export type { ParametricExportParams, ParametricExportResult } from './parametric/types';
+export type { FeaturePoint, FeatureKind, ChainDebugLine, ChainDebugData, PeakDebugData } from './parametric/types';
+import type {
+    ParametricExportParams,
+    ParametricExportResult,
+    ChainDebugData,
+    ChainDebugLine,
+    PeakDebugData,
+} from './parametric/types';
 
 // ============================================================================
-// Types
+// Debug State
 // ============================================================================
-
-export interface ParametricExportParams {
-    dimensions: PotDimensions;
-    styleId: StyleId;
-    styleOpts: StyleOptions;
-    styleIndex: number;
-    /** Target triangle count (default: 2M = ~100MB STL) */
-    targetTriangles?: number;
-    /** Number of anisotropic relaxation steps (v5.3). Default: 20 */
-    relaxIterations?: number;
-}
-
-export interface ParametricExportResult {
-    mesh: MeshData;
-    computeTimeMs: number;
-    gridDimensions: { nu: number; nt: number };
-    adaptiveStats: {
-        densityRatio: number;
-        featurePeaksSnapped: number;
-        tCurvatureRange: [number, number];
-        uCurvatureRange: [number, number];
-    };
-}
-
-export interface ChainDebugLine {
-    points: Array<[number, number]>; // [u, t]
-}
-
-export interface ChainDebugData {
-    createdAt: number;
-    chainCount: number;
-    lineCount: number;
-    lines: ChainDebugLine[];
-}
-
-/** Feature kind: ridge peak (local max radius) or valley (local min radius). */
-export type FeatureKind = 'peak' | 'valley';
-
-/** A classified, verified feature point detected by row/column probing. */
-export interface FeaturePoint {
-    /** U position in [0, 1) */
-    u: number;
-    /** Feature classification */
-    kind: FeatureKind;
-    /** Cylindrical radius at the feature position */
-    radius: number;
-    /** Peak-to-valley prominence in the local neighbourhood (mm) */
-    prominence: number;
-    /** Confidence score in [0, 1]: 1 = strong isolated extremum, 0 = marginal */
-    confidence: number;
-}
-
-/** Raw per-row (and per-column) peak positions for debug visualization. */
-export interface PeakDebugData {
-    createdAt: number;
-    /** Total number of raw peak points */
-    totalPeaks: number;
-    /** Peak positions as [u, t, kind] triples (flattened: [u0,t0,k0, u1,t1,k1, ...])
-     *  k=0 for peak, k=1 for valley */
-    points: Float32Array;
-    /** Number of row-detected peaks */
-    rowPeaks: number;
-    /** Number of column-detected peaks */
-    colPeaks: number;
-    /** Breakdown: peaks vs valleys */
-    peakCount: number;
-    valleyCount: number;
-    /** Number of candidates that failed verification */
-    rejected: number;
-}
 
 let LAST_CHAIN_DEBUG_DATA: ChainDebugData | null = null;
 let LAST_PEAK_DEBUG_DATA: PeakDebugData | null = null;
@@ -164,79 +105,13 @@ export function getLastPeakDebugData(): PeakDebugData | null {
 }
 
 // ============================================================================
-// Surface Grid Definitions
+// Local Constants
 // ============================================================================
-
-const SURFACE_CONFIG = [
-    { id: 0, name: 'Outer Wall', budgetFrac: 0.72, invertWinding: false },
-    { id: 1, name: 'Inner Wall', budgetFrac: 0.14, invertWinding: true },
-    { id: 2, name: 'Rim', budgetFrac: 0.04, invertWinding: false },
-    { id: 3, name: 'Bottom Under', budgetFrac: 0.04, invertWinding: true },
-    { id: 4, name: 'Bottom Top', budgetFrac: 0.03, invertWinding: true },
-    { id: 5, name: 'Drain', budgetFrac: 0.03, invertWinding: true },
-] as const;
-
-/** Samples per strip for curvature probing.
- * 4096 gives ~0.088Â° resolution for feature detection. */
-const CURVATURE_SAMPLES = 4096;
-
-/** Number of parallel strips for multi-angle curvature detection */
-const NUM_STRIPS = 16;
-
-// ============================================================================
-// Curvature Computation â€” imported from ./parametric/CurvatureAnalysis.ts
-// (computeRawCurvature, normalizeProfile, smoothProfile)
-// ============================================================================
-
-/** v10.7: Number of columns on EACH side of the ridge to include in the
- * stitch band.  Total band width = 2 * STITCH_BAND_HALF_WIDTH + 1 quads.
- * Wider band u2192 more quads get 4-tri fan subdivision u2192 smoother transition
- * increasing stitch coverage from ~3% to ~10%.
- * Performance impact: each extra band column adds 2 tris per quad row per
- * chain segment.  At 500K with 93 chains u00d7 73 avg pts u2192 +27K extra tris
- * per extra column, well within budget. */
 
 /** v16.6 LOCAL-ONLY OUTER ADAPTATION MODE:
  *  Feature-guided mesh refinement is done ONLY through per-row vertex
- *  patching and chain-constrained stitch topology. No global grid changes:
- *  - No global T-row insertion
- *  - No global U-column insertion from per-row features
- *
- * Feature fidelity is driven by per-row vertex patching + stitch fan topology,
- * avoiding global grid reshaping that can hurt surrounding smoothness.
- */
+ *  patching and chain-constrained stitch topology. No global grid changes. */
 const LOCAL_ONLY_OUTER_ADAPTATION = true;
-
-/** v10.8: Number of columns on EACH side of the peak to receive gradient-based
- * U redistribution.  Total redistribution band = 2 * GRADIENT_PATCH_HALF_WIDTH + 1.
- * v10.10: NO LONGER USED u2014 peak-only patching eliminates flanking column movement.
- * Retained as documentation of the historical value. */
-// const GRADIENT_PATCH_HALF_WIDTH = 4;
-// [Extracted] buildCDTOuterWall -> parametric/OuterWallTessellator.ts
-
-// [Extracted] chainDirectedFlip, flipEdges3D -> parametric/MeshOptimizer.ts
-
-// ============================================================================
-// Feature Detection â€” imported from ./parametric/FeatureDetection.ts
-// (detectRowFeaturesV16, detectRowFeatures, detectAllRowFeatures,
-//  detectColumnFeaturesV16, detectColumnFeatures, detectAndMergeColumnFeatures,
-//  circularDistance)
-// ============================================================================
-// ============================================================================
-// Chain Linking  imported from ./parametric/ChainLinker.ts
-// (circularSignedDelta, liftUToReference, unwrapChain, chainRoughness,
-//  suppressDuplicateChains, resnapChainToMeasuredPeaks, postProcessFeatureChains,
-//  linkFeatureChainsCore, linkFeatureChains, linkFeatureChainsByKind,
-//  insertChainGuidedRows, CHAIN_LINK_RADIUS)
-// ============================================================================
-// ============================================================================
-// ============================================================================
-// Grid Building  imported from ./parametric/GridBuilder.ts
-// (bsearchFloor, mergeFeaturePositions, generateCDFAdaptivePositions,
-//  generateAdaptiveGrid, buildUnionFeatureGrid, patchRowFeatures,
-//  computeGridDimensions, downsampleSortedPositions, FLANK_OFFSET,
-//  MIN_U_SEPARATION, FLANK_OFFSETS, FEATURE_CLUSTER_RADIUS)
-// ============================================================================
 
 // ============================================================================
 // GPU Compute Pipeline
