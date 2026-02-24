@@ -44,6 +44,7 @@
 
 import { MeshData, PotDimensions, StyleOptions, StyleId } from '../../geometry/types';
 import { buildStyleParamPayload } from '../../utils/styleParams';
+import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
 // NOTE: cdt2d import removed in v11.1 — no longer needed on the hot path.
 // The grid-native approach eliminates the O(n²) CDT library dependency.
 
@@ -153,77 +154,9 @@ const CURVATURE_SAMPLES = 4096;
 const NUM_STRIPS = 16;
 
 // ============================================================================
-// Curvature Computation from 3D Positions
+// Curvature Computation — imported from ./parametric/CurvatureAnalysis.ts
+// (computeRawCurvature, normalizeProfile, smoothProfile)
 // ============================================================================
-
-/**
- * Compute RAW (unnormalized) curvature from 3D positions along a parameter.
- * Returns absolute second-derivative magnitudes — no clamping, no scaling.
- */
-function computeRawCurvature(positions: Float32Array, numSamples: number): Float32Array {
-    const curvature = new Float32Array(numSamples);
-
-    for (let i = 1; i < numSamples - 1; i++) {
-        const x0 = positions[(i - 1) * 3], y0 = positions[(i - 1) * 3 + 1], z0 = positions[(i - 1) * 3 + 2];
-        const x1 = positions[i * 3], y1 = positions[i * 3 + 1], z1 = positions[i * 3 + 2];
-        const x2 = positions[(i + 1) * 3], y2 = positions[(i + 1) * 3 + 1], z2 = positions[(i + 1) * 3 + 2];
-
-        const dx = x0 - 2 * x1 + x2;
-        const dy = y0 - 2 * y1 + y2;
-        const dz = z0 - 2 * z1 + z2;
-
-        curvature[i] = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    curvature[0] = curvature[1];
-    curvature[numSamples - 1] = curvature[numSamples - 2];
-
-    return curvature;
-}
-
-/**
- * Normalize a curvature profile to [0, 1] using percentile scaling.
- * Applied AFTER max-aggregation across all strips.
- */
-function normalizeProfile(curvature: Float32Array): Float32Array {
-    const n = curvature.length;
-    const result = new Float32Array(n);
-
-    const sorted = Array.from(curvature).sort((a, b) => a - b);
-    const p05 = sorted[Math.floor(n * 0.05)];
-    const p95 = sorted[Math.floor(n * 0.95)];
-    const range = p95 - p05;
-
-    if (range > 1e-8) {
-        for (let i = 0; i < n; i++) {
-            result[i] = Math.max(0, Math.min(1, (curvature[i] - p05) / range));
-        }
-    }
-    // else: all curvatures are similar → keep zeros → uniform grid (correct!)
-
-    return result;
-}
-
-/**
- * Smooth a curvature profile using a moving average window.
- * Prevents CDF from creating excessively sharp density transitions.
- */
-function smoothProfile(profile: Float32Array, radius: number): Float32Array {
-    const n = profile.length;
-    const result = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-        let sum = 0;
-        let count = 0;
-        const lo = Math.max(0, i - radius);
-        const hi = Math.min(n - 1, i + radius);
-        for (let j = lo; j <= hi; j++) {
-            sum += profile[j];
-            count++;
-        }
-        result[i] = sum / count;
-    }
-    return result;
-}
 
 /** Smoothing radius for curvature profiles before CDF generation.
  * Keep small (2) to preserve sharp feature peaks while preventing noise. */
@@ -267,7 +200,7 @@ const STITCH_BAND_HALF_WIDTH = 1;
  * the transition from peak to slope instead of forcing chain-aligned
  * diagonals on quads that don't contain the ridge vertex.
  */
-const CHAIN_LOCK_BAND_HALF_WIDTH = 0;
+const CHAIN_LOCK_BAND_HALF_WIDTH = 1;
 
 // v16.8: Supplemental stitch pass can create broad density bands because it
 // stitches many adjacent-row feature pairs beyond linked chains.
@@ -710,7 +643,7 @@ function buildCDTOuterWall(
     unionU: Float32Array,
     _targetOuterTris: number,
     surfaceId: number = 0
-): { vertices: Float32Array; indices: Uint32Array; quadMap: Int32Array } {
+): { vertices: Float32Array; indices: Uint32Array; quadMap: Int32Array; gridVertexCount: number; chainEdges: Array<[number, number]> } {
     const buildStart = performance.now();
 
     // Build reverse map: original row → final row index
@@ -839,13 +772,31 @@ function buildCDTOuterWall(
         }
     }
 
-    const totalChainPoints = chainVertices.length;
+    // v20.0: Per-row UV snapping — exact feature positions without chain-strip topology.
+    //
+    // v19.0 removed chain vertices entirely → feature ridges became imprecise (±0.5 grid
+    // cell ≈ 0.21mm approximation), making sharp styles visually degraded.
+    //
+    // v20.0 fix: instead of appending extra chain vertices (which create bridge triangles
+    // with poor dihedral), we SNAP the nearest existing grid vertex in each row to the
+    // chain's exact U position. The GPU evaluates the snapped vertex at that U → it lands
+    // exactly on the mathematical ridge surface. No extra vertices → no chain-strip
+    // designation → standard quad triangulation → smooth surface + exact feature positions.
+    //
+    // Adjacent rows have the same grid column at slightly different U positions (tiny
+    // ≤0.5/numU "kink"), but this is sub-millimeter and below 3D-printing resolution.
+    //
+    // chainDirectedFlip still orients diagonals using chain UV data (unchanged).
+    // All chain-strip downstream passes are no-ops (chainVertices cleared below).
+    const chainDataForSnap = chainVertices.slice(); // save before clearing
+    chainVertices.length = 0;
+    chainEdges.length = 0;
 
-    // ── 2. Generate vertices: grid + chain points ──
-    const totalVertexCount = gridVertexCount + totalChainPoints;
+    // ── 2. Generate vertices: grid (v20.0 — chain UVs snapped in-place) ──
+    const totalVertexCount = gridVertexCount;
     const vertices = new Float32Array(totalVertexCount * 3);
 
-    // Grid vertices (same as before)
+    // Grid vertices
     let vIdx = 0;
     for (let j = 0; j < numT; j++) {
         for (let i = 0; i < numU; i++) {
@@ -855,11 +806,25 @@ function buildCDTOuterWall(
         }
     }
 
-    // Chain point vertices (appended after grid)
-    for (const cv of chainVertices) {
-        vertices[vIdx++] = cv.u;
-        vertices[vIdx++] = tPositions[cv.rowIdx];
-        vertices[vIdx++] = surfaceId;
+    // Per-row UV snapping: move the nearest grid column vertex in each row to the
+    // chain's exact U position. The GPU will evaluate it on the ridge surface.
+    // Binary-search for efficiency (unionU is sorted).
+    let snappedVertexCount = 0;
+    for (const cv of chainDataForSnap) {
+        // Find nearest column via binary search
+        let lo = 0, hi = numU - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (unionU[mid] < cv.u) lo = mid + 1; else hi = mid;
+        }
+        // lo is the first column >= cv.u; check lo and lo-1
+        let bestCol = lo;
+        if (lo > 0 && Math.abs(unionU[lo - 1] - cv.u) < Math.abs(unionU[lo] - cv.u)) {
+            bestCol = lo - 1;
+        }
+        // Snap the U coordinate of the grid vertex at (rowIdx, bestCol)
+        vertices[(cv.rowIdx * numU + bestCol) * 3 + 0] = cv.u;
+        snappedVertexCount++;
     }
 
     // ── 3. Build per-row chain vertex lookup (sorted by U) ──
@@ -947,8 +912,10 @@ function buildCDTOuterWall(
                 result.push({ idx: chainList[ci].vertexIdx, u: chainList[ci].u, isChain: true, gridCol: i });
                 ci++;
             } else {
-                // Normal: add grid column vertex
-                result.push({ idx: row * numU + i, u: unionU[i], isChain: false, gridCol: i });
+                // Normal: add grid column vertex.
+                // v20.0: use actual vertex U (may be snapped to chain position).
+                const actualU = vertices[(row * numU + i) * 3 + 0];
+                result.push({ idx: row * numU + i, u: actualU, isChain: false, gridCol: i });
             }
 
             // Insert chain points between this grid column and the next
@@ -1147,7 +1114,10 @@ function buildCDTOuterWall(
                 buf.push(bot[bi].idx, bot[bi + 1].idx, top[ti].idx);
                 bi++;
             } else {
-                // Both can advance — choose the one with smaller next U
+                // Both can advance — choose whichever has smaller next-U.
+                // On ties (same grid column), prefer bot (<=) for consistent
+                // diagonal direction. The 3D flip passes correct diagonals
+                // that would benefit from the other orientation.
                 const nextBotU = bot[bi + 1].u;
                 const nextTopU = top[ti + 1].u;
                 if (nextBotU <= nextTopU) {
@@ -1371,13 +1341,10 @@ function buildCDTOuterWall(
     const buildMs = performance.now() - buildStart;
     const triCount = indices.length / 3;
     const realTriCount = triCount - seamSkipCount * 2;
-    console.log(`[ParametricExport]   v16.19 Chain-constrained mesh: ${totalVertexCount} verts (${gridVertexCount} grid + ${totalChainPoints} chain [${totalChainPoints - interpolatedCount} real + ${interpolatedCount} interpolated]), ${realTriCount} real tris`);
-    console.log(`[ParametricExport]   v16.19 Grid: ${numU}×${numT}, chain cells: ${chainCellCount}/${totalCells} (${(chainCellCount/totalCells*100).toFixed(1)}%)`);    
-    console.log(`[ParametricExport]   v16.19 Chain edges: ${chainEdges.length}, cross-cell: ${crossCellEdgeCount}, seam skips: ${seamSkipCount}`);
-    console.log(`[ParametricExport]   v16.19 Edge enforcement: ${enforced}/${chainEdges.length} enforced, ${missing} missing`);
-    console.log(`[ParametricExport]   v16.19 Build time: ${buildMs.toFixed(1)}ms`);
+    console.log(`[ParametricExport]   v20.0 Per-row UV snapping: ${totalVertexCount} verts (${numU}×${numT} grid, ${snappedVertexCount} snapped to chain positions), ${realTriCount} real tris`);
+    console.log(`[ParametricExport]   v20.0 Grid: ${numU}×${numT}, seam skips: ${seamSkipCount}, build time: ${buildMs.toFixed(1)}ms`);
 
-    return { vertices, indices, quadMap };
+    return { vertices, indices, quadMap, gridVertexCount, chainEdges };
 }
 
 /**
@@ -2122,8 +2089,8 @@ function flipEdges3D(
 
     // Helper: compute minimum angle of a triangle given 3D positions
     const minAngle = (ax: number, ay: number, az: number,
-                      bx: number, by: number, bz: number,
-                      cx: number, cy: number, cz: number): number => {
+        bx: number, by: number, bz: number,
+        cx: number, cy: number, cz: number): number => {
         const abx = bx - ax, aby = by - ay, abz = bz - az;
         const acx = cx - ax, acy = cy - ay, acz = cz - az;
         const bcx = cx - bx, bcy = cy - by, bcz = cz - bz;
@@ -2147,8 +2114,8 @@ function flipEdges3D(
 
     // Helper: compute triangle face normal (unnormalized)
     const faceNormal = (ax: number, ay: number, az: number,
-                        bx: number, by: number, bz: number,
-                        cx: number, cy: number, cz: number): [number, number, number] => {
+        bx: number, by: number, bz: number,
+        cx: number, cy: number, cz: number): [number, number, number] => {
         const abx = bx - ax, aby = by - ay, abz = bz - az;
         const acx = cx - ax, acy = cy - ay, acz = cz - az;
         return [
@@ -2407,7 +2374,7 @@ function detectRowFeaturesV16(
     for (let i = 0; i < numSamples; i++) {
         const prev = wrap(i - 1);
         const next = wrap(i + 1);
-        const dLeft  = radii[i] - radii[prev];
+        const dLeft = radii[i] - radii[prev];
         const dRight = radii[next] - radii[i];
 
         // Gradient must change sign for this to be an extremum
@@ -2595,7 +2562,7 @@ function detectRowFeaturesV16(
                 radius: refinedRadius,
                 prominence,
                 confidence: 0.5 * Math.min(1, absCurv[i] / maxCurvGlobal)
-                          + 0.5 * Math.min(1, prominence / (minProminence * 5)),
+                    + 0.5 * Math.min(1, prominence / (minProminence * 5)),
             });
         }
     }
@@ -2858,7 +2825,7 @@ function detectColumnFeaturesV16(
                 candidates.push({
                     u: peakT, kind: expectedKind, radius: refinedRadius, prominence,
                     confidence: 0.5 * Math.min(1, absCurv[i] / maxCurvGlobal)
-                              + 0.5 * Math.min(1, prominence / (minProminence * 5)),
+                        + 0.5 * Math.min(1, prominence / (minProminence * 5)),
                 });
             } else {
                 rejected++;
@@ -3070,7 +3037,7 @@ function detectAndMergeColumnFeatures(
                     // Confidence: based on gradient strength and prominence
                     const gradStrength = Math.abs(dLeft) + Math.abs(dRight);
                     foundConfidence = 0.5 * Math.min(1, gradStrength * probeSamples)
-                                   + 0.5 * Math.min(1, prominence / 0.025);
+                        + 0.5 * Math.min(1, prominence / 0.025);
                 }
             }
 
@@ -4552,7 +4519,7 @@ export class ParametricExportComputer {
             // Detect ridges/valleys using BOTH curvature peaks AND gradient zero-crossings.
             // Pass 3D positions from the BEST strip (highest total curvature) for
             // gradient zero-crossing detection (actual ridge/valley positions).
-            
+
             // Find best T-strip (highest total curvature) for gradient analysis
             let bestTStrip = 0;
             let bestTSum = 0;
@@ -5034,9 +5001,20 @@ export class ParametricExportComputer {
             // Formula: maxTris = 2 * (numU-1) * (numT-1) → numU = maxTris/(2*(numT-1)) + 1
             const numTRows = finalT.length;
             const maxOuterColumns = Math.floor(targetOuterBudget / (2 * Math.max(1, numTRows - 1))) + 1;
-            const unionU = LOCAL_ONLY_OUTER_ADAPTATION
-                ? outerBaseU
-                : buildUnionFeatureGrid(outerBaseU, finalRowFeatures, maxOuterColumns);
+            let unionU: Float32Array;
+            if (LOCAL_ONLY_OUTER_ADAPTATION) {
+                // v20.0: Use base grid directly (no global corridor columns).
+                // v17.0 corridor columns doubled grid size (735→1395, +660 cols).
+                // v18.0 tried GPU-surface subdivision but dihedral stayed at 0.04 —
+                // bridge triangles (chain_r, chain_r+1, grid_vertex) are topologically
+                // broken and can't be fixed by post-processing.
+                // v19.0: chain vertices removed → features imprecise (±0.5 grid cell).
+                // v20.0: per-row UV snapping — nearest grid vertex snapped to chain U.
+                // No extra vertices, no chain-strip boundary, exact ridge positions.
+                unionU = outerBaseU;
+            } else {
+                unionU = buildUnionFeatureGrid(outerBaseU, finalRowFeatures, maxOuterColumns);
+            }
             const featureColumnsAdded = unionU.length - outerBaseU.length;
             console.log(`[ParametricExport]   Union grid: ${unionU.length} U (base=${outerBaseU.length} + ${featureColumnsAdded} feature columns, budget max=${maxOuterColumns}, localOnly=${LOCAL_ONLY_OUTER_ADAPTATION})`);
 
@@ -5051,6 +5029,8 @@ export class ParametricExportComputer {
             // v11.3: Per-row feature patching replaces global column merging
             let outerW = unionU.length; // kept for diagnostics
             let outerQuadMap: Int32Array | null = null; // v11.3: gap-free quad→index mapping
+            let outerGridVertexCount = 0; // v16.27: grid vertex count for chain-strip detection
+            let outerChainEdges: Array<[number, number]> = []; // v16.28: constraint edges for flip protection
 
             for (const surf of SURFACE_CONFIG) {
                 if (surf.id === 0) {
@@ -5073,6 +5053,8 @@ export class ParametricExportComputer {
                     // Removing stitch vertices eliminates density banding artifacts
                     // and frees ~4-5% of triangle budget for uniform base density.
 
+                    outerGridVertexCount = cdtResult.gridVertexCount;
+                    outerChainEdges = cdtResult.chainEdges;
                     allVertArrays.push(cdtResult.vertices);
 
                     if (vertexOffset > 0) {
@@ -5214,20 +5196,1266 @@ export class ParametricExportComputer {
             const flip3DMs = performance.now() - flip3DStart;
             console.log(`[ParametricExport]   v11.3 3D edge flip: ${genericFlips} quality flips (${flip3DMs.toFixed(1)}ms)`);
 
-            // v16.9: Stitch triangulation REMOVED.
-            // Chain-directed flip + 3D quality flip provide all necessary
-            // topology optimization. No fan re-triangulation needed.
-            const finalIndices = combinedIdxs;
-            console.log('[ParametricExport]   v16.9 stitch triangulation: removed (chain flip + 3D flip handle topology)');
+            // ═══════════════════════════════════════════
+            // v16.28f: Chain-strip 3D edge flip (ANGLE + VALENCE)
+            //
+            // Chain-strip triangles are produced by sweepRegion() with a
+            // consistent `nextBotU <= nextTopU` diagonal bias. This creates
+            // a visible sawtooth on one side of feature ridges — especially
+            // on ridges that run at a more vertical angle (small U-shift).
+            //
+            // TWO-PHASE approach:
+            //   Phase A: Angle-based Delaunay flips (max-min-angle improvement)
+            //            with valence bonus — flips that also improve valence
+            //            toward 6 get a reduced threshold.
+            //   Phase B: Valence-only flips — for edges where the angle doesn't
+            //            improve much but the 4 involved vertices have irregular
+            //            valence (<5 or >7). Flipping such edges redistributes
+            //            connectivity, eliminating "pinch points" where 3-4
+            //            edges meet a vertex and "star points" with 8+ edges.
+            //
+            // Guards (both phases):
+            //   1. Convexity: only flip convex quads
+            //   2. Normal consistency: both new tris must face same way as originals
+            //   3. Row-span: new tris must not exceed the original pair's T-extent
+            //   4. Edge length: new edge ≤ 2× longest perimeter edge
+            //   5. Aspect ratio: reject only extreme slivers (aspect > 12)
+            //   6. Constraint protection: never flip chain edges
+            //   7. Chain-strip only: no boundary flips into grid-managed quads
+            //   8. Angle floor: flipped result must not have min-angle < 0.05 rad
+            //
+            // v16.28f improvements over v16.28e:
+            //   - Added valence tracking (vertex → edge count) for chain-strip region
+            //   - Phase A: valence-improving flips use threshold 0.001 instead of 0.005
+            //   - Phase B: pure valence flips (no angle requirement) with angle floor
+            //   - Diagnostic: reports valence stats + phase B flip count
+            // ═══════════════════════════════════════════
+            const csFlipStart = performance.now();
 
-            const finalVertexCount = resultData.length / 3;
-            const finalTriangleCount = finalIndices.length / 3;
+            // Build set of constraint edges (canonical keys)
+            const constraintEdgeSet = new Set<bigint>();
+            for (const [v0, v1] of outerChainEdges) {
+                const lo = v0 < v1 ? v0 : v1;
+                const hi = v0 < v1 ? v1 : v0;
+                constraintEdgeSet.add(BigInt(lo) * BigInt(0x100000) + BigInt(hi));
+            }
+
+            // Identify chain-strip triangles in the outer wall
+            const outerIdxCount = allIdxArrays[0].length;
+            const chainStripTriSet = new Set<number>(); // index offsets (t) of chain-strip tris
+            for (let t = 0; t < outerIdxCount; t += 3) {
+                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+                if (a === b || b === c || a === c) continue; // degenerate
+                if (a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount) {
+                    chainStripTriSet.add(t);
+                }
+            }
+
+            // v16.28c: Build vertex→T lookup for row-span checking.
+            // Each vertex's T-coordinate tells us which row band it lives in.
+            // Grid vertex v has T at combinedVerts[v*3+1].
+            // Chain vertex v (>= outerGridVertexCount) also has T there.
+            // We use this to prevent flips that would span multiple row bands.
+            const vtxT = (v: number): number => combinedVerts[v * 3 + 1];
+
+            // Build edge→triangle adjacency for chain-strip triangles ONLY.
+            // We do NOT include boundary triangles — flipping at the boundary
+            // between chain-strip and standard grid quads creates inconsistencies
+            // because the grid quad side is managed by flipEdges3D via quadMap.
+            const edgeToTris = new Map<bigint, number[]>();
+            const edgeKey = (a: number, b: number): bigint => {
+                const lo = a < b ? a : b;
+                const hi = a < b ? b : a;
+                return BigInt(lo) * BigInt(0x100000) + BigInt(hi);
+            };
+
+            for (const t of chainStripTriSet) {
+                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+                const eAB = edgeKey(a, b), eBC = edgeKey(b, c), eCA = edgeKey(c, a);
+                if (!edgeToTris.has(eAB)) edgeToTris.set(eAB, []);
+                edgeToTris.get(eAB)!.push(t);
+                if (!edgeToTris.has(eBC)) edgeToTris.set(eBC, []);
+                edgeToTris.get(eBC)!.push(t);
+                if (!edgeToTris.has(eCA)) edgeToTris.set(eCA, []);
+                edgeToTris.get(eCA)!.push(t);
+            }
+
+            // 3D helpers
+            const pos3 = (v: number): [number, number, number] => [
+                resultData[v * 3], resultData[v * 3 + 1], resultData[v * 3 + 2]
+            ];
+            const cross3 = (ax: number, ay: number, az: number,
+                bx: number, by: number, bz: number): [number, number, number] => [
+                    ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx
+                ];
+            const dot3 = (a: [number, number, number], b: [number, number, number]): number =>
+                a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+            const len3 = (a: [number, number, number]): number =>
+                Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+            const dist3sq = (p: [number, number, number], q: [number, number, number]): number =>
+                (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
+            const triNormal = (p0: [number, number, number], p1: [number, number, number], p2: [number, number, number]): [number, number, number] =>
+                cross3(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2],
+                    p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
+
+            // Min-angle of a 3D triangle given vertex indices
+            const minAngle3D = (i0: number, i1: number, i2: number): number => {
+                const p0 = pos3(i0), p1 = pos3(i1), p2 = pos3(i2);
+                const e01 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]] as [number, number, number];
+                const e02 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]] as [number, number, number];
+                const e12 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]] as [number, number, number];
+                const d01 = len3(e01), d02 = len3(e02), d12 = len3(e12);
+                if (d01 < 1e-12 || d02 < 1e-12 || d12 < 1e-12) return 0;
+                const cos0 = dot3(e01, e02) / (d01 * d02);
+                const ne01: [number, number, number] = [-e01[0], -e01[1], -e01[2]];
+                const cos1 = dot3(ne01, e12) / (d01 * d12);
+                const ne02: [number, number, number] = [-e02[0], -e02[1], -e02[2]];
+                const cos2 = dot3(e12, ne02) / (d12 * d02);
+                return Math.min(
+                    Math.acos(Math.max(-1, Math.min(1, cos0))),
+                    Math.acos(Math.max(-1, Math.min(1, cos1))),
+                    Math.acos(Math.max(-1, Math.min(1, cos2)))
+                );
+            };
+
+            // Aspect ratio of a 3D triangle: longest edge / shortest altitude.
+            // Returns ratio >= 1. High values = elongated slivers.
+            const triAspect3D = (i0: number, i1: number, i2: number): number => {
+                const p0 = pos3(i0), p1 = pos3(i1), p2 = pos3(i2);
+                const a2 = dist3sq(p1, p2), b2 = dist3sq(p0, p2), c2 = dist3sq(p0, p1);
+                const longest2 = Math.max(a2, b2, c2);
+                const longest = Math.sqrt(longest2);
+                // Area via cross product
+                const n = triNormal(p0, p1, p2);
+                const area2 = len3(n); // 2× area
+                if (area2 < 1e-15) return 1e6; // degenerate
+                // shortest altitude = 2*area / longest edge
+                const shortAlt = area2 / longest;
+                return longest / Math.max(shortAlt, 1e-15);
+            };
+
+            // Convexity check in 3D: the quadrilateral (A, B, C, D) must be convex.
+            // Check by verifying all 4 cross products at corners point the same way.
+            const isConvexQuad3D = (vA: number, vB: number, vC: number, vD: number): boolean => {
+                // Quad vertices in order: A, B, C, D (forming a ring)
+                const pA = pos3(vA), pB = pos3(vB), pC = pos3(vC), pD = pos3(vD);
+                const n0 = cross3(pB[0] - pA[0], pB[1] - pA[1], pB[2] - pA[2], pD[0] - pA[0], pD[1] - pA[1], pD[2] - pA[2]);
+                const n1 = cross3(pC[0] - pB[0], pC[1] - pB[1], pC[2] - pB[2], pA[0] - pB[0], pA[1] - pB[1], pA[2] - pB[2]);
+                const n2 = cross3(pD[0] - pC[0], pD[1] - pC[1], pD[2] - pC[2], pB[0] - pC[0], pB[1] - pC[1], pB[2] - pC[2]);
+                const n3 = cross3(pA[0] - pD[0], pA[1] - pD[1], pA[2] - pD[2], pC[0] - pD[0], pC[1] - pD[1], pC[2] - pD[2]);
+                // All cross products should point the same direction
+                const d01 = dot3(n0, n1), d02 = dot3(n0, n2), d03 = dot3(n0, n3);
+                return d01 > 0 && d02 > 0 && d03 > 0;
+            };
+
+            // v16.28e: Row-span guard uses "no-worse" policy instead of absolute limit.
+            // We still pre-compute max row span as a last-resort absolute cap (3×).
+            const rowTSpans: number[] = [];
+            for (let j = 0; j < finalT.length - 1; j++) {
+                rowTSpans.push(finalT[j + 1] - finalT[j]);
+            }
+            const maxSingleRowTSpan = Math.max(...rowTSpans);
+
+            // v16.28f: Build vertex valence map for chain-strip vertices.
+            // Valence = number of distinct edges incident on a vertex within the
+            // chain-strip region. Ideal valence for interior surface vertices is 6.
+            // Vertices with valence < 5 create "pinch points"; valence > 7 creates
+            // "star points" — both cause triangle flow irregularity.
+            const csValence = new Map<number, number>();
+            const addValenceEdge = (a: number, b: number) => {
+                // We track valence per-vertex as the number of unique neighbors
+                // Since we're iterating all edges, each neighbor is counted once
+                csValence.set(a, (csValence.get(a) || 0) + 1);
+                csValence.set(b, (csValence.get(b) || 0) + 1);
+            };
+            // Count valence from all chain-strip triangle edges (unique edges only)
+            const countedEdges = new Set<bigint>();
+            for (const t of chainStripTriSet) {
+                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+                const eAB = edgeKey(a, b), eBC = edgeKey(b, c), eCA = edgeKey(c, a);
+                if (!countedEdges.has(eAB)) { countedEdges.add(eAB); addValenceEdge(a, b); }
+                if (!countedEdges.has(eBC)) { countedEdges.add(eBC); addValenceEdge(b, c); }
+                if (!countedEdges.has(eCA)) { countedEdges.add(eCA); addValenceEdge(c, a); }
+            }
+
+            // Valence deviation from ideal (6). Lower is better.
+            const valenceDeviation = (v: number): number => Math.abs((csValence.get(v) || 6) - 6);
+
+            // Compute total valence cost for the 4 vertices of a quad.
+            // A flip changes the valence of all 4 vertices:
+            //   shared edge endpoints (shLo, shHi): lose 1 edge each
+            //   opposite vertices (opp0, opp1): gain 1 edge each
+            const valenceCost4 = (shLo: number, shHi: number, opp0: number, opp1: number): number =>
+                valenceDeviation(shLo) + valenceDeviation(shHi) + valenceDeviation(opp0) + valenceDeviation(opp1);
+
+            const valenceCostAfterFlip = (shLo: number, shHi: number, opp0: number, opp1: number): number => {
+                // After flip: shLo and shHi lose one neighbor, opp0 and opp1 gain one
+                const vShLo = (csValence.get(shLo) || 6) - 1;
+                const vShHi = (csValence.get(shHi) || 6) - 1;
+                const vOpp0 = (csValence.get(opp0) || 6) + 1;
+                const vOpp1 = (csValence.get(opp1) || 6) + 1;
+                return Math.abs(vShLo - 6) + Math.abs(vShHi - 6) + Math.abs(vOpp0 - 6) + Math.abs(vOpp1 - 6);
+            };
+
+            // Helper: update valence after a flip is applied
+            const applyValenceFlip = (shLo: number, shHi: number, opp0: number, opp1: number) => {
+                csValence.set(shLo, (csValence.get(shLo) || 6) - 1);
+                csValence.set(shHi, (csValence.get(shHi) || 6) - 1);
+                csValence.set(opp0, (csValence.get(opp0) || 6) + 1);
+                csValence.set(opp1, (csValence.get(opp1) || 6) + 1);
+            };
+
+            // Log valence stats before flipping
+            {
+                let lo = 0, hi = 0, ideal = 0;
+                for (const [, v] of csValence) {
+                    if (v < 5) lo++;
+                    else if (v > 7) hi++;
+                    else if (v === 6) ideal++;
+                }
+                console.log(`[ParametricExport]     valence before: ${csValence.size} verts, ${lo} low(<5), ${ideal} ideal(6), ${hi} high(>7)`);
+            }
+
+            // Iterative edge flip — Phase A: angle-based with valence bonus
+            let totalCSFlips = 0;
+            let csRowSpanRejects = 0, csEdgeLenRejects = 0, csAspectRejects = 0;
+            let csValenceBonus = 0; // flips enabled by valence bonus
+            const MIN_ANGLE_IMPROVEMENT = 0.005; // ~0.29° — allow subtle improvements
+            const MIN_ANGLE_VALENCE_BONUS = 0.0005; // ~0.03° — nearly free if valence improves
+            const MIN_ANGLE_FLOOR = 0.04; // ~2.3° — never create triangles worse than this
+            const MAX_CS_PASSES = 8;
+            for (let pass = 0; pass < MAX_CS_PASSES; pass++) {
+                let passFlips = 0;
+
+                // Snapshot edge keys to iterate (since we modify the map)
+                const edgeKeys = Array.from(edgeToTris.keys());
+
+                for (const ek of edgeKeys) {
+                    const tris = edgeToTris.get(ek);
+                    if (!tris || tris.length !== 2) continue; // boundary or non-manifold
+                    if (constraintEdgeSet.has(ek)) continue; // never flip constraints
+
+                    const t0 = tris[0], t1 = tris[1];
+                    const a0 = combinedIdxs[t0], b0 = combinedIdxs[t0 + 1], c0 = combinedIdxs[t0 + 2];
+                    const a1 = combinedIdxs[t1], b1 = combinedIdxs[t1 + 1], c1 = combinedIdxs[t1 + 2];
+
+                    // Decode shared edge: ek = lo * 0x100000 + hi
+                    const shLo = Number(ek / BigInt(0x100000));
+                    const shHi = Number(ek % BigInt(0x100000));
+
+                    // Verify the shared edge actually appears in both triangles
+                    const set0 = new Set([a0, b0, c0]);
+                    const set1 = new Set([a1, b1, c1]);
+                    if (!set0.has(shLo) || !set0.has(shHi) || !set1.has(shLo) || !set1.has(shHi)) continue;
+
+                    // Find opposite vertices
+                    let opp0 = -1, opp1 = -1;
+                    for (const v of [a0, b0, c0]) { if (v !== shLo && v !== shHi) { opp0 = v; break; } }
+                    for (const v of [a1, b1, c1]) { if (v !== shLo && v !== shHi) { opp1 = v; break; } }
+                    if (opp0 < 0 || opp1 < 0 || opp0 === opp1) continue;
+
+                    // Don't create a constraint edge
+                    if (constraintEdgeSet.has(edgeKey(opp0, opp1))) continue;
+
+                    // Convexity check: the quad must be convex to flip safely
+                    // Quad order: shLo → opp0 → shHi → opp1 (ring around the quad)
+                    if (!isConvexQuad3D(shLo, opp0, shHi, opp1)) continue;
+
+                    // v16.31: Per-triangle row-span guard.
+                    // Each new triangle must fit within a single row band.
+                    // Use "no-worse" policy: the flipped pair can span up to
+                    // the original pair's T-extent + 10% tolerance, but never
+                    // exceed 2× a single row band (prevents multi-row creep).
+                    {
+                        const t_shLo = vtxT(shLo), t_shHi = vtxT(shHi);
+                        const t_opp0 = vtxT(opp0), t_opp1 = vtxT(opp1);
+                        // Original pair's combined T-extent
+                        const allT_arr = [t_shLo, t_shHi, t_opp0, t_opp1];
+                        const origTExtent = Math.max(...allT_arr) - Math.min(...allT_arr);
+                        // After flip, new tri A = (shLo, opp0, opp1), tri B = (shHi, opp1, opp0)
+                        const newTriATSpan = Math.max(t_shLo, t_opp0, t_opp1) - Math.min(t_shLo, t_opp0, t_opp1);
+                        const newTriBTSpan = Math.max(t_shHi, t_opp0, t_opp1) - Math.min(t_shHi, t_opp0, t_opp1);
+                        const maxNewTSpan = Math.max(newTriATSpan, newTriBTSpan);
+                        // "No-worse" + absolute cap at 2 row bands
+                        const tSpanLimit = Math.min(origTExtent * 1.1 + maxSingleRowTSpan * 0.1, maxSingleRowTSpan * 2.0);
+                        if (maxNewTSpan > tSpanLimit) {
+                            csRowSpanRejects++;
+                            continue;
+                        }
+                    }
+
+                    // v16.28d: Edge length guard — the new edge (opp0↔opp1) must not be
+                    // excessively longer than the existing perimeter edges.
+                    const pShLo = pos3(shLo), pOpp0 = pos3(opp0), pShHi = pos3(shHi), pOpp1 = pos3(opp1);
+                    {
+                        // Perimeter edges: shLo↔opp0, opp0↔shHi, shHi↔opp1, opp1↔shLo
+                        const maxPerim2 = Math.max(
+                            dist3sq(pShLo, pOpp0), dist3sq(pOpp0, pShHi),
+                            dist3sq(pShHi, pOpp1), dist3sq(pOpp1, pShLo)
+                        );
+                        // New edge: opp0↔opp1
+                        const newEdge2 = dist3sq(pOpp0, pOpp1);
+                        // Reject if new edge is >2× the longest perimeter edge
+                        if (newEdge2 > maxPerim2 * 4.0) { // 2.0² = 4.0
+                            csEdgeLenRejects++;
+                            continue;
+                        }
+                    }
+
+                    // Current quality
+                    const curMin = Math.min(minAngle3D(a0, b0, c0), minAngle3D(a1, b1, c1));
+
+                    // Determine winding from original normals.
+                    // We check BOTH original triangle normals and require the
+                    // new triangles to be consistent with their respective originals.
+                    const origNormal0 = triNormal(pos3(a0), pos3(b0), pos3(c0));
+                    const origNormal1 = triNormal(pos3(a1), pos3(b1), pos3(c1));
+
+                    // Try primary winding: tri0=(shLo,opp0,opp1), tri1=(shHi,opp1,opp0)
+                    const newNA = triNormal(pShLo, pOpp0, pOpp1);
+                    const newNB = triNormal(pShHi, pOpp1, pOpp0);
+
+                    // For normal consistency, check against the AVERAGE of original normals.
+                    // This is more robust than checking against just one original — the
+                    // two originals might have slightly different normals near a ridge.
+                    const avgNormal: [number, number, number] = [
+                        origNormal0[0] + origNormal1[0],
+                        origNormal0[1] + origNormal1[1],
+                        origNormal0[2] + origNormal1[2]
+                    ];
+                    const avgLen = len3(avgNormal);
+                    if (avgLen < 1e-12) continue; // degenerate normals
+
+                    let flipI0: number, flipI1: number, flipI2: number;
+                    let flipJ0: number, flipJ1: number, flipJ2: number;
+
+                    if (dot3(avgNormal, newNA) > 0 && dot3(avgNormal, newNB) > 0) {
+                        // Primary winding works
+                        flipI0 = shLo; flipI1 = opp0; flipI2 = opp1;
+                        flipJ0 = shHi; flipJ1 = opp1; flipJ2 = opp0;
+                    } else {
+                        // Try reversed winding: tri0=(shLo,opp1,opp0), tri1=(shHi,opp0,opp1)
+                        const altNA = triNormal(pShLo, pOpp1, pOpp0);
+                        const altNB = triNormal(pShHi, pOpp0, pOpp1);
+                        if (dot3(avgNormal, altNA) <= 0 || dot3(avgNormal, altNB) <= 0) continue;
+                        flipI0 = shLo; flipI1 = opp1; flipI2 = opp0;
+                        flipJ0 = shHi; flipJ1 = opp0; flipJ2 = opp1;
+                    }
+
+                    // Quality check: min angle must improve.
+                    // v16.28f: If the flip also improves valence, use a much lower threshold.
+                    const flipMin = Math.min(minAngle3D(flipI0, flipI1, flipI2), minAngle3D(flipJ0, flipJ1, flipJ2));
+                    const curValCost = valenceCost4(shLo, shHi, opp0, opp1);
+                    const newValCost = valenceCostAfterFlip(shLo, shHi, opp0, opp1);
+                    const valenceImproves = newValCost < curValCost;
+                    const threshold = valenceImproves ? MIN_ANGLE_VALENCE_BONUS : MIN_ANGLE_IMPROVEMENT;
+                    if (flipMin <= curMin + threshold) continue;
+                    // Floor check: never create very bad triangles
+                    if (flipMin < MIN_ANGLE_FLOOR && flipMin < curMin) continue;
+                    if (valenceImproves && flipMin > curMin + MIN_ANGLE_VALENCE_BONUS && flipMin <= curMin + MIN_ANGLE_IMPROVEMENT) {
+                        csValenceBonus++;
+                    }
+
+                    // v16.28e: Aspect ratio guard — only reject extreme slivers.
+                    // Thin triangles are acceptable along ridges; only block truly
+                    // degenerate slivers (aspect > 12) that would also be worse.
+                    const newAspect = Math.max(triAspect3D(flipI0, flipI1, flipI2), triAspect3D(flipJ0, flipJ1, flipJ2));
+                    const curAspect = Math.max(triAspect3D(a0, b0, c0), triAspect3D(a1, b1, c1));
+                    if (newAspect > 12.0 && newAspect > curAspect) {
+                        csAspectRejects++;
+                        continue;
+                    }
+
+                    // Apply flip
+                    combinedIdxs[t0] = flipI0; combinedIdxs[t0 + 1] = flipI1; combinedIdxs[t0 + 2] = flipI2;
+                    combinedIdxs[t1] = flipJ0; combinedIdxs[t1 + 1] = flipJ1; combinedIdxs[t1 + 2] = flipJ2;
+
+                    // Update valence: shared endpoints lose 1, opposites gain 1
+                    applyValenceFlip(shLo, shHi, opp0, opp1);
+
+                    // Update adjacency: remove old edge, add new
+                    const newEk = edgeKey(opp0, opp1);
+                    edgeToTris.delete(ek);
+                    edgeToTris.set(newEk, [t0, t1]);
+
+                    // Update perimeter edges:
+                    // Before: tri0 had edges {shLo↔shHi}, {shHi↔opp0}, {opp0↔shLo}
+                    //         tri1 had edges {shLo↔shHi}, {shHi↔opp1}, {opp1↔shLo}
+                    // After:  tri0 has edges {opp0↔opp1}, {opp1↔shLo}, {shLo↔opp0}  [shLo side]
+                    //         tri1 has edges {opp0↔opp1}, {shHi↔opp1}, {opp0↔shHi}  [shHi side]
+                    // Changed: {shHi↔opp0} moved from t0 → t1
+                    //          {opp1↔shLo} moved from t1 → t0
+                    const ek1 = edgeKey(shHi, opp0);
+                    const adj1 = edgeToTris.get(ek1);
+                    if (adj1) {
+                        const idx = adj1.indexOf(t0);
+                        if (idx >= 0) adj1[idx] = t1;
+                    }
+                    const ek2 = edgeKey(opp1, shLo);
+                    const adj2 = edgeToTris.get(ek2);
+                    if (adj2) {
+                        const idx = adj2.indexOf(t1);
+                        if (idx >= 0) adj2[idx] = t0;
+                    }
+
+                    passFlips++;
+                }
+                totalCSFlips += passFlips;
+                if (passFlips === 0) break;
+            }
+
+            // ═══════════════════════════════════════════
+            // Phase B: Valence-only flips
+            //
+            // After Phase A has exhausted angle-based improvements, some edges
+            // still have vertices with bad valence (3-4 or 8+). These create
+            // "pinch points" or "star patterns" where triangle flow converges
+            // or diverges irregularly.
+            //
+            // Phase B flips edges that improve the total valence deviation of
+            // their 4 vertices, subject to the same safety guards PLUS:
+            //   - The flip must not DECREASE min-angle below the floor (0.04 rad)
+            //   - The flip must strictly improve total valence cost
+            // ═══════════════════════════════════════════
+            let phaseB_flips = 0;
+            const MAX_VALENCE_PASSES = 4;
+            for (let pass = 0; pass < MAX_VALENCE_PASSES; pass++) {
+                let passFlips = 0;
+                const edgeKeys2 = Array.from(edgeToTris.keys());
+
+                for (const ek of edgeKeys2) {
+                    const tris = edgeToTris.get(ek);
+                    if (!tris || tris.length !== 2) continue;
+                    if (constraintEdgeSet.has(ek)) continue;
+
+                    const t0 = tris[0], t1 = tris[1];
+                    const a0 = combinedIdxs[t0], b0 = combinedIdxs[t0 + 1], c0 = combinedIdxs[t0 + 2];
+                    const a1 = combinedIdxs[t1], b1 = combinedIdxs[t1 + 1], c1 = combinedIdxs[t1 + 2];
+
+                    const shLo = Number(ek / BigInt(0x100000));
+                    const shHi = Number(ek % BigInt(0x100000));
+
+                    const set0 = new Set([a0, b0, c0]);
+                    const set1 = new Set([a1, b1, c1]);
+                    if (!set0.has(shLo) || !set0.has(shHi) || !set1.has(shLo) || !set1.has(shHi)) continue;
+
+                    let opp0 = -1, opp1 = -1;
+                    for (const v of [a0, b0, c0]) { if (v !== shLo && v !== shHi) { opp0 = v; break; } }
+                    for (const v of [a1, b1, c1]) { if (v !== shLo && v !== shHi) { opp1 = v; break; } }
+                    if (opp0 < 0 || opp1 < 0 || opp0 === opp1) continue;
+
+                    // Skip if valence doesn't improve
+                    const curValCost = valenceCost4(shLo, shHi, opp0, opp1);
+                    const newValCost = valenceCostAfterFlip(shLo, shHi, opp0, opp1);
+                    if (newValCost >= curValCost) continue;
+
+                    if (constraintEdgeSet.has(edgeKey(opp0, opp1))) continue;
+                    if (!isConvexQuad3D(shLo, opp0, shHi, opp1)) continue;
+
+                    // Row-span guard (same no-worse policy as Phase A)
+                    {
+                        const t_shLo = vtxT(shLo), t_shHi = vtxT(shHi);
+                        const t_opp0 = vtxT(opp0), t_opp1 = vtxT(opp1);
+                        const allT_arr = [t_shLo, t_shHi, t_opp0, t_opp1];
+                        const origTExtent = Math.max(...allT_arr) - Math.min(...allT_arr);
+                        const newTriATSpan = Math.max(t_shLo, t_opp0, t_opp1) - Math.min(t_shLo, t_opp0, t_opp1);
+                        const newTriBTSpan = Math.max(t_shHi, t_opp0, t_opp1) - Math.min(t_shHi, t_opp0, t_opp1);
+                        const maxNewTSpan = Math.max(newTriATSpan, newTriBTSpan);
+                        const tSpanLimit = Math.min(origTExtent * 1.1 + maxSingleRowTSpan * 0.1, maxSingleRowTSpan * 2.0);
+                        if (maxNewTSpan > tSpanLimit) continue;
+                    }
+
+                    // Edge length guard
+                    const pShLo = pos3(shLo), pOpp0 = pos3(opp0), pShHi = pos3(shHi), pOpp1 = pos3(opp1);
+                    {
+                        const maxPerim2 = Math.max(
+                            dist3sq(pShLo, pOpp0), dist3sq(pOpp0, pShHi),
+                            dist3sq(pShHi, pOpp1), dist3sq(pOpp1, pShLo)
+                        );
+                        const newEdge2 = dist3sq(pOpp0, pOpp1);
+                        if (newEdge2 > maxPerim2 * 4.0) continue;
+                    }
+
+                    // Normal consistency
+                    const origNormal0 = triNormal(pos3(a0), pos3(b0), pos3(c0));
+                    const origNormal1 = triNormal(pos3(a1), pos3(b1), pos3(c1));
+                    const avgNormal: [number, number, number] = [
+                        origNormal0[0] + origNormal1[0],
+                        origNormal0[1] + origNormal1[1],
+                        origNormal0[2] + origNormal1[2]
+                    ];
+                    if (len3(avgNormal) < 1e-12) continue;
+
+                    let flipI0: number, flipI1: number, flipI2: number;
+                    let flipJ0: number, flipJ1: number, flipJ2: number;
+
+                    const newNA = triNormal(pShLo, pOpp0, pOpp1);
+                    const newNB = triNormal(pShHi, pOpp1, pOpp0);
+                    if (dot3(avgNormal, newNA) > 0 && dot3(avgNormal, newNB) > 0) {
+                        flipI0 = shLo; flipI1 = opp0; flipI2 = opp1;
+                        flipJ0 = shHi; flipJ1 = opp1; flipJ2 = opp0;
+                    } else {
+                        const altNA = triNormal(pShLo, pOpp1, pOpp0);
+                        const altNB = triNormal(pShHi, pOpp0, pOpp1);
+                        if (dot3(avgNormal, altNA) <= 0 || dot3(avgNormal, altNB) <= 0) continue;
+                        flipI0 = shLo; flipI1 = opp1; flipI2 = opp0;
+                        flipJ0 = shHi; flipJ1 = opp0; flipJ2 = opp1;
+                    }
+
+                    // Angle floor: flipped result must not have terrible min-angle
+                    const curMin = Math.min(minAngle3D(a0, b0, c0), minAngle3D(a1, b1, c1));
+                    const flipMin = Math.min(minAngle3D(flipI0, flipI1, flipI2), minAngle3D(flipJ0, flipJ1, flipJ2));
+                    if (flipMin < MIN_ANGLE_FLOOR && flipMin < curMin) continue;
+                    // Don't allow angle to degrade more than 0.01 rad (~0.57°) even for valence
+                    if (flipMin < curMin - 0.01) continue;
+
+                    // Aspect ratio guard
+                    const newAspect = Math.max(triAspect3D(flipI0, flipI1, flipI2), triAspect3D(flipJ0, flipJ1, flipJ2));
+                    const curAspect = Math.max(triAspect3D(a0, b0, c0), triAspect3D(a1, b1, c1));
+                    if (newAspect > 12.0 && newAspect > curAspect) continue;
+
+                    // Apply flip
+                    combinedIdxs[t0] = flipI0; combinedIdxs[t0 + 1] = flipI1; combinedIdxs[t0 + 2] = flipI2;
+                    combinedIdxs[t1] = flipJ0; combinedIdxs[t1 + 1] = flipJ1; combinedIdxs[t1 + 2] = flipJ2;
+                    applyValenceFlip(shLo, shHi, opp0, opp1);
+
+                    // Update adjacency
+                    const newEk = edgeKey(opp0, opp1);
+                    edgeToTris.delete(ek);
+                    edgeToTris.set(newEk, [t0, t1]);
+                    const ek1 = edgeKey(shHi, opp0);
+                    const adj1 = edgeToTris.get(ek1);
+                    if (adj1) { const idx = adj1.indexOf(t0); if (idx >= 0) adj1[idx] = t1; }
+                    const ek2 = edgeKey(opp1, shLo);
+                    const adj2 = edgeToTris.get(ek2);
+                    if (adj2) { const idx = adj2.indexOf(t1); if (idx >= 0) adj2[idx] = t0; }
+
+                    passFlips++;
+                }
+                phaseB_flips += passFlips;
+                if (passFlips === 0) break;
+            }
+
+            // ═══════════════════════════════════════════
+            // Phase C: Short-diagonal flips (Delaunay tie-breaker)
+            //
+            // On gentle features, both diagonal orientations produce nearly
+            // identical min-angles, so Phase A's 0.005 rad threshold blocks
+            // the flip. But the sweep's consistent `<=` tie-break creates
+            // a visible \\\\ bias in the diagonal pattern.
+            //
+            // Phase C uses the Delaunay criterion: when the angle difference
+            // is negligible (< MIN_ANGLE_IMPROVEMENT), flip to the SHORTER
+            // diagonal. The shorter diagonal produces more equilateral
+            // triangles, which is the optimal choice for near-planar quads.
+            //
+            // Safety: same guards as Phase A (row-span, edge-length, normal
+            // consistency, convexity), plus the angle must not degrade beyond
+            // a small tolerance (0.002 rad ≈ 0.11°).
+            // ═══════════════════════════════════════════
+            let phaseC_flips = 0;
+            {
+                const ANGLE_DEGRADE_TOLERANCE = 0.002; // Allow up to 0.11° angle loss for shorter diagonal
+                const edgeKeys3 = Array.from(edgeToTris.keys());
+
+                for (const ek of edgeKeys3) {
+                    const tris = edgeToTris.get(ek);
+                    if (!tris || tris.length !== 2) continue;
+                    if (constraintEdgeSet.has(ek)) continue;
+
+                    const t0 = tris[0], t1 = tris[1];
+                    const a0 = combinedIdxs[t0], b0 = combinedIdxs[t0 + 1], c0 = combinedIdxs[t0 + 2];
+                    const a1 = combinedIdxs[t1], b1 = combinedIdxs[t1 + 1], c1 = combinedIdxs[t1 + 2];
+
+                    const shLo = Number(ek / BigInt(0x100000));
+                    const shHi = Number(ek % BigInt(0x100000));
+
+                    const set0 = new Set([a0, b0, c0]);
+                    const set1 = new Set([a1, b1, c1]);
+                    if (!set0.has(shLo) || !set0.has(shHi) || !set1.has(shLo) || !set1.has(shHi)) continue;
+
+                    let opp0 = -1, opp1 = -1;
+                    for (const v of [a0, b0, c0]) { if (v !== shLo && v !== shHi) { opp0 = v; break; } }
+                    for (const v of [a1, b1, c1]) { if (v !== shLo && v !== shHi) { opp1 = v; break; } }
+                    if (opp0 < 0 || opp1 < 0 || opp0 === opp1) continue;
+
+                    // Don't create a constraint edge
+                    if (constraintEdgeSet.has(edgeKey(opp0, opp1))) continue;
+
+                    // Check if the alternative diagonal is actually shorter
+                    const pShLo = pos3(shLo), pOpp0 = pos3(opp0), pShHi = pos3(shHi), pOpp1 = pos3(opp1);
+                    const curDiag2 = dist3sq(pShLo, pShHi);
+                    const altDiag2 = dist3sq(pOpp0, pOpp1);
+                    // Only flip if alternative diagonal is at least 5% shorter
+                    // (avoid churn on nearly-equal diagonals)
+                    if (altDiag2 >= curDiag2 * 0.9025) continue; // 0.95² = 0.9025
+
+                    if (!isConvexQuad3D(shLo, opp0, shHi, opp1)) continue;
+
+                    // Row-span guard (same as Phase A)
+                    {
+                        const t_shLo = vtxT(shLo), t_shHi = vtxT(shHi);
+                        const t_opp0 = vtxT(opp0), t_opp1 = vtxT(opp1);
+                        const allT_arr = [t_shLo, t_shHi, t_opp0, t_opp1];
+                        const origTExtent = Math.max(...allT_arr) - Math.min(...allT_arr);
+                        const newTriATSpan = Math.max(t_shLo, t_opp0, t_opp1) - Math.min(t_shLo, t_opp0, t_opp1);
+                        const newTriBTSpan = Math.max(t_shHi, t_opp0, t_opp1) - Math.min(t_shHi, t_opp0, t_opp1);
+                        const maxNewTSpan = Math.max(newTriATSpan, newTriBTSpan);
+                        const tSpanLimit = Math.min(origTExtent * 1.1 + maxSingleRowTSpan * 0.1, maxSingleRowTSpan * 2.0);
+                        if (maxNewTSpan > tSpanLimit) continue;
+                    }
+
+                    // Edge length guard
+                    {
+                        const maxPerim2 = Math.max(
+                            dist3sq(pShLo, pOpp0), dist3sq(pOpp0, pShHi),
+                            dist3sq(pShHi, pOpp1), dist3sq(pOpp1, pShLo)
+                        );
+                        if (altDiag2 > maxPerim2 * 4.0) continue;
+                    }
+
+                    // Angle quality: the flip must not degrade min-angle too much
+                    const curMin = Math.min(minAngle3D(a0, b0, c0), minAngle3D(a1, b1, c1));
+
+                    // Normal consistency
+                    const origNormal0 = triNormal(pos3(a0), pos3(b0), pos3(c0));
+                    const origNormal1 = triNormal(pos3(a1), pos3(b1), pos3(c1));
+                    const avgNormal: [number, number, number] = [
+                        origNormal0[0] + origNormal1[0],
+                        origNormal0[1] + origNormal1[1],
+                        origNormal0[2] + origNormal1[2]
+                    ];
+                    if (len3(avgNormal) < 1e-12) continue;
+
+                    let flipI0: number, flipI1: number, flipI2: number;
+                    let flipJ0: number, flipJ1: number, flipJ2: number;
+
+                    const newNA = triNormal(pShLo, pOpp0, pOpp1);
+                    const newNB = triNormal(pShHi, pOpp1, pOpp0);
+                    if (dot3(avgNormal, newNA) > 0 && dot3(avgNormal, newNB) > 0) {
+                        flipI0 = shLo; flipI1 = opp0; flipI2 = opp1;
+                        flipJ0 = shHi; flipJ1 = opp1; flipJ2 = opp0;
+                    } else {
+                        const altNA = triNormal(pShLo, pOpp1, pOpp0);
+                        const altNB = triNormal(pShHi, pOpp0, pOpp1);
+                        if (dot3(avgNormal, altNA) <= 0 || dot3(avgNormal, altNB) <= 0) continue;
+                        flipI0 = shLo; flipI1 = opp1; flipI2 = opp0;
+                        flipJ0 = shHi; flipJ1 = opp0; flipJ2 = opp1;
+                    }
+
+                    const flipMin = Math.min(minAngle3D(flipI0, flipI1, flipI2), minAngle3D(flipJ0, flipJ1, flipJ2));
+                    // Allow small angle degradation for shorter diagonal
+                    if (flipMin < curMin - ANGLE_DEGRADE_TOLERANCE) continue;
+                    // Never create very bad triangles
+                    if (flipMin < MIN_ANGLE_FLOOR) continue;
+
+                    // Aspect ratio guard
+                    const newAspect = Math.max(triAspect3D(flipI0, flipI1, flipI2), triAspect3D(flipJ0, flipJ1, flipJ2));
+                    if (newAspect > 12.0) continue;
+
+                    // Apply flip
+                    combinedIdxs[t0] = flipI0; combinedIdxs[t0 + 1] = flipI1; combinedIdxs[t0 + 2] = flipI2;
+                    combinedIdxs[t1] = flipJ0; combinedIdxs[t1 + 1] = flipJ1; combinedIdxs[t1 + 2] = flipJ2;
+                    applyValenceFlip(shLo, shHi, opp0, opp1);
+
+                    const newEk = edgeKey(opp0, opp1);
+                    edgeToTris.delete(ek);
+                    edgeToTris.set(newEk, [t0, t1]);
+
+                    // Update perimeter adjacency
+                    for (const perimEk of [edgeKey(shHi, opp0), edgeKey(opp1, shLo)]) {
+                        const perimTris = edgeToTris.get(perimEk);
+                        if (perimTris) {
+                            const idx0 = perimTris.indexOf(t0);
+                            const idx1 = perimTris.indexOf(t1);
+                            if (idx0 >= 0) perimTris[idx0] = t1;
+                            if (idx1 >= 0) perimTris[idx1] = t0;
+                        }
+                    }
+
+                    phaseC_flips++;
+                }
+            }
+
+            const csFlipMs = performance.now() - csFlipStart;
+            console.log(`[ParametricExport]   v16.31 chain-strip 3D edge flip: ${totalCSFlips}+${phaseB_flips}+${phaseC_flips} flips (angle+valence+shortDiag) on ${chainStripTriSet.size} chain-strip tris (${csFlipMs.toFixed(1)}ms)`);
+            console.log(`[ParametricExport]     rejects: rowSpan=${csRowSpanRejects}, edgeLen=${csEdgeLenRejects}, aspect=${csAspectRejects}, valenceBonus=${csValenceBonus}`);
+            // Log valence stats after flipping
+            {
+                let lo = 0, hi = 0, ideal = 0;
+                for (const [, v] of csValence) {
+                    if (v < 5) lo++;
+                    else if (v > 7) hi++;
+                    else if (v === 6) ideal++;
+                }
+                console.log(`[ParametricExport]     valence after:  ${csValence.size} verts, ${lo} low(<5), ${ideal} ideal(6), ${hi} high(>7)`);
+            }
+
+            // ═══════════════════════════════════════════
+            // v16.34: Boundary diagonal optimization
+            //
+            // Standard cells adjacent to chain strips have their diagonal
+            // chosen by chainDirectedFlip (UV-based chain direction) and
+            // potentially locked against flipEdges3D. But this UV-based
+            // choice doesn't consider the 3D geometry at the boundary.
+            //
+            // This pass examines each standard cell bordering a chain strip,
+            // tries both diagonal options (AD and BC), and picks the one that
+            // minimizes the dihedral angle at the boundary edge with the
+            // adjacent chain-strip triangle.
+            //
+            // Unlike the failed v16.33 boundary reconciliation (which flipped
+            // boundary EDGES across cell boundaries), this pass only changes
+            // the INTERNAL DIAGONAL of standard cells — a safe operation that
+            // rearranges two triangles within one cell.
+            // ═══════════════════════════════════════════
+            {
+                const bndDiagStart = performance.now();
+                const cellsPerRow = outerW - 1;
+
+                // Build edge→tri adjacency for all outer wall tris
+                const bdEdge2Tri = new Map<bigint, number[]>();
+                const bdEK = (a: number, b: number): bigint => {
+                    const lo = a < b ? a : b;
+                    const hi = a < b ? b : a;
+                    return BigInt(lo) * BigInt(0x100000) + BigInt(hi);
+                };
+                for (let t = 0; t < outerIdxCount; t += 3) {
+                    const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+                    if (a === b || b === c || a === c) continue;
+                    for (const ek of [bdEK(a, b), bdEK(b, c), bdEK(c, a)]) {
+                        let arr = bdEdge2Tri.get(ek);
+                        if (!arr) { arr = []; bdEdge2Tri.set(ek, arr); }
+                        arr.push(t);
+                    }
+                }
+
+                // 3D normal of a triangle (unnormalized)
+                const bdNorm = (v0: number, v1: number, v2: number): [number, number, number] => {
+                    const ax = resultData[v1 * 3] - resultData[v0 * 3];
+                    const ay = resultData[v1 * 3 + 1] - resultData[v0 * 3 + 1];
+                    const az = resultData[v1 * 3 + 2] - resultData[v0 * 3 + 2];
+                    const bx = resultData[v2 * 3] - resultData[v0 * 3];
+                    const by = resultData[v2 * 3 + 1] - resultData[v0 * 3 + 1];
+                    const bz = resultData[v2 * 3 + 2] - resultData[v0 * 3 + 2];
+                    return [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx];
+                };
+                const bdDotN = (a: [number, number, number], b: [number, number, number]): number => {
+                    const la = Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+                    const lb = Math.sqrt(b[0] * b[0] + b[1] * b[1] + b[2] * b[2]);
+                    if (la < 1e-12 || lb < 1e-12) return 1; // degenerate → treat as smooth
+                    return (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (la * lb);
+                };
+
+                let bdFlips = 0;
+                let bdChecked = 0;
+
+                for (let j = 0; j < outerH - 1; j++) {
+                    for (let col = 0; col < cellsPerRow; col++) {
+                        const qIdx = j * cellsPerRow + col;
+                        const triBase = outerQuadMap![qIdx];
+                        if (triBase < 0) continue; // chain-strip cell, skip
+
+                        // Cell vertices
+                        const vBL = j * outerW + col;
+                        const vBR = j * outerW + col + 1;
+                        const vTL = (j + 1) * outerW + col;
+                        const vTR = (j + 1) * outerW + col + 1;
+
+                        // Check boundary edges: right edge (vBR→vTR) and left edge (vBL→vTL)
+                        // A boundary edge is one shared with a chain-strip tri
+                        const checkEdge = (v0: number, v1: number): number => {
+                            // Returns the chain-strip tri offset, or -1 if not a boundary edge
+                            const ek = bdEK(v0, v1);
+                            const tris = bdEdge2Tri.get(ek);
+                            if (!tris || tris.length !== 2) return -1;
+                            for (const t of tris) {
+                                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+                                if (a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount) {
+                                    return t; // this is a chain-strip tri
+                                }
+                            }
+                            return -1;
+                        };
+
+                        const csTriRight = checkEdge(vBR, vTR);
+                        const csTriLeft = checkEdge(vBL, vTL);
+                        if (csTriRight < 0 && csTriLeft < 0) continue; // no boundary
+
+                        bdChecked++;
+
+                        // Compute boundary dihedral for BOTH diagonal options
+                        // AD diagonal: tri0 = (vBL, vBR, vTR), tri1 = (vBL, vTR, vTL)
+                        //   - Right boundary (vBR→vTR) is in tri0, normal from (vBL, vBR, vTR)
+                        //   - Left boundary (vBL→vTL) is in tri1, normal from (vBL, vTR, vTL)
+                        // BC diagonal: tri0 = (vBL, vBR, vTL), tri1 = (vBR, vTR, vTL)
+                        //   - Right boundary (vBR→vTR) is in tri1, normal from (vBR, vTR, vTL)
+                        //   - Left boundary (vBL→vTL) is in tri0, normal from (vBL, vBR, vTL)
+
+                        let adScore = 0; // sum of dihedral dots (higher = smoother)
+                        let bcScore = 0;
+                        let edgeCount = 0;
+
+                        if (csTriRight >= 0) {
+                            const ca = combinedIdxs[csTriRight], cb = combinedIdxs[csTriRight + 1], cc = combinedIdxs[csTriRight + 2];
+                            const csNorm = bdNorm(ca, cb, cc);
+                            // AD: boundary tri = (vBL, vBR, vTR)
+                            adScore += bdDotN(bdNorm(vBL, vBR, vTR), csNorm);
+                            // BC: boundary tri = (vBR, vTR, vTL)
+                            bcScore += bdDotN(bdNorm(vBR, vTR, vTL), csNorm);
+                            edgeCount++;
+                        }
+                        if (csTriLeft >= 0) {
+                            const ca = combinedIdxs[csTriLeft], cb = combinedIdxs[csTriLeft + 1], cc = combinedIdxs[csTriLeft + 2];
+                            const csNorm = bdNorm(ca, cb, cc);
+                            // AD: boundary tri = (vBL, vTR, vTL)
+                            adScore += bdDotN(bdNorm(vBL, vTR, vTL), csNorm);
+                            // BC: boundary tri = (vBL, vBR, vTL)
+                            bcScore += bdDotN(bdNorm(vBL, vBR, vTL), csNorm);
+                            edgeCount++;
+                        }
+
+                        if (edgeCount === 0) continue;
+
+                        // Determine current diagonal from index buffer
+                        const curI0 = combinedIdxs[triBase], curI1 = combinedIdxs[triBase + 1], curI2 = combinedIdxs[triBase + 2];
+                        const curIsAD = (curI0 === vTR || curI1 === vTR || curI2 === vTR);
+                        const curScore = curIsAD ? adScore : bcScore;
+                        const altScore = curIsAD ? bcScore : adScore;
+
+                        // Only flip if alternative is meaningfully better
+                        if (altScore <= curScore + 0.001) continue;
+
+                        // Apply the flip (override chainDirectedFlip's choice)
+                        if (curIsAD) {
+                            // Currently AD, switch to BC
+                            combinedIdxs[triBase + 0] = vBL;
+                            combinedIdxs[triBase + 1] = vBR;
+                            combinedIdxs[triBase + 2] = vTL;
+                            combinedIdxs[triBase + 3] = vBR;
+                            combinedIdxs[triBase + 4] = vTR;
+                            combinedIdxs[triBase + 5] = vTL;
+                        } else {
+                            // Currently BC, switch to AD
+                            combinedIdxs[triBase + 0] = vBL;
+                            combinedIdxs[triBase + 1] = vBR;
+                            combinedIdxs[triBase + 2] = vTR;
+                            combinedIdxs[triBase + 3] = vBL;
+                            combinedIdxs[triBase + 4] = vTR;
+                            combinedIdxs[triBase + 5] = vTL;
+                        }
+                        bdFlips++;
+                    }
+                }
+
+                const bndDiagMs = performance.now() - bndDiagStart;
+                console.log(`[ParametricExport]   v16.34 boundary diagonal optimization: ${bdFlips} cell diag flips on ${bdChecked} boundary cells (${bndDiagMs.toFixed(1)}ms)`);
+            }
+
+            // ═══════════════════════════════════════════
+            // v16.29: Chain-strip midpoint subdivision
+            //
+            // After flipping, chain-strip triangles can still be stretched
+            // because a chain vertex sits inside a grid cell, far from the
+            // cell's corners. Instead of trying to fix topology, ADD more
+            // vertices at the midpoints of long edges, splitting stretched
+            // triangles into well-shaped smaller ones.
+            //
+            // For each non-constraint interior edge shared by two chain-strip
+            // triangles: if the 3D edge length exceeds a threshold (based on
+            // the average grid edge length), insert a midpoint vertex and
+            // split both adjacent triangles.
+            //
+            // The midpoint's 3D position is linearly interpolated from the
+            // two endpoints. At this mesh resolution (~0.5mm spacing), linear
+            // interpolation on a smooth parametric surface introduces < 0.01mm
+            // error — well below 3D printing tolerance.
+            //
+            // Each split turns 2 triangles into 4:
+            //   Before: tri0=(A,B,C), tri1=(B,D,C)  [shared edge B↔C]
+            //   After:  tri0=(A,B,M), tri0b=(A,M,C), tri1=(B,D,M), tri1b=(M,D,C)
+            //   where M = midpoint of B↔C
+            // ═══════════════════════════════════════════
+            const subdivStart = performance.now();
+
+            // Compute average grid edge length (from first few hundred grid edges)
+            // to set the subdivision threshold.
+            let gridEdgeLenSum = 0;
+            let gridEdgeCount = 0;
+            {
+                const sampleRows = Math.min(10, outerH - 1);
+                for (let j = 0; j < sampleRows; j++) {
+                    for (let i = 0; i < outerW - 1 && i < 50; i++) {
+                        const v0 = j * outerW + i;
+                        const v1 = j * outerW + i + 1;
+                        const dx = resultData[v0 * 3] - resultData[v1 * 3];
+                        const dy = resultData[v0 * 3 + 1] - resultData[v1 * 3 + 1];
+                        const dz = resultData[v0 * 3 + 2] - resultData[v1 * 3 + 2];
+                        gridEdgeLenSum += Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        gridEdgeCount++;
+                    }
+                }
+            }
+            const avgGridEdge = gridEdgeCount > 0 ? gridEdgeLenSum / gridEdgeCount : 1.0;
+            // Subdivide edges longer than 1.8× average grid edge
+            const subdivThreshold2 = (avgGridEdge * 1.8) ** 2;
+
+            // Re-identify chain-strip triangles (indices may have changed from flips)
+            const csTriSetNow = new Set<number>();
+            for (let t = 0; t < allIdxArrays[0].length; t += 3) {
+                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+                if (a === b || b === c || a === c) continue;
+                if (a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount) {
+                    csTriSetNow.add(t);
+                }
+            }
+
+            // Build edge→triangle adjacency for chain-strip tris AND their
+            // boundary neighbors. Previously, only chain-strip tris were indexed,
+            // so boundary edges (shared between a chain-strip tri and a standard-
+            // grid tri) had only 1 entry and were skipped by the `tris.length !== 2`
+            // filter. This left the worst stretched triangles unsubdivided.
+            //
+            // v17.0: Also index standard-grid tris that share an edge with any
+            // chain-strip tri. This allows boundary edges to be split.
+            const subEdgeToTris = new Map<bigint, number[]>();
+            const subEdgeKey = (a: number, b: number): bigint => {
+                const lo = a < b ? a : b;
+                const hi = a < b ? b : a;
+                return BigInt(lo) * BigInt(0x100000) + BigInt(hi);
+            };
+
+            // First pass: index chain-strip tris
+            const csEdgeSet = new Set<bigint>();
+            for (const t of csTriSetNow) {
+                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+                for (const ek of [subEdgeKey(a, b), subEdgeKey(b, c), subEdgeKey(c, a)]) {
+                    if (!subEdgeToTris.has(ek)) subEdgeToTris.set(ek, []);
+                    subEdgeToTris.get(ek)!.push(t);
+                    csEdgeSet.add(ek);
+                }
+            }
+
+            // Second pass: index standard-grid tris that share edges with chain-strip tris
+            let boundaryTrisAdded = 0;
+            for (let t = 0; t < outerIdxCount; t += 3) {
+                if (csTriSetNow.has(t)) continue; // already indexed
+                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+                if (a === b || b === c || a === c) continue;
+                // Check if any edge is shared with a chain-strip tri
+                let isBoundary = false;
+                for (const ek of [subEdgeKey(a, b), subEdgeKey(b, c), subEdgeKey(c, a)]) {
+                    if (csEdgeSet.has(ek)) { isBoundary = true; break; }
+                }
+                if (isBoundary) {
+                    for (const ek of [subEdgeKey(a, b), subEdgeKey(b, c), subEdgeKey(c, a)]) {
+                        if (!subEdgeToTris.has(ek)) subEdgeToTris.set(ek, []);
+                        subEdgeToTris.get(ek)!.push(t);
+                    }
+                    boundaryTrisAdded++;
+                }
+            }
+
+            // Collect edges to split: interior, non-constraint, long edges
+            interface SplitEdge {
+                ek: bigint;
+                v0: number;
+                v1: number;
+                len2: number;
+                tris: number[]; // the 2 tri offsets
+            }
+            const edgesToSplit: SplitEdge[] = [];
+            const edgesScheduled = new Set<bigint>();
+
+            // v17.0: Use a more aggressive threshold for boundary edges
+            // (edges where one tri is chain-strip and the other is standard-grid).
+            // These are the edges that create the visible "serrated ridge" artifact.
+            const boundarySubdivThreshold2 = (avgGridEdge * 1.2) ** 2;
+
+            for (const [ek, tris] of subEdgeToTris) {
+                if (tris.length !== 2) continue; // true boundary (mesh edge) or non-manifold
+                if (constraintEdgeSet.has(ek)) continue; // never split chain edges
+
+                const v0 = Number(ek / BigInt(0x100000));
+                const v1 = Number(ek % BigInt(0x100000));
+
+                const dx = resultData[v0 * 3] - resultData[v1 * 3];
+                const dy = resultData[v0 * 3 + 1] - resultData[v1 * 3 + 1];
+                const dz = resultData[v0 * 3 + 2] - resultData[v1 * 3 + 2];
+                const len2 = dx * dx + dy * dy + dz * dz;
+
+                // Use tighter threshold for boundary edges (one chain-strip + one standard tri)
+                const isBoundaryEdge = (csTriSetNow.has(tris[0]) !== csTriSetNow.has(tris[1]));
+                const threshold = isBoundaryEdge ? boundarySubdivThreshold2 : subdivThreshold2;
+
+                if (len2 > threshold) {
+                    edgesToSplit.push({ ek, v0, v1, len2, tris: [tris[0], tris[1]] });
+                    edgesScheduled.add(ek);
+                }
+            }
+
+            // Sort by length descending — split longest edges first
+            edgesToSplit.sort((a, b) => b.len2 - a.len2);
+
+            // Apply splits. We need to grow the vertex and index arrays.
+            // Strategy: collect all new vertices and new triangles, then
+            // rebuild the arrays at the end.
+            //
+            // For each split edge (shared by tri0 and tri1):
+            //   tri0 has vertices containing v0 and v1 plus opp0
+            //   tri1 has vertices containing v0 and v1 plus opp1
+            //   Insert M = midpoint(v0, v1)
+            //   Replace: tri0 → (opp0, v0, M), new tri → (opp0, M, v1)
+            //            tri1 → (opp1, v1, M), new tri → (opp1, M, v0)
+
+            // ═══════════════════════════════════════════
+            // v18.0: GPU-surface subdivision.
+            //
+            // Root cause of v17.0 oscillation: midpoints were the 3D chord
+            // midpoint (average of two XYZ surface points). On a curved surface,
+            // this chord lies INSIDE the surface, producing a "divot" vertex.
+            // The normal at the divot points inward; adjacent triangles point
+            // outward → alternating inward/outward normals = slicer oscillations.
+            //
+            // Fix: compute midpoints in UV (parametric) space, then GPU-evaluate
+            // them to get exact on-surface 3D positions. A UV midpoint evaluates
+            // to a point ON the mathematical surface, not on the chord.
+            //
+            // Phase A: Determine which splits apply (respecting modifiedTris).
+            // Phase B: Batch GPU-evaluate UV midpoints → exact on-surface XYZ.
+            // Phase C: Apply splits using GPU-evaluated positions.
+            // ═══════════════════════════════════════════
+
+            // Phase A: Collect splits to apply (dry run — no index modifications)
+            const splitsToApply: Array<{ se: SplitEdge; opp0: number; opp1: number }> = [];
+            const modifiedTris = new Set<number>();
+            const maxSplits = Math.floor((csTriSetNow.size + boundaryTrisAdded) * 0.5);
+
+            for (const se of edgesToSplit) {
+                if (splitsToApply.length >= maxSplits) break;
+                if (modifiedTris.has(se.tris[0]) || modifiedTris.has(se.tris[1])) continue;
+
+                const t0off = se.tris[0], t1off = se.tris[1];
+                const a0 = combinedIdxs[t0off], b0 = combinedIdxs[t0off + 1], c0 = combinedIdxs[t0off + 2];
+                const a1 = combinedIdxs[t1off], b1 = combinedIdxs[t1off + 1], c1 = combinedIdxs[t1off + 2];
+
+                let opp0 = -1;
+                for (const v of [a0, b0, c0]) { if (v !== se.v0 && v !== se.v1) { opp0 = v; break; } }
+                let opp1 = -1;
+                for (const v of [a1, b1, c1]) { if (v !== se.v0 && v !== se.v1) { opp1 = v; break; } }
+                if (opp0 < 0 || opp1 < 0) continue;
+
+                splitsToApply.push({ se, opp0, opp1 });
+                modifiedTris.add(t0off);
+                modifiedTris.add(t1off);
+            }
+
+            // Phase B + C: GPU-evaluate UV midpoints, then apply splits
+            let finalResultData = resultData;
+            let finalCombinedIdxs = combinedIdxs;
+
+            if (splitsToApply.length > 0) {
+                // Build UV batch: [u_mid, t_mid, surfaceId] per split
+                const midUVBatch = new Float32Array(splitsToApply.length * 3);
+                for (let i = 0; i < splitsToApply.length; i++) {
+                    const { se } = splitsToApply[i];
+                    // Average UV coordinates — evaluates to exact on-surface position
+                    midUVBatch[i * 3] = (combinedVerts[se.v0 * 3] + combinedVerts[se.v1 * 3]) * 0.5;
+                    midUVBatch[i * 3 + 1] = (combinedVerts[se.v0 * 3 + 1] + combinedVerts[se.v1 * 3 + 1]) * 0.5;
+                    midUVBatch[i * 3 + 2] = combinedVerts[se.v0 * 3 + 2]; // surfaceId (same for both endpoints)
+                }
+
+                // GPU evaluate: UV midpoints → exact 3D surface positions
+                const mid3D = await this.evaluatePoints(
+                    midUVBatch, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                    false, 0
+                );
+
+                // Phase C: Apply splits with GPU-evaluated on-surface midpoints
+                const newVerts: number[] = [];
+                const newTris: number[] = [];
+                let nextNewIdx = resultData.length / 3;
+
+                for (let i = 0; i < splitsToApply.length; i++) {
+                    const { se, opp0, opp1 } = splitsToApply[i];
+                    const t0off = se.tris[0], t1off = se.tris[1];
+
+                    const midIdx = nextNewIdx++;
+                    newVerts.push(mid3D[i * 3], mid3D[i * 3 + 1], mid3D[i * 3 + 2]);
+
+                    // Replace tri0: (opp0, v0, M)
+                    combinedIdxs[t0off] = opp0;
+                    combinedIdxs[t0off + 1] = se.v0;
+                    combinedIdxs[t0off + 2] = midIdx;
+                    // New tri: (opp0, M, v1)
+                    newTris.push(opp0, midIdx, se.v1);
+
+                    // Replace tri1: (opp1, v1, M)
+                    combinedIdxs[t1off] = opp1;
+                    combinedIdxs[t1off + 1] = se.v1;
+                    combinedIdxs[t1off + 2] = midIdx;
+                    // New tri: (opp1, M, v0)
+                    newTris.push(opp1, midIdx, se.v0);
+                }
+
+                // Grow vertex array
+                const newResultData = new Float32Array(resultData.length + newVerts.length);
+                newResultData.set(resultData);
+                for (let i = 0; i < newVerts.length; i++) {
+                    newResultData[resultData.length + i] = newVerts[i];
+                }
+                finalResultData = newResultData;
+
+                // Grow index array
+                const newCombinedIdxs = new Uint32Array(combinedIdxs.length + newTris.length);
+                newCombinedIdxs.set(combinedIdxs);
+                for (let i = 0; i < newTris.length; i++) {
+                    newCombinedIdxs[combinedIdxs.length + i] = newTris[i];
+                }
+                finalCombinedIdxs = newCombinedIdxs;
+            }
+
+            const splitCount = splitsToApply.length;
+            const subdivMs = performance.now() - subdivStart;
+            console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris (${subdivMs.toFixed(1)}ms)`);
+            console.log(`[ParametricExport]     avg grid edge: ${avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivThreshold2).toFixed(3)}mm, boundary threshold: ${Math.sqrt(boundarySubdivThreshold2).toFixed(3)}mm, candidates: ${edgesToSplit.length}, boundary neighbor tris: ${boundaryTrisAdded}`);
+
+            // ═══════════════════════════════════════════
+            // v16.33 REVERTED — boundary edge flipping made artifacts worse.
+            // Flipping edges at chain-strip/standard boundary on a curved
+            // surface near ridges creates triangles that overshoot the ridge.
+            // The dihedral criterion tries to flatten the surface, but ridges
+            // are SUPPOSED to be non-flat. 3023 flips → visible protrusions.
+            //
+            // Boundary diagnostic: count boundary edges + dihedral stats
+            // without modifying any geometry.
+            // ═══════════════════════════════════════════
+            {
+                const bndEdgeKey2 = (a: number, b: number): bigint => {
+                    const lo = a < b ? a : b;
+                    const hi = a < b ? b : a;
+                    return BigInt(lo) * BigInt(0x100000) + BigInt(hi);
+                };
+                // Build edge→tri for outer wall
+                const bndE2T = new Map<bigint, number[]>();
+                for (let t = 0; t < outerIdxCount; t += 3) {
+                    const a = finalCombinedIdxs[t], b = finalCombinedIdxs[t + 1], c = finalCombinedIdxs[t + 2];
+                    if (a === b || b === c || a === c) continue;
+                    for (const ek of [bndEdgeKey2(a, b), bndEdgeKey2(b, c), bndEdgeKey2(c, a)]) {
+                        let arr = bndE2T.get(ek);
+                        if (!arr) { arr = []; bndE2T.set(ek, arr); }
+                        arr.push(t);
+                    }
+                }
+                let bndEdgeCount = 0;
+                let dihedralSum = 0, dihedralMin = 2, dihedralMax = -2;
+                for (const [, tris] of bndE2T) {
+                    if (tris.length !== 2) continue;
+                    const [t0, t1] = tris;
+                    const a0 = finalCombinedIdxs[t0], b0 = finalCombinedIdxs[t0 + 1], c0 = finalCombinedIdxs[t0 + 2];
+                    const a1 = finalCombinedIdxs[t1], b1 = finalCombinedIdxs[t1 + 1], c1 = finalCombinedIdxs[t1 + 2];
+                    const cs0 = a0 >= outerGridVertexCount || b0 >= outerGridVertexCount || c0 >= outerGridVertexCount;
+                    const cs1 = a1 >= outerGridVertexCount || b1 >= outerGridVertexCount || c1 >= outerGridVertexCount;
+                    if (cs0 === cs1) continue; // not a boundary edge
+                    bndEdgeCount++;
+                    // Compute dihedral (dot of triangle normals)
+                    const px = (v: number) => finalResultData[v * 3];
+                    const py = (v: number) => finalResultData[v * 3 + 1];
+                    const pz = (v: number) => finalResultData[v * 3 + 2];
+                    const nx0 = (py(b0) - py(a0)) * (pz(c0) - pz(a0)) - (pz(b0) - pz(a0)) * (py(c0) - py(a0));
+                    const ny0 = (pz(b0) - pz(a0)) * (px(c0) - px(a0)) - (px(b0) - px(a0)) * (pz(c0) - pz(a0));
+                    const nz0 = (px(b0) - px(a0)) * (py(c0) - py(a0)) - (py(b0) - py(a0)) * (px(c0) - px(a0));
+                    const nx1 = (py(b1) - py(a1)) * (pz(c1) - pz(a1)) - (pz(b1) - pz(a1)) * (py(c1) - py(a1));
+                    const ny1 = (pz(b1) - pz(a1)) * (px(c1) - px(a1)) - (px(b1) - px(a1)) * (pz(c1) - pz(a1));
+                    const nz1 = (px(b1) - px(a1)) * (py(c1) - py(a1)) - (py(b1) - py(a1)) * (px(c1) - px(a1));
+                    const len0 = Math.sqrt(nx0 * nx0 + ny0 * ny0 + nz0 * nz0);
+                    const len1 = Math.sqrt(nx1 * nx1 + ny1 * ny1 + nz1 * nz1);
+                    if (len0 > 1e-10 && len1 > 1e-10) {
+                        const d = (nx0 * nx1 + ny0 * ny1 + nz0 * nz1) / (len0 * len1);
+                        dihedralSum += d;
+                        if (d < dihedralMin) dihedralMin = d;
+                        if (d > dihedralMax) dihedralMax = d;
+                    }
+                }
+                const dihedralAvg = bndEdgeCount > 0 ? dihedralSum / bndEdgeCount : 0;
+                console.log(`[ParametricExport]   v16.33 boundary diagnostic: ${bndEdgeCount} boundary edges`);
+                console.log(`[ParametricExport]     dihedral dot(n0,n1): avg=${dihedralAvg.toFixed(4)}, min=${dihedralMin.toFixed(4)}, max=${dihedralMax.toFixed(4)}`);
+            }
+
+            // v16.31: Diagnostic — count cross-row tris and aspect ratios
+            {
+                const origVertCount = vertexCount; // grid + chain verts (before subdivision)
+                let crossRow1 = 0, crossRow2 = 0, crossRow3plus = 0;
+                let aspectOver5 = 0, aspectOver10 = 0, aspectOver20 = 0;
+                let val3 = 0, val4 = 0, val5 = 0;
+                // Rebuild valence for final mesh
+                const finalVal = new Map<number, number>();
+                for (let t = 0; t < finalCombinedIdxs.length; t += 3) {
+                    const a = finalCombinedIdxs[t], b = finalCombinedIdxs[t + 1], c = finalCombinedIdxs[t + 2];
+                    if (a === b || b === c || a === c) continue;
+                    // Only count outer wall tris (first surface)
+                    if (t >= allIdxArrays[0].length + (finalCombinedIdxs.length - combinedIdxs.length)) continue;
+                    finalVal.set(a, (finalVal.get(a) || 0) + 1);
+                    finalVal.set(b, (finalVal.get(b) || 0) + 1);
+                    finalVal.set(c, (finalVal.get(c) || 0) + 1);
+                    // T-span check: use combinedVerts for grid+chain verts, midpoint for subdiv verts
+                    const tOf = (v: number): number => {
+                        if (v < origVertCount) return combinedVerts[v * 3 + 1];
+                        // Subdivision vertex: approximate from 3D Y if available
+                        return NaN;
+                    };
+                    const tA = tOf(a), tB = tOf(b), tC = tOf(c);
+                    const validTs: number[] = [];
+                    if (!isNaN(tA)) validTs.push(tA);
+                    if (!isNaN(tB)) validTs.push(tB);
+                    if (!isNaN(tC)) validTs.push(tC);
+                    if (validTs.length >= 2) {
+                        const tSpan = Math.max(...validTs) - Math.min(...validTs);
+                        const rowBands = tSpan / maxSingleRowTSpan;
+                        if (rowBands > 1.5 && rowBands <= 2.5) crossRow1++;
+                        else if (rowBands > 2.5 && rowBands <= 3.5) crossRow2++;
+                        else if (rowBands > 3.5) crossRow3plus++;
+                    }
+                    // Aspect ratio check (3D)
+                    const px = (v: number) => finalResultData[v * 3];
+                    const py = (v: number) => finalResultData[v * 3 + 1];
+                    const pz = (v: number) => finalResultData[v * 3 + 2];
+                    const e1 = Math.sqrt((px(b) - px(a)) ** 2 + (py(b) - py(a)) ** 2 + (pz(b) - pz(a)) ** 2);
+                    const e2 = Math.sqrt((px(c) - px(b)) ** 2 + (py(c) - py(b)) ** 2 + (pz(c) - pz(b)) ** 2);
+                    const e3 = Math.sqrt((px(a) - px(c)) ** 2 + (py(a) - py(c)) ** 2 + (pz(a) - pz(c)) ** 2);
+                    const maxE = Math.max(e1, e2, e3);
+                    const s = (e1 + e2 + e3) / 2;
+                    const area = Math.sqrt(Math.max(0, s * (s - e1) * (s - e2) * (s - e3)));
+                    const aspect = area > 1e-10 ? (maxE * maxE) / (4 * area * 1.7320508) : 999;
+                    if (aspect > 5) aspectOver5++;
+                    if (aspect > 10) aspectOver10++;
+                    if (aspect > 20) aspectOver20++;
+                }
+                for (const [, v] of finalVal) {
+                    if (v === 3) val3++;
+                    else if (v === 4) val4++;
+                    else if (v === 5) val5++;
+                }
+                console.log(`[ParametricExport]   v16.31 diagnostics:`);
+                console.log(`[ParametricExport]     cross-row tris: 2-row=${crossRow1}, 3-row=${crossRow2}, 4+row=${crossRow3plus}`);
+                console.log(`[ParametricExport]     aspect ratios: >5=${aspectOver5}, >10=${aspectOver10}, >20=${aspectOver20}`);
+                console.log(`[ParametricExport]     low valence: val=3: ${val3}, val=4: ${val4}, val=5: ${val5} (outer wall only)`);
+            }
+            // It was incorrectly detecting normal chain-strip triangles as
+            // "cross-row" (141K false positives) due to the getT() returning
+            // NaN for new subdivision vertices. The repair inflated the mesh
+            // from 508K to 2.3M triangles. The real fix for diagonal
+            // directionality is the alternating sweep in sweepRegion().
+
+            const finalVertexCount = finalResultData.length / 3;
+            const finalTriangleCount = finalCombinedIdxs.length / 3;
 
             // NaN guard
             let nanCount = 0;
-            for (let i = 0; i < resultData.length; i++) {
-                if (!Number.isFinite(resultData[i])) {
-                    resultData[i] = 0;
+            for (let i = 0; i < finalResultData.length; i++) {
+                if (!Number.isFinite(finalResultData[i])) {
+                    finalResultData[i] = 0;
                     nanCount++;
                 }
             }
@@ -5240,8 +6468,8 @@ export class ParametricExportComputer {
 
             return {
                 mesh: {
-                    vertices: resultData,
-                    indices: finalIndices,
+                    vertices: finalResultData,
+                    indices: finalCombinedIdxs,
                     vertexCount: finalVertexCount,
                     triangleCount: finalTriangleCount,
                 },
