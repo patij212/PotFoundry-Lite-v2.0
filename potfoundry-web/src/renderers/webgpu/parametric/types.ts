@@ -7,6 +7,48 @@
 import type { MeshData, PotDimensions, StyleOptions, StyleId } from '../../../geometry/types';
 
 // ============================================================================
+// Quality Profiles & Tolerances
+// ============================================================================
+
+/** Quality profile names (ordered lowest → highest fidelity). */
+export type QualityProfileName = 'draft' | 'standard' | 'high' | 'ultra';
+
+/**
+ * Export tolerances — hard pass/fail thresholds for geometric fidelity.
+ *
+ * These are measured against the analytic surface and linked feature graph.
+ * Triangle budget is retained as a safety cap, not a quality proxy.
+ */
+export interface ExportTolerances {
+    /** Maximum acceptable surface position error in mm (chord error). */
+    epsPosMm: number;
+    /** Maximum acceptable surface normal deviation in degrees. */
+    epsNormalDeg: number;
+    /** Maximum acceptable feature ridge/valley drift in mm (from chain graph). */
+    epsFeatureMm: number;
+    /** Minimum acceptable triangle interior angle in degrees. */
+    minTriangleAngleDeg: number;
+    /** Maximum acceptable triangle aspect ratio. */
+    maxAspectRatio: number;
+}
+
+/**
+ * A named quality profile bundles tolerances with budget and refinement caps.
+ */
+export interface QualityProfile {
+    /** Profile identifier. */
+    name: QualityProfileName;
+    /** Tolerance thresholds for this profile. */
+    tolerances: ExportTolerances;
+    /** Maximum triangle budget (safety cap, not quality target). */
+    maxTriangleBudget: number;
+    /** Maximum adaptive refinement iterations (0 = no refinement). */
+    maxRefineIterations: number;
+    /** Human-readable description. */
+    description: string;
+}
+
+// ============================================================================
 // Pipeline Parameters & Results
 // ============================================================================
 
@@ -19,6 +61,10 @@ export interface ParametricExportParams {
     targetTriangles?: number;
     /** Number of anisotropic relaxation steps (v5.3). Default: 20 */
     relaxIterations?: number;
+    /** Named quality profile (default: 'standard'). */
+    qualityProfile?: QualityProfileName;
+    /** Explicit tolerance overrides (take precedence over profile defaults). */
+    toleranceOverrides?: Partial<ExportTolerances>;
 }
 
 export interface ParametricExportResult {
@@ -31,6 +77,16 @@ export interface ParametricExportResult {
         tCurvatureRange: [number, number];
         uCurvatureRange: [number, number];
     };
+    /** Quality profile used for this export (if resolved). */
+    qualityProfile?: QualityProfileName;
+    /** Effective tolerances used (after profile + overrides resolution). */
+    effectiveTolerances?: ExportTolerances;
+    /** Whether the export passed all tolerance gates. */
+    tolerancesPassed?: boolean;
+    /** If the profile was downgraded due to resource limits, the original profile. */
+    requestedProfile?: QualityProfileName;
+    /** If downgraded, the reason string. */
+    downgradeReason?: string;
 }
 
 // ============================================================================
