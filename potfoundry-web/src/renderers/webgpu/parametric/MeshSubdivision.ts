@@ -34,6 +34,23 @@
 export type EvaluateMidpointsFn = (uvBatch: Float32Array) => Promise<Float32Array>;
 
 /**
+ * Minimal chain point representation for UV-proximity detection.
+ */
+export interface ChainPointUV {
+    /** U position in [0, 1) */
+    u: number;
+    /** Row index in the grid */
+    row: number;
+}
+
+/**
+ * Minimal chain representation for UV-proximity detection.
+ */
+export interface ChainUV {
+    points: ChainPointUV[];
+}
+
+/**
  * Input parameters for {@link subdivideLongEdges}.
  */
 export interface SubdivisionParams {
@@ -53,6 +70,12 @@ export interface SubdivisionParams {
     outerW: number;
     /** Outer wall grid height (number of rows). */
     outerH: number;
+    /**
+     * Feature chains for UV-proximity-based chain-strip detection (v20.x).
+     * When provided, triangles near chain UV positions are identified as chain-strip,
+     * instead of relying solely on vertex index >= outerGridVertexCount.
+     */
+    chains?: ChainUV[];
 }
 
 /**
@@ -101,6 +124,98 @@ function edgeKey(a: number, b: number): bigint {
 }
 
 /**
+ * Build a set of vertex indices that are "near" chain UV positions.
+ *
+ * For each chain point, find vertices whose UV coordinates are within
+ * `proximityRadius` (in UV space) of the chain point.  This handles the
+ * v20.x scenario where grid vertices are UV-snapped to chain positions
+ * but their indices remain < outerGridVertexCount.
+ *
+ * @param combinedVerts  UV data — [u, t, surfaceId] packed, 3 floats per vertex.
+ * @param vertexCount    Number of vertices.
+ * @param chains         Feature chains with UV positions.
+ * @param gridSpacing    Approximate UV spacing between grid columns (1 / outerW).
+ * @returns              Set of vertex indices considered "chain-adjacent".
+ */
+export function identifyChainAdjacentVertices(
+    combinedVerts: Float32Array,
+    vertexCount: number,
+    chains: ChainUV[],
+    gridSpacing: number,
+): Set<number> {
+    const result = new Set<number>();
+    const proximityRadius = gridSpacing * 0.5;
+    const proximityRadius2 = proximityRadius * proximityRadius;
+
+    // Collect all chain point UV positions
+    const chainPoints: Array<{ u: number; t: number }> = [];
+    for (const chain of chains) {
+        for (const pt of chain.points) {
+            chainPoints.push({ u: pt.u, t: pt.row });
+        }
+    }
+
+    if (chainPoints.length === 0) return result;
+
+    // For each vertex, check proximity to any chain point
+    for (let v = 0; v < vertexCount; v++) {
+        const vu = combinedVerts[v * 3];
+        const vt = combinedVerts[v * 3 + 1];
+
+        for (const cp of chainPoints) {
+            // Circular distance in U (wraps at 1.0)
+            let du = Math.abs(vu - cp.u);
+            if (du > 0.5) du = 1.0 - du;
+            const dt = vt - cp.t;
+            const dist2 = du * du + dt * dt;
+            if (dist2 <= proximityRadius2) {
+                result.add(v);
+                break; // vertex is near at least one chain point
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Identify chain-strip triangles using a hybrid approach:
+ * 1. Index-based: any vertex >= outerGridVertexCount (classic chain vertices)
+ * 2. UV-proximity: any vertex near a chain UV position (v20.x UV-snapped vertices)
+ *
+ * @param combinedIdxs          Triangle index buffer.
+ * @param outerIdxCount         Number of outer wall indices.
+ * @param outerGridVertexCount  First chain vertex index.
+ * @param chainAdjacentVertices Optional set of chain-adjacent vertices from UV proximity.
+ * @returns                     Set of triangle offsets (in index buffer) that are chain-strip.
+ */
+export function identifyChainStripTriangles(
+    combinedIdxs: Uint32Array,
+    outerIdxCount: number,
+    outerGridVertexCount: number,
+    chainAdjacentVertices?: Set<number>,
+): Set<number> {
+    const csTriSet = new Set<number>();
+    for (let t = 0; t < outerIdxCount; t += 3) {
+        const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+        if (a === b || b === c || a === c) continue;
+
+        // Classic index-based detection
+        if (a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount) {
+            csTriSet.add(t);
+            continue;
+        }
+
+        // UV-proximity detection (v20.x)
+        if (chainAdjacentVertices &&
+            (chainAdjacentVertices.has(a) || chainAdjacentVertices.has(b) || chainAdjacentVertices.has(c))) {
+            csTriSet.add(t);
+        }
+    }
+    return csTriSet;
+}
+
+/**
  * Descriptor for an edge that should be split.
  */
 interface SplitEdge {
@@ -144,6 +259,7 @@ export async function subdivideLongEdges(
         constraintEdgeSet,
         outerW,
         outerH,
+        chains,
     } = params;
 
     const subdivStart = performance.now();
@@ -169,14 +285,18 @@ export async function subdivideLongEdges(
     const subdivThreshold2 = (avgGridEdge * 1.8) ** 2;
 
     // ── 2. Re-identify chain-strip triangles ─────────────────────────
-    const csTriSetNow = new Set<number>();
-    for (let t = 0; t < outerIdxCount; t += 3) {
-        const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
-        if (a === b || b === c || a === c) continue;
-        if (a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount) {
-            csTriSetNow.add(t);
-        }
+    //       Uses hybrid detection: index-based + UV-proximity (v20.x)
+    let chainAdjacentVerts: Set<number> | undefined;
+    if (chains && chains.length > 0 && outerW > 0) {
+        const gridSpacing = 1.0 / outerW;
+        const vertexCount = resultData.length / 3;
+        chainAdjacentVerts = identifyChainAdjacentVertices(
+            combinedVerts, vertexCount, chains, gridSpacing,
+        );
     }
+    const csTriSetNow = identifyChainStripTriangles(
+        combinedIdxs, outerIdxCount, outerGridVertexCount, chainAdjacentVerts,
+    );
 
     // ── 3. Build edge→tri adjacency (chain-strip + boundary) ────────
     const subEdgeToTris = new Map<bigint, number[]>();

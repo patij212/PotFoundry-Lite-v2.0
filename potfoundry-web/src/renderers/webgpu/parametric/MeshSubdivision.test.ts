@@ -6,9 +6,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
     subdivideLongEdges,
+    identifyChainAdjacentVertices,
+    identifyChainStripTriangles,
     type SubdivisionParams,
     type EvaluateMidpointsFn,
     type SubdivisionResult,
+    type ChainUV,
 } from './MeshSubdivision';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -548,6 +551,194 @@ describe('MeshSubdivision', () => {
             const evaluator = makeFlatEvaluator();
             const result = await subdivideLongEdges(params, evaluator);
             expect(result.resultData.length % 3).toBe(0);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // UV-proximity chain-strip detection (v20.x fix)
+    // ─────────────────────────────────────────────────────────────────
+
+    describe('identifyChainAdjacentVertices', () => {
+        it('returns empty set when no chains provided', () => {
+            const verts = new Float32Array([0, 0, 0, 1, 0, 0]);
+            const result = identifyChainAdjacentVertices(verts, 2, [], 0.1);
+            expect(result.size).toBe(0);
+        });
+
+        it('finds vertices near chain points in UV space', () => {
+            // 5 vertices on a line: u=0, 0.25, 0.5, 0.75, 1.0
+            const verts = new Float32Array([
+                0, 0, 0,
+                0.25, 0, 0,
+                0.5, 0, 0,
+                0.75, 0, 0,
+                1.0, 0, 0,
+            ]);
+            const chains: ChainUV[] = [
+                { points: [{ u: 0.5, row: 0 }] },
+            ];
+            // gridSpacing = 0.25, proximityRadius = 0.125
+            const result = identifyChainAdjacentVertices(verts, 5, chains, 0.25);
+            // Vertex 2 (u=0.5) is exactly at chain point
+            expect(result.has(2)).toBe(true);
+            // Vertices 0, 4 should be far away
+            expect(result.has(0)).toBe(false);
+            expect(result.has(4)).toBe(false);
+        });
+
+        it('handles circular U wrapping (0/1 boundary)', () => {
+            const verts = new Float32Array([
+                0.98, 0.5, 0,  // v0: near u=1.0
+                0.02, 0.5, 0,  // v1: near u=0.0
+                0.5, 0.5, 0,   // v2: far away
+            ]);
+            const chains: ChainUV[] = [
+                { points: [{ u: 0.0, row: 0.5 }] },
+            ];
+            // gridSpacing = 0.1, proximityRadius = 0.05
+            const result = identifyChainAdjacentVertices(verts, 3, chains, 0.1);
+            // Both v0 (distance in U = min(0.98, 0.02) = 0.02) and v1 (distance = 0.02) should be near
+            expect(result.has(0)).toBe(true);
+            expect(result.has(1)).toBe(true);
+            expect(result.has(2)).toBe(false);
+        });
+
+        it('finds vertices from multiple chains', () => {
+            const verts = new Float32Array([
+                0.1, 0, 0,   // v0
+                0.5, 0, 0,   // v1
+                0.9, 0, 0,   // v2
+            ]);
+            const chains: ChainUV[] = [
+                { points: [{ u: 0.1, row: 0 }] },
+                { points: [{ u: 0.9, row: 0 }] },
+            ];
+            const result = identifyChainAdjacentVertices(verts, 3, chains, 0.25);
+            expect(result.has(0)).toBe(true);  // near chain 1
+            expect(result.has(2)).toBe(true);  // near chain 2
+            expect(result.has(1)).toBe(false); // far from both
+        });
+    });
+
+    describe('identifyChainStripTriangles', () => {
+        it('detects triangles with chain vertex indices (classic mode)', () => {
+            // 3 grid vertices (idx 0,1,2) + 1 chain vertex (idx 3)
+            const idxs = new Uint32Array([0, 1, 2, 0, 1, 3]);
+            const result = identifyChainStripTriangles(idxs, 6, 3);
+            // Only tri1 (offset 3) has a chain vertex
+            expect(result.size).toBe(1);
+            expect(result.has(3)).toBe(true);
+            expect(result.has(0)).toBe(false);
+        });
+
+        it('skips degenerate triangles', () => {
+            const idxs = new Uint32Array([0, 0, 3]); // a === b
+            const result = identifyChainStripTriangles(idxs, 3, 3);
+            expect(result.size).toBe(0);
+        });
+
+        it('detects triangles via UV proximity when chains provided', () => {
+            // All vertices are grid vertices (idx < outerGridVertexCount)
+            const idxs = new Uint32Array([0, 1, 2, 1, 3, 2]);
+            // But vertex 2 has been UV-snapped to a chain position
+            const chainAdjacentVerts = new Set<number>([2]);
+            const result = identifyChainStripTriangles(idxs, 6, 100, chainAdjacentVerts);
+            // Both triangles include vertex 2
+            expect(result.size).toBe(2);
+            expect(result.has(0)).toBe(true);
+            expect(result.has(3)).toBe(true);
+        });
+
+        it('returns empty set when no chain vertices or proximity matches', () => {
+            const idxs = new Uint32Array([0, 1, 2]);
+            const result = identifyChainStripTriangles(idxs, 3, 100);
+            expect(result.size).toBe(0);
+        });
+    });
+
+    describe('subdivideLongEdges with chains (v20.x)', () => {
+        it('identifies UV-snapped vertices as chain-strip via chains param', async () => {
+            // v20.x scenario: all vertices are grid vertices but some are UV-snapped
+            const numU = 4, numT = 3;
+            const totalVerts = numU * numT + 0; // no extra chain vertices
+            const resultData = new Float32Array(totalVerts * 3);
+            const combinedVerts = new Float32Array(totalVerts * 3);
+
+            // Grid vertices on a flat 10×10 plane
+            for (let t = 0; t < numT; t++) {
+                for (let u = 0; u < numU; u++) {
+                    const idx = t * numU + u;
+                    resultData[idx * 3] = u * 3;        // 3mm spacing → edges = 3mm
+                    resultData[idx * 3 + 1] = 0;
+                    resultData[idx * 3 + 2] = t * 3;
+                    combinedVerts[idx * 3] = u / numU;
+                    combinedVerts[idx * 3 + 1] = t / (numT - 1);
+                    combinedVerts[idx * 3 + 2] = 0;
+                }
+            }
+
+            // UV-snap vertex at (row=1, col=2) to a chain position
+            const snappedIdx = 1 * numU + 2;
+            combinedVerts[snappedIdx * 3] = 0.55;   // snapped U
+            // Move the 3D position far from grid to create a long edge
+            resultData[snappedIdx * 3] = 8;          // far from neighbors at u=3,u=9
+
+            // Build triangulated grid (2 tris per quad)
+            const triIdxs: number[] = [];
+            for (let t = 0; t < numT - 1; t++) {
+                for (let u = 0; u < numU - 1; u++) {
+                    const v00 = t * numU + u;
+                    const v10 = t * numU + u + 1;
+                    const v01 = (t + 1) * numU + u;
+                    const v11 = (t + 1) * numU + u + 1;
+                    triIdxs.push(v00, v10, v01);
+                    triIdxs.push(v10, v11, v01);
+                }
+            }
+            const combinedIdxs = new Uint32Array(triIdxs);
+
+            // Chain at the snapped position
+            const chains: ChainUV[] = [
+                { points: [{ u: 0.55, row: 0.5 }] },
+            ];
+
+            const params: SubdivisionParams = {
+                combinedIdxs,
+                resultData,
+                combinedVerts,
+                outerIdxCount: combinedIdxs.length,
+                outerGridVertexCount: totalVerts, // ALL vertices are grid → index-based detection finds nothing
+                constraintEdgeSet: new Set(),
+                outerW: numU,
+                outerH: numT,
+                chains,
+            };
+
+            const evaluator: EvaluateMidpointsFn = async (uvBatch) => {
+                const n = uvBatch.length / 3;
+                const out = new Float32Array(n * 3);
+                for (let i = 0; i < n; i++) {
+                    out[i * 3] = uvBatch[i * 3] * 12;
+                    out[i * 3 + 1] = 0;
+                    out[i * 3 + 2] = uvBatch[i * 3 + 1] * 6;
+                }
+                return out;
+            };
+
+            const result = await subdivideLongEdges(params, evaluator);
+
+            // Without chains: splitCount would be 0 (no chain vertices by index)
+            // With chains: UV-proximity detects snapped vertex → finds long edges → splits
+            expect(result.splitCount).toBeGreaterThan(0);
+        });
+
+        it('works with chains=undefined (backward compat)', async () => {
+            const mesh = makeChainStripMesh();
+            const params = makeDefaultParams();
+            // chains is undefined by default → falls back to index-based detection
+            const evaluator = makeFlatEvaluator();
+            const result = await subdivideLongEdges(params, evaluator);
+            expect(result.splitCount).toBeGreaterThan(0);
         });
     });
 });
