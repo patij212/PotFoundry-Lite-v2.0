@@ -38,8 +38,35 @@ src/
   App.tsx                   # Root component
   renderers/
     factory.ts              # Auto-selects WebGPU → WebGL, handles crash recovery
+    webgpu_core.ts          # WebGPU mount entry point (called by factory.ts)
+    webgpu_geometry.ts      # Fills F32 geometry buffer from React state → GPU
     webgpu/                 # WGSL compute shaders, parametric export pipeline
+      parametric/           # Modular parametric pipeline (extracted from monolith)
+        types.ts            # Shared types: FeatureChain, ChainPoint, FeaturePoint, etc.
+        CurvatureAnalysis.ts    # Raw curvature computation, normalization, smoothing
+        FeatureDetection.ts     # Per-row/column peak and valley detection
+        ChainLinker.ts          # Feature chain linking, dedup, re-snap, row insertion
+        GridBuilder.ts          # Adaptive grid construction, union feature grids
+        OuterWallTessellator.ts # CDT outer wall mesh generation, UV-snapping
+        MeshOptimizer.ts        # Laplacian relaxation, topology optimization
+        MeshSubdivision.ts      # Adaptive edge subdivision, chain-aware splitting
+        ChainStripOptimizer.ts  # Chain-directed diagonal flipping, strip detection
+        SurfaceEvaluator.ts     # Surface evaluation utilities
+        CurvatureSampler.ts     # Curvature sampling utilities
+        integration.test.ts     # End-to-end pipeline integration tests
     webgl/                  # Three.js fallback (lazy-loaded)
+  styles/
+    registry.ts             # Single source of truth: style ID, shaderName, UI params
+                            # Add new styles HERE first, before touching anything else
+  geometry/                 # CPU-side mesh generation (TS port of Python geometry.py)
+    meshBuilder.ts          # Builds watertight pot mesh (outer/inner wall, rim, base, drain)
+    styles.ts               # CPU style radius functions — EXPORT PIPELINE ONLY (not rendering)
+                            # May be deprecated once export migrates fully to GPU
+    profile.ts              # Base radius + spin/twist calculations
+    types.ts                # PotDimensions, MeshQuality, StyleId, all geometry types
+    stlExport.ts            # STL + 3MF export (binary STL preferred: 80% smaller)
+    meshDecimator.ts        # LOD decimation
+    __fixtures__/           # Golden reference values for regression tests
   state/
     store.ts                # Zustand store — persists geometry/style/mesh/appearance
     slices/                 # geometry, style, ui, mesh, appearance, performance
@@ -60,7 +87,36 @@ src/
     layout/                 # Sidebar, Toolbar, StatusBar, MobileBottomSheet
     debug/                  # ConsoleOverlay (reads from ConsolePatch intercept)
   utils/geometry/           # CDT triangulation, mesh stitching, chain constraints
+                            # → see docs/geometry.md for full file-by-file reference
 ```
+
+## WebGPU Renderer Files (`src/renderers/webgpu/`)
+
+| File | Purpose |
+|---|---|
+| `WebGPURenderer.ts` | Top-level WebGPU renderer class. Owns the device, swap chain, and frame loop. |
+| `SceneManager.ts` | Manages render pipelines and uniform/style-param buffers. Caches compiled pipelines per style ID. Runs a smoke test on init to detect incompatible drivers. |
+| `ShaderManager.ts` | Singleton. Assembles WGSL programs from raw shader modules. Key methods: `getStyleWGSL(id)` (preview vertex/fragment), `getStyleEnvironmentWGSL(id)` (compute environment), `getUniversalWGSL()` (thumbnail renderer — includes all styles with switch dispatch), `getDebugLinesWGSL(id)` / `getDebugPointsWGSL(id)` (debug overlay shaders). Calls `stripShaderCode()` to remove inactive style functions before upload. |
+| `ExportComputer.ts` | GPU Grid export (pipeline 2). Runs `calc_vertices` + `calc_indices` compute kernels. Handles adaptive Z-LUT, tiling (≤16 MB tiles), and optional meshoptimizer decimation. |
+| `FeatureExtractionComputer.ts` | Adaptive pipeline stage 1. GPU compute pass that detects ridges/valleys/creases. Outputs up to 100,000 `FeaturePoint` structs (`{theta, t, type, strength}`). Uses RAII-style `ResourceScope` for buffer cleanup. |
+| `ImportanceMapComputer.ts` | Adaptive pipeline stage 2. GPU compute that samples style curvature across a 64×64 UV grid to produce an importance map. Output drives adaptive background point density in `ConstrainedTriangulator`. |
+| `AdaptiveExportComputer.ts` | Adaptive pipeline stage 4. GPU triangle subdivision using feature proximity importance. Uses `weldMesh` post-GPU to merge seam vertices. Known issue: T-junctions where neighbour triangles split independently at the importance threshold. |
+| `ParametricExportComputer.ts` | Parametric pipeline orchestrator (pipeline 4, current best path). ~1400 lines — delegates to modular `parametric/` sub-modules for curvature analysis, feature detection, chain linking, grid building, tessellation, optimization, and subdivision. See `parametric/` directory for individual module docs. |
+
+## Dev Hooks (`.claude/hooks/`)
+
+Two hooks run automatically during agent editing sessions.
+
+**`env-guard.js`** — `PreToolUse` hook (runs before every Edit/Write):
+- Blocks any attempt to edit files matching `*.env*` or ending in `.env`.
+- Exit code 2 = hard block. The edit will not proceed.
+
+**`eslint-check.js`** — `PostToolUse` hook (runs after every Edit/Write on `.ts`/`.tsx` files):
+- Runs `npx eslint <file> --max-warnings=0` on the edited file.
+- Exit code mirrors ESLint result. A non-zero exit warns the agent of lint errors.
+- This enforces the 0-warnings policy in CI locally during editing.
+
+Agents should expect ESLint output after every TypeScript file edit. A lint failure does not prevent the write, but the agent should fix warnings before moving on — they will fail CI.
 
 ## State Management
 
@@ -99,14 +155,159 @@ is intercepted for the debug overlay. Don't assume native console behaviour in d
 **WGSL alignment:** `vec3<f32>` requires 16-byte alignment in compute shader structs.
 Missing padding causes silent data corruption in the export pipeline.
 
+**Adding a new style — required update order:**
+1. `src/styles/registry.ts` — register `id` (must be unique, current max is 19), `shaderName`, `params`, `advancedParams`
+2. WGSL shader in `src/renderers/webgpu/` — the GPU implementation (drives all live rendering)
+3. `src/geometry/styles.ts` — CPU function (export pipeline only; may be deprecated soon)
+4. If step 3 is added, regenerate `src/geometry/__fixtures__/styleGoldenValues.json`
+
+**Style IDs are permanent:** IDs in `STYLE_REGISTRY` are serialized into localStorage
+presets and the GPU geometry buffer. Never renumber existing styles. Use ID ≥ 20 for new ones.
+
+**CPU style functions are export-only:** `src/geometry/styles.ts` is only used by the
+export pipeline (STL/3MF generation). Live rendering runs entirely on WGSL shaders.
+The CPU layer may be removed once the export pipeline migrates to GPU.
+
+**Export formats:** Supports binary STL and 3MF. Binary STL is default (80% smaller,
+10× faster than ASCII). 3MF via `src/geometry/exporters/export3MF.ts`.
+
+## Export Pipeline
+
+Four distinct export paths exist. The parametric pipeline is the current best path.
+
+### 1. Legacy CPU — `useExport.ts`
+`buildPotMesh()` (CPU, `src/geometry/meshBuilder.ts`) → `downloadSTL()`.
+Uniform nTheta×nZ grid. Uses `src/geometry/styles.ts` for style radius evaluation.
+**Targeted for deprecation** once all paths are fully GPU.
+
+### 2. GPU Grid — `useGPUExport.ts` → `ExportComputer`
+Uniform grid computed entirely on GPU via `calc_vertices` + `calc_indices` compute kernels.
+Shaders: `common.wgsl` + `styles.wgsl` + `pot_export.wgsl` + `scan_profile.wgsl`.
+
+- **Adaptive Z-LUT**: optionally scans 100k profile points to build a Z-row lookup table,
+  concentrating rows at high-curvature areas before the full mesh dispatch
+- **Tiling**: Z-axis auto-splits into ≤16MB tiles when mesh exceeds GPU buffer limits
+  (up to 2000 tiles; index buffer is the bottleneck at ~48 bytes × nTheta × nZ)
+- **Decimation**: optional `meshoptimizer` (lazy-loaded) targets 2M triangles;
+  `lockBorders: true` is critical — required to preserve tile seam vertices for stitching
+
+### 3. Adaptive Subdivision — `useAdaptiveExport.ts` → `AdaptiveExportComputer`
+GPU feature extraction → constrained base mesh → GPU triangle subdivision.
+Stages: `FeatureExtractionComputer` → `ImportanceMapComputer` → `ConstrainedTriangulator` (CDT) → `AdaptiveExportComputer`.
+Shaders: `feature_extract.wgsl`, `importance_map.wgsl`, `adaptive_mesh.wgsl`.
+
+### 4. Parametric — `useParametricExport.ts` → `ParametricExportComputer` ← current best
+8-stage CPU+GPU hybrid. Produces a non-uniform curvature-adaptive grid where feature
+edges (style ridges, peaks) are actual mesh edges — not approximated by the grid.
+
+```
+1. GPU  — 16-strip curvature sampling (4096 samples/strip) → gradient + curvature profiles
+2. CPU  — Feature detection: gradient zero-crossings → peak/valley classification with
+           confidence scoring (Strategy 3 / inflection-point detection removed — was noise source)
+3. CPU  — Uniform base grid sized to user triangle budget (LOCAL_ONLY_OUTER_ADAPTATION=true;
+           CDF-adaptive spacing removed v16.10 — was causing visible "density band" artifacts)
+4. GPU  — Per-row probing (4096 samples/row): 5-point stencil + GSS sub-sample for exact
+           peak/valley U positions
+5. CPU  — Kind-separated chain linking: peaks and valleys linked independently into continuous
+           (u,t) polylines (kind-separation added v16.3 — valleys were being orphaned otherwise)
+6. CPU  — Chain vertices appended to grid (never merged into columns); per-row interpolation
+           fills multi-row chain gaps; row-band strip triangulation enforces chain edges as mesh
+           constraints without post-hoc edge flipping (stitch fans removed v16.9)
+7. GPU  — Re-snap chain vertices: re-probes each peak/valley to exact GPU position (v13.0)
+8. GPU  — Evaluate full mesh → 3D positions (positions only, no normals in buffer)
+```
+
+Shaders: `common.wgsl` + `styles.wgsl` + `adaptive_mesh.wgsl`.
+
+### Shared Export Gotchas
+
+**Shader stripping:** `stripShaderCode()` in `src/utils/shaderStripper.ts` removes all
+inactive style functions before GPU upload. Only the current style's WGSL ships to the device.
+
+**Vertex buffer layout:** Export buffers store position only (`vec3`, 3 floats/vertex,
+12 bytes). No normals — STL normals are computed per-face from the triangle geometry.
+
+**Workgroup dispatch cap:** `getDispatchSize()` in `ExportComputer` wraps dispatches into
+a 2D grid when `totalWorkgroups > 65535` (WebGPU per-dimension limit).
+
+**No CPU fallback on WebGL:** Export requires WebGPU. If the renderer fell back to WebGL,
+GPU export paths are unavailable; only the legacy CPU path (`useExport`) will work.
+
 ## Testing
 
 - Unit tests: `src/**/*.test.ts` — Vitest + jsdom + @testing-library/react
 - Setup file: `src/test/setup.ts`
-- E2E: `playwright.config.ts`
+- E2E: `playwright.config.ts` — Chromium + Edge only, both with `--enable-unsafe-webgpu`
 - Coverage thresholds are commented out in `vite.config.ts` (can be re-enabled)
+- Golden fixtures: `src/geometry/__fixtures__/styleGoldenValues.json` and `topologySnapshots.json`
+  — regenerate when style function outputs intentionally change
+
+**E2E requires a running dev server** — `webServer` is commented out in `playwright.config.ts`.
+Start `npm run dev` first, then run `npm run test:e2e` in a second terminal.
 
 ## Deployment
 
 Hosted on Cloudflare Pages. Wrangler handles edge functions for auth callbacks.
 `npm run deploy` builds and pushes. Env vars set in Cloudflare Pages dashboard.
+
+## Agent Journal
+
+`../agents_journal.md` (one directory up from `potfoundry-web/`) is an **append-only**
+multi-agent forum. Every agent session must:
+1. **Read relevant sections** before starting work (use `offset`/`limit` — it's ~5000 lines)
+2. **Append a signed entry** at the end of the session documenting decisions, bugs found,
+   root causes, and what the next agent should know
+
+The journal is the project's institutional memory. It has caught dozens of bugs by giving
+future agents context about why decisions were made.
+
+## Known Issues & Active Work (from journal)
+
+These are open items as of the latest session (`refactor/core-migration` branch):
+
+**Parametric pipeline (ParametricExportComputer.ts — v20.x, ~1400 lines + modular `parametric/`):**
+
+The monolith has been decomposed into 10 focused sub-modules in `src/renderers/webgpu/parametric/`.
+259 unit + integration tests cover the extracted modules. Key improvements:
+- **Seam chain edges fixed** — circular U wrapping now applied before SEAM_THRESHOLD check
+- **Sawtooth fix** — micro-row insertion for steep spiral chain crossings
+- **UV-proximity chain detection** in subdivision (hybrid index + UV-based)
+- **v20.0 UV-snapping** — grid vertices snapped to exact chain positions (no extra chain vertices)
+
+Remaining items:
+- **53% of outer-wall vertices have valence < 5** — structural from chain-vertex fan topology;
+  needs vertex insertion or subdivision, not just edge flipping
+- **Tall cross-row triangles** still present; subdivision pass splits long edges but not
+  specifically cross-row triangles
+- **Diagonal boundary crease — ongoing investigation:**
+  - v16.34: Boundary diagonal optimization — adjusts standard cell INTERNAL diagonal (AD↔BC)
+    to minimize dihedral angle at chain-strip boundary.
+  - Regression test: `ParametricExportComputer.diagonalConsistency.test.ts`
+
+**Adaptive pipeline (ConstrainedTriangulator.ts + AdaptiveExportComputer):**
+- `weldMesh.ts` uses string-key deduplication — may crash browser at very large exports (>8k tris)
+  A spatial sort-based welder is needed as replacement
+- Adaptive GPU subdivision creates T-junctions (neighbor triangles split independently based on
+  local importance threshold) — causes cracks in the output mesh
+
+**WebGPU shader history:**
+- `adaptive_mesh.wgsl` had a "EXPLOSION TEST: 50x higher dt" debug value shipped to production
+  for several versions (v7.x) before being caught. Always audit shader constant comments.
+- `webgpu_core.ts` is a 5500+ line monolith — #1 maintenance risk; future work should
+  extract into sub-modules (cf. `parametric/` extraction as a model)
+
+**Parametric pipeline modular extraction (completed):**
+- `ParametricExportComputer.ts` reduced from ~5200 to ~1400 lines
+- 10 sub-modules in `src/renderers/webgpu/parametric/` with 259 tests
+- Each module is independently testable and has comprehensive JSDoc
+- Plan: `docs/plans/2026-02-24-parametric-pipeline-implementation.md`
+
+**Architecture decisions that must not be reverted:**
+- `cdt2d` library removed from hot path (v11.1) — was O(n²), 12+ minutes at production scale.
+  Replaced with grid-native O(n) strip triangulation. Do NOT re-add cdt2d to ParametricExportComputer.
+- CDF-adaptive grid spacing removed from parametric pipeline (v16.10) — was causing visible
+  "density band" artifacts. Uniform grid + per-row chain patching is the correct architecture.
+- Stitch fan vertices removed (v16.9) — were creating visible rings around feature edges.
+- GPU snap/relax disabled (v7.2) — CPU merge-and-insert replaced the need for GPU vertex movement.
+- `CHAIN_LOCK_BAND_HALF_WIDTH = 1` (v16.32) — do NOT revert to 0. Lock=0 re-enables the diagonal
+  crease bug. The justification for 0 (stitch fan cleanup) was removed in v16.9.
