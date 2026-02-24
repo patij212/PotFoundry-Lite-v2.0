@@ -477,6 +477,7 @@ export function buildCDTOuterWall(
             const p0 = fullChain[k - 1];
             const p1 = fullChain[k];
             let du = Math.abs(p1.u - p0.u);
+            if (du > 0.5) du = 1 - du; // circular wrap for seam-crossing edges
             if (du > SEAM_THRESHOLD) continue;
             const rowGap = Math.abs(p1.rowIdx - p0.rowIdx);
             if (rowGap !== 1) continue;

@@ -407,3 +407,100 @@ describe('CHAIN_LINK_RADIUS', () => {
         expect(CHAIN_LINK_RADIUS).toBe(0.04);
     });
 });
+
+// ============================================================================
+// Seam-crossing chain linking
+// ============================================================================
+
+describe('linkFeatureChainsCore — seam crossing', () => {
+    it('links features across the U=0/1 seam boundary', () => {
+        // Feature wraps from u~0.99 to u~0.01 across 5 rows
+        const numRows = 5;
+        const allRowFeatures: number[][] = [];
+        for (let row = 0; row < numRows; row++) {
+            // U wraps: 0.98, 0.99, 0.00, 0.01, 0.02
+            const u = ((0.98 + row * 0.01) % 1.0 + 1.0) % 1.0;
+            allRowFeatures.push([u]);
+        }
+
+        const chains = linkFeatureChainsCore(
+            allRowFeatures, numRows, CHAIN_LINK_RADIUS, 6, 2.0
+        );
+
+        // Should produce ONE chain spanning the seam (not two broken chains)
+        expect(chains.length).toBe(1);
+        expect(chains[0].points.length).toBe(numRows);
+        // Should have points on both sides of the seam
+        const hasHighU = chains[0].points.some(p => p.u > 0.9);
+        const hasLowU = chains[0].points.some(p => p.u < 0.1);
+        expect(hasHighU).toBe(true);
+        expect(hasLowU).toBe(true);
+    });
+
+    it('links features with larger seam crossing gap within link radius', () => {
+        // Feature jumps from u=0.97 to u=0.01 (gap of 0.04 = CHAIN_LINK_RADIUS)
+        const numRows = 3;
+        const allRowFeatures: number[][] = [
+            [0.97],
+            [0.99],
+            [0.01],
+        ];
+
+        const chains = linkFeatureChainsCore(
+            allRowFeatures, numRows, CHAIN_LINK_RADIUS, 6, 2.0
+        );
+
+        // Circular distance 0.99→0.01 = 0.02, well within radius
+        expect(chains.length).toBe(1);
+        expect(chains[0].points.length).toBe(3);
+    });
+
+    it('does NOT link features too far apart even circularly', () => {
+        // Features on opposite sides of the circle, far apart
+        const numRows = 3;
+        const allRowFeatures: number[][] = [
+            [0.1],
+            [0.6], // circular distance 0.5 — way beyond CHAIN_LINK_RADIUS
+            [0.1],
+        ];
+
+        const chains = linkFeatureChainsCore(
+            allRowFeatures, numRows, CHAIN_LINK_RADIUS, 6, 2.0
+        );
+
+        // Should be separate short chains or no chains (link radius is 0.04)
+        for (const chain of chains) {
+            // No single chain should contain both u=0.1 and u=0.6
+            const hasLow = chain.points.some(p => Math.abs(p.u - 0.1) < 0.01);
+            const hasHigh = chain.points.some(p => Math.abs(p.u - 0.6) < 0.01);
+            expect(hasLow && hasHigh).toBe(false);
+        }
+    });
+});
+
+describe('linkFeatureChainsByKind — seam crossing', () => {
+    it('handles seam-crossing chains with kind separation', () => {
+        const numRows = 5;
+        const allRowFeatures: number[][] = [];
+        const allRowTypedFeatures: FeaturePoint[][] = [];
+
+        for (let row = 0; row < numRows; row++) {
+            const u = ((0.98 + row * 0.01) % 1.0 + 1.0) % 1.0;
+            allRowFeatures.push([u]);
+            allRowTypedFeatures.push([
+                { u, kind: 'peak', radius: 1, prominence: 0.5, confidence: 0.9 },
+            ]);
+        }
+
+        const chains = linkFeatureChainsByKind(
+            allRowFeatures, allRowTypedFeatures, numRows
+        );
+
+        // Should have at least one chain spanning the seam
+        expect(chains.length).toBeGreaterThanOrEqual(1);
+        const seamChain = chains.find(c =>
+            c.points.some(p => p.u > 0.9) && c.points.some(p => p.u < 0.1)
+        );
+        expect(seamChain).toBeDefined();
+    });
+});
