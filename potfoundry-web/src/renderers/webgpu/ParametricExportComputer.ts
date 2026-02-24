@@ -66,6 +66,7 @@ import {
 } from './parametric/GridBuilder';
 import { buildCDTOuterWall } from './parametric/OuterWallTessellator';
 import { chainDirectedFlip, flipEdges3D, STITCH_BAND_HALF_WIDTH, CHAIN_LOCK_BAND_HALF_WIDTH } from './parametric/MeshOptimizer';
+import { subdivideLongEdges } from './parametric/MeshSubdivision';
 import type { FeatureChain } from './parametric/types';
 // NOTE: cdt2d import removed in v11.1 â€” no longer needed on the hot path.
 // The grid-native approach eliminates the O(nÂ²) CDT library dependency.
@@ -2205,274 +2206,32 @@ export class ParametricExportComputer {
                 console.log(`[ParametricExport]   v16.34 boundary diagonal optimization: ${bdFlips} cell diag flips on ${bdChecked} boundary cells (${bndDiagMs.toFixed(1)}ms)`);
             }
 
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // v16.29: Chain-strip midpoint subdivision
-            //
-            // After flipping, chain-strip triangles can still be stretched
-            // because a chain vertex sits inside a grid cell, far from the
-            // cell's corners. Instead of trying to fix topology, ADD more
-            // vertices at the midpoints of long edges, splitting stretched
-            // triangles into well-shaped smaller ones.
-            //
-            // For each non-constraint interior edge shared by two chain-strip
-            // triangles: if the 3D edge length exceeds a threshold (based on
-            // the average grid edge length), insert a midpoint vertex and
-            // split both adjacent triangles.
-            //
-            // The midpoint's 3D position is linearly interpolated from the
-            // two endpoints. At this mesh resolution (~0.5mm spacing), linear
-            // interpolation on a smooth parametric surface introduces < 0.01mm
-            // error â€” well below 3D printing tolerance.
-            //
-            // Each split turns 2 triangles into 4:
-            //   Before: tri0=(A,B,C), tri1=(B,D,C)  [shared edge Bâ†”C]
-            //   After:  tri0=(A,B,M), tri0b=(A,M,C), tri1=(B,D,M), tri1b=(M,D,C)
-            //   where M = midpoint of Bâ†”C
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            const subdivStart = performance.now();
-
-            // Compute average grid edge length (from first few hundred grid edges)
-            // to set the subdivision threshold.
-            let gridEdgeLenSum = 0;
-            let gridEdgeCount = 0;
-            {
-                const sampleRows = Math.min(10, outerH - 1);
-                for (let j = 0; j < sampleRows; j++) {
-                    for (let i = 0; i < outerW - 1 && i < 50; i++) {
-                        const v0 = j * outerW + i;
-                        const v1 = j * outerW + i + 1;
-                        const dx = resultData[v0 * 3] - resultData[v1 * 3];
-                        const dy = resultData[v0 * 3 + 1] - resultData[v1 * 3 + 1];
-                        const dz = resultData[v0 * 3 + 2] - resultData[v1 * 3 + 2];
-                        gridEdgeLenSum += Math.sqrt(dx * dx + dy * dy + dz * dz);
-                        gridEdgeCount++;
-                    }
-                }
-            }
-            const avgGridEdge = gridEdgeCount > 0 ? gridEdgeLenSum / gridEdgeCount : 1.0;
-            // Subdivide edges longer than 1.8Ã— average grid edge
-            const subdivThreshold2 = (avgGridEdge * 1.8) ** 2;
-
-            // Re-identify chain-strip triangles (indices may have changed from flips)
-            const csTriSetNow = new Set<number>();
-            for (let t = 0; t < allIdxArrays[0].length; t += 3) {
-                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
-                if (a === b || b === c || a === c) continue;
-                if (a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount) {
-                    csTriSetNow.add(t);
-                }
-            }
-
-            // Build edgeâ†’triangle adjacency for chain-strip tris AND their
-            // boundary neighbors. Previously, only chain-strip tris were indexed,
-            // so boundary edges (shared between a chain-strip tri and a standard-
-            // grid tri) had only 1 entry and were skipped by the `tris.length !== 2`
-            // filter. This left the worst stretched triangles unsubdivided.
-            //
-            // v17.0: Also index standard-grid tris that share an edge with any
-            // chain-strip tri. This allows boundary edges to be split.
-            const subEdgeToTris = new Map<bigint, number[]>();
-            const subEdgeKey = (a: number, b: number): bigint => {
-                const lo = a < b ? a : b;
-                const hi = a < b ? b : a;
-                return BigInt(lo) * BigInt(0x100000) + BigInt(hi);
-            };
-
-            // First pass: index chain-strip tris
-            const csEdgeSet = new Set<bigint>();
-            for (const t of csTriSetNow) {
-                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
-                for (const ek of [subEdgeKey(a, b), subEdgeKey(b, c), subEdgeKey(c, a)]) {
-                    if (!subEdgeToTris.has(ek)) subEdgeToTris.set(ek, []);
-                    subEdgeToTris.get(ek)!.push(t);
-                    csEdgeSet.add(ek);
-                }
-            }
-
-            // Second pass: index standard-grid tris that share edges with chain-strip tris
-            let boundaryTrisAdded = 0;
-            for (let t = 0; t < outerIdxCount; t += 3) {
-                if (csTriSetNow.has(t)) continue; // already indexed
-                const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
-                if (a === b || b === c || a === c) continue;
-                // Check if any edge is shared with a chain-strip tri
-                let isBoundary = false;
-                for (const ek of [subEdgeKey(a, b), subEdgeKey(b, c), subEdgeKey(c, a)]) {
-                    if (csEdgeSet.has(ek)) { isBoundary = true; break; }
-                }
-                if (isBoundary) {
-                    for (const ek of [subEdgeKey(a, b), subEdgeKey(b, c), subEdgeKey(c, a)]) {
-                        if (!subEdgeToTris.has(ek)) subEdgeToTris.set(ek, []);
-                        subEdgeToTris.get(ek)!.push(t);
-                    }
-                    boundaryTrisAdded++;
-                }
-            }
-
-            // Collect edges to split: interior, non-constraint, long edges
-            interface SplitEdge {
-                ek: bigint;
-                v0: number;
-                v1: number;
-                len2: number;
-                tris: number[]; // the 2 tri offsets
-            }
-            const edgesToSplit: SplitEdge[] = [];
-            const edgesScheduled = new Set<bigint>();
-
-            // v17.0: Use a more aggressive threshold for boundary edges
-            // (edges where one tri is chain-strip and the other is standard-grid).
-            // These are the edges that create the visible "serrated ridge" artifact.
-            const boundarySubdivThreshold2 = (avgGridEdge * 1.2) ** 2;
-
-            for (const [ek, tris] of subEdgeToTris) {
-                if (tris.length !== 2) continue; // true boundary (mesh edge) or non-manifold
-                if (constraintEdgeSet.has(ek)) continue; // never split chain edges
-
-                const v0 = Number(ek / BigInt(0x100000));
-                const v1 = Number(ek % BigInt(0x100000));
-
-                const dx = resultData[v0 * 3] - resultData[v1 * 3];
-                const dy = resultData[v0 * 3 + 1] - resultData[v1 * 3 + 1];
-                const dz = resultData[v0 * 3 + 2] - resultData[v1 * 3 + 2];
-                const len2 = dx * dx + dy * dy + dz * dz;
-
-                // Use tighter threshold for boundary edges (one chain-strip + one standard tri)
-                const isBoundaryEdge = (csTriSetNow.has(tris[0]) !== csTriSetNow.has(tris[1]));
-                const threshold = isBoundaryEdge ? boundarySubdivThreshold2 : subdivThreshold2;
-
-                if (len2 > threshold) {
-                    edgesToSplit.push({ ek, v0, v1, len2, tris: [tris[0], tris[1]] });
-                    edgesScheduled.add(ek);
-                }
-            }
-
-            // Sort by length descending â€” split longest edges first
-            edgesToSplit.sort((a, b) => b.len2 - a.len2);
-
-            // Apply splits. We need to grow the vertex and index arrays.
-            // Strategy: collect all new vertices and new triangles, then
-            // rebuild the arrays at the end.
-            //
-            // For each split edge (shared by tri0 and tri1):
-            //   tri0 has vertices containing v0 and v1 plus opp0
-            //   tri1 has vertices containing v0 and v1 plus opp1
-            //   Insert M = midpoint(v0, v1)
-            //   Replace: tri0 â†’ (opp0, v0, M), new tri â†’ (opp0, M, v1)
-            //            tri1 â†’ (opp1, v1, M), new tri â†’ (opp1, M, v0)
-
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // v18.0: GPU-surface subdivision.
-            //
-            // Root cause of v17.0 oscillation: midpoints were the 3D chord
-            // midpoint (average of two XYZ surface points). On a curved surface,
-            // this chord lies INSIDE the surface, producing a "divot" vertex.
-            // The normal at the divot points inward; adjacent triangles point
-            // outward â†’ alternating inward/outward normals = slicer oscillations.
-            //
-            // Fix: compute midpoints in UV (parametric) space, then GPU-evaluate
-            // them to get exact on-surface 3D positions. A UV midpoint evaluates
-            // to a point ON the mathematical surface, not on the chord.
-            //
-            // Phase A: Determine which splits apply (respecting modifiedTris).
-            // Phase B: Batch GPU-evaluate UV midpoints â†’ exact on-surface XYZ.
-            // Phase C: Apply splits using GPU-evaluated positions.
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
-            // Phase A: Collect splits to apply (dry run â€” no index modifications)
-            const splitsToApply: Array<{ se: SplitEdge; opp0: number; opp1: number }> = [];
-            const modifiedTris = new Set<number>();
-            const maxSplits = Math.floor((csTriSetNow.size + boundaryTrisAdded) * 0.5);
-
-            for (const se of edgesToSplit) {
-                if (splitsToApply.length >= maxSplits) break;
-                if (modifiedTris.has(se.tris[0]) || modifiedTris.has(se.tris[1])) continue;
-
-                const t0off = se.tris[0], t1off = se.tris[1];
-                const a0 = combinedIdxs[t0off], b0 = combinedIdxs[t0off + 1], c0 = combinedIdxs[t0off + 2];
-                const a1 = combinedIdxs[t1off], b1 = combinedIdxs[t1off + 1], c1 = combinedIdxs[t1off + 2];
-
-                let opp0 = -1;
-                for (const v of [a0, b0, c0]) { if (v !== se.v0 && v !== se.v1) { opp0 = v; break; } }
-                let opp1 = -1;
-                for (const v of [a1, b1, c1]) { if (v !== se.v0 && v !== se.v1) { opp1 = v; break; } }
-                if (opp0 < 0 || opp1 < 0) continue;
-
-                splitsToApply.push({ se, opp0, opp1 });
-                modifiedTris.add(t0off);
-                modifiedTris.add(t1off);
-            }
-
-            // Phase B + C: GPU-evaluate UV midpoints, then apply splits
-            let finalResultData = resultData;
-            let finalCombinedIdxs = combinedIdxs;
-
-            if (splitsToApply.length > 0) {
-                // Build UV batch: [u_mid, t_mid, surfaceId] per split
-                const midUVBatch = new Float32Array(splitsToApply.length * 3);
-                for (let i = 0; i < splitsToApply.length; i++) {
-                    const { se } = splitsToApply[i];
-                    // Average UV coordinates â€” evaluates to exact on-surface position
-                    midUVBatch[i * 3] = (combinedVerts[se.v0 * 3] + combinedVerts[se.v1 * 3]) * 0.5;
-                    midUVBatch[i * 3 + 1] = (combinedVerts[se.v0 * 3 + 1] + combinedVerts[se.v1 * 3 + 1]) * 0.5;
-                    midUVBatch[i * 3 + 2] = combinedVerts[se.v0 * 3 + 2]; // surfaceId (same for both endpoints)
-                }
-
-                // GPU evaluate: UV midpoints â†’ exact 3D surface positions
-                const mid3D = await this.evaluatePoints(
-                    midUVBatch, uniformBuffer, styleParamBuffer,
+            // 
+            // v16.29 / v18.0: Chain-strip midpoint subdivision
+            // [Extracted to parametric/MeshSubdivision.ts]
+            // 
+            const subdivResult = await subdivideLongEdges(
+                {
+                    combinedIdxs,
+                    resultData,
+                    combinedVerts,
+                    outerIdxCount: allIdxArrays[0].length,
+                    outerGridVertexCount,
+                    constraintEdgeSet,
+                    outerW,
+                    outerH,
+                },
+                (uvBatch) => this.evaluatePoints(
+                    uvBatch, uniformBuffer, styleParamBuffer,
                     dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
                     false, 0
-                );
-
-                // Phase C: Apply splits with GPU-evaluated on-surface midpoints
-                const newVerts: number[] = [];
-                const newTris: number[] = [];
-                let nextNewIdx = resultData.length / 3;
-
-                for (let i = 0; i < splitsToApply.length; i++) {
-                    const { se, opp0, opp1 } = splitsToApply[i];
-                    const t0off = se.tris[0], t1off = se.tris[1];
-
-                    const midIdx = nextNewIdx++;
-                    newVerts.push(mid3D[i * 3], mid3D[i * 3 + 1], mid3D[i * 3 + 2]);
-
-                    // Replace tri0: (opp0, v0, M)
-                    combinedIdxs[t0off] = opp0;
-                    combinedIdxs[t0off + 1] = se.v0;
-                    combinedIdxs[t0off + 2] = midIdx;
-                    // New tri: (opp0, M, v1)
-                    newTris.push(opp0, midIdx, se.v1);
-
-                    // Replace tri1: (opp1, v1, M)
-                    combinedIdxs[t1off] = opp1;
-                    combinedIdxs[t1off + 1] = se.v1;
-                    combinedIdxs[t1off + 2] = midIdx;
-                    // New tri: (opp1, M, v0)
-                    newTris.push(opp1, midIdx, se.v0);
-                }
-
-                // Grow vertex array
-                const newResultData = new Float32Array(resultData.length + newVerts.length);
-                newResultData.set(resultData);
-                for (let i = 0; i < newVerts.length; i++) {
-                    newResultData[resultData.length + i] = newVerts[i];
-                }
-                finalResultData = newResultData;
-
-                // Grow index array
-                const newCombinedIdxs = new Uint32Array(combinedIdxs.length + newTris.length);
-                newCombinedIdxs.set(combinedIdxs);
-                for (let i = 0; i < newTris.length; i++) {
-                    newCombinedIdxs[combinedIdxs.length + i] = newTris[i];
-                }
-                finalCombinedIdxs = newCombinedIdxs;
-            }
-
-            const splitCount = splitsToApply.length;
-            const subdivMs = performance.now() - subdivStart;
-            console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split â†’ ${splitCount * 2} new tris (${subdivMs.toFixed(1)}ms)`);
-            console.log(`[ParametricExport]     avg grid edge: ${avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivThreshold2).toFixed(3)}mm, boundary threshold: ${Math.sqrt(boundarySubdivThreshold2).toFixed(3)}mm, candidates: ${edgesToSplit.length}, boundary neighbor tris: ${boundaryTrisAdded}`);
+                ),
+            );
+            const finalResultData = subdivResult.resultData;
+            const finalCombinedIdxs = subdivResult.indices;
+            const splitCount = subdivResult.splitCount;
+            console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris (${subdivResult.stats.timeMs.toFixed(1)}ms)`);
+            console.log(`[ParametricExport]     avg grid edge: ${subdivResult.stats.avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivResult.stats.interiorThreshold).toFixed(3)}mm, boundary threshold: ${Math.sqrt(subdivResult.stats.boundaryThreshold).toFixed(3)}mm, candidates: ${subdivResult.stats.candidates}, boundary neighbor tris: ${subdivResult.stats.boundaryTrisAdded}`);
 
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // v16.33 REVERTED â€” boundary edge flipping made artifacts worse.
