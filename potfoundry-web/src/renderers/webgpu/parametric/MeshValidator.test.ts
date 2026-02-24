@@ -22,6 +22,9 @@ import {
     checkFidelityCPU,
     checkSeam,
     checkWallThickness,
+    checkDistortionMetric,
+    checkEdgeLengthDistribution,
+    distortionGatesForProfile,
     validateMesh,
     checkFidelity,
 } from './MeshValidator';
@@ -816,5 +819,191 @@ describe('validateMesh', () => {
         expect(report.degenerates.ok).toBe(true);
         expect(report.normals.ok).toBe(true);
         expect(report.triangleQuality.ok).toBe(true);
+    });
+});
+
+// ============================================================================
+// checkDistortionMetric
+// ============================================================================
+
+describe('checkDistortionMetric', () => {
+    it('reports low distortion for isotropic quad', () => {
+        const positions = new Float32Array([
+            0, 0, 0,  10, 0, 0,  10, 10, 0,  0, 10, 0,
+        ]);
+        const uvs = new Float32Array([
+            0, 0, 0,  1, 0, 0,  1, 1, 0,  0, 1, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+        const report = checkDistortionMetric(positions, uvs, indices, 6);
+        expect(report.p95StretchRatio).toBeCloseTo(1.0, 0);
+        expect(report.meanStretchRatio).toBeCloseTo(1.0, 0);
+        expect(report.ok).toBe(true);
+    });
+
+    it('reports high distortion for stretched quad', () => {
+        const positions = new Float32Array([
+            0, 0, 0,  10, 0, 0,  10, 100, 0,  0, 100, 0,
+        ]);
+        const uvs = new Float32Array([
+            0, 0, 0,  1, 0, 0,  1, 1, 0,  0, 1, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+        const report = checkDistortionMetric(positions, uvs, indices, 6);
+        expect(report.p95StretchRatio).toBeGreaterThan(5);
+        expect(report.ok).toBe(true); // No gates specified → always ok
+    });
+
+    it('fails with strict distortion gates on stretched mesh', () => {
+        const positions = new Float32Array([
+            0, 0, 0,  10, 0, 0,  10, 100, 0,  0, 100, 0,
+        ]);
+        const uvs = new Float32Array([
+            0, 0, 0,  1, 0, 0,  1, 1, 0,  0, 1, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+        const gates = { maxP95StretchRatio: 1.5, maxP999StretchRatio: 2.5 };
+        const report = checkDistortionMetric(positions, uvs, indices, 6, gates);
+        expect(report.ok).toBe(false);
+    });
+
+    it('handles empty mesh', () => {
+        const report = checkDistortionMetric(
+            new Float32Array(0), new Float32Array(0),
+            new Uint32Array(0), 0,
+        );
+        expect(report.triangleCount).toBe(0);
+        expect(report.ok).toBe(true);
+    });
+});
+
+// ============================================================================
+// checkEdgeLengthDistribution
+// ============================================================================
+
+describe('checkEdgeLengthDistribution', () => {
+    it('reports edge stats for a simple quad', () => {
+        const positions = new Float32Array([
+            0, 0, 0,  10, 0, 0,  10, 10, 0,  0, 10, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+        const report = checkEdgeLengthDistribution(positions, indices, 6);
+        expect(report.edgeCount).toBeGreaterThan(0);
+        expect(report.meanMm).toBeGreaterThan(0);
+        expect(report.p95Mm).toBeGreaterThanOrEqual(report.meanMm);
+        expect(report.ok).toBe(true);
+    });
+
+    it('reports higher CV for non-uniform mesh', () => {
+        // Uniform grid
+        const uniformPos = new Float32Array([
+            0, 0, 0,  5, 0, 0,  10, 0, 0,
+            0, 5, 0,  5, 5, 0,  10, 5, 0,
+        ]);
+        const uniformIdx = new Uint32Array([0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4]);
+        const uniformReport = checkEdgeLengthDistribution(uniformPos, uniformIdx, 12);
+
+        // Stretched: one edge 10× longer
+        const stretchPos = new Float32Array([
+            0, 0, 0,  5, 0, 0,  50, 0, 0,
+            0, 5, 0,  5, 5, 0,  50, 5, 0,
+        ]);
+        const stretchReport = checkEdgeLengthDistribution(stretchPos, uniformIdx, 12);
+
+        expect(stretchReport.coeffOfVariation).toBeGreaterThan(uniformReport.coeffOfVariation);
+    });
+
+    it('returns zeros for empty mesh', () => {
+        const report = checkEdgeLengthDistribution(new Float32Array(0), new Uint32Array(0), 0);
+        expect(report.edgeCount).toBe(0);
+        expect(report.meanMm).toBe(0);
+    });
+});
+
+// ============================================================================
+// distortionGatesForProfile
+// ============================================================================
+
+describe('distortionGatesForProfile', () => {
+    it('high profile has moderate gates', () => {
+        const gates = distortionGatesForProfile('high');
+        expect(gates.maxP95StretchRatio).toBe(1.8);
+        expect(gates.maxP999StretchRatio).toBe(3.0);
+    });
+
+    it('ultra profile has strict gates', () => {
+        const gates = distortionGatesForProfile('ultra');
+        expect(gates.maxP95StretchRatio).toBe(1.5);
+        expect(gates.maxP999StretchRatio).toBe(2.5);
+    });
+
+    it('draft profile has no gating (Infinity)', () => {
+        const gates = distortionGatesForProfile('draft');
+        expect(gates.maxP95StretchRatio).toBe(Infinity);
+        expect(gates.maxP999StretchRatio).toBe(Infinity);
+    });
+});
+
+// ============================================================================
+// validateMesh with distortion + edge-length integration
+// ============================================================================
+
+describe('validateMesh — distortion and edge-length gates', () => {
+    it('includes distortion report when UVs provided', () => {
+        const positions = new Float32Array([
+            0, 0, 0,  10, 0, 0,  10, 10, 0,  0, 10, 0,
+        ]);
+        const uvs = new Float32Array([
+            0, 0, 0,  1, 0, 0,  1, 1, 0,  0, 1, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+        const report = validateMesh(positions, indices, 6, {
+            tolerances: LOOSE_TOLERANCES,
+            uvs,
+        });
+        expect(report.distortion).toBeDefined();
+        expect(report.distortion!.p95StretchRatio).toBeCloseTo(1.0, 0);
+    });
+
+    it('omits distortion report when no UVs', () => {
+        const positions = new Float32Array([
+            0, 0, 0,  10, 0, 0,  10, 10, 0,  0, 10, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+        const report = validateMesh(positions, indices, 6, {
+            tolerances: LOOSE_TOLERANCES,
+        });
+        expect(report.distortion).toBeUndefined();
+    });
+
+    it('always includes edge-length report', () => {
+        const positions = new Float32Array([
+            0, 0, 0,  10, 0, 0,  10, 10, 0,  0, 10, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+        const report = validateMesh(positions, indices, 6, {
+            tolerances: LOOSE_TOLERANCES,
+        });
+        expect(report.edgeLength).toBeDefined();
+        expect(report.edgeLength!.edgeCount).toBeGreaterThan(0);
+    });
+
+    it('fails valid when distortion gates exceeded', () => {
+        // 10× stretch
+        const positions = new Float32Array([
+            0, 0, 0,  10, 0, 0,  10, 100, 0,  0, 100, 0,
+        ]);
+        const uvs = new Float32Array([
+            0, 0, 0,  1, 0, 0,  1, 1, 0,  0, 1, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+        const report = validateMesh(positions, indices, 6, {
+            tolerances: LOOSE_TOLERANCES,
+            uvs,
+            distortionGates: { maxP95StretchRatio: 1.5, maxP999StretchRatio: 2.5 },
+        });
+        expect(report.distortion!.ok).toBe(false);
+        expect(report.valid).toBe(false);
+        expect(report.warnings.some(w => w.includes('Distortion'))).toBe(true);
     });
 });

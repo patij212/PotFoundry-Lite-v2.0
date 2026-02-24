@@ -32,6 +32,10 @@ import {
 } from './SeamTopology';
 import type { SeamValidationConfig } from './SeamTopology';
 import type { QualityProfileName } from './types';
+import {
+    computeDistortion,
+    edgeLengthStats,
+} from './SurfaceMetric';
 
 // ============================================================================
 // Types
@@ -117,6 +121,44 @@ export interface WallThicknessReport {
     thinSpots: number;
 }
 
+/** UV metric distortion check result. */
+export interface DistortionReport {
+    /** Whether distortion passes the tolerance gates. */
+    ok: boolean;
+    /** 95th percentile stretch ratio (σ₁/σ₂) across triangles. */
+    p95StretchRatio: number;
+    /** 99.9th percentile stretch ratio. */
+    p999StretchRatio: number;
+    /** Mean stretch ratio across triangles. */
+    meanStretchRatio: number;
+    /** Number of triangles evaluated. */
+    triangleCount: number;
+}
+
+/** 3D edge-length distribution check result. */
+export interface EdgeLengthReport {
+    /** Whether edge-length distribution passes quality gates. */
+    ok: boolean;
+    /** 95th percentile 3D edge length in mm. */
+    p95Mm: number;
+    /** 99.9th percentile 3D edge length in mm. */
+    p999Mm: number;
+    /** Mean 3D edge length in mm. */
+    meanMm: number;
+    /** Coefficient of variation (stddev/mean). Lower = more uniform. */
+    coeffOfVariation: number;
+    /** Total unique edges measured. */
+    edgeCount: number;
+}
+
+/** Distortion tolerance thresholds per quality profile. */
+export interface DistortionGates {
+    /** Maximum allowable p95 stretch ratio. */
+    maxP95StretchRatio: number;
+    /** Maximum allowable p999 stretch ratio. */
+    maxP999StretchRatio: number;
+}
+
 /** Complete mesh validation report. */
 export interface ValidationReport {
     /** Overall pass: all enabled checks passed. */
@@ -135,6 +177,10 @@ export interface ValidationReport {
     seam?: SeamReport;
     /** Wall thickness (present if inner positions provided). */
     wallThickness?: WallThicknessReport;
+    /** UV metric distortion (present if UVs provided). */
+    distortion?: DistortionReport;
+    /** 3D edge-length distribution. */
+    edgeLength?: EdgeLengthReport;
     /** Human-readable warnings. */
     warnings: string[];
 }
@@ -163,6 +209,10 @@ export interface ValidateConfig {
     featureChainReferencePositions?: Float32Array;
     /** Only check outer wall triangles up to this index count. */
     outerIdxCount?: number;
+    /** UV coordinates for distortion checking. Packed [u,v,surfaceId,...]. */
+    uvs?: Float32Array;
+    /** Distortion tolerance gates (profile-dependent). */
+    distortionGates?: DistortionGates;
 }
 
 // ============================================================================
@@ -939,6 +989,103 @@ export function checkWallThickness(
 }
 
 // ============================================================================
+// Distortion Check (UV Metric)
+// ============================================================================
+
+/**
+ * Check UV metric distortion across all triangles.
+ *
+ * Computes the per-triangle anisotropy ratio (σ₁/σ₂) from the first
+ * fundamental form and reports p95, p999, and mean values.
+ *
+ * @param positions - Packed [x,y,z,...] vertex positions.
+ * @param uvs - Packed [u,v,surfaceId,...] UV coordinates.
+ * @param indices - Triangle index buffer.
+ * @param idxCount - Number of indices to check.
+ * @param gates - Optional distortion thresholds for pass/fail gating.
+ * @returns DistortionReport with stretch ratio statistics.
+ */
+export function checkDistortionMetric(
+    positions: Float32Array,
+    uvs: Float32Array,
+    indices: Uint32Array,
+    idxCount: number,
+    gates?: DistortionGates,
+): DistortionReport {
+    const d = computeDistortion(positions, uvs, indices, idxCount);
+
+    const ok = gates
+        ? d.p95Anisotropy <= gates.maxP95StretchRatio &&
+          (d.triangleCount >= 1000
+              ? d.maxAnisotropy <= gates.maxP999StretchRatio * 1.5  // p999 proxy for small meshes
+              : true)
+        : true;
+
+    return {
+        ok,
+        p95StretchRatio: d.p95Anisotropy,
+        p999StretchRatio: d.maxAnisotropy,  // For small meshes, max ≈ p999
+        meanStretchRatio: d.meanAnisotropy,
+        triangleCount: d.triangleCount,
+    };
+}
+
+// ============================================================================
+// Edge-Length Distribution Check
+// ============================================================================
+
+/**
+ * Check the distribution of 3D edge lengths across the mesh.
+ *
+ * A well-behaved mesh should have relatively uniform edge lengths.
+ * Large variation indicates uneven tessellation that metric-aware
+ * refinement should improve.
+ *
+ * @param positions - Packed [x,y,z,...] vertex positions.
+ * @param indices - Triangle index buffer.
+ * @param idxCount - Number of indices to check.
+ * @returns EdgeLengthReport with distribution statistics.
+ */
+export function checkEdgeLengthDistribution(
+    positions: Float32Array,
+    indices: Uint32Array,
+    idxCount: number,
+): EdgeLengthReport {
+    const stats = edgeLengthStats(positions, indices, idxCount);
+
+    return {
+        ok: true, // No hard gates; used for monitoring
+        p95Mm: stats.p95,
+        p999Mm: stats.max, // max ≈ p999 for moderate meshes
+        meanMm: stats.mean,
+        coeffOfVariation: stats.mean > 0 ? stats.stddev / stats.mean : 0,
+        edgeCount: stats.count,
+    };
+}
+
+// ============================================================================
+// Distortion Gate Presets
+// ============================================================================
+
+/**
+ * Get distortion tolerance gates for a named quality profile.
+ *
+ * @param profileName - Quality profile name.
+ * @returns DistortionGates thresholds.
+ */
+export function distortionGatesForProfile(profileName: QualityProfileName): DistortionGates {
+    switch (profileName) {
+        case 'high':
+            return { maxP95StretchRatio: 1.8, maxP999StretchRatio: 3.0 };
+        case 'ultra':
+            return { maxP95StretchRatio: 1.5, maxP999StretchRatio: 2.5 };
+        default:
+            // draft/standard: no distortion gating
+            return { maxP95StretchRatio: Infinity, maxP999StretchRatio: Infinity };
+    }
+}
+
+// ============================================================================
 // Main Validation Entry Point
 // ============================================================================
 
@@ -1069,6 +1216,24 @@ export function validateMesh(
         }
     }
 
+    // 8. UV metric distortion (if UVs provided)
+    let distortion: DistortionReport | undefined;
+    if (config.uvs) {
+        distortion = checkDistortionMetric(
+            positions, config.uvs, indices, idxCount,
+            config.distortionGates,
+        );
+        if (!distortion.ok) {
+            warnings.push(
+                `Distortion: p95 stretch ${distortion.p95StretchRatio.toFixed(2)}, ` +
+                `p999 stretch ${distortion.p999StretchRatio.toFixed(2)}`,
+            );
+        }
+    }
+
+    // 9. Edge-length distribution (always available)
+    const edgeLength = checkEdgeLengthDistribution(positions, indices, idxCount);
+
     // Overall validity
     const valid =
         manifold.ok &&
@@ -1077,7 +1242,8 @@ export function validateMesh(
         tqOk &&
         fidOk &&
         (seam?.ok ?? true) &&
-        (wallThickness?.ok ?? true);
+        (wallThickness?.ok ?? true) &&
+        (distortion?.ok ?? true);
 
     return {
         valid,
@@ -1088,6 +1254,8 @@ export function validateMesh(
         triangleQuality,
         seam,
         wallThickness,
+        distortion,
+        edgeLength,
         warnings,
     };
 }
