@@ -1,27 +1,27 @@
-/**
- * ParametricExportComputer.ts — v11.3 Gap-Free Index Layout + Budget Cap
+﻿/**
+ * ParametricExportComputer.ts â€” v11.3 Gap-Free Index Layout + Budget Cap
  *
  * COMPLETELY SEPARATE pipeline from AdaptiveExportComputer (CDT+GPU subdivision).
  *
  * Architecture:
- *   1. GPU: Multi-strip curvature sampling (16 strips × 4096 samples) → gradient + curvature profiles
- *   2. CPU: Feature detection via gradient zero-crossings + d²r/du² curvature peaks
+ *   1. GPU: Multi-strip curvature sampling (16 strips Ã— 4096 samples) â†’ gradient + curvature profiles
+ *   2. CPU: Feature detection via gradient zero-crossings + dÂ²r/duÂ² curvature peaks
  *   3. CPU: CDF-adaptive base grid sized to respect the user's triangle budget
- *   4. GPU: Per-row probing (4096 samples/row) → 5-point stencil + GSS sub-sample peak detection
- *   5. CPU: Feature CHAIN LINKING — connect per-row peaks across adjacent rows into
+ *   4. GPU: Per-row probing (4096 samples/row) â†’ 5-point stencil + GSS sub-sample peak detection
+ *   5. CPU: Feature CHAIN LINKING â€” connect per-row peaks across adjacent rows into
  *          continuous polylines through (u,t) space.
- *   6. CPU: Chain-guided T-row insertion — subdivide grid rows at T positions where
+ *   6. CPU: Chain-guided T-row insertion â€” subdivide grid rows at T positions where
  *          chains cross row boundaries.
- *   7. CPU: PER-ROW FEATURE PATCHING — union grid provides representative feature
+ *   7. CPU: PER-ROW FEATURE PATCHING â€” union grid provides representative feature
  *          columns; each row's vertices are snapped to the chain's exact U position.
  *          Chain edges become mesh edges via diagonal alignment.
- *   8. GPU: Evaluate full mesh → 3D positions
+ *   8. GPU: Evaluate full mesh â†’ 3D positions
  *
  * v11.2 DENSITY FIX:
  *   v11.1 merged ALL chain vertex U-positions into the global grid as full-height
- *   columns. With 70 chains × ~97 points = ~6800 chain U-values → 5593 new columns
- *   spanning ALL rows. This created a near-uniform 6331×279 mesh with 3.5M tris
- *   instead of the target ~360K (10× over budget).
+ *   columns. With 70 chains Ã— ~97 points = ~6800 chain U-values â†’ 5593 new columns
+ *   spanning ALL rows. This created a near-uniform 6331Ã—279 mesh with 3.5M tris
+ *   instead of the target ~360K (10Ã— over budget).
  *
  *   v11.2 fixes this by using the UNION GRID (which clusters features into
  *   representative columns with flanking companions, ~200-400 extra columns)
@@ -45,8 +45,15 @@
 import { MeshData, PotDimensions, StyleOptions, StyleId } from '../../geometry/types';
 import { buildStyleParamPayload } from '../../utils/styleParams';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
-// NOTE: cdt2d import removed in v11.1 — no longer needed on the hot path.
-// The grid-native approach eliminates the O(n²) CDT library dependency.
+import {
+    circularDistance,
+    detectFeatureEdges,
+    detectAllRowFeatures,
+    detectAndMergeColumnFeatures,
+} from './parametric/FeatureDetection';
+import type { ChainPoint, FeatureChain } from './parametric/types';
+// NOTE: cdt2d import removed in v11.1 â€” no longer needed on the hot path.
+// The grid-native approach eliminates the O(nÂ²) CDT library dependency.
 
 // ============================================================================
 // Types
@@ -147,42 +154,34 @@ const SURFACE_CONFIG = [
 ] as const;
 
 /** Samples per strip for curvature probing.
- * 4096 gives ~0.088° resolution for feature detection. */
+ * 4096 gives ~0.088Â° resolution for feature detection. */
 const CURVATURE_SAMPLES = 4096;
 
 /** Number of parallel strips for multi-angle curvature detection */
 const NUM_STRIPS = 16;
 
 // ============================================================================
-// Curvature Computation — imported from ./parametric/CurvatureAnalysis.ts
+// Curvature Computation â€” imported from ./parametric/CurvatureAnalysis.ts
 // (computeRawCurvature, normalizeProfile, smoothProfile)
 // ============================================================================
 
-/** Smoothing radius for curvature profiles before CDF generation.
- * Keep small (2) to preserve sharp feature peaks while preventing noise. */
-const SMOOTH_RADIUS = 2;
-
-/** Minimum prominence for a peak to be considered a feature edge.
- * Expressed as fraction of max curvature. Lower = catch subtler features. */
-const FEATURE_PROMINENCE_THRESHOLD = 0.08;
-
 /** Flanking companion offset as fraction of average grid spacing.
- * Each feature gets two companion grid lines at ±FLANK_OFFSET * avgSpacing
+ * Each feature gets two companion grid lines at Â±FLANK_OFFSET * avgSpacing
  * to properly capture the curvature on both sides of the ridge/valley. */
 const FLANK_OFFSET = 0.3;
 
 /** v10.7: Number of columns on EACH side of the ridge to include in the
  * stitch band.  Total band width = 2 * STITCH_BAND_HALF_WIDTH + 1 quads.
- * Wider band → more quads get 4-tri fan subdivision → smoother transition
+ * Wider band â†’ more quads get 4-tri fan subdivision â†’ smoother transition
  * zone between ridge crest and flat regions.
- * At 500K export (outerW≈1290, m=6 ridges), each ridge spans ~215 columns.
- * A half-width of 3 gives a 7-column band ≈ 3.3% of a ridge period,
+ * At 500K export (outerWâ‰ˆ1290, m=6 ridges), each ridge spans ~215 columns.
+ * A half-width of 3 gives a 7-column band â‰ˆ 3.3% of a ridge period,
  * increasing stitch coverage from ~3% to ~10%.
  * Performance impact: each extra band column adds 2 tris per quad row per
- * chain segment.  At 500K with 93 chains × 73 avg pts → +27K extra tris
+ * chain segment.  At 500K with 93 chains Ã— 73 avg pts â†’ +27K extra tris
  * per extra column, well within budget. */
 // v16.8: Further narrow stitch band to minimize visible density rings.
-// Keep only ±1 columns around ridge for fan triangulation.
+// Keep only Â±1 columns around ridge for fan triangulation.
 const STITCH_BAND_HALF_WIDTH = 1;
 
 /**
@@ -194,7 +193,7 @@ const STITCH_BAND_HALF_WIDTH = 1;
  * edges look coarse/rough.
  *
  * v16.12: Reduced from 1 to 0. Only lock the ridge quad itself.
- * The ±1 neighbor quads still get chain-directed diagonals, but are
+ * The Â±1 neighbor quads still get chain-directed diagonals, but are
  * left UNLOCKED so flipEdges3D can override them with 3D-optimal
  * diagonals. On sharp ridges, this lets the quality flipper smooth
  * the transition from peak to slope instead of forcing chain-aligned
@@ -221,132 +220,11 @@ const LOCAL_ONLY_OUTER_ADAPTATION = true;
 
 /** v10.8: Number of columns on EACH side of the peak to receive gradient-based
  * U redistribution.  Total redistribution band = 2 * GRADIENT_PATCH_HALF_WIDTH + 1.
- * v10.10: NO LONGER USED — peak-only patching eliminates flanking column movement.
+ * v10.10: NO LONGER USED â€” peak-only patching eliminates flanking column movement.
  * Retained as documentation of the historical value. */
 // const GRADIENT_PATCH_HALF_WIDTH = 4;
 
-/**
- * Detect feature edges (ridges and valleys) in a curvature profile.
- *
- * Uses TWO complementary detection strategies:
- * 1. Curvature peaks: Local maxima in |d²r/dp²| with prominence filtering.
- *    These mark positions of maximum bending (where the surface curves most).
- * 2. Gradient zero-crossings: Sign changes in dr/dp (first derivative).
- *    These are the ACTUAL ridge peaks and valley bottoms — the extrema of
- *    the radius function itself, which is where grid lines matter most.
- *
- * Both types are merged and deduplicated. This dual approach ensures we
- * catch both sharp cusps (high curvature) and gentle hills (gradient zero
- * but low curvature).
- *
- * @param curvature - Raw (unnormalized) curvature profile (|d²r/dp²|)
- * @param numSamples - Length of the profile
- * @param positions3D - Optional: the 3D positions used to compute curvature.
- *   If provided, also detects gradient zero-crossings (radius extrema).
- * @returns Array of feature positions in [0, 1) normalized coordinates
- */
-function detectFeatureEdges(
-    curvature: Float32Array,
-    numSamples: number,
-    positions3D?: Float32Array
-): number[] {
-    const features: number[] = [];
-    if (numSamples < 5) return features;
-
-    // --- Strategy 1: Curvature peaks (high |d²r/dp²|) ---
-    let maxCurv = 0;
-    for (let i = 0; i < numSamples; i++) {
-        maxCurv = Math.max(maxCurv, curvature[i]);
-    }
-
-    if (maxCurv > 1e-8) {
-        const prominenceThreshold = maxCurv * FEATURE_PROMINENCE_THRESHOLD;
-
-        for (let i = 2; i < numSamples - 2; i++) {
-            const c = curvature[i];
-            if (c <= curvature[i - 1] || c <= curvature[i + 1]) continue;
-
-            // Prominence: height above the higher of the two flanking minima
-            let leftMin = c;
-            for (let j = i - 1; j >= 0; j--) {
-                leftMin = Math.min(leftMin, curvature[j]);
-                if (curvature[j] > c) break;
-            }
-            let rightMin = c;
-            for (let j = i + 1; j < numSamples; j++) {
-                rightMin = Math.min(rightMin, curvature[j]);
-                if (curvature[j] > c) break;
-            }
-            const prominence = c - Math.max(leftMin, rightMin);
-
-            if (prominence >= prominenceThreshold) {
-                const L = curvature[i - 1];
-                const R = curvature[i + 1];
-                const denom = 2 * (L - 2 * c + R);
-                const offset = Math.abs(denom) > 1e-9 ? (L - R) / denom : 0;
-                const refinedPos = (i + offset) / numSamples;
-                features.push(Math.max(0, Math.min(1 - 1e-6, refinedPos)));
-            }
-        }
-    }
-
-    // --- Strategy 2: Gradient zero-crossings (radius extrema) ---
-    // These are the actual ridge tops and valley bottoms.
-    // Even gentle hills with low curvature create zero-crossings.
-    if (positions3D && positions3D.length >= numSamples * 3) {
-        // Compute cylindrical radius at each sample
-        const radii = new Float32Array(numSamples);
-        for (let i = 0; i < numSamples; i++) {
-            const x = positions3D[i * 3];
-            const y = positions3D[i * 3 + 1];
-            radii[i] = Math.sqrt(x * x + y * y);
-        }
-
-        // Compute first derivative (gradient) via central differences
-        const gradient = new Float32Array(numSamples);
-        for (let i = 1; i < numSamples - 1; i++) {
-            gradient[i] = radii[i + 1] - radii[i - 1]; // proportional to dr/dp
-        }
-        gradient[0] = gradient[1];
-        gradient[numSamples - 1] = gradient[numSamples - 2];
-
-        // Find zero-crossings with minimum curvature gate
-        // (only add if curvature at zero-crossing exceeds noise floor)
-        const noiseFloor = maxCurv * 0.02; // 2% of max = very sensitive
-        for (let i = 1; i < numSamples - 1; i++) {
-            if (gradient[i - 1] * gradient[i] < 0 || // Sign change
-                (gradient[i] === 0 && gradient[i - 1] !== 0)) { // Exact zero
-                // Linear interpolation for sub-sample zero-crossing position
-                const g0 = gradient[i - 1];
-                const g1 = gradient[i];
-                const frac = Math.abs(g0) / (Math.abs(g0) + Math.abs(g1) + 1e-12);
-                const pos = (i - 1 + frac) / numSamples;
-
-                // Gate: must have non-trivial curvature nearby
-                const localCurv = Math.max(
-                    curvature[Math.max(0, i - 1)],
-                    curvature[i],
-                    curvature[Math.min(numSamples - 1, i + 1)]
-                );
-                if (localCurv > noiseFloor) {
-                    features.push(Math.max(0, Math.min(1 - 1e-6, pos)));
-                }
-            }
-        }
-    }
-
-    // Deduplicate features that are too close together (within 0.5 sample)
-    features.sort((a, b) => a - b);
-    const minSep = 0.5 / numSamples;
-    const deduped: number[] = [];
-    for (const f of features) {
-        if (deduped.length === 0 || f - deduped[deduped.length - 1] > minSep) {
-            deduped.push(f);
-        }
-    }
-
-    return deduped;
-}
+// detectFeatureEdges â€” imported from ./parametric/FeatureDetection.ts
 
 /**
  * Merge feature edge positions into a CDF-adaptive position array.
@@ -473,7 +351,7 @@ function generateCDFAdaptivePositions(
     // Normalize CDF to [0, 1]
     const total = cdf[n];
     if (total < 1e-8) {
-        // Flat curvature → uniform spacing
+        // Flat curvature â†’ uniform spacing
         const positions = new Float32Array(count);
         for (let i = 0; i < count; i++) positions[i] = i / count;
         return positions;
@@ -563,20 +441,20 @@ function generateAdaptiveGrid(
 }
 
 // ============================================================================
-// v11.1 — Grid-Native Constrained Meshing (No CDT Library)
+// v11.1 â€” Grid-Native Constrained Meshing (No CDT Library)
 // ============================================================================
 //
 // v11.2 DENSITY FIX:
 //
 // v11.1 merged ALL chain U-positions into the global U array, creating 5593
-// new columns spanning every row. This produced a 6331×279 grid with 3.5M tris
-// instead of the target ~360K (10× over budget). The mesh was near-uniform
+// new columns spanning every row. This produced a 6331Ã—279 grid with 3.5M tris
+// instead of the target ~360K (10Ã— over budget). The mesh was near-uniform
 // with no feature-following.
 //
 // v11.2 fixes this with a two-layer approach:
 //   1. UNION GRID: Uses buildUnionFeatureGrid() which clusters per-row features
 //      into representative columns with flanking companions (~200-400 extra cols).
-//      This is the global grid topology — respects the triangle budget.
+//      This is the global grid topology â€” respects the triangle budget.
 //   2. PER-ROW PATCHING: For each chain point, find the nearest grid column and
 //      overwrite that row's vertex U-coordinate with the exact chain position.
 //      This makes chain vertices mesh vertices without adding global columns.
@@ -584,7 +462,7 @@ function generateAdaptiveGrid(
 //      diagonal oriented to follow the chain direction.
 //
 // The result: ~1900 columns instead of 6331. Features are mesh edges via
-// per-row patching. Triangle count respects the budget. O(numU × numT).
+// per-row patching. Triangle count respects the budget. O(numU Ã— numT).
 // ============================================================================
 
 /**
@@ -613,19 +491,19 @@ function bsearchFloor(arr: Float32Array | number[], value: number): number {
  *
  * v16.13 CHAIN-CONSTRAINED TESSELLATION:
  * Instead of generating a grid and patching the nearest column, this approach:
- *   1. Generates the base grid vertices (numU × numT)
+ *   1. Generates the base grid vertices (numU Ã— numT)
  *   2. INSERTS chain points as additional vertices (appended after grid)
  *   3. For grid cells containing chain points, splits the cell into fan
- *      triangles around the chain vertex — the chain point IS a mesh vertex
+ *      triangles around the chain vertex â€” the chain point IS a mesh vertex
  *   4. Chain edges (consecutive chain points) are enforced as mesh edges
  *      by triangulating chain-occupied cells to connect the chain vertices
  *   5. Grid cells without chain points are triangulated normally (2 tris)
  *
  * This ensures every chain point is an actual mesh vertex and consecutive
- * chain points are connected by mesh edges — the chain IS the tessellation
+ * chain points are connected by mesh edges â€” the chain IS the tessellation
  * constraint, not a post-hoc patch.
  *
- * The grid stays at numU × numT (no extra columns/rows). Chain points are
+ * The grid stays at numU Ã— numT (no extra columns/rows). Chain points are
  * extra vertices beyond the grid, inserted into the cells they occupy.
  *
  * @param chains          Feature chains from Phase 2.5 (linked per-row peaks)
@@ -646,7 +524,7 @@ function buildCDTOuterWall(
 ): { vertices: Float32Array; indices: Uint32Array; quadMap: Int32Array; gridVertexCount: number; chainEdges: Array<[number, number]> } {
     const buildStart = performance.now();
 
-    // Build reverse map: original row → final row index
+    // Build reverse map: original row â†’ final row index
     const origToFinal = new Map<number, number>();
     for (let f = 0; f < rowMapping.length; f++) {
         if (rowMapping[f] >= 0) {
@@ -658,7 +536,7 @@ function buildCDTOuterWall(
     const numU = unionU.length;
     const gridVertexCount = numU * numT;
 
-    // ── 1. Collect chain points remapped to UV space with vertex indices ──
+    // â”€â”€ 1. Collect chain points remapped to UV space with vertex indices â”€â”€
     const SEAM_THRESHOLD = 0.4;
 
     // Each chain point gets a unique vertex index (appended after grid)
@@ -729,7 +607,7 @@ function buildCDTOuterWall(
 
                 const rowGap = p1.rowIdx - p0.rowIdx;
                 if (rowGap <= 1 && rowGap >= -1) {
-                    // Single row step — no interpolation needed
+                    // Single row step â€” no interpolation needed
                     continue; // edge recorded in the next loop
                 }
 
@@ -772,19 +650,19 @@ function buildCDTOuterWall(
         }
     }
 
-    // v20.0: Per-row UV snapping — exact feature positions without chain-strip topology.
+    // v20.0: Per-row UV snapping â€” exact feature positions without chain-strip topology.
     //
-    // v19.0 removed chain vertices entirely → feature ridges became imprecise (±0.5 grid
-    // cell ≈ 0.21mm approximation), making sharp styles visually degraded.
+    // v19.0 removed chain vertices entirely â†’ feature ridges became imprecise (Â±0.5 grid
+    // cell â‰ˆ 0.21mm approximation), making sharp styles visually degraded.
     //
     // v20.0 fix: instead of appending extra chain vertices (which create bridge triangles
     // with poor dihedral), we SNAP the nearest existing grid vertex in each row to the
-    // chain's exact U position. The GPU evaluates the snapped vertex at that U → it lands
-    // exactly on the mathematical ridge surface. No extra vertices → no chain-strip
-    // designation → standard quad triangulation → smooth surface + exact feature positions.
+    // chain's exact U position. The GPU evaluates the snapped vertex at that U â†’ it lands
+    // exactly on the mathematical ridge surface. No extra vertices â†’ no chain-strip
+    // designation â†’ standard quad triangulation â†’ smooth surface + exact feature positions.
     //
     // Adjacent rows have the same grid column at slightly different U positions (tiny
-    // ≤0.5/numU "kink"), but this is sub-millimeter and below 3D-printing resolution.
+    // â‰¤0.5/numU "kink"), but this is sub-millimeter and below 3D-printing resolution.
     //
     // chainDirectedFlip still orients diagonals using chain UV data (unchanged).
     // All chain-strip downstream passes are no-ops (chainVertices cleared below).
@@ -792,7 +670,7 @@ function buildCDTOuterWall(
     chainVertices.length = 0;
     chainEdges.length = 0;
 
-    // ── 2. Generate vertices: grid (v20.0 — chain UVs snapped in-place) ──
+    // â”€â”€ 2. Generate vertices: grid (v20.0 â€” chain UVs snapped in-place) â”€â”€
     const totalVertexCount = gridVertexCount;
     const vertices = new Float32Array(totalVertexCount * 3);
 
@@ -827,7 +705,7 @@ function buildCDTOuterWall(
         snappedVertexCount++;
     }
 
-    // ── 3. Build per-row chain vertex lookup (sorted by U) ──
+    // â”€â”€ 3. Build per-row chain vertex lookup (sorted by U) â”€â”€
     // For each row, collect chain vertices sorted by U position.
     const rowChainVerts = new Map<number, ChainVertex[]>();
     for (const cv of chainVertices) {
@@ -840,17 +718,17 @@ function buildCDTOuterWall(
         list.sort((a, b) => a.u - b.u);
     }
 
-    // ── 4. Full-row strip triangulation ──
+    // â”€â”€ 4. Full-row strip triangulation â”€â”€
     // For each row band (j to j+1), build a SINGLE merged vertex sequence
     // spanning ALL columns on both the bottom and top edges (grid columns +
-    // chain points sorted by U), then sweep L→R to create a triangle strip
+    // chain points sorted by U), then sweep Lâ†’R to create a triangle strip
     // across the entire row.
     //
     // This is critical for cross-cell chain edges: when chain point P is in
     // column i (row j) and chain point Q is in column i+1 (row j+1), a
-    // per-cell approach processes them separately and never creates edge P→Q.
+    // per-cell approach processes them separately and never creates edge Pâ†’Q.
     // The full-row sweep sees both P and Q in the same pass and naturally
-    // creates a triangle with edge P→Q.
+    // creates a triangle with edge Pâ†’Q.
     //
     // For quadMap: after the strip, we classify each triangle by which grid
     // column its centroid falls in. Standard cells (2 tris, no chain vertices)
@@ -870,7 +748,7 @@ function buildCDTOuterWall(
 
     // Pre-build row-indexed chain edge lookup for efficient bridge-gap marking.
     // For each row band j (from row j to j+1), store the chain edges that span it.
-    const rowBandEdges = new Map<number, Array<[number, number]>>(); // row → edges
+    const rowBandEdges = new Map<number, Array<[number, number]>>(); // row â†’ edges
     for (const [v0, v1] of chainEdges) {
         const cv0 = chainVertices[v0 - gridVertexCount];
         const cv1 = chainVertices[v1 - gridVertexCount];
@@ -904,10 +782,10 @@ function buildCDTOuterWall(
             // Check if a chain point is very close to this grid column.
             // If so, REPLACE the grid vertex with the chain vertex to avoid
             // degenerate triangles while keeping the chain vertex in the topology.
-            // This is critical for constraint enforcement — skipping chain vertices
+            // This is critical for constraint enforcement â€” skipping chain vertices
             // breaks the vtxBotPos/vtxTopPos lookup in constraintAwareTriangulate.
             if (ci < chainList.length && Math.abs(chainList[ci].u - unionU[i]) <= 1e-6) {
-                // Chain vertex coincides with grid column — emit chain vertex
+                // Chain vertex coincides with grid column â€” emit chain vertex
                 // at this grid column's position in the sorted sequence
                 result.push({ idx: chainList[ci].vertexIdx, u: chainList[ci].u, isChain: true, gridCol: i });
                 ci++;
@@ -921,7 +799,7 @@ function buildCDTOuterWall(
             // Insert chain points between this grid column and the next
             const uNext = (i < numU - 1) ? unionU[i + 1] : 1.0 + 1e-6;
             while (ci < chainList.length && chainList[ci].u < uNext - 1e-9) {
-                // v16.19: Always include chain vertices — never skip them.
+                // v16.19: Always include chain vertices â€” never skip them.
                 // Skipping chain vertices close to grid columns breaks constraint
                 // enforcement because the vertex won't appear in the strip's
                 // bot/top arrays. The constraint-aware sweep handles thin triangles.
@@ -938,7 +816,7 @@ function buildCDTOuterWall(
         return result;
     };
 
-    // ── v16.19: Constraint-aware strip triangulation ──
+    // â”€â”€ v16.19: Constraint-aware strip triangulation â”€â”€
     //
     // Instead of a naive strip sweep + post-hoc edge flipping (which has
     // numerical issues with convexity tests and winding corruption), this
@@ -947,7 +825,7 @@ function buildCDTOuterWall(
     // For each row band with chain constraints:
     //   1. Build merged bottom/top vertex sequences (grid + chain, sorted by U)
     //   2. Sort constraint edges by the U midpoint
-    //   3. Triangulate by processing "pillars" — each constraint edge acts as
+    //   3. Triangulate by processing "pillars" â€” each constraint edge acts as
     //      a mandatory diagonal that splits the strip. The regions between
     //      constraints are filled with a simple fan from the constraint vertex.
     //
@@ -982,9 +860,9 @@ function buildCDTOuterWall(
             return;
         }
 
-        // Build index→position maps for constraint vertices
-        const vtxBotPos = new Map<number, number>(); // vertex index → position in bot[]
-        const vtxTopPos = new Map<number, number>(); // vertex index → position in top[]
+        // Build indexâ†’position maps for constraint vertices
+        const vtxBotPos = new Map<number, number>(); // vertex index â†’ position in bot[]
+        const vtxTopPos = new Map<number, number>(); // vertex index â†’ position in top[]
         for (let i = 0; i < bot.length; i++) vtxBotPos.set(bot[i].idx, i);
         for (let i = 0; i < top.length; i++) vtxTopPos.set(top[i].idx, i);
 
@@ -1015,7 +893,7 @@ function buildCDTOuterWall(
             } else if (bp1 !== undefined && tp0 !== undefined) {
                 bIdx = v1; tIdx = v0;
             } else {
-                continue; // Both on same row or not found — skip
+                continue; // Both on same row or not found â€” skip
             }
 
             const bPos = vtxBotPos.get(bIdx);
@@ -1043,7 +921,7 @@ function buildCDTOuterWall(
             const targetBot = con.botPos;
             const targetTop = con.topPos;
 
-            // Only sweep forward — if a constraint's endpoint is already
+            // Only sweep forward â€” if a constraint's endpoint is already
             // behind the cursor (because a previous constraint crossed it),
             // we still need to ensure the constraint edge exists.
             const sweepBotEnd = Math.max(targetBot, curBot);
@@ -1055,7 +933,7 @@ function buildCDTOuterWall(
             }
 
             // Now we're at (sweepBotEnd, sweepTopEnd). The constraint edge
-            // bot[targetBot]→top[targetTop] should be in the triangulation
+            // bot[targetBot]â†’top[targetTop] should be in the triangulation
             // if the sweep covered both endpoints. But if one endpoint was
             // already behind the cursor, the edge might not be present.
             // In that case, explicitly emit a triangle containing the edge.
@@ -1092,7 +970,7 @@ function buildCDTOuterWall(
     }
 
     /**
-     * Sweep a sub-region of the strip from (botStart..botEnd) × (topStart..topEnd).
+     * Sweep a sub-region of the strip from (botStart..botEnd) Ã— (topStart..topEnd).
      * Standard alternating-advance: at each step, advance whichever pointer
      * has the smaller next-U, creating one triangle per step.
      */
@@ -1114,7 +992,7 @@ function buildCDTOuterWall(
                 buf.push(bot[bi].idx, bot[bi + 1].idx, top[ti].idx);
                 bi++;
             } else {
-                // Both can advance — choose whichever has smaller next-U.
+                // Both can advance â€” choose whichever has smaller next-U.
                 // On ties (same grid column), prefer bot (<=) for consistent
                 // diagonal direction. The 3D flip passes correct diagonals
                 // that would benefit from the other orientation.
@@ -1160,7 +1038,7 @@ function buildCDTOuterWall(
 
                 // Mark columns as chain-involved (bridge-gap)
                 // Clamp to valid cell range [0, cellsPerRow-1]: a vertex
-                // at u≈1.0 returns col=numU-1 from bsearchFloor, but the
+                // at uâ‰ˆ1.0 returns col=numU-1 from bsearchFloor, but the
                 // last valid cell is cellsPerRow-1 (between col numU-2 and numU-1).
                 const col0raw = bsearchFloor(unionU, cv0.u);
                 const col1raw = bsearchFloor(unionU, cv1.u);
@@ -1208,7 +1086,7 @@ function buildCDTOuterWall(
             }
 
             if (!colHasChain[i]) {
-                // ── Standard cell: 2 triangles (default diagonal) ──
+                // â”€â”€ Standard cell: 2 triangles (default diagonal) â”€â”€
                 const bl = j * numU + i;
                 const br = j * numU + (i + 1);
                 const tl = (j + 1) * numU + i;
@@ -1220,7 +1098,7 @@ function buildCDTOuterWall(
                 quadMap[quadIdx] = triBase;
                 i++;
             } else {
-                // ── Chain segment: contiguous run of chain-involved columns ──
+                // â”€â”€ Chain segment: contiguous run of chain-involved columns â”€â”€
                 const segStart = i;
                 while (i < cellsPerRow && colHasChain[i]) {
                     chainCellCount++;
@@ -1299,7 +1177,7 @@ function buildCDTOuterWall(
     // Convert to Uint32Array
     const indices = new Uint32Array(indexBuf);
 
-    // ── Verify chain edges are actual mesh edges ──
+    // â”€â”€ Verify chain edges are actual mesh edges â”€â”€
     // Build a set of mesh edges for quick lookup
     const meshEdgeSet = new Set<string>();
     for (let t = 0; t < indexBuf.length; t += 3) {
@@ -1324,10 +1202,10 @@ function buildCDTOuterWall(
                     const col0 = bsearchFloor(unionU, cv0.u);
                     const col1 = bsearchFloor(unionU, cv1.u);
                     missingExamples.push(
-                        `  chain${cv0.chainId} pt${cv0.pointIdx}→pt${cv1.pointIdx}: ` +
-                        `row${cv0.rowIdx}→${cv1.rowIdx} col${col0}→${col1} ` +
-                        `u=${cv0.u.toFixed(6)}→${cv1.u.toFixed(6)} ` +
-                        `vidx=${v0}→${v1}`
+                        `  chain${cv0.chainId} pt${cv0.pointIdx}â†’pt${cv1.pointIdx}: ` +
+                        `row${cv0.rowIdx}â†’${cv1.rowIdx} col${col0}â†’${col1} ` +
+                        `u=${cv0.u.toFixed(6)}â†’${cv1.u.toFixed(6)} ` +
+                        `vidx=${v0}â†’${v1}`
                     );
                 }
             }
@@ -1341,8 +1219,8 @@ function buildCDTOuterWall(
     const buildMs = performance.now() - buildStart;
     const triCount = indices.length / 3;
     const realTriCount = triCount - seamSkipCount * 2;
-    console.log(`[ParametricExport]   v20.0 Per-row UV snapping: ${totalVertexCount} verts (${numU}×${numT} grid, ${snappedVertexCount} snapped to chain positions), ${realTriCount} real tris`);
-    console.log(`[ParametricExport]   v20.0 Grid: ${numU}×${numT}, seam skips: ${seamSkipCount}, build time: ${buildMs.toFixed(1)}ms`);
+    console.log(`[ParametricExport]   v20.0 Per-row UV snapping: ${totalVertexCount} verts (${numU}Ã—${numT} grid, ${snappedVertexCount} snapped to chain positions), ${realTriCount} real tris`);
+    console.log(`[ParametricExport]   v20.0 Grid: ${numU}Ã—${numT}, seam skips: ${seamSkipCount}, build time: ${buildMs.toFixed(1)}ms`);
 
     return { vertices, indices, quadMap, gridVertexCount, chainEdges };
 }
@@ -1352,7 +1230,7 @@ function buildCDTOuterWall(
  *
  * In a regular grid, each quad cell is split with a fixed diagonal.
  * When a feature curve crosses a cell diagonally, the default split
- * creates a triangle edge that CROSSES the feature — producing a
+ * creates a triangle edge that CROSSES the feature â€” producing a
  * visible stair-step alias.
  *
  * This function examines each quad cell and flips its diagonal if the
@@ -1366,8 +1244,8 @@ function buildCDTOuterWall(
  *   - Alternative diagonal: A-D (connects (i,j) to (i+1,j+1))
  *
  *   If the U-displacement between rows suggests the feature runs from
- *   A→D (both rows shifted same direction), flip to A-D diagonal.
- *   If it suggests B→C, keep default.
+ *   Aâ†’D (both rows shifted same direction), flip to A-D diagonal.
+ *   If it suggests Bâ†’C, keep default.
  *
  *   Specifically: measure how much the U coordinate shifts between rows
  *   at column i and column i+1.  If both shift in the same direction
@@ -1450,12 +1328,12 @@ function flipFeatureAlignedDiagonals(
             // Normalize: scale T by (cellDU / cellDT) so both axes have similar range
             const tScale = (cellDT > 1e-8) ? (cellDU / cellDT) : 1.0;
 
-            // Default diagonal B-C: length² in normalized UV space
+            // Default diagonal B-C: lengthÂ² in normalized UV space
             const duBC = uB - uC;
             const dtBC = (vertices[v10 * 3 + 1] - vertices[v01 * 3 + 1]) * tScale;
             const lenBC2 = duBC * duBC + dtBC * dtBC;
 
-            // Alternative diagonal A-D: length² in normalized UV space
+            // Alternative diagonal A-D: lengthÂ² in normalized UV space
             const duAD = uA - uD;
             const dtAD = (vertices[v00 * 3 + 1] - vertices[v11 * 3 + 1]) * tScale;
             const lenAD2 = duAD * duAD + dtAD * dtAD;
@@ -1476,7 +1354,7 @@ function flipFeatureAlignedDiagonals(
                     indices[triBase + 3] = v00; indices[triBase + 4] = v11; indices[triBase + 5] = v10;
                 } else {
                     // Default: (A,B,C) (B,D,C)
-                    // Flipped: (A,D,C) (A,B,D) — wait, need correct winding
+                    // Flipped: (A,D,C) (A,B,D) â€” wait, need correct winding
                     // Default: tri0=(A,B,C)=(v00,v10,v01)  tri1=(B,D,C)=(v10,v11,v01)
                     // Flipped: tri0=(A,B,D)=(v00,v10,v11)  tri1=(A,D,C)=(v00,v11,v01)
                     indices[triBase + 0] = v00; indices[triBase + 1] = v10; indices[triBase + 2] = v11;
@@ -1492,7 +1370,7 @@ function flipFeatureAlignedDiagonals(
 }
 
 // ============================================================================
-// v10.7 — Wide-Band Ridge-Edge Stitching (insert midpoint vertices along chain paths)
+// v10.7 â€” Wide-Band Ridge-Edge Stitching (insert midpoint vertices along chain paths)
 // ============================================================================
 
 /**
@@ -1516,7 +1394,7 @@ function flipFeatureAlignedDiagonals(
  * geometry that smooths the transition between ridge crest and flat regions.
  *
  * v10.7 vs v10.5: Stitch band width increased from 2 columns (ridge + left)
- * to (2 × STITCH_BAND_HALF_WIDTH + 1) = 7 columns. Coverage increases
+ * to (2 Ã— STITCH_BAND_HALF_WIDTH + 1) = 7 columns. Coverage increases
  * from ~3% to ~10% of outer wall quads at 500K triangle budget.
  *
  * @param vertices       Outer wall vertex buffer (u, t, surfaceId interleaved)
@@ -1525,8 +1403,8 @@ function flipFeatureAlignedDiagonals(
  * @param tPositions     T positions for each row
  * @param unionU         Union grid U positions (sorted ascending)
  * @param chains         Linked feature chains from Phase 2.5
- * @param rowMapping     Maps final row index → original row index
- * @returns Extended vertex buffer + map of quadIdx → new vertex index
+ * @param rowMapping     Maps final row index â†’ original row index
+ * @returns Extended vertex buffer + map of quadIdx â†’ new vertex index
  */
 function prepareStitchVertices(
     vertices: Float32Array,
@@ -1541,7 +1419,7 @@ function prepareStitchVertices(
     const cellsPerRow = w - 1;
     const quadRows = h - 1;
 
-    // Build reverse map: original row → final row index
+    // Build reverse map: original row â†’ final row index
     const origToFinal = new Map<number, number>();
     for (let f = 0; f < rowMapping.length; f++) {
         if (rowMapping[f] >= 0) {
@@ -1700,7 +1578,7 @@ function prepareStitchVertices(
     const newVertices = new Float32Array(vertices.length + stitchUV.size * 3);
     newVertices.set(vertices);
 
-    const stitchMap = new Map<number, number>(); // quadIdx → vertex index
+    const stitchMap = new Map<number, number>(); // quadIdx â†’ vertex index
     let nextVert = origVertCount;
 
     for (const [quadIdx, uv] of stitchUV) {
@@ -1723,16 +1601,16 @@ function prepareStitchVertices(
  * Stitched quads get a center-fan that creates 4 triangles, ensuring the
  * ridge vertex E connects to all 4 quad corners.
  *
- *  A ────── B         A ──── B
- *  │ ╲      │   →     │╲  ╱│
- *  │   ╲    │         │ E  │
- *  │     ╲  │         │╱  ╲│
- *  C ────── D         C ──── D
+ *  A â”€â”€â”€â”€â”€â”€ B         A â”€â”€â”€â”€ B
+ *  â”‚ â•²      â”‚   â†’     â”‚â•²  â•±â”‚
+ *  â”‚   â•²    â”‚         â”‚ E  â”‚
+ *  â”‚     â•²  â”‚         â”‚â•±  â•²â”‚
+ *  C â”€â”€â”€â”€â”€â”€ D         C â”€â”€â”€â”€ D
  *
  * @param indices        Original index buffer (with flipped diagonals)
  * @param w              Grid width
  * @param h              Grid height (quad rows)
- * @param stitchMap      Map of quadIdx → stitch vertex index
+ * @param stitchMap      Map of quadIdx â†’ stitch vertex index
  * @param invertWinding  Whether this surface uses inverted winding
  * @returns New index buffer with stitched quads expanded to 4-tri fans
  */
@@ -1796,7 +1674,7 @@ function applyStitchTriangulation(
 }
 
 // ============================================================================
-// v10.4 — Chain-Directed Ridge Flipping (uses actual chains)
+// v10.4 â€” Chain-Directed Ridge Flipping (uses actual chains)
 // ============================================================================
 
 /**
@@ -1820,7 +1698,7 @@ function applyStitchTriangulation(
  * @param w              Grid width (columns per row)
  * @param h              Grid height (number of quad rows = T positions - 1)
  * @param chains         Linked feature chains from Phase 2.5
- * @param rowMapping     Maps final row index → original row index (negative = inserted)
+ * @param rowMapping     Maps final row index â†’ original row index (negative = inserted)
  * @param invertWinding  Whether this surface uses inverted winding
  * @returns Object with flipCount and a Set of locked quad indices
  */
@@ -1840,7 +1718,7 @@ function chainDirectedFlip(
     // v11.3: cellsPerRow = w - 1 (non-wrapping grid, no seam cell)
     const cellsPerRow = w - 1;
 
-    // Build reverse map: original row → final row index
+    // Build reverse map: original row â†’ final row index
     const origToFinal = new Map<number, number>();
     for (let f = 0; f < rowMapping.length; f++) {
         if (rowMapping[f] >= 0) {
@@ -1877,7 +1755,7 @@ function chainDirectedFlip(
         if (quadCol >= cellsPerRow || j >= h - 1) return;
 
         const triBase = quadMap[quadIdx];
-        if (triBase < 0) return; // Degenerate/seam cell — skip
+        if (triBase < 0) return; // Degenerate/seam cell â€” skip
 
         const vA = j * w + quadCol;
         const vB = j * w + (quadCol + 1);
@@ -1906,7 +1784,7 @@ function chainDirectedFlip(
         if (quadCol >= cellsPerRow || j >= h - 1) return;
 
         const triBase = quadMap[quadIdx];
-        if (triBase < 0) return; // Degenerate/seam cell — skip
+        if (triBase < 0) return; // Degenerate/seam cell â€” skip
 
         const vA = j * w + quadCol;
         const vB = j * w + (quadCol + 1);
@@ -1978,7 +1856,7 @@ function chainDirectedFlip(
                 if (localUDelta > 0.5) localUDelta -= 1;
                 if (localUDelta < -0.5) localUDelta += 1;
 
-                const LEAN_THRESHOLD = 0.0001; // ~0.036° — below this, treat as vertical
+                const LEAN_THRESHOLD = 0.0001; // ~0.036Â° â€” below this, treat as vertical
 
                 // v16.5: Traverse the full stitch band, but only LOCK a narrow core.
                 // This preserves chain continuity while allowing surrounding quads to
@@ -2038,13 +1916,13 @@ function chainDirectedFlip(
 }
 
 // ============================================================================
-// v10.2 — Post-GPU 3D Edge Flipping (with dihedral awareness)
+// v10.2 â€” Post-GPU 3D Edge Flipping (with dihedral awareness)
 // ============================================================================
 
 /**
  * Flip quad diagonals using actual 3D vertex positions from GPU evaluation.
  *
- * After the GPU evaluates UV→XYZ, we have the true 3D surface positions.
+ * After the GPU evaluates UVâ†’XYZ, we have the true 3D surface positions.
  * For each quad cell on the outer wall, compare the two possible diagonal
  * splits and choose the one that produces triangles whose normals better
  * match the true surface. This is the classic "Delaunay-like" edge flip
@@ -2054,8 +1932,8 @@ function chainDirectedFlip(
  * the CURRENT diagonal orientation instead of always assuming default B-C.
  *
  * The criterion: for quad ABCD with two possible splits:
- *   Default:     tri(A,B,C) + tri(B,D,C)   — diagonal B-C
- *   Alternative: tri(A,B,D) + tri(A,D,C)   — diagonal A-D
+ *   Default:     tri(A,B,C) + tri(B,D,C)   â€” diagonal B-C
+ *   Alternative: tri(A,B,D) + tri(A,D,C)   â€” diagonal A-D
  *
  * We flip if the alternative diagonal produces a LARGER minimum interior
  * angle (Delaunay criterion) OR if the alternative produces more co-planar
@@ -2070,7 +1948,7 @@ function chainDirectedFlip(
  * @param h             Grid height (total rows, NOT quad rows)
  * @param invertWinding Whether this surface uses inverted winding
  * @param lockedQuads   Set of quad indices locked by chain-directed flip
- * @param quadMap       v11.3: Maps logical quad index → index buffer offset (or -1 for degenerate)
+ * @param quadMap       v11.3: Maps logical quad index â†’ index buffer offset (or -1 for degenerate)
  * @returns Number of quads flipped
  */
 function flipEdges3D(
@@ -2130,7 +2008,7 @@ function flipEdges3D(
     const dihedralCos = (n1: [number, number, number], n2: [number, number, number]): number => {
         const len1 = Math.sqrt(n1[0] * n1[0] + n1[1] * n1[1] + n1[2] * n1[2]);
         const len2 = Math.sqrt(n2[0] * n2[0] + n2[1] * n2[1] + n2[2] * n2[2]);
-        if (len1 < 1e-15 || len2 < 1e-15) return 1; // degenerate → treat as coplanar
+        if (len1 < 1e-15 || len2 < 1e-15) return 1; // degenerate â†’ treat as coplanar
         return (n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2]) / (len1 * len2);
     };
 
@@ -2138,8 +2016,8 @@ function flipEdges3D(
     // flip criterion newly satisfied.  Up to MAX_PASSES, stopping early
     // when a pass produces zero flips (convergence).
     const MAX_PASSES = 5;
-    const THRESHOLD_INITIAL = 0.0175;  // ~1° in radians
-    const THRESHOLD_CLEANUP = 0.0087;  // ~0.5° in radians
+    const THRESHOLD_INITIAL = 0.0175;  // ~1Â° in radians
+    const THRESHOLD_CLEANUP = 0.0087;  // ~0.5Â° in radians
 
     for (let pass = 0; pass < MAX_PASSES; pass++) {
         let passFlips = 0;
@@ -2155,7 +2033,7 @@ function flipEdges3D(
 
                 // v11.3: Use quadMap if available, otherwise fall back to quadIdx * 6
                 const triBase = quadMap ? quadMap[quadIdx] : quadIdx * 6;
-                if (triBase < 0) continue; // Degenerate/seam cell — skip
+                if (triBase < 0) continue; // Degenerate/seam cell â€” skip
 
                 const vA = j * w + i;
                 const vB = j * w + (i + 1);
@@ -2167,28 +2045,28 @@ function flipEdges3D(
                 const cx = positions3D[vC * 3], cy = positions3D[vC * 3 + 1], cz = positions3D[vC * 3 + 2];
                 const dx = positions3D[vD * 3], dy = positions3D[vD * 3 + 1], dz = positions3D[vD * 3 + 2];
 
-                // ── Detect current diagonal orientation ──
+                // â”€â”€ Detect current diagonal orientation â”€â”€
                 // Read the actual indices to determine which diagonal is present.
-                // Default: tri0=(A,B,C) tri1=(B,D,C) → diagonal B-C
-                // Flipped: tri0=(A,B,D) tri1=(A,D,C) → diagonal A-D
+                // Default: tri0=(A,B,C) tri1=(B,D,C) â†’ diagonal B-C
+                // Flipped: tri0=(A,B,D) tri1=(A,D,C) â†’ diagonal A-D
                 const curI0 = indices[triBase + 0];
                 const curI1 = indices[triBase + 1];
                 const curI2 = indices[triBase + 2];
 
                 // Determine current diagonal: check if any triangle vertex is D
-                // In default B-C diagonal: vertices are {A,B,C} and {B,D,C} — D appears in tri1 only
-                // In A-D diagonal: vertices are {A,B,D} and {A,D,C} — D appears in both tris
+                // In default B-C diagonal: vertices are {A,B,C} and {B,D,C} â€” D appears in tri1 only
+                // In A-D diagonal: vertices are {A,B,D} and {A,D,C} â€” D appears in both tris
                 // Simple check: does tri0 contain vD?
                 const tri0HasD = (curI0 === vD || curI1 === vD || curI2 === vD);
                 const currentIsAD = tri0HasD; // true = A-D diagonal, false = B-C diagonal
 
                 // Compute quality for BOTH diagonal options (regardless of current state)
-                // Option BC: tri(A,B,C) + tri(B,D,C) — diagonal B-C
+                // Option BC: tri(A,B,C) + tri(B,D,C) â€” diagonal B-C
                 const bcMinAng1 = minAngle(ax, ay, az, bx, by, bz, cx, cy, cz);
                 const bcMinAng2 = minAngle(bx, by, bz, dx, dy, dz, cx, cy, cz);
                 const bcMin = Math.min(bcMinAng1, bcMinAng2);
 
-                // Option AD: tri(A,B,D) + tri(A,D,C) — diagonal A-D
+                // Option AD: tri(A,B,D) + tri(A,D,C) â€” diagonal A-D
                 const adMinAng1 = minAngle(ax, ay, az, bx, by, bz, dx, dy, dz);
                 const adMinAng2 = minAngle(ax, ay, az, dx, dy, dz, cx, cy, cz);
                 const adMin = Math.min(adMinAng1, adMinAng2);
@@ -2227,7 +2105,7 @@ function flipEdges3D(
                     (angleBenefit > threshold * 0.5 && dihedralBenefit > 0.02);
 
                 if (shouldFlip) {
-                    // v10.7: Normal-inversion guard — reject flips that would
+                    // v10.7: Normal-inversion guard â€” reject flips that would
                     // invert a triangle normal relative to the current orientation.
                     // This prevents creating triangles that face inward, which
                     // appear as "glitched connections through the inside."
@@ -2254,7 +2132,7 @@ function flipEdges3D(
                         if (dot1 < 0 || dot2 < 0) invertionSafe = false;
                     }
 
-                    if (!invertionSafe) continue; // Skip this flip — would invert normals
+                    if (!invertionSafe) continue; // Skip this flip â€” would invert normals
 
                     if (targetIsAD) {
                         // Write A-D diagonal
@@ -2289,817 +2167,11 @@ function flipEdges3D(
 }
 
 // ============================================================================
-// Per-Row Feature Tracking (v16.0 — Verified Peak/Valley Detection)
+// Feature Detection â€” imported from ./parametric/FeatureDetection.ts
+// (detectRowFeaturesV16, detectRowFeatures, detectAllRowFeatures,
+//  detectColumnFeaturesV16, detectColumnFeatures, detectAndMergeColumnFeatures,
+//  circularDistance)
 // ============================================================================
-
-/**
- * v16.0: COMPLETELY REWRITTEN peak/valley detection with separate logic for
- * peaks (radius local maxima) and valleys (radius local minima).
- *
- * KEY CHANGES from v10/v13/v15:
- *   1. TYPED features: each detection carries kind (peak/valley), radius,
- *      prominence, and confidence score.
- *   2. SEPARATE peak and valley detection: peaks search for local maxima,
- *      valleys search for local minima. No shared code path that could
- *      confuse the two.
- *   3. VERIFICATION: every candidate is verified by checking that the
- *      refined position is still an extremum of the correct type.
- *      Parabolic fit is checked for consistency (curvature sign must
- *      match the extremum type).
- *   4. CONFIDENCE scoring: based on prominence relative to neighbourhood,
- *      curvature sharpness, and consistency of surrounding gradient.
- *   5. NO inflection points: Strategy 3 is REMOVED. Inflections are not
- *      features — they're curvature sign changes that create noise in the
- *      point cloud without corresponding to visible edges.
- *   6. Strategy 2 (curvature) is REWORKED: only emits a feature if the
- *      curvature peak corresponds to a VERIFIED radius extremum. No more
- *      blind redirection to "nearest extremum within ±3 samples".
- *
- * Detection Pipeline:
- *   1. Compute cylindrical radii from GPU probe data
- *   2. Find all gradient sign changes (candidate extrema)
- *   3. Classify each as peak or valley based on gradient direction
- *   4. Parabolic refinement for sub-sample position
- *   5. VERIFY: check that refined position is consistent with extremum type
- *   6. Compute prominence, confidence, and local radius
- *   7. Apply prominence gate to reject noise
- *   8. Curvature-shoulder detection: find high-curvature points that are
- *      ALSO verified as radius extrema within a 5-sample window
- *   9. Deduplicate, keeping highest-confidence detection at each location
- *
- * @param positions3D   Interleaved [x,y,z, ...] from GPU evaluate
- * @param numSamples    Number of samples (= positions3D.length / 3)
- * @param minProminence Min peak-to-valley radius change (mm) to keep
- * @returns Object with:
- *   - features: FeaturePoint[] (classified, verified)
- *   - uPositions: number[] (sorted U values, backward-compatible)
- *   - rejected: number (candidates that failed verification)
- */
-function detectRowFeaturesV16(
-    positions3D: Float32Array,
-    numSamples: number,
-    minProminence: number = 0.005
-): { features: FeaturePoint[]; uPositions: number[]; rejected: number } {
-    if (numSamples < 7) return { features: [], uPositions: [], rejected: 0 };
-
-    // 1. Cylindrical radius at each sample — GROUND TRUTH from GPU
-    const radii = new Float32Array(numSamples);
-    for (let i = 0; i < numSamples; i++) {
-        const x = positions3D[i * 3];
-        const y = positions3D[i * 3 + 1];
-        radii[i] = Math.sqrt(x * x + y * y);
-    }
-
-    const wrap = (idx: number) => ((idx % numSamples) + numSamples) % numSamples;
-    const prominenceWindow = Math.max(5, Math.floor(numSamples * 0.008));
-
-    // Pre-compute 5-point stencil second derivative (sign-preserving)
-    // Negative = concave down (peak), Positive = concave up (valley)
-    const d2r = new Float32Array(numSamples);
-    for (let i = 0; i < numSamples; i++) {
-        d2r[i] = (
-            -radii[wrap(i - 2)] + 16 * radii[wrap(i - 1)]
-            - 30 * radii[i]
-            + 16 * radii[wrap(i + 1)] - radii[wrap(i + 2)]
-        ) / 12;
-    }
-
-    const candidates: FeaturePoint[] = [];
-    let rejected = 0;
-
-    // ── Strategy 1: Gradient Sign Changes (True Extrema) ──
-    // This is the PRIMARY and most reliable detection strategy.
-    // A gradient sign change means dr/du went from positive to negative (peak)
-    // or negative to positive (valley).
-    for (let i = 0; i < numSamples; i++) {
-        const prev = wrap(i - 1);
-        const next = wrap(i + 1);
-        const dLeft = radii[i] - radii[prev];
-        const dRight = radii[next] - radii[i];
-
-        // Gradient must change sign for this to be an extremum
-        if (dLeft * dRight >= 0) continue;
-
-        // Classify: peak (rising then falling) vs valley (falling then rising)
-        const kind: FeatureKind = dLeft > 0 ? 'peak' : 'valley';
-
-        // ── Parabolic refinement ──
-        // 3-point fit: optimal for smooth peaks, safe for cusps
-        const L = radii[prev];
-        const C = radii[i];
-        const R = radii[next];
-        const denom = L - 2 * C + R;
-        let delta = 0;
-        if (Math.abs(denom) > 1e-14) {
-            delta = 0.5 * (L - R) / denom;
-            delta = Math.max(-0.5, Math.min(0.5, delta));
-        }
-
-        // ── VERIFICATION: parabolic curvature must agree with extremum type ──
-        // For a peak: denom (= d²r) must be NEGATIVE (concave down)
-        // For a valley: denom (= d²r) must be POSITIVE (concave up)
-        // If they disagree, this is likely noise or an inflection, not a real extremum
-        const curvatureCorrect = kind === 'peak' ? (denom < 0) : (denom > 0);
-        if (!curvatureCorrect && Math.abs(denom) > 1e-10) {
-            // Curvature disagrees with extremum type — likely a saddle or noise
-            rejected++;
-            continue;
-        }
-
-        // ── VERIFICATION: the refined position must still be an extremum ──
-        // Check that the value at the refined position is indeed a local max/min
-        // compared to its immediate neighbours
-        const refinedIdx = i + delta;
-        const refinedU = ((refinedIdx / numSamples) % 1 + 1) % 1;
-
-        // Interpolate radius at refined position for verification
-        const fracIdx = ((refinedIdx % numSamples) + numSamples) % numSamples;
-        const iLo = Math.floor(fracIdx);
-        const frac = fracIdx - iLo;
-        const iHi = wrap(iLo + 1);
-        const refinedRadius = radii[iLo] * (1 - frac) + radii[iHi] * frac;
-
-        // Check: is the refined position still an extremum vs its ±1 neighbours?
-        const rMinus1 = radii[prev];
-        const rPlus1 = radii[next];
-        const isStillExtremum = kind === 'peak'
-            ? (refinedRadius >= rMinus1 - 1e-10 && refinedRadius >= rPlus1 - 1e-10)
-            : (refinedRadius <= rMinus1 + 1e-10 && refinedRadius <= rPlus1 + 1e-10);
-
-        if (!isStillExtremum) {
-            rejected++;
-            continue;
-        }
-
-        // ── Prominence: peak-to-valley range in local window ──
-        let localMax = -Infinity, localMin = Infinity;
-        for (let k = -prominenceWindow; k <= prominenceWindow; k++) {
-            const idx = wrap(i + k);
-            localMax = Math.max(localMax, radii[idx]);
-            localMin = Math.min(localMin, radii[idx]);
-        }
-        const prominence = localMax - localMin;
-        if (prominence < minProminence) {
-            rejected++;
-            continue;
-        }
-
-        // ── Confidence scoring ──
-        // Higher confidence for: sharp curvature, strong gradient change, isolated peaks
-        const gradientStrength = Math.abs(dLeft) + Math.abs(dRight);
-        const curvatureStrength = Math.abs(d2r[i]);
-
-        // Compute max gradient and curvature in neighbourhood for normalization
-        let maxGrad = 0, maxCurv = 0;
-        for (let k = -prominenceWindow; k <= prominenceWindow; k++) {
-            const idx = wrap(i + k);
-            const nextIdx = wrap(idx + 1);
-            maxGrad = Math.max(maxGrad, Math.abs(radii[nextIdx] - radii[idx]));
-            maxCurv = Math.max(maxCurv, Math.abs(d2r[idx]));
-        }
-
-        const gradConf = maxGrad > 1e-12 ? Math.min(1, gradientStrength / (2 * maxGrad)) : 0.5;
-        const curvConf = maxCurv > 1e-12 ? Math.min(1, curvatureStrength / maxCurv) : 0.5;
-        const promConf = Math.min(1, prominence / (minProminence * 5));
-        const confidence = 0.4 * gradConf + 0.3 * curvConf + 0.3 * promConf;
-
-        candidates.push({
-            u: refinedU,
-            kind,
-            radius: refinedRadius,
-            prominence,
-            confidence,
-        });
-    }
-
-    // ── Strategy 2: Curvature Shoulders (Verified) ──
-    // Find positions where |d²r/du²| is high AND the position is a VERIFIED
-    // radius extremum (peak or valley) within a tight window.
-    // This catches features that Strategy 1 misses when the gradient sign
-    // change falls exactly between two samples.
-    const absCurv = new Float32Array(numSamples);
-    let maxCurvGlobal = 0;
-    for (let i = 0; i < numSamples; i++) {
-        absCurv[i] = Math.abs(d2r[i]);
-        maxCurvGlobal = Math.max(maxCurvGlobal, absCurv[i]);
-    }
-
-    if (maxCurvGlobal > 1e-10) {
-        const curvThreshold = maxCurvGlobal * 0.20; // top 20% curvature
-
-        for (let i = 0; i < numSamples; i++) {
-            // Must be a local maximum of |curvature|
-            if (absCurv[i] <= absCurv[wrap(i - 1)] ||
-                absCurv[i] <= absCurv[wrap(i + 1)]
-            ) continue;
-            if (absCurv[i] < curvThreshold) continue;
-
-            // Determine expected extremum type from curvature sign
-            // Negative d²r = concave down = PEAK
-            // Positive d²r = concave up = VALLEY
-            const expectedKind: FeatureKind = d2r[i] < 0 ? 'peak' : 'valley';
-
-            // ── VERIFICATION: Find and verify the actual radius extremum ──
-            // Search within ±2 samples for the actual extremum
-            let bestIdx = i;
-            let bestVal = radii[i];
-            for (let k = -2; k <= 2; k++) {
-                const idx = wrap(i + k);
-                if (expectedKind === 'peak' ? (radii[idx] > bestVal) : (radii[idx] < bestVal)) {
-                    bestVal = radii[idx];
-                    bestIdx = idx;
-                }
-            }
-
-            // Verify: the best sample must actually be a local extremum
-            const bPrev = radii[wrap(bestIdx - 1)];
-            const bNext = radii[wrap(bestIdx + 1)];
-            const bCur = radii[bestIdx];
-            const isExtremum = expectedKind === 'peak'
-                ? (bCur >= bPrev && bCur >= bNext)
-                : (bCur <= bPrev && bCur <= bNext);
-            if (!isExtremum) {
-                rejected++;
-                continue;
-            }
-
-            // Parabolic refinement at the verified extremum
-            const eL = radii[wrap(bestIdx - 1)];
-            const eC = radii[bestIdx];
-            const eR = radii[wrap(bestIdx + 1)];
-            const eDenom = eL - 2 * eC + eR;
-            let eDelta = 0;
-            if (Math.abs(eDenom) > 1e-14) {
-                eDelta = 0.5 * (eL - eR) / eDenom;
-                eDelta = Math.max(-0.5, Math.min(0.5, eDelta));
-            }
-
-            // Verify curvature sign agrees with expected kind
-            if (expectedKind === 'peak' && eDenom > 0) { rejected++; continue; }
-            if (expectedKind === 'valley' && eDenom < 0) { rejected++; continue; }
-
-            const curvPeakU = ((bestIdx + eDelta) / numSamples + 1) % 1;
-
-            // Prominence
-            let localMax = -Infinity, localMin = Infinity;
-            for (let k = -prominenceWindow; k <= prominenceWindow; k++) {
-                const idx = wrap(bestIdx + k);
-                localMax = Math.max(localMax, radii[idx]);
-                localMin = Math.min(localMin, radii[idx]);
-            }
-            const prominence = localMax - localMin;
-            if (prominence < minProminence) { rejected++; continue; }
-
-            // Interpolate radius at refined position
-            const fracIdx = ((bestIdx + eDelta) % numSamples + numSamples) % numSamples;
-            const iLo = Math.floor(fracIdx);
-            const fr = fracIdx - iLo;
-            const refinedRadius = radii[iLo] * (1 - fr) + radii[wrap(iLo + 1)] * fr;
-
-            candidates.push({
-                u: curvPeakU,
-                kind: expectedKind,
-                radius: refinedRadius,
-                prominence,
-                confidence: 0.5 * Math.min(1, absCurv[i] / maxCurvGlobal)
-                    + 0.5 * Math.min(1, prominence / (minProminence * 5)),
-            });
-        }
-    }
-
-    // ── Deduplicate: keep highest-confidence feature at each location ──
-    candidates.sort((a, b) => a.u - b.u);
-    const minSep = 1.5 / numSamples;
-    const features: FeaturePoint[] = [];
-
-    for (const cand of candidates) {
-        if (features.length === 0) {
-            features.push(cand);
-            continue;
-        }
-        const last = features[features.length - 1];
-        let gap = cand.u - last.u;
-        if (gap < 0) gap += 1;
-
-        if (gap > minSep && (1 - gap) > minSep) {
-            // Far enough from any existing feature — add
-            features.push(cand);
-        } else {
-            // Too close: keep the one with higher confidence
-            if (cand.confidence > last.confidence) {
-                features[features.length - 1] = cand;
-            }
-            // Otherwise keep the existing one
-        }
-    }
-
-    // Extract sorted U positions for backward compatibility
-    const uPositions = features.map(f => f.u);
-    uPositions.sort((a, b) => a - b);
-
-    return { features, uPositions, rejected };
-}
-
-/**
- * Backward-compatible wrapper: returns just the U positions.
- * Used by the existing pipeline that expects number[].
- */
-function detectRowFeatures(
-    positions3D: Float32Array,
-    numSamples: number,
-    minProminence: number = 0.005
-): number[] {
-    return detectRowFeaturesV16(positions3D, numSamples, minProminence).uPositions;
-}
-
-/**
- * v16.0: Detect features for all rows. Returns per-row U positions (backward
- * compatible) plus typed feature data and total rejection count.
- *
- * @returns Object with:
- *   - allRowFeatures: number[][] (sorted U positions per row)
- *   - allRowTypedFeatures: FeaturePoint[][] (classified features per row)
- *   - totalRejected: number (total candidates that failed verification)
- */
-function detectAllRowFeatures(
-    rowProbeData: Float32Array[],
-    probeSamples: number
-): { allRowFeatures: number[][]; allRowTypedFeatures: FeaturePoint[][]; totalRejected: number } {
-    const allRowFeatures: number[][] = [];
-    const allRowTypedFeatures: FeaturePoint[][] = [];
-    let totalRejected = 0;
-
-    for (let j = 0; j < rowProbeData.length; j++) {
-        if (rowProbeData[j].length >= probeSamples * 3) {
-            const result = detectRowFeaturesV16(rowProbeData[j], probeSamples);
-            allRowFeatures.push(result.uPositions);
-            allRowTypedFeatures.push(result.features);
-            totalRejected += result.rejected;
-        } else {
-            allRowFeatures.push([]);
-            allRowTypedFeatures.push([]);
-        }
-    }
-    return { allRowFeatures, allRowTypedFeatures, totalRejected };
-}
-
-// ============================================================================
-// v16.0 — Column-Direction Feature Detection (Verified Peak/Valley)
-// ============================================================================
-
-/**
- * v16.0: Detect VERIFIED features along a column (T-direction) at a fixed U.
- *
- * Same verification pipeline as detectRowFeaturesV16 but adapted for
- * non-periodic T domain. Every detected feature is classified as peak
- * or valley, verified for consistency, and scored for confidence.
- *
- * @param radiiAlongT   Cylindrical radius at each T sample
- * @param numSamples    Number of T-direction samples
- * @param tPositions    The T values corresponding to each sample
- * @param minProminence Minimum peak-to-valley range to qualify
- * @returns Object with T positions and feature details
- */
-function detectColumnFeaturesV16(
-    radiiAlongT: Float32Array,
-    numSamples: number,
-    tPositions: Float32Array | number[],
-    minProminence: number = 0.003
-): { tPositions: number[]; features: FeaturePoint[]; rejected: number } {
-    if (numSamples < 5) return { tPositions: [], features: [], rejected: 0 };
-
-    const prominenceWindow = Math.max(3, Math.floor(numSamples * 0.02));
-    const clamp = (idx: number) => Math.max(0, Math.min(numSamples - 1, idx));
-
-    // Pre-compute second derivative (non-periodic)
-    const d2r = new Float32Array(numSamples);
-    for (let i = 2; i < numSamples - 2; i++) {
-        d2r[i] = (
-            -radiiAlongT[i - 2] + 16 * radiiAlongT[i - 1]
-            - 30 * radiiAlongT[i]
-            + 16 * radiiAlongT[i + 1] - radiiAlongT[i + 2]
-        ) / 12;
-    }
-    // Edge: 3-point stencil
-    if (numSamples > 2) {
-        d2r[1] = radiiAlongT[0] - 2 * radiiAlongT[1] + radiiAlongT[2];
-        d2r[numSamples - 2] = radiiAlongT[numSamples - 3] - 2 * radiiAlongT[numSamples - 2] + radiiAlongT[numSamples - 1];
-    }
-
-    const candidates: FeaturePoint[] = [];
-    let rejected = 0;
-
-    // Helper: interpolate T position from fractional index
-    const interpT = (refinedIdx: number): number => {
-        const iLo = Math.max(0, Math.min(numSamples - 2, Math.floor(refinedIdx)));
-        const iFrac = refinedIdx - iLo;
-        const iHi = Math.min(iLo + 1, numSamples - 1);
-        return (tPositions[iLo] as number) * (1 - iFrac) + (tPositions[iHi] as number) * iFrac;
-    };
-
-    // ── Strategy 1: Gradient sign changes ──
-    for (let i = 1; i < numSamples - 1; i++) {
-        const dLeft = radiiAlongT[i] - radiiAlongT[i - 1];
-        const dRight = radiiAlongT[i + 1] - radiiAlongT[i];
-
-        if (dLeft * dRight >= 0) continue;
-
-        const kind: FeatureKind = dLeft > 0 ? 'peak' : 'valley';
-
-        // Parabolic refinement
-        const L = radiiAlongT[i - 1];
-        const C = radiiAlongT[i];
-        const R = radiiAlongT[i + 1];
-        const denom = L - 2 * C + R;
-        let delta = 0;
-        if (Math.abs(denom) > 1e-14) {
-            delta = 0.5 * (L - R) / denom;
-            delta = Math.max(-0.5, Math.min(0.5, delta));
-        }
-
-        // VERIFY: curvature sign must match extremum type
-        const curvatureCorrect = kind === 'peak' ? (denom < 0) : (denom > 0);
-        if (!curvatureCorrect && Math.abs(denom) > 1e-10) {
-            rejected++;
-            continue;
-        }
-
-        // VERIFY: refined position still an extremum
-        const refinedRadius = C + delta * (R - L) / 2 + delta * delta * denom / 2;
-        const isStillExtremum = kind === 'peak'
-            ? (refinedRadius >= L - 1e-10 && refinedRadius >= R - 1e-10)
-            : (refinedRadius <= L + 1e-10 && refinedRadius <= R + 1e-10);
-        if (!isStillExtremum) { rejected++; continue; }
-
-        // Prominence
-        let localMax = -Infinity, localMin = Infinity;
-        for (let k = -prominenceWindow; k <= prominenceWindow; k++) {
-            const idx = clamp(i + k);
-            localMax = Math.max(localMax, radiiAlongT[idx]);
-            localMin = Math.min(localMin, radiiAlongT[idx]);
-        }
-        const prominence = localMax - localMin;
-        if (prominence < minProminence) { rejected++; continue; }
-
-        const peakT = interpT(i + delta);
-
-        // Confidence
-        const gradStrength = Math.abs(dLeft) + Math.abs(dRight);
-        const curvStrength = Math.abs(d2r[i]);
-        let maxGrad = 0, maxCurv = 0;
-        for (let k = -prominenceWindow; k <= prominenceWindow; k++) {
-            const idx = clamp(i + k);
-            const nIdx = clamp(idx + 1);
-            maxGrad = Math.max(maxGrad, Math.abs(radiiAlongT[nIdx] - radiiAlongT[idx]));
-            maxCurv = Math.max(maxCurv, Math.abs(d2r[idx]));
-        }
-        const confidence = 0.4 * (maxGrad > 1e-12 ? Math.min(1, gradStrength / (2 * maxGrad)) : 0.5)
-            + 0.3 * (maxCurv > 1e-12 ? Math.min(1, curvStrength / maxCurv) : 0.5)
-            + 0.3 * Math.min(1, prominence / (minProminence * 5));
-
-        candidates.push({ u: peakT, kind, radius: refinedRadius, prominence, confidence });
-    }
-
-    // ── Strategy 2: Curvature shoulders (verified) ──
-    const absCurv = new Float32Array(numSamples);
-    let maxCurvGlobal = 0;
-    for (let i = 0; i < numSamples; i++) {
-        absCurv[i] = Math.abs(d2r[i]);
-        maxCurvGlobal = Math.max(maxCurvGlobal, absCurv[i]);
-    }
-
-    if (maxCurvGlobal > 1e-10) {
-        const curvThreshold = maxCurvGlobal * 0.20;
-        for (let i = 1; i < numSamples - 1; i++) {
-            if (absCurv[i] <= absCurv[clamp(i - 1)] ||
-                absCurv[i] <= absCurv[clamp(i + 1)]) continue;
-            if (absCurv[i] < curvThreshold) continue;
-
-            const expectedKind: FeatureKind = d2r[i] < 0 ? 'peak' : 'valley';
-
-            // Find and verify the actual extremum within ±2 samples
-            let bestIdx = i;
-            let bestVal = radiiAlongT[i];
-            for (let k = -2; k <= 2; k++) {
-                const idx = clamp(i + k);
-                if (expectedKind === 'peak' ? (radiiAlongT[idx] > bestVal) : (radiiAlongT[idx] < bestVal)) {
-                    bestVal = radiiAlongT[idx];
-                    bestIdx = idx;
-                }
-            }
-
-            // Verify extremum
-            if (bestIdx > 0 && bestIdx < numSamples - 1) {
-                const bP = radiiAlongT[bestIdx - 1];
-                const bC = radiiAlongT[bestIdx];
-                const bN = radiiAlongT[bestIdx + 1];
-                const isExtremum = expectedKind === 'peak'
-                    ? (bC >= bP && bC >= bN)
-                    : (bC <= bP && bC <= bN);
-                if (!isExtremum) { rejected++; continue; }
-
-                // Verify curvature sign
-                const eDenom = bP - 2 * bC + bN;
-                if (expectedKind === 'peak' && eDenom > 0) { rejected++; continue; }
-                if (expectedKind === 'valley' && eDenom < 0) { rejected++; continue; }
-
-                let eDelta = 0;
-                if (Math.abs(eDenom) > 1e-14) {
-                    eDelta = 0.5 * (bP - bN) / eDenom;
-                    eDelta = Math.max(-0.5, Math.min(0.5, eDelta));
-                }
-
-                // Prominence
-                let localMax = -Infinity, localMin = Infinity;
-                for (let k = -prominenceWindow; k <= prominenceWindow; k++) {
-                    const idx = clamp(bestIdx + k);
-                    localMax = Math.max(localMax, radiiAlongT[idx]);
-                    localMin = Math.min(localMin, radiiAlongT[idx]);
-                }
-                const prominence = localMax - localMin;
-                if (prominence < minProminence) { rejected++; continue; }
-
-                const peakT = interpT(bestIdx + eDelta);
-                const refinedRadius = bC + eDelta * (bN - bP) / 2;
-
-                candidates.push({
-                    u: peakT, kind: expectedKind, radius: refinedRadius, prominence,
-                    confidence: 0.5 * Math.min(1, absCurv[i] / maxCurvGlobal)
-                        + 0.5 * Math.min(1, prominence / (minProminence * 5)),
-                });
-            } else {
-                rejected++;
-            }
-        }
-    }
-
-    // Deduplicate by T proximity, keeping highest confidence
-    candidates.sort((a, b) => a.u - b.u);
-    const tSpacing = numSamples > 1
-        ? (Math.abs((tPositions[numSamples - 1] as number) - (tPositions[0] as number)) / (numSamples - 1))
-        : 0.01;
-    const minSepT = tSpacing * 1.5;
-    const features: FeaturePoint[] = [];
-    for (const cand of candidates) {
-        if (features.length === 0 || cand.u - features[features.length - 1].u > minSepT) {
-            features.push(cand);
-        } else if (cand.confidence > features[features.length - 1].confidence) {
-            features[features.length - 1] = cand;
-        }
-    }
-
-    const resultT = features.map(f => f.u);
-    return { tPositions: resultT, features, rejected };
-}
-
-/** Backward-compatible wrapper returning just T positions. */
-function detectColumnFeatures(
-    radiiAlongT: Float32Array,
-    numSamples: number,
-    tPositions: Float32Array | number[],
-    minProminence: number = 0.003
-): number[] {
-    return detectColumnFeaturesV16(radiiAlongT, numSamples, tPositions, minProminence).tPositions;
-}
-
-/**
- * v16.1: Detect VERIFIED column-direction features and merge into row data.
- *
- * CRITICAL FIX from v16.0: Column detection now SNAPS to the nearest
- * verified peak/valley in the row's 8k U-probe data, instead of placing
- * features at the column's grid U position. This eliminates:
- *   1. "Horizontal lines" in UV debug (points at grid-aligned U positions)
- *   2. Points that miss the actual peak (placed at column U, not peak U)
- *   3. Misclassified peaks/valleys (column features now carry typed data)
- *
- * Algorithm:
- *   1. For each U column, extract T-direction radius profile from row data
- *   2. Detect T-direction extrema using verified pipeline
- *   3. For each detected T-feature, find the closest row
- *   4. In that row's 8k U-probe data, search for the nearest VERIFIED
- *      radius extremum within a tight U window around the column position
- *   5. Only add the feature if a verified extremum is found — at the
- *      EXACT peak U position from the 8k data, not the column grid U
- *
- * @param rowProbeData       Per-row GPU probe results (8k samples each)
- * @param probeSamples       Number of U samples per row (8192)
- * @param tPositions         T values for each row
- * @param numColProbes       Number of U columns to probe
- * @param allRowFeatures     Existing per-row feature U positions (MUTATED)
- * @param allRowTypedFeatures Existing per-row typed features (MUTATED)
- * @returns Object with addedCount and rejectedCount
- */
-function detectAndMergeColumnFeatures(
-    rowProbeData: Float32Array[],
-    probeSamples: number,
-    tPositions: Float32Array,
-    numColProbes: number,
-    allRowFeatures: number[][],
-    allRowTypedFeatures: FeaturePoint[][]
-): { addedCount: number; rejectedCount: number } {
-    const numRows = rowProbeData.length;
-    if (numRows < 5 || probeSamples < 16) return { addedCount: 0, rejectedCount: 0 };
-
-    let addedCount = 0;
-    let rejectedCount = 0;
-    const colStep = Math.max(1, Math.floor(probeSamples / numColProbes));
-
-    // v16.1: Search window in the row's U-probe data to find the actual peak.
-    // ±SNAP_WINDOW samples around the column position. At 8192 samples,
-    // ±16 samples = ±0.002 U, which is ~0.7° — tight enough to avoid
-    // snapping to a different feature.
-    const SNAP_WINDOW = 16;
-    const MIN_SEP = 1.5 / probeSamples;
-
-    for (let ci = 0; ci < probeSamples; ci += colStep) {
-        const uPos = ci / probeSamples;
-
-        // Extract radius profile along T at this U position
-        const radiiAlongT = new Float32Array(numRows);
-        for (let j = 0; j < numRows; j++) {
-            const x = rowProbeData[j][ci * 3];
-            const y = rowProbeData[j][ci * 3 + 1];
-            radiiAlongT[j] = Math.sqrt(x * x + y * y);
-        }
-
-        // v16.0: Use verified detection — only genuine peaks/valleys pass
-        const colResult = detectColumnFeaturesV16(radiiAlongT, numRows, tPositions);
-        rejectedCount += colResult.rejected;
-
-        // For each verified T-direction feature, snap to nearest U-peak in the row
-        for (const feat of colResult.features) {
-            // Find the row closest to this T position
-            let bestRow = 0;
-            let bestDist = Math.abs(tPositions[0] - feat.u);
-            for (let j = 1; j < numRows; j++) {
-                const d = Math.abs(tPositions[j] - feat.u);
-                if (d < bestDist) {
-                    bestDist = d;
-                    bestRow = j;
-                }
-            }
-
-            // v16.1: Search for a VERIFIED radius extremum in the row's 8k data
-            // near the column position. This gives us the EXACT peak U at 8k resolution.
-            const rowData = rowProbeData[bestRow];
-            const wrap = (idx: number) => ((idx % probeSamples) + probeSamples) % probeSamples;
-
-            // Compute radii in the search window
-            const lo = ci - SNAP_WINDOW;
-            const hi = ci + SNAP_WINDOW;
-
-            // Find the best extremum (matching the column feature's kind) in the window
-            let foundPeakU = -1;
-            let foundKind: FeatureKind = feat.kind; // Inherit T-direction classification as hint
-            let foundRadius = 0;
-            let foundProminence = 0;
-            let foundConfidence = 0;
-
-            // Scan for gradient sign changes in the window — actual U-peaks/valleys
-            for (let si = lo + 1; si < hi; si++) {
-                const i = wrap(si);
-                const prev = wrap(si - 1);
-                const next = wrap(si + 1);
-
-                const x_i = rowData[i * 3], y_i = rowData[i * 3 + 1];
-                const x_p = rowData[prev * 3], y_p = rowData[prev * 3 + 1];
-                const x_n = rowData[next * 3], y_n = rowData[next * 3 + 1];
-                const r_i = Math.sqrt(x_i * x_i + y_i * y_i);
-                const r_p = Math.sqrt(x_p * x_p + y_p * y_p);
-                const r_n = Math.sqrt(x_n * x_n + y_n * y_n);
-
-                const dLeft = r_i - r_p;
-                const dRight = r_n - r_i;
-                if (dLeft * dRight >= 0) continue; // Not an extremum
-
-                const kind: FeatureKind = dLeft > 0 ? 'peak' : 'valley';
-
-                // Parabolic refinement
-                const denom = r_p - 2 * r_i + r_n;
-                let delta = 0;
-                if (Math.abs(denom) > 1e-14) {
-                    delta = 0.5 * (r_p - r_n) / denom;
-                    delta = Math.max(-0.5, Math.min(0.5, delta));
-                }
-
-                // Verify curvature sign
-                const curvOk = kind === 'peak' ? (denom < 0) : (denom > 0);
-                if (!curvOk && Math.abs(denom) > 1e-10) continue;
-
-                // Verify refined position is still extremum
-                const fracIdx = ((si + delta) % probeSamples + probeSamples) % probeSamples;
-                const iLo = Math.floor(fracIdx);
-                const frac = fracIdx - iLo;
-                const iHi = wrap(iLo + 1);
-                const x_lo = rowData[iLo * 3], y_lo = rowData[iLo * 3 + 1];
-                const x_hi = rowData[iHi * 3], y_hi = rowData[iHi * 3 + 1];
-                const r_refined = Math.sqrt(
-                    (x_lo * (1 - frac) + x_hi * frac) ** 2 +
-                    (y_lo * (1 - frac) + y_hi * frac) ** 2
-                );
-
-                const isStillExtremum = kind === 'peak'
-                    ? (r_refined >= r_p - 1e-10 && r_refined >= r_n - 1e-10)
-                    : (r_refined <= r_p + 1e-10 && r_refined <= r_n + 1e-10);
-                if (!isStillExtremum) continue;
-
-                // Prominence in local window
-                const promWin = Math.max(5, Math.floor(probeSamples * 0.008));
-                let localMax = -Infinity, localMin = Infinity;
-                for (let k = -promWin; k <= promWin; k++) {
-                    const idx = wrap(si + k);
-                    const xk = rowData[idx * 3], yk = rowData[idx * 3 + 1];
-                    const rk = Math.sqrt(xk * xk + yk * yk);
-                    localMax = Math.max(localMax, rk);
-                    localMin = Math.min(localMin, rk);
-                }
-                const prominence = localMax - localMin;
-                if (prominence < 0.005) continue; // Same threshold as row detection
-
-                const peakU = (((si + delta) / probeSamples) % 1 + 1) % 1;
-
-                // Pick the closest verified extremum to the column position
-                const distToCol = Math.min(
-                    Math.abs(peakU - uPos),
-                    Math.abs(peakU - uPos + 1),
-                    Math.abs(peakU - uPos - 1)
-                );
-
-                if (foundPeakU < 0 || distToCol < Math.min(
-                    Math.abs(foundPeakU - uPos),
-                    Math.abs(foundPeakU - uPos + 1),
-                    Math.abs(foundPeakU - uPos - 1)
-                )) {
-                    foundPeakU = peakU;
-                    foundKind = kind;
-                    foundRadius = r_refined;
-                    foundProminence = prominence;
-                    // Confidence: based on gradient strength and prominence
-                    const gradStrength = Math.abs(dLeft) + Math.abs(dRight);
-                    foundConfidence = 0.5 * Math.min(1, gradStrength * probeSamples)
-                        + 0.5 * Math.min(1, prominence / 0.025);
-                }
-            }
-
-            // If no verified extremum found in the U-window, skip this column feature
-            if (foundPeakU < 0) {
-                rejectedCount++;
-                continue;
-            }
-
-            // Dedup: don't add if an existing row feature is too close
-            const existingFeats = allRowFeatures[bestRow];
-            let isDuplicate = false;
-            for (const ef of existingFeats) {
-                if (circularDistance(ef, foundPeakU) < MIN_SEP) {
-                    isDuplicate = true;
-                    break;
-                }
-            }
-
-            if (!isDuplicate) {
-                allRowFeatures[bestRow].push(foundPeakU);
-                allRowFeatures[bestRow].sort((a, b) => a - b);
-
-                // v16.1: Also add typed feature data for correct peak/valley visualization
-                if (bestRow < allRowTypedFeatures.length) {
-                    allRowTypedFeatures[bestRow].push({
-                        u: foundPeakU,
-                        kind: foundKind,
-                        radius: foundRadius,
-                        prominence: foundProminence,
-                        confidence: foundConfidence,
-                    });
-                }
-                addedCount++;
-            }
-        }
-    }
-
-    return { addedCount, rejectedCount };
-}
-
-// ============================================================================
-// v10.0 — Feature Chain Linking
-// ============================================================================
-
-/** A single point on a feature chain: (u, rowIndex) */
-interface ChainPoint {
-    u: number;
-    row: number;
-}
-
-/** A feature chain is a polyline through (u, t) space.
- *  Each chain connects features across adjacent rows. */
-interface FeatureChain {
-    points: ChainPoint[];
-}
-
-function circularDistance(u0: number, u1: number): number {
-    let d = Math.abs(u0 - u1);
-    if (d > 0.5) d = 1 - d;
-    return d;
-}
 
 function circularSignedDelta(fromU: number, toU: number): number {
     let d = toU - fromU;
@@ -3230,7 +2302,7 @@ function resnapChainToMeasuredPeaks(
  *   2. Re-snap every point to the nearest measured peak (zero drift)
  *
  * NO smoothing. NO DP "optimization". These destroy measured accuracy
- * by moving peaks ±0.002 to ±0.008 away from their true positions.
+ * by moving peaks Â±0.002 to Â±0.008 away from their true positions.
  * The detected peaks from GPU probe data ARE the ground truth.
  */
 function postProcessFeatureChains(chains: FeatureChain[], allRowFeatures: number[][]): FeatureChain[] {
@@ -3248,7 +2320,7 @@ const CHAIN_LINK_RADIUS = 0.04;
 /**
  * Link per-row feature detections across adjacent rows into continuous chains.
  *
- * Features are arbitrary and unique to each style — they can run at ANY angle:
+ * Features are arbitrary and unique to each style â€” they can run at ANY angle:
  * vertical, diagonal, curved, spiral. This function uses greedy nearest-neighbor
  * linking to build polylines through (u, rowIndex) space.
  *
@@ -3285,17 +2357,17 @@ function linkFeatureChainsCore(
 
     // v10.8: Maximum consecutive misses before closing a chain.
     // Raised from 3 to 6 to bridge the m-transition zone where features
-    // split/merge over 5-8 rows as m interpolates (e.g., m=6→10).
+    // split/merge over 5-8 rows as m interpolates (e.g., m=6â†’10).
     // With momentum prediction, the search stays focused even across gaps.
     const MAX_MISS_COUNT = maxMissCount;
 
-    // v10.6: Wider search radius when using momentum (2× normal)
+    // v10.6: Wider search radius when using momentum (2Ã— normal)
     const MOMENTUM_LINK_RADIUS = linkRadius * momentumScale;
 
     for (let j = 0; j < numRows; j++) {
         const rowFeats = allRowFeatures[j];
         if (rowFeats.length === 0) {
-            // No features in this row — increment miss count on all active chains
+            // No features in this row â€” increment miss count on all active chains
             const newActive: ActiveChain[] = [];
             for (const ac of activeChains) {
                 ac.missCount++;
@@ -3348,7 +2420,7 @@ function linkFeatureChainsCore(
             }
         }
 
-        // Sort by distance (ascending) — closest pairs matched first
+        // Sort by distance (ascending) â€” closest pairs matched first
         candidates.sort((a, b) => a.dist - b.dist);
 
         // Assign: each chain and feature can only be used once
@@ -3382,7 +2454,7 @@ function linkFeatureChainsCore(
             newActive.push(ac);
         }
 
-        // Unmatched chains — increment miss count
+        // Unmatched chains â€” increment miss count
         for (let ci = 0; ci < activeChains.length; ci++) {
             if (usedChains.has(ci)) continue;
             const ac = activeChains[ci];
@@ -3475,8 +2547,8 @@ function linkFeatureChains(
  * of rows) would fail to form a chain due to too many gaps.
  *
  * v16.3 separates peaks and valleys before linking:
- *   - Peak features → linked independently → peak chains
- *   - Valley features → linked independently → valley chains
+ *   - Peak features â†’ linked independently â†’ peak chains
+ *   - Valley features â†’ linked independently â†’ valley chains
  *   - Both chain types get full mesh treatment (patching, stitch, flip)
  *
  * This typically DOUBLES the number of chains and gives valleys proper
@@ -3514,12 +2586,12 @@ function linkFeatureChainsByKind(
                     if (match.kind === 'peak') peaks.push(u);
                     else valleys.push(u);
                 } else {
-                    // No typed match — default to peak (conservative)
+                    // No typed match â€” default to peak (conservative)
                     peaks.push(u);
                 }
             }
         } else if (j < allRowFeatures.length) {
-            // No typed data for this row — all features default to peak
+            // No typed data for this row â€” all features default to peak
             peaks.push(...allRowFeatures[j]);
         }
 
@@ -3543,8 +2615,8 @@ function linkFeatureChainsByKind(
     const valleyChainPts = valleyChains.reduce((s, c) => s + c.points.length, 0);
 
     console.log(`[ParametricExport]   v16.3 kind-separated linking:`);
-    console.log(`[ParametricExport]     Peaks: ${peakTotal} features → ${peakChains.length} chains (${peakChainPts} points)`);
-    console.log(`[ParametricExport]     Valleys: ${valleyTotal} features → ${valleyChains.length} chains (${valleyChainPts} points)`);
+    console.log(`[ParametricExport]     Peaks: ${peakTotal} features â†’ ${peakChains.length} chains (${peakChainPts} points)`);
+    console.log(`[ParametricExport]     Valleys: ${valleyTotal} features â†’ ${valleyChains.length} chains (${valleyChainPts} points)`);
 
     return combined;
 }
@@ -3596,7 +2668,7 @@ function insertChainGuidedRows(
     }
 
     if (candidates.length === 0) {
-        // No insertions needed — build identity mapping
+        // No insertions needed â€” build identity mapping
         const rowMapping: number[] = [];
         for (let j = 0; j < tPositions.length; j++) rowMapping.push(j);
         return { tPositions, rowMapping, insertedCount: 0 };
@@ -3673,28 +2745,28 @@ function insertChainGuidedRows(
 }
 
 // ============================================================================
-// v8.2 — Per-Row Feature Patching on a Regular Grid
+// v8.2 â€” Per-Row Feature Patching on a Regular Grid
 // ============================================================================
 
 /**
  * Minimum separation between consecutive U positions in the union grid.
  * Prevents degenerate (zero-area) triangles. Expressed as fraction of 1.0.
- * 0.05% of circumference ≈ 0.18° — well below any visible artifact.
+ * 0.05% of circumference â‰ˆ 0.18Â° â€” well below any visible artifact.
  */
 const MIN_U_SEPARATION = 0.0005;
 
 /**
  * v10.9: Multi-level flanking offsets for feature companions in the union grid.
- * Each detected peak gets companion vertices at each offset × localSpacing
+ * Each detected peak gets companion vertices at each offset Ã— localSpacing
  * on both sides, creating a locally-dense column cluster that can trace
  * knife-edge cusps. Geometrically spaced: inner offsets are denser for
  * capturing the steep cusp slope, outer offsets are sparser for smooth
  * transition to the uniform grid.
  *
- * Total columns per feature: 1 (peak) + 2 × FLANK_OFFSETS.length (flanks)
- * = 1 + 2×4 = 9 columns per feature.
+ * Total columns per feature: 1 (peak) + 2 Ã— FLANK_OFFSETS.length (flanks)
+ * = 1 + 2Ã—4 = 9 columns per feature.
  *
- * Budget impact: ~183 clusters × 6 extra columns = ~1098 additional columns
+ * Budget impact: ~183 clusters Ã— 6 extra columns = ~1098 additional columns
  * over the v10.8 union grid.  Outer wall tris increase from ~714K to ~1.3M
  * at 500K target.  This is acceptable for perfect cusp representation.
  */
@@ -3704,12 +2776,12 @@ const FLANK_OFFSETS = [0.10, 0.25, 0.45, 0.70] as const;
  * Cluster radius for merging per-row feature peaks into a single U column.
  * Peaks within this distance (circular) across different rows are considered
  * the same vertical feature and get a single column at their median position.
- * This determines the GRID WIDTH — we need enough columns to assign each
+ * This determines the GRID WIDTH â€” we need enough columns to assign each
  * per-row peak to a nearby column for patching.
  *
  * v10.6: Reduced from 0.003 to 0.002. This creates tighter clusters so
  * each cluster's median column is closer to its constituent peaks. Combined
- * with the wider patching acceptance radius (0.85×), this ensures ~95%+ of
+ * with the wider patching acceptance radius (0.85Ã—), this ensures ~95%+ of
  * peaks get patched to exact positions (vs ~68% before).
  * Cost: ~50% more feature columns (modest triangle count increase).
  */
@@ -3726,11 +2798,11 @@ const FEATURE_CLUSTER_RADIUS = 0.002;
  *
  * Algorithm:
  *   1. Collect all per-row feature peaks into a flat list
- *   2. Sort and cluster peaks within FEATURE_CLUSTER_RADIUS → representative
+ *   2. Sort and cluster peaks within FEATURE_CLUSTER_RADIUS â†’ representative
  *      column positions (median of each cluster)
- *   3. Add flanking companions at ±FLANK_OFFSET_ROW × localSpacing
+ *   3. Add flanking companions at Â±FLANK_OFFSET_ROW Ã— localSpacing
  *   4. Merge with CDF base grid using tagged deduplication
- *      (base positions are sacred — never collapsed)
+ *      (base positions are sacred â€” never collapsed)
  *   5. Return a single sorted Float32Array of U positions
  *
  * @param baseU           CDF-adaptive U positions (the budget-sized grid)
@@ -3752,7 +2824,7 @@ function buildUnionFeatureGrid(
     }
 
     if (allPeaks.length === 0) {
-        // No features detected — use base grid as-is
+        // No features detected â€” use base grid as-is
         return baseU;
     }
 
@@ -3788,14 +2860,14 @@ function buildUnionFeatureGrid(
     const baseLen = baseU.length;
     const baseSpacing = 1.0 / Math.max(baseLen, 1);
 
-    // All base positions — always kept
+    // All base positions â€” always kept
     for (let k = 0; k < baseLen; k++) {
         tagged.push({ u: baseU[k], isBase: true, isFeatureCenter: false });
     }
 
     // Feature column positions + multi-level flanking companions (v10.9)
     for (const feat of clusterCenters) {
-        // v16.2: Feature cluster centers are sacred — they define where chains live
+        // v16.2: Feature cluster centers are sacred â€” they define where chains live
         tagged.push({ u: feat, isBase: false, isFeatureCenter: true });
 
         // Find local spacing at this feature position
@@ -3831,7 +2903,7 @@ function buildUnionFeatureGrid(
     for (let k = 1; k < tagged.length; k++) {
         const gap = tagged[k].u - deduped[deduped.length - 1].u;
         if (gap <= 0) {
-            // Exact duplicate (or out-of-order due to floating point) — always skip
+            // Exact duplicate (or out-of-order due to floating point) â€” always skip
             continue;
         }
         if (tagged[k].isBase || tagged[k].isFeatureCenter) {
@@ -3867,10 +2939,10 @@ function buildUnionFeatureGrid(
         result[k] = final[k];
     }
 
-    // v16.2: Budget cap — if maxColumns is specified and we exceed it,
+    // v16.2: Budget cap â€” if maxColumns is specified and we exceed it,
     // downsample by removing only FLANKING positions (non-sacred) with the
     // smallest gaps to their neighbors. Base positions AND feature cluster
-    // centers are SACRED and never dropped — they define where chains live.
+    // centers are SACRED and never dropped â€” they define where chains live.
     //
     // v11.3 BUG FIX: The old budget cap treated ALL non-base positions as
     // droppable, including feature cluster centers. When base grid (738 cols)
@@ -3934,7 +3006,7 @@ function buildUnionFeatureGrid(
         const droppedFlanks = scored.filter(s => s.kind === 0 && dropSet.has(s.idx)).length;
         const droppedBase = scored.filter(s => s.kind === 1 && dropSet.has(s.idx)).length;
         const droppedFeature = scored.filter(s => s.kind === 2 && dropSet.has(s.idx)).length;
-        console.log(`[ParametricExport]   v16.4 Budget cap: ${result.length} → ${capped.length} columns (max=${maxColumns}, dropped flanks=${droppedFlanks}/${flankCount}, base=${droppedBase}/${baseCount}, features=${droppedFeature}/${featureCount})`);
+        console.log(`[ParametricExport]   v16.4 Budget cap: ${result.length} â†’ ${capped.length} columns (max=${maxColumns}, dropped flanks=${droppedFlanks}/${flankCount}, base=${droppedBase}/${baseCount}, features=${droppedFeature}/${featureCount})`);
 
         const cappedResult = new Float32Array(capped.length);
         for (let k = 0; k < capped.length; k++) cappedResult[k] = capped[k];
@@ -3952,14 +3024,14 @@ function buildUnionFeatureGrid(
  *
  * Only the peak column (the nearest grid column to each detected feature)
  * is snapped to the exact feature U. Flanking columns are LEFT AT THEIR
- * UNION-GRID POSITIONS — identical across all rows.
+ * UNION-GRID POSITIONS â€” identical across all rows.
  *
  * This eliminates the inter-row vertex inconsistency that caused sawtooth
  * artifacts in v10.9. The cusp-interpolated and Gaussian patching approaches
  * moved flanking columns to per-row-varying positions (because the arc-length
  * or shift varies with height-dependent superformula parameters). Since
  * triangulation connects vertices across rows, those inconsistent flanking
- * positions created zigzag triangles — the sawtooth.
+ * positions created zigzag triangles â€” the sawtooth.
  *
  * The multi-level flanking in buildUnionFeatureGrid already provides 9 columns
  * per feature at positions that are IDENTICAL across all rows (union grid).
@@ -4008,7 +3080,7 @@ function patchRowFeatures(
             const dWrapN = Math.abs(unionU[W - 1] - peakU + 1);
             if (dWrapN < bestDist) { bestCol = W - 1; bestDist = dWrapN; }
 
-            // v14.0: No acceptance gate — always patch. Chain U IS ground truth.
+            // v14.0: No acceptance gate â€” always patch. Chain U IS ground truth.
             if (!patchedCols.has(bestCol)) {
                 patchedCols.add(bestCol);
                 const clampedPeak = Math.max(0, Math.min(1 - 1e-7, peakU));
@@ -4027,7 +3099,7 @@ function computeGridDimensions(
     budgetFrac: number,
     aspectRatio: number
 ): { w: number; h: number } {
-    // v8.0: Respect the user's triangle budget — no artificial floor.
+    // v8.0: Respect the user's triangle budget â€” no artificial floor.
     // Previous versions forced Math.max(2_000_000, ...) which wasted triangles on flat areas.
     const surfaceTriangles = totalTriangles * budgetFrac;
     const balancedAspect = Math.max(1, aspectRatio);
@@ -4225,7 +3297,7 @@ export class ParametricExportComputer {
         const encoder = this.device.createCommandEncoder();
         const workgroups = Math.ceil(vertexCount / 64);
         // Safety check: WebGPU limits dispatch to 65535 per dimension.
-        // With original W (~1568) this is ~13K workgroups — well under limit.
+        // With original W (~1568) this is ~13K workgroups â€” well under limit.
         if (workgroups > 65535) {
             console.error(`[ParametricExport] Workgroup count ${workgroups} exceeds WebGPU limit 65535. Reduce grid resolution.`);
         }
@@ -4285,7 +3357,7 @@ export class ParametricExportComputer {
             }
         }
 
-        // Pass 2: Evaluate UV → 3D positions (New Encoder for final step)
+        // Pass 2: Evaluate UV â†’ 3D positions (New Encoder for final step)
         const finalEncoder = this.device.createCommandEncoder({ label: 'Parametric_FinalEval' });
         const evalPass = finalEncoder.beginComputePass();
         evalPass.setPipeline(this.evaluatePipeline!);
@@ -4334,7 +3406,7 @@ export class ParametricExportComputer {
         const targetTris = params.targetTriangles ?? 2_000_000;
         console.log(`[ParametricExport] Target: ${targetTris.toLocaleString()} triangles`);
 
-        // ── Shared GPU resources ──
+        // â”€â”€ Shared GPU resources â”€â”€
         const buffers: GPUBuffer[] = [];
         const track = (b: GPUBuffer) => { buffers.push(b); return b; };
 
@@ -4395,14 +3467,14 @@ export class ParametricExportComputer {
             styleData.set(packedStyleParams.slice(0, Math.min(48, packedStyleParams.length)));
             this.device.queue.writeBuffer(styleParamBuffer, 0, styleData.buffer);
 
-            // ═══════════════════════════════════════════
-            // PHASE 1: Multi-Strip Curvature Sampling (GPU → CPU)
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // PHASE 1: Multi-Strip Curvature Sampling (GPU â†’ CPU)
             //
             // Sample NUM_STRIPS T-strips (at different U values) and
             // NUM_STRIPS U-strips (at different T values).
             // Take MAX curvature across all strips at each position.
             // This captures features regardless of angular/height position.
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const curvStart = performance.now();
             const N = CURVATURE_SAMPLES;
             const S = NUM_STRIPS;
@@ -4416,7 +3488,7 @@ export class ParametricExportComputer {
                 const uVal = s / S; // u = 0, 0.125, 0.25, ..., 0.875
                 for (let i = 0; i < N; i++) {
                     sampleVertices[writeIdx++] = uVal;
-                    sampleVertices[writeIdx++] = i / (N - 1);  // t ∈ [0, 1]
+                    sampleVertices[writeIdx++] = i / (N - 1);  // t âˆˆ [0, 1]
                     sampleVertices[writeIdx++] = 0;             // surface_id = 0
                 }
             }
@@ -4425,7 +3497,7 @@ export class ParametricExportComputer {
             for (let s = 0; s < S; s++) {
                 const tVal = (s + 0.5) / S; // t = 0.0625, 0.1875, ..., 0.9375
                 for (let i = 0; i < N; i++) {
-                    sampleVertices[writeIdx++] = i / N;  // u ∈ [0, 1) periodic
+                    sampleVertices[writeIdx++] = i / N;  // u âˆˆ [0, 1) periodic
                     sampleVertices[writeIdx++] = tVal;
                     sampleVertices[writeIdx++] = 0;      // surface_id = 0
                 }
@@ -4437,7 +3509,7 @@ export class ParametricExportComputer {
                 dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly
             );
 
-            // ── Aggregate T-curvature: MAX across all T-strips ──
+            // â”€â”€ Aggregate T-curvature: MAX across all T-strips â”€â”€
             const tRawCurvatures: Float32Array[] = [];
             for (let s = 0; s < S; s++) {
                 const offset = s * N * 3;
@@ -4454,7 +3526,7 @@ export class ParametricExportComputer {
                 tMaxCurvature[i] = maxVal;
             }
 
-            // ── Aggregate U-curvature: MAX across all U-strips ──
+            // â”€â”€ Aggregate U-curvature: MAX across all U-strips â”€â”€
             const uRawCurvatures: Float32Array[] = [];
             for (let s = 0; s < S; s++) {
                 const offset = (S + s) * N * 3; // U-strips start after T-strips
@@ -4481,13 +3553,13 @@ export class ParametricExportComputer {
             const tMax = Math.max(...Array.from(tCurvature));
             const uMin = Math.min(...Array.from(uCurvature));
             const uMax = Math.max(...Array.from(uCurvature));
-            console.log(`[ParametricExport] Curvature sampling: ${curvMs.toFixed(1)}ms (${S} strips × ${N} samples)`);
+            console.log(`[ParametricExport] Curvature sampling: ${curvMs.toFixed(1)}ms (${S} strips Ã— ${N} samples)`);
             console.log(`[ParametricExport]   T-curvature: min=${tMin.toFixed(4)}, max=${tMax.toFixed(4)}`);
             console.log(`[ParametricExport]   U-curvature: min=${uMin.toFixed(4)}, max=${uMax.toFixed(4)}`);
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // PHASE 2: Build Adaptive Grid (CPU)
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const gridStart = performance.now();
 
             const { H, Rt, Rb } = dimensions;
@@ -4515,7 +3587,7 @@ export class ParametricExportComputer {
             // CDF-adaptive spacing has been replaced by uniform spacing.
             // Curvature data is still used for feature detection (detectFeatureEdges).
 
-            // ── Feature Edge Detection (v7.0) ──
+            // â”€â”€ Feature Edge Detection (v7.0) â”€â”€
             // Detect ridges/valleys using BOTH curvature peaks AND gradient zero-crossings.
             // Pass 3D positions from the BEST strip (highest total curvature) for
             // gradient zero-crossing detection (actual ridge/valley positions).
@@ -4562,7 +3634,7 @@ export class ParametricExportComputer {
             // Previously, computeGridDimensions returned w=738 columns, then a
             // later downsample step trimmed to 735 (desiredBaseCols). The
             // downsampleSortedPositions picks evenly-spaced indices which creates
-            // a handful of wider gaps in the otherwise uniform grid — visible as
+            // a handful of wider gaps in the otherwise uniform grid â€” visible as
             // "thicker columns." Fix: pre-compute the budget-constrained column
             // count and generate the uniform grid at that exact size, eliminating
             // the downsample step entirely.
@@ -4579,12 +3651,12 @@ export class ParametricExportComputer {
             for (let i = 0; i < tCount; i++) cdfT[i] = i / (tCount - 1);
             // t=0 and t=1 are already exact from uniform generation
             if (finalUCols !== sharedW) {
-                console.log(`[ParametricExport]   v16.11 Budget-aware U grid: ${sharedW} → ${finalUCols} columns (no downsample needed)`);
+                console.log(`[ParametricExport]   v16.11 Budget-aware U grid: ${sharedW} â†’ ${finalUCols} columns (no downsample needed)`);
             }
 
             console.log(`[ParametricExport]   v16.6 mode: LOCAL_ONLY_OUTER_ADAPTATION=${LOCAL_ONLY_OUTER_ADAPTATION}`);
 
-            // ── Merge Feature Edges into T Grid (v7.0) ──
+            // â”€â”€ Merge Feature Edges into T Grid (v7.0) â”€â”€
             // v16.6 local-only mode: disable global T-row insertion and keep
             // feature handling local to per-row point-cloud constraints.
             const tMerged = LOCAL_ONLY_OUTER_ADAPTATION
@@ -4592,12 +3664,12 @@ export class ParametricExportComputer {
                 : mergeFeaturePositions(cdfT, tFeatures, false);
             const tPositions = tMerged.positions;
 
-            // For U, the CDF base grid is used as-is — per-row features are inserted later.
+            // For U, the CDF base grid is used as-is â€” per-row features are inserted later.
             const uBasePositions = cdfU;
             const featurePeaksSnapped = tMerged.injected;
 
             console.log(`[ParametricExport]   T-feature edges merged: ${tMerged.injected} (localOnly=${LOCAL_ONLY_OUTER_ADAPTATION})`);
-            console.log(`[ParametricExport]   Base grid: ${uBasePositions.length} U × ${tPositions.length} T`);
+            console.log(`[ParametricExport]   Base grid: ${uBasePositions.length} U Ã— ${tPositions.length} T`);
 
             // Compute density ratio diagnostics
             const computeDensityRatio = (pos: Float32Array): number => {
@@ -4614,14 +3686,14 @@ export class ParametricExportComputer {
             const densityRatioT = computeDensityRatio(tPositions);
             const densityRatioU = computeDensityRatio(uBasePositions);
 
-            console.log(`[ParametricExport]   Density ratio: T=${densityRatioT.toFixed(1)}×, U=${densityRatioU.toFixed(1)}×`);
+            console.log(`[ParametricExport]   Density ratio: T=${densityRatioT.toFixed(1)}Ã—, U=${densityRatioU.toFixed(1)}Ã—`);
             console.log(`[ParametricExport]   Features: ${featurePeaksSnapped} T merged, ${uFeatures.length} U detected (injected per-row in Phase 2.5)`);
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // PHASE 2.5: Per-Row Feature Probing, Chain Linking & T-Subdivision (v10.0)
             //
             // 1. GPU-probe each T-row at 4096 U samples
-            // 2. Detect per-row peaks with 5-point stencil + d²r/du² + inflections
+            // 2. Detect per-row peaks with 5-point stencil + dÂ²r/duÂ² + inflections
             // 3. LINK features across rows into continuous chains (polylines in u,t space)
             // 4. INSERT additional T-rows where chains cross row boundaries diagonally
             // 5. GPU-probe INSERTED rows and detect their features
@@ -4631,8 +3703,8 @@ export class ParametricExportComputer {
             // 9. Flip diagonals to follow chain direction
             //
             // Result: chain-following topology with vertices ON feature curves.
-            // Features are arbitrary — they run at ANY angle through (u,t) space.
-            // ═══════════════════════════════════════════
+            // Features are arbitrary â€” they run at ANY angle through (u,t) space.
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const probeStart = performance.now();
             // v12.0 high-fidelity mode: denser row probing to reduce sub-sample
             // aliasing before chain linking. User requested spending more compute
@@ -4640,13 +3712,13 @@ export class ParametricExportComputer {
             const ROW_PROBE_SAMPLES = 8192;
             const numOuterRows = tPositions.length;
 
-            // ── Step 1: GPU-probe all original T-rows ──
+            // â”€â”€ Step 1: GPU-probe all original T-rows â”€â”€
             const probeVerts = new Float32Array(numOuterRows * ROW_PROBE_SAMPLES * 3);
             let pIdx = 0;
             for (let j = 0; j < numOuterRows; j++) {
                 const tVal = tPositions[j];
                 for (let i = 0; i < ROW_PROBE_SAMPLES; i++) {
-                    probeVerts[pIdx++] = i / ROW_PROBE_SAMPLES; // u ∈ [0, 1)
+                    probeVerts[pIdx++] = i / ROW_PROBE_SAMPLES; // u âˆˆ [0, 1)
                     probeVerts[pIdx++] = tVal;
                     probeVerts[pIdx++] = 0; // outer wall
                 }
@@ -4663,7 +3735,7 @@ export class ParametricExportComputer {
                 rowProbeData.push(probePositions.subarray(offset, offset + ROW_PROBE_SAMPLES * 3));
             }
 
-            // ── Step 2: Detect features for all original rows (v16.0 verified) ──
+            // â”€â”€ Step 2: Detect features for all original rows (v16.0 verified) â”€â”€
             const {
                 allRowFeatures,
                 allRowTypedFeatures,
@@ -4682,12 +3754,12 @@ export class ParametricExportComputer {
                 }
             }
 
-            console.log(`[ParametricExport] Per-row probing: ${(performance.now() - probeStart).toFixed(1)}ms (${numOuterRows} rows × ${ROW_PROBE_SAMPLES} samples)`);
+            console.log(`[ParametricExport] Per-row probing: ${(performance.now() - probeStart).toFixed(1)}ms (${numOuterRows} rows Ã— ${ROW_PROBE_SAMPLES} samples)`);
             console.log(`[ParametricExport]   Rows with features: ${rowsWithFeatures}/${numOuterRows}`);
             console.log(`[ParametricExport]   v16.0 VERIFIED per-row: ${totalRowPeaks} features (${rowPeakCount} peaks, ${rowValleyCount} valleys, ${rowRejected} rejected)`);
             console.log(`[ParametricExport]   Avg features/row: ${(totalRowPeaks / numOuterRows).toFixed(1)}, rejection rate: ${(100 * rowRejected / Math.max(1, totalRowPeaks + rowRejected)).toFixed(1)}%`);
 
-            // ── Step 2.5: v16.0 Column-direction probing (verified) ──
+            // â”€â”€ Step 2.5: v16.0 Column-direction probing (verified) â”€â”€
             // v16.6 local-only mode: disabled. Rely on per-row point-cloud
             // constraints only to avoid global feature insertion side effects.
             let colPeaksAdded = 0;
@@ -4708,7 +3780,7 @@ export class ParametricExportComputer {
             const totalRejected = rowRejected + colRejected;
             console.log(`[ParametricExport]   Total verified peaks: ${totalPeaks} (row=${totalRowPeaks}, col=${colPeaksAdded}), total rejected: ${totalRejected}`);
 
-            // ── Build raw peak debug data for green point cloud overlay ──
+            // â”€â”€ Build raw peak debug data for green point cloud overlay â”€â”€
             // v16.0: Now includes feature kind (peak=0, valley=1) as third value
             {
                 const peakPoints: number[] = [];
@@ -4738,7 +3810,7 @@ export class ParametricExportComputer {
                 };
             }
 
-            // ── Step 3: Link features into chains (v16.3: separated by kind) ──
+            // â”€â”€ Step 3: Link features into chains (v16.3: separated by kind) â”€â”€
             const chains = linkFeatureChainsByKind(allRowFeatures, allRowTypedFeatures, numOuterRows);
             console.log(`[ParametricExport]   v16.3 feature chains: ${chains.length} chains linked`);
 
@@ -4750,18 +3822,18 @@ export class ParametricExportComputer {
                 console.log(`[ParametricExport]     Chain lengths: avg=${avgLen.toFixed(1)}, max=${maxLen}, total points=${chainLengths.reduce((a, b) => a + b, 0)}`);
             }
 
-            // ── Step 3.5: GPU RE-SNAP — find the EXACT mathematical peak for each chain point ──
+            // â”€â”€ Step 3.5: GPU RE-SNAP â€” find the EXACT mathematical peak for each chain point â”€â”€
             // The per-row probe gives 8192 uniformly-spaced samples. The detected
-            // peaks are within ±1/(2*8192) ≈ ±0.00006 of the true peak. This is
+            // peaks are within Â±1/(2*8192) â‰ˆ Â±0.00006 of the true peak. This is
             // good, but for sharp cusps the true peak can be BETWEEN samples.
             //
             // Re-snap evaluates a tight window of 32 candidates around each chain
             // point on the GPU, finds the one with max/min radius, then does a
-            // final parabolic refinement. This gives ~20× better precision than
+            // final parabolic refinement. This gives ~20Ã— better precision than
             // the initial 8192-sample probe.
             if (chains.length > 0) {
                 const RESNAP_CANDIDATES = 32;
-                const RESNAP_HALFWIDTH = 2.0 / ROW_PROBE_SAMPLES; // ±2 sample widths
+                const RESNAP_HALFWIDTH = 2.0 / ROW_PROBE_SAMPLES; // Â±2 sample widths
                 const RESNAP_STEP = (2 * RESNAP_HALFWIDTH) / (RESNAP_CANDIDATES - 1);
 
                 // Collect all chain points
@@ -4869,10 +3941,10 @@ export class ParametricExportComputer {
                     }
                 }
 
-                console.log(`[ParametricExport]   v13.0 GPU re-snap: ${resnapCount}/${allChainPoints.length} points refined (${RESNAP_CANDIDATES} candidates/point, ±${(RESNAP_HALFWIDTH * ROW_PROBE_SAMPLES).toFixed(1)} samples)`);
+                console.log(`[ParametricExport]   v13.0 GPU re-snap: ${resnapCount}/${allChainPoints.length} points refined (${RESNAP_CANDIDATES} candidates/point, Â±${(RESNAP_HALFWIDTH * ROW_PROBE_SAMPLES).toFixed(1)} samples)`);
             }
 
-            // ── Step 4: Insert additional T-rows where chains cross diagonally ──
+            // â”€â”€ Step 4: Insert additional T-rows where chains cross diagonally â”€â”€
             // v16.4: Make row insertion budget-aware to avoid exploding outer-wall
             // triangle count (and visual over-tessellation) on high-feature styles.
             const targetOuterBudget = Math.floor(targetTris * SURFACE_CONFIG[0].budgetFrac);
@@ -4889,7 +3961,7 @@ export class ParametricExportComputer {
                 ? uBasePositions // Already at correct size from v16.11 pre-computation
                 : downsampleSortedPositions(uBasePositions, Math.min(uBasePositions.length, desiredBaseCols));
             if (outerBaseU.length !== uBasePositions.length) {
-                console.log(`[ParametricExport]   v16.4 Outer base downsample: ${uBasePositions.length} → ${outerBaseU.length} columns (pre-union)`);
+                console.log(`[ParametricExport]   v16.4 Outer base downsample: ${uBasePositions.length} â†’ ${outerBaseU.length} columns (pre-union)`);
             }
 
             // Maximum rows allowed by targetOuterBudget for this base width.
@@ -4905,9 +3977,9 @@ export class ParametricExportComputer {
             const insertion = insertChainGuidedRows(tPositions, chains, maxRowInsertions, adaptiveInsertThreshold);
             let finalT = insertion.tPositions;
             const rowMapping = insertion.rowMapping;
-            console.log(`[ParametricExport]   v16.6 T-row insertion: ${insertion.insertedCount} rows added (${numOuterRows} → ${finalT.length}, minUShift=${adaptiveInsertThreshold.toFixed(4)}, cap=${maxRowInsertions}, localOnly=${LOCAL_ONLY_OUTER_ADAPTATION})`);
+            console.log(`[ParametricExport]   v16.6 T-row insertion: ${insertion.insertedCount} rows added (${numOuterRows} â†’ ${finalT.length}, minUShift=${adaptiveInsertThreshold.toFixed(4)}, cap=${maxRowInsertions}, localOnly=${LOCAL_ONLY_OUTER_ADAPTATION})`);
 
-            // ── Step 5: GPU-probe inserted rows and detect their features ──
+            // â”€â”€ Step 5: GPU-probe inserted rows and detect their features â”€â”€
             let finalRowFeatures: number[][];
             let insertedRowProbeData: Float32Array[] = []; // used for inserted-row feature detection
             if (insertion.insertedCount > 0) {
@@ -4955,7 +4027,7 @@ export class ParametricExportComputer {
                             origRow < allRowFeatures.length ? [...allRowFeatures[origRow]] : []
                         );
                     } else {
-                        // Inserted row — use GPU-detected features
+                        // Inserted row â€” use GPU-detected features
                         finalRowFeatures.push(
                             insertIdx < insertedFeatures.length ? insertedFeatures[insertIdx] : []
                         );
@@ -4995,21 +4067,21 @@ export class ParametricExportComputer {
                 lines: debugLines,
             };
 
-            // ── Step 6: Build UNION feature grid from ALL rows (original + inserted) ──
+            // â”€â”€ Step 6: Build UNION feature grid from ALL rows (original + inserted) â”€â”€
             // v11.3: Union grid used for ALL surfaces including outer wall.
             // Budget cap: compute max columns from targetTris and T-row count.
-            // Formula: maxTris = 2 * (numU-1) * (numT-1) → numU = maxTris/(2*(numT-1)) + 1
+            // Formula: maxTris = 2 * (numU-1) * (numT-1) â†’ numU = maxTris/(2*(numT-1)) + 1
             const numTRows = finalT.length;
             const maxOuterColumns = Math.floor(targetOuterBudget / (2 * Math.max(1, numTRows - 1))) + 1;
             let unionU: Float32Array;
             if (LOCAL_ONLY_OUTER_ADAPTATION) {
                 // v20.0: Use base grid directly (no global corridor columns).
-                // v17.0 corridor columns doubled grid size (735→1395, +660 cols).
-                // v18.0 tried GPU-surface subdivision but dihedral stayed at 0.04 —
+                // v17.0 corridor columns doubled grid size (735â†’1395, +660 cols).
+                // v18.0 tried GPU-surface subdivision but dihedral stayed at 0.04 â€”
                 // bridge triangles (chain_r, chain_r+1, grid_vertex) are topologically
                 // broken and can't be fixed by post-processing.
-                // v19.0: chain vertices removed → features imprecise (±0.5 grid cell).
-                // v20.0: per-row UV snapping — nearest grid vertex snapped to chain U.
+                // v19.0: chain vertices removed â†’ features imprecise (Â±0.5 grid cell).
+                // v20.0: per-row UV snapping â€” nearest grid vertex snapped to chain U.
                 // No extra vertices, no chain-strip boundary, exact ridge positions.
                 unionU = outerBaseU;
             } else {
@@ -5018,7 +4090,7 @@ export class ParametricExportComputer {
             const featureColumnsAdded = unionU.length - outerBaseU.length;
             console.log(`[ParametricExport]   Union grid: ${unionU.length} U (base=${outerBaseU.length} + ${featureColumnsAdded} feature columns, budget max=${maxOuterColumns}, localOnly=${LOCAL_ONLY_OUTER_ADAPTATION})`);
 
-            // ── Step 7-9: Generate surfaces ──
+            // â”€â”€ Step 7-9: Generate surfaces â”€â”€
             // v11.2: Outer wall uses union grid + per-row patching (no column explosion).
             // Other surfaces use the regular adaptive grid (no features).
             const surfaceStats: string[] = [];
@@ -5028,15 +4100,15 @@ export class ParametricExportComputer {
 
             // v11.3: Per-row feature patching replaces global column merging
             let outerW = unionU.length; // kept for diagnostics
-            let outerQuadMap: Int32Array | null = null; // v11.3: gap-free quad→index mapping
+            let outerQuadMap: Int32Array | null = null; // v11.3: gap-free quadâ†’index mapping
             let outerGridVertexCount = 0; // v16.27: grid vertex count for chain-strip detection
             let outerChainEdges: Array<[number, number]> = []; // v16.28: constraint edges for flip protection
 
             for (const surf of SURFACE_CONFIG) {
                 if (surf.id === 0) {
-                    // ═══════════════════════════════════════════
-                    // v11.3: PER-ROW PATCHED OUTER WALL — union grid + chain vertex patching
-                    // ═══════════════════════════════════════════
+                    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+                    // v11.3: PER-ROW PATCHED OUTER WALL â€” union grid + chain vertex patching
+                    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
                     const targetOuterTris = Math.floor(targetTris * surf.budgetFrac);
                     const cdtResult = buildCDTOuterWall(
                         chains, rowMapping, finalT, unionU,
@@ -5071,8 +4143,8 @@ export class ParametricExportComputer {
                     const outerTris = cdtResult.indices.length / 3;
                     vertexOffset += outerVerts;
                     outerW = unionU.length; // grid width = number of columns in union grid
-                    outerQuadMap = cdtResult.quadMap; // v11.3: quad→index mapping
-                    surfaceStats.push(`  ${surf.name}: ${outerW}×${finalT.length} grid = ${outerTris.toLocaleString()} tris (chains=${chains.length})`);
+                    outerQuadMap = cdtResult.quadMap; // v11.3: quadâ†’index mapping
+                    surfaceStats.push(`  ${surf.name}: ${outerW}Ã—${finalT.length} grid = ${outerTris.toLocaleString()} tris (chains=${chains.length})`);
                 } else {
                     // Other surfaces: uniform grid with base U positions
                     const surfBudget = targetTris * surf.budgetFrac;
@@ -5098,7 +4170,7 @@ export class ParametricExportComputer {
                     const tris = grid.indices.length / 3;
                     const w = grid.w;
                     const h2 = (grid.vertices.length / 3 / w) - 1;
-                    surfaceStats.push(`  ${surf.name}: ${w}×${h2} grid = ${tris.toLocaleString()} tris`);
+                    surfaceStats.push(`  ${surf.name}: ${w}Ã—${h2} grid = ${tris.toLocaleString()} tris`);
                 }
             }
 
@@ -5119,12 +4191,12 @@ export class ParametricExportComputer {
             console.log(`[ParametricExport] Total: ${vertexCount.toLocaleString()} verts, ${triangleCount.toLocaleString()} tris`);
             for (const stat of surfaceStats) console.log(`[ParametricExport] ${stat}`);
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // PHASE 3: Evaluate Full Mesh (GPU)
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const gpuStart = performance.now();
 
-            // Write Grid Width (W) to Uniforms — used by relax_vertices shader
+            // Write Grid Width (W) to Uniforms â€” used by relax_vertices shader
             // for row/col neighbor addressing.  chunk4.w is at offset 76 (19 * 4 bytes).
             // v8.2: outerW = union grid width (same topology for all rows)
             const widthUniform = new Float32Array([outerW]);
@@ -5133,20 +4205,20 @@ export class ParametricExportComputer {
             // v8.2: Relaxation DISABLED.  Per-row feature patching writes
             // different U values into the same column across rows.  The
             // relax shader assumes column c has the same U in every row
-            // (it averages with left/right neighbors at col±1).  With
+            // (it averages with left/right neighbors at colÂ±1).  With
             // patched vertices, relaxation would smear the exact feature
-            // positions back toward the union-grid median — destroying the
+            // positions back toward the union-grid median â€” destroying the
             // per-row precision we just established.
             const resultData = await this.evaluatePoints(
                 combinedVerts, uniformBuffer, styleParamBuffer,
                 dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
-                false, // Snap disabled — union grid has dedicated feature columns
-                0      // v8.2: relax=0 — patched per-row U would be smeared by Laplacian
+                false, // Snap disabled â€” union grid has dedicated feature columns
+                0      // v8.2: relax=0 â€” patched per-row U would be smeared by Laplacian
             );
 
             const gpuMs = performance.now() - gpuStart;
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // PHASE 4: Post-GPU Quality Improvement (v11.3)
             //
             // v11.3 FIX: chainDirectedFlip and flipEdges3D now use the quadMap
@@ -5157,16 +4229,16 @@ export class ParametricExportComputer {
             // v11.2: Per-row patching places vertices at exact chain positions
             // but UV-space diagonal alignment may not be optimal in 3D.
             // After GPU evaluation provides actual XYZ positions, we run:
-            //   Stage 1: chainDirectedFlip — forces diagonals along chain edges
-            //   Stage 2: flipEdges3D — generic dihedral+angle quality improvement
-            // ═══════════════════════════════════════════
+            //   Stage 1: chainDirectedFlip â€” forces diagonals along chain edges
+            //   Stage 2: flipEdges3D â€” generic dihedral+angle quality improvement
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const flip3DStart = performance.now();
 
-            // The outer wall occupies the first outerW × finalT.length vertices
+            // The outer wall occupies the first outerW Ã— finalT.length vertices
             // in the combined buffer. Its indices are at the start of combinedIdxs.
             const outerH = finalT.length;
 
-            // Stage 1: Chain-directed flip — uses chain topology to force
+            // Stage 1: Chain-directed flip â€” uses chain topology to force
             // diagonals along ridge lines (v11.3: with quadMap)
             const { flipCount: chainFlips, lockedQuads } = chainDirectedFlip(
                 combinedIdxs,    // indices (outer wall at start, mutated in-place)
@@ -5174,13 +4246,13 @@ export class ParametricExportComputer {
                 outerW,          // grid width (number of columns)
                 outerH,          // grid height (number of rows)
                 chains,          // feature chains from Phase 2.5
-                rowMapping,      // row mapping (final → original)
+                rowMapping,      // row mapping (final â†’ original)
                 false,           // invertWinding = false for outer wall
-                outerQuadMap!    // v11.3: quad→index mapping from buildCDTOuterWall
+                outerQuadMap!    // v11.3: quadâ†’index mapping from buildCDTOuterWall
             );
             console.log(`[ParametricExport]   v14.0 chain-directed flip: ${chainFlips} diagonals along ridges (${lockedQuads.size} quads locked)`);
 
-            // Stage 2: Generic 3D edge flip — improves triangle quality using
+            // Stage 2: Generic 3D edge flip â€” improves triangle quality using
             // dihedral angle + min-angle criterion on actual 3D positions (v10.2)
             // Skips quads locked by chain-directed flip.
             const genericFlips = flipEdges3D(
@@ -5190,25 +4262,25 @@ export class ParametricExportComputer {
                 outerH,          // grid height
                 false,           // invertWinding = false for outer wall
                 lockedQuads,     // locked quads from chain-directed flip
-                outerQuadMap!    // v11.3: quad→index mapping
+                outerQuadMap!    // v11.3: quadâ†’index mapping
             );
 
             const flip3DMs = performance.now() - flip3DStart;
             console.log(`[ParametricExport]   v11.3 3D edge flip: ${genericFlips} quality flips (${flip3DMs.toFixed(1)}ms)`);
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // v16.28f: Chain-strip 3D edge flip (ANGLE + VALENCE)
             //
             // Chain-strip triangles are produced by sweepRegion() with a
             // consistent `nextBotU <= nextTopU` diagonal bias. This creates
-            // a visible sawtooth on one side of feature ridges — especially
+            // a visible sawtooth on one side of feature ridges â€” especially
             // on ridges that run at a more vertical angle (small U-shift).
             //
             // TWO-PHASE approach:
             //   Phase A: Angle-based Delaunay flips (max-min-angle improvement)
-            //            with valence bonus — flips that also improve valence
+            //            with valence bonus â€” flips that also improve valence
             //            toward 6 get a reduced threshold.
-            //   Phase B: Valence-only flips — for edges where the angle doesn't
+            //   Phase B: Valence-only flips â€” for edges where the angle doesn't
             //            improve much but the 4 involved vertices have irregular
             //            valence (<5 or >7). Flipping such edges redistributes
             //            connectivity, eliminating "pinch points" where 3-4
@@ -5218,18 +4290,18 @@ export class ParametricExportComputer {
             //   1. Convexity: only flip convex quads
             //   2. Normal consistency: both new tris must face same way as originals
             //   3. Row-span: new tris must not exceed the original pair's T-extent
-            //   4. Edge length: new edge ≤ 2× longest perimeter edge
+            //   4. Edge length: new edge â‰¤ 2Ã— longest perimeter edge
             //   5. Aspect ratio: reject only extreme slivers (aspect > 12)
             //   6. Constraint protection: never flip chain edges
             //   7. Chain-strip only: no boundary flips into grid-managed quads
             //   8. Angle floor: flipped result must not have min-angle < 0.05 rad
             //
             // v16.28f improvements over v16.28e:
-            //   - Added valence tracking (vertex → edge count) for chain-strip region
+            //   - Added valence tracking (vertex â†’ edge count) for chain-strip region
             //   - Phase A: valence-improving flips use threshold 0.001 instead of 0.005
             //   - Phase B: pure valence flips (no angle requirement) with angle floor
             //   - Diagnostic: reports valence stats + phase B flip count
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const csFlipStart = performance.now();
 
             // Build set of constraint edges (canonical keys)
@@ -5251,15 +4323,15 @@ export class ParametricExportComputer {
                 }
             }
 
-            // v16.28c: Build vertex→T lookup for row-span checking.
+            // v16.28c: Build vertexâ†’T lookup for row-span checking.
             // Each vertex's T-coordinate tells us which row band it lives in.
             // Grid vertex v has T at combinedVerts[v*3+1].
             // Chain vertex v (>= outerGridVertexCount) also has T there.
             // We use this to prevent flips that would span multiple row bands.
             const vtxT = (v: number): number => combinedVerts[v * 3 + 1];
 
-            // Build edge→triangle adjacency for chain-strip triangles ONLY.
-            // We do NOT include boundary triangles — flipping at the boundary
+            // Build edgeâ†’triangle adjacency for chain-strip triangles ONLY.
+            // We do NOT include boundary triangles â€” flipping at the boundary
             // between chain-strip and standard grid quads creates inconsistencies
             // because the grid quad side is managed by flipEdges3D via quadMap.
             const edgeToTris = new Map<bigint, number[]>();
@@ -5327,7 +4399,7 @@ export class ParametricExportComputer {
                 const longest = Math.sqrt(longest2);
                 // Area via cross product
                 const n = triNormal(p0, p1, p2);
-                const area2 = len3(n); // 2× area
+                const area2 = len3(n); // 2Ã— area
                 if (area2 < 1e-15) return 1e6; // degenerate
                 // shortest altitude = 2*area / longest edge
                 const shortAlt = area2 / longest;
@@ -5349,7 +4421,7 @@ export class ParametricExportComputer {
             };
 
             // v16.28e: Row-span guard uses "no-worse" policy instead of absolute limit.
-            // We still pre-compute max row span as a last-resort absolute cap (3×).
+            // We still pre-compute max row span as a last-resort absolute cap (3Ã—).
             const rowTSpans: number[] = [];
             for (let j = 0; j < finalT.length - 1; j++) {
                 rowTSpans.push(finalT[j + 1] - finalT[j]);
@@ -5360,7 +4432,7 @@ export class ParametricExportComputer {
             // Valence = number of distinct edges incident on a vertex within the
             // chain-strip region. Ideal valence for interior surface vertices is 6.
             // Vertices with valence < 5 create "pinch points"; valence > 7 creates
-            // "star points" — both cause triangle flow irregularity.
+            // "star points" â€” both cause triangle flow irregularity.
             const csValence = new Map<number, number>();
             const addValenceEdge = (a: number, b: number) => {
                 // We track valence per-vertex as the number of unique neighbors
@@ -5416,13 +4488,13 @@ export class ParametricExportComputer {
                 console.log(`[ParametricExport]     valence before: ${csValence.size} verts, ${lo} low(<5), ${ideal} ideal(6), ${hi} high(>7)`);
             }
 
-            // Iterative edge flip — Phase A: angle-based with valence bonus
+            // Iterative edge flip â€” Phase A: angle-based with valence bonus
             let totalCSFlips = 0;
             let csRowSpanRejects = 0, csEdgeLenRejects = 0, csAspectRejects = 0;
             let csValenceBonus = 0; // flips enabled by valence bonus
-            const MIN_ANGLE_IMPROVEMENT = 0.005; // ~0.29° — allow subtle improvements
-            const MIN_ANGLE_VALENCE_BONUS = 0.0005; // ~0.03° — nearly free if valence improves
-            const MIN_ANGLE_FLOOR = 0.04; // ~2.3° — never create triangles worse than this
+            const MIN_ANGLE_IMPROVEMENT = 0.005; // ~0.29Â° â€” allow subtle improvements
+            const MIN_ANGLE_VALENCE_BONUS = 0.0005; // ~0.03Â° â€” nearly free if valence improves
+            const MIN_ANGLE_FLOOR = 0.04; // ~2.3Â° â€” never create triangles worse than this
             const MAX_CS_PASSES = 8;
             for (let pass = 0; pass < MAX_CS_PASSES; pass++) {
                 let passFlips = 0;
@@ -5458,14 +4530,14 @@ export class ParametricExportComputer {
                     if (constraintEdgeSet.has(edgeKey(opp0, opp1))) continue;
 
                     // Convexity check: the quad must be convex to flip safely
-                    // Quad order: shLo → opp0 → shHi → opp1 (ring around the quad)
+                    // Quad order: shLo â†’ opp0 â†’ shHi â†’ opp1 (ring around the quad)
                     if (!isConvexQuad3D(shLo, opp0, shHi, opp1)) continue;
 
                     // v16.31: Per-triangle row-span guard.
                     // Each new triangle must fit within a single row band.
                     // Use "no-worse" policy: the flipped pair can span up to
                     // the original pair's T-extent + 10% tolerance, but never
-                    // exceed 2× a single row band (prevents multi-row creep).
+                    // exceed 2Ã— a single row band (prevents multi-row creep).
                     {
                         const t_shLo = vtxT(shLo), t_shHi = vtxT(shHi);
                         const t_opp0 = vtxT(opp0), t_opp1 = vtxT(opp1);
@@ -5484,19 +4556,19 @@ export class ParametricExportComputer {
                         }
                     }
 
-                    // v16.28d: Edge length guard — the new edge (opp0↔opp1) must not be
+                    // v16.28d: Edge length guard â€” the new edge (opp0â†”opp1) must not be
                     // excessively longer than the existing perimeter edges.
                     const pShLo = pos3(shLo), pOpp0 = pos3(opp0), pShHi = pos3(shHi), pOpp1 = pos3(opp1);
                     {
-                        // Perimeter edges: shLo↔opp0, opp0↔shHi, shHi↔opp1, opp1↔shLo
+                        // Perimeter edges: shLoâ†”opp0, opp0â†”shHi, shHiâ†”opp1, opp1â†”shLo
                         const maxPerim2 = Math.max(
                             dist3sq(pShLo, pOpp0), dist3sq(pOpp0, pShHi),
                             dist3sq(pShHi, pOpp1), dist3sq(pOpp1, pShLo)
                         );
-                        // New edge: opp0↔opp1
+                        // New edge: opp0â†”opp1
                         const newEdge2 = dist3sq(pOpp0, pOpp1);
-                        // Reject if new edge is >2× the longest perimeter edge
-                        if (newEdge2 > maxPerim2 * 4.0) { // 2.0² = 4.0
+                        // Reject if new edge is >2Ã— the longest perimeter edge
+                        if (newEdge2 > maxPerim2 * 4.0) { // 2.0Â² = 4.0
                             csEdgeLenRejects++;
                             continue;
                         }
@@ -5516,7 +4588,7 @@ export class ParametricExportComputer {
                     const newNB = triNormal(pShHi, pOpp1, pOpp0);
 
                     // For normal consistency, check against the AVERAGE of original normals.
-                    // This is more robust than checking against just one original — the
+                    // This is more robust than checking against just one original â€” the
                     // two originals might have slightly different normals near a ridge.
                     const avgNormal: [number, number, number] = [
                         origNormal0[0] + origNormal1[0],
@@ -5556,7 +4628,7 @@ export class ParametricExportComputer {
                         csValenceBonus++;
                     }
 
-                    // v16.28e: Aspect ratio guard — only reject extreme slivers.
+                    // v16.28e: Aspect ratio guard â€” only reject extreme slivers.
                     // Thin triangles are acceptable along ridges; only block truly
                     // degenerate slivers (aspect > 12) that would also be worse.
                     const newAspect = Math.max(triAspect3D(flipI0, flipI1, flipI2), triAspect3D(flipJ0, flipJ1, flipJ2));
@@ -5579,12 +4651,12 @@ export class ParametricExportComputer {
                     edgeToTris.set(newEk, [t0, t1]);
 
                     // Update perimeter edges:
-                    // Before: tri0 had edges {shLo↔shHi}, {shHi↔opp0}, {opp0↔shLo}
-                    //         tri1 had edges {shLo↔shHi}, {shHi↔opp1}, {opp1↔shLo}
-                    // After:  tri0 has edges {opp0↔opp1}, {opp1↔shLo}, {shLo↔opp0}  [shLo side]
-                    //         tri1 has edges {opp0↔opp1}, {shHi↔opp1}, {opp0↔shHi}  [shHi side]
-                    // Changed: {shHi↔opp0} moved from t0 → t1
-                    //          {opp1↔shLo} moved from t1 → t0
+                    // Before: tri0 had edges {shLoâ†”shHi}, {shHiâ†”opp0}, {opp0â†”shLo}
+                    //         tri1 had edges {shLoâ†”shHi}, {shHiâ†”opp1}, {opp1â†”shLo}
+                    // After:  tri0 has edges {opp0â†”opp1}, {opp1â†”shLo}, {shLoâ†”opp0}  [shLo side]
+                    //         tri1 has edges {opp0â†”opp1}, {shHiâ†”opp1}, {opp0â†”shHi}  [shHi side]
+                    // Changed: {shHiâ†”opp0} moved from t0 â†’ t1
+                    //          {opp1â†”shLo} moved from t1 â†’ t0
                     const ek1 = edgeKey(shHi, opp0);
                     const adj1 = edgeToTris.get(ek1);
                     if (adj1) {
@@ -5604,7 +4676,7 @@ export class ParametricExportComputer {
                 if (passFlips === 0) break;
             }
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // Phase B: Valence-only flips
             //
             // After Phase A has exhausted angle-based improvements, some edges
@@ -5616,7 +4688,7 @@ export class ParametricExportComputer {
             // their 4 vertices, subject to the same safety guards PLUS:
             //   - The flip must not DECREASE min-angle below the floor (0.04 rad)
             //   - The flip must strictly improve total valence cost
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             let phaseB_flips = 0;
             const MAX_VALENCE_PASSES = 4;
             for (let pass = 0; pass < MAX_VALENCE_PASSES; pass++) {
@@ -5706,7 +4778,7 @@ export class ParametricExportComputer {
                     const curMin = Math.min(minAngle3D(a0, b0, c0), minAngle3D(a1, b1, c1));
                     const flipMin = Math.min(minAngle3D(flipI0, flipI1, flipI2), minAngle3D(flipJ0, flipJ1, flipJ2));
                     if (flipMin < MIN_ANGLE_FLOOR && flipMin < curMin) continue;
-                    // Don't allow angle to degrade more than 0.01 rad (~0.57°) even for valence
+                    // Don't allow angle to degrade more than 0.01 rad (~0.57Â°) even for valence
                     if (flipMin < curMin - 0.01) continue;
 
                     // Aspect ratio guard
@@ -5736,7 +4808,7 @@ export class ParametricExportComputer {
                 if (passFlips === 0) break;
             }
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // Phase C: Short-diagonal flips (Delaunay tie-breaker)
             //
             // On gentle features, both diagonal orientations produce nearly
@@ -5751,11 +4823,11 @@ export class ParametricExportComputer {
             //
             // Safety: same guards as Phase A (row-span, edge-length, normal
             // consistency, convexity), plus the angle must not degrade beyond
-            // a small tolerance (0.002 rad ≈ 0.11°).
-            // ═══════════════════════════════════════════
+            // a small tolerance (0.002 rad â‰ˆ 0.11Â°).
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             let phaseC_flips = 0;
             {
-                const ANGLE_DEGRADE_TOLERANCE = 0.002; // Allow up to 0.11° angle loss for shorter diagonal
+                const ANGLE_DEGRADE_TOLERANCE = 0.002; // Allow up to 0.11Â° angle loss for shorter diagonal
                 const edgeKeys3 = Array.from(edgeToTris.keys());
 
                 for (const ek of edgeKeys3) {
@@ -5788,7 +4860,7 @@ export class ParametricExportComputer {
                     const altDiag2 = dist3sq(pOpp0, pOpp1);
                     // Only flip if alternative diagonal is at least 5% shorter
                     // (avoid churn on nearly-equal diagonals)
-                    if (altDiag2 >= curDiag2 * 0.9025) continue; // 0.95² = 0.9025
+                    if (altDiag2 >= curDiag2 * 0.9025) continue; // 0.95Â² = 0.9025
 
                     if (!isConvexQuad3D(shLo, opp0, shHi, opp1)) continue;
 
@@ -5891,7 +4963,7 @@ export class ParametricExportComputer {
                 console.log(`[ParametricExport]     valence after:  ${csValence.size} verts, ${lo} low(<5), ${ideal} ideal(6), ${hi} high(>7)`);
             }
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // v16.34: Boundary diagonal optimization
             //
             // Standard cells adjacent to chain strips have their diagonal
@@ -5906,14 +4978,14 @@ export class ParametricExportComputer {
             //
             // Unlike the failed v16.33 boundary reconciliation (which flipped
             // boundary EDGES across cell boundaries), this pass only changes
-            // the INTERNAL DIAGONAL of standard cells — a safe operation that
+            // the INTERNAL DIAGONAL of standard cells â€” a safe operation that
             // rearranges two triangles within one cell.
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             {
                 const bndDiagStart = performance.now();
                 const cellsPerRow = outerW - 1;
 
-                // Build edge→tri adjacency for all outer wall tris
+                // Build edgeâ†’tri adjacency for all outer wall tris
                 const bdEdge2Tri = new Map<bigint, number[]>();
                 const bdEK = (a: number, b: number): bigint => {
                     const lo = a < b ? a : b;
@@ -5943,7 +5015,7 @@ export class ParametricExportComputer {
                 const bdDotN = (a: [number, number, number], b: [number, number, number]): number => {
                     const la = Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
                     const lb = Math.sqrt(b[0] * b[0] + b[1] * b[1] + b[2] * b[2]);
-                    if (la < 1e-12 || lb < 1e-12) return 1; // degenerate → treat as smooth
+                    if (la < 1e-12 || lb < 1e-12) return 1; // degenerate â†’ treat as smooth
                     return (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (la * lb);
                 };
 
@@ -5962,7 +5034,7 @@ export class ParametricExportComputer {
                         const vTL = (j + 1) * outerW + col;
                         const vTR = (j + 1) * outerW + col + 1;
 
-                        // Check boundary edges: right edge (vBR→vTR) and left edge (vBL→vTL)
+                        // Check boundary edges: right edge (vBRâ†’vTR) and left edge (vBLâ†’vTL)
                         // A boundary edge is one shared with a chain-strip tri
                         const checkEdge = (v0: number, v1: number): number => {
                             // Returns the chain-strip tri offset, or -1 if not a boundary edge
@@ -5986,11 +5058,11 @@ export class ParametricExportComputer {
 
                         // Compute boundary dihedral for BOTH diagonal options
                         // AD diagonal: tri0 = (vBL, vBR, vTR), tri1 = (vBL, vTR, vTL)
-                        //   - Right boundary (vBR→vTR) is in tri0, normal from (vBL, vBR, vTR)
-                        //   - Left boundary (vBL→vTL) is in tri1, normal from (vBL, vTR, vTL)
+                        //   - Right boundary (vBRâ†’vTR) is in tri0, normal from (vBL, vBR, vTR)
+                        //   - Left boundary (vBLâ†’vTL) is in tri1, normal from (vBL, vTR, vTL)
                         // BC diagonal: tri0 = (vBL, vBR, vTL), tri1 = (vBR, vTR, vTL)
-                        //   - Right boundary (vBR→vTR) is in tri1, normal from (vBR, vTR, vTL)
-                        //   - Left boundary (vBL→vTL) is in tri0, normal from (vBL, vBR, vTL)
+                        //   - Right boundary (vBRâ†’vTR) is in tri1, normal from (vBR, vTR, vTL)
+                        //   - Left boundary (vBLâ†’vTL) is in tri0, normal from (vBL, vBR, vTL)
 
                         let adScore = 0; // sum of dihedral dots (higher = smoother)
                         let bcScore = 0;
@@ -6052,7 +5124,7 @@ export class ParametricExportComputer {
                 console.log(`[ParametricExport]   v16.34 boundary diagonal optimization: ${bdFlips} cell diag flips on ${bdChecked} boundary cells (${bndDiagMs.toFixed(1)}ms)`);
             }
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // v16.29: Chain-strip midpoint subdivision
             //
             // After flipping, chain-strip triangles can still be stretched
@@ -6069,13 +5141,13 @@ export class ParametricExportComputer {
             // The midpoint's 3D position is linearly interpolated from the
             // two endpoints. At this mesh resolution (~0.5mm spacing), linear
             // interpolation on a smooth parametric surface introduces < 0.01mm
-            // error — well below 3D printing tolerance.
+            // error â€” well below 3D printing tolerance.
             //
             // Each split turns 2 triangles into 4:
-            //   Before: tri0=(A,B,C), tri1=(B,D,C)  [shared edge B↔C]
+            //   Before: tri0=(A,B,C), tri1=(B,D,C)  [shared edge Bâ†”C]
             //   After:  tri0=(A,B,M), tri0b=(A,M,C), tri1=(B,D,M), tri1b=(M,D,C)
-            //   where M = midpoint of B↔C
-            // ═══════════════════════════════════════════
+            //   where M = midpoint of Bâ†”C
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const subdivStart = performance.now();
 
             // Compute average grid edge length (from first few hundred grid edges)
@@ -6097,7 +5169,7 @@ export class ParametricExportComputer {
                 }
             }
             const avgGridEdge = gridEdgeCount > 0 ? gridEdgeLenSum / gridEdgeCount : 1.0;
-            // Subdivide edges longer than 1.8× average grid edge
+            // Subdivide edges longer than 1.8Ã— average grid edge
             const subdivThreshold2 = (avgGridEdge * 1.8) ** 2;
 
             // Re-identify chain-strip triangles (indices may have changed from flips)
@@ -6110,7 +5182,7 @@ export class ParametricExportComputer {
                 }
             }
 
-            // Build edge→triangle adjacency for chain-strip tris AND their
+            // Build edgeâ†’triangle adjacency for chain-strip tris AND their
             // boundary neighbors. Previously, only chain-strip tris were indexed,
             // so boundary edges (shared between a chain-strip tri and a standard-
             // grid tri) had only 1 entry and were skipped by the `tris.length !== 2`
@@ -6194,7 +5266,7 @@ export class ParametricExportComputer {
                 }
             }
 
-            // Sort by length descending — split longest edges first
+            // Sort by length descending â€” split longest edges first
             edgesToSplit.sort((a, b) => b.len2 - a.len2);
 
             // Apply splits. We need to grow the vertex and index arrays.
@@ -6205,28 +5277,28 @@ export class ParametricExportComputer {
             //   tri0 has vertices containing v0 and v1 plus opp0
             //   tri1 has vertices containing v0 and v1 plus opp1
             //   Insert M = midpoint(v0, v1)
-            //   Replace: tri0 → (opp0, v0, M), new tri → (opp0, M, v1)
-            //            tri1 → (opp1, v1, M), new tri → (opp1, M, v0)
+            //   Replace: tri0 â†’ (opp0, v0, M), new tri â†’ (opp0, M, v1)
+            //            tri1 â†’ (opp1, v1, M), new tri â†’ (opp1, M, v0)
 
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // v18.0: GPU-surface subdivision.
             //
             // Root cause of v17.0 oscillation: midpoints were the 3D chord
             // midpoint (average of two XYZ surface points). On a curved surface,
             // this chord lies INSIDE the surface, producing a "divot" vertex.
             // The normal at the divot points inward; adjacent triangles point
-            // outward → alternating inward/outward normals = slicer oscillations.
+            // outward â†’ alternating inward/outward normals = slicer oscillations.
             //
             // Fix: compute midpoints in UV (parametric) space, then GPU-evaluate
             // them to get exact on-surface 3D positions. A UV midpoint evaluates
             // to a point ON the mathematical surface, not on the chord.
             //
             // Phase A: Determine which splits apply (respecting modifiedTris).
-            // Phase B: Batch GPU-evaluate UV midpoints → exact on-surface XYZ.
+            // Phase B: Batch GPU-evaluate UV midpoints â†’ exact on-surface XYZ.
             // Phase C: Apply splits using GPU-evaluated positions.
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-            // Phase A: Collect splits to apply (dry run — no index modifications)
+            // Phase A: Collect splits to apply (dry run â€” no index modifications)
             const splitsToApply: Array<{ se: SplitEdge; opp0: number; opp1: number }> = [];
             const modifiedTris = new Set<number>();
             const maxSplits = Math.floor((csTriSetNow.size + boundaryTrisAdded) * 0.5);
@@ -6259,13 +5331,13 @@ export class ParametricExportComputer {
                 const midUVBatch = new Float32Array(splitsToApply.length * 3);
                 for (let i = 0; i < splitsToApply.length; i++) {
                     const { se } = splitsToApply[i];
-                    // Average UV coordinates — evaluates to exact on-surface position
+                    // Average UV coordinates â€” evaluates to exact on-surface position
                     midUVBatch[i * 3] = (combinedVerts[se.v0 * 3] + combinedVerts[se.v1 * 3]) * 0.5;
                     midUVBatch[i * 3 + 1] = (combinedVerts[se.v0 * 3 + 1] + combinedVerts[se.v1 * 3 + 1]) * 0.5;
                     midUVBatch[i * 3 + 2] = combinedVerts[se.v0 * 3 + 2]; // surfaceId (same for both endpoints)
                 }
 
-                // GPU evaluate: UV midpoints → exact 3D surface positions
+                // GPU evaluate: UV midpoints â†’ exact 3D surface positions
                 const mid3D = await this.evaluatePoints(
                     midUVBatch, uniformBuffer, styleParamBuffer,
                     dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
@@ -6318,26 +5390,26 @@ export class ParametricExportComputer {
 
             const splitCount = splitsToApply.length;
             const subdivMs = performance.now() - subdivStart;
-            console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris (${subdivMs.toFixed(1)}ms)`);
+            console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split â†’ ${splitCount * 2} new tris (${subdivMs.toFixed(1)}ms)`);
             console.log(`[ParametricExport]     avg grid edge: ${avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivThreshold2).toFixed(3)}mm, boundary threshold: ${Math.sqrt(boundarySubdivThreshold2).toFixed(3)}mm, candidates: ${edgesToSplit.length}, boundary neighbor tris: ${boundaryTrisAdded}`);
 
-            // ═══════════════════════════════════════════
-            // v16.33 REVERTED — boundary edge flipping made artifacts worse.
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // v16.33 REVERTED â€” boundary edge flipping made artifacts worse.
             // Flipping edges at chain-strip/standard boundary on a curved
             // surface near ridges creates triangles that overshoot the ridge.
             // The dihedral criterion tries to flatten the surface, but ridges
-            // are SUPPOSED to be non-flat. 3023 flips → visible protrusions.
+            // are SUPPOSED to be non-flat. 3023 flips â†’ visible protrusions.
             //
             // Boundary diagnostic: count boundary edges + dihedral stats
             // without modifying any geometry.
-            // ═══════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             {
                 const bndEdgeKey2 = (a: number, b: number): bigint => {
                     const lo = a < b ? a : b;
                     const hi = a < b ? b : a;
                     return BigInt(lo) * BigInt(0x100000) + BigInt(hi);
                 };
-                // Build edge→tri for outer wall
+                // Build edgeâ†’tri for outer wall
                 const bndE2T = new Map<bigint, number[]>();
                 for (let t = 0; t < outerIdxCount; t += 3) {
                     const a = finalCombinedIdxs[t], b = finalCombinedIdxs[t + 1], c = finalCombinedIdxs[t + 2];
@@ -6383,7 +5455,7 @@ export class ParametricExportComputer {
                 console.log(`[ParametricExport]     dihedral dot(n0,n1): avg=${dihedralAvg.toFixed(4)}, min=${dihedralMin.toFixed(4)}, max=${dihedralMax.toFixed(4)}`);
             }
 
-            // v16.31: Diagnostic — count cross-row tris and aspect ratios
+            // v16.31: Diagnostic â€” count cross-row tris and aspect ratios
             {
                 const origVertCount = vertexCount; // grid + chain verts (before subdivision)
                 let crossRow1 = 0, crossRow2 = 0, crossRow3plus = 0;
