@@ -76,6 +76,99 @@ const SEAM_THRESHOLD = 0.4;
 const SEAM_GUARD = 0.3;
 
 /**
+ * Insert micro-rows into tPositions at midpoints of steep chain crossings.
+ *
+ * When a chain segment crosses >1 grid column within a single row band,
+ * the UV-snapped vertices in adjacent rows are far apart in U, creating
+ * sawtooth artifacts. Inserting a micro-row between those rows gives the
+ * chain an intermediate step, producing smoother triangulation.
+ *
+ * @param tPositions   Current T-row positions.
+ * @param chains       Feature chains.
+ * @param origToFinal  Mapping from original chain row → final row index.
+ * @param unionU       Sorted U-column positions.
+ * @returns            Expanded tPositions, updated origToFinal, and count of inserted micro-rows.
+ */
+export function insertMicroRowsForSteepCrossings(
+    tPositions: Float32Array,
+    chains: FeatureChain[],
+    origToFinal: Map<number, number>,
+    unionU: Float32Array,
+): { tPositions: Float32Array; origToFinal: Map<number, number>; microRowCount: number } {
+    const numU = unionU.length;
+    if (numU < 2) return { tPositions, origToFinal, microRowCount: 0 };
+
+    // Identify steep crossings that need micro-rows
+    const microTSet = new Set<string>();
+    const microTValues: number[] = [];
+
+    for (const chain of chains) {
+        for (let k = 1; k < chain.points.length; k++) {
+            const p0 = chain.points[k - 1];
+            const p1 = chain.points[k];
+            const r0 = origToFinal.get(p0.row);
+            const r1 = origToFinal.get(p1.row);
+            if (r0 === undefined || r1 === undefined) continue;
+            if (Math.abs(r1 - r0) !== 1) continue; // only single-row bands
+
+            const col0 = bsearchFloor(unionU, Math.max(0, Math.min(1 - 1e-7, p0.u)));
+            const col1 = bsearchFloor(unionU, Math.max(0, Math.min(1 - 1e-7, p1.u)));
+            let colGap = Math.abs(col1 - col0);
+            if (colGap > numU / 2) colGap = numU - colGap; // circular wrap
+
+            if (colGap > 1) {
+                const lowRow = Math.min(r0, r1);
+                const highRow = Math.max(r0, r1);
+                const tMid = (tPositions[lowRow] + tPositions[highRow]) / 2;
+                const key = tMid.toFixed(10);
+                if (!microTSet.has(key)) {
+                    microTSet.add(key);
+                    microTValues.push(tMid);
+                }
+            }
+        }
+    }
+
+    if (microTValues.length === 0) {
+        return { tPositions, origToFinal, microRowCount: 0 };
+    }
+
+    // Build new T array: merge existing T values with micro-rows
+    const allTs: Array<{ t: number; origIdx: number }> = [];
+    for (let i = 0; i < tPositions.length; i++) {
+        allTs.push({ t: tPositions[i], origIdx: i });
+    }
+    for (const mt of microTValues) {
+        allTs.push({ t: mt, origIdx: -1 });
+    }
+    allTs.sort((a, b) => a.t - b.t);
+
+    const newTPositions = new Float32Array(allTs.length);
+    const oldToNew = new Map<number, number>();
+    for (let i = 0; i < allTs.length; i++) {
+        newTPositions[i] = allTs[i].t;
+        if (allTs[i].origIdx >= 0) {
+            oldToNew.set(allTs[i].origIdx, i);
+        }
+    }
+
+    // Rebuild origToFinal with shifted indices
+    const newOrigToFinal = new Map<number, number>();
+    for (const [origRow, oldFinalRow] of origToFinal) {
+        const newFinalRow = oldToNew.get(oldFinalRow);
+        if (newFinalRow !== undefined) {
+            newOrigToFinal.set(origRow, newFinalRow);
+        }
+    }
+
+    return {
+        tPositions: newTPositions,
+        origToFinal: newOrigToFinal,
+        microRowCount: microTValues.length,
+    };
+}
+
+/**
  * Sweep a sub-region of the strip from (botStart..botEnd) × (topStart..topEnd).
  * Standard alternating-advance: at each step, advance whichever pointer
  * has the smaller next-U, creating one triangle per step.
@@ -270,14 +363,25 @@ export function buildCDTOuterWall(
     const buildStart = performance.now();
 
     // Build reverse map: original row → final row index
-    const origToFinal = new Map<number, number>();
+    let origToFinal = new Map<number, number>();
     for (let f = 0; f < rowMapping.length; f++) {
         if (rowMapping[f] >= 0) {
             origToFinal.set(rowMapping[f], f);
         }
     }
 
-    const numT = tPositions.length;
+    // ── 0. Insert micro-rows for steep spiral chain crossings (sawtooth fix) ──
+    let activeTPositions = tPositions;
+    const microResult = insertMicroRowsForSteepCrossings(
+        activeTPositions, chains, origToFinal, unionU
+    );
+    if (microResult.microRowCount > 0) {
+        activeTPositions = microResult.tPositions;
+        origToFinal = microResult.origToFinal;
+        console.log(`[CDT] Inserted ${microResult.microRowCount} micro-rows for steep crossings`);
+    }
+
+    const numT = activeTPositions.length;
     const numU = unionU.length;
     const gridVertexCount = numU * numT;
 
@@ -403,7 +507,7 @@ export function buildCDTOuterWall(
     for (let j = 0; j < numT; j++) {
         for (let i = 0; i < numU; i++) {
             vertices[vIdx++] = unionU[i];
-            vertices[vIdx++] = tPositions[j];
+            vertices[vIdx++] = activeTPositions[j];
             vertices[vIdx++] = surfaceId;
         }
     }
