@@ -1,25 +1,25 @@
 ﻿/**
- * ParametricExportComputer.ts â€” v11.3 Gap-Free Index Layout + Budget Cap
+ * ParametricExportComputer.ts â€" v11.3 Gap-Free Index Layout + Budget Cap
  *
  * COMPLETELY SEPARATE pipeline from AdaptiveExportComputer (CDT+GPU subdivision).
  *
  * Architecture:
- *   1. GPU: Multi-strip curvature sampling (16 strips Ã— 4096 samples) â†’ gradient + curvature profiles
+ *   1. GPU: Multi-strip curvature sampling (16 strips Ã— 4096 samples) â†' gradient + curvature profiles
  *   2. CPU: Feature detection via gradient zero-crossings + dÂ²r/duÂ² curvature peaks
  *   3. CPU: CDF-adaptive base grid sized to respect the user's triangle budget
- *   4. GPU: Per-row probing (4096 samples/row) â†’ 5-point stencil + GSS sub-sample peak detection
- *   5. CPU: Feature CHAIN LINKING â€” connect per-row peaks across adjacent rows into
+ *   4. GPU: Per-row probing (4096 samples/row) â†' 5-point stencil + GSS sub-sample peak detection
+ *   5. CPU: Feature CHAIN LINKING â€" connect per-row peaks across adjacent rows into
  *          continuous polylines through (u,t) space.
- *   6. CPU: Chain-guided T-row insertion â€” subdivide grid rows at T positions where
+ *   6. CPU: Chain-guided T-row insertion â€" subdivide grid rows at T positions where
  *          chains cross row boundaries.
- *   7. CPU: PER-ROW FEATURE PATCHING â€” union grid provides representative feature
+ *   7. CPU: PER-ROW FEATURE PATCHING â€" union grid provides representative feature
  *          columns; each row's vertices are snapped to the chain's exact U position.
  *          Chain edges become mesh edges via diagonal alignment.
- *   8. GPU: Evaluate full mesh â†’ 3D positions
+ *   8. GPU: Evaluate full mesh â†' 3D positions
  *
  * v11.2 DENSITY FIX:
  *   v11.1 merged ALL chain vertex U-positions into the global grid as full-height
- *   columns. With 70 chains Ã— ~97 points = ~6800 chain U-values â†’ 5593 new columns
+ *   columns. With 70 chains Ã— ~97 points = ~6800 chain U-values â†' 5593 new columns
  *   spanning ALL rows. This created a near-uniform 6331Ã—279 mesh with 3.5M tris
  *   instead of the target ~360K (10Ã— over budget).
  *
@@ -48,16 +48,24 @@ import {
     circularDistance,
     detectFeatureEdges,
     detectAllRowFeatures,
-    detectAndMergeColumnFeatures,
+    detectTDirectionFeatures,
+    computeTaperProfile,
+    filterByColumnConsensus,
+    crossValidateAndMergeColumnFeatures,
 } from './parametric/FeatureDetection';
 import {
     linkFeatureChainsByKind,
     insertChainGuidedRows,
+    whittakerSmooth,
+    filterLowConfidenceChains,
+    computeChainDiagnostics,
+    repairChainsZigzags,
 } from './parametric/ChainLinker';
 import {
     mergeFeaturePositions,
     generateAdaptiveGrid,
-    buildUnionFeatureGrid,
+    generateCDFAdaptivePositions,
+    buildDensityProfile,
     computeGridDimensions,
     downsampleSortedPositions,
 } from './parametric/GridBuilder';
@@ -70,12 +78,52 @@ import {
     optimizeBoundaryDiagonals,
     computeBoundaryDiagnostic,
     computeMeshDiagnostics,
+    computeChainStrip3DQuality,
 } from './parametric/ChainStripOptimizer';
 import {
     SURFACE_CONFIG,
     CURVATURE_SAMPLES,
     NUM_STRIPS,
+    COL_PROBE_COUNT,
+    COL_PROBE_T_SAMPLES,
+    type QualityProfileName,
 } from './parametric/types';
+import {
+    getQualityProfile,
+    resolveTriangleBudget,
+    resolveTolerances,
+    profileForAttempt,
+} from './parametric/QualityProfiles';
+import {
+    resolveFeatureFlags,
+    validateFeatureFlags,
+} from './parametric/contracts';
+import {
+    buildFeatureEdgeGraphFromChainEdges,
+    emptyFeatureEdgeGraph,
+} from './parametric/FeatureEdgeGraph';
+import {
+    adaptiveRefine,
+    type RefinementConfig,
+} from './parametric/AdaptiveRefinement';
+import { GPUErrorEstimator } from './parametric/GPUErrorEstimator';
+import { ShaderManager } from './ShaderManager';
+import {
+    computeVertexMetrics,
+} from './parametric/SurfaceMetric';
+import {
+    validateMesh,
+    validateMeshGPU,
+    distortionGatesForProfile,
+    type ValidateConfig,
+    type ValidationReport,
+} from './parametric/MeshValidator';
+import {
+    healSeam,
+    healConfigForProfile,
+} from './parametric/SeamTopology';
+import type { EvaluateMidpointsFn } from './parametric/MeshSubdivision';
+import type { ValidationSummary, RefinementSummary, TDirectionFeature } from './parametric/types';
 
 // Re-export types for backward compatibility (used by useParametricExport.ts)
 // Re-export types for backward compatibility (used by useParametricExport.ts)
@@ -107,11 +155,6 @@ export function getLastPeakDebugData(): PeakDebugData | null {
 // ============================================================================
 // Local Constants
 // ============================================================================
-
-/** v16.6 LOCAL-ONLY OUTER ADAPTATION MODE:
- *  Feature-guided mesh refinement is done ONLY through per-row vertex
- *  patching and chain-constrained stitch topology. No global grid changes. */
-const LOCAL_ONLY_OUTER_ADAPTATION = true;
 
 // ============================================================================
 // GPU Compute Pipeline
@@ -261,7 +304,7 @@ export class ParametricExportComputer {
         const encoder = this.device.createCommandEncoder();
         const workgroups = Math.ceil(vertexCount / 64);
         // Safety check: WebGPU limits dispatch to 65535 per dimension.
-        // With original W (~1568) this is ~13K workgroups â€” well under limit.
+        // With original W (~1568) this is ~13K workgroups â€" well under limit.
         if (workgroups > 65535) {
             console.error(`[ParametricExport] Workgroup count ${workgroups} exceeds WebGPU limit 65535. Reduce grid resolution.`);
         }
@@ -321,7 +364,7 @@ export class ParametricExportComputer {
             }
         }
 
-        // Pass 2: Evaluate UV â†’ 3D positions (New Encoder for final step)
+        // Pass 2: Evaluate UV â†' 3D positions (New Encoder for final step)
         const finalEncoder = this.device.createCommandEncoder({ label: 'Parametric_FinalEval' });
         const evalPass = finalEncoder.beginComputePass();
         evalPass.setPipeline(this.evaluatePipeline!);
@@ -367,10 +410,42 @@ export class ParametricExportComputer {
         if (!this.initialized) throw new Error('[ParametricExport] Not initialized');
         const startTime = performance.now();
 
-        const targetTris = params.targetTriangles ?? 2_000_000;
-        console.log(`[ParametricExport] Target: ${targetTris.toLocaleString()} triangles`);
+        const requestedProfile: QualityProfileName = params.qualityProfile ?? 'standard';
+        const effectiveProfileName = profileForAttempt(requestedProfile, 0);
+        const effectiveProfile = getQualityProfile(effectiveProfileName);
+        const effectiveTolerances = resolveTolerances({
+            qualityProfile: effectiveProfileName,
+            toleranceOverrides: params.toleranceOverrides,
+        });
+        const targetTris = resolveTriangleBudget(params.targetTriangles, effectiveProfile);
+        const flags = resolveFeatureFlags(params.pipelineFeatureFlags);
+        validateFeatureFlags(flags);
 
-        // â”€â”€ Shared GPU resources â”€â”€
+        // Resolve pipeline-stage config (UI overrides → hardcoded defaults)
+        const pc = params.pipelineConfig;
+        const cfgNumStrips = pc?.numStrips ?? NUM_STRIPS;
+        const cfgCurvatureSamples = pc?.curvatureSamples ?? CURVATURE_SAMPLES;
+        const cfgDetectHorizontalFeatures = pc?.detectHorizontalFeatures ?? false;
+        const cfgRowProbeSamples = pc?.rowProbeSamples ?? 8192;
+        const cfgGpuResnap = pc?.gpuResnap ?? true;
+        const cfgResnapCandidates = pc?.resnapCandidates ?? 32;
+        const cfgFeatureBudgetMB = pc?.featureBudgetMB ?? 0;
+        const cfgChainStripMode = pc?.chainStripMode ?? 'cdt';
+        const cfgChainStripDensity = pc?.chainStripDensity ?? 4;
+        const cfgChainStripExpansion = pc?.chainStripExpansion ?? 1;
+        const cfgChainStripAdaptiveRefine = pc?.chainStripAdaptiveRefine ?? true;
+        const cfgChainFlip = pc?.chainDirectedFlip ?? true;
+        const cfgEdgeFlip3D = pc?.edgeFlip3D ?? true;
+        const cfgStripOptimizer = pc?.chainStripOptimizer ?? true;
+        const cfgBoundaryDiag = pc?.boundaryDiagOpt ?? true;
+        const cfgGpuSubdiv = pc?.gpuSubdivision ?? true;
+
+        console.log(`[ParametricExport] Target: ${targetTris.toLocaleString()} triangles`);
+        console.log(`[ParametricExport] Quality profile: requested=${requestedProfile}, effective=${effectiveProfileName}`);
+        console.log(`[ParametricExport] Feature flags: metric=${Boolean(flags.metricAwareRefinement)}, distortion=${Boolean(flags.distortionGating)}, gpuFidelity=${Boolean(flags.gpuFidelityCheck)}, seamHealing=${Boolean(flags.seamHealing)}, edgeCollapse=${Boolean(flags.edgeCollapseEnabled)}, perEdgeError=${Boolean(flags.perEdgeErrorEstimation)}`);
+        console.log(`[ParametricExport] Pipeline config: strips=${cfgNumStrips}, curvSamples=${cfgCurvatureSamples}, detectHorizontal=${cfgDetectHorizontalFeatures}, rowProbe=${cfgRowProbeSamples}, featureBudget=${cfgFeatureBudgetMB}MB, resnap=${cfgGpuResnap}/${cfgResnapCandidates}, chainStrip=${cfgChainStripMode}/d${cfgChainStripDensity}/e${cfgChainStripExpansion}/r${cfgChainStripAdaptiveRefine}, chainFlip=${cfgChainFlip}, edgeFlip3D=${cfgEdgeFlip3D}, stripOpt=${cfgStripOptimizer}, boundaryDiag=${cfgBoundaryDiag}, gpuSubdiv=${cfgGpuSubdiv}`);
+
+        // â"€â"€ Shared GPU resources â"€â"€
         const buffers: GPUBuffer[] = [];
         const track = (b: GPUBuffer) => { buffers.push(b); return b; };
 
@@ -432,7 +507,7 @@ export class ParametricExportComputer {
             this.device.queue.writeBuffer(styleParamBuffer, 0, styleData.buffer);
 
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // PHASE 1: Multi-Strip Curvature Sampling (GPU â†’ CPU)
+            // PHASE 1: Multi-Strip Curvature Sampling (GPU â†' CPU)
             //
             // Sample NUM_STRIPS T-strips (at different U values) and
             // NUM_STRIPS U-strips (at different T values).
@@ -440,8 +515,8 @@ export class ParametricExportComputer {
             // This captures features regardless of angular/height position.
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const curvStart = performance.now();
-            const N = CURVATURE_SAMPLES;
-            const S = NUM_STRIPS;
+            const N = cfgCurvatureSamples;
+            const S = cfgNumStrips;
             const totalSamples = S * N * 2; // S T-strips + S U-strips
 
             const sampleVertices = new Float32Array(totalSamples * 3);
@@ -473,7 +548,7 @@ export class ParametricExportComputer {
                 dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly
             );
 
-            // â”€â”€ Aggregate T-curvature: MAX across all T-strips â”€â”€
+            // â"€â"€ Aggregate T-curvature: MAX across all T-strips â"€â"€
             const tRawCurvatures: Float32Array[] = [];
             for (let s = 0; s < S; s++) {
                 const offset = s * N * 3;
@@ -490,7 +565,7 @@ export class ParametricExportComputer {
                 tMaxCurvature[i] = maxVal;
             }
 
-            // â”€â”€ Aggregate U-curvature: MAX across all U-strips â”€â”€
+            // â"€â"€ Aggregate U-curvature: MAX across all U-strips â"€â"€
             const uRawCurvatures: Float32Array[] = [];
             for (let s = 0; s < S; s++) {
                 const offset = (S + s) * N * 3; // U-strips start after T-strips
@@ -528,9 +603,10 @@ export class ParametricExportComputer {
 
             const { H, Rt, Rb } = dimensions;
             const avgCircumference = Math.PI * (Rt + Rb);
+            const maxCircumference = 2 * Math.PI * Math.max(Rt, Rb);
             const aspectRatios: Record<number, number> = {
-                0: avgCircumference / H,
-                1: avgCircumference / H,
+                0: maxCircumference / H,
+                1: maxCircumference / H,
                 2: avgCircumference / (dimensions.tWall || 3),
                 3: avgCircumference / (Rb || 10),
                 4: avgCircumference / (Rb || 10),
@@ -551,7 +627,7 @@ export class ParametricExportComputer {
             // CDF-adaptive spacing has been replaced by uniform spacing.
             // Curvature data is still used for feature detection (detectFeatureEdges).
 
-            // â”€â”€ Feature Edge Detection (v7.0) â”€â”€
+            // â"€â"€ Feature Edge Detection (v7.0) â"€â"€
             // Detect ridges/valleys using BOTH curvature peaks AND gradient zero-crossings.
             // Pass 3D positions from the BEST strip (highest total curvature) for
             // gradient zero-crossing detection (actual ridge/valley positions).
@@ -598,41 +674,34 @@ export class ParametricExportComputer {
             // Previously, computeGridDimensions returned w=738 columns, then a
             // later downsample step trimmed to 735 (desiredBaseCols). The
             // downsampleSortedPositions picks evenly-spaced indices which creates
-            // a handful of wider gaps in the otherwise uniform grid â€” visible as
+            // a handful of wider gaps in the otherwise uniform grid â€" visible as
             // "thicker columns." Fix: pre-compute the budget-constrained column
             // count and generate the uniform grid at that exact size, eliminating
             // the downsample step entirely.
             const tCount = outerDims.h + 1;
-            const numOuterRowsEarly = tCount; // In local-only mode, no T-rows are injected
-            const targetOuterBudgetEarly = Math.floor(targetTris * SURFACE_CONFIG[0].budgetFrac);
-            const maxColsEarly = Math.floor(targetOuterBudgetEarly / (2 * Math.max(1, numOuterRowsEarly - 1))) + 1;
-            const finalUCols = LOCAL_ONLY_OUTER_ADAPTATION
-                ? Math.min(sharedW, maxColsEarly)
-                : sharedW;
+            const finalUCols = sharedW;
             const cdfU = new Float32Array(finalUCols);
             for (let i = 0; i < finalUCols; i++) cdfU[i] = i / finalUCols;
             const cdfT = new Float32Array(tCount);
             for (let i = 0; i < tCount; i++) cdfT[i] = i / (tCount - 1);
             // t=0 and t=1 are already exact from uniform generation
             if (finalUCols !== sharedW) {
-                console.log(`[ParametricExport]   v16.11 Budget-aware U grid: ${sharedW} â†’ ${finalUCols} columns (no downsample needed)`);
+                console.log(`[ParametricExport]   v16.11 Budget-aware U grid: ${sharedW} â†' ${finalUCols} columns (no downsample needed)`);
             }
 
-            console.log(`[ParametricExport]   v16.6 mode: LOCAL_ONLY_OUTER_ADAPTATION=${LOCAL_ONLY_OUTER_ADAPTATION}`);
+            console.log(`[ParametricExport]   v16.6 mode: CAG (curvature-adaptive grid)`);
 
-            // â”€â”€ Merge Feature Edges into T Grid (v7.0) â”€â”€
+            // â"€â"€ Merge Feature Edges into T Grid (v7.0) â"€â"€
             // v16.6 local-only mode: disable global T-row insertion and keep
             // feature handling local to per-row point-cloud constraints.
-            const tMerged = LOCAL_ONLY_OUTER_ADAPTATION
-                ? { positions: cdfT, injected: 0 }
-                : mergeFeaturePositions(cdfT, tFeatures, false);
+            const tMerged = mergeFeaturePositions(cdfT, tFeatures, false);
             const tPositions = tMerged.positions;
 
-            // For U, the CDF base grid is used as-is â€” per-row features are inserted later.
+            // For U, the CDF base grid is used as-is â€" per-row features are inserted later.
             const uBasePositions = cdfU;
             const featurePeaksSnapped = tMerged.injected;
 
-            console.log(`[ParametricExport]   T-feature edges merged: ${tMerged.injected} (localOnly=${LOCAL_ONLY_OUTER_ADAPTATION})`);
+            console.log(`[ParametricExport]   T-feature edges merged: ${tMerged.injected}`);
             console.log(`[ParametricExport]   Base grid: ${uBasePositions.length} U Ã— ${tPositions.length} T`);
 
             // Compute density ratio diagnostics
@@ -667,16 +736,16 @@ export class ParametricExportComputer {
             // 9. Flip diagonals to follow chain direction
             //
             // Result: chain-following topology with vertices ON feature curves.
-            // Features are arbitrary â€” they run at ANY angle through (u,t) space.
+            // Features are arbitrary â€" they run at ANY angle through (u,t) space.
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const probeStart = performance.now();
             // v12.0 high-fidelity mode: denser row probing to reduce sub-sample
             // aliasing before chain linking. User requested spending more compute
             // to improve chain curvature quality.
-            const ROW_PROBE_SAMPLES = 8192;
+            const ROW_PROBE_SAMPLES = cfgRowProbeSamples;
             const numOuterRows = tPositions.length;
 
-            // â”€â”€ Step 1: GPU-probe all original T-rows â”€â”€
+            // â"€â"€ Step 1: GPU-probe all original T-rows â"€â"€
             const probeVerts = new Float32Array(numOuterRows * ROW_PROBE_SAMPLES * 3);
             let pIdx = 0;
             for (let j = 0; j < numOuterRows; j++) {
@@ -699,7 +768,7 @@ export class ParametricExportComputer {
                 rowProbeData.push(probePositions.subarray(offset, offset + ROW_PROBE_SAMPLES * 3));
             }
 
-            // â”€â”€ Step 2: Detect features for all original rows (v16.0 verified) â”€â”€
+            // â"€â"€ Step 2: Detect features for all original rows (v16.0 verified) â"€â"€
             const {
                 allRowFeatures,
                 allRowTypedFeatures,
@@ -723,28 +792,77 @@ export class ParametricExportComputer {
             console.log(`[ParametricExport]   v16.0 VERIFIED per-row: ${totalRowPeaks} features (${rowPeakCount} peaks, ${rowValleyCount} valleys, ${rowRejected} rejected)`);
             console.log(`[ParametricExport]   Avg features/row: ${(totalRowPeaks / numOuterRows).toFixed(1)}, rejection rate: ${(100 * rowRejected / Math.max(1, totalRowPeaks + rowRejected)).toFixed(1)}%`);
 
-            // â”€â”€ Step 2.5: v16.0 Column-direction probing (verified) â”€â”€
-            // v16.6 local-only mode: disabled. Rely on per-row point-cloud
-            // constraints only to avoid global feature insertion side effects.
+            // ── Step 2.5: v17.1 GPU Column-Direction Probing + Taper-Relative Detection ──
+            // Dedicated high-resolution T-direction probing with taper subtraction
+            // eliminates false horizontal feature lines caused by taper inflections.
             let colPeaksAdded = 0;
             let colRejected = 0;
-            if (!LOCAL_ONLY_OUTER_ADAPTATION) {
-                const COL_PROBE_COUNT = 512;
+            if (cfgDetectHorizontalFeatures) {
                 const colProbeStart = performance.now();
-                const colResult = detectAndMergeColumnFeatures(
-                    rowProbeData, ROW_PROBE_SAMPLES, tPositions, COL_PROBE_COUNT, allRowFeatures, allRowTypedFeatures
+
+                // GPU-probe dedicated T-direction strips at high resolution
+                const colProbeVerts = new Float32Array(COL_PROBE_COUNT * COL_PROBE_T_SAMPLES * 3);
+                let cpIdx = 0;
+                const colUPositions: number[] = [];
+                for (let c = 0; c < COL_PROBE_COUNT; c++) {
+                    const uVal = c / COL_PROBE_COUNT;
+                    colUPositions.push(uVal);
+                    for (let i = 0; i < COL_PROBE_T_SAMPLES; i++) {
+                        colProbeVerts[cpIdx++] = uVal;
+                        colProbeVerts[cpIdx++] = i / (COL_PROBE_T_SAMPLES - 1);
+                        colProbeVerts[cpIdx++] = 0; // outer wall
+                    }
+                }
+
+                const colProbePositions = await this.evaluatePoints(
+                    colProbeVerts, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly
                 );
-                colPeaksAdded = colResult.addedCount;
-                colRejected = colResult.rejectedCount;
-                console.log(`[ParametricExport]   v16.0 Column probing: ${colPeaksAdded} verified peaks from ${COL_PROBE_COUNT} columns (${colRejected} rejected, ${(performance.now() - colProbeStart).toFixed(1)}ms)`);
+
+                // v17.1: Compute taper profile (mean radius across all columns at each T)
+                const taperProfile = computeTaperProfile(
+                    colProbePositions, COL_PROBE_COUNT, COL_PROBE_T_SAMPLES
+                );
+
+                // Detect T-direction features per column using taper-relative deviation
+                const columnFeatures: TDirectionFeature[][] = [];
+                let totalColDetected = 0;
+                let totalColPreRejected = 0;
+                for (let c = 0; c < COL_PROBE_COUNT; c++) {
+                    const offset = c * COL_PROBE_T_SAMPLES * 3;
+                    const colData = colProbePositions.subarray(offset, offset + COL_PROBE_T_SAMPLES * 3);
+                    const result = detectTDirectionFeatures(colData, COL_PROBE_T_SAMPLES, taperProfile);
+                    columnFeatures.push(result.features);
+                    totalColDetected += result.features.length;
+                    totalColPreRejected += result.rejected;
+                }
+
+                // v17.1: Consensus filter — reject global taper artifacts and noise
+                const consensus = filterByColumnConsensus(
+                    columnFeatures, COL_PROBE_COUNT, COL_PROBE_T_SAMPLES
+                );
+                const totalConsensusRejected = consensus.globalRejected + consensus.noiseRejected;
+                const filteredColDetected = consensus.filtered.reduce((s, c) => s + c.length, 0);
+
+                // Cross-validate against row probe data and merge (kind-aware)
+                const mergeResult = crossValidateAndMergeColumnFeatures(
+                    consensus.filtered, colUPositions, rowProbeData, cfgRowProbeSamples,
+                    tPositions, allRowFeatures, allRowTypedFeatures
+                );
+                colPeaksAdded = mergeResult.addedCount;
+                colRejected = mergeResult.rejectedCount + totalColPreRejected + totalConsensusRejected;
+
+                console.log(`[ParametricExport]   v17.1 GPU Column probing: ${totalColDetected} T-features from ${COL_PROBE_COUNT} columns × ${COL_PROBE_T_SAMPLES} samples (taper-relative)`);
+                console.log(`[ParametricExport]   v17.1 Consensus filter: ${filteredColDetected} kept, ${consensus.globalRejected} global rejected, ${consensus.noiseRejected} noise rejected`);
+                console.log(`[ParametricExport]   v17.1 Cross-validated: ${colPeaksAdded} merged, ${mergeResult.rejectedCount} rejected, ${totalColPreRejected} pre-rejected (${(performance.now() - colProbeStart).toFixed(1)}ms)`);
             } else {
-                console.log('[ParametricExport]   v16.6 Column probing: disabled (localOnly=true)');
+                console.log('[ParametricExport]   Column probing: disabled (detectHorizontalFeatures=false)');
             }
             const totalPeaks = allRowFeatures.reduce((sum, f) => sum + f.length, 0);
             const totalRejected = rowRejected + colRejected;
             console.log(`[ParametricExport]   Total verified peaks: ${totalPeaks} (row=${totalRowPeaks}, col=${colPeaksAdded}), total rejected: ${totalRejected}`);
 
-            // â”€â”€ Build raw peak debug data for green point cloud overlay â”€â”€
+            // â"€â"€ Build raw peak debug data for green point cloud overlay â"€â"€
             // v16.0: Now includes feature kind (peak=0, valley=1) as third value
             {
                 const peakPoints: number[] = [];
@@ -774,8 +892,8 @@ export class ParametricExportComputer {
                 };
             }
 
-            // â”€â”€ Step 3: Link features into chains (v16.3: separated by kind) â”€â”€
-            const chains = linkFeatureChainsByKind(allRowFeatures, allRowTypedFeatures, numOuterRows);
+            // â"€â"€ Step 3: Link features into chains (v16.3: separated by kind) â"€â"€
+            let chains = linkFeatureChainsByKind(allRowFeatures, allRowTypedFeatures, numOuterRows);
             console.log(`[ParametricExport]   v16.3 feature chains: ${chains.length} chains linked`);
 
             // Chain diagnostics
@@ -784,9 +902,35 @@ export class ParametricExportComputer {
                 const avgLen = chainLengths.reduce((a, b) => a + b, 0) / chainLengths.length;
                 const maxLen = Math.max(...chainLengths);
                 console.log(`[ParametricExport]     Chain lengths: avg=${avgLen.toFixed(1)}, max=${maxLen}, total points=${chainLengths.reduce((a, b) => a + b, 0)}`);
+
+                // v21.1 Chain jaggedness diagnostics
+                const diag = computeChainDiagnostics(chains, allRowFeatures);
+                const maxDevAll = Math.max(...diag.perChain.map(d => d.maxLinearDeviation));
+                const maxDeltaAll = Math.max(...diag.perChain.map(d => d.maxConsecutiveDelta));
+                console.log(`[ParametricExport]     Chain quality: maxLinearDev=${maxDevAll.toFixed(6)}, maxConsecDelta=${maxDeltaAll.toFixed(6)}, minSameKindSpacing=${diag.minSameKindSpacing.toFixed(6)}`);
+
+                // v25 diagnostic: identify the worst zigzag location
+                for (let ci = 0; ci < chains.length; ci++) {
+                    const pts = chains[ci].points;
+                    let worstDelta = 0, worstRow = -1, worstU = 0, prevU = 0, nextU = 0;
+                    for (let pi = 1; pi < pts.length; pi++) {
+                        let d = Math.abs(pts[pi].u - pts[pi - 1].u);
+                        if (d > 0.5) d = 1 - d;
+                        if (d > worstDelta) {
+                            worstDelta = d;
+                            worstRow = pts[pi].row;
+                            worstU = pts[pi].u;
+                            prevU = pts[pi - 1].u;
+                            nextU = pi < pts.length - 1 ? pts[pi + 1].u : -1;
+                        }
+                    }
+                    if (worstDelta > 0.005) {
+                        console.log(`[ParametricExport]     chain${ci} (kind=${chains[ci].kind}, len=${pts.length}) worst delta=${worstDelta.toFixed(6)} at row=${worstRow}: prev=${prevU.toFixed(6)} → curr=${worstU.toFixed(6)} → next=${nextU >= 0 ? nextU.toFixed(6) : 'end'}`);
+                    }
+                }
             }
 
-            // â”€â”€ Step 3.5: GPU RE-SNAP â€” find the EXACT mathematical peak for each chain point â”€â”€
+            // â"€â"€ Step 3.5: GPU RE-SNAP â€" find the EXACT mathematical peak for each chain point â"€â"€
             // The per-row probe gives 8192 uniformly-spaced samples. The detected
             // peaks are within Â±1/(2*8192) â‰ˆ Â±0.00006 of the true peak. This is
             // good, but for sharp cusps the true peak can be BETWEEN samples.
@@ -795,8 +939,8 @@ export class ParametricExportComputer {
             // point on the GPU, finds the one with max/min radius, then does a
             // final parabolic refinement. This gives ~20Ã— better precision than
             // the initial 8192-sample probe.
-            if (chains.length > 0) {
-                const RESNAP_CANDIDATES = 32;
+            if (chains.length > 0 && cfgGpuResnap) {
+                const RESNAP_CANDIDATES = cfgResnapCandidates;
                 const RESNAP_HALFWIDTH = 2.0 / ROW_PROBE_SAMPLES; // Â±2 sample widths
                 const RESNAP_STEP = (2 * RESNAP_HALFWIDTH) / (RESNAP_CANDIDATES - 1);
 
@@ -908,42 +1052,101 @@ export class ParametricExportComputer {
                 console.log(`[ParametricExport]   v13.0 GPU re-snap: ${resnapCount}/${allChainPoints.length} points refined (${RESNAP_CANDIDATES} candidates/point, Â±${(RESNAP_HALFWIDTH * ROW_PROBE_SAMPLES).toFixed(1)} samples)`);
             }
 
-            // â”€â”€ Step 4: Insert additional T-rows where chains cross diagonally â”€â”€
+            // Post-resnap diagnostic: measure chain quality after GPU refinement but before smoothing
+            if (chains.length > 0) {
+                const postResnapDiag = computeChainDiagnostics(chains, allRowFeatures);
+                const postResnapMaxDelta = Math.max(...postResnapDiag.perChain.map(d => d.maxConsecutiveDelta));
+                const postResnapMaxDev = Math.max(...postResnapDiag.perChain.map(d => d.maxLinearDeviation));
+                console.log(`[ParametricExport]     Post-resnap quality: maxConsecDelta=${postResnapMaxDelta.toFixed(6)}, maxLinearDev=${postResnapMaxDev.toFixed(6)}`);
+            }
+
+            // v24.0 Post-linker zigzag repair: detect and fix chain swaps
+            chains = repairChainsZigzags(chains, allRowFeatures, allRowTypedFeatures);
+
+            // Post-repair diagnostic: measure chain quality after zigzag repair
+            if (chains.length > 0) {
+                const postRepairDiag = computeChainDiagnostics(chains, allRowFeatures);
+                const postRepairMaxDelta = Math.max(...postRepairDiag.perChain.map(d => d.maxConsecutiveDelta));
+                const postRepairMaxDev = Math.max(...postRepairDiag.perChain.map(d => d.maxLinearDeviation));
+                console.log(`[ParametricExport]     Post-repair quality: maxConsecDelta=${postRepairMaxDelta.toFixed(6)}, maxLinearDev=${postRepairMaxDev.toFixed(6)}`);
+            }
+
+            // ── Step 3.6: Smooth chain paths + filter low-confidence chains ──
+            // After GPU re-snap gives the best per-point positions, apply
+            // Whittaker-Henderson smoothing to remove remaining sampling jitter.
+            // Then filter out short/noisy chains that are likely noise artifacts.
+            const chainsBeforeSmooth = chains.length;
+            const pointsBeforeSmooth = chains.reduce((s, c) => s + c.points.length, 0);
+
+            // v26 Save pre-smooth chain positions for debug visualization.
+            // Debug dots show raw feature detections, so debug lines should show
+            // pre-smooth chain positions (which pass through those dots) rather
+            // than smoothed positions (which are displaced by WH smoothing).
+            const preSmoothChains = chains.map(c => ({
+                ...c,
+                points: c.points.map(p => ({ ...p })),
+            }));
+
+            // Whittaker-Henderson smooth each chain's U path (single-pass, optimal L2 + penalty)
+            for (let ci = 0; ci < chains.length; ci++) {
+                chains[ci] = whittakerSmooth(chains[ci]);
+            }
+
+            // Filter out low-confidence chains (too short or too noisy)
+            chains = filterLowConfidenceChains(chains);
+
+            const pointsAfterSmooth = chains.reduce((s, c) => s + c.points.length, 0);
+            console.log(`[ParametricExport]   v22.0 Chain smoothing: ${chainsBeforeSmooth} → ${chains.length} chains, ${pointsBeforeSmooth} → ${pointsAfterSmooth} points`);
+
+            // v27: Use pre-smooth chain positions for mesh construction.
+            // WH smoothing displaces chain vertices from true GPU re-snapped
+            // feature positions, causing the STL mesh to not follow the actual
+            // ridges/valleys. Pre-smooth chains are at exact peak/valley positions.
+            // Smoothed chains are kept only for diagnostic quality metrics.
+            const meshChains = filterLowConfidenceChains(preSmoothChains);
+
+            // Post-smooth diagnostic: measure chain quality after smoothing
+            if (chains.length > 0) {
+                const postDiag = computeChainDiagnostics(chains, allRowFeatures);
+                const postMaxDelta = Math.max(...postDiag.perChain.map(d => d.maxConsecutiveDelta));
+                const postMaxDev = Math.max(...postDiag.perChain.map(d => d.maxLinearDeviation));
+                console.log(`[ParametricExport]     Post-smooth quality: maxConsecDelta=${postMaxDelta.toFixed(6)}, maxLinearDev=${postMaxDev.toFixed(6)}`);
+            }
+
+            // v21.0 CAG: Extract chain vertex U positions for density profile + dead zones
+            const chainVertexUs = meshChains.flatMap(c => c.points.map(p => p.u));
+
+            // â"€â"€ Step 4: Insert additional T-rows where chains cross diagonally â"€â"€
             // v16.4: Make row insertion budget-aware to avoid exploding outer-wall
             // triangle count (and visual over-tessellation) on high-feature styles.
             const targetOuterBudget = Math.floor(targetTris * SURFACE_CONFIG[0].budgetFrac);
+            const featureBudgetTriangles = Math.max(0, Math.floor((cfgFeatureBudgetMB * 1_000_000 - 84) / 50));
+            const targetOuterBudgetWithFeatures = targetOuterBudget + featureBudgetTriangles;
 
-            // v16.11: In local-only mode, the U grid was already generated at the
-            // budget-constrained width (finalUCols), so no downsample is needed.
-            // In non-local mode, optionally slim the outer-wall base U set before
-            // insertion so there is room for feature columns in the later union grid.
+            // v21.0 CAG: Slim the outer-wall base U set before insertion
+            // so there is room for feature columns in the later CDF-adaptive grid.
             const maxColsAtCurrentRows = Math.floor(targetOuterBudget / (2 * Math.max(1, numOuterRows - 1))) + 1;
-            const desiredBaseCols = LOCAL_ONLY_OUTER_ADAPTATION
-                ? maxColsAtCurrentRows
-                : Math.max(160, Math.floor(maxColsAtCurrentRows * 0.82));
-            const outerBaseU = (LOCAL_ONLY_OUTER_ADAPTATION && uBasePositions.length <= desiredBaseCols)
-                ? uBasePositions // Already at correct size from v16.11 pre-computation
-                : downsampleSortedPositions(uBasePositions, Math.min(uBasePositions.length, desiredBaseCols));
+            const desiredBaseCols = Math.max(160, Math.floor(maxColsAtCurrentRows * 0.82));
+            let outerBaseU = downsampleSortedPositions(uBasePositions, Math.min(uBasePositions.length, desiredBaseCols));
             if (outerBaseU.length !== uBasePositions.length) {
-                console.log(`[ParametricExport]   v16.4 Outer base downsample: ${uBasePositions.length} â†’ ${outerBaseU.length} columns (pre-union)`);
+                console.log(`[ParametricExport]   v16.4 Outer base downsample: ${uBasePositions.length} â†' ${outerBaseU.length} columns (pre-union)`);
             }
 
             // Maximum rows allowed by targetOuterBudget for this base width.
             const maxRowsForBudget = Math.floor(targetOuterBudget / (2 * Math.max(1, outerBaseU.length - 1))) + 1;
-            const budgetInsertionCap = Math.max(0, maxRowsForBudget - numOuterRows);
-            const maxRowInsertions = LOCAL_ONLY_OUTER_ADAPTATION
-                ? 0
-                : Math.min(200, Math.floor(numOuterRows * 0.5), budgetInsertionCap);
+            const maxRowsForFeatureBudget = Math.floor(targetOuterBudgetWithFeatures / (2 * Math.max(1, outerBaseU.length - 1))) + 1;
+            const budgetInsertionCap = Math.max(0, maxRowsForFeatureBudget - numOuterRows);
+            const maxRowInsertions = Math.min(200, Math.floor(numOuterRows * 0.5), budgetInsertionCap);
             // v11.5: adaptive insertion threshold improves ridge coverage on both
             // sharp and smooth features by adding intermediate rows when per-step
             // U-shifts are smaller than legacy 0.005 but still significant.
             const adaptiveInsertThreshold = Math.max(0.0035, 2.0 / Math.max(1, outerBaseU.length));
-            const insertion = insertChainGuidedRows(tPositions, chains, maxRowInsertions, adaptiveInsertThreshold);
+            const insertion = insertChainGuidedRows(tPositions, meshChains, maxRowInsertions, adaptiveInsertThreshold);
             let finalT = insertion.tPositions;
             const rowMapping = insertion.rowMapping;
-            console.log(`[ParametricExport]   v16.6 T-row insertion: ${insertion.insertedCount} rows added (${numOuterRows} â†’ ${finalT.length}, minUShift=${adaptiveInsertThreshold.toFixed(4)}, cap=${maxRowInsertions}, localOnly=${LOCAL_ONLY_OUTER_ADAPTATION})`);
+            console.log(`[ParametricExport]   v16.6 T-row insertion: ${insertion.insertedCount} rows added (${numOuterRows} â†' ${finalT.length}, minUShift=${adaptiveInsertThreshold.toFixed(4)}, cap=${maxRowInsertions}, baseRowsCap=${maxRowsForBudget}, featureRowsCap=${maxRowsForFeatureBudget})`);
 
-            // â”€â”€ Step 5: GPU-probe inserted rows and detect their features â”€â”€
+            // â"€â"€ Step 5: GPU-probe inserted rows and detect their features â"€â"€
             let finalRowFeatures: number[][];
             let insertedRowProbeData: Float32Array[] = []; // used for inserted-row feature detection
             if (insertion.insertedCount > 0) {
@@ -991,7 +1194,7 @@ export class ParametricExportComputer {
                             origRow < allRowFeatures.length ? [...allRowFeatures[origRow]] : []
                         );
                     } else {
-                        // Inserted row â€” use GPU-detected features
+                        // Inserted row â€" use GPU-detected features
                         finalRowFeatures.push(
                             insertIdx < insertedFeatures.length ? insertedFeatures[insertIdx] : []
                         );
@@ -1013,48 +1216,77 @@ export class ParametricExportComputer {
             }
 
             const debugLines: ChainDebugLine[] = [];
-            for (const chain of chains) {
+            let totalChainPoints = 0;
+            let droppedPoints = 0;
+            let largeUJumps = 0;
+            for (const chain of preSmoothChains) {
                 if (chain.points.length < 2) continue;
                 const remapped: Array<[number, number]> = [];
                 for (const pt of chain.points) {
+                    totalChainPoints++;
                     const fr = origToFinalRow.get(pt.row);
-                    if (fr === undefined || fr < 0 || fr >= finalT.length) continue;
+                    if (fr === undefined || fr < 0 || fr >= finalT.length) {
+                        droppedPoints++;
+                        continue;
+                    }
                     remapped.push([pt.u, finalT[fr]]);
                 }
-                if (remapped.length >= 2) debugLines.push({ points: remapped });
+                // Break polyline at seam crossings (raw |Δu| > 0.4) to avoid
+                // horizontal lines spanning the entire UV space.
+                let segment: Array<[number, number]> = [];
+                for (let ri = 0; ri < remapped.length; ri++) {
+                    if (segment.length > 0) {
+                        const rawDu = Math.abs(remapped[ri][0] - segment[segment.length - 1][0]);
+                        // Count large U-jumps (wrap-adjusted |Δu| > 0.1) for diagnostics
+                        let wrapDu = rawDu;
+                        if (wrapDu > 0.5) wrapDu = 1 - wrapDu;
+                        if (wrapDu > 0.1) largeUJumps++;
+                        // Break the polyline at seam crossings
+                        if (rawDu > 0.4) {
+                            if (segment.length >= 2) debugLines.push({ points: segment });
+                            segment = [];
+                        }
+                    }
+                    segment.push(remapped[ri]);
+                }
+                if (segment.length >= 2) debugLines.push({ points: segment });
             }
+            console.log(`[ParametricExport] Debug line diagnostics: ${totalChainPoints} total chain points, ${droppedPoints} dropped (${(100 * droppedPoints / Math.max(1, totalChainPoints)).toFixed(1)}%), ${largeUJumps} large-Δu jumps (|Δu|>0.1)`);
 
             LAST_CHAIN_DEBUG_DATA = {
                 createdAt: Date.now(),
-                chainCount: chains.length,
+                chainCount: meshChains.length,
                 lineCount: debugLines.length,
                 lines: debugLines,
             };
 
-            // â”€â”€ Step 6: Build UNION feature grid from ALL rows (original + inserted) â”€â”€
-            // v11.3: Union grid used for ALL surfaces including outer wall.
-            // Budget cap: compute max columns from targetTris and T-row count.
-            // Formula: maxTris = 2 * (numU-1) * (numT-1) â†’ numU = maxTris/(2*(numT-1)) + 1
+            // â"€â"€ Step 6: Build curvature-adaptive outer-wall grid â"€â"€
+            // v21.0 CAG: CDF-adaptive columns from curvature envelope + Gaussian feature floor.
+            // Budget: use targetOuterBudget (not the inflated featureBudget, which was
+            // designed for the old union grid's per-feature column injection).
             const numTRows = finalT.length;
             const maxOuterColumns = Math.floor(targetOuterBudget / (2 * Math.max(1, numTRows - 1))) + 1;
-            let unionU: Float32Array;
-            if (LOCAL_ONLY_OUTER_ADAPTATION) {
-                // v20.0: Use base grid directly (no global corridor columns).
-                // v17.0 corridor columns doubled grid size (735â†’1395, +660 cols).
-                // v18.0 tried GPU-surface subdivision but dihedral stayed at 0.04 â€”
-                // bridge triangles (chain_r, chain_r+1, grid_vertex) are topologically
-                // broken and can't be fixed by post-processing.
-                // v19.0: chain vertices removed â†’ features imprecise (Â±0.5 grid cell).
-                // v20.0: per-row UV snapping â€” nearest grid vertex snapped to chain U.
-                // No extra vertices, no chain-strip boundary, exact ridge positions.
-                unionU = outerBaseU;
-            } else {
-                unionU = buildUnionFeatureGrid(outerBaseU, finalRowFeatures, maxOuterColumns);
-            }
-            const featureColumnsAdded = unionU.length - outerBaseU.length;
-            console.log(`[ParametricExport]   Union grid: ${unionU.length} U (base=${outerBaseU.length} + ${featureColumnsAdded} feature columns, budget max=${maxOuterColumns}, localOnly=${LOCAL_ONLY_OUTER_ADAPTATION})`);
 
-            // â”€â”€ Step 7-9: Generate surfaces â”€â”€
+            // v21.0 CAG: Re-downsample base U if row insertion shrank the column budget.
+            if (outerBaseU.length > Math.floor(maxOuterColumns * 0.75)) {
+                const postInsertDesiredBase = Math.max(160, Math.floor(maxOuterColumns * 0.75));
+                if (outerBaseU.length > postInsertDesiredBase) {
+                    outerBaseU = downsampleSortedPositions(outerBaseU, postInsertDesiredBase);
+                    console.log(`[ParametricExport]   v17.1 Post-insertion base re-downsample: ${desiredBaseCols} → ${outerBaseU.length} columns (post-insert max=${maxOuterColumns})`);
+                }
+            }
+
+            // v21.0 CAG: Build curvature-adaptive U grid with Gaussian feature floor.
+            // Dead zones are NOT applied: with drifting chains (U-drift ~0.094 per chain
+            // over 313 rows) and shared columns, global dead zones destroy the CDF
+            // structure — chain points spaced ~0.0004 apart create continuous exclusion
+            // bands that tile ~100% of U-space. The CDT + vertex dedup handles
+            // near-coincident grid/chain vertices naturally.
+            const densityProfile = buildDensityProfile(uCurvature, chainVertexUs, 0.6, 0.004);
+            const unionU = generateCDFAdaptivePositions(densityProfile, maxOuterColumns, 0.3, true);
+            console.log(`[ParametricExport]   v21.0 CAG grid: ${unionU.length} U columns (density profile + CDF-adaptive, budget max=${maxOuterColumns})`);
+
+            // â"€â"€ Step 7-9: Generate surfaces â"€â"€
             // v11.2: Outer wall uses union grid + per-row patching (no column explosion).
             // Other surfaces use the regular adaptive grid (no features).
             const surfaceStats: string[] = [];
@@ -1064,19 +1296,28 @@ export class ParametricExportComputer {
 
             // v11.3: Per-row feature patching replaces global column merging
             let outerW = unionU.length; // kept for diagnostics
-            let outerQuadMap: Int32Array | null = null; // v11.3: gap-free quadâ†’index mapping
+            let outerQuadMap: Int32Array | null = null; // v11.3: gap-free quadâ†'index mapping
+            let outerOrigToFinal!: Map<number, number>;
             let outerGridVertexCount = 0; // v16.27: grid vertex count for chain-strip detection
             let outerChainEdges: Array<[number, number]> = []; // v16.28: constraint edges for flip protection
+            let outerChainVertexChainIds: Map<number, number> = new Map(); // CAG: for feature edge graph
 
             for (const surf of SURFACE_CONFIG) {
                 if (surf.id === 0) {
                     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-                    // v11.3: PER-ROW PATCHED OUTER WALL â€” union grid + chain vertex patching
+                    // v11.3: PER-ROW PATCHED OUTER WALL â€" union grid + chain vertex patching
                     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
                     const targetOuterTris = Math.floor(targetTris * surf.budgetFrac);
                     const cdtResult = buildCDTOuterWall(
-                        chains, rowMapping, finalT, unionU,
-                        targetOuterTris, surf.id
+                        meshChains, rowMapping, finalT, unionU,
+                        targetOuterTris, surf.id,
+                        {
+                            mode: cfgChainStripMode as 'sweep' | 'cdt' | 'sweep-repair',
+                            densityMultiplier: cfgChainStripDensity,
+                            adaptiveRefine: cfgChainStripAdaptiveRefine,
+                            expansion: cfgChainStripExpansion,
+                        },
+                        { Rb: dimensions.Rb, Rt: dimensions.Rt, expn: dimensions.expn },
                     );
 
                     // v16.9: Stitch vertices REMOVED.
@@ -1091,6 +1332,7 @@ export class ParametricExportComputer {
 
                     outerGridVertexCount = cdtResult.gridVertexCount;
                     outerChainEdges = cdtResult.chainEdges;
+                    outerChainVertexChainIds = cdtResult.chainVertexChainIds;
                     allVertArrays.push(cdtResult.vertices);
 
                     if (vertexOffset > 0) {
@@ -1106,8 +1348,11 @@ export class ParametricExportComputer {
                     const outerVerts = cdtResult.vertices.length / 3;
                     const outerTris = cdtResult.indices.length / 3;
                     vertexOffset += outerVerts;
+                    outerGridVertexCount = cdtResult.gridVertexCount;
+                    outerChainEdges = cdtResult.chainEdges;
+                    outerOrigToFinal = cdtResult.origToFinal;
                     outerW = unionU.length; // grid width = number of columns in union grid
-                    outerQuadMap = cdtResult.quadMap; // v11.3: quadâ†’index mapping
+                    outerQuadMap = cdtResult.quadMap; // v11.3: quadâ†'index mapping
                     surfaceStats.push(`  ${surf.name}: ${outerW}Ã—${finalT.length} grid = ${outerTris.toLocaleString()} tris (chains=${chains.length})`);
                 } else {
                     // Other surfaces: uniform grid with base U positions
@@ -1141,7 +1386,7 @@ export class ParametricExportComputer {
             // Combine all surfaces
             const totalVerts = allVertArrays.reduce((sum, a) => sum + a.length, 0);
             const totalIdxs = allIdxArrays.reduce((sum, a) => sum + a.length, 0);
-            const combinedVerts = new Float32Array(totalVerts);
+            let combinedVerts = new Float32Array(totalVerts);
             const combinedIdxs = new Uint32Array(totalIdxs);
             let vOff = 0, iOff = 0;
             for (const v of allVertArrays) { combinedVerts.set(v, vOff); vOff += v.length; }
@@ -1150,6 +1395,26 @@ export class ParametricExportComputer {
             const vertexCount = combinedVerts.length / 3;
             const triangleCount = combinedIdxs.length / 3;
             const gridMs = performance.now() - gridStart;
+
+            // ── Build FeatureEdgeGraph from actual chain edges (CAG v1.0) ──
+            // Uses the tessellator's real vertex indices instead of re-computing
+            // via grid-column snapping (which produces stale indices after CAG).
+            // Seam guard: filter out edges that cross the 0°/360° seam boundary
+            // using |u0 - u1| > 0.5 wrap-around detection.
+            let seamFilteredChainEdges = outerChainEdges;
+            if (meshChains.length > 0 && outerChainEdges.length > 0) {
+                const outerVerts = allVertArrays[0]; // outer wall vertices (u, t, surfaceId)
+                seamFilteredChainEdges = outerChainEdges.filter(([v0, v1]) => {
+                    const u0 = outerVerts[v0 * 3];
+                    const u1 = outerVerts[v1 * 3];
+                    return Math.abs(u0 - u1) <= 0.5;
+                });
+            }
+            const featureGraph = meshChains.length > 0
+                ? buildFeatureEdgeGraphFromChainEdges(
+                    meshChains, seamFilteredChainEdges, outerChainVertexChainIds,
+                )
+                : emptyFeatureEdgeGraph();
 
             console.log(`[ParametricExport] Grid generation: ${gridMs.toFixed(1)}ms`);
             console.log(`[ParametricExport] Total: ${vertexCount.toLocaleString()} verts, ${triangleCount.toLocaleString()} tris`);
@@ -1160,24 +1425,31 @@ export class ParametricExportComputer {
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const gpuStart = performance.now();
 
-            // Write Grid Width (W) to Uniforms â€” used by relax_vertices shader
+            // Write Grid Width (W) to Uniforms â€" used by relax_vertices shader
             // for row/col neighbor addressing.  chunk4.w is at offset 76 (19 * 4 bytes).
             // v8.2: outerW = union grid width (same topology for all rows)
             const widthUniform = new Float32Array([outerW]);
             this.device.queue.writeBuffer(uniformBuffer, 76, widthUniform.buffer);
 
-            // v8.2: Relaxation DISABLED.  Per-row feature patching writes
-            // different U values into the same column across rows.  The
-            // relax shader assumes column c has the same U in every row
-            // (it averages with left/right neighbors at colÂ±1).  With
-            // patched vertices, relaxation would smear the exact feature
-            // positions back toward the union-grid median â€” destroying the
-            // per-row precision we just established.
+            const relaxIterations = Math.max(0, Math.floor(params.relaxIterations ?? 0));
+            if (relaxIterations > 0) {
+                // Write outerGridVertexCount to chunk4.z (byte offset 72) so the
+                // relaxation shader can skip chain vertices (appended after grid).
+                // Chain vertices don't follow row*W+col topology — relaxing them
+                // reads neighbors from unrelated surfaces (inner wall, rim, etc.).
+                const gridVertCountUniform = new Float32Array([outerGridVertexCount]);
+                this.device.queue.writeBuffer(uniformBuffer, 72, gridVertCountUniform.buffer);
+                console.log(`[ParametricExport]   v21.0 metric relaxation enabled: ${relaxIterations} iterations (gridVertCount=${outerGridVertexCount})`);
+            }
+
+            // Relaxation now uses metric-aware diffusion (bounded step + crossover
+            // guards in shader) to improve physical triangle regularity while
+            // preserving feature-constrained topology.
             const resultData = await this.evaluatePoints(
                 combinedVerts, uniformBuffer, styleParamBuffer,
                 dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
-                false, // Snap disabled â€” union grid has dedicated feature columns
-                0      // v8.2: relax=0 â€” patched per-row U would be smeared by Laplacian
+                false, // Snap disabled â€" union grid has dedicated feature columns
+                relaxIterations
             );
 
             const gpuMs = performance.now() - gpuStart;
@@ -1193,44 +1465,53 @@ export class ParametricExportComputer {
             // v11.2: Per-row patching places vertices at exact chain positions
             // but UV-space diagonal alignment may not be optimal in 3D.
             // After GPU evaluation provides actual XYZ positions, we run:
-            //   Stage 1: chainDirectedFlip â€” forces diagonals along chain edges
-            //   Stage 2: flipEdges3D â€” generic dihedral+angle quality improvement
+            //   Stage 1: chainDirectedFlip â€" forces diagonals along chain edges
+            //   Stage 2: flipEdges3D â€" generic dihedral+angle quality improvement
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const flip3DStart = performance.now();
 
             // The outer wall occupies the first outerW Ã— finalT.length vertices
             // in the combined buffer. Its indices are at the start of combinedIdxs.
-            const outerH = finalT.length;
+            const outerH = Math.round(outerGridVertexCount / outerW);
 
-            // Stage 1: Chain-directed flip â€” uses chain topology to force
+            // Stage 1: Chain-directed flip â€" uses chain topology to force
             // diagonals along ridge lines (v11.3: with quadMap)
-            const { flipCount: chainFlips, lockedQuads } = chainDirectedFlip(
-                combinedIdxs,    // indices (outer wall at start, mutated in-place)
-                unionU,          // column U positions
-                outerW,          // grid width (number of columns)
-                outerH,          // grid height (number of rows)
-                chains,          // feature chains from Phase 2.5
-                rowMapping,      // row mapping (final â†’ original)
-                false,           // invertWinding = false for outer wall
-                outerQuadMap!    // v11.3: quadâ†’index mapping from buildCDTOuterWall
-            );
-            console.log(`[ParametricExport]   v14.0 chain-directed flip: ${chainFlips} diagonals along ridges (${lockedQuads.size} quads locked)`);
+            let chainFlips = 0;
+            let lockedQuads = new Set<number>();
+            if (cfgChainFlip) {
+                const cdResult = chainDirectedFlip(
+                    combinedIdxs,    // indices (outer wall at start, mutated in-place)
+                    unionU,          // column U positions
+                    outerW,          // grid width (number of columns)
+                    outerH,          // grid height (number of rows)
+                    meshChains,      // feature chains (pre-smooth, at true peak positions)
+                    outerOrigToFinal, // map from original row index to actual grid row
+                    false,           // invertWinding = false for outer wall
+                    outerQuadMap!    // v11.3: quadâ†'index mapping from buildCDTOuterWall
+                );
+                chainFlips = cdResult.flipCount;
+                lockedQuads = cdResult.lockedQuads;
+            }
+            console.log(`[ParametricExport]   v14.0 chain-directed flip: ${chainFlips} diagonals along ridges (${lockedQuads.size} quads locked)${!cfgChainFlip ? ' [DISABLED]' : ''}`);
 
-            // Stage 2: Generic 3D edge flip â€” improves triangle quality using
+            // Stage 2: Generic 3D edge flip â€" improves triangle quality using
             // dihedral angle + min-angle criterion on actual 3D positions (v10.2)
             // Skips quads locked by chain-directed flip.
-            const genericFlips = flipEdges3D(
-                combinedIdxs,    // indices (mutated in-place)
-                resultData,      // 3D positions from GPU
-                outerW,          // grid width
-                outerH,          // grid height
-                false,           // invertWinding = false for outer wall
-                lockedQuads,     // locked quads from chain-directed flip
-                outerQuadMap!    // v11.3: quadâ†’index mapping
-            );
+            let genericFlips = 0;
+            if (cfgEdgeFlip3D) {
+                genericFlips = flipEdges3D(
+                    combinedIdxs,    // indices (mutated in-place)
+                    resultData,      // 3D positions from GPU
+                    outerW,          // grid width
+                    outerH,          // grid height
+                    false,           // invertWinding = false for outer wall
+                    lockedQuads,     // locked quads from chain-directed flip
+                    outerQuadMap!    // v11.3: quadâ†'index mapping
+                );
+            }
 
             const flip3DMs = performance.now() - flip3DStart;
-            console.log(`[ParametricExport]   v11.3 3D edge flip: ${genericFlips} quality flips (${flip3DMs.toFixed(1)}ms)`);
+            console.log(`[ParametricExport]   v11.3 3D edge flip: ${genericFlips} quality flips (${flip3DMs.toFixed(1)}ms)${!cfgEdgeFlip3D ? ' [DISABLED]' : ''}`);
 
 
             //
@@ -1240,57 +1521,83 @@ export class ParametricExportComputer {
             const outerIdxCount = allIdxArrays[0].length;
             const constraintEdgeSet = buildConstraintEdgeSet(outerChainEdges);
 
-            const csResult = optimizeChainStrips({
-                combinedIdxs,
-                positions: resultData,
-                combinedVerts,
-                constraintEdgeSet,
-                outerGridVertexCount,
-                outerIdxCount,
-                finalT,
-            });
-            console.log(`[ParametricExport]   v16.31 chain-strip 3D edge flip: ${csResult.phaseAFlips}+${csResult.phaseBFlips}+${csResult.phaseCFlips} flips (angle+valence+shortDiag) on ${csResult.chainStripTriCount} chain-strip tris (${csResult.timeMs.toFixed(1)}ms)`);
-            console.log(`[ParametricExport]     rejects: rowSpan=${csResult.rowSpanRejects}, edgeLen=${csResult.edgeLenRejects}, aspect=${csResult.aspectRejects}, valenceBonus=${csResult.valenceBonusFlips}`);
-            console.log(`[ParametricExport]     valence before: ${csResult.valenceStats.before.total} verts, ${csResult.valenceStats.before.low} low(<5), ${csResult.valenceStats.before.ideal} ideal(6), ${csResult.valenceStats.before.high} high(>7)`);
-            console.log(`[ParametricExport]     valence after:  ${csResult.valenceStats.after.total} verts, ${csResult.valenceStats.after.low} low(<5), ${csResult.valenceStats.after.ideal} ideal(6), ${csResult.valenceStats.after.high} high(>7)`);
+            let csResult = { phaseAFlips: 0, phaseBFlips: 0, phaseCFlips: 0, chainStripTriCount: 0, timeMs: 0, rowSpanRejects: 0, edgeLenRejects: 0, aspectRejects: 0, valenceBonusFlips: 0, maxSingleRowTSpan: 0, valenceStats: { before: { total: 0, low: 0, ideal: 0, high: 0 }, after: { total: 0, low: 0, ideal: 0, high: 0 } } };
+            if (cfgStripOptimizer) {
+                csResult = optimizeChainStrips({
+                    combinedIdxs,
+                    positions: resultData,
+                    combinedVerts,
+                    constraintEdgeSet,
+                    outerGridVertexCount,
+                    outerIdxCount,
+                    finalT,
+                });
+                console.log(`[ParametricExport]   v16.31 chain-strip 3D edge flip: ${csResult.phaseAFlips}+${csResult.phaseBFlips}+${csResult.phaseCFlips} flips (angle+valence+shortDiag) on ${csResult.chainStripTriCount} chain-strip tris (${csResult.timeMs.toFixed(1)}ms)`);
+                console.log(`[ParametricExport]     rejects: rowSpan=${csResult.rowSpanRejects}, edgeLen=${csResult.edgeLenRejects}, aspect=${csResult.aspectRejects}, valenceBonus=${csResult.valenceBonusFlips}`);
+                console.log(`[ParametricExport]     valence before: ${csResult.valenceStats.before.total} verts, ${csResult.valenceStats.before.low} low(<5), ${csResult.valenceStats.before.ideal} ideal(6), ${csResult.valenceStats.before.high} high(>7)`);
+                console.log(`[ParametricExport]     valence after:  ${csResult.valenceStats.after.total} verts, ${csResult.valenceStats.after.low} low(<5), ${csResult.valenceStats.after.ideal} ideal(6), ${csResult.valenceStats.after.high} high(>7)`);
+            } else {
+                console.log(`[ParametricExport]   v16.31 chain-strip optimizer [DISABLED]`);
+            }
 
-            const bdResult = optimizeBoundaryDiagonals({
-                combinedIdxs,
-                positions: resultData,
-                outerW,
-                outerH,
-                outerQuadMap: outerQuadMap!,
-                outerIdxCount,
-                outerGridVertexCount,
-            });
-            console.log(`[ParametricExport]   v16.34 boundary diagonal optimization: ${bdResult.flips} cell diag flips on ${bdResult.checked} boundary cells (${bdResult.timeMs.toFixed(1)}ms)`);
+            let bdResult = { flips: 0, checked: 0, timeMs: 0 };
+            if (cfgBoundaryDiag) {
+                bdResult = optimizeBoundaryDiagonals({
+                    combinedIdxs,
+                    positions: resultData,
+                    outerW,
+                    outerH,
+                    outerQuadMap: outerQuadMap!,
+                    outerIdxCount,
+                    outerGridVertexCount,
+                });
+            }
+            console.log(`[ParametricExport]   v16.34 boundary diagonal optimization: ${bdResult.flips} cell diag flips on ${bdResult.checked} boundary cells (${bdResult.timeMs.toFixed(1)}ms)${!cfgBoundaryDiag ? ' [DISABLED]' : ''}`);
+
+            // v24.0: 3D winding safety net REMOVED.
+            // The radially-outward assumption (dot(face_normal, radial) < 0 → flip)
+            // is invalid for concave sections (vase necks, valleys) and style features
+            // where the surface normal legitimately points toward the axis.
+            // Winding correctness is ensured upstream via UV cross-product checks in
+            // the tessellator (sweepRepair, emitWindingSafe, CDT filter).
 
             // 
             // v16.29 / v18.0: Chain-strip midpoint subdivision
             // [Extracted to parametric/MeshSubdivision.ts]
             // 
-            const subdivResult = await subdivideLongEdges(
-                {
-                    combinedIdxs,
-                    resultData,
-                    combinedVerts,
-                    outerIdxCount: allIdxArrays[0].length,
-                    outerGridVertexCount,
-                    constraintEdgeSet,
-                    outerW,
-                    outerH,
-                },
-                (uvBatch) => this.evaluatePoints(
-                    uvBatch, uniformBuffer, styleParamBuffer,
-                    dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
-                    false, 0
-                ),
-            );
-            const finalResultData = subdivResult.resultData;
-            const finalCombinedIdxs = subdivResult.indices;
-            const splitCount = subdivResult.splitCount;
-            console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris (${subdivResult.stats.timeMs.toFixed(1)}ms)`);
-            console.log(`[ParametricExport]     avg grid edge: ${subdivResult.stats.avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivResult.stats.interiorThreshold).toFixed(3)}mm, boundary threshold: ${Math.sqrt(subdivResult.stats.boundaryThreshold).toFixed(3)}mm, candidates: ${subdivResult.stats.candidates}, boundary neighbor tris: ${subdivResult.stats.boundaryTrisAdded}`);
+            let finalResultData: Float32Array;
+            let finalCombinedIdxs: Uint32Array;
+            let splitCount = 0;
+            if (cfgGpuSubdiv) {
+                const subdivResult = await subdivideLongEdges(
+                    {
+                        combinedIdxs,
+                        resultData,
+                        combinedVerts,
+                        outerIdxCount: allIdxArrays[0].length,
+                        outerGridVertexCount,
+                        constraintEdgeSet,
+                        outerW,
+                        outerH,
+                        chains: meshChains,
+                        finalT,
+                    },
+                    (uvBatch) => this.evaluatePoints(
+                        uvBatch, uniformBuffer, styleParamBuffer,
+                        dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                        false, 0
+                    ),
+                );
+                finalResultData = subdivResult.resultData;
+                finalCombinedIdxs = subdivResult.indices;
+                splitCount = subdivResult.splitCount;
+                console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris (${subdivResult.stats.timeMs.toFixed(1)}ms)`);
+                console.log(`[ParametricExport]     avg grid edge: ${subdivResult.stats.avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivResult.stats.interiorThreshold).toFixed(3)}mm, boundary threshold: ${Math.sqrt(subdivResult.stats.boundaryThreshold).toFixed(3)}mm, candidates: ${subdivResult.stats.candidates}, boundary neighbor tris: ${subdivResult.stats.boundaryTrisAdded}`);
+            } else {
+                finalResultData = resultData;
+                finalCombinedIdxs = combinedIdxs;
+                console.log(`[ParametricExport]   v18.0 GPU-surface subdivision [DISABLED]`);
+            }
 
 
             //
@@ -1319,6 +1626,295 @@ export class ParametricExportComputer {
             console.log(`[ParametricExport]     aspect ratios: >5=${meshDiag.aspectOver5}, >10=${meshDiag.aspectOver10}, >20=${meshDiag.aspectOver20}`);
             console.log(`[ParametricExport]     low valence: val=3: ${meshDiag.val3}, val=4: ${meshDiag.val4}, val=5: ${meshDiag.val5} (outer wall only)`);
 
+            // B5: Chain-strip-specific 3D quality report (post-GPU)
+            const cs3D = computeChainStrip3DQuality({
+                indices: finalCombinedIdxs,
+                positions: finalResultData,
+                outerGridVertexCount,
+                outerIdxCount,
+            });
+            if (cs3D.triCount > 0) {
+                const minAngleDeg = (cs3D.minAngle * 180 / Math.PI).toFixed(1);
+                const violationPct = (100 * cs3D.aspectOver4 / cs3D.triCount).toFixed(1);
+                console.log(`[ParametricExport]   v25.0 chain-strip 3D quality: ${cs3D.triCount} tris, min_angle=${minAngleDeg}°, max_aspect=${cs3D.maxAspect.toFixed(1)}:1, avg_aspect=${cs3D.avgAspect.toFixed(1)}:1, violations(>4:1)=${cs3D.aspectOver4}/${cs3D.triCount} (${violationPct}%)`);
+                console.log(`[ParametricExport]     grading: max_area_ratio=${cs3D.maxAreaRatio.toFixed(1)}:1, grading_violations(>2:1)=${cs3D.gradingViolations}`);
+            }
+
+            // ═══════════════════════════════════════════════════════
+            // PHASE 5: Adaptive Refinement (flag-gated)
+            //
+            // When the quality profile requests refinement iterations > 0,
+            // run error-driven adaptive triangle splitting to bring
+            // chord error and normal error within profile tolerances.
+            // ═══════════════════════════════════════════════════════
+            let refinementSummary: RefinementSummary | undefined;
+            let outerIdxCountAfterSubdiv = allIdxArrays[0].length + (finalCombinedIdxs.length - combinedIdxs.length);
+
+            if (effectiveProfile.maxRefineIterations > 0) {
+                const refineStart = performance.now();
+
+                // Build the GPU evaluator callback for surface reprojection
+                const evaluateMidpointsFn: EvaluateMidpointsFn = (uvBatch: Float32Array) =>
+                    this.evaluatePoints(
+                        uvBatch, uniformBuffer, styleParamBuffer,
+                        dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                        false, 0,
+                    );
+
+                // ── Extract outer-wall-only slices for refinement ──
+                // The combined buffer has [outer | inner | rim | base | ...].
+                // AdaptiveRefinement appends new triangles/vertices at the END
+                // of its arrays. If we pass the combined buffer, appended indices
+                // land after all surfaces, and curOuterIdxCount extends into
+                // inner-wall territory — causing cross-surface triangle linkage.
+                //
+                // Fix: pass only outer-wall positions/uvs/indices to refinement,
+                // then stitch the refined outer wall back into the combined buffer.
+                const outerPositions = finalResultData;  // positions are shared (all surfaces reference same pool)
+                const outerUVs = combinedVerts;          // UVs are shared
+                const outerIndices = new Uint32Array(finalCombinedIdxs.buffer, finalCombinedIdxs.byteOffset, outerIdxCountAfterSubdiv);
+                const nonOuterIndices = finalCombinedIdxs.slice(outerIdxCountAfterSubdiv);
+
+                // Optionally compute vertex metrics for metric-aware edge scoring
+                // when the metricAwareRefinement flag is enabled.
+                let vertexMetrics: ReturnType<typeof computeVertexMetrics> | undefined;
+                if (flags.metricAwareRefinement) {
+                    vertexMetrics = computeVertexMetrics(
+                        outerPositions, outerUVs, outerIndices,
+                        outerIdxCountAfterSubdiv,
+                    );
+                    console.log(`[ParametricExport]   Metric-aware refinement: computed ${vertexMetrics.vertexCount} vertex metrics`);
+                }
+
+                const refinementConfig: RefinementConfig = {
+                    profile: effectiveProfile,
+                    tolerances: effectiveTolerances,
+                    maxTriangles: targetTris,
+                    featureGraph,
+                    outerIdxCount: outerIdxCountAfterSubdiv,
+                    vertexMetrics,
+                    edgeCollapseEnabled: Boolean(flags.edgeCollapseEnabled),
+                    perEdgeErrorEstimation: Boolean(flags.perEdgeErrorEstimation),
+                };
+
+                // Phase 5: GPU error estimation (gated behind gpuFidelityCheck flag)
+                let gpuErrorEstimator: GPUErrorEstimator | undefined;
+                if (flags.gpuFidelityCheck) {
+                    try {
+                        const sm = ShaderManager.getInstance();
+                        const eeShaderSource = sm.getErrorEstimationWGSL(Number(params.styleId));
+                        gpuErrorEstimator = new GPUErrorEstimator(this.device);
+                        await gpuErrorEstimator.init(eeShaderSource);
+
+                        refinementConfig.gpuEstimateErrors = (
+                            positions: Float32Array,
+                            uvs: Float32Array,
+                            indices: Uint32Array,
+                            outerIdxCount: number,
+                        ) => gpuErrorEstimator!.estimateErrors(
+                            positions, uvs, indices, outerIdxCount,
+                            uniformBuffer, styleParamBuffer,
+                        );
+                        console.log('[ParametricExport]   GPU error estimator enabled for refinement');
+                    } catch (err) {
+                        console.warn('[ParametricExport]   GPU error estimator init failed, falling back to CPU:', err);
+                        gpuErrorEstimator = undefined;
+                    }
+                }
+
+                const refineResult = await adaptiveRefine(
+                    outerPositions,
+                    outerUVs,
+                    outerIndices,
+                    refinementConfig,
+                    evaluateMidpointsFn,
+                );
+
+                // ── Stitch refined outer wall back into combined buffers ──
+                // Refinement may have grown positions/uvs (appended midpoints)
+                // and indices (appended split triangles). Non-outer indices
+                // reference the original vertex pool which is a prefix of the
+                // refined positions array, so they remain valid.
+                finalResultData = refineResult.positions;
+                combinedVerts = new Float32Array(refineResult.uvs);
+                // Concatenate: refined outer indices + original non-outer indices
+                const stitchedIndices = new Uint32Array(refineResult.indices.length + nonOuterIndices.length);
+                stitchedIndices.set(refineResult.indices);
+                stitchedIndices.set(nonOuterIndices, refineResult.indices.length);
+                finalCombinedIdxs = stitchedIndices;
+
+                // Cleanup GPU error estimator
+                if (gpuErrorEstimator) {
+                    gpuErrorEstimator.destroy();
+                }
+
+                const refineMs = performance.now() - refineStart;
+                const finalTriCount = finalCombinedIdxs.length / 3;
+                const totalSplits = refineResult.iterationStats.reduce((sum, s) => sum + s.splitCount, 0);
+
+                // Compute final quality with histogram for telemetry
+                const { computeMeshQuality: mqFn } = await import('./parametric/AdaptiveRefinement');
+                const finalQuality = mqFn(finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv, true);
+
+                refinementSummary = {
+                    tolerancesPassed: refineResult.tolerancesPassed,
+                    iterationsPerformed: refineResult.iterationsPerformed,
+                    stopReason: refineResult.stopReason,
+                    maxPosErrorMm: refineResult.maxPosErrorMm,
+                    maxNormalErrorDeg: refineResult.maxNormalErrorDeg,
+                    p95PosErrorMm: refineResult.p95PosErrorMm,
+                    p95NormalErrorDeg: refineResult.p95NormalErrorDeg,
+                    totalTimeMs: refineMs,
+                    finalTriangleCount: finalTriCount,
+                    totalSplits,
+                    minAngleDeg: finalQuality.minAngleDeg,
+                    maxAspectRatio: finalQuality.maxAspectRatio,
+                    angleHistogram: finalQuality.angleHistogram?.bins,
+                };
+
+                console.log(`[ParametricExport]   Adaptive refinement: ${refineResult.iterationsPerformed} iterations, ` +
+                    `stop=${refineResult.stopReason}, maxPos=${refineResult.maxPosErrorMm.toFixed(4)}mm, ` +
+                    `maxNorm=${refineResult.maxNormalErrorDeg.toFixed(2)}°, tris=${finalTriCount.toLocaleString()} (${refineMs.toFixed(0)}ms)`);
+                if (finalQuality.angleHistogram) {
+                    const h = finalQuality.angleHistogram.bins;
+                    console.log(`[ParametricExport]   Angle histogram: [0-10)=${h[0]} [10-20)=${h[1]} [20-30)=${h[2]} [30-40)=${h[3]} [40-50)=${h[4]} [50-60)=${h[5]} [60+)=${h[6]}`);
+                }
+            }
+
+            // ═══════════════════════════════════════════════════════
+            // PHASE 5b: Seam Healing (flag-gated)
+            //
+            // When seamHealing flag is enabled, average col0/colLast
+            // vertex positions to close the periodic seam gap.
+            // ═══════════════════════════════════════════════════════
+            if (flags.seamHealing) {
+                const healStart = performance.now();
+                const healConfig = healConfigForProfile(effectiveProfileName);
+                const healResult = healSeam(
+                    finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv,
+                    outerW, finalT.length, healConfig,
+                );
+                finalCombinedIdxs = healResult.indices;
+                const healMs = performance.now() - healStart;
+                console.log(`[ParametricExport]   Seam healing: ${healResult.pairsAveraged} pairs averaged, ` +
+                    `${healResult.ghostStripsInserted} ghost strips, residual=${healResult.maxResidualGapMm.toFixed(4)}mm (${healMs.toFixed(1)}ms)`);
+            }
+
+            // ═══════════════════════════════════════════════════════
+            // PHASE 5c: Strip degenerate placeholder triangles
+            //
+            // Multiple earlier stages emit (0,0,0) placeholder triangles
+            // for degenerate cases: UV-collinear standard cells, Batch 6
+            // dedup collapses, sweepRepair nullification. Strip them now
+            // so validation and STL export see only real geometry.
+            // ═══════════════════════════════════════════════════════
+            {
+                let outerDegen = 0;
+                let totalDegen = 0;
+                const idxLen = finalCombinedIdxs.length;
+
+                for (let t = 0; t < idxLen; t += 3) {
+                    const a = finalCombinedIdxs[t], b = finalCombinedIdxs[t + 1], c = finalCombinedIdxs[t + 2];
+                    if (a === b || b === c || a === c) {
+                        totalDegen++;
+                        if (t < outerIdxCountAfterSubdiv) outerDegen++;
+                    }
+                }
+
+                if (totalDegen > 0) {
+                    const compacted = new Uint32Array(idxLen - totalDegen * 3);
+                    let w = 0;
+                    for (let t = 0; t < idxLen; t += 3) {
+                        const a = finalCombinedIdxs[t], b = finalCombinedIdxs[t + 1], c = finalCombinedIdxs[t + 2];
+                        if (a === b || b === c || a === c) continue;
+                        compacted[w++] = a;
+                        compacted[w++] = b;
+                        compacted[w++] = c;
+                    }
+                    finalCombinedIdxs = compacted;
+                    outerIdxCountAfterSubdiv -= outerDegen * 3;
+                    console.log(`[ParametricExport]   Stripped ${totalDegen} degenerate triangles (${outerDegen} outer wall)`);
+                }
+            }
+
+            // ═══════════════════════════════════════════════════════
+            // PHASE 6: Mesh Validation (always runs)
+            //
+            // Runs the full MeshValidator as a QA gate.
+            // Optional GPU-enhanced fidelity check when gpuFidelityCheck
+            // flag is enabled. Distortion gating uses profile-specific
+            // thresholds when the distortionGating flag is set.
+            // ═══════════════════════════════════════════════════════
+            let validationSummary: ValidationSummary | undefined;
+            {
+                const validateStart = performance.now();
+                const valConfig: ValidateConfig = {
+                    tolerances: effectiveTolerances,
+                    profileName: effectiveProfileName,
+                    numU: outerW,
+                    numT: finalT.length,
+                    outerIdxCount: outerIdxCountAfterSubdiv,
+                    uvs: combinedVerts,
+                    distortionGates: flags.distortionGating
+                        ? distortionGatesForProfile(effectiveProfileName)
+                        : undefined,
+                };
+
+                let report: ValidationReport;
+                if (flags.gpuFidelityCheck) {
+                    const gpuEvalFn = (uvBatch: Float32Array) =>
+                        this.evaluatePoints(
+                            uvBatch, uniformBuffer, styleParamBuffer,
+                            dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                            false, 0,
+                        );
+                    report = await validateMeshGPU(
+                        finalResultData, combinedVerts, finalCombinedIdxs,
+                        outerIdxCountAfterSubdiv, valConfig, gpuEvalFn,
+                    );
+                } else {
+                    report = validateMesh(
+                        finalResultData, finalCombinedIdxs,
+                        outerIdxCountAfterSubdiv, valConfig,
+                    );
+                }
+
+                // Map full ValidationReport → lightweight ValidationSummary
+                validationSummary = {
+                    valid: report.valid,
+                    manifoldOk: report.manifold.ok,
+                    degeneratesOk: report.degenerates.ok,
+                    normalsOk: report.normals.ok,
+                    triangleQualityOk: report.triangleQuality.ok,
+                    fidelityOk: report.fidelity?.ok,
+                    seamOk: report.seam?.ok,
+                    distortionOk: report.distortion?.ok,
+                    warnings: report.warnings,
+                    minAngleDeg: report.triangleQuality.minAngleDeg,
+                    maxAspectRatio: report.triangleQuality.maxAspectRatio,
+                    p95PosErrorMm: report.fidelity?.p95PosErrorMm,
+                    p999PosErrorMm: report.fidelity?.p999PosErrorMm,
+                    maxFeatureDriftMm: report.fidelity?.maxFeatureDriftMm,
+                    seamMaxGapMm: report.seam?.maxPositionDiscontinuityMm,
+                    p95StretchRatio: report.distortion?.p95StretchRatio,
+                };
+
+                const validateMs = performance.now() - validateStart;
+                const passStr = report.valid ? 'PASS' : 'FAIL';
+                console.log(`[ParametricExport]   Validation: ${passStr} (${validateMs.toFixed(1)}ms) — ` +
+                    `manifold=${report.manifold.ok}, degenerates=${report.degenerates.ok}, ` +
+                    `normals=${report.normals.ok}, quality=${report.triangleQuality.ok}` +
+                    (report.fidelity ? `, fidelity=${report.fidelity.ok}` : '') +
+                    (report.seam ? `, seam=${report.seam.ok}` : '') +
+                    (report.distortion ? `, distortion=${report.distortion.ok}` : ''));
+                // v26: Log the actual mesh quality metric prominently
+                if (report.normals) {
+                    console.log(`[ParametricExport]   Normal check: ${report.normals.inconsistentPairs} inconsistent pairs (mesh defects), ${report.normals.invertedTriangles} inverted (includes inner wall — expected for closed solids)`);
+                }
+                if (report.warnings.length > 0) {
+                    console.log(`[ParametricExport]   Validation warnings: ${report.warnings.join('; ')}`);
+                }
+            }
 
             const finalVertexCount = finalResultData.length / 3;
             const finalTriangleCount = finalCombinedIdxs.length / 3;
@@ -1338,6 +1934,29 @@ export class ParametricExportComputer {
             const totalMs = performance.now() - startTime;
             console.log(`[ParametricExport] Complete: ${totalMs.toFixed(0)}ms (curvature: ${curvMs.toFixed(0)}ms, grid: ${gridMs.toFixed(0)}ms, GPU: ${gpuMs.toFixed(0)}ms)`);
 
+            // Build pipeline diagnostics for ExportDialog debug tab
+            const pipelineDiagnostics = {
+                phases: [
+                    { name: 'Curvature Sampling', timeMs: curvMs },
+                    { name: 'Grid Generation', timeMs: gridMs },
+                    { name: 'GPU Evaluation', timeMs: gpuMs },
+                    { name: '3D Edge Flip', timeMs: flip3DMs },
+                    { name: 'Chain Strip Opt', timeMs: csResult.timeMs },
+                    { name: 'Boundary Diag', timeMs: bdResult.timeMs },
+                ],
+                chainCount: chains.length,
+                chainPoints: chains.reduce((sum, c) => sum + c.points.length, 0),
+                chainFlips,
+                genericFlips3D: genericFlips,
+                subdivSplits: splitCount,
+                valenceLow: csResult.valenceStats.after.low,
+                valenceIdeal: csResult.valenceStats.after.ideal,
+                valenceHigh: csResult.valenceStats.after.high,
+                crossRowTris: meshDiag.crossRow1 + meshDiag.crossRow2 + meshDiag.crossRow3plus,
+                aspectOver5: meshDiag.aspectOver5,
+                refinement: refinementSummary,
+            };
+
             return {
                 mesh: {
                     vertices: finalResultData,
@@ -1353,6 +1972,13 @@ export class ParametricExportComputer {
                     tCurvatureRange: [tMin, tMax],
                     uCurvatureRange: [uMin, uMax],
                 },
+                qualityProfile: effectiveProfileName,
+                effectiveTolerances,
+                tolerancesPassed: validationSummary?.valid ?? refinementSummary?.tolerancesPassed,
+                requestedProfile,
+                validationSummary,
+                refinementSummary,
+                pipelineDiagnostics,
             };
 
         } finally {
