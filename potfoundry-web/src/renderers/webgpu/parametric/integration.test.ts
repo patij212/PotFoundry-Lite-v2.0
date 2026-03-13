@@ -10,10 +10,26 @@
 import { describe, it, expect } from 'vitest';
 import { computeRawCurvature, normalizeProfile, smoothProfile } from './CurvatureAnalysis';
 import { detectFeatureEdges } from './FeatureDetection';
-import { linkFeatureChainsByKind } from './ChainLinker';
-import { computeGridDimensions, buildUnionFeatureGrid } from './GridBuilder';
+import { computeGridDimensions } from './GridBuilder';
 import { buildCDTOuterWall } from './OuterWallTessellator';
-import type { FeaturePoint } from './types';
+import {
+    buildConstraintEdgeSet,
+    computeBoundaryDiagnostic,
+    edgeKey,
+    optimizeBoundaryDiagonals,
+    optimizeChainStrips,
+} from './ChainStripOptimizer';
+import { buildDowngradeLadder, profileForAttempt } from './QualityProfiles';
+import {
+    isValidStageRegistry,
+    resolveFeatureFlags,
+    validateFeatureFlags,
+    type FeatureConstraintStage,
+    type TessellationStage,
+    type RefinementStage,
+    type ValidationStage,
+    type StageRegistry,
+} from './contracts';
 
 // ============================================================================
 // Helpers
@@ -31,6 +47,118 @@ function generateLobePositions(numSamples: number, lobes: number, baseRadius: nu
         positions[i * 3 + 0] = r * Math.cos(theta);
         positions[i * 3 + 1] = r * Math.sin(theta);
         positions[i * 3 + 2] = 0;
+    }
+    return positions;
+}
+
+function makeSupportedCorridorFixture(): {
+    chains: Array<{
+        kind: 'peak';
+        points: Array<{ row: number; u: number }>;
+    }>;
+    rowMapping: number[];
+    tPositions: Float32Array;
+    unionU: Float32Array;
+} {
+    const unionU = new Float32Array(8);
+    for (let i = 0; i < unionU.length; i++) {
+        unionU[i] = i / (unionU.length - 1);
+    }
+
+    const tPositions = new Float32Array(4);
+    for (let i = 0; i < tPositions.length; i++) {
+        tPositions[i] = i / (tPositions.length - 1);
+    }
+
+    return {
+        chains: [
+            {
+                kind: 'peak',
+                points: [
+                    { row: 1, u: 0.28 },
+                    { row: 2, u: 0.34 },
+                ],
+            },
+        ],
+        rowMapping: Array.from({ length: tPositions.length }, (_, i) => i),
+        tPositions,
+        unionU,
+    };
+}
+
+function makeSeamCorridorFixture(): {
+    chains: Array<{
+        kind: 'peak';
+        points: Array<{ row: number; u: number }>;
+    }>;
+    rowMapping: number[];
+    tPositions: Float32Array;
+    unionU: Float32Array;
+} {
+    return {
+        chains: [
+            {
+                kind: 'peak',
+                points: [
+                    { row: 0, u: 0.5 },
+                    { row: 1, u: 0.5 },
+                ],
+            },
+        ],
+        rowMapping: [0, 1, 2],
+        tPositions: new Float32Array([0, 0.5, 1.0]),
+        unionU: new Float32Array([0, 0.1, 0.2, 0.3, 0.7]),
+    };
+}
+
+function makeSupportedOverlapCorridorFixture(): {
+    chains: Array<{
+        kind: 'peak' | 'valley';
+        points: Array<{ row: number; u: number }>;
+    }>;
+    rowMapping: number[];
+    tPositions: Float32Array;
+    unionU: Float32Array;
+} {
+    const unionU = new Float32Array(10);
+    for (let i = 0; i < unionU.length; i++) {
+        unionU[i] = i / (unionU.length - 1);
+    }
+
+    const tPositions = new Float32Array(5);
+    for (let i = 0; i < tPositions.length; i++) {
+        tPositions[i] = i / (tPositions.length - 1);
+    }
+
+    return {
+        chains: [
+            {
+                kind: 'peak',
+                points: [
+                    { row: 1, u: 0.35 },
+                    { row: 2, u: 0.42 },
+                ],
+            },
+            {
+                kind: 'valley',
+                points: [
+                    { row: 1, u: 0.40 },
+                    { row: 2, u: 0.44 },
+                ],
+            },
+        ],
+        rowMapping: Array.from({ length: tPositions.length }, (_, i) => i),
+        tPositions,
+        unionU,
+    };
+}
+
+function makePlanarPositions(vertices: Float32Array): Float32Array {
+    const positions = new Float32Array(vertices.length);
+    for (let i = 0; i < vertices.length; i += 3) {
+        positions[i] = vertices[i];
+        positions[i + 1] = vertices[i + 1];
+        positions[i + 2] = 0;
     }
     return positions;
 }
@@ -158,7 +286,7 @@ describe('Parametric Pipeline Integration', () => {
             }
         });
 
-        it('UV-snapping adjusts grid vertices for chain positions', () => {
+        it('chain vertices are added as CDT free points (no UV-snapping)', () => {
             const numU = 20;
             const numT = 5;
 
@@ -182,15 +310,238 @@ describe('Parametric Pipeline Integration', () => {
 
             const result = buildCDTOuterWall(chains, rowMapping, tPositions, unionU, 1000, 0);
 
-            // Find a snapped vertex: one grid vertex per chain row should be at u=0.33
-            let snappedCount = 0;
-            for (let j = 1; j <= 3; j++) { // rows 1-3 have chain points
-                for (let i = 0; i < numU; i++) {
-                    const vU = result.vertices[(j * numU + i) * 3];
-                    if (Math.abs(vU - 0.33) < 1e-4) snappedCount++;
-                }
+            // Chain vertices appear in the mesh as additional vertices beyond the grid
+            const gridVertexCount = numU * numT;
+            expect(result.vertices.length / 3).toBeGreaterThan(gridVertexCount);
+        });
+
+        it('keeps corridor-enabled output compatible with downstream outer-wall optimizers', () => {
+            const { chains, rowMapping, tPositions, unionU } = makeSupportedCorridorFixture();
+            const result = buildCDTOuterWall(
+                chains,
+                rowMapping,
+                tPositions,
+                unionU,
+                1000,
+                0,
+                undefined,
+                undefined,
+                { corridorPlanning: true, corridorDiagnostics: true },
+            );
+
+            const supportedCandidate = result.corridorPlan?.candidates.find(candidate => candidate.supported);
+            expect(supportedCandidate).toBeDefined();
+            const cellsPerRow = unionU.length - 1;
+            const quadIndex = supportedCandidate!.band * cellsPerRow + supportedCandidate!.colStart;
+            expect(result.quadMap[quadIndex]).toBe(-1);
+            expect(result.chainAdjacentVertices.size).toBeGreaterThan(0);
+
+            const combinedIdxs = new Uint32Array(result.indices);
+            const positions = makePlanarPositions(result.vertices);
+            const constraintEdgeSet = buildConstraintEdgeSet(result.chainEdges);
+            for (const [v0, v1] of result.fanDiagonalEdges) {
+                constraintEdgeSet.add(edgeKey(v0, v1));
             }
-            expect(snappedCount).toBeGreaterThanOrEqual(3); // at least one per chain row
+
+            const chainResult = optimizeChainStrips({
+                combinedIdxs,
+                positions,
+                combinedVerts: result.vertices,
+                constraintEdgeSet,
+                outerGridVertexCount: result.gridVertexCount,
+                outerIdxCount: combinedIdxs.length,
+                finalT: tPositions,
+                chainAdjacentVertices: result.chainAdjacentVertices,
+                protectedVertices: result.protectedStripVertices,
+            });
+
+            const boundaryResult = optimizeBoundaryDiagonals({
+                combinedIdxs,
+                positions,
+                outerW: unionU.length,
+                outerH: tPositions.length,
+                outerQuadMap: result.quadMap,
+                outerIdxCount: combinedIdxs.length,
+                outerGridVertexCount: result.gridVertexCount,
+                chainAdjacentVertices: result.chainAdjacentVertices,
+                protectedVertices: result.protectedStripVertices,
+            });
+
+            const boundaryDiagnostic = computeBoundaryDiagnostic({
+                indices: combinedIdxs,
+                positions,
+                outerIdxCount: combinedIdxs.length,
+                outerGridVertexCount: result.gridVertexCount,
+                chainAdjacentVertices: result.chainAdjacentVertices,
+            });
+
+            expect(chainResult.chainStripTriCount).toBeGreaterThan(0);
+            expect(boundaryResult.checked).toBeGreaterThan(0);
+            expect(boundaryDiagnostic.boundaryEdgeCount).toBeGreaterThan(0);
+            expect(Number.isFinite(boundaryDiagnostic.dihedralAvg)).toBe(true);
+            expect(result.interpolatedChainVertices).toBeDefined();
+
+            const vertexCount = result.vertices.length / 3;
+            for (let i = 0; i < combinedIdxs.length; i++) {
+                expect(combinedIdxs[i]).toBeLessThan(vertexCount);
+            }
+
+            for (let i = 0; i < combinedIdxs.length; i += 3) {
+                const a = combinedIdxs[i];
+                const b = combinedIdxs[i + 1];
+                const c = combinedIdxs[i + 2];
+                if (a === 0 && b === 0 && c === 0) {
+                    continue;
+                }
+                expect(a !== b && b !== c && a !== c).toBe(true);
+            }
+        });
+
+        it('keeps seam-supported corridor output compatible with downstream outer-wall optimizers', () => {
+            const { chains, rowMapping, tPositions, unionU } = makeSeamCorridorFixture();
+            const result = buildCDTOuterWall(
+                chains,
+                rowMapping,
+                tPositions,
+                unionU,
+                1000,
+                0,
+                undefined,
+                undefined,
+                { corridorPlanning: true, corridorDiagnostics: true },
+            );
+
+            const supportedCandidate = result.corridorPlan?.candidates.find(candidate =>
+                candidate.supported && candidate.ownershipSegments.some(segment => segment.periodicSeam),
+            );
+            expect(supportedCandidate).toBeDefined();
+            const cellsPerRow = unionU.length - 1;
+            const quadIndex = supportedCandidate!.band * cellsPerRow + supportedCandidate!.colStart;
+            expect(result.quadMap[quadIndex]).toBe(-1);
+
+            const combinedIdxs = new Uint32Array(result.indices);
+            const positions = makePlanarPositions(result.vertices);
+            const constraintEdgeSet = buildConstraintEdgeSet(result.chainEdges);
+            for (const [v0, v1] of result.fanDiagonalEdges) {
+                constraintEdgeSet.add(edgeKey(v0, v1));
+            }
+
+            const chainResult = optimizeChainStrips({
+                combinedIdxs,
+                positions,
+                combinedVerts: result.vertices,
+                constraintEdgeSet,
+                outerGridVertexCount: result.gridVertexCount,
+                outerIdxCount: combinedIdxs.length,
+                finalT: tPositions,
+                chainAdjacentVertices: result.chainAdjacentVertices,
+                protectedVertices: result.protectedStripVertices,
+            });
+
+            const boundaryResult = optimizeBoundaryDiagonals({
+                combinedIdxs,
+                positions,
+                outerW: unionU.length,
+                outerH: tPositions.length,
+                outerQuadMap: result.quadMap,
+                outerIdxCount: combinedIdxs.length,
+                outerGridVertexCount: result.gridVertexCount,
+                chainAdjacentVertices: result.chainAdjacentVertices,
+                protectedVertices: result.protectedStripVertices,
+            });
+
+            const boundaryDiagnostic = computeBoundaryDiagnostic({
+                indices: combinedIdxs,
+                positions,
+                outerIdxCount: combinedIdxs.length,
+                outerGridVertexCount: result.gridVertexCount,
+                chainAdjacentVertices: result.chainAdjacentVertices,
+            });
+
+            expect(chainResult.chainStripTriCount).toBeGreaterThan(0);
+            expect(boundaryResult.checked).toBeGreaterThan(0);
+            expect(boundaryDiagnostic.boundaryEdgeCount).toBeGreaterThan(0);
+            expect(Number.isFinite(boundaryDiagnostic.dihedralAvg)).toBe(true);
+            expect(result.interpolatedChainVertices).toBeDefined();
+
+            const vertexCount = result.vertices.length / 3;
+            for (let i = 0; i < combinedIdxs.length; i++) {
+                expect(combinedIdxs[i]).toBeLessThan(vertexCount);
+            }
+
+            for (let i = 0; i < combinedIdxs.length; i += 3) {
+                const a = combinedIdxs[i];
+                const b = combinedIdxs[i + 1];
+                const c = combinedIdxs[i + 2];
+                expect(a !== b && b !== c && a !== c).toBe(true);
+            }
+        });
+
+        it('keeps overlap-supported corridor output compatible with downstream outer-wall optimizers', () => {
+            const { chains, rowMapping, tPositions, unionU } = makeSupportedOverlapCorridorFixture();
+            const result = buildCDTOuterWall(
+                chains,
+                rowMapping,
+                tPositions,
+                unionU,
+                1000,
+                0,
+                undefined,
+                undefined,
+                { corridorPlanning: true, corridorDiagnostics: true },
+            );
+
+            const supportedCandidate = result.corridorPlan?.candidates.find(candidate =>
+                candidate.supported && candidate.ownershipSegments.some(segment => segment.chainIds.length === 2),
+            );
+            expect(supportedCandidate).toBeDefined();
+            const cellsPerRow = unionU.length - 1;
+            const quadIndex = supportedCandidate!.band * cellsPerRow + supportedCandidate!.colStart;
+            expect(result.quadMap[quadIndex]).toBe(-1);
+
+            const combinedIdxs = new Uint32Array(result.indices);
+            const positions = makePlanarPositions(result.vertices);
+            const constraintEdgeSet = buildConstraintEdgeSet(result.chainEdges);
+            for (const [v0, v1] of result.fanDiagonalEdges) {
+                constraintEdgeSet.add(edgeKey(v0, v1));
+            }
+
+            const chainResult = optimizeChainStrips({
+                combinedIdxs,
+                positions,
+                combinedVerts: result.vertices,
+                constraintEdgeSet,
+                outerGridVertexCount: result.gridVertexCount,
+                outerIdxCount: combinedIdxs.length,
+                finalT: tPositions,
+                chainAdjacentVertices: result.chainAdjacentVertices,
+                protectedVertices: result.protectedStripVertices,
+            });
+
+            const boundaryResult = optimizeBoundaryDiagonals({
+                combinedIdxs,
+                positions,
+                outerW: unionU.length,
+                outerH: tPositions.length,
+                outerQuadMap: result.quadMap,
+                outerIdxCount: combinedIdxs.length,
+                outerGridVertexCount: result.gridVertexCount,
+                chainAdjacentVertices: result.chainAdjacentVertices,
+                protectedVertices: result.protectedStripVertices,
+            });
+
+            const boundaryDiagnostic = computeBoundaryDiagnostic({
+                indices: combinedIdxs,
+                positions,
+                outerIdxCount: combinedIdxs.length,
+                outerGridVertexCount: result.gridVertexCount,
+                chainAdjacentVertices: result.chainAdjacentVertices,
+            });
+
+            expect(chainResult.chainStripTriCount).toBeGreaterThan(0);
+            expect(boundaryResult.checked).toBeGreaterThan(0);
+            expect(boundaryDiagnostic.boundaryEdgeCount).toBeGreaterThan(0);
+            expect(Number.isFinite(boundaryDiagnostic.dihedralAvg)).toBe(true);
         });
     });
 
@@ -226,6 +577,117 @@ describe('Parametric Pipeline Integration', () => {
             const result = buildCDTOuterWall([], rowMapping, tPositions, unionU, 200_000, 0);
             expect(result.gridVertexCount).toBe(w * h);
             expect(result.indices.length / 3).toBeGreaterThan(0);
+        });
+    });
+
+    // ========================================================================
+    // Task 23 compatibility checks (contracts + downgrade determinism)
+    // ========================================================================
+
+    describe('contract compatibility and fallback determinism', () => {
+        it('accepts stage registry implementations through stable interfaces', async () => {
+            const featureStage: FeatureConstraintStage = {
+                name: 'feature',
+                async execute() {
+                    return {
+                        featureIndices: [10, 20],
+                        featureCount: 2,
+                        metrics: { stageName: 'feature', timeMs: 1 },
+                    };
+                },
+            };
+
+            const tessellationStage: TessellationStage = {
+                name: 'tess',
+                async execute() {
+                    return {
+                        mesh: {
+                            positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+                            uvs: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+                            indices: new Uint32Array([0, 1, 2]),
+                            outerIdxCount: 3,
+                            vertexCount: 3,
+                        },
+                        gridU: 3,
+                        gridT: 1,
+                        triangleCount: 1,
+                        metrics: { stageName: 'tess', timeMs: 1 },
+                    };
+                },
+            };
+
+            const refinementStage: RefinementStage = {
+                name: 'refine',
+                async execute(input) {
+                    return {
+                        mesh: input.mesh,
+                        tolerancesPassed: true,
+                        iterationsPerformed: 0,
+                        stopReason: 'zero_iterations',
+                        maxPosErrorMm: 0,
+                        maxNormalErrorDeg: 0,
+                        metrics: { stageName: 'refine', timeMs: 1 },
+                    };
+                },
+            };
+
+            const validationStage: ValidationStage = {
+                name: 'validate',
+                async execute() {
+                    return {
+                        valid: true,
+                        manifoldOk: true,
+                        degeneratesOk: true,
+                        normalsOk: true,
+                        triangleQualityOk: true,
+                        fidelityOk: true,
+                        distortionOk: true,
+                        warnings: [],
+                        metrics: { stageName: 'validate', timeMs: 1 },
+                    };
+                },
+            };
+
+            const registry: StageRegistry = {
+                featureConstraint: featureStage,
+                tessellation: tessellationStage,
+                refinement: refinementStage,
+                validation: validationStage,
+            };
+
+            expect(isValidStageRegistry(registry)).toBe(true);
+
+            const featureOut = await registry.featureConstraint.execute({
+                positions3D: new Float32Array(30),
+                numSamples: 10,
+                profileName: 'high',
+            });
+            expect(featureOut.featureCount).toBe(2);
+        });
+
+        it('downgrade ladder is deterministic across repeated runs', () => {
+            const runA = buildDowngradeLadder('ultra');
+            const runB = buildDowngradeLadder('ultra');
+            expect(runA).toEqual(runB);
+            expect(runA).toEqual(['ultra', 'high', 'standard', 'draft']);
+            expect(profileForAttempt('ultra', 0)).toBe('ultra');
+            expect(profileForAttempt('ultra', 1)).toBe('high');
+            expect(profileForAttempt('ultra', 2)).toBe('standard');
+            expect(profileForAttempt('ultra', 3)).toBe('draft');
+            expect(profileForAttempt('ultra', 4)).toBe('draft');
+        });
+
+        it('feature flags remain backward-safe by default', () => {
+            const flags = resolveFeatureFlags(undefined);
+            expect(flags.metricAwareRefinement).toBe(false);
+            expect(flags.distortionGating).toBe(false);
+            expect(flags.gpuFidelityCheck).toBe(false);
+            expect(flags.seamHealing).toBe(false);
+            expect(flags.outerWallCorridorPlanning).toBe(false);
+            expect(flags.outerWallCorridorDiagnostics).toBe(false);
+
+            expect(() => validateFeatureFlags(flags)).not.toThrow();
+            expect(() => validateFeatureFlags(resolveFeatureFlags({ mdcIsosurface: true }))).toThrow();
         });
     });
 });

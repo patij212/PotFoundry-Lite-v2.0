@@ -170,7 +170,7 @@ export const createMeshSlice: StateCreator<
       mesh: {
         ...state.mesh,
         [key]: typeof value === 'number' && key in MESH_QUALITY_BOUNDS
-          ? clampMeshParam(key as any, value)
+          ? clampMeshParam(key as keyof typeof MESH_QUALITY_BOUNDS, value)
           : value,
       },
     }));
@@ -184,10 +184,10 @@ export const createMeshSlice: StateCreator<
         const paramKey = key as keyof MeshQuality;
         // Only clamp numeric values that have bounds defined
         if (typeof value === 'number' && paramKey in MESH_QUALITY_BOUNDS) {
-          clampedParams[paramKey] = clampMeshParam(paramKey as keyof typeof MESH_QUALITY_BOUNDS, value) as any;
+          (clampedParams as Record<string, number>)[paramKey] = clampMeshParam(paramKey as keyof typeof MESH_QUALITY_BOUNDS, value);
         } else {
           // Pass through boolean/other values unchanged
-          clampedParams[paramKey] = value as any;
+          (clampedParams as Record<string, unknown>)[paramKey] = value;
         }
       }
 

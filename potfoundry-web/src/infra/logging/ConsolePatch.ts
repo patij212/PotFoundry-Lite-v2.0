@@ -1,14 +1,15 @@
 import manager from './MessageManager';
+import type { LogLevel } from './types';
 
 let installed = false;
-const originals: Partial<Record<keyof Console, any>> = {};
+const originals: Partial<Record<keyof Console, (...args: unknown[]) => void>> = {};
 
 export function installConsolePatch(opts: { capture?: ReadonlyArray<'log' | 'info' | 'debug'> } = { capture: ['log', 'info', 'debug'] }) {
   if (installed) return;
   installed = true;
   const capture = opts.capture ?? ['log', 'info', 'debug'];
   // Register console sink using the original console functions to avoid recursion
-  const origSink = (line: string, lvl: any) => {
+  const origSink = (line: string, lvl: string) => {
     try {
       if (lvl === 'ERROR' || lvl === 'CRITICAL') (originals.error ?? console.error).apply(console, [line]);
       else if (lvl === 'WARN') (originals.warn ?? console.warn).apply(console, [line]);
@@ -20,7 +21,8 @@ export function installConsolePatch(opts: { capture?: ReadonlyArray<'log' | 'inf
   try { manager.setConsoleSink(origSink); } catch (err) { /* ignore */ }
   for (const level of capture) {
     originals[level] = console[level];
-    (console as any)[level] = (...args: any[]) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Monkey-patching console requires dynamic property assignment
+    (console as any)[level] = (...args: unknown[]) => {
       // 1. Construct full message for display (human readable)
       const msg = args.map(a => {
         if (typeof a === 'string') return a;
@@ -41,7 +43,7 @@ export function installConsolePatch(opts: { capture?: ReadonlyArray<'log' | 'inf
         }
       }
 
-      const map: any = { log: 'INFO', info: 'INFO', debug: 'DEBUG' };
+      const map: Record<string, LogLevel> = { log: 'INFO', info: 'INFO', debug: 'DEBUG' };
       manager.log(map[level], code, msg, context, signature);
       // leave original out to avoid echo
     };
@@ -51,6 +53,7 @@ export function installConsolePatch(opts: { capture?: ReadonlyArray<'log' | 'inf
 export function uninstallConsolePatch() {
   if (!installed) return;
   for (const k of Object.keys(originals) as (keyof Console)[]) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Restoring monkey-patched console methods
     if (originals[k]) (console as any)[k] = originals[k];
   }
   installed = false;

@@ -125,4 +125,6 @@ export {
   generateSTLBlob,
   estimateSTLSize,
   formatFileSize,
+  downloadMesh,
+  type ExportFormat,
 } from './stlExport';

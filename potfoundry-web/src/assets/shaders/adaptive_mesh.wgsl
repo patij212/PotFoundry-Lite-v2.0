@@ -6,14 +6,18 @@
 // Bindings
 // ============================================================================
 
-
+// HAZARD: chunk4.z is dual-purpose depending on pipeline stage:
+//   - During SUBDIVISION: holds targetTris (triangle budget cap)
+//   - During RELAXATION: holds outerGridVertexCount (grid-vs-chain boundary)
+// If uniforms are not re-written between stages, wrong interpretation occurs.
+// See ParametricExportComputer.ts ~L1588 for the re-write logic.
 
 struct AdaptiveUniforms {
   chunk0: vec4<f32>, // x:H, y:Rt, z:Rb, w:tWall
   chunk1: vec4<f32>, // x:tBottom, y:rDrain, z:expn, w:styleId
   chunk2: vec4<f32>, // x:spinTurns, y:spinPhase, z:spinCurve, w:reserved_seam
   chunk3: vec4<f32>, // x:bellAmp, y:bellCenter, z:bellWidth, w:maxDepth
-  chunk4: vec4<f32>, // x:subdivThreshold, y:minQuadSize, z:targetTris, w:reserved
+  chunk4: vec4<f32>, // x:subdivThreshold, y:minQuadSize, z:targetTris|gridVertCount (DUAL-PURPOSE), w:W
 }
 
 @group(0) @binding(0) var<uniform> uniforms: AdaptiveUniforms;
@@ -767,7 +771,9 @@ fn evaluate_vertices(@builtin(global_invocation_id) gid: vec3<u32>) {
     
     let base = idx * 3u;
     let u = vertices[base];
-    let theta = u * 6.28318530718;
+    // Normalize periodic U before converting to theta
+    let u_wrapped = u - floor(u);
+    let theta = u_wrapped * 6.28318530718;
     let t = vertices[base + 1u];
     let surface = vertices[base + 2u];
     
@@ -1110,6 +1116,14 @@ fn compute_metric_field(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx = get_global_idx(gid);
     if (idx * 3u >= arrayLength(&vertices)) { return; }
 
+    // Skip non-grid vertices (chain vertices appended after grid).
+    // chunk4.z holds outerGridVertexCount when relaxation is active.
+    let grid_vert_count = u32(uniforms.chunk4.z);
+    if (grid_vert_count > 0u && idx >= grid_vert_count) {
+        set_metric_tensor(idx, vec3<f32>(1.0, 0.0, 1.0));
+        return;
+    }
+
     let base = idx * 3u;
     let u = vertices[base];
     let t = vertices[base + 1u];
@@ -1192,8 +1206,11 @@ fn compute_metric_field(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Scale local metric by rho^2 for u-component.
     
     let H_phys = get_H();
-    let R_avg = compute_outer_radius(theta, 0.5); // Sample mid-height radius
-    let circ = 6.28318530718 * R_avg;
+    // v21.1: Use LOCAL radius at this vertex (theta,t), not a fixed mid-height
+    // sample. This equalizes physical edge lengths across rows when the pot
+    // radius varies with height and style modulation.
+    let R_local = max(0.001, r_c);
+    let circ = 6.28318530718 * R_local;
     let rho_raw = circ / max(H_phys, 0.001);
     // CRITICAL FIX: Clamp rho to prevent explosion on flat pots (Precision Flow)
     let rho = min(rho_raw, 10.0); 
@@ -1216,6 +1233,17 @@ fn compute_metric_field(@builtin(global_invocation_id) gid: vec3<u32>) {
 fn relax_vertices(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx = get_global_idx(gid);
     if (idx * 3u >= arrayLength(&vertices)) { return; }
+
+    // Skip non-grid vertices (chain vertices appended after grid).
+    // chunk4.z holds outerGridVertexCount when relaxation is active.
+    let grid_vert_count = u32(uniforms.chunk4.z);
+    if (grid_vert_count > 0u && idx >= grid_vert_count) {
+        let base_skip = idx * 3u;
+        vertices_out[base_skip] = vertices[base_skip];
+        vertices_out[base_skip + 1u] = vertices[base_skip + 1u];
+        vertices_out[base_skip + 2u] = vertices[base_skip + 2u];
+        return;
+    }
 
     let base = idx * 3u;
     let u_c = vertices[base];

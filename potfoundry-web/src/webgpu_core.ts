@@ -17,6 +17,19 @@
 import { ShaderManager } from './renderers/webgpu/ShaderManager';
 import { WebGPURenderer } from './renderers/webgpu/WebGPURenderer';
 import { SceneManager } from './renderers/webgpu/SceneManager';
+import {
+  createAxisOverlay,
+  overlayForAxisFromBasis,
+  ndcDirBetween,
+  mulMat4Vec4,
+  type AxisOverlayInstance,
+} from './AxisOverlay';
+import {
+  createInputManager,
+  type InputManagerInstance,
+  type FreeKeyboardState,
+  type ViewPreset,
+} from './InputManager';
 
 import {
   buildCameraBasis,
@@ -35,12 +48,60 @@ import {
   invertQuaternion,
   axisAngleFromQuaternion,
   quaternionFromEuler,
+  vec3Dot,
+  vec3Subtract,
+  vec3Length,
+  vec3Normalize,
+  vec3Scale,
 } from './camera_basis';
+import {
+  viewMatrixFromBasis,
+  mat4Multiply,
+  matrixIsFinite,
+  mat4OrthoLH,
+  mat4PerspectiveFovLH,
+} from './MatrixMath';
+import {
+  wrapAngle,
+  wrapTau,
+  clampZoomValue,
+  mulMat4Vec4Full,
+} from './MathHelpers';
+import { createToolbarButtonSync, type ToolbarButtonSync } from './ToolbarButtonSync';
+import { createCameraStateBroadcaster, type CameraStateBroadcaster } from './CameraStateBroadcaster';
+import { createDebugPipelineFactory, type DebugPipelineFactory } from './DebugPipelineFactory';
+import { createBindGroupFactory, type BindGroupFactory } from './BindGroupFactory';
+import { createResizeManager, type ResizeManager, type DimensionResult } from './ResizeManager';
+import {
+  markUniformParityRewriteNeeded,
+  isUniformParityRewritePending,
+  clearUniformParityRewriteFlag,
+} from './UniformParityGuard';
+import {
+  createCameraModeManager,
+  type CameraModeManager,
+} from './CameraModeManager';
+import {
+  createPointerEventRouter,
+  type PointerEventRouter,
+} from './PointerEventRouter';
+import {
+  createControlsClickHandler,
+  type ControlsClickHandler,
+} from './ControlsClickHandler';
+import {
+  createAxisIndicatorRenderer,
+  type AxisIndicatorRendererInstance,
+} from './AxisIndicatorRenderer';
+import {
+  createCameraCommandRouter,
+  type CameraCommandRouterInstance,
+} from './CameraCommandRouter';
 import { cameraPayloadDiffers as sharedCameraPayloadDiffers } from './camera_basis';
 import { worldRayFromCanvas, intersectRayZPlane, intersectRayCylinder } from './camera_helpers';
 import { CameraController, PointerState, ControllerHelpers } from './camera_controller';
 import * as CameraConstants from './camera_constants';
-import type { MountOptions, WebGPUController, WebGPUEvent, WebGPUState, WebGPUParams, CameraRig, Ray, CameraMode } from './types';
+import type { MountOptions, WebGPUController, WebGPUEvent, WebGPUState, WebGPUParams, CameraRig, Ray, CameraMode, MountConfig, CameraSnapshot } from './types';
 export type { WebGPUController, WebGPUEvent } from './types';
 import { DEBUG_PARAM_FLAG, ALWAYS_ON_DIAGNOSTICS, isCameraMode, lerp, easeOutCubic, clamp, computeSceneExtents } from './types';
 import manager from './infra/logging/MessageManager';
@@ -49,9 +110,12 @@ import { resolveLoggingPreferences } from './infra/logging/loggingPreferences';
 import { createShaderModule } from './infra/logging/WebGpuCapture';
 
 import { createIdleDetector } from './utils/idleDetection';
-import { fillGeometryBuffer } from './webgpu_geometry';
+import { createUniformBlock, clampNumber, resolveStyleId } from './UniformBlock';
 import { STYLE_IDS } from './styles/registry';
+import { createBufferWriter, type BufferWriteContext, hexToRgbNorm } from './BufferLayout';
+import { STYLE_PARAM_CAPACITY } from './utils/styleParams';
 import { type StyleId } from './geometry/types';
+import type {} from './webgpu_global';  // Activates global Window augmentation
 
 
 try {
@@ -74,8 +138,7 @@ applyLoggingPreferences();
 // If debug is explicitly enabled (mount will set `debugEnabled` per session),
 // attach `manager` to `window` so dev tooling / tests can inspect runtime counters.
 try {
-  const root = window as any;
-  root.__pf_manager = root.__pf_manager ?? manager;
+  window.__pf_manager = window.__pf_manager ?? manager;
 } catch (err) {
   /* ignore attach errors */
 }
@@ -85,7 +148,6 @@ try {
 
 
 const MAX_VERTS = 0xffffffff;
-const STYLE_PARAM_CAPACITY = 48;
 const {
   DEFAULT_INTERACTIVE_LOD,
   MIN_INTERACTIVE_LOD,
@@ -135,12 +197,10 @@ const {
   */
   PIVOT_LERP_SPEED,
   PIVOT_SNAP_THRESHOLD,
-} = CameraConstants as any;
+} = CameraConstants;
 
 
-type CameraSnapshot = any;
 type CameraBasis = import('./camera_basis').CameraBasis;
-type Mat4 = Float32Array;
 
 // Minimal local types to satisfy TypeScript; the concrete types are defined elsewhere or are runtime shaped.
 type WebGPUEmitter = (ev: WebGPUEvent | any) => void;
@@ -148,31 +208,15 @@ type WebGPUEmitter = (ev: WebGPUEvent | any) => void;
 type GradientColor = [number, number, number];
 type ClearColor = [number, number, number, number];
 // CameraMode is imported from './types'
-// `Mat4` already defined above; Ray used as simple type alias
+// Matrix math functions extracted to MatrixMath.ts (Phase 5)
 // Ray type defined later as { origin: Vec3; dir: Vec3 }
 type Vec3 = HelperVec3;
 type Quaternion = HelperQuaternion;
 let lastLookAtBasis: { xLen: number; yLen: number; zLen: number } | null = null;
 let lastCameraRig: CameraRig | null = null;
 
-type UniformParityState = WebGPUState & { __pendingUniformParityRewrite?: boolean };
-
-const markUniformParityRewriteNeeded = (state: WebGPUState): void => {
-  const target = state as UniformParityState;
-  target.__pendingUniformParityRewrite = true;
-  state.cameraDirty = true;
-};
-
-const isUniformParityRewritePending = (state: WebGPUState): boolean => {
-  return Boolean((state as UniformParityState).__pendingUniformParityRewrite);
-};
-
-const clearUniformParityRewriteFlag = (state: WebGPUState): void => {
-  const target = state as UniformParityState;
-  if (target.__pendingUniformParityRewrite) {
-    target.__pendingUniformParityRewrite = false;
-  }
-};
+// UniformParityGuard functions imported from './UniformParityGuard' (Phase 13)
+// Type and implementations extracted to maintain module-level exports for tests
 
 // Single module-level controller instance (mounted in `mount`).
 var cameraController: CameraController | null = null;
@@ -267,28 +311,7 @@ const postToHost = (emit: WebGPUEmitter | null, message: WebGPUEvent): void => {
   }
 };
 
-const decodeHex = (hex: string): number => parseInt(hex, 16) / 255;
-
-const hexToRgbNorm = (input: unknown): [number, number, number] => {
-  if (Array.isArray(input) && input.length >= 3) {
-    return [Number(input[0]) || 0, Number(input[1]) || 0, Number(input[2]) || 0];
-  }
-  const raw = typeof input === 'string' ? input : '';
-  let value = raw.replace('#', '');
-  if (value.length === 3) {
-    value = value
-      .split('')
-      .map((ch) => ch + ch)
-      .join('');
-  }
-  if (value.length !== 6) {
-    return [0.18, 0.53, 0.87];
-  }
-  const r = decodeHex(value.slice(0, 2));
-  const g = decodeHex(value.slice(2, 4));
-  const b = decodeHex(value.slice(4, 6));
-  return [r, g, b];
-};
+// hexToRgbNorm moved to BufferLayout.ts
 
 const mergeParams = (target: WebGPUParams | null, incoming: WebGPUParams): WebGPUParams => {
   if (!target) {
@@ -303,12 +326,7 @@ const mergeParams = (target: WebGPUParams | null, incoming: WebGPUParams): WebGP
   return target;
 };
 
-const clampZoomValue = (v: number): number => {
-  if (!Number.isFinite(v)) return 1.0;
-  const minZoom = 0.25;
-  const maxZoom = 4.0;
-  return Math.max(minZoom, Math.min(maxZoom, v));
-};
+// clampZoomValue imported from MathHelpers.ts (Phase 7)
 
 const ensureFreePosition = (state: WebGPUState): Vec3 => {
   if (typeof cameraController !== 'undefined' && cameraController) {
@@ -328,19 +346,7 @@ const ensureFreePosition = (state: WebGPUState): Vec3 => {
   return fallback;
 };
 
-const wrapAngle = (v: number): number => {
-  while (v > Math.PI) v -= 2 * Math.PI;
-  while (v <= -Math.PI) v += 2 * Math.PI;
-  return v;
-};
-
-const wrapTau = (v: number): number => {
-  const twoPi = 2 * Math.PI;
-  let r = v % twoPi;
-  if (r > Math.PI) r -= twoPi;
-  if (r <= -Math.PI) r += twoPi;
-  return r;
-};
+// wrapAngle, wrapTau imported from MathHelpers.ts (Phase 7)
 
 const parseClearColor = (source: unknown): ClearColor => {
   if (Array.isArray(source) && source.length >= 4) {
@@ -391,37 +397,12 @@ const createDepthTexture = (device: GPUDevice, width: number, height: number): G
 // to per-mount instrumentation and to reuse preallocated scratch buffers
 // without allocating in the hot render path.
 
-const buildUniformBlock = (size: number): Float32Array => {
-  const buffer = new ArrayBuffer(size);
-  const f32 = new Float32Array(buffer);
-  f32.fill(0); // Initialize the array with zeros
-  return f32;
-};
-
-const clampNumber = (value: unknown, fallback: number): number => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return fallback;
-  }
-  return parsed;
-};
-
 const sanitizePadding = (value: number): number => {
   const normalized = Math.abs(value) || CAMERA_PADDING;
   return Math.min(Math.max(normalized, CAMERA_PADDING_MIN), CAMERA_PADDING_MAX);
 };
 
-const vec3Length = (v: Vec3): number => Math.hypot(v[0], v[1], v[2]);
-const vec3Normalize = (v: Vec3): Vec3 => {
-  const len = vec3Length(v);
-  if (!Number.isFinite(len) || len < 1e-8) {
-    return [0, 0, 0];
-  }
-  return [v[0] / len, v[1] / len, v[2] / len];
-};
-const vec3Subtract = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const vec3Scale = (v: Vec3, s: number): Vec3 => [v[0] * s, v[1] * s, v[2] * s];
-const vec3Dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+// vec3Length, vec3Normalize, vec3Scale imported from camera_basis.ts (Phase 6)
 
 const applyCameraEuler = (state: WebGPUState, rotX: number, rotY: number): void => {
   const basis = applyCameraEulerToBasis(rotX, rotY);
@@ -451,160 +432,8 @@ let commitDisplayBasisToState: (state: WebGPUState) => boolean = (_state: WebGPU
 // Forward declaration for emitDiagnostic (defined inside mount).
 let emitDiagnostic: (message: string, detail?: Record<string, unknown>) => void = () => { };
 
-const viewMatrixFromBasis = (basis: CameraBasis, eye: Vec3): Mat4 => {
-  // View matrix transforms world coords to camera space.
-  // Camera axes form ROWS of the rotation part (stored as columns in column-major).
-  // Column 0 = [right.x, up.x, forward.x, 0]
-  // Column 1 = [right.y, up.y, forward.y, 0]
-  // Column 2 = [right.z, up.z, forward.z, 0]
-  // Column 3 = [-dot(right,eye), -dot(up,eye), -dot(forward,eye), 1]
-  const out = new Float32Array(16);
-  out[0] = basis.right[0];
-  out[1] = basis.up[0];
-  out[2] = basis.forward[0];
-  out[3] = 0;
-  out[4] = basis.right[1];
-  out[5] = basis.up[1];
-  out[6] = basis.forward[1];
-  out[7] = 0;
-  out[8] = basis.right[2];
-  out[9] = basis.up[2];
-  out[10] = basis.forward[2];
-  out[11] = 0;
-  out[12] = -vec3Dot(basis.right, eye);
-  out[13] = -vec3Dot(basis.up, eye);
-  out[14] = -vec3Dot(basis.forward, eye);
-  out[15] = 1;
-  return out;
-};
-
-const writeVec3 = (target: Float32Array, offset: number, value: Vec3): void => {
-  target[offset + 0] = value[0];
-  target[offset + 1] = value[1];
-  target[offset + 2] = value[2];
-};
-
-const mat4Multiply = (a: Mat4, b: Mat4): Mat4 => {
-  const out = new Float32Array(16);
-  for (let col = 0; col < 4; col += 1) {
-    const bo = col * 4;
-    const b0 = b[bo + 0];
-    const b1 = b[bo + 1];
-    const b2 = b[bo + 2];
-    const b3 = b[bo + 3];
-    out[bo + 0] = a[0] * b0 + a[4] * b1 + a[8] * b2 + a[12] * b3;
-    out[bo + 1] = a[1] * b0 + a[5] * b1 + a[9] * b2 + a[13] * b3;
-    out[bo + 2] = a[2] * b0 + a[6] * b1 + a[10] * b2 + a[14] * b3;
-    out[bo + 3] = a[3] * b0 + a[7] * b1 + a[11] * b2 + a[15] * b3;
-  }
-
-  return out;
-};
-
-// Project a world-space position (x,y,z) using a viewProjection matrix
-// and return clip coords {x,y,w}
-const mulMat4Vec4 = (m: Mat4, x: number, y: number, z: number) => {
-  const cx = m[0] * x + m[4] * y + m[8] * z + m[12];
-  const cy = m[1] * x + m[5] * y + m[9] * z + m[13];
-  const cw = m[3] * x + m[7] * y + m[11] * z + m[15];
-  return { x: cx, y: cy, w: cw };
-};
-
-const ndcDirBetween = (projA: { x: number; y: number; w: number }, projB: { x: number; y: number; w: number }) => {
-  const ax = projA.x / projA.w;
-  const ay = projA.y / projA.w;
-  const bx = projB.x / projB.w;
-  const by = projB.y / projB.w;
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len = Math.hypot(dx, dy);
-  return len < 1e-9 ? [0, 0] : [dx / len, dy / len];
-};
-
-const ndcDeltaBetween = (projA: { x: number; y: number; w: number }, projB: { x: number; y: number; w: number }) => {
-  const ax = projA.x / projA.w;
-  const ay = projA.y / projA.w;
-  const bx = projB.x / projB.w;
-  const by = projB.y / projB.w;
-  return [bx - ax, by - ay];
-};
-
-// Compute overlay (screen) direction for a world `axis` using the camera
-// rig. Projects the axis vector directly to screen space so the overlay
-// direction matches a naive projection computed elsewhere (parity tests).
-const overlayForAxisFromBasis = (
-  rig: CameraRig,
-  _basis: CameraBasis,
-  axis: Vec3,
-  pivot: Vec3,
-  worldScale: number
-): [number, number] => {
-  const axisLen = vec3Length(axis);
-  const scaledAxis =
-    axisLen > 1e-9 ? (vec3Scale(axis, worldScale / axisLen) as Vec3) : ([0, 0, 0] as Vec3);
-  const p = mulMat4Vec4(rig.viewProjection, pivot[0], pivot[1], pivot[2]);
-  const pa = mulMat4Vec4(
-    rig.viewProjection,
-    pivot[0] + scaledAxis[0],
-    pivot[1] + scaledAxis[1],
-    pivot[2] + scaledAxis[2]
-  );
-  const delta = ndcDeltaBetween(p, pa);
-  // Convert NDC deltas to overlay coords (flip Y)
-  const ovx = delta[0];
-  const ovy = -delta[1];
-  const len = Math.hypot(ovx, ovy);
-  if (len < 1e-9) return [0, 0];
-  return [ovx / len, ovy / len];
-};
-
-const matrixIsFinite = (m: Mat4): boolean => {
-  for (let i = 0; i < 16; i += 1) {
-    if (!Number.isFinite(m[i])) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const mat4OrthoLH = (
-  left: number,
-  right: number,
-  bottom: number,
-  top: number,
-  near: number,
-  far: number
-): Mat4 => {
-  const out = new Float32Array(16);
-  const lr = 1 / (right - left || 1);
-  const bt = 1 / (top - bottom || 1);
-  const nf = 1 / (far - near || 1);
-  out[0] = 2 * lr;
-  out[5] = 2 * bt;
-  out[10] = nf;
-  out[12] = -(right + left) * lr;
-  out[13] = -(top + bottom) * bt;
-  out[14] = -near * nf;
-  out[15] = 1;
-  return out;
-};
-
-const mat4PerspectiveFovLH = (
-  fovY: number,
-  aspect: number,
-  near: number,
-  far: number
-): Mat4 => {
-  const out = new Float32Array(16);
-  const f = 1 / Math.tan(Math.max(fovY * 0.5, 1e-4));
-  const range = 1 / (far - near || 1);
-  out[0] = f / Math.max(aspect, 1e-4);
-  out[5] = f;
-  out[10] = far * range;
-  out[11] = 1;
-  out[14] = -near * far * range;
-  return out;
-};
+// Matrix math functions extracted to MatrixMath.ts (Phase 5)
+// mulMat4Vec4, ndcDirBetween, and overlayForAxisFromBasis are now imported from ./AxisOverlay
 
 const INTERACTION_TIMEOUT_MS = 240;
 const INERTIA_DECAY = 0.92;
@@ -788,7 +617,7 @@ const buildCameraRig = (
   let near = CAMERA_NEAR_EPS;
   let far = Math.max(near + paddedMax * 6, distance + paddedMax * 6);
   let fov = BASE_FOV;
-  let projection: Mat4;
+  let projection: Float32Array;
   if (state.projectionMode === 'perspective') {
     const halfFov = Math.max(fov * 0.5, 1e-4);
     const halfFovY = halfFov;
@@ -934,7 +763,7 @@ export const mount = async ({
   let statusReady = false;
   // Attach manager to window for debug/test introspection; harmless in production.
   try {
-    (window as any).__pf_manager = manager;
+    window.__pf_manager = manager;
   } catch (err) {
     /* ignore */
   }
@@ -945,10 +774,11 @@ export const mount = async ({
   }
   const mountCanvasId = (canvasId ?? '').trim() || undefined;
   try {
-    (window as any).__pf_webgpu_mounts = (window as any).__pf_webgpu_mounts || {};
+    window.__pf_webgpu_mounts = window.__pf_webgpu_mounts ?? {};
     if (mountCanvasId) {
-      (window as any).__pf_webgpu_mounts[mountCanvasId] = (window as any).__pf_webgpu_mounts[mountCanvasId] || {};
-      (window as any).__pf_webgpu_mounts[mountCanvasId].debug = (window as any).__pf_webgpu_mounts[mountCanvasId].debug || {
+      window.__pf_webgpu_mounts[mountCanvasId] = window.__pf_webgpu_mounts[mountCanvasId] ?? {};
+      const mount = window.__pf_webgpu_mounts[mountCanvasId]!;
+      mount.debug = mount.debug ?? {
         ready: false,
         usedFallback: false,
         lastApplyCameraPayload: null,
@@ -1118,6 +948,13 @@ export const mount = async ({
   const context = renderer.context!;
   const format = renderer.presentationFormat;
 
+  // Create debug pipeline factory (Phase 10 extraction)
+  const debugPipelineFactory = createDebugPipelineFactory({
+    device,
+    format,
+    depthFormat: depthFormatUsed ?? 'depth24plus',
+  });
+
   emitDiagnostic('webgpu:adapter-ready');
   emitDiagnostic('webgpu:device-ready');
   emitDiagnostic('webgpu:context-ready');
@@ -1133,7 +970,7 @@ export const mount = async ({
     if (disposed) return;
     device.lost.then((info) => {
       handleDeviceLost(info, {
-        getInitializationComplete: () => initializationComplete,
+        getInitializationComplete: () => resizeManager.isInitialized(),
         setDeviceLostDuringInit: () => { deviceLostDuringInit = true; },
         getLastOperation: () => lastOperation,
         emit
@@ -1153,16 +990,16 @@ export const mount = async ({
   let disposed = false; // Declared early to avoid Temporal Dead Zone errors in helper functions
   try {
     maxTextureDimension2D = device.limits?.maxTextureDimension2D ?? 8192;
-    console.log(`[WebGPU] Device maxTextureDimension2D: ${maxTextureDimension2D}`);
+    if (import.meta.env.DEV) console.log(`[WebGPU] Device maxTextureDimension2D: ${maxTextureDimension2D}`);
   } catch (e) { /* ignore limit query errors */ }
 
   // CRITICAL: Add stabilization delay before first GPU operation.
   // Windows Dawn WebGPU backend crashes with "Instance reference no longer exists" if GPU
   // operations (like createTexture) happen too soon after device creation.
   // Increased stabilization delay to 200ms based on user reports of crashes at 50ms
-  console.log('[WebGPU] Waiting 200ms for GPU device stabilization...');
+  if (import.meta.env.DEV) console.log('[WebGPU] Waiting 200ms for GPU device stabilization...');
   await new Promise(resolve => setTimeout(resolve, 200));
-  console.log('[WebGPU] Device stabilization complete, proceeding with initialization...');
+  if (import.meta.env.DEV) console.log('[WebGPU] Device stabilization complete, proceeding with initialization...');
 
   // Initialize SceneManager
   const sceneManager = new SceneManager(renderer);
@@ -1193,6 +1030,14 @@ export const mount = async ({
     c2: sceneManager.bgBuffers.bg2,
     c3: sceneManager.bgBuffers.bg3
   };
+
+  // Create buffer writer factory (owns pre-allocated scratch buffers)
+  const writeContext: BufferWriteContext = {
+    isDisposed: () => disposed,
+    emitDiagnostic,
+    mountCanvasId,
+  };
+  const bufferWriter = createBufferWriter({ device, context: writeContext });
 
   let depth = createDepthTexture(device, width, height);
 
@@ -1272,360 +1117,99 @@ export const mount = async ({
 
   const controlsRoot = controlsEl ?? null;
 
-  const resolveControlsButton = (selector: string): HTMLButtonElement | null => {
-    if (controlsRoot) {
-      const candidate = controlsRoot.querySelector<HTMLButtonElement>(selector);
-      if (candidate) {
-        return candidate;
-      }
-    }
-    const shell = canvas.parentElement;
-    if (shell instanceof HTMLElement) {
-      const scoped = shell.querySelector<HTMLButtonElement>(selector);
-      if (scoped) {
-        return scoped;
-      }
-    }
-    return document.querySelector<HTMLButtonElement>(selector);
-  };
+  // === Toolbar Button Sync (Phase 8 extraction) ===
+  const toolbar: ToolbarButtonSync = createToolbarButtonSync({
+    controlsRoot,
+    canvas,
+  });
 
-  let autorotateButton: HTMLButtonElement | null = null;
-  const resolveAutorotateButton = (): HTMLButtonElement | null => {
-    if (autorotateButton && autorotateButton.isConnected) {
-      return autorotateButton;
-    }
-    const button = resolveControlsButton('[data-role="autorotate"]');
-    autorotateButton = button;
-    return button;
-  };
+  // Wrapper functions for backward compatibility with existing call sites
+  const resolveControlsButton = (selector: string): HTMLButtonElement | null =>
+    toolbar.resolveButton(selector);
 
-  const updateAutoButton = (): void => {
-    const button = resolveAutorotateButton();
-    if (!button) {
-      return;
-    }
-    button.dataset.state = state.autoRotate ? 'on' : 'off';
-    button.setAttribute('aria-pressed', state.autoRotate ? 'true' : 'false');
-    const label = state.autoRotate ? 'Auto' : 'Manual';
-    if (button.textContent !== label) {
-      button.textContent = label;
-    }
-  };
+  const updateAutoButton = (): void => toolbar.updateAutoButton(state.autoRotate);
+  const updateProjectionButton = (): void => toolbar.updateProjectionButton(state.projectionMode);
+  const updateDebugButton = (): void => toolbar.updateDebugButton(state.debugOverlay);
+  const updateGridButton = (): void => toolbar.updateGridButton(state.showGrid ?? true);
+  const updateAxisButton = (): void => toolbar.updateAxisButton(state.showAxis ?? true);
+  const updateArcballButton = (): void => toolbar.updateArcballButton(state.cameraMode);
+  const updateFreeButton = (): void => toolbar.updateFreeButton(state.cameraMode);
+  const updatePivotAutoButton = (): void => toolbar.updatePivotAutoButton(state.autoPivotFromCamera ?? false);
+  const updateCameraModeButtons = (): void => toolbar.updateCameraModeButtons(state.cameraMode);
 
   const notifyAutoRotateChange = (): void => {
     updateAutoButton();
     onAutoRotateChange?.(state.autoRotate);
   };
 
-  let projectionButton: HTMLButtonElement | null = null;
-  const updateProjectionButton = (): void => {
-    const button =
-      projectionButton && projectionButton.isConnected
-        ? projectionButton
-        : resolveControlsButton('[data-wgpu-action="projection"]');
-    projectionButton = button;
-    if (!button) {
-      return;
-    }
-    const isPerspective = state.projectionMode === 'perspective';
-    button.dataset.state = state.projectionMode;
-    button.setAttribute('aria-pressed', isPerspective ? 'true' : 'false');
-    const label = isPerspective ? 'Persp' : 'Ortho';
-    if (button.textContent !== label) {
-      button.textContent = label;
-    }
-  };
-
-  let debugButton: HTMLButtonElement | null = null;
-  const updateDebugButton = (): void => {
-    const button =
-      debugButton && debugButton.isConnected
-        ? debugButton
-        : resolveControlsButton('[data-wgpu-action="debug"]');
-    debugButton = button;
-    if (!button) {
-      return;
-    }
-    const active = state.debugOverlay;
-    button.dataset.state = active ? 'on' : 'off';
-    button.textContent = active ? 'Debug*' : 'Debug';
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-  };
-
+  // Initial button sync
   notifyAutoRotateChange();
   updateProjectionButton();
   updateDebugButton();
-
-  let gridButton: HTMLButtonElement | null = null;
-  const resolveGridButton = (): HTMLButtonElement | null => {
-    if (gridButton && gridButton.isConnected) {
-      return gridButton;
-    }
-    const button = resolveControlsButton('[data-wgpu-action="grid"]');
-    gridButton = button;
-    return button;
-  };
-
-  const updateGridButton = (): void => {
-    const button = resolveGridButton();
-    if (!button) return;
-    const active = state.showGrid;
-    button.dataset.state = active ? 'on' : 'off';
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    const label = active ? 'Grid*' : 'Grid';
-    if (button.textContent !== label) {
-      button.textContent = label;
-    }
-  };
-  let axisButton: HTMLButtonElement | null = null;
-  const resolveAxisButton = (): HTMLButtonElement | null => {
-    if (axisButton && axisButton.isConnected) return axisButton;
-    const button = resolveControlsButton('[data-wgpu-action="axis"]') || resolveControlsButton('#wgpu-toggle-axis');
-    axisButton = button;
-    return axisButton;
-  };
-  const updateAxisButton = (): void => {
-    const button = resolveAxisButton();
-    if (!button) return;
-    const active = state.showAxis;
-    button.dataset.state = active ? 'on' : 'off';
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    const label = active ? 'Axis*' : 'Axis';
-    if (button.textContent !== label) {
-      button.textContent = label;
-    }
-  };
-  const updateArcballButton = (): void => {
-    const btn = resolveControlsButton('[data-wgpu-action="arcball"]') || resolveControlsButton('#wgpu-toggle-arcball');
-    if (!btn) {
-      return;
-    }
-    const active = state.cameraMode === 'arcball';
-    const label = active ? 'Arc*' : 'Arc';
-    btn.textContent = label;
-    btn.setAttribute('data-state', active ? 'on' : 'off');
-    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-  };
-
-  const updateFreeButton = (): void => {
-    const btn = resolveControlsButton('[data-wgpu-action="fly"]') || resolveControlsButton('#wgpu-toggle-fly');
-    if (!btn) {
-      return;
-    }
-    const active = state.cameraMode === 'free';
-    btn.textContent = active ? 'Free*' : 'Free';
-    btn.setAttribute('data-state', active ? 'on' : 'off');
-    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-  };
-
-  const updateCameraModeButtons = (): void => {
-    updateArcballButton();
-    updateFreeButton();
-  };
-
-  let pivotAutoButton: HTMLButtonElement | null = null;
-  const resolvePivotButton = (): HTMLButtonElement | null => {
-    if (pivotAutoButton && pivotAutoButton.isConnected) return pivotAutoButton;
-    const button = resolveControlsButton('[data-wgpu-action="pivot-auto"]') || resolveControlsButton('#wgpu-toggle-pivot');
-    pivotAutoButton = button;
-    return pivotAutoButton;
-  };
-
-  const updatePivotAutoButton = (): void => {
-    const button = resolvePivotButton();
-    if (!button) return;
-    const active = Boolean(state.autoPivotFromCamera);
-    button.dataset.state = active ? 'on' : 'off';
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    const label = active ? 'Pivot*' : 'Pivot';
-    if (button.textContent !== label) button.textContent = label;
-  };
   updateGridButton();
   updateAxisButton();
   updateCameraModeButtons();
 
-  const buildCameraSnapshot = (): CameraSnapshot => ({
-    rotX: state.rotX,
-    rotY: state.rotY,
-    zoom: state.zoom,
-    panX: state.panX,
-    panY: state.panY,
-    autoRotate: state.autoRotate,
-    sceneRadius: state.sceneRadius,
-    projection: state.projectionMode,
-    cameraMode: state.cameraMode,
-    pivot: [...state.pivot],
-    eye: [...(lastCameraRig?.eye ?? ensureFreePosition(state))],
+  // Camera state broadcasting (Phase 9 extraction)
+  const cameraBroadcaster: CameraStateBroadcaster = createCameraStateBroadcaster({
+    getState: () => ({
+      rotX: state.rotX,
+      rotY: state.rotY,
+      zoom: state.zoom,
+      panX: state.panX,
+      panY: state.panY,
+      autoRotate: state.autoRotate,
+      sceneRadius: state.sceneRadius,
+      projectionMode: state.projectionMode,
+      cameraMode: state.cameraMode,
+      pivot: state.pivot,
+      cameraDirty: state.cameraDirty ?? false,
+      lastCameraPush: state.lastCameraPush,
+    }),
+    updateState: (updates) => {
+      if (updates.cameraDirty !== undefined) state.cameraDirty = updates.cameraDirty;
+      if (updates.lastCameraPush !== undefined) state.lastCameraPush = updates.lastCameraPush;
+    },
+    getEyePosition: () => lastCameraRig?.eye ?? ensureFreePosition(state),
+    emit: (msg) => emit?.(msg),
+    emitDiagnostic,
+    canvasId: mountCanvasId,
   });
 
+  // Thin wrapper for backward compatibility
+  const buildCameraSnapshot = (): CameraSnapshot => cameraBroadcaster.buildSnapshot();
+
+  // Axis indicator renderer (Phase 17 extraction)
+  const axisRenderer: AxisIndicatorRendererInstance = createAxisIndicatorRenderer({
+    getPivot: () => state.pivot,
+    getSceneRadius: () => state.sceneRadius,
+    getSequence: () => cameraBroadcaster.getSequence(),
+    emitDiagnostic: debugEnabled ? emitDiagnostic : undefined,
+    debugThrottleMs: DEBUG_THROTTLE_MS,
+  });
+
+  // Thin wrapper delegating to axisRenderer (Phase 17 backward compatibility)
   const drawAxisIndicator = (ctx: CanvasRenderingContext2D | null, rig: CameraRig | null): void => {
-    if (!ctx || !rig) return;
-    try {
-      const canvas = ctx.canvas as HTMLCanvasElement;
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
-      const cx = w / 2;
-      const cy = h / 2;
-      const axisLen = Math.min(w, h) * 0.34;
-      const basis = rig.basis;
-      // Project world axis to screen using camera basis vectors.
-      // screenX = dot(worldAxis, camRight), screenY = dot(worldAxis, camUp)
-      // This gives the 2D position where the axis tip appears on screen.
-      const axisToScreen = (axis: [number, number, number]): [number, number] => {
-        // camRight points screen-right, camUp points screen-up
-        const screenX = axis[0] * basis.right[0] + axis[1] * basis.right[1] + axis[2] * basis.right[2];
-        const screenY = axis[0] * basis.up[0] + axis[1] * basis.up[1] + axis[2] * basis.up[2];
-        // Scale and convert to canvas coords (canvas Y is inverted from screen up)
-        return [cx + screenX * axisLen, cy - screenY * axisLen];
-      };
-      ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.beginPath();
-      ctx.arc(cx, cy, Math.min(w, h) * 0.46, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      const axes: Array<{ v: [number, number, number]; color: string; label: string }> = [
-        { v: [1, 0, 0], color: '#e53935', label: 'X' },
-        { v: [0, 1, 0], color: '#43a047', label: 'Y' },
-        { v: [0, 0, 1], color: '#1e88e5', label: 'Z' },
-      ];
-      const diagAxes: Record<string, unknown> = {};
-      for (const a of axes) {
-        const [tx, ty] = axisToScreen(a.v);
-        const dx = tx - cx;
-        const dy = ty - cy;
-        const len = Math.hypot(dx, dy);
-        if (len < 0.001) continue;
-        const ux = dx / len;
-        const uy = dy / len;
-        ctx.beginPath();
-        ctx.lineWidth = Math.max(2, Math.round(w * 0.02));
-        ctx.strokeStyle = a.color;
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(tx - ux * Math.min(8, w * 0.06), ty - uy * Math.min(8, w * 0.06));
-        ctx.stroke();
-        const tipSize = Math.max(6, Math.round(w * 0.04));
-        ctx.beginPath();
-        ctx.fillStyle = a.color;
-        ctx.moveTo(tx, ty);
-        ctx.lineTo(tx - ux * tipSize - uy * (tipSize * 0.45), ty - uy * tipSize + ux * (tipSize * 0.45));
-        ctx.lineTo(tx - ux * tipSize + uy * (tipSize * 0.45), ty - uy * tipSize - ux * (tipSize * 0.45));
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.92)';
-        ctx.font = `${Math.max(10, Math.round(w * 0.12))}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const lx = tx + ux * Math.max(6, Math.round(w * 0.02));
-        const ly = ty + uy * Math.max(6, Math.round(w * 0.02));
-        ctx.fillText(a.label, lx, ly);
-        // Collect diagnostic vectors for overlay vs basis projection
-        try {
-          const ov_basis_unit = overlayForAxisFromBasis(rig, basis, a.v, state.pivot ?? [0, 0, 0], Math.max(state.sceneRadius, 1));
-          const pivot = state.pivot ?? [0, 0, 0];
-          const pA = mulMat4Vec4(rig.viewProjection, pivot[0], pivot[1], pivot[2]);
-          const pB = mulMat4Vec4(rig.viewProjection, pivot[0] + a.v[0] * Math.max(state.sceneRadius, 1), pivot[1] + a.v[1] * Math.max(state.sceneRadius, 1), pivot[2] + a.v[2] * Math.max(state.sceneRadius, 1));
-          const ov_proj_unit = ndcDirBetween(pA, pB);
-          // convert to overlay coordinates: flip Y
-          const ov_proj_2d = [ov_proj_unit[0], -ov_proj_unit[1]];
-          const ov_proj_len = Math.hypot(ov_proj_2d[0], ov_proj_2d[1]);
-          const ov_proj_norm = ov_proj_len < 1e-9 ? [0, 0] : [ov_proj_2d[0] / ov_proj_len, ov_proj_2d[1] / ov_proj_len];
-          diagAxes[a.label] = { overlayProj: ov_proj_norm, overlayBasis: ov_basis_unit };
-        } catch (err) {
-          /* best-effort */
-        }
-      }
-      // Emit diagnostic if enabled (throttled)
-      try {
-        const now = performance.now();
-        if (now - lastAxisEmit >= DEBUG_THROTTLE_MS) {
-          lastAxisEmit = now;
-          emitDiagnostic('component:axis-overlay-compare', { axes: diagAxes, ts: Date.now(), camSeq: cameraSequence });
-        }
-      } catch (err) {/* ignore */ }
-    } catch (err) {
-      /* ignore drawing errors */
-    }
+    axisRenderer.draw(ctx, rig);
   };
 
-  const snapshotsEqual = (prev: CameraSnapshot | null, next: CameraSnapshot): boolean => {
-    if (!prev) {
-      return false;
-    }
-    return (
-      Math.abs(prev.rotX - next.rotX) <= CAMERA_EPSILON &&
-      Math.abs(prev.rotY - next.rotY) <= CAMERA_EPSILON &&
-      Math.abs(prev.zoom - next.zoom) <= CAMERA_EPSILON &&
-      Math.abs(prev.panX - next.panX) <= CAMERA_EPSILON &&
-      Math.abs(prev.panY - next.panY) <= CAMERA_EPSILON &&
-      prev.autoRotate === next.autoRotate &&
-      Math.abs(prev.sceneRadius - next.sceneRadius) <= CAMERA_EPSILON &&
-      prev.projection === next.projection &&
-      prev.cameraMode === next.cameraMode &&
-      Math.abs(prev.pivot[0] - next.pivot[0]) <= CAMERA_EPSILON &&
-      Math.abs(prev.pivot[1] - next.pivot[1]) <= CAMERA_EPSILON &&
-      Math.abs(prev.pivot[2] - next.pivot[2]) <= CAMERA_EPSILON &&
-      Math.abs(prev.eye[0] - next.eye[0]) <= CAMERA_EPSILON &&
-      Math.abs(prev.eye[1] - next.eye[1]) <= CAMERA_EPSILON &&
-      Math.abs(prev.eye[2] - next.eye[2]) <= CAMERA_EPSILON
-    );
-  };
+  // snapshotsEqual replaced by cameraBroadcaster.snapshotsEqual()
+  const snapshotsEqual = (prev: CameraSnapshot | null, next: CameraSnapshot): boolean =>
+    cameraBroadcaster.snapshotsEqual(prev, next);
 
-  let lastCameraSnapshot: CameraSnapshot | null = null;
-  let lastAxisEmit = 0;
+  // State tracking variables (some moved to broadcaster, some kept for local diagnostic use)
+  // Note: lastAxisEmit moved to AxisIndicatorRenderer (Phase 17)
   let lastDrawEmit = 0;
   let lastUniformEmit = 0;
   let lastCameraEmit = 0;
   let lastFitEmit = 0;
-  let cameraSequence = 0;
-  let pendingStaticCameraEmit = false;
 
-  const emitCameraState = (force = false): void => {
-    const now = performance.now();
-    if (!force) {
-      if (!state.cameraDirty) {
-        return;
-      }
-      if (now - state.lastCameraPush < CAMERA_BROADCAST_MS) {
-        return;
-      }
-    }
-    const snapshot = buildCameraSnapshot();
-    if (!force && snapshotsEqual(lastCameraSnapshot, snapshot)) {
-      state.cameraDirty = false;
-      state.lastCameraPush = now;
-      return;
-    }
-    lastCameraSnapshot = { ...snapshot };
-    state.cameraDirty = false;
-    state.lastCameraPush = now;
-    cameraSequence += 1;
-    // Emit a compact diagnostic snapshot for correlation with uniform writes and overlay draws
-    try {
-      const now = performance.now();
-      if (now - lastCameraEmit >= 500) {
-        lastCameraEmit = now;
-        emitDiagnostic('component:camera-state', {
-          ts: Date.now(),
-          seq: cameraSequence,
-          rotX: snapshot.rotX,
-          rotY: snapshot.rotY,
-          zoom: snapshot.zoom,
-          canvasId: mountCanvasId,
-        });
-      }
-    } catch (err) {/* best-effort */ }
-    pendingStaticCameraEmit = false;
-    postToHost(emit, {
-      type: 'cameraState',
-      payload: {
-        ...snapshot,
-        timestamp: Date.now(),
-        seq: cameraSequence,
-      },
-    });
-  };
+  // Uniform signature tracking (moved from globalThis during P-1 as-any elimination)
+  let __lastUniformSignature: string | null = null;
+  let __lastUniformEmitMs = 0;
+
+  // Thin wrapper delegating to broadcaster
+  const emitCameraState = (force = false): void => cameraBroadcaster.emit(force);
 
   const setAutoRotate = (value: boolean, emitCamera = true): void => {
     const next = Boolean(value);
@@ -1693,219 +1277,88 @@ export const mount = async ({
     setAutoPivot(!Boolean(state.autoPivotFromCamera), true);
   };
 
-  let cameraEmitTimer: number | null = null;
+  // Timer state variables moved to broadcaster; keep local unrelated state
   let lastGradientSignature: string | null = null;
   let validationFrameCounter = 0;
   let lastValidGeometry: GeometrySnapshot | null = null;
 
-  const cancelCameraEmit = (): void => {
-    if (cameraEmitTimer !== null) {
-      window.clearTimeout(cameraEmitTimer);
-      cameraEmitTimer = null;
-    }
-  };
-
-  const scheduleCameraEmit = (delay = CAMERA_BROADCAST_MS): void => {
-    cancelCameraEmit();
-    cameraEmitTimer = window.setTimeout(() => {
-      cameraEmitTimer = null;
-      emitCameraState(true);
-    }, delay);
-  };
-
-  let lastResizeSignature: string | null = null;
-
-  // Track last resize dimensions to prevent redundant resize calls that could
-  // invalidate textures mid-render (causing WebGPU swapchain errors)
-  let lastResizeWidth = 0;
-  let lastResizeHeight = 0;
-  let lastFullscreenState = false;
-
-  // Mobile GPU safety: prevent context.configure during async initialization
-  // to avoid destabilizing the GPU device during pipeline creation
-  let initializationComplete = false;
+  // Thin wrappers delegating to broadcaster
+  const cancelCameraEmit = (): void => cameraBroadcaster.cancelScheduledEmit();
+  const scheduleCameraEmit = (delay = CAMERA_BROADCAST_MS): void => cameraBroadcaster.scheduleEmit(delay);
 
   const initialBgMode = (initialParams as Record<string, unknown>).__pf_bg_mode;
   let currentAlphaMode: 'opaque' | 'premultiplied' = resolveAlphaMode(initialBgMode);
 
-  const resize = (): void => {
-    // Mobile GPU safety: completely skip resize during async initialization
-    // Any resize operations during pipeline creation can destabilize the GPU device
-    if (!initializationComplete) {
-      return; // Total no-op during init
-    }
+  // Axis overlay canvas reference (set later after axis overlay is created)
+  // Forward declaration needed for ResizeManager callback
+  let axisCanvas: HTMLCanvasElement | null = null;
 
-    // Get the TARGET dimensions from the PARENT container
-    // The canvas has inline styles, so we can't query it directly
-    // The parent container uses CSS flex/grid and tells us the available space
-    const isFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
-    let cssWidth: number;
-    let cssHeight: number;
+  // ResizeManager handles all resize logic, event listeners, and mobile GPU safety
+  const resizeManager: ResizeManager = createResizeManager({
+    canvas,
+    context,
+    device,
+    format,
+    maxTextureDimension2D,
+    onResize: (dims: DimensionResult, alphaMode: GPUCanvasAlphaMode) => {
+      // Update module-level width/height
+      width = dims.width;
+      height = dims.height;
+      lastOperation = 'resize';
 
-    if (isFullscreen) {
-      // Fullscreen: use full window dimensions
-      cssWidth = window.innerWidth;
-      cssHeight = window.innerHeight;
-    } else {
-      // Normal mode: query PARENT container for available space
-      const parent = canvas.parentElement;
-      if (parent) {
-        const rect = parent.getBoundingClientRect();
-        cssWidth = rect.width;
-        cssHeight = rect.height;
-      } else {
-        // Fallback to window
-        cssWidth = window.innerWidth;
-        cssHeight = window.innerHeight;
+      // Update canvas and reconfigure context
+      canvas.width = dims.width;
+      canvas.height = dims.height;
+      context.configure({ device, format, alphaMode });
+
+      // Recreate depth texture
+      const newDepth = createDepthTexture(device, dims.width, dims.height);
+      const oldDepth = depth;
+      depth = newDepth;
+      if (oldDepth) {
+        setTimeout(() => {
+          try {
+            oldDepth.destroy();
+          } catch (err) {
+            /* ignore */
+          }
+        }, 0);
       }
-    }
 
-    const nextDpr = window.devicePixelRatio || 1;
-    // Calculate raw dimensions from CSS size × devicePixelRatio
-    let nextWidth = Math.max(1, Math.round(cssWidth * nextDpr));
-    let nextHeight = Math.max(1, Math.round(cssHeight * nextDpr));
+      // Update state
+      state.canvasAspect = dims.height > 0 ? dims.width / dims.height : 1;
+      state.cameraDirty = true;
+      lastCameraRig = null;
 
-    // Mobile GPU safety: use conservative limit to prevent memory exhaustion
-    // Even if GPU reports 8192, mobile devices often can't allocate textures that large
-    // Use 4096 as a safe maximum that works on most mobile GPUs
-    const gpuMaxDim = maxTextureDimension2D || 8192;
-    // Mobile devices: use conservative 4096 limit to prevent memory issues
-    // Desktop: use full GPU reported limit (typically 16384+)
-    const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const maxDim = isMobile ? Math.min(gpuMaxDim, 4096) : gpuMaxDim;
-
-    if (nextWidth > maxDim || nextHeight > maxDim) {
-      const scale = Math.min(maxDim / nextWidth, maxDim / nextHeight);
-      nextWidth = Math.max(1, Math.floor(nextWidth * scale));
-      nextHeight = Math.max(1, Math.floor(nextHeight * scale));
-      console.warn(`[WebGPU] Canvas clamped to ${isMobile ? 'mobile' : 'GPU'} limit: ${nextWidth}×${nextHeight} (max: ${maxDim})`);
-    }
-
-    // Track fullscreen state changes - force resize when fullscreen toggles
-    const fullscreenChanged = isFullscreen !== lastFullscreenState;
-    lastFullscreenState = isFullscreen;
-
-    // Skip if dimensions haven't changed AND fullscreen state is the same
-    // This prevents texture invalidation mid-render, but allows fullscreen transitions
-    if (nextWidth === lastResizeWidth && nextHeight === lastResizeHeight && !fullscreenChanged) {
-      return;
-    }
-    lastResizeWidth = nextWidth;
-    lastResizeHeight = nextHeight;
-
-    if (Math.abs(nextDpr - devicePixelRatio) > 1e-3) {
-      devicePixelRatio = nextDpr;
-      if (debugEnabled) {
-        emitDiagnostic('canvas:dpr-change', { dpr: devicePixelRatio });
+      // Update DPR if changed
+      if (Math.abs(dims.dpr - devicePixelRatio) > 1e-3) {
+        devicePixelRatio = dims.dpr;
       }
-    }
-    // Enforce 1x1 minimum to prevent driver crashes with 0-sized textures
-    width = Math.max(1, nextWidth);
-    height = Math.max(1, nextHeight);
-    lastOperation = 'resize';
 
-    // At this point we know initializationComplete is true (early return at start of function)
-    // Safe to set full canvas dimensions and reconfigure context
-    canvas.width = width;
-    canvas.height = height;
-    context.configure({ device, format, alphaMode: currentAlphaMode });
-    const newDepth = createDepthTexture(device, width, height);
-    const oldDepth = depth;
-    depth = newDepth;
-    if (oldDepth) {
-      setTimeout(() => {
-        try {
-          oldDepth.destroy();
-        } catch (err) {
-          /* ignore */
+      // Update axis overlay size to be crisp on DPR-scaled devices
+      try {
+        if (axisCanvas) {
+          const overlaySizeCss = 96; // CSS px
+          const overlayW = Math.max(1, Math.round(overlaySizeCss * dims.dpr));
+          const overlayH = overlayW;
+          axisCanvas.width = overlayW;
+          axisCanvas.height = overlayH;
+          axisCanvas.style.width = `${overlaySizeCss}px`;
+          axisCanvas.style.height = `${overlaySizeCss}px`;
         }
-      }, 0);
-    }
-    state.canvasAspect = height > 0 ? width / height : 1;
-    // Force projection matrix recalculation on next frame
-    state.cameraDirty = true;
-    // Invalidate ALL cached camera rigs so they're rebuilt with new aspect ratio
-    // Module-level cache:
-    lastCameraRig = null;
-    // Mount-closure cache (used by getCachedRig) - wrapped in try-catch because
-    // these variables are defined later in the file and may not exist during
-    // the initial resize() call at mount time
-    try {
-      // @ts-ignore - lastRigSignature/lastRigCached are defined later in mount()
-      if (typeof lastRigSignature !== 'undefined') lastRigSignature = null;
-      // @ts-ignore
-      if (typeof lastRigCached !== 'undefined') lastRigCached = null;
-    } catch (e) {
-      // Ignore - variables not yet defined during initial mount
-    }
-    // console.log('[WebGPU] Resize:', width, 'x', height, 'aspect:', state.canvasAspect.toFixed(3));
-    if (debugEnabled) {
-      const signature = `${width}x${height}@${Math.round(devicePixelRatio * 100) / 100}`;
-      if (signature !== lastResizeSignature) {
-        lastResizeSignature = signature;
-        emitDiagnostic('canvas:resize', {
-          width,
-          height,
-          cssWidth: Math.round(cssWidth),
-          cssHeight: Math.round(cssHeight),
-          dpr: devicePixelRatio,
-        });
+      } catch (err) {
+        /* ignore overlay resize errors */
       }
-    }
-    // Update axis overlay size to be crisp on DPR-scaled devices
-    try {
-      if (axisCanvas) {
-        const overlaySizeCss = 96; // CSS px
-        const overlayW = Math.max(1, Math.round(overlaySizeCss * devicePixelRatio));
-        const overlayH = overlayW;
-        axisCanvas.width = overlayW;
-        axisCanvas.height = overlayH;
-        axisCanvas.style.width = `${overlaySizeCss}px`;
-        axisCanvas.style.height = `${overlaySizeCss}px`;
-      }
-    } catch (err) {
-      /* ignore overlay resize errors */
-    }
-  };
+    },
+    onDprChange: (dpr: number) => {
+      devicePixelRatio = dpr;
+    },
+    emitDiagnostic: debugEnabled ? emitDiagnostic : undefined,
+    debugEnabled,
+  });
 
-  window.addEventListener('resize', resize);
-  // Trigger resize on fullscreen changes (browser fullscreen API doesn't always fire resize)
-  const handleFullscreenChange = (): void => {
-    setTimeout(resize, 100);
-  };
-  document.addEventListener('fullscreenchange', handleFullscreenChange);
-  document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-
-  // Use ResizeObserver to detect parent container size changes
-  // We watch the parent because the canvas has inline pixel styles that don't change
-  // When the parent container resizes (e.g., sidebar toggle), we need to resize the canvas
-  let resizeObserver: ResizeObserver | null = null;
-  const parentContainer = canvas.parentElement;
-  if (parentContainer) {
-    try {
-      resizeObserver = new ResizeObserver(() => {
-        // Debounce to avoid excessive resize calls
-        requestAnimationFrame(resize);
-      });
-      resizeObserver.observe(parentContainer);
-      console.log('[WebGPU] ResizeObserver attached to parent container');
-    } catch (err) {
-      // ResizeObserver not supported, fall back to window resize only
-      console.warn('[WebGPU] ResizeObserver not available, using window resize only');
-    }
-  }
-
-  // Important: Configure context with MINIMAL dimensions before pipeline creation.
-  // On mobile, configuring with large dimensions can destabilize the GPU.
-  // We set canvas to 1x1, configure context, then let resize() set proper dimensions
-  // after pipeline is created (when initializationComplete = true).
-  canvas.width = 1;
-  canvas.height = 1;
-  context.configure({ device, format, alphaMode: currentAlphaMode });
-
-  // resize() will set canvas dimensions but skip context.configure and createDepthTexture
-  // because initializationComplete is still false. This is intentional.
-  resize();
+  // Thin wrapper for legacy code that calls resize() directly
+  const resize = (): void => resizeManager.resize();
 
   try {
     const parent = canvas.parentElement || document.body;
@@ -1919,153 +1372,19 @@ export const mount = async ({
     debugOverlayEl = null;
   }
 
-  // Axis overlay canvas for small 2D axis gizmo in corner
-  let axisCanvas: HTMLCanvasElement | null = null;
+  // Axis overlay using extracted module (Phase 1 decomposition)
+  let axisOverlay: AxisOverlayInstance | null = null;
   let axisCtx: CanvasRenderingContext2D | null = null;
-  const AXIS_POS_KEY = 'pf-axis-position';
-
-  // Load saved position from localStorage - now uses top instead of bottom
-  const loadAxisPosition = (): { left: number; top: number } | null => {
-    try {
-      const saved = localStorage.getItem(AXIS_POS_KEY);
-      if (saved) {
-        const pos = JSON.parse(saved);
-        if (typeof pos.left === 'number' && typeof pos.top === 'number') {
-          return pos;
-        }
-      }
-    } catch { /* ignore */ }
-    return null;
-  };
-
-  // Save position to localStorage
-  const saveAxisPosition = (left: number, top: number): void => {
-    try {
-      localStorage.setItem(AXIS_POS_KEY, JSON.stringify({ left, top }));
-    } catch { /* ignore */ }
-  };
-
-  // Default position - top left with offset for sidebar on desktop (>768px)
-  const getDefaultAxisPosition = (): { left: number; top: number } => {
-    const isMobileDevice = window.innerWidth <= 768;
-    // On desktop, offset by sidebar width (~360px) + margin
-    // On mobile, just a small margin since sidebar is bottom sheet
-    const leftOffset = isMobileDevice ? 12 : 360;
-    return { left: leftOffset, top: 12 };
-  };
-
+  // Note: axisCanvas is declared earlier (forward declaration for ResizeManager callback)
   try {
     const parent = canvas.parentElement || document.body;
-
-    // Remove any existing axis overlay to prevent duplicates
-    const existingAxis = document.getElementById('wgpu-axis-overlay');
-    if (existingAxis) {
-      existingAxis.remove();
-    }
-
-    axisCanvas = document.createElement('canvas');
-    axisCanvas.id = 'wgpu-axis-overlay';
-    axisCanvas.style.position = 'absolute';
-    axisCanvas.style.cursor = 'move';
-    axisCanvas.style.pointerEvents = 'auto';
-    axisCanvas.style.zIndex = '9998';
-    axisCanvas.width = 96;
-    axisCanvas.height = 96;
-    axisCanvas.style.width = '96px';
-    axisCanvas.style.height = '96px';
-
-    // Load saved position or use default (top-left with sidebar offset)
-    const savedPos = loadAxisPosition();
-    const defaultPos = getDefaultAxisPosition();
-    const posToUse = savedPos || defaultPos;
-    axisCanvas.style.left = `${posToUse.left}px`;
-    axisCanvas.style.top = `${posToUse.top}px`;
-
-    // Drag state
-    let isDragging = false;
-    let dragStartX = 0;
-    let dragStartY = 0;
-    let startLeft = 0;
-    let startTop = 0;
-
-    const onMouseDown = (e: MouseEvent) => {
-      if (!axisCanvas) return;
-      isDragging = true;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
-      startLeft = parseInt(axisCanvas.style.left, 10) || 12;
-      startTop = parseInt(axisCanvas.style.top, 10) || 12;
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging || !axisCanvas) return;
-      const dx = e.clientX - dragStartX;
-      const dy = e.clientY - dragStartY;
-      const newLeft = Math.max(0, startLeft + dx);
-      const newTop = Math.max(0, startTop + dy);
-      axisCanvas.style.left = `${newLeft}px`;
-      axisCanvas.style.top = `${newTop}px`;
-    };
-
-    const onMouseUp = () => {
-      if (!isDragging || !axisCanvas) return;
-      isDragging = false;
-      const left = parseInt(axisCanvas.style.left, 10) || 12;
-      const top = parseInt(axisCanvas.style.top, 10) || 12;
-      saveAxisPosition(left, top);
-    };
-
-    // Touch event handlers for mobile
-    const onTouchStart = (e: TouchEvent) => {
-      if (!axisCanvas || e.touches.length !== 1) return;
-      const touch = e.touches[0];
-      isDragging = true;
-      dragStartX = touch.clientX;
-      dragStartY = touch.clientY;
-      startLeft = parseInt(axisCanvas.style.left, 10) || 12;
-      startTop = parseInt(axisCanvas.style.top, 10) || 12;
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (!isDragging || !axisCanvas || e.touches.length !== 1) return;
-      const touch = e.touches[0];
-      const dx = touch.clientX - dragStartX;
-      const dy = touch.clientY - dragStartY;
-      const newLeft = Math.max(0, startLeft + dx);
-      const newTop = Math.max(0, startTop + dy);
-      axisCanvas.style.left = `${newLeft}px`;
-      axisCanvas.style.top = `${newTop}px`;
-      e.preventDefault();
-    };
-
-    const onTouchEnd = () => {
-      if (!isDragging || !axisCanvas) return;
-      isDragging = false;
-      const left = parseInt(axisCanvas.style.left, 10) || 12;
-      const top = parseInt(axisCanvas.style.top, 10) || 12;
-      saveAxisPosition(left, top);
-    };
-
-    // Mouse events (desktop)
-    axisCanvas.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-
-    // Touch events (mobile)
-    axisCanvas.addEventListener('touchstart', onTouchStart, { passive: false });
-    document.addEventListener('touchmove', onTouchMove, { passive: false });
-    document.addEventListener('touchend', onTouchEnd);
-    document.addEventListener('touchcancel', onTouchEnd);
-
-    parent?.appendChild(axisCanvas);
-    axisCtx = axisCanvas.getContext('2d');
+    axisOverlay = createAxisOverlay({ parent, size: 96 });
+    axisCtx = axisOverlay.getContext();
+    axisCanvas = axisOverlay.getCanvas();
   } catch (e) {
-    axisCanvas = null;
+    axisOverlay = null;
     axisCtx = null;
+    axisCanvas = null;
   }
 
   let wgsl = ShaderManager.getInstance().getWGSL();
@@ -2141,9 +1460,9 @@ export const mount = async ({
   } catch (e) {
     /* ignore */
   }
-  console.log('[WebGPU] Creating shader module...');
-  const shaderModule = await createShaderModule(device as any, wgsl, 'potfoundry-webgpu');
-  console.log('[WebGPU] Shader module created:', shaderModule ? 'SUCCESS' : 'null');
+  if (import.meta.env.DEV) console.log('[WebGPU] Creating shader module...');
+  const shaderModule = await createShaderModule(device, wgsl, 'potfoundry-webgpu');
+  if (import.meta.env.DEV) console.log('[WebGPU] Shader module created:', shaderModule ? 'SUCCESS' : 'null');
 
   // Lazy Pipeline Cache Implementation
   // Lazy Pipeline Cache Implementation
@@ -2162,7 +1481,7 @@ export const mount = async ({
 
   // Create Shared Pipeline Layout ONCE
   // This saves the driver from deducing the layout from the shader every time.
-  console.log('[WebGPU] Creating shared pipeline layout...');
+  if (import.meta.env.DEV) console.log('[WebGPU] Creating shared pipeline layout...');
   device.createBindGroupLayout({
     label: 'component:bgl-shared',
     entries: [
@@ -2188,9 +1507,10 @@ export const mount = async ({
   // warmupPipelineCache();
 
   // Initialize with the requested style from config, or default to 0 if missing
-  console.log('[WebGPU] mount() received style:', (initialParams as any).style);
-  const initialStyleId = Number((initialParams as any).style) || 0;
-  console.log(`[WebGPU] Initializing pipeline for requested style ${initialStyleId}...`);
+  const mountConfig = (initialParams ?? {}) as MountConfig;
+  if (import.meta.env.DEV) console.log('[WebGPU] mount() received style:', mountConfig.style);
+  const initialStyleId = resolveStyleId(mountConfig, {});
+  if (import.meta.env.DEV) console.log(`[WebGPU] Initializing pipeline for requested style ${initialStyleId}...`);
 
   // HYBRID APPROACH: Start warmup 2s after dispatching initial style
   // This gives initial a head start while overlapping most compilation
@@ -2205,7 +1525,7 @@ export const mount = async ({
   // But strictly we use activePipeline for rendering.
   const pipeline = activePipeline;
 
-  console.log('[WebGPU] Default pipeline result:', activePipeline ? 'SUCCESS' : 'null');
+  if (import.meta.env.DEV) console.log('[WebGPU] Default pipeline result:', activePipeline ? 'SUCCESS' : 'null');
   if (!activePipeline) {
     console.error('[WebGPU] PIPELINE CREATION FAILED - this is why mount() returns null!');
     emitErrorEvent({
@@ -2216,12 +1536,11 @@ export const mount = async ({
     return null;
   }
   emitDiagnostic('webgpu:pipeline-ready');
-  console.log('[WebGPU] Pipeline ready!');
+  if (import.meta.env.DEV) console.log('[WebGPU] Pipeline ready!');
 
   // Mobile GPU safety: now safe to call context.configure in resize()
-  initializationComplete = true;
-  // Trigger a resize to properly configure context with actual dimensions
-  resize();
+  resizeManager.markInitialized();
+  // Note: markInitialized() triggers initial resize automatically
 
   // NOTE: Warmup is now triggered 2s after dispatching initial style (line ~2919)
   // to give initial a head start while overlapping most compilation work.
@@ -2259,8 +1578,8 @@ export const mount = async ({
         },
       });
       emitDiagnostic('webgpu:wireframe-pipeline-ready');
-    } catch (err: any) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? (err as Error).message : String(err);
       console.warn('Failed to create wireframe pipeline:', errorMsg);
       // emitDiagnostic('webgpu:wireframe-pipeline-failed', { error: errorMsg });
 
@@ -2295,146 +1614,22 @@ export const mount = async ({
 
   const uniformSize = 4 * UNIFORM_FLOAT_COUNT;
 
-  // Uniform/color buffers managed by SceneManager, removed local declaration
-  // Preallocated Float32Array scratch buffers used to avoid allocation in
-  // the hot render path when updating gradient colors.
-  const colorBufC1 = new Float32Array(4);
-  const colorBufC2 = new Float32Array(4);
-  const colorBufC3 = new Float32Array(4);
-  const bgBufC1 = new Float32Array(4);
-  const bgBufC2 = new Float32Array(4);
-  const bgBufC3 = new Float32Array(4);
-  const writeGradient = (
-    device: GPUDevice,
-    buffers: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer },
-    gradient: unknown
-  ): void => {
-    const stops = Array.isArray(gradient) ? gradient : [];
-    const c1 = hexToRgbNorm(stops[0]);
-    const c2 = hexToRgbNorm(stops[1] ?? stops[0]);
-    const c3 = hexToRgbNorm(stops[2] ?? stops[1] ?? stops[0]);
-    colorBufC1[0] = c1[0]; colorBufC1[1] = c1[1]; colorBufC1[2] = c1[2]; colorBufC1[3] = 0;
-    colorBufC2[0] = c2[0]; colorBufC2[1] = c2[1]; colorBufC2[2] = c2[2]; colorBufC2[3] = 0;
-    colorBufC3[0] = c3[0]; colorBufC3[1] = c3[1]; colorBufC3[2] = c3[2]; colorBufC3[3] = 0;
-    if (!disposed) {
-      device.queue.writeBuffer(buffers.c1, 0, colorBufC1.buffer);
-      device.queue.writeBuffer(buffers.c2, 0, colorBufC2.buffer);
-      device.queue.writeBuffer(buffers.c3, 0, colorBufC3.buffer);
-      try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.colorWrites += 3); } catch (e) { /* ignore */ }
-    }
-  };
-  const writeBackgroundGradient = (
-    device: GPUDevice,
-    buffers: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer },
-    gradient: unknown,
-    angleVal: unknown
-  ): void => {
-    const stops = Array.isArray(gradient) ? gradient : [];
-    const angle = typeof angleVal === 'number' ? angleVal : 0;
-    const c1 = hexToRgbNorm(stops[0]);
-    // If only 2 stops provided, interpolate the middle stop for smooth 3-point gradient
-    let c3 = hexToRgbNorm(stops[2] ?? stops[1] ?? stops[0]);
-    let c2: GradientColor;
+  // Bind group factory (Phase 11 extraction)
+  const bindGroupFactory = createBindGroupFactory({
+    device,
+    uniformBuffer,
+    styleParamBuffer,
+    colorBuffers,
+    bgBuffers,
+  });
 
-    if (stops.length === 2) {
-      // Interpolate middle
-      const end = hexToRgbNorm(stops[1]);
-      c3 = end;
-      c2 = [(c1[0] + end[0]) * 0.5, (c1[1] + end[1]) * 0.5, (c1[2] + end[2]) * 0.5];
-    } else {
-      c2 = hexToRgbNorm(stops[1] ?? stops[0]);
-    }
-
-    // Store angle in C1 alpha channel (uBg1.w)
-    bgBufC1[0] = c1[0]; bgBufC1[1] = c1[1]; bgBufC1[2] = c1[2]; bgBufC1[3] = angle;
-    bgBufC2[0] = c2[0]; bgBufC2[1] = c2[1]; bgBufC2[2] = c2[2]; bgBufC2[3] = 0;
-    bgBufC3[0] = c3[0]; bgBufC3[1] = c3[1]; bgBufC3[2] = c3[2]; bgBufC3[3] = 0;
-
-    if (!disposed) {
-      device.queue.writeBuffer(buffers.c1, 0, bgBufC1.buffer);
-      device.queue.writeBuffer(buffers.c2, 0, bgBufC2.buffer);
-      device.queue.writeBuffer(buffers.c3, 0, bgBufC3.buffer);
-    }
-  };
-
-  // styleParamBuffer managed by SceneManager, removed local declaration
-  const styleParamCache = new Float32Array(STYLE_PARAM_CAPACITY);
-  const syncStyleParams = (values: unknown): void => {
-    let changed = false;
-    const source = Array.isArray(values) ? values : [];
-    const limit = Math.min(source.length, STYLE_PARAM_CAPACITY);
-    for (let i = 0; i < STYLE_PARAM_CAPACITY; i += 1) {
-      let next = i < limit ? Number(source[i]) || 0 : 0;
-
-      // CRITICAL FIX: The shader expects the last float (index 47) to be > 0.5.
-      // We respect the input source if provided (e.g. styleId + 1), otherwise force 1.0
-      // only if we have data but index 47 was left as 0.
-      if (i === STYLE_PARAM_CAPACITY - 1 && source.length > 0 && next === 0) {
-        next = 1.0;
-      }
-
-      // Temporary Debug: Log params for Gyroid (Style 12)
-      if (i === 0 && source.length > 0) {
-        const sentinel = source[STYLE_PARAM_CAPACITY - 1];
-        if (sentinel === 13 || sentinel === 12) {
-          console.log(`[WebGPU] Sync Gyroid: Sent=${sentinel} Len=${source.length} P0=${source[0]} P1=${source[1]}`);
-        } else if (sentinel === 0 || sentinel === undefined) {
-          console.warn(`[WebGPU] Sync Gyroid: SENTINEL MISSING! Sent=${sentinel} Len=${source.length}`);
-        }
-      }
-
-      // Use epsilon for float comparison to avoid cache thrashing and infinite buffer writes
-      if (Math.abs(styleParamCache[i] - next) > 1e-6) {
-        styleParamCache[i] = next;
-        changed = true;
-      }
-    }
-
-    if (changed && !disposed) {
-
-      try {
-        device.queue.writeBuffer(styleParamBuffer, 0, styleParamCache.buffer);
-        // try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.styleParamWrites += 1); } catch (e) { /* ignore */ }
-
-        // Debug Log to enable diagnosing thrashing (throttled)
-        if (Math.random() < 0.005) {
-          console.log(`[WebGPU] Writing StyleBuffer (Sampled)`);
-        }
-      } catch (err) {
-        console.error('[WebGPU] syncStyleParams buffer write failed:', err);
-        emitDiagnostic('webgpu:buffer-write-failed', { buffer: 'style-params', error: String(err) });
-      }
-    } else if (changed && disposed) {
-      console.warn('[WebGPU] syncStyleParams SKIPPED (disposed)');
-    }
-  };
-
+  // Thin wrappers delegating to BindGroupFactory (Phase 11 extraction)
   const createMainBindGroup = (p: GPURenderPipeline) => {
-    return device.createBindGroup({
-      label: 'component:bind-group-main',
-      layout: p.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: uniformBuffer } },
-        { binding: 1, resource: { buffer: colorBuffers.c1 } },
-        { binding: 2, resource: { buffer: colorBuffers.c2 } },
-        { binding: 3, resource: { buffer: colorBuffers.c3 } },
-        { binding: 4, resource: { buffer: styleParamBuffer } },
-        { binding: 5, resource: { buffer: bgBuffers.c1 } },
-        { binding: 6, resource: { buffer: bgBuffers.c2 } },
-        { binding: 7, resource: { buffer: bgBuffers.c3 } },
-      ],
-    });
+    return bindGroupFactory.createMainBindGroup(p);
   };
 
   const createDebugBindGroup = (p: GPURenderPipeline) => {
-    return device.createBindGroup({
-      label: 'component:bind-group-debug',
-      layout: p.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: uniformBuffer } },
-        { binding: 4, resource: { buffer: styleParamBuffer } },
-      ],
-    });
+    return bindGroupFactory.createDebugBindGroup(p);
   };
 
   if (!pipeline) return null;
@@ -2445,7 +1640,7 @@ export const mount = async ({
     canvasId: mountCanvasId,
   });
   // Also log to the console for immediate dev feedback
-  console.debug('[WebGPU:diag] bind-group-ready', { layoutEntries: pipeline.getBindGroupLayout(0) });
+  if (import.meta.env.DEV) console.debug('[WebGPU:diag] bind-group-ready', { layoutEntries: pipeline.getBindGroupLayout(0) });
 
   // Create wireframe bind group if wireframe pipeline exists
   // Note: The wireframe shader only uses bindings 0 (uniforms) and 4 (style params)
@@ -2453,14 +1648,7 @@ export const mount = async ({
   let wireframeBindGroup: GPUBindGroup | null = null;
   if (wireframePipeline) {
     try {
-      wireframeBindGroup = device.createBindGroup({
-        label: 'component:bind-group-wireframe',
-        layout: (wireframePipeline as any).getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: uniformBuffer } },
-          { binding: 4, resource: { buffer: styleParamBuffer } },
-        ],
-      });
+      wireframeBindGroup = bindGroupFactory.createWireframeBindGroup(wireframePipeline as GPURenderPipeline);
       emitDiagnostic('webgpu:wireframe-bind-group-ready');
     } catch (err) {
       console.warn('Failed to create wireframe bind group:', err);
@@ -2469,8 +1657,8 @@ export const mount = async ({
   }
 
   let current: WebGPUParams | null = null;
-  let hasLocalCameraControl = false;
-  let localControlResetTimer: number | null = null;
+  // hasLocalCameraControl and localControlResetTimer now managed by PointerEventRouter
+  let pointerRouter: PointerEventRouter | undefined;
   let lastCameraNonce: number | null = null;
   // Focus tween now owned by the CameraController instance
 
@@ -2478,7 +1666,7 @@ export const mount = async ({
 
   const pointer: PointerState = {
     active: false,
-    mode: 'orbit' as any,
+    mode: 'orbit',
     lastX: 0,
     lastY: 0,
     arcLastX: 0,
@@ -2501,14 +1689,10 @@ export const mount = async ({
   // Instantiate controller after pointer and state are created
 
 
-  const FREE_MOVE_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e', 'r', 'f']);
-  const freeKeyboard = {
-    activeKeys: new Set<string>(),
-    boost: false,
-  };
+  // NOTE: FREE_MOVE_KEYS and freeKeyboard moved to InputManager (Phase 2 extraction)
+  // This wrapper function is kept for backward compatibility with existing call sites
   const clearFreeMovementKeys = (): void => {
-    freeKeyboard.activeKeys.clear();
-    freeKeyboard.boost = false;
+    inputManager.clearKeys();
   };
 
   // resolveActiveBasis and controller wrappers will be defined after cameraController is instantiated.
@@ -2532,7 +1716,7 @@ export const mount = async ({
     // Rig cache miss logging disabled - too verbose
     // manager.debug('webgpu:rig-cache-miss', 'Rig cache MISS - aspect: ' + s.canvasAspect?.toFixed(3), undefined, 'rig-cache-miss');
     const rig = buildCameraRig(s, paddingHint ?? CAMERA_PADDING, phw, phh);
-    try { (window as any).__pf_webgpu_mounts[mountCanvasId as string]?.debug?.metrics && ((window as any).__pf_webgpu_mounts[mountCanvasId as string].debug.metrics.rigRebuilds += 1); } catch (e) { /* ignore */ }
+    try { const m = window.__pf_webgpu_mounts?.[mountCanvasId as string]?.debug?.metrics; if (m) m.rigRebuilds += 1; } catch (e) { /* ignore */ }
     lastRigSignature = sig;
     lastRigCached = rig;
     return rig;
@@ -2563,6 +1747,19 @@ export const mount = async ({
 
   const ensureInteractiveBasisLocal = ensureInteractiveBasis;
 
+  // === InputManager (Phase 2 extraction) ===
+  const inputManager = createInputManager({
+    state,
+    getParams: getMergedParams,
+    callbacks: {
+      markInteraction,
+      emitCameraState,
+      toggleAutoRotate,
+      applyViewPreset: (s: WebGPUState, preset: ViewPreset) => applyViewPreset(s, preset),
+    },
+    clampNumber,
+  });
+
   const controllerHelpers: ControllerHelpers = {
     resolveInteractionRig: resolveInteractionRig,
     ensureInteractiveBasis: ensureInteractiveBasisLocal,
@@ -2571,14 +1768,14 @@ export const mount = async ({
     requestCameraEmitWhenStatic: () => requestCameraEmitWhenStatic(),
     markInteraction: (shouldCancel?: boolean) => markInteraction(shouldCancel),
     worldRayFromCanvas: (rig: unknown, canvasEl: HTMLCanvasElement, x: number, y: number) => worldRayFromCanvas(rig as CameraRig, canvasEl, x, y),
-    intersectRayZPlane: (ray: any, z: number) => intersectRayZPlane(ray as any, z),
-    intersectRayCylinder: (ray: any, radius: number, minZ: number, maxZ: number) => intersectRayCylinder(ray as any, radius, minZ, maxZ),
+    intersectRayZPlane: (ray: Ray, z: number) => intersectRayZPlane(ray, z),
+    intersectRayCylinder: (ray: Ray, radius: number, minZ: number, maxZ: number) => intersectRayCylinder(ray, radius, minZ, maxZ),
     buildCameraRig: (s: WebGPUState, paddingHint: number, phw?: number | null, phh?: number | null) => getCachedRig(s, paddingHint, phw, phh),
     clampZoomValue: (v: number) => clampZoomValue(v),
     cancelCameraEmit: () => cancelCameraEmit(),
     setAutoRotate: (v: boolean, emit?: boolean) => setAutoRotate(v, emit),
     setCameraMode: (mode: CameraMode) => setCameraMode(mode),
-    freeKeyboard,
+    freeKeyboard: inputManager.getKeyboardState(),
     quaternionFromAxisAngle: (axis: Vec3, angle: number) => quaternionFromAxisAngle(axis, angle),
     multiplyQuaternions: (a: any, b: any) => multiplyQuaternions(a, b),
     invertQuaternion: (q: any) => invertQuaternion(q),
@@ -2589,7 +1786,7 @@ export const mount = async ({
     writeUniformsImmediately: (): void => {
       try {
         state.cameraDirty = true;
-        device.queue.writeBuffer(uniformBuffer, 0, uniform.buffer as ArrayBuffer);
+        device.queue.writeBuffer(uniformBuffer, 0, f32.buffer as ArrayBuffer);
         emitDiagnostic('component:write-uniforms-immediate', { afterCommit: true });
       } catch (err) {
         console.error('[WebGPU] writeUniformsImmediately buffer write failed:', err);
@@ -2601,11 +1798,11 @@ export const mount = async ({
   cameraController = new CameraController(state, pointer, canvas, controllerHelpers);
   // Propagate hostCameraAcceptPolicy from initial params (default 'grace')
   try {
-    const policy = (initialParams as any)?.hostCameraAcceptPolicy as 'always' | 'grace' | 'strict' | undefined;
+    const policy = mountConfig.hostCameraAcceptPolicy;
     if (policy && cameraController && typeof cameraController.setHostCameraAcceptPolicy === 'function') {
       cameraController.setHostCameraAcceptPolicy(policy);
     }
-    const graceMs = Number((initialParams as any)?.localCameraGraceMs ?? (initialParams as any)?.hostCameraGraceMs ?? null);
+    const graceMs = Number(mountConfig.localCameraGraceMs ?? mountConfig.hostCameraGraceMs ?? null);
     if (Number.isFinite(graceMs) && cameraController && typeof cameraController.setLocalCameraGraceMs === 'function') {
       cameraController.setLocalCameraGraceMs(graceMs);
     }
@@ -2616,12 +1813,12 @@ export const mount = async ({
     // When tests or external scripts pre-set a stub controller, do not
     // override it — this preserves test-provided spies and avoids race
     // conditions where a test stub gets replaced shortly after being set.
-    if (!(window as any).__pf_webgpu_camera_controller) {
-      (window as any).__pf_webgpu_camera_controller = cameraController;
+    if (!window.__pf_webgpu_camera_controller) {
+      window.__pf_webgpu_camera_controller = cameraController;
     } else {
       try {
         // Helpful debug message for developers: don't clobber an existing controller.
-        console.debug('[WebGPU] window.__pf_webgpu_camera_controller already present — not overriding');
+        if (import.meta.env.DEV) console.debug('[WebGPU] window.__pf_webgpu_camera_controller already present — not overriding');
       } catch (e) {
         /* ignore console errors */
       }
@@ -2668,8 +1865,8 @@ export const mount = async ({
         const testAxis: Vec3 = [0, 0, 1];
         const rig = buildCameraRig(state, CAMERA_PADDING);
         const worldScale = Math.max(state.sceneRadius || 1, 1);
-        const pA = (mulMat4Vec4 as any)(rig.viewProjection, state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0);
-        const pB = (mulMat4Vec4 as any)(rig.viewProjection, (state.pivot?.[0] ?? 0) + testAxis[0] * worldScale, (state.pivot?.[1] ?? 0) + testAxis[1] * worldScale, (state.pivot?.[2] ?? 0) + testAxis[2] * worldScale);
+        const pA = mulMat4Vec4(rig.viewProjection, state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0);
+        const pB = mulMat4Vec4(rig.viewProjection, (state.pivot?.[0] ?? 0) + testAxis[0] * worldScale, (state.pivot?.[1] ?? 0) + testAxis[1] * worldScale, (state.pivot?.[2] ?? 0) + testAxis[2] * worldScale);
         const dirNdc = ndcDirBetween(pA, pB);
         const ov_proj = [dirNdc[0], -dirNdc[1]];
         const ov_proj_len = Math.hypot(ov_proj[0], ov_proj[1]);
@@ -2722,8 +1919,8 @@ export const mount = async ({
       const testAxis: Vec3 = [0, 0, 1];
       const rig = buildCameraRig(state, CAMERA_PADDING);
       const worldScale = Math.max(state.sceneRadius || 1, 1);
-      const pA = (mulMat4Vec4 as any)(rig.viewProjection, state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0);
-      const pB = (mulMat4Vec4 as any)(rig.viewProjection, (state.pivot?.[0] ?? 0) + testAxis[0] * worldScale, (state.pivot?.[1] ?? 0) + testAxis[1] * worldScale, (state.pivot?.[2] ?? 0) + testAxis[2] * worldScale);
+      const pA = mulMat4Vec4(rig.viewProjection, state.pivot?.[0] ?? 0, state.pivot?.[1] ?? 0, state.pivot?.[2] ?? 0);
+      const pB = mulMat4Vec4(rig.viewProjection, (state.pivot?.[0] ?? 0) + testAxis[0] * worldScale, (state.pivot?.[1] ?? 0) + testAxis[1] * worldScale, (state.pivot?.[2] ?? 0) + testAxis[2] * worldScale);
       const dirNdc = ndcDirBetween(pA, pB);
       const ov_proj = [dirNdc[0], -dirNdc[1]];
       const ov_proj_len = Math.hypot(ov_proj[0], ov_proj[1]);
@@ -2752,7 +1949,7 @@ export const mount = async ({
     state.camRight = [...committedBasis.right];
     // Keep quaternion in sync and emit a short diagnostic just like controller
     state.camQuat = quaternionFromBasis(committedBasis);
-    state.recentBasisCommit = { right: [...committedBasis.right], up: [...committedBasis.up], forward: [...committedBasis.forward] } as any;
+    state.recentBasisCommit = { right: [...committedBasis.right], up: [...committedBasis.up], forward: [...committedBasis.forward] };
     // Optionally update pivot from camera center if configured
     try {
       if (state.autoPivotFromCamera) {
@@ -2763,8 +1960,8 @@ export const mount = async ({
         const ray = worldRayFromCanvas(rig, canvas, centerX, centerY);
         if (ray) {
           const pivotZ = state.pivot?.[2] ?? 0;
-          const cylinderHit = intersectRayCylinder(ray as any, extents.paddedHalfWidth, -extents.paddedHalfHeight, extents.paddedHalfHeight) ?? null;
-          const hit = cylinderHit ?? intersectRayZPlane(ray as any, pivotZ) ?? null;
+          const cylinderHit = intersectRayCylinder(ray, extents.paddedHalfWidth, -extents.paddedHalfHeight, extents.paddedHalfHeight) ?? null;
+          const hit = cylinderHit ?? intersectRayZPlane(ray, pivotZ) ?? null;
           if (hit) {
             if (state.cameraMode !== 'free') {
               state.panX = hit[0];
@@ -2788,7 +1985,7 @@ export const mount = async ({
     // overlay projection parity tests observe consistent state.
     try {
       state.cameraDirty = true;
-      device.queue.writeBuffer(uniformBuffer, 0, uniform.buffer as ArrayBuffer);
+      device.queue.writeBuffer(uniformBuffer, 0, f32.buffer as ArrayBuffer);
       clearUniformParityRewriteFlag(state);
       emitDiagnostic('component:uniform-write-after-commit', { immediate: true, ts: Date.now() });
     } catch (err) {
@@ -2887,98 +2084,111 @@ export const mount = async ({
     );
   };
 
-  const requestCameraEmitWhenStatic = (): void => {
-    pendingStaticCameraEmit = true;
-    cancelCameraEmit();
-  };
+  // Thin wrapper delegating to broadcaster
+  const requestCameraEmitWhenStatic = (): void => cameraBroadcaster.requestEmitWhenStatic();
 
   function markInteraction(shouldCancelFocus = true): void {
-    hasLocalCameraControl = true;
+    pointerRouter?.setLocalControl(true);
     if (!cameraController) return;
     return cameraController.markInteraction(shouldCancelFocus);
   }
 
-  const setCameraMode = (nextMode: CameraMode): void => {
-    cancelFocusTween();
-    if (state.cameraMode === nextMode) {
-      return;
-    }
-    const prevMode = state.cameraMode;
+  // PointerEventRouter creation (Phase 15 extraction)
+  // Create after markInteraction and other dependencies are defined
+  pointerRouter = createPointerEventRouter({
+    canvas,
+    canvasId: mountCanvasId,
+    getState: () => ({
+      cameraMode: state.cameraMode,
+    }),
+    getCameraController: () => cameraController ?? undefined,
+    markInteraction,
+    applyFreeLookDolly,
+    zoomCameraAtCursor,
+    focusCameraAtCursor,
+    scheduleCameraEmit,
+    emitDiagnostic,
+    debugEnabled,
+    localControlResetDelay: 250,
+  });
 
-    if (nextMode === 'free') {
-      try {
-        const { rig } = resolveInteractionRig();
-        state.freePosition = [...rig.eye];
-      } catch (err) {
-        /* ignore */
-      }
-      state.orbitZoom = clampZoomValue(state.zoom || state.orbitZoom || 1.0);
-      state.cameraMode = 'free';
-      state.zoom = 1.0;
-      state.displayCamRight = null;
-      state.displayCamUp = null;
-      state.displayCamForward = null;
-      state.displayCamQuat = null;
-      state.displayRotX = null;
-      state.displayRotY = null;
-      resetInertia(state);
-      clearFreeMovementKeys();
-      setAutoRotate(false, false);
-      updateCameraModeButtons();
-      state.cameraDirty = true;
-      requestCameraEmitWhenStatic();
-      return;
-    }
+  // Camera mode management (Phase 14 extraction)
+  const modeManager: CameraModeManager = createCameraModeManager({
+    getState: () => ({
+      cameraMode: state.cameraMode,
+      useArcball: Boolean(state.useArcball),
+      autoRotate: state.autoRotate,
+      zoom: state.zoom,
+      orbitZoom: state.orbitZoom,
+      freePosition: state.freePosition,
+      pivot: state.pivot,
+      panX: state.panX,
+      panY: state.panY,
+      rotX: state.rotX,
+      rotY: state.rotY,
+      camRight: state.camRight,
+      camUp: state.camUp,
+      camForward: state.camForward,
+      camQuat: state.camQuat,
+      displayCamRight: state.displayCamRight,
+      displayCamUp: state.displayCamUp,
+      displayCamForward: state.displayCamForward,
+      displayCamQuat: state.displayCamQuat,
+      displayRotX: state.displayRotX,
+      displayRotY: state.displayRotY,
+      cameraDirty: state.cameraDirty ?? false,
+      autoRotateResumeAt: state.autoRotateResumeAt,
+      inertiaVx: state.inertiaVx as number | undefined,
+      inertiaVy: state.inertiaVy as number | undefined,
+      inertiaDecay: state.inertiaDecay as number | undefined,
+      inertiaActive: Boolean(state.inertiaActive),
+    }),
+    updateState: (updates) => {
+      if (updates.cameraMode !== undefined) state.cameraMode = updates.cameraMode;
+      if (updates.useArcball !== undefined) state.useArcball = updates.useArcball;
+      if (updates.autoRotate !== undefined) state.autoRotate = updates.autoRotate;
+      if (updates.zoom !== undefined) state.zoom = updates.zoom;
+      if (updates.orbitZoom !== undefined) state.orbitZoom = updates.orbitZoom;
+      if (updates.freePosition !== undefined) state.freePosition = updates.freePosition;
+      if (updates.pivot !== undefined && updates.pivot !== null) state.pivot = updates.pivot;
+      if (updates.panX !== undefined) state.panX = updates.panX;
+      if (updates.panY !== undefined) state.panY = updates.panY;
+      if (updates.rotX !== undefined) state.rotX = updates.rotX;
+      if (updates.rotY !== undefined) state.rotY = updates.rotY;
+      if (updates.camRight !== undefined) state.camRight = updates.camRight;
+      if (updates.camUp !== undefined) state.camUp = updates.camUp;
+      if (updates.camForward !== undefined) state.camForward = updates.camForward;
+      if (updates.camQuat !== undefined) state.camQuat = updates.camQuat;
+      if (updates.displayCamRight !== undefined) state.displayCamRight = updates.displayCamRight;
+      if (updates.displayCamUp !== undefined) state.displayCamUp = updates.displayCamUp;
+      if (updates.displayCamForward !== undefined) state.displayCamForward = updates.displayCamForward;
+      if (updates.displayCamQuat !== undefined) state.displayCamQuat = updates.displayCamQuat;
+      if (updates.displayRotX !== undefined) state.displayRotX = updates.displayRotX;
+      if (updates.displayRotY !== undefined) state.displayRotY = updates.displayRotY;
+      if (updates.cameraDirty !== undefined) state.cameraDirty = updates.cameraDirty;
+      if (updates.autoRotateResumeAt !== undefined) state.autoRotateResumeAt = updates.autoRotateResumeAt;
+      if (updates.inertiaVx !== undefined) state.inertiaVx = updates.inertiaVx;
+      if (updates.inertiaVy !== undefined) state.inertiaVy = updates.inertiaVy;
+      if (updates.inertiaDecay !== undefined) state.inertiaDecay = updates.inertiaDecay;
+      if (updates.inertiaActive !== undefined) state.inertiaActive = updates.inertiaActive;
+    },
+    cancelFocusTween: () => cancelFocusTween(),
+    resolveInteractionRig: () => {
+      const { rig, extents } = resolveInteractionRig();
+      return { eye: rig.eye, extents: { paddedMax: extents.paddedMax } };
+    },
+    resolveActiveBasis: () => resolveActiveBasis(state),
+    ensureFreePosition: () => ensureFreePosition(state),
+    intersectRayZPlane: (ray, pivotZ) => intersectRayZPlane(ray, pivotZ),
+    updatePivotFromPan: () => updatePivotFromPan(),
+    clearFreeMovementKeys: () => clearFreeMovementKeys(),
+    setAutoRotate: (value, emit) => setAutoRotate(value, emit),
+    updateCameraModeButtons: () => updateCameraModeButtons(),
+    requestCameraEmitWhenStatic: () => requestCameraEmitWhenStatic(),
+  });
 
-    if (prevMode === 'free') {
-      const basis = resolveActiveBasis(state);
-      const eye = ensureFreePosition(state);
-      const pivotZ = state.pivot?.[2] ?? 0;
-      const ray: Ray = { origin: eye, dir: vec3Normalize(basis.forward) };
-      const hit = intersectRayZPlane(ray, pivotZ);
-      if (hit) {
-        state.panX = hit[0];
-        state.panY = hit[1];
-        updatePivotFromPan();
-      }
-      try {
-        const { extents } = resolveInteractionRig();
-        const target: Vec3 = [state.panX, state.panY, pivotZ];
-        const distance = vec3Length(vec3Subtract(target, eye));
-        if (Number.isFinite(distance) && distance > 1e-3) {
-          const zoomFromDistance =
-            (extents.paddedMax * CAMERA_DISTANCE_FALLOFF) / Math.max(distance, 1e-3);
-          state.zoom = clampZoomValue(zoomFromDistance);
-        } else {
-          state.zoom = clampZoomValue(state.orbitZoom || state.zoom || 1.0);
-        }
-      } catch (err) {
-        state.zoom = clampZoomValue(state.orbitZoom || state.zoom || 1.0);
-      }
-      state.orbitZoom = state.zoom;
-      state.camRight = [...basis.right];
-      state.camUp = [...basis.up];
-      state.camForward = [...basis.forward];
-      state.camQuat = quaternionFromBasis(basis);
-      const { rotX, rotY } = cbSyncAnglesFromBasis(basis);
-      state.rotX = rotX;
-      state.rotY = wrapTau(rotY);
-      state.displayCamRight = null;
-      state.displayCamUp = null;
-      state.displayCamForward = null;
-      state.displayCamQuat = null;
-      state.displayRotX = null;
-      state.displayRotY = null;
-      clearFreeMovementKeys();
-    }
-
-    state.cameraMode = nextMode;
-    state.useArcball = nextMode === 'arcball';
-    resetInertia(state);
-    updateCameraModeButtons();
-    state.cameraDirty = true;
-    requestCameraEmitWhenStatic();
-  };
+  // Thin wrapper delegating to modeManager
+  const setCameraMode = (nextMode: CameraMode): void => modeManager.setCameraMode(nextMode);
 
   const applyCameraPayload = (payload: WebGPUParams | null | undefined, force: boolean): void => {
     // Delegate to CameraController when available. This centralizes payload
@@ -2986,7 +2196,7 @@ export const mount = async ({
     if (typeof cameraController !== 'undefined' && cameraController) {
       // update debug mount before delegating
       try {
-        const dbg = mountCanvasId ? (window as any).__pf_webgpu_mounts?.[mountCanvasId]?.debug : undefined;
+        const dbg = mountCanvasId ? window.__pf_webgpu_mounts?.[mountCanvasId]?.debug : undefined;
         if (dbg && payload) dbg.lastApplyCameraPayload = { fields: Object.keys(payload as WebGPUParams), timestamp: Date.now() };
       } catch (err) {/* ignore */ }
       cameraController.setPayload(payload, { force });
@@ -2995,18 +2205,18 @@ export const mount = async ({
     if (!payload) {
       return;
     }
-    const allowCamera = force || !hasLocalCameraControl;
+    const allowCamera = force || !pointerRouter?.hasLocalControl();
     // Avoid applying unchanged camera payloads unless forced.
     try {
       if (!force && sharedCameraPayloadDiffers) {
-        const differs = sharedCameraPayloadDiffers(state as any, payload as any);
+        const differs = sharedCameraPayloadDiffers(state, payload);
         if (!differs) return;
       }
     } catch (err) {
       /* ignore */
     }
     try {
-      const dbg = mountCanvasId ? (window as any).__pf_webgpu_mounts?.[mountCanvasId]?.debug : undefined;
+      const dbg = mountCanvasId ? window.__pf_webgpu_mounts?.[mountCanvasId]?.debug : undefined;
       if (dbg && payload) dbg.lastApplyCameraPayload = { fields: Object.keys(payload as WebGPUParams), timestamp: Date.now() };
     } catch (err) {
       /* ignore */
@@ -3224,10 +2434,10 @@ export const mount = async ({
     if (cameraMutated) {
       // Emit any recent inertia diagnostics provided by CameraController
       try {
-        const rev = (state as any).recentInertia as Record<string, unknown> | undefined;
+        const rev = state.recentInertia;
         if (rev) {
           emitDiagnostic('component:inertia', rev);
-          try { delete (state as any).recentInertia; } catch (e) {/* best-effort */ }
+          try { state.recentInertia = undefined; } catch (e) {/* best-effort */ }
         }
       } catch (e) {
         /* ignore diag failures */
@@ -3256,149 +2466,40 @@ export const mount = async ({
       } catch (err) { /* ignore */ }
     }
     if (force) {
-      hasLocalCameraControl = false;
+      pointerRouter?.setLocalControl(false);
     }
   };
 
-  const handleCameraCommand = (raw: unknown): void => {
-    if (raw === null || raw === undefined) {
-      return;
-    }
-    let payload: Record<string, unknown> | null = null;
-    if (typeof raw === 'string') {
-      try {
-        payload = JSON.parse(raw) as Record<string, unknown>;
-      } catch (err) {
-        console.warn('WebGPU camera payload parse failed', err);
-        return;
-      }
-    } else if (typeof raw === 'object') {
-      payload = raw as Record<string, unknown>;
-    }
-    if (!payload) {
-      return;
-    }
-    const request = typeof payload.request === 'string' ? payload.request : null;
-    if (request === 'state') {
-      emitCameraState(true);
-      return;
-    }
-
-    let cameraMutated = false;
-    const preset = typeof payload.preset === 'string' ? payload.preset : null;
-    if (preset) {
-      applyViewPreset(state, preset);
-      cameraMutated = true;
-    } else if (typeof payload.action === 'string') {
-      const normalized = payload.action.toLowerCase();
-      const mapped =
-        normalized === 'reset' || normalized === 'fit'
-          ? 'fit'
-          : normalized === 'isometric'
-            ? 'iso'
-            : normalized;
-      if (
-        mapped === 'top' ||
-        mapped === 'front' ||
-        mapped === 'right' ||
-        mapped === 'iso' ||
-        mapped === 'fit'
-      ) {
-        applyViewPreset(state, mapped);
-        cameraMutated = true;
-      }
-    }
-
-    const patch: WebGPUParams = {};
-    let patchApplied = false;
-    if (typeof payload.rotX === 'number') {
-      patch.rotX = payload.rotX;
-      patchApplied = true;
-    }
-    if (typeof payload.rotY === 'number') {
-      patch.rotY = payload.rotY;
-      patchApplied = true;
-    }
-    if (typeof payload.zoom === 'number') {
-      patch.zoom = payload.zoom;
-      patchApplied = true;
-    }
-    if (typeof payload.panX === 'number') {
-      patch.panX = payload.panX;
-      patchApplied = true;
-    }
-    if (typeof payload.panY === 'number') {
-      patch.panY = payload.panY;
-      patchApplied = true;
-    }
-    if (patchApplied) {
-      const isForce = Boolean((payload as Record<string, unknown>)?.force) || false;
-      applyCameraPayload(patch, isForce);
-      cameraMutated = true;
-    }
-
-    if (typeof payload.autoRotate === 'boolean') {
-      setAutoRotate(payload.autoRotate, false);
-      cameraMutated = true;
-    }
-
-    if (typeof payload.projection === 'string') {
-      const nextMode = payload.projection === 'perspective' ? 'perspective' : 'ortho';
-      if (state.projectionMode !== nextMode) {
-        state.projectionMode = nextMode;
+  // Camera command router (Phase 18 extraction)
+  const commandRouter: CameraCommandRouterInstance = createCameraCommandRouter({
+    onEmitState: () => emitCameraState(true),
+    onViewPreset: (preset: string) => applyViewPreset(state, preset),
+    onCameraPayload: (patch, force) => applyCameraPayload(patch as WebGPUParams, force),
+    onAutoRotate: (value: boolean) => setAutoRotate(value, false),
+    onProjection: (mode: 'perspective' | 'ortho') => {
+      if (state.projectionMode !== mode) {
+        state.projectionMode = mode;
         updateProjectionButton();
-        cameraMutated = true;
       }
-    }
-
-    // Handle projectionMode (alias for projection)
-    if (typeof payload.projectionMode === 'string') {
-      const nextMode = payload.projectionMode === 'perspective' ? 'perspective' : 'ortho';
-      if (state.projectionMode !== nextMode) {
-        state.projectionMode = nextMode;
-        updateProjectionButton();
-        cameraMutated = true;
-      }
-    }
-
-    // Handle viewPreset (alias for preset)
-    // Note: viewPreset changes are handled specially - applyViewPreset already sets
-    // autoRotateResumeAt appropriately, so we don't call markInteraction for presets
-    // to avoid overwriting the intended 500ms delay with a 3000ms delay.
-    let wasPresetApplied = false;
-    if (typeof payload.viewPreset === 'string') {
-      applyViewPreset(state, payload.viewPreset);
-      cameraMutated = true;
-      wasPresetApplied = true;
-    }
-
-    // Handle cameraMode (turntable/arcball/free)
-    if (isCameraMode(payload.cameraMode)) {
-      if (state.cameraMode !== payload.cameraMode) {
-        setCameraMode(payload.cameraMode);
-        cameraMutated = true;
-      }
-    }
-
-    // Handle grid toggle
-    if (payload.toggleGrid === true) {
+    },
+    onCameraMode: (mode) => setCameraMode(mode as CameraMode),
+    onGridToggle: () => {
       state.showGrid = !state.showGrid;
       updateGridButton();
       state.cameraDirty = true;
-    }
-
-    // Handle axis toggle
-    if (payload.toggleAxis === true) {
+    },
+    onAxisToggle: () => {
       state.showAxis = !state.showAxis;
       updateAxisButton();
       state.cameraDirty = true;
-    }
+    },
+    onMarkInteraction: () => markInteraction(),
+    emitDiagnostic,
+  });
 
-    // Only call markInteraction for non-preset camera mutations
-    // View presets handle their own timing via autoRotateResumeAt
-    if (cameraMutated && !wasPresetApplied) {
-      markInteraction();
-    }
+  // Thin wrapper delegating to commandRouter (Phase 18 backward compatibility)
+  const handleCameraCommand = (raw: unknown): void => {
+    commandRouter.handleCommand(raw);
   };
 
 
@@ -3407,362 +2508,198 @@ export const mount = async ({
   };
   canvas.addEventListener('contextmenu', preventContextMenu);
 
-  const handlePointerDown = (event: PointerEvent): void => {
-    try {
-      if (debugEnabled) emitDiagnostic('webgpu:pointer-down', { x: event.clientX, y: event.clientY, button: event.button, canvasId: mountCanvasId });
-    } catch (e) {
-      /* ignore */
-    }
-    if (localControlResetTimer !== null) {
-      window.clearTimeout(localControlResetTimer);
-      localControlResetTimer = null;
-    }
-    hasLocalCameraControl = true;
-    cameraController?.onPointerDown?.(event);
-  };
-  canvas.addEventListener('pointerdown', handlePointerDown);
+  // Pointer, wheel, touch, and double-click event handlers now managed by PointerEventRouter (Phase 15)
+  // Attach listeners after all dependencies are available
+  pointerRouter.attach();
 
-  const handlePointerRelease = (): void => {
-    try {
-      if (debugEnabled) emitDiagnostic('webgpu:pointer-up', { canvasId: mountCanvasId });
-    } catch (e) { /* ignore */ }
-    if (localControlResetTimer !== null) {
-      window.clearTimeout(localControlResetTimer);
-      localControlResetTimer = null;
-    }
-    // Defer clearing local camera control briefly to avoid immediate
-    // remote updates overriding the user's local camera changes.
-    localControlResetTimer = window.setTimeout(() => {
-      localControlResetTimer = null;
-      hasLocalCameraControl = false;
-    }, 250);
-    cameraController?.onPointerRelease?.();
-  };
-
-  canvas.addEventListener('pointerup', handlePointerRelease);
-  canvas.addEventListener('pointercancel', handlePointerRelease);
-  window.addEventListener('pointerup', handlePointerRelease);
-
-  const handlePointerMove = (event: PointerEvent): void => {
-    try {
-      if (debugEnabled) emitDiagnostic('webgpu:pointer-move', { x: event.clientX, y: event.clientY, canvasId: mountCanvasId });
-    } catch (e) { /* ignore */ }
-    cameraController?.onPointerMove?.(event);
-  };
-  canvas.addEventListener('pointermove', handlePointerMove);
-
-  const handleWheel = (event: WheelEvent): void => {
-    event.preventDefault();
-    if (state.cameraMode === 'free') {
-      applyFreeLookDolly(-event.deltaY);
-    } else {
-      const k = Math.exp(-event.deltaY * 0.001);
-      zoomCameraAtCursor(event.clientX, event.clientY, k);
+  // Controls click handler action callbacks (Phase 16)
+  const handleViewPreset = (preset: string): void => {
+    cancelFocusTween();
+    applyViewPreset(state, preset);
+    if (preset === 'fit') {
+      try {
+        const cfg = { ...initialParams, ...current } as WebGPUParams;
+        const height = clampNumber(cfg.H, 120.0);
+        const radiusTop = clampNumber(cfg.Rt, 70.0);
+        const radiusBottom = clampNumber(cfg.Rb, 45.0);
+        const safeHeight = Math.max(Math.abs(height), 1);
+        const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
+        const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
+        const computedMaxWithHeight = Math.max(safeHeight, safeRadiusTop, safeRadiusBottom);
+        state.sceneRadius = computedMaxWithHeight;
+        state.cameraDirty = true;
+      } catch (err) {
+        /* ignore */
+      }
     }
     markInteraction();
-    scheduleCameraEmit();
+    emitCameraState(true);
   };
 
-  const handleDoubleClick = (event: MouseEvent): void => {
-    // Only respond to left-button double-clicks
-    if (event.button !== 0) return;
-    event.preventDefault();
-    focusCameraAtCursor(event.clientX, event.clientY);
-  };
+  const handleProjectionToggle = (): void => {
+    // Compute padded extents to compute a stable visual mapping between
+    // perspective and orthographic modes so the pot remains similar on screen
+    const cfg = { ...initialParams, ...current } as WebGPUParams;
+    const height = clampNumber(cfg.H, 120.0);
+    const safeHeight = Math.max(Math.abs(height), 1);
+    const radiusTop = clampNumber(cfg.Rt ?? cfg.Rt, 70.0);
+    const radiusBottom = clampNumber(cfg.Rb ?? cfg.Rb, 45.0);
+    const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
+    const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
 
-  // Touch event handlers for pinch-to-zoom
-  const handleTouchStart = (event: TouchEvent): void => {
-    // For single touch, let pointer events handle it
-    // For multi-touch (2+ fingers), handle as pinch gesture
-    if (event.touches.length >= 2) {
-      event.preventDefault(); // Prevent browser zoom
-      cameraController?.onTouchStart?.(event);
-    } else if (event.touches.length === 1) {
-      // Track single touches for potential pinch gesture
-      cameraController?.onTouchStart?.(event);
-    }
-  };
-
-  const handleTouchMove = (event: TouchEvent): void => {
-    // Only handle multi-touch (pinch) moves
-    if (cameraController?.pointer?.isPinching) {
-      event.preventDefault(); // Prevent browser scroll/zoom
-      cameraController?.onTouchMove?.(event);
-    }
-  };
-
-  const handleTouchEnd = (event: TouchEvent): void => {
-    cameraController?.onTouchEnd?.(event);
-  };
-
-  // Add touch event listeners with passive:false to allow preventDefault
-  canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-  canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-  canvas.addEventListener('touchend', handleTouchEnd);
-  canvas.addEventListener('touchcancel', handleTouchEnd);
-
-  const handleControlsClick = (event: MouseEvent): void => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
-      return;
-    }
-    const preset = target.dataset.wgpuView;
-    if (preset) {
-      cancelFocusTween();
-      applyViewPreset(state, preset);
-      if (preset === 'fit') {
-        try {
-          const cfg = { ...initialParams, ...current } as WebGPUParams;
-          const height = clampNumber(cfg.H, 120.0);
-          const radiusTop = clampNumber(cfg.Rt, 70.0);
-          const radiusBottom = clampNumber(cfg.Rb, 45.0);
-          const safeHeight = Math.max(Math.abs(height), 1);
-          const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
-          const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
-          const computedMaxWithHeight = Math.max(safeHeight, safeRadiusTop, safeRadiusBottom);
-          state.sceneRadius = computedMaxWithHeight;
-          state.cameraDirty = true;
-        } catch (err) {
-          /* ignore */
-        }
-      }
-      markInteraction();
-      emitCameraState(true);
-      return;
-    }
-    const action = target.dataset.wgpuAction;
-    if (action === 'projection') {
-      // Compute padded extents to compute a stable visual mapping between
-      // perspective and orthographic modes so the pot remains similar on screen
-      const cfg = { ...initialParams, ...current } as WebGPUParams;
-      const height = clampNumber(cfg.H, 120.0);
-      const safeHeight = Math.max(Math.abs(height), 1);
-      const radiusTop = clampNumber(cfg.Rt ?? cfg.Rt, 70.0);
-      const radiusBottom = clampNumber(cfg.Rb ?? cfg.Rb, 45.0);
-      const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
-      const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
-
-      const rawPadding = typeof cfg.scenePadding === 'number' ? clampNumber(cfg.scenePadding, CAMERA_PADDING) : CAMERA_PADDING;
-      const paddingHint = sanitizePadding(rawPadding);
-      const halfHeight = Math.max(safeHeight * 0.5, 1);
-      const outerRadius = Math.max(safeRadiusTop, safeRadiusBottom);
-      const halfWidth = Math.max(outerRadius, 1);
-      const paddedHalfWidth = Math.max(1, halfWidth * paddingHint);
-      const paddedHalfHeight = Math.max(1, halfHeight * paddingHint);
-      const oldMode = state.projectionMode;
-      const currentRig = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
-      const nextMode = oldMode === 'ortho' ? 'perspective' : 'ortho';
-      if (oldMode === 'perspective' && nextMode === 'ortho') {
-        // Convert perspective -> ortho: keep similar screen size based on limiting axis
-        const aspect = Math.max(state.canvasAspect || 1, 1e-3);
-        const halfFovY = Math.max(BASE_FOV * 0.5, 1e-4);
-        const halfFovX = Math.atan(Math.tan(halfFovY) * aspect);
-        const targetVec: Vec3 = [state.panX, state.panY, state.pivot?.[2] ?? 0];
-        const distance = vec3Length(vec3Subtract(currentRig.eye, targetVec));
-        const halfHeightPers = distance * Math.tan(halfFovY);
-        const halfWidthPers = distance * Math.tan(halfFovX);
-        const isHeightLimiting = paddedHalfHeight >= paddedHalfWidth / aspect;
-        if (isHeightLimiting) {
-          if (halfHeightPers > 1e-6) {
-            const newZoom = Math.max(1e-3, paddedHalfHeight / halfHeightPers);
-            state.zoom = newZoom;
-          }
-        } else {
-          if (halfWidthPers > 1e-6) {
-            const newZoom = Math.max(1e-3, paddedHalfWidth / halfWidthPers);
-            state.zoom = newZoom;
-          }
+    const rawPadding = typeof cfg.scenePadding === 'number' ? clampNumber(cfg.scenePadding, CAMERA_PADDING) : CAMERA_PADDING;
+    const paddingHint = sanitizePadding(rawPadding);
+    const halfHeight = Math.max(safeHeight * 0.5, 1);
+    const outerRadius = Math.max(safeRadiusTop, safeRadiusBottom);
+    const halfWidth = Math.max(outerRadius, 1);
+    const paddedHalfWidth = Math.max(1, halfWidth * paddingHint);
+    const paddedHalfHeight = Math.max(1, halfHeight * paddingHint);
+    const oldMode = state.projectionMode;
+    const currentRig = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
+    const nextMode = oldMode === 'ortho' ? 'perspective' : 'ortho';
+    if (oldMode === 'perspective' && nextMode === 'ortho') {
+      // Convert perspective -> ortho: keep similar screen size based on limiting axis
+      const aspect = Math.max(state.canvasAspect || 1, 1e-3);
+      const halfFovY = Math.max(BASE_FOV * 0.5, 1e-4);
+      const halfFovX = Math.atan(Math.tan(halfFovY) * aspect);
+      const targetVec: Vec3 = [state.panX, state.panY, state.pivot?.[2] ?? 0];
+      const distance = vec3Length(vec3Subtract(currentRig.eye, targetVec));
+      const halfHeightPers = distance * Math.tan(halfFovY);
+      const halfWidthPers = distance * Math.tan(halfFovX);
+      const isHeightLimiting = paddedHalfHeight >= paddedHalfWidth / aspect;
+      if (isHeightLimiting) {
+        if (halfHeightPers > 1e-6) {
+          const newZoom = Math.max(1e-3, paddedHalfHeight / halfHeightPers);
+          state.zoom = newZoom;
         }
       } else {
-        // Convert ortho -> perspective: pick zoom so perspective fits same limiting axis
-        const aspect = Math.max(state.canvasAspect || 1, 1e-3);
-        const halfFovY = Math.max(BASE_FOV * 0.5, 1e-4);
-        const halfFovX = Math.atan(Math.tan(halfFovY) * aspect);
-        const halfHeightOrtho = paddedHalfHeight / Math.max(state.zoom, 1e-3);
-        const halfWidthOrtho = paddedHalfWidth / Math.max(state.zoom, 1e-3);
-        const isHeightLimiting = paddedHalfHeight >= paddedHalfWidth / aspect;
-        const desiredDistance = isHeightLimiting
-          ? halfHeightOrtho / Math.max(Math.tan(halfFovY), 1e-6)
-          : halfWidthOrtho / Math.max(Math.tan(halfFovX), 1e-6);
-        // Compute per-axis distances and base distance similar to the perspective rig
-        const dV = paddedHalfHeight / Math.max(Math.tan(halfFovY), 1e-6);
-        const dH = paddedHalfWidth / Math.max(Math.tan(halfFovX), 1e-6);
-        const baseDistanceForMapping = Math.max(dV, dH) * CAMERA_DISTANCE_FALLOFF;
-        let newZoom = Math.max(1e-3, baseDistanceForMapping / Math.max(desiredDistance, 1e-6));
-        // Apply correction by simulating perspective and checking the resulting half-height
-        try {
-          const prevProj = state.projectionMode;
-          const prevZoom = state.zoom;
-          const maxIter = 6;
-          for (let it = 0; it < maxIter; it += 1) {
-            state.projectionMode = 'perspective';
-            state.zoom = newZoom;
-            const rigCheck = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
-            const targetVec: Vec3 = [state.panX, state.panY, state.pivot?.[2] ?? 0];
-            const actualHalfHeight = vec3Length(vec3Subtract(rigCheck.eye, targetVec)) * Math.tan(halfFovY);
-            const actualHalfWidth = vec3Length(vec3Subtract(rigCheck.eye, targetVec)) * Math.tan(halfFovX);
-            const axisValue = isHeightLimiting ? actualHalfHeight : actualHalfWidth;
-            const desiredAxis = isHeightLimiting ? halfHeightOrtho : halfWidthOrtho;
-            if (axisValue <= 1e-6) break;
-            const correction = Math.max(1e-6, desiredAxis / axisValue);
-            if (Math.abs(1 - correction) < 1e-3) break;
-            newZoom = newZoom * correction;
-          }
-          state.zoom = prevZoom;
-          state.projectionMode = prevProj;
-        } catch (err) {
-          /* ignore */
+        if (halfWidthPers > 1e-6) {
+          const newZoom = Math.max(1e-3, paddedHalfWidth / halfWidthPers);
+          state.zoom = newZoom;
         }
-        state.zoom = Math.min(4.0, Math.max(0.25, newZoom));
       }
-      state.projectionMode = nextMode;
-      updateProjectionButton();
-      state.cameraDirty = true;
-      markInteraction();
-      emitCameraState(true);
-      return;
-    }
-    if (action === 'debug') {
-      state.debugOverlay = !state.debugOverlay;
-      updateDebugButton();
-      return;
-    }
-    if (action === 'arcball') {
-      const targetMode: CameraMode = state.cameraMode === 'arcball' ? 'turntable' : 'arcball';
-      setCameraMode(targetMode);
-      markInteraction();
-      emitCameraState(true);
-      return;
-    }
-    if (action === 'fly') {
-      const fallbackOrbit: CameraMode = state.useArcball ? 'arcball' : 'turntable';
-      const targetMode: CameraMode = state.cameraMode === 'free' ? fallbackOrbit : 'free';
-      setCameraMode(targetMode);
-      markInteraction();
-      emitCameraState(true);
-      return;
-    }
-    if (action === 'grid') {
-      state.showGrid = !state.showGrid;
-      updateGridButton();
-      // grid is a visual aid, mark cameraDirty so uniforms are re-written
-      state.cameraDirty = true;
-      return;
-    }
-    if (action === 'axis') {
-      state.showAxis = !state.showAxis;
-      updateAxisButton();
-      // axis is a visual aid, mark cameraDirty so overlay is updated
-      state.cameraDirty = true;
-      return;
-    }
-    if (action === 'pivot-auto') {
-      toggleAutoPivot();
-      markInteraction();
-      emitCameraState(true);
-      return;
-    }
-    if (target.dataset.role === 'autorotate') {
-      toggleAutoRotate();
-      markInteraction();
-      emitCameraState(true);
-      return;
-    }
-  };
-  if (controlsRoot) {
-    controlsRoot.addEventListener('click', handleControlsClick);
-  }
-
-  const handleKeydown = (event: KeyboardEvent): void => {
-    const target = event.target;
-    if (
-      target instanceof HTMLElement &&
-      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-    ) {
-      return;
-    }
-    const normalizedKey = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-    // Enable WASD/QE in ALL camera modes - free mode uses 3D movement, orbit modes use panning
-    if (normalizedKey === 'shift') {
-      freeKeyboard.boost = true;
-    }
-    if (FREE_MOVE_KEYS.has(normalizedKey)) {
-      freeKeyboard.activeKeys.add(normalizedKey);
-      markInteraction();
-      event.preventDefault();
-      return;
-    }
-    switch (event.key) {
-      case '0':
-        applyViewPreset(state, 'fit');
-        // When user explicitly requests fit, compute and set the scene radius
-        // to ensure both height and width are visible.
-        try {
-          const cfg = { ...initialParams, ...current } as WebGPUParams;
-          const height = clampNumber(cfg.H, 120.0);
-          const radiusTop = clampNumber(cfg.Rt, 70.0);
-          const radiusBottom = clampNumber(cfg.Rb, 45.0);
-          const safeHeight = Math.max(Math.abs(height), 1);
-          const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
-          const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
-          const computedMaxWithHeight = Math.max(safeHeight, safeRadiusTop, safeRadiusBottom);
-          state.sceneRadius = computedMaxWithHeight;
-          state.cameraDirty = true;
-        } catch (err) {
-          /* ignore */
+    } else {
+      // Convert ortho -> perspective: pick zoom so perspective fits same limiting axis
+      const aspect = Math.max(state.canvasAspect || 1, 1e-3);
+      const halfFovY = Math.max(BASE_FOV * 0.5, 1e-4);
+      const halfFovX = Math.atan(Math.tan(halfFovY) * aspect);
+      const halfHeightOrtho = paddedHalfHeight / Math.max(state.zoom, 1e-3);
+      const halfWidthOrtho = paddedHalfWidth / Math.max(state.zoom, 1e-3);
+      const isHeightLimiting = paddedHalfHeight >= paddedHalfWidth / aspect;
+      const desiredDistance = isHeightLimiting
+        ? halfHeightOrtho / Math.max(Math.tan(halfFovY), 1e-6)
+        : halfWidthOrtho / Math.max(Math.tan(halfFovX), 1e-6);
+      // Compute per-axis distances and base distance similar to the perspective rig
+      const dV = paddedHalfHeight / Math.max(Math.tan(halfFovY), 1e-6);
+      const dH = paddedHalfWidth / Math.max(Math.tan(halfFovX), 1e-6);
+      const baseDistanceForMapping = Math.max(dV, dH) * CAMERA_DISTANCE_FALLOFF;
+      let newZoom = Math.max(1e-3, baseDistanceForMapping / Math.max(desiredDistance, 1e-6));
+      // Apply correction by simulating perspective and checking the resulting half-height
+      try {
+        const prevProj = state.projectionMode;
+        const prevZoom = state.zoom;
+        const maxIter = 6;
+        for (let it = 0; it < maxIter; it += 1) {
+          state.projectionMode = 'perspective';
+          state.zoom = newZoom;
+          const rigCheck = getCachedRig(state, paddingHint, paddedHalfWidth, paddedHalfHeight);
+          const targetVec: Vec3 = [state.panX, state.panY, state.pivot?.[2] ?? 0];
+          const actualHalfHeight = vec3Length(vec3Subtract(rigCheck.eye, targetVec)) * Math.tan(halfFovY);
+          const actualHalfWidth = vec3Length(vec3Subtract(rigCheck.eye, targetVec)) * Math.tan(halfFovX);
+          const axisValue = isHeightLimiting ? actualHalfHeight : actualHalfWidth;
+          const desiredAxis = isHeightLimiting ? halfHeightOrtho : halfWidthOrtho;
+          if (axisValue <= 1e-6) break;
+          const correction = Math.max(1e-6, desiredAxis / axisValue);
+          if (Math.abs(1 - correction) < 1e-3) break;
+          newZoom = newZoom * correction;
         }
-        markInteraction();
-        emitCameraState(true);
-        break;
-      case '1':
-        applyViewPreset(state, 'top');
-        markInteraction();
-        emitCameraState(true);
-        break;
-      case '2':
-        applyViewPreset(state, 'front');
-        markInteraction();
-        emitCameraState(true);
-        break;
-      case '3':
-        applyViewPreset(state, 'right');
-        markInteraction();
-        emitCameraState(true);
-        break;
-      case '4':
-        applyViewPreset(state, 'iso');
-        markInteraction();
-        emitCameraState(true);
-        break;
-      case ' ':
-        toggleAutoRotate();
-        markInteraction();
-        event.preventDefault();
-        break;
-      default:
-        break;
+        state.zoom = prevZoom;
+        state.projectionMode = prevProj;
+      } catch (err) {
+        /* ignore */
+      }
+      state.zoom = Math.min(4.0, Math.max(0.25, newZoom));
     }
+    state.projectionMode = nextMode;
+    updateProjectionButton();
+    state.cameraDirty = true;
+    markInteraction();
+    emitCameraState(true);
   };
-  window.addEventListener('keydown', handleKeydown);
-  const handleKeyup = (event: KeyboardEvent): void => {
-    const normalizedKey = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-    if (normalizedKey === 'shift') {
-      freeKeyboard.boost = false;
-    }
-    if (FREE_MOVE_KEYS.has(normalizedKey)) {
-      freeKeyboard.activeKeys.delete(normalizedKey);
-      event.preventDefault();
-    }
-  };
-  window.addEventListener('keyup', handleKeyup);
-  const handleWindowBlur = (): void => {
-    clearFreeMovementKeys();
-  };
-  window.addEventListener('blur', handleWindowBlur);
 
-  const uniform = buildUniformBlock(uniformSize);
-  // Typed alias used by shader-update code.
-  const f32 = uniform;
+  const handleDebugToggle = (): void => {
+    state.debugOverlay = !state.debugOverlay;
+    updateDebugButton();
+  };
+
+  const handleArcballToggle = (): void => {
+    const targetMode: CameraMode = state.cameraMode === 'arcball' ? 'turntable' : 'arcball';
+    setCameraMode(targetMode);
+    markInteraction();
+    emitCameraState(true);
+  };
+
+  const handleFlyToggle = (): void => {
+    const fallbackOrbit: CameraMode = state.useArcball ? 'arcball' : 'turntable';
+    const targetMode: CameraMode = state.cameraMode === 'free' ? fallbackOrbit : 'free';
+    setCameraMode(targetMode);
+    markInteraction();
+    emitCameraState(true);
+  };
+
+  const handleGridToggle = (): void => {
+    state.showGrid = !state.showGrid;
+    updateGridButton();
+    // grid is a visual aid, mark cameraDirty so uniforms are re-written
+    state.cameraDirty = true;
+  };
+
+  const handleAxisToggle = (): void => {
+    state.showAxis = !state.showAxis;
+    updateAxisButton();
+    // axis is a visual aid, mark cameraDirty so overlay is updated
+    state.cameraDirty = true;
+  };
+
+  const handleAutoPivotToggle = (): void => {
+    toggleAutoPivot();
+    markInteraction();
+    emitCameraState(true);
+  };
+
+  const handleAutoRotateToggle = (): void => {
+    toggleAutoRotate();
+    markInteraction();
+    emitCameraState(true);
+  };
+
+  // Controls click handler (Phase 16 extraction)
+  const controlsHandler: ControlsClickHandler = createControlsClickHandler({
+    controlsRoot,
+    canvasId: mountCanvasId,
+    getCameraMode: () => state.cameraMode,
+    getUseArcball: () => Boolean(state.useArcball),
+    onViewPreset: handleViewPreset,
+    onProjectionToggle: handleProjectionToggle,
+    onDebugToggle: handleDebugToggle,
+    onArcballToggle: handleArcballToggle,
+    onFlyToggle: handleFlyToggle,
+    onGridToggle: handleGridToggle,
+    onAxisToggle: handleAxisToggle,
+    onAutoPivotToggle: handleAutoPivotToggle,
+    onAutoRotateToggle: handleAutoRotateToggle,
+    emitDiagnostic,
+    debugEnabled,
+  });
+  controlsHandler.attach();
+
+  // NOTE: Keyboard handlers (handleKeydown, handleKeyup, handleWindowBlur) moved to InputManager
+  // (Phase 2 extraction). InputManager is instantiated earlier and manages its own event listeners.
+
+  // Create uniform block instance using the new consolidated module
+  const uniformBlock = createUniformBlock(uniformSize);
+  // Typed alias for backward compatibility with existing f32[N] writes
+  const f32 = uniformBlock.buffer;
   let frameCounter = 0;
   let totalDrawnVerts = 0;
   let totalDrawCalls = 0;
@@ -3878,35 +2815,25 @@ export const mount = async ({
       const safeRadiusTop = Math.max(Math.abs(radiusTop), 1);
       const safeRadiusBottom = Math.max(Math.abs(radiusBottom), 1);
 
-      const styleIdRaw =
-        typeof cfg.styleId === 'number'
-          ? Math.trunc(cfg.styleId)
-          : typeof current.styleId === 'number'
-            ? Math.trunc(Number(current.styleId))
-            : (typeof (cfg as any).style === 'string' && (cfg as any).style in STYLE_IDS)
-              ? STYLE_IDS[(cfg as any).style as StyleId]
-              : typeof (cfg as any).style === 'number'
-                ? Math.trunc(Number((cfg as any).style))
-                : typeof (cfg as any).style === 'string' && !isNaN(Number((cfg as any).style))
-                  ? Math.trunc(Number((cfg as any).style))
-                  : 0;
-      const styleId = styleIdRaw < 0 ? 0 : styleIdRaw;
+      // Use shared resolveStyleId for consistent style resolution
+      const cfgMounted = cfg as MountConfig;
+      const styleId = resolveStyleId(cfg, current);
 
-      // Debug: Trace Voronoi Style Resolution
-      if (styleId === 13 || (cfg as any).style === 'Voronoi') {
-        console.log(`[WebGPU Debug] StyleRes: raw=${styleIdRaw} resolved=${styleId} cfg.style=${(cfg as any).style} inConfig=${(cfg as any).styleId}`);
-      }
+      // Debug: Trace Voronoi Style Resolution (disabled — fires every frame)
+      // if (import.meta.env.DEV && (styleId === 13 || cfgMounted.style === 'Voronoi')) {
+      //   console.log(`[WebGPU Debug] StyleRes: resolved=${styleId} cfg.style=${cfgMounted.style} inConfig=${cfgMounted.styleId}`);
+      // }
 
-      // Populate uniform buffer using shared helper (handles geometry, twist, resolution)
+      // Populate uniform buffer using UniformBlock (handles geometry, twist, style, seam)
       try {
-        fillGeometryBuffer(f32, cfg, current);
+        uniformBlock.populateGeometry(cfg, current);
 
-        // Debug: Verify buffer content
-        if (styleId === 13) {
-          console.log(`[WebGPU Debug] Buffer[7] (StyleID): ${f32[7]}`);
-        }
+        // Debug: Verify buffer content (disabled — fires every frame)
+        // if (import.meta.env.DEV && styleId === 13) {
+        //   console.log(`[WebGPU Debug] Buffer[7] (StyleID): ${f32[7]}`);
+        // }
       } catch (err) {
-        console.error('[WebGPU] fillGeometryBuffer failed:', err);
+        console.error('[WebGPU] populateGeometry failed:', err);
         emitDiagnostic('webgpu:fill-geometry-failed', { error: String(err) });
       }
 
@@ -3916,7 +2843,7 @@ export const mount = async ({
 
 
 
-      syncStyleParams(cfg.styleParams ?? current.styleParams);
+      bufferWriter.syncStyleParams(styleParamBuffer, cfg.styleParams ?? current.styleParams);
       current.styleParams = cfg.styleParams;
 
       const computedMaxWithHeight = Math.max(safeHeight, safeRadiusTop, safeRadiusBottom);
@@ -3946,7 +2873,7 @@ export const mount = async ({
       if (cameraRig && cameraRig.basis) {
         if (state.cameraMode !== 'arcball' && (cameraRig.basis.up[2] ?? 0) < 0) {
           emitDiagnostic('webgpu:camera-up-negative', { up: cameraRig.basis.up, eye: cameraRig.eye, canvasId: mountCanvasId });
-          console.debug('[WebGPU] camera up negative — flipping roll', { up: cameraRig.basis.up, eye: cameraRig.eye });
+          if (import.meta.env.DEV) console.debug('[WebGPU] camera up negative — flipping roll', { up: cameraRig.basis.up, eye: cameraRig.eye });
           // Flip roll: negate right/up so the camera appears upright while
           // preserving forward direction. This avoids upside-down render when
           // the computed basis ends up reversed due to Euler ambiguities.
@@ -3959,7 +2886,7 @@ export const mount = async ({
           // correctly oriented.
           try {
             const aspect = state.canvasAspect || 1;
-            let projection: Mat4 | null = null;
+            let projection: Float32Array | null = null;
             if (cameraRig.mode === 'perspective') {
               projection = mat4PerspectiveFovLH(cameraRig.fov, aspect, cameraRig.near, cameraRig.far);
             } else {
@@ -4000,60 +2927,23 @@ export const mount = async ({
       const bottomRings = Math.max(2, Math.min(24, baseBottom));
       const rimRings = Math.max(1, Math.min(8, baseRim));
 
-      f32[16] = nTheta;
-      f32[17] = nZ;
-      f32[18] = debugActive ? 1 : 0;
-      f32[19] = state.rotX;
-      f32[20] = state.rotY;
-      f32[21] = state.zoom;
-      // Default Ambient/Diffuse set to 0.0 to avoid baked/emit-like brightness
-      f32[22] = clampNumber(cfg.ambient, 0.0);
-      f32[23] = clampNumber(cfg.diffuse, 0.0);
-      f32[24] = clampNumber(cfg.fresnel, 0.25);
-      f32[25] = clampNumber(cfg.t_wall, 3.0);
-      f32[26] = clampNumber(cfg.t_bottom, 3.0);
-      f32[27] = innerSeg;
-      f32[28] = bottomRings;
-      f32[29] = state.panX;
-      f32[30] = rimRings;
-      f32[31] = state.panY;
-      f32[32] = state.canvasAspect || 1;
-      f32[33] = state.sceneRadius;
-      f32[34] = paddingHint;
-      f32[35] = cameraRig.near;
+      // Resolution params (nTheta, nZ, debugFlag)
+      uniformBlock.populateResolution(cfg, state, debugActive);
 
-      f32[CAMERA_EYE_OFFSET + 0] = cameraRig.eye[0];
-      f32[CAMERA_EYE_OFFSET + 1] = cameraRig.eye[1];
-      f32[CAMERA_EYE_OFFSET + 2] = cameraRig.eye[2];
-      f32[CAMERA_MODE_OFFSET] = cameraRig.mode === 'perspective' ? 1 : 0;
-      writeVec3(f32, CAMERA_RIGHT_OFFSET, cameraRig.basis.right);
-      f32[CAMERA_RIGHT_OFFSET + 3] = 0;
-      writeVec3(f32, CAMERA_UP_OFFSET, cameraRig.basis.up);
-      f32[CAMERA_UP_OFFSET + 3] = 0;
-      writeVec3(f32, CAMERA_FORWARD_OFFSET, cameraRig.basis.forward);
-      f32[CAMERA_FORWARD_OFFSET + 3] = 0;
-      f32[GRID_FLAG_OFFSET] = state.showGrid ? 1 : 0;
-      const specular = Math.min(Math.max(clampNumber(cfg.specular, 0.4), 0), 1);
-      const roughness = Math.min(Math.max(clampNumber(cfg.roughness, 0.45), 0.02), 1);
-      f32[SPECULAR_GAIN_OFFSET] = specular;
-      f32[ROUGHNESS_OFFSET] = roughness;
-      // Index 71 used for SHOW_INNER_OFFSET (not currently populated but reserved)
+      // Topology params (innerSegments, bottomRings, rimRings)
+      uniformBlock.populateTopology(cfg, nZ);
 
+      // Lighting params (ambient, diffuse, fresnel, t_wall, t_bottom, specular, roughness)
+      uniformBlock.populateLighting(cfg);
 
+      // Feature flags (showGrid, showInner)
+      uniformBlock.populateFeatureFlags(cfg, state);
 
-      // Show inner surface toggle - default to true (show inner)
-      const showInner = cfg.showInner !== false;
-      f32[SHOW_INNER_OFFSET] = showInner ? 1 : 0;
-      // Seam blending controls for watertight radial seam (θ=0/360° joint)
-
-      for (let i = 0; i < 16; i += 1) {
-        f32[VP_MATRIX_OFFSET + i] = cameraRig.viewProjection[i];
-      }
-
-
+      // Camera params (rotation, zoom, pan, eye, basis, viewProjection matrix)
+      uniformBlock.populateCamera(state, cameraRig, paddingHint);
 
       // Sanity check: ensure the viewProjection matrix and camera eye are finite.
-      const isFiniteMat = (m: Mat4) => {
+      const isFiniteMat = (m: Float32Array) => {
         for (let i = 0; i < 16; i += 1) {
           if (!Number.isFinite(m[i])) return false;
         }
@@ -4149,13 +3039,6 @@ export const mount = async ({
           }
           // Emit NDC extents of bounding box corners so we can confirm fit
           try {
-            const mulMat4Vec4 = (m: Mat4, x: number, y: number, z: number) => {
-              const cx = m[0] * x + m[4] * y + m[8] * z + m[12] * 1;
-              const cy = m[1] * x + m[5] * y + m[9] * z + m[13] * 1;
-              const cz = m[2] * x + m[6] * y + m[10] * z + m[14] * 1;
-              const cw = m[3] * x + m[7] * y + m[11] * z + m[15] * 1;
-              return { x: cx, y: cy, z: cz, w: cw };
-            };
             const corners: Array<Vec3> = [
               [paddedHalfWidth, paddedHalfWidth, paddedHalfHeight],
               [-paddedHalfWidth, paddedHalfWidth, paddedHalfHeight],
@@ -4215,17 +3098,19 @@ export const mount = async ({
         }
         if (now - lastVpLogTime >= DEBUG_THROTTLE_MS) {
           lastVpLogTime = now;
-          try {
-            const vpSlice = Array.from(
-              f32.slice(VP_MATRIX_OFFSET, VP_MATRIX_OFFSET + 16)
-            ).map((value) => Number(value.toFixed(4)));
-            console.debug('WebGPU VP matrix', {
-              canvasId,
-              debugFlag: f32[18],
-              vp: vpSlice,
-            });
-          } catch (err) {
-            /* ignore diagnostics issues */
+          if (import.meta.env.DEV) {
+            try {
+              const vpSlice = Array.from(
+                f32.slice(VP_MATRIX_OFFSET, VP_MATRIX_OFFSET + 16)
+              ).map((value) => Number(value.toFixed(4)));
+              console.debug('WebGPU VP matrix', {
+                canvasId,
+                debugFlag: f32[18],
+                vp: vpSlice,
+              });
+            } catch (err) {
+              /* ignore diagnostics issues */
+            }
           }
         }
       } else if (debugOverlayEl && !state.debugOverlay) {
@@ -4341,7 +3226,7 @@ export const mount = async ({
           resolvedCounts,
           canvasId: mountCanvasId,
         });
-        console.debug('[WebGPU:diag] skip-draw', { desiredCounts, resolvedCounts });
+        if (import.meta.env.DEV) console.debug('[WebGPU:diag] skip-draw', { desiredCounts, resolvedCounts });
         return;
       }
       totalDrawnVerts += safeDrawVerts;
@@ -4365,14 +3250,14 @@ export const mount = async ({
       // CRITICAL: Include spin (f32[4-6]), drain (f32[13]), bell (f32[14-15,72]), wall/bottom (f32[25-26]) for live updates
       const geoSig = `${f32[0]}_${f32[1]}_${f32[2]}_${f32[3]}_${f32[4]}_${f32[5]}_${f32[6]}_${f32[16]}_${f32[17]}_${f32[7]}_${f32[8]}_${f32[13]}_${f32[25]}_${f32[26]}_${f32[14]}_${f32[15]}_${f32[72]}_${f32[73]}`;
       const uniformSignature = `${sigRotX}_${sigRotY}_${state.zoom ?? 1}_${state.panX ?? 0}_${state.panY ?? 0}_${state.projectionMode}_${String(state.displayCamQuat ?? state.camQuat)}_${geoSig}_${state.canvasAspect}`;
-      (globalThis as any).__lastUniformSignature = (globalThis as any).__lastUniformSignature ?? null;
-      const lastUniformSignature = (globalThis as any).__lastUniformSignature;
+      __lastUniformSignature = __lastUniformSignature ?? null;
+      const lastUniformSignature = __lastUniformSignature;
       const parityUniformPending = isUniformParityRewritePending(state);
       const shouldWriteUniforms = parityUniformPending || (uniformDirty && uniformSignature !== lastUniformSignature);
       if (shouldWriteUniforms) {
         lastOperation = 'write-uniforms';
-        (globalThis as any).__lastUniformSignature = uniformSignature;
-        device.queue.writeBuffer(uniformBuffer, 0, uniform.buffer as ArrayBuffer);
+        __lastUniformSignature = uniformSignature;
+        device.queue.writeBuffer(uniformBuffer, 0, f32.buffer as ArrayBuffer);
         clearUniformParityRewriteFlag(state);
         // Emit a compact diagnostic snapshot of key uniform params for debugging
         const Hval = Number(f32[0]);
@@ -4380,9 +3265,9 @@ export const mount = async ({
         const Rbval = Number(f32[2]);
         // Throttle uniform debug emissions to avoid flooding diagnostics
         const __now = performance.now();
-        const __lastUniform = (globalThis as any).__lastUniformEmitMs ?? 0;
+        const __lastUniform = __lastUniformEmitMs ?? 0;
         if (__now - __lastUniform > 250) {
-          (globalThis as any).__lastUniformEmitMs = __now;
+          __lastUniformEmitMs = __now;
           // Throttled debug log for uniform writes
           try {
             const now = performance.now();
@@ -4396,7 +3281,7 @@ export const mount = async ({
                 panY: state.panY,
                 zoom: state.zoom,
                 canvasId: mountCanvasId,
-                cameraSeq: cameraSequence,
+                cameraSeq: cameraBroadcaster.getSequence(),
               });
             }
           } catch (err) { /* ignore */ }
@@ -4407,30 +3292,23 @@ export const mount = async ({
       const gradientSignature = JSON.stringify(cfg.gradient ?? null);
       if (gradientSignature !== lastGradientSignature) {
         lastOperation = 'write-gradient';
-        writeGradient(device, colorBuffers, cfg.gradient);
+        bufferWriter.writeGradient(colorBuffers, cfg.gradient);
         lastGradientSignature = gradientSignature;
       }
 
-      const bg = cfg.background_gradient ?? cfg.background ?? (cfg as any).__pf_bg_gradient ?? null;
+      const bg = cfg.background_gradient ?? cfg.background ?? cfgMounted.__pf_bg_gradient ?? null;
       const bgAngle = cfg.gradient_angle ?? 0;
       const bgSignature = JSON.stringify(bg) + '_' + bgAngle;
       if (bgSignature !== lastBgSignature) {
-        writeBackgroundGradient(device, bgBuffers, bg, bgAngle);
+        bufferWriter.writeBackgroundGradient(bgBuffers, bg, bgAngle);
         lastBgSignature = bgSignature;
       }
 
-      const desiredAlphaMode = resolveAlphaMode((cfg as Record<string, unknown>).__pf_bg_mode);
+      const desiredAlphaMode = resolveAlphaMode(cfgMounted.__pf_bg_mode);
       if (desiredAlphaMode !== currentAlphaMode) {
         currentAlphaMode = desiredAlphaMode;
-        try {
-          context.configure({ device, format, alphaMode: currentAlphaMode });
-        } catch (cfgErr) {
-          emitDiagnostic('webgpu:alpha-mode-reconfigure-failed', {
-            error: cfgErr instanceof Error ? cfgErr.message : String(cfgErr),
-            canvasId: mountCanvasId,
-            mode: currentAlphaMode,
-          });
-        }
+        // Update ResizeManager's alpha mode (which also reconfigures context)
+        resizeManager.setAlphaMode(currentAlphaMode);
       }
 
       const clearTuple = parseClearColor((cfg as Record<string, unknown>).__pf_bg_rgba);
@@ -4486,15 +3364,15 @@ export const mount = async ({
               storeOp: 'store',
             },
           ],
-        } as GPURenderPassDescriptor;
-        if (depthView) {
-          (magentaPassDesc as any).depthStencilAttachment = {
-            view: depthView,
-            depthClearValue: 1.0,
-            depthLoadOp: 'clear',
-            depthStoreOp: 'store',
-          };
-        }
+          ...(depthView && {
+            depthStencilAttachment: {
+              view: depthView,
+              depthClearValue: 1.0,
+              depthLoadOp: 'clear' as const,
+              depthStoreOp: 'store' as const,
+            },
+          }),
+        };
         const pass = encoder.beginRenderPass(magentaPassDesc);
         pass.end();
         device.queue.submit([encoder.finish()]);
@@ -4516,15 +3394,15 @@ export const mount = async ({
             storeOp: 'store',
           },
         ],
-      } as GPURenderPassDescriptor;
-      if (depthView) {
-        (renderPassDesc as any).depthStencilAttachment = {
-          view: depthView,
-          depthClearValue: 1.0,
-          depthLoadOp: 'clear',
-          depthStoreOp: 'store',
-        };
-      }
+        ...(depthView && {
+          depthStencilAttachment: {
+            view: depthView,
+            depthClearValue: 1.0,
+            depthLoadOp: 'clear' as const,
+            depthStoreOp: 'store' as const,
+          },
+        }),
+      };
       // Throttle verbose diagnostics to avoid flooding the host; only emit when validation
       // triggers (debug mode on) or once every ~60 frames.
       if (shouldValidate) {
@@ -4558,7 +3436,7 @@ export const mount = async ({
         const renderStateDetail: Record<string, unknown> = {
           clearValue,
           depthFormatUsed,
-          pipelineLabel: (pipeline as any)?.label ?? null,
+          pipelineLabel: pipeline.label ?? null,
           bindGroupLayoutPresent: pipeline.getBindGroupLayout(0) ? true : false,
           totalVerts: resolvedCounts.totalVerts,
           nTheta: resolvedCounts.nTheta,
@@ -4579,17 +3457,10 @@ export const mount = async ({
       // Frustum check for a few sample points (center / top / bottom) to detect off-screen camera
       if (shouldValidate) {
         try {
-          const mulMat4Vec4 = (m: Mat4, x: number, y: number, z: number) => {
-            const cx = m[0] * x + m[4] * y + m[8] * z + m[12] * 1;
-            const cy = m[1] * x + m[5] * y + m[9] * z + m[13] * 1;
-            const cz = m[2] * x + m[6] * y + m[10] * z + m[14] * 1;
-            const cw = m[3] * x + m[7] * y + m[11] * z + m[15] * 1;
-            return { x: cx, y: cy, z: cz, w: cw };
-          };
           const proj = cameraRig.viewProjection;
           const pivotZ = state.pivot?.[2] ?? 0;
           const toNDC = (world: Vec3): { inside: boolean; ndc: [number, number, number] | null } => {
-            const clip = mulMat4Vec4(proj, world[0], world[1], world[2]);
+            const clip = mulMat4Vec4Full(proj, world[0], world[1], world[2]);
             if (!Number.isFinite(clip.w) || Math.abs(clip.w) < 1e-6) return { inside: false, ndc: null };
             const ndc_x = clip.x / clip.w;
             const ndc_y = clip.y / clip.w;
@@ -4633,7 +3504,7 @@ export const mount = async ({
       const reqStyleId = typeof current.styleId === 'number' ? current.styleId : (Number(cfg.style) || 0);
 
       // Debug log only when style changes or is pending
-      if (reqStyleId !== activePipelineStyleId || pendingPipelineStyleId !== null) {
+      if (import.meta.env.DEV && (reqStyleId !== activePipelineStyleId || pendingPipelineStyleId !== null)) {
         if (frameCounter % 60 === 0) {
           console.log(`[WebGPU] Pipeline State: req=${reqStyleId}, active=${activePipelineStyleId}, pending=${pendingPipelineStyleId}`);
         }
@@ -4642,11 +3513,11 @@ export const mount = async ({
       if (reqStyleId !== activePipelineStyleId) {
         // If we haven't requested this style yet, start compilation
         if (reqStyleId !== pendingPipelineStyleId) {
-          console.log(`[WebGPU] Style change detected! ${activePipelineStyleId} -> ${reqStyleId}. Initiating compilation...`);
+          if (import.meta.env.DEV) console.log(`[WebGPU] Style change detected! ${activePipelineStyleId} -> ${reqStyleId}. Initiating compilation...`);
           pendingPipelineStyleId = reqStyleId;
           getOrCreatePipeline(reqStyleId).then((p) => {
             if (p) {
-              console.log(`[WebGPU] Pipeline for style ${reqStyleId} ready. Swapping now.`);
+              if (import.meta.env.DEV) console.log(`[WebGPU] Pipeline for style ${reqStyleId} ready. Swapping now.`);
               activePipeline = p;
               activePipelineStyleId = reqStyleId;
               pendingPipelineStyleId = null;
@@ -4700,12 +3571,12 @@ export const mount = async ({
         totalDrawCalls += 1;
         pass.draw(wireframeVerts);
         totalDrawCalls += 1;
-        console.debug('[WebGPU:diag] wireframe-draw', { wireframeVerts, solidVerts: safeDrawVerts });
+        if (import.meta.env.DEV) console.debug('[WebGPU:diag] wireframe-draw', { wireframeVerts, solidVerts: safeDrawVerts });
       }
 
       if (debugSegmentsBuffer && debugSegmentsCount > 0) {
         if (!debugLinePipeline || debugPipelineStyleId !== activePipelineStyleId) {
-          console.log(`[WebGPU] Creating debug pipeline for style ${activePipelineStyleId}...`);
+          if (import.meta.env.DEV) console.log(`[WebGPU] Creating debug pipeline for style ${activePipelineStyleId}...`);
           const styleToLoad = activePipelineStyleId;
           createDebugPipeline(styleToLoad).then(p => {
             if (p && !disposed) {
@@ -4728,7 +3599,7 @@ export const mount = async ({
           pass.setVertexBuffer(0, debugSegmentsBuffer!);
           pass.draw(debugSegmentsCount);
           totalDrawCalls += 1;
-        } else if (debugSegmentsCount > 0 && frameCounter % 120 === 0) {
+        } else if (import.meta.env.DEV && debugSegmentsCount > 0 && frameCounter % 120 === 0) {
           console.log(`[WebGPU] RENDER SKIP: pipeline=${!!debugLinePipeline}, bg=${!!debugBindGroup}, styleMatch=${debugPipelineStyleId === activePipelineStyleId} (Debug: ${debugPipelineStyleId}, Active: ${activePipelineStyleId})`);
         }
       }
@@ -4785,7 +3656,7 @@ export const mount = async ({
           .then((error: GPUError | null) => {
             if (error) {
               console.warn('WebGPU validation', error);
-              const detail = typeof error === 'string' ? error : (error as any)?.message ?? 'validation error';
+              const detail = typeof error === 'string' ? error : error.message ?? 'validation error';
               setStatus(`WebGPU • ${detail}`);
               emitDiagnostic('webgpu:validation-error', { detail });
             }
@@ -4873,9 +3744,7 @@ export const mount = async ({
     updateAxisButton();
   }
 
-  const wheelOptions: AddEventListenerOptions = { passive: false };
-  canvas.addEventListener('wheel', handleWheel, wheelOptions);
-  canvas.addEventListener('dblclick', handleDoubleClick);
+  // wheel and dblclick event listeners now managed by PointerEventRouter (Phase 15)
   // Host camera accept policy button (cycles: grace -> always -> strict)
   const updateHostPolicyButton = (): void => {
     const btn = resolveControlsButton('[data-wgpu-action="host-policy"]');
@@ -4887,8 +3756,8 @@ export const mount = async ({
   const toggleHostPolicy = (): void => {
     if (!cameraController) return;
     const cur = cameraController.hostCameraAcceptPolicy;
-    const next = cur === 'grace' ? 'always' : cur === 'always' ? 'strict' : 'grace';
-    cameraController.setHostCameraAcceptPolicy(next as any);
+    const next: 'always' | 'grace' | 'strict' = cur === 'grace' ? 'always' : cur === 'always' ? 'strict' : 'grace';
+    cameraController.setHostCameraAcceptPolicy(next);
     updateHostPolicyButton();
   };
   const hostBtn = resolveControlsButton('[data-wgpu-action="host-policy"]');
@@ -4930,86 +3799,13 @@ export const mount = async ({
   let debugPointsBindGroup: GPUBindGroup | null = null;
   let debugPointsPipelineStyleId: number | null = null;
 
-  const createDebugPipeline = async (styleId: number): Promise<GPURenderPipeline | null> => {
-    const code = ShaderManager.getInstance().getDebugLinesWGSL(styleId);
-    const module = await createShaderModule(device, code, 'debug-lines');
-    if (!module) return null;
-
-    try {
-      return await device.createRenderPipelineAsync({
-        label: 'debug-lines',
-        layout: 'auto',
-        vertex: {
-          module,
-          entryPoint: 'vs_main',
-          buffers: [{
-            arrayStride: 8, // 2 floats (u,v)
-            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }]
-          }]
-        },
-        fragment: {
-          module,
-          entryPoint: 'fs_main',
-          targets: [{
-            format: format,
-            blend: {
-              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' }
-            }
-          }]
-        },
-        primitive: { topology: 'line-list' }, // Segments are lines
-        depthStencil: {
-          depthWriteEnabled: true,
-          depthCompare: 'less-equal',
-          format: depthFormatUsed || 'depth24plus',
-        }
-      });
-    } catch (e) {
-      console.error('[WebGPU] Failed to create debug pipeline', e);
-      return null;
-    }
+  // Thin wrappers delegating to DebugPipelineFactory (Phase 10 extraction)
+  const createDebugPipeline = (styleId: number): Promise<GPURenderPipeline | null> => {
+    return debugPipelineFactory.createDebugLinesPipeline(styleId);
   };
 
-  const createDebugPointsPipeline = async (styleId: number): Promise<GPURenderPipeline | null> => {
-    const code = ShaderManager.getInstance().getDebugPointsWGSL(styleId);
-    const module = await createShaderModule(device, code, 'debug-points');
-    if (!module) return null;
-
-    try {
-      return await device.createRenderPipelineAsync({
-        label: 'debug-points',
-        layout: 'auto',
-        vertex: {
-          module,
-          entryPoint: 'vs_main',
-          buffers: [{
-            arrayStride: 12, // 3 floats (u, t, kind)
-            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' as GPUVertexFormat }]
-          }]
-        },
-        fragment: {
-          module,
-          entryPoint: 'fs_main',
-          targets: [{
-            format: format,
-            blend: {
-              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' }
-            }
-          }]
-        },
-        primitive: { topology: 'point-list' },
-        depthStencil: {
-          depthWriteEnabled: true,
-          depthCompare: 'less-equal',
-          format: depthFormatUsed || 'depth24plus',
-        }
-      });
-    } catch (e) {
-      console.error('[WebGPU] Failed to create debug points pipeline', e);
-      return null;
-    }
+  const createDebugPointsPipeline = (styleId: number): Promise<GPURenderPipeline | null> => {
+    return debugPipelineFactory.createDebugPointsPipeline(styleId);
   };
 
   // Idle detection for resource savings
@@ -5027,9 +3823,9 @@ export const mount = async ({
         if (disposed) return;
         if (isVisible) {
           // Resume immediately when tab becomes visible
-          console.debug('[WebGPU] Tab visible, resuming full render rate');
+          if (import.meta.env.DEV) console.debug('[WebGPU] Tab visible, resuming full render rate');
         } else {
-          console.debug('[WebGPU] Tab hidden, pausing render');
+          if (import.meta.env.DEV) console.debug('[WebGPU] Tab hidden, pausing render');
         }
       },
     });
@@ -5076,8 +3872,8 @@ export const mount = async ({
         const prev = state.sceneRadius;
         state.sceneRadius = nextRadius;
         try {
-          const root: any = typeof window !== 'undefined' ? window : (globalThis as any);
-          const dbg = mountCanvasId ? root.__pf_webgpu_mounts?.[mountCanvasId]?.debug : undefined;
+          const mounts = typeof window !== 'undefined' ? window.__pf_webgpu_mounts : __pf_webgpu_mounts;
+          const dbg = mountCanvasId ? mounts?.[mountCanvasId]?.debug : undefined;
           if (dbg) dbg.lastSceneRadiusUpdate = { prev, next: nextRadius, timestamp: Date.now() };
         } catch (err) { /* ignore */ }
         state.cameraDirty = true;
@@ -5358,7 +4154,7 @@ export const mount = async ({
           state.displayRotY = wrapTau((state.displayRotY as number) + deltaRotation);
 
           // Preserve rotZ (tilt) during autorotation
-          const currentRotZ = (state as any).displayRotZ ?? state.rotZ ?? 0;
+          const currentRotZ = state.displayRotZ ?? state.rotZ ?? 0;
           const autoQuat = quaternionFromEuler(state.displayRotX as number, state.displayRotY as number, currentRotZ);
           const autoBasis = basisFromQuaternion(autoQuat);
           state.displayCamRight = autoBasis.right;
@@ -5377,7 +4173,7 @@ export const mount = async ({
       }
     }
 
-    if (pendingStaticCameraEmit && isCameraStatic()) {
+    if (cameraBroadcaster.isPendingStaticEmit() && isCameraStatic()) {
       // Before committing transient basis, ensure the camera is upright
       // when near vertical pitch: if the yaw orientation has the up vector
       // pointing screen-down, rotate yaw by π to preserve expected
@@ -5413,7 +4209,7 @@ export const mount = async ({
       } catch (err) {
         /* ignore */
       }
-      pendingStaticCameraEmit = false;
+      cameraBroadcaster.clearPendingStaticEmit();
       emitCameraState(true);
     }
 
@@ -5460,28 +4256,37 @@ export const mount = async ({
     }
     disposed = true;
     emitDiagnostic('component:dispose');
-    window.removeEventListener('resize', resize);
-    document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    // Note: ResizeManager.dispose() handles window resize and fullscreen event cleanup
     canvas.removeEventListener('contextmenu', preventContextMenu);
-    canvas.removeEventListener('pointerdown', handlePointerDown);
-    canvas.removeEventListener('pointermove', handlePointerMove);
-    canvas.removeEventListener('pointerup', handlePointerRelease);
-    canvas.removeEventListener('pointercancel', handlePointerRelease);
-    window.removeEventListener('pointerup', handlePointerRelease);
-    // Remove touch event listeners for pinch-to-zoom
-    canvas.removeEventListener('touchstart', handleTouchStart);
-    canvas.removeEventListener('touchmove', handleTouchMove);
-    canvas.removeEventListener('touchend', handleTouchEnd);
-    canvas.removeEventListener('touchcancel', handleTouchEnd);
-    canvas.removeEventListener('dblclick', handleDoubleClick);
-    canvas.removeEventListener('wheel', handleWheel, wheelOptions);
-    if (controlsRoot) {
-      controlsRoot.removeEventListener('click', handleControlsClick);
-    }
-    window.removeEventListener('keydown', handleKeydown);
-    window.removeEventListener('keyup', handleKeyup);
-    window.removeEventListener('blur', handleWindowBlur);
+    // Pointer, wheel, touch, and double-click event listeners cleaned up by PointerEventRouter (Phase 15)
+    try {
+      pointerRouter?.dispose();
+    } catch (e) { /* ignore cleanup errors */ }
+    // Controls click handler cleaned up (Phase 16)
+    try {
+      controlsHandler?.dispose();
+    } catch (e) { /* ignore cleanup errors */ }
+    // Axis indicator renderer cleaned up (Phase 17)
+    try {
+      axisRenderer?.dispose();
+    } catch (e) { /* ignore cleanup errors */ }
+    // Clean up axis overlay (Phase 1 decomposition: single dispose() call)
+    try {
+      axisOverlay?.dispose();
+    } catch (e) { /* ignore cleanup errors */ }
+    // Clean up input manager (Phase 2 decomposition)
+    try {
+      inputManager?.dispose();
+    } catch (e) { /* ignore cleanup errors */ }
+    // Clean up toolbar button sync (Phase 8 decomposition)
+    try {
+      toolbar?.dispose();
+    } catch (e) { /* ignore cleanup errors */ }
+    // Clean up camera state broadcaster (Phase 9 decomposition)
+    try {
+      cameraBroadcaster?.dispose();
+    } catch (e) { /* ignore cleanup errors */ }
+    // NOTE: Keyboard event listeners now cleaned up by inputManager.dispose() above
     cancelCameraEmit();
     if (debugOverlayEl?.parentElement) {
       debugOverlayEl.parentElement.removeChild(debugOverlayEl);
@@ -5502,9 +4307,16 @@ export const mount = async ({
       }
     } catch (e) { /* ignore cleanup errors */ }
 
-    if (resizeObserver) {
-      try { resizeObserver.disconnect(); } catch (e) { /* ignore */ }
-    }
+    // Clean up CameraCommandRouter (Phase 18)
+    try {
+      commandRouter.dispose();
+    } catch (e) { /* ignore cleanup errors */ }
+
+    // Clean up ResizeManager (removes event listeners and ResizeObserver)
+    try {
+      resizeManager.dispose();
+    } catch (e) { /* ignore */ }
+
     try { if (depth) depth.destroy(); } catch (e) { /* ignore */ }
     try { if (uniformBuffer) uniformBuffer.destroy(); } catch (e) { /* ignore */ }
     try { if (colorBuffers?.c1) colorBuffers.c1.destroy(); } catch (e) { /* ignore */ }
@@ -5514,10 +4326,7 @@ export const mount = async ({
     try { if (bgBuffers?.c2) bgBuffers.c2.destroy(); } catch (e) { /* ignore */ }
     try { if (bgBuffers?.c3) bgBuffers.c3.destroy(); } catch (e) { /* ignore */ }
     try { if (styleParamBuffer) styleParamBuffer.destroy(); } catch (e) { /* ignore */ }
-    if (localControlResetTimer !== null) {
-      window.clearTimeout(localControlResetTimer);
-      localControlResetTimer = null;
-    }
+    // localControlResetTimer cleanup now handled by PointerEventRouter.dispose (Phase 15)
     try { if (device) device.destroy(); } catch (e) { /* ignore */ }
   };
 
@@ -5531,7 +4340,7 @@ export const mount = async ({
   let paramUpdateLastFn = performance.now();
 
   const controller: WebGPUController = {
-    updateParams: (payload: any) => {
+    updateParams: (payload?: WebGPUParams | null) => {
       // Loop detection: warn if updates exceed 60Hz
       paramUpdateCount++;
       const now = performance.now();
@@ -5544,7 +4353,7 @@ export const mount = async ({
       }
       applyParamPayload(payload);
     },
-    handleCameraCommand: (payload: any) => {
+    handleCameraCommand: (payload: unknown) => {
       handleCameraCommand(payload);
     },
     setAutoRotate: (value: boolean) => {
@@ -5560,7 +4369,7 @@ export const mount = async ({
     dispose,
     setDebugSegments: (segments: Float32Array) => {
       if (disposed) return;
-      console.log(`[WebGPU] setDebugSegments: ${segments.length} floats (${segments.length / 4} segments)`);
+      if (import.meta.env.DEV) console.log(`[WebGPU] setDebugSegments: ${segments.length} floats (${segments.length / 4} segments)`);
       if (debugSegmentsBuffer) {
         debugSegmentsBuffer.destroy();
         debugSegmentsBuffer = null;
@@ -5580,7 +4389,7 @@ export const mount = async ({
     },
     setDebugPoints: (points: Float32Array) => {
       if (disposed) return;
-      console.log(`[WebGPU] setDebugPoints: ${points.length} floats (${points.length / 3} points)`);
+      if (import.meta.env.DEV) console.log(`[WebGPU] setDebugPoints: ${points.length} floats (${points.length / 3} points)`);
       if (debugPointsBuffer) {
         debugPointsBuffer.destroy();
         debugPointsBuffer = null;

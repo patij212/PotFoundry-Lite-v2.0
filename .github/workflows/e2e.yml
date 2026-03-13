@@ -1,0 +1,59 @@
+name: E2E Tests
+
+on:
+  # Runs on PRs and pushes to main branches, but only when app code changes
+  push:
+    branches: [apply/streamlit-fix, main]
+    paths:
+      - 'potfoundry-web/src/**'
+      - 'potfoundry-web/e2e/**'
+      - 'potfoundry-web/playwright.config.ts'
+      - 'potfoundry-web/package.json'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'potfoundry-web/src/**'
+      - 'potfoundry-web/e2e/**'
+      - 'potfoundry-web/playwright.config.ts'
+      - 'potfoundry-web/package.json'
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: potfoundry-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: potfoundry-web/package-lock.json
+
+      - run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npx playwright test --project=chromium
+        env:
+          CI: true
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: potfoundry-web/playwright-report/
+          retention-days: 14

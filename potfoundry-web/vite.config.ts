@@ -1,16 +1,22 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import basicSsl from '@vitejs/plugin-basic-ssl';
+
+const isMobileMode = process.env.VITE_MOBILE === '1';
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [
+        react(),
+        ...(isMobileMode ? [basicSsl()] : []),
+    ],
     build: {
         outDir: 'dist',
         sourcemap: true,
         emptyOutDir: true,
     },
     server: {
-        port: 3000,
-        host: '127.0.0.1',
+        port: isMobileMode ? 3443 : 3000,
+        host: isMobileMode ? '0.0.0.0' : '127.0.0.1',
     },
     test: {
         globals: true,

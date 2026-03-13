@@ -93,7 +93,7 @@ export interface TriangleQualityReport {
     ok: boolean;
     /** Minimum interior angle across all triangles (degrees). */
     minAngleDeg: number;
-    /** Maximum aspect ratio (longest/shortest edge) across all triangles. */
+    /** Maximum aspect ratio (circumradius/inradius, R/r) across all triangles. */
     maxAspectRatio: number;
     /** Number of sliver triangles (min angle < threshold). */
     sliverCount: number;
@@ -219,9 +219,15 @@ export interface ValidateConfig {
 // Edge Key Helpers
 // ============================================================================
 
-/** Pack two vertex indices into a canonical edge key (lower index first). */
-function edgeKey(a: number, b: number): string {
-    return a < b ? `${a}-${b}` : `${b}-${a}`;
+/**
+ * Pack two vertex indices into a canonical bigint edge key.
+ * Uses 0x200000 (2M) stride to allow vertex indices up to 2M per coordinate.
+ * Key = min(a,b) * stride + max(a,b), ensuring consistent ordering.
+ */
+function edgeKey(a: number, b: number): bigint {
+    return a < b
+        ? BigInt(a) * 0x200000n + BigInt(b)
+        : BigInt(b) * 0x200000n + BigInt(a);
 }
 
 // ============================================================================
@@ -242,7 +248,7 @@ export function checkManifold(
     indices: Uint32Array,
     idxCount: number,
 ): ManifoldReport {
-    const edgeFaceCount = new Map<string, number>();
+    const edgeFaceCount = new Map<bigint, number>();
 
     for (let t = 0; t < idxCount; t += 3) {
         const i0 = indices[t], i1 = indices[t + 1], i2 = indices[t + 2];
@@ -295,7 +301,7 @@ export function checkDegenerates(
     minEdgeLen: number = 1e-6,
 ): DegenerateReport {
     let zeroAreaTriangles = 0;
-    const collapsedEdgesSet = new Set<string>();
+    const collapsedEdgesSet = new Set<bigint>();
     const minEdgeSq = minEdgeLen * minEdgeLen;
 
     for (let t = 0; t < idxCount; t += 3) {
@@ -383,6 +389,11 @@ export function checkNormals(
     }
 
     // Count inverted triangles (oppose dominant direction)
+    // NOTE: This metric is informational only. For closed solids with
+    // inner + outer surfaces, the global average normal is dominated by
+    // the largest surface, causing normals on opposing surfaces (inner wall,
+    // base underside) to be flagged as "inverted" — a false positive.
+    // Validation gates on inconsistentPairs (local adjacent-face check) instead.
     let invertedTriangles = 0;
     for (const n of normals) {
         if (n[0] === 0 && n[1] === 0 && n[2] === 0) continue;
@@ -391,7 +402,7 @@ export function checkNormals(
     }
 
     // Check adjacent triangle normal consistency
-    const edgeTriMap = new Map<string, number[]>();
+    const edgeTriMap = new Map<bigint, number[]>();
     for (let t = 0; t < triCount; t++) {
         const base = t * 3;
         const i0 = indices[base], i1 = indices[base + 1], i2 = indices[base + 2];
@@ -416,7 +427,7 @@ export function checkNormals(
     }
 
     return {
-        ok: invertedTriangles === 0 && inconsistentPairs === 0,
+        ok: inconsistentPairs === 0,
         invertedTriangles,
         inconsistentPairs,
     };
@@ -446,9 +457,9 @@ export function checkTriangleQuality(
         return {
             ok: true,
             minAngleDeg: 60, // equilateral default
-            maxAspectRatio: 1,
+            maxAspectRatio: 2,  // equilateral R/r = 2
             sliverCount: 0,
-            meanAspectRatio: 1,
+            meanAspectRatio: 2, // equilateral R/r = 2
         };
     }
 
@@ -486,10 +497,20 @@ export function checkTriangleQuality(
         if (minAngle < globalMinAngle) globalMinAngle = minAngle;
         if (minAngle < sliverThresholdDeg) sliverCount++;
 
-        // Aspect ratio: longest / shortest edge
-        const longest = Math.max(e01, e12, e20);
-        const shortest = Math.min(e01, e12, e20);
-        const ar = longest / shortest;
+        // Aspect ratio: circumradius / inradius (R/r metric).
+        // Equilateral = 2.0, slivers → ∞.
+        // R = abc / (4A), r = 2A / (a+b+c), so R/r = abc(a+b+c) / (8A²).
+        const s = (e01 + e12 + e20) * 0.5;
+        const areaSq = s * (s - e01) * (s - e12) * (s - e20);
+        let ar: number;
+        if (areaSq > 1e-24) {
+            const area = Math.sqrt(areaSq);
+            ar = (e01 * e12 * e20) / (8 * area * area) * (e01 + e12 + e20);
+        } else {
+            ar = Infinity;
+            sliverCount++;
+            continue;
+        }
         if (ar > globalMaxAR) globalMaxAR = ar;
         arSum += ar;
         validCount++;
@@ -688,10 +709,10 @@ export async function checkFidelity(
     const sortedPos = [...posErrors].sort((a, b) => a - b);
     const sortedNorm = [...normErrors].sort((a, b) => a - b);
 
-    const p95Pos = percentile(sortedPos, 0.95);
-    const p999Pos = percentile(sortedPos, 0.999);
-    const p95Norm = percentile(sortedNorm, 0.95);
-    const p999Norm = percentile(sortedNorm, 0.999);
+    const p95Pos = percentile(sortedPos, 95);
+    const p999Pos = percentile(sortedPos, 99.9);
+    const p95Norm = percentile(sortedNorm, 95);
+    const p999Norm = percentile(sortedNorm, 99.9);
 
     // Feature drift
     let maxFeatureDrift = 0;
@@ -728,8 +749,8 @@ function computeDihedralAngles(
     positions: Float32Array,
     indices: Uint32Array,
     idxCount: number,
-    edgeAdj: Map<string, number[]>,
-): Map<string, number> {
+    edgeAdj: Map<bigint, number[]>,
+): Map<bigint, number> {
     const triCount = Math.floor(idxCount / 3);
 
     // Precompute face normals
@@ -749,7 +770,7 @@ function computeDihedralAngles(
         }
     }
 
-    const result = new Map<string, number>();
+    const result = new Map<bigint, number>();
 
     for (const [ek, tris] of edgeAdj) {
         if (tris.length !== 2) continue;
@@ -780,12 +801,12 @@ function computeDihedralAngles(
 function getTriangleEdgeDihedrals(
     triOffset: number,
     indices: Uint32Array,
-    edgeAdj: Map<string, number[]>,
-    dihedralAngles: Map<string, number>,
-): Array<[string, number]> {
+    edgeAdj: Map<bigint, number[]>,
+    dihedralAngles: Map<bigint, number>,
+): Array<[bigint, number]> {
     const i0 = indices[triOffset], i1 = indices[triOffset + 1], i2 = indices[triOffset + 2];
     const edges = [edgeKey(i0, i1), edgeKey(i1, i2), edgeKey(i2, i0)];
-    const result: Array<[string, number]> = [];
+    const result: Array<[bigint, number]> = [];
 
     for (const ek of edges) {
         const angle = dihedralAngles.get(ek);
@@ -842,13 +863,14 @@ export function checkFidelityCPU(
     // For an edge of length L subtending angle θ, chord error ≈ L²θ / 8
     const posErrors: number[] = [];
     for (const [ek, angle] of dihedralAngles) {
-        const parts = ek.split('-');
-        const a = parseInt(parts[0], 10);
-        const b = parseInt(parts[1], 10);
+        // Decode bigint key: ek = min(a,b) * 0x200000 + max(a,b)
+        const a = Number(ek / 0x200000n);
+        const b = Number(ek % 0x200000n);
         const lenSq = edgeLengthSq(positions, a, b);
         const theta = angle * Math.PI / 180;
-        const chordErr = lenSq * theta / 8; // L²θ/8 approximation
-        posErrors.push(Math.sqrt(chordErr)); // take sqrt for mm scale
+        const len = Math.sqrt(lenSq);
+        const chordErr = len * theta / 8; // L·θ/8 chord error bound
+        posErrors.push(chordErr);
     }
     const sortedPos = posErrors.sort((a, b) => a - b);
 
@@ -870,10 +892,10 @@ export function checkFidelityCPU(
 
     return {
         ok: true,
-        p95PosErrorMm: sortedPos.length > 0 ? percentile(sortedPos, 0.95) : 0,
-        p999PosErrorMm: sortedPos.length > 0 ? percentile(sortedPos, 0.999) : 0,
-        p95NormalErrorDeg: dihedralValues.length > 0 ? percentile(dihedralValues, 0.95) : 0,
-        p999NormalErrorDeg: dihedralValues.length > 0 ? percentile(dihedralValues, 0.999) : 0,
+        p95PosErrorMm: sortedPos.length > 0 ? percentile(sortedPos, 95) : 0,
+        p999PosErrorMm: sortedPos.length > 0 ? percentile(sortedPos, 99.9) : 0,
+        p95NormalErrorDeg: dihedralValues.length > 0 ? percentile(dihedralValues, 95) : 0,
+        p999NormalErrorDeg: dihedralValues.length > 0 ? percentile(dihedralValues, 99.9) : 0,
         maxFeatureDriftMm: maxFeatureDrift,
     };
 }
@@ -1016,9 +1038,9 @@ export function checkDistortionMetric(
 
     const ok = gates
         ? d.p95Anisotropy <= gates.maxP95StretchRatio &&
-          (d.triangleCount >= 1000
-              ? d.maxAnisotropy <= gates.maxP999StretchRatio * 1.5  // p999 proxy for small meshes
-              : true)
+        (d.triangleCount >= 1000
+            ? d.maxAnisotropy <= gates.maxP999StretchRatio * 1.5  // p999 proxy for small meshes
+            : true)
         : true;
 
     return {
@@ -1135,8 +1157,10 @@ export function validateMesh(
     const normals = checkNormals(positions, indices, idxCount);
     if (!normals.ok) {
         warnings.push(
-            `${normals.invertedTriangles} inverted triangles, ` +
-            `${normals.inconsistentPairs} inconsistent normal pairs`,
+            `${normals.inconsistentPairs} inconsistent normal pairs` +
+            (normals.invertedTriangles > 0
+                ? ` (${normals.invertedTriangles} inverted triangles — includes inner wall, expected for closed solids)`
+                : ''),
         );
     }
 
@@ -1146,7 +1170,7 @@ export function validateMesh(
         config.tolerances.minTriangleAngleDeg,
     );
     const tqOk = triangleQuality.minAngleDeg >= config.tolerances.minTriangleAngleDeg &&
-                 triangleQuality.maxAspectRatio <= config.tolerances.maxAspectRatio;
+        triangleQuality.maxAspectRatio <= config.tolerances.maxAspectRatio;
     triangleQuality.ok = tqOk;
     if (!tqOk) {
         if (triangleQuality.minAngleDeg < config.tolerances.minTriangleAngleDeg) {
@@ -1170,8 +1194,8 @@ export function validateMesh(
         config.featureChainReferencePositions,
     );
     const fidOk = fidelity.p999PosErrorMm <= config.tolerances.epsPosMm &&
-                  fidelity.p999NormalErrorDeg <= config.tolerances.epsNormalDeg &&
-                  fidelity.maxFeatureDriftMm <= config.tolerances.epsFeatureMm;
+        fidelity.p999NormalErrorDeg <= config.tolerances.epsNormalDeg &&
+        fidelity.maxFeatureDriftMm <= config.tolerances.epsFeatureMm;
     fidelity.ok = fidOk;
     if (!fidOk) {
         warnings.push(
@@ -1292,8 +1316,8 @@ export async function validateMeshGPU(
         config.featureChainReferencePositions,
     );
     const fidOk = gpuFidelity.p999PosErrorMm <= config.tolerances.epsPosMm &&
-                  gpuFidelity.p999NormalErrorDeg <= config.tolerances.epsNormalDeg &&
-                  gpuFidelity.maxFeatureDriftMm <= config.tolerances.epsFeatureMm;
+        gpuFidelity.p999NormalErrorDeg <= config.tolerances.epsNormalDeg &&
+        gpuFidelity.maxFeatureDriftMm <= config.tolerances.epsFeatureMm;
     gpuFidelity.ok = fidOk;
 
     report.fidelity = gpuFidelity;
@@ -1306,7 +1330,8 @@ export async function validateMeshGPU(
         report.triangleQuality.ok &&
         fidOk &&
         (report.seam?.ok ?? true) &&
-        (report.wallThickness?.ok ?? true);
+        (report.wallThickness?.ok ?? true) &&
+        (report.distortion?.ok ?? true);
 
     // Update fidelity warning
     if (!fidOk) {

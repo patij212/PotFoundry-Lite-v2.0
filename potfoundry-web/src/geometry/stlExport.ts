@@ -16,7 +16,7 @@ import { MeshData, Vec3, STLExportOptions } from './types';
 /**
  * Supported export file formats
  */
-export type ExportFormat = 'stl' | '3mf';
+export type ExportFormat = 'stl' | '3mf' | 'obj';
 
 /**
  * Extended export options supporting multiple formats
@@ -42,6 +42,10 @@ export async function exportMesh(
     const { exportTo3MF } = await import('./exporters/export3MF');
     return exportTo3MF(mesh, { name });
   }
+  if (format === 'obj') {
+    const { exportToOBJ } = await import('./exporters/exportOBJ');
+    return exportToOBJ(mesh, { name });
+  }
   return generateSTLBlob(mesh, { name, binary: true });
 }
 
@@ -58,12 +62,24 @@ export async function downloadMesh(
   options: ExportOptions = {}
 ): Promise<void> {
   // Infer format from filename if not specified
-  const format = options.format ?? (filename.toLowerCase().endsWith('.3mf') ? '3mf' : 'stl');
-  const name = options.name ?? filename.replace(/\.(stl|3mf)$/i, '');
+  let format = options.format;
+  if (!format) {
+    const lowerFilename = filename.toLowerCase();
+    if (lowerFilename.endsWith('.3mf')) format = '3mf';
+    else if (lowerFilename.endsWith('.obj')) format = 'obj';
+    else format = 'stl';
+  }
+  const name = options.name ?? filename.replace(/\.(stl|3mf|obj)$/i, '');
 
   if (format === '3mf') {
     const { download3MF } = await import('./exporters/export3MF');
     await download3MF(mesh, filename, { name });
+    return;
+  }
+
+  if (format === 'obj') {
+    const { downloadOBJ } = await import('./exporters/exportOBJ');
+    await downloadOBJ(mesh, filename, { name });
     return;
   }
 

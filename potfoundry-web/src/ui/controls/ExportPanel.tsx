@@ -1,11 +1,13 @@
 /**
  * ExportPanel - UI for mesh generation and file export
- * 
+ *
  * Provides a clean interface for:
  * - Viewing mesh statistics
  * - Downloading STL or 3MF files
  * - Configuring export options (format, GPU, optimization)
  * - Tier-based export limits and upgrade prompts
+ *
+ * Parametric v4 exports open a dedicated ExportDialog with full pipeline controls.
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
@@ -18,6 +20,12 @@ import { useIsPro, useIsAuthenticated } from '../../context/AuthContext';
 import { PricingModal } from '../pricing';
 import { AuthModal } from '../auth';
 import { Button } from '../shared/Button';
+import ExportDialog, {
+  type ExportDialogConfig,
+  type ExportDialogStats,
+  type ExportDialogValidation,
+  type ExportDiagnostics,
+} from './ExportDialog';
 import { Section } from '../shared/Section';
 import type { ExportFormat } from '../../geometry/stlExport';
 import './ExportPanel.css';
@@ -94,7 +102,15 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const [useParametric, setUseParametric] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('stl');
   const [adaptiveQuality, setAdaptiveQuality] = useState<AdaptiveExportQuality>('high');
-  const [parametricBudgetMB, setParametricBudgetMB] = useState(250); // Default 250MB
+  const parametricBudgetMB = 250; // Fallback budget for non-dialog export path
+
+  // Export dialog state
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [dialogStats, setDialogStats] = useState<ExportDialogStats | null>(null);
+  const [dialogValidation, setDialogValidation] = useState<ExportDialogValidation | null>(null);
+  const [dialogDiagnostics, setDialogDiagnostics] = useState<ExportDiagnostics | null>(null);
+  const [dialogPhase, setDialogPhase] = useState('');
+  const [dialogProgress, setDialogProgress] = useState(0);
 
   // Determine active exporter (parametric > adaptive > GPU > CPU)
   const activeExport = useParametric && parametricExport.isAvailable
@@ -132,6 +148,107 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   // In DEV mode, bypass all restrictions.
   const canExport = (isAuthenticated || isDev) && (tierCheck.canExport || isDev);
 
+  // Sync parametric stats into dialog format whenever they update
+  useEffect(() => {
+    if (!parametricExport.stats) return;
+    const s = parametricExport.stats;
+    setDialogStats({
+      triangles: s.triangleCount,
+      vertices: s.vertexCount,
+      fileSize: s.fileSize,
+      timeMs: s.generationTimeMs,
+      volumeMl: s.volumeMl,
+      surfaceAreaMm2: s.surfaceAreaMm2,
+      gridDimensions: s.gridDimensions,
+      densityRatio: s.adaptiveDensityRatio,
+      featurePeaksSnapped: s.featurePeaksSnapped,
+    });
+
+    // Map ValidationSummary → ExportDialogValidation for the dialog
+    const vs = s.validationSummary;
+    if (vs) {
+      setDialogValidation({
+        manifold: vs.manifoldOk,
+        normals: vs.normalsOk,
+        fidelity: vs.fidelityOk ?? true,
+        quality: vs.triangleQualityOk,
+        warnings: vs.warnings,
+      });
+    } else {
+      setDialogValidation(null);
+    }
+
+    // Map PipelineDiagnostics → ExportDiagnostics for the dialog
+    const pd = s.pipelineDiagnostics;
+    if (pd) {
+      setDialogDiagnostics({
+        phases: pd.phases,
+        chainCount: pd.chainCount,
+        chainPoints: pd.chainPoints,
+        chainFlips: pd.chainFlips,
+        genericFlips3D: pd.genericFlips3D,
+        subdivSplits: pd.subdivSplits,
+        valenceLow: pd.valenceLow,
+        valenceIdeal: pd.valenceIdeal,
+        valenceHigh: pd.valenceHigh,
+        crossRowTris: pd.crossRowTris,
+        aspectOver5: pd.aspectOver5,
+        refinement: pd.refinement ? {
+          iterations: pd.refinement.iterationsPerformed,
+          stopReason: pd.refinement.stopReason,
+          maxPosErrorMm: pd.refinement.maxPosErrorMm,
+          p95PosErrorMm: pd.refinement.p95PosErrorMm,
+          maxNormalErrorDeg: pd.refinement.maxNormalErrorDeg,
+        } : undefined,
+      });
+    } else {
+      setDialogDiagnostics(null);
+    }
+  }, [parametricExport.stats]);
+
+  // Sync parametric progress into dialog
+  useEffect(() => {
+    setDialogPhase(parametricExport.progress.message);
+    setDialogProgress(parametricExport.progress.progress);
+  }, [parametricExport.progress]);
+
+  /** Build pipeline overrides from the dialog config for the hook. */
+  const buildOverrides = useCallback((config: ExportDialogConfig) => ({
+    qualityProfile: config.qualityProfile,
+    pipelineFeatureFlags: config.featureFlags,
+    toleranceOverrides: config.toleranceOverrides,
+    pipelineConfig: config.pipeline,
+    relaxIterations: config.pipeline.relaxIterations,
+  }), []);
+
+  const handleDialogExport = useCallback(async (config: ExportDialogConfig) => {
+    if (!isAuthenticated && !isDev) { setShowAuthModal(true); return; }
+    if (!tierCheck.canExport && !isDev) { setShowPricingModal(true); return; }
+
+    const tris = fileSizeToTriangles(config.budgetMB);
+    const meshData = await parametricExport.generateMesh(tris, buildOverrides(config));
+    if (!meshData) return;
+
+    const styleName = style.name ?? 'Pot';
+    const ext = config.format === '3mf' ? '3mf' : config.format === 'obj' ? 'obj' : 'stl';
+    const filename = `PotFoundry_${styleName}_${Date.now()}.${ext}`;
+
+    try {
+      const { downloadMesh } = await import('../../geometry/stlExport');
+      await downloadMesh(meshData, filename, { format: config.format });
+      await recordExport();
+      onExportComplete?.();
+    } catch (error) {
+      console.error('[ExportPanel] Dialog export failed:', error);
+      alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [isAuthenticated, isDev, tierCheck, parametricExport, style.name, recordExport, onExportComplete, buildOverrides]);
+
+  const handleDialogPreview = useCallback(async (config: ExportDialogConfig) => {
+    const tris = fileSizeToTriangles(config.budgetMB);
+    await parametricExport.generateMesh(tris, buildOverrides(config));
+  }, [parametricExport, buildOverrides]);
+
   const handleExport = useCallback(async () => {
     // If not authenticated, show auth modal (unless in dev mode)
     if (!isAuthenticated && !isDev) {
@@ -166,7 +283,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
 
     // Determine filename with correct extension
     const styleName = style.name ?? 'Pot';
-    const extension = exportFormat === '3mf' ? '3mf' : 'stl';
+    const extension = exportFormat === '3mf' ? '3mf' : exportFormat === 'obj' ? 'obj' : 'stl';
     const filename = `PotFoundry_${styleName}_${Date.now()}.${extension}`;
 
     try {
@@ -287,12 +404,18 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
             <Button
               variant="primary"
               size="md"
-              onClick={handleExport}
+              onClick={useParametric && parametricExport.isAvailable
+                ? () => setExportDialogOpen(true)
+                : handleExport}
               disabled={isLoading}
               className="export-panel__export-btn"
             >
               <DownloadIcon />
-              {isLoading ? 'Generating...' : `Download ${exportFormat.toUpperCase()}`}
+              {isLoading
+                ? 'Generating...'
+                : (useParametric && parametricExport.isAvailable)
+                  ? 'Export…'
+                  : `Download ${exportFormat.toUpperCase()}`}
             </Button>
           ) : (
             // Signed in but limit reached
@@ -468,52 +591,17 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                 </span>
               </label>
 
-              {useParametric && (
-                <div className="export-panel__adaptive-settings" style={{ marginLeft: '24px', marginTop: '8px' }}>
-                  <div className="export-panel__quality-slider">
-                    <label style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      STL Budget: <strong>{parametricBudgetMB >= 1000 ? `${(parametricBudgetMB / 1000).toFixed(1)}GB` : `${parametricBudgetMB}MB`}</strong>
-                    </label>
-                    <input
-                      type="range"
-                      min="25" max="2000" step="25"
-                      value={parametricBudgetMB}
-                      onChange={(e) => setParametricBudgetMB(parseInt(e.target.value))}
-                      style={{ width: '100%', accentColor: 'var(--color-primary)' }}
-                    />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#94a3b8' }}>
-                      <span>25MB</span>
-                      <span>500MB</span>
-                      <span>1GB</span>
-                      <span>2GB</span>
-                    </div>
-                  </div>
-
-                  {/* v15.0: Debug overlay toggles */}
-                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={parametricExport.showChainOverlay}
-                        onChange={(e) => parametricExport.setShowChainOverlay(e.target.checked)}
-                      />
-                      <span style={{ color: '#e879f9' }}>■</span> Chain Lines (magenta)
-                    </label>
-                    <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={parametricExport.showPeakOverlay}
-                        onChange={(e) => parametricExport.setShowPeakOverlay(e.target.checked)}
-                      />
-                      <span style={{ color: '#4ade80' }}>●</span> Peaks <span style={{ color: '#60a5fa' }}>●</span> Valleys
-                    </label>
-                  </div>
-
-                  <p className="export-panel__hint" style={{ marginTop: '8px', fontSize: '11px' }}>
-                    Direct GPU tessellation — no CDT artifacts.<br />
-                    ~{(fileSizeToTriangles(parametricBudgetMB) / 1_000_000).toFixed(1)}M triangles.
-                    {parametricBudgetMB >= 800 && <><br /><strong style={{ color: '#f59e0b' }}>⚠️ Large files may slow slicers.</strong></>}
+              {useParametric && parametricExport.isAvailable && (
+                <div className="export-panel__parametric-card">
+                  <p className="export-panel__hint">
+                    Quality profile, file budget, per-stage settings, feature flags and diagnostics available in the export dialog.
                   </p>
+                  <button
+                    className="export-panel__open-dialog-btn"
+                    onClick={() => setExportDialogOpen(true)}
+                  >
+                    Configure &amp; Export…
+                  </button>
                 </div>
               )}
             </div>
@@ -589,23 +677,46 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                 >
                   <option value="stl">STL (Binary)</option>
                   <option value="3mf">3MF (Compressed)</option>
+                  <option value="obj">OBJ (Wavefront)</option>
                 </select>
               </label>
             </div>
 
             <div className="export-panel__format-info">
               <span className="export-panel__format-badge">
-                {exportFormat === '3mf' ? '3MF' : 'Binary STL'}
+                {exportFormat === '3mf' ? '3MF' : exportFormat === 'obj' ? 'OBJ' : 'Binary STL'}
               </span>
               <span className="export-panel__format-desc">
                 {exportFormat === '3mf'
                   ? '50% smaller than STL, ZIP compressed'
-                  : '80% smaller than ASCII STL'}
+                  : exportFormat === 'obj'
+                    ? 'ASCII text, widely compatible'
+                    : '80% smaller than ASCII STL'}
               </span>
             </div>
           </div>
         )}
       </Section>
+
+      {/* Parametric Export Dialog */}
+      <ExportDialog
+        isOpen={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        potName={style.name ?? 'Pot'}
+        onExport={handleDialogExport}
+        onPreview={handleDialogPreview}
+        isGenerating={parametricExport.progress.status === 'generating'}
+        generationPhase={dialogPhase}
+        generationProgress={dialogProgress}
+        stats={dialogStats}
+        validation={dialogValidation}
+        diagnostics={dialogDiagnostics}
+        isAvailable={parametricExport.isAvailable}
+        showChainOverlay={parametricExport.showChainOverlay}
+        showPeakOverlay={parametricExport.showPeakOverlay}
+        onChainOverlayChange={parametricExport.setShowChainOverlay}
+        onPeakOverlayChange={parametricExport.setShowPeakOverlay}
+      />
 
       {/* Pricing Modal */}
       <PricingModal open={showPricingModal} onOpenChange={setShowPricingModal} />

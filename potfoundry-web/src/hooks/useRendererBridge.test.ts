@@ -155,6 +155,15 @@ describe('sendFullStoreToController', () => {
         resetCamera: vi.fn(),
     };
 
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+    });
+
     it('should send all state parameters', () => {
         (useAppStore.getState as any).mockReturnValue({
             geometry: { H: 120, top_od: 140 },
@@ -174,20 +183,27 @@ describe('sendFullStoreToController', () => {
 
         sendFullStoreToController(mockController);
 
-        expect(mockController.updateParams).toHaveBeenCalled();
-        const params = mockController.updateParams.mock.calls[0][0];
+        // Advance past the 100ms setTimeout inside sendFullStoreToController
+        vi.advanceTimersByTime(150);
 
-        // Check geometry mapping
-        expect(params).toHaveProperty('H', 120);
-        expect(params).toHaveProperty('top_od', 140);
+        // Source calls updateParams 4 times: geometry, style, appearance, mesh
+        expect(mockController.updateParams).toHaveBeenCalledTimes(4);
 
-        // Check style mapping
-        expect(params).toHaveProperty('styleId');
+        // Call 0: geometry params
+        const geomParams = mockController.updateParams.mock.calls[0][0];
+        expect(geomParams).toHaveProperty('H', 120);
+        expect(geomParams).toHaveProperty('top_od', 140);
 
-        // Check mesh mapping
-        expect(params).toHaveProperty('preview_n_theta', 256);
+        // Call 1: style params
+        const styleParams = mockController.updateParams.mock.calls[1][0];
+        expect(styleParams).toHaveProperty('styleId');
 
-        // Check appearance mapping
-        expect(params).toHaveProperty('primaryColor');
+        // Call 2: appearance params (primaryColor is mapped to gradient array)
+        const appearanceParams = mockController.updateParams.mock.calls[2][0];
+        expect(appearanceParams).toHaveProperty('gradient');
+
+        // Call 3: mesh params (preview_n_theta is mapped to nTheta)
+        const meshParams = mockController.updateParams.mock.calls[3][0];
+        expect(meshParams).toHaveProperty('nTheta', 256);
     });
 });

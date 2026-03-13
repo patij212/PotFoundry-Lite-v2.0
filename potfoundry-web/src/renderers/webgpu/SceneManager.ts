@@ -2,6 +2,10 @@ import { WebGPURenderer } from './WebGPURenderer';
 import { ShaderManager } from './ShaderManager';
 import { UNIFORM_BUFFER_SIZE } from '../../camera_constants';
 import { STYLE_FUNCTION_MAP } from '../../styles/registry';
+import { isMobileDevice } from '../../ResizeManager';
+
+/** Maximum shader size (bytes) allowed on mobile before refusing compilation to prevent GPU TDR */
+const MOBILE_SHADER_BUDGET = 50 * 1024;
 
 export class SceneManager {
     private renderer: WebGPURenderer;
@@ -11,7 +15,8 @@ export class SceneManager {
     private bindGroup: GPUBindGroup | null = null;
 
     // Buffers for color/gradient data (temporary port from core)
-    public bgBuffers: any = null;
+    // Definite assignment: always set in createBuffers() before any rendering
+    public bgBuffers!: { c1: GPUBuffer; c2: GPUBuffer; c3: GPUBuffer; bg1: GPUBuffer; bg2: GPUBuffer; bg3: GPUBuffer };
 
     private pipelineCache: Map<number, GPURenderPipeline> = new Map();
     private compilationPromises: Map<number, Promise<GPURenderPipeline>> = new Map();
@@ -46,26 +51,34 @@ export class SceneManager {
             // 1. Compile ONLY the requested style first.
             await this.activateStyle(initialStyleId);
 
-            // 2. Start background compilation of remaining styles
-            this.warmupPipelines(initialStyleId);
+            // 2. Start background compilation of remaining styles (desktop only).
+            // On mobile, skip warmup to avoid overloading the GPU shader compiler.
+            if (!isMobileDevice()) {
+                this.warmupPipelines(initialStyleId);
+            } else {
+                console.log('[WebGPU] [SceneManager] Mobile device — skipping background shader warmup');
+            }
 
             return !!this.pipeline;
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('[WebGPU] [SceneManager] CRITICAL INIT FAILURE:', err);
+            // Mirror to console.log so mobile DevConsole (ConsolePatch) can see it
+            console.log(`[WebGPU] [SceneManager] CRITICAL INIT FAILURE: ${err instanceof Error ? err.message : String(err)}`);
 
             // Explicitly log known properties for better debugging
-            if (err) {
+            if (err instanceof Error) {
                 console.error('[WebGPU] [SceneManager] Error Details:', {
                     name: err.name,
                     message: err.message,
                     stack: err.stack,
-                    code: err.code
+                    code: (err as Error & { code?: string }).code
                 });
+                console.log(`[WebGPU] [SceneManager] Error Details: name=${err.name} message=${err.message}`);
             }
 
             // Fallback stringify
             if (typeof err === 'object') {
-                try { console.error('[WebGPU] [SceneManager] Full Error Object:', JSON.stringify(err, Object.getOwnPropertyNames(err))); } catch (e) { }
+                try { console.error('[WebGPU] [SceneManager] Full Error Object:', JSON.stringify(err, Object.getOwnPropertyNames(err))); } catch (e) { console.error('[WebGPU] [SceneManager] Error during error logging:', String(e)); }
             }
             return false;
         }
@@ -155,6 +168,11 @@ export class SceneManager {
 
             console.log(`[WebGPU] [SceneManager] Compiling Style ${styleId}. Size: ${(wgsl.length / 1024).toFixed(2)} KB, Lines: ${wgsl.split('\n').length}`);
 
+            // Mobile safety net: refuse to compile shaders exceeding the budget to prevent GPU TDR
+            if (isMobileDevice() && wgsl.length > MOBILE_SHADER_BUDGET) {
+                throw new Error(`Shader too complex for mobile GPU (${(wgsl.length / 1024).toFixed(1)}KB exceeds ${(MOBILE_SHADER_BUDGET / 1024).toFixed(0)}KB budget)`);
+            }
+
             // const moduleStart = performance.now();
             const module = device.createShaderModule({
                 label: `pot_preview_style_${styleId}.wgsl`,
@@ -169,13 +187,15 @@ export class SceneManager {
                 if (info.messages.length > 0) {
                     const errs = info.messages.filter(m => m.type === 'error');
                     if (errs.length > 0) {
+                        for (const e of errs) {
+                            console.log(`[WebGPU] SHADER ERROR line ${e.lineNum}:${e.linePos}: ${e.message}`);
+                        }
                         console.error(`[WebGPU] [SceneManager] Style ${styleId} Shader Errors:`, errs);
-                    } else {
-                        // console.warn(`[WebGPU] [SceneManager] Style ${styleId} Shader Warnings:`, info.messages);
+                        console.log(`[WebGPU] [SceneManager] Style ${styleId} has ${errs.length} shader compilation error(s)`);
                     }
                 }
             } catch (e) {
-                console.warn('[WebGPU] [SceneManager] Could not retrieve compilation info (driver might have crashed already).');
+                console.warn(`[WebGPU] [SceneManager] Could not retrieve compilation info: ${e instanceof Error ? e.message : String(e)}`);
             }
 
             const pipelineDescriptor: GPURenderPipelineDescriptor = {
@@ -209,20 +229,23 @@ export class SceneManager {
             const pipelineStart = performance.now();
             // console.log(`[WebGPU] [SceneManager] Starting Async Pipeline Compilation for Style ${styleId}...`);
 
-            const pipeline = await device.createRenderPipelineAsync(pipelineDescriptor).catch(async (err) => {
+            /** Mobile pipeline compilation timeout (ms) — prevents infinite GPU hangs */
+            const PIPELINE_TIMEOUT_MS = 8000;
+            const pipelinePromise = device.createRenderPipelineAsync(pipelineDescriptor);
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error(`Pipeline compilation timed out after ${PIPELINE_TIMEOUT_MS}ms (possible Dawn compiler hang)`)), PIPELINE_TIMEOUT_MS);
+            });
+
+            const pipeline = await Promise.race([pipelinePromise, timeoutPromise]).catch(async (err) => {
                 const duration = performance.now() - pipelineStart;
-                console.error(`[WebGPU] [SceneManager] createRenderPipelineAsync failed for Style ${styleId} after ${duration.toFixed(0)}ms`);
-                console.error('[WebGPU] [SceneManager] Raw Error:', err);
-                if (typeof err === 'object') {
-                    console.error('[WebGPU] [SceneManager] Error Object Keys:', Object.keys(err));
-                    console.error('[WebGPU] [SceneManager] Error Details:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
-                }
+                console.error(`[WebGPU] [SceneManager] createRenderPipelineAsync failed for Style ${styleId} after ${duration.toFixed(0)}ms:`, err);
+                // Mirror to console.log so mobile DevConsole can see this
+                console.log(`[WebGPU] [SceneManager] PIPELINE FAILED Style ${styleId} after ${duration.toFixed(0)}ms: ${err instanceof Error ? err.message : String(err)}`);
 
                 // If it was a TDR, the device is likely lost now.
                 if (this.renderer.device) {
                     await this.renderer.device.lost.then((info) => {
-                        console.error('[WebGPU] [SceneManager] Device Lost Reason:', info.reason);
-                        console.error('[WebGPU] [SceneManager] Device Lost Message:', info.message);
+                        console.error('[WebGPU] [SceneManager] Device Lost:', info.reason, info.message);
                     }).catch(() => { });
                 }
 
@@ -275,18 +298,20 @@ export class SceneManager {
 
     public updateUniforms(data: Float32Array) {
         if (this.uniformBuffer && this.renderer.device) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Float32Array<ArrayBufferLike> vs GPUAllowSharedBufferSource strict mode mismatch
             this.renderer.device.queue.writeBuffer(this.uniformBuffer, 0, data as any);
         }
     }
 
     public updateStyleParams(data: Float32Array) {
         if (this.styleParamBuffer && this.renderer.device) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Float32Array<ArrayBufferLike> vs GPUAllowSharedBufferSource strict mode mismatch
             this.renderer.device.queue.writeBuffer(this.styleParamBuffer, 0, data as any);
         }
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    public updateColors(_colors: any) { // Type to be defined
+    public updateColors(_colors: unknown) { // Type to be defined
         // Implementation needed based on input structure
     }
 
@@ -353,13 +378,13 @@ export class SceneManager {
 
             // Now run the Intermediate Test
             return await this.intermediateLightingTest();
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('[WebGPU] [SceneManager] Smoke Test FAILED (Critical).', err);
-            if (err) {
+            if (err instanceof Error) {
                 console.error('[WebGPU] [SceneManager] Smoke Test Error Details:', {
                     name: err.name,
                     message: err.message,
-                    code: err.code
+                    code: (err as Error & { code?: string }).code
                 });
             }
             return false;

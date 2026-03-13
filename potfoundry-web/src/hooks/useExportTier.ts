@@ -110,12 +110,12 @@ export function useExportTier(): UseExportTierResult {
         // Skip if auth not configured or no profile
         // (We now track ALL users, including Pro, for stats)
         if (!isAuthConfigured || !profile) {
-            console.log('[ExportTier] Skipping record:', { isAuthConfigured, hasProfile: !!profile });
+            if (import.meta.env.DEV) console.log('[ExportTier] Skipping record:', { isAuthConfigured, hasProfile: !!profile });
             return;
         }
 
         try {
-            console.log('[ExportTier] Recording export for user:', profile.id, 'Current count:', profile.exportsThisMonth);
+            if (import.meta.env.DEV) console.log('[ExportTier] Recording export for user:', profile.id, 'Current count:', profile.exportsThisMonth);
 
             // Use RPC call to secure increment_exports() function
             // This function uses auth.uid() internally so users can only increment their own count
@@ -128,7 +128,7 @@ export function useExportTier(): UseExportTierResult {
             if (error) {
                 console.error('[ExportTier] Failed to record export:', error);
             } else {
-                console.log('[ExportTier] Export recorded successfully. New count:', data);
+                if (import.meta.env.DEV) console.log('[ExportTier] Export recorded successfully. New count:', data);
                 // Refresh profile to update the UI with new counts
                 await refreshProfile();
             }

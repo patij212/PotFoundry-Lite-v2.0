@@ -1466,7 +1466,6 @@ export class ConstrainedTriangulator {
      * @param maxRatio Maximum allowed Aspect Ratio (Longest Edge / Shortest Altitude)
      * @param maxIterations Number of refinement passes
      */
-    // @ts-expect-error Intentionally unused - disabled in v3.9, kept for future re-evaluation
     private static refineTriangleQuality(
         mesh: TriangulatedMesh,
         chains: Point2D[][],

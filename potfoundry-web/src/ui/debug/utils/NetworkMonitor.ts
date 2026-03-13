@@ -92,9 +92,11 @@ export function installNetworkMonitor(onCapture: NetworkCallback): () => void {
         username?: string | null,
         password?: string | null
     ) {
+        /* eslint-disable @typescript-eslint/no-explicit-any -- Attaching tracking metadata to XHR instance for network monitoring */
         (this as any).__nm_method = method.toUpperCase();
         (this as any).__nm_url = typeof url === 'string' ? url : url.href;
         (this as any).__nm_id = `xhr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        /* eslint-enable @typescript-eslint/no-explicit-any */
         return origXhrOpen.call(this, method, url, async ?? true, username, password);
     };
 

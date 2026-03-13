@@ -1,4 +1,32 @@
 // Canonical types and lightweight helpers for frontend WebGPU component
+
+/**
+ * Mount configuration passed via initialParams.
+ * Extends base properties with optional style and camera settings.
+ */
+export interface MountConfig extends Record<string, unknown> {
+  /** Style ID (numeric) or style name (string) */
+  style?: string | number;
+  /** Numeric style ID (takes precedence over style) */
+  styleId?: number;
+  /** Camera acceptance policy for host-driven updates */
+  hostCameraAcceptPolicy?: 'always' | 'grace' | 'strict';
+  /** Grace period for local camera control (ms) */
+  localCameraGraceMs?: number;
+  /** Alias for localCameraGraceMs */
+  hostCameraGraceMs?: number;
+  /** Internal: background gradient override */
+  __pf_bg_gradient?: unknown;
+  /** Internal: background alpha mode */
+  __pf_bg_mode?: unknown;
+  /** Background gradient configuration */
+  background_gradient?: unknown;
+  /** Background configuration */
+  background?: unknown;
+  /** Gradient angle */
+  gradient_angle?: number;
+}
+
 export type MountOptions = {
   canvas: HTMLCanvasElement;
   canvasId?: string;
@@ -10,8 +38,82 @@ export type MountOptions = {
   onAutoRotateChange?: (v: boolean) => void;
 };
 
-export type WebGPUController = any;
-export type WebGPUEvent = any;
+// === WebGPU Error Codes ===
+export type WebGPUErrorCode =
+  | 'webgpu:not-supported'
+  | 'webgpu:adapter-unavailable'
+  | 'webgpu:context-unavailable'
+  | 'webgpu:pipeline-failed'
+  | 'webgpu:invalid-vertex-count'
+  | 'webgpu:index-overflow'
+  | 'component:mount-failed'
+  | 'component:mount-rejected';
+
+// === Camera Snapshot ===
+export interface CameraSnapshot {
+  rotX: number;
+  rotY: number;
+  zoom: number;
+  panX: number;
+  panY: number;
+  autoRotate: boolean;
+  sceneRadius: number;
+  projection: 'perspective' | 'ortho';
+  cameraMode: CameraMode;
+  pivot: Vec3;
+  eye: Vec3;
+}
+
+// === WebGPU Events ===
+export interface WebGPUReadyEvent {
+  type: 'ready';
+  payload: { timestamp: number; canvasId: string | undefined };
+}
+
+export interface WebGPUDiagnosticEvent {
+  type: 'diagnostic';
+  payload: { message: string; detail?: Record<string, unknown>; timestamp: number; canvasId: string | undefined };
+}
+
+export interface WebGPUErrorEvent {
+  type: 'error';
+  payload: {
+    code: WebGPUErrorCode;
+    message: string;
+    detail?: string;
+    fatal: boolean;
+    timestamp: number;
+    canvasId: string | undefined;
+    context: Record<string, unknown>;
+  };
+}
+
+export interface WebGPUCameraStateEvent {
+  type: 'cameraState';
+  payload: CameraSnapshot & { timestamp: number; seq: number };
+}
+
+export type WebGPUEvent =
+  | WebGPUReadyEvent
+  | WebGPUDiagnosticEvent
+  | WebGPUErrorEvent
+  | WebGPUCameraStateEvent;
+
+// === WebGPU Controller Interface ===
+export interface WebGPUController {
+  updateParams(payload?: WebGPUParams | null): void;
+  handleCameraCommand(payload: unknown): void;
+  setAutoRotate(value: boolean): void;
+  toggleAutoRotate(): void;
+  getAutoRotate(): boolean;
+  setAutoPivot(value: boolean): void;
+  toggleAutoPivot(): void;
+  getAutoPivot(): boolean;
+  dispose(): void;
+  setDebugSegments(segments: Float32Array): void;
+  setDebugPoints(points: Float32Array): void;
+}
+
 export const DEBUG_PARAM_FLAG = '__webgpu_debug_flag__';
 export const ALWAYS_ON_DIAGNOSTICS: Set<string> = new Set([
   'webgpu:shader-compile-error',
@@ -43,7 +145,7 @@ export const clamp = (v: number, lo: number, hi: number): number => Math.max(lo,
 
 import type { Vec3, Quaternion, CameraBasis } from './camera_basis';
 
-export const computeSceneExtents = (cfg: any) => {
+export const computeSceneExtents = (cfg: Record<string, unknown>) => {
   // Extract pot dimensions from config
   const H = Math.max(Math.abs(Number(cfg?.H) || 120), 1);
   const Rt = Math.max(Math.abs(Number(cfg?.Rt) || 70), 1);
@@ -125,6 +227,21 @@ export interface WebGPUState {
   showAxis?: boolean;
   autoPivotFromCamera?: boolean;
   disableAutoFlip?: boolean;
+  /** Debug: last committed camera basis (for diagnostics) */
+  recentBasisCommit?: { right: Vec3; up: Vec3; forward: Vec3 };
+  /** Debug: last inertia snapshot (for diagnostics) */
+  recentInertia?: {
+    type: 'arc' | 'turntable';
+    raw?: number;
+    clamped?: number;
+    axis?: Vec3 | null;
+    inertiaRotX?: number;
+    inertiaRotY?: number;
+    displayRotX?: number | null;
+    displayRotY?: number | null;
+    dt?: number;
+    ts: number;
+  } | null;
   // allowance for additional properties used by update loops
   [key: string]: unknown;
 }

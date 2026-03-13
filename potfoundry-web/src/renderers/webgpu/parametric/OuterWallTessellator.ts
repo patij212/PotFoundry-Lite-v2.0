@@ -12,12 +12,38 @@
 
 import type { FeatureChain } from './types';
 import { bsearchFloor } from './GridBuilder';
+import { collectChainVertices, SEAM_THRESHOLD } from './ChainVertexBuilder';
+import type { ChainBuildResult } from './ChainVertexBuilder';
 import {
-    triangulateChainStrip,
-    createEmptyStats,
-    DEFAULT_CHAIN_STRIP_CONFIG,
-    type ChainStripConfig,
-} from './ChainStripTriangulator';
+    planOuterWallCorridors,
+} from './OuterWallCorridorPlanner';
+import type {
+    OuterWallCorridorOwnershipSegment,
+    OuterWallCorridorPlanningResult,
+    OuterWallLegacyOwnershipCell,
+} from './OuterWallCorridorPlanner';
+
+/**
+ * Configuration for chain strip triangulation.
+ * @deprecated R34: Cell-local quad splitting replaces ChainStripTriangulator.ts.
+ * Retained for backward-compatible function signature only.
+ */
+export interface ChainStripConfig {
+    mode: string;
+    densityMultiplier: number;
+    adaptiveRefine: boolean;
+    expansion: number;
+    bandMergeFactor?: number;
+}
+
+/** Default chain strip config — kept for backward compatibility. */
+export const DEFAULT_CHAIN_STRIP_CONFIG: ChainStripConfig = {
+    mode: 'cdt-first',
+    densityMultiplier: 3,
+    adaptiveRefine: true,
+    expansion: 2,
+    bandMergeFactor: 1.0,
+};
 
 // ============================================================================
 // Types
@@ -55,6 +81,8 @@ export interface StripVertex {
     isChain: boolean;
     /** Grid column this vertex belongs to or is nearest to */
     gridCol: number;
+    /** Perturbed T-position for promoted chain vertices (D-Radical). */
+    promotedT?: number;
 }
 
 /**
@@ -75,6 +103,29 @@ export interface OuterWallResult {
     origToFinal: Map<number, number>;
     /** Map from chain vertex index → chainId (for FeatureEdgeGraph construction) */
     chainVertexChainIds: Map<number, number>;
+    /** R36: Grid vertices adjacent to chain cells/super-cells, for optimizer visibility */
+    chainAdjacentVertices: Set<number>;
+    /** R38: Protected corridor around phantom crossing anchors and companions */
+    protectedStripVertices: Set<number>;
+    /** R46: Fan diagonal edges from chainFanQuad (chain↔grid), for constraint protection */
+    fanDiagonalEdges: Array<[number, number]>;
+    /** R46 Phase 2: Interpolated chain vertices for post-OWT GPU re-snap */
+    interpolatedChainVertices: Array<{ vertexIdx: number; chainId: number; rowIdx: number; gapSize: number }>;
+    /** C0/C1: Dry-run corridor planning output. Undefined unless explicitly enabled. */
+    corridorPlan?: OuterWallCorridorPlanningResult;
+}
+
+/**
+ * Optional build-time controls for non-behavioral corridor planning.
+ *
+ * In C0/C1 these options are strictly read-only: they may add diagnostics and
+ * planner output, but they must not change emitted topology.
+ */
+export interface OuterWallBuildOptions {
+    /** Enable dry-run corridor planning. Default: false. */
+    readonly corridorPlanning?: boolean;
+    /** Include aggregate planner diagnostics in the returned plan. Default: false. */
+    readonly corridorDiagnostics?: boolean;
 }
 
 // ============================================================================
@@ -89,6 +140,8 @@ export interface PotGeometryParams {
     Rt: number;
     /** Profile exponent. */
     expn: number;
+    /** Total pot height (mm). Used for metric-aware CDT normalization. */
+    H: number;
 }
 
 /**
@@ -113,41 +166,413 @@ export function estimateCircumferentialStretch(t: number, params: PotGeometryPar
     return Math.max(1.0, R / Rmin);
 }
 
-/** Seam threshold: skip chain edges crossing more than this U-delta */
-const SEAM_THRESHOLD = 0.4;
+// SEAM_THRESHOLD imported from ChainVertexBuilder.ts
+
+/** R36: Minimum interior angle of a 2D triangle (radians). Returns 0 for degenerate. */
+function minAngle2D(
+    ax: number, ay: number,
+    bx: number, by: number,
+    cx: number, cy: number,
+): number {
+    const abx = bx - ax, aby = by - ay;
+    const acx = cx - ax, acy = cy - ay;
+    const bcx = cx - bx, bcy = cy - by;
+    const lab = Math.sqrt(abx * abx + aby * aby);
+    const lac = Math.sqrt(acx * acx + acy * acy);
+    const lbc = Math.sqrt(bcx * bcx + bcy * bcy);
+    if (lab < 1e-12 || lac < 1e-12 || lbc < 1e-12) return 0;
+    const cosA = (abx * acx + aby * acy) / (lab * lac);
+    const cosB = (-abx * bcx - aby * bcy) / (lab * lbc);
+    const cosC = (acx * bcx + acy * bcy) / (lac * lbc);
+    return Math.min(
+        Math.acos(Math.max(-1, Math.min(1, cosA))),
+        Math.acos(Math.max(-1, Math.min(1, cosB))),
+        Math.acos(Math.max(-1, Math.min(1, cosC))),
+    );
+}
+
+/**
+ * R51: Maximum cosine of all interior angles of a 2D triangle.
+ * Larger cosine = smaller angle = worse triangle quality.
+ * Returns 1.0 for degenerate triangles (worst possible).
+ * Uses only dot products — no Math.acos needed.
+ */
+function maxCosine2D(
+    ax: number, ay: number,
+    bx: number, by: number,
+    cx: number, cy: number,
+): number {
+    const abx = bx - ax, aby = by - ay;
+    const acx = cx - ax, acy = cy - ay;
+    const bcx = cx - bx, bcy = cy - by;
+    const lab = Math.sqrt(abx * abx + aby * aby);
+    const lac = Math.sqrt(acx * acx + acy * acy);
+    const lbc = Math.sqrt(bcx * bcx + bcy * bcy);
+    if (lab < 1e-12 || lac < 1e-12 || lbc < 1e-12) return 1.0;
+    const cosA = (abx * acx + aby * acy) / (lab * lac);
+    const cosB = (-abx * bcx - aby * bcy) / (lab * lbc);
+    const cosC = (acx * bcx + acy * bcy) / (lac * lbc);
+    return Math.max(cosA, cosB, cosC);
+}
 
 /** Seam guard: skip grid cells wider than this */
 const SEAM_GUARD = 0.3;
 
+/**
+ * R54: Base fraction of cell width below which a chain vertex may trigger
+ * fusion with the neighboring cell to eliminate narrow-side slivers.
+ * Kept conservative to avoid over-fusing; severe aspect guard can still trigger.
+ */
+const R54_NEAR_BOUNDARY_FRAC = 0.2;
+
+/**
+ * R54: Severe narrow-side guard expressed directly in quality terms.
+ * If narrowWidth / bandHeight drops below this value, force fusion even when
+ * the base cell-width fraction does not trigger.
+ */
+const R54_NARROW_TO_BAND_MAX = 0.2;
+
+/**
+ * R55: Drop grid vertices within this U-distance of a chain vertex on shared edges.
+ * Eliminates pin triangles caused by CDF grid clustering near chain positions.
+ * Value = mathematical 4:1 aspect ratio violation threshold.
+ */
+const GRID_CHAIN_COALESCE_RADIUS = 0.0006;
+
+/** Fraction of band T-height used to perturb promoted chain vertices into the strip interior.
+ *  R24: Set to 0 — chain vertices are boundary vertices (no promotion).
+ *  The UV/3D mismatch that caused slivers is eliminated. */
+
 // ============================================================================
-// Crossing constraint helpers
+// Cell-local triangulation helpers (R34)
 // ============================================================================
 
 /**
- * Test whether two 2D line segments (p0→p1) and (q0→q1) properly intersect
- * (crossing, not touching at endpoints). Uses the orientation-test method.
- *
- * @returns true if the segments cross each other's interiors
+ * Emit a triangle with CCW winding in UV space.
+ * Uses explicit cross-product winding check rather than relying on sweep direction.
  */
-function segmentsCross(
-    p0u: number, p0t: number, p1u: number, p1t: number,
-    q0u: number, q0t: number, q1u: number, q1t: number,
-): boolean {
-    // Cross product of (b-a) × (c-a)
-    const cross = (au: number, at: number, bu: number, bt: number, cu: number, ct: number) =>
-        (bu - au) * (ct - at) - (bt - at) * (cu - au);
-
-    const d1 = cross(q0u, q0t, q1u, q1t, p0u, p0t);
-    const d2 = cross(q0u, q0t, q1u, q1t, p1u, p1t);
-    const d3 = cross(p0u, p0t, p1u, p1t, q0u, q0t);
-    const d4 = cross(p0u, p0t, p1u, p1t, q1u, q1t);
-
-    // Proper crossing: endpoints of each segment are on opposite sides of the other
-    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
-        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
-        return true;
+function emitTriCCW(
+    buf: number[],
+    a: number, b: number, c: number,
+    verts: Float32Array,
+): void {
+    const au = verts[a * 3], at = verts[a * 3 + 1];
+    const bu = verts[b * 3], bt = verts[b * 3 + 1];
+    const cu = verts[c * 3], ct = verts[c * 3 + 1];
+    const cross = (bu - au) * (ct - at) - (cu - au) * (bt - at);
+    if (Math.abs(cross) < 1e-12) {
+        buf.push(0, 0, 0); // degenerate
+    } else if (cross >= 0) {
+        buf.push(a, b, c);
+    } else {
+        buf.push(a, c, b);
     }
-    return false;
+}
+
+/**
+ * Triangulate a quad with extra vertices on bottom and top edges.
+ * Both edges are sorted left-to-right by U. The quad is U-monotone.
+ * Uses a two-pointer sweep.
+ *
+ * @param buf   Index buffer to append to
+ * @param bot   Bottom edge vertex indices sorted by U: [BL, ...chain verts..., BR]
+ * @param top   Top edge vertex indices sorted by U: [TL, ...chain verts..., TR]
+ * @param verts Vertex buffer for U lookups (stride 3: u, t, surfaceId)
+ */
+function sweepQuad(
+    buf: number[],
+    bot: number[],
+    top: number[],
+    verts: Float32Array,
+): void {
+    let bi = 0, ti = 0;
+    const bLen = bot.length, tLen = top.length;
+
+    // R51: Compute cell width from vertex data for quality zone sizing
+    const cellWidth = Math.abs(verts[bot[bLen - 1] * 3] - verts[bot[0] * 3]);
+    const QUALITY_ZONE = cellWidth * 0.5;
+
+    while (bi < bLen - 1 || ti < tLen - 1) {
+        if (bi >= bLen - 1) {
+            emitTriCCW(buf, top[ti], top[ti + 1], bot[bi], verts);
+            ti++;
+        } else if (ti >= tLen - 1) {
+            emitTriCCW(buf, bot[bi], bot[bi + 1], top[ti], verts);
+            bi++;
+        } else {
+            const botNextU = verts[bot[bi + 1] * 3];
+            const topNextU = verts[top[ti + 1] * 3];
+            // R51: Quality-aware diagonal choice with wider zone and cosine comparison
+            const uRange = Math.abs(botNextU - topNextU);
+            if (uRange < QUALITY_ZONE) {
+                // Quality zone: pick diagonal with lower max-cosine (better min-angle)
+                const cosA = maxCosine2D(
+                    verts[bot[bi] * 3], verts[bot[bi] * 3 + 1],
+                    verts[bot[bi + 1] * 3], verts[bot[bi + 1] * 3 + 1],
+                    verts[top[ti] * 3], verts[top[ti] * 3 + 1],
+                );
+                const cosB = maxCosine2D(
+                    verts[top[ti] * 3], verts[top[ti] * 3 + 1],
+                    verts[top[ti + 1] * 3], verts[top[ti + 1] * 3 + 1],
+                    verts[bot[bi] * 3], verts[bot[bi] * 3 + 1],
+                );
+                if (cosA <= cosB) {
+                    // Diagonal A has lower max-cosine → better min-angle
+                    emitTriCCW(buf, bot[bi], bot[bi + 1], top[ti], verts);
+                    bi++;
+                } else {
+                    emitTriCCW(buf, top[ti], top[ti + 1], bot[bi], verts);
+                    ti++;
+                }
+            } else if (botNextU < topNextU) {
+                emitTriCCW(buf, bot[bi], bot[bi + 1], top[ti], verts);
+                bi++;
+            } else {
+                emitTriCCW(buf, top[ti], top[ti + 1], bot[bi], verts);
+                ti++;
+            }
+        }
+    }
+}
+
+/**
+ * R55: Drop near-coincident grid vertices from an edge array when a chain vertex
+ * is within RADIUS in U-space. Returns a new array with grid vertices removed;
+ * records mappings (grid → nearest chain) in coalMap for post-processing T-junction fix.
+ *
+ * Each chain vertex may absorb at most ONE grid vertex per edge to prevent
+ * double-coalescing (two adjacent grid vertices both mapping to the same chain
+ * vertex, collapsing their shared triangle to a degenerate).
+ *
+ * Cross-cell consistency: A grid corner vertex shared by multiple cells must
+ * map to the SAME chain vertex everywhere. If a previous cell already coalesced
+ * v → c_prev, we honour that mapping rather than overwriting with a different
+ * chain vertex, which would create edge mismatches (boundary edges / holes).
+ */
+function coalesceNearGridChain(
+    edge: number[],
+    verts: Float32Array,
+    isGridLikeFn: (idx: number) => boolean,
+    isChainLikeFn: (idx: number) => boolean,
+    radius: number,
+    coalMap: Map<number, number>,
+    safeSet: Set<number>,
+): number[] {
+    // Track which chain vertices have already absorbed a grid vertex on THIS edge.
+    // Prevents double-coalescing: gridA→chainV and gridB→chainV on the same edge
+    // would collapse triangle(gridA, gridB, ...) to degenerate(chainV, chainV, ...).
+    const usedChainTargets = new Set<number>();
+    const result: number[] = [];
+    for (let i = 0; i < edge.length; i++) {
+        const v = edge[i];
+        if (!isGridLikeFn(v)) { result.push(v); continue; }
+
+        // R55-S: Only coalesce if all adjacent cells are chain/super cells
+        if (!safeSet.has(v)) { result.push(v); continue; }
+
+        // Cross-cell guard: if v was already coalesced by a previous cell,
+        // don't overwrite the mapping. If the target is already on this edge
+        // (vertical neighbour — same chain vertex shared via row boundary),
+        // drop v to avoid a post-remap degenerate. Otherwise keep v on the
+        // edge; the post-processing remap will consistently replace it.
+        const existing = coalMap.get(v);
+        if (existing !== undefined) {
+            if (!edge.includes(existing)) {
+                result.push(v);
+            }
+            continue;
+        }
+
+        const vU = verts[v * 3];
+        let nearestChain = -1;
+        let nearestDist = Infinity;
+        for (let j = 0; j < edge.length; j++) {
+            if (i === j) continue;
+            const cv = edge[j];
+            if (!isChainLikeFn(cv)) continue;
+            if (usedChainTargets.has(cv)) continue; // already absorbed one grid vertex
+            const dist = Math.abs(verts[cv * 3] - vU);
+            if (dist < radius && dist < nearestDist) {
+                nearestChain = cv;
+                nearestDist = dist;
+            }
+        }
+        if (nearestChain >= 0) {
+            coalMap.set(v, nearestChain);
+            usedChainTargets.add(nearestChain);
+        } else {
+            result.push(v);
+        }
+    }
+    return result;
+}
+
+/**
+ * Per-cell chain info for cell-local quad splitting.
+ */
+interface CellChainInfo {
+    /** Chain vertex indices on bottom edge, sorted by U */
+    botChainVerts: number[];
+    /** Chain vertex indices on top edge, sorted by U */
+    topChainVerts: number[];
+    /** Chain edges crossing this cell (global vertex index pairs) */
+    chainEdges: Array<[number, number]>;
+}
+
+/** Super-cell: merged cell spanning multiple columns for cross-column chain edges (R35). */
+interface SuperCell {
+    band: number;
+    colStart: number;  // leftmost column (inclusive)
+    colEnd: number;    // rightmost column (inclusive)
+}
+
+/**
+ * Triangulate a cell with chain edges as mandatory triangle edges.
+ * Chain edges connect bottom-edge vertices to top-edge vertices,
+ * partitioning the cell into sub-quads swept independently.
+ *
+ * @param buf        Index buffer to append to
+ * @param bot        Full bottom edge: [BL, ...chain verts..., BR] sorted by U
+ * @param top        Full top edge: [TL, ...chain verts..., TR] sorted by U
+ * @param edges      Chain edges crossing this cell (vertex index pairs)
+ * @param verts      Vertex buffer for position lookups
+ */
+function constrainedSweepCell(
+    buf: number[],
+    bot: number[],
+    top: number[],
+    edges: Array<[number, number]>,
+    verts: Float32Array,
+    fanDiagEdges: Array<[number, number]>,
+): void {
+    // Build partition list: map each chain edge to positions in bot/top arrays
+    interface Partition {
+        botPos: number;
+        topPos: number;
+    }
+    const partitions: Partition[] = [];
+
+    for (const [v0, v1] of edges) {
+        // Try both orientations: v0 on bot & v1 on top, or reversed
+        let bIdx = bot.indexOf(v0);
+        let tIdx = top.indexOf(v1);
+        if (bIdx < 0 || tIdx < 0) {
+            bIdx = bot.indexOf(v1);
+            tIdx = top.indexOf(v0);
+        }
+        if (bIdx >= 0 && tIdx >= 0) {
+            partitions.push({ botPos: bIdx, topPos: tIdx });
+        }
+        // If neither endpoint is on bot/top, this is a side-entering cross-column
+        // fragment handled elsewhere via intersection vertices
+    }
+
+    if (partitions.length === 0) {
+        // No valid chain edge partitions — fall back to simple sweep
+        sweepQuad(buf, bot, top, verts);
+        return;
+    }
+
+    // Sort partitions by average U position
+    partitions.sort((a, b) => {
+        const aU = (verts[bot[a.botPos] * 3] + verts[top[a.topPos] * 3]) / 2;
+        const bU = (verts[bot[b.botPos] * 3] + verts[top[b.topPos] * 3]) / 2;
+        return aU - bU;
+    });
+
+    // Sweep: emit sub-quads between consecutive partition lines
+    // R41: Track whether left boundary is a chain edge for fan diagonal selection
+    let prevBotPos = 0;
+    let prevTopPos = 0;
+    let prevIsChainEdge = false;
+
+    for (const part of partitions) {
+        const subBot = bot.slice(prevBotPos, part.botPos + 1);
+        const subTop = top.slice(prevTopPos, part.topPos + 1);
+        if (subBot.length < 2 || subTop.length < 2) {
+            // A2 degenerate guard: collapsed edge after batch2Remap merge
+            if (subBot.length >= 1 && subTop.length >= 1) {
+                sweepQuad(buf, subBot, subTop, verts);
+            }
+        } else if (subBot.length === 2 && subTop.length === 2 && !prevIsChainEdge) {
+            // R41/R51 chainFanQuad: 2×2 sub-quad with chain on RIGHT only
+            // R51: Quality-aware diagonal choice using cosine comparison
+            const cosA = maxCosine2D(
+                verts[subBot[0] * 3], verts[subBot[0] * 3 + 1],
+                verts[subBot[1] * 3], verts[subBot[1] * 3 + 1],
+                verts[subTop[0] * 3], verts[subTop[0] * 3 + 1],
+            );
+            const cosB = maxCosine2D(
+                verts[subTop[0] * 3], verts[subTop[0] * 3 + 1],
+                verts[subTop[1] * 3], verts[subTop[1] * 3 + 1],
+                verts[subBot[0] * 3], verts[subBot[0] * 3 + 1],
+            );
+            if (cosA <= cosB) {
+                // Diagonal A: chain_bot → grid_top (original)
+                emitTriCCW(buf, subBot[0], subBot[1], subTop[0], verts);
+                emitTriCCW(buf, subTop[0], subBot[1], subTop[1], verts);
+                fanDiagEdges.push([subBot[1], subTop[0]]);
+            } else {
+                // Diagonal B: grid_bot → chain_top
+                emitTriCCW(buf, subBot[0], subBot[1], subTop[1], verts);
+                emitTriCCW(buf, subBot[0], subTop[1], subTop[0], verts);
+                fanDiagEdges.push([subBot[0], subTop[1]]);
+            }
+        } else {
+            // Chain on both sides, or N×M sub-quad → standard sweep
+            sweepQuad(buf, subBot, subTop, verts);
+        }
+        prevBotPos = part.botPos;
+        prevTopPos = part.topPos;
+        prevIsChainEdge = true;
+    }
+
+    // Final sub-quad: from last partition to right boundary
+    const finalBot = bot.slice(prevBotPos);
+    const finalTop = top.slice(prevTopPos);
+    if (finalBot.length < 2 || finalTop.length < 2) {
+        // A2 degenerate guard
+        if (finalBot.length >= 1 && finalTop.length >= 1) {
+            sweepQuad(buf, finalBot, finalTop, verts);
+        }
+    } else if (finalBot.length === 2 && finalTop.length === 2 && partitions.length > 0) {
+        // R41/R51 chainFanQuad: 2×2 sub-quad with chain on LEFT only
+        // R51: Quality-aware diagonal choice using cosine comparison
+        const cosA = maxCosine2D(
+            verts[finalBot[0] * 3], verts[finalBot[0] * 3 + 1],
+            verts[finalBot[1] * 3], verts[finalBot[1] * 3 + 1],
+            verts[finalTop[1] * 3], verts[finalTop[1] * 3 + 1],
+        );
+        const cosB = maxCosine2D(
+            verts[finalTop[0] * 3], verts[finalTop[0] * 3 + 1],
+            verts[finalTop[1] * 3], verts[finalTop[1] * 3 + 1],
+            verts[finalBot[1] * 3], verts[finalBot[1] * 3 + 1],
+        );
+        if (cosA <= cosB) {
+            // Diagonal A: chain_bot → grid_top (original)
+            emitTriCCW(buf, finalBot[0], finalBot[1], finalTop[1], verts);
+            emitTriCCW(buf, finalBot[0], finalTop[1], finalTop[0], verts);
+            fanDiagEdges.push([finalBot[0], finalTop[1]]);
+        } else {
+            // Diagonal B: grid_bot → chain_top
+            emitTriCCW(buf, finalBot[0], finalBot[1], finalTop[0], verts);
+            emitTriCCW(buf, finalTop[0], finalBot[1], finalTop[1], verts);
+            fanDiagEdges.push([finalBot[1], finalTop[0]]);
+        }
+    } else {
+        sweepQuad(buf, finalBot, finalTop, verts);
+    }
+}
+
+function dedupeSortedVertexEdge(edge: number[]): number[] {
+    const deduped: number[] = [];
+    let prev = -1;
+    for (const vertexIdx of edge) {
+        if (vertexIdx === prev) continue;
+        deduped.push(vertexIdx);
+        prev = vertexIdx;
+    }
+    return deduped;
 }
 
 /**
@@ -244,7 +669,7 @@ export function insertMicroRowsForSteepCrossings(
 }
 
 // NOTE: sweepRegion, simpleSweep, constraintAwareTriangulate removed in v23.0.
-// All strip triangulation now lives in ChainStripTriangulator.ts.
+// R34: ChainStripTriangulator.ts deleted — cell-local quad splitting replaces CDT strips.
 
 // ============================================================================
 // Main function
@@ -393,8 +818,31 @@ function catmullRomInterp(p0: number, p1: number, p2: number, p3: number, t: num
  * @param rowMapping      Mapping from final rows to original rows
  * @param tPositions      T positions for all rows (original + inserted)
  * @param unionU          Union grid U positions (base grid)
+/** @deprecated R34: Chain strip config kept for backward compatibility. Ignored internally. */
+interface ChainStripConfigLegacy {
+    mode: string;
+    densityMultiplier: number;
+    adaptiveRefine: boolean;
+    expansion: number;
+    bandMergeFactor?: number;
+}
+
+/**
+ * Build the outer wall mesh with chain points as first-class vertices.
+ *
+ * R34 CELL-LOCAL QUAD SPLITTING:
+ * Instead of CDT chain strips, each grid cell is independently triangulated.
+ * Chain vertices on cell edges create sub-quads swept by a two-pointer
+ * algorithm. Chain edges become guaranteed mesh edges by construction
+ * (they partition cells into sub-quads whose sweep produces the edge).
+ *
+ * @param chains          Feature chains from Phase 2.5 (linked per-row peaks)
+ * @param rowMapping      Mapping from final rows to original rows
+ * @param tPositions      T positions for all rows (original + inserted)
+ * @param unionU          Union grid U positions (base grid)
  * @param _targetOuterTris Target triangle count for the outer wall (reserved)
  * @param surfaceId       Surface ID (0 for outer wall)
+ * @param _chainStripConfig Deprecated — kept for backward compatibility, ignored internally
  * @returns OuterWallResult with vertices, indices, quadMap, gridVertexCount, chainEdges
  */
 export function buildCDTOuterWall(
@@ -404,8 +852,9 @@ export function buildCDTOuterWall(
     unionU: Float32Array,
     _targetOuterTris: number,
     surfaceId: number = 0,
-    chainStripConfig: ChainStripConfig = DEFAULT_CHAIN_STRIP_CONFIG,
-    potGeometry?: PotGeometryParams,
+    _chainStripConfig?: ChainStripConfigLegacy,
+    _potGeometry?: PotGeometryParams,
+    options?: OuterWallBuildOptions,
 ): OuterWallResult {
     const buildStart = performance.now();
 
@@ -431,350 +880,29 @@ export function buildCDTOuterWall(
     const numT = activeTPositions.length;
     const numU = unionU.length;
     const gridVertexCount = numU * numT;
+    // R34: chainStripConfig is no longer used (cell-local replaces CDT strips)
+    // Kept in function signature for backward compatibility only.
 
     // ── 1. Collect chain points remapped to UV space with vertex indices ──
-
-    // Each chain point gets a unique vertex index (appended after grid)
-    const chainVertices: ChainVertex[] = [];
+    // Extracted to ChainVertexBuilder.ts (R52) for modularity and precision documentation.
+    const chainResult: ChainBuildResult = collectChainVertices(
+        chains, origToFinal, numT, gridVertexCount,
+    );
+    const { chainVertices, interpolatedCount, interpolatedGapSizes, nextVertexIdx: _nextVIdx } = chainResult;
+    const chainEdges = chainResult.chainEdges; // mutable — A4 edge splitting modifies in-place
     const cellsPerRow = numU - 1;
 
-    // Chain edge segments: pairs of consecutive chain vertex indices.
-    // After interpolation, every edge spans exactly 1 row band.
-    const chainEdges: Array<[number, number]> = [];
+    // ── R34: Cell-local quad splitting — no companions, no CDT strips ──
 
-    let nextVertexIdx = gridVertexCount;
-
-    // v16.14: For chain edges spanning multiple rows (chain skips a row where
-    // no feature was detected), interpolate intermediate chain vertices so
-    // that every chain edge spans exactly one row band.
-    let interpolatedCount = 0;
-
-    for (let cIdx = 0; cIdx < chains.length; cIdx++) {
-        const chain = chains[cIdx];
-        if (chain.points.length < 2) continue;
-
-        // First pass: remap chain points to final row indices
-        const rawRemapped: ChainVertex[] = [];
-        for (let pIdx = 0; pIdx < chain.points.length; pIdx++) {
-            const pt = chain.points[pIdx];
-            const fr = origToFinal.get(pt.row);
-            if (fr === undefined || fr < 0 || fr >= numT) continue;
-
-            const u = Math.max(0, Math.min(1 - 1e-7, pt.u));
-
-            const cv: ChainVertex = {
-                u,
-                rowIdx: fr,
-                vertexIdx: nextVertexIdx++,
-                chainId: cIdx,
-                pointIdx: pIdx
-            };
-            chainVertices.push(cv);
-            rawRemapped.push(cv);
-        }
-
-        // Second pass: for each consecutive pair, if they span >1 row,
-        // insert interpolated chain vertices at intermediate rows.
-        const fullChain: ChainVertex[] = [];
-        for (let k = 0; k < rawRemapped.length; k++) {
-            fullChain.push(rawRemapped[k]);
-
-            if (k < rawRemapped.length - 1) {
-                const p0 = rawRemapped[k];
-                const p1 = rawRemapped[k + 1];
-
-                // Skip seam-crossing edges for interpolation direction.
-                // NOTE: This uses wrap-correction intentionally — we need the physical
-                // distance/direction to place interpolated vertices on the correct side
-                // of the seam. The edge recording loop below uses raw UV delta
-                // to exclude seam-spanning edges from the constraint set.
-                let du = p1.u - p0.u;
-                if (du > 0.5) du -= 1;
-                if (du < -0.5) du += 1;
-                if (Math.abs(du) > SEAM_THRESHOLD) continue;
-
-                const rowGap = p1.rowIdx - p0.rowIdx;
-                if (rowGap <= 1 && rowGap >= -1) {
-                    continue; // edge recorded in the next loop
-                }
-
-                // Multi-row gap: interpolate intermediate vertices
-                const dir = rowGap > 0 ? 1 : -1;
-                const steps = Math.abs(rowGap);
-                for (let s = 1; s < steps; s++) {
-                    const frac = s / steps;
-                    let interpU = p0.u + du * frac;
-                    interpU = Math.max(0, Math.min(1 - 1e-7, ((interpU % 1) + 1) % 1));
-                    const interpRow = p0.rowIdx + dir * s;
-
-                    if (interpRow < 0 || interpRow >= numT) continue;
-
-                    const interpCV: ChainVertex = {
-                        u: interpU,
-                        rowIdx: interpRow,
-                        vertexIdx: nextVertexIdx++,
-                        chainId: cIdx,
-                        pointIdx: -1
-                    };
-                    chainVertices.push(interpCV);
-                    fullChain.push(interpCV);
-                    interpolatedCount++;
-                }
-            }
-        }
-
-        // v27.0: CatRom subdivision removed — piecewise-linear chain (fullChain)
-        // used directly. CatRom caused overshoot at inflection points.
-        const finalChain = fullChain;
-
-        // Record chain edges between consecutive finalChain entries.
-        // v27.0: CatRom subdivision is no longer applied, so sub-edges with
-        // rowGap=0 are rare. The rowGap===0 && !isSubdivEdge guard is retained
-        // for backward compatibility: interpolated gap-fill vertices (pointIdx<0)
-        // may still produce same-row edges that should be kept.
-        for (let k = 1; k < finalChain.length; k++) {
-            const p0 = finalChain[k - 1];
-            const p1 = finalChain[k];
-            const du = Math.abs(p1.u - p0.u);
-            // Raw UV delta: seam-crossing edges have |Δu| ≈ 0.99, far above threshold.
-            // The interpolation pass above intentionally uses wrap-correction to compute
-            // physically correct intermediate positions; this edge filter intentionally
-            // does NOT wrap-correct, so seam-spanning edges are excluded from the mesh.
-            if (du > SEAM_THRESHOLD) continue;
-            const rowGap = Math.abs(p1.rowIdx - p0.rowIdx);
-            const isSubdivEdge = p0.pointIdx < 0 || p1.pointIdx < 0;
-            if (rowGap > 1) continue;
-            if (rowGap === 0 && !isSubdivEdge) continue;
-            chainEdges.push([p0.vertexIdx, p1.vertexIdx]);
-        }
-    }
-
-    // v21.0 CAG: Chain vertices are first-class mesh vertices appended after
-    // grid vertices. Transition vertices and UV-snapping are no longer needed —
-    // the CDF-adaptive grid with Gaussian feature floor provides smooth density
-    // near chain features, and dead zones prevent redundant column placement.
-
-    // ── 1.5: Insert 2D companion point cloud around each chain vertex ──
-    // T-Ladder design: The CDF-adaptive grid already provides dense U-coverage
-    // near chain features. The real deficit is T-density — chain vertices sit ON
-    // row boundaries, creating long CDT slivers spanning the full T-gap between
-    // rows. The T-Ladder places Steiner points at intermediate T-positions within
-    // each adjacent band, centered on each chain vertex's U-position with optional
-    // U-spread. This breaks up slivers and produces well-shaped triangles.
-    const companionVertices: ChainVertex[] = [];
-    const density = Math.max(1, Math.min(12, chainStripConfig.densityMultiplier));
-    const SEAM_COMPANION_GUARD = 1e-6; // minimal seam guard (Verifier C1 amendment)
-    const COMPANION_DEDUP_THRESHOLD = 1e-5; // distance below which companions are skipped
-    const ASPECT_MATCH_FACTOR = 0.4; // U-spread relative to T-gap for near-equilateral spacing
-    const MIN_LATERAL_CLEARANCE = 0.002;   // minimum U-offset from chain vertex
-    const MIN_TGAP_FOR_COMPANIONS = 0.001; // skip micro-row bands with tiny T-gaps
-    const CONSTRAINT_GUARD_RADIUS = 0.001; // minimum distance from any constraint edge
-    const MAX_COMPANIONS_PER_CV = 20;      // hard cap per chain vertex
-
-    // Capped scaling: density=1-3→(1,1), density=4-7→(1,1), density=8-11→(2,2), density=12→(2,2)
-    const nTLevels = Math.max(1, Math.min(2, Math.floor(density / 4)));
-    const nUSpread = Math.max(1, Math.min(2, Math.floor(density / 3)));
-
-    // ── Constraint edge spatial index for companion guard zone ──
-    // Index chain edges by row band for fast point-to-segment distance checks
-    // during companion generation. Prevents companions near constraint paths.
-    const constraintsByBand = new Map<number, Array<{u0: number, t0: number, u1: number, t1: number}>>();
-    for (const [v0Idx, v1Idx] of chainEdges) {
-        const cv0 = chainVertices[v0Idx - gridVertexCount];
-        const cv1 = chainVertices[v1Idx - gridVertexCount];
-        if (!cv0 || !cv1) continue;
-        const bandIdx = Math.min(cv0.rowIdx, cv1.rowIdx);
-        const t0 = activeTPositions[cv0.rowIdx];
-        const t1 = activeTPositions[cv1.rowIdx];
-        let list = constraintsByBand.get(bandIdx);
-        if (!list) { list = []; constraintsByBand.set(bandIdx, list); }
-        list.push({ u0: cv0.u, t0, u1: cv1.u, t1 });
-    }
-
-    let guardRejectCount = 0;
-
-    /** Check if a candidate companion is too close to any constraint edge in the band. */
-    function isNearConstraintEdge(cu: number, ct: number, bandIdx: number): boolean {
-        const edges = constraintsByBand.get(bandIdx);
-        if (!edges) return false;
-        for (const e of edges) {
-            const dx = e.u1 - e.u0, dy = e.t1 - e.t0;
-            const len2 = dx * dx + dy * dy;
-            if (len2 < 1e-20) continue;
-            const t = Math.max(0, Math.min(1, ((cu - e.u0) * dx + (ct - e.t0) * dy) / len2));
-            const projU = e.u0 + t * dx, projT = e.t0 + t * dy;
-            const dist = Math.sqrt((cu - projU) ** 2 + (ct - projT) ** 2);
-            if (dist < CONSTRAINT_GUARD_RADIUS) {
-                guardRejectCount++;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** Try to emit a single companion, applying seam guard, bounds check, and dedup. */
-    function tryEmitCompanion(cu: number, ct: number, parent: ChainVertex): void {
-        companionPreDedup++;
-
-        // Seam guard: reject companions too close to U=0 or U=1
-        if (cu < SEAM_COMPANION_GUARD || cu > 1 - SEAM_COMPANION_GUARD) return;
-
-        // T bounds: must be strictly within [0, 1] parametric range
-        if (ct <= 0 || ct >= 1) return;
-
-        // 2D spatial dedup
-        if (isDuplicate2D(cu, ct, COMPANION_DEDUP_THRESHOLD)) return;
-
-        companionVertices.push({
-            u: cu,
-            t: ct,
-            rowIdx: parent.rowIdx,
-            vertexIdx: nextVertexIdx++,
-            chainId: parent.chainId,
-            pointIdx: -1,
-        });
-        addToBuckets(cu, ct);
-        companionCount++;
-    }
-
-    /** Emit T-Ladder rungs at intermediate T-levels within a band. */
-    function emitRungs(
-        cv: ChainVertex,
-        tLo: number,
-        tGap: number,
-        bandIdx: number,
-    ): void {
-        if (tGap < MIN_TGAP_FOR_COMPANIONS) return; // micro-row guard
-
-        const baseSpreadU = Math.max(tGap * ASPECT_MATCH_FACTOR, MIN_LATERAL_CLEARANCE);
-        let emitted = 0;
-
-        for (let k = 1; k <= nTLevels; k++) {
-            const tFrac = k / (nTLevels + 1);
-            const tLevel = tLo + tFrac * tGap;
-
-            // NO center companion — collinear with constraint edge path (Bug B fix)
-
-            // Lateral-only U-spread companions
-            for (let m = 1; m <= nUSpread; m++) {
-                const uOff = baseSpreadU * m / nUSpread;
-
-                for (const sign of [-1, 1] as const) {
-                    const cu = cv.u + sign * uOff;
-                    if (emitted >= MAX_COMPANIONS_PER_CV) return;
-                    if (!isNearConstraintEdge(cu, tLevel, bandIdx)) {
-                        tryEmitCompanion(cu, tLevel, cv);
-                        emitted++;
-                    }
-                }
-            }
-        }
-    }
-
-    // ── 2D spatial-bucket dedup (integer keys, V8-safe) ──
-    const BUCKET_SIZE = COMPANION_DEDUP_THRESHOLD * 10; // ~1e-4
-    interface CompanionEntry { u: number; t: number; }
-    const companionBuckets = new Map<number, CompanionEntry[]>();
-
-    function bucketKey(u: number, t: number): number {
-        const bu = Math.floor(u / BUCKET_SIZE);
-        const bt = Math.floor(t / BUCKET_SIZE);
-        return bu * 100000 + bt; // single integer key — no string hashing
-    }
-
-    function isDuplicate2D(cu: number, ct: number, threshold: number): boolean {
-        const bx = Math.floor(cu / BUCKET_SIZE);
-        const by = Math.floor(ct / BUCKET_SIZE);
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                const key = (bx + dx) * 100000 + (by + dy);
-                const entries = companionBuckets.get(key);
-                if (!entries) continue;
-                for (const e of entries) {
-                    const dist2 = (cu - e.u) ** 2 + (ct - e.t) ** 2;
-                    if (dist2 < threshold * threshold) return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    function addToBuckets(cu: number, ct: number): void {
-        const key = bucketKey(cu, ct);
-        let entries = companionBuckets.get(key);
-        if (!entries) { entries = []; companionBuckets.set(key, entries); }
-        entries.push({ u: cu, t: ct });
-    }
-
-    // Seed buckets with existing chain vertex positions
-    for (const cv of chainVertices) {
-        addToBuckets(cv.u, activeTPositions[cv.rowIdx]);
-    }
-
-    let companionCount = 0;
-    let companionPreDedup = 0;
-
-    // ── T-Ladder companion generation ──
-    // For each chain vertex, emit companions at intermediate T-levels within the
-    // band above (rows j to j+1) and band below (rows j-1 to j). At each T-level,
-    // emit lateral-only companions (no center — avoids constraint collinearity).
-    for (const cv of chainVertices) {
-        if (cv.pointIdx < 0) continue; // skip interpolated micro-row vertices (C5)
-        const tRow = activeTPositions[cv.rowIdx];
-
-        // Process band above (between row j and j+1)
-        if (cv.rowIdx < numT - 1) {
-            const tAbove = activeTPositions[cv.rowIdx + 1];
-            const tGap = tAbove - tRow;
-            if (tGap > 1e-9) {
-                emitRungs(cv, tRow, tGap, cv.rowIdx);
-            }
-        }
-
-        // Process band below (between row j-1 and j)
-        if (cv.rowIdx > 0) {
-            const tBelow = activeTPositions[cv.rowIdx - 1];
-            const tGap = tRow - tBelow;
-            if (tGap > 1e-9) {
-                emitRungs(cv, tBelow, tGap, cv.rowIdx - 1);
-            }
-        }
-    }
-
-    const allChainVertices = [...chainVertices, ...companionVertices];
-    const allChainEdges = chainEdges;
-
-    // ── Build interiorByBand map: bucket 2D interior vertices by T-position band ──
-    // Uses bsearchFloor on activeTPositions, NOT rowIdx (C6 fix: negative-dt
-    // companions are bucketed into the correct band based on their T-position).
-    // v25.0: Iterate all chain + companion vertices (not just companions) so CatRom subdivision
-    // vertices with explicit t are included and participate in CDT.
-    const interiorByBand = new Map<number, ChainVertex[]>();
-    for (const cv of allChainVertices) {
-        if (cv.t === undefined) continue;
-        const bandIdx = bsearchFloor(activeTPositions, cv.t);
-        if (bandIdx < 0 || bandIdx >= numT - 1) continue;
-        if (cv.t <= activeTPositions[bandIdx] || cv.t >= activeTPositions[bandIdx + 1]) continue;
-        let list = interiorByBand.get(bandIdx);
-        if (!list) { list = []; interiorByBand.set(bandIdx, list); }
-        list.push(cv);
-    }
-
-    // ── 2D Companion diagnostics ──
-    let interiorCollected = 0;
-    for (const [, list] of interiorByBand) interiorCollected += list.length;
-    if (companionCount > 0) {
-        const collectionRate = companionCount > 0 ? (interiorCollected / companionCount * 100).toFixed(1) : '0';
-        console.log(
-            `[CDT] T-Ladder companions: ${companionPreDedup} generated, ${companionCount} after dedup, ` +
-            `${interiorCollected} collected as interior (${collectionRate}%), ` +
-            `density=${density}, nTLevels=${nTLevels}, nUSpread=${nUSpread}, guardRejects=${guardRejectCount}`
-        );
-    }
-
-    // ── 2. Generate vertices: grid + chain vertices + companions ──
-    const totalVertexCount = gridVertexCount + allChainVertices.length;
-    const vertices = new Float32Array(totalVertexCount * 3);
+    // ── 2. Generate vertices: grid + chain vertices ──
+    const totalVertexCount = gridVertexCount + chainVertices.length;
+    // R37: Overestimate buffer for phantom vertices (column-crossing band splitting).
+    // Exact count is computed in section 3.9 after super-cell merge.
+    // Upper bound: R38 adds local companions around true crossing anchors.
+    const maxPhantomSlots = chainEdges.length * 12;
+    const vertices = new Float32Array((totalVertexCount + maxPhantomSlots) * 3);
+    const phantomVertexStart = totalVertexCount;
+    let phantomVertexCount = 0;
 
     // Grid vertices
     let vIdx = 0;
@@ -787,19 +915,16 @@ export function buildCDTOuterWall(
     }
 
     // Append chain vertices after the grid
-    for (const cv of allChainVertices) {
+    for (const cv of chainVertices) {
         vertices[vIdx++] = cv.u;
         vertices[vIdx++] = cv.t ?? activeTPositions[cv.rowIdx];
         vertices[vIdx++] = surfaceId;
     }
 
     // ── 3. Build per-row chain vertex lookup (sorted by U) ──
-    // C1 fix: 2D companions (cv.t !== undefined) are excluded from
-    // rowChainVerts — they must NOT appear in buildMergedRow output.
-    // They exist only as interior vertices passed to CDT.
     const rowChainVerts = new Map<number, ChainVertex[]>();
-    for (const cv of allChainVertices) {
-        if (cv.t !== undefined) continue; // 2D companions are interior-only
+    for (const cv of chainVertices) {
+        if (cv.t !== undefined) continue; // 2D companions (if any) are interior-only
         let list = rowChainVerts.get(cv.rowIdx);
         if (!list) { list = []; rowChainVerts.set(cv.rowIdx, list); }
         list.push(cv);
@@ -808,538 +933,1691 @@ export function buildCDTOuterWall(
         list.sort((a, b) => a.u - b.u);
     }
 
-    // ── 4. Full-row strip triangulation ──
-    const totalCells = cellsPerRow * (numT - 1);
-    const indexBuf: number[] = [];
+    // ╔══════════════════════════════════════════════════════════════════════╗
+    // ║ 🔒 R52 PRECISION LOCK — batch2Remap DISABLED                        ║
+    // ║ Chain vertices must NEVER be merged to nearby grid column positions. ║
+    // ║ Re-enabling this destroys sub-sample feature precision.              ║
+    // ║ See ChainVertexBuilder.ts for the full R52 precision guarantee.      ║
+    // ╚══════════════════════════════════════════════════════════════════════╝
+    // ── 3.5. Pre-compute batch2Remap (Amendment A1) ──
+    // R52: DISABLED — chain vertices are NEVER merged to grid positions.
+    // Both vertices are preserved at their exact positions; the extra
+    // triangulation from near-coincident vertices is acceptable.
+    // Precision is absolute: no averaging, no estimation, no "close enough".
+    const batch2Remap = new Map<number, number>();
 
-    const quadMap = new Int32Array(totalCells);
-    quadMap.fill(-1);
-    let seamSkipCount = 0;
-    let chainCellCount = 0;
-    let crossCellEdgeCount = 0;
-    let windingFixCount = 0;
-    let crossingConstraintsRemoved = 0;
-    const chainStripStats = createEmptyStats();
+    // ── 3.6. Remap chain edge endpoints (Amendment A4) ──
+    // After batch2Remap, update chainEdges so endpoints reference grid vertices
+    // where merged. This must happen BEFORE cellChainMap construction.
+    if (batch2Remap.size > 0) {
+        for (let e = 0; e < chainEdges.length; e++) {
+            const [v0, v1] = chainEdges[e];
+            const m0 = batch2Remap.get(v0);
+            const m1 = batch2Remap.get(v1);
+            if (m0 !== undefined || m1 !== undefined) {
+                chainEdges[e] = [m0 ?? v0, m1 ?? v1];
+            }
+        }
+    }
+
+    const remappedGridChainIds = new Map<number, number>();
+    for (const [chainVertexIdx, gridVertexIdx] of batch2Remap) {
+        const chainVertex = chainVertices[chainVertexIdx - gridVertexCount];
+        if (chainVertex) {
+            remappedGridChainIds.set(gridVertexIdx, chainVertex.chainId);
+        }
+    }
+
+    const resolveVertexChainId = (vertexIdx: number): number | undefined => {
+        if (vertexIdx >= gridVertexCount && vertexIdx < totalVertexCount) {
+            return chainVertices[vertexIdx - gridVertexCount]?.chainId;
+        }
+        return remappedGridChainIds.get(vertexIdx);
+    };
+
+    // ── 3.7. Build cellChainMap: (band, col) → chain info ──
+    const cellChainMap = new Map<number, CellChainInfo>();
+    const r35SuperCellCols = new Set<number>();
+    const cellKey = (band: number, col: number): number => band * cellsPerRow + col;
 
     // Pre-build row-indexed chain edge lookup
     const rowBandEdges = new Map<number, Array<[number, number]>>();
-    for (const [v0, v1] of allChainEdges) {
-        const cv0 = allChainVertices[v0 - gridVertexCount];
-        const cv1 = allChainVertices[v1 - gridVertexCount];
-        if (!cv0 || !cv1) continue;
-        if (Math.abs(cv0.u - cv1.u) > SEAM_THRESHOLD) continue;
-        const r0 = Math.min(cv0.rowIdx, cv1.rowIdx);
-        const r1 = Math.max(cv0.rowIdx, cv1.rowIdx);
-        // Allow rowGap 0 (subdivision sub-edges within a band) and 1 (normal cross-row)
+    for (const [v0, v1] of chainEdges) {
+        // Resolve vertex data — endpoint may be a grid vertex after batch2Remap
+        const isChainV0 = v0 >= gridVertexCount && v0 < totalVertexCount;
+        const isChainV1 = v1 >= gridVertexCount && v1 < totalVertexCount;
+        const cv0 = isChainV0 ? chainVertices[v0 - gridVertexCount] : undefined;
+        const cv1 = isChainV1 ? chainVertices[v1 - gridVertexCount] : undefined;
+
+        // For remapped endpoints, determine row from grid index
+        let row0: number, row1: number, u0: number, u1: number;
+        if (cv0) {
+            row0 = cv0.rowIdx;
+            u0 = cv0.u;
+        } else {
+            row0 = Math.floor(v0 / numU);
+            u0 = vertices[v0 * 3];
+        }
+        if (cv1) {
+            row1 = cv1.rowIdx;
+            u1 = cv1.u;
+        } else {
+            row1 = Math.floor(v1 / numU);
+            u1 = vertices[v1 * 3];
+        }
+
+        if (Math.abs(u0 - u1) > SEAM_THRESHOLD) continue;
+        const r0 = Math.min(row0, row1);
+        const r1 = Math.max(row0, row1);
         if (r1 - r0 > 1) continue;
         let list = rowBandEdges.get(r0);
         if (!list) { list = []; rowBandEdges.set(r0, list); }
         list.push([v0, v1]);
     }
 
-    // Batch 2 remap: track chain→grid vertex replacements made by buildMergedRow
-    // when a chain vertex coincides with a grid vertex. This is needed so
-    // allChainEdges can be updated before edge verification.
-    const batch2Remap = new Map<number, number>();
+    // Assign chain vertices to cells
+    for (const cv of chainVertices) {
+        if (cv.t !== undefined) continue; // skip 2D companions
+        if (batch2Remap.has(cv.vertexIdx)) continue; // merged with grid
 
-    // Build merged row: grid columns interleaved with chain points.
-    const buildMergedRow = (row: number): StripVertex[] => {
-        const result: StripVertex[] = [];
-        const chainList = rowChainVerts.get(row) || [];
-        let ci = 0;
+        const col = bsearchFloor(unionU, cv.u);
+        const gc = col < 0 ? 0 : (col >= cellsPerRow ? cellsPerRow - 1 : col);
 
-        for (let i = 0; i < numU; i++) {
-            while (ci < chainList.length && chainList[ci].u < unionU[i] - 1e-9) {
-                const col = i > 0 ? i - 1 : 0;
-                result.push({ idx: chainList[ci].vertexIdx, u: chainList[ci].u, isChain: true, gridCol: col });
-                ci++;
-            }
-
-            if (ci < chainList.length && Math.abs(chainList[ci].u - unionU[i]) <= 1e-6) {
-                // Batch 2: When chain vertex coincides with a UV-snapped grid vertex,
-                // prefer the grid vertex index so strip boundary shares indices with
-                // adjacent standard cells (eliminates T-junctions / non-manifold edges).
-                const gridIdx = row * numU + i;
-                const gridU = vertices[gridIdx * 3];
-                if (Math.abs(gridU - chainList[ci].u) <= 1e-6) {
-                    result.push({ idx: gridIdx, u: gridU, isChain: false, gridCol: i });
-                    // Record so allChainEdges can be updated for edge verification
-                    batch2Remap.set(chainList[ci].vertexIdx, gridIdx);
-                } else {
-                    result.push({ idx: chainList[ci].vertexIdx, u: chainList[ci].u, isChain: true, gridCol: i });
-                }
-                ci++;
-            } else {
-                const actualU = vertices[(row * numU + i) * 3 + 0];
-                result.push({ idx: row * numU + i, u: actualU, isChain: false, gridCol: i });
-            }
-
-            const uNext = (i < numU - 1) ? unionU[i + 1] : 1.0 + 1e-6;
-            while (ci < chainList.length && chainList[ci].u < uNext - 1e-9) {
-                result.push({ idx: chainList[ci].vertexIdx, u: chainList[ci].u, isChain: true, gridCol: i });
-                ci++;
-            }
+        // This vertex is on row cv.rowIdx.
+        // It affects cell (cv.rowIdx - 1, gc) as a top-edge vertex
+        // and cell (cv.rowIdx, gc) as a bottom-edge vertex.
+        if (cv.rowIdx > 0) {
+            const key = cellKey(cv.rowIdx - 1, gc);
+            let info = cellChainMap.get(key);
+            if (!info) { info = { botChainVerts: [], topChainVerts: [], chainEdges: [] }; cellChainMap.set(key, info); }
+            info.topChainVerts.push(cv.vertexIdx);
         }
-        while (ci < chainList.length) {
-            result.push({ idx: chainList[ci].vertexIdx, u: chainList[ci].u, isChain: true, gridCol: numU - 1 });
-            ci++;
+        if (cv.rowIdx < numT - 1) {
+            const key = cellKey(cv.rowIdx, gc);
+            let info = cellChainMap.get(key);
+            if (!info) { info = { botChainVerts: [], topChainVerts: [], chainEdges: [] }; cellChainMap.set(key, info); }
+            info.botChainVerts.push(cv.vertexIdx);
         }
-
-        // Post-pass: sort by U and eliminate duplicate vertices.
-        //
-        // UV-snapping moves grid vertex U to match a chain vertex's U, but
-        // buildMergedRow's interleaving uses unionU (the original grid column
-        // positions) for ordering. When a grid vertex is snapped away from its
-        // original position, chain vertices can appear after the grid vertex
-        // even though their U is smaller — producing non-monotonic rows.
-        // CDT builds boundary edges between consecutive entries, so a backward
-        // step (e.g. grid@0.0832 → support@0.0826) creates crossed constraints
-        // that produce degenerate triangles and broken topology.
-        //
-        // Sorting by U ensures monotonic ordering for CDT. The subsequent dedup
-        // catches coincident grid+chain entries that become adjacent after sort.
-        result.sort((a, b) => a.u - b.u);
-
-        if (result.length > 1) {
-            const deduped: StripVertex[] = [result[0]];
-            for (let k = 1; k < result.length; k++) {
-                const prev = deduped[deduped.length - 1];
-                if (Math.abs(result[k].u - prev.u) <= 1e-6) {
-                    if (!prev.isChain && result[k].isChain) {
-                        // Previous is grid (keep), current is chain (skip+remap)
-                        batch2Remap.set(result[k].idx, prev.idx);
-                    } else if (prev.isChain && !result[k].isChain) {
-                        // Previous is chain, current is grid: replace previous
-                        batch2Remap.set(prev.idx, result[k].idx);
-                        deduped[deduped.length - 1] = result[k];
-                    } else {
-                        // Both grid or both chain at same position: keep first, remap second
-                        batch2Remap.set(result[k].idx, prev.idx);
-                    }
-                } else {
-                    deduped.push(result[k]);
-                }
-            }
-            return deduped;
-        }
-
-        return result;
-    };
-
-    // ── Two-pass colHasChain: ensure adjacent bands agree on CDT columns ──
-    // Pass 1: Compute rawColHasChain for each band independently.
-    // Each band marks columns from: (a) chain edges spanning the band,
-    // (b) chain/support vertices at the bot row, (c) chain/support vertices
-    // at the top row. Adjacent bands may mark DIFFERENT columns at their
-    // shared row — one band's CDT includes a support vertex between two
-    // grid columns while the other band uses standard cells there, creating
-    // mismatched boundary edges (~3 per mismatch, ~20K total).
-    const rawColHasChain: Uint8Array[] = [];
-    for (let j = 0; j < numT - 1; j++) {
-        const bandCols = new Uint8Array(cellsPerRow);
-
-        const bandEdges = rowBandEdges.get(j);
-        if (bandEdges) {
-            for (const [v0, v1] of bandEdges) {
-                const cv0 = allChainVertices[v0 - gridVertexCount];
-                const cv1 = allChainVertices[v1 - gridVertexCount];
-                if (!cv0 || !cv1) continue;
-                const col0raw = bsearchFloor(unionU, cv0.u);
-                const col1raw = bsearchFloor(unionU, cv1.u);
-                const col0 = col0raw < 0 ? 0 : (col0raw >= cellsPerRow ? cellsPerRow - 1 : col0raw);
-                const col1 = col1raw < 0 ? 0 : (col1raw >= cellsPerRow ? cellsPerRow - 1 : col1raw);
-                const cMin = Math.min(col0, col1);
-                const cMax = Math.max(col0, col1);
-                for (let c = cMin; c <= cMax; c++) {
-                    bandCols[c] = 1;
-                }
-            }
-        }
-
-        // Mark columns from chain vertices at bot row.
-        // With same-row-only ring placement, transition vertices are only at the
-        // feature edge's own rows — they correctly expand the strip to cover the
-        // transition zone without polluting distant bands.
-        const botChain = rowChainVerts.get(j);
-        if (botChain) {
-            for (const cv of botChain) {
-                const col = bsearchFloor(unionU, cv.u);
-                const gc = col < 0 ? 0 : (col >= cellsPerRow ? cellsPerRow - 1 : col);
-                bandCols[gc] = 1;
-            }
-        }
-        const topChain = rowChainVerts.get(j + 1);
-        if (topChain) {
-            for (const cv of topChain) {
-                const col = bsearchFloor(unionU, cv.u);
-                const gc = col < 0 ? 0 : (col >= cellsPerRow ? cellsPerRow - 1 : col);
-                bandCols[gc] = 1;
-            }
-        }
-
-        rawColHasChain.push(bandCols);
     }
 
-    // Pass 2: Union adjacent bands so shared rows get consistent CDT coverage.
-    // effectiveColHasChain[j] = rawColHasChain[j-1] | rawColHasChain[j] | rawColHasChain[j+1]
-    const colHasChain = new Uint8Array(cellsPerRow);
+    // Assign chain edges to cells
+    let crossCellEdgeCount = 0;
+    const fusionRequests: SuperCell[] = [];
 
-    for (let j = 0; j < numT - 1; j++) {
-        const botRow = buildMergedRow(j);
-        const topRow = buildMergedRow(j + 1);
+    for (const [v0, v1] of chainEdges) {
+        // Skip self-edges from batch2Remap
+        if (v0 === v1) continue;
 
-        const bandEdges = rowBandEdges.get(j);
-        const bandConstraintEdges: Array<[number, number]> = [];
+        const isChainV0 = v0 >= gridVertexCount && v0 < totalVertexCount;
+        const isChainV1 = v1 >= gridVertexCount && v1 < totalVertexCount;
+        const cv0 = isChainV0 ? chainVertices[v0 - gridVertexCount] : undefined;
+        const cv1 = isChainV1 ? chainVertices[v1 - gridVertexCount] : undefined;
 
-        // Compute effective colHasChain: union of this band and adjacent bands.
-        // This ensures both sides of a shared row agree on which columns use CDT,
-        // preventing mismatched boundary edges from strip-range filtering.
-        colHasChain.fill(0);
-        const raw = rawColHasChain[j];
-        const prev = j > 0 ? rawColHasChain[j - 1] : undefined;
-        const next = j < numT - 2 ? rawColHasChain[j + 1] : undefined;
-        for (let c = 0; c < cellsPerRow; c++) {
-            if (raw[c] || prev?.[c] || next?.[c]) {
-                colHasChain[c] = 1;
-            }
-        }
+        let row0: number, row1: number, u0: number, u1: number;
+        if (cv0) { row0 = cv0.rowIdx; u0 = cv0.u; }
+        else { row0 = Math.floor(v0 / numU); u0 = vertices[v0 * 3]; }
+        if (cv1) { row1 = cv1.rowIdx; u1 = cv1.u; }
+        else { row1 = Math.floor(v1 / numU); u1 = vertices[v1 * 3]; }
 
-        // Horizontal expansion: pad N extra columns on each side of marked chain columns.
-        // This widens the CDT strip area so triangles merge more fluently with the base mesh.
-        const stripExpansion = chainStripConfig.expansion;
-        if (stripExpansion > 0) {
-            // Work on a copy to avoid cascading expansion within the same pass
-            const pre = Uint8Array.from(colHasChain);
-            for (let c = 0; c < cellsPerRow; c++) {
-                if (pre[c]) {
-                    for (let d = 1; d <= stripExpansion; d++) {
-                        if (c - d >= 0) colHasChain[c - d] = 1;
-                        if (c + d < cellsPerRow) colHasChain[c + d] = 1;
-                    }
+        if (Math.abs(u0 - u1) > SEAM_THRESHOLD) continue;
+        const r0 = Math.min(row0, row1);
+        const r1 = Math.max(row0, row1);
+        if (r1 - r0 > 1) continue;
+        const band = r0;
+
+        const col0raw = bsearchFloor(unionU, u0);
+        const col1raw = bsearchFloor(unionU, u1);
+        const gc0 = Math.max(0, Math.min(cellsPerRow - 1, col0raw));
+        const gc1 = Math.max(0, Math.min(cellsPerRow - 1, col1raw));
+
+        if (gc0 === gc1) {
+            // Same-column edge: register directly
+            const key = cellKey(band, gc0);
+            let info = cellChainMap.get(key);
+            if (!info) { info = { botChainVerts: [], topChainVerts: [], chainEdges: [] }; cellChainMap.set(key, info); }
+            info.chainEdges.push([v0, v1]);
+        } else {
+            // R35: Cross-column edge → record fusion request (super-cell)
+            crossCellEdgeCount++;
+            const cMin = Math.min(gc0, gc1);
+            const cMax = Math.max(gc0, gc1);
+
+            // Register the chain edge in ALL cells it crosses
+            for (let c = cMin; c <= cMax; c++) {
+                const key = cellKey(band, c);
+                let info = cellChainMap.get(key);
+                if (!info) {
+                    info = { botChainVerts: [], topChainVerts: [], chainEdges: [] };
+                    cellChainMap.set(key, info);
                 }
+                info.chainEdges.push([v0, v1]);
+                r35SuperCellCols.add(key);
+            }
+
+            // Record fusion request
+            fusionRequests.push({ band, colStart: cMin, colEnd: cMax });
+        }
+    }
+
+    // Sort chain vertex lists within each cell by U position
+    for (const [, info] of cellChainMap) {
+        info.botChainVerts.sort((a, b) => vertices[a * 3] - vertices[b * 3]);
+        info.topChainVerts.sort((a, b) => vertices[a * 3] - vertices[b * 3]);
+    }
+
+    // ── R54: Near-boundary cell fusion ──
+    // Chain vertices very close to a cell boundary create narrow sub-quads
+    // with catastrophic aspect ratios (12:1+) at the most critical location
+    // (directly adjacent to ridge/valley chain edges). Detect these and
+    // generate fusion requests so the cell merges with its neighbor,
+    // eliminating the narrow sub-quad. Reuses R35 super-cell infrastructure.
+    let r54FusionCount = 0;
+    let r54ChainCellsScanned = 0;
+    let r54SkippedR35Covered = 0;
+    let r54SkippedMultiChain = 0;
+    let r54SevereQualified = 0;
+    for (const [key, info] of cellChainMap) {
+        r54ChainCellsScanned++;
+        if (r35SuperCellCols.has(key)) {
+            r54SkippedR35Covered++;
+            continue;
+        }
+        // First pass: keep R54 focused on simple single-edge cells.
+        if (info.chainEdges.length !== 1) {
+            r54SkippedMultiChain++;
+            continue;
+        }
+        const band = Math.floor(key / cellsPerRow);
+        const col = key % cellsPerRow;
+        const uLeft = unionU[col];
+        const uRight = unionU[col + 1];
+        const cellWidth = uRight - uLeft;
+        if (cellWidth <= 0 || cellWidth > SEAM_GUARD) continue; // skip seam cells
+        const bandHeight = activeTPositions[band + 1] - activeTPositions[band];
+        if (bandHeight <= 1e-12) continue;
+
+        const allChainVerts = [...info.botChainVerts, ...info.topChainVerts];
+        for (const cvIdx of allChainVerts) {
+            const uChain = vertices[cvIdx * 3];
+            const distToLeft = uChain - uLeft;
+            const distToRight = uRight - uChain;
+            const minDist = Math.min(distToLeft, distToRight);
+
+            // Exact-boundary: handled by R35 cross-column detection
+            if (minDist < 1e-10) continue;
+
+            const nearBoundary = minDist / cellWidth < R54_NEAR_BOUNDARY_FRAC;
+            const severeNarrowAspect = minDist / bandHeight < R54_NARROW_TO_BAND_MAX;
+
+            // Stricter policy: fuse only when BOTH conditions are true.
+            // This keeps R54 focused on truly bad narrow-side cases and avoids
+            // broad topology rewrites that can degrade aggregate quality.
+            if (nearBoundary && severeNarrowAspect) {
+                const neighborCol = distToLeft < distToRight ? col - 1 : col + 1;
+
+                // Guard: neighbor must exist
+                if (neighborCol < 0 || neighborCol >= cellsPerRow) continue;
+
+                // Guard: neighbor must not be a seam cell
+                const neighborWidth = unionU[neighborCol + 1] - unionU[neighborCol];
+                if (neighborWidth > SEAM_GUARD || neighborWidth < -SEAM_GUARD) continue;
+
+                fusionRequests.push({
+                    band,
+                    colStart: Math.min(col, neighborCol),
+                    colEnd: Math.max(col, neighborCol),
+                });
+                r54SevereQualified++;
+                r54FusionCount++;
+                break; // one fusion per cell is sufficient
             }
         }
+    }
+    if (r54FusionCount > 0) {
+        console.log(
+            `[CDT] R54: ${r54FusionCount} fusions from ${cellChainMap.size} chain cells ` +
+            `(threshold=${R54_NEAR_BOUNDARY_FRAC}, severe=${R54_NARROW_TO_BAND_MAX}, ` +
+            `scanned=${r54ChainCellsScanned}, r35Skip=${r54SkippedR35Covered}, multiSkip=${r54SkippedMultiChain}, ` +
+            `severeQualified=${r54SevereQualified})`
+        );
+    }
 
-        if (bandEdges) {
-            for (const [v0, v1] of bandEdges) {
-                const cv0 = allChainVertices[v0 - gridVertexCount];
-                const cv1 = allChainVertices[v1 - gridVertexCount];
-                if (!cv0 || !cv1) continue;
-                if (Math.abs(cv0.u - cv1.u) > SEAM_THRESHOLD) continue;
-                bandConstraintEdges.push([v0, v1]);
-            }
+    // ── 3.8. Merge fusion requests into super-cells (R35 + R54) ──
+    const superCellMap = new Map<number, SuperCell[]>(); // band → merged intervals
+
+    if (fusionRequests.length > 0) {
+        const byBand = new Map<number, SuperCell[]>();
+        for (const req of fusionRequests) {
+            let list = byBand.get(req.band);
+            if (!list) { list = []; byBand.set(req.band, list); }
+            list.push(req);
         }
 
-        let i = 0;
-        while (i < cellsPerRow) {
-            const quadIdx = j * cellsPerRow + i;
-            const uLeft = unionU[i];
-            const uRight = unionU[i + 1];
-            const uSpan = uRight - uLeft;
-
-            if (uSpan > SEAM_GUARD || uSpan < -SEAM_GUARD) {
-                indexBuf.push(0, 0, 0, 0, 0, 0);
-                quadMap[quadIdx] = -1;
-                seamSkipCount++;
-                i++;
-                continue;
-            }
-
-            if (!colHasChain[i]) {
-                // Standard cell: 2 triangles with winding verification after UV-snap
-                const bl = j * numU + i;
-                const br = j * numU + (i + 1);
-                const tl = (j + 1) * numU + i;
-                const tr = (j + 1) * numU + (i + 1);
-
-                // Read back actual U,T coords (U may have been modified by UV-snap)
-                const blU = vertices[bl * 3], blT = vertices[bl * 3 + 1];
-                const brU = vertices[br * 3], brT = vertices[br * 3 + 1];
-                const tlU = vertices[tl * 3], tlT = vertices[tl * 3 + 1];
-                const trU = vertices[tr * 3], trT = vertices[tr * 3 + 1];
-
-                const triBase = indexBuf.length;
-
-                // Triangle 1: bl, br, tr — verify CCW winding via UV cross product
-                const cross1 = (brU - blU) * (trT - blT) - (trU - blU) * (brT - blT);
-                if (Math.abs(cross1) < 1e-12) {
-                    // Degenerate triangle (collinear vertices) — emit as placeholder
-                    indexBuf.push(0, 0, 0);
-                } else if (cross1 >= 0) {
-                    indexBuf.push(bl, br, tr);
+        for (const [band, reqs] of byBand) {
+            reqs.sort((a, b) => a.colStart - b.colStart);
+            const merged: SuperCell[] = [];
+            let cur = { ...reqs[0] };
+            for (let i = 1; i < reqs.length; i++) {
+                if (reqs[i].colStart <= cur.colEnd + 1) {
+                    cur.colEnd = Math.max(cur.colEnd, reqs[i].colEnd);
                 } else {
-                    indexBuf.push(bl, tr, br);
-                    windingFixCount++;
+                    merged.push(cur);
+                    cur = { ...reqs[i] };
                 }
+            }
+            merged.push(cur);
+            superCellMap.set(band, merged);
+        }
+    }
 
-                // Triangle 2: bl, tr, tl — verify CCW winding via UV cross product
-                const cross2 = (trU - blU) * (tlT - blT) - (tlU - blU) * (trT - blT);
-                if (Math.abs(cross2) < 1e-12) {
-                    // Degenerate triangle (collinear vertices) — emit as placeholder
-                    indexBuf.push(0, 0, 0);
-                } else if (cross2 >= 0) {
-                    indexBuf.push(bl, tr, tl);
-                } else {
-                    indexBuf.push(bl, tl, tr);
-                    windingFixCount++;
+    // Build quick lookup: (band, col) → true if column is part of a super-cell
+    const superCellCols = new Set<number>(); // stores cellKey(band, col)
+    const superCellStarts = new Map<number, SuperCell>(); // cellKey(band, colStart) → SuperCell
+    const superCellOwnerByCell = new Map<number, SuperCell>();
+    for (const [band, cells] of superCellMap) {
+        for (const sc of cells) {
+            // Seam guard: if ANY constituent cell is seam-spanning, exclude it
+            let hasSeam = false;
+            for (let c = sc.colStart; c <= sc.colEnd; c++) {
+                const uSpan = unionU[c + 1] - unionU[c];
+                if (uSpan > SEAM_GUARD || uSpan < -SEAM_GUARD) {
+                    hasSeam = true;
+                    break;
                 }
+            }
+            if (hasSeam) continue; // fall back to per-cell emission (edges will be dropped)
 
-                quadMap[quadIdx] = triBase;
-                i++;
-            } else {
-                // Chain segment: contiguous run of chain-involved columns.
-                // Break at seam columns to avoid crossing the theta wrap.
-                const segStart = i;
-                while (i < cellsPerRow && colHasChain[i]) {
-                    const span = unionU[i + 1] - unionU[i];
-                    if (span > SEAM_GUARD || span < -SEAM_GUARD) break;
-                    chainCellCount++;
-                    quadMap[j * cellsPerRow + i] = -1;
-                    i++;
+            superCellStarts.set(cellKey(band, sc.colStart), sc);
+            for (let c = sc.colStart; c <= sc.colEnd; c++) {
+                const key = cellKey(band, c);
+                superCellCols.add(key);
+                superCellOwnerByCell.set(key, sc);
+            }
+        }
+    }
+
+    let corridorPlan: OuterWallCorridorPlanningResult | undefined;
+    if (options?.corridorPlanning) {
+        const legacyOwnership = new Map<number, Set<number>>();
+        const appendChainId = (key: number, chainId: number | undefined): void => {
+            if (chainId === undefined) return;
+            let ids = legacyOwnership.get(key);
+            if (!ids) {
+                ids = new Set<number>();
+                legacyOwnership.set(key, ids);
+            }
+            ids.add(chainId);
+        };
+        for (const [key, info] of cellChainMap) {
+            for (const vertexIdx of info.botChainVerts) appendChainId(key, resolveVertexChainId(vertexIdx));
+            for (const vertexIdx of info.topChainVerts) appendChainId(key, resolveVertexChainId(vertexIdx));
+            for (const [v0, v1] of info.chainEdges) {
+                appendChainId(key, resolveVertexChainId(v0));
+                appendChainId(key, resolveVertexChainId(v1));
+            }
+        }
+        for (const [band, cells] of superCellMap) {
+            for (const sc of cells) {
+                const inheritedIds = new Set<number>();
+                for (let col = sc.colStart; col <= sc.colEnd; col++) {
+                    const ids = legacyOwnership.get(cellKey(band, col));
+                    if (!ids) continue;
+                    for (const chainId of ids) inheritedIds.add(chainId);
                 }
-                const segEnd = i;
+                if (inheritedIds.size === 0) continue;
+                for (let col = sc.colStart; col <= sc.colEnd; col++) {
+                    const key = cellKey(band, col);
+                    let ids = legacyOwnership.get(key);
+                    if (!ids) {
+                        ids = new Set<number>();
+                        legacyOwnership.set(key, ids);
+                    }
+                    for (const chainId of inheritedIds) ids.add(chainId);
+                }
+            }
+        }
+        const legacyCells: OuterWallLegacyOwnershipCell[] = [...legacyOwnership.entries()]
+            .map(([key, chainIds]) => ({
+                band: Math.floor(key / cellsPerRow),
+                col: key % cellsPerRow,
+                chainIds: [...chainIds].sort((a, b) => a - b),
+            }))
+            .sort((left, right) => left.band - right.band || left.col - right.col);
+        corridorPlan = planOuterWallCorridors({
+            unionU,
+            cellsPerRow,
+            legacyCells,
+            seamGuard: SEAM_GUARD,
+            includeDiagnostics: Boolean(options.corridorDiagnostics),
+        });
+        if (options.corridorDiagnostics && corridorPlan.diagnostics) {
+            const diagnostics = corridorPlan.diagnostics;
+            console.log(
+                `[CDT] Corridor dry-run: legacyCells=${diagnostics.legacyCellCount}, ` +
+                `candidates=${diagnostics.candidateCount}, supported=${diagnostics.supportedCandidateCount}, ` +
+                `unsupported=${diagnostics.unsupportedCandidateCount}, supportedCoverage=${diagnostics.supportedCoverageRatio.toFixed(3)}`,
+            );
+        }
+    }
 
-                // Skip empty segments (seam break at first column)
-                if (segEnd <= segStart) continue;
-
-                const uStripLeft = unionU[segStart];
-                const uStripRight = unionU[segEnd];
-
-                const stripBot: StripVertex[] = [];
-                const stripTop: StripVertex[] = [];
-
-                for (let bi = 0; bi < botRow.length; bi++) {
-                    const sv = botRow[bi];
-                    if (sv.u >= uStripLeft - 1e-9 && sv.u <= uStripRight + 1e-9) {
-                        stripBot.push(sv);
+    const supportedCorridorCells = new Set<number>();
+    const supportedCorridorStarts = new Map<number, OuterWallCorridorOwnershipSegment>();
+    const corridorOwnedSpanCells = new Set<number>();
+    const corridorOwnedSpanStarts = new Map<number, OwnedSpanDescriptor>();
+    if (options?.corridorPlanning && corridorPlan) {
+        for (const candidate of corridorPlan.candidates) {
+            if (!candidate.supported) continue;
+            for (const segment of candidate.ownershipSegments) {
+                if (!isCorridorOwnershipSegmentAdmissible(segment)) {
+                    continue;
+                }
+                let authoritative = true;
+                for (let col = segment.colStart; col <= segment.colEnd; col++) {
+                    const key = cellKey(segment.band, col);
+                    if (supportedCorridorCells.has(key)) {
+                        authoritative = false;
+                        break;
                     }
                 }
-                const botLeftIdx = j * numU + segStart;
-                const botRightIdx = j * numU + segEnd;
-                if (stripBot.length === 0 || stripBot[0].idx !== botLeftIdx) {
-                    stripBot.unshift({ idx: botLeftIdx, u: uStripLeft, isChain: false, gridCol: segStart });
-                }
-                if (stripBot[stripBot.length - 1].idx !== botRightIdx) {
-                    stripBot.push({ idx: botRightIdx, u: uStripRight, isChain: false, gridCol: segEnd });
-                }
-
-                for (let ti = 0; ti < topRow.length; ti++) {
-                    const sv = topRow[ti];
-                    if (sv.u >= uStripLeft - 1e-9 && sv.u <= uStripRight + 1e-9) {
-                        stripTop.push(sv);
+                if (!authoritative) continue;
+                supportedCorridorStarts.set(cellKey(segment.band, segment.colStart), segment);
+                const ownedSpan = tryBuildCorridorOwnedSpanDescriptor(segment);
+                if (ownedSpan) {
+                    corridorOwnedSpanStarts.set(cellKey(segment.band, segment.colStart), ownedSpan);
+                    for (let col = segment.colStart; col <= segment.colEnd; col++) {
+                        corridorOwnedSpanCells.add(cellKey(segment.band, col));
                     }
                 }
-                const topLeftIdx = (j + 1) * numU + segStart;
-                const topRightIdx = (j + 1) * numU + segEnd;
-                if (stripTop.length === 0 || stripTop[0].idx !== topLeftIdx) {
-                    stripTop.unshift({ idx: topLeftIdx, u: uStripLeft, isChain: false, gridCol: segStart });
+                for (let col = segment.colStart; col <= segment.colEnd; col++) {
+                    supportedCorridorCells.add(cellKey(segment.band, col));
                 }
-                if (stripTop[stripTop.length - 1].idx !== topRightIdx) {
-                    stripTop.push({ idx: topRightIdx, u: uStripRight, isChain: false, gridCol: segEnd });
+            }
+        }
+    }
+
+    const ownedSpanCells = new Set<number>();
+    const ownedSpanStarts = new Map<number, OwnedSpanDescriptor>();
+    const ownedSpanDescriptors: OwnedSpanDescriptor[] = [];
+    const registerOwnedSpan = (span: OwnedSpanDescriptor): void => {
+        ownedSpanStarts.set(cellKey(span.band, span.colStart), span);
+        ownedSpanDescriptors.push(span);
+        for (let col = span.colStart; col <= span.colEnd; col++) {
+            ownedSpanCells.add(cellKey(span.band, col));
+        }
+    };
+
+    for (const span of corridorOwnedSpanStarts.values()) {
+        registerOwnedSpan(span);
+    }
+
+    for (const [band, cells] of superCellMap) {
+        for (const sc of cells) {
+            let claimedByCorridor = false;
+            for (let col = sc.colStart; col <= sc.colEnd; col++) {
+                if (corridorOwnedSpanCells.has(cellKey(band, col))) {
+                    claimedByCorridor = true;
+                    break;
                 }
+            }
+            if (claimedByCorridor) continue;
 
-                const segConstraints: Array<[number, number]> = [];
-                for (const [v0, v1] of bandConstraintEdges) {
-                    const cv0 = allChainVertices[v0 - gridVertexCount];
-                    const cv1 = allChainVertices[v1 - gridVertexCount];
-                    if (!cv0 || !cv1) continue;
-                    // R1: Only feature-to-feature edges are hard constraints.
-                    // Interpolated micro-row vertices (pointIdx = -1) participate
-                    // freely in CDT/sweep without constraint edges.
-                    // NOTE: pointIdx < 0 filter removed — all chain edges now
-                    // participate as constraints. CDT try/catch provides sweep
-                    // fallback if any crossing constraints occur.
-                    const uMinE = Math.min(cv0.u, cv1.u);
-                    const uMaxE = Math.max(cv0.u, cv1.u);
-                    if (uMaxE >= uStripLeft - 1e-9 && uMinE <= uStripRight + 1e-9) {
-                        segConstraints.push([v0, v1]);
-                    }
+            registerOwnedSpan({
+                ownerKey: `supercell-${band}-${sc.colStart}-${sc.colEnd}`,
+                band,
+                colStart: sc.colStart,
+                colEnd: sc.colEnd,
+                kind: 'supercell',
+                includeIntermediateGridColumns: true,
+                bottomBoundaryUs: [unionU[sc.colStart], unionU[sc.colEnd + 1]],
+                topBoundaryUs: [unionU[sc.colStart], unionU[sc.colEnd + 1]],
+            });
+        }
+    }
+
+    interface OwnedSpanDescriptor {
+        ownerKey: string;
+        band: number;
+        colStart: number;
+        colEnd: number;
+        kind: 'supercell' | 'corridor';
+        includeIntermediateGridColumns: boolean;
+        bottomBoundaryUs: [number, number];
+        topBoundaryUs: [number, number];
+    }
+
+    interface CorridorSpanGeometry {
+        bottomEdge: number[];
+        topEdge: number[];
+        uniqueEdges: Array<[number, number]>;
+    }
+
+    function resolveCorridorBoundaryUs(segment: OuterWallCorridorOwnershipSegment): {
+        leftBoundaryU: number;
+        rightBoundaryU: number;
+        topLeftBoundaryU: number;
+        topRightBoundaryU: number;
+    } {
+        const { colStart, colEnd } = segment;
+        const bottomCollar = segment.seamCollar.find(entry => entry.edge === 'bottom');
+        const topCollar = segment.seamCollar.find(entry => entry.edge === 'top');
+        const leftBoundaryU = bottomCollar?.splitUs[0] ?? unionU[colStart];
+        const rightBoundaryU = bottomCollar?.splitUs[bottomCollar.splitUs.length - 1] ?? unionU[colEnd + 1];
+        const topLeftBoundaryU = topCollar?.splitUs[0] ?? leftBoundaryU;
+        const topRightBoundaryU = topCollar?.splitUs[topCollar.splitUs.length - 1] ?? rightBoundaryU;
+
+        return { leftBoundaryU, rightBoundaryU, topLeftBoundaryU, topRightBoundaryU };
+    }
+
+    function getExactMatchedSuperCellOwner(
+        segment: OuterWallCorridorOwnershipSegment,
+    ): SuperCell | undefined {
+        if (segment.periodicSeam) return undefined;
+
+        const touchedSuperCells = new Set<SuperCell>();
+        for (let col = segment.colStart; col <= segment.colEnd; col++) {
+            const owner = superCellOwnerByCell.get(cellKey(segment.band, col));
+            if (owner) {
+                touchedSuperCells.add(owner);
+            }
+        }
+        if (touchedSuperCells.size !== 1) return undefined;
+
+        const [owner] = [...touchedSuperCells];
+        if (owner.band !== segment.band || owner.colStart !== segment.colStart || owner.colEnd !== segment.colEnd) {
+            return undefined;
+        }
+
+        return owner;
+    }
+
+    function isBoundedTwoChainOwnedSpan(
+        segment: OuterWallCorridorOwnershipSegment,
+        geometry: CorridorSpanGeometry,
+    ): boolean {
+        if (segment.periodicSeam) return false;
+        if (segment.chainIds.length !== 2) return false;
+        if (geometry.uniqueEdges.length !== 2) return false;
+
+        const bandBottomT = activeTPositions[segment.band];
+        const bandTopT = activeTPositions[segment.band + 1];
+        const edgeRecords: Array<{ bottomU: number; topU: number; chainId: number }> = [];
+
+        for (const [v0, v1] of geometry.uniqueEdges) {
+            const t0 = vertices[v0 * 3 + 1];
+            const t1 = vertices[v1 * 3 + 1];
+            const bottomVertex = Math.abs(t0 - bandBottomT) <= 1e-6
+                ? v0
+                : (Math.abs(t1 - bandBottomT) <= 1e-6 ? v1 : -1);
+            const topVertex = Math.abs(t0 - bandTopT) <= 1e-6
+                ? v0
+                : (Math.abs(t1 - bandTopT) <= 1e-6 ? v1 : -1);
+            if (bottomVertex < 0 || topVertex < 0 || bottomVertex === topVertex) {
+                return false;
+            }
+
+            const chainId = resolveVertexChainId(v0) ?? resolveVertexChainId(v1);
+            if (chainId === undefined || !segment.chainIds.includes(chainId)) {
+                return false;
+            }
+
+            edgeRecords.push({
+                bottomU: vertices[bottomVertex * 3],
+                topU: vertices[topVertex * 3],
+                chainId,
+            });
+        }
+
+        const uniqueChainIds = new Set(edgeRecords.map(record => record.chainId));
+        if (uniqueChainIds.size !== 2) return false;
+
+        const bottomChainVertices = geometry.bottomEdge.filter(vertexIdx => {
+            const chainId = resolveVertexChainId(vertexIdx);
+            return chainId !== undefined && segment.chainIds.includes(chainId);
+        });
+        const topChainVertices = geometry.topEdge.filter(vertexIdx => {
+            const chainId = resolveVertexChainId(vertexIdx);
+            return chainId !== undefined && segment.chainIds.includes(chainId);
+        });
+        if (bottomChainVertices.length !== 2 || topChainVertices.length !== 2) {
+            return false;
+        }
+
+        edgeRecords.sort((left, right) => left.bottomU - right.bottomU);
+        return edgeRecords[0].topU < edgeRecords[1].topU;
+    }
+
+    function tryBuildCorridorOwnedSpanDescriptor(
+        segment: OuterWallCorridorOwnershipSegment,
+    ): OwnedSpanDescriptor | undefined {
+        const owner = getExactMatchedSuperCellOwner(segment);
+        if (!owner) return undefined;
+        if (segment.chainIds.length > 2) return undefined;
+
+        if (segment.chainIds.length === 2) {
+            const geometry = buildCorridorSpanGeometry(segment);
+            if (!isBoundedTwoChainOwnedSpan(segment, geometry)) {
+                return undefined;
+            }
+        }
+
+        const { leftBoundaryU, rightBoundaryU, topLeftBoundaryU, topRightBoundaryU } = resolveCorridorBoundaryUs(segment);
+        return {
+            ownerKey: `corridor-${segment.band}-${segment.colStart}-${segment.colEnd}`,
+            band: segment.band,
+            colStart: segment.colStart,
+            colEnd: segment.colEnd,
+            kind: 'corridor',
+            includeIntermediateGridColumns: false,
+            bottomBoundaryUs: [leftBoundaryU, rightBoundaryU],
+            topBoundaryUs: [topLeftBoundaryU, topRightBoundaryU],
+        };
+    }
+
+    function buildOwnedSpanGeometry(span: OwnedSpanDescriptor): CorridorSpanGeometry {
+        const { band, colStart, colEnd } = span;
+        const [leftBoundaryU, rightBoundaryU] = span.bottomBoundaryUs;
+        const [topLeftBoundaryU, topRightBoundaryU] = span.topBoundaryUs;
+
+        const resolveBoundaryColumn = (targetU: number, fallbackCol: number): number => {
+            if (Math.abs(unionU[fallbackCol] - targetU) <= 1e-8) return fallbackCol;
+            const resolved = bsearchFloor(unionU, targetU);
+            return Math.max(0, Math.min(numU - 1, resolved));
+        };
+
+        const leftBotCol = resolveBoundaryColumn(leftBoundaryU, colStart);
+        const rightBotCol = resolveBoundaryColumn(rightBoundaryU, colEnd + 1);
+        const leftTopCol = resolveBoundaryColumn(topLeftBoundaryU, colStart);
+        const rightTopCol = resolveBoundaryColumn(topRightBoundaryU, colEnd + 1);
+
+        const bottomEdge: number[] = [band * numU + leftBotCol];
+        const topEdge: number[] = [(band + 1) * numU + leftTopCol];
+        for (let col = colStart; col <= colEnd; col++) {
+            if (span.includeIntermediateGridColumns && col < colEnd) {
+                bottomEdge.push(band * numU + (col + 1));
+                topEdge.push((band + 1) * numU + (col + 1));
+            }
+            const info = cellChainMap.get(cellKey(band, col));
+            if (!info) continue;
+            bottomEdge.push(...info.botChainVerts);
+            topEdge.push(...info.topChainVerts);
+        }
+        bottomEdge.push(band * numU + rightBotCol);
+        topEdge.push((band + 1) * numU + rightTopCol);
+        bottomEdge.sort((left, right) => vertices[left * 3] - vertices[right * 3]);
+        topEdge.sort((left, right) => vertices[left * 3] - vertices[right * 3]);
+
+        const allEdges: Array<[number, number]> = [];
+        for (let col = colStart; col <= colEnd; col++) {
+            const info = cellChainMap.get(cellKey(band, col));
+            if (!info) continue;
+            allEdges.push(...info.chainEdges);
+        }
+        const uniqueEdges: Array<[number, number]> = [];
+        const edgeSet = new Set<string>();
+        for (const [v0, v1] of allEdges) {
+            const edgeKey = v0 < v1 ? `${v0}-${v1}` : `${v1}-${v0}`;
+            if (edgeSet.has(edgeKey)) continue;
+            edgeSet.add(edgeKey);
+            uniqueEdges.push([v0, v1]);
+        }
+
+        return {
+            bottomEdge: dedupeSortedVertexEdge(bottomEdge),
+            topEdge: dedupeSortedVertexEdge(topEdge),
+            uniqueEdges,
+        };
+    }
+
+    function buildCorridorSpanGeometry(segment: OuterWallCorridorOwnershipSegment): CorridorSpanGeometry {
+        const { leftBoundaryU, rightBoundaryU, topLeftBoundaryU, topRightBoundaryU } = resolveCorridorBoundaryUs(segment);
+        return buildOwnedSpanGeometry({
+            ownerKey: `segment-${segment.band}-${segment.colStart}-${segment.colEnd}`,
+            band: segment.band,
+            colStart: segment.colStart,
+            colEnd: segment.colEnd,
+            kind: 'corridor',
+            includeIntermediateGridColumns: false,
+            bottomBoundaryUs: [leftBoundaryU, rightBoundaryU],
+            topBoundaryUs: [topLeftBoundaryU, topRightBoundaryU],
+        });
+    }
+
+    function isCorridorOwnershipSegmentAdmissible(segment: OuterWallCorridorOwnershipSegment): boolean {
+        let touchesSuperCell = false;
+        for (let col = segment.colStart; col <= segment.colEnd; col++) {
+            const key = cellKey(segment.band, col);
+            if (superCellCols.has(key)) {
+                touchesSuperCell = true;
+            }
+        }
+        if (touchesSuperCell) {
+            return tryBuildCorridorOwnedSpanDescriptor(segment) !== undefined;
+        }
+
+        if (segment.chainIds.length <= 1) return true;
+        const geometry = buildCorridorSpanGeometry(segment);
+        return isBoundedTwoChainOwnedSpan(segment, geometry);
+    }
+
+    // ── 3.9. R37: Column-crossing phantom vertices and chain edge pre-split ──
+    // For each super-cell with column-boundary crossings, create phantom row
+    // vertices at the crossing T and split chain edges at those vertices.
+    // This enables band splitting in emitSuperCell to eliminate dip artifacts.
+
+    /** Phantom crossing anchor and optional side companions on a phantom row. */
+    interface PhantomCrossing {
+        anchorIdx: number;
+        leftCompanionIdx?: number;
+        rightCompanionIdx?: number;
+        sourceEdge: [number, number];
+        isBoundaryCrossing: boolean;
+    }
+
+    /** Phantom row: a horizontal slice at a specific T within a super-cell band */
+    interface PhantomRow {
+        tCross: number;
+        vertexIndices: number[];
+        crossings: PhantomCrossing[];
+    }
+
+    /** R37 band-splitting data for a single owned span */
+    interface SuperCellR37Data {
+        phantomRows: PhantomRow[];
+        subEdges: Array<[number, number]>;
+    }
+
+    const ownedSpanR37 = new Map<string, SuperCellR37Data>();
+
+    /** Fraction of band height: crossings closer to a boundary than this are skipped */
+    const R37_DEGEN_GUARD_FRAC = 0.05;
+    /** Absolute minimum distance from band boundary for a valid crossing */
+    const R37_DEGEN_GUARD_MIN = 1e-4;
+    /** Threshold for merging phantom vertices at similar U positions */
+    const R37_U_MERGE = 1e-4;
+
+    const edgeSplitMap = new Map<string, Array<[number, number]>>();
+    const phantomVertexChainIds = new Map<number, number>();
+    const protectedStripVertices = new Set<number>();
+    let nextPhantomIdx = phantomVertexStart;
+    let r37ClampedCrossings = 0;
+    let r37BoundaryTouchCrossings = 0;
+
+    const R38_COMPANION_FRACTION = 0.5;
+    const R38_MIN_SIDE_SPAN_FACTOR = 0.35;
+
+    // ╔══════════════════════════════════════════════════════════════════════╗
+    // ║ 🔒 R52 PRECISION LOCK — Phantom vertex type separation              ║
+    // ║ phantomChainAnchorSet and isChainAnchor parameter ensure chain       ║
+    // ║ crossing anchors NEVER merge with column boundary phantom vertices.  ║
+    // ║ Removing this causes chain vertices to snap to grid column U-values. ║
+    // ║ See ChainVertexBuilder.ts for the full R52 precision guarantee.      ║
+    // ╚══════════════════════════════════════════════════════════════════════╝
+    // R52: Track which phantom vertices are chain anchors vs grid column boundaries
+    const phantomChainAnchorSet = new Set<number>();
+
+    // R55: Vertex classification closures for grid/chain coalescing.
+    // Grid-like: original grid vertices OR phantom vertices that are NOT chain anchors.
+    // Chain-like: original chain vertices OR phantom chain anchor vertices.
+    const isGridLike = (idx: number): boolean =>
+        idx < gridVertexCount || (idx >= totalVertexCount && !phantomChainAnchorSet.has(idx));
+    const isChainLike = (idx: number): boolean =>
+        (idx >= gridVertexCount && idx < totalVertexCount) || phantomChainAnchorSet.has(idx);
+
+    const upsertPhantomRowVertex = (
+        rowVerts: Array<{ u: number; idx: number }>,
+        tCross: number,
+        u: number,
+        isChainAnchor: boolean = false,
+    ): number => {
+        // R52: Chain anchors never merge with column boundary vertices.
+        // They only dedup against other chain anchors on the same phantom row.
+        for (const pv of rowVerts) {
+            if (Math.abs(pv.u - u) < R37_U_MERGE) {
+                if (isChainAnchor && !phantomChainAnchorSet.has(pv.idx)) {
+                    // Skip: chain anchor must not reuse a grid column vertex
+                    continue;
                 }
+                if (!isChainAnchor && phantomChainAnchorSet.has(pv.idx)) {
+                    // Skip: column boundary must not reuse a chain anchor
+                    continue;
+                }
+                return pv.idx;
+            }
+        }
+        if (nextPhantomIdx >= totalVertexCount + maxPhantomSlots) {
+            console.warn(`[CDT] R37: Phantom vertex slot overflow! budget=${maxPhantomSlots}, used=${nextPhantomIdx - phantomVertexStart}. Geometry may be corrupt.`);
+            return rowVerts[rowVerts.length - 1]?.idx ?? 0;
+        }
+        const pIdx = nextPhantomIdx++;
+        vertices[pIdx * 3] = u;
+        vertices[pIdx * 3 + 1] = tCross;
+        vertices[pIdx * 3 + 2] = surfaceId;
+        rowVerts.push({ u, idx: pIdx });
+        if (isChainAnchor) {
+            phantomChainAnchorSet.add(pIdx);
+        }
+        return pIdx;
+    };
 
-                // Synthetic cross-row constraint generation DISABLED.
-                // Only feature-to-feature edges (both pointIdx >= 0) are retained
-                // as constraints. Interpolated micro-row vertices and transition
-                // vertices participate freely in CDT/sweep without constraint edges.
+    for (const ownedSpan of ownedSpanDescriptors) {
+            const r37Band = ownedSpan.band;
+            let r37HasSeam = false;
+            for (let c = ownedSpan.colStart; c <= ownedSpan.colEnd; c++) {
+                const uSpan = unionU[c + 1] - unionU[c];
+                if (uSpan > SEAM_GUARD || uSpan < -SEAM_GUARD) { r37HasSeam = true; break; }
+            }
+            if (r37HasSeam) continue;
 
-                // Remap constraint endpoints for Batch 2 coincident replacements.
-                // buildMergedRow replaces chain vertex indices with grid indices when
-                // they coincide; constraints must reference the same indices that
-                // appear in stripBot/stripTop, or CDT silently drops them.
-                if (batch2Remap.size > 0) {
-                    for (let c = 0; c < segConstraints.length; c++) {
-                        const [cv0, cv1] = segConstraints[c];
-                        const rv0 = batch2Remap.get(cv0);
-                        const rv1 = batch2Remap.get(cv1);
-                        if (rv0 !== undefined || rv1 !== undefined) {
-                            segConstraints[c] = [rv0 ?? cv0, rv1 ?? cv1];
+            const tBot = activeTPositions[r37Band];
+            const tTop = activeTPositions[r37Band + 1];
+            const bandHeight = tTop - tBot;
+            const degenGuard = Math.max(R37_DEGEN_GUARD_MIN, R37_DEGEN_GUARD_FRAC * bandHeight);
+
+            // Collect unique chain edges for this owned span
+            const scEdgeSet = new Set<string>();
+            const scEdges: Array<[number, number]> = [];
+            for (let c = ownedSpan.colStart; c <= ownedSpan.colEnd; c++) {
+                const info = cellChainMap.get(cellKey(r37Band, c));
+                if (info) {
+                    for (const [ev0, ev1] of info.chainEdges) {
+                        const k = ev0 < ev1 ? `${ev0}-${ev1}` : `${ev1}-${ev0}`;
+                        if (!scEdgeSet.has(k)) {
+                            scEdgeSet.add(k);
+                            scEdges.push([ev0, ev1]);
                         }
                     }
                 }
+            }
 
-                // Collect 2D interior companions for this strip's band and U-range
-                const bandInterior = interiorByBand.get(j) || [];
-                const stripInteriorVerts: StripVertex[] = [];
-                for (const icv of bandInterior) {
-                    if (icv.u < uStripLeft - 1e-9 || icv.u > uStripRight + 1e-9) continue;
-                    stripInteriorVerts.push({ idx: icv.vertexIdx, u: icv.u, isChain: false, gridCol: -1 });
-                }
-
-                // ── Fix missing constraint endpoints (Sub-problem B) ──
-                // Ensure all constraint endpoints appear in stripBot or stripTop.
-                // The strip U-range filter can exclude chain vertices beyond the
-                // strip boundary, causing CDT to silently drop constraint edges.
-                let botModified = false, topModified = false;
-                for (const [v0, v1] of segConstraints) {
-                    for (const vIdx of [v0, v1]) {
-                        if (vIdx < gridVertexCount) continue;
-                        const cvIdx = vIdx - gridVertexCount;
-                        const cv = allChainVertices[cvIdx];
-                        if (!cv) continue;
-                        const inStrip = stripBot.some(sv => sv.idx === vIdx) ||
-                                        stripTop.some(sv => sv.idx === vIdx) ||
-                                        stripInteriorVerts.some(sv => sv.idx === vIdx);
-                        if (inStrip) continue;
-                        // v25.0: Interior vertices (subdivision/companion with explicit t)
-                        // must route to stripInteriorVerts, not strip boundaries.
-                        if (cv.t !== undefined) {
-                            stripInteriorVerts.push({ idx: vIdx, u: cv.u, isChain: true, gridCol: -1 });
-                        } else if (cv.rowIdx === j) {
-                            stripBot.push({ idx: vIdx, u: cv.u, isChain: true, gridCol: -1 });
-                            botModified = true;
-                        } else if (cv.rowIdx === j + 1) {
-                            stripTop.push({ idx: vIdx, u: cv.u, isChain: true, gridCol: -1 });
-                            topModified = true;
+            // Find crossing T values where chain edges cross column boundaries
+            const crossingTs: number[] = [];
+            for (const [ev0, ev1] of scEdges) {
+                const u0 = vertices[ev0 * 3], t0 = vertices[ev0 * 3 + 1];
+                const u1 = vertices[ev1 * 3], t1 = vertices[ev1 * 3 + 1];
+                if (Math.abs(u1 - u0) < 1e-12) continue;
+                for (let c = ownedSpan.colStart + 1; c <= ownedSpan.colEnd; c++) {
+                    const uBound = unionU[c];
+                    const d0 = u0 - uBound;
+                    const d1 = u1 - uBound;
+                    const crossesBoundary = (d0 < 0 && d1 > 0) || (d0 > 0 && d1 < 0);
+                    const touchesBoundary = (!crossesBoundary) &&
+                        ((Math.abs(d0) <= R37_U_MERGE && Math.abs(d1) > R37_U_MERGE) ||
+                            (Math.abs(d1) <= R37_U_MERGE && Math.abs(d0) > R37_U_MERGE));
+                    if (crossesBoundary || touchesBoundary) {
+                        const alpha = (uBound - u0) / (u1 - u0);
+                        const tCross = t0 + alpha * (t1 - t0);
+                        const clampedTCross = Math.max(tBot + degenGuard, Math.min(tTop - degenGuard, tCross));
+                        if (touchesBoundary) {
+                            r37BoundaryTouchCrossings++;
                         }
+                        if (Math.abs(clampedTCross - tCross) > 1e-10) {
+                            r37ClampedCrossings++;
+                        }
+                        crossingTs.push(clampedTCross);
                     }
                 }
-                if (botModified) stripBot.sort((a, b) => a.u - b.u);
-                if (topModified) stripTop.sort((a, b) => a.u - b.u);
+            }
 
-                // ── P5: Remove crossing constraint edges ──
-                // When nearby chains oscillate, their constraint edges can cross
-                // in UV space. cdt2d silently drops one crossing constraint,
-                // producing "missing" edges and degenerate triangulations.
-                // Detect and remove the lower-confidence constraint before CDT.
-                if (segConstraints.length >= 2) {
-                    const tBot = activeTPositions[j];
-                    const tTop = activeTPositions[j + 1];
-                    const removed = new Set<number>();
+            if (crossingTs.length === 0) continue;
 
-                    // Resolve UV for a constraint endpoint
-                    const getUV = (vIdx: number): [number, number] => {
-                        if (vIdx < gridVertexCount) {
-                            return [vertices[vIdx * 3], vertices[vIdx * 3 + 1]];
-                        }
-                        const cv = allChainVertices[vIdx - gridVertexCount];
-                        return [cv.u, cv.t ?? activeTPositions[cv.rowIdx]];
-                    };
+            // Dedup crossing T values
+            crossingTs.sort((a, b) => a - b);
+            const dedupedTs: number[] = [crossingTs[0]];
+            for (let i = 1; i < crossingTs.length; i++) {
+                if (crossingTs[i] - dedupedTs[dedupedTs.length - 1] > R37_DEGEN_GUARD_MIN) {
+                    dedupedTs.push(crossingTs[i]);
+                }
+            }
 
-                    // Confidence score: prefer keeping edges from longer chains
-                    // with detected (not interpolated) endpoints
-                    const edgeConfidence = (v0: number, v1: number): number => {
-                        let score = 0;
-                        if (v0 >= gridVertexCount) {
-                            const cv = allChainVertices[v0 - gridVertexCount];
-                            if (cv.pointIdx >= 0) score += 2; // detected point
-                        }
-                        if (v1 >= gridVertexCount) {
-                            const cv = allChainVertices[v1 - gridVertexCount];
-                            if (cv.pointIdx >= 0) score += 2; // detected point
-                        }
-                        // Use UV edge length as tiebreaker (longer = more important)
-                        const [u0, t0] = getUV(v0);
-                        const [u1, t1] = getUV(v1);
-                        score += Math.hypot(u1 - u0, (t1 - t0) / (tTop - tBot + 1e-12));
-                        return score;
-                    };
+            // Create phantom row vertices for each crossing T
+            const phantomRows: PhantomRow[] = [];
+            for (const tCross of dedupedTs) {
+                const rowVerts: Array<{ u: number; idx: number }> = [];
+                const crossings: PhantomCrossing[] = [];
 
-                    for (let ci = 0; ci < segConstraints.length; ci++) {
-                        if (removed.has(ci)) continue;
-                        const [a0, a1] = segConstraints[ci];
-                        const [a0u, a0t] = getUV(a0);
-                        const [a1u, a1t] = getUV(a1);
+                // Column boundary vertices
+                for (let c = ownedSpan.colStart; c <= ownedSpan.colEnd + 1; c++) {
+                    upsertPhantomRowVertex(rowVerts, tCross, unionU[c]);
+                }
 
-                        for (let cj = ci + 1; cj < segConstraints.length; cj++) {
-                            if (removed.has(cj)) continue;
-                            const [b0, b1] = segConstraints[cj];
-                            const [b0u, b0t] = getUV(b0);
-                            const [b1u, b1t] = getUV(b1);
+                // Add crossing-point vertices for each chain edge that crosses
+                // this phantom row (handles same-column edges within super-cells)
+                for (const [ev0, ev1] of scEdges) {
+                    const t0 = vertices[ev0 * 3 + 1], t1 = vertices[ev1 * 3 + 1];
+                    if ((t0 - tCross) * (t1 - tCross) >= 0) continue;
+                    const u0 = vertices[ev0 * 3], u1 = vertices[ev1 * 3];
+                    const crossAlpha = (tCross - t0) / (t1 - t0);
+                    const uCross = u0 + crossAlpha * (u1 - u0);
 
-                            if (segmentsCross(a0u, a0t, a1u, a1t, b0u, b0t, b1u, b1t)) {
-                                // Remove the lower-confidence edge
-                                const confA = edgeConfidence(a0, a1);
-                                const confB = edgeConfidence(b0, b1);
-                                if (confA <= confB) {
-                                    removed.add(ci);
-                                    break; // ci is removed, no more comparisons needed
-                                } else {
-                                    removed.add(cj);
-                                }
+                    let isBoundaryCrossing = false;
+                    if (Math.abs(u1 - u0) >= 1e-12) {
+                        for (let c = ownedSpan.colStart + 1; c <= ownedSpan.colEnd; c++) {
+                            const uBound = unionU[c];
+                            const d0 = u0 - uBound;
+                            const d1 = u1 - uBound;
+                            const crossesBoundary = (d0 < 0 && d1 > 0) || (d0 > 0 && d1 < 0);
+                            const touchesBoundary = (!crossesBoundary) &&
+                                ((Math.abs(d0) <= R37_U_MERGE && Math.abs(d1) > R37_U_MERGE) ||
+                                    (Math.abs(d1) <= R37_U_MERGE && Math.abs(d0) > R37_U_MERGE));
+                            if (crossesBoundary || touchesBoundary) {
+                                isBoundaryCrossing = true;
+                                break;
                             }
                         }
                     }
 
-                    if (removed.size > 0) {
-                        crossingConstraintsRemoved += removed.size;
-                        // Filter in-place: rebuild array without removed indices
-                        const kept: Array<[number, number]> = [];
-                        for (let ci = 0; ci < segConstraints.length; ci++) {
-                            if (!removed.has(ci)) kept.push(segConstraints[ci]);
+                    const anchorIdx = upsertPhantomRowVertex(rowVerts, tCross, uCross, true);
+                    crossings.push({
+                        anchorIdx,
+                        sourceEdge: [ev0, ev1],
+                        isBoundaryCrossing,
+                    });
+                }
+
+                rowVerts.sort((a, b) => a.u - b.u);
+
+                for (const crossing of crossings) {
+                    if (!crossing.isBoundaryCrossing) continue;
+                    const anchorPos = rowVerts.findIndex(v => v.idx === crossing.anchorIdx);
+                    if (anchorPos <= 0 || anchorPos >= rowVerts.length - 1) continue;
+
+                    const uPrev = rowVerts[anchorPos - 1].u;
+                    const uAnchor = rowVerts[anchorPos].u;
+                    const uNext = rowVerts[anchorPos + 1].u;
+                    const localWidth = Math.max(uNext - uPrev, 1e-6);
+                    const minSideSpan = Math.max(4 * R37_U_MERGE, R38_MIN_SIDE_SPAN_FACTOR * localWidth);
+
+                    if (uAnchor - uPrev > minSideSpan) {
+                        const uLeft = uAnchor - R38_COMPANION_FRACTION * (uAnchor - uPrev);
+                        const leftIdx = upsertPhantomRowVertex(rowVerts, tCross, uLeft);
+                        if (leftIdx !== crossing.anchorIdx) {
+                            crossing.leftCompanionIdx = leftIdx;
                         }
-                        segConstraints.length = 0;
-                        segConstraints.push(...kept);
+                    }
+                    if (uNext - uAnchor > minSideSpan) {
+                        const uRight = uAnchor + R38_COMPANION_FRACTION * (uNext - uAnchor);
+                        const rightIdx = upsertPhantomRowVertex(rowVerts, tCross, uRight);
+                        if (rightIdx !== crossing.anchorIdx) {
+                            crossing.rightCompanionIdx = rightIdx;
+                        }
+                    }
+
+                    protectedStripVertices.add(crossing.anchorIdx);
+                    if (crossing.leftCompanionIdx !== undefined) {
+                        protectedStripVertices.add(crossing.leftCompanionIdx);
+                    }
+                    if (crossing.rightCompanionIdx !== undefined) {
+                        protectedStripVertices.add(crossing.rightCompanionIdx);
                     }
                 }
 
-                triangulateChainStrip(
-                    indexBuf, stripBot, stripTop, segConstraints,
-                    stripInteriorVerts,
-                    allChainVertices, gridVertexCount,
-                    activeTPositions[j], activeTPositions[j + 1],
-                    chainStripConfig, chainStripStats,
+                // Sort phantom row vertices by U
+                rowVerts.sort((a, b) => a.u - b.u);
+                phantomRows.push({ tCross, vertexIndices: rowVerts.map(rv => rv.idx), crossings });
+            }
+
+            // Pre-split chain edges at phantom row crossings
+            const allSubEdges: Array<[number, number]> = [];
+
+            for (const [ev0, ev1] of scEdges) {
+                const t0 = vertices[ev0 * 3 + 1];
+                const t1 = vertices[ev1 * 3 + 1];
+                const edgeChainId = resolveVertexChainId(ev0) ?? resolveVertexChainId(ev1);
+
+                // Find phantom rows this edge crosses
+                const edgeCrossings: PhantomRow[] = [];
+                for (const pr of phantomRows) {
+                    if ((t0 - pr.tCross) * (t1 - pr.tCross) < 0) {
+                        edgeCrossings.push(pr);
+                    }
+                }
+
+                if (edgeCrossings.length === 0) {
+                    allSubEdges.push([ev0, ev1]);
+                    continue;
+                }
+
+                // Sort crossings ascending from lower-T endpoint
+                const lowV = t0 <= t1 ? ev0 : ev1;
+                const highV = lowV === ev0 ? ev1 : ev0;
+                const lowT = vertices[lowV * 3 + 1];
+                const highT = vertices[highV * 3 + 1];
+                const lowU = vertices[lowV * 3];
+                const highU = vertices[highV * 3];
+                edgeCrossings.sort((a, b) => a.tCross - b.tCross);
+
+                // Build sub-edges through phantom vertices at crossing points
+                let prevV = lowV;
+                const subEdges: Array<[number, number]> = [];
+
+                for (const pr of edgeCrossings) {
+                    const crossAlpha = (pr.tCross - lowT) / (highT - lowT);
+                    const uAtCross = lowU + crossAlpha * (highU - lowU);
+
+                    // ── 🔒 R52 PRECISION LOCK — bestV chain-anchor-only lookup ──
+                    // Search ONLY among phantomChainAnchorSet vertices.
+                    // Column boundary vertices at grid U-positions must not be selected.
+                    // Removing this filter re-introduces the grid-snap dip artifact.
+                    // R52: Find nearest CHAIN ANCHOR phantom vertex in this row
+                    // (never snap to a column boundary vertex)
+                    let bestV = pr.vertexIndices[0];
+                    let bestDist = Infinity;
+                    for (const pv of pr.vertexIndices) {
+                        if (!phantomChainAnchorSet.has(pv)) continue; // skip column boundary vertices
+                        const d = Math.abs(vertices[pv * 3] - uAtCross);
+                        if (d < bestDist) {
+                            bestDist = d;
+                            bestV = pv;
+                        }
+                    }
+                    // Fallback: if no chain anchor found (shouldn't happen), use nearest any vertex
+                    if (bestDist === Infinity) {
+                        for (const pv of pr.vertexIndices) {
+                            const d = Math.abs(vertices[pv * 3] - uAtCross);
+                            if (d < bestDist) {
+                                bestDist = d;
+                                bestV = pv;
+                            }
+                        }
+                    }
+
+                    if (edgeChainId !== undefined && !phantomVertexChainIds.has(bestV)) {
+                        phantomVertexChainIds.set(bestV, edgeChainId);
+                    }
+
+                    subEdges.push([prevV, bestV]);
+                    prevV = bestV;
+                }
+                subEdges.push([prevV, highV]);
+
+                // Record split for master chainEdges update (A4)
+                const origKey = ev0 < ev1 ? `${ev0}-${ev1}` : `${ev1}-${ev0}`;
+                edgeSplitMap.set(origKey, subEdges);
+                allSubEdges.push(...subEdges);
+            }
+
+            ownedSpanR37.set(ownedSpan.ownerKey, {
+                phantomRows,
+                subEdges: allSubEdges,
+            });
+    }
+
+    phantomVertexCount = nextPhantomIdx - phantomVertexStart;
+
+    // A4: Apply chain edge pre-splits to master chainEdges array
+    if (edgeSplitMap.size > 0) {
+        const newEdges: Array<[number, number]> = [];
+        for (const [v0, v1] of chainEdges) {
+            const key = v0 < v1 ? `${v0}-${v1}` : `${v1}-${v0}`;
+            const splits = edgeSplitMap.get(key);
+            if (splits) {
+                newEdges.push(...splits);
+            } else {
+                newEdges.push([v0, v1]);
+            }
+        }
+        chainEdges.length = 0;
+        chainEdges.push(...newEdges);
+    }
+
+    if (phantomVertexCount > 0) {
+        console.log(`[CDT] R37: ${phantomVertexCount} phantom vertices, ${edgeSplitMap.size} edges split, ${ownedSpanR37.size} owned spans with band splitting, clamped=${r37ClampedCrossings}, boundaryTouch=${r37BoundaryTouchCrossings}`);
+    }
+
+    // ── R53: Boundary Phantom Propagation (BPP) — T-junction elimination ──
+    // Scan each owned span's phantom rows for boundary vertices at colStart
+    // and colEnd+1. Register them keyed by the ADJACENT standard cell so
+    // that cell can include them in its triangulation, eliminating T-junctions.
+    interface PhantomBoundaryInfo {
+        /** Phantom vertex indices on this cell's LEFT vertical edge, sorted by T ascending */
+        leftPhantoms: number[];
+        /** Phantom vertex indices on this cell's RIGHT vertical edge, sorted by T ascending */
+        rightPhantoms: number[];
+    }
+    const phantomBoundaryMap = new Map<number, PhantomBoundaryInfo>();
+
+    for (const ownedSpan of ownedSpanDescriptors) {
+            const scBand = ownedSpan.band;
+            const r37Data = ownedSpanR37.get(ownedSpan.ownerKey);
+            if (!r37Data || r37Data.phantomRows.length === 0) continue;
+
+            // Left boundary: phantoms at U ≈ unionU[colStart]
+            // These sit on the RIGHT vertical edge of cell (band, colStart - 1)
+            const leftAdjacentCol = ownedSpan.colStart - 1;
+            if (leftAdjacentCol >= 0) {
+                const adjUSpan = unionU[leftAdjacentCol + 1] - unionU[leftAdjacentCol];
+                if (!(adjUSpan > SEAM_GUARD || adjUSpan < -SEAM_GUARD)) {
+                    const adjKey = cellKey(scBand, leftAdjacentCol);
+                    if (!ownedSpanCells.has(adjKey)) {
+                        const boundaryU = unionU[ownedSpan.colStart];
+                        const phantomIndices: number[] = [];
+                        for (const pr of r37Data.phantomRows) {
+                            for (const vIdx of pr.vertexIndices) {
+                                if (Math.abs(vertices[vIdx * 3] - boundaryU) < R37_U_MERGE) {
+                                    phantomIndices.push(vIdx);
+                                }
+                            }
+                        }
+                        if (phantomIndices.length > 0) {
+                            phantomIndices.sort((a, b) => vertices[a * 3 + 1] - vertices[b * 3 + 1]);
+                            let entry = phantomBoundaryMap.get(adjKey);
+                            if (!entry) {
+                                entry = { leftPhantoms: [], rightPhantoms: [] };
+                                phantomBoundaryMap.set(adjKey, entry);
+                            }
+                            entry.rightPhantoms.push(...phantomIndices);
+                        }
+                    }
+                }
+            }
+
+            // Right boundary: phantoms at U ≈ unionU[colEnd + 1]
+            // These sit on the LEFT vertical edge of cell (band, colEnd + 1)
+            const rightAdjacentCol = ownedSpan.colEnd + 1;
+            if (rightAdjacentCol < cellsPerRow) {
+                const adjUSpan = unionU[rightAdjacentCol + 1] - unionU[rightAdjacentCol];
+                if (!(adjUSpan > SEAM_GUARD || adjUSpan < -SEAM_GUARD)) {
+                    const adjKey = cellKey(scBand, rightAdjacentCol);
+                    if (!ownedSpanCells.has(adjKey)) {
+                        const boundaryU = unionU[ownedSpan.colEnd + 1];
+                        const phantomIndices: number[] = [];
+                        for (const pr of r37Data.phantomRows) {
+                            for (const vIdx of pr.vertexIndices) {
+                                if (Math.abs(vertices[vIdx * 3] - boundaryU) < R37_U_MERGE) {
+                                    phantomIndices.push(vIdx);
+                                }
+                            }
+                        }
+                        if (phantomIndices.length > 0) {
+                            phantomIndices.sort((a, b) => vertices[a * 3 + 1] - vertices[b * 3 + 1]);
+                            let entry = phantomBoundaryMap.get(adjKey);
+                            if (!entry) {
+                                entry = { leftPhantoms: [], rightPhantoms: [] };
+                                phantomBoundaryMap.set(adjKey, entry);
+                            }
+                            entry.leftPhantoms.push(...phantomIndices);
+                        }
+                    }
+                }
+            }
+    }
+
+    let bppSplitCellCount = 0;
+    let bppChainSplitCellCount = 0;
+    let bppPropagatedCount = 0;
+    if (phantomBoundaryMap.size > 0) {
+        for (const [, info] of phantomBoundaryMap) {
+            bppPropagatedCount += info.leftPhantoms.length + info.rightPhantoms.length;
+        }
+        console.log(`[CDT] R53 BPP: ${phantomBoundaryMap.size} cells with propagated boundary phantoms, ${bppPropagatedCount} phantom vertices propagated`);
+    }
+
+    // ── 4. Cell-local triangulation (R34/R35) ──
+    const totalBands = Math.max(1, numT - 1);
+    const totalCells = cellsPerRow * totalBands;
+    const indexBuf: number[] = [];
+
+    const quadMap = new Int32Array(totalCells);
+    quadMap.fill(-1);
+    let seamSkipCount = 0;
+    let chainCellCount = 0;
+    let windingFixCount = 0;
+    let superCellCount = 0;
+    let superCellColumnsConsumed = 0;
+
+    // R46: Collector for chainFanQuad fan diagonal edges (chain↔grid)
+    const fanDiagEdges: Array<[number, number]> = [];
+
+    // R55: Track grid→chain vertex coalescing for post-processing T-junction fix
+    const coalesceMap = new Map<number, number>();
+
+    // R36: Track grid vertices adjacent to chain/super-cells for optimizer visibility
+    const chainAdjacentGridVerts = new Set<number>();
+
+    // R55-S: Build safe-to-coalesce set — grid vertices where ALL adjacent cells
+    // are chain/super cells. Coalescing at chain-to-standard boundaries creates
+    // T-junctions because standard cells don't have chain vertices on shared edges.
+    const safeToCoalesce = new Set<number>();
+    {
+        const isChainOrSuper = (band: number, col: number): boolean => {
+            const key = cellKey(band, col);
+            return cellChainMap.has(key) || ownedSpanCells.has(key);
+        };
+        const isSeamCell = (col: number): boolean => {
+            const uSpan = unionU[col + 1] - unionU[col];
+            return uSpan > SEAM_GUARD || uSpan < -SEAM_GUARD;
+        };
+        for (let row = 0; row < numT; row++) {
+            for (let col = 0; col < numU; col++) {
+                let safe = true;
+                // Check all 4 cells sharing this vertex as a corner.
+                // Out-of-bounds and seam cells are treated as safe (skip).
+                if (row < totalBands && col < cellsPerRow) {
+                    if (!isSeamCell(col) && !isChainOrSuper(row, col)) { safe = false; }
+                }
+                if (row < totalBands && col > 0) {
+                    if (!isSeamCell(col - 1) && !isChainOrSuper(row, col - 1)) { safe = false; }
+                }
+                if (row > 0 && col < cellsPerRow) {
+                    if (!isSeamCell(col) && !isChainOrSuper(row - 1, col)) { safe = false; }
+                }
+                if (row > 0 && col > 0) {
+                    if (!isSeamCell(col - 1) && !isChainOrSuper(row - 1, col - 1)) { safe = false; }
+                }
+                if (safe) {
+                    safeToCoalesce.add(row * numU + col);
+                }
+            }
+        }
+        console.log(`[CDT] R55-S: ${safeToCoalesce.size} safe grid vertices out of ${gridVertexCount} total`);
+    }
+
+    /** Emit a standard 2-triangle quad cell (no chain activity). */
+    const emitStandardCell = (b: number, c: number): void => {
+        const quadIdx = b * cellsPerRow + c;
+        const bl = b * numU + c;
+        const br = b * numU + (c + 1);
+        const tl = (b + 1) * numU + c;
+        const tr = (b + 1) * numU + (c + 1);
+
+        const blU = vertices[bl * 3], blT = vertices[bl * 3 + 1];
+        const brU = vertices[br * 3], brT = vertices[br * 3 + 1];
+        const tlU = vertices[tl * 3], tlT = vertices[tl * 3 + 1];
+        const trU = vertices[tr * 3], trT = vertices[tr * 3 + 1];
+
+        const triBase = indexBuf.length;
+
+        const cross1 = (brU - blU) * (trT - blT) - (trU - blU) * (brT - blT);
+        if (Math.abs(cross1) < 1e-12) {
+            indexBuf.push(0, 0, 0);
+        } else if (cross1 >= 0) {
+            indexBuf.push(bl, br, tr);
+        } else {
+            indexBuf.push(bl, tr, br);
+            windingFixCount++;
+        }
+
+        const cross2 = (trU - blU) * (tlT - blT) - (tlU - blU) * (trT - blT);
+        if (Math.abs(cross2) < 1e-12) {
+            indexBuf.push(0, 0, 0);
+        } else if (cross2 >= 0) {
+            indexBuf.push(bl, tr, tl);
+        } else {
+            indexBuf.push(bl, tl, tr);
+            windingFixCount++;
+        }
+
+        quadMap[quadIdx] = triBase;
+    };
+
+    /**
+     * R53 BPP: Emit a standard cell with phantom boundary vertices on its
+     * vertical edges, using a vertical-edge sweep. This eliminates T-junctions
+     * between super-cells and their adjacent standard cells.
+     */
+    const emitSplitCell = (b: number, c: number, bppInfo: PhantomBoundaryInfo): void => {
+        quadMap[b * cellsPerRow + c] = -1; // Not a standard 2-tri quad; skip edge flip
+        bppSplitCellCount++;
+
+        const BL = b * numU + c;
+        const BR = b * numU + (c + 1);
+        const TL = (b + 1) * numU + c;
+        const TR = (b + 1) * numU + (c + 1);
+
+        // Build vertical edges sorted by T ascending.
+        // sweepQuad advances the left (lower-U) pointer first, producing a
+        // fan from the right edge — geometrically valid and T-junction-free.
+        const leftEdge: number[] = [BL, ...bppInfo.leftPhantoms, TL];
+        const rightEdge: number[] = [BR, ...bppInfo.rightPhantoms, TR];
+        sweepQuad(indexBuf, leftEdge, rightEdge, vertices);
+    };
+
+    /** Emit a chain-involved cell using cell-local quad splitting (R34). */
+    const emitChainCell = (band: number, col: number, info: CellChainInfo): void => {
+        quadMap[band * cellsPerRow + col] = -1; // (Amendment A3: match current CDT behavior)
+        chainCellCount++;
+
+        // Grid corner vertex indices
+        const BL = band * numU + col;
+        const BR = band * numU + (col + 1);
+        const TL = (band + 1) * numU + col;
+        const TR = (band + 1) * numU + (col + 1);
+
+        // Build full bottom edge: [BL, ...sorted chain verts..., BR]
+        const botEdge: number[] = [BL];
+        for (const cvIdx of info.botChainVerts) {
+            botEdge.push(cvIdx);
+        }
+        botEdge.push(BR);
+
+        // Build full top edge: [TL, ...sorted chain verts..., TR]
+        const topEdge: number[] = [TL];
+        for (const cvIdx of info.topChainVerts) {
+            topEdge.push(cvIdx);
+        }
+        topEdge.push(TR);
+
+        // R55: Coalesce near-coincident grid vertices with chain vertices
+        const coalBot = coalesceNearGridChain(botEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce);
+        const coalTop = coalesceNearGridChain(topEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce);
+
+        if (info.chainEdges.length === 0) {
+            // Chain vertices on edges but no chain edge through this cell.
+            // Use monotone sweep between bottom and top edge arrays.
+            sweepQuad(indexBuf, coalBot, coalTop, vertices);
+        } else {
+            // Chain edges partition the cell into sub-quads.
+            constrainedSweepCell(indexBuf, coalBot, coalTop, info.chainEdges, vertices, fanDiagEdges);
+        }
+    };
+
+    /** Emit a chain cell with phantom boundary vertices using sub-band decomposition (R53 Phase 2). */
+    const emitChainSplitCell = (
+        band: number, col: number,
+        info: CellChainInfo, bppInfo: PhantomBoundaryInfo
+    ): void => {
+        quadMap[band * cellsPerRow + col] = -1;
+        chainCellCount++;
+        bppSplitCellCount++;
+        bppChainSplitCellCount++;
+
+        const BL = band * numU + col;
+        const BR = band * numU + (col + 1);
+        const TL = (band + 1) * numU + col;
+        const TR = (band + 1) * numU + (col + 1);
+        const uLeft = vertices[BL * 3];
+        const uRight = vertices[BR * 3];
+
+        // Step 1: Collect unique phantom T-values
+        const phantomTSet = new Set<number>();
+        const leftByT = new Map<number, number>();
+        const rightByT = new Map<number, number>();
+
+        for (const pIdx of bppInfo.leftPhantoms) {
+            const t = vertices[pIdx * 3 + 1];
+            const tKey = Math.round(t * 1e8) / 1e8;
+            phantomTSet.add(tKey);
+            leftByT.set(tKey, pIdx);
+        }
+        for (const pIdx of bppInfo.rightPhantoms) {
+            const t = vertices[pIdx * 3 + 1];
+            const tKey = Math.round(t * 1e8) / 1e8;
+            phantomTSet.add(tKey);
+            rightByT.set(tKey, pIdx);
+        }
+
+        const phantomTs = [...phantomTSet].sort((a, b) => a - b);
+        if (phantomTs.length === 0) {
+            emitChainCell(band, col, info);
+            return;
+        }
+
+        // Step 2: Ensure both edges have vertices at each phantom T
+        for (const tKey of phantomTs) {
+            if (!leftByT.has(tKey)) {
+                if (nextPhantomIdx >= totalVertexCount + maxPhantomSlots) {
+                    console.warn('[CDT] R53 Phase 2: phantom slot overflow');
+                    emitChainCell(band, col, info);
+                    return;
+                }
+                const pIdx = nextPhantomIdx++;
+                vertices[pIdx * 3] = uLeft;
+                vertices[pIdx * 3 + 1] = tKey;
+                vertices[pIdx * 3 + 2] = surfaceId;
+                leftByT.set(tKey, pIdx);
+            }
+            if (!rightByT.has(tKey)) {
+                if (nextPhantomIdx >= totalVertexCount + maxPhantomSlots) {
+                    console.warn('[CDT] R53 Phase 2: phantom slot overflow');
+                    emitChainCell(band, col, info);
+                    return;
+                }
+                const pIdx = nextPhantomIdx++;
+                vertices[pIdx * 3] = uRight;
+                vertices[pIdx * 3 + 1] = tKey;
+                vertices[pIdx * 3 + 2] = surfaceId;
+                rightByT.set(tKey, pIdx);
+            }
+        }
+
+        // Step 3: Build sub-band boundaries
+        const botEdge: number[] = [BL];
+        for (const cv of info.botChainVerts) botEdge.push(cv);
+        botEdge.push(BR);
+
+        const topEdge: number[] = [TL];
+        for (const cv of info.topChainVerts) topEdge.push(cv);
+        topEdge.push(TR);
+
+        const boundaries: number[][] = [botEdge];
+        for (const tKey of phantomTs) {
+            boundaries.push([leftByT.get(tKey)!, rightByT.get(tKey)!]);
+        }
+        boundaries.push(topEdge);
+
+        // Step 4: Split chain edges at phantom T-values
+        const allSubEdges: Array<[number, number]> = [];
+
+        if (info.chainEdges.length > 0) {
+            for (const [ev0, ev1] of info.chainEdges) {
+                const t0 = vertices[ev0 * 3 + 1];
+                const t1 = vertices[ev1 * 3 + 1];
+
+                // Find phantom Ts this edge crosses
+                const crossedTs: number[] = [];
+                for (const tKey of phantomTs) {
+                    if ((t0 - tKey) * (t1 - tKey) < 0) {
+                        crossedTs.push(tKey);
+                    }
+                }
+
+                if (crossedTs.length === 0) {
+                    allSubEdges.push([ev0, ev1]);
+                    continue;
+                }
+
+                // Sort from lower-T to higher-T
+                const lowV = t0 <= t1 ? ev0 : ev1;
+                const highV = lowV === ev0 ? ev1 : ev0;
+                const lowT = vertices[lowV * 3 + 1];
+                const highT = vertices[highV * 3 + 1];
+                const lowU = vertices[lowV * 3];
+                const highU = vertices[highV * 3];
+                crossedTs.sort((a, b) => a - b);
+
+                let prevV = lowV;
+                for (const tCross of crossedTs) {
+                    if (nextPhantomIdx >= totalVertexCount + maxPhantomSlots) {
+                        console.warn('[CDT] R53 Phase 2: phantom slot overflow');
+                        emitChainCell(band, col, info);
+                        return;
+                    }
+                    const alpha = (tCross - lowT) / (highT - lowT);
+                    const uCross = lowU + alpha * (highU - lowU);
+
+                    const pIdx = nextPhantomIdx++;
+                    vertices[pIdx * 3] = uCross;
+                    vertices[pIdx * 3 + 1] = tCross;
+                    vertices[pIdx * 3 + 2] = surfaceId;
+                    phantomChainAnchorSet.add(pIdx);
+
+                    // Amendment C: epsilon-based boundary lookup
+                    const bndIdx = phantomTs.findIndex(t => Math.abs(t - tCross) < 1e-10) + 1;
+                    boundaries[bndIdx].push(pIdx);
+
+                    allSubEdges.push([prevV, pIdx]);
+                    prevV = pIdx;
+                }
+                allSubEdges.push([prevV, highV]);
+            }
+        }
+
+        // Steps 5-6: Emit each sub-band
+        for (let sb = 0; sb < boundaries.length - 1; sb++) {
+            const subBotRaw = [...boundaries[sb]].sort(
+                (a, b) => vertices[a * 3] - vertices[b * 3]
+            );
+            const subTopRaw = [...boundaries[sb + 1]].sort(
+                (a, b) => vertices[a * 3] - vertices[b * 3]
+            );
+
+            // R55: Coalesce near-coincident grid vertices with chain vertices
+            const subBot = coalesceNearGridChain(subBotRaw, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce);
+            const subTop = coalesceNearGridChain(subTopRaw, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce);
+
+            // Find chain sub-edges for this sub-band
+            const subBotSet = new Set(subBot);
+            const subTopSet = new Set(subTop);
+            const subEdges: Array<[number, number]> = [];
+            for (const [sv0, sv1] of allSubEdges) {
+                if ((subBotSet.has(sv0) && subTopSet.has(sv1)) ||
+                    (subBotSet.has(sv1) && subTopSet.has(sv0))) {
+                    subEdges.push([sv0, sv1]);
+                }
+            }
+
+            if (subEdges.length === 0) {
+                sweepQuad(indexBuf, subBot, subTop, vertices);
+            } else {
+                constrainedSweepCell(indexBuf, subBot, subTop, subEdges, vertices, fanDiagEdges);
+            }
+        }
+    };
+
+    /** Emit a shared owned span spanning multiple columns with R35/R37 support. */
+    const emitOwnedSpan = (span: OwnedSpanDescriptor): void => {
+        const { band, colStart, colEnd } = span;
+        if (span.kind === 'supercell') {
+            superCellCount++;
+            superCellColumnsConsumed += (colEnd - colStart + 1);
+        }
+
+        // Mark all constituent cells in quadMap
+        for (let c = colStart; c <= colEnd; c++) {
+            quadMap[band * cellsPerRow + c] = -1;
+        }
+        chainCellCount += (colEnd - colStart + 1);
+        const geometry = buildOwnedSpanGeometry(span);
+
+        // R55: Coalesce near-coincident grid vertices with chain vertices
+        const coalBot = dedupeSortedVertexEdge(
+            coalesceNearGridChain(geometry.bottomEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce),
+        );
+        const coalTop = dedupeSortedVertexEdge(
+            coalesceNearGridChain(geometry.topEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce),
+        );
+
+        // R36.1: Mark only INTERMEDIATE column grid vertices as chain-adjacent.
+        // Corner vertices (BL/BR/TL/TR at colStart and colEnd+1) are shared with
+        // adjacent standard cells — marking them would pull those standard-cell
+        // triangles into chainStripTriSet, causing cross-row and non-manifold regressions.
+        for (let c = colStart + 1; c <= colEnd; c++) {
+            chainAdjacentGridVerts.add(band * numU + c);       // intermediate bot
+            chainAdjacentGridVerts.add((band + 1) * numU + c); // intermediate top
+        }
+
+        // A2 guard: degenerate owned span → fall back to standard cells
+        if (coalBot.length < 2 || coalTop.length < 2) {
+            for (let c = colStart; c <= colEnd; c++) {
+                emitStandardCell(band, c);
+            }
+            return;
+        }
+
+        // ── R37: Band splitting for column-crossing dip elimination ──
+        const r37 = ownedSpanR37.get(span.ownerKey);
+        if (r37 && r37.phantomRows.length > 0) {
+            const sortedRows = [...r37.phantomRows].sort((a, b) => a.tCross - b.tCross);
+
+            // Build sub-band boundary edge arrays: [coalBot, phantomRow1, ..., coalTop]
+            const boundaries: number[][] = [coalBot];
+            for (const pr of sortedRows) {
+                boundaries.push([...pr.vertexIndices]);
+            }
+            boundaries.push(coalTop);
+
+            // R55: Coalesce intermediate phantom row boundaries
+            for (let i = 1; i < boundaries.length - 1; i++) {
+                boundaries[i] = dedupeSortedVertexEdge(
+                    coalesceNearGridChain(boundaries[i], vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce),
                 );
+            }
+
+            for (let sb = 0; sb < boundaries.length - 1; sb++) {
+                const subBot = boundaries[sb];
+                const subTop = boundaries[sb + 1];
+
+                // Assign pre-split chain sub-edges to this sub-band (A5)
+                const subBotSet = new Set(subBot);
+                const subTopSet = new Set(subTop);
+                const subEdges: Array<[number, number]> = [];
+                for (const [ev0, ev1] of r37.subEdges) {
+                    if ((subBotSet.has(ev0) && subTopSet.has(ev1)) ||
+                        (subBotSet.has(ev1) && subTopSet.has(ev0))) {
+                        subEdges.push([ev0, ev1]);
+                    }
+                }
+
+                if (subEdges.length === 0) {
+                    sweepQuad(indexBuf, subBot, subTop, vertices);
+                } else {
+                    constrainedSweepCell(indexBuf, subBot, subTop, subEdges, vertices, fanDiagEdges);
+                }
+            }
+            return;
+        }
+
+        if (geometry.uniqueEdges.length === 0) {
+            sweepQuad(indexBuf, coalBot, coalTop, vertices);
+        } else {
+            constrainedSweepCell(indexBuf, coalBot, coalTop, geometry.uniqueEdges, vertices, fanDiagEdges);
+        }
+    };
+
+    const emitSupportedCorridorSpan = (segment: OuterWallCorridorOwnershipSegment): void => {
+        const { band, colStart, colEnd } = segment;
+        const spanLength = colEnd - colStart + 1;
+        chainCellCount += spanLength;
+
+        for (let col = colStart; col <= colEnd; col++) {
+            quadMap[band * cellsPerRow + col] = -1;
+        }
+        for (let col = colStart + 1; col <= colEnd; col++) {
+            chainAdjacentGridVerts.add(band * numU + col);
+            chainAdjacentGridVerts.add((band + 1) * numU + col);
+        }
+
+        const geometry = buildCorridorSpanGeometry(segment);
+        const coalescedBottom = dedupeSortedVertexEdge(coalesceNearGridChain(
+            geometry.bottomEdge,
+            vertices,
+            isGridLike,
+            isChainLike,
+            GRID_CHAIN_COALESCE_RADIUS,
+            coalesceMap,
+            safeToCoalesce,
+        ));
+        const coalescedTop = dedupeSortedVertexEdge(coalesceNearGridChain(
+            geometry.topEdge,
+            vertices,
+            isGridLike,
+            isChainLike,
+            GRID_CHAIN_COALESCE_RADIUS,
+            coalesceMap,
+            safeToCoalesce,
+        ));
+
+        if (geometry.uniqueEdges.length === 0) {
+            sweepQuad(indexBuf, coalescedBottom, coalescedTop, vertices);
+            return;
+        }
+        constrainedSweepCell(indexBuf, coalescedBottom, coalescedTop, geometry.uniqueEdges, vertices, fanDiagEdges);
+    };
+
+    // Main cell emission loop (R34/R35): super-cells first, then standard/chain cells
+    console.log(`[CDT] R35 cell-local: ${totalBands} bands × ${cellsPerRow} cells, cellChainMap size=${cellChainMap.size}, batch2Remap=${batch2Remap.size}, fusionRequests=${fusionRequests.length}`);
+
+    for (let band = 0; band < totalBands; band++) {
+        for (let c = 0; c < cellsPerRow; c++) {
+            const key = cellKey(band, c);
+
+            if (ownedSpanCells.has(key)) {
+                const ownedSpan = ownedSpanStarts.get(key);
+                if (ownedSpan) {
+                    emitOwnedSpan(ownedSpan);
+                    c = ownedSpan.colEnd;
+                }
+                continue;
+            }
+
+            if (supportedCorridorCells.has(key)) {
+                const corridor = supportedCorridorStarts.get(key);
+                if (corridor) {
+                    emitSupportedCorridorSpan(corridor);
+                    c = corridor.colEnd;
+                }
+                continue;
+            }
+
+            const uSpan = unionU[c + 1] - unionU[c];
+
+            if (uSpan > SEAM_GUARD || uSpan < -SEAM_GUARD) {
+                indexBuf.push(0, 0, 0, 0, 0, 0);
+                quadMap[band * cellsPerRow + c] = -1;
+                seamSkipCount++;
+                continue;
+            }
+
+            const info = cellChainMap.get(key);
+
+            if (!info) {
+                // R53 BPP: Check if this standard cell has phantom boundary vertices
+                const bppInfo = phantomBoundaryMap.get(key);
+                if (bppInfo) {
+                    emitSplitCell(band, c, bppInfo);
+                } else {
+                    emitStandardCell(band, c);
+                }
+            } else {
+                const bppInfo = phantomBoundaryMap.get(key);
+                if (bppInfo) {
+                    emitChainSplitCell(band, c, info, bppInfo);
+                } else {
+                    emitChainCell(band, c, info);
+                }
             }
         }
     }
 
-    // Count cross-cell chain edges
-    for (const [v0, v1] of allChainEdges) {
-        const cv0 = allChainVertices[v0 - gridVertexCount];
-        const cv1 = allChainVertices[v1 - gridVertexCount];
-        if (cv0 && cv1) {
-            const col0 = bsearchFloor(unionU, cv0.u);
-            const col1 = bsearchFloor(unionU, cv1.u);
-            if (col0 !== col1) crossCellEdgeCount++;
+    // R53 Phase 2: Update phantom count to include vertices created by emitChainSplitCell
+    phantomVertexCount = nextPhantomIdx - phantomVertexStart;
+
+    // ╔══════════════════════════════════════════════════════════════════════╗
+    // ║ R55 GRID/CHAIN VERTEX COALESCING — Post-processing T-junction fix   ║
+    // ║ Grid vertices dropped from chain/super-cell edges may still be      ║
+    // ║ referenced by adjacent standard cells. Replace all references with  ║
+    // ║ the surviving chain vertex to maintain watertight mesh topology.     ║
+    // ║ COALESCE_RADIUS = 0.0006 = mathematical 4:1 aspect violation bound. ║
+    // ║ R52 safe: chain vertices never move; grid vertices dropped, not     ║
+    // ║ merged. Post-processing replaces grid vertex REFERENCES only.       ║
+    // ║ NOTE: Same-cell coalescing can produce degenerate triangles [C,C,X] ║
+    // ║ when G and its target C are both on the same cell's edge. These are ║
+    // ║ geometrically harmless (zero area) and tolerated by the pipeline.   ║
+    // ╚══════════════════════════════════════════════════════════════════════╝
+    if (coalesceMap.size > 0) {
+        let coalesceRemapCount = 0;
+        for (let i = 0; i < indexBuf.length; i++) {
+            const mapped = coalesceMap.get(indexBuf[i]);
+            if (mapped !== undefined) { indexBuf[i] = mapped; coalesceRemapCount++; }
         }
+        for (let i = 0; i < fanDiagEdges.length; i++) {
+            const [v0, v1] = fanDiagEdges[i];
+            fanDiagEdges[i] = [coalesceMap.get(v0) ?? v0, coalesceMap.get(v1) ?? v1];
+        }
+        console.log(`[CDT] R55 coalescing: ${coalesceMap.size} grid vertices coalesced, ${coalesceRemapCount} index references remapped`);
     }
 
     const indices = new Uint32Array(indexBuf);
 
-    // ── Apply Batch 2 remap to allChainEdges ──
-    // buildMergedRow replaces coincident chain vertices with grid indices in the
-    // triangulation, but allChainEdges still references the original chain vertex
-    // indices. Apply the Batch 2 remap so edge verification works correctly.
-    if (batch2Remap.size > 0) {
-        for (let e = 0; e < allChainEdges.length; e++) {
-            const [v0, v1] = allChainEdges[e];
-            const m0 = batch2Remap.get(v0);
-            const m1 = batch2Remap.get(v1);
-            if (m0 !== undefined || m1 !== undefined) {
-                allChainEdges[e] = [m0 ?? v0, m1 ?? v1];
-            }
-        }
-    }
-
+    // ╔══════════════════════════════════════════════════════════════════════╗
+    // ║ 🔒 R52 PRECISION LOCK — Batch 6 cross-type dedup guard              ║
+    // ║ The vIsChain !== existIsChain check prevents chain and grid vertices ║
+    // ║ from merging even when quantized to the same 1e-5 grid cell.        ║
+    // ║ Removing this guard causes chain vertices to be replaced by grid    ║
+    // ║ vertices, destroying sub-sample feature edge precision.             ║
+    // ║ See ChainVertexBuilder.ts for the full R52 precision guarantee.     ║
+    // ╚══════════════════════════════════════════════════════════════════════╝
     // ── Batch 6: Global vertex deduplication pass ──
-    // Group vertices by UV proximity (quantized to 1e-5 grid) and rewrite
-    // index buffer to use canonical index per group (prefer grid over chain).
+    // R52: NEVER merge chain↔grid vertices. Chain vertices preserve exact
+    // feature positions; grid vertices preserve exact grid positions.
+    // Only same-type dedup (grid↔grid or chain↔chain) is allowed.
     let dedupMergeCount = 0;
     const batch6Remap = new Map<number, number>();
     {
         const QUANT = 1e5; // 1e-5 precision
         const uvToCanonical = new Map<string, number>();
         const remap = batch6Remap;
-        const totalVerts = vertices.length / 3;
+        const totalVerts = totalVertexCount + phantomVertexCount; // R37: Include phantom vertices in dedup
 
         for (let v = 0; v < totalVerts; v++) {
             const qu = Math.round(vertices[v * 3] * QUANT);
@@ -1347,18 +2625,15 @@ export function buildCDTOuterWall(
             const key = `${qu}:${qt}`;
             const existing = uvToCanonical.get(key);
             if (existing !== undefined) {
-                // Prefer grid vertex (lower index) as canonical
-                if (v >= gridVertexCount && existing < gridVertexCount) {
-                    remap.set(v, existing);
-                    dedupMergeCount++;
-                } else if (existing >= gridVertexCount && v < gridVertexCount) {
-                    // Remap the existing chain vertex to this grid vertex
-                    remap.set(existing, v);
-                    uvToCanonical.set(key, v);
-                    dedupMergeCount++;
+                const vIsChain = v >= gridVertexCount;
+                const existIsChain = existing >= gridVertexCount;
+                // R52: Skip cross-type merging — never merge chain↔grid
+                if (vIsChain !== existIsChain) {
+                    // Both vertices survive at their exact positions
+                    continue;
                 }
-                // Both grid or both chain: keep first as canonical
-                else if (existing !== v) {
+                // Same-type dedup: keep first as canonical
+                if (existing !== v) {
                     remap.set(v, existing);
                     dedupMergeCount++;
                 }
@@ -1385,13 +2660,13 @@ export function buildCDTOuterWall(
             for (let i = 0; i < indices.length; i++) {
                 indexBuf[i] = indices[i];
             }
-            // Also remap allChainEdges so edge verification uses correct indices
-            for (let e = 0; e < allChainEdges.length; e++) {
-                const [v0, v1] = allChainEdges[e];
+            // Also remap chainEdges so edge verification uses correct indices
+            for (let e = 0; e < chainEdges.length; e++) {
+                const [v0, v1] = chainEdges[e];
                 const m0 = remap.get(v0);
                 const m1 = remap.get(v1);
                 if (m0 !== undefined || m1 !== undefined) {
-                    allChainEdges[e] = [m0 ?? v0, m1 ?? v1];
+                    chainEdges[e] = [m0 ?? v0, m1 ?? v1];
                 }
             }
         }
@@ -1410,12 +2685,10 @@ export function buildCDTOuterWall(
     }
     // Build inverse remap: grid vertex → original chain vertex index
     // so we can look up chain vertex data for remapped edges.
-    // Includes both batch2Remap and global dedup mappings.
     const inverseRemap = new Map<number, number>();
     for (const [chainIdx, gridIdx] of batch2Remap) {
         inverseRemap.set(gridIdx, chainIdx);
     }
-    // Also add global dedup remap entries (batch6Remap populated inside Batch 6 block)
     for (const [sourceIdx, targetIdx] of batch6Remap) {
         if (sourceIdx >= gridVertexCount && targetIdx < gridVertexCount) {
             inverseRemap.set(targetIdx, sourceIdx);
@@ -1423,19 +2696,16 @@ export function buildCDTOuterWall(
     }
     let enforced = 0, missing = 0;
     let missingSameRow = 0, missingCrossRow = 0;
-    // Track primary chain edges (both endpoints are real feature points, not support)
     let primaryTotal = 0, primaryEnforced = 0, primaryMissing = 0;
     const missingExamples: string[] = [];
-    for (const [v0, v1] of allChainEdges) {
-        // Skip self-edges created when dedup maps both endpoints to the same vertex
+    for (const [v0, v1] of chainEdges) {
         if (v0 === v1) continue;
-        // Check if this is a primary chain edge (both endpoints are real feature points)
         const pi0 = v0 - gridVertexCount;
         const pi1 = v1 - gridVertexCount;
-        const pcv0 = (pi0 >= 0 && pi0 < allChainVertices.length) ? allChainVertices[pi0] : undefined;
-        const pcv1 = (pi1 >= 0 && pi1 < allChainVertices.length) ? allChainVertices[pi1] : undefined;
-        const rpcv0 = pcv0 ?? (() => { const o = inverseRemap.get(v0); return o !== undefined ? allChainVertices[o - gridVertexCount] : undefined; })();
-        const rpcv1 = pcv1 ?? (() => { const o = inverseRemap.get(v1); return o !== undefined ? allChainVertices[o - gridVertexCount] : undefined; })();
+        const pcv0 = (pi0 >= 0 && pi0 < chainVertices.length) ? chainVertices[pi0] : undefined;
+        const pcv1 = (pi1 >= 0 && pi1 < chainVertices.length) ? chainVertices[pi1] : undefined;
+        const rpcv0 = pcv0 ?? (() => { const o = inverseRemap.get(v0); return o !== undefined ? chainVertices[o - gridVertexCount] : undefined; })();
+        const rpcv1 = pcv1 ?? (() => { const o = inverseRemap.get(v1); return o !== undefined ? chainVertices[o - gridVertexCount] : undefined; })();
         const isPrimary = rpcv0 && rpcv1 && rpcv0.pointIdx >= 0 && rpcv1.pointIdx >= 0;
         if (isPrimary) primaryTotal++;
         const key = v0 < v1 ? `${v0}-${v1}` : `${v1}-${v0}`;
@@ -1445,34 +2715,27 @@ export function buildCDTOuterWall(
         } else {
             missing++;
             if (isPrimary) primaryMissing++;
-            // Categorize as same-row (non-actionable) vs cross-row (real bug)
             const idx0 = v0 - gridVertexCount;
             const idx1 = v1 - gridVertexCount;
-            const cv0 = (idx0 >= 0 && idx0 < allChainVertices.length) ? allChainVertices[idx0] : undefined;
-            const cv1 = (idx1 >= 0 && idx1 < allChainVertices.length) ? allChainVertices[idx1] : undefined;
+            const cv0 = (idx0 >= 0 && idx0 < chainVertices.length) ? chainVertices[idx0] : undefined;
+            const cv1 = (idx1 >= 0 && idx1 < chainVertices.length) ? chainVertices[idx1] : undefined;
             if (cv0 && cv1) {
-                if (cv0.rowIdx === cv1.rowIdx) {
-                    missingSameRow++;
-                } else {
-                    missingCrossRow++;
-                }
+                if (cv0.rowIdx === cv1.rowIdx) missingSameRow++;
+                else missingCrossRow++;
             }
-            if (missingExamples.length < 10) {
-                if (cv0 && cv1) {
-                    const col0 = bsearchFloor(unionU, cv0.u);
-                    const col1 = bsearchFloor(unionU, cv1.u);
-                    missingExamples.push(
-                        `  chain${cv0.chainId} pt${cv0.pointIdx}\u2192pt${cv1.pointIdx}: ` +
-                        `row${cv0.rowIdx}\u2192${cv1.rowIdx} col${col0}\u2192${col1} ` +
-                        `u=${cv0.u.toFixed(6)}\u2192${cv1.u.toFixed(6)} ` +
-                        `vidx=${v0}\u2192${v1}`
-                    );
-                }
+            if (missingExamples.length < 10 && cv0 && cv1) {
+                const col0 = bsearchFloor(unionU, cv0.u);
+                const col1 = bsearchFloor(unionU, cv1.u);
+                missingExamples.push(
+                    `  chain${cv0.chainId} pt${cv0.pointIdx}\u2192pt${cv1.pointIdx}: ` +
+                    `row${cv0.rowIdx}\u2192${cv1.rowIdx} col${col0}\u2192${col1} ` +
+                    `u=${cv0.u.toFixed(6)}\u2192${cv1.u.toFixed(6)} vidx=${v0}\u2192${v1}`
+                );
             }
         }
     }
     if (missingExamples.length > 0) {
-        console.log(`[ParametricExport]   v16.19 Missing edge examples:`);
+        console.log(`[ParametricExport]   Missing edge examples:`);
         for (const ex of missingExamples) console.log(`[ParametricExport]     ${ex}`);
     }
 
@@ -1480,27 +2743,54 @@ export function buildCDTOuterWall(
     const finalVertexCount = vertices.length / 3;
     const triCount = indices.length / 3;
     const realTriCount = triCount - seamSkipCount * 2;
-    console.log(`[ParametricExport]   v24.0 Chain-vertex mesh: ${finalVertexCount} verts (${numU}\u00d7${numT} grid + ${allChainVertices.length} chain verts), ${realTriCount} real tris`);
-    console.log(`[ParametricExport]   v24.0 Chain edges: ${allChainEdges.length} (enforced=${enforced}, missing=${missing} [sameRow=${missingSameRow}, crossRow=${missingCrossRow}]), chain cells: ${chainCellCount}, cross-cell: ${crossCellEdgeCount}`);
-    console.log(`[ParametricExport]   v24.0 Primary chain edges (feature points): total=${primaryTotal}, enforced=${primaryEnforced}, missing=${primaryMissing}`);
-    if (crossingConstraintsRemoved > 0) {
-        console.log(`[ParametricExport]   v24.0 Crossing constraints removed: ${crossingConstraintsRemoved}`);
-    }
+    console.log(`[ParametricExport]   R34 Cell-local mesh: ${finalVertexCount} verts (${numU}\u00d7${numT} grid + ${chainVertices.length} chain), ${realTriCount} real tris`);
+    console.log(`[ParametricExport]   R35 Chain edges: ${chainEdges.length} (enforced=${enforced}, missing=${missing} [sameRow=${missingSameRow}, crossRow=${missingCrossRow}]), chain cells: ${chainCellCount}, cross-cell: ${crossCellEdgeCount}, super-cells: ${superCellCount} (${superCellColumnsConsumed} cols), interpolated: ${interpolatedCount}`);
+    // R46 Phase 2: Build interpolated chain vertex list (excluding batch2Remap'd vertices)
+    const interpolatedChainVertices = chainVertices
+        .filter(cv => cv.pointIdx === -1 && !batch2Remap.has(cv.vertexIdx))
+        .map(cv => ({
+            vertexIdx: cv.vertexIdx,
+            chainId: cv.chainId,
+            rowIdx: cv.rowIdx,
+            gapSize: interpolatedGapSizes.get(cv.vertexIdx) ?? 2,
+        }));
+
+    console.log(`[ParametricExport]   R46 Fan diagonals: ${fanDiagEdges.length} (protected as constraint edges)`);
+    console.log(`[ParametricExport]   R46 Interpolated chain vertices for re-snap: ${interpolatedChainVertices.length}/${interpolatedCount}`);
+    console.log(`[ParametricExport]   R37 Phantom vertices: ${phantomVertexCount} (start=${phantomVertexStart}), band-split owned spans: ${ownedSpanR37.size}`);
+    console.log(`[ParametricExport]   R53 BPP split cells: ${bppSplitCellCount} (standard=${bppSplitCellCount - bppChainSplitCellCount}, chain=${bppChainSplitCellCount}), propagated phantoms: ${bppPropagatedCount}`);
+    console.log(`[ParametricExport]   R34 Primary chain edges: total=${primaryTotal}, enforced=${primaryEnforced}, missing=${primaryMissing}`);
     if (windingFixCount > 0) {
-        console.log(`[ParametricExport]   v24.0 Standard cell winding fixes: ${windingFixCount}`);
+        console.log(`[ParametricExport]   R34 Standard cell winding fixes: ${windingFixCount}`);
     }
-    console.log(`[ParametricExport]   v24.0 Chain-strip: mode=${chainStripConfig.mode}, cdt=${chainStripStats.cdtStrips}, sweep=${chainStripStats.sweepStrips}, fallback=${chainStripStats.sweepFallbacks}, repair=${chainStripStats.repairPatches}, windFlips=${chainStripStats.windingFlips}`);
-    console.log(`[ParametricExport]   v24.0 Chain-strip constraints: total=${chainStripStats.totalConstraints}, classified=${chainStripStats.classifiedConstraints}`);
-    if (chainStripStats.cdtStrips > 0) {
-        console.log(`[ParametricExport]   v24.0 Chain-strip quality (UV): minAngle=${chainStripStats.minAngleUV.toFixed(1)}\u00b0, maxAspect=${chainStripStats.maxAspectUV.toFixed(1)}:1, R2violations=${chainStripStats.r2Violations}`);
-    }
-    console.log(`[ParametricExport]   v24.0 Grid: ${numU}\u00d7${numT}, seam skips: ${seamSkipCount}, build time: ${buildMs.toFixed(1)}ms`);
+    console.log(`[ParametricExport]   R34 Grid: ${numU}\u00d7${numT}, seam skips: ${seamSkipCount}, build time: ${buildMs.toFixed(1)}ms`);
+    console.log(`[ParametricExport]   R34 batch2Remap: ${batch2Remap.size}, cellChainMap: ${cellChainMap.size}`);
 
     // Build chain vertex → chainId map for FeatureEdgeGraph
     const chainVertexChainIds = new Map<number, number>();
-    for (const cv of allChainVertices) {
+    for (const cv of chainVertices) {
         chainVertexChainIds.set(cv.vertexIdx, cv.chainId);
     }
+    for (const [vertexIdx, chainId] of phantomVertexChainIds) {
+        chainVertexChainIds.set(vertexIdx, chainId);
+    }
 
-    return { vertices, indices, quadMap, gridVertexCount, chainEdges: allChainEdges, origToFinal, chainVertexChainIds };
+    // R37: Trim overallocated phantom buffer to actual size to avoid GPU waste
+    const usedVertexCount = totalVertexCount + phantomVertexCount;
+    const finalVertices = vertices.subarray(0, usedVertexCount * 3);
+
+    return {
+        vertices: finalVertices,
+        indices,
+        quadMap,
+        gridVertexCount,
+        chainEdges,
+        origToFinal,
+        chainVertexChainIds,
+        chainAdjacentVertices: chainAdjacentGridVerts,
+        protectedStripVertices,
+        fanDiagonalEdges: fanDiagEdges,
+        interpolatedChainVertices,
+        corridorPlan,
+    };
 }

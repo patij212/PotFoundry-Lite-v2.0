@@ -47,6 +47,9 @@ body {
   z-index: 100;
   /* Ensure header elements are clickable/tappable */
   pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .pf-error {
@@ -71,4 +74,21 @@ body {
   margin-bottom: 1rem;
   line-height: 1.6;
   color: var(--pf-text-secondary);
+}
+
+/* ============================================================================
+   Mobile — Safe-area and touch-target fixes
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf-app__header {
+    top: max(16px, env(safe-area-inset-top, 16px));
+    right: max(16px, env(safe-area-inset-right, 16px));
+  }
+
+  /* Ensure all header buttons meet 44x44 touch-target minimum */
+  .pf-app__header button {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

@@ -157,7 +157,7 @@ export function rOuterSuperformulaBlossom(
 
   // Seam amplitude blending: gradually reduce petal amplitude near the seam
   // This makes peaks gently lower to valley level for a smooth transition
-  const seamAngleDeg = (opts as any).seamAngle ?? 0;
+  const seamAngleDeg = opts.seamAngle ?? 0;
   if (seamAngleDeg > 0) {
     const seamSpread = (seamAngleDeg * Math.PI) / 180;
     const distFromSeam = Math.min(theta, TAU - theta);
@@ -205,7 +205,7 @@ export function rOuterSuperformulaBlossomVec(
   const seamOffset = Math.PI / Math.max(m, 1.0);
 
   // Seam amplitude blending parameters
-  const seamAngleDeg = (opts as any).seamAngle ?? 0;
+  const seamAngleDeg = opts.seamAngle ?? 0;
   const seamSpread = seamAngleDeg > 0 ? (seamAngleDeg * Math.PI) / 180 : 0;
 
   for (let i = 0; i < n; i++) {

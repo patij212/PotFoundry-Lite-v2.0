@@ -61,22 +61,37 @@ export interface RendererController {
     /**
      * Handle camera commands (view presets, mode changes, etc.)
      */
-    handleCameraCommand?(payload: Record<string, unknown>): void;
+    handleCameraCommand(payload: Record<string, unknown>): void;
 
     /**
      * Set auto-rotate state
      */
-    setAutoRotate?(value: boolean): void;
+    setAutoRotate(value: boolean): void;
 
     /**
      * Toggle auto-rotate
      */
-    toggleAutoRotate?(): void;
+    toggleAutoRotate(): void;
 
     /**
      * Get current auto-rotate state
      */
-    getAutoRotate?(): boolean;
+    getAutoRotate(): boolean;
+
+    /**
+     * Set auto-pivot state
+     */
+    setAutoPivot(value: boolean): void;
+
+    /**
+     * Toggle auto-pivot
+     */
+    toggleAutoPivot(): void;
+
+    /**
+     * Get current auto-pivot state
+     */
+    getAutoPivot(): boolean;
 
     // === Info ===
 
@@ -92,13 +107,13 @@ export interface RendererController {
      * Set debug segments to visualize (e.g. feature polylines)
      * @param segments Float32Array of 2D points [u0, v0, u1, v1, ...]
      */
-    setDebugSegments?(segments: Float32Array): void;
+    setDebugSegments(segments: Float32Array): void;
 
     /**
      * Set debug points to visualize as a green point cloud (e.g. raw peak positions)
      * @param points Float32Array of 2D points [u0, v0, u1, v1, ...]
      */
-    setDebugPoints?(points: Float32Array): void;
+    setDebugPoints(points: Float32Array): void;
 
     /**
      * True if using fallback mode (WebGL when WebGPU is available but crashed)

@@ -115,7 +115,7 @@ export const useAppStore = create<AppStore>()(
 
 // Expose store globally for save/load functionality
 if (typeof window !== 'undefined') {
-  (window as any).__POTFOUNDRY_STORE__ = useAppStore;
+  window.__POTFOUNDRY_STORE__ = useAppStore;
 }
 
 // ============================================================================
@@ -189,6 +189,15 @@ export const useUIActions = () =>
       toggleFullscreen: s.toggleFullscreen,
       setFullscreen: s.setFullscreen,
       resetUI: s.resetUI,
+      setUITheme: s.setUITheme,
+      setV2ActiveTab: s.setV2ActiveTab,
+      toggleZenMode: s.toggleZenMode,
+      setDensity: s.setDensity,
+      setHapticsEnabled: s.setHapticsEnabled,
+      beginHistoryTransaction: s.beginHistoryTransaction,
+      commitHistoryTransaction: s.commitHistoryTransaction,
+      undo: s.undo,
+      redo: s.redo,
     }))
   );
 

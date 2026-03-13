@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c \"echo GITHUB_PERSONAL_ACCESS_TOKEN=%GITHUB_PERSONAL_ACCESS_TOKEN%\")",
+      "Bash(cmd /c \"uvx --version 2>&1 && echo uvx found || echo uvx NOT FOUND\")",
+      "Bash(cmd /c \"where uvx 2>&1 & where uv 2>&1\")",
+      "Bash(powershell -Command:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(node -e:*)",
+      "Bash(npm run test:*)",
+      "Bash(node:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npx tsc:*)",
+      "Bash(\"C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/agents_journal.md\":*)",
+      "Bash(npx vite build)",
+      "Bash(npx vitest run:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm run lint:*)",
+      "Bash(ls:*)",
+      "Bash(/c/Users/patij212/Downloads/PotFoundry-Lite-v2.0/agents_journal.md:*)",
+      "WebSearch",
+      "Bash(npm install:*)",
+      "Bash(git:*)",
+      "Bash(tail:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}

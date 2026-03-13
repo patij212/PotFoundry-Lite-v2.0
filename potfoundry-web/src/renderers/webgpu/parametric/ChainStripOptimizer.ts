@@ -45,6 +45,14 @@ export interface ChainStripFlipParams {
   outerIdxCount: number;
   /** Sorted T-values for adaptive row spacing. */
   finalT: Float32Array | number[];
+  /**
+   * Optional set of chain-adjacent vertex indices identified by UV-proximity.
+   * When provided, triangles touching these vertices are also treated as chain-strip,
+   * catching UV-snapped triangles that the index-based detection misses.
+   */
+  chainAdjacentVertices?: Set<number>;
+  /** R38: Protected corridor around phantom crossing anchors and companions. */
+  protectedVertices?: Set<number>;
 }
 
 /** Result of the three-phase chain-strip edge flip optimization. */
@@ -58,6 +66,10 @@ export interface ChainStripFlipResult {
   valenceBonusFlips: number;
   chainStripTriCount: number;
   maxSingleRowTSpan: number;
+  /** R46: Flips where shared edge has exactly one chain vertex (≥ outerGridVertexCount) */
+  chainGridFlips: number;
+  /** R47: Chain-grid flips allowed through the quality gate */
+  chainGridFlipsAllowed: number;
   valenceStats: {
     before: ValenceStats;
     after: ValenceStats;
@@ -81,6 +93,10 @@ export interface BoundaryDiagonalParams {
   outerIdxCount: number;
   /** Number of grid-only vertices; indices >= this are chain vertices. */
   outerGridVertexCount: number;
+  /** Optional UV-proximity chain-adjacent vertices for hybrid detection. */
+  chainAdjacentVertices?: Set<number>;
+  /** R38: Protected corridor around phantom crossing anchors and companions. */
+  protectedVertices?: Set<number>;
 }
 
 /** Result of boundary diagonal optimization. */
@@ -100,6 +116,8 @@ export interface BoundaryDiagnosticParams {
   outerIdxCount: number;
   /** Number of grid-only vertices; indices >= this are chain vertices. */
   outerGridVertexCount: number;
+  /** Optional UV-proximity chain-adjacent vertices for hybrid detection. */
+  chainAdjacentVertices?: Set<number>;
 }
 
 /** Result of boundary diagnostic analysis. */
@@ -124,6 +142,12 @@ export interface MeshDiagnosticParams {
   origVertCount: number;
   /** Max T-span of a single row band. */
   maxSingleRowTSpan: number;
+  /** Number of columns per row in the outer wall grid. */
+  numU: number;
+  /** Number of rows in the outer wall grid. */
+  numT: number;
+  /** Number of grid-only vertices (grid = numU × numT). */
+  gridVertexCount: number;
 }
 
 /** Result of mesh quality diagnostics. */
@@ -137,6 +161,12 @@ export interface MeshDiagnosticResult {
   val3: number;
   val4: number;
   val5: number;
+  /** Valence-3 vertices on mesh boundary (row 0/last, col 0/last). */
+  val3Boundary: number;
+  /** Valence-3 vertices in mesh interior — THESE ARE T-JUNCTIONS. */
+  val3Interior: number;
+  /** Valence-3 vertices that are chain/phantom (index ≥ gridVertexCount). */
+  val3Chain: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -155,16 +185,21 @@ export const MIN_ANGLE_FLOOR = 0.04;
 export const MAX_VALENCE_PASSES = 4;
 /** Phase C angle degradation tolerance (radians, ~0.11°). */
 export const ANGLE_DEGRADE_TOLERANCE = 0.002;
+/** R47: minimum quality gain (radians) required to allow a chain-grid edge flip */
+export const CHAIN_GRID_FLIP_THRESHOLD = 0.20;
 
 // ═══════════════════════════════════════════════════════════════════════
 // 3D Math Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
-/** Canonical bigint edge key: lo * 0x100000 + hi (lo < hi). */
+/** Canonical bigint edge key: lo * 0x200000 + hi (lo < hi, safe up to 2M vertices). */
 export function edgeKey(a: number, b: number): bigint {
+  if (a >= 0x200000 || b >= 0x200000) {
+    throw new Error(`Vertex index exceeds edgeKey stride limit: a=${a}, b=${b}`);
+  }
   const lo = a < b ? a : b;
   const hi = a < b ? b : a;
-  return BigInt(lo) * BigInt(0x100000) + BigInt(hi);
+  return BigInt(lo) * BigInt(0x200000) + BigInt(hi);
 }
 
 /** Read xyz position of vertex v from interleaved Float32Array. */
@@ -265,10 +300,10 @@ export function isConvexQuad3D(
 ): boolean {
   const pA = pos3(positions, vA), pB = pos3(positions, vB);
   const pC = pos3(positions, vC), pD = pos3(positions, vD);
-  const n0 = cross3(pB[0]-pA[0], pB[1]-pA[1], pB[2]-pA[2], pD[0]-pA[0], pD[1]-pA[1], pD[2]-pA[2]);
-  const n1 = cross3(pC[0]-pB[0], pC[1]-pB[1], pC[2]-pB[2], pA[0]-pB[0], pA[1]-pB[1], pA[2]-pB[2]);
-  const n2 = cross3(pD[0]-pC[0], pD[1]-pC[1], pD[2]-pC[2], pB[0]-pC[0], pB[1]-pC[1], pB[2]-pC[2]);
-  const n3 = cross3(pA[0]-pD[0], pA[1]-pD[1], pA[2]-pD[2], pC[0]-pD[0], pC[1]-pD[1], pC[2]-pD[2]);
+  const n0 = cross3(pB[0] - pA[0], pB[1] - pA[1], pB[2] - pA[2], pD[0] - pA[0], pD[1] - pA[1], pD[2] - pA[2]);
+  const n1 = cross3(pC[0] - pB[0], pC[1] - pB[1], pC[2] - pB[2], pA[0] - pB[0], pA[1] - pB[1], pA[2] - pB[2]);
+  const n2 = cross3(pD[0] - pC[0], pD[1] - pC[1], pD[2] - pC[2], pB[0] - pC[0], pB[1] - pC[1], pB[2] - pC[2]);
+  const n3 = cross3(pA[0] - pD[0], pA[1] - pD[1], pA[2] - pD[2], pC[0] - pD[0], pC[1] - pD[1], pC[2] - pD[2]);
   return dot3(n0, n1) > 0 && dot3(n0, n2) > 0 && dot3(n0, n3) > 0;
 }
 
@@ -344,16 +379,24 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
   const {
     combinedIdxs, positions, combinedVerts,
     constraintEdgeSet, outerGridVertexCount, outerIdxCount, finalT,
+    chainAdjacentVertices, protectedVertices,
   } = params;
 
   const startTime = performance.now();
 
-  // ─── Identify chain-strip triangles ──────────────────────────────
+  // ─── Identify chain-strip triangles (hybrid: index + UV-proximity) ─
   const chainStripTriSet = new Set<number>();
   for (let t = 0; t < outerIdxCount; t += 3) {
     const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
     if (a === b || b === c || a === c) continue;
+    // Classic index-based detection
     if (a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount) {
+      chainStripTriSet.add(t);
+      continue;
+    }
+    // UV-proximity detection for v20.0 UV-snapped triangles
+    if (chainAdjacentVertices &&
+        (chainAdjacentVertices.has(a) || chainAdjacentVertices.has(b) || chainAdjacentVertices.has(c))) {
       chainStripTriSet.add(t);
     }
   }
@@ -433,7 +476,7 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     const newTriATSpan = Math.max(t_shLo, t_opp0, t_opp1) - Math.min(t_shLo, t_opp0, t_opp1);
     const newTriBTSpan = Math.max(t_shHi, t_opp0, t_opp1) - Math.min(t_shHi, t_opp0, t_opp1);
     const maxNewTSpan = Math.max(newTriATSpan, newTriBTSpan);
-    const tSpanLimit = Math.min(origTExtent * 1.1 + maxSingleRowTSpan * 0.1, maxSingleRowTSpan * 2.0);
+    const tSpanLimit = Math.min(origTExtent * 1.1 + maxSingleRowTSpan * 0.1, maxSingleRowTSpan * 2.5);
     return maxNewTSpan > tSpanLimit;
   };
 
@@ -524,8 +567,8 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
   const decodeEdge = (ek: bigint, t0: number, t1: number): DecodedEdge | null => {
     const a0 = combinedIdxs[t0], b0 = combinedIdxs[t0 + 1], c0 = combinedIdxs[t0 + 2];
     const a1 = combinedIdxs[t1], b1 = combinedIdxs[t1 + 1], c1 = combinedIdxs[t1 + 2];
-    const shLo = Number(ek / BigInt(0x100000));
-    const shHi = Number(ek % BigInt(0x100000));
+    const shLo = Number(ek / BigInt(0x200000));
+    const shHi = Number(ek % BigInt(0x200000));
     const set0 = new Set([a0, b0, c0]);
     const set1 = new Set([a1, b1, c1]);
     if (!set0.has(shLo) || !set0.has(shHi) || !set1.has(shLo) || !set1.has(shHi)) return null;
@@ -536,10 +579,19 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     return { shLo, shHi, opp0, opp1, a0, b0, c0, a1, b1, c1 };
   };
 
+  const touchesProtectedCorridor = (a: number, b: number, c: number, d: number): boolean =>
+    protectedVertices !== undefined &&
+    (protectedVertices.has(a) || protectedVertices.has(b) || protectedVertices.has(c) || protectedVertices.has(d));
+
   // ─── Phase A: Angle-based with valence bonus ─────────────────────
   let totalCSFlips = 0;
   let csRowSpanRejects = 0, csEdgeLenRejects = 0, csAspectRejects = 0;
   let csValenceBonus = 0;
+  // R46: Count flips where the shared edge has exactly one chain vertex
+  let chainGridFlips = 0;
+  let chainGridFlipsAllowed = 0;
+  const isChainGridEdge = (a: number, b: number): boolean =>
+    (a >= outerGridVertexCount) !== (b >= outerGridVertexCount);
 
   for (let pass = 0; pass < MAX_CS_PASSES; pass++) {
     let passFlips = 0;
@@ -554,6 +606,7 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
       if (!d) continue;
       const { shLo, shHi, opp0, opp1, a0, b0, c0, a1, b1, c1 } = d;
       const t0 = tris[0], t1 = tris[1];
+      if (touchesProtectedCorridor(shLo, shHi, opp0, opp1)) continue;
 
       // Don't create a constraint edge
       if (constraintEdgeSet.has(edgeKey(opp0, opp1))) continue;
@@ -603,6 +656,16 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
       }
 
       // Apply
+      // R47: quality-gated chain-grid flip (was blanket skip in R46)
+      if (isChainGridEdge(shLo, shHi)) {
+        const qualityGain = flipMin - curMin;
+        if (qualityGain < CHAIN_GRID_FLIP_THRESHOLD) {
+          chainGridFlips++;
+          continue;
+        }
+        chainGridFlipsAllowed++;
+      }
+
       applyFlip(ek, t0, t1, shLo, shHi, opp0, opp1, fw);
       passFlips++;
     }
@@ -626,6 +689,7 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
       if (!d) continue;
       const { shLo, shHi, opp0, opp1, a0, b0, c0, a1, b1, c1 } = d;
       const t0 = tris[0], t1 = tris[1];
+      if (touchesProtectedCorridor(shLo, shHi, opp0, opp1)) continue;
 
       // Skip if valence doesn't improve
       const curValCost = valenceCost4(shLo, shHi, opp0, opp1);
@@ -657,6 +721,16 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
       const curAspect = Math.max(ta3D(a0, b0, c0), ta3D(a1, b1, c1));
       if (newAspect > 12.0 && newAspect > curAspect) continue;
 
+      // R47: quality-gated chain-grid flip
+      if (isChainGridEdge(shLo, shHi)) {
+        const qualityGain = flipMin - curMin;
+        if (qualityGain < CHAIN_GRID_FLIP_THRESHOLD) {
+          chainGridFlips++;
+          continue;
+        }
+        chainGridFlipsAllowed++;
+      }
+
       applyFlip(ek, t0, t1, shLo, shHi, opp0, opp1, fw);
       passFlips++;
     }
@@ -680,6 +754,7 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
       if (!d) continue;
       const { shLo, shHi, opp0, opp1, a0, b0, c0, a1, b1, c1 } = d;
       const t0 = tris[0], t1 = tris[1];
+      if (touchesProtectedCorridor(shLo, shHi, opp0, opp1)) continue;
 
       if (constraintEdgeSet.has(edgeKey(opp0, opp1))) continue;
 
@@ -720,6 +795,16 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
       const newAspect = Math.max(ta3D(fw.flipI0, fw.flipI1, fw.flipI2), ta3D(fw.flipJ0, fw.flipJ1, fw.flipJ2));
       if (newAspect > 12.0) continue;
 
+      // R47: quality-gated chain-grid flip
+      if (isChainGridEdge(shLo, shHi)) {
+        const qualityGain = flipMin - curMin;
+        if (qualityGain < CHAIN_GRID_FLIP_THRESHOLD) {
+          chainGridFlips++;
+          continue;
+        }
+        chainGridFlipsAllowed++;
+      }
+
       applyFlip(ek, t0, t1, shLo, shHi, opp0, opp1, fw);
       phaseC_flips++;
     }
@@ -737,6 +822,8 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     valenceBonusFlips: csValenceBonus,
     chainStripTriCount: chainStripTriSet.size,
     maxSingleRowTSpan,
+    chainGridFlips,
+    chainGridFlipsAllowed,
     valenceStats: { before: valBefore, after: valAfter },
     timeMs: performance.now() - startTime,
   };
@@ -764,6 +851,8 @@ export function optimizeBoundaryDiagonals(params: BoundaryDiagonalParams): Bound
   const {
     combinedIdxs, positions, outerW, outerH,
     outerQuadMap, outerIdxCount, outerGridVertexCount,
+    chainAdjacentVertices: bdChainAdjacentVerts,
+    protectedVertices,
   } = params;
 
   const startTime = performance.now();
@@ -822,8 +911,13 @@ export function optimizeBoundaryDiagonals(params: BoundaryDiagonalParams): Bound
         if (!tris || tris.length !== 2) return -1;
         for (const t of tris) {
           const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+          // Hybrid detection: index-based + UV-proximity
           if (a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount) {
-            return t; // this is a chain-strip tri
+            return t;
+          }
+          if (bdChainAdjacentVerts &&
+              (bdChainAdjacentVerts.has(a) || bdChainAdjacentVerts.has(b) || bdChainAdjacentVerts.has(c))) {
+            return t;
           }
         }
         return -1;
@@ -832,6 +926,23 @@ export function optimizeBoundaryDiagonals(params: BoundaryDiagonalParams): Bound
       const csTriRight = checkEdge(vBR, vTR);
       const csTriLeft = checkEdge(vBL, vTL);
       if (csTriRight < 0 && csTriLeft < 0) continue;
+
+      if (protectedVertices && (
+        protectedVertices.has(vBL) || protectedVertices.has(vBR) ||
+        protectedVertices.has(vTL) || protectedVertices.has(vTR)
+      )) {
+        continue;
+      }
+
+      const triTouchesProtected = (triBaseIdx: number): boolean => {
+        if (triBaseIdx < 0 || protectedVertices === undefined) return false;
+        const a = combinedIdxs[triBaseIdx];
+        const b = combinedIdxs[triBaseIdx + 1];
+        const c = combinedIdxs[triBaseIdx + 2];
+        return protectedVertices.has(a) || protectedVertices.has(b) || protectedVertices.has(c);
+      };
+
+      if (triTouchesProtected(csTriRight) || triTouchesProtected(csTriLeft)) continue;
 
       bdChecked++;
 
@@ -907,7 +1018,7 @@ export function optimizeBoundaryDiagonals(params: BoundaryDiagonalParams): Bound
  * modify any geometry.
  */
 export function computeBoundaryDiagnostic(params: BoundaryDiagnosticParams): BoundaryDiagnosticResult {
-  const { indices, positions, outerIdxCount, outerGridVertexCount } = params;
+  const { indices, positions, outerIdxCount, outerGridVertexCount, chainAdjacentVertices } = params;
 
   // Build edge→tri for outer wall
   const bndE2T = new Map<bigint, number[]>();
@@ -929,8 +1040,12 @@ export function computeBoundaryDiagnostic(params: BoundaryDiagnosticParams): Bou
     const [t0, t1] = tris;
     const a0 = indices[t0], b0 = indices[t0 + 1], c0 = indices[t0 + 2];
     const a1 = indices[t1], b1 = indices[t1 + 1], c1 = indices[t1 + 2];
-    const cs0 = a0 >= outerGridVertexCount || b0 >= outerGridVertexCount || c0 >= outerGridVertexCount;
-    const cs1 = a1 >= outerGridVertexCount || b1 >= outerGridVertexCount || c1 >= outerGridVertexCount;
+    const isChainTri = (a: number, b: number, c: number): boolean =>
+      a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount ||
+      (chainAdjacentVertices !== undefined &&
+        (chainAdjacentVertices.has(a) || chainAdjacentVertices.has(b) || chainAdjacentVertices.has(c)));
+    const cs0 = isChainTri(a0, b0, c0);
+    const cs1 = isChainTri(a1, b1, c1);
     if (cs0 === cs1) continue; // not a boundary edge
 
     bndEdgeCount++;
@@ -972,6 +1087,7 @@ export function computeMeshDiagnostics(params: MeshDiagnosticParams): MeshDiagno
   const {
     finalIndices, finalPositions, combinedVerts,
     outerIdxCountAfterSubdiv, origVertCount, maxSingleRowTSpan,
+    numU, numT, gridVertexCount,
   } = params;
 
   let crossRow1 = 0, crossRow2 = 0, crossRow3plus = 0;
@@ -1025,9 +1141,25 @@ export function computeMeshDiagnostics(params: MeshDiagnosticParams): MeshDiagno
     if (aspect > 20) aspectOver20++;
   }
 
-  for (const [, v] of finalVal) {
-    if (v === 3) val3++;
-    else if (v === 4) val4++;
+  let val3Boundary = 0, val3Interior = 0, val3Chain = 0;
+
+  for (const [vertIdx, v] of finalVal) {
+    if (v === 3) {
+      val3++;
+      if (vertIdx < gridVertexCount) {
+        const row = Math.floor(vertIdx / numU);
+        const col = vertIdx % numU;
+        const isBoundary = row === 0 || row === numT - 1
+                        || col === 0 || col === numU - 1;
+        if (isBoundary) {
+          val3Boundary++;
+        } else {
+          val3Interior++;
+        }
+      } else {
+        val3Chain++;
+      }
+    } else if (v === 4) val4++;
     else if (v === 5) val5++;
   }
 
@@ -1035,5 +1167,138 @@ export function computeMeshDiagnostics(params: MeshDiagnosticParams): MeshDiagno
     crossRow1, crossRow2, crossRow3plus,
     aspectOver5, aspectOver10, aspectOver20,
     val3, val4, val5,
+    val3Boundary, val3Interior, val3Chain,
   };
+}
+
+// ============================================================================
+// Chain-strip-specific 3D quality report (B5)
+// ============================================================================
+
+/** Parameters for chain-strip-specific 3D quality analysis. */
+export interface ChainStrip3DQualityParams {
+    /** Combined index buffer. */
+    indices: Uint32Array;
+    /** GPU-evaluated 3D positions (x,y,z per vertex). */
+    positions: Float32Array;
+    /** Number of grid vertices (chain vertices start after this). */
+    outerGridVertexCount: number;
+    /** Upper bound for outer-wall index range. */
+    outerIdxCount: number;
+}
+
+/** Result of chain-strip-specific 3D quality analysis. */
+export interface ChainStrip3DQualityResult {
+    /** Total chain-strip triangles analyzed. */
+    triCount: number;
+    /** Minimum angle across all chain-strip triangles (radians). */
+    minAngle: number;
+    /** Maximum aspect ratio across all chain-strip triangles. */
+    maxAspect: number;
+    /** Average aspect ratio. */
+    avgAspect: number;
+    /** Number of triangles with aspect ratio > 4:1 (R4 violations). */
+    aspectOver4: number;
+    /** Maximum area ratio between adjacent chain-strip triangles. */
+    maxAreaRatio: number;
+    /** Number of adjacent triangle pairs with area ratio > 2:1 (R3 violations). */
+    gradingViolations: number;
+}
+
+/**
+ * Compute 3D quality metrics specifically for chain-strip triangles.
+ *
+ * Chain-strip triangles are those containing at least one vertex with
+ * index >= outerGridVertexCount (i.e. a chain or transition vertex).
+ *
+ * Also computes grading verification by measuring area ratios between
+ * adjacent chain-strip triangles (those sharing an edge).
+ */
+export function computeChainStrip3DQuality(params: ChainStrip3DQualityParams): ChainStrip3DQualityResult {
+    const { indices, positions, outerGridVertexCount, outerIdxCount } = params;
+
+    let minAngle = Math.PI;
+    let maxAspect = 0;
+    let aspectSum = 0;
+    let aspectOver4 = 0;
+    let triCount = 0;
+
+    // Collect chain-strip triangle indices and their areas for grading check
+    const csTriIndices: number[] = []; // triangle start offsets in index buffer
+    const csTriAreas: number[] = [];
+
+    // Edge → triangle index mapping for adjacency detection
+    const edgeToTri = new Map<bigint, number[]>();
+
+    for (let t = 0; t < outerIdxCount; t += 3) {
+        const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+        if (a === b || b === c || a === c) continue;
+
+        // Is this a chain-strip triangle? At least one vertex is a chain vertex
+        const isChainStrip = a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount;
+        if (!isChainStrip) continue;
+
+        // 3D quality metrics
+        const angle = minAngle3D(positions, a, b, c);
+        const aspect = triAspect3D(positions, a, b, c);
+
+        if (angle < minAngle) minAngle = angle;
+        if (aspect > maxAspect) maxAspect = aspect;
+        aspectSum += aspect;
+        if (aspect > 4) aspectOver4++;
+
+        // Compute area for grading check
+        const p0 = pos3(positions, a), p1 = pos3(positions, b), p2 = pos3(positions, c);
+        const n = cross3(
+            p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2],
+            p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2],
+        );
+        const area = len3(n) * 0.5;
+
+        const triIdx = csTriIndices.length;
+        csTriIndices.push(t);
+        csTriAreas.push(area);
+
+        // Register edges for adjacency
+        for (const ek of [edgeKey(a, b), edgeKey(b, c), edgeKey(a, c)]) {
+            const arr = edgeToTri.get(ek);
+            if (arr) arr.push(triIdx);
+            else edgeToTri.set(ek, [triIdx]);
+        }
+
+        triCount++;
+    }
+
+    // Grading check: find max area ratio between adjacent chain-strip triangles
+    let maxAreaRatio = 1.0;
+    let gradingViolations = 0;
+    const checkedPairs = new Set<bigint>();
+
+    for (const triList of edgeToTri.values()) {
+        if (triList.length < 2) continue;
+        for (let i = 0; i < triList.length; i++) {
+            for (let j = i + 1; j < triList.length; j++) {
+                const pairKey = BigInt(Math.min(triList[i], triList[j])) * BigInt(1e9) + BigInt(Math.max(triList[i], triList[j]));
+                if (checkedPairs.has(pairKey)) continue;
+                checkedPairs.add(pairKey);
+
+                const a1 = csTriAreas[triList[i]];
+                const a2 = csTriAreas[triList[j]];
+                if (a1 < 1e-15 || a2 < 1e-15) continue;
+                const ratio = Math.max(a1, a2) / Math.min(a1, a2);
+                if (ratio > maxAreaRatio) maxAreaRatio = ratio;
+                if (ratio > 2.0) gradingViolations++;
+            }
+        }
+    }
+
+    return {
+        triCount,
+        minAngle: triCount > 0 ? minAngle : 0,
+        maxAspect: triCount > 0 ? maxAspect : 0,
+        avgAspect: triCount > 0 ? aspectSum / triCount : 0,
+        aspectOver4,
+        maxAreaRatio,
+        gradingViolations,
+    };
 }

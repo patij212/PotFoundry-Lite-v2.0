@@ -9,13 +9,10 @@ import { describe, it, expect } from 'vitest';
 import {
     FLANK_OFFSET,
     MIN_U_SEPARATION,
-    FLANK_OFFSETS,
-    FEATURE_CLUSTER_RADIUS,
     bsearchFloor,
     mergeFeaturePositions,
     generateCDFAdaptivePositions,
     generateAdaptiveGrid,
-    buildUnionFeatureGrid,
     patchRowFeatures,
     computeGridDimensions,
     downsampleSortedPositions,
@@ -33,18 +30,6 @@ describe('GridBuilder constants', () => {
     it('MIN_U_SEPARATION is very small but positive', () => {
         expect(MIN_U_SEPARATION).toBeGreaterThan(0);
         expect(MIN_U_SEPARATION).toBeLessThan(0.01);
-    });
-
-    it('FLANK_OFFSETS has 4 geometrically spaced values', () => {
-        expect(FLANK_OFFSETS).toHaveLength(4);
-        for (let i = 1; i < FLANK_OFFSETS.length; i++) {
-            expect(FLANK_OFFSETS[i]).toBeGreaterThan(FLANK_OFFSETS[i - 1]);
-        }
-    });
-
-    it('FEATURE_CLUSTER_RADIUS is a small positive number', () => {
-        expect(FEATURE_CLUSTER_RADIUS).toBeGreaterThan(0);
-        expect(FEATURE_CLUSTER_RADIUS).toBeLessThan(0.1);
     });
 });
 
@@ -236,78 +221,6 @@ describe('generateAdaptiveGrid', () => {
         // But i1 and i2 should be swapped
         expect(normal.indices[1]).toBe(inverted.indices[2]);
         expect(normal.indices[2]).toBe(inverted.indices[1]);
-    });
-});
-
-// ============================================================================
-// buildUnionFeatureGrid
-// ============================================================================
-describe('buildUnionFeatureGrid', () => {
-    it('returns baseU when no features detected', () => {
-        const baseU = new Float32Array([0, 0.25, 0.5, 0.75]);
-        const result = buildUnionFeatureGrid(baseU, []);
-        expect(result).toBe(baseU); // Same reference
-    });
-
-    it('adds columns for detected features', () => {
-        const baseU = new Float32Array([0, 0.25, 0.5, 0.75]);
-        const rowFeatures = [[0.33], [0.34], [0.33]];
-        const result = buildUnionFeatureGrid(baseU, rowFeatures);
-        expect(result.length).toBeGreaterThan(baseU.length);
-    });
-
-    it('output is sorted and in [0, 1)', () => {
-        const baseU = new Float32Array([0, 0.25, 0.5, 0.75]);
-        const rowFeatures = [[0.1, 0.6], [0.12, 0.62]];
-        const result = buildUnionFeatureGrid(baseU, rowFeatures);
-        for (let i = 1; i < result.length; i++) {
-            expect(result[i]).toBeGreaterThan(result[i - 1]);
-        }
-        for (const u of result) {
-            expect(u).toBeGreaterThanOrEqual(0);
-            expect(u).toBeLessThan(1);
-        }
-    });
-
-    it('clusters nearby features into one column', () => {
-        const baseU = new Float32Array([0, 0.5]);
-        // Three features within FEATURE_CLUSTER_RADIUS → one cluster
-        const radius = FEATURE_CLUSTER_RADIUS;
-        const rowFeatures = [
-            [0.3],
-            [0.3 + radius * 0.3],
-            [0.3 + radius * 0.6],
-        ];
-        const result = buildUnionFeatureGrid(baseU, rowFeatures);
-        // Should have base (2) + 1 feature center + flanks, not 3 separate centers
-        // Count how many positions are near 0.3
-        const near03 = Array.from(result).filter(u => Math.abs(u - 0.3) < 0.05);
-        // Should be 1 center + flanks, not 3 separate cluster centers
-        expect(near03.length).toBeGreaterThanOrEqual(1);
-    });
-
-    it('respects maxColumns budget cap', () => {
-        const n = 100;
-        const baseU = new Float32Array(n);
-        for (let i = 0; i < n; i++) baseU[i] = i / n;
-        // Add many features to force exceeding budget
-        const rowFeatures = Array.from({ length: 20 }, (_, i) =>
-            [0.05 + i * 0.045]
-        );
-        const maxCols = 50;
-        const result = buildUnionFeatureGrid(baseU, rowFeatures, maxCols);
-        expect(result.length).toBeLessThanOrEqual(maxCols);
-    });
-
-    it('preserves all base positions when budget allows', () => {
-        const baseU = new Float32Array([0, 0.25, 0.5, 0.75]);
-        const rowFeatures = [[0.33]];
-        const result = buildUnionFeatureGrid(baseU, rowFeatures);
-        // All base positions should be present (merged, not removed)
-        for (const base of baseU) {
-            const found = Array.from(result).some(u => Math.abs(u - base) < 1e-6);
-            expect(found).toBe(true);
-        }
     });
 });
 

@@ -74,13 +74,15 @@ describe('buildStyleParamPayload', () => {
 
     it('should pack SuperformulaBlossom parameters', () => {
         const opts = {
+            sf_strength: 0.5,
             sf_m_base: 6,
             sf_m_top: 10,
         };
         const [styleId, params] = buildStyleParamPayload('SuperformulaBlossom', opts);
         expect(styleId).toBe(0);
-        expect(params[0]).toBe(6);
-        expect(params[1]).toBe(10);
+        expect(params[0]).toBe(0.5);
+        expect(params[1]).toBe(6);
+        expect(params[2]).toBe(10);
     });
 
     it('should pack GothicArches parameters', () => {
@@ -100,7 +102,7 @@ describe('buildStyleParamPayload', () => {
     });
 
     it('should pack WaveInterference parameters', () => {
-        const [styleId, params] = buildStyleParamPayload('WaveInterference', { wi_wave1_freq: 5 });
+        const [styleId, params] = buildStyleParamPayload('WaveInterference', { wi_feature_count: 5 });
         expect(styleId).toBe(6);
         expect(params[0]).toBe(5);
     });

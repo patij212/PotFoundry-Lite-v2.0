@@ -1,118 +1,51 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# Dependencies
+node_modules/
 
-# Virtual environments and Python tooling
-venv/
-.venv/
+# Build output
+dist/
+build/
+out/
+
+# Environment variables
 .env
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# Streamlit
-.streamlit/
+.env.local
+.env.*.local
 
 # OS and editor files
 .DS_Store
 Thumbs.db
-.vscode/
-
-# Project-specific debug logs
-.pf_edge_flow_debug.json
-.pf_edge_flow_log.md
-
-# Build artifacts
-dist/
-build/
-node_modules/
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-venv/
-ENV/
-env/
-
-# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.hypothesis/
+# Test & coverage output
+coverage/
+playwright-report/
+test-results/
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
-out/
+# Project-specific exports
 *.stl
 *.zip
 
-# CI artifacts and local caches - avoid scanning/committing these
+# CI artifacts and local caches
 artifacts/
 .gha_artifacts_*/
 .gha_run_*.log
-.runs_grep.txt
-_runs_all.json
-pytest-output.txt
-pytest-report.xml
-pytest-summary.json
-artifacts/**
-.mypy_cache/
-.venv/
-.pytest_cache/
-pre-commit-output*.txt
-ruff-*.txt
-mypy-out*.txt
 
-# Streamlit secrets (do NOT commit your real secrets)
-.streamlit/secrets.toml
+# Agent session temp files (never commit)
+append_journal*.py
+agents_journal_final.md
+git_status_*.txt
+mesh_pipeline_audit*.resolved
 
-# Runtime debug artifacts
-.pf_edge_flow_debug.json
-
-# Additional logs and temporary artifacts
-run_*.log
-tmp_pr_validation_run_*.log
-mypy_full_output.txt
-.ruff_*.txt
-.mypy_*.txt
-.tmp_*.txt
-tmp_*.py
-pytest_output.txt
-.pf_edge_flow_log.md
+# Logs and temporary artifacts
+*.log
 *.bak
+.tmp_*.txt
 *_COMMIT_MSG.txt
-TERMINAL_OUTPUT_CHECK.txt
-pfui/tabs/interactive/preview_impl_old_backup.py
-pfui/tabs/interactive/preview_impl.py.backup
+
+# Legacy (safe to keep until .venv is deleted)
+.venv/
+__pycache__/

@@ -57,6 +57,21 @@ export interface ParametricExportStats {
     gridDimensions: { nu: number; nt: number };
     adaptiveDensityRatio?: number;
     featurePeaksSnapped?: number;
+    /** Validation summary from the pipeline (null if validator didn't run). */
+    validationSummary?: import('../renderers/webgpu/parametric/types').ValidationSummary;
+    /** Refinement summary from the pipeline (null if refinement didn't run). */
+    refinementSummary?: import('../renderers/webgpu/parametric/types').RefinementSummary;
+    /** Pipeline diagnostics for the debug tab (null if not collected). */
+    pipelineDiagnostics?: import('../renderers/webgpu/parametric/types').PipelineDiagnostics;
+}
+
+/** Optional pipeline overrides passed from the ExportDialog. */
+export interface ParametricExportOverrides {
+    qualityProfile?: import('../renderers/webgpu/parametric/types').QualityProfileName;
+    toleranceOverrides?: Partial<import('../renderers/webgpu/parametric/types').ExportTolerances>;
+    pipelineFeatureFlags?: Partial<import('../renderers/webgpu/parametric/contracts').PipelineFeatureFlags>;
+    pipelineConfig?: Partial<import('../renderers/webgpu/parametric/types').PipelineStageConfig>;
+    relaxIterations?: number;
 }
 
 export interface UseParametricExportResult {
@@ -64,7 +79,7 @@ export interface UseParametricExportResult {
     stats: ParametricExportStats | null;
     isAvailable: boolean;
     exportSTL: (filename?: string, targetTriangles?: number) => Promise<void>;
-    generateMesh: (targetTriangles?: number) => Promise<MeshData | null>;
+    generateMesh: (targetTriangles?: number, overrides?: ParametricExportOverrides) => Promise<MeshData | null>;
     reset: () => void;
     /** v15.0: Toggle chain overlay (magenta lines) on/off */
     setShowChainOverlay: (show: boolean) => void;
@@ -243,7 +258,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         return opts;
     }, [style, geometry, mesh]);
 
-    const generateMesh = useCallback(async (targetTriangles?: number): Promise<MeshData | null> => {
+    const generateMesh = useCallback(async (targetTriangles?: number, overrides?: ParametricExportOverrides): Promise<MeshData | null> => {
         if (!computerRef.current?.isReady()) {
             setProgress({
                 status: 'error',
@@ -297,6 +312,11 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 styleOpts,
                 styleIndex,
                 targetTriangles: tris,
+                qualityProfile: overrides?.qualityProfile,
+                toleranceOverrides: overrides?.toleranceOverrides,
+                pipelineFeatureFlags: overrides?.pipelineFeatureFlags,
+                pipelineConfig: overrides?.pipelineConfig,
+                relaxIterations: overrides?.relaxIterations,
             };
 
             const result = await computerRef.current.compute(params);
@@ -319,6 +339,9 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 gridDimensions: result.gridDimensions,
                 adaptiveDensityRatio: result.adaptiveStats?.densityRatio,
                 featurePeaksSnapped: result.adaptiveStats?.featurePeaksSnapped,
+                validationSummary: result.validationSummary,
+                refinementSummary: result.refinementSummary,
+                pipelineDiagnostics: result.pipelineDiagnostics,
             };
 
             setStats(exportStats);
@@ -354,6 +377,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                     for (let i = 0; i < pts.length - 1; i++) {
                         const p0 = pts[i];
                         const p1 = pts[i + 1];
+                        if (Math.abs(p1[0] - p0[0]) > 0.5) continue; // skip seam-crossing debug segments
                         segs.push(p0[0], p0[1], p1[0], p1[1]);
                     }
                 }

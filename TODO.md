@@ -2,7 +2,7 @@
 
 This document tracks planned features, improvements, and technical debt for the **PotFoundry Web Application**.
 
-**Last Updated:** February 2026
+**Last Updated:** March 2026
 **Current Version:** v3.1.0 (WebGPU)
 **Primary Product:** potfoundry-web (WebGPU React Application)
 
@@ -158,7 +158,7 @@ This document tracks planned features, improvements, and technical debt for the 
 ## 🐛 Known Issues & Bug Fixes
 
 ### Critical
-- [ ] **Seam Flattening**: The mesh pipeline has a known issue where the seam (0/360 degrees) is flattened, causing a visible artifact. (See `mesh_pipeline_audit_comprehensive.md.resolved`)
+- [ ] **Seam Flattening**: The mesh pipeline has a known issue where the seam (0/360 degrees) is flattened, causing a visible artifact. (See `docs/AGENT_CONTEXT_DISTILLED.md` §4.4)
 - [ ] **Memory Bounds**: High-resolution exports (8k) can hit WebGPU buffer limits or browser memory caps.
 
 ### High Priority
@@ -190,7 +190,7 @@ This document tracks planned features, improvements, and technical debt for the 
 ### API & SDK
 - [ ] REST API for headless operation
 - [ ] Command-line interface (CLI)
-- [ ] Python SDK documentation
+- [ ] TypeScript/WebGPU API documentation
 - [ ] JavaScript/TypeScript bindings
 - [ ] Docker containerization
 

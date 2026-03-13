@@ -9,7 +9,7 @@ import { useCallback, useState } from 'react';
 import { useAppStore } from '../state';
 import {
   buildPotMesh,
-  downloadSTL,
+  downloadMesh,
   calculateMeshVolume,
   calculateMeshSurfaceArea,
   estimateSTLSize,
@@ -17,6 +17,7 @@ import {
   StyleId,
   StyleOptions,
   MeshResult,
+  ExportFormat,
 } from '../geometry';
 
 // ============================================================================
@@ -45,8 +46,8 @@ export interface UseExportResult {
   progress: ExportProgress;
   /** Stats from last successful export */
   stats: ExportStats | null;
-  /** Generate and download STL file */
-  exportSTL: (filename?: string) => Promise<void>;
+  /** Generate and download file in the specified format (defaults to store format) */
+  exportSTL: (filename?: string, format?: ExportFormat) => Promise<void>;
   /** Generate mesh for preview/stats without downloading */
   generateMesh: () => Promise<MeshResult | null>;
   /** Reset export state */
@@ -304,9 +305,12 @@ export function useExport(): UseExportResult {
   }, [geometry, style, mesh, buildStyleOptions]);
 
   /**
-   * Generate and download STL file
+   * Generate and download file in the specified format
    */
-  const exportSTL = useCallback(async (filename: string = 'pot.stl'): Promise<void> => {
+  const exportSTL = useCallback(async (
+    filename?: string,
+    format?: ExportFormat
+  ): Promise<void> => {
     try {
       const result = await generateMesh();
       if (!result) {
@@ -319,16 +323,20 @@ export function useExport(): UseExportResult {
         message: 'Preparing download...',
       });
 
-      // Generate filename with style name
-      const styleName = style.name ?? 'Pot';
-      const finalFilename = filename === 'pot.stl'
-        ? `PotFoundry_${styleName}_${Date.now()}.stl`
-        : filename;
+      // Determine export format: parameter > store > default 'stl'
+      const storeFormat = useAppStore.getState().ui.exportFormat;
+      const effectiveFormat = format ?? storeFormat;
 
-      // Download STL
-      downloadSTL(result.mesh, finalFilename, {
+      // Generate filename with style name and correct extension
+      const styleName = style.name ?? 'Pot';
+      const ext = effectiveFormat;
+      const defaultFilename = `PotFoundry_${styleName}_${Date.now()}.${ext}`;
+      const finalFilename = filename ?? defaultFilename;
+
+      // Download using the appropriate exporter
+      await downloadMesh(result.mesh, finalFilename, {
+        format: effectiveFormat,
         name: `PotFoundry ${style.name}`,
-        binary: true,
       });
 
       setProgress({

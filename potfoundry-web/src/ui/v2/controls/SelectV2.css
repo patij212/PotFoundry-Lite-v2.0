@@ -1,0 +1,203 @@
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.pf2-select {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-sm);
+  width: 100%;
+}
+
+/* ============================================================================
+   Label
+   ============================================================================ */
+
+.pf2-select__label {
+  user-select: none;
+}
+
+/* ============================================================================
+   Trigger
+   ============================================================================ */
+
+.pf2-select__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--pf2-space-md);
+  font-family: var(--pf2-font-body);
+  font-size: 13px;
+  color: var(--pf2-text-primary);
+  background: var(--pf2-bg-elevated);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-md);
+  cursor: pointer;
+  transition:
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    background var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-select__trigger:hover:not(:disabled) {
+  background: var(--pf2-bg-hover);
+  border-color: var(--pf2-border-active);
+}
+
+.pf2-select__trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pf2-select__trigger[data-state='open'] {
+  border-color: var(--pf2-accent);
+}
+
+.pf2-select__chevron {
+  display: flex;
+  align-items: center;
+  color: var(--pf2-text-muted);
+  transition: transform var(--pf2-duration-fast) var(--pf2-ease-move);
+}
+
+.pf2-select__trigger[data-state='open'] .pf2-select__chevron {
+  transform: rotate(180deg);
+}
+
+/* ============================================================================
+   Content (Dropdown)
+   ============================================================================ */
+
+.pf2-select__content {
+  overflow: hidden;
+  background: var(--pf2-bg-elevated);
+  border: 1px solid var(--pf2-border-active);
+  border-radius: var(--pf2-radius-md);
+  box-shadow: var(--pf2-shadow-float);
+  z-index: var(--pf2-z-tooltip);
+  animation: pf2-select-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+}
+
+@keyframes pf2-select-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pf2-select__viewport {
+  padding: var(--pf2-space-xs);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.pf2-select__viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pf2-select__viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pf2-select__viewport::-webkit-scrollbar-thumb {
+  background: var(--pf2-border-active);
+  border-radius: 3px;
+}
+
+/* ============================================================================
+   Items
+   ============================================================================ */
+
+.pf2-select__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pf2-space-sm);
+  padding: var(--pf2-space-sm) var(--pf2-space-md);
+  font-size: 13px;
+  color: var(--pf2-text-primary);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  transition:
+    background var(--pf2-duration-instant) var(--pf2-ease-move),
+    transform var(--pf2-duration-instant) var(--pf2-ease-move);
+}
+
+.pf2-select__item:hover,
+.pf2-select__item[data-highlighted] {
+  background: var(--pf2-accent-subtle);
+}
+
+.pf2-select__item[data-disabled] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.pf2-select__item[data-state='checked'] {
+  color: var(--pf2-accent);
+}
+
+/* Uses <span> with flex layout per Master Decision #2 (valid HTML inside Radix <span>) */
+.pf2-select__item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pf2-select__item-label {
+  font-weight: 500;
+}
+
+.pf2-select__item-desc {
+  font-size: 11px;
+  color: var(--pf2-text-muted);
+  line-height: 1.3;
+}
+
+.pf2-select__check {
+  display: flex;
+  align-items: center;
+  color: var(--pf2-accent);
+  flex-shrink: 0;
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-select__trigger {
+    border: 1px solid ButtonText;
+  }
+
+  .pf2-select__content {
+    border: 1px solid ButtonText;
+  }
+
+  .pf2-select__item[data-highlighted] {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .pf2-select__check {
+    color: Highlight;
+  }
+}
+
+/* ============================================================================
+   Mobile — Touch Target (C5)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-select__trigger {
+    height: 44px;
+  }
+}

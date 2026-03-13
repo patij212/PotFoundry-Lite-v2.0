@@ -58,7 +58,7 @@ export const CHAIN_LOCK_BAND_HALF_WIDTH = 1;
  * @param w              Grid width (columns per row)
  * @param h              Grid height (number of quad rows = T positions - 1)
  * @param chains         Linked feature chains from Phase 2.5
- * @param rowMapping     Maps final row index → original row index (negative = inserted)
+ * @param origToFinalMap Maps original row index → final grid row index
  * @param invertWinding  Whether this surface uses inverted winding
  * @param quadMap        Maps logical quad index → index buffer offset (or -1 for degenerate)
  * @returns Object with flipCount and a Set of locked quad indices
@@ -69,7 +69,7 @@ export function chainDirectedFlip(
     w: number,
     h: number,
     chains: FeatureChain[],
-    rowMapping: number[],
+    origToFinalMap: Map<number, number>,
     invertWinding: boolean,
     quadMap: Int32Array
 ): { flipCount: number; lockedQuads: Set<number> } {
@@ -78,14 +78,6 @@ export function chainDirectedFlip(
 
     // v11.3: cellsPerRow = w - 1 (non-wrapping grid, no seam cell)
     const cellsPerRow = w - 1;
-
-    // Build reverse map: original row → final row index
-    const origToFinal = new Map<number, number>();
-    for (let f = 0; f < rowMapping.length; f++) {
-        if (rowMapping[f] >= 0) {
-            origToFinal.set(rowMapping[f], f);
-        }
-    }
 
     // Binary search for nearest column in unionU, with circular wrap handling
     const findColumn = (u: number): number => {
@@ -169,7 +161,7 @@ export function chainDirectedFlip(
         // Remap chain points to final grid rows
         const remapped: { u: number; finalRow: number }[] = [];
         for (const pt of chain.points) {
-            const fr = origToFinal.get(pt.row);
+            const fr = origToFinalMap.get(pt.row);
             if (fr !== undefined) {
                 remapped.push({ u: pt.u, finalRow: fr });
             }
@@ -215,20 +207,21 @@ export function chainDirectedFlip(
                     const shouldLockBand = Math.abs(band) <= CHAIN_LOCK_BAND_HALF_WIDTH;
                     if (shouldLockBand && lockedQuads.has(bandQuadIdx)) continue;
 
+                    let flipped = false;
                     if (band >= -1 && band <= 1) {
                         if (localUDelta > LEAN_THRESHOLD) {
                             flipToAD(bandQuadIdx, j, bandCol);
+                            flipped = true;
                         } else if (localUDelta < -LEAN_THRESHOLD) {
                             flipToBC(bandQuadIdx, j, bandCol);
-                        } else {
-                            if (j % 2 === 0) {
-                                flipToAD(bandQuadIdx, j, bandCol);
-                            } else {
-                                flipToBC(bandQuadIdx, j, bandCol);
-                            }
+                            flipped = true;
                         }
+                        // Tie-break (|delta| ≤ LEAN_THRESHOLD): skip flip, leave cell at default diagonal.
+                        // R42: removed j%2 alternation that created visible sawtooth in band cells.
                     }
-                    if (shouldLockBand) {
+                    // R42: Only lock cells where a flip was actually performed,
+                    // so flipEdges3D can optimize tie-break cells downstream.
+                    if (shouldLockBand && flipped) {
                         lockedQuads.add(bandQuadIdx);
                     }
                 }

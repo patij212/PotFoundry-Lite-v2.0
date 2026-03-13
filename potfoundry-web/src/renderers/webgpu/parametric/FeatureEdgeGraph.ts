@@ -12,7 +12,7 @@
  * @see docs/plans/2026-02-24-parametric-pipeline-modular-redesign.md Phase 2 Gap B
  */
 
-import type { FeatureChain, FeatureKind, ChainPoint } from './types';
+import type { FeatureChain, FeatureKind } from './types';
 
 // ============================================================================
 // Types
@@ -263,6 +263,78 @@ export function buildFeatureEdgeGraphFromGrid(
     };
 }
 
+/**
+ * Build a feature-edge graph directly from tessellator chain edges.
+ *
+ * This is the v21.0-compatible path: after buildCDTOuterWall, chain vertices
+ * have real vertex indices (>= gridVertexCount) and chainEdges contains the
+ * actual [v0, v1] pairs used in the mesh. This avoids re-computing indices
+ * via grid-column snapping, which would produce stale grid indices that
+ * don't match the actual chain vertex indices in the mesh.
+ *
+ * @param chains - Feature chains (for kind classification).
+ * @param chainEdges - Actual chain edge pairs from OuterWallResult.chainEdges.
+ * @param chainVertexChainIds - Maps chain vertex index → chainId. Built from
+ *        the tessellator's ChainVertex records.
+ * @returns The complete feature-edge graph using actual mesh vertex indices.
+ */
+export function buildFeatureEdgeGraphFromChainEdges(
+    chains: FeatureChain[],
+    chainEdges: Array<[number, number]>,
+    chainVertexChainIds: Map<number, number>,
+): FeatureEdgeGraph {
+    const edges: FeatureEdge[] = [];
+    const edgeSet = new Set<string>();
+    const edgesByChain = new Map<number, FeatureEdge[]>();
+    const chainKinds = new Map<number, FeatureKind>();
+
+    for (let chainId = 0; chainId < chains.length; chainId++) {
+        const kind: FeatureKind = chains[chainId].kind ?? 'peak';
+        chainKinds.set(chainId, kind);
+        if (!edgesByChain.has(chainId)) {
+            edgesByChain.set(chainId, []);
+        }
+    }
+
+    for (const [v0, v1] of chainEdges) {
+        if (v0 === v1) continue;
+
+        const key = edgeKey(v0, v1);
+        if (edgeSet.has(key)) continue;
+
+        // Determine which chain this edge belongs to
+        const cId0 = chainVertexChainIds.get(v0);
+        const cId1 = chainVertexChainIds.get(v1);
+        const chainId = cId0 ?? cId1 ?? 0;
+        const kind: FeatureKind = chainKinds.get(chainId) ?? 'peak';
+
+        const edge: FeatureEdge = {
+            v0: Math.min(v0, v1),
+            v1: Math.max(v0, v1),
+            chainId,
+            kind,
+        };
+        edges.push(edge);
+        edgeSet.add(key);
+
+        const chainEdgeList = edgesByChain.get(chainId);
+        if (chainEdgeList) {
+            chainEdgeList.push(edge);
+        } else {
+            edgesByChain.set(chainId, [edge]);
+        }
+    }
+
+    return {
+        edges,
+        edgeSet,
+        edgesByChain,
+        chainKinds,
+        chainCount: chains.length,
+        edgeCount: edges.length,
+    };
+}
+
 // ============================================================================
 // Query Functions
 // ============================================================================
@@ -336,16 +408,17 @@ export function featureEdgesToLockedQuads(
         const maxCol = Math.max(col0, col1);
         const minCol = Math.min(col0, col1);
 
+        const quadStride = numU - 1;
         for (let dc = -bandHalfWidth; dc <= bandHalfWidth; dc++) {
             const c0 = (minCol + dc + numU) % numU;
             const c1 = (maxCol + dc + numU) % numU;
-            // Quad index = row * (numU) + col (for the upper-left corner)
+            // Quad index = row * (numU - 1) + col (for the upper-left corner)
             if (minRow > 0) {
-                locked.add((minRow - 1) * numU + c0);
-                locked.add((minRow - 1) * numU + c1);
+                locked.add((minRow - 1) * quadStride + c0);
+                locked.add((minRow - 1) * quadStride + c1);
             }
-            locked.add(minRow * numU + c0);
-            locked.add(minRow * numU + c1);
+            locked.add(minRow * quadStride + c0);
+            locked.add(minRow * quadStride + c1);
         }
     }
 
@@ -366,7 +439,7 @@ export function featureEdgesToLockedQuads(
 export function wouldFlipDestroyConstraint(
     graph: FeatureEdgeGraph,
     diag0: [number, number],
-    diag1: [number, number],
+    _diag1: [number, number],
 ): boolean {
     // If current diagonal is a feature edge, it must not be flipped away
     return isFeatureEdge(graph, diag0[0], diag0[1]);

@@ -1,0 +1,267 @@
+/* ============================================================================
+   LibraryDrawer — Full-screen preset library
+   ============================================================================ */
+
+/* Overlay */
+.pf2-library-drawer__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--pf2-z-modal, 1000);
+  background: rgba(0, 0, 0, 0.7);
+  animation: pf2-overlay-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+}
+
+@supports (backdrop-filter: blur(4px)) {
+  .pf2-library-drawer__overlay {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+}
+
+@keyframes pf2-overlay-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Content panel */
+.pf2-library-drawer {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: calc(var(--pf2-z-modal, 1000) + 1);
+  width: min(90vw, 960px);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--pf2-bg-base);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-md);
+  box-shadow: var(--pf2-shadow-float);
+  overflow: hidden;
+  animation: pf2-drawer-enter var(--pf2-duration-fast) var(--pf2-ease-spring) both;
+}
+
+/* ============================================================================
+   Header
+   ============================================================================ */
+
+.pf2-library-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--pf2-space-lg) var(--pf2-space-xl);
+  border-bottom: 1px solid var(--pf2-border);
+  flex-shrink: 0;
+}
+
+.pf2-library-drawer__title {
+  font-family: var(--pf2-font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--pf2-text-primary);
+  margin: 0;
+}
+
+.pf2-library-drawer__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  color: var(--pf2-text-secondary);
+  cursor: pointer;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-library-drawer__close:hover {
+  color: var(--pf2-text-primary);
+  border-color: var(--pf2-border-active);
+}
+
+/* ============================================================================
+   Search
+   ============================================================================ */
+
+.pf2-library-drawer__search {
+  position: relative;
+  padding: var(--pf2-space-md) var(--pf2-space-xl);
+  flex-shrink: 0;
+}
+
+.pf2-library-drawer__search-icon {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--pf2-space-xl) + 10px);
+  transform: translateY(-50%);
+  color: var(--pf2-text-muted);
+  pointer-events: none;
+}
+
+.pf2-library-drawer__search-input {
+  width: 100%;
+  padding: 8px 8px 8px 32px;
+  font-family: var(--pf2-font-body);
+  font-size: 13px;
+  color: var(--pf2-text-primary);
+  background: var(--pf2-bg-surface);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  outline: none;
+  transition: border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-library-drawer__search-input:focus {
+  border-color: var(--pf2-accent);
+}
+
+.pf2-library-drawer__search-input::placeholder {
+  color: var(--pf2-text-muted);
+}
+
+/* ============================================================================
+   Category Filters
+   ============================================================================ */
+
+.pf2-library-drawer__categories {
+  display: flex;
+  gap: var(--pf2-space-xs);
+  padding: 0 var(--pf2-space-xl) var(--pf2-space-md);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.pf2-library-drawer__chip {
+  padding: 4px 12px;
+  font-family: var(--pf2-font-body);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  background: var(--pf2-bg-surface);
+  border: 1px solid var(--pf2-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    background var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-library-drawer__chip:hover {
+  color: var(--pf2-text-primary);
+  background: var(--pf2-bg-hover);
+}
+
+.pf2-library-drawer__chip--active {
+  color: var(--pf2-accent);
+  background: var(--pf2-accent-subtle);
+  border-color: var(--pf2-accent);
+}
+
+/* ============================================================================
+   Preset Grid
+   ============================================================================ */
+
+.pf2-library-drawer__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--pf2-space-md);
+  padding: var(--pf2-space-md) var(--pf2-space-xl) var(--pf2-space-xl);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.pf2-library-drawer__empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--pf2-text-muted);
+  padding: var(--pf2-space-xl);
+}
+
+/* ============================================================================
+   Preset Card
+   ============================================================================ */
+
+.pf2-library-drawer__card {
+  display: flex;
+  flex-direction: column;
+  background: var(--pf2-bg-surface);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    transform var(--pf2-duration-micro) var(--pf2-ease-move),
+    box-shadow var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-library-drawer__card:hover {
+  border-color: var(--pf2-accent-subtle);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.pf2-library-drawer__card--active {
+  border-color: var(--pf2-accent);
+  box-shadow: 0 0 0 1px var(--pf2-accent);
+}
+
+.pf2-library-drawer__card-thumb {
+  aspect-ratio: 4 / 3;
+  background: var(--pf2-bg-base);
+  overflow: hidden;
+}
+
+.pf2-library-drawer__card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--pf2-space-sm) var(--pf2-space-md);
+}
+
+.pf2-library-drawer__card-title {
+  font-family: var(--pf2-font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pf2-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf2-library-drawer__card-category {
+  font-size: 10px;
+  color: var(--pf2-text-muted);
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-library-drawer {
+    border: 2px solid ButtonText;
+  }
+
+  .pf2-library-drawer__card--active {
+    border-color: Highlight;
+  }
+
+  .pf2-library-drawer__chip--active {
+    border-color: Highlight;
+  }
+}
+
+/* ============================================================================
+   Light Theme — Overlay
+   ============================================================================ */
+
+[data-theme="light"] .pf2-library-drawer__overlay {
+  background: var(--pf2-bg-overlay);
+}

@@ -6,7 +6,7 @@
  * @module ui/debug/components/StateInspector
  */
 
-import React, { memo, useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../../../state';
 
 interface TreeNodeProps {
@@ -154,6 +154,33 @@ TreeNode.displayName = 'TreeNode';
 export const StateInspector: React.FC = () => {
     const state = useAppStore();
     const [filter, setFilter] = useState('');
+    const [autoRefresh, setAutoRefresh] = useState(false);
+    const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
+    const [, forceUpdate] = useState(0);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Auto-refresh on store changes
+    useEffect(() => {
+        if (!autoRefresh) return;
+        
+        const unsubscribe = useAppStore.subscribe(() => {
+            // Debounce updates to avoid thrashing
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+            }
+            debounceRef.current = setTimeout(() => {
+                setLastUpdate(Date.now());
+                forceUpdate(n => n + 1);
+            }, 100);
+        });
+        
+        return () => {
+            unsubscribe();
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+            }
+        };
+    }, [autoRefresh]);
 
     // Get top-level slices (excluding functions)
     const slices = useMemo(() => {
@@ -183,8 +210,29 @@ export const StateInspector: React.FC = () => {
                     value={filter}
                     onChange={e => setFilter(e.target.value)}
                 />
+                <label className="pf-state-auto-refresh">
+                    <input
+                        type="checkbox"
+                        checked={autoRefresh}
+                        onChange={e => setAutoRefresh(e.target.checked)}
+                    />
+                    Auto
+                </label>
+                <button 
+                    className="pf-console-btn"
+                    onClick={() => {
+                        setLastUpdate(Date.now());
+                        forceUpdate(n => n + 1);
+                    }}
+                    title="Refresh state snapshot"
+                >
+                    ↻
+                </button>
                 <span className="pf-state-count">
                     {slices.length} slice{slices.length !== 1 ? 's' : ''}
+                </span>
+                <span className="pf-state-updated" title="Last updated">
+                    {new Date(lastUpdate).toLocaleTimeString()}
                 </span>
             </div>
 

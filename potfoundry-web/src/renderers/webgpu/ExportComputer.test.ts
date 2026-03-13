@@ -27,7 +27,7 @@ describe('calculateBufferSizes', () => {
 
         expect(sizes.vertexCount).toBeGreaterThan(0);
         expect(sizes.triangleCount).toBeGreaterThan(0);
-        expect(sizes.vertexBufferBytes).toBe(sizes.vertexCount * 6 * 4); // 6 floats * 4 bytes
+        expect(sizes.vertexBufferBytes).toBe(sizes.vertexCount * 3 * 4); // 3 floats (position only) * 4 bytes
         expect(sizes.indexBufferBytes).toBe(sizes.triangleCount * 3 * 4); // 3 indices * 4 bytes
     });
 
@@ -135,8 +135,8 @@ describe('ExportComputer', () => {
             // - vertices: Float32Array [x,y,z, x,y,z, ...]
             // - indices: Uint32Array [i0,i1,i2, i3,i4,i5, ...]
 
-            // Verify vertex buffer can hold position + normal per vertex
-            const expectedVertexFloats = sizes.vertexCount * 6;
+            // Verify vertex buffer can hold position per vertex (3 floats)
+            const expectedVertexFloats = sizes.vertexCount * 3;
             expect(sizes.vertexBufferBytes).toBe(expectedVertexFloats * 4);
 
             // Verify index buffer can hold 3 indices per triangle

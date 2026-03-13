@@ -19,6 +19,16 @@ export const MOBILE_BREAKPOINT = 768;
 /** Tablet breakpoint for intermediate layouts */
 export const TABLET_BREAKPOINT = 768;
 
+/** Named breakpoints for consistent responsive queries */
+export const BREAKPOINTS = {
+  /** Phones: 0–480px */
+  phone: 480,
+  /** Tablets: 0–768px */
+  tablet: 768,
+  /** Desktop starts above 1024px */
+  desktop: 1024,
+} as const;
+
 // ============================================================================
 // Types
 // ============================================================================

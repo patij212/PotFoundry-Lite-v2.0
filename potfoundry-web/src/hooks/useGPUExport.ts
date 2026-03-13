@@ -131,7 +131,7 @@ export function useGPUExport(): UseGPUExportResult {
                 // Import map dynamically or assume it's available? 
                 // We need to import STYLE_FUNCTION_MAP.
                 // Assuming it's imported at top (I will add import in next step if missed, but assume I add it)
-                const functionName = (STYLE_FUNCTION_MAP as any)[styleIndex] || 'sf_radius';
+                const functionName = STYLE_FUNCTION_MAP[styleIndex] ?? 'sf_radius';
 
                 // 3. Strip unused styles to reduce bloat/conflicts and generate dispatch
                 const strippedStyles = stripShaderCode(stylesWgsl, functionName);
@@ -149,7 +149,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 const fullShaderSource = [commonWgsl, strippedStyles, dispatchCode, potExportWgsl].join('\n');
                 const scanShaderSource = [commonWgsl, strippedStyles, dispatchCode, scanProfileWgsl].join('\n');
 
-                console.log(`[useGPUExport] Compiling shader for style ${styleIndex} (${functionName})...`);
+                if (import.meta.env.DEV) console.log(`[useGPUExport] Compiling shader for style ${styleIndex} (${functionName})...`);
 
                 // Force cleanup of previous shader pipelines to allow re-init with new source
                 if (computerRef.current.isReady()) {
@@ -160,7 +160,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
 
                 if (isMounted) {
                     setIsGPUAvailable(true);
-                    console.log('[useGPUExport] GPU pipeline ready');
+                    if (import.meta.env.DEV) console.log('[useGPUExport] GPU pipeline ready');
                 }
             } catch (error) {
                 console.error('[useGPUExport] GPU initialization failed:', error);
@@ -277,7 +277,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             const needsTiling = computerRef.current.needsTiling(nTheta, nZ);
             if (needsTiling) {
                 const tileCount = computerRef.current.getTileCount(nTheta, nZ);
-                console.log(`[useGPUExport] High resolution (${nTheta}x${nZ}) - using ${tileCount}-tile export`);
+                if (import.meta.env.DEV) console.log(`[useGPUExport] High resolution (${nTheta}x${nZ}) - using ${tileCount}-tile export`);
             }
 
             const quality = { nTheta, nZ };
@@ -293,7 +293,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 if (foundEntry) {
                     styleId = foundEntry[0] as StyleId;
                     styleIndex = foundEntry[1].id;
-                    console.log(`[useGPUExport] Mapped display name "${style.name}" to key "${styleId}" (ID: ${styleIndex})`);
+                    if (import.meta.env.DEV) console.log(`[useGPUExport] Mapped display name "${style.name}" to key "${styleId}" (ID: ${styleIndex})`);
                 } else {
                     console.warn(`[useGPUExport] Style ID not found for "${style.name}". Defaulting to 0 (Superformula).`);
                     styleIndex = 0;

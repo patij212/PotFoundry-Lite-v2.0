@@ -30,3 +30,31 @@ Thumbs.db
 # Temporary files
 *.tmp
 build_error*.txt
+
+# Debug & test output (agent session artifacts)
+debug_seam*.log
+stress_test*.txt
+test_results*.txt
+test_results*.json
+test_results*.log
+test_output*.txt
+test_output*.json
+test_output*.log
+test-results.json
+topology_audit*.log
+tsc_err*.txt
+tsc_errors*.txt
+tsc_output*.txt
+typecheck_errors*.log
+build_out.txt
+build_result.txt
+failed_tests.txt
+search_results.csv
+*.log.bak
+
+# One-off debug scripts (never commit)
+reproduce_*.cjs
+reproduce_*.js
+reproduce_*.ts
+temp_*.ts
+verify_fix.ts

@@ -248,6 +248,15 @@ export const DEFAULT_APPEARANCE: AppearanceState = {
 // UI State
 // ============================================================================
 
+/** UI theme variant */
+export type UITheme = 'classic' | 'v2';
+
+/** v2 sidebar tab */
+export type V2Tab = 'shape' | 'style' | 'export';
+
+/** Display density */
+export type UIDensity = 'compact' | 'comfortable' | 'spacious';
+
 /**
  * UI panel and modal state.
  */
@@ -260,6 +269,21 @@ export interface UIState {
   modalOpen: 'export' | 'presets' | 'settings' | 'about' | null;
   /** Whether the app is in fullscreen mode */
   fullscreen: boolean;
+  /** Selected export format */
+  exportFormat: 'stl' | '3mf' | 'obj';
+
+  // --- v2 additions ---
+
+  /** Active UI theme ('classic' = v1, 'v2' = new luxury UI) */
+  uiTheme: UITheme;
+  /** Active tab in v2 sidebar */
+  v2ActiveTab: V2Tab;
+  /** Zen mode — full-screen viewport, sidebar hidden */
+  zenMode: boolean;
+  /** Display density for v2 controls */
+  density: UIDensity;
+  /** Whether haptic feedback is enabled in v2 */
+  hapticsEnabled: boolean;
 }
 
 /** Default UI state */
@@ -268,6 +292,12 @@ export const DEFAULT_UI_STATE: UIState = {
   activeTab: 'controls',
   modalOpen: null,
   fullscreen: false,
+  exportFormat: 'stl',
+  uiTheme: 'classic',
+  v2ActiveTab: 'shape',
+  zenMode: false,
+  density: 'comfortable',
+  hapticsEnabled: true,
 };
 
 // ============================================================================

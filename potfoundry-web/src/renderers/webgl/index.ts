@@ -505,6 +505,45 @@ export async function mountWebGL(
                 controls.update();
             },
 
+            // === Camera control methods (stub implementations for compatibility) ===
+            handleCameraCommand(_payload: Record<string, unknown>) {
+                // WebGL uses OrbitControls, camera commands are handled differently
+                // Most presets/modes not implemented in fallback renderer
+            },
+
+            setAutoRotate(value: boolean) {
+                controls.autoRotate = value;
+            },
+
+            toggleAutoRotate() {
+                controls.autoRotate = !controls.autoRotate;
+            },
+
+            getAutoRotate() {
+                return controls.autoRotate;
+            },
+
+            setAutoPivot(_value: boolean) {
+                // Auto-pivot not implemented in WebGL fallback
+            },
+
+            toggleAutoPivot() {
+                // Auto-pivot not implemented in WebGL fallback
+            },
+
+            getAutoPivot() {
+                return false; // Not implemented
+            },
+
+            // === Debug visualization methods (no-op stubs) ===
+            setDebugSegments(_segments: Float32Array) {
+                // Debug visualization not implemented in WebGL fallback
+            },
+
+            setDebugPoints(_points: Float32Array) {
+                // Debug visualization not implemented in WebGL fallback
+            },
+
             get rendererType() { return 'webgl' as const; },
             get isCompatibilityMode() { return true; },
         };

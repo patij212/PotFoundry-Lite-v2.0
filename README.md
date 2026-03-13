@@ -74,29 +74,24 @@ Opens at **http://localhost:5173/**
 PotFoundry/
 ├── potfoundry-web/              # 🌐 Main Web Application
 │   ├── src/
-│   │   ├── webgpu_core.ts       # WebGPU rendering (5,200+ LOC)
-│   │   ├── camera_controller.ts # 3D camera system (1,240 LOC)
+│   │   ├── renderers/webgpu/    # WebGPU renderer + WGSL shaders
+│   │   │   └── parametric/      # Parametric export pipeline
 │   │   ├── state/               # Zustand state management
 │   │   ├── hooks/               # React hooks
 │   │   ├── ui/                  # UI components
-│   │   └── context/             # React contexts (Auth, Library)
+│   │   ├── services/            # Supabase, Stripe integrations
+│   │   └── styles/              # Style registry (permanent IDs)
 │   ├── README.md                # Web app documentation
 │   └── ARCHITECTURE.md          # Technical architecture
 │
-├── potfoundry/                  # 🐍 Python Core Library
-│   ├── geometry.py              # Mesh generation engine
-│   ├── core/io/stl.py           # Binary STL writer
-│   └── schema.py                # Pydantic validation
+├── docs/                        # 📚 Documentation
+│   ├── AGENT_CONTEXT_DISTILLED.md  # Deep engineering knowledge
+│   └── guides/                  # Development guides
 │
-├── pfui/                        # 🎛️ Legacy Streamlit UI
-│   └── (deprecated - see potfoundry-web)
-│
-├── tests/                       # 🧪 Test Suite (99 tests)
-│   ├── test_*.py                # Unit & integration tests
-│   └── pfui/                    # UI component tests
-│
-└── docs/                        # 📚 Additional Documentation
-    └── guides/                  # Development guides
+└── archive/                     # 📦 Historical reference
+    ├── plans/                   # 296 archived plan docs (INDEX.md)
+    ├── legacy_python/           # Original Python core + Streamlit UI
+    └── docs/                    # Archived documentation
 ```
 
 ---
@@ -112,7 +107,7 @@ PotFoundry/
 | **Auth** | Supabase |
 | **Payments** | Stripe |
 | **Deployment** | Cloudflare Pages |
-| **Core Engine** | Python (NumPy, Pydantic) |
+| **Export** | Binary STL (watertight, feature-aware) |
 
 ---
 
@@ -148,9 +143,9 @@ Each style has customizable parameters for unique designs.
 - **[potfoundry-web/ARCHITECTURE.md](potfoundry-web/ARCHITECTURE.md)** — System design, modules, data flow
 
 ### Development
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** — Development setup and workflows
+- **[docs/guides/DEVELOPMENT.md](docs/guides/DEVELOPMENT.md)** — Development setup and workflows
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — Contribution guidelines
-- **[CODE_QUALITY_GUIDE.md](CODE_QUALITY_GUIDE.md)** — Coding standards
+- **[.github/copilot-instructions.md](.github/copilot-instructions.md)** — Coding standards
 
 ### Reference
 - **[CHANGELOG.md](CHANGELOG.md)** — Version history
@@ -158,45 +153,16 @@ Each style has customizable parameters for unique designs.
 
 ---
 
-## 🧪 Testing
-
-```bash
-# Python tests (core geometry)
-pip install pytest pytest-cov
-PYTHONPATH=. pytest -v
-
-# TypeScript tests (web app)
-cd potfoundry-web
-npm run test
-```
-
-**Test Coverage**: 99 tests, 100% pass rate
-
----
-
-## 🛠️ Development
-
-### Web App Development
+## 🧪 Testing & Development
 
 ```bash
 cd potfoundry-web
 npm run dev         # Start dev server
 npm run build       # Production build
-npm run lint        # Run ESLint
-npm run typecheck   # TypeScript check
-```
-
-### Python Core Development
-
-```bash
-# Linting
-pip install ruff
-ruff check .
-ruff check . --fix
-
-# Type checking
-pip install mypy
-mypy potfoundry/
+npm run lint        # ESLint (0 max-warnings)
+npm run typecheck   # tsc --noEmit
+npm test            # Vitest unit tests
+npm run test:e2e    # Playwright E2E
 ```
 
 ---
@@ -243,4 +209,4 @@ Built with:
 
 ---
 
-*Last Updated: December 2025*
+*Last Updated: March 2026*

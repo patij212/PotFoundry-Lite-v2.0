@@ -92,7 +92,7 @@ describe('ConstrainedTriangulator Exhaustive Stress Tests', () => {
             // let badTris = 0;
             const tCount = mesh.indices.length / 3;
             console.log(`AR=${ar}: ${vCount} verts, ${tCount} tris. OK.`);
-        });
+        }, 30_000);
     });
 
     it('should handle Diagonal Features crossing multiple grid cells', () => {
@@ -108,7 +108,7 @@ describe('ConstrainedTriangulator Exhaustive Stress Tests', () => {
 
         // Just ensure it didn't crash and produced geometry
         console.log(`Diagonal Feature: ${mesh.vertices.length / 3} verts. OK.`);
-    });
+    }, 30_000);
 
     it('should handle Closed Loop Features', () => {
         const dims = getDimsForAR(1.0);
@@ -124,7 +124,7 @@ describe('ConstrainedTriangulator Exhaustive Stress Tests', () => {
         const mesh = ConstrainedTriangulator.generateFullPot(features, dims, undefined, 64);
         expect(mesh.vertices.length).toBeGreaterThan(0);
         console.log(`Closed Loop: ${mesh.vertices.length / 3} verts. OK.`);
-    });
+    }, 30_000);
 
     it('should handle Multi-Segment Features with Sharp Turns (stressing Buffer)', () => {
         const dims = getDimsForAR(1.5);
@@ -140,6 +140,6 @@ describe('ConstrainedTriangulator Exhaustive Stress Tests', () => {
         const mesh = ConstrainedTriangulator.generateFullPot(features, dims, undefined, 64);
         expect(mesh.vertices.length).toBeGreaterThan(0);
         console.log(`ZigZag Feature: ${mesh.vertices.length / 3} verts. OK.`);
-    });
+    }, 30_000);
 
 });

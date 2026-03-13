@@ -1,0 +1,208 @@
+/* ============================================================================
+   StatusFooter — Persistent sidebar footer with stats + download
+   ============================================================================ */
+
+.pf2-status-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-md);
+  padding: var(--pf2-space-lg) var(--pf2-space-xl);
+  border-top: 1px solid var(--pf2-border);
+  background: var(--pf2-bg-surface);
+}
+
+/* ============================================================================
+   Stats Line
+   ============================================================================ */
+
+.pf2-status-footer__stats {
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-sm);
+  font-size: 11px;
+  color: var(--pf2-text-secondary);
+  flex-wrap: wrap;
+}
+
+.pf2-status-footer__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pf2-status-footer__stat svg {
+  opacity: 0.6;
+}
+
+.pf2-status-footer__divider {
+  color: var(--pf2-text-muted);
+  font-size: 10px;
+}
+
+.pf2-status-footer__generating {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--pf2-space-xs);
+}
+
+.pf2-status-footer__spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--pf2-text-muted);
+  border-top-color: var(--pf2-accent);
+  border-radius: 50%;
+  animation: pf2-spin 0.8s linear infinite;
+}
+
+/* ============================================================================
+   Progress Bar (placeholder — hidden in Phase 2)
+   ============================================================================ */
+
+.pf2-status-footer__progress {
+  height: 3px;
+  background: var(--pf2-bg-elevated);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pf2-status-footer__progress-bar {
+  height: 100%;
+  background: var(--pf2-accent);
+  border-radius: 2px;
+  width: 0%;
+  transition: width var(--pf2-duration-normal) var(--pf2-ease-move);
+}
+
+/* Shimmer effect for indeterminate state */
+.pf2-status-footer__progress--indeterminate .pf2-status-footer__progress-bar {
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--pf2-accent-subtle) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: pf2-shimmer 1.5s linear infinite;
+}
+
+/* Complete state — solid accent fill */
+.pf2-status-footer__progress--complete .pf2-status-footer__progress-bar {
+  width: 100%;
+  background: var(--pf2-accent);
+  transition: width var(--pf2-duration-fast) var(--pf2-ease-move);
+}
+
+/* Error state — red bar */
+.pf2-status-footer__progress--error .pf2-status-footer__progress-bar {
+  width: 100%;
+  background: var(--pf2-error);
+}
+
+/* ============================================================================
+   Completion Card
+   ============================================================================ */
+
+.pf2-status-footer__completion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-xs);
+  padding: var(--pf2-space-md);
+  background: var(--pf2-bg-elevated);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  animation: pf2-tab-enter var(--pf2-duration-fast) var(--pf2-ease-spring) both;
+}
+
+.pf2-status-footer__completion-header {
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-sm);
+}
+
+.pf2-status-footer__completion-title {
+  font-family: var(--pf2-font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pf2-success);
+}
+
+.pf2-status-footer__completion-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-sm);
+  font-size: 11px;
+  color: var(--pf2-text-secondary);
+}
+
+.pf2-status-footer__completion-volume {
+  font-size: 10px;
+  color: var(--pf2-text-muted);
+}
+
+/* Check icon SVG draw-on animation */
+.pf2-status-footer__check-circle {
+  stroke-dasharray: 54;
+  stroke-dashoffset: 54;
+  animation: pf2-draw-circle 0.4s var(--pf2-ease-enter) 0.1s forwards;
+}
+
+.pf2-status-footer__check-mark {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  animation: pf2-draw-check 0.3s var(--pf2-ease-enter) 0.4s forwards;
+}
+
+@keyframes pf2-draw-circle {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes pf2-draw-check {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ============================================================================
+   Error Message
+   ============================================================================ */
+
+.pf2-status-footer__error {
+  padding: var(--pf2-space-sm) var(--pf2-space-md);
+  font-family: var(--pf2-font-body);
+  font-size: 11px;
+  color: var(--pf2-error);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--pf2-radius-sm);
+  animation: pf2-tab-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-status-footer {
+    border-top: 1px solid ButtonText;
+  }
+
+  .pf2-status-footer__spinner {
+    border-color: ButtonText;
+    border-top-color: Highlight;
+  }
+}
+
+/* ============================================================================
+   Mobile — Compact Footer
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-status-footer {
+    padding: var(--pf2-space-xs) var(--pf2-space-sm);
+    font-size: 11px;
+  }
+
+  .pf2-status-footer__divider {
+    display: none;
+  }
+}

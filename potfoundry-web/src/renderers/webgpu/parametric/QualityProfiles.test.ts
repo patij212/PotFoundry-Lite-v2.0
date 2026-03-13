@@ -9,6 +9,8 @@ import {
     resolveTolerances,
     resolveTriangleBudget,
     downgradeProfile,
+    buildDowngradeLadder,
+    profileForAttempt,
     checkTolerances,
 } from './QualityProfiles';
 import type { QualityProfileName, ExportTolerances } from './types';
@@ -181,6 +183,37 @@ describe('QualityProfiles', () => {
         });
     });
 
+    describe('buildDowngradeLadder', () => {
+        it('builds full ladder for ultra', () => {
+            expect(buildDowngradeLadder('ultra')).toEqual(['ultra', 'high', 'standard', 'draft']);
+        });
+
+        it('builds partial ladder for high', () => {
+            expect(buildDowngradeLadder('high')).toEqual(['high', 'standard', 'draft']);
+        });
+
+        it('returns only draft for draft', () => {
+            expect(buildDowngradeLadder('draft')).toEqual(['draft']);
+        });
+    });
+
+    describe('profileForAttempt', () => {
+        it('is deterministic for ultra ladder attempts', () => {
+            expect(profileForAttempt('ultra', 0)).toBe('ultra');
+            expect(profileForAttempt('ultra', 1)).toBe('high');
+            expect(profileForAttempt('ultra', 2)).toBe('standard');
+            expect(profileForAttempt('ultra', 3)).toBe('draft');
+        });
+
+        it('clamps attempts past ladder end to draft', () => {
+            expect(profileForAttempt('standard', 99)).toBe('draft');
+        });
+
+        it('clamps negative attempts to first attempt', () => {
+            expect(profileForAttempt('high', -5)).toBe('high');
+        });
+    });
+
     // ========================================================================
     // checkTolerances
     // ========================================================================
@@ -220,7 +253,7 @@ describe('QualityProfiles', () => {
 
         it('fails when aspect ratio exceeds threshold', () => {
             const result = checkTolerances(standardTol, {
-                maxAspectRatio: 15, // exceeds 10.0
+                maxAspectRatio: 25, // exceeds 20.0 (R/r metric)
             });
             expect(result.passed).toBe(false);
             expect(result.details.aspectRatio.passed).toBe(false);
@@ -259,7 +292,7 @@ describe('QualityProfiles', () => {
                 epsFeatureMm: 0.01,       // not a valid key, should be ignored
                 maxFeatureDriftMm: 0.015,  // passes 0.02
                 minAngleDeg: 25,           // passes 22
-                maxAspectRatio: 5.0,       // passes 6.0
+                maxAspectRatio: 5.0,       // passes 12.0 (R/r metric)
             });
             expect(result.passed).toBe(true);
         });

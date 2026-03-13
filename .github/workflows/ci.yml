@@ -2,137 +2,79 @@ name: CI
 
 on:
   push:
-    branches: [ apply/streamlit-fix, main ]
-  schedule:
-    - cron: '0 6 * * *'  # daily at 06:00 UTC
+    branches: [apply/streamlit-fix, main]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: potfoundry-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: potfoundry-web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: potfoundry-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: potfoundry-web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+
   test:
+    name: Unit Tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.11', '3.12', '3.13']
+    defaults:
+      run:
+        working-directory: potfoundry-web
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+      - uses: actions/setup-node@v4
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-      - name: Cache pre-commit
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            pre-commit-${{ runner.os }}-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov
-      # Lint/typecheck are enforced in PR Validation (full). This CI job focuses on multi-version tests.
-      # Preview tests are executed as part of the canonical pytest invocation below
-      - name: Run tests
-        run: |
-          pytest -v --cov=potfoundry --cov=pfui --cov-report=xml --cov-report=term --junitxml=pytest-report.xml
-      - name: Upload test report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: pytest-report-${{ matrix.python-version }}
-          path: pytest-report.xml
-      - name: Publish Unit Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()
-        with:
-          files: pytest-report.xml
-      - name: Check coverage
-        run: |
-          coverage report --fail-under=50
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        if: matrix.python-version == '3.11'
-        with:
-          file: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-  pre-commit:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: potfoundry-web/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  build:
+    name: Build
+    needs: [typecheck, lint, test]
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: potfoundry-web
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-      - name: Cache pre-commit
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            pre-commit-${{ runner.os }}-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt || true
-          pip install pre-commit pytest ruff
-      - name: Run pre-commit
-        run: |
-          pre-commit run --all-files
-  test-windows:
-    runs-on: windows-latest
-    if: github.event_name == 'push' || github.event_name == 'schedule'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-      - name: Cache pre-commit
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            pre-commit-${{ runner.os }}-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
-      - name: Run a minimal smoke suite on Windows
-        run: |
-          pytest -q tests/test_windows_export_path.py tests/test_integration_binary_stl.py -q
-          python -c "from potfoundry import build_pot_mesh, STYLES; fn,_=STYLES['HarmonicRipple']; import numpy as np; v,f,_=build_pot_mesh(H=80,Rt=50,Rb=40,t_wall=2.5,t_bottom=2.5,r_drain=6,expn=1.0,n_theta=48,n_z=24,r_outer_fn=fn,style_opts={}); assert v.size>0 and f.size>0; print('HarmonicRipple smoke OK:', v.shape, f.shape)"
-      - name: Install pytest-cov on Windows
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest-cov
-      - name: Run preview/adversarial tests with coverage on Windows
-        run: |
-          pytest -v --cov=potfoundry --cov=pfui --cov-report=xml --junitxml=pytest-windows-preview-report.xml tests/test_app_full_preview_branch.py tests/test_preview_adversarial.py tests/test_preview_adversarial_more.py tests/test_preview_full_resolution_strict.py tests/test_preview_inner_wall_behavior.py tests/test_preview_fuzz.py
-      - name: Upload Windows preview pytest report and coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-preview-pytest-report
-          path: |
-            pytest-windows-preview-report.xml
-            coverage.xml
+          node-version: 22
+          cache: npm
+          cache-dependency-path: potfoundry-web/package-lock.json
+      - run: npm ci
+      - run: npm run build

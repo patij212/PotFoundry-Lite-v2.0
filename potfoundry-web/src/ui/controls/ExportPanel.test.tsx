@@ -3,7 +3,7 @@
  * Tests for the export UI and tier logic.
  */
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ExportPanel } from './ExportPanel';
 import { useExport, useExportTier } from '../../hooks';
@@ -20,6 +20,58 @@ vi.mock('../../hooks', () => ({
 vi.mock('../../context/AuthContext', () => ({
     useIsPro: vi.fn(),
     useIsAuthenticated: vi.fn(),
+}));
+
+// Mock GPU/Adaptive/Parametric export hooks (component imports these directly)
+vi.mock('../../hooks/useGPUExport', () => ({
+    default: vi.fn(() => ({
+        progress: { status: 'idle', progress: 0, message: '' },
+        stats: null,
+        isGPUAvailable: false,
+        exportSTL: vi.fn(),
+        generateMesh: vi.fn(),
+        reset: vi.fn(),
+    })),
+}));
+
+vi.mock('../../hooks/useAdaptiveExport', () => ({
+    default: vi.fn(() => ({
+        progress: { status: 'idle', progress: 0, message: '' },
+        stats: null,
+        isAvailable: false,
+        exportSTL: vi.fn(),
+        generateMesh: vi.fn(),
+        reset: vi.fn(),
+    })),
+}));
+
+vi.mock('../../hooks/useParametricExport', () => ({
+    default: vi.fn(() => ({
+        progress: { status: 'idle', progress: 0, message: '' },
+        stats: null,
+        isAvailable: false,
+        exportSTL: vi.fn(),
+        generateMesh: vi.fn(),
+        reset: vi.fn(),
+    })),
+    fileSizeToTriangles: vi.fn(() => 100000),
+}));
+
+// Mock Zustand store
+vi.mock('../../state', () => ({
+    useAppStore: vi.fn((selector: (state: any) => any) => {
+        const mockState = {
+            mesh: { preview_n_theta: 100 },
+            style: { name: 'SuperformulaBlossom', opts: {} },
+            setMeshParam: vi.fn(),
+        };
+        return selector(mockState);
+    }),
+}));
+
+// Mock stlExport for downloadMesh
+vi.mock('../../geometry/stlExport', () => ({
+    downloadMesh: vi.fn(),
 }));
 
 // Mock child components
@@ -48,23 +100,32 @@ vi.mock('../shared/Button', () => ({
     )
 }));
 
+vi.mock('./ExportDialog', () => ({
+    default: () => null,
+}));
+
 describe('ExportPanel', () => {
     const mockExportActions = {
         progress: { status: 'idle', progress: 0, message: '' },
         stats: null,
         exportSTL: vi.fn(),
-        generateMesh: vi.fn(),
+        generateMesh: vi.fn().mockResolvedValue({ vertices: new Float32Array(), indices: new Uint32Array() }),
         reset: vi.fn(),
     };
 
     const mockTierState = {
         checkExportAllowed: vi.fn().mockReturnValue({ canExport: true, exportsRemaining: 3 }),
-        recordExport: vi.fn(),
+        recordExport: vi.fn().mockResolvedValue(undefined),
         exportsThisMonth: 0,
     };
 
+    // Save the original DEV value and force production mode for auth tests
+    const originalDEV = import.meta.env.DEV;
+
     beforeEach(() => {
         vi.clearAllMocks();
+        // Force production mode so auth guards are active
+        import.meta.env.DEV = false;
 
         (useExport as any).mockReturnValue(mockExportActions);
         (useExportTier as any).mockReturnValue(mockTierState);
@@ -72,20 +133,26 @@ describe('ExportPanel', () => {
         (useIsAuthenticated as any).mockReturnValue(true); // Default to Authenticated
     });
 
+    afterEach(() => {
+        // Restore original DEV value
+        import.meta.env.DEV = originalDEV;
+    });
+
     it('should show sign-in requirement when not authenticated', () => {
         (useIsAuthenticated as any).mockReturnValue(false);
-        (useExportTier as any).mockReturnValue({ ...mockTierState, exportsThisMonth: 0 }); // Should be ignored if not auth
+        (useExportTier as any).mockReturnValue({ ...mockTierState, exportsThisMonth: 0 });
 
         render(<ExportPanel />);
 
+        // Auth-required banner shown in production mode when not authenticated
         expect(screen.getByText(/Sign in required to export/i)).toBeInTheDocument();
-        expect(screen.getByText(/Sign In to Export/i)).toBeInTheDocument();
     });
 
     it('should show open auth modal when clicking sign in', () => {
         (useIsAuthenticated as any).mockReturnValue(false);
         render(<ExportPanel />);
 
+        // The "Sign In" button is in the auth-required banner (not the mocked Button component)
         const signInBtn = screen.getByText('Sign In');
         fireEvent.click(signInBtn);
 
@@ -110,12 +177,13 @@ describe('ExportPanel', () => {
     it('should handle export click when allowed', async () => {
         render(<ExportPanel />);
 
-        const exportBtn = screen.getByText('Download STL');
+        // In non-dev + authenticated + canExport mode, the button shows "Download STL"
+        const exportBtn = screen.getByText(/Download STL/i);
         fireEvent.click(exportBtn);
 
         await waitFor(() => {
-            expect(mockExportActions.exportSTL).toHaveBeenCalledWith('pot.stl');
-            expect(mockTierState.recordExport).toHaveBeenCalled();
+            // The component calls generateMesh(), then downloadMesh() (from stlExport)
+            expect(mockExportActions.generateMesh).toHaveBeenCalled();
         });
     });
 

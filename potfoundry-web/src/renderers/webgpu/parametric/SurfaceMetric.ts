@@ -22,6 +22,80 @@
  */
 
 // ============================================================================
+// RunningStats — O(1) streaming statistics (Phase 11.3 — I6, P1)
+// ============================================================================
+
+/**
+ * Welford's online algorithm for streaming mean, variance, min, max.
+ *
+ * Accumulates statistics in O(1) space per `push()` call, avoiding the
+ * need to store all values in a temporary array. This is critical for
+ * large meshes where edge-length arrays would consume >10MB.
+ *
+ * @example
+ * ```ts
+ * const stats = new RunningStats();
+ * for (const length of edgeLengths) stats.push(length);
+ * console.log(stats.mean, stats.stddev, stats.min, stats.max);
+ * ```
+ */
+export class RunningStats {
+    private _count = 0;
+    private _mean = 0;
+    private _m2 = 0;     // Sum of squared differences from current mean
+    private _min = Infinity;
+    private _max = -Infinity;
+
+    /**
+     * Push a new observation.
+     *
+     * @param value - The value to accumulate.
+     */
+    push(value: number): void {
+        this._count++;
+        const delta = value - this._mean;
+        this._mean += delta / this._count;
+        const delta2 = value - this._mean;
+        this._m2 += delta * delta2;
+        if (value < this._min) this._min = value;
+        if (value > this._max) this._max = value;
+    }
+
+    /** Number of values accumulated. */
+    get count(): number { return this._count; }
+
+    /** Running mean. Returns 0 for empty series. */
+    get mean(): number { return this._count > 0 ? this._mean : 0; }
+
+    /** Population variance (N denominator). */
+    get variance(): number { return this._count > 1 ? this._m2 / this._count : 0; }
+
+    /** Sample variance (N-1 denominator). */
+    get sampleVariance(): number { return this._count > 1 ? this._m2 / (this._count - 1) : 0; }
+
+    /** Population standard deviation. */
+    get stddev(): number { return Math.sqrt(this.variance); }
+
+    /** Coefficient of variation (stddev / mean). Returns 0 when mean ≈ 0. */
+    get cv(): number { return Math.abs(this._mean) > 1e-12 ? this.stddev / Math.abs(this._mean) : 0; }
+
+    /** Minimum value seen (Infinity if no values pushed). */
+    get min(): number { return this._min; }
+
+    /** Maximum value seen (-Infinity if no values pushed). */
+    get max(): number { return this._max; }
+
+    /** Reset all accumulators to initial state. */
+    reset(): void {
+        this._count = 0;
+        this._mean = 0;
+        this._m2 = 0;
+        this._min = Infinity;
+        this._max = -Infinity;
+    }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -369,22 +443,59 @@ export function buildMetricField(
     const fF = new Float32Array(n);
     const fG = new Float32Array(n);
 
-    // Build spatial bins for nearest-vertex lookup
     const vc = vertexMetrics.vertexCount;
+
+    // Spatial binning for O(1) average nearest-vertex lookup instead of O(vc)
+    const binResU = Math.max(1, Math.min(resU, 64));
+    const binResT = Math.max(1, Math.min(resT, 64));
+    const bins: number[][] = new Array(binResU * binResT);
+    for (let i = 0; i < bins.length; i++) bins[i] = [];
+
+    for (let vi = 0; vi < vc; vi++) {
+        const u = Math.max(0, Math.min(1, uvs[vi * 3]));
+        const t = Math.max(0, Math.min(1, uvs[vi * 3 + 1]));
+        const bu = Math.min(Math.floor(u * binResU), binResU - 1);
+        const bt = Math.min(Math.floor(t * binResT), binResT - 1);
+        bins[bt * binResU + bu].push(vi);
+    }
+
     for (let tIdx = 0; tIdx < resT; tIdx++) {
         const tParam = resT > 1 ? tIdx / (resT - 1) : 0.5;
         for (let uIdx = 0; uIdx < resU; uIdx++) {
             const uParam = resU > 1 ? uIdx / (resU - 1) : 0.5;
             const gi = tIdx * resU + uIdx;
 
-            // Find nearest vertex (simple O(n) scan; fine for moderate vc)
+            // Search this bin and its immediate neighbors
+            const bu = Math.min(Math.floor(uParam * binResU), binResU - 1);
+            const bt = Math.min(Math.floor(tParam * binResT), binResT - 1);
+
             let bestDist = Infinity;
             let bestVi = 0;
-            for (let vi = 0; vi < vc; vi++) {
-                const du = uvs[vi * 3] - uParam;
-                const dv = uvs[vi * 3 + 1] - tParam;
-                const d = du * du + dv * dv;
-                if (d < bestDist) { bestDist = d; bestVi = vi; }
+
+            for (let dbt = -1; dbt <= 1; dbt++) {
+                const nbt = bt + dbt;
+                if (nbt < 0 || nbt >= binResT) continue;
+                for (let dbu = -1; dbu <= 1; dbu++) {
+                    const nbu = bu + dbu;
+                    if (nbu < 0 || nbu >= binResU) continue;
+                    const bin = bins[nbt * binResU + nbu];
+                    for (const vi of bin) {
+                        const du = uvs[vi * 3] - uParam;
+                        const dv = uvs[vi * 3 + 1] - tParam;
+                        const d = du * du + dv * dv;
+                        if (d < bestDist) { bestDist = d; bestVi = vi; }
+                    }
+                }
+            }
+
+            // If no vertex found in neighbors (sparse mesh), fall back to scan
+            if (bestDist === Infinity) {
+                for (let vi = 0; vi < vc; vi++) {
+                    const du = uvs[vi * 3] - uParam;
+                    const dv = uvs[vi * 3 + 1] - tParam;
+                    const d = du * du + dv * dv;
+                    if (d < bestDist) { bestDist = d; bestVi = vi; }
+                }
             }
 
             fE[gi] = vertexMetrics.E[bestVi];
@@ -467,6 +578,37 @@ export function metricEdgeLength(
 
     const qf = ME * du * du + 2 * MF * du * dv + MG * dv * dv;
     return Math.sqrt(Math.max(0, qf));
+}
+
+/**
+ * Compute the squared metric-weighted length of a mesh edge using vertex UVs.
+ *
+ * Avoids the sqrt for comparison-only use cases (e.g., selecting the longest
+ * metric edge within a triangle). Uses the averaged metric tensor at the
+ * edge midpoint.
+ *
+ * @param vertexMetrics - Per-vertex E, F, G arrays.
+ * @param uvs - Packed [u,v,surfaceId,...] UV coordinates.
+ * @param v0 - First vertex index.
+ * @param v1 - Second vertex index.
+ * @returns Squared metric-weighted edge length.
+ */
+export function metricEdgeLengthSq(
+    vertexMetrics: { E: Float32Array; F: Float32Array; G: Float32Array },
+    uvs: Float32Array,
+    v0: number,
+    v1: number,
+): number {
+    // UV displacement
+    const du = uvs[v1 * 3] - uvs[v0 * 3];
+    const dv = uvs[v1 * 3 + 1] - uvs[v0 * 3 + 1];
+
+    // Average metric at edge midpoint
+    const ME = (vertexMetrics.E[v0] + vertexMetrics.E[v1]) * 0.5;
+    const MF = (vertexMetrics.F[v0] + vertexMetrics.F[v1]) * 0.5;
+    const MG = (vertexMetrics.G[v0] + vertexMetrics.G[v1]) * 0.5;
+
+    return Math.max(0, ME * du * du + 2 * MF * du * dv + MG * dv * dv);
 }
 
 // ============================================================================
@@ -590,7 +732,8 @@ export function edgeLengthStats(
     count: number;
 } {
     const seen = new Set<string>();
-    const lengths: number[] = [];
+    const stats = new RunningStats();
+    const lengths: number[] = []; // still needed for percentiles
 
     for (let t = 0; t < indexCount; t += 3) {
         const a = indices[t], b = indices[t + 1], c = indices[t + 2];
@@ -604,29 +747,28 @@ export function edgeLengthStats(
             const dx = positions[v0 * 3] - positions[v1 * 3];
             const dy = positions[v0 * 3 + 1] - positions[v1 * 3 + 1];
             const dz = positions[v0 * 3 + 2] - positions[v1 * 3 + 2];
-            lengths.push(Math.sqrt(dx * dx + dy * dy + dz * dz));
+            const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            stats.push(len);
+            lengths.push(len);
         }
     }
 
-    if (lengths.length === 0) {
+    if (stats.count === 0) {
         return { mean: 0, variance: 0, stddev: 0, min: 0, max: 0, p5: 0, p95: 0, count: 0 };
     }
 
+    // Percentiles still need a sorted array
     lengths.sort((a, b) => a - b);
-    const n = lengths.length;
-    const sum = lengths.reduce((s, v) => s + v, 0);
-    const mean = sum / n;
-    const vari = lengths.reduce((s, v) => s + (v - mean) * (v - mean), 0) / n;
-
+    const n = stats.count;
     const p5idx = Math.max(0, Math.ceil(0.05 * n) - 1);
     const p95idx = Math.max(0, Math.ceil(0.95 * n) - 1);
 
     return {
-        mean,
-        variance: vari,
-        stddev: Math.sqrt(vari),
-        min: lengths[0],
-        max: lengths[n - 1],
+        mean: stats.mean,
+        variance: stats.variance,
+        stddev: stats.stddev,
+        min: stats.min,
+        max: stats.max,
         p5: lengths[p5idx],
         p95: lengths[p95idx],
         count: n,

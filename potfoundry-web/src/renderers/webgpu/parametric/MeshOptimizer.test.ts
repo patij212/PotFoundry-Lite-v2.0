@@ -60,8 +60,12 @@ function makeUniformU(cols: number): Float32Array {
 }
 
 /** Identity row mapping */
-function makeIdentityRowMapping(numT: number): number[] {
-    return Array.from({ length: numT }, (_, i) => i);
+function makeIdentityRowMapping(numT: number): Map<number, number> {
+    const map = new Map<number, number>();
+    for (let i = 0; i < numT; i++) {
+        map.set(i, i);
+    }
+    return map;
 }
 
 /**
@@ -159,9 +163,10 @@ describe('chainDirectedFlip', () => {
             indices, unionU, w, h, [chain], rowMapping, false, quadMap
         );
 
-        // Should flip or lock quads along the chain
+        // R42: Vertical chain has |localUDelta| ≤ LEAN_THRESHOLD at every row,
+        // so no flips or locks are produced (j%2 alternation removed).
         expect(result.flipCount).toBeGreaterThanOrEqual(0);
-        expect(result.lockedQuads.size).toBeGreaterThan(0);
+        expect(result.lockedQuads.size).toBe(0);
     });
 
     it('locks quads within CHAIN_LOCK_BAND_HALF_WIDTH', () => {
@@ -239,8 +244,14 @@ describe('chainDirectedFlip', () => {
     it('handles non-identity row mapping', () => {
         const { indices, quadMap } = buildDefaultGrid(w, h);
         const unionU = makeUniformU(w);
-        // final row 0→orig 0, 1→orig 2, 2→orig 4, 3→orig 6, 4→orig 8
-        const rowMapping = [0, 2, 4, 6, 8];
+        // Original rows mapped to final rows
+        const rowMapping = new Map([
+            [0, 0],
+            [2, 1],
+            [4, 2],
+            [6, 3],
+            [8, 4]
+        ]);
 
         const chain: FeatureChain = {
             kind: 'ridge',
@@ -255,8 +266,9 @@ describe('chainDirectedFlip', () => {
             indices, unionU, w, h, [chain], rowMapping, false, quadMap
         );
 
-        // Chain points map to final rows 0, 1, 2 → should process
-        expect(result.lockedQuads.size).toBeGreaterThan(0);
+        // R42: Vertical chain (u=0.5 everywhere) → |localUDelta| ≤ LEAN_THRESHOLD,
+        // so no flips or locks are produced.
+        expect(result.lockedQuads.size).toBe(0);
     });
 
     it('skips degenerate quads (quadMap = -1)', () => {
@@ -314,8 +326,9 @@ describe('chainDirectedFlip', () => {
             indices, unionU, largew, largeh, chains, rowMapping, false, quadMap
         );
 
-        // Both chains should contribute locked quads
-        expect(result.lockedQuads.size).toBeGreaterThanOrEqual(4);
+        // R42: Both chains are vertical (u constant) → |localUDelta| ≤ LEAN_THRESHOLD,
+        // so no flips or locks are produced for either chain.
+        expect(result.lockedQuads.size).toBe(0);
     });
 });
 

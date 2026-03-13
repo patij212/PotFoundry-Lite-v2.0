@@ -9,6 +9,10 @@
 
 import React, { createContext, useContext, useCallback, useMemo, RefObject, useState, useEffect } from 'react';
 import type { WebGPUController } from '../types';
+import type { RendererController } from '../renderers/types';
+
+/** Controller type union accepted by the context */
+export type ContextController = WebGPUController | RendererController;
 
 // ============================================================================
 // Types
@@ -30,7 +34,7 @@ export interface CameraState {
  */
 export interface ControllerContextValue {
   /** Reference to the WebGPU controller */
-  controllerRef: RefObject<WebGPUController | null>;
+  controllerRef: RefObject<ContextController | null>;
   /** Whether the controller is ready */
   isReady: boolean;
 
@@ -125,7 +129,7 @@ export function useControllerMaybe(): ControllerContextValue | null {
 
 export interface ControllerProviderProps {
   /** Reference to the WebGPU controller */
-  controllerRef: RefObject<WebGPUController | null>;
+  controllerRef: RefObject<ContextController | null>;
   /** Whether the controller is ready */
   isReady: boolean;
   /** Canvas element reference for screenshots */
@@ -174,6 +178,7 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
   // Update rendererType when controller becomes ready
   useEffect(() => {
     if (isReady && controllerRef.current) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Remove when webgpu_core.ts exports ContextController with rendererType
       const type = (controllerRef.current as any)?.rendererType;
       setRendererType(type);
     }
@@ -261,7 +266,7 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
     if (!ctrl?.handleCameraCommand) return;
 
     // Read directly from window state since controller owns the truth
-    const cc = (window as any).__pf_webgpu_camera_controller;
+    const cc = window.__pf_webgpu_camera_controller;
     const current = cc?.state?.cameraMode ?? 'turntable';
     const next = current === 'turntable' ? 'arcball' : 'turntable';
     ctrl.handleCameraCommand({ cameraMode: next });
@@ -278,7 +283,7 @@ export const ControllerProvider: React.FC<ControllerProviderProps> = ({
     if (!ctrl?.handleCameraCommand) return;
 
     // Read directly from window state
-    const cc = (window as any).__pf_webgpu_camera_controller;
+    const cc = window.__pf_webgpu_camera_controller;
     const current = cc?.state?.projectionMode ?? 'ortho';
     const next = current === 'perspective' ? 'ortho' : 'perspective';
     ctrl.handleCameraCommand({ projectionMode: next });

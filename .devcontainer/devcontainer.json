@@ -1,28 +1,26 @@
 {
   "name": "PotFoundry Codespace",
-  "image": "mcr.microsoft.com/devcontainers/python:3.11",
-  "postCreateCommand": "./scripts/setup_local_secrets.sh || true",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "postCreateCommand": "cd potfoundry-web && npm install",
   "customizations": {
     "codespaces": {
       "openFiles": [
-        "README.md",
-        "app.py"
+        "potfoundry-web/README.md"
       ]
     },
     "vscode": {
       "extensions": [
-        "ms-python.python",
-        "ms-python.vscode-pylance"
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
       ]
     }
   },
-  "forwardPorts": [8501],
+  "forwardPorts": [5173],
   "portsAttributes": {
-    "8501": {
-      "label": "Application",
+    "5173": {
+      "label": "Dev Server",
       "onAutoForward": "openPreview"
     }
   },
-  "remoteUser": "vscode",
-  "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y <packages.txt; [ -f requirements.txt ] && pip3 install --user -r requirements.txt; pip3 install --user streamlit; echo '✅ Packages installed and Requirements met'"
+  "remoteUser": "node"
 }

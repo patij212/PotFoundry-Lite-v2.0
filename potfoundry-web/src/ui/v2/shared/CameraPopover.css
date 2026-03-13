@@ -1,0 +1,241 @@
+/* ============================================================================
+   CameraPopover — Camera settings flyout
+   ============================================================================ */
+
+.pf2-camera-popover {
+  position: absolute;
+  top: calc(100% + var(--pf2-space-sm));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10; /* Above toolbar siblings */
+  min-width: 240px;
+  max-width: calc(100vw - 32px); /* C6: Narrow viewport guard */
+  padding: var(--pf2-space-md);
+  background: var(--pf2-bg-elevated);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-md);
+  box-shadow: var(--pf2-shadow-float);
+  animation: pf2-popover-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+}
+
+@supports (backdrop-filter: blur(12px)) {
+  .pf2-camera-popover {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: rgba(30, 30, 36, 0.92);
+  }
+}
+
+@keyframes pf2-popover-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* ============================================================================
+   Content Layout
+   ============================================================================ */
+
+.pf2-camera-popover__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-sm);
+}
+
+.pf2-camera-popover__row {
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-sm);
+}
+
+.pf2-camera-popover__label {
+  min-width: 72px;
+  font-size: 11px;
+  color: var(--pf2-text-secondary);
+}
+
+.pf2-camera-popover__divider {
+  height: 1px;
+  background: var(--pf2-border);
+  margin: var(--pf2-space-xs) 0;
+}
+
+/* ============================================================================
+   Toggle Buttons (Mode / Projection)
+   ============================================================================ */
+
+.pf2-camera-popover__toggle-group {
+  display: flex;
+  gap: 2px;
+  background: var(--pf2-bg-base);
+  border-radius: var(--pf2-radius-sm);
+  padding: 2px;
+}
+
+.pf2-camera-popover__toggle {
+  flex: 1;
+  padding: 4px 10px;
+  font-family: var(--pf2-font-body);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    background var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-camera-popover__toggle:hover:not(:disabled) {
+  color: var(--pf2-text-primary);
+  background: var(--pf2-bg-hover);
+}
+
+.pf2-camera-popover__toggle--active {
+  color: var(--pf2-accent);
+  background: var(--pf2-bg-surface);
+  border-color: var(--pf2-accent);
+}
+
+.pf2-camera-popover__toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   Checkbox-Style Toggles (Grid / Axis)
+   ============================================================================ */
+
+.pf2-camera-popover__check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-family: var(--pf2-font-body);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  background: transparent;
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-camera-popover__check:hover:not(:disabled) {
+  color: var(--pf2-text-primary);
+  border-color: var(--pf2-border-active);
+}
+
+.pf2-camera-popover__check--active {
+  color: var(--pf2-accent);
+  border-color: var(--pf2-accent);
+}
+
+.pf2-camera-popover__check-indicator {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+
+.pf2-camera-popover__check--active .pf2-camera-popover__check-indicator::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.pf2-camera-popover__check:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   View Presets Grid
+   ============================================================================ */
+
+.pf2-camera-popover__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-xs);
+}
+
+.pf2-camera-popover__preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+
+.pf2-camera-popover__preset {
+  padding: 5px 4px;
+  font-family: var(--pf2-font-body);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  background: var(--pf2-bg-base);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    background var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-camera-popover__preset:hover:not(:disabled) {
+  color: var(--pf2-text-primary);
+  background: var(--pf2-bg-hover);
+  border-color: var(--pf2-accent-subtle);
+}
+
+.pf2-camera-popover__preset:active:not(:disabled) {
+  background: var(--pf2-accent-subtle);
+  border-color: var(--pf2-accent);
+}
+
+.pf2-camera-popover__preset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-camera-popover {
+    border: 2px solid ButtonText;
+  }
+
+  .pf2-camera-popover__toggle--active,
+  .pf2-camera-popover__check--active {
+    border-color: Highlight;
+    color: Highlight;
+  }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-camera-popover {
+  background: var(--pf2-glass-bg);
+  border-color: var(--pf2-glass-border);
+}

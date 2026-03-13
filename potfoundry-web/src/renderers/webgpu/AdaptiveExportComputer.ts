@@ -42,7 +42,7 @@ export interface AdaptiveExportResult {
 }
 
 function packStyleParams(opts: StyleOptions, id: StyleId): Float32Array {
-    const [_, data] = buildStyleParamPayload(id, opts as any);
+    const [_, data] = buildStyleParamPayload(id, opts as Record<string, unknown>);
     return new Float32Array(data);
 }
 
@@ -218,7 +218,11 @@ export class AdaptiveExportComputer {
             // chunk1: tBottom, rDrain, expn, styleId
             // chunk2: spinTurns, spinPhase, spinCurve, seamAngle
             // chunk3: bellAmp, bellCenter, bellWidth, maxDepth
-            // chunk4: subdivThreshold, minQuadSize (unused), targetTris, reserved
+            // chunk4: subdivThreshold, minQuadSize (unused), targetTris|gridVertCount (DUAL-PURPOSE), W
+            //
+            // HAZARD: chunk4.z is dual-purpose — holds targetTris during subdivision but is
+            // re-written with outerGridVertexCount before relaxation (see ParametricExportComputer.ts ~L1588).
+            // If relaxation runs without the re-write, chain vertices get wrong neighbors.
             const uniformData = new Float32Array([
                 dimensions.H, dimensions.Rt, dimensions.Rb, dimensions.tWall,
                 dimensions.tBottom, dimensions.rDrain, dimensions.expn, params.styleIndex,
@@ -226,10 +230,12 @@ export class AdaptiveExportComputer {
                 styleOpts.bellAmp ?? 0, styleOpts.bellCenter ?? 0.5, styleOpts.bellWidth ?? 0.22, maxDepth,
                 0.03, 0.0000001, 2000000, 0, // Threshold 0.03, Budget 2M (Features need high density)
             ]);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- writeBuffer accepts ArrayBufferView but @webgpu/types is narrower
             this.device.queue.writeBuffer(uniformBuffer, 0, uniformData as any);
             const packedStyleParams = packStyleParams(styleOpts, params.styleId);
             console.log(`[AdaptiveExport] StyleId: ${params.styleId}, Index: ${params.styleIndex}`);
             console.log(`[AdaptiveExport] StyleParams[0-8]:`, packedStyleParams.slice(0, 8));
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- writeBuffer accepts ArrayBufferView but @webgpu/types is narrower
             this.device.queue.writeBuffer(styleParamBuffer, 0, packedStyleParams as any);
 
             // ... (Lines 234-670 skipped, assuming no changes there except earlier chunks)
@@ -319,11 +325,14 @@ export class AdaptiveExportComputer {
                 packedTriangles[i * 4 + 3] = surf;
             }
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- writeBuffer accepts ArrayBufferView but @webgpu/types is narrower
             this.device.queue.writeBuffer(vertexBuffer, 0, baseVerts as any);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- writeBuffer accepts ArrayBufferView but @webgpu/types is narrower
             this.device.queue.writeBuffer(trianglesCurrentBuffer, 0, packedTriangles as any);
 
             // Counters: [VertexCount, IndexCount, TriCount_Current, TriCount_Next, STATUS, ...]
             const initialCounters = new Uint32Array([vertexCount, 0, triCount, 0, STATUS_OK, 0]);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- writeBuffer accepts ArrayBufferView but @webgpu/types is narrower
             this.device.queue.writeBuffer(countersBuffer, 0, initialCounters as any);
 
             let currentTriCount = triCount;

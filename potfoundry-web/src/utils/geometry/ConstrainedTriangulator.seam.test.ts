@@ -7,7 +7,7 @@ type TestableTriangulator = typeof ConstrainedTriangulator & {
 };
 
 describe('ConstrainedTriangulator Seam Logic', () => {
-    // @ts-ignore - Accessing private methods for testing
+    // @ts-expect-error — Accessing private methods via type cast for testing purposes
     const CT = ConstrainedTriangulator as TestableTriangulator;
 
     describe('normalizeFeatures', () => {

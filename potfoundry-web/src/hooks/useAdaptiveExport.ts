@@ -23,6 +23,7 @@ import { ImportanceMapComputer } from '../renderers/webgpu/ImportanceMapComputer
 import { STYLE_IDS, STYLE_FUNCTION_MAP, STYLE_REGISTRY } from '../styles/registry';
 import { stripShaderCode } from '../utils/shaderStripper';
 import { useControllerMaybe } from '../context/ControllerContext';
+import { geometryInspector } from '../ui/debug/utils/GeometryInspector';
 
 // Import shader sources
 import commonWgsl from '../assets/shaders/common.wgsl?raw';
@@ -109,7 +110,7 @@ export function useAdaptiveExport(): UseAdaptiveExportResult {
 
     // Initialize GPU
     useEffect(() => {
-        console.log('[useAdaptiveExport] Mounting and initializing GPU...');
+        if (import.meta.env.DEV) console.log('[useAdaptiveExport] Mounting and initializing GPU...');
         let isMounted = true;
         let device: GPUDevice | null = null;
         let computer: AdaptiveExportComputer | null = null;
@@ -155,7 +156,7 @@ export function useAdaptiveExport(): UseAdaptiveExportResult {
                 // Build shader with style dispatch - same pattern as useGPUExport
                 const styleIdVal = (style.name as StyleId) ?? 'SuperformulaBlossom';
                 const styleIndex = STYLE_IDS[styleIdVal] ?? 0;
-                const functionName = (STYLE_FUNCTION_MAP as any)[styleIndex] || 'sf_radius';
+                const functionName = STYLE_FUNCTION_MAP[styleIndex] ?? 'sf_radius';
 
                 // Strip unused style functions to reduce shader size
                 const strippedStyles = stripShaderCode(stylesWgsl, functionName);
@@ -187,7 +188,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                     importanceMapRef.current = importanceMapComputer;
                     deviceRef.current = device;
                     setIsAvailable(true);
-                    console.log('[useAdaptiveExport] Adaptive export ready (with importance map)');
+                    if (import.meta.env.DEV) console.log('[useAdaptiveExport] Adaptive export ready (with importance map)');
                 } else {
                     // Cleanup if unmounted during init
                     computer.destroy();
@@ -311,7 +312,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 const extractionThreshold = quality === 'ultra' ? 0.02 :
                     quality === 'high' ? 0.03 : 0.06;
 
-                console.log(`[useAdaptiveExport] 1. Extraction: quality=${quality}, threshold=${extractionThreshold}`);
+                if (import.meta.env.DEV) console.log(`[useAdaptiveExport] 1. Extraction: quality=${quality}, threshold=${extractionThreshold}`);
                 try {
                     const rawFeatures = await featureComputerRef.current.compute({
                         styleId,
@@ -323,7 +324,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                         threshold: extractionThreshold
                     });
 
-                    console.log(`[useAdaptiveExport] 2. Analysis: Found ${rawFeatures.length} raw candidates.`);
+                    if (import.meta.env.DEV) console.log(`[useAdaptiveExport] 2. Analysis: Found ${rawFeatures.length} raw candidates.`);
 
                     // FIX: CPU-side filtering to remove noise but keep significant features
                     // Sort by strength descending
@@ -338,8 +339,10 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                     // CRITICAL FIX: Assign features so params are valid
                     features = triangulationFeatures;
 
-                    console.log(`[useAdaptiveExport]    - Triangulation Features: ${triangulationFeatures.length}`);
-                    console.log(`[useAdaptiveExport]    - Snapping Features: ${snappingFeatures.length} (feeding GPU)`);
+                    if (import.meta.env.DEV) {
+                        console.log(`[useAdaptiveExport]    - Triangulation Features: ${triangulationFeatures.length}`);
+                        console.log(`[useAdaptiveExport]    - Snapping Features: ${snappingFeatures.length} (feeding GPU)`);
+                    }
 
                     // --- TOPOLOGY GENERATION (CPU) ---
                     setProgress({ status: 'generating', progress: 30, message: 'Generating base topology...' });
@@ -361,7 +364,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                     const IMPORTANCE_GRID_SIZE = 64;
                     if (importanceMapRef.current) {
                         try {
-                            console.log('[useAdaptiveExport] 2.5. Computing importance map...');
+                            if (import.meta.env.DEV) console.log('[useAdaptiveExport] 2.5. Computing importance map...');
                             const importanceResult = await importanceMapRef.current.compute({
                                 dimensions: potDims,
                                 styleId: styleId,
@@ -370,22 +373,22 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                                 gridSize: IMPORTANCE_GRID_SIZE
                             });
                             importanceMap = importanceResult.importanceMap;
-                            console.log(`[useAdaptiveExport]    - Importance map: ${importanceMap.length} values, computed in ${importanceResult.computeTimeMs.toFixed(1)}ms`);
+                            if (import.meta.env.DEV) console.log(`[useAdaptiveExport]    - Importance map: ${importanceMap.length} values, computed in ${importanceResult.computeTimeMs.toFixed(1)}ms`);
                         } catch (importanceError) {
                             console.warn('[useAdaptiveExport] Importance map failed, using uniform density:', importanceError);
                         }
                     }
 
-                    console.log('[useAdaptiveExport] 3. Topology: Generating Constrained Mesh...');
+                    if (import.meta.env.DEV) console.log('[useAdaptiveExport] 3. Topology: Generating Constrained Mesh...');
                     baseMesh = ConstrainedTriangulator.generateFullPot(triangulationFeatures, potDims, importanceMap, IMPORTANCE_GRID_SIZE);
-                    console.log(`[useAdaptiveExport]    - Base Mesh: ${baseMesh.vertices.length / 3} verts, ${baseMesh.indices.length / 3} tris.`);
+                    if (import.meta.env.DEV) console.log(`[useAdaptiveExport]    - Base Mesh: ${baseMesh.vertices.length / 3} verts, ${baseMesh.indices.length / 3} tris.`);
 
                     // --- GENERATE GPU SNAPPING DATA (Segments + Grid) ---
                     try {
                         // Extract chains from the HIGH FIDELITY set
                         const avgRadius = (potDims.Rt + potDims.Rb) * 0.5;
                         const { chains } = ConstrainedTriangulator.extractChains(snappingFeatures, avgRadius * 6.283185, potDims.H);
-                        console.log(`[useAdaptiveExport]    - Extracted Chains: ${chains.length}. First Chain Length: ${chains[0]?.length || 0}`);
+                        if (import.meta.env.DEV) console.log(`[useAdaptiveExport]    - Extracted Chains: ${chains.length}. First Chain Length: ${chains[0]?.length || 0}`);
 
                         // Binning Config
                         const GRID_BINS = 64;
@@ -425,21 +428,6 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                             }
                         });
 
-                        // --- DEBUG VISUALIZATION ---
-                        console.log(`[useAdaptiveExport] DebugVis: Segments=${allSegments.length}, Ctrl=${!!ctrl}, Ref=${!!ctrl?.controllerRef.current}`);
-                        if (ctrl?.controllerRef.current) {
-                            const renderer = ctrl.controllerRef.current;
-                            console.log(`[useAdaptiveExport] DebugVis: Renderer found. setDebugSegments=${typeof renderer.setDebugSegments}`);
-                            if (renderer.setDebugSegments) {
-                                console.log(`[useAdaptiveExport] Calling setDebugSegments with ${allSegments.length} floats.`);
-                                renderer.setDebugSegments(new Float32Array(allSegments));
-                            } else {
-                                console.warn('[useAdaptiveExport] DebugVis: Wrapper has no setDebugSegments method!');
-                            }
-                        } else {
-                            console.warn('[useAdaptiveExport] DebugVis: Controller Ref is missing! Cannot visualize.');
-                        }
-
                         // Build Final Sorted Buffers
                         const sortedSegments: number[] = [];
                         const gridOffsets = new Uint32Array(GRID_BINS + 1);
@@ -461,8 +449,10 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                         featureSegments = new Float32Array(sortedSegments);
                         featureGridOffsets = gridOffsets;
 
-                        console.log(`[useAdaptiveExport]    - Generated ${allSegments.length / 4} unique segments.`);
-                        console.log(`[useAdaptiveExport]    - Binned into ${sortedSegments.length / 4} GPU references.`);
+                        if (import.meta.env.DEV) {
+                            console.log(`[useAdaptiveExport]    - Generated ${allSegments.length / 4} unique segments.`);
+                            console.log(`[useAdaptiveExport]    - Binned into ${sortedSegments.length / 4} GPU references.`);
+                        }
 
                     } catch (err) {
                         console.error('[useAdaptiveExport] CRITICAL ERROR IN SEGMENTATION LOOP:', err);
@@ -520,6 +510,17 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             };
 
             setStats(exportStats);
+
+            // Report to geometry inspector for DevConsole
+            geometryInspector.recordExport({
+                vertexCount: result.mesh.vertexCount,
+                triangleCount: result.mesh.triangleCount,
+                exportTimeMs: result.computeTimeMs,
+                fileSize: formatFileSize(fileSizeBytes),
+                volumeMl: volume / 1000,
+                surfaceAreaMm2: surfaceArea,
+                maxSubdivisionDepth: result.subdivisionStats.maxDepthReached,
+            });
 
             setProgress({
                 status: 'complete',

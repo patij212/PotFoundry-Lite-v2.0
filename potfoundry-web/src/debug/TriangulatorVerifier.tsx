@@ -127,6 +127,7 @@ export const TriangulatorVerifier: React.FC = () => {
                 {Object.keys(TEST_CASES).map(name => (
                     <button
                         key={name}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Object.keys returns string[], cast to TestCase key type
                         onClick={() => setTestName(name as any)}
                         style={{
                             padding: '8px 16px',

@@ -5,7 +5,7 @@
  * with no Python/Streamlit dependencies.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { createRenderer, RendererController } from './renderers';
 import { WebGPUController } from './webgpu_core';
 import { AppUI } from './ui';
@@ -14,8 +14,12 @@ import { useUIActions, useAppStore } from './state';
 import { ControllerProvider, LibraryProvider } from './context';
 import { AuthProvider } from './context/AuthContext';
 import { UserMenu } from './ui/auth';
+import { AppSettingsButton } from './ui/settings';
 import { ToastProvider } from './ui/shared';
 import './WebGPUPreview.css';
+
+// Lazy-load v2 UI — v1 users pay zero bundle cost
+const AppUIv2 = lazy(() => import('./ui/v2/AppUIv2'));
 
 // ============================================================================
 // Fallback Parameters (used only for WebGPU mount if no persisted state exists)
@@ -96,6 +100,7 @@ const App: React.FC = () => {
     const [controllerReady, setControllerReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isCompatibilityMode, setIsCompatibilityMode] = useState(false);
+    const [fallbackReason, setFallbackReason] = useState<string>('');
     // Force renderer remount on crash
     const [remountKey, setRemountKey] = useState(0);
     const [forcedRenderer, setForcedRenderer] = useState<'webgl' | 'webgpu' | undefined>(undefined);
@@ -106,6 +111,9 @@ const App: React.FC = () => {
 
     // UI actions
     const { setPanelOpen, toggleFullscreen } = useUIActions();
+
+    // UI theme — determines which UI shell to render
+    const uiTheme = useAppStore((s) => s.ui.uiTheme);
 
     // Performance tracking - setGenerating shows loading indicator during mount
     const { setGenerating } = usePerformanceTracker({ debug: false });
@@ -126,7 +134,7 @@ const App: React.FC = () => {
 
         // Handle runtime device loss (crash)
         if (eventType === 'device-lost') {
-            const reason = (event?.payload as any)?.reason || 'Unknown driver crash';
+            const reason = (event?.payload as Record<string, unknown>)?.reason ?? 'Unknown driver crash';
             console.warn('[PotFoundry] Runtime device loss detected:', reason);
 
             // If not already in compatibility mode, force fallback to WebGL
@@ -234,7 +242,7 @@ const App: React.FC = () => {
                 // Merge persisted state into initialParams to prevent double-compilation on startup
                 const storeState = useAppStore.getState();
                 const currentStyleName = storeState.style.name;
-                // @ts-ignore - indexing by string/StyleName into StyleId record
+                // @ts-expect-error — StyleState.name is string, STYLE_IDS is Record<StyleId, number>; safe with fallback
                 const currentStyleId = STYLE_NAME_TO_ID[currentStyleName] ?? 0;
                 console.log(`[App] Mount resolving style: '${currentStyleName}' -> ${currentStyleId}`);
                 const styleOpts = storeState.style.opts || {};
@@ -258,6 +266,7 @@ const App: React.FC = () => {
                     onAutoRotateChange: () => { },
                     onFallback: (reason) => {
                         console.log('[Renderer] Using fallback mode:', reason);
+                        setFallbackReason(reason);
                         setIsCompatibilityMode(true);
                     },
                 });
@@ -406,6 +415,7 @@ Protocol: ${protocol}`}
                 <div className="pf-app">
                     {/* User Menu - Top Right */}
                     <div className="pf-app__header">
+                        <AppSettingsButton />
                         <UserMenu />
                     </div>
 
@@ -431,18 +441,37 @@ Protocol: ${protocol}`}
                                     position: 'absolute',
                                     bottom: '10px',
                                     right: '10px',
-                                    padding: '4px 10px',
-                                    backgroundColor: 'rgba(255, 193, 7, 0.9)',
+                                    padding: '6px 12px',
+                                    backgroundColor: 'rgba(255, 193, 7, 0.95)',
                                     color: '#1a1a2e',
-                                    borderRadius: '4px',
+                                    borderRadius: '6px',
                                     fontSize: '11px',
                                     fontWeight: 500,
                                     zIndex: 10,
                                     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                    maxWidth: '280px',
+                                    cursor: 'pointer',
                                 }}
-                                title="Using WebGL renderer because WebGPU is not available on this device"
+                                title="Tap to retry WebGPU"
+                                onClick={() => {
+                                    try {
+                                        localStorage.removeItem('pf-preferred-renderer');
+                                        sessionStorage.removeItem('pf-gpu-recovery');
+                                        const url = new URL(window.location.href);
+                                        url.searchParams.delete('renderer');
+                                        window.location.href = url.toString();
+                                    } catch { window.location.reload(); }
+                                }}
                             >
-                                ⚠️ Compatibility Mode (WebGL)
+                                <div>⚠️ Compatibility Mode (WebGL)</div>
+                                {fallbackReason && (
+                                    <div style={{ fontSize: '10px', marginTop: '3px', opacity: 0.85 }}>
+                                        Reason: {fallbackReason}
+                                    </div>
+                                )}
+                                <div style={{ fontSize: '9px', marginTop: '3px', opacity: 0.7 }}>
+                                    Tap to retry WebGPU
+                                </div>
                             </div>
                         )}
 
@@ -525,7 +554,13 @@ Protocol: ${protocol}`}
                             localParamsLockRef={localParamsLockUntilRef}
                         >
                             <LibraryProvider libraryData={null}>
-                                <AppUI />
+                                {uiTheme === 'v2' ? (
+                                    <Suspense fallback={null}>
+                                        <AppUIv2 />
+                                    </Suspense>
+                                ) : (
+                                    <AppUI />
+                                )}
                             </LibraryProvider>
                         </ControllerProvider>
                     </div>

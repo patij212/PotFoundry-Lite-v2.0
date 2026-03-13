@@ -57,9 +57,11 @@ import {
     linkFeatureChainsByKind,
     insertChainGuidedRows,
     whittakerSmooth,
+    blendTowardSmoothedChain,
     filterLowConfidenceChains,
     computeChainDiagnostics,
     repairChainsZigzags,
+    validateAndRepairChains,
 } from './parametric/ChainLinker';
 import {
     mergeFeaturePositions,
@@ -70,10 +72,12 @@ import {
     downsampleSortedPositions,
 } from './parametric/GridBuilder';
 import { buildCDTOuterWall } from './parametric/OuterWallTessellator';
+import { DEFAULT_CHAIN_STRIP_CONFIG } from './parametric/OuterWallTessellator';
 import { chainDirectedFlip, flipEdges3D } from './parametric/MeshOptimizer';
 import { subdivideLongEdges } from './parametric/MeshSubdivision';
 import {
     buildConstraintEdgeSet,
+    edgeKey,
     optimizeChainStrips,
     optimizeBoundaryDiagonals,
     computeBoundaryDiagnostic,
@@ -430,10 +434,11 @@ export class ParametricExportComputer {
         const cfgGpuResnap = pc?.gpuResnap ?? true;
         const cfgResnapCandidates = pc?.resnapCandidates ?? 32;
         const cfgFeatureBudgetMB = pc?.featureBudgetMB ?? 0;
-        const cfgChainStripMode = pc?.chainStripMode ?? 'cdt';
-        const cfgChainStripDensity = pc?.chainStripDensity ?? 4;
-        const cfgChainStripExpansion = pc?.chainStripExpansion ?? 1;
-        const cfgChainStripAdaptiveRefine = pc?.chainStripAdaptiveRefine ?? true;
+        const cfgChainStripMode = pc?.chainStripMode ?? DEFAULT_CHAIN_STRIP_CONFIG.mode;
+        const cfgChainStripDensity = pc?.chainStripDensity ?? DEFAULT_CHAIN_STRIP_CONFIG.densityMultiplier;
+        const cfgChainStripExpansion = pc?.chainStripExpansion ?? DEFAULT_CHAIN_STRIP_CONFIG.expansion;
+        const cfgChainStripAdaptiveRefine = pc?.chainStripAdaptiveRefine ?? DEFAULT_CHAIN_STRIP_CONFIG.adaptiveRefine;
+        const cfgBandMergeFactor = pc?.bandMergeFactor ?? 2;  // Default to 2 for production
         const cfgChainFlip = pc?.chainDirectedFlip ?? true;
         const cfgEdgeFlip3D = pc?.edgeFlip3D ?? true;
         const cfgStripOptimizer = pc?.chainStripOptimizer ?? true;
@@ -442,8 +447,8 @@ export class ParametricExportComputer {
 
         console.log(`[ParametricExport] Target: ${targetTris.toLocaleString()} triangles`);
         console.log(`[ParametricExport] Quality profile: requested=${requestedProfile}, effective=${effectiveProfileName}`);
-        console.log(`[ParametricExport] Feature flags: metric=${Boolean(flags.metricAwareRefinement)}, distortion=${Boolean(flags.distortionGating)}, gpuFidelity=${Boolean(flags.gpuFidelityCheck)}, seamHealing=${Boolean(flags.seamHealing)}, edgeCollapse=${Boolean(flags.edgeCollapseEnabled)}, perEdgeError=${Boolean(flags.perEdgeErrorEstimation)}`);
-        console.log(`[ParametricExport] Pipeline config: strips=${cfgNumStrips}, curvSamples=${cfgCurvatureSamples}, detectHorizontal=${cfgDetectHorizontalFeatures}, rowProbe=${cfgRowProbeSamples}, featureBudget=${cfgFeatureBudgetMB}MB, resnap=${cfgGpuResnap}/${cfgResnapCandidates}, chainStrip=${cfgChainStripMode}/d${cfgChainStripDensity}/e${cfgChainStripExpansion}/r${cfgChainStripAdaptiveRefine}, chainFlip=${cfgChainFlip}, edgeFlip3D=${cfgEdgeFlip3D}, stripOpt=${cfgStripOptimizer}, boundaryDiag=${cfgBoundaryDiag}, gpuSubdiv=${cfgGpuSubdiv}`);
+        console.log(`[ParametricExport] Feature flags: metric=${Boolean(flags.metricAwareRefinement)}, distortion=${Boolean(flags.distortionGating)}, gpuFidelity=${Boolean(flags.gpuFidelityCheck)}, seamHealing=${Boolean(flags.seamHealing)}, edgeCollapse=${Boolean(flags.edgeCollapseEnabled)}, perEdgeError=${Boolean(flags.perEdgeErrorEstimation)}, corridorPlan=${Boolean(flags.outerWallCorridorPlanning)}, corridorDiag=${Boolean(flags.outerWallCorridorDiagnostics)}`);
+        console.log(`[ParametricExport] Pipeline config: strips=${cfgNumStrips}, curvSamples=${cfgCurvatureSamples}, detectHorizontal=${cfgDetectHorizontalFeatures}, rowProbe=${cfgRowProbeSamples}, featureBudget=${cfgFeatureBudgetMB}MB, resnap=${cfgGpuResnap}/${cfgResnapCandidates}, chainStrip=${cfgChainStripMode}/d${cfgChainStripDensity}/e${cfgChainStripExpansion}/r${cfgChainStripAdaptiveRefine}/m${cfgBandMergeFactor}, chainFlip=${cfgChainFlip}, edgeFlip3D=${cfgEdgeFlip3D}, stripOpt=${cfgStripOptimizer}, boundaryDiag=${cfgBoundaryDiag}, gpuSubdiv=${cfgGpuSubdiv}`);
 
         // â"€â"€ Shared GPU resources â"€â"€
         const buffers: GPUBuffer[] = [];
@@ -896,6 +901,13 @@ export class ParametricExportComputer {
             let chains = linkFeatureChainsByKind(allRowFeatures, allRowTypedFeatures, numOuterRows);
             console.log(`[ParametricExport]   v16.3 feature chains: ${chains.length} chains linked`);
 
+            // R51: Post-linking chain validation — truncate tails tracking wrong features
+            const preValidateCount = chains.length;
+            chains = validateAndRepairChains(chains, allRowTypedFeatures);
+            if (chains.length !== preValidateCount) {
+                console.log(`[ParametricExport]   R51 chain validation: ${preValidateCount} → ${chains.length} chains`);
+            }
+
             // Chain diagnostics
             if (chains.length > 0) {
                 const chainLengths = chains.map(c => c.points.length);
@@ -930,99 +942,166 @@ export class ParametricExportComputer {
                 }
             }
 
-            // â"€â"€ Step 3.5: GPU RE-SNAP â€" find the EXACT mathematical peak for each chain point â"€â"€
-            // The per-row probe gives 8192 uniformly-spaced samples. The detected
-            // peaks are within Â±1/(2*8192) â‰ˆ Â±0.00006 of the true peak. This is
-            // good, but for sharp cusps the true peak can be BETWEEN samples.
+            // ── Step 3.5: GPU RE-SNAP – Two-Stage Adaptive Wide Search ──
+            // R49 P1: The original ±2 sample-width window (±0.000244 U) was too
+            // narrow to correct chain-linking noise (up to ±0.008 U).
             //
-            // Re-snap evaluates a tight window of 32 candidates around each chain
-            // point on the GPU, finds the one with max/min radius, then does a
-            // final parabolic refinement. This gives ~20Ã— better precision than
-            // the initial 8192-sample probe.
+            // Stage 1: Wide adaptive search (64 candidates) finds the approximate
+            //          extremum within ±min(nearestSameKind/3, 0.005) U.
+            // Stage 2: Narrow refinement (32 candidates) around Stage 1's best
+            //          candidate preserves original sub-sample precision (~0.0008mm).
             if (chains.length > 0 && cfgGpuResnap) {
-                const RESNAP_CANDIDATES = cfgResnapCandidates;
-                const RESNAP_HALFWIDTH = 2.0 / ROW_PROBE_SAMPLES; // Â±2 sample widths
-                const RESNAP_STEP = (2 * RESNAP_HALFWIDTH) / (RESNAP_CANDIDATES - 1);
+                const STAGE1_CANDIDATES = 64;
+                const STAGE2_CANDIDATES = 32;
+                const NARROW_HW = 2.0 / ROW_PROBE_SAMPLES; // ±2 sample widths
+                const MAX_RESNAP_HW = 0.005;
 
-                // Collect all chain points
-                const allChainPoints: Array<{ chainIdx: number; ptIdx: number; u: number; row: number }> = [];
+                // Collect all chain points with kind info
+                const allChainPoints: Array<{
+                    chainIdx: number; ptIdx: number; u: number; row: number; kind: string;
+                }> = [];
                 for (let ci = 0; ci < chains.length; ci++) {
                     for (let pi = 0; pi < chains[ci].points.length; pi++) {
                         const pt = chains[ci].points[pi];
-                        allChainPoints.push({ chainIdx: ci, ptIdx: pi, u: pt.u, row: pt.row });
+                        allChainPoints.push({
+                            chainIdx: ci, ptIdx: pi, u: pt.u, row: pt.row,
+                            kind: chains[ci].kind ?? 'peak',
+                        });
                     }
                 }
 
-                // Build GPU probe vertices: for each chain point, RESNAP_CANDIDATES positions
-                const totalProbes = allChainPoints.length * RESNAP_CANDIDATES;
-                const resnapVerts = new Float32Array(totalProbes * 3);
-                let rIdx = 0;
+                // Compute per-point adaptive halfwidth based on nearest same-kind feature
+                const perPointHW: number[] = [];
+                let wideSearchCount = 0;
                 for (const cp of allChainPoints) {
+                    const rowFeatures = allRowTypedFeatures[Math.min(cp.row, allRowTypedFeatures.length - 1)];
+                    let nearestDist = Infinity;
+                    if (rowFeatures) {
+                        for (const feat of rowFeatures) {
+                            if (feat.kind !== cp.kind) continue; // same kind only
+                            const dist = circularDistance(cp.u, feat.u);
+                            if (dist > 1e-6 && dist < nearestDist) { // exclude self
+                                nearestDist = dist;
+                            }
+                        }
+                    }
+                    const hw = Math.max(
+                        NARROW_HW, // floor: original narrow width
+                        Math.min(nearestDist / 3.0, MAX_RESNAP_HW), // adaptive, capped
+                    );
+                    if (hw > NARROW_HW + 1e-8) wideSearchCount++;
+                    perPointHW.push(hw);
+                }
+
+                // ── Stage 1: Wide search to find approximate extremum ──
+                const totalStage1Probes = allChainPoints.length * STAGE1_CANDIDATES;
+                const stage1Verts = new Float32Array(totalStage1Probes * 3);
+                let s1Idx = 0;
+                for (let cpIdx = 0; cpIdx < allChainPoints.length; cpIdx++) {
+                    const cp = allChainPoints[cpIdx];
+                    const hw = perPointHW[cpIdx];
                     const tVal = tPositions[Math.min(cp.row, tPositions.length - 1)];
-                    for (let k = 0; k < RESNAP_CANDIDATES; k++) {
-                        let uCandidate = cp.u - RESNAP_HALFWIDTH + k * RESNAP_STEP;
-                        // Wrap to [0, 1)
+                    const step = (2 * hw) / (STAGE1_CANDIDATES - 1);
+                    for (let k = 0; k < STAGE1_CANDIDATES; k++) {
+                        let uCandidate = cp.u - hw + k * step;
                         uCandidate = ((uCandidate % 1) + 1) % 1;
-                        resnapVerts[rIdx++] = uCandidate;
-                        resnapVerts[rIdx++] = tVal;
-                        resnapVerts[rIdx++] = 0; // outer wall
+                        stage1Verts[s1Idx++] = uCandidate;
+                        stage1Verts[s1Idx++] = tVal;
+                        stage1Verts[s1Idx++] = 0; // outer wall
                     }
                 }
 
-                // GPU evaluate all resnap candidates
-                const resnapPositions = await this.evaluatePoints(
-                    resnapVerts, uniformBuffer, styleParamBuffer,
+                const stage1Positions = await this.evaluatePoints(
+                    stage1Verts, uniformBuffer, styleParamBuffer,
                     dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly
                 );
 
-                // For each chain point, find the candidate with the highest/lowest radius
-                let resnapCount = 0;
+                // Find per-point best candidate from Stage 1
+                const stage1BestU: number[] = [];
                 for (let cpIdx = 0; cpIdx < allChainPoints.length; cpIdx++) {
                     const cp = allChainPoints[cpIdx];
-                    const baseOffset = cpIdx * RESNAP_CANDIDATES * 3;
+                    const hw = perPointHW[cpIdx];
+                    const baseOffset = cpIdx * STAGE1_CANDIDATES * 3;
+                    const step = (2 * hw) / (STAGE1_CANDIDATES - 1);
 
-                    // Determine if this is a peak (maximum) or valley (minimum).
-                    // Use the original probe data: check if radius at this u is a local max or min.
-                    const origRowData = rowProbeData[Math.min(cp.row, rowProbeData.length - 1)];
-                    const sampleIdx = Math.round(cp.u * ROW_PROBE_SAMPLES) % ROW_PROBE_SAMPLES;
-                    const rCenter = Math.sqrt(
-                        origRowData[sampleIdx * 3] ** 2 +
-                        origRowData[sampleIdx * 3 + 1] ** 2
-                    );
-                    const prevSampleIdx = (sampleIdx - 1 + ROW_PROBE_SAMPLES) % ROW_PROBE_SAMPLES;
-                    const nextSampleIdx = (sampleIdx + 1) % ROW_PROBE_SAMPLES;
-                    const rPrev = Math.sqrt(
-                        origRowData[prevSampleIdx * 3] ** 2 +
-                        origRowData[prevSampleIdx * 3 + 1] ** 2
-                    );
-                    const rNext = Math.sqrt(
-                        origRowData[nextSampleIdx * 3] ** 2 +
-                        origRowData[nextSampleIdx * 3 + 1] ** 2
-                    );
-                    const isMax = (rCenter >= rPrev && rCenter >= rNext);
+                    // R50-B P1: Use chain kind instead of probe-data heuristic
+                    const isMax = cp.kind === 'peak';
 
-                    // Extract radii from resnap candidates
-                    const candidateRadii = new Float32Array(RESNAP_CANDIDATES);
-                    for (let k = 0; k < RESNAP_CANDIDATES; k++) {
+                    let bestK = 0;
+                    let bestR = isMax ? -Infinity : Infinity;
+                    for (let k = 0; k < STAGE1_CANDIDATES; k++) {
                         const off = baseOffset + k * 3;
-                        const x = resnapPositions[off];
-                        const y = resnapPositions[off + 1];
+                        const x = stage1Positions[off];
+                        const y = stage1Positions[off + 1];
+                        const r = Math.sqrt(x * x + y * y);
+                        if (isMax ? (r > bestR) : (r < bestR)) {
+                            bestR = r;
+                            bestK = k;
+                        }
+                    }
+
+                    let bestU = cp.u - hw + bestK * step;
+                    bestU = ((bestU % 1) + 1) % 1;
+                    stage1BestU.push(bestU);
+                }
+
+                // ── Stage 2: Narrow refinement around Stage 1 winner ──
+                const totalStage2Probes = allChainPoints.length * STAGE2_CANDIDATES;
+                const stage2Verts = new Float32Array(totalStage2Probes * 3);
+                let s2Idx = 0;
+                const stage2Step = (2 * NARROW_HW) / (STAGE2_CANDIDATES - 1);
+                for (let cpIdx = 0; cpIdx < allChainPoints.length; cpIdx++) {
+                    const cp = allChainPoints[cpIdx];
+                    const centerU = stage1BestU[cpIdx];
+                    const tVal = tPositions[Math.min(cp.row, tPositions.length - 1)];
+                    for (let k = 0; k < STAGE2_CANDIDATES; k++) {
+                        let uCandidate = centerU - NARROW_HW + k * stage2Step;
+                        uCandidate = ((uCandidate % 1) + 1) % 1;
+                        stage2Verts[s2Idx++] = uCandidate;
+                        stage2Verts[s2Idx++] = tVal;
+                        stage2Verts[s2Idx++] = 0;
+                    }
+                }
+
+                const stage2Positions = await this.evaluatePoints(
+                    stage2Verts, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly
+                );
+
+                // Stage 2: find best + parabolic refinement
+                let resnapCount = 0;
+                let wideDifferentCount = 0;
+                const perChainWideDiff: number[] = new Array(chains.length).fill(0);
+                for (let cpIdx = 0; cpIdx < allChainPoints.length; cpIdx++) {
+                    const cp = allChainPoints[cpIdx];
+                    const hw = perPointHW[cpIdx];
+                    const baseOffset = cpIdx * STAGE2_CANDIDATES * 3;
+
+                    // R50-B P1: Use chain kind instead of probe-data heuristic
+                    const isMax = cp.kind === 'peak';
+
+                    // Extract Stage 2 radii
+                    const candidateRadii = new Float32Array(STAGE2_CANDIDATES);
+                    for (let k = 0; k < STAGE2_CANDIDATES; k++) {
+                        const off = baseOffset + k * 3;
+                        const x = stage2Positions[off];
+                        const y = stage2Positions[off + 1];
                         candidateRadii[k] = Math.sqrt(x * x + y * y);
                     }
 
-                    // Find the best candidate
+                    // Find best candidate
                     let bestK = 0;
                     let bestR = candidateRadii[0];
-                    for (let k = 1; k < RESNAP_CANDIDATES; k++) {
+                    for (let k = 1; k < STAGE2_CANDIDATES; k++) {
                         if (isMax ? (candidateRadii[k] > bestR) : (candidateRadii[k] < bestR)) {
                             bestR = candidateRadii[k];
                             bestK = k;
                         }
                     }
 
-                    // Parabolic refinement on the resnap candidates
+                    // Parabolic refinement
                     let finalU: number;
-                    if (bestK > 0 && bestK < RESNAP_CANDIDATES - 1) {
+                    if (bestK > 0 && bestK < STAGE2_CANDIDATES - 1) {
                         const L = candidateRadii[bestK - 1];
                         const C = candidateRadii[bestK];
                         const R = candidateRadii[bestK + 1];
@@ -1033,23 +1112,44 @@ export class ParametricExportComputer {
                             delta = Math.max(-0.5, Math.min(0.5, delta));
                         }
                         const refinedK = bestK + delta;
-                        finalU = cp.u - RESNAP_HALFWIDTH + refinedK * RESNAP_STEP;
+                        finalU = stage1BestU[cpIdx] - NARROW_HW + refinedK * stage2Step;
                     } else {
-                        finalU = cp.u - RESNAP_HALFWIDTH + bestK * RESNAP_STEP;
+                        finalU = stage1BestU[cpIdx] - NARROW_HW + bestK * stage2Step;
                     }
 
                     // Wrap to [0, 1)
                     finalU = ((finalU % 1) + 1) % 1;
 
-                    // Only apply if the resnap moved the point (avoid noise)
+                    // Guard: don't overshoot the adaptive window
                     const moved = circularDistance(cp.u, finalU);
-                    if (moved > 1e-7 && moved < RESNAP_HALFWIDTH * 1.5) {
+                    if (moved > 1e-7 && moved < hw) {
                         chains[cp.chainIdx].points[cp.ptIdx] = { row: cp.row, u: finalU };
                         resnapCount++;
                     }
+
+                    // Diagnostic: did wide search find a different extremum?
+                    // "Different" = Stage 1 best is > 2 sample widths from original U
+                    const stage1Shift = circularDistance(cp.u, stage1BestU[cpIdx]);
+                    if (stage1Shift > NARROW_HW) {
+                        wideDifferentCount++;
+                        perChainWideDiff[cp.chainIdx]++;
+                    }
                 }
 
-                console.log(`[ParametricExport]   v13.0 GPU re-snap: ${resnapCount}/${allChainPoints.length} points refined (${RESNAP_CANDIDATES} candidates/point, Â±${(RESNAP_HALFWIDTH * ROW_PROBE_SAMPLES).toFixed(1)} samples)`);
+                // Diagnostic summary
+                console.log(`[ParametricExport]   R49 two-stage GPU re-snap: ${resnapCount}/${allChainPoints.length} points refined`);
+                console.log(`[ParametricExport]     Stage 1: ${STAGE1_CANDIDATES} candidates/point, ${wideSearchCount} points used wide window (>${(NARROW_HW * ROW_PROBE_SAMPLES).toFixed(1)} samples)`);
+                console.log(`[ParametricExport]     Stage 2: ${STAGE2_CANDIDATES} candidates/point, \u00b1${(NARROW_HW * ROW_PROBE_SAMPLES).toFixed(1)} samples around Stage 1 best`);
+                console.log(`[ParametricExport]     Wide search found different extremum: ${wideDifferentCount}/${allChainPoints.length} points`);
+                if (wideDifferentCount > 0) {
+                    const chainSummaries: string[] = [];
+                    for (let ci = 0; ci < chains.length; ci++) {
+                        if (perChainWideDiff[ci] > 0) {
+                            chainSummaries.push(`chain${ci}=${perChainWideDiff[ci]}/${chains[ci].points.length}`);
+                        }
+                    }
+                    console.log(`[ParametricExport]       Per-chain: ${chainSummaries.join(', ')}`);
+                }
             }
 
             // Post-resnap diagnostic: measure chain quality after GPU refinement but before smoothing
@@ -1088,9 +1188,11 @@ export class ParametricExportComputer {
             }));
 
             // Whittaker-Henderson smooth each chain's U path (single-pass, optimal L2 + penalty)
-            for (let ci = 0; ci < chains.length; ci++) {
-                chains[ci] = whittakerSmooth(chains[ci]);
-            }
+            const smoothedChains = chains.map(chain => whittakerSmooth(chain));
+            const meshGuideChains = preSmoothChains.map((chain, ci) =>
+                blendTowardSmoothedChain(chain, smoothedChains[ci] ?? chain)
+            );
+            chains = smoothedChains;
 
             // Filter out low-confidence chains (too short or too noisy)
             chains = filterLowConfidenceChains(chains);
@@ -1098,12 +1200,28 @@ export class ParametricExportComputer {
             const pointsAfterSmooth = chains.reduce((s, c) => s + c.points.length, 0);
             console.log(`[ParametricExport]   v22.0 Chain smoothing: ${chainsBeforeSmooth} → ${chains.length} chains, ${pointsBeforeSmooth} → ${pointsAfterSmooth} points`);
 
-            // v27: Use pre-smooth chain positions for mesh construction.
-            // WH smoothing displaces chain vertices from true GPU re-snapped
-            // feature positions, causing the STL mesh to not follow the actual
-            // ridges/valleys. Pre-smooth chains are at exact peak/valley positions.
-            // Smoothed chains are kept only for diagnostic quality metrics.
+            // R45: Use pre-smooth chains (raw GPU re-snapped positions) for mesh.
+            // The mesh MUST place edges at true mathematical feature positions.
+            // Any smoothing (WH or blend) displaces vertices from ground truth.
+            // GPU re-snap precision is ~±0.00006 U ≈ 0.03mm — acceptable.
             const meshChains = filterLowConfidenceChains(preSmoothChains);
+
+            let maxMeshGuideShift = 0;
+            let sumMeshGuideShift = 0;
+            let meshGuidePointCount = 0;
+            for (let ci = 0; ci < Math.min(preSmoothChains.length, meshGuideChains.length); ci++) {
+                const rawPts = preSmoothChains[ci].points;
+                const guidePts = meshGuideChains[ci].points;
+                for (let pi = 0; pi < Math.min(rawPts.length, guidePts.length); pi++) {
+                    const shift = circularDistance(rawPts[pi].u, guidePts[pi].u);
+                    if (shift > maxMeshGuideShift) maxMeshGuideShift = shift;
+                    sumMeshGuideShift += shift;
+                    meshGuidePointCount++;
+                }
+            }
+            if (meshGuidePointCount > 0) {
+                console.log(`[ParametricExport]     Mesh-guide blend (diagnostic only): maxShift=${maxMeshGuideShift.toFixed(6)}, avgShift=${(sumMeshGuideShift / meshGuidePointCount).toFixed(6)}`);
+            }
 
             // Post-smooth diagnostic: measure chain quality after smoothing
             if (chains.length > 0) {
@@ -1111,6 +1229,13 @@ export class ParametricExportComputer {
                 const postMaxDelta = Math.max(...postDiag.perChain.map(d => d.maxConsecutiveDelta));
                 const postMaxDev = Math.max(...postDiag.perChain.map(d => d.maxLinearDeviation));
                 console.log(`[ParametricExport]     Post-smooth quality: maxConsecDelta=${postMaxDelta.toFixed(6)}, maxLinearDev=${postMaxDev.toFixed(6)}`);
+            }
+
+            // R43: Mesh-chain quality diagnostic — validates what actually enters tessellation
+            if (meshChains.length > 0) {
+                const meshDiag = computeChainDiagnostics(meshChains, allRowFeatures);
+                const meshMaxDelta = Math.max(...meshDiag.perChain.map(d => d.maxConsecutiveDelta));
+                console.log(`[ParametricExport]     Mesh-chain quality: maxConsecDelta=${meshMaxDelta.toFixed(6)}`);
             }
 
             // v21.0 CAG: Extract chain vertex U positions for density profile + dead zones
@@ -1136,7 +1261,16 @@ export class ParametricExportComputer {
             const maxRowsForBudget = Math.floor(targetOuterBudget / (2 * Math.max(1, outerBaseU.length - 1))) + 1;
             const maxRowsForFeatureBudget = Math.floor(targetOuterBudgetWithFeatures / (2 * Math.max(1, outerBaseU.length - 1))) + 1;
             const budgetInsertionCap = Math.max(0, maxRowsForFeatureBudget - numOuterRows);
-            const maxRowInsertions = Math.min(200, Math.floor(numOuterRows * 0.5), budgetInsertionCap);
+            
+            // II-5 Fix: Proportional feature budget based on detected feature density.
+            // Count total chain crossing points (chain vertices per row) as density metric.
+            // High-feature styles (spirals, voronoi) get higher insertion caps; low-feature
+            // styles (smooth, minimal) get lower caps to avoid wasted tessellation.
+            const chainPointCount = meshChains.reduce((acc, c) => acc + c.points.length, 0);
+            const featureDensity = chainPointCount / Math.max(1, numOuterRows); // avg chain points/row
+            // Scale: density 0 → base 50, density 10+ → base 400 (clamped)
+            const densityScaledBase = Math.min(400, Math.max(50, Math.floor(featureDensity * 40)));
+            const maxRowInsertions = Math.min(densityScaledBase, Math.floor(numOuterRows * 0.5), budgetInsertionCap);
             // v11.5: adaptive insertion threshold improves ridge coverage on both
             // sharp and smooth features by adding intermediate rows when per-step
             // U-shifts are smaller than legacy 0.005 but still significant.
@@ -1144,7 +1278,7 @@ export class ParametricExportComputer {
             const insertion = insertChainGuidedRows(tPositions, meshChains, maxRowInsertions, adaptiveInsertThreshold);
             let finalT = insertion.tPositions;
             const rowMapping = insertion.rowMapping;
-            console.log(`[ParametricExport]   v16.6 T-row insertion: ${insertion.insertedCount} rows added (${numOuterRows} â†' ${finalT.length}, minUShift=${adaptiveInsertThreshold.toFixed(4)}, cap=${maxRowInsertions}, baseRowsCap=${maxRowsForBudget}, featureRowsCap=${maxRowsForFeatureBudget})`);
+            console.log(`[ParametricExport]   v16.6 T-row insertion: ${insertion.insertedCount} rows added (${numOuterRows} → ${finalT.length}, minUShift=${adaptiveInsertThreshold.toFixed(4)}, cap=${maxRowInsertions} [density=${featureDensity.toFixed(2)}, densityCap=${densityScaledBase}], baseRowsCap=${maxRowsForBudget}, featureRowsCap=${maxRowsForFeatureBudget})`);
 
             // â"€â"€ Step 5: GPU-probe inserted rows and detect their features â"€â"€
             let finalRowFeatures: number[][];
@@ -1219,7 +1353,9 @@ export class ParametricExportComputer {
             let totalChainPoints = 0;
             let droppedPoints = 0;
             let largeUJumps = 0;
-            for (const chain of preSmoothChains) {
+            // R45: Use meshChains (pre-smooth, GPU re-snapped positions) for debug
+            // lines — matches actual mesh edge positions at true feature locations.
+            for (const chain of meshChains) {
                 if (chain.points.length < 2) continue;
                 const remapped: Array<[number, number]> = [];
                 for (const pt of chain.points) {
@@ -1301,6 +1437,10 @@ export class ParametricExportComputer {
             let outerGridVertexCount = 0; // v16.27: grid vertex count for chain-strip detection
             let outerChainEdges: Array<[number, number]> = []; // v16.28: constraint edges for flip protection
             let outerChainVertexChainIds: Map<number, number> = new Map(); // CAG: for feature edge graph
+            let outerChainAdjacentVertices: Set<number> | undefined; // R36: grid verts adjacent to chain/super-cells
+            let outerProtectedStripVertices: Set<number> | undefined; // R38: preserve repaired phantom corridor
+            let outerFanDiagonalEdges: Array<[number, number]> = []; // R46: fan diagonal edges for constraint protection
+            let outerInterpolatedChainVertices: Array<{ vertexIdx: number; chainId: number; rowIdx: number; gapSize: number }> = []; // R46 Phase 2
 
             for (const surf of SURFACE_CONFIG) {
                 if (surf.id === 0) {
@@ -1316,8 +1456,13 @@ export class ParametricExportComputer {
                             densityMultiplier: cfgChainStripDensity,
                             adaptiveRefine: cfgChainStripAdaptiveRefine,
                             expansion: cfgChainStripExpansion,
+                            bandMergeFactor: cfgBandMergeFactor,
                         },
-                        { Rb: dimensions.Rb, Rt: dimensions.Rt, expn: dimensions.expn },
+                        { Rb: dimensions.Rb, Rt: dimensions.Rt, expn: dimensions.expn, H: dimensions.H },
+                        {
+                            corridorPlanning: Boolean(flags.outerWallCorridorPlanning),
+                            corridorDiagnostics: Boolean(flags.outerWallCorridorDiagnostics),
+                        },
                     );
 
                     // v16.9: Stitch vertices REMOVED.
@@ -1333,6 +1478,10 @@ export class ParametricExportComputer {
                     outerGridVertexCount = cdtResult.gridVertexCount;
                     outerChainEdges = cdtResult.chainEdges;
                     outerChainVertexChainIds = cdtResult.chainVertexChainIds;
+                    outerChainAdjacentVertices = cdtResult.chainAdjacentVertices;
+                    outerProtectedStripVertices = cdtResult.protectedStripVertices;
+                    outerFanDiagonalEdges = cdtResult.fanDiagonalEdges;
+                    outerInterpolatedChainVertices = cdtResult.interpolatedChainVertices;
                     allVertArrays.push(cdtResult.vertices);
 
                     if (vertexOffset > 0) {
@@ -1387,7 +1536,7 @@ export class ParametricExportComputer {
             const totalVerts = allVertArrays.reduce((sum, a) => sum + a.length, 0);
             const totalIdxs = allIdxArrays.reduce((sum, a) => sum + a.length, 0);
             let combinedVerts = new Float32Array(totalVerts);
-            const combinedIdxs = new Uint32Array(totalIdxs);
+            let combinedIdxs = new Uint32Array(totalIdxs);
             let vOff = 0, iOff = 0;
             for (const v of allVertArrays) { combinedVerts.set(v, vOff); vOff += v.length; }
             for (const ix of allIdxArrays) { combinedIdxs.set(ix, iOff); iOff += ix.length; }
@@ -1420,6 +1569,128 @@ export class ParametricExportComputer {
             console.log(`[ParametricExport] Total: ${vertexCount.toLocaleString()} verts, ${triangleCount.toLocaleString()} tris`);
             for (const stat of surfaceStats) console.log(`[ParametricExport] ${stat}`);
 
+            // ── R46 Phase 2: Post-OWT GPU re-snap for interpolated chain vertices ──
+            if (outerInterpolatedChainVertices.length > 0 && cfgGpuResnap) {
+                const SAMPLE_WIDTH = 1.0 / ROW_PROBE_SAMPLES;
+                const BASE_HALFWIDTH = 2.0 * SAMPLE_WIDTH; // ±2 sample widths (same as Step 3.5)
+                const MAX_INTERP_DELTA = 0.08; // max allowable U shift
+
+                const interpVertCount = outerInterpolatedChainVertices.length;
+                // Pre-compute per-vertex adaptive window and candidate count
+                const perVertexHW: number[] = [];
+                const perVertexCands: number[] = [];
+                let totalProbes = 0;
+                for (const iv of outerInterpolatedChainVertices) {
+                    // C1 amendment: adaptive window scales with gapSize² × 0.001
+                    const gapAdaptive = iv.gapSize * iv.gapSize * 0.001;
+                    const hw = Math.min(0.01, Math.max(BASE_HALFWIDTH, gapAdaptive));
+                    const cands = hw > 4 * SAMPLE_WIDTH ? 64 : 32;
+                    perVertexHW.push(hw);
+                    perVertexCands.push(cands);
+                    totalProbes += cands;
+                }
+
+                const resnapVerts = new Float32Array(totalProbes * 3);
+                let rIdx = 0;
+                for (let i = 0; i < interpVertCount; i++) {
+                    const iv = outerInterpolatedChainVertices[i];
+                    const currentU = combinedVerts[iv.vertexIdx * 3];
+                    const tVal = combinedVerts[iv.vertexIdx * 3 + 1];
+                    const hw = perVertexHW[i];
+                    const cands = perVertexCands[i];
+                    const step = (2 * hw) / (cands - 1);
+                    for (let k = 0; k < cands; k++) {
+                        let uCandidate = currentU - hw + k * step;
+                        uCandidate = ((uCandidate % 1) + 1) % 1;
+                        resnapVerts[rIdx++] = uCandidate;
+                        resnapVerts[rIdx++] = tVal;
+                        resnapVerts[rIdx++] = 0; // outer wall surface
+                    }
+                }
+
+                const resnapPositions = await this.evaluatePoints(
+                    resnapVerts, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                );
+
+                let interpResnapCount = 0;
+                let interpAlreadyCorrect = 0;
+                let interpOvershoot = 0;
+                let maxOvershootMoved = 0;
+                let maxWindowUsed = 0;
+                let totalWindowUsed = 0;
+                let probeOffset = 0;
+                for (let i = 0; i < interpVertCount; i++) {
+                    const iv = outerInterpolatedChainVertices[i];
+                    const hw = perVertexHW[i];
+                    const cands = perVertexCands[i];
+                    const currentU = combinedVerts[iv.vertexIdx * 3];
+
+                    if (hw > maxWindowUsed) maxWindowUsed = hw;
+                    totalWindowUsed += hw;
+
+                    // Determine peak vs valley from parent chain kind
+                    const parentChain = meshChains[iv.chainId];
+                    const isMax = !parentChain?.kind || parentChain.kind === 'peak';
+
+                    // Extract radii from resnap candidates
+                    const candidateRadii = new Float32Array(cands);
+                    for (let k = 0; k < cands; k++) {
+                        const off = (probeOffset + k) * 3;
+                        const x = resnapPositions[off];
+                        const y = resnapPositions[off + 1];
+                        candidateRadii[k] = Math.sqrt(x * x + y * y);
+                    }
+
+                    // Find best candidate (max radius for peaks, min for valleys)
+                    let bestK = 0;
+                    let bestR = candidateRadii[0];
+                    for (let k = 1; k < cands; k++) {
+                        if (isMax ? (candidateRadii[k] > bestR) : (candidateRadii[k] < bestR)) {
+                            bestR = candidateRadii[k];
+                            bestK = k;
+                        }
+                    }
+
+                    // Parabolic refinement for sub-sample accuracy
+                    const step = (2 * hw) / (cands - 1);
+                    let finalU: number;
+                    if (bestK > 0 && bestK < cands - 1) {
+                        const L = candidateRadii[bestK - 1];
+                        const C = candidateRadii[bestK];
+                        const R_val = candidateRadii[bestK + 1];
+                        const denom = L - 2 * C + R_val;
+                        let delta = 0;
+                        if (Math.abs(denom) > 1e-14) {
+                            delta = 0.5 * (L - R_val) / denom;
+                            delta = Math.max(-0.5, Math.min(0.5, delta));
+                        }
+                        finalU = currentU - hw + (bestK + delta) * step;
+                    } else {
+                        finalU = currentU - hw + bestK * step;
+                    }
+                    finalU = ((finalU % 1) + 1) % 1;
+
+                    const moved = circularDistance(currentU, finalU);
+                    if (moved > 1e-7 && moved < MAX_INTERP_DELTA) {
+                        combinedVerts[iv.vertexIdx * 3] = finalU;
+                        interpResnapCount++;
+                    } else if (moved <= 1e-7) {
+                        interpAlreadyCorrect++;
+                    } else {
+                        interpOvershoot++;
+                        if (moved > maxOvershootMoved) maxOvershootMoved = moved;
+                    }
+
+                    probeOffset += cands;
+                }
+
+                const avgWindow = interpVertCount > 0 ? (totalWindowUsed / interpVertCount) : 0;
+                console.log(`[ParametricExport]   R46 interp re-snap: ${interpResnapCount}/${interpVertCount} refined, already-correct=${interpAlreadyCorrect}, overshoot=${interpOvershoot} (max=${maxOvershootMoved.toFixed(6)}) (avg window=${avgWindow.toFixed(6)}, max window=${maxWindowUsed.toFixed(6)})`);
+            }
+
+
+
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // PHASE 3: Evaluate Full Mesh (GPU)
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1445,7 +1716,7 @@ export class ParametricExportComputer {
             // Relaxation now uses metric-aware diffusion (bounded step + crossover
             // guards in shader) to improve physical triangle regularity while
             // preserving feature-constrained topology.
-            const resultData = await this.evaluatePoints(
+            let resultData = await this.evaluatePoints(
                 combinedVerts, uniformBuffer, styleParamBuffer,
                 dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
                 false, // Snap disabled â€" union grid has dedicated feature columns
@@ -1453,6 +1724,8 @@ export class ParametricExportComputer {
             );
 
             const gpuMs = performance.now() - gpuStart;
+
+            const outerIdxCount = allIdxArrays[0].length;
 
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // PHASE 4: Post-GPU Quality Improvement (v11.3)
@@ -1484,7 +1757,7 @@ export class ParametricExportComputer {
                     unionU,          // column U positions
                     outerW,          // grid width (number of columns)
                     outerH,          // grid height (number of rows)
-                    meshChains,      // feature chains (pre-smooth, at true peak positions)
+                    meshChains,      // R43: WH-smoothed chains (was: blend-capped meshGuideChains)
                     outerOrigToFinal, // map from original row index to actual grid row
                     false,           // invertWinding = false for outer wall
                     outerQuadMap!    // v11.3: quadâ†'index mapping from buildCDTOuterWall
@@ -1518,10 +1791,14 @@ export class ParametricExportComputer {
             // v16.28f + v16.34: Chain-strip 3D edge flip + boundary diagonal
             // [Extracted to parametric/ChainStripOptimizer.ts]
             //
-            const outerIdxCount = allIdxArrays[0].length;
             const constraintEdgeSet = buildConstraintEdgeSet(outerChainEdges);
 
-            let csResult = { phaseAFlips: 0, phaseBFlips: 0, phaseCFlips: 0, chainStripTriCount: 0, timeMs: 0, rowSpanRejects: 0, edgeLenRejects: 0, aspectRejects: 0, valenceBonusFlips: 0, maxSingleRowTSpan: 0, valenceStats: { before: { total: 0, low: 0, ideal: 0, high: 0 }, after: { total: 0, low: 0, ideal: 0, high: 0 } } };
+            // R46: Protect fan diagonal edges from CSO flips
+            for (const [v0, v1] of outerFanDiagonalEdges) {
+                constraintEdgeSet.add(edgeKey(v0, v1));
+            }
+
+            let csResult = { phaseAFlips: 0, phaseBFlips: 0, phaseCFlips: 0, chainStripTriCount: 0, timeMs: 0, rowSpanRejects: 0, edgeLenRejects: 0, aspectRejects: 0, valenceBonusFlips: 0, maxSingleRowTSpan: 0, chainGridFlips: 0, chainGridFlipsAllowed: 0, valenceStats: { before: { total: 0, low: 0, ideal: 0, high: 0 }, after: { total: 0, low: 0, ideal: 0, high: 0 } } };
             if (cfgStripOptimizer) {
                 csResult = optimizeChainStrips({
                     combinedIdxs,
@@ -1531,9 +1808,11 @@ export class ParametricExportComputer {
                     outerGridVertexCount,
                     outerIdxCount,
                     finalT,
+                    chainAdjacentVertices: outerChainAdjacentVertices,
+                    protectedVertices: outerProtectedStripVertices,
                 });
                 console.log(`[ParametricExport]   v16.31 chain-strip 3D edge flip: ${csResult.phaseAFlips}+${csResult.phaseBFlips}+${csResult.phaseCFlips} flips (angle+valence+shortDiag) on ${csResult.chainStripTriCount} chain-strip tris (${csResult.timeMs.toFixed(1)}ms)`);
-                console.log(`[ParametricExport]     rejects: rowSpan=${csResult.rowSpanRejects}, edgeLen=${csResult.edgeLenRejects}, aspect=${csResult.aspectRejects}, valenceBonus=${csResult.valenceBonusFlips}`);
+                console.log(`[ParametricExport]     rejects: rowSpan=${csResult.rowSpanRejects}, edgeLen=${csResult.edgeLenRejects}, aspect=${csResult.aspectRejects}, valenceBonus=${csResult.valenceBonusFlips}, chainGridSkips=${csResult.chainGridFlips}, chainGridFlipsAllowed=${csResult.chainGridFlipsAllowed}`);
                 console.log(`[ParametricExport]     valence before: ${csResult.valenceStats.before.total} verts, ${csResult.valenceStats.before.low} low(<5), ${csResult.valenceStats.before.ideal} ideal(6), ${csResult.valenceStats.before.high} high(>7)`);
                 console.log(`[ParametricExport]     valence after:  ${csResult.valenceStats.after.total} verts, ${csResult.valenceStats.after.low} low(<5), ${csResult.valenceStats.after.ideal} ideal(6), ${csResult.valenceStats.after.high} high(>7)`);
             } else {
@@ -1550,6 +1829,8 @@ export class ParametricExportComputer {
                     outerQuadMap: outerQuadMap!,
                     outerIdxCount,
                     outerGridVertexCount,
+                    chainAdjacentVertices: outerChainAdjacentVertices,
+                    protectedVertices: outerProtectedStripVertices,
                 });
             }
             console.log(`[ParametricExport]   v16.34 boundary diagonal optimization: ${bdResult.flips} cell diag flips on ${bdResult.checked} boundary cells (${bdResult.timeMs.toFixed(1)}ms)${!cfgBoundaryDiag ? ' [DISABLED]' : ''}`);
@@ -1581,6 +1862,7 @@ export class ParametricExportComputer {
                         outerH,
                         chains: meshChains,
                         finalT,
+                        protectedVertices: outerProtectedStripVertices,
                     },
                     (uvBatch) => this.evaluatePoints(
                         uvBatch, uniformBuffer, styleParamBuffer,
@@ -1592,11 +1874,262 @@ export class ParametricExportComputer {
                 finalCombinedIdxs = subdivResult.indices;
                 splitCount = subdivResult.splitCount;
                 console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris (${subdivResult.stats.timeMs.toFixed(1)}ms)`);
-                console.log(`[ParametricExport]     avg grid edge: ${subdivResult.stats.avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivResult.stats.interiorThreshold).toFixed(3)}mm, boundary threshold: ${Math.sqrt(subdivResult.stats.boundaryThreshold).toFixed(3)}mm, candidates: ${subdivResult.stats.candidates}, boundary neighbor tris: ${subdivResult.stats.boundaryTrisAdded}`);
+                console.log(`[ParametricExport]     avg grid edge: ${subdivResult.stats.avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivResult.stats.interiorThreshold).toFixed(3)}mm, boundary threshold: ${Math.sqrt(subdivResult.stats.boundaryThreshold).toFixed(3)}mm, feature threshold: ${Math.sqrt(subdivResult.stats.featureThreshold).toFixed(3)}mm, candidates: ${subdivResult.stats.candidates}, protected rejects: ${subdivResult.stats.protectedRejects}, boundary neighbor tris: ${subdivResult.stats.boundaryTrisAdded}`);
+
+                // ── R46 Phase 3: Subdivision midpoint re-snap ──────────────
+                // Chain-edge midpoints use UV-average U, which drifts off-ridge
+                // for curved features. Re-snap to the true extremum using the
+                // same discrete candidate pattern as Phase 2 interp re-snap.
+                if (subdivResult.chainMidpoints.length > 0 && cfgGpuResnap) {
+                    const subdivResnapStart = performance.now();
+                    const SAMPLE_WIDTH = 1.0 / ROW_PROBE_SAMPLES;
+                    const BASE_HALFWIDTH = 2.0 * SAMPLE_WIDTH;
+
+                    const allMidpoints = subdivResult.chainMidpoints;
+
+                    // Pre-compute per-midpoint adaptive window and candidate count
+                    const eligibleIndices: number[] = [];
+                    const perMidpointHW: number[] = [];
+                    const perMidpointCands: number[] = [];
+                    let totalProbes = 0;
+
+                    for (let i = 0; i < allMidpoints.length; i++) {
+                        const cm = allMidpoints[i];
+                        const uDrift = circularDistance(cm.u0, cm.u1);
+                        // Endpoints close enough — midpoint is already at the ridge
+                        if (uDrift < 2 * SAMPLE_WIDTH) continue;
+
+                        // C1 amendment: adaptive window scales with endpoint U drift
+                        const hw = Math.max(BASE_HALFWIDTH, Math.min(0.01, uDrift * 0.5 + BASE_HALFWIDTH));
+                        const cands = hw > 4 * SAMPLE_WIDTH ? 64 : 32;
+                        eligibleIndices.push(i);
+                        perMidpointHW.push(hw);
+                        perMidpointCands.push(cands);
+                        totalProbes += cands;
+                    }
+
+                    const eligibleCount = eligibleIndices.length;
+                    let subdivResnapCount = 0;
+                    let skippedNoChainId = 0;
+
+                    if (totalProbes > 0) {
+                        // Build candidate UV batch with prefix-sum allocation
+                        const resnapVerts = new Float32Array(totalProbes * 3);
+                        let rIdx = 0;
+                        for (let ei = 0; ei < eligibleCount; ei++) {
+                            const cm = allMidpoints[eligibleIndices[ei]];
+                            const hw = perMidpointHW[ei];
+                            const cands = perMidpointCands[ei];
+                            const step = (2 * hw) / (cands - 1);
+                            for (let k = 0; k < cands; k++) {
+                                let uCandidate = cm.u - hw + k * step;
+                                uCandidate = ((uCandidate % 1) + 1) % 1;
+                                resnapVerts[rIdx++] = uCandidate;
+                                resnapVerts[rIdx++] = cm.t;
+                                resnapVerts[rIdx++] = 0; // outer wall surface
+                            }
+                        }
+
+                        // GPU evaluate all candidates in one call
+                        const resnapPositions = await this.evaluatePoints(
+                            resnapVerts, uniformBuffer, styleParamBuffer,
+                            dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                        );
+
+                        // For each eligible midpoint: find best discrete candidate
+                        let probeOffset = 0;
+                        for (let ei = 0; ei < eligibleCount; ei++) {
+                            const cm = allMidpoints[eligibleIndices[ei]];
+                            const hw = perMidpointHW[ei];
+                            const cands = perMidpointCands[ei];
+
+                            // Look up chain ID from endpoints — skip if unknown
+                            const chainId = outerChainVertexChainIds.get(cm.v0) ?? outerChainVertexChainIds.get(cm.v1);
+                            if (chainId === undefined) {
+                                skippedNoChainId++;
+                                probeOffset += cands;
+                                continue;
+                            }
+
+                            const parentChain = meshChains[chainId];
+                            const isMax = !parentChain?.kind || parentChain.kind === 'peak';
+
+                            // Extract radii from resnap candidates
+                            const candidateRadii = new Float32Array(cands);
+                            for (let k = 0; k < cands; k++) {
+                                const off = (probeOffset + k) * 3;
+                                const x = resnapPositions[off];
+                                const y = resnapPositions[off + 1];
+                                candidateRadii[k] = Math.sqrt(x * x + y * y);
+                            }
+
+                            // Find best discrete candidate (max radius for peaks, min for valleys)
+                            let bestK = 0;
+                            let bestR = candidateRadii[0];
+                            for (let k = 1; k < cands; k++) {
+                                if (isMax ? (candidateRadii[k] > bestR) : (candidateRadii[k] < bestR)) {
+                                    bestR = candidateRadii[k];
+                                    bestK = k;
+                                }
+                            }
+
+                            // Best candidate's 3D position replaces the midpoint directly
+                            const step = (2 * hw) / (cands - 1);
+                            let bestU = cm.u - hw + bestK * step;
+                            bestU = ((bestU % 1) + 1) % 1;
+                            const moved = circularDistance(cm.u, bestU);
+                            if (moved > 1e-7 && moved < 0.08) {
+                                const off = (probeOffset + bestK) * 3;
+                                finalResultData[cm.vertexIdx * 3] = resnapPositions[off];
+                                finalResultData[cm.vertexIdx * 3 + 1] = resnapPositions[off + 1];
+                                finalResultData[cm.vertexIdx * 3 + 2] = resnapPositions[off + 2];
+                                subdivResnapCount++;
+                            }
+
+                            probeOffset += cands;
+                        }
+                    }
+
+                    console.log(`[ParametricExport]   R46 subdiv re-snap: ${subdivResnapCount}/${eligibleCount} refined, ${skippedNoChainId} skipped (no chainId) (${(performance.now() - subdivResnapStart).toFixed(1)}ms)`);
+                }
             } else {
                 finalResultData = resultData;
                 finalCombinedIdxs = combinedIdxs;
                 console.log(`[ParametricExport]   v18.0 GPU-surface subdivision [DISABLED]`);
+            }
+
+            // ── R48 H': Ridge-distance diagnostic ──
+            if (meshChains.length > 0 && outerChainVertexChainIds.size > 0) {
+                const RIDGE_DIAG_HW = 0.015; // ±0.015 U half-width
+                const RIDGE_DIAG_CANDS = 64;
+
+                // Collect chain vertex info
+                const chainVtxList: Array<{ vertexIdx: number; chainId: number; isPrimary: boolean }> = [];
+                const interpIdxSetH = new Set<number>();
+                for (const iv of outerInterpolatedChainVertices) {
+                    interpIdxSetH.add(iv.vertexIdx);
+                }
+                for (const [vtxIdx, chainId] of outerChainVertexChainIds) {
+                    chainVtxList.push({ vertexIdx: vtxIdx, chainId, isPrimary: !interpIdxSetH.has(vtxIdx) });
+                }
+
+                if (chainVtxList.length > 0) {
+                    // Build probe UV batch
+                    const probeUVs = new Float32Array(chainVtxList.length * RIDGE_DIAG_CANDS * 3);
+                    let pIdx = 0;
+                    for (const cv of chainVtxList) {
+                        const currentU = combinedVerts[cv.vertexIdx * 3];
+                        const currentT = combinedVerts[cv.vertexIdx * 3 + 1];
+                        const step = (2 * RIDGE_DIAG_HW) / (RIDGE_DIAG_CANDS - 1);
+                        for (let k = 0; k < RIDGE_DIAG_CANDS; k++) {
+                            let u = currentU - RIDGE_DIAG_HW + k * step;
+                            u = ((u % 1) + 1) % 1;
+                            probeUVs[pIdx++] = u;
+                            probeUVs[pIdx++] = currentT;
+                            probeUVs[pIdx++] = 0; // outer wall
+                        }
+                    }
+
+                    const probePositions = await this.evaluatePoints(
+                        probeUVs, uniformBuffer, styleParamBuffer,
+                        dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                    );
+
+                    // For each chain vertex, find true extremum and compute 3D distance
+                    let totalDist = 0, maxDist = 0, count = 0;
+                    let primaryTotal = 0, primaryMax = 0, primaryCount = 0;
+                    let interpTotal = 0, interpMax = 0, interpCount = 0;
+                    let worstVtx = { chainId: -1, vertexIdx: -1, dist: 0, uError: 0 };
+                    // R50-B D1: Per-chain R48 error breakdown
+                    const chainR48Stats = new Map<number, { sumDist: number; count: number; maxDist: number; sumUErr: number; maxUErr: number }>();
+
+                    for (let i = 0; i < chainVtxList.length; i++) {
+                        const cv = chainVtxList[i];
+                        const parentChain = meshChains[cv.chainId];
+                        const isMax = !parentChain?.kind || parentChain.kind === 'peak';
+
+                        const base = i * RIDGE_DIAG_CANDS;
+                        let bestK = 0;
+                        let bestR = 0;
+                        { // Find radius at first candidate
+                            const off = base * 3;
+                            bestR = Math.sqrt(probePositions[off] ** 2 + probePositions[off + 1] ** 2);
+                        }
+                        for (let k = 1; k < RIDGE_DIAG_CANDS; k++) {
+                            const off = (base + k) * 3;
+                            const r = Math.sqrt(probePositions[off] ** 2 + probePositions[off + 1] ** 2);
+                            if (isMax ? (r > bestR) : (r < bestR)) {
+                                bestR = r; bestK = k;
+                            }
+                        }
+
+                        // R50-B D3: Parabolic refinement of R48 extremum U position
+                        const step = (2 * RIDGE_DIAG_HW) / (RIDGE_DIAG_CANDS - 1);
+                        let refinedTrueU = combinedVerts[cv.vertexIdx * 3] - RIDGE_DIAG_HW + bestK * step;
+                        let clampedDelta = 0;
+                        if (bestK > 0 && bestK < RIDGE_DIAG_CANDS - 1) {
+                            const rL = Math.sqrt(probePositions[(base + bestK - 1) * 3] ** 2 + probePositions[(base + bestK - 1) * 3 + 1] ** 2);
+                            const rC = bestR;
+                            const rR = Math.sqrt(probePositions[(base + bestK + 1) * 3] ** 2 + probePositions[(base + bestK + 1) * 3 + 1] ** 2);
+                            const denom = rL - 2 * rC + rR;
+                            if (Math.abs(denom) > 1e-12) {
+                                const delta = 0.5 * (rL - rR) / denom;
+                                clampedDelta = Math.max(-0.5, Math.min(0.5, delta));
+                                refinedTrueU = combinedVerts[cv.vertexIdx * 3] - RIDGE_DIAG_HW + (bestK + clampedDelta) * step;
+                            }
+                        }
+                        const refinedUError = circularDistance(((refinedTrueU % 1) + 1) % 1, combinedVerts[cv.vertexIdx * 3]);
+
+                        // True ridge 3D position (discrete best candidate)
+                        const trueOff = (base + bestK) * 3;
+                        const tx = probePositions[trueOff], ty = probePositions[trueOff + 1], tz = probePositions[trueOff + 2];
+
+                        // Current chain vertex 3D position (from final result data)
+                        const cx = finalResultData[cv.vertexIdx * 3];
+                        const cy = finalResultData[cv.vertexIdx * 3 + 1];
+                        const cz = finalResultData[cv.vertexIdx * 3 + 2];
+
+                        const dist = Math.sqrt((tx - cx) ** 2 + (ty - cy) ** 2 + (tz - cz) ** 2);
+                        totalDist += dist; count++;
+                        if (dist > maxDist) maxDist = dist;
+
+                        if (cv.isPrimary) {
+                            primaryTotal += dist; primaryCount++;
+                            if (dist > primaryMax) primaryMax = dist;
+                        } else {
+                            interpTotal += dist; interpCount++;
+                            if (dist > interpMax) interpMax = dist;
+                        }
+
+                        // R50-B D1: Accumulate per-chain stats
+                        let cs = chainR48Stats.get(cv.chainId);
+                        if (!cs) {
+                            cs = { sumDist: 0, count: 0, maxDist: 0, sumUErr: 0, maxUErr: 0 };
+                            chainR48Stats.set(cv.chainId, cs);
+                        }
+                        cs.sumDist += dist; cs.count++;
+                        if (dist > cs.maxDist) cs.maxDist = dist;
+                        cs.sumUErr += refinedUError;
+                        if (refinedUError > cs.maxUErr) cs.maxUErr = refinedUError;
+
+                        // Track worst vertex
+                        if (dist > worstVtx.dist) {
+                            const trueU = combinedVerts[cv.vertexIdx * 3] - RIDGE_DIAG_HW + bestK * step;
+                            worstVtx = { chainId: cv.chainId, vertexIdx: cv.vertexIdx, dist, uError: Math.abs(trueU - combinedVerts[cv.vertexIdx * 3]) };
+                        }
+                    }
+
+                    console.log(`[ParametricExport]   R48 ridge-distance diagnostic:`);
+                    console.log(`[ParametricExport]     all: avg=${(totalDist / count).toFixed(4)}mm, max=${maxDist.toFixed(4)}mm (n=${count})`);
+                    if (primaryCount > 0) console.log(`[ParametricExport]     primary: avg=${(primaryTotal / primaryCount).toFixed(4)}mm, max=${primaryMax.toFixed(4)}mm (n=${primaryCount})`);
+                    if (interpCount > 0) console.log(`[ParametricExport]     interpolated: avg=${(interpTotal / interpCount).toFixed(4)}mm, max=${interpMax.toFixed(4)}mm (n=${interpCount})`);
+                    console.log(`[ParametricExport]     worst: chain${worstVtx.chainId} vtx${worstVtx.vertexIdx} dist=${worstVtx.dist.toFixed(4)}mm uErr=${worstVtx.uError.toFixed(6)}`);
+                    // R50-B D1: Per-chain R48 error breakdown
+                    for (const [chainId, cs] of chainR48Stats) {
+                        const kind = meshChains[chainId]?.kind ?? 'peak';
+                        console.log(`[ParametricExport]     R48 chain${chainId} (${kind}, len=${cs.count}): avgDist=${(cs.sumDist / cs.count).toFixed(4)}mm, maxDist=${cs.maxDist.toFixed(4)}mm, avgUErr=${(cs.sumUErr / cs.count).toFixed(6)}, maxUErr=${cs.maxUErr.toFixed(6)}`);
+                    }
+                }
             }
 
 
@@ -1620,11 +2153,14 @@ export class ParametricExportComputer {
                 outerIdxCountAfterSubdiv: allIdxArrays[0].length + (finalCombinedIdxs.length - combinedIdxs.length),
                 origVertCount: vertexCount,
                 maxSingleRowTSpan: csResult.maxSingleRowTSpan,
+                numU: outerW,
+                numT: outerH,
+                gridVertexCount: outerGridVertexCount,
             });
             console.log(`[ParametricExport]   v16.31 diagnostics:`);
             console.log(`[ParametricExport]     cross-row tris: 2-row=${meshDiag.crossRow1}, 3-row=${meshDiag.crossRow2}, 4+row=${meshDiag.crossRow3plus}`);
             console.log(`[ParametricExport]     aspect ratios: >5=${meshDiag.aspectOver5}, >10=${meshDiag.aspectOver10}, >20=${meshDiag.aspectOver20}`);
-            console.log(`[ParametricExport]     low valence: val=3: ${meshDiag.val3}, val=4: ${meshDiag.val4}, val=5: ${meshDiag.val5} (outer wall only)`);
+            console.log(`[ParametricExport]     low valence: val=3: ${meshDiag.val3} (boundary=${meshDiag.val3Boundary}, interior=${meshDiag.val3Interior}, chain=${meshDiag.val3Chain}), val=4: ${meshDiag.val4}, val=5: ${meshDiag.val5}`);
 
             // B5: Chain-strip-specific 3D quality report (post-GPU)
             const cs3D = computeChainStrip3DQuality({

@@ -19,7 +19,7 @@ async function isWebGPUAvailable(): Promise<boolean> {
 
     const gpu = (navigator as Navigator & { gpu?: unknown }).gpu;
     if (!gpu) {
-        console.log('[Renderer] WebGPU API not available');
+        if (import.meta.env.DEV) console.log('[Renderer] WebGPU API not available');
         return false;
     }
 
@@ -29,12 +29,13 @@ async function isWebGPUAvailable(): Promise<boolean> {
 
         // Fallback: Try compatibility mode (required for some Android devices)
         if (!adapter) {
-            console.log('[Renderer] Standard WebGPU adapter not found, trying compatibility mode...');
+            if (import.meta.env.DEV) console.log('[Renderer] Standard WebGPU adapter not found, trying compatibility mode...');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Non-spec Chrome extension for Android compatibility mode
             adapter = await (gpu as GPU).requestAdapter({ compatibilityMode: true } as any);
         }
 
         if (!adapter) {
-            console.log('[Renderer] WebGPU adapter not available');
+            if (import.meta.env.DEV) console.log('[Renderer] WebGPU adapter not available');
             return false;
         }
         return true;
@@ -79,7 +80,7 @@ function wrapWebGPUController(
 ): RendererController | null {
     if (!webgpuController) return null;
 
-    // The WebGPU controller already has these methods
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Remove when webgpu_core.ts exports proper types
     const ctrl = webgpuController as any;
 
     return {
@@ -93,6 +94,9 @@ function wrapWebGPUController(
         setAutoRotate: (value) => ctrl.setAutoRotate?.(value),
         toggleAutoRotate: () => ctrl.toggleAutoRotate?.(),
         getAutoRotate: () => ctrl.getAutoRotate?.(),
+        setAutoPivot: (value) => ctrl.setAutoPivot?.(value),
+        toggleAutoPivot: () => ctrl.toggleAutoPivot?.(),
+        getAutoPivot: () => ctrl.getAutoPivot?.() ?? false,
         get rendererType() { return 'webgpu' as const; },
         setDebugSegments: (segments) => ctrl.setDebugSegments?.(segments),
         setDebugPoints: (points) => ctrl.setDebugPoints?.(points),
@@ -120,30 +124,32 @@ export async function createRenderer(
     const urlParams = new URLSearchParams(window.location.search);
     const urlRenderer = urlParams.get('renderer');
 
-    console.log(`[Renderer] URL search: "${window.location.search}", urlRenderer: "${urlRenderer}"`);
+    if (import.meta.env.DEV) console.log(`[Renderer] URL search: "${window.location.search}", urlRenderer: "${urlRenderer}"`);
     if (urlRenderer === 'webgl' || urlRenderer === 'webgpu') {
-        console.log(`[Renderer] URL parameter override: ${urlRenderer}`);
+        if (import.meta.env.DEV) console.log(`[Renderer] URL parameter override: ${urlRenderer}`);
     }
 
     // Check for user's saved renderer preference from Settings
     const savedPref = getSavedRendererPreference();
     const effectiveForce = forceRenderer ?? urlRenderer ?? savedPref;
-    console.log(`[Renderer] forceRenderer=${forceRenderer}, urlRenderer=${urlRenderer}, savedPref=${savedPref}, effectiveForce=${effectiveForce}`);
+    if (import.meta.env.DEV) console.log(`[Renderer] forceRenderer=${forceRenderer}, urlRenderer=${urlRenderer}, savedPref=${savedPref}, effectiveForce=${effectiveForce}`);
 
     // === Force specific renderer (from API, URL, or user preference) ===
     if (effectiveForce === 'webgl') {
-        console.log('[Renderer] Forcing WebGL mode' + (urlRenderer === 'webgl' ? ' (URL param)' : savedPref === 'webgl' ? ' (user preference)' : ''));
+        const forceSource = urlRenderer === 'webgl' ? 'URL param ?renderer=webgl' : savedPref === 'webgl' ? 'localStorage pf-preferred-renderer=webgl' : 'API forceRenderer';
+        console.log(`[Renderer] Forcing WebGL mode (${forceSource})`);
+        onFallback?.(`Forced: ${forceSource}`);
         return createWebGLRenderer(mountOptions, 'forced');
     }
 
     // === Try WebGPU first ===
     if (effectiveForce !== 'webgl' && await isWebGPUAvailable()) {
         try {
-            console.log('[Renderer] Attempting WebGPU...');
+            if (import.meta.env.DEV) console.log('[Renderer] Attempting WebGPU...');
             const webgpuController = await mountWebGPU(mountOptions);
 
             if (webgpuController) {
-                console.log('[Renderer] WebGPU initialized successfully');
+                if (import.meta.env.DEV) console.log('[Renderer] WebGPU initialized successfully');
                 return wrapWebGPUController(webgpuController);
             }
 
@@ -155,14 +161,15 @@ export async function createRenderer(
             console.warn('[Renderer] WebGPU error:', err);
 
             if (isGPUInstanceLossError(err)) {
-                console.log('[Renderer] Detected GPU instance loss, falling back to WebGL');
+                if (import.meta.env.DEV) console.log('[Renderer] Detected GPU instance loss, falling back to WebGL');
                 onFallback?.('GPU process crash detected');
             } else {
                 onFallback?.(`WebGPU error: ${err instanceof Error ? err.message : String(err)}`);
             }
         }
     } else if (!forceRenderer) {
-        onFallback?.('WebGPU not available');
+        const hasGpuApi = typeof navigator !== 'undefined' && !!(navigator as Navigator & { gpu?: unknown }).gpu;
+        onFallback?.(hasGpuApi ? 'WebGPU adapter unavailable (GPU may not support it)' : 'navigator.gpu API missing (browser lacks WebGPU)');
     }
 
     // === Fall back to WebGL ===
@@ -205,7 +212,7 @@ async function createWebGLRenderer(
     options: CreateRendererOptions,
     reason: 'forced' | 'fallback'
 ): Promise<RendererController | null> {
-    console.log(`[Renderer] Creating WebGL renderer (${reason})`);
+    if (import.meta.env.DEV) console.log(`[Renderer] Creating WebGL renderer (${reason})`);
 
     try {
         // Lazy load the WebGL renderer
@@ -217,7 +224,7 @@ async function createWebGLRenderer(
         const controller = await webglModule.mountWebGL(options);
 
         if (controller) {
-            console.log('[Renderer] WebGL initialized successfully');
+            if (import.meta.env.DEV) console.log('[Renderer] WebGL initialized successfully');
             return controller;
         }
 

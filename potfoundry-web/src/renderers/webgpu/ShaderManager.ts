@@ -3,9 +3,13 @@ import commonWgsl from '../../assets/shaders/common.wgsl?raw';
 import previewUniformsWgsl from '../../assets/shaders/preview_uniforms.wgsl?raw';
 import stylesWgsl from '../../assets/shaders/styles.wgsl?raw';
 import previewMainWgsl from '../../assets/shaders/preview_main.wgsl?raw';
+import previewMainMobileWgsl from '../../assets/shaders/preview_main_mobile.wgsl?raw';
+import previewFullMobileWgsl from '../../assets/shaders/preview_full_mobile.wgsl?raw';
+import errorEstimationWgsl from '../../assets/shaders/error_estimation.wgsl?raw';
 import { generateStyleConstants } from '../../utils/shaderGenerator';
 
 import { STYLE_FUNCTION_MAP } from '../../styles/registry';
+import { isMobileDevice } from '../../ResizeManager';
 
 import { stripShaderCode } from '../../utils/shaderStripper';
 
@@ -15,7 +19,11 @@ export class ShaderManager {
     private uniformsWgsl: string = '';
     private stylesWgsl: string = '';
     private mainWgsl: string = '';
+    private mainMobileWgsl: string = '';
+    private fullMobileWgsl: string = '';
     private constantsWgsl: string = '';
+    private errorEstimationWgsl: string = '';
+    private readonly mobile: boolean;
 
     private constructor() {
         // Load raw strings once
@@ -23,10 +31,18 @@ export class ShaderManager {
         this.uniformsWgsl = this.getShaderContent(previewUniformsWgsl);
         this.stylesWgsl = this.getShaderContent(stylesWgsl);
         this.mainWgsl = this.getShaderContent(previewMainWgsl);
+        this.mainMobileWgsl = this.getShaderContent(previewMainMobileWgsl);
+        this.fullMobileWgsl = this.getShaderContent(previewFullMobileWgsl);
         this.constantsWgsl = generateStyleConstants();
+        this.errorEstimationWgsl = this.getShaderContent(errorEstimationWgsl);
+        this.mobile = isMobileDevice();
 
         if (!this.commonWgsl || !this.uniformsWgsl || !this.stylesWgsl || !this.mainWgsl) {
             console.error('[ShaderManager] Failed to load shader modules');
+        }
+        console.log(`[ShaderManager] Mobile detection: ${this.mobile} (UA: ${navigator.userAgent.substring(0, 80)}, touch: ${navigator.maxTouchPoints}, screen: ${window.screen.width}x${window.screen.height}, VITE_MOBILE: ${import.meta.env.VITE_MOBILE ?? 'unset'})`);
+        if (this.mobile) {
+            console.log(`[ShaderManager] Using mobile preview shader (${(this.fullMobileWgsl.length / 1024).toFixed(1)}KB base vs desktop ${(this.mainWgsl.length / 1024).toFixed(1)}KB)`);
         }
     }
 
@@ -37,16 +53,62 @@ export class ShaderManager {
         return ShaderManager.instance;
     }
 
-    private getShaderContent(mod: any): string {
+    private getShaderContent(mod: string | { default: string }): string {
         if (typeof mod === 'string') return mod;
         if (mod && typeof mod.default === 'string') return mod.default;
         return '';
     }
 
     /**
-     * Generates WGSL with a specific style hardcoded, enabling compiler optimization (DCE).
-     * @param styleId The ID of the style to compile for.
+     * Extracts ONLY the content of a named #region from styles.wgsl.
+     * Returns the style function body without shared/surface code.
      */
+    private extractStyleRegionOnly(functionName: string): string {
+        const lines = this.stylesWgsl.split('\n');
+        const output: string[] = [];
+        let insideRegion = false;
+        let keepCurrentRegion = false;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('// #region')) {
+                insideRegion = true;
+                const regionName = trimmed.replace('// #region', '').trim();
+                keepCurrentRegion = regionName === functionName;
+                continue; // skip the marker itself
+            }
+            if (trimmed.startsWith('// #endregion')) {
+                insideRegion = false;
+                keepCurrentRegion = false;
+                continue;
+            }
+            if (insideRegion && keepCurrentRegion) {
+                output.push(line);
+            }
+        }
+        return output.join('\n');
+    }
+
+    /**
+     * Extracts ONLY the main style function from a #region, skipping
+     * optimized _zero/_tau variants that mobile preview doesn't need.
+     */
+    private extractMainStyleFunctionOnly(functionName: string): string {
+        const fullRegion = this.extractStyleRegionOnly(functionName);
+        const lines = fullRegion.split('\n');
+        const output: string[] = [];
+        const zeroFn = `fn ${functionName}_zero`;
+        const tauFn = `fn ${functionName}_tau`;
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith(zeroFn) || trimmed.startsWith(tauFn)) {
+                break;
+            }
+            output.push(line);
+        }
+        return output.join('\n');
+    }
+
     /**
      * Generates the common environment (Constants + Common + Style + Dispatch).
      * Useful for Compute Shaders (Adaptive Export, Feature Extraction).
@@ -85,6 +147,43 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
     }
 
     /**
+     * Generates the assembled WGSL for GPU error estimation compute shader.
+     * Prepends the style environment (Constants + Common + Styles + Dispatch)
+     * to the error_estimation.wgsl shader, which defines its own uniforms,
+     * bindings, and compute entry point.
+     *
+     * @param styleId The ID of the style to compile for.
+     */
+    public getErrorEstimationWGSL(styleId: number): string {
+        const functionName = STYLE_FUNCTION_MAP[styleId] || 'sf_radius';
+        const optimizedStylesWgsl = stripShaderCode(this.stylesWgsl, functionName);
+
+        const dispatchCode = `
+// DYNAMICALLY GENERATED DISPATCH FOR STYLE ID ${styleId} (${functionName})
+fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
+    let th = theta - floor(theta / TAU) * TAU;
+    return ${functionName}(th, t, r0);
+}
+
+fn style_radius_zero(style_id: i32, t: f32, r0: f32) -> f32 {
+    return ${functionName}(0.0, t, r0);
+}
+
+fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
+    return ${functionName}(TAU, t, r0);
+}
+`;
+
+        return [
+            this.constantsWgsl,
+            this.commonWgsl,
+            optimizedStylesWgsl,
+            dispatchCode,
+            this.errorEstimationWgsl,
+        ].join('\n');
+    }
+
+    /**
      * Generates WGSL for the Preview Renderer (Vertex/Fragment).
      * Includes Preview Uniforms and Main logic.
      * 
@@ -93,8 +192,28 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
      */
     public getStyleWGSL(styleId: number): string {
         const functionName = STYLE_FUNCTION_MAP[styleId] || 'sf_radius';
-        const optimizedStylesWgsl = stripShaderCode(this.stylesWgsl, functionName);
-        console.log(`[ShaderManager] Style ${styleId} (${functionName}) Stripped Size: ${optimizedStylesWgsl.length} bytes, ${optimizedStylesWgsl.split('\n').length} lines.`);
+
+        // Mobile: self-contained ultra-mobile shader (skips common/uniforms/styles surface logic)
+        if (this.mobile) {
+            // Mobile only needs the main style function + single dispatch wrapper
+            const extractedStyle = this.extractMainStyleFunctionOnly(functionName);
+            const mobileDispatch = `
+fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
+    let th = theta - floor(theta / TAU) * TAU;
+    return ${functionName}(th, t, r0);
+}
+`;
+            const parts = this.fullMobileWgsl.split('// __STYLE_SLOT__');
+            const composed = [
+                // Skip constantsWgsl on mobile — style constants are unused by mobile shader
+                parts[0],             // Preamble: inline uniforms, helpers, pot profile
+                extractedStyle,       // Just the main style function (no _zero/_tau)
+                mobileDispatch,       // Single dispatcher (no _zero/_tau variants)
+                parts[1] || '',       // Surface logic + vertex/fragment shaders
+            ].join('\n');
+            console.log(`[ShaderManager] Mobile ultra-compact: style=${functionName}, total=${(composed.length / 1024).toFixed(1)}KB, ${composed.split('\n').length} lines`);
+            return composed;
+        }
 
         // Re-generate dispatch code (same as in getStyleEnvironmentWGSL)
         const dispatchCode = `
@@ -114,13 +233,17 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
 }
 `;
 
+        // Desktop: full composition with stripped styles
+        const optimizedStylesWgsl = stripShaderCode(this.stylesWgsl, functionName);
+        console.log(`[ShaderManager] Style ${styleId} (${functionName}) Stripped Size: ${optimizedStylesWgsl.length} bytes, ${optimizedStylesWgsl.split('\n').length} lines.`);
+
         return [
             this.constantsWgsl,    // 1. Constants
             this.commonWgsl,       // 2. Helpers
             this.uniformsWgsl,     // 3. Uniforms & style_param Definition
             optimizedStylesWgsl,   // 4. Styles (uses style_param)
             dispatchCode,          // 5. Dispatcher
-            this.mainWgsl          // 6. Main
+            this.mainWgsl          // 6. Main (full desktop)
         ].join('\n');
     }
 
@@ -135,6 +258,11 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
      * Used by ThumbnailRenderer to avoid recompiling for every preset.
      */
     public getUniversalWGSL(): string {
+        // On mobile, universal shader (all styles) is too large — fall back to single-style
+        if (this.mobile) {
+            return this.getStyleWGSL(0);
+        }
+
         // No stripping - include all styles
         const allStylesWgsl = this.stylesWgsl;
 
@@ -173,7 +301,7 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
             this.uniformsWgsl,     // 3. Uniforms
             allStylesWgsl,         // 4. Styles (ALL of them)
             dispatchCode,          // 5. Dispatcher
-            this.mainWgsl          // 6. Main
+            this.mainWgsl          // 6. Main (desktop only — mobile early-returns)
         ].join('\n');
     }
 

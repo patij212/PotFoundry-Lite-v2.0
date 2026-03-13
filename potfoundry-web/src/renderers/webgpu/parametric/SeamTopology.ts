@@ -592,3 +592,174 @@ export function seamConfigForProfile(
             return { maxPositionGapMm: 0.02, maxNormalGapDeg: 2 };
     }
 }
+
+// ============================================================================
+// Seam Healing
+// ============================================================================
+
+/**
+ * Configuration for the seam healing pass.
+ */
+export interface HealSeamConfig {
+    /** Maximum position gap (mm) below which averaging alone is sufficient. */
+    averageOnlyThresholdMm: number;
+    /** Maximum position gap (mm) above which ghost triangles are inserted. */
+    ghostTriangleThresholdMm: number;
+}
+
+/**
+ * Result of the seam healing pass.
+ */
+export interface HealSeamResult {
+    /** Output positions (modified in-place from input). */
+    positions: Float32Array;
+    /** Output indices (may be extended with ghost triangles). */
+    indices: Uint32Array;
+    /** Number of seam pairs averaged. */
+    pairsAveraged: number;
+    /** Number of ghost triangle strips inserted. */
+    ghostStripsInserted: number;
+    /** Maximum residual gap after healing (mm). */
+    maxResidualGapMm: number;
+}
+
+/**
+ * Default healing thresholds per quality profile.
+ *
+ * @param profileName - Quality profile name.
+ * @returns HealSeamConfig with appropriate thresholds.
+ */
+export function healConfigForProfile(
+    profileName: 'draft' | 'standard' | 'high' | 'ultra',
+): HealSeamConfig {
+    switch (profileName) {
+        case 'draft':
+            return { averageOnlyThresholdMm: 2.0, ghostTriangleThresholdMm: 5.0 };
+        case 'standard':
+            return { averageOnlyThresholdMm: 1.0, ghostTriangleThresholdMm: 3.0 };
+        case 'high':
+            return { averageOnlyThresholdMm: 0.2, ghostTriangleThresholdMm: 1.0 };
+        case 'ultra':
+            return { averageOnlyThresholdMm: 0.05, ghostTriangleThresholdMm: 0.5 };
+    }
+}
+
+/**
+ * Heal the periodic seam by averaging vertex positions and optionally
+ * inserting ghost triangles to stitch large gaps.
+ *
+ * The seam in the outer-wall grid is between column 0 (U ≈ 0) and
+ * column W-1 (U ≈ (W-1)/W). For a truly periodic surface these vertices
+ * should be geometrically close. This function:
+ *
+ * 1. Identifies seam vertex pairs (col0 ↔ colLast) per row.
+ * 2. **Position averaging**: for each pair with gap < `ghostTriangleThresholdMm`,
+ *    moves both vertices to their 3D midpoint. This closes minor gaps.
+ * 3. **Ghost triangle insertion** (optional): for pairs with gap ≥ threshold,
+ *    inserts a strip of two triangles (quad) bridging the seam gap.
+ *    Ghost triangles reference the existing seam vertices — no new vertices
+ *    are created.
+ *
+ * @param positions - Packed [x,y,z,...] vertex positions (mutated in-place).
+ * @param indices - Triangle index buffer (may be extended).
+ * @param outerIdxCount - Number of outer-wall indices (only seam pairs within
+ *                        this range are healed).
+ * @param numU - Number of U columns in the outer-wall grid.
+ * @param numT - Number of T rows in the outer-wall grid.
+ * @param config - Healing thresholds.
+ * @returns Healing result with diagnostics.
+ */
+export function healSeam(
+    positions: Float32Array,
+    indices: Uint32Array,
+    _outerIdxCount: number,
+    numU: number,
+    numT: number,
+    config: HealSeamConfig,
+): HealSeamResult {
+    const pairs = identifySeamPairs(numU, numT);
+
+    if (pairs.length === 0) {
+        return {
+            positions,
+            indices,
+            pairsAveraged: 0,
+            ghostStripsInserted: 0,
+            maxResidualGapMm: 0,
+        };
+    }
+
+    // ── Step 1: Classify pairs by gap size ──────────────────────────
+    let pairsAveraged = 0;
+    const ghostCandidateRows: number[] = []; // rows needing ghost triangles
+
+    for (const pair of pairs) {
+        const gap = measurePositionGap(positions, pair);
+
+        if (gap < config.ghostTriangleThresholdMm) {
+            // Average positions: move both vertices to their 3D midpoint
+            const a = pair.col0Vertex * 3;
+            const b = pair.colLastVertex * 3;
+            const mx = (positions[a] + positions[b]) * 0.5;
+            const my = (positions[a + 1] + positions[b + 1]) * 0.5;
+            const mz = (positions[a + 2] + positions[b + 2]) * 0.5;
+            positions[a] = mx;     positions[a + 1] = my;     positions[a + 2] = mz;
+            positions[b] = mx;     positions[b + 1] = my;     positions[b + 2] = mz;
+            pairsAveraged++;
+        } else {
+            ghostCandidateRows.push(pair.row);
+        }
+    }
+
+    // ── Step 2: Insert ghost triangles for large gaps ───────────────
+    // Ghost triangles form a quad strip between consecutive rows:
+    //   Triangle 1: (col0[r], colLast[r], col0[r+1])
+    //   Triangle 2: (colLast[r], colLast[r+1], col0[r+1])
+    //
+    // We only insert ghosts for consecutive ghost-candidate row pairs.
+    let ghostStripsInserted = 0;
+    const ghostIndices: number[] = [];
+
+    for (let i = 0; i < ghostCandidateRows.length - 1; i++) {
+        const r0 = ghostCandidateRows[i];
+        const r1 = ghostCandidateRows[i + 1];
+        // Only bridge consecutive rows
+        if (r1 - r0 !== 1) continue;
+
+        const c0_r0 = r0 * numU;               // col0 at row r0
+        const cL_r0 = r0 * numU + numU - 1;     // colLast at row r0
+        const c0_r1 = r1 * numU;               // col0 at row r1
+        const cL_r1 = r1 * numU + numU - 1;     // colLast at row r1
+
+        // Triangle 1: col0[r0] → colLast[r0] → col0[r1]
+        ghostIndices.push(c0_r0, cL_r0, c0_r1);
+        // Triangle 2: colLast[r0] → colLast[r1] → col0[r1]
+        ghostIndices.push(cL_r0, cL_r1, c0_r1);
+        ghostStripsInserted++;
+    }
+
+    // ── Step 3: Extend index buffer with ghost triangles ────────────
+    let finalIndices = indices;
+    if (ghostIndices.length > 0) {
+        finalIndices = new Uint32Array(indices.length + ghostIndices.length);
+        finalIndices.set(indices);
+        for (let i = 0; i < ghostIndices.length; i++) {
+            finalIndices[indices.length + i] = ghostIndices[i];
+        }
+    }
+
+    // ── Step 4: Measure residual gap ────────────────────────────────
+    let maxResidual = 0;
+    for (const pair of pairs) {
+        const gap = measurePositionGap(positions, pair);
+        if (gap > maxResidual) maxResidual = gap;
+    }
+
+    return {
+        positions,
+        indices: finalIndices,
+        pairsAveraged,
+        ghostStripsInserted,
+        maxResidualGapMm: maxResidual,
+    };
+}

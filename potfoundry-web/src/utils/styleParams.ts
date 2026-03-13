@@ -28,6 +28,15 @@ import { STYLE_ID_MAP_FROM_KEYS as STYLE_ID_MAP_REGISTRY } from '../styles/regis
 export const STYLE_ID_MAP = STYLE_ID_MAP_REGISTRY;
 
 // ============================================================================
+// Type Guards
+// ============================================================================
+
+/** Type guard: checks if styleName is a valid StyleId */
+function isStyleId(name: string): name is keyof typeof STYLE_ID_MAP {
+  return name in STYLE_ID_MAP;
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -56,7 +65,7 @@ function pad(values: number[]): number[] {
  * Flatten a nested array of numbers.
  * Because standard library support varies in some environments.
  */
-function flatten(arr: any[]): number[] {
+function flatten(arr: (number | number[])[]): number[] {
   return arr.flat(Infinity) as number[];
 }
 
@@ -448,8 +457,7 @@ export function buildStyleParamPayload(
   styleName: string,
   opts: Record<string, unknown> | null | undefined
 ): [number, number[]] {
-  // @ts-ignore - indexing by string into StyleId record
-  const styleId = STYLE_ID_MAP[styleName] ?? 0;
+  const styleId = isStyleId(styleName) ? STYLE_ID_MAP[styleName] : 0;
   const packer = PACKERS[styleId] ?? packSuperformula;
   const values = packer(opts || {});
 
@@ -469,6 +477,5 @@ export function buildStyleParamPayload(
  * @returns Numeric style ID, defaults to 0 for unknown styles
  */
 export function getStyleId(styleName: string): number {
-  // @ts-ignore - indexing by string into StyleId record
-  return STYLE_ID_MAP[styleName] ?? 0;
+  return isStyleId(styleName) ? STYLE_ID_MAP[styleName] : 0;
 }

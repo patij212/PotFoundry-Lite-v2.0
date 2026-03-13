@@ -145,10 +145,10 @@ describe('extractChains', () => {
             }
 
             const result = ConstrainedTriangulator.extractChains(features);
-            // After Douglas-Peucker simplification followed by high-res densification (0.0005 increments)
+            // After Douglas-Peucker simplification followed by high-res densification (0.001 increments)
             // our total point count will be high.
             const totalPoints = result.chains.reduce((a, c) => a + c.length, 0);
-            expect(totalPoints).toBeGreaterThan(800);
+            expect(totalPoints).toBeGreaterThan(400);
         });
     });
 
@@ -160,9 +160,9 @@ describe('extractChains', () => {
             }
 
             const result = ConstrainedTriangulator.extractChains(features);
-            // SEAMS = 360 (Current Setting)
-            // (361 * 2) for left/right + (361 * 2) for top/bottom = 1444
-            expect(result.seamPoints.length).toBe(1444);
+            // SEAMS = 1024 (Current Setting)
+            // (1025 * 2) for left/right + (1025 * 2) for top/bottom = 4100
+            expect(result.seamPoints.length).toBe(4100);
         });
     });
 

@@ -19,13 +19,17 @@ import manager from '../../infra/logging/MessageManager';
 import { LogLevel, LogMessage } from '../../infra/logging/types';
 import { useConsoleStore, ConsoleTab, ProcessedLog } from './hooks/useConsoleStore';
 import { installNetworkMonitor } from './utils/NetworkMonitor';
-import { executeCommand } from './utils/CommandRegistry';
+import { executeCommand, getCommands } from './utils/CommandRegistry';
 import { generateLogId, exportLogsAsJSON, exportLogsAsText, copyLogsToClipboard, matchesSearch } from './utils/exportLogs';
 import { LogRow } from './components/LogRow';
+import { VirtualizedLogList } from './components/VirtualizedLogList';
 import { NetworkTab } from './components/NetworkTab';
 import { MetricCard } from './components/Sparkline';
 import { ResizeHandle, useResizable } from './components/ResizeHandle';
 import { StateInspector } from './components/StateInspector';
+import { useDraggable } from './hooks/useDraggable';
+import { GPUTab } from './tabs/GPUTab';
+import { GeometryTab } from './tabs/GeometryTab';
 import './ConsoleOverlay.css';
 
 // ============================================================================
@@ -37,6 +41,8 @@ const TABS: { id: ConsoleTab; label: string; icon: string }[] = [
     { id: 'network', label: 'Network', icon: '🌐' },
     { id: 'health', label: 'Health', icon: '💓' },
     { id: 'state', label: 'State', icon: '🔧' },
+    { id: 'gpu', label: 'GPU', icon: '🎮' },
+    { id: 'geometry', label: 'Geometry', icon: '📐' },
 ];
 
 // ============================================================================
@@ -58,6 +64,7 @@ export const ConsoleOverlayV2: React.FC = () => {
     const commandHistory = useConsoleStore(s => s.commandHistory);
     const historyIndex = useConsoleStore(s => s.historyIndex);
     const dockPosition = useConsoleStore(s => s.dockPosition);
+    const floatPosition = useConsoleStore(s => s.floatPosition);
     const fontSize = useConsoleStore(s => s.fontSize);
     const theme = useConsoleStore(s => s.theme);
 
@@ -78,6 +85,7 @@ export const ConsoleOverlayV2: React.FC = () => {
         setHistoryIndex,
         addNetworkEntry,
         setDockPosition,
+        setFloatPosition,
     } = useConsoleStore.getState();
 
     // Local state
@@ -85,6 +93,8 @@ export const ConsoleOverlayV2: React.FC = () => {
     const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
     const [showShortcuts, setShowShortcuts] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [showAutocomplete, setShowAutocomplete] = useState(false);
+    const [autocompleteIndex, setAutocompleteIndex] = useState(0);
 
     // Local state for health metrics (aggregated from store/manager)
     const [healthMetrics, setHealthMetrics] = useState({
@@ -97,6 +107,10 @@ export const ConsoleOverlayV2: React.FC = () => {
     // Refs
     const logsEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const logsContainerRef = useRef<HTMLDivElement>(null);
+
+    // Local state for virtualized list height
+    const [logsContainerHeight, setLogsContainerHeight] = useState(300);
 
     // Resize hook
     const { size: panelHeight, handleResize, handleResizeEnd } = useResizable({
@@ -105,6 +119,13 @@ export const ConsoleOverlayV2: React.FC = () => {
         max: window.innerHeight * 0.8,
         direction: 'vertical',
         persist: 'pf-console-height',
+    });
+
+    // Draggable hook for float mode
+    const { position: dragPosition, isDragging, dragHandleProps } = useDraggable({
+        initialPosition: floatPosition,
+        onPositionChange: setFloatPosition,
+        bounds: 'viewport',
     });
 
 
@@ -166,6 +187,21 @@ export const ConsoleOverlayV2: React.FC = () => {
     // Effects
     // ============================================================================
 
+    // Measure logs container height for virtualization
+    useEffect(() => {
+        const container = logsContainerRef.current;
+        if (!container) return;
+        
+        const observer = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                setLogsContainerHeight(entry.contentRect.height);
+            }
+        });
+        
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, []);
+
     // Keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -185,6 +221,22 @@ export const ConsoleOverlayV2: React.FC = () => {
                 return;
             }
 
+            // Clear logs with Ctrl+K
+            if (e.key === 'k' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                clearLogs();
+                return;
+            }
+
+            // Focus search with Ctrl+F
+            if (e.key === 'f' && (e.ctrlKey || e.metaKey) && activeTab === 'console') {
+                e.preventDefault();
+                const searchInput = document.querySelector('.pf-console-search') as HTMLInputElement;
+                searchInput?.focus();
+                searchInput?.select();
+                return;
+            }
+
             // Show shortcuts
             if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
                 e.preventDefault();
@@ -195,7 +247,7 @@ export const ConsoleOverlayV2: React.FC = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isVisible, toggleVisible, setVisible]);
+    }, [isVisible, toggleVisible, setVisible, clearLogs, activeTab]);
 
     // Subscribe to logs - BATCHED to prevent performance issues
     useEffect(() => {
@@ -259,7 +311,7 @@ export const ConsoleOverlayV2: React.FC = () => {
                     errors: currentStats.counts.ERROR + currentStats.counts.CRITICAL,
                     warns: currentStats.counts.WARN,
                     info: currentStats.counts.INFO + currentStats.counts.DEBUG, // grouping info/debug
-                    fps: Math.round(1000 / (currentStats.windowMs / (currentStats.frames || 1))), // approximate
+                    fps: Math.round((currentStats.frames || 0) * 1000 / (currentStats.windowMs || 1)), // frames per second
                     draws: currentStats.draws || 0,
                     verts: currentStats.verts || 0,
                     suppressed: currentStats.suppressedDuplicates || 0,
@@ -267,9 +319,9 @@ export const ConsoleOverlayV2: React.FC = () => {
                 });
 
                 // Update sparkline history
-                const SPARKLINE_HISTORY = 60; // Assuming this constant is defined elsewhere or needs to be added
+                const SPARKLINE_HISTORY = 60;
                 setFpsHistory(prev => {
-                    const val = Math.round(1000 / (currentStats.windowMs / (currentStats.frames || 1))) || 0;
+                    const val = Math.round((currentStats.frames || 0) * 1000 / (currentStats.windowMs || 1));
                     return [...prev.slice(-(SPARKLINE_HISTORY - 1)), val];
                 });
                 setDrawsHistory(prev => [...prev.slice(-(SPARKLINE_HISTORY - 1)), currentStats.draws || 0]);
@@ -318,7 +370,51 @@ export const ConsoleOverlayV2: React.FC = () => {
         setCommand('');
     }, [command, addToHistory, clearLogs]);
 
+    // Autocomplete suggestions for slash commands (must be before handleCommandKeyDown)
+    const autocompleteSuggestions = useMemo(() => {
+        if (!command.startsWith('/') || command.includes(' ')) {
+            return [];
+        }
+        const prefix = command.toLowerCase();
+        const allCommands = getCommands();
+        return Object.entries(allCommands)
+            .filter(([name]) => name.toLowerCase().startsWith(prefix))
+            .map(([name, { help }]) => ({ name, help }))
+            .slice(0, 8); // Limit to 8 suggestions
+    }, [command]);
+
     const handleCommandKeyDown = useCallback((e: React.KeyboardEvent) => {
+        // Handle autocomplete with Tab
+        if (e.key === 'Tab' && autocompleteSuggestions.length > 0) {
+            e.preventDefault();
+            const selected = autocompleteSuggestions[autocompleteIndex];
+            if (selected) {
+                setCommand(selected.name + ' ');
+                setShowAutocomplete(false);
+            }
+            return;
+        }
+
+        // Navigate autocomplete with arrows when showing
+        if (showAutocomplete && autocompleteSuggestions.length > 0) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setAutocompleteIndex(i => (i + 1) % autocompleteSuggestions.length);
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setAutocompleteIndex(i => (i - 1 + autocompleteSuggestions.length) % autocompleteSuggestions.length);
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                setShowAutocomplete(false);
+                return;
+            }
+        }
+
+        // Command history navigation
         if (e.key === 'ArrowUp') {
             e.preventDefault();
             if (commandHistory.length > 0) {
@@ -339,7 +435,7 @@ export const ConsoleOverlayV2: React.FC = () => {
                 setCommand('');
             }
         }
-    }, [commandHistory, historyIndex, setHistoryIndex]);
+    }, [commandHistory, historyIndex, setHistoryIndex, autocompleteSuggestions, autocompleteIndex, showAutocomplete]);
 
     const handleCopy = useCallback(async () => {
         const success = await copyLogsToClipboard(processedLogs);
@@ -368,11 +464,18 @@ export const ConsoleOverlayV2: React.FC = () => {
     const themeClass = `pf-console-overlay--${theme}`;
     const fontClass = `pf-console-overlay--font-${fontSize}`;
 
+    // Float mode styles
+    const floatStyle: React.CSSProperties | undefined = dockPosition === 'float' 
+        ? { left: dragPosition.x, top: dragPosition.y, position: 'fixed' }
+        : dockPosition === 'bottom' 
+            ? { height: panelHeight } 
+            : undefined;
+
     return (
         <>
             <div
-                className={`pf-console-overlay ${dockClass} ${themeClass} ${fontClass} ${!isVisible ? 'pf-console-overlay--hidden' : ''}`}
-                style={dockPosition === 'bottom' ? { height: panelHeight } : undefined}
+                className={`pf-console-overlay ${dockClass} ${themeClass} ${fontClass} ${!isVisible ? 'pf-console-overlay--hidden' : ''} ${isDragging ? 'pf-console-overlay--dragging' : ''}`}
+                style={floatStyle}
                 role="region"
                 aria-label="Developer Console"
             >
@@ -386,7 +489,10 @@ export const ConsoleOverlayV2: React.FC = () => {
                 )}
 
                 {/* Header */}
-                <div className="pf-console-header">
+                <div 
+                    className={`pf-console-header ${dockPosition === 'float' ? 'pf-console-header--draggable' : ''}`}
+                    {...(dockPosition === 'float' ? dragHandleProps : {})}
+                >
                     <div className="pf-console-title">DevConsole</div>
 
                     {/* Tabs */}
@@ -419,6 +525,7 @@ export const ConsoleOverlayV2: React.FC = () => {
                     <select
                         className="pf-console-dock-select"
                         value={dockPosition}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- select value cast to DockPosition union type
                         onChange={(e) => setDockPosition(e.target.value as any)}
                         title="Panel position"
                     >
@@ -526,10 +633,6 @@ export const ConsoleOverlayV2: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
-
-                                <button className="pf-console-btn" onClick={clearLogs}>
-                                    Clear
-                                </button>
                             </div>
 
                             {/* Pinned Logs */}
@@ -552,39 +655,64 @@ export const ConsoleOverlayV2: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* Log List */}
-                            <div className="pf-console-logs" role="log">
-                                {unpinnedLogs.map((log, i) => (
-                                    <LogRow
-                                        key={log.id}
-                                        log={log}
-                                        search={search}
-                                        isRegex={isRegexSearch}
-                                        timestampFormat={timestampFormat}
-                                        isPinned={false}
-                                        isBookmarked={bookmarkedIds.has(log.id)}
-                                        isSelected={selectedLogIndex === i}
-                                        onClick={() => setSelectedLogIndex(i === selectedLogIndex ? null : i)}
-                                        onPin={togglePinned}
-                                        onBookmark={toggleBookmarked}
-                                    />
-                                ))}
-                                <div ref={logsEndRef} />
+                            {/* Log List (Virtualized) */}
+                            <div className="pf-console-logs" role="log" ref={logsContainerRef}>
+                                <VirtualizedLogList
+                                    logs={unpinnedLogs}
+                                    search={search}
+                                    isRegex={isRegexSearch}
+                                    timestampFormat={timestampFormat}
+                                    pinnedIds={pinnedIds}
+                                    bookmarkedIds={bookmarkedIds}
+                                    selectedIndex={selectedLogIndex}
+                                    onSelect={setSelectedLogIndex}
+                                    onPin={togglePinned}
+                                    onBookmark={toggleBookmarked}
+                                    height={logsContainerHeight}
+                                />
                             </div>
 
                             {/* Command Input */}
                             <form className="pf-console-input-area" onSubmit={handleCommand}>
                                 <span className="pf-console-prompt">&gt;</span>
-                                <input
-                                    ref={inputRef}
-                                    type="text"
-                                    className="pf-console-input"
-                                    value={command}
-                                    onChange={e => setCommand(e.target.value)}
-                                    onKeyDown={handleCommandKeyDown}
-                                    placeholder="Enter command or /help..."
-                                    aria-label="Command input"
-                                />
+                                <div className="pf-console-input-wrapper">
+                                    <input
+                                        ref={inputRef}
+                                        type="text"
+                                        className="pf-console-input"
+                                        value={command}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setCommand(val);
+                                            setShowAutocomplete(val.startsWith('/') && !val.includes(' '));
+                                            setAutocompleteIndex(0);
+                                        }}
+                                        onKeyDown={handleCommandKeyDown}
+                                        onBlur={() => setTimeout(() => setShowAutocomplete(false), 150)}
+                                        placeholder="Enter command or /help..."
+                                        aria-label="Command input"
+                                        autoComplete="off"
+                                    />
+                                    {/* Autocomplete Dropdown */}
+                                    {showAutocomplete && autocompleteSuggestions.length > 0 && (
+                                        <div className="pf-console-autocomplete">
+                                            {autocompleteSuggestions.map((s, i) => (
+                                                <div
+                                                    key={s.name}
+                                                    className={`pf-console-autocomplete-item ${i === autocompleteIndex ? 'pf-console-autocomplete-item--selected' : ''}`}
+                                                    onMouseDown={() => {
+                                                        setCommand(s.name + ' ');
+                                                        setShowAutocomplete(false);
+                                                        inputRef.current?.focus();
+                                                    }}
+                                                >
+                                                    <span className="pf-autocomplete-cmd">{s.name}</span>
+                                                    <span className="pf-autocomplete-help">{s.help}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </form>
                         </>
                     )}
@@ -633,6 +761,12 @@ export const ConsoleOverlayV2: React.FC = () => {
 
                     {/* State Tab */}
                     {activeTab === 'state' && <StateInspector />}
+
+                    {/* GPU Tab */}
+                    {activeTab === 'gpu' && <GPUTab />}
+
+                    {/* Geometry Tab */}
+                    {activeTab === 'geometry' && <GeometryTab />}
                 </div>
             </div>
 
@@ -645,7 +779,10 @@ export const ConsoleOverlayV2: React.FC = () => {
                             <tbody>
                                 <tr><td><kbd>`</kbd></td><td>Toggle console</td></tr>
                                 <tr><td><kbd>Esc</kbd></td><td>Close console</td></tr>
+                                <tr><td><kbd>Ctrl+K</kbd></td><td>Clear logs</td></tr>
+                                <tr><td><kbd>Ctrl+F</kbd></td><td>Focus search</td></tr>
                                 <tr><td><kbd>↑</kbd>/<kbd>↓</kbd></td><td>Navigate command history</td></tr>
+                                <tr><td><kbd>Tab</kbd></td><td>Autocomplete command</td></tr>
                                 <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
                             </tbody>
                         </table>

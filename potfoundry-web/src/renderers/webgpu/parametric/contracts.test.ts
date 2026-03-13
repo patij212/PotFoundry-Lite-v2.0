@@ -43,12 +43,12 @@ import {
 // ---------------------------------------------------------------------------
 function makeMiniMesh(): StageMeshData {
     const positions = new Float32Array([
-        0, 0, 0,   1, 0, 0,   0, 1, 0,
-        1, 0, 0,   1, 1, 0,   0, 1, 0,
+        0, 0, 0, 1, 0, 0, 0, 1, 0,
+        1, 0, 0, 1, 1, 0, 0, 1, 0,
     ]);
     const uvs = new Float32Array([
-        0, 0, 0,  1, 0, 0,  0, 1, 0,
-        1, 0, 0,  1, 1, 0,  0, 1, 0,
+        0, 0, 0, 1, 0, 0, 0, 1, 0,
+        1, 0, 0, 1, 1, 0, 0, 1, 0,
     ]);
     const indices = new Uint32Array([0, 1, 2, 3, 4, 5]);
     return { positions, uvs, indices, outerIdxCount: 6, vertexCount: 6 };
@@ -148,6 +148,8 @@ describe('contracts', () => {
             expect(flags.distortionGating).toBe(false);
             expect(flags.gpuFidelityCheck).toBe(false);
             expect(flags.seamHealing).toBe(false);
+            expect(flags.outerWallCorridorPlanning).toBe(false);
+            expect(flags.outerWallCorridorDiagnostics).toBe(false);
             expect(flags.mdcIsosurface).toBe(false);
         });
 
@@ -155,9 +157,11 @@ describe('contracts', () => {
             const flags = resolveFeatureFlags({
                 distortionGating: true,
                 seamHealing: true,
+                outerWallCorridorPlanning: true,
             });
             expect(flags.distortionGating).toBe(true);
             expect(flags.seamHealing).toBe(true);
+            expect(flags.outerWallCorridorPlanning).toBe(true);
             expect(flags.metricAwareRefinement).toBe(false);
         });
 
@@ -196,6 +200,11 @@ describe('contracts', () => {
             });
             expect(() => validateFeatureFlags(flags)).not.toThrow();
         });
+
+        it('rejects corridor diagnostics without corridor planning', () => {
+            const flags = resolveFeatureFlags({ outerWallCorridorDiagnostics: true });
+            expect(() => validateFeatureFlags(flags)).toThrow(/outerWallCorridorDiagnostics requires outerWallCorridorPlanning/);
+        });
     });
 
     // -----------------------------------------------------------------------
@@ -211,6 +220,8 @@ describe('contracts', () => {
             expect(DEFAULT_FEATURE_FLAGS.distortionGating).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.gpuFidelityCheck).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.seamHealing).toBe(false);
+            expect(DEFAULT_FEATURE_FLAGS.outerWallCorridorPlanning).toBe(false);
+            expect(DEFAULT_FEATURE_FLAGS.outerWallCorridorDiagnostics).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.mdcIsosurface).toBe(false);
         });
     });
@@ -257,7 +268,7 @@ describe('contracts', () => {
 
         it('returns false when a stage name is not a string', () => {
             const bad = {
-                featureConstraint: { name: 123, execute: () => {} },
+                featureConstraint: { name: 123, execute: () => { } },
                 tessellation: mockTessellation,
                 refinement: mockRefinement,
                 validation: mockValidation,
@@ -311,7 +322,7 @@ describe('contracts', () => {
         it('returns refined mesh with stop reason', async () => {
             const input: RefinementInput = {
                 mesh: makeMiniMesh(),
-                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, minAngleDeg: 20 },
+                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, epsFeatureMm: 0.04, minTriangleAngleDeg: 20, maxAspectRatio: 8.0 },
                 profileName: 'high',
                 maxTriangles: 10000,
                 evaluate: null,
@@ -331,8 +342,9 @@ describe('contracts', () => {
                 'budget_exhausted',
                 'no_improvement',
                 'zero_iterations',
+                'diminishing_returns',
             ];
-            expect(validReasons).toHaveLength(5);
+            expect(validReasons).toHaveLength(6);
         });
     });
 
@@ -340,7 +352,7 @@ describe('contracts', () => {
         it('returns comprehensive check results', async () => {
             const input: ValidationInput = {
                 mesh: makeMiniMesh(),
-                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, minAngleDeg: 20 },
+                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, epsFeatureMm: 0.04, minTriangleAngleDeg: 20, maxAspectRatio: 8.0 },
                 profileName: 'ultra',
             };
             const output = await mockValidation.execute(input);
@@ -391,7 +403,7 @@ describe('contracts', () => {
             // Stage 3: Refinement
             const refOut = await registry.refinement.execute({
                 mesh: tessOut.mesh,
-                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, minAngleDeg: 20 },
+                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, epsFeatureMm: 0.04, minTriangleAngleDeg: 20, maxAspectRatio: 8.0 },
                 profileName: 'high',
                 maxTriangles: 50000,
                 evaluate: null,
@@ -401,7 +413,7 @@ describe('contracts', () => {
             // Stage 4: Validation
             const valOut = await registry.validation.execute({
                 mesh: refOut.mesh,
-                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, minAngleDeg: 20 },
+                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, epsFeatureMm: 0.04, minTriangleAngleDeg: 20, maxAspectRatio: 8.0 },
                 profileName: 'high',
             });
             expect(valOut.valid).toBe(true);
@@ -440,7 +452,7 @@ describe('contracts', () => {
 
             const refOut = await registry.refinement.execute({
                 mesh: makeMiniMesh(),
-                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, minAngleDeg: 20 },
+                tolerances: { epsPosMm: 0.05, epsNormalDeg: 5.0, epsFeatureMm: 0.04, minTriangleAngleDeg: 20, maxAspectRatio: 8.0 },
                 profileName: 'high',
                 maxTriangles: 50000,
                 evaluate: null,
@@ -485,7 +497,7 @@ describe('contracts', () => {
         it('can be constructed with feature flags', () => {
             const config: PipelineConfig = {
                 profileName: 'ultra',
-                tolerances: { epsPosMm: 0.03, epsNormalDeg: 3.0, minAngleDeg: 22 },
+                tolerances: { epsPosMm: 0.03, epsNormalDeg: 3.0, epsFeatureMm: 0.02, minTriangleAngleDeg: 22, maxAspectRatio: 6.0 },
                 totalBudget: 100000,
                 flags: resolveFeatureFlags({ distortionGating: true }),
             };

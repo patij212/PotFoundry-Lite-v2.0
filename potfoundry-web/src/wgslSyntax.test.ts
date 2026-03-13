@@ -106,9 +106,11 @@ describe('WGSL Syntax Validation', () => {
     describe('Type Safety', () => {
         it('pot_export.wgsl should have ExportUniforms struct', () => {
             expect(potExportWgsl).toContain('struct ExportUniforms');
-            expect(potExportWgsl).toContain('H: f32');
-            expect(potExportWgsl).toContain('nTheta: u32');
-            expect(potExportWgsl).toContain('nZ: u32');
+            // Struct uses 16-byte aligned vec4 chunks for GPU alignment
+            // chunk0: x:H, y:Rt, z:Rb, w:tWall
+            expect(potExportWgsl).toContain('chunk0: vec4<f32>');
+            expect(potExportWgsl).toContain('chunk1: vec4<f32>');
+            expect(potExportWgsl).toContain('chunk2: vec4<f32>');
         });
 
         it('pot_export.wgsl should use storage buffers correctly', () => {

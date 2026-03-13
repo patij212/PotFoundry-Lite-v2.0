@@ -7,7 +7,7 @@ import { STYLE_IDS } from './styles/registry';
 const {
     DRAIN_RADIUS_OFFSET,
     BELL_WIDTH_OFFSET,
-} = CameraConstants as any;
+} = CameraConstants;
 
 const clampNumber = (value: unknown, fallback: number): number => {
     const parsed = Number(value);
@@ -17,9 +17,18 @@ const clampNumber = (value: unknown, fallback: number): number => {
     return parsed;
 };
 
+/**
+ * Populates geometry parameters into the uniform buffer.
+ * 
+ * @deprecated This function is deprecated as of Phase 6 decomposition.
+ *             Use `UniformBlock.populateGeometry()` instead.
+ *             This function will be removed in a future release.
+ * 
+ * @see UniformBlock for the consolidated uniform buffer management
+ */
 export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current: WebGPUParams) => {
-    const c = cfg as any;
-    const cur = current as any;
+    const c = cfg;
+    const cur = current;
 
     // Resolve drain radius and style id from `cfg`/`current`
     const height = clampNumber(c.H, 120.0);
@@ -120,31 +129,30 @@ export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current
     for (let i = 37; i <= 52; i++) f32[i] = 0.0;
 
     if (styleId === 5) { // Gothic Arches
-        const ga = c as any;
         // 0: Counts
-        f32[37] = clampNumber(ga.gaCounts, 12.0);
+        f32[37] = clampNumber(c.gaCounts, 12.0);
         // 1: Relief (mm)
-        f32[38] = clampNumber(ga.gaRelief, 1.5);
+        f32[38] = clampNumber(c.gaRelief, 1.5);
         // 2: Pointiness (0.25-2.0)
-        f32[39] = clampNumber(ga.gaPointiness, 1.2);
+        f32[39] = clampNumber(c.gaPointiness, 1.2);
         // 3: Diamond Tracery (0-1)
-        f32[40] = clampNumber(ga.gaDiamond, 0.5);
+        f32[40] = clampNumber(c.gaDiamond, 0.5);
         // 4: X-Tracery (0-1)
-        f32[41] = clampNumber(ga.gaX, 0.0);
+        f32[41] = clampNumber(c.gaX, 0.0);
         // 5: Spring Line (0-1)
-        f32[42] = clampNumber(ga.gaSpring, 0.15);
+        f32[42] = clampNumber(c.gaSpring, 0.15);
         // 6: Arch Height (0-1)
-        f32[43] = clampNumber(ga.gaArchHeight, 0.7);
+        f32[43] = clampNumber(c.gaArchHeight, 0.7);
         // 7: Rib Width (0-1)
-        f32[44] = clampNumber(ga.gaRib, 0.04);
+        f32[44] = clampNumber(c.gaRib, 0.04);
         // 8: Column Width (0-1)
-        f32[45] = clampNumber(ga.gaCol, 0.15);
+        f32[45] = clampNumber(c.gaCol, 0.15);
         // 9: Sharpness
-        f32[46] = clampNumber(ga.gaSharp, 4.0);
+        f32[46] = clampNumber(c.gaSharp, 4.0);
         // 10: Bands
-        f32[47] = clampNumber(ga.gaBands, 1.0);
+        f32[47] = clampNumber(c.gaBands, 1.0);
         // 11: Band Width
-        f32[48] = clampNumber(ga.gaBandW, 0.04);
+        f32[48] = clampNumber(c.gaBandW, 0.04);
     } else {
         // ... mappings for other styles (Superformula, etc) would go here ...
         // For now, these are likely handled by the specific style functions 

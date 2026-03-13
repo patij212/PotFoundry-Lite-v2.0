@@ -160,7 +160,7 @@ describe('MeshSubdivision', () => {
                 0.0005, 0, 0.0005,
             ]);
             const combinedVerts = new Float32Array([
-                0, 0, 0,   1, 0, 0,   0, 1, 0,   1, 1, 0,  0.5, 0.5, 0,
+                0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0.5, 0.5, 0,
             ]);
             const combinedIdxs = new Uint32Array([0, 1, 4, 1, 3, 4, 3, 2, 4, 2, 0, 4]);
             const params = makeDefaultParams({
@@ -191,9 +191,11 @@ describe('MeshSubdivision', () => {
             );
         });
 
-        it('never splits constraint edges', async () => {
+        it('treats constraint (chain) edges as feature edges for subdivision', async () => {
+            // R44: Chain edges are now subdivision candidates classified as feature edges.
+            // When ALL edges are marked as constraints, the long ones should still split
+            // (using the feature threshold) because chain edges are no longer skipped.
             const mesh = makeChainStripMesh();
-            // Mark ALL edges as constraints — nothing should split
             const constraintEdgeSet = new Set<bigint>();
             for (let t = 0; t < mesh.combinedIdxs.length; t += 3) {
                 const a = mesh.combinedIdxs[t];
@@ -202,17 +204,32 @@ describe('MeshSubdivision', () => {
                 const ek = (x: number, y: number) => {
                     const lo = x < y ? x : y;
                     const hi = x < y ? y : x;
-                    return BigInt(lo) * BigInt(0x100000) + BigInt(hi);
+                    return BigInt(lo) * BigInt(0x200000) + BigInt(hi);
                 };
                 constraintEdgeSet.add(ek(a, b));
                 constraintEdgeSet.add(ek(b, c));
                 constraintEdgeSet.add(ek(c, a));
             }
             const params = makeDefaultParams({ constraintEdgeSet });
+            const evaluator = makeFlatEvaluator();
+            const result = await subdivideLongEdges(params, evaluator);
+
+            // Chain edges exceeding the feature threshold should be split
+            expect(result.splitCount).toBeGreaterThan(0);
+        });
+
+        it('skips subdivision patches that touch protected corridor vertices', async () => {
+            // R42: Feature edges now bypass endpoint protection (only opposite
+            // vertices are checked). Protect grid vertices (the opposites of
+            // feature edges) so all feature-edge splits are still rejected.
+            const params = makeDefaultParams({
+                protectedVertices: new Set([0, 1, 2, 3]),
+            });
             const mockEval = vi.fn(async () => new Float32Array(0));
             const result = await subdivideLongEdges(params, mockEval);
 
             expect(result.splitCount).toBe(0);
+            expect(result.stats.protectedRejects).toBeGreaterThan(0);
             expect(mockEval).not.toHaveBeenCalled();
         });
 
@@ -396,7 +413,7 @@ describe('MeshSubdivision', () => {
                 5, 0, 10,  // v2 — chain vertex
             ]);
             const combinedVerts = new Float32Array([
-                0, 0, 0,   1, 0, 0,   0.5, 1, 0,
+                0, 0, 0, 1, 0, 0, 0.5, 1, 0,
             ]);
             const combinedIdxs = new Uint32Array([0, 1, 2]);
             const params: SubdivisionParams = {
@@ -427,7 +444,7 @@ describe('MeshSubdivision', () => {
                 5, 0, 5,    // v4  — chain vertex (~7mm from grid corners)
             ]);
             const combinedVerts = new Float32Array([
-                0, 0, 0,   1, 0, 0,   0, 1, 0,   1, 1, 0,   0.5, 0.5, 0,
+                0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0.5, 0.5, 0,
             ]);
             const combinedIdxs = new Uint32Array([
                 0, 1, 4,   // tri0
@@ -471,7 +488,7 @@ describe('MeshSubdivision', () => {
                 5, 0, 10,   // v2 chain
             ]);
             const combinedVerts = new Float32Array([
-                0, 0, 0,   1, 0, 0,   0.5, 1, 0,
+                0, 0, 0, 1, 0, 0, 0.5, 1, 0,
             ]);
             const combinedIdxs = new Uint32Array([0, 1, 2]);
             const params: SubdivisionParams = {
@@ -561,7 +578,7 @@ describe('MeshSubdivision', () => {
     describe('identifyChainAdjacentVertices', () => {
         it('returns empty set when no chains provided', () => {
             const verts = new Float32Array([0, 0, 0, 1, 0, 0]);
-            const result = identifyChainAdjacentVertices(verts, 2, [], 0.1);
+            const result = identifyChainAdjacentVertices(verts, 2, [], 0.1, 100);
             expect(result.size).toBe(0);
         });
 
@@ -578,7 +595,7 @@ describe('MeshSubdivision', () => {
                 { points: [{ u: 0.5, row: 0 }] },
             ];
             // gridSpacing = 0.25, proximityRadius = 0.125
-            const result = identifyChainAdjacentVertices(verts, 5, chains, 0.25);
+            const result = identifyChainAdjacentVertices(verts, 5, chains, 0.25, 100);
             // Vertex 2 (u=0.5) is exactly at chain point
             expect(result.has(2)).toBe(true);
             // Vertices 0, 4 should be far away
@@ -593,10 +610,10 @@ describe('MeshSubdivision', () => {
                 0.5, 0.5, 0,   // v2: far away
             ]);
             const chains: ChainUV[] = [
-                { points: [{ u: 0.0, row: 0.5 }] },
+                { points: [{ u: 0.0, row: 50 }] },  // row=50 → tNorm = 50/99 ≈ 0.505, near vertex vt=0.5
             ];
             // gridSpacing = 0.1, proximityRadius = 0.05
-            const result = identifyChainAdjacentVertices(verts, 3, chains, 0.1);
+            const result = identifyChainAdjacentVertices(verts, 3, chains, 0.1, 100);
             // Both v0 (distance in U = min(0.98, 0.02) = 0.02) and v1 (distance = 0.02) should be near
             expect(result.has(0)).toBe(true);
             expect(result.has(1)).toBe(true);
@@ -613,7 +630,7 @@ describe('MeshSubdivision', () => {
                 { points: [{ u: 0.1, row: 0 }] },
                 { points: [{ u: 0.9, row: 0 }] },
             ];
-            const result = identifyChainAdjacentVertices(verts, 3, chains, 0.25);
+            const result = identifyChainAdjacentVertices(verts, 3, chains, 0.25, 100);
             expect(result.has(0)).toBe(true);  // near chain 1
             expect(result.has(2)).toBe(true);  // near chain 2
             expect(result.has(1)).toBe(false); // far from both
@@ -699,7 +716,7 @@ describe('MeshSubdivision', () => {
 
             // Chain at the snapped position
             const chains: ChainUV[] = [
-                { points: [{ u: 0.55, row: 0.5 }] },
+                { points: [{ u: 0.55, row: 1 }] },  // row=1 → tNorm = 1/(3-1) = 0.5, matching snapped vertex
             ];
 
             const params: SubdivisionParams = {

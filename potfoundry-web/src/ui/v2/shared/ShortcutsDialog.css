@@ -1,0 +1,121 @@
+/* ShortcutsDialog — v2 keyboard shortcuts overlay */
+
+.pf2-shortcuts-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--pf2-bg-overlay);
+  z-index: 1000;
+  animation: pf2-fade-in var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+}
+
+.pf2-shortcuts-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--pf2-bg-raised);
+  border-radius: var(--pf2-radius-lg);
+  border: 1px solid var(--pf2-border-default);
+  padding: var(--pf2-space-xl);
+  max-width: 420px;
+  width: 90vw;
+  box-shadow: var(--pf2-shadow-lg);
+  z-index: 1001;
+  animation: pf2-drawer-enter var(--pf2-duration-fast) var(--pf2-ease-spring) both;
+}
+
+.pf2-shortcuts-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pf2-space-sm);
+  margin-bottom: var(--pf2-space-lg);
+}
+
+.pf2-shortcuts-title {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--pf2-space-sm);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--pf2-text-primary);
+  margin: 0;
+}
+
+.pf2-shortcuts-title svg {
+  color: var(--pf2-text-muted);
+}
+
+.pf2-shortcuts-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--pf2-text-muted);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  transition: background var(--pf2-duration-fast), color var(--pf2-duration-fast);
+}
+
+.pf2-shortcuts-close:hover {
+  background: var(--pf2-bg-sunken);
+  color: var(--pf2-text-primary);
+}
+
+.pf2-shortcuts-list {
+  display: grid;
+  gap: var(--pf2-space-sm);
+}
+
+.pf2-shortcuts-item {
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-md);
+}
+
+.pf2-shortcuts-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pf2-accent-muted);
+  color: var(--pf2-accent);
+  border-radius: var(--pf2-radius-sm);
+  padding: 2px 8px;
+  font-size: 13px;
+  font-family: monospace;
+  font-weight: 500;
+  min-width: 32px;
+}
+
+.pf2-shortcuts-desc {
+  color: var(--pf2-text-secondary);
+  font-size: 14px;
+}
+
+/* Forced colors (high contrast) */
+@media (forced-colors: active) {
+  .pf2-shortcuts-overlay {
+    background: Canvas;
+    opacity: 0.8;
+  }
+
+  .pf2-shortcuts-content {
+    border: 2px solid ButtonText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .pf2-shortcuts-overlay,
+  .pf2-shortcuts-content {
+    animation: none;
+  }
+}

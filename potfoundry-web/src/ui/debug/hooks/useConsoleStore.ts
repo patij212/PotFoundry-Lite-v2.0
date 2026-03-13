@@ -19,7 +19,7 @@ export type DockPosition = 'bottom' | 'right' | 'float';
 export type FontSize = 'sm' | 'md' | 'lg';
 export type Theme = 'dark' | 'light';
 export type TimestampFormat = 'absolute' | 'relative';
-export type ConsoleTab = 'console' | 'health' | 'network' | 'state';
+export type ConsoleTab = 'console' | 'health' | 'network' | 'state' | 'gpu' | 'geometry';
 
 export interface NetworkEntry {
     id: string;
@@ -272,6 +272,7 @@ export const useConsoleStore = create<ConsoleStore>()(
                 pinnedIds: Array.from(state.pinnedIds),
                 bookmarkedIds: Array.from(state.bookmarkedIds),
             }),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Zustand persist merge callback receives untyped persisted state
             merge: (persisted: any, current) => ({
                 ...current,
                 ...persisted,

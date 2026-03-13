@@ -1,83 +1,47 @@
 # PotFoundry Archive
 
-This directory contains historical documents from the evolution of PotFoundry-Lite v2.x.
-These files are preserved for reference but are not actively maintained.
+Historical documents from PotFoundry's development, preserved for reference and traceability.
+Not actively maintained — for current docs see the main repository.
 
-## Purpose
-
-The archive preserves context for past development decisions, progress tracking, and
-improvement efforts. This helps:
-- Understand why certain decisions were made
-- Track project evolution over time
-- Reference past approaches to similar problems
-- Maintain institutional knowledge
+Last reorganized: 2026-03-11
 
 ## Directory Structure
 
-### `evolution/`
-Historical improvement summaries and progress reports from major development phases.
+| Directory | Contents | When to consult |
+|-----------|----------|-----------------|
+| `plans/` | 296 multi-agent debate documents (Generator/Verifier/Executioner/Master) | Deep-dive on pipeline, UI, or WebGPU design decisions |
+| `agent-journals/` | Pre-distillation journal snapshots (~11K lines total) | Forensic chronology of development sessions |
+| `artifacts/` | Playwright captures, pytest outputs, benchmark data, streamlit logs | Debugging similar issues, performance baselines |
+| `docs/` | Superseded strategy docs, stale roadmaps, completed audits, Python-era guides | Understanding past approaches |
+| `evolution/` | Quality improvement summaries, progress reports | Tracking project quality over time |
+| `ci-logs/` | GitHub Actions logs, historical build outputs | Debugging CI/CD issues |
+| `refactoring/` | Linting/type-checking outputs from improvement work | Code quality evolution |
+| `cleanup/` | Stale root configs (`.eslintrc.cjs`, `.yamllint`), one-off debug scripts (`test_camera_mapping.js`) | Past cleanup operations |
+| `debug_scripts/` | One-off investigation scripts | Debugging methodology reference |
+| `legacy_app/` | Old Streamlit app code | Understanding original application |
+| `legacy_python/` | Deprecated Python modules, migration tools, Streamlit config | Mathematical reference, algorithm origins |
+| `reference_snippets/` | Useful code snippets from past work | Implementation patterns |
+| `workflows/` | Python-era GitHub Actions workflows (10 files + CI helper script) | Understanding past CI/CD setup |
 
-**Contents:**
-- Quality improvement summaries
-- Test coverage reports
-- Implementation summaries
-- Progress tracking documents
+### Plans (296 docs, ~5MB) — `plans/`
 
-**When to consult:**
-- Understanding past quality improvement efforts
-- Reviewing historical test coverage progress
-- Learning about past implementation challenges
+Organized by workstream with a detailed navigation index at `plans/INDEX.md`:
 
-### `ci-logs/`
-Historical CI/CD run logs and workflow outputs.
+| Subdirectory | Files | Topic |
+|---|---|---|
+| `parametric-pipeline/` | 220 | Chain linking, tessellation, CDT, grid, feature detection, mesh quality (R1–R55+) |
+| `ui-redesign/` | 32 | UI v2 layout, responsive theme, component phases 1–3 |
+| `webgpu-refactor/` | 28 | WebGPU core decomposition, buffer layout, type safety |
+| `misc/` | 16 | OBJ export, code quality, known issues, MCP guidance |
 
-**Contents:**
-- GitHub Actions run logs
-- Historical pytest outputs
-- Build and deployment logs
-
-**When to consult:**
-- Debugging similar CI/CD issues
-- Understanding past build failures
-- Historical performance tracking
-
-### `refactoring/`
-Linting and type-checking output from improvement work.
-
-**Contents:**
-- `linting/` - ruff, flake8, pylint outputs
-- `type-checking/` - mypy outputs and error reports
-
-**When to consult:**
-- Understanding code quality evolution
-- Reviewing type hint additions
-- Learning from past linting fixes
+Key knowledge from these docs has been **distilled** into `docs/AGENT_CONTEXT_DISTILLED.md`.
 
 ## Usage Guidelines
 
-### For Developers
-- These documents provide historical context but should not be used as current guides
-- For current development information, see the main repository documentation:
-  - README.md (project overview)
-  - ARCHITECTURE.md (system design)
-  - docs/guides/ (current development guides)
-
-### For AI Assistants
 - Archive documents show project evolution but may contain outdated information
-- Always verify information against current documentation
-- Use archive to understand "why" decisions were made, not "what" to do now
-
-## Document Lifecycle
-
-Documents move to archive when:
-1. A new version supersedes them
-2. The reported status is complete and historical
-3. The information is no longer actively maintained
-4. The document is primarily of historical interest
-
-Documents should NOT be in archive if:
-1. They describe current active work
-2. They are referenced by active development processes
+- Always verify against current docs (`docs/AGENT_CONTEXT_DISTILLED.md`, `CLAUDE.md`, etc.)
+- Use archive to understand **why** decisions were made, not **what** to do now
+- The `plans/INDEX.md` file is your entry point for finding specific debate topics
 3. They contain information not available elsewhere
 
 ## Quarterly Archive Process
@@ -91,6 +55,6 @@ At the end of each quarter, maintainers should:
 
 ---
 
-**Last Updated:** January 2025
+**Last Updated:** March 2026
 **Maintained By:** PotFoundry Team
 **Contact:** See main README.md for current contact information

@@ -25,6 +25,8 @@ import {
     expectedSeamGap,
     isSeamGapAcceptable,
     seamConfigForProfile,
+    healSeam,
+    healConfigForProfile,
 } from './SeamTopology';
 import type {
     SeamPair,
@@ -503,5 +505,143 @@ describe('seamConfigForProfile', () => {
         // Plan: seam continuity error < 0.02mm position, <2° normal
         expect(ultra.maxPositionGapMm).toBe(0.02);
         expect(ultra.maxNormalGapDeg).toBe(2);
+    });
+});
+
+// ============================================================================
+// healSeam Tests
+// ============================================================================
+
+describe('healSeam', () => {
+    /**
+     * Build a cylindrical grid where col0 and colLast occupy the SAME
+     * angular position (0 rad) separated only by `extraGapMm` in the
+     * x-direction.  Interior columns (1 .. numU-2) are evenly spaced
+     * around the rest of the circle.
+     *
+     * This mimics the real open-grid seam where the first and last
+     * columns should meet at the same physical location.
+     */
+    function buildSeamGrid(numU: number, numT: number, radius: number, extraGapMm: number): {
+        positions: Float32Array;
+        indices: Uint32Array;
+    } {
+        const vertCount = numU * numT;
+        const positions = new Float32Array(vertCount * 3);
+
+        for (let row = 0; row < numT; row++) {
+            const y = row * 10; // height spacing
+            for (let col = 0; col < numU; col++) {
+                const idx = (row * numU + col) * 3;
+                if (col === 0) {
+                    // col0: at angle 0, shifted +x by half the gap
+                    positions[idx]     = radius + extraGapMm * 0.5;
+                    positions[idx + 1] = y;
+                    positions[idx + 2] = 0;
+                } else if (col === numU - 1) {
+                    // colLast: at angle 0, shifted -x by half the gap
+                    positions[idx]     = radius - extraGapMm * 0.5;
+                    positions[idx + 1] = y;
+                    positions[idx + 2] = 0;
+                } else {
+                    // Interior columns span the circle
+                    const angle = (col / (numU - 1)) * 2 * Math.PI;
+                    positions[idx]     = radius * Math.cos(angle);
+                    positions[idx + 1] = y;
+                    positions[idx + 2] = radius * Math.sin(angle);
+                }
+            }
+        }
+
+        // Build triangle indices for the grid
+        const triCount = (numU - 1) * (numT - 1) * 2;
+        const indices = new Uint32Array(triCount * 3);
+        let iOff = 0;
+        for (let row = 0; row < numT - 1; row++) {
+            for (let col = 0; col < numU - 1; col++) {
+                const tl = row * numU + col;
+                const tr = row * numU + col + 1;
+                const bl = (row + 1) * numU + col;
+                const br = (row + 1) * numU + col + 1;
+                indices[iOff++] = tl;
+                indices[iOff++] = bl;
+                indices[iOff++] = tr;
+                indices[iOff++] = tr;
+                indices[iOff++] = bl;
+                indices[iOff++] = br;
+            }
+        }
+
+        return { positions, indices };
+    }
+
+    it('returns identity when no seam pairs exist (degenerate grid)', () => {
+        const positions = new Float32Array([0, 0, 0]);
+        const indices = new Uint32Array([]);
+        const config = healConfigForProfile('standard');
+        const result = healSeam(positions, indices, 0, 1, 1, config);
+        expect(result.pairsAveraged).toBe(0);
+        expect(result.ghostStripsInserted).toBe(0);
+    });
+
+    it('averages seam vertex positions for small gaps', () => {
+        const numU = 8, numT = 4, radius = 20;
+        const gapMm = 0.3; // below standard ghostTriangleThresholdMm
+        const { positions, indices } = buildSeamGrid(numU, numT, radius, gapMm);
+        const config = healConfigForProfile('standard');
+
+        const result = healSeam(positions, indices, indices.length, numU, numT, config);
+
+        expect(result.pairsAveraged).toBe(numT);
+        // After averaging, col0 and colLast should be at same position
+        for (let row = 0; row < numT; row++) {
+            const col0 = row * numU;
+            const colLast = row * numU + numU - 1;
+            const gap = measurePositionGap(result.positions, {
+                col0Vertex: col0,
+                colLastVertex: colLast,
+                row,
+            });
+            expect(gap).toBeLessThan(0.001);
+        }
+        expect(result.maxResidualGapMm).toBeLessThan(0.001);
+    });
+
+    it('does not grow index buffer when all gaps are healable by averaging', () => {
+        const numU = 8, numT = 4, radius = 20;
+        const { positions, indices } = buildSeamGrid(numU, numT, radius, 0.3);
+        const config = healConfigForProfile('standard');
+        const origLen = indices.length;
+
+        const result = healSeam(positions, indices, indices.length, numU, numT, config);
+        expect(result.indices.length).toBe(origLen);
+        expect(result.ghostStripsInserted).toBe(0);
+    });
+
+    it('inserts ghost triangles for large gaps', () => {
+        const numU = 8, numT = 4, radius = 20;
+        const gapMm = 10; // way above ghostTriangleThresholdMm (5.0)
+        const { positions, indices } = buildSeamGrid(numU, numT, radius, gapMm);
+        const config = { averageOnlyThresholdMm: 0.5, ghostTriangleThresholdMm: 5.0 };
+
+        const result = healSeam(positions, indices, indices.length, numU, numT, config);
+
+        // All pairs should get ghost triangles (gap > ghostTriangleThresholdMm)
+        expect(result.pairsAveraged).toBe(0);
+        // Ghost strips = consecutive ghost-candidate row pairs = numT - 1
+        expect(result.ghostStripsInserted).toBe(numT - 1);
+        // Index buffer should grow by ghostStripsInserted * 6 (2 tris per strip)
+        expect(result.indices.length).toBe(indices.length + (numT - 1) * 6);
+    });
+
+    it('healConfigForProfile returns tighter thresholds for higher profiles', () => {
+        const draft = healConfigForProfile('draft');
+        const standard = healConfigForProfile('standard');
+        const high = healConfigForProfile('high');
+        const ultra = healConfigForProfile('ultra');
+
+        expect(draft.averageOnlyThresholdMm).toBeGreaterThan(standard.averageOnlyThresholdMm);
+        expect(standard.averageOnlyThresholdMm).toBeGreaterThan(high.averageOnlyThresholdMm);
+        expect(high.averageOnlyThresholdMm).toBeGreaterThan(ultra.averageOnlyThresholdMm);
     });
 });

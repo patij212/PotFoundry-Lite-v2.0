@@ -1,0 +1,151 @@
+/* ============================================================================
+   Section Container
+   ============================================================================ */
+
+.pf2-section {
+  border-radius: var(--pf2-radius-md);
+  background: var(--pf2-bg-surface);
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.pf2-section + .pf2-section {
+  margin-top: var(--pf2-space-md);
+}
+
+/* ============================================================================
+   Trigger (Collapsible Header)
+   ============================================================================ */
+
+.pf2-section__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--pf2-space-md) var(--pf2-space-lg);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--pf2-radius-md);
+  transition: background var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-section__trigger:hover {
+  background: var(--pf2-bg-hover);
+}
+
+/* ============================================================================
+   Header (icon + title)
+   ============================================================================ */
+
+.pf2-section__header {
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-sm);
+}
+
+.pf2-section__icon {
+  display: flex;
+  align-items: center;
+  color: var(--pf2-text-muted);
+}
+
+.pf2-section__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pf2-section__title {
+  margin: 0;
+  transition: color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-section__trigger[data-state='open'] .pf2-section__title {
+  color: var(--pf2-accent);
+}
+
+/* ============================================================================
+   Chevron
+   ============================================================================ */
+
+.pf2-section__chevron {
+  color: var(--pf2-text-muted);
+  transition: transform var(--pf2-duration-fast) var(--pf2-ease-move);
+  flex-shrink: 0;
+}
+
+.pf2-section__trigger[data-state='open'] .pf2-section__chevron {
+  transform: rotate(90deg);
+}
+
+/* ============================================================================
+   Content Body — grid-template-rows animation
+   ============================================================================ */
+
+.pf2-section__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--pf2-duration-normal) var(--pf2-ease-move),
+    opacity var(--pf2-duration-fast) var(--pf2-ease-move);
+}
+
+.pf2-section__body[data-state='open'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.pf2-section__body[data-state='closed'] {
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--pf2-duration-normal) var(--pf2-ease-move),
+    opacity var(--pf2-duration-fast) var(--pf2-ease-move),
+    visibility 0s var(--pf2-duration-normal);
+}
+
+.pf2-section__body[data-state='open'] {
+  visibility: visible;
+  transition:
+    grid-template-rows var(--pf2-duration-normal) var(--pf2-ease-move),
+    opacity var(--pf2-duration-fast) var(--pf2-ease-move),
+    visibility 0s 0s;
+}
+
+/* ============================================================================
+   Inner Content
+   ============================================================================ */
+
+.pf2-section__content {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-lg);
+  padding: var(--pf2-space-md) var(--pf2-space-lg);
+  padding-top: var(--pf2-space-sm);
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-section {
+    border: 1px solid ButtonText;
+  }
+
+  .pf2-section__trigger {
+    border: 1px solid ButtonText;
+  }
+}
+
+/* ============================================================================
+   Mobile — Touch Target (C6)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-section__trigger {
+    min-height: 44px;
+  }
+}

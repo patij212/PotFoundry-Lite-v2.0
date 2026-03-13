@@ -12,12 +12,15 @@ import {
     unwrapChain,
     chainRoughness,
     suppressDuplicateChains,
-    resnapChainToMeasuredPeaks,
+    computeChainDiagnostics,
     postProcessFeatureChains,
     linkFeatureChainsCore,
     linkFeatureChains,
     linkFeatureChainsByKind,
     insertChainGuidedRows,
+    whittakerSmooth,
+    blendTowardSmoothedChain,
+    repairChainsZigzags,
     CHAIN_LINK_RADIUS,
 } from './ChainLinker';
 import type { FeatureChain, FeaturePoint } from './types';
@@ -186,33 +189,38 @@ describe('suppressDuplicateChains', () => {
 });
 
 // ============================================================================
-// resnapChainToMeasuredPeaks
+// computeChainDiagnostics
 // ============================================================================
 
-describe('resnapChainToMeasuredPeaks', () => {
-    it('should snap chain points to nearest measured peak', () => {
+describe('computeChainDiagnostics', () => {
+    it('should compute zero deviation for a straight chain', () => {
         const chain: FeatureChain = {
-            points: [
-                { u: 0.101, row: 0 },
-                { u: 0.202, row: 1 },
-            ],
+            points: Array.from({ length: 10 }, (_, i) => ({ u: 0.1 + i * 0.01, row: i })),
         };
-        const allRowFeatures = [
-            [0.1, 0.5],  // row 0: peaks at 0.1 and 0.5
-            [0.2, 0.7],  // row 1: peaks at 0.2 and 0.7
-        ];
-        const result = resnapChainToMeasuredPeaks(chain, allRowFeatures);
-        expect(result.points[0].u).toBeCloseTo(0.1);
-        expect(result.points[1].u).toBeCloseTo(0.2);
+        const diag = computeChainDiagnostics([chain], []);
+        expect(diag.perChain).toHaveLength(1);
+        expect(diag.perChain[0].maxLinearDeviation).toBeCloseTo(0, 8);
+        expect(diag.perChain[0].maxConsecutiveDelta).toBeCloseTo(0.01, 8);
     });
 
-    it('should keep original position when no peak is within snap radius', () => {
+    it('should detect zigzag deviation', () => {
         const chain: FeatureChain = {
-            points: [{ u: 0.5, row: 0 }],
+            points: [
+                { u: 0.10, row: 0 },
+                { u: 0.12, row: 1 },
+                { u: 0.08, row: 2 },  // zigzag
+                { u: 0.12, row: 3 },
+                { u: 0.10, row: 4 },
+            ],
         };
-        const allRowFeatures = [[0.1, 0.9]]; // far away
-        const result = resnapChainToMeasuredPeaks(chain, allRowFeatures);
-        expect(result.points[0].u).toBeCloseTo(0.5);
+        const diag = computeChainDiagnostics([chain], []);
+        expect(diag.perChain[0].maxLinearDeviation).toBeGreaterThan(0.01);
+    });
+
+    it('should compute min same-kind spacing', () => {
+        const allRowFeatures = [[0.1, 0.2, 0.8]]; // spacing: 0.1, 0.6, 0.3(wrap)
+        const diag = computeChainDiagnostics([], allRowFeatures);
+        expect(diag.minSameKindSpacing).toBeCloseTo(0.1, 8);
     });
 });
 
@@ -222,23 +230,20 @@ describe('resnapChainToMeasuredPeaks', () => {
 
 describe('postProcessFeatureChains', () => {
     it('should return empty array for empty input', () => {
-        expect(postProcessFeatureChains([], [])).toEqual([]);
+        expect(postProcessFeatureChains([])).toEqual([]);
     });
 
-    it('should deduplicate and resnap chains', () => {
-        // Two near-duplicate chains + allRowFeatures for snapping
+    it('should deduplicate chains', () => {
+        // Two near-duplicate chains
         const chain1: FeatureChain = {
             points: Array.from({ length: 40 }, (_, i) => ({ u: 0.301, row: i })),
         };
         const chain2: FeatureChain = {
             points: Array.from({ length: 40 }, (_, i) => ({ u: 0.3005, row: i })),
         };
-        const allRowFeatures = Array.from({ length: 40 }, () => [0.3, 0.6]);
-        const result = postProcessFeatureChains([chain1, chain2], allRowFeatures);
+        const result = postProcessFeatureChains([chain1, chain2]);
         // Should deduplicate to 1 chain
         expect(result).toHaveLength(1);
-        // Should snap to 0.3
-        expect(result[0].points[0].u).toBeCloseTo(0.3);
     });
 });
 
@@ -404,7 +409,7 @@ describe('insertChainGuidedRows', () => {
 describe('CHAIN_LINK_RADIUS', () => {
     it('should be a positive number', () => {
         expect(CHAIN_LINK_RADIUS).toBeGreaterThan(0);
-        expect(CHAIN_LINK_RADIUS).toBe(0.04);
+        expect(CHAIN_LINK_RADIUS).toBe(0.02);
     });
 });
 
@@ -438,11 +443,11 @@ describe('linkFeatureChainsCore — seam crossing', () => {
     });
 
     it('links features with larger seam crossing gap within link radius', () => {
-        // Feature jumps from u=0.97 to u=0.01 (gap of 0.04 = CHAIN_LINK_RADIUS)
+        // Feature wraps across seam with steps within CHAIN_LINK_RADIUS (0.02)
         const numRows = 3;
         const allRowFeatures: number[][] = [
-            [0.97],
-            [0.99],
+            [0.98],
+            [0.995],
             [0.01],
         ];
 
@@ -450,7 +455,7 @@ describe('linkFeatureChainsCore — seam crossing', () => {
             allRowFeatures, numRows, CHAIN_LINK_RADIUS, 6, 2.0
         );
 
-        // Circular distance 0.99→0.01 = 0.02, well within radius
+        // Circular distance 0.995→0.01 = 0.015, well within radius
         expect(chains.length).toBe(1);
         expect(chains[0].points.length).toBe(3);
     });
@@ -468,7 +473,7 @@ describe('linkFeatureChainsCore — seam crossing', () => {
             allRowFeatures, numRows, CHAIN_LINK_RADIUS, 6, 2.0
         );
 
-        // Should be separate short chains or no chains (link radius is 0.04)
+        // Should be separate short chains or no chains (features are 0.5 apart)
         for (const chain of chains) {
             // No single chain should contain both u=0.1 and u=0.6
             const hasLow = chain.points.some(p => Math.abs(p.u - 0.1) < 0.01);
@@ -502,5 +507,361 @@ describe('linkFeatureChainsByKind — seam crossing', () => {
             c.points.some(p => p.u > 0.9) && c.points.some(p => p.u < 0.1)
         );
         expect(seamChain).toBeDefined();
+    });
+});
+
+// ============================================================================
+// whittakerSmooth
+// ============================================================================
+
+describe('whittakerSmooth', () => {
+    it('preserves a linear chain exactly', () => {
+        const n = 20;
+        const points = Array.from({ length: n }, (_, i) => ({
+            row: i,
+            u: 0.1 + i * 0.01,
+        }));
+        const chain: FeatureChain = { points };
+        const smoothed = whittakerSmooth(chain);
+        for (let i = 0; i < n; i++) {
+            expect(smoothed.points[i].u).toBeCloseTo(points[i].u, 10);
+        }
+    });
+
+    it('preserves a constant chain exactly', () => {
+        const n = 20;
+        const points = Array.from({ length: n }, (_, i) => ({
+            row: i,
+            u: 0.5,
+        }));
+        const chain: FeatureChain = { points };
+        const smoothed = whittakerSmooth(chain);
+        for (let i = 0; i < n; i++) {
+            expect(smoothed.points[i].u).toBeCloseTo(0.5, 10);
+        }
+    });
+
+    it('attenuates a sinusoidal perturbation', () => {
+        const n = 40;
+        const period = 10;
+        const amplitude = 0.01;
+        const points = Array.from({ length: n }, (_, i) => ({
+            row: i,
+            u: 0.5 + amplitude * Math.sin((2 * Math.PI * i) / period),
+        }));
+        const chain: FeatureChain = { points };
+        const smoothed = whittakerSmooth(chain, 50);
+
+        // Measure output amplitude in the interior (avoid boundaries)
+        let maxDev = 0;
+        for (let i = 10; i < n - 10; i++) {
+            maxDev = Math.max(maxDev, Math.abs(smoothed.points[i].u - 0.5));
+        }
+
+        // At λ=50, period=10, expected attenuation factor ≈ 0.121
+        // Allow some tolerance for boundary effects
+        const ratio = maxDev / amplitude;
+        expect(ratio).toBeLessThan(0.25);
+        expect(ratio).toBeGreaterThan(0.02);
+    });
+
+    it('handles short chains (n < 3) without crashing', () => {
+        const chain3: FeatureChain = {
+            points: [{ row: 0, u: 0.1 }, { row: 1, u: 0.2 }, { row: 2, u: 0.3 }],
+        };
+        // n=3 is minimum for smoothing; should not crash
+        const result3 = whittakerSmooth(chain3);
+        expect(result3.points).toHaveLength(3);
+
+        const chain2: FeatureChain = {
+            points: [{ row: 0, u: 0.1 }, { row: 1, u: 0.2 }],
+        };
+        // n=2 → returned unchanged
+        const result2 = whittakerSmooth(chain2);
+        expect(result2.points).toHaveLength(2);
+        expect(result2.points[0].u).toBe(0.1);
+
+        const chain1: FeatureChain = { points: [{ row: 0, u: 0.5 }] };
+        const result1 = whittakerSmooth(chain1);
+        expect(result1.points).toHaveLength(1);
+    });
+
+    it('produces valid [0,1) output for seam-crossing chains', () => {
+        const n = 20;
+        // Chain crosses from u≈0.98 upward past the seam
+        const points = Array.from({ length: n }, (_, i) => ({
+            row: i,
+            u: ((0.98 + i * 0.005) % 1.0 + 1.0) % 1.0,
+        }));
+        const chain: FeatureChain = { points };
+        const smoothed = whittakerSmooth(chain);
+
+        for (let i = 0; i < n; i++) {
+            expect(smoothed.points[i].u).toBeGreaterThanOrEqual(0);
+            expect(smoothed.points[i].u).toBeLessThan(1);
+        }
+
+        // Check no wild jumps (no cross-pot artifacts)
+        for (let i = 1; i < n; i++) {
+            const du = Math.abs(smoothed.points[i].u - smoothed.points[i - 1].u);
+            const circDu = du > 0.5 ? 1 - du : du;
+            expect(circDu).toBeLessThan(0.05);
+        }
+    });
+});
+
+// ============================================================================
+// blendTowardSmoothedChain
+// ============================================================================
+
+describe('blendTowardSmoothedChain', () => {
+    it('preserves an identical chain exactly', () => {
+        const chain: FeatureChain = {
+            points: Array.from({ length: 6 }, (_, i) => ({ row: i, u: 0.2 + i * 0.01 })),
+        };
+
+        const blended = blendTowardSmoothedChain(chain, chain);
+
+        expect(blended.points).toHaveLength(chain.points.length);
+        for (let i = 0; i < chain.points.length; i++) {
+            expect(blended.points[i].row).toBe(chain.points[i].row);
+            expect(blended.points[i].u).toBeCloseTo(chain.points[i].u, 10);
+        }
+    });
+
+    it('caps seam-safe displacement per point', () => {
+        const raw: FeatureChain = {
+            points: [
+                { row: 0, u: 0.98 },
+                { row: 1, u: 0.99 },
+                { row: 2, u: 0.00 },
+                { row: 3, u: 0.01 },
+            ],
+        };
+        const smoothed: FeatureChain = {
+            points: [
+                { row: 0, u: 0.995 },
+                { row: 1, u: 0.005 },
+                { row: 2, u: 0.015 },
+                { row: 3, u: 0.025 },
+            ],
+        };
+
+        const blended = blendTowardSmoothedChain(raw, smoothed, 1.0, 0.0015);
+
+        for (let i = 0; i < raw.points.length; i++) {
+            expect(blended.points[i].u).toBeGreaterThanOrEqual(0);
+            expect(blended.points[i].u).toBeLessThan(1);
+            expect(Math.abs(circularSignedDelta(raw.points[i].u, blended.points[i].u))).toBeLessThanOrEqual(0.0015 + 1e-9);
+        }
+
+        for (let i = 1; i < blended.points.length; i++) {
+            expect(Math.abs(circularSignedDelta(blended.points[i - 1].u, blended.points[i].u))).toBeLessThan(0.05);
+        }
+    });
+
+    it('moves a jagged interior point harder than smoother neighbors', () => {
+        const raw: FeatureChain = {
+            points: [
+                { row: 0, u: 0.20 },
+                { row: 1, u: 0.21 },
+                { row: 2, u: 0.24 },
+                { row: 3, u: 0.215 },
+                { row: 4, u: 0.22 },
+            ],
+        };
+        const smoothed: FeatureChain = {
+            points: [
+                { row: 0, u: 0.20 },
+                    { row: 1, u: 0.2085 },
+                { row: 2, u: 0.214 },
+                    { row: 3, u: 0.217 },
+                { row: 4, u: 0.22 },
+            ],
+        };
+
+        const blended = blendTowardSmoothedChain(raw, smoothed);
+        const centerShift = Math.abs(circularSignedDelta(raw.points[2].u, blended.points[2].u));
+        const neighborShift = Math.abs(circularSignedDelta(raw.points[1].u, blended.points[1].u));
+
+        expect(centerShift).toBeGreaterThan(0.002);
+        expect(centerShift).toBeGreaterThan(neighborShift);
+        expect(centerShift).toBeLessThanOrEqual(0.005 + 1e-9);  // R42: MAX_POINT_SHIFT raised to 0.005
+    });
+});
+
+// ============================================================================
+// repairChainsZigzags
+// ============================================================================
+
+describe('repairChainsZigzags', () => {
+    it('repairs a known zigzag pattern', () => {
+        // Chain at u=0.50 with one point swapped to u=0.53 (zigzag)
+        const chain: FeatureChain = {
+            points: [
+                { row: 0, u: 0.50 },
+                { row: 1, u: 0.50 },
+                { row: 2, u: 0.50 },
+                { row: 3, u: 0.53 },  // zigzag: should be ~0.50
+                { row: 4, u: 0.50 },
+                { row: 5, u: 0.50 },
+            ],
+        };
+
+        // allRowFeatures: every row has features at 0.50 and 0.53
+        const allRowFeatures: number[][] = Array.from({ length: 6 }, () => [0.50, 0.53]);
+
+        const repaired = repairChainsZigzags([chain], allRowFeatures, undefined, 0.003);
+        expect(repaired).toHaveLength(1);
+        // The zigzag point at row 3 should be repaired back to 0.50
+        expect(repaired[0].points[3].u).toBeCloseTo(0.50, 4);
+    });
+
+    it('converges within maxPasses', () => {
+        // Two adjacent zigzags
+        const chain: FeatureChain = {
+            points: [
+                { row: 0, u: 0.30 },
+                { row: 1, u: 0.30 },
+                { row: 2, u: 0.34 },  // zigzag
+                { row: 3, u: 0.30 },
+                { row: 4, u: 0.34 },  // zigzag
+                { row: 5, u: 0.30 },
+                { row: 6, u: 0.30 },
+            ],
+        };
+        const allRowFeatures: number[][] = Array.from({ length: 7 }, () => [0.30, 0.34]);
+
+        const repaired = repairChainsZigzags([chain], allRowFeatures, undefined, 0.003, 3);
+        // Both zigzag points should converge to 0.30
+        expect(repaired[0].points[2].u).toBeCloseTo(0.30, 4);
+        expect(repaired[0].points[4].u).toBeCloseTo(0.30, 4);
+    });
+
+    it('is a no-op for smooth chains', () => {
+        // Perfectly smooth chain: linear progression
+        const chain: FeatureChain = {
+            points: Array.from({ length: 10 }, (_, i) => ({
+                row: i,
+                u: 0.10 + i * 0.005,
+            })),
+        };
+        const allRowFeatures: number[][] = chain.points.map(p => [p.u]);
+
+        const repaired = repairChainsZigzags([chain], allRowFeatures, undefined, 0.003);
+        // All points should remain unchanged
+        for (let i = 0; i < chain.points.length; i++) {
+            expect(repaired[0].points[i].u).toBeCloseTo(chain.points[i].u, 10);
+        }
+    });
+
+    it('handles seam-crossing zigzag', () => {
+        // Chain crossing the 0/1 seam with a zigzag
+        const chain: FeatureChain = {
+            points: [
+                { row: 0, u: 0.98 },
+                { row: 1, u: 0.99 },
+                { row: 2, u: 0.95 },  // zigzag: should be ~0.00
+                { row: 3, u: 0.01 },
+                { row: 4, u: 0.02 },
+            ],
+        };
+        // Features at both the "correct" seam-crossing position and the zigzag position
+        const allRowFeatures: number[][] = [
+            [0.98],
+            [0.99],
+            [0.95, 0.00],  // 0.00 is the correct position near seam
+            [0.01],
+            [0.02],
+        ];
+
+        const repaired = repairChainsZigzags([chain], allRowFeatures, undefined, 0.003);
+        // The zigzag at row 2 should be repaired to 0.00 (closer to predicted seam crossing)
+        expect(repaired[0].points[2].u).toBeCloseTo(0.00, 4);
+    });
+});
+
+// ============================================================================
+// Non-crossing DP matching (v25)
+// ============================================================================
+
+describe('linkFeatureChainsCore — non-crossing DP matching', () => {
+    it('does not produce zigzag when close features alternate positions', () => {
+        // Two vertical features at U≈0.170 and U≈0.172, alternating positions:
+        // Even rows: [0.170, 0.172], Odd rows: [0.169, 0.173].
+        // The greedy algorithm could swap chain assignments causing zigzag.
+        // The non-crossing DP ensures chains maintain left/right ordering.
+        const numRows = 10;
+        const allRowFeatures: number[][] = [];
+        for (let r = 0; r < numRows; r++) {
+            if (r % 2 === 0) {
+                allRowFeatures.push([0.170, 0.172]);
+            } else {
+                allRowFeatures.push([0.169, 0.173]);
+            }
+        }
+
+        const chains = linkFeatureChainsCore(allRowFeatures, numRows, CHAIN_LINK_RADIUS, 6, 1.5);
+        // Both features should form chains — check no zigzag
+        for (const chain of chains) {
+            if (chain.points.length < 3) continue;
+            const u = unwrapChain(chain);
+            for (let i = 1; i < u.length - 1; i++) {
+                const accel = Math.abs(u[i - 1] - 2 * u[i] + u[i + 1]);
+                // Feature drift per row is ~0.001-0.003; accel should be tiny
+                expect(accel).toBeLessThan(0.005);
+            }
+        }
+    });
+
+    it('handles non-crossing across circular seam (U=0.99 and U=0.01)', () => {
+        // Two chains near the seam: one at U≈0.99, one at U≈0.01.
+        // Features drift slowly: 0.99+r*0.001 and 0.01+r*0.001.
+        const numRows = 10;
+        const allRowFeatures: number[][] = [];
+        for (let r = 0; r < numRows; r++) {
+            const u1 = ((0.99 + r * 0.001) % 1 + 1) % 1;
+            const u2 = ((0.01 + r * 0.001) % 1 + 1) % 1;
+            allRowFeatures.push([u1, u2]);
+        }
+
+        const chains = linkFeatureChainsCore(allRowFeatures, numRows, CHAIN_LINK_RADIUS, 6, 1.5);
+        // Should produce two non-crossing chains
+        expect(chains.length).toBe(2);
+        for (const chain of chains) {
+            expect(chain.points.length).toBe(numRows);
+        }
+        // Verify no zigzag in either chain
+        for (const chain of chains) {
+            const u = unwrapChain(chain);
+            for (let i = 1; i < u.length - 1; i++) {
+                const accel = Math.abs(u[i - 1] - 2 * u[i] + u[i + 1]);
+                expect(accel).toBeLessThan(0.005);
+            }
+        }
+    });
+
+    it('starts new chains for unmatched features when K < M', () => {
+        // 2 features in rows 0-4, then 4 features appear from row 5 onward
+        const numRows = 10;
+        const allRowFeatures: number[][] = [];
+        for (let r = 0; r < numRows; r++) {
+            if (r < 5) {
+                allRowFeatures.push([0.1, 0.5]);
+            } else {
+                allRowFeatures.push([0.1, 0.3, 0.5, 0.7]);
+            }
+        }
+
+        const chains = linkFeatureChainsCore(allRowFeatures, numRows, CHAIN_LINK_RADIUS, 6, 1.5);
+
+        // Should have at least 4 chains (2 original + 2 new from unmatched features)
+        expect(chains.length).toBeGreaterThanOrEqual(4);
+        // The two original chains should span all 10 rows
+        const longChains = chains.filter(c => c.points.length >= 8);
+        expect(longChains.length).toBe(2);
+        // The two new chains should span rows 5-9 (5 points each)
+        const shortChains = chains.filter(c => c.points.length >= 4 && c.points.length <= 6);
+        expect(shortChains.length).toBe(2);
     });
 });

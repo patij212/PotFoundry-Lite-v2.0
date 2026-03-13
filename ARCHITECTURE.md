@@ -60,7 +60,7 @@ graph TD
 ```
 
 ### 3.1 The "Hybrid" Pipeline
-While the preview is purely GPU-based, the Export process currently uses a separate CPU/WASM path (in `AdaptiveExportComputer.ts`) to ensure 100% robust, watertight meshes that standard GPU rasterization pipelines might gloss over. This "Dual Path" ensures:
+While the preview is purely GPU-based, the Export process uses a CPU+GPU hybrid pipeline (in `ParametricExportComputer.ts`) to ensure watertight meshes with precise feature tracking. See `docs/AGENT_CONTEXT_DISTILLED.md` §3 for the full 9-step pipeline architecture.
 1.  **Speed**: 60fps Preview via WebGPU.
 2.  **Accuracy**: Watertight, valid STL via comprehensive CPU checks for Export.
 
@@ -80,7 +80,7 @@ The original Python Core (`potfoundry/`) and its tests (`tests/`). This code is 
 ## 5. Development Philosophy
 
 1.  **Browser First**: All features must run in a standard browser (Chrome/Edge/Firefox Nightly) without backend dependencies.
-2.  **Type Safety**: Strict TypeScript in frontend, Pydantic in backend (if used).
+2.  **Type Safety**: Strict TypeScript throughout. No `any`.
 3.  **Performance**: Zero-copy where possible. Use TypedArrays.
 4.  **Math Purity**: Algorithms should be mathematically derived (e.g. Superformula) rather than approximate.
 

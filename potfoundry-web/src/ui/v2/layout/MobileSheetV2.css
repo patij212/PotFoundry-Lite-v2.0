@@ -1,0 +1,169 @@
+/* ============================================================================
+   MobileSheetV2 — Bottom sheet overlay for mobile viewports
+   ============================================================================ */
+
+.pf2-mobile-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 160;
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 15, 18, 0.92);
+  border-top: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-xl) var(--pf2-radius-xl) 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  overflow: hidden;
+  transition: height var(--pf2-duration-normal) var(--pf2-ease-enter);
+  animation: pf2-sheet-up var(--pf2-duration-normal) var(--pf2-ease-enter) both;
+}
+
+@supports (backdrop-filter: blur(16px)) {
+  .pf2-mobile-sheet {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+}
+
+/* Disable transition while actively dragging */
+.pf2-mobile-sheet--dragging {
+  transition: none;
+}
+
+/* ============================================================================
+   Drag Handle
+   ============================================================================ */
+
+.pf2-mobile-sheet__handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: var(--pf2-space-sm) 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pf2-mobile-sheet__handle:active {
+  cursor: grabbing;
+}
+
+.pf2-mobile-sheet__grip {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--pf2-text-muted);
+  opacity: 0.5;
+}
+
+/* ============================================================================
+   Tab Navigation
+   ============================================================================ */
+
+.pf2-mobile-sheet__tabs-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.pf2-mobile-sheet__tab-list {
+  display: flex;
+  padding: 0 var(--pf2-space-lg);
+  gap: var(--pf2-space-xs);
+  border-bottom: 1px solid var(--pf2-border);
+  flex-shrink: 0;
+}
+
+.pf2-mobile-sheet__tab {
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-sm);
+  padding: var(--pf2-space-md) var(--pf2-space-lg);
+  font-family: var(--pf2-font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+  margin-bottom: -1px;
+  /* Touch target minimum 44x44 per WCAG */
+  min-height: 44px;
+}
+
+.pf2-mobile-sheet__tab:hover {
+  color: var(--pf2-text-primary);
+}
+
+.pf2-mobile-sheet__tab[data-state='active'] {
+  color: var(--pf2-accent);
+  border-bottom-color: var(--pf2-accent);
+}
+
+/* ============================================================================
+   Scrollable Content
+   ============================================================================ */
+
+.pf2-mobile-sheet__content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
+  padding: var(--pf2-space-lg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--pf2-bg-hover) transparent;
+}
+
+.pf2-mobile-sheet__content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pf2-mobile-sheet__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pf2-mobile-sheet__content::-webkit-scrollbar-thumb {
+  background: var(--pf2-bg-hover);
+  border-radius: 3px;
+}
+
+.pf2-mobile-sheet__tab-content {
+  animation: pf2-tab-enter var(--pf2-duration-normal) var(--pf2-ease-enter) both;
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-mobile-sheet {
+    border-top: 1px solid ButtonText;
+    background: Canvas;
+  }
+
+  .pf2-mobile-sheet__grip {
+    background: ButtonText;
+  }
+
+  .pf2-mobile-sheet__tab[data-state='active'] {
+    border-bottom-color: Highlight;
+    color: Highlight;
+  }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-mobile-sheet {
+  background: var(--pf2-glass-bg);
+  border-top-color: var(--pf2-glass-border);
+}

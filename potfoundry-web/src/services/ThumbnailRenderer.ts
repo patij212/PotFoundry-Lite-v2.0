@@ -161,7 +161,7 @@ class ThumbnailRenderer {
                 bindGroupLayout,
             };
 
-            console.log('[ThumbnailRenderer] Initialized successfully');
+            if (import.meta.env.DEV) console.log('[ThumbnailRenderer] Initialized successfully');
             return true;
         } catch (err) {
             console.error('[ThumbnailRenderer] Initialization failed:', err);
@@ -224,7 +224,7 @@ class ThumbnailRenderer {
         // Get or create pipeline for this style
         let pipeline = pipelineCache.get(styleId);
         if (!pipeline) {
-            console.log(`[ThumbnailRenderer] Compiling pipeline for Style ID ${styleId}...`);
+            if (import.meta.env.DEV) console.log(`[ThumbnailRenderer] Compiling pipeline for Style ID ${styleId}...`);
             const code = ShaderManager.getInstance().getStyleWGSL(styleId);
             const shaderModule = device.createShaderModule({
                 label: `thumbnail-shader-${styleId}`,

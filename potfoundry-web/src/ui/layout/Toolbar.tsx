@@ -99,6 +99,7 @@ export const Toolbar: React.FC = () => {
   // Save design as JSON file
   const handleSave = useCallback(() => {
     // Get current state from store
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug global for store access
     const store = (window as any).__POTFOUNDRY_STORE__;
     if (!store) {
       console.warn('Store not available for save');
@@ -158,6 +159,7 @@ export const Toolbar: React.FC = () => {
         }
 
         // Get store and apply state
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug global for store access
         const store = (window as any).__POTFOUNDRY_STORE__;
         if (!store) {
           console.warn('Store not available for load');

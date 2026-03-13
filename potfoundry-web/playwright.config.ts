@@ -13,7 +13,7 @@ export default defineConfig({
     reporter: 'html',
 
     use: {
-        baseURL: 'http://localhost:3000',
+        baseURL: process.env.CI ? 'http://localhost:5173' : 'http://localhost:3001',
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
         video: 'retain-on-failure',
@@ -46,16 +46,40 @@ export default defineConfig({
                 },
             },
         },
+        // ── Mobile Device Emulation ──────────────────────────────
+        {
+            name: 'mobile-chrome',
+            use: {
+                ...devices['Pixel 7'],
+                launchOptions: {
+                    args: [
+                        '--enable-features=Vulkan',
+                        '--enable-unsafe-webgpu',
+                    ],
+                },
+            },
+        },
+        {
+            name: 'mobile-safari',
+            use: {
+                ...devices['iPhone 14'],
+            },
+        },
+        {
+            name: 'tablet',
+            use: {
+                ...devices['iPad (gen 7)'],
+            },
+        },
     ],
 
-    /* 
-     * NOTE: WebServer is disabled. Start dev server manually with `npm run dev`
-     * before running E2E tests. This avoids timeout issues.
-     */
-    // webServer: {
-    //     command: 'npm run dev',
-    //     url: 'http://localhost:5173',
-    //     reuseExistingServer: !process.env.CI,
-    //     timeout: 120 * 1000,
-    // },
+    /* Start dev server automatically in CI */
+    webServer: process.env.CI
+        ? {
+              command: 'npm run dev',
+              url: 'http://localhost:5173',
+              reuseExistingServer: false,
+              timeout: 120 * 1000,
+          }
+        : undefined,
 });

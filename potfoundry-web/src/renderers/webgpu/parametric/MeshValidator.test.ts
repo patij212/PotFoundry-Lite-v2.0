@@ -317,9 +317,9 @@ describe('checkTriangleQuality', () => {
         const indices = new Uint32Array([0, 1, 2]);
         const report = checkTriangleQuality(positions, indices, 3);
 
-        // Equilateral: all angles ≈ 60°, aspect ratio ≈ 1
+        // Equilateral: all angles ≈ 60°, R/r aspect ratio ≈ 2.0
         expect(report.minAngleDeg).toBeCloseTo(60, 0);
-        expect(report.maxAspectRatio).toBeCloseTo(1, 1);
+        expect(report.maxAspectRatio).toBeCloseTo(2, 1);
         expect(report.sliverCount).toBe(0);
     });
 

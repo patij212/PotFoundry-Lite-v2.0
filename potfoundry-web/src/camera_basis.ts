@@ -21,19 +21,31 @@ const EPS = 1e-6;
 const QUAT_EPS = 1e-8;
 export const QUAT_IDENTITY: Quaternion = [0, 0, 0, 1];
 
-const vec3Length = (v: Vec3): number => Math.hypot(v[0], v[1], v[2]);
-const vec3Normalize = (v: Vec3): Vec3 => {
+/** Type-safe Vec3 construction — eliminates `as Vec3` casts on array literals */
+export const vec3 = (x: number, y: number, z: number): Vec3 => [x, y, z];
+
+/** Type-safe Vec3 copy — eliminates `as Vec3` casts on spread copies */
+export const copyVec3 = (v: Vec3): Vec3 => [v[0], v[1], v[2]];
+
+/** Type-safe Quaternion copy — eliminates `as Quaternion` casts on spread copies */
+export const copyQuat = (q: Quaternion): Quaternion => [q[0], q[1], q[2], q[3]];
+
+export const vec3Length = (v: Vec3): number => Math.hypot(v[0], v[1], v[2]);
+export const vec3Normalize = (v: Vec3): Vec3 => {
   const len = vec3Length(v);
   if (!Number.isFinite(len) || len < 1e-8) return [0, 0, 0];
   return [v[0] / len, v[1] / len, v[2] / len];
 };
-const vec3Dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+/** Dot product of two Vec3 vectors */
+export const vec3Dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+/** Subtract two Vec3 vectors: a - b */
+export const vec3Subtract = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const vec3Cross = (a: Vec3, b: Vec3): Vec3 => [
   a[1] * b[2] - a[2] * b[1],
   a[2] * b[0] - a[0] * b[2],
   a[0] * b[1] - a[1] * b[0],
 ];
-const vec3Scale = (v: Vec3, s: number): Vec3 => [v[0] * s, v[1] * s, v[2] * s];
+export const vec3Scale = (v: Vec3, s: number): Vec3 => [v[0] * s, v[1] * s, v[2] * s];
 const vec3Add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const wrapToPi = (value: number): number => {
   if (!Number.isFinite(value)) {
@@ -527,8 +539,8 @@ export const cameraPayloadDiffers = (prev: Record<string, unknown> | null | unde
       continue;
     }
     if (k === 'pivot') {
-      const pa = Array.isArray(a) ? (a as any) : null;
-      const pb = Array.isArray(b) ? (b as any) : null;
+      const pa = Array.isArray(a) ? a : null;
+      const pb = Array.isArray(b) ? b : null;
       if (!pa && !pb) continue;
       if (!pa || !pb) return true;
       for (let i = 0; i < 3; i += 1) {

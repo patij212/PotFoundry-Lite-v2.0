@@ -1,0 +1,270 @@
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.pf2-slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-sm);
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.pf2-slider--disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Header (Label + Value Input)
+   ============================================================================ */
+
+.pf2-slider__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pf2-space-sm);
+}
+
+.pf2-slider__label {
+  cursor: default;
+  user-select: none;
+}
+
+.pf2-slider__value-group {
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-xs);
+}
+
+.pf2-slider__input {
+  width: 56px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--pf2-text-primary);
+  background: var(--pf2-bg-elevated);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  text-align: right;
+  transition:
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    background var(--pf2-duration-micro) var(--pf2-ease-move);
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.pf2-slider__input::-webkit-outer-spin-button,
+.pf2-slider__input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.pf2-slider__input:hover:not(:focus):not(:disabled) {
+  background: var(--pf2-bg-hover);
+}
+
+.pf2-slider__input:focus {
+  border-color: var(--pf2-accent);
+  background: var(--pf2-bg-hover);
+}
+
+.pf2-slider__unit {
+  font-size: 11px;
+  color: var(--pf2-text-muted);
+  min-width: 20px;
+}
+
+/* ============================================================================
+   Radix Slider Root
+   ============================================================================ */
+
+.pf2-slider__root {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 24px;
+  touch-action: none;
+  user-select: none;
+}
+
+/* ============================================================================
+   Ghost Marker (Default Value Indicator)
+   ============================================================================ */
+
+.pf2-slider__ghost {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  background: var(--pf2-accent);
+  opacity: 0.3;
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ============================================================================
+   Track & Range
+   ============================================================================ */
+
+.pf2-slider__track {
+  position: relative;
+  flex-grow: 1;
+  height: 4px;
+  background: var(--pf2-border-active);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pf2-slider__range {
+  position: absolute;
+  height: 100%;
+  background: var(--pf2-accent);
+  border-radius: 2px;
+}
+
+/* ============================================================================
+   Thumb
+   ============================================================================ */
+
+.pf2-slider__thumb {
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: var(--pf2-bg-elevated);
+  border: 2px solid var(--pf2-accent);
+  border-radius: 50%;
+  cursor: grab;
+  outline: none;
+  position: relative;
+  transition:
+    transform var(--pf2-duration-micro) var(--pf2-ease-move),
+    box-shadow var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-slider__thumb::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+}
+
+.pf2-slider__thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 4px rgba(180, 151, 90, 0.3);
+}
+
+.pf2-slider__thumb:active,
+.pf2-slider__root[data-dragging] .pf2-slider__thumb {
+  cursor: grabbing;
+  transform: scale(1.15);
+  box-shadow: 0 0 0 8px rgba(180, 151, 90, 0.2);
+}
+
+.pf2-slider__thumb.pf2-focus-ring:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--pf2-bg-surface),
+    0 0 0 4px var(--pf2-accent);
+}
+
+/* ============================================================================
+   Floating Tooltip (visible during drag only)
+   ============================================================================ */
+
+.pf2-slider__tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 2px 8px;
+  min-width: 3ch;
+  background: var(--pf2-accent);
+  color: var(--pf2-bg-base);
+  font-family: var(--pf2-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  border-radius: var(--pf2-radius-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--pf2-duration-micro) var(--pf2-ease-enter);
+  z-index: var(--pf2-z-tooltip);
+}
+
+.pf2-slider__tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--pf2-accent);
+}
+
+.pf2-slider__root[data-dragging] .pf2-slider__tooltip {
+  opacity: 1;
+}
+
+.pf2-slider__tooltip-unit {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-slider__thumb {
+    border: 2px solid ButtonText;
+    background: ButtonFace;
+  }
+
+  .pf2-slider__track {
+    background: GrayText;
+  }
+
+  .pf2-slider__range {
+    background: Highlight;
+  }
+
+  .pf2-slider__ghost {
+    background: GrayText;
+  }
+
+  .pf2-slider__input {
+    border: 1px solid ButtonText;
+  }
+}
+
+/* ============================================================================
+   Mobile — Larger Touch Target
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-slider__thumb {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* ============================================================================
+   Light Theme — Thumb Glow (C9)
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-slider__thumb:hover {
+  box-shadow: 0 0 0 4px rgba(122, 101, 38, 0.3);
+}
+
+.pf2-root[data-theme="light"] .pf2-slider__thumb:active,
+.pf2-root[data-theme="light"] .pf2-slider__root[data-dragging] .pf2-slider__thumb {
+  box-shadow: 0 0 0 8px rgba(122, 101, 38, 0.2);
+}

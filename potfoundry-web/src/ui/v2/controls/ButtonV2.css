@@ -1,0 +1,262 @@
+/* ============================================================================
+   Base Button
+   ============================================================================ */
+
+.pf2-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pf2-space-sm);
+  font-family: var(--pf2-font-body);
+  font-weight: 600;
+  border: none;
+  border-radius: var(--pf2-radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    transform var(--pf2-duration-instant) var(--pf2-ease-exit);
+}
+
+.pf2-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pf2-button:active:not(:disabled) {
+  transform: scale(0.97) translateY(1px);
+}
+
+/* ============================================================================
+   Size Variants
+   ============================================================================ */
+
+.pf2-button--sm {
+  height: 28px;
+  padding: 0 var(--pf2-space-md);
+  font-size: 12px;
+}
+
+.pf2-button--md {
+  height: 36px;
+  padding: 0 var(--pf2-space-lg);
+  font-size: 13px;
+}
+
+.pf2-button--lg {
+  height: 44px;
+  padding: 0 var(--pf2-space-xl);
+  font-size: 14px;
+}
+
+/* ============================================================================
+   Primary (Gold)
+   ============================================================================ */
+
+.pf2-button--primary {
+  background: var(--pf2-accent);
+  color: var(--pf2-bg-base);
+}
+
+.pf2-button--primary:hover:not(:disabled) {
+  background: var(--pf2-accent-hover);
+}
+
+.pf2-button--primary:active:not(:disabled) {
+  background: var(--pf2-accent);
+}
+
+/* ============================================================================
+   Secondary (Ghost)
+   ============================================================================ */
+
+.pf2-button--secondary {
+  background: transparent;
+  color: var(--pf2-text-primary);
+  border: 1px solid var(--pf2-border);
+}
+
+.pf2-button--secondary:hover:not(:disabled) {
+  border-color: var(--pf2-accent);
+  color: var(--pf2-accent);
+}
+
+.pf2-button--secondary:active:not(:disabled) {
+  background: var(--pf2-accent-subtle);
+}
+
+/* ============================================================================
+   Danger — hover color #a85252 per Master Decision #1 (WCAG AA compliant)
+   ============================================================================ */
+
+.pf2-button--danger {
+  background: var(--pf2-error);
+  color: var(--pf2-text-primary);
+}
+
+.pf2-button--danger:hover:not(:disabled) {
+  background: #a85252;
+}
+
+.pf2-button--danger:active:not(:disabled) {
+  background: var(--pf2-error);
+}
+
+/* ============================================================================
+   Modifiers
+   ============================================================================ */
+
+.pf2-button--full {
+  width: 100%;
+}
+
+.pf2-button--loading {
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Parts
+   ============================================================================ */
+
+.pf2-button__icon {
+  display: flex;
+  align-items: center;
+}
+
+.pf2-button__icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.pf2-button--sm .pf2-button__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pf2-button--lg .pf2-button__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pf2-button__label {
+  display: flex;
+  align-items: center;
+}
+
+.pf2-button__spinner {
+  display: flex;
+  align-items: center;
+}
+
+.pf2-button__spinner svg {
+  width: 16px;
+  height: 16px;
+  animation: pf2-spin 0.8s linear infinite;
+}
+
+/* ============================================================================
+   Icon Button
+   ============================================================================ */
+
+.pf2-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--pf2-radius-md);
+  cursor: pointer;
+  background: transparent;
+  color: var(--pf2-text-secondary);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pf2-icon-button--sm { width: 28px; height: 28px; }
+.pf2-icon-button--md { width: 36px; height: 36px; }
+.pf2-icon-button--lg { width: 44px; height: 44px; }
+
+.pf2-icon-button--secondary:hover:not(:disabled) {
+  background: var(--pf2-bg-hover);
+  color: var(--pf2-text-primary);
+}
+
+.pf2-icon-button--primary {
+  background: var(--pf2-accent);
+  color: var(--pf2-bg-base);
+}
+
+.pf2-icon-button--primary:hover:not(:disabled) {
+  background: var(--pf2-accent-hover);
+}
+
+.pf2-icon-button--danger:hover:not(:disabled) {
+  background: rgba(184, 92, 92, 0.15);
+  color: var(--pf2-error);
+}
+
+.pf2-icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pf2-icon-button--sm svg { width: 14px; height: 14px; }
+.pf2-icon-button--lg svg { width: 22px; height: 22px; }
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-button {
+    border: 1px solid ButtonText;
+  }
+
+  .pf2-button--primary {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .pf2-icon-button {
+    border: 1px solid ButtonText;
+  }
+}
+
+/* ============================================================================
+   Mobile — Touch Targets (44px minimum)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  /* Sidebar / tab icon buttons: visual expansion */
+  .pf2-icon-button--sm {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Toolbar exclusion: keep compact visually, expand hit area invisibly (C1) */
+  .pf2-toolbar .pf2-icon-button--sm {
+    min-width: initial;
+    min-height: initial;
+  }
+
+  .pf2-toolbar .pf2-icon-button {
+    position: relative;
+  }
+
+  .pf2-toolbar .pf2-icon-button::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+}

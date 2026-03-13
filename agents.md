@@ -1,117 +1,83 @@
-# 🤖 AGENTS.MD - The Master Context
+# AGENTS.MD — Agent Protocol
 
-> **STOP! READ THIS FIRST.**
-> This file is the **Absolute Source of Truth** for any AI Agent working on PotFoundry.
-> Ignore `archive/` legacy files. Trust this document.
-
----
-
-## 🔄 AGENT LIFECYCLE (The Protocol)
-
-We follow a strict 3-Phase Cycle to ensure continuity and shared knowledge.
-
-### Phase 1: Initialization (Context & Check-in)
-*   **Deep Read**: Read `agents_journal.md`. Don't just scan; read the last 5-10 entries to understand the *emotional state* of the codebase.
-*   **Check-in Log (Optional)**: Feel free to write a quick "Hello" entry. "Starting up. Reading the logs. Looks like `webgpu_core` is acting up again."
-*   **⚠️ PROTOCOL ALERT**: You must **APPEND** to the journal. **NEVER** delete or modify previous entries. History is sacred.
-
-### Phase 2: Execution (Live-Blogging)
-*   **Work**: Do the job requested by the User.
-*   **The "Scratchpad"**: Use `agents_journal.md` as your personal notebook during work.
-    *   *Vent*: "This function is too long!"
-    *   *Hypothesize*: "I bet the Z-fighting is caused by the depth bias."
-    *   *Communicate*: "@PreviousAgent, GOOD CATCH on that typo."
-
-### Phase 3: Termination (The Sign-off)
-*   **Mandatory Entry**: You MUST write a "Sign-off" entry before finishing the task.
-*   **The "Real Talk"**:
-    1.  **Summary**: Implementation details.
-    2.  **Feelings**: How was the session? Frustrating? Satisfying? Be honest.
-    3.  **Proposals**: Have an idea for a feature or improvement? Don't keep it to yourself. Pitch it!
-    4.  **To the Next Agent**: Leave a sticky note. "Watch out for the `weld()` function, it bites."
+> This file defines the **workflow protocol** for AI agents working on PotFoundry.
+> For engineering knowledge, read `docs/AGENT_CONTEXT_DISTILLED.md`.
+> For coding standards and commands, see `.github/copilot-instructions.md`.
 
 ---
 
-## 1. 🚀 Quick Start
-*   **Root Directory**: `C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0`
-*   **Active App**: `potfoundry-web/`
-*   **Run Dev Server**: `cd potfoundry-web && npm run dev`
-*   **Tests**: `npm test` (Frontend) or `pytest` (Backend Reference)
+## Quick Start
 
-**The "North Star"**:
-We build **Generative 3D Pottery** for 3D printing.
-*   **Goal**: Create high-fidelity, watertight STL meshes.
-*   **Key Tech**: Superformula (math), WebGPU (render), Marching Squares (export).
+- **Active app**: `potfoundry-web/` (TypeScript/React/WebGPU SPA)
+- **Dev server**: `cd potfoundry-web && npm run dev`
+- **Tests**: `cd potfoundry-web && npm test`
+- **Python module** (`potfoundry/`): reference math only, not active product
 
 ---
 
-## 2. 🏗️ System Architecture
+## Agent Lifecycle
 
-### The "Dual-Engine but Single-Product" Reality
-We effectively have two engines, but only one product:
-1.  **Frontend (Product)**: `potfoundry-web/`
-    *   **Logic**: `src/renderers/webgpu/`
-    *   **State**: `src/state/` (Zustand)
-    *   **Geometry**: WGSL Shaders (Preview) + TypeScript (Export)
-2.  **Backend (Reference)**: `potfoundry/`
-    *   **Role**: Mathematical ground truth. If the JS math looks wrong, check the Python `core/`.
+### Phase 0: Orientation
+1. Read `docs/AGENT_CONTEXT_DISTILLED.md` (deep engineering knowledge)
+2. Check `TODO.md` and `ROADMAP.md` for current priorities
+3. Read last 3-5 entries of `agents_journal.md` only if you need recent chronology
 
-### Critical Data Flow
-*   **Preview**: `UI Interactions` -> `Zustand` -> `GPU UniformBuffer` -> `Compute Shader` -> `Screen`
-*   **Export**: `UI Interactions` -> `Worker Thread` -> `AdaptiveExportComputer.ts` -> `Binary STL` -> `Disk`
+### Phase 1: Execution
+- Work on the requested task
+- Use `agents_journal.md` as a scratchpad (hypotheses, observations, notes to other agents)
+- **APPEND only** — never delete or modify previous journal entries
 
-> **WARNING**: The Export path is CPU-based to guarantee watertightness. **Do not** blindly rewrite it to GPU without solving the index-welding problem first.
+### Phase 2: Sign-off (Mandatory)
+Write a sign-off entry in `agents_journal.md` with:
+1. **Summary**: What you implemented and why
+2. **Decisions**: Key choices made (with rationale)
+3. **Validation**: What you tested (`typecheck`, `lint`, `test`)
+4. **Risks**: What might break, open questions
+5. **Next agent**: What the next agent should know
 
----
-
-## 3. 🧠 The Mesh Pipeline (Deep Dive)
-
-**The "Pipeline of Gaps" Issue**:
-The biggest technical debt is the **Seam (0°/360°)**.
-*   **Symptom**: A visible vertical line or flattened geometry on the pot.
-*   **Cause**: The grid topology has a 1.5mm gap hidden by a "flattening" factor in the shader.
-*   **The Fix**: Defined in `mesh_pipeline_audit_comprehensive.md.resolved`. We need to move to a "Zero-Gap" topology using Ghost Segments.
-
-**Key Files**:
-*   `ConstrainedTriangulator.ts`: Handles the complex mesh stitching.
-*   `AdaptiveExportComputer.ts`: The orchestrator of the export.
-*   `common.wgsl`: Mathematical utilities.
+### Journal Rules
+- Target 15-40 lines per entry
+- Deep narratives go in `archive/plans/`, linked from journal
+- If an entry exceeds ~120 lines, split into a plan doc
 
 ---
 
-## 4. 🛠️ Coding Standards
+## Multi-Agent Debate Protocol (Pipeline Work)
 
-### TypeScript (Strict)
-*   **No `any`**: Use `unknown` or define an interface.
-*   **JSDoc**: Required for all exported functions.
-*   **Immutability**: Prefer `const` and spread operators `...`.
+For complex parametric pipeline changes, use the 4-agent debate cycle:
 
-### Python (Reference)
-*   **Pydantic v2**: All schemas must use v2.
-*   **Type Hints**: 100% coverage required.
+1. **Generator** proposes a solution (creative, aggressive, mathematically grounded)
+2. **Verifier** attacks the proposal (rigorous, evidence-driven, must cite code)
+3. **Executioner** reviews feasibility (production TypeScript, implementation cost)
+4. **Master** approves or rejects (architectural alignment, regression safety)
 
-### AI Behaviors (For You)
-*   **Rationalize First**: Don't just edit code. Explain *why* in the chat.
-*   **Update Docs**: If you change the code, update `ARCHITECTURE.md`.
-*   **No Magic Numbers**: Extract them to `constants.ts`.
-
----
-
-## 5. ⚠️ Known Bottlenecks & Tribal Knowledge
-
-*   **`webgpu_core.ts`**: It's a 5000-line monster. Refactor with extreme caution.
-*   **Memory Limits**: 8k resolution exports create massive arrays (~500MB). Browser tabs will crash.
-*   **Vertex Welding**: Currently done via spatial hashing (custom integer sort). Previous string-hashing caused V8 crashes.
-*   **Housekeeping**: Leave the campsite cleaner than you found it. If you create `debug_foo.js`, DELETE IT before you leave.
+**Rules**:
+- Nothing ships without unanimous agreement from all four agents
+- Max 10 debate rounds before Master intervenes with a directive
+- Generator must trace code paths, not just reason abstractly
+- Verifier rejections must include a path to ACCEPT
+- Documents go in `archive/plans/` (see `archive/plans/INDEX.md` for structure)
 
 ---
 
-## 6. 📅 Active Roadmap
-See `TODO.md` and `ROADMAP.md` for granular tasks.
-*   **Priority 1**: Mobile responsiveness.
-*   **Priority 2**: OBJ/3MF Export.
-*   **Priority 3**: Fixing the Seam.
+## Before Any Handoff
+
+```bash
+cd potfoundry-web
+npm run typecheck    # tsc --noEmit
+npm run lint         # ESLint — must be 0 warnings
+npm test             # Vitest unit tests
+```
 
 ---
 
-> **Final Instruction**: Now go read `agents_journal.md`.
+## File Map (What to Read When)
+
+| You need... | Read this |
+|---|---|
+| Deep engineering knowledge, bug patterns, constants | `docs/AGENT_CONTEXT_DISTILLED.md` |
+| Coding standards, commands, git workflow | `.github/copilot-instructions.md` |
+| File-level architecture, export paths, dev hooks | `potfoundry-web/CLAUDE.md` |
+| Current priorities | `TODO.md` + `ROADMAP.md` |
+| Recent agent activity | Last 3-5 entries of `agents_journal.md` |
+| Detailed web architecture (diagrams) | `potfoundry-web/ARCHITECTURE.md` |

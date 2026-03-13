@@ -1,5 +1,8 @@
 
 
+import { isMobileDevice } from '../../ResizeManager';
+import { gpuDiagnostics } from '../../ui/debug/utils/GPUDiagnostics';
+
 export class WebGPURenderer {
     public device: GPUDevice | null = null;
     public context: GPUCanvasContext | null = null;
@@ -14,8 +17,8 @@ export class WebGPURenderer {
     }
 
     private async getBestAdapter(): Promise<GPUAdapter | null> {
-        // Detect Mobile
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        // Use centralized mobile detection (handles VITE_MOBILE, UA, and touch+screen)
+        const isMobile = isMobileDevice();
         console.log(`[WebGPURenderer] Adapter Strategy: ${isMobile ? 'Mobile (Default)' : 'Desktop (High-Performance)'}`);
 
         // Option 1: High Performance (Desktop Only)
@@ -45,6 +48,7 @@ export class WebGPURenderer {
         // Option 3: Compatibility Mode
         try {
             console.warn('[WebGPURenderer] Trying compatibility mode...');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Non-spec Chrome extension for Android compatibility mode
             const adapter = await navigator.gpu.requestAdapter({ compatibilityMode: true } as any);
             if (adapter) {
                 console.log('[WebGPURenderer] Acquired Compatibility Adapter');
@@ -74,6 +78,7 @@ export class WebGPURenderer {
             // Diagnostic Logging
             try {
                 // Use standard property if available (latest spec), fallback to async method
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- adapter.info not yet in @webgpu/types; requestAdapterInfo deprecated in latest spec
                 const info = (this.adapter as any).info || await (this.adapter as any).requestAdapterInfo?.();
 
                 if (info) {
@@ -91,7 +96,26 @@ export class WebGPURenderer {
                     maxStorageBufferBindingSize: this.adapter.limits.maxStorageBufferBindingSize,
                     maxComputeWorkgroupStorageSize: this.adapter.limits.maxComputeWorkgroupStorageSize,
                 });
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- isFallbackAdapter not yet in @webgpu/types
                 console.log('[WebGPURenderer] Is Fallback:', (this.adapter as any).isFallbackAdapter);
+
+                // Emit to GPU diagnostics service for DevConsole
+                gpuDiagnostics.setAdapterInfo(
+                    {
+                        vendor: info?.vendor ?? 'Unknown',
+                        architecture: info?.architecture ?? 'Unknown',
+                        device: info?.device ?? 'Unknown',
+                        description: info?.description ?? 'Unknown',
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- isFallbackAdapter not yet in @webgpu/types
+                        isFallbackAdapter: (this.adapter as any).isFallbackAdapter ?? false,
+                    },
+                    {
+                        maxTextureDimension2D: this.adapter.limits.maxTextureDimension2D,
+                        maxBufferSize: this.adapter.limits.maxBufferSize,
+                        maxStorageBufferBindingSize: this.adapter.limits.maxStorageBufferBindingSize,
+                        maxComputeWorkgroupStorageSize: this.adapter.limits.maxComputeWorkgroupStorageSize,
+                    }
+                );
             } catch (e) {
                 console.warn('[WebGPURenderer] Failed to log adapter details (non-critical):', e);
             }
@@ -133,7 +157,7 @@ export class WebGPURenderer {
 
         // Handle High-DPI
         // Mobile optimization: Cap at 1.5x on mobile to save memory (7MP -> 4MP)
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const isMobile = isMobileDevice();
         const maxDpr = isMobile ? 1.5 : 2.0;
         const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
 

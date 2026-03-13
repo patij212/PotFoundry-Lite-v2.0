@@ -1,0 +1,43 @@
+/* ============================================================================
+   ShapeTab — Geometry parameter controls
+   ============================================================================ */
+
+.pf2-shape-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-lg);
+}
+
+/* Individual parameter with stagger animation */
+.pf2-shape-tab__param {
+  animation: pf2-tab-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  animation-delay: calc(var(--stagger-index, 0) * var(--pf2-duration-stagger));
+}
+
+/* Bell & Twist sub-groups */
+.pf2-shape-tab__subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-sm);
+}
+
+.pf2-shape-tab__subgroup + .pf2-shape-tab__subgroup {
+  margin-top: var(--pf2-space-md);
+  padding-top: var(--pf2-space-md);
+  border-top: 1px solid var(--pf2-border);
+}
+
+.pf2-shape-tab__subgroup-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pf2-text-muted);
+  margin-bottom: var(--pf2-space-xs);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .pf2-shape-tab__param {
+    animation: none;
+  }
+}

@@ -41,6 +41,7 @@ import {
   optimizeBoundaryDiagonals,
   computeBoundaryDiagnostic,
   computeMeshDiagnostics,
+  computeChainStrip3DQuality,
 } from './ChainStripOptimizer';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -83,7 +84,7 @@ describe('edgeKey', () => {
 
   it('encodes lo * 0x100000 + hi', () => {
     const k = edgeKey(5, 10);
-    expect(k).toBe(BigInt(5) * BigInt(0x100000) + BigInt(10));
+    expect(k).toBe(BigInt(5) * BigInt(0x200000) + BigInt(10));
   });
 });
 
@@ -726,6 +727,9 @@ describe('computeMeshDiagnostics', () => {
       outerIdxCountAfterSubdiv: 3,
       origVertCount: 3,
       maxSingleRowTSpan: 0.5,
+      numU: 3,
+      numT: 1,
+      gridVertexCount: 3,
     });
 
     expect(result).toHaveProperty('crossRow1');
@@ -756,6 +760,9 @@ describe('computeMeshDiagnostics', () => {
       finalIndices, finalPositions, combinedVerts,
       outerIdxCountAfterSubdiv: finalIndices.length,
       origVertCount: 5, maxSingleRowTSpan: 0.5,
+      numU: 5,
+      numT: 1,
+      gridVertexCount: 5,
     });
 
     // Vertex 0 has face-valence 4, vertices 1-4 have face-valence 2
@@ -787,6 +794,9 @@ describe('computeMeshDiagnostics', () => {
       finalIndices, finalPositions, combinedVerts,
       outerIdxCountAfterSubdiv: 9, // only first 3 tris
       origVertCount: 5, maxSingleRowTSpan: 0.5,
+      numU: 5,
+      numT: 1,
+      gridVertexCount: 5,
     });
 
     // Vertex 0 appears in 3 tris → face-valence 3
@@ -809,9 +819,108 @@ describe('computeMeshDiagnostics', () => {
       finalIndices, finalPositions, combinedVerts,
       outerIdxCountAfterSubdiv: 3, origVertCount: 3,
       maxSingleRowTSpan: 0.1, // very small rows → this tri spans many
+      numU: 3,
+      numT: 1,
+      gridVertexCount: 3,
     });
 
     // The tSpan is 0.9, rowBands = 9. That's > 3.5, so crossRow3plus
     expect(result.crossRow3plus).toBeGreaterThan(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// computeChainStrip3DQuality (B5)
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('computeChainStrip3DQuality', () => {
+  it('returns zero counts when no chain-strip triangles exist', () => {
+    // All-grid triangle (vertices 0,1,2 < gridVertexCount=10)
+    const positions = makePositions([
+      [0, 0, 0], [1, 0, 0], [0, 1, 0],
+    ]);
+    const indices = makeIndices([0, 1, 2]);
+    const result = computeChainStrip3DQuality({
+      indices, positions,
+      outerGridVertexCount: 10,
+      outerIdxCount: 3,
+    });
+    expect(result.triCount).toBe(0);
+    expect(result.minAngle).toBe(0);
+    expect(result.maxAspect).toBe(0);
+  });
+
+  it('identifies chain-strip triangles (vertex >= gridVertexCount)', () => {
+    // Equilateral-ish triangle: v0, v1 are grid, v2 is chain vertex
+    const positions = makePositions([
+      [0, 0, 0], [10, 0, 0], // grid verts (idx 0,1 < 2)
+      [5, 8, 0],             // chain vert (idx 2 >= gridVertexCount=2)
+    ]);
+    const indices = makeIndices([0, 1, 2]);
+    const result = computeChainStrip3DQuality({
+      indices, positions,
+      outerGridVertexCount: 2,
+      outerIdxCount: 3,
+    });
+    expect(result.triCount).toBe(1);
+    expect(result.minAngle).toBeGreaterThan(0);
+    expect(result.maxAspect).toBeGreaterThan(0);
+    expect(result.avgAspect).toBeCloseTo(result.maxAspect, 5);
+  });
+
+  it('detects high aspect ratio triangles (R4 violations)', () => {
+    // Very elongated sliver: long and thin
+    const positions = makePositions([
+      [0, 0, 0], [100, 0, 0], // grid
+      [50, 0.1, 0],           // chain — very thin triangle
+    ]);
+    const indices = makeIndices([0, 1, 2]);
+    const result = computeChainStrip3DQuality({
+      indices, positions,
+      outerGridVertexCount: 2,
+      outerIdxCount: 3,
+    });
+    expect(result.triCount).toBe(1);
+    expect(result.maxAspect).toBeGreaterThan(4);
+    expect(result.aspectOver4).toBe(1);
+  });
+
+  it('computes grading violations for mismatched adjacent triangles', () => {
+    // Two adjacent triangles sharing edge (0,1), very different areas
+    // Large triangle: v0(0,0,0), v1(10,0,0), v2(5,10,0) — area=50
+    // Tiny triangle: v0(0,0,0), v1(10,0,0), v3(5,0.1,0) — area=0.5
+    // Area ratio = 100:1 — grading violation
+    const positions = makePositions([
+      [0, 0, 0], [10, 0, 0],    // grid (shared edge)
+      [5, 10, 0],                // chain vert (large tri)
+      [5, 0.1, 0],              // chain vert (tiny tri)
+    ]);
+    const indices = makeIndices([0, 1, 2, 0, 1, 3]);
+    const result = computeChainStrip3DQuality({
+      indices, positions,
+      outerGridVertexCount: 2,
+      outerIdxCount: 6,
+    });
+    expect(result.triCount).toBe(2);
+    expect(result.maxAreaRatio).toBeGreaterThan(2);
+    expect(result.gradingViolations).toBeGreaterThan(0);
+  });
+
+  it('reports no grading violations for uniform triangles', () => {
+    // Two adjacent equilateral-ish triangles of similar area
+    const positions = makePositions([
+      [0, 0, 0], [10, 0, 0],  // grid (shared edge)
+      [5, 8, 0],               // chain vert (tri 1)
+      [5, -8, 0],              // chain vert (tri 2)
+    ]);
+    const indices = makeIndices([0, 1, 2, 0, 1, 3]);
+    const result = computeChainStrip3DQuality({
+      indices, positions,
+      outerGridVertexCount: 2,
+      outerIdxCount: 6,
+    });
+    expect(result.triCount).toBe(2);
+    expect(result.maxAreaRatio).toBeLessThan(2);
+    expect(result.gradingViolations).toBe(0);
   });
 });

@@ -1,0 +1,148 @@
+ Here is Claude's plan:
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Fix & Redesign Column Feature Detection in Parametric Pipeline
+
+ Context
+
+ The parametric export pipeline detects feature edges (ridges, valleys) to create mesh edges that follow the actual surface geometry. Row sampling works correctly — it probes 8192 U-samples
+  per T-row, detects gradient sign changes in cylindrical radius, and produces verified peaks/valleys. Column sampling is broken and currently disabled (LOCAL_ONLY_OUTER_ADAPTATION = true).
+  When enabled, it generates horizontal lines around the outer wall surface.
+
+ The goal is to redesign column detection so it can be re-enabled alongside row detection, producing a complete 2D feature map without artifacts.
+
+ Root Cause Analysis
+
+ Why column sampling produces horizontal lines
+
+ Three interacting problems:
+
+ 1. Low T-resolution: Column detection extracts radius profiles from the already-probed row data. With ~100-300 T-rows, the T-direction profile has only ~100-300 samples vs 8192 in U. This
+ makes detectColumnFeaturesV16() prone to spurious detections — gradient noise at low resolution produces false peaks.
+ 2. Fixed-U slicing of curved features: Each column samples at a fixed U position across all T-rows. If a ridge runs diagonally or curves through UV space, the fixed-U slice sees a
+ distorted version of the feature — the column radius profile captures the intersection of a vertical UV line with the feature, not the feature itself. This creates spurious T-direction
+ extrema that don't correspond to real surface features.
+ 3. Same-row clustering: When column detection adds features, the v16.1 snap-to-row logic finds the closest row for each T-feature. Multiple columns detecting spurious features at similar T
+  heights snap to the same row, injecting a dense horizontal band of points — visible as horizontal lines in 3D.
+
+ Semantic confusion in detectColumnFeaturesV16
+
+ The function stores T positions in the FeaturePoint.u field (defined as "U position in [0, 1)"). While detectAndMergeColumnFeatures handles this correctly, it's a maintenance trap.
+
+ The LOCAL_ONLY_OUTER_ADAPTATION workaround
+
+ Column detection was disabled in v16.6 rather than fixed. This means:
+ - No T-direction feature detection in the default pipeline
+ - T-grid is strictly uniform — horizontal features have no representation
+ - Styles with height-varying ridges get no special treatment in the T direction
+
+ Proposed Fix: Dedicated GPU Column Probing
+
+ The fundamental flaw is that column detection reuses row probe data (low T-resolution, fixed-U slicing). The fix mirrors the row probing architecture: GPU-probe dedicated T-direction
+ strips at high resolution.
+
+ Phase 1: GPU Column Probing (new dedicated T-strips)
+
+ File: ParametricExportComputer.ts — Add a new GPU dispatch after row probing.
+
+ Instead of extracting columns from row probe data, probe dedicated T-direction strips:
+ - For each of COL_PROBE_COUNT (e.g., 64-128) evenly-spaced U positions:
+   - Evaluate COL_PROBE_SAMPLES (e.g., 4096) T-values at that fixed U
+   - This gives high-resolution T-direction radius profiles
+ - Single GPU dispatch for all columns (same pattern as row probing)
+ - Extract cylindrical radius from 3D positions
+
+ This eliminates problems #1 (low resolution) and #2 (relies on already-probed row data).
+
+ Phase 2: Rewrite detectColumnFeaturesV16 → detectTDirectionFeatures
+
+ File: FeatureDetection.ts — New function with clean semantics.
+
+ detectTDirectionFeatures(
+     positions3D: Float32Array,  // High-res GPU probe data for one column
+     numSamples: number,         // 4096
+     minProminence: number
+ ): { features: TDirectionFeature[]; rejected: number }
+
+ - Input: 3D positions from GPU (not extracted row data)
+ - Uses the same verified dual-strategy detection as detectRowFeaturesV16 (gradient sign changes + curvature shoulders)
+ - Output type uses explicit t field (not overloaded u)
+ - Non-periodic domain (T goes 0→1, no wrapping) — same as current detectColumnFeaturesV16 but at much higher resolution
+
+ Phase 3: Cross-validate column features against row data
+
+ File: FeatureDetection.ts — New function replacing detectAndMergeColumnFeatures.
+
+ For each T-feature detected by the column probe:
+ 1. Find the two nearest T-rows that bracket this T position
+ 2. In those rows' 8192-sample U data, verify there's a matching radius extremum near the column's U position
+ 3. Only accept T-features that are corroborated by at least one neighboring row — this eliminates spurious detections from noise
+ 4. Use the row's verified U-peak position (not the column's grid U) for the final feature placement
+
+ This eliminates problem #3 (same-row clustering of unverified features).
+
+ Phase 4: Adaptive T-row insertion from verified column features
+
+ File: ParametricExportComputer.ts — Re-enable T-feature merging in local-only mode.
+
+ Instead of the removed CDF-adaptive spacing (which caused density bands), use a targeted approach:
+ - Only insert extra T-rows at verified column feature positions
+ - Maximum of N additional rows (configurable, e.g., 20) to prevent grid density explosion
+ - Inserted rows go through the full row probing + feature detection pipeline
+ - This preserves the uniform grid everywhere except at verified T-direction features
+
+ Phase 5: Remove LOCAL_ONLY_OUTER_ADAPTATION flag
+
+ Once column detection is reliable:
+ - Remove the flag and its conditional branches
+ - Column probing becomes a standard pipeline stage
+ - T-feature row insertion is always-on (gated by detection quality, not a kill switch)
+
+ Files to Modify
+
+ ┌─────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │                        File                         │                                                             Changes                                                              │
+ ├─────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ src/renderers/webgpu/ParametricExportComputer.ts    │ Add GPU column probe dispatch (Phase 1), adaptive T-row insertion (Phase 4), remove LOCAL_ONLY_OUTER_ADAPTATION (Phase 5)        │
+ ├─────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ src/renderers/webgpu/parametric/FeatureDetection.ts │ New detectTDirectionFeatures() (Phase 2), new cross-validation function (Phase 3), deprecate detectColumnFeaturesV16 and         │
+ │                                                     │ detectAndMergeColumnFeatures                                                                                                     │
+ ├─────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ src/renderers/webgpu/parametric/types.ts            │ Add TDirectionFeature type with explicit t field                                                                                 │
+ └─────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ Files to Add
+
+ ┌───────────────────────────────────────────────────────┬───────────────────────────────────────────────┐
+ │                         File                          │                    Purpose                    │
+ ├───────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+ │ src/renderers/webgpu/parametric/ColumnProbing.test.ts │ Unit tests for new column detection functions │
+ └───────────────────────────────────────────────────────┴───────────────────────────────────────────────┘
+
+ Verification
+
+ 1. Unit tests: New tests for detectTDirectionFeatures using synthetic radius profiles with known peaks/valleys
+ 2. Cross-validation tests: Verify that column features without row corroboration are rejected
+ 3. Integration test: Run the full parametric pipeline on a style with known T-direction features (e.g., style with horizontal ridges) and verify:
+   - No horizontal line artifacts in debug point cloud
+   - Column features appear at correct T positions
+   - T-direction chains are linked correctly
+ 4. Regression: Existing row detection tests still pass unchanged
+ 5. Visual: Export a pot with the debug overlay and confirm feature points trace actual surface ridges in both U and T directions
+ 6. Run npm run test — all tests pass
+ 7. Run npm run typecheck — no type errors
+ 8. Run npm run lint — 0 warnings
+
+ Risks & Constraints
+
+ - Budget: Extra GPU dispatch for column probes adds ~2-5ms (same order as row probing)
+ - Do NOT re-add CDF-adaptive spacing — removed in v16.10 for good reason (density bands)
+ - Do NOT re-add cdt2d — removed in v11.1 (O(n^2), 12+ min at production scale)
+ - Chain linking: The existing linkFeatureChainsByKind should work for T-direction features without changes, since column features are injected into per-row feature arrays before linking
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+ Claude has written up a plan and is ready to execute. Would you like to proceed?
+
+ ❯ 1. Yes, clear context (38% used) and auto-accept edits (shift+tab)
+   2. Yes, auto-accept edits
+   3. Yes, manually approve edits
+   4. Type here to tell Claude what to change

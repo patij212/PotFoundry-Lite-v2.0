@@ -29,20 +29,19 @@ describe('ShaderManager', () => {
         it('should apply global twist transformation (Fix for Alignment)', () => {
             const wgsl = manager.getDebugLinesWGSL(0);
 
-            // Must verify twist_theta is called
-            expect(wgsl).toContain('twist_theta(');
+            // The shader delegates to surface_point() which internally handles twist
+            expect(wgsl).toContain('surface_point(');
 
-            // Must verify that projection uses the twisted theta
-            expect(wgsl).toMatch(/let\s+theta_final\s*=\s*twist_theta\(/);
-            expect(wgsl).toMatch(/cos\(theta_final\)/);
-            expect(wgsl).toMatch(/sin\(theta_final\)/);
+            // The styles WGSL (included in the concatenated output) defines twist_theta
+            // surface_point calls twist_theta internally — verify surface_point is the projection entry
+            expect(wgsl).toMatch(/let\s+p\s*=\s*surface_point\(/);
         });
 
         it('should center the Z height', () => {
             const wgsl = manager.getDebugLinesWGSL(0);
-            // Verify (t - 0.5) * H logic
+            // Verify Z-centering: p.z - 0.5 * H (post-surface_point centering)
             expect(wgsl).toContain('let H = getf(0u)');
-            expect(wgsl).toContain('(t - 0.5) * H');
+            expect(wgsl).toMatch(/p\.z\s*-\s*0\.5\s*\*\s*H/);
         });
     });
 });

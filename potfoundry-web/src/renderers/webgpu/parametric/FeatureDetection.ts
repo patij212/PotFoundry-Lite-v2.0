@@ -7,7 +7,7 @@
  * All detection is based on cylindrical radius analysis from GPU probe data.
  */
 
-import { FeatureKind, FeaturePoint, FEATURE_PROMINENCE_THRESHOLD } from './types';
+import { FeatureKind, FeaturePoint, TDirectionFeature, FEATURE_PROMINENCE_THRESHOLD } from './types';
 
 // ============================================================================
 // Utility: Circular distance on [0, 1)
@@ -865,8 +865,8 @@ export function detectAndMergeColumnFeatures(
                 );
 
                 const isStillExtremum = kind === 'peak'
-                    ? (r_refined >= r_p - 1e-10 && r_refined >= r_n - 1e-10)
-                    : (r_refined <= r_p + 1e-10 && r_refined <= r_n + 1e-10);
+                    ? (r_refined >= r_p - 1e-6 && r_refined >= r_n - 1e-6)
+                    : (r_refined <= r_p + 1e-6 && r_refined <= r_n + 1e-6);
                 if (!isStillExtremum) continue;
 
                 // Prominence in local window
@@ -935,6 +935,655 @@ export function detectAndMergeColumnFeatures(
                         radius: foundRadius,
                         prominence: foundProminence,
                         confidence: foundConfidence,
+                    });
+                }
+                addedCount++;
+            }
+        }
+    }
+
+    return { addedCount, rejectedCount };
+}
+
+// ============================================================================
+// v17.0 — GPU Column Probing: High-Resolution T-Direction Feature Detection
+// ============================================================================
+
+/**
+ * v17.1: Compute the mean taper profile across all column probes.
+ *
+ * For a surface of revolution r(u,t) = R(t) * styleModulation(u,t), the
+ * taper profile R(t) dominates the T-direction signal. By averaging cylindrical
+ * radius across all U columns at each T position, the style modulation cancels
+ * out, leaving the pure taper shape.
+ *
+ * The result is smoothed with a moving-average window to remove any residual
+ * style texture that doesn't fully cancel at 128 columns.
+ *
+ * @param allColumnPositions  GPU probe results: interleaved [x,y,z,...] for all columns concatenated
+ * @param numColumns          Number of U-direction columns (typically 128)
+ * @param numTSamples         Number of T-direction samples per column (typically 4096)
+ * @param smoothWindow        Moving-average half-window for smoothing (default: 7)
+ * @returns Float32Array of length numTSamples with the mean radius at each T position
+ */
+export function computeTaperProfile(
+    allColumnPositions: Float32Array,
+    numColumns: number,
+    numTSamples: number,
+    smoothWindow: number = 7
+): Float32Array {
+    const rawProfile = new Float32Array(numTSamples);
+
+    // Accumulate cylindrical radius across all columns for each T sample
+    for (let c = 0; c < numColumns; c++) {
+        const colOffset = c * numTSamples * 3;
+        for (let i = 0; i < numTSamples; i++) {
+            const x = allColumnPositions[colOffset + i * 3];
+            const y = allColumnPositions[colOffset + i * 3 + 1];
+            rawProfile[i] += Math.sqrt(x * x + y * y);
+        }
+    }
+
+    // Divide by column count to get mean
+    for (let i = 0; i < numTSamples; i++) {
+        rawProfile[i] /= numColumns;
+    }
+
+    // Smooth with symmetric moving-average (clamped at boundaries)
+    if (smoothWindow <= 0) return rawProfile;
+    const smoothed = new Float32Array(numTSamples);
+    for (let i = 0; i < numTSamples; i++) {
+        const lo = Math.max(0, i - smoothWindow);
+        const hi = Math.min(numTSamples - 1, i + smoothWindow);
+        let sum = 0;
+        for (let k = lo; k <= hi; k++) sum += rawProfile[k];
+        smoothed[i] = sum / (hi - lo + 1);
+    }
+
+    return smoothed;
+}
+
+// ============================================================================
+
+/**
+ * v17.1: Detect VERIFIED T-direction features from dedicated GPU column probes.
+ *
+ * Takes high-resolution (4096+) 3D positions from a GPU T-direction column
+ * probe and detects radius extrema along the height axis. Uses the same
+ * dual-strategy pipeline as detectRowFeaturesV16 but adapted for the
+ * non-periodic T domain.
+ *
+ * v17.1 CRITICAL FIX: When a taperProfile is provided, detection operates on
+ * the **taper-relative deviation** `deviation[i] = r[i] - taperProfile[i]`
+ * instead of raw radius. This eliminates false positives at taper inflection
+ * points (where the pot's silhouette curves from inward to outward) which
+ * are the root cause of spurious horizontal feature lines.
+ *
+ * @param positions3D   Interleaved [x,y,z, ...] from GPU column probe
+ * @param numSamples    Number of T-direction samples (= positions3D.length / 3)
+ * @param taperProfile  Mean radius at each T-sample (from computeTaperProfile). If null, uses raw radius.
+ * @param minProminence Minimum peak-to-valley radius change (mm) to keep
+ * @returns Object with:
+ *   - features: TDirectionFeature[] (classified, verified, with explicit .t)
+ *   - rejected: number (candidates that failed verification)
+ */
+export function detectTDirectionFeatures(
+    positions3D: Float32Array,
+    numSamples: number,
+    taperProfile: Float32Array | null = null,
+    minProminence: number = 0.003
+): { features: TDirectionFeature[]; rejected: number } {
+    if (numSamples < 7) return { features: [], rejected: 0 };
+
+    // 1. Cylindrical radius at each T-sample
+    const radii = new Float32Array(numSamples);
+    for (let i = 0; i < numSamples; i++) {
+        const x = positions3D[i * 3];
+        const y = positions3D[i * 3 + 1];
+        radii[i] = Math.sqrt(x * x + y * y);
+    }
+
+    // 2. Compute analysis signal: taper-relative deviation if taper provided,
+    //    otherwise raw radius (backward-compatible)
+    const signal = new Float32Array(numSamples);
+    if (taperProfile && taperProfile.length === numSamples) {
+        for (let i = 0; i < numSamples; i++) {
+            signal[i] = radii[i] - taperProfile[i];
+        }
+    } else {
+        signal.set(radii);
+    }
+
+    const clamp = (idx: number) => Math.max(0, Math.min(numSamples - 1, idx));
+    const prominenceWindow = Math.max(5, Math.floor(numSamples * 0.008));
+
+    // T position from sample index (uniform spacing [0, 1])
+    const sampleToT = (idx: number): number =>
+        Math.max(0, Math.min(1, idx / (numSamples - 1)));
+
+    // Pre-compute 5-point stencil second derivative on the analysis signal
+    // (non-periodic, clamped at boundaries)
+    const d2s = new Float32Array(numSamples);
+    for (let i = 2; i < numSamples - 2; i++) {
+        d2s[i] = (
+            -signal[i - 2] + 16 * signal[i - 1]
+            - 30 * signal[i]
+            + 16 * signal[i + 1] - signal[i + 2]
+        ) / 12;
+    }
+    if (numSamples > 2) {
+        d2s[1] = signal[0] - 2 * signal[1] + signal[2];
+        d2s[numSamples - 2] = signal[numSamples - 3] - 2 * signal[numSamples - 2] + signal[numSamples - 1];
+    }
+
+    const candidates: TDirectionFeature[] = [];
+    let rejected = 0;
+
+    // ── Strategy 1: Gradient Sign Changes (True Extrema) ──
+    // Operates on `signal` (taper-subtracted deviation when taper provided)
+    for (let i = 1; i < numSamples - 1; i++) {
+        const dLeft = signal[i] - signal[i - 1];
+        const dRight = signal[i + 1] - signal[i];
+
+        if (dLeft * dRight >= 0) continue;
+
+        const kind: FeatureKind = dLeft > 0 ? 'peak' : 'valley';
+
+        // Parabolic refinement on the analysis signal
+        const L = signal[i - 1];
+        const C = signal[i];
+        const R = signal[i + 1];
+        const denom = L - 2 * C + R;
+        let delta = 0;
+        if (Math.abs(denom) > 1e-14) {
+            delta = 0.5 * (L - R) / denom;
+            delta = Math.max(-0.5, Math.min(0.5, delta));
+        }
+
+        // VERIFY: curvature sign must match extremum type
+        const curvatureCorrect = kind === 'peak' ? (denom < 0) : (denom > 0);
+        if (!curvatureCorrect && Math.abs(denom) > 1e-10) {
+            rejected++;
+            continue;
+        }
+
+        // VERIFY: refined position still an extremum (on signal)
+        const refinedSignal = C + delta * (R - L) / 2 + delta * delta * denom / 2;
+        const isStillExtremum = kind === 'peak'
+            ? (refinedSignal >= L - 1e-10 && refinedSignal >= R - 1e-10)
+            : (refinedSignal <= L + 1e-10 && refinedSignal <= R + 1e-10);
+        if (!isStillExtremum) { rejected++; continue; }
+
+        // Prominence check (on signal, not raw radius)
+        let localMax = -Infinity, localMin = Infinity;
+        for (let k = -prominenceWindow; k <= prominenceWindow; k++) {
+            const idx = clamp(i + k);
+            localMax = Math.max(localMax, signal[idx]);
+            localMin = Math.min(localMin, signal[idx]);
+        }
+        const prominence = localMax - localMin;
+        if (prominence < minProminence) { rejected++; continue; }
+
+        const t = sampleToT(i + delta);
+
+        // Report actual radius (not deviation) for the output
+        const actualRadius = radii[i];
+
+        // Confidence scoring (on signal)
+        const gradStrength = Math.abs(dLeft) + Math.abs(dRight);
+        const curvStrength = Math.abs(d2s[i]);
+        let maxGrad = 0, maxCurv = 0;
+        for (let k = -prominenceWindow; k <= prominenceWindow; k++) {
+            const idx = clamp(i + k);
+            const nIdx = clamp(idx + 1);
+            maxGrad = Math.max(maxGrad, Math.abs(signal[nIdx] - signal[idx]));
+            maxCurv = Math.max(maxCurv, Math.abs(d2s[idx]));
+        }
+        const confidence = 0.4 * (maxGrad > 1e-12 ? Math.min(1, gradStrength / (2 * maxGrad)) : 0.5)
+            + 0.3 * (maxCurv > 1e-12 ? Math.min(1, curvStrength / maxCurv) : 0.5)
+            + 0.3 * Math.min(1, prominence / (minProminence * 5));
+
+        candidates.push({ t, kind, radius: actualRadius, prominence, confidence });
+    }
+
+    // ── Strategy 2: Curvature Shoulders (Verified) ──
+    // Also operates on `signal`
+    const absCurv = new Float32Array(numSamples);
+    let maxCurvGlobal = 0;
+    for (let i = 0; i < numSamples; i++) {
+        absCurv[i] = Math.abs(d2s[i]);
+        maxCurvGlobal = Math.max(maxCurvGlobal, absCurv[i]);
+    }
+
+    if (maxCurvGlobal > 1e-10) {
+        const curvThreshold = maxCurvGlobal * 0.20;
+        for (let i = 1; i < numSamples - 1; i++) {
+            if (absCurv[i] <= absCurv[clamp(i - 1)] ||
+                absCurv[i] <= absCurv[clamp(i + 1)]
+            ) continue;
+            if (absCurv[i] < curvThreshold) continue;
+
+            const expectedKind: FeatureKind = d2s[i] < 0 ? 'peak' : 'valley';
+
+            // Find and verify actual extremum in signal within ±2 samples
+            let bestIdx = i;
+            let bestVal = signal[i];
+            for (let k = -2; k <= 2; k++) {
+                const idx = clamp(i + k);
+                if (expectedKind === 'peak' ? (signal[idx] > bestVal) : (signal[idx] < bestVal)) {
+                    bestVal = signal[idx];
+                    bestIdx = idx;
+                }
+            }
+
+            if (bestIdx > 0 && bestIdx < numSamples - 1) {
+                const bP = signal[bestIdx - 1];
+                const bC = signal[bestIdx];
+                const bN = signal[bestIdx + 1];
+                const isExtremum = expectedKind === 'peak'
+                    ? (bC >= bP && bC >= bN)
+                    : (bC <= bP && bC <= bN);
+                if (!isExtremum) { rejected++; continue; }
+
+                const eDenom = bP - 2 * bC + bN;
+                if (expectedKind === 'peak' && eDenom > 0) { rejected++; continue; }
+                if (expectedKind === 'valley' && eDenom < 0) { rejected++; continue; }
+
+                let eDelta = 0;
+                if (Math.abs(eDenom) > 1e-14) {
+                    eDelta = 0.5 * (bP - bN) / eDenom;
+                    eDelta = Math.max(-0.5, Math.min(0.5, eDelta));
+                }
+
+                let localMax = -Infinity, localMin = Infinity;
+                for (let k = -prominenceWindow; k <= prominenceWindow; k++) {
+                    const idx = clamp(bestIdx + k);
+                    localMax = Math.max(localMax, signal[idx]);
+                    localMin = Math.min(localMin, signal[idx]);
+                }
+                const prominence = localMax - localMin;
+                if (prominence < minProminence) { rejected++; continue; }
+
+                const t = sampleToT(bestIdx + eDelta);
+                const actualRadius = radii[bestIdx];
+
+                candidates.push({
+                    t, kind: expectedKind, radius: actualRadius, prominence,
+                    confidence: 0.5 * Math.min(1, absCurv[i] / maxCurvGlobal)
+                        + 0.5 * Math.min(1, prominence / (minProminence * 5)),
+                });
+            } else {
+                rejected++;
+            }
+        }
+    }
+
+    // Deduplicate by T proximity, keeping highest confidence
+    candidates.sort((a, b) => a.t - b.t);
+    const minSepT = 1.5 / numSamples;
+    const features: TDirectionFeature[] = [];
+    for (const cand of candidates) {
+        if (features.length === 0 || cand.t - features[features.length - 1].t > minSepT) {
+            features.push(cand);
+        } else if (cand.confidence > features[features.length - 1].confidence) {
+            features[features.length - 1] = cand;
+        }
+    }
+
+    return { features, rejected };
+}
+
+// ============================================================================
+// v17.1 — Cross-Column Consensus Filter
+// ============================================================================
+
+/**
+ * Filter column features by cross-column consensus.
+ *
+ * After running detectTDirectionFeatures() on all columns, this function
+ * checks how many columns agree on each T-position. This catches residual
+ * global artifacts (taper inflection remnants) even after taper subtraction:
+ *
+ *   - If >80% of columns detect a feature at the same T → global taper artifact → REJECT
+ *   - If <15% of columns detect it → likely noise → REJECT
+ *   - Features detected by 15-80% of columns are localized style features → KEEP
+ *
+ * @param columnFeatures     Per-column detected T-direction features
+ * @param numColumns         Total number of columns probed
+ * @param numTSamples        Number of T samples per column (for proximity threshold)
+ * @param highConsensus      Fraction threshold above which features are global artifacts (default 0.80)
+ * @param lowConsensus       Fraction threshold below which features are noise (default 0.15)
+ * @returns Filtered columnFeatures (same structure, some features removed) and rejection counts
+ */
+export function filterByColumnConsensus(
+    columnFeatures: TDirectionFeature[][],
+    numColumns: number,
+    numTSamples: number,
+    highConsensus: number = 0.80,
+    lowConsensus: number = 0.15
+): { filtered: TDirectionFeature[][]; globalRejected: number; noiseRejected: number } {
+    // Collect all T-positions across all columns into a histogram
+    const tProximity = 3.0 / numTSamples; // ±3 T-samples
+    const allTPositions: { t: number; col: number; featIdx: number }[] = [];
+
+    for (let c = 0; c < columnFeatures.length; c++) {
+        for (let f = 0; f < columnFeatures[c].length; f++) {
+            allTPositions.push({ t: columnFeatures[c][f].t, col: c, featIdx: f });
+        }
+    }
+
+    if (allTPositions.length === 0) {
+        return { filtered: columnFeatures.map(c => [...c]), globalRejected: 0, noiseRejected: 0 };
+    }
+
+    // Cluster T-positions by proximity
+    allTPositions.sort((a, b) => a.t - b.t);
+    const clusters: { tCenter: number; members: typeof allTPositions }[] = [];
+
+    for (const tp of allTPositions) {
+        // Find existing cluster within proximity
+        let added = false;
+        for (const cluster of clusters) {
+            if (Math.abs(tp.t - cluster.tCenter) <= tProximity) {
+                cluster.members.push(tp);
+                // Update center as running average
+                cluster.tCenter = cluster.members.reduce((s, m) => s + m.t, 0) / cluster.members.length;
+                added = true;
+                break;
+            }
+        }
+        if (!added) {
+            clusters.push({ tCenter: tp.t, members: [tp] });
+        }
+    }
+
+    // Determine which features to reject
+    const rejectSet = new Set<string>(); // "col:featIdx"
+    let globalRejected = 0;
+    let noiseRejected = 0;
+
+    for (const cluster of clusters) {
+        // Count unique columns in this cluster
+        const uniqueCols = new Set(cluster.members.map(m => m.col));
+        const fraction = uniqueCols.size / numColumns;
+
+        if (fraction >= highConsensus) {
+            // Global artifact — reject all members
+            for (const m of cluster.members) {
+                rejectSet.add(`${m.col}:${m.featIdx}`);
+                globalRejected++;
+            }
+        } else if (fraction < lowConsensus) {
+            // Noise — reject all members
+            for (const m of cluster.members) {
+                rejectSet.add(`${m.col}:${m.featIdx}`);
+                noiseRejected++;
+            }
+        }
+    }
+
+    // Build filtered output
+    const filtered: TDirectionFeature[][] = [];
+    for (let c = 0; c < columnFeatures.length; c++) {
+        const kept: TDirectionFeature[] = [];
+        for (let f = 0; f < columnFeatures[c].length; f++) {
+            if (!rejectSet.has(`${c}:${f}`)) {
+                kept.push(columnFeatures[c][f]);
+            }
+        }
+        filtered.push(kept);
+    }
+
+    return { filtered, globalRejected, noiseRejected };
+}
+
+// ============================================================================
+// v17.1 — Cross-Validation: Verify Column Features Against Row Probe Data
+// ============================================================================
+
+/**
+ * Search a single row's 8K U-probe data for a verified radius extremum
+ * near a given U position.
+ *
+ * @param rowData       The row's interleaved [x,y,z,...] from GPU
+ * @param probeSamples  Number of U samples in the row (8192)
+ * @param colIdx        Column index in the row (U position × probeSamples)
+ * @param snapWindow    Search window ±samples around colIdx
+ * @returns Verified peak info, or null if no extremum found in the window
+ */
+function findVerifiedUPeakInRow(
+    rowData: Float32Array,
+    probeSamples: number,
+    colIdx: number,
+    snapWindow: number
+): { peakU: number; kind: FeatureKind; radius: number; prominence: number; confidence: number } | null {
+    const wrap = (idx: number) => ((idx % probeSamples) + probeSamples) % probeSamples;
+    const colU = colIdx / probeSamples;
+    const lo = colIdx - snapWindow;
+    const hi = colIdx + snapWindow;
+
+    let foundPeakU = -1;
+    let foundKind: FeatureKind = 'peak';
+    let foundRadius = 0;
+    let foundProminence = 0;
+    let foundConfidence = 0;
+
+    for (let si = lo + 1; si < hi; si++) {
+        const i = wrap(si);
+        const prev = wrap(si - 1);
+        const next = wrap(si + 1);
+
+        const x_i = rowData[i * 3], y_i = rowData[i * 3 + 1];
+        const x_p = rowData[prev * 3], y_p = rowData[prev * 3 + 1];
+        const x_n = rowData[next * 3], y_n = rowData[next * 3 + 1];
+        const r_i = Math.sqrt(x_i * x_i + y_i * y_i);
+        const r_p = Math.sqrt(x_p * x_p + y_p * y_p);
+        const r_n = Math.sqrt(x_n * x_n + y_n * y_n);
+
+        const dLeft = r_i - r_p;
+        const dRight = r_n - r_i;
+        if (dLeft * dRight >= 0) continue;
+
+        const kind: FeatureKind = dLeft > 0 ? 'peak' : 'valley';
+
+        const denom = r_p - 2 * r_i + r_n;
+        let delta = 0;
+        if (Math.abs(denom) > 1e-14) {
+            delta = 0.5 * (r_p - r_n) / denom;
+            delta = Math.max(-0.5, Math.min(0.5, delta));
+        }
+
+        const curvOk = kind === 'peak' ? (denom < 0) : (denom > 0);
+        if (!curvOk && Math.abs(denom) > 1e-10) continue;
+
+        // Verify refined position
+        const fracIdx = ((si + delta) % probeSamples + probeSamples) % probeSamples;
+        const iLo = Math.floor(fracIdx);
+        const frac = fracIdx - iLo;
+        const iHi = wrap(iLo + 1);
+        const x_lo = rowData[iLo * 3], y_lo = rowData[iLo * 3 + 1];
+        const x_hi = rowData[iHi * 3], y_hi = rowData[iHi * 3 + 1];
+        const r_refined = Math.sqrt(
+            (x_lo * (1 - frac) + x_hi * frac) ** 2 +
+            (y_lo * (1 - frac) + y_hi * frac) ** 2
+        );
+
+        // Verify refined position is consistent with extremum type.
+        // Tolerance is 1e-6 mm (not 1e-10) because Cartesian interpolation
+        // of (x,y) followed by sqrt(x²+y²) is systematically lower than
+        // polar interpolation due to the chord-vs-arc effect.
+        const isStillExtremum = kind === 'peak'
+            ? (r_refined >= r_p - 1e-6 && r_refined >= r_n - 1e-6)
+            : (r_refined <= r_p + 1e-6 && r_refined <= r_n + 1e-6);
+        if (!isStillExtremum) continue;
+
+        const promWin = Math.max(5, Math.floor(probeSamples * 0.008));
+        let localMax = -Infinity, localMin = Infinity;
+        for (let k = -promWin; k <= promWin; k++) {
+            const idx = wrap(si + k);
+            const xk = rowData[idx * 3], yk = rowData[idx * 3 + 1];
+            const rk = Math.sqrt(xk * xk + yk * yk);
+            localMax = Math.max(localMax, rk);
+            localMin = Math.min(localMin, rk);
+        }
+        const prominence = localMax - localMin;
+        if (prominence < 0.005) continue;
+
+        const peakU = (((si + delta) / probeSamples) % 1 + 1) % 1;
+
+        // Pick the closest verified extremum to the column position
+        const distToCol = Math.min(
+            Math.abs(peakU - colU),
+            Math.abs(peakU - colU + 1),
+            Math.abs(peakU - colU - 1)
+        );
+
+        if (foundPeakU < 0 || distToCol < Math.min(
+            Math.abs(foundPeakU - colU),
+            Math.abs(foundPeakU - colU + 1),
+            Math.abs(foundPeakU - colU - 1)
+        )) {
+            foundPeakU = peakU;
+            foundKind = kind;
+            foundRadius = r_refined;
+            foundProminence = prominence;
+            const gradStrength = Math.abs(dLeft) + Math.abs(dRight);
+            foundConfidence = 0.5 * Math.min(1, gradStrength * probeSamples)
+                + 0.5 * Math.min(1, prominence / 0.025);
+        }
+    }
+
+    return foundPeakU >= 0 ? {
+        peakU: foundPeakU,
+        kind: foundKind,
+        radius: foundRadius,
+        prominence: foundProminence,
+        confidence: foundConfidence
+    } : null;
+}
+
+/**
+ * v17.1: Cross-validate GPU-probed column features against row probe data
+ * and merge verified features into per-row feature arrays.
+ *
+ * For each column feature detected at (columnU, t):
+ *   1. Find the two nearest T-rows that bracket this T position
+ *   2. In those rows' 8K U-probe data, search for a verified radius
+ *      extremum within ±SNAP_WINDOW samples of the column's U position
+ *   3. v17.1: Require the row extremum to match the SAME KIND (peak/valley)
+ *      as the column feature — prevents cross-contamination
+ *   4. v17.1: Require the row extremum prominence to exceed MIN_PROMINENCE
+ *   5. Accept only features corroborated by at least one bracketing row
+ *   6. Use the EXACT peak U from the row's 8K data (not the column grid U)
+ *
+ * @param columnFeatures        Per-column detected T-direction features
+ * @param columnUPositions      U position [0,1) for each column
+ * @param rowProbeData          Per-row GPU probe results (8K samples each)
+ * @param probeSamples          Number of U samples per row (8192)
+ * @param tPositions            T values for each row
+ * @param allRowFeatures        Existing per-row feature U positions (MUTATED)
+ * @param allRowTypedFeatures   Existing per-row typed features (MUTATED)
+ * @returns Object with addedCount and rejectedCount
+ */
+export function crossValidateAndMergeColumnFeatures(
+    columnFeatures: TDirectionFeature[][],
+    columnUPositions: number[],
+    rowProbeData: Float32Array[],
+    probeSamples: number,
+    tPositions: Float32Array,
+    allRowFeatures: number[][],
+    allRowTypedFeatures: FeaturePoint[][]
+): { addedCount: number; rejectedCount: number } {
+    const numRows = rowProbeData.length;
+    if (numRows < 3 || probeSamples < 16) return { addedCount: 0, rejectedCount: 0 };
+
+    let addedCount = 0;
+    let rejectedCount = 0;
+
+    const SNAP_WINDOW = 16; // ±16 samples (~0.7° at 8192 resolution)
+    const MIN_SEP = 1.5 / probeSamples;
+    const MIN_ROW_PROMINENCE = 0.005; // Must match row detection threshold
+
+    for (let c = 0; c < columnFeatures.length; c++) {
+        const colU = columnUPositions[c];
+        const colIdx = Math.round(colU * probeSamples);
+
+        for (const feat of columnFeatures[c]) {
+            // Find the two nearest T-rows that bracket this T position
+            let bestRow = 0;
+            let bestDist = Math.abs(tPositions[0] - feat.t);
+            for (let j = 1; j < numRows; j++) {
+                const d = Math.abs(tPositions[j] - feat.t);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestRow = j;
+                }
+            }
+
+            // Determine second bracketing row
+            let secondRow = -1;
+            if (feat.t < tPositions[bestRow] && bestRow > 0) {
+                secondRow = bestRow - 1;
+            } else if (feat.t > tPositions[bestRow] && bestRow < numRows - 1) {
+                secondRow = bestRow + 1;
+            }
+
+            // Try nearest row first, then secondary row as fallback
+            let result = findVerifiedUPeakInRow(
+                rowProbeData[bestRow], probeSamples, colIdx, SNAP_WINDOW
+            );
+            let targetRow = bestRow;
+
+            // v17.1: Kind-aware validation — row extremum must match column feature kind
+            if (result && result.kind !== feat.kind) {
+                result = null; // Kind mismatch → try second row
+            }
+            // v17.1: Prominence gate — row extremum must be significant
+            if (result && result.prominence < MIN_ROW_PROMINENCE) {
+                result = null;
+            }
+
+            if (!result && secondRow >= 0) {
+                result = findVerifiedUPeakInRow(
+                    rowProbeData[secondRow], probeSamples, colIdx, SNAP_WINDOW
+                );
+                targetRow = secondRow;
+
+                // v17.1: Same kind + prominence checks on fallback row
+                if (result && result.kind !== feat.kind) {
+                    result = null;
+                }
+                if (result && result.prominence < MIN_ROW_PROMINENCE) {
+                    result = null;
+                }
+            }
+
+            if (!result) {
+                rejectedCount++;
+                continue;
+            }
+
+            // Dedup: don't add if existing row feature is too close
+            const existingFeats = allRowFeatures[targetRow];
+            let isDuplicate = false;
+            for (const ef of existingFeats) {
+                if (circularDistance(ef, result.peakU) < MIN_SEP) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+
+            if (!isDuplicate) {
+                allRowFeatures[targetRow].push(result.peakU);
+                allRowFeatures[targetRow].sort((a, b) => a - b);
+
+                if (targetRow < allRowTypedFeatures.length) {
+                    allRowTypedFeatures[targetRow].push({
+                        u: result.peakU,
+                        kind: result.kind,
+                        radius: result.radius,
+                        prominence: result.prominence,
+                        confidence: result.confidence,
                     });
                 }
                 addedCount++;

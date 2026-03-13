@@ -57,6 +57,6 @@ describe('weldMesh (SpatialWelder)', () => {
         const dt = end - start;
 
         console.log(`Benchmark 100k verts: ${dt.toFixed(2)}ms`); // Expected ~20-50ms
-        expect(dt).toBeLessThan(500); // Generous limit (CI/Debug overhead)
+        expect(dt).toBeLessThan(1000); // Generous limit (CI/Debug overhead)
     });
 });

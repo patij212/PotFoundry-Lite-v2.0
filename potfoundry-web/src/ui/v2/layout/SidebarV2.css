@@ -1,0 +1,233 @@
+/* ============================================================================
+   SidebarV2 — Resizable left sidebar with tabs
+   ============================================================================ */
+
+.pf2-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  height: 100dvh;
+  z-index: var(--pf2-z-panel);
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 15, 18, 0.96);
+  border-right: 1px solid var(--pf2-border);
+  animation: pf2-slide-in var(--pf2-duration-slow) var(--pf2-ease-enter) both;
+  overflow: hidden;
+}
+
+@supports (backdrop-filter: blur(12px)) {
+  .pf2-sidebar {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
+.pf2-sidebar--resizing {
+  transition: none;
+  user-select: none;
+}
+
+/* ============================================================================
+   Header
+   ============================================================================ */
+
+.pf2-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--pf2-space-xl) var(--pf2-space-xl) var(--pf2-space-lg);
+  flex-shrink: 0;
+}
+
+.pf2-sidebar__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pf2-space-sm);
+}
+
+.pf2-sidebar__title h2 {
+  font-size: 20px;
+  font-weight: 400;
+  margin: 0;
+  color: var(--pf2-text-primary);
+}
+
+.pf2-sidebar__version {
+  font-size: 11px;
+  color: var(--pf2-text-muted);
+}
+
+/* ============================================================================
+   Tab Navigation
+   ============================================================================ */
+
+.pf2-sidebar__tabs-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.pf2-sidebar__tab-list {
+  display: flex;
+  padding: 0 var(--pf2-space-xl);
+  gap: var(--pf2-space-xs);
+  border-bottom: 1px solid var(--pf2-border);
+  flex-shrink: 0;
+}
+
+.pf2-sidebar__tab {
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-sm);
+  padding: var(--pf2-space-md) var(--pf2-space-lg);
+  font-family: var(--pf2-font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+  /* Offset the parent border-bottom by 1px so active indicator overlaps */
+  margin-bottom: -1px;
+}
+
+.pf2-sidebar__tab:hover {
+  color: var(--pf2-text-primary);
+}
+
+.pf2-sidebar__tab[data-state='active'] {
+  color: var(--pf2-accent);
+  border-bottom-color: var(--pf2-accent);
+}
+
+/* ============================================================================
+   Tab Content
+   ============================================================================ */
+
+.pf2-sidebar__content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
+  padding: var(--pf2-space-xl);
+  /* Custom scrollbar for dark theme */
+  scrollbar-width: thin;
+  scrollbar-color: var(--pf2-bg-hover) transparent;
+}
+
+.pf2-sidebar__content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pf2-sidebar__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pf2-sidebar__content::-webkit-scrollbar-thumb {
+  background: var(--pf2-bg-hover);
+  border-radius: 3px;
+}
+
+.pf2-sidebar__tab-content {
+  animation: pf2-tab-enter var(--pf2-duration-normal) var(--pf2-ease-enter) both;
+}
+
+/* ============================================================================
+   Placeholder Content
+   ============================================================================ */
+
+.pf2-sidebar__placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-sm);
+  padding: var(--pf2-space-lg);
+  background: var(--pf2-bg-elevated);
+  border-radius: var(--pf2-radius-md);
+  border: 1px solid var(--pf2-border);
+}
+
+.pf2-sidebar__placeholder-text {
+  font-size: 13px;
+  color: var(--pf2-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ============================================================================
+   Resize Handle
+   ============================================================================ */
+
+.pf2-sidebar__resize-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ew-resize;
+  color: var(--pf2-text-muted);
+  opacity: 0;
+  transition: opacity var(--pf2-duration-micro) var(--pf2-ease-move);
+  z-index: 1;
+}
+
+.pf2-sidebar:hover .pf2-sidebar__resize-handle,
+.pf2-sidebar__resize-handle:focus-visible {
+  opacity: 1;
+}
+
+.pf2-sidebar__resize-handle:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--pf2-bg-surface),
+    0 0 0 4px var(--pf2-accent);
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-sidebar {
+    border-right: 1px solid ButtonText;
+    background: Canvas;
+  }
+
+  .pf2-sidebar__tab[data-state='active'] {
+    border-bottom-color: Highlight;
+    color: Highlight;
+  }
+
+  .pf2-sidebar__resize-handle {
+    opacity: 1;
+  }
+}
+
+/* ============================================================================
+   Tablet — Narrow Sidebar
+   ============================================================================ */
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .pf2-sidebar {
+    width: 280px !important;
+    max-width: 280px;
+  }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-sidebar {
+  background: var(--pf2-glass-bg);
+  border-color: var(--pf2-glass-border);
+}

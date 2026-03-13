@@ -1,0 +1,254 @@
+/* ============================================================================
+   StyleTab.css — Layout and visuals for StyleTab controls
+   
+   Tokens: AppUIv2.css   Motion: motion.css   BEM prefix: pf2-style-tab
+   ============================================================================ */
+
+/* Root */
+.pf2-style-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-sm);
+}
+
+/* --- Stagger animation for dynamic params -------------------------------- */
+.pf2-style-tab__param {
+  animation: pf2-tab-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  animation-delay: calc(var(--stagger-index, 0) * var(--pf2-duration-stagger));
+}
+
+.pf2-style-tab__params {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-xs);
+  margin-top: var(--pf2-space-xs);
+}
+
+.pf2-style-tab__advanced {
+  margin-top: var(--pf2-space-xs);
+}
+
+/* --- Style transition keyframes ----------------------------------------- */
+@keyframes pf2-param-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes pf2-param-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Exiting: stagger from bottom (last item exits first → delay inverted) */
+.pf2-style-tab__params--exiting .pf2-style-tab__param {
+  animation: pf2-param-exit var(--pf2-duration-fast) var(--pf2-ease-exit) both;
+  animation-delay: calc(
+    (var(--pf2-param-count, 5) - 1 - var(--stagger-index, 0))
+    * var(--pf2-duration-stagger)
+  );
+}
+
+/* Pausing: content swapped, keep invisible */
+.pf2-style-tab__params--pausing .pf2-style-tab__param {
+  opacity: 0;
+}
+
+/* Entering: stagger from top (first item enters first → normal order) */
+.pf2-style-tab__params--entering .pf2-style-tab__param {
+  animation: pf2-param-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  animation-delay: calc(var(--stagger-index, 0) * var(--pf2-duration-stagger));
+}
+
+/* --- Color Scheme Swatches ----------------------------------------------- */
+.pf2-style-tab__swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--pf2-space-xs);
+}
+
+.pf2-style-tab__swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 2px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  transition: border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+              transform var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-style-tab__swatch:hover {
+  border-color: var(--pf2-border-active);
+  transform: scale(1.1);
+}
+
+.pf2-style-tab__swatch--active {
+  border-color: var(--pf2-accent);
+  box-shadow: 0 0 0 1px var(--pf2-accent);
+}
+
+/* --- Custom Color Pickers ------------------------------------------------ */
+.pf2-style-tab__custom-colors {
+  display: flex;
+  gap: var(--pf2-space-sm);
+  margin-top: var(--pf2-space-xs);
+}
+
+.pf2-style-tab__color-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  cursor: pointer;
+}
+
+.pf2-style-tab__color-picker input[type='color'] {
+  width: 100%;
+  height: 28px;
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  background: none;
+  padding: 0;
+}
+
+.pf2-style-tab__color-picker input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.pf2-style-tab__color-picker input[type='color']::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+/* --- Gradient Preview Bar ------------------------------------------------ */
+.pf2-style-tab__gradient-preview {
+  width: 100%;
+  height: 12px;
+  border-radius: var(--pf2-radius-sm);
+  margin-top: var(--pf2-space-xs);
+  border: 1px solid var(--pf2-border);
+}
+
+/* --- Toggle Row ---------------------------------------------------------- */
+.pf2-style-tab__toggle-row {
+  display: flex;
+  gap: var(--pf2-space-sm);
+}
+
+.pf2-style-tab__toggle-row > * {
+  flex: 1;
+}
+
+/* --- Chip Row (Lighting) ------------------------------------------------- */
+.pf2-style-tab__chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pf2-space-xs);
+}
+
+.pf2-style-tab__chip {
+  padding: 4px 10px;
+  border: 1px solid var(--pf2-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pf2-text-secondary);
+  font-family: var(--pf2-font-body);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--pf2-duration-micro) var(--pf2-ease-move),
+              border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+              color var(--pf2-duration-micro) var(--pf2-ease-move);
+  white-space: nowrap;
+}
+
+.pf2-style-tab__chip:hover {
+  background: var(--pf2-bg-hover);
+  border-color: var(--pf2-border-active);
+}
+
+.pf2-style-tab__chip--active {
+  background: var(--pf2-accent-subtle);
+  border-color: var(--pf2-accent);
+  color: var(--pf2-accent);
+}
+
+/* --- Background Gradient Swatches ---------------------------------------- */
+.pf2-style-tab__bg-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--pf2-space-xs);
+}
+
+.pf2-style-tab__bg-swatch {
+  width: 100%;
+  aspect-ratio: 1.5;
+  border: 2px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  transition: border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+              transform var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-style-tab__bg-swatch:hover {
+  border-color: var(--pf2-border-active);
+  transform: scale(1.05);
+}
+
+.pf2-style-tab__bg-swatch--active {
+  border-color: var(--pf2-accent);
+  box-shadow: 0 0 0 1px var(--pf2-accent);
+}
+
+/* --- Background Custom Section ------------------------------------------- */
+.pf2-style-tab__bg-custom {
+  margin-top: var(--pf2-space-xs);
+}
+
+/* --- Reduced Motion ------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .pf2-style-tab__param {
+    animation: none;
+  }
+
+  .pf2-style-tab__swatch,
+  .pf2-style-tab__bg-swatch {
+    transition: none;
+  }
+
+  .pf2-style-tab__swatch:hover,
+  .pf2-style-tab__bg-swatch:hover {
+    transform: none;
+  }
+  .pf2-style-tab__params--exiting .pf2-style-tab__param,
+  .pf2-style-tab__params--entering .pf2-style-tab__param {
+    animation: none;
+  }
+}
+
+/* --- Forced Colors (High Contrast) --------------------------------------- */
+@media (forced-colors: active) {
+  .pf2-style-tab__swatch--active,
+  .pf2-style-tab__bg-swatch--active {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  .pf2-style-tab__chip--active {
+    border-color: Highlight;
+    color: Highlight;
+  }
+}

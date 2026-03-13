@@ -43,5 +43,33 @@ if (isSupabaseConfigured()) {
 // Export the client (may be null if not configured)
 export const supabase = supabaseInstance;
 
+/**
+ * Safe Supabase accessor that throws if client is not configured.
+ * 
+ * Use this instead of directly accessing `supabase` to ensure compile-time
+ * and runtime safety. Always check `isSupabaseConfigured()` in UI code before
+ * calling functions that depend on safeSupabase().
+ * 
+ * @example
+ * ```ts
+ * // In a hook or service that requires Supabase:
+ * const client = safeSupabase();
+ * const { data } = await client.from('users').select();
+ * ```
+ * 
+ * @throws {Error} If Supabase is not configured (missing env vars)
+ * @returns {SupabaseClient} The configured Supabase client
+ */
+export function safeSupabase(): SupabaseClient {
+    if (!supabaseInstance) {
+        throw new Error(
+            '[Supabase] Client not configured. ' +
+            'Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment. ' +
+            'Check isSupabaseConfigured() before calling this function.'
+        );
+    }
+    return supabaseInstance;
+}
+
 // Export for type safety
 export type { SupabaseClient };

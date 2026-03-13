@@ -542,6 +542,7 @@ export class ExportComputer {
                 size: tileInfo.lut.byteLength,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Float32Array<ArrayBufferLike> vs GPUAllowSharedBufferSource strict mode mismatch
             this.device.queue.writeBuffer(lutBuffer, 0, tileInfo.lut as any);
         }
 
@@ -883,8 +884,8 @@ export class ExportComputer {
         }
 
         // Optimization Setup
-        let decimateFn: any = null;
-        let compactFn: any = null;
+        let decimateFn: ((mesh: MeshData, opts: { targetRatio: number; errorThreshold?: number; lockBorders?: boolean }) => Promise<{ mesh: MeshData; error?: unknown }>) | null = null;
+        let compactFn: ((mesh: MeshData) => MeshData) | null = null;
         let globalTargetRatio = 1.0;
         const TARGET_TRIS = 2_000_000;
 
@@ -917,7 +918,7 @@ export class ExportComputer {
                             targetRatio: globalTargetRatio,
                             lockBorders: true // Keep consistent
                         });
-                        result.mesh = compactFn(decResult.mesh);
+                        result.mesh = compactFn!(decResult.mesh);
                     } catch (e) {
                         console.warn('[ExportComputer] Optimization failed', e);
                     }
@@ -985,10 +986,10 @@ export class ExportComputer {
                         // DO NOT nullify result.mesh here, as we are using it!
                     } else {
                         // Compact immediately to free memory
-                        meshToStore = compactFn(decResult.mesh);
-
-                        // Help GC by releasing the large raw buffers ONLY if we have a new compacted mesh
+                        meshToStore = compactFn!(decResult.mesh);
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Intentional: nullify for GC after data extraction
                         (result.mesh.vertices as any) = null;
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Intentional: nullify for GC after data extraction
                         (result.mesh.indices as any) = null;
                     }
 
@@ -1168,6 +1169,7 @@ export class ExportComputer {
         });
         const spData = packStyleParams(params.styleOpts, params.styleId);
         // Cast to any to avoid SharedArrayBuffer type mismatch in strict mode
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Float32Array<ArrayBufferLike> vs GPUAllowSharedBufferSource strict mode mismatch
         this.device.queue.writeBuffer(sb, 0, spData as any);
 
         const bindGroup = this.device.createBindGroup({

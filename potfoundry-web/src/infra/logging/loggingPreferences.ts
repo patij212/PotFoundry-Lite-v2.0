@@ -92,7 +92,7 @@ function readFromStorage(keys: string[]): string | null {
 
 function readFromGlobals(keys: string[]): unknown {
   try {
-    const root = window as Record<string, unknown>;
+    const root = window as unknown as Record<string, unknown>;
     for (const key of keys) {
       if (key in root && root[key] != null) {
         return root[key];
@@ -121,7 +121,7 @@ function readDocumentDataset(key: string): string | null {
 }
 
 function resolveMode(initialParams?: Record<string, unknown> | null): LogMode {
-  const globalInitial = (window as any).__pf_initialParams as Record<string, unknown> | undefined;
+  const globalInitial = window.__pf_initialParams;
   const candidates: Array<unknown> = [
     readInitial(initialParams, INITIAL_PARAM_MODE_KEY),
     readInitial(globalInitial, INITIAL_PARAM_MODE_KEY),
@@ -138,7 +138,7 @@ function resolveMode(initialParams?: Record<string, unknown> | null): LogMode {
 }
 
 function resolveHeartbeatMs(initialParams?: Record<string, unknown> | null): number {
-  const globalInitial = (window as any).__pf_initialParams as Record<string, unknown> | undefined;
+  const globalInitial = window.__pf_initialParams;
   const candidates: Array<unknown> = [
     readInitial(initialParams, INITIAL_PARAM_HEARTBEAT_KEY),
     readInitial(globalInitial, INITIAL_PARAM_HEARTBEAT_KEY),
@@ -155,7 +155,7 @@ function resolveHeartbeatMs(initialParams?: Record<string, unknown> | null): num
 }
 
 function resolveDedupeEveryN(initialParams?: Record<string, unknown> | null): number {
-  const globalInitial = (window as any).__pf_initialParams as Record<string, unknown> | undefined;
+  const globalInitial = window.__pf_initialParams;
   const candidates: Array<unknown> = [
     readInitial(initialParams, INITIAL_PARAM_DEDUPE_KEY),
     readInitial(globalInitial, INITIAL_PARAM_DEDUPE_KEY),

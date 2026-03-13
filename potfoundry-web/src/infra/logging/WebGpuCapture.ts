@@ -47,6 +47,7 @@ export function installWebGpuCapture(device: GPUDevice) {
   // Device lost
   device.lost.then((info) => {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- GPUDeviceLostInfo.reason not in all @webgpu/types versions
       const reason = (info as any)?.reason;
       if (reason === 'destroyed') {
         manager.debug('WGPU_DEVICE_DESTROYED', 'Device destroyed intentionally');
@@ -61,6 +62,7 @@ export function installWebGpuCapture(device: GPUDevice) {
   // uncaptured errors
   device.addEventListener('uncapturederror', (ev: GPUUncapturedErrorEvent) => {
     const err = ev?.error;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- GPUError subtypes don't expose .name consistently
     const kind = (err as any)?.name || 'GPUError';
     manager.error('WGPU_UNCAPTURED_ERROR', `${String(kind)}: ${String(err?.message ?? err)}`, { name: kind });
   });
@@ -75,14 +77,17 @@ export async function withValidationScope<T>(device: GPUDevice, label: string, f
   }
   try {
     const r = await fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- popErrorScope returns GPUError | null, typed loosely to handle cross-impl variation
     let err = null as any;
     try { err = await device.popErrorScope(); } catch { err = undefined; }
     if (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- GPUError.message access on loosely-typed popErrorScope result
       manager.error('WGPU_VALIDATE', `[${label}] ${String((err as any)?.message ?? err)}`, { label });
     }
     return r;
   } catch (e) {
     try { await device.popErrorScope(); } catch { };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Accessing .message on unknown caught error
     manager.error('WGPU_VALIDATE_THROW', `[${label}] ${String((e as any)?.message ?? e)}`);
     return undefined;
   }
@@ -91,6 +96,7 @@ export async function withValidationScope<T>(device: GPUDevice, label: string, f
 export async function createShaderModule(device: GPUDevice, code: string, label?: string) {
   const module = device.createShaderModule({ code, label });
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- getCompilationInfo not in all @webgpu/types versions
     const info: any = await (module as any).getCompilationInfo?.();
     if (info && Array.isArray(info.messages)) {
       let warnCount = 0;
@@ -116,6 +122,7 @@ export async function createShaderModule(device: GPUDevice, code: string, label?
   return module;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Shader compilation message format varies across implementations
 function fmtShaderMsg(label: string | undefined, m: any) {
   const loc = (m.lineNum != null) ? `:${m.lineNum}:${m.linePos ?? 0}` : '';
   return `[${label ?? 'shader'}${loc}] ${m.message}`;

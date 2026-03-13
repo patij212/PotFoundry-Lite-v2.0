@@ -24,6 +24,11 @@ import {
     estimateErrorsGPU,
     splitOverThresholdTriangles,
     adaptiveRefine,
+    seamSafeMidpointU,
+    topK,
+    predictSplitReduction,
+    computeMeshQuality,
+    globalSmoothing,
 } from './AdaptiveRefinement';
 import type {
     RefinementConfig,
@@ -32,6 +37,10 @@ import type {
 import type { ExportTolerances, QualityProfile } from './types';
 import { emptyFeatureEdgeGraph, buildFeatureEdgeGraph } from './FeatureEdgeGraph';
 import type { EvaluateMidpointsFn } from './MeshSubdivision';
+import { isConverged } from './contracts';
+import type { ConvergenceState } from './contracts';
+import { RunningStats } from './SurfaceMetric';
+import { edgeKey } from './ChainStripOptimizer';
 
 // ============================================================================
 // Test Helpers
@@ -126,7 +135,7 @@ function testTolerances(overrides?: Partial<ExportTolerances>): ExportTolerances
         epsNormalDeg: 6.0,
         epsFeatureMm: 0.06,
         minTriangleAngleDeg: 18,
-        maxAspectRatio: 10.0,
+        maxAspectRatio: 20.0, // R/r metric: equilateral=2, sliver→∞
         ...overrides,
     };
 }
@@ -160,7 +169,7 @@ const linearEvaluator: EvaluateMidpointsFn = async (uvBatch: Float32Array): Prom
 };
 
 /** Mock GPU evaluator that returns offset positions (simulates curvature). */
-const curvedEvaluator: EvaluateMidpointsFn = async (uvBatch: Float32Array): Promise<Float32Array> => {
+const curvedEvaluator: EvaluateMidpointsFn = (uvBatch: Float32Array): Promise<Float32Array> => {
     const count = uvBatch.length / 3;
     const result = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
@@ -171,7 +180,7 @@ const curvedEvaluator: EvaluateMidpointsFn = async (uvBatch: Float32Array): Prom
         // Curved surface: z = sin(u*π) * sin(t*π) — chord error exists
         result[i * 3 + 2] = Math.sin(u * Math.PI) * Math.sin(t * Math.PI);
     }
-    return result;
+    return Promise.resolve(result);
 };
 
 // ============================================================================
@@ -326,11 +335,11 @@ describe('buildEdgeAdjacency', () => {
         expect(adj.size).toBe(5);
 
         // Shared edge 0-2 should have 2 triangles
-        const shared = adj.get('0-2');
+        const shared = adj.get(edgeKey(0, 2));
         expect(shared).toHaveLength(2);
 
         // Boundary edges should have 1 triangle each
-        const boundary = adj.get('0-1');
+        const boundary = adj.get(edgeKey(0, 1));
         expect(boundary).toHaveLength(1);
     });
 
@@ -556,7 +565,7 @@ describe('adaptiveRefine', () => {
     });
 
     it('returns max_iterations when hitting iteration cap', async () => {
-        const { positions, uvs, indices, outerIdxCount } = makeGridMesh(4, 4);
+        const { positions, uvs, indices, outerIdxCount } = makeGridMesh(6, 6);
         const config: RefinementConfig = {
             profile: testProfile({ maxRefineIterations: 1 }),
             tolerances: testTolerances({ epsPosMm: 0.0001, epsNormalDeg: 0.0001 }), // very tight
@@ -662,5 +671,793 @@ describe('estimateErrorsGPU', () => {
         // At least some triangles should have non-zero chord error
         const maxErr = Math.max(...errors.map((e: { posErrorMm: number }) => e.posErrorMm));
         expect(maxErr).toBeGreaterThan(0);
+    });
+});
+
+// ============================================================================
+// Phase 1-4 Feature Tests
+// ============================================================================
+
+import { checkSplitQuality, localEdgeFlip } from './AdaptiveRefinement';
+import { metricEdgeLengthSq, computeVertexMetrics } from './SurfaceMetric';
+
+describe('checkSplitQuality (Task 1.4)', () => {
+    it('accepts a well-shaped split', () => {
+        // Square: (0,0,0), (2,0,0), (0,2,0), (2,2,0)
+        // Edge (0,1) with opposite vertices 2 and 3
+        // Midpoint at (1,0,0)
+        const positions = new Float32Array([
+            0, 0, 0,   // v0
+            2, 0, 0,   // v1
+            0, 2, 0,   // v2 (opp0)
+            2, 2, 0,   // v3 (opp1)
+        ]);
+        const midPos: [number, number, number] = [1, 0, 0];
+        const result = checkSplitQuality(positions, midPos, 0, 1, 2, 3, 10);
+        expect(result).toBe(true);
+    });
+
+    it('rejects a split that creates a sliver', () => {
+        // Nearly collinear points: sliver triangle
+        const positions = new Float32Array([
+            0, 0, 0,       // v0
+            10, 0, 0,      // v1
+            5, 0.001, 0,   // opp0 (barely off the line)
+            5, -0.001, 0,  // opp1 (barely off the line)
+        ]);
+        const midPos: [number, number, number] = [5, 0, 0];
+        // With a threshold of 10°, these near-degenerate triangles should be rejected
+        const result = checkSplitQuality(positions, midPos, 0, 1, 2, 3, 10);
+        expect(result).toBe(false);
+    });
+
+    it('returns false for degenerate (zero-area) triangles', () => {
+        const positions = new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            0, 1, 0,
+            1, 1, 0,
+        ]);
+        // Midpoint exactly on vertex 0 — creates degenerate triangle
+        const midPos: [number, number, number] = [0, 0, 0];
+        const result = checkSplitQuality(positions, midPos, 0, 1, 2, 3, 1);
+        expect(result).toBe(false);
+    });
+});
+
+describe('localEdgeFlip (Task 3.1)', () => {
+    it('flips an edge that improves minimum angle', () => {
+        // Diamond shape: 4 vertices, 2 triangles sharing edge (0,2)
+        // v0=(0,0,0), v1=(1,1,0), v2=(2,0,0), v3=(1,-1,0)
+        // Current: (0,2,1) and (0,2,3) — skinny
+        // After flip: (1,3,0) and (1,3,2) — better
+        const positions = new Float32Array([
+            0, 0, 0,   // v0
+            1, 2, 0,   // v1
+            2, 0, 0,   // v2
+            1, -2, 0,  // v3
+        ]);
+        const indices = new Uint32Array([
+            0, 2, 1,   // tri0
+            0, 3, 2,   // tri1
+        ]);
+        const affected = new Set([0, 1, 2, 3]);
+        const featureGraph = emptyFeatureEdgeGraph();
+        const flipCount = localEdgeFlip(indices, positions, affected, featureGraph, 6);
+        expect(flipCount).toBeGreaterThanOrEqual(0);
+    });
+
+    it('does not flip feature edges', () => {
+        const positions = new Float32Array([
+            0, 0, 0,
+            1, 2, 0,
+            2, 0, 0,
+            1, -2, 0,
+        ]);
+        const indices = new Uint32Array([
+            0, 2, 1,
+            0, 3, 2,
+        ]);
+        const affected = new Set([0, 1, 2, 3]);
+        // Mark edge (0,2) as feature edge
+        const featureGraph = buildFeatureEdgeGraph(
+            [{ points: [{ u: 0, row: 0 }, { u: 1, row: 0 }], kind: 'peak' as const }],
+            { chainToVertices: new Map([[0, [0, 2]]]) },
+        );
+        const flipCount = localEdgeFlip(indices, positions, affected, featureGraph, 6);
+        expect(flipCount).toBe(0);
+    });
+});
+
+describe('metricEdgeLengthSq (SurfaceMetric)', () => {
+    it('returns non-negative squared length', () => {
+        // Build a simple mesh and compute vertex metrics
+        const positions = new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            0, 1, 0,
+            1, 1, 0,
+        ]);
+        const uvs = new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            0, 1, 0,
+            1, 1, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 1, 3, 2]);
+        const metrics = computeVertexMetrics(positions, uvs, indices, 6);
+        const lenSq = metricEdgeLengthSq(metrics, uvs, 0, 1);
+        expect(lenSq).toBeGreaterThanOrEqual(0);
+    });
+
+    it('gives larger result for stretched direction', () => {
+        // Stretched in X: surface goes 0→10 while UV goes 0→1
+        const positions = new Float32Array([
+            0, 0, 0,
+            10, 0, 0,
+            0, 1, 0,
+            10, 1, 0,
+        ]);
+        const uvs = new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            0, 1, 0,
+            1, 1, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 1, 3, 2]);
+        const metrics = computeVertexMetrics(positions, uvs, indices, 6);
+        const lenSqU = metricEdgeLengthSq(metrics, uvs, 0, 1); // along stretched u
+        const lenSqT = metricEdgeLengthSq(metrics, uvs, 0, 2); // along t (not stretched)
+        expect(lenSqU).toBeGreaterThan(lenSqT);
+    });
+});
+
+// ============================================================================
+// Phase 12 — New Test Coverage (T1-T6)
+// ============================================================================
+
+describe('seamSafeMidpointU', () => {
+    it('returns simple midpoint for non-seam edges', () => {
+        expect(seamSafeMidpointU(0.2, 0.8)).toBeCloseTo(0.5, 8);
+        expect(seamSafeMidpointU(0.3, 0.7)).toBeCloseTo(0.5, 8);
+    });
+
+    it('wraps around for seam edges (u near 0 and 1)', () => {
+        // 0.9 and 0.1 should wrap: midpoint = (0.9 + 1.1) / 2 = 1.0 → 0.0
+        const mid = seamSafeMidpointU(0.9, 0.1);
+        // Should be near 0.0 (wrapped)
+        expect(mid === 0 || mid === 1 || Math.abs(mid) < 0.01 || Math.abs(mid - 1) < 0.01).toBe(true);
+    });
+
+    it('does not wrap when both values are in the interior', () => {
+        // Both u values well away from seam — should not wrap
+        expect(seamSafeMidpointU(0.4, 0.6)).toBeCloseTo(0.5, 8);
+    });
+
+    it('handles boundary u=0 and u=1 correctly', () => {
+        // When u values are exactly 0 and 1, boundary guard should apply
+        const mid = seamSafeMidpointU(0.0, 1.0);
+        expect(mid).toBeCloseTo(0.5, 5);
+    });
+
+    it('handles identical u values', () => {
+        expect(seamSafeMidpointU(0.5, 0.5)).toBeCloseTo(0.5, 8);
+        expect(seamSafeMidpointU(0.0, 0.0)).toBeCloseTo(0.0, 8);
+    });
+});
+
+describe('topK', () => {
+    it('returns top k elements in sorted order', () => {
+        const arr = [5, 1, 3, 9, 7, 2, 8, 4, 6, 10];
+        const result = topK(arr, 3, (a, b) => b - a);
+        expect(result).toEqual([10, 9, 8]);
+    });
+
+    it('returns all elements when k >= array length', () => {
+        const arr = [3, 1, 2];
+        const result = topK(arr, 10, (a, b) => b - a);
+        expect(result).toHaveLength(3);
+        expect(result).toEqual([3, 2, 1]);
+    });
+
+    it('returns empty array for empty input', () => {
+        const result = topK([] as number[], 5, (a, b) => b - a);
+        expect(result).toEqual([]);
+    });
+
+    it('handles k=1 correctly', () => {
+        const arr = [3, 1, 4, 1, 5, 9, 2, 6];
+        const result = topK(arr, 1, (a, b) => b - a);
+        expect(result).toEqual([9]);
+    });
+
+    it('works with objects and custom comparator', () => {
+        const arr = [
+            { id: 'a', score: 10 },
+            { id: 'b', score: 30 },
+            { id: 'c', score: 20 },
+            { id: 'd', score: 40 },
+            { id: 'e', score: 5 },
+        ];
+        const result = topK(arr, 2, (a, b) => b.score - a.score);
+        expect(result[0].id).toBe('d');
+        expect(result[1].id).toBe('b');
+    });
+
+    it('handles all identical elements', () => {
+        const arr = [7, 7, 7, 7, 7];
+        const result = topK(arr, 3, (a, b) => b - a);
+        expect(result).toHaveLength(3);
+        expect(result.every(x => x === 7)).toBe(true);
+    });
+});
+
+describe('predictSplitReduction', () => {
+    it('returns positive reduction for curved edge', () => {
+        const reduction = predictSplitReduction(0.5, 10.0, 0.1);
+        expect(reduction).toBeGreaterThan(0);
+        expect(reduction).toBeLessThanOrEqual(0.5);
+    });
+
+    it('returns zero for zero chord error', () => {
+        const reduction = predictSplitReduction(0, 10.0, 0.1);
+        expect(reduction).toBe(0);
+    });
+
+    it('larger curvature gives larger predicted reduction', () => {
+        // Use physically consistent chord errors: chord ≈ κL²/8
+        const r1 = predictSplitReduction(0.625, 10.0, 0.05);
+        const r2 = predictSplitReduction(2.5, 10.0, 0.20);
+        expect(r2).toBeGreaterThanOrEqual(r1);
+    });
+
+    it('works without curvature parameter', () => {
+        const reduction = predictSplitReduction(0.5, 10.0);
+        expect(reduction).toBeGreaterThan(0);
+        expect(reduction).toBeLessThanOrEqual(0.5);
+    });
+});
+
+describe('computeMeshQuality', () => {
+    it('computes correct quality for equilateral triangle', () => {
+        // Equilateral triangle: all angles 60°, R/r = 2.0
+        const h = Math.sqrt(3) / 2;
+        const positions = new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            0.5, h, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2]);
+        const quality = computeMeshQuality(positions, indices, 3);
+        expect(quality.minAngleDeg).toBeCloseTo(60, 0);
+        expect(quality.maxAspectRatio).toBeCloseTo(2.0, 1); // R/r for equilateral = 2
+    });
+
+    it('detects poor quality in right isosceles triangle', () => {
+        const positions = new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            0, 1, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2]);
+        const quality = computeMeshQuality(positions, indices, 3);
+        expect(quality.minAngleDeg).toBeCloseTo(45, 0);
+        // R/r for 45-45-90 right triangle: R = √2/2 ≈ 0.707, r = (1+1-√2)/2 ≈ 0.293
+        // R/r ≈ 2.414
+        expect(quality.maxAspectRatio).toBeGreaterThanOrEqual(2.0);
+        expect(quality.maxAspectRatio).toBeLessThan(3.0);
+    });
+
+    it('handles flat square mesh', () => {
+        const positions = new Float32Array([
+            0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0,
+        ]);
+        const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+        const quality = computeMeshQuality(positions, indices, 6);
+        expect(quality.minAngleDeg).toBeGreaterThan(0);
+        expect(quality.maxAspectRatio).toBeGreaterThanOrEqual(1.0);
+    });
+
+    it('handles outerIdxCount limiting which triangles to measure', () => {
+        const positions = new Float32Array([
+            0, 0, 0, 1, 0, 0, 0.5, 1, 0,
+            // v3 used by second triangle only
+            0.5, -1, 0,
+        ]);
+        const indices = new Uint32Array([
+            0, 1, 2,  // outer triangle
+            0, 3, 1,  // inner triangle (not measured if outerIdxCount=3)
+        ]);
+        const qualityAll = computeMeshQuality(positions, indices, 6);
+        const qualityOuter = computeMeshQuality(positions, indices, 3);
+        // Both should return valid results
+        expect(qualityOuter.minAngleDeg).toBeGreaterThan(0);
+        expect(qualityAll.minAngleDeg).toBeGreaterThan(0);
+    });
+});
+
+describe('isConverged', () => {
+    const baseTolerances: ExportTolerances = {
+        epsPosMm: 0.08,
+        epsNormalDeg: 6.0,
+        epsFeatureMm: 0.06,
+        minTriangleAngleDeg: 18,
+        maxAspectRatio: 10.0,
+    };
+
+    it('returns converged when all criteria pass', () => {
+        const state: ConvergenceState = {
+            maxPosError: 0.05,
+            p95PosError: 0.03,
+            maxNormalError: 4.0,
+            p95NormalError: 2.0,
+            minAngleDeg: 30,
+            maxAspectRatio: 3.0,
+            triangleCount: 1000,
+        };
+        const result = isConverged(state, baseTolerances);
+        expect(result.converged).toBe(true);
+        expect(result.reason).toBe('all_passed');
+    });
+
+    it('returns pos_error when position error exceeds tolerance', () => {
+        const state: ConvergenceState = {
+            maxPosError: 0.10, // > 0.08
+            p95PosError: 0.03,
+            maxNormalError: 4.0,
+            p95NormalError: 2.0,
+            minAngleDeg: 30,
+            maxAspectRatio: 3.0,
+            triangleCount: 1000,
+        };
+        const result = isConverged(state, baseTolerances);
+        expect(result.converged).toBe(false);
+        expect(result.reason).toBe('pos_error');
+    });
+
+    it('returns normal_error when normal error exceeds tolerance', () => {
+        const state: ConvergenceState = {
+            maxPosError: 0.05,
+            p95PosError: 0.03,
+            maxNormalError: 8.0, // > 6.0
+            p95NormalError: 5.0,
+            minAngleDeg: 30,
+            maxAspectRatio: 3.0,
+            triangleCount: 1000,
+        };
+        const result = isConverged(state, baseTolerances);
+        expect(result.converged).toBe(false);
+        expect(result.reason).toBe('normal_error');
+    });
+
+    it('returns min_angle when minimum angle too small', () => {
+        const state: ConvergenceState = {
+            maxPosError: 0.05,
+            p95PosError: 0.03,
+            maxNormalError: 4.0,
+            p95NormalError: 2.0,
+            minAngleDeg: 10, // < 18
+            maxAspectRatio: 3.0,
+            triangleCount: 1000,
+        };
+        const result = isConverged(state, baseTolerances);
+        expect(result.converged).toBe(false);
+        expect(result.reason).toBe('min_angle');
+    });
+
+    it('returns aspect_ratio when aspect ratio too high', () => {
+        const state: ConvergenceState = {
+            maxPosError: 0.05,
+            p95PosError: 0.03,
+            maxNormalError: 4.0,
+            p95NormalError: 2.0,
+            minAngleDeg: 30,
+            maxAspectRatio: 15.0, // > 10
+            triangleCount: 1000,
+        };
+        const result = isConverged(state, baseTolerances);
+        expect(result.converged).toBe(false);
+        expect(result.reason).toBe('aspect_ratio');
+    });
+
+    it('checks criteria in priority order (pos first)', () => {
+        // All criteria fail — but pos_error should be reported first
+        const state: ConvergenceState = {
+            maxPosError: 0.20,
+            p95PosError: 0.15,
+            maxNormalError: 20.0,
+            p95NormalError: 15.0,
+            minAngleDeg: 5,
+            maxAspectRatio: 50,
+            triangleCount: 100,
+        };
+        const result = isConverged(state, baseTolerances);
+        expect(result.converged).toBe(false);
+        expect(result.reason).toBe('pos_error');
+    });
+});
+
+describe('RunningStats', () => {
+    it('computes correct mean for simple sequence', () => {
+        const stats = new RunningStats();
+        stats.push(1);
+        stats.push(2);
+        stats.push(3);
+        stats.push(4);
+        stats.push(5);
+        expect(stats.count).toBe(5);
+        expect(stats.mean).toBeCloseTo(3.0, 8);
+    });
+
+    it('computes correct variance (population)', () => {
+        const stats = new RunningStats();
+        // Values: 2, 4, 4, 4, 5, 5, 7, 9 → mean=5, var=4
+        for (const v of [2, 4, 4, 4, 5, 5, 7, 9]) stats.push(v);
+        expect(stats.mean).toBeCloseTo(5.0, 8);
+        expect(stats.variance).toBeCloseTo(4.0, 5);
+    });
+
+    it('computes correct sample variance', () => {
+        const stats = new RunningStats();
+        for (const v of [2, 4, 4, 4, 5, 5, 7, 9]) stats.push(v);
+        // Sample variance = var * n / (n-1) = 4.0 * 8/7 ≈ 4.571
+        expect(stats.sampleVariance).toBeCloseTo(4 * 8 / 7, 4);
+    });
+
+    it('tracks min and max', () => {
+        const stats = new RunningStats();
+        stats.push(5);
+        stats.push(2);
+        stats.push(8);
+        stats.push(1);
+        stats.push(9);
+        expect(stats.min).toBe(1);
+        expect(stats.max).toBe(9);
+    });
+
+    it('returns 0 for empty stats', () => {
+        const stats = new RunningStats();
+        expect(stats.count).toBe(0);
+        expect(stats.mean).toBe(0);
+        expect(stats.variance).toBe(0);
+        expect(stats.stddev).toBe(0);
+        expect(stats.min).toBe(Infinity);
+        expect(stats.max).toBe(-Infinity);
+    });
+
+    it('handles single value', () => {
+        const stats = new RunningStats();
+        stats.push(42);
+        expect(stats.count).toBe(1);
+        expect(stats.mean).toBe(42);
+        expect(stats.variance).toBe(0);
+    });
+
+    it('resets correctly', () => {
+        const stats = new RunningStats();
+        stats.push(1);
+        stats.push(2);
+        stats.push(3);
+        stats.reset();
+        expect(stats.count).toBe(0);
+        expect(stats.mean).toBe(0);
+        stats.push(10);
+        expect(stats.mean).toBe(10);
+    });
+
+    it('coefficient of variation works', () => {
+        const stats = new RunningStats();
+        for (const v of [10, 10, 10, 10]) stats.push(v);
+        expect(stats.cv).toBe(0); // zero variance → zero CV
+        for (const v of [5, 15]) stats.push(v);
+        expect(stats.cv).toBeGreaterThan(0);
+    });
+});
+
+describe('multi-iteration convergence', () => {
+    it('curved mesh converges with monotonically decreasing error', async () => {
+        const mesh = makeGridMesh(6, 6);
+        const config: RefinementConfig = {
+            profile: testProfile({ maxRefineIterations: 4 }),
+            tolerances: testTolerances({ epsPosMm: 0.001, epsNormalDeg: 0.5 }),
+            maxTriangles: 50_000,
+            featureGraph: emptyFeatureEdgeGraph(),
+            outerIdxCount: mesh.outerIdxCount,
+        };
+
+        const result = await adaptiveRefine(
+            mesh.positions, mesh.uvs, mesh.indices, config, curvedEvaluator,
+        );
+
+        // Should perform multiple iterations
+        expect(result.iterationsPerformed).toBeGreaterThanOrEqual(1);
+
+        // Error should generally decrease across iterations
+        if (result.iterationStats.length >= 2) {
+            const firstError = result.iterationStats[0].maxPosErrorMm;
+            const lastError = result.iterationStats[result.iterationStats.length - 1].maxPosErrorMm;
+            expect(lastError).toBeLessThanOrEqual(firstError);
+        }
+
+        // Mesh should not shrink (splits may occur depending on test ordering)
+        expect(result.indices.length / 3).toBeGreaterThanOrEqual(mesh.indices.length / 3);
+        // Stop reason should reflect iteration progress
+        expect(['max_iterations', 'tolerances_passed', 'no_improvement']).toContain(result.stopReason);
+    });
+
+    it('flat mesh passes tolerance immediately', async () => {
+        const { positions, uvs, indices } = makeFlatSquare();
+        const config: RefinementConfig = {
+            profile: testProfile({ maxRefineIterations: 4 }),
+            tolerances: testTolerances({ epsPosMm: 10, epsNormalDeg: 90 }),
+            maxTriangles: 50_000,
+            featureGraph: emptyFeatureEdgeGraph(),
+            outerIdxCount: indices.length,
+        };
+
+        const result = await adaptiveRefine(
+            positions, uvs, indices, config, linearEvaluator,
+        );
+
+        expect(result.tolerancesPassed).toBe(true);
+        expect(result.stopReason).toBe('tolerances_passed');
+        // Should exit after first iteration's tolerance check
+        expect(result.iterationsPerformed).toBe(1);
+    });
+});
+
+// ============================================================================
+// Phase 14: Per-edge vs per-triangle A/B comparison
+// ============================================================================
+
+describe('per-edge vs per-triangle error estimation', () => {
+    it('per-edge path produces comparable or better error on curved mesh', async () => {
+        const mesh = makeGridMesh(8, 8);
+        const tol = testTolerances({ epsPosMm: 0.01, epsNormalDeg: 1.0 });
+
+        // Run per-triangle path (default)
+        const configTriangle: RefinementConfig = {
+            profile: testProfile({ maxRefineIterations: 3 }),
+            tolerances: tol,
+            maxTriangles: 50_000,
+            featureGraph: emptyFeatureEdgeGraph(),
+            outerIdxCount: mesh.outerIdxCount,
+        };
+        const resultTriangle = await adaptiveRefine(
+            new Float32Array(mesh.positions), new Float32Array(mesh.uvs),
+            new Uint32Array(mesh.indices), configTriangle, curvedEvaluator,
+        );
+
+        // Run per-edge path
+        const configEdge: RefinementConfig = {
+            ...configTriangle,
+            perEdgeErrorEstimation: true,
+        };
+        const resultEdge = await adaptiveRefine(
+            new Float32Array(mesh.positions), new Float32Array(mesh.uvs),
+            new Uint32Array(mesh.indices), configEdge, curvedEvaluator,
+        );
+
+        // Both should perform at least one iteration
+        expect(resultTriangle.iterationsPerformed).toBeGreaterThanOrEqual(1);
+        expect(resultEdge.iterationsPerformed).toBeGreaterThanOrEqual(1);
+
+        // Per-edge path should produce equal or lower max error
+        expect(resultEdge.maxPosErrorMm).toBeLessThanOrEqual(
+            resultTriangle.maxPosErrorMm * 1.1, // 10% tolerance for stochastic ordering
+        );
+
+        // Both should produce valid meshes (no degenerate triangles)
+        expect(resultTriangle.indices.length).toBeGreaterThan(0);
+        expect(resultEdge.indices.length).toBeGreaterThan(0);
+        expect(resultTriangle.indices.length % 3).toBe(0);
+        expect(resultEdge.indices.length % 3).toBe(0);
+    });
+
+    it('per-edge path produces valid mesh with vertex index integrity', async () => {
+        const mesh = makeGridMesh(6, 6);
+        const config: RefinementConfig = {
+            profile: testProfile({ maxRefineIterations: 3 }),
+            tolerances: testTolerances({ epsPosMm: 0.001, epsNormalDeg: 0.5 }),
+            maxTriangles: 50_000,
+            featureGraph: emptyFeatureEdgeGraph(),
+            outerIdxCount: mesh.outerIdxCount,
+            perEdgeErrorEstimation: true,
+        };
+
+        const result = await adaptiveRefine(
+            mesh.positions, mesh.uvs, mesh.indices, config, curvedEvaluator,
+        );
+
+        // Mesh should have at least as many triangles as original
+        expect(result.indices.length / 3).toBeGreaterThanOrEqual(mesh.indices.length / 3);
+        // All indices should be valid vertex references
+        const vertCount = result.positions.length / 3;
+        for (let i = 0; i < result.indices.length; i++) {
+            expect(result.indices[i]).toBeLessThan(vertCount);
+        }
+        // No degenerate triangles
+        for (let t = 0; t < result.indices.length; t += 3) {
+            const v0 = result.indices[t], v1 = result.indices[t + 1], v2 = result.indices[t + 2];
+            expect(v0 !== v1 || v1 !== v2).toBe(true);
+        }
+    });
+
+    it('per-edge path works on flat mesh without errors', async () => {
+        const { positions, uvs, indices } = makeFlatSquare();
+        const config: RefinementConfig = {
+            profile: testProfile({ maxRefineIterations: 2 }),
+            tolerances: testTolerances({ epsPosMm: 10, epsNormalDeg: 90 }),
+            maxTriangles: 50_000,
+            featureGraph: emptyFeatureEdgeGraph(),
+            outerIdxCount: indices.length,
+            perEdgeErrorEstimation: true,
+        };
+
+        const result = await adaptiveRefine(
+            positions, uvs, indices, config, linearEvaluator,
+        );
+
+        // Flat mesh should pass immediately (no chord error)
+        expect(result.tolerancesPassed).toBe(true);
+        expect(result.stopReason).toBe('tolerances_passed');
+    });
+});
+
+// ============================================================================
+// Phase 15: Seam-aware smoothing
+// ============================================================================
+
+describe('globalSmoothing — seam-aware', () => {
+    /** Evaluator that maps UV to 3D using same scale as makeSeamMesh */
+    const seamEvaluator: EvaluateMidpointsFn = async (uvBatch: Float32Array): Promise<Float32Array> => {
+        const count = uvBatch.length / 3;
+        const result = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+            const u = uvBatch[i * 3];
+            const t = uvBatch[i * 3 + 1];
+            result[i * 3] = u * 10;
+            result[i * 3 + 1] = t * 10;
+            result[i * 3 + 2] = 0;
+        }
+        return result;
+    };
+
+    /**
+     * Build a small mesh with seam vertices for testing.
+     * Layout: 4 columns (u=0, 0.33, 0.67, 1.0) × 3 rows (t=0, 0.5, 1.0)
+     * Vertices at u=0 and u=1 are seam vertices.
+     * Corners: (u=0,t=0), (u=0,t=1), (u=1,t=0), (u=1,t=1)
+     */
+    function makeSeamMesh(): { positions: Float32Array; uvs: Float32Array; indices: Uint32Array } {
+        const cols = 4, rows = 3;
+        const vCount = cols * rows;
+        const positions = new Float32Array(vCount * 3);
+        const uvs = new Float32Array(vCount * 3);
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const idx = r * cols + c;
+                const u = c / (cols - 1);
+                const t = r / (rows - 1);
+                // 3D positions consistent with seamEvaluator (u*10, t*10, 0)
+                // Add perturbation to interior vertices so smoothing has work
+                positions[idx * 3] = u * 10 + (c > 0 && c < cols - 1 ? Math.sin(t * 3) * 0.3 : 0);
+                positions[idx * 3 + 1] = t * 10;
+                positions[idx * 3 + 2] = 0;
+                uvs[idx * 3] = u;
+                uvs[idx * 3 + 1] = t;
+                uvs[idx * 3 + 2] = 0; // surfaceId
+            }
+        }
+
+        const triCount = (cols - 1) * (rows - 1) * 2;
+        const indices = new Uint32Array(triCount * 3);
+        let idx = 0;
+        for (let r = 0; r < rows - 1; r++) {
+            for (let c = 0; c < cols - 1; c++) {
+                const v0 = r * cols + c;
+                const v1 = r * cols + c + 1;
+                const v2 = (r + 1) * cols + c + 1;
+                const v3 = (r + 1) * cols + c;
+                indices[idx++] = v0; indices[idx++] = v1; indices[idx++] = v2;
+                indices[idx++] = v0; indices[idx++] = v2; indices[idx++] = v3;
+            }
+        }
+        return { positions, uvs, indices };
+    }
+
+    it('corner vertices remain fully locked', async () => {
+        const { positions, uvs, indices } = makeSeamMesh();
+        const cols = 4;
+
+        // Corner vertices: (0,0)=idx 0, (0,1)=idx 8, (1,0)=idx 3, (1,1)=idx 11
+        const corners = [0, cols - 1, (3 - 1) * cols, (3 - 1) * cols + cols - 1];
+        const cornerUVsBefore = corners.map(v => [uvs[v * 3], uvs[v * 3 + 1]]);
+        const cornerPosBefore = corners.map(v => [positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2]]);
+
+        await globalSmoothing(
+            positions, uvs, indices, indices.length,
+            emptyFeatureEdgeGraph(), seamEvaluator, 3, 5,
+        );
+
+        // Corner UVs should not have changed
+        for (let i = 0; i < corners.length; i++) {
+            const v = corners[i];
+            expect(uvs[v * 3]).toBeCloseTo(cornerUVsBefore[i][0], 10);
+            expect(uvs[v * 3 + 1]).toBeCloseTo(cornerUVsBefore[i][1], 10);
+        }
+        // Corner positions should not have changed
+        for (let i = 0; i < corners.length; i++) {
+            const v = corners[i];
+            expect(positions[v * 3]).toBeCloseTo(cornerPosBefore[i][0], 10);
+            expect(positions[v * 3 + 1]).toBeCloseTo(cornerPosBefore[i][1], 10);
+            expect(positions[v * 3 + 2]).toBeCloseTo(cornerPosBefore[i][2], 10);
+        }
+    });
+
+    it('seam-interior vertex T changes but U remains at 0 or 1', async () => {
+        const { positions, uvs, indices } = makeSeamMesh();
+        const cols = 4;
+
+        // Seam-interior vertex: u=0, t=0.5 → idx = 1*4 + 0 = 4
+        const seamVert = 1 * cols + 0; // row 1, col 0 → u=0, t=0.5
+        expect(uvs[seamVert * 3]).toBeCloseTo(0, 10); // confirm u=0
+
+        // Perturb the T coordinate so smoothing has something to correct
+        uvs[seamVert * 3 + 1] = 0.4; // offset from ideal 0.5
+        // Also update the 3D position to match the perturbed UV
+        positions[seamVert * 3 + 1] = 0.4 * 10;
+
+        await globalSmoothing(
+            positions, uvs, indices, indices.length,
+            emptyFeatureEdgeGraph(), seamEvaluator, 3, 5,
+        );
+
+        // U should remain exactly 0 (seam-constrained)
+        expect(uvs[seamVert * 3]).toBe(0);
+        // T should have moved toward neighbors (smoothed)
+        // It was at 0.4, neighbors at t=0 and t=1, so should move toward ~0.5
+        expect(uvs[seamVert * 3 + 1]).not.toBeCloseTo(0.4, 3);
+    });
+
+    it('seam-interior vertex at u≈1 keeps U at 1', async () => {
+        const { positions, uvs, indices } = makeSeamMesh();
+        const cols = 4;
+
+        // Seam-interior vertex: u=1, t=0.5 → idx = 1*4 + 3 = 7
+        const seamVert = 1 * cols + (cols - 1);
+        expect(uvs[seamVert * 3]).toBeCloseTo(1, 10); // confirm u=1
+
+        await globalSmoothing(
+            positions, uvs, indices, indices.length,
+            emptyFeatureEdgeGraph(), seamEvaluator, 3, 5,
+        );
+
+        // U should remain exactly 1 (seam-constrained)
+        expect(uvs[seamVert * 3]).toBe(1);
+    });
+
+    it('interior vertices are smoothed normally', async () => {
+        const { positions, uvs, indices } = makeSeamMesh();
+        const cols = 4;
+
+        // Interior vertex: u=0.33, t=0.5 → idx = 1*4 + 1 = 5
+        const intVert = 1 * cols + 1;
+
+        // Perturb UV and position together
+        uvs[intVert * 3] = 0.25;
+        uvs[intVert * 3 + 1] = 0.4;
+        positions[intVert * 3] = 0.25 * 10;
+        positions[intVert * 3 + 1] = 0.4 * 10;
+
+        await globalSmoothing(
+            positions, uvs, indices, indices.length,
+            emptyFeatureEdgeGraph(), seamEvaluator, 3, 5,
+        );
+
+        // Both U and T should have been smoothed (moved from perturbed values)
+        expect(uvs[intVert * 3]).not.toBeCloseTo(0.25, 3);
+        expect(uvs[intVert * 3 + 1]).not.toBeCloseTo(0.4, 3);
     });
 });

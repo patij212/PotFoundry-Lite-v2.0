@@ -44,6 +44,10 @@ import {
   WORLD_UP as cbWORLD_UP,
   turntableStep,
   cameraPayloadDiffers as sharedCameraPayloadDiffers,
+  vec3,
+  copyVec3,
+  copyQuat,
+  vec3Scale,
 } from './camera_basis';
 
 import type { Vec3 as CameraVec3, CameraBasis as CameraBasisType, Quaternion as CameraQuaternion } from './camera_basis';
@@ -66,6 +70,9 @@ type FocusTween = {
   targetQuat?: Quaternion;
 };
 import * as CameraConstants from './camera_constants';
+
+// Global type augmentation consolidated in webgpu_global.d.ts
+import type {} from './webgpu_global';
 
 export type PointerState = {
   active: boolean;
@@ -163,10 +170,19 @@ export class CameraController {
   // If present, a deferred forced camera payload which will be applied
   // after the local-control grace window ends and the payload meaningfully differs
   pendingForceCameraPayload: WebGPUParams | null = null;
-  readonly LOCAL_CAMERA_GRACE_MS = 1000;
-  setLocalCameraGraceMs(ms: number) {
+  private _localCameraGraceMs = 1000;
+  /** Grace period in milliseconds before accepting forced camera payloads */
+  get LOCAL_CAMERA_GRACE_MS(): number {
+    return this._localCameraGraceMs;
+  }
+  /** Set the grace period in milliseconds */
+  set LOCAL_CAMERA_GRACE_MS(ms: number) {
     if (!Number.isFinite(ms) || ms < 0) return;
-    (this as any).LOCAL_CAMERA_GRACE_MS = Math.max(0, Math.floor(ms));
+    this._localCameraGraceMs = Math.max(0, Math.floor(ms));
+  }
+  /** @deprecated since v2.1 — Use direct property assignment instead */
+  setLocalCameraGraceMs(ms: number): void {
+    this.LOCAL_CAMERA_GRACE_MS = ms;
   }
   hostCameraAcceptPolicy: 'always' | 'grace' | 'strict' = 'grace';
 
@@ -190,7 +206,7 @@ export class CameraController {
   cameraPayloadDiffers(payload: WebGPUParams, s: WebGPUState): boolean {
     // Delegate to shared tolerant payload comparison helper.
     try {
-      return sharedCameraPayloadDiffers(s as Record<string, unknown>, (payload as Record<string, unknown>) ?? {} as Record<string, unknown>);
+      return sharedCameraPayloadDiffers(s, payload ?? {});
     } catch (err) {
       return true;
     }
@@ -274,9 +290,8 @@ export class CameraController {
         // assert that the controller applied a camera payload.
         try {
           const id = this.canvas && typeof this.canvas.getAttribute === 'function' ? this.canvas.getAttribute('data-pf-wgpu-id') ?? 'pf-wgpu-default' : 'pf-wgpu-default';
-          const root: any = typeof window !== 'undefined' ? window : (globalThis as any);
-          root.__pf_webgpu_mounts = root.__pf_webgpu_mounts || {};
-          const dbg = root.__pf_webgpu_mounts[id]?.debug;
+          globalThis.__pf_webgpu_mounts = globalThis.__pf_webgpu_mounts ?? {};
+          const dbg = globalThis.__pf_webgpu_mounts[id]?.debug;
           if (dbg) {
             dbg.lastApplyCameraPayload = { fields: Object.keys(payload), timestamp: Date.now() };
             dbg.lastPayloadIsFullState = !!force;
@@ -297,7 +312,7 @@ export class CameraController {
     if (!payload) return;
     const nowMs = Date.now();
     // compute rawCameraNonce strictly from the incoming payload
-    const rawCameraNonce = typeof (payload as Record<string, unknown>).cameraNonce === 'number' ? (payload as Record<string, unknown>).cameraNonce as number : null;
+    const rawCameraNonce = typeof payload.cameraNonce === 'number' ? payload.cameraNonce as number : null;
     const nonceForce = rawCameraNonce !== null && rawCameraNonce !== this.lastCameraNonce;
     if (nonceForce) {
       this.lastCameraNonce = rawCameraNonce;
@@ -333,9 +348,8 @@ export class CameraController {
       // update debug info indicating a deferred forced payload is being applied
       try {
         const id = this.canvas && typeof this.canvas.getAttribute === 'function' ? this.canvas.getAttribute('data-pf-wgpu-id') ?? 'pf-wgpu-default' : 'pf-wgpu-default';
-        const root: any = typeof window !== 'undefined' ? window : (globalThis as any);
-        root.__pf_webgpu_mounts = root.__pf_webgpu_mounts || {};
-        const dbg = root.__pf_webgpu_mounts[id]?.debug;
+        globalThis.__pf_webgpu_mounts = globalThis.__pf_webgpu_mounts ?? {};
+        const dbg = globalThis.__pf_webgpu_mounts[id]?.debug;
         if (dbg) {
           dbg.lastApplyCameraPayload = { fields: Object.keys(deferred), timestamp: Date.now() };
           dbg.lastPayloadIsFullState = true;
@@ -401,14 +415,14 @@ export class CameraController {
   applyFreeLookPan(dx: number, dy: number): void {
     const factor = this.computePanFactor(this.canvas) * this.state.freeSpeed * 0.85;
     const basis = this.ensureInteractiveBasis();
-    const deltaRight = [basis.right[0] * -dx * factor, basis.right[1] * -dx * factor, basis.right[2] * -dx * factor] as Vec3;
-    const deltaUp = [basis.up[0] * dy * factor, basis.up[1] * dy * factor, basis.up[2] * dy * factor] as Vec3;
+    const deltaRight = vec3Scale(basis.right, -dx * factor);
+    const deltaUp = vec3Scale(basis.up, dy * factor);
     this.translateFreeCamera(this.state, [deltaRight[0] + deltaUp[0], deltaRight[1] + deltaUp[1], deltaRight[2] + deltaUp[2]]);
   }
 
   applyFreeLookDolly(delta: number): void {
     const basis = this.ensureInteractiveBasis();
-    const move = [basis.forward[0] * delta * this.state.sceneRadius * 0.0025, basis.forward[1] * delta * this.state.sceneRadius * 0.0025, basis.forward[2] * delta * this.state.sceneRadius * 0.0025] as Vec3;
+    const move = vec3Scale(basis.forward, delta * this.state.sceneRadius * 0.0025);
     this.translateFreeCamera(this.state, move);
   }
 
@@ -420,8 +434,8 @@ export class CameraController {
       if (!keys || keys.size === 0) return false;
 
       // Use constants for professional speed scaling
-      const baseSpeed = (CameraConstants as any).FREE_MOVE_SPEED_BASE ?? 100.0;
-      const boostMultiplier = (CameraConstants as any).FREE_MOVE_SPEED_BOOST ?? 3.0;
+      const baseSpeed = CameraConstants.FREE_MOVE_SPEED_BASE;
+      const boostMultiplier = CameraConstants.FREE_MOVE_SPEED_BOOST;
       const boost = this.helpers.freeKeyboard?.boost ? boostMultiplier : 1.0;
 
       // Scale movement by scene radius for consistent feel regardless of object size
@@ -519,10 +533,10 @@ export class CameraController {
         // This smoothly tilts during autorotate without causing jumps
         if (tiltDelta !== 0) {
           // Update rotZ angle incrementally
-          const currentRotZ = (this.state as any).displayRotZ ?? this.state.rotZ ?? 0;
+          const currentRotZ = this.state.displayRotZ ?? this.state.rotZ ?? 0;
           const newRotZ = currentRotZ + tiltDelta;
           this.state.rotZ = newRotZ;
-          (this.state as any).displayRotZ = newRotZ;
+          this.state.displayRotZ = newRotZ;
 
           // Get current display angles (these are being continuously updated by autorotate)
           const rotX = (this.state.displayRotX ?? this.state.rotX) as number;
@@ -536,7 +550,7 @@ export class CameraController {
           this.state.displayCamRight = [...newBasis.right];
           this.state.displayCamUp = [...newBasis.up];
           this.state.displayCamForward = [...newBasis.forward];
-          this.state.displayCamQuat = [...newQuat] as Quaternion;
+          this.state.displayCamQuat = copyQuat(newQuat);
 
           // Don't pause autorotate for Q/E - let it keep spinning with the new tilt
           // shouldMarkInteraction = true; // Removed to allow smooth tilt during autorotate
@@ -611,7 +625,7 @@ export class CameraController {
     // Emit diagnostic in debug-mode when available — the parent mount will
     // choose whether to send diagnostics; we leave UI-side emission to the
     // host. We set a flag on state to help debug.
-    this.state.recentBasisCommit = { right: [...committedBasis.right], up: [...committedBasis.up], forward: [...committedBasis.forward] } as any;
+    this.state.recentBasisCommit = { right: [...committedBasis.right], up: [...committedBasis.up], forward: [...committedBasis.forward] };
     // Sync angles is expected to be performed externally in commit path
     this.state.displayCamForward = null;
     // Optionally update pivot from camera center ray when configured
@@ -671,12 +685,13 @@ export class CameraController {
       const { extents } = this.helpers.resolveInteractionRig();
       const paddedMax = extents.paddedMax;
       const CAMERA_DISTANCE_FALLOFF = CameraConstants.CAMERA_DISTANCE_FALLOFF;
-      const minZoom = 0.25;
-      const maxZoom = 4.0;
+      // TODO(Phase 7): Consider importing ZOOM_CLAMP_MIN/MAX from MathHelpers.ts
+      const minZoom = 0.25;  // Duplicated in MathHelpers.ts
+      const maxZoom = 4.0;   // Duplicated in MathHelpers.ts
       const zoomFromDepth = Math.max(minZoom, Math.min(maxZoom, paddedMax * CAMERA_DISTANCE_FALLOFF / Math.max(hitDepth, 1e-3)));
       adjustedZoom = zoomFromDepth;
     }
-    const baseQuat = (this.state.displayCamQuat ?? this.state.camQuat) as Quaternion;
+    const baseQuat = this.state.displayCamQuat ?? this.state.camQuat;
     // Compute target quaternion by synthesizing a temporary state with the target pan/zoom
     let targetQuat: Quaternion | undefined = undefined;
     try {
@@ -720,19 +735,21 @@ export class CameraController {
     const nextZoom = (this.helpers.clampZoomValue?.(this.state.zoom * factor)) ?? this.state.zoom * factor;
     if (Math.abs(nextZoom - this.state.zoom) < 1e-6) return;
     const { extents, rig } = this.helpers.resolveInteractionRig();
-    const rayBefore = this.helpers.worldRayFromCanvas?.(rig as any, this.canvas, clientX, clientY);
+    const rayBefore = this.helpers.worldRayFromCanvas?.(rig, this.canvas, clientX, clientY);
     const pivotZ = this.state.pivot?.[2] ?? 0;
     const anchor = rayBefore ? this.helpers.intersectRayZPlane?.(rayBefore, pivotZ) : null;
     this.state.zoom = nextZoom;
     if (anchor) {
       const rigAfter = this.helpers.buildCameraRig?.(this.state, extents.paddingHint ?? 0, extents.paddedHalfWidth, extents.paddedHalfHeight);
-      const rayAfter = this.helpers.worldRayFromCanvas?.(rigAfter as any, this.canvas, clientX, clientY);
-      if (rayAfter) {
-        const projected = this.helpers.intersectRayZPlane?.(rayAfter, pivotZ);
-        if (projected) {
-          this.state.panX += anchor[0] - projected[0];
-          this.state.panY += anchor[1] - projected[1];
-          this.updatePivotFromPan();
+      if (rigAfter) {
+        const rayAfter = this.helpers.worldRayFromCanvas?.(rigAfter, this.canvas, clientX, clientY);
+        if (rayAfter) {
+          const projected = this.helpers.intersectRayZPlane?.(rayAfter, pivotZ);
+          if (projected) {
+            this.state.panX += anchor[0] - projected[0];
+            this.state.panY += anchor[1] - projected[1];
+            this.updatePivotFromPan();
+          }
         }
       }
     }
@@ -743,14 +760,14 @@ export class CameraController {
     const hasDisplay = Boolean(this.state.displayCamForward && this.state.displayCamUp && this.state.displayCamRight);
     const sourceBasis: CameraBasis = hasDisplay
       ? {
-        right: [...(this.state.displayCamRight as Vec3)] as Vec3,
-        up: [...(this.state.displayCamUp as Vec3)] as Vec3,
-        forward: [...(this.state.displayCamForward as Vec3)] as Vec3,
+        right: copyVec3(this.state.displayCamRight!),
+        up: copyVec3(this.state.displayCamUp!),
+        forward: copyVec3(this.state.displayCamForward!),
       }
       : {
-        right: [...(this.state.camRight as Vec3)] as Vec3,
-        up: [...(this.state.camUp as Vec3)] as Vec3,
-        forward: [...(this.state.camForward as Vec3)] as Vec3,
+        right: copyVec3(this.state.camRight),
+        up: copyVec3(this.state.camUp),
+        forward: copyVec3(this.state.camForward),
       };
     // Normalize via camera_basis helper; sync to state
     // We prefer using quaternion conversions and cbSyncAngles
@@ -774,17 +791,17 @@ export class CameraController {
 
   focusCameraAtCursor(clientX: number, clientY: number) {
     const { rig, extents } = this.helpers.resolveInteractionRig();
-    const ray = this.helpers.worldRayFromCanvas?.(rig as any, this.canvas, clientX, clientY);
+    const ray = this.helpers.worldRayFromCanvas?.(rig, this.canvas, clientX, clientY);
     if (!ray) return;
     const pivotZ = this.state.pivot?.[2] ?? 0;
-    const cylinderHit = this.helpers.intersectRayCylinder?.(ray as any, extents.paddedHalfWidth, -extents.paddedHalfHeight, extents.paddedHalfHeight) ?? null;
-    const hit = cylinderHit ?? this.helpers.intersectRayZPlane?.(ray as any, pivotZ) ?? null;
+    const cylinderHit = this.helpers.intersectRayCylinder?.(ray, extents.paddedHalfWidth, -extents.paddedHalfHeight, extents.paddedHalfHeight) ?? null;
+    const hit = cylinderHit ?? this.helpers.intersectRayZPlane?.(ray, pivotZ) ?? null;
     if (!hit) return;
     if (this.state.cameraMode === 'free') {
       // Free camera: move to a position looking at the hit point
       const distance = Math.max(this.state.sceneRadius * 0.5, 50);
       this.state.freePosition = [hit[0], hit[1], hit[2] + distance];
-      const look = [hit[0] - this.state.freePosition[0], hit[1] - this.state.freePosition[1], hit[2] - this.state.freePosition[2]] as Vec3;
+      const look = vec3(hit[0] - this.state.freePosition[0], hit[1] - this.state.freePosition[1], hit[2] - this.state.freePosition[2]);
       const n = Math.hypot(look[0], look[1], look[2]);
       if (n > 1e-6) {
         look[0] /= n; look[1] /= n; look[2] /= n;
@@ -804,7 +821,7 @@ export class CameraController {
     // Orbit mode: start a smooth focus tween toward the hit location
     // Professional CAD behavior: zoom in slightly when focusing on a point
     this.helpers.cancelCameraEmit?.();
-    const focusZoomFactor = (CameraConstants as any).FOCUS_ZOOM_FACTOR ?? 1.5;
+    const focusZoomFactor = CameraConstants.FOCUS_ZOOM_FACTOR;
     const targetZoom = this.helpers.clampZoomValue?.(this.state.zoom * focusZoomFactor) ?? this.state.zoom * focusZoomFactor;
     this.startFocusTween(hit[0], hit[1], targetZoom, hit[2]);
     this.state.cameraDirty = true;
@@ -818,17 +835,17 @@ export class CameraController {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     const { rig, extents } = this.helpers.resolveInteractionRig();
-    const ray = this.helpers.worldRayFromCanvas?.(rig as any, this.canvas, centerX, centerY);
+    const ray = this.helpers.worldRayFromCanvas?.(rig, this.canvas, centerX, centerY);
     if (!ray) return false;
     const pivotZ = this.state.pivot?.[2] ?? 0;
-    const cylinderHit = this.helpers.intersectRayCylinder?.(ray as any, extents.paddedHalfWidth, -extents.paddedHalfHeight, extents.paddedHalfHeight) ?? null;
-    const hit = cylinderHit ?? this.helpers.intersectRayZPlane?.(ray as any, pivotZ) ?? null;
+    const cylinderHit = this.helpers.intersectRayCylinder?.(ray, extents.paddedHalfWidth, -extents.paddedHalfHeight, extents.paddedHalfHeight) ?? null;
+    const hit = cylinderHit ?? this.helpers.intersectRayZPlane?.(ray, pivotZ) ?? null;
     if (!hit) return false;
     if (this.state.cameraMode === 'free') return false; // free mode doesn't use pivot
     // Set panX/panY and pivot as hit location
     this.state.panX = hit[0];
     this.state.panY = hit[1];
-    this.state.pivot = [hit[0], hit[1], hit[2]] as Vec3;
+    this.state.pivot = vec3(hit[0], hit[1], hit[2]);
     this.state.cameraDirty = true;
     this.helpers.requestCameraEmitWhenStatic?.();
     return true;
@@ -844,7 +861,7 @@ export class CameraController {
     this.state.cameraDirty = true;
     // Schedule autorotate resume after interaction ends (if autorotate is enabled)
     if (this.state.autoRotate) {
-      const resumeDelay = (CameraConstants as any).AUTOROTATE_RESUME_DELAY_MS ?? 3000;
+      const resumeDelay = CameraConstants.AUTOROTATE_RESUME_DELAY_MS;
       this.state.autoRotateResumeAt = performance.now() + resumeDelay;
     }
     // If a forced payload was pending while the user starts interacting again,
@@ -865,7 +882,7 @@ export class CameraController {
       const clamped = Math.sign(raw) * Math.min(maxVal, Math.abs(raw));
       this.state.inertiaArcSpeed = clamped;
       // Expose debug snapshot for diagnostics
-      try { (this.state as any).recentInertia = { type: 'arc', raw: this.pointer.arcInertiaSpeed, clamped, axis: this.pointer.arcInertiaAxis, ts: Date.now() }; } catch (e) {/* best-effort */ }
+      try { this.state.recentInertia = { type: 'arc', raw: this.pointer.arcInertiaSpeed, clamped, axis: this.pointer.arcInertiaAxis, ts: Date.now() }; } catch (e) {/* best-effort */ }
     } else if (arcballDrag) {
       this.state.inertiaArcAxis = null;
       this.state.inertiaArcSpeed = 0;
@@ -901,7 +918,7 @@ export class CameraController {
     this.pointer.arcStartQuat = this.state.displayCamQuat
       ?? this.state.camQuat
       ?? quaternionFromBasis(this.ensureInteractiveBasis());
-    this.pointer.arcPrevQuat = [...this.pointer.arcStartQuat] as Quaternion;
+    this.pointer.arcPrevQuat = copyQuat(this.pointer.arcStartQuat);
 
     // Reset inertia and hit tracking
     this.pointer.arcInertiaAxis = null;
@@ -957,7 +974,7 @@ export class CameraController {
     this.state.displayCamRight = [...rotated.right];
     this.state.displayCamUp = [...rotated.up];
     this.state.displayCamForward = [...rotated.forward];
-    this.state.displayCamQuat = [...nextQuat] as Quaternion;
+    this.state.displayCamQuat = copyQuat(nextQuat);
 
     // Sync Euler angles for compatibility with other systems
     const { rotX, rotY } = cbSyncAnglesFromBasis({
@@ -980,7 +997,7 @@ export class CameraController {
    */
   private updateArcballInertia(nextQuat: Quaternion, dtSec: number): void {
     if (!this.pointer.arcPrevQuat) {
-      this.pointer.arcPrevQuat = [...nextQuat] as Quaternion;
+      this.pointer.arcPrevQuat = copyQuat(nextQuat);
       return;
     }
 
@@ -1015,7 +1032,7 @@ export class CameraController {
     }
 
     // Store current quat for next frame's delta calculation
-    this.pointer.arcPrevQuat = [...nextQuat] as Quaternion;
+    this.pointer.arcPrevQuat = copyQuat(nextQuat);
   }
 
   /**
@@ -1029,7 +1046,7 @@ export class CameraController {
       return;
     }
 
-    this.state.inertiaArcAxis = [...this.pointer.arcInertiaAxis] as Vec3;
+    this.state.inertiaArcAxis = copyVec3(this.pointer.arcInertiaAxis);
     this.state.inertiaArcSpeed = this.pointer.arcInertiaSpeed;
   }
 
@@ -1064,7 +1081,7 @@ export class CameraController {
     this.state.displayCamRight = [...this.state.camRight];
     this.state.displayCamUp = [...this.state.camUp];
     this.state.displayCamForward = [...this.state.camForward];
-    this.state.displayCamQuat = [...this.state.camQuat] as Quaternion;
+    this.state.displayCamQuat = copyQuat(this.state.camQuat);
     this.state.displayRotX = this.state.rotX;
     this.state.displayRotY = this.state.rotY;
 
@@ -1192,7 +1209,7 @@ export class CameraController {
         if (this.state.cameraMode === 'turntable') {
           const basis = this.ensureInteractiveBasis();
           // Preserve rotZ (tilt) during drag
-          const currentRotZ = (this.state as any).displayRotZ ?? this.state.rotZ ?? 0;
+          const currentRotZ = this.state.displayRotZ ?? this.state.rotZ ?? 0;
           let { basis: nextBasis, rotX: nextRotX, rotY: nextRotY } = turntableStep(basis, dYaw, pitchDelta, currentRotZ);
           // Keep display basis upright: if the computed up vector flips negative
           // Z, mirror right/up like commitDisplayBasisToState to keep camera upright.
@@ -1217,7 +1234,7 @@ export class CameraController {
           const maxRot = CameraController.MAX_ROT_INERTIA_SPEED;
           if (Math.abs(this.state.inertiaRotY) > maxRot) this.state.inertiaRotY = Math.sign(this.state.inertiaRotY) * maxRot;
           if (Math.abs(this.state.inertiaRotX) > maxRot) this.state.inertiaRotX = Math.sign(this.state.inertiaRotX) * maxRot;
-          try { (this.state as any).recentInertia = { type: 'turntable', inertiaRotX: this.state.inertiaRotX, inertiaRotY: this.state.inertiaRotY, displayRotX: this.state.displayRotX, displayRotY: this.state.displayRotY, dt: dtSec, ts: Date.now() }; } catch (e) {/* best-effort */ }
+          try { this.state.recentInertia = { type: 'turntable', inertiaRotX: this.state.inertiaRotX, inertiaRotY: this.state.inertiaRotY, displayRotX: this.state.displayRotX, displayRotY: this.state.displayRotY, dt: dtSec, ts: Date.now() }; } catch (e) {/* best-effort */ }
         } else {
           // Default turntable-like mapping for other modes (orbit)
           // Ensure transient display angles exist
@@ -1399,7 +1416,7 @@ export class CameraController {
           if (Math.abs(clampedZoom - this.state.zoom) > 1e-6) {
             // For anchored zoom, we need to adjust pan to keep the pinch center fixed
             const { extents, rig } = this.helpers.resolveInteractionRig();
-            const rayBefore = this.helpers.worldRayFromCanvas?.(rig as any, this.canvas, center.x, center.y);
+            const rayBefore = this.helpers.worldRayFromCanvas?.(rig, this.canvas, center.x, center.y);
             const pivotZ = this.state.pivot?.[2] ?? 0;
             const anchorBefore = rayBefore ? this.helpers.intersectRayZPlane?.(rayBefore, pivotZ) : null;
 
@@ -1409,13 +1426,15 @@ export class CameraController {
             // Adjust pan to keep anchor point fixed
             if (anchorBefore) {
               const rigAfter = this.helpers.buildCameraRig?.(this.state, extents.paddingHint ?? 0, extents.paddedHalfWidth, extents.paddedHalfHeight);
-              const rayAfter = this.helpers.worldRayFromCanvas?.(rigAfter as any, this.canvas, center.x, center.y);
-              if (rayAfter) {
-                const anchorAfter = this.helpers.intersectRayZPlane?.(rayAfter, pivotZ);
-                if (anchorAfter) {
-                  this.state.panX += anchorBefore[0] - anchorAfter[0];
-                  this.state.panY += anchorBefore[1] - anchorAfter[1];
-                  this.updatePivotFromPan();
+              if (rigAfter) {
+                const rayAfter = this.helpers.worldRayFromCanvas?.(rigAfter, this.canvas, center.x, center.y);
+                if (rayAfter) {
+                  const anchorAfter = this.helpers.intersectRayZPlane?.(rayAfter, pivotZ);
+                  if (anchorAfter) {
+                    this.state.panX += anchorBefore[0] - anchorAfter[0];
+                    this.state.panY += anchorBefore[1] - anchorAfter[1];
+                    this.updatePivotFromPan();
+                  }
                 }
               }
             }

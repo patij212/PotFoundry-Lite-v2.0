@@ -11,8 +11,12 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore, LIGHTING_PRESETS } from '../state';
 import type { WebGPUController } from '../webgpu_core';
+import type { RendererController } from '../renderers/types';
 import type { GeometryParams, StyleState, AppearanceState, MeshQuality, StyleName } from '../state';
 import { buildStyleParamPayload } from '../utils/styleParams';
+
+/** Controller type union accepted by the renderer bridge */
+export type BridgeController = WebGPUController | RendererController;
 
 // ============================================================================
 // Types
@@ -248,7 +252,7 @@ function appearanceToParams(appearance: AppearanceState): Record<string, unknown
  * ```
  */
 export function useRendererBridge(
-  controller: WebGPUController | null,
+  controller: BridgeController | null,
   options: RendererBridgeOptions = {}
 ): void {
   // Memoize options to prevent unnecessary re-subscriptions
@@ -257,7 +261,7 @@ export function useRendererBridge(
   const appearanceDebounce = options.appearanceDebounce ?? DEFAULT_OPTIONS.appearanceDebounce;
   const debug = options.debug ?? DEFAULT_OPTIONS.debug;
 
-  console.log('useRendererBridge controller:', controller ? 'PRESENT' : 'NULL');
+  if (import.meta.env.DEV) console.log('useRendererBridge controller:', controller ? 'PRESENT' : 'NULL');
 
   // Use ref for debug to avoid recreating callbacks
   const debugRef = useRef(debug);
@@ -511,7 +515,7 @@ export function syncStoreFromParams(params: Record<string, unknown>): void {
  * 
  * @param controller - The WebGPU controller instance
  */
-export function sendFullStoreToController(controller: WebGPUController): void {
+export function sendFullStoreToController(controller: BridgeController): void {
   // Delay to allow GPU instance to stabilize after initialization
   // This prevents "Instance reference no longer exists" crashes on Windows
   setTimeout(() => {
@@ -534,7 +538,7 @@ export function sendFullStoreToController(controller: WebGPUController): void {
       const meshParams = meshToParams(store.mesh);
       controller.updateParams(meshParams);
 
-      console.log('[RendererBridge] Sent full store state after stabilization delay');
+      if (import.meta.env.DEV) console.log('[RendererBridge] Sent full store state after stabilization delay');
     } catch (err) {
       console.warn('[RendererBridge] Failed to send store state:', err);
     }

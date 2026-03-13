@@ -59,7 +59,7 @@ export interface DecimationResult {
     decimatedTriangles: number;
     reductionPercent: number;
     timeMs: number;
-    error?: any;
+    error?: unknown;
 }
 
 // ============================================================================

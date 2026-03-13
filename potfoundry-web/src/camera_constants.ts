@@ -19,25 +19,49 @@ export const MIN_FOV = (20 * Math.PI) / 180;
 export const MAX_FOV = (75 * Math.PI) / 180;
 export const CAMERA_NEAR_EPS = 0.05;
 export const CAMERA_DISTANCE_FALLOFF = 2.2;
-export const UNIFORM_FLOAT_COUNT = 76; // Increased from 72 to add bell params
-export const UNIFORM_BUFFER_SIZE = UNIFORM_FLOAT_COUNT * 4;
 
-export const CAMERA_EYE_OFFSET = 36;
-export const CAMERA_MODE_OFFSET = 39;
-export const VP_MATRIX_OFFSET = 40;
-export const CAMERA_RIGHT_OFFSET = 56;
-export const CAMERA_UP_OFFSET = 60;
-export const CAMERA_FORWARD_OFFSET = 64;
-export const GRID_FLAG_OFFSET = 68;
-export const DRAIN_RADIUS_OFFSET = 13;
+// ============================================================================
+// UNIFORM BUFFER CONSTANTS
+// Imported from UniformBlock.ts (single source of truth) and re-exported
+// ============================================================================
+import {
+  UNIFORM_FLOAT_COUNT as _UNIFORM_FLOAT_COUNT,
+  UNIFORM_BUFFER_SIZE as _UNIFORM_BUFFER_SIZE,
+  CAMERA_EYE_OFFSET as _CAMERA_EYE_OFFSET,
+  CAMERA_MODE_OFFSET as _CAMERA_MODE_OFFSET,
+  VP_MATRIX_OFFSET as _VP_MATRIX_OFFSET,
+  CAMERA_RIGHT_OFFSET as _CAMERA_RIGHT_OFFSET,
+  CAMERA_UP_OFFSET as _CAMERA_UP_OFFSET,
+  CAMERA_FORWARD_OFFSET as _CAMERA_FORWARD_OFFSET,
+  GRID_FLAG_OFFSET as _GRID_FLAG_OFFSET,
+  DRAIN_RADIUS_OFFSET as _DRAIN_RADIUS_OFFSET,
+  SPECULAR_GAIN_OFFSET as _SPECULAR_GAIN_OFFSET,
+  ROUGHNESS_OFFSET as _ROUGHNESS_OFFSET,
+  SHOW_INNER_OFFSET as _SHOW_INNER_OFFSET,
+  BELL_WIDTH_OFFSET as _BELL_WIDTH_OFFSET,
+  SEAM_ANGLE_OFFSET as _SEAM_ANGLE_OFFSET,
+  SEAM_RADIUS_OFFSET as _SEAM_RADIUS_OFFSET,
+} from './UniformBlock';
+
+// Re-export for backward compatibility
+export const UNIFORM_FLOAT_COUNT = _UNIFORM_FLOAT_COUNT;
+export const UNIFORM_BUFFER_SIZE = _UNIFORM_BUFFER_SIZE;
+export const CAMERA_EYE_OFFSET = _CAMERA_EYE_OFFSET;
+export const CAMERA_MODE_OFFSET = _CAMERA_MODE_OFFSET;
+export const VP_MATRIX_OFFSET = _VP_MATRIX_OFFSET;
+export const CAMERA_RIGHT_OFFSET = _CAMERA_RIGHT_OFFSET;
+export const CAMERA_UP_OFFSET = _CAMERA_UP_OFFSET;
+export const CAMERA_FORWARD_OFFSET = _CAMERA_FORWARD_OFFSET;
+export const GRID_FLAG_OFFSET = _GRID_FLAG_OFFSET;
+export const DRAIN_RADIUS_OFFSET = _DRAIN_RADIUS_OFFSET;
+export const SPECULAR_GAIN_OFFSET = _SPECULAR_GAIN_OFFSET;
+export const ROUGHNESS_OFFSET = _ROUGHNESS_OFFSET;
+export const SHOW_INNER_OFFSET = _SHOW_INNER_OFFSET;
+export const BELL_WIDTH_OFFSET = _BELL_WIDTH_OFFSET;
+export const SEAM_ANGLE_OFFSET = _SEAM_ANGLE_OFFSET;
+export const SEAM_RADIUS_OFFSET = _SEAM_RADIUS_OFFSET;
+
 export const BASIS_FLIP_DOT_THRESHOLD = -0.999;
-export const SPECULAR_GAIN_OFFSET = 69;
-export const ROUGHNESS_OFFSET = 70;
-export const SHOW_INNER_OFFSET = 71;
-export const BELL_WIDTH_OFFSET = 72; // Bell bulge width parameter
-export const SEAM_ANGLE_OFFSET = 73; // Seam blend angle in radians (v2)
-
-export const SEAM_RADIUS_OFFSET = 75; // Precomputed seam radius (CPU-side)
 
 export const INVALID_STATUS_COOLDOWN_MS = 750;
 

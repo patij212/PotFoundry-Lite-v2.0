@@ -1,9 +1,9 @@
 /**
- * parametric/GridBuilder.ts — Adaptive grid generation and union feature grid construction.
+ * parametric/GridBuilder.ts — Adaptive grid generation with curvature-based density.
  *
- * Provides CDF-adaptive grid generation from curvature profiles, feature-position
- * merging with flanking companions, union feature grid construction, per-row
- * feature patching, and grid dimension computation.
+ * Provides CDF-adaptive grid generation from curvature profiles, density profile
+ * construction with Gaussian feature floor, chain dead zone filtering,
+ * feature-position merging, per-row feature patching, and grid dimension computation.
  *
  * Extracted from ParametricExportComputer.ts for modularity and testability.
  *
@@ -27,38 +27,6 @@ export const FLANK_OFFSET = 0.3;
  * 0.05% of circumference ≈ 0.18° — well below any visible artifact.
  */
 export const MIN_U_SEPARATION = 0.0005;
-
-/**
- * v10.9: Multi-level flanking offsets for feature companions in the union grid.
- * Each detected peak gets companion vertices at each offset × localSpacing
- * on both sides, creating a locally-dense column cluster that can trace
- * knife-edge cusps. Geometrically spaced: inner offsets are denser for
- * capturing the steep cusp slope, outer offsets are sparser for smooth
- * transition to the uniform grid.
- *
- * Total columns per feature: 1 (peak) + 2 × FLANK_OFFSETS.length (flanks)
- * = 1 + 2×4 = 9 columns per feature.
- *
- * Budget impact: ~183 clusters × 6 extra columns = ~1098 additional columns
- * over the v10.8 union grid.  Outer wall tris increase from ~714K to ~1.3M
- * at 500K target.  This is acceptable for perfect cusp representation.
- */
-export const FLANK_OFFSETS = [0.10, 0.25, 0.45, 0.70] as const;
-
-/**
- * Cluster radius for merging per-row feature peaks into a single U column.
- * Peaks within this distance (circular) across different rows are considered
- * the same vertical feature and get a single column at their median position.
- * This determines the GRID WIDTH — we need enough columns to assign each
- * per-row peak to a nearby column for patching.
- *
- * v10.6: Reduced from 0.003 to 0.002. This creates tighter clusters so
- * each cluster's median column is closer to its constituent peaks. Combined
- * with the wider patching acceptance radius (0.85×), this ensures ~95%+ of
- * peaks get patched to exact positions (vs ~68% before).
- * Cost: ~50% more feature columns (modest triangle count increase).
- */
-export const FEATURE_CLUSTER_RADIUS = 0.002;
 
 // ============================================================================
 // Utility
@@ -185,18 +153,20 @@ export function mergeFeaturePositions(
 export function generateCDFAdaptivePositions(
     curvature: Float32Array,
     count: number,
-    minSpacingFactor: number = 0.3
+    minSpacingFactor: number = 0.3,
+    rawDensity: boolean = false,
 ): Float32Array {
     const n = curvature.length;
 
-    // Build density: baseline + curvature boost (squared for stronger contrast)
-    // The baseline prevents gaps in low-curvature regions.
-    // Squaring the curvature amplifies the difference between high and low areas.
+    // Build density: baseline + curvature boost.
+    // When rawDensity=true, the input is already a density profile (e.g. from
+    // buildDensityProfile with κ² + feature floor) — skip internal squaring.
+    // When rawDensity=false (default), square the curvature for stronger contrast.
     const density = new Float32Array(n);
     const baseline = minSpacingFactor;
     for (let i = 0; i < n; i++) {
         const c = curvature[i];
-        const boosted = c * c; // Square for stronger contrast
+        const boosted = rawDensity ? c : c * c;
         density[i] = baseline + (1 - baseline) * boosted;
     }
 
@@ -242,6 +212,102 @@ export function generateCDFAdaptivePositions(
     }
 
     return positions;
+}
+
+// ============================================================================
+// Curvature-Adaptive Density Profile
+// ============================================================================
+
+/**
+ * Build a density profile combining curvature and feature proximity.
+ *
+ * Produces a density signal in [0, 1] suitable for CDF-adaptive grid generation.
+ * High values = place more grid columns here. The profile is the element-wise MAX of:
+ *   - κ²(u): squared normalized curvature (concentrates columns at high-curvature regions)
+ *   - featureFloor × Gaussian(u, chain_u): ensures minimum density near chain vertices
+ *
+ * @param curvatureEnvelope  Normalized [0,1] curvature profile (U-direction MAX across strips)
+ * @param chainVertexUs      All chain vertex U positions (post-resnap)
+ * @param featureFloor       Minimum relative density at feature positions (default: 0.6)
+ * @param featureRadius      U-space Gaussian σ for feature influence (default: 0.004)
+ * @returns Float32Array density profile, same length as curvatureEnvelope
+ */
+export function buildDensityProfile(
+    curvatureEnvelope: Float32Array,
+    chainVertexUs: number[],
+    featureFloor: number = 0.6,
+    featureRadius: number = 0.004,
+): Float32Array {
+    const N = curvatureEnvelope.length;
+    const density = new Float32Array(N);
+
+    // Curvature contribution: κ²
+    for (let i = 0; i < N; i++) {
+        const c = curvatureEnvelope[i];
+        density[i] = c * c;
+    }
+
+    // Feature proximity floor: Gaussian envelope around each chain vertex U
+    for (const cu of chainVertexUs) {
+        const centerIdx = Math.round(cu * N) % N;
+        const spreadSamples = Math.ceil(featureRadius * N * 3); // 3σ cutoff
+        for (let off = -spreadSamples; off <= spreadSamples; off++) {
+            const idx = ((centerIdx + off) % N + N) % N;
+            const du = off / (featureRadius * N);
+            const contribution = featureFloor * Math.exp(-0.5 * du * du);
+            density[idx] = Math.max(density[idx], contribution);
+        }
+    }
+
+    return density;
+}
+
+/**
+ * Remove CDF-generated columns that land too close to chain vertex positions.
+ *
+ * Prevents near-degenerate sliver triangles caused by a CDF column and a chain
+ * vertex being almost coincident. Chain vertices are first-class mesh vertices
+ * (appended after grid vertices) — a grid column at nearly the same U would
+ * create a pair of extremely thin triangles.
+ *
+ * @param cdfColumns     CDF-adaptive column positions (sorted Float32Array)
+ * @param chainVertexUs  Chain vertex U positions
+ * @param deadZoneRadius Minimum U-distance from any chain vertex (default: 0.0005)
+ * @returns Filtered Float32Array with dead-zone columns removed
+ */
+export function applyChainDeadZones(
+    cdfColumns: Float32Array,
+    chainVertexUs: number[],
+    deadZoneRadius: number = 0.0005,
+): Float32Array {
+    if (chainVertexUs.length === 0) return cdfColumns;
+
+    const sortedChainUs = [...chainVertexUs].sort((a, b) => a - b);
+    const kept: number[] = [];
+
+    for (let i = 0; i < cdfColumns.length; i++) {
+        const u = cdfColumns[i];
+        // Binary search for nearest chain vertex
+        let lo = 0, hi = sortedChainUs.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (sortedChainUs[mid] < u) lo = mid + 1;
+            else hi = mid;
+        }
+        // Check neighbors for proximity
+        let tooClose = false;
+        for (let k = Math.max(0, lo - 1); k <= Math.min(sortedChainUs.length - 1, lo + 1); k++) {
+            if (Math.abs(sortedChainUs[k] - u) < deadZoneRadius) {
+                tooClose = true;
+                break;
+            }
+        }
+        if (!tooClose) kept.push(u);
+    }
+
+    const result = new Float32Array(kept.length);
+    for (let i = 0; i < kept.length; i++) result[i] = kept[i];
+    return result;
 }
 
 // ============================================================================
@@ -303,239 +369,6 @@ export function generateAdaptiveGrid(
 }
 
 // ============================================================================
-// Union Feature Grid
-// ============================================================================
-
-/**
- * Build a UNION feature grid: a single set of U positions that contains
- * BOTH the CDF-adaptive base grid AND columns for every detected feature
- * peak across ALL rows.
- *
- * v8.2: This grid determines the TOPOLOGY (number of columns, index buffer).
- * After grid generation, per-row feature patching overwrites each row's
- * feature-column U coordinates with the exact peak position for that row.
- *
- * Algorithm:
- *   1. Collect all per-row feature peaks into a flat list
- *   2. Sort and cluster peaks within FEATURE_CLUSTER_RADIUS → representative
- *      column positions (median of each cluster)
- *   3. Add flanking companions at ±FLANK_OFFSETS × localSpacing
- *   4. Merge with CDF base grid using tagged deduplication
- *      (base positions are sacred — never collapsed)
- *   5. Return a single sorted Float32Array of U positions
- *
- * @param baseU           CDF-adaptive U positions (the budget-sized grid)
- * @param allRowFeatures  Per-row detected feature U positions
- * @param maxColumns      v11.3: Maximum total columns (budget cap). 0 = no limit.
- * @returns Sorted Float32Array of union U positions (used as template for ALL rows)
- */
-export function buildUnionFeatureGrid(
-    baseU: Float32Array,
-    allRowFeatures: number[][],
-    maxColumns: number = 0
-): Float32Array {
-    // 1. Collect ALL per-row peaks into a flat list
-    const allPeaks: number[] = [];
-    for (const rowFeats of allRowFeatures) {
-        for (const u of rowFeats) {
-            allPeaks.push(u);
-        }
-    }
-
-    if (allPeaks.length === 0) {
-        // No features detected — use base grid as-is
-        return baseU;
-    }
-
-    // 2. Sort and cluster into representative columns
-    allPeaks.sort((a, b) => a - b);
-
-    const clusterCenters: number[] = [];
-    let clusterStart = 0;
-    while (clusterStart < allPeaks.length) {
-        // Find the extent of this cluster
-        let clusterEnd = clusterStart;
-        while (
-            clusterEnd + 1 < allPeaks.length &&
-            allPeaks[clusterEnd + 1] - allPeaks[clusterStart] < FEATURE_CLUSTER_RADIUS
-        ) {
-            clusterEnd++;
-        }
-
-        // Representative = median of cluster
-        const midIdx = Math.floor((clusterStart + clusterEnd) / 2);
-        clusterCenters.push(allPeaks[midIdx]);
-
-        clusterStart = clusterEnd + 1;
-    }
-
-    // 3. Build tagged position list: base (sacred) + feature centers (sacred) + flanks
-    // v16.2: Feature cluster centers are marked as sacred (isFeatureCenter=true)
-    // so the budget cap preserves them alongside base positions. Only flanking
-    // companions are sacrificed when the column budget is tight.
-    interface TaggedPos { u: number; isBase: boolean; isFeatureCenter: boolean; }
-    const tagged: TaggedPos[] = [];
-
-    const baseLen = baseU.length;
-    const baseSpacing = 1.0 / Math.max(baseLen, 1);
-
-    // All base positions — always kept
-    for (let k = 0; k < baseLen; k++) {
-        tagged.push({ u: baseU[k], isBase: true, isFeatureCenter: false });
-    }
-
-    // Feature column positions + multi-level flanking companions (v10.9)
-    for (const feat of clusterCenters) {
-        // v16.2: Feature cluster centers are sacred — they define where chains live
-        tagged.push({ u: feat, isBase: false, isFeatureCenter: true });
-
-        // Find local spacing at this feature position
-        let localSpacing = baseSpacing;
-        for (let k = 0; k < baseLen - 1; k++) {
-            if (baseU[k] <= feat && baseU[k + 1] > feat) {
-                localSpacing = baseU[k + 1] - baseU[k];
-                break;
-            }
-        }
-
-        // v10.9: Multiple flanking companions at geometrically-spaced offsets
-        for (const offset of FLANK_OFFSETS) {
-            const leftFlank = ((feat - offset * localSpacing) % 1 + 1) % 1;
-            const rightFlank = ((feat + offset * localSpacing) % 1 + 1) % 1;
-            tagged.push({ u: leftFlank, isBase: false, isFeatureCenter: false });
-            tagged.push({ u: rightFlank, isBase: false, isFeatureCenter: false });
-        }
-    }
-
-    // 4. Sort by U position
-    tagged.sort((a, b) => a.u - b.u);
-
-    // 5. Deduplicate: KEEP all base and feature center positions, only drop
-    //    flanking companions that are too close to their predecessor.
-    // v16.4: Track position kind through dedup and budget-cap stages so we can
-    // apply a hard cap when sacred columns exceed budget (base first, feature
-    // centers last-resort), instead of silently exploding triangle counts.
-    // kind: 0=flank, 1=base, 2=feature-center
-    interface DedupedPos { u: number; kind: 0 | 1 | 2; }
-    const firstKind: 0 | 1 | 2 = tagged[0].isBase ? 1 : (tagged[0].isFeatureCenter ? 2 : 0);
-    const deduped: DedupedPos[] = [{ u: tagged[0].u, kind: firstKind }];
-    for (let k = 1; k < tagged.length; k++) {
-        const gap = tagged[k].u - deduped[deduped.length - 1].u;
-        if (gap <= 0) {
-            // Exact duplicate (or out-of-order due to floating point) — always skip
-            continue;
-        }
-        if (tagged[k].isBase || tagged[k].isFeatureCenter) {
-            // v16.2: Base AND feature center positions are ALWAYS kept
-            deduped.push({ u: tagged[k].u, kind: tagged[k].isBase ? 1 : 2 });
-        } else if (gap > MIN_U_SEPARATION) {
-            // Flanking companions kept only if far enough from predecessor
-            deduped.push({ u: tagged[k].u, kind: 0 });
-        }
-    }
-
-    // 6. Clamp to valid range and convert to Float32
-    const raw = new Float32Array(deduped.length);
-    const rawKind = new Uint8Array(deduped.length); // 0=flank, 1=base, 2=feature-center
-    for (let k = 0; k < deduped.length; k++) {
-        raw[k] = Math.max(0, Math.min(1 - 1e-7, deduped[k].u));
-        rawKind[k] = deduped[k].kind;
-    }
-
-    // 7. Post-Float32 dedup: two distinct Float64 values can collapse
-    //    to the same Float32 representation.  Remove duplicates.
-    const final: number[] = [raw[0]];
-    const finalKind: Array<0 | 1 | 2> = [rawKind[0] as 0 | 1 | 2];
-    for (let k = 1; k < raw.length; k++) {
-        if (raw[k] > final[final.length - 1]) {
-            final.push(raw[k]);
-            finalKind.push(rawKind[k] as 0 | 1 | 2);
-        }
-    }
-
-    const result = new Float32Array(final.length);
-    for (let k = 0; k < final.length; k++) {
-        result[k] = final[k];
-    }
-
-    // v16.2: Budget cap — if maxColumns is specified and we exceed it,
-    // downsample by removing only FLANKING positions (non-sacred) with the
-    // smallest gaps to their neighbors. Base positions AND feature cluster
-    // centers are SACRED and never dropped — they define where chains live.
-    //
-    // v11.3 BUG FIX: The old budget cap treated ALL non-base positions as
-    // droppable, including feature cluster centers. When base grid (738 cols)
-    // already exceeded the budget (470), ALL feature columns were dropped,
-    // leaving 0 dedicated feature columns in the union grid. Per-row patching
-    // could only bend existing grid columns, causing jagged mesh edges.
-    if (maxColumns > 0 && result.length > maxColumns) {
-        // Score each non-sacred position by contribution (min gap to neighbors)
-        interface ScoredPos { u: number; kind: 0 | 1 | 2; score: number; idx: number; }
-        const scored: ScoredPos[] = [];
-        for (let k = 0; k < result.length; k++) {
-            const gapLeft = k > 0 ? result[k] - result[k - 1] : 1;
-            const gapRight = k < result.length - 1 ? result[k + 1] - result[k] : 1;
-            const score = Math.min(gapLeft, gapRight); // Smaller = less unique, more droppable
-            scored.push({ u: result[k], kind: finalKind[k], score, idx: k });
-        }
-
-        // v16.2: Only drop non-sacred positions (flanking companions).
-        // Base positions and feature cluster centers are preserved.
-        const droppable = scored.filter(s => s.kind === 0);
-        droppable.sort((a, b) => a.score - b.score);
-
-        const toDrop = result.length - maxColumns;
-        const dropSet = new Set<number>();
-        for (let k = 0; k < Math.min(toDrop, droppable.length); k++) {
-            dropSet.add(droppable[k].idx);
-        }
-
-        // v16.4 HARD CAP: If sacred columns alone exceed budget, we must thin
-        // them too or triangle count can blow up far beyond user target.
-        // Priority: keep feature centers over base columns.
-        const currentKept = () => result.length - dropSet.size;
-        if (currentKept() > maxColumns) {
-            const baseCandidates = scored
-                .filter(s => s.kind === 1 && !dropSet.has(s.idx))
-                .sort((a, b) => a.score - b.score);
-            const needBaseDrop = currentKept() - maxColumns;
-            for (let k = 0; k < Math.min(needBaseDrop, baseCandidates.length); k++) {
-                dropSet.add(baseCandidates[k].idx);
-            }
-        }
-
-        if (currentKept() > maxColumns) {
-            const featureCandidates = scored
-                .filter(s => s.kind === 2 && !dropSet.has(s.idx))
-                .sort((a, b) => a.score - b.score);
-            const needFeatureDrop = currentKept() - maxColumns;
-            for (let k = 0; k < Math.min(needFeatureDrop, featureCandidates.length); k++) {
-                dropSet.add(featureCandidates[k].idx);
-            }
-        }
-
-        const capped: number[] = [];
-        for (let k = 0; k < result.length; k++) {
-            if (!dropSet.has(k)) capped.push(result[k]);
-        }
-
-        const baseCount = scored.filter(s => s.kind === 1).length;
-        const featureCount = scored.filter(s => s.kind === 2).length;
-        const flankCount = scored.filter(s => s.kind === 0).length;
-        const droppedFlanks = scored.filter(s => s.kind === 0 && dropSet.has(s.idx)).length;
-        const droppedBase = scored.filter(s => s.kind === 1 && dropSet.has(s.idx)).length;
-        const droppedFeature = scored.filter(s => s.kind === 2 && dropSet.has(s.idx)).length;
-        console.log(`[ParametricExport]   v16.4 Budget cap: ${result.length} → ${capped.length} columns (max=${maxColumns}, dropped flanks=${droppedFlanks}/${flankCount}, base=${droppedBase}/${baseCount}, features=${droppedFeature}/${featureCount})`);
-
-        const cappedResult = new Float32Array(capped.length);
-        for (let k = 0; k < capped.length; k++) cappedResult[k] = capped[k];
-        return cappedResult;
-    }
-
-    return result;
-}
-
-// ============================================================================
 // Per-Row Feature Patching
 // ============================================================================
 
@@ -547,19 +380,11 @@ export function buildUnionFeatureGrid(
  *
  * Only the peak column (the nearest grid column to each detected feature)
  * is snapped to the exact feature U. Flanking columns are LEFT AT THEIR
- * UNION-GRID POSITIONS — identical across all rows.
+ * GRID POSITIONS — identical across all rows.
  *
  * This eliminates the inter-row vertex inconsistency that caused sawtooth
- * artifacts in v10.9. The cusp-interpolated and Gaussian patching approaches
- * moved flanking columns to per-row-varying positions (because the arc-length
- * or shift varies with height-dependent superformula parameters). Since
- * triangulation connects vertices across rows, those inconsistent flanking
- * positions created zigzag triangles — the sawtooth.
- *
- * The multi-level flanking in buildUnionFeatureGrid already provides 9 columns
- * per feature at positions that are IDENTICAL across all rows (union grid).
- * The stitch fan system handles smooth normal transitions. Peak-only patching
- * lets the ridge follow the exact feature while flanking geometry stays clean.
+ * artifacts in v10.9. Peak-only patching lets the ridge follow the exact
+ * feature while the surrounding grid geometry stays clean.
  *
  * @param vertices        The outer wall vertex buffer (interleaved u, t, surfaceId)
  * @param W               Grid width (number of U columns per row)

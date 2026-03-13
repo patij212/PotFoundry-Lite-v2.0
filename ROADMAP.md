@@ -60,8 +60,8 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 
 | Feature | Priority | Effort |
 |---------|----------|--------|
-| OBJ export format | High | 2 days |
-| 3MF export format | High | 3 days |
+| ~~OBJ export format~~ | ~~High~~ | Done — `src/geometry/exporters/exportOBJ.ts` |
+| ~~3MF export format~~ | ~~High~~ | Done — `src/geometry/exporters/export3MF.ts` |
 | Export preview dimensions | Medium | 1 day |
 | Batch export | Medium | 2 days |
 
@@ -129,20 +129,22 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 
 ### Code Quality
 - [ ] Increase TypeScript strict mode coverage
-- [ ] Add end-to-end tests (Playwright)
+- [x] Add end-to-end tests (Playwright) — E2E workflow with auto dev server in CI
 - [ ] Improve error handling and recovery
 - [ ] Performance profiling and optimization
 
 ### Documentation
 - [x] Web app README.md
 - [x] Web app ARCHITECTURE.md
-- [/] Consolidated Agents Guide (`agents.md`)
+- [x] Consolidated Agents Guide (`agents.md`)
 - [ ] API documentation
 - [ ] User guide / tutorial
 
 ### Infrastructure
-- [ ] CI/CD pipeline (GitHub Actions)
-- [ ] Automated testing on PR
+- [x] CI/CD pipeline (GitHub Actions) — typecheck, lint, test, build gates on PR
+- [x] Automated testing on PR — Vitest unit tests (2053 tests)
+- [x] Cloudflare Pages deploy-on-push workflow
+- [x] Dependabot for npm + GitHub Actions updates
 - [ ] Staging environment
 - [ ] Performance monitoring
 
@@ -161,5 +163,5 @@ This document outlines the evolution of PotFoundry from its origins to the curre
 
 ---
 
-*Last Updated: February 2026*
+*Last Updated: March 2026*
 *Version: 3.1.0*

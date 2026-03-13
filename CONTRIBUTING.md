@@ -4,19 +4,26 @@ Thanks for your interest in contributing! This guide explains how to propose cha
 
 ## Development Setup
 
-- Python 3.11+
-- Create a virtual environment and install dependencies:
-  - `pip install -r requirements.txt`
-  - `pip install -r requirements-dev.txt` (optional dev extras)
-- Run tests to verify baseline:
-  - `PYTHONPATH=. pytest -v`
+- Node.js 18+
+- Modern browser with WebGPU support (Chrome 113+, Edge 113+, Firefox Nightly)
+
+```bash
+cd potfoundry-web
+npm install
+npm run dev          # Dev server at http://localhost:5173/
+```
 
 ## Coding Standards
 
-- Follow `docs/guides/CODE_QUALITY_GUIDE.md` and `docs/guides/TYPE_HINTS_GUIDE.md`
-- Type hints required on all functions
-- Google-style docstrings for all public functions
-- Keep functions small and focused; prefer NumPy vectorization
+- **TypeScript strict** — no `any`, use `unknown` or define an interface
+- **JSDoc required** for all exported functions
+- **ESLint 0 max-warnings** — any warning fails CI
+- **Immutability** — prefer `const` and spread operators
+- **Named selector hooks** — use `useGeometry()`, `useStyle()` etc., not raw `useAppStore()`
+- **No magic numbers** — extract to `constants.ts` with a comment
+- **Style IDs are permanent** — never renumber; use ID >= 20 for new styles
+
+See `.github/copilot-instructions.md` for the full coding standards.
 
 ## Making Changes
 
@@ -27,12 +34,19 @@ Thanks for your interest in contributing! This guide explains how to propose cha
 
 ## Pull Request Checklist
 
-- [ ] Tests pass: `PYTHONPATH=. pytest -v`
-- [ ] Lint clean: `ruff check .`
-- [ ] Type check clean: `mypy` (if applicable)
+```bash
+cd potfoundry-web
+npm run typecheck    # tsc --noEmit — must pass
+npm run lint         # ESLint — must be 0 warnings
+npm test             # Vitest unit tests — must pass
+```
+
+- [ ] All three checks above pass (CI runs these automatically on every PR)
+- [ ] No new `any` types introduced
+- [ ] Style IDs not renumbered
 - [ ] Docs updated (if needed)
-- [ ] No performance regressions
 - [ ] PR description includes motivation and context
+- [ ] Conventional commit format: `feat:` `fix:` `docs:` `refactor:` `perf:` `test:` `chore:`
 
 ## Review Process
 
@@ -42,7 +56,8 @@ Thanks for your interest in contributing! This guide explains how to propose cha
 
 ## Security & Secrets
 
-- Do not commit any secrets. We use pre-commit and detect-secrets to scan staged files
+- **Supabase client can be null** — always call `isSupabaseConfigured()` first
+- Do not commit any secrets — pre-commit hooks scan for service role keys
 - If a secret is accidentally committed, rotate it immediately and notify maintainers
 
 ## Reporting Issues

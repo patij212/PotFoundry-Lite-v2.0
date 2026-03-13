@@ -19,6 +19,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
 const CACHE_KEY_PREFIX = 'pf_lib_cache_';
 
 interface CacheEntry {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic cache stores arbitrary JSON-serializable data
   data: any;
   timestamp: number;
 }
@@ -33,6 +34,7 @@ function getCacheKey(page: number, search: string, style: string | null, myDesig
 /**
  * Get cached data from sessionStorage if still valid
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic cache returns arbitrary JSON data
 function getCachedData(key: string): any | null {
   try {
     const cached = sessionStorage.getItem(key);
@@ -52,6 +54,7 @@ function getCachedData(key: string): any | null {
 /**
  * Store data in sessionStorage cache
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic cache stores arbitrary JSON-serializable data
 function setCachedData(key: string, data: any): void {
   try {
     const entry: CacheEntry = { data, timestamp: Date.now() };
@@ -254,6 +257,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
         return;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase REST row is untyped
       const designs: LibraryDesign[] = (data || []).map((d: any) => ({
         id: d.id,
         user_id: d.user_id,
@@ -354,6 +358,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
       controller.updateParams(wgpuParams);
 
       // Sync store with loaded design parameters
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug global for store access
       const store = (window as any).__POTFOUNDRY_STORE__;
       if (store) {
         const state = store.getState();
@@ -425,6 +430,7 @@ export const LibraryProvider: React.FC<LibraryProviderProps> = ({ children }) =>
       }
 
       // Get current pot state from store
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug global for store access
       const store = (window as any).__POTFOUNDRY_STORE__;
       if (!store) {
         throw new Error('Store not available');

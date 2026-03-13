@@ -1,0 +1,86 @@
+# Verifier Round 38 — Critique of Phantom Corridor Fan Proposal
+Date: 2026-03-08
+
+## Summary Verdict: ACCEPT WITH AMENDMENTS
+
+The proposal's primary geometric idea is sound: densifying true boundary-crossing phantom rows should materially shorten the local support wedges because R37 already feeds each phantom row directly into sub-band boundary emission before calling `constrainedSweepCell` at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1459), [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1464), and [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1486). The protected-corridor threading is also mechanically feasible because the relevant interfaces are already funneled through [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts#L1306), [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts#L1531), and [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts#L1551).
+
+What does not hold up as written is the causal claim that optimizer damage is already demonstrated as the source of the current non-manifold counts. The later flip passes are plausible quality amplifiers, but the code does not support treating them as the proven creator of the present topology failures.
+
+## Critique
+
+### C1 [WARNING]: Optimizer damage is plausible, but not proven as the source of non-manifold edges
+**Generator's claim**: downstream optimization is free to damage the corridor, consistent with the observed `86 non-manifold edges`.
+
+**Actual behavior**: `optimizeChainStrips` only flips one shared edge between exactly two triangles at a time in Phase A/B/C at [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L565), [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L637), and [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L691). `optimizeBoundaryDiagonals` only swaps the internal diagonal of a single standard quad at [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L841). The manifold checker counts non-manifold edges only when an edge has more than two incident triangles at [MeshValidator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/MeshValidator.ts#L234), [MeshValidator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/MeshValidator.ts#L241), and [MeshValidator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/MeshValidator.ts#L1129).
+
+**Counterexample**: if R37 phantom-row emission already creates a T-junction or overlapping triangle pair, disabling every later flip pass still leaves that edge with 3+ incident faces. A local diagonal swap cannot by itself create a third face on an edge unless the mesh was already inconsistent around that neighborhood.
+
+**Required fix**: downgrade the claim. Corridor protection should be justified as a local quality-preservation safeguard, not as already-proven remediation for manifold failures. Before attributing the topology warnings to optimizer damage, capture validation and boundary-diagnostic counters before and after the chain-strip/boundary passes, or run one A/B export with those passes disabled.
+
+### C2 [CRITICAL]: Protected corridor must remain separate from chain-strip classification
+**Generator's claim**: return a protected set from the tessellator and thread that protection forward.
+
+**Actual behavior**: the current tessellator already has one adjacency channel, `chainAdjacentVertices`, returned from [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1721) and forwarded through [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts#L1340), [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts#L1531), and [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts#L1551). That channel is used to classify additional triangles as chain-strip in both `optimizeChainStrips` and `optimizeBoundaryDiagonals` at [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L376) and [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L841). The tessellator comment at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1441) explicitly records that over-marking shared corner vertices pulled standard-cell triangles into `chainStripTriSet` and caused cross-row and non-manifold regressions.
+
+**Counterexample**: if `protectedCorridorVertices` is folded into `chainAdjacentVertices` for convenience, a boundary standard cell next to the corridor is reclassified as chain-strip instead of merely protected. That recreates the exact broad-region contamination R36.1 had to remove.
+
+**Required fix**: add a new field, separate from `chainAdjacentVertices`, on `OuterWallResult` at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L81) and the return site at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1721). It must only be consumed as a skip predicate in the optimizers, never as additional chain-strip classification input.
+
+### C3 [WARNING]: Boundary protection must inspect adjacent chain-strip triangles, not only the grid cell corners
+**Generator's claim**: skip boundary-diagonal flips on protected quads.
+
+**Actual behavior**: `optimizeBoundaryDiagonals` iterates standard grid cells whose own vertices are `vBL/vBR/vTL/vTR`, then discovers chain-strip adjacency by looking across the left and right vertical edges in `checkEdge` at [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L841). Phantom-row anchors and companions are not grid-cell corner vertices.
+
+**Counterexample**: a standard boundary cell adjacent to a protected phantom-row triangle contains only grid vertices itself. A guard that checks only `vBL/vBR/vTL/vTR` will return false, and the pass can still flip the boundary diagonal even though the adjacent chain-strip triangle contains the protected phantom anchor.
+
+**Required fix**: in the boundary pass, skip if either the four grid cell corners are protected or either adjacent chain-strip triangle found by `checkEdge` references any protected vertex. Vertex-only checks on the standard cell are insufficient.
+
+### C4 [WARNING]: `isBoundaryCrossing` provenance has to be carried explicitly
+**Generator's claim**: densify only true column-boundary crossings and not same-column row splits.
+
+**Actual behavior**: current R37 phantom-row state stores only `tCross` and `vertexIndices` at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1056), with row construction beginning at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1154) and anchors inserted from every edge crossing that row at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1156). Later, sub-edge pre-splitting finds the nearest row vertex by UV proximity, not by provenance.
+
+**Counterexample**: a same-column edge crossing and a true boundary-crossing edge can land on the same phantom row. If provenance is inferred after sorting purely from neighbor layout, the same-column anchor can be mis-tagged as a boundary anchor and receive unnecessary companions, inflating the corridor and changing the local sweep in cells that are not the current failure mode.
+
+**Required fix**: add explicit crossing metadata when the row is constructed. `isBoundaryCrossing` must be derived from whether the source edge crosses an interior super-cell column boundary, not guessed later from row-local geometry.
+
+### C5 [NOTE]: The fan mechanism itself is sound under the current R37 emission path
+**Generator's claim**: a denser phantom row should reduce support-triangle span without a new mesher.
+
+**Actual behavior**: `emitSuperCell` already converts `r37.phantomRows` into ordered sub-band boundary arrays and feeds them directly to `constrainedSweepCell` at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1459), [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1464), and [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1486). `constrainedSweepCell` already exists as the width-agnostic sub-band mesher at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L288).
+
+**Implication**: this is the strongest part of the proposal. The fan is a local boundary enrichment of an existing code path, not a second meshing regime.
+
+### C6 [NOTE]: Existing subdivision is not a better primary fix
+**Observation**: there is already a post-optimizer edge-splitting stage in `subdivideLongEdges` at [MeshSubdivision.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/MeshSubdivision.ts#L269) with boundary-biased thresholds at [MeshSubdivision.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/MeshSubdivision.ts#L357), [MeshSubdivision.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/MeshSubdivision.ts#L372), and a capped split budget at [MeshSubdivision.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/MeshSubdivision.ts#L385).
+
+**Why it is weaker**: it runs later, is global to the identified chain-strip/boundary region, and cannot express the distinction between true boundary-crossing anchors and same-column phantom-row support. It is a useful fallback knob, not a cleaner root-cause fix.
+
+## Accepted Items
+
+- The diagnosis that R37 solved combinatorial coverage and moved the failure toward local support quality is consistent with the code structure. R37 already creates phantom rows and sub-band emission at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1053), [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1154), and [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1459).
+- The fan is sufficient in principle to reduce support span because the current sub-band path directly consumes richer row boundaries rather than projecting them away.
+- Protected-corridor threading is feasible with focused surface-area changes only in [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts), [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts), and [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts).
+- No change is required to the earlier `flipEdges3D` generic quad pass for this proposal because chain and super-cell regions are already excluded from `quadMap` at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1348), [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1388), and [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1543).
+
+## Mandatory Amendments
+
+1. Keep `protectedCorridorVertices` separate from `chainAdjacentVertices`. Do not widen chain-strip classification.
+2. Reframe corridor protection as a quality-preservation measure until a before/after optimizer A/B confirms topology impact.
+3. In `optimizeBoundaryDiagonals`, inspect adjacent chain-strip triangle vertex IDs for protected phantom vertices before allowing a flip.
+4. Carry explicit per-crossing provenance so companions are added only to true interior column-boundary crossings.
+5. Add at least one targeted regression test proving that protected corridor vertices do not contaminate `chainStripTriSet` classification of neighboring standard cells.
+
+## Implementation Order
+
+1. Add instrumentation or run an A/B export to measure validation and boundary-diagnostic counters before and after the chain-strip/boundary passes. This is the proof step for the optimizer-damage claim.
+2. Extend phantom-row metadata in [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1056) and row construction at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1154) to add true-boundary-only companions.
+3. Extend `OuterWallResult` at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L81) and the return site at [OuterWallTessellator.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/OuterWallTessellator.ts#L1721) with a separate protected-corridor set.
+4. Thread that set through [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts#L1306), [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts#L1531), and [ParametricExportComputer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts#L1551).
+5. Add skip guards in `optimizeChainStrips` at [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L565), [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L637), and [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L691), and in `optimizeBoundaryDiagonals` at [ChainStripOptimizer.ts](c:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ChainStripOptimizer.ts#L841).
+6. Re-run the reproducer and require all of: `missing chain edges = 0`, materially improved local quality metrics, and no re-expansion of `chainStripTriSet` into neighboring standard cells.
+
+## Bottom Line
+
+This is not another coverage round. The fan concept is the right local geometric direction. Accept it, but only with a separate protection channel, explicit crossing provenance, and proof that any optimizer-locking is addressing a measured quality regression rather than being used as an unsupported explanation for current manifold failures.

@@ -64,7 +64,7 @@ export interface SubdivisionParams {
     outerIdxCount: number;
     /** First vertex index that is a chain vertex (not a grid vertex). */
     outerGridVertexCount: number;
-    /** Set of constraint (chain) edges — canonical BigInt keys — never split. */
+    /** Set of constraint (chain) edges — used for flip-protection in CSO and feature-edge classification in subdivision. */
     constraintEdgeSet: Set<bigint>;
     /** Outer wall grid width (number of columns). */
     outerW: number;
@@ -76,6 +76,10 @@ export interface SubdivisionParams {
      * instead of relying solely on vertex index >= outerGridVertexCount.
      */
     chains?: ChainUV[];
+    /** Map from original row indices to final physical T-coordinates */
+    finalT?: Float32Array | number[];
+    /** R38: Protected corridor around phantom crossing anchors and companions. */
+    protectedVertices?: Set<number>;
 }
 
 /**
@@ -88,12 +92,37 @@ export interface SubdivisionStats {
     interiorThreshold: number;
     /** Squared threshold for boundary edge splitting (1.2× avgGridEdge). */
     boundaryThreshold: number;
+    /** Squared threshold for feature-edge splitting (chain↔grid edges). */
+    featureThreshold: number;
     /** Number of candidate edges that exceeded the threshold. */
     candidates: number;
     /** Number of standard-grid tris indexed as boundary neighbours. */
     boundaryTrisAdded: number;
+    /** Number of split candidates skipped because they touched the protected corridor. */
+    protectedRejects: number;
     /** Time in ms for the subdivision pass. */
     timeMs: number;
+}
+
+/**
+ * Metadata for a subdivision midpoint on a chain edge.
+ * Collected during Phase A and returned to PEC for downstream re-snap.
+ */
+export interface ChainMidpointInfo {
+    /** Final vertex index in the grown resultData array. */
+    vertexIdx: number;
+    /** Initial midpoint U (circular average of endpoint Us). */
+    u: number;
+    /** Midpoint T coordinate. */
+    t: number;
+    /** First endpoint vertex index. */
+    v0: number;
+    /** Second endpoint vertex index. */
+    v1: number;
+    /** First endpoint U coordinate (for adaptive window sizing). */
+    u0: number;
+    /** Second endpoint U coordinate (for adaptive window sizing). */
+    u1: number;
 }
 
 /**
@@ -108,6 +137,8 @@ export interface SubdivisionResult {
     splitCount: number;
     /** Diagnostic statistics. */
     stats: SubdivisionStats;
+    /** R46: Metadata for chain-edge midpoints (for downstream re-snap in PEC). */
+    chainMidpoints: ChainMidpointInfo[];
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -120,7 +151,7 @@ export interface SubdivisionResult {
 function edgeKey(a: number, b: number): bigint {
     const lo = a < b ? a : b;
     const hi = a < b ? b : a;
-    return BigInt(lo) * BigInt(0x100000) + BigInt(hi);
+    return BigInt(lo) * BigInt(0x200000) + BigInt(hi);
 }
 
 /**
@@ -142,6 +173,8 @@ export function identifyChainAdjacentVertices(
     vertexCount: number,
     chains: ChainUV[],
     gridSpacing: number,
+    outerH: number,
+    finalT?: Float32Array | number[],
 ): Set<number> {
     const result = new Set<number>();
     const proximityRadius = gridSpacing * 0.5;
@@ -151,7 +184,15 @@ export function identifyChainAdjacentVertices(
     const chainPoints: Array<{ u: number; t: number }> = [];
     for (const chain of chains) {
         for (const pt of chain.points) {
-            chainPoints.push({ u: pt.u, t: pt.row });
+            let tNorm = 0;
+            if (finalT && pt.row >= 0 && pt.row < finalT.length) {
+                tNorm = finalT[pt.row];
+            } else {
+                // Fallback when finalT is not provided (e.g. in tests)
+                const denom = Math.max(1, outerH - 1);
+                tNorm = Math.max(0, Math.min(1, pt.row / denom));
+            }
+            chainPoints.push({ u: pt.u, t: tNorm });
         }
     }
 
@@ -176,6 +217,14 @@ export function identifyChainAdjacentVertices(
     }
 
     return result;
+}
+
+function midpointWrappedU(u0: number, u1: number): number {
+    let du = u1 - u0;
+    if (du > 0.5) du -= 1.0;
+    if (du < -0.5) du += 1.0;
+    const mid = u0 + du * 0.5;
+    return ((mid % 1) + 1) % 1;
 }
 
 /**
@@ -260,6 +309,8 @@ export async function subdivideLongEdges(
         outerW,
         outerH,
         chains,
+        finalT,
+        protectedVertices,
     } = params;
 
     const subdivStart = performance.now();
@@ -267,8 +318,8 @@ export async function subdivideLongEdges(
     // ── 1. Compute average grid edge length ──────────────────────────
     let gridEdgeLenSum = 0;
     let gridEdgeCount = 0;
+    const sampleRows = Math.min(10, outerH - 1);
     {
-        const sampleRows = Math.min(10, outerH - 1);
         for (let j = 0; j < sampleRows; j++) {
             for (let i = 0; i < outerW - 1 && i < 50; i++) {
                 const v0 = j * outerW + i;
@@ -284,6 +335,34 @@ export async function subdivideLongEdges(
     const avgGridEdge = gridEdgeCount > 0 ? gridEdgeLenSum / gridEdgeCount : 1.0;
     const subdivThreshold2 = (avgGridEdge * 1.8) ** 2;
 
+    // R44.2: Also measure vertical grid edge lengths. Chain edges are primarily vertical
+    // (row j → j+1) so the horizontal-only avgGridEdge misrepresents their scale.
+    let vertGridEdgeLenSum = 0;
+    let vertGridEdgeCount = 0;
+    {
+        const sampleCols = Math.min(10, outerW);
+        for (let i = 0; i < sampleCols; i++) {
+            for (let j = 0; j < sampleRows; j++) {
+                const v0 = j * outerW + i;
+                const v1 = (j + 1) * outerW + i;
+                const dx = resultData[v0 * 3] - resultData[v1 * 3];
+                const dy = resultData[v0 * 3 + 1] - resultData[v1 * 3 + 1];
+                const dz = resultData[v0 * 3 + 2] - resultData[v1 * 3 + 2];
+                vertGridEdgeLenSum += Math.sqrt(dx * dx + dy * dy + dz * dz);
+                vertGridEdgeCount++;
+            }
+        }
+    }
+    const avgVertGridEdge = vertGridEdgeCount > 0 ? vertGridEdgeLenSum / vertGridEdgeCount : avgGridEdge;
+
+    /** Feature edges (chain↔grid) use a tighter threshold to resolve curvature at ridge flanks. */
+    const FEATURE_SCALE = 0.75;
+    const featureSubdivThreshold2 = (avgGridEdge * FEATURE_SCALE) ** 2;
+
+    /** R44.2: Chain edges use vertical grid edge scale since they span rows, not columns. */
+    const CHAIN_SCALE = 0.50;
+    const chainSubdivThreshold2 = (avgVertGridEdge * CHAIN_SCALE) ** 2;
+
     // ── 2. Re-identify chain-strip triangles ─────────────────────────
     //       Uses hybrid detection: index-based + UV-proximity (v20.x)
     let chainAdjacentVerts: Set<number> | undefined;
@@ -291,7 +370,7 @@ export async function subdivideLongEdges(
         const gridSpacing = 1.0 / outerW;
         const vertexCount = resultData.length / 3;
         chainAdjacentVerts = identifyChainAdjacentVertices(
-            combinedVerts, vertexCount, chains, gridSpacing,
+            combinedVerts, vertexCount, chains, gridSpacing, outerH, finalT,
         );
     }
     const csTriSetNow = identifyChainStripTriangles(
@@ -335,25 +414,61 @@ export async function subdivideLongEdges(
     const edgesToSplit: SplitEdge[] = [];
     const boundarySubdivThreshold2 = (avgGridEdge * 1.2) ** 2;
 
-    for (const [ek, tris] of subEdgeToTris) {
-        if (tris.length !== 2) continue;
-        if (constraintEdgeSet.has(ek)) continue;
+    // R44.1 diagnostic: track chain edge fate through the candidate pipeline
+    let diagChainInMap = 0;
+    let diagChainSingleTri = 0;
+    let diagChainBelowThresh = 0;
+    let diagChainCandidate = 0;
+    let diagChainMinLen2 = Infinity;
+    let diagChainMaxLen2 = 0;
 
-        const v0 = Number(ek / BigInt(0x100000));
-        const v1 = Number(ek % BigInt(0x100000));
+    for (const [ek, tris] of subEdgeToTris) {
+        const isChainEdge = constraintEdgeSet.has(ek);
+        if (isChainEdge) diagChainInMap++;
+
+        if (tris.length !== 2) {
+            if (isChainEdge) diagChainSingleTri++;
+            continue;
+        }
+
+        // R44: Chain edges (in constraintEdgeSet) are subdivision candidates —
+        // they define the ridge path and need higher resolution. The set was
+        // built for flip-protection in ChainStripOptimizer; reusing it as a
+        // subdivision skip locked ridge resolution at row spacing (~0.77mm).
+
+        const v0 = Number(ek / BigInt(0x200000));
+        const v1 = Number(ek % BigInt(0x200000));
 
         const dx = resultData[v0 * 3] - resultData[v1 * 3];
         const dy = resultData[v0 * 3 + 1] - resultData[v1 * 3 + 1];
         const dz = resultData[v0 * 3 + 2] - resultData[v1 * 3 + 2];
         const len2 = dx * dx + dy * dy + dz * dz;
 
+        if (isChainEdge) {
+            if (len2 < diagChainMinLen2) diagChainMinLen2 = len2;
+            if (len2 > diagChainMaxLen2) diagChainMaxLen2 = len2;
+        }
+
+        // R44: Chain-to-chain edges are feature edges — they trace the ridge.
+        // Cross-edges (grid↔chain) were already caught by XOR.
+        const isCrossEdge = (v0 < outerGridVertexCount) !== (v1 < outerGridVertexCount);
+        const isFeatureEdge = isCrossEdge || isChainEdge;
         const isBoundaryEdge = (csTriSetNow.has(tris[0]) !== csTriSetNow.has(tris[1]));
-        const threshold = isBoundaryEdge ? boundarySubdivThreshold2 : subdivThreshold2;
+        const threshold = isChainEdge
+            ? chainSubdivThreshold2
+            : isFeatureEdge
+                ? featureSubdivThreshold2
+                : (isBoundaryEdge ? boundarySubdivThreshold2 : subdivThreshold2);
 
         if (len2 > threshold) {
+            if (isChainEdge) diagChainCandidate++;
             edgesToSplit.push({ ek, v0, v1, len2, tris: [tris[0], tris[1]] });
+        } else if (isChainEdge) {
+            diagChainBelowThresh++;
         }
     }
+
+    console.log(`[Subdivision] R44 chain edge diagnosis: constraintSet=${constraintEdgeSet.size}, inMap=${diagChainInMap}, singleTri=${diagChainSingleTri}, belowThresh=${diagChainBelowThresh}, candidates=${diagChainCandidate}, len range=${Math.sqrt(diagChainMinLen2).toFixed(3)}-${Math.sqrt(diagChainMaxLen2).toFixed(3)}mm, featureThresh=${Math.sqrt(featureSubdivThreshold2).toFixed(3)}mm, chainThresh=${Math.sqrt(chainSubdivThreshold2).toFixed(3)}mm, avgVertEdge=${avgVertGridEdge.toFixed(3)}mm`);
 
     // Sort by length descending — split longest edges first
     edgesToSplit.sort((a, b) => b.len2 - a.len2);
@@ -362,36 +477,99 @@ export async function subdivideLongEdges(
     const splitsToApply: Array<{ se: SplitEdge; opp0: number; opp1: number }> = [];
     const modifiedTris = new Set<number>();
     const maxSplits = Math.floor((csTriSetNow.size + boundaryTrisAdded) * 0.5);
+    let protectedRejects = 0;
 
-    for (const se of edgesToSplit) {
+    const touchesProtectedPatch = (
+        v0: number, v1: number, opp0: number, opp1: number,
+        isFeatureEdge: boolean, isChainEdge: boolean
+    ): boolean => {
+        if (protectedVertices === undefined) return false;
+        // R45: Chain edges (both endpoints are chain vertices) are always safe
+        // to split — midpoint insertion is topology-preserving and phantom
+        // vertices don't move. Blocking 51% of chain splits was the #2 cause
+        // of poor feature edge resolution.
+        if (isChainEdge) return false;
+        // R42: Feature edges (chain↔grid) can be split even when edge endpoints
+        // are protected — subdivision is topology-preserving (adds midpoint only).
+        // Still block if opposite vertices are protected (fully inside phantom corridor).
+        if (isFeatureEdge) {
+            return protectedVertices.has(opp0) || protectedVertices.has(opp1);
+        }
+        return protectedVertices.has(v0) || protectedVertices.has(v1) ||
+               protectedVertices.has(opp0) || protectedVertices.has(opp1);
+    };
+
+    // R44.1 diagnostic: track chain edge fate in Phase A (splitting decisions)
+    let diagChainPhaseA_conflict = 0;   // blocked by modifiedTris
+    let diagChainPhaseA_protected = 0;  // blocked by touchesProtectedPatch
+    let diagChainPhaseA_split = 0;      // actually split
+    let diagChainPhaseA_total = 0;      // total chain edges entering Phase A
+
+    // R44.2: Partition into chain and non-chain, both sorted by length descending
+    const chainEdgesToSplit = edgesToSplit.filter(se => constraintEdgeSet.has(se.ek));
+    const nonChainEdgesToSplit = edgesToSplit.filter(se => !constraintEdgeSet.has(se.ek));
+
+    // R46: Track which splits are chain-edge midpoints for downstream re-snap
+    const chainSplitIndices: number[] = [];
+
+    // Phase A1: Chain edges first, Phase A2: Non-chain edges
+    for (const batch of [chainEdgesToSplit, nonChainEdgesToSplit]) {
         if (splitsToApply.length >= maxSplits) break;
-        if (modifiedTris.has(se.tris[0]) || modifiedTris.has(se.tris[1])) continue;
+        for (const se of batch) {
+            if (splitsToApply.length >= maxSplits) break;
+            const isChainEdgeA = constraintEdgeSet.has(se.ek);
+            if (isChainEdgeA) diagChainPhaseA_total++;
 
-        const t0off = se.tris[0], t1off = se.tris[1];
-        const a0 = combinedIdxs[t0off], b0 = combinedIdxs[t0off + 1], c0 = combinedIdxs[t0off + 2];
-        const a1 = combinedIdxs[t1off], b1 = combinedIdxs[t1off + 1], c1 = combinedIdxs[t1off + 2];
+            if (modifiedTris.has(se.tris[0]) || modifiedTris.has(se.tris[1])) {
+                if (isChainEdgeA) diagChainPhaseA_conflict++;
+                continue;
+            }
 
-        let opp0 = -1;
-        for (const v of [a0, b0, c0]) { if (v !== se.v0 && v !== se.v1) { opp0 = v; break; } }
-        let opp1 = -1;
-        for (const v of [a1, b1, c1]) { if (v !== se.v0 && v !== se.v1) { opp1 = v; break; } }
-        if (opp0 < 0 || opp1 < 0) continue;
+            const t0off = se.tris[0], t1off = se.tris[1];
+            const a0 = combinedIdxs[t0off], b0 = combinedIdxs[t0off + 1], c0 = combinedIdxs[t0off + 2];
+            const a1 = combinedIdxs[t1off], b1 = combinedIdxs[t1off + 1], c1 = combinedIdxs[t1off + 2];
 
-        splitsToApply.push({ se, opp0, opp1 });
-        modifiedTris.add(t0off);
-        modifiedTris.add(t1off);
+            let opp0 = -1;
+            for (const v of [a0, b0, c0]) { if (v !== se.v0 && v !== se.v1) { opp0 = v; break; } }
+            let opp1 = -1;
+            for (const v of [a1, b1, c1]) { if (v !== se.v0 && v !== se.v1) { opp1 = v; break; } }
+            if (opp0 < 0 || opp1 < 0) continue;
+            // R44: Same chain-edge classification as the collection loop above.
+            const isCrossEdge = (se.v0 < outerGridVertexCount) !== (se.v1 < outerGridVertexCount);
+            const isFeatureEdge = isCrossEdge || constraintEdgeSet.has(se.ek);
+            if (touchesProtectedPatch(se.v0, se.v1, opp0, opp1, isFeatureEdge, isChainEdgeA)) {
+                protectedRejects++;
+                if (isChainEdgeA) diagChainPhaseA_protected++;
+                continue;
+            }
+
+            splitsToApply.push({ se, opp0, opp1 });
+            modifiedTris.add(t0off);
+            modifiedTris.add(t1off);
+            if (isChainEdgeA) diagChainPhaseA_split++;
+
+            // R46: Track chain-edge splits where both endpoints are chain vertices
+            // (guard: exclude fan diagonal edges in constraintEdgeSet)
+            const isChainMidpoint = isChainEdgeA
+                && se.v0 >= outerGridVertexCount
+                && se.v1 >= outerGridVertexCount;
+            if (isChainMidpoint) chainSplitIndices.push(splitsToApply.length - 1);
+        }
     }
+
+    console.log(`[Subdivision] R44 Phase A chain diagnosis: total=${diagChainPhaseA_total}, split=${diagChainPhaseA_split}, conflict=${diagChainPhaseA_conflict}, protected=${diagChainPhaseA_protected}, maxSplits=${maxSplits}`);
 
     // ── 6. Phase B + C: GPU-evaluate midpoints, apply splits ─────────
     let finalResultData = resultData;
     let finalCombinedIdxs = combinedIdxs;
+    const chainMidpoints: ChainMidpointInfo[] = [];
 
     if (splitsToApply.length > 0) {
         // Build UV batch: [u_mid, t_mid, surfaceId] per split
         const midUVBatch = new Float32Array(splitsToApply.length * 3);
         for (let i = 0; i < splitsToApply.length; i++) {
             const { se } = splitsToApply[i];
-            midUVBatch[i * 3] = (combinedVerts[se.v0 * 3] + combinedVerts[se.v1 * 3]) * 0.5;
+            midUVBatch[i * 3] = midpointWrappedU(combinedVerts[se.v0 * 3], combinedVerts[se.v1 * 3]);
             midUVBatch[i * 3 + 1] = (combinedVerts[se.v0 * 3 + 1] + combinedVerts[se.v1 * 3 + 1]) * 0.5;
             midUVBatch[i * 3 + 2] = combinedVerts[se.v0 * 3 + 2]; // surfaceId (same for both)
         }
@@ -405,25 +583,37 @@ export async function subdivideLongEdges(
         let nextNewIdx = resultData.length / 3;
 
         for (let i = 0; i < splitsToApply.length; i++) {
-            const { se, opp0, opp1 } = splitsToApply[i];
+            const { se } = splitsToApply[i];
             const t0off = se.tris[0], t1off = se.tris[1];
 
             const midIdx = nextNewIdx++;
             newVerts.push(mid3D[i * 3], mid3D[i * 3 + 1], mid3D[i * 3 + 2]);
 
-            // Replace tri0: (opp0, v0, M)
-            combinedIdxs[t0off] = opp0;
-            combinedIdxs[t0off + 1] = se.v0;
-            combinedIdxs[t0off + 2] = midIdx;
-            // New tri: (opp0, M, v1)
-            newTris.push(opp0, midIdx, se.v1);
+            // Preserve winding order for tri0
+            const a0 = combinedIdxs[t0off], b0 = combinedIdxs[t0off + 1], c0 = combinedIdxs[t0off + 2];
+            if ((a0 === se.v0 && b0 === se.v1) || (a0 === se.v1 && b0 === se.v0)) {
+                combinedIdxs[t0off] = a0; combinedIdxs[t0off + 1] = midIdx; combinedIdxs[t0off + 2] = c0;
+                newTris.push(midIdx, b0, c0);
+            } else if ((b0 === se.v0 && c0 === se.v1) || (b0 === se.v1 && c0 === se.v0)) {
+                combinedIdxs[t0off] = a0; combinedIdxs[t0off + 1] = b0; combinedIdxs[t0off + 2] = midIdx;
+                newTris.push(a0, midIdx, c0);
+            } else {
+                combinedIdxs[t0off] = midIdx; combinedIdxs[t0off + 1] = b0; combinedIdxs[t0off + 2] = c0;
+                newTris.push(a0, b0, midIdx);
+            }
 
-            // Replace tri1: (opp1, v1, M)
-            combinedIdxs[t1off] = opp1;
-            combinedIdxs[t1off + 1] = se.v1;
-            combinedIdxs[t1off + 2] = midIdx;
-            // New tri: (opp1, M, v0)
-            newTris.push(opp1, midIdx, se.v0);
+            // Preserve winding order for tri1
+            const a1 = combinedIdxs[t1off], b1 = combinedIdxs[t1off + 1], c1 = combinedIdxs[t1off + 2];
+            if ((a1 === se.v0 && b1 === se.v1) || (a1 === se.v1 && b1 === se.v0)) {
+                combinedIdxs[t1off] = a1; combinedIdxs[t1off + 1] = midIdx; combinedIdxs[t1off + 2] = c1;
+                newTris.push(midIdx, b1, c1);
+            } else if ((b1 === se.v0 && c1 === se.v1) || (b1 === se.v1 && c1 === se.v0)) {
+                combinedIdxs[t1off] = a1; combinedIdxs[t1off + 1] = b1; combinedIdxs[t1off + 2] = midIdx;
+                newTris.push(a1, midIdx, c1);
+            } else {
+                combinedIdxs[t1off] = midIdx; combinedIdxs[t1off + 1] = b1; combinedIdxs[t1off + 2] = c1;
+                newTris.push(a1, b1, midIdx);
+            }
         }
 
         // Grow vertex array
@@ -441,6 +631,20 @@ export async function subdivideLongEdges(
             newCombinedIdxs[combinedIdxs.length + i] = newTris[i];
         }
         finalCombinedIdxs = newCombinedIdxs;
+
+        // R46: Build chain midpoint metadata for downstream re-snap in PEC
+        for (const idx of chainSplitIndices) {
+            const se = splitsToApply[idx].se;
+            chainMidpoints.push({
+                vertexIdx: resultData.length / 3 + idx,
+                u: midUVBatch[idx * 3],
+                t: midUVBatch[idx * 3 + 1],
+                v0: se.v0,
+                v1: se.v1,
+                u0: combinedVerts[se.v0 * 3],
+                u1: combinedVerts[se.v1 * 3],
+            });
+        }
     }
 
     const splitCount = splitsToApply.length;
@@ -450,12 +654,15 @@ export async function subdivideLongEdges(
         resultData: finalResultData,
         indices: finalCombinedIdxs,
         splitCount,
+        chainMidpoints,
         stats: {
             avgGridEdge,
             interiorThreshold: subdivThreshold2,
             boundaryThreshold: boundarySubdivThreshold2,
+            featureThreshold: featureSubdivThreshold2,
             candidates: edgesToSplit.length,
             boundaryTrisAdded,
+            protectedRejects,
             timeMs: subdivMs,
         },
     };

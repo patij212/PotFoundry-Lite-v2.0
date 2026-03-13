@@ -250,64 +250,9 @@ Start `npm run dev` first, then run `npm run test:e2e` in a second terminal.
 Hosted on Cloudflare Pages. Wrangler handles edge functions for auth callbacks.
 `npm run deploy` builds and pushes. Env vars set in Cloudflare Pages dashboard.
 
-## Agent Journal
+## Deep Context
 
-`../agents_journal.md` (one directory up from `potfoundry-web/`) is an **append-only**
-multi-agent forum. Every agent session must:
-1. **Read relevant sections** before starting work (use `offset`/`limit` — it's ~5000 lines)
-2. **Append a signed entry** at the end of the session documenting decisions, bugs found,
-   root causes, and what the next agent should know
+For parametric pipeline engineering knowledge, bug patterns, critical constants,
+and architectural decisions that must not be reverted, see `../docs/AGENT_CONTEXT_DISTILLED.md`.
 
-The journal is the project's institutional memory. It has caught dozens of bugs by giving
-future agents context about why decisions were made.
-
-## Known Issues & Active Work (from journal)
-
-These are open items as of the latest session (`refactor/core-migration` branch):
-
-**Parametric pipeline (ParametricExportComputer.ts — v20.x, ~1400 lines + modular `parametric/`):**
-
-The monolith has been decomposed into 10 focused sub-modules in `src/renderers/webgpu/parametric/`.
-259 unit + integration tests cover the extracted modules. Key improvements:
-- **Seam chain edges fixed** — circular U wrapping now applied before SEAM_THRESHOLD check
-- **Sawtooth fix** — micro-row insertion for steep spiral chain crossings
-- **UV-proximity chain detection** in subdivision (hybrid index + UV-based)
-- **v20.0 UV-snapping** — grid vertices snapped to exact chain positions (no extra chain vertices)
-
-Remaining items:
-- **53% of outer-wall vertices have valence < 5** — structural from chain-vertex fan topology;
-  needs vertex insertion or subdivision, not just edge flipping
-- **Tall cross-row triangles** still present; subdivision pass splits long edges but not
-  specifically cross-row triangles
-- **Diagonal boundary crease — ongoing investigation:**
-  - v16.34: Boundary diagonal optimization — adjusts standard cell INTERNAL diagonal (AD↔BC)
-    to minimize dihedral angle at chain-strip boundary.
-  - Regression test: `ParametricExportComputer.diagonalConsistency.test.ts`
-
-**Adaptive pipeline (ConstrainedTriangulator.ts + AdaptiveExportComputer):**
-- `weldMesh.ts` uses string-key deduplication — may crash browser at very large exports (>8k tris)
-  A spatial sort-based welder is needed as replacement
-- Adaptive GPU subdivision creates T-junctions (neighbor triangles split independently based on
-  local importance threshold) — causes cracks in the output mesh
-
-**WebGPU shader history:**
-- `adaptive_mesh.wgsl` had a "EXPLOSION TEST: 50x higher dt" debug value shipped to production
-  for several versions (v7.x) before being caught. Always audit shader constant comments.
-- `webgpu_core.ts` is a 5500+ line monolith — #1 maintenance risk; future work should
-  extract into sub-modules (cf. `parametric/` extraction as a model)
-
-**Parametric pipeline modular extraction (completed):**
-- `ParametricExportComputer.ts` reduced from ~5200 to ~1400 lines
-- 10 sub-modules in `src/renderers/webgpu/parametric/` with 259 tests
-- Each module is independently testable and has comprehensive JSDoc
-- Plan: `docs/plans/2026-02-24-parametric-pipeline-implementation.md`
-
-**Architecture decisions that must not be reverted:**
-- `cdt2d` library removed from hot path (v11.1) — was O(n²), 12+ minutes at production scale.
-  Replaced with grid-native O(n) strip triangulation. Do NOT re-add cdt2d to ParametricExportComputer.
-- CDF-adaptive grid spacing removed from parametric pipeline (v16.10) — was causing visible
-  "density band" artifacts. Uniform grid + per-row chain patching is the correct architecture.
-- Stitch fan vertices removed (v16.9) — were creating visible rings around feature edges.
-- GPU snap/relax disabled (v7.2) — CPU merge-and-insert replaced the need for GPU vertex movement.
-- `CHAIN_LOCK_BAND_HALF_WIDTH = 1` (v16.32) — do NOT revert to 0. Lock=0 re-enables the diagonal
-  crease bug. The justification for 0 (stitch fan cleanup) was removed in v16.9.
+For agent workflow protocol and journal rules, see `../agents.md`.

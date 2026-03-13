@@ -84,10 +84,15 @@ registerCommand('help', () => {
     manager.info('HELP', `Available commands:\n${lines}`);
 }, 'Show available commands');
 
-// /clear - Will be connected to store in ConsoleOverlay
+// /clear - Clear all console logs
 registerCommand('clear', () => {
-    // This is a placeholder - actual implementation connects to store
-    manager.info('CMD', 'Logs cleared');
+    try {
+        const { useConsoleStore } = require('../hooks/useConsoleStore');
+        useConsoleStore.getState().clearLogs();
+        manager.info('CMD', 'Logs cleared');
+    } catch {
+        manager.warn('CMD', 'Failed to clear logs');
+    }
 }, 'Clear all logs');
 
 // /ping
@@ -99,6 +104,7 @@ registerCommand('ping', () => {
 registerCommand('state', (args) => {
     try {
         // Dynamic import to avoid circular dependencies
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug-only global; typed in global.d.ts as __POTFOUNDRY_STORE__ but debug console uses __PF_STORE__
         const storeModule = (window as any).__PF_STORE__;
         if (!storeModule) {
             manager.warn('STATE', 'Store not available. Make sure app is initialized.');
@@ -123,6 +129,7 @@ registerCommand('state', (args) => {
 // /camera - Will dump camera state
 registerCommand('camera', () => {
     try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug-only global for camera controller access
         const controller = (window as any).__PF_CONTROLLER__;
         if (!controller) {
             manager.warn('CAMERA', 'Controller not available.');
@@ -198,9 +205,28 @@ registerCommand('export', (args) => {
 
     if (format === 'json' || format === 'txt') {
         // Export logs
-        manager.info('EXPORT', `Log export requested: ${format}`);
+        try {
+            const { useConsoleStore } = require('../hooks/useConsoleStore');
+            const { exportLogsAsJSON, exportLogsAsText } = require('./exportLogs');
+            const logs = useConsoleStore.getState().logs;
+            if (format === 'json') {
+                exportLogsAsJSON(logs);
+            } else {
+                // Convert to ProcessedLog format for text export
+                const processedLogs = logs.map((l: { ts: number; level: string; code: string; message: string; repeat?: number }) => ({
+                    ...l,
+                    count: l.repeat || 1,
+                    id: `${l.ts}-${l.code}`
+                }));
+                exportLogsAsText(processedLogs);
+            }
+            manager.info('EXPORT', `Logs exported as ${format.toUpperCase()}`);
+        } catch (err) {
+            manager.error('EXPORT', `Failed to export logs: ${err}`);
+        }
     } else {
         // Export 3D model
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug-only global for controller export access
         const controller = (window as any).__PF_CONTROLLER__;
         if (controller?.exportModel) {
             controller.exportModel(format);
@@ -239,8 +265,10 @@ export function evaluateREPL(expression: string): unknown {
     // Create a sandboxed context with useful references
     const context: Record<string, unknown> = {
         // App store
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug-only REPL context references
         store: (window as any).__PF_STORE__?.getState(),
         // Controller
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug-only REPL context references
         controller: (window as any).__PF_CONTROLLER__,
         // MessageManager
         log: manager,

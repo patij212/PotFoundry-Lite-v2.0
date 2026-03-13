@@ -40,6 +40,7 @@ export const LibraryPanel: React.FC = () => {
   const [publishTags, setPublishTags] = useState('');
   const [publishLicense, setPublishLicense] = useState('CC BY-NC 4.0');
   const [hasFetched, setHasFetched] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LibraryDesign type not imported here to avoid circular dep
   const [confirmLoad, setConfirmLoad] = useState<{ design: any } | null>(null);
 
   // Auto-fetch when the panel becomes visible AND the context is ready (uses cache)

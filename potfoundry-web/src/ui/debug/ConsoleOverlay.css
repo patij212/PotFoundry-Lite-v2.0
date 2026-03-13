@@ -37,8 +37,7 @@
 }
 
 .pf-console-overlay--float {
-    top: 100px;
-    left: 100px;
+    /* Position handled by inline styles from useDraggable */
     right: auto;
     bottom: auto;
     width: 700px;
@@ -102,6 +101,20 @@
     padding: 0 12px;
     flex-shrink: 0;
     gap: 4px;
+}
+
+/* Draggable header for float mode */
+.pf-console-header--draggable {
+    cursor: grab;
+    user-select: none;
+}
+
+.pf-console-overlay--dragging .pf-console-header--draggable {
+    cursor: grabbing;
+}
+
+.pf-console-overlay--dragging {
+    user-select: none;
 }
 
 .pf-console-title {
@@ -359,6 +372,10 @@
     align-items: flex-start;
     position: relative;
     transition: background 0.15s;
+    /* Virtualization: ensure fixed height for react-window */
+    height: 28px;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .pf-console-row:hover {
@@ -561,6 +578,58 @@
 
 .pf-console-input::placeholder {
     color: #666;
+}
+
+/* Input Wrapper for Autocomplete */
+.pf-console-input-wrapper {
+    flex: 1;
+    position: relative;
+}
+
+/* Autocomplete Dropdown */
+.pf-console-autocomplete {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    background: rgba(20, 20, 25, 0.98);
+    border: 1px solid var(--console-border, #444);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 100;
+}
+
+.pf-console-autocomplete-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+    gap: 12px;
+}
+
+.pf-console-autocomplete-item:hover,
+.pf-console-autocomplete-item--selected {
+    background: rgba(74, 158, 255, 0.15);
+}
+
+.pf-autocomplete-cmd {
+    color: #4a9eff;
+    font-family: monospace;
+    font-weight: 600;
+    flex-shrink: 0;
+    min-width: 80px;
+}
+
+.pf-autocomplete-help {
+    color: #888;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* ============================================================================
@@ -914,6 +983,210 @@
     font-size: 18px;
 }
 
+/* ============================================================================
+   GPU Tab
+   ============================================================================ */
+
+.pf-gpu-tab {
+    padding: 12px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.pf-gpu-tab--unavailable {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.pf-gpu-unavailable {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--console-text, #888);
+}
+
+.pf-gpu-unavailable-icon {
+    font-size: 32px;
+}
+
+.pf-gpu-unavailable-hint {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.pf-gpu-section {
+    margin-bottom: 16px;
+}
+
+.pf-gpu-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--console-text, #e0e0e0);
+}
+
+.pf-gpu-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.pf-gpu-item {
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 8px;
+    border-radius: 4px;
+}
+
+.pf-gpu-label {
+    font-size: 10px;
+    color: var(--console-text, #888);
+    text-transform: uppercase;
+    opacity: 0.7;
+}
+
+.pf-gpu-value {
+    font-size: 13px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--console-text, #e0e0e0);
+}
+
+.pf-gpu-value--warn {
+    color: #f59e0b;
+}
+
+.pf-gpu-memory-summary {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.pf-gpu-memory-total {
+    font-size: 24px;
+    font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #60a5fa;
+}
+
+.pf-gpu-memory-label {
+    font-size: 12px;
+    color: var(--console-text, #888);
+    opacity: 0.7;
+}
+
+.pf-gpu-memory-count {
+    font-size: 11px;
+    color: var(--console-text, #888);
+    opacity: 0.5;
+}
+
+.pf-gpu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.pf-gpu-list-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+.pf-gpu-buffer-label,
+.pf-gpu-pipeline-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--console-text, #e0e0e0);
+}
+
+.pf-gpu-buffer-size {
+    color: #60a5fa;
+}
+
+.pf-gpu-pipeline-type {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: var(--console-text, #888);
+}
+
+.pf-gpu-pipeline-time {
+    color: #34d399;
+}
+
+.pf-gpu-pipeline-time--slow {
+    color: #f59e0b;
+}
+
+.pf-gpu-clear {
+    margin-top: 12px;
+}
+
+/* ============================================================================
+   Geometry Tab
+   ============================================================================ */
+
+.pf-geometry-tab {
+    padding: 12px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.pf-geometry-empty {
+    padding: 12px;
+    color: var(--console-text, #666);
+    font-style: italic;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.pf-geometry-ok {
+    color: #34d399;
+}
+
+.pf-geometry-warn {
+    color: #f59e0b;
+}
+
+.pf-geometry-surfaces {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pf-geometry-surface-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pf-geometry-surface-badge {
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--console-text, #e0e0e0);
+}
+
 .pf-console-modal h4 {
     margin: 16px 0 8px 0;
     color: #888;
@@ -1035,4 +1308,67 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* ============================================================================
+   Virtualized Log List
+   ============================================================================ */
+
+.pf-console-virtualized-wrapper {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+}
+
+.pf-console-scroll-bottom {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--console-accent, #4a9eff);
+    color: white;
+    border: none;
+    border-radius: 16px;
+    padding: 6px 16px;
+    font-size: 12px;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: background 0.15s;
+}
+
+.pf-console-scroll-bottom:hover {
+    background: var(--console-accent-hover, #3d8be0);
+}
+
+.pf-console-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    font-style: italic;
+}
+
+/* ============================================================================
+   State Inspector Auto-Refresh
+   ============================================================================ */
+
+.pf-state-auto-refresh {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #888;
+    cursor: pointer;
+}
+
+.pf-state-auto-refresh input {
+    cursor: pointer;
+}
+
+.pf-state-updated {
+    font-size: 11px;
+    color: #666;
+    margin-left: auto;
 }

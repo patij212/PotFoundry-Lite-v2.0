@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CameraController, PointerState, ControllerHelpers } from './camera_controller';
 import type { WebGPUState, CameraRig } from './types';
+import { vec3 } from './camera_basis';
 import type { Vec3, CameraBasis } from './camera_basis';
 
 // Create mock state with all required camera fields
@@ -23,9 +24,9 @@ function createMockState(): WebGPUState {
         autoRotateSpeed: 0.5,
         autoRotateResumeAt: 0,
         cameraMode: 'turntable',
-        camRight: [1, 0, 0] as Vec3,
-        camUp: [0, 0, 1] as Vec3,
-        camForward: [0, -1, 0] as Vec3,
+        camRight: vec3(1, 0, 0),
+        camUp: vec3(0, 0, 1),
+        camForward: vec3(0, -1, 0),
         camQuat: [0, 0, 0, 1],
         displayCamRight: null,
         displayCamUp: null,
@@ -44,9 +45,9 @@ function createMockState(): WebGPUState {
         inertiaRotY: 0,
         inertiaPanX: 0,
         inertiaPanY: 0,
-        pivot: [0, 0, 0] as Vec3,
+        pivot: vec3(0, 0, 0),
         targetPivot: null,
-        freePosition: [0, -200, 50] as Vec3,
+        freePosition: vec3(0, -200, 50),
         freeSpeed: 1,
         interacting: false,
         lastInteraction: 0,

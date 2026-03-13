@@ -157,6 +157,26 @@ The mesh is generated entirely on the GPU using WGSL compute shaders:
 3. **Normal Calculation**: Per-vertex normals for lighting
 4. **Index Buffer**: Triangulation of the pot surface
 
+#### Chain Strip Mesh Pipeline (Export)
+
+The export path uses a CPU-based parametric mesh pipeline to guarantee watertight STL output. Feature chains (peaks, valleys) detected by the GPU are stitched into the outer wall mesh via a multi-stage process:
+
+1. **Feature-Only Constraints** (`OuterWallTessellator.ts`): Chain edges are filtered to only include feature-to-feature edges (both endpoints have `pointIdx >= 0`). Support edges are no longer emitted.
+
+2. **Graded Transition Vertices** (`insertGradedTransitionVertices()`): Instead of the legacy 8-pass density system, a single grading function inserts transition vertices around each feature edge. Vertices are spaced in concentric rings (3–5 rings) with geometrically increasing spacing (ratio 1.5×), ensuring smooth element-size transitions between fine chain-strip triangles and coarse grid cells.
+
+3. **Stretch-Aware Spacing** (`estimateCircumferentialStretch()`): At each height `t`, the local circumferential stretch `R(t)/Rmin` is computed from the pot's parametric profile (`Rb`, `Rt`, `expn`). Graded vertex spacing is divided by this factor so that 3D triangle quality remains uniform even on flared pots.
+
+4. **CDT Triangulation** (`ChainStripTriangulator.ts`): Each row band containing chain vertices is triangulated using Constrained Delaunay Triangulation (CDT). Constraint edges enforce feature chain connectivity. A sweep fallback handles degenerate cases.
+
+5. **3D Quality Metrics** (`ChainStripOptimizer.ts`): After mesh construction, `computeChainStrip3DQuality()` analyzes chain-strip triangles in 3D space, reporting minimum angle, aspect ratio distribution, and area-ratio grading violations.
+
+Key files:
+- `OuterWallTessellator.ts` — Grid construction, chain vertex insertion, graded transitions
+- `ChainStripTriangulator.ts` — CDT/sweep triangulation per row band
+- `ChainStripOptimizer.ts` — Mesh diagnostics and 3D quality analysis
+- `ParametricExportComputer.ts` — Full export pipeline orchestration
+
 ---
 
 ### `camera_controller.ts` — Camera System (1,240 LOC)

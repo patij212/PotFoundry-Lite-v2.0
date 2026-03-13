@@ -25,11 +25,12 @@ const DRAFT: QualityProfile = {
         epsNormalDeg: 8.0,
         epsFeatureMm: 0.10,
         minTriangleAngleDeg: 15,
-        maxAspectRatio: 12.0,
+        maxAspectRatio: 24.0,    // R/r metric: equilateral=2, sliver→∞
     },
     maxTriangleBudget: 500_000,
-    maxRefineIterations: 0,
-    description: 'Fast preview — loose tolerances, no adaptive refinement',
+    maxRefineIterations: 1,
+    qualityIterations: 1,
+    description: 'Fast preview — loose tolerances, minimal adaptive refinement',
 };
 
 /**
@@ -43,10 +44,11 @@ const STANDARD: QualityProfile = {
         epsNormalDeg: 6.0,
         epsFeatureMm: 0.06,
         minTriangleAngleDeg: 18,
-        maxAspectRatio: 10.0,
+        maxAspectRatio: 20.0,    // R/r metric: equilateral=2, sliver→∞
     },
     maxTriangleBudget: 2_000_000,
-    maxRefineIterations: 2,
+    maxRefineIterations: 4,
+    qualityIterations: 2,
     description: 'Balanced quality for FDM printing',
 };
 
@@ -61,10 +63,11 @@ const HIGH: QualityProfile = {
         epsNormalDeg: 4.0,
         epsFeatureMm: 0.04,
         minTriangleAngleDeg: 20,
-        maxAspectRatio: 8.0,
+        maxAspectRatio: 16.0,    // R/r metric: equilateral=2, sliver→∞
     },
     maxTriangleBudget: 4_000_000,
-    maxRefineIterations: 4,
+    maxRefineIterations: 8,
+    qualityIterations: 3,
     description: 'High-fidelity for detailed FDM and draft SLA',
 };
 
@@ -79,10 +82,11 @@ const ULTRA: QualityProfile = {
         epsNormalDeg: 3.0,
         epsFeatureMm: 0.02,
         minTriangleAngleDeg: 22,
-        maxAspectRatio: 6.0,
+        maxAspectRatio: 12.0,    // R/r metric: equilateral=2, sliver→∞
     },
     maxTriangleBudget: 8_000_000,
-    maxRefineIterations: 6,
+    maxRefineIterations: 12,
+    qualityIterations: 4,
     description: 'Maximum fidelity for SLA/resin printing',
 };
 
@@ -186,6 +190,44 @@ export function downgradeProfile(current: QualityProfileName): QualityProfileNam
     const idx = PROFILE_QUALITY_ORDER.indexOf(current);
     if (idx <= 0) return null;
     return PROFILE_QUALITY_ORDER[idx - 1];
+}
+
+/**
+ * Build the full deterministic downgrade ladder from a starting profile.
+ *
+ * Examples:
+ * - ultra -> [ultra, high, standard, draft]
+ * - high  -> [high, standard, draft]
+ * - draft -> [draft]
+ *
+ * @param start - Requested quality profile.
+ * @returns Ordered fallback sequence from highest attempt to lowest.
+ */
+export function buildDowngradeLadder(start: QualityProfileName): readonly QualityProfileName[] {
+    const idx = PROFILE_QUALITY_ORDER.indexOf(start);
+    if (idx < 0) {
+        return ['draft'];
+    }
+    return PROFILE_QUALITY_ORDER.slice(0, idx + 1).reverse();
+}
+
+/**
+ * Resolve profile for a specific fallback attempt index.
+ *
+ * Attempt 0 returns the requested profile. Subsequent attempts walk the
+ * deterministic downgrade ladder until clamped at `draft`.
+ *
+ * @param requested - Initially requested profile.
+ * @param attempt - Zero-based attempt index.
+ * @returns Profile to use for this attempt.
+ */
+export function profileForAttempt(
+    requested: QualityProfileName,
+    attempt: number,
+): QualityProfileName {
+    const ladder = buildDowngradeLadder(requested);
+    const safeAttempt = Math.max(0, Math.floor(attempt));
+    return ladder[Math.min(safeAttempt, ladder.length - 1)];
 }
 
 /**

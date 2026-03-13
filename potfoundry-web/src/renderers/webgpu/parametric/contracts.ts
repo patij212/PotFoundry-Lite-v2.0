@@ -222,7 +222,7 @@ export interface RefinementOutput {
     /** Number of refinement iterations performed. */
     readonly iterationsPerformed: number;
     /** Reason refinement stopped. */
-    readonly stopReason: 'tolerances_passed' | 'max_iterations' | 'budget_exhausted' | 'no_improvement' | 'zero_iterations';
+    readonly stopReason: 'tolerances_passed' | 'max_iterations' | 'budget_exhausted' | 'no_improvement' | 'zero_iterations' | 'diminishing_returns';
     /** Maximum position error after refinement (mm). */
     readonly maxPosErrorMm: number;
     /** Maximum normal error after refinement (degrees). */
@@ -344,6 +344,36 @@ export interface PipelineFeatureFlags {
      * Default: false.
      */
     readonly mdcIsosurface?: boolean;
+
+    /**
+     * Enable QEM edge collapse to remove over-tessellated edges.
+     * When true, the refinement loop can both split AND collapse edges.
+     * Default: false.
+     */
+    readonly edgeCollapseEnabled?: boolean;
+
+    /**
+     * Enable per-edge error estimation instead of per-triangle.
+     * When true, the refinement loop measures chord error on every edge
+     * directly (via GPU midpoint evaluation) and splits the highest-error
+     * edges. More targeted than the per-triangle → longest-edge heuristic.
+     * Default: false.
+     */
+    readonly perEdgeErrorEstimation?: boolean;
+
+    /**
+     * Enable dry-run outer-wall corridor planning.
+     * When true, the outer-wall tessellator computes corridor candidates and
+     * future ownership diagnostics without changing emitted geometry.
+     * Default: false.
+     */
+    readonly outerWallCorridorPlanning?: boolean;
+
+    /**
+     * Emit outer-wall corridor planning diagnostics.
+     * Requires outerWallCorridorPlanning to be true. Default: false.
+     */
+    readonly outerWallCorridorDiagnostics?: boolean;
 }
 
 /**
@@ -355,6 +385,10 @@ export const DEFAULT_FEATURE_FLAGS: Readonly<PipelineFeatureFlags> = Object.free
     gpuFidelityCheck: false,
     seamHealing: false,
     mdcIsosurface: false,
+    edgeCollapseEnabled: false,
+    perEdgeErrorEstimation: false,
+    outerWallCorridorPlanning: false,
+    outerWallCorridorDiagnostics: false,
 });
 
 /**
@@ -386,10 +420,12 @@ export function validateFeatureFlags(flags: PipelineFeatureFlags): void {
             'See contracts.ts for the planned extension point.',
         );
     }
-    if (flags.gpuFidelityCheck && !flags.distortionGating) {
-        // gpuFidelityCheck without distortionGating is valid but unusual —
-        // just a note, no error.
+    if (flags.outerWallCorridorDiagnostics && !flags.outerWallCorridorPlanning) {
+        throw new Error(
+            'outerWallCorridorDiagnostics requires outerWallCorridorPlanning to be enabled first.',
+        );
     }
+    // Note: gpuFidelityCheck without distortionGating is valid but unusual.
 }
 
 // ============================================================================
@@ -474,4 +510,70 @@ function hasStageShape(val: unknown): boolean {
     if (!val || typeof val !== 'object') return false;
     const s = val as Record<string, unknown>;
     return typeof s['name'] === 'string' && typeof s['execute'] === 'function';
+}
+
+// ============================================================================
+// Convergence State (Phase 9.3 — A3, C6)
+// ============================================================================
+
+/**
+ * Complete convergence snapshot including quality metrics.
+ *
+ * Replaces the simple 5% improvement check with comprehensive convergence
+ * criteria that include triangle quality as first-class constraints.
+ */
+export interface ConvergenceState {
+    /** Maximum chord error across all triangles/edges (mm). */
+    readonly maxPosError: number;
+    /** 95th percentile position error (mm). */
+    readonly p95PosError: number;
+    /** Maximum normal deviation (degrees). */
+    readonly maxNormalError: number;
+    /** 95th percentile normal error (degrees). */
+    readonly p95NormalError: number;
+    /** Minimum interior angle across all triangles (degrees). */
+    readonly minAngleDeg: number;
+    /** Maximum aspect ratio across all triangles. */
+    readonly maxAspectRatio: number;
+    /** Current triangle count. */
+    readonly triangleCount: number;
+}
+
+/**
+ * Result of a convergence check.
+ */
+export interface ConvergenceCheckResult {
+    /** Whether all convergence criteria are met. */
+    readonly converged: boolean;
+    /** The criterion that prevented convergence, or 'all_passed'. */
+    readonly reason: 'pos_error' | 'normal_error' | 'min_angle' | 'aspect_ratio' | 'all_passed';
+}
+
+/**
+ * Check whether the mesh has converged to meet all tolerance + quality criteria.
+ *
+ * Quality metrics (minAngleDeg, maxAspectRatio) are first-class convergence
+ * criteria, not just diagnostic values. This addresses review issues A3 and C6.
+ *
+ * @param current - Current convergence state snapshot.
+ * @param tolerances - Tolerance thresholds to meet.
+ * @returns Convergence result with the blocking reason (if any).
+ */
+export function isConverged(
+    current: ConvergenceState,
+    tolerances: ExportTolerances,
+): ConvergenceCheckResult {
+    if (current.maxPosError > tolerances.epsPosMm) {
+        return { converged: false, reason: 'pos_error' };
+    }
+    if (current.maxNormalError > tolerances.epsNormalDeg) {
+        return { converged: false, reason: 'normal_error' };
+    }
+    if (current.minAngleDeg < (tolerances.minTriangleAngleDeg ?? 18)) {
+        return { converged: false, reason: 'min_angle' };
+    }
+    if (current.maxAspectRatio > (tolerances.maxAspectRatio ?? 20)) {
+        return { converged: false, reason: 'aspect_ratio' };
+    }
+    return { converged: true, reason: 'all_passed' };
 }

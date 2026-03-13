@@ -1,0 +1,8 @@
+﻿potfoundry\integrations\supabase_client.py:184: error: Statement is unreachable  [unreachable]
+potfoundry\integrations\supabase_client.py:249: error: Statement is unreachable  [unreachable]
+potfoundry\integrations\supabase_client.py:295: error: Statement is unreachable  [unreachable]
+potfoundry\integrations\supabase_client.py:361: error: Statement is unreachable  [unreachable]
+potfoundry\integrations\supabase_client.py:427: error: Returning Any from function declared to return "list[dict[str, Any]]"  [no-any-return]
+potfoundry\integrations\supabase_client.py:455: error: Statement is unreachable  [unreachable]
+potfoundry\integrations\supabase_client.py:617: error: Incompatible types in assignment (expression has type "str | None", variable has type "str")  [assignment]
+Found 7 errors in 1 file (checked 1 source file)
