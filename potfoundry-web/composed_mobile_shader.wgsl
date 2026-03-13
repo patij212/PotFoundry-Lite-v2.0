@@ -1,9 +1,12 @@
-// Ultra-Mobile Preview — v11 (desktop parity: seam_t bottom, showInner fix, tuned lighting)
+// Ultra-Mobile Preview — v12 (add missing common.wgsl constants for all styles)
 // Self-contained. Only the style function is injected at __STYLE_SLOT__.
 // Segments: 0=outer, 1=inner, 2=rim, 3=bottom_top, 4=bottom_under, 5=drain.
 const TAU = 6.28318530718;
 const PI = 3.14159265359;
+const PI_OVER_2 = 1.57079632679;
+const BOTTOM_Z_OFFSET = 1e-3;
 const STYLE_PARAM_CAPACITY : u32 = 48u;
+const DRAIN_RADIUS_OFFSET : u32 = 13u;
 
 struct PreviewParamBlock { values: array<vec4<f32>, 19> }
 struct StyleParamBlock  { values: array<vec4<f32>, 12> }
