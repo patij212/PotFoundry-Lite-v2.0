@@ -6,10 +6,12 @@ dist/
 build/
 out/
 
-# Environment variables
+# Environment variables and secrets
 .env
 .env.local
 .env.*.local
+**/secrets.toml
+**/.streamlit/secrets.toml
 
 # OS and editor files
 .DS_Store
