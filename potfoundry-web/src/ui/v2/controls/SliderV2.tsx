@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as RadixSlider from '@radix-ui/react-slider';
 import clsx from 'clsx';
 import './SliderV2.css';
@@ -114,19 +114,61 @@ export const SliderV2 = React.forwardRef<HTMLDivElement, SliderV2Props>(
       }
     }, [defaultValue, disabled, onChange, onValueCommit]);
 
-    const handleInputChange = useCallback(
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const parsed = parseFloat(e.target.value);
+    // Debounced input: local state tracks raw typed value, store
+    // updates after 300ms idle or on blur for responsive typing.
+    const [inputText, setInputText] = useState<string | null>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+    // When external value changes (slider drag, undo), clear local override
+    const prevExternal = useRef(safeValue);
+    if (prevExternal.current !== safeValue) {
+      prevExternal.current = safeValue;
+      if (inputText !== null) setInputText(null);
+    }
+
+    const flushInput = useCallback(
+      (raw: string) => {
+        const parsed = parseFloat(raw);
         if (!isNaN(parsed)) {
-          onChange(Math.max(min, Math.min(max, parsed)));
+          const clamped = Math.max(min, Math.min(max, parsed));
+          onChange(clamped);
+          onValueCommit?.(clamped);
         }
+        setInputText(null);
       },
-      [min, max, onChange]
+      [min, max, onChange, onValueCommit]
     );
 
+    const handleInputChange = useCallback(
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = e.target.value;
+        setInputText(raw);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => flushInput(raw), 300);
+      },
+      [flushInput]
+    );
+
+    // Clean up debounce timer on unmount
+    useEffect(() => {
+      return () => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+      };
+    }, []);
+
     const handleInputBlur = useCallback(() => {
-      onValueCommit?.(safeValue);
-    }, [onValueCommit, safeValue]);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (inputText !== null) {
+        flushInput(inputText);
+      } else {
+        onValueCommit?.(safeValue);
+      }
+    }, [inputText, flushInput, onValueCommit, safeValue]);
+
+    const displayInputValue = useMemo(
+      () => inputText ?? formatValue(safeValue),
+      [inputText, formatValue, safeValue]
+    );
 
     // Shift+Arrow: step ×10 for faster keyboard nudging
     const handleThumbKeyDown = useCallback(
@@ -167,16 +209,23 @@ export const SliderV2 = React.forwardRef<HTMLDivElement, SliderV2Props>(
       setIsDragging(true);
     }, [onInteractionStart]);
 
-    // TODO: Phase 4 — compensate for Radix getThumbInBoundsOffset.
-    // The ghost marker uses left: X% relative to Root, but Radix adjusts
-    // the Thumb position at extremes (0%, 100%) to keep it in bounds.
-    // This causes up to ±9px misalignment at the track edges.
-    const ghostPercent =
-      defaultValue !== undefined &&
-      defaultValue >= min &&
-      defaultValue <= max
-        ? ((defaultValue - min) / (max - min)) * 100
-        : undefined;
+    // Compensate for Radix getThumbInBoundsOffset: the thumb is shifted
+    // inward at track edges by thumbRadius × (1 - 2×percent). We apply
+    // the same offset to the ghost marker so it aligns with where the
+    // thumb would actually be at the default value position.
+    const THUMB_RADIUS_PX = 9; // 18px thumb / 2
+    const ghostStyle = useMemo(() => {
+      if (
+        defaultValue === undefined ||
+        defaultValue < min ||
+        defaultValue > max
+      ) {
+        return undefined;
+      }
+      const pct = (defaultValue - min) / (max - min);
+      const offsetPx = THUMB_RADIUS_PX * (1 - 2 * pct);
+      return { left: `calc(${pct * 100}% + ${offsetPx}px)` };
+    }, [defaultValue, min, max]);
 
     return (
       <div
@@ -203,7 +252,7 @@ export const SliderV2 = React.forwardRef<HTMLDivElement, SliderV2Props>(
               id={id}
               type="number"
               className="pf2-slider__input pf2-text-mono pf2-focus-ring"
-              value={formatValue(safeValue)}
+              value={displayInputValue}
               onChange={handleInputChange}
               onBlur={handleInputBlur}
               min={min}
@@ -230,10 +279,10 @@ export const SliderV2 = React.forwardRef<HTMLDivElement, SliderV2Props>(
           onPointerDown={handlePointerDown}
           data-dragging={isDragging || undefined}
         >
-          {ghostPercent !== undefined && (
+          {ghostStyle && (
             <span
               className="pf2-slider__ghost"
-              style={{ left: `${ghostPercent}%` }}
+              style={ghostStyle}
               aria-hidden="true"
             />
           )}
@@ -248,6 +297,7 @@ export const SliderV2 = React.forwardRef<HTMLDivElement, SliderV2Props>(
             aria-valuetext={
               `${formatValue(safeValue)}${unit ? ` ${unit}` : ''}`
             }
+            aria-description={defaultValue !== undefined ? 'Double-click to reset' : undefined}
             onKeyDown={handleThumbKeyDown}
           >
             <span className="pf2-slider__tooltip" aria-hidden="true">

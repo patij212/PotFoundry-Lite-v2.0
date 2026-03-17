@@ -28,6 +28,7 @@ import { geometryInspector } from '../ui/debug/utils/GeometryInspector';
 // Import shader sources
 import commonWgsl from '../assets/shaders/common.wgsl?raw';
 import stylesWgsl from '../assets/shaders/styles.wgsl?raw';
+import { isMobileDevice } from '../ResizeManager';
 import adaptiveMeshWgsl from '../assets/shaders/adaptive_mesh.wgsl?raw';
 import featureExtractWgsl from '../assets/shaders/feature_extract.wgsl?raw';
 import importanceMapWgsl from '../assets/shaders/importance_map.wgsl?raw';
@@ -118,6 +119,13 @@ export function useAdaptiveExport(): UseAdaptiveExportResult {
 
         const initGPU = async () => {
             try {
+                // On mobile, defer GPU export init to avoid multi-device crash.
+                // The main renderer needs the sole GPUDevice during boot.
+                if (isMobileDevice()) {
+                    if (import.meta.env.DEV) console.log('[useAdaptiveExport] Skipping eager GPU init on mobile');
+                    return;
+                }
+
                 if (!navigator.gpu) {
                     console.warn('[useAdaptiveExport] WebGPU not supported');
                     if (isMounted) setIsAvailable(false);

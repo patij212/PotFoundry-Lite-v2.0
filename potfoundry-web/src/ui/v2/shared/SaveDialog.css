@@ -1,0 +1,234 @@
+/* ============================================================================
+   SaveDialog — Save design to library modal
+   ============================================================================ */
+
+.pf2-save-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--pf2-z-modal, 1000);
+  background: rgba(0, 0, 0, 0.6);
+  animation: pf2-fade-in var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+}
+
+.pf2-save-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: calc(var(--pf2-z-modal, 1000) + 1);
+  width: min(90vw, 420px);
+  display: flex;
+  flex-direction: column;
+  background: var(--pf2-bg-base);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-md);
+  box-shadow: var(--pf2-shadow-float);
+  animation: pf2-drawer-enter var(--pf2-duration-fast) var(--pf2-ease-spring) both;
+}
+
+/* ============================================================================
+   Header
+   ============================================================================ */
+
+.pf2-save-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--pf2-space-lg) var(--pf2-space-xl);
+  border-bottom: 1px solid var(--pf2-border);
+}
+
+.pf2-save-dialog__title {
+  font-family: var(--pf2-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--pf2-text-primary);
+  margin: 0;
+}
+
+.pf2-save-dialog__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  color: var(--pf2-text-secondary);
+  cursor: pointer;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-save-dialog__close:hover {
+  color: var(--pf2-text-primary);
+  border-color: var(--pf2-border-active);
+}
+
+/* ============================================================================
+   Body
+   ============================================================================ */
+
+.pf2-save-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-lg);
+  padding: var(--pf2-space-xl);
+}
+
+.pf2-save-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf2-space-xs);
+}
+
+.pf2-save-dialog__input {
+  width: 100%;
+  padding: 8px 12px;
+  font-family: var(--pf2-font-body);
+  font-size: 13px;
+  color: var(--pf2-text-primary);
+  background: var(--pf2-bg-surface);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  outline: none;
+  transition: border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-save-dialog__input:focus {
+  border-color: var(--pf2-accent);
+}
+
+.pf2-save-dialog__input::placeholder {
+  color: var(--pf2-text-muted);
+}
+
+.pf2-save-dialog__input:disabled {
+  opacity: 0.5;
+}
+
+/* ============================================================================
+   Feedback
+   ============================================================================ */
+
+.pf2-save-dialog__notice {
+  color: var(--pf2-text-muted);
+  text-align: center;
+  padding: var(--pf2-space-lg) 0;
+  margin: 0;
+}
+
+.pf2-save-dialog__error {
+  padding: var(--pf2-space-sm) var(--pf2-space-md);
+  font-size: 12px;
+  color: var(--pf2-error);
+  background: color-mix(in srgb, var(--pf2-error) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pf2-error) 20%, transparent);
+  border-radius: var(--pf2-radius-sm);
+}
+
+.pf2-save-dialog__success {
+  padding: var(--pf2-space-sm) var(--pf2-space-md);
+  font-size: 12px;
+  color: var(--pf2-success);
+  background: color-mix(in srgb, var(--pf2-success) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pf2-success) 20%, transparent);
+  border-radius: var(--pf2-radius-sm);
+  text-align: center;
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-save-dialog__overlay {
+    animation: none;
+  }
+
+  .pf2-save-dialog {
+    animation: none;
+  }
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-save-dialog {
+    border: 2px solid ButtonText;
+    background: Canvas;
+  }
+
+  .pf2-save-dialog__close {
+    border: 1px solid ButtonText;
+  }
+
+  .pf2-save-dialog__input {
+    border: 1px solid ButtonText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .pf2-save-dialog__error {
+    border: 1px solid LinkText;
+    background: Canvas;
+  }
+
+  .pf2-save-dialog__success {
+    border: 1px solid LinkText;
+    background: Canvas;
+  }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-save-dialog__overlay {
+  background: var(--pf2-bg-overlay);
+}
+
+.pf2-root[data-theme="light"] .pf2-save-dialog {
+  background: var(--pf2-bg-elevated);
+  box-shadow: var(--pf2-shadow-lg);
+}
+
+.pf2-root[data-theme="light"] .pf2-save-dialog__input {
+  background: var(--pf2-bg-sunken);
+}
+
+.pf2-root[data-theme="light"] .pf2-save-dialog__error {
+  background: rgba(185, 28, 28, 0.06);
+  border-color: rgba(185, 28, 28, 0.2);
+}
+
+.pf2-root[data-theme="light"] .pf2-save-dialog__success {
+  background: rgba(61, 122, 71, 0.06);
+  border-color: rgba(61, 122, 71, 0.2);
+}
+
+/* ============================================================================
+   Mobile — Full-width bottom sheet style
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-save-dialog {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100%;
+    max-width: none;
+    border-radius: var(--pf2-radius-xl) var(--pf2-radius-xl) 0 0;
+    animation: pf2-sheet-up var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  }
+
+  .pf2-save-dialog__body {
+    padding-bottom: max(var(--pf2-space-xl), env(safe-area-inset-bottom, 0));
+  }
+}

@@ -30,6 +30,8 @@ import {
   Star,
 } from 'lucide-react';
 import { useConfidence } from '../onboarding/useConfidence';
+import { useAnnounce } from '../shared/Announcer';
+import { useRadioGroupKeys } from '../hooks/useRadioGroupKeys';
 import clsx from 'clsx';
 import './ExportTab.css';
 
@@ -137,13 +139,20 @@ export const ExportTab: React.FC = () => {
   );
 
   const activePreset = useMemo(() => detectActivePreset(mesh), [mesh]);
-  const triCount = useMemo(() => estimateTriangles(), [mesh]);
+  // estimateTriangles reads mesh internally; mesh dep triggers recompute.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const triCount = useMemo(() => estimateTriangles(), [mesh, estimateTriangles]);
+
+  const announce = useAnnounce();
+  const radioGroupKeys = useRadioGroupKeys();
 
   const handlePreset = useCallback(
     (preset: QualityPreset) => {
       runDiscreteHistoryUpdate(() => setQualityPreset(preset));
+      const card = QUALITY_CARDS.find((c) => c.id === preset);
+      if (card) announce(`Quality set to ${card.label}`);
     },
-    [runDiscreteHistoryUpdate, setQualityPreset]
+    [runDiscreteHistoryUpdate, setQualityPreset, announce]
   );
 
   return (
@@ -152,7 +161,7 @@ export const ExportTab: React.FC = () => {
           Quality Presets
           ================================================================ */}
       <SectionV2 title="Quality" icon={<Download size={14} />} sectionIndex={0}>
-        <div className="pf2-export-tab__presets" role="radiogroup" aria-label="Quality preset">
+        <div className="pf2-export-tab__presets" role="radiogroup" aria-label="Quality preset" onKeyDown={radioGroupKeys}>
           {QUALITY_CARDS.map((card) => (
             <button
               key={card.id}
@@ -184,14 +193,15 @@ export const ExportTab: React.FC = () => {
           ================================================================ */}
       {isVisible('export:format') && (
       <SectionV2 title="Format" icon={<Layers size={14} />} sectionIndex={1}>
-        <div className="pf2-export-tab__format-row">
+        <div className="pf2-export-tab__format-row" role="radiogroup" aria-label="Export format" onKeyDown={radioGroupKeys}>
           {FORMAT_OPTIONS.map((opt) => (
             <ButtonV2
               key={opt.value}
               variant={format === opt.value ? 'primary' : 'secondary'}
               size="sm"
-              onClick={() => setFormat(opt.value)}
-              aria-pressed={format === opt.value}
+              onClick={() => { setFormat(opt.value); announce(`Export format: ${opt.label}`); }}
+              role="radio"
+              aria-checked={format === opt.value}
               title={opt.description}
             >
               {opt.label}

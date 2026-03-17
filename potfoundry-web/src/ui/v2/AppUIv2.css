@@ -87,6 +87,10 @@
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Smooth theme switching */
+  transition:
+    color var(--pf2-duration-normal) var(--pf2-ease-move),
+    background-color var(--pf2-duration-normal) var(--pf2-ease-move);
 }
 
 .pf2-root *,
@@ -200,11 +204,16 @@
 .pf2-root[data-theme="light"] {
   /* Surfaces — warm paper palette */
   --pf2-bg-base: #faf8f5;
+  --pf2-bg-surface: #f5f0eb;
+  --pf2-bg-elevated: #ffffff;
+  --pf2-bg-hover: #ede8e1;
   --pf2-bg-raised: #ffffff;
   --pf2-bg-sunken: #f5f0eb;
   --pf2-bg-overlay: rgba(0, 0, 0, 0.4);
 
   /* Borders */
+  --pf2-border: rgba(0, 0, 0, 0.1);
+  --pf2-border-active: rgba(0, 0, 0, 0.2);
   --pf2-border-subtle: rgba(0, 0, 0, 0.08);
   --pf2-border-default: rgba(0, 0, 0, 0.15);
 
@@ -217,6 +226,7 @@
   /* Accent — CORRECTED per Verifier C2: 5.33:1 on #faf8f5 */
   --pf2-accent: #7a6526;
   --pf2-accent-hover: #695518;
+  --pf2-accent-subtle: rgba(122, 101, 38, 0.1);
   --pf2-accent-muted: rgba(122, 101, 38, 0.15);
 
   /* Semantics */
@@ -232,4 +242,27 @@
   --pf2-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --pf2-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
   --pf2-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --pf2-shadow-float: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Density Overrides ─────────────────────────────────────── */
+
+.pf2-root[data-density="compact"] {
+  --pf2-space-xs: 2px;
+  --pf2-space-sm: 4px;
+  --pf2-space-md: 8px;
+  --pf2-space-lg: 12px;
+  --pf2-space-xl: 16px;
+  font-size: 13px;
+}
+
+/* comfortable = default tokens — no overrides needed */
+
+.pf2-root[data-density="spacious"] {
+  --pf2-space-xs: 6px;
+  --pf2-space-sm: 10px;
+  --pf2-space-md: 16px;
+  --pf2-space-lg: 20px;
+  --pf2-space-xl: 28px;
+  font-size: 15px;
 }

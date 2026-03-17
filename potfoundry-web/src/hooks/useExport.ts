@@ -333,10 +333,19 @@ export function useExport(): UseExportResult {
       const defaultFilename = `PotFoundry_${styleName}_${Date.now()}.${ext}`;
       const finalFilename = filename ?? defaultFilename;
 
+      // Grab appearance colors for 3MF color embedding
+      const appearance = useAppStore.getState().appearance;
+      const exportColors = effectiveFormat === '3mf' ? {
+        primaryColor: appearance.primaryColor,
+        midColor: appearance.midColor,
+        secondaryColor: appearance.secondaryColor,
+      } : undefined;
+
       // Download using the appropriate exporter
       await downloadMesh(result.mesh, finalFilename, {
         format: effectiveFormat,
         name: `PotFoundry ${style.name}`,
+        colors: exportColors,
       });
 
       setProgress({

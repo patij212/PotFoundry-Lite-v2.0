@@ -139,6 +139,7 @@ export function useConfidence(): UseConfidenceReturn {
   // React re-renders, both are preserved.
   const unlock = useCallback((trigger: ConfidenceTrigger) => {
     if (state.triggers.has(trigger)) return;
+    const prevLevel = state.level;
     const newTriggers = new Set(state.triggers);
     newTriggers.add(trigger);
 
@@ -151,6 +152,15 @@ export function useConfidence(): UseConfidenceReturn {
     state = { level: newLevel, triggers: newTriggers };
     saveState();
     emitChange();
+
+    // Dispatch event for toast/celebration when level increases
+    if (newLevel > prevLevel) {
+      window.dispatchEvent(
+        new CustomEvent('pf2:confidence-unlock', {
+          detail: { from: prevLevel, to: newLevel },
+        })
+      );
+    }
   }, []);
 
   const resetAll = useCallback(() => {

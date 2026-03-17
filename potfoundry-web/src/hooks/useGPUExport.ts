@@ -25,6 +25,7 @@ import commonWgsl from '../assets/shaders/common.wgsl?raw';
 import stylesWgsl from '../assets/shaders/styles.wgsl?raw';
 import potExportWgsl from '../assets/shaders/pot_export.wgsl?raw';
 import scanProfileWgsl from '../assets/shaders/scan_profile.wgsl?raw';
+import { isMobileDevice } from '../ResizeManager';
 
 // ============================================================================
 // Types
@@ -99,6 +100,13 @@ export function useGPUExport(): UseGPUExportResult {
 
         const initOrUpdateGPU = async () => {
             try {
+                // On mobile, defer GPU export init to avoid multi-device crash.
+                // The main renderer needs the sole GPUDevice during boot.
+                if (isMobileDevice()) {
+                    if (import.meta.env.DEV) console.log('[useGPUExport] Skipping eager GPU init on mobile');
+                    return;
+                }
+
                 if (!navigator.gpu) {
                     console.warn('[useGPUExport] WebGPU not supported');
                     if (isMounted) setIsGPUAvailable(false);

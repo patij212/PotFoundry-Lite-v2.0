@@ -7,7 +7,7 @@
  * @module ui/v2/shared/LibraryDrawer
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Search, X } from 'lucide-react';
 import {
@@ -22,6 +22,7 @@ import { useAppStore, type StyleName } from '../../../state';
 import { useAnnounce } from './Announcer';
 import { useConfidence } from '../onboarding/useConfidence';
 import type { LibraryDesign } from '../../../context/LibraryContext';
+import { useRadioGroupKeys } from '../hooks/useRadioGroupKeys';
 import clsx from 'clsx';
 import './LibraryDrawer.css';
 
@@ -49,9 +50,10 @@ interface PresetCardProps {
   preset: PotPreset;
   isActive: boolean;
   onApply: () => void;
+  index: number;
 }
 
-const PresetCard: React.FC<PresetCardProps> = ({ preset, isActive, onApply }) => {
+const PresetCard: React.FC<PresetCardProps> = ({ preset, isActive, onApply, index }) => {
   const design = useMemo(() => presetToDesign(preset), [preset]);
 
   return (
@@ -62,6 +64,7 @@ const PresetCard: React.FC<PresetCardProps> = ({ preset, isActive, onApply }) =>
       )}
       onClick={onApply}
       title={preset.description}
+      style={{ '--card-index': index } as React.CSSProperties}
     >
       <div className="pf2-library-drawer__card-thumb">
         <DesignThumbnail design={design} width={160} height={120} />
@@ -93,6 +96,7 @@ export const LibraryDrawer: React.FC<LibraryDrawerProps> = ({
   const [activeCategory, setActiveCategory] = useState<PresetCategory | null>(null);
 
   const announce = useAnnounce();
+  const radioGroupKeys = useRadioGroupKeys();
   const { unlock } = useConfidence();
 
   // Store actions
@@ -104,6 +108,8 @@ export const LibraryDrawer: React.FC<LibraryDrawerProps> = ({
   const setPrimaryColor = useAppStore((s) => s.setPrimaryColor);
   const setMidColor = useAppStore((s) => s.setMidColor);
   const setSecondaryColor = useAppStore((s) => s.setSecondaryColor);
+  const beginHistoryTransaction = useAppStore((s) => s.beginHistoryTransaction);
+  const commitHistoryTransaction = useAppStore((s) => s.commitHistoryTransaction);
 
   const categories = useMemo(() => getCategories(), []);
 
@@ -124,6 +130,18 @@ export const LibraryDrawer: React.FC<LibraryDrawerProps> = ({
     return result;
   }, [activeCategory, searchQuery]);
 
+  // Announce result count with debounce (avoids flooding on fast typing)
+  const announceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    if (!open) return;
+    clearTimeout(announceTimerRef.current);
+    announceTimerRef.current = setTimeout(() => {
+      const count = filteredPresets.length;
+      announce(count === 0 ? 'No presets match' : `${count} preset${count === 1 ? '' : 's'} found`);
+    }, 400);
+    return () => clearTimeout(announceTimerRef.current);
+  }, [filteredPresets.length, open, announce]);
+
   const isPresetActive = useCallback(
     (preset: PotPreset): boolean => {
       return (
@@ -136,6 +154,8 @@ export const LibraryDrawer: React.FC<LibraryDrawerProps> = ({
 
   const applyPreset = useCallback(
     (preset: PotPreset) => {
+      beginHistoryTransaction();
+
       setGeometryParams({
         H: preset.size.height,
         top_od: preset.size.top_od,
@@ -171,11 +191,14 @@ export const LibraryDrawer: React.FC<LibraryDrawerProps> = ({
         setSecondaryColor(preset.appearance.secondaryColor);
       }
 
+      commitHistoryTransaction();
+
       onOpenChange(false);
       announce(`Applied preset: ${preset.title}`);
       unlock('preset-load');
     },
     [
+      beginHistoryTransaction, commitHistoryTransaction,
       setGeometryParams, setStyle, setStyleOpts,
       setPrimaryColor, setMidColor, setSecondaryColor,
       onOpenChange, announce, unlock,
@@ -219,7 +242,7 @@ export const LibraryDrawer: React.FC<LibraryDrawerProps> = ({
           </div>
 
           {/* Category Filters */}
-          <div className="pf2-library-drawer__categories" role="radiogroup" aria-label="Filter by category">
+          <div className="pf2-library-drawer__categories" role="radiogroup" aria-label="Filter by category" onKeyDown={radioGroupKeys}>
             <button
               className={clsx(
                 'pf2-library-drawer__chip pf2-focus-ring',
@@ -247,15 +270,49 @@ export const LibraryDrawer: React.FC<LibraryDrawerProps> = ({
             ))}
           </div>
 
-          {/* Preset Grid */}
-          <div className="pf2-library-drawer__grid">
+          {/* Preset Grid — arrow key navigation */}
+          <div
+            className="pf2-library-drawer__grid"
+            role="grid"
+            aria-label="Preset designs"
+            onKeyDown={(e) => {
+              const cards = Array.from(
+                e.currentTarget.querySelectorAll<HTMLButtonElement>('.pf2-library-drawer__card')
+              );
+              const focused = document.activeElement as HTMLElement;
+              const idx = cards.indexOf(focused as HTMLButtonElement);
+              if (idx < 0) return;
+
+              // Estimate columns from grid layout
+              const gridEl = e.currentTarget;
+              const cols = Math.round(gridEl.clientWidth / (cards[0]?.offsetWidth || 180)) || 1;
+              let next = idx;
+
+              switch (e.key) {
+                case 'ArrowRight': next = Math.min(idx + 1, cards.length - 1); break;
+                case 'ArrowLeft': next = Math.max(idx - 1, 0); break;
+                case 'ArrowDown': next = Math.min(idx + cols, cards.length - 1); break;
+                case 'ArrowUp': next = Math.max(idx - cols, 0); break;
+                case 'Home': next = 0; break;
+                case 'End': next = cards.length - 1; break;
+                default: return;
+              }
+
+              if (next !== idx) {
+                e.preventDefault();
+                cards[next].focus();
+                cards[next].scrollIntoView({ block: 'nearest' });
+              }
+            }}
+          >
             {filteredPresets.length > 0 ? (
-              filteredPresets.map((preset) => (
+              filteredPresets.map((preset, i) => (
                 <PresetCard
                   key={preset.id}
                   preset={preset}
                   isActive={isPresetActive(preset)}
                   onApply={() => applyPreset(preset)}
+                  index={i}
                 />
               ))
             ) : (

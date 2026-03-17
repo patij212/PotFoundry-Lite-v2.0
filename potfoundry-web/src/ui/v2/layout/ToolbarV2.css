@@ -88,10 +88,26 @@
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--pf2-duration-micro) var(--pf2-ease-move);
+  transition-delay: 0ms;
 }
 
 .pf2-toolbar .pf2-icon-button:hover::after {
   opacity: 1;
+  transition-delay: 400ms;
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-toolbar {
+    animation: none;
+  }
+
+  .pf2-toolbar--zen {
+    transition: none;
+  }
 }
 
 /* ============================================================================
@@ -121,16 +137,41 @@
 @media (max-width: 768px) {
   .pf2-toolbar {
     top: max(8px, env(safe-area-inset-top, 8px));
+    left: env(safe-area-inset-left, 0px);
+    right: env(safe-area-inset-right, 0px);
+    transform: none;
+    width: auto;
     padding: 2px 4px;
     gap: 2px;
-    max-width: calc(100vw - 16px);
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .pf2-toolbar::-webkit-scrollbar {
+    display: none;
   }
 
   .pf2-toolbar__group {
     gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .pf2-toolbar__group--center {
+    padding: 0 2px;
   }
 
   .pf2-toolbar__divider {
+    display: none;
+  }
+
+  /* Hide hover tooltips on touch devices */
+  .pf2-toolbar .pf2-icon-button::after {
     display: none;
   }
 }

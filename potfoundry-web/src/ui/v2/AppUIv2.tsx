@@ -21,6 +21,7 @@ import { useColorMode } from './hooks/useColorMode';
 import { ErrorBoundary } from '../shared';
 import './AppUIv2.css';
 import { WelcomeCard } from './onboarding/WelcomeCard';
+import { UnlockToast } from './shared/UnlockToast';
 
 // ============================================================================
 // Tab index mapping for Alt+N shortcuts
@@ -44,6 +45,7 @@ export const AppUIv2: React.FC = () => {
   const uiTheme = useAppStore((s) => s.ui.uiTheme);
   const panelOpen = useAppStore((s) => s.ui.panelOpen);
   const zenMode = useAppStore((s) => s.ui.zenMode);
+  const density = useAppStore((s) => s.ui.density);
   const { resolvedTheme } = useColorMode();
 
   // Sync data-theme to <html> so portal-rendered content (modals, drawers,
@@ -102,6 +104,22 @@ export const AppUIv2: React.FC = () => {
         }
       }
 
+      // D — trigger download (dispatches custom event for StatusFooter)
+      if (e.key === 'd' || e.key === 'D') {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('pf2:download'));
+        }
+      }
+
+      // R — reset camera (dispatches custom event for ToolbarV2/controller)
+      if (e.key === 'r' || e.key === 'R') {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('pf2:reset-camera'));
+        }
+      }
+
       // Alt+1/2/3 — tab switching
       if (e.altKey && !e.ctrlKey && !e.metaKey) {
         const tab = TAB_KEYS[e.key];
@@ -122,6 +140,7 @@ export const AppUIv2: React.FC = () => {
         <div
           className="pf2-root pf2-layout"
           data-theme={resolvedTheme}
+          data-density={density}
           data-zen={zenMode || undefined}
           data-panel-open={panelOpen || undefined}
         >
@@ -138,6 +157,9 @@ export const AppUIv2: React.FC = () => {
           <ErrorBoundary name="WelcomeCard">
             <WelcomeCard />
           </ErrorBoundary>
+
+          {/* Toast for confidence unlock celebrations */}
+          <UnlockToast />
         </div>
       </AnnouncerProvider>
     </ErrorBoundary>

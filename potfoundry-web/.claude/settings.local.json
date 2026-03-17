@@ -23,7 +23,9 @@
       "Bash(npm install:*)",
       "Bash(git:*)",
       "Bash(tail:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(grep:*)",
+      "Read(//c/Users/patij212/Downloads/PotFoundry-Lite-v2.0/archive/legacy_app/.streamlit/**)"
     ]
   }
 }

@@ -195,7 +195,10 @@
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
-  transition: opacity var(--pf2-duration-micro) var(--pf2-ease-enter);
+  transform: translateX(-50%) translateY(4px);
+  transition:
+    opacity var(--pf2-duration-micro) var(--pf2-ease-enter),
+    transform var(--pf2-duration-micro) var(--pf2-ease-enter);
   z-index: var(--pf2-z-tooltip);
 }
 
@@ -211,6 +214,7 @@
 
 .pf2-slider__root[data-dragging] .pf2-slider__tooltip {
   opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .pf2-slider__tooltip-unit {
@@ -260,6 +264,18 @@
    Light Theme — Thumb Glow (C9)
    ============================================================================ */
 
+.pf2-root[data-theme="light"] .pf2-slider__track {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.pf2-root[data-theme="light"] .pf2-slider__thumb {
+  background: var(--pf2-bg-elevated);
+}
+
+.pf2-root[data-theme="light"] .pf2-slider__input {
+  background: var(--pf2-bg-sunken);
+}
+
 .pf2-root[data-theme="light"] .pf2-slider__thumb:hover {
   box-shadow: 0 0 0 4px rgba(122, 101, 38, 0.3);
 }
@@ -267,4 +283,12 @@
 .pf2-root[data-theme="light"] .pf2-slider__thumb:active,
 .pf2-root[data-theme="light"] .pf2-slider__root[data-dragging] .pf2-slider__thumb {
   box-shadow: 0 0 0 8px rgba(122, 101, 38, 0.2);
+}
+
+.pf2-root[data-theme="light"] .pf2-slider__tooltip {
+  color: var(--pf2-text-on-accent);
+}
+
+.pf2-root[data-theme="light"] .pf2-slider__tooltip::after {
+  border-top-color: var(--pf2-accent);
 }

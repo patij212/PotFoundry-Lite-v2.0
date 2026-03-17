@@ -7,9 +7,11 @@
  * @module ui/shared/DesignThumbnail
  */
 
-import React, { useRef, useEffect, useState, memo } from 'react';
+import React, { useRef, useEffect, useState, memo, useMemo } from 'react';
 import type { LibraryDesign } from '../../context/LibraryContext';
 import ThumbnailRenderer from '../../services/ThumbnailRenderer';
+import { ImageOff } from 'lucide-react';
+import clsx from 'clsx';
 import './DesignThumbnail.css';
 
 interface DesignThumbnailProps {
@@ -32,8 +34,12 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
     const [hasRendered, setHasRendered] = useState(false);
     const [renderError, setRenderError] = useState(false);
 
-    // Scale for device pixel ratio
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    // Scale for device pixel ratio — cap to 2.0 (thumbnails are small enough
+    // that 2× is fine even on mobile without straining GPU memory)
+    const dpr = useMemo(() => {
+        if (typeof window === 'undefined') return 1;
+        return Math.min(window.devicePixelRatio || 1, 2.0);
+    }, []);
     const renderWidth = Math.floor(width * dpr);
     const renderHeight = Math.floor(height * dpr);
 
@@ -88,12 +94,15 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
                 setRenderError(true);
                 setHasRendered(true);
             });
-    }, [isVisible, hasRendered, design, width, height]);
+    }, [isVisible, hasRendered, design, width, height, renderWidth, renderHeight]);
 
     return (
         <div
             ref={containerRef}
-            className="pf-design-thumbnail"
+            className={clsx(
+                'pf-design-thumbnail',
+                hasRendered && !renderError && 'pf-design-thumbnail--rendered'
+            )}
             style={{ width: '100%', height: '100%' }}
         >
             <canvas
@@ -110,6 +119,7 @@ export const DesignThumbnail: React.FC<DesignThumbnailProps> = memo(({
             )}
             {renderError && (
                 <div className="pf-design-thumbnail__error">
+                    <ImageOff className="pf-design-thumbnail__error-icon" size={24} />
                     <span>Preview unavailable</span>
                 </div>
             )}

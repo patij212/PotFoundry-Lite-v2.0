@@ -16,13 +16,22 @@ import { buildStyleParamPayload } from '../utils/styleParams';
 import type { LibraryDesign } from '../context/LibraryContext';
 
 import { UNIFORM_FLOAT_COUNT } from '../camera_constants';
+import { isMobileDevice } from '../ResizeManager';
 
 // Constants matching webgpu_core.ts
 const STYLE_PARAM_CAPACITY = 48;
 
-// Mesh Resolution Constants - higher than simplified default to handle twist/styles better
-const CELLS_X = 200;      // Was 120 (nTheta)
-const CELLS_OUTER_Y = 150; // Was 60  (nZ)
+// Mesh Resolution Constants — sized for thumbnail previews, not full renders.
+// 64×48 yields ~68K vertices, plenty for a 150×120 preview but ~5× fewer than
+// the 200×150 (336K vertices) that was causing GPU exhaustion on mobile.
+const CELLS_X = 64;
+const CELLS_OUTER_Y = 48;
+
+/** Safety timeout (ms) — if the main renderer never calls setDevice(), queued requests fail gracefully */
+const DEVICE_READY_TIMEOUT_MS = 10_000;
+
+/** Delay (ms) between thumbnail renders on mobile to prevent GPU process exhaustion */
+const MOBILE_INTER_RENDER_DELAY_MS = 200;
 
 interface ThumbnailRequest {
     design: LibraryDesign;
@@ -47,9 +56,16 @@ class ThumbnailRenderer {
     private resources: RenderResources | null = null;
     private queue: ThumbnailRequest[] = [];
     private processing = false;
-    private initPromise: Promise<boolean> | null = null;
+    private device: GPUDevice | null = null;
+    private deviceReady: Promise<GPUDevice | null>;
+    private deviceReadyResolve: ((device: GPUDevice | null) => void) | null = null;
+    private deviceLost = false;
 
-    private constructor() { }
+    private constructor() {
+        this.deviceReady = new Promise(resolve => {
+            this.deviceReadyResolve = resolve;
+        });
+    }
 
     /**
      * Get the singleton instance
@@ -62,39 +78,50 @@ class ThumbnailRenderer {
     }
 
     /**
-     * Initialize WebGPU resources (called once)
+     * Inject the main renderer's GPUDevice. Called by webgpu_core.ts after
+     * the device has been created and stabilized. Creates GPU resources and
+     * unblocks any queued thumbnail renders.
      */
-    private async initialize(): Promise<boolean> {
-        if (this.resources) return true;
-        if (this.initPromise) return this.initPromise;
+    setDevice(device: GPUDevice): void {
+        this.device = device;
+        this.deviceLost = false;
 
-        this.initPromise = this._doInit();
-        return this.initPromise;
+        const ok = this._initResources(device);
+        // Resolve (or re-resolve) the deviceReady gate
+        this.deviceReady = Promise.resolve(ok ? device : null);
+        this.deviceReadyResolve = null;
+
+        device.lost.then(() => {
+            this.deviceLost = true;
+            this.destroyResources();
+            while (this.queue.length > 0) {
+                this.queue.shift()!.resolve(null);
+            }
+        });
+
+        if (import.meta.env.DEV) console.log('[ThumbnailRenderer] Device injected successfully');
+        // Kick the queue in case requests were waiting
+        this.processQueue();
     }
 
-    private async _doInit(): Promise<boolean> {
+    /**
+     * Reject device availability — called when WebGPU init fails so queued
+     * thumbnail requests resolve with null immediately instead of hanging.
+     */
+    rejectDevice(): void {
+        this.deviceReady = Promise.resolve(null);
+        if (this.deviceReadyResolve) {
+            this.deviceReadyResolve(null);
+            this.deviceReadyResolve = null;
+        }
+    }
+
+    /**
+     * Create GPU buffers, layouts, and pipeline on the injected device.
+     * @returns true if resources were created successfully
+     */
+    private _initResources(device: GPUDevice): boolean {
         try {
-            // Check WebGPU support
-            if (!navigator.gpu) {
-                console.warn('[ThumbnailRenderer] WebGPU not supported');
-                return false;
-            }
-
-            const adapter = await navigator.gpu.requestAdapter();
-            if (!adapter) {
-                console.warn('[ThumbnailRenderer] No GPU adapter available');
-                return false;
-            }
-
-            const device = await adapter.requestDevice();
-            if (!device) {
-                console.warn('[ThumbnailRenderer] No GPU device available');
-                return false;
-            }
-
-            // Create buffers
-
-            // Create buffers
             const uniformBuffer = device.createBuffer({
                 label: 'thumbnail-uniforms',
                 size: UNIFORM_FLOAT_COUNT * 4,
@@ -126,8 +153,6 @@ class ThumbnailRenderer {
                 c3: createColorBuffer('thumbnail-bg3'),
             };
 
-            // Create bind group layout
-            // Note: Color buffers (1-3) need VERTEX visibility because gradient_color() is called from vs_main
             const bindGroupLayout = device.createBindGroupLayout({
                 label: 'thumbnail-bind-group-layout',
                 entries: [
@@ -142,7 +167,6 @@ class ThumbnailRenderer {
                 ],
             });
 
-            // Create pipeline
             const pipelineLayout = device.createPipelineLayout({
                 label: 'thumbnail-pipeline-layout',
                 bindGroupLayouts: [bindGroupLayout],
@@ -161,10 +185,9 @@ class ThumbnailRenderer {
                 bindGroupLayout,
             };
 
-            if (import.meta.env.DEV) console.log('[ThumbnailRenderer] Initialized successfully');
             return true;
         } catch (err) {
-            console.error('[ThumbnailRenderer] Initialization failed:', err);
+            console.error('[ThumbnailRenderer] Resource creation failed:', err);
             return false;
         }
     }
@@ -186,8 +209,13 @@ class ThumbnailRenderer {
         if (this.processing || this.queue.length === 0) return;
         this.processing = true;
 
-        const initialized = await this.initialize();
-        if (!initialized || !this.resources) {
+        // Wait for device injection with a safety timeout
+        const device = await Promise.race([
+            this.deviceReady,
+            new Promise<null>(r => setTimeout(() => r(null), DEVICE_READY_TIMEOUT_MS)),
+        ]);
+
+        if (!device || this.deviceLost || !this.resources) {
             // Fail all pending requests
             while (this.queue.length > 0) {
                 const req = this.queue.shift()!;
@@ -197,6 +225,7 @@ class ThumbnailRenderer {
             return;
         }
 
+        const mobile = isMobileDevice();
         while (this.queue.length > 0) {
             const request = this.queue.shift()!;
             try {
@@ -205,6 +234,12 @@ class ThumbnailRenderer {
             } catch (err) {
                 console.error('[ThumbnailRenderer] Render failed:', err);
                 request.resolve(null);
+            }
+            // On mobile, pause between renders to let the GPU process recover.
+            // Without this, rapid shader compilation + render + readback exhausts
+            // the Adreno GPU process and triggers a Dawn instance crash.
+            if (mobile && this.queue.length > 0) {
+                await new Promise(r => setTimeout(r, MOBILE_INTER_RENDER_DELAY_MS));
             }
         }
 
@@ -231,7 +266,7 @@ class ThumbnailRenderer {
                 code,
             });
 
-            pipeline = await device.createRenderPipelineAsync({
+            const pipelineDescriptor: GPURenderPipelineDescriptor = {
                 label: `thumbnail-pipeline-${styleId}`,
                 layout: pipelineLayout,
                 vertex: { module: shaderModule, entryPoint: 'vs_main' },
@@ -246,7 +281,13 @@ class ThumbnailRenderer {
                     depthCompare: 'less',
                     format: 'depth24plus',
                 },
-            });
+            };
+
+            // On mobile, use synchronous pipeline creation to avoid Chrome's
+            // GPU process watchdog killing the Dawn instance mid-compilation.
+            pipeline = isMobileDevice()
+                ? device.createRenderPipeline(pipelineDescriptor)
+                : await device.createRenderPipelineAsync(pipelineDescriptor);
             pipelineCache.set(styleId, pipeline);
         }
 
@@ -676,9 +717,9 @@ class ThumbnailRenderer {
     }
 
     /**
-     * Dispose of resources (typically not called unless app unmounts)
+     * Destroy GPU buffer resources (reusable for device-lost and dispose)
      */
-    dispose(): void {
+    private destroyResources(): void {
         if (this.resources) {
             const { uniformBuffer, styleParamBuffer, colorBuffers, bgBuffers } = this.resources;
             uniformBuffer.destroy();
@@ -691,6 +732,19 @@ class ThumbnailRenderer {
             bgBuffers.c3.destroy();
             this.resources = null;
         }
+    }
+
+    /**
+     * Dispose of resources (typically not called unless app unmounts)
+     */
+    dispose(): void {
+        // Resolve pending deviceReady with null so nothing hangs
+        if (this.deviceReadyResolve) {
+            this.deviceReadyResolve(null);
+            this.deviceReadyResolve = null;
+        }
+        this.destroyResources();
+        this.device = null;
         ThumbnailRenderer.instance = null;
     }
 }

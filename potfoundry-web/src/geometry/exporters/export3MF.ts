@@ -21,6 +21,15 @@ import type { MeshData } from '../types';
 // Types
 // ============================================================================
 
+export interface Export3MFColors {
+    /** Bottom color hex (e.g. '#8B4513') */
+    primaryColor: string;
+    /** Mid color hex */
+    midColor: string;
+    /** Top color hex */
+    secondaryColor: string;
+}
+
 export interface Export3MFOptions {
     /** Model name (default: 'PotFoundry') */
     name?: string;
@@ -30,6 +39,8 @@ export interface Export3MFOptions {
     compressionLevel?: number;
     /** Progress callback */
     onProgress?: (progress: number, message: string) => void;
+    /** Per-triangle colors via 3MF Materials Extension (optional) */
+    colors?: Export3MFColors;
 }
 
 // ============================================================================
@@ -54,6 +65,72 @@ const RELS_XML = `<?xml version="1.0" encoding="UTF-8"?>
 </Relationships>`;
 
 // ============================================================================
+// Color Helpers
+// ============================================================================
+
+/** Parse hex color to [r,g,b] 0-255 */
+function parseHex(hex: string): [number, number, number] {
+    const h = hex.replace('#', '');
+    return [
+        parseInt(h.substring(0, 2), 16),
+        parseInt(h.substring(2, 4), 16),
+        parseInt(h.substring(4, 6), 16),
+    ];
+}
+
+/** Linearly interpolate between two colors */
+function lerpColor(
+    a: [number, number, number],
+    b: [number, number, number],
+    t: number,
+): string {
+    const r = Math.round(a[0] + (b[0] - a[0]) * t);
+    const g = Math.round(a[1] + (b[1] - a[1]) * t);
+    const b2 = Math.round(a[2] + (b[2] - a[2]) * t);
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b2.toString(16).padStart(2, '0')}`.toUpperCase();
+}
+
+/**
+ * Build a color palette: N evenly spaced colors from bottom→mid→top.
+ * Returns hex strings for a <m:colorgroup>.
+ */
+function buildColorPalette(colors: Export3MFColors, steps: number): string[] {
+    const cBottom = parseHex(colors.primaryColor);
+    const cMid = parseHex(colors.midColor);
+    const cTop = parseHex(colors.secondaryColor);
+    const palette: string[] = [];
+    for (let i = 0; i < steps; i++) {
+        const t = i / (steps - 1); // 0..1
+        if (t <= 0.5) {
+            palette.push(lerpColor(cBottom, cMid, t * 2));
+        } else {
+            palette.push(lerpColor(cMid, cTop, (t - 0.5) * 2));
+        }
+    }
+    return palette;
+}
+
+/**
+ * Map a triangle to a palette index based on its centroid Z height.
+ * Z range is auto-detected from vertices.
+ */
+function triangleColorIndex(
+    vertices: Float32Array,
+    indices: Uint32Array,
+    triIndex: number,
+    zMin: number,
+    zRange: number,
+    paletteSize: number,
+): number {
+    const i0 = indices[triIndex * 3];
+    const i1 = indices[triIndex * 3 + 1];
+    const i2 = indices[triIndex * 3 + 2];
+    const z = (vertices[i0 * 3 + 2] + vertices[i1 * 3 + 2] + vertices[i2 * 3 + 2]) / 3;
+    const t = zRange > 0 ? Math.max(0, Math.min(1, (z - zMin) / zRange)) : 0;
+    return Math.min(paletteSize - 1, Math.floor(t * paletteSize));
+}
+
+// ============================================================================
 // 3MF Generation
 // ============================================================================
 
@@ -62,11 +139,14 @@ const RELS_XML = `<?xml version="1.0" encoding="UTF-8"?>
  * 
  * For meshes over 1M vertices, generates XML in chunks to avoid memory issues.
  */
+/** Number of discrete color steps in the palette */
+const COLOR_PALETTE_SIZE = 64;
+
 function generateModelXML(mesh: MeshData, options: Export3MFOptions = {}): string | Blob {
-    const { name = 'PotFoundry', unit = 'millimeter' } = options;
+    const { name = 'PotFoundry', unit = 'millimeter', colors } = options;
     const { vertices, indices, vertexCount, triangleCount } = mesh;
 
-    // For very large meshes, use blob-based streaming
+    // For very large meshes, use blob-based streaming (without color for simplicity)
     const STREAMING_THRESHOLD = 1_000_000;
     const useStreaming = vertexCount > STREAMING_THRESHOLD || triangleCount > STREAMING_THRESHOLD;
 
@@ -74,15 +154,48 @@ function generateModelXML(mesh: MeshData, options: Export3MFOptions = {}): strin
         return generateStreamingModelXML(mesh, options);
     }
 
+    // Pre-compute Z range for color mapping
+    let zMin = Infinity;
+    let zMax = -Infinity;
+    if (colors) {
+        for (let i = 0; i < vertexCount; i++) {
+            const z = vertices[i * 3 + 2];
+            if (z < zMin) zMin = z;
+            if (z > zMax) zMax = z;
+        }
+    }
+    const zRange = zMax - zMin;
+
+    const palette = colors ? buildColorPalette(colors, COLOR_PALETTE_SIZE) : null;
+    const hasColors = palette !== null;
+
     const lines: string[] = [];
 
     // XML header and model element
     lines.push('<?xml version="1.0" encoding="UTF-8"?>');
-    lines.push('<model unit="' + unit + '" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">');
+    if (hasColors) {
+        lines.push(
+            '<model unit="' + unit + '" xml:lang="en-US"' +
+            ' xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"' +
+            ' xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02">'
+        );
+    } else {
+        lines.push('<model unit="' + unit + '" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">');
+    }
     lines.push('  <metadata name="Title">' + escapeXml(name) + '</metadata>');
     lines.push('  <metadata name="Application">PotFoundry</metadata>');
     lines.push('  <metadata name="CreationDate">' + new Date().toISOString() + '</metadata>');
     lines.push('  <resources>');
+
+    // Color group resource (3MF Materials Extension)
+    if (hasColors) {
+        lines.push('    <m:colorgroup id="2">');
+        for (const hex of palette) {
+            lines.push(`      <m:color color="${hex}FF"/>`);
+        }
+        lines.push('    </m:colorgroup>');
+    }
+
     lines.push('    <object id="1" type="model" name="' + escapeXml(name) + '">');
     lines.push('      <mesh>');
 
@@ -96,13 +209,18 @@ function generateModelXML(mesh: MeshData, options: Export3MFOptions = {}): strin
     }
     lines.push('        </vertices>');
 
-    // Triangles
+    // Triangles (with optional per-triangle color)
     lines.push('        <triangles>');
     for (let i = 0; i < triangleCount; i++) {
         const v1 = indices[i * 3];
         const v2 = indices[i * 3 + 1];
         const v3 = indices[i * 3 + 2];
-        lines.push(`          <triangle v1="${v1}" v2="${v2}" v3="${v3}"/>`);
+        if (hasColors) {
+            const ci = triangleColorIndex(vertices, indices, i, zMin, zRange, COLOR_PALETTE_SIZE);
+            lines.push(`          <triangle v1="${v1}" v2="${v2}" v3="${v3}" pid="2" p1="${ci}"/>`);
+        } else {
+            lines.push(`          <triangle v1="${v1}" v2="${v2}" v3="${v3}"/>`);
+        }
     }
     lines.push('        </triangles>');
 

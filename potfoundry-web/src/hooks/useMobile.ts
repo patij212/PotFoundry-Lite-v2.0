@@ -13,10 +13,10 @@ import { useState, useEffect, useCallback } from 'react';
 // Configuration - Easy to adjust
 // ============================================================================
 
-/** Default breakpoint for mobile detection - 768px captures all phones and small tablets */
+/** Default breakpoint for mobile detection - includes phones and small tablets */
 export const MOBILE_BREAKPOINT = 768;
 
-/** Tablet breakpoint for intermediate layouts */
+/** Tablet breakpoint — same as MOBILE_BREAKPOINT for now, kept separate for future refinement */
 export const TABLET_BREAKPOINT = 768;
 
 /** Named breakpoints for consistent responsive queries */
@@ -34,7 +34,7 @@ export const BREAKPOINTS = {
 // ============================================================================
 
 export interface UseMobileOptions {
-    /** Custom breakpoint width in pixels (default: 480) */
+    /** Custom breakpoint width in pixels (default: MOBILE_BREAKPOINT = 768) */
     breakpoint?: number;
     /** Initial value before hydration (default: false) */
     initialValue?: boolean;

@@ -421,8 +421,8 @@ export function createUniformBlock(
       // Note: Topology (InnerSegments, BottomRings, RimRings) moved to populateTopology()
       // to ensure correct nZ-derived defaults. Do NOT add topology writes here.
 
-      // Scene radius
-      buffer[O.SceneRadius] = clampNumber(c.sceneRadius, 200.0);
+      // Note: SceneRadius moved to populateCamera() — do NOT write here
+      // (populateCamera runs after populateGeometry and has the authoritative value)
 
       // Show inner default (will be overwritten by populateFeatureFlags)
       buffer[O.ShowInner] = 1.0;

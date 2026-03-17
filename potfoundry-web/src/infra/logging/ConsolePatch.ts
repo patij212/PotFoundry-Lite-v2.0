@@ -4,10 +4,10 @@ import type { LogLevel } from './types';
 let installed = false;
 const originals: Partial<Record<keyof Console, (...args: unknown[]) => void>> = {};
 
-export function installConsolePatch(opts: { capture?: ReadonlyArray<'log' | 'info' | 'debug'> } = { capture: ['log', 'info', 'debug'] }) {
+export function installConsolePatch(opts: { capture?: ReadonlyArray<'log' | 'info' | 'debug' | 'warn' | 'error'> } = { capture: ['log', 'info', 'debug', 'warn', 'error'] }) {
   if (installed) return;
   installed = true;
-  const capture = opts.capture ?? ['log', 'info', 'debug'];
+  const capture = opts.capture ?? ['log', 'info', 'debug', 'warn', 'error'];
   // Register console sink using the original console functions to avoid recursion
   const origSink = (line: string, lvl: string) => {
     try {
@@ -19,8 +19,12 @@ export function installConsolePatch(opts: { capture?: ReadonlyArray<'log' | 'inf
     }
   };
   try { manager.setConsoleSink(origSink); } catch (err) { /* ignore */ }
+
+  const levelMap: Record<string, LogLevel> = { log: 'INFO', info: 'INFO', debug: 'DEBUG', warn: 'WARN', error: 'ERROR' };
+
   for (const level of capture) {
     originals[level] = console[level];
+    const isErrorLevel = level === 'error' || level === 'warn';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Monkey-patching console requires dynamic property assignment
     (console as any)[level] = (...args: unknown[]) => {
       // 1. Construct full message for display (human readable)
@@ -43,9 +47,13 @@ export function installConsolePatch(opts: { capture?: ReadonlyArray<'log' | 'inf
         }
       }
 
-      const map: Record<string, LogLevel> = { log: 'INFO', info: 'INFO', debug: 'DEBUG' };
-      manager.log(map[level], code, msg, context, signature);
-      // leave original out to avoid echo
+      manager.log(levelMap[level], code, msg, context, signature);
+
+      // For error/warn: also call through to original so browser DevTools
+      // still shows stack traces, red/yellow highlighting, etc.
+      if (isErrorLevel && originals[level]) {
+        originals[level]!.apply(console, args);
+      }
     };
   }
 }

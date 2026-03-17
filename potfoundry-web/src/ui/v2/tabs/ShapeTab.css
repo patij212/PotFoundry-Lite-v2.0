@@ -35,6 +35,11 @@
   margin-bottom: var(--pf2-space-xs);
 }
 
+/* Light Theme */
+.pf2-root[data-theme="light"] .pf2-shape-tab__subgroup + .pf2-shape-tab__subgroup {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .pf2-shape-tab__param {

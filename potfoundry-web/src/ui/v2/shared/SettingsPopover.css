@@ -1,0 +1,234 @@
+/* SettingsPopover — mirrors CameraPopover styling */
+
+.pf2-settings-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--pf2-z-tooltip);
+  min-width: 240px;
+  background: var(--pf2-bg-elevated);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-lg);
+  box-shadow: var(--pf2-shadow-float);
+  padding: 8px;
+}
+
+.pf2-settings-popover__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pf2-settings-popover__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  min-height: 32px;
+}
+
+.pf2-settings-popover__label {
+  font-size: 12px;
+  color: var(--pf2-text-secondary);
+  white-space: nowrap;
+}
+
+.pf2-settings-popover__toggle-group {
+  display: flex;
+  gap: 2px;
+  background: var(--pf2-bg-inset);
+  border-radius: var(--pf2-radius-md);
+  padding: 2px;
+}
+
+.pf2-settings-popover__toggle {
+  all: unset;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--pf2-duration-micro) var(--pf2-ease-move),
+    color var(--pf2-duration-micro) var(--pf2-ease-move);
+  white-space: nowrap;
+}
+
+.pf2-settings-popover__toggle:hover {
+  color: var(--pf2-text-primary);
+  background: var(--pf2-bg-hover);
+}
+
+.pf2-settings-popover__toggle--active {
+  background: var(--pf2-accent);
+  color: var(--pf2-bg-base);
+}
+
+.pf2-settings-popover__toggle--active:hover {
+  background: var(--pf2-accent-hover);
+  color: var(--pf2-bg-base);
+}
+
+.pf2-settings-popover__divider {
+  height: 1px;
+  background: var(--pf2-border);
+  margin: 2px 4px;
+}
+
+.pf2-settings-popover__check {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    background var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-settings-popover__check:hover {
+  color: var(--pf2-text-primary);
+  background: var(--pf2-bg-hover);
+}
+
+.pf2-settings-popover__check-indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1.5px solid var(--pf2-border-strong);
+  transition:
+    background var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+  flex-shrink: 0;
+}
+
+.pf2-settings-popover__check--active .pf2-settings-popover__check-indicator {
+  background: var(--pf2-accent);
+  border-color: var(--pf2-accent);
+}
+
+.pf2-settings-popover__action {
+  all: unset;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--pf2-duration-micro) var(--pf2-ease-move),
+    color var(--pf2-duration-micro) var(--pf2-ease-move);
+  white-space: nowrap;
+}
+
+.pf2-settings-popover__action:hover:not(:disabled) {
+  background: var(--pf2-bg-hover);
+  color: var(--pf2-text-primary);
+}
+
+.pf2-settings-popover__action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-settings-popover {
+    border: 2px solid ButtonText;
+    background: Canvas;
+  }
+
+  .pf2-settings-popover__toggle {
+    border: 1px solid ButtonText;
+  }
+
+  .pf2-settings-popover__toggle--active {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .pf2-settings-popover__check-indicator {
+    border-color: ButtonText;
+  }
+
+  .pf2-settings-popover__check--active .pf2-settings-popover__check-indicator {
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .pf2-settings-popover__action {
+    border: 1px solid ButtonText;
+  }
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-settings-popover {
+    animation: none;
+  }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-settings-popover {
+  background: var(--pf2-glass-bg);
+  border-color: var(--pf2-glass-border);
+  box-shadow: var(--pf2-shadow-lg);
+}
+
+.pf2-root[data-theme="light"] .pf2-settings-popover__toggle-group {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.pf2-root[data-theme="light"] .pf2-settings-popover__toggle--active {
+  color: var(--pf2-text-on-accent);
+}
+
+.pf2-root[data-theme="light"] .pf2-settings-popover__check-indicator {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.pf2-root[data-theme="light"] .pf2-settings-popover__check--active .pf2-settings-popover__check-indicator {
+  border-color: var(--pf2-accent);
+}
+
+/* ============================================================================
+   Mobile — Full-width bottom positioning
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-settings-popover {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    min-width: auto;
+    border-radius: var(--pf2-radius-xl) var(--pf2-radius-xl) 0 0;
+    padding: var(--pf2-space-lg);
+    padding-bottom: max(var(--pf2-space-lg), env(safe-area-inset-bottom, 0));
+    animation: pf2-sheet-up var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  }
+}

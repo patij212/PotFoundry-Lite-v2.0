@@ -5,6 +5,39 @@ Primary startup context is `docs/AGENT_CONTEXT_DISTILLED.md`.
 
 ---
 
+## 2026-03-14 — Master: Thumbnail Device Sharing — APPROVED & IMPLEMENTED
+
+**Summary**: Full G→V→E cycle for ThumbnailRenderer device-sharing fix. Root cause: ThumbnailRenderer created a second GPUDevice via bare `requestAdapter()` — no mobile adapter strategy, no device-lost handler. Competed with main renderer for GPU resources, crashing Adreno 730 mobile.
+
+**Fix**: Share main WebGPURenderer's GPUDevice via `setDevice()` injection. Three files changed:
+- `ThumbnailRenderer.ts`: Removed adapter/device creation. Added `setDevice(device)`, `rejectDevice()`, `_initResources()`, `destroyResources()`. Promise-gated queue with 10s timeout.
+- `webgpu_core.ts`: Calls `setDevice(device)` after 200ms stabilization + SceneManager.init. Calls `rejectDevice()` on SceneManager fail paths.
+- `DesignThumbnail.tsx`: DPR capped via `useMemo` — mobile=1.0, desktop=min(dpr, 2.0).
+
+**Agent cycle**: Generator proposed 4 options (device sharing, DPR cap, rAF throttle, shared layouts). Verifier found 2 critical bugs (C1: promise hangs on init fail, C2: injection before stabilization delay), 3 warnings (C3: promise re-resolve, C4: device.lost ordering, C5: useMemo). Executioner implemented with all amendments. Master validated.
+
+**Validation**: typecheck clean, lint 0 warnings, 2404 tests pass.
+
+**Risks**: GPU queue contention (mitigated by Proposal 3 rAF throttle if needed). No live mobile test yet — needs deployment.
+
+**Next agent**: Test on phone (Adreno 730, Chrome 145). If frame drops observed, add rAF throttle per Proposal 3.
+
+---
+
+## 2026-03-14 — Verifier: Round 1 — Thumbnail Device Sharing Critique
+
+**Summary**: Adversarially reviewed Generator's Proposal 1–4 for sharing WebGPURenderer's GPUDevice with ThumbnailRenderer. Read all 7 key files (~2000 lines total). Found 2 CRITICAL, 3 WARNING, 5 NOTE issues across 12 attack points.
+
+**Verdict**: ACCEPT WITH AMENDMENTS. Core architecture (setDevice injection + promise-gated queue) is SOUND. Two critical bugs block implementation: (C1) `deviceReady` promise hangs forever if WebGPU init fails — regression from current "Preview unavailable" to "infinite spinner". Fix: add `rejectDevice()` method + 10s safety timeout. (C2) Injection site at line 949 precedes the 200ms Windows Dawn stabilization delay — ThumbnailRenderer would GPU-crash on Windows. Fix: inject after stabilization + SceneManager.init (~line 1015).
+
+**Key verifications**: Mobile shader bindings 0-7 match ThumbnailRenderer's layout ✓. `isMobileDevice()` is side-effect-free ✓. processQueue race condition is safe (JS single-thread mutex) ✓. GPU queue contention is low risk ✓. Preset count is 15 not 17 (Generator wrong). PresetPanel `defaultOpen={false}` means thumbnails don't render on first load (Generator overstated urgency).
+
+**Deliverable**: `potfoundry-web/docs/plans/verifier-round-1-thumbnail-device-sharing.md` — 12 numbered critiques, validation protocol with 8 test cases, revised file change summary.
+
+**Next agent**: Generator should acknowledge C1/C2/C3/C5 amendments, then Executioner implements with revised injection site and rejection path.
+
+---
+
 ## 2026-03-13 — Verifier: Round 1 — Mobile Shader Desktop Parity Critique
 
 **Summary**: Reviewed Generator's 5-proposal mobile shader parity fix (`generator-round-1-mobile-shader-parity.md`). Verified each claim against actual source code in `styles.wgsl`, `preview_main.wgsl`, `preview_full_mobile.wgsl`, `UniformBlock.ts`, and `useRendererBridge.ts`.

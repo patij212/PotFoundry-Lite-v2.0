@@ -1,0 +1,124 @@
+/* ============================================================================
+   UnlockToast — Confidence level unlock celebration
+   ============================================================================ */
+
+.pf2-unlock-toast {
+  position: fixed;
+  bottom: var(--pf2-space-xl);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--pf2-z-tooltip);
+  display: flex;
+  align-items: center;
+  gap: var(--pf2-space-sm);
+  padding: var(--pf2-space-sm) var(--pf2-space-lg);
+  background: var(--pf2-bg-elevated);
+  border: 1px solid var(--pf2-accent);
+  border-radius: var(--pf2-radius-lg);
+  box-shadow:
+    0 0 0 1px var(--pf2-accent),
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(180, 151, 90, 0.15);
+  animation: pf2-toast-enter var(--pf2-duration-normal) var(--pf2-ease-spring) both;
+  pointer-events: none;
+}
+
+.pf2-unlock-toast--exit {
+  animation: pf2-toast-exit var(--pf2-duration-fast) var(--pf2-ease-exit) both;
+}
+
+.pf2-unlock-toast__icon {
+  color: var(--pf2-accent);
+  animation: pf2-gold-flash 0.6s var(--pf2-ease-enter) both;
+}
+
+.pf2-unlock-toast__message {
+  font-family: var(--pf2-font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pf2-accent);
+  white-space: nowrap;
+}
+
+/* ============================================================================
+   Animations
+   ============================================================================ */
+
+@keyframes pf2-toast-enter {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px) scale(0.95);
+  }
+  60% {
+    transform: translateX(-50%) translateY(-2px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes pf2-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-unlock-toast,
+  .pf2-unlock-toast--exit {
+    animation: none;
+  }
+
+  .pf2-unlock-toast__icon {
+    animation: none;
+  }
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-unlock-toast {
+    border: 2px solid Highlight;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .pf2-unlock-toast__icon,
+  .pf2-unlock-toast__message {
+    color: Highlight;
+  }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-unlock-toast {
+  background: var(--pf2-bg-elevated);
+  box-shadow:
+    0 0 0 1px var(--pf2-accent),
+    0 8px 24px rgba(0, 0, 0, 0.12),
+    0 0 20px rgba(122, 101, 38, 0.1);
+}
+
+/* ============================================================================
+   Mobile — Position above bottom sheet
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-unlock-toast {
+    bottom: calc(40vh + var(--pf2-space-md));
+  }
+}

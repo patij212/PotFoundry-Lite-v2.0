@@ -171,10 +171,67 @@
   font-family: var(--pf2-font-body);
   font-size: 11px;
   color: var(--pf2-error);
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: color-mix(in srgb, var(--pf2-error) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pf2-error) 20%, transparent);
   border-radius: var(--pf2-radius-sm);
   animation: pf2-tab-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+}
+
+/* ============================================================================
+   Download Button Spinner
+   ============================================================================ */
+
+.pf2-status-footer__spin {
+  animation: pf2-spin 0.8s linear infinite;
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-status-footer__spinner {
+    animation: none;
+  }
+
+  .pf2-status-footer__spin {
+    animation: none;
+  }
+
+  .pf2-status-footer__completion {
+    animation: none;
+  }
+
+  .pf2-status-footer__error {
+    animation: none;
+  }
+
+  .pf2-status-footer__check-circle,
+  .pf2-status-footer__check-mark {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .pf2-status-footer__progress--indeterminate .pf2-status-footer__progress-bar {
+    animation: none;
+  }
+}
+
+/* ============================================================================
+   Export Path Badge
+   ============================================================================ */
+
+.pf2-status-footer__path-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--pf2-space-sm);
+  padding: 1px var(--pf2-space-xs);
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.7;
+  background: var(--pf2-bg-hover);
+  border-radius: var(--pf2-radius-sm);
 }
 
 /* ============================================================================
@@ -199,10 +256,38 @@
 @media (max-width: 768px) {
   .pf2-status-footer {
     padding: var(--pf2-space-xs) var(--pf2-space-sm);
+    padding-bottom: max(var(--pf2-space-xs), env(safe-area-inset-bottom, 0));
     font-size: 11px;
   }
 
   .pf2-status-footer__divider {
     display: none;
   }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-status-footer {
+  background: var(--pf2-bg-elevated);
+  border-top-color: var(--pf2-border);
+}
+
+.pf2-root[data-theme="light"] .pf2-status-footer__progress {
+  background: var(--pf2-bg-sunken);
+}
+
+.pf2-root[data-theme="light"] .pf2-status-footer__completion {
+  background: var(--pf2-bg-sunken);
+  border-color: var(--pf2-border);
+}
+
+.pf2-root[data-theme="light"] .pf2-status-footer__error {
+  background: rgba(185, 28, 28, 0.06);
+  border-color: rgba(185, 28, 28, 0.2);
+}
+
+.pf2-root[data-theme="light"] .pf2-status-footer__path-badge {
+  background: rgba(0, 0, 0, 0.06);
 }

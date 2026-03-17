@@ -25,14 +25,21 @@ import {
   Sun,
   Moon,
   Monitor,
+  Undo2,
+  Redo2,
+  Settings,
+  Upload,
 } from 'lucide-react';
 import { IconButtonV2 } from '../controls/ButtonV2';
 import { useAppStore } from '../../../state';
 import { useControllerMaybe } from '../../../context';
+import { useAnnounce } from '../shared/Announcer';
 import { ShortcutsDialog } from '../shared/ShortcutsDialog';
 import { useColorMode } from '../hooks/useColorMode';
 import { CameraPopover } from '../shared/CameraPopover';
 import { LibraryDrawer } from '../shared/LibraryDrawer';
+import { SettingsPopover } from '../shared/SettingsPopover';
+import { SaveDialog } from '../shared/SaveDialog';
 import clsx from 'clsx';
 import './ToolbarV2.css';
 
@@ -47,12 +54,25 @@ export const ToolbarV2: React.FC = () => {
   const togglePanel = useAppStore((s) => s.togglePanel);
   const toggleFullscreen = useAppStore((s) => s.toggleFullscreen);
   const toggleZenMode = useAppStore((s) => s.toggleZenMode);
+  const undo = useAppStore((s) => s.undo);
+  const redo = useAppStore((s) => s.redo);
   const controller = useControllerMaybe();
   const [helpOpen, setHelpOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
   const cameraTriggerRef = useRef<HTMLButtonElement>(null);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const { colorMode, cycleColorMode } = useColorMode();
+  const announce = useAnnounce();
+
+  const handleCycleColorMode = useCallback(() => {
+    cycleColorMode();
+    // Announce the next mode in the cycle
+    const next = colorMode === 'system' ? 'light' : colorMode === 'light' ? 'dark' : 'system';
+    announce(`Color mode: ${next}`);
+  }, [cycleColorMode, colorMode, announce]);
 
   const isControllerReady = controller?.isReady ?? false;
 
@@ -75,6 +95,13 @@ export const ToolbarV2: React.FC = () => {
     if (controller?.isReady) controller.resetCamera();
   }, [controller]);
 
+  // Listen for global keyboard shortcut (R key)
+  useEffect(() => {
+    const onShortcut = () => { handleResetCamera(); };
+    window.addEventListener('pf2:reset-camera', onShortcut);
+    return () => window.removeEventListener('pf2:reset-camera', onShortcut);
+  }, [handleResetCamera]);
+
   const handleToggleAutoRotate = useCallback(() => {
     if (controller?.isReady) controller.toggleAutoRotate();
   }, [controller]);
@@ -96,24 +123,7 @@ export const ToolbarV2: React.FC = () => {
 
   // Save design as JSON
   const handleSave = useCallback(() => {
-    const store = (window as unknown as { __POTFOUNDRY_STORE__?: { getState: () => Record<string, unknown> } })
-      .__POTFOUNDRY_STORE__;
-    if (!store) return;
-
-    const state = store.getState() as {
-      geometry: unknown;
-      style: { name: string; opts?: unknown };
-      appearance: {
-        colorScheme: unknown;
-        primaryColor: unknown;
-        midColor: unknown;
-        secondaryColor: unknown;
-        showInner: unknown;
-        showWireframe: unknown;
-        gradient: unknown;
-        lightingPreset: unknown;
-      };
-    };
+    const state = useAppStore.getState();
 
     const designData = {
       version: '2.1',
@@ -138,7 +148,7 @@ export const ToolbarV2: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `PotFoundry_${(state.style as { name?: string }).name ?? 'design'}_${Date.now()}.json`;
+    a.download = `PotFoundry_${state.style.name ?? 'design'}_${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -169,28 +179,26 @@ export const ToolbarV2: React.FC = () => {
           return;
         }
 
-        const store = (window as unknown as { __POTFOUNDRY_STORE__?: { getState: () => Record<string, (...args: unknown[]) => void> } })
-          .__POTFOUNDRY_STORE__;
-        if (!store) return;
+        const s = useAppStore.getState();
 
-        const s = store.getState();
-
-        if (designData.geometry) s.setGeometryParams(designData.geometry);
+        s.beginHistoryTransaction();
+        if (designData.geometry) s.setGeometryParams(designData.geometry as Partial<typeof s.geometry>);
         if (designData.style) {
-          s.setStyle(designData.style.name);
-          if (designData.style.opts) s.setStyleOpts(designData.style.opts);
+          s.setStyle(designData.style.name as Parameters<typeof s.setStyle>[0]);
+          if (designData.style.opts) s.setStyleOpts(designData.style.opts as Parameters<typeof s.setStyleOpts>[0]);
         }
         if (designData.appearance) {
-          const app = designData.appearance as Record<string, unknown>;
-          if (app.colorScheme) s.setColorScheme(app.colorScheme);
-          if (app.primaryColor) s.setPrimaryColor(app.primaryColor);
-          if (app.midColor) s.setMidColor(app.midColor);
-          if (app.secondaryColor) s.setSecondaryColor(app.secondaryColor);
-          if (app.showWireframe !== undefined) s.setShowWireframe(app.showWireframe);
-          if (app.showInner !== undefined) s.setShowInner(app.showInner);
-          if (app.gradient) s.setBackgroundGradient(app.gradient);
-          if (app.lightingPreset) s.setLightingPreset(app.lightingPreset);
+          const app = designData.appearance;
+          if (app.colorScheme) s.setColorScheme(app.colorScheme as string);
+          if (app.primaryColor) s.setPrimaryColor(app.primaryColor as string);
+          if (app.midColor) s.setMidColor(app.midColor as string);
+          if (app.secondaryColor) s.setSecondaryColor(app.secondaryColor as string);
+          if (app.showWireframe !== undefined) s.setShowWireframe(app.showWireframe as boolean);
+          if (app.showInner !== undefined) s.setShowInner(app.showInner as boolean);
+          if (app.gradient) s.setBackgroundGradient(app.gradient as string);
+          if (app.lightingPreset) s.setLightingPreset(app.lightingPreset as string);
         }
+        s.commitHistoryTransaction();
       } catch (error) {
         console.error('Failed to load design:', error);
       }
@@ -211,6 +219,22 @@ export const ToolbarV2: React.FC = () => {
               onClick={togglePanel}
             />
           )}
+        </div>
+
+        {/* Undo/Redo */}
+        <div className="pf2-toolbar__group">
+          <IconButtonV2
+            icon={<Undo2 size={16} />}
+            aria-label="Undo"
+            onClick={undo}
+            size="sm"
+          />
+          <IconButtonV2
+            icon={<Redo2 size={16} />}
+            aria-label="Redo"
+            onClick={redo}
+            size="sm"
+          />
         </div>
 
         {/* Center group — Camera actions */}
@@ -267,6 +291,12 @@ export const ToolbarV2: React.FC = () => {
             size="sm"
           />
           <IconButtonV2
+            icon={<Upload size={16} />}
+            aria-label="Save to library"
+            onClick={() => setSaveOpen(true)}
+            size="sm"
+          />
+          <IconButtonV2
             icon={<FolderOpen size={16} />}
             aria-label="Load design"
             onClick={handleLoad}
@@ -275,12 +305,25 @@ export const ToolbarV2: React.FC = () => {
           <IconButtonV2
             icon={colorMode === 'light' ? <Sun size={16} /> : colorMode === 'dark' ? <Moon size={16} /> : <Monitor size={16} />}
             aria-label={`Color mode: ${colorMode}. Click to cycle.`}
-            onClick={cycleColorMode}
+            onClick={handleCycleColorMode}
             size="sm"
           />
 
           <div className="pf2-toolbar__divider" aria-hidden="true" />
 
+          <IconButtonV2
+            ref={settingsTriggerRef}
+            icon={<Settings size={16} />}
+            aria-label="Settings"
+            aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen((o) => !o)}
+            size="sm"
+          />
+          <SettingsPopover
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            triggerRef={settingsTriggerRef}
+          />
           <IconButtonV2
             icon={<HelpCircle size={16} />}
             aria-label="Help and shortcuts"
@@ -304,6 +347,7 @@ export const ToolbarV2: React.FC = () => {
 
       <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
       <LibraryDrawer open={libraryOpen} onOpenChange={setLibraryOpen} />
+      <SaveDialog open={saveOpen} onOpenChange={setSaveOpen} />
     </>
   );
 };

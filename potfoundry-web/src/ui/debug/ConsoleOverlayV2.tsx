@@ -17,7 +17,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import manager from '../../infra/logging/MessageManager';
 import { LogLevel, LogMessage } from '../../infra/logging/types';
-import { useConsoleStore, ConsoleTab, ProcessedLog } from './hooks/useConsoleStore';
+import { useConsoleStore, ConsoleTab, ProcessedLog, loadPersistedLogs } from './hooks/useConsoleStore';
 import { installNetworkMonitor } from './utils/NetworkMonitor';
 import { executeCommand, getCommands } from './utils/CommandRegistry';
 import { generateLogId, exportLogsAsJSON, exportLogsAsText, copyLogsToClipboard, matchesSearch } from './utils/exportLogs';
@@ -45,6 +45,9 @@ const TABS: { id: ConsoleTab; label: string; icon: string }[] = [
     { id: 'geometry', label: 'Geometry', icon: '📐' },
 ];
 
+// Module-level initialization flag - survives component mounts/unmounts
+let logsInitialized = false;
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -67,13 +70,13 @@ export const ConsoleOverlayV2: React.FC = () => {
     const floatPosition = useConsoleStore(s => s.floatPosition);
     const fontSize = useConsoleStore(s => s.fontSize);
     const theme = useConsoleStore(s => s.theme);
+    const persistLogs = useConsoleStore(s => s.persistLogs);
 
     // Store actions
     const {
         toggleVisible,
         setVisible,
         setActiveTab,
-        setLogs,
         clearLogs,
         togglePinned,
         toggleBookmarked,
@@ -86,6 +89,7 @@ export const ConsoleOverlayV2: React.FC = () => {
         addNetworkEntry,
         setDockPosition,
         setFloatPosition,
+        setPersistLogs,
     } = useConsoleStore.getState();
 
     // Local state
@@ -188,9 +192,21 @@ export const ConsoleOverlayV2: React.FC = () => {
     // ============================================================================
 
     // Measure logs container height for virtualization
+    // Must re-run when activeTab changes because the container is conditionally rendered
     useEffect(() => {
+        // Only observe when on console tab and container exists
+        if (activeTab !== 'console') return;
+        
         const container = logsContainerRef.current;
         if (!container) return;
+        
+        // Get initial height after layout settles (requestAnimationFrame ensures paint is done)
+        const rafId = requestAnimationFrame(() => {
+            const initialHeight = container.getBoundingClientRect().height;
+            if (initialHeight > 0) {
+                setLogsContainerHeight(initialHeight);
+            }
+        });
         
         const observer = new ResizeObserver(entries => {
             for (const entry of entries) {
@@ -199,8 +215,11 @@ export const ConsoleOverlayV2: React.FC = () => {
         });
         
         observer.observe(container);
-        return () => observer.disconnect();
-    }, []);
+        return () => {
+            cancelAnimationFrame(rafId);
+            observer.disconnect();
+        };
+    }, [activeTab]);
 
     // Keyboard shortcuts
     useEffect(() => {
@@ -250,10 +269,24 @@ export const ConsoleOverlayV2: React.FC = () => {
     }, [isVisible, toggleVisible, setVisible, clearLogs, activeTab]);
 
     // Subscribe to logs - BATCHED to prevent performance issues
+    // This effect runs once and maintains subscription for component lifetime
     useEffect(() => {
-        // Load recent logs on mount (balanced - not too few, not too many)
-        const recent = manager.dumpRecent();
-        setLogs(recent.slice(-100));
+        // Only initialize logs ONCE per app lifetime (module-level flag)
+        if (!logsInitialized) {
+            logsInitialized = true;
+            
+            // First load any persisted logs (if persistence enabled)
+            loadPersistedLogs();
+            
+            // If still empty after persistence load, seed from MessageManager
+            const afterPersist = useConsoleStore.getState().logs;
+            if (afterPersist.length === 0) {
+                const recent = manager.dumpRecent();
+                if (recent.length > 0) {
+                    useConsoleStore.setState({ logs: recent });
+                }
+            }
+        }
 
         // Queue for batching incoming logs
         let logQueue: LogMessage[] = [];
@@ -265,11 +298,14 @@ export const ConsoleOverlayV2: React.FC = () => {
                 return;
             }
 
-            const state = useConsoleStore.getState();
-            const prevLogs = state.logs;
+            const currentState = useConsoleStore.getState();
+            const prevLogs = currentState.logs;
             const newLogs = [...prevLogs, ...logQueue];
-            // Keep buffer reasonable (200 max, trim to 100)
-            const trimmed = newLogs.length > 200 ? newLogs.slice(-100) : newLogs;
+            // Keep buffer reasonable - trim to 90% of max when exceeded (less aggressive)
+            const MAX_CONSOLE_LOGS = 5000;
+            const trimmed = newLogs.length > MAX_CONSOLE_LOGS 
+                ? newLogs.slice(-Math.floor(MAX_CONSOLE_LOGS * 0.9)) 
+                : newLogs;
             useConsoleStore.setState({ logs: trimmed });
             logQueue = [];
             batchTimeout = null;
@@ -287,9 +323,11 @@ export const ConsoleOverlayV2: React.FC = () => {
             unsubscribe();
             if (batchTimeout !== null) {
                 window.clearTimeout(batchTimeout);
+                // Flush any pending logs before unmounting
+                flushQueue();
             }
         };
-    }, [setLogs]);
+    }, []); // Empty deps - runs once on mount
 
     // Install network monitor
     useEffect(() => {
@@ -588,6 +626,15 @@ export const ConsoleOverlayV2: React.FC = () => {
                                         onChange={e => setGroupDuplicates(e.target.checked)}
                                     />
                                     Group
+                                </label>
+
+                                <label className="pf-console-btn pf-console-checkbox-label" title="Persist logs across page reloads">
+                                    <input
+                                        type="checkbox"
+                                        checked={persistLogs}
+                                        onChange={e => setPersistLogs(e.target.checked)}
+                                    />
+                                    Persist
                                 </label>
 
                                 <button

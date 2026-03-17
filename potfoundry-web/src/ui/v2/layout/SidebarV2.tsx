@@ -11,7 +11,7 @@
  * @module ui/v2/layout/SidebarV2
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { X, GripVertical, Layers, Paintbrush, Download } from 'lucide-react';
 import { IconButtonV2 } from '../controls/ButtonV2';
@@ -118,16 +118,30 @@ export const SidebarV2: React.FC = () => {
     return () => window.removeEventListener('resize', handleWindowResize);
   }, []);
 
+  // Track tab navigation direction for directional animation
+  const prevTabRef = useRef(activeTab);
+  const [tabDirection, setTabDirection] = useState(1);
+
   // Tab change handler
   const handleTabChange = useCallback(
     (value: string) => {
       const tab = value as 'shape' | 'style' | 'export';
+      const prevIndex = TAB_ORDER.indexOf(prevTabRef.current);
+      const nextIndex = TAB_ORDER.indexOf(tab);
+      setTabDirection(nextIndex >= prevIndex ? 1 : -1);
+      prevTabRef.current = tab;
       setV2ActiveTab(tab);
+      contentRef.current?.scrollTo({ top: 0 });
       const label = TAB_CONFIG.find((t) => t.id === tab)?.label ?? tab;
       announce(`${label} tab selected`);
       tap();
     },
     [setV2ActiveTab, announce, tap]
+  );
+
+  const tabContentStyle = useMemo(
+    () => ({ '--pf2-tab-direction': tabDirection } as React.CSSProperties),
+    [tabDirection]
   );
 
   useSwipeGesture(contentRef, {
@@ -145,13 +159,42 @@ export const SidebarV2: React.FC = () => {
     },
   });
 
-  // Close handler
+  // Animated close — play exit animation, then unmount
+  const [isClosing, setIsClosing] = useState(false);
   const handleClose = useCallback(() => {
-    setPanelOpen(false);
-  }, [setPanelOpen]);
+    setIsClosing(true);
+  }, []);
 
-  // Hidden in zen mode or when panel is closed
-  if (zenMode || !panelOpen) return null;
+  useEffect(() => {
+    if (!isClosing) return;
+    const timer = setTimeout(() => {
+      // Only close the panel if not zen mode (zen mode keeps panel state)
+      if (!useAppStore.getState().ui.zenMode) {
+        setPanelOpen(false);
+      }
+      setIsClosing(false);
+    }, 220); // matches --pf2-duration-fast
+    return () => clearTimeout(timer);
+  }, [isClosing, setPanelOpen]);
+
+  // Reset closing state when panel opens externally
+  useEffect(() => {
+    if (panelOpen) setIsClosing(false);
+  }, [panelOpen]);
+
+  // Animate out when zen mode activates
+  const prevZenRef = useRef(zenMode);
+  useEffect(() => {
+    if (zenMode && !prevZenRef.current && panelOpen) {
+      setIsClosing(true);
+    }
+    prevZenRef.current = zenMode;
+  }, [zenMode, panelOpen]);
+
+  // Hidden when panel is closed (zen mode closing is handled by animation)
+  if (!panelOpen) return null;
+  // After close animation finishes during zen mode, hide
+  if (zenMode && !isClosing) return null;
 
   // On mobile, render the bottom sheet instead of the desktop sidebar
   if (isMobile) {
@@ -169,7 +212,11 @@ export const SidebarV2: React.FC = () => {
   return (
     <aside
       ref={sidebarRef}
-      className={clsx('pf2-sidebar', isResizing && 'pf2-sidebar--resizing')}
+      className={clsx(
+        'pf2-sidebar',
+        isResizing && 'pf2-sidebar--resizing',
+        isClosing && 'pf2-sidebar--closing'
+      )}
       style={{ width: `${width}px` }}
       aria-label="Design controls"
     >
@@ -207,16 +254,16 @@ export const SidebarV2: React.FC = () => {
         </Tabs.List>
 
         {/* Tab Content */}
-        <div className="pf2-sidebar__content" ref={contentRef}>
-          <Tabs.Content className="pf2-sidebar__tab-content" value="shape">
+        <div className="pf2-sidebar__content" ref={contentRef} style={tabContentStyle}>
+          <Tabs.Content className="pf2-sidebar__tab-content" value="shape" forceMount>
             <ShapeTab />
           </Tabs.Content>
 
-          <Tabs.Content className="pf2-sidebar__tab-content" value="style">
+          <Tabs.Content className="pf2-sidebar__tab-content" value="style" forceMount>
             <StyleTab />
           </Tabs.Content>
 
-          <Tabs.Content className="pf2-sidebar__tab-content" value="export">
+          <Tabs.Content className="pf2-sidebar__tab-content" value="export" forceMount>
             <ExportTab />
           </Tabs.Content>
         </div>

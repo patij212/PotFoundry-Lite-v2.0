@@ -175,7 +175,9 @@
   -webkit-tap-highlight-color: transparent;
   transition:
     background-color var(--pf2-duration-micro) var(--pf2-ease-move),
-    color var(--pf2-duration-micro) var(--pf2-ease-move);
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    transform var(--pf2-duration-micro) var(--pf2-ease-spring),
+    box-shadow var(--pf2-duration-micro) var(--pf2-ease-move);
 }
 
 .pf2-icon-button:disabled {
@@ -192,6 +194,12 @@
   color: var(--pf2-text-primary);
 }
 
+.pf2-icon-button--secondary:active:not(:disabled) {
+  transform: scale(0.9);
+  background: var(--pf2-bg-elevated);
+  transition-duration: var(--pf2-duration-instant);
+}
+
 .pf2-icon-button--primary {
   background: var(--pf2-accent);
   color: var(--pf2-bg-base);
@@ -199,11 +207,23 @@
 
 .pf2-icon-button--primary:hover:not(:disabled) {
   background: var(--pf2-accent-hover);
+  box-shadow: 0 0 12px rgba(180, 151, 90, 0.3);
+}
+
+.pf2-icon-button--primary:active:not(:disabled) {
+  transform: scale(0.9);
+  box-shadow: none;
+  transition-duration: var(--pf2-duration-instant);
 }
 
 .pf2-icon-button--danger:hover:not(:disabled) {
   background: rgba(184, 92, 92, 0.15);
   color: var(--pf2-error);
+}
+
+.pf2-icon-button--danger:active:not(:disabled) {
+  transform: scale(0.9);
+  transition-duration: var(--pf2-duration-instant);
 }
 
 .pf2-icon-button svg {
@@ -230,6 +250,46 @@
 
   .pf2-icon-button {
     border: 1px solid ButtonText;
+  }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-button--primary {
+  color: var(--pf2-text-on-accent);
+}
+
+.pf2-root[data-theme="light"] .pf2-button--danger {
+  color: #fff;
+}
+
+.pf2-root[data-theme="light"] .pf2-icon-button--primary {
+  color: var(--pf2-text-on-accent);
+}
+
+.pf2-root[data-theme="light"] .pf2-icon-button--primary:hover:not(:disabled) {
+  box-shadow: 0 0 12px rgba(122, 101, 38, 0.25);
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-button__spinner svg {
+    animation: none;
+  }
+
+  .pf2-button:active:not(:disabled) {
+    transform: none;
+  }
+
+  .pf2-icon-button--secondary:active:not(:disabled),
+  .pf2-icon-button--primary:active:not(:disabled),
+  .pf2-icon-button--danger:active:not(:disabled) {
+    transform: none;
   }
 }
 

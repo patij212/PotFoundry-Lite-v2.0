@@ -1,0 +1,162 @@
+/* ============================================================================
+   PresetStrip — Horizontal scrollable preset quick-pick
+   ============================================================================ */
+
+.pf2-preset-strip {
+  margin-bottom: var(--pf2-space-md);
+}
+
+.pf2-preset-strip__scroll {
+  display: flex;
+  gap: var(--pf2-space-sm);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--pf2-space-xs) 0;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  scroll-snap-type: x proximity;
+}
+
+.pf2-preset-strip__scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* ============================================================================
+   Chip — Individual preset card
+   ============================================================================ */
+
+.pf2-preset-strip__chip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--pf2-space-xs);
+  padding: var(--pf2-space-xs);
+  background: var(--pf2-bg-elevated);
+  border: 1px solid var(--pf2-border);
+  border-radius: var(--pf2-radius-md);
+  cursor: pointer;
+  transition:
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    background-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    transform var(--pf2-duration-micro) var(--pf2-ease-spring),
+    box-shadow var(--pf2-duration-micro) var(--pf2-ease-move);
+  scroll-snap-align: start;
+  min-width: 76px;
+}
+
+.pf2-preset-strip__chip:hover {
+  background: var(--pf2-bg-hover);
+  border-color: var(--pf2-text-muted);
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.pf2-preset-strip__chip:active {
+  transform: scale(0.95);
+  transition-duration: var(--pf2-duration-instant);
+}
+
+.pf2-preset-strip__chip--active {
+  border-color: var(--pf2-accent);
+  background: var(--pf2-accent-subtle, rgba(99, 102, 241, 0.08));
+  box-shadow: 0 0 0 1px var(--pf2-accent), 0 2px 8px rgba(180, 151, 90, 0.12);
+  animation: pf2-chip-select var(--pf2-duration-fast) var(--pf2-ease-spring) both;
+}
+
+@keyframes pf2-chip-select {
+  0%   { transform: scale(0.92); }
+  60%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* ============================================================================
+   Thumbnail
+   ============================================================================ */
+
+.pf2-preset-strip__thumb {
+  width: 64px;
+  height: 48px;
+  border-radius: var(--pf2-radius-sm);
+  overflow: hidden;
+  background: var(--pf2-bg-surface);
+}
+
+/* ============================================================================
+   Label
+   ============================================================================ */
+
+.pf2-preset-strip__label {
+  font-family: var(--pf2-font-body);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--pf2-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 72px;
+  text-align: center;
+}
+
+.pf2-preset-strip__chip--active .pf2-preset-strip__label {
+  color: var(--pf2-accent);
+}
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-preset-strip__chip {
+    border: 1px solid ButtonText;
+  }
+
+  .pf2-preset-strip__chip--active {
+    border-color: Highlight;
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+    box-shadow: none;
+  }
+
+  .pf2-preset-strip__chip--active .pf2-preset-strip__label {
+    color: Highlight;
+  }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-preset-strip__chip {
+  background: var(--pf2-bg-sunken);
+}
+
+.pf2-root[data-theme="light"] .pf2-preset-strip__chip:hover {
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+.pf2-root[data-theme="light"] .pf2-preset-strip__chip--active {
+  box-shadow: 0 0 0 1px var(--pf2-accent), 0 2px 8px rgba(122, 101, 38, 0.1);
+}
+
+.pf2-root[data-theme="light"] .pf2-preset-strip__thumb {
+  background: var(--pf2-bg-elevated);
+}
+
+/* ============================================================================
+   Reduced motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-preset-strip__chip {
+    transition: none;
+  }
+
+  .pf2-preset-strip__chip--active {
+    animation: none;
+  }
+
+  .pf2-preset-strip__chip:hover {
+    transform: none;
+  }
+}

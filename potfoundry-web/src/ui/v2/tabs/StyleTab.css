@@ -122,6 +122,23 @@
   cursor: pointer;
   background: none;
   padding: 0;
+  transition:
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    box-shadow var(--pf2-duration-micro) var(--pf2-ease-move),
+    transform var(--pf2-duration-micro) var(--pf2-ease-move);
+}
+
+.pf2-style-tab__color-picker input[type='color']:hover {
+  border-color: var(--pf2-border-active);
+  transform: scale(1.05);
+}
+
+.pf2-style-tab__color-picker input[type='color']:focus-visible {
+  border-color: var(--pf2-accent);
+  box-shadow:
+    0 0 0 2px var(--pf2-bg-surface),
+    0 0 0 4px var(--pf2-accent);
+  outline: none;
 }
 
 .pf2-style-tab__color-picker input[type='color']::-webkit-color-swatch-wrapper {
@@ -230,12 +247,48 @@
   }
 
   .pf2-style-tab__swatch:hover,
-  .pf2-style-tab__bg-swatch:hover {
+  .pf2-style-tab__bg-swatch:hover,
+  .pf2-style-tab__color-picker input[type='color']:hover {
     transform: none;
+  }
+
+  .pf2-style-tab__color-picker input[type='color'] {
+    transition: none;
   }
   .pf2-style-tab__params--exiting .pf2-style-tab__param,
   .pf2-style-tab__params--entering .pf2-style-tab__param {
     animation: none;
+  }
+}
+
+/* --- Light Theme --------------------------------------------------------- */
+
+.pf2-root[data-theme="light"] .pf2-style-tab__swatch:hover {
+  border-color: var(--pf2-accent);
+}
+
+.pf2-root[data-theme="light"] .pf2-style-tab__swatch--active {
+  box-shadow: 0 0 0 1px var(--pf2-accent), 0 2px 6px rgba(122, 101, 38, 0.15);
+}
+
+.pf2-root[data-theme="light"] .pf2-style-tab__bg-swatch--active {
+  box-shadow: 0 0 0 1px var(--pf2-accent), 0 2px 6px rgba(122, 101, 38, 0.15);
+}
+
+.pf2-root[data-theme="light"] .pf2-style-tab__color-picker input[type='color'] {
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+/* --- Mobile — Touch Targets ---------------------------------------------- */
+@media (max-width: 768px) {
+  .pf2-style-tab__color-picker input[type='color'] {
+    height: 44px;
+  }
+
+  .pf2-style-tab__chip {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
   }
 }
 

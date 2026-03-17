@@ -19,7 +19,7 @@ export const WelcomeCard: React.FC = () => {
   const setPanelOpen = useAppStore((s) => s.setPanelOpen);
   const setV2ActiveTab = useAppStore((s) => s.setV2ActiveTab);
   const accentBtnRef = useRef<HTMLButtonElement>(null);
-  const exitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const exitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initializedRef = useRef(false);
 
   // FourierBloom preset initialization (only once)
@@ -37,6 +37,16 @@ export const WelcomeCard: React.FC = () => {
     }
   }, [level, controller]);
 
+  // Exit animation handler — declared before effects that depend on it
+  const handleExit = useCallback((trigger: 'preset-load' | 'auto-unlock') => {
+    if (exiting || dismissed) return;
+    setExiting(true);
+    exitTimeoutRef.current = setTimeout(() => {
+      setDismissed(true);
+      unlock(trigger);
+    }, 220); // --pf2-duration-fast
+  }, [exiting, dismissed, unlock]);
+
   // Escape key listener to dismiss
   useEffect(() => {
     if (level !== 0 || dismissed) return;
@@ -47,17 +57,7 @@ export const WelcomeCard: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [level, dismissed]);
-
-  // Exit animation handler
-  const handleExit = useCallback((trigger: 'preset-load' | 'auto-unlock') => {
-    if (exiting || dismissed) return;
-    setExiting(true);
-    exitTimeoutRef.current = setTimeout(() => {
-      setDismissed(true);
-      unlock(trigger);
-    }, 220); // --pf2-duration-fast
-  }, [exiting, dismissed, unlock]);
+  }, [level, dismissed, handleExit]);
 
   // Focus accent button on mount
   useEffect(() => {
@@ -95,7 +95,7 @@ export const WelcomeCard: React.FC = () => {
           className="pf2-welcome-btn-ghost pf2-focus-ring"
           onClick={() => handleExit('auto-unlock')}
         >
-          I know what I'm doing
+          I know what I&apos;m doing
         </button>
       </div>
     </div>

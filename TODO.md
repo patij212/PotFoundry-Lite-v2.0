@@ -50,8 +50,8 @@ This document tracks planned features, improvements, and technical debt for the 
 - [ ] Add performance metrics dashboard
 
 #### Export & Integration
-- [ ] Add OBJ export format (Client-side)
-- [ ] Add 3MF export format (Client-side, with metadata)
+- [x] Add OBJ export format (Client-side) — `src/geometry/exporters/exportOBJ.ts`
+- [x] Add 3MF export format (Client-side, with metadata) — `src/geometry/exporters/export3MF.ts`
 - [ ] Add STEP/IGES export (if feasible via WASM)
 - [ ] Slicer integration (PrusaSlicer, Cura)
 - [ ] Export with embedded settings/metadata

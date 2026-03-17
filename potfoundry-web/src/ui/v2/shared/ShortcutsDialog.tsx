@@ -16,12 +16,17 @@ import './ShortcutsDialog.css';
 // ============================================================================
 
 const V2_SHORTCUTS = [
+  { keys: 'Ctrl/⌘ + Z', description: 'Undo' },
+  { keys: 'Ctrl/⌘ + Shift + Z', description: 'Redo' },
+  { keys: 'D', description: 'Download / export' },
+  { keys: 'R', description: 'Reset camera' },
   { keys: 'Z', description: 'Toggle zen mode' },
   { keys: 'Alt + 1', description: 'Shape tab' },
   { keys: 'Alt + 2', description: 'Style tab' },
   { keys: 'Alt + 3', description: 'Export tab' },
   { keys: '?', description: 'Keyboard shortcuts' },
-  { keys: 'Shift + ←/→', description: 'Fine-tune slider (±1)' },
+  { keys: 'Shift + ←/→', description: 'Coarse slider step (×10)' },
+  { keys: 'Double-click slider', description: 'Reset to default' },
   { keys: 'F11', description: 'Toggle fullscreen' },
 ] as const;
 

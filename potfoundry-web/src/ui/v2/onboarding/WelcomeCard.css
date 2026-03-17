@@ -13,17 +13,18 @@
 
 .pf2-welcome {
   position: fixed;
-  bottom: var(--pf2-spacing-xl);
-  right: var(--pf2-spacing-xl);
+  bottom: var(--pf2-space-xl);
+  right: var(--pf2-space-xl);
   z-index: var(--pf2-z-welcome);
   width: 320px;
-  background: var(--pf2-bg-card);
+  background: var(--pf2-bg-elevated);
+  border: 1px solid var(--pf2-border);
   border-radius: var(--pf2-radius-lg);
-  box-shadow: var(--pf2-shadow-lg);
-  padding: var(--pf2-spacing-lg);
+  box-shadow: var(--pf2-shadow-float);
+  padding: var(--pf2-space-lg);
   display: flex;
   flex-direction: column;
-  gap: var(--pf2-spacing-md);
+  gap: var(--pf2-space-md);
   animation: pf2-welcome-enter 600ms cubic-bezier(0.42, 0, 0.58, 1) 0.6s both;
 }
 
@@ -32,37 +33,48 @@
 }
 
 .pf2-welcome-wordmark {
+  font-family: var(--pf2-font-display);
   font-size: 22px;
   font-weight: 700;
   color: var(--pf2-accent);
-  margin-bottom: var(--pf2-spacing-xs);
+  margin-bottom: var(--pf2-space-xs);
 }
 
 .pf2-welcome-tagline {
   font-size: 14px;
   color: var(--pf2-text-secondary);
-  margin-bottom: var(--pf2-spacing-md);
+  margin-bottom: var(--pf2-space-md);
 }
 
 .pf2-welcome-buttons {
   display: flex;
-  gap: var(--pf2-spacing-md);
+  gap: var(--pf2-space-md);
 }
 
 .pf2-welcome-btn-accent {
-  background: var(--pf2-accent-gold);
-  color: var(--pf2-text-dark);
+  background: var(--pf2-accent);
+  color: #1a1a1e;
   border: none;
   border-radius: var(--pf2-radius-md);
+  font-family: var(--pf2-font-body);
   font-size: 15px;
   font-weight: 600;
   padding: 8px 18px;
   cursor: pointer;
-  transition: box-shadow 0.2s;
+  transition:
+    background-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    box-shadow var(--pf2-duration-micro) var(--pf2-ease-move),
+    transform var(--pf2-duration-micro) var(--pf2-ease-spring);
+}
+
+.pf2-welcome-btn-accent:hover {
+  background: var(--pf2-accent-hover);
+  box-shadow: 0 0 12px rgba(180, 151, 90, 0.3);
 }
 
 .pf2-welcome-btn-accent:active {
-  box-shadow: var(--pf2-shadow-sm);
+  transform: scale(0.95);
+  box-shadow: none;
 }
 
 .pf2-welcome-btn-ghost {
@@ -70,36 +82,50 @@
   color: var(--pf2-text-secondary);
   border: 1px solid var(--pf2-border);
   border-radius: var(--pf2-radius-md);
+  font-family: var(--pf2-font-body);
   font-size: 15px;
   font-weight: 600;
   padding: 8px 18px;
   cursor: pointer;
-  transition: border-color 0.2s;
+  transition:
+    color var(--pf2-duration-micro) var(--pf2-ease-move),
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    background-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    transform var(--pf2-duration-micro) var(--pf2-ease-spring);
+}
+
+.pf2-welcome-btn-ghost:hover {
+  color: var(--pf2-text-primary);
+  border-color: var(--pf2-border-active);
+  background: var(--pf2-bg-hover);
 }
 
 .pf2-welcome-btn-ghost:active {
+  transform: scale(0.95);
   border-color: var(--pf2-accent);
 }
 
-.pf2-focus-ring:focus {
-  outline: 2px solid var(--pf2-accent);
-  outline-offset: 2px;
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-welcome {
+  background: var(--pf2-bg-elevated);
+  border-color: var(--pf2-border);
+  box-shadow: var(--pf2-shadow-lg);
 }
 
-[data-theme="light"] .pf2-welcome {
-  background: var(--pf2-bg-card-light);
-  color: var(--pf2-text-dark);
+.pf2-root[data-theme="light"] .pf2-welcome-btn-accent {
+  color: var(--pf2-text-on-accent);
 }
 
-[data-theme="light"] .pf2-welcome-btn-accent {
-  background: var(--pf2-accent-gold-light);
-  color: var(--pf2-text-dark);
+.pf2-root[data-theme="light"] .pf2-welcome-btn-accent:hover {
+  box-shadow: 0 0 12px rgba(122, 101, 38, 0.2);
 }
 
-[data-theme="light"] .pf2-welcome-btn-ghost {
-  color: var(--pf2-text-secondary-light);
-  border-color: var(--pf2-border-light);
-}
+/* ============================================================================
+   Mobile — Full-width bottom card
+   ============================================================================ */
 
 @media (max-width: 768px) {
   .pf2-welcome {
@@ -107,10 +133,29 @@
     right: 0;
     left: 0;
     bottom: 0;
-    border-radius: 0;
-    box-shadow: var(--pf2-shadow-md);
+    border-radius: var(--pf2-radius-xl) var(--pf2-radius-xl) 0 0;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+    padding-bottom: max(var(--pf2-space-lg), env(safe-area-inset-bottom, 0));
   }
 }
+
+/* ============================================================================
+   High Contrast
+   ============================================================================ */
+
+@media (forced-colors: active) {
+  .pf2-welcome {
+    border: 2px solid ButtonText;
+  }
+
+  .pf2-welcome-btn-accent {
+    border: 2px solid ButtonText;
+  }
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
 
 @media (prefers-reduced-motion: reduce) {
   .pf2-welcome {

@@ -10,6 +10,8 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { FocusScope } from '@radix-ui/react-focus-scope';
 import { useControllerMaybe } from '../../../context';
+import { useAnnounce } from './Announcer';
+import { useRadioGroupKeys } from '../hooks/useRadioGroupKeys';
 import clsx from 'clsx';
 import './CameraPopover.css';
 
@@ -85,28 +87,33 @@ export const CameraPopover: React.FC<CameraPopoverProps> = ({
     };
   }, [open, onOpenChange, triggerRef]);
 
+  const announce = useAnnounce();
+  const radioGroupKeys = useRadioGroupKeys();
   const cameraState = controller?.cameraState;
   const isReady = controller?.isReady ?? false;
 
   const handleCameraMode = useCallback(
     (mode: 'turntable' | 'arcball') => {
       controller?.setCameraMode(mode);
+      announce(`Camera mode: ${mode}`);
     },
-    [controller]
+    [controller, announce]
   );
 
   const handleProjection = useCallback(
     (mode: 'perspective' | 'ortho') => {
       controller?.setProjection(mode);
+      announce(`Projection: ${mode === 'ortho' ? 'orthographic' : mode}`);
     },
-    [controller]
+    [controller, announce]
   );
 
   const handleViewPreset = useCallback(
     (preset: 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso') => {
       controller?.applyViewPreset(preset);
+      announce(`View: ${preset}`);
     },
-    [controller]
+    [controller, announce]
   );
 
   if (!open) return null;
@@ -123,7 +130,7 @@ export const CameraPopover: React.FC<CameraPopoverProps> = ({
           {/* Camera Mode */}
           <div className="pf2-camera-popover__row">
             <span className="pf2-camera-popover__label pf2-text-label">Mode</span>
-            <div className="pf2-camera-popover__toggle-group">
+            <div className="pf2-camera-popover__toggle-group" role="radiogroup" aria-label="Camera mode" onKeyDown={radioGroupKeys}>
               <button
                 className={clsx(
                   'pf2-camera-popover__toggle pf2-focus-ring',
@@ -131,7 +138,8 @@ export const CameraPopover: React.FC<CameraPopoverProps> = ({
                 )}
                 onClick={() => handleCameraMode('turntable')}
                 disabled={!isReady}
-                aria-pressed={cameraState?.mode === 'turntable'}
+                role="radio"
+                aria-checked={cameraState?.mode === 'turntable'}
               >
                 Turntable
               </button>
@@ -142,7 +150,8 @@ export const CameraPopover: React.FC<CameraPopoverProps> = ({
                 )}
                 onClick={() => handleCameraMode('arcball')}
                 disabled={!isReady}
-                aria-pressed={cameraState?.mode === 'arcball'}
+                role="radio"
+                aria-checked={cameraState?.mode === 'arcball'}
               >
                 Arcball
               </button>
@@ -152,7 +161,7 @@ export const CameraPopover: React.FC<CameraPopoverProps> = ({
           {/* Projection */}
           <div className="pf2-camera-popover__row">
             <span className="pf2-camera-popover__label pf2-text-label">Projection</span>
-            <div className="pf2-camera-popover__toggle-group">
+            <div className="pf2-camera-popover__toggle-group" role="radiogroup" aria-label="Projection" onKeyDown={radioGroupKeys}>
               <button
                 className={clsx(
                   'pf2-camera-popover__toggle pf2-focus-ring',
@@ -160,7 +169,8 @@ export const CameraPopover: React.FC<CameraPopoverProps> = ({
                 )}
                 onClick={() => handleProjection('perspective')}
                 disabled={!isReady}
-                aria-pressed={cameraState?.projection === 'perspective'}
+                role="radio"
+                aria-checked={cameraState?.projection === 'perspective'}
               >
                 Persp
               </button>
@@ -171,7 +181,8 @@ export const CameraPopover: React.FC<CameraPopoverProps> = ({
                 )}
                 onClick={() => handleProjection('ortho')}
                 disabled={!isReady}
-                aria-pressed={cameraState?.projection === 'ortho'}
+                role="radio"
+                aria-checked={cameraState?.projection === 'ortho'}
               >
                 Ortho
               </button>
@@ -187,7 +198,7 @@ export const CameraPopover: React.FC<CameraPopoverProps> = ({
                 'pf2-camera-popover__check pf2-focus-ring',
                 cameraState?.showGrid && 'pf2-camera-popover__check--active'
               )}
-              onClick={() => controller?.toggleGrid()}
+              onClick={() => { controller?.toggleGrid(); announce(cameraState?.showGrid ? 'Grid hidden' : 'Grid visible'); }}
               disabled={!isReady}
               role="checkbox"
               aria-checked={cameraState?.showGrid ?? false}
@@ -200,7 +211,7 @@ export const CameraPopover: React.FC<CameraPopoverProps> = ({
                 'pf2-camera-popover__check pf2-focus-ring',
                 cameraState?.showAxis && 'pf2-camera-popover__check--active'
               )}
-              onClick={() => controller?.toggleAxis()}
+              onClick={() => { controller?.toggleAxis(); announce(cameraState?.showAxis ? 'Axis hidden' : 'Axis visible'); }}
               disabled={!isReady}
               role="checkbox"
               aria-checked={cameraState?.showAxis ?? false}

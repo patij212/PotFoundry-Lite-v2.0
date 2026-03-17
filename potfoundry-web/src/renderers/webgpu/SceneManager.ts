@@ -37,16 +37,21 @@ export class SceneManager {
             this.createBuffers();
             console.log('[WebGPU] [SceneManager] Buffers created successfully.');
 
-            // Diagnostic Smoke Test
-            const smokeTestPassed = await this.smokeTest();
-            if (!smokeTestPassed) {
-                console.error('[WebGPU] [SceneManager] Aborting Init: Smoke Test Failed. Device likely incompatible or driver broken.');
-                // Throwing specific error to communicate to UI if needed, or simply return false
-                return false;
-            }
+            // Diagnostic Smoke Test — skip on mobile to preserve GPU compilation budget.
+            // On Adreno GPUs, each pipeline compilation stresses the Dawn shader compiler;
+            // smoke/intermediate tests waste that budget and can trigger GPU process crashes.
+            if (!isMobileDevice()) {
+                const smokeTestPassed = await this.smokeTest();
+                if (!smokeTestPassed) {
+                    console.error('[WebGPU] [SceneManager] Aborting Init: Smoke Test Failed. Device likely incompatible or driver broken.');
+                    return false;
+                }
 
-            // Yield to event loop to allow driver to reset after smoke test
-            await new Promise(r => setTimeout(r, 50));
+                // Yield to event loop to allow driver to reset after smoke test
+                await new Promise(r => setTimeout(r, 50));
+            } else {
+                console.log('[WebGPU] [SceneManager] Mobile device — skipping diagnostic tests to preserve GPU budget');
+            }
 
             // 1. Compile ONLY the requested style first.
             await this.activateStyle(initialStyleId);
@@ -227,30 +232,37 @@ export class SceneManager {
             };
 
             const pipelineStart = performance.now();
-            // console.log(`[WebGPU] [SceneManager] Starting Async Pipeline Compilation for Style ${styleId}...`);
 
-            /** Mobile pipeline compilation timeout (ms) — prevents infinite GPU hangs */
-            const PIPELINE_TIMEOUT_MS = 8000;
-            const pipelinePromise = device.createRenderPipelineAsync(pipelineDescriptor);
-            const timeoutPromise = new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error(`Pipeline compilation timed out after ${PIPELINE_TIMEOUT_MS}ms (possible Dawn compiler hang)`)), PIPELINE_TIMEOUT_MS);
-            });
+            let pipeline: GPURenderPipeline;
 
-            const pipeline = await Promise.race([pipelinePromise, timeoutPromise]).catch(async (err) => {
-                const duration = performance.now() - pipelineStart;
-                console.error(`[WebGPU] [SceneManager] createRenderPipelineAsync failed for Style ${styleId} after ${duration.toFixed(0)}ms:`, err);
-                // Mirror to console.log so mobile DevConsole can see this
-                console.log(`[WebGPU] [SceneManager] PIPELINE FAILED Style ${styleId} after ${duration.toFixed(0)}ms: ${err instanceof Error ? err.message : String(err)}`);
+            if (isMobileDevice()) {
+                // Mobile: use synchronous createRenderPipeline to avoid Dawn async
+                // compilation bugs that crash Chrome's GPU process on Adreno.
+                // Blocks main thread briefly but is far more reliable.
+                pipeline = device.createRenderPipeline(pipelineDescriptor);
+            } else {
+                // Desktop: use async path with timeout safety net
+                /** Pipeline compilation timeout (ms) — prevents infinite GPU hangs */
+                const PIPELINE_TIMEOUT_MS = 8000;
+                const pipelinePromise = device.createRenderPipelineAsync(pipelineDescriptor);
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    setTimeout(() => reject(new Error(`Pipeline compilation timed out after ${PIPELINE_TIMEOUT_MS}ms (possible Dawn compiler hang)`)), PIPELINE_TIMEOUT_MS);
+                });
 
-                // If it was a TDR, the device is likely lost now.
-                if (this.renderer.device) {
-                    await this.renderer.device.lost.then((info) => {
-                        console.error('[WebGPU] [SceneManager] Device Lost:', info.reason, info.message);
-                    }).catch(() => { });
-                }
+                pipeline = await Promise.race([pipelinePromise, timeoutPromise]).catch(async (err) => {
+                    const duration = performance.now() - pipelineStart;
+                    console.error(`[WebGPU] [SceneManager] createRenderPipelineAsync failed for Style ${styleId} after ${duration.toFixed(0)}ms:`, err);
+                    console.log(`[WebGPU] [SceneManager] PIPELINE FAILED Style ${styleId} after ${duration.toFixed(0)}ms: ${err instanceof Error ? err.message : String(err)}`);
 
-                throw err;
-            });
+                    if (this.renderer.device) {
+                        await this.renderer.device.lost.then((info) => {
+                            console.error('[WebGPU] [SceneManager] Device Lost:', info.reason, info.message);
+                        }).catch(() => { });
+                    }
+
+                    throw err;
+                });
+            }
 
             const duration = performance.now() - pipelineStart;
 

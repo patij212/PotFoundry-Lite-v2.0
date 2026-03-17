@@ -15,6 +15,10 @@
   border-right: 1px solid var(--pf2-border);
   animation: pf2-slide-in var(--pf2-duration-slow) var(--pf2-ease-enter) both;
   overflow: hidden;
+  /* Safe area insets for notched/rounded devices */
+  padding-top: env(safe-area-inset-top, 0);
+  padding-left: env(safe-area-inset-left, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 @supports (backdrop-filter: blur(12px)) {
@@ -27,6 +31,10 @@
 .pf2-sidebar--resizing {
   transition: none;
   user-select: none;
+}
+
+.pf2-sidebar--closing {
+  animation: pf2-slide-out var(--pf2-duration-fast) var(--pf2-ease-exit) forwards;
 }
 
 /* ============================================================================
@@ -112,6 +120,7 @@
    ============================================================================ */
 
 .pf2-sidebar__content {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -135,8 +144,49 @@
   border-radius: 3px;
 }
 
-.pf2-sidebar__tab-content {
+/* Scroll shadow — top fade when scrolled */
+.pf2-sidebar__content::before,
+.pf2-sidebar__content::after {
+  content: '';
+  position: sticky;
+  left: 0;
+  right: 0;
+  height: 16px;
+  pointer-events: none;
+  z-index: 1;
+  display: block;
+  flex-shrink: 0;
+}
+
+.pf2-sidebar__content::before {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    var(--pf2-bg-base) 0%,
+    transparent 100%
+  );
+  margin-bottom: -16px;
+}
+
+.pf2-sidebar__content::after {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    var(--pf2-bg-base) 0%,
+    transparent 100%
+  );
+  margin-top: -16px;
+}
+
+.pf2-sidebar__tab-content[data-state="active"] {
   animation: pf2-tab-enter var(--pf2-duration-normal) var(--pf2-ease-enter) both;
+}
+
+.pf2-sidebar__tab-content[data-state="inactive"] {
+  animation: pf2-tab-exit var(--pf2-duration-fast) var(--pf2-ease-exit) forwards;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 /* ============================================================================
@@ -193,6 +243,25 @@
 }
 
 /* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-sidebar {
+    animation: none;
+  }
+
+  .pf2-sidebar--closing {
+    animation: none;
+  }
+
+  .pf2-sidebar__tab-content[data-state="active"],
+  .pf2-sidebar__tab-content[data-state="inactive"] {
+    animation: none;
+  }
+}
+
+/* ============================================================================
    High Contrast
    ============================================================================ */
 
@@ -230,4 +299,20 @@
 .pf2-root[data-theme="light"] .pf2-sidebar {
   background: var(--pf2-glass-bg);
   border-color: var(--pf2-glass-border);
+}
+
+.pf2-root[data-theme="light"] .pf2-sidebar__content::before {
+  background: linear-gradient(
+    to bottom,
+    var(--pf2-bg-elevated) 0%,
+    transparent 100%
+  );
+}
+
+.pf2-root[data-theme="light"] .pf2-sidebar__content::after {
+  background: linear-gradient(
+    to top,
+    var(--pf2-bg-elevated) 0%,
+    transparent 100%
+  );
 }

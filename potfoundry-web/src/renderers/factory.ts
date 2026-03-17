@@ -12,9 +12,12 @@ import { mount as mountWebGPU } from '../webgpu_core';
 let webglRendererPromise: Promise<typeof import('./webgl')> | null = null;
 
 /**
- * Check if WebGPU is available in this browser
+ * Check if WebGPU API is present in this browser.
+ * Does NOT request an adapter — that happens in mountWebGPU.
+ * Requesting and dropping a probe adapter destabilizes mobile
+ * Dawn/Vulkan (Adreno 730 GPU process crash).
  */
-async function isWebGPUAvailable(): Promise<boolean> {
+function isWebGPUApiPresent(): boolean {
     if (typeof navigator === 'undefined') return false;
 
     const gpu = (navigator as Navigator & { gpu?: unknown }).gpu;
@@ -22,27 +25,7 @@ async function isWebGPUAvailable(): Promise<boolean> {
         if (import.meta.env.DEV) console.log('[Renderer] WebGPU API not available');
         return false;
     }
-
-    // Try to get an adapter to confirm WebGPU actually works
-    try {
-        let adapter = await (gpu as GPU).requestAdapter();
-
-        // Fallback: Try compatibility mode (required for some Android devices)
-        if (!adapter) {
-            if (import.meta.env.DEV) console.log('[Renderer] Standard WebGPU adapter not found, trying compatibility mode...');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Non-spec Chrome extension for Android compatibility mode
-            adapter = await (gpu as GPU).requestAdapter({ compatibilityMode: true } as any);
-        }
-
-        if (!adapter) {
-            if (import.meta.env.DEV) console.log('[Renderer] WebGPU adapter not available');
-            return false;
-        }
-        return true;
-    } catch (err) {
-        console.warn('[Renderer] WebGPU adapter request failed:', err);
-        return false;
-    }
+    return true;
 }
 
 /**
@@ -143,7 +126,7 @@ export async function createRenderer(
     }
 
     // === Try WebGPU first ===
-    if (effectiveForce !== 'webgl' && await isWebGPUAvailable()) {
+    if (effectiveForce !== 'webgl' && isWebGPUApiPresent()) {
         try {
             if (import.meta.env.DEV) console.log('[Renderer] Attempting WebGPU...');
             const webgpuController = await mountWebGPU(mountOptions);
@@ -174,7 +157,7 @@ export async function createRenderer(
 
     // === Fall back to WebGL ===
     // If we just crashed the GPU process, give it a moment to recover before trying WebGL
-    if (effectiveForce !== 'webgl' && (await isWebGPUAvailable())) {
+    if (effectiveForce !== 'webgl' && isWebGPUApiPresent()) {
         await new Promise(r => setTimeout(r, 100)); // Brief pause for browser process recovery
     }
 
@@ -241,7 +224,7 @@ async function createWebGLRenderer(
  * Check what renderer would be used without actually creating it
  */
 export async function detectBestRenderer(): Promise<'webgpu' | 'webgl'> {
-    return await isWebGPUAvailable() ? 'webgpu' : 'webgl';
+    return isWebGPUApiPresent() ? 'webgpu' : 'webgl';
 }
 
 export type { RendererController, CreateRendererOptions };

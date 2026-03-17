@@ -193,6 +193,37 @@
 }
 
 /* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-select__content {
+  background: var(--pf2-bg-elevated);
+  box-shadow: var(--pf2-shadow-lg);
+}
+
+.pf2-root[data-theme="light"] .pf2-select__trigger {
+  background: var(--pf2-bg-sunken);
+}
+
+.pf2-root[data-theme="light"] .pf2-select__viewport::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-select__content {
+    animation: none;
+  }
+
+  .pf2-select__chevron {
+    transition: none;
+  }
+}
+
+/* ============================================================================
    Mobile — Touch Target (C5)
    ============================================================================ */
 

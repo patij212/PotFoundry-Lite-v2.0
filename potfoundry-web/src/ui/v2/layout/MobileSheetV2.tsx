@@ -11,7 +11,7 @@
  * @module ui/v2/layout/MobileSheetV2
  */
 
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Layers, Paintbrush, Download } from 'lucide-react';
 import { ShapeTab } from '../tabs/ShapeTab';
@@ -75,6 +75,15 @@ export const MobileSheetV2: React.FC<MobileSheetV2Props> = ({
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
+  // Track tab navigation direction for directional animation
+  const prevTabRef = useRef(activeTab);
+  const [tabDirection, setTabDirection] = useState(1);
+
+  const tabContentStyle = useMemo(
+    () => ({ '--pf2-tab-direction': tabDirection } as React.CSSProperties),
+    [tabDirection]
+  );
+
   const handleStateChange = useCallback(
     (newState: SheetState) => {
       document.body.setAttribute('data-mobile-sheet-state', newState);
@@ -85,18 +94,41 @@ export const MobileSheetV2: React.FC<MobileSheetV2Props> = ({
     [handleClose]
   );
 
-  const { state, dragHandlers } = useSheetDrag({
+  const { state, dragHandlers, toggle } = useSheetDrag({
     sheetRef,
     onStateChange: handleStateChange,
   });
 
-  // Set initial body attribute and clean up on unmount
+  // Double-tap handle to snap to full
+  const lastTapRef = useRef(0);
+  const handleDoubleTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      // Double-tap detected — snap to full or collapse if already full
+      if (state === 'full') {
+        toggle(); // cycles to collapsed
+      } else {
+        // Snap directly to full
+        const el = sheetRef.current;
+        if (el) {
+          const fullH = window.innerHeight * 0.85;
+          el.style.height = `${fullH}px`;
+        }
+        handleStateChange('full' as SheetState);
+      }
+      lastTapRef.current = 0;
+    } else {
+      lastTapRef.current = now;
+    }
+  }, [state, toggle, sheetRef, handleStateChange]);
+
+  // Keep body attribute in sync with sheet state; clean up on unmount
   useEffect(() => {
     document.body.setAttribute('data-mobile-sheet-state', state);
     return () => {
       document.body.removeAttribute('data-mobile-sheet-state');
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- only on mount/unmount
+  }, [state]);
 
   // Swipe left/right on content area to switch tabs
   useSwipeGesture(contentRef, {
@@ -120,7 +152,13 @@ export const MobileSheetV2: React.FC<MobileSheetV2Props> = ({
 
   const onTabChange = useCallback(
     (value: string) => {
+      const tab = value as 'shape' | 'style' | 'export';
+      const prevIndex = TAB_ORDER.indexOf(prevTabRef.current);
+      const nextIndex = TAB_ORDER.indexOf(tab);
+      setTabDirection(nextIndex >= prevIndex ? 1 : -1);
+      prevTabRef.current = tab;
       handleTabChange(value);
+      contentRef.current?.scrollTo({ top: 0 });
       const label = TAB_CONFIG.find((t) => t.id === value)?.label ?? value;
       announce(`${label} tab selected`);
       tap();
@@ -139,8 +177,9 @@ export const MobileSheetV2: React.FC<MobileSheetV2Props> = ({
       <div
         className="pf2-mobile-sheet__handle"
         {...dragHandlers}
+        onClick={handleDoubleTap}
         role="slider"
-        aria-label="Resize sheet"
+        aria-label="Resize sheet (double-tap for full)"
         aria-orientation="vertical"
         aria-valuetext={state}
         tabIndex={0}
@@ -171,10 +210,11 @@ export const MobileSheetV2: React.FC<MobileSheetV2Props> = ({
         </Tabs.List>
 
         {/* Scrollable Content */}
-        <div className="pf2-mobile-sheet__content" ref={contentRef}>
+        <div className="pf2-mobile-sheet__content" ref={contentRef} style={tabContentStyle}>
           <Tabs.Content
             className="pf2-mobile-sheet__tab-content"
             value="shape"
+            forceMount
           >
             <ShapeTab />
           </Tabs.Content>
@@ -182,6 +222,7 @@ export const MobileSheetV2: React.FC<MobileSheetV2Props> = ({
           <Tabs.Content
             className="pf2-mobile-sheet__tab-content"
             value="style"
+            forceMount
           >
             <StyleTab />
           </Tabs.Content>
@@ -189,6 +230,7 @@ export const MobileSheetV2: React.FC<MobileSheetV2Props> = ({
           <Tabs.Content
             className="pf2-mobile-sheet__tab-content"
             value="export"
+            forceMount
           >
             <ExportTab />
           </Tabs.Content>

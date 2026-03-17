@@ -13,13 +13,13 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: var(--pf2-bg-raised);
+  background: var(--pf2-bg-elevated);
   border-radius: var(--pf2-radius-lg);
-  border: 1px solid var(--pf2-border-default);
+  border: 1px solid var(--pf2-border-active);
   padding: var(--pf2-space-xl);
   max-width: 420px;
   width: 90vw;
-  box-shadow: var(--pf2-shadow-lg);
+  box-shadow: var(--pf2-shadow-float);
   z-index: 1001;
   animation: pf2-drawer-enter var(--pf2-duration-fast) var(--pf2-ease-spring) both;
 }
@@ -64,7 +64,7 @@
 }
 
 .pf2-shortcuts-close:hover {
-  background: var(--pf2-bg-sunken);
+  background: var(--pf2-bg-hover);
   color: var(--pf2-text-primary);
 }
 
@@ -83,7 +83,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--pf2-accent-muted);
+  background: var(--pf2-accent-subtle);
   color: var(--pf2-accent);
   border-radius: var(--pf2-radius-sm);
   padding: 2px 8px;
@@ -112,7 +112,51 @@
   }
 }
 
-/* Reduced motion */
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-shortcuts-overlay {
+  background: var(--pf2-bg-overlay);
+}
+
+.pf2-root[data-theme="light"] .pf2-shortcuts-content {
+  background: var(--pf2-bg-elevated);
+  border-color: var(--pf2-border);
+  box-shadow: var(--pf2-shadow-lg);
+}
+
+/* ============================================================================
+   Mobile — Full-screen layout
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-shortcuts-content {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    max-width: none;
+    width: 100%;
+    border-radius: var(--pf2-radius-xl) var(--pf2-radius-xl) 0 0;
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: var(--pf2-space-lg);
+    padding-bottom: max(var(--pf2-space-lg), env(safe-area-inset-bottom, 0));
+    animation: pf2-sheet-up var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  }
+
+  .pf2-shortcuts-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
 @media (prefers-reduced-motion: reduce) {
   .pf2-shortcuts-overlay,
   .pf2-shortcuts-content {

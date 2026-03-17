@@ -7,7 +7,7 @@
   top: calc(100% + var(--pf2-space-sm));
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10; /* Above toolbar siblings */
+  z-index: var(--pf2-z-tooltip);
   min-width: 240px;
   max-width: calc(100vw - 32px); /* C6: Narrow viewport guard */
   padding: var(--pf2-space-md);
@@ -216,6 +216,16 @@
 }
 
 /* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-camera-popover {
+    animation: none;
+  }
+}
+
+/* ============================================================================
    High Contrast
    ============================================================================ */
 
@@ -238,4 +248,24 @@
 .pf2-root[data-theme="light"] .pf2-camera-popover {
   background: var(--pf2-glass-bg);
   border-color: var(--pf2-glass-border);
+}
+
+/* ============================================================================
+   Mobile — Full-width bottom positioning
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-camera-popover {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    max-width: none;
+    border-radius: var(--pf2-radius-xl) var(--pf2-radius-xl) 0 0;
+    padding: var(--pf2-space-lg);
+    padding-bottom: max(var(--pf2-space-lg), env(safe-area-inset-bottom, 0));
+    animation: pf2-sheet-up var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  }
 }

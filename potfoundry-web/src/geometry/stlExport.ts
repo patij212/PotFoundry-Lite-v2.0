@@ -23,6 +23,12 @@ export type ExportFormat = 'stl' | '3mf' | 'obj';
  */
 export interface ExportOptions extends Partial<STLExportOptions> {
   format?: ExportFormat;
+  /** Colors for 3MF color embedding (primaryColor, midColor, secondaryColor) */
+  colors?: {
+    primaryColor: string;
+    midColor: string;
+    secondaryColor: string;
+  };
 }
 
 /**
@@ -36,11 +42,12 @@ export interface ExportOptions extends Partial<STLExportOptions> {
 export async function exportMesh(
   mesh: MeshData,
   format: ExportFormat = 'stl',
-  name: string = 'PotFoundry'
+  name: string = 'PotFoundry',
+  colors?: ExportOptions['colors']
 ): Promise<Blob> {
   if (format === '3mf') {
     const { exportTo3MF } = await import('./exporters/export3MF');
-    return exportTo3MF(mesh, { name });
+    return exportTo3MF(mesh, { name, colors });
   }
   if (format === 'obj') {
     const { exportToOBJ } = await import('./exporters/exportOBJ');
@@ -73,7 +80,7 @@ export async function downloadMesh(
 
   if (format === '3mf') {
     const { download3MF } = await import('./exporters/export3MF');
-    await download3MF(mesh, filename, { name });
+    await download3MF(mesh, filename, { name, colors: options.colors });
     return;
   }
 

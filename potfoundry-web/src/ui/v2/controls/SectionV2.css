@@ -7,6 +7,8 @@
   background: var(--pf2-bg-surface);
   overflow: visible;
   flex-shrink: 0;
+  animation: pf2-section-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  animation-delay: calc(var(--pf2-duration-stagger, 30ms) * var(--section-index, 0));
 }
 
 .pf2-section + .pf2-section {
@@ -137,6 +139,40 @@
 
   .pf2-section__trigger {
     border: 1px solid ButtonText;
+  }
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+.pf2-root[data-theme="light"] .pf2-section {
+  background: var(--pf2-bg-elevated);
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-section {
+    animation: none;
+  }
+
+  .pf2-section__chevron {
+    transition: none;
+  }
+
+  .pf2-section__body {
+    transition: none;
+  }
+
+  .pf2-section__body[data-state='closed'] {
+    transition: none;
+  }
+
+  .pf2-section__body[data-state='open'] {
+    transition: none;
   }
 }
 

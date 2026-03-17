@@ -12,6 +12,7 @@
         "deploy": "npm run build && wrangler pages deploy dist",
         "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
         "lint:wgsl": "node scripts/lint-wgsl-regions.mjs",
+        "lint:mobile-constants": "node scripts/check-mobile-constants.mjs",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
         "typecheck:full": "tsc --noEmit",
         "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx}\"",

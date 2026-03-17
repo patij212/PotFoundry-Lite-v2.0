@@ -149,12 +149,19 @@
   transition:
     color var(--pf2-duration-micro) var(--pf2-ease-move),
     background var(--pf2-duration-micro) var(--pf2-ease-move),
-    border-color var(--pf2-duration-micro) var(--pf2-ease-move);
+    border-color var(--pf2-duration-micro) var(--pf2-ease-move),
+    transform var(--pf2-duration-micro) var(--pf2-ease-spring);
 }
 
 .pf2-library-drawer__chip:hover {
   color: var(--pf2-text-primary);
   background: var(--pf2-bg-hover);
+  transform: translateY(-1px);
+}
+
+.pf2-library-drawer__chip:active {
+  transform: scale(0.95);
+  transition-duration: var(--pf2-duration-instant);
 }
 
 .pf2-library-drawer__chip--active {
@@ -193,29 +200,74 @@
   background: var(--pf2-bg-surface);
   border: 1px solid var(--pf2-border);
   border-radius: var(--pf2-radius-md);
-  overflow: hidden;
+  overflow: visible;
   cursor: pointer;
   transition:
     border-color var(--pf2-duration-micro) var(--pf2-ease-move),
     transform var(--pf2-duration-micro) var(--pf2-ease-move),
     box-shadow var(--pf2-duration-micro) var(--pf2-ease-move);
+  animation: pf2-card-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  animation-delay: calc(var(--card-index, 0) * 30ms);
+}
+
+@keyframes pf2-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .pf2-library-drawer__card:hover {
   border-color: var(--pf2-accent-subtle);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.pf2-library-drawer__card:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition-duration: var(--pf2-duration-instant);
 }
 
 .pf2-library-drawer__card--active {
   border-color: var(--pf2-accent);
-  box-shadow: 0 0 0 1px var(--pf2-accent);
+  box-shadow: 0 0 0 1px var(--pf2-accent), 0 4px 16px rgba(180, 151, 90, 0.15);
 }
 
 .pf2-library-drawer__card-thumb {
   aspect-ratio: 4 / 3;
   background: var(--pf2-bg-base);
   overflow: hidden;
+  position: relative;
+  border-radius: var(--pf2-radius-md) var(--pf2-radius-md) 0 0;
+}
+
+/* Skeleton shimmer while thumbnail loads */
+.pf2-library-drawer__card-thumb::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.03) 40%,
+    rgba(255, 255, 255, 0.06) 50%,
+    rgba(255, 255, 255, 0.03) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: pf2-skeleton-shimmer 1.8s ease-in-out infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@keyframes pf2-skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 .pf2-library-drawer__card-info {
@@ -238,6 +290,36 @@
 .pf2-library-drawer__card-category {
   font-size: 10px;
   color: var(--pf2-text-muted);
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-library-drawer__overlay {
+    animation: none;
+  }
+
+  .pf2-library-drawer {
+    animation: none;
+  }
+
+  .pf2-library-drawer__card {
+    animation: none;
+  }
+
+  .pf2-library-drawer__chip:hover {
+    transform: none;
+  }
+
+  .pf2-library-drawer__card:hover {
+    transform: none;
+  }
+
+  .pf2-library-drawer__card-thumb::before {
+    animation: none;
+  }
 }
 
 /* ============================================================================
@@ -264,4 +346,69 @@
 
 [data-theme="light"] .pf2-library-drawer__overlay {
   background: var(--pf2-bg-overlay);
+}
+
+.pf2-root[data-theme="light"] .pf2-library-drawer {
+  background: var(--pf2-bg-elevated);
+  box-shadow: var(--pf2-shadow-lg);
+}
+
+.pf2-root[data-theme="light"] .pf2-library-drawer__card {
+  background: var(--pf2-bg-base);
+}
+
+.pf2-root[data-theme="light"] .pf2-library-drawer__card:hover {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.pf2-root[data-theme="light"] .pf2-library-drawer__card--active {
+  box-shadow: 0 0 0 1px var(--pf2-accent), 0 4px 16px rgba(122, 101, 38, 0.1);
+}
+
+.pf2-root[data-theme="light"] .pf2-library-drawer__card-thumb {
+  background: var(--pf2-bg-sunken);
+}
+
+.pf2-root[data-theme="light"] .pf2-library-drawer__card-thumb::before {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.02) 40%,
+    rgba(0, 0, 0, 0.04) 50%,
+    rgba(0, 0, 0, 0.02) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+.pf2-root[data-theme="light"] .pf2-library-drawer__search-input {
+  background: var(--pf2-bg-sunken);
+}
+
+.pf2-root[data-theme="light"] .pf2-library-drawer__chip {
+  background: var(--pf2-bg-sunken);
+}
+
+/* ============================================================================
+   Mobile — Full-screen drawer
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .pf2-library-drawer {
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    width: 100%;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: 0;
+    animation: pf2-fade-in var(--pf2-duration-fast) var(--pf2-ease-enter) both;
+  }
+
+  .pf2-library-drawer__grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    padding-bottom: max(var(--pf2-space-xl), env(safe-area-inset-bottom, 0));
+  }
 }

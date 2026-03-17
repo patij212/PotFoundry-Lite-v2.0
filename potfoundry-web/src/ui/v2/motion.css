@@ -188,6 +188,10 @@
   animation: pf2-tab-enter var(--pf2-duration-normal) var(--pf2-ease-enter) both;
 }
 
+.pf2-animate-tab-exit {
+  animation: pf2-tab-exit var(--pf2-duration-fast) var(--pf2-ease-exit) forwards;
+}
+
 .pf2-animate-section-enter {
   animation: pf2-section-enter var(--pf2-duration-fast) var(--pf2-ease-enter) both;
   animation-delay: calc(var(--pf2-duration-stagger) * var(--section-index, 0));

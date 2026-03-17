@@ -17,6 +17,7 @@
 import { ShaderManager } from './renderers/webgpu/ShaderManager';
 import { WebGPURenderer } from './renderers/webgpu/WebGPURenderer';
 import { SceneManager } from './renderers/webgpu/SceneManager';
+import ThumbnailRenderer from './services/ThumbnailRenderer';
 import {
   createAxisOverlay,
   overlayForAxisFromBasis,
@@ -1007,12 +1008,17 @@ export const mount = async ({
   try {
     if (!await sceneManager.init(reqInitStyleId)) {
       console.error('[WebGPU] SceneManager.init returned false');
+      ThumbnailRenderer.getInstance().rejectDevice();
       return fail('webgpu:pipeline-failed', 'SceneManager initialization failed');
     }
   } catch (err) {
     console.error('[WebGPU] SceneManager.init threw:', err);
+    ThumbnailRenderer.getInstance().rejectDevice();
     return fail('webgpu:pipeline-failed', `SceneManager initialization crashed: ${err}`);
   }
+
+  // Share device with ThumbnailRenderer (must be after stabilization + SceneManager init)
+  ThumbnailRenderer.getInstance().setDevice(device);
 
   // Extract buffers for legacy code compatibility
   const uniformBuffer = sceneManager.uniformBuffer!;

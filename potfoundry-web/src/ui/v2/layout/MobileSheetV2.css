@@ -13,7 +13,10 @@
   background: rgba(15, 15, 18, 0.92);
   border-top: 1px solid var(--pf2-border);
   border-radius: var(--pf2-radius-xl) var(--pf2-radius-xl) 0 0;
+  /* Safe area insets for notched/rounded devices */
   padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
   overflow: hidden;
   transition: height var(--pf2-duration-normal) var(--pf2-ease-enter);
   animation: pf2-sheet-up var(--pf2-duration-normal) var(--pf2-ease-enter) both;
@@ -113,6 +116,7 @@
    ============================================================================ */
 
 .pf2-mobile-sheet__content {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -135,8 +139,65 @@
   border-radius: 3px;
 }
 
-.pf2-mobile-sheet__tab-content {
+/* Scroll shadow — top/bottom fade */
+.pf2-mobile-sheet__content::before,
+.pf2-mobile-sheet__content::after {
+  content: '';
+  position: sticky;
+  left: 0;
+  right: 0;
+  height: 12px;
+  pointer-events: none;
+  z-index: 1;
+  display: block;
+  flex-shrink: 0;
+}
+
+.pf2-mobile-sheet__content::before {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(15, 15, 18, 0.92) 0%,
+    transparent 100%
+  );
+  margin-bottom: -12px;
+}
+
+.pf2-mobile-sheet__content::after {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    rgba(15, 15, 18, 0.92) 0%,
+    transparent 100%
+  );
+  margin-top: -12px;
+}
+
+.pf2-mobile-sheet__tab-content[data-state="active"] {
   animation: pf2-tab-enter var(--pf2-duration-normal) var(--pf2-ease-enter) both;
+}
+
+.pf2-mobile-sheet__tab-content[data-state="inactive"] {
+  animation: pf2-tab-exit var(--pf2-duration-fast) var(--pf2-ease-exit) forwards;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pf2-mobile-sheet {
+    animation: none;
+    transition: none;
+  }
+
+  .pf2-mobile-sheet__tab-content[data-state="active"],
+  .pf2-mobile-sheet__tab-content[data-state="inactive"] {
+    animation: none;
+  }
 }
 
 /* ============================================================================
@@ -166,4 +227,20 @@
 .pf2-root[data-theme="light"] .pf2-mobile-sheet {
   background: var(--pf2-glass-bg);
   border-top-color: var(--pf2-glass-border);
+}
+
+.pf2-root[data-theme="light"] .pf2-mobile-sheet__content::before {
+  background: linear-gradient(
+    to bottom,
+    var(--pf2-bg-elevated) 0%,
+    transparent 100%
+  );
+}
+
+.pf2-root[data-theme="light"] .pf2-mobile-sheet__content::after {
+  background: linear-gradient(
+    to top,
+    var(--pf2-bg-elevated) 0%,
+    transparent 100%
+  );
 }

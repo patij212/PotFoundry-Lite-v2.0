@@ -18,6 +18,7 @@ import {
 } from '../../../state';
 import { useConfidence } from '../onboarding/useConfidence';
 import { Ruler, Box, CircleDot, Waves } from 'lucide-react';
+import { PresetStrip } from './PresetStrip';
 import './ShapeTab.css';
 
 // ============================================================================
@@ -129,7 +130,7 @@ export const ShapeTab: React.FC = () => {
 
   return (
     <div className="pf2-shape-tab">
-      {/* Phase 4: Preset gallery */}
+      <PresetStrip />
 
       <SectionV2 title="Size" icon={<Ruler size={14} />} sectionIndex={0}>
         <GeometrySliderGroup

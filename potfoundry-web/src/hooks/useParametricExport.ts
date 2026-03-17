@@ -28,6 +28,7 @@ import {
 import { STYLE_IDS, STYLE_FUNCTION_MAP, STYLE_REGISTRY } from '../styles/registry';
 import { stripShaderCode } from '../utils/shaderStripper';
 import { useControllerMaybe } from '../context/ControllerContext';
+import { isMobileDevice } from '../ResizeManager';
 
 // Import shader sources
 import commonWgsl from '../assets/shaders/common.wgsl?raw';
@@ -154,6 +155,13 @@ export function useParametricExport(): UseParametricExportResult {
 
         const initGPU = async () => {
             try {
+                // On mobile, defer GPU export init to avoid multi-device crash.
+                // The main renderer needs the sole GPUDevice during boot.
+                if (isMobileDevice()) {
+                    if (import.meta.env.DEV) console.log('[useParametricExport] Skipping eager GPU init on mobile');
+                    return;
+                }
+
                 if (!navigator.gpu) {
                     console.warn('[useParametricExport] WebGPU not supported');
                     if (isMounted) setIsAvailable(false);

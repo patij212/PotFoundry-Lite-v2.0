@@ -33,6 +33,7 @@ import {
 import { useConfidence } from '../onboarding/useConfidence';
 import clsx from 'clsx';
 import { useStyleTransition } from '../hooks/useStyleTransition';
+import { useRadioGroupKeys } from '../hooks/useRadioGroupKeys';
 import './StyleTab.css';
 
 // ============================================================================
@@ -148,7 +149,9 @@ export const StyleTab: React.FC = () => {
   const setCustomGradient = useAppStore((s) => s.setCustomGradient);
   const setGradientAngle = useAppStore((s) => s.setGradientAngle);
 
-  // Derived
+  // Derived — getStyleSchema reads styleName internally; styleName listed
+  // as a dep purely to trigger recomputation when the style changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const schema = useMemo(() => getStyleSchema(), [styleName, getStyleSchema]);
   const advancedParams = useMemo(
     () => (schema.advancedParams ? Object.entries(schema.advancedParams) : []),
@@ -157,6 +160,7 @@ export const StyleTab: React.FC = () => {
 
   const { isVisible, unlock } = useConfidence();
   const { phase, displayStyle, onStyleChanged } = useStyleTransition(styleName);
+  const radioGroupKeys = useRadioGroupKeys();
 
   const runDiscreteHistoryUpdate = useCallback(
     (update: () => void) => {
@@ -271,7 +275,7 @@ export const StyleTab: React.FC = () => {
       {isVisible('style:colors') && (
       <SectionV2 title="Colors" icon={<Palette size={14} />} sectionIndex={1}>
         {/* Color scheme swatches */}
-        <div className="pf2-style-tab__swatches" role="radiogroup" aria-label="Color scheme">
+        <div className="pf2-style-tab__swatches" role="radiogroup" aria-label="Color scheme" onKeyDown={radioGroupKeys}>
           {COLOR_SCHEMES.map((scheme) => (
             <button
               key={scheme.id}
@@ -372,7 +376,7 @@ export const StyleTab: React.FC = () => {
           ================================================================ */}
       {isVisible('style:lighting') && (
       <SectionV2 title="Lighting" icon={<Sun size={14} />} sectionIndex={3}>
-        <div className="pf2-style-tab__chip-row" role="radiogroup" aria-label="Lighting preset">
+        <div className="pf2-style-tab__chip-row" role="radiogroup" aria-label="Lighting preset" onKeyDown={radioGroupKeys}>
           {LIGHTING_PRESETS.map((preset) => (
             <button
               key={preset.id}
@@ -399,7 +403,7 @@ export const StyleTab: React.FC = () => {
       {isVisible('style:background') && (
       <SectionV2 title="Background" icon={<Monitor size={14} />} sectionIndex={4}>
         {/* Background gradient swatches */}
-        <div className="pf2-style-tab__bg-swatches" role="radiogroup" aria-label="Background gradient">
+        <div className="pf2-style-tab__bg-swatches" role="radiogroup" aria-label="Background gradient" onKeyDown={radioGroupKeys}>
           {BACKGROUND_GRADIENTS.map((bg) => (
             <button
               key={bg.id}
