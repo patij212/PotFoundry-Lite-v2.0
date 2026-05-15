@@ -1441,6 +1441,10 @@ export class ParametricExportComputer {
             let outerProtectedStripVertices: Set<number> | undefined; // R38: preserve repaired phantom corridor
             let outerFanDiagonalEdges: Array<[number, number]> = []; // R46: fan diagonal edges for constraint protection
             let outerInterpolatedChainVertices: Array<{ vertexIdx: number; chainId: number; rowIdx: number; gapSize: number }> = []; // R46 Phase 2
+            // Bug #1 fix: phantom chain anchors created at column-boundary crossings.
+            // Their UV positions are linear interpolation between chain endpoints, so
+            // they drift off the feature ridge for curved features. GPU re-snap below.
+            let outerPhantomChainAnchors: Array<{ vertexIdx: number; chainId: number; tCross: number }> = [];
 
             for (const surf of SURFACE_CONFIG) {
                 if (surf.id === 0) {
@@ -1448,6 +1452,13 @@ export class ParametricExportComputer {
                     // v11.3: PER-ROW PATCHED OUTER WALL â€" union grid + chain vertex patching
                     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
                     const targetOuterTris = Math.floor(targetTris * surf.budgetFrac);
+                    // Bug #5 fix: compute metric aspect for the outer-wall sweep diagonal selector.
+                    // U maps to circumference at mean radius, T maps to pot height. Clamped to
+                    // [0.25, 10] to avoid pathological scaling on degenerate dimensions.
+                    const meanRadius = 0.5 * (dimensions.Rb + dimensions.Rt);
+                    const circumference = 2 * Math.PI * Math.max(1e-3, meanRadius);
+                    const rawMetricAspect = circumference / Math.max(1e-3, dimensions.H);
+                    const outerMetricAspect = Math.max(0.25, Math.min(10.0, rawMetricAspect));
                     const cdtResult = buildCDTOuterWall(
                         meshChains, rowMapping, finalT, unionU,
                         targetOuterTris, surf.id,
@@ -1462,6 +1473,7 @@ export class ParametricExportComputer {
                         {
                             corridorPlanning: Boolean(flags.outerWallCorridorPlanning),
                             corridorDiagnostics: Boolean(flags.outerWallCorridorDiagnostics),
+                            metricAspect: outerMetricAspect,
                         },
                     );
 
@@ -1482,6 +1494,7 @@ export class ParametricExportComputer {
                     outerProtectedStripVertices = cdtResult.protectedStripVertices;
                     outerFanDiagonalEdges = cdtResult.fanDiagonalEdges;
                     outerInterpolatedChainVertices = cdtResult.interpolatedChainVertices;
+                    outerPhantomChainAnchors = cdtResult.phantomChainAnchors;
                     allVertArrays.push(cdtResult.vertices);
 
                     if (vertexOffset > 0) {
@@ -1687,6 +1700,101 @@ export class ParametricExportComputer {
 
                 const avgWindow = interpVertCount > 0 ? (totalWindowUsed / interpVertCount) : 0;
                 console.log(`[ParametricExport]   R46 interp re-snap: ${interpResnapCount}/${interpVertCount} refined, already-correct=${interpAlreadyCorrect}, overshoot=${interpOvershoot} (max=${maxOvershootMoved.toFixed(6)}) (avg window=${avgWindow.toFixed(6)}, max window=${maxWindowUsed.toFixed(6)})`);
+            }
+
+            // ── Bug #1 fix: GPU re-snap R37 phantom chain anchors ──
+            // R37 creates phantom vertices at column-boundary crossings via linear UV
+            // interpolation between chain edge endpoints. For curved features the
+            // linear interpolation drifts off the feature ridge, producing visible
+            // bumps/dips at every chain-column crossing in the STL. We re-snap each
+            // anchor to the local peak/valley at its own T value.
+            if (outerPhantomChainAnchors.length > 0 && cfgGpuResnap) {
+                const SAMPLE_WIDTH = 1.0 / ROW_PROBE_SAMPLES;
+                const BASE_HALFWIDTH = 2.0 * SAMPLE_WIDTH;
+                const PHANTOM_HALFWIDTH = Math.max(BASE_HALFWIDTH, 0.004);
+                const PHANTOM_CANDIDATES = 32;
+                const MAX_PHANTOM_DELTA = 0.04;
+
+                const phCount = outerPhantomChainAnchors.length;
+                const phProbeVerts = new Float32Array(phCount * PHANTOM_CANDIDATES * 3);
+                let phWriteIdx = 0;
+                for (const pa of outerPhantomChainAnchors) {
+                    const currentU = combinedVerts[pa.vertexIdx * 3];
+                    const step = (2 * PHANTOM_HALFWIDTH) / (PHANTOM_CANDIDATES - 1);
+                    for (let k = 0; k < PHANTOM_CANDIDATES; k++) {
+                        let uC = currentU - PHANTOM_HALFWIDTH + k * step;
+                        uC = ((uC % 1) + 1) % 1;
+                        phProbeVerts[phWriteIdx++] = uC;
+                        phProbeVerts[phWriteIdx++] = pa.tCross;
+                        phProbeVerts[phWriteIdx++] = 0;
+                    }
+                }
+
+                const phPositions = await this.evaluatePoints(
+                    phProbeVerts, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                );
+
+                let phResnapCount = 0;
+                let phAlreadyCorrect = 0;
+                let phOvershoot = 0;
+                let phMaxMoved = 0;
+                let phProbeOffset = 0;
+                for (const pa of outerPhantomChainAnchors) {
+                    const currentU = combinedVerts[pa.vertexIdx * 3];
+                    const parentChain = meshChains[pa.chainId];
+                    const isMax = !parentChain?.kind || parentChain.kind === 'peak';
+
+                    const radii = new Float32Array(PHANTOM_CANDIDATES);
+                    for (let k = 0; k < PHANTOM_CANDIDATES; k++) {
+                        const off = (phProbeOffset + k) * 3;
+                        const x = phPositions[off];
+                        const y = phPositions[off + 1];
+                        radii[k] = Math.sqrt(x * x + y * y);
+                    }
+
+                    let bestK = 0;
+                    let bestR = radii[0];
+                    for (let k = 1; k < PHANTOM_CANDIDATES; k++) {
+                        if (isMax ? (radii[k] > bestR) : (radii[k] < bestR)) {
+                            bestR = radii[k];
+                            bestK = k;
+                        }
+                    }
+
+                    const step = (2 * PHANTOM_HALFWIDTH) / (PHANTOM_CANDIDATES - 1);
+                    let finalU: number;
+                    if (bestK > 0 && bestK < PHANTOM_CANDIDATES - 1) {
+                        const L = radii[bestK - 1];
+                        const C = radii[bestK];
+                        const R_val = radii[bestK + 1];
+                        const denom = L - 2 * C + R_val;
+                        let delta = 0;
+                        if (Math.abs(denom) > 1e-14) {
+                            delta = 0.5 * (L - R_val) / denom;
+                            delta = Math.max(-0.5, Math.min(0.5, delta));
+                        }
+                        finalU = currentU - PHANTOM_HALFWIDTH + (bestK + delta) * step;
+                    } else {
+                        finalU = currentU - PHANTOM_HALFWIDTH + bestK * step;
+                    }
+                    finalU = ((finalU % 1) + 1) % 1;
+
+                    const moved = circularDistance(currentU, finalU);
+                    if (moved > 1e-7 && moved < MAX_PHANTOM_DELTA) {
+                        combinedVerts[pa.vertexIdx * 3] = finalU;
+                        phResnapCount++;
+                        if (moved > phMaxMoved) phMaxMoved = moved;
+                    } else if (moved <= 1e-7) {
+                        phAlreadyCorrect++;
+                    } else {
+                        phOvershoot++;
+                    }
+
+                    phProbeOffset += PHANTOM_CANDIDATES;
+                }
+
+                console.log(`[ParametricExport]   Bug#1 phantom re-snap: ${phResnapCount}/${phCount} refined, already-correct=${phAlreadyCorrect}, overshoot=${phOvershoot}, max moved=${phMaxMoved.toFixed(6)}`);
             }
 
 

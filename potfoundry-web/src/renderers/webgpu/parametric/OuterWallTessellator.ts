@@ -111,6 +111,15 @@ export interface OuterWallResult {
     fanDiagonalEdges: Array<[number, number]>;
     /** R46 Phase 2: Interpolated chain vertices for post-OWT GPU re-snap */
     interpolatedChainVertices: Array<{ vertexIdx: number; chainId: number; rowIdx: number; gapSize: number }>;
+    /**
+     * Bug #1 fix: R37 phantom chain anchors created at column-boundary crossings.
+     * These vertices' UV positions come from LINEAR INTERPOLATION between chain
+     * edge endpoints — they sit off the feature ridge for any curved feature.
+     * Downstream (ParametricExportComputer.compute) must GPU re-snap them to
+     * the local peak/valley to eliminate hotspot artifacts at chain-column
+     * crossings.
+     */
+    phantomChainAnchors: Array<{ vertexIdx: number; chainId: number; tCross: number }>;
     /** C0/C1: Dry-run corridor planning output. Undefined unless explicitly enabled. */
     corridorPlan?: OuterWallCorridorPlanningResult;
 }
@@ -126,6 +135,12 @@ export interface OuterWallBuildOptions {
     readonly corridorPlanning?: boolean;
     /** Include aggregate planner diagnostics in the returned plan. Default: false. */
     readonly corridorDiagnostics?: boolean;
+    /**
+     * Bug #5 fix: metric correction for sweep diagonal choice. Equal to
+     * `physical_U_extent / physical_T_extent` for the pot. Default 1.0
+     * preserves legacy raw-UV behavior.
+     */
+    readonly metricAspect?: number;
 }
 
 // ============================================================================
@@ -201,10 +216,15 @@ function maxCosine2D(
     ax: number, ay: number,
     bx: number, by: number,
     cx: number, cy: number,
+    /** Bug #5 fix: metric correction (default 1.0 = legacy behavior). */
+    metricAspect: number = 1.0,
 ): number {
-    const abx = bx - ax, aby = by - ay;
-    const acx = cx - ax, acy = cy - ay;
-    const bcx = cx - bx, bcy = cy - by;
+    const ayS = ay * metricAspect;
+    const byS = by * metricAspect;
+    const cyS = cy * metricAspect;
+    const abx = bx - ax, aby = byS - ayS;
+    const acx = cx - ax, acy = cyS - ayS;
+    const bcx = cx - bx, bcy = cyS - byS;
     const lab = Math.sqrt(abx * abx + aby * aby);
     const lac = Math.sqrt(acx * acx + acy * acy);
     const lbc = Math.sqrt(bcx * bcx + bcy * bcy);
@@ -284,6 +304,8 @@ function sweepQuad(
     bot: number[],
     top: number[],
     verts: Float32Array,
+    /** Bug #5 fix: optional metric aspect (U/T physical ratio). 1.0 = legacy. */
+    metricAspect: number = 1.0,
 ): void {
     let bi = 0, ti = 0;
     const bLen = bot.length, tLen = top.length;
@@ -310,11 +332,13 @@ function sweepQuad(
                     verts[bot[bi] * 3], verts[bot[bi] * 3 + 1],
                     verts[bot[bi + 1] * 3], verts[bot[bi + 1] * 3 + 1],
                     verts[top[ti] * 3], verts[top[ti] * 3 + 1],
+                    metricAspect,
                 );
                 const cosB = maxCosine2D(
                     verts[top[ti] * 3], verts[top[ti] * 3 + 1],
                     verts[top[ti + 1] * 3], verts[top[ti + 1] * 3 + 1],
                     verts[bot[bi] * 3], verts[bot[bi] * 3 + 1],
+                    metricAspect,
                 );
                 if (cosA <= cosB) {
                     // Diagonal A has lower max-cosine → better min-angle
@@ -444,6 +468,8 @@ function constrainedSweepCell(
     edges: Array<[number, number]>,
     verts: Float32Array,
     fanDiagEdges: Array<[number, number]>,
+    /** Bug #5 fix: optional metric aspect. 1.0 = legacy. */
+    metricAspect: number = 1.0,
 ): void {
     // Build partition list: map each chain edge to positions in bot/top arrays
     interface Partition {
@@ -469,7 +495,7 @@ function constrainedSweepCell(
 
     if (partitions.length === 0) {
         // No valid chain edge partitions — fall back to simple sweep
-        sweepQuad(buf, bot, top, verts);
+        sweepQuad(buf, bot, top, verts, metricAspect);
         return;
     }
 
@@ -492,7 +518,7 @@ function constrainedSweepCell(
         if (subBot.length < 2 || subTop.length < 2) {
             // A2 degenerate guard: collapsed edge after batch2Remap merge
             if (subBot.length >= 1 && subTop.length >= 1) {
-                sweepQuad(buf, subBot, subTop, verts);
+                sweepQuad(buf, subBot, subTop, verts, metricAspect);
             }
         } else if (subBot.length === 2 && subTop.length === 2 && !prevIsChainEdge) {
             // R41/R51 chainFanQuad: 2×2 sub-quad with chain on RIGHT only
@@ -501,11 +527,13 @@ function constrainedSweepCell(
                 verts[subBot[0] * 3], verts[subBot[0] * 3 + 1],
                 verts[subBot[1] * 3], verts[subBot[1] * 3 + 1],
                 verts[subTop[0] * 3], verts[subTop[0] * 3 + 1],
+                metricAspect,
             );
             const cosB = maxCosine2D(
                 verts[subTop[0] * 3], verts[subTop[0] * 3 + 1],
                 verts[subTop[1] * 3], verts[subTop[1] * 3 + 1],
                 verts[subBot[0] * 3], verts[subBot[0] * 3 + 1],
+                metricAspect,
             );
             if (cosA <= cosB) {
                 // Diagonal A: chain_bot → grid_top (original)
@@ -520,7 +548,7 @@ function constrainedSweepCell(
             }
         } else {
             // Chain on both sides, or N×M sub-quad → standard sweep
-            sweepQuad(buf, subBot, subTop, verts);
+            sweepQuad(buf, subBot, subTop, verts, metricAspect);
         }
         prevBotPos = part.botPos;
         prevTopPos = part.topPos;
@@ -533,7 +561,7 @@ function constrainedSweepCell(
     if (finalBot.length < 2 || finalTop.length < 2) {
         // A2 degenerate guard
         if (finalBot.length >= 1 && finalTop.length >= 1) {
-            sweepQuad(buf, finalBot, finalTop, verts);
+            sweepQuad(buf, finalBot, finalTop, verts, metricAspect);
         }
     } else if (finalBot.length === 2 && finalTop.length === 2 && partitions.length > 0) {
         // R41/R51 chainFanQuad: 2×2 sub-quad with chain on LEFT only
@@ -542,11 +570,13 @@ function constrainedSweepCell(
             verts[finalBot[0] * 3], verts[finalBot[0] * 3 + 1],
             verts[finalBot[1] * 3], verts[finalBot[1] * 3 + 1],
             verts[finalTop[1] * 3], verts[finalTop[1] * 3 + 1],
+            metricAspect,
         );
         const cosB = maxCosine2D(
             verts[finalTop[0] * 3], verts[finalTop[0] * 3 + 1],
             verts[finalTop[1] * 3], verts[finalTop[1] * 3 + 1],
             verts[finalBot[1] * 3], verts[finalBot[1] * 3 + 1],
+            metricAspect,
         );
         if (cosA <= cosB) {
             // Diagonal A: chain_bot → grid_top (original)
@@ -560,7 +590,7 @@ function constrainedSweepCell(
             fanDiagEdges.push([finalBot[1], finalTop[0]]);
         }
     } else {
-        sweepQuad(buf, finalBot, finalTop, verts);
+        sweepQuad(buf, finalBot, finalTop, verts, metricAspect);
     }
 }
 
@@ -857,6 +887,10 @@ export function buildCDTOuterWall(
     options?: OuterWallBuildOptions,
 ): OuterWallResult {
     const buildStart = performance.now();
+    // Bug #5 fix: resolve metric aspect once at function entry, default 1.0.
+    const metricAspect = options?.metricAspect ?? 1.0;
+    // Bug #1 fix: per-anchor metadata for downstream GPU re-snap.
+    const phantomChainAnchorData = new Map<number, { chainId: number; tCross: number }>();
 
     // Build reverse map: original row → final row index
     let origToFinal = new Map<number, number>();
@@ -1531,10 +1565,44 @@ export function buildCDTOuterWall(
 
         const bottomEdge: number[] = [band * numU + leftBotCol];
         const topEdge: number[] = [(band + 1) * numU + leftTopCol];
+
+        // Bug #4 fix: pre-collect chain U positions per edge so we can drop
+        // intermediate grid columns that would create near-coincident pairs
+        // (PIN TRIANGLES). Intermediate columns are INTERIOR to the super-cell
+        // — adjacent cells are also chain/super — so dropping them cannot
+        // create T-junctions with standard cells. R52 Precision Lock preserved:
+        // chain vertices are NOT moved; redundant grid vertices clustered near
+        // them are simply not emitted.
+        const INTERMEDIATE_PIN_RADIUS = 0.0006;
+        const chainBotUs: number[] = [];
+        const chainTopUs: number[] = [];
+        for (let col = colStart; col <= colEnd; col++) {
+            const info = cellChainMap.get(cellKey(band, col));
+            if (!info) continue;
+            for (const vIdx of info.botChainVerts) chainBotUs.push(vertices[vIdx * 3]);
+            for (const vIdx of info.topChainVerts) chainTopUs.push(vertices[vIdx * 3]);
+        }
+        const tooCloseToChain = (gridU: number, chainUs: number[]): boolean => {
+            for (const cu of chainUs) {
+                let du = Math.abs(gridU - cu);
+                if (du > 0.5) du = 1 - du;
+                if (du < INTERMEDIATE_PIN_RADIUS) return true;
+            }
+            return false;
+        };
+
         for (let col = colStart; col <= colEnd; col++) {
             if (span.includeIntermediateGridColumns && col < colEnd) {
-                bottomEdge.push(band * numU + (col + 1));
-                topEdge.push((band + 1) * numU + (col + 1));
+                const interBotIdx = band * numU + (col + 1);
+                const interTopIdx = (band + 1) * numU + (col + 1);
+                const interBotU = vertices[interBotIdx * 3];
+                const interTopU = vertices[interTopIdx * 3];
+                if (!tooCloseToChain(interBotU, chainBotUs)) {
+                    bottomEdge.push(interBotIdx);
+                }
+                if (!tooCloseToChain(interTopU, chainTopUs)) {
+                    topEdge.push(interTopIdx);
+                }
             }
             const info = cellChainMap.get(cellKey(band, col));
             if (!info) continue;
@@ -1807,6 +1875,13 @@ export function buildCDTOuterWall(
                     }
 
                     const anchorIdx = upsertPhantomRowVertex(rowVerts, tCross, uCross, true);
+                    // Bug #1 fix: record anchor data for downstream GPU re-snap.
+                    if (!phantomChainAnchorData.has(anchorIdx)) {
+                        const chainId = resolveVertexChainId(ev0) ?? resolveVertexChainId(ev1);
+                        if (chainId !== undefined) {
+                            phantomChainAnchorData.set(anchorIdx, { chainId, tCross });
+                        }
+                    }
                     crossings.push({
                         anchorIdx,
                         sourceEdge: [ev0, ev1],
@@ -2169,7 +2244,7 @@ export function buildCDTOuterWall(
         // fan from the right edge — geometrically valid and T-junction-free.
         const leftEdge: number[] = [BL, ...bppInfo.leftPhantoms, TL];
         const rightEdge: number[] = [BR, ...bppInfo.rightPhantoms, TR];
-        sweepQuad(indexBuf, leftEdge, rightEdge, vertices);
+        sweepQuad(indexBuf, leftEdge, rightEdge, vertices, metricAspect);
     };
 
     /** Emit a chain-involved cell using cell-local quad splitting (R34). */
@@ -2204,10 +2279,10 @@ export function buildCDTOuterWall(
         if (info.chainEdges.length === 0) {
             // Chain vertices on edges but no chain edge through this cell.
             // Use monotone sweep between bottom and top edge arrays.
-            sweepQuad(indexBuf, coalBot, coalTop, vertices);
+            sweepQuad(indexBuf, coalBot, coalTop, vertices, metricAspect);
         } else {
             // Chain edges partition the cell into sub-quads.
-            constrainedSweepCell(indexBuf, coalBot, coalTop, info.chainEdges, vertices, fanDiagEdges);
+            constrainedSweepCell(indexBuf, coalBot, coalTop, info.chainEdges, vertices, fanDiagEdges, metricAspect);
         }
     };
 
@@ -2377,9 +2452,9 @@ export function buildCDTOuterWall(
             }
 
             if (subEdges.length === 0) {
-                sweepQuad(indexBuf, subBot, subTop, vertices);
+                sweepQuad(indexBuf, subBot, subTop, vertices, metricAspect);
             } else {
-                constrainedSweepCell(indexBuf, subBot, subTop, subEdges, vertices, fanDiagEdges);
+                constrainedSweepCell(indexBuf, subBot, subTop, subEdges, vertices, fanDiagEdges, metricAspect);
             }
         }
     };
@@ -2459,18 +2534,18 @@ export function buildCDTOuterWall(
                 }
 
                 if (subEdges.length === 0) {
-                    sweepQuad(indexBuf, subBot, subTop, vertices);
+                    sweepQuad(indexBuf, subBot, subTop, vertices, metricAspect);
                 } else {
-                    constrainedSweepCell(indexBuf, subBot, subTop, subEdges, vertices, fanDiagEdges);
+                    constrainedSweepCell(indexBuf, subBot, subTop, subEdges, vertices, fanDiagEdges, metricAspect);
                 }
             }
             return;
         }
 
         if (geometry.uniqueEdges.length === 0) {
-            sweepQuad(indexBuf, coalBot, coalTop, vertices);
+            sweepQuad(indexBuf, coalBot, coalTop, vertices, metricAspect);
         } else {
-            constrainedSweepCell(indexBuf, coalBot, coalTop, geometry.uniqueEdges, vertices, fanDiagEdges);
+            constrainedSweepCell(indexBuf, coalBot, coalTop, geometry.uniqueEdges, vertices, fanDiagEdges, metricAspect);
         }
     };
 
@@ -2508,10 +2583,10 @@ export function buildCDTOuterWall(
         ));
 
         if (geometry.uniqueEdges.length === 0) {
-            sweepQuad(indexBuf, coalescedBottom, coalescedTop, vertices);
+            sweepQuad(indexBuf, coalescedBottom, coalescedTop, vertices, metricAspect);
             return;
         }
-        constrainedSweepCell(indexBuf, coalescedBottom, coalescedTop, geometry.uniqueEdges, vertices, fanDiagEdges);
+        constrainedSweepCell(indexBuf, coalescedBottom, coalescedTop, geometry.uniqueEdges, vertices, fanDiagEdges, metricAspect);
     };
 
     // Main cell emission loop (R34/R35): super-cells first, then standard/chain cells
@@ -2791,6 +2866,15 @@ export function buildCDTOuterWall(
         protectedStripVertices,
         fanDiagonalEdges: fanDiagEdges,
         interpolatedChainVertices,
+        // Bug #1 fix: expose phantom chain anchors for downstream GPU re-snap.
+        // Filtered against live phantomChainAnchorSet for defensive consistency.
+        phantomChainAnchors: Array.from(phantomChainAnchorData.entries())
+            .filter(([vertexIdx]) => phantomChainAnchorSet.has(vertexIdx))
+            .map(([vertexIdx, meta]) => ({
+                vertexIdx,
+                chainId: meta.chainId,
+                tCross: meta.tCross,
+            })),
         corridorPlan,
     };
 }

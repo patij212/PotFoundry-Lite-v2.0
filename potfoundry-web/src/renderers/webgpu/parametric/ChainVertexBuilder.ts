@@ -24,6 +24,7 @@
 
 import type { FeatureChain } from './types';
 import type { ChainVertex } from './OuterWallTessellator';
+import { splitChainsAtSeam, splitChainsAtSteepDelta } from './ChainLinker';
 
 // ============================================================================
 // Constants
@@ -88,6 +89,25 @@ export function collectChainVertices(
     numT: number,
     gridVertexCount: number,
 ): ChainBuildResult {
+    // Cluster-1 fix (defensive): split any seam-spanning chains so we never
+    // place interpolated chain vertices straddling u=0/1 with no constraint
+    // edge connecting them. See parametric.audit.test.ts Phase C cluster 1.
+    // Production callers (linkFeatureChainsByKind, buildCDTOuterWall) already
+    // pre-split; this is the third defense-in-depth layer.
+    chains = splitChainsAtSeam(chains as FeatureChain[]);
+
+    // Cluster-2 fix (defensive): split steep-spiral segments. numU is derived
+    // from gridVertexCount / numT — the function's existing assumption is
+    // gridVertexCount = numU × numT. See parametric.audit.test.ts Phase C
+    // cluster 2.
+    if (numT > 0) {
+        const numU = Math.floor(gridVertexCount / numT);
+        if (numU >= 2) {
+            const maxDuPerRow = 2 / (numU - 1);
+            chains = splitChainsAtSteepDelta(chains as FeatureChain[], maxDuPerRow);
+        }
+    }
+
     const chainVertices: ChainVertex[] = [];
     const chainEdges: Array<[number, number]> = [];
     let nextVertexIdx = gridVertexCount;

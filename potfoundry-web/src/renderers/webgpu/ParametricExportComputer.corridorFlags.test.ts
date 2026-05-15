@@ -221,11 +221,17 @@ describe('ParametricExportComputer corridor flag threading', () => {
         const outerWallOptions = buildCDTOuterWallMock.mock.calls[0]?.[8] as {
             corridorPlanning?: boolean;
             corridorDiagnostics?: boolean;
+            metricAspect?: number;
         };
-        expect(outerWallOptions).toEqual({
+        // Use toMatchObject so the Bug #5 metricAspect field (always present,
+        // computed from pot geometry) doesn't fail this flag-threading test.
+        expect(outerWallOptions).toMatchObject({
             corridorPlanning: false,
             corridorDiagnostics: false,
         });
+        expect(typeof outerWallOptions.metricAspect).toBe('number');
+        expect(outerWallOptions.metricAspect).toBeGreaterThan(0);
+        expect(outerWallOptions.metricAspect).toBeLessThanOrEqual(10);
     });
 
     it('threads corridor planning and diagnostics into the outer-wall build', async () => {
@@ -249,8 +255,11 @@ describe('ParametricExportComputer corridor flag threading', () => {
         const outerWallOptions = buildCDTOuterWallMock.mock.calls[0]?.[8] as {
             corridorPlanning?: boolean;
             corridorDiagnostics?: boolean;
+            metricAspect?: number;
         };
-        expect(outerWallOptions).toEqual({
+        // Use toMatchObject so the Bug #5 metricAspect field doesn't break
+        // this flag-threading assertion.
+        expect(outerWallOptions).toMatchObject({
             corridorPlanning: true,
             corridorDiagnostics: true,
         });

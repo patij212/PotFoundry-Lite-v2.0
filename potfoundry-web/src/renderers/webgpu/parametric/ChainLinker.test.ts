@@ -21,6 +21,8 @@ import {
     whittakerSmooth,
     blendTowardSmoothedChain,
     repairChainsZigzags,
+    splitChainsAtSeam,
+    splitChainsAtSteepDelta,
     CHAIN_LINK_RADIUS,
 } from './ChainLinker';
 import type { FeatureChain, FeaturePoint } from './types';
@@ -484,7 +486,11 @@ describe('linkFeatureChainsCore — seam crossing', () => {
 });
 
 describe('linkFeatureChainsByKind — seam crossing', () => {
-    it('handles seam-crossing chains with kind separation', () => {
+    it('splits seam-crossing features into separate chains on each side', () => {
+        // U values: 0.98, 0.99, 0.00, 0.01, 0.02 — physically a single ridge
+        // wrapping the seam. After cluster-1 fix, linkFeatureChainsByKind
+        // returns it as TWO chains, one on each side, so no downstream stage
+        // has to enforce a seam-spanning constraint edge.
         const numRows = 5;
         const allRowFeatures: number[][] = [];
         const allRowTypedFeatures: FeaturePoint[][] = [];
@@ -501,12 +507,23 @@ describe('linkFeatureChainsByKind — seam crossing', () => {
             allRowFeatures, allRowTypedFeatures, numRows
         );
 
-        // Should have at least one chain spanning the seam
-        expect(chains.length).toBeGreaterThanOrEqual(1);
-        const seamChain = chains.find(c =>
-            c.points.some(p => p.u > 0.9) && c.points.some(p => p.u < 0.1)
-        );
-        expect(seamChain).toBeDefined();
+        // No chain may simultaneously contain points on both sides of the seam.
+        for (const c of chains) {
+            const hasHigh = c.points.some(p => p.u > 0.9);
+            const hasLow = c.points.some(p => p.u < 0.1);
+            expect(hasHigh && hasLow).toBe(false);
+        }
+        // The chain should be split into a high-side and a low-side fragment.
+        const highChain = chains.find(c => c.points.every(p => p.u > 0.9));
+        const lowChain = chains.find(c => c.points.every(p => p.u < 0.1));
+        expect(highChain).toBeDefined();
+        expect(lowChain).toBeDefined();
+        // Consecutive points within any returned chain have |Δu| ≤ 0.5.
+        for (const c of chains) {
+            for (let i = 1; i < c.points.length; i++) {
+                expect(Math.abs(c.points[i].u - c.points[i - 1].u)).toBeLessThanOrEqual(0.5);
+            }
+        }
     });
 });
 
@@ -863,5 +880,198 @@ describe('linkFeatureChainsCore — non-crossing DP matching', () => {
         // The two new chains should span rows 5-9 (5 points each)
         const shortChains = chains.filter(c => c.points.length >= 4 && c.points.length <= 6);
         expect(shortChains.length).toBe(2);
+    });
+});
+
+// ============================================================================
+// splitChainsAtSeam — Cluster-1 fix (audit Phase C / B1)
+// ============================================================================
+
+describe('splitChainsAtSeam', () => {
+    it('passes a non-seam-crossing chain through unchanged', () => {
+        const input: FeatureChain[] = [{
+            kind: 'peak',
+            points: [
+                { row: 0, u: 0.10 },
+                { row: 1, u: 0.12 },
+                { row: 2, u: 0.14 },
+                { row: 3, u: 0.16 },
+            ],
+        }];
+        const out = splitChainsAtSeam(input);
+        expect(out).toHaveLength(1);
+        expect(out[0].points).toHaveLength(4);
+        expect(out[0].kind).toBe('peak');
+    });
+
+    it('splits a chain that wraps the seam into two sub-chains', () => {
+        const input: FeatureChain[] = [{
+            kind: 'peak',
+            points: [
+                { row: 0, u: 0.92 },
+                { row: 1, u: 0.96 },
+                { row: 2, u: 0.04 }, // |Δu| = 0.92 > 0.5 — seam crossing
+                { row: 3, u: 0.08 },
+            ],
+        }];
+        const out = splitChainsAtSeam(input);
+        expect(out).toHaveLength(2);
+        expect(out[0].points.map(p => p.u)).toEqual([0.92, 0.96]);
+        expect(out[1].points.map(p => p.u)).toEqual([0.04, 0.08]);
+        for (const c of out) expect(c.kind).toBe('peak');
+    });
+
+    it('drops sub-chain remnants of fewer than 2 points', () => {
+        // First crossing leaves a 1-point head; second crossing leaves a 1-point tail.
+        const input: FeatureChain[] = [{
+            kind: 'valley',
+            points: [
+                { row: 0, u: 0.95 },
+                { row: 1, u: 0.03 }, // crossing 1: leaves [0.95] head → dropped
+                { row: 2, u: 0.06 },
+                { row: 3, u: 0.97 }, // crossing 2: leaves [0.97] tail → dropped
+            ],
+        }];
+        const out = splitChainsAtSeam(input);
+        expect(out).toHaveLength(1);
+        expect(out[0].points.map(p => p.u)).toEqual([0.03, 0.06]);
+    });
+
+    it('handles multiple input chains independently', () => {
+        const input: FeatureChain[] = [
+            { kind: 'peak', points: [{ row: 0, u: 0.2 }, { row: 1, u: 0.21 }] },
+            { kind: 'valley', points: [{ row: 0, u: 0.95 }, { row: 1, u: 0.05 }] }, // crosses, both 1-pt → all dropped
+            { kind: 'peak', points: [{ row: 0, u: 0.93 }, { row: 1, u: 0.95 }, { row: 2, u: 0.02 }, { row: 3, u: 0.05 }] }, // splits 2+2
+        ];
+        const out = splitChainsAtSeam(input);
+        // 1 peak survives + 0 valleys + 2 peak halves = 3
+        expect(out).toHaveLength(3);
+    });
+
+    it('after splitting, every consecutive pair has |Δu| ≤ 0.5', () => {
+        const input: FeatureChain[] = [{
+            kind: 'peak',
+            points: [
+                { row: 0, u: 0.10 },
+                { row: 1, u: 0.45 },
+                { row: 2, u: 0.92 },
+                { row: 3, u: 0.05 }, // |Δu| = 0.87 — crossing
+                { row: 4, u: 0.30 },
+                { row: 5, u: 0.95 }, // |Δu| = 0.65 — crossing
+                { row: 6, u: 0.10 },
+            ],
+        }];
+        const out = splitChainsAtSeam(input);
+        for (const chain of out) {
+            for (let i = 1; i < chain.points.length; i++) {
+                const du = Math.abs(chain.points[i].u - chain.points[i - 1].u);
+                expect(du).toBeLessThanOrEqual(0.5);
+            }
+        }
+    });
+
+    it('passes through chains with fewer than 2 points without modification', () => {
+        const input: FeatureChain[] = [
+            { kind: 'peak', points: [] },
+            { kind: 'valley', points: [{ row: 0, u: 0.5 }] },
+        ];
+        const out = splitChainsAtSeam(input);
+        expect(out).toHaveLength(2);
+        expect(out[0].points).toHaveLength(0);
+        expect(out[1].points).toHaveLength(1);
+    });
+});
+
+// ============================================================================
+// splitChainsAtSteepDelta — Cluster-2 fix (audit Phase C)
+// ============================================================================
+
+describe('splitChainsAtSteepDelta', () => {
+    // For numU=20 (19 cells), 2-col threshold = 2/19 ≈ 0.105
+    const MAX_DU = 2 / 19;
+
+    it('passes a gentle-slope chain through unchanged', () => {
+        const input: FeatureChain[] = [{
+            kind: 'peak',
+            points: [
+                { row: 0, u: 0.10 },
+                { row: 1, u: 0.15 },
+                { row: 2, u: 0.20 },
+            ],
+        }];
+        const out = splitChainsAtSteepDelta(input, MAX_DU);
+        expect(out).toHaveLength(1);
+        expect(out[0].points).toHaveLength(3);
+    });
+
+    it('splits a chain where one row hop exceeds the threshold', () => {
+        const input: FeatureChain[] = [{
+            kind: 'peak',
+            points: [
+                { row: 0, u: 0.10 },
+                { row: 1, u: 0.15 },
+                { row: 2, u: 0.40 }, // Δu=0.25, du/row=0.25 > 0.105 → split
+                { row: 3, u: 0.45 },
+            ],
+        }];
+        const out = splitChainsAtSteepDelta(input, MAX_DU);
+        expect(out).toHaveLength(2);
+        expect(out[0].points.map(p => p.u)).toEqual([0.10, 0.15]);
+        expect(out[1].points.map(p => p.u)).toEqual([0.40, 0.45]);
+    });
+
+    it('normalizes by row gap (large Δu over large rowGap is OK)', () => {
+        // Δu=0.30 over rowGap=4 → 0.075 per row < 0.105 — should NOT split
+        const input: FeatureChain[] = [{
+            kind: 'peak',
+            points: [
+                { row: 0, u: 0.10 },
+                { row: 4, u: 0.40 },
+            ],
+        }];
+        const out = splitChainsAtSteepDelta(input, MAX_DU);
+        expect(out).toHaveLength(1);
+        expect(out[0].points).toHaveLength(2);
+    });
+
+    it('drops sub-chain remnants of fewer than 2 points', () => {
+        const input: FeatureChain[] = [{
+            kind: 'peak',
+            points: [
+                { row: 0, u: 0.10 },
+                { row: 1, u: 0.50 }, // steep — leaves [(0,0.10)] head → dropped
+                { row: 2, u: 0.55 },
+            ],
+        }];
+        const out = splitChainsAtSteepDelta(input, MAX_DU);
+        expect(out).toHaveLength(1);
+        expect(out[0].points.map(p => p.u)).toEqual([0.50, 0.55]);
+    });
+
+    it('disables splitting when threshold is non-positive or non-finite', () => {
+        const input: FeatureChain[] = [{
+            kind: 'peak',
+            points: [
+                { row: 0, u: 0.10 },
+                { row: 1, u: 0.95 },
+                { row: 2, u: 0.50 },
+            ],
+        }];
+        for (const t of [0, -1, NaN, Infinity]) {
+            const out = splitChainsAtSteepDelta(input, t);
+            expect(out).toHaveLength(1);
+            expect(out[0].points).toHaveLength(3);
+        }
+    });
+
+    it('passes through chains with fewer than 2 points without modification', () => {
+        const input: FeatureChain[] = [
+            { kind: 'peak', points: [] },
+            { kind: 'valley', points: [{ row: 0, u: 0.5 }] },
+        ];
+        const out = splitChainsAtSteepDelta(input, MAX_DU);
+        expect(out).toHaveLength(2);
+        expect(out[0].points).toHaveLength(0);
+        expect(out[1].points).toHaveLength(1);
     });
 });

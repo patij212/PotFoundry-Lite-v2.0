@@ -85,6 +85,111 @@ export function circularSignedDelta(fromU: number, toU: number): number {
 }
 
 /**
+ * Split chains at consecutive-point segments whose per-row U-delta exceeds
+ * `maxDuPerRow`. A chain segment that moves more than `maxDuPerRow` in U per
+ * row of T (i.e. a steep spiral) produces super-cells in row-band
+ * triangulation that span many grid columns, leading to extreme aspect-
+ * ratio triangles (cluster-2 in the audit Phase C).
+ *
+ * Splitting at steep transitions trades a constrained super-cell for an
+ * unconstrained Delaunay triangulation in the steep zone. The caller is
+ * expected to pass `maxDuPerRow = ~2 / (numU - 1)` so each remaining chain
+ * edge spans at most ~2 grid columns.
+ *
+ * Sub-chains with fewer than 2 points are dropped.
+ *
+ * Different from {@link splitChainsAtSeam}: this splits on steep but
+ * non-seam-crossing deltas. Seam crossings (|du| > 0.5) are handled by
+ * splitChainsAtSeam.
+ *
+ * @param chains       Input chains, possibly containing steep segments
+ * @param maxDuPerRow  Maximum allowable per-row U delta (positive number).
+ *                     Recommended: 2 / (numU - 1) for "no more than ~2
+ *                     columns crossed per row."
+ * @returns            Chains with all consecutive du/rowGap ≤ maxDuPerRow
+ */
+export function splitChainsAtSteepDelta(
+    chains: FeatureChain[],
+    maxDuPerRow: number,
+): FeatureChain[] {
+    if (!Number.isFinite(maxDuPerRow) || maxDuPerRow <= 0) {
+        // Threshold disabled — pass through unchanged
+        return chains;
+    }
+    const out: FeatureChain[] = [];
+    for (const chain of chains) {
+        if (chain.points.length < 2) {
+            out.push(chain);
+            continue;
+        }
+        let current: ChainPoint[] = [chain.points[0]];
+        for (let i = 1; i < chain.points.length; i++) {
+            const prev = chain.points[i - 1];
+            const curr = chain.points[i];
+            const rowGap = Math.max(1, Math.abs(curr.row - prev.row));
+            const duPerRow = Math.abs(curr.u - prev.u) / rowGap;
+            if (duPerRow > maxDuPerRow) {
+                if (current.length >= 2) {
+                    out.push({ kind: chain.kind, points: current });
+                }
+                current = [];
+            }
+            current.push(curr);
+        }
+        if (current.length >= 2) {
+            out.push({ kind: chain.kind, points: current });
+        }
+    }
+    return out;
+}
+
+/**
+ * Split chains that cross the parametric seam (u=0/1) into separate sub-chains
+ * on each side of the seam. A chain whose consecutive points have raw |Δu| > 0.5
+ * is wrapping the seam — represented as one polyline in [0, 1) it cannot be
+ * connected without crossing the boundary.
+ *
+ * Splitting at the seam eliminates an entire class of downstream bugs that
+ * arise from trying to enforce seam-crossing constraint edges (wrap-correction
+ * filters, defense-in-depth guards at OWT:1062, orphan chain vertices that
+ * produce radial slivers in CDT — see parametric.audit.test.ts Phase C
+ * cluster 1).
+ *
+ * Sub-chains with fewer than 2 points are dropped (a single-row chain
+ * remnant has no constraint utility).
+ *
+ * @param chains  Input chains, possibly containing seam-spanning consecutive points
+ * @returns       Chains with all consecutive |Δu| ≤ 0.5; chain count may grow
+ */
+export function splitChainsAtSeam(chains: FeatureChain[]): FeatureChain[] {
+    const out: FeatureChain[] = [];
+    for (const chain of chains) {
+        if (chain.points.length < 2) {
+            // Single-point or empty chains pass through unchanged
+            out.push(chain);
+            continue;
+        }
+        let current: ChainPoint[] = [chain.points[0]];
+        for (let i = 1; i < chain.points.length; i++) {
+            const prev = chain.points[i - 1];
+            const curr = chain.points[i];
+            if (Math.abs(curr.u - prev.u) > 0.5) {
+                // Seam crossing — terminate current sub-chain, start a new one
+                if (current.length >= 2) {
+                    out.push({ kind: chain.kind, points: current });
+                }
+                current = [];
+            }
+            current.push(curr);
+        }
+        if (current.length >= 2) {
+            out.push({ kind: chain.kind, points: current });
+        }
+    }
+    return out;
+}
+
+/**
  * Lift a wrapped U coordinate to the neighbourhood of a reference unwrapped value.
  *
  * Given a U in [0, 1) and an unwrapped reference (possibly outside [0, 1)),
@@ -1535,7 +1640,10 @@ export function linkFeatureChainsByKind(
     // to ensure re-snap uses the complete ground truth
     const combined = [...peakChains, ...valleyChains];
 
-    return combined;
+    // Cluster-1 fix: split chains at the parametric seam so downstream
+    // tessellation never has to enforce seam-crossing constraint edges.
+    // See parametric.audit.test.ts Phase C / B1 invariant.
+    return splitChainsAtSeam(combined);
 }
 
 // ============================================================================
