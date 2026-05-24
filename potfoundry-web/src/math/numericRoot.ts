@@ -63,7 +63,6 @@ export function findExtremumNewton(
 
     let u = seed;
     let lastGrad = Infinity;
-    let lastFVal = 0;
 
     // Helper: 4th-order central-difference gradient and Hessian at u.
     // Returns [grad, hess, fCenter]. Caller is responsible for clamping u to
@@ -82,7 +81,6 @@ export function findExtremumNewton(
     let iter = 0;
     for (; iter < maxIter; iter++) {
         const [grad, hess, fc] = stencil(u);
-        lastFVal = fc;
         lastGrad = Math.abs(grad);
 
         if (lastGrad <= tol) {
