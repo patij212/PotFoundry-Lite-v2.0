@@ -130,6 +130,68 @@ export function identifySeamPairs(numU: number, numT: number): SeamPair[] {
 }
 
 /**
+ * BUG F fix: UV-aware seam pair identification.
+ *
+ * The index-arithmetic version (`identifySeamPairs`) only finds base-grid
+ * vertices at the seam. Chain vertices, phantom vertices, and subdivision
+ * midpoints that lie on or near the seam are missed, leaving the actual seam
+ * gap unhealed (production log: 9.8mm residual).
+ *
+ * This variant scans all vertex UVs and pairs vertices at U≈0 with vertices
+ * at U≈1 that share (within tolerance) the same T-coordinate.
+ *
+ * @param combinedVerts - Flat UV array, 3 floats per vertex (u, t, surfaceId).
+ * @param vertexCount - Number of vertices to scan.
+ * @param uTolerance - U-distance from seam (default 1e-4) considered "on the seam".
+ * @param tTolerance - T-distance tolerance for pairing (default 1e-5).
+ * @returns Array of seam pairs. `row` is set to the integer-rounded T-index when
+ *          a grid mapping exists, otherwise -1 for non-grid pairs.
+ */
+export function identifySeamPairsByUV(
+    combinedVerts: Float32Array,
+    vertexCount: number,
+    uTolerance = 1e-4,
+    tTolerance = 1e-5,
+): SeamPair[] {
+    const leftCandidates: Array<{ idx: number; t: number }> = [];
+    const rightCandidates: Array<{ idx: number; t: number }> = [];
+
+    for (let v = 0; v < vertexCount; v++) {
+        const u = combinedVerts[v * 3];
+        const t = combinedVerts[v * 3 + 1];
+        if (u < uTolerance) leftCandidates.push({ idx: v, t });
+        else if (u > 1 - uTolerance) rightCandidates.push({ idx: v, t });
+    }
+
+    rightCandidates.sort((a, b) => a.t - b.t);
+
+    const pairs: SeamPair[] = [];
+    for (const left of leftCandidates) {
+        let bestIdx = -1;
+        let bestDt = tTolerance;
+        let lo = 0, hi = rightCandidates.length - 1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            const dt = Math.abs(rightCandidates[mid].t - left.t);
+            if (dt <= bestDt) {
+                bestDt = dt;
+                bestIdx = mid;
+            }
+            if (rightCandidates[mid].t < left.t) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        if (bestIdx >= 0) {
+            pairs.push({
+                col0Vertex: left.idx,
+                colLastVertex: rightCandidates[bestIdx].idx,
+                row: -1,
+            });
+        }
+    }
+    return pairs;
+}
+
+/**
  * Identify all vertex indices on the seam boundary.
  *
  * @param numU - Number of U columns in the grid.
@@ -676,8 +738,15 @@ export function healSeam(
     numU: number,
     numT: number,
     config: HealSeamConfig,
+    /** BUG F fix: when provided, identifies all seam-adjacent vertices by UV
+     *  proximity instead of base-grid arithmetic. Includes chain vertices,
+     *  phantom vertices, and subdivision midpoints. */
+    combinedVerts?: Float32Array,
+    outerVertexCount?: number,
 ): HealSeamResult {
-    const pairs = identifySeamPairs(numU, numT);
+    const pairs = combinedVerts !== undefined
+        ? identifySeamPairsByUV(combinedVerts, outerVertexCount ?? Math.floor(combinedVerts.length / 3))
+        : identifySeamPairs(numU, numT);
 
     if (pairs.length === 0) {
         return {

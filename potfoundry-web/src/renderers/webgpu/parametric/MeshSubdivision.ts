@@ -382,8 +382,13 @@ export async function subdivideLongEdges(
     const csEdgeSet = new Set<bigint>();
 
     // First pass: index chain-strip tris
+    // BUG D fix: skip degenerate triangles (a===b||b===c||a===c). R55 coalescing
+    // and Batch 6 dedup can leave [C,C,X] or [0,0,0] placeholders in the buffer
+    // before Phase 5c strips them. Indexing them corrupts edge adjacency and
+    // blocks legitimate edges from being split (tris.length !== 2 path at L429).
     for (const t of csTriSetNow) {
         const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+        if (a === b || b === c || a === c) continue;
         for (const ek of [edgeKey(a, b), edgeKey(b, c), edgeKey(c, a)]) {
             if (!subEdgeToTris.has(ek)) subEdgeToTris.set(ek, []);
             subEdgeToTris.get(ek)!.push(t);

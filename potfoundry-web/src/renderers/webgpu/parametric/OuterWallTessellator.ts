@@ -219,12 +219,27 @@ function maxCosine2D(
     /** Bug #5 fix: metric correction (default 1.0 = legacy behavior). */
     metricAspect: number = 1.0,
 ): number {
+    // BUG B partial fix: wrap U-coords when triangle straddles the seam, so a
+    // (0.99, 0.99, 0.01) triangle is treated as (0.99, 0.99, 1.01) for diagonal
+    // selection rather than producing a pathological 0.98-wide U-span. Without
+    // this, seam-crossing chain strips always pick the wrong diagonal.
+    // FULL BUG B fix (deferred): replace scalar metricAspect with per-row
+    // E,F,G metric tensor — required to correctly handle boundary rows where
+    // the U-direction physical length collapses (radius → 0).
+    let axS = ax, bxS = bx, cxS = cx;
+    const maxU = Math.max(axS, bxS, cxS);
+    const minU = Math.min(axS, bxS, cxS);
+    if (maxU - minU > 0.5) {
+        if (axS < 0.5) axS += 1.0;
+        if (bxS < 0.5) bxS += 1.0;
+        if (cxS < 0.5) cxS += 1.0;
+    }
     const ayS = ay * metricAspect;
     const byS = by * metricAspect;
     const cyS = cy * metricAspect;
-    const abx = bx - ax, aby = byS - ayS;
-    const acx = cx - ax, acy = cyS - ayS;
-    const bcx = cx - bx, bcy = cyS - byS;
+    const abx = bxS - axS, aby = byS - ayS;
+    const acx = cxS - axS, acy = cyS - ayS;
+    const bcx = cxS - bxS, bcy = cyS - byS;
     const lab = Math.sqrt(abx * abx + aby * aby);
     const lac = Math.sqrt(acx * acx + acy * acy);
     const lbc = Math.sqrt(bcx * bcx + bcy * bcy);
@@ -276,9 +291,20 @@ function emitTriCCW(
     a: number, b: number, c: number,
     verts: Float32Array,
 ): void {
-    const au = verts[a * 3], at = verts[a * 3 + 1];
-    const bu = verts[b * 3], bt = verts[b * 3 + 1];
-    const cu = verts[c * 3], ct = verts[c * 3 + 1];
+    let au = verts[a * 3], at = verts[a * 3 + 1];
+    let bu = verts[b * 3], bt = verts[b * 3 + 1];
+    let cu = verts[c * 3], ct = verts[c * 3 + 1];
+    // BUG G fix: when a triangle straddles the U=0/U=1 seam, naive UV cross
+    // product is huge and may flip sign, producing inverted winding (4243
+    // inconsistent normal pairs in production logs). Wrap so that the three
+    // U-coordinates are within 0.5 of each other before computing the cross.
+    const maxU = Math.max(au, bu, cu);
+    const minU = Math.min(au, bu, cu);
+    if (maxU - minU > 0.5) {
+        if (au < 0.5) au += 1.0;
+        if (bu < 0.5) bu += 1.0;
+        if (cu < 0.5) cu += 1.0;
+    }
     const cross = (bu - au) * (ct - at) - (cu - au) * (bt - at);
     if (Math.abs(cross) < 1e-12) {
         buf.push(0, 0, 0); // degenerate

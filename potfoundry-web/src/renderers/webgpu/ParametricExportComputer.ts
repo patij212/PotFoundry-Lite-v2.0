@@ -954,7 +954,12 @@ export class ParametricExportComputer {
                 const STAGE1_CANDIDATES = 64;
                 const STAGE2_CANDIDATES = 32;
                 const NARROW_HW = 2.0 / ROW_PROBE_SAMPLES; // ±2 sample widths
-                const MAX_RESNAP_HW = 0.005;
+                // BUG A fix: raised from 0.005 to 0.015 to match the R48 ridge-diagnostic
+                // window. Boundary chains (few same-kind neighbors) saturated the old cap
+                // and were placed 3.9-6.4mm off-ridge. The diagnostic at L2111 uses
+                // RIDGE_DIAG_HW = 0.015 — re-snap must search at least that wide to find
+                // ridges the diagnostic measures.
+                const MAX_RESNAP_HW = 0.015;
 
                 // Collect all chain points with kind info
                 const allChainPoints: Array<{
@@ -1810,7 +1815,17 @@ export class ParametricExportComputer {
             const widthUniform = new Float32Array([outerW]);
             this.device.queue.writeBuffer(uniformBuffer, 76, widthUniform.buffer);
 
-            const relaxIterations = Math.max(0, Math.floor(params.relaxIterations ?? 0));
+            // BUG E mitigation: WGSL relaxation has no Jacobian inversion check —
+            // production logs at relax=200 show dihedral dot min=-1.0 (inverted
+            // faces) and aspect 4.9e9. Until the shader adds per-step validity
+            // guards, clamp to a safe ceiling and warn. FULL fix (deferred):
+            // add inversion-aware line search inside relax.wgsl.
+            const SAFE_RELAX_MAX = 50;
+            const requestedRelax = Math.max(0, Math.floor(params.relaxIterations ?? 0));
+            const relaxIterations = Math.min(requestedRelax, SAFE_RELAX_MAX);
+            if (requestedRelax > SAFE_RELAX_MAX) {
+                console.warn(`[ParametricExport]   BUG E: relaxIterations=${requestedRelax} clamped to ${SAFE_RELAX_MAX} (shader lacks inversion guard; higher values produce non-manifold output)`);
+            }
             if (relaxIterations > 0) {
                 // Write outerGridVertexCount to chunk4.z (byte offset 72) so the
                 // relaxation shader can skip chain vertices (appended after grid).
@@ -2437,6 +2452,10 @@ export class ParametricExportComputer {
                 const healResult = healSeam(
                     finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv,
                     outerW, finalT.length, healConfig,
+                    // BUG F fix: pass UV data so seam pairing finds chain vertices,
+                    // phantom vertices, and subdivision midpoints — not just base
+                    // grid vertices. The outer-wall vertex range is [0, totalVerts/3).
+                    combinedVerts, Math.floor(finalResultData.length / 3),
                 );
                 finalCombinedIdxs = healResult.indices;
                 const healMs = performance.now() - healStart;
