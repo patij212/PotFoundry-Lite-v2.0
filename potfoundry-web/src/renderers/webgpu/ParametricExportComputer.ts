@@ -128,11 +128,17 @@ import {
 } from './parametric/SeamTopology';
 import type { EvaluateMidpointsFn } from './parametric/MeshSubdivision';
 import type { ValidationSummary, RefinementSummary, TDirectionFeature } from './parametric/types';
-// Analytic ridge placement (Newton iteration on CPU style functions). Replaces
-// the GPU sample-and-parabolic-refine pattern in the R46 re-snap and the Bug #1
-// phantom re-snap. See docs/superpowers/plans/2026-05-24-analytic-ridge-placement.md.
+// Analytic ridge placement (Newton iteration). The CPU AnalyticRidgeSolver is
+// kept for legacy reference / synthetic unit tests; production uses
+// GpuRidgeSolver, which iterates Newton directly on the WGSL evaluator —
+// eliminating CPU↔WGSL surface drift as a failure mode.
+// See docs/superpowers/plans/2026-05-24-analytic-ridge-placement.md.
 import { solveRidgesBatch, type BatchEntry as RidgeBatchEntry } from './parametric/AnalyticRidgeSolver';
+import { gpuNewtonRidge, type GpuRidgeSeed } from './parametric/GpuRidgeSolver';
 import { baseRadius } from '../../geometry/profile';
+void solveRidgesBatch; void baseRadius; // legacy CPU path imports — kept for type re-export and reference
+type _LegacyRidgeBatchEntry = RidgeBatchEntry;
+void (null as unknown as _LegacyRidgeBatchEntry);
 
 // Re-export types for backward compatibility (used by useParametricExport.ts)
 // Re-export types for backward compatibility (used by useParametricExport.ts)
@@ -971,8 +977,12 @@ export class ParametricExportComputer {
             if (chains.length > 0 && cfgGpuResnap) {
                 const arpStart = performance.now();
 
-                // Collect all chain points
-                const arpEntries: RidgeBatchEntry[] = [];
+                // Collect chain points into GPU Newton seeds. Half-width is
+                // tightly bounded (max 0.001 U = 0.1% of circumference) because
+                // the chain detector's output is already on-ridge to ~3e-4 U;
+                // larger windows let Newton migrate to neighbouring ridges on
+                // styles with rich substructure (SuperformulaBlossom, etc).
+                const arpSeeds: GpuRidgeSeed[] = [];
                 const arpRefs: Array<{ chainIdx: number; ptIdx: number; oldU: number; row: number }> = [];
 
                 for (let ci = 0; ci < chains.length; ci++) {
@@ -981,9 +991,9 @@ export class ParametricExportComputer {
                         const pt = chains[ci].points[pi];
                         const tVal = tPositions[Math.min(pt.row, tPositions.length - 1)];
 
-                        // Adaptive search half-width based on nearest same-kind feature in this row,
-                        // capped at 0.015 (matches Bug A regular re-snap cap to prevent migrating
-                        // to a neighbouring ridge).
+                        // Adaptive search half-width based on nearest same-kind
+                        // feature in this row, capped at 0.001 (1.5–4× the
+                        // chain detector's typical maxConsecDelta).
                         const rowFeatures = allRowTypedFeatures[Math.min(pt.row, allRowTypedFeatures.length - 1)];
                         let nearestDist = Infinity;
                         if (rowFeatures) {
@@ -994,27 +1004,24 @@ export class ParametricExportComputer {
                             }
                         }
                         const NARROW_HW = 2.0 / ROW_PROBE_SAMPLES;
-                        const hw = Math.max(NARROW_HW, Math.min(nearestDist / 3.0, 0.015));
+                        const hw = Math.max(NARROW_HW, Math.min(nearestDist / 4.0, 0.001));
 
-                        arpEntries.push({ t: tVal, seedU: pt.u, kind, searchHalfWidth: hw });
+                        arpSeeds.push({ u: pt.u, t: tVal, kind, halfWidth: hw });
                         arpRefs.push({ chainIdx: ci, ptIdx: pi, oldU: pt.u, row: pt.row });
                     }
                 }
 
-                // Solve each vertex independently. r0 varies with z due to the
-                // flare profile, so we compute it per-vertex. Inner cost is
-                // ~50 style-function evals per vertex — fast on CPU. We do not
-                // use solveRidgesBatch here because it assumes a single r0
-                // across the whole batch; vertex r0 varies with the vertex's t.
-                const arpResults = arpEntries.map((e) => {
-                    const r0 = baseRadius(
-                        e.t, dimensions.H, dimensions.Rb, dimensions.Rt, dimensions.expn,
-                        params.styleOpts,
-                    );
-                    return solveRidgesBatch({
-                        styleId: params.styleId, opts: params.styleOpts,
-                        r0, H: dimensions.H, entries: [e],
-                    })[0];
+                // Build an async evaluator that closes over the GPU pipeline
+                // state. Each Newton iteration is ONE GPU dispatch evaluating
+                // 5N probes (4th-order central-difference stencil).
+                const arpEvaluator = (verts: Float32Array) => this.evaluatePoints(
+                    verts, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                );
+                const arpResults = await gpuNewtonRidge(arpSeeds, arpEvaluator, {
+                    maxIter: 12,
+                    tolerance: 0.5,   // ~8× f32 FD-noise floor at h=1e-4 (~0.06 mm/U)
+                    fdStep: 1e-4,
                 });
 
                 // Apply results — strictly safe: a refinement is only accepted if
@@ -1034,7 +1041,8 @@ export class ParametricExportComputer {
                 // chain-detector U position. The chain detector's GPU re-snap
                 // already gave us sub-millimetre precision; analytic Newton is
                 // an optional refinement, never a replacement.
-                const GRAD_ACCEPT_THRESHOLD = 1e-4; // mm/U — converged enough
+                const GRAD_ACCEPT_THRESHOLD = 1.0;  // mm/U — accept Newton converged or near-converged
+                                                    // (f32 FD noise floor at h=1e-4 is ~0.06 mm/U)
                 const SAFE_MOVE_LIMIT = 0.001;      // U — never move more than 0.1% of circumference
                 let arpRefined = 0, arpAlreadyCorrect = 0;
                 let arpRejectedNonConv = 0, arpRejectedOversize = 0;
@@ -1851,29 +1859,29 @@ export class ParametricExportComputer {
             // See docs/superpowers/plans/2026-05-24-analytic-ridge-placement.md.
             if (outerPhantomChainAnchors.length > 0 && cfgGpuResnap) {
                 const arpPhStart = performance.now();
-                const arpPhEntries: RidgeBatchEntry[] = [];
+                const arpPhSeeds: GpuRidgeSeed[] = [];
                 const arpPhRefs: Array<{ vertexIdx: number; oldU: number }> = [];
 
                 for (const pa of outerPhantomChainAnchors) {
                     const parentChain = meshChains[pa.chainId];
                     const kind: 'peak' | 'valley' = parentChain?.kind === 'valley' ? 'valley' : 'peak';
                     const currentU = combinedVerts[pa.vertexIdx * 3];
-                    arpPhEntries.push({
-                        t: pa.tCross, seedU: currentU, kind, searchHalfWidth: 0.015,
-                    });
+                    // Phantom anchors are at linear-interpolation midpoints
+                    // between adjacent-row chain vertices; allow a slightly
+                    // wider window than row-boundary chains to absorb the
+                    // interpolation drift while still preventing migration.
+                    arpPhSeeds.push({ u: currentU, t: pa.tCross, kind, halfWidth: 0.003 });
                     arpPhRefs.push({ vertexIdx: pa.vertexIdx, oldU: currentU });
                 }
 
-                // Solve each phantom anchor. r0 varies with t (flare profile).
-                const arpPhResults = arpPhEntries.map((e) => {
-                    const r0 = baseRadius(
-                        e.t, dimensions.H, dimensions.Rb, dimensions.Rt, dimensions.expn,
-                        params.styleOpts,
-                    );
-                    return solveRidgesBatch({
-                        styleId: params.styleId, opts: params.styleOpts,
-                        r0, H: dimensions.H, entries: [e],
-                    })[0];
+                const arpPhEvaluator = (verts: Float32Array) => this.evaluatePoints(
+                    verts, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
+                );
+                const arpPhResults = await gpuNewtonRidge(arpPhSeeds, arpPhEvaluator, {
+                    maxIter: 12,
+                    tolerance: 1e-3,
+                    fdStep: 1e-4,
                 });
 
                 // Same strict acceptance criteria as the row-boundary re-snap:
@@ -1884,8 +1892,8 @@ export class ParametricExportComputer {
                 // we tighten further here. Non-converged or oversize results
                 // leave the linearly-interpolated U in place — that's at least
                 // as good as the pre-Bug#1 baseline, never worse.
-                const PH_GRAD_ACCEPT_THRESHOLD = 1e-4; // mm/U
-                const PH_SAFE_MOVE_LIMIT = 0.005;      // U — phantom needs more slack than row-boundary
+                const PH_GRAD_ACCEPT_THRESHOLD = 1.0;  // mm/U — matches Phase 3
+                const PH_SAFE_MOVE_LIMIT = 0.003;      // U — matches Newton halfWidth
                 let arpPhRefined = 0, arpPhAlreadyCorrect = 0;
                 let arpPhRejectedNonConv = 0, arpPhRejectedOversize = 0;
                 let arpPhMaxMoved = 0, arpPhMaxGrad = 0, arpPhMaxAcceptedGrad = 0;
