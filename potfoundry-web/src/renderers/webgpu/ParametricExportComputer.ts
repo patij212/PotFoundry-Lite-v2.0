@@ -1017,36 +1017,59 @@ export class ParametricExportComputer {
                     })[0];
                 });
 
-                // Apply results
-                let arpRefined = 0, arpAlreadyCorrect = 0, arpRejected = 0;
-                let arpMaxMoved = 0, arpMaxGrad = 0;
+                // Apply results — strictly safe: a refinement is only accepted if
+                //   1. Newton actually converged (gradAbs at the result is small), AND
+                //   2. the move is at most SAFE_MOVE_LIMIT.
+                //
+                // The chain detector's output is already on-ridge to ~3e-4 mm/U
+                // (per production-log maxLinearDev). A "refinement" that wants to
+                // move a chain vertex by 0.015 U is NOT a refinement — it's the
+                // solver chain-jumping to a neighbouring ridge because Newton
+                // hit its search-halfWidth cap without converging. Applying such
+                // moves destroys chain coherence (rows N and N+1 land on
+                // different ridges; mesh tessellation produces sliver/spike
+                // triangles where chain edges cross column boundaries).
+                //
+                // For non-convergence or oversize moves, KEEP THE ORIGINAL
+                // chain-detector U position. The chain detector's GPU re-snap
+                // already gave us sub-millimetre precision; analytic Newton is
+                // an optional refinement, never a replacement.
+                const GRAD_ACCEPT_THRESHOLD = 1e-4; // mm/U — converged enough
+                const SAFE_MOVE_LIMIT = 0.001;      // U — never move more than 0.1% of circumference
+                let arpRefined = 0, arpAlreadyCorrect = 0;
+                let arpRejectedNonConv = 0, arpRejectedOversize = 0;
+                let arpMaxMoved = 0, arpMaxGrad = 0, arpMaxAcceptedGrad = 0;
                 for (let i = 0; i < arpResults.length; i++) {
                     const r = arpResults[i];
                     const ref = arpRefs[i];
                     const moved = circularDistance(ref.oldU, r.u);
+                    if (r.gradAbs > arpMaxGrad) arpMaxGrad = r.gradAbs;
 
-                    // Reject overshoots: anything that moved more than the search
-                    // window is suspicious (a migrating ridge or a bad seed). The
-                    // search-halfWidth clip in Newton should prevent this, but
-                    // belt-and-braces.
-                    if (moved > 0.015) {
-                        arpRejected++;
-                    } else if (moved > 1e-9) {
+                    if (r.gradAbs > GRAD_ACCEPT_THRESHOLD) {
+                        arpRejectedNonConv++;
+                        continue;
+                    }
+                    if (moved > SAFE_MOVE_LIMIT) {
+                        arpRejectedOversize++;
+                        continue;
+                    }
+                    if (moved > 1e-9) {
                         chains[ref.chainIdx].points[ref.ptIdx] = { row: ref.row, u: r.u };
                         arpRefined++;
                         if (moved > arpMaxMoved) arpMaxMoved = moved;
+                        if (r.gradAbs > arpMaxAcceptedGrad) arpMaxAcceptedGrad = r.gradAbs;
                     } else {
                         arpAlreadyCorrect++;
                     }
-                    if (r.gradAbs > arpMaxGrad) arpMaxGrad = r.gradAbs;
                 }
                 const arpElapsed = performance.now() - arpStart;
 
                 console.log(
                     `[ParametricExport]   AnalyticRidge re-snap: ${arpRefined}/${arpResults.length} refined, ` +
-                    `already-correct=${arpAlreadyCorrect}, rejected=${arpRejected}, ` +
-                    `max moved=${arpMaxMoved.toFixed(6)}, max |∂r/∂u|=${arpMaxGrad.toExponential(3)} mm/U, ` +
-                    `time=${arpElapsed.toFixed(1)}ms`,
+                    `already-correct=${arpAlreadyCorrect}, ` +
+                    `rejected non-converged=${arpRejectedNonConv}, oversize=${arpRejectedOversize}, ` +
+                    `max moved=${arpMaxMoved.toFixed(6)}, max |∂r/∂u|=${arpMaxGrad.toExponential(3)} mm/U ` +
+                    `(accepted: ${arpMaxAcceptedGrad.toExponential(3)}), time=${arpElapsed.toFixed(1)}ms`,
                 );
             }
             // ── End AnalyticRidge re-snap ──
@@ -1853,29 +1876,49 @@ export class ParametricExportComputer {
                     })[0];
                 });
 
-                let arpPhRefined = 0, arpPhAlreadyCorrect = 0, arpPhRejected = 0;
-                let arpPhMaxMoved = 0, arpPhMaxGrad = 0;
+                // Same strict acceptance criteria as the row-boundary re-snap:
+                // only apply Newton's result if (a) it actually converged and
+                // (b) the displacement is small. Phantom anchors are at
+                // linearly-interpolated UV midpoints; the original GPU re-snap
+                // (Bug #1) capped moves at MAX_PHANTOM_DELTA = 0.04 mm, which
+                // we tighten further here. Non-converged or oversize results
+                // leave the linearly-interpolated U in place — that's at least
+                // as good as the pre-Bug#1 baseline, never worse.
+                const PH_GRAD_ACCEPT_THRESHOLD = 1e-4; // mm/U
+                const PH_SAFE_MOVE_LIMIT = 0.005;      // U — phantom needs more slack than row-boundary
+                let arpPhRefined = 0, arpPhAlreadyCorrect = 0;
+                let arpPhRejectedNonConv = 0, arpPhRejectedOversize = 0;
+                let arpPhMaxMoved = 0, arpPhMaxGrad = 0, arpPhMaxAcceptedGrad = 0;
                 for (let i = 0; i < arpPhResults.length; i++) {
                     const r = arpPhResults[i];
                     const ref = arpPhRefs[i];
                     const moved = circularDistance(ref.oldU, r.u);
-                    if (moved > 0.04) {
-                        arpPhRejected++;
-                    } else if (moved > 1e-9) {
+                    if (r.gradAbs > arpPhMaxGrad) arpPhMaxGrad = r.gradAbs;
+
+                    if (r.gradAbs > PH_GRAD_ACCEPT_THRESHOLD) {
+                        arpPhRejectedNonConv++;
+                        continue;
+                    }
+                    if (moved > PH_SAFE_MOVE_LIMIT) {
+                        arpPhRejectedOversize++;
+                        continue;
+                    }
+                    if (moved > 1e-9) {
                         combinedVerts[ref.vertexIdx * 3] = r.u;
                         arpPhRefined++;
                         if (moved > arpPhMaxMoved) arpPhMaxMoved = moved;
+                        if (r.gradAbs > arpPhMaxAcceptedGrad) arpPhMaxAcceptedGrad = r.gradAbs;
                     } else {
                         arpPhAlreadyCorrect++;
                     }
-                    if (r.gradAbs > arpPhMaxGrad) arpPhMaxGrad = r.gradAbs;
                 }
                 const arpPhElapsed = performance.now() - arpPhStart;
                 console.log(
                     `[ParametricExport]   AnalyticRidge phantom re-snap: ${arpPhRefined}/${arpPhResults.length} refined, ` +
-                    `already-correct=${arpPhAlreadyCorrect}, rejected=${arpPhRejected}, ` +
-                    `max moved=${arpPhMaxMoved.toFixed(6)}, max |∂r/∂u|=${arpPhMaxGrad.toExponential(3)} mm/U, ` +
-                    `time=${arpPhElapsed.toFixed(1)}ms`,
+                    `already-correct=${arpPhAlreadyCorrect}, ` +
+                    `rejected non-converged=${arpPhRejectedNonConv}, oversize=${arpPhRejectedOversize}, ` +
+                    `max moved=${arpPhMaxMoved.toFixed(6)}, max |∂r/∂u|=${arpPhMaxGrad.toExponential(3)} mm/U ` +
+                    `(accepted: ${arpPhMaxAcceptedGrad.toExponential(3)}), time=${arpPhElapsed.toFixed(1)}ms`,
                 );
             }
             // ── End AnalyticRidge phantom re-snap ──
