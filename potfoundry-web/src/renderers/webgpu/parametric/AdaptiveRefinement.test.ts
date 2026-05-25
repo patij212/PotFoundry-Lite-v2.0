@@ -817,27 +817,65 @@ describe('metricEdgeLengthSq (SurfaceMetric)', () => {
 // ============================================================================
 
 describe('seamSafeMidpointU', () => {
-    it('returns simple midpoint for non-seam edges', () => {
-        expect(seamSafeMidpointU(0.2, 0.8)).toBeCloseTo(0.5, 8);
-        expect(seamSafeMidpointU(0.3, 0.7)).toBeCloseTo(0.5, 8);
-    });
+    // Cylindrical semantics: U ∈ [0, 1) with u=0 ≡ u=1 (same theta=0 line on
+    // the cylinder). The "midpoint" of two U values is the centre of the
+    // SHORTER arc between them. Whenever |u1 − u0| > 0.5 the shorter arc
+    // is via the seam; the midpoint must wrap accordingly.
 
-    it('wraps around for seam edges (u near 0 and 1)', () => {
-        // 0.9 and 0.1 should wrap: midpoint = (0.9 + 1.1) / 2 = 1.0 → 0.0
-        const mid = seamSafeMidpointU(0.9, 0.1);
-        // Should be near 0.0 (wrapped)
-        expect(mid === 0 || mid === 1 || Math.abs(mid) < 0.01 || Math.abs(mid - 1) < 0.01).toBe(true);
-    });
-
-    it('does not wrap when both values are in the interior', () => {
-        // Both u values well away from seam — should not wrap
+    it('returns simple midpoint when the short arc does not cross the seam', () => {
+        // |0.6 − 0.4| = 0.2 < 0.5  →  short arc is 0.4 → 0.5 → 0.6
         expect(seamSafeMidpointU(0.4, 0.6)).toBeCloseTo(0.5, 8);
+        expect(seamSafeMidpointU(0.45, 0.55)).toBeCloseTo(0.5, 8);
+        // Within-half edges away from seam: trivial.
+        expect(seamSafeMidpointU(0.10, 0.30)).toBeCloseTo(0.20, 8);
     });
 
-    it('handles boundary u=0 and u=1 correctly', () => {
-        // When u values are exactly 0 and 1, boundary guard should apply
-        const mid = seamSafeMidpointU(0.0, 1.0);
-        expect(mid).toBeCloseTo(0.5, 5);
+    it('wraps when both endpoints are inside SEAM_WRAP_ZONE of opposite seams', () => {
+        // (0.9, 0.1): both within 0.15 of seam, short arc through u=0.
+        const m1 = seamSafeMidpointU(0.9, 0.1);
+        const onSeam1 = Math.min(Math.abs(m1 - 0), Math.abs(m1 - 1));
+        expect(onSeam1).toBeLessThan(1e-8);
+
+        // (0.05, 0.95): symmetric, ditto.
+        const m2 = seamSafeMidpointU(0.05, 0.95);
+        const onSeam2 = Math.min(Math.abs(m2 - 0), Math.abs(m2 - 1));
+        expect(onSeam2).toBeLessThan(1e-8);
+    });
+
+    it('does not wrap when endpoints are outside SEAM_WRAP_ZONE', () => {
+        // (0.2, 0.8): gap > 0.5 but neither endpoint is within 0.15 of a seam.
+        // Heuristic treats this as a flat-mesh long edge, not a cylindrical wrap.
+        // (If a future caller needs cylindrical-everywhere semantics, add an
+        // explicit parameter rather than widening the heuristic globally.)
+        expect(seamSafeMidpointU(0.2, 0.8)).toBeCloseTo(0.5, 8);
+    });
+
+    it('handles the production seam-edge case (u0=0 exactly, u1 near 1)', () => {
+        // Regression test: this is what the 476-col grid produces on every
+        // wrap-around edge: col 0 at u=0.000000, col 475 at u=475/476≈0.997900.
+        // The pre-fix bug excluded lo>0 in its wrap-zone guard and returned
+        // the naive 0.499 average — 125 mm of arc off on a 250 mm pot, which
+        // showed up in production as Adaptive Refinement maxPos≈160 mm.
+        const u0 = 0;
+        const u1 = 475 / 476;
+        const mid = seamSafeMidpointU(u0, u1);
+        // Correct midpoint of the short arc (length 1/476): half a column past
+        // u=0 on the negative side → u = 1 − 1/(2·476) ≈ 0.998950.
+        const expectedShortMid = 1 - 1 / (2 * 476);
+        // Allow for the equivalence u=0 ≡ u=1 by checking shortest arc distance.
+        const arcDist = Math.min(
+            Math.abs(mid - expectedShortMid),
+            Math.abs(mid - (expectedShortMid - 1)),
+        );
+        expect(arcDist).toBeLessThan(1e-8);
+    });
+
+    it('treats EXACT (0, 1) as a flat-mesh corner span (returns 0.5)', () => {
+        // (0, 1) exactly is ambiguous on a cylinder (same theta) but unambiguous
+        // on a flat parameterization (corner-to-corner edge of a unit UV square).
+        // The flat-square test fixture relies on this; production grids never
+        // emit edges with hi=1 exactly (last column is at (N-1)/N ≠ 1).
+        expect(seamSafeMidpointU(0.0, 1.0)).toBeCloseTo(0.5, 8);
     });
 
     it('handles identical u values', () => {

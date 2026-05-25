@@ -287,9 +287,25 @@ export interface RefinementResult {
 /**
  * Compute the midpoint of two U coordinates handling seam wrapping at u=0/1.
  *
- * When the two U values span the periodic seam boundary (difference > 0.5),
- * the shorter arc through the boundary is used instead of the naive average
- * which would place the midpoint at u≈0.5.
+ * Detects seam crossings via a zone heuristic (both endpoints inside
+ * SEAM_WRAP_ZONE of opposite seam boundaries) and uses the shorter arc.
+ * For non-seam edges or the ambiguous exact-(0,1) flat-mesh case it falls
+ * back to the linear average.
+ *
+ * History — production-bug fix 2026-05-25:
+ *   A previous version gated seam wrapping behind `lo > 0 && hi < 1`, which
+ *   prevented wrapping whenever one endpoint was EXACTLY at u=0. Every
+ *   wrap-around edge of an N-column uniform grid hits that case (col 0 is
+ *   at u=0.000000 exactly). The function returned the naive 0.499 instead
+ *   of the correct ~0.999 — on a 250 mm-circumference pot that placed the
+ *   refinement midpoint 125 mm of arc off the intended position, which
+ *   propagated through Adaptive Refinement as maxPos≈160 mm chord error
+ *   and surfaced as sliver triangles with aspect ratios > 10⁷.
+ *
+ *   Fix: replace the `lo > 0 && hi < 1` guard with a narrower exclusion
+ *   only for the exact ambiguous case `(lo === 0 && hi === 1)`, which is
+ *   used by flat-square test fixtures where the geometric midpoint of a
+ *   corner-to-corner edge IS u=0.5.
  *
  * @param u0 - First U coordinate in [0, 1].
  * @param u1 - Second U coordinate in [0, 1].
@@ -297,16 +313,12 @@ export interface RefinementResult {
  */
 export function seamSafeMidpointU(u0: number, u1: number): number {
     const gap = Math.abs(u1 - u0);
-    // Only apply seam wrapping when both endpoints are near opposite seam
-    // boundaries (one near 0, one near 1). SEAM_WRAP_ZONE defines how close
-    // to the boundary a vertex must be to qualify as seam-adjacent.
-    // This prevents false positives for UVs that span the full [0,1] range
-    // in non-cylindrical parametrizations (e.g., flat test meshes).
     const SEAM_ZONE = SEAM_WRAP_ZONE;
     if (gap > 0.5) {
         const lo = Math.min(u0, u1);
         const hi = Math.max(u0, u1);
-        if (lo < SEAM_ZONE && hi > 1 - SEAM_ZONE && lo > 0 && hi < 1) {
+        const isExactFlatSpan = lo === 0 && hi === 1;
+        if (lo < SEAM_ZONE && hi > 1 - SEAM_ZONE && !isExactFlatSpan) {
             // True seam crossing: wrap the smaller value by +1, average, then normalize
             let mid: number;
             if (u0 < u1) {
