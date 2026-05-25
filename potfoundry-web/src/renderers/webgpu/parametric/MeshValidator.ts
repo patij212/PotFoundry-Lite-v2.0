@@ -469,6 +469,22 @@ export function checkTriangleQuality(
     let sliverCount = 0;
     let validCount = 0;
 
+    // Diagnostic: track top-10 worst-aspect triangles for triage. We only
+    // log vertex indices + edge lengths so post-mortem analysis can answer
+    // "is this triangle from chain-strip / from seam / from grid?".
+    interface BadTri { aspect: number; i0: number; i1: number; i2: number; e01: number; e12: number; e20: number; }
+    const worstTris: BadTri[] = [];
+    const WORST_TRACK_SIZE = 10;
+    const trackWorst = (aspect: number, i0: number, i1: number, i2: number, e01: number, e12: number, e20: number) => {
+        if (worstTris.length < WORST_TRACK_SIZE) {
+            worstTris.push({ aspect, i0, i1, i2, e01, e12, e20 });
+            worstTris.sort((a, b) => b.aspect - a.aspect);
+        } else if (aspect > worstTris[worstTris.length - 1].aspect) {
+            worstTris[worstTris.length - 1] = { aspect, i0, i1, i2, e01, e12, e20 };
+            worstTris.sort((a, b) => b.aspect - a.aspect);
+        }
+    };
+
     for (let t = 0; t < idxCount; t += 3) {
         const i0 = indices[t], i1 = indices[t + 1], i2 = indices[t + 2];
         if (i0 === i1 || i1 === i2 || i0 === i2) {
@@ -509,11 +525,31 @@ export function checkTriangleQuality(
         } else {
             ar = Infinity;
             sliverCount++;
+            trackWorst(Infinity, i0, i1, i2, e01, e12, e20);
             continue;
         }
         if (ar > globalMaxAR) globalMaxAR = ar;
+        if (ar > 100) trackWorst(ar, i0, i1, i2, e01, e12, e20);
         arSum += ar;
         validCount++;
+    }
+
+    // Diagnostic: log the top 10 worst-aspect triangles so post-mortem can
+    // pinpoint where slivers come from (chain-strip, seam, drain, phantom row).
+    // Each line gives the three vertex indices + the three edge lengths in mm.
+    // To interpret: if all three indices < gridVertexCount they're pure grid;
+    // mixed indices indicate chain/phantom involvement. Two near-zero edge
+    // lengths and one large = needle; one near-zero edge = pin.
+    if (worstTris.length > 0 && worstTris[0].aspect > 1000) {
+        console.log(`[MeshValidator] Worst-aspect triangle triage (top ${worstTris.length}):`);
+        for (let i = 0; i < worstTris.length; i++) {
+            const t = worstTris[i];
+            console.log(
+                `[MeshValidator]   #${i}: aspect=${t.aspect === Infinity ? 'Inf' : t.aspect.toExponential(3)} ` +
+                `verts=[${t.i0}, ${t.i1}, ${t.i2}] ` +
+                `edges=[${t.e01.toExponential(3)}, ${t.e12.toExponential(3)}, ${t.e20.toExponential(3)}] mm`,
+            );
+        }
     }
 
     if (validCount === 0) {
