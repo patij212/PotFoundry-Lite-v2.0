@@ -269,3 +269,72 @@ function lawOfCosines(adj1: number, adj2: number, opp: number): number {
   if (cos < -1) cos = -1;
   return (Math.acos(cos) * 180) / Math.PI;
 }
+
+export interface TopologyResult {
+  boundaryEdges: number;
+  nonManifoldEdges: number;
+  orientationMismatches: number;
+}
+
+/**
+ * Weld vertices by position quantization, then analyze the directed edge map:
+ * - boundaryEdges: undirected edges used by exactly one triangle side.
+ * - nonManifoldEdges: undirected edges shared by >2 triangle sides.
+ * - orientationMismatches: manifold edges whose two uses point the same way
+ *   (i.e. not one forward + one reverse) → inconsistent winding.
+ */
+export function topologyMetric(mesh: MeshView, weldToleranceMm: number): TopologyResult {
+  const remap = buildWeldRemap(mesh.vertices, weldToleranceMm);
+  const { indices } = mesh;
+
+  // Directed edge usage keyed by "min:max"; track forward/reverse counts.
+  const uses = new Map<string, { forward: number; reverse: number }>();
+  for (let t = 0; t < indices.length; t += 3) {
+    const tri = [remap[indices[t]], remap[indices[t + 1]], remap[indices[t + 2]]];
+    for (let e = 0; e < 3; e++) {
+      const a = tri[e];
+      const b = tri[(e + 1) % 3];
+      if (a === b) continue; // degenerate edge
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      const key = `${lo}:${hi}`;
+      let u = uses.get(key);
+      if (!u) { u = { forward: 0, reverse: 0 }; uses.set(key, u); }
+      if (a === lo) u.forward++; else u.reverse++;
+    }
+  }
+
+  let boundary = 0;
+  let nonManifold = 0;
+  let mismatch = 0;
+  for (const u of uses.values()) {
+    const total = u.forward + u.reverse;
+    if (total === 1) boundary++;
+    else if (total > 2) nonManifold++;
+    else if (total === 2 && !(u.forward === 1 && u.reverse === 1)) mismatch++;
+  }
+
+  return { boundaryEdges: boundary, nonManifoldEdges: nonManifold, orientationMismatches: mismatch };
+}
+
+/** Map each vertex index to a canonical welded index via position quantization. */
+function buildWeldRemap(vertices: Float32Array, toleranceMm: number): Uint32Array {
+  const n = vertices.length / 3;
+  const remap = new Uint32Array(n);
+  if (toleranceMm <= 0) {
+    for (let i = 0; i < n; i++) remap[i] = i;
+    return remap;
+  }
+  const inv = 1 / toleranceMm;
+  const buckets = new Map<string, number>();
+  for (let i = 0; i < n; i++) {
+    const qx = Math.round(vertices[i * 3] * inv);
+    const qy = Math.round(vertices[i * 3 + 1] * inv);
+    const qz = Math.round(vertices[i * 3 + 2] * inv);
+    const key = `${qx},${qy},${qz}`;
+    const existing = buckets.get(key);
+    if (existing === undefined) { buckets.set(key, i); remap[i] = i; }
+    else remap[i] = existing;
+  }
+  return remap;
+}

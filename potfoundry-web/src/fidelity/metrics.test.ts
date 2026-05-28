@@ -117,3 +117,45 @@ describe('triangleQuality3D', () => {
     expect(out.sliverCount).toBe(1);
   });
 });
+
+import { topologyMetric } from './metrics';
+
+function closedCube(): { vertices: Float32Array; indices: Uint32Array } {
+  return {
+    vertices: new Float32Array([
+      -1, -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, -1,
+      -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1,
+    ]),
+    indices: new Uint32Array([
+      0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7,
+      0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5,
+      2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+    ]),
+  };
+}
+
+describe('topologyMetric', () => {
+  it('reports a closed oriented cube as watertight', () => {
+    const out = topologyMetric(closedCube(), 1e-4);
+    expect(out.boundaryEdges).toBe(0);
+    expect(out.nonManifoldEdges).toBe(0);
+    expect(out.orientationMismatches).toBe(0);
+  });
+
+  it('reports boundary edges for an open quad', () => {
+    const mesh = {
+      vertices: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+    };
+    const out = topologyMetric(mesh, 1e-4);
+    expect(out.boundaryEdges).toBeGreaterThan(0);
+  });
+
+  it('detects winding mismatches on a flipped face', () => {
+    const mesh = closedCube();
+    const flipped = new Uint32Array(mesh.indices);
+    flipped[3] = 0; flipped[4] = 2; flipped[5] = 3; // flip second triangle
+    const out = topologyMetric({ vertices: mesh.vertices, indices: flipped }, 1e-4);
+    expect(out.orientationMismatches).toBeGreaterThan(0);
+  });
+});
