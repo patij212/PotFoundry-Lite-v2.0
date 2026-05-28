@@ -95,3 +95,25 @@ describe('sagDeviation', () => {
     expect(out.maxSagMm).toBeLessThanOrEqual(expectedMax + 1e-6);
   });
 });
+
+import { triangleQuality3D } from './metrics';
+
+describe('triangleQuality3D', () => {
+  it('rates an equilateral triangle as near-ideal', () => {
+    const vertices = new Float32Array([0, 0, 0, 1, 0, 0, 0.5, Math.sqrt(3) / 2, 0]);
+    const indices = new Uint32Array([0, 1, 2]);
+    const out = triangleQuality3D({ vertices, indices });
+    expect(out.maxAspect3D).toBeCloseTo(1, 1);
+    expect(out.minAngleDeg).toBeGreaterThan(59);
+    expect(out.sliverCount).toBe(0);
+  });
+
+  it('flags a needle sliver with high aspect and tiny min angle', () => {
+    const vertices = new Float32Array([0, 0, 0, 100, 0, 0, 50, 0.05, 0]);
+    const indices = new Uint32Array([0, 1, 2]);
+    const out = triangleQuality3D({ vertices, indices });
+    expect(out.maxAspect3D).toBeGreaterThan(100);
+    expect(out.minAngleDeg).toBeLessThan(1);
+    expect(out.sliverCount).toBe(1);
+  });
+});

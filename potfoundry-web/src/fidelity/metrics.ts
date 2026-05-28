@@ -187,3 +187,85 @@ export function sagDeviation(mesh: MeshView, rTrue: RTrue, order = 4): SagResult
     rmsSagMm: count > 0 ? Math.sqrt(sumSq / count) : 0,
   };
 }
+
+export interface TriangleQualityResult {
+  maxAspect3D: number;
+  minAngleDeg: number;
+  sliverCount: number;
+}
+
+const SLIVER_ASPECT = 100;
+
+/**
+ * 3D triangle quality. aspect = longest²·√3 / (4·area) (1 = equilateral),
+ * minAngleDeg = smallest interior angle across all triangles, sliverCount =
+ * triangles with aspect > 100.
+ */
+export function triangleQuality3D(mesh: MeshView): TriangleQualityResult {
+  const { vertices, indices } = mesh;
+  let maxAspect = 0;
+  let minAngle = 180;
+  let slivers = 0;
+
+  for (let t = 0; t < indices.length; t += 3) {
+    const ia = indices[t] * 3;
+    const ib = indices[t + 1] * 3;
+    const ic = indices[t + 2] * 3;
+    const ax = vertices[ia], ay = vertices[ia + 1], az = vertices[ia + 2];
+    const bx = vertices[ib], by = vertices[ib + 1], bz = vertices[ib + 2];
+    const cx = vertices[ic], cy = vertices[ic + 1], cz = vertices[ic + 2];
+
+    const ab2 = dist2(ax, ay, az, bx, by, bz);
+    const bc2 = dist2(bx, by, bz, cx, cy, cz);
+    const ca2 = dist2(cx, cy, cz, ax, ay, az);
+    const longest2 = Math.max(ab2, bc2, ca2);
+
+    // Area via cross product of two edges.
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const cxp = uy * vz - uz * vy;
+    const cyp = uz * vx - ux * vz;
+    const czp = ux * vy - uy * vx;
+    const area = 0.5 * Math.hypot(cxp, cyp, czp);
+
+    if (area <= 1e-12) {
+      maxAspect = Math.max(maxAspect, Infinity);
+      slivers++;
+      minAngle = 0;
+      continue;
+    }
+
+    const aspect = (longest2 * Math.sqrt(3)) / (4 * area);
+    if (aspect > maxAspect) maxAspect = aspect;
+    if (aspect > SLIVER_ASPECT) slivers++;
+
+    const a = Math.sqrt(bc2); // side opposite A
+    const b = Math.sqrt(ca2); // side opposite B
+    const c = Math.sqrt(ab2); // side opposite C
+    const angA = lawOfCosines(b, c, a);
+    const angB = lawOfCosines(a, c, b);
+    const angC = lawOfCosines(a, b, c);
+    const triMin = Math.min(angA, angB, angC);
+    if (triMin < minAngle) minAngle = triMin;
+  }
+
+  return {
+    maxAspect3D: maxAspect,
+    minAngleDeg: indices.length > 0 ? minAngle : 0,
+    sliverCount: slivers,
+  };
+}
+
+function dist2(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
+  const dx = ax - bx, dy = ay - by, dz = az - bz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+/** Interior angle (degrees) opposite side `opp`, given the two adjacent sides. */
+function lawOfCosines(adj1: number, adj2: number, opp: number): number {
+  if (adj1 <= 0 || adj2 <= 0) return 0;
+  let cos = (adj1 * adj1 + adj2 * adj2 - opp * opp) / (2 * adj1 * adj2);
+  if (cos > 1) cos = 1;
+  if (cos < -1) cos = -1;
+  return (Math.acos(cos) * 180) / Math.PI;
+}
