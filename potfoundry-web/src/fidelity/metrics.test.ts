@@ -46,3 +46,52 @@ describe('buildRadialReference', () => {
     expect(ref.rTrue(2.0, 25)).toBeCloseTo(30, 1);
   });
 });
+
+import { sagDeviation } from './metrics';
+
+const TAU2 = 2 * Math.PI;
+
+/** Faceted cylinder (flat side quads) of radius R, nSides around, 1 tall band. */
+function facetedCylinder(R: number, H: number, nSides: number): { vertices: Float32Array; indices: Uint32Array } {
+  const verts: number[] = [];
+  for (let j = 0; j < 2; j++) {
+    const z = j * H;
+    for (let i = 0; i < nSides; i++) {
+      const th = (i / nSides) * TAU2;
+      verts.push(Math.cos(th) * R, Math.sin(th) * R, z);
+    }
+  }
+  const idx: number[] = [];
+  for (let i = 0; i < nSides; i++) {
+    const a = i;
+    const b = (i + 1) % nSides;
+    const c = i + nSides;
+    const d = ((i + 1) % nSides) + nSides;
+    idx.push(a, b, c, b, d, c);
+  }
+  return { vertices: new Float32Array(verts), indices: new Uint32Array(idx) };
+}
+
+describe('sagDeviation', () => {
+  it('reports near-zero sag when the mesh lies on the reference surface', () => {
+    const R = 40;
+    const mesh = facetedCylinder(R, 100, 256); // many sides → near-smooth
+    const rTrue = () => R;
+    const out = sagDeviation(mesh, rTrue, 4);
+    // A 256-gon's flat-chord dip from the true circle is tiny.
+    expect(out.maxSagMm).toBeLessThan(0.05);
+    expect(out.rmsSagMm).toBeLessThanOrEqual(out.maxSagMm);
+  });
+
+  it('reports the chord sag of a coarse faceted cylinder', () => {
+    const R = 40;
+    const nSides = 8;
+    const mesh = facetedCylinder(R, 100, nSides);
+    const rTrue = () => R;
+    const out = sagDeviation(mesh, rTrue, 6);
+    // Max chord sag of a regular n-gon ≈ R(1 - cos(π/n)).
+    const expectedMax = R * (1 - Math.cos(Math.PI / nSides));
+    expect(out.maxSagMm).toBeGreaterThan(expectedMax * 0.5);
+    expect(out.maxSagMm).toBeLessThanOrEqual(expectedMax + 1e-6);
+  });
+});

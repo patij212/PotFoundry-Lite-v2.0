@@ -130,3 +130,60 @@ function dilateFillEmpty(grid: Float64Array, nTheta: number, nZ: number): void {
     grid.set(next);
   }
 }
+
+export interface SagResult {
+  maxSagMm: number;
+  rmsSagMm: number;
+}
+
+/** Barycentric interior sample weights for a given order (order 4 → 15 samples). */
+function barycentricSamples(order: number): Array<[number, number, number]> {
+  const out: Array<[number, number, number]> = [];
+  for (let i = 1; i < order; i++) {
+    for (let j = 1; j < order - i; j++) {
+      const k = order - i - j;
+      if (k < 1) continue;
+      out.push([i / order, j / order, k / order]);
+    }
+  }
+  // Fallback to centroid if the order is too small to yield interior points.
+  if (out.length === 0) out.push([1 / 3, 1 / 3, 1 / 3]);
+  return out;
+}
+
+/**
+ * Radial sag of each triangle's interior vs R_true. For each barycentric
+ * sample point P, deviation = |hypot(P.x,P.y) − R_true(atan2(P.y,P.x), P.z)|.
+ */
+export function sagDeviation(mesh: MeshView, rTrue: RTrue, order = 4): SagResult {
+  const { vertices, indices } = mesh;
+  const samples = barycentricSamples(order);
+  let maxSag = 0;
+  let sumSq = 0;
+  let count = 0;
+
+  for (let t = 0; t < indices.length; t += 3) {
+    const ia = indices[t] * 3;
+    const ib = indices[t + 1] * 3;
+    const ic = indices[t + 2] * 3;
+    const ax = vertices[ia], ay = vertices[ia + 1], az = vertices[ia + 2];
+    const bx = vertices[ib], by = vertices[ib + 1], bz = vertices[ib + 2];
+    const cx = vertices[ic], cy = vertices[ic + 1], cz = vertices[ic + 2];
+
+    for (const [wa, wb, wc] of samples) {
+      const px = ax * wa + bx * wb + cx * wc;
+      const py = ay * wa + by * wb + cy * wc;
+      const pz = az * wa + bz * wb + cz * wc;
+      const r = Math.hypot(px, py);
+      const dev = Math.abs(r - rTrue(Math.atan2(py, px), pz));
+      if (dev > maxSag) maxSag = dev;
+      sumSq += dev * dev;
+      count++;
+    }
+  }
+
+  return {
+    maxSagMm: maxSag,
+    rmsSagMm: count > 0 ? Math.sqrt(sumSq / count) : 0,
+  };
+}
