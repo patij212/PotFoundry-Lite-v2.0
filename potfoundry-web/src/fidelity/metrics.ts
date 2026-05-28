@@ -2,7 +2,7 @@
  * Pure 3D export-fidelity metrics (SP0). No DOM, no GPU, no app imports beyond types.
  * Trusted via vitest unit tests, then run in-page by the fidelity window hook.
  */
-import type { MeshView, RTrue } from './types';
+import type { FidelityMetrics, MeshView, RTrue } from './types';
 
 const TAU = 2 * Math.PI;
 
@@ -337,4 +337,44 @@ function buildWeldRemap(vertices: Float32Array, toleranceMm: number): Uint32Arra
     else remap[i] = existing;
   }
   return remap;
+}
+
+export interface ComputeFidelityArgs {
+  styleId: string;
+  mesh: MeshView;
+  denseVertices: Float32Array;
+  features: { expected: number; present: number };
+  weldToleranceMm: number;
+  sagSampleOrder?: number;
+  referenceTriangleCount?: number;
+}
+
+/** Assemble a complete FidelityMetrics row from a mesh-under-test + dense reference. */
+export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetrics {
+  const { styleId, mesh, denseVertices, features, weldToleranceMm } = args;
+  const ref = buildRadialReference(denseVertices);
+  const sag = sagDeviation(mesh, ref.rTrue, args.sagSampleOrder ?? 4);
+  const quality = triangleQuality3D(mesh);
+  const topo = topologyMetric(mesh, weldToleranceMm);
+  const dropped = Math.max(0, features.expected - features.present);
+
+  return {
+    styleId,
+    triangleCount: mesh.indices.length / 3,
+    vertexCount: mesh.vertices.length / 3,
+    referenceTriangleCount: args.referenceTriangleCount ?? denseVertices.length / 3,
+    maxSagMm: sag.maxSagMm,
+    rmsSagMm: sag.rmsSagMm,
+    sagReferenceBinThetaRad: ref.binThetaRad,
+    sagReferenceBinZmm: ref.binZmm,
+    maxAspect3D: quality.maxAspect3D,
+    minAngleDeg: quality.minAngleDeg,
+    sliverCount: quality.sliverCount,
+    boundaryEdges: topo.boundaryEdges,
+    nonManifoldEdges: topo.nonManifoldEdges,
+    orientationMismatches: topo.orientationMismatches,
+    featuresExpected: features.expected,
+    featuresPresent: features.present,
+    featuresDropped: dropped,
+  };
 }

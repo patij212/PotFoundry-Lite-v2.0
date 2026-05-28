@@ -159,3 +159,28 @@ describe('topologyMetric', () => {
     expect(out.orientationMismatches).toBeGreaterThan(0);
   });
 });
+
+import { computeFidelityMetrics } from './metrics';
+
+describe('computeFidelityMetrics', () => {
+  it('assembles a full metrics row from a mesh + dense reference', () => {
+    const R = 40;
+    const dense = denseCylinder(R, 100, 360, 200);
+    const mesh = facetedCylinder(R, 100, 64);
+    const row = computeFidelityMetrics({
+      styleId: 'TestCylinder',
+      mesh,
+      denseVertices: dense,
+      features: { expected: 5, present: 5 },
+      weldToleranceMm: 1e-4,
+      sagSampleOrder: 4,
+    });
+    expect(row.styleId).toBe('TestCylinder');
+    expect(row.triangleCount).toBe(mesh.indices.length / 3);
+    expect(row.maxSagMm).toBeGreaterThanOrEqual(0);
+    expect(row.maxAspect3D).toBeGreaterThan(0);
+    expect(row.featuresExpected).toBe(5);
+    expect(row.featuresDropped).toBe(0);
+    expect(row.sagReferenceBinThetaRad).toBeGreaterThan(0);
+  });
+});
