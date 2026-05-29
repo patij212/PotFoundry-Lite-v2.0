@@ -184,3 +184,74 @@ describe('computeFidelityMetrics', () => {
     expect(row.sagReferenceBinThetaRad).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Hardening: input guards, z-boundary accuracy, degenerate-triangle isolation,
+// and non-manifold detection. These pin the measurement instrument so its
+// output can serve as the SP0 acceptance baseline.
+// ---------------------------------------------------------------------------
+
+/** Dense cone: R = R0 + (R1-R0)*(z/H) over height [0, H]. */
+function denseCone(R0: number, R1: number, H: number, nTheta: number, nZ: number): Float32Array {
+  const verts: number[] = [];
+  for (let j = 0; j < nZ; j++) {
+    const z = (j / (nZ - 1)) * H;
+    const R = R0 + (R1 - R0) * (z / H);
+    for (let i = 0; i < nTheta; i++) {
+      const th = (i / nTheta) * TAU;
+      verts.push(Math.cos(th) * R, Math.sin(th) * R, z);
+    }
+  }
+  return new Float32Array(verts);
+}
+
+describe('buildRadialReference guards & boundaries', () => {
+  it('throws a clear error on an empty dense reference', () => {
+    expect(() => buildRadialReference(new Float32Array([]))).toThrow();
+  });
+
+  it('throws when bin dimensions are degenerate (< 2)', () => {
+    expect(() => buildRadialReference(denseCylinder(40, 100, 1440, 800), { zBins: 1 })).toThrow();
+    expect(() => buildRadialReference(denseCylinder(40, 100, 1440, 800), { thetaBins: 1 })).toThrow();
+  });
+
+  it('is accurate at z boundaries with no half-bin bias against the gradient', () => {
+    // Coarse z-bins (40 over H=100 → 2.5mm bins) with ~20 samples/bin so each
+    // cell centroid sits at the cell center. A naive boundary clamp biases the
+    // rim/base by ~0.5mm (half a bin × the 0.4 mm/mm cone gradient); correct
+    // linear extrapolation at the extremes drives that to well under 0.1mm.
+    const ref = buildRadialReference(denseCone(20, 60, 100, 360, 800), {
+      thetaBins: 180,
+      zBins: 40,
+    });
+    expect(Math.abs(ref.rTrue(2.0, 0) - 20)).toBeLessThan(0.1);
+    expect(Math.abs(ref.rTrue(2.0, 100) - 60)).toBeLessThan(0.1);
+  });
+});
+
+describe('triangleQuality3D degenerate isolation', () => {
+  it('keeps maxAspect finite and excludes a degenerate triangle from the good min angle', () => {
+    const vertices = new Float32Array([
+      0, 0, 0, 1, 0, 0, 0.5, Math.sqrt(3) / 2, 0, // good equilateral
+      0, 0, 0, 1, 0, 0, 2, 0, 0,                  // degenerate (collinear, zero area)
+    ]);
+    const indices = new Uint32Array([0, 1, 2, 3, 4, 5]);
+    const out = triangleQuality3D({ vertices, indices });
+    expect(Number.isFinite(out.maxAspect3D)).toBe(true);
+    expect(out.sliverCount).toBe(1);
+    // minAngle must reflect the good equilateral (~60°), not be pinned to 0.
+    expect(out.minAngleDeg).toBeGreaterThan(59);
+  });
+});
+
+describe('topologyMetric non-manifold detection', () => {
+  it('flags an edge shared by three triangles', () => {
+    const vertices = new Float32Array([
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 1,
+    ]);
+    // Edge 0–1 is shared by all three triangles → non-manifold.
+    const indices = new Uint32Array([0, 1, 2, 0, 1, 3, 0, 1, 4]);
+    const out = topologyMetric({ vertices, indices }, 1e-4);
+    expect(out.nonManifoldEdges).toBeGreaterThan(0);
+  });
+});

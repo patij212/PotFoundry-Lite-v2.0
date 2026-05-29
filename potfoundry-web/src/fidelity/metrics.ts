@@ -2,6 +2,7 @@
  * Pure 3D export-fidelity metrics (SP0). No DOM, no GPU, no app imports beyond types.
  * Trusted via vitest unit tests, then run in-page by the fidelity window hook.
  */
+import { ASPECT_MAX } from './types';
 import type { FidelityMetrics, MeshView, RTrue } from './types';
 
 const TAU = 2 * Math.PI;
@@ -30,6 +31,15 @@ export function buildRadialReference(
   const nZ = options.zBins ?? 400;
   const n = denseVertices.length / 3;
 
+  if (n === 0) {
+    throw new Error('buildRadialReference: empty dense vertex set');
+  }
+  if (nTheta < 2 || nZ < 2) {
+    throw new Error(
+      `buildRadialReference: bin dimensions must be >= 2 (got thetaBins=${nTheta}, zBins=${nZ})`,
+    );
+  }
+
   let zMin = Infinity;
   let zMax = -Infinity;
   for (let i = 0; i < n; i++) {
@@ -51,7 +61,7 @@ export function buildRadialReference(
     if (th < 0) th += TAU;
     let ti = Math.floor((th / TAU) * nTheta);
     if (ti >= nTheta) ti = nTheta - 1;
-    let zi = Math.floor(((z - zMin) / zSpan) * (nZ - 1));
+    let zi = Math.floor(((z - zMin) / zSpan) * nZ);
     if (zi < 0) zi = 0;
     if (zi >= nZ) zi = nZ - 1;
     const idx = zi * nTheta + ti;
@@ -66,25 +76,35 @@ export function buildRadialReference(
   }
   dilateFillEmpty(grid, nTheta, nZ);
 
+  for (let k = 0; k < grid.length; k++) {
+    if (grid[k] < 0) {
+      throw new Error('buildRadialReference: reference grid has unfillable empty cells');
+    }
+  }
+
   const binThetaRad = TAU / nTheta;
-  const binZmm = zSpan / (nZ - 1);
+  const binZmm = zSpan / nZ;
 
   const cellAt = (ti: number, zi: number): number => {
-    const t = ((ti % nTheta) + nTheta) % nTheta; // wrap θ
-    const z = zi < 0 ? 0 : zi >= nZ ? nZ - 1 : zi; // clamp z
+    const t = ((ti % nTheta) + nTheta) % nTheta; // wrap θ (periodic)
+    const z = zi < 0 ? 0 : zi >= nZ ? nZ - 1 : zi; // defensive z clamp
     return grid[z * nTheta + t];
   };
 
   const rTrue: RTrue = (theta, z) => {
     let th = theta % TAU;
     if (th < 0) th += TAU;
-    const tf = (th / TAU) * nTheta - 0.5;
     // -0.5 shifts to cell centers: a bin holds samples in [k, k+1), so its
-    // value represents position k+0.5. Matches the theta convention above;
-    // without it, z sampling is biased half a bin against the radius gradient.
-    const zf = ((z - zMin) / zSpan) * (nZ - 1) - 0.5;
+    // value represents position k+0.5. θ is periodic (wraps); z is bounded.
+    const tf = (th / TAU) * nTheta - 0.5;
+    const zf = ((z - zMin) / zSpan) * nZ - 0.5;
     const ti0 = Math.floor(tf);
-    const zi0 = Math.floor(zf);
+    // Clamp the base z-cell so the upper cell (zi0+1) stays in range; zw is then
+    // allowed outside [0,1] at the z extremes, yielding linear extrapolation.
+    // This removes the half-bin clamp bias at the rim/base against the gradient.
+    let zi0 = Math.floor(zf);
+    if (zi0 < 0) zi0 = 0;
+    else if (zi0 > nZ - 2) zi0 = nZ - 2;
     const tw = tf - ti0;
     const zw = zf - zi0;
     const c00 = cellAt(ti0, zi0);
@@ -101,12 +121,11 @@ export function buildRadialReference(
 
 /** Multi-pass nearest-neighbour dilation to fill empty (-1) cells in place. */
 function dilateFillEmpty(grid: Float64Array, nTheta: number, nZ: number): void {
-  const hasEmpty = () => {
-    for (let k = 0; k < grid.length; k++) if (grid[k] < 0) return true;
-    return false;
-  };
+  let emptyCount = 0;
+  for (let k = 0; k < grid.length; k++) if (grid[k] < 0) emptyCount++;
+
   let guard = 0;
-  while (hasEmpty() && guard++ < nTheta + nZ) {
+  while (emptyCount > 0 && guard++ < nTheta + nZ) {
     const next = grid.slice();
     for (let zi = 0; zi < nZ; zi++) {
       for (let ti = 0; ti < nTheta; ti++) {
@@ -124,7 +143,7 @@ function dilateFillEmpty(grid: Float64Array, nTheta: number, nZ: number): void {
           const v = grid[nz * nTheta + nt];
           if (v >= 0) { acc += v; num++; }
         }
-        if (num > 0) next[idx] = acc / num;
+        if (num > 0) { next[idx] = acc / num; emptyCount--; }
       }
     }
     grid.set(next);
@@ -194,18 +213,24 @@ export interface TriangleQualityResult {
   sliverCount: number;
 }
 
-const SLIVER_ASPECT = 100;
+/**
+ * Finite aspect sentinel for zero-area (degenerate) triangles. Using a large
+ * finite value (not Infinity) keeps every FidelityMetrics field JSON-numeric,
+ * so the row survives CDP transfer and the all-numeric baseline contract.
+ */
+const DEGENERATE_ASPECT = 1e9;
 
 /**
  * 3D triangle quality. aspect = longest²·√3 / (4·area) (1 = equilateral),
- * minAngleDeg = smallest interior angle across all triangles, sliverCount =
- * triangles with aspect > 100.
+ * minAngleDeg = smallest interior angle across non-degenerate triangles,
+ * sliverCount = triangles with aspect > ASPECT_MAX (degenerate ones included).
  */
 export function triangleQuality3D(mesh: MeshView): TriangleQualityResult {
   const { vertices, indices } = mesh;
   let maxAspect = 0;
   let minAngle = 180;
   let slivers = 0;
+  let goodCount = 0;
 
   for (let t = 0; t < indices.length; t += 3) {
     const ia = indices[t] * 3;
@@ -229,15 +254,16 @@ export function triangleQuality3D(mesh: MeshView): TriangleQualityResult {
     const area = 0.5 * Math.hypot(cxp, cyp, czp);
 
     if (area <= 1e-12) {
-      maxAspect = Math.max(maxAspect, Infinity);
+      // Degenerate triangle: finite sentinel aspect, counts as a sliver, but
+      // contributes no interior angle (would otherwise pin minAngle to 0).
+      if (DEGENERATE_ASPECT > maxAspect) maxAspect = DEGENERATE_ASPECT;
       slivers++;
-      minAngle = 0;
       continue;
     }
 
     const aspect = (longest2 * Math.sqrt(3)) / (4 * area);
     if (aspect > maxAspect) maxAspect = aspect;
-    if (aspect > SLIVER_ASPECT) slivers++;
+    if (aspect > ASPECT_MAX) slivers++;
 
     const a = Math.sqrt(bc2); // side opposite A
     const b = Math.sqrt(ca2); // side opposite B
@@ -247,11 +273,12 @@ export function triangleQuality3D(mesh: MeshView): TriangleQualityResult {
     const angC = lawOfCosines(a, b, c);
     const triMin = Math.min(angA, angB, angC);
     if (triMin < minAngle) minAngle = triMin;
+    goodCount++;
   }
 
   return {
     maxAspect3D: maxAspect,
-    minAngleDeg: indices.length > 0 ? minAngle : 0,
+    minAngleDeg: goodCount > 0 ? minAngle : 0,
     sliverCount: slivers,
   };
 }
