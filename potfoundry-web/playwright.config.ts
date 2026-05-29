@@ -24,12 +24,16 @@ export default defineConfig({
             name: 'chromium',
             use: {
                 ...devices['Desktop Chrome'],
-                // Enable WebGPU in Chromium
+                // WebGPU requires a real GPU adapter. On Windows, headless
+                // Chromium exposes NO WebGPU adapter (requestAdapter() returns
+                // null) regardless of flags, so this project runs headed.
+                // Note: a single --enable-features is required — Chromium keeps
+                // only the last one, so multiple flags silently drop features.
+                headless: false,
                 launchOptions: {
                     args: [
-                        '--enable-features=Vulkan',
                         '--enable-unsafe-webgpu',
-                        '--enable-features=UseSkiaRenderer',
+                        '--enable-features=Vulkan,UseSkiaRenderer',
                     ],
                 },
             },

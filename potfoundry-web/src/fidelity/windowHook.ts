@@ -19,8 +19,19 @@ export interface FidelityMeasureOptions {
 
 export interface FidelityHookDeps {
   setStyle: (name: string) => void;
+  /** Parametric pipeline (the path under test) is ready for the current style. */
   isAvailable: () => boolean;
+  /** GPU uniform-grid pipeline (the dense reference source) is ready. */
+  isReferenceAvailable: () => boolean;
+  /** Generate the under-test mesh via the parametric pipeline at a triangle budget. */
   generateMesh: (targetTriangles?: number) => Promise<MeshData | null>;
+  /**
+   * Generate the dense R_true reference via the fast GPU uniform grid. The grid
+   * resolution is driven by the store's export_n_theta/export_n_z, which the
+   * mount sets to a dense value under ?fidelity. The parametric pipeline is far
+   * too CPU-bound to build a dense reference across all ~20 styles.
+   */
+  generateReference: () => Promise<MeshData | null>;
 }
 
 export interface PfFidelityApi {
@@ -56,30 +67,63 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       return Object.keys(STYLE_REGISTRY);
     },
     isReady() {
-      return deps.isAvailable();
+      // Both pipelines must be live: parametric (under test) AND GPU grid (reference).
+      return deps.isAvailable() && deps.isReferenceAvailable();
     },
     async setStyle(styleId: string) {
       deps.setStyle(styleId);
-      // Wait for the async GPU re-init (useEffect keyed on style.name) to settle.
-      const deadline = Date.now() + 20000;
+      // The store write above triggers a React re-render whose [style.name]
+      // effects tear down and rebuild BOTH GPU pipelines, flipping isAvailable /
+      // isReferenceAvailable false at the top of each effect. That happens on a
+      // later tick, so we must NOT poll immediately — otherwise we'd observe the
+      // PREVIOUS style's still-true flags and return before the rebuild even
+      // starts (the stale-availability race). Settle first to let React commit
+      // the re-render and run the effects, then poll for the NEW style's
+      // pipelines to come back up.
+      await sleep(500);
+      // GPU pipeline (re)compilation can be slow on some styles/drivers (Dawn
+      // shader compile observed up to ~8s), and both pipelines rebuild in
+      // sequence, so budget generously.
+      const deadline = Date.now() + 45000;
       while (Date.now() < deadline) {
-        if (deps.isAvailable()) return;
+        if (deps.isAvailable() && deps.isReferenceAvailable()) return;
         await sleep(100);
       }
       throw new Error(`Fidelity: GPU did not become ready for style ${styleId}`);
     },
     async measure(opts: FidelityMeasureOptions): Promise<FidelityMetrics> {
       const styleId = currentStyleId();
-      const dense = await deps.generateMesh(opts.referenceTriangles);
-      if (!dense) throw new Error('Fidelity: dense reference generateMesh returned null');
-      const denseVertices = dense.vertices.slice(); // copy before next generate reuses buffers
 
+      // Dense R_true reference via the fast GPU uniform grid (referenceTriangles
+      // is advisory only; the grid resolution comes from the store, set dense by
+      // the mount under ?fidelity).
+      const tRef0 = Date.now();
+      const dense = await deps.generateReference();
+      if (!dense) throw new Error('Fidelity: GPU-grid reference generateReference returned null');
+      const denseVertices = dense.vertices.slice(); // copy before next generate reuses buffers
+      const refMs = Date.now() - tRef0;
+
+      // Under-test mesh via the parametric pipeline at the requested budget.
+      const tTest0 = Date.now();
       const mesh = await deps.generateMesh(opts.targetTriangles);
       if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const testMs = Date.now() - tTest0;
 
       const chain = getLastChainDebugData();
       const expected = chain?.chainCount ?? 0;
       const present = chain?.lineCount ?? 0;
+
+      try {
+        if (import.meta.env?.DEV) {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[fidelity] ${styleId}: refTris=${dense.triangleCount} (${refMs}ms) ` +
+              `testTris=${mesh.triangleCount} (${testMs}ms)`,
+          );
+        }
+      } catch {
+        /* import.meta may be undefined in some bundling contexts */
+      }
 
       return computeFidelityMetrics({
         styleId,

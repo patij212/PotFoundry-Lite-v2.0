@@ -98,6 +98,14 @@ export function useGPUExport(): UseGPUExportResult {
     useEffect(() => {
         let isMounted = true;
 
+        // Availability must reflect the NEW style's pipeline, not the previous
+        // one. During a style switch this effect re-runs and destroys/re-inits
+        // the computer asynchronously; without flipping the flag false up front,
+        // isGPUAvailable stays stale-true and consumers (e.g. the SP0 fidelity
+        // harness's setStyle gate) proceed against a destroyed/re-initializing
+        // computer → null mesh. Reset here so readiness is honest mid-rebuild.
+        setIsGPUAvailable(false);
+
         const initOrUpdateGPU = async () => {
             try {
                 // On mobile, defer GPU export init to avoid multi-device crash.

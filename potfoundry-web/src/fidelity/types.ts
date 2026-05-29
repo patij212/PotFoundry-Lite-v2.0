@@ -51,6 +51,12 @@ export interface FidelityBaseline {
   referenceBudget: number;
   refDimensions: { H: number; Rt: number; Rb: number };
   rows: FidelityMatrixRow[];
+  /**
+   * Styles that could not be measured at all (e.g. GPU pipeline init hang or a
+   * pipeline exception). Empty on a clean run. Recorded so the baseline is an
+   * honest account of HEAD: a style absent from `rows` is explained here.
+   */
+  failures?: { styleId: string; error: string }[];
 }
 
 // ── Pinned thresholds (see spec "Thresholds") ──────────────────────────────

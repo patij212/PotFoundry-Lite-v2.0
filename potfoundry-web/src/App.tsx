@@ -16,6 +16,7 @@ import { AuthProvider } from './context/AuthContext';
 import { UserMenu } from './ui/auth';
 import { AppSettingsButton } from './ui/settings';
 import { ToastProvider } from './ui/shared';
+import { FidelityHookMount } from './fidelity/FidelityHookMount';
 import './WebGPUPreview.css';
 
 // Lazy-load v2 UI — v1 users pay zero bundle cost
@@ -554,6 +555,9 @@ Protocol: ${protocol}`}
                             localParamsLockRef={localParamsLockUntilRef}
                         >
                             <LibraryProvider libraryData={null}>
+                                {/* Dev/test-gated fidelity harness registrar —
+                                    always mounted, independent of UI theme. */}
+                                <FidelityHookMount />
                                 {uiTheme === 'v2' ? (
                                     <Suspense fallback={null}>
                                         <AppUIv2 />

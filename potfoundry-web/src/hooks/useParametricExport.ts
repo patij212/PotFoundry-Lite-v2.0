@@ -73,6 +73,15 @@ export interface ParametricExportOverrides {
     pipelineFeatureFlags?: Partial<import('../renderers/webgpu/parametric/contracts').PipelineFeatureFlags>;
     pipelineConfig?: Partial<import('../renderers/webgpu/parametric/types').PipelineStageConfig>;
     relaxIterations?: number;
+    /**
+     * Harness-only escape hatch (SP0 fidelity measurement). When true,
+     * generateMesh returns the computed mesh even if export validation flags it
+     * invalid, instead of throwing and returning null. This changes no geometry
+     * — the pipeline output is identical; it only stops the hook from discarding
+     * a measurable (defective) mesh. Production callers (exportSTL) leave this
+     * unset, preserving the throw→null guard. Never set in shipped UI paths.
+     */
+    returnInvalidMesh?: boolean;
 }
 
 export interface UseParametricExportResult {
@@ -152,6 +161,15 @@ export function useParametricExport(): UseParametricExportResult {
         let isMounted = true;
         let device: GPUDevice | null = null;
         let computer: ParametricExportComputer | null = null;
+
+        // Availability must reflect the NEW style's pipeline. On a style switch
+        // this effect re-runs: the cleanup destroys the previous computer and the
+        // async init rebuilds it. Without flipping the flag false up front,
+        // isAvailable stays stale-true while computerRef is null/rebuilding, so
+        // the SP0 fidelity harness's setStyle gate returns instantly and
+        // generateMesh runs against a torn-down computer → null. Reset here so
+        // readiness is honest mid-rebuild.
+        setIsAvailable(false);
 
         const initGPU = async () => {
             try {
@@ -328,6 +346,18 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             };
 
             const result = await computerRef.current.compute(params);
+            if (result.validationSummary && !result.validationSummary.valid) {
+                const reason = result.validationSummary.warnings.length > 0
+                    ? result.validationSummary.warnings.slice(0, 4).join('; ')
+                    : 'mesh failed export validation';
+                if (!overrides?.returnInvalidMesh) {
+                    throw new Error(`Export validation failed: ${reason}`);
+                }
+                // Harness mode (SP0): surface the defective mesh for measurement
+                // instead of discarding it. The fidelity harness must observe the
+                // pipeline's actual (flawed) output at HEAD.
+                console.warn(`[useParametricExport] Returning mesh despite validation failure (harness mode): ${reason}`);
+            }
 
             // Compute statistics
             const volume = calculateMeshVolume(result.mesh);
