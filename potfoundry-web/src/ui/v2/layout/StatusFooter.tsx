@@ -17,6 +17,10 @@ import { useAppStore } from '../../../state';
 import { useExport } from '../../../hooks/useExport';
 import { useGPUExport } from '../../../hooks/useGPUExport';
 import { useParametricExport } from '../../../hooks/useParametricExport';
+import {
+  createFidelityApi,
+  shouldEnableFidelityHook,
+} from '../../../fidelity/windowHook';
 import { useAnnounce } from '../shared/Announcer';
 import { useConfidence } from '../onboarding/useConfidence';
 import { useHaptics } from '../hooks/useHaptics';
@@ -59,6 +63,27 @@ export const StatusFooter: React.FC = () => {
   const cpuExport = useExport();
   const gpuExport = useGPUExport();
   const parametricExport = useParametricExport();
+
+  const setStyle = useAppStore((s) => s.setStyle);
+  const styleName = useAppStore((s) => s.style.name);
+
+  // Expose the current style id for the fidelity hook's row labelling.
+  useEffect(() => {
+    (window as unknown as { __pfCurrentStyle?: string }).__pfCurrentStyle = styleName;
+  }, [styleName]);
+
+  // Dev/test-gated 3D fidelity measurement hook (SP0). No-op in production.
+  useEffect(() => {
+    if (!shouldEnableFidelityHook()) return;
+    window.__pfFidelity = createFidelityApi({
+      setStyle: (name: string) => setStyle(name as Parameters<typeof setStyle>[0]),
+      isAvailable: () => parametricExport.isAvailable,
+      generateMesh: (n) => parametricExport.generateMesh(n),
+    });
+    return () => {
+      delete window.__pfFidelity;
+    };
+  }, [setStyle, parametricExport]);
 
   const announce = useAnnounce();
   const { unlock } = useConfidence();
