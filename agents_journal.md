@@ -4202,3 +4202,365 @@ Phone-tested v11 mobile shader on Adreno 730. Diagnosed false-positive init fail
 - `webgpu_core.ts`: Commented out per-frame Voronoi debug logs (lines ~2824, ~2833)
 
 **Risks**: None - logging-only changes, no shader or pipeline logic modified.
+
+---
+
+## 2026-05-25 - Codex - Core Migration Export Quality Guardrails
+
+**Summary**:
+Corrected course onto `refactor/core-migration` after the branch mismatch callout.
+Audited the active web export path and tightened the parts that were giving misleading quality signals.
+Implemented strict mesh validation so open boundary edges make a mesh invalid instead of merely warning.
+Added binary STL size ceiling constants so profile triangle budgets are tied to a real 1 GiB file limit.
+Updated the export dialog controls so user-facing file-size and feature-budget sliders cap at 1 GB.
+Reworked tests that previously treated an open flat quad as "well formed"; closed geometry is now required.
+
+**Decisions**:
+Kept the changes scoped to the core-migration branch instead of porting unrelated branch work.
+Did not raise global mesh resolution; quality changes focus on validation correctness and bounded export budgets.
+Used a closed cube fixture for positive manifold validation because it catches the false-positive open-surface case.
+Left adaptive tessellation architecture intact in this pass because broader pipeline surgery needs separate corridor/audit work.
+Replaced constant `false && ...` lint tripwires with named disabled flags in `ParametricExportComputer`.
+
+**Validation**:
+`npm run typecheck` passed.
+`npm run lint` passed after the lint-only disabled-flag cleanup.
+Targeted export-quality tests passed: `MeshValidator`, `QualityProfiles`, and `ExportDialog`.
+Full `npm test` still failed on two reproducible corridor-owned-span assertions.
+`meshDecimator.test.ts` passed in isolation with `--testTimeout=30000`.
+`parametric.audit.test.ts` passed in isolation with `--testTimeout=30000`.
+
+**Risks**:
+Stricter boundary validation may expose open meshes that older tests incorrectly accepted.
+The full suite remains red because `ParametricExportComputer.corridorFlags.test.ts` expects owned-span diagnostics/adjacency that are currently absent.
+The corridor failures look pre-existing to this scoped validation work, but they still block a completely green handoff.
+GitNexus index reported stale earlier in the session, so symbol impact data should be treated as advisory.
+
+**Next agent**:
+Start by investigating the two corridor-owned-span failures in `ParametricExportComputer.corridorFlags.test.ts`.
+After corridor behavior is repaired, rerun the full `npm test` without an increased timeout.
+Consider a follow-up pass that wires tolerance-driven adaptive tessellation deeper into the export computer, beyond the guardrails added here.
+
+---
+
+## 2026-05-25 - Codex - Tolerance-Driven Export Quality Gate
+
+**Summary**:
+Implemented the next export-quality slice: explicit tolerance feasibility preflight, a shared slicer-oriented mesh export validator, deterministic OBJ/3MF metadata, and active parametric UI fail-loud behavior when validation reports are invalid.
+Added a multi-agent debate note at `archive/plans/parametric-pipeline/2026-05-25-export-quality-gate-debate.md`.
+The goal was to replace "file written" confidence with measurable gates: finite vertices, valid indices, closed manifold edges, degenerate triangle rejection, orientation coherence, deterministic output, and the 1 GiB hard file ceiling.
+
+**Decisions**:
+Kept raw format writer helpers usable for syntax/unit tests, but wired production `exportMesh`, `downloadMesh`, and `downloadSTL` through `assertMeshExportable` by default.
+Added `ExportFeasibility.ts` as a conservative preflight rather than burying estimates in `ParametricExportComputer`.
+Made OBJ/3MF wall-clock metadata opt-in through `createdAt`; default output is deterministic.
+Parametric `compute()` rejects impossible explicit tolerance requests before GPU work; `useParametricExport.generateMesh()` now refuses invalid `validationSummary` results instead of downloading them.
+Did not alter `OuterWallTessellator` ownership/corridor logic in this slice.
+
+**Validation**:
+`npm run typecheck` passed.
+`npm run lint` passed with 0 warnings.
+Focused export-quality suite passed: `npx vitest run src/geometry/exportValidation.test.ts src/renderers/webgpu/parametric/ExportFeasibility.test.ts src/geometry/exporters/exportOBJ.test.ts src/geometry/exporters/export3MF.test.ts src/geometry/stlExport.test.ts src/renderers/webgpu/parametric/MeshValidator.test.ts src/renderers/webgpu/parametric/QualityProfiles.test.ts src/ui/controls/ExportDialog.test.tsx` (185 tests).
+`npx vitest run src/geometry/meshDecimator.test.ts src/renderers/webgpu/parametric/parametric.audit.test.ts --testTimeout=30000` passed (41 tests).
+Full `npm test` still failed: two corridor-owned-span assertions in `ParametricExportComputer.corridorFlags.test.ts`, plus default-timeout failures for `meshDecimator.test.ts` and `parametric.audit.test.ts` that pass with `--testTimeout=30000`.
+GitNexus `analyze` timed out twice; `detect_changes(scope=all)` reported medium risk across the dirty worktree and affected `StatusFooter -> Init/Destroy` via `useParametricExport`.
+
+**Risks**:
+Stricter default export validation may expose invalid meshes in GPU/adaptive/legacy export paths that previously downloaded anyway.
+Generic orientation coherence is edge-based, not a full outward-normal proof for hollow genus surfaces; it is a real gate but not the final Rhino-grade normal validator.
+Tolerance feasibility estimates are conservative and meant to fail impossible user overrides, not prove final fidelity; `MeshValidator` remains authoritative after tessellation.
+The worktree had pre-existing dirty files before this pass, including prior quality guardrail changes and corridor failures.
+
+**Next Agent**:
+Fix the two corridor-owned-span failures before claiming full-suite green.
+Consider moving the 30s timeout into test config or splitting production-scale audit tests so `npm test` is not red on default timeouts.
+Next tessellation slice should use these gates as acceptance criteria: no export should be considered successful unless validator + feasibility + deterministic format tests agree.
+
+---
+
+## 2026-05-25 - Codex - Browser-Verified Export Pipeline Continuation
+
+**Summary**:
+Continued the tolerance-driven export pipeline work through browser QA instead of trusting green unit tests.
+Added explicit tolerance override controls to the parametric export dialog and surfaced generation errors inside the modal.
+Fixed WebGPU evaluator overflow by splitting oversized UV evaluation batches before dispatch, replacing the prior "log and still dispatch illegally" behavior.
+Fixed adaptive-refinement reassembly so validation uses the refined outer index length after stitching refined outer indices with non-outer indices.
+Changed parametric validation scoping so topology/quality checks run against the full stitched export index buffer while seam-specific checks retain the outer-wall boundary.
+Added an opt-in geometric manifold helper for STL-style duplicated face vertices without enabling it on the hot browser path yet.
+Fixed 3MF deterministic package bytes by avoiding JSZip's implicit timestamped folder entries.
+
+**Decisions**:
+Kept geometric manifold welding opt-in because enabling it by default made the browser export path too heavy during QA.
+Used browser-visible validation failures as the current source of truth: Draft parametric export still fails real mesh validation, so it is correctly blocked.
+Kept the dispatch splitter small and deterministic, with helper tests for batch offsets and whole-vertex slicing.
+Did not try to paper over the remaining boundary/non-manifold failures; they indicate the next conformal stitching/welding slice.
+
+**Validation**:
+Browser at `http://127.0.0.1:5174/` loaded `PotFoundry - 3D Pot Designer`, opened Advanced Options, enabled Parametric v4, and exercised `Configure & Export`.
+Browser Draft preview after dispatch batching logged `Eval batch split: 7,397,376 vertices across 2 WebGPU dispatches` instead of the prior WebGPU workgroup-limit error, then failed validation with boundary/normal/quality defects.
+Browser tolerance preflight with `epsPosMm=0.0001mm` failed loudly in the dialog before mesh generation: estimated minimum `7,550,424` triangles for the requested tolerance.
+`npm run typecheck` passed.
+`npm run lint` passed.
+Focused tests passed: `ParametricExportComputer.refinementStitch`, `MeshValidator`, `ExportDialog`, and `export3MF`.
+Full `npm test` was run; after fixing 3MF determinism, targeted remaining red areas reproduce 3 failures: two corridor-owned-span assertions and `parametric.audit` F14 default-timeout.
+GitNexus `detect_changes(scope=all)` reported medium risk across the dirty worktree and affected `ExportPanel -> UseAuth`, `StatusFooter -> Init`, and `StatusFooter -> Destroy`.
+
+**Risks**:
+The exported parametric mesh is still not Rhino-grade; browser validation now proves it is blocked by real topology/normal/quality failures instead of hidden by shallow tests.
+Console log collection in the browser retained stale entries from earlier runs, so DOM-visible error states and screenshots were more reliable than log tail filtering.
+The worktree includes pre-existing dirty export-pipeline files beyond this continuation; do not assume every diff hunk came from this session.
+
+**Next agent**:
+Start with conformal stitching/welding between independent surface grids: the full-export validator now exposes remaining boundary loops instead of only outer-wall slice failures.
+Then fix the two corridor-owned-span assertions in `ParametricExportComputer.corridorFlags.test.ts`.
+After that, either split or timeout-configure the production-scale audit so default `npm test` can become a meaningful gate again.
+
+---
+
+## 2026-05-26 - Codex - Parametric v4 Tessellation Pin-Pair Slice
+
+**Summary**:
+Investigated the fast-failing Parametric v4 export path against the browser preview instead of only unit tests.
+Added a focused regression for the B11 same-row pin-pair topology failure and implemented bounded horizontal chain-vertex propagation into adjacent grid columns.
+The slice fixes that synthetic pin-pair case, but it does not yet produce Grasshopper/Rhino-grade export quality: live Draft preview still fails the export validator.
+
+**Decisions**:
+Promoted B11 from `it.fails` to a real passing regression because it captured a specific grid-plus-chain near-boundary pin pair.
+Used a conservative propagation radius of `0.00012` so chain vertices very near vertical column boundaries are visible to neighboring cells without the much larger blast radius seen at `0.0006`.
+Did not enable seam-healing or edge-collapse flags as a default escape hatch; browser QA with those flags still failed the same validation family.
+
+**Validation**:
+`npm run typecheck` passed.
+`npm run lint` passed with 0 warnings.
+Focused tests passed: `parametric.audit.test.ts --testTimeout=30000`, `OuterWallTessellator.test.ts --testTimeout=30000`, and `MeshValidator.test.ts` plus `ParametricExportComputer.refinementStitch.test.ts`.
+`ParametricExportComputer.corridorFlags.test.ts --testTimeout=30000` still fails the two pre-existing corridor-owned-span assertions.
+Full `npm test` failed with 4 failures: the two corridor assertions, `meshDecimator.test.ts` default timeout, and `parametric.audit.test.ts` F14 default timeout.
+Browser Draft preview still fails validation: 2 non-manifold edges, 13,978 boundary edges, 33,846 inconsistent normal pairs, and min angle 0.0 degrees.
+
+**Risks**:
+Export quality is not clean yet; the validator correctly blocks download.
+The B11 fix improved one topology slice but worsened synthetic F14 boundary count from the prior 13,641 baseline to 17,139 in the focused run, while non-manifold count stayed at 24.
+Worst-aspect sliver triangles and seam/fidelity diagnostics remain the dominant blockers for Rhino/Grasshopper-style tessellation.
+The worktree was already dirty before this pass, so preserve unrelated export-quality and UI changes.
+
+**Next agent**:
+Map the live browser worst-aspect triangles back to tessellation cells/chains before attempting another broad fix.
+Treat geometric topology welding as a diagnostic/gate-correction tool only; it will not solve slivers or seam fidelity by itself.
+Then repair the corridor-owned-span test failures so full-suite red does not hide export-quality regressions.
+### 2026-05-26 - Codex - Parametric v4 Boundary Repair Continuation
+
+Summary:
+- Continued the Parametric v4 export-quality push from the 266-boundary-edge live Draft failure.
+- Added UV-tolerant split-point handling for outer-wall T-junction repair (`UV_SEGMENT_SPLIT_EPS = 1e-4`).
+- Added optional geometric canonicalization to `repairOuterWallTJunctions` so repair identity can match the validator's topology weld.
+- Wired `ParametricExportComputer` to pass final positions plus `topologyWeldToleranceForExport(...)` into outer-wall repair.
+
+Decisions:
+- Kept UV weld identity strict (`UV_WELD_EPS = 1e-5`) and only relaxed the segment-membership test.
+- Used optional geometric identity rather than changing all UV canonicalization, because validation is geometric but many repair predicates still need UV surface class/t-position.
+- Added `ArrayBufferLike` annotations where subdivision results can flow through typed-array generics under the current TS lib.
+- Removed temporary live-export diagnostics before sign-off.
+
+Validation:
+- RED test confirmed slightly off-segment split vertices were not repaired.
+- GREEN: `npm test -- BoundaryTJunctionRepair.test.ts ParametricExportComputer.refinementStitch.test.ts SeamTopology.test.ts MeshValidator.test.ts` passed, 113 tests.
+- GREEN: `npm run typecheck` passed after typed-array annotation fixes.
+- Live Chrome/WebGPU Draft export still fails: 9 non-manifold edges, 266 boundary edges, 34,915 inconsistent normal pairs, min angle 0.0 deg.
+- Temporary live probe showed outer repair ran and split 1,182 edges / inserted 1,185 tris, but final boundary diagnostics remained unchanged.
+- GitNexus `detect_changes(scope=all)` reported medium risk, 28 changed files in dirty worktree, 3 affected processes; many files pre-existed in the dirty state.
+
+Risks:
+- Clean Grasshopper/Rhino-quality export is not achieved yet.
+- Remaining boundary class is stable at `s0:tmid-s0:tmid:204` plus top/bottom classes, so the next fault is likely not simple long-edge T-junction repair.
+- Geometric canonicalization may increase repair activity without reducing final boundary count; continue to watch for over-repair or sliver creation.
+
+Next agent:
+- Start from the live evidence: after repair, Draft still reports 266 boundary edges with sample edges around `u≈0.0767`, `t≈0.029-0.030`.
+- The next useful probe is a post-repair boundary-loop classifier: detect whether remaining `s0:tmid` boundaries form 3-cycles, open polylines, or edges whose counterpart was excluded by `resolveValidationIndexScopes`.
+- Avoid assuming the browser is stale; a fresh server on 3001 confirmed the repair ran, but it did not improve the final validator count.
+
+### 2026-05-26 - Codex - Parametric v4 Loop Fill and Zipper Diagnostics
+
+Summary:
+- Continued the Parametric v4 Grasshopper/Rhino export-quality push from the 266-boundary-edge state.
+- Added boundary-component diagnostics to `MeshValidator` so live failures classify loops/chains/branched components.
+- Added loop-fill repairs in `BoundaryTJunctionRepair` for outer-wall loops, same-surface loops, and geometric projection loops.
+- Added topology-safe cap acceptance so loop fills cannot push any welded edge above two incident faces.
+- Added targeted non-manifold T-junction splitting and near-duplicate endpoint zipper repair for s0 mid-wall defects.
+
+Decisions:
+- Kept loop filling conservative: accept a cap only when simulated edge counts remain <= 2.
+- Re-ran outer-wall T-junction repair after outer loop fills, because filling can expose adjacent chain defects.
+- Expanded validator samples from 3 to 8 for non-manifold and boundary diagnostics to avoid another blind live cycle.
+- Did not relax validation or treat normal/sliver failures as acceptable; export remains blocked until manifold closure is real.
+
+Validation:
+- GREEN: `npm test -- BoundaryTJunctionRepair.test.ts MeshValidator.test.ts ParametricExportComputer.refinementStitch.test.ts -t "repairOuterWallTJunctions|fillGeometricBoundaryLoops|fillOuterWallBoundaryLoops|fillSameSurfaceBoundaryLoops|skips a loop|diagnoseBoundaryEdges|stitch"` passed, 14 focused tests.
+- GREEN: `npm test -- BoundaryTJunctionRepair.test.ts -t "repairOuterWallTJunctions"` passed, 6 focused tests.
+- GREEN: `npm test -- MeshValidator.test.ts -t "diagnoseBoundaryEdges"` passed.
+- GREEN: `npm run typecheck` passed after the new repair helpers and diagnostics.
+- Live Chrome/WebGPU Draft parametric preview improved partway but still fails: 7 non-manifold edges, 84 boundary edges, 34,935 inconsistent normal pairs, min angle 0.0 deg.
+- Latest remaining non-manifold samples include seam-column edges at `u=0` (`19800->19600`, `133400->133200`) and count-4 local fan conflicts near `u=0.52140`, `u=0.22999`, and `u=0.15353`.
+- GitNexus `detect_changes(scope=all)` reports medium risk across the dirty worktree; direct affected processes remain export/UI status flows.
+
+Risks:
+- Clean Rhino/Grasshopper-quality export is not achieved yet; the validator correctly blocks Parametric v4 export.
+- The new zipper repair can reduce near-duplicate endpoint defects, but remaining count-4 conflicts appear to be fan ownership/seam ownership issues rather than simple A-C-B splits.
+- Boundary loop filling is now safe against creating new non-manifold edges, but it may leave loops open when proposed diagonals conflict with existing triangles.
+- The worktree contains many unrelated pre-existing changes; preserve them and keep future edits scoped.
+
+Next agent:
+- Target the seven remaining s0 mid-wall non-manifold edges, especially the two `u=0` seam-column edges and the count-4 fan conflicts around vertices `317502`, `343711`, and `304342`.
+- Add an incident-triangle diagnostic for each non-manifold edge: list all opposite vertices, UVs, and triangle offsets so the correct duplicate/fan owner can be removed or rewired.
+- Do not add broader cap filling until non-manifold count is zero; loops are now secondary to edge ownership.
+
+### 2026-05-27 - Codex - Parametric v4 STL Export Closure
+
+Summary:
+- Continued the Parametric v4 Rhino/Grasshopper-grade export push from the 84-boundary-edge state.
+- Added non-manifold incident samples and boundary component samples so live failures identify loops/chains/branched components.
+- Added topology-safe loop fills, center-fan same-surface fills, seam-chain zipper fill, crowded fan pruning, and final degenerate stripping.
+- Aligned Draft validation semantics: topology and degenerates remain fatal; normals/quality/fidelity remain warnings for iterative Draft export.
+- Fixed the final STL writer gate by validating closure after 0.001mm geometric welding, matching the parametric export topology tolerance.
+- Made STL download paths treat winding mismatches as warnings while still blocking boundary, non-manifold, degenerate, invalid, and oversized exports.
+
+Decisions:
+- Kept strict export validation available by default through `validateMeshForExport`; only download paths relax orientation consistency.
+- Used geometric welding in the shared writer validator because STL is coordinate triangle soup, not indexed topology.
+- Kept the downloaded STL artifact out of the worktree after verification to avoid committing a 35MB generated file.
+
+Validation:
+- GREEN: live Chrome/WebGPU Draft Parametric v4 STL download succeeded through `http://127.0.0.1:3010`.
+- GREEN: downloaded binary STL had 711,888 triangles and exact STL size `84 + triangleCount * 50 = 35,594,484` bytes.
+- GREEN: independent STL parse at 0.001mm weld found 0 degenerate triangles, 0 boundary edges, and 0 non-manifold edges.
+- GREEN: `npm run lint` passed.
+- GREEN: `npm run typecheck` passed.
+- GREEN: `npm test -- exportValidation.test.ts BoundaryTJunctionRepair.test.ts MeshValidator.test.ts ParametricExportComputer.refinementStitch.test.ts` passed, 95 tests.
+- RED: full `npm test` still has 3 failures outside the verified export path: two corridor flag assertions and `parametric.audit.test.ts` F14 timeout.
+
+Risks:
+- Draft export is now watertight at STL triangle-soup topology, but winding/quality/fidelity warnings still indicate normals and sliver-quality work remains for stricter profiles.
+- The corridor flag full-suite failures should be handled separately so they do not mask future parametric regressions.
+
+Next agent:
+- Start from the successful live STL artifact result; do not re-open the already-fixed writer gate unless a stricter profile fails.
+- Next quality step is winding/orientation cleanup and sliver reduction without breaking the zero-boundary, zero-non-manifold STL result.
+- Preserve the shared export validator split: geometry closure is fatal, STL download winding is advisory unless callers request strict orientation.
+
+### 2026-05-27 - Codex - Standard Profile Export Gate Fix
+
+Summary:
+- Investigated a user-provided Standard profile failure from `potfoundry-logs-2026-05-27T08-03-22-284Z.json`.
+- Root cause: the previous advisory bypass was Draft-only, while the dialog default is Standard.
+- The logged Standard export completed mesh generation with `manifold=true` and `degenerates=true`, but `validationSummary.valid=false` because normals, triangle quality, fidelity, and seam continuity were treated as fatal.
+- Added `validationPassForExport()` so ParametricExportComputer blocks only non-exportable topology/degenerates before the format writer gate.
+- Added regression tests covering clean topology with advisory quality failures, plus open-boundary and degenerate blocking.
+
+Decisions:
+- Kept full profile QA warnings intact in `validationSummary`; only changed the boolean used to decide whether export may proceed.
+- Did not relax MeshValidator itself; strict quality reports remain useful for high-quality follow-up work.
+- Preserved the actual STL/OBJ/3MF writer gate as the final slicer-oriented exportability check.
+
+Validation:
+- GREEN: `npm run typecheck`.
+- GREEN: `npm run lint`.
+- GREEN: `npm test -- ParametricExportComputer.refinementStitch.test.ts -t "validationPassForExport|topologyWeldToleranceForExport"`.
+- GREEN: `npm test -- exportValidation.test.ts BoundaryTJunctionRepair.test.ts MeshValidator.test.ts ParametricExportComputer.refinementStitch.test.ts`, 98 tests.
+- Browser Standard dialog export is heavier than the user log when using the default 100MB budget; a long run was still computing rather than reaching the previous quick validation throw.
+
+Risks:
+- Standard exports can proceed when topology is exportable, but normals, seam gap, fidelity, and sliver-quality warnings still need separate quality work.
+- Full `npm test` was not rerun in this pass; the prior known corridor/audit failures remain outside this gate fix.
+
+Next agent:
+- If Standard still fails for a user, check whether the failure is now from the final `ExportValidation` writer gate rather than `useParametricExport` validationSummary.
+- Continue with winding/orientation cleanup and sliver reduction as quality work, but keep exportability gating topology-first.
+
+### 2026-05-27 - Codex - STL Winding and Seam Zipper Quality Fix
+
+Summary:
+- Investigated user screenshots showing downloaded STL was watertight but visually poor: alternating dark facets, diagonal scars, and a vertical zigzag seam strip.
+- Added `orientMeshForSTL()` so binary, streaming, and ASCII STL serialization repair coherent triangle winding before writing facet normals.
+- Orientation repair uses 0.001mm geometric welding, so duplicated seam vertices still participate in adjacency and do not preserve inverted normals.
+- Changed unsafe outer-wall seam fallback: unsafe zipper triangles are no longer emitted.
+- Added seam index welding fallback that collapses the denser seam boundary side into the sparser side by nearest t/position, closing the seam without adding visible zigzag triangles.
+
+Decisions:
+- Fixed STL output winding in the writer instead of trying to mutate every upstream mesh generator path.
+- Kept actual vertex positions except for seam index welding in the unsafe zipper fallback; this removes the visible strip while keeping topology closed.
+- Preserved final export validation and did not disable topology checks.
+
+Validation:
+- GREEN: `npm test -- stlExport.test.ts -t "coherent normals|orientMeshForSTL|duplicated seam"`.
+- GREEN: `npm test -- BoundaryTJunctionRepair.test.ts stlExport.test.ts exportValidation.test.ts`.
+- GREEN: `npm run typecheck`.
+- GREEN: live Chrome/WebGPU Draft Parametric v4 STL download succeeded after unsafe zipper removal.
+- GREEN: independent STL parse of live export: 711,884 triangles, exact binary size, 0 degenerates, 0 boundary edges, 0 non-manifold edges, 0 orientation mismatches after 0.001mm weld.
+- GREEN: `npm run lint`.
+- GREEN: `npm test -- stlExport.test.ts exportValidation.test.ts BoundaryTJunctionRepair.test.ts MeshValidator.test.ts ParametricExportComputer.refinementStitch.test.ts`, 142 tests.
+
+Risks:
+- This should address the worst visible inverted-normal shimmer and the unsafe seam zipper strip, but sliver-quality warnings still remain in the parametric QA metrics.
+- The next quality layer is reducing chain-strip slivers/aspect ratio at generation time rather than export serialization.
+
+Next agent:
+- If the user still sees faceting scars, inspect chain-strip aspect diagnostics and remove the worst slivers at source.
+- Keep the seam fallback as index welding, not triangle zippering, unless a future repair can prove added seam triangles are manifold-safe and visually small.
+
+### 2026-05-27 - Codex - Row-Edge Companion Tessellation Pass
+
+Summary:
+- Continued the Rhino/Grasshopper-grade Parametric v4 export push after the user showed downloaded STL tessellation still containing diagonal strip scars and poor mesh quality.
+- Added R56 row-edge quality companions in `OuterWallTessellator` so chain-heavy row edges project missing U breakpoints onto the opposite row edge before sweep triangulation.
+- Increased the phantom vertex budget for this production export path and added logging for the number of R56 quality companions emitted.
+- Added a regression test proving chain-heavy row edges receive top and bottom companion vertices at each chain U breakpoint.
+
+Decisions:
+- Scoped R56 to the production parametric export path by requiring `metricAspect` and disabling it under corridor planning, preserving corridor dry-run/test semantics.
+- Applied companions only in regular chain cells and chain split sub-bands, not the global `sweepQuad` or supported-corridor spans, after earlier broader attempts risked corridor contract regressions.
+- Kept STL winding and seam fixes from the prior pass unchanged; this pass targets source tessellation slivers rather than writer serialization.
+
+Validation:
+- GREEN: `npm run typecheck`.
+- GREEN: `npm run lint`.
+- GREEN: `npm test -- OuterWallTessellator.test.ts BoundaryTJunctionRepair.test.ts stlExport.test.ts exportValidation.test.ts MeshValidator.test.ts ParametricExportComputer.refinementStitch.test.ts`, 215 tests.
+- GitNexus `detect_changes(scope=all)` reports HIGH risk across the dirty workspace: 30 changed files, 264 changed symbols, 9 affected processes. The R56-specific edit is concentrated in `buildCDTOuterWall` / `emitChainSplitCell`, but the worktree includes many earlier export-quality changes.
+- Browser Chrome/WebGPU automation reached the Parametric v4 dialog, selected Draft, and clicked Download STL, but no download event arrived within the 7-minute cap; a follow-up status probe blocked while generation was running, so live artifact quality was not re-verified in this pass.
+
+Risks:
+- Clean Rhino/Grasshopper-grade export is not fully proven yet because the live downloaded artifact was not obtained after R56.
+- R56 should reduce chain-row fan slivers, but worst-aspect/min-angle metrics still need live artifact measurement on Draft and Standard profiles.
+- The browser export path may now be CPU/main-thread bound or stalled during generation; do not conflate that with a successful quality fix.
+- The dirty worktree remains broad and high risk; preserve unrelated user/agent changes and keep further edits tightly scoped.
+
+Next agent:
+- First profile or instrument the live Parametric v4 dialog export so it reliably completes or reports phase progress under automation.
+- Once a fresh STL downloads, independently parse topology plus min-angle/aspect metrics and compare against the user-reported 0.0 degree / huge-aspect failure.
+- If slivers remain, map worst-aspect triangles back to row band, column, chain id, and whether R56 companions were emitted for that cell before adding another repair.
+
+### 2026-05-27 - Codex - R56 Gate Correction Addendum
+
+Summary:
+- Corrected the first R56 activation gate after full-suite testing showed it had overloaded `metricAspect`.
+- Added explicit `rowEdgeQualityCompanions` to `OuterWallBuildOptions`.
+- Production `ParametricExportComputer.compute()` now opts into R56 directly, while `metricAspect` remains only the diagonal-choice metric.
+
+Decisions:
+- Kept R56 disabled for corridor planning and ordinary audit calls unless explicitly requested.
+- Preserved the B12 audit contract that anisotropic metric changes may alter diagonals but must not add vertices by itself.
+
+Validation:
+- GREEN: `npm test -- OuterWallTessellator.test.ts parametric.audit.test.ts -t "R56|B12"`.
+- GREEN: `npm run typecheck`.
+- GREEN: `npm run lint`.
+- GREEN: `npm test -- OuterWallTessellator.test.ts BoundaryTJunctionRepair.test.ts stlExport.test.ts exportValidation.test.ts MeshValidator.test.ts ParametricExportComputer.refinementStitch.test.ts`, 215 tests.
+- RED: full `npm test` now has 5 failures: `meshDecimator.test.ts` timeout, `export3MF.test.ts` deterministic byte mismatch, two `ParametricExportComputer.corridorFlags.test.ts` assertions, and `parametric.audit.test.ts` F14 default-timeout.
+- GitNexus `detect_changes(scope=all)` remains HIGH risk across the dirty workspace: 30 changed files, 266 changed symbols, 9 affected processes.
+
+Risks:
+- Browser live export still was not proven after R56; the previous headless download attempt timed out.
+- R56 is active in production exports, so the next live run must watch generation time and companion counts closely.
+
+Next agent:
+- Do not re-use `metricAspect` as an implicit feature gate; keep quality-companion behavior explicit.
+- Re-run live Draft/Standard export with phase timing instrumentation before judging mesh visual quality.
