@@ -15,6 +15,7 @@ function renderDialog(overrides?: Partial<React.ComponentProps<typeof ExportDial
             onExport={onExport}
             onPreview={onPreview}
             isGenerating={false}
+            generationStatus="idle"
             generationPhase=""
             generationProgress={0}
             stats={null}
@@ -33,6 +34,17 @@ function renderDialog(overrides?: Partial<React.ComponentProps<typeof ExportDial
 }
 
 describe('ExportDialog corridor flags', () => {
+    it('caps user-facing export file size controls at 1 GiB', () => {
+        renderDialog();
+
+        const sliders = screen.getAllByRole('slider');
+        const fileSizeSlider = sliders[0];
+
+        expect(fileSizeSlider).toHaveAttribute('max', '1024');
+        expect(screen.getByText('1 GB')).toBeInTheDocument();
+        expect(screen.queryByText('2 GB')).not.toBeInTheDocument();
+    });
+
     it('shows corridor controls in the debug tab', () => {
         renderDialog();
 
@@ -69,5 +81,40 @@ describe('ExportDialog corridor flags', () => {
                 outerWallCorridorDiagnostics: true,
             }),
         }));
+    });
+
+    it('emits explicit tolerance overrides from the export tab', () => {
+        const { onPreview } = renderDialog();
+
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Surface error tolerance' }), {
+            target: { value: '0.0008' },
+        });
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Feature drift tolerance' }), {
+            target: { value: '0.0006' },
+        });
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Normal error tolerance' }), {
+            target: { value: '2.5' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Preview Stats' }));
+
+        expect(onPreview).toHaveBeenCalledTimes(1);
+        expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({
+            toleranceOverrides: expect.objectContaining({
+                epsPosMm: 0.0008,
+                epsFeatureMm: 0.0006,
+                epsNormalDeg: 2.5,
+            }),
+        }));
+    });
+
+    it('surfaces generation errors inside the dialog', () => {
+        renderDialog({
+            generationStatus: 'error',
+            generationPhase: 'Parametric export failed: requested tolerance needs about 75,445,704 triangles',
+        });
+
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            'Parametric export failed: requested tolerance needs about 75,445,704 triangles',
+        );
     });
 });

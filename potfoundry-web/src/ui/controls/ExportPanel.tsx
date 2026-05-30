@@ -706,6 +706,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
         onExport={handleDialogExport}
         onPreview={handleDialogPreview}
         isGenerating={parametricExport.progress.status === 'generating'}
+        generationStatus={parametricExport.progress.status}
         generationPhase={dialogPhase}
         generationProgress={dialogProgress}
         stats={dialogStats}

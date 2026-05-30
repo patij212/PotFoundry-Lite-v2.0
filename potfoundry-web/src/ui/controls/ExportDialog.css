@@ -457,6 +457,47 @@
     color: var(--ed-text);
 }
 
+.ed-number-input {
+    width: 92px;
+    height: 28px;
+    padding: 4px 8px;
+    border-radius: var(--ed-radius-sm);
+    border: 1px solid var(--ed-border);
+    background: var(--ed-bg-raised);
+    color: var(--ed-text);
+    font-family: var(--ed-mono);
+    font-size: 11px;
+    text-align: right;
+    outline: none;
+}
+
+.ed-number-input:hover {
+    border-color: var(--ed-border-hover);
+}
+
+.ed-number-input:focus {
+    border-color: var(--ed-border-focus);
+    box-shadow: 0 0 0 2px var(--ed-amber-glow);
+}
+
+.ed-tolerance-grid {
+    background: var(--ed-bg-raised);
+    border: 1px solid var(--ed-border);
+    border-radius: var(--ed-radius-sm);
+    padding: 8px 14px;
+    display: grid;
+    grid-template-columns: 1fr;
+}
+
+.ed-tolerance-grid .ed-param-row {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--ed-border);
+}
+
+.ed-tolerance-grid .ed-param-row:last-child {
+    border-bottom: none;
+}
+
 /* ============================================================================
    Format options
    ============================================================================ */
@@ -635,6 +676,46 @@
     border-radius: 4px;
     padding: 5px 9px;
     line-height: 1.4;
+}
+
+.ed-error {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    color: var(--ed-red);
+    background: var(--ed-red-glow);
+    border: 1px solid rgba(201,110,110,0.24);
+    border-radius: var(--ed-radius-sm);
+    padding: 10px 12px;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.ed-error svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.ed-shell-error {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin: 12px 20px 0;
+    max-height: 86px;
+    overflow-y: auto;
+    color: var(--ed-red);
+    background: var(--ed-red-glow);
+    border: 1px solid rgba(201,110,110,0.24);
+    border-radius: var(--ed-radius-sm);
+    padding: 10px 12px;
+    font-size: 11px;
+    line-height: 1.45;
+    flex-shrink: 0;
+}
+
+.ed-shell-error svg {
+    flex-shrink: 0;
+    margin-top: 2px;
 }
 
 /* ============================================================================

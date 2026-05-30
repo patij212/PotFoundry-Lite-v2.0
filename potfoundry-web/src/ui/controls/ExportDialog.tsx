@@ -12,6 +12,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { PipelineFeatureFlags } from '../../renderers/webgpu/parametric/contracts';
 import type { QualityProfileName, ExportTolerances, ChainStripMode } from '../../renderers/webgpu/parametric/types';
+import { QUALITY_PROFILES as PROFILE_DEFINITIONS } from '../../renderers/webgpu/parametric/QualityProfiles';
 import './ExportDialog.css';
 
 // ============================================================================
@@ -19,6 +20,7 @@ import './ExportDialog.css';
 // ============================================================================
 
 export type ExportFormat = 'stl' | '3mf' | 'obj';
+type GenerationStatus = 'idle' | 'initializing' | 'generating' | 'complete' | 'error';
 type TabId = 'export' | 'pipeline' | 'debug';
 
 /**
@@ -112,6 +114,7 @@ export interface ExportDialogProps {
     /** Called when the user clicks Preview Stats — caller handles generation only. */
     onPreview: (config: ExportDialogConfig) => void;
     isGenerating: boolean;
+    generationStatus: GenerationStatus;
     generationPhase: string;
     generationProgress: number;
     stats: ExportDialogStats | null;
@@ -134,6 +137,8 @@ const QUALITY_PROFILES = {
     high: { label: 'High', trisLabel: '4M', mb: 200, desc: 'Detail-first' },
     ultra: { label: 'Ultra', trisLabel: '8M', mb: 400, desc: 'SLA/Resin ready' },
 } as const;
+
+const MAX_EXPORT_MB = 1024;
 
 export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
     numStrips: 16,
@@ -158,7 +163,7 @@ const DEFAULT_FLAGS: Partial<PipelineFeatureFlags> = {
     metricAwareRefinement: false,
     distortionGating: false,
     gpuFidelityCheck: false,
-    seamHealing: false,
+    seamHealing: true,
     edgeCollapseEnabled: false,
     outerWallCorridorPlanning: false,
     outerWallCorridorDiagnostics: false,
@@ -254,6 +259,31 @@ const RangeSlider: React.FC<RangeSliderProps> = ({ value, min, max, step, onChan
     );
 };
 
+interface NumberInputProps {
+    label: string;
+    value: number;
+    min: number;
+    max: number;
+    step: number;
+    onChange: (v: number) => void;
+}
+
+const NumberInput: React.FC<NumberInputProps> = ({ label, value, min, max, step, onChange }) => (
+    <input
+        className="ed-number-input"
+        type="number"
+        aria-label={label}
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={e => {
+            const next = Number(e.currentTarget.value);
+            if (Number.isFinite(next)) onChange(next);
+        }}
+    />
+);
+
 interface StageSectionProps {
     id: string;
     phase: string;
@@ -313,6 +343,8 @@ interface ExportTabProps {
     onFormatChange: (f: ExportFormat) => void;
     budgetMB: number;
     onBudgetChange: (mb: number) => void;
+    tolerances: ExportTolerances;
+    onToleranceChange: <K extends keyof ExportTolerances>(key: K, value: ExportTolerances[K]) => void;
     stats: ExportDialogStats | null;
     validation: ExportDialogValidation | null;
     isGenerating: boolean;
@@ -324,6 +356,7 @@ const ExportTab: React.FC<ExportTabProps> = ({
     qualityProfile, onQualitySelect,
     format, onFormatChange,
     budgetMB, onBudgetChange,
+    tolerances, onToleranceChange,
     stats, validation,
     isGenerating, generationPhase, generationProgress,
 }) => {
@@ -358,15 +391,71 @@ const ExportTab: React.FC<ExportTabProps> = ({
             <div className="ed-section">
                 <div className="ed-section__label">FILE SIZE TARGET</div>
                 <RangeSlider
-                    value={budgetMB} min={25} max={2000} step={25}
+                    value={budgetMB} min={25} max={MAX_EXPORT_MB} step={25}
                     onChange={onBudgetChange}
                     format={v => v >= 1000 ? `${(v / 1000).toFixed(1)} GB` : `${v} MB`}
                 />
                 <div className="ed-budget-meta">
                     <span className="ed-budget-hint">≈ {trisLabel} triangles</span>
                     <div className="ed-budget-scale">
-                        <span>25 MB</span><span>500 MB</span><span>1 GB</span><span>2 GB</span>
+                        <span>25 MB</span><span>250 MB</span><span>500 MB</span><span>1 GB</span>
                     </div>
+                </div>
+            </div>
+
+            <div className="ed-section">
+                <div className="ed-section__label">TOLERANCE GATES</div>
+                <div className="ed-tolerance-grid">
+                    <ParamRow label="Surface error" hint="mm">
+                        <NumberInput
+                            label="Surface error tolerance"
+                            value={tolerances.epsPosMm}
+                            min={0.0001}
+                            max={1}
+                            step={0.0001}
+                            onChange={v => onToleranceChange('epsPosMm', v)}
+                        />
+                    </ParamRow>
+                    <ParamRow label="Feature drift" hint="mm">
+                        <NumberInput
+                            label="Feature drift tolerance"
+                            value={tolerances.epsFeatureMm}
+                            min={0.0001}
+                            max={1}
+                            step={0.0001}
+                            onChange={v => onToleranceChange('epsFeatureMm', v)}
+                        />
+                    </ParamRow>
+                    <ParamRow label="Normal error" hint="degrees">
+                        <NumberInput
+                            label="Normal error tolerance"
+                            value={tolerances.epsNormalDeg}
+                            min={0.1}
+                            max={45}
+                            step={0.1}
+                            onChange={v => onToleranceChange('epsNormalDeg', v)}
+                        />
+                    </ParamRow>
+                    <ParamRow label="Min angle" hint="degrees">
+                        <NumberInput
+                            label="Minimum triangle angle"
+                            value={tolerances.minTriangleAngleDeg}
+                            min={1}
+                            max={45}
+                            step={1}
+                            onChange={v => onToleranceChange('minTriangleAngleDeg', v)}
+                        />
+                    </ParamRow>
+                    <ParamRow label="Max aspect" hint="R/r">
+                        <NumberInput
+                            label="Maximum triangle aspect ratio"
+                            value={tolerances.maxAspectRatio}
+                            min={2}
+                            max={100}
+                            step={0.5}
+                            onChange={v => onToleranceChange('maxAspectRatio', v)}
+                        />
+                    </ParamRow>
                 </div>
             </div>
 
@@ -518,7 +607,7 @@ const PipelineTab: React.FC<PipelineTabProps> = ({ pipeline, onChange, expandedS
                         format={v => v.toLocaleString()} />
                 </ParamRow>
                 <ParamRow label="Feature budget" hint="Extra budget for row insertion + feature columns; base mesh budget is unchanged">
-                    <RangeSlider value={pipeline.featureBudgetMB} min={0} max={2000} step={25}
+                    <RangeSlider value={pipeline.featureBudgetMB} min={0} max={MAX_EXPORT_MB} step={25}
                         onChange={v => onChange('featureBudgetMB', v)}
                         format={v => v >= 1000 ? `${(v / 1000).toFixed(1)} GB` : `${v} MB`} />
                 </ParamRow>
@@ -775,7 +864,7 @@ const DebugTab: React.FC<DebugTabProps> = ({
 export const ExportDialog: React.FC<ExportDialogProps> = ({
     isOpen, onClose, potName = 'PotFoundry',
     onExport, onPreview,
-    isGenerating, generationPhase, generationProgress,
+    isGenerating, generationStatus, generationPhase, generationProgress,
     stats, validation, diagnostics, isAvailable,
     showChainOverlay, showPeakOverlay, onChainOverlayChange, onPeakOverlayChange,
 }) => {
@@ -783,6 +872,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
     const [qualityProfile, setQualityProfile] = useState<QualityProfileName>('standard');
     const [format, setFormat] = useState<ExportFormat>('stl');
     const [budgetMB, setBudgetMB] = useState(100);
+    const [tolerances, setTolerances] = useState<ExportTolerances>({ ...PROFILE_DEFINITIONS.standard.tolerances });
     const [pipeline, setPipeline] = useState<PipelineConfig>(DEFAULT_PIPELINE_CONFIG);
     const [flags, setFlags] = useState<Partial<PipelineFeatureFlags>>(DEFAULT_FLAGS);
     const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
@@ -791,6 +881,11 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
     const handleQualitySelect = useCallback((p: QualityProfileName) => {
         setQualityProfile(p);
         setBudgetMB(QUALITY_PROFILES[p].mb);
+        setTolerances({ ...PROFILE_DEFINITIONS[p].tolerances });
+    }, []);
+
+    const setToleranceField = useCallback(<K extends keyof ExportTolerances>(key: K, value: ExportTolerances[K]) => {
+        setTolerances(prev => ({ ...prev, [key]: value }));
     }, []);
 
     const toggleStage = useCallback((id: string) => {
@@ -828,8 +923,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
     }, []);
 
     const buildConfig = useCallback((): ExportDialogConfig => ({
-        qualityProfile, format, budgetMB, pipeline, featureFlags: flags,
-    }), [qualityProfile, format, budgetMB, pipeline, flags]);
+        qualityProfile, format, budgetMB, pipeline, featureFlags: flags, toleranceOverrides: tolerances,
+    }), [qualityProfile, format, budgetMB, pipeline, flags, tolerances]);
 
     // Close on backdrop click
     const handleBackdrop = useCallback((e: React.MouseEvent) => {
@@ -882,6 +977,13 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
                     <div className="ed-tabs__rule" />
                 </div>
 
+                {generationStatus === 'error' && generationPhase && (
+                    <div className="ed-shell-error" role="alert">
+                        <IconAlert />
+                        <span>{generationPhase}</span>
+                    </div>
+                )}
+
                 {/* Content */}
                 <div className="ed-content">
                     {activeTab === 'export' && (
@@ -892,6 +994,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
                             onFormatChange={setFormat}
                             budgetMB={budgetMB}
                             onBudgetChange={setBudgetMB}
+                            tolerances={tolerances}
+                            onToleranceChange={setToleranceField}
                             stats={stats}
                             validation={validation}
                             isGenerating={isGenerating}
