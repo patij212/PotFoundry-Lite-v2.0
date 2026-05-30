@@ -100,7 +100,10 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       const tRef0 = Date.now();
       const dense = await deps.generateReference();
       if (!dense) throw new Error('Fidelity: GPU-grid reference generateReference returned null');
-      const denseVertices = dense.vertices.slice(); // copy before next generate reuses buffers
+      // Copy before the next generate reuses buffers. Indices feed the
+      // nearest-surface index for non-vertical (base/drain/rim + sloped foot) sag.
+      const denseVertices = dense.vertices.slice();
+      const denseIndices = dense.indices.slice();
       const refMs = Date.now() - tRef0;
 
       // Under-test mesh via the parametric pipeline at the requested budget.
@@ -129,6 +132,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         styleId,
         mesh: { vertices: mesh.vertices, indices: mesh.indices },
         denseVertices,
+        denseIndices,
         features: { expected, present },
         weldToleranceMm: WELD_TOL_MM,
         sagSampleOrder: opts.sagSampleOrder,

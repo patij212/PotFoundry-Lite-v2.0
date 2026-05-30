@@ -171,10 +171,226 @@ function barycentricSamples(order: number): Array<[number, number, number]> {
 }
 
 /**
- * Radial sag of each triangle's interior vs R_true. For each barycentric
- * sample point P, deviation = |hypot(P.x,P.y) − R_true(atan2(P.y,P.x), P.z)|.
+ * Cutoff for the radial-vs-nearest sag split, expressed as |n_z|/|n| (the cosine
+ * of the angle between the face normal and the vertical axis). The radial model
+ * r=R(θ,z) is single-valued — and the radial sag metric valid — only on
+ * near-VERTICAL walls (small |n_z|/|n|). Anywhere the surface tilts toward
+ * horizontal (base, drain, rim, AND the sloped foot/base fillet) the radial
+ * parameterization folds in z and the metric is degenerate, so triangles at or
+ * above this cosine are measured by true nearest-surface distance instead.
+ * Set above the flared-wall band (a wall flaring Rb→Rt over H sits near ~0.2)
+ * so ordinary walls stay on the cheap radial path with margin.
  */
-export function sagDeviation(mesh: MeshView, rTrue: RTrue, order = 4): SagResult {
+const NEAR_VERTICAL_COS = 0.35;
+
+/** Spatial index over reference triangles, queryable by nearest-surface distance. */
+export interface NearestSurface {
+  /** Squared distance from (px,py,pz) to the closest reference triangle. */
+  nearestDist2(px: number, py: number, pz: number): number;
+}
+
+export interface NearestSurfaceOptions {
+  /** |n_z|/|n| at/above which a reference triangle is indexed (non-vertical). */
+  minNonVerticalCos?: number; // default NEAR_VERTICAL_COS
+  /** XY spatial-hash cell size in mm. Small keeps candidates-per-query low on
+   *  the dense reference (~0.1mm triangles → a 2mm cell holds a few hundred). */
+  cellMm?: number; // default 2
+}
+
+/**
+ * Build a nearest-surface index from the dense reference's NON-VERTICAL triangles
+ * (base/drain/rim discs and the sloped foot/base fillet — everything where the
+ * radial metric is degenerate). Triangles are hashed by their XY bounding box
+ * into a uniform grid; nearestDist2 searches the query cell outward in rings
+ * until a candidate is found (plus one safety ring), using exact closest-point-
+ * on-triangle distance. Near-vertical walls are excluded — they stay on the
+ * cheap radial path, which keeps the dense wall bulk out of the index.
+ */
+export function buildNearestSurface(
+  denseVertices: Float32Array,
+  denseIndices: Uint32Array,
+  options: NearestSurfaceOptions = {},
+): NearestSurface {
+  const minNonVerticalCos = options.minNonVerticalCos ?? NEAR_VERTICAL_COS;
+  const cell = options.cellMm ?? 2;
+  const invCell = 1 / cell;
+
+  // Flat triangle coords (9 per triangle) for the horizontal subset.
+  const tris: number[] = [];
+  const cellMap = new Map<string, number[]>(); // "cx,cy" -> triangle base indices (into tris/9)
+
+  const addToCell = (cx: number, cy: number, triBase: number): void => {
+    const key = `${cx},${cy}`;
+    let list = cellMap.get(key);
+    if (!list) { list = []; cellMap.set(key, list); }
+    list.push(triBase);
+  };
+
+  for (let t = 0; t < denseIndices.length; t += 3) {
+    const ia = denseIndices[t] * 3;
+    const ib = denseIndices[t + 1] * 3;
+    const ic = denseIndices[t + 2] * 3;
+    const ax = denseVertices[ia], ay = denseVertices[ia + 1], az = denseVertices[ia + 2];
+    const bx = denseVertices[ib], by = denseVertices[ib + 1], bz = denseVertices[ib + 2];
+    const cx = denseVertices[ic], cy = denseVertices[ic + 1], cz = denseVertices[ic + 2];
+
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const nx = uy * vz - uz * vy;
+    const ny = uz * vx - ux * vz;
+    const nz = ux * vy - uy * vx;
+    const nlen = Math.hypot(nx, ny, nz);
+    if (nlen <= 1e-12) continue; // degenerate
+    if (Math.abs(nz) / nlen < minNonVerticalCos) continue; // near-vertical wall → radial path
+
+    const triBase = tris.length / 9;
+    tris.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+
+    const minCx = Math.floor(Math.min(ax, bx, cx) * invCell);
+    const maxCx = Math.floor(Math.max(ax, bx, cx) * invCell);
+    const minCy = Math.floor(Math.min(ay, by, cy) * invCell);
+    const maxCy = Math.floor(Math.max(ay, by, cy) * invCell);
+    for (let gx = minCx; gx <= maxCx; gx++) {
+      for (let gy = minCy; gy <= maxCy; gy++) addToCell(gx, gy, triBase);
+    }
+  }
+
+  const triCount = tris.length / 9;
+
+  const distToTri = (px: number, py: number, pz: number, triBase: number): number => {
+    const o = triBase * 9;
+    return closestPtTriDist2(
+      px, py, pz,
+      tris[o], tris[o + 1], tris[o + 2],
+      tris[o + 3], tris[o + 4], tris[o + 5],
+      tris[o + 6], tris[o + 7], tris[o + 8],
+    );
+  };
+
+  return {
+    nearestDist2(px: number, py: number, pz: number): number {
+      if (triCount === 0) return Infinity;
+      const qx = Math.floor(px * invCell);
+      const qy = Math.floor(py * invCell);
+      let best = Infinity;
+      let foundRing = -1;
+      // Expand in square rings; once a candidate is found, search one more ring
+      // (a closer triangle can sit just across a cell boundary) then stop.
+      const maxRing = 4096;
+      for (let ring = 0; ring <= maxRing; ring++) {
+        if (foundRing >= 0 && ring > foundRing + 1) break;
+        for (let gx = qx - ring; gx <= qx + ring; gx++) {
+          for (let gy = qy - ring; gy <= qy + ring; gy++) {
+            // Only the ring perimeter is new on each iteration.
+            if (ring > 0 && gx > qx - ring && gx < qx + ring && gy > qy - ring && gy < qy + ring) {
+              continue;
+            }
+            const list = cellMap.get(`${gx},${gy}`);
+            if (!list) continue;
+            for (const triBase of list) {
+              const d2 = distToTri(px, py, pz, triBase);
+              if (d2 < best) best = d2;
+            }
+            if (list.length > 0 && foundRing < 0) foundRing = ring;
+          }
+        }
+      }
+      // Fallback: sparse/extreme query that missed every populated cell ring —
+      // brute-force so the measurement is never silently Infinity.
+      if (best === Infinity) {
+        for (let triBase = 0; triBase < triCount; triBase++) {
+          const d2 = distToTri(px, py, pz, triBase);
+          if (d2 < best) best = d2;
+        }
+      }
+      return best;
+    },
+  };
+}
+
+/** Squared distance between two points. */
+function pointDist2(
+  px: number, py: number, pz: number,
+  qx: number, qy: number, qz: number,
+): number {
+  const dx = px - qx, dy = py - qy, dz = pz - qz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+/**
+ * Squared distance from point P to triangle ABC. Ericson, "Real-Time Collision
+ * Detection" §5.1.5 (closest point on triangle via Voronoi regions of the
+ * vertices, edges, and face interior).
+ */
+function closestPtTriDist2(
+  px: number, py: number, pz: number,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  cx: number, cy: number, cz: number,
+): number {
+  const abx = bx - ax, aby = by - ay, abz = bz - az;
+  const acx = cx - ax, acy = cy - ay, acz = cz - az;
+  const apx = px - ax, apy = py - ay, apz = pz - az;
+  const d1 = abx * apx + aby * apy + abz * apz;
+  const d2 = acx * apx + acy * apy + acz * apz;
+  if (d1 <= 0 && d2 <= 0) return pointDist2(px, py, pz, ax, ay, az); // vertex A
+
+  const bpx = px - bx, bpy = py - by, bpz = pz - bz;
+  const d3 = abx * bpx + aby * bpy + abz * bpz;
+  const d4 = acx * bpx + acy * bpy + acz * bpz;
+  if (d3 >= 0 && d4 <= d3) return pointDist2(px, py, pz, bx, by, bz); // vertex B
+
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) { // edge AB
+    const v = d1 / (d1 - d3);
+    return pointDist2(px, py, pz, ax + v * abx, ay + v * aby, az + v * abz);
+  }
+
+  const cpx = px - cx, cpy = py - cy, cpz = pz - cz;
+  const d5 = abx * cpx + aby * cpy + abz * cpz;
+  const d6 = acx * cpx + acy * cpy + acz * cpz;
+  if (d6 >= 0 && d5 <= d6) return pointDist2(px, py, pz, cx, cy, cz); // vertex C
+
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) { // edge AC
+    const w = d2 / (d2 - d6);
+    return pointDist2(px, py, pz, ax + w * acx, ay + w * acy, az + w * acz);
+  }
+
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { // edge BC
+    const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+    return pointDist2(px, py, pz, bx + w * (cx - bx), by + w * (cy - by), bz + w * (cz - bz));
+  }
+
+  // Inside face region — project onto the plane via barycentric coords.
+  const denom = 1 / (va + vb + vc);
+  const v = vb * denom;
+  const w = vc * denom;
+  return pointDist2(
+    px, py, pz,
+    ax + abx * v + acx * w,
+    ay + aby * v + acy * w,
+    az + abz * v + acz * w,
+  );
+}
+
+/**
+ * Per-triangle sag vs the reference. Each test triangle is classified by its
+ * face normal: non-vertical triangles (|n_z|/|n| >= NEAR_VERTICAL_COS — base,
+ * drain, rim, AND the sloped foot/base fillet), when a `nearestSurface` is
+ * supplied, are measured by true nearest-surface distance, because the radial
+ * metric is degenerate wherever the surface tilts off vertical. Near-vertical
+ * wall triangles keep the radial deviation |hypot(P.x,P.y) −
+ * R_true(atan2(P.y,P.x), P.z)|. Omitting `nearestSurface` preserves the
+ * pure-radial behavior exactly.
+ */
+export function sagDeviation(
+  mesh: MeshView,
+  rTrue: RTrue,
+  order = 4,
+  nearestSurface?: NearestSurface,
+): SagResult {
   const { vertices, indices } = mesh;
   const samples = barycentricSamples(order);
   let maxSag = 0;
@@ -189,12 +405,28 @@ export function sagDeviation(mesh: MeshView, rTrue: RTrue, order = 4): SagResult
     const bx = vertices[ib], by = vertices[ib + 1], bz = vertices[ib + 2];
     const cx = vertices[ic], cy = vertices[ic + 1], cz = vertices[ic + 2];
 
+    let useSurface = false;
+    if (nearestSurface !== undefined) {
+      const ux = bx - ax, uy = by - ay, uz = bz - az;
+      const vx = cx - ax, vy = cy - ay, vz = cz - az;
+      const nx = uy * vz - uz * vy;
+      const ny = uz * vx - ux * vz;
+      const nz = ux * vy - uy * vx;
+      const nlen = Math.hypot(nx, ny, nz);
+      useSurface = nlen > 1e-12 && Math.abs(nz) / nlen >= NEAR_VERTICAL_COS;
+    }
+
     for (const [wa, wb, wc] of samples) {
       const px = ax * wa + bx * wb + cx * wc;
       const py = ay * wa + by * wb + cy * wc;
       const pz = az * wa + bz * wb + cz * wc;
-      const r = Math.hypot(px, py);
-      const dev = Math.abs(r - rTrue(Math.atan2(py, px), pz));
+      let dev: number;
+      if (useSurface) {
+        dev = Math.sqrt(nearestSurface!.nearestDist2(px, py, pz));
+      } else {
+        const r = Math.hypot(px, py);
+        dev = Math.abs(r - rTrue(Math.atan2(py, px), pz));
+      }
       if (dev > maxSag) maxSag = dev;
       sumSq += dev * dev;
       count++;
@@ -370,6 +602,13 @@ export interface ComputeFidelityArgs {
   styleId: string;
   mesh: MeshView;
   denseVertices: Float32Array;
+  /**
+   * Reference triangle indices. When supplied, non-vertical surfaces (base/drain/
+   * rim and the sloped foot/base fillet) are measured by true nearest-surface
+   * distance instead of the degenerate radial metric. Omit to keep the
+   * pure-radial measurement.
+   */
+  denseIndices?: Uint32Array;
   features: { expected: number; present: number };
   weldToleranceMm: number;
   sagSampleOrder?: number;
@@ -378,9 +617,12 @@ export interface ComputeFidelityArgs {
 
 /** Assemble a complete FidelityMetrics row from a mesh-under-test + dense reference. */
 export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetrics {
-  const { styleId, mesh, denseVertices, features, weldToleranceMm } = args;
+  const { styleId, mesh, denseVertices, denseIndices, features, weldToleranceMm } = args;
   const ref = buildRadialReference(denseVertices);
-  const sag = sagDeviation(mesh, ref.rTrue, args.sagSampleOrder ?? 4);
+  const nearestSurface = denseIndices
+    ? buildNearestSurface(denseVertices, denseIndices)
+    : undefined;
+  const sag = sagDeviation(mesh, ref.rTrue, args.sagSampleOrder ?? 4, nearestSurface);
   const quality = triangleQuality3D(mesh);
   const topo = topologyMetric(mesh, weldToleranceMm);
   const dropped = Math.max(0, features.expected - features.present);

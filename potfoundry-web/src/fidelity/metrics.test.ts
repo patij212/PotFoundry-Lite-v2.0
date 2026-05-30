@@ -255,3 +255,111 @@ describe('topologyMetric non-manifold detection', () => {
     expect(out.nonManifoldEdges).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Surface-aware sag: the radial metric (|hypot(x,y) − R(θ,z)|) is degenerate on
+// horizontal surfaces (base/drain/rim), where many radii map to one (θ,z) bin —
+// it reports large false "sag" on a geometrically perfect flat disc. The fix
+// classifies each test triangle by face normal: near-horizontal triangles are
+// measured by true nearest-surface (point-to-triangle) distance against the
+// dense reference; vertical wall triangles keep the radial metric.
+// ---------------------------------------------------------------------------
+
+import { buildNearestSurface } from './metrics';
+
+/** Triangle-fan disc of radius R at height z (center vertex + ring). Horizontal. */
+function flatDisc(R: number, z: number, nSides: number): { vertices: Float32Array; indices: Uint32Array } {
+  const verts: number[] = [0, 0, z]; // center = index 0
+  for (let i = 0; i < nSides; i++) {
+    const th = (i / nSides) * TAU;
+    verts.push(Math.cos(th) * R, Math.sin(th) * R, z);
+  }
+  const idx: number[] = [];
+  for (let i = 0; i < nSides; i++) {
+    idx.push(0, 1 + i, 1 + ((i + 1) % nSides));
+  }
+  return { vertices: new Float32Array(verts), indices: new Uint32Array(idx) };
+}
+
+/** Single-band frustum: ring of radius Rb at z=0 up to Rt at z=H. Sloped facets. */
+function coneFrustum(Rb: number, Rt: number, H: number, nSides: number): { vertices: Float32Array; indices: Uint32Array } {
+  const verts: number[] = [];
+  for (let i = 0; i < nSides; i++) {
+    const th = (i / nSides) * TAU;
+    verts.push(Math.cos(th) * Rb, Math.sin(th) * Rb, 0);
+  }
+  for (let i = 0; i < nSides; i++) {
+    const th = (i / nSides) * TAU;
+    verts.push(Math.cos(th) * Rt, Math.sin(th) * Rt, H);
+  }
+  const idx: number[] = [];
+  for (let i = 0; i < nSides; i++) {
+    const a = i;
+    const b = (i + 1) % nSides;
+    const c = i + nSides;
+    const d = ((i + 1) % nSides) + nSides;
+    idx.push(a, b, c, b, d, c);
+  }
+  return { vertices: new Float32Array(verts), indices: new Uint32Array(idx) };
+}
+
+describe('buildNearestSurface', () => {
+  it('reports ~0 distance on the surface and ~d² at height d', () => {
+    const disc = flatDisc(40, 0, 64);
+    const surf = buildNearestSurface(disc.vertices, disc.indices);
+    // Point lying on the disc plane within its radius → distance 0.
+    expect(surf.nearestDist2(10, 0, 0)).toBeLessThan(1e-4);
+    // Point 5mm above the disc → squared distance ≈ 25.
+    expect(surf.nearestDist2(10, 0, 5)).toBeCloseTo(25, 1);
+  });
+});
+
+describe('sagDeviation surface-aware horizontal path', () => {
+  it('radial metric reports false sag on a perfect flat disc; surface-aware reads ~0', () => {
+    const disc = flatDisc(40, 0, 64);
+    const surf = buildNearestSurface(disc.vertices, disc.indices);
+    const rTrue = () => 40; // single-valued radial model is wrong for a disc
+    const radial = sagDeviation(disc, rTrue, 4);
+    const aware = sagDeviation(disc, rTrue, 4, surf);
+    // Radial wrongly sees ~30mm because interior points have r far below 40.
+    expect(radial.maxSagMm).toBeGreaterThan(10);
+    // Surface-aware correctly sees the disc lying exactly on the reference.
+    expect(aware.maxSagMm).toBeLessThan(0.5);
+  });
+
+  it('surface-aware path catches a real displacement (disc lifted to z=20)', () => {
+    const refDisc = flatDisc(40, 0, 64);
+    const surf = buildNearestSurface(refDisc.vertices, refDisc.indices);
+    const testDisc = flatDisc(40, 20, 64);
+    const rTrue = () => 40;
+    const aware = sagDeviation(testDisc, rTrue, 4, surf);
+    expect(aware.maxSagMm).toBeCloseTo(20, 0);
+    expect(aware.rmsSagMm).toBeCloseTo(20, 0);
+  });
+
+  it('leaves vertical wall triangles on the radial path (surface arg ignored)', () => {
+    const mesh = facetedCylinder(40, 100, 8); // vertical facets, radial normals
+    const disc = flatDisc(40, 0, 64);
+    const surf = buildNearestSurface(disc.vertices, disc.indices);
+    const rTrue = () => 40;
+    const without = sagDeviation(mesh, rTrue, 6);
+    const withSurf = sagDeviation(mesh, rTrue, 6, surf);
+    expect(withSurf.maxSagMm).toBeCloseTo(without.maxSagMm, 10);
+    expect(withSurf.rmsSagMm).toBeCloseTo(without.rmsSagMm, 10);
+  });
+
+  it('measures SLOPED surfaces by nearest-surface, not radial (the foot/fillet band)', () => {
+    // A 45°-sloped frustum (Rt-Rb == H) has |n_z|/|n| ≈ 0.707 — non-vertical, so
+    // the radial r=R(θ,z) model is degenerate there. The nearest-surface path
+    // sees the test surface lying on the matching reference (~0); the radial path,
+    // given a deliberately-wrong rTrue, reports a large false sag.
+    const ref = coneFrustum(20, 60, 40, 96);
+    const surf = buildNearestSurface(ref.vertices, ref.indices);
+    const test = coneFrustum(20, 60, 40, 96); // coincident facets
+    const wrongRadial = () => 0; // intentionally wrong single-valued model
+    const aware = sagDeviation(test, wrongRadial, 4, surf);
+    const radial = sagDeviation(test, wrongRadial, 4);
+    expect(aware.maxSagMm).toBeLessThan(0.5);
+    expect(radial.maxSagMm).toBeGreaterThan(10);
+  });
+});
