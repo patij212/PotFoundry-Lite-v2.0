@@ -90,6 +90,15 @@ function createLargeMesh(triangleCount: number): MeshData {
   };
 }
 
+async function blobToBytes(blob: Blob): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -146,6 +155,15 @@ describe('exportTo3MF', () => {
       expect(content).toContain('<?xml');
       expect(content).toContain('<model');
     });
+
+    it('generates deterministic package bytes by default', async () => {
+      const mesh = createSingleTriangleMesh();
+      const first = await blobToBytes(await exportTo3MF(mesh, { name: 'Stable' }));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const second = await blobToBytes(await exportTo3MF(mesh, { name: 'Stable' }));
+
+      expect(Array.from(first)).toEqual(Array.from(second));
+    });
   });
 
   describe('model XML', () => {
@@ -197,6 +215,27 @@ describe('exportTo3MF', () => {
       const content = await model!.async('string');
 
       expect(content).toContain('unit="millimeter"');
+    });
+
+    it('omits creation date unless explicitly requested', async () => {
+      const mesh = createSingleTriangleMesh();
+      const defaultBlob = await exportTo3MF(mesh);
+      const defaultZip = await JSZip.loadAsync(defaultBlob);
+      const defaultModel = defaultZip.file('3D/3dmodel.model');
+      const defaultContent = await defaultModel!.async('string');
+
+      expect(defaultContent).not.toContain('CreationDate');
+
+      const stampedBlob = await exportTo3MF(mesh, {
+        createdAt: '2026-05-25T12:00:00.000Z',
+      });
+      const stampedZip = await JSZip.loadAsync(stampedBlob);
+      const stampedModel = stampedZip.file('3D/3dmodel.model');
+      const stampedContent = await stampedModel!.async('string');
+
+      expect(stampedContent).toContain(
+        '<metadata name="CreationDate">2026-05-25T12:00:00.000Z</metadata>',
+      );
     });
   });
 

@@ -8,6 +8,7 @@
  */
 
 import { MeshData, Vec3, STLExportOptions } from './types';
+import { assertMeshExportable } from './exportValidation';
 
 // ============================================================================
 // Export Format Types
@@ -23,6 +24,10 @@ export type ExportFormat = 'stl' | '3mf' | 'obj';
  */
 export interface ExportOptions extends Partial<STLExportOptions> {
   format?: ExportFormat;
+  /** Run slicer-oriented print-readiness validation before export. Defaults to true. */
+  validateMesh?: boolean;
+  /** Require globally consistent adjacent face winding. Defaults to false for download paths. */
+  requireConsistentOrientation?: boolean;
   /** Colors for 3MF color embedding (primaryColor, midColor, secondaryColor) */
   colors?: {
     primaryColor: string;
@@ -30,6 +35,22 @@ export interface ExportOptions extends Partial<STLExportOptions> {
     secondaryColor: string;
   };
 }
+
+type STLDownloadOptions = Partial<STLExportOptions> & {
+  /** Run slicer-oriented print-readiness validation before STL download. Defaults to true. */
+  validateMesh?: boolean;
+  /** Require globally consistent adjacent face winding. Defaults to false for download paths. */
+  requireConsistentOrientation?: boolean;
+  /** Reorder triangle winding coherently before writing STL. Defaults to true. */
+  repairOrientation?: boolean;
+};
+
+interface EdgeUseForOrientation {
+  tri: number;
+  forward: boolean;
+}
+
+const STL_ORIENTATION_WELD_TOLERANCE_MM = 0.001;
 
 /**
  * Export mesh to the specified format
@@ -45,6 +66,8 @@ export async function exportMesh(
   name: string = 'PotFoundry',
   colors?: ExportOptions['colors']
 ): Promise<Blob> {
+  assertMeshExportable(mesh, { format });
+
   if (format === '3mf') {
     const { exportTo3MF } = await import('./exporters/export3MF');
     return exportTo3MF(mesh, { name, colors });
@@ -78,6 +101,13 @@ export async function downloadMesh(
   }
   const name = options.name ?? filename.replace(/\.(stl|3mf|obj)$/i, '');
 
+  if (options.validateMesh !== false) {
+    assertMeshExportable(mesh, {
+      format,
+      requireConsistentOrientation: options.requireConsistentOrientation ?? false,
+    });
+  }
+
   if (format === '3mf') {
     const { download3MF } = await import('./exporters/export3MF');
     await download3MF(mesh, filename, { name, colors: options.colors });
@@ -91,7 +121,7 @@ export async function downloadMesh(
   }
 
   // Use existing STL download
-  downloadSTL(mesh, filename, { ...options, name });
+  downloadSTL(mesh, filename, { ...options, name, validateMesh: false });
 }
 
 // ============================================================================
@@ -125,6 +155,178 @@ function computeNormal(
   return [n[0] / len, n[1] / len, n[2] / len];
 }
 
+function edgeKeyForOrientation(a: number, b: number): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+function edgeForwardForOrientation(a: number, b: number): boolean {
+  return a < b;
+}
+
+function buildOrientationVertexRemap(
+  vertices: Float32Array,
+  vertexCount: number,
+  epsilon: number = STL_ORIENTATION_WELD_TOLERANCE_MM,
+): Uint32Array {
+  const remap = new Uint32Array(vertexCount);
+  if (vertexCount === 0) return remap;
+
+  const precision = Math.max(1, Math.round(1 / epsilon));
+  const quantized = new Int32Array(vertexCount * 4);
+  const order = new Uint32Array(vertexCount);
+
+  for (let i = 0; i < vertexCount; i++) {
+    quantized[i * 4] = Math.round(vertices[i * 3] * precision);
+    quantized[i * 4 + 1] = Math.round(vertices[i * 3 + 1] * precision);
+    quantized[i * 4 + 2] = Math.round(vertices[i * 3 + 2] * precision);
+    quantized[i * 4 + 3] = i;
+    order[i] = i;
+  }
+
+  order.sort((a, b) => {
+    const ax = quantized[a * 4];
+    const bx = quantized[b * 4];
+    if (ax !== bx) return ax - bx;
+
+    const ay = quantized[a * 4 + 1];
+    const by = quantized[b * 4 + 1];
+    if (ay !== by) return ay - by;
+
+    return quantized[a * 4 + 2] - quantized[b * 4 + 2];
+  });
+
+  let canonical = 0;
+  let prevX = quantized[order[0] * 4];
+  let prevY = quantized[order[0] * 4 + 1];
+  let prevZ = quantized[order[0] * 4 + 2];
+  remap[order[0]] = canonical;
+
+  for (let sortedIdx = 1; sortedIdx < vertexCount; sortedIdx++) {
+    const vertexIdx = order[sortedIdx];
+    const x = quantized[vertexIdx * 4];
+    const y = quantized[vertexIdx * 4 + 1];
+    const z = quantized[vertexIdx * 4 + 2];
+    if (x !== prevX || y !== prevY || z !== prevZ) {
+      canonical++;
+      prevX = x;
+      prevY = y;
+      prevZ = z;
+    }
+    remap[vertexIdx] = canonical;
+  }
+
+  return remap;
+}
+
+function triangleSignedVolume(vertices: Float32Array, i0: number, i1: number, i2: number): number {
+  const ax = vertices[i0 * 3], ay = vertices[i0 * 3 + 1], az = vertices[i0 * 3 + 2];
+  const bx = vertices[i1 * 3], by = vertices[i1 * 3 + 1], bz = vertices[i1 * 3 + 2];
+  const cx = vertices[i2 * 3], cy = vertices[i2 * 3 + 1], cz = vertices[i2 * 3 + 2];
+  return (
+    ax * (by * cz - bz * cy) -
+    ay * (bx * cz - bz * cx) +
+    az * (bx * cy - by * cx)
+  ) / 6;
+}
+
+/**
+ * Reorient triangle winding so adjacent faces traverse shared edges in opposite
+ * directions. This repairs STL facet normals without changing vertex positions.
+ */
+export function orientMeshForSTL(mesh: MeshData): MeshData {
+  const { vertices, indices, vertexCount, triangleCount } = mesh;
+  const oriented = new Uint32Array(indices);
+  const edgeUses = new Map<string, EdgeUseForOrientation[]>();
+  const remap = buildOrientationVertexRemap(vertices, vertexCount);
+
+  const addEdge = (a: number, b: number, tri: number) => {
+    if (a >= vertexCount || b >= vertexCount) return;
+    const ca = remap[a];
+    const cb = remap[b];
+    if (ca === cb) return;
+    const key = edgeKeyForOrientation(ca, cb);
+    const uses = edgeUses.get(key);
+    const use = { tri, forward: edgeForwardForOrientation(ca, cb) };
+    if (uses) uses.push(use);
+    else edgeUses.set(key, [use]);
+  };
+
+  for (let tri = 0; tri < triangleCount; tri++) {
+    const base = tri * 3;
+    const i0 = indices[base];
+    const i1 = indices[base + 1];
+    const i2 = indices[base + 2];
+    if (
+      i0 === i1 || i1 === i2 || i0 === i2 ||
+      i0 >= vertexCount || i1 >= vertexCount || i2 >= vertexCount ||
+      remap[i0] === remap[i1] || remap[i1] === remap[i2] || remap[i0] === remap[i2]
+    ) continue;
+    addEdge(i0, i1, tri);
+    addEdge(i1, i2, tri);
+    addEdge(i2, i0, tri);
+  }
+
+  const adjacency: Array<Array<{ tri: number; sameDirection: boolean }>> =
+    Array.from({ length: triangleCount }, () => []);
+  for (const uses of edgeUses.values()) {
+    if (uses.length !== 2) continue;
+    const [a, b] = uses;
+    const sameDirection = a.forward === b.forward;
+    adjacency[a.tri].push({ tri: b.tri, sameDirection });
+    adjacency[b.tri].push({ tri: a.tri, sameDirection });
+  }
+
+  const visited = new Uint8Array(triangleCount);
+  const flip = new Uint8Array(triangleCount);
+  const components: number[][] = [];
+
+  for (let start = 0; start < triangleCount; start++) {
+    if (visited[start]) continue;
+    const stack = [start];
+    const component: number[] = [];
+    visited[start] = 1;
+
+    while (stack.length > 0) {
+      const tri = stack.pop()!;
+      component.push(tri);
+      for (const next of adjacency[tri]) {
+        const nextFlip = next.sameDirection ? 1 - flip[tri] : flip[tri];
+        if (visited[next.tri]) continue;
+        visited[next.tri] = 1;
+        flip[next.tri] = nextFlip;
+        stack.push(next.tri);
+      }
+    }
+
+    components.push(component);
+  }
+
+  for (let tri = 0; tri < triangleCount; tri++) {
+    if (!flip[tri]) continue;
+    const base = tri * 3;
+    const tmp = oriented[base + 1];
+    oriented[base + 1] = oriented[base + 2];
+    oriented[base + 2] = tmp;
+  }
+
+  for (const component of components) {
+    let volume = 0;
+    for (const tri of component) {
+      const base = tri * 3;
+      volume += triangleSignedVolume(vertices, oriented[base], oriented[base + 1], oriented[base + 2]);
+    }
+    if (volume >= 0) continue;
+    for (const tri of component) {
+      const base = tri * 3;
+      const tmp = oriented[base + 1];
+      oriented[base + 1] = oriented[base + 2];
+      oriented[base + 2] = tmp;
+    }
+  }
+
+  return { ...mesh, indices: oriented };
+}
+
 // ============================================================================
 // Binary STL Export
 // ============================================================================
@@ -145,7 +347,8 @@ function computeNormal(
  * @returns ArrayBuffer containing binary STL data
  */
 export function generateBinarySTL(mesh: MeshData, name: string = 'PotFoundry'): ArrayBuffer {
-  const { vertices, indices, triangleCount } = mesh;
+  const exportMeshData = orientMeshForSTL(mesh);
+  const { vertices, indices, triangleCount } = exportMeshData;
 
   // Calculate buffer size: 80 header + 4 count + 50 per triangle
   const bufferSize = 84 + triangleCount * 50;
@@ -241,7 +444,8 @@ export function generateStreamingSTLBlob(
   chunkSize: number = 50000,
   onProgress?: (progress: number) => void
 ): Blob {
-  const { vertices, indices, triangleCount } = mesh;
+  const exportMeshData = orientMeshForSTL(mesh);
+  const { vertices, indices, triangleCount } = exportMeshData;
   const chunks: ArrayBuffer[] = [];
 
   // Create header chunk (84 bytes: 80 header + 4 count)
@@ -340,7 +544,8 @@ export function generateStreamingSTLBlob(
  * @returns ASCII STL string
  */
 export function generateAsciiSTL(mesh: MeshData, name: string = 'PotFoundry'): string {
-  const { vertices, indices, triangleCount } = mesh;
+  const exportMeshData = orientMeshForSTL(mesh);
+  const { vertices, indices, triangleCount } = exportMeshData;
   const lines: string[] = [];
 
   lines.push(`solid ${name}`);
@@ -396,12 +601,20 @@ export function generateAsciiSTL(mesh: MeshData, name: string = 'PotFoundry'): s
 export function downloadSTL(
   mesh: MeshData,
   filename: string = 'pot.stl',
-  options: Partial<STLExportOptions> = {}
+  options: STLDownloadOptions = {}
 ): void {
   const name = options.name ?? filename.replace(/\.stl$/i, '');
   const binary = options.binary ?? true;
 
   let blob: Blob;
+
+  if (options.validateMesh !== false) {
+    assertMeshExportable(mesh, {
+      format: 'stl',
+      estimatedSizeBytes: estimateSTLSize(mesh.triangleCount, binary),
+      requireConsistentOrientation: options.requireConsistentOrientation ?? false,
+    });
+  }
 
   if (binary) {
     // Use streaming export for large meshes to avoid memory allocation failures

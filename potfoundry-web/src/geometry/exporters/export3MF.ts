@@ -39,6 +39,8 @@ export interface Export3MFOptions {
     compressionLevel?: number;
     /** Progress callback */
     onProgress?: (progress: number, message: string) => void;
+    /** Optional creation timestamp. Omitted by default for deterministic exports. */
+    createdAt?: string;
     /** Per-triangle colors via 3MF Materials Extension (optional) */
     colors?: Export3MFColors;
 }
@@ -63,6 +65,9 @@ const RELS_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model" Id="rel0"/>
 </Relationships>`;
+
+/** Stable ZIP timestamp used so default exports are byte-deterministic. */
+const DETERMINISTIC_ZIP_DATE = new Date('1980-01-01T00:00:00.000Z');
 
 // ============================================================================
 // Color Helpers
@@ -143,7 +148,7 @@ function triangleColorIndex(
 const COLOR_PALETTE_SIZE = 64;
 
 function generateModelXML(mesh: MeshData, options: Export3MFOptions = {}): string | Blob {
-    const { name = 'PotFoundry', unit = 'millimeter', colors } = options;
+    const { name = 'PotFoundry', unit = 'millimeter', colors, createdAt } = options;
     const { vertices, indices, vertexCount, triangleCount } = mesh;
 
     // For very large meshes, use blob-based streaming (without color for simplicity)
@@ -184,7 +189,9 @@ function generateModelXML(mesh: MeshData, options: Export3MFOptions = {}): strin
     }
     lines.push('  <metadata name="Title">' + escapeXml(name) + '</metadata>');
     lines.push('  <metadata name="Application">PotFoundry</metadata>');
-    lines.push('  <metadata name="CreationDate">' + new Date().toISOString() + '</metadata>');
+    if (createdAt) {
+        lines.push('  <metadata name="CreationDate">' + escapeXml(createdAt) + '</metadata>');
+    }
     lines.push('  <resources>');
 
     // Color group resource (3MF Materials Extension)
@@ -239,7 +246,7 @@ function generateModelXML(mesh: MeshData, options: Export3MFOptions = {}): strin
  * Generate streaming model XML as Blob for ultra-large meshes
  */
 function generateStreamingModelXML(mesh: MeshData, options: Export3MFOptions = {}): Blob {
-    const { name = 'PotFoundry', unit = 'millimeter' } = options;
+    const { name = 'PotFoundry', unit = 'millimeter', createdAt } = options;
     const { vertices, indices, vertexCount, triangleCount } = mesh;
     const chunks: string[] = [];
 
@@ -248,7 +255,9 @@ function generateStreamingModelXML(mesh: MeshData, options: Export3MFOptions = {
     chunks.push(`<model unit="${unit}" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n`);
     chunks.push(`  <metadata name="Title">${escapeXml(name)}</metadata>\n`);
     chunks.push('  <metadata name="Application">PotFoundry</metadata>\n');
-    chunks.push(`  <metadata name="CreationDate">${new Date().toISOString()}</metadata>\n`);
+    if (createdAt) {
+        chunks.push(`  <metadata name="CreationDate">${escapeXml(createdAt)}</metadata>\n`);
+    }
     chunks.push('  <resources>\n');
     chunks.push(`    <object id="1" type="model" name="${escapeXml(name)}">\n`);
     chunks.push('      <mesh>\n');
@@ -331,14 +340,14 @@ export async function exportTo3MF(
     const zip = new JSZip();
 
     // Add required files
-    zip.file('[Content_Types].xml', CONTENT_TYPES_XML);
-    zip.folder('_rels')!.file('.rels', RELS_XML);
+    zip.file('[Content_Types].xml', CONTENT_TYPES_XML, { date: DETERMINISTIC_ZIP_DATE });
+    zip.file('_rels/.rels', RELS_XML, { date: DETERMINISTIC_ZIP_DATE });
 
     onProgress?.(0.3, 'Generating model data...');
 
     // Generate model XML (may be string or Blob for streaming)
     const modelData = generateModelXML(mesh, options);
-    zip.folder('3D')!.file('3dmodel.model', modelData);
+    zip.file('3D/3dmodel.model', modelData, { date: DETERMINISTIC_ZIP_DATE });
 
     onProgress?.(0.6, 'Compressing...');
 

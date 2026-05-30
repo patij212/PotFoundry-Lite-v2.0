@@ -140,6 +140,32 @@ describe('exportToOBJ', () => {
     });
   });
 
+  describe('deterministic output', () => {
+    it('omits wall-clock metadata by default', async () => {
+      const mesh = createSingleTriangleMesh();
+      const first = await exportToOBJ(mesh, { name: 'Stable' });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const second = await exportToOBJ(mesh, { name: 'Stable' });
+
+      const firstText = await blobToText(first);
+      const secondText = await blobToText(second);
+
+      expect(firstText).toBe(secondText);
+      expect(firstText).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    });
+
+    it('includes creation metadata only when explicitly requested', async () => {
+      const mesh = createSingleTriangleMesh();
+      const blob = await exportToOBJ(mesh, {
+        name: 'Stamped',
+        createdAt: '2026-05-25T12:00:00.000Z',
+      });
+
+      const text = await blobToText(blob);
+      expect(text).toContain('# Created: 2026-05-25T12:00:00.000Z');
+    });
+  });
+
   describe('1-based indexing', () => {
     it('uses 1-based vertex indices in faces', async () => {
       const mesh = createSingleTriangleMesh();

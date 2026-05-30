@@ -14,6 +14,7 @@ import {
     generateStreamingSTLBlob,
     generateAsciiSTL,
     generateSTLBlob,
+    orientMeshForSTL,
     estimateSTLSize,
     formatFileSize,
 } from './stlExport';
@@ -55,6 +56,42 @@ function createQuadMesh(): MeshData {
             0, 2, 3,   // second triangle
         ]),
         vertexCount: 4,
+        triangleCount: 2,
+    };
+}
+
+function createIncoherentQuadMesh(): MeshData {
+    return {
+        vertices: new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            1, 1, 0,
+            0, 1, 0,
+        ]),
+        indices: new Uint32Array([
+            0, 1, 2,
+            0, 3, 2,
+        ]),
+        vertexCount: 4,
+        triangleCount: 2,
+    };
+}
+
+function createDuplicateVertexIncoherentQuadMesh(): MeshData {
+    return {
+        vertices: new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            1, 1, 0,
+            0, 0, 0,
+            1, 1, 0,
+            0, 1, 0,
+        ]),
+        indices: new Uint32Array([
+            0, 1, 2,
+            3, 5, 4,
+        ]),
+        vertexCount: 6,
         triangleCount: 2,
     };
 }
@@ -215,6 +252,46 @@ describe('generateBinarySTL', () => {
         const header = String.fromCharCode(...headerBytes).trim();
 
         expect(header).toContain('PotFoundry');
+    });
+
+    it('should write coherent normals for adjacent triangles with inconsistent source winding', () => {
+        const buffer = generateBinarySTL(createIncoherentQuadMesh());
+        const view = new DataView(buffer);
+
+        const firstNz = view.getFloat32(92, true);
+        const secondNz = view.getFloat32(142, true);
+
+        expect(firstNz).toBeCloseTo(1, 5);
+        expect(secondNz).toBeCloseTo(1, 5);
+    });
+});
+
+describe('orientMeshForSTL', () => {
+    it('flips neighboring triangles that traverse a shared edge in the same direction', () => {
+        const oriented = orientMeshForSTL(createIncoherentQuadMesh());
+
+        expect([...oriented.indices]).toEqual([
+            0, 1, 2,
+            0, 2, 3,
+        ]);
+    });
+
+    it('does not mutate the source index buffer', () => {
+        const mesh = createIncoherentQuadMesh();
+        const before = [...mesh.indices];
+
+        orientMeshForSTL(mesh);
+
+        expect([...mesh.indices]).toEqual(before);
+    });
+
+    it('uses geometric adjacency so duplicated seam vertices still get coherent winding', () => {
+        const oriented = orientMeshForSTL(createDuplicateVertexIncoherentQuadMesh());
+
+        expect([...oriented.indices]).toEqual([
+            0, 1, 2,
+            3, 4, 5,
+        ]);
     });
 });
 
