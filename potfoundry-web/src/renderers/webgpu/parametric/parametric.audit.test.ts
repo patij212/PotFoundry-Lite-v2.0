@@ -790,7 +790,7 @@ describe('Parametric audit — Phase B: invariants', () => {
      *   dropping the chain vertex (loses precision) or by propagating it
      *   to the adjacent cell via horizontal BPP (preferred).
      */
-    it.fails('B11: chain vertices coincident with column boundaries do not produce pin pairs', () => {
+    it('B11: chain vertices coincident with column boundaries do not produce pin pairs', () => {
         // Spiral fixture (B10's old fixture) reliably produces chain U positions
         // that drift across grid column boundaries. Without horizontal BPP, the
         // chain vertex is in the chain cell but missing from the adjacent
@@ -809,6 +809,7 @@ describe('Parametric audit — Phase B: invariants', () => {
         const MIN_PIN_SEP = 0.0006;
         const seen = new Set<string>();
         let pinPairs = 0;
+        const pinDetails: Array<{ a: number; b: number; uA: number; uB: number; du: number; t: number }> = [];
         const isChainVert = (idx: number) => chainVertSet.has(idx);
         const isGridVert = (idx: number) => idx < result.gridVertexCount;
         const checkPair = (a: number, b: number) => {
@@ -823,7 +824,10 @@ describe('Parametric audit — Phase B: invariants', () => {
             const uB = verts[b * 3];
             let du = Math.abs(uA - uB);
             if (du > 0.5) du = 1 - du;
-            if (du > 0 && du < MIN_PIN_SEP) pinPairs++;
+            if (du > 0 && du < MIN_PIN_SEP) {
+                pinPairs++;
+                pinDetails.push({ a, b, uA, uB, du, t: tA });
+            }
         };
         for (let i = 0; i < indices.length; i += 3) {
             const a = indices[i], b = indices[i + 1], c = indices[i + 2];
@@ -831,6 +835,12 @@ describe('Parametric audit — Phase B: invariants', () => {
             checkPair(a, b);
             checkPair(b, c);
             checkPair(c, a);
+        }
+        if (pinPairs > 0) {
+            // eslint-disable-next-line no-console
+            console.log('[B11 diagnostic] pin pairs:', pinDetails.slice(0, 10).map(p =>
+                `${isGridVert(p.a) ? 'G' : 'C'}#${p.a}(u=${p.uA.toFixed(6)}) <-> ${isGridVert(p.b) ? 'G' : 'C'}#${p.b}(u=${p.uB.toFixed(6)}) du=${p.du.toExponential(3)} t=${p.t.toFixed(4)}`,
+            ));
         }
         expect(pinPairs).toBe(0);
     });

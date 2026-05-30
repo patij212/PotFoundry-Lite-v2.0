@@ -127,6 +127,13 @@ export interface PipelineStageConfig {
     boundaryDiagOpt: boolean;
     /** Phase 04: Enable GPU subdivision of long edges (default: true). */
     gpuSubdivision: boolean;
+    /**
+     * Debug-only: run logs-only diagnostic passes (R48 ridge-distance,
+     * v16.33 boundary, v25.0 chain-strip 3D quality, per-chain breakdowns)
+     * that never modify the mesh (default: false). The R48 pass alone costs a
+     * ~20M-vertex GPU evaluation, so production exports leave this off.
+     */
+    debugDiagnostics?: boolean;
 }
 
 export interface ParametricExportResult {

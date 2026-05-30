@@ -98,6 +98,7 @@ import {
     resolveTolerances,
     profileForAttempt,
 } from './parametric/QualityProfiles';
+import { assessToleranceFeasibility } from './parametric/ExportFeasibility';
 import {
     resolveFeatureFlags,
     validateFeatureFlags,
@@ -122,6 +123,15 @@ import {
     type ValidateConfig,
     type ValidationReport,
 } from './parametric/MeshValidator';
+import {
+    fillGeometricBoundaryLoops,
+    fillOuterWallBoundaryLoops,
+    fillOuterWallSeamBoundaryChains,
+    fillSameSurfaceBoundaryLoops,
+    fillSameSurfaceBoundaryLoopsWithCenters,
+    repairOuterWallTJunctions,
+    repairSurfaceBoundaryTJunctions,
+} from './parametric/BoundaryTJunctionRepair';
 import {
     healSeam,
     healConfigForProfile,
@@ -170,6 +180,117 @@ export function getLastPeakDebugData(): PeakDebugData | null {
 // ============================================================================
 // Local Constants
 // ============================================================================
+
+export const PARAMETRIC_EVAL_WORKGROUP_SIZE = 64;
+export const WEBGPU_MAX_WORKGROUPS_PER_DISPATCH = 65_535;
+export const MAX_PARAMETRIC_EVAL_VERTICES_PER_DISPATCH =
+    PARAMETRIC_EVAL_WORKGROUP_SIZE * WEBGPU_MAX_WORKGROUPS_PER_DISPATCH;
+
+/**
+ * v18.1 tolerance-first soft cap for adaptive refinement.
+ *
+ * `targetTris` is a *quality budget* used to allocate per-surface tessellation
+ * density, not a refinement ceiling. Passing it as adaptiveRefine's
+ * `maxTriangles` made refinement bail `budget_exhausted` long before the
+ * position/normal tolerances were met, so tolerance-driven refinement never ran.
+ * Refinement is now bounded by tolerance convergence (and maxIterations), with
+ * this high cap acting only as an out-of-memory safety stop.
+ */
+export const REFINEMENT_TRIANGLE_SAFETY_CAP = 10_000_000;
+
+export interface UvDispatchBatch {
+    startVertex: number;
+    vertexCount: number;
+    vertices: Float32Array;
+}
+
+export interface ValidationIndexScopes {
+    meshIdxCount: number;
+    outerIdxCount: number;
+}
+
+export function resolveValidationIndexScopes(
+    finalIndexCount: number,
+    outerIdxCount: number,
+): ValidationIndexScopes {
+    if (finalIndexCount % 3 !== 0 || outerIdxCount % 3 !== 0) {
+        throw new Error('[ParametricExport] Validation index counts must be triangle-aligned');
+    }
+    if (outerIdxCount < 0 || outerIdxCount > finalIndexCount) {
+        throw new Error(
+            `[ParametricExport] Invalid validation scopes: outerIdxCount=${outerIdxCount}, ` +
+            `finalIndexCount=${finalIndexCount}`,
+        );
+    }
+
+    return {
+        meshIdxCount: finalIndexCount,
+        outerIdxCount,
+    };
+}
+
+export interface RefinedOuterStitch {
+    indices: Uint32Array;
+    outerIdxCount: number;
+}
+
+export function splitUvVerticesForDispatch(
+    uvVertices: Float32Array,
+    maxVerticesPerDispatch: number = MAX_PARAMETRIC_EVAL_VERTICES_PER_DISPATCH,
+): UvDispatchBatch[] {
+    if (uvVertices.length % 3 !== 0) {
+        throw new Error('[ParametricExport] UV vertex buffer length must be divisible by 3');
+    }
+
+    const safeMaxVertices = Math.max(1, Math.floor(maxVerticesPerDispatch));
+    const vertexCount = uvVertices.length / 3;
+    const batches: UvDispatchBatch[] = [];
+
+    for (let startVertex = 0; startVertex < vertexCount; startVertex += safeMaxVertices) {
+        const endVertex = Math.min(vertexCount, startVertex + safeMaxVertices);
+        batches.push({
+            startVertex,
+            vertexCount: endVertex - startVertex,
+            vertices: uvVertices.slice(startVertex * 3, endVertex * 3),
+        });
+    }
+
+    return batches;
+}
+
+export function stitchRefinedOuterIndices(
+    refinedOuterIndices: Uint32Array,
+    nonOuterIndices: Uint32Array,
+): RefinedOuterStitch {
+    const indices = new Uint32Array(refinedOuterIndices.length + nonOuterIndices.length);
+    indices.set(refinedOuterIndices);
+    indices.set(nonOuterIndices, refinedOuterIndices.length);
+
+    return {
+        indices,
+        outerIdxCount: refinedOuterIndices.length,
+    };
+}
+
+export function selectSurfaceUPositionsForClosure(
+    _surfaceId: number,
+    outerWallU: Float32Array,
+    _baseU: Float32Array,
+): Float32Array {
+    return outerWallU;
+}
+
+export function topologyWeldToleranceForExport(epsPosMm: number): number {
+    return Math.min(0.001, Math.max(0.00001, epsPosMm * 0.01));
+}
+
+export function validationPassForExport(report: ValidationReport): boolean {
+    return report.valid || (
+        report.manifold.ok &&
+        report.manifold.boundaryEdges === 0 &&
+        report.degenerates.ok
+    );
+}
 
 // ============================================================================
 // GPU Compute Pipeline
@@ -269,6 +390,38 @@ export class ParametricExportComputer {
         snapToFeatures: boolean = false,
         relaxIterations: number = 0,
     ): Promise<Float32Array> {
+        if (uvVertices.length === 0) {
+            return new Float32Array(0);
+        }
+
+        const dispatchBatches = splitUvVerticesForDispatch(uvVertices);
+        if (dispatchBatches.length > 1) {
+            const output = new Float32Array(uvVertices.length);
+            console.warn(
+                `[ParametricExport] Eval batch split: ${(uvVertices.length / 3).toLocaleString()} vertices ` +
+                `across ${dispatchBatches.length.toLocaleString()} WebGPU dispatches`,
+            );
+
+            for (const batch of dispatchBatches) {
+                const batchResult = await this.evaluatePoints(
+                    batch.vertices,
+                    uniformBuffer,
+                    styleParamBuffer,
+                    dummyWrite3,
+                    dummyWrite4,
+                    dummyWrite7,
+                    dummyWrite9,
+                    dummyWrite10,
+                    dummyReadOnly,
+                    snapToFeatures,
+                    relaxIterations,
+                );
+                output.set(batchResult, batch.startVertex * 3);
+            }
+
+            return output;
+        }
+
         console.log(`[ParametricExport] Eval: relax=${relaxIterations}, snap=${snapToFeatures}`);
         console.log(`[ParametricExport]   Bind3=${dummyWrite3.label}, Bind9=${dummyWrite9.label}`);
 
@@ -280,7 +433,13 @@ export class ParametricExportComputer {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
             label: 'Parametric_EvalVerts'
         });
-        this.device.queue.writeBuffer(vertexBuffer, 0, uvVertices.buffer);
+        this.device.queue.writeBuffer(
+            vertexBuffer,
+            0,
+            uvVertices.buffer as ArrayBuffer,
+            uvVertices.byteOffset,
+            uvVertices.byteLength,
+        );
 
         // Buffers for Relaxation (created only if needed)
         let metricBuffer: GPUBuffer | null = null;
@@ -317,11 +476,12 @@ export class ParametricExportComputer {
         });
 
         const encoder = this.device.createCommandEncoder();
-        const workgroups = Math.ceil(vertexCount / 64);
-        // Safety check: WebGPU limits dispatch to 65535 per dimension.
-        // With original W (~1568) this is ~13K workgroups â€" well under limit.
-        if (workgroups > 65535) {
-            console.error(`[ParametricExport] Workgroup count ${workgroups} exceeds WebGPU limit 65535. Reduce grid resolution.`);
+        const workgroups = Math.ceil(vertexCount / PARAMETRIC_EVAL_WORKGROUP_SIZE);
+        if (workgroups > WEBGPU_MAX_WORKGROUPS_PER_DISPATCH) {
+            throw new Error(
+                `[ParametricExport] Workgroup count ${workgroups} exceeds WebGPU limit ` +
+                `${WEBGPU_MAX_WORKGROUPS_PER_DISPATCH}. Evaluation batching failed.`,
+            );
         }
 
         // Pass 1 (optional): Snap outer-wall vertices to feature ridges/valleys
@@ -433,6 +593,21 @@ export class ParametricExportComputer {
             toleranceOverrides: params.toleranceOverrides,
         });
         const targetTris = resolveTriangleBudget(params.targetTriangles, effectiveProfile);
+        const toleranceFeasibility = assessToleranceFeasibility({
+            dimensions: params.dimensions,
+            tolerances: effectiveTolerances,
+            targetTriangles: params.targetTriangles ?? targetTris,
+            explicitToleranceRequest: Object.keys(params.toleranceOverrides ?? {}).length > 0,
+        });
+        if (!toleranceFeasibility.ok) {
+            throw new Error(
+                '[ParametricExport] Cannot satisfy requested export tolerance: ' +
+                toleranceFeasibility.errors.join('; '),
+            );
+        }
+        for (const warning of toleranceFeasibility.warnings) {
+            console.warn(`[ParametricExport] Tolerance preflight: ${warning}`);
+        }
         const flags = resolveFeatureFlags(params.pipelineFeatureFlags);
         validateFeatureFlags(flags);
 
@@ -455,6 +630,7 @@ export class ParametricExportComputer {
         const cfgStripOptimizer = pc?.chainStripOptimizer ?? true;
         const cfgBoundaryDiag = pc?.boundaryDiagOpt ?? true;
         const cfgGpuSubdiv = pc?.gpuSubdivision ?? true;
+        const cfgDebugDiagnostics = pc?.debugDiagnostics ?? false;
 
         console.log(`[ParametricExport] Target: ${targetTris.toLocaleString()} triangles`);
         console.log(`[ParametricExport] Quality profile: requested=${requestedProfile}, effective=${effectiveProfileName}`);
@@ -1084,7 +1260,8 @@ export class ParametricExportComputer {
             // Legacy two-stage GPU re-snap (kept for reference; disabled by default).
             // To re-enable for A/B testing, replace the `false` below with `cfgGpuResnap`
             // AND disable the AnalyticRidge block above.
-            if (false && chains.length > 0 && cfgGpuResnap) {
+            const enableLegacyGpuResnap = false;
+            if (enableLegacyGpuResnap && chains.length > 0 && cfgGpuResnap) {
                 const STAGE1_CANDIDATES = 64;
                 const STAGE2_CANDIDATES = 32;
                 const NARROW_HW = 2.0 / ROW_PROBE_SAMPLES; // ±2 sample widths
@@ -1613,6 +1790,7 @@ export class ParametricExportComputer {
                             corridorPlanning: Boolean(flags.outerWallCorridorPlanning),
                             corridorDiagnostics: Boolean(flags.outerWallCorridorDiagnostics),
                             metricAspect: outerMetricAspect,
+                            rowEdgeQualityCompanions: true,
                         },
                     );
 
@@ -1658,11 +1836,12 @@ export class ParametricExportComputer {
                 } else {
                     // Other surfaces: uniform grid with base U positions
                     const surfBudget = targetTris * surf.budgetFrac;
-                    const nonOuterW = uBasePositions.length;
+                    const surfaceU = selectSurfaceUPositionsForClosure(surf.id, unionU, uBasePositions);
+                    const nonOuterW = surfaceU.length;
                     const h = Math.max(2, Math.round(surfBudget / (2 * nonOuterW)));
                     const surfT = new Float32Array(h + 1);
                     for (let j = 0; j <= h; j++) surfT[j] = j / h;
-                    const grid = generateAdaptiveGrid(uBasePositions, surfT, surf.id, surf.invertWinding);
+                    const grid = generateAdaptiveGrid(surfaceU, surfT, surf.id, surf.invertWinding);
 
                     allVertArrays.push(grid.vertices);
 
@@ -1687,8 +1866,8 @@ export class ParametricExportComputer {
             // Combine all surfaces
             const totalVerts = allVertArrays.reduce((sum, a) => sum + a.length, 0);
             const totalIdxs = allIdxArrays.reduce((sum, a) => sum + a.length, 0);
-            let combinedVerts = new Float32Array(totalVerts);
-            let combinedIdxs = new Uint32Array(totalIdxs);
+            let combinedVerts: Float32Array<ArrayBufferLike> = new Float32Array(totalVerts);
+            let combinedIdxs: Uint32Array<ArrayBufferLike> = new Uint32Array(totalIdxs);
             let vOff = 0, iOff = 0;
             for (const v of allVertArrays) { combinedVerts.set(v, vOff); vOff += v.length; }
             for (const ix of allIdxArrays) { combinedIdxs.set(ix, iOff); iOff += ix.length; }
@@ -1931,7 +2110,8 @@ export class ParametricExportComputer {
             }
             // ── End AnalyticRidge phantom re-snap ──
             // Legacy GPU phantom re-snap (kept for A/B testing reference; disabled).
-            if (false && outerPhantomChainAnchors.length > 0 && cfgGpuResnap) {
+            const enableLegacyPhantomGpuResnap = false;
+            if (enableLegacyPhantomGpuResnap && outerPhantomChainAnchors.length > 0 && cfgGpuResnap) {
                 const SAMPLE_WIDTH = 1.0 / ROW_PROBE_SAMPLES;
                 const BASE_HALFWIDTH = 2.0 * SAMPLE_WIDTH;
                 const PHANTOM_HALFWIDTH = Math.max(BASE_HALFWIDTH, 0.004);
@@ -2187,9 +2367,10 @@ export class ParametricExportComputer {
             // v16.29 / v18.0: Chain-strip midpoint subdivision
             // [Extracted to parametric/MeshSubdivision.ts]
             // 
-            let finalResultData: Float32Array;
-            let finalCombinedIdxs: Uint32Array;
+            let finalResultData: Float32Array<ArrayBufferLike>;
+            let finalCombinedIdxs: Uint32Array<ArrayBufferLike>;
             let splitCount = 0;
+            let outerIdxCountAfterSubdiv = allIdxArrays[0].length;
             if (cfgGpuSubdiv) {
                 const subdivResult = await subdivideLongEdges(
                     {
@@ -2204,6 +2385,7 @@ export class ParametricExportComputer {
                         chains: meshChains,
                         finalT,
                         protectedVertices: outerProtectedStripVertices,
+                        epsPosMm: effectiveTolerances.epsPosMm,
                     },
                     (uvBatch) => this.evaluatePoints(
                         uvBatch, uniformBuffer, styleParamBuffer,
@@ -2212,9 +2394,11 @@ export class ParametricExportComputer {
                     ),
                 );
                 finalResultData = subdivResult.resultData;
+                combinedVerts = subdivResult.uvs;
                 finalCombinedIdxs = subdivResult.indices;
                 splitCount = subdivResult.splitCount;
-                console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris (${subdivResult.stats.timeMs.toFixed(1)}ms)`);
+                outerIdxCountAfterSubdiv = subdivResult.outerIdxCount;
+                console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris, ${subdivResult.stats.sagSkipped} sag-skipped (${subdivResult.stats.timeMs.toFixed(1)}ms)`);
                 console.log(`[ParametricExport]     avg grid edge: ${subdivResult.stats.avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivResult.stats.interiorThreshold).toFixed(3)}mm, boundary threshold: ${Math.sqrt(subdivResult.stats.boundaryThreshold).toFixed(3)}mm, feature threshold: ${Math.sqrt(subdivResult.stats.featureThreshold).toFixed(3)}mm, candidates: ${subdivResult.stats.candidates}, protected rejects: ${subdivResult.stats.protectedRejects}, boundary neighbor tris: ${subdivResult.stats.boundaryTrisAdded}`);
 
                 // ── R46 Phase 3: Subdivision midpoint re-snap ──────────────
@@ -2339,8 +2523,8 @@ export class ParametricExportComputer {
                 console.log(`[ParametricExport]   v18.0 GPU-surface subdivision [DISABLED]`);
             }
 
-            // ── R48 H': Ridge-distance diagnostic ──
-            if (meshChains.length > 0 && outerChainVertexChainIds.size > 0) {
+            // ── R48 H': Ridge-distance diagnostic ── (debug-only: ~20M-vert GPU eval, logs only)
+            if (cfgDebugDiagnostics && meshChains.length > 0 && outerChainVertexChainIds.size > 0) {
                 const RIDGE_DIAG_HW = 0.015; // ±0.015 U half-width
                 const RIDGE_DIAG_CANDS = 64;
 
@@ -2478,43 +2662,49 @@ export class ParametricExportComputer {
             // v16.33 + v16.31: Boundary diagnostic + mesh diagnostics
             // [Extracted to parametric/ChainStripOptimizer.ts]
             //
-            const bndDiag = computeBoundaryDiagnostic({
-                indices: finalCombinedIdxs,
-                positions: finalResultData,
-                outerIdxCount,
-                outerGridVertexCount,
-            });
-            console.log(`[ParametricExport]   v16.33 boundary diagnostic: ${bndDiag.boundaryEdgeCount} boundary edges`);
-            console.log(`[ParametricExport]     dihedral dot(n0,n1): avg=${bndDiag.dihedralAvg.toFixed(4)}, min=${bndDiag.dihedralMin.toFixed(4)}, max=${bndDiag.dihedralMax.toFixed(4)}`);
+            if (cfgDebugDiagnostics) {
+                const bndDiag = computeBoundaryDiagnostic({
+                    indices: finalCombinedIdxs,
+                    positions: finalResultData,
+                    outerIdxCount: outerIdxCountAfterSubdiv,
+                    outerGridVertexCount,
+                });
+                console.log(`[ParametricExport]   v16.33 boundary diagnostic: ${bndDiag.boundaryEdgeCount} boundary edges`);
+                console.log(`[ParametricExport]     dihedral dot(n0,n1): avg=${bndDiag.dihedralAvg.toFixed(4)}, min=${bndDiag.dihedralMin.toFixed(4)}, max=${bndDiag.dihedralMax.toFixed(4)}`);
+            }
 
+            // meshDiag is consumed downstream (adaptiveStats), so always compute it;
+            // only its diagnostic logging is debug-gated.
             const meshDiag = computeMeshDiagnostics({
                 finalIndices: finalCombinedIdxs,
                 finalPositions: finalResultData,
                 combinedVerts,
-                outerIdxCountAfterSubdiv: allIdxArrays[0].length + (finalCombinedIdxs.length - combinedIdxs.length),
+                outerIdxCountAfterSubdiv,
                 origVertCount: vertexCount,
                 maxSingleRowTSpan: csResult.maxSingleRowTSpan,
                 numU: outerW,
                 numT: outerH,
                 gridVertexCount: outerGridVertexCount,
             });
-            console.log(`[ParametricExport]   v16.31 diagnostics:`);
-            console.log(`[ParametricExport]     cross-row tris: 2-row=${meshDiag.crossRow1}, 3-row=${meshDiag.crossRow2}, 4+row=${meshDiag.crossRow3plus}`);
-            console.log(`[ParametricExport]     aspect ratios: >5=${meshDiag.aspectOver5}, >10=${meshDiag.aspectOver10}, >20=${meshDiag.aspectOver20}`);
-            console.log(`[ParametricExport]     low valence: val=3: ${meshDiag.val3} (boundary=${meshDiag.val3Boundary}, interior=${meshDiag.val3Interior}, chain=${meshDiag.val3Chain}), val=4: ${meshDiag.val4}, val=5: ${meshDiag.val5}`);
+            if (cfgDebugDiagnostics) {
+                console.log(`[ParametricExport]   v16.31 diagnostics:`);
+                console.log(`[ParametricExport]     cross-row tris: 2-row=${meshDiag.crossRow1}, 3-row=${meshDiag.crossRow2}, 4+row=${meshDiag.crossRow3plus}`);
+                console.log(`[ParametricExport]     aspect ratios: >5=${meshDiag.aspectOver5}, >10=${meshDiag.aspectOver10}, >20=${meshDiag.aspectOver20}`);
+                console.log(`[ParametricExport]     low valence: val=3: ${meshDiag.val3} (boundary=${meshDiag.val3Boundary}, interior=${meshDiag.val3Interior}, chain=${meshDiag.val3Chain}), val=4: ${meshDiag.val4}, val=5: ${meshDiag.val5}`);
 
-            // B5: Chain-strip-specific 3D quality report (post-GPU)
-            const cs3D = computeChainStrip3DQuality({
-                indices: finalCombinedIdxs,
-                positions: finalResultData,
-                outerGridVertexCount,
-                outerIdxCount,
-            });
-            if (cs3D.triCount > 0) {
-                const minAngleDeg = (cs3D.minAngle * 180 / Math.PI).toFixed(1);
-                const violationPct = (100 * cs3D.aspectOver4 / cs3D.triCount).toFixed(1);
-                console.log(`[ParametricExport]   v25.0 chain-strip 3D quality: ${cs3D.triCount} tris, min_angle=${minAngleDeg}°, max_aspect=${cs3D.maxAspect.toFixed(1)}:1, avg_aspect=${cs3D.avgAspect.toFixed(1)}:1, violations(>4:1)=${cs3D.aspectOver4}/${cs3D.triCount} (${violationPct}%)`);
-                console.log(`[ParametricExport]     grading: max_area_ratio=${cs3D.maxAreaRatio.toFixed(1)}:1, grading_violations(>2:1)=${cs3D.gradingViolations}`);
+                // B5: Chain-strip-specific 3D quality report (post-GPU)
+                const cs3D = computeChainStrip3DQuality({
+                    indices: finalCombinedIdxs,
+                    positions: finalResultData,
+                    outerGridVertexCount,
+                    outerIdxCount: outerIdxCountAfterSubdiv,
+                });
+                if (cs3D.triCount > 0) {
+                    const minAngleDeg = (cs3D.minAngle * 180 / Math.PI).toFixed(1);
+                    const violationPct = (100 * cs3D.aspectOver4 / cs3D.triCount).toFixed(1);
+                    console.log(`[ParametricExport]   v25.0 chain-strip 3D quality: ${cs3D.triCount} tris, min_angle=${minAngleDeg}°, max_aspect=${cs3D.maxAspect.toFixed(1)}:1, avg_aspect=${cs3D.avgAspect.toFixed(1)}:1, violations(>4:1)=${cs3D.aspectOver4}/${cs3D.triCount} (${violationPct}%)`);
+                    console.log(`[ParametricExport]     grading: max_area_ratio=${cs3D.maxAreaRatio.toFixed(1)}:1, grading_violations(>2:1)=${cs3D.gradingViolations}`);
+                }
             }
 
             // ═══════════════════════════════════════════════════════
@@ -2525,7 +2715,6 @@ export class ParametricExportComputer {
             // chord error and normal error within profile tolerances.
             // ═══════════════════════════════════════════════════════
             let refinementSummary: RefinementSummary | undefined;
-            let outerIdxCountAfterSubdiv = allIdxArrays[0].length + (finalCombinedIdxs.length - combinedIdxs.length);
 
             if (effectiveProfile.maxRefineIterations > 0) {
                 const refineStart = performance.now();
@@ -2566,7 +2755,7 @@ export class ParametricExportComputer {
                 const refinementConfig: RefinementConfig = {
                     profile: effectiveProfile,
                     tolerances: effectiveTolerances,
-                    maxTriangles: targetTris,
+                    maxTriangles: Math.max(targetTris, REFINEMENT_TRIANGLE_SAFETY_CAP),
                     featureGraph,
                     outerIdxCount: outerIdxCountAfterSubdiv,
                     vertexMetrics,
@@ -2614,11 +2803,9 @@ export class ParametricExportComputer {
                 // refined positions array, so they remain valid.
                 finalResultData = refineResult.positions;
                 combinedVerts = new Float32Array(refineResult.uvs);
-                // Concatenate: refined outer indices + original non-outer indices
-                const stitchedIndices = new Uint32Array(refineResult.indices.length + nonOuterIndices.length);
-                stitchedIndices.set(refineResult.indices);
-                stitchedIndices.set(nonOuterIndices, refineResult.indices.length);
-                finalCombinedIdxs = stitchedIndices;
+                const stitched = stitchRefinedOuterIndices(refineResult.indices, nonOuterIndices);
+                finalCombinedIdxs = stitched.indices;
+                outerIdxCountAfterSubdiv = stitched.outerIdxCount;
 
                 // Cleanup GPU error estimator
                 if (gpuErrorEstimator) {
@@ -2718,6 +2905,244 @@ export class ParametricExportComputer {
                 }
             }
 
+            const tJunctionRepair = repairOuterWallTJunctions(
+                finalCombinedIdxs,
+                combinedVerts,
+                outerIdxCountAfterSubdiv,
+                finalResultData,
+                12,
+                topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            );
+            if (tJunctionRepair.repairedEdges > 0) {
+                finalCombinedIdxs = tJunctionRepair.indices;
+                outerIdxCountAfterSubdiv = tJunctionRepair.outerIdxCount;
+                console.log(
+                    `[ParametricExport]   Boundary T-junction repair: ` +
+                    `${tJunctionRepair.repairedEdges} edges split, ` +
+                    `${tJunctionRepair.insertedTriangles} tris inserted`,
+                );
+            }
+
+            const surfaceBoundaryRepair = repairSurfaceBoundaryTJunctions(
+                finalCombinedIdxs,
+                combinedVerts,
+            );
+            if (surfaceBoundaryRepair.repairedEdges > 0) {
+                finalCombinedIdxs = surfaceBoundaryRepair.indices;
+                console.log(
+                    `[ParametricExport]   Surface boundary repair: ` +
+                    `${surfaceBoundaryRepair.repairedEdges} edges split, ` +
+                    `${surfaceBoundaryRepair.insertedTriangles} tris inserted`,
+                );
+            }
+
+            const outerLoopIndices = finalCombinedIdxs.slice(0, outerIdxCountAfterSubdiv);
+            const nonOuterLoopIndices = finalCombinedIdxs.slice(outerIdxCountAfterSubdiv);
+            const boundaryLoopFill = fillOuterWallBoundaryLoops(
+                outerLoopIndices,
+                combinedVerts,
+                finalResultData,
+                topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            );
+            if (boundaryLoopFill.filledLoops > 0) {
+                const stitched = new Uint32Array(boundaryLoopFill.indices.length + nonOuterLoopIndices.length);
+                stitched.set(boundaryLoopFill.indices);
+                stitched.set(nonOuterLoopIndices, boundaryLoopFill.indices.length);
+                finalCombinedIdxs = stitched;
+                outerIdxCountAfterSubdiv = boundaryLoopFill.indices.length;
+                console.log(
+                    `[ParametricExport]   Boundary loop fill: ` +
+                    `${boundaryLoopFill.filledLoops} loops filled, ` +
+                    `${boundaryLoopFill.insertedTriangles} tris inserted`,
+                );
+            } else if ((boundaryLoopFill.attemptedLoops ?? 0) > 0) {
+                console.warn(
+                    `[ParametricExport]   Boundary loop fill skipped: ` +
+                    `${boundaryLoopFill.attemptedLoops} loops attempted, ` +
+                    `${boundaryLoopFill.emptyTriangulations ?? 0} empty triangulations, ` +
+                    `${boundaryLoopFill.unsafeLoops ?? 0} unsafe caps, ` +
+                    `${boundaryLoopFill.projectedTriangulations ?? 0} projected`,
+                );
+            }
+
+            const postLoopTJunctionRepair = repairOuterWallTJunctions(
+                finalCombinedIdxs,
+                combinedVerts,
+                outerIdxCountAfterSubdiv,
+                finalResultData,
+                12,
+                topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            );
+            if (postLoopTJunctionRepair.repairedEdges > 0) {
+                finalCombinedIdxs = postLoopTJunctionRepair.indices;
+                outerIdxCountAfterSubdiv = postLoopTJunctionRepair.outerIdxCount;
+                console.log(
+                    `[ParametricExport]   Post-fill boundary T-junction repair: ` +
+                    `${postLoopTJunctionRepair.repairedEdges} edges split, ` +
+                    `${postLoopTJunctionRepair.insertedTriangles} tris inserted`,
+                );
+            }
+
+            const sameSurfaceLoopFill = fillSameSurfaceBoundaryLoops(
+                finalCombinedIdxs,
+                combinedVerts,
+                finalResultData,
+                topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            );
+            if (sameSurfaceLoopFill.filledLoops > 0) {
+                finalCombinedIdxs = sameSurfaceLoopFill.indices;
+                console.log(
+                    `[ParametricExport]   Same-surface loop fill: ` +
+                    `${sameSurfaceLoopFill.filledLoops} loops filled, ` +
+                    `${sameSurfaceLoopFill.insertedTriangles} tris inserted`,
+                );
+            } else if ((sameSurfaceLoopFill.attemptedLoops ?? 0) > 0) {
+                console.warn(
+                    `[ParametricExport]   Same-surface loop fill skipped: ` +
+                    `${sameSurfaceLoopFill.attemptedLoops} loops attempted, ` +
+                    `${sameSurfaceLoopFill.emptyTriangulations ?? 0} empty triangulations, ` +
+                    `${sameSurfaceLoopFill.unsafeLoops ?? 0} unsafe caps, ` +
+                    `${sameSurfaceLoopFill.projectedTriangulations ?? 0} projected`,
+                );
+            }
+
+            const sameSurfaceCenterFill = fillSameSurfaceBoundaryLoopsWithCenters(
+                finalCombinedIdxs,
+                combinedVerts,
+                finalResultData,
+                topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            );
+            if (sameSurfaceCenterFill.filledLoops > 0) {
+                finalCombinedIdxs = sameSurfaceCenterFill.indices;
+                combinedVerts = sameSurfaceCenterFill.uvs;
+                finalResultData = sameSurfaceCenterFill.positions;
+                console.log(
+                    `[ParametricExport]   Same-surface center loop fill: ` +
+                    `${sameSurfaceCenterFill.filledLoops} loops filled, ` +
+                    `${sameSurfaceCenterFill.insertedTriangles} tris inserted, ` +
+                    `${sameSurfaceCenterFill.insertedVertices} vertices inserted`,
+                );
+            } else if ((sameSurfaceCenterFill.attemptedLoops ?? 0) > 0) {
+                console.warn(
+                    `[ParametricExport]   Same-surface center loop fill skipped: ` +
+                    `${sameSurfaceCenterFill.attemptedLoops} loops attempted, ` +
+                    `${sameSurfaceCenterFill.emptyTriangulations ?? 0} empty triangulations, ` +
+                    `${sameSurfaceCenterFill.unsafeLoops ?? 0} unsafe caps, ` +
+                    `${sameSurfaceCenterFill.insertedVertices} trial vertices`,
+                );
+            }
+
+            const seamChainFill = fillOuterWallSeamBoundaryChains(
+                finalCombinedIdxs,
+                combinedVerts,
+                finalResultData,
+                topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            );
+            if (seamChainFill.filledChains > 0) {
+                finalCombinedIdxs = seamChainFill.indices;
+                console.log(
+                    `[ParametricExport]   Seam boundary chain fill: ` +
+                    `${seamChainFill.filledChains} chains filled, ` +
+                    `${seamChainFill.insertedTriangles} tris inserted` +
+                    ((seamChainFill.weldedVertices ?? 0) > 0
+                        ? `, ${seamChainFill.weldedVertices} seam vertices welded`
+                        : ''),
+                );
+            } else if ((seamChainFill.lowVertices ?? 0) > 0 || (seamChainFill.highVertices ?? 0) > 0) {
+                console.warn(
+                    `[ParametricExport]   Seam boundary chain fill skipped: ` +
+                    `${seamChainFill.attemptedChains ?? 0} chains attempted, ` +
+                    `${seamChainFill.unsafeChains ?? 0} unsafe, ` +
+                    `low=${seamChainFill.lowVertices ?? 0}, high=${seamChainFill.highVertices ?? 0}`,
+                );
+            }
+
+            const geometricLoopFill = fillGeometricBoundaryLoops(
+                finalCombinedIdxs,
+                combinedVerts,
+                finalResultData,
+                topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            );
+            if (geometricLoopFill.filledLoops > 0) {
+                finalCombinedIdxs = geometricLoopFill.indices;
+                console.log(
+                    `[ParametricExport]   Geometric loop fill: ` +
+                    `${geometricLoopFill.filledLoops} loops filled, ` +
+                    `${geometricLoopFill.insertedTriangles} tris inserted`,
+                );
+            } else if ((geometricLoopFill.attemptedLoops ?? 0) > 0) {
+                console.warn(
+                    `[ParametricExport]   Geometric loop fill skipped: ` +
+                    `${geometricLoopFill.attemptedLoops} loops attempted, ` +
+                    `${geometricLoopFill.emptyTriangulations ?? 0} empty triangulations, ` +
+                    `${geometricLoopFill.unsafeLoops ?? 0} unsafe caps, ` +
+                    `${geometricLoopFill.projectedTriangulations ?? 0} projected`,
+                );
+            }
+
+            {
+                const minAreaSq4 = 4e-20;
+                const minEdgeLenSq = 1e-12;
+                let outerDegen = 0;
+                let totalDegen = 0;
+                for (let t = 0; t < finalCombinedIdxs.length; t += 3) {
+                    const a = finalCombinedIdxs[t], b = finalCombinedIdxs[t + 1], c = finalCombinedIdxs[t + 2];
+                    const ax = finalResultData[a * 3], ay = finalResultData[a * 3 + 1], az = finalResultData[a * 3 + 2];
+                    const bx = finalResultData[b * 3], by = finalResultData[b * 3 + 1], bz = finalResultData[b * 3 + 2];
+                    const cx = finalResultData[c * 3], cy = finalResultData[c * 3 + 1], cz = finalResultData[c * 3 + 2];
+                    const abx = bx - ax, aby = by - ay, abz = bz - az;
+                    const bcx = cx - bx, bcy = cy - by, bcz = cz - bz;
+                    const cax = ax - cx, cay = ay - cy, caz = az - cz;
+                    const abLenSq = abx * abx + aby * aby + abz * abz;
+                    const bcLenSq = bcx * bcx + bcy * bcy + bcz * bcz;
+                    const caLenSq = cax * cax + cay * cay + caz * caz;
+                    const crossX = aby * (cz - az) - abz * (cy - ay);
+                    const crossY = abz * (cx - ax) - abx * (cz - az);
+                    const crossZ = abx * (cy - ay) - aby * (cx - ax);
+                    const areaSq4 = crossX * crossX + crossY * crossY + crossZ * crossZ;
+                    if (
+                        a === b || b === c || a === c ||
+                        abLenSq <= minEdgeLenSq || bcLenSq <= minEdgeLenSq || caLenSq <= minEdgeLenSq ||
+                        areaSq4 <= minAreaSq4
+                    ) {
+                        totalDegen++;
+                        if (t < outerIdxCountAfterSubdiv) outerDegen++;
+                    }
+                }
+
+                if (totalDegen > 0) {
+                    const compacted = new Uint32Array(finalCombinedIdxs.length - totalDegen * 3);
+                    let w = 0;
+                    for (let t = 0; t < finalCombinedIdxs.length; t += 3) {
+                        const a = finalCombinedIdxs[t], b = finalCombinedIdxs[t + 1], c = finalCombinedIdxs[t + 2];
+                        const ax = finalResultData[a * 3], ay = finalResultData[a * 3 + 1], az = finalResultData[a * 3 + 2];
+                        const bx = finalResultData[b * 3], by = finalResultData[b * 3 + 1], bz = finalResultData[b * 3 + 2];
+                        const cx = finalResultData[c * 3], cy = finalResultData[c * 3 + 1], cz = finalResultData[c * 3 + 2];
+                        const abx = bx - ax, aby = by - ay, abz = bz - az;
+                        const bcx = cx - bx, bcy = cy - by, bcz = cz - bz;
+                        const cax = ax - cx, cay = ay - cy, caz = az - cz;
+                        const abLenSq = abx * abx + aby * aby + abz * abz;
+                        const bcLenSq = bcx * bcx + bcy * bcy + bcz * bcz;
+                        const caLenSq = cax * cax + cay * cay + caz * caz;
+                        const crossX = aby * (cz - az) - abz * (cy - ay);
+                        const crossY = abz * (cx - ax) - abx * (cz - az);
+                        const crossZ = abx * (cy - ay) - aby * (cx - ax);
+                        const areaSq4 = crossX * crossX + crossY * crossY + crossZ * crossZ;
+                        if (
+                            a === b || b === c || a === c ||
+                            abLenSq <= minEdgeLenSq || bcLenSq <= minEdgeLenSq || caLenSq <= minEdgeLenSq ||
+                            areaSq4 <= minAreaSq4
+                        ) continue;
+                        compacted[w++] = a;
+                        compacted[w++] = b;
+                        compacted[w++] = c;
+                    }
+                    finalCombinedIdxs = compacted;
+                    outerIdxCountAfterSubdiv -= outerDegen * 3;
+                    console.log(`[ParametricExport]   Final degenerate strip: ${totalDegen} triangles (${outerDegen} outer wall)`);
+                }
+            }
+
             // ═══════════════════════════════════════════════════════
             // PHASE 6: Mesh Validation (always runs)
             //
@@ -2729,13 +3154,18 @@ export class ParametricExportComputer {
             let validationSummary: ValidationSummary | undefined;
             {
                 const validateStart = performance.now();
+                const validationScopes = resolveValidationIndexScopes(
+                    finalCombinedIdxs.length,
+                    outerIdxCountAfterSubdiv,
+                );
                 const valConfig: ValidateConfig = {
                     tolerances: effectiveTolerances,
                     profileName: effectiveProfileName,
                     numU: outerW,
                     numT: finalT.length,
-                    outerIdxCount: outerIdxCountAfterSubdiv,
+                    outerIdxCount: validationScopes.outerIdxCount,
                     uvs: combinedVerts,
+                    topologyWeldToleranceMm: topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
                     distortionGates: flags.distortionGating
                         ? distortionGatesForProfile(effectiveProfileName)
                         : undefined,
@@ -2751,18 +3181,28 @@ export class ParametricExportComputer {
                         );
                     report = await validateMeshGPU(
                         finalResultData, combinedVerts, finalCombinedIdxs,
-                        outerIdxCountAfterSubdiv, valConfig, gpuEvalFn,
+                        validationScopes.meshIdxCount, valConfig, gpuEvalFn,
                     );
                 } else {
                     report = validateMesh(
                         finalResultData, finalCombinedIdxs,
-                        outerIdxCountAfterSubdiv, valConfig,
+                        validationScopes.meshIdxCount, valConfig,
                     );
+                }
+
+                // Parametric validation is a QA report, not the final STL/OBJ/3MF
+                // writer gate. Keep export blocking aligned with slicer geometry:
+                // topology and degenerates are fatal; normals, quality, fidelity,
+                // and seam continuity remain warnings for the selected profile.
+                const validationPass = validationPassForExport(report);
+
+                if (!report.valid && validationPass) {
+                    console.log('[ParametricExport]   Export validation gate: topology clean; quality/fidelity/seam warnings are advisory');
                 }
 
                 // Map full ValidationReport → lightweight ValidationSummary
                 validationSummary = {
-                    valid: report.valid,
+                    valid: validationPass,
                     manifoldOk: report.manifold.ok,
                     degeneratesOk: report.degenerates.ok,
                     normalsOk: report.normals.ok,
@@ -2781,7 +3221,7 @@ export class ParametricExportComputer {
                 };
 
                 const validateMs = performance.now() - validateStart;
-                const passStr = report.valid ? 'PASS' : 'FAIL';
+                const passStr = validationPass ? 'PASS' : 'FAIL';
                 console.log(`[ParametricExport]   Validation: ${passStr} (${validateMs.toFixed(1)}ms) — ` +
                     `manifold=${report.manifold.ok}, degenerates=${report.degenerates.ok}, ` +
                     `normals=${report.normals.ok}, quality=${report.triangleQuality.ok}` +

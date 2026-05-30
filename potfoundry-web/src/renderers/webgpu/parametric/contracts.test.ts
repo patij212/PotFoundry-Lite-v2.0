@@ -147,7 +147,7 @@ describe('contracts', () => {
             expect(flags.metricAwareRefinement).toBe(true);
             expect(flags.distortionGating).toBe(false);
             expect(flags.gpuFidelityCheck).toBe(false);
-            expect(flags.seamHealing).toBe(false);
+            expect(flags.seamHealing).toBe(true);
             expect(flags.outerWallCorridorPlanning).toBe(false);
             expect(flags.outerWallCorridorDiagnostics).toBe(false);
             expect(flags.mdcIsosurface).toBe(false);
@@ -219,7 +219,7 @@ describe('contracts', () => {
             expect(DEFAULT_FEATURE_FLAGS.metricAwareRefinement).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.distortionGating).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.gpuFidelityCheck).toBe(false);
-            expect(DEFAULT_FEATURE_FLAGS.seamHealing).toBe(false);
+            expect(DEFAULT_FEATURE_FLAGS.seamHealing).toBe(true);
             expect(DEFAULT_FEATURE_FLAGS.outerWallCorridorPlanning).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.outerWallCorridorDiagnostics).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.mdcIsosurface).toBe(false);

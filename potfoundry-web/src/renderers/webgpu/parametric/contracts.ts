@@ -383,7 +383,7 @@ export const DEFAULT_FEATURE_FLAGS: Readonly<PipelineFeatureFlags> = Object.free
     metricAwareRefinement: false,
     distortionGating: false,
     gpuFidelityCheck: false,
-    seamHealing: false,
+    seamHealing: true,
     mdcIsosurface: false,
     edgeCollapseEnabled: false,
     perEdgeErrorEstimation: false,

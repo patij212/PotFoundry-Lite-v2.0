@@ -10,6 +10,12 @@
 
 import type { ExportTolerances, QualityProfile, QualityProfileName } from './types';
 
+/** Hard export ceiling: keep binary STL output below 1 GiB. */
+export const MAX_BINARY_STL_BYTES = 1024 * 1024 * 1024;
+
+/** Maximum triangle count that fits in a binary STL below 1 GiB. */
+export const MAX_BINARY_STL_TRIANGLES = Math.floor((MAX_BINARY_STL_BYTES - 84) / 50);
+
 // ============================================================================
 // Profile Definitions
 // ============================================================================

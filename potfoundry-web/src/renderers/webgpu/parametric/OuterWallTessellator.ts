@@ -45,6 +45,20 @@ export const DEFAULT_CHAIN_STRIP_CONFIG: ChainStripConfig = {
     bandMergeFactor: 1.0,
 };
 
+/**
+ * Append every element of `items` to `target` in place.
+ *
+ * Replaces `target.push(...items)`, whose spread passes each element as a
+ * separate call argument and overflows V8's argument-count ceiling (~125k
+ * here) on dense meshes, throwing `RangeError: Maximum call stack size
+ * exceeded`. A plain loop has no such ceiling.
+ */
+export function pushAll<T>(target: T[], items: readonly T[]): void {
+    for (let i = 0; i < items.length; i++) {
+        target.push(items[i]);
+    }
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -141,6 +155,8 @@ export interface OuterWallBuildOptions {
      * preserves legacy raw-UV behavior.
      */
     readonly metricAspect?: number;
+    /** Add projected row-edge companions to reduce chain-heavy fan slivers. */
+    readonly rowEdgeQualityCompanions?: boolean;
 }
 
 // ============================================================================
@@ -273,6 +289,7 @@ const R54_NARROW_TO_BAND_MAX = 0.2;
  * Value = mathematical 4:1 aspect ratio violation threshold.
  */
 const GRID_CHAIN_COALESCE_RADIUS = 0.0006;
+const GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS = 0.00012;
 
 /** Fraction of band T-height used to perturb promoted chain vertices into the strip interior.
  *  R24: Set to 0 — chain vertices are boundary vertices (no promotion).
@@ -915,6 +932,7 @@ export function buildCDTOuterWall(
     const buildStart = performance.now();
     // Bug #5 fix: resolve metric aspect once at function entry, default 1.0.
     const metricAspect = options?.metricAspect ?? 1.0;
+    const enableRowEdgeQualityCompanions = Boolean(options?.rowEdgeQualityCompanions) && !options?.corridorPlanning;
     // Bug #1 fix: per-anchor metadata for downstream GPU re-snap.
     const phantomChainAnchorData = new Map<number, { chainId: number; tCross: number }>();
 
@@ -958,8 +976,9 @@ export function buildCDTOuterWall(
     const totalVertexCount = gridVertexCount + chainVertices.length;
     // R37: Overestimate buffer for phantom vertices (column-crossing band splitting).
     // Exact count is computed in section 3.9 after super-cell merge.
-    // Upper bound: R38 adds local companions around true crossing anchors.
-    const maxPhantomSlots = chainEdges.length * 12;
+    // Upper bound: R38 adds local companions around true crossing anchors; R56
+    // adds row-edge quality companions to avoid fan slivers in chain-heavy cells.
+    const maxPhantomSlots = chainEdges.length * 24 + chainVertices.length * 4;
     const vertices = new Float32Array((totalVertexCount + maxPhantomSlots) * 3);
     const phantomVertexStart = totalVertexCount;
     let phantomVertexCount = 0;
@@ -1075,6 +1094,34 @@ export function buildCDTOuterWall(
         list.push([v0, v1]);
     }
 
+    const getCellChainInfo = (band: number, col: number): CellChainInfo => {
+        const key = cellKey(band, col);
+        let info = cellChainMap.get(key);
+        if (!info) {
+            info = { botChainVerts: [], topChainVerts: [], chainEdges: [] };
+            cellChainMap.set(key, info);
+        }
+        return info;
+    };
+
+    const pushUnique = (list: number[], vertexIdx: number): void => {
+        if (!list.includes(vertexIdx)) list.push(vertexIdx);
+    };
+
+    const assignChainVertexToColumn = (cv: ChainVertex, col: number): void => {
+        if (col < 0 || col >= cellsPerRow) return;
+
+        // This vertex is on row cv.rowIdx.
+        // It affects cell (cv.rowIdx - 1, col) as a top-edge vertex
+        // and cell (cv.rowIdx, col) as a bottom-edge vertex.
+        if (cv.rowIdx > 0) {
+            pushUnique(getCellChainInfo(cv.rowIdx - 1, col).topChainVerts, cv.vertexIdx);
+        }
+        if (cv.rowIdx < numT - 1) {
+            pushUnique(getCellChainInfo(cv.rowIdx, col).botChainVerts, cv.vertexIdx);
+        }
+    };
+
     // Assign chain vertices to cells
     for (const cv of chainVertices) {
         if (cv.t !== undefined) continue; // skip 2D companions
@@ -1083,20 +1130,16 @@ export function buildCDTOuterWall(
         const col = bsearchFloor(unionU, cv.u);
         const gc = col < 0 ? 0 : (col >= cellsPerRow ? cellsPerRow - 1 : col);
 
-        // This vertex is on row cv.rowIdx.
-        // It affects cell (cv.rowIdx - 1, gc) as a top-edge vertex
-        // and cell (cv.rowIdx, gc) as a bottom-edge vertex.
-        if (cv.rowIdx > 0) {
-            const key = cellKey(cv.rowIdx - 1, gc);
-            let info = cellChainMap.get(key);
-            if (!info) { info = { botChainVerts: [], topChainVerts: [], chainEdges: [] }; cellChainMap.set(key, info); }
-            info.topChainVerts.push(cv.vertexIdx);
+        assignChainVertexToColumn(cv, gc);
+
+        // If the chain vertex lies on a vertical cell boundary, both adjacent
+        // cells must receive the row-edge split or grid-chain coalescing leaves
+        // a one-triangle pin on the standard side of the boundary.
+        if (Math.abs(cv.u - unionU[gc]) < GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS) {
+            assignChainVertexToColumn(cv, gc - 1);
         }
-        if (cv.rowIdx < numT - 1) {
-            const key = cellKey(cv.rowIdx, gc);
-            let info = cellChainMap.get(key);
-            if (!info) { info = { botChainVerts: [], topChainVerts: [], chainEdges: [] }; cellChainMap.set(key, info); }
-            info.botChainVerts.push(cv.vertexIdx);
+        if (Math.abs(cv.u - unionU[gc + 1]) < GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS) {
+            assignChainVertexToColumn(cv, gc + 1);
         }
     }
 
@@ -1632,8 +1675,8 @@ export function buildCDTOuterWall(
             }
             const info = cellChainMap.get(cellKey(band, col));
             if (!info) continue;
-            bottomEdge.push(...info.botChainVerts);
-            topEdge.push(...info.topChainVerts);
+            pushAll(bottomEdge, info.botChainVerts);
+            pushAll(topEdge, info.topChainVerts);
         }
         bottomEdge.push(band * numU + rightBotCol);
         topEdge.push((band + 1) * numU + rightTopCol);
@@ -1644,7 +1687,7 @@ export function buildCDTOuterWall(
         for (let col = colStart; col <= colEnd; col++) {
             const info = cellChainMap.get(cellKey(band, col));
             if (!info) continue;
-            allEdges.push(...info.chainEdges);
+            pushAll(allEdges, info.chainEdges);
         }
         const uniqueEdges: Array<[number, number]> = [];
         const edgeSet = new Set<string>();
@@ -2034,7 +2077,7 @@ export function buildCDTOuterWall(
                 // Record split for master chainEdges update (A4)
                 const origKey = ev0 < ev1 ? `${ev0}-${ev1}` : `${ev1}-${ev0}`;
                 edgeSplitMap.set(origKey, subEdges);
-                allSubEdges.push(...subEdges);
+                pushAll(allSubEdges, subEdges);
             }
 
             ownedSpanR37.set(ownedSpan.ownerKey, {
@@ -2052,13 +2095,13 @@ export function buildCDTOuterWall(
             const key = v0 < v1 ? `${v0}-${v1}` : `${v1}-${v0}`;
             const splits = edgeSplitMap.get(key);
             if (splits) {
-                newEdges.push(...splits);
+                pushAll(newEdges, splits);
             } else {
                 newEdges.push([v0, v1]);
             }
         }
         chainEdges.length = 0;
-        chainEdges.push(...newEdges);
+        pushAll(chainEdges, newEdges);
     }
 
     if (phantomVertexCount > 0) {
@@ -2106,7 +2149,7 @@ export function buildCDTOuterWall(
                                 entry = { leftPhantoms: [], rightPhantoms: [] };
                                 phantomBoundaryMap.set(adjKey, entry);
                             }
-                            entry.rightPhantoms.push(...phantomIndices);
+                            pushAll(entry.rightPhantoms, phantomIndices);
                         }
                     }
                 }
@@ -2136,7 +2179,7 @@ export function buildCDTOuterWall(
                                 entry = { leftPhantoms: [], rightPhantoms: [] };
                                 phantomBoundaryMap.set(adjKey, entry);
                             }
-                            entry.leftPhantoms.push(...phantomIndices);
+                            pushAll(entry.leftPhantoms, phantomIndices);
                         }
                     }
                 }
@@ -2146,6 +2189,79 @@ export function buildCDTOuterWall(
     let bppSplitCellCount = 0;
     let bppChainSplitCellCount = 0;
     let bppPropagatedCount = 0;
+    let qualityCompanionCount = 0;
+
+    const QUALITY_COMPANION_U_TOL = 1e-7;
+
+    const interpolateEdgeTAtU = (edge: number[], u: number): number => {
+        if (edge.length === 0) return 0;
+        const sorted = [...edge].sort((a, b) => vertices[a * 3] - vertices[b * 3]);
+        if (u <= vertices[sorted[0] * 3]) return vertices[sorted[0] * 3 + 1];
+        for (let i = 0; i < sorted.length - 1; i++) {
+            const a = sorted[i];
+            const b = sorted[i + 1];
+            const au = vertices[a * 3];
+            const bu = vertices[b * 3];
+            if (u > bu + QUALITY_COMPANION_U_TOL) continue;
+            const at = vertices[a * 3 + 1];
+            const bt = vertices[b * 3 + 1];
+            const span = bu - au;
+            if (Math.abs(span) < QUALITY_COMPANION_U_TOL) return (at + bt) * 0.5;
+            const alpha = Math.max(0, Math.min(1, (u - au) / span));
+            return at + (bt - at) * alpha;
+        }
+        return vertices[sorted[sorted.length - 1] * 3 + 1];
+    };
+
+    const edgeHasU = (edge: number[], u: number): boolean =>
+        edge.some(v => Math.abs(vertices[v * 3] - u) <= QUALITY_COMPANION_U_TOL);
+
+    const createQualityCompanion = (edge: number[], u: number): number | undefined => {
+        if (nextPhantomIdx >= totalVertexCount + maxPhantomSlots) {
+            console.warn('[CDT] R56 quality companion slot overflow');
+            return undefined;
+        }
+        const pIdx = nextPhantomIdx++;
+        vertices[pIdx * 3] = u;
+        vertices[pIdx * 3 + 1] = interpolateEdgeTAtU(edge, u);
+        vertices[pIdx * 3 + 2] = surfaceId;
+        qualityCompanionCount++;
+        return pIdx;
+    };
+
+    const addRowEdgeQualityCompanions = (bottom: number[], top: number[]): { bottom: number[]; top: number[] } => {
+        if (!enableRowEdgeQualityCompanions) return { bottom, top };
+        if (bottom.length < 2 || top.length < 2) return { bottom, top };
+
+        const uBreaks: number[] = [];
+        for (const edge of [bottom, top]) {
+            for (const v of edge) {
+                const u = vertices[v * 3];
+                if (!uBreaks.some(existing => Math.abs(existing - u) <= QUALITY_COMPANION_U_TOL)) {
+                    uBreaks.push(u);
+                }
+            }
+        }
+        uBreaks.sort((a, b) => a - b);
+
+        const nextBottom = [...bottom];
+        const nextTop = [...top];
+        for (const u of uBreaks) {
+            if (!edgeHasU(nextBottom, u)) {
+                const companion = createQualityCompanion(nextBottom, u);
+                if (companion !== undefined) nextBottom.push(companion);
+            }
+            if (!edgeHasU(nextTop, u)) {
+                const companion = createQualityCompanion(nextTop, u);
+                if (companion !== undefined) nextTop.push(companion);
+            }
+        }
+
+        return {
+            bottom: dedupeSortedVertexEdge(nextBottom.sort((a, b) => vertices[a * 3] - vertices[b * 3])),
+            top: dedupeSortedVertexEdge(nextTop.sort((a, b) => vertices[a * 3] - vertices[b * 3])),
+        };
+    };
     if (phantomBoundaryMap.size > 0) {
         for (const [, info] of phantomBoundaryMap) {
             bppPropagatedCount += info.leftPhantoms.length + info.rightPhantoms.length;
@@ -2302,13 +2418,15 @@ export function buildCDTOuterWall(
         const coalBot = coalesceNearGridChain(botEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce);
         const coalTop = coalesceNearGridChain(topEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce);
 
+        const qualityEdges = addRowEdgeQualityCompanions(coalBot, coalTop);
+
         if (info.chainEdges.length === 0) {
             // Chain vertices on edges but no chain edge through this cell.
             // Use monotone sweep between bottom and top edge arrays.
-            sweepQuad(indexBuf, coalBot, coalTop, vertices, metricAspect);
+            sweepQuad(indexBuf, qualityEdges.bottom, qualityEdges.top, vertices, metricAspect);
         } else {
             // Chain edges partition the cell into sub-quads.
-            constrainedSweepCell(indexBuf, coalBot, coalTop, info.chainEdges, vertices, fanDiagEdges, metricAspect);
+            constrainedSweepCell(indexBuf, qualityEdges.bottom, qualityEdges.top, info.chainEdges, vertices, fanDiagEdges, metricAspect);
         }
     };
 
@@ -2477,10 +2595,12 @@ export function buildCDTOuterWall(
                 }
             }
 
+            const qualityEdges = addRowEdgeQualityCompanions(subBot, subTop);
+
             if (subEdges.length === 0) {
-                sweepQuad(indexBuf, subBot, subTop, vertices, metricAspect);
+                sweepQuad(indexBuf, qualityEdges.bottom, qualityEdges.top, vertices, metricAspect);
             } else {
-                constrainedSweepCell(indexBuf, subBot, subTop, subEdges, vertices, fanDiagEdges, metricAspect);
+                constrainedSweepCell(indexBuf, qualityEdges.bottom, qualityEdges.top, subEdges, vertices, fanDiagEdges, metricAspect);
             }
         }
     };
@@ -2860,6 +2980,9 @@ export function buildCDTOuterWall(
     console.log(`[ParametricExport]   R46 Interpolated chain vertices for re-snap: ${interpolatedChainVertices.length}/${interpolatedCount}`);
     console.log(`[ParametricExport]   R37 Phantom vertices: ${phantomVertexCount} (start=${phantomVertexStart}), band-split owned spans: ${ownedSpanR37.size}`);
     console.log(`[ParametricExport]   R53 BPP split cells: ${bppSplitCellCount} (standard=${bppSplitCellCount - bppChainSplitCellCount}, chain=${bppChainSplitCellCount}), propagated phantoms: ${bppPropagatedCount}`);
+    if (qualityCompanionCount > 0) {
+        console.log(`[ParametricExport]   R56 quality companions: ${qualityCompanionCount}`);
+    }
     console.log(`[ParametricExport]   R34 Primary chain edges: total=${primaryTotal}, enforced=${primaryEnforced}, missing=${primaryMissing}`);
     if (windingFixCount > 0) {
         console.log(`[ParametricExport]   R34 Standard cell winding fixes: ${windingFixCount}`);

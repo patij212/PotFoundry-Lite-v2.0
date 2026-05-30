@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     identifySeamPairs,
+    identifySeamPairsByUV,
     identifySeamVertices,
     measurePositionGap,
     estimateNormalGapFromFaces,
@@ -186,6 +187,39 @@ describe('identifySeamPairs', () => {
     it('returns empty for degenerate grids', () => {
         expect(identifySeamPairs(1, 5)).toHaveLength(0); // numU < 2
         expect(identifySeamPairs(10, 0)).toHaveLength(0); // numT < 1
+    });
+});
+
+describe('identifySeamPairsByUV', () => {
+    it('pairs the maximum available outer-wall U column even when it is below 1.0', () => {
+        const uvs = new Float32Array([
+            0.0, 0.0, 0,
+            0.25, 0.0, 0,
+            0.9974, 0.0, 0,
+            0.0, 0.5, 0,
+            0.25, 0.5, 0,
+            0.9974, 0.5, 0,
+        ]);
+
+        const pairs = identifySeamPairsByUV(uvs, 6);
+
+        expect(pairs).toHaveLength(2);
+        expect(pairs[0]).toMatchObject({ col0Vertex: 0, colLastVertex: 2 });
+        expect(pairs[1]).toMatchObject({ col0Vertex: 3, colLastVertex: 5 });
+    });
+
+    it('ignores non-outer surfaces when detecting UV seam pairs', () => {
+        const uvs = new Float32Array([
+            0.0, 0.0, 0,
+            0.9974, 0.0, 0,
+            0.0, 0.0, 2,
+            1.0, 0.0, 2,
+        ]);
+
+        const pairs = identifySeamPairsByUV(uvs, 4);
+
+        expect(pairs).toHaveLength(1);
+        expect(pairs[0]).toMatchObject({ col0Vertex: 0, colLastVertex: 1 });
     });
 });
 
@@ -616,6 +650,47 @@ describe('healSeam', () => {
         const result = healSeam(positions, indices, indices.length, numU, numT, config);
         expect(result.indices.length).toBe(origLen);
         expect(result.ghostStripsInserted).toBe(0);
+    });
+
+    it('keeps base-grid seam pairs when UV extras have a larger U than the grid seam column', () => {
+        const numU = 8, numT = 4, radius = 20;
+        const { positions, indices } = buildSeamGrid(numU, numT, radius, 0.3);
+        const positionsWithExtra = new Float32Array(positions.length + 3);
+        positionsWithExtra.set(positions);
+        positionsWithExtra.set([radius, 999, 0], positions.length);
+
+        const uvs = new Float32Array((numU * numT + 1) * 3);
+        for (let row = 0; row < numT; row++) {
+            for (let col = 0; col < numU; col++) {
+                const base = (row * numU + col) * 3;
+                uvs[base] = col === numU - 1 ? 0.9974 : col / numU;
+                uvs[base + 1] = row / (numT - 1);
+                uvs[base + 2] = 0;
+            }
+        }
+        uvs[numU * numT * 3] = 0.9999;
+        uvs[numU * numT * 3 + 1] = 0.1234;
+        uvs[numU * numT * 3 + 2] = 0;
+
+        const result = healSeam(
+            positionsWithExtra,
+            indices,
+            indices.length,
+            numU,
+            numT,
+            healConfigForProfile('standard'),
+            uvs,
+            numU * numT + 1,
+        );
+
+        expect(result.pairsAveraged).toBeGreaterThanOrEqual(numT);
+        for (let row = 0; row < numT; row++) {
+            expect(measurePositionGap(result.positions, {
+                col0Vertex: row * numU,
+                colLastVertex: row * numU + numU - 1,
+                row,
+            })).toBeLessThan(0.001);
+        }
     });
 
     it('inserts ghost triangles for large gaps', () => {

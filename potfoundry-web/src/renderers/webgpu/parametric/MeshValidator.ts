@@ -37,6 +37,8 @@ import {
     edgeLengthStats,
 } from './SurfaceMetric';
 
+const DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM = 0;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -151,6 +153,76 @@ export interface EdgeLengthReport {
     edgeCount: number;
 }
 
+/** Boundary-edge classification used for export topology diagnostics. */
+export interface BoundaryEdgeDiagnostics {
+    /** Total boundary edges after optional geometric welding. */
+    total: number;
+    /** Counts grouped by endpoint surface ids. */
+    bySurfacePair: Array<{ key: string; count: number }>;
+    /** Counts grouped by endpoint surface id and T-boundary class. */
+    byEndpointClass: Array<{ key: string; count: number }>;
+    /** Representative raw vertex pairs for the first few boundary edges. */
+    samples: Array<{
+        classKey?: string;
+        rawCount?: number;
+        v0: number;
+        v1: number;
+        u0: number;
+        t0: number;
+        s0: number;
+        u1: number;
+        t1: number;
+        s1: number;
+    }>;
+    /** Connected components of the boundary-edge graph after optional geometric welding. */
+    components: {
+        total: number;
+        closedLoops: number;
+        openChains: number;
+        branched: number;
+        largestEdges: number;
+        degree1Vertices: number;
+        degree2Vertices: number;
+        degree3PlusVertices: number;
+    };
+    /** Representative connected boundary components with UV extents. */
+    componentSamples?: Array<{
+        kind: 'loop' | 'chain' | 'branched';
+        edges: number;
+        vertices: number;
+        minU: number;
+        maxU: number;
+        minT: number;
+        maxT: number;
+        maxDegree: number;
+        sampleVertices: number[];
+    }>;
+}
+
+export interface EdgeAnomalyDiagnostics {
+    total: number;
+    byEndpointClass: Array<{ key: string; count: number }>;
+    samples: Array<{
+        classKey?: string;
+        count: number;
+        v0: number;
+        v1: number;
+        u0: number;
+        t0: number;
+        s0: number;
+        u1: number;
+        t1: number;
+        s1: number;
+        incidents?: Array<{
+            triOffset: number;
+            opp: number;
+            oppU?: number;
+            oppT?: number;
+            oppS?: number;
+        }>;
+    }>;
+}
+
 /** Distortion tolerance thresholds per quality profile. */
 export interface DistortionGates {
     /** Maximum allowable p95 stretch ratio. */
@@ -213,6 +285,12 @@ export interface ValidateConfig {
     uvs?: Float32Array;
     /** Distortion tolerance gates (profile-dependent). */
     distortionGates?: DistortionGates;
+    /**
+     * Position tolerance used to weld STL-style duplicated vertices before
+     * manifold checks. Defaults to 0 for the hot export path; callers can opt
+     * in when they need STL-style geometric topology auditing.
+     */
+    topologyWeldToleranceMm?: number;
 }
 
 // ============================================================================
@@ -228,6 +306,61 @@ function edgeKey(a: number, b: number): bigint {
     return a < b
         ? BigInt(a) * 0x200000n + BigInt(b)
         : BigInt(b) * 0x200000n + BigInt(a);
+}
+
+function buildGeometricVertexRemap(
+    positions: Float32Array,
+    epsilon: number,
+): Uint32Array {
+    const vertexCount = Math.floor(positions.length / 3);
+    const remap = new Uint32Array(vertexCount);
+    if (vertexCount === 0) return remap;
+
+    const precision = Math.max(1, Math.round(1 / epsilon));
+    const quantized = new Int32Array(vertexCount * 4);
+    const order = new Uint32Array(vertexCount);
+
+    for (let i = 0; i < vertexCount; i++) {
+        quantized[i * 4] = Math.round(positions[i * 3] * precision);
+        quantized[i * 4 + 1] = Math.round(positions[i * 3 + 1] * precision);
+        quantized[i * 4 + 2] = Math.round(positions[i * 3 + 2] * precision);
+        quantized[i * 4 + 3] = i;
+        order[i] = i;
+    }
+
+    order.sort((a, b) => {
+        const ax = quantized[a * 4];
+        const bx = quantized[b * 4];
+        if (ax !== bx) return ax - bx;
+
+        const ay = quantized[a * 4 + 1];
+        const by = quantized[b * 4 + 1];
+        if (ay !== by) return ay - by;
+
+        return quantized[a * 4 + 2] - quantized[b * 4 + 2];
+    });
+
+    let canonical = 0;
+    let prevX = quantized[order[0] * 4];
+    let prevY = quantized[order[0] * 4 + 1];
+    let prevZ = quantized[order[0] * 4 + 2];
+    remap[order[0]] = canonical;
+
+    for (let sortedIdx = 1; sortedIdx < vertexCount; sortedIdx++) {
+        const vertexIdx = order[sortedIdx];
+        const x = quantized[vertexIdx * 4];
+        const y = quantized[vertexIdx * 4 + 1];
+        const z = quantized[vertexIdx * 4 + 2];
+        if (x !== prevX || y !== prevY || z !== prevZ) {
+            canonical++;
+            prevX = x;
+            prevY = y;
+            prevZ = z;
+        }
+        remap[vertexIdx] = canonical;
+    }
+
+    return remap;
 }
 
 // ============================================================================
@@ -248,10 +381,21 @@ export function checkManifold(
     indices: Uint32Array,
     idxCount: number,
 ): ManifoldReport {
+    return checkManifoldWithRemap(indices, idxCount);
+}
+
+function checkManifoldWithRemap(
+    indices: Uint32Array,
+    idxCount: number,
+    remap?: Uint32Array,
+): ManifoldReport {
     const edgeFaceCount = new Map<bigint, number>();
 
     for (let t = 0; t < idxCount; t += 3) {
-        const i0 = indices[t], i1 = indices[t + 1], i2 = indices[t + 2];
+        const raw0 = indices[t], raw1 = indices[t + 1], raw2 = indices[t + 2];
+        const i0 = remap && raw0 < remap.length ? remap[raw0] : raw0;
+        const i1 = remap && raw1 < remap.length ? remap[raw1] : raw1;
+        const i2 = remap && raw2 < remap.length ? remap[raw2] : raw2;
         // Skip degenerate triangles
         if (i0 === i1 || i1 === i2 || i0 === i2) continue;
 
@@ -276,6 +420,412 @@ export function checkManifold(
         ok: nonManifoldEdges === 0,
         nonManifoldEdges,
         boundaryEdges,
+    };
+}
+
+/**
+ * Check manifold topology after welding coincident geometric vertices.
+ *
+ * STL is triangle soup and OBJ/3MF writers may contain duplicated vertex rows
+ * even when surfaces meet exactly in 3D. This check measures slicer-style
+ * geometric closure instead of requiring shared vertex IDs.
+ */
+export function checkGeometricManifold(
+    positions: Float32Array,
+    indices: Uint32Array,
+    idxCount: number,
+    topologyWeldToleranceMm: number = DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM,
+): ManifoldReport {
+    if (topologyWeldToleranceMm <= 0) {
+        return checkManifold(indices, idxCount);
+    }
+
+    const remap = buildGeometricVertexRemap(positions, topologyWeldToleranceMm);
+    return checkManifoldWithRemap(indices, idxCount, remap);
+}
+
+function incrementCount(map: Map<string, number>, key: string): void {
+    map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function sortedCounts(map: Map<string, number>): Array<{ key: string; count: number }> {
+    return Array.from(map.entries())
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+}
+
+function tBoundaryClass(t: number): string {
+    if (t <= 1e-5) return 't0';
+    if (t >= 1 - 1e-5) return 't1';
+    return 'tmid';
+}
+
+function endpointClass(uvs: Float32Array, vertexIdx: number): string {
+    const base = vertexIdx * 3;
+    const surface = Math.round(uvs[base + 2] ?? -1);
+    const t = uvs[base + 1] ?? NaN;
+    return `s${surface}:${tBoundaryClass(t)}`;
+}
+
+function surfacePairKey(uvs: Float32Array, v0: number, v1: number): string {
+    const s0 = Math.round(uvs[v0 * 3 + 2] ?? -1);
+    const s1 = Math.round(uvs[v1 * 3 + 2] ?? -1);
+    return s0 <= s1 ? `s${s0}-s${s1}` : `s${s1}-s${s0}`;
+}
+
+function endpointPairKey(uvs: Float32Array, v0: number, v1: number): string {
+    const a = endpointClass(uvs, v0);
+    const b = endpointClass(uvs, v1);
+    return a <= b ? `${a}-${b}` : `${b}-${a}`;
+}
+
+function summarizeBoundaryComponents(boundaryEdges: Array<[number, number]>): BoundaryEdgeDiagnostics['components'] {
+    const adjacency = new Map<number, Set<number>>();
+    for (const [a, b] of boundaryEdges) {
+        let aNeighbors = adjacency.get(a);
+        if (!aNeighbors) {
+            aNeighbors = new Set<number>();
+            adjacency.set(a, aNeighbors);
+        }
+        aNeighbors.add(b);
+
+        let bNeighbors = adjacency.get(b);
+        if (!bNeighbors) {
+            bNeighbors = new Set<number>();
+            adjacency.set(b, bNeighbors);
+        }
+        bNeighbors.add(a);
+    }
+
+    let degree1Vertices = 0;
+    let degree2Vertices = 0;
+    let degree3PlusVertices = 0;
+    for (const neighbors of adjacency.values()) {
+        if (neighbors.size === 1) degree1Vertices++;
+        else if (neighbors.size === 2) degree2Vertices++;
+        else if (neighbors.size >= 3) degree3PlusVertices++;
+    }
+
+    const visited = new Set<number>();
+    let total = 0;
+    let closedLoops = 0;
+    let openChains = 0;
+    let branched = 0;
+    let largestEdges = 0;
+
+    for (const start of adjacency.keys()) {
+        if (visited.has(start)) continue;
+        total++;
+        const stack = [start];
+        const vertices: number[] = [];
+        let degreeSum = 0;
+        let hasBranch = false;
+        let endpoints = 0;
+
+        while (stack.length > 0) {
+            const v = stack.pop()!;
+            if (visited.has(v)) continue;
+            visited.add(v);
+            vertices.push(v);
+
+            const neighbors = adjacency.get(v);
+            if (!neighbors) continue;
+            degreeSum += neighbors.size;
+            if (neighbors.size === 1) endpoints++;
+            if (neighbors.size > 2) hasBranch = true;
+            for (const n of neighbors) {
+                if (!visited.has(n)) stack.push(n);
+            }
+        }
+
+        const edgeCount = degreeSum / 2;
+        largestEdges = Math.max(largestEdges, edgeCount);
+        if (hasBranch) branched++;
+        else if (vertices.length > 0 && endpoints === 0) closedLoops++;
+        else openChains++;
+    }
+
+    return {
+        total,
+        closedLoops,
+        openChains,
+        branched,
+        largestEdges,
+        degree1Vertices,
+        degree2Vertices,
+        degree3PlusVertices,
+    };
+}
+
+function summarizeBoundaryComponentSamples(
+    boundaryEdges: Array<[number, number]>,
+    uvs: Float32Array,
+    maxSamples: number = 8,
+): NonNullable<BoundaryEdgeDiagnostics['componentSamples']> {
+    const adjacency = new Map<number, Set<number>>();
+    for (const [a, b] of boundaryEdges) {
+        let aNeighbors = adjacency.get(a);
+        if (!aNeighbors) {
+            aNeighbors = new Set<number>();
+            adjacency.set(a, aNeighbors);
+        }
+        aNeighbors.add(b);
+
+        let bNeighbors = adjacency.get(b);
+        if (!bNeighbors) {
+            bNeighbors = new Set<number>();
+            adjacency.set(b, bNeighbors);
+        }
+        bNeighbors.add(a);
+    }
+
+    const visited = new Set<number>();
+    const components: NonNullable<BoundaryEdgeDiagnostics['componentSamples']> = [];
+
+    for (const start of adjacency.keys()) {
+        if (visited.has(start)) continue;
+        const stack = [start];
+        const vertices: number[] = [];
+        let degreeSum = 0;
+        let endpoints = 0;
+        let maxDegree = 0;
+        let minU = Infinity, maxU = -Infinity, minT = Infinity, maxT = -Infinity;
+
+        while (stack.length > 0) {
+            const v = stack.pop()!;
+            if (visited.has(v)) continue;
+            visited.add(v);
+            vertices.push(v);
+
+            const base = v * 3;
+            const u = uvs[base] ?? NaN;
+            const t = uvs[base + 1] ?? NaN;
+            if (Number.isFinite(u)) {
+                minU = Math.min(minU, u);
+                maxU = Math.max(maxU, u);
+            }
+            if (Number.isFinite(t)) {
+                minT = Math.min(minT, t);
+                maxT = Math.max(maxT, t);
+            }
+
+            const neighbors = adjacency.get(v);
+            if (!neighbors) continue;
+            const degree = neighbors.size;
+            degreeSum += degree;
+            maxDegree = Math.max(maxDegree, degree);
+            if (degree === 1) endpoints++;
+            for (const n of neighbors) {
+                if (!visited.has(n)) stack.push(n);
+            }
+        }
+
+        const kind = maxDegree > 2 ? 'branched' : endpoints === 0 ? 'loop' : 'chain';
+        components.push({
+            kind,
+            edges: degreeSum / 2,
+            vertices: vertices.length,
+            minU: Number.isFinite(minU) ? minU : NaN,
+            maxU: Number.isFinite(maxU) ? maxU : NaN,
+            minT: Number.isFinite(minT) ? minT : NaN,
+            maxT: Number.isFinite(maxT) ? maxT : NaN,
+            maxDegree,
+            sampleVertices: vertices.slice(0, 6),
+        });
+    }
+
+    return components
+        .sort((a, b) => b.edges - a.edges || b.maxDegree - a.maxDegree)
+        .slice(0, maxSamples);
+}
+
+/**
+ * Classify boundary edges after the same optional geometric weld used by
+ * manifold validation. Intended for diagnosing which surface loops remain open.
+ */
+export function diagnoseBoundaryEdges(
+    positions: Float32Array,
+    indices: Uint32Array,
+    idxCount: number,
+    uvs?: Float32Array,
+    topologyWeldToleranceMm: number = DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM,
+): BoundaryEdgeDiagnostics {
+    const remap = topologyWeldToleranceMm > 0
+        ? buildGeometricVertexRemap(positions, topologyWeldToleranceMm)
+        : undefined;
+    const edgeFaceCount = new Map<bigint, number>();
+    const rawEdgeFaceCount = new Map<bigint, number>();
+    const rawEdgeSample = new Map<bigint, [number, number]>();
+
+    for (let t = 0; t < idxCount; t += 3) {
+        const raw0 = indices[t], raw1 = indices[t + 1], raw2 = indices[t + 2];
+        const i0 = remap && raw0 < remap.length ? remap[raw0] : raw0;
+        const i1 = remap && raw1 < remap.length ? remap[raw1] : raw1;
+        const i2 = remap && raw2 < remap.length ? remap[raw2] : raw2;
+        if (i0 === i1 || i1 === i2 || i0 === i2) continue;
+
+        const edges: Array<[bigint, number, number]> = [
+            [edgeKey(i0, i1), raw0, raw1],
+            [edgeKey(i1, i2), raw1, raw2],
+            [edgeKey(i2, i0), raw2, raw0],
+        ];
+        for (const [key, rawA, rawB] of edges) {
+            edgeFaceCount.set(key, (edgeFaceCount.get(key) ?? 0) + 1);
+            const rawKey = edgeKey(rawA, rawB);
+            rawEdgeFaceCount.set(rawKey, (rawEdgeFaceCount.get(rawKey) ?? 0) + 1);
+            if (!rawEdgeSample.has(key)) rawEdgeSample.set(key, [rawA, rawB]);
+        }
+    }
+
+    const bySurfacePair = new Map<string, number>();
+    const byEndpointClass = new Map<string, number>();
+    const samplesByClass = new Map<string, BoundaryEdgeDiagnostics['samples']>();
+    const boundaryEdges: Array<[number, number]> = [];
+    const rawBoundaryEdges: Array<[number, number]> = [];
+    let total = 0;
+
+    for (const [key, count] of edgeFaceCount) {
+        if (count !== 1) continue;
+        total++;
+        const raw = rawEdgeSample.get(key);
+        if (raw) {
+            const [raw0, raw1] = raw;
+            const i0 = remap && raw0 < remap.length ? remap[raw0] : raw0;
+            const i1 = remap && raw1 < remap.length ? remap[raw1] : raw1;
+            boundaryEdges.push([i0, i1]);
+            rawBoundaryEdges.push([raw0, raw1]);
+        }
+        if (!uvs || !raw) continue;
+        const [v0, v1] = raw;
+        incrementCount(bySurfacePair, surfacePairKey(uvs, v0, v1));
+        const classKey = endpointPairKey(uvs, v0, v1);
+        incrementCount(byEndpointClass, classKey);
+        let classSamples = samplesByClass.get(classKey);
+        if (!classSamples) {
+            classSamples = [];
+            samplesByClass.set(classKey, classSamples);
+        }
+        if (classSamples.length < 3) {
+            const b0 = v0 * 3;
+            const b1 = v1 * 3;
+            classSamples.push({
+                classKey,
+                rawCount: rawEdgeFaceCount.get(edgeKey(v0, v1)) ?? 0,
+                v0,
+                v1,
+                u0: uvs[b0],
+                t0: uvs[b0 + 1],
+                s0: uvs[b0 + 2],
+                u1: uvs[b1],
+                t1: uvs[b1 + 1],
+                s1: uvs[b1 + 2],
+            });
+        }
+    }
+
+    const byEndpointClassSorted = sortedCounts(byEndpointClass);
+    const samples: BoundaryEdgeDiagnostics['samples'] = [];
+    for (const { key } of byEndpointClassSorted) {
+        const classSamples = samplesByClass.get(key);
+        if (!classSamples) continue;
+        for (const sample of classSamples) {
+            samples.push(sample);
+            if (samples.length >= 8) break;
+        }
+        if (samples.length >= 8) break;
+    }
+
+    return {
+        total,
+        bySurfacePair: sortedCounts(bySurfacePair),
+        byEndpointClass: byEndpointClassSorted,
+        samples,
+        components: summarizeBoundaryComponents(boundaryEdges),
+        componentSamples: uvs ? summarizeBoundaryComponentSamples(rawBoundaryEdges, uvs) : undefined,
+    };
+}
+
+export function diagnoseNonManifoldEdges(
+    positions: Float32Array,
+    indices: Uint32Array,
+    idxCount: number,
+    uvs?: Float32Array,
+    topologyWeldToleranceMm: number = DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM,
+): EdgeAnomalyDiagnostics {
+    const remap = topologyWeldToleranceMm > 0
+        ? buildGeometricVertexRemap(positions, topologyWeldToleranceMm)
+        : undefined;
+    const edgeFaceCount = new Map<bigint, number>();
+    const rawEdgeSample = new Map<bigint, [number, number]>();
+    const incidentSamples = new Map<bigint, Array<{ triOffset: number; opp: number }>>();
+
+    for (let t = 0; t < idxCount; t += 3) {
+        const raw0 = indices[t], raw1 = indices[t + 1], raw2 = indices[t + 2];
+        const i0 = remap && raw0 < remap.length ? remap[raw0] : raw0;
+        const i1 = remap && raw1 < remap.length ? remap[raw1] : raw1;
+        const i2 = remap && raw2 < remap.length ? remap[raw2] : raw2;
+        if (i0 === i1 || i1 === i2 || i0 === i2) continue;
+
+        const edges: Array<[bigint, number, number, number]> = [
+            [edgeKey(i0, i1), raw0, raw1, raw2],
+            [edgeKey(i1, i2), raw1, raw2, raw0],
+            [edgeKey(i2, i0), raw2, raw0, raw1],
+        ];
+        for (const [key, rawA, rawB, opp] of edges) {
+            edgeFaceCount.set(key, (edgeFaceCount.get(key) ?? 0) + 1);
+            if (!rawEdgeSample.has(key)) rawEdgeSample.set(key, [rawA, rawB]);
+            let incidents = incidentSamples.get(key);
+            if (!incidents) {
+                incidents = [];
+                incidentSamples.set(key, incidents);
+            }
+            incidents.push({ triOffset: t, opp });
+        }
+    }
+
+    const byEndpointClass = new Map<string, number>();
+    const samples: EdgeAnomalyDiagnostics['samples'] = [];
+    let total = 0;
+    for (const [key, count] of edgeFaceCount) {
+        if (count <= 2) continue;
+        total++;
+        const raw = rawEdgeSample.get(key);
+        if (!uvs || !raw) continue;
+        const [v0, v1] = raw;
+        const classKey = endpointPairKey(uvs, v0, v1);
+        incrementCount(byEndpointClass, classKey);
+        if (samples.length < 8) {
+            const b0 = v0 * 3;
+            const b1 = v1 * 3;
+            const incidents = (incidentSamples.get(key) ?? []).map(incident => {
+                const oppBase = incident.opp * 3;
+                return {
+                    ...incident,
+                    oppU: uvs[oppBase],
+                    oppT: uvs[oppBase + 1],
+                    oppS: uvs[oppBase + 2],
+                };
+            });
+            samples.push({
+                classKey,
+                count,
+                v0,
+                v1,
+                u0: uvs[b0],
+                t0: uvs[b0 + 1],
+                s0: uvs[b0 + 2],
+                u1: uvs[b1],
+                t1: uvs[b1 + 1],
+                s1: uvs[b1 + 2],
+                incidents,
+            });
+        }
+    }
+
+    return {
+        total,
+        byEndpointClass: sortedCounts(byEndpointClass),
+        samples,
     };
 }
 
@@ -1168,12 +1718,75 @@ export function validateMesh(
     const warnings: string[] = [];
 
     // 1. Manifold check
-    const manifold = checkManifold(indices, idxCount);
+    const manifold = checkGeometricManifold(
+        positions,
+        indices,
+        idxCount,
+        config.topologyWeldToleranceMm ?? DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM,
+    );
     if (!manifold.ok) {
         warnings.push(`${manifold.nonManifoldEdges} non-manifold edges detected`);
+        if (config.uvs) {
+            const nonManifoldDiag = diagnoseNonManifoldEdges(
+                positions,
+                indices,
+                idxCount,
+                config.uvs,
+                config.topologyWeldToleranceMm ?? DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM,
+            );
+            const classes = nonManifoldDiag.byEndpointClass
+                .slice(0, 8)
+                .map(({ key, count }) => `${key}:${count}`)
+                .join(', ');
+            const samples = nonManifoldDiag.samples
+                .slice(0, 8)
+                .map(s => {
+                    const incidents = (s.incidents ?? [])
+                        .map(i => `@${i.triOffset}:opp=${i.opp}[s${Math.round(i.oppS ?? -1)} t=${(i.oppT ?? 0).toFixed(5)} u=${(i.oppU ?? 0).toFixed(5)}]`)
+                        .join('|');
+                    return `${s.classKey ?? 'edge'} count=${s.count} ${s.v0}->${s.v1} [s${Math.round(s.s0)} t=${s.t0.toFixed(5)} u=${s.u0.toFixed(5)} | s${Math.round(s.s1)} t=${s.t1.toFixed(5)} u=${s.u1.toFixed(5)}] incidents=${incidents || 'n/a'}`;
+                })
+                .join('; ');
+            console.warn(`[MeshValidator] Non-manifold diagnostics: total=${nonManifoldDiag.total}, classes=${classes || 'n/a'}, samples=${samples || 'n/a'}`);
+        }
     }
     if (manifold.boundaryEdges > 0) {
         warnings.push(`${manifold.boundaryEdges} boundary edges (mesh not closed)`);
+        if (config.uvs) {
+            const boundaryDiag = diagnoseBoundaryEdges(
+                positions,
+                indices,
+                idxCount,
+                config.uvs,
+                config.topologyWeldToleranceMm ?? DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM,
+            );
+            const classes = boundaryDiag.byEndpointClass
+                .slice(0, 8)
+                .map(({ key, count }) => `${key}:${count}`)
+                .join(', ');
+            const samples = boundaryDiag.samples
+                .slice(0, 8)
+                .map(s => `${s.classKey ?? 'edge'} raw=${s.rawCount ?? '?'} ${s.v0}->${s.v1} [s${Math.round(s.s0)} t=${s.t0.toFixed(5)} u=${s.u0.toFixed(5)} | s${Math.round(s.s1)} t=${s.t1.toFixed(5)} u=${s.u1.toFixed(5)}]`)
+                .join('; ');
+            const c = boundaryDiag.components;
+            const componentSamples = (boundaryDiag.componentSamples ?? [])
+                .slice(0, 8)
+                .map(sample =>
+                    `${sample.kind}:edges=${sample.edges},verts=${sample.vertices},deg=${sample.maxDegree},` +
+                    `u=${sample.minU.toFixed(5)}..${sample.maxU.toFixed(5)},` +
+                    `t=${sample.minT.toFixed(5)}..${sample.maxT.toFixed(5)},` +
+                    `v=${sample.sampleVertices.join('/')}`,
+                )
+                .join('; ');
+            console.warn(
+                `[MeshValidator] Boundary diagnostics: total=${boundaryDiag.total}, ` +
+                `classes=${classes || 'n/a'}, ` +
+                `components=${c.total} (loops=${c.closedLoops}, chains=${c.openChains}, ` +
+                `branched=${c.branched}, largest=${c.largestEdges}, ` +
+                `deg1=${c.degree1Vertices}, deg2=${c.degree2Vertices}, deg3+=${c.degree3PlusVertices}), ` +
+                `samples=${samples || 'n/a'}, componentSamples=${componentSamples || 'n/a'}`,
+            );
+        }
     }
 
     // 2. Degenerate check
@@ -1205,6 +1818,7 @@ export function validateMesh(
         positions, indices, idxCount,
         config.tolerances.minTriangleAngleDeg,
     );
+    const draftProfile = config.profileName === 'draft';
     const tqOk = triangleQuality.minAngleDeg >= config.tolerances.minTriangleAngleDeg &&
         triangleQuality.maxAspectRatio <= config.tolerances.maxAspectRatio;
     triangleQuality.ok = tqOk;
@@ -1297,10 +1911,11 @@ export function validateMesh(
     // Overall validity
     const valid =
         manifold.ok &&
+        manifold.boundaryEdges === 0 &&
         degenerates.ok &&
-        normals.ok &&
-        tqOk &&
-        fidOk &&
+        (draftProfile || normals.ok) &&
+        (draftProfile || tqOk) &&
+        (draftProfile || fidOk) &&
         (seam?.ok ?? true) &&
         (wallThickness?.ok ?? true) &&
         (distortion?.ok ?? true);
@@ -1361,10 +1976,11 @@ export async function validateMeshGPU(
     // Recalculate overall validity
     report.valid =
         report.manifold.ok &&
+        report.manifold.boundaryEdges === 0 &&
         report.degenerates.ok &&
-        report.normals.ok &&
-        report.triangleQuality.ok &&
-        fidOk &&
+        (config.profileName === 'draft' || report.normals.ok) &&
+        (config.profileName === 'draft' || report.triangleQuality.ok) &&
+        (config.profileName === 'draft' || fidOk) &&
         (report.seam?.ok ?? true) &&
         (report.wallThickness?.ok ?? true) &&
         (report.distortion?.ok ?? true);

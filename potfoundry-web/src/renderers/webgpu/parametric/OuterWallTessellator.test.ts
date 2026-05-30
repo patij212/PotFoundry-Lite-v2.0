@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { buildCDTOuterWall, insertMicroRowsForSteepCrossings, estimateCircumferentialStretch, subdivideFullChain } from './OuterWallTessellator';
+import { buildCDTOuterWall, insertMicroRowsForSteepCrossings, estimateCircumferentialStretch, subdivideFullChain, pushAll } from './OuterWallTessellator';
 import type { ChainVertex } from './OuterWallTessellator';
 import type { FeatureChain } from './types';
 
@@ -1310,6 +1310,47 @@ describe('OuterWallTessellator', () => {
             expect(result.gridVertexCount).toBe(numU * numT);
         });
 
+        it('R56: adds opposite-edge companions for chain-heavy row edges', () => {
+            const unionU = new Float32Array([0, 0.2, 0.4, 0.6, 0.8, 1]);
+            const tPositions = new Float32Array([0, 0.5, 1]);
+            const rowMapping = makeIdentityRowMapping(3);
+            const chains: FeatureChain[] = [0.25, 0.3, 0.35].map((u, i) => ({
+                kind: i % 2 === 0 ? 'peak' : 'valley',
+                points: [
+                    { row: 1, u },
+                    { row: 1, u },
+                ],
+            }));
+
+            const result = buildCDTOuterWall(
+                chains,
+                rowMapping,
+                tPositions,
+                unionU,
+                200,
+                0,
+                undefined,
+                undefined,
+                { metricAspect: 1, rowEdgeQualityCompanions: true },
+            );
+            const gridAndChainVertexCount = result.gridVertexCount + result.chainVertexChainIds.size;
+            const companionUs = [0.25, 0.3, 0.35];
+
+            for (const targetU of companionUs) {
+                let hasBottomCompanion = false;
+                let hasTopCompanion = false;
+                for (let v = gridAndChainVertexCount; v < result.vertices.length / 3; v++) {
+                    const u = result.vertices[v * 3];
+                    const t = result.vertices[v * 3 + 1];
+                    if (Math.abs(u - targetU) > 1e-6) continue;
+                    if (Math.abs(t - 0) < 1e-6) hasBottomCompanion = true;
+                    if (Math.abs(t - 1) < 1e-6) hasTopCompanion = true;
+                }
+                expect(hasBottomCompanion).toBe(true);
+                expect(hasTopCompanion).toBe(true);
+            }
+        });
+
         it('R52: chain vertices near grid columns are NOT merged to grid positions', () => {
             const numU = 8;
             const numT = 4;
@@ -1758,5 +1799,40 @@ describe('OuterWallTessellator', () => {
             expect(result.indices.length).toBeGreaterThan(0);
             expect(result.chainEdges.length).toBeGreaterThanOrEqual(2);
         });
+    });
+});
+
+describe('pushAll — V8 spread-arg overflow guard', () => {
+    // Real-style dense meshes (GothicArches, Voronoi, …) accumulate chain-edge
+    // arrays well past V8's spread-argument ceiling (~125k here). The old
+    // `target.push(...big)` spread threw `RangeError: Maximum call stack size
+    // exceeded` — the exact failure that left 8 styles unmeasurable.
+    const OVERFLOW_N = 200_000;
+
+    it('the native spread-push it replaces actually overflows at this size', () => {
+        const big = Array.from({ length: OVERFLOW_N }, (_, i) => i);
+        const naive: number[] = [];
+        expect(() => naive.push(...big)).toThrow(RangeError);
+    });
+
+    it('appends a large number array without overflowing, preserving order', () => {
+        const big = Array.from({ length: OVERFLOW_N }, (_, i) => i);
+        const target: number[] = [7, 8];
+        pushAll(target, big);
+        expect(target.length).toBe(OVERFLOW_N + 2);
+        expect(target[0]).toBe(7);
+        expect(target[2]).toBe(0);
+        expect(target[OVERFLOW_N + 1]).toBe(OVERFLOW_N - 1);
+    });
+
+    it('appends a large tuple array (chain edges)', () => {
+        const big: Array<[number, number]> = Array.from(
+            { length: OVERFLOW_N },
+            (_, i) => [i, i + 1],
+        );
+        const target: Array<[number, number]> = [];
+        pushAll(target, big);
+        expect(target.length).toBe(OVERFLOW_N);
+        expect(target[123]).toEqual([123, 124]);
     });
 });

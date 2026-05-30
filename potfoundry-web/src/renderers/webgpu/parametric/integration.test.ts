@@ -682,7 +682,7 @@ describe('Parametric Pipeline Integration', () => {
             expect(flags.metricAwareRefinement).toBe(false);
             expect(flags.distortionGating).toBe(false);
             expect(flags.gpuFidelityCheck).toBe(false);
-            expect(flags.seamHealing).toBe(false);
+            expect(flags.seamHealing).toBe(true);
             expect(flags.outerWallCorridorPlanning).toBe(false);
             expect(flags.outerWallCorridorDiagnostics).toBe(false);
 

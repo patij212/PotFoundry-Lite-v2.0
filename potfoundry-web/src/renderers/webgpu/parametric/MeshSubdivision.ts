@@ -80,6 +80,13 @@ export interface SubdivisionParams {
     finalT?: Float32Array | number[];
     /** R38: Protected corridor around phantom crossing anchors and companions. */
     protectedVertices?: Set<number>;
+    /**
+     * v18.1 sag-gate: position tolerance in mm. When provided, a length-qualifying
+     * split is only applied if the true on-surface midpoint deviates from the linear
+     * chord midpoint by more than this tolerance (i.e. the chord actually sags off
+     * the surface). When undefined, the legacy length-only criterion is used.
+     */
+    epsPosMm?: number;
 }
 
 /**
@@ -100,6 +107,8 @@ export interface SubdivisionStats {
     boundaryTrisAdded: number;
     /** Number of split candidates skipped because they touched the protected corridor. */
     protectedRejects: number;
+    /** v18.1: Number of splits skipped because chord sag was within epsPosMm tolerance. */
+    sagSkipped: number;
     /** Time in ms for the subdivision pass. */
     timeMs: number;
 }
@@ -131,10 +140,14 @@ export interface ChainMidpointInfo {
 export interface SubdivisionResult {
     /** Final 3D vertex positions (may be a grown copy of the input). */
     resultData: Float32Array;
+    /** Final UV vertex data aligned with resultData. */
+    uvs: Float32Array;
     /** Final triangle index buffer (may be a grown copy of the input). */
     indices: Uint32Array;
     /** Number of edges that were actually split. */
     splitCount: number;
+    /** Number of leading indices that belong to the outer wall after subdivision. */
+    outerIdxCount: number;
     /** Diagnostic statistics. */
     stats: SubdivisionStats;
     /** R46: Metadata for chain-edge midpoints (for downstream re-snap in PEC). */
@@ -311,9 +324,11 @@ export async function subdivideLongEdges(
         chains,
         finalT,
         protectedVertices,
+        epsPosMm,
     } = params;
 
     const subdivStart = performance.now();
+    let sagSkipped = 0;
 
     // ── 1. Compute average grid edge length ──────────────────────────
     let gridEdgeLenSum = 0;
@@ -566,29 +581,83 @@ export async function subdivideLongEdges(
 
     // ── 6. Phase B + C: GPU-evaluate midpoints, apply splits ─────────
     let finalResultData = resultData;
+    let finalCombinedVerts = combinedVerts;
     let finalCombinedIdxs = combinedIdxs;
     const chainMidpoints: ChainMidpointInfo[] = [];
+    let appliedSplitCount = 0;
 
     if (splitsToApply.length > 0) {
-        // Build UV batch: [u_mid, t_mid, surfaceId] per split
-        const midUVBatch = new Float32Array(splitsToApply.length * 3);
+        // Build UV batch for ALL candidate splits: [u_mid, t_mid, surfaceId].
+        const candMidUV = new Float32Array(splitsToApply.length * 3);
         for (let i = 0; i < splitsToApply.length; i++) {
             const { se } = splitsToApply[i];
-            midUVBatch[i * 3] = midpointWrappedU(combinedVerts[se.v0 * 3], combinedVerts[se.v1 * 3]);
-            midUVBatch[i * 3 + 1] = (combinedVerts[se.v0 * 3 + 1] + combinedVerts[se.v1 * 3 + 1]) * 0.5;
-            midUVBatch[i * 3 + 2] = combinedVerts[se.v0 * 3 + 2]; // surfaceId (same for both)
+            candMidUV[i * 3] = midpointWrappedU(combinedVerts[se.v0 * 3], combinedVerts[se.v1 * 3]);
+            candMidUV[i * 3 + 1] = (combinedVerts[se.v0 * 3 + 1] + combinedVerts[se.v1 * 3 + 1]) * 0.5;
+            candMidUV[i * 3 + 2] = combinedVerts[se.v0 * 3 + 2]; // surfaceId (same for both)
         }
 
-        // GPU evaluate: UV midpoints → exact 3D surface positions
-        const mid3D = await evaluateMidpoints(midUVBatch);
+        // GPU evaluate: UV midpoints → exact 3D surface positions.
+        const candMid3D = await evaluateMidpoints(candMidUV);
+
+        // v18.1 sag-gate: keep a split only if the true on-surface midpoint
+        // deviates from the linear chord midpoint by more than epsPosMm.
+        // Reuses the already-evaluated midpoints — no extra GPU work — and can
+        // only REMOVE candidates, so it never inflates triangle count.
+        // When epsPosMm is undefined, fall back to the legacy length criterion
+        // (keep every candidate).
+        let appliedSplits = splitsToApply;
+        let midUVBatch = candMidUV;
+        let mid3D = candMid3D;
+        let appliedChainSplitIndices = chainSplitIndices;
+        if (epsPosMm !== undefined) {
+            const keep: number[] = [];
+            for (let i = 0; i < splitsToApply.length; i++) {
+                const { se } = splitsToApply[i];
+                const mx = (resultData[se.v0 * 3] + resultData[se.v1 * 3]) * 0.5;
+                const my = (resultData[se.v0 * 3 + 1] + resultData[se.v1 * 3 + 1]) * 0.5;
+                const mz = (resultData[se.v0 * 3 + 2] + resultData[se.v1 * 3 + 2]) * 0.5;
+                const dx = candMid3D[i * 3] - mx;
+                const dy = candMid3D[i * 3 + 1] - my;
+                const dz = candMid3D[i * 3 + 2] - mz;
+                const sag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (sag > epsPosMm) keep.push(i);
+            }
+            sagSkipped = splitsToApply.length - keep.length;
+
+            if (keep.length < splitsToApply.length) {
+                // Compact candidate arrays down to the kept splits, preserving order.
+                const oldToNew = new Map<number, number>();
+                appliedSplits = new Array(keep.length);
+                midUVBatch = new Float32Array(keep.length * 3);
+                mid3D = new Float32Array(keep.length * 3);
+                for (let k = 0; k < keep.length; k++) {
+                    const i = keep[k];
+                    oldToNew.set(i, k);
+                    appliedSplits[k] = splitsToApply[i];
+                    midUVBatch[k * 3] = candMidUV[i * 3];
+                    midUVBatch[k * 3 + 1] = candMidUV[i * 3 + 1];
+                    midUVBatch[k * 3 + 2] = candMidUV[i * 3 + 2];
+                    mid3D[k * 3] = candMid3D[i * 3];
+                    mid3D[k * 3 + 1] = candMid3D[i * 3 + 1];
+                    mid3D[k * 3 + 2] = candMid3D[i * 3 + 2];
+                }
+                appliedChainSplitIndices = [];
+                for (const oldIdx of chainSplitIndices) {
+                    const newIdx = oldToNew.get(oldIdx);
+                    if (newIdx !== undefined) appliedChainSplitIndices.push(newIdx);
+                }
+            }
+        }
+
+        appliedSplitCount = appliedSplits.length;
 
         // Phase C: Apply splits with GPU-evaluated on-surface midpoints
         const newVerts: number[] = [];
         const newTris: number[] = [];
         let nextNewIdx = resultData.length / 3;
 
-        for (let i = 0; i < splitsToApply.length; i++) {
-            const { se } = splitsToApply[i];
+        for (let i = 0; i < appliedSplits.length; i++) {
+            const { se } = appliedSplits[i];
             const t0off = se.tris[0], t1off = se.tris[1];
 
             const midIdx = nextNewIdx++;
@@ -629,17 +698,26 @@ export async function subdivideLongEdges(
         }
         finalResultData = newResultData;
 
-        // Grow index array
+        // Grow UV array to keep parametric coordinates aligned with resultData.
+        const newCombinedVerts = new Float32Array(combinedVerts.length + midUVBatch.length);
+        newCombinedVerts.set(combinedVerts);
+        newCombinedVerts.set(midUVBatch, combinedVerts.length);
+        finalCombinedVerts = newCombinedVerts;
+
+        // Grow index array while preserving the downstream contract:
+        // all outer-wall triangles must stay in a leading contiguous slice.
+        const nonOuterIdxs = combinedIdxs.slice(outerIdxCount);
         const newCombinedIdxs = new Uint32Array(combinedIdxs.length + newTris.length);
-        newCombinedIdxs.set(combinedIdxs);
+        newCombinedIdxs.set(combinedIdxs.slice(0, outerIdxCount));
         for (let i = 0; i < newTris.length; i++) {
-            newCombinedIdxs[combinedIdxs.length + i] = newTris[i];
+            newCombinedIdxs[outerIdxCount + i] = newTris[i];
         }
+        newCombinedIdxs.set(nonOuterIdxs, outerIdxCount + newTris.length);
         finalCombinedIdxs = newCombinedIdxs;
 
         // R46: Build chain midpoint metadata for downstream re-snap in PEC
-        for (const idx of chainSplitIndices) {
-            const se = splitsToApply[idx].se;
+        for (const idx of appliedChainSplitIndices) {
+            const se = appliedSplits[idx].se;
             chainMidpoints.push({
                 vertexIdx: resultData.length / 3 + idx,
                 u: midUVBatch[idx * 3],
@@ -652,13 +730,15 @@ export async function subdivideLongEdges(
         }
     }
 
-    const splitCount = splitsToApply.length;
+    const splitCount = appliedSplitCount;
     const subdivMs = performance.now() - subdivStart;
 
     return {
         resultData: finalResultData,
+        uvs: finalCombinedVerts,
         indices: finalCombinedIdxs,
         splitCount,
+        outerIdxCount: outerIdxCount + splitCount * 6,
         chainMidpoints,
         stats: {
             avgGridEdge,
@@ -668,6 +748,7 @@ export async function subdivideLongEdges(
             candidates: edgesToSplit.length,
             boundaryTrisAdded,
             protectedRejects,
+            sagSkipped,
             timeMs: subdivMs,
         },
     };

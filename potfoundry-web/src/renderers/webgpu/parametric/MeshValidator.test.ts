@@ -15,6 +15,9 @@
 import { describe, it, expect } from 'vitest';
 import {
     checkManifold,
+    checkGeometricManifold,
+    diagnoseBoundaryEdges,
+    diagnoseNonManifoldEdges,
     checkDegenerates,
     checkNormals,
     checkTriangleQuality,
@@ -64,6 +67,35 @@ function makeTetrahedron(): { positions: Float32Array; indices: Uint32Array } {
         2, 0, 3,  // left
     ]);
     return { positions, indices };
+}
+
+function makeDuplicatedTetrahedron(): { positions: Float32Array; indices: Uint32Array } {
+    const coords = [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0.5, 1, 0],
+        [0.5, 0.5, 1],
+    ] as const;
+    const faces = [
+        [0, 2, 1],
+        [0, 1, 3],
+        [1, 2, 3],
+        [2, 0, 3],
+    ] as const;
+    const positions: number[] = [];
+    const indices: number[] = [];
+
+    for (const face of faces) {
+        for (const src of face) {
+            positions.push(coords[src][0], coords[src][1], coords[src][2]);
+            indices.push(indices.length);
+        }
+    }
+
+    return {
+        positions: new Float32Array(positions),
+        indices: new Uint32Array(indices),
+    };
 }
 
 /**
@@ -189,6 +221,78 @@ describe('checkManifold', () => {
         const report = checkManifold(indices, 3);
         expect(report.ok).toBe(true);
         expect(report.boundaryEdges).toBe(3); // all 3 edges are boundary
+    });
+});
+
+describe('checkGeometricManifold', () => {
+    it('treats STL-style duplicated face vertices as closed when coordinates coincide', () => {
+        const { positions, indices } = makeDuplicatedTetrahedron();
+
+        const indexReport = checkManifold(indices, indices.length);
+        const geometricReport = checkGeometricManifold(positions, indices, indices.length, 1e-5);
+
+        expect(indexReport.boundaryEdges).toBeGreaterThan(0);
+        expect(geometricReport.ok).toBe(true);
+        expect(geometricReport.boundaryEdges).toBe(0);
+        expect(geometricReport.nonManifoldEdges).toBe(0);
+    });
+});
+
+describe('diagnoseBoundaryEdges', () => {
+    it('classifies open edge loops by endpoint surface and T boundary', () => {
+        const { positions, indices } = makeQuad();
+        const uvs = new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            1, 1, 0,
+            0, 1, 0,
+        ]);
+
+        const diag = diagnoseBoundaryEdges(positions, indices, indices.length, uvs);
+
+        expect(diag.total).toBe(4);
+        expect(diag.bySurfacePair).toContainEqual({ key: 's0-s0', count: 4 });
+        expect(diag.byEndpointClass).toContainEqual({ key: 's0:t0-s0:t0', count: 1 });
+        expect(diag.byEndpointClass).toContainEqual({ key: 's0:t1-s0:t1', count: 1 });
+        expect(diag.samples.length).toBeGreaterThan(0);
+        expect(diag.components.total).toBe(1);
+        expect(diag.components.closedLoops).toBe(1);
+        expect(diag.components.openChains).toBe(0);
+        expect(diag.components.largestEdges).toBe(4);
+    });
+});
+
+describe('diagnoseNonManifoldEdges', () => {
+    it('reports incident triangle offsets and opposite vertices for non-manifold edge samples', () => {
+        const positions = new Float32Array([
+            0, 0, 0,
+            1, 0, 0,
+            0, 1, 0,
+            0, -1, 0,
+            0.5, 0, 1,
+        ]);
+        const uvs = new Float32Array([
+            0.1, 0.5, 0,
+            0.2, 0.5, 0,
+            0.1, 0.6, 0,
+            0.1, 0.4, 0,
+            0.2, 0.6, 0,
+        ]);
+        const indices = new Uint32Array([
+            0, 1, 2,
+            1, 0, 3,
+            0, 1, 4,
+        ]);
+
+        const diag = diagnoseNonManifoldEdges(positions, indices, indices.length, uvs);
+
+        expect(diag.total).toBe(1);
+        expect(diag.samples[0].incidents?.map(({ triOffset, opp }) => ({ triOffset, opp }))).toEqual([
+            { triOffset: 0, opp: 2 },
+            { triOffset: 3, opp: 3 },
+            { triOffset: 6, opp: 4 },
+        ]);
+        expect(diag.samples[0].incidents?.[0].oppT).toBeCloseTo(0.6);
     });
 });
 
@@ -655,7 +759,7 @@ describe('checkSeam', () => {
 // ============================================================================
 
 describe('validateMesh', () => {
-    it('passes a well-formed flat quad with loose tolerances', () => {
+    it('rejects an open flat quad even with loose tolerances', () => {
         const { positions, indices } = makeQuad();
         const config: ValidateConfig = {
             tolerances: LOOSE_TOLERANCES,
@@ -663,12 +767,12 @@ describe('validateMesh', () => {
 
         const report = validateMesh(positions, indices, indices.length, config);
 
-        // Flat quad: manifold ok, degenerates ok, normals ok (all +Z)
         expect(report.manifold.ok).toBe(true);
+        expect(report.manifold.boundaryEdges).toBeGreaterThan(0);
         expect(report.degenerates.ok).toBe(true);
         expect(report.normals.ok).toBe(true);
-        expect(report.valid).toBe(true);
-        // Boundary edges warning (open mesh), but valid=true (no non-manifold)
+        expect(report.valid).toBe(false);
+        expect(report.warnings.some(w => w.includes('boundary edges'))).toBe(true);
     });
 
     it('reports warnings for a mesh with boundary edges', () => {
@@ -729,6 +833,26 @@ describe('validateMesh', () => {
         // Extreme sliver should fail quality check
         expect(report.triangleQuality.ok).toBe(false);
         expect(report.valid).toBe(false);
+    });
+
+    it('keeps draft export valid for closed topology while reporting quality warnings', () => {
+        const { positions, indices } = makeTetrahedron();
+        const config: ValidateConfig = {
+            tolerances: {
+                ...STANDARD_TOLERANCES,
+                maxAspectRatio: 1.01,
+                minTriangleAngleDeg: 59,
+                epsPosMm: 0.0001,
+                epsNormalDeg: 0.1,
+            },
+            profileName: 'draft',
+        };
+
+        const report = validateMesh(positions, indices, indices.length, config);
+
+        expect(report.manifold.boundaryEdges).toBe(0);
+        expect(report.valid).toBe(true);
+        expect(report.warnings.length).toBeGreaterThan(0);
     });
 
     it('includes wall thickness when inner positions provided', () => {
@@ -795,17 +919,18 @@ describe('validateMesh', () => {
         expect(report.valid).toBe(false);
     });
 
-    it('ok=true when all checks pass with loose tolerances on consistent winding', () => {
-        // Build a flat quad with consistent CCW winding — guaranteed valid
+    it('ok=true when all checks pass on a closed mesh with consistent winding', () => {
         const positions = new Float32Array([
-            0, 0, 0,
-            2, 0, 0,
-            2, 2, 0,
-            0, 2, 0,
+            0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0,
+            0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1,
         ]);
         const indices = new Uint32Array([
-            0, 1, 2,
-            0, 2, 3,
+            0, 2, 1, 0, 3, 2,
+            4, 5, 6, 4, 6, 7,
+            0, 1, 5, 0, 5, 4,
+            1, 2, 6, 1, 6, 5,
+            2, 3, 7, 2, 7, 6,
+            3, 0, 4, 3, 4, 7,
         ]);
 
         const config: ValidateConfig = {

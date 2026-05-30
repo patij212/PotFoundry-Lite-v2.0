@@ -3,6 +3,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+    MAX_BINARY_STL_BYTES,
+    MAX_BINARY_STL_TRIANGLES,
     QUALITY_PROFILES,
     PROFILE_QUALITY_ORDER,
     getQualityProfile,
@@ -158,6 +160,15 @@ describe('QualityProfiles', () => {
         it('returns ultra budget for ultra profile', () => {
             const budget = resolveTriangleBudget(undefined, QUALITY_PROFILES.ultra);
             expect(budget).toBe(8_000_000);
+        });
+
+        it('keeps every profile under the 1 GiB binary STL cap', () => {
+            expect(MAX_BINARY_STL_BYTES).toBe(1024 * 1024 * 1024);
+            expect(MAX_BINARY_STL_TRIANGLES).toBe(Math.floor((MAX_BINARY_STL_BYTES - 84) / 50));
+
+            for (const profile of Object.values(QUALITY_PROFILES)) {
+                expect(profile.maxTriangleBudget).toBeLessThanOrEqual(MAX_BINARY_STL_TRIANGLES);
+            }
         });
     });
 

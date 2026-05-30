@@ -155,12 +155,27 @@ export function identifySeamPairsByUV(
 ): SeamPair[] {
     const leftCandidates: Array<{ idx: number; t: number }> = [];
     const rightCandidates: Array<{ idx: number; t: number }> = [];
+    let minOuterU = Infinity;
+    let maxOuterU = -Infinity;
+
+    for (let v = 0; v < vertexCount; v++) {
+        const u = combinedVerts[v * 3];
+        const surfaceId = Math.round(combinedVerts[v * 3 + 2] ?? -1);
+        if (surfaceId !== 0) continue;
+        if (u < minOuterU) minOuterU = u;
+        if (u > maxOuterU) maxOuterU = u;
+    }
+
+    if (!Number.isFinite(minOuterU) || !Number.isFinite(maxOuterU)) return [];
+    if (maxOuterU - minOuterU <= uTolerance * 2) return [];
 
     for (let v = 0; v < vertexCount; v++) {
         const u = combinedVerts[v * 3];
         const t = combinedVerts[v * 3 + 1];
-        if (u < uTolerance) leftCandidates.push({ idx: v, t });
-        else if (u > 1 - uTolerance) rightCandidates.push({ idx: v, t });
+        const surfaceId = Math.round(combinedVerts[v * 3 + 2] ?? -1);
+        if (surfaceId !== 0) continue;
+        if (u <= minOuterU + uTolerance) leftCandidates.push({ idx: v, t });
+        else if (u >= maxOuterU - uTolerance) rightCandidates.push({ idx: v, t });
     }
 
     rightCandidates.sort((a, b) => a.t - b.t);
@@ -744,9 +759,22 @@ export function healSeam(
     combinedVerts?: Float32Array,
     outerVertexCount?: number,
 ): HealSeamResult {
-    const pairs = combinedVerts !== undefined
-        ? identifySeamPairsByUV(combinedVerts, outerVertexCount ?? Math.floor(combinedVerts.length / 3))
-        : identifySeamPairs(numU, numT);
+    const basePairs = identifySeamPairs(numU, numT);
+    const pairs = [...basePairs];
+
+    if (combinedVerts !== undefined) {
+        const seen = new Set(basePairs.map(pair => `${pair.col0Vertex}:${pair.colLastVertex}`));
+        const uvPairs = identifySeamPairsByUV(
+            combinedVerts,
+            outerVertexCount ?? Math.floor(combinedVerts.length / 3),
+        );
+        for (const pair of uvPairs) {
+            const key = `${pair.col0Vertex}:${pair.colLastVertex}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            pairs.push(pair);
+        }
+    }
 
     if (pairs.length === 0) {
         return {

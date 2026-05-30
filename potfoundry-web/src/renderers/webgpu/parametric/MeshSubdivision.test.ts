@@ -218,6 +218,73 @@ describe('MeshSubdivision', () => {
             expect(result.splitCount).toBeGreaterThan(0);
         });
 
+        it('sag-gate: skips all splits on a flat surface when epsPosMm is set', async () => {
+            // v18.1 tolerance-driven: a genuinely flat, internally consistent
+            // surface where resultData == evaluator(UV) for EVERY vertex, so the
+            // GPU-evaluated midpoint always coincides with the linear chord
+            // midpoint → sag = 0. Grid edges are short (1mm) but the centre chain
+            // vertex sits far out (~7mm edges) so the splits still qualify on
+            // length; with a positive tolerance every one must be sag-skipped.
+            //
+            // Evaluator maps UV(u,t) → (u*100, 0, t*100). UVs are scaled down by
+            // 100 so the 3D positions match makeChainStripMesh's geometry exactly.
+            const flatConsistentEval: EvaluateMidpointsFn = async (uvBatch) => {
+                const n = uvBatch.length / 3;
+                const out = new Float32Array(n * 3);
+                for (let i = 0; i < n; i++) {
+                    out[i * 3] = uvBatch[i * 3] * 100;
+                    out[i * 3 + 1] = 0;
+                    out[i * 3 + 2] = uvBatch[i * 3 + 1] * 100;
+                }
+                return out;
+            };
+            const params = makeDefaultParams({
+                combinedVerts: new Float32Array([
+                    0, 0, 0,       // v0 UV(0,0)      → (0,0,0)
+                    0.01, 0, 0,    // v1 UV(0.01,0)   → (1,0,0)
+                    0, 0.01, 0,    // v2 UV(0,0.01)   → (0,0,1)
+                    0.01, 0.01, 0, // v3 UV(0.01,0.01)→ (1,0,1)
+                    0.05, 0.05, 0, // v4 UV(0.05,0.05)→ (5,0,5)
+                ]),
+                epsPosMm: 0.1,
+            });
+            const result = await subdivideLongEdges(params, flatConsistentEval);
+
+            expect(result.splitCount).toBe(0);
+            expect(result.stats.sagSkipped).toBeGreaterThan(0);
+        });
+
+        it('sag-gate: legacy length-driven behaviour when epsPosMm is undefined', async () => {
+            // No tolerance supplied → behave exactly as before: long edges in
+            // the chain strip are split purely on the length criterion.
+            const params = makeDefaultParams(); // no epsPosMm
+            const result = await subdivideLongEdges(params, makeFlatEvaluator());
+
+            expect(result.splitCount).toBeGreaterThan(0);
+            expect(result.stats.sagSkipped).toBe(0);
+        });
+
+        it('sag-gate: splits high-curvature edges whose chord deviates beyond epsPosMm', async () => {
+            // Curved evaluator: the true on-surface midpoint bulges +1mm in Y
+            // off the (flat-in-Y) chord, so every split has sag ≈ 1mm ≫ 0.1mm.
+            const curvedEvaluator: EvaluateMidpointsFn = async (uvBatch) => {
+                const n = uvBatch.length / 3;
+                const out = new Float32Array(n * 3);
+                for (let i = 0; i < n; i++) {
+                    const u = uvBatch[i * 3];
+                    const t = uvBatch[i * 3 + 1];
+                    out[i * 3] = u * 10;
+                    out[i * 3 + 1] = 1.0; // +1mm bulge off the chord
+                    out[i * 3 + 2] = t * 10;
+                }
+                return out;
+            };
+            const params = makeDefaultParams({ epsPosMm: 0.1 });
+            const result = await subdivideLongEdges(params, curvedEvaluator);
+
+            expect(result.splitCount).toBeGreaterThan(0);
+        });
+
         it('skips subdivision patches that touch protected corridor vertices', async () => {
             // R42: Feature edges now bypass endpoint protection (only opposite
             // vertices are checked). Protect grid vertices (the opposites of
@@ -307,6 +374,67 @@ describe('MeshSubdivision', () => {
                     expect(Number.isFinite(z)).toBe(true);
                 }
             }
+        });
+
+        it('returns grown UVs aligned with appended subdivision vertices', async () => {
+            const mesh = makeChainStripMesh();
+            const params = makeDefaultParams();
+            let receivedBatch: Float32Array | null = null;
+            const evaluator: EvaluateMidpointsFn = async (uvBatch) => {
+                receivedBatch = new Float32Array(uvBatch);
+                return makeFlatEvaluator()(uvBatch);
+            };
+
+            const result = await subdivideLongEdges(params, evaluator);
+            const uvs = (result as SubdivisionResult & { uvs?: Float32Array }).uvs;
+
+            expect(result.splitCount).toBeGreaterThan(0);
+            expect(uvs).toBeDefined();
+            expect(uvs!.length).toBe(result.resultData.length);
+            expect(receivedBatch).not.toBeNull();
+
+            const originalVertexCount = mesh.combinedVerts.length / 3;
+            for (let i = 0; i < result.splitCount; i++) {
+                expect(uvs![(originalVertexCount + i) * 3]).toBeCloseTo(receivedBatch![i * 3], 8);
+                expect(uvs![(originalVertexCount + i) * 3 + 1]).toBeCloseTo(receivedBatch![i * 3 + 1], 8);
+                expect(uvs![(originalVertexCount + i) * 3 + 2]).toBeCloseTo(receivedBatch![i * 3 + 2], 8);
+            }
+        });
+
+        it('keeps appended outer-wall subdivision triangles before non-outer surfaces', async () => {
+            const mesh = makeChainStripMesh();
+            const nonOuterPositions = new Float32Array([
+                20, 0, 0,
+                21, 0, 0,
+                20, 0, 1,
+            ]);
+            const resultData = new Float32Array(mesh.resultData.length + nonOuterPositions.length);
+            resultData.set(mesh.resultData);
+            resultData.set(nonOuterPositions, mesh.resultData.length);
+
+            const nonOuterUvs = new Float32Array([
+                0, 0, 2,
+                1, 0, 2,
+                0, 1, 2,
+            ]);
+            const combinedVerts = new Float32Array(mesh.combinedVerts.length + nonOuterUvs.length);
+            combinedVerts.set(mesh.combinedVerts);
+            combinedVerts.set(nonOuterUvs, mesh.combinedVerts.length);
+
+            const nonOuterIndices = [5, 6, 7];
+            const combinedIdxs = new Uint32Array([...mesh.combinedIdxs, ...nonOuterIndices]);
+            const params = makeDefaultParams({
+                combinedIdxs,
+                resultData,
+                combinedVerts,
+                outerIdxCount: mesh.combinedIdxs.length,
+            });
+
+            const result = await subdivideLongEdges(params, makeFlatEvaluator());
+
+            expect(result.splitCount).toBeGreaterThan(0);
+            expect(result.outerIdxCount).toBe(mesh.combinedIdxs.length + result.splitCount * 6);
+            expect(Array.from(result.indices.slice(result.outerIdxCount))).toEqual(nonOuterIndices);
         });
 
         it('preserves original vertices unchanged', async () => {
