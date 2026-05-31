@@ -85,6 +85,46 @@ flat disc on the test side — a band-definition artifact, not a geometry defect
    suggests the *reference* may close to r=0 — if so the reference, not the
    parametric, is wrong on the hole, and that contaminated the old diagnostic).
 
+## Step 1 RESULT (2026-05-30, real WebGPU, 6 measurable styles, 30min)
+
+Ran a per-region breakdown instead of a per-surfaceId one: the v18.1 subdivision
+remaps the index buffer, so the initial per-surface index ranges do not survive
+to the final mesh. Geometric region bucketing (centroid z-band × orientation
+|n_z|/|n|) is robust to the remap and answers the same question. Each region uses
+the SAME honest split as the metric (nearest-surface for non-vertical, radial for
+near-vertical). Decisive numbers:
+
+| style | `body_vert` rms (wall floor) | `low_horiz` rms/max (base disc, **honest**) | `low_vert` rms (radial) |
+|---|---|---|---|
+| SuperformulaBlossom | 1.51 | **18.66 / 33.27** | 24.24 |
+| FourierBloom | 1.51 | **14.76 / 30.32** | 24.82 |
+| SpiralRidges | 1.51 | **14.76 / 67.32** | 22.51 |
+| SuperellipseMorph | 1.51 | **17.47 / 31.70** | 23.93 |
+| HarmonicRipple | 1.51 | **13.02 / 27.94** | 22.56 |
+| LowPolyFacet | 1.51 | **15.60 / 28.00** | 20.80 |
+
+**Conclusions:**
+1. **Wall body (z>5mm, vertical) is CLEAN** — `mid_vert`+`body_vert` rms = 1.51mm
+   (the radial metric floor) on every style. The body is NOT under-tessellated.
+2. **The base (z<5mm) carries a real, honest defect** — `low_horiz`, measured by
+   true nearest-surface (NOT the degenerate radial path), is 13–18mm rms /
+   28–67mm max across all 6 styles. Co-planar discs would score ~0, so the
+   parametric base disc is genuinely OFF the reference base surface. Corroborates
+   the metric-independent point-to-triangle base finding (~20mm).
+3. **Feature-dense styles add a SECOND defect up the body** — HarmonicRipple
+   `body_horiz` rms=27mm (max ~100mm); its maxSag driver is the horizontal
+   ripple-shelf facets up the wall, NOT the base. SpiralRidges/FourierBloom show
+   smaller body_horiz/slope residuals. So maxSag has two regimes: smooth styles →
+   base disc; ripple/bloom styles → horizontal feature shelves.
+
+**Caveat:** `low_vert` is on the radial path, and R_true averages over the base
+disc's full radius range at low z, so its 20–25mm is contaminated and NOT
+trustworthy for attributing a wall-bottom defect. Only `low_horiz` (honest) is.
+The nearest-surface index excludes near-vertical reference triangles, so the
+outer-wall bottom rows cannot currently be measured honestly — if step 2 needs to
+isolate the wall bottom, the index must be extended to include near-vertical
+reference triangles for that query.
+
 ## Candidate fixes — ONLY if step 1–2 confirm a real base defect
 
 - If v18.1 subdivision perturbs base z → constrain the sag-gate/repair to leave
