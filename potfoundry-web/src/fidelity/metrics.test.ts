@@ -363,3 +363,40 @@ describe('sagDeviation surface-aware horizontal path', () => {
     expect(radial.maxSagMm).toBeGreaterThan(10);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Spatial-hash + near-vertical inclusion contract for buildNearestSurface.
+//
+// These pin the OBSERVABLE behavior across the planned 3D-cell hash refactor
+// (the XY-only hash stacks the whole dense wall into a few columns → quadratic
+// per-query cost; a 3D hash distributes vertical-wall triangles by z so the
+// outer-wall bottom rows can be measured honestly in a feasible runtime).
+//
+//   1. DEFAULT options exclude near-vertical reference triangles → a pure
+//      vertical wall yields an EMPTY index → nearestDist2 == Infinity. This is
+//      the property that keeps the production sag path (computeFidelityMetrics,
+//      default options) byte-identical: vertical walls stay on the radial path.
+//   2. With minNonVerticalCos:0 the vertical wall IS indexed and measured by
+//      true point-to-triangle distance at every height — on-wall ≈ 0, a 3mm
+//      radial offset ≈ 9 mm². This must hold at low / mid / high z, which is
+//      exactly what the 3D-cell distribution has to preserve.
+// ---------------------------------------------------------------------------
+describe('buildNearestSurface vertical-wall inclusion contract', () => {
+  it('DEFAULT options exclude near-vertical walls → empty index → Infinity', () => {
+    const wall = facetedCylinder(40, 100, 64);
+    const surf = buildNearestSurface(wall.vertices, wall.indices);
+    expect(surf.nearestDist2(40, 0, 50)).toBe(Infinity);
+  });
+
+  it('minNonVerticalCos:0 measures the wall honestly at every height', () => {
+    const wall = facetedCylinder(40, 100, 128);
+    const surf = buildNearestSurface(wall.vertices, wall.indices, { minNonVerticalCos: 0 });
+    for (const zc of [5, 50, 95]) {
+      // On the wall near θ=0 (128-gon chord dip is sub-mm) → ~0.
+      expect(surf.nearestDist2(40, 0, zc)).toBeLessThan(0.05);
+      // 3mm radially outside / inside the wall → squared distance ≈ 9.
+      expect(surf.nearestDist2(43, 0, zc)).toBeCloseTo(9, 0);
+      expect(surf.nearestDist2(37, 0, zc)).toBeCloseTo(9, 0);
+    }
+  });
+});

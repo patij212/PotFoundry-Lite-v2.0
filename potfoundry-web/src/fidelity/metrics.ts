@@ -215,12 +215,16 @@ export function buildNearestSurface(
   const cell = options.cellMm ?? 2;
   const invCell = 1 / cell;
 
-  // Flat triangle coords (9 per triangle) for the horizontal subset.
+  // Triangle coords (9 per triangle) for the indexed subset.
   const tris: number[] = [];
-  const cellMap = new Map<string, number[]>(); // "cx,cy" -> triangle base indices (into tris/9)
+  // 3D spatial hash: "cx,cy,cz" -> triangle base indices (into tris/9). Adding z
+  // to the cell key distributes a tall vertical wall over many z-cells instead of
+  // stacking every wall triangle into a couple of XY columns — which is what makes
+  // a full (minNonVerticalCos:0) index over a dense wall feasible to query.
+  const cellMap = new Map<string, number[]>();
 
-  const addToCell = (cx: number, cy: number, triBase: number): void => {
-    const key = `${cx},${cy}`;
+  const addToCell = (cx: number, cy: number, cz: number, triBase: number): void => {
+    const key = `${cx},${cy},${cz}`;
     let list = cellMap.get(key);
     if (!list) { list = []; cellMap.set(key, list); }
     list.push(triBase);
@@ -250,8 +254,12 @@ export function buildNearestSurface(
     const maxCx = Math.floor(Math.max(ax, bx, cx) * invCell);
     const minCy = Math.floor(Math.min(ay, by, cy) * invCell);
     const maxCy = Math.floor(Math.max(ay, by, cy) * invCell);
+    const minCz = Math.floor(Math.min(az, bz, cz) * invCell);
+    const maxCz = Math.floor(Math.max(az, bz, cz) * invCell);
     for (let gx = minCx; gx <= maxCx; gx++) {
-      for (let gy = minCy; gy <= maxCy; gy++) addToCell(gx, gy, triBase);
+      for (let gy = minCy; gy <= maxCy; gy++) {
+        for (let gz = minCz; gz <= maxCz; gz++) addToCell(gx, gy, gz, triBase);
+      }
     }
   }
 
@@ -272,26 +280,34 @@ export function buildNearestSurface(
       if (triCount === 0) return Infinity;
       const qx = Math.floor(px * invCell);
       const qy = Math.floor(py * invCell);
+      const qz = Math.floor(pz * invCell);
       let best = Infinity;
       let foundRing = -1;
-      // Expand in square rings; once a candidate is found, search one more ring
+      // Expand in cube shells; once a candidate is found, search one more shell
       // (a closer triangle can sit just across a cell boundary) then stop.
       const maxRing = 4096;
       for (let ring = 0; ring <= maxRing; ring++) {
         if (foundRing >= 0 && ring > foundRing + 1) break;
         for (let gx = qx - ring; gx <= qx + ring; gx++) {
           for (let gy = qy - ring; gy <= qy + ring; gy++) {
-            // Only the ring perimeter is new on each iteration.
-            if (ring > 0 && gx > qx - ring && gx < qx + ring && gy > qy - ring && gy < qy + ring) {
-              continue;
+            for (let gz = qz - ring; gz <= qz + ring; gz++) {
+              // Only the shell surface is new on each iteration (skip the interior).
+              if (
+                ring > 0 &&
+                gx > qx - ring && gx < qx + ring &&
+                gy > qy - ring && gy < qy + ring &&
+                gz > qz - ring && gz < qz + ring
+              ) {
+                continue;
+              }
+              const list = cellMap.get(`${gx},${gy},${gz}`);
+              if (!list) continue;
+              for (const triBase of list) {
+                const d2 = distToTri(px, py, pz, triBase);
+                if (d2 < best) best = d2;
+              }
+              if (list.length > 0 && foundRing < 0) foundRing = ring;
             }
-            const list = cellMap.get(`${gx},${gy}`);
-            if (!list) continue;
-            for (const triBase of list) {
-              const d2 = distToTri(px, py, pz, triBase);
-              if (d2 < best) best = d2;
-            }
-            if (list.length > 0 && foundRing < 0) foundRing = ring;
           }
         }
       }

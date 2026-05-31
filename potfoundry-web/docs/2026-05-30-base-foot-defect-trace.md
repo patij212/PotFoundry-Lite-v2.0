@@ -1,13 +1,23 @@
 # Base/Foot "20 mm Defect" — Read-Only Trace & Re-Attribution Plan
 
-**Date:** 2026-05-30
-**Status:** read-only investigation complete; no production code touched.
+**Date:** 2026-05-30 (Step 3 added 2026-05-31)
+**Status:** investigation COMPLETE. No base/foot geometry defect exists. The
+"20 mm base defect" was a **metric artifact**, now proven and resolved.
 **TL;DR:** The committed shaders do **not** displace the base disc in z. The
 parametric and GPU-grid reference build the **same** flat bottom slab from the
-**same** radius functions. The prior session's "parametric base disc is displaced
-~20 mm upward" conclusion is **not supported by the current shader code**. Before
-any geometry fix, the residual must be re-attributed — the prime suspect is the
-**uncommitted v18.1 subdivision/repair tree**, not the base parameterization.
+**same** radius functions. The prior "parametric base disc is displaced ~20 mm
+upward" conclusion is **wrong** — it was a nearest-surface index artifact. The
+index excluded near-vertical reference triangles (the drain cylinder and the
+outer-wall bottom rows), so honest base-disc test points near the rim/drain had
+no adjacent reference surface and snapped to distant horizontal triangles,
+inflating the deviation to 13–18 mm. **Step 3 (2026-05-31)** re-ran the
+per-region breakdown with a FULL reference index (`minNonVerticalCos:0`): the
+low-z residual collapsed to **0.4–1.5 mm rms** on all 6 styles. There is no base
+defect, no foot defect, and no wall-bottom defect. The only real residuals are
+**horizontal/slope feature shelves up the body of feature-dense styles**
+(HarmonicRipple, FourierBloom, SpiralRidges) — under-tessellation of ripple/ridge
+facets, not the base. Smooth styles (SuperformulaBlossom, SuperellipseMorph,
+LowPolyFacet) are essentially clean everywhere.
 
 ---
 
@@ -164,7 +174,71 @@ reference disc edge snapping to the rim). Distinguishing (a) from (b) is the che
 next diagnostic (step 3-adjacent): dump the parametric base-disc vertex z/r extent
 vs the reference at matched (θ), no GPU re-run needed.
 
-## Candidate fixes — ONLY if step 1–2 confirm a real base defect
+## Step 3 RESULT — full-coverage honest breakdown (2026-05-31, real WebGPU, 6 styles, 12.8min)
+
+Per the "broaden first" decision, the nearest-surface index was extended from
+XY-only + near-vertical-excluded to a **3D-cell spatial hash** with
+`minNonVerticalCos:0` (vertical walls INCLUDED). This closes the metric's last
+blind spot: horizontal base-disc test points near the rim/drain, and the
+outer-wall bottom rows (vertical at low z), can now both snap to the correct
+adjacent reference surface. (Harness change only — `buildNearestSurface` 3D hash,
+pinned by new vitest contract tests; production sag path keeps the default
+`minNonVerticalCos:0.35` and is byte-identical. Diagnostic reverted after the run.)
+
+| style | low_horiz rms/max — partial idx → FULL idx | low_vert rms — radial → honest | body_vert rms — partial → full |
+|---|---|---|---|
+| SuperformulaBlossom | 18.66/33.27 → **0.42/19.46** | 24.24 → **1.42** | 1.51 → **0.27** |
+| FourierBloom | 14.76/30.32 → **1.42/29.32** | 24.82 → **1.42** | 1.52 → 1.52 |
+| SpiralRidges | 14.76/67.32 → **1.42/67.36** | 22.51 → **1.42** | 1.67 → 1.67 |
+| SuperellipseMorph | 17.47/31.70 → **0.42/19.42** | 23.93 → **1.42** | 1.51 → **0.27** |
+| HarmonicRipple | 13.02/27.94 → **1.46/27.99** | 22.56 → **1.42** | 1.66 → 1.66 |
+| LowPolyFacet | 15.60/28.00 → **0.42/19.46** | 20.80 → **1.42** | 1.52 → 1.52 |
+
+**Decisive conclusions:**
+1. **NO base defect.** `low_horiz` rms dropped from 13–18 mm to **0.4–1.5 mm**
+   the instant vertical reference triangles entered the index. The base disc lies
+   on the reference base disc to sub-mm — exactly as the shader trace predicted.
+   This resolves the (a)/(b) tension from Step 2 in favor of **(b): metric rim
+   artifact**. Option (a) (real base-disc placement divergence) is refuted.
+2. **NO wall-bottom defect.** `low_vert`, now on the honest nearest-surface path
+   (was the contaminated radial 20–25 mm), reads **1.42 mm** on every style. The
+   outer-wall bottom rows — the blind spot this step existed to close — are clean.
+3. **Correctness cross-check.** Where the reference is genuinely horizontal and
+   dense, the number did NOT move: HarmonicRipple `body_horiz` 24.64 → 24.64
+   identical. Only regions that previously LACKED adjacent reference dropped. The
+   collapse is the artifact being removed, not a measurement bug. (22 vitest
+   contract tests green, incl. a real 20 mm displacement still caught at ~20.)
+4. **The smooth-style `body_vert` 1.51 "floor" was also artifact** — it was the
+   radial metric's chord/quantization floor. Honest nearest-surface reads **0.27**
+   on SuperformulaBlossom/SuperellipseMorph: the wall body is near-perfect.
+5. **The REAL residuals are feature shelves up the body, feature-dense styles
+   only:** HarmonicRipple `body_horiz` 24.64 rms / 99.99 max + `mid_horiz` 103 max
+   (ripple shelves); FourierBloom `body_slope` 82 max + `mid_horiz` 12.27;
+   SpiralRidges `body_slope` 75 max / `body_horiz` 52 max. Smooth styles have only
+   a localized ~19–20 mm max at the drain/rim corner (shared low_horiz≈low_vert
+   max → same vertices), no systematic residual.
+
+**Final re-attribution:** The multi-session "base/foot 20 mm defect" never
+existed — it was the nearest-surface index excluding the vertical walls. The
+parametric base disc, foot, and wall bottom are all correct. The maxSag headline
+is driven entirely by **horizontal feature-shelf under-tessellation on
+feature-dense styles** (the v18.1 sag-gate moved none of these — Step 2). Any
+future fidelity work on smooth styles is essentially done; feature-dense styles
+need finer horizontal-shelf tessellation, NOT base geometry changes.
+
+### Recommendation (needs sign-off — changes the baseline contract)
+The PRODUCTION sag metric (`computeFidelityMetrics` → default
+`minNonVerticalCos:0.35`) STILL carries the base-rim artifact, so `baseline.json`
+maxSag for smooth styles is inflated by ~18–33 mm of phantom base sag. Promoting
+the production index to `minNonVerticalCos:0` (now affordable via the 3D hash)
+would make the headline metric honest — but it rewrites `baseline.json` and the
+pinned `INVARIANT sag` numbers, so it is a measurement-contract change to confirm
+before applying.
+
+## Candidate fixes — SUPERSEDED by Step 3 (no base defect exists)
+The candidates below were written before Step 3 proved the base is clean. They are
+retained only as a record; do NOT act on them — there is no base z-perturbation to
+constrain and no wall-bottom CDT defect to inspect.
 
 - If v18.1 subdivision perturbs base z → constrain the sag-gate/repair to leave
   flat (|nz|≈1) surfaces on-plane.
