@@ -125,6 +125,45 @@ outer-wall bottom rows cannot currently be measured honestly — if step 2 needs
 isolate the wall bottom, the index must be extended to include near-vertical
 reference triangles for that query.
 
+## Step 2 RESULT — v18.1 isolation (2026-05-31, real WebGPU, 6 styles, isolated worktree)
+
+Re-ran the identical per-region breakdown against the **pre-v18.1** pipeline
+(worktree at `df9d729`, the surface-aware-metric commit, on its own dev server
+:3002 so it could not accidentally hit the v18.1 HEAD server on :3001). `metrics.ts`
+is byte-identical at `df9d729` and HEAD, so the v18.1 parametric pipeline
+(`c7ebe9a` and later) is the **only** variable between the two runs.
+
+| style | `low_horiz` rms/max — HEAD (v18.1) | `low_horiz` rms/max — pre-v18.1 (`df9d729`) |
+|---|---|---|
+| SuperformulaBlossom | 18.66 / 33.27 | **18.65 / 33.27** |
+| FourierBloom | 14.76 / 30.32 | **14.74 / 30.20** |
+| SpiralRidges | 14.76 / 67.32 | **15.12 / 67.23** |
+| SuperellipseMorph | 17.47 / 31.70 | **17.48 / 31.70** |
+| HarmonicRipple | 13.02 / 27.94 | **13.30 / 26.57** |
+| LowPolyFacet | 15.60 / 28.00 | **15.62 / 28.00** |
+
+**v18.1 is EXONERATED.** The base `low_horiz` residual is identical within ~0.3mm
+noise at both pipelines. The candidate-fix hypothesis "v18.1 subdivision perturbs
+base z" (below) is **refuted** — the ~13–18mm base defect predates v18.1 and lives
+in base-disc generation upstream of the subdivision/repair. Corollaries:
+
+1. The `body_vert` 1.51mm floor is unchanged (1.51 → 1.51–1.67) — wall body clean
+   in both.
+2. The feature-dense body defects are unchanged: HarmonicRipple `body_horiz`
+   27.01 → 24.64 (max 99.99 in both); FourierBloom `body_slope` max 85.30 → 82.22.
+   v18.1's tolerance-first sag-gate moved **none** of the honest sag deviations
+   (it may still help other dimensions — slivers/watertightness — not measured here).
+
+**Re-attribution after step 2:** the fix target is NOT the v18.1 subdivision/repair.
+It is upstream — but note the tension with the shader trace above, which shows the
+base disc is built identically to the reference with no z-displacement. Both can be
+true only if (a) base-disc vertex *placement* (CPU grid build, stages 3/6) differs
+from the GPU-grid reference despite the shared `style_radius`, or (b) `low_horiz`
+still carries a nearest-surface artifact at the base rim (query points just past the
+reference disc edge snapping to the rim). Distinguishing (a) from (b) is the cheap
+next diagnostic (step 3-adjacent): dump the parametric base-disc vertex z/r extent
+vs the reference at matched (θ), no GPU re-run needed.
+
 ## Candidate fixes — ONLY if step 1–2 confirm a real base defect
 
 - If v18.1 subdivision perturbs base z → constrain the sag-gate/repair to leave
