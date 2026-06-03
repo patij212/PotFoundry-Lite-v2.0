@@ -259,7 +259,16 @@ class TestMeshProperties:
             f"Found {len(non_manifold_edges)} non-manifold edges (mesh not watertight)"
 
     def test_mesh_has_consistent_normals(self):
-        """Verify face normals point consistently outward."""
+        """Verify face normals are coherent and globally point outward.
+
+        Rather than the (convexity-dependent) radial heuristic, this asserts the
+        two invariants that actually guarantee correct shading in Rhino/
+        Grasshopper: coherent winding (every directed edge appears once) and a
+        positive enclosed volume (outward normals). See
+        ``tests/test_mesh_orientation.py`` for the full suite.
+        """
+        from collections import Counter
+
         style_fn = STYLES["SuperformulaBlossom"][0]
 
         verts, faces, _ = build_pot_mesh(
@@ -269,45 +278,29 @@ class TestMeshProperties:
             r_outer_fn=style_fn, style_opts={}
         )
 
-        # Compute face normals
+        # All face normals must be non-zero (no degenerate triangles).
         v0 = verts[faces[:, 0]]
         v1 = verts[faces[:, 1]]
         v2 = verts[faces[:, 2]]
-
         normals = np.cross(v1 - v0, v2 - v0)
+        assert np.all(np.linalg.norm(normals, axis=1) > 0), \
+            "All face normals should be non-zero"
 
-        # Compute face centers
-        centers = (v0 + v1 + v2) / 3.0
+        # Coherent orientation: each directed edge appears exactly once.
+        counts: Counter = Counter()
+        for tri in faces:
+            for k in range(3):
+                counts[(int(tri[k]), int(tri[(k + 1) % 3]))] += 1
+        incoherent = sum(1 for c in counts.values() if c != 1)
+        assert incoherent == 0, \
+            f"{incoherent} directed edges have inconsistent winding"
 
-        # For outer wall faces, normals should generally point outward
-        # (away from pot center which is at [0, 0, z])
-        # We check this for faces not on the top or bottom
-
-        middle_faces = (centers[:, 2] > 10) & (centers[:, 2] < 90)  # Not top/bottom
-
-        for i in np.where(middle_faces)[0]:
-            center = centers[i]
-            normal = normals[i]
-
-            # Radial direction from Z-axis to face center
-            radial = np.array([center[0], center[1], 0])
-            radial_norm = np.linalg.norm(radial)
-
-            if radial_norm > 1.0:  # Skip faces near centerline
-                radial_unit = radial / radial_norm
-
-                # Normal should have positive dot product with radial direction
-                # (pointing outward)
-                np.dot(normal[:2], radial_unit[:2])
-
-                # Allow some tolerance for complex geometries
-                # Just check that most faces point outward
-                # This is a heuristic, not a strict requirement
-                pass  # Skip strict check for now
-
-        # At minimum, normals should exist and be non-zero
-        normal_lengths = np.linalg.norm(normals, axis=1)
-        assert np.all(normal_lengths > 0), "All face normals should be non-zero"
+        # Outward orientation: closed shell encloses positive signed volume.
+        signed_vol = float(
+            np.einsum("ij,ij->i", v0, np.cross(v1, v2)).sum() / 6.0
+        )
+        assert signed_vol > 0, \
+            f"signed volume {signed_vol:.1f} <= 0 (mesh is inside-out)"
 
     def test_mesh_vertices_within_bounds(self):
         """Verify all vertices are within expected bounds."""

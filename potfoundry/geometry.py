@@ -392,16 +392,19 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces.extend(list(zip(v00, v01, vd1)))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
+    # Winding reversed so this seam stays coherent with the inner wall and drain
+    # cylinder (otherwise neighbouring faces traverse shared edges in the same
+    # direction, giving inconsistent orientation at the drain junction).
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    faces.extend(list(zip(vi0, vi1, vd1)))
-    faces.extend(list(zip(vi0, vd1, vd0)))
+    faces.extend(list(zip(vi0, vd1, vi1)))
+    faces.extend(list(zip(vi0, vd0, vd1)))
 
-    # Drain cylinder wall
+    # Drain cylinder wall (winding reversed to stay coherent with the slab top)
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    faces.extend(list(zip(v0b, v0t, v1t)))
-    faces.extend(list(zip(v0b, v1t, v1b)))
+    faces.extend(list(zip(v0b, v1t, v0t)))
+    faces.extend(list(zip(v0b, v1b, v1t)))
 
     # Diagnostics
     def ring_od(ids):
@@ -418,7 +421,17 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
-    return np.array(verts, dtype=float), np.array(faces, dtype=int), diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    faces_arr = np.array(faces, dtype=int)
+    # Guarantee outward-facing normals for clean CAD import (Rhino/Grasshopper):
+    # flip all winding if the closed shell encloses negative signed volume.
+    v0 = verts_arr[faces_arr[:, 0]]
+    v1 = verts_arr[faces_arr[:, 1]]
+    v2 = verts_arr[faces_arr[:, 2]]
+    signed_vol = float(np.einsum("ij,ij->i", v0, np.cross(v1, v2)).sum() / 6.0)
+    if signed_vol < 0.0:
+        faces_arr = np.ascontiguousarray(faces_arr[:, ::-1])
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
