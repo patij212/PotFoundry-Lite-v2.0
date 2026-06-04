@@ -24,6 +24,9 @@ from .core.geometry import (
 # Binary STL writer (recommended)
 from .core.io.stl import write_stl_binary
 
+# 3MF writer (units-aware, manifold interchange for Rhino/Grasshopper/slicers)
+from .core.io.threemf import write_3mf
+
 # Mesh-quality / export-readiness utilities
 from .core.mesh_ops import ensure_outward, signed_volume, winding_report
 
@@ -40,6 +43,8 @@ __all__ = [
     # STL export (binary is recommended)
     'write_stl_binary',
     'write_ascii_stl',  # deprecated
+    # 3MF export (units-aware interchange)
+    'write_3mf',
     # Mesh-quality / export-readiness utilities
     'ensure_outward',
     'signed_volume',

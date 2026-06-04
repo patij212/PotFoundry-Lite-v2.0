@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mesh-quality regression tests (`tests/test_mesh_quality.py`) asserting
   watertightness, consistent winding, and outward normals across every style
   and twist/bell parameter set.
+- **3MF export** (`potfoundry.write_3mf`): units-aware (`millimeter`), indexed
+  manifold interchange format. Unlike STL it declares physical units so
+  Rhino/Grasshopper/slicers import at the correct scale without guessing, and
+  its required counter-clockwise winding is satisfied by the new outward
+  orientation guarantee. Covered by `tests/test_3mf_export.py`.
 
 ### Fixed
 - **Inverted and mis-wound export meshes:** `build_pot_mesh` previously emitted
