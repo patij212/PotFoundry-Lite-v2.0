@@ -133,6 +133,7 @@ import {
     fillSameSurfaceBoundaryLoopsWithCenters,
     repairOuterWallTJunctions,
     repairSurfaceBoundaryTJunctions,
+    splitResidualBoundaryTJunctions,
 } from './parametric/BoundaryTJunctionRepair';
 import { buildPeriodicSeamClosure } from './parametric/PeriodicSeamClosure';
 import {
@@ -4125,6 +4126,43 @@ export class ParametricExportComputer {
                     `${branchedFill.emptyTriangulations ?? 0} empty triangulations, ` +
                     `${branchedFill.unsafeLoops ?? 0} unsafe caps`,
                 );
+            }
+
+            // Final surface-agnostic boundary T-junction closer: splits residual
+            // density-mismatch boundary edges (e.g. the outer-wall top row vs the rim,
+            // the same physical ring at different column densities) at the vertices
+            // lying on them, in raw 3D, after the whole fill battery. Owner-consistent
+            // winding + manifold-safe, so it adds no flips and no non-manifold edges.
+            await pfStageFlush(`tail:before-splitResidualBoundaryTJunctions tris=${finalCombinedIdxs.length / 3}`);
+            {
+                const residualTjStart = performance.now();
+                const residualTjTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+                const residualTj = splitResidualBoundaryTJunctions(
+                    finalCombinedIdxs,
+                    combinedVerts,
+                    finalResultData,
+                    topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+                );
+                recordTailDiagnosticStage({
+                    name: 'splitResidualBoundaryTJunctions',
+                    elapsedMs: performance.now() - residualTjStart,
+                    trianglesBefore: residualTjTrisBefore,
+                    trianglesAfter: indexCountToTriangleCount(residualTj.indices.length),
+                    outerTrianglesBefore: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    outerTrianglesAfter: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    details: {
+                        repairedEdges: residualTj.repairedEdges,
+                        insertedTriangles: residualTj.insertedTriangles,
+                    },
+                });
+                if (residualTj.repairedEdges > 0) {
+                    finalCombinedIdxs = residualTj.indices;
+                    console.log(
+                        `[ParametricExport]   Residual boundary T-junction split: ` +
+                        `${residualTj.repairedEdges} edges split, ` +
+                        `${residualTj.insertedTriangles} tris inserted`,
+                    );
+                }
             }
 
             await pfStageFlush(`tail:before-final-geometric-degen-strip tris=${finalCombinedIdxs.length / 3}`);

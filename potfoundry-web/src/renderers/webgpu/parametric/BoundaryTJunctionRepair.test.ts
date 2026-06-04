@@ -10,6 +10,7 @@ import {
     repairOuterWallTJunctions,
     repairSurfaceBoundaryTJunctions,
     shouldStopRepairPasses,
+    splitResidualBoundaryTJunctions,
 } from './BoundaryTJunctionRepair';
 import { topologyDiagnostics } from '../../../fidelity/metrics';
 
@@ -636,6 +637,70 @@ describe('fillSameSurfaceBoundaryLoopsWithCenters', () => {
         expect(topo.boundaryEdges).toBe(0);
         expect(topo.nonManifoldEdges).toBe(0);
         expect(topo.orientationMismatches).toBe(0);
+    });
+});
+
+describe('splitResidualBoundaryTJunctions', () => {
+    it('splits a coarse boundary edge at a finer vertex lying on it (3D T-junction)', () => {
+        // The coarse triangle 0-1-2 owns the long boundary edge 0-1. Vertex 3 sits at
+        // the midpoint of 0-1 — a finer adjacent surface's vertex (the rim/outer-wall
+        // density mismatch in miniature). Two finer triangles below (0-4-3, 3-5-1)
+        // make 0-3 and 3-1 boundary edges. The pass must split the coarse triangle at
+        // 3 so 0-3 and 3-1 each reach incidence 2 (watertight), owner-consistent.
+        const uvs = new Float32Array([
+            0, 0, 0,    // 0
+            2, 0, 0,    // 1
+            1, 1, 0,    // 2  coarse apex (above the edge)
+            1, 0, 0,    // 3  midpoint of 0-1
+            0, -1, 0,   // 4
+            2, -1, 0,   // 5
+        ]);
+        const positions = uvs.slice();
+        const indices = new Uint32Array([
+            0, 1, 2,    // coarse, owns boundary edge 0-1
+            0, 4, 3,    // finer, owns boundary edge 3-0
+            3, 5, 1,    // finer, owns boundary edge 1-3
+        ]);
+
+        const before = edgeCounts(indices);
+        expect(before.get(key(0, 1))).toBe(1);
+        expect(before.get(key(0, 3))).toBe(1);
+        expect(before.get(key(3, 1))).toBe(1);
+
+        const result = splitResidualBoundaryTJunctions(indices, uvs, positions, 1e-4);
+        const counts = edgeCounts(result.indices);
+
+        expect(result.repairedEdges).toBeGreaterThan(0);
+        // Coarse edge 0-1 is replaced by 0-3 and 3-1, each now shared with the finer
+        // triangles below → the T-junction is closed (the fixture's outer perimeter
+        // 0-2/1-2/0-4/4-3/3-5/5-1 stays legitimately open, this is an open patch).
+        expect(counts.get(key(0, 1)) ?? 0).toBe(0);
+        expect(counts.get(key(0, 3))).toBe(2);
+        expect(counts.get(key(3, 1))).toBe(2);
+
+        const topo = topologyDiagnostics(
+            { vertices: positions, indices: result.indices, uvs },
+            1e-4,
+            8,
+        );
+        // The split introduces no non-manifold edges and no winding flips (the fan
+        // preserves the owner triangle's winding).
+        expect(topo.nonManifoldEdges).toBe(0);
+        expect(topo.orientationMismatches).toBe(0);
+    });
+
+    it('is a no-op when no vertex lies on any boundary edge', () => {
+        // A single triangle: its three edges are boundary, but no other vertex lies on
+        // them, so there is nothing to split.
+        const uvs = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+        const positions = uvs.slice();
+        const indices = new Uint32Array([0, 1, 2]);
+
+        const result = splitResidualBoundaryTJunctions(indices, uvs, positions, 1e-4);
+
+        expect(result.repairedEdges).toBe(0);
+        expect(result.insertedTriangles).toBe(0);
+        expect(Array.from(result.indices)).toEqual([0, 1, 2]);
     });
 });
 

@@ -3172,3 +3172,197 @@ export function repairSurfaceBoundaryTJunctions(
 
     return { indices: current, repairedEdges, insertedTriangles };
 }
+
+/**
+ * Final, surface-agnostic boundary T-junction closer. The earlier join repair
+ * (`repairSurfaceBoundaryTJunctions`) keys on parametric surface-join identity
+ * and runs before the fill battery; it leaves residual density-mismatch
+ * T-junctions on shared rings (e.g. the outer-wall top row vs the rim, which are
+ * the same physical circle at different column densities). This pass operates on
+ * the FINAL mesh by raw 3D geometry: for every position-welded boundary edge
+ * (incidence 1) it finds any mesh vertices lying on the edge's interior within
+ * the weld tolerance and splits the edge's single owning triangle into a fan
+ * through them, preserving the owner's winding (so no orientation flip is
+ * introduced) and gating each split on manifold safety (never raises a canonical
+ * edge above incidence 2). Splitting the coarse side of a density mismatch
+ * cascades to close the finer side, since the inserted segment edges become
+ * shared with the finer surface's existing edges.
+ */
+export function splitResidualBoundaryTJunctions(
+    indices: Uint32Array,
+    uvs: Float32Array,
+    positions: Float32Array,
+    topologyWeldToleranceMm: number = 0,
+    maxPasses: number = 3,
+): { indices: Uint32Array; repairedEdges: number; insertedTriangles: number } {
+    let current = indices;
+    let repairedEdges = 0;
+    let insertedTriangles = 0;
+    for (let pass = 0; pass < maxPasses; pass++) {
+        const result = splitResidualBoundaryTJunctionPass(current, uvs, positions, topologyWeldToleranceMm);
+        if (result.repairedEdges === 0) break;
+        current = result.indices;
+        repairedEdges += result.repairedEdges;
+        insertedTriangles += result.insertedTriangles;
+    }
+    return { indices: current, repairedEdges, insertedTriangles };
+}
+
+function splitResidualBoundaryTJunctionPass(
+    indices: Uint32Array,
+    uvs: Float32Array,
+    positions: Float32Array,
+    topologyWeldToleranceMm: number,
+): { indices: Uint32Array; repairedEdges: number; insertedTriangles: number } {
+    const tol = topologyWeldToleranceMm > 0 ? topologyWeldToleranceMm : 1e-4;
+    // On-edge perpendicular tolerance. A vertex sitting on the SAME physical ring as a
+    // boundary edge is not collinear with the edge's straight chord: its perpendicular
+    // offset is the arc sagitta, which grows with edge length (~L²/8R) and easily
+    // exceeds the (sub-micron) weld tolerance on coarse rim edges. Allow up to ~1.5% of
+    // the edge length (plus the weld floor) so a vertex genuinely on the ring is caught,
+    // while staying far below the inter-vertex spacing so off-edge vertices are not.
+    const onEdgeFloor2 = (tol * 2) ** 2;
+    const onEdgeLenFrac = 0.015;
+    const globalIds = getGlobalVertexCanonical(uvs, positions, topologyWeldToleranceMm);
+    const numV = (positions.length / 3) | 0;
+
+    // Representative raw vertex per canonical id (first encountered).
+    const reprRaw = new Map<number, number>();
+    for (let v = 0; v < numV; v++) {
+        const c = globalIds[v];
+        if (!reprRaw.has(c)) reprRaw.set(c, v);
+    }
+
+    // Canonical edge incidence over the whole mesh (for manifold-safe gating).
+    const incidence = new Map<number, number>();
+    const triCount = (indices.length / 3) | 0;
+    for (let t = 0; t < triCount; t++) {
+        const a = globalIds[indices[t * 3]], b = globalIds[indices[t * 3 + 1]], c = globalIds[indices[t * 3 + 2]];
+        if (a === b || b === c || a === c) continue;
+        incidence.set(edgeKey(a, b), (incidence.get(edgeKey(a, b)) ?? 0) + 1);
+        incidence.set(edgeKey(b, c), (incidence.get(edgeKey(b, c)) ?? 0) + 1);
+        incidence.set(edgeKey(c, a), (incidence.get(edgeKey(c, a)) ?? 0) + 1);
+    }
+
+    // Coarse spatial hash of canonical vertices for the on-edge query.
+    const cell = Math.max(tol * 4, 1e-4);
+    const cinv = 1 / cell;
+    const grid = new Map<number, number[]>();
+    const gridKey = (gx: number, gy: number, gz: number): number =>
+        (gx & 0x3ff) * 0x100000 + (gy & 0x3ff) * 0x400 + (gz & 0x3ff);
+    const hashed = new Set<number>();
+    for (let v = 0; v < numV; v++) {
+        const c = globalIds[v];
+        if (hashed.has(c)) continue;
+        hashed.add(c);
+        const r = reprRaw.get(c)! * 3;
+        const gk = gridKey(Math.floor(positions[r] * cinv), Math.floor(positions[r + 1] * cinv), Math.floor(positions[r + 2] * cinv));
+        const arr = grid.get(gk);
+        if (arr) arr.push(c); else grid.set(gk, [c]);
+    }
+
+    // Canonical vertices lying on the interior of segment a->b, sorted by param.
+    const onEdgeCanon = (canonA: number, canonB: number): number[] => {
+        const ra = reprRaw.get(canonA)! * 3, rb = reprRaw.get(canonB)! * 3;
+        const ax = positions[ra], ay = positions[ra + 1], az = positions[ra + 2];
+        const bx = positions[rb], by = positions[rb + 1], bz = positions[rb + 2];
+        const dx = bx - ax, dy = by - ay, dz = bz - az;
+        const len2 = dx * dx + dy * dy + dz * dz;
+        if (len2 < 1e-12) return [];
+        const edgeOnTol2 = Math.max(onEdgeFloor2, len2 * onEdgeLenFrac * onEdgeLenFrac);
+        const loX = Math.min(ax, bx) - cell, hiX = Math.max(ax, bx) + cell;
+        const loY = Math.min(ay, by) - cell, hiY = Math.max(ay, by) + cell;
+        const loZ = Math.min(az, bz) - cell, hiZ = Math.max(az, bz) + cell;
+        const found: Array<{ canon: number; s: number }> = [];
+        const seenCanon = new Set<number>();
+        for (let gx = Math.floor(loX * cinv); gx <= Math.floor(hiX * cinv); gx++)
+        for (let gy = Math.floor(loY * cinv); gy <= Math.floor(hiY * cinv); gy++)
+        for (let gz = Math.floor(loZ * cinv); gz <= Math.floor(hiZ * cinv); gz++) {
+            const arr = grid.get(gridKey(gx, gy, gz));
+            if (!arr) continue;
+            for (const cc of arr) {
+                if (cc === canonA || cc === canonB || seenCanon.has(cc)) continue;
+                const rc = reprRaw.get(cc)! * 3;
+                const px = positions[rc], py = positions[rc + 1], pz = positions[rc + 2];
+                const s = ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / len2;
+                if (s <= 1e-3 || s >= 1 - 1e-3) continue;
+                const projx = ax + s * dx, projy = ay + s * dy, projz = az + s * dz;
+                const d2 = (px - projx) ** 2 + (py - projy) ** 2 + (pz - projz) ** 2;
+                if (d2 > edgeOnTol2) continue;
+                seenCanon.add(cc);
+                found.push({ canon: cc, s });
+            }
+        }
+        found.sort((p, q) => p.s - q.s);
+        return found.map(f => f.canon);
+    };
+
+    const { records } = collectBoundaryEdges(indices, indices.length, uvs, positions, topologyWeldToleranceMm);
+
+    const mutable = new Uint32Array(indices);
+    const appended: number[] = [];
+    const touched = new Set<number>();
+    let repairedEdges = 0;
+
+    for (const record of records) {
+        if (touched.has(record.triOffset)) continue;
+
+        const mids = onEdgeCanon(record.canonA, record.canonB);
+        if (mids.length === 0) continue;
+
+        // Canonical vertex sequence along the edge: A, m1, ..., mk, B.
+        const seq = [record.canonA, ...mids, record.canonB];
+        const oppCanon = globalIds[record.opp];
+
+        // Manifold-safe gate: every inserted segment edge must currently be at or
+        // below incidence 1 (so the split lifts it to <= 2), and every new apex spoke
+        // opp->mi must be below incidence 2. Skip the whole split otherwise.
+        let safe = true;
+        for (let i = 0; i < seq.length - 1 && safe; i++) {
+            if ((incidence.get(edgeKey(seq[i], seq[i + 1])) ?? 0) > 1) safe = false;
+        }
+        for (let i = 0; i < mids.length && safe; i++) {
+            if ((incidence.get(edgeKey(oppCanon, mids[i])) ?? 0) > 1) safe = false;
+        }
+        if (!safe) continue;
+
+        // Raw vertex sequence (endpoints keep the record's raw ids so existing
+        // adjacency is preserved; interior verts use their canonical representative).
+        const rawSeq: number[] = seq.map(c => reprRaw.get(c)!);
+        rawSeq[0] = record.rawA;
+        rawSeq[rawSeq.length - 1] = record.rawB;
+
+        // Replace the owning triangle with the first fan triangle and append the rest,
+        // each (segStart, segEnd, opp) — preserving the owner's rawA->rawB winding.
+        mutable[record.triOffset] = rawSeq[0];
+        mutable[record.triOffset + 1] = rawSeq[1];
+        mutable[record.triOffset + 2] = record.opp;
+        for (let i = 1; i < rawSeq.length - 1; i++) {
+            appended.push(rawSeq[i], rawSeq[i + 1], record.opp);
+        }
+
+        // Reflect the change in the incidence map so later records in this pass gate
+        // correctly: drop the coarse edge, add the segment edges and apex spokes.
+        incidence.set(edgeKey(record.canonA, record.canonB), (incidence.get(edgeKey(record.canonA, record.canonB)) ?? 1) - 1);
+        for (let i = 0; i < seq.length - 1; i++) {
+            const k = edgeKey(seq[i], seq[i + 1]);
+            incidence.set(k, (incidence.get(k) ?? 0) + 1);
+        }
+        for (const m of mids) {
+            const k = edgeKey(oppCanon, m);
+            incidence.set(k, (incidence.get(k) ?? 0) + 1);
+        }
+
+        touched.add(record.triOffset);
+        repairedEdges++;
+    }
+
+    if (appended.length === 0) {
+        return { indices, repairedEdges: 0, insertedTriangles: 0 };
+    }
+
+    const repaired = new Uint32Array(mutable.length + appended.length);
+    repaired.set(mutable);
+    repaired.set(appended, mutable.length);
+    return { indices: repaired, repairedEdges, insertedTriangles: appended.length / 3 };
+}
