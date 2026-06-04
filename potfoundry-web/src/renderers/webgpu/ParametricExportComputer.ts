@@ -4210,6 +4210,50 @@ export class ParametricExportComputer {
                 }
             }
 
+            // Final same-surface loop closure: the T-junction split and the periodic
+            // seam closure can leave small SAME-SURFACE closed loops (notably a thin
+            // loop straddling the u=0/u≈1 seam where a feature row crosses it). The
+            // earlier same-surface center filler ran before those stages. Re-run it
+            // here (owner-opposite, manifold-safe, incremental commit) to mop them up.
+            await pfStageFlush(`tail:before-finalSameSurfaceLoopFill tris=${finalCombinedIdxs.length / 3}`);
+            {
+                const finalSFillStart = performance.now();
+                const finalSFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+                const finalSFill = fillSameSurfaceBoundaryLoopsWithCenters(
+                    finalCombinedIdxs,
+                    combinedVerts,
+                    finalResultData,
+                    topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+                );
+                recordTailDiagnosticStage({
+                    name: 'finalSameSurfaceLoopFill',
+                    elapsedMs: performance.now() - finalSFillStart,
+                    trianglesBefore: finalSFillTrisBefore,
+                    trianglesAfter: indexCountToTriangleCount(finalSFill.indices.length),
+                    outerTrianglesBefore: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    outerTrianglesAfter: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    details: {
+                        filledLoops: finalSFill.filledLoops,
+                        insertedTriangles: finalSFill.insertedTriangles,
+                        insertedVertices: finalSFill.insertedVertices,
+                        attemptedLoops: finalSFill.attemptedLoops,
+                        emptyTriangulations: finalSFill.emptyTriangulations,
+                        unsafeLoops: finalSFill.unsafeLoops,
+                    },
+                });
+                if (finalSFill.filledLoops > 0) {
+                    finalCombinedIdxs = finalSFill.indices;
+                    combinedVerts = finalSFill.uvs;
+                    finalResultData = finalSFill.positions;
+                    console.log(
+                        `[ParametricExport]   Final same-surface loop fill: ` +
+                        `${finalSFill.filledLoops} loops filled, ` +
+                        `${finalSFill.insertedTriangles} tris inserted, ` +
+                        `${finalSFill.insertedVertices} vertices inserted`,
+                    );
+                }
+            }
+
             await pfStageFlush(`tail:before-final-geometric-degen-strip tris=${finalCombinedIdxs.length / 3}`);
             const finalDegenStripTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
             const finalDegenStripOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
