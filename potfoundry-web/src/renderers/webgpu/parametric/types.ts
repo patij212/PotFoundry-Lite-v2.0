@@ -181,6 +181,16 @@ export interface PipelineDiagnostics {
     crossRowTris: number;
     aspectOver5: number;
     refinement?: RefinementSummary;
+    /** Repair/fill/validation tail timings and mutation counts for slow export probes. */
+    tailDiagnostics?: Array<{
+        name: string;
+        elapsedMs: number;
+        trianglesBefore: number;
+        trianglesAfter: number;
+        outerTrianglesBefore: number;
+        outerTrianglesAfter: number;
+        details: Record<string, string | number | boolean>;
+    }>;
 }
 
 // ============================================================================
@@ -360,9 +370,9 @@ export interface SurfaceConfig {
 export const SURFACE_CONFIG: readonly SurfaceConfig[] = [
     { id: 0, name: 'Outer Wall', budgetFrac: 0.72, invertWinding: false },
     { id: 1, name: 'Inner Wall', budgetFrac: 0.14, invertWinding: true },
-    { id: 2, name: 'Rim', budgetFrac: 0.04, invertWinding: false },
+    { id: 2, name: 'Rim', budgetFrac: 0.04, invertWinding: true },
     { id: 3, name: 'Bottom Under', budgetFrac: 0.04, invertWinding: true },
-    { id: 4, name: 'Bottom Top', budgetFrac: 0.03, invertWinding: true },
+    { id: 4, name: 'Bottom Top', budgetFrac: 0.03, invertWinding: false },
     { id: 5, name: 'Drain', budgetFrac: 0.03, invertWinding: true },
 ] as const;
 

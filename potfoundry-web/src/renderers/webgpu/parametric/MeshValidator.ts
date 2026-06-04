@@ -65,12 +65,31 @@ export interface DegenerateReport {
 
 /** Normal consistency check result. */
 export interface NormalConsistencyReport {
-    /** Whether normals are consistent across the mesh. */
+    /**
+     * Whether the mesh is consistently oriented. Gates on
+     * `windingInconsistentEdges` (genuine edge-traversal orientability), NOT on
+     * the dihedral-confounded `inconsistentPairs`.
+     */
     ok: boolean;
-    /** Triangles with normals pointing opposite to dominant direction. */
+    /**
+     * Triangles whose normal opposes the global-average direction. INFORMATIONAL
+     * ONLY — a documented false positive for closed solids (the inner wall &
+     * base underside legitimately oppose the outer-wall-dominated average).
+     */
     invertedTriangles: number;
-    /** Adjacent triangle pairs with incompatible normals. */
+    /**
+     * Adjacent triangle pairs whose face normals have dot < threshold (default
+     * -0.1). INFORMATIONAL ONLY — conflates a genuine winding flip with an
+     * intentionally sharp dihedral (gothic grooves, feature shelves), so it
+     * massively overstates orientation defects and must not gate validation.
+     */
     inconsistentPairs: number;
+    /**
+     * Manifold edges (shared by exactly 2 triangles) whose two owning triangles
+     * traverse the edge in the SAME direction = a genuine local winding flip.
+     * Geometry-independent orientability measure; this is the real gate.
+     */
+    windingInconsistentEdges: number;
 }
 
 /** Geometric fidelity check result (vs analytic surface). */
@@ -908,7 +927,7 @@ export function checkNormals(
 ): NormalConsistencyReport {
     const triCount = Math.floor(idxCount / 3);
     if (triCount === 0) {
-        return { ok: true, invertedTriangles: 0, inconsistentPairs: 0 };
+        return { ok: true, invertedTriangles: 0, inconsistentPairs: 0, windingInconsistentEdges: 0 };
     }
 
     // Compute all face normals
@@ -951,20 +970,41 @@ export function checkNormals(
         if (dot < 0) invertedTriangles++;
     }
 
-    // Check adjacent triangle normal consistency
+    // Build per-edge adjacency. `edgeTriMap` records the incident triangles (for
+    // the informational normal-dot check); `edgeDirMap` records each triangle's
+    // traversal direction along the edge (+1 when it walks low->high vertex id,
+    // -1 high->low) for the genuine orientability gate.
     const edgeTriMap = new Map<bigint, number[]>();
+    const edgeDirMap = new Map<bigint, number[]>();
     for (let t = 0; t < triCount; t++) {
         const base = t * 3;
         const i0 = indices[base], i1 = indices[base + 1], i2 = indices[base + 2];
         if (i0 === i1 || i1 === i2 || i0 === i2) continue;
 
-        for (const ek of [edgeKey(i0, i1), edgeKey(i1, i2), edgeKey(i2, i0)]) {
+        for (const [a, b] of [[i0, i1], [i1, i2], [i2, i0]] as Array<[number, number]>) {
+            const ek = edgeKey(a, b);
             const existing = edgeTriMap.get(ek);
             if (existing) existing.push(t);
             else edgeTriMap.set(ek, [t]);
+            const dir = a < b ? 1 : -1;
+            const dirs = edgeDirMap.get(ek);
+            if (dirs) dirs.push(dir);
+            else edgeDirMap.set(ek, [dir]);
         }
     }
 
+    // Genuine orientability gate: a manifold edge (exactly 2 incident triangles)
+    // is consistently wound when its two owning triangles traverse it in opposite
+    // directions. Two SAME-direction traversals are a real winding flip. This is
+    // independent of dihedral sharpness, unlike the normal-dot check below.
+    let windingInconsistentEdges = 0;
+    for (const dirs of edgeDirMap.values()) {
+        if (dirs.length !== 2) continue;
+        if (dirs[0] === dirs[1]) windingInconsistentEdges++;
+    }
+
+    // Informational only: adjacent faces whose normals oppose past the threshold.
+    // Trips on intentionally sharp dihedrals, so it is reported but NOT gated on.
     let inconsistentPairs = 0;
     for (const tris of edgeTriMap.values()) {
         if (tris.length !== 2) continue;
@@ -977,9 +1017,10 @@ export function checkNormals(
     }
 
     return {
-        ok: inconsistentPairs === 0,
+        ok: windingInconsistentEdges === 0,
         invertedTriangles,
         inconsistentPairs,
+        windingInconsistentEdges,
     };
 }
 
@@ -1802,14 +1843,14 @@ export function validateMesh(
         );
     }
 
-    // 3. Normal consistency
+    // 3. Normal consistency (orientability). Gates on genuine winding flips
+    // (edge-traversal direction), not the dihedral-confounded normal-dot count.
     const normals = checkNormals(positions, indices, idxCount);
     if (!normals.ok) {
         warnings.push(
-            `${normals.inconsistentPairs} inconsistent normal pairs` +
-            (normals.invertedTriangles > 0
-                ? ` (${normals.invertedTriangles} inverted triangles — includes inner wall, expected for closed solids)`
-                : ''),
+            `${normals.windingInconsistentEdges} winding-inconsistent edges (genuine orientation flips) ` +
+            `[normal-dot inconsistentPairs=${normals.inconsistentPairs}, informational — inflated by sharp dihedrals; ` +
+            `invertedTriangles=${normals.invertedTriangles}, includes inner wall, expected for closed solids]`,
         );
     }
 

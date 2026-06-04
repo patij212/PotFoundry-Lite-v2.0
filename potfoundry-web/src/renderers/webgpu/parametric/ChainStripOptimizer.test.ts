@@ -571,6 +571,166 @@ describe('optimizeChainStrips', () => {
     // Should have flipped the long diagonal to the shorter one
     expect(result.phaseAFlips + result.phaseBFlips + result.phaseCFlips).toBeGreaterThan(0);
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Characterization (perf-pin): freezes the EXACT output of
+  // optimizeChainStrips on a large deterministic mesh so that any
+  // performance refactor of the flip loops can be proven byte-identical.
+  // The expected hash + counts were captured from the reference
+  // implementation; a mismatch means the refactor changed behaviour.
+  // ─────────────────────────────────────────────────────────────────────
+  describe('characterization (perf-pin)', () => {
+    /** Deterministic PRNG (same as MeshSubdivision perf-pin). */
+    function mulberry32(seed: number): () => number {
+      let a = seed >>> 0;
+      return () => {
+        a |= 0;
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    /** FNV-1a 32-bit hash over a Uint32Array (stable, order-sensitive). */
+    function hashU32(arr: Uint32Array): number {
+      let h = 0x811c9dc5;
+      for (let i = 0; i < arr.length; i++) {
+        const v = arr[i];
+        for (let b = 0; b < 4; b++) {
+          h ^= (v >>> (b * 8)) & 0xff;
+          h = Math.imul(h, 0x01000193);
+        }
+      }
+      return h >>> 0;
+    }
+
+    /**
+     * Build a deterministic triangulated W×H grid with 3D z-noise (so the
+     * diagonals are non-Delaunay and the flip phases do real work).
+     * outerGridVertexCount=0 ⇒ every triangle is a chain-strip triangle,
+     * exercising the full Phase A/B/C machinery across the whole grid.
+     */
+    function makeGridMesh(W: number, H: number, seed: number) {
+      const rng = mulberry32(seed);
+      const positions = new Float32Array(W * H * 3);
+      const combinedVerts = new Float32Array(W * H * 3);
+      for (let j = 0; j < H; j++) {
+        for (let i = 0; i < W; i++) {
+          const v = j * W + i;
+          const u = i / (W - 1);
+          const t = j / (H - 1);
+          // 3D position: planar grid + per-vertex z perturbation
+          positions[v * 3] = u;
+          positions[v * 3 + 1] = t;
+          positions[v * 3 + 2] = (rng() - 0.5) * 0.18;
+          // UV/T parameter coords
+          combinedVerts[v * 3] = u;
+          combinedVerts[v * 3 + 1] = t;
+          combinedVerts[v * 3 + 2] = 0;
+        }
+      }
+      // Triangulate each cell with a consistent diagonal.
+      const idx: number[] = [];
+      for (let j = 0; j < H - 1; j++) {
+        for (let i = 0; i < W - 1; i++) {
+          const bl = j * W + i, br = bl + 1, tl = bl + W, tr = tl + 1;
+          idx.push(bl, br, tr);
+          idx.push(bl, tr, tl);
+        }
+      }
+      const combinedIdxs = new Uint32Array(idx);
+      // A handful of constraint edges scattered through the grid.
+      const constraintEdgeSet = new Set<bigint>();
+      for (let j = 0; j < H - 1; j += 3) {
+        const a = j * W + 2, b = (j + 1) * W + 2;
+        constraintEdgeSet.add(edgeKey(a, b));
+      }
+      const finalT: number[] = [];
+      for (let j = 0; j < H; j++) finalT.push(j / (H - 1));
+      return {
+        combinedIdxs,
+        positions,
+        combinedVerts,
+        constraintEdgeSet,
+        outerGridVertexCount: 0,
+        outerIdxCount: combinedIdxs.length,
+        finalT,
+      };
+    }
+
+    it('produces the exact same flipped index buffer (40×40 z-noise grid)', () => {
+      const mesh = makeGridMesh(40, 40, 0x1234abcd);
+      const result = optimizeChainStrips(mesh);
+
+      // Output index buffer must be byte-identical to the captured baseline.
+      expect(hashU32(mesh.combinedIdxs)).toBe(2126344167);
+
+      // Flip counts and rejects must match exactly.
+      expect({
+        phaseAFlips: result.phaseAFlips,
+        phaseBFlips: result.phaseBFlips,
+        phaseCFlips: result.phaseCFlips,
+        rowSpanRejects: result.rowSpanRejects,
+        edgeLenRejects: result.edgeLenRejects,
+        aspectRejects: result.aspectRejects,
+        valenceBonusFlips: result.valenceBonusFlips,
+        chainStripTriCount: result.chainStripTriCount,
+        chainGridFlips: result.chainGridFlips,
+        chainGridFlipsAllowed: result.chainGridFlipsAllowed,
+        valBeforeTotal: result.valenceStats.before.total,
+        valAfterTotal: result.valenceStats.after.total,
+      }).toEqual({
+        phaseAFlips: 1866,
+        phaseBFlips: 16,
+        phaseCFlips: 19,
+        rowSpanRejects: 1072,
+        edgeLenRejects: 0,
+        aspectRejects: 1,
+        valenceBonusFlips: 6,
+        chainStripTriCount: 3042,
+        chainGridFlips: 0,
+        chainGridFlipsAllowed: 0,
+        valBeforeTotal: 1600,
+        valAfterTotal: 1600,
+      });
+    });
+
+    it('produces the exact same output with real chain-grid edges (split gridVertexCount)', () => {
+      // outerGridVertexCount in the middle ⇒ the upper half of the grid are
+      // "chain" vertices, so shared edges straddling the split are chain-grid
+      // edges, exercising the CHAIN_GRID_FLIP_THRESHOLD gate.
+      const mesh = makeGridMesh(40, 40, 0x55aa33cc);
+      mesh.outerGridVertexCount = 800; // 1600 verts total → rows 0..19 grid, 20..39 chain
+
+      const result = optimizeChainStrips(mesh);
+
+      expect(hashU32(mesh.combinedIdxs)).toBe(2766157292);
+      expect({
+        phaseAFlips: result.phaseAFlips,
+        phaseBFlips: result.phaseBFlips,
+        phaseCFlips: result.phaseCFlips,
+        rowSpanRejects: result.rowSpanRejects,
+        edgeLenRejects: result.edgeLenRejects,
+        aspectRejects: result.aspectRejects,
+        valenceBonusFlips: result.valenceBonusFlips,
+        chainStripTriCount: result.chainStripTriCount,
+        chainGridFlips: result.chainGridFlips,
+        chainGridFlipsAllowed: result.chainGridFlipsAllowed,
+      }).toEqual({
+        phaseAFlips: 934,
+        phaseBFlips: 5,
+        phaseCFlips: 9,
+        rowSpanRejects: 463,
+        edgeLenRejects: 0,
+        aspectRejects: 2,
+        valenceBonusFlips: 2,
+        chainStripTriCount: 1560,
+        chainGridFlips: 114,
+        chainGridFlipsAllowed: 16,
+      });
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════

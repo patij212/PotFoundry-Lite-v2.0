@@ -71,7 +71,7 @@ import {
     computeGridDimensions,
     downsampleSortedPositions,
 } from './parametric/GridBuilder';
-import { buildCDTOuterWall } from './parametric/OuterWallTessellator';
+import { buildCDTOuterWall, type OuterWallResult } from './parametric/OuterWallTessellator';
 import { DEFAULT_CHAIN_STRIP_CONFIG } from './parametric/OuterWallTessellator';
 import { chainDirectedFlip, flipEdges3D } from './parametric/MeshOptimizer';
 import { subdivideLongEdges } from './parametric/MeshSubdivision';
@@ -124,6 +124,8 @@ import {
     type ValidationReport,
 } from './parametric/MeshValidator';
 import {
+    fillBranchedBoundaryComponentsWithCenters,
+    fillCrossSurfaceConstantTBoundaryLoopsWithCenters,
     fillGeometricBoundaryLoops,
     fillOuterWallBoundaryLoops,
     fillOuterWallSeamBoundaryChains,
@@ -132,6 +134,7 @@ import {
     repairOuterWallTJunctions,
     repairSurfaceBoundaryTJunctions,
 } from './parametric/BoundaryTJunctionRepair';
+import { buildPeriodicSeamClosure } from './parametric/PeriodicSeamClosure';
 import {
     healSeam,
     healConfigForProfile,
@@ -183,8 +186,23 @@ export function getLastPeakDebugData(): PeakDebugData | null {
 
 export const PARAMETRIC_EVAL_WORKGROUP_SIZE = 64;
 export const WEBGPU_MAX_WORKGROUPS_PER_DISPATCH = 65_535;
-export const MAX_PARAMETRIC_EVAL_VERTICES_PER_DISPATCH =
+
+/** Hardware ceiling: the largest eval dispatch WebGPU will legally accept. */
+export const WEBGPU_MAX_EVAL_VERTICES_PER_DISPATCH =
     PARAMETRIC_EVAL_WORKGROUP_SIZE * WEBGPU_MAX_WORKGROUPS_PER_DISPATCH;
+
+/**
+ * Default per-dispatch eval cap used to chunk large midpoint-eval batches.
+ *
+ * The hardware ceiling (~4.19M verts) is legal but stalls the Dawn compute
+ * path indefinitely on dense parametric surfaces: a non-converging style grows
+ * its outer wall ~10%/refinement-iteration, and a late iteration's midpoint
+ * eval reaches a single ~4.19M-vertex dispatch that hangs >150s (observed on
+ * GothicArches: a 5.01M-vertex batch split left one ~4.19M dispatch that never
+ * returned). Capping well below the ceiling keeps each dispatch promptly
+ * evaluable; oversized batches are chunked by splitUvVerticesForDispatch.
+ */
+export const MAX_PARAMETRIC_EVAL_VERTICES_PER_DISPATCH = 1_048_576;
 
 /**
  * v18.1 tolerance-first soft cap for adaptive refinement.
@@ -197,6 +215,449 @@ export const MAX_PARAMETRIC_EVAL_VERTICES_PER_DISPATCH =
  * this high cap acting only as an out-of-memory safety stop.
  */
 export const REFINEMENT_TRIANGLE_SAFETY_CAP = 10_000_000;
+
+const INDICES_PER_TRIANGLE = 3;
+
+type TailDiagnosticDetailValue = string | number | boolean;
+
+interface TailDiagnosticStage {
+    name: string;
+    elapsedMs: number;
+    trianglesBefore: number;
+    trianglesAfter: number;
+    outerTrianglesBefore: number;
+    outerTrianglesAfter: number;
+    details: Record<string, TailDiagnosticDetailValue>;
+}
+
+interface TailDiagnosticStageInput {
+    name: string;
+    elapsedMs: number;
+    trianglesBefore: number;
+    trianglesAfter: number;
+    outerTrianglesBefore: number;
+    outerTrianglesAfter: number;
+    details?: Record<string, TailDiagnosticDetailValue | undefined>;
+}
+
+type TailDiagnosticsGlobal = {
+    __pfStageLog?: string[];
+    __pfTailDiagnostics?: TailDiagnosticStage[];
+};
+
+type SourceTopologyKind = 'grid' | 'chain' | 'phantom';
+
+interface SourceTopologySampleVertex {
+    index: number;
+    kind: SourceTopologyKind;
+    chainId?: number;
+    u: number;
+    t: number;
+    surface: number;
+}
+
+interface SourceTopologyIncidentSample {
+    triOffset: number;
+    opposite: SourceTopologySampleVertex;
+    provenance?: string;
+}
+
+interface SourceTopologySample {
+    count: number;
+    perimeter?: boolean;
+    classKey: string;
+    orientation: 'vertical' | 'horizontal' | 'diagonal';
+    v0: SourceTopologySampleVertex;
+    v1: SourceTopologySampleVertex;
+    incidents: SourceTopologyIncidentSample[];
+}
+
+interface SourceTopologyCounts {
+    boundaryEdges: number;
+    perimeterBoundaryEdges: number;
+    interiorBoundaryEdges: number;
+    nonManifoldEdges: number;
+    byClass: Record<string, number>;
+    byEndpointClass: Record<string, number>;
+    byOrientation: Record<string, number>;
+    boundarySamples: SourceTopologySample[];
+    nonManifoldSamples: SourceTopologySample[];
+}
+
+interface SourceTopologyDiagnostic {
+    label: string;
+    vertexCount: number;
+    triangleCount: number;
+    raw: SourceTopologyCounts;
+    uvCanonical: SourceTopologyCounts;
+}
+
+type SourceDiagnosticsGlobal = TailDiagnosticsGlobal & {
+    __pfEnableSourceDiagnostics?: boolean;
+    __pfStopAfterSourceDiagnostics?: boolean;
+    __pfSourceDiagnostics?: SourceTopologyDiagnostic[];
+};
+
+const SOURCE_TOPOLOGY_UV_QUANT = 1e6;
+const SOURCE_TOPOLOGY_SAMPLE_LIMIT = 8;
+const SOURCE_TOPOLOGY_INCIDENT_LIMIT = 6;
+const SOURCE_TOPOLOGY_ORIENTATION_RATIO = 0.1;
+const SOURCE_TOPOLOGY_ENDPOINT_EPS = 1e-6;
+const SOURCE_TOPOLOGY_PERIMETER_EPS = 1e-5;
+
+function indexCountToTriangleCount(indexCount: number): number {
+    return indexCount / INDICES_PER_TRIANGLE;
+}
+
+function cleanTailDiagnosticDetails(
+    details: Record<string, TailDiagnosticDetailValue | undefined> = {},
+): Record<string, TailDiagnosticDetailValue> {
+    const clean: Record<string, TailDiagnosticDetailValue> = {};
+    for (const [key, value] of Object.entries(details)) {
+        if (value !== undefined) clean[key] = value;
+    }
+    return clean;
+}
+
+function formatTailDiagnosticDetails(details: Record<string, TailDiagnosticDetailValue>): string {
+    return Object.entries(details)
+        .map(([key, value]) => `${key}=${String(value)}`)
+        .join(' ');
+}
+
+function recordTailDiagnosticStage(input: TailDiagnosticStageInput): void {
+    const details = cleanTailDiagnosticDetails(input.details);
+    const stage: TailDiagnosticStage = { ...input, details };
+    const detailText = formatTailDiagnosticDetails(details);
+    try {
+        const w = globalThis as unknown as TailDiagnosticsGlobal;
+        (w.__pfTailDiagnostics ??= []).push(stage);
+    } catch {
+        /* noop */
+    }
+    pfStageMark(
+        `tail-diagnostic ${input.name} elapsed=${input.elapsedMs.toFixed(1)}ms ` +
+        `tris=${input.trianglesBefore}->${input.trianglesAfter} ` +
+        `outer=${input.outerTrianglesBefore}->${input.outerTrianglesAfter}` +
+        (detailText.length > 0 ? ` ${detailText}` : ''),
+    );
+    try {
+        console.warn(
+            `[TailDiagnostic] ${input.name}: ${input.elapsedMs.toFixed(1)}ms ` +
+            `tris=${input.trianglesBefore}->${input.trianglesAfter} ` +
+            `outer=${input.outerTrianglesBefore}->${input.outerTrianglesAfter}` +
+            (detailText.length > 0 ? ` ${detailText}` : ''),
+        );
+    } catch {
+        /* noop */
+    }
+}
+
+function resetTailDiagnostics(): void {
+    try {
+        const w = globalThis as unknown as TailDiagnosticsGlobal;
+        w.__pfTailDiagnostics = [];
+    } catch {
+        /* noop */
+    }
+}
+
+function tailDiagnosticsSnapshot(): TailDiagnosticStage[] {
+    try {
+        const w = globalThis as unknown as TailDiagnosticsGlobal;
+        return [...(w.__pfTailDiagnostics ?? [])];
+    } catch {
+        return [];
+    }
+}
+
+function incrementSourceCount(counts: Record<string, number>, key: string): void {
+    counts[key] = (counts[key] ?? 0) + 1;
+}
+
+function sortedSourceCounts(counts: Record<string, number>): Record<string, number> {
+    return Object.fromEntries(
+        Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+    );
+}
+
+function sourceVertexKind(result: OuterWallResult, index: number): SourceTopologyKind {
+    if (index < result.gridVertexCount) return 'grid';
+    if (result.chainVertexChainIds.has(index)) return 'chain';
+    return 'phantom';
+}
+
+function sourceSampleVertex(result: OuterWallResult, index: number): SourceTopologySampleVertex {
+    const base = index * 3;
+    const chainId = result.chainVertexChainIds.get(index);
+    return {
+        index,
+        kind: sourceVertexKind(result, index),
+        chainId,
+        u: result.vertices[base],
+        t: result.vertices[base + 1],
+        surface: result.vertices[base + 2],
+    };
+}
+
+function sourceVertexClass(result: OuterWallResult, index: number): string {
+    const kind = sourceVertexKind(result, index);
+    if (kind === 'grid') return 'G';
+    if (kind === 'chain') return `C${result.chainVertexChainIds.get(index) ?? '?'}`;
+    return 'P';
+}
+
+function sourceEndpointClass(result: OuterWallResult, index: number): string {
+    const base = index * 3;
+    const surface = Math.round(result.vertices[base + 2]);
+    const t = result.vertices[base + 1];
+    const tClass = t <= SOURCE_TOPOLOGY_ENDPOINT_EPS
+        ? 'bottom'
+        : (t >= 1 - SOURCE_TOPOLOGY_ENDPOINT_EPS ? 'top' : 'tmid');
+    return `s${surface}:${tClass}`;
+}
+
+function sourceClassPair(a: string, b: string): string {
+    return a <= b ? `${a}-${b}` : `${b}-${a}`;
+}
+
+function sourceEdgeKey(a: number, b: number): string {
+    return a < b ? `${a}-${b}` : `${b}-${a}`;
+}
+
+function sourceOrientation(result: OuterWallResult, a: number, b: number): 'vertical' | 'horizontal' | 'diagonal' {
+    const du = Math.abs(result.vertices[a * 3] - result.vertices[b * 3]);
+    const dt = Math.abs(result.vertices[a * 3 + 1] - result.vertices[b * 3 + 1]);
+    if (du < SOURCE_TOPOLOGY_ORIENTATION_RATIO * dt) return 'vertical';
+    if (dt < SOURCE_TOPOLOGY_ORIENTATION_RATIO * du) return 'horizontal';
+    return 'diagonal';
+}
+
+function sourceUvCanonicalIds(result: OuterWallResult): Int32Array {
+    const vertexCount = result.vertices.length / 3;
+    const canonicalIds = new Int32Array(vertexCount);
+    const canonical = new Map<string, number>();
+    let next = 0;
+    for (let index = 0; index < vertexCount; index++) {
+        const base = index * 3;
+        const key = `${Math.round(result.vertices[base] * SOURCE_TOPOLOGY_UV_QUANT)}:` +
+            `${Math.round(result.vertices[base + 1] * SOURCE_TOPOLOGY_UV_QUANT)}:` +
+            `${Math.round(result.vertices[base + 2] * SOURCE_TOPOLOGY_UV_QUANT)}`;
+        let canonicalId = canonical.get(key);
+        if (canonicalId === undefined) {
+            canonicalId = next++;
+            canonical.set(key, canonicalId);
+        }
+        canonicalIds[index] = canonicalId;
+    }
+    return canonicalIds;
+}
+
+function analyzeOuterWallSourceTopology(
+    result: OuterWallResult,
+    canonicalIds?: Int32Array,
+): SourceTopologyCounts {
+    interface EdgeAccumulator {
+        count: number;
+        rawA: number;
+        rawB: number;
+        incidents: SourceTopologyIncidentSample[];
+    }
+    interface SurfaceBounds {
+        minU: number;
+        maxU: number;
+        minT: number;
+        maxT: number;
+    }
+
+    const edges = new Map<string, EdgeAccumulator>();
+    const surfaceBounds = new Map<number, SurfaceBounds>();
+    for (let index = 0; index < result.gridVertexCount; index++) {
+        const base = index * 3;
+        const surface = Math.round(result.vertices[base + 2]);
+        const u = result.vertices[base];
+        const t = result.vertices[base + 1];
+        const bounds = surfaceBounds.get(surface);
+        if (bounds) {
+            bounds.minU = Math.min(bounds.minU, u);
+            bounds.maxU = Math.max(bounds.maxU, u);
+            bounds.minT = Math.min(bounds.minT, t);
+            bounds.maxT = Math.max(bounds.maxT, t);
+        } else {
+            surfaceBounds.set(surface, { minU: u, maxU: u, minT: t, maxT: t });
+        }
+    }
+
+    const addEdge = (canonicalA: number, canonicalB: number, rawA: number, rawB: number, opposite: number, triOffset: number): void => {
+        if (canonicalA === canonicalB) return;
+        const key = sourceEdgeKey(canonicalA, canonicalB);
+        let edge = edges.get(key);
+        if (!edge) {
+            edge = { count: 0, rawA, rawB, incidents: [] };
+            edges.set(key, edge);
+        }
+        edge.count++;
+        if (edge.incidents.length < SOURCE_TOPOLOGY_INCIDENT_LIMIT) {
+            edge.incidents.push({
+                triOffset,
+                opposite: sourceSampleVertex(result, opposite),
+            });
+        }
+    };
+
+    const onSameLine = (a: number, b: number, target: number): boolean =>
+        Math.abs(a - target) <= SOURCE_TOPOLOGY_PERIMETER_EPS &&
+        Math.abs(b - target) <= SOURCE_TOPOLOGY_PERIMETER_EPS;
+    const isPerimeterBoundary = (edge: EdgeAccumulator): boolean => {
+        const aBase = edge.rawA * 3;
+        const bBase = edge.rawB * 3;
+        const surfaceA = Math.round(result.vertices[aBase + 2]);
+        const surfaceB = Math.round(result.vertices[bBase + 2]);
+        if (surfaceA !== surfaceB) return false;
+        const bounds = surfaceBounds.get(surfaceA);
+        if (!bounds) return false;
+        const au = result.vertices[aBase];
+        const at = result.vertices[aBase + 1];
+        const bu = result.vertices[bBase];
+        const bt = result.vertices[bBase + 1];
+        return (
+            onSameLine(au, bu, bounds.minU) ||
+            onSameLine(au, bu, bounds.maxU) ||
+            onSameLine(at, bt, bounds.minT) ||
+            onSameLine(at, bt, bounds.maxT)
+        );
+    };
+
+    for (let offset = 0; offset < result.indices.length; offset += 3) {
+        const rawA = result.indices[offset];
+        const rawB = result.indices[offset + 1];
+        const rawC = result.indices[offset + 2];
+        const a = canonicalIds ? canonicalIds[rawA] : rawA;
+        const b = canonicalIds ? canonicalIds[rawB] : rawB;
+        const c = canonicalIds ? canonicalIds[rawC] : rawC;
+        if (a === b || b === c || a === c) continue;
+        addEdge(a, b, rawA, rawB, rawC, offset);
+        addEdge(b, c, rawB, rawC, rawA, offset);
+        addEdge(c, a, rawC, rawA, rawB, offset);
+    }
+
+    const byClass: Record<string, number> = {};
+    const byEndpointClass: Record<string, number> = {};
+    const byOrientation: Record<string, number> = {};
+    const boundarySamples: SourceTopologySample[] = [];
+    const nonManifoldSamples: SourceTopologySample[] = [];
+    let boundaryEdges = 0;
+    let perimeterBoundaryEdges = 0;
+    let interiorBoundaryEdges = 0;
+    let nonManifoldEdges = 0;
+
+    const recordClass = (edge: EdgeAccumulator, perimeter?: boolean): SourceTopologySample => {
+        const classKey = sourceClassPair(sourceVertexClass(result, edge.rawA), sourceVertexClass(result, edge.rawB));
+        const endpointClass = sourceClassPair(sourceEndpointClass(result, edge.rawA), sourceEndpointClass(result, edge.rawB));
+        const orientation = sourceOrientation(result, edge.rawA, edge.rawB);
+        incrementSourceCount(byClass, classKey);
+        incrementSourceCount(byEndpointClass, endpointClass);
+        incrementSourceCount(byOrientation, orientation);
+        return {
+            count: edge.count,
+            ...(perimeter !== undefined ? { perimeter } : {}),
+            classKey,
+            orientation,
+            v0: sourceSampleVertex(result, edge.rawA),
+            v1: sourceSampleVertex(result, edge.rawB),
+            incidents: edge.incidents.map((incident) => ({
+                ...incident,
+                provenance: result.triangleProvenance?.[incident.triOffset / 3],
+            })),
+        };
+    };
+
+    for (const edge of edges.values()) {
+        if (edge.count === 1) {
+            boundaryEdges++;
+            const perimeter = isPerimeterBoundary(edge);
+            if (perimeter) {
+                perimeterBoundaryEdges++;
+            } else {
+                interiorBoundaryEdges++;
+            }
+            const sample = recordClass(edge, perimeter);
+            if (!perimeter && boundarySamples.length < SOURCE_TOPOLOGY_SAMPLE_LIMIT) boundarySamples.push(sample);
+        } else if (edge.count > 2) {
+            nonManifoldEdges++;
+            const sample = recordClass(edge);
+            if (nonManifoldSamples.length < SOURCE_TOPOLOGY_SAMPLE_LIMIT) nonManifoldSamples.push(sample);
+        }
+    }
+
+    return {
+        boundaryEdges,
+        perimeterBoundaryEdges,
+        interiorBoundaryEdges,
+        nonManifoldEdges,
+        byClass: sortedSourceCounts(byClass),
+        byEndpointClass: sortedSourceCounts(byEndpointClass),
+        byOrientation: sortedSourceCounts(byOrientation),
+        boundarySamples,
+        nonManifoldSamples,
+    };
+}
+
+function recordOuterWallSourceTopology(label: string, result: OuterWallResult): void {
+    let shouldStopAfterRecord = false;
+    try {
+        const global = globalThis as unknown as SourceDiagnosticsGlobal;
+        if (!global.__pfEnableSourceDiagnostics && !global.__pfSourceDiagnostics) return;
+        const diagnostic: SourceTopologyDiagnostic = {
+            label,
+            vertexCount: result.vertices.length / 3,
+            triangleCount: result.indices.length / 3,
+            raw: analyzeOuterWallSourceTopology(result),
+            uvCanonical: analyzeOuterWallSourceTopology(result, sourceUvCanonicalIds(result)),
+        };
+        (global.__pfSourceDiagnostics ??= []).push(diagnostic);
+        console.warn(
+            `[SOURCE-TOPOLOGY] ${label} ` +
+            `raw boundary=${diagnostic.raw.boundaryEdges} nonMan=${diagnostic.raw.nonManifoldEdges} ` +
+            `uvCanon boundary=${diagnostic.uvCanonical.boundaryEdges} nonMan=${diagnostic.uvCanonical.nonManifoldEdges}`,
+        );
+        shouldStopAfterRecord = global.__pfStopAfterSourceDiagnostics === true;
+    } catch {
+        /* diagnostics must not affect export */
+    }
+    if (shouldStopAfterRecord) {
+        throw new Error('SOURCE_DIAGNOSTICS_STOP');
+    }
+}
+
+// TEMP-TAILPROBE: in-page stage tracker that SURVIVES a long synchronous block
+// (unlike console, whose buffered lines are lost when the E2E caps and closes the
+// page). The spec reads window.__pfStageLog after the cap to pin the hanging stage.
+// REMOVE once the GothicArches export-completion hang is localized.
+export function pfStageMark(name: string): void {
+    try {
+        const w = globalThis as unknown as TailDiagnosticsGlobal;
+        (w.__pfStageLog ??= []).push(`${performance.now().toFixed(0)}ms ${name}`);
+    } catch {
+        /* noop */
+    }
+}
+
+// TEMP-TAILPROBE: flush variant. console.warn + a macrotask yield so the line is
+// delivered over CDP to Playwright BEFORE the next (possibly hanging) sync stage
+// runs. The last [StageFlush] line captured therefore pins the hanging stage even
+// when the main thread blocks for minutes (page.evaluate can't run during a sync
+// block). REMOVE once the GothicArches export-completion hang is localized.
+async function pfStageFlush(name: string): Promise<void> {
+    pfStageMark(name);
+    try {
+        // eslint-disable-next-line no-console
+        console.warn(`[StageFlush] ${performance.now().toFixed(0)}ms ${name}`);
+    } catch {
+        /* noop */
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 export interface UvDispatchBatch {
     startVertex: number;
@@ -1775,6 +2236,7 @@ export class ParametricExportComputer {
                     const circumference = 2 * Math.PI * Math.max(1e-3, meanRadius);
                     const rawMetricAspect = circumference / Math.max(1e-3, dimensions.H);
                     const outerMetricAspect = Math.max(0.25, Math.min(10.0, rawMetricAspect));
+                    console.warn(`[StageProbe] pre-CDT elapsed-since-gridStart=${(performance.now() - gridStart).toFixed(0)}ms`);
                     const cdtResult = buildCDTOuterWall(
                         meshChains, rowMapping, finalT, unionU,
                         targetOuterTris, surf.id,
@@ -1790,9 +2252,24 @@ export class ParametricExportComputer {
                             corridorPlanning: Boolean(flags.outerWallCorridorPlanning),
                             corridorDiagnostics: Boolean(flags.outerWallCorridorDiagnostics),
                             metricAspect: outerMetricAspect,
-                            rowEdgeQualityCompanions: true,
+                            // WATERTIGHT-FIX (Task #16): R56 row-edge quality companions add a
+                            // balancing vertex to a chain cell's row edge that the abutting
+                            // STANDARD cell never receives → a horizontal T-junction crack on
+                            // every chain/standard row boundary. Measured: this is 71% (183K of
+                            // 258K) of the base-mesh non-watertight edges that hang the export.
+                            // Companions are quality-only (sliver avoidance), not correctness;
+                            // disabling restores row-boundary watertightness by construction.
+                            rowEdgeQualityCompanions: false,
+                            // WATERTIGHT-FIX (Task #22): base-gen u-seam closure (periodicSeamU)
+                            // MEASURED net-negative — the manifold-safe zipper is clean at
+                            // base-gen (−519 boundary, 0 new non-manifold) but refinement's
+                            // canonical position-weld amplifies the added closure triangles into
+                            // +31 final non-manifold. Disabled; the proven PeriodicSeamClosure
+                            // module is retained for a post-refinement (tail) application instead.
+                            periodicSeamU: false,
                         },
                     );
+                    recordOuterWallSourceTopology('outer-cdt', cdtResult);
 
                     // v16.9: Stitch vertices REMOVED.
                     // With 100% patch rate, 0 collisions, chain-directed flip,
@@ -1899,6 +2376,18 @@ export class ParametricExportComputer {
             console.log(`[ParametricExport] Grid generation: ${gridMs.toFixed(1)}ms`);
             console.log(`[ParametricExport] Total: ${vertexCount.toLocaleString()} verts, ${triangleCount.toLocaleString()} tris`);
             for (const stat of surfaceStats) console.log(`[ParametricExport] ${stat}`);
+            // TEMP-STAGE-PROBE A: grid built. REMOVE.
+            console.warn(`[StageProbe] A grid-built: verts=${vertexCount} tris=${triangleCount} gridMs=${gridMs.toFixed(0)} targetTris=${targetTris} targetOuterBudget=${targetOuterBudget} numTRows=${numTRows} unionU=${unionU.length} maxOuterColumns=${maxOuterColumns}`);
+            console.warn(`[StageProbe] A surfaceStats: ${surfaceStats.join(' | ')}`);
+            {
+                const cptCounts = meshChains.map(c => c.points.length).sort((a, b) => a - b);
+                const cpt = cptCounts.reduce((s, n) => s + n, 0);
+                const med = cptCounts[Math.floor(cptCounts.length / 2)] ?? 0;
+                const singles = cptCounts.filter(n => n <= 2).length;
+                const kinds: Record<string, number> = {};
+                for (const c of meshChains) kinds[c.kind ?? 'undef'] = (kinds[c.kind ?? 'undef'] ?? 0) + 1;
+                console.warn(`[StageProbe] A chains: count=${meshChains.length} totalPts=${cpt} avgPts=${(cpt / Math.max(1, meshChains.length)).toFixed(1)} medianPts=${med} maxPts=${cptCounts[cptCounts.length - 1] ?? 0} chainsWith<=2pts=${singles} kinds=${JSON.stringify(kinds)}`);
+            }
 
             // ── R46 Phase 2: Post-OWT GPU re-snap for interpolated chain vertices ──
             if (outerInterpolatedChainVertices.length > 0 && cfgGpuResnap) {
@@ -2237,12 +2726,14 @@ export class ParametricExportComputer {
             // Relaxation now uses metric-aware diffusion (bounded step + crossover
             // guards in shader) to improve physical triangle regularity while
             // preserving feature-constrained topology.
+            console.warn(`[StageProbe] B before full-grid eval: verts=${combinedVerts.length / 3} relax=${relaxIterations}`);
             let resultData = await this.evaluatePoints(
                 combinedVerts, uniformBuffer, styleParamBuffer,
                 dummyWrite3, dummyWrite4, dummyWrite7, dummyWrite9, dummyWrite10, dummyReadOnly,
                 false, // Snap disabled â€" union grid has dedicated feature columns
                 relaxIterations
             );
+            console.warn(`[StageProbe] C full-grid eval done`);
 
             const gpuMs = performance.now() - gpuStart;
 
@@ -2355,6 +2846,7 @@ export class ParametricExportComputer {
                 });
             }
             console.log(`[ParametricExport]   v16.34 boundary diagonal optimization: ${bdResult.flips} cell diag flips on ${bdResult.checked} boundary cells (${bdResult.timeMs.toFixed(1)}ms)${!cfgBoundaryDiag ? ' [DISABLED]' : ''}`);
+            console.warn(`[StageProbe] Phase4 quality block: flip3DMs=${flip3DMs.toFixed(0)} chainStripMs=${csResult.timeMs.toFixed(0)} boundaryDiagMs=${bdResult.timeMs.toFixed(0)} (chainFlips=${chainFlips} genericFlips=${genericFlips} csFlips=${csResult.phaseAFlips + csResult.phaseBFlips + csResult.phaseCFlips})`);
 
             // v24.0: 3D winding safety net REMOVED.
             // The radially-outward assumption (dot(face_normal, radial) < 0 → flip)
@@ -2363,15 +2855,55 @@ export class ParametricExportComputer {
             // Winding correctness is ensured upstream via UV cross-product checks in
             // the tessellator (sweepRepair, emitWindingSafe, CDT filter).
 
-            // 
+            //
             // v16.29 / v18.0: Chain-strip midpoint subdivision
             // [Extracted to parametric/MeshSubdivision.ts]
-            // 
+            //
             let finalResultData: Float32Array<ArrayBufferLike>;
             let finalCombinedIdxs: Uint32Array<ArrayBufferLike>;
             let splitCount = 0;
             let outerIdxCountAfterSubdiv = allIdxArrays[0].length;
             if (cfgGpuSubdiv) {
+                console.warn(`[StageProbe] D before subdivideLongEdges: verts=${combinedVerts.length / 3} tris=${combinedIdxs.length / 3}`);
+                // TEMP-NONCONFORM-PROBE: canonical (position-welded) boundary/non-manifold
+                // edge counts on the outer wall, BEFORE and AFTER subdivideLongEdges, to
+                // localize whether the ~258K boundary edges come in from CDT/chain assembly
+                // or are injected by subdivision. console.warn survives the __pfStageLog reset.
+                const __canonBoundaryProbe = (label: string, pos: Float32Array, idx: Uint32Array, outerCount: number): void => {
+                    const tol = topologyWeldToleranceForExport(effectiveTolerances.epsPosMm);
+                    const inv = tol > 0 ? 1 / tol : 0;
+                    const q = (x: number): number => (inv > 0 ? Math.round(x * inv) : x);
+                    const numV = (pos.length / 3) | 0;
+                    const canon = new Map<string, number>();
+                    const cid = new Int32Array(numV);
+                    let next = 0;
+                    for (let v = 0; v < numV; v++) {
+                        const k = `${q(pos[v * 3])}:${q(pos[v * 3 + 1])}:${q(pos[v * 3 + 2])}`;
+                        let id = canon.get(k);
+                        if (id === undefined) { id = next++; canon.set(k, id); }
+                        cid[v] = id;
+                    }
+                    const STRIDE = 0x4000000;
+                    const ecount = new Map<number, number>();
+                    const addE = (a: number, b: number): void => {
+                        if (a === b) return;
+                        const lo = a < b ? a : b, hi = a < b ? b : a;
+                        const key = lo * STRIDE + hi;
+                        ecount.set(key, (ecount.get(key) ?? 0) + 1);
+                    };
+                    const lim = Math.min(outerCount, idx.length);
+                    for (let t = 0; t + 2 < lim; t += 3) {
+                        const a = cid[idx[t]], b = cid[idx[t + 1]], c = cid[idx[t + 2]];
+                        addE(a, b); addE(b, c); addE(c, a);
+                    }
+                    let boundary = 0, nonManifold = 0;
+                    for (const cnt of ecount.values()) {
+                        if (cnt === 1) boundary++;
+                        else if (cnt >= 3) nonManifold++;
+                    }
+                    console.warn(`[SUBDIV-CANON] ${label} outerTris=${lim / 3} canonVerts=${next}/${numV} boundaryEdges=${boundary} nonManifoldEdges=${nonManifold}`);
+                };
+                __canonBoundaryProbe('PRE-SUBDIV', resultData, combinedIdxs, allIdxArrays[0].length);
                 const subdivResult = await subdivideLongEdges(
                     {
                         combinedIdxs,
@@ -2398,6 +2930,8 @@ export class ParametricExportComputer {
                 finalCombinedIdxs = subdivResult.indices;
                 splitCount = subdivResult.splitCount;
                 outerIdxCountAfterSubdiv = subdivResult.outerIdxCount;
+                console.warn(`[StageProbe] E subdiv done: splitCount=${splitCount} newVerts=${combinedVerts.length / 3} subdivMs=${subdivResult.stats.timeMs.toFixed(0)} sagSkipped=${subdivResult.stats.sagSkipped}`);
+                __canonBoundaryProbe('POST-SUBDIV', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
                 console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris, ${subdivResult.stats.sagSkipped} sag-skipped (${subdivResult.stats.timeMs.toFixed(1)}ms)`);
                 console.log(`[ParametricExport]     avg grid edge: ${subdivResult.stats.avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivResult.stats.interiorThreshold).toFixed(3)}mm, boundary threshold: ${Math.sqrt(subdivResult.stats.boundaryThreshold).toFixed(3)}mm, feature threshold: ${Math.sqrt(subdivResult.stats.featureThreshold).toFixed(3)}mm, candidates: ${subdivResult.stats.candidates}, protected rejects: ${subdivResult.stats.protectedRejects}, boundary neighbor tris: ${subdivResult.stats.boundaryTrisAdded}`);
 
@@ -2716,8 +3250,32 @@ export class ParametricExportComputer {
             // ═══════════════════════════════════════════════════════
             let refinementSummary: RefinementSummary | undefined;
 
+            // TEMP-STAGE-PROBE: localize whether the stall is in base-gen or refinement. REMOVE.
+            console.warn(`[StageProbe] base-gen DONE: outerIdxCount=${outerIdxCountAfterSubdiv} ` +
+                `combinedTris=${finalCombinedIdxs.length / 3} maxRefineIterations=${effectiveProfile.maxRefineIterations}`);
+            // TEMP-TAILPROBE: reset per parametric-generate and mark base-gen end. REMOVE.
+            try { (globalThis as unknown as TailDiagnosticsGlobal).__pfStageLog = []; } catch { /* noop */ }
+            resetTailDiagnostics();
+            {
+                // Count zero-area outer triangles: |edge0 × edge1| < 1e-12 is exactly the
+                // triangleNormal() degenerate threshold that yields the 90.00° normal error.
+                let zeroAreaOuter = 0;
+                for (let t = 0; t < outerIdxCountAfterSubdiv; t += 3) {
+                    const a = finalCombinedIdxs[t], b = finalCombinedIdxs[t + 1], c = finalCombinedIdxs[t + 2];
+                    const ax = finalResultData[a * 3], ay = finalResultData[a * 3 + 1], az = finalResultData[a * 3 + 2];
+                    const bx = finalResultData[b * 3], by = finalResultData[b * 3 + 1], bz = finalResultData[b * 3 + 2];
+                    const cx = finalResultData[c * 3], cy = finalResultData[c * 3 + 1], cz = finalResultData[c * 3 + 2];
+                    const ux = bx - ax, uy = by - ay, uz = bz - az;
+                    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+                    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+                    if (Math.sqrt(nx * nx + ny * ny + nz * nz) < 1e-12) zeroAreaOuter++;
+                }
+                pfStageMark(`base-gen-done tris=${finalCombinedIdxs.length / 3} outerTris=${outerIdxCountAfterSubdiv / 3} zeroAreaOuter=${zeroAreaOuter}`);
+            }
+
             if (effectiveProfile.maxRefineIterations > 0) {
                 const refineStart = performance.now();
+                console.warn('[StageProbe] entering adaptiveRefine');
 
                 // Build the GPU evaluator callback for surface reprojection
                 const evaluateMidpointsFn: EvaluateMidpointsFn = (uvBatch: Float32Array) =>
@@ -2740,6 +3298,160 @@ export class ParametricExportComputer {
                 const outerUVs = combinedVerts;          // UVs are shared
                 const outerIndices = new Uint32Array(finalCombinedIdxs.buffer, finalCombinedIdxs.byteOffset, outerIdxCountAfterSubdiv);
                 const nonOuterIndices = finalCombinedIdxs.slice(outerIdxCountAfterSubdiv);
+
+                // TEMP-NONCONFORM-PROBE: count CANONICAL boundary edges (count===1 in
+                // geometry-welded space) on the outer wall ENTERING refinement. Compare
+                // to the post-refinement "TJ ENTRY" count to localize whether the 387K
+                // hanging nodes pre-exist (base-mesh assembly) or are created by refinement.
+                {
+                    const tol = topologyWeldToleranceForExport(effectiveTolerances.epsPosMm);
+                    const inv = tol > 0 ? 1 / tol : 0;
+                    const q = (x: number): number => (inv > 0 ? Math.round(x * inv) : x);
+                    const numV = (outerPositions.length / 3) | 0;
+                    const canon = new Map<string, number>();
+                    const cid = new Int32Array(numV);
+                    // representative position per canonical id (first occurrence)
+                    const repX: number[] = [], repY: number[] = [], repZ: number[] = [];
+                    // TEMP-SPATIAL: representative (u,t) per canonical id for spatial attribution
+                    const repU: number[] = [], repV: number[] = [];
+                    let next = 0;
+                    for (let v = 0; v < numV; v++) {
+                        const px = outerPositions[v * 3], py = outerPositions[v * 3 + 1], pz = outerPositions[v * 3 + 2];
+                        const k = `${q(px)}:${q(py)}:${q(pz)}`;
+                        let id = canon.get(k);
+                        if (id === undefined) {
+                            id = next++; canon.set(k, id); repX.push(px); repY.push(py); repZ.push(pz);
+                            repU.push(outerUVs[v * 3]); repV.push(outerUVs[v * 3 + 1]);
+                        }
+                        cid[v] = id;
+                    }
+                    const STRIDE = 0x4000000;
+                    const ecount = new Map<number, number>();
+                    const addE = (a: number, b: number): void => {
+                        if (a === b) return;
+                        const lo = a < b ? a : b, hi = a < b ? b : a;
+                        const key = lo * STRIDE + hi;
+                        ecount.set(key, (ecount.get(key) ?? 0) + 1);
+                    };
+                    for (let t = 0; t + 2 < outerIndices.length; t += 3) {
+                        const a = cid[outerIndices[t]], b = cid[outerIndices[t + 1]], c = cid[outerIndices[t + 2]];
+                        addE(a, b); addE(b, c); addE(c, a);
+                    }
+                    // Collect boundary edges (count===1) and the boundary-vertex set.
+                    const bEdges: number[] = []; // packed lo*STRIDE+hi
+                    const isBoundaryVert = new Uint8Array(next);
+                    let boundary = 0, nonManifold = 0;
+                    for (const [key, cnt] of ecount) {
+                        if (cnt === 1) {
+                            boundary++; bEdges.push(key);
+                            const lo = Math.floor(key / STRIDE), hi = key - lo * STRIDE;
+                            isBoundaryVert[lo] = 1; isBoundaryVert[hi] = 1;
+                        } else if (cnt >= 3) nonManifold++;
+                    }
+                    // Average boundary-edge length → spatial-hash cell size.
+                    let sumLen = 0;
+                    for (const key of bEdges) {
+                        const lo = Math.floor(key / STRIDE), hi = key - lo * STRIDE;
+                        const dx = repX[hi] - repX[lo], dy = repY[hi] - repY[lo], dz = repZ[hi] - repZ[lo];
+                        sumLen += Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    }
+                    const avgLen = bEdges.length > 0 ? sumLen / bEdges.length : 1;
+                    const cs = Math.max(avgLen, tol > 0 ? tol * 4 : 1e-3);
+                    const invCs = 1 / cs;
+                    // Spatial hash of boundary vertices by representative position.
+                    const cellKey = (x: number, y: number, z: number): string =>
+                        `${Math.floor(x * invCs)}|${Math.floor(y * invCs)}|${Math.floor(z * invCs)}`;
+                    const grid = new Map<string, number[]>();
+                    for (let id = 0; id < next; id++) {
+                        if (!isBoundaryVert[id]) continue;
+                        const ck = cellKey(repX[id], repY[id], repZ[id]);
+                        let arr = grid.get(ck); if (!arr) { arr = []; grid.set(ck, arr); } arr.push(id);
+                    }
+                    // Classify each boundary edge: T-junction if a DISTINCT boundary vertex
+                    // lies collinear-interior on it (within tol perpendicular, param in (eps,1-eps)).
+                    const distTol = tol > 0 ? tol * 2 : 1e-4;
+                    const distTol2 = distTol * distTol;
+                    const tEps = 0.01;
+                    const stamp = new Int32Array(next).fill(-1);
+                    const relFrac2 = 0.15 * 0.15; // relaxed: perp < 15% of edge length
+                    let tjTight = 0, tjRelaxed = 0, holeRelaxed = 0, multiTjEdges = 0;
+                    let edgeEpoch = 0;
+                    for (const key of bEdges) {
+                        const A = Math.floor(key / STRIDE), B = key - A * STRIDE;
+                        const ax = repX[A], ay = repY[A], az = repZ[A];
+                        const dx = repX[B] - ax, dy = repY[B] - ay, dz = repZ[B] - az;
+                        const len2 = dx * dx + dy * dy + dz * dz;
+                        if (len2 <= 0) { holeRelaxed++; continue; }
+                        const relTol2 = relFrac2 * len2;
+                        const steps = Math.min(256, Math.max(1, Math.ceil(Math.sqrt(len2) * invCs)));
+                        const epoch = edgeEpoch++;
+                        let foundTight = 0, foundRelaxed = 0;
+                        for (let s = 0; s <= steps; s++) {
+                            const f = s / steps;
+                            const ck = cellKey(ax + dx * f, ay + dy * f, az + dz * f);
+                            const arr = grid.get(ck);
+                            if (!arr) continue;
+                            for (const M of arr) {
+                                if (M === A || M === B || stamp[M] === epoch) continue;
+                                stamp[M] = epoch;
+                                const wx = repX[M] - ax, wy = repY[M] - ay, wz = repZ[M] - az;
+                                const t = (wx * dx + wy * dy + wz * dz) / len2;
+                                if (t <= tEps || t >= 1 - tEps) continue;
+                                const perp2 = (wx * wx + wy * wy + wz * wz) - t * t * len2;
+                                if (perp2 <= distTol2) foundTight++;
+                                if (perp2 <= relTol2) foundRelaxed++;
+                            }
+                        }
+                        if (foundTight > 0) { tjTight++; if (foundTight > 1) multiTjEdges++; }
+                        if (foundRelaxed > 0) tjRelaxed++; else holeRelaxed++;
+                    }
+                    pfStageMark(`PRE-REFINE-CANON outerTris=${outerIndices.length / 3} canonVerts=${next}/${numV} boundaryEdges=${boundary} nonManifoldEdges=${nonManifold}`);
+                    pfStageMark(`BOUNDARY-CLASS tjTight=${tjTight} tjRelaxed=${tjRelaxed} holeRelaxed=${holeRelaxed} multiTjEdges=${multiTjEdges} avgBLen=${avgLen.toFixed(3)}mm cs=${cs.toFixed(3)}mm tol=${tol.toFixed(4)}mm`);
+
+                    // ── TEMP-SPATIAL: bucket boundary edges by (u,t) geometry ──
+                    // Determines WHICH cell-emit path leaks: vertical edges => column
+                    // (cross-cell horizontal-neighbour) boundary; horizontal edges => row
+                    // (vertical-neighbour) boundary; seam => u-wrap left/right border;
+                    // diagonal => chain-edge / interior. Boundary-vertex U-range frames seam.
+                    {
+                        let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+                        for (let id = 0; id < next; id++) {
+                            if (repU[id] < uMin) uMin = repU[id];
+                            if (repU[id] > uMax) uMax = repU[id];
+                            if (repV[id] < vMin) vMin = repV[id];
+                            if (repV[id] > vMax) vMax = repV[id];
+                        }
+                        const uRange = Math.max(1e-9, uMax - uMin);
+                        const vRange = Math.max(1e-9, vMax - vMin);
+                        const seamBand = 0.02 * uRange;
+                        let vertical = 0, horizontal = 0, diagonal = 0;
+                        let seamVertical = 0, vertNearChainU = 0;
+                        let vertTop = 0, vertMid = 0, vertBot = 0;
+                        for (const key of bEdges) {
+                            const A = Math.floor(key / STRIDE), B = key - A * STRIDE;
+                            let du = Math.abs(repU[A] - repU[B]);
+                            // wrap (u domain is circular over uRange)
+                            if (du > uRange * 0.5) du = uRange - du;
+                            const dv = Math.abs(repV[A] - repV[B]);
+                            const duN = du / uRange, dvN = dv / vRange;
+                            if (duN < 0.1 * dvN) {
+                                vertical++;
+                                const uA = repU[A];
+                                const nearSeam = (uA - uMin) < seamBand || (uMax - uA) < seamBand
+                                    || (repU[B] - uMin) < seamBand || (uMax - repU[B]) < seamBand;
+                                if (nearSeam) seamVertical++;
+                                const vMidN = ((repV[A] + repV[B]) * 0.5 - vMin) / vRange;
+                                if (vMidN > 0.66) vertTop++; else if (vMidN < 0.33) vertBot++; else vertMid++;
+                            } else if (dvN < 0.1 * duN) {
+                                horizontal++;
+                            } else {
+                                diagonal++;
+                            }
+                        }
+                        void vertNearChainU;
+                        pfStageMark(`SPATIAL-CLASS vertical=${vertical} horizontal=${horizontal} diagonal=${diagonal} seamVertical=${seamVertical} (vertTop=${vertTop} vertMid=${vertMid} vertBot=${vertBot}) uRange=${uRange.toFixed(4)} vRange=${vRange.toFixed(4)}`);
+                    }
+                }
 
                 // Optionally compute vertex metrics for metric-aware edge scoring
                 // when the metricAwareRefinement flag is enabled.
@@ -2806,6 +3518,44 @@ export class ParametricExportComputer {
                 const stitched = stitchRefinedOuterIndices(refineResult.indices, nonOuterIndices);
                 finalCombinedIdxs = stitched.indices;
                 outerIdxCountAfterSubdiv = stitched.outerIdxCount;
+                await pfStageFlush(`refine-returned stop=${refineResult.stopReason} iters=${refineResult.iterationsPerformed} tris=${finalCombinedIdxs.length / 3}`);
+
+                // TEMP-POSTREFINE-CANON: measure canonical boundary/non-manifold edges on the
+                // refined outer wall to quantify how much adaptiveRefine amplifies the base
+                // mesh's coincident-edge defects (compare to PRE-REFINE-CANON above).
+                {
+                    const tol = topologyWeldToleranceForExport(effectiveTolerances.epsPosMm);
+                    const inv = tol > 0 ? 1 / tol : 0;
+                    const q = (x: number): number => (inv > 0 ? Math.round(x * inv) : x);
+                    const numV = (finalResultData.length / 3) | 0;
+                    const canon = new Map<string, number>();
+                    const cid = new Int32Array(numV);
+                    let next = 0;
+                    for (let v = 0; v < numV; v++) {
+                        const k = `${q(finalResultData[v * 3])}:${q(finalResultData[v * 3 + 1])}:${q(finalResultData[v * 3 + 2])}`;
+                        let id = canon.get(k);
+                        if (id === undefined) { id = next++; canon.set(k, id); }
+                        cid[v] = id;
+                    }
+                    const STRIDE = 0x4000000;
+                    const ecount = new Map<number, number>();
+                    const addE = (a: number, b: number): void => {
+                        if (a === b) return;
+                        const lo = a < b ? a : b, hi = a < b ? b : a;
+                        const key = lo * STRIDE + hi;
+                        ecount.set(key, (ecount.get(key) ?? 0) + 1);
+                    };
+                    const oc = outerIdxCountAfterSubdiv;
+                    for (let t = 0; t + 2 < oc; t += 3) {
+                        const a = cid[finalCombinedIdxs[t]], b = cid[finalCombinedIdxs[t + 1]], c = cid[finalCombinedIdxs[t + 2]];
+                        addE(a, b); addE(b, c); addE(c, a);
+                    }
+                    let boundary = 0, nonManifold = 0;
+                    for (const cnt of ecount.values()) {
+                        if (cnt === 1) boundary++; else if (cnt >= 3) nonManifold++;
+                    }
+                    console.warn(`[POST-REFINE-CANON] outerTris=${oc / 3} canonVerts=${next}/${numV} boundaryEdges=${boundary} nonManifoldEdges=${nonManifold}`);
+                }
 
                 // Cleanup GPU error estimator
                 if (gpuErrorEstimator) {
@@ -2851,6 +3601,7 @@ export class ParametricExportComputer {
             // When seamHealing flag is enabled, average col0/colLast
             // vertex positions to close the periodic seam gap.
             // ═══════════════════════════════════════════════════════
+            await pfStageFlush('tail:before-seamHealing');
             if (flags.seamHealing) {
                 const healStart = performance.now();
                 const healConfig = healConfigForProfile(effectiveProfileName);
@@ -2876,6 +3627,7 @@ export class ParametricExportComputer {
             // dedup collapses, sweepRepair nullification. Strip them now
             // so validation and STL export see only real geometry.
             // ═══════════════════════════════════════════════════════
+            await pfStageFlush('tail:before-phase5c-index-degen-strip');
             {
                 let outerDegen = 0;
                 let totalDegen = 0;
@@ -2905,6 +3657,10 @@ export class ParametricExportComputer {
                 }
             }
 
+            await pfStageFlush(`tail:before-repairOuterWallTJunctions#1 tris=${finalCombinedIdxs.length / 3}`);
+            const tJunctionRepairTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const tJunctionRepairOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const tJunctionRepairStart = performance.now();
             const tJunctionRepair = repairOuterWallTJunctions(
                 finalCombinedIdxs,
                 combinedVerts,
@@ -2913,6 +3669,18 @@ export class ParametricExportComputer {
                 12,
                 topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
             );
+            recordTailDiagnosticStage({
+                name: 'repairOuterWallTJunctions#1',
+                elapsedMs: performance.now() - tJunctionRepairStart,
+                trianglesBefore: tJunctionRepairTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(tJunctionRepair.indices.length),
+                outerTrianglesBefore: tJunctionRepairOuterTrisBefore,
+                outerTrianglesAfter: indexCountToTriangleCount(tJunctionRepair.outerIdxCount),
+                details: {
+                    repairedEdges: tJunctionRepair.repairedEdges,
+                    insertedTriangles: tJunctionRepair.insertedTriangles,
+                },
+            });
             if (tJunctionRepair.repairedEdges > 0) {
                 finalCombinedIdxs = tJunctionRepair.indices;
                 outerIdxCountAfterSubdiv = tJunctionRepair.outerIdxCount;
@@ -2923,10 +3691,26 @@ export class ParametricExportComputer {
                 );
             }
 
+            await pfStageFlush('tail:before-repairSurfaceBoundaryTJunctions');
+            const surfaceBoundaryRepairTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const surfaceBoundaryRepairOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const surfaceBoundaryRepairStart = performance.now();
             const surfaceBoundaryRepair = repairSurfaceBoundaryTJunctions(
                 finalCombinedIdxs,
                 combinedVerts,
             );
+            recordTailDiagnosticStage({
+                name: 'repairSurfaceBoundaryTJunctions',
+                elapsedMs: performance.now() - surfaceBoundaryRepairStart,
+                trianglesBefore: surfaceBoundaryRepairTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(surfaceBoundaryRepair.indices.length),
+                outerTrianglesBefore: surfaceBoundaryRepairOuterTrisBefore,
+                outerTrianglesAfter: surfaceBoundaryRepairOuterTrisBefore,
+                details: {
+                    repairedEdges: surfaceBoundaryRepair.repairedEdges,
+                    insertedTriangles: surfaceBoundaryRepair.insertedTriangles,
+                },
+            });
             if (surfaceBoundaryRepair.repairedEdges > 0) {
                 finalCombinedIdxs = surfaceBoundaryRepair.indices;
                 console.log(
@@ -2936,14 +3720,34 @@ export class ParametricExportComputer {
                 );
             }
 
+            await pfStageFlush('tail:before-fillOuterWallBoundaryLoops');
             const outerLoopIndices = finalCombinedIdxs.slice(0, outerIdxCountAfterSubdiv);
             const nonOuterLoopIndices = finalCombinedIdxs.slice(outerIdxCountAfterSubdiv);
+            const boundaryLoopFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const boundaryLoopFillOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const boundaryLoopFillStart = performance.now();
             const boundaryLoopFill = fillOuterWallBoundaryLoops(
                 outerLoopIndices,
                 combinedVerts,
                 finalResultData,
                 topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
             );
+            recordTailDiagnosticStage({
+                name: 'fillOuterWallBoundaryLoops',
+                elapsedMs: performance.now() - boundaryLoopFillStart,
+                trianglesBefore: boundaryLoopFillTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(boundaryLoopFill.indices.length + nonOuterLoopIndices.length),
+                outerTrianglesBefore: boundaryLoopFillOuterTrisBefore,
+                outerTrianglesAfter: indexCountToTriangleCount(boundaryLoopFill.indices.length),
+                details: {
+                    filledLoops: boundaryLoopFill.filledLoops,
+                    insertedTriangles: boundaryLoopFill.insertedTriangles,
+                    attemptedLoops: boundaryLoopFill.attemptedLoops,
+                    emptyTriangulations: boundaryLoopFill.emptyTriangulations,
+                    unsafeLoops: boundaryLoopFill.unsafeLoops,
+                    projectedTriangulations: boundaryLoopFill.projectedTriangulations,
+                },
+            });
             if (boundaryLoopFill.filledLoops > 0) {
                 const stitched = new Uint32Array(boundaryLoopFill.indices.length + nonOuterLoopIndices.length);
                 stitched.set(boundaryLoopFill.indices);
@@ -2965,6 +3769,10 @@ export class ParametricExportComputer {
                 );
             }
 
+            await pfStageFlush('tail:before-postLoopTJunctionRepair');
+            const postLoopTJunctionRepairTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const postLoopTJunctionRepairOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const postLoopTJunctionRepairStart = performance.now();
             const postLoopTJunctionRepair = repairOuterWallTJunctions(
                 finalCombinedIdxs,
                 combinedVerts,
@@ -2973,6 +3781,18 @@ export class ParametricExportComputer {
                 12,
                 topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
             );
+            recordTailDiagnosticStage({
+                name: 'repairOuterWallTJunctions#postLoop',
+                elapsedMs: performance.now() - postLoopTJunctionRepairStart,
+                trianglesBefore: postLoopTJunctionRepairTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(postLoopTJunctionRepair.indices.length),
+                outerTrianglesBefore: postLoopTJunctionRepairOuterTrisBefore,
+                outerTrianglesAfter: indexCountToTriangleCount(postLoopTJunctionRepair.outerIdxCount),
+                details: {
+                    repairedEdges: postLoopTJunctionRepair.repairedEdges,
+                    insertedTriangles: postLoopTJunctionRepair.insertedTriangles,
+                },
+            });
             if (postLoopTJunctionRepair.repairedEdges > 0) {
                 finalCombinedIdxs = postLoopTJunctionRepair.indices;
                 outerIdxCountAfterSubdiv = postLoopTJunctionRepair.outerIdxCount;
@@ -2983,12 +3803,32 @@ export class ParametricExportComputer {
                 );
             }
 
+            await pfStageFlush('tail:before-fillSameSurfaceBoundaryLoops');
+            const sameSurfaceLoopFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const sameSurfaceLoopFillOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const sameSurfaceLoopFillStart = performance.now();
             const sameSurfaceLoopFill = fillSameSurfaceBoundaryLoops(
                 finalCombinedIdxs,
                 combinedVerts,
                 finalResultData,
                 topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
             );
+            recordTailDiagnosticStage({
+                name: 'fillSameSurfaceBoundaryLoops',
+                elapsedMs: performance.now() - sameSurfaceLoopFillStart,
+                trianglesBefore: sameSurfaceLoopFillTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(sameSurfaceLoopFill.indices.length),
+                outerTrianglesBefore: sameSurfaceLoopFillOuterTrisBefore,
+                outerTrianglesAfter: sameSurfaceLoopFillOuterTrisBefore,
+                details: {
+                    filledLoops: sameSurfaceLoopFill.filledLoops,
+                    insertedTriangles: sameSurfaceLoopFill.insertedTriangles,
+                    attemptedLoops: sameSurfaceLoopFill.attemptedLoops,
+                    emptyTriangulations: sameSurfaceLoopFill.emptyTriangulations,
+                    unsafeLoops: sameSurfaceLoopFill.unsafeLoops,
+                    projectedTriangulations: sameSurfaceLoopFill.projectedTriangulations,
+                },
+            });
             if (sameSurfaceLoopFill.filledLoops > 0) {
                 finalCombinedIdxs = sameSurfaceLoopFill.indices;
                 console.log(
@@ -3006,12 +3846,34 @@ export class ParametricExportComputer {
                 );
             }
 
+            await pfStageFlush('tail:before-fillSameSurfaceBoundaryLoopsWithCenters');
+            const sameSurfaceCenterFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const sameSurfaceCenterFillOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const sameSurfaceCenterFillStart = performance.now();
             const sameSurfaceCenterFill = fillSameSurfaceBoundaryLoopsWithCenters(
                 finalCombinedIdxs,
                 combinedVerts,
                 finalResultData,
                 topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
             );
+            console.warn(`[TAILPROBE] fillSameSurfaceBoundaryLoopsWithCenters RETURNED elapsed=${(performance.now() - sameSurfaceCenterFillStart).toFixed(0)}ms tris=${sameSurfaceCenterFill.indices.length / 3}`);
+            recordTailDiagnosticStage({
+                name: 'fillSameSurfaceBoundaryLoopsWithCenters',
+                elapsedMs: performance.now() - sameSurfaceCenterFillStart,
+                trianglesBefore: sameSurfaceCenterFillTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(sameSurfaceCenterFill.indices.length),
+                outerTrianglesBefore: sameSurfaceCenterFillOuterTrisBefore,
+                outerTrianglesAfter: sameSurfaceCenterFillOuterTrisBefore,
+                details: {
+                    filledLoops: sameSurfaceCenterFill.filledLoops,
+                    insertedTriangles: sameSurfaceCenterFill.insertedTriangles,
+                    insertedVertices: sameSurfaceCenterFill.insertedVertices,
+                    attemptedLoops: sameSurfaceCenterFill.attemptedLoops,
+                    emptyTriangulations: sameSurfaceCenterFill.emptyTriangulations,
+                    unsafeLoops: sameSurfaceCenterFill.unsafeLoops,
+                    projectedTriangulations: sameSurfaceCenterFill.projectedTriangulations,
+                },
+            });
             if (sameSurfaceCenterFill.filledLoops > 0) {
                 finalCombinedIdxs = sameSurfaceCenterFill.indices;
                 combinedVerts = sameSurfaceCenterFill.uvs;
@@ -3032,12 +3894,33 @@ export class ParametricExportComputer {
                 );
             }
 
+            await pfStageFlush('tail:before-fillOuterWallSeamBoundaryChains');
+            const seamChainFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const seamChainFillOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const seamChainFillStart = performance.now();
             const seamChainFill = fillOuterWallSeamBoundaryChains(
                 finalCombinedIdxs,
                 combinedVerts,
                 finalResultData,
                 topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
             );
+            recordTailDiagnosticStage({
+                name: 'fillOuterWallSeamBoundaryChains',
+                elapsedMs: performance.now() - seamChainFillStart,
+                trianglesBefore: seamChainFillTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(seamChainFill.indices.length),
+                outerTrianglesBefore: seamChainFillOuterTrisBefore,
+                outerTrianglesAfter: seamChainFillOuterTrisBefore,
+                details: {
+                    filledChains: seamChainFill.filledChains,
+                    insertedTriangles: seamChainFill.insertedTriangles,
+                    weldedVertices: seamChainFill.weldedVertices,
+                    attemptedChains: seamChainFill.attemptedChains,
+                    unsafeChains: seamChainFill.unsafeChains,
+                    lowVertices: seamChainFill.lowVertices,
+                    highVertices: seamChainFill.highVertices,
+                },
+            });
             if (seamChainFill.filledChains > 0) {
                 finalCombinedIdxs = seamChainFill.indices;
                 console.log(
@@ -3057,12 +3940,78 @@ export class ParametricExportComputer {
                 );
             }
 
+            // Post-refinement periodic seam closure. The half-open u-grid never emits
+            // the wrap cell (last col u≈0.999 → col 0 u=0), and refinement subdivided the
+            // last column densely while the wrap rail stayed coarse — leaving the dominant
+            // s0:tmid seam boundary residual. buildPeriodicSeamClosure is provably
+            // non-regressive (incidence-gated, rail-anchored), so it can only ADD
+            // manifold-safe triangles. The [SEAM-CLOSURE] diagnostic also reveals the
+            // low(u=0)/high(u≈1) boundary split that the t-classified boundary diagnostic
+            // cannot show — telling us whether the residual is a true wrap gap or a
+            // within-high density mismatch.
+            await pfStageFlush('tail:before-periodicSeamClosure');
+            const periodicSeamStart = performance.now();
+            const periodicSeamTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const periodicSeam = buildPeriodicSeamClosure(finalCombinedIdxs, combinedVerts, {
+                positions: finalResultData,
+                weldToleranceMm: topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            });
+            if (periodicSeam.triangles.length > 0) {
+                const merged = new Uint32Array(finalCombinedIdxs.length + periodicSeam.triangles.length);
+                merged.set(finalCombinedIdxs, 0);
+                merged.set(periodicSeam.triangles, finalCombinedIdxs.length);
+                finalCombinedIdxs = merged;
+            }
+            recordTailDiagnosticStage({
+                name: 'periodicSeamClosure',
+                elapsedMs: performance.now() - periodicSeamStart,
+                trianglesBefore: periodicSeamTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(finalCombinedIdxs.length),
+                outerTrianglesBefore: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                outerTrianglesAfter: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                details: {
+                    lowSeamEdges: periodicSeam.lowSeamEdges,
+                    highSeamEdges: periodicSeam.highSeamEdges,
+                    closedLowEdges: periodicSeam.closedLowEdges,
+                    closedHighEdges: periodicSeam.closedHighEdges,
+                    skippedUnsafe: periodicSeam.skippedUnsafe,
+                    insertedTriangles: periodicSeam.triangles.length / 3,
+                },
+            });
+            console.warn(
+                `[SEAM-CLOSURE] lowSeamEdges=${periodicSeam.lowSeamEdges} ` +
+                `highSeamEdges=${periodicSeam.highSeamEdges} ` +
+                `closedLow=${periodicSeam.closedLowEdges} closedHigh=${periodicSeam.closedHighEdges} ` +
+                `skipped=${periodicSeam.skippedUnsafe} ` +
+                `addedTris=${periodicSeam.triangles.length / 3}`,
+            );
+
+            await pfStageFlush('tail:before-fillGeometricBoundaryLoops');
+            const geometricLoopFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const geometricLoopFillOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const geometricLoopFillStart = performance.now();
             const geometricLoopFill = fillGeometricBoundaryLoops(
                 finalCombinedIdxs,
                 combinedVerts,
                 finalResultData,
                 topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
             );
+            recordTailDiagnosticStage({
+                name: 'fillGeometricBoundaryLoops',
+                elapsedMs: performance.now() - geometricLoopFillStart,
+                trianglesBefore: geometricLoopFillTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(geometricLoopFill.indices.length),
+                outerTrianglesBefore: geometricLoopFillOuterTrisBefore,
+                outerTrianglesAfter: geometricLoopFillOuterTrisBefore,
+                details: {
+                    filledLoops: geometricLoopFill.filledLoops,
+                    insertedTriangles: geometricLoopFill.insertedTriangles,
+                    attemptedLoops: geometricLoopFill.attemptedLoops,
+                    emptyTriangulations: geometricLoopFill.emptyTriangulations,
+                    unsafeLoops: geometricLoopFill.unsafeLoops,
+                    projectedTriangulations: geometricLoopFill.projectedTriangulations,
+                },
+            });
             if (geometricLoopFill.filledLoops > 0) {
                 finalCombinedIdxs = geometricLoopFill.indices;
                 console.log(
@@ -3080,6 +4029,110 @@ export class ParametricExportComputer {
                 );
             }
 
+            await pfStageFlush('tail:before-fillCrossSurfaceConstantTBoundaryLoopsWithCenters');
+            const crossSurfaceLoopFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const crossSurfaceLoopFillOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const crossSurfaceLoopFillStart = performance.now();
+            const crossSurfaceLoopFill = fillCrossSurfaceConstantTBoundaryLoopsWithCenters(
+                finalCombinedIdxs,
+                combinedVerts,
+                finalResultData,
+                topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            );
+            recordTailDiagnosticStage({
+                name: 'fillCrossSurfaceConstantTBoundaryLoopsWithCenters',
+                elapsedMs: performance.now() - crossSurfaceLoopFillStart,
+                trianglesBefore: crossSurfaceLoopFillTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(crossSurfaceLoopFill.indices.length),
+                outerTrianglesBefore: crossSurfaceLoopFillOuterTrisBefore,
+                outerTrianglesAfter: crossSurfaceLoopFillOuterTrisBefore,
+                details: {
+                    filledLoops: crossSurfaceLoopFill.filledLoops,
+                    insertedTriangles: crossSurfaceLoopFill.insertedTriangles,
+                    insertedVertices: crossSurfaceLoopFill.insertedVertices,
+                    attemptedLoops: crossSurfaceLoopFill.attemptedLoops,
+                    emptyTriangulations: crossSurfaceLoopFill.emptyTriangulations,
+                    unsafeLoops: crossSurfaceLoopFill.unsafeLoops,
+                },
+            });
+            if (crossSurfaceLoopFill.filledLoops > 0) {
+                finalCombinedIdxs = crossSurfaceLoopFill.indices;
+                combinedVerts = crossSurfaceLoopFill.uvs;
+                finalResultData = crossSurfaceLoopFill.positions;
+                console.log(
+                    `[ParametricExport]   Cross-surface constant-t loop fill: ` +
+                    `${crossSurfaceLoopFill.filledLoops} loops filled, ` +
+                    `${crossSurfaceLoopFill.insertedTriangles} tris inserted, ` +
+                    `${crossSurfaceLoopFill.insertedVertices} vertices inserted`,
+                );
+            } else if ((crossSurfaceLoopFill.attemptedLoops ?? 0) > 0) {
+                console.warn(
+                    `[ParametricExport]   Cross-surface constant-t loop fill skipped: ` +
+                    `${crossSurfaceLoopFill.attemptedLoops} loops attempted, ` +
+                    `${crossSurfaceLoopFill.emptyTriangulations ?? 0} incomplete loops, ` +
+                    `${crossSurfaceLoopFill.unsafeLoops ?? 0} unsafe caps`,
+                );
+            }
+
+            // Final closer: branched boundary components (holes that touch at a
+            // shared junction vertex). The simple-loop fillers above can only
+            // trace degree-2 loops and structurally skip every component with a
+            // degree-3+ junction — the dominant residual on feature-dense walls
+            // (measured: ~87% of leftover boundary edges are branched s0:tmid
+            // holes). This decomposes those components into edge-disjoint cycles
+            // and centre-fans each, manifold-guarded so nothing it adds can
+            // create a non-manifold edge.
+            await pfStageFlush('tail:before-fillBranchedBoundaryComponentsWithCenters');
+            const branchedFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const branchedFillOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const branchedFillStart = performance.now();
+            const branchedFill = fillBranchedBoundaryComponentsWithCenters(
+                finalCombinedIdxs,
+                combinedVerts,
+                finalResultData,
+                topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+            );
+            recordTailDiagnosticStage({
+                name: 'fillBranchedBoundaryComponentsWithCenters',
+                elapsedMs: performance.now() - branchedFillStart,
+                trianglesBefore: branchedFillTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(branchedFill.indices.length),
+                outerTrianglesBefore: branchedFillOuterTrisBefore,
+                outerTrianglesAfter: branchedFillOuterTrisBefore,
+                details: {
+                    filledLoops: branchedFill.filledLoops,
+                    insertedTriangles: branchedFill.insertedTriangles,
+                    insertedVertices: branchedFill.insertedVertices,
+                    attemptedLoops: branchedFill.attemptedLoops,
+                    emptyTriangulations: branchedFill.emptyTriangulations,
+                    unsafeLoops: branchedFill.unsafeLoops,
+                },
+            });
+            if (branchedFill.filledLoops > 0) {
+                finalCombinedIdxs = branchedFill.indices;
+                combinedVerts = branchedFill.uvs;
+                finalResultData = branchedFill.positions;
+                console.log(
+                    `[ParametricExport]   Branched boundary fill: ` +
+                    `${branchedFill.filledLoops} cycles filled, ` +
+                    `${branchedFill.insertedTriangles} tris inserted, ` +
+                    `${branchedFill.insertedVertices} vertices inserted`,
+                );
+            } else if ((branchedFill.attemptedLoops ?? 0) > 0) {
+                console.warn(
+                    `[ParametricExport]   Branched boundary fill skipped: ` +
+                    `${branchedFill.attemptedLoops} cycles attempted, ` +
+                    `${branchedFill.emptyTriangulations ?? 0} empty triangulations, ` +
+                    `${branchedFill.unsafeLoops ?? 0} unsafe caps`,
+                );
+            }
+
+            await pfStageFlush(`tail:before-final-geometric-degen-strip tris=${finalCombinedIdxs.length / 3}`);
+            const finalDegenStripTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const finalDegenStripOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const finalDegenStripStart = performance.now();
+            let finalDegenStripRemoved = 0;
+            let finalDegenStripOuterRemoved = 0;
             {
                 const minAreaSq4 = 4e-20;
                 const minEdgeLenSq = 1e-12;
@@ -3141,7 +4194,21 @@ export class ParametricExportComputer {
                     outerIdxCountAfterSubdiv -= outerDegen * 3;
                     console.log(`[ParametricExport]   Final degenerate strip: ${totalDegen} triangles (${outerDegen} outer wall)`);
                 }
+                finalDegenStripRemoved = totalDegen;
+                finalDegenStripOuterRemoved = outerDegen;
             }
+            recordTailDiagnosticStage({
+                name: 'finalGeometricDegenStrip',
+                elapsedMs: performance.now() - finalDegenStripStart,
+                trianglesBefore: finalDegenStripTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(finalCombinedIdxs.length),
+                outerTrianglesBefore: finalDegenStripOuterTrisBefore,
+                outerTrianglesAfter: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                details: {
+                    removedTriangles: finalDegenStripRemoved,
+                    removedOuterTriangles: finalDegenStripOuterRemoved,
+                },
+            });
 
             // ═══════════════════════════════════════════════════════
             // PHASE 6: Mesh Validation (always runs)
@@ -3152,6 +4219,9 @@ export class ParametricExportComputer {
             // thresholds when the distortionGating flag is set.
             // ═══════════════════════════════════════════════════════
             let validationSummary: ValidationSummary | undefined;
+            await pfStageFlush(`tail:before-validateMesh tris=${finalCombinedIdxs.length / 3}`);
+            const validationTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const validationOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
             {
                 const validateStart = performance.now();
                 const validationScopes = resolveValidationIndexScopes(
@@ -3221,6 +4291,30 @@ export class ParametricExportComputer {
                 };
 
                 const validateMs = performance.now() - validateStart;
+                recordTailDiagnosticStage({
+                    name: 'validateMesh',
+                    elapsedMs: validateMs,
+                    trianglesBefore: validationTrisBefore,
+                    trianglesAfter: validationTrisBefore,
+                    outerTrianglesBefore: validationOuterTrisBefore,
+                    outerTrianglesAfter: validationOuterTrisBefore,
+                    details: {
+                        validationPass,
+                        reportValid: report.valid,
+                        manifoldOk: report.manifold.ok,
+                        boundaryEdges: report.manifold.boundaryEdges,
+                        nonManifoldEdges: report.manifold.nonManifoldEdges,
+                        degeneratesOk: report.degenerates.ok,
+                        normalsOk: report.normals.ok,
+                        windingInconsistentEdges: report.normals.windingInconsistentEdges,
+                        inconsistentPairs: report.normals.inconsistentPairs,
+                        invertedTriangles: report.normals.invertedTriangles,
+                        triangleQualityOk: report.triangleQuality.ok,
+                        minAngleDeg: report.triangleQuality.minAngleDeg,
+                        maxAspectRatio: report.triangleQuality.maxAspectRatio,
+                        warningCount: report.warnings.length,
+                    },
+                });
                 const passStr = validationPass ? 'PASS' : 'FAIL';
                 console.log(`[ParametricExport]   Validation: ${passStr} (${validateMs.toFixed(1)}ms) — ` +
                     `manifold=${report.manifold.ok}, degenerates=${report.degenerates.ok}, ` +
@@ -3237,6 +4331,7 @@ export class ParametricExportComputer {
                 }
             }
 
+            await pfStageFlush('tail:after-validation (entering result assembly/export)');
             const finalVertexCount = finalResultData.length / 3;
             const finalTriangleCount = finalCombinedIdxs.length / 3;
 
@@ -3254,6 +4349,8 @@ export class ParametricExportComputer {
 
             const totalMs = performance.now() - startTime;
             console.log(`[ParametricExport] Complete: ${totalMs.toFixed(0)}ms (curvature: ${curvMs.toFixed(0)}ms, grid: ${gridMs.toFixed(0)}ms, GPU: ${gpuMs.toFixed(0)}ms)`);
+
+            const tailDiagnostics = tailDiagnosticsSnapshot();
 
             // Build pipeline diagnostics for ExportDialog debug tab
             const pipelineDiagnostics = {
@@ -3276,6 +4373,7 @@ export class ParametricExportComputer {
                 crossRowTris: meshDiag.crossRow1 + meshDiag.crossRow2 + meshDiag.crossRow3plus,
                 aspectOver5: meshDiag.aspectOver5,
                 refinement: refinementSummary,
+                tailDiagnostics,
             };
 
             return {

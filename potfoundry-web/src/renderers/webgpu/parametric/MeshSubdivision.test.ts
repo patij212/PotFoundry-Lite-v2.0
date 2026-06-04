@@ -12,6 +12,7 @@ import {
     type EvaluateMidpointsFn,
     type SubdivisionResult,
     type ChainUV,
+    type ChainPointUV,
 } from './MeshSubdivision';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -762,6 +763,144 @@ describe('MeshSubdivision', () => {
             expect(result.has(0)).toBe(true);  // near chain 1
             expect(result.has(2)).toBe(true);  // near chain 2
             expect(result.has(1)).toBe(false); // far from both
+        });
+
+        // ─────────────────────────────────────────────────────────────
+        // PERF-PIN: spatial-hash optimization must be byte-for-byte
+        // equivalent to the brute-force O(V×C) proximity scan. This guards
+        // the GothicArches hang fix (identifyChainAdjacentVertices was 212s
+        // of a ~5min base-gen; spatial bucketing replaces the 54.6B-op loop).
+        // The reference below IS the original algorithm — keep it in sync
+        // with the documented semantics, not the production implementation.
+        // ─────────────────────────────────────────────────────────────
+        describe('spatial-hash equivalence (perf-pin)', () => {
+            // Deterministic PRNG (mulberry32) so failures are reproducible.
+            function mulberry32(seed: number): () => number {
+                let a = seed >>> 0;
+                return () => {
+                    a |= 0; a = (a + 0x6d2b79f5) | 0;
+                    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+                    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+                    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+                };
+            }
+
+            /** Brute-force reference: the exact original O(V×C) algorithm. */
+            function referenceChainAdjacent(
+                verts: Float32Array,
+                vertexCount: number,
+                chains: ChainUV[],
+                gridSpacing: number,
+                outerH: number,
+                finalT?: Float32Array | number[],
+            ): Set<number> {
+                const result = new Set<number>();
+                const proximityRadius = gridSpacing * 0.5;
+                const proximityRadius2 = proximityRadius * proximityRadius;
+                const chainPoints: Array<{ u: number; t: number }> = [];
+                for (const chain of chains) {
+                    for (const pt of chain.points) {
+                        let tNorm = 0;
+                        if (finalT && pt.row >= 0 && pt.row < finalT.length) {
+                            tNorm = finalT[pt.row];
+                        } else {
+                            const denom = Math.max(1, outerH - 1);
+                            tNorm = Math.max(0, Math.min(1, pt.row / denom));
+                        }
+                        chainPoints.push({ u: pt.u, t: tNorm });
+                    }
+                }
+                if (chainPoints.length === 0) return result;
+                for (let v = 0; v < vertexCount; v++) {
+                    const vu = verts[v * 3];
+                    const vt = verts[v * 3 + 1];
+                    for (const cp of chainPoints) {
+                        let du = Math.abs(vu - cp.u);
+                        if (du > 0.5) du = 1.0 - du;
+                        const dt = vt - cp.t;
+                        const dist2 = du * du + dt * dt;
+                        if (dist2 <= proximityRadius2) { result.add(v); break; }
+                    }
+                }
+                return result;
+            }
+
+            function setsEqual(a: Set<number>, b: Set<number>): boolean {
+                if (a.size !== b.size) return false;
+                for (const x of a) if (!b.has(x)) return false;
+                return true;
+            }
+
+            it('matches brute force on a dense random field (incl. seam wrap)', () => {
+                const rng = mulberry32(0x1234abcd);
+                const N = 4000;
+                const verts = new Float32Array(N * 3);
+                for (let i = 0; i < N; i++) {
+                    verts[i * 3] = rng();           // u in [0,1)
+                    verts[i * 3 + 1] = rng();       // t in [0,1)
+                    verts[i * 3 + 2] = 0;
+                }
+                // Many chains, some hugging the seam (u≈0 and u≈1) to stress wrap.
+                const outerH = 270;
+                const finalT = new Float32Array(outerH);
+                for (let r = 0; r < outerH; r++) finalT[r] = r / (outerH - 1);
+                const chains: ChainUV[] = [];
+                for (let c = 0; c < 120; c++) {
+                    const pts: ChainPointUV[] = [];
+                    const len = 5 + Math.floor(rng() * 40);
+                    let u = c < 20 ? (rng() < 0.5 ? 0.001 + rng() * 0.01 : 0.999 - rng() * 0.01) : rng();
+                    for (let p = 0; p < len; p++) {
+                        u = ((u + (rng() - 0.5) * 0.02) % 1 + 1) % 1;
+                        pts.push({ u, row: Math.floor(rng() * outerH) });
+                    }
+                    chains.push({ points: pts });
+                }
+                const gridSpacing = 1 / 672;
+                const ref = referenceChainAdjacent(verts, N, chains, gridSpacing, outerH, finalT);
+                const got = identifyChainAdjacentVertices(verts, N, chains, gridSpacing, outerH, finalT);
+                expect(got.size).toBeGreaterThan(0);
+                expect(setsEqual(got, ref)).toBe(true);
+            });
+
+            it('matches brute force without finalT (row-normalized fallback)', () => {
+                const rng = mulberry32(0x99);
+                const N = 1500;
+                const verts = new Float32Array(N * 3);
+                for (let i = 0; i < N; i++) {
+                    verts[i * 3] = rng();
+                    verts[i * 3 + 1] = rng();
+                    verts[i * 3 + 2] = 0;
+                }
+                const outerH = 100;
+                const chains: ChainUV[] = [];
+                for (let c = 0; c < 40; c++) {
+                    const pts: ChainPointUV[] = [];
+                    for (let p = 0; p < 10; p++) pts.push({ u: rng(), row: Math.floor(rng() * outerH) });
+                    chains.push({ points: pts });
+                }
+                const gridSpacing = 1 / 200;
+                const ref = referenceChainAdjacent(verts, N, chains, gridSpacing, outerH);
+                const got = identifyChainAdjacentVertices(verts, N, chains, gridSpacing, outerH);
+                expect(setsEqual(got, ref)).toBe(true);
+            });
+
+            it('matches brute force with coarse gridSpacing (wide radius)', () => {
+                const rng = mulberry32(0x5eed);
+                const N = 800;
+                const verts = new Float32Array(N * 3);
+                for (let i = 0; i < N; i++) {
+                    verts[i * 3] = rng();
+                    verts[i * 3 + 1] = rng();
+                    verts[i * 3 + 2] = 0;
+                }
+                const chains: ChainUV[] = [
+                    { points: [{ u: 0.5, row: 5 }, { u: 0.0, row: 0 }, { u: 0.97, row: 9 }] },
+                ];
+                const gridSpacing = 0.3; // proximityRadius 0.15 — spans many buckets
+                const ref = referenceChainAdjacent(verts, N, chains, gridSpacing, 10);
+                const got = identifyChainAdjacentVertices(verts, N, chains, gridSpacing, 10);
+                expect(setsEqual(got, ref)).toBe(true);
+            });
         });
     });
 

@@ -17,6 +17,36 @@ import {
     computeGridDimensions,
     downsampleSortedPositions,
 } from './GridBuilder';
+import { topologyDiagnostics } from '../../../fidelity/metrics';
+import { SURFACE_CONFIG } from './types';
+
+function projectGrid(
+    uvs: Float32Array,
+    project: (u: number, t: number, surfaceId: number) => [number, number, number],
+): Float32Array {
+    const out = new Float32Array(uvs.length);
+    for (let i = 0; i < uvs.length / 3; i++) {
+        const [x, y, z] = project(uvs[i * 3], uvs[i * 3 + 1], uvs[i * 3 + 2]);
+        out[i * 3] = x;
+        out[i * 3 + 1] = y;
+        out[i * 3 + 2] = z;
+    }
+    return out;
+}
+
+function combineMeshes(
+    a: { vertices: Float32Array; indices: Uint32Array },
+    b: { vertices: Float32Array; indices: Uint32Array },
+): { vertices: Float32Array; indices: Uint32Array } {
+    const vertices = new Float32Array(a.vertices.length + b.vertices.length);
+    vertices.set(a.vertices, 0);
+    vertices.set(b.vertices, a.vertices.length);
+    const vertexOffset = a.vertices.length / 3;
+    const indices = new Uint32Array(a.indices.length + b.indices.length);
+    indices.set(a.indices, 0);
+    for (let i = 0; i < b.indices.length; i++) indices[a.indices.length + i] = b.indices[i] + vertexOffset;
+    return { vertices, indices };
+}
 
 // ============================================================================
 // Constants smoke tests
@@ -221,6 +251,53 @@ describe('generateAdaptiveGrid', () => {
         // But i1 and i2 should be swapped
         expect(normal.indices[1]).toBe(inverted.indices[2]);
         expect(normal.indices[2]).toBe(inverted.indices[1]);
+    });
+
+    it('configured rim winding opposes the outer-wall top ring after positional welding', () => {
+        const uPos = new Float32Array([0, 0.25, 0.5, 0.75]);
+        const tPos = new Float32Array([0, 1]);
+        const rim = SURFACE_CONFIG.find((s) => s.id === 2);
+        expect(rim).toBeDefined();
+
+        const outerGrid = generateAdaptiveGrid(uPos, tPos, 0, false);
+        const rimGrid = generateAdaptiveGrid(uPos, tPos, 2, rim!.invertWinding);
+        const outerPositions = projectGrid(outerGrid.vertices, (u, t) => [u, t, 0]);
+        const rimPositions = projectGrid(rimGrid.vertices, (u, t) => [u, 0.75 + 0.25 * t, 0]);
+        const mesh = combineMeshes(
+            { vertices: outerPositions, indices: outerGrid.indices },
+            { vertices: rimPositions, indices: rimGrid.indices },
+        );
+
+        const topo = topologyDiagnostics(mesh, 1e-6, 8);
+        expect(topo.orientationMismatches).toBe(0);
+    });
+
+    it('configured bottom-top winding opposes inner wall and drain rings after positional welding', () => {
+        const uPos = new Float32Array([0, 0.25, 0.5, 0.75]);
+        const tPos = new Float32Array([0, 1]);
+        const inner = SURFACE_CONFIG.find((s) => s.id === 1);
+        const bottomTop = SURFACE_CONFIG.find((s) => s.id === 4);
+        const drain = SURFACE_CONFIG.find((s) => s.id === 5);
+        expect(inner).toBeDefined();
+        expect(bottomTop).toBeDefined();
+        expect(drain).toBeDefined();
+
+        const innerGrid = generateAdaptiveGrid(uPos, tPos, 1, inner!.invertWinding);
+        const bottomTopGrid = generateAdaptiveGrid(uPos, tPos, 4, bottomTop!.invertWinding);
+        const drainGrid = generateAdaptiveGrid(uPos, tPos, 5, drain!.invertWinding);
+        const innerPositions = projectGrid(innerGrid.vertices, (u, t) => [u, 1 + t, 0]);
+        const bottomTopPositions = projectGrid(bottomTopGrid.vertices, (u, t) => [u, 1 - 0.5 * t, 0]);
+        const drainPositions = projectGrid(drainGrid.vertices, (u, t) => [u, 0.25 + 0.25 * t, 0]);
+        const mesh = combineMeshes(
+            combineMeshes(
+                { vertices: innerPositions, indices: innerGrid.indices },
+                { vertices: bottomTopPositions, indices: bottomTopGrid.indices },
+            ),
+            { vertices: drainPositions, indices: drainGrid.indices },
+        );
+
+        const topo = topologyDiagnostics(mesh, 1e-6, 8);
+        expect(topo.orientationMismatches).toBe(0);
     });
 });
 

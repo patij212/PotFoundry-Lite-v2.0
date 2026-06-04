@@ -10,6 +10,7 @@ export type RTrue = (theta: number, z: number) => number;
 export interface MeshView {
   vertices: Float32Array; // flat [x0,y0,z0, x1,y1,z1, ...]
   indices: Uint32Array;   // flat [i0,i1,i2, ...]
+  uvs?: Float32Array;     // optional flat [u0,t0,surface0, ...] diagnostic data
 }
 
 /** One row of the fidelity matrix — all numeric, transferable across CDP. */

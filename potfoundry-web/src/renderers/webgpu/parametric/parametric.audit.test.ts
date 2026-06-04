@@ -294,6 +294,111 @@ function computeMetrics(
         else if (count > 2) nonManifoldEdges++;
     }
 
+    // TEMP-T18CLASS: orientation + provenance breakdown of boundary edges.
+    if (fixture.name === 'F14_production_scale' || fixture.name === 'F14b_prod_nogaps') {
+        let v = 0, h = 0, d = 0;
+        let gg = 0, gc = 0, cc = 0, other = 0;
+        // coincident-duplicate: a boundary edge whose two endpoints both have a
+        // position-twin (different index, same (u,t)) — i.e. a true seam between
+        // two independently-created copies, not a genuine hole.
+        const posKey = (vi: number): string =>
+            `${Math.round(vertices[vi * 3] * 1e5)}:${Math.round(vertices[vi * 3 + 1] * 1e5)}`;
+        const posCount = new Map<string, number>();
+        const maxV = result.vertices.length / 3;
+        for (let vi = 0; vi < maxV; vi++) posCount.set(posKey(vi), (posCount.get(posKey(vi)) ?? 0) + 1);
+        let dupBoth = 0;
+        // TEMP-T18SAMPLE: topological character of vertical chain-chain holes.
+        const cid = result.chainVertexChainIds;
+        const klass = (vi: number): string =>
+            vi < result.gridVertexCount ? 'G' : (cid.has(vi) ? `C${cid.get(vi)}` : 'P');
+        // sub-counts among the dominant V chain-chain class
+        let sameChain = 0, diffChain = 0, withPhantom = 0, phantomPhantom = 0;
+        const samples: string[] = [];
+        for (const [key, count] of edgeFaces) {
+            if (count !== 1) continue;
+            const dash = key.indexOf('-');
+            const a = Number(key.slice(0, dash)), b = Number(key.slice(dash + 1));
+            const du = Math.abs(vertices[a * 3] - vertices[b * 3]);
+            const dt = Math.abs(vertices[a * 3 + 1] - vertices[b * 3 + 1]);
+            const isV = du < 0.1 * dt;
+            if (isV) v++;
+            else if (dt < 0.1 * du) h++;
+            else d++;
+            const gc0 = a < result.gridVertexCount, gc1 = b < result.gridVertexCount;
+            const isCC = !gc0 && !gc1;
+            if (gc0 && gc1) gg++; else if (isCC) cc++; else gc++;
+            void other;
+            if ((posCount.get(posKey(a)) ?? 0) > 1 && (posCount.get(posKey(b)) ?? 0) > 1) dupBoth++;
+            if (isV && isCC) {
+                const ka = klass(a), kb = klass(b);
+                const aP = ka === 'P', bP = kb === 'P';
+                if (aP && bP) phantomPhantom++;
+                else if (aP || bP) withPhantom++;
+                else if (ka === kb) sameChain++;
+                else diffChain++;
+                if (samples.length < 14) {
+                    samples.push(`${ka}(${vertices[a * 3].toFixed(4)},${vertices[a * 3 + 1].toFixed(4)})-` +
+                        `${kb}(${vertices[b * 3].toFixed(4)},${vertices[b * 3 + 1].toFixed(4)})`);
+                }
+            }
+        }
+        // TEMP-T18TJCT: classify each interior boundary edge as a collinear
+        // T-junction (a third vertex lies strictly between the endpoints, within
+        // perpendicular tol) vs a genuine 2D hole. T-junctions are repairable by
+        // the TAIL repairOuterWallTJunctions stage; genuine holes are not.
+        {
+            const QU = 1e5;
+            const byU = new Map<number, Array<{ t: number; vi: number }>>();
+            const maxVt = result.vertices.length / 3;
+            for (let vi = 0; vi < maxVt; vi++) {
+                const uq = Math.round(vertices[vi * 3] * QU);
+                let arr = byU.get(uq);
+                if (!arr) { arr = []; byU.set(uq, arr); }
+                arr.push({ t: vertices[vi * 3 + 1], vi });
+            }
+            for (const arr of byU.values()) arr.sort((p, q) => p.t - q.t);
+            let tjct = 0, genuine = 0;
+            for (const [key, count] of edgeFaces) {
+                if (count !== 1) continue;
+                const dash = key.indexOf('-');
+                const a = Number(key.slice(0, dash)), b = Number(key.slice(dash + 1));
+                const au = vertices[a * 3], at = vertices[a * 3 + 1];
+                const bu = vertices[b * 3], bt = vertices[b * 3 + 1];
+                const du = au - bu, dt = at - bt;
+                const len2 = du * du + dt * dt;
+                let collinear = false;
+                if (len2 > 0) {
+                    // search column-line buckets near min(au,bu)..max(au,bu)
+                    const uqA = Math.round(au * QU), uqB = Math.round(bu * QU);
+                    for (let uq = Math.min(uqA, uqB) - 1; uq <= Math.max(uqA, uqB) + 1 && !collinear; uq++) {
+                        const arr = byU.get(uq);
+                        if (!arr) continue;
+                        for (const { t: mt, vi: mi } of arr) {
+                            if (mi === a || mi === b) continue;
+                            const mu = vertices[mi * 3];
+                            const wu = mu - au, wt = mt - at;
+                            const proj = (wu * du + wt * dt) / len2;
+                            if (proj <= 0.01 || proj >= 0.99) continue;
+                            const perp2 = (wu * wu + wt * wt) - proj * proj * len2;
+                            if (perp2 < 1e-9 * len2) { collinear = true; break; }
+                        }
+                    }
+                }
+                if (collinear) tjct++; else genuine++;
+            }
+            // eslint-disable-next-line no-console
+            console.log(`[T18TJCT ${fixture.name}] interior-ish boundary=${tjct + genuine} collinear-Tjct=${tjct} genuine-2D=${genuine}`);
+        }
+        // eslint-disable-next-line no-console
+        console.log(`[T18CLASS ${fixture.name}] boundary=${boundaryEdges} | orient V=${v} H=${h} D=${d} | prov grid-grid=${gg} grid-chain=${gc} chain-chain=${cc} | bothEndpointsHavePosTwin=${dupBoth}`);
+        // eslint-disable-next-line no-console
+        console.log(`[T18SAMPLE ${fixture.name}] V&CC subclasses: sameChain=${sameChain} diffChain=${diffChain} withPhantom=${withPhantom} phantomPhantom=${phantomPhantom}`);
+        for (const s of samples) {
+            // eslint-disable-next-line no-console
+            console.log(`    [T18SAMPLE] ${s}`);
+        }
+    }
+
     // Chain-edge enforcement
     const meshEdgeSet = new Set(edgeFaces.keys());
     let enforced = 0;
@@ -377,6 +482,7 @@ const PHASE_A_FIXTURES: Array<() => BuiltFixture> = [
     () => buildFixture('F12_ripple22_worst',        { numU: 200, numT: 50, chainSpec: { numChains: 22, numU: 0, numT: 0, spiralDuPerRow: 0.03, seamCrossingChainIdx: 0, multiRowGapEvery: 4 } }),
     () => buildFixture('F13_ripple22_dense_T',      { numU: 200, numT: 200, chainSpec: { numChains: 22, numU: 0, numT: 0, spiralDuPerRow: 0.005, seamCrossingChainIdx: 0 } }),
     () => buildFixture('F14_production_scale',      { numU: 200, numT: 253, chainSpec: { numChains: 80, numU: 0, numT: 0, spiralDuPerRow: 0.005, seamCrossingChainIdx: 0, multiRowGapEvery: 7 } }),
+    () => buildFixture('F14b_prod_nogaps',          { numU: 200, numT: 253, chainSpec: { numChains: 80, numU: 0, numT: 0, spiralDuPerRow: 0.005, seamCrossingChainIdx: 0 } }),
     // Adaptive-unionU variants — mimic production GridBuilder by inserting a
     // grid column at every chain U position. Compare to F10/F11/F12 to test
     // whether their aspect/fragmentation issues are real or audit-only.

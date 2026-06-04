@@ -39,6 +39,17 @@ import {
 import type { ConvergenceState } from './contracts';
 import { isConverged } from './contracts';
 
+// TEMP-TAILPROBE: survivable in-page stage marker (mirrors ParametricExportComputer's
+// pfStageMark; kept local to avoid a circular import). REMOVE with the tail probes.
+function refineMark(name: string): void {
+    try {
+        const w = globalThis as unknown as { __pfStageLog?: string[] };
+        (w.__pfStageLog ??= []).push(`${performance.now().toFixed(0)}ms ${name}`);
+    } catch {
+        /* noop */
+    }
+}
+
 /**
  * Per-vertex metric tensor data from SurfaceMetric.computeVertexMetrics().
  */
@@ -2236,6 +2247,7 @@ export async function adaptiveRefine(
     for (let iter = 0; iter < maxIter; iter++) {
         const iterStart = performance.now();
         const totalTriangles = curIndices.length / 3;
+        refineMark(`refine:iter${iter}-start tris=${totalTriangles}`);
 
         // Budget check
         if (totalTriangles >= maxTriangles) {
@@ -2288,6 +2300,13 @@ export async function adaptiveRefine(
         const p95Norm = percentile(normErrors, 95);
         const overPosCount = posErrors.filter(e => e > tolerances.epsPosMm).length;
         const overNormCount = normErrors.filter(e => e > tolerances.epsNormalDeg).length;
+
+        // TEMP-CONVERGENCE-PROBE: per-iteration trajectory to diagnose non-convergence. REMOVE.
+        // eslint-disable-next-line no-console
+        console.warn(`[ConvProbe] iter=${iter} tris=${totalTriangles} ` +
+            `maxPos=${maxPos.toFixed(4)}/${tolerances.epsPosMm}mm (over=${overPosCount}) ` +
+            `maxNorm=${maxNorm.toFixed(2)}/${tolerances.epsNormalDeg}° (over=${overNormCount}) ` +
+            `p95Pos=${p95Pos.toFixed(4)} prevMaxPos=${prevMaxPos === Infinity ? 'inf' : prevMaxPos.toFixed(4)}`);
 
         // Tolerance check — Phase 9: use isConverged with quality metrics (A3, C6)
         const quality = computeMeshQuality(curPositions, curIndices, curOuterIdxCount);
@@ -2385,6 +2404,7 @@ export async function adaptiveRefine(
         }
 
         // ── Phase 14: Per-edge vs per-triangle split path ─────────────
+        refineMark(`refine:iter${iter}-split-start maxSplits=${maxSplitsPerIter} perEdge=${Boolean(config.perEdgeErrorEstimation)}`);
         let splitCount = 0;
         if (config.perEdgeErrorEstimation && evaluateMidpoints) {
             // Per-edge path: measure chord error on every edge directly
@@ -2439,6 +2459,7 @@ export async function adaptiveRefine(
             splitCount = splitResult.splitCount;
         }
 
+        refineMark(`refine:iter${iter}-split-done splits=${splitCount} tris=${curIndices.length / 3}`);
         // Task 1.1: Recompute vertex metrics for the updated mesh
         if (curVertexMetrics && splitCount > 0) {
             curVertexMetrics = computeVertexMetrics(
@@ -2446,42 +2467,33 @@ export async function adaptiveRefine(
             );
         }
 
-        // Task 3.1 & 3.2: Cleanup passes (re-enabled after fixing stale
-        // adjacency bug in localEdgeFlip and seam UV wrapping in smoothNewVertices)
+        // Task 3.2: Cleanup pass — Laplacian smoothing of new midpoints.
+        // (Edge-flip cleanup was removed; see note at the smoothing call below.)
         if (splitCount > 0 && evaluateMidpoints) {
             const prevVertCount = curPositions.length / 3 - splitCount;
-            // C5: Build 2-ring affected set — new midpoints + 1-ring + 2-ring
-            const affectedVertices = new Set<number>();
-            for (let v = prevVertCount; v < curPositions.length / 3; v++) {
-                affectedVertices.add(v);
-            }
-            // 1-ring: vertices in triangles touching new midpoints
-            const ring1 = new Set<number>();
-            for (let t = 0; t < curOuterIdxCount; t += 3) {
-                const v0 = curIndices[t], v1 = curIndices[t + 1], v2 = curIndices[t + 2];
-                if (affectedVertices.has(v0) || affectedVertices.has(v1) || affectedVertices.has(v2)) {
-                    ring1.add(v0); ring1.add(v1); ring1.add(v2);
-                }
-            }
-            for (const v of ring1) affectedVertices.add(v);
-            // 2-ring: vertices in triangles touching 1-ring vertices
-            for (let t = 0; t < curOuterIdxCount; t += 3) {
-                const v0 = curIndices[t], v1 = curIndices[t + 1], v2 = curIndices[t + 2];
-                if (ring1.has(v0) || ring1.has(v1) || ring1.has(v2)) {
-                    affectedVertices.add(v0); affectedVertices.add(v1); affectedVertices.add(v2);
-                }
-            }
-            const flipCount = localEdgeFlip(curIndices, curPositions, affectedVertices, featureGraph, curOuterIdxCount);
-            if (flipCount > 0) {
-                console.log(`[AdaptiveRefinement] iter ${iter}: ${flipCount} edge flips`);
-            }
-
+            // NOTE: localEdgeFlip is intentionally NOT run here. It performs
+            // Delaunay diagonal flips using INDEX-based adjacency, which is unsafe
+            // on the export mesh: the mesh always carries coincident vertices (the
+            // U-seam, hole rims, and base-mesh non-manifold overlaps), so an
+            // index-edge that looks like a clean 2-triangle interior edge often has
+            // its true canonical neighbor in a different-index triangle. Flipping
+            // such edges tears the welded surface. Measured on GothicArches: the
+            // flip pass amplified canonical boundary edges 7481 → 136169 (18×) for
+            // zero net min-angle improvement (final min-angle identical with the
+            // pass on or off). Guarding the flip against coincident vertices and
+            // within-pass stale adjacency only converted the boundary tears into
+            // non-manifold tears (boundary 9389 / nonManifold 124) — still far worse
+            // than leaving it off (boundary 1756 / nonManifold 6). The operation is
+            // fundamentally incompatible with this mesh's topology, so it is removed
+            // rather than patched. Split already places midpoints on-surface, and
+            // smoothNewVertices provides the quality refinement.
             await smoothNewVertices(
                 curPositions, curUVs, curIndices, curOuterIdxCount,
                 prevVertCount, featureGraph, evaluateMidpoints, 1,
             );
         }
 
+        refineMark(`refine:iter${iter}-cleanup-done tris=${curIndices.length / 3}`);
         // Task 6.6: Edge collapse — remove over-tessellated edges
         if (config.edgeCollapseEnabled && curIndices.length / 3 > maxTriangles) {
             const collapseResult = await collapseOverBudgetEdges(
@@ -2545,26 +2557,28 @@ export async function adaptiveRefine(
 
     // ── Phase 10: Post-loop global quality optimization ──────────────
     // After the main refinement loop exhausts iterations, run a final
-    // quality pass (edge flips + smoothing) to improve triangle quality
-    // without adding geometry. Only when GPU evaluation is available.
+    // smoothing pass to improve triangle quality without adding geometry.
+    // Only when GPU evaluation is available.
+    //
+    // NOTE: globalEdgeFlip is intentionally NOT run here, for the same reason
+    // localEdgeFlip is skipped inside the loop (see that call site): index-based
+    // Delaunay flips tear the welded export surface at its coincident vertices.
+    // This post-loop flip ran AFTER the loop and re-tore the otherwise-clean mesh
+    // before the tail repair battery. Smoothing (which moves vertices on-surface
+    // without changing topology) is retained.
     if (evaluateMidpoints && featureGraph) {
         const qualityIterations = profile.qualityIterations ?? 2;
-        const flipCount = globalEdgeFlip(
-            curIndices, curPositions, featureGraph, curOuterIdxCount,
-            qualityIterations, /* qualityFloor */ 9,
-        );
         const smoothMoved = await globalSmoothing(
             curPositions, curUVs, curIndices, curOuterIdxCount,
             featureGraph, evaluateMidpoints,
             qualityIterations, /* qualityThreshold */ 15,
         );
-        if (flipCount > 0 || smoothMoved > 0) {
+        if (smoothMoved > 0) {
             // Log quality optimization results in the last iteration stats
             const lastStat = iterationStats.length > 0
                 ? iterationStats[iterationStats.length - 1]
                 : null;
             if (lastStat) {
-                (lastStat as unknown as Record<string, unknown>).qualityFlips = flipCount;
                 (lastStat as unknown as Record<string, unknown>).qualitySmoothMoved = smoothMoved;
             }
         }

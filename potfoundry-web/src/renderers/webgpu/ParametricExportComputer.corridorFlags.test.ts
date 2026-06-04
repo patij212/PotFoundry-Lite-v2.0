@@ -10,10 +10,21 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GPUBufferDescriptor } from '@webgpu/types';
-import type { ParametricExportParams } from './parametric/types';
+import type {
+    ParametricExportParams,
+    ParametricExportResult,
+    ValidationSummary,
+} from './parametric/types';
 
 const OUTER_WALL_SENTINEL = new Error('outer-wall-sentinel');
 const CHAIN_STRIP_SENTINEL = new Error('chain-strip-sentinel');
+const CAD_CLOSURE_TARGET_TRIANGLES = 1_200;
+const CAD_CLOSURE_NUM_STRIPS = 4;
+const CAD_CLOSURE_CURVATURE_SAMPLES = 128;
+const CAD_CLOSURE_ROW_PROBE_SAMPLES = 256;
+const CAD_CLOSURE_MIN_CHAIN_COUNT = 2;
+const CAD_CLOSURE_MIN_CHAIN_POINTS = 12;
+const CAD_QUALITY_WARNING_PATTERN = /boundary edges|non-manifold|degenerate|normal|triangle quality|fidelity|seam|distortion/i;
 const {
     buildCDTOuterWallMock,
     optimizeChainStripsMock,
@@ -101,11 +112,59 @@ vi.mock('./parametric/FeatureDetection', async () => {
     };
 });
 
-import { ParametricExportComputer } from './ParametricExportComputer';
+import {
+    getLastChainDebugData,
+    getLastPeakDebugData,
+    ParametricExportComputer,
+} from './ParametricExportComputer';
 
 type FakeBuffer = {
     readonly label: string;
     readonly destroy: ReturnType<typeof vi.fn>;
+};
+
+type AnalyticSurface = (
+    uCoord: number,
+    tCoord: number,
+    surfaceId: number,
+) => readonly [number, number, number];
+
+const defaultAnalyticSurface: AnalyticSurface = (uCoord, tCoord) => {
+    const theta = uCoord * Math.PI * 2;
+    const radius = 30 + 4 * Math.cos(theta * 4) + tCoord * 2;
+    return [
+        radius * Math.cos(theta),
+        radius * Math.sin(theta),
+        tCoord * 120,
+    ];
+};
+
+function signedCircularDelta(uCoord: number, centerU: number): number {
+    let delta = uCoord - centerU;
+    if (delta > 0.5) delta -= 1;
+    if (delta < -0.5) delta += 1;
+    return delta;
+}
+
+function gaussianAtU(uCoord: number, centerU: number, sigma: number): number {
+    const delta = signedCircularDelta(uCoord, centerU);
+    return Math.exp(-0.5 * (delta / sigma) * (delta / sigma));
+}
+
+const zeroInterceptionOverlapSurface: AnalyticSurface = (uCoord, tCoord, surfaceId) => {
+    const theta = uCoord * Math.PI * 2;
+    const peakCenter = 0.195 + 0.010 * tCoord;
+    const valleyCenter = 0.245 + 0.010 * tCoord;
+    const peak = gaussianAtU(uCoord, peakCenter, 0.010);
+    const valley = gaussianAtU(uCoord, valleyCenter, 0.010);
+    const secondaryPeak = 0.35 * gaussianAtU(uCoord, 0.62 - 0.012 * tCoord, 0.020);
+    const surfaceOffset = surfaceId === 0 ? 0 : -1.5 * surfaceId;
+    const radius = 32 + surfaceOffset + tCoord * 1.5 + peak * 5.0 - valley * 4.0 + secondaryPeak;
+    return [
+        radius * Math.cos(theta),
+        radius * Math.sin(theta),
+        tCoord * 120,
+    ];
 };
 
 function createFakeDevice(): GPUDevice {
@@ -168,7 +227,7 @@ function createParams(overrides?: Partial<ParametricExportParams>): ParametricEx
     };
 }
 
-function createComputer(): ParametricExportComputer {
+function createComputer(surface: AnalyticSurface = defaultAnalyticSurface): ParametricExportComputer {
     const computer = new ParametricExportComputer(createFakeDevice());
     (computer as unknown as { initialized: boolean }).initialized = true;
     (computer as unknown as {
@@ -179,13 +238,10 @@ function createComputer(): ParametricExportComputer {
     }).evaluatePoints = vi.fn(async (vertices: Float32Array) => {
         const positions = new Float32Array(vertices.length);
         for (let i = 0; i < vertices.length; i += 3) {
-            const u = vertices[i];
-            const t = vertices[i + 1];
-            const theta = u * Math.PI * 2;
-            const radius = 30 + 4 * Math.cos(theta * 4) + t * 2;
-            positions[i] = radius * Math.cos(theta);
-            positions[i + 1] = radius * Math.sin(theta);
-            positions[i + 2] = t * 120;
+            const [x, y, z] = surface(vertices[i], vertices[i + 1], vertices[i + 2]);
+            positions[i] = x;
+            positions[i + 1] = y;
+            positions[i + 2] = z;
         }
         return positions;
     });
@@ -197,6 +253,37 @@ function extractBoundaryEdgeWarningCount(result: { validationSummary?: { warning
     if (!warning) return undefined;
     const match = warning.match(/(\d+) boundary edges/);
     return match ? Number(match[1]) : undefined;
+}
+
+function requireValidationSummary(result: ParametricExportResult): ValidationSummary {
+    expect(result.validationSummary).toBeDefined();
+    return result.validationSummary as ValidationSummary;
+}
+
+function expectCadQualityClosure(result: ParametricExportResult): void {
+    const summary = requireValidationSummary(result);
+    const warnings = summary.warnings.join('\n');
+
+    const tolerances = result.effectiveTolerances;
+    if (!tolerances) {
+        throw new Error('missing effective tolerances');
+    }
+
+    expect.soft(summary.valid, warnings).toBe(true);
+    expect.soft(summary.manifoldOk, warnings).toBe(true);
+    expect.soft(summary.degeneratesOk, warnings).toBe(true);
+    expect.soft(summary.normalsOk, warnings).toBe(true);
+    expect.soft(summary.triangleQualityOk, warnings).toBe(true);
+    expect.soft(summary.fidelityOk, warnings).toBe(true);
+    expect.soft(summary.seamOk, warnings).toBe(true);
+    expect.soft(summary.distortionOk, warnings).toBe(true);
+    expect.soft(summary.minAngleDeg, warnings).toBeGreaterThanOrEqual(tolerances.minTriangleAngleDeg);
+    expect.soft(summary.maxAspectRatio, warnings).toBeLessThanOrEqual(tolerances.maxAspectRatio);
+    expect.soft(summary.p95PosErrorMm, warnings).toBeLessThanOrEqual(tolerances.epsPosMm);
+    expect.soft(summary.p999PosErrorMm, warnings).toBeLessThanOrEqual(tolerances.epsPosMm * 2);
+    expect.soft(summary.maxFeatureDriftMm ?? 0, warnings).toBeLessThanOrEqual(tolerances.epsFeatureMm);
+    expect.soft(summary.seamMaxGapMm ?? 0, warnings).toBeLessThanOrEqual(tolerances.epsPosMm);
+    expect.soft(summary.warnings.filter(message => CAD_QUALITY_WARNING_PATTERN.test(message))).toEqual([]);
 }
 
 describe('ParametricExportComputer corridor flag threading', () => {
@@ -293,7 +380,7 @@ describe('ParametricExportComputer corridor flag threading', () => {
                     kind: 'peak',
                     points: [
                         { row: band, u: 0.28 },
-                        { row: band + 1, u: 0.34 },
+                        { row: band + 1, u: 0.33 },
                     ],
                 },
             ];
@@ -509,11 +596,11 @@ describe('ParametricExportComputer corridor flag threading', () => {
         expect(sawCorridorDiagnostic).toBe(true);
     });
 
-    it('changes max-strength SuperformulaBlossom export when corridor-supported spans reuse owned super-cell machinery', async () => {
+    it('changes max-strength SuperformulaBlossom export when natural corridors use chain-cell emission', async () => {
         const computer = createComputer();
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
         let sawCorridorDiagnostic = false;
-        let sawOwnedSpanDiagnostic = false;
+        let sawChainCellDiagnostic = false;
 
         const baseParams = createParams({
             styleId: 'SuperformulaBlossom',
@@ -574,18 +661,19 @@ describe('ParametricExportComputer corridor flag threading', () => {
             expect(planned.mesh.triangleCount).toBeGreaterThan(0);
 
             sawCorridorDiagnostic = plannedMessages.some(message =>
-                message.includes('Corridor dry-run:') && message.includes('supported='),
+                message.includes('Corridor dry-run:') && /supported=[1-9]\d*/.test(message),
             );
-            sawOwnedSpanDiagnostic = plannedMessages.some(message =>
-                (message.includes('R35 Chain edges:') && /super-cells: [1-9]\d*/.test(message)) ||
-                (message.includes('R37 Phantom vertices:') && /band-split owned spans: [1-9]\d*/.test(message)),
+            sawChainCellDiagnostic = plannedMessages.some(message =>
+                message.includes('R35 Chain edges:') &&
+                /chain cells: [1-9]\d*/.test(message) &&
+                /missing=0/.test(message),
             );
         } finally {
             logSpy.mockRestore();
         }
 
         expect(sawCorridorDiagnostic).toBe(true);
-        expect(sawOwnedSpanDiagnostic).toBe(true);
+        expect(sawChainCellDiagnostic).toBe(true);
     });
 
     it('threads a detection-driven bounded overlap fixture through real chain linking before outer-wall build', async () => {
@@ -714,5 +802,169 @@ describe('ParametricExportComputer corridor flag threading', () => {
 
         expect(sawCorridorDiagnostic).toBe(true);
         expect(sawOwnedSpanDiagnostic).toBe(true);
+    });
+
+    it('derives a corridor-supported overlap from real detection, linking, grid generation, and tessellation', async () => {
+        const computer = createComputer(zeroInterceptionOverlapSurface);
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        let sawCorridorDiagnostic = false;
+        let sawOuterWallEmissionDiagnostic = false;
+
+        const baseParams = createParams({
+            targetTriangles: CAD_CLOSURE_TARGET_TRIANGLES,
+            pipelineConfig: {
+                ...createParams().pipelineConfig,
+                numStrips: CAD_CLOSURE_NUM_STRIPS,
+                curvatureSamples: CAD_CLOSURE_CURVATURE_SAMPLES,
+                rowProbeSamples: CAD_CLOSURE_ROW_PROBE_SAMPLES,
+                gpuResnap: false,
+                chainDirectedFlip: false,
+                edgeFlip3D: false,
+                chainStripOptimizer: false,
+                boundaryDiagOpt: false,
+                gpuSubdivision: false,
+            },
+        });
+
+        try {
+            const legacy = await computer.compute(baseParams);
+            const plannedLogStart = logSpy.mock.calls.length;
+            const planned = await computer.compute({
+                ...baseParams,
+                pipelineFeatureFlags: {
+                    outerWallCorridorPlanning: true,
+                    outerWallCorridorDiagnostics: true,
+                },
+            });
+
+            const chainDebug = getLastChainDebugData();
+            const peakDebug = getLastPeakDebugData();
+            const plannedMessages = logSpy.mock.calls
+                .slice(plannedLogStart)
+                .map(call => typeof call[0] === 'string' ? call[0] : '')
+                .filter(Boolean);
+
+            expect(peakDebug?.peakCount).toBeGreaterThan(0);
+            expect(peakDebug?.valleyCount).toBeGreaterThan(0);
+            expect(chainDebug?.chainCount).toBeGreaterThanOrEqual(CAD_CLOSURE_MIN_CHAIN_COUNT);
+            expect(planned.pipelineDiagnostics?.chainCount).toBeGreaterThanOrEqual(CAD_CLOSURE_MIN_CHAIN_COUNT);
+            expect(planned.pipelineDiagnostics?.chainPoints).toBeGreaterThan(CAD_CLOSURE_MIN_CHAIN_POINTS);
+            expect(legacy.mesh.indices.length).toBeGreaterThan(0);
+            expect(planned.mesh.indices.length).toBeGreaterThan(0);
+            expect(Array.from(planned.mesh.indices)).not.toEqual(Array.from(legacy.mesh.indices));
+            expect(planned.validationSummary?.degeneratesOk).toBe(true);
+
+            sawCorridorDiagnostic = plannedMessages.some(message =>
+                message.includes('Corridor dry-run:') && /supported=[1-9]\d*/.test(message),
+            );
+            sawOuterWallEmissionDiagnostic = plannedMessages.some(message =>
+                message.includes('R35 Chain edges:') && /chain cells: [1-9]\d*/.test(message),
+            );
+        } finally {
+            logSpy.mockRestore();
+        }
+
+        expect(sawCorridorDiagnostic).toBe(true);
+        expect(sawOuterWallEmissionDiagnostic).toBe(true);
+    });
+
+    it.fails('proves detection-driven corridor export is fully CAD-quality closed', async () => {
+        const computer = createComputer(zeroInterceptionOverlapSurface);
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+        try {
+            const plannedLogStart = logSpy.mock.calls.length;
+            const planned = await computer.compute({
+                ...createParams({
+                    targetTriangles: CAD_CLOSURE_TARGET_TRIANGLES,
+                    pipelineConfig: {
+                        ...createParams().pipelineConfig,
+                        numStrips: CAD_CLOSURE_NUM_STRIPS,
+                        curvatureSamples: CAD_CLOSURE_CURVATURE_SAMPLES,
+                        rowProbeSamples: CAD_CLOSURE_ROW_PROBE_SAMPLES,
+                        gpuResnap: false,
+                        chainDirectedFlip: false,
+                        edgeFlip3D: false,
+                        chainStripOptimizer: false,
+                        boundaryDiagOpt: false,
+                        gpuSubdivision: false,
+                    },
+                }),
+                pipelineFeatureFlags: {
+                    outerWallCorridorPlanning: true,
+                    outerWallCorridorDiagnostics: true,
+                    gpuFidelityCheck: true,
+                    distortionGating: true,
+                },
+            });
+
+            const chainDebug = getLastChainDebugData();
+            const peakDebug = getLastPeakDebugData();
+            const plannedMessages = logSpy.mock.calls
+                .slice(plannedLogStart)
+                .map(call => typeof call[0] === 'string' ? call[0] : '')
+                .filter(Boolean);
+
+            expect(peakDebug?.peakCount).toBeGreaterThan(0);
+            expect(peakDebug?.valleyCount).toBeGreaterThan(0);
+            expect(chainDebug?.chainCount).toBeGreaterThanOrEqual(CAD_CLOSURE_MIN_CHAIN_COUNT);
+            expect(planned.pipelineDiagnostics?.chainPoints).toBeGreaterThan(CAD_CLOSURE_MIN_CHAIN_POINTS);
+            expect(plannedMessages.some(message =>
+                message.includes('Corridor dry-run:') && /supported=[1-9]\d*/.test(message),
+            )).toBe(true);
+            expectCadQualityClosure(planned);
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
+
+    it.fails('proves natural feature corridors use owned-span topology before CAD closure is accepted', async () => {
+        const computer = createComputer(zeroInterceptionOverlapSurface);
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+        try {
+            const plannedLogStart = logSpy.mock.calls.length;
+            const planned = await computer.compute({
+                ...createParams({
+                    targetTriangles: CAD_CLOSURE_TARGET_TRIANGLES,
+                    pipelineConfig: {
+                        ...createParams().pipelineConfig,
+                        numStrips: CAD_CLOSURE_NUM_STRIPS,
+                        curvatureSamples: CAD_CLOSURE_CURVATURE_SAMPLES,
+                        rowProbeSamples: CAD_CLOSURE_ROW_PROBE_SAMPLES,
+                        gpuResnap: false,
+                        chainDirectedFlip: false,
+                        edgeFlip3D: false,
+                        chainStripOptimizer: false,
+                        boundaryDiagOpt: false,
+                        gpuSubdivision: false,
+                    },
+                }),
+                pipelineFeatureFlags: {
+                    outerWallCorridorPlanning: true,
+                    outerWallCorridorDiagnostics: true,
+                    gpuFidelityCheck: true,
+                    distortionGating: true,
+                },
+            });
+
+            const plannedMessages = logSpy.mock.calls
+                .slice(plannedLogStart)
+                .map(call => typeof call[0] === 'string' ? call[0] : '')
+                .filter(Boolean);
+
+            expect.soft(plannedMessages.some(message =>
+                message.includes('Corridor dry-run:') && /supported=[1-9]\d*/.test(message),
+            )).toBe(true);
+            expect.soft(plannedMessages.some(message =>
+                message.includes('R35 Chain edges:') && /super-cells: [1-9]\d*/.test(message),
+            )).toBe(true);
+            expect.soft(plannedMessages.some(message =>
+                message.includes('R37 Phantom vertices:') && /band-split owned spans: [1-9]\d*/.test(message),
+            )).toBe(true);
+            expectCadQualityClosure(planned);
+        } finally {
+            logSpy.mockRestore();
+        }
     });
 });

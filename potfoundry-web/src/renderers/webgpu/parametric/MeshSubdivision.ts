@@ -211,22 +211,75 @@ export function identifyChainAdjacentVertices(
 
     if (chainPoints.length === 0) return result;
 
-    // For each vertex, check proximity to any chain point
+    // Spatial-hash acceleration. The brute-force O(vertexCount × chainPoints)
+    // scan was the dominant export cost on feature-dense styles (e.g.
+    // GothicArches: 1.1M verts × 48k chain points ≈ 55B iterations → ~212s).
+    // Bucketing chain points into a uniform UV grid of cell size
+    // `proximityRadius` lets each vertex test only its 3×3 cell neighbourhood,
+    // which provably covers every point within the radius (|Δcell| ≤ 1 per axis
+    // when cell == radius). U wraps circularly; T does not. Output is identical
+    // to the brute-force scan (pinned by the spatial-hash equivalence tests).
+    if (!(proximityRadius > 0) || !Number.isFinite(proximityRadius)) {
+        // Degenerate radius — fall back to the exact O(V×C) scan.
+        for (let v = 0; v < vertexCount; v++) {
+            const vu = combinedVerts[v * 3];
+            const vt = combinedVerts[v * 3 + 1];
+            for (const cp of chainPoints) {
+                let du = Math.abs(vu - cp.u);
+                if (du > 0.5) du = 1.0 - du;
+                const dt = vt - cp.t;
+                if (du * du + dt * dt <= proximityRadius2) { result.add(v); break; }
+            }
+        }
+        return result;
+    }
+
+    // nU U-buckets tile the circle [0, 1) EXACTLY (cell = 1/nU), so the seam at
+    // u=0/1 falls on a bucket boundary and there is no narrow partial cell.
+    // cell ≥ proximityRadius guarantees any two points within the radius land in
+    // the same or an adjacent bucket (|Δbucket| ≤ 1, modular in U). T is not
+    // circular and reuses the same cell size.
+    const nU = Math.max(1, Math.floor(1.0 / proximityRadius));
+    const cell = 1.0 / nU;
+    const uBucket = (u: number): number => {
+        let b = Math.floor((((u % 1) + 1) % 1) / cell);
+        if (b >= nU) b = nU - 1; // fp guard for u just below 1.0
+        return b;
+    };
+    // Composite key: tCell * nU + uCell (uCell ∈ [0, nU) keeps keys unique even
+    // for negative tCell).
+    const buckets = new Map<number, number[]>();
+    for (let i = 0; i < chainPoints.length; i++) {
+        const cp = chainPoints[i];
+        const key = Math.floor(cp.t / cell) * nU + uBucket(cp.u);
+        let list = buckets.get(key);
+        if (!list) { list = []; buckets.set(key, list); }
+        list.push(i);
+    }
+
     for (let v = 0; v < vertexCount; v++) {
         const vu = combinedVerts[v * 3];
         const vt = combinedVerts[v * 3 + 1];
+        const vtCell = Math.floor(vt / cell);
+        const vuCell = uBucket(vu);
+        let found = false;
 
-        for (const cp of chainPoints) {
-            // Circular distance in U (wraps at 1.0)
-            let du = Math.abs(vu - cp.u);
-            if (du > 0.5) du = 1.0 - du;
-            const dt = vt - cp.t;
-            const dist2 = du * du + dt * dt;
-            if (dist2 <= proximityRadius2) {
-                result.add(v);
-                break; // vertex is near at least one chain point
+        for (let dtc = -1; dtc <= 1 && !found; dtc++) {
+            const tBase = (vtCell + dtc) * nU;
+            for (let duc = -1; duc <= 1 && !found; duc++) {
+                const uc = ((vuCell + duc) % nU + nU) % nU;
+                const list = buckets.get(tBase + uc);
+                if (list === undefined) continue;
+                for (const ci of list) {
+                    const cp = chainPoints[ci];
+                    let du = Math.abs(vu - cp.u);
+                    if (du > 0.5) du = 1.0 - du;
+                    const dt = vt - cp.t;
+                    if (du * du + dt * dt <= proximityRadius2) { found = true; break; }
+                }
             }
         }
+        if (found) result.add(v);
     }
 
     return result;
@@ -388,6 +441,7 @@ export async function subdivideLongEdges(
             combinedVerts, vertexCount, chains, gridSpacing, outerH, finalT,
         );
     }
+    console.warn(`[StageProbe] subdiv.t1 identifyChainAdjacentVerts=${(performance.now() - subdivStart).toFixed(0)}ms (verts=${resultData.length / 3} chainPts=${chains?.reduce((s, c) => s + c.points.length, 0) ?? 0} found=${chainAdjacentVerts?.size ?? 0})`);
     const csTriSetNow = identifyChainStripTriangles(
         combinedIdxs, outerIdxCount, outerGridVertexCount, chainAdjacentVerts,
     );
@@ -490,6 +544,7 @@ export async function subdivideLongEdges(
 
     console.log(`[Subdivision] R44 chain edge diagnosis: constraintSet=${constraintEdgeSet.size}, inMap=${diagChainInMap}, singleTri=${diagChainSingleTri}, belowThresh=${diagChainBelowThresh}, candidates=${diagChainCandidate}, len range=${Math.sqrt(diagChainMinLen2).toFixed(3)}-${Math.sqrt(diagChainMaxLen2).toFixed(3)}mm, featureThresh=${Math.sqrt(featureSubdivThreshold2).toFixed(3)}mm, chainThresh=${Math.sqrt(chainSubdivThreshold2).toFixed(3)}mm, avgVertEdge=${avgVertGridEdge.toFixed(3)}mm`);
 
+    console.warn(`[StageProbe] subdiv.t2 edgeAdjacency+candidates=${(performance.now() - subdivStart).toFixed(0)}ms (csTris=${csTriSetNow.size} edges=${subEdgeToTris.size} toSplit=${edgesToSplit.length})`);
     // Sort by length descending — split longest edges first
     edgesToSplit.sort((a, b) => b.len2 - a.len2);
 

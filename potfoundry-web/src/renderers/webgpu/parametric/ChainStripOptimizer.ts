@@ -417,11 +417,83 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     }
   }
 
-  // ─── Local position-bound 3D helpers ─────────────────────────────
-  const p3 = (v: number): Vec3 => pos3(positions, v);
-  const triNorm = (p0: Vec3, p1: Vec3, p2: Vec3): Vec3 => triNormalFromPoints(p0, p1, p2);
-  const ma3D = (i0: number, i1: number, i2: number): number => minAngle3D(positions, i0, i1, i2);
-  const ta3D = (i0: number, i1: number, i2: number): number => triAspect3D(positions, i0, i1, i2);
+  // ─── Local position-bound 3D helpers (allocation-free) ───────────
+  // These inline pos3/cross3/dot3/len3/minAngle3D/triAspect3D/isConvexQuad3D
+  // with scalar reads to avoid millions of short-lived Vec3 arrays in the
+  // per-edge flip loops. Float ops are preserved in original order so the
+  // numeric output is bit-identical (pinned by characterization tests).
+  const px = (v: number): number => positions[v * 3];
+  const py = (v: number): number => positions[v * 3 + 1];
+  const pz = (v: number): number => positions[v * 3 + 2];
+
+  // minAngle3D inlined.
+  const ma3D = (i0: number, i1: number, i2: number): number => {
+    const x0 = px(i0), y0 = py(i0), z0 = pz(i0);
+    const x1 = px(i1), y1 = py(i1), z1 = pz(i1);
+    const x2 = px(i2), y2 = py(i2), z2 = pz(i2);
+    const e01x = x1 - x0, e01y = y1 - y0, e01z = z1 - z0;
+    const e02x = x2 - x0, e02y = y2 - y0, e02z = z2 - z0;
+    const e12x = x2 - x1, e12y = y2 - y1, e12z = z2 - z1;
+    const d01 = Math.sqrt(e01x * e01x + e01y * e01y + e01z * e01z);
+    const d02 = Math.sqrt(e02x * e02x + e02y * e02y + e02z * e02z);
+    const d12 = Math.sqrt(e12x * e12x + e12y * e12y + e12z * e12z);
+    if (d01 < 1e-12 || d02 < 1e-12 || d12 < 1e-12) return 0;
+    const cos0 = (e01x * e02x + e01y * e02y + e01z * e02z) / (d01 * d02);
+    const cos1 = (-e01x * e12x + -e01y * e12y + -e01z * e12z) / (d01 * d12);
+    const cos2 = (e12x * -e02x + e12y * -e02y + e12z * -e02z) / (d12 * d02);
+    return Math.min(
+      Math.acos(Math.max(-1, Math.min(1, cos0))),
+      Math.acos(Math.max(-1, Math.min(1, cos1))),
+      Math.acos(Math.max(-1, Math.min(1, cos2))),
+    );
+  };
+
+  // triAspect3D inlined.
+  const ta3D = (i0: number, i1: number, i2: number): number => {
+    const x0 = px(i0), y0 = py(i0), z0 = pz(i0);
+    const x1 = px(i1), y1 = py(i1), z1 = pz(i1);
+    const x2 = px(i2), y2 = py(i2), z2 = pz(i2);
+    const a2 = (x1 - x2) ** 2 + (y1 - y2) ** 2 + (z1 - z2) ** 2;
+    const b2 = (x0 - x2) ** 2 + (y0 - y2) ** 2 + (z0 - z2) ** 2;
+    const c2 = (x0 - x1) ** 2 + (y0 - y1) ** 2 + (z0 - z1) ** 2;
+    const longest2 = Math.max(a2, b2, c2);
+    const longest = Math.sqrt(longest2);
+    const ux = x1 - x0, uy = y1 - y0, uz = z1 - z0;
+    const vx = x2 - x0, vy = y2 - y0, vz = z2 - z0;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const area2 = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (area2 < 1e-15) return 1e6;
+    const shortAlt = area2 / longest;
+    return longest / Math.max(shortAlt, 1e-15);
+  };
+
+  // isConvexQuad3D(positions, vA, vB, vC, vD) inlined; short-circuits on
+  // the same dot>0 conjunction as the original.
+  const convex = (vA: number, vB: number, vC: number, vD: number): boolean => {
+    const ax = px(vA), ay = py(vA), az = pz(vA);
+    const bx = px(vB), by = py(vB), bz = pz(vB);
+    const cx = px(vC), cy = py(vC), cz = pz(vC);
+    const dx = px(vD), dy = py(vD), dz = pz(vD);
+    // n0 = cross(B-A, D-A)
+    let e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+    let e2x = dx - ax, e2y = dy - ay, e2z = dz - az;
+    const n0x = e1y * e2z - e1z * e2y, n0y = e1z * e2x - e1x * e2z, n0z = e1x * e2y - e1y * e2x;
+    // n1 = cross(C-B, A-B)
+    e1x = cx - bx; e1y = cy - by; e1z = cz - bz;
+    e2x = ax - bx; e2y = ay - by; e2z = az - bz;
+    const n1x = e1y * e2z - e1z * e2y, n1y = e1z * e2x - e1x * e2z, n1z = e1x * e2y - e1y * e2x;
+    if (!(n0x * n1x + n0y * n1y + n0z * n1z > 0)) return false;
+    // n2 = cross(D-C, B-C)
+    e1x = dx - cx; e1y = dy - cy; e1z = dz - cz;
+    e2x = bx - cx; e2y = by - cy; e2z = bz - cz;
+    const n2x = e1y * e2z - e1z * e2y, n2y = e1z * e2x - e1x * e2z, n2z = e1x * e2y - e1y * e2x;
+    if (!(n0x * n2x + n0y * n2y + n0z * n2z > 0)) return false;
+    // n3 = cross(A-D, C-D)
+    e1x = ax - dx; e1y = ay - dy; e1z = az - dz;
+    e2x = cx - dx; e2y = cy - dy; e2z = cz - dz;
+    const n3x = e1y * e2z - e1z * e2y, n3y = e1z * e2x - e1x * e2z, n3z = e1x * e2y - e1y * e2x;
+    return n0x * n3x + n0y * n3y + n0z * n3z > 0;
+  };
 
   // ─── Row T-span ──────────────────────────────────────────────────
   const maxSingleRowTSpan = computeMaxRowTSpan(finalT);
@@ -471,8 +543,7 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
   const rowSpanExceeds = (shLo: number, shHi: number, opp0: number, opp1: number): boolean => {
     const t_shLo = vtxT(shLo), t_shHi = vtxT(shHi);
     const t_opp0 = vtxT(opp0), t_opp1 = vtxT(opp1);
-    const allT = [t_shLo, t_shHi, t_opp0, t_opp1];
-    const origTExtent = Math.max(...allT) - Math.min(...allT);
+    const origTExtent = Math.max(t_shLo, t_shHi, t_opp0, t_opp1) - Math.min(t_shLo, t_shHi, t_opp0, t_opp1);
     const newTriATSpan = Math.max(t_shLo, t_opp0, t_opp1) - Math.min(t_shLo, t_opp0, t_opp1);
     const newTriBTSpan = Math.max(t_shHi, t_opp0, t_opp1) - Math.min(t_shHi, t_opp0, t_opp1);
     const maxNewTSpan = Math.max(newTriATSpan, newTriBTSpan);
@@ -482,12 +553,16 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
 
   // Edge-length guard: returns true if new diagonal > 2× longest perimeter edge.
   const edgeLenExceeds = (shLo: number, shHi: number, opp0: number, opp1: number): boolean => {
-    const pShLo = p3(shLo), pOpp0 = p3(opp0), pShHi = p3(shHi), pOpp1 = p3(opp1);
-    const maxPerim2 = Math.max(
-      dist3sq(pShLo, pOpp0), dist3sq(pOpp0, pShHi),
-      dist3sq(pShHi, pOpp1), dist3sq(pOpp1, pShLo),
-    );
-    const newEdge2 = dist3sq(pOpp0, pOpp1);
+    const loX = px(shLo), loY = py(shLo), loZ = pz(shLo);
+    const hiX = px(shHi), hiY = py(shHi), hiZ = pz(shHi);
+    const o0X = px(opp0), o0Y = py(opp0), o0Z = pz(opp0);
+    const o1X = px(opp1), o1Y = py(opp1), o1Z = pz(opp1);
+    const d_lo_o0 = (loX - o0X) ** 2 + (loY - o0Y) ** 2 + (loZ - o0Z) ** 2;
+    const d_o0_hi = (o0X - hiX) ** 2 + (o0Y - hiY) ** 2 + (o0Z - hiZ) ** 2;
+    const d_hi_o1 = (hiX - o1X) ** 2 + (hiY - o1Y) ** 2 + (hiZ - o1Z) ** 2;
+    const d_o1_lo = (o1X - loX) ** 2 + (o1Y - loY) ** 2 + (o1Z - loZ) ** 2;
+    const maxPerim2 = Math.max(d_lo_o0, d_o0_hi, d_hi_o1, d_o1_lo);
+    const newEdge2 = (o0X - o1X) ** 2 + (o0Y - o1Y) ** 2 + (o0Z - o1Z) ** 2;
     return newEdge2 > maxPerim2 * 4.0; // 2.0² = 4.0
   };
 
@@ -501,27 +576,45 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     a0: number, b0: number, c0: number,
     a1: number, b1: number, c1: number,
   ): FlipWinding | null => {
-    const origNormal0 = triNorm(p3(a0), p3(b0), p3(c0));
-    const origNormal1 = triNorm(p3(a1), p3(b1), p3(c1));
-    const avgNormal: Vec3 = [
-      origNormal0[0] + origNormal1[0],
-      origNormal0[1] + origNormal1[1],
-      origNormal0[2] + origNormal1[2],
-    ];
-    if (len3(avgNormal) < 1e-12) return null;
+    // triNorm(p,q,r) = cross(q-p, r-p)
+    const a0x = px(a0), a0y = py(a0), a0z = pz(a0);
+    let qx = px(b0) - a0x, qy = py(b0) - a0y, qz = pz(b0) - a0z;
+    let rx = px(c0) - a0x, ry = py(c0) - a0y, rz = pz(c0) - a0z;
+    const on0x = qy * rz - qz * ry, on0y = qz * rx - qx * rz, on0z = qx * ry - qy * rx;
+    const a1x = px(a1), a1y = py(a1), a1z = pz(a1);
+    qx = px(b1) - a1x; qy = py(b1) - a1y; qz = pz(b1) - a1z;
+    rx = px(c1) - a1x; ry = py(c1) - a1y; rz = pz(c1) - a1z;
+    const on1x = qy * rz - qz * ry, on1y = qz * rx - qx * rz, on1z = qx * ry - qy * rx;
+    const avgX = on0x + on1x, avgY = on0y + on1y, avgZ = on0z + on1z;
+    if (Math.sqrt(avgX * avgX + avgY * avgY + avgZ * avgZ) < 1e-12) return null;
 
-    const pShLo = p3(shLo), pOpp0 = p3(opp0), pShHi = p3(shHi), pOpp1 = p3(opp1);
-    const newNA = triNorm(pShLo, pOpp0, pOpp1);
-    const newNB = triNorm(pShHi, pOpp1, pOpp0);
-    if (dot3(avgNormal, newNA) > 0 && dot3(avgNormal, newNB) > 0) {
+    const loX = px(shLo), loY = py(shLo), loZ = pz(shLo);
+    const hiX = px(shHi), hiY = py(shHi), hiZ = pz(shHi);
+    const o0X = px(opp0), o0Y = py(opp0), o0Z = pz(opp0);
+    const o1X = px(opp1), o1Y = py(opp1), o1Z = pz(opp1);
+    // newNA = triNorm(shLo, opp0, opp1) = cross(opp0-shLo, opp1-shLo)
+    let e1x = o0X - loX, e1y = o0Y - loY, e1z = o0Z - loZ;
+    let e2x = o1X - loX, e2y = o1Y - loY, e2z = o1Z - loZ;
+    const nAx = e1y * e2z - e1z * e2y, nAy = e1z * e2x - e1x * e2z, nAz = e1x * e2y - e1y * e2x;
+    // newNB = triNorm(shHi, opp1, opp0) = cross(opp1-shHi, opp0-shHi)
+    e1x = o1X - hiX; e1y = o1Y - hiY; e1z = o1Z - hiZ;
+    e2x = o0X - hiX; e2y = o0Y - hiY; e2z = o0Z - hiZ;
+    const nBx = e1y * e2z - e1z * e2y, nBy = e1z * e2x - e1x * e2z, nBz = e1x * e2y - e1y * e2x;
+    if (avgX * nAx + avgY * nAy + avgZ * nAz > 0 && avgX * nBx + avgY * nBy + avgZ * nBz > 0) {
       return {
         flipI0: shLo, flipI1: opp0, flipI2: opp1,
         flipJ0: shHi, flipJ1: opp1, flipJ2: opp0,
       };
     }
-    const altNA = triNorm(pShLo, pOpp1, pOpp0);
-    const altNB = triNorm(pShHi, pOpp0, pOpp1);
-    if (dot3(avgNormal, altNA) > 0 && dot3(avgNormal, altNB) > 0) {
+    // altNA = triNorm(shLo, opp1, opp0) = cross(opp1-shLo, opp0-shLo)
+    e1x = o1X - loX; e1y = o1Y - loY; e1z = o1Z - loZ;
+    e2x = o0X - loX; e2y = o0Y - loY; e2z = o0Z - loZ;
+    const aNAx = e1y * e2z - e1z * e2y, aNAy = e1z * e2x - e1x * e2z, aNAz = e1x * e2y - e1y * e2x;
+    // altNB = triNorm(shHi, opp0, opp1) = cross(opp0-shHi, opp1-shHi)
+    e1x = o0X - hiX; e1y = o0Y - hiY; e1z = o0Z - hiZ;
+    e2x = o1X - hiX; e2y = o1Y - hiY; e2z = o1Z - hiZ;
+    const aNBx = e1y * e2z - e1z * e2y, aNBy = e1z * e2x - e1x * e2z, aNBz = e1x * e2y - e1y * e2x;
+    if (avgX * aNAx + avgY * aNAy + avgZ * aNAz > 0 && avgX * aNBx + avgY * aNBy + avgZ * aNBz > 0) {
       return {
         flipI0: shLo, flipI1: opp1, flipI2: opp0,
         flipJ0: shHi, flipJ1: opp0, flipJ2: opp1,
@@ -569,9 +662,11 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     const a1 = combinedIdxs[t1], b1 = combinedIdxs[t1 + 1], c1 = combinedIdxs[t1 + 2];
     const shLo = Number(ek / BigInt(0x200000));
     const shHi = Number(ek % BigInt(0x200000));
-    const set0 = new Set([a0, b0, c0]);
-    const set1 = new Set([a1, b1, c1]);
-    if (!set0.has(shLo) || !set0.has(shHi) || !set1.has(shLo) || !set1.has(shHi)) return null;
+    const in0Lo = a0 === shLo || b0 === shLo || c0 === shLo;
+    const in0Hi = a0 === shHi || b0 === shHi || c0 === shHi;
+    const in1Lo = a1 === shLo || b1 === shLo || c1 === shLo;
+    const in1Hi = a1 === shHi || b1 === shHi || c1 === shHi;
+    if (!in0Lo || !in0Hi || !in1Lo || !in1Hi) return null;
     let opp0 = -1, opp1 = -1;
     for (const v of [a0, b0, c0]) { if (v !== shLo && v !== shHi) { opp0 = v; break; } }
     for (const v of [a1, b1, c1]) { if (v !== shLo && v !== shHi) { opp1 = v; break; } }
@@ -612,7 +707,7 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
       if (constraintEdgeSet.has(edgeKey(opp0, opp1))) continue;
 
       // Convexity check
-      if (!isConvexQuad3D(positions, shLo, opp0, shHi, opp1)) continue;
+      if (!convex(shLo, opp0, shHi, opp1)) continue;
 
       // Row-span guard
       if (rowSpanExceeds(shLo, shHi, opp0, opp1)) {
@@ -697,7 +792,7 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
       if (newValCost >= curValCost) continue;
 
       if (constraintEdgeSet.has(edgeKey(opp0, opp1))) continue;
-      if (!isConvexQuad3D(positions, shLo, opp0, shHi, opp1)) continue;
+      if (!convex(shLo, opp0, shHi, opp1)) continue;
 
       // Row-span guard
       if (rowSpanExceeds(shLo, shHi, opp0, opp1)) continue;
@@ -759,22 +854,26 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
       if (constraintEdgeSet.has(edgeKey(opp0, opp1))) continue;
 
       // Check if the alternative diagonal is actually shorter
-      const pShLo = p3(shLo), pOpp0 = p3(opp0), pShHi = p3(shHi), pOpp1 = p3(opp1);
-      const curDiag2 = dist3sq(pShLo, pShHi);
-      const altDiag2 = dist3sq(pOpp0, pOpp1);
+      const loX = px(shLo), loY = py(shLo), loZ = pz(shLo);
+      const hiX = px(shHi), hiY = py(shHi), hiZ = pz(shHi);
+      const o0X = px(opp0), o0Y = py(opp0), o0Z = pz(opp0);
+      const o1X = px(opp1), o1Y = py(opp1), o1Z = pz(opp1);
+      const curDiag2 = (loX - hiX) ** 2 + (loY - hiY) ** 2 + (loZ - hiZ) ** 2;
+      const altDiag2 = (o0X - o1X) ** 2 + (o0Y - o1Y) ** 2 + (o0Z - o1Z) ** 2;
       if (altDiag2 >= curDiag2) continue; // only flip to shorter diagonal
 
-      if (!isConvexQuad3D(positions, shLo, opp0, shHi, opp1)) continue;
+      if (!convex(shLo, opp0, shHi, opp1)) continue;
 
       // Row-span guard
       if (rowSpanExceeds(shLo, shHi, opp0, opp1)) continue;
 
       // Edge length guard
       {
-        const maxPerim2 = Math.max(
-          dist3sq(pShLo, pOpp0), dist3sq(pOpp0, pShHi),
-          dist3sq(pShHi, pOpp1), dist3sq(pOpp1, pShLo),
-        );
+        const d_lo_o0 = (loX - o0X) ** 2 + (loY - o0Y) ** 2 + (loZ - o0Z) ** 2;
+        const d_o0_hi = (o0X - hiX) ** 2 + (o0Y - hiY) ** 2 + (o0Z - hiZ) ** 2;
+        const d_hi_o1 = (hiX - o1X) ** 2 + (hiY - o1Y) ** 2 + (hiZ - o1Z) ** 2;
+        const d_o1_lo = (o1X - loX) ** 2 + (o1Y - loY) ** 2 + (o1Z - loZ) ** 2;
+        const maxPerim2 = Math.max(d_lo_o0, d_o0_hi, d_hi_o1, d_o1_lo);
         if (altDiag2 > maxPerim2 * 4.0) continue;
       }
 

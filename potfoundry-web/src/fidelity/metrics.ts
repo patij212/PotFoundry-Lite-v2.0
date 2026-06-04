@@ -7,6 +7,24 @@ import type { FidelityMetrics, MeshView, RTrue } from './types';
 
 const TAU = 2 * Math.PI;
 
+/** Default upper bound for expensive sag test triangles in large fidelity runs. */
+const DEFAULT_SAG_TRIANGLE_SAMPLE_LIMIT = 64_000;
+
+/** Default upper bound for 3D triangle-quality scoring in large fidelity runs. */
+const DEFAULT_QUALITY_TRIANGLE_SAMPLE_LIMIT = 256_000;
+
+/** Default upper bound for reference triangles indexed by nearest-surface sag. */
+const DEFAULT_NEAREST_REFERENCE_TRIANGLE_SAMPLE_LIMIT = 256_000;
+
+/** Include every reference orientation in the downsampled nearest-surface index. */
+const ALL_REFERENCE_ORIENTATIONS_COS = 0;
+
+/** Local cell-ring budget before nearest-surface queries switch to fallback sampling. */
+const DEFAULT_NEAREST_SURFACE_MAX_SEARCH_RING = 2;
+
+/** Fallback reference-triangle budget for sparse nearest-surface index misses. */
+const DEFAULT_NEAREST_SURFACE_FALLBACK_TRIANGLE_LIMIT = 4_096;
+
 export interface RadialReferenceOptions {
   thetaBins?: number; // default 720
   zBins?: number;     // default 400
@@ -155,6 +173,41 @@ export interface SagResult {
   rmsSagMm: number;
 }
 
+interface TriangleSample {
+  mesh: MeshView;
+  triangleCount: number;
+  scaleToOriginal: number;
+}
+
+function sampleTriangles(mesh: MeshView, maxTriangles: number | undefined): TriangleSample {
+  const triangleCount = mesh.indices.length / 3;
+  if (
+    maxTriangles === undefined ||
+    maxTriangles <= 0 ||
+    triangleCount <= maxTriangles
+  ) {
+    return { mesh, triangleCount, scaleToOriginal: 1 };
+  }
+
+  const sampleCount = Math.max(1, Math.floor(maxTriangles));
+  const sampled = new Uint32Array(sampleCount * 3);
+  const stride = triangleCount / sampleCount;
+  for (let i = 0; i < sampleCount; i++) {
+    const tri = Math.min(triangleCount - 1, Math.floor((i + 0.5) * stride));
+    const src = tri * 3;
+    const dst = i * 3;
+    sampled[dst] = mesh.indices[src];
+    sampled[dst + 1] = mesh.indices[src + 1];
+    sampled[dst + 2] = mesh.indices[src + 2];
+  }
+
+  return {
+    mesh: { vertices: mesh.vertices, indices: sampled },
+    triangleCount: sampleCount,
+    scaleToOriginal: triangleCount / sampleCount,
+  };
+}
+
 /** Barycentric interior sample weights for a given order (order 4 → 15 samples). */
 function barycentricSamples(order: number): Array<[number, number, number]> {
   const out: Array<[number, number, number]> = [];
@@ -195,6 +248,10 @@ export interface NearestSurfaceOptions {
   /** XY spatial-hash cell size in mm. Small keeps candidates-per-query low on
    *  the dense reference (~0.1mm triangles → a 2mm cell holds a few hundred). */
   cellMm?: number; // default 2
+  /** Maximum empty cell rings to scan before using the bounded fallback sample. */
+  maxSearchRing?: number;
+  /** Reference triangles tested when a sparse query misses the local cell rings. */
+  fallbackTriangleLimit?: number;
 }
 
 /**
@@ -213,6 +270,8 @@ export function buildNearestSurface(
 ): NearestSurface {
   const minNonVerticalCos = options.minNonVerticalCos ?? NEAR_VERTICAL_COS;
   const cell = options.cellMm ?? 2;
+  const maxSearchRing = options.maxSearchRing ?? DEFAULT_NEAREST_SURFACE_MAX_SEARCH_RING;
+  const fallbackTriangleLimit = options.fallbackTriangleLimit ?? DEFAULT_NEAREST_SURFACE_FALLBACK_TRIANGLE_LIMIT;
   const invCell = 1 / cell;
 
   // Triangle coords (9 per triangle) for the indexed subset.
@@ -264,6 +323,7 @@ export function buildNearestSurface(
   }
 
   const triCount = tris.length / 9;
+  const fallbackTriBases = buildFallbackTriBases(triCount, fallbackTriangleLimit);
 
   const distToTri = (px: number, py: number, pz: number, triBase: number): number => {
     const o = triBase * 9;
@@ -285,8 +345,7 @@ export function buildNearestSurface(
       let foundRing = -1;
       // Expand in cube shells; once a candidate is found, search one more shell
       // (a closer triangle can sit just across a cell boundary) then stop.
-      const maxRing = 4096;
-      for (let ring = 0; ring <= maxRing; ring++) {
+      for (let ring = 0; ring <= maxSearchRing; ring++) {
         if (foundRing >= 0 && ring > foundRing + 1) break;
         for (let gx = qx - ring; gx <= qx + ring; gx++) {
           for (let gy = qy - ring; gy <= qy + ring; gy++) {
@@ -311,10 +370,10 @@ export function buildNearestSurface(
           }
         }
       }
-      // Fallback: sparse/extreme query that missed every populated cell ring —
-      // brute-force so the measurement is never silently Infinity.
+      // Fallback: sparse/extreme query that missed every populated local ring.
+      // This is deliberately sampled so downscaled metric runs stay bounded.
       if (best === Infinity) {
-        for (let triBase = 0; triBase < triCount; triBase++) {
+        for (const triBase of fallbackTriBases) {
           const d2 = distToTri(px, py, pz, triBase);
           if (d2 < best) best = d2;
         }
@@ -322,6 +381,22 @@ export function buildNearestSurface(
       return best;
     },
   };
+}
+
+function buildFallbackTriBases(triCount: number, fallbackTriangleLimit: number): Uint32Array {
+  if (triCount === 0) return new Uint32Array(0);
+  if (fallbackTriangleLimit <= 0 || triCount <= fallbackTriangleLimit) {
+    const all = new Uint32Array(triCount);
+    for (let triBase = 0; triBase < triCount; triBase++) all[triBase] = triBase;
+    return all;
+  }
+  const sampleCount = Math.max(1, Math.floor(fallbackTriangleLimit));
+  const out = new Uint32Array(sampleCount);
+  const stride = triCount / sampleCount;
+  for (let i = 0; i < sampleCount; i++) {
+    out[i] = Math.min(triCount - 1, Math.floor((i + 0.5) * stride));
+  }
+  return out;
 }
 
 /** Squared distance between two points. */
@@ -461,6 +536,19 @@ export interface TriangleQualityResult {
   sliverCount: number;
 }
 
+export interface TriangleQualityDiagnosticSample {
+  triangleIndex: number;
+  indices: [number, number, number];
+  aspect3D: number;
+  minAngleDeg: number;
+  edgeLengthsMm: [number, number, number];
+  uvs?: [[number, number, number], [number, number, number], [number, number, number]];
+}
+
+export interface TriangleQualityDiagnostics extends TriangleQualityResult {
+  worst: TriangleQualityDiagnosticSample[];
+}
+
 /**
  * Finite aspect sentinel for zero-area (degenerate) triangles. Using a large
  * finite value (not Infinity) keeps every FidelityMetrics field JSON-numeric,
@@ -531,6 +619,90 @@ export function triangleQuality3D(mesh: MeshView): TriangleQualityResult {
   };
 }
 
+export function triangleQualityDiagnostics(mesh: MeshView, sampleLimit = 16): TriangleQualityDiagnostics {
+  const { vertices, indices, uvs } = mesh;
+  let maxAspect = 0;
+  let minAngle = 180;
+  let slivers = 0;
+  let goodCount = 0;
+  const worst: TriangleQualityDiagnosticSample[] = [];
+  const limit = Math.max(0, Math.floor(sampleLimit));
+
+  const trackWorst = (sample: TriangleQualityDiagnosticSample): void => {
+    if (limit === 0) return;
+    if (worst.length < limit) {
+      worst.push(sample);
+      worst.sort((a, b) => b.aspect3D - a.aspect3D);
+    } else if (sample.aspect3D > worst[worst.length - 1].aspect3D) {
+      worst[worst.length - 1] = sample;
+      worst.sort((a, b) => b.aspect3D - a.aspect3D);
+    }
+  };
+
+  for (let t = 0; t < indices.length; t += 3) {
+    const aIdx = indices[t];
+    const bIdx = indices[t + 1];
+    const cIdx = indices[t + 2];
+    const ia = aIdx * 3;
+    const ib = bIdx * 3;
+    const ic = cIdx * 3;
+    const ax = vertices[ia], ay = vertices[ia + 1], az = vertices[ia + 2];
+    const bx = vertices[ib], by = vertices[ib + 1], bz = vertices[ib + 2];
+    const cx = vertices[ic], cy = vertices[ic + 1], cz = vertices[ic + 2];
+
+    const ab2 = dist2(ax, ay, az, bx, by, bz);
+    const bc2 = dist2(bx, by, bz, cx, cy, cz);
+    const ca2 = dist2(cx, cy, cz, ax, ay, az);
+    const ab = Math.sqrt(ab2);
+    const bc = Math.sqrt(bc2);
+    const ca = Math.sqrt(ca2);
+    const longest2 = Math.max(ab2, bc2, ca2);
+
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const cxp = uy * vz - uz * vy;
+    const cyp = uz * vx - ux * vz;
+    const czp = ux * vy - uy * vx;
+    const area = 0.5 * Math.hypot(cxp, cyp, czp);
+
+    let aspect = DEGENERATE_ASPECT;
+    let triMin = 0;
+    if (area > 1e-12) {
+      aspect = (longest2 * Math.sqrt(3)) / (4 * area);
+      const angA = lawOfCosines(bc, ca, ab);
+      const angB = lawOfCosines(ab, ca, bc);
+      const angC = lawOfCosines(ab, bc, ca);
+      triMin = Math.min(angA, angB, angC);
+      if (triMin < minAngle) minAngle = triMin;
+      goodCount++;
+    }
+
+    if (aspect > maxAspect) maxAspect = aspect;
+    if (aspect > ASPECT_MAX) slivers++;
+    trackWorst({
+      triangleIndex: t / 3,
+      indices: [aIdx, bIdx, cIdx],
+      aspect3D: aspect,
+      minAngleDeg: triMin,
+      edgeLengthsMm: [ab, bc, ca],
+      uvs: uvs
+        ? [
+          [uvs[ia], uvs[ia + 1], uvs[ia + 2]],
+          [uvs[ib], uvs[ib + 1], uvs[ib + 2]],
+          [uvs[ic], uvs[ic + 1], uvs[ic + 2]],
+        ]
+        : undefined,
+    });
+  }
+
+  return {
+    maxAspect3D: maxAspect,
+    minAngleDeg: goodCount > 0 ? minAngle : 0,
+    sliverCount: slivers,
+    worst,
+  };
+}
+
 function dist2(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
   const dx = ax - bx, dy = ay - by, dz = az - bz;
   return dx * dx + dy * dy + dz * dz;
@@ -551,6 +723,45 @@ export interface TopologyResult {
   orientationMismatches: number;
 }
 
+export type TopologySampleKind = 'boundary' | 'nonManifold' | 'orientationMismatch';
+
+export interface TopologyEdgeSample {
+  kind: TopologySampleKind;
+  canonicalA: number;
+  canonicalB: number;
+  forward: number;
+  reverse: number;
+  total: number;
+  edgeLengthMm: number;
+  midpoint: [number, number, number];
+  a: [number, number, number];
+  b: [number, number, number];
+  uvA?: [number, number, number];
+  uvB?: [number, number, number];
+  firstForwardTriangle: number | null;
+  secondForwardTriangle: number | null;
+  firstReverseTriangle: number | null;
+  secondReverseTriangle: number | null;
+}
+
+export interface TopologyDiagnostics extends TopologyResult {
+  triangleCount: number;
+  vertexCount: number;
+  weldToleranceMm: number;
+  samples: TopologyEdgeSample[];
+}
+
+interface TopologyUse {
+  lo: number;
+  hi: number;
+  forward: number;
+  reverse: number;
+  firstForwardTriangle: number | null;
+  secondForwardTriangle: number | null;
+  firstReverseTriangle: number | null;
+  secondReverseTriangle: number | null;
+}
+
 /**
  * Weld vertices by position quantization, then analyze the directed edge map:
  * - boundaryEdges: undirected edges used by exactly one triangle side.
@@ -559,13 +770,48 @@ export interface TopologyResult {
  *   (i.e. not one forward + one reverse) → inconsistent winding.
  */
 export function topologyMetric(mesh: MeshView, weldToleranceMm: number): TopologyResult {
+  return summarizeTopologyUses(collectTopologyUses(mesh, weldToleranceMm).uses);
+}
+
+export function topologyDiagnostics(
+  mesh: MeshView,
+  weldToleranceMm: number,
+  sampleLimit = 16,
+): TopologyDiagnostics {
+  const { uses } = collectTopologyUses(mesh, weldToleranceMm);
+  const summary = summarizeTopologyUses(uses);
+  const samples: TopologyEdgeSample[] = [];
+
+  if (sampleLimit > 0) {
+    for (const use of uses.values()) {
+      const kind = classifyTopologyUse(use);
+      if (!kind) continue;
+      samples.push(sampleTopologyEdge(mesh.vertices, mesh.uvs, use, kind));
+      if (samples.length >= sampleLimit) break;
+    }
+  }
+
+  return {
+    ...summary,
+    triangleCount: mesh.indices.length / 3,
+    vertexCount: mesh.vertices.length / 3,
+    weldToleranceMm,
+    samples,
+  };
+}
+
+function collectTopologyUses(
+  mesh: MeshView,
+  weldToleranceMm: number,
+): { uses: Map<string, TopologyUse>; remap: Uint32Array } {
   const remap = buildWeldRemap(mesh.vertices, weldToleranceMm);
   const { indices } = mesh;
 
   // Directed edge usage keyed by "min:max"; track forward/reverse counts.
-  const uses = new Map<string, { forward: number; reverse: number }>();
+  const uses = new Map<string, TopologyUse>();
   for (let t = 0; t < indices.length; t += 3) {
     const tri = [remap[indices[t]], remap[indices[t + 1]], remap[indices[t + 2]]];
+    const triangleIndex = t / 3;
     for (let e = 0; e < 3; e++) {
       const a = tri[e];
       const b = tri[(e + 1) % 3];
@@ -574,22 +820,90 @@ export function topologyMetric(mesh: MeshView, weldToleranceMm: number): Topolog
       const hi = Math.max(a, b);
       const key = `${lo}:${hi}`;
       let u = uses.get(key);
-      if (!u) { u = { forward: 0, reverse: 0 }; uses.set(key, u); }
-      if (a === lo) u.forward++; else u.reverse++;
+      if (!u) {
+        u = {
+          lo,
+          hi,
+          forward: 0,
+          reverse: 0,
+          firstForwardTriangle: null,
+          secondForwardTriangle: null,
+          firstReverseTriangle: null,
+          secondReverseTriangle: null,
+        };
+        uses.set(key, u);
+      }
+      if (a === lo) {
+        u.forward++;
+        if (u.firstForwardTriangle === null) u.firstForwardTriangle = triangleIndex;
+        else if (u.secondForwardTriangle === null) u.secondForwardTriangle = triangleIndex;
+      } else {
+        u.reverse++;
+        if (u.firstReverseTriangle === null) u.firstReverseTriangle = triangleIndex;
+        else if (u.secondReverseTriangle === null) u.secondReverseTriangle = triangleIndex;
+      }
     }
   }
 
+  return { uses, remap };
+}
+
+function summarizeTopologyUses(uses: Map<string, TopologyUse>): TopologyResult {
   let boundary = 0;
   let nonManifold = 0;
   let mismatch = 0;
   for (const u of uses.values()) {
-    const total = u.forward + u.reverse;
-    if (total === 1) boundary++;
-    else if (total > 2) nonManifold++;
-    else if (total === 2 && !(u.forward === 1 && u.reverse === 1)) mismatch++;
+    const kind = classifyTopologyUse(u);
+    if (kind === 'boundary') boundary++;
+    else if (kind === 'nonManifold') nonManifold++;
+    else if (kind === 'orientationMismatch') mismatch++;
   }
 
   return { boundaryEdges: boundary, nonManifoldEdges: nonManifold, orientationMismatches: mismatch };
+}
+
+function classifyTopologyUse(u: TopologyUse): TopologySampleKind | null {
+  const total = u.forward + u.reverse;
+  if (total === 1) return 'boundary';
+  if (total > 2) return 'nonManifold';
+  if (total === 2 && !(u.forward === 1 && u.reverse === 1)) return 'orientationMismatch';
+  return null;
+}
+
+function sampleTopologyEdge(
+  vertices: Float32Array,
+  uvs: Float32Array | undefined,
+  use: TopologyUse,
+  kind: TopologySampleKind,
+): TopologyEdgeSample {
+  const ax = vertices[use.lo * 3];
+  const ay = vertices[use.lo * 3 + 1];
+  const az = vertices[use.lo * 3 + 2];
+  const bx = vertices[use.hi * 3];
+  const by = vertices[use.hi * 3 + 1];
+  const bz = vertices[use.hi * 3 + 2];
+  const edgeLengthMm = Math.sqrt(dist2(ax, ay, az, bx, by, bz));
+  const sample: TopologyEdgeSample = {
+    kind,
+    canonicalA: use.lo,
+    canonicalB: use.hi,
+    forward: use.forward,
+    reverse: use.reverse,
+    total: use.forward + use.reverse,
+    edgeLengthMm,
+    midpoint: [(ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5],
+    a: [ax, ay, az],
+    b: [bx, by, bz],
+    firstForwardTriangle: use.firstForwardTriangle,
+    secondForwardTriangle: use.secondForwardTriangle,
+    firstReverseTriangle: use.firstReverseTriangle,
+    secondReverseTriangle: use.secondReverseTriangle,
+  };
+  if (uvs && use.hi * 3 + 2 < uvs.length) {
+    sample.uvA = [uvs[use.lo * 3], uvs[use.lo * 3 + 1], uvs[use.lo * 3 + 2]];
+    sample.uvB = [uvs[use.hi * 3], uvs[use.hi * 3 + 1], uvs[use.hi * 3 + 2]];
+  }
+  return sample;
 }
 
 /** Map each vertex index to a canonical welded index via position quantization. */
@@ -628,6 +942,12 @@ export interface ComputeFidelityArgs {
   features: { expected: number; present: number };
   weldToleranceMm: number;
   sagSampleOrder?: number;
+  /** 0 or negative disables downsampling and measures sag on every test triangle. */
+  sagTriangleSampleLimit?: number;
+  /** 0 or negative disables downsampling and scores quality on every test triangle. */
+  qualityTriangleSampleLimit?: number;
+  /** 0 or negative disables downsampling for the nearest-surface reference index. */
+  nearestReferenceTriangleSampleLimit?: number;
   referenceTriangleCount?: number;
 }
 
@@ -635,11 +955,27 @@ export interface ComputeFidelityArgs {
 export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetrics {
   const { styleId, mesh, denseVertices, denseIndices, features, weldToleranceMm } = args;
   const ref = buildRadialReference(denseVertices);
-  const nearestSurface = denseIndices
-    ? buildNearestSurface(denseVertices, denseIndices)
+  const sagMesh = sampleTriangles(
+    mesh,
+    args.sagTriangleSampleLimit ?? DEFAULT_SAG_TRIANGLE_SAMPLE_LIMIT,
+  );
+  const qualityMesh = sampleTriangles(
+    mesh,
+    args.qualityTriangleSampleLimit ?? DEFAULT_QUALITY_TRIANGLE_SAMPLE_LIMIT,
+  );
+  const nearestReference = denseIndices
+    ? sampleTriangles(
+      { vertices: denseVertices, indices: denseIndices },
+      args.nearestReferenceTriangleSampleLimit ?? DEFAULT_NEAREST_REFERENCE_TRIANGLE_SAMPLE_LIMIT,
+    ).mesh.indices
     : undefined;
-  const sag = sagDeviation(mesh, ref.rTrue, args.sagSampleOrder ?? 4, nearestSurface);
-  const quality = triangleQuality3D(mesh);
+  const nearestSurface = denseIndices
+    ? buildNearestSurface(denseVertices, nearestReference!, {
+      minNonVerticalCos: ALL_REFERENCE_ORIENTATIONS_COS,
+    })
+    : undefined;
+  const sag = sagDeviation(sagMesh.mesh, ref.rTrue, args.sagSampleOrder ?? 4, nearestSurface);
+  const quality = triangleQuality3D(qualityMesh.mesh);
   const topo = topologyMetric(mesh, weldToleranceMm);
   const dropped = Math.max(0, features.expected - features.present);
 
@@ -654,7 +990,7 @@ export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetri
     sagReferenceBinZmm: ref.binZmm,
     maxAspect3D: quality.maxAspect3D,
     minAngleDeg: quality.minAngleDeg,
-    sliverCount: quality.sliverCount,
+    sliverCount: Math.round(quality.sliverCount * qualityMesh.scaleToOriginal),
     boundaryEdges: topo.boundaryEdges,
     nonManifoldEdges: topo.nonManifoldEdges,
     orientationMismatches: topo.orientationMismatches,

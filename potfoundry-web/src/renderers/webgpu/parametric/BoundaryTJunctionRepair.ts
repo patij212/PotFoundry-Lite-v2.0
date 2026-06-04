@@ -7,9 +7,82 @@
  * geometry is moved and feature/chain precision is preserved.
  */
 
-const EDGE_STRIDE = 0x200000n;
+// Number-encoded undirected edge key: min(a,b) * EDGE_STRIDE + max(a,b).
+// Vertex indices are < EDGE_STRIDE (2^21); the product stays < 2^42, well within
+// the 2^53 safe-integer range, so Number keys are collision-free and far cheaper
+// than BigInt (no per-edge heap allocation, faster Map hashing).
+const EDGE_STRIDE = 0x200000;
 const UV_WELD_EPS = 1e-5;
 const UV_SEGMENT_SPLIT_EPS = 1e-4;
+const PROJECTED_LOOP_FILL_MAX_ASPECT = 100;
+
+// --- Precomputed canonical vertex map -------------------------------------
+// canonicalizeVertex maps each vertex index to a canonical id derived from a
+// string position/UV key. That key build + Map<string,number> lookup dominated
+// the T-junction repair (collectBoundaryEdges was ~95% of every sub-pass, and
+// each sub-pass rebuilt it from scratch ~6x per pass). The canonical identity of
+// a vertex is a pure function of (positions[v]/uvs[v], weld tolerance) and the
+// repair passes only re-reference existing vertex indices (they never append new
+// vertices), so the vertex->id mapping is invariant across all passes within one
+// repairOuterWallTJunctions call. We therefore build it ONCE and reuse it.
+//
+// The cache is keyed by the input array references + tolerance, so a different
+// mesh (new typed arrays) transparently rebuilds. JS is single-threaded, so no
+// interleaving across concurrent meshes is possible.
+let __gvcUvs: Float32Array | null = null;
+let __gvcPositions: Float32Array | null = null;
+let __gvcTol = Number.NaN;
+let __gvcIds: Int32Array | null = null;
+
+function getGlobalVertexCanonical(
+    uvs: Float32Array,
+    positions: Float32Array | undefined,
+    topologyWeldToleranceMm: number,
+): Int32Array {
+    const pos = positions ?? null;
+    if (__gvcIds && __gvcUvs === uvs && __gvcPositions === pos && __gvcTol === topologyWeldToleranceMm) {
+        return __gvcIds;
+    }
+    const numVerts = (uvs.length / 3) | 0;
+    const ids = new Int32Array(numVerts);
+    const keyToId = new Map<string, number>();
+    let nextId = 0;
+    for (let v = 0; v < numVerts; v++) {
+        const geometryKey = positions
+            ? canonicalGeometryKey(positions, v, topologyWeldToleranceMm)
+            : null;
+        const key = geometryKey ?? canonicalUvKey(uvs, v);
+        let id = keyToId.get(key);
+        if (id === undefined) {
+            id = nextId++;
+            keyToId.set(key, id);
+        }
+        ids[v] = id;
+    }
+    __gvcUvs = uvs;
+    __gvcPositions = pos;
+    __gvcTol = topologyWeldToleranceMm;
+    __gvcIds = ids;
+    return ids;
+}
+
+// TEMP-TJPROBE: module-level deadline so inner loops can self-abort even when a
+// single sub-pass is itself the multi-minute sink. repairOuterWallTJunctions arms it;
+// inner hot loops call __tjAbort() which throws past the deadline, unwinding the sync
+// block so the E2E can read window.__pfStageLog. REMOVE once the tail hang is fixed.
+let __tjDeadlineAt = 0;
+let __tjAbortCounter = 0;
+function __tjAbort(where: string): void {
+    if (__tjDeadlineAt === 0) return;
+    // Sample the clock cheaply (every 4096 calls) to avoid per-iteration perf cost.
+    if ((++__tjAbortCounter & 0xfff) !== 0) return;
+    if (performance.now() > __tjDeadlineAt) {
+        try {
+            (globalThis as unknown as { __pfStageLog?: string[] }).__pfStageLog?.push(`TJ-ABORT at ${where} t=${performance.now().toFixed(0)}`);
+        } catch { /* noop */ }
+        throw new Error(`TJPROBE_DEADLINE at ${where}`);
+    }
+}
 
 export interface BoundaryTJunctionRepairResult {
     indices: Uint32Array;
@@ -52,7 +125,7 @@ export interface BoundaryChainFillResult {
 }
 
 interface BoundaryEdgeRecord {
-    key: bigint;
+    key: number;
     triOffset: number;
     rawA: number;
     rawB: number;
@@ -74,7 +147,7 @@ interface SplitSequence {
 }
 
 interface CanonicalEdgeState {
-    edgeCounts: Map<bigint, number>;
+    edgeCounts: Map<number, number>;
     canonical: CanonicalVertexData;
     keyToId: Map<string, number>;
 }
@@ -87,10 +160,10 @@ type SurfaceJoinKey =
     | 'drainTop'
     | 'drainBottom';
 
-function edgeKey(a: number, b: number): bigint {
+function edgeKey(a: number, b: number): number {
     return a < b
-        ? BigInt(a) * EDGE_STRIDE + BigInt(b)
-        : BigInt(b) * EDGE_STRIDE + BigInt(a);
+        ? a * EDGE_STRIDE + b
+        : b * EDGE_STRIDE + a;
 }
 
 function isOuterMidVertex(uvs: Float32Array, v: number): boolean {
@@ -153,17 +226,17 @@ function canonicalizeVertex(
     const cached = canonical.remap.get(vertexIdx);
     if (cached !== undefined) return cached;
 
-    const geometryKey = positions
-        ? canonicalGeometryKey(positions, vertexIdx, topologyWeldToleranceMm)
-        : null;
-    const key = geometryKey ?? canonicalUvKey(uvs, vertexIdx);
-    let id = keyToId.get(key);
-    if (id === undefined) {
-        id = canonical.nextId++;
-        keyToId.set(key, id);
+    // O(1) lookup into the precomputed global vertex->canonicalId map instead of
+    // rebuilding a position/UV string key here. keyToId is retained in the
+    // signature for call-site compatibility but is no longer consulted on this
+    // (geometry/UV) path. representativeRaw stays first-encounter in this pass's
+    // triangle iteration order, identical to the previous per-pass behavior.
+    void keyToId;
+    const id = getGlobalVertexCanonical(uvs, positions, topologyWeldToleranceMm)[vertexIdx];
+    canonical.remap.set(vertexIdx, id);
+    if (!canonical.representativeRaw.has(id)) {
         canonical.representativeRaw.set(id, vertexIdx);
     }
-    canonical.remap.set(vertexIdx, id);
     return id;
 }
 
@@ -254,11 +327,17 @@ function pointOnJoinSegmentParam(uvs: Float32Array, a: number, b: number, p: num
     const join = surfaceJoinKey(uvs, a);
     if (!join || surfaceJoinKey(uvs, b) !== join || surfaceJoinKey(uvs, p) !== join) return null;
 
-    const au = uvs[a * 3];
-    const bu = uvs[b * 3];
-    const pu = uvs[p * 3];
+    const au0 = uvs[a * 3];
+    const bu0 = uvs[b * 3];
+    const pu0 = uvs[p * 3];
+    const center = Math.abs(au0 - bu0) > 0.5
+        ? (unwrapUToCenter(au0, bu0) + bu0) * 0.5
+        : (au0 + bu0) * 0.5;
+    const au = unwrapUToCenter(au0, center);
+    const bu = unwrapUToCenter(bu0, center);
+    const pu = unwrapUToCenter(pu0, center);
     const du = bu - au;
-    if (Math.abs(du) > 0.5 || Math.abs(du) < 1e-12) return null;
+    if (Math.abs(du) < 1e-12) return null;
 
     const s = (pu - au) / du;
     if (s <= 1e-6 || s >= 1 - 1e-6) return null;
@@ -281,66 +360,86 @@ function emitTriCCW(buf: number[], a: number, b: number, c: number, uvs: Float32
     else buf.push(a, c, b);
 }
 
+// Reconstruct a boundary-edge record from a packed location (triOffset*4 + edgeIndex)
+// using the precomputed global canonical ids. Avoids storing a record object per edge.
+function makeEdgeRecord(
+    indices: Uint32Array,
+    globalIds: Int32Array,
+    loc: number,
+): BoundaryEdgeRecord {
+    const i = loc & 3;
+    const t = (loc - i) / 4;
+    const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+    let rawA: number, rawB: number, opp: number;
+    if (i === 0) { rawA = a; rawB = b; opp = c; }
+    else if (i === 1) { rawA = b; rawB = c; opp = a; }
+    else { rawA = c; rawB = a; opp = b; }
+    const canonA = globalIds[rawA], canonB = globalIds[rawB], oppCanon = globalIds[opp];
+    return { key: edgeKey(canonA, canonB), triOffset: t, rawA, rawB, canonA, canonB, opp, oppCanon };
+}
+
 function collectBoundaryEdges(
     indices: Uint32Array,
     outerIdxCount: number,
     uvs: Float32Array,
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
+    collectEdgeRecords: boolean = false,
 ): {
     records: BoundaryEdgeRecord[];
-    boundaryKeys: Set<bigint>;
+    boundaryKeys: Set<number>;
     boundaryNeighbors: Map<number, Set<number>>;
     representativeRaw: Map<number, number>;
-    edgeCounts: Map<bigint, number>;
-    edgeRecordsByKey: Map<bigint, BoundaryEdgeRecord[]>;
+    edgeCounts: Map<number, number>;
+    edgeRecordsByKey: Map<number, BoundaryEdgeRecord[]>;
 } {
-    const edgeCounts = new Map<bigint, number>();
-    const edgeSamples = new Map<bigint, BoundaryEdgeRecord>();
-    const edgeRecordsByKey = new Map<bigint, BoundaryEdgeRecord[]>();
-    const canonical: CanonicalVertexData = {
-        remap: new Map<number, number>(),
-        representativeRaw: new Map<number, number>(),
-        nextId: 0,
-    };
-    const keyToId = new Map<string, number>();
+    // Use the precomputed global vertex->canonicalId map. The canonical identity of a
+    // vertex is invariant across passes (uvs/positions never change, splits only reuse
+    // existing vertices), so we avoid the per-vertex string-key rebuild and the per-pass
+    // remap Map entirely. We also avoid allocating a record object per directed edge
+    // (~5M/pass): edge counts are tallied with a single first-occurrence location per key,
+    // and record objects are materialized only for boundary edges (count===1, ~few 100K)
+    // and — when requested — non-manifold edges (count>=3, rare). This is output-identical
+    // to the prior allocate-everything implementation; representativeRaw and boundary
+    // record/order semantics are preserved (first-encounter in triangle iteration order).
+    const globalIds = getGlobalVertexCanonical(uvs, positions, topologyWeldToleranceMm);
+    const edgeCounts = new Map<number, number>();
+    const firstLoc = new Map<number, number>();
+    const representativeRaw = new Map<number, number>();
 
+    // Pass A: tally edge counts, capture each edge's first-occurrence location, and
+    // record representativeRaw (first raw vertex seen for each canonical id).
     for (let t = 0; t < outerIdxCount; t += 3) {
+        __tjAbort('collectBoundaryEdges'); // TEMP-TJPROBE
         const a = indices[t], b = indices[t + 1], c = indices[t + 2];
         if (a === b || b === c || a === c) continue;
-        const ca = canonicalizeVertex(uvs, a, canonical, keyToId, positions, topologyWeldToleranceMm);
-        const cb = canonicalizeVertex(uvs, b, canonical, keyToId, positions, topologyWeldToleranceMm);
-        const cc = canonicalizeVertex(uvs, c, canonical, keyToId, positions, topologyWeldToleranceMm);
+        const ca = globalIds[a], cb = globalIds[b], cc = globalIds[c];
+        if (!representativeRaw.has(ca)) representativeRaw.set(ca, a);
+        if (!representativeRaw.has(cb)) representativeRaw.set(cb, b);
+        if (!representativeRaw.has(cc)) representativeRaw.set(cc, c);
         if (ca === cb || cb === cc || ca === cc) continue;
 
-        const triEdges: Array<[number, number, number, number, number, number]> = [
-            [a, b, ca, cb, c, cc],
-            [b, c, cb, cc, a, ca],
-            [c, a, cc, ca, b, cb],
-        ];
-        for (const [rawA, rawB, canonA, canonB, opp, oppCanon] of triEdges) {
-            const key = edgeKey(canonA, canonB);
-            edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1);
-            let recordsForKey = edgeRecordsByKey.get(key);
-            if (!recordsForKey) {
-                recordsForKey = [];
-                edgeRecordsByKey.set(key, recordsForKey);
-            }
-            const record = { key, triOffset: t, rawA, rawB, canonA, canonB, opp, oppCanon };
-            recordsForKey.push(record);
-            if (!edgeSamples.has(key)) {
-                edgeSamples.set(key, record);
-            }
-        }
+        const k0 = edgeKey(ca, cb);
+        edgeCounts.set(k0, (edgeCounts.get(k0) ?? 0) + 1);
+        if (!firstLoc.has(k0)) firstLoc.set(k0, t * 4 + 0);
+        const k1 = edgeKey(cb, cc);
+        edgeCounts.set(k1, (edgeCounts.get(k1) ?? 0) + 1);
+        if (!firstLoc.has(k1)) firstLoc.set(k1, t * 4 + 1);
+        const k2 = edgeKey(cc, ca);
+        edgeCounts.set(k2, (edgeCounts.get(k2) ?? 0) + 1);
+        if (!firstLoc.has(k2)) firstLoc.set(k2, t * 4 + 2);
     }
 
+    // Pass B: materialize boundary records (count===1) in edgeCounts insertion order,
+    // matching the prior implementation's `records` ordering exactly.
     const records: BoundaryEdgeRecord[] = [];
-    const boundaryKeys = new Set<bigint>();
+    const boundaryKeys = new Set<number>();
     const boundaryNeighbors = new Map<number, Set<number>>();
     for (const [key, count] of edgeCounts) {
         if (count !== 1) continue;
-        const sample = edgeSamples.get(key);
-        if (!sample) continue;
+        const loc = firstLoc.get(key);
+        if (loc === undefined) continue;
+        const sample = makeEdgeRecord(indices, globalIds, loc);
         records.push(sample);
         boundaryKeys.add(key);
         let aNeighbors = boundaryNeighbors.get(sample.canonA);
@@ -357,11 +456,40 @@ function collectBoundaryEdges(
         bNeighbors.add(sample.canonA);
     }
 
+    // Pass C (only when a caller needs per-edge fan records): materialize records for
+    // non-manifold edges (count>=3) in triangle iteration order. Callers only ever query
+    // edgeRecordsByKey for count>2 keys, so building it solely for those is observationally
+    // identical while skipping millions of manifold-edge allocations.
+    const edgeRecordsByKey = new Map<number, BoundaryEdgeRecord[]>();
+    if (collectEdgeRecords) {
+        for (let t = 0; t < outerIdxCount; t += 3) {
+            __tjAbort('collectBoundaryEdges'); // TEMP-TJPROBE
+            const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+            if (a === b || b === c || a === c) continue;
+            const ca = globalIds[a], cb = globalIds[b], cc = globalIds[c];
+            if (ca === cb || cb === cc || ca === cc) continue;
+            const edgeKeysAndLocs: Array<[number, number]> = [
+                [edgeKey(ca, cb), t * 4 + 0],
+                [edgeKey(cb, cc), t * 4 + 1],
+                [edgeKey(cc, ca), t * 4 + 2],
+            ];
+            for (const [key, loc] of edgeKeysAndLocs) {
+                if ((edgeCounts.get(key) ?? 0) < 3) continue;
+                let arr = edgeRecordsByKey.get(key);
+                if (!arr) {
+                    arr = [];
+                    edgeRecordsByKey.set(key, arr);
+                }
+                arr.push(makeEdgeRecord(indices, globalIds, loc));
+            }
+        }
+    }
+
     return {
         records,
         boundaryKeys,
         boundaryNeighbors,
-        representativeRaw: canonical.representativeRaw,
+        representativeRaw,
         edgeCounts,
         edgeRecordsByKey,
     };
@@ -373,7 +501,7 @@ function buildCanonicalEdgeState(
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
 ): CanonicalEdgeState {
-    const edgeCounts = new Map<bigint, number>();
+    const edgeCounts = new Map<number, number>();
     const canonical: CanonicalVertexData = {
         remap: new Map<number, number>(),
         representativeRaw: new Map<number, number>(),
@@ -382,6 +510,7 @@ function buildCanonicalEdgeState(
     const keyToId = new Map<string, number>();
 
     for (let t = 0; t < indices.length; t += 3) {
+        __tjAbort('buildCanonicalEdgeState'); // TEMP-TJPROBE
         const a = indices[t], b = indices[t + 1], c = indices[t + 2];
         if (a === b || b === c || a === c) continue;
         const ca = canonicalizeVertex(uvs, a, canonical, keyToId, positions, topologyWeldToleranceMm);
@@ -405,7 +534,7 @@ function addTriangleEdgesIfManifoldSafe(
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
 ): boolean {
-    const pending = new Map<bigint, number>();
+    const pending = new Map<number, number>();
 
     for (let i = 0; i < tris.length; i += 3) {
         const a = tris[i], b = tris[i + 1], c = tris[i + 2];
@@ -427,6 +556,48 @@ function addTriangleEdgesIfManifoldSafe(
     }
 
     return true;
+}
+
+/**
+ * Incremental, per-triangle variant of addTriangleEdgesIfManifoldSafe.
+ *
+ * Instead of all-or-nothing (one unsafe/degenerate candidate discarding the WHOLE
+ * batch), this commits each candidate triangle independently against the live edge
+ * map and returns the accepted subset. A candidate is accepted only when it is
+ * non-degenerate AND none of its three canonical edges would exceed two incidences —
+ * the same manifold-safety gate, applied one triangle at a time. This makes the pass
+ * provably non-regressive (it can only ADD triangles and can NEVER create a >2
+ * incidence edge) while still making progress on mismatched-density seams where a few
+ * candidates are canonically degenerate (e.g. low/high seam endpoints sharing a 3D
+ * position). Mutates state.edgeCounts for every accepted triangle.
+ */
+function addTrianglesIncrementallyIfSafe(
+    state: CanonicalEdgeState,
+    tris: number[],
+    uvs: Float32Array,
+    positions?: Float32Array,
+    topologyWeldToleranceMm: number = 0,
+): number[] {
+    const accepted: number[] = [];
+    for (let i = 0; i < tris.length; i += 3) {
+        const a = tris[i], b = tris[i + 1], c = tris[i + 2];
+        const ca = canonicalizeVertex(uvs, a, state.canonical, state.keyToId, positions, topologyWeldToleranceMm);
+        const cb = canonicalizeVertex(uvs, b, state.canonical, state.keyToId, positions, topologyWeldToleranceMm);
+        const cc = canonicalizeVertex(uvs, c, state.canonical, state.keyToId, positions, topologyWeldToleranceMm);
+        if (ca === cb || cb === cc || ca === cc) continue; // skip canonically degenerate, keep going
+
+        const keys: [number, number, number] = [edgeKey(ca, cb), edgeKey(cb, cc), edgeKey(cc, ca)];
+        // A well-formed triangle has three distinct canonical edges; guard against
+        // duplicate-edge folds before consulting the incidence map.
+        if (keys[0] === keys[1] || keys[1] === keys[2] || keys[0] === keys[2]) continue;
+        if ((state.edgeCounts.get(keys[0]) ?? 0) + 1 > 2) continue;
+        if ((state.edgeCounts.get(keys[1]) ?? 0) + 1 > 2) continue;
+        if ((state.edgeCounts.get(keys[2]) ?? 0) + 1 > 2) continue;
+
+        for (const key of keys) state.edgeCounts.set(key, (state.edgeCounts.get(key) ?? 0) + 1);
+        accepted.push(a, b, c);
+    }
+    return accepted;
 }
 
 function findSplitSequence(
@@ -465,6 +636,7 @@ function findSplitSequence(
     }
 
     while (queue.length > 0) {
+        __tjAbort('findSplitSequence-bfs'); // TEMP-TJPROBE
         const state = queue.shift()!;
         if (state.rawPath.length > MAX_SEGMENTS) continue;
 
@@ -500,6 +672,7 @@ function splitBoundaryTJunctionPass(
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
 ): { indices: Uint32Array; repairedEdges: number; insertedTriangles: number } {
+    const __sbtA = performance.now(); // TEMP-TJPROBE
     const { records, boundaryKeys, boundaryNeighbors, representativeRaw } = collectBoundaryEdges(
         outerIndices,
         outerIndices.length,
@@ -507,12 +680,20 @@ function splitBoundaryTJunctionPass(
         positions,
         topologyWeldToleranceMm,
     );
+    // TEMP-TJPROBE: split collectBoundaryEdges vs records-loop cost
+    try {
+        (globalThis as unknown as { __pfStageLog?: string[] }).__pfStageLog?.push(
+            `  sbtj.collectBoundaryEdges=${(performance.now() - __sbtA).toFixed(0)}ms records=${records.length} tris=${outerIndices.length / 3}`,
+        );
+    } catch { /* noop */ }
+    const __sbtB = performance.now(); // TEMP-TJPROBE
     const mutable = new Uint32Array(outerIndices);
     const appended: number[] = [];
     const touchedTris = new Set<number>();
     let repairedEdges = 0;
 
     for (const record of records) {
+        __tjAbort('splitBoundaryTJunctionPass-records'); // TEMP-TJPROBE
         if (touchedTris.has(record.triOffset)) continue;
         const { rawA, rawB } = record;
         if (!isOuterMidVertex(uvs, rawA) || !isOuterMidVertex(uvs, rawB)) continue;
@@ -546,6 +727,13 @@ function splitBoundaryTJunctionPass(
         repairedEdges++;
     }
 
+    // TEMP-TJPROBE: records-loop (findSplitSequence) cost
+    try {
+        (globalThis as unknown as { __pfStageLog?: string[] }).__pfStageLog?.push(
+            `  sbtj.recordsLoop=${(performance.now() - __sbtB).toFixed(0)}ms repaired=${repairedEdges}`,
+        );
+    } catch { /* noop */ }
+
     if (appended.length === 0) {
         return { indices: outerIndices, repairedEdges: 0, insertedTriangles: 0 };
     }
@@ -560,8 +748,8 @@ function splitBoundaryTJunctionPass(
     };
 }
 
-function splitTriangleEdgeDeltas(record: BoundaryEdgeRecord, sequence: SplitSequence): Map<bigint, number> {
-    const deltas = new Map<bigint, number>();
+function splitTriangleEdgeDeltas(record: BoundaryEdgeRecord, sequence: SplitSequence): Map<number, number> {
+    const deltas = new Map<number, number>();
     const addDelta = (a: number, b: number, delta: number) => {
         const key = edgeKey(a, b);
         deltas.set(key, (deltas.get(key) ?? 0) + delta);
@@ -582,7 +770,7 @@ function splitTriangleEdgeDeltas(record: BoundaryEdgeRecord, sequence: SplitSequ
     return deltas;
 }
 
-function canApplyEdgeDeltas(edgeCounts: Map<bigint, number>, deltas: Map<bigint, number>): boolean {
+function canApplyEdgeDeltas(edgeCounts: Map<number, number>, deltas: Map<number, number>): boolean {
     for (const [key, delta] of deltas) {
         const next = (edgeCounts.get(key) ?? 0) + delta;
         if (next < 0 || next > 2) return false;
@@ -590,7 +778,7 @@ function canApplyEdgeDeltas(edgeCounts: Map<bigint, number>, deltas: Map<bigint,
     return true;
 }
 
-function applyEdgeDeltas(edgeCounts: Map<bigint, number>, deltas: Map<bigint, number>): void {
+function applyEdgeDeltas(edgeCounts: Map<number, number>, deltas: Map<number, number>): void {
     for (const [key, delta] of deltas) {
         const next = (edgeCounts.get(key) ?? 0) + delta;
         if (next === 0) edgeCounts.delete(key);
@@ -602,13 +790,13 @@ function replaceTriangleVertexDeltas(
     record: BoundaryEdgeRecord,
     replaceCanon: number,
     replacementCanon: number,
-): Map<bigint, number> | null {
+): Map<number, number> | null {
     const original = [record.canonA, record.canonB, record.oppCanon];
     if (!original.includes(replaceCanon)) return null;
     const replaced = original.map(v => v === replaceCanon ? replacementCanon : v);
     if (replaced[0] === replaced[1] || replaced[1] === replaced[2] || replaced[2] === replaced[0]) return null;
 
-    const deltas = new Map<bigint, number>();
+    const deltas = new Map<number, number>();
     const addDelta = (a: number, b: number, delta: number) => {
         const key = edgeKey(a, b);
         deltas.set(key, (deltas.get(key) ?? 0) + delta);
@@ -692,11 +880,11 @@ function pruneMultiNonManifoldFanTriangles(
         nextId: 0,
     };
     const keyToId = new Map<string, number>();
-    const edgeCounts = new Map<bigint, number>();
+    const edgeCounts = new Map<number, number>();
     const tris: Array<{
         raw: [number, number, number];
         canonical: [number, number, number];
-        edges: [bigint, bigint, bigint];
+        edges: [number, number, number];
         remove: boolean;
     }> = [];
 
@@ -708,7 +896,7 @@ function pruneMultiNonManifoldFanTriangles(
         const cb = canonicalizeVertex(uvs, b, canonical, keyToId, positions, topologyWeldToleranceMm);
         const cc = canonicalizeVertex(uvs, c, canonical, keyToId, positions, topologyWeldToleranceMm);
         if (ca === cb || cb === cc || ca === cc) continue;
-        const edges: [bigint, bigint, bigint] = [
+        const edges: [number, number, number] = [
             edgeKey(ca, cb),
             edgeKey(cb, cc),
             edgeKey(cc, ca),
@@ -752,6 +940,7 @@ function pruneCrowdedSideNonManifoldEdgeFans(
         uvs,
         positions,
         topologyWeldToleranceMm,
+        true,
     );
     const removeTriOffsets = new Set<number>();
 
@@ -824,6 +1013,7 @@ function splitNonManifoldTJunctionPass(
         uvs,
         positions,
         topologyWeldToleranceMm,
+        true,
     );
     const mutable = new Uint32Array(outerIndices);
     const appended: number[] = [];
@@ -831,11 +1021,13 @@ function splitNonManifoldTJunctionPass(
     let repairedEdges = 0;
 
     for (const [key, count] of Array.from(edgeCounts.entries())) {
+        __tjAbort('splitNonManifoldTJunctionPass-edges'); // TEMP-TJPROBE
         if (count <= 2) continue;
         const records = edgeRecordsByKey.get(key);
         if (!records) continue;
 
         for (const record of records) {
+            __tjAbort('splitNonManifoldTJunctionPass-records'); // TEMP-TJPROBE
             if (touchedTris.has(record.triOffset)) continue;
             const { rawA, rawB } = record;
             if (!isOuterMidVertex(uvs, rawA) || !isOuterMidVertex(uvs, rawB)) continue;
@@ -907,6 +1099,7 @@ function snapNonManifoldEndpointToBoundaryPass(
         uvs,
         positions,
         topologyWeldToleranceMm,
+        true,
     );
     const mutable = new Uint32Array(outerIndices);
     const touchedTris = new Set<number>();
@@ -994,12 +1187,12 @@ function collectJoinBoundaryEdges(
     uvs: Float32Array,
 ): {
     records: BoundaryEdgeRecord[];
-    boundaryKeys: Set<bigint>;
+    boundaryKeys: Set<number>;
     boundaryNeighbors: Map<number, Set<number>>;
     representativeRaw: Map<number, number>;
 } {
-    const edgeCounts = new Map<bigint, number>();
-    const edgeSamples = new Map<bigint, BoundaryEdgeRecord>();
+    const edgeCounts = new Map<number, number>();
+    const edgeSamples = new Map<number, BoundaryEdgeRecord>();
     const canonical: CanonicalVertexData = {
         remap: new Map<number, number>(),
         representativeRaw: new Map<number, number>(),
@@ -1031,7 +1224,7 @@ function collectJoinBoundaryEdges(
     }
 
     const records: BoundaryEdgeRecord[] = [];
-    const boundaryKeys = new Set<bigint>();
+    const boundaryKeys = new Set<number>();
     const boundaryNeighbors = new Map<number, Set<number>>();
     for (const [key, count] of edgeCounts) {
         if (count !== 1) continue;
@@ -1092,6 +1285,7 @@ function findJoinSplitSequence(
     }
 
     while (queue.length > 0) {
+        __tjAbort('findJoinSplitSequence-bfs'); // TEMP-TJPROBE
         const state = queue.shift()!;
         if (state.rawPath.length > MAX_SEGMENTS) continue;
 
@@ -1360,11 +1554,11 @@ function orientedLoopPoints(points: LoopPoint[]): LoopPoint[] {
 function safeTriangleEdgeKeys(
     state: CanonicalEdgeState,
     tri: [number, number, number],
-    pending: Map<bigint, number>,
+    pending: Map<number, number>,
     uvs: Float32Array,
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
-): bigint[] | null {
+): number[] | null {
     const [a, b, c] = tri;
     const ca = canonicalizeVertex(uvs, a, state.canonical, state.keyToId, positions, topologyWeldToleranceMm);
     const cb = canonicalizeVertex(uvs, b, state.canonical, state.keyToId, positions, topologyWeldToleranceMm);
@@ -1376,7 +1570,7 @@ function safeTriangleEdgeKeys(
         edgeKey(cb, cc),
         edgeKey(cc, ca),
     ];
-    const local = new Map<bigint, number>();
+    const local = new Map<number, number>();
     for (const key of keys) {
         local.set(key, (local.get(key) ?? 0) + 1);
         const nextCount = (state.edgeCounts.get(key) ?? 0) + (pending.get(key) ?? 0) + (local.get(key) ?? 0);
@@ -1399,8 +1593,8 @@ function triangulatePointsManifoldSafe(
 
     const remaining = [...loop];
     const triangles: number[] = [];
-    const pending = new Map<bigint, number>();
-    const addPending = (keys: bigint[]) => {
+    const pending = new Map<number, number>();
+    const addPending = (keys: number[]) => {
         for (const key of keys) pending.set(key, (pending.get(key) ?? 0) + 1);
     };
 
@@ -1506,18 +1700,40 @@ function averageLoopCenter(
     };
 }
 
-function triangulateLoopCenterFan(
+/**
+ * Center-fan a boundary loop where each spoke triangle traverses its boundary
+ * edge OPPOSITE to the owning wall triangle's half-edge (record.canonA→canonB),
+ * so the cap is orientation-consistent with its neighbor. This is the same rule
+ * the cross-surface filler enforces; it replaces the UV-area `emitTriCCW` fan
+ * whose winding ignored the owner direction and produced the genuine winding
+ * flips localized to the boundary-fill stage.
+ *
+ * For any loop edge that has no owning boundary record (defensive — loop edges
+ * are boundary edges and normally always do), the spoke falls back to the
+ * UV-CCW emit so loop coverage is never reduced relative to the prior behavior.
+ */
+function buildOwnerOpposedCenterFan(
     uvs: Float32Array,
     loopRaw: number[],
     centerVertex: number,
+    edgeRecordByKey: Map<number, BoundaryEdgeRecord>,
+    edgeState: CanonicalEdgeState,
+    positions: Float32Array,
+    topologyWeldToleranceMm: number,
 ): number[] {
-    const points = orientedLoopPoints(unwrapLoopPoints(uvs, loopRaw));
-    if (points.length < 3) return [];
+    if (loopRaw.length < 3) return [];
     const tris: number[] = [];
-    for (let i = 0; i < points.length; i++) {
-        const a = points[i].vertex;
-        const b = points[(i + 1) % points.length].vertex;
-        emitTriCCW(tris, a, b, centerVertex, uvs);
+    for (let i = 0; i < loopRaw.length; i++) {
+        const a = loopRaw[i];
+        const b = loopRaw[(i + 1) % loopRaw.length];
+        const ca = canonicalizeVertex(uvs, a, edgeState.canonical, edgeState.keyToId, positions, topologyWeldToleranceMm);
+        const cb = canonicalizeVertex(uvs, b, edgeState.canonical, edgeState.keyToId, positions, topologyWeldToleranceMm);
+        const record = edgeRecordByKey.get(edgeKey(ca, cb));
+        if (record) {
+            tris.push(record.rawB, record.rawA, centerVertex);
+        } else {
+            emitTriCCW(tris, a, b, centerVertex, uvs);
+        }
     }
     return tris;
 }
@@ -1528,18 +1744,56 @@ export function fillSameSurfaceBoundaryLoopsWithCenters(
     positions: Float32Array,
     topologyWeldToleranceMm: number = 0,
 ): BoundaryLoopVertexFillResult {
-    const { boundaryNeighbors, representativeRaw } = collectBoundaryEdges(
+    const { records, boundaryNeighbors, representativeRaw } = collectBoundaryEdges(
         indices,
         indices.length,
         uvs,
         positions,
         topologyWeldToleranceMm,
     );
+    // Owner half-edge direction per boundary edge: the one wall triangle that owns
+    // each boundary edge traverses it canonA→canonB. A fill triangle covering that
+    // edge MUST traverse it canonB→canonA, otherwise the cap is topologically
+    // present but orientation-inconsistent with its neighbor (the genuine winding
+    // flips localized to this stage). This mirrors the proven cross-surface filler.
+    const edgeRecordByKey = new Map<number, BoundaryEdgeRecord>();
+    for (const record of records) {
+        edgeRecordByKey.set(record.key, record);
+    }
     const appended: number[] = [];
-    const uvValues = Array.from(uvs);
-    const positionValues = Array.from(positions);
-    let currentUvs = uvs;
-    let currentPositions = positions;
+    const loops = Array.from(orderedClosedLoops(boundaryNeighbors, representativeRaw));
+    // TEMP-LOOPSIZE-PROBE: measure loop-size distribution before the O(N^3) ear-clip runs.
+    // Uses console.warn (streams live to the harness) — __pfStageLog is only read after the
+    // test ends, which never happens when this stage hangs into the 900s cap.
+    try {
+        const sizes = loops.map((l) => l.length).sort((a, b) => b - a);
+        const total = sizes.reduce((s, n) => s + n, 0);
+        const buckets = { lt16: 0, lt64: 0, lt256: 0, lt1k: 0, lt4k: 0, ge4k: 0 };
+        for (const n of sizes) {
+            if (n < 16) buckets.lt16++; else if (n < 64) buckets.lt64++;
+            else if (n < 256) buckets.lt256++; else if (n < 1024) buckets.lt1k++;
+            else if (n < 4096) buckets.lt4k++; else buckets.ge4k++;
+        }
+        console.warn(
+            `[LOOPSIZE] loops=${loops.length} totalVerts=${total} max=${sizes[0] ?? 0} ` +
+            `top10=[${sizes.slice(0, 10).join(',')}] buckets=${JSON.stringify(buckets)}`,
+        );
+    } catch { /* noop */ }
+    // Pre-allocate the growth buffers ONCE. The old implementation rebuilt the entire
+    // vertex arrays (new Float32Array(...), ~2.85M floats on a feature-dense mesh) on
+    // every center-fan loop, making this O(loops × vertices) — billions of element
+    // copies that stalled the export indefinitely. Each center vertex is now written
+    // in place and exposed downstream via an O(1) subarray view; one slice() at the
+    // end compacts the result. At most one center is inserted per loop, so the loop
+    // count bounds the extra capacity.
+    const maxCenters = loops.length;
+    const uvBuf = new Float32Array(uvs.length + maxCenters * 3);
+    uvBuf.set(uvs);
+    const posBuf = new Float32Array(positions.length + maxCenters * 3);
+    posBuf.set(positions);
+    let writtenVerts = uvs.length / 3;
+    let currentUvs: Float32Array = uvBuf.subarray(0, uvs.length);
+    let currentPositions: Float32Array = posBuf.subarray(0, positions.length);
     let filledLoops = 0;
     let insertedVertices = 0;
     let attemptedLoops = 0;
@@ -1547,42 +1801,397 @@ export function fillSameSurfaceBoundaryLoopsWithCenters(
     let unsafeLoops = 0;
     const edgeState = buildCanonicalEdgeState(indices, currentUvs, currentPositions, topologyWeldToleranceMm);
 
-    for (const loop of orderedClosedLoops(boundaryNeighbors, representativeRaw)) {
+    // The manifold-safe ear-clip (triangulatePointsManifoldSafe) is O(N^3) in the loop
+    // vertex count: an outer clip pass (up to N) x an inner ear scan (N) x a
+    // point-in-triangle containment scan (N). On feature-dense meshes the refined outer
+    // wall produces boundary loops with tens of thousands of vertices, which makes this
+    // run effectively forever (the measured tail hang). Above this size we skip the
+    // ear-clip and go straight to the O(N) center-fan path, which still closes the loop.
+    const EAR_CLIP_MAX_LOOP = 512;
+
+    // TEMP-LOOPPROG-PROBE: stream per-loop progress so a stall is attributable to a loop index.
+    const __progStart = performance.now();
+    let __loopIdx = 0;
+    let __earClipped = 0;
+    for (const loop of loops) {
+        if ((__loopIdx++ & 0x3ff) === 0) {
+            console.warn(
+                `[LOOPPROG] idx=${__loopIdx}/${loops.length} t=${(performance.now() - __progStart).toFixed(0)}ms ` +
+                `attempted=${attemptedLoops} earClipped=${__earClipped} filled=${filledLoops} ` +
+                `inserted=${insertedVertices} unsafe=${unsafeLoops}`,
+            );
+        }
         if (!sameSurfaceLoop(currentUvs, loop)) continue;
         attemptedLoops++;
+        if (loop.length <= EAR_CLIP_MAX_LOOP) __earClipped++;
 
-        const triangulation = triangulateLoopManifoldSafe(
+        // Owner-opposed ear-clip (no center vertex): order the loop so every edge
+        // opposes its owning wall triangle, then triangulate preserving that
+        // winding. This replaces the prior UV-area ear-clip whose winding ignored
+        // the owner direction and produced the stage's genuine winding flips.
+        // Manifold-safety is gated on the whole batch; on failure we fall through
+        // to the owner-opposite center fan, so loop coverage is preserved.
+        if (loop.length <= EAR_CLIP_MAX_LOOP) {
+            const ordered = loopOrderOpposingBoundaryRecords(
+                loop,
+                edgeRecordByKey,
+                edgeState,
+                currentUvs,
+                currentPositions,
+                topologyWeldToleranceMm,
+            );
+            if (ordered) {
+                const orderedTris = triangulateProjectedLoopPreservingWinding(currentPositions, ordered);
+                if (
+                    orderedTris.length > 0 &&
+                    addTriangleEdgesIfManifoldSafe(edgeState, orderedTris, currentUvs, currentPositions, topologyWeldToleranceMm)
+                ) {
+                    appended.push(...orderedTris);
+                    filledLoops++;
+                    continue;
+                }
+            }
+        }
+
+        const center = averageLoopCenter(currentUvs, currentPositions, loop);
+        const centerVertex = writtenVerts;
+        const base = centerVertex * 3;
+        uvBuf[base] = center.uv[0];
+        uvBuf[base + 1] = center.uv[1];
+        uvBuf[base + 2] = center.uv[2];
+        posBuf[base] = center.position[0];
+        posBuf[base + 1] = center.position[1];
+        posBuf[base + 2] = center.position[2];
+        writtenVerts++;
+        currentUvs = uvBuf.subarray(0, writtenVerts * 3);
+        currentPositions = posBuf.subarray(0, writtenVerts * 3);
+        insertedVertices++;
+
+        // Assign the fresh center vertex a unique canonical id directly. getGlobalVertexCanonical
+        // (used by the manifold check below) is memoized by array IDENTITY; since currentUvs
+        // becomes a new subarray view on every insertion, letting the center fall through to it
+        // would rebuild the entire ~V-vertex canonical map per loop — the real O(loops × V) stall
+        // that left feature-dense exports hanging here. centerVertex >= the original vertex count,
+        // and every existing canonical id is < that count, so this id cannot collide; the returned
+        // geometry is unchanged (canonical ids are internal to edge-manifold counting only).
+        edgeState.canonical.remap.set(centerVertex, centerVertex);
+        if (!edgeState.canonical.representativeRaw.has(centerVertex)) {
+            edgeState.canonical.representativeRaw.set(centerVertex, centerVertex);
+        }
+
+        // Owner-opposite center fan: each spoke triangle traverses its boundary edge
+        // opposite to the owning wall triangle (record.rawB → record.rawA → center),
+        // so the cap is orientation-consistent with its neighbor instead of UV-CCW.
+        // Falls back to the UV-CCW spoke only when an edge has no boundary record
+        // (defensive — loop edges are boundary edges and normally always do), which
+        // preserves the prior fill coverage. Mirrors the cross-surface filler.
+        const fan = buildOwnerOpposedCenterFan(
             currentUvs,
             loop,
+            centerVertex,
+            edgeRecordByKey,
             edgeState,
             currentPositions,
             topologyWeldToleranceMm,
         );
-        if (triangulation) {
-            appended.push(...triangulation.triangles);
-            filledLoops++;
-            continue;
-        }
-
-        const center = averageLoopCenter(currentUvs, currentPositions, loop);
-        const centerVertex = uvValues.length / 3;
-        uvValues.push(...center.uv);
-        positionValues.push(...center.position);
-        currentUvs = new Float32Array(uvValues);
-        currentPositions = new Float32Array(positionValues);
-        insertedVertices++;
-
-        const fan = triangulateLoopCenterFan(currentUvs, loop, centerVertex);
         if (fan.length === 0) {
             emptyTriangulations++;
             continue;
         }
-        if (!addTriangleEdgesIfManifoldSafe(edgeState, fan, currentUvs, currentPositions, topologyWeldToleranceMm)) {
+        // Incremental commit (mirrors fillOuterWallSeamBoundaryChains): keep every
+        // manifold-safe fan triangle and drop only the canonically-degenerate /
+        // over-incident ones, instead of discarding the WHOLE fan on the first bad
+        // candidate. The all-or-nothing gate left a loop fully open whenever a single
+        // spoke collided (weld-merged perimeter vertices on feature-dense seams); the
+        // incremental gate is provably non-regressive (never creates a >2 incidence
+        // edge) and closes the safe majority of the loop.
+        const acceptedFan = addTrianglesIncrementallyIfSafe(edgeState, fan, currentUvs, currentPositions, topologyWeldToleranceMm);
+        if (acceptedFan.length === 0) {
             unsafeLoops++;
             continue;
         }
 
-        appended.push(...fan);
+        appended.push(...acceptedFan);
+        filledLoops++;
+    }
+    // TEMP-FILLCENTERS-PROBE
+    console.warn(
+        `[FILLCENTERS] loop-done t=${(performance.now() - __progStart).toFixed(0)}ms ` +
+        `loops=${loops.length} attempted=${attemptedLoops} filled=${filledLoops} ` +
+        `inserted=${insertedVertices} appendedTris=${appended.length / 3}`,
+    );
+
+    if (appended.length === 0) {
+        return {
+            indices,
+            uvs,
+            positions,
+            filledLoops: 0,
+            insertedTriangles: 0,
+            insertedVertices,
+            attemptedLoops,
+            emptyTriangulations,
+            unsafeLoops,
+        };
+    }
+
+    const repaired = new Uint32Array(indices.length + appended.length);
+    repaired.set(indices);
+    repaired.set(appended, indices.length);
+    return {
+        indices: repaired,
+        uvs: insertedVertices > 0 ? currentUvs.slice() : uvs,
+        positions: insertedVertices > 0 ? currentPositions.slice() : positions,
+        filledLoops,
+        insertedTriangles: appended.length / 3,
+        insertedVertices,
+        attemptedLoops,
+        emptyTriangulations,
+        unsafeLoops,
+    };
+}
+
+/**
+ * Decompose a canonical boundary-edge graph into edge-disjoint closed cycles,
+ * restricted to BRANCHED components (those containing a vertex of boundary
+ * degree >= 3).
+ *
+ * `orderedClosedLoops` can only trace a loop whose every vertex has boundary
+ * degree exactly 2 — it bails at the first junction (degree-3+) vertex. So any
+ * component where two or more holes touch at a shared vertex (a "branched"
+ * component, the dominant residual the export fill battery leaves open) is never
+ * presented to a filler. This routine handles exactly those components: for an
+ * even-degree (manifold-rim) junction the boundary edges decompose cleanly into
+ * closed cycles; odd-degree pinches leave a small tail of edges unconsumed
+ * (genuine non-manifold geometry that adding triangles alone cannot close).
+ *
+ * Simple (degree-2-only) components are intentionally skipped — they are already
+ * the job of the simple-loop fillers earlier in the battery, and re-filling them
+ * here would double-cap them into non-manifold geometry.
+ *
+ * Returned cycles are sequences of RAW vertex indices (mapped through
+ * representativeRaw), matching the contract of `orderedClosedLoops`.
+ */
+function decomposeBranchedBoundaryCycles(
+    boundaryNeighbors: Map<number, Set<number>>,
+    representativeRaw: Map<number, number>,
+): number[][] {
+    const cycles: number[][] = [];
+    const usedEdge = new Set<number>();
+    const visitedComponent = new Set<number>();
+
+    const firstUnused = (v: number): number | undefined => {
+        const ns = boundaryNeighbors.get(v);
+        if (!ns) return undefined;
+        for (const n of ns) {
+            if (!usedEdge.has(edgeKey(v, n))) return n;
+        }
+        return undefined;
+    };
+
+    const mapRaw = (canonical: number[]): number[] | null => {
+        const raw: number[] = [];
+        for (const c of canonical) {
+            const r = representativeRaw.get(c);
+            if (r === undefined) return null;
+            raw.push(r);
+        }
+        return raw;
+    };
+
+    for (const seed of boundaryNeighbors.keys()) {
+        if (visitedComponent.has(seed)) continue;
+
+        // Flood the connected component, recording its vertices and whether any
+        // junction (degree >= 3) is present.
+        const componentVerts: number[] = [];
+        let hasBranch = false;
+        const stack = [seed];
+        visitedComponent.add(seed);
+        while (stack.length > 0) {
+            const v = stack.pop()!;
+            componentVerts.push(v);
+            const ns = boundaryNeighbors.get(v);
+            if (!ns) continue;
+            if (ns.size >= 3) hasBranch = true;
+            for (const n of ns) {
+                if (!visitedComponent.has(n)) {
+                    visitedComponent.add(n);
+                    stack.push(n);
+                }
+            }
+        }
+
+        if (!hasBranch) continue; // simple loop/chain — leave to the other fillers.
+
+        // Stack-based cycle popping: walk along unused edges; whenever the walk
+        // revisits a vertex already on the current path, pop the closed sub-cycle
+        // and continue. Each boundary edge is consumed at most once.
+        for (const v0 of componentVerts) {
+            while (firstUnused(v0) !== undefined) {
+                const path = [v0];
+                const pos = new Map<number, number>([[v0, 0]]);
+                let cur = v0;
+                for (;;) {
+                    const n = firstUnused(cur);
+                    if (n === undefined) break; // odd-degree tail — leave unconsumed.
+                    usedEdge.add(edgeKey(cur, n));
+                    const seen = pos.get(n);
+                    if (seen !== undefined) {
+                        const cycle = path.slice(seen);
+                        if (cycle.length >= 3) {
+                            const raw = mapRaw(cycle);
+                            if (raw) cycles.push(raw);
+                        }
+                        for (let k = seen + 1; k < path.length; k++) pos.delete(path[k]);
+                        path.length = seen + 1;
+                        cur = n;
+                    } else {
+                        pos.set(n, path.length);
+                        path.push(n);
+                        cur = n;
+                    }
+                }
+            }
+        }
+    }
+
+    return cycles;
+}
+
+/**
+ * Close branched boundary components (holes that touch at a shared junction
+ * vertex) that the simple-loop fillers structurally cannot reach. Decomposes
+ * each branched component into edge-disjoint cycles and centre-fans every
+ * same-surface cycle, guarding each fan with the canonical edge-manifold check
+ * so a fill that would create a non-manifold edge is rejected rather than
+ * corrupting the mesh. Mirrors `fillSameSurfaceBoundaryLoopsWithCenters` but
+ * sources its loops from `decomposeBranchedBoundaryCycles`.
+ */
+export function fillBranchedBoundaryComponentsWithCenters(
+    indices: Uint32Array,
+    uvs: Float32Array,
+    positions: Float32Array,
+    topologyWeldToleranceMm: number = 0,
+): BoundaryLoopVertexFillResult {
+    const { records, boundaryNeighbors, representativeRaw } = collectBoundaryEdges(
+        indices,
+        indices.length,
+        uvs,
+        positions,
+        topologyWeldToleranceMm,
+    );
+    const edgeRecordByKey = new Map<number, BoundaryEdgeRecord>();
+    for (const record of records) {
+        edgeRecordByKey.set(record.key, record);
+    }
+    const cycles = decomposeBranchedBoundaryCycles(boundaryNeighbors, representativeRaw);
+
+    const appended: number[] = [];
+    const maxCenters = cycles.length;
+    const uvBuf = new Float32Array(uvs.length + maxCenters * 3);
+    uvBuf.set(uvs);
+    const posBuf = new Float32Array(positions.length + maxCenters * 3);
+    posBuf.set(positions);
+    let writtenVerts = uvs.length / 3;
+    let currentUvs: Float32Array = uvBuf.subarray(0, uvs.length);
+    let currentPositions: Float32Array = posBuf.subarray(0, positions.length);
+    let filledLoops = 0;
+    let insertedVertices = 0;
+    let attemptedLoops = 0;
+    let emptyTriangulations = 0;
+    let unsafeLoops = 0;
+    const edgeState = buildCanonicalEdgeState(indices, currentUvs, currentPositions, topologyWeldToleranceMm);
+
+    // Branched cycles share junction vertices, so re-triangulating an interior
+    // span could collide with an existing edge. Route EVERY fill through the
+    // manifold-safe check; the centre-fan introduces a fresh centre vertex (no
+    // existing-edge collisions) and is the reliable closer for these components.
+    const EAR_CLIP_MAX_LOOP = 512;
+    for (const loop of cycles) {
+        if (!sameSurfaceLoop(currentUvs, loop)) continue;
+        attemptedLoops++;
+
+        // Owner-opposed ear-clip (no center vertex): order each cycle so its edges
+        // oppose the owning wall triangles, then triangulate preserving that winding
+        // — instead of the UV-area ear-clip whose winding ignored owner direction.
+        if (loop.length <= EAR_CLIP_MAX_LOOP) {
+            const ordered = loopOrderOpposingBoundaryRecords(
+                loop,
+                edgeRecordByKey,
+                edgeState,
+                currentUvs,
+                currentPositions,
+                topologyWeldToleranceMm,
+            );
+            if (ordered) {
+                const orderedTris = triangulateProjectedLoopPreservingWinding(currentPositions, ordered);
+                if (
+                    orderedTris.length > 0 &&
+                    addTriangleEdgesIfManifoldSafe(edgeState, orderedTris, currentUvs, currentPositions, topologyWeldToleranceMm)
+                ) {
+                    appended.push(...orderedTris);
+                    filledLoops++;
+                    continue;
+                }
+            }
+        }
+
+        const center = averageLoopCenter(currentUvs, currentPositions, loop);
+        const centerVertex = writtenVerts;
+        const base = centerVertex * 3;
+        uvBuf[base] = center.uv[0];
+        uvBuf[base + 1] = center.uv[1];
+        uvBuf[base + 2] = center.uv[2];
+        posBuf[base] = center.position[0];
+        posBuf[base + 1] = center.position[1];
+        posBuf[base + 2] = center.position[2];
+        writtenVerts++;
+        currentUvs = uvBuf.subarray(0, writtenVerts * 3);
+        currentPositions = posBuf.subarray(0, writtenVerts * 3);
+
+        // Give the fresh centre a unique canonical id directly (see
+        // fillSameSurfaceBoundaryLoopsWithCenters for why this avoids an
+        // O(loops x V) canonical-map rebuild). centerVertex >= original vertex
+        // count, so it cannot collide with any existing canonical id.
+        edgeState.canonical.remap.set(centerVertex, centerVertex);
+        if (!edgeState.canonical.representativeRaw.has(centerVertex)) {
+            edgeState.canonical.representativeRaw.set(centerVertex, centerVertex);
+        }
+
+        const fan = buildOwnerOpposedCenterFan(
+            currentUvs,
+            loop,
+            centerVertex,
+            edgeRecordByKey,
+            edgeState,
+            currentPositions,
+            topologyWeldToleranceMm,
+        );
+        if (fan.length === 0) {
+            // Roll back the speculative centre vertex.
+            writtenVerts--;
+            currentUvs = uvBuf.subarray(0, writtenVerts * 3);
+            currentPositions = posBuf.subarray(0, writtenVerts * 3);
+            emptyTriangulations++;
+            continue;
+        }
+        // Incremental commit: branched cycles share junction vertices, so a fan can
+        // collide on a single weld-merged spoke. The old all-or-nothing gate then
+        // discarded the entire fan and rolled back the centre, leaving the whole cycle
+        // open. Keep every manifold-safe triangle instead; roll back the speculative
+        // centre only when NOTHING could be added. Still provably non-regressive.
+        const acceptedFan = addTrianglesIncrementallyIfSafe(edgeState, fan, currentUvs, currentPositions, topologyWeldToleranceMm);
+        if (acceptedFan.length === 0) {
+            writtenVerts--;
+            currentUvs = uvBuf.subarray(0, writtenVerts * 3);
+            currentPositions = posBuf.subarray(0, writtenVerts * 3);
+            unsafeLoops++;
+            continue;
+        }
+
+        insertedVertices++;
+        appended.push(...acceptedFan);
         filledLoops++;
     }
 
@@ -1605,8 +2214,263 @@ export function fillSameSurfaceBoundaryLoopsWithCenters(
     repaired.set(appended, indices.length);
     return {
         indices: repaired,
-        uvs: currentUvs,
-        positions: currentPositions,
+        uvs: insertedVertices > 0 ? currentUvs.slice() : uvs,
+        positions: insertedVertices > 0 ? currentPositions.slice() : positions,
+        filledLoops,
+        insertedTriangles: appended.length / 3,
+        insertedVertices,
+        attemptedLoops,
+        emptyTriangulations,
+        unsafeLoops,
+    };
+}
+
+function loopOrderOpposingBoundaryRecords(
+    loop: number[],
+    edgeRecordByKey: Map<number, BoundaryEdgeRecord>,
+    edgeState: CanonicalEdgeState,
+    uvs: Float32Array,
+    positions: Float32Array,
+    topologyWeldToleranceMm: number,
+): number[] | null {
+    let sameDirection = 0;
+    let oppositeDirection = 0;
+
+    for (let i = 0; i < loop.length; i++) {
+        const a = loop[i];
+        const b = loop[(i + 1) % loop.length];
+        const ca = canonicalizeVertex(uvs, a, edgeState.canonical, edgeState.keyToId, positions, topologyWeldToleranceMm);
+        const cb = canonicalizeVertex(uvs, b, edgeState.canonical, edgeState.keyToId, positions, topologyWeldToleranceMm);
+        const record = edgeRecordByKey.get(edgeKey(ca, cb));
+        if (!record) return null;
+
+        const recordA = canonicalizeVertex(uvs, record.rawA, edgeState.canonical, edgeState.keyToId, positions, topologyWeldToleranceMm);
+        const recordB = canonicalizeVertex(uvs, record.rawB, edgeState.canonical, edgeState.keyToId, positions, topologyWeldToleranceMm);
+        if (recordA === ca && recordB === cb) sameDirection++;
+        else if (recordA === cb && recordB === ca) oppositeDirection++;
+    }
+
+    return sameDirection > oppositeDirection ? [...loop].reverse() : [...loop];
+}
+
+function pointInTriangleForWinding(point: LoopPoint, a: LoopPoint, b: LoopPoint, c: LoopPoint, sign: number): boolean {
+    return sign >= 0
+        ? pointInTriangle2D(point.u, point.t, a.u, a.t, b.u, b.t, c.u, c.t)
+        : pointInTriangle2D(point.u, point.t, a.u, a.t, c.u, c.t, b.u, b.t);
+}
+
+function triangulateProjectedLoopPreservingWinding(positions: Float32Array, loopRaw: number[]): number[] {
+    if (loopRaw.length < 3) return [];
+    const loop = projectedLoopPoints(positions, loopRaw);
+    const area = polygonArea(loop);
+    if (Math.abs(area) < 1e-14) return [];
+    const sign = area >= 0 ? 1 : -1;
+
+    const remaining = [...loop];
+    const triangles: number[] = [];
+    let guard = 0;
+    while (remaining.length > 3 && guard++ < loop.length * loop.length) {
+        let clipped = false;
+        for (let i = 0; i < remaining.length; i++) {
+            const prev = remaining[(i - 1 + remaining.length) % remaining.length];
+            const curr = remaining[i];
+            const next = remaining[(i + 1) % remaining.length];
+            if (sign * localCross(prev, curr, next) <= 1e-14) continue;
+
+            let containsPoint = false;
+            for (const v of remaining) {
+                if (v === prev || v === curr || v === next) continue;
+                if (pointInTriangleForWinding(v, prev, curr, next, sign)) {
+                    containsPoint = true;
+                    break;
+                }
+            }
+            if (containsPoint) continue;
+
+            triangles.push(prev.vertex, curr.vertex, next.vertex);
+            remaining.splice(i, 1);
+            clipped = true;
+            break;
+        }
+        if (!clipped) return [];
+    }
+
+    if (remaining.length === 3) {
+        triangles.push(remaining[0].vertex, remaining[1].vertex, remaining[2].vertex);
+    }
+    return triangles;
+}
+
+function projectedFillMaxAspect3D(positions: Float32Array, tris: number[]): number {
+    let maxAspect = 0;
+    for (let i = 0; i < tris.length; i += 3) {
+        const a = tris[i];
+        const b = tris[i + 1];
+        const c = tris[i + 2];
+        const ia = a * 3;
+        const ib = b * 3;
+        const ic = c * 3;
+        const ax = positions[ia], ay = positions[ia + 1], az = positions[ia + 2];
+        const bx = positions[ib], by = positions[ib + 1], bz = positions[ib + 2];
+        const cx = positions[ic], cy = positions[ic + 1], cz = positions[ic + 2];
+        const ab2 = (ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2;
+        const bc2 = (bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2;
+        const ca2 = (cx - ax) ** 2 + (cy - ay) ** 2 + (cz - az) ** 2;
+        const longest2 = Math.max(ab2, bc2, ca2);
+        const ux = bx - ax, uy = by - ay, uz = bz - az;
+        const vx = cx - ax, vy = cy - ay, vz = cz - az;
+        const cxp = uy * vz - uz * vy;
+        const cyp = uz * vx - ux * vz;
+        const czp = ux * vy - uy * vx;
+        const area = 0.5 * Math.hypot(cxp, cyp, czp);
+        const aspect = area > 1e-12
+            ? (longest2 * Math.sqrt(3)) / (4 * area)
+            : Number.POSITIVE_INFINITY;
+        if (aspect > maxAspect) maxAspect = aspect;
+    }
+    return maxAspect;
+}
+
+export function fillCrossSurfaceConstantTBoundaryLoopsWithCenters(
+    indices: Uint32Array,
+    uvs: Float32Array,
+    positions: Float32Array,
+    topologyWeldToleranceMm: number = 0,
+): BoundaryLoopVertexFillResult {
+    const { records, boundaryNeighbors, representativeRaw } = collectBoundaryEdges(
+        indices,
+        indices.length,
+        uvs,
+        positions,
+        topologyWeldToleranceMm,
+    );
+    const loops = Array.from(orderedClosedLoops(boundaryNeighbors, representativeRaw));
+    const edgeRecordByKey = new Map<number, BoundaryEdgeRecord>();
+    for (const record of records) {
+        edgeRecordByKey.set(record.key, record);
+    }
+
+    const appended: number[] = [];
+    const maxCenters = loops.length;
+    const uvBuf = new Float32Array(uvs.length + maxCenters * 3);
+    uvBuf.set(uvs);
+    const posBuf = new Float32Array(positions.length + maxCenters * 3);
+    posBuf.set(positions);
+    let writtenVerts = uvs.length / 3;
+    let currentUvs: Float32Array = uvBuf.subarray(0, uvs.length);
+    let currentPositions: Float32Array = posBuf.subarray(0, positions.length);
+    let filledLoops = 0;
+    let insertedVertices = 0;
+    let attemptedLoops = 0;
+    let emptyTriangulations = 0;
+    let unsafeLoops = 0;
+    const edgeState = buildCanonicalEdgeState(indices, currentUvs, currentPositions, topologyWeldToleranceMm);
+
+    for (const loop of loops) {
+        if (!crossSurfaceConstantTLoop(currentUvs, loop)) continue;
+        attemptedLoops++;
+
+        if (loop.length > 3) {
+            const projectedLoop = loopOrderOpposingBoundaryRecords(
+                loop,
+                edgeRecordByKey,
+                edgeState,
+                currentUvs,
+                currentPositions,
+                topologyWeldToleranceMm,
+            );
+            const projectedTris = projectedLoop
+                ? triangulateProjectedLoopPreservingWinding(currentPositions, projectedLoop)
+                : [];
+            if (
+                projectedTris.length > 0 &&
+                projectedFillMaxAspect3D(currentPositions, projectedTris) <= PROJECTED_LOOP_FILL_MAX_ASPECT &&
+                addTriangleEdgesIfManifoldSafe(edgeState, projectedTris, currentUvs, currentPositions, topologyWeldToleranceMm)
+            ) {
+                appended.push(...projectedTris);
+                filledLoops++;
+                continue;
+            }
+        }
+
+        const center = averageLoopCenter(currentUvs, currentPositions, loop);
+        const centerVertex = writtenVerts;
+        const base = centerVertex * 3;
+        uvBuf[base] = center.uv[0];
+        uvBuf[base + 1] = center.uv[1];
+        uvBuf[base + 2] = center.uv[2];
+        posBuf[base] = center.position[0];
+        posBuf[base + 1] = center.position[1];
+        posBuf[base + 2] = center.position[2];
+        writtenVerts++;
+        currentUvs = uvBuf.subarray(0, writtenVerts * 3);
+        currentPositions = posBuf.subarray(0, writtenVerts * 3);
+
+        edgeState.canonical.remap.set(centerVertex, centerVertex);
+        if (!edgeState.canonical.representativeRaw.has(centerVertex)) {
+            edgeState.canonical.representativeRaw.set(centerVertex, centerVertex);
+        }
+
+        const fan: number[] = [];
+        let completeLoop = true;
+        for (let i = 0; i < loop.length; i++) {
+            const a = loop[i];
+            const b = loop[(i + 1) % loop.length];
+            const ca = canonicalizeVertex(currentUvs, a, edgeState.canonical, edgeState.keyToId, currentPositions, topologyWeldToleranceMm);
+            const cb = canonicalizeVertex(currentUvs, b, edgeState.canonical, edgeState.keyToId, currentPositions, topologyWeldToleranceMm);
+            const record = edgeRecordByKey.get(edgeKey(ca, cb));
+            if (!record) {
+                completeLoop = false;
+                break;
+            }
+
+            // The fill triangle must traverse the existing boundary edge in the
+            // opposite direction, otherwise the cap is topologically present but
+            // still orientation-inconsistent with its neighbor.
+            fan.push(record.rawB, record.rawA, centerVertex);
+        }
+
+        if (!completeLoop || fan.length === 0) {
+            writtenVerts--;
+            currentUvs = uvBuf.subarray(0, writtenVerts * 3);
+            currentPositions = posBuf.subarray(0, writtenVerts * 3);
+            emptyTriangulations++;
+            continue;
+        }
+        if (!addTriangleEdgesIfManifoldSafe(edgeState, fan, currentUvs, currentPositions, topologyWeldToleranceMm)) {
+            writtenVerts--;
+            currentUvs = uvBuf.subarray(0, writtenVerts * 3);
+            currentPositions = posBuf.subarray(0, writtenVerts * 3);
+            unsafeLoops++;
+            continue;
+        }
+
+        appended.push(...fan);
+        insertedVertices++;
+        filledLoops++;
+    }
+
+    if (appended.length === 0) {
+        return {
+            indices,
+            uvs,
+            positions,
+            filledLoops: 0,
+            insertedTriangles: 0,
+            insertedVertices,
+            attemptedLoops,
+            emptyTriangulations,
+            unsafeLoops,
+        };
+    }
+
+    const repaired = new Uint32Array(indices.length + appended.length);
+    repaired.set(indices);
+    repaired.set(appended, indices.length);
+    return {
+        indices: repaired,
+        uvs: insertedVertices > 0 ? currentUvs.slice() : uvs,
+        positions: insertedVertices > 0 ? currentPositions.slice() : positions,
         filledLoops,
         insertedTriangles: appended.length / 3,
         insertedVertices,
@@ -1752,42 +2616,49 @@ export function fillOuterWallSeamBoundaryChains(
     }
 
     const edgeState = buildCanonicalEdgeState(indices, uvs, positions, topologyWeldToleranceMm);
-    const safe = addTriangleEdgesIfManifoldSafe(edgeState, tris, uvs, positions, topologyWeldToleranceMm);
-    if (!safe) {
-        const welded = weldSeamBoundaryVertices(indices, uvs, low, high, positions);
-        if (welded.weldedVertices > 0) {
-            return {
-                indices: welded.indices,
-                filledChains: 1,
-                insertedTriangles: 0,
-                attemptedChains: 1,
-                unsafeChains: 0,
-                lowVertices: low.length,
-                highVertices: high.length,
-                weldedVertices: welded.weldedVertices,
-            };
-        }
+    // Incremental commit: add every manifold-safe zipper triangle, skipping the few
+    // canonically degenerate ones (mismatched-density seams emit some). The previous
+    // all-or-nothing gate discarded the entire batch on the first degenerate candidate
+    // and fell back to a feature-destroying vertex weld; the incremental pass keeps the
+    // real triangles (which close the seam) and is still provably non-regressive.
+    const accepted = addTrianglesIncrementallyIfSafe(edgeState, tris, uvs, positions, topologyWeldToleranceMm);
+    if (accepted.length > 0) {
+        const repaired = new Uint32Array(indices.length + accepted.length);
+        repaired.set(indices);
+        repaired.set(accepted, indices.length);
         return {
-            indices,
-            filledChains: 0,
-            insertedTriangles: 0,
+            indices: repaired,
+            filledChains: 1,
+            insertedTriangles: accepted.length / 3,
             attemptedChains: 1,
-            unsafeChains: 1,
+            unsafeChains: tris.length > accepted.length ? 1 : 0,
             lowVertices: low.length,
             highVertices: high.length,
             weldedVertices: 0,
         };
     }
 
-    const repaired = new Uint32Array(indices.length + tris.length);
-    repaired.set(indices);
-    repaired.set(tris, indices.length);
+    // Nothing could be added safely (every candidate was degenerate or would have gone
+    // non-manifold). Fall back to the vertex weld so the seam still collapses.
+    const welded = weldSeamBoundaryVertices(indices, uvs, low, high, positions);
+    if (welded.weldedVertices > 0) {
+        return {
+            indices: welded.indices,
+            filledChains: 1,
+            insertedTriangles: 0,
+            attemptedChains: 1,
+            unsafeChains: 0,
+            lowVertices: low.length,
+            highVertices: high.length,
+            weldedVertices: welded.weldedVertices,
+        };
+    }
     return {
-        indices: repaired,
-        filledChains: 1,
-        insertedTriangles: tris.length / 3,
+        indices,
+        filledChains: 0,
+        insertedTriangles: 0,
         attemptedChains: 1,
-        unsafeChains: 0,
+        unsafeChains: 1,
         lowVertices: low.length,
         highVertices: high.length,
         weldedVertices: 0,
@@ -1799,7 +2670,7 @@ function orderedClosedLoops(
     representativeRaw: Map<number, number>,
 ): number[][] {
     const loops: number[][] = [];
-    const visitedEdges = new Set<bigint>();
+    const visitedEdges = new Set<number>();
 
     for (const [start, neighbors] of boundaryNeighbors) {
         if (neighbors.size !== 2) continue;
@@ -1851,6 +2722,23 @@ function sameSurfaceLoop(uvs: Float32Array, loop: number[]): boolean {
     return loop.every(v => Math.round(uvs[v * 3 + 2] ?? -2) === surface);
 }
 
+function crossSurfaceConstantTLoop(uvs: Float32Array, loop: number[]): boolean {
+    if (loop.length < 3) return false;
+    const firstSurface = Math.round(uvs[loop[0] * 3 + 2] ?? -1);
+    let mixedSurfaces = false;
+    let minT = Number.POSITIVE_INFINITY;
+    let maxT = Number.NEGATIVE_INFINITY;
+    for (const v of loop) {
+        const base = v * 3;
+        const surface = Math.round(uvs[base + 2] ?? -2);
+        if (surface !== firstSurface) mixedSurfaces = true;
+        const t = uvs[base + 1] ?? 0;
+        minT = Math.min(minT, t);
+        maxT = Math.max(maxT, t);
+    }
+    return mixedSurfaces && maxT - minT <= UV_WELD_EPS;
+}
+
 function fillBoundaryLoopsWhere(
     indices: Uint32Array,
     uvs: Float32Array,
@@ -1858,13 +2746,17 @@ function fillBoundaryLoopsWhere(
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
 ): BoundaryLoopFillResult {
-    const { boundaryNeighbors, representativeRaw } = collectBoundaryEdges(
+    const { records, boundaryNeighbors, representativeRaw } = collectBoundaryEdges(
         indices,
         indices.length,
         uvs,
         positions,
         topologyWeldToleranceMm,
     );
+    const edgeRecordByKey = new Map<number, BoundaryEdgeRecord>();
+    for (const record of records) {
+        edgeRecordByKey.set(record.key, record);
+    }
     const appended: number[] = [];
     let filledLoops = 0;
     let attemptedLoops = 0;
@@ -1876,6 +2768,34 @@ function fillBoundaryLoopsWhere(
     for (const loop of orderedClosedLoops(boundaryNeighbors, representativeRaw)) {
         if (!acceptsLoop(loop)) continue;
         attemptedLoops++;
+        // Owner-opposed winding (universal correctness; matches the cross-surface
+        // and center-fan fillers). Order the loop so every edge opposes its owning
+        // wall triangle, then triangulate preserving that winding, gated all-or-
+        // nothing on manifold safety. Requires 3D positions for the projected
+        // ear-clip; when absent or it fails, fall through to the prior UV path so
+        // loop coverage is never reduced.
+        if (positions) {
+            const ordered = loopOrderOpposingBoundaryRecords(
+                loop,
+                edgeRecordByKey,
+                edgeState,
+                uvs,
+                positions,
+                topologyWeldToleranceMm,
+            );
+            if (ordered) {
+                const orderedTris = triangulateProjectedLoopPreservingWinding(positions, ordered);
+                if (
+                    orderedTris.length > 0 &&
+                    addTriangleEdgesIfManifoldSafe(edgeState, orderedTris, uvs, positions, topologyWeldToleranceMm)
+                ) {
+                    appended.push(...orderedTris);
+                    filledLoops++;
+                    projectedTriangulations++;
+                    continue;
+                }
+            }
+        }
         const triangulation = triangulateLoopManifoldSafe(
             uvs,
             loop,
@@ -1965,6 +2885,7 @@ export function fillGeometricBoundaryLoops(
     const edgeState = buildCanonicalEdgeState(indices, uvs, positions, topologyWeldToleranceMm);
 
     for (const loop of orderedClosedLoops(boundaryNeighbors, representativeRaw)) {
+        if (crossSurfaceConstantTLoop(uvs, loop)) continue;
         attemptedLoops++;
         const triangulation = triangulatePointsManifoldSafe(
             projectedLoopPoints(positions, loop),
@@ -2003,6 +2924,37 @@ export function fillGeometricBoundaryLoops(
     };
 }
 
+/**
+ * Convergence guard for the repairOuterWallTJunctions pass loop. Each pass is
+ * O(triangles) and re-collects all boundary edges several times (~35s/pass on a
+ * 1.6M-triangle feature-dense outer wall), so running the full maxPasses after
+ * the repair has plateaued is wasted work that blows past the export deadline.
+ *
+ * The repair only nibbles a handful of T-junctions per pass on a mesh whose
+ * ~135K boundary edges are the genuine open outer-wall rim/seam (closed later by
+ * the fill battery, not by this pass). The measured GothicArches trajectory was
+ * pass0=110, pass1=13, pass2=5, ... — a gradual decay to a low plateau, not a
+ * relative collapse. So the stop signal is an ABSOLUTE floor: returns true once a
+ * pass mutates fewer than `floor` edges, meaning it has plateaued and further
+ * full passes are not worth their cost. `floor` is derived at the call site from
+ * the first (most productive) pass, so it adapts per style.
+ *
+ * A zero-work pass returns false so it falls through to the caller's existing
+ * all-zero break (which means "converged to fixpoint", a distinct outcome). The
+ * first pass (prevMutations<=0) never stops here, keeping tiny meshes (pass0=1,
+ * pass1=0) on the all-zero path so the guard never changes their exact-count
+ * outcomes.
+ */
+export function shouldStopRepairPasses(
+    prevMutations: number,
+    thisMutations: number,
+    floor: number,
+): boolean {
+    if (thisMutations <= 0) return false;
+    if (prevMutations <= 0) return false;
+    return thisMutations < floor;
+}
+
 export function repairOuterWallTJunctions(
     indices: Uint32Array,
     uvs: Float32Array,
@@ -2016,6 +2968,45 @@ export function repairOuterWallTJunctions(
     let repairedEdges = 0;
     let insertedTriangles = 0;
 
+    // TEMP-TJPROBE: per-sub-pass timing that survives a long sync block. Pushes to
+    // window.__pfStageLog (sync) and throws past a deadline so the caller's sync block
+    // unwinds and the E2E can read the array. REMOVE once the tail hang is fixed.
+    const __tjStart = performance.now();
+    // TEMP-TJPROBE: arm the module-level inner-loop deadline so a single sub-pass that
+    // is itself the multi-minute sink self-aborts (with a `where` label) instead of
+    // running past the E2E cap. Reset to 0 before every return below.
+    // TEMP-TJPROBE: arm at a LARGE deadline so the repair runs many passes but still
+    // unwinds (throws) before the harness cap, leaving __pfStageLog readable so we can
+    // count passes-to-convergence and see the per-pass time trajectory.
+    __tjDeadlineAt = 0; // TEMP-TJPROBE: deadline DISARMED — let the repair + fill battery run to completion so the true end-to-end watertight verdict is observable.
+    __tjAbortCounter = 0;
+    const __tjLog = (globalThis as unknown as { __pfStageLog?: string[] }).__pfStageLog ??= [];
+    const __tjMark = (msg: string): void => {
+        __tjLog.push(`${(performance.now() - __tjStart).toFixed(0)}ms-into-TJ ${msg}`);
+    };
+    const __TJ_DEADLINE_MS = Number.POSITIVE_INFINITY;
+    const __tjCheckDeadline = (where: string): void => {
+        if (performance.now() - __tjStart > __TJ_DEADLINE_MS) {
+            __tjMark(`DEADLINE_HIT at ${where}`);
+            throw new Error(`TJPROBE_DEADLINE at ${where}`);
+        }
+    };
+    {
+        let zeroArea = 0;
+        for (let t = 0; t + 2 < outerIndices.length; t += 3) {
+            const a = outerIndices[t], b = outerIndices[t + 1], c = outerIndices[t + 2];
+            if (a === b || b === c || a === c) continue;
+            const ax = positions ? positions[a * 3] : 0, ay = positions ? positions[a * 3 + 1] : 0, az = positions ? positions[a * 3 + 2] : 0;
+            const bx = positions ? positions[b * 3] : 0, by = positions ? positions[b * 3 + 1] : 0, bz = positions ? positions[b * 3 + 2] : 0;
+            const cx = positions ? positions[c * 3] : 0, cy = positions ? positions[c * 3 + 1] : 0, cz = positions ? positions[c * 3 + 2] : 0;
+            const ux = bx - ax, uy = by - ay, uz = bz - az;
+            const vx = cx - ax, vy = cy - ay, vz = cz - az;
+            const crx = uy * vz - uz * vy, cry = uz * vx - ux * vz, crz = ux * vy - uy * vx;
+            if (crx * crx + cry * cry + crz * crz < 1e-24) zeroArea++;
+        }
+        __tjMark(`ENTRY outerTris=${outerIndices.length / 3} zeroAreaOuter=${zeroArea}`);
+    }
+
     const initialCompaction = compactDuplicateCanonicalTriangles(
         outerIndices,
         uvs,
@@ -2027,71 +3018,92 @@ export function repairOuterWallTJunctions(
         repairedEdges += initialCompaction.removedTriangles;
     }
 
+    let prevPassMutations = 0;
+    let firstPassMutations = 0;
     for (let pass = 0; pass < maxPasses; pass++) {
+        __tjMark(`pass${pass} START outerTris=${outerIndices.length / 3}`);
+        let __t = performance.now();
         const passResult = splitBoundaryTJunctionPass(
             outerIndices,
             uvs,
             positions,
             topologyWeldToleranceMm,
         );
+        __tjMark(`pass${pass} splitBoundaryTJunctionPass=${(performance.now() - __t).toFixed(0)}ms repaired=${passResult.repairedEdges}`);
+        __tjCheckDeadline(`pass${pass} after splitBoundaryTJunctionPass`);
         if (passResult.repairedEdges > 0) {
             outerIndices = passResult.indices;
             repairedEdges += passResult.repairedEdges;
             insertedTriangles += passResult.insertedTriangles;
         }
 
+        __t = performance.now();
         const nonManifoldPassResult = splitNonManifoldTJunctionPass(
             outerIndices,
             uvs,
             positions,
             topologyWeldToleranceMm,
         );
+        __tjMark(`pass${pass} splitNonManifoldTJunctionPass=${(performance.now() - __t).toFixed(0)}ms repaired=${nonManifoldPassResult.repairedEdges}`);
+        __tjCheckDeadline(`pass${pass} after splitNonManifoldTJunctionPass`);
         if (nonManifoldPassResult.repairedEdges > 0) {
             outerIndices = nonManifoldPassResult.indices;
             repairedEdges += nonManifoldPassResult.repairedEdges;
             insertedTriangles += nonManifoldPassResult.insertedTriangles;
         }
 
+        __t = performance.now();
         const snapPassResult = snapNonManifoldEndpointToBoundaryPass(
             outerIndices,
             uvs,
             positions,
             topologyWeldToleranceMm,
         );
+        __tjMark(`pass${pass} snapNonManifoldEndpointToBoundaryPass=${(performance.now() - __t).toFixed(0)}ms repaired=${snapPassResult.repairedEdges}`);
+        __tjCheckDeadline(`pass${pass} after snapNonManifoldEndpointToBoundaryPass`);
         if (snapPassResult.repairedEdges > 0) {
             outerIndices = snapPassResult.indices;
             repairedEdges += snapPassResult.repairedEdges;
             insertedTriangles += snapPassResult.insertedTriangles;
         }
 
+        __t = performance.now();
         const compaction = compactDuplicateCanonicalTriangles(
             outerIndices,
             uvs,
             positions,
             topologyWeldToleranceMm,
         );
+        __tjMark(`pass${pass} compactDuplicateCanonicalTriangles=${(performance.now() - __t).toFixed(0)}ms removed=${compaction.removedTriangles}`);
+        __tjCheckDeadline(`pass${pass} after compactDuplicateCanonicalTriangles`);
         if (compaction.removedTriangles > 0) {
             outerIndices = compaction.indices;
             repairedEdges += compaction.removedTriangles;
         }
 
+        __t = performance.now();
         const fanPrune = pruneMultiNonManifoldFanTriangles(
             outerIndices,
             uvs,
             positions,
             topologyWeldToleranceMm,
         );
+        __tjMark(`pass${pass} pruneMultiNonManifoldFanTriangles=${(performance.now() - __t).toFixed(0)}ms removed=${fanPrune.removedTriangles}`);
+        __tjCheckDeadline(`pass${pass} after pruneMultiNonManifoldFanTriangles`);
         if (fanPrune.removedTriangles > 0) {
             outerIndices = fanPrune.indices;
             repairedEdges += fanPrune.removedTriangles;
         }
 
+        __t = performance.now();
         const crowdedFanPrune = pruneCrowdedSideNonManifoldEdgeFans(
             outerIndices,
             uvs,
             positions,
             topologyWeldToleranceMm,
         );
+        __tjMark(`pass${pass} pruneCrowdedSideNonManifoldEdgeFans=${(performance.now() - __t).toFixed(0)}ms removed=${crowdedFanPrune.removedTriangles}`);
+        __tjCheckDeadline(`pass${pass} after pruneCrowdedSideNonManifoldEdgeFans`);
         if (crowdedFanPrune.removedTriangles > 0) {
             outerIndices = crowdedFanPrune.indices;
             repairedEdges += crowdedFanPrune.removedTriangles;
@@ -2105,15 +3117,34 @@ export function repairOuterWallTJunctions(
             fanPrune.removedTriangles === 0 &&
             crowdedFanPrune.removedTriangles === 0
         ) break;
+
+        const passMutations =
+            passResult.repairedEdges +
+            nonManifoldPassResult.repairedEdges +
+            snapPassResult.repairedEdges +
+            compaction.removedTriangles +
+            fanPrune.removedTriangles +
+            crowdedFanPrune.removedTriangles;
+        if (firstPassMutations === 0) firstPassMutations = passMutations;
+        // Plateau floor adapts to the style: a pass doing under a quarter of the
+        // first (most productive) pass's work has converged for practical purposes.
+        const plateauFloor = Math.max(32, Math.floor(firstPassMutations * 0.25));
+        if (shouldStopRepairPasses(prevPassMutations, passMutations, plateauFloor)) {
+            __tjMark(`pass${pass} early-exit (converged, floor=${plateauFloor})`);
+            break;
+        }
+        prevPassMutations = passMutations;
     }
 
     if (repairedEdges === 0) {
+        __tjDeadlineAt = 0; // TEMP-TJPROBE disarm
         return { indices, outerIdxCount, repairedEdges: 0, insertedTriangles: 0 };
     }
 
     const repaired = new Uint32Array(outerIndices.length + nonOuterIndices.length);
     repaired.set(outerIndices);
     repaired.set(nonOuterIndices, outerIndices.length);
+    __tjDeadlineAt = 0; // TEMP-TJPROBE disarm
     return {
         indices: repaired,
         outerIdxCount: outerIndices.length,

@@ -8,13 +8,41 @@
 import type { MeshData } from '../geometry/types';
 import { STYLE_REGISTRY } from '../styles/registry';
 import { getLastChainDebugData } from '../renderers/webgpu/ParametricExportComputer';
-import { computeFidelityMetrics } from './metrics';
+import {
+  computeFidelityMetrics,
+  topologyDiagnostics,
+  triangleQualityDiagnostics,
+  type TopologyDiagnostics,
+  type TriangleQualityDiagnostics,
+} from './metrics';
 import { WELD_TOL_MM, type FidelityMetrics } from './types';
 
 export interface FidelityMeasureOptions {
   targetTriangles: number;
   referenceTriangles: number;
   sagSampleOrder?: number;
+  sagTriangleSampleLimit?: number;
+  qualityTriangleSampleLimit?: number;
+  nearestReferenceTriangleSampleLimit?: number;
+}
+
+export interface FidelityTopologyDiagnosticOptions {
+  targetTriangles?: number;
+  weldToleranceMm?: number;
+  sampleLimit?: number;
+}
+
+export interface FidelityQualityDiagnosticOptions {
+  targetTriangles?: number;
+  sampleLimit?: number;
+}
+
+export interface FidelityTopologyDiagnostics extends TopologyDiagnostics {
+  styleId: string;
+}
+
+export interface FidelityQualityDiagnostics extends TriangleQualityDiagnostics {
+  styleId: string;
 }
 
 export interface FidelityHookDeps {
@@ -39,6 +67,8 @@ export interface PfFidelityApi {
   isReady(): boolean;
   setStyle(styleId: string): Promise<void>;
   measure(opts: FidelityMeasureOptions): Promise<FidelityMetrics>;
+  diagnoseTopology(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTopologyDiagnostics>;
+  diagnoseQuality(opts?: FidelityQualityDiagnosticOptions): Promise<FidelityQualityDiagnostics>;
 }
 
 declare global {
@@ -136,8 +166,36 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         features: { expected, present },
         weldToleranceMm: WELD_TOL_MM,
         sagSampleOrder: opts.sagSampleOrder,
+        sagTriangleSampleLimit: opts.sagTriangleSampleLimit,
+        qualityTriangleSampleLimit: opts.qualityTriangleSampleLimit,
+        nearestReferenceTriangleSampleLimit: opts.nearestReferenceTriangleSampleLimit,
         referenceTriangleCount: dense.triangleCount,
       });
+    },
+    async diagnoseTopology(opts: FidelityTopologyDiagnosticOptions = {}): Promise<FidelityTopologyDiagnostics> {
+      const styleId = currentStyleId();
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      return {
+        styleId,
+        ...topologyDiagnostics(
+          { vertices: mesh.vertices, indices: mesh.indices },
+          opts.weldToleranceMm ?? WELD_TOL_MM,
+          opts.sampleLimit ?? 16,
+        ),
+      };
+    },
+    async diagnoseQuality(opts: FidelityQualityDiagnosticOptions = {}): Promise<FidelityQualityDiagnostics> {
+      const styleId = currentStyleId();
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      return {
+        styleId,
+        ...triangleQualityDiagnostics(
+          { vertices: mesh.vertices, indices: mesh.indices },
+          opts.sampleLimit ?? 16,
+        ),
+      };
     },
   };
 }

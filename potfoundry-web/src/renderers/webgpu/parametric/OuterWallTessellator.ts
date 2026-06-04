@@ -14,6 +14,7 @@ import type { FeatureChain } from './types';
 import { bsearchFloor } from './GridBuilder';
 import { collectChainVertices, SEAM_THRESHOLD } from './ChainVertexBuilder';
 import type { ChainBuildResult } from './ChainVertexBuilder';
+import { buildPeriodicSeamClosure } from './PeriodicSeamClosure';
 import {
     planOuterWallCorridors,
 } from './OuterWallCorridorPlanner';
@@ -107,6 +108,8 @@ export interface OuterWallResult {
     vertices: Float32Array;
     /** Triangle index buffer */
     indices: Uint32Array;
+    /** Optional source-diagnostic label per triangle, populated only when source diagnostics are enabled. */
+    triangleProvenance?: string[];
     /** Per-quad map: index into indices buffer, or -1 for chain/seam cells */
     quadMap: Int32Array;
     /** Number of grid vertices (before chain vertices) */
@@ -157,6 +160,12 @@ export interface OuterWallBuildOptions {
     readonly metricAspect?: number;
     /** Add projected row-edge companions to reduce chain-heavy fan slivers. */
     readonly rowEdgeQualityCompanions?: boolean;
+    /**
+     * Close the half-open u-seam at base-gen (after coalesce/dedup) by zippering the
+     * low-side (u≈0) and high-side (u≈0.997) boundary chains. Manifold-safe and
+     * non-regressive. See PeriodicSeamClosure.ts. Default: false.
+     */
+    readonly periodicSeamU?: boolean;
 }
 
 // ============================================================================
@@ -289,7 +298,23 @@ const R54_NARROW_TO_BAND_MAX = 0.2;
  * Value = mathematical 4:1 aspect ratio violation threshold.
  */
 const GRID_CHAIN_COALESCE_RADIUS = 0.0006;
-const GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS = 0.00012;
+// Must equal GRID_CHAIN_COALESCE_RADIUS (the pin-pair tolerance). A chain vertex
+// within this U-distance of a column boundary is propagated into the ADJACENT
+// cell so the shared vertical edge conforms to the exact (infinite-precision)
+// chain vertex — eliminating near-coincident grid↔chain "pin pairs" (audit B11)
+// WITHOUT dropping any grid sample. Previously 0.00012, which left a dead zone:
+// vertices in (0.00012, 0.0006) of a boundary registered as pins but were never
+// propagated. Propagation is preferred over coalescing because it preserves the
+// chain vertex's precise position rather than discarding a grid vertex.
+const GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS = GRID_CHAIN_COALESCE_RADIUS;
+
+/** Replacement fans must stay within the local source-cell edge scale. */
+const OWNED_SPAN_RAIL_PATCH_MAX_EDGE_SCALE = 1.02;
+
+/** Minimum source-grid resolution where crossing fallback keeps the existing dense/topology behavior. */
+const CROSSING_CONSTRAINT_FALLBACK_MIN_GRID_SIZE = 128;
+/** Sparse crossing fallback must not exceed the local source-cell edge scale. */
+const CROSSING_CONSTRAINT_FALLBACK_MAX_EDGE_SCALE = 1.02;
 
 /** Fraction of band T-height used to perturb promoted chain vertices into the strip interior.
  *  R24: Set to 0 — chain vertices are boundary vertices (no promotion).
@@ -513,7 +538,28 @@ function constrainedSweepCell(
     fanDiagEdges: Array<[number, number]>,
     /** Bug #5 fix: optional metric aspect. 1.0 = legacy. */
     metricAspect: number = 1.0,
+    crossingConstraintFallbackMaxEdge: number = Number.POSITIVE_INFINITY,
 ): void {
+    const edgeLength = (a: number, b: number): number => Math.hypot(
+        verts[a * 3] - verts[b * 3],
+        verts[a * 3 + 1] - verts[b * 3 + 1],
+    );
+
+    const maxFallbackEdge = (indices: readonly number[]): number => {
+        let maxEdge = 0;
+        for (let i = 0; i < indices.length; i += 3) {
+            const a = indices[i], b = indices[i + 1], c = indices[i + 2];
+            if (a === 0 && b === 0 && c === 0) continue;
+            maxEdge = Math.max(
+                maxEdge,
+                edgeLength(a, b),
+                edgeLength(b, c),
+                edgeLength(a, c),
+            );
+        }
+        return maxEdge;
+    };
+
     // Build partition list: map each chain edge to positions in bot/top arrays
     interface Partition {
         botPos: number;
@@ -548,6 +594,37 @@ function constrainedSweepCell(
         const bU = (verts[bot[b.botPos] * 3] + verts[top[b.topPos] * 3]) / 2;
         return aU - bU;
     });
+
+    // WATERTIGHT-FIX (Task #18): crossing chain constraints. The sweep below
+    // slices bot/top BY POSITION assuming partitions are monotone — i.e. botPos
+    // and topPos increase together. Two chain edges that CROSS inside the cell
+    // (one rises L→R, the other falls) invert that order: after sorting, a later
+    // partition has a SMALLER topPos, so `top.slice(prevTopPos, topPos+1)` is
+    // empty and the region between the crossing edges is DROPPED, leaving the
+    // crossed edge one-sided → a genuine vertical chain↔chain hole. This is the
+    // measured dominant production class (audit F14: ~42K such holes from dense
+    // drifting chains that cross within cells). The monotone sweep cannot enforce
+    // crossing constraints without intersection vertices (which this function
+    // cannot allocate). Fall back to the unconstrained monotone triangulation,
+    // which is watertight (uses only the shared boundary-loop edges); the crossed
+    // constraint segments are simply not enforced in this one sub-cell — a
+    // sub-cell-local fidelity loss at the ridge junction, but a watertight mesh.
+    let constraintsCross = false;
+    for (let i = 0; i < partitions.length && !constraintsCross; i++) {
+        for (let j = i + 1; j < partitions.length; j++) {
+            const dBot = partitions[i].botPos - partitions[j].botPos;
+            const dTop = partitions[i].topPos - partitions[j].topPos;
+            if (dBot * dTop < 0) { constraintsCross = true; break; } // opposite order = crossing
+        }
+    }
+    if (constraintsCross) {
+        const fallback: number[] = [];
+        sweepQuad(fallback, bot, top, verts, metricAspect);
+        if (maxFallbackEdge(fallback) <= crossingConstraintFallbackMaxEdge) {
+            pushAll(buf, fallback);
+            return;
+        }
+    }
 
     // Sweep: emit sub-quads between consecutive partition lines
     // R41: Track whether left boundary is a chain edge for fan diagonal selection
@@ -646,99 +723,6 @@ function dedupeSortedVertexEdge(edge: number[]): number[] {
         prev = vertexIdx;
     }
     return deduped;
-}
-
-/**
- * Insert micro-rows into tPositions at midpoints of steep chain crossings.
- *
- * When a chain segment crosses >1 grid column within a single row band,
- * the UV-snapped vertices in adjacent rows are far apart in U, creating
- * sawtooth artifacts. Inserting a micro-row between those rows gives the
- * chain an intermediate step, producing smoother triangulation.
- *
- * @param tPositions   Current T-row positions.
- * @param chains       Feature chains.
- * @param origToFinal  Mapping from original chain row → final row index.
- * @param unionU       Sorted U-column positions.
- * @returns            Expanded tPositions, updated origToFinal, and count of inserted micro-rows.
- */
-export function insertMicroRowsForSteepCrossings(
-    tPositions: Float32Array,
-    chains: FeatureChain[],
-    origToFinal: Map<number, number>,
-    unionU: Float32Array,
-): { tPositions: Float32Array; origToFinal: Map<number, number>; microRowCount: number } {
-    const numU = unionU.length;
-    if (numU < 2) return { tPositions, origToFinal, microRowCount: 0 };
-
-    // Identify steep crossings that need micro-rows
-    const microTSet = new Set<string>();
-    const microTValues: number[] = [];
-
-    for (const chain of chains) {
-        for (let k = 1; k < chain.points.length; k++) {
-            const p0 = chain.points[k - 1];
-            const p1 = chain.points[k];
-            const r0 = origToFinal.get(p0.row);
-            const r1 = origToFinal.get(p1.row);
-            if (r0 === undefined || r1 === undefined) continue;
-            if (Math.abs(r1 - r0) !== 1) continue; // only single-row bands
-
-            const col0 = bsearchFloor(unionU, Math.max(0, Math.min(1 - 1e-7, p0.u)));
-            const col1 = bsearchFloor(unionU, Math.max(0, Math.min(1 - 1e-7, p1.u)));
-            let colGap = Math.abs(col1 - col0);
-            if (colGap > numU / 2) colGap = numU - colGap; // circular wrap
-
-            if (colGap > 1) {
-                const lowRow = Math.min(r0, r1);
-                const highRow = Math.max(r0, r1);
-                const tMid = (tPositions[lowRow] + tPositions[highRow]) / 2;
-                const key = tMid.toFixed(10);
-                if (!microTSet.has(key)) {
-                    microTSet.add(key);
-                    microTValues.push(tMid);
-                }
-            }
-        }
-    }
-
-    if (microTValues.length === 0) {
-        return { tPositions, origToFinal, microRowCount: 0 };
-    }
-
-    // Build new T array: merge existing T values with micro-rows
-    const allTs: Array<{ t: number; origIdx: number }> = [];
-    for (let i = 0; i < tPositions.length; i++) {
-        allTs.push({ t: tPositions[i], origIdx: i });
-    }
-    for (const mt of microTValues) {
-        allTs.push({ t: mt, origIdx: -1 });
-    }
-    allTs.sort((a, b) => a.t - b.t);
-
-    const newTPositions = new Float32Array(allTs.length);
-    const oldToNew = new Map<number, number>();
-    for (let i = 0; i < allTs.length; i++) {
-        newTPositions[i] = allTs[i].t;
-        if (allTs[i].origIdx >= 0) {
-            oldToNew.set(allTs[i].origIdx, i);
-        }
-    }
-
-    // Rebuild origToFinal with shifted indices
-    const newOrigToFinal = new Map<number, number>();
-    for (const [origRow, oldFinalRow] of origToFinal) {
-        const newFinalRow = oldToNew.get(oldFinalRow);
-        if (newFinalRow !== undefined) {
-            newOrigToFinal.set(origRow, newFinalRow);
-        }
-    }
-
-    return {
-        tPositions: newTPositions,
-        origToFinal: newOrigToFinal,
-        microRowCount: microTValues.length,
-    };
 }
 
 // NOTE: sweepRegion, simpleSweep, constraintAwareTriangulate removed in v23.0.
@@ -937,27 +921,31 @@ export function buildCDTOuterWall(
     const phantomChainAnchorData = new Map<number, { chainId: number; tCross: number }>();
 
     // Build reverse map: original row → final row index
-    let origToFinal = new Map<number, number>();
+    const origToFinal = new Map<number, number>();
     for (let f = 0; f < rowMapping.length; f++) {
         if (rowMapping[f] >= 0) {
             origToFinal.set(rowMapping[f], f);
         }
     }
 
-    // ── 0. Insert micro-rows for steep spiral chain crossings (sawtooth fix) ──
-    let activeTPositions = tPositions;
-    const microResult = insertMicroRowsForSteepCrossings(
-        activeTPositions, chains, origToFinal, unionU
-    );
-    if (microResult.microRowCount > 0) {
-        activeTPositions = microResult.tPositions;
-        origToFinal = microResult.origToFinal;
-        console.log(`[CDT] Inserted ${microResult.microRowCount} micro-rows for steep crossings`);
-    }
-
+    const activeTPositions = tPositions;
     const numT = activeTPositions.length;
     const numU = unionU.length;
     const gridVertexCount = numU * numT;
+    let maxSourceDU = 0;
+    for (let i = 1; i < unionU.length; i++) {
+        maxSourceDU = Math.max(maxSourceDU, Math.abs(unionU[i] - unionU[i - 1]));
+    }
+    let maxSourceDT = 0;
+    for (let i = 1; i < activeTPositions.length; i++) {
+        maxSourceDT = Math.max(maxSourceDT, Math.abs(activeTPositions[i] - activeTPositions[i - 1]));
+    }
+    const sparseCrossingFallbackMaxEdge = CROSSING_CONSTRAINT_FALLBACK_MAX_EDGE_SCALE * Math.hypot(maxSourceDU, maxSourceDT);
+    const crossingConstraintFallbackMaxEdge =
+        numU >= CROSSING_CONSTRAINT_FALLBACK_MIN_GRID_SIZE &&
+            numT >= CROSSING_CONSTRAINT_FALLBACK_MIN_GRID_SIZE
+            ? Number.POSITIVE_INFINITY
+            : sparseCrossingFallbackMaxEdge;
     // R34: chainStripConfig is no longer used (cell-local replaces CDT strips)
     // Kept in function signature for backward compatibility only.
 
@@ -1108,6 +1096,27 @@ export function buildCDTOuterWall(
         if (!list.includes(vertexIdx)) list.push(vertexIdx);
     };
 
+    const boundaryStraddleMask = new Map<number, number>();
+    const boundaryPropagationKey = (row: number, line: number): number => row * numU + line;
+    for (const cv of chainVertices) {
+        if (cv.t !== undefined) continue;
+        if (batch2Remap.has(cv.vertexIdx)) continue;
+        const col = bsearchFloor(unionU, cv.u);
+        const gc = col < 0 ? 0 : (col >= cellsPerRow ? cellsPerRow - 1 : col);
+        for (const line of [gc, gc + 1]) {
+            if (line <= 0 || line >= cellsPerRow) continue;
+            const distance = cv.u - unionU[line];
+            if (Math.abs(distance) >= GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS) continue;
+            if (Math.abs(distance) <= 1e-12) continue;
+            const key = boundaryPropagationKey(cv.rowIdx, line);
+            const sideMask = distance < 0 ? 1 : 2;
+            boundaryStraddleMask.set(key, (boundaryStraddleMask.get(key) ?? 0) | sideMask);
+        }
+    }
+
+    const hasOppositeSideBoundaryChain = (row: number, line: number): boolean =>
+        boundaryStraddleMask.get(boundaryPropagationKey(row, line)) === 3;
+
     const assignChainVertexToColumn = (cv: ChainVertex, col: number): void => {
         if (col < 0 || col >= cellsPerRow) return;
 
@@ -1135,10 +1144,16 @@ export function buildCDTOuterWall(
         // If the chain vertex lies on a vertical cell boundary, both adjacent
         // cells must receive the row-edge split or grid-chain coalescing leaves
         // a one-triangle pin on the standard side of the boundary.
-        if (Math.abs(cv.u - unionU[gc]) < GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS) {
+        if (
+            Math.abs(cv.u - unionU[gc]) < GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS &&
+            !hasOppositeSideBoundaryChain(cv.rowIdx, gc)
+        ) {
             assignChainVertexToColumn(cv, gc - 1);
         }
-        if (Math.abs(cv.u - unionU[gc + 1]) < GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS) {
+        if (
+            Math.abs(cv.u - unionU[gc + 1]) < GRID_CHAIN_BOUNDARY_PROPAGATE_RADIUS &&
+            !hasOppositeSideBoundaryChain(cv.rowIdx, gc + 1)
+        ) {
             assignChainVertexToColumn(cv, gc + 1);
         }
     }
@@ -1475,6 +1490,69 @@ export function buildCDTOuterWall(
                 topBoundaryUs: [unionU[sc.colStart], unionU[sc.colEnd + 1]],
             });
         }
+    }
+
+    let ownedNeighborPrunedChainVerts = 0;
+    for (const [key, info] of [...cellChainMap]) {
+        if (ownedSpanCells.has(key)) continue;
+        const band = Math.floor(key / cellsPerRow);
+        const col = key % cellsPerRow;
+        const edgeVerts = new Set<number>();
+        for (const [v0, v1] of info.chainEdges) {
+            edgeVerts.add(v0);
+            edgeVerts.add(v1);
+        }
+        const propagatedOwnerKind = (vertexIdx: number): 'active' | 'owned' | undefined => {
+            if (edgeVerts.has(vertexIdx)) return undefined;
+            const u = vertices[vertexIdx * 3];
+            const rawCol = bsearchFloor(unionU, u);
+            const owningCol = Math.max(0, Math.min(cellsPerRow - 1, rawCol));
+            if (owningCol === col) return undefined;
+            if (
+                owningCol <= 0 ||
+                owningCol >= cellsPerRow - 1 ||
+                col <= 0 ||
+                col >= cellsPerRow - 1
+            ) {
+                return undefined;
+            }
+            const ownerKey = cellKey(band, owningCol);
+            if (ownedSpanCells.has(ownerKey)) return 'owned';
+            if (cellChainMap.has(ownerKey)) return 'active';
+            return undefined;
+        };
+        const pruneRowEdge = (rowVerts: number[]): number[] => {
+            const candidates = rowVerts
+                .map(vertexIdx => ({ vertexIdx, kind: propagatedOwnerKind(vertexIdx) }))
+                .filter((candidate): candidate is { vertexIdx: number; kind: 'active' | 'owned' } =>
+                    candidate.kind !== undefined,
+                );
+            if (candidates.length === 0) return rowVerts;
+            const candidateSet = new Set(
+                candidates
+                    .filter(candidate => candidate.kind === 'active' || candidates.length >= 2)
+                    .map(candidate => candidate.vertexIdx),
+            );
+            if (candidateSet.size === 0) return rowVerts;
+            return rowVerts.filter(vertexIdx => !candidateSet.has(vertexIdx));
+        };
+        const oldBotCount = info.botChainVerts.length;
+        const oldTopCount = info.topChainVerts.length;
+        info.botChainVerts = pruneRowEdge(info.botChainVerts);
+        info.topChainVerts = pruneRowEdge(info.topChainVerts);
+        ownedNeighborPrunedChainVerts +=
+            oldBotCount - info.botChainVerts.length +
+            oldTopCount - info.topChainVerts.length;
+        if (
+            info.botChainVerts.length === 0 &&
+            info.topChainVerts.length === 0 &&
+            info.chainEdges.length === 0
+        ) {
+            cellChainMap.delete(key);
+        }
+    }
+    if (ownedNeighborPrunedChainVerts > 0) {
+        console.log(`[CDT] R57 row propagation pruning: ${ownedNeighborPrunedChainVerts} propagated chain verts removed`);
     }
 
     interface OwnedSpanDescriptor {
@@ -2120,6 +2198,19 @@ export function buildCDTOuterWall(
     }
     const phantomBoundaryMap = new Map<number, PhantomBoundaryInfo>();
 
+    // ── Task #18: Owned-span boundary rail registry ──
+    // The mirror-flood (Task #17) creates rail vertices on column lines but
+    // refuses to register them to owned-span (super-cell) cells, and
+    // emitOwnedSpan never consumed phantomBoundaryMap. Result: when a chain
+    // neighbor splits the shared column line at a T the super-cell lacks, a thin
+    // boundary sliver (chord vs. neighbor's bulged edge) is filled by neither →
+    // genuine vertical void (measured: 100% of M/F14 residual). This registry
+    // captures the rail verts destined for super-cell boundary lines so
+    // emitOwnedSpan can patch the slivers with a local fan (no full-width row →
+    // no cascading left-line obligation).
+    const ownedSpanRail = new Map<number, { leftRail: number[]; rightRail: number[] }>();
+    let ownedSpanRailRegistrationCount = 0;
+
     for (const ownedSpan of ownedSpanDescriptors) {
             const scBand = ownedSpan.band;
             const r37Data = ownedSpanR37.get(ownedSpan.ownerKey);
@@ -2186,10 +2277,126 @@ export function buildCDTOuterWall(
             }
     }
 
+    // ── WATERTIGHT-FIX (Task #17): Mirror-flood reconciliation ──
+    // emitChainSplitCell (Step 2) mirrors each boundary phantom T from one
+    // vertical edge to the OPPOSITE edge, creating a split vertex on the far
+    // column line. That mirror is never shared with the neighbor across the far
+    // line → vertical column-boundary crack (confirmed: standard cell emits the
+    // edge unsplit while the chain-split cell splits it at the mirror vertex).
+    //
+    // Fix (pre-emission): pre-create each mirror vertex and register it to BOTH
+    // cells adjacent to every crossed column line, flooding outward through
+    // consecutive chain cells (which keep mirroring) until a non-mirroring cell
+    // (standard → emitSplitCell, or owned/corridor/seam) absorbs the split. The
+    // shared vertex index makes both sides reference the identical split point.
+    if (typeof process === 'undefined' || !process.env?.T17_OFF) {
+        const railVert = new Map<string, number>();
+        const getRailVert = (bnd: number, line: number, t: number): number | undefined => {
+            const tKey = Math.round(t * 1e8) / 1e8;
+            const k = `${bnd}:${line}:${tKey}`;
+            let v = railVert.get(k);
+            if (v === undefined) {
+                if (nextPhantomIdx >= totalVertexCount + maxPhantomSlots) return undefined;
+                v = nextPhantomIdx++;
+                vertices[v * 3] = unionU[line];
+                vertices[v * 3 + 1] = t;
+                vertices[v * 3 + 2] = surfaceId;
+                // NOTE: rail verts sit on grid column lines → column-boundary
+                // phantoms, NOT chain anchors (R52 precision lock preserved).
+                railVert.set(k, v);
+            }
+            return v;
+        };
+        const railIsSeam = (line: number): boolean => {
+            const s = unionU[line + 1] - unionU[line];
+            const p = unionU[line] - unionU[line - 1];
+            return (s > SEAM_GUARD || s < -SEAM_GUARD) || (p > SEAM_GUARD || p < -SEAM_GUARD);
+        };
+        const willMirror = (bnd: number, col: number): boolean => {
+            if (col < 0 || col >= cellsPerRow) return false;
+            const key = cellKey(bnd, col);
+            return cellChainMap.has(key) && !ownedSpanCells.has(key) && !supportedCorridorCells.has(key);
+        };
+        const addRail = (bnd: number, col: number, side: 'L' | 'R', v: number): void => {
+            if (col < 0 || col >= cellsPerRow) return;
+            const key = cellKey(bnd, col);
+            if (supportedCorridorCells.has(key)) return;
+            // Task #18: owned-span cells were previously skipped, orphaning the
+            // rail vert and leaving the super-cell's shared column-line edge
+            // unsplit. Route it to the owned-span rail registry instead.
+            if (ownedSpanCells.has(key)) {
+                let oe = ownedSpanRail.get(key);
+                if (!oe) { oe = { leftRail: [], rightRail: [] }; ownedSpanRail.set(key, oe); }
+                const oarr = side === 'L' ? oe.leftRail : oe.rightRail;
+                if (!oarr.includes(v)) {
+                    oarr.push(v);
+                    ownedSpanRailRegistrationCount++;
+                }
+                return;
+            }
+            let e = phantomBoundaryMap.get(key);
+            if (!e) { e = { leftPhantoms: [], rightPhantoms: [] }; phantomBoundaryMap.set(key, e); }
+            const arr = side === 'L' ? e.leftPhantoms : e.rightPhantoms;
+            if (!arr.includes(v)) arr.push(v);
+        };
+
+        // Snapshot seeds from the BPP-created entries (only these exist yet).
+        // A phantom on a cell's RIGHT edge mirrors LEFT (dir=-1); on its LEFT
+        // edge mirrors RIGHT (dir=+1).
+        interface RailSeed { bnd: number; col: number; dir: -1 | 1; t: number; }
+        const seeds: RailSeed[] = [];
+        for (const [key, entry] of phantomBoundaryMap) {
+            const bnd = Math.floor(key / cellsPerRow);
+            const col = key % cellsPerRow;
+            for (const v of entry.rightPhantoms) seeds.push({ bnd, col, dir: -1, t: vertices[v * 3 + 1] });
+            for (const v of entry.leftPhantoms) seeds.push({ bnd, col, dir: 1, t: vertices[v * 3 + 1] });
+        }
+
+        let railRegistrations = 0;
+        for (const seed of seeds) {
+            let col = seed.col;
+            // Walk while the current cell is a chain cell (it will mirror).
+            while (willMirror(seed.bnd, col)) {
+                // Opposite (mirror-target) edge column line:
+                //   dir=-1 → LEFT edge  = line `col`
+                //   dir=+1 → RIGHT edge = line `col+1`
+                const line = seed.dir === -1 ? col : col + 1;
+                if (line <= 0 || line >= cellsPerRow || railIsSeam(line)) break;
+                const v = getRailVert(seed.bnd, line, seed.t);
+                if (v === undefined) break;
+                if (seed.dir === -1) {
+                    addRail(seed.bnd, col, 'L', v);
+                    addRail(seed.bnd, col - 1, 'R', v);
+                    col -= 1;
+                } else {
+                    addRail(seed.bnd, col, 'R', v);
+                    addRail(seed.bnd, col + 1, 'L', v);
+                    col += 1;
+                }
+                railRegistrations++;
+            }
+        }
+
+        // Re-normalize every entry (dedupe + sort by T ascending) after flooding.
+        for (const entry of phantomBoundaryMap.values()) {
+            if (entry.leftPhantoms.length > 1)
+                entry.leftPhantoms = [...new Set(entry.leftPhantoms)].sort((a, b) => vertices[a * 3 + 1] - vertices[b * 3 + 1]);
+            if (entry.rightPhantoms.length > 1)
+                entry.rightPhantoms = [...new Set(entry.rightPhantoms)].sort((a, b) => vertices[a * 3 + 1] - vertices[b * 3 + 1]);
+        }
+        if (railRegistrations > 0) {
+            console.log(`[CDT] Task#17 mirror-flood: ${railRegistrations} rail registrations, ${railVert.size} rail verts`);
+        }
+    }
+
     let bppSplitCellCount = 0;
     let bppChainSplitCellCount = 0;
     let bppPropagatedCount = 0;
     let qualityCompanionCount = 0;
+    let ownedSpanRailPatchCandidates = 0;
+    let ownedSpanRailPatchReplaced = 0;
+    let ownedSpanRailPatchDisabled = 0;
+    let ownedSpanRailPatchRejected = 0;
 
     const QUALITY_COMPANION_U_TOL = 1e-7;
 
@@ -2273,6 +2480,14 @@ export function buildCDTOuterWall(
     const totalBands = Math.max(1, numT - 1);
     const totalCells = cellsPerRow * totalBands;
     const indexBuf: number[] = [];
+    const sourceDiagnosticsGlobal = globalThis as unknown as { __pfEnableSourceDiagnostics?: boolean };
+    const triangleProvenance = sourceDiagnosticsGlobal.__pfEnableSourceDiagnostics === true ? [] as string[] : undefined;
+    const markTriangleProvenance = (startIndex: number, label: string): void => {
+        if (!triangleProvenance) return;
+        for (let offset = startIndex; offset < indexBuf.length; offset += 3) {
+            triangleProvenance[offset / 3] = label;
+        }
+    };
 
     const quadMap = new Int32Array(totalCells);
     quadMap.fill(-1);
@@ -2332,6 +2547,7 @@ export function buildCDTOuterWall(
     /** Emit a standard 2-triangle quad cell (no chain activity). */
     const emitStandardCell = (b: number, c: number): void => {
         const quadIdx = b * cellsPerRow + c;
+        const provenanceStart = indexBuf.length;
         const bl = b * numU + c;
         const br = b * numU + (c + 1);
         const tl = (b + 1) * numU + c;
@@ -2365,6 +2581,7 @@ export function buildCDTOuterWall(
         }
 
         quadMap[quadIdx] = triBase;
+        markTriangleProvenance(provenanceStart, `standard:b${b}:c${c}`);
     };
 
     /**
@@ -2375,6 +2592,7 @@ export function buildCDTOuterWall(
     const emitSplitCell = (b: number, c: number, bppInfo: PhantomBoundaryInfo): void => {
         quadMap[b * cellsPerRow + c] = -1; // Not a standard 2-tri quad; skip edge flip
         bppSplitCellCount++;
+        const provenanceStart = indexBuf.length;
 
         const BL = b * numU + c;
         const BR = b * numU + (c + 1);
@@ -2387,12 +2605,14 @@ export function buildCDTOuterWall(
         const leftEdge: number[] = [BL, ...bppInfo.leftPhantoms, TL];
         const rightEdge: number[] = [BR, ...bppInfo.rightPhantoms, TR];
         sweepQuad(indexBuf, leftEdge, rightEdge, vertices, metricAspect);
+        markTriangleProvenance(provenanceStart, `split:b${b}:c${c}`);
     };
 
     /** Emit a chain-involved cell using cell-local quad splitting (R34). */
     const emitChainCell = (band: number, col: number, info: CellChainInfo): void => {
         quadMap[band * cellsPerRow + col] = -1; // (Amendment A3: match current CDT behavior)
         chainCellCount++;
+        const provenanceStart = indexBuf.length;
 
         // Grid corner vertex indices
         const BL = band * numU + col;
@@ -2420,14 +2640,22 @@ export function buildCDTOuterWall(
 
         const qualityEdges = addRowEdgeQualityCompanions(coalBot, coalTop);
 
+        // TEMP-T18TRACE: dump the target crack cell's edge/constraint state.
+        if (cellsPerRow < 30 && (typeof process !== 'undefined' && process.env?.T18TRACE) && band === 9 && col === 7) {
+            const fmt = (v: number): string => `${v}@(${vertices[v * 3].toFixed(4)},${vertices[v * 3 + 1].toFixed(4)})`;
+            // eslint-disable-next-line no-console
+            console.log(`[T18TRACE emitChainCell b9c7] bot=[${coalBot.map(fmt).join(' ')}] top=[${coalTop.map(fmt).join(' ')}] chainEdges=${info.chainEdges.map(([a, b]) => `${fmt(a)}-${fmt(b)}`).join(',')} qbot=[${qualityEdges.bottom.map(fmt).join(' ')}] qtop=[${qualityEdges.top.map(fmt).join(' ')}]`);
+        }
+
         if (info.chainEdges.length === 0) {
             // Chain vertices on edges but no chain edge through this cell.
             // Use monotone sweep between bottom and top edge arrays.
             sweepQuad(indexBuf, qualityEdges.bottom, qualityEdges.top, vertices, metricAspect);
         } else {
             // Chain edges partition the cell into sub-quads.
-            constrainedSweepCell(indexBuf, qualityEdges.bottom, qualityEdges.top, info.chainEdges, vertices, fanDiagEdges, metricAspect);
+            constrainedSweepCell(indexBuf, qualityEdges.bottom, qualityEdges.top, info.chainEdges, vertices, fanDiagEdges, metricAspect, crossingConstraintFallbackMaxEdge);
         }
+        markTriangleProvenance(provenanceStart, `chain:b${band}:c${col}:edges${info.chainEdges.length}`);
     };
 
     /** Emit a chain cell with phantom boundary vertices using sub-band decomposition (R53 Phase 2). */
@@ -2573,6 +2801,7 @@ export function buildCDTOuterWall(
 
         // Steps 5-6: Emit each sub-band
         for (let sb = 0; sb < boundaries.length - 1; sb++) {
+            const provenanceStart = indexBuf.length;
             const subBotRaw = [...boundaries[sb]].sort(
                 (a, b) => vertices[a * 3] - vertices[b * 3]
             );
@@ -2600,8 +2829,9 @@ export function buildCDTOuterWall(
             if (subEdges.length === 0) {
                 sweepQuad(indexBuf, qualityEdges.bottom, qualityEdges.top, vertices, metricAspect);
             } else {
-                constrainedSweepCell(indexBuf, qualityEdges.bottom, qualityEdges.top, subEdges, vertices, fanDiagEdges, metricAspect);
+                constrainedSweepCell(indexBuf, qualityEdges.bottom, qualityEdges.top, subEdges, vertices, fanDiagEdges, metricAspect, crossingConstraintFallbackMaxEdge);
             }
+            markTriangleProvenance(provenanceStart, `chain-split:b${band}:c${col}:sb${sb}:edges${subEdges.length}`);
         }
     };
 
@@ -2645,8 +2875,145 @@ export function buildCDTOuterWall(
             return;
         }
 
+        const spanIndexStart = indexBuf.length;
+
+        // ── Task #18: patch shared column-line boundary slivers ──
+        // For each boundary line (colStart / colEnd+1), the chain neighbor may
+        // have split the line at a rail T the super-cell lacks (the mirror-flood
+        // registered that rail vert into ownedSpanRail). Replace the owned-span
+        // triangle that owns the unsplit edge P0→P1 with a fan from that triangle's
+        // interior vertex through the shared rail verts. Appending a collinear
+        // boundary-only triangle cannot split P0→P1 topologically; replacing the
+        // original triangle removes that exposed edge and makes both sides use the
+        // same P0→rail→P1 segments.
+        const patchBoundarySlivers = (rows: number[][]): void => {
+            const spanIndexEnd = indexBuf.length;
+            const replacedTriangles = new Set<number>();
+            let localEdgeOwners: Map<string, number[]> | undefined;
+
+            const edgeKey = (a: number, b: number): string => a < b ? `${a}-${b}` : `${b}-${a}`;
+
+            const getLocalEdgeOwners = (): Map<string, number[]> => {
+                if (localEdgeOwners) return localEdgeOwners;
+                localEdgeOwners = new Map<string, number[]>();
+                const addOwner = (a: number, b: number, tri: number): void => {
+                    const key = edgeKey(a, b);
+                    const owners = localEdgeOwners!.get(key) ?? [];
+                    owners.push(tri);
+                    localEdgeOwners!.set(key, owners);
+                };
+                for (let tri = spanIndexStart; tri < spanIndexEnd; tri += 3) {
+                    const ia = indexBuf[tri], ib = indexBuf[tri + 1], ic = indexBuf[tri + 2];
+                    if (ia === 0 && ib === 0 && ic === 0) continue;
+                    addOwner(ia, ib, tri);
+                    addOwner(ib, ic, tri);
+                    addOwner(ia, ic, tri);
+                }
+                return localEdgeOwners;
+            };
+
+            const orientedTriangles = (apex: number, polyline: number[]): number[] => {
+                const out: number[] = [];
+                for (let i = 0; i < polyline.length - 1; i++) {
+                    emitTriCCW(out, apex, polyline[i], polyline[i + 1], vertices);
+                }
+                return out;
+            };
+
+            const edgeLength = (a: number, b: number): number => Math.hypot(
+                vertices[a * 3] - vertices[b * 3],
+                vertices[a * 3 + 1] - vertices[b * 3 + 1],
+            );
+
+            const maxTriangleEdge = (a: number, b: number, c: number): number => Math.max(
+                edgeLength(a, b),
+                edgeLength(b, c),
+                edgeLength(a, c),
+            );
+
+            const maxTriangleListEdge = (triangles: number[]): number => {
+                let maxEdge = 0;
+                for (let i = 0; i < triangles.length; i += 3) {
+                    const a = triangles[i], b = triangles[i + 1], c = triangles[i + 2];
+                    if (a === 0 && b === 0 && c === 0) continue;
+                    maxEdge = Math.max(maxEdge, maxTriangleEdge(a, b, c));
+                }
+                return maxEdge;
+            };
+
+            const maxReplacementEdge = OWNED_SPAN_RAIL_PATCH_MAX_EDGE_SCALE * Math.hypot(
+                1 / Math.max(1, numU - 1),
+                1 / Math.max(1, numT - 1),
+            );
+
+            const replaceBoundaryTriangle = (p0: number, p1: number, orderedRails: number[]): boolean => {
+                const matches = getLocalEdgeOwners().get(edgeKey(p0, p1)) ?? [];
+                if (matches.length !== 1) return false;
+
+                const tri = matches[0];
+                if (replacedTriangles.has(tri)) return false;
+                const ia = indexBuf[tri], ib = indexBuf[tri + 1], ic = indexBuf[tri + 2];
+                const apex = ia !== p0 && ia !== p1 ? ia : (ib !== p0 && ib !== p1 ? ib : ic);
+                if (apex === p0 || apex === p1) return false;
+
+                const split = orientedTriangles(apex, [p0, ...orderedRails, p1]);
+                if (split.length < 3) return false;
+                const originalMaxEdge = maxTriangleEdge(ia, ib, ic);
+                const splitMaxEdge = maxTriangleListEdge(split);
+                if (splitMaxEdge > originalMaxEdge + 1e-12 || splitMaxEdge > maxReplacementEdge) return false;
+
+                indexBuf[tri] = split[0];
+                indexBuf[tri + 1] = split[1];
+                indexBuf[tri + 2] = split[2];
+                for (let i = 3; i < split.length; i++) {
+                    indexBuf.push(split[i]);
+                }
+                replacedTriangles.add(tri);
+                return true;
+            };
+
+            const doSide = (side: 'L' | 'R'): void => {
+                const edgeCol = side === 'L' ? colStart : colEnd;
+                const lineU = side === 'L' ? unionU[colStart] : unionU[colEnd + 1];
+                const reg = ownedSpanRail.get(cellKey(band, edgeCol));
+                if (!reg) return;
+                const rail = (side === 'L' ? reg.leftRail : reg.rightRail)
+                    .filter(v => Math.abs(vertices[v * 3] - lineU) < R37_U_MERGE);
+                if (rail.length === 0) return;
+                rail.sort((a, b) => vertices[a * 3 + 1] - vertices[b * 3 + 1]);
+                for (let k = 0; k < rows.length - 1; k++) {
+                    const row0 = rows[k], row1 = rows[k + 1];
+                    if (row0.length === 0 || row1.length === 0) continue;
+                    const P0 = side === 'R' ? row0[row0.length - 1] : row0[0];
+                    const P1 = side === 'R' ? row1[row1.length - 1] : row1[0];
+                    const t0 = vertices[P0 * 3 + 1], t1 = vertices[P1 * 3 + 1];
+                    const lo = Math.min(t0, t1), hi = Math.max(t0, t1);
+                    const between = rail.filter(v => {
+                        const tv = vertices[v * 3 + 1];
+                        return tv > lo + 1e-9 && tv < hi - 1e-9 && v !== P0 && v !== P1;
+                    });
+                    if (between.length === 0) continue;
+                    const ordered = t0 <= t1 ? between : [...between].reverse();
+                    ownedSpanRailPatchCandidates++;
+                    const replaced = replaceBoundaryTriangle(P0, P1, ordered);
+                    if (replaced) {
+                        ownedSpanRailPatchReplaced++;
+                    } else {
+                        ownedSpanRailPatchRejected++;
+                        const poly = [P0, ...ordered, P1];
+                        for (let i = 1; i < poly.length - 1; i++) {
+                            emitTriCCW(indexBuf, poly[0], poly[i], poly[i + 1], vertices);
+                        }
+                    }
+                }
+            };
+            doSide('L');
+            doSide('R');
+        };
+
         // ── R37: Band splitting for column-crossing dip elimination ──
         const r37 = ownedSpanR37.get(span.ownerKey);
+
         if (r37 && r37.phantomRows.length > 0) {
             const sortedRows = [...r37.phantomRows].sort((a, b) => a.tCross - b.tCross);
 
@@ -2665,6 +3032,7 @@ export function buildCDTOuterWall(
             }
 
             for (let sb = 0; sb < boundaries.length - 1; sb++) {
+                const provenanceStart = indexBuf.length;
                 const subBot = boundaries[sb];
                 const subTop = boundaries[sb + 1];
 
@@ -2682,17 +3050,22 @@ export function buildCDTOuterWall(
                 if (subEdges.length === 0) {
                     sweepQuad(indexBuf, subBot, subTop, vertices, metricAspect);
                 } else {
-                    constrainedSweepCell(indexBuf, subBot, subTop, subEdges, vertices, fanDiagEdges, metricAspect);
+                    constrainedSweepCell(indexBuf, subBot, subTop, subEdges, vertices, fanDiagEdges, metricAspect, crossingConstraintFallbackMaxEdge);
                 }
+                markTriangleProvenance(provenanceStart, `owned-${span.kind}:b${band}:c${colStart}-${colEnd}:sb${sb}:edges${subEdges.length}`);
             }
+            patchBoundarySlivers(boundaries);
             return;
         }
 
+        const provenanceStart = indexBuf.length;
         if (geometry.uniqueEdges.length === 0) {
             sweepQuad(indexBuf, coalBot, coalTop, vertices, metricAspect);
         } else {
-            constrainedSweepCell(indexBuf, coalBot, coalTop, geometry.uniqueEdges, vertices, fanDiagEdges, metricAspect);
+            constrainedSweepCell(indexBuf, coalBot, coalTop, geometry.uniqueEdges, vertices, fanDiagEdges, metricAspect, crossingConstraintFallbackMaxEdge);
         }
+        markTriangleProvenance(provenanceStart, `owned-${span.kind}:b${band}:c${colStart}-${colEnd}:single:edges${geometry.uniqueEdges.length}`);
+        patchBoundarySlivers([coalBot, coalTop]);
     };
 
     const emitSupportedCorridorSpan = (segment: OuterWallCorridorOwnershipSegment): void => {
@@ -2728,11 +3101,14 @@ export function buildCDTOuterWall(
             safeToCoalesce,
         ));
 
+        const provenanceStart = indexBuf.length;
         if (geometry.uniqueEdges.length === 0) {
             sweepQuad(indexBuf, coalescedBottom, coalescedTop, vertices, metricAspect);
+            markTriangleProvenance(provenanceStart, `corridor:b${band}:c${colStart}-${colEnd}:sweep`);
             return;
         }
-        constrainedSweepCell(indexBuf, coalescedBottom, coalescedTop, geometry.uniqueEdges, vertices, fanDiagEdges, metricAspect);
+        constrainedSweepCell(indexBuf, coalescedBottom, coalescedTop, geometry.uniqueEdges, vertices, fanDiagEdges, metricAspect, crossingConstraintFallbackMaxEdge);
+        markTriangleProvenance(provenanceStart, `corridor:b${band}:c${colStart}-${colEnd}:edges${geometry.uniqueEdges.length}`);
     };
 
     // Main cell emission loop (R34/R35): super-cells first, then standard/chain cells
@@ -2789,6 +3165,21 @@ export function buildCDTOuterWall(
             }
         }
     }
+    if (
+        sourceDiagnosticsGlobal.__pfEnableSourceDiagnostics === true ||
+        ownedSpanRailRegistrationCount > 0 ||
+        ownedSpanRailPatchCandidates > 0
+    ) {
+        const message =
+            `[CDT] Task#18 owned-span rail patches: regs=${ownedSpanRailRegistrationCount} ` +
+            `candidates=${ownedSpanRailPatchCandidates} replaced=${ownedSpanRailPatchReplaced} ` +
+            `disabled=${ownedSpanRailPatchDisabled} rejected=${ownedSpanRailPatchRejected}`;
+        if (sourceDiagnosticsGlobal.__pfEnableSourceDiagnostics === true) {
+            console.warn(message);
+        } else {
+            console.log(message);
+        }
+    }
 
     // R53 Phase 2: Update phantom count to include vertices created by emitChainSplitCell
     phantomVertexCount = nextPhantomIdx - phantomVertexStart;
@@ -2818,7 +3209,7 @@ export function buildCDTOuterWall(
         console.log(`[CDT] R55 coalescing: ${coalesceMap.size} grid vertices coalesced, ${coalesceRemapCount} index references remapped`);
     }
 
-    const indices = new Uint32Array(indexBuf);
+    let indices = new Uint32Array(indexBuf);
 
     // ╔══════════════════════════════════════════════════════════════════════╗
     // ║ 🔒 R52 PRECISION LOCK — Batch 6 cross-type dedup guard              ║
@@ -2894,6 +3285,23 @@ export function buildCDTOuterWall(
     }
     if (dedupMergeCount > 0) {
         console.log(`[ParametricExport]   v24.0 Global vertex dedup: ${dedupMergeCount} vertices merged`);
+    }
+
+    // ── Periodic u-seam closure (opt-in). Runs AFTER coalesce/dedup so it zippers
+    //    the FINAL post-coalesce seam boundary verts (grid OR chain). Manifold-safe
+    //    and non-regressive: only appends triangles that close an existing seam
+    //    boundary edge without ever creating a >2-incidence (non-manifold) edge. ──
+    if (options?.periodicSeamU) {
+        const closure = buildPeriodicSeamClosure(indices, vertices);
+        if (closure.triangles.length > 0) {
+            for (const ti of closure.triangles) indexBuf.push(ti);
+            indices = new Uint32Array(indexBuf);
+        }
+        console.warn(
+            `[SEAM-CLOSURE] closed low=${closure.closedLowEdges}/${closure.lowSeamEdges} ` +
+            `high=${closure.closedHighEdges}/${closure.highSeamEdges} skipped=${closure.skippedUnsafe} ` +
+            `+${closure.triangles.length / 3} tris`,
+        );
     }
 
     // ── Verify chain edges are actual mesh edges ──
@@ -3006,6 +3414,7 @@ export function buildCDTOuterWall(
     return {
         vertices: finalVertices,
         indices,
+        ...(triangleProvenance ? { triangleProvenance } : {}),
         quadMap,
         gridVertexCount,
         chainEdges,

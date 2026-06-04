@@ -72,6 +72,48 @@ function facetedCylinder(R: number, H: number, nSides: number): { vertices: Floa
   return { vertices: new Float32Array(verts), indices: new Uint32Array(idx) };
 }
 
+/** Multi-band open cylinder wall; exact topology has top+bottom boundary rings. */
+function openCylinderWall(
+  R: number,
+  H: number,
+  nSides: number,
+  nBands: number,
+): { vertices: Float32Array; indices: Uint32Array } {
+  const verts: number[] = [];
+  for (let j = 0; j <= nBands; j++) {
+    const z = (j / nBands) * H;
+    for (let i = 0; i < nSides; i++) {
+      const th = (i / nSides) * TAU2;
+      verts.push(Math.cos(th) * R, Math.sin(th) * R, z);
+    }
+  }
+  const idx: number[] = [];
+  for (let j = 0; j < nBands; j++) {
+    const row = j * nSides;
+    const next = (j + 1) * nSides;
+    for (let i = 0; i < nSides; i++) {
+      const a = row + i;
+      const b = row + ((i + 1) % nSides);
+      const c = next + i;
+      const d = next + ((i + 1) % nSides);
+      idx.push(a, b, c, b, d, c);
+    }
+  }
+  return { vertices: new Float32Array(verts), indices: new Uint32Array(idx) };
+}
+
+function repeatedNeedleSlivers(count: number): { vertices: Float32Array; indices: Uint32Array } {
+  const verts: number[] = [];
+  const idx: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const base = i * 3;
+    const z = i * 0.01;
+    verts.push(0, 0, z, 100, 0, z, 50, 0.05, z);
+    idx.push(base, base + 1, base + 2);
+  }
+  return { vertices: new Float32Array(verts), indices: new Uint32Array(idx) };
+}
+
 describe('sagDeviation', () => {
   it('reports near-zero sag when the mesh lies on the reference surface', () => {
     const R = 40;
@@ -96,7 +138,7 @@ describe('sagDeviation', () => {
   });
 });
 
-import { triangleQuality3D } from './metrics';
+import { triangleQuality3D, triangleQualityDiagnostics } from './metrics';
 
 describe('triangleQuality3D', () => {
   it('rates an equilateral triangle as near-ideal', () => {
@@ -118,7 +160,44 @@ describe('triangleQuality3D', () => {
   });
 });
 
-import { topologyMetric } from './metrics';
+describe('triangleQualityDiagnostics', () => {
+  it('returns the worst triangles with indices, edge lengths, and UV labels', () => {
+    const vertices = new Float32Array([
+      0, 0, 0,
+      1, 0, 0,
+      0.5, Math.sqrt(3) / 2, 0,
+      0, 0, 1,
+      100, 0, 1,
+      50, 0.05, 1,
+    ]);
+    const uvs = new Float32Array([
+      0, 0, 0,
+      0.1, 0, 0,
+      0.05, 0.1, 0,
+      0.2, 1, 2,
+      0.3, 1, 2,
+      0.25, 1, 0,
+    ]);
+    const indices = new Uint32Array([
+      0, 1, 2,
+      3, 4, 5,
+    ]);
+
+    const out = triangleQualityDiagnostics({ vertices, indices, uvs }, 1);
+
+    expect(out.worst).toHaveLength(1);
+    expect(out.worst[0].triangleIndex).toBe(1);
+    expect(out.worst[0].indices).toEqual([3, 4, 5]);
+    expect(out.worst[0].aspect3D).toBeGreaterThan(100);
+    expect(out.worst[0].minAngleDeg).toBeLessThan(1);
+    expect(out.worst[0].edgeLengthsMm[0]).toBeCloseTo(100);
+    expect(out.worst[0].uvs?.[0][0]).toBeCloseTo(0.2);
+    expect(out.worst[0].uvs?.[1][0]).toBeCloseTo(0.3);
+    expect(out.worst[0].uvs?.[2]).toEqual([0.25, 1, 0]);
+  });
+});
+
+import { topologyDiagnostics, topologyMetric } from './metrics';
 
 function closedCube(): { vertices: Float32Array; indices: Uint32Array } {
   return {
@@ -151,12 +230,53 @@ describe('topologyMetric', () => {
     expect(out.boundaryEdges).toBeGreaterThan(0);
   });
 
+  it('returns classified boundary samples with coordinates', () => {
+    const mesh = {
+      vertices: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+    };
+    const out = topologyDiagnostics(mesh, 1e-4, 2);
+    expect(out.boundaryEdges).toBe(4);
+    expect(out.samples).toHaveLength(2);
+    expect(out.samples[0].kind).toBe('boundary');
+    expect(out.samples[0].total).toBe(1);
+    expect(out.samples[0].midpoint).toHaveLength(3);
+  });
+
+  it('includes uv coordinates in topology samples when the mesh provides uvs', () => {
+    const mesh = {
+      vertices: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      uvs: new Float32Array([0.1, 0.2, 0, 0.3, 0.4, 2, 0.5, 0.6, 2]),
+    };
+
+    const out = topologyDiagnostics(mesh, 1e-4, 1);
+
+    expect(out.samples[0].uvA?.[0]).toBeCloseTo(0.1, 6);
+    expect(out.samples[0].uvA?.[1]).toBeCloseTo(0.2, 6);
+    expect(out.samples[0].uvA?.[2]).toBe(0);
+    expect(out.samples[0].uvB?.[0]).toBeCloseTo(0.3, 6);
+    expect(out.samples[0].uvB?.[1]).toBeCloseTo(0.4, 6);
+    expect(out.samples[0].uvB?.[2]).toBe(2);
+  });
+
   it('detects winding mismatches on a flipped face', () => {
     const mesh = closedCube();
     const flipped = new Uint32Array(mesh.indices);
     flipped[3] = 0; flipped[4] = 2; flipped[5] = 3; // flip second triangle
     const out = topologyMetric({ vertices: mesh.vertices, indices: flipped }, 1e-4);
     expect(out.orientationMismatches).toBeGreaterThan(0);
+  });
+
+  it('returns classified orientation mismatch samples with triangle ids', () => {
+    const mesh = closedCube();
+    const flipped = new Uint32Array(mesh.indices);
+    flipped[3] = 0; flipped[4] = 2; flipped[5] = 3; // flip second triangle
+    const out = topologyDiagnostics({ vertices: mesh.vertices, indices: flipped }, 1e-4, 32);
+    const sample = out.samples.find((s) => s.kind === 'orientationMismatch');
+    expect(sample).toBeDefined();
+    expect(sample?.total).toBe(2);
+    expect([sample?.firstForwardTriangle, sample?.firstReverseTriangle].some((v) => v !== null)).toBe(true);
   });
 });
 
@@ -183,6 +303,62 @@ describe('computeFidelityMetrics', () => {
     expect(row.featuresDropped).toBe(0);
     expect(row.sagReferenceBinThetaRad).toBeGreaterThan(0);
   });
+
+  it('bounds large sag/quality work while preserving exact topology accounting', () => {
+    const R = 40;
+    const dense = denseCylinder(R, 100, 360, 200);
+    const mesh = openCylinderWall(R, 100, 32, 2_000);
+    const row = computeFidelityMetrics({
+      styleId: 'LargeOpenCylinder',
+      mesh,
+      denseVertices: dense,
+      features: { expected: 0, present: 0 },
+      weldToleranceMm: 1e-4,
+      sagTriangleSampleLimit: 512,
+      qualityTriangleSampleLimit: 512,
+    });
+    expect(row.triangleCount).toBe(mesh.indices.length / 3);
+    expect(row.vertexCount).toBe(mesh.vertices.length / 3);
+    expect(row.boundaryEdges).toBe(64);
+    expect(Number.isFinite(row.maxSagMm)).toBe(true);
+    expect(Number.isFinite(row.maxAspect3D)).toBe(true);
+  });
+
+  it('scales sampled sliver counts back to the original triangle population', () => {
+    const dense = denseCylinder(40, 100, 360, 200);
+    const mesh = repeatedNeedleSlivers(1_000);
+    const row = computeFidelityMetrics({
+      styleId: 'SampledSlivers',
+      mesh,
+      denseVertices: dense,
+      features: { expected: 0, present: 0 },
+      weldToleranceMm: 1e-4,
+      sagTriangleSampleLimit: 128,
+      qualityTriangleSampleLimit: 100,
+    });
+    expect(row.triangleCount).toBe(1_000);
+    expect(row.sliverCount).toBe(1_000);
+    expect(row.maxAspect3D).toBeGreaterThan(100);
+  });
+
+  it('executes the downsampled nearest-reference path for surface-aware sag', () => {
+    const dense = denseConeMesh(20, 60, 40, 360, 200);
+    const reference = coneFrustum(20, 60, 40, 256);
+    const row = computeFidelityMetrics({
+      styleId: 'SampledSurfaceAwareSag',
+      mesh: reference,
+      denseVertices: dense.vertices,
+      denseIndices: dense.indices,
+      features: { expected: 0, present: 0 },
+      weldToleranceMm: 1e-4,
+      sagTriangleSampleLimit: 64,
+      qualityTriangleSampleLimit: 64,
+      nearestReferenceTriangleSampleLimit: 4_096,
+    });
+    expect(row.triangleCount).toBe(reference.indices.length / 3);
+    expect(Number.isFinite(row.maxSagMm)).toBe(true);
+    expect(row.maxSagMm).toBeLessThan(2);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -203,6 +379,29 @@ function denseCone(R0: number, R1: number, H: number, nTheta: number, nZ: number
     }
   }
   return new Float32Array(verts);
+}
+
+function denseConeMesh(
+  R0: number,
+  R1: number,
+  H: number,
+  nTheta: number,
+  nZ: number,
+): { vertices: Float32Array; indices: Uint32Array } {
+  const vertices = denseCone(R0, R1, H, nTheta, nZ);
+  const idx: number[] = [];
+  for (let j = 0; j < nZ - 1; j++) {
+    const row = j * nTheta;
+    const next = (j + 1) * nTheta;
+    for (let i = 0; i < nTheta; i++) {
+      const a = row + i;
+      const b = row + ((i + 1) % nTheta);
+      const c = next + i;
+      const d = next + ((i + 1) % nTheta);
+      idx.push(a, b, c, b, d, c);
+    }
+  }
+  return { vertices, indices: new Uint32Array(idx) };
 }
 
 describe('buildRadialReference guards & boundaries', () => {
@@ -253,6 +452,17 @@ describe('topologyMetric non-manifold detection', () => {
     const indices = new Uint32Array([0, 1, 2, 0, 1, 3, 0, 1, 4]);
     const out = topologyMetric({ vertices, indices }, 1e-4);
     expect(out.nonManifoldEdges).toBeGreaterThan(0);
+  });
+
+  it('returns classified non-manifold samples', () => {
+    const vertices = new Float32Array([
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 1,
+    ]);
+    const indices = new Uint32Array([0, 1, 2, 0, 1, 3, 0, 1, 4]);
+    const out = topologyDiagnostics({ vertices, indices }, 1e-4, 1);
+    expect(out.nonManifoldEdges).toBe(1);
+    expect(out.samples[0].kind).toBe('nonManifold');
+    expect(out.samples[0].total).toBe(3);
   });
 });
 

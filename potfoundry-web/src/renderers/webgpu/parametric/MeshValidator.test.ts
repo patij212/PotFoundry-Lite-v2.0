@@ -403,6 +403,64 @@ describe('checkNormals', () => {
         const report = checkNormals(new Float32Array(0), new Uint32Array(0), 0);
         expect(report.ok).toBe(true);
     });
+
+    // Orientability gate: `ok` must measure GENUINE winding consistency
+    // (each shared edge traversed once a->b and once b->a), NOT the normal-dot
+    // heuristic. Sharp dihedrals (intentional on gothic/feature-dense walls)
+    // legitimately produce adjacent normals with dot < -0.1 even when winding
+    // is perfectly consistent — those must NOT fail the gate. Measured on the
+    // GothicArches export: normal-dot reported 304634 "inconsistent" pairs but
+    // the edge-direction check found only 7935 genuine winding flips (~97%
+    // false-positive from sharp grooves).
+    it('passes sharp antiparallel-normal faces when winding is consistent', () => {
+        // Two triangles sharing edge (0,1), traversed in OPPOSITE directions
+        // (0->1 vs 1->0) = consistent winding, but coplanar-folded so their
+        // normals are antiparallel (dot = -1, well below the -0.1 threshold).
+        const positions = new Float32Array([
+            0, 0, 0,    // v0
+            1, 0, 0,    // v1
+            0.5, 1, 0,  // v2 — tri A normal +Z
+            2, 1, 0,    // v3 — tri B normal -Z
+        ]);
+        const indices = new Uint32Array([
+            0, 1, 2,    // A: edge 0->1
+            1, 0, 3,    // B: edge 1->0 (opposite => consistent)
+        ]);
+        const report = checkNormals(positions, indices, indices.length);
+
+        expect(report.inconsistentPairs).toBeGreaterThan(0); // normal-dot trips
+        expect(report.windingInconsistentEdges).toBe(0);     // but winding is fine
+        expect(report.ok).toBe(true);                        // gate must pass
+    });
+
+    it('fails a genuine winding flip even when normals agree', () => {
+        // Two triangles sharing edge (0,1) traversed the SAME direction
+        // (0->1 in both) = winding flip, yet both normals point +Z so the
+        // normal-dot heuristic would call it consistent. The edge-direction
+        // gate must still catch it.
+        const positions = new Float32Array([
+            0, 0, 0,    // v0
+            1, 0, 0,    // v1
+            0.5, 1, 0,  // v2 — tri A normal +Z
+            2, 1, 0,    // v3 — tri B normal +Z
+        ]);
+        const indices = new Uint32Array([
+            0, 1, 2,    // A: edge 0->1
+            0, 1, 3,    // B: edge 0->1 (same => flipped)
+        ]);
+        const report = checkNormals(positions, indices, indices.length);
+
+        expect(report.inconsistentPairs).toBe(0);            // normal-dot misses it
+        expect(report.windingInconsistentEdges).toBe(1);     // edge-direction catches it
+        expect(report.ok).toBe(false);                       // gate must fail
+    });
+
+    it('reports zero winding-inconsistent edges on a correctly wound tetrahedron', () => {
+        const { positions, indices } = makeTetrahedron();
+        const report = checkNormals(positions, indices, indices.length);
+        expect(report.windingInconsistentEdges).toBe(0);
+        expect(report.ok).toBe(true);
+    });
 });
 
 // ============================================================================

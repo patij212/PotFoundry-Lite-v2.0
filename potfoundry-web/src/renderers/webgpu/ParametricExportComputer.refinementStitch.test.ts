@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+    MAX_PARAMETRIC_EVAL_VERTICES_PER_DISPATCH,
+    WEBGPU_MAX_EVAL_VERTICES_PER_DISPATCH,
     resolveValidationIndexScopes,
     selectSurfaceUPositionsForClosure,
     splitUvVerticesForDispatch,
@@ -32,6 +34,28 @@ describe('stitchRefinedOuterIndices', () => {
 });
 
 describe('splitUvVerticesForDispatch', () => {
+    // Regression: a single GothicArches export hung Dawn on a ~5.01M-vertex
+    // midpoint eval. The default cap equalled the WebGPU hardware ceiling
+    // (~4.19M verts/dispatch), so the batch split left one ~4.19M-vertex
+    // dispatch that stalled the compute path indefinitely (observed >150s).
+    // The default per-dispatch cap must sit strictly BELOW the hardware
+    // ceiling so no single dispatch reaches the Dawn-stall size.
+    it('caps the default eval dispatch below the WebGPU hardware ceiling', () => {
+        expect(MAX_PARAMETRIC_EVAL_VERTICES_PER_DISPATCH)
+            .toBeLessThan(WEBGPU_MAX_EVAL_VERTICES_PER_DISPATCH);
+    });
+
+    it('keeps every dispatch under the hardware ceiling for the observed hang size', () => {
+        const HANG_VERTEX_COUNT = 5_010_688;
+        const uvVertices = new Float32Array(HANG_VERTEX_COUNT * 3);
+
+        const batches = splitUvVerticesForDispatch(uvVertices);
+
+        for (const batch of batches) {
+            expect(batch.vertexCount).toBeLessThan(WEBGPU_MAX_EVAL_VERTICES_PER_DISPATCH);
+        }
+    });
+
     it('splits UV vertices into dispatch-safe whole-vertex batches with offsets', () => {
         const uvVertices = new Float32Array([
             0, 0, 0,

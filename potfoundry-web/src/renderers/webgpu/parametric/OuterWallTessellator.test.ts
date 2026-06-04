@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { buildCDTOuterWall, insertMicroRowsForSteepCrossings, estimateCircumferentialStretch, subdivideFullChain, pushAll } from './OuterWallTessellator';
+import { buildCDTOuterWall, estimateCircumferentialStretch, subdivideFullChain, pushAll } from './OuterWallTessellator';
 import type { ChainVertex } from './OuterWallTessellator';
 import type { FeatureChain } from './types';
 
@@ -788,216 +788,11 @@ describe('OuterWallTessellator', () => {
     });
 
     // ========================================================================
-    // insertMicroRowsForSteepCrossings tests
-    // ========================================================================
-
-    describe('insertMicroRowsForSteepCrossings', () => {
-        it('returns unchanged data when no chains are provided', () => {
-            const tPos = new Float32Array([0, 0.5, 1.0]);
-            const unionU = makeUniformU(8);
-            const origMap = new Map<number, number>([[0, 0], [1, 1], [2, 2]]);
-
-            const result = insertMicroRowsForSteepCrossings(tPos, [], origMap, unionU);
-
-            expect(result.microRowCount).toBe(0);
-            expect(result.tPositions).toBe(tPos); // same reference (no-op)
-        });
-
-        it('returns unchanged data for gentle chains (≤1 col per row)', () => {
-            const numU = 10;
-            const unionU = makeUniformU(numU);
-            const tPos = new Float32Array([0, 0.25, 0.5, 0.75, 1.0]);
-            const origMap = new Map<number, number>([[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]]);
-
-            // Chain moves ≤1 column per row → no steep crossings
-            const chain: FeatureChain = {
-                kind: 'peak',
-                points: [
-                    { row: 0, u: 0.1 },
-                    { row: 1, u: 0.15 },
-                    { row: 2, u: 0.2 },
-                    { row: 3, u: 0.25 },
-                ],
-            };
-
-            const result = insertMicroRowsForSteepCrossings(tPos, [chain], origMap, unionU);
-            expect(result.microRowCount).toBe(0);
-        });
-
-        it('inserts micro-rows for steep chain crossings', () => {
-            const numU = 10;
-            const unionU = makeUniformU(numU); // cols at 0, 0.111, 0.222, ...
-            const tPos = new Float32Array([0, 0.5, 1.0]); // 3 rows
-            const origMap = new Map<number, number>([[0, 0], [1, 1], [2, 2]]);
-
-            // Chain jumps from col ~1 (u=0.111) to col ~5 (u=0.556) in one row step
-            // That's ~4 columns in one row → steep crossing
-            const chain: FeatureChain = {
-                kind: 'peak',
-                points: [
-                    { row: 0, u: 0.111 },
-                    { row: 1, u: 0.556 },
-                ],
-            };
-
-            const result = insertMicroRowsForSteepCrossings(tPos, [chain], origMap, unionU);
-
-            expect(result.microRowCount).toBeGreaterThan(0);
-            expect(result.tPositions.length).toBeGreaterThan(tPos.length);
-            // Original rows should still be mapped
-            expect(result.origToFinal.has(0)).toBe(true);
-            expect(result.origToFinal.has(1)).toBe(true);
-            expect(result.origToFinal.has(2)).toBe(true);
-        });
-
-        it('preserves sorted T order in expanded positions', () => {
-            const numU = 10;
-            const unionU = makeUniformU(numU);
-            const tPos = new Float32Array([0, 0.25, 0.5, 0.75, 1.0]);
-            const origMap = new Map<number, number>([[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]]);
-
-            const chain: FeatureChain = {
-                kind: 'peak',
-                points: [
-                    { row: 1, u: 0.1 },
-                    { row: 2, u: 0.6 }, // jumps ~5 cols
-                ],
-            };
-
-            const result = insertMicroRowsForSteepCrossings(tPos, [chain], origMap, unionU);
-
-            // Verify T values are monotonically increasing
-            for (let i = 1; i < result.tPositions.length; i++) {
-                expect(result.tPositions[i]).toBeGreaterThan(result.tPositions[i - 1]);
-            }
-        });
-
-        it('origToFinal maps are consistent with expanded positions', () => {
-            const numU = 10;
-            const unionU = makeUniformU(numU);
-            const tPos = new Float32Array([0, 0.5, 1.0]);
-            const origMap = new Map<number, number>([[0, 0], [1, 1], [2, 2]]);
-
-            const chain: FeatureChain = {
-                kind: 'peak',
-                points: [
-                    { row: 0, u: 0.1 },
-                    { row: 1, u: 0.7 }, // ~6 col jump → steep
-                ],
-            };
-
-            const result = insertMicroRowsForSteepCrossings(tPos, [chain], origMap, unionU);
-
-            // Each original row maps to the correct T value in expanded array
-            for (const [origRow] of origMap) {
-                const mappedFinal = result.origToFinal.get(origRow);
-                expect(mappedFinal).toBeDefined();
-                expect(result.tPositions[mappedFinal!]).toBeCloseTo(tPos[origRow], 5);
-            }
-        });
-
-        it('handles circular U wrapping for steep crossings', () => {
-            const numU = 10;
-            const unionU = makeUniformU(numU);
-            const tPos = new Float32Array([0, 0.5, 1.0]);
-            const origMap = new Map<number, number>([[0, 0], [1, 1], [2, 2]]);
-
-            // Chain near seam: u wraps from 0.88 (col 8) to 0.99 (col 8 or 9-ish)
-            // Without wrapping: |col9 - col8| = 1 → not steep
-            // This verifies the wrapping logic doesn't false-positive
-            const chain: FeatureChain = {
-                kind: 'peak',
-                points: [
-                    { row: 0, u: 0.88 },
-                    { row: 1, u: 0.99 }, // same or adjacent column → not steep
-                ],
-            };
-
-            const result = insertMicroRowsForSteepCrossings(tPos, [chain], origMap, unionU);
-
-            // Gap is ≤1 column → no micro-rows
-            expect(result.microRowCount).toBe(0);
-        });
-
-        it('multiple chains create micro-rows independently', () => {
-            const numU = 10;
-            const unionU = makeUniformU(numU);
-            const tPos = new Float32Array([0, 0.25, 0.5, 0.75, 1.0]);
-            const origMap = new Map<number, number>([[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]]);
-
-            const chains: FeatureChain[] = [
-                {
-                    kind: 'peak',
-                    points: [
-                        { row: 0, u: 0.1 },
-                        { row: 1, u: 0.6 }, // ~5 col jump
-                    ],
-                },
-                {
-                    kind: 'valley',
-                    points: [
-                        { row: 2, u: 0.8 },
-                        { row: 3, u: 0.2 }, // ~6 col jump with wrapping? No — 0.8→0.2 gap=6, wrapping makes it 4? Let's check
-                    ],
-                },
-            ];
-
-            const result = insertMicroRowsForSteepCrossings(tPos, chains, origMap, unionU);
-
-            // At least the first chain has a steep crossing
-            expect(result.microRowCount).toBeGreaterThan(0);
-            expect(result.tPositions.length).toBeGreaterThan(tPos.length);
-        });
-
-        it('does not insert micro-rows for single-point chains', () => {
-            const numU = 10;
-            const unionU = makeUniformU(numU);
-            const tPos = new Float32Array([0, 0.5, 1.0]);
-            const origMap = new Map<number, number>([[0, 0], [1, 1], [2, 2]]);
-
-            const chain: FeatureChain = {
-                kind: 'peak',
-                points: [{ row: 1, u: 0.5 }],
-            };
-
-            const result = insertMicroRowsForSteepCrossings(tPos, [chain], origMap, unionU);
-            expect(result.microRowCount).toBe(0);
-        });
-    });
-
-    // ========================================================================
     // Integration: buildCDTOuterWall with steep chains
     // ========================================================================
 
     describe('buildCDTOuterWall — steep chain integration', () => {
-        it('produces more grid vertices when steep chains cause micro-row insertion', () => {
-            const numU = 10;
-            const numT = 5;
-            const unionU = makeUniformU(numU);
-            const tPositions = makeUniformT(numT);
-            const rowMapping = makeIdentityRowMapping(numT);
-
-            // Steep chain: jumps ~5 columns in one row
-            const chain: FeatureChain = {
-                kind: 'peak',
-                points: [
-                    { row: 1, u: 0.1 },
-                    { row: 2, u: 0.6 },
-                ],
-            };
-
-            const resultWithChain = buildCDTOuterWall(
-                [chain], rowMapping, tPositions, unionU, 200, 0
-            );
-            const resultNoChain = buildCDTOuterWall(
-                [], rowMapping, tPositions, unionU, 200, 0
-            );
-
-            // Micro-rows mean more total grid vertices
-            expect(resultWithChain.gridVertexCount).toBeGreaterThan(resultNoChain.gridVertexCount);
-        });
-
-        it('all triangle indices remain valid after micro-row expansion', () => {
+        it('all triangle indices remain valid for steep chains', () => {
             const numU = 8;
             const numT = 4;
             const unionU = makeUniformU(numU);
@@ -1834,5 +1629,187 @@ describe('pushAll — V8 spread-arg overflow guard', () => {
         pushAll(target, big);
         expect(target.length).toBe(OVERFLOW_N);
         expect(target[123]).toEqual([123, 124]);
+    });
+});
+
+// ============================================================================
+// characterization (budget-pin) — pins the CURRENT outer-wall tri-count
+// contract so any future `_targetOuterTris`-honoring change is *measured*,
+// not asserted. buildCDTOuterWall currently IGNORES its budget argument
+// (the param is underscore-prefixed); the grid is fully tessellated at
+// numU×numT and chain cells are split cell-locally, producing far more
+// triangles than the requested budget. These tests lock the exact output of
+// a representative dense, chain-heavy fixture. If a change here alters the
+// tri count, that is the WHOLE POINT — re-run, confirm the new count honors
+// the budget, and update the pinned numbers deliberately (not blindly).
+// ============================================================================
+
+describe('buildCDTOuterWall — characterization (budget-pin)', () => {
+    // Sawtooth-edge baseline (see the 'fidelity floor' test). Captured from the
+    // live output AFTER micro-row removal; any future redesign that adds local
+    // refinement must keep the longest UV edge at or below these.
+    const MAXEDGE_BASELINE_MAX = 0.0243;     // worst single UV triangle edge (measured 0.024244)
+    const MAXEDGE_BASELINE_LONG_EDGES = 0;   // # edges longer than LONG (0.05 UV) — none currently
+
+    /** Deterministic PRNG (mulberry32) — byte-stable across runs/platforms. */
+    function mulberry32(seed: number): () => number {
+        let a = seed >>> 0;
+        return () => {
+            a |= 0; a = (a + 0x6d2b79f5) | 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
+    /** FNV-1a 32-bit hash over a typed-array's u32 view — order-sensitive. */
+    function hashU32(arr: Uint32Array): number {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < arr.length; i++) {
+            h ^= arr[i] & 0xff;          h = Math.imul(h, 0x01000193);
+            h ^= (arr[i] >>> 8) & 0xff;  h = Math.imul(h, 0x01000193);
+            h ^= (arr[i] >>> 16) & 0xff; h = Math.imul(h, 0x01000193);
+            h ^= (arr[i] >>> 24) & 0xff; h = Math.imul(h, 0x01000193);
+        }
+        return h >>> 0;
+    }
+
+    /**
+     * Build a representative dense, chain-heavy fixture: a numU×numT grid plus
+     * `chainCount` feature chains that each walk a contiguous row span with a
+     * small per-row U drift (mimicking real curvature-detected peaks/valleys).
+     * The drift keeps consecutive chain points inside neighbouring cells so the
+     * cell-local splitter generates real sub-quads and phantom vertices — the
+     * exact machinery responsible for over-tessellation.
+     */
+    function makeDenseFixture(numU: number, numT: number, chainCount: number, seed: number): {
+        chains: FeatureChain[];
+        rowMapping: number[];
+        tPositions: Float32Array;
+        unionU: Float32Array;
+    } {
+        const rng = mulberry32(seed);
+        const unionU = makeUniformU(numU);
+        const tPositions = makeUniformT(numT);
+        const rowMapping = makeIdentityRowMapping(numT);
+        const chains: FeatureChain[] = [];
+        for (let c = 0; c < chainCount; c++) {
+            const span = 4 + Math.floor(rng() * (numT - 6));
+            const startRow = Math.floor(rng() * (numT - span - 1));
+            let u = 0.08 + rng() * 0.84;
+            const kind = (c % 2 === 0) ? 'peak' : 'valley';
+            const points: { row: number; u: number }[] = [];
+            for (let r = startRow; r <= startRow + span; r++) {
+                u = Math.max(0.02, Math.min(0.98, u + (rng() - 0.5) * 0.04));
+                points.push({ row: r, u });
+            }
+            chains.push({ kind, points });
+        }
+        return { chains, rowMapping, tPositions, unionU };
+    }
+
+    it('produces the exact same outer-wall mesh (80×50 grid, 8 chains)', () => {
+        // Suppress the chatty [CDT] logs this path emits.
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        const { chains, rowMapping, tPositions, unionU } = makeDenseFixture(80, 50, 8, 0x1234abcd);
+
+        const result = buildCDTOuterWall(chains, rowMapping, tPositions, unionU, 6000, 0);
+        logSpy.mockRestore();
+
+        const indexHash = hashU32(result.indices);
+        // Real (non-padding) triangles: exclude trailing (0,0,0) degenerate slots.
+        let realTris = 0;
+        for (let i = 0; i < result.indices.length; i += 3) {
+            const a = result.indices[i], b = result.indices[i + 1], c = result.indices[i + 2];
+            if (a === 0 && b === 0 && c === 0) continue;
+            realTris++;
+        }
+
+        // ── Pinned current-behavior contract (post micro-row removal + Task#17) ──
+        // NOTE: budget (_targetOuterTris) was 6000, yet realTris is 9985 —
+        // ~1.66× over budget. THIS is the residual over-tessellation the param
+        // is meant to bound. Removing micro-rows cut realTris 12511→9972 (−20%)
+        // and gridVertexCount 5280→4000 (numT no longer expands). Task#17 rail
+        // sharing plus short crossing fallbacks then changed the sparse
+        // characterization to 9985 real tris; the crossing fallback is bounded
+        // by source-cell edge scale here to preserve the sawtooth max-edge floor.
+        // A further budget-honoring change SHOULD lower realTris toward 6000
+        // and WILL change indexHash/indicesLength/vertexCount; when it does,
+        // re-run, verify the new tri count respects the budget, and update these
+        // numbers deliberately.
+        const actual = {
+            gridVertexCount: result.gridVertexCount,
+            indexHash,
+            indicesLength: result.indices.length,
+            realTris,
+            vertexCount: result.vertices.length / 3,
+            chainEdges: result.chainEdges.length,
+        };
+        expect(actual).toEqual({
+            gridVertexCount: 4000,
+            indexHash: 1142801298,
+            indicesLength: 30852,
+            realTris: 9985,
+            vertexCount: 5282,
+            chainEdges: 440,
+        });
+        // The budget is still a no-op: realTris (9985) exceeds it (~1.66×).
+        expect(realTris).toBeGreaterThan(6000);
+    });
+
+    /**
+     * Sawtooth metric in UV space: the longest single triangle EDGE.
+     *
+     * This replaced the old skinniness ratio (longestEdge²/2·area), which was
+     * proven to measure R52 chain-coincidence slivers — tiny near-coincident
+     * grid/chain vertices — NOT sawtooth. Investigation (micro-rows ON vs OFF)
+     * showed identical maxEdge on every fixture: long EDGES are the real
+     * sawtooth signature, so a redesign must not lengthen the worst edge.
+     * Reports maxEdge (worst single UV edge length) and the count of edges
+     * longer than `longThreshold` (in UV units; grid cell ≈ 1/numU wide).
+     */
+    function triQualityStats(vertices: Float32Array, indices: Uint32Array, longThreshold: number): {
+        maxEdge: number;
+        longEdgeCount: number;
+        realTris: number;
+    } {
+        let maxEdge = 0;
+        let longEdgeCount = 0;
+        let realTris = 0;
+        for (let i = 0; i < indices.length; i += 3) {
+            const a = indices[i], b = indices[i + 1], c = indices[i + 2];
+            if (a === 0 && b === 0 && c === 0) continue;
+            realTris++;
+            const ux = vertices[a * 3],     ty = vertices[a * 3 + 1];
+            const vx = vertices[b * 3],     wy = vertices[b * 3 + 1];
+            const xx = vertices[c * 3],     yy = vertices[c * 3 + 1];
+            const e0 = Math.hypot(ux - vx, ty - wy);
+            const e1 = Math.hypot(vx - xx, wy - yy);
+            const e2 = Math.hypot(xx - ux, yy - ty);
+            const longest = Math.max(e0, e1, e2);
+            if (longest > maxEdge) maxEdge = longest;
+            if (longest > longThreshold) longEdgeCount++;
+        }
+        return { maxEdge, longEdgeCount, realTris };
+    }
+
+    it('fidelity floor: redesign must not lengthen sawtooth edges', () => {
+        // Mechanism-INDEPENDENT, sawtooth-CORRECT fidelity guard. The real
+        // sawtooth signature is a long triangle EDGE spanning a steep chain
+        // crossing — not the old skinniness ratio (which measured R52 sliver
+        // noise). Any redesign that puts triangles "where they are needed" must
+        // keep the longest UV edge AT MOST the current value — hence ≤ floors,
+        // not exact pins. An improvement passes; a regression fails.
+        const LONG = 0.05; // UV units (~4 grid cells at numU=80) = sawtooth-ish edge
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        const { chains, rowMapping, tPositions, unionU } = makeDenseFixture(80, 50, 8, 0x1234abcd);
+        const result = buildCDTOuterWall(chains, rowMapping, tPositions, unionU, 6000, 0);
+        logSpy.mockRestore();
+
+        const q = triQualityStats(result.vertices, result.indices, LONG);
+
+        // Post-micro-row-removal baseline — the sawtooth ceiling to preserve.
+        expect(q.maxEdge).toBeLessThanOrEqual(MAXEDGE_BASELINE_MAX);
+        expect(q.longEdgeCount).toBeLessThanOrEqual(MAXEDGE_BASELINE_LONG_EDGES);
     });
 });
