@@ -1700,6 +1700,47 @@ function averageLoopCenter(
     };
 }
 
+function outerJoinLoopCenter(
+    uvs: Float32Array,
+    positions: Float32Array,
+    loop: number[],
+): { uv: [number, number, number]; position: [number, number, number] } | null {
+    if (loop.length < 3) return null;
+    const join = surfaceJoinKey(uvs, loop[0]);
+    if (join !== 'outerTop' && join !== 'outerBottom') return null;
+    for (const vertexIdx of loop) {
+        if (surfaceJoinKey(uvs, vertexIdx) !== join) return null;
+    }
+
+    const center = averageLoopCenter(uvs, positions, loop);
+    let maxEdge = 0;
+    for (let i = 0; i < loop.length; i++) {
+        const a = loop[i] * 3;
+        const b = loop[(i + 1) % loop.length] * 3;
+        maxEdge = Math.max(
+            maxEdge,
+            Math.hypot(
+                (positions[a] ?? 0) - (positions[b] ?? 0),
+                (positions[a + 1] ?? 0) - (positions[b + 1] ?? 0),
+                (positions[a + 2] ?? 0) - (positions[b + 2] ?? 0),
+            ),
+        );
+    }
+    if (maxEdge <= 1e-9) return null;
+
+    const [x, y, z] = center.position;
+    const radial = Math.hypot(x, y);
+    if (radial <= 1e-9) return null;
+    const offset = Math.min(maxEdge * 0.4, radial * 0.05);
+    const ux = x / radial;
+    const uy = y / radial;
+    const capSurface = join === 'outerTop' ? 2 : 3;
+    return {
+        uv: [center.uv[0], center.uv[1], capSurface],
+        position: [x - ux * offset, y - uy * offset, z],
+    };
+}
+
 /**
  * Center-fan a boundary loop where each spoke triangle traverses its boundary
  * edge OPPOSITE to the owning wall triangle's half-edge (record.canonA→canonB),
@@ -1736,6 +1777,20 @@ function buildOwnerOpposedCenterFan(
         }
     }
     return tris;
+}
+
+function loopHasVertexOnNonAdjacentSegment(uvs: Float32Array, loopRaw: number[]): boolean {
+    if (loopRaw.length < 4) return false;
+    for (let i = 0; i < loopRaw.length; i++) {
+        const a = loopRaw[i];
+        const b = loopRaw[(i + 1) % loopRaw.length];
+        for (let j = 0; j < loopRaw.length; j++) {
+            const p = loopRaw[j];
+            if (p === a || p === b) continue;
+            if (pointOnSegmentParam(uvs, a, b, p) !== null) return true;
+        }
+    }
+    return false;
 }
 
 export function fillSameSurfaceBoundaryLoopsWithCenters(
@@ -1824,6 +1879,44 @@ export function fillSameSurfaceBoundaryLoopsWithCenters(
         if (!sameSurfaceLoop(currentUvs, loop)) continue;
         attemptedLoops++;
         if (loop.length <= EAR_CLIP_MAX_LOOP) __earClipped++;
+        if (loopHasVertexOnNonAdjacentSegment(currentUvs, loop)) {
+            const ordered = loop.length === 4
+                ? loopOrderOpposingBoundaryRecords(
+                    loop,
+                    edgeRecordByKey,
+                    edgeState,
+                    currentUvs,
+                    currentPositions,
+                    topologyWeldToleranceMm,
+                )
+                : null;
+            if (ordered) {
+                const [a, b, c, d] = ordered;
+                const spikeQuadFill = [b, a, d, b, d, c];
+                if (addTriangleEdgesIfManifoldSafe(edgeState, spikeQuadFill, currentUvs, currentPositions, topologyWeldToleranceMm)) {
+                    const triStart = indices.length / 3 + appended.length / 3;
+                    appended.push(...spikeQuadFill);
+                    filledLoops++;
+                    try {
+                        const global = globalThis as unknown as { __pfEnableWindingStageDiagnostics?: boolean };
+                        if (global.__pfEnableWindingStageDiagnostics) {
+                            console.warn(
+                                `[FILL-SPIKE-QUAD] idx=${__loopIdx - 1} triStart=${triStart} ` +
+                                `loop=[${loop.join(',')}] ordered=[${ordered.join(',')}] ` +
+                                `tris=[${spikeQuadFill.slice(0, 3).join(',')}|${spikeQuadFill.slice(3, 6).join(',')}]`,
+                            );
+                        }
+                    } catch { /* noop */ }
+                    continue;
+                }
+            }
+            try {
+                const global = globalThis as unknown as { __pfEnableWindingStageDiagnostics?: boolean };
+                if (global.__pfEnableWindingStageDiagnostics) {
+                    console.warn(`[FILL-CENTER-FALLBACK] idx=${__loopIdx - 1} reason=spike-quad-unsafe loop=[${loop.join(',')}]`);
+                }
+            } catch { /* noop */ }
+        }
 
         // Owner-opposed ear-clip (no center vertex): order the loop so every edge
         // opposes its owning wall triangle, then triangulate preserving that
@@ -1910,6 +2003,26 @@ export function fillSameSurfaceBoundaryLoopsWithCenters(
             unsafeLoops++;
             continue;
         }
+
+        const acceptedGlobalTriStart = indices.length / 3 + appended.length / 3;
+        try {
+            const global = globalThis as unknown as { __pfEnableWindingStageDiagnostics?: boolean };
+            if (global.__pfEnableWindingStageDiagnostics) {
+                const loopUv = loop.map(v => {
+                    const b = v * 3;
+                    return `${v}:${(currentUvs[b] ?? NaN).toFixed(6)},${(currentUvs[b + 1] ?? NaN).toFixed(6)},${Math.round(currentUvs[b + 2] ?? -1)}`;
+                }).join('|');
+                const acceptedTris = [];
+                for (let i = 0; i < acceptedFan.length; i += 3) {
+                    acceptedTris.push(`${acceptedFan[i]},${acceptedFan[i + 1]},${acceptedFan[i + 2]}`);
+                }
+                console.warn(
+                    `[FILL-CENTER-LOOP] idx=${__loopIdx - 1} triStart=${acceptedGlobalTriStart} ` +
+                    `triCount=${acceptedFan.length / 3} center=${centerVertex} ` +
+                    `loop=[${loop.join(',')}] loopUv=[${loopUv}] tris=[${acceptedTris.join('|')}]`,
+                );
+            }
+        } catch { /* noop */ }
 
         appended.push(...acceptedFan);
         filledLoops++;
@@ -2370,6 +2483,8 @@ export function fillCrossSurfaceConstantTBoundaryLoopsWithCenters(
         if (!crossSurfaceConstantTLoop(currentUvs, loop)) continue;
         attemptedLoops++;
 
+        let projectedTris: number[] = [];
+        let projectedAspect = Number.POSITIVE_INFINITY;
         if (loop.length > 3) {
             const projectedLoop = loopOrderOpposingBoundaryRecords(
                 loop,
@@ -2379,21 +2494,16 @@ export function fillCrossSurfaceConstantTBoundaryLoopsWithCenters(
                 currentPositions,
                 topologyWeldToleranceMm,
             );
-            const projectedTris = projectedLoop
+            projectedTris = projectedLoop
                 ? triangulateProjectedLoopPreservingWinding(currentPositions, projectedLoop)
                 : [];
-            if (
-                projectedTris.length > 0 &&
-                projectedFillMaxAspect3D(currentPositions, projectedTris) <= PROJECTED_LOOP_FILL_MAX_ASPECT &&
-                addTriangleEdgesIfManifoldSafe(edgeState, projectedTris, currentUvs, currentPositions, topologyWeldToleranceMm)
-            ) {
-                appended.push(...projectedTris);
-                filledLoops++;
-                continue;
-            }
+            projectedAspect = projectedTris.length > 0
+                ? projectedFillMaxAspect3D(currentPositions, projectedTris)
+                : Number.POSITIVE_INFINITY;
         }
 
-        const center = averageLoopCenter(currentUvs, currentPositions, loop);
+        const center = outerJoinLoopCenter(currentUvs, currentPositions, loop) ??
+            averageLoopCenter(currentUvs, currentPositions, loop);
         const centerVertex = writtenVerts;
         const base = centerVertex * 3;
         uvBuf[base] = center.uv[0];
@@ -2405,11 +2515,6 @@ export function fillCrossSurfaceConstantTBoundaryLoopsWithCenters(
         writtenVerts++;
         currentUvs = uvBuf.subarray(0, writtenVerts * 3);
         currentPositions = posBuf.subarray(0, writtenVerts * 3);
-
-        edgeState.canonical.remap.set(centerVertex, centerVertex);
-        if (!edgeState.canonical.representativeRaw.has(centerVertex)) {
-            edgeState.canonical.representativeRaw.set(centerVertex, centerVertex);
-        }
 
         const fan: number[] = [];
         let completeLoop = true;
@@ -2428,6 +2533,51 @@ export function fillCrossSurfaceConstantTBoundaryLoopsWithCenters(
             // opposite direction, otherwise the cap is topologically present but
             // still orientation-inconsistent with its neighbor.
             fan.push(record.rawB, record.rawA, centerVertex);
+        }
+
+        const centerFanAspect = completeLoop && fan.length > 0
+            ? projectedFillMaxAspect3D(currentPositions, fan)
+            : Number.POSITIVE_INFINITY;
+        const projectedIsPreferable =
+            projectedTris.length > 0 &&
+            (
+                projectedAspect <= PROJECTED_LOOP_FILL_MAX_ASPECT ||
+                projectedAspect <= centerFanAspect
+            );
+        try {
+            const global = globalThis as unknown as { __pfEnableWindingStageDiagnostics?: boolean };
+            if (global.__pfEnableWindingStageDiagnostics) {
+                const loopUv = loop.map(v => {
+                    const b = v * 3;
+                    return `${v}:${(currentUvs[b] ?? NaN).toFixed(6)},${(currentUvs[b + 1] ?? NaN).toFixed(6)},${Math.round(currentUvs[b + 2] ?? -1)}`;
+                }).join('|');
+                const loopPos = loop.map(v => {
+                    const b = v * 3;
+                    return `${v}:${(currentPositions[b] ?? NaN).toFixed(4)},${(currentPositions[b + 1] ?? NaN).toFixed(4)},${(currentPositions[b + 2] ?? NaN).toFixed(4)}`;
+                }).join('|');
+                console.warn(
+                    `[CROSS-FILL-CAND] loopLen=${loop.length} projectedTris=${projectedTris.length / 3} ` +
+                    `projectedAspect=${projectedAspect.toFixed(3)} centerAspect=${centerFanAspect.toFixed(3)} ` +
+                    `preferProjected=${projectedIsPreferable} completeLoop=${completeLoop} ` +
+                    `loop=[${loop.join(',')}] loopUv=[${loopUv}] loopPos=[${loopPos}]`,
+                );
+            }
+        } catch { /* noop */ }
+        if (
+            projectedIsPreferable &&
+            addTriangleEdgesIfManifoldSafe(edgeState, projectedTris, currentUvs, currentPositions, topologyWeldToleranceMm)
+        ) {
+            writtenVerts--;
+            currentUvs = uvBuf.subarray(0, writtenVerts * 3);
+            currentPositions = posBuf.subarray(0, writtenVerts * 3);
+            appended.push(...projectedTris);
+            filledLoops++;
+            continue;
+        }
+
+        edgeState.canonical.remap.set(centerVertex, centerVertex);
+        if (!edgeState.canonical.representativeRaw.has(centerVertex)) {
+            edgeState.canonical.representativeRaw.set(centerVertex, centerVertex);
         }
 
         if (!completeLoop || fan.length === 0) {
@@ -3365,4 +3515,121 @@ function splitResidualBoundaryTJunctionPass(
     repaired.set(mutable);
     repaired.set(appended, mutable.length);
     return { indices: repaired, repairedEdges, insertedTriangles: appended.length / 3 };
+}
+
+/**
+ * Weld duplicate vertices that are the SAME physical point split a few microns
+ * apart by floating-point path divergence at feature/seam crossings. Such a pair
+ * sits just over the (sub-micron) topology weld tolerance, so it is never merged
+ * and leaves a near-degenerate edge shared by 3+ triangles (non-manifold) plus an
+ * open boundary chain — the irreducible residual after the fill battery.
+ *
+ * To stay safe, the merge is RESTRICTED to vertices that are incident to a defect
+ * edge (a boundary edge, incidence 1, or a non-manifold edge, incidence >= 3) at
+ * the topology weld tolerance. Those live only in the sparse seam/rim regions, so
+ * a generous (~tens of microns) merge tolerance there cannot collapse legitimate
+ * detail in dense feature interiors. Merged pairs use the lower vertex index as
+ * the representative; triangles that become degenerate after the remap are
+ * stripped. Vertex positions are not otherwise moved, so fidelity is untouched.
+ */
+export function weldNearCoincidentBoundaryVertices(
+    indices: Uint32Array,
+    positions: Float32Array,
+    topologyWeldToleranceMm: number,
+    defectWeldToleranceMm: number,
+): { indices: Uint32Array; weldedVertices: number; strippedTriangles: number } {
+    const tol = topologyWeldToleranceMm > 0 ? topologyWeldToleranceMm : 1e-4;
+    const defectTol = Math.max(defectWeldToleranceMm, tol);
+    const numV = (positions.length / 3) | 0;
+    const triCount = (indices.length / 3) | 0;
+
+    // 1. Canonicalize at the weld tolerance (3D position quantization).
+    const wInv = 1 / tol;
+    const wmap = new Map<string, number>();
+    const wcid = new Int32Array(numV);
+    for (let v = 0; v < numV; v++) {
+        const k = `${Math.round(positions[v * 3] * wInv)}:${Math.round(positions[v * 3 + 1] * wInv)}:${Math.round(positions[v * 3 + 2] * wInv)}`;
+        let id = wmap.get(k);
+        if (id === undefined) { id = wmap.size; wmap.set(k, id); }
+        wcid[v] = id;
+    }
+
+    // 2. Canonical edge incidence → defect canonical vertices (incidence 1 or >= 3).
+    const STR = 0x4000000;
+    const ek = (a: number, b: number): number => (a < b ? a * STR + b : b * STR + a);
+    const inc = new Map<number, number>();
+    for (let t = 0; t < triCount; t++) {
+        const a = wcid[indices[t * 3]], b = wcid[indices[t * 3 + 1]], c = wcid[indices[t * 3 + 2]];
+        if (a === b || b === c || a === c) continue;
+        inc.set(ek(a, b), (inc.get(ek(a, b)) ?? 0) + 1);
+        inc.set(ek(b, c), (inc.get(ek(b, c)) ?? 0) + 1);
+        inc.set(ek(c, a), (inc.get(ek(c, a)) ?? 0) + 1);
+    }
+    const defectCanon = new Set<number>();
+    for (const [key, count] of inc) {
+        if (count === 1 || count >= 3) {
+            defectCanon.add(Math.floor(key / STR));
+            defectCanon.add(key % STR);
+        }
+    }
+    if (defectCanon.size === 0) {
+        return { indices, weldedVertices: 0, strippedTriangles: 0 };
+    }
+
+    // 3. Defect raw vertices + spatial hash at the defect tolerance.
+    const defectRaw: number[] = [];
+    for (let v = 0; v < numV; v++) if (defectCanon.has(wcid[v])) defectRaw.push(v);
+    const cell = Math.max(defectTol, 1e-6);
+    const cinv = 1 / cell;
+    const gkey = (x: number, y: number, z: number): string => `${x}:${y}:${z}`;
+    const grid = new Map<string, number[]>();
+    for (const v of defectRaw) {
+        const gk = gkey(Math.floor(positions[v * 3] * cinv), Math.floor(positions[v * 3 + 1] * cinv), Math.floor(positions[v * 3 + 2] * cinv));
+        const arr = grid.get(gk);
+        if (arr) arr.push(v); else grid.set(gk, [v]);
+    }
+
+    // 4. Union-find merge of defect vertices within the defect tolerance.
+    const parent = new Int32Array(numV);
+    for (let v = 0; v < numV; v++) parent[v] = v;
+    const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    const union = (a: number, b: number): void => { const ra = find(a), rb = find(b); if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb); };
+    const defectTol2 = defectTol * defectTol;
+    for (const v of defectRaw) {
+        const px = positions[v * 3], py = positions[v * 3 + 1], pz = positions[v * 3 + 2];
+        const gx = Math.floor(px * cinv), gy = Math.floor(py * cinv), gz = Math.floor(pz * cinv);
+        for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++)
+        for (let dz = -1; dz <= 1; dz++) {
+            const arr = grid.get(gkey(gx + dx, gy + dy, gz + dz));
+            if (!arr) continue;
+            for (const w of arr) {
+                if (w <= v) continue;
+                const d2 = (positions[w * 3] - px) ** 2 + (positions[w * 3 + 1] - py) ** 2 + (positions[w * 3 + 2] - pz) ** 2;
+                if (d2 <= defectTol2) union(v, w);
+            }
+        }
+    }
+
+    // 5. Remap to representatives; count merges.
+    let welded = 0;
+    const remap = new Uint32Array(numV);
+    for (let v = 0; v < numV; v++) {
+        const r = find(v);
+        remap[v] = r;
+        if (r !== v) welded++;
+    }
+    if (welded === 0) {
+        return { indices, weldedVertices: 0, strippedTriangles: 0 };
+    }
+
+    // 6. Apply the remap and strip triangles that collapsed to degenerate.
+    const out: number[] = [];
+    let stripped = 0;
+    for (let t = 0; t < triCount; t++) {
+        const a = remap[indices[t * 3]], b = remap[indices[t * 3 + 1]], c = remap[indices[t * 3 + 2]];
+        if (a === b || b === c || a === c) { stripped++; continue; }
+        out.push(a, b, c);
+    }
+    return { indices: new Uint32Array(out), weldedVertices: welded, strippedTriangles: stripped };
 }

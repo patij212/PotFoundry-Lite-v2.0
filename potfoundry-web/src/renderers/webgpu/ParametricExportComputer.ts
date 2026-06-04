@@ -134,7 +134,9 @@ import {
     repairOuterWallTJunctions,
     repairSurfaceBoundaryTJunctions,
     splitResidualBoundaryTJunctions,
+    weldNearCoincidentBoundaryVertices,
 } from './parametric/BoundaryTJunctionRepair';
+import { normalizeWindingByComponent } from './parametric/WindingNormalizer';
 import { buildPeriodicSeamClosure } from './parametric/PeriodicSeamClosure';
 import {
     healSeam,
@@ -297,6 +299,9 @@ type SourceDiagnosticsGlobal = TailDiagnosticsGlobal & {
     __pfEnableSourceDiagnostics?: boolean;
     __pfStopAfterSourceDiagnostics?: boolean;
     __pfSourceDiagnostics?: SourceTopologyDiagnostic[];
+    __pfEnableWindingStageDiagnostics?: boolean;
+    __pfSourceTriangleProbe?: number[];
+    __pfSourceEdgeProbe?: Array<[number, number]>;
 };
 
 const SOURCE_TOPOLOGY_UV_QUANT = 1e6;
@@ -351,6 +356,66 @@ function recordTailDiagnosticStage(input: TailDiagnosticStageInput): void {
         );
     } catch {
         /* noop */
+    }
+}
+
+function recordWindingStageDiagnostic(
+    name: string,
+    indices: Uint32Array,
+    positions: Float32Array,
+): void {
+    try {
+        const global = globalThis as unknown as SourceDiagnosticsGlobal;
+        if (!global.__pfEnableWindingStageDiagnostics) return;
+        const start = performance.now();
+        const winding = normalizeWindingByComponent(
+            indices,
+            indices.length,
+            positions,
+            DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+        );
+        console.warn(
+            `[WINDING-STAGE] ${name} tris=${indices.length / 3} ` +
+            `flipped=${winding.flipped} components=${winding.components} ` +
+            `conflicts=${winding.conflicts} ms=${(performance.now() - start).toFixed(1)}`,
+        );
+        for (const sample of winding.conflictSamples.slice(0, 8)) {
+            const [a, b] = sample.edge;
+            const ax = positions[a * 3] ?? NaN;
+            const ay = positions[a * 3 + 1] ?? NaN;
+            const az = positions[a * 3 + 2] ?? NaN;
+            const bx = positions[b * 3] ?? NaN;
+            const by = positions[b * 3 + 1] ?? NaN;
+            const bz = positions[b * 3 + 2] ?? NaN;
+            const dx = bx - ax;
+            const dy = by - ay;
+            const dz = bz - az;
+            const fromBase = sample.fromTriangle * 3;
+            const toBase = sample.toTriangle * 3;
+            const fromTri = [
+                indices[fromBase] ?? -1,
+                indices[fromBase + 1] ?? -1,
+                indices[fromBase + 2] ?? -1,
+            ];
+            const toTri = [
+                indices[toBase] ?? -1,
+                indices[toBase + 1] ?? -1,
+                indices[toBase + 2] ?? -1,
+            ];
+            console.warn(
+                `[WINDING-CONFLICT] ${name} edge=${a}-${b} ` +
+                `len=${Math.hypot(dx, dy, dz).toFixed(6)} ` +
+                `mid=[${((ax + bx) * 0.5).toFixed(3)},${((ay + by) * 0.5).toFixed(3)},${((az + bz) * 0.5).toFixed(3)}] ` +
+                `tris=${sample.fromTriangle}->${sample.toTriangle} ` +
+                `from=[${fromTri.join(',')}] to=[${toTri.join(',')}] ` +
+                `parity=${sample.currentParity}->want${sample.expectedParity}/actual${sample.actualParity} ` +
+                `consistent=${sample.edgeConsistent} dirs=${sample.fromDirection}/${sample.toDirection}`,
+            );
+        }
+    } catch (error) {
+        console.warn(
+            `[WINDING-STAGE] ${name} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
     }
 }
 
@@ -631,6 +696,59 @@ function recordOuterWallSourceTopology(label: string, result: OuterWallResult): 
     }
 }
 
+function recordOuterWallTriangleProbe(result: OuterWallResult): void {
+    try {
+        const global = globalThis as unknown as SourceDiagnosticsGlobal;
+        const probe = global.__pfSourceTriangleProbe;
+        const edgeProbe = global.__pfSourceEdgeProbe;
+        const formatVerts = (verts: number[]): string => {
+            const uv = verts.map((v) => {
+                const b = v * 3;
+                return `${v}:${(result.vertices[b] ?? NaN).toFixed(6)},${(result.vertices[b + 1] ?? NaN).toFixed(6)},${Math.round(result.vertices[b + 2] ?? -1)}`;
+            }).join('|');
+            return `verts=[${verts.join(',')}] uv=[${uv}]`;
+        };
+        if (probe && probe.length > 0) {
+            for (const tri of probe) {
+                const base = tri * 3;
+                if (base + 2 >= result.indices.length) continue;
+                const verts = [
+                    result.indices[base],
+                    result.indices[base + 1],
+                    result.indices[base + 2],
+                ];
+                console.warn(
+                    `[SOURCE-TRI] t=${tri} provenance=${result.triangleProvenance?.[tri] ?? 'unknown'} ` +
+                    formatVerts(verts),
+                );
+            }
+        }
+        if (edgeProbe && edgeProbe.length > 0) {
+            for (const [ea, eb] of edgeProbe) {
+                const incidents: string[] = [];
+                for (let base = 0; base + 2 < result.indices.length; base += 3) {
+                    const verts = [
+                        result.indices[base],
+                        result.indices[base + 1],
+                        result.indices[base + 2],
+                    ];
+                    const hasA = verts.includes(ea);
+                    const hasB = verts.includes(eb);
+                    if (!hasA || !hasB) continue;
+                    const tri = base / 3;
+                    incidents.push(
+                        `t=${tri}:prov=${result.triangleProvenance?.[tri] ?? 'unknown'}:${formatVerts(verts)}`,
+                    );
+                    if (incidents.length >= 8) break;
+                }
+                console.warn(`[SOURCE-EDGE] edge=${ea}-${eb} incidents=${incidents.length} ${incidents.join(' || ')}`);
+            }
+        }
+    } catch {
+        /* diagnostics must not affect export */
+    }
+}
+
 // TEMP-TAILPROBE: in-page stage tracker that SURVIVES a long synchronous block
 // (unlike console, whose buffered lines are lost when the E2E caps and closes the
 // page). The spec reads window.__pfStageLog after the cap to pin the hanging stage.
@@ -742,9 +860,53 @@ export function selectSurfaceUPositionsForClosure(
     return outerWallU;
 }
 
+/**
+ * Build per-surface T rows for export grids.
+ *
+ * Bottom sheets terminate at the small drain ring. With the shared outer-wall
+ * U grid, tiny seam intervals at that ring paired with a full uniform radial
+ * step create high-aspect wrap-cell slivers. A quadratic drain bias keeps the
+ * same boundary rows but makes the final radial bands shorter near t=1.
+ */
+export function buildSurfaceTPositionsForQuality(
+    surfaceId: number,
+    segments: number,
+    wallRadiusMm?: number,
+    drainRadiusMm?: number,
+): Float32Array {
+    const safeSegments = Math.max(1, Math.floor(segments));
+    const tPositions = new Float32Array(safeSegments + 1);
+    const biasTowardDrain = surfaceId === 3 || surfaceId === 4;
+    const canUseRadiusLadder = biasTowardDrain &&
+        Number.isFinite(wallRadiusMm) &&
+        Number.isFinite(drainRadiusMm) &&
+        (wallRadiusMm ?? 0) > (drainRadiusMm ?? 0) &&
+        (drainRadiusMm ?? 0) > 0;
+
+    for (let j = 0; j <= safeSegments; j++) {
+        const linear = j / safeSegments;
+        if (canUseRadiusLadder) {
+            const wallRadius = wallRadiusMm!;
+            const drainRadius = drainRadiusMm!;
+            const radius = wallRadius * Math.pow(drainRadius / wallRadius, linear);
+            tPositions[j] = (radius - wallRadius) / (drainRadius - wallRadius);
+        } else if (biasTowardDrain) {
+            tPositions[j] = 1 - (1 - linear) * (1 - linear);
+        } else {
+            tPositions[j] = linear;
+        }
+    }
+
+    tPositions[0] = 0;
+    tPositions[safeSegments] = 1;
+    return tPositions;
+}
+
 export function topologyWeldToleranceForExport(epsPosMm: number): number {
     return Math.min(0.001, Math.max(0.00001, epsPosMm * 0.01));
 }
+
+const DEFECT_WELD_DISCOVERY_TOLERANCE_MM = 1e-4;
 
 export function validationPassForExport(report: ValidationReport): boolean {
     return report.valid || (
@@ -2271,6 +2433,7 @@ export class ParametricExportComputer {
                         },
                     );
                     recordOuterWallSourceTopology('outer-cdt', cdtResult);
+                    recordOuterWallTriangleProbe(cdtResult);
 
                     // v16.9: Stitch vertices REMOVED.
                     // With 100% patch rate, 0 collisions, chain-directed flip,
@@ -2317,8 +2480,15 @@ export class ParametricExportComputer {
                     const surfaceU = selectSurfaceUPositionsForClosure(surf.id, unionU, uBasePositions);
                     const nonOuterW = surfaceU.length;
                     const h = Math.max(2, Math.round(surfBudget / (2 * nonOuterW)));
-                    const surfT = new Float32Array(h + 1);
-                    for (let j = 0; j <= h; j++) surfT[j] = j / h;
+                    const surfaceWallRadius = surf.id === 4
+                        ? Math.max(dimensions.rDrain + 0.5, dimensions.Rb - dimensions.tWall)
+                        : dimensions.Rb;
+                    const surfT = buildSurfaceTPositionsForQuality(
+                        surf.id,
+                        h,
+                        surfaceWallRadius,
+                        dimensions.rDrain,
+                    );
                     const grid = generateAdaptiveGrid(surfaceU, surfT, surf.id, surf.invertWinding);
 
                     allVertArrays.push(grid.vertices);
@@ -3691,6 +3861,7 @@ export class ParametricExportComputer {
                     `${tJunctionRepair.insertedTriangles} tris inserted`,
                 );
             }
+            recordWindingStageDiagnostic('after-repairOuterWallTJunctions#1', finalCombinedIdxs, finalResultData);
 
             await pfStageFlush('tail:before-repairSurfaceBoundaryTJunctions');
             const surfaceBoundaryRepairTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
@@ -3720,6 +3891,7 @@ export class ParametricExportComputer {
                     `${surfaceBoundaryRepair.insertedTriangles} tris inserted`,
                 );
             }
+            recordWindingStageDiagnostic('after-repairSurfaceBoundaryTJunctions', finalCombinedIdxs, finalResultData);
 
             await pfStageFlush('tail:before-fillOuterWallBoundaryLoops');
             const outerLoopIndices = finalCombinedIdxs.slice(0, outerIdxCountAfterSubdiv);
@@ -3894,6 +4066,7 @@ export class ParametricExportComputer {
                     `${sameSurfaceCenterFill.insertedVertices} trial vertices`,
                 );
             }
+            recordWindingStageDiagnostic('after-fillSameSurfaceBoundaryLoopsWithCenters', finalCombinedIdxs, finalResultData);
 
             await pfStageFlush('tail:before-fillOuterWallSeamBoundaryChains');
             const seamChainFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
@@ -3940,6 +4113,7 @@ export class ParametricExportComputer {
                     `low=${seamChainFill.lowVertices ?? 0}, high=${seamChainFill.highVertices ?? 0}`,
                 );
             }
+            recordWindingStageDiagnostic('after-fillOuterWallSeamBoundaryChains', finalCombinedIdxs, finalResultData);
 
             // Post-refinement periodic seam closure. The half-open u-grid never emits
             // the wrap cell (last col u≈0.999 → col 0 u=0), and refinement subdivided the
@@ -4074,6 +4248,7 @@ export class ParametricExportComputer {
                     `${crossSurfaceLoopFill.unsafeLoops ?? 0} unsafe caps`,
                 );
             }
+            recordWindingStageDiagnostic('after-fillCrossSurfaceConstantTBoundaryLoopsWithCenters', finalCombinedIdxs, finalResultData);
 
             // Final closer: branched boundary components (holes that touch at a
             // shared junction vertex). The simple-loop fillers above can only
@@ -4209,6 +4384,7 @@ export class ParametricExportComputer {
                     );
                 }
             }
+            recordWindingStageDiagnostic('after-finalCrossSurfaceLoopFill', finalCombinedIdxs, finalResultData);
 
             // Final same-surface loop closure: the T-junction split and the periodic
             // seam closure can leave small SAME-SURFACE closed loops (notably a thin
@@ -4250,6 +4426,88 @@ export class ParametricExportComputer {
                         `${finalSFill.filledLoops} loops filled, ` +
                         `${finalSFill.insertedTriangles} tris inserted, ` +
                         `${finalSFill.insertedVertices} vertices inserted`,
+                    );
+                }
+            }
+            recordWindingStageDiagnostic('after-finalSameSurfaceLoopFill', finalCombinedIdxs, finalResultData);
+
+            // Final near-coincident defect weld: the only residual after the fill
+            // battery is duplicate vertices a few microns apart (the same physical
+            // point split by float path divergence at feature/seam crossings), which
+            // leave a non-manifold near-degenerate edge plus an open boundary chain.
+            // Merge such pairs — restricted to boundary/non-manifold-incident vertices
+            // so dense feature interiors are untouched — at a tolerance well above the
+            // sub-micron weld floor but far below the inter-vertex spacing.
+            await pfStageFlush(`tail:before-finalDefectWeld tris=${finalCombinedIdxs.length / 3}`);
+            {
+                const defectWeldStart = performance.now();
+                const defectWeldTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+                const defectWeld = weldNearCoincidentBoundaryVertices(
+                    finalCombinedIdxs,
+                    finalResultData,
+                    Math.min(
+                        topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+                        DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                    ),
+                    0.02,
+                );
+                recordTailDiagnosticStage({
+                    name: 'finalDefectWeld',
+                    elapsedMs: performance.now() - defectWeldStart,
+                    trianglesBefore: defectWeldTrisBefore,
+                    trianglesAfter: indexCountToTriangleCount(defectWeld.indices.length),
+                    outerTrianglesBefore: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    outerTrianglesAfter: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    details: {
+                        weldedVertices: defectWeld.weldedVertices,
+                        strippedTriangles: defectWeld.strippedTriangles,
+                    },
+                });
+                if (defectWeld.weldedVertices > 0) {
+                    finalCombinedIdxs = defectWeld.indices;
+                    console.log(
+                        `[ParametricExport]   Final defect weld: ` +
+                        `${defectWeld.weldedVertices} vertices welded, ` +
+                        `${defectWeld.strippedTriangles} degenerate tris stripped`,
+                    );
+                }
+            }
+            recordWindingStageDiagnostic('after-finalDefectWeld', finalCombinedIdxs, finalResultData);
+
+            await pfStageFlush(`tail:before-normalizeWindingByComponent tris=${finalCombinedIdxs.length / 3}`);
+            {
+                const windingStart = performance.now();
+                const windingTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+                const winding = normalizeWindingByComponent(
+                    finalCombinedIdxs,
+                    finalCombinedIdxs.length,
+                    finalResultData,
+                    DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                );
+                recordTailDiagnosticStage({
+                    name: 'normalizeWindingByComponent',
+                    elapsedMs: performance.now() - windingStart,
+                    trianglesBefore: windingTrisBefore,
+                    trianglesAfter: indexCountToTriangleCount(winding.indices.length),
+                    outerTrianglesBefore: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    outerTrianglesAfter: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    details: {
+                        flippedTriangles: winding.flipped,
+                        components: winding.components,
+                        conflicts: winding.conflicts,
+                    },
+                });
+                if (winding.flipped > 0) {
+                    finalCombinedIdxs = winding.indices;
+                    console.log(
+                        `[ParametricExport]   Winding normalized: ` +
+                        `${winding.flipped} triangles flipped across ${winding.components} components ` +
+                        `(conflicts=${winding.conflicts})`,
+                    );
+                }
+                if (winding.conflicts > 0) {
+                    console.warn(
+                        `[ParametricExport]   Winding normalization found ${winding.conflicts} conflicts`,
                     );
                 }
             }
