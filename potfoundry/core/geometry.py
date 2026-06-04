@@ -7,6 +7,8 @@ import math
 import numpy as np
 from functools import lru_cache
 
+from .mesh_ops import ensure_outward
+
 
 
 __all__ = [
@@ -415,18 +417,20 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces_out_parts.append(tri_bot2)
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
+    # Winding chosen to match the inner wall and drain cylinder it joins so the
+    # whole surface stays consistently orientable (see ensure_outward below).
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
-    tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_top1 = np.stack([inner_bottom[j], drain_top[jn], inner_bottom[jn]], axis=1)
+    tri_top2 = np.stack([inner_bottom[j], drain_top[j], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_top1)
     faces_out_parts.append(tri_top2)
 
-    # Drain cylinder wall
+    # Drain cylinder wall (winding matched to slab top / bottom underside).
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
-    tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
+    tri_cyl1 = np.stack([drain_under[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_cyl2 = np.stack([drain_under[j], drain_under[jn], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 
@@ -445,7 +449,13 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    # Guarantee outward-facing normals for export-grade output. The regions
+    # above are wound consistently; this only corrects a possible global sign
+    # so the enclosed signed volume is positive (normals point out of the
+    # material), which Rhino/Grasshopper and slicers require for a valid solid.
+    faces_arr = ensure_outward(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401

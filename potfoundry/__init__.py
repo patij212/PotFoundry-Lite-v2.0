@@ -24,6 +24,9 @@ from .core.geometry import (
 # Binary STL writer (recommended)
 from .core.io.stl import write_stl_binary
 
+# Mesh-quality / export-readiness utilities
+from .core.mesh_ops import ensure_outward, signed_volume, winding_report
+
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
 
@@ -37,6 +40,10 @@ __all__ = [
     # STL export (binary is recommended)
     'write_stl_binary',
     'write_ascii_stl',  # deprecated
+    # Mesh-quality / export-readiness utilities
+    'ensure_outward',
+    'signed_volume',
+    'winding_report',
     # Version
     '__version__',
 ]
