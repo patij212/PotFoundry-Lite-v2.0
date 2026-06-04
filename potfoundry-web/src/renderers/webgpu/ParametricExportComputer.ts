@@ -4165,6 +4165,51 @@ export class ParametricExportComputer {
                 }
             }
 
+            // Final cross-surface loop closure: the T-junction split above can leave
+            // small CROSS-SURFACE closed loops at the rim ring (the tiny gaps where the
+            // refined outer-wall row, s0, and the unionU rim, s2, meet imperfectly at
+            // t=1). The earlier cross-surface filler ran before the split and never saw
+            // them; the geometric/same-surface fillers reject cross-surface loops. Re-run
+            // the cross-surface constant-t filler here (owner-opposite, manifold-safe).
+            await pfStageFlush(`tail:before-finalCrossSurfaceLoopFill tris=${finalCombinedIdxs.length / 3}`);
+            {
+                const finalXFillStart = performance.now();
+                const finalXFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+                const finalXFill = fillCrossSurfaceConstantTBoundaryLoopsWithCenters(
+                    finalCombinedIdxs,
+                    combinedVerts,
+                    finalResultData,
+                    topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+                );
+                recordTailDiagnosticStage({
+                    name: 'finalCrossSurfaceLoopFill',
+                    elapsedMs: performance.now() - finalXFillStart,
+                    trianglesBefore: finalXFillTrisBefore,
+                    trianglesAfter: indexCountToTriangleCount(finalXFill.indices.length),
+                    outerTrianglesBefore: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    outerTrianglesAfter: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    details: {
+                        filledLoops: finalXFill.filledLoops,
+                        insertedTriangles: finalXFill.insertedTriangles,
+                        insertedVertices: finalXFill.insertedVertices,
+                        attemptedLoops: finalXFill.attemptedLoops,
+                        emptyTriangulations: finalXFill.emptyTriangulations,
+                        unsafeLoops: finalXFill.unsafeLoops,
+                    },
+                });
+                if (finalXFill.filledLoops > 0) {
+                    finalCombinedIdxs = finalXFill.indices;
+                    combinedVerts = finalXFill.uvs;
+                    finalResultData = finalXFill.positions;
+                    console.log(
+                        `[ParametricExport]   Final cross-surface loop fill: ` +
+                        `${finalXFill.filledLoops} loops filled, ` +
+                        `${finalXFill.insertedTriangles} tris inserted, ` +
+                        `${finalXFill.insertedVertices} vertices inserted`,
+                    );
+                }
+            }
+
             await pfStageFlush(`tail:before-final-geometric-degen-strip tris=${finalCombinedIdxs.length / 3}`);
             const finalDegenStripTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
             const finalDegenStripOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
