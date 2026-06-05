@@ -4311,6 +4311,7 @@ export class ParametricExportComputer {
             }
 
             await pfStageFlush(`tail:before-repairOuterWallTJunctions#1 tris=${finalCombinedIdxs.length / 3}`);
+            recordWindingStageDiagnostic('before-tail-repairs', finalCombinedIdxs, finalResultData);
             const tJunctionRepairTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
             const tJunctionRepairOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
             const tJunctionRepairStart = performance.now();
