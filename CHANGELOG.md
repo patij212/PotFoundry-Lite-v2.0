@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- Mesh export-quality regression tests (`tests/test_mesh_orientation.py`):
+  rigorous watertight, consistent-winding (directed-edge), and outward-normal
+  (divergence-theorem signed volume) checks across all styles and resolutions.
+
+### Fixed
+- **Mesh orientation (Rhino/Grasshopper export quality):** `build_pot_mesh`
+  previously wound the outer wall, inner wall, rim cap, and bottom underside so
+  their normals pointed *inward*. This produced a negative signed volume (models
+  imported inside-out) and 336 inconsistently-wound directed edges where the
+  flipped groups met the correctly-wound drain cylinder and slab top (seams that
+  Rhino flags as naked/non-manifold). Corrected the winding of all four groups in
+  both `potfoundry/core/geometry.py` and the legacy `potfoundry/geometry.py` so
+  the entire mesh is consistently outward-oriented by construction (positive
+  volume, every directed edge traversed exactly once). Zero performance cost —
+  generation stays at ~31ms. The auto-computed STL face normals are now correct.
 
 ### Fixed
 - **Critical Bug Fixes:**

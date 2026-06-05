@@ -342,8 +342,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     for i in range(rows):
         v00 = outer_idx[i, j]; v01 = outer_idx[i, jn]
         v10 = outer_idx[i+1, j]; v11 = outer_idx[i+1, jn]
-        faces.extend(list(zip(v00, v10, v11)))
-        faces.extend(list(zip(v00, v11, v01)))
+        # Outward winding: normals point radially away from the central axis.
+        faces.extend(list(zip(v00, v11, v10)))
+        faces.extend(list(zip(v00, v01, v11)))
 
     # ---- Inner wall rings (clamp near drain)
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
@@ -365,15 +366,17 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     for i in range(rows_in):
         v00 = inner_idx[i, j]; v01 = inner_idx[i, jn]
         v10 = inner_idx[i+1, j]; v11 = inner_idx[i+1, jn]
-        faces.extend(list(zip(v00, v11, v10)))
-        faces.extend(list(zip(v00, v01, v11)))
+        # Outward normal points toward the axis (cavity is empty).
+        faces.extend(list(zip(v00, v10, v11)))
+        faces.extend(list(zip(v00, v11, v01)))
 
     # ---- Rim cap
     outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
     v00 = outer_top[j]; v01 = outer_top[jn]
     vi0 = inner_top[j]; vi1 = inner_top[jn]
-    faces.extend(list(zip(v00, vi0, vi1)))
-    faces.extend(list(zip(v00, vi1, v01)))
+    # Rim cap (top annulus): outward normal points up (+z).
+    faces.extend(list(zip(v00, vi1, vi0)))
+    faces.extend(list(zip(v00, v01, vi1)))
 
     # ---- Drain circles (untwisted)
     drain_under = []; drain_top = []
@@ -388,8 +391,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     # Bottom underside (outer bottom ring -> drain under ring)
     v00 = outer_bottom[j]; v01 = outer_bottom[jn]
     vd0 = drain_under[j];  vd1 = drain_under[jn]
-    faces.extend(list(zip(v00, vd1, vd0)))
-    faces.extend(list(zip(v00, v01, vd1)))
+    # Bottom underside: outward normal points down (-z).
+    faces.extend(list(zip(v00, vd0, vd1)))
+    faces.extend(list(zip(v00, vd1, v01)))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
