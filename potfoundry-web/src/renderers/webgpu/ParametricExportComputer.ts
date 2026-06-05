@@ -43,6 +43,7 @@
  */
 
 import { buildStyleParamPayload } from '../../utils/styleParams';
+import { topologyMetric } from '../../fidelity/metrics';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
 import {
     circularDistance,
@@ -124,6 +125,7 @@ import {
     type ValidationReport,
 } from './parametric/MeshValidator';
 import {
+    compactDuplicateCanonicalTriangles,
     fillBranchedBoundaryComponentsWithCenters,
     fillCrossSurfaceConstantTBoundaryLoopsWithCenters,
     fillGeometricBoundaryLoops,
@@ -133,6 +135,7 @@ import {
     fillSameSurfaceBoundaryLoopsWithCenters,
     repairOuterWallTJunctions,
     repairSurfaceBoundaryTJunctions,
+    splitNonManifoldBoundaryTJunctions,
     splitResidualBoundaryTJunctions,
     weldNearCoincidentBoundaryVertices,
 } from './parametric/BoundaryTJunctionRepair';
@@ -221,6 +224,157 @@ export const REFINEMENT_TRIANGLE_SAFETY_CAP = 10_000_000;
 
 const INDICES_PER_TRIANGLE = 3;
 
+export type SampledResnapRejectReason =
+    'accepted' | 'protected' | 'unbracketed' | 'already-correct' | 'oversize';
+
+export type PhantomAnchorResnapRejectReason =
+    'accepted' | 'already-correct' | 'non-converged' | 'oversize' | 'near-duplicate';
+
+export interface SampledResnapCandidate {
+    currentU: number;
+    finalU: number;
+    bestK: number;
+    candidateCount: number;
+    maxDelta: number;
+    protectedVertex?: boolean;
+}
+
+export interface PhantomAnchorResnapCandidate {
+    vertexIdx: number;
+    currentU: number;
+    finalU: number;
+    t: number;
+    gradAbs: number;
+    gradThreshold: number;
+    maxDelta: number;
+    minSeparation: number;
+}
+
+export interface PhantomAnchorResnapDecision {
+    accept: boolean;
+    reason: PhantomAnchorResnapRejectReason;
+}
+
+export function shouldAcceptSampledResnapCandidate(
+    candidate: SampledResnapCandidate,
+): { accept: boolean; reason: SampledResnapRejectReason } {
+    const { currentU, finalU, bestK, candidateCount, maxDelta, protectedVertex } = candidate;
+    if (protectedVertex) {
+        return { accept: false, reason: 'protected' };
+    }
+    if (bestK <= 0 || bestK >= candidateCount - 1) {
+        return { accept: false, reason: 'unbracketed' };
+    }
+    const moved = circularDistance(currentU, finalU);
+    if (moved <= 1e-7) {
+        return { accept: false, reason: 'already-correct' };
+    }
+    if (moved >= maxDelta) {
+        return { accept: false, reason: 'oversize' };
+    }
+    return { accept: true, reason: 'accepted' };
+}
+
+function phantomResnapCandidateRank(
+    candidate: PhantomAnchorResnapCandidate,
+): [number, number, number] {
+    return [
+        candidate.gradAbs,
+        circularDistance(candidate.currentU, candidate.finalU),
+        candidate.vertexIdx,
+    ];
+}
+
+function comparePhantomResnapCandidates(
+    left: PhantomAnchorResnapCandidate,
+    right: PhantomAnchorResnapCandidate,
+): number {
+    const leftRank = phantomResnapCandidateRank(left);
+    const rightRank = phantomResnapCandidateRank(right);
+    for (let i = 0; i < leftRank.length; i++) {
+        const diff = leftRank[i] - rightRank[i];
+        if (diff !== 0) return diff;
+    }
+    return 0;
+}
+
+export function classifyPhantomAnchorResnapCandidates(
+    candidates: readonly PhantomAnchorResnapCandidate[],
+): PhantomAnchorResnapDecision[] {
+    const decisions = candidates.map((candidate): PhantomAnchorResnapDecision => {
+        const moved = circularDistance(candidate.currentU, candidate.finalU);
+        if (candidate.gradAbs > candidate.gradThreshold) {
+            return { accept: false, reason: 'non-converged' };
+        }
+        if (moved > candidate.maxDelta) {
+            return { accept: false, reason: 'oversize' };
+        }
+        if (moved <= 1e-9) {
+            return { accept: false, reason: 'already-correct' };
+        }
+        return { accept: true, reason: 'accepted' };
+    });
+
+    const rowGroups = new Map<number, number[]>();
+    const T_KEY_SCALE = 1e6;
+    for (let i = 0; i < candidates.length; i++) {
+        if (decisions[i].reason !== 'accepted' && decisions[i].reason !== 'already-correct') continue;
+        const key = Math.round(candidates[i].t * T_KEY_SCALE);
+        const group = rowGroups.get(key) ?? [];
+        group.push(i);
+        rowGroups.set(key, group);
+    }
+
+    for (const group of rowGroups.values()) {
+        group.sort((left, right) => candidates[left].finalU - candidates[right].finalU);
+        let cluster: number[] = [];
+        const flushCluster = (): void => {
+            if (cluster.length <= 1) {
+                cluster = [];
+                return;
+            }
+            let winner = cluster[0];
+            for (const candidateIdx of cluster.slice(1)) {
+                if (comparePhantomResnapCandidates(candidates[candidateIdx], candidates[winner]) < 0) {
+                    winner = candidateIdx;
+                }
+            }
+            for (const candidateIdx of cluster) {
+                if (candidateIdx === winner) continue;
+                if (decisions[candidateIdx].reason === 'accepted') {
+                    decisions[candidateIdx] = { accept: false, reason: 'near-duplicate' };
+                }
+            }
+            cluster = [];
+        };
+
+        for (const candidateIdx of group) {
+            if (cluster.length === 0) {
+                cluster.push(candidateIdx);
+                continue;
+            }
+            const previousIdx = cluster[cluster.length - 1];
+            const separation = circularDistance(
+                candidates[previousIdx].finalU,
+                candidates[candidateIdx].finalU,
+            );
+            const required = Math.max(
+                candidates[previousIdx].minSeparation,
+                candidates[candidateIdx].minSeparation,
+            );
+            if (separation < required) {
+                cluster.push(candidateIdx);
+            } else {
+                flushCluster();
+                cluster.push(candidateIdx);
+            }
+        }
+        flushCluster();
+    }
+
+    return decisions;
+}
+
 type TailDiagnosticDetailValue = string | number | boolean;
 
 interface TailDiagnosticStage {
@@ -302,6 +456,7 @@ type SourceDiagnosticsGlobal = TailDiagnosticsGlobal & {
     __pfEnableWindingStageDiagnostics?: boolean;
     __pfSourceTriangleProbe?: number[];
     __pfSourceEdgeProbe?: Array<[number, number]>;
+    __pfSourceVertexProbe?: number[];
 };
 
 const SOURCE_TOPOLOGY_UV_QUANT = 1e6;
@@ -463,6 +618,17 @@ function sourceSampleVertex(result: OuterWallResult, index: number): SourceTopol
         u: result.vertices[base],
         t: result.vertices[base + 1],
         surface: result.vertices[base + 2],
+    };
+}
+
+export function describeSourceProbeVertex(result: OuterWallResult, index: number): SourceTopologySampleVertex & {
+    protected: boolean;
+    phantomAnchor: boolean;
+} {
+    return {
+        ...sourceSampleVertex(result, index),
+        protected: result.protectedStripVertices.has(index),
+        phantomAnchor: result.phantomChainAnchors.some(anchor => anchor.vertexIdx === index),
     };
 }
 
@@ -701,13 +867,22 @@ function recordOuterWallTriangleProbe(result: OuterWallResult): void {
         const global = globalThis as unknown as SourceDiagnosticsGlobal;
         const probe = global.__pfSourceTriangleProbe;
         const edgeProbe = global.__pfSourceEdgeProbe;
+        const vertexProbe = global.__pfSourceVertexProbe;
+        const formatSourceVertex = (v: number): string => {
+            const sample = describeSourceProbeVertex(result, v);
+            return `${v}:${sample.u.toFixed(6)},${sample.t.toFixed(6)},${Math.round(sample.surface)},` +
+                `kind=${sample.kind},chain=${sample.chainId ?? '-'},` +
+                `protected=${sample.protected ? 1 : 0},phantomAnchor=${sample.phantomAnchor ? 1 : 0}`;
+        };
         const formatVerts = (verts: number[]): string => {
-            const uv = verts.map((v) => {
-                const b = v * 3;
-                return `${v}:${(result.vertices[b] ?? NaN).toFixed(6)},${(result.vertices[b + 1] ?? NaN).toFixed(6)},${Math.round(result.vertices[b + 2] ?? -1)}`;
-            }).join('|');
+            const uv = verts.map(formatSourceVertex).join('|');
             return `verts=[${verts.join(',')}] uv=[${uv}]`;
         };
+        if (vertexProbe && vertexProbe.length > 0) {
+            for (const vertexIdx of vertexProbe) {
+                console.warn(`[SOURCE-VERTEX] ${formatSourceVertex(vertexIdx)}`);
+            }
+        }
         if (probe && probe.length > 0) {
             for (const tri of probe) {
                 const base = tri * 3;
@@ -852,6 +1027,246 @@ export function stitchRefinedOuterIndices(
     };
 }
 
+export interface PostDefectWeldTopologyRepair {
+    indices: Uint32Array;
+    uvs: Float32Array;
+    positions: Float32Array;
+    outerIdxCount: number;
+    repairedEdges: number;
+    repairInsertedTriangles: number;
+    sameSurfaceFilledLoops: number;
+    sameSurfaceInsertedTriangles: number;
+    sameSurfaceInsertedVertices: number;
+    branchedFilledLoops: number;
+    branchedInsertedTriangles: number;
+    branchedInsertedVertices: number;
+    nonManifoldRepairedEdges: number;
+    nonManifoldInsertedTriangles: number;
+    residualRepairedEdges: number;
+    residualInsertedTriangles: number;
+    finalSameSurfaceFilledLoops: number;
+    finalSameSurfaceInsertedTriangles: number;
+    finalSameSurfaceInsertedVertices: number;
+}
+
+export interface TopologyDefectCounts {
+    boundaryEdges: number;
+    nonManifoldEdges: number;
+    orientationMismatches: number;
+}
+
+export interface FinalDefectWeldCandidateScore extends TopologyDefectCounts {
+    toleranceMm: number;
+}
+
+function finalDefectWeldCandidateTier(
+    before: TopologyDefectCounts,
+    candidate: FinalDefectWeldCandidateScore,
+): number {
+    if (candidate.boundaryEdges < before.boundaryEdges &&
+        candidate.nonManifoldEdges <= before.nonManifoldEdges) {
+        return 0;
+    }
+    if (candidate.nonManifoldEdges <= before.nonManifoldEdges) {
+        return 1;
+    }
+    if (candidate.boundaryEdges < before.boundaryEdges) {
+        return 2;
+    }
+    return 3;
+}
+
+function compareByFields(
+    left: FinalDefectWeldCandidateScore,
+    right: FinalDefectWeldCandidateScore,
+    fields: readonly (keyof FinalDefectWeldCandidateScore)[],
+): number {
+    for (const field of fields) {
+        const diff = left[field] - right[field];
+        if (diff !== 0) return diff;
+    }
+    return 0;
+}
+
+function compareFinalDefectWeldCandidates(
+    before: TopologyDefectCounts,
+    left: FinalDefectWeldCandidateScore,
+    right: FinalDefectWeldCandidateScore,
+): number {
+    const leftTier = finalDefectWeldCandidateTier(before, left);
+    const rightTier = finalDefectWeldCandidateTier(before, right);
+    if (leftTier !== rightTier) return leftTier - rightTier;
+    if (leftTier === 0) {
+        return compareByFields(left, right, [
+            'boundaryEdges',
+            'nonManifoldEdges',
+            'orientationMismatches',
+            'toleranceMm',
+        ]);
+    }
+    return compareByFields(left, right, [
+        'nonManifoldEdges',
+        'boundaryEdges',
+        'orientationMismatches',
+        'toleranceMm',
+    ]);
+}
+
+export function selectFinalDefectWeldCandidate<T extends FinalDefectWeldCandidateScore>(
+    before: TopologyDefectCounts,
+    candidates: readonly T[],
+): T {
+    if (candidates.length === 0) {
+        throw new Error('selectFinalDefectWeldCandidate requires at least one candidate');
+    }
+    let best = candidates[0];
+    for (const candidate of candidates.slice(1)) {
+        if (compareFinalDefectWeldCandidates(before, candidate, best) < 0) {
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+export function shouldAcceptPostDefectTopologyRepair(
+    before: TopologyDefectCounts,
+    after: TopologyDefectCounts,
+): boolean {
+    if (after.boundaryEdges > before.boundaryEdges) return false;
+    if (after.nonManifoldEdges > before.nonManifoldEdges) return false;
+
+    const hardTopologyImproved =
+        after.boundaryEdges < before.boundaryEdges ||
+        after.nonManifoldEdges < before.nonManifoldEdges;
+    if (!hardTopologyImproved) {
+        return after.orientationMismatches < before.orientationMismatches;
+    }
+
+    const orientationDelta = after.orientationMismatches - before.orientationMismatches;
+    const orientationBudget = Math.max(4, Math.ceil(before.orientationMismatches * 0.001));
+    return orientationDelta <= orientationBudget;
+}
+
+export function repairPostDefectWeldTopology(
+    indices: Uint32Array,
+    uvs: Float32Array,
+    positions: Float32Array,
+    outerIdxCount: number,
+    topologyWeldToleranceMm: number,
+    maxRepairPasses: number = 4,
+): PostDefectWeldTopologyRepair {
+    let currentIndices = indices;
+    let currentUvs = uvs;
+    let currentPositions = positions;
+    let currentOuterIdxCount = outerIdxCount;
+    let repairedEdges = 0;
+    let repairInsertedTriangles = 0;
+    let nonManifoldRepairedEdges = 0;
+    let nonManifoldInsertedTriangles = 0;
+    let residualRepairedEdges = 0;
+    let residualInsertedTriangles = 0;
+
+    if (maxRepairPasses > 0 && currentOuterIdxCount > 0) {
+        const repair = repairOuterWallTJunctions(
+            currentIndices,
+            currentUvs,
+            currentOuterIdxCount,
+            currentPositions,
+            maxRepairPasses,
+            topologyWeldToleranceMm,
+        );
+        if (repair.repairedEdges > 0) {
+            currentIndices = repair.indices;
+            currentOuterIdxCount = repair.outerIdxCount;
+            repairedEdges = repair.repairedEdges;
+            repairInsertedTriangles = repair.insertedTriangles;
+        }
+    }
+
+    const nonManifoldTj = splitNonManifoldBoundaryTJunctions(
+        currentIndices,
+        currentUvs,
+        currentPositions,
+        topologyWeldToleranceMm,
+        2,
+    );
+    if (nonManifoldTj.repairedEdges > 0) {
+        currentIndices = nonManifoldTj.indices;
+        nonManifoldRepairedEdges = nonManifoldTj.repairedEdges;
+        nonManifoldInsertedTriangles = nonManifoldTj.insertedTriangles;
+    }
+
+    const sameSurfaceFill = fillSameSurfaceBoundaryLoopsWithCenters(
+        currentIndices,
+        currentUvs,
+        currentPositions,
+        topologyWeldToleranceMm,
+    );
+    if (sameSurfaceFill.filledLoops > 0) {
+        currentIndices = sameSurfaceFill.indices;
+        currentUvs = sameSurfaceFill.uvs;
+            currentPositions = sameSurfaceFill.positions;
+    }
+
+    const branchedFill = fillBranchedBoundaryComponentsWithCenters(
+        currentIndices,
+        currentUvs,
+        currentPositions,
+        topologyWeldToleranceMm,
+    );
+    if (branchedFill.filledLoops > 0) {
+        currentIndices = branchedFill.indices;
+        currentUvs = branchedFill.uvs;
+        currentPositions = branchedFill.positions;
+    }
+
+    const residualTj = splitResidualBoundaryTJunctions(
+        currentIndices,
+        currentUvs,
+        currentPositions,
+        topologyWeldToleranceMm,
+    );
+    if (residualTj.repairedEdges > 0) {
+        currentIndices = residualTj.indices;
+        residualRepairedEdges = residualTj.repairedEdges;
+        residualInsertedTriangles = residualTj.insertedTriangles;
+    }
+
+    const finalSameSurfaceFill = fillSameSurfaceBoundaryLoopsWithCenters(
+        currentIndices,
+        currentUvs,
+        currentPositions,
+        topologyWeldToleranceMm,
+    );
+    if (finalSameSurfaceFill.filledLoops > 0) {
+        currentIndices = finalSameSurfaceFill.indices;
+        currentUvs = finalSameSurfaceFill.uvs;
+        currentPositions = finalSameSurfaceFill.positions;
+    }
+
+    return {
+        indices: currentIndices,
+        uvs: currentUvs,
+        positions: currentPositions,
+        outerIdxCount: currentOuterIdxCount,
+        repairedEdges,
+        repairInsertedTriangles,
+        sameSurfaceFilledLoops: sameSurfaceFill.filledLoops,
+        sameSurfaceInsertedTriangles: sameSurfaceFill.insertedTriangles,
+        sameSurfaceInsertedVertices: sameSurfaceFill.insertedVertices,
+        branchedFilledLoops: branchedFill.filledLoops,
+        branchedInsertedTriangles: branchedFill.insertedTriangles,
+        branchedInsertedVertices: branchedFill.insertedVertices,
+        nonManifoldRepairedEdges,
+        nonManifoldInsertedTriangles,
+        residualRepairedEdges,
+        residualInsertedTriangles,
+        finalSameSurfaceFilledLoops: finalSameSurfaceFill.filledLoops,
+        finalSameSurfaceInsertedTriangles: finalSameSurfaceFill.insertedTriangles,
+        finalSameSurfaceInsertedVertices: finalSameSurfaceFill.insertedVertices,
+    };
+}
+
 export function selectSurfaceUPositionsForClosure(
     _surfaceId: number,
     outerWallU: Float32Array,
@@ -907,6 +1322,13 @@ export function topologyWeldToleranceForExport(epsPosMm: number): number {
 }
 
 const DEFECT_WELD_DISCOVERY_TOLERANCE_MM = 1e-4;
+const DEFECT_WELD_TOLERANCE_CANDIDATES_MM = [0.001, 0.002, 0.005, 0.01, 0.02] as const;
+const STRICT_CAD_CLOSURE_TOLERANCE_CANDIDATES_MM = [
+    DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+    0.0002,
+    0.0005,
+    0.001,
+] as const;
 
 export function validationPassForExport(report: ValidationReport): boolean {
     return report.valid || (
@@ -1234,6 +1656,15 @@ export class ParametricExportComputer {
         }
         const flags = resolveFeatureFlags(params.pipelineFeatureFlags);
         validateFeatureFlags(flags);
+
+        // By-construction watertight assembly (periodic seam + shared rings + verifier
+        // tail). Flag-gated; legacy repair-battery path when false. The e2e probes force
+        // it on via window.__pfByConstruction without changing the default.
+        const byConstructionAssembly = Boolean(flags.byConstructionAssembly)
+            || Boolean((globalThis as unknown as { __pfByConstruction?: boolean }).__pfByConstruction);
+        if (byConstructionAssembly) {
+            console.warn('[ParametricExport] by-construction assembly ENABLED (periodic seam + shared rings + verifier tail)');
+        }
 
         // Resolve pipeline-stage config (UI overrides → hardcoded defaults)
         const pc = params.pipelineConfig;
@@ -2432,8 +2863,8 @@ export class ParametricExportComputer {
                             periodicSeamU: false,
                         },
                     );
-                    recordOuterWallSourceTopology('outer-cdt', cdtResult);
                     recordOuterWallTriangleProbe(cdtResult);
+                    recordOuterWallSourceTopology('outer-cdt', cdtResult);
 
                     // v16.9: Stitch vertices REMOVED.
                     // With 100% patch rate, 0 collisions, chain-directed flip,
@@ -2606,7 +3037,9 @@ export class ParametricExportComputer {
 
                 let interpResnapCount = 0;
                 let interpAlreadyCorrect = 0;
+                let interpProtected = 0;
                 let interpOvershoot = 0;
+                let interpUnbracketed = 0;
                 let maxOvershootMoved = 0;
                 let maxWindowUsed = 0;
                 let totalWindowUsed = 0;
@@ -2663,12 +3096,24 @@ export class ParametricExportComputer {
                     finalU = ((finalU % 1) + 1) % 1;
 
                     const moved = circularDistance(currentU, finalU);
-                    if (moved > 1e-7 && moved < MAX_INTERP_DELTA) {
+                    const accept = shouldAcceptSampledResnapCandidate({
+                        currentU,
+                        finalU,
+                        bestK,
+                        candidateCount: cands,
+                        maxDelta: MAX_INTERP_DELTA,
+                        protectedVertex: outerProtectedStripVertices?.has(iv.vertexIdx) ?? false,
+                    });
+                    if (accept.accept) {
                         combinedVerts[iv.vertexIdx * 3] = finalU;
                         interpResnapCount++;
-                    } else if (moved <= 1e-7) {
+                    } else if (accept.reason === 'protected') {
+                        interpProtected++;
+                    } else if (accept.reason === 'already-correct') {
                         interpAlreadyCorrect++;
-                    } else {
+                    } else if (accept.reason === 'unbracketed') {
+                        interpUnbracketed++;
+                    } else if (accept.reason === 'oversize') {
                         interpOvershoot++;
                         if (moved > maxOvershootMoved) maxOvershootMoved = moved;
                     }
@@ -2677,7 +3122,7 @@ export class ParametricExportComputer {
                 }
 
                 const avgWindow = interpVertCount > 0 ? (totalWindowUsed / interpVertCount) : 0;
-                console.log(`[ParametricExport]   R46 interp re-snap: ${interpResnapCount}/${interpVertCount} refined, already-correct=${interpAlreadyCorrect}, overshoot=${interpOvershoot} (max=${maxOvershootMoved.toFixed(6)}) (avg window=${avgWindow.toFixed(6)}, max window=${maxWindowUsed.toFixed(6)})`);
+                console.log(`[ParametricExport]   R46 interp re-snap: ${interpResnapCount}/${interpVertCount} refined, protected=${interpProtected}, already-correct=${interpAlreadyCorrect}, unbracketed=${interpUnbracketed}, overshoot=${interpOvershoot} (max=${maxOvershootMoved.toFixed(6)}) (avg window=${avgWindow.toFixed(6)}, max window=${maxWindowUsed.toFixed(6)})`);
             }
 
             // ── ANALYTIC RIDGE PLACEMENT for R37 phantom column-crossing anchors ──
@@ -2699,7 +3144,7 @@ export class ParametricExportComputer {
             if (outerPhantomChainAnchors.length > 0 && cfgGpuResnap) {
                 const arpPhStart = performance.now();
                 const arpPhSeeds: GpuRidgeSeed[] = [];
-                const arpPhRefs: Array<{ vertexIdx: number; oldU: number }> = [];
+                const arpPhRefs: Array<{ vertexIdx: number; oldU: number; tCross: number }> = [];
 
                 for (const pa of outerPhantomChainAnchors) {
                     const parentChain = meshChains[pa.chainId];
@@ -2710,7 +3155,7 @@ export class ParametricExportComputer {
                     // wider window than row-boundary chains to absorb the
                     // interpolation drift while still preventing migration.
                     arpPhSeeds.push({ u: currentU, t: pa.tCross, kind, halfWidth: 0.003 });
-                    arpPhRefs.push({ vertexIdx: pa.vertexIdx, oldU: currentU });
+                    arpPhRefs.push({ vertexIdx: pa.vertexIdx, oldU: currentU, tCross: pa.tCross });
                 }
 
                 const arpPhEvaluator = (verts: Float32Array) => this.evaluatePoints(
@@ -2733,25 +3178,61 @@ export class ParametricExportComputer {
                 // as good as the pre-Bug#1 baseline, never worse.
                 const PH_GRAD_ACCEPT_THRESHOLD = 1.0;  // mm/U — matches Phase 3
                 const PH_SAFE_MOVE_LIMIT = 0.003;      // U — matches Newton halfWidth
+                const PH_MIN_SAME_ROW_SEPARATION = 0.00005;
+                const arpPhAnchorVertexSet = new Set(outerPhantomChainAnchors.map(anchor => anchor.vertexIdx));
+                const arpPhCandidates: PhantomAnchorResnapCandidate[] = arpPhResults.map((r, i) => ({
+                        vertexIdx: arpPhRefs[i].vertexIdx,
+                        currentU: arpPhRefs[i].oldU,
+                        finalU: ((r.u % 1) + 1) % 1,
+                        t: arpPhRefs[i].tCross,
+                        gradAbs: r.gradAbs,
+                        gradThreshold: PH_GRAD_ACCEPT_THRESHOLD,
+                        maxDelta: PH_SAFE_MOVE_LIMIT,
+                        minSeparation: PH_MIN_SAME_ROW_SEPARATION,
+                }));
+                if (outerProtectedStripVertices) {
+                    for (const vertexIdx of outerProtectedStripVertices) {
+                        if (arpPhAnchorVertexSet.has(vertexIdx)) continue;
+                        const u = combinedVerts[vertexIdx * 3];
+                        const t = combinedVerts[vertexIdx * 3 + 1];
+                        arpPhCandidates.push({
+                            vertexIdx,
+                            currentU: u,
+                            finalU: u,
+                            t,
+                            gradAbs: 0,
+                            gradThreshold: PH_GRAD_ACCEPT_THRESHOLD,
+                            maxDelta: PH_SAFE_MOVE_LIMIT,
+                            minSeparation: PH_MIN_SAME_ROW_SEPARATION,
+                        });
+                    }
+                }
+                const arpPhDecisions = classifyPhantomAnchorResnapCandidates(arpPhCandidates);
                 let arpPhRefined = 0, arpPhAlreadyCorrect = 0;
-                let arpPhRejectedNonConv = 0, arpPhRejectedOversize = 0;
+                let arpPhRejectedNonConv = 0, arpPhRejectedOversize = 0, arpPhRejectedNearDuplicate = 0;
                 let arpPhMaxMoved = 0, arpPhMaxGrad = 0, arpPhMaxAcceptedGrad = 0;
                 for (let i = 0; i < arpPhResults.length; i++) {
                     const r = arpPhResults[i];
                     const ref = arpPhRefs[i];
-                    const moved = circularDistance(ref.oldU, r.u);
+                    const finalU = ((r.u % 1) + 1) % 1;
+                    const moved = circularDistance(ref.oldU, finalU);
                     if (r.gradAbs > arpPhMaxGrad) arpPhMaxGrad = r.gradAbs;
 
-                    if (r.gradAbs > PH_GRAD_ACCEPT_THRESHOLD) {
+                    const decision = arpPhDecisions[i];
+                    if (decision.reason === 'non-converged') {
                         arpPhRejectedNonConv++;
                         continue;
                     }
-                    if (moved > PH_SAFE_MOVE_LIMIT) {
+                    if (decision.reason === 'oversize') {
                         arpPhRejectedOversize++;
                         continue;
                     }
-                    if (moved > 1e-9) {
-                        combinedVerts[ref.vertexIdx * 3] = r.u;
+                    if (decision.reason === 'near-duplicate') {
+                        arpPhRejectedNearDuplicate++;
+                        continue;
+                    }
+                    if (decision.reason === 'accepted') {
+                        combinedVerts[ref.vertexIdx * 3] = finalU;
                         arpPhRefined++;
                         if (moved > arpPhMaxMoved) arpPhMaxMoved = moved;
                         if (r.gradAbs > arpPhMaxAcceptedGrad) arpPhMaxAcceptedGrad = r.gradAbs;
@@ -2763,7 +3244,7 @@ export class ParametricExportComputer {
                 console.log(
                     `[ParametricExport]   AnalyticRidge phantom re-snap: ${arpPhRefined}/${arpPhResults.length} refined, ` +
                     `already-correct=${arpPhAlreadyCorrect}, ` +
-                    `rejected non-converged=${arpPhRejectedNonConv}, oversize=${arpPhRejectedOversize}, ` +
+                    `rejected non-converged=${arpPhRejectedNonConv}, oversize=${arpPhRejectedOversize}, near-duplicate=${arpPhRejectedNearDuplicate}, ` +
                     `max moved=${arpPhMaxMoved.toFixed(6)}, max |∂r/∂u|=${arpPhMaxGrad.toExponential(3)} mm/U ` +
                     `(accepted: ${arpPhMaxAcceptedGrad.toExponential(3)}), time=${arpPhElapsed.toFixed(1)}ms`,
                 );
@@ -2981,7 +3462,7 @@ export class ParametricExportComputer {
                 constraintEdgeSet.add(edgeKey(v0, v1));
             }
 
-            let csResult = { phaseAFlips: 0, phaseBFlips: 0, phaseCFlips: 0, chainStripTriCount: 0, timeMs: 0, rowSpanRejects: 0, edgeLenRejects: 0, aspectRejects: 0, valenceBonusFlips: 0, maxSingleRowTSpan: 0, chainGridFlips: 0, chainGridFlipsAllowed: 0, valenceStats: { before: { total: 0, low: 0, ideal: 0, high: 0 }, after: { total: 0, low: 0, ideal: 0, high: 0 } } };
+            let csResult = { phaseAFlips: 0, phaseBFlips: 0, phaseCFlips: 0, chainStripTriCount: 0, timeMs: 0, rowSpanRejects: 0, edgeLenRejects: 0, aspectRejects: 0, valenceBonusFlips: 0, maxSingleRowTSpan: 0, chainGridFlips: 0, chainGridFlipsAllowed: 0, chainSliverRescueFlips: 0, nonQuadSliverFlips: 0, valenceStats: { before: { total: 0, low: 0, ideal: 0, high: 0 }, after: { total: 0, low: 0, ideal: 0, high: 0 } } };
             if (cfgStripOptimizer) {
                 csResult = optimizeChainStrips({
                     combinedIdxs,
@@ -2991,10 +3472,11 @@ export class ParametricExportComputer {
                     outerGridVertexCount,
                     outerIdxCount,
                     finalT,
+                    quadMap: outerQuadMap!,
                     chainAdjacentVertices: outerChainAdjacentVertices,
                     protectedVertices: outerProtectedStripVertices,
                 });
-                console.log(`[ParametricExport]   v16.31 chain-strip 3D edge flip: ${csResult.phaseAFlips}+${csResult.phaseBFlips}+${csResult.phaseCFlips} flips (angle+valence+shortDiag) on ${csResult.chainStripTriCount} chain-strip tris (${csResult.timeMs.toFixed(1)}ms)`);
+                console.log(`[ParametricExport]   v16.31 chain-strip 3D edge flip: ${csResult.phaseAFlips}+${csResult.phaseBFlips}+${csResult.phaseCFlips} flips (angle+valence+shortDiag), sliverRescue=${csResult.chainSliverRescueFlips}, nonQuadSliver=${csResult.nonQuadSliverFlips} on ${csResult.chainStripTriCount} chain-strip tris (${csResult.timeMs.toFixed(1)}ms)`);
                 console.log(`[ParametricExport]     rejects: rowSpan=${csResult.rowSpanRejects}, edgeLen=${csResult.edgeLenRejects}, aspect=${csResult.aspectRejects}, valenceBonus=${csResult.valenceBonusFlips}, chainGridSkips=${csResult.chainGridFlips}, chainGridFlipsAllowed=${csResult.chainGridFlipsAllowed}`);
                 console.log(`[ParametricExport]     valence before: ${csResult.valenceStats.before.total} verts, ${csResult.valenceStats.before.low} low(<5), ${csResult.valenceStats.before.ideal} ideal(6), ${csResult.valenceStats.before.high} high(>7)`);
                 console.log(`[ParametricExport]     valence after:  ${csResult.valenceStats.after.total} verts, ${csResult.valenceStats.after.low} low(<5), ${csResult.valenceStats.after.ideal} ideal(6), ${csResult.valenceStats.after.high} high(>7)`);
@@ -3017,7 +3499,7 @@ export class ParametricExportComputer {
                 });
             }
             console.log(`[ParametricExport]   v16.34 boundary diagonal optimization: ${bdResult.flips} cell diag flips on ${bdResult.checked} boundary cells (${bdResult.timeMs.toFixed(1)}ms)${!cfgBoundaryDiag ? ' [DISABLED]' : ''}`);
-            console.warn(`[StageProbe] Phase4 quality block: flip3DMs=${flip3DMs.toFixed(0)} chainStripMs=${csResult.timeMs.toFixed(0)} boundaryDiagMs=${bdResult.timeMs.toFixed(0)} (chainFlips=${chainFlips} genericFlips=${genericFlips} csFlips=${csResult.phaseAFlips + csResult.phaseBFlips + csResult.phaseCFlips})`);
+            console.warn(`[StageProbe] Phase4 quality block: flip3DMs=${flip3DMs.toFixed(0)} chainStripMs=${csResult.timeMs.toFixed(0)} boundaryDiagMs=${bdResult.timeMs.toFixed(0)} (chainFlips=${chainFlips} genericFlips=${genericFlips} csFlips=${csResult.phaseAFlips + csResult.phaseBFlips + csResult.phaseCFlips} sliverRescue=${csResult.chainSliverRescueFlips} nonQuadSliver=${csResult.nonQuadSliverFlips})`);
 
             // v24.0: 3D winding safety net REMOVED.
             // The radially-outward assumption (dot(face_normal, radial) < 0 → flip)
@@ -4439,32 +4921,78 @@ export class ParametricExportComputer {
             // so dense feature interiors are untouched — at a tolerance well above the
             // sub-micron weld floor but far below the inter-vertex spacing.
             await pfStageFlush(`tail:before-finalDefectWeld tris=${finalCombinedIdxs.length / 3}`);
+            let finalDefectWeldMutated = false;
             {
                 const defectWeldStart = performance.now();
                 const defectWeldTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
-                const defectWeld = weldNearCoincidentBoundaryVertices(
-                    finalCombinedIdxs,
-                    finalResultData,
-                    Math.min(
-                        topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
-                        DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
-                    ),
-                    0.02,
+                const defectWeldTopologyBefore = topologyMetric(
+                    { vertices: finalResultData, indices: finalCombinedIdxs },
+                    DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
                 );
+                const defectWeldDiscoveryToleranceMm = Math.min(
+                    topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+                    DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                );
+                const defectWeldCandidateSummary: string[] = [];
+                const defectWeldCandidates: Array<FinalDefectWeldCandidateScore & {
+                    result: ReturnType<typeof weldNearCoincidentBoundaryVertices>;
+                }> = [];
+                for (const candidateToleranceMm of DEFECT_WELD_TOLERANCE_CANDIDATES_MM) {
+                    const candidate = weldNearCoincidentBoundaryVertices(
+                        finalCombinedIdxs,
+                        finalResultData,
+                        defectWeldDiscoveryToleranceMm,
+                        candidateToleranceMm,
+                        outerIdxCountAfterSubdiv,
+                    );
+                    const candidateTopology = topologyMetric(
+                        { vertices: finalResultData, indices: candidate.indices },
+                        DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                    );
+                    defectWeldCandidates.push({
+                        toleranceMm: candidateToleranceMm,
+                        boundaryEdges: candidateTopology.boundaryEdges,
+                        nonManifoldEdges: candidateTopology.nonManifoldEdges,
+                        orientationMismatches: candidateTopology.orientationMismatches,
+                        result: candidate,
+                    });
+                    defectWeldCandidateSummary.push(
+                        `${candidateToleranceMm}:${candidateTopology.boundaryEdges}/${candidateTopology.nonManifoldEdges}/` +
+                        `${candidateTopology.orientationMismatches}/${candidate.weldedVertices}/${candidate.strippedTriangles}/` +
+                        `${candidate.strippedPrefixTriangles}`,
+                    );
+                }
+                const selectedDefectWeld = selectFinalDefectWeldCandidate(
+                    defectWeldTopologyBefore,
+                    defectWeldCandidates,
+                );
+                const defectWeld = selectedDefectWeld.result;
+                const defectWeldOuterIdxCount = outerIdxCountAfterSubdiv - defectWeld.strippedPrefixTriangles * INDICES_PER_TRIANGLE;
                 recordTailDiagnosticStage({
                     name: 'finalDefectWeld',
                     elapsedMs: performance.now() - defectWeldStart,
                     trianglesBefore: defectWeldTrisBefore,
                     trianglesAfter: indexCountToTriangleCount(defectWeld.indices.length),
                     outerTrianglesBefore: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
-                    outerTrianglesAfter: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                    outerTrianglesAfter: indexCountToTriangleCount(defectWeldOuterIdxCount),
                     details: {
                         weldedVertices: defectWeld.weldedVertices,
                         strippedTriangles: defectWeld.strippedTriangles,
+                        strippedOuterTriangles: defectWeld.strippedPrefixTriangles,
+                        beforeBoundaryEdges: defectWeldTopologyBefore.boundaryEdges,
+                        beforeNonManifoldEdges: defectWeldTopologyBefore.nonManifoldEdges,
+                        beforeOrientationMismatches: defectWeldTopologyBefore.orientationMismatches,
+                        afterBoundaryEdges: selectedDefectWeld.boundaryEdges,
+                        afterNonManifoldEdges: selectedDefectWeld.nonManifoldEdges,
+                        afterOrientationMismatches: selectedDefectWeld.orientationMismatches,
+                        selectedToleranceMm: selectedDefectWeld.toleranceMm,
+                        toleranceCandidates: defectWeldCandidateSummary.join('|'),
                     },
                 });
                 if (defectWeld.weldedVertices > 0) {
                     finalCombinedIdxs = defectWeld.indices;
+                    outerIdxCountAfterSubdiv = defectWeldOuterIdxCount;
+                    finalDefectWeldMutated = true;
                     console.log(
                         `[ParametricExport]   Final defect weld: ` +
                         `${defectWeld.weldedVertices} vertices welded, ` +
@@ -4472,7 +5000,184 @@ export class ParametricExportComputer {
                     );
                 }
             }
+
+            if (finalDefectWeldMutated) {
+                await pfStageFlush(`tail:before-postDefectWeldTopologyRepair tris=${finalCombinedIdxs.length / 3}`);
+                const postDefectRepairStart = performance.now();
+                const postDefectRepairTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+                const postDefectRepairOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+                const postDefectTopologyBefore = topologyMetric(
+                    { vertices: finalResultData, indices: finalCombinedIdxs },
+                    DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                );
+                const postDefectRepair = repairPostDefectWeldTopology(
+                    finalCombinedIdxs,
+                    combinedVerts,
+                    finalResultData,
+                    outerIdxCountAfterSubdiv,
+                    topologyWeldToleranceForExport(effectiveTolerances.epsPosMm),
+                    0,
+                );
+                const postDefectTopologyAfter = topologyMetric(
+                    { vertices: postDefectRepair.positions, indices: postDefectRepair.indices },
+                    DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                );
+                const postDefectRepairHasWork =
+                    postDefectRepair.repairedEdges > 0 ||
+                    postDefectRepair.sameSurfaceFilledLoops > 0 ||
+                    postDefectRepair.branchedFilledLoops > 0 ||
+                    postDefectRepair.nonManifoldRepairedEdges > 0 ||
+                    postDefectRepair.residualRepairedEdges > 0 ||
+                    postDefectRepair.finalSameSurfaceFilledLoops > 0;
+                const acceptPostDefectRepair = shouldAcceptPostDefectTopologyRepair(
+                    postDefectTopologyBefore,
+                    postDefectTopologyAfter,
+                );
+                recordTailDiagnosticStage({
+                    name: 'postDefectWeldTopologyRepair',
+                    elapsedMs: performance.now() - postDefectRepairStart,
+                    trianglesBefore: postDefectRepairTrisBefore,
+                    trianglesAfter: indexCountToTriangleCount(postDefectRepair.indices.length),
+                    outerTrianglesBefore: postDefectRepairOuterTrisBefore,
+                    outerTrianglesAfter: indexCountToTriangleCount(postDefectRepair.outerIdxCount),
+                    details: {
+                        repairedEdges: postDefectRepair.repairedEdges,
+                        repairInsertedTriangles: postDefectRepair.repairInsertedTriangles,
+                        sameSurfaceFilledLoops: postDefectRepair.sameSurfaceFilledLoops,
+                        sameSurfaceInsertedTriangles: postDefectRepair.sameSurfaceInsertedTriangles,
+                        sameSurfaceInsertedVertices: postDefectRepair.sameSurfaceInsertedVertices,
+                        branchedFilledLoops: postDefectRepair.branchedFilledLoops,
+                        branchedInsertedTriangles: postDefectRepair.branchedInsertedTriangles,
+                        branchedInsertedVertices: postDefectRepair.branchedInsertedVertices,
+                        nonManifoldRepairedEdges: postDefectRepair.nonManifoldRepairedEdges,
+                        nonManifoldInsertedTriangles: postDefectRepair.nonManifoldInsertedTriangles,
+                        residualRepairedEdges: postDefectRepair.residualRepairedEdges,
+                        residualInsertedTriangles: postDefectRepair.residualInsertedTriangles,
+                        finalSameSurfaceFilledLoops: postDefectRepair.finalSameSurfaceFilledLoops,
+                        finalSameSurfaceInsertedTriangles: postDefectRepair.finalSameSurfaceInsertedTriangles,
+                        finalSameSurfaceInsertedVertices: postDefectRepair.finalSameSurfaceInsertedVertices,
+                        accepted: acceptPostDefectRepair,
+                        beforeBoundaryEdges: postDefectTopologyBefore.boundaryEdges,
+                        beforeNonManifoldEdges: postDefectTopologyBefore.nonManifoldEdges,
+                        beforeOrientationMismatches: postDefectTopologyBefore.orientationMismatches,
+                        afterBoundaryEdges: postDefectTopologyAfter.boundaryEdges,
+                        afterNonManifoldEdges: postDefectTopologyAfter.nonManifoldEdges,
+                        afterOrientationMismatches: postDefectTopologyAfter.orientationMismatches,
+                    },
+                });
+                if (postDefectRepairHasWork && acceptPostDefectRepair) {
+                    finalCombinedIdxs = postDefectRepair.indices;
+                    combinedVerts = postDefectRepair.uvs;
+                    finalResultData = postDefectRepair.positions;
+                    outerIdxCountAfterSubdiv = postDefectRepair.outerIdxCount;
+                    console.log(
+                        `[ParametricExport]   Post-defect topology repair: ` +
+                        `${postDefectRepair.repairedEdges} repaired edges, ` +
+                        `${postDefectRepair.sameSurfaceFilledLoops} same-surface loops filled, ` +
+                        `${postDefectRepair.branchedFilledLoops} branched loops filled, ` +
+                        `${postDefectRepair.nonManifoldRepairedEdges} non-manifold chains split, ` +
+                        `${postDefectRepair.residualRepairedEdges} residual T-junctions split, ` +
+                        `${postDefectRepair.finalSameSurfaceFilledLoops} final same-surface loops filled`,
+                    );
+                } else if (postDefectRepairHasWork) {
+                    console.warn(
+                        `[ParametricExport]   Post-defect topology repair rejected: ` +
+                        `boundary ${postDefectTopologyBefore.boundaryEdges}->${postDefectTopologyAfter.boundaryEdges}, ` +
+                        `nonMan ${postDefectTopologyBefore.nonManifoldEdges}->${postDefectTopologyAfter.nonManifoldEdges}, ` +
+                        `orient ${postDefectTopologyBefore.orientationMismatches}->${postDefectTopologyAfter.orientationMismatches}`,
+                    );
+                }
+            }
             recordWindingStageDiagnostic('after-finalDefectWeld', finalCombinedIdxs, finalResultData);
+
+            await pfStageFlush(`tail:before-finalCadTopologyWeld tris=${finalCombinedIdxs.length / 3}`);
+            {
+                const cadWeldStart = performance.now();
+                const cadWeldTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+                const cadWeldOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+                const cadTopologyBefore = topologyMetric(
+                    { vertices: finalResultData, indices: finalCombinedIdxs },
+                    DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                );
+                const cadWeldCandidateSummary: string[] = [];
+                const cadWeldCandidates: Array<FinalDefectWeldCandidateScore & {
+                    result: ReturnType<typeof weldNearCoincidentBoundaryVertices>;
+                }> = [];
+                for (const candidateToleranceMm of STRICT_CAD_CLOSURE_TOLERANCE_CANDIDATES_MM) {
+                    const candidate = weldNearCoincidentBoundaryVertices(
+                        finalCombinedIdxs,
+                        finalResultData,
+                        DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                        candidateToleranceMm,
+                        outerIdxCountAfterSubdiv,
+                    );
+                    const candidateTopology = topologyMetric(
+                        { vertices: finalResultData, indices: candidate.indices },
+                        DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                    );
+                    cadWeldCandidates.push({
+                        toleranceMm: candidateToleranceMm,
+                        boundaryEdges: candidateTopology.boundaryEdges,
+                        nonManifoldEdges: candidateTopology.nonManifoldEdges,
+                        orientationMismatches: candidateTopology.orientationMismatches,
+                        result: candidate,
+                    });
+                    cadWeldCandidateSummary.push(
+                        `${candidateToleranceMm}:${candidateTopology.boundaryEdges}/${candidateTopology.nonManifoldEdges}/` +
+                        `${candidateTopology.orientationMismatches}/${candidate.weldedVertices}/${candidate.strippedTriangles}/` +
+                        `${candidate.strippedPrefixTriangles}`,
+                    );
+                }
+                const selectedCadWeld = selectFinalDefectWeldCandidate(
+                    cadTopologyBefore,
+                    cadWeldCandidates,
+                );
+                const cadWeld = selectedCadWeld.result;
+                const cadTopologyAfter: TopologyDefectCounts = {
+                    boundaryEdges: selectedCadWeld.boundaryEdges,
+                    nonManifoldEdges: selectedCadWeld.nonManifoldEdges,
+                    orientationMismatches: selectedCadWeld.orientationMismatches,
+                };
+                const acceptCadWeld =
+                    cadWeld.weldedVertices > 0 &&
+                    shouldAcceptPostDefectTopologyRepair(cadTopologyBefore, cadTopologyAfter);
+                const cadWeldOuterIdxCount = outerIdxCountAfterSubdiv - cadWeld.strippedPrefixTriangles * INDICES_PER_TRIANGLE;
+                recordTailDiagnosticStage({
+                    name: 'finalCadTopologyWeld',
+                    elapsedMs: performance.now() - cadWeldStart,
+                    trianglesBefore: cadWeldTrisBefore,
+                    trianglesAfter: acceptCadWeld
+                        ? indexCountToTriangleCount(cadWeld.indices.length)
+                        : cadWeldTrisBefore,
+                    outerTrianglesBefore: cadWeldOuterTrisBefore,
+                    outerTrianglesAfter: acceptCadWeld
+                        ? indexCountToTriangleCount(cadWeldOuterIdxCount)
+                        : cadWeldOuterTrisBefore,
+                    details: {
+                        accepted: acceptCadWeld,
+                        weldedVertices: cadWeld.weldedVertices,
+                        strippedTriangles: cadWeld.strippedTriangles,
+                        strippedOuterTriangles: cadWeld.strippedPrefixTriangles,
+                        beforeBoundaryEdges: cadTopologyBefore.boundaryEdges,
+                        beforeNonManifoldEdges: cadTopologyBefore.nonManifoldEdges,
+                        beforeOrientationMismatches: cadTopologyBefore.orientationMismatches,
+                        afterBoundaryEdges: selectedCadWeld.boundaryEdges,
+                        afterNonManifoldEdges: selectedCadWeld.nonManifoldEdges,
+                        afterOrientationMismatches: selectedCadWeld.orientationMismatches,
+                        selectedToleranceMm: selectedCadWeld.toleranceMm,
+                        toleranceCandidates: cadWeldCandidateSummary.join('|'),
+                    },
+                });
+                if (acceptCadWeld) {
+                    finalCombinedIdxs = cadWeld.indices;
+                    outerIdxCountAfterSubdiv = cadWeldOuterIdxCount;
+                    console.log(
+                        `[ParametricExport]   Final CAD topology weld: ` +
+                        `${cadWeld.weldedVertices} vertices welded at ${selectedCadWeld.toleranceMm}mm, ` +
+                        `${cadWeld.strippedTriangles} degenerate tris stripped`,
+                    );
+                }
+            }
 
             await pfStageFlush(`tail:before-normalizeWindingByComponent tris=${finalCombinedIdxs.length / 3}`);
             {
@@ -4592,6 +5297,57 @@ export class ParametricExportComputer {
                 details: {
                     removedTriangles: finalDegenStripRemoved,
                     removedOuterTriangles: finalDegenStripOuterRemoved,
+                },
+            });
+
+            await pfStageFlush(`tail:before-final-duplicate-triangle-strip tris=${finalCombinedIdxs.length / 3}`);
+            const finalDuplicateStripTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+            const finalDuplicateStripOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
+            const finalDuplicateStripStart = performance.now();
+            const topologyWeldToleranceMm = topologyWeldToleranceForExport(effectiveTolerances.epsPosMm);
+            let finalDuplicateStripRemoved = 0;
+            let finalDuplicateStripOuterRemoved = 0;
+            {
+                const outerSlice = finalCombinedIdxs.slice(0, outerIdxCountAfterSubdiv);
+                const nonOuterSlice = finalCombinedIdxs.slice(outerIdxCountAfterSubdiv);
+                const outerCompaction = compactDuplicateCanonicalTriangles(
+                    outerSlice,
+                    combinedVerts,
+                    finalResultData,
+                    topologyWeldToleranceMm,
+                    { preserveBoundaryEdges: true },
+                );
+                const nonOuterCompaction = compactDuplicateCanonicalTriangles(
+                    nonOuterSlice,
+                    combinedVerts,
+                    finalResultData,
+                    topologyWeldToleranceMm,
+                    { preserveBoundaryEdges: true },
+                );
+                finalDuplicateStripOuterRemoved = outerCompaction.removedTriangles;
+                finalDuplicateStripRemoved = outerCompaction.removedTriangles + nonOuterCompaction.removedTriangles;
+                if (finalDuplicateStripRemoved > 0) {
+                    const compacted = new Uint32Array(outerCompaction.indices.length + nonOuterCompaction.indices.length);
+                    compacted.set(outerCompaction.indices);
+                    compacted.set(nonOuterCompaction.indices, outerCompaction.indices.length);
+                    finalCombinedIdxs = compacted;
+                    outerIdxCountAfterSubdiv = outerCompaction.indices.length;
+                    console.log(
+                        `[ParametricExport]   Final duplicate triangle strip: ` +
+                        `${finalDuplicateStripRemoved} triangles (${finalDuplicateStripOuterRemoved} outer wall)`,
+                    );
+                }
+            }
+            recordTailDiagnosticStage({
+                name: 'finalDuplicateTriangleStrip',
+                elapsedMs: performance.now() - finalDuplicateStripStart,
+                trianglesBefore: finalDuplicateStripTrisBefore,
+                trianglesAfter: indexCountToTriangleCount(finalCombinedIdxs.length),
+                outerTrianglesBefore: finalDuplicateStripOuterTrisBefore,
+                outerTrianglesAfter: indexCountToTriangleCount(outerIdxCountAfterSubdiv),
+                details: {
+                    removedTriangles: finalDuplicateStripRemoved,
+                    removedOuterTriangles: finalDuplicateStripOuterRemoved,
                 },
             });
 

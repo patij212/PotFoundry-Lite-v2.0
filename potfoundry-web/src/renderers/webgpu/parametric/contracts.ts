@@ -374,6 +374,14 @@ export interface PipelineFeatureFlags {
      * Requires outerWallCorridorPlanning to be true. Default: false.
      */
     readonly outerWallCorridorDiagnostics?: boolean;
+
+    /**
+     * Enable by-construction watertight assembly: periodic outer-wall seam,
+     * refine-before-caps, shared junction rings, feature taper, and a verifier
+     * tail in place of the post-hoc repair battery. Legacy battery path when
+     * false. Default: false. See docs/superpowers/specs/2026-06-05-by-construction-watertight-export-design.md.
+     */
+    readonly byConstructionAssembly?: boolean;
 }
 
 /**
@@ -389,6 +397,7 @@ export const DEFAULT_FEATURE_FLAGS: Readonly<PipelineFeatureFlags> = Object.free
     perEdgeErrorEstimation: false,
     outerWallCorridorPlanning: false,
     outerWallCorridorDiagnostics: false,
+    byConstructionAssembly: false,
 });
 
 /**
