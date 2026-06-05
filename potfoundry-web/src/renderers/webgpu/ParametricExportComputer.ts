@@ -4577,7 +4577,7 @@ export class ParametricExportComputer {
                     highVertices: seamChainFill.highVertices,
                 },
             });
-            if (seamChainFill.filledChains > 0) {
+            if (!byConstructionAssembly && seamChainFill.filledChains > 0) {
                 finalCombinedIdxs = seamChainFill.indices;
                 console.log(
                     `[ParametricExport]   Seam boundary chain fill: ` +
