@@ -12,6 +12,7 @@ from functools import lru_cache
 __all__ = [
     "MeshQuality", "PotDefaults", "STYLES",
     "r_base_out", "build_pot_mesh",
+    "validate_mesh", "orient_outward",
     "save_preview_png",
     "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
@@ -356,8 +357,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     v01 = outer_idx[:-1, :][:, jn]
     v10 = outer_idx[1:, :][:, j]
     v11 = outer_idx[1:, :][:, jn]
-    tri1 = np.stack([v00, v10, v11], axis=2).reshape(-1, 3)
-    tri2 = np.stack([v00, v11, v01], axis=2).reshape(-1, 3)
+    # Wound so outer-wall normals point outward (+radial) for clean CAD export.
+    tri1 = np.stack([v00, v11, v10], axis=2).reshape(-1, 3)
+    tri2 = np.stack([v00, v01, v11], axis=2).reshape(-1, 3)
     faces_out_parts.append(tri1)
     faces_out_parts.append(tri2)
 
@@ -382,8 +384,10 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vi01 = inner_idx[:-1, :][:, jn]
     vi10 = inner_idx[1:, :][:, j]
     vi11 = inner_idx[1:, :][:, jn]
-    tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
-    tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
+    # Inner cavity wall: normals point toward the axis (into the cavity), i.e.
+    # outward from the solid material.
+    tri_in1 = np.stack([vi00, vi10, vi11], axis=2).reshape(-1, 3)
+    tri_in2 = np.stack([vi00, vi11, vi01], axis=2).reshape(-1, 3)
     faces_out_parts.append(tri_in1)
     faces_out_parts.append(tri_in2)
 
@@ -391,8 +395,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
     v00 = outer_top[j]; v01 = outer_top[jn]
     vi0 = inner_top[j]; vi1 = inner_top[jn]
-    tri_rim1 = np.stack([outer_top[j], inner_top[j], inner_top[jn]], axis=1)
-    tri_rim2 = np.stack([outer_top[j], inner_top[jn], outer_top[jn]], axis=1)
+    # Rim cap normals point up (+Z), consistent with the outward wall winding.
+    tri_rim1 = np.stack([outer_top[j], inner_top[jn], inner_top[j]], axis=1)
+    tri_rim2 = np.stack([outer_top[j], outer_top[jn], inner_top[jn]], axis=1)
     faces_out_parts.append(tri_rim1)
     faces_out_parts.append(tri_rim2)
 
@@ -409,8 +414,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     # Bottom underside (outer bottom ring -> drain under ring)
     v00 = outer_bottom[j]; v01 = outer_bottom[jn]
     vd0 = drain_under[j];  vd1 = drain_under[jn]
-    tri_bot1 = np.stack([outer_bottom[j], drain_under[jn], drain_under[j]], axis=1)
-    tri_bot2 = np.stack([outer_bottom[j], outer_bottom[jn], drain_under[jn]], axis=1)
+    # Underside normals point down (-Z), consistent with the rest of the shell.
+    tri_bot1 = np.stack([outer_bottom[j], drain_under[j], drain_under[jn]], axis=1)
+    tri_bot2 = np.stack([outer_bottom[j], drain_under[jn], outer_bottom[jn]], axis=1)
     faces_out_parts.append(tri_bot1)
     faces_out_parts.append(tri_bot2)
 
@@ -446,6 +452,170 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
     return np.array(verts, dtype=float), faces_arr, diagnostics
+
+
+# -----------------------------
+# Mesh export-quality validation & repair
+# -----------------------------
+#
+# Rhino / Grasshopper (and any CAD/NURBS workflow that imports an STL) expect a
+# *closed, consistently-oriented, outward-facing* triangle mesh. Two failure
+# modes silently degrade imports:
+#
+#   1. Inconsistent winding — adjacent triangles traverse their shared edge in
+#      the same direction, so the surface is not orientable as authored. CAD
+#      tools render flipped facets and boolean/offset operations fail.
+#   2. Inverted normals — the whole solid is wound so normals point inward
+#      (negative signed volume). The model imports "inside-out".
+#
+# ``validate_mesh`` is a cheap, fully-vectorized quality gate. ``orient_outward``
+# is a topological repair pass (BFS over shared edges) that any imported or
+# externally-generated mesh can be run through. ``build_pot_mesh`` is authored
+# to satisfy ``validate_mesh`` directly, so the repair pass is a safety net for
+# new styles/sections and third-party meshes rather than a hot-path cost.
+
+def _signed_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+    """Signed volume via the divergence theorem (sum of tetra (0,a,b,c)).
+
+    Positive for a closed mesh whose face winding yields outward normals.
+    """
+    v0 = verts[faces[:, 0]]; v1 = verts[faces[:, 1]]; v2 = verts[faces[:, 2]]
+    return float(np.einsum('ij,ij->i', v0, np.cross(v1, v2)).sum() / 6.0)
+
+
+def validate_mesh(verts: np.ndarray, faces: np.ndarray, *, weld_decimals: int = 6) -> Dict:
+    """Validate export quality of a triangle mesh.
+
+    Returns a diagnostics dict. ``ok`` is True only when the mesh is a closed,
+    consistently-oriented, outward-facing manifold with no degenerate faces —
+    i.e. clean to import into Rhino/Grasshopper or any slicer.
+
+    Keys:
+        ok                    : overall pass/fail (closed & consistent & outward & no degenerate)
+        closed                : every undirected edge shared by exactly two faces
+        consistent_orientation: every directed edge appears exactly once (orientable & uniformly wound)
+        outward               : signed volume > 0 (normals point out of the solid)
+        signed_volume         : float, divergence-theorem volume
+        non_manifold_edges    : count of edges not shared by exactly two faces
+        boundary_edges        : count of edges used by a single face (holes)
+        inconsistent_edges    : count of directed edges that repeat (winding clashes)
+        degenerate_faces      : count of zero-area triangles
+        duplicate_vertices    : count of coincident vertices (rounded to weld_decimals)
+        vertex_count, face_count
+    """
+    verts = np.asarray(verts, dtype=float)
+    faces = np.asarray(faces, dtype=np.int64)
+    nverts = int(verts.shape[0])
+    F = int(faces.shape[0])
+
+    a = faces[:, [0, 1, 2]].reshape(-1)
+    b = faces[:, [1, 2, 0]].reshape(-1)
+    lo = np.minimum(a, b).astype(np.int64)
+    hi = np.maximum(a, b).astype(np.int64)
+
+    # Undirected edge multiplicity -> manifold / closed
+    _, ucounts = np.unique(lo * nverts + hi, return_counts=True)
+    non_manifold_edges = int(np.sum(ucounts != 2))
+    boundary_edges = int(np.sum(ucounts == 1))
+    closed = non_manifold_edges == 0
+
+    # Directed edge multiplicity -> consistent winding (orientability as authored)
+    _, dcounts = np.unique(a.astype(np.int64) * nverts + b.astype(np.int64), return_counts=True)
+    inconsistent_edges = int(np.sum(dcounts != 1))
+    consistent = inconsistent_edges == 0
+
+    signed_volume = _signed_volume(verts, faces)
+    outward = signed_volume > 0.0
+
+    v0 = verts[faces[:, 0]]; v1 = verts[faces[:, 1]]; v2 = verts[faces[:, 2]]
+    areas = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=1)
+    degenerate_faces = int(np.sum(areas <= 1e-12))
+
+    uniqv = np.unique(np.round(verts, weld_decimals), axis=0)
+    duplicate_vertices = int(nverts - uniqv.shape[0])
+
+    ok = bool(closed and consistent and outward and degenerate_faces == 0)
+    return dict(
+        ok=ok,
+        closed=bool(closed),
+        consistent_orientation=bool(consistent),
+        outward=bool(outward),
+        signed_volume=signed_volume,
+        non_manifold_edges=non_manifold_edges,
+        boundary_edges=boundary_edges,
+        inconsistent_edges=inconsistent_edges,
+        degenerate_faces=degenerate_faces,
+        duplicate_vertices=duplicate_vertices,
+        vertex_count=nverts,
+        face_count=F,
+    )
+
+
+def orient_outward(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Return a re-wound copy of ``faces`` with consistent, outward normals.
+
+    Topological repair equivalent to Rhino's "Unify Mesh Normals": orientation
+    is propagated across shared edges (BFS) so every interior edge is traversed
+    in opposite directions by its two faces, then the whole mesh is flipped if
+    its signed volume is negative so normals face outward.
+
+    Works on any orientable closed manifold. Vertices are untouched, so vertex
+    counts/positions and any golden hashes over vertices are preserved.
+    """
+    from collections import deque
+
+    faces = np.asarray(faces, dtype=np.int64).copy()
+    F = int(faces.shape[0])
+    if F == 0:
+        return faces
+    nverts = int(np.asarray(verts).shape[0])
+
+    a = faces[:, [0, 1, 2]].reshape(-1)
+    b = faces[:, [1, 2, 0]].reshape(-1)
+    fid = np.repeat(np.arange(F), 3)
+    forward = a < b
+    key = np.minimum(a, b).astype(np.int64) * nverts + np.maximum(a, b).astype(np.int64)
+    order = np.argsort(key, kind='stable')
+    key_s = key[order]; fid_s = fid[order]; fwd_s = forward[order]
+
+    # Build face adjacency over shared (manifold) edges.
+    adj: list[list[tuple[int, bool]]] = [[] for _ in range(F)]
+    i = 0; n = len(key_s)
+    while i < n:
+        j = i + 1
+        while j < n and key_s[j] == key_s[i]:
+            j += 1
+        if j - i == 2:
+            f1, f2 = int(fid_s[i]), int(fid_s[i + 1])
+            # If both faces traverse the shared edge the same way, exactly one
+            # must be flipped for the pair to be consistently oriented.
+            same_dir = bool(fwd_s[i] == fwd_s[i + 1])
+            adj[f1].append((f2, same_dir))
+            adj[f2].append((f1, same_dir))
+        i = j
+
+    flip = np.zeros(F, dtype=bool)
+    visited = np.zeros(F, dtype=bool)
+    for seed in range(F):
+        if visited[seed]:
+            continue
+        visited[seed] = True
+        dq = deque([seed])
+        while dq:
+            u = dq.popleft()
+            for v, same_dir in adj[u]:
+                if not visited[v]:
+                    visited[v] = True
+                    flip[v] = flip[u] ^ same_dir
+                    dq.append(v)
+
+    out = faces.copy()
+    out[flip] = out[flip][:, [0, 2, 1]]
+    if _signed_volume(np.asarray(verts, dtype=float), out) < 0.0:
+        out = out[:, [0, 2, 1]]
+    return out
+
+
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401

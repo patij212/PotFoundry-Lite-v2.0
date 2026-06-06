@@ -80,6 +80,52 @@ ASCII STL is only recommended for:
 
 For 99% of use cases, **use binary STL**.
 
+## Mesh Orientation & Export Quality (Rhino / Grasshopper)
+
+CAD/NURBS tools (Rhino, Grasshopper) and slicers expect a **closed,
+consistently-oriented, outward-facing** triangle mesh. Two defects that a
+vertex/face-count check cannot see will silently degrade an import:
+
+- **Inconsistent winding** — adjacent triangles traverse their shared edge the
+  same way, so the surface is not orientable as authored. Tools render flipped
+  facets and boolean/offset operations fail.
+- **Inverted normals** — the whole solid is wound so normals point inward
+  (negative signed volume). The model imports "inside-out".
+
+`build_pot_mesh` is authored so each shell section (outer wall, inner cavity
+wall, rim, base underside, drain) is wound to point **away from the solid
+material**, yielding a positive signed volume. This holds for every style, with
+or without spin twist (verified in `tests/test_mesh_orientation.py`).
+
+### Validating any mesh
+
+```python
+from potfoundry import validate_mesh
+
+report = validate_mesh(verts, faces)
+assert report["ok"]                       # closed + consistent + outward + no degenerate
+# report also exposes: signed_volume, non_manifold_edges, boundary_edges,
+# inconsistent_edges, degenerate_faces, duplicate_vertices
+```
+
+### Repairing an imported / externally-generated mesh
+
+For meshes from other sources, `orient_outward` re-winds faces into a single,
+consistent, outward orientation (the equivalent of Rhino's "Unify Mesh
+Normals"). It is a topological repair (BFS over shared edges) and leaves
+vertices untouched:
+
+```python
+from potfoundry import orient_outward, validate_mesh
+
+faces = orient_outward(verts, faces)
+assert validate_mesh(verts, faces)["ok"]
+```
+
+`build_pot_mesh` output is already clean, so this pass is a safety net for new
+styles/sections and third-party meshes — it is intentionally **not** run on the
+interactive build/preview path.
+
 ## Testing
 
 All export paths are tested to ensure binary STL is working correctly:
