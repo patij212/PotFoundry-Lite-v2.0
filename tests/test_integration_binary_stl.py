@@ -1,10 +1,72 @@
 """
 Integration test: Verify complete binary STL migration
 """
+import struct
 import tempfile
 import warnings
 from pathlib import Path
+
+import numpy as np
+
 from potfoundry import build_pot_mesh, write_stl_binary, STYLES
+
+
+def _read_binary_stl(path):
+    """Parse a binary STL into (normals, triangles) arrays.
+
+    Returns:
+        normals: (M, 3) stored facet normals
+        tris:    (M, 3, 3) triangle vertex coordinates
+    """
+    data = Path(path).read_bytes()
+    tri_count = struct.unpack_from("<I", data, 80)[0]
+    normals = np.empty((tri_count, 3), dtype=np.float64)
+    tris = np.empty((tri_count, 3, 3), dtype=np.float64)
+    off = 84
+    for i in range(tri_count):
+        vals = struct.unpack_from("<12f", data, off)
+        normals[i] = vals[0:3]
+        tris[i, 0] = vals[3:6]
+        tris[i, 1] = vals[6:9]
+        tris[i, 2] = vals[9:12]
+        off += 50
+    return normals, tris
+
+
+def test_exported_stl_is_outward_oriented_closed_solid():
+    """The written STL must enclose positive volume (outward normals) and have
+    stored facet normals consistent with the triangle winding.
+
+    This is what makes the export import cleanly as a valid closed solid in
+    Rhino / Grasshopper and slicers, rather than an inside-out shell.
+    """
+    for style_name, (style_fn, _desc) in STYLES.items():
+        verts, faces, _ = build_pot_mesh(
+            H=110, Rt=65, Rb=48,
+            t_wall=3, t_bottom=3, r_drain=9,
+            expn=1.1, n_theta=96, n_z=48,
+            r_outer_fn=style_fn, style_opts={},
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / f"{style_name}.stl"
+            write_stl_binary(out, style_name, verts, faces)
+            normals, tris = _read_binary_stl(out)
+
+        v0, v1, v2 = tris[:, 0], tris[:, 1], tris[:, 2]
+
+        # Signed volume via divergence theorem: positive => outward normals.
+        signed_vol = float(np.einsum("ij,ij->i", v0, np.cross(v1, v2)).sum() / 6.0)
+        assert signed_vol > 0, (
+            f"{style_name}: exported STL encloses non-positive volume "
+            f"({signed_vol:.1f}) -> inside-out solid"
+        )
+
+        # Stored normals must agree with the right-hand-rule winding normal.
+        winding = np.cross(v1 - v0, v2 - v0)
+        dots = np.einsum("ij,ij->i", normals, winding)
+        assert np.all(dots >= 0), (
+            f"{style_name}: stored facet normals disagree with winding"
+        )
 
 
 def test_end_to_end_export_workflow():

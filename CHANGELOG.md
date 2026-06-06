@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
 
 ### Fixed
+- **Mesh export quality (Rhino/Grasshopper):** Fixed inverted and inconsistent
+  face winding in `build_pot_mesh`. Every style previously exported an
+  inside-out solid (negative enclosed volume) with a flipped-face seam at the
+  base/drain (2·n_theta non-orientable edges). Meshes now have consistent
+  outward-facing normals and import as valid closed solids in Rhino/Grasshopper
+  and slicers. Fix is at construction time (zero runtime cost); mesh topology
+  and dimensions are unchanged. See `adr/0002-mesh-orientation-outward-normals.md`.
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`

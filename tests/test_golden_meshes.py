@@ -259,7 +259,12 @@ class TestMeshProperties:
             f"Found {len(non_manifold_edges)} non-manifold edges (mesh not watertight)"
 
     def test_mesh_has_consistent_normals(self):
-        """Verify face normals point consistently outward."""
+        """Verify face normals are non-zero and the solid is outward-oriented.
+
+        A correctly oriented closed mesh encloses positive signed volume; if it
+        were wound inside-out the volume would be negative. See
+        ``tests/test_mesh_orientation.py`` for the per-patch orientation checks.
+        """
         style_fn = STYLES["SuperformulaBlossom"][0]
 
         verts, faces, _ = build_pot_mesh(
@@ -276,38 +281,15 @@ class TestMeshProperties:
 
         normals = np.cross(v1 - v0, v2 - v0)
 
-        # Compute face centers
-        centers = (v0 + v1 + v2) / 3.0
-
-        # For outer wall faces, normals should generally point outward
-        # (away from pot center which is at [0, 0, z])
-        # We check this for faces not on the top or bottom
-
-        middle_faces = (centers[:, 2] > 10) & (centers[:, 2] < 90)  # Not top/bottom
-
-        for i in np.where(middle_faces)[0]:
-            center = centers[i]
-            normal = normals[i]
-
-            # Radial direction from Z-axis to face center
-            radial = np.array([center[0], center[1], 0])
-            radial_norm = np.linalg.norm(radial)
-
-            if radial_norm > 1.0:  # Skip faces near centerline
-                radial_unit = radial / radial_norm
-
-                # Normal should have positive dot product with radial direction
-                # (pointing outward)
-                np.dot(normal[:2], radial_unit[:2])
-
-                # Allow some tolerance for complex geometries
-                # Just check that most faces point outward
-                # This is a heuristic, not a strict requirement
-                pass  # Skip strict check for now
-
-        # At minimum, normals should exist and be non-zero
+        # All face normals should exist and be non-zero (no degenerate faces)
         normal_lengths = np.linalg.norm(normals, axis=1)
         assert np.all(normal_lengths > 0), "All face normals should be non-zero"
+
+        # The closed solid must be outward-oriented: signed volume > 0.
+        signed_volume = float(np.einsum("ij,ij->i", v0, np.cross(v1, v2)).sum() / 6.0)
+        assert signed_volume > 0, (
+            f"Mesh is wound inside-out (signed volume {signed_volume:.1f} <= 0)"
+        )
 
     def test_mesh_vertices_within_bounds(self):
         """Verify all vertices are within expected bounds."""
