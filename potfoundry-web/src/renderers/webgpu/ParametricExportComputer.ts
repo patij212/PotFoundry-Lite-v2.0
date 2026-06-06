@@ -140,6 +140,8 @@ import {
     weldNearCoincidentBoundaryVertices,
 } from './parametric/BoundaryTJunctionRepair';
 import { normalizeWindingByComponent } from './parametric/WindingNormalizer';
+import { weldNearCoincidentVertices } from './parametric/NearCoincidentWeld';
+import { resolveCollinearTriangles } from './parametric/CollinearTriangleResolution';
 import { buildPeriodicSeamClosure } from './parametric/PeriodicSeamClosure';
 import {
     healSeam,
@@ -5455,6 +5457,62 @@ export class ParametricExportComputer {
                 },
             });
             recordOuterWallQualityStage('tail-final', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
+
+            // By-construction final cleanup: weld near-coincident vertices at the metric's
+            // own weld tolerance (1e-4mm) and strip the triangles that collapse. The
+            // tessellation / chain re-snap can cluster interior vertices sub-tolerance
+            // apart, forming NEEDLE slivers (aspect 1e5–1e6) that the sliver metric counts
+            // even though the validated topology treats the pair as one welded point.
+            // Merging them makes the exported geometry match the validated topology with no
+            // new boundary (a zero-area needle bounds nothing) and no new non-manifold edge
+            // the validator did not already account for at this tolerance.
+            if (byConstructionAssembly) {
+                // Resolve collinear interior-T-junction sliver triangles (apex on its own
+                // longest edge → zero-area [x,x,2x] needles that survive the degen strip).
+                // Iterate: a spanning edge with several on-edge vertices, or whose neighbour
+                // was itself split in the same pass, is only resolvable after the prior pass
+                // updates the topology. Bounded pass count; stops at the fixpoint.
+                const collinearBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+                let collinearResolvedTotal = 0;
+                for (let cpass = 0; cpass < 8; cpass++) {
+                    const collinear = resolveCollinearTriangles(
+                        finalCombinedIdxs,
+                        finalResultData,
+                        DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                        0.01,
+                        outerIdxCountAfterSubdiv,
+                    );
+                    if (collinear.resolvedTriangles === 0) break;
+                    finalCombinedIdxs = collinear.indices;
+                    outerIdxCountAfterSubdiv = collinear.outerIdxCount;
+                    collinearResolvedTotal += collinear.resolvedTriangles;
+                }
+                if (collinearResolvedTotal > 0) {
+                    console.warn(
+                        `[ParametricExport]   Collinear sliver resolution: ${collinearResolvedTotal} collinear tris removed ` +
+                        `(${collinearBefore}->${indexCountToTriangleCount(finalCombinedIdxs.length)} tris)`,
+                    );
+                }
+            }
+
+            if (byConstructionAssembly) {
+                const ncwBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
+                const ncw = weldNearCoincidentVertices(
+                    finalCombinedIdxs,
+                    finalResultData,
+                    DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                    outerIdxCountAfterSubdiv,
+                );
+                if (ncw.weldedVertices > 0) {
+                    finalCombinedIdxs = ncw.indices;
+                    outerIdxCountAfterSubdiv = ncw.outerIdxCount;
+                    console.warn(
+                        `[ParametricExport]   Near-coincident weld: ${ncw.weldedVertices} verts merged, ` +
+                        `${ncw.strippedTriangles} needle/degenerate tris stripped ` +
+                        `(${ncwBefore}->${indexCountToTriangleCount(finalCombinedIdxs.length)} tris)`,
+                    );
+                }
+            }
 
             // ═══════════════════════════════════════════════════════
             // PHASE 6: Mesh Validation (always runs)
