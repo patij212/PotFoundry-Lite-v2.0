@@ -141,7 +141,7 @@ import {
 } from './parametric/BoundaryTJunctionRepair';
 import { normalizeWindingByComponent } from './parametric/WindingNormalizer';
 import { weldNearCoincidentVertices } from './parametric/NearCoincidentWeld';
-import { resolveCollinearTriangles } from './parametric/CollinearTriangleResolution';
+import { resolveCollinearTriangles, countCollinearSlivers } from './parametric/CollinearTriangleResolution';
 import { buildPeriodicSeamClosure } from './parametric/PeriodicSeamClosure';
 import {
     healSeam,
@@ -4376,6 +4376,12 @@ export class ParametricExportComputer {
 
             await pfStageFlush(`tail:before-repairOuterWallTJunctions#1 tris=${finalCombinedIdxs.length / 3}`);
             recordWindingStageDiagnostic('before-tail-repairs', finalCombinedIdxs, finalResultData);
+            try {
+                if ((globalThis as unknown as { __pfEnableWindingStageDiagnostics?: boolean }).__pfEnableWindingStageDiagnostics) {
+                    const cc = countCollinearSlivers(finalCombinedIdxs, finalResultData, finalCombinedIdxs.length);
+                    console.warn(`[COLLINEAR-STAGE] before-tail-repairs collinear=${cc} tris=${finalCombinedIdxs.length / 3} outerTris=${outerIdxCountAfterSubdiv / 3}`);
+                }
+            } catch { /* noop */ }
             const tJunctionRepairTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
             const tJunctionRepairOuterTrisBefore = indexCountToTriangleCount(outerIdxCountAfterSubdiv);
             const tJunctionRepairStart = performance.now();
@@ -5467,6 +5473,12 @@ export class ParametricExportComputer {
             // new boundary (a zero-area needle bounds nothing) and no new non-manifold edge
             // the validator did not already account for at this tolerance.
             if (byConstructionAssembly) {
+                try {
+                    if ((globalThis as unknown as { __pfEnableWindingStageDiagnostics?: boolean }).__pfEnableWindingStageDiagnostics) {
+                        const cc = countCollinearSlivers(finalCombinedIdxs, finalResultData, finalCombinedIdxs.length);
+                        console.warn(`[COLLINEAR-STAGE] before-final-resolution collinear=${cc} tris=${finalCombinedIdxs.length / 3}`);
+                    }
+                } catch { /* noop */ }
                 // Resolve collinear interior-T-junction sliver triangles (apex on its own
                 // longest edge → zero-area [x,x,2x] needles that survive the degen strip).
                 // Iterate: a spanning edge with several on-edge vertices, or whose neighbour

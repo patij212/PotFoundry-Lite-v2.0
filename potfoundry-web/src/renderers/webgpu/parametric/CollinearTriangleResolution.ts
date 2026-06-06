@@ -237,3 +237,37 @@ function dist(positions: Float32Array, a: number, b: number): number {
         positions[a * 3 + 2] - positions[b * 3 + 2],
     );
 }
+
+/**
+ * Diagnostic: count collinear triangles (apex on its own longest edge within perpFraction)
+ * over an index range [0, idxCount). Used to locate the pipeline stage that BORN them.
+ */
+export function countCollinearSlivers(
+    indices: ArrayLike<number>,
+    positions: Float32Array,
+    idxCount: number = indices.length,
+    perpFraction: number = 0.01,
+): number {
+    let count = 0;
+    for (let t = 0; t + 2 < idxCount; t += 3) {
+        const i0 = indices[t], i1 = indices[t + 1], i2 = indices[t + 2];
+        const d01 = dist(positions, i0, i1);
+        const d12 = dist(positions, i1, i2);
+        const d20 = dist(positions, i2, i0);
+        let lo: number, hi: number, ap: number, longest: number;
+        if (d01 >= d12 && d01 >= d20) { lo = i0; hi = i1; ap = i2; longest = d01; }
+        else if (d12 >= d01 && d12 >= d20) { lo = i1; hi = i2; ap = i0; longest = d12; }
+        else { lo = i2; hi = i0; ap = i1; longest = d20; }
+        if (longest <= 1e-9) continue;
+        const ax = positions[lo * 3], ay = positions[lo * 3 + 1], az = positions[lo * 3 + 2];
+        const bx = positions[hi * 3], by = positions[hi * 3 + 1], bz = positions[hi * 3 + 2];
+        const cx = positions[ap * 3], cy = positions[ap * 3 + 1], cz = positions[ap * 3 + 2];
+        const abx = bx - ax, aby = by - ay, abz = bz - az;
+        const len2 = abx * abx + aby * aby + abz * abz;
+        const s = ((cx - ax) * abx + (cy - ay) * aby + (cz - az) * abz) / len2;
+        if (s <= 0.001 || s >= 0.999) continue;
+        const px = ax + s * abx, py = ay + s * aby, pz = az + s * abz;
+        if (Math.hypot(cx - px, cy - py, cz - pz) <= longest * perpFraction) count++;
+    }
+    return count;
+}
