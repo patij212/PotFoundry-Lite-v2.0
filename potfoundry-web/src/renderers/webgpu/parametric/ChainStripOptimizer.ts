@@ -45,6 +45,8 @@ export interface ChainStripFlipParams {
   outerIdxCount: number;
   /** Sorted T-values for adaptive row spacing. */
   finalT: Float32Array | number[];
+  /** Optional quad -> triangle-base map; -1 marks non-standard chain/super cells. */
+  quadMap?: Int32Array;
   /**
    * Optional set of chain-adjacent vertex indices identified by UV-proximity.
    * When provided, triangles touching these vertices are also treated as chain-strip,
@@ -70,11 +72,25 @@ export interface ChainStripFlipResult {
   chainGridFlips: number;
   /** R47: Chain-grid flips allowed through the quality gate */
   chainGridFlipsAllowed: number;
+  /** High-aspect chain-strip flips rescued with UV-convex topology. */
+  chainSliverRescueFlips: number;
+  /** High-aspect pure-grid flips in non-standard outer-wall cells. */
+  nonQuadSliverFlips: number;
   valenceStats: {
     before: ValenceStats;
     after: ValenceStats;
   };
   timeMs: number;
+}
+
+interface ChainStripOptimizerProbe {
+  triangles?: number[];
+  edges?: Array<[number, number]>;
+  events?: Array<Record<string, unknown>>;
+}
+
+interface ChainStripOptimizerProbeGlobal {
+  __pfChainStripOptimizerProbe?: ChainStripOptimizerProbe;
 }
 
 /** Parameters for boundary diagonal optimization. */
@@ -187,19 +203,30 @@ export const MAX_VALENCE_PASSES = 4;
 export const ANGLE_DEGRADE_TOLERANCE = 0.002;
 /** R47: minimum quality gain (radians) required to allow a chain-grid edge flip */
 export const CHAIN_GRID_FLIP_THRESHOLD = 0.20;
+/** Minimum aspect ratio for the non-standard pure-grid sliver rescue pass. */
+const NON_QUAD_SLIVER_ASPECT_TRIGGER = 100.0;
+/** Rescue flips must produce triangles at or below this aspect unless massively better. */
+const NON_QUAD_SLIVER_TARGET_ASPECT = 100.0;
+const EDGE_KEY_SHIFT_BITS = 32n;
+const EDGE_KEY_MASK = (1n << EDGE_KEY_SHIFT_BITS) - 1n;
+const EDGE_KEY_MAX_INDEX = 0xffffffff;
 
 // ═══════════════════════════════════════════════════════════════════════
 // 3D Math Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
-/** Canonical bigint edge key: lo * 0x200000 + hi (lo < hi, safe up to 2M vertices). */
+/** Canonical bigint edge key: lo in the high 32 bits, hi in the low 32 bits. */
 export function edgeKey(a: number, b: number): bigint {
-  if (a >= 0x200000 || b >= 0x200000) {
-    throw new Error(`Vertex index exceeds edgeKey stride limit: a=${a}, b=${b}`);
+  if (
+    !Number.isInteger(a) || !Number.isInteger(b) ||
+    a < 0 || b < 0 ||
+    a > EDGE_KEY_MAX_INDEX || b > EDGE_KEY_MAX_INDEX
+  ) {
+    throw new Error(`Vertex index outside Uint32 edgeKey range: a=${a}, b=${b}`);
   }
   const lo = a < b ? a : b;
   const hi = a < b ? b : a;
-  return BigInt(lo) * BigInt(0x200000) + BigInt(hi);
+  return (BigInt(lo) << EDGE_KEY_SHIFT_BITS) | BigInt(hi);
 }
 
 /** Read xyz position of vertex v from interleaved Float32Array. */
@@ -379,7 +406,7 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
   const {
     combinedIdxs, positions, combinedVerts,
     constraintEdgeSet, outerGridVertexCount, outerIdxCount, finalT,
-    chainAdjacentVertices, protectedVertices,
+    quadMap, chainAdjacentVertices, protectedVertices,
   } = params;
 
   const startTime = performance.now();
@@ -401,8 +428,52 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     }
   }
 
+  const standardQuadTriSet = new Set<number>();
+  if (quadMap) {
+    for (let i = 0; i < quadMap.length; i++) {
+      const triBase = quadMap[i];
+      if (triBase < 0) continue;
+      standardQuadTriSet.add(triBase);
+      standardQuadTriSet.add(triBase + 3);
+    }
+  }
+
   // ─── Vertex T-coordinate lookup ──────────────────────────────────
   const vtxT = (v: number): number => combinedVerts[v * 3 + 1];
+  const uvOrient = (i0: number, i1: number, i2: number): number => {
+    const ax = combinedVerts[i0 * 3], ay = combinedVerts[i0 * 3 + 1];
+    const bx = combinedVerts[i1 * 3], by = combinedVerts[i1 * 3 + 1];
+    const cx = combinedVerts[i2 * 3], cy = combinedVerts[i2 * 3 + 1];
+    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  };
+  const isConvexQuadUv = (vA: number, vB: number, vC: number, vD: number): boolean => {
+    const turns = [
+      uvOrient(vA, vB, vC),
+      uvOrient(vB, vC, vD),
+      uvOrient(vC, vD, vA),
+      uvOrient(vD, vA, vB),
+    ];
+    let sign = 0;
+    for (const turn of turns) {
+      if (Math.abs(turn) < 1e-12) return false;
+      const s = Math.sign(turn);
+      if (sign === 0) sign = s;
+      else if (s !== sign) return false;
+    }
+    return true;
+  };
+  const uvOrientedTriangle = (
+    targetSign: number,
+    i0: number,
+    i1: number,
+    i2: number,
+  ): [number, number, number] => {
+    const sign = Math.sign(uvOrient(i0, i1, i2));
+    if (sign !== 0 && targetSign !== 0 && sign !== targetSign) {
+      return [i0, i2, i1];
+    }
+    return [i0, i1, i2];
+  };
 
   // ─── Build edge→tri adjacency for chain-strip tris only ─────────
   // Boundary triangles are excluded — flipping at the boundary between
@@ -660,8 +731,8 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
   const decodeEdge = (ek: bigint, t0: number, t1: number): DecodedEdge | null => {
     const a0 = combinedIdxs[t0], b0 = combinedIdxs[t0 + 1], c0 = combinedIdxs[t0 + 2];
     const a1 = combinedIdxs[t1], b1 = combinedIdxs[t1 + 1], c1 = combinedIdxs[t1 + 2];
-    const shLo = Number(ek / BigInt(0x200000));
-    const shHi = Number(ek % BigInt(0x200000));
+    const shLo = Number(ek >> EDGE_KEY_SHIFT_BITS);
+    const shHi = Number(ek & EDGE_KEY_MASK);
     const in0Lo = a0 === shLo || b0 === shLo || c0 === shLo;
     const in0Hi = a0 === shHi || b0 === shHi || c0 === shHi;
     const in1Lo = a1 === shLo || b1 === shLo || c1 === shLo;
@@ -674,9 +745,111 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     return { shLo, shHi, opp0, opp1, a0, b0, c0, a1, b1, c1 };
   };
 
+  const probe = (globalThis as unknown as ChainStripOptimizerProbeGlobal).__pfChainStripOptimizerProbe;
+  const probeEdges = new Set<string>();
+  if (probe?.edges) {
+    for (const [a, b] of probe.edges) probeEdges.add(edgeKey(a, b).toString());
+  }
+  const probeTriangles = new Set<number>((probe?.triangles ?? []).map((tri) => tri * 3));
+  const recordProbe = (payload: Record<string, unknown>): void => {
+    if (!probe) return;
+    (probe.events ??= []).push(payload);
+    try {
+      console.warn(`[CSO-PROBE] ${JSON.stringify(payload)}`);
+    } catch {
+      console.warn('[CSO-PROBE] <unserializable>');
+    }
+  };
+  const isProbeEdge = (ek: bigint): boolean => probeEdges.has(ek.toString());
+  const isProbeTriPair = (t0: number, t1: number): boolean =>
+    probeTriangles.has(t0) || probeTriangles.has(t1);
+  const edgeLabel = (a: number, b: number): string => `${Math.min(a, b)}-${Math.max(a, b)}`;
+  const explainProbeEdge = (
+    stage: string,
+    ek: bigint,
+    tris: number[] | undefined,
+    useUvConvexity: boolean,
+  ): void => {
+    if (!probe || !isProbeEdge(ek)) return;
+    if (!tris) {
+      recordProbe({ stage, edge: ek.toString(), status: 'absent' });
+      return;
+    }
+    if (tris.length !== 2) {
+      recordProbe({ stage, edge: ek.toString(), status: 'wrong-incidence', tris: tris.map((t) => t / 3) });
+      return;
+    }
+    const d = decodeEdge(ek, tris[0], tris[1]);
+    if (!d) {
+      recordProbe({ stage, edge: ek.toString(), status: 'decode-failed', tris: tris.map((t) => t / 3) });
+      return;
+    }
+    const { shLo, shHi, opp0, opp1, a0, b0, c0, a1, b1, c1 } = d;
+    let reject = '';
+    const newEdge = edgeKey(opp0, opp1);
+    const curAspect = Math.max(ta3D(a0, b0, c0), ta3D(a1, b1, c1));
+    const curMin = Math.min(ma3D(a0, b0, c0), ma3D(a1, b1, c1));
+    let newAspect: number | undefined;
+    let newMin: number | undefined;
+    if (constraintEdgeSet.has(ek)) reject = 'current-constraint';
+    else if (touchesProtectedCorridor(shLo, shHi, opp0, opp1)) reject = 'protected';
+    else if (constraintEdgeSet.has(newEdge)) reject = 'new-constraint';
+    else if (useUvConvexity ? !isConvexQuadUv(shLo, opp0, shHi, opp1) : !convex(shLo, opp0, shHi, opp1)) reject = 'not-convex';
+    else if (rowSpanExceeds(shLo, shHi, opp0, opp1)) reject = 'row-span';
+    else if (edgeLenExceeds(shLo, shHi, opp0, opp1)) reject = 'edge-length';
+    else {
+      const oldUvSign = Math.sign(uvOrient(a0, b0, c0) + uvOrient(a1, b1, c1));
+      const tri0 = uvOrientedTriangle(oldUvSign, shLo, opp0, opp1);
+      const tri1 = uvOrientedTriangle(oldUvSign, shHi, opp1, opp0);
+      newAspect = Math.max(ta3D(tri0[0], tri0[1], tri0[2]), ta3D(tri1[0], tri1[1], tri1[2]));
+      newMin = Math.min(ma3D(tri0[0], tri0[1], tri0[2]), ma3D(tri1[0], tri1[1], tri1[2]));
+      if (newMin <= curMin + MIN_ANGLE_VALENCE_BONUS) reject = 'angle-gain';
+      else if (newAspect > Math.min(NON_QUAD_SLIVER_TARGET_ASPECT, curAspect * 0.25)) reject = 'aspect-target';
+    }
+    recordProbe({
+      stage,
+      edge: edgeLabel(shLo, shHi),
+      tris: tris.map((t) => t / 3),
+      verts: [a0, b0, c0, a1, b1, c1],
+      shared: [shLo, shHi],
+      opposites: [opp0, opp1],
+      classes: [shLo, shHi, opp0, opp1].map((v) => v >= outerGridVertexCount ? 'chain' : 'grid'),
+      chainStrip: tris.map((t) => chainStripTriSet.has(t)),
+      standardQuad: tris.map((t) => standardQuadTriSet.has(t)),
+      chainAdjacent: [shLo, shHi, opp0, opp1].map((v) => chainAdjacentVertices?.has(v) ?? false),
+      curAspect,
+      curMin,
+      newAspect,
+      newMin,
+      reject: reject || 'eligible',
+    });
+  };
+
   const touchesProtectedCorridor = (a: number, b: number, c: number, d: number): boolean =>
     protectedVertices !== undefined &&
     (protectedVertices.has(a) || protectedVertices.has(b) || protectedVertices.has(c) || protectedVertices.has(d));
+
+  if (probe) {
+    for (const triBase of probeTriangles) {
+      if (triBase < 0 || triBase + 2 >= outerIdxCount) continue;
+      const verts = [combinedIdxs[triBase], combinedIdxs[triBase + 1], combinedIdxs[triBase + 2]];
+      recordProbe({
+        stage: 'triangle-classification',
+        tri: triBase / 3,
+        verts,
+        classes: verts.map((v) => v >= outerGridVertexCount ? 'chain' : 'grid'),
+        chainStrip: chainStripTriSet.has(triBase),
+        standardQuad: standardQuadTriSet.has(triBase),
+        chainAdjacent: verts.map((v) => chainAdjacentVertices?.has(v) ?? false),
+        aspect: ta3D(verts[0], verts[1], verts[2]),
+        minAngle: ma3D(verts[0], verts[1], verts[2]),
+      });
+    }
+    for (const edgeText of probeEdges) {
+      const ek = BigInt(edgeText);
+      explainProbeEdge('chain-map-initial', ek, edgeToTris.get(ek), false);
+    }
+  }
 
   // ─── Phase A: Angle-based with valence bonus ─────────────────────
   let totalCSFlips = 0;
@@ -909,6 +1082,185 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     }
   }
 
+  let chainSliverRescueFlips = 0;
+  {
+    const allOuterEdgeCounts = new Map<bigint, number>();
+    for (let t = 0; t < outerIdxCount; t += 3) {
+      const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+      if (a === b || b === c || a === c) continue;
+      for (const ek of [edgeKey(a, b), edgeKey(b, c), edgeKey(c, a)]) {
+        allOuterEdgeCounts.set(ek, (allOuterEdgeCounts.get(ek) ?? 0) + 1);
+      }
+    }
+
+    const flippedTris = new Set<number>();
+    for (const [ek, tris] of Array.from(edgeToTris.entries())) {
+      if (tris.length !== 2) continue;
+      if (constraintEdgeSet.has(ek)) continue;
+      const t0 = tris[0], t1 = tris[1];
+      if (flippedTris.has(t0) || flippedTris.has(t1)) continue;
+
+      const d = decodeEdge(ek, t0, t1);
+      if (!d) continue;
+      const { shLo, shHi, opp0, opp1, a0, b0, c0, a1, b1, c1 } = d;
+      const probeChainRescue = isProbeEdge(ek) || isProbeTriPair(t0, t1);
+      if (probeChainRescue) {
+        const oldUvSign = Math.sign(uvOrient(a0, b0, c0) + uvOrient(a1, b1, c1));
+        const tri0 = uvOrientedTriangle(oldUvSign, shLo, opp0, opp1);
+        const tri1 = uvOrientedTriangle(oldUvSign, shHi, opp1, opp0);
+        const curAspect = Math.max(ta3D(a0, b0, c0), ta3D(a1, b1, c1));
+        const newAspect = Math.max(ta3D(tri0[0], tri0[1], tri0[2]), ta3D(tri1[0], tri1[1], tri1[2]));
+        const curMin = Math.min(ma3D(a0, b0, c0), ma3D(a1, b1, c1));
+        const newMin = Math.min(ma3D(tri0[0], tri0[1], tri0[2]), ma3D(tri1[0], tri1[1], tri1[2]));
+        recordProbe({
+          stage: 'chain-sliver-rescue-candidate',
+          edge: edgeLabel(shLo, shHi),
+          tris: [t0 / 3, t1 / 3],
+          shared: [shLo, shHi],
+          opposites: [opp0, opp1],
+          uv: [shLo, shHi, opp0, opp1].map((v) => [
+            combinedVerts[v * 3],
+            combinedVerts[v * 3 + 1],
+          ]),
+          uvTurns: [
+            uvOrient(shLo, opp0, shHi),
+            uvOrient(opp0, shHi, opp1),
+            uvOrient(shHi, opp1, shLo),
+            uvOrient(opp1, shLo, opp0),
+          ],
+          newUvOrient: [
+            uvOrient(shLo, opp0, opp1),
+            uvOrient(shHi, opp1, opp0),
+          ],
+          newEdgeExists: (allOuterEdgeCounts.get(edgeKey(opp0, opp1)) ?? 0) > 0,
+          currentConstraint: constraintEdgeSet.has(ek),
+          newConstraint: constraintEdgeSet.has(edgeKey(opp0, opp1)),
+          protected: touchesProtectedCorridor(shLo, shHi, opp0, opp1),
+          uvConvex: isConvexQuadUv(shLo, opp0, shHi, opp1),
+          rowSpan: rowSpanExceeds(shLo, shHi, opp0, opp1),
+          edgeLength: edgeLenExceeds(shLo, shHi, opp0, opp1),
+          chainGrid: isChainGridEdge(shLo, shHi),
+          curAspect,
+          newAspect,
+          targetAspect: Math.min(NON_QUAD_SLIVER_TARGET_ASPECT, curAspect * 0.25),
+          curMin,
+          newMin,
+        });
+      }
+      if (touchesProtectedCorridor(shLo, shHi, opp0, opp1)) continue;
+
+      const newEdge = edgeKey(opp0, opp1);
+      if (constraintEdgeSet.has(newEdge)) continue;
+      if ((allOuterEdgeCounts.get(newEdge) ?? 0) > 0) continue;
+      if (!isConvexQuadUv(shLo, opp0, shHi, opp1)) continue;
+      if (rowSpanExceeds(shLo, shHi, opp0, opp1)) continue;
+      if (edgeLenExceeds(shLo, shHi, opp0, opp1)) continue;
+
+      const curAspect = Math.max(ta3D(a0, b0, c0), ta3D(a1, b1, c1));
+      if (!Number.isFinite(curAspect) || curAspect < NON_QUAD_SLIVER_ASPECT_TRIGGER) continue;
+
+      const oldUvSign = Math.sign(uvOrient(a0, b0, c0) + uvOrient(a1, b1, c1));
+      const tri0 = uvOrientedTriangle(oldUvSign, shLo, opp0, opp1);
+      const tri1 = uvOrientedTriangle(oldUvSign, shHi, opp1, opp0);
+      const newAspect = Math.max(ta3D(tri0[0], tri0[1], tri0[2]), ta3D(tri1[0], tri1[1], tri1[2]));
+      if (!Number.isFinite(newAspect)) continue;
+      const targetAspect = Math.min(NON_QUAD_SLIVER_TARGET_ASPECT, curAspect * 0.25);
+      if (newAspect > targetAspect) continue;
+
+      const curMin = Math.min(ma3D(a0, b0, c0), ma3D(a1, b1, c1));
+      const newMin = Math.min(ma3D(tri0[0], tri0[1], tri0[2]), ma3D(tri1[0], tri1[1], tri1[2]));
+      if (newMin <= curMin + MIN_ANGLE_VALENCE_BONUS) continue;
+      if (isChainGridEdge(shLo, shHi) && newMin - curMin < CHAIN_GRID_FLIP_THRESHOLD) {
+        chainGridFlips++;
+        continue;
+      }
+
+      combinedIdxs[t0] = tri0[0]; combinedIdxs[t0 + 1] = tri0[1]; combinedIdxs[t0 + 2] = tri0[2];
+      combinedIdxs[t1] = tri1[0]; combinedIdxs[t1 + 1] = tri1[1]; combinedIdxs[t1 + 2] = tri1[2];
+      applyValenceFlip(shLo, shHi, opp0, opp1);
+      allOuterEdgeCounts.set(ek, 0);
+      allOuterEdgeCounts.set(newEdge, 2);
+      flippedTris.add(t0);
+      flippedTris.add(t1);
+      chainSliverRescueFlips++;
+    }
+  }
+
+  let nonQuadSliverFlips = 0;
+  if (quadMap) {
+    const allOuterEdgeCounts = new Map<bigint, number>();
+    const nonQuadEdgeToTris = new Map<bigint, number[]>();
+    for (let t = 0; t < outerIdxCount; t += 3) {
+      const a = combinedIdxs[t], b = combinedIdxs[t + 1], c = combinedIdxs[t + 2];
+      if (a === b || b === c || a === c) continue;
+      const edges = [edgeKey(a, b), edgeKey(b, c), edgeKey(c, a)];
+      for (const ek of edges) {
+        allOuterEdgeCounts.set(ek, (allOuterEdgeCounts.get(ek) ?? 0) + 1);
+      }
+      if (chainStripTriSet.has(t) || standardQuadTriSet.has(t)) continue;
+      if (a >= outerGridVertexCount || b >= outerGridVertexCount || c >= outerGridVertexCount) continue;
+      if (chainAdjacentVertices &&
+          (chainAdjacentVertices.has(a) || chainAdjacentVertices.has(b) || chainAdjacentVertices.has(c))) {
+        continue;
+      }
+      for (const ek of edges) {
+        let tris = nonQuadEdgeToTris.get(ek);
+        if (!tris) { tris = []; nonQuadEdgeToTris.set(ek, tris); }
+        tris.push(t);
+      }
+    }
+
+    if (probe) {
+      for (const edgeText of probeEdges) {
+        const ek = BigInt(edgeText);
+        explainProbeEdge('nonquad-map-initial', ek, nonQuadEdgeToTris.get(ek), true);
+      }
+    }
+
+    const flippedTris = new Set<number>();
+    for (const [ek, tris] of nonQuadEdgeToTris) {
+      if (tris.length !== 2) continue;
+      if (constraintEdgeSet.has(ek)) continue;
+      const t0 = tris[0], t1 = tris[1];
+      if (flippedTris.has(t0) || flippedTris.has(t1)) continue;
+
+      const d = decodeEdge(ek, t0, t1);
+      if (!d) continue;
+      const { shLo, shHi, opp0, opp1, a0, b0, c0, a1, b1, c1 } = d;
+      if (touchesProtectedCorridor(shLo, shHi, opp0, opp1)) continue;
+
+      const newEdge = edgeKey(opp0, opp1);
+      if (constraintEdgeSet.has(newEdge)) continue;
+      if ((allOuterEdgeCounts.get(newEdge) ?? 0) > 0) continue;
+      if (!isConvexQuadUv(shLo, opp0, shHi, opp1)) continue;
+      if (rowSpanExceeds(shLo, shHi, opp0, opp1)) continue;
+      if (edgeLenExceeds(shLo, shHi, opp0, opp1)) continue;
+
+      const curAspect = Math.max(ta3D(a0, b0, c0), ta3D(a1, b1, c1));
+      if (!Number.isFinite(curAspect) || curAspect < NON_QUAD_SLIVER_ASPECT_TRIGGER) continue;
+
+      const oldUvSign = Math.sign(uvOrient(a0, b0, c0) + uvOrient(a1, b1, c1));
+      const tri0 = uvOrientedTriangle(oldUvSign, shLo, opp0, opp1);
+      const tri1 = uvOrientedTriangle(oldUvSign, shHi, opp1, opp0);
+      const newAspect = Math.max(ta3D(tri0[0], tri0[1], tri0[2]), ta3D(tri1[0], tri1[1], tri1[2]));
+      if (!Number.isFinite(newAspect)) continue;
+      const targetAspect = Math.min(NON_QUAD_SLIVER_TARGET_ASPECT, curAspect * 0.25);
+      if (newAspect > targetAspect) continue;
+
+      const curMin = Math.min(ma3D(a0, b0, c0), ma3D(a1, b1, c1));
+      const newMin = Math.min(ma3D(tri0[0], tri0[1], tri0[2]), ma3D(tri1[0], tri1[1], tri1[2]));
+      if (newMin <= curMin + MIN_ANGLE_VALENCE_BONUS) continue;
+
+      combinedIdxs[t0] = tri0[0]; combinedIdxs[t0 + 1] = tri0[1]; combinedIdxs[t0 + 2] = tri0[2];
+      combinedIdxs[t1] = tri1[0]; combinedIdxs[t1 + 1] = tri1[1]; combinedIdxs[t1 + 2] = tri1[2];
+      allOuterEdgeCounts.set(ek, 0);
+      allOuterEdgeCounts.set(newEdge, 2);
+      flippedTris.add(t0);
+      flippedTris.add(t1);
+      nonQuadSliverFlips++;
+    }
+  }
+
   const valAfter = computeValenceStats(csValence);
 
   return {
@@ -923,6 +1275,8 @@ export function optimizeChainStrips(params: ChainStripFlipParams): ChainStripFli
     maxSingleRowTSpan,
     chainGridFlips,
     chainGridFlipsAllowed,
+    chainSliverRescueFlips,
+    nonQuadSliverFlips,
     valenceStats: { before: valBefore, after: valAfter },
     timeMs: performance.now() - startTime,
   };

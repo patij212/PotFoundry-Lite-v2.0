@@ -542,6 +542,8 @@ export interface TriangleQualityDiagnosticSample {
   aspect3D: number;
   minAngleDeg: number;
   edgeLengthsMm: [number, number, number];
+  /** 3D centroid [x,y,z] — for localizing slivers by height (z) and radius (hypot(x,y)). */
+  centroid: [number, number, number];
   uvs?: [[number, number, number], [number, number, number], [number, number, number]];
 }
 
@@ -685,6 +687,7 @@ export function triangleQualityDiagnostics(mesh: MeshView, sampleLimit = 16): Tr
       aspect3D: aspect,
       minAngleDeg: triMin,
       edgeLengthsMm: [ab, bc, ca],
+      centroid: [(ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3],
       uvs: uvs
         ? [
           [uvs[ia], uvs[ia + 1], uvs[ia + 2]],
@@ -783,10 +786,13 @@ export function topologyDiagnostics(
   const samples: TopologyEdgeSample[] = [];
 
   if (sampleLimit > 0) {
-    for (const use of uses.values()) {
-      const kind = classifyTopologyUse(use);
-      if (!kind) continue;
-      samples.push(sampleTopologyEdge(mesh.vertices, mesh.uvs, use, kind));
+    for (const preferredKind of ['nonManifold', 'boundary', 'orientationMismatch'] satisfies TopologySampleKind[]) {
+      for (const use of uses.values()) {
+        const kind = classifyTopologyUse(use);
+        if (kind !== preferredKind) continue;
+        samples.push(sampleTopologyEdge(mesh.vertices, mesh.uvs, use, kind));
+        if (samples.length >= sampleLimit) break;
+      }
       if (samples.length >= sampleLimit) break;
     }
   }

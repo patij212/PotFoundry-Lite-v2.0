@@ -82,9 +82,17 @@ describe('edgeKey', () => {
     expect(typeof edgeKey(0, 1)).toBe('bigint');
   });
 
-  it('encodes lo * 0x100000 + hi', () => {
+  it('encodes lo in the high 32 bits and hi in the low 32 bits', () => {
     const k = edgeKey(5, 10);
-    expect(k).toBe(BigInt(5) * BigInt(0x200000) + BigInt(10));
+    expect(k).toBe((BigInt(5) << 32n) | BigInt(10));
+  });
+
+  it('supports adaptive-refinement meshes above the old 2M stride limit', () => {
+    const a = 1_719_953;
+    const b = 2_107_451;
+
+    expect(edgeKey(a, b)).toBe(edgeKey(b, a));
+    expect(edgeKey(a, b)).not.toBe(edgeKey(a, b + 1));
   });
 });
 
@@ -579,6 +587,79 @@ describe('optimizeChainStrips', () => {
   // The expected hash + counts were captured from the reference
   // implementation; a mismatch means the refactor changed behaviour.
   // ─────────────────────────────────────────────────────────────────────
+  it('rescues pure-grid slivers in non-standard outer cells', () => {
+    const positions = makePositions([
+      [0, 0, 0],
+      [0.0001, 0, 0],
+      [0.5, -1, 0],
+      [0.5, 1, 0],
+    ]);
+    const combinedVerts = makePositions([
+      [0, 0, 0],
+      [1, 1, 0],
+      [1, 0, 0],
+      [0, 1, 0],
+    ]);
+    const combinedIdxs = makeIndices([
+      0, 2, 1,
+      0, 1, 3,
+    ]);
+    const result = optimizeChainStrips({
+      combinedIdxs,
+      positions,
+      combinedVerts,
+      constraintEdgeSet: new Set(),
+      outerGridVertexCount: 4,
+      outerIdxCount: combinedIdxs.length,
+      finalT: [0, 1],
+      quadMap: new Int32Array([-1]),
+    });
+
+    expect(result.chainStripTriCount).toBe(0);
+    expect(result.nonQuadSliverFlips).toBe(1);
+    expect(Array.from(combinedIdxs)).toEqual([0, 2, 3, 1, 3, 2]);
+    expect(Math.max(
+      triAspect3D(positions, combinedIdxs[0], combinedIdxs[1], combinedIdxs[2]),
+      triAspect3D(positions, combinedIdxs[3], combinedIdxs[4], combinedIdxs[5]),
+    )).toBeLessThan(10);
+  });
+
+  it('rescues chain-strip slivers rejected by 3D convexity when UV is convex', () => {
+    const positions = makePositions([
+      [0, 0, 0],
+      [0.0001, 0, 0],
+      [0.5, -1, 0],
+      [0.5, 1, 0],
+    ]);
+    const combinedVerts = makePositions([
+      [0, 0, 0],
+      [1, 1, 0],
+      [1, 0, 0],
+      [0, 1, 0],
+    ]);
+    const combinedIdxs = makeIndices([
+      0, 2, 1,
+      0, 1, 3,
+    ]);
+    const result = optimizeChainStrips({
+      combinedIdxs,
+      positions,
+      combinedVerts,
+      constraintEdgeSet: new Set(),
+      outerGridVertexCount: 0,
+      outerIdxCount: combinedIdxs.length,
+      finalT: [0, 1],
+    });
+
+    expect(result.chainStripTriCount).toBe(2);
+    expect(result.chainSliverRescueFlips).toBe(1);
+    expect(Array.from(combinedIdxs)).toEqual([0, 2, 3, 1, 3, 2]);
+    expect(Math.max(
+      triAspect3D(positions, combinedIdxs[0], combinedIdxs[1], combinedIdxs[2]),
+      triAspect3D(positions, combinedIdxs[3], combinedIdxs[4], combinedIdxs[5]),
+    )).toBeLessThan(10);
+  });
+
   describe('characterization (perf-pin)', () => {
     /** Deterministic PRNG (same as MeshSubdivision perf-pin). */
     function mulberry32(seed: number): () => number {

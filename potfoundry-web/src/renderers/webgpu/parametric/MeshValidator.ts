@@ -38,6 +38,9 @@ import {
 } from './SurfaceMetric';
 
 const DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM = 0;
+const EDGE_KEY_SHIFT_BITS = 32n;
+const EDGE_KEY_MASK = (1n << EDGE_KEY_SHIFT_BITS) - 1n;
+const EDGE_KEY_MAX_INDEX = 0xffffffff;
 
 // ============================================================================
 // Types
@@ -318,13 +321,27 @@ export interface ValidateConfig {
 
 /**
  * Pack two vertex indices into a canonical bigint edge key.
- * Uses 0x200000 (2M) stride to allow vertex indices up to 2M per coordinate.
- * Key = min(a,b) * stride + max(a,b), ensuring consistent ordering.
+ * Uses the same 32-bit packing as ChainStripOptimizer/AdaptiveRefinement:
+ * high 32 bits = lower vertex id, low 32 bits = higher vertex id.
  */
 function edgeKey(a: number, b: number): bigint {
-    return a < b
-        ? BigInt(a) * 0x200000n + BigInt(b)
-        : BigInt(b) * 0x200000n + BigInt(a);
+    if (
+        !Number.isInteger(a) || !Number.isInteger(b) ||
+        a < 0 || b < 0 ||
+        a > EDGE_KEY_MAX_INDEX || b > EDGE_KEY_MAX_INDEX
+    ) {
+        throw new Error(`MeshValidator edge vertex index outside Uint32 range: a=${a}, b=${b}`);
+    }
+    const lo = a < b ? a : b;
+    const hi = a < b ? b : a;
+    return (BigInt(lo) << EDGE_KEY_SHIFT_BITS) | BigInt(hi);
+}
+
+function decodeEdgeKey(key: bigint): [number, number] {
+    return [
+        Number(key >> EDGE_KEY_SHIFT_BITS),
+        Number(key & EDGE_KEY_MASK),
+    ];
 }
 
 function buildGeometricVertexRemap(
@@ -1490,9 +1507,7 @@ export function checkFidelityCPU(
     // For an edge of length L subtending angle θ, chord error ≈ L²θ / 8
     const posErrors: number[] = [];
     for (const [ek, angle] of dihedralAngles) {
-        // Decode bigint key: ek = min(a,b) * 0x200000 + max(a,b)
-        const a = Number(ek / 0x200000n);
-        const b = Number(ek % 0x200000n);
+        const [a, b] = decodeEdgeKey(ek);
         const lenSq = edgeLengthSq(positions, a, b);
         const theta = angle * Math.PI / 180;
         const len = Math.sqrt(lenSq);

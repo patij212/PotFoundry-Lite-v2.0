@@ -238,6 +238,7 @@ export function validateMeshForExport(
   const edgeUses = new Map<string, EdgeUse>();
   let invalidIndices = 0;
   let degenerateTriangles = 0;
+  let signedVolumeMm3 = 0;
   const vertexRemap = buildGeometricVertexRemap(
     mesh.vertices,
     Math.min(mesh.vertexCount, Math.floor(mesh.vertices.length / 3)),
@@ -291,6 +292,7 @@ export function validateMeshForExport(
       continue;
     }
 
+    signedVolumeMm3 += signedTetraVolumeMm3(mesh.vertices, i0, i1, i2);
     recordEdge(c0, c1);
     recordEdge(c1, c2);
     recordEdge(c2, c0);
@@ -323,6 +325,18 @@ export function validateMeshForExport(
     errors.push(`${orientationMismatches} inconsistent edge orientation pairs`);
   } else if (orientationMismatches > 0) {
     warnings.push(`${orientationMismatches} inconsistent edge orientation pairs`);
+  }
+  if (
+    requireClosed &&
+    invalidVertexScalars === 0 &&
+    invalidIndices === 0 &&
+    degenerateTriangles === 0 &&
+    boundaryEdges === 0 &&
+    nonManifoldEdges === 0 &&
+    orientationMismatches === 0 &&
+    signedVolumeMm3 <= 0
+  ) {
+    errors.push(`mesh is inside-out: signed volume ${signedVolumeMm3.toExponential(3)} mm^3, expected outward-facing positive volume`);
   }
   if (estimatedSizeBytes > maxBytes) {
     errors.push(
@@ -389,6 +403,29 @@ function triangleAreaMm2(
   const ny = abz * acx - abx * acz;
   const nz = abx * acy - aby * acx;
   return Math.sqrt(nx * nx + ny * ny + nz * nz) * 0.5;
+}
+
+function signedTetraVolumeMm3(
+  vertices: Float32Array,
+  i0: number,
+  i1: number,
+  i2: number,
+): number {
+  const ax = vertices[i0 * 3];
+  const ay = vertices[i0 * 3 + 1];
+  const az = vertices[i0 * 3 + 2];
+  const bx = vertices[i1 * 3];
+  const by = vertices[i1 * 3 + 1];
+  const bz = vertices[i1 * 3 + 2];
+  const cx = vertices[i2 * 3];
+  const cy = vertices[i2 * 3 + 1];
+  const cz = vertices[i2 * 3 + 2];
+
+  return (
+    ax * (by * cz - bz * cy) +
+    ay * (bz * cx - bx * cz) +
+    az * (bx * cy - by * cx)
+  ) / 6;
 }
 
 function formatGiB(bytes: number): string {

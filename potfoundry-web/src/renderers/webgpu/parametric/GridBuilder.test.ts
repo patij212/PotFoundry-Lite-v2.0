@@ -149,6 +149,7 @@ describe('mergeFeaturePositions', () => {
         // Left flank of 0.05 wraps around to ~0.95
         expect(result.positions.length).toBeGreaterThan(2);
     });
+
 });
 
 // ============================================================================

@@ -35,6 +35,8 @@ export interface FidelityTopologyDiagnosticOptions {
 export interface FidelityQualityDiagnosticOptions {
   targetTriangles?: number;
   sampleLimit?: number;
+  triangleStart?: number;
+  triangleEnd?: number;
 }
 
 export interface FidelityTopologyDiagnostics extends TopologyDiagnostics {
@@ -189,12 +191,26 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       const styleId = currentStyleId();
       const mesh = await deps.generateMesh(opts.targetTriangles);
       if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const triangleCount = Math.floor(mesh.indices.length / 3);
+      const triangleStart = Math.min(triangleCount, Math.max(0, Math.floor(opts.triangleStart ?? 0)));
+      const triangleEnd = Math.min(
+        triangleCount,
+        Math.max(triangleStart, Math.floor(opts.triangleEnd ?? triangleCount)),
+      );
+      const diagnostics = triangleQualityDiagnostics(
+        {
+          vertices: mesh.vertices,
+          indices: mesh.indices.subarray(triangleStart * 3, triangleEnd * 3),
+        },
+        opts.sampleLimit ?? 16,
+      );
       return {
         styleId,
-        ...triangleQualityDiagnostics(
-          { vertices: mesh.vertices, indices: mesh.indices },
-          opts.sampleLimit ?? 16,
-        ),
+        ...diagnostics,
+        worst: diagnostics.worst.map((sample) => ({
+          ...sample,
+          triangleIndex: sample.triangleIndex + triangleStart,
+        })),
       };
     },
   };

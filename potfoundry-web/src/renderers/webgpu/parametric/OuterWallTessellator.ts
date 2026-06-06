@@ -298,6 +298,10 @@ const R54_NARROW_TO_BAND_MAX = 0.2;
  * Value = mathematical 4:1 aspect ratio violation threshold.
  */
 const GRID_CHAIN_COALESCE_RADIUS = 0.0006;
+/** Protected row pins closer than this are below exportable feature scale. */
+const PROTECTED_ROW_PIN_COALESCE_RADIUS = 0.00015;
+/** Grid/phantom row support pins inside the quality bound yield to exact chain anchors. */
+const GRID_CHAIN_ROW_REMAP_RADIUS = GRID_CHAIN_COALESCE_RADIUS;
 // Must equal GRID_CHAIN_COALESCE_RADIUS (the pin-pair tolerance). A chain vertex
 // within this U-distance of a column boundary is propagated into the ADJACENT
 // cell so the shared vertical edge conforms to the exact (infinite-precision)
@@ -723,6 +727,228 @@ function dedupeSortedVertexEdge(edge: number[]): number[] {
         prev = vertexIdx;
     }
     return deduped;
+}
+
+/**
+ * Remove interior same-row pins that are too close to produce a usable triangle.
+ * Row endpoints and active constraint endpoints are preserved.
+ */
+export function pruneNearDuplicateRowEdgePins(
+    edge: number[],
+    verts: Float32Array,
+    protectedVertices: ReadonlySet<number>,
+    radius: number = GRID_CHAIN_COALESCE_RADIUS,
+    options?: {
+        remapDroppedToSurvivor?: Map<number, number>;
+        shouldRemapDroppedVertex?: (dropped: number, survivor: number) => boolean;
+    },
+): number[] {
+    if (edge.length <= 1) return edge;
+
+    const sortedEdge = [...edge].sort((a, b) => verts[a * 3] - verts[b * 3]);
+    const endpointVertices = new Set([sortedEdge[0], sortedEdge[sortedEdge.length - 1]]);
+    const isProtected = (vertexIdx: number): boolean =>
+        endpointVertices.has(vertexIdx) || protectedVertices.has(vertexIdx);
+    const rowSpanU = (verticesInGroup: number[]): number => {
+        let minU = Infinity;
+        let maxU = -Infinity;
+        for (const vertexIdx of verticesInGroup) {
+            const u = verts[vertexIdx * 3];
+            minU = Math.min(minU, u);
+            maxU = Math.max(maxU, u);
+        }
+        const span = maxU - minU;
+        return span > 0.5 ? 1 - span : span;
+    };
+    const rowDistanceU = (a: number, b: number): number => {
+        const au = verts[a * 3];
+        const bu = verts[b * 3];
+        let du = Math.abs(au - bu);
+        if (du > 0.5) du = 1 - du;
+        return du;
+    };
+    const sameRowClose = (a: number, b: number): boolean => {
+        const at = verts[a * 3 + 1];
+        const bt = verts[b * 3 + 1];
+        return Math.abs(at - bt) <= 1e-9 && rowDistanceU(a, b) < radius;
+    };
+    const pruned: number[] = [];
+    let group: number[] = [];
+    const recordDropped = (dropped: number, survivor: number): void => {
+        if (dropped === survivor) return;
+        if (!options?.remapDroppedToSurvivor) return;
+        if (options.shouldRemapDroppedVertex && !options.shouldRemapDroppedVertex(dropped, survivor)) return;
+        if (!options.remapDroppedToSurvivor.has(dropped)) {
+            options.remapDroppedToSurvivor.set(dropped, survivor);
+        }
+    };
+    const pushSurvivor = (survivor: number): void => {
+        for (const dropped of group) {
+            recordDropped(dropped, survivor);
+        }
+        pruned.push(survivor);
+    };
+
+    if (sortedEdge.length === 2) {
+        const [a, b] = sortedEdge;
+        if (
+            protectedVertices.has(a) &&
+            protectedVertices.has(b) &&
+            sameRowClose(a, b) &&
+            rowSpanU(sortedEdge) < PROTECTED_ROW_PIN_COALESCE_RADIUS
+        ) {
+            recordDropped(a, b);
+            return [b];
+        }
+        return sortedEdge;
+    }
+
+    const flush = (): void => {
+        if (group.length === 0) return;
+        if (group.length === 1) {
+            pruned.push(group[0]);
+            group = [];
+            return;
+        }
+
+        const protectedGroup = group.filter(isProtected);
+        if (protectedGroup.length === 1) {
+            pushSurvivor(protectedGroup[0]);
+        } else if (protectedGroup.length > 1) {
+            if (rowSpanU(protectedGroup) < PROTECTED_ROW_PIN_COALESCE_RADIUS) {
+                pushSurvivor(protectedGroup[protectedGroup.length - 1]);
+            } else {
+                const keptProtected: number[] = [];
+                for (let i = 0; i < protectedGroup.length; i++) {
+                    const start = protectedGroup[i];
+                    if (endpointVertices.has(start)) {
+                        keptProtected.push(start);
+                        continue;
+                    }
+                    const cluster = [start];
+                    while (
+                        i + 1 < protectedGroup.length &&
+                        !endpointVertices.has(protectedGroup[i + 1]) &&
+                        rowDistanceU(protectedGroup[i], protectedGroup[i + 1]) < PROTECTED_ROW_PIN_COALESCE_RADIUS
+                    ) {
+                        cluster.push(protectedGroup[i + 1]);
+                        i++;
+                    }
+                    keptProtected.push(cluster[cluster.length - 1]);
+                }
+                const keptProtectedSet = new Set(keptProtected);
+                const nearestKeptProtected = (vertexIdx: number): number => {
+                    let nearest = keptProtected[0];
+                    let nearestDist = rowDistanceU(vertexIdx, nearest);
+                    for (let i = 1; i < keptProtected.length; i++) {
+                        const protectedIdx = keptProtected[i];
+                        const dist = rowDistanceU(vertexIdx, protectedIdx);
+                        if (dist < nearestDist) {
+                            nearestDist = dist;
+                            nearest = protectedIdx;
+                        }
+                    }
+                    return nearest;
+                };
+                const kept = group.filter(vertexIdx =>
+                    keptProtectedSet.has(vertexIdx) ||
+                    (!isProtected(vertexIdx) && keptProtected.every(protectedIdx =>
+                        rowDistanceU(vertexIdx, protectedIdx) >= PROTECTED_ROW_PIN_COALESCE_RADIUS,
+                    )));
+                const keptSet = new Set(kept);
+                for (const dropped of group) {
+                    if (keptSet.has(dropped)) continue;
+                    recordDropped(dropped, nearestKeptProtected(dropped));
+                }
+                pushAll(pruned, kept);
+            }
+        } else {
+            pushSurvivor(group[Math.floor(group.length / 2)]);
+        }
+        group = [];
+    };
+
+    for (const vertexIdx of sortedEdge) {
+        if (group.length === 0 || sameRowClose(group[group.length - 1], vertexIdx)) {
+            group.push(vertexIdx);
+        } else {
+            flush();
+            group.push(vertexIdx);
+        }
+    }
+    flush();
+    return pruned;
+}
+
+export function recordNearRowGridChainRemaps(
+    verts: Float32Array,
+    totalVertices: number,
+    isGridLikeFn: (idx: number) => boolean,
+    isChainLikeFn: (idx: number) => boolean,
+    radius: number,
+    remap: Map<number, number>,
+): number {
+    const T_KEY_SCALE = 1e6;
+    const rowChainVertices = new Map<number, number[]>();
+    const rowKey = (vertexIdx: number): number => Math.round(verts[vertexIdx * 3 + 1] * T_KEY_SCALE);
+    const rowDistanceU = (a: number, b: number): number => {
+        let du = Math.abs(verts[a * 3] - verts[b * 3]);
+        if (du > 0.5) du = 1 - du;
+        return du;
+    };
+
+    for (let vertexIdx = 0; vertexIdx < totalVertices; vertexIdx++) {
+        if (!isChainLikeFn(vertexIdx)) continue;
+        const key = rowKey(vertexIdx);
+        const row = rowChainVertices.get(key);
+        if (row) {
+            row.push(vertexIdx);
+        } else {
+            rowChainVertices.set(key, [vertexIdx]);
+        }
+    }
+    for (const row of rowChainVertices.values()) {
+        row.sort((a, b) => verts[a * 3] - verts[b * 3]);
+    }
+
+    let recorded = 0;
+    for (let vertexIdx = 0; vertexIdx < totalVertices; vertexIdx++) {
+        if (!isGridLikeFn(vertexIdx)) continue;
+        if (remap.has(vertexIdx)) continue;
+        const row = rowChainVertices.get(rowKey(vertexIdx));
+        if (!row || row.length === 0) continue;
+
+        const u = verts[vertexIdx * 3];
+        let lo = 0;
+        let hi = row.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (verts[row[mid] * 3] < u) lo = mid + 1;
+            else hi = mid;
+        }
+
+        let nearest = -1;
+        let nearestDist = Infinity;
+        const check = (pos: number): void => {
+            if (pos < 0 || pos >= row.length) return;
+            const candidate = row[pos];
+            const dist = rowDistanceU(vertexIdx, candidate);
+            if (dist < radius && dist < nearestDist) {
+                nearest = candidate;
+                nearestDist = dist;
+            }
+        };
+        check(lo - 1);
+        check(lo);
+        check(0);
+        check(row.length - 1);
+
+        if (nearest >= 0) {
+            remap.set(vertexIdx, nearest);
+            recorded++;
+        }
+    }
+    return recorded;
 }
 
 // NOTE: sweepRegion, simpleSweep, constraintAwareTriangulate removed in v23.0.
@@ -1528,11 +1754,7 @@ export function buildCDTOuterWall(
                     candidate.kind !== undefined,
                 );
             if (candidates.length === 0) return rowVerts;
-            const candidateSet = new Set(
-                candidates
-                    .filter(candidate => candidate.kind === 'active' || candidates.length >= 2)
-                    .map(candidate => candidate.vertexIdx),
-            );
+            const candidateSet = new Set(candidates.map(candidate => candidate.vertexIdx));
             if (candidateSet.size === 0) return rowVerts;
             return rowVerts.filter(vertexIdx => !candidateSet.has(vertexIdx));
         };
@@ -1846,7 +2068,13 @@ export function buildCDTOuterWall(
     /** Fraction of band height: crossings closer to a boundary than this are skipped */
     const R37_DEGEN_GUARD_FRAC = 0.05;
     /** Absolute minimum distance from band boundary for a valid crossing */
-    const R37_DEGEN_GUARD_MIN = 1e-4;
+    const R37_DEGEN_GUARD_MIN = 2e-4;
+    /**
+     * R37 rows are optional auxiliary splits. Keep a reserve below the final
+     * hard-sliver threshold because style deformation can amplify source-space
+     * aspect after GPU surface evaluation.
+     */
+    const R37_MAX_SOURCE_ASPECT = 60;
     /** Threshold for merging phantom vertices at similar U positions */
     const R37_U_MERGE = 1e-4;
 
@@ -1854,7 +2082,7 @@ export function buildCDTOuterWall(
     const phantomVertexChainIds = new Map<number, number>();
     const protectedStripVertices = new Set<number>();
     let nextPhantomIdx = phantomVertexStart;
-    let r37ClampedCrossings = 0;
+    let r37SkippedNearBoundaryCrossings = 0;
     let r37BoundaryTouchCrossings = 0;
 
     const R38_COMPANION_FRACTION = 0.5;
@@ -1927,6 +2155,16 @@ export function buildCDTOuterWall(
             const tTop = activeTPositions[r37Band + 1];
             const bandHeight = tTop - tBot;
             const degenGuard = Math.max(R37_DEGEN_GUARD_MIN, R37_DEGEN_GUARD_FRAC * bandHeight);
+            let maxAdjacentColumnWidth = 0;
+            const firstQualityCol = Math.max(0, ownedSpan.colStart - 1);
+            const lastQualityCol = Math.min(cellsPerRow - 1, ownedSpan.colEnd + 1);
+            for (let c = firstQualityCol; c <= lastQualityCol; c++) {
+                const width = Math.abs(unionU[c + 1] - unionU[c]);
+                if (width <= SEAM_GUARD) {
+                    maxAdjacentColumnWidth = Math.max(maxAdjacentColumnWidth, width);
+                }
+            }
+            const metricColumnWidth = maxAdjacentColumnWidth * metricAspect;
 
             // Collect unique chain edges for this owned span
             const scEdgeSet = new Set<string>();
@@ -1961,14 +2199,25 @@ export function buildCDTOuterWall(
                     if (crossesBoundary || touchesBoundary) {
                         const alpha = (uBound - u0) / (u1 - u0);
                         const tCross = t0 + alpha * (t1 - t0);
-                        const clampedTCross = Math.max(tBot + degenGuard, Math.min(tTop - degenGuard, tCross));
                         if (touchesBoundary) {
                             r37BoundaryTouchCrossings++;
                         }
-                        if (Math.abs(clampedTCross - tCross) > 1e-10) {
-                            r37ClampedCrossings++;
+                        if (tCross <= tBot + degenGuard || tCross >= tTop - degenGuard) {
+                            r37SkippedNearBoundaryCrossings++;
+                            continue;
                         }
-                        crossingTs.push(clampedTCross);
+                        const minSubBandHeight = Math.min(tCross - tBot, tTop - tCross);
+                        const sourceAspect = metricColumnWidth > 0 && minSubBandHeight > 0
+                            ? (
+                                (metricColumnWidth * metricColumnWidth + minSubBandHeight * minSubBandHeight) *
+                                Math.sqrt(3)
+                            ) / (2 * metricColumnWidth * minSubBandHeight)
+                            : Number.POSITIVE_INFINITY;
+                        if (sourceAspect > R37_MAX_SOURCE_ASPECT) {
+                            r37SkippedNearBoundaryCrossings++;
+                            continue;
+                        }
+                        crossingTs.push(tCross);
                     }
                 }
             }
@@ -2183,7 +2432,7 @@ export function buildCDTOuterWall(
     }
 
     if (phantomVertexCount > 0) {
-        console.log(`[CDT] R37: ${phantomVertexCount} phantom vertices, ${edgeSplitMap.size} edges split, ${ownedSpanR37.size} owned spans with band splitting, clamped=${r37ClampedCrossings}, boundaryTouch=${r37BoundaryTouchCrossings}`);
+        console.log(`[CDT] R37: ${phantomVertexCount} phantom vertices, ${edgeSplitMap.size} edges split, ${ownedSpanR37.size} owned spans with band splitting, skippedNearBoundary=${r37SkippedNearBoundaryCrossings}, boundaryTouch=${r37BoundaryTouchCrossings}`);
     }
 
     // ── R53: Boundary Phantom Propagation (BPP) — T-junction elimination ──
@@ -2502,6 +2751,11 @@ export function buildCDTOuterWall(
 
     // R55: Track grid→chain vertex coalescing for post-processing T-junction fix
     const coalesceMap = new Map<number, number>();
+    const recordGridToChainPruneRemap = {
+        remapDroppedToSurvivor: coalesceMap,
+        shouldRemapDroppedVertex: (dropped: number, survivor: number): boolean =>
+            isGridLike(dropped) && isChainLike(survivor),
+    };
 
     // R36: Track grid vertices adjacent to chain/super-cells for optimizer visibility
     const chainAdjacentGridVerts = new Set<number>();
@@ -2849,13 +3103,30 @@ export function buildCDTOuterWall(
         }
         chainCellCount += (colEnd - colStart + 1);
         const geometry = buildOwnedSpanGeometry(span);
+        const geometryProtectedVertices = new Set<number>();
+        for (const [v0, v1] of geometry.uniqueEdges) {
+            geometryProtectedVertices.add(v0);
+            geometryProtectedVertices.add(v1);
+        }
 
         // R55: Coalesce near-coincident grid vertices with chain vertices
-        const coalBot = dedupeSortedVertexEdge(
-            coalesceNearGridChain(geometry.bottomEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce),
+        const coalBot = pruneNearDuplicateRowEdgePins(
+            dedupeSortedVertexEdge(
+                coalesceNearGridChain(geometry.bottomEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce),
+            ),
+            vertices,
+            geometryProtectedVertices,
+            GRID_CHAIN_COALESCE_RADIUS,
+            recordGridToChainPruneRemap,
         );
-        const coalTop = dedupeSortedVertexEdge(
-            coalesceNearGridChain(geometry.topEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce),
+        const coalTop = pruneNearDuplicateRowEdgePins(
+            dedupeSortedVertexEdge(
+                coalesceNearGridChain(geometry.topEdge, vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce),
+            ),
+            vertices,
+            geometryProtectedVertices,
+            GRID_CHAIN_COALESCE_RADIUS,
+            recordGridToChainPruneRemap,
         );
 
         // R36.1: Mark only INTERMEDIATE column grid vertices as chain-adjacent.
@@ -3016,18 +3287,49 @@ export function buildCDTOuterWall(
 
         if (r37 && r37.phantomRows.length > 0) {
             const sortedRows = [...r37.phantomRows].sort((a, b) => a.tCross - b.tCross);
+            const r37ProtectedVertices = new Set<number>();
+            for (const [v0, v1] of r37.subEdges) {
+                r37ProtectedVertices.add(v0);
+                r37ProtectedVertices.add(v1);
+            }
 
             // Build sub-band boundary edge arrays: [coalBot, phantomRow1, ..., coalTop]
-            const boundaries: number[][] = [coalBot];
+            const boundaries: number[][] = [
+                pruneNearDuplicateRowEdgePins(
+                    coalBot,
+                    vertices,
+                    r37ProtectedVertices,
+                    GRID_CHAIN_COALESCE_RADIUS,
+                    recordGridToChainPruneRemap,
+                ),
+            ];
             for (const pr of sortedRows) {
-                boundaries.push([...pr.vertexIndices]);
+                boundaries.push(pruneNearDuplicateRowEdgePins(
+                    [...pr.vertexIndices],
+                    vertices,
+                    r37ProtectedVertices,
+                    GRID_CHAIN_COALESCE_RADIUS,
+                    recordGridToChainPruneRemap,
+                ));
             }
-            boundaries.push(coalTop);
+            boundaries.push(pruneNearDuplicateRowEdgePins(
+                coalTop,
+                vertices,
+                r37ProtectedVertices,
+                GRID_CHAIN_COALESCE_RADIUS,
+                recordGridToChainPruneRemap,
+            ));
 
             // R55: Coalesce intermediate phantom row boundaries
             for (let i = 1; i < boundaries.length - 1; i++) {
-                boundaries[i] = dedupeSortedVertexEdge(
-                    coalesceNearGridChain(boundaries[i], vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce),
+                boundaries[i] = pruneNearDuplicateRowEdgePins(
+                    dedupeSortedVertexEdge(
+                        coalesceNearGridChain(boundaries[i], vertices, isGridLike, isChainLike, GRID_CHAIN_COALESCE_RADIUS, coalesceMap, safeToCoalesce),
+                    ),
+                    vertices,
+                    r37ProtectedVertices,
+                    GRID_CHAIN_COALESCE_RADIUS,
+                    recordGridToChainPruneRemap,
                 );
             }
 
@@ -3183,6 +3485,18 @@ export function buildCDTOuterWall(
 
     // R53 Phase 2: Update phantom count to include vertices created by emitChainSplitCell
     phantomVertexCount = nextPhantomIdx - phantomVertexStart;
+
+    const globalRowRemapCount = recordNearRowGridChainRemaps(
+        vertices,
+        totalVertexCount + phantomVertexCount,
+        isGridLike,
+        isChainLike,
+        GRID_CHAIN_ROW_REMAP_RADIUS,
+        coalesceMap,
+    );
+    if (globalRowRemapCount > 0) {
+        console.log(`[CDT] R58 row grid-chain remaps: ${globalRowRemapCount}`);
+    }
 
     // ╔══════════════════════════════════════════════════════════════════════╗
     // ║ R55 GRID/CHAIN VERTEX COALESCING — Post-processing T-junction fix   ║

@@ -179,6 +179,30 @@ describe('buildPeriodicSeamClosure', () => {
         expect(res.triangles).toHaveLength(0);
     });
 
+    it('does not bridge a seam rail edge to an apex across a disconnected T gap', () => {
+        const vertices = new Float32Array([
+            0.000, 0.50, 0,
+            0.000, 0.51, 0,
+            0.997, 0.00, 0,
+            0.997, 0.10, 0,
+            0.500, 0.505, 0,
+            0.500, 0.050, 0,
+        ]);
+        const indices = new Uint32Array([
+            0, 1, 4,
+            2, 5, 3,
+        ]);
+
+        const res = buildPeriodicSeamClosure(indices, vertices);
+
+        // Both rail edges are real seam boundaries, but they belong to separate
+        // T ranges. A zipper triangle would be an extreme sliver spanning the gap.
+        expect(res.lowSeamEdges).toBe(1);
+        expect(res.highSeamEdges).toBe(1);
+        expect(res.triangles).toHaveLength(0);
+        expect(res.skippedUnsafe).toBeGreaterThan(0);
+    });
+
     it('gates on CANONICAL (welded) topology: stray u=1.0 verts coincident with col-0 never create a welded non-manifold edge', () => {
         // Reproduces the real export failure: the periodic cylinder has u=0 and u=1.0 at
         // the SAME 3D point, and an earlier tail pass left stray u=1.0 verts that are

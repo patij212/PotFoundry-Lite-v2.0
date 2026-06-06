@@ -190,6 +190,12 @@ export function buildPeriodicSeamClosure(
         if (apex === railA || apex === railB || railA === railB) return false;
         const eRail = edgeKey(railA, railB, stride);
         if (!boundarySet.has(eRail)) return false; // only close real boundary edges
+        const tA = canonT(railA);
+        const tB = canonT(railB);
+        const tC = canonT(apex);
+        const minRailT = Math.min(tA, tB) - MIN_SEAM_EDGE_T_SPAN;
+        const maxRailT = Math.max(tA, tB) + MIN_SEAM_EDGE_T_SPAN;
+        if (tC < minRailT || tC > maxRailT) return false;
         const eA = edgeKey(railA, apex, stride);
         const eB = edgeKey(railB, apex, stride);
         if (eA === eB) return false;
@@ -198,9 +204,9 @@ export function buildPeriodicSeamClosure(
         if ((incidence.get(eA) ?? 0) >= 2) return false;
         if ((incidence.get(eB) ?? 0) >= 2) return false;
         // Winding by unwrapped-u signed area (skip near-degenerate area).
-        const uA = unwrappedU(railA), tA = canonT(railA);
-        const uB = unwrappedU(railB), tB = canonT(railB);
-        const uC = unwrappedU(apex), tC = canonT(apex);
+        const uA = unwrappedU(railA);
+        const uB = unwrappedU(railB);
+        const uC = unwrappedU(apex);
         const cross = (uB - uA) * (tC - tA) - (uC - uA) * (tB - tA);
         if (Math.abs(cross) < 1e-12) return false;
         const rA = reprRaw.get(railA) ?? railA;

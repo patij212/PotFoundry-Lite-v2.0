@@ -7,6 +7,8 @@
  * geometry is moved and feature/chain precision is preserved.
  */
 
+import { normalizeWindingByComponent } from './WindingNormalizer';
+
 // Number-encoded undirected edge key: min(a,b) * EDGE_STRIDE + max(a,b).
 // Vertex indices are < EDGE_STRIDE (2^21); the product stays < 2^42, well within
 // the 2^53 safe-integer range, so Number keys are collision-free and far cheaper
@@ -15,6 +17,7 @@ const EDGE_STRIDE = 0x200000;
 const UV_WELD_EPS = 1e-5;
 const UV_SEGMENT_SPLIT_EPS = 1e-4;
 const PROJECTED_LOOP_FILL_MAX_ASPECT = 100;
+const WINDING_GUARD_MAX_WELD_TOLERANCE_MM = 1e-4;
 
 // --- Precomputed canonical vertex map -------------------------------------
 // canonicalizeVertex maps each vertex index to a canonical id derived from a
@@ -166,6 +169,12 @@ function edgeKey(a: number, b: number): number {
         : b * EDGE_STRIDE + a;
 }
 
+function windingGuardWeldTolerance(topologyWeldToleranceMm: number): number {
+    return topologyWeldToleranceMm > 0
+        ? Math.min(topologyWeldToleranceMm, WINDING_GUARD_MAX_WELD_TOLERANCE_MM)
+        : 0;
+}
+
 function isOuterMidVertex(uvs: Float32Array, v: number): boolean {
     const base = v * 3;
     const surfaceId = Math.round(uvs[base + 2] ?? -1);
@@ -283,6 +292,38 @@ function pointOnSegmentParam(uvs: Float32Array, a: number, b: number, p: number)
     const projT = at + s * dt;
     const distSq = (pu - projU) * (pu - projU) + (pt - projT) * (pt - projT);
     return distSq <= UV_SEGMENT_SPLIT_EPS * UV_SEGMENT_SPLIT_EPS ? s : null;
+}
+
+function pointNearSegmentParam3D(
+    positions: Float32Array,
+    a: number,
+    b: number,
+    p: number,
+    topologyWeldToleranceMm: number,
+): number | null {
+    const ax = positions[a * 3] ?? 0;
+    const ay = positions[a * 3 + 1] ?? 0;
+    const az = positions[a * 3 + 2] ?? 0;
+    const bx = positions[b * 3] ?? 0;
+    const by = positions[b * 3 + 1] ?? 0;
+    const bz = positions[b * 3 + 2] ?? 0;
+    const px = positions[p * 3] ?? 0;
+    const py = positions[p * 3 + 1] ?? 0;
+    const pz = positions[p * 3 + 2] ?? 0;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    const len2 = dx * dx + dy * dy + dz * dz;
+    if (len2 < 1e-16) return null;
+    const s = ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / len2;
+    if (s <= 1e-6 || s >= 1 - 1e-6) return null;
+    const projX = ax + s * dx;
+    const projY = ay + s * dy;
+    const projZ = az + s * dz;
+    const dist2 = (px - projX) ** 2 + (py - projY) ** 2 + (pz - projZ) ** 2;
+    const len = Math.sqrt(len2);
+    const tol = Math.max(topologyWeldToleranceMm * 2, Math.min(len * 0.25, 0.02));
+    return dist2 <= tol * tol ? s : null;
 }
 
 function uvDistanceSq(uvs: Float32Array, a: number, b: number): number {
@@ -527,6 +568,34 @@ function buildCanonicalEdgeState(
     return { edgeCounts, canonical, keyToId };
 }
 
+function countCanonicalOrientationMismatches(
+    indices: Uint32Array,
+    uvs: Float32Array,
+    positions?: Float32Array,
+    topologyWeldToleranceMm: number = 0,
+): number {
+    const canonical = getGlobalVertexCanonical(uvs, positions, topologyWeldToleranceMm);
+    const directions = new Map<number, [number, number]>();
+    for (let t = 0; t < indices.length; t += 3) {
+        const a = canonical[indices[t]];
+        const b = canonical[indices[t + 1]];
+        const c = canonical[indices[t + 2]];
+        if (a === b || b === c || a === c) continue;
+        for (const [from, to] of [[a, b], [b, c], [c, a]] as Array<[number, number]>) {
+            const key = edgeKey(from, to);
+            const counts = directions.get(key) ?? [0, 0];
+            counts[from < to ? 0 : 1]++;
+            directions.set(key, counts);
+        }
+    }
+
+    let mismatches = 0;
+    for (const [forward, reverse] of directions.values()) {
+        if (forward + reverse === 2 && (forward === 2 || reverse === 2)) mismatches++;
+    }
+    return mismatches;
+}
+
 function addTriangleEdgesIfManifoldSafe(
     state: CanonicalEdgeState,
     tris: number[],
@@ -608,6 +677,8 @@ function findSplitSequence(
     canonB: number,
     boundaryNeighbors: Map<number, Set<number>>,
     representativeRaw: Map<number, number>,
+    segmentParam: (rawVertex: number) => number | null = (rawVertex) =>
+        pointOnSegmentParam(uvs, rawA, rawB, rawVertex),
 ): SplitSequence | null {
     const MAX_SEGMENTS = 32;
     interface State {
@@ -625,7 +696,7 @@ function findSplitSequence(
         if (n === canonB) continue;
         const rawN = representativeRaw.get(n);
         if (rawN === undefined || !isOuterMidVertex(uvs, rawN)) continue;
-        const s = pointOnSegmentParam(uvs, rawA, rawB, rawN);
+        const s = segmentParam(rawN);
         if (s === null) continue;
         queue.push({
             canonical: n,
@@ -652,7 +723,7 @@ function findSplitSequence(
             if (state.canonicalPath.includes(n)) continue;
             const rawN = representativeRaw.get(n);
             if (rawN === undefined || !isOuterMidVertex(uvs, rawN)) continue;
-            const s = pointOnSegmentParam(uvs, rawA, rawB, rawN);
+            const s = segmentParam(rawN);
             if (s === null || s <= state.s + 1e-6) continue;
             queue.push({
                 canonical: n,
@@ -666,6 +737,19 @@ function findSplitSequence(
     return null;
 }
 
+function splitPathOpposesBoundaryOwners(
+    sequence: SplitSequence,
+    boundaryRecordByKey: Map<number, BoundaryEdgeRecord>,
+): boolean {
+    for (let i = 0; i < sequence.canonical.length - 1; i++) {
+        const ca = sequence.canonical[i];
+        const cb = sequence.canonical[i + 1];
+        const owner = boundaryRecordByKey.get(edgeKey(ca, cb));
+        if (!owner || owner.canonA !== cb || owner.canonB !== ca) return false;
+    }
+    return true;
+}
+
 function splitBoundaryTJunctionPass(
     outerIndices: Uint32Array,
     uvs: Float32Array,
@@ -673,7 +757,7 @@ function splitBoundaryTJunctionPass(
     topologyWeldToleranceMm: number = 0,
 ): { indices: Uint32Array; repairedEdges: number; insertedTriangles: number } {
     const __sbtA = performance.now(); // TEMP-TJPROBE
-    const { records, boundaryKeys, boundaryNeighbors, representativeRaw } = collectBoundaryEdges(
+    const { records, boundaryNeighbors, representativeRaw } = collectBoundaryEdges(
         outerIndices,
         outerIndices.length,
         uvs,
@@ -690,6 +774,8 @@ function splitBoundaryTJunctionPass(
     const mutable = new Uint32Array(outerIndices);
     const appended: number[] = [];
     const touchedTris = new Set<number>();
+    const boundaryRecordByKey = new Map<number, BoundaryEdgeRecord>();
+    for (const record of records) boundaryRecordByKey.set(record.key, record);
     let repairedEdges = 0;
 
     for (const record of records) {
@@ -708,14 +794,7 @@ function splitBoundaryTJunctionPass(
             representativeRaw,
         );
         if (!sequence) continue;
-        let closesSplitSide = true;
-        for (let i = 0; i < sequence.canonical.length - 1; i++) {
-            if (!boundaryKeys.has(edgeKey(sequence.canonical[i], sequence.canonical[i + 1]))) {
-                closesSplitSide = false;
-                break;
-            }
-        }
-        if (!closesSplitSide) continue;
+        if (!splitPathOpposesBoundaryOwners(sequence, boundaryRecordByKey)) continue;
 
         mutable[record.triOffset] = sequence.raw[0];
         mutable[record.triOffset + 1] = sequence.raw[1];
@@ -811,6 +890,24 @@ function replaceTriangleVertexDeltas(
     return deltas;
 }
 
+function replacementEdgesOpposeBoundaryOwners(
+    record: BoundaryEdgeRecord,
+    replaceCanon: number,
+    replacementCanon: number,
+    boundaryRecordByKey: Map<number, BoundaryEdgeRecord>,
+): boolean {
+    const replaced = [record.canonA, record.canonB, record.oppCanon]
+        .map(vertex => vertex === replaceCanon ? replacementCanon : vertex);
+    for (let i = 0; i < 3; i++) {
+        const from = replaced[i];
+        const to = replaced[(i + 1) % 3];
+        if (from !== replacementCanon && to !== replacementCanon) continue;
+        const owner = boundaryRecordByKey.get(edgeKey(from, to));
+        if (owner && (owner.canonA !== to || owner.canonB !== from)) return false;
+    }
+    return true;
+}
+
 function replaceRawVertexInTriangle(mutable: Uint32Array, triOffset: number, rawTarget: number, rawReplacement: number): boolean {
     for (let i = 0; i < 3; i++) {
         if (mutable[triOffset + i] !== rawTarget) continue;
@@ -825,11 +922,16 @@ function canonicalTriangleKey(a: number, b: number, c: number): string {
     return `${sorted[0]}:${sorted[1]}:${sorted[2]}`;
 }
 
-function compactDuplicateCanonicalTriangles(
+interface CompactDuplicateCanonicalTrianglesOptions {
+    preserveBoundaryEdges?: boolean;
+}
+
+export function compactDuplicateCanonicalTriangles(
     indices: Uint32Array,
     uvs: Float32Array,
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
+    options: CompactDuplicateCanonicalTrianglesOptions = {},
 ): { indices: Uint32Array; removedTriangles: number } {
     const canonical: CanonicalVertexData = {
         remap: new Map<number, number>(),
@@ -840,24 +942,62 @@ function compactDuplicateCanonicalTriangles(
     const seen = new Set<string>();
     const kept: number[] = [];
     let removedTriangles = 0;
+    const edgeCounts = new Map<number, number>();
+    const triangles: Array<{
+        raw: [number, number, number];
+        canonical: [number, number, number] | null;
+        edges: [number, number, number] | null;
+        key: string | null;
+    }> = [];
 
     for (let t = 0; t < indices.length; t += 3) {
         const a = indices[t], b = indices[t + 1], c = indices[t + 2];
         if (a === b || b === c || a === c) {
-            removedTriangles++;
+            triangles.push({ raw: [a, b, c], canonical: null, edges: null, key: null });
             continue;
         }
         const ca = canonicalizeVertex(uvs, a, canonical, keyToId, positions, topologyWeldToleranceMm);
         const cb = canonicalizeVertex(uvs, b, canonical, keyToId, positions, topologyWeldToleranceMm);
         const cc = canonicalizeVertex(uvs, c, canonical, keyToId, positions, topologyWeldToleranceMm);
         if (ca === cb || cb === cc || ca === cc) {
-            removedTriangles++;
+            triangles.push({ raw: [a, b, c], canonical: null, edges: null, key: null });
             continue;
         }
 
         const key = canonicalTriangleKey(ca, cb, cc);
-        if (seen.has(key)) {
+        const edges: [number, number, number] = [
+            edgeKey(ca, cb),
+            edgeKey(cb, cc),
+            edgeKey(cc, ca),
+        ];
+        for (const edge of edges) {
+            edgeCounts.set(edge, (edgeCounts.get(edge) ?? 0) + 1);
+        }
+        triangles.push({ raw: [a, b, c], canonical: [ca, cb, cc], edges, key });
+    }
+
+    for (const tri of triangles) {
+        const [a, b, c] = tri.raw;
+        if (!tri.canonical || !tri.edges || !tri.key) {
             removedTriangles++;
+            continue;
+        }
+
+        const key = tri.key;
+        if (seen.has(key)) {
+            if (
+                options.preserveBoundaryEdges &&
+                tri.edges.some(edge => (edgeCounts.get(edge) ?? 0) <= 2)
+            ) {
+                kept.push(a, b, c);
+                continue;
+            }
+            removedTriangles++;
+            for (const edge of tri.edges) {
+                const next = (edgeCounts.get(edge) ?? 0) - 1;
+                if (next <= 0) edgeCounts.delete(edge);
+                else edgeCounts.set(edge, next);
+            }
             continue;
         }
         seen.add(key);
@@ -1000,9 +1140,10 @@ function splitNonManifoldTJunctionPass(
     uvs: Float32Array,
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
+    segmentParamFactory?: (rawA: number, rawB: number) => (rawVertex: number) => number | null,
 ): { indices: Uint32Array; repairedEdges: number; insertedTriangles: number } {
     const {
-        boundaryKeys,
+        records,
         boundaryNeighbors,
         representativeRaw,
         edgeCounts,
@@ -1018,6 +1159,8 @@ function splitNonManifoldTJunctionPass(
     const mutable = new Uint32Array(outerIndices);
     const appended: number[] = [];
     const touchedTris = new Set<number>();
+    const boundaryRecordByKey = new Map<number, BoundaryEdgeRecord>();
+    for (const record of records) boundaryRecordByKey.set(record.key, record);
     let repairedEdges = 0;
 
     for (const [key, count] of Array.from(edgeCounts.entries())) {
@@ -1040,17 +1183,11 @@ function splitNonManifoldTJunctionPass(
                 record.canonB,
                 boundaryNeighbors,
                 representativeRaw,
+                segmentParamFactory?.(rawA, rawB),
             );
             if (!sequence) continue;
 
-            let closesSplitSide = true;
-            for (let i = 0; i < sequence.canonical.length - 1; i++) {
-                if (!boundaryKeys.has(edgeKey(sequence.canonical[i], sequence.canonical[i + 1]))) {
-                    closesSplitSide = false;
-                    break;
-                }
-            }
-            if (!closesSplitSide) continue;
+            if (!splitPathOpposesBoundaryOwners(sequence, boundaryRecordByKey)) continue;
 
             const deltas = splitTriangleEdgeDeltas(record, sequence);
             if (!canApplyEdgeDeltas(edgeCounts, deltas)) continue;
@@ -1082,6 +1219,41 @@ function splitNonManifoldTJunctionPass(
     };
 }
 
+export function splitNonManifoldBoundaryTJunctions(
+    indices: Uint32Array,
+    uvs: Float32Array,
+    positions?: Float32Array,
+    topologyWeldToleranceMm: number = 0,
+    maxPasses: number = 3,
+): { indices: Uint32Array; repairedEdges: number; insertedTriangles: number } {
+    let current = indices;
+    let repairedEdges = 0;
+    let insertedTriangles = 0;
+    for (let pass = 0; pass < maxPasses; pass++) {
+        let result = splitNonManifoldTJunctionPass(
+            current,
+            uvs,
+            positions,
+            topologyWeldToleranceMm,
+        );
+        if (result.repairedEdges === 0 && positions) {
+            result = splitNonManifoldTJunctionPass(
+                current,
+                uvs,
+                positions,
+                topologyWeldToleranceMm,
+                (rawA, rawB) => (rawVertex) =>
+                    pointNearSegmentParam3D(positions, rawA, rawB, rawVertex, topologyWeldToleranceMm),
+            );
+        }
+        if (result.repairedEdges === 0) break;
+        current = result.indices;
+        repairedEdges += result.repairedEdges;
+        insertedTriangles += result.insertedTriangles;
+    }
+    return { indices: current, repairedEdges, insertedTriangles };
+}
+
 function snapNonManifoldEndpointToBoundaryPass(
     outerIndices: Uint32Array,
     uvs: Float32Array,
@@ -1089,6 +1261,7 @@ function snapNonManifoldEndpointToBoundaryPass(
     topologyWeldToleranceMm: number = 0,
 ): { indices: Uint32Array; repairedEdges: number; insertedTriangles: number } {
     const {
+        records,
         boundaryNeighbors,
         representativeRaw,
         edgeCounts,
@@ -1103,6 +1276,8 @@ function snapNonManifoldEndpointToBoundaryPass(
     );
     const mutable = new Uint32Array(outerIndices);
     const touchedTris = new Set<number>();
+    const boundaryRecordByKey = new Map<number, BoundaryEdgeRecord>();
+    for (const record of records) boundaryRecordByKey.set(record.key, record);
     let repairedEdges = 0;
 
     for (const [key, count] of Array.from(edgeCounts.entries())) {
@@ -1152,6 +1327,12 @@ function snapNonManifoldEndpointToBoundaryPass(
             }
 
             for (const candidate of candidates) {
+                if (!replacementEdgesOpposeBoundaryOwners(
+                    record,
+                    candidate.replaceCanon,
+                    candidate.replacementCanon,
+                    boundaryRecordByKey,
+                )) continue;
                 const deltas = replaceTriangleVertexDeltas(
                     record,
                     candidate.replaceCanon,
@@ -1934,16 +2115,43 @@ export function fillSameSurfaceBoundaryLoopsWithCenters(
                 topologyWeldToleranceMm,
             );
             if (ordered) {
-                const orderedTris = triangulateProjectedLoopPreservingWinding(currentPositions, ordered);
-                if (
+                const orderedTris = triangulateProjectedLoopMinimizingAspect(currentPositions, ordered);
+                const projectedAspect = orderedTris.length > 0
+                    ? projectedFillMaxAspect3D(currentPositions, orderedTris)
+                    : Number.POSITIVE_INFINITY;
+                const centerFanAspect = averageCenterFanMaxAspect3D(currentPositions, loop);
+                const projectedIsPreferable =
                     orderedTris.length > 0 &&
+                    (
+                        projectedAspect <= PROJECTED_LOOP_FILL_MAX_ASPECT ||
+                        projectedAspect <= centerFanAspect
+                    );
+                if (
+                    projectedIsPreferable &&
                     addTriangleEdgesIfManifoldSafe(edgeState, orderedTris, currentUvs, currentPositions, topologyWeldToleranceMm)
                 ) {
+                    try {
+                        const global = globalThis as unknown as { __pfEnableLoopFillDiagnostics?: boolean };
+                        if (global.__pfEnableLoopFillDiagnostics) {
+                            console.warn(
+                                `[SAME-SURFACE-FILL] attempt=${attemptedLoops - 1} mode=ear ` +
+                                `triStart=${indices.length / 3 + appended.length / 3} len=${ordered.length} ` +
+                                `aspect=${projectedAspect.toFixed(6)} centerAspect=${centerFanAspect.toFixed(6)} ` +
+                                `loop=[${ordered.join(',')}]`,
+                            );
+                        }
+                    } catch { /* noop */ }
                     appended.push(...orderedTris);
                     filledLoops++;
                     continue;
                 }
             }
+        }
+
+        const centerFanAspect = averageCenterFanMaxAspect3D(currentPositions, loop);
+        if (loop.length > 4 && centerFanAspect > PROJECTED_LOOP_FILL_MAX_ASPECT) {
+            unsafeLoops++;
+            continue;
         }
 
         const center = averageLoopCenter(currentUvs, currentPositions, loop);
@@ -2051,10 +2259,38 @@ export function fillSameSurfaceBoundaryLoopsWithCenters(
     const repaired = new Uint32Array(indices.length + appended.length);
     repaired.set(indices);
     repaired.set(appended, indices.length);
+    const repairedUvs = insertedVertices > 0 ? currentUvs.slice() : uvs;
+    const repairedPositions = insertedVertices > 0 ? currentPositions.slice() : positions;
+    const windingWeldToleranceMm = windingGuardWeldTolerance(topologyWeldToleranceMm);
+    const conflictsBefore = normalizeWindingByComponent(
+        indices,
+        indices.length,
+        positions,
+        windingWeldToleranceMm,
+    ).conflicts;
+    const conflictsAfter = normalizeWindingByComponent(
+        repaired,
+        repaired.length,
+        repairedPositions,
+        windingWeldToleranceMm,
+    ).conflicts;
+    if (conflictsAfter > conflictsBefore) {
+        return {
+            indices,
+            uvs,
+            positions,
+            filledLoops: 0,
+            insertedTriangles: 0,
+            insertedVertices: 0,
+            attemptedLoops,
+            emptyTriangulations,
+            unsafeLoops: unsafeLoops + filledLoops,
+        };
+    }
     return {
         indices: repaired,
-        uvs: insertedVertices > 0 ? currentUvs.slice() : uvs,
-        positions: insertedVertices > 0 ? currentPositions.slice() : positions,
+        uvs: repairedUvs,
+        positions: repairedPositions,
         filledLoops,
         insertedTriangles: appended.length / 3,
         insertedVertices,
@@ -2238,11 +2474,30 @@ export function fillBranchedBoundaryComponentsWithCenters(
                 topologyWeldToleranceMm,
             );
             if (ordered) {
-                const orderedTris = triangulateProjectedLoopPreservingWinding(currentPositions, ordered);
+                const orderedTris = projectedLoopHasSelfIntersection(currentPositions, ordered)
+                    ? []
+                    : triangulateProjectedLoopMinimizingAspect(currentPositions, ordered);
                 if (
                     orderedTris.length > 0 &&
                     addTriangleEdgesIfManifoldSafe(edgeState, orderedTris, currentUvs, currentPositions, topologyWeldToleranceMm)
                 ) {
+                    try {
+                        const global = globalThis as unknown as { __pfEnableLoopFillDiagnostics?: boolean };
+                        if (global.__pfEnableLoopFillDiagnostics) {
+                            const aspect = projectedFillMaxAspect3D(currentPositions, orderedTris);
+                            const loopPositions = ordered.map((vertex) => [
+                                currentPositions[vertex * 3],
+                                currentPositions[vertex * 3 + 1],
+                                currentPositions[vertex * 3 + 2],
+                            ]);
+                            console.warn(
+                                `[BRANCHED-FILL] attempt=${attemptedLoops - 1} mode=ear ` +
+                                `triStart=${indices.length / 3 + appended.length / 3} len=${ordered.length} ` +
+                                `aspect=${aspect.toFixed(6)} loop=[${ordered.join(',')}] ` +
+                                `tris=[${orderedTris.join(',')}] positions=${JSON.stringify(loopPositions)}`,
+                            );
+                        }
+                    } catch { /* noop */ }
                     appended.push(...orderedTris);
                     filledLoops++;
                     continue;
@@ -2304,6 +2559,17 @@ export function fillBranchedBoundaryComponentsWithCenters(
         }
 
         insertedVertices++;
+        try {
+            const global = globalThis as unknown as { __pfEnableLoopFillDiagnostics?: boolean };
+            if (global.__pfEnableLoopFillDiagnostics) {
+                console.warn(
+                    `[BRANCHED-FILL] attempt=${attemptedLoops - 1} mode=fan ` +
+                    `triStart=${indices.length / 3 + appended.length / 3} len=${loop.length} center=${centerVertex} ` +
+                    `aspect=${projectedFillMaxAspect3D(currentPositions, acceptedFan).toFixed(6)} ` +
+                    `loop=[${loop.join(',')}]`,
+                );
+            }
+        } catch { /* noop */ }
         appended.push(...acceptedFan);
         filledLoops++;
     }
@@ -2442,6 +2708,295 @@ function projectedFillMaxAspect3D(positions: Float32Array, tris: number[]): numb
         if (aspect > maxAspect) maxAspect = aspect;
     }
     return maxAspect;
+}
+
+function averageCenterFanMaxAspect3D(positions: Float32Array, loop: number[]): number {
+    if (loop.length < 3) return Number.POSITIVE_INFINITY;
+    let centerX = 0, centerY = 0, centerZ = 0;
+    for (const vertex of loop) {
+        const base = vertex * 3;
+        centerX += positions[base];
+        centerY += positions[base + 1];
+        centerZ += positions[base + 2];
+    }
+    centerX /= loop.length;
+    centerY /= loop.length;
+    centerZ /= loop.length;
+
+    let maxAspect = 0;
+    for (let i = 0; i < loop.length; i++) {
+        const a = loop[i] * 3;
+        const b = loop[(i + 1) % loop.length] * 3;
+        const ax = positions[a], ay = positions[a + 1], az = positions[a + 2];
+        const bx = positions[b], by = positions[b + 1], bz = positions[b + 2];
+        const ab2 = (ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2;
+        const bc2 = (bx - centerX) ** 2 + (by - centerY) ** 2 + (bz - centerZ) ** 2;
+        const ca2 = (centerX - ax) ** 2 + (centerY - ay) ** 2 + (centerZ - az) ** 2;
+        const longest2 = Math.max(ab2, bc2, ca2);
+        const ux = bx - ax, uy = by - ay, uz = bz - az;
+        const vx = centerX - ax, vy = centerY - ay, vz = centerZ - az;
+        const cxp = uy * vz - uz * vy;
+        const cyp = uz * vx - ux * vz;
+        const czp = ux * vy - uy * vx;
+        const area = 0.5 * Math.hypot(cxp, cyp, czp);
+        const aspect = area > 1e-12
+            ? (longest2 * Math.sqrt(3)) / (4 * area)
+            : Number.POSITIVE_INFINITY;
+        if (aspect > maxAspect) maxAspect = aspect;
+    }
+    return maxAspect;
+}
+
+function triangulateProjectedLoopByEarQuality(positions: Float32Array, loopRaw: number[]): number[] {
+    if (loopRaw.length < 3) return [];
+    const loop = projectedLoopPoints(positions, loopRaw);
+    const area = polygonArea(loop);
+    if (Math.abs(area) < 1e-14) return [];
+    const sign = area >= 0 ? 1 : -1;
+
+    const remaining = [...loop];
+    const triangles: number[] = [];
+    let guard = 0;
+    while (remaining.length > 3 && guard++ < loop.length * loop.length) {
+        let bestIndex = -1;
+        let bestAspect = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < remaining.length; i++) {
+            const prev = remaining[(i - 1 + remaining.length) % remaining.length];
+            const curr = remaining[i];
+            const next = remaining[(i + 1) % remaining.length];
+            if (sign * localCross(prev, curr, next) <= 1e-14) continue;
+
+            let containsPoint = false;
+            for (const v of remaining) {
+                if (v === prev || v === curr || v === next) continue;
+                if (pointInTriangleForWinding(v, prev, curr, next, sign)) {
+                    containsPoint = true;
+                    break;
+                }
+            }
+            if (containsPoint) continue;
+
+            const aspect = projectedFillMaxAspect3D(
+                positions,
+                [prev.vertex, curr.vertex, next.vertex],
+            );
+            if (aspect < bestAspect) {
+                bestIndex = i;
+                bestAspect = aspect;
+            }
+        }
+        if (bestIndex < 0) return [];
+
+        const prev = remaining[(bestIndex - 1 + remaining.length) % remaining.length];
+        const curr = remaining[bestIndex];
+        const next = remaining[(bestIndex + 1) % remaining.length];
+        triangles.push(prev.vertex, curr.vertex, next.vertex);
+        remaining.splice(bestIndex, 1);
+    }
+
+    if (remaining.length === 3) {
+        triangles.push(remaining[0].vertex, remaining[1].vertex, remaining[2].vertex);
+    }
+    return triangles;
+}
+
+function projectedPointOnSegment(a: LoopPoint, b: LoopPoint, p: LoopPoint): boolean {
+    const eps = 1e-10;
+    return Math.abs(localCross(a, b, p)) <= eps &&
+        p.u >= Math.min(a.u, b.u) - eps &&
+        p.u <= Math.max(a.u, b.u) + eps &&
+        p.t >= Math.min(a.t, b.t) - eps &&
+        p.t <= Math.max(a.t, b.t) + eps;
+}
+
+function projectedSegmentsIntersect(a: LoopPoint, b: LoopPoint, c: LoopPoint, d: LoopPoint): boolean {
+    const eps = 1e-10;
+    const abC = localCross(a, b, c);
+    const abD = localCross(a, b, d);
+    const cdA = localCross(c, d, a);
+    const cdB = localCross(c, d, b);
+    if (
+        ((abC > eps && abD < -eps) || (abC < -eps && abD > eps)) &&
+        ((cdA > eps && cdB < -eps) || (cdA < -eps && cdB > eps))
+    ) {
+        return true;
+    }
+    return projectedPointOnSegment(a, b, c) ||
+        projectedPointOnSegment(a, b, d) ||
+        projectedPointOnSegment(c, d, a) ||
+        projectedPointOnSegment(c, d, b);
+}
+
+function projectedLoopHasSelfIntersection(positions: Float32Array, loopRaw: number[]): boolean {
+    const loop = projectedLoopPoints(positions, loopRaw);
+    for (let edgeA = 0; edgeA < loop.length; edgeA++) {
+        const edgeANext = (edgeA + 1) % loop.length;
+        for (let edgeB = edgeA + 1; edgeB < loop.length; edgeB++) {
+            const edgeBNext = (edgeB + 1) % loop.length;
+            if (edgeA === edgeBNext || edgeANext === edgeB) continue;
+            if (projectedSegmentsIntersect(loop[edgeA], loop[edgeANext], loop[edgeB], loop[edgeBNext])) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function projectedPointInPolygon(point: LoopPoint, polygon: LoopPoint[]): boolean {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const a = polygon[i];
+        const b = polygon[j];
+        if (
+            ((a.t > point.t) !== (b.t > point.t)) &&
+            point.u < ((b.u - a.u) * (point.t - a.t)) / (b.t - a.t) + a.u
+        ) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+function triangulateProjectedLoopMinMaxAspect(positions: Float32Array, loopRaw: number[]): number[] {
+    const count = loopRaw.length;
+    if (count < 3 || count > 128) return [];
+    const loop = projectedLoopPoints(positions, loopRaw);
+    const area = polygonArea(loop);
+    if (Math.abs(area) < 1e-14) return [];
+    const sign = area >= 0 ? 1 : -1;
+
+    const visible = Array.from({ length: count }, () => new Uint8Array(count));
+    const isAdjacent = (a: number, b: number): boolean =>
+        Math.abs(a - b) === 1 || (a === 0 && b === count - 1) || (b === 0 && a === count - 1);
+    for (let a = 0; a < count; a++) {
+        for (let b = a + 1; b < count; b++) {
+            if (isAdjacent(a, b)) {
+                visible[a][b] = 1;
+                visible[b][a] = 1;
+                continue;
+            }
+            let valid = true;
+            for (let edgeA = 0; edgeA < count; edgeA++) {
+                const edgeB = (edgeA + 1) % count;
+                if (edgeA === a || edgeB === a || edgeA === b || edgeB === b) continue;
+                if (projectedSegmentsIntersect(loop[a], loop[b], loop[edgeA], loop[edgeB])) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (valid) {
+                valid = projectedPointInPolygon(
+                    {
+                        vertex: -1,
+                        u: (loop[a].u + loop[b].u) * 0.5,
+                        t: (loop[a].t + loop[b].t) * 0.5,
+                    },
+                    loop,
+                );
+            }
+            if (valid) {
+                visible[a][b] = 1;
+                visible[b][a] = 1;
+            }
+        }
+    }
+
+    const cost = Array.from({ length: count }, () => {
+        const row = new Float64Array(count);
+        row.fill(Number.POSITIVE_INFINITY);
+        return row;
+    });
+    const split = Array.from({ length: count }, () => {
+        const row = new Int16Array(count);
+        row.fill(-1);
+        return row;
+    });
+    for (let i = 0; i < count - 1; i++) cost[i][i + 1] = 0;
+
+    for (let gap = 2; gap < count; gap++) {
+        for (let a = 0; a + gap < count; a++) {
+            const b = a + gap;
+            if (visible[a][b] === 0) continue;
+            for (let k = a + 1; k < b; k++) {
+                if (visible[a][k] === 0 || visible[k][b] === 0) continue;
+                if (!Number.isFinite(cost[a][k]) || !Number.isFinite(cost[k][b])) continue;
+                if (sign * localCross(loop[a], loop[k], loop[b]) <= 1e-14) continue;
+                const triAspect = projectedFillMaxAspect3D(
+                    positions,
+                    [loop[a].vertex, loop[k].vertex, loop[b].vertex],
+                );
+                const candidateCost = Math.max(cost[a][k], cost[k][b], triAspect);
+                if (candidateCost < cost[a][b]) {
+                    cost[a][b] = candidateCost;
+                    split[a][b] = k;
+                }
+            }
+        }
+    }
+    if (!Number.isFinite(cost[0][count - 1])) return [];
+
+    const triangles: number[] = [];
+    const emit = (a: number, b: number): void => {
+        const k = split[a][b];
+        if (k < 0) return;
+        triangles.push(loop[a].vertex, loop[k].vertex, loop[b].vertex);
+        emit(a, k);
+        emit(k, b);
+    };
+    emit(0, count - 1);
+    return triangles.length === (count - 2) * 3 ? triangles : [];
+}
+
+function triangulateProjectedLoopMinimizingAspect(positions: Float32Array, loopRaw: number[]): number[] {
+    // Ear clipping is cyclic-order dependent: clipping the first valid ear can
+    // leave an avoidable near-collinear final triangle. Repair loops are usually
+    // small, so score all valid ears and evaluate every equivalent start vertex.
+    // Preserve the single-pass behavior for large loops to bound repair runtime.
+    const rotationCount = loopRaw.length <= 32 ? loopRaw.length : 1;
+    const expectedIndexCount = Math.max(0, loopRaw.length - 2) * 3;
+    let best: number[] = [];
+    let bestAspect = Number.POSITIVE_INFINITY;
+    const globalCandidate = triangulateProjectedLoopMinMaxAspect(positions, loopRaw);
+    const globalAspect = globalCandidate.length === expectedIndexCount
+        ? projectedFillMaxAspect3D(positions, globalCandidate)
+        : Number.POSITIVE_INFINITY;
+    if (globalCandidate.length === expectedIndexCount) {
+        best = globalCandidate;
+        bestAspect = globalAspect;
+    }
+    let qualityAspect = Number.POSITIVE_INFINITY;
+    if (loopRaw.length <= 128) {
+        const qualityCandidate = triangulateProjectedLoopByEarQuality(positions, loopRaw);
+        if (qualityCandidate.length === expectedIndexCount) {
+            qualityAspect = projectedFillMaxAspect3D(positions, qualityCandidate);
+            if (qualityAspect < bestAspect) {
+                best = qualityCandidate;
+                bestAspect = qualityAspect;
+            }
+        }
+    }
+    for (let offset = 0; offset < rotationCount; offset++) {
+        const rotated = offset === 0
+            ? loopRaw
+            : loopRaw.slice(offset).concat(loopRaw.slice(0, offset));
+        const candidate = triangulateProjectedLoopPreservingWinding(positions, rotated);
+        if (candidate.length !== expectedIndexCount) continue;
+        const aspect = projectedFillMaxAspect3D(positions, candidate);
+        if (aspect < bestAspect) {
+            best = candidate;
+            bestAspect = aspect;
+        }
+    }
+    try {
+        const global = globalThis as unknown as { __pfEnableLoopFillDiagnostics?: boolean };
+        if (global.__pfEnableLoopFillDiagnostics) {
+            console.warn(
+                `[LOOP-TRI-CAND] len=${loopRaw.length} global=${globalAspect.toFixed(6)} ` +
+                `greedy=${qualityAspect.toFixed(6)} selected=${bestAspect.toFixed(6)}`,
+            );
+        }
+    } catch { /* noop */ }
+    return best;
 }
 
 export function fillCrossSurfaceConstantTBoundaryLoopsWithCenters(
@@ -2635,7 +3190,36 @@ function sortedUniqueByT(uvs: Float32Array, vertices: Set<number>): number[] {
         .sort((a, b) => (uvs[a * 3 + 1] ?? 0) - (uvs[b * 3 + 1] ?? 0) || a - b);
 }
 
-function buildSeamZipperTriangles(uvs: Float32Array, lowSide: number[], highSide: number[]): number[] {
+function emitOwnerOpposedBoundaryTriangle(
+    tris: number[],
+    edgeA: number,
+    edgeB: number,
+    third: number,
+    uvs: Float32Array,
+    edgeRecordByKey: Map<number, BoundaryEdgeRecord>,
+    edgeState: CanonicalEdgeState,
+    positions?: Float32Array,
+    topologyWeldToleranceMm: number = 0,
+): void {
+    const ca = canonicalizeVertex(uvs, edgeA, edgeState.canonical, edgeState.keyToId, positions, topologyWeldToleranceMm);
+    const cb = canonicalizeVertex(uvs, edgeB, edgeState.canonical, edgeState.keyToId, positions, topologyWeldToleranceMm);
+    const record = edgeRecordByKey.get(edgeKey(ca, cb));
+    if (record) {
+        tris.push(record.rawB, record.rawA, third);
+        return;
+    }
+    emitTriCCW(tris, edgeA, edgeB, third, uvs);
+}
+
+function buildSeamZipperTriangles(
+    uvs: Float32Array,
+    lowSide: number[],
+    highSide: number[],
+    edgeRecordByKey: Map<number, BoundaryEdgeRecord>,
+    edgeState: CanonicalEdgeState,
+    positions?: Float32Array,
+    topologyWeldToleranceMm: number = 0,
+): number[] {
     if (lowSide.length < 2 || highSide.length < 2) return [];
     const tris: number[] = [];
     let i = 0;
@@ -2647,10 +3231,30 @@ function buildSeamZipperTriangles(uvs: Float32Array, lowSide: number[], highSide
         const nextHighT = canAdvanceHigh ? (uvs[highSide[j + 1] * 3 + 1] ?? Infinity) : Infinity;
 
         if (canAdvanceLow && (!canAdvanceHigh || nextLowT <= nextHighT)) {
-            emitTriCCW(tris, lowSide[i], lowSide[i + 1], highSide[j], uvs);
+            emitOwnerOpposedBoundaryTriangle(
+                tris,
+                lowSide[i],
+                lowSide[i + 1],
+                highSide[j],
+                uvs,
+                edgeRecordByKey,
+                edgeState,
+                positions,
+                topologyWeldToleranceMm,
+            );
             i++;
         } else if (canAdvanceHigh) {
-            emitTriCCW(tris, lowSide[i], highSide[j + 1], highSide[j], uvs);
+            emitOwnerOpposedBoundaryTriangle(
+                tris,
+                highSide[j],
+                highSide[j + 1],
+                lowSide[i],
+                uvs,
+                edgeRecordByKey,
+                edgeState,
+                positions,
+                topologyWeldToleranceMm,
+            );
             j++;
         } else {
             break;
@@ -2752,7 +3356,18 @@ export function fillOuterWallSeamBoundaryChains(
 
     const low = sortedUniqueByT(uvs, lowSide);
     const high = sortedUniqueByT(uvs, highSide);
-    const tris = buildSeamZipperTriangles(uvs, low, high);
+    const edgeState = buildCanonicalEdgeState(indices, uvs, positions, topologyWeldToleranceMm);
+    const edgeRecordByKey = new Map<number, BoundaryEdgeRecord>();
+    for (const record of records) edgeRecordByKey.set(record.key, record);
+    const tris = buildSeamZipperTriangles(
+        uvs,
+        low,
+        high,
+        edgeRecordByKey,
+        edgeState,
+        positions,
+        topologyWeldToleranceMm,
+    );
     if (tris.length === 0) {
         return {
             indices,
@@ -2765,7 +3380,6 @@ export function fillOuterWallSeamBoundaryChains(
         };
     }
 
-    const edgeState = buildCanonicalEdgeState(indices, uvs, positions, topologyWeldToleranceMm);
     // Incremental commit: add every manifold-safe zipper triangle, skipping the few
     // canonically degenerate ones (mismatched-density seams emit some). The previous
     // all-or-nothing gate discarded the entire batch on the first degenerate candidate
@@ -2776,6 +3390,45 @@ export function fillOuterWallSeamBoundaryChains(
         const repaired = new Uint32Array(indices.length + accepted.length);
         repaired.set(indices);
         repaired.set(accepted, indices.length);
+        const orientationMismatchesBefore = countCanonicalOrientationMismatches(
+            indices,
+            uvs,
+            positions,
+            topologyWeldToleranceMm,
+        );
+        const orientationMismatchesAfter = countCanonicalOrientationMismatches(
+            repaired,
+            uvs,
+            positions,
+            topologyWeldToleranceMm,
+        );
+        const conflictsBefore = normalizeWindingByComponent(
+            indices,
+            indices.length,
+            positions,
+            topologyWeldToleranceMm,
+        ).conflicts;
+        const conflictsAfter = normalizeWindingByComponent(
+            repaired,
+            repaired.length,
+            positions,
+            topologyWeldToleranceMm,
+        ).conflicts;
+        if (
+            conflictsAfter > conflictsBefore ||
+            orientationMismatchesAfter > orientationMismatchesBefore
+        ) {
+            return {
+                indices,
+                filledChains: 0,
+                insertedTriangles: 0,
+                attemptedChains: 1,
+                unsafeChains: 1,
+                lowVertices: low.length,
+                highVertices: high.length,
+                weldedVertices: 0,
+            };
+        }
         return {
             indices: repaired,
             filledChains: 1,
@@ -2934,7 +3587,36 @@ function fillBoundaryLoopsWhere(
                 topologyWeldToleranceMm,
             );
             if (ordered) {
-                const orderedTris = triangulateProjectedLoopPreservingWinding(positions, ordered);
+                const orderedTris = triangulateProjectedLoopMinimizingAspect(positions, ordered);
+                const orderedAspect = orderedTris.length > 0
+                    ? projectedFillMaxAspect3D(positions, orderedTris)
+                    : Number.POSITIVE_INFINITY;
+                try {
+                    const global = globalThis as unknown as { __pfEnableLoopFillDiagnostics?: boolean };
+                    if (global.__pfEnableLoopFillDiagnostics) {
+                        const loopPos = ordered.map(vertex => {
+                            const base = vertex * 3;
+                            return `${vertex}:${(positions[base] ?? NaN).toFixed(6)},${(positions[base + 1] ?? NaN).toFixed(6)},${(positions[base + 2] ?? NaN).toFixed(6)}`;
+                        }).join('|');
+                        const triangles = [];
+                        for (let i = 0; i < orderedTris.length; i += 3) {
+                            triangles.push(`${orderedTris[i]},${orderedTris[i + 1]},${orderedTris[i + 2]}`);
+                        }
+                        console.warn(
+                            `[LOOP-FILL-CAND] attempt=${attemptedLoops - 1} len=${ordered.length} ` +
+                            `aspect=${orderedAspect.toFixed(6)} ` +
+                            `loop=[${ordered.join(',')}] loopPos=[${loopPos}] tris=[${triangles.join('|')}]`,
+                        );
+                    }
+                } catch { /* noop */ }
+                // This indices-only pass cannot introduce Steiner vertices. A
+                // complete projected cap above the fidelity sliver gate is
+                // intentionally left open for the immediately following
+                // center-aware filler, which can compare it against a fan.
+                if (orderedTris.length > 0 && orderedAspect > PROJECTED_LOOP_FILL_MAX_ASPECT) {
+                    unsafeLoops++;
+                    continue;
+                }
                 if (
                     orderedTris.length > 0 &&
                     addTriangleEdgesIfManifoldSafe(edgeState, orderedTris, uvs, positions, topologyWeldToleranceMm)
@@ -2989,13 +3671,38 @@ export function fillOuterWallBoundaryLoops(
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
 ): BoundaryLoopFillResult {
-    return fillBoundaryLoopsWhere(
+    const result = fillBoundaryLoopsWhere(
         indices,
         uvs,
         loop => loop.every(v => isOuterMidVertex(uvs, v)),
         positions,
         topologyWeldToleranceMm,
     );
+    if (result.filledLoops === 0) return result;
+
+    const windingWeldToleranceMm = windingGuardWeldTolerance(topologyWeldToleranceMm);
+    const conflictsBefore = normalizeWindingByComponent(
+        indices,
+        indices.length,
+        positions,
+        windingWeldToleranceMm,
+    ).conflicts;
+    const conflictsAfter = normalizeWindingByComponent(
+        result.indices,
+        result.indices.length,
+        positions,
+        windingWeldToleranceMm,
+    ).conflicts;
+    if (conflictsAfter <= conflictsBefore) return result;
+
+    return {
+        ...result,
+        indices,
+        filledLoops: 0,
+        insertedTriangles: 0,
+        unsafeLoops: (result.unsafeLoops ?? 0) + result.filledLoops,
+        projectedTriangulations: 0,
+    };
 }
 
 export function fillSameSurfaceBoundaryLoops(
@@ -3004,13 +3711,38 @@ export function fillSameSurfaceBoundaryLoops(
     positions?: Float32Array,
     topologyWeldToleranceMm: number = 0,
 ): BoundaryLoopFillResult {
-    return fillBoundaryLoopsWhere(
+    const result = fillBoundaryLoopsWhere(
         indices,
         uvs,
         loop => sameSurfaceLoop(uvs, loop),
         positions,
         topologyWeldToleranceMm,
     );
+    if (result.filledLoops === 0) return result;
+
+    const windingWeldToleranceMm = windingGuardWeldTolerance(topologyWeldToleranceMm);
+    const conflictsBefore = normalizeWindingByComponent(
+        indices,
+        indices.length,
+        positions,
+        windingWeldToleranceMm,
+    ).conflicts;
+    const conflictsAfter = normalizeWindingByComponent(
+        result.indices,
+        result.indices.length,
+        positions,
+        windingWeldToleranceMm,
+    ).conflicts;
+    if (conflictsAfter <= conflictsBefore) return result;
+
+    return {
+        ...result,
+        indices,
+        filledLoops: 0,
+        insertedTriangles: 0,
+        unsafeLoops: (result.unsafeLoops ?? 0) + result.filledLoops,
+        projectedTriangulations: 0,
+    };
 }
 
 export function fillGeometricBoundaryLoops(
@@ -3134,6 +3866,43 @@ export function repairOuterWallTJunctions(
     const __tjMark = (msg: string): void => {
         __tjLog.push(`${(performance.now() - __tjStart).toFixed(0)}ms-into-TJ ${msg}`);
     };
+    const __tjWindingMark = (name: string): void => {
+        const enabled = (globalThis as unknown as {
+            __pfEnableWindingStageDiagnostics?: boolean;
+        }).__pfEnableWindingStageDiagnostics === true;
+        if (!enabled || !positions) return;
+        const combined = new Uint32Array(outerIndices.length + nonOuterIndices.length);
+        combined.set(outerIndices);
+        combined.set(nonOuterIndices, outerIndices.length);
+        const winding = normalizeWindingByComponent(
+            combined,
+            combined.length,
+            positions,
+            topologyWeldToleranceMm,
+        );
+        const outerWinding = normalizeWindingByComponent(
+            outerIndices,
+            outerIndices.length,
+            positions,
+            topologyWeldToleranceMm,
+        );
+        console.warn(
+            `[TJ-WINDING] ${name} outerTris=${outerIndices.length / 3} ` +
+            `components=${winding.components} conflicts=${winding.conflicts} ` +
+            `outerComponents=${outerWinding.components} outerConflicts=${outerWinding.conflicts}`,
+        );
+        for (const sample of outerWinding.conflictSamples.slice(0, 4)) {
+            const fromBase = sample.fromTriangle * 3;
+            const toBase = sample.toTriangle * 3;
+            console.warn(
+                `[TJ-WINDING-CONFLICT] ${name} edge=${sample.edge[0]}-${sample.edge[1]} ` +
+                `tris=${sample.fromTriangle}->${sample.toTriangle} ` +
+                `from=[${outerIndices[fromBase]},${outerIndices[fromBase + 1]},${outerIndices[fromBase + 2]}] ` +
+                `to=[${outerIndices[toBase]},${outerIndices[toBase + 1]},${outerIndices[toBase + 2]}] ` +
+                `consistent=${sample.edgeConsistent} dirs=${sample.fromDirection}/${sample.toDirection}`,
+            );
+        }
+    };
     const __TJ_DEADLINE_MS = Number.POSITIVE_INFINITY;
     const __tjCheckDeadline = (where: string): void => {
         if (performance.now() - __tjStart > __TJ_DEADLINE_MS) {
@@ -3167,6 +3936,7 @@ export function repairOuterWallTJunctions(
         outerIndices = initialCompaction.indices;
         repairedEdges += initialCompaction.removedTriangles;
     }
+    __tjWindingMark('after-initial-compaction');
 
     let prevPassMutations = 0;
     let firstPassMutations = 0;
@@ -3186,6 +3956,7 @@ export function repairOuterWallTJunctions(
             repairedEdges += passResult.repairedEdges;
             insertedTriangles += passResult.insertedTriangles;
         }
+        __tjWindingMark(`pass${pass}-after-splitBoundaryTJunctionPass`);
 
         __t = performance.now();
         const nonManifoldPassResult = splitNonManifoldTJunctionPass(
@@ -3201,14 +3972,32 @@ export function repairOuterWallTJunctions(
             repairedEdges += nonManifoldPassResult.repairedEdges;
             insertedTriangles += nonManifoldPassResult.insertedTriangles;
         }
+        __tjWindingMark(`pass${pass}-after-splitNonManifoldTJunctionPass`);
 
         __t = performance.now();
-        const snapPassResult = snapNonManifoldEndpointToBoundaryPass(
+        let snapPassResult = snapNonManifoldEndpointToBoundaryPass(
             outerIndices,
             uvs,
             positions,
             topologyWeldToleranceMm,
         );
+        if (snapPassResult.repairedEdges > 0) {
+            const conflictsBefore = normalizeWindingByComponent(
+                outerIndices,
+                outerIndices.length,
+                positions,
+                topologyWeldToleranceMm,
+            ).conflicts;
+            const conflictsAfter = normalizeWindingByComponent(
+                snapPassResult.indices,
+                snapPassResult.indices.length,
+                positions,
+                topologyWeldToleranceMm,
+            ).conflicts;
+            if (conflictsAfter > conflictsBefore) {
+                snapPassResult = { indices: outerIndices, repairedEdges: 0, insertedTriangles: 0 };
+            }
+        }
         __tjMark(`pass${pass} snapNonManifoldEndpointToBoundaryPass=${(performance.now() - __t).toFixed(0)}ms repaired=${snapPassResult.repairedEdges}`);
         __tjCheckDeadline(`pass${pass} after snapNonManifoldEndpointToBoundaryPass`);
         if (snapPassResult.repairedEdges > 0) {
@@ -3216,6 +4005,7 @@ export function repairOuterWallTJunctions(
             repairedEdges += snapPassResult.repairedEdges;
             insertedTriangles += snapPassResult.insertedTriangles;
         }
+        __tjWindingMark(`pass${pass}-after-snapNonManifoldEndpointToBoundaryPass`);
 
         __t = performance.now();
         const compaction = compactDuplicateCanonicalTriangles(
@@ -3230,6 +4020,7 @@ export function repairOuterWallTJunctions(
             outerIndices = compaction.indices;
             repairedEdges += compaction.removedTriangles;
         }
+        __tjWindingMark(`pass${pass}-after-compactDuplicateCanonicalTriangles`);
 
         __t = performance.now();
         const fanPrune = pruneMultiNonManifoldFanTriangles(
@@ -3244,20 +4035,39 @@ export function repairOuterWallTJunctions(
             outerIndices = fanPrune.indices;
             repairedEdges += fanPrune.removedTriangles;
         }
+        __tjWindingMark(`pass${pass}-after-pruneMultiNonManifoldFanTriangles`);
 
         __t = performance.now();
-        const crowdedFanPrune = pruneCrowdedSideNonManifoldEdgeFans(
+        let crowdedFanPrune = pruneCrowdedSideNonManifoldEdgeFans(
             outerIndices,
             uvs,
             positions,
             topologyWeldToleranceMm,
         );
+        if (crowdedFanPrune.removedTriangles > 0) {
+            const conflictsBefore = normalizeWindingByComponent(
+                outerIndices,
+                outerIndices.length,
+                positions,
+                topologyWeldToleranceMm,
+            ).conflicts;
+            const conflictsAfter = normalizeWindingByComponent(
+                crowdedFanPrune.indices,
+                crowdedFanPrune.indices.length,
+                positions,
+                topologyWeldToleranceMm,
+            ).conflicts;
+            if (conflictsAfter > conflictsBefore) {
+                crowdedFanPrune = { indices: outerIndices, removedTriangles: 0 };
+            }
+        }
         __tjMark(`pass${pass} pruneCrowdedSideNonManifoldEdgeFans=${(performance.now() - __t).toFixed(0)}ms removed=${crowdedFanPrune.removedTriangles}`);
         __tjCheckDeadline(`pass${pass} after pruneCrowdedSideNonManifoldEdgeFans`);
         if (crowdedFanPrune.removedTriangles > 0) {
             outerIndices = crowdedFanPrune.indices;
             repairedEdges += crowdedFanPrune.removedTriangles;
         }
+        __tjWindingMark(`pass${pass}-after-pruneCrowdedSideNonManifoldEdgeFans`);
 
         if (
             passResult.repairedEdges === 0 &&
@@ -3537,7 +4347,8 @@ export function weldNearCoincidentBoundaryVertices(
     positions: Float32Array,
     topologyWeldToleranceMm: number,
     defectWeldToleranceMm: number,
-): { indices: Uint32Array; weldedVertices: number; strippedTriangles: number } {
+    prefixIndexCount: number = indices.length,
+): { indices: Uint32Array; weldedVertices: number; strippedTriangles: number; strippedPrefixTriangles: number } {
     const tol = topologyWeldToleranceMm > 0 ? topologyWeldToleranceMm : 1e-4;
     const defectTol = Math.max(defectWeldToleranceMm, tol);
     const numV = (positions.length / 3) | 0;
@@ -3573,7 +4384,7 @@ export function weldNearCoincidentBoundaryVertices(
         }
     }
     if (defectCanon.size === 0) {
-        return { indices, weldedVertices: 0, strippedTriangles: 0 };
+        return { indices, weldedVertices: 0, strippedTriangles: 0, strippedPrefixTriangles: 0 };
     }
 
     // 3. Defect raw vertices + spatial hash at the defect tolerance.
@@ -3620,16 +4431,26 @@ export function weldNearCoincidentBoundaryVertices(
         if (r !== v) welded++;
     }
     if (welded === 0) {
-        return { indices, weldedVertices: 0, strippedTriangles: 0 };
+        return { indices, weldedVertices: 0, strippedTriangles: 0, strippedPrefixTriangles: 0 };
     }
 
     // 6. Apply the remap and strip triangles that collapsed to degenerate.
     const out: number[] = [];
     let stripped = 0;
+    let strippedPrefix = 0;
     for (let t = 0; t < triCount; t++) {
         const a = remap[indices[t * 3]], b = remap[indices[t * 3 + 1]], c = remap[indices[t * 3 + 2]];
-        if (a === b || b === c || a === c) { stripped++; continue; }
+        if (a === b || b === c || a === c) {
+            stripped++;
+            if (t * 3 < prefixIndexCount) strippedPrefix++;
+            continue;
+        }
         out.push(a, b, c);
     }
-    return { indices: new Uint32Array(out), weldedVertices: welded, strippedTriangles: stripped };
+    return {
+        indices: new Uint32Array(out),
+        weldedVertices: welded,
+        strippedTriangles: stripped,
+        strippedPrefixTriangles: strippedPrefix,
+    };
 }

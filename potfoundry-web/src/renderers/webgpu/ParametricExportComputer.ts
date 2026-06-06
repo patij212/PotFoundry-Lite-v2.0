@@ -924,6 +924,49 @@ function recordOuterWallTriangleProbe(result: OuterWallResult): void {
     }
 }
 
+function recordOuterWallQualityStage(
+    label: string,
+    positions: Float32Array,
+    indices: Uint32Array,
+    outerIdxCount: number,
+): void {
+    try {
+        const global = globalThis as unknown as { __pfEnableQualityStageDiagnostics?: boolean };
+        if (!global.__pfEnableQualityStageDiagnostics) return;
+        const worst: Array<{ triangle: number; aspect: number; vertices: [number, number, number] }> = [];
+        let slivers = 0;
+        const limit = Math.min(indices.length, outerIdxCount);
+        for (let base = 0; base + 2 < limit; base += 3) {
+            const a = indices[base], b = indices[base + 1], c = indices[base + 2];
+            if (a === b || b === c || a === c) continue;
+            const ia = a * 3, ib = b * 3, ic = c * 3;
+            const ax = positions[ia], ay = positions[ia + 1], az = positions[ia + 2];
+            const bx = positions[ib], by = positions[ib + 1], bz = positions[ib + 2];
+            const cx = positions[ic], cy = positions[ic + 1], cz = positions[ic + 2];
+            const ab2 = (ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2;
+            const bc2 = (bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2;
+            const ca2 = (cx - ax) ** 2 + (cy - ay) ** 2 + (cz - az) ** 2;
+            const ux = bx - ax, uy = by - ay, uz = bz - az;
+            const vx = cx - ax, vy = cy - ay, vz = cz - az;
+            const crossX = uy * vz - uz * vy;
+            const crossY = uz * vx - ux * vz;
+            const crossZ = ux * vy - uy * vx;
+            const area = 0.5 * Math.hypot(crossX, crossY, crossZ);
+            if (area <= 1e-12) continue;
+            const aspect = Math.max(ab2, bc2, ca2) * Math.sqrt(3) / (4 * area);
+            if (aspect > 100) slivers++;
+            if (worst.length < 8 || aspect > worst[worst.length - 1].aspect) {
+                worst.push({ triangle: base / 3, aspect, vertices: [a, b, c] });
+                worst.sort((left, right) => right.aspect - left.aspect);
+                if (worst.length > 8) worst.length = 8;
+            }
+        }
+        console.warn(`[QUALITY-STAGE] ${label} outerTris=${limit / 3} slivers=${slivers} worst=${JSON.stringify(worst)}`);
+    } catch {
+        /* diagnostics must not affect export */
+    }
+}
+
 // TEMP-TAILPROBE: in-page stage tracker that SURVIVES a long synchronous block
 // (unlike console, whose buffered lines are lost when the E2E caps and closes the
 // page). The spec reads window.__pfStageLog after the cap to pin the hanging stage.
@@ -1147,6 +1190,15 @@ export function shouldAcceptPostDefectTopologyRepair(
     return orientationDelta <= orientationBudget;
 }
 
+export function shouldAcceptWindingNormalization(
+    before: TopologyDefectCounts,
+    after: TopologyDefectCounts,
+): boolean {
+    return after.boundaryEdges === before.boundaryEdges &&
+        after.nonManifoldEdges === before.nonManifoldEdges &&
+        after.orientationMismatches < before.orientationMismatches;
+}
+
 export function repairPostDefectWeldTopology(
     indices: Uint32Array,
     uvs: Float32Array,
@@ -1289,6 +1341,11 @@ export function buildSurfaceTPositionsForQuality(
     wallRadiusMm?: number,
     drainRadiusMm?: number,
 ): Float32Array {
+    // The rim is an exact planar annulus between its two constrained rings.
+    // Interior radial rows add no geometric fidelity and can only turn the
+    // shared non-uniform U intervals into high-aspect triangles.
+    if (surfaceId === 2) return new Float32Array([0, 1]);
+
     const safeSegments = Math.max(1, Math.floor(segments));
     const tPositions = new Float32Array(safeSegments + 1);
     const biasTowardDrain = surfaceId === 3 || surfaceId === 4;
@@ -3516,6 +3573,7 @@ export class ParametricExportComputer {
             let finalCombinedIdxs: Uint32Array<ArrayBufferLike>;
             let splitCount = 0;
             let outerIdxCountAfterSubdiv = allIdxArrays[0].length;
+            recordOuterWallQualityStage('post-phase4-pre-subdiv', resultData, combinedIdxs, allIdxArrays[0].length);
             if (cfgGpuSubdiv) {
                 console.warn(`[StageProbe] D before subdivideLongEdges: verts=${combinedVerts.length / 3} tris=${combinedIdxs.length / 3}`);
                 // TEMP-NONCONFORM-PROBE: canonical (position-welded) boundary/non-manifold
@@ -3585,6 +3643,7 @@ export class ParametricExportComputer {
                 outerIdxCountAfterSubdiv = subdivResult.outerIdxCount;
                 console.warn(`[StageProbe] E subdiv done: splitCount=${splitCount} newVerts=${combinedVerts.length / 3} subdivMs=${subdivResult.stats.timeMs.toFixed(0)} sagSkipped=${subdivResult.stats.sagSkipped}`);
                 __canonBoundaryProbe('POST-SUBDIV', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
+                recordOuterWallQualityStage('post-subdiv-raw', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
                 console.log(`[ParametricExport]   v18.0 GPU-surface subdivision: ${splitCount} edges split → ${splitCount * 2} new tris, ${subdivResult.stats.sagSkipped} sag-skipped (${subdivResult.stats.timeMs.toFixed(1)}ms)`);
                 console.log(`[ParametricExport]     avg grid edge: ${subdivResult.stats.avgGridEdge.toFixed(3)}mm, interior threshold: ${Math.sqrt(subdivResult.stats.interiorThreshold).toFixed(3)}mm, boundary threshold: ${Math.sqrt(subdivResult.stats.boundaryThreshold).toFixed(3)}mm, feature threshold: ${Math.sqrt(subdivResult.stats.featureThreshold).toFixed(3)}mm, candidates: ${subdivResult.stats.candidates}, protected rejects: ${subdivResult.stats.protectedRejects}, boundary neighbor tris: ${subdivResult.stats.boundaryTrisAdded}`);
 
@@ -3906,6 +3965,7 @@ export class ParametricExportComputer {
             // TEMP-STAGE-PROBE: localize whether the stall is in base-gen or refinement. REMOVE.
             console.warn(`[StageProbe] base-gen DONE: outerIdxCount=${outerIdxCountAfterSubdiv} ` +
                 `combinedTris=${finalCombinedIdxs.length / 3} maxRefineIterations=${effectiveProfile.maxRefineIterations}`);
+            recordOuterWallQualityStage('base-gen-pre-adaptive', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
             // TEMP-TAILPROBE: reset per parametric-generate and mark base-gen end. REMOVE.
             try { (globalThis as unknown as TailDiagnosticsGlobal).__pfStageLog = []; } catch { /* noop */ }
             resetTailDiagnostics();
@@ -4247,6 +4307,7 @@ export class ParametricExportComputer {
                     console.log(`[ParametricExport]   Angle histogram: [0-10)=${h[0]} [10-20)=${h[1]} [20-30)=${h[2]} [30-40)=${h[3]} [40-50)=${h[4]} [50-60)=${h[5]} [60+)=${h[6]}`);
                 }
             }
+            recordOuterWallQualityStage('post-adaptive-refine', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
 
             // ═══════════════════════════════════════════════════════
             // PHASE 5b: Seam Healing (flag-gated)
@@ -4271,6 +4332,7 @@ export class ParametricExportComputer {
                 console.log(`[ParametricExport]   Seam healing: ${healResult.pairsAveraged} pairs averaged, ` +
                     `${healResult.ghostStripsInserted} ghost strips, residual=${healResult.maxResidualGapMm.toFixed(4)}mm (${healMs.toFixed(1)}ms)`);
             }
+            recordOuterWallQualityStage('tail-post-seam-healing', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
 
             // ═══════════════════════════════════════════════════════
             // PHASE 5c: Strip degenerate placeholder triangles
@@ -4344,6 +4406,7 @@ export class ParametricExportComputer {
                     `${tJunctionRepair.insertedTriangles} tris inserted`,
                 );
             }
+            recordOuterWallQualityStage('tail-post-outer-tjunction-repair', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
             recordWindingStageDiagnostic('after-repairOuterWallTJunctions#1', finalCombinedIdxs, finalResultData);
 
             await pfStageFlush('tail:before-repairSurfaceBoundaryTJunctions');
@@ -4424,6 +4487,7 @@ export class ParametricExportComputer {
                     `${boundaryLoopFill.projectedTriangulations ?? 0} projected`,
                 );
             }
+            recordWindingStageDiagnostic('after-fillOuterWallBoundaryLoops', finalCombinedIdxs, finalResultData);
 
             await pfStageFlush('tail:before-postLoopTJunctionRepair');
             const postLoopTJunctionRepairTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
@@ -4458,6 +4522,7 @@ export class ParametricExportComputer {
                     `${postLoopTJunctionRepair.insertedTriangles} tris inserted`,
                 );
             }
+            recordWindingStageDiagnostic('after-postLoopTJunctionRepair', finalCombinedIdxs, finalResultData);
 
             await pfStageFlush('tail:before-fillSameSurfaceBoundaryLoops');
             const sameSurfaceLoopFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
@@ -4501,6 +4566,7 @@ export class ParametricExportComputer {
                     `${sameSurfaceLoopFill.projectedTriangulations ?? 0} projected`,
                 );
             }
+            recordWindingStageDiagnostic('after-fillSameSurfaceBoundaryLoops', finalCombinedIdxs, finalResultData);
 
             await pfStageFlush('tail:before-fillSameSurfaceBoundaryLoopsWithCenters');
             const sameSurfaceCenterFillTrisBefore = indexCountToTriangleCount(finalCombinedIdxs.length);
@@ -4549,6 +4615,7 @@ export class ParametricExportComputer {
                     `${sameSurfaceCenterFill.insertedVertices} trial vertices`,
                 );
             }
+            recordOuterWallQualityStage('tail-post-same-surface-center-fill', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
             recordWindingStageDiagnostic('after-fillSameSurfaceBoundaryLoopsWithCenters', finalCombinedIdxs, finalResultData);
 
             await pfStageFlush('tail:before-fillOuterWallSeamBoundaryChains');
@@ -4785,6 +4852,7 @@ export class ParametricExportComputer {
                     `${branchedFill.unsafeLoops ?? 0} unsafe caps`,
                 );
             }
+            recordOuterWallQualityStage('tail-post-branched-fill', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
 
             // Final surface-agnostic boundary T-junction closer: splits residual
             // density-mismatch boundary edges (e.g. the outer-wall top row vs the rim,
@@ -5089,6 +5157,7 @@ export class ParametricExportComputer {
                     );
                 }
             }
+            recordOuterWallQualityStage('tail-post-defect-weld', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
             recordWindingStageDiagnostic('after-finalDefectWeld', finalCombinedIdxs, finalResultData);
 
             await pfStageFlush(`tail:before-finalCadTopologyWeld tris=${finalCombinedIdxs.length / 3}`);
@@ -5190,6 +5259,23 @@ export class ParametricExportComputer {
                     finalResultData,
                     DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
                 );
+                let windingTopologyBefore: TopologyDefectCounts | undefined;
+                let windingTopologyAfter: TopologyDefectCounts | undefined;
+                let acceptWinding = false;
+                if (winding.flipped > 0) {
+                    windingTopologyBefore = topologyMetric(
+                        { vertices: finalResultData, indices: finalCombinedIdxs },
+                        DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                    );
+                    windingTopologyAfter = topologyMetric(
+                        { vertices: finalResultData, indices: winding.indices },
+                        DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
+                    );
+                    acceptWinding = shouldAcceptWindingNormalization(
+                        windingTopologyBefore,
+                        windingTopologyAfter,
+                    );
+                }
                 recordTailDiagnosticStage({
                     name: 'normalizeWindingByComponent',
                     elapsedMs: performance.now() - windingStart,
@@ -5201,14 +5287,31 @@ export class ParametricExportComputer {
                         flippedTriangles: winding.flipped,
                         components: winding.components,
                         conflicts: winding.conflicts,
+                        accepted: acceptWinding,
+                        beforeBoundaryEdges: windingTopologyBefore?.boundaryEdges,
+                        beforeNonManifoldEdges: windingTopologyBefore?.nonManifoldEdges,
+                        beforeOrientationMismatches: windingTopologyBefore?.orientationMismatches,
+                        afterBoundaryEdges: windingTopologyAfter?.boundaryEdges,
+                        afterNonManifoldEdges: windingTopologyAfter?.nonManifoldEdges,
+                        afterOrientationMismatches: windingTopologyAfter?.orientationMismatches,
                     },
                 });
-                if (winding.flipped > 0) {
+                if (acceptWinding) {
                     finalCombinedIdxs = winding.indices;
                     console.log(
                         `[ParametricExport]   Winding normalized: ` +
                         `${winding.flipped} triangles flipped across ${winding.components} components ` +
                         `(conflicts=${winding.conflicts})`,
+                    );
+                } else if (winding.flipped > 0) {
+                    console.warn(
+                        `[ParametricExport]   Winding normalization rejected: ` +
+                        `orientation ${windingTopologyBefore?.orientationMismatches ?? 'n/a'}->` +
+                        `${windingTopologyAfter?.orientationMismatches ?? 'n/a'}, ` +
+                        `boundary ${windingTopologyBefore?.boundaryEdges ?? 'n/a'}->` +
+                        `${windingTopologyAfter?.boundaryEdges ?? 'n/a'}, ` +
+                        `nonManifold ${windingTopologyBefore?.nonManifoldEdges ?? 'n/a'}->` +
+                        `${windingTopologyAfter?.nonManifoldEdges ?? 'n/a'}`,
                     );
                 }
                 if (winding.conflicts > 0) {
@@ -5351,6 +5454,7 @@ export class ParametricExportComputer {
                     removedOuterTriangles: finalDuplicateStripOuterRemoved,
                 },
             });
+            recordOuterWallQualityStage('tail-final', finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv);
 
             // ═══════════════════════════════════════════════════════
             // PHASE 6: Mesh Validation (always runs)

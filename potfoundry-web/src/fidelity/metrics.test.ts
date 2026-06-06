@@ -278,6 +278,28 @@ describe('topologyMetric', () => {
     expect(sample?.total).toBe(2);
     expect([sample?.firstForwardTriangle, sample?.firstReverseTriangle].some((v) => v !== null)).toBe(true);
   });
+
+  it('prioritizes scarce boundary samples before abundant winding mismatches', () => {
+    const cube = closedCube();
+    const vertices = new Float32Array([
+      ...cube.vertices,
+      3, 0, 0,
+      4, 0, 0,
+      3, 1, 0,
+    ]);
+    const indices = new Uint32Array([
+      ...cube.indices.slice(0, 3),
+      0, 2, 3, // flip second cube triangle so orientation mismatches are inserted first
+      ...cube.indices.slice(6),
+      8, 9, 10,
+    ]);
+
+    const out = topologyDiagnostics({ vertices, indices }, 1e-4, 1);
+
+    expect(out.orientationMismatches).toBeGreaterThan(0);
+    expect(out.boundaryEdges).toBe(3);
+    expect(out.samples[0].kind).toBe('boundary');
+  });
 });
 
 import { computeFidelityMetrics } from './metrics';

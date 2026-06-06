@@ -5,7 +5,14 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { buildCDTOuterWall, estimateCircumferentialStretch, subdivideFullChain, pushAll } from './OuterWallTessellator';
+import {
+    buildCDTOuterWall,
+    estimateCircumferentialStretch,
+    pruneNearDuplicateRowEdgePins,
+    recordNearRowGridChainRemaps,
+    subdivideFullChain,
+    pushAll,
+} from './OuterWallTessellator';
 import type { ChainVertex } from './OuterWallTessellator';
 import type { FeatureChain } from './types';
 
@@ -31,6 +38,154 @@ function makeUniformT(rows: number): Float32Array {
 function makeIdentityRowMapping(numT: number): number[] {
     return Array.from({ length: numT }, (_, i) => i);
 }
+
+describe('pruneNearDuplicateRowEdgePins', () => {
+    it('drops an unprotected owned-span row pin when it is nearly coincident with a protected vertex', () => {
+        const vertices = new Float32Array([
+            0.500000, 0.063288, 0,
+            0.507117, 0.063288, 0,
+            0.507129, 0.063288, 0,
+            0.520000, 0.063288, 0,
+        ]);
+
+        const pruned = pruneNearDuplicateRowEdgePins([0, 1, 2, 3], vertices, new Set([2]), 0.0006);
+
+        expect(pruned).toEqual([0, 2, 3]);
+    });
+
+    it('records a remap when an owned-span row prune drops a grid pin for a surviving chain pin', () => {
+        const vertices = new Float32Array([
+            0.481350, 0.807735, 0,
+            0.482746, 0.807735, 0,
+            0.482747, 0.807735, 0,
+            0.490000, 0.807735, 0,
+        ]);
+        const remap = new Map<number, number>();
+        const pruned = pruneNearDuplicateRowEdgePins([0, 1, 2, 3], vertices, new Set([2]), 0.0006, {
+            remapDroppedToSurvivor: remap,
+            shouldRemapDroppedVertex: (dropped, survivor) => dropped === 1 && survivor === 2,
+        });
+
+        expect(pruned).toEqual([0, 2, 3]);
+        expect(remap.get(1)).toBe(2);
+    });
+
+    it('collapses multiple protected row pins when they are microscopically close', () => {
+        const vertices = new Float32Array([
+            0.500000, 0.063288, 0,
+            0.507117, 0.063288, 0,
+            0.507129, 0.063288, 0,
+            0.520000, 0.063288, 0,
+        ]);
+
+        const pruned = pruneNearDuplicateRowEdgePins([0, 1, 2, 3], vertices, new Set([1, 2]), 0.0006);
+
+        expect(pruned).toEqual([0, 2, 3]);
+    });
+
+    it('collapses protected row pins at the observed Gothic sub-0.0002mm edge scale', () => {
+        const vertices = new Float32Array([
+            0.676036, 0.511261, 0,
+            0.676091, 0.511261, 0,
+            0.676147, 0.511261, 0,
+            0.676270, 0.511261, 0,
+        ]);
+
+        const pruned = pruneNearDuplicateRowEdgePins([0, 1, 2, 3], vertices, new Set([1, 2]), 0.0006);
+
+        expect(pruned).toEqual([0, 2, 3]);
+    });
+
+    it('drops an unprotected phantom row pin at the observed Gothic protected-anchor edge scale', () => {
+        const vertices = new Float32Array([
+            0.736000, 0.527862, 0,
+            0.737155, 0.527862, 0,
+            0.737268, 0.527862, 0,
+            0.737674, 0.527862, 0,
+            0.742000, 0.527862, 0,
+        ]);
+
+        const pruned = pruneNearDuplicateRowEdgePins([0, 1, 2, 3, 4], vertices, new Set([2, 3]), 0.0006);
+
+        expect(pruned).toEqual([0, 2, 3, 4]);
+    });
+
+    it('keeps multiple protected row pins when their separation is resolvable', () => {
+        const vertices = new Float32Array([
+            0.500000, 0.063288, 0,
+            0.507000, 0.063288, 0,
+            0.507200, 0.063288, 0,
+            0.520000, 0.063288, 0,
+        ]);
+
+        const pruned = pruneNearDuplicateRowEdgePins([0, 1, 2, 3], vertices, new Set([1, 2]), 0.0006);
+
+        expect(pruned).toEqual([0, 1, 2, 3]);
+    });
+
+    it('sorts row pins before pruning so R37 phantom rows cannot hide near duplicates', () => {
+        const vertices = new Float32Array([
+            0.500000, 0.063288, 0,
+            0.507117, 0.063288, 0,
+            0.507129, 0.063288, 0,
+            0.520000, 0.063288, 0,
+        ]);
+
+        const pruned = pruneNearDuplicateRowEdgePins([0, 2, 1, 3], vertices, new Set([1, 2]), 0.0006);
+
+        expect(pruned).toEqual([0, 2, 3]);
+    });
+
+    it('collapses a two-point phantom row when both endpoints are microscopic protected pins', () => {
+        const vertices = new Float32Array([
+            0.507117, 0.063288, 0,
+            0.507129, 0.063288, 0,
+        ]);
+
+        const pruned = pruneNearDuplicateRowEdgePins([0, 1], vertices, new Set([0, 1]), 0.0006);
+
+        expect(pruned).toEqual([1]);
+    });
+
+    it('drops a microscopic unprotected row pin even when a resolvable endpoint is chained into the same group', () => {
+        const vertices = new Float32Array([
+            0.505926192, 0.063288286, 0,
+            0.507116616, 0.063288286, 0,
+            0.507128835, 0.063288286, 0,
+            0.507717967, 0.063288286, 0,
+            0.508307099, 0.063288286, 0,
+        ]);
+
+        const pruned = pruneNearDuplicateRowEdgePins([0, 1, 2, 3, 4], vertices, new Set([2]), 0.0006);
+
+        expect(pruned).toEqual([0, 2, 3, 4]);
+    });
+});
+
+describe('recordNearRowGridChainRemaps', () => {
+    it('records a global row remap when a split-cell grid endpoint nearly matches an owned-span chain pin', () => {
+        const vertices = new Float32Array([
+            0.514305, 0.837838, 0,
+            0.515788, 0.837838, 0,
+            0.514160, 0.837838, 0,
+        ]);
+        const remap = new Map<number, number>();
+
+        const count = recordNearRowGridChainRemaps(
+            vertices,
+            3,
+            vertexIdx => vertexIdx < 2,
+            vertexIdx => vertexIdx === 2,
+            0.00015,
+            remap,
+        );
+
+        expect(count).toBe(1);
+        expect(remap.get(0)).toBe(2);
+        expect(remap.has(1)).toBe(false);
+    });
+
+});
 
 function makeSupportedCorridorFixture(): {
     chains: FeatureChain[];
@@ -194,6 +349,22 @@ function getChainTriangleIndices(result: ReturnType<typeof buildCDTOuterWall>): 
 
 function getSupportedCandidate(result: ReturnType<typeof buildCDTOuterWall>) {
     return result.corridorPlan?.candidates.find(candidate => candidate.supported);
+}
+
+function countUndirectedEdgeIncidents(indices: Uint32Array, a: number, b: number): number {
+    let count = 0;
+    for (let i = 0; i < indices.length; i += 3) {
+        const t0 = indices[i], t1 = indices[i + 1], t2 = indices[i + 2];
+        if (t0 === 0 && t1 === 0 && t2 === 0) continue;
+        if (
+            (t0 === a && t1 === b) || (t1 === a && t0 === b) ||
+            (t1 === a && t2 === b) || (t2 === a && t1 === b) ||
+            (t2 === a && t0 === b) || (t0 === a && t2 === b)
+        ) {
+            count++;
+        }
+    }
+    return count;
 }
 
 // ============================================================================
@@ -861,6 +1032,200 @@ describe('OuterWallTessellator', () => {
             for (const [, count] of edgeTris) {
                 expect(count).toBeLessThanOrEqual(2);
             }
+        });
+
+        it('does not overfill a row segment shared by an owned span and its neighbor', () => {
+            const unionU = new Float32Array([0, 0.25, 0.5, 0.75, 1]);
+            const tPositions = new Float32Array([0, 0.5, 1]);
+            const rowMapping = makeIdentityRowMapping(tPositions.length);
+            const chains: FeatureChain[] = [{
+                kind: 'peak',
+                points: [
+                    { row: 1, u: 0.5004 },
+                    { row: 2, u: 0.76 },
+                ],
+            }];
+
+            const result = buildCDTOuterWall(chains, rowMapping, tPositions, unionU, 100, 0);
+
+            const gridBoundaryVertex = 1 * unionU.length + 2;
+            const chainBoundaryVertex = [...result.chainVertexChainIds.keys()].find(vertexIdx =>
+                Math.abs(result.vertices[vertexIdx * 3] - 0.5004) < 1e-6 &&
+                Math.abs(result.vertices[vertexIdx * 3 + 1] - 0.5) < 1e-6,
+            );
+            expect(chainBoundaryVertex).toBeDefined();
+
+            const incidents = countUndirectedEdgeIncidents(
+                result.indices,
+                gridBoundaryVertex,
+                chainBoundaryVertex!,
+            );
+            expect(incidents).toBe(0);
+        });
+
+        it('does not retain a microscopic same-row grid-chain pin inside the quality remap radius', () => {
+            const unionU = new Float32Array([0, 0.25, 0.5, 0.75, 1]);
+            const tPositions = new Float32Array([0, 0.5, 1]);
+            const rowMapping = makeIdentityRowMapping(tPositions.length);
+            const exactChainU = 0.5002;
+            const chains: FeatureChain[] = [{
+                kind: 'peak',
+                points: [
+                    { row: 1, u: exactChainU },
+                    { row: 2, u: 0.76 },
+                ],
+            }];
+
+            const result = buildCDTOuterWall(chains, rowMapping, tPositions, unionU, 100, 0);
+            const gridBoundaryVertex = 1 * unionU.length + 2;
+            const chainBoundaryVertex = [...result.chainVertexChainIds.keys()].find(vertexIdx =>
+                Math.abs(result.vertices[vertexIdx * 3] - exactChainU) < 1e-6 &&
+                Math.abs(result.vertices[vertexIdx * 3 + 1] - 0.5) < 1e-6,
+            );
+            expect(chainBoundaryVertex).toBeDefined();
+            expect(result.vertices[chainBoundaryVertex! * 3]).toBeCloseTo(exactChainU, 6);
+
+            expect(countUndirectedEdgeIncidents(
+                result.indices,
+                gridBoundaryVertex,
+                chainBoundaryVertex!,
+            )).toBe(0);
+        });
+
+        it('does not clamp a near-boundary column crossing into a microscopic phantom strip', () => {
+            const unionU = new Float32Array([0, 0.2, 0.4, 0.5, 0.6, 0.8, 1]);
+            const tPositions = new Float32Array([0, 0.001, 0.002]);
+            const rowMapping = makeIdentityRowMapping(tPositions.length);
+            const chains: FeatureChain[] = [{
+                kind: 'peak',
+                points: [
+                    { row: 0, u: 0.499 },
+                    { row: 1, u: 0.55 },
+                    { row: 2, u: 0.55 },
+                ],
+            }];
+
+            const result = buildCDTOuterWall(chains, rowMapping, tPositions, unionU, 100, 0);
+            const microscopicColumnEdges = new Set<string>();
+
+            for (let i = 0; i < result.indices.length; i += 3) {
+                const tri = [result.indices[i], result.indices[i + 1], result.indices[i + 2]];
+                if (tri[0] === 0 && tri[1] === 0 && tri[2] === 0) continue;
+                for (const [a, b] of [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]]) {
+                    const au = result.vertices[a * 3];
+                    const at = result.vertices[a * 3 + 1];
+                    const bu = result.vertices[b * 3];
+                    const bt = result.vertices[b * 3 + 1];
+                    const dt = Math.abs(at - bt);
+                    if (
+                        Math.abs(au - bu) < 1e-7 &&
+                        dt > 1e-8 &&
+                        dt <= 0.0001001
+                    ) {
+                        microscopicColumnEdges.add(a < b ? `${a}-${b}` : `${b}-${a}`);
+                    }
+                }
+            }
+
+            expect([...microscopicColumnEdges]).toEqual([]);
+        });
+
+        it('does not create a phantom strip at the observed sub-0.0002 boundary distance', () => {
+            const unionU = new Float32Array([0, 0.2, 0.4, 0.5, 0.6, 0.8, 1]);
+            const tPositions = new Float32Array([0, 0.001, 0.002]);
+            const rowMapping = makeIdentityRowMapping(tPositions.length);
+            const chains: FeatureChain[] = [{
+                kind: 'peak',
+                points: [
+                    { row: 0, u: 0.49 },
+                    { row: 1, u: 0.5566667 },
+                    { row: 2, u: 0.5566667 },
+                ],
+            }];
+
+            const result = buildCDTOuterWall(chains, rowMapping, tPositions, unionU, 100, 0);
+            const microscopicColumnEdges = new Set<string>();
+
+            for (let i = 0; i < result.indices.length; i += 3) {
+                const tri = [result.indices[i], result.indices[i + 1], result.indices[i + 2]];
+                if (tri[0] === 0 && tri[1] === 0 && tri[2] === 0) continue;
+                for (const [a, b] of [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]]) {
+                    const au = result.vertices[a * 3];
+                    const at = result.vertices[a * 3 + 1];
+                    const bu = result.vertices[b * 3];
+                    const bt = result.vertices[b * 3 + 1];
+                    const dt = Math.abs(at - bt);
+                    if (
+                        Math.abs(au - bu) < 1e-7 &&
+                        dt > 1e-8 &&
+                        dt <= 0.0002001
+                    ) {
+                        microscopicColumnEdges.add(a < b ? `${a}-${b}` : `${b}-${a}`);
+                    }
+                }
+            }
+
+            expect([...microscopicColumnEdges]).toEqual([]);
+        });
+
+        it('does not propagate an R37 row that exceeds the neighboring-cell source aspect reserve', () => {
+            const tBot = 0.953535;
+            const tCross = 0.953753;
+            const tTop = 0.954038;
+            const leftNeighborU = 0.877104;
+            const ownedSpanBoundaryU = 0.882298;
+            const crossedBoundaryU = 0.887493;
+            const metricAspect = 3.14;
+            const crossingAlpha = (tCross - tBot) / (tTop - tBot);
+            const chainBottomU = 0.885;
+            const chainTopU = chainBottomU + (crossedBoundaryU - chainBottomU) / crossingAlpha;
+            const unionU = new Float32Array([
+                0,
+                leftNeighborU,
+                ownedSpanBoundaryU,
+                crossedBoundaryU,
+                0.892688,
+                1,
+            ]);
+            const tPositions = new Float32Array([tBot, tTop, 0.954541]);
+            const rowMapping = makeIdentityRowMapping(tPositions.length);
+            const chains: FeatureChain[] = [{
+                kind: 'peak',
+                points: [
+                    { row: 0, u: chainBottomU },
+                    { row: 1, u: chainTopU },
+                    { row: 2, u: chainTopU },
+                ],
+            }];
+
+            const result = buildCDTOuterWall(
+                chains,
+                rowMapping,
+                tPositions,
+                unionU,
+                100,
+                0,
+                undefined,
+                undefined,
+                { metricAspect },
+            );
+            const neighborWidth = (ownedSpanBoundaryU - leftNeighborU) * metricAspect;
+            const unsafeBoundaryPhantoms: Array<{ t: number; aspect: number }> = [];
+
+            for (let vertexIdx = result.gridVertexCount; vertexIdx < result.vertices.length / 3; vertexIdx++) {
+                const u = result.vertices[vertexIdx * 3];
+                const t = result.vertices[vertexIdx * 3 + 1];
+                if (Math.abs(u - ownedSpanBoundaryU) > 1e-6 || t <= tBot || t >= tTop) continue;
+                const subBandHeight = Math.min(t - tBot, tTop - t);
+                const aspect = (
+                    (neighborWidth * neighborWidth + subBandHeight * subBandHeight) * Math.sqrt(3)
+                ) / (2 * neighborWidth * subBandHeight);
+                if (aspect > 60) {
+                    unsafeBoundaryPhantoms.push({ t, aspect });
+                }
+            }
+
+            expect(unsafeBoundaryPhantoms).toEqual([]);
         });
 
         it('two close chains produce valid mesh without degenerate triangles', () => {
@@ -1648,7 +2013,7 @@ describe('buildCDTOuterWall — characterization (budget-pin)', () => {
     // Sawtooth-edge baseline (see the 'fidelity floor' test). Captured from the
     // live output AFTER micro-row removal; any future redesign that adds local
     // refinement must keep the longest UV edge at or below these.
-    const MAXEDGE_BASELINE_MAX = 0.0243;     // worst single UV triangle edge (measured 0.024244)
+    const MAXEDGE_BASELINE_MAX = 0.02431;    // worst single UV triangle edge (measured 0.024305 after R37 quality gate)
     const MAXEDGE_BASELINE_LONG_EDGES = 0;   // # edges longer than LONG (0.05 UV) — none currently
 
     /** Deterministic PRNG (mulberry32) — byte-stable across runs/platforms. */
@@ -1731,8 +2096,9 @@ describe('buildCDTOuterWall — characterization (budget-pin)', () => {
         // is meant to bound. Removing micro-rows cut realTris 12511→9972 (−20%)
         // and gridVertexCount 5280→4000 (numT no longer expands). Task#17 rail
         // sharing plus short crossing fallbacks then changed the sparse
-        // characterization to 9985 real tris; the crossing fallback is bounded
-        // by source-cell edge scale here to preserve the sawtooth max-edge floor.
+        // characterization to 9985 real tris; R58 row-pin collapse/coalescence
+        // reduced it to 9943. The R37 source-aspect gate then removed 136
+        // quality-unsafe auxiliary split triangles, reducing it to 9807.
         // A further budget-honoring change SHOULD lower realTris toward 6000
         // and WILL change indexHash/indicesLength/vertexCount; when it does,
         // re-run, verify the new tri count respects the budget, and update these
@@ -1747,13 +2113,13 @@ describe('buildCDTOuterWall — characterization (budget-pin)', () => {
         };
         expect(actual).toEqual({
             gridVertexCount: 4000,
-            indexHash: 1142801298,
-            indicesLength: 30852,
-            realTris: 9985,
-            vertexCount: 5282,
-            chainEdges: 440,
+            indexHash: 1351672304,
+            indicesLength: 29433,
+            realTris: 9807,
+            vertexCount: 5201,
+            chainEdges: 424,
         });
-        // The budget is still a no-op: realTris (9985) exceeds it (~1.66×).
+        // The budget is still a no-op: realTris (9807) exceeds it (~1.63×).
         expect(realTris).toBeGreaterThan(6000);
     });
 

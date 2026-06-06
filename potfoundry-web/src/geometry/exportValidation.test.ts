@@ -162,6 +162,27 @@ describe('validateMeshForExport', () => {
     expect(report.errors.join('\n')).toMatch(/orientation/i);
   });
 
+  it('rejects globally inverted closed solids even when local edge winding is coherent', () => {
+    const mesh = makeClosedCube();
+    const inverted = new Uint32Array(mesh.indices);
+    for (let i = 0; i < inverted.length; i += 3) {
+      const tmp = inverted[i + 1];
+      inverted[i + 1] = inverted[i + 2];
+      inverted[i + 2] = tmp;
+    }
+    mesh.indices = inverted;
+
+    const report = validateMeshForExport(mesh, { format: '3mf' });
+
+    expect(report.ok).toBe(false);
+    expect(report.boundaryEdges).toBe(0);
+    expect(report.nonManifoldEdges).toBe(0);
+    expect(report.orientationMismatches).toBe(0);
+    expect(report.errors.join('\n')).toMatch(/outward|inside-out|signed volume/i);
+    expect(() => assertMeshExportable(mesh, { format: '3mf' }))
+      .toThrow(/outward|inside-out|signed volume/i);
+  });
+
   it('can report winding mismatches as warnings for STL triangle soup downloads', () => {
     const mesh = makeClosedCube();
     const flipped = new Uint32Array(mesh.indices);

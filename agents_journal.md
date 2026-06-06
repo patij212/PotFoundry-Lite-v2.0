@@ -4923,3 +4923,142 @@ Next agent:
 - Treat topology and sliver work as separate stages: first fix Fourier/feature-chain orientation mismatches from the same-surface/cross-surface center fills, then replace center fans with quality-preserving graded caps or a source stitch.
 - Use `window.__pfFidelity.diagnoseQuality()` to prove whether a proposed sliver fix targets appended cap triangles or pre-existing grid/seam needles.
 - Do not repin broad characterization tests until the residual dirty-worktree failures are isolated from this topology pass.
+---
+
+## 2026-06-04 - Codex - Fourier Micro-Crack Closure and Winding Conflict Isolation
+
+Summary:
+- Continued the CAD-level parametric export quality push after Claude/Codex intermediate work.
+- Proved FourierBloom's residual `boundaryEdges=4` came from one duplicated vertex pair about `0.0002mm` apart that the final defect weld missed because it used the coarser export validation tolerance.
+- Added a fine `1e-4mm` defect-discovery ceiling for the final weld and a regression test showing coarse `1e-3mm` discovery masks the micro-crack.
+- Added and wired `normalizeWindingByComponent`, a late index-only winding normalization pass with canonical-position adjacency and conflict telemetry.
+- Added a compact multi-agent debate note: `archive/plans/parametric-pipeline/2026-06-04-defect-weld-and-winding-normalizer.md`.
+
+Decisions:
+- Kept the defect weld restricted to defect-incident vertices; it now discovers defects at fidelity topology precision but still welds only within the local defect region.
+- Ran winding normalization late, after final defect weld and before validation. An early-normalization hypothesis after same-surface center fill was tested and rejected because Fourier worsened to `orientation=2926`.
+- Kept gated stage diagnostics (`__pfEnableWindingStageDiagnostics`) because they proved the remaining conflicts collapse to 28 after same-surface center fill and are preserved by later stages.
+
+Validation:
+- GREEN: `npx vitest run src/renderers/webgpu/parametric/BoundaryTJunctionRepair.test.ts src/renderers/webgpu/parametric/WindingNormalizer.test.ts --testTimeout=60000` (42 tests).
+- GREEN: `npm run typecheck`.
+- GREEN: `npm run lint`.
+- GREEN browser SuperformulaBlossom topology: `boundary=0`, `nonMan=0`, `orient=0`; normalizer no-op (`flipped=0`, `conflicts=0`).
+- IMPROVED browser FourierBloom topology: pre-fix focused probe was `boundary=4`, `orient=50`; current tree is `boundary=0`, `nonMan=0`, `orient=14`; final defect weld reports `weldedVertices=1`, winding pass `flippedTriangles=44`, `conflicts=28`.
+- RED full `npm test`: 7 failures remain: meshDecimator timeout, two ParametricExportComputer corridor failures, BoundaryTJunctionRepair default-timeout pressure, OuterWallTessellator 80x50 characterization drift, and F14/F14b default-timeout failures.
+
+Risks:
+- Goal is not complete: FourierBloom still has 14 orientation mismatches from two small parity-conflict patches involving same-surface center-fill triangles (`514847`, `514855`) and surrounding repaired/source triangles.
+- `normalizeWindingByComponent` cannot fix those final conflicts by winding alone; the source topology needs a patch rebuild or safer same-surface center-fill strategy.
+- Worktree still contains Claude/user dirty files and generated artifacts; I did not revert unrelated changes.
+- GitNexus index was stale at first; `npx gitnexus analyze` eventually refreshed it, and `gitnexus detect_changes` reports medium affected scope.
+
+Next agent:
+- Continue from the proven source: stage diagnostics show conflicts are huge after T-junction repair, collapse to 28 after `fillSameSurfaceBoundaryLoopsWithCenters`, and remain 28 through seam/cross/final weld.
+- Use the two Fourier residual clusters as the next TDD target: remove/retriangulate the tiny non-orientable patches or teach same-surface center fill to reject/rebuild the two bad 5-edge loops.
+- Keep Superformula as the no-regression canary and Fourier as the fast feature-chain topology target before returning to GothicArches or the full matrix.
+
+## 2026-06-05 - Claude - WATERTIGHT: GothicArches export passes the validation gate
+
+Milestone: the feature-dense GothicArches export is now watertight AND manifold on
+the faithful e2e — boundaryEdges=0, nonManifoldEdges=0, manifoldOk=true,
+degeneratesOk=true, validationPass=true. Boundary 1026 -> 0 across the session.
+
+Final fix (commit 30cf123): weldNearCoincidentBoundaryVertices. After the fill
+battery + splitResidualBoundaryTJunctions + final cross/same-surface loop mop-ups,
+the only residual was 8 duplicate vertices (4 pairs ~6-12µm apart) — the same
+physical point split by float path divergence at feature/seam crossings, just over
+the 0.8µm weld floor — each leaving a non-manifold near-degenerate edge plus an
+open boundary chain. The pass merges such pairs, restricted to boundary/NM-incident
+vertices (dense interiors untouched), strips the collapsed triangles, and moves no
+positions. boundaryEdges 4->0, nonManifoldEdges 4->0.
+
+Session arc (committed): owner-opposite fill winding (winding 7955->3464,
+boundary 1026->163) -> residual 3D T-junction split (163->36) -> final
+cross-surface loop fill (36->10) -> final same-surface loop fill (10->4) ->
+defect weld (4->0, NM 4->0). Five commits 533081f, cd834b4, 848b656, 982e518,
+30cf123.
+
+Coordination note: BoundaryTJunctionRepair.ts + ParametricExportComputer.ts are
+being live-edited by a PARALLEL agent (sliver-quality WIP: outerJoinLoopCenter,
+projected cross-surface caps, surface-T quality probes). The watertight e2e result
+reflects the combined tree. The shared test file currently has 1 failing test from
+that parallel agent's in-progress projected-cap work (fillCrossSurfaceConstantT...
+'uses projected triangulation when the center fan would be worse'): NOT caused by
+this watertightness work (which does not touch the cross-surface filler). The test
+file was left uncommitted so the committed suite stays green; the parallel agent
+should commit it once their projected-cap feature lands.
+
+Remaining for grasshopper/rhino quality (non-gating): winding 3462 (fold-inherent;
+repairOuterWallTJunctions emits owner-consistent already -> needs source-fold
+elimination) and slivers/min-angle~0 (the parallel agent's active target).
+
+---
+
+## 2026-06-05 - Codex - Gothic Strict Fidelity Closure and Winding Source Probe
+
+Summary:
+- Continued the Rhino/Grasshopper-grade export pipeline work on GothicArches after the validator-level watertight milestone.
+- Proved the previous hardcoded `0.02mm` final weld was a source fault: it reduced boundaries but created non-manifold regressions; the selector now chooses the smallest topology-safe candidate.
+- Fixed the post-defect repair acceptance gate so hard topology improvements are accepted when only a tiny pre-normalization orientation count regresses.
+- Added a strict final CAD topology weld after post-defect repair; it uses `1e-4mm` defect discovery and a tiny `0.0001/0.0002/0.0005/0.001mm` tolerance ladder.
+
+Decisions:
+- Kept the broad defect weld and strict CAD closure weld as separate ladders so Gothic's final `0.00016mm` residual crack is closed without reintroducing the unsafe `0.02mm` behavior.
+- Changed fidelity topology diagnostics to prioritize hard-defect samples (`nonManifold`, then `boundary`, then `orientationMismatch`) so probes surface scarce hard topology failures.
+- Did not attempt to "flip harder" for winding: live diagnostics show `normalizeWindingByComponent` has parity conflicts, so the source graph is contradictory.
+
+Validation:
+- GREEN: `npm run typecheck`.
+- GREEN: `npm run lint`.
+- GREEN: `npx vitest run src/renderers/webgpu/ParametricExportComputer.refinementStitch.test.ts --testTimeout=60000` (26 tests).
+- GREEN: `npx vitest run src/renderers/webgpu/parametric/BoundaryTJunctionRepair.test.ts --testTimeout=60000` (48 tests).
+- GREEN: `npx vitest run src/fidelity/metrics.test.ts --testTimeout=60000` (31 tests).
+- GREEN browser GothicArches E2E: `boundaryEdges=0`, `nonManifoldEdges=0`, `featuresDropped=0`, `triangleCount=1,572,052`; strict CAD weld selected `0.0002mm` and closed `4->0` boundary edges.
+- RED/timeout: full `npm test` exceeded 10 minutes and left Vitest child processes, which were stopped; no completed full-suite result from this slice.
+
+Risks:
+- Goal is not complete: GothicArches still reports `orientationMismatches=31,681`, `sliverCount=23,704`, `maxAspect3D=281,375`, `minAngleDeg=0.000176`.
+- Winding-stage probe shows conflicts already after `repairOuterWallTJunctions#1` (`53,750` conflicts) and final normalization still reports `63,362` directed conflicts, so the next fix belongs upstream in the first repair/edge-flip/prune sequence.
+- Worktree contains prior Claude/user dirty changes and generated artifacts; I did not revert unrelated files.
+
+Next agent:
+- Add a before/after winding diagnostic around the first `repairOuterWallTJunctions` pass or isolate its subpasses to prove whether conflicts originate before repair, in `splitBoundaryTJunctionPass`, `flipHighAspectInteriorEdges`, or pruning.
+- Use conflict samples around z≈113-116mm (e.g. edges `172059-250909`, `172059-219967`, `219967-250909`) as the next TDD fixture for non-orientable outer-wall patches.
+- Keep Gothic strict topology (`boundary=0`, `nonMan=0`) as a regression canary while moving to winding and then sliver quality.
+
+---
+
+## 2026-06-06 - Codex - Claude Branch Triage and Export Gate Sync
+
+Summary:
+- Inspected all remote `origin/claude/eloquent-heisenberg-*` branches without switching the dirty local worktree.
+- Found they are based on the older `apply/streamlit-fix` / legacy Python line, not active `refactor/core-migration`; direct merge would delete active WebGPU app files and reintroduce legacy Python surface.
+- Ported the one branch idea that was missing in the active export gate: globally inside-out closed solids now fail shared STL/OBJ/3MF export validation via signed volume.
+- Synced in-flight parametric repair API drift so local typecheck passes again: exported `compactDuplicateCanonicalTriangles`, restored `splitNonManifoldBoundaryTJunctions`, and added `strippedPrefixTriangles` accounting to `weldNearCoincidentBoundaryVertices`.
+- Implemented the existing compactor `preserveBoundaryEdges` contract and the short geometric bridge fallback pinned by the non-manifold splitter tests.
+
+Decisions:
+- Do not merge any `claude/eloquent-heisenberg-*` branch wholesale; treat them as stale reference branches only.
+- Do not port legacy Python 3MF writer code because active TypeScript `export3MF.ts` already has units, indexed meshes, deterministic package dates, and metadata.
+- Keep the signed-volume gate in `geometry/exportValidation.ts` rather than dirty `MeshValidator.ts`; this narrows the change to the production file-download gate and avoids colliding with ongoing parametric diagnostics.
+- Keep the geometric bridge fallback local to the public non-manifold wrapper instead of relaxing the global UV segment predicate used by broader T-junction repair.
+
+Validation:
+- RED then GREEN: `npx vitest run src/geometry/exportValidation.test.ts --testTimeout=60000`.
+- GREEN: `npm run typecheck`.
+- GREEN: `npm run lint`.
+- GREEN: `npx vitest run src/geometry/exportValidation.test.ts src/geometry/stlExport.test.ts src/geometry/exporters/export3MF.test.ts src/geometry/exporters/exportOBJ.test.ts --testTimeout=60000` (90 tests).
+- GREEN: focused `BoundaryTJunctionRepair.test.ts` helper contract run for non-manifold split, compaction, and near-coincident weld tests.
+- GREEN: `npx vitest run src/renderers/webgpu/ParametricExportComputer.refinementStitch.test.ts --testTimeout=60000` (26 tests).
+- RED/timeout: full `BoundaryTJunctionRepair.test.ts` exceeded 180s before the focused run; stale Vitest PIDs were stopped.
+
+Risks:
+- GitNexus `detect_changes` still reports HIGH because the overall worktree contains many prior dirty agent changes outside this slice, especially `OuterWallTessellator` and fidelity diagnostics.
+- Signed-volume validation is only in the shared download/export gate; the parametric `MeshValidator` still does not expose a first-class outward-volume report.
+- Full E2E export matrix was not rerun in this slice; previous baseline still shows slivers/orientation/sag as the main CAD-quality blockers.
+
+Next agent:
+- Continue from Gothic strict topology: hard topology is now closed, but orientation conflicts and sliver quality remain the core Rhino/Grasshopper blockers.
+- Do not merge `claude/eloquent-heisenberg-*` directly; if a branch insight is needed, cherry-pick the concept into active TypeScript with TDD.
+- Consider adding signed-volume/outwardness to `parametric/MeshValidator.ts` once the current dirty diagnostics in that file settle.

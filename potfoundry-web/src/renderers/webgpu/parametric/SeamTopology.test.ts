@@ -641,6 +641,23 @@ describe('healSeam', () => {
         expect(result.maxResidualGapMm).toBeLessThan(0.001);
     });
 
+    it('leaves intermediate seam gaps on-surface instead of averaging them', () => {
+        const numU = 8, numT = 4, radius = 20;
+        const gapMm = 0.3;
+        const { positions, indices } = buildSeamGrid(numU, numT, radius, gapMm);
+        const originalPositions = positions.slice();
+        const config = healConfigForProfile('ultra');
+
+        const result = healSeam(positions, indices, indices.length, numU, numT, config);
+
+        expect(gapMm).toBeGreaterThan(config.averageOnlyThresholdMm);
+        expect(gapMm).toBeLessThan(config.ghostTriangleThresholdMm);
+        expect(result.pairsAveraged).toBe(0);
+        expect(result.ghostStripsInserted).toBe(0);
+        expect(result.positions).toEqual(originalPositions);
+        expect(result.maxResidualGapMm).toBeCloseTo(gapMm, 4);
+    });
+
     it('does not grow index buffer when all gaps are healable by averaging', () => {
         const numU = 8, numT = 4, radius = 20;
         const { positions, indices } = buildSeamGrid(numU, numT, radius, 0.3);

@@ -34,4 +34,39 @@ describe('createFidelityApi diagnostics', () => {
     expect(out.worst[0].triangleIndex).toBe(1);
     expect(out.worst[0].indices).toEqual([3, 4, 5]);
   });
+
+  it('limits quality diagnostics to an exact triangle range while preserving mesh indices', async () => {
+    (window as unknown as { __pfCurrentStyle?: string }).__pfCurrentStyle = 'RangeProbe';
+    const api = createFidelityApi({
+      setStyle: () => {},
+      isAvailable: () => true,
+      isReferenceAvailable: () => true,
+      generateReference: async () => null,
+      generateMesh: async () => ({
+        vertices: new Float32Array([
+          0, 0, 0,
+          1, 0, 0,
+          0.5, Math.sqrt(3) / 2, 0,
+          0, 0, 1,
+          100, 0, 1,
+          50, 0.05, 1,
+        ]),
+        indices: new Uint32Array([
+          0, 1, 2,
+          3, 4, 5,
+        ]),
+        vertexCount: 6,
+        triangleCount: 2,
+      }),
+    });
+
+    const first = await api.diagnoseQuality({ triangleStart: 0, triangleEnd: 1, sampleLimit: 1 });
+    const second = await api.diagnoseQuality({ triangleStart: 1, triangleEnd: 2, sampleLimit: 1 });
+
+    expect(first.sliverCount).toBe(0);
+    expect(first.worst[0].triangleIndex).toBe(0);
+    expect(second.sliverCount).toBe(1);
+    expect(second.worst[0].triangleIndex).toBe(1);
+    expect(second.worst[0].indices).toEqual([3, 4, 5]);
+  });
 });

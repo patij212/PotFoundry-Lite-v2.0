@@ -730,12 +730,13 @@ export function healConfigForProfile(
  * should be geometrically close. This function:
  *
  * 1. Identifies seam vertex pairs (col0 ↔ colLast) per row.
- * 2. **Position averaging**: for each pair with gap < `ghostTriangleThresholdMm`,
+ * 2. **Position averaging**: for each pair with gap < `averageOnlyThresholdMm`,
  *    moves both vertices to their 3D midpoint. This closes minor gaps.
  * 3. **Ghost triangle insertion** (optional): for pairs with gap ≥ threshold,
  *    inserts a strip of two triangles (quad) bridging the seam gap.
  *    Ghost triangles reference the existing seam vertices — no new vertices
- *    are created.
+ *    are created. Gaps between the two thresholds remain on-surface and
+ *    unchanged.
  *
  * @param positions - Packed [x,y,z,...] vertex positions (mutated in-place).
  * @param indices - Triangle index buffer (may be extended).
@@ -793,7 +794,7 @@ export function healSeam(
     for (const pair of pairs) {
         const gap = measurePositionGap(positions, pair);
 
-        if (gap < config.ghostTriangleThresholdMm) {
+        if (gap < config.averageOnlyThresholdMm) {
             // Average positions: move both vertices to their 3D midpoint
             const a = pair.col0Vertex * 3;
             const b = pair.colLastVertex * 3;
@@ -803,7 +804,7 @@ export function healSeam(
             positions[a] = mx;     positions[a + 1] = my;     positions[a + 2] = mz;
             positions[b] = mx;     positions[b + 1] = my;     positions[b + 2] = mz;
             pairsAveraged++;
-        } else {
+        } else if (gap >= config.ghostTriangleThresholdMm) {
             ghostCandidateRows.push(pair.row);
         }
     }
