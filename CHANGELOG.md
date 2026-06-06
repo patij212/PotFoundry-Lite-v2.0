@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] - 2024-12 (In Development)
 
 ### Added
+- Mesh validation: `potfoundry.validate_mesh` / `MeshReport` — a fast,
+  dependency-free export-quality gate reporting watertightness, orientation
+  consistency, outward normals (signed volume), and degenerate-face counts.
+  Runs in ~30 ms on a ~58k-face mesh.
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
 
