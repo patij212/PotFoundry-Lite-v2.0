@@ -52,6 +52,7 @@ export function resolveCollinearTriangles(
     perpFraction: number = 0.01,
     outerIdxCount: number = indices.length,
     maxResultAspect: number = 100,
+    endpointSnapMm: number = 0.03,
 ): CollinearResolutionResult {
     const triCount = (indices.length / 3) | 0;
     const numV = (positions.length / 3) | 0;
@@ -82,9 +83,13 @@ export function resolveCollinearTriangles(
 
     const removed = new Set<number>();
     const appended: number[] = [];
+    // Apex-snap: a collinear apex within endpointSnapMm of an endpoint is a near-duplicate
+    // of that endpoint (tessellation artifact). Welding it onto the endpoint collapses the
+    // sliver (and any other tris using the apex move sub-tolerance). Applied at rebuild.
+    const weldRemap = new Map<number, number>();
     let resolvedTriangles = 0;
     let splitNeighbors = 0;
-    let outerDelta = 0;
+    let snappedApices = 0;
 
     const triVerts = (t: number): [number, number, number] => [indices[t * 3], indices[t * 3 + 1], indices[t * 3 + 2]];
 
@@ -116,6 +121,21 @@ export function resolveCollinearTriangles(
 
         const cLo = cid[rawLo], cHi = cid[rawHi], cApex = cid[apex];
         if (cApex === cLo || cApex === cHi) continue; // apex coincident with an endpoint
+
+        // Apex-snap: if the apex sits within endpointSnapMm of an endpoint, it is a near-
+        // duplicate of that endpoint — weld it there (collapsing the zero-area sliver and
+        // its short artifact edge) rather than splitting (which would make a worse needle).
+        const dLo = s * longest;
+        const dHi = (1 - s) * longest;
+        if (Math.min(dLo, dHi) <= endpointSnapMm) {
+            const target = dLo <= dHi ? rawLo : rawHi;
+            if (!weldRemap.has(apex) && apex !== target) {
+                weldRemap.set(apex, target);
+                resolvedTriangles++;
+                snappedApices++;
+            }
+            continue;
+        }
 
         const incident = edgeTris.get(edgeKey(cLo, cHi));
         if (!incident) continue;
@@ -150,34 +170,47 @@ export function resolveCollinearTriangles(
         appended.push(rawX, apex, rawD, apex, rawY, rawD);
         resolvedTriangles++;
         splitNeighbors++;
-        // Outer prefix accounting: T and N leave the prefix; the 2 split tris are appended
-        // at the end (non-outer). Net change to the outer prefix = -(those of T,N that were outer).
-        if (t * 3 < outerIdxCount) outerDelta -= 3;
-        if (n * 3 < outerIdxCount) outerDelta -= 3;
     }
 
     if (resolvedTriangles === 0) {
         return { indices, resolvedTriangles: 0, splitNeighbors: 0, outerIdxCount };
     }
 
-    // Rebuild: surviving original triangles (preserving order so the outer prefix stays
-    // contiguous) followed by appended split triangles.
-    const survivingLen = (triCount - removed.size) * 3;
-    const out = new Uint32Array(survivingLen + appended.length);
-    let w = 0;
+    // Resolve apex-snap weld chains (apex → endpoint, possibly chained).
+    const resolve = (v: number): number => {
+        let x = v, guard = 0;
+        while (weldRemap.has(x) && guard++ < 16) x = weldRemap.get(x)!;
+        return x;
+    };
+
+    // Rebuild: surviving original triangles first (preserving order so the outer prefix
+    // stays contiguous at the front), then the appended split triangles. Every index goes
+    // through the weld remap; triangles that become degenerate (collapsed by a snap) are
+    // stripped. The outer prefix length is recounted from the kept outer survivors.
+    const kept: number[] = [];
+    let newOuterIdxCount = 0;
     for (let t = 0; t < triCount; t++) {
         if (removed.has(t)) continue;
-        out[w++] = indices[t * 3];
-        out[w++] = indices[t * 3 + 1];
-        out[w++] = indices[t * 3 + 2];
+        const a = resolve(indices[t * 3]);
+        const b = resolve(indices[t * 3 + 1]);
+        const c = resolve(indices[t * 3 + 2]);
+        if (a === b || b === c || a === c) continue; // degenerate after snap → strip
+        kept.push(a, b, c);
+        if (t * 3 < outerIdxCount) newOuterIdxCount += 3;
     }
-    for (let i = 0; i < appended.length; i++) out[w++] = appended[i];
+    for (let i = 0; i + 2 < appended.length; i += 3) {
+        const a = resolve(appended[i]);
+        const b = resolve(appended[i + 1]);
+        const c = resolve(appended[i + 2]);
+        if (a === b || b === c || a === c) continue;
+        kept.push(a, b, c);
+    }
 
     return {
-        indices: out,
+        indices: Uint32Array.from(kept),
         resolvedTriangles,
         splitNeighbors,
-        outerIdxCount: outerIdxCount + outerDelta,
+        outerIdxCount: newOuterIdxCount,
     };
 }
 
