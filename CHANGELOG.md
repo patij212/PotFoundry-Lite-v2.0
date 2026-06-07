@@ -10,10 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] - 2024-12 (In Development)
 
 ### Added
+- **Welded OBJ export for Rhino / Grasshopper** (`potfoundry.write_obj`,
+  `pfui.exporters.export_obj_bytes`, "Download OBJ" button). OBJ preserves the
+  shared-vertex (indexed) topology of the mesh, so pots import into Rhino /
+  Grasshopper as a closed, watertight mesh. Binary STL — fine for slicers —
+  de-welds every triangle (3 vertex copies per face) and imports as a naked-edge
+  shell, which is why it is not suitable for CAD round-tripping.
+- **Mesh validation** (`potfoundry.validate_mesh` → `MeshReport`): a single
+  CAD-readiness check mirroring Rhino's mesh criteria — watertight, manifold,
+  consistent winding, no degenerate/duplicate faces, plus signed volume /
+  outward-orientation. Guards every export against silent topology regressions.
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
 
 ### Fixed
+- **Mesh winding (export quality):** `build_pot_mesh` previously emitted a mesh
+  that was watertight but **not coherently oriented** — the outer wall, inner
+  wall, rim cap and bottom underside were wound with normals pointing *into* the
+  solid, while the cavity floor and drain cylinder pointed outward. Rhino /
+  Grasshopper would import flipped normals (requiring `_UnifyMeshNormals`) and
+  STL facet normals were wrong on those faces. All sub-surfaces are now wound so
+  normals point **outward** from the solid (positive enclosed volume), making the
+  whole shell a single coherently oriented closed manifold. Proven by
+  `validate_mesh` across all five styles; vectorized, no performance cost.
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`

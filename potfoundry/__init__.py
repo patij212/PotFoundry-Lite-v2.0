@@ -30,6 +30,9 @@ from .core.io.stl import write_stl_binary
 # Welded OBJ writer (recommended for Rhino / Grasshopper round-tripping)
 from .core.io.obj import write_obj
 
+# Mesh validation — CAD-readiness guarantee used before export
+from .core.mesh_validation import MeshReport, validate_mesh
+
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
 
@@ -44,6 +47,9 @@ __all__ = [
     'write_stl_binary',  # binary STL — slicers / 3D printing
     'write_obj',         # welded OBJ — Rhino / Grasshopper
     'write_ascii_stl',   # deprecated
+    # Mesh validation
+    'MeshReport',
+    'validate_mesh',
     # Version
     '__version__',
 ]
