@@ -3,12 +3,15 @@ potfoundry — a tiny toolkit for generating parametric, printable flower pots
 ---------------------------------------------------------------------------
 Public domain / Unlicense. See LICENSE for details.
 
-STL Export:
-    - write_stl_binary: **Recommended** - Fast, compact binary STL export (default)
+Mesh Export:
+    - write_stl_binary: **Recommended for slicers / 3D printing** - fast, compact
+      binary STL (de-welded per-triangle geometry, as the STL format requires).
+    - write_obj: **Recommended for Rhino / Grasshopper** - welded indexed Wavefront
+      OBJ that preserves the watertight, closed mesh topology for CAD round-tripping.
     - write_ascii_stl: **Deprecated** - Legacy ASCII STL (debug/compatibility only)
 
-For all production use, prefer write_stl_binary. It produces smaller files,
-writes faster, and is universally supported by modern slicers and CAD tools.
+For slicing, prefer write_stl_binary. For CAD interchange (Rhino, Grasshopper),
+prefer write_obj — it keeps shared vertices so the mesh imports closed/watertight.
 """
 
 __version__ = "2.1.0"
@@ -21,8 +24,11 @@ from .core.geometry import (
     save_preview_png,
 )
 
-# Binary STL writer (recommended)
+# Binary STL writer (recommended for slicers / 3D printing)
 from .core.io.stl import write_stl_binary
+
+# Welded OBJ writer (recommended for Rhino / Grasshopper round-tripping)
+from .core.io.obj import write_obj
 
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
@@ -34,9 +40,10 @@ __all__ = [
     'STYLES',
     'build_pot_mesh',
     'save_preview_png',
-    # STL export (binary is recommended)
-    'write_stl_binary',
-    'write_ascii_stl',  # deprecated
+    # Mesh export
+    'write_stl_binary',  # binary STL — slicers / 3D printing
+    'write_obj',         # welded OBJ — Rhino / Grasshopper
+    'write_ascii_stl',   # deprecated
     # Version
     '__version__',
 ]
