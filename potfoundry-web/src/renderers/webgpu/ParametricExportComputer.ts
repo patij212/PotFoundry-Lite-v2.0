@@ -531,10 +531,11 @@ function recordWindingStageDiagnostic(
             positions,
             DEFECT_WELD_DISCOVERY_TOLERANCE_MM,
         );
+        const collinear = countCollinearSlivers(indices, positions, indices.length);
         console.warn(
             `[WINDING-STAGE] ${name} tris=${indices.length / 3} ` +
             `flipped=${winding.flipped} components=${winding.components} ` +
-            `conflicts=${winding.conflicts} ms=${(performance.now() - start).toFixed(1)}`,
+            `conflicts=${winding.conflicts} collinear=${collinear} ms=${(performance.now() - start).toFixed(1)}`,
         );
         for (const sample of winding.conflictSamples.slice(0, 8)) {
             const [a, b] = sample.edge;
