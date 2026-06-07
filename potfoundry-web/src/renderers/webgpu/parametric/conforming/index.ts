@@ -30,3 +30,4 @@ export type {
   ConformingOuterWallResult,
 } from './ConformingOuterWall';
 export { buildConformingOuterWall } from './ConformingOuterWall';
+export { annulusStrip, discFan } from './RingStrip';
