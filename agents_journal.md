@@ -5062,3 +5062,37 @@ Next agent:
 - Continue from Gothic strict topology: hard topology is now closed, but orientation conflicts and sliver quality remain the core Rhino/Grasshopper blockers.
 - Do not merge `claude/eloquent-heisenberg-*` directly; if a branch insight is needed, cherry-pick the concept into active TypeScript with TDD.
 - Consider adding signed-volume/outwardness to `parametric/MeshValidator.ts` once the current dirty diagnostics in that file settle.
+
+---
+
+## 2026-06-07 - Claude - By-Construction Phase 1: collinear-sliver class + architectural diagnosis (5 styles fully Rhino-grade)
+
+Summary:
+- Continued from the multi-agent tree (checkpointed as `a54a1b2` to protect ~5251 uncommitted lines; environment fix: a stale `node_modules/.vite` cache was making every probe time out at isReady — NOT the GPU, `navigator.gpu=true`).
+- Refuted the "weld-pinch/self-fold" hypothesis: the outer wall is single-valued `R(theta,z)` (sag metric proves it) so it cannot self-intersect — fold-class defects are TESSELLATION artifacts, not geometry.
+- Shipped (gated under `byConstructionAssembly` / `PF_BYCONSTRUCTION=1`): `CollinearTriangleResolution.resolveCollinearTriangles` (single-vertex collinear T-junction split using real manifold-neighbour connectivity + iterated + quality-gated) and apex-snap (weld near-endpoint apexes), plus `NearCoincidentWeld.weldNearCoincidentVertices`.
+- Result: 5 styles fully goal-complete (orient/bnd/nonMan/sliver=0): SuperformulaBlossom, HarmonicRipple, SuperellipseMorph, LowPolyFacet, BambooSegments. Slivers slashed on every topology-clean style (9-87 -> 2-16).
+
+Architectural diagnosis (the durable finding):
+- The dominant remaining defect is the COLLINEAR interior-T-junction triangle (edges [x,x,2x], zero-area, aspect 1e4-1e6). Per-stage counter (`countCollinearSlivers` in `recordWindingStageDiagnostic`, `PF_WINDING_STAGE=1`): WaveInterference 36 (base tessellation) -> 111 (after the repair battery). The CENTER-FAN fills create the bulk: `fillSameSurfaceBoundaryLoopsWithCenters` +45, `fillOuterWallBoundaryLoops` +23.
+- Mechanism: the ear-clip (`triangulateProjectedLoopPreservingWinding`) correctly skips collinear ears but returns [] on DEGENERATE (near-zero-area) loops; the fill then falls back to the center-fan (`averageLoopCenter` + `buildOwnerOpposedCenterFan`), which emits collinear/zero-area spokes. Small loops (<=4) bypass the aspect gate entirely (`BoundaryTJunctionRepair.ts` ~2151 `if (loop.length > 4 && centerFanAspect > 100)`).
+
+Three DISPROVEN post-hoc fixes (all reverted - do NOT retry):
+1. Multi-vertex collinear fan-split -> opened boundaries (Wave bnd 0->8).
+2. General geometric conforming-remesh (`ConformingRemesh`, split every near-edge vertex) -> exploded nonManifold on EVERY style (false positives: a vertex near an edge != a true T-junction at mesh density).
+3. Degenerate-loop center-fan gate (apply aspect gate to all loop sizes) -> no sliver benefit + made HarmonicRipple export hang (skipped fills -> open boundary -> downstream O(N^2) repair chokes).
+Conclusion (3+ failures -> architecture): post-hoc/fill-gating CANNOT fix this. The fix must be UPSTREAM: make the base tessellation CONFORMING so the degenerate loops never form (MeshSubdivision T-junction-free subdivision + chain integration that doesn't leave on-edge vertices). Then the fill battery has nothing to botch.
+
+Decisions:
+- Consolidate at the 5-PASS milestone (user decision). Do not attempt more post-hoc collinear surgery.
+- Keep `resolveCollinearTriangles` + apex-snap + near-coincident weld (validated, gated) and the gated diagnostics (`countCollinearSlivers`, per-stage collinear/[COLLINEAR-STAGE]).
+- The collinear+weld+seam-skip remain gated under `byConstructionAssembly`; promoting to the default path needs an all-styles validation pass first.
+
+Validation:
+- GREEN: `npm run lint` on all touched files; focused unit suites NearCoincidentWeld 3/3, CollinearTriangleResolution 3/3, contracts 31/31.
+- GREEN e2e (byConstruction): the 5 PASS styles 0/0/0/0; canaries non-regressing across every iteration.
+- TOOLING: `e2e/_check.cjs` (PF_STYLES=A,B PF_BYCONSTRUCTION=1) + `windowHook.diagnoseTopoQuality` generate the mesh ONCE (combined topo+quality) ~halving validation time. Do NOT run the full `BoundaryTJunctionRepair.test.ts` in a fast loop - it has slow integration tests (>1h observed).
+
+Risks / Next agent:
+- Remaining blockers: collinear residue on ~6 topology-clean styles (ArtDeco 5, WaveInterference 4, RippleInterference 1, Crystalline nonMan1+slivers); fold-class holes (DragonScales bnd=30/nonMan=6); FourierBloom watertightness regression (bnd=272 crack at z=29-38, r=47 - present in BOTH legacy and byConstruction, introduced by the multi-agent tree, not the seam); heavy styles (Gothic/Gyroid/Voronoi) diagnostic-timeout >300s.
+- The real path to completion is the by-construction base-tessellation rework (conforming subdivision/chain-integration). Validate with `_check.cjs` (fast), clean styles as regression canaries. Export is ~150s/style/gen - budget accordingly.
