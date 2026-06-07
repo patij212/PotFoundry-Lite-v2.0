@@ -12,9 +12,7 @@
  */
 
 import type { SurfaceSampler } from './SurfaceSampler';
-import { MetricSizingField } from './MetricSizingField';
-import { PeriodicBalancedQuadtree } from './PeriodicBalancedQuadtree';
-import { triangulateQuadtree } from './QuadtreeTriangulator';
+import { buildConformingWall } from './ConformingWall';
 
 /** Tuning for the conforming outer wall. */
 export interface ConformingOuterWallOptions {
@@ -50,48 +48,32 @@ export interface ConformingOuterWallResult {
   topRing: number[];
 }
 
-const RING_EPS = 1e-6;
-
+/**
+ * Thin wrapper over {@link buildConformingWall} for the feature-free outer wall
+ * (surfaceId 0, unpinned boundary rings — preserves the Plan 1 behaviour).
+ * Plan 3's whole-mesh assembly calls `buildConformingWall` directly with a
+ * uniform `nRing` to obtain shared rings.
+ */
 export function buildConformingOuterWall(
   sampler: SurfaceSampler,
   opts: ConformingOuterWallOptions,
 ): ConformingOuterWallResult {
-  const field = new MetricSizingField(sampler, {
+  const wall = buildConformingWall(sampler, {
     maxSagMm: opts.maxSagMm,
-    minEdgeMm: opts.minEdgeMm,
     maxEdgeMm: opts.maxEdgeMm,
+    minEdgeMm: opts.minEdgeMm,
     gradeRatio: opts.gradeRatio,
+    maxLevel: opts.maxLevel,
     resU: opts.resU,
     resT: opts.resT,
+    surfaceId: 0,
   });
-
-  const quadtree = new PeriodicBalancedQuadtree(field, sampler, {
-    maxLevel: opts.maxLevel,
-  });
-
-  const mesh = triangulateQuadtree(quadtree);
-
-  // Ordered boundary rings at t=0 and t=1 (by increasing u). The seam is
-  // already index-shared, so each ring is a single closed loop.
-  const n = mesh.vertices.length / 3;
-  const bottom: number[] = [];
-  const top: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = mesh.vertices[i * 3 + 1];
-    if (t < RING_EPS) bottom.push(i);
-    else if (t > 1 - RING_EPS) top.push(i);
-  }
-  const byU = (a: number, b: number): number =>
-    mesh.vertices[a * 3] - mesh.vertices[b * 3];
-  bottom.sort(byU);
-  top.sort(byU);
-
   return {
-    vertices: mesh.vertices,
-    indices: mesh.indices,
-    seamTriangles: mesh.seamTriangles,
-    gridVertexCount: n,
-    bottomRing: bottom,
-    topRing: top,
+    vertices: wall.vertices,
+    indices: wall.indices,
+    seamTriangles: wall.seamTriangles,
+    gridVertexCount: wall.gridVertexCount,
+    bottomRing: wall.bottomRing,
+    topRing: wall.topRing,
   };
 }
