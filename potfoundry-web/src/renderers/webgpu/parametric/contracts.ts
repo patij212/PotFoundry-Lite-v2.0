@@ -382,6 +382,17 @@ export interface PipelineFeatureFlags {
      * false. Default: false. See docs/superpowers/specs/2026-06-05-by-construction-watertight-export-design.md.
      */
     readonly byConstructionAssembly?: boolean;
+
+    /**
+     * Enable the conforming metric-warped outer-wall mesher: a periodic
+     * balanced quadtree refined by a curvature→edge-length sizing field,
+     * triangulated with transition templates (T-junction-free, seam closed
+     * by construction). When true, the outer wall is built watertight by
+     * construction and the optimization passes + tail repair battery are
+     * skipped. Legacy path when false. Default: false.
+     * See docs/superpowers/specs/2026-06-07-cad-grade-parametric-export-design.md.
+     */
+    readonly conformingMesher?: boolean;
 }
 
 /**
@@ -398,6 +409,7 @@ export const DEFAULT_FEATURE_FLAGS: Readonly<PipelineFeatureFlags> = Object.free
     outerWallCorridorPlanning: false,
     outerWallCorridorDiagnostics: false,
     byConstructionAssembly: false,
+    conformingMesher: false,
 });
 
 /**
@@ -409,10 +421,20 @@ export const DEFAULT_FEATURE_FLAGS: Readonly<PipelineFeatureFlags> = Object.free
 export function resolveFeatureFlags(
     overrides?: Partial<PipelineFeatureFlags>,
 ): Readonly<PipelineFeatureFlags> {
-    if (!overrides) return DEFAULT_FEATURE_FLAGS;
+    // globalThis escape hatch so e2e probes can force the conforming mesher on
+    // without changing defaults (mirrors __pfByConstruction). Read once here so
+    // the resolved flags reflect it regardless of caller-supplied overrides.
+    const conformingHatch = Boolean(
+        (globalThis as { __pfConforming?: boolean }).__pfConforming,
+    );
+    if (!overrides) {
+        if (!conformingHatch) return DEFAULT_FEATURE_FLAGS;
+        return Object.freeze({ ...DEFAULT_FEATURE_FLAGS, conformingMesher: true });
+    }
     return Object.freeze({
         ...DEFAULT_FEATURE_FLAGS,
         ...overrides,
+        conformingMesher: Boolean(overrides.conformingMesher) || conformingHatch,
     });
 }
 
