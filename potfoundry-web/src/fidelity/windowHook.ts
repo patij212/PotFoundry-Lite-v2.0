@@ -47,6 +47,17 @@ export interface FidelityQualityDiagnostics extends TriangleQualityDiagnostics {
   styleId: string;
 }
 
+export interface FidelityTopoQualitySummary {
+  styleId: string;
+  orientationMismatches: number;
+  boundaryEdges: number;
+  nonManifoldEdges: number;
+  sliverCount: number;
+  maxAspect3D: number;
+  minAngleDeg: number;
+  triangleCount: number;
+}
+
 export interface FidelityHookDeps {
   setStyle: (name: string) => void;
   /** Parametric pipeline (the path under test) is ready for the current style. */
@@ -71,6 +82,8 @@ export interface PfFidelityApi {
   measure(opts: FidelityMeasureOptions): Promise<FidelityMetrics>;
   diagnoseTopology(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTopologyDiagnostics>;
   diagnoseQuality(opts?: FidelityQualityDiagnosticOptions): Promise<FidelityQualityDiagnostics>;
+  /** Fast combined check: generates the mesh ONCE, returns topology + quality summary. */
+  diagnoseTopoQuality(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTopoQualitySummary>;
 }
 
 declare global {
@@ -185,6 +198,24 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           opts.weldToleranceMm ?? WELD_TOL_MM,
           opts.sampleLimit ?? 16,
         ),
+      };
+    },
+    async diagnoseTopoQuality(opts: FidelityTopologyDiagnosticOptions = {}): Promise<FidelityTopoQualitySummary> {
+      const styleId = currentStyleId();
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const view = { vertices: mesh.vertices, indices: mesh.indices };
+      const topo = topologyDiagnostics(view, opts.weldToleranceMm ?? WELD_TOL_MM, 0);
+      const qual = triangleQualityDiagnostics(view, 0);
+      return {
+        styleId,
+        orientationMismatches: topo.orientationMismatches,
+        boundaryEdges: topo.boundaryEdges,
+        nonManifoldEdges: topo.nonManifoldEdges,
+        sliverCount: qual.sliverCount,
+        maxAspect3D: qual.maxAspect3D,
+        minAngleDeg: qual.minAngleDeg,
+        triangleCount: Math.floor(mesh.indices.length / 3),
       };
     },
     async diagnoseQuality(opts: FidelityQualityDiagnosticOptions = {}): Promise<FidelityQualityDiagnostics> {
