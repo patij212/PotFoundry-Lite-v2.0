@@ -43,7 +43,16 @@
  */
 
 import { buildStyleParamPayload } from '../../utils/styleParams';
-import { topologyMetric } from '../../fidelity/metrics';
+import {
+    topologyMetric,
+    topologyDiagnostics,
+    triangleQualityDiagnostics,
+} from '../../fidelity/metrics';
+import { WELD_TOL_MM } from '../../fidelity/types';
+import {
+    buildConformingOuterWall,
+    GpuSurfaceSampler,
+} from './parametric/conforming';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
 import {
     circularDistance,
@@ -1812,6 +1821,173 @@ export class ParametricExportComputer {
             const styleData = new Float32Array(48);
             styleData.set(packedStyleParams.slice(0, Math.min(48, packedStyleParams.length)));
             this.device.queue.writeBuffer(styleParamBuffer, 0, styleData.buffer);
+
+            // ─────────────────────────────────────────────────────────────────
+            // ISOLATED CONFORMING OUTER-WALL PROBE (gated, purely additive)
+            //
+            // When window.__pfConformingProbe is set, build the conforming
+            // outer wall (src/.../parametric/conforming) on the REAL style
+            // surface — sampled via a dense GPU grid — and measure its mesh in
+            // isolation, BEFORE any optimization/repair/assembly. Reports
+            // ring-excluded boundary, non-manifold edges, orientation
+            // mismatches, slivers, and aspect. Returns a minimal valid result
+            // so the finally block still runs the buffer cleanup.
+            // ─────────────────────────────────────────────────────────────────
+            if ((globalThis as unknown as { __pfConformingProbe?: boolean }).__pfConformingProbe) {
+                const probeBuildStart = performance.now();
+
+                // 1. Dense sampler grid of (u,t,0). u = col/resU (periodic),
+                //    t = row/(resT-1) (clamped).
+                const SAMP_RES_U = 192;
+                const SAMP_RES_T = 192;
+                const sampGrid = new Float32Array(SAMP_RES_U * SAMP_RES_T * 3);
+                {
+                    let w = 0;
+                    for (let row = 0; row < SAMP_RES_T; row++) {
+                        const tVal = row / (SAMP_RES_T - 1);
+                        for (let col = 0; col < SAMP_RES_U; col++) {
+                            sampGrid[w++] = col / SAMP_RES_U; // u ∈ [0,1) periodic
+                            sampGrid[w++] = tVal;             // t ∈ [0,1]
+                            sampGrid[w++] = 0;                // surface_id = 0 (outer wall)
+                        }
+                    }
+                }
+
+                // 2. Evaluate the dense grid to 3D on the GPU (single batch).
+                const densePos = await this.evaluatePoints(
+                    sampGrid, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7,
+                    dummyWrite9, dummyWrite10, dummyReadOnly,
+                );
+
+                // 3. GPU-backed sampler (bilinear interp over the dense grid).
+                const sampler = new GpuSurfaceSampler(densePos, SAMP_RES_U, SAMP_RES_T);
+
+                // 4. Build the conforming outer wall in (u,t) space.
+                const ow = buildConformingOuterWall(sampler, {
+                    maxSagMm: 0.1,
+                    maxEdgeMm: 8,
+                    minEdgeMm: 0.2,
+                    gradeRatio: 2,
+                    maxLevel: 10,
+                    resU: 128,
+                    resT: 128,
+                });
+
+                // 5. Evaluate the conforming (u,t) vertices to real 3D positions.
+                const owUv = new Float32Array(ow.vertices.length);
+                for (let i = 0; i < ow.vertices.length; i += 3) {
+                    owUv[i] = ow.vertices[i];         // u
+                    owUv[i + 1] = ow.vertices[i + 1]; // t
+                    owUv[i + 2] = 0;                  // surface_id = 0
+                }
+                const pos3D = await this.evaluatePoints(
+                    owUv, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7,
+                    dummyWrite9, dummyWrite10, dummyReadOnly,
+                );
+                const buildMs = performance.now() - probeBuildStart;
+
+                // 6. Metrics on the real-3D mesh.
+                const probeView = { vertices: pos3D, indices: ow.indices };
+                const topo = topologyDiagnostics(probeView, WELD_TOL_MM, 0);
+                const qual = triangleQualityDiagnostics(probeView, 0);
+
+                // Ring-excluded boundary: build the undirected boundary-edge
+                // list on welded indices (same quantization the topology metric
+                // uses), then drop edges whose endpoints are both on the same
+                // ring (bottom-ring set OR top-ring set). What remains is a real
+                // hole/crack in the cylinder wall.
+                const vCount = pos3D.length / 3;
+                const weldRemap = new Uint32Array(vCount);
+                if (WELD_TOL_MM > 0) {
+                    const inv = 1 / WELD_TOL_MM;
+                    const buckets = new Map<string, number>();
+                    for (let i = 0; i < vCount; i++) {
+                        const qx = Math.round(pos3D[i * 3] * inv);
+                        const qy = Math.round(pos3D[i * 3 + 1] * inv);
+                        const qz = Math.round(pos3D[i * 3 + 2] * inv);
+                        const key = `${qx},${qy},${qz}`;
+                        const existing = buckets.get(key);
+                        if (existing === undefined) { buckets.set(key, i); weldRemap[i] = i; }
+                        else weldRemap[i] = existing;
+                    }
+                } else {
+                    for (let i = 0; i < vCount; i++) weldRemap[i] = i;
+                }
+                const bottomWelded = new Set<number>(ow.bottomRing.map((i) => weldRemap[i]));
+                const topWelded = new Set<number>(ow.topRing.map((i) => weldRemap[i]));
+                const edgeUse = new Map<string, { a: number; b: number; count: number }>();
+                for (let t = 0; t < ow.indices.length; t += 3) {
+                    const tri = [
+                        weldRemap[ow.indices[t]],
+                        weldRemap[ow.indices[t + 1]],
+                        weldRemap[ow.indices[t + 2]],
+                    ];
+                    for (let e = 0; e < 3; e++) {
+                        const a = tri[e];
+                        const b = tri[(e + 1) % 3];
+                        if (a === b) continue;
+                        const lo = Math.min(a, b);
+                        const hi = Math.max(a, b);
+                        const key = `${lo}:${hi}`;
+                        const use = edgeUse.get(key);
+                        if (use) use.count++;
+                        else edgeUse.set(key, { a: lo, b: hi, count: 1 });
+                    }
+                }
+                let totalBoundary = 0;
+                let ringExclBoundary = 0;
+                for (const use of edgeUse.values()) {
+                    if (use.count !== 1) continue; // boundary edge = used exactly once
+                    totalBoundary++;
+                    const bothBottom = bottomWelded.has(use.a) && bottomWelded.has(use.b);
+                    const bothTop = topWelded.has(use.a) && topWelded.has(use.b);
+                    if (!bothBottom && !bothTop) ringExclBoundary++;
+                }
+
+                // 7. Stash structured result for the e2e probe to read.
+                const probeResult = {
+                    style: params.styleId,
+                    ringExclBoundary,
+                    totalBoundary,
+                    nonManifoldEdges: topo.nonManifoldEdges,
+                    orientationMismatches: topo.orientationMismatches,
+                    sliverCount: qual.sliverCount,
+                    maxAspect3D: qual.maxAspect3D,
+                    triangleCount: ow.indices.length / 3,
+                    vertexCount: vCount,
+                    buildMs,
+                };
+                (globalThis as unknown as { __pfConformingResult?: typeof probeResult }).__pfConformingResult = probeResult;
+
+                // 8. Summary line.
+                console.warn(
+                    `[CONFORMING-PROBE] ${params.styleId} ` +
+                    `ringExclBoundary=${ringExclBoundary} totalBoundary=${totalBoundary} ` +
+                    `nonMan=${topo.nonManifoldEdges} orient=${topo.orientationMismatches} ` +
+                    `sliver=${qual.sliverCount} maxAspect=${qual.maxAspect3D.toFixed(1)} ` +
+                    `tris=${ow.indices.length / 3} verts=${vCount} buildMs=${buildMs.toFixed(0)}`,
+                );
+
+                // 9. Minimal valid result; the finally block runs buffer cleanup.
+                return {
+                    mesh: {
+                        vertices: pos3D,
+                        indices: ow.indices,
+                        triangleCount: ow.indices.length / 3,
+                        vertexCount: vCount,
+                    },
+                    computeTimeMs: buildMs,
+                    gridDimensions: { nu: 128, nt: 128 },
+                    adaptiveStats: {
+                        densityRatio: 0,
+                        featurePeaksSnapped: 0,
+                        tCurvatureRange: [0, 0],
+                        uCurvatureRange: [0, 0],
+                    },
+                };
+            }
 
             // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // PHASE 1: Multi-Strip Curvature Sampling (GPU â†' CPU)

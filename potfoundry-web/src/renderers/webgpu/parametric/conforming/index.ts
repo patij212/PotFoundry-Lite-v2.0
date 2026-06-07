@@ -16,7 +16,7 @@
  */
 
 export type { SurfaceSampler, Vec3 } from './SurfaceSampler';
-export { SyntheticCylinderSampler } from './SurfaceSampler';
+export { SyntheticCylinderSampler, GpuSurfaceSampler } from './SurfaceSampler';
 export type { MetricTensor } from './SurfaceMetricTensor';
 export { firstFundamentalForm, principalCurvatureMax } from './SurfaceMetricTensor';
 export type { SizingOptions } from './MetricSizingField';
