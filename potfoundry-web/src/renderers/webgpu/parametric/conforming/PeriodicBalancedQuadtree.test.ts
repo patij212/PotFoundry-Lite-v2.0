@@ -59,6 +59,80 @@ describe('PeriodicBalancedQuadtree — 2:1 balance invariant', () => {
   });
 });
 
+describe('PeriodicBalancedQuadtree — pinned boundary rows', () => {
+  // Localized ripple → genuinely mixed interior levels, so the pinned boundary
+  // rows must coexist with a refined interior under 2:1 balance.
+  const s = new SyntheticCylinderSampler(50, 120, 8, 2);
+  const opts: SizingOptions = {
+    maxSagMm: 0.1,
+    minEdgeMm: 0.5,
+    maxEdgeMm: 120,
+    gradeRatio: 4,
+    resU: 65,
+    resT: 9,
+  };
+  const PIN = 4;
+  const field = new MetricSizingField(s, opts);
+  const qt = new PeriodicBalancedQuadtree(field, s, {
+    maxLevel: 7,
+    pinBoundaryLevel: PIN,
+  });
+  const leaves = qt.leaves();
+  const EPS = 1e-9;
+
+  /** Leaves whose lower edge sits on t=0 (the bottom boundary row). */
+  const bottom = leaves.filter((l) => Math.abs(l.t0) < EPS);
+  /** Leaves whose UPPER edge sits on t=1 (the top boundary row). */
+  const top = leaves.filter(
+    (l) => Math.abs(l.t0 + 1 / 2 ** l.level - 1) < EPS,
+  );
+
+  it('every bottom-row (t=0) leaf is exactly at the pin level; count = 2^pin', () => {
+    expect(bottom.length).toBeGreaterThan(0);
+    expect(bottom.every((l) => l.level === PIN)).toBe(true);
+    expect(bottom.length).toBe(2 ** PIN);
+    // U coverage is uniform: u0 = i/2^pin for i=0..2^pin-1.
+    const us = bottom.map((l) => l.u0).sort((a, b) => a - b);
+    for (let i = 0; i < us.length; i++) {
+      expect(Math.abs(us[i] - i / 2 ** PIN)).toBeLessThan(EPS);
+    }
+  });
+
+  it('every top-row (t=1) leaf is exactly at the pin level; count = 2^pin', () => {
+    expect(top.length).toBeGreaterThan(0);
+    expect(top.every((l) => l.level === PIN)).toBe(true);
+    expect(top.length).toBe(2 ** PIN);
+    const us = top.map((l) => l.u0).sort((a, b) => a - b);
+    for (let i = 0; i < us.length; i++) {
+      expect(Math.abs(us[i] - i / 2 ** PIN)).toBeLessThan(EPS);
+    }
+  });
+
+  it('interior still refines beyond the pin level (not a uniform grid)', () => {
+    const levels = new Set(leaves.map((l) => l.level));
+    expect(levels.size).toBeGreaterThan(1);
+    expect(Math.max(...levels)).toBeGreaterThan(PIN);
+  });
+
+  it('2:1 balance still holds across every edge (incl. u-wrap)', () => {
+    for (const leaf of leaves) {
+      for (const { leaf: nb } of qt.neighbors(leaf)) {
+        expect(Math.abs(leaf.level - nb.level)).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('periodic seam closed: a last-column bottom leaf wraps to u0=0', () => {
+    const size = 1 / 2 ** PIN;
+    const last = bottom.find((l) => Math.abs(l.u0 - (1 - size)) < EPS);
+    expect(last).toBeDefined();
+    const uPlus = qt
+      .neighbors(last as QuadLeaf)
+      .filter((n) => n.side === 'uPlus');
+    expect(uPlus.some((n) => Math.abs(n.leaf.u0) < EPS)).toBe(true);
+  });
+});
+
 describe('PeriodicBalancedQuadtree — periodic neighbour', () => {
   it('a leaf at u0 = 1 - size has a uPlus neighbour at u0 = 0', () => {
     const s = new SyntheticCylinderSampler(50, 120);

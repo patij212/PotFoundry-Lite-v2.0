@@ -51,15 +51,71 @@ export class PeriodicBalancedQuadtree {
   private cells: Cell[] = [];
   /** Deepest level allowed; bounds the finer-neighbour probes. */
   private maxLevel = 0;
+  /**
+   * If set, the t=0 and t=1 boundary rows are forced to EXACTLY this level
+   * (uniform 2^pin cells), while the interior refines freely. The cap grades
+   * one level per pin-row away from the boundary so 2:1 balance holds against
+   * the pinned rows (the cell touching the boundary is `pin`, the next at most
+   * `pin+1`, etc.). 0/undefined disables pinning.
+   */
+  private readonly pinBoundaryLevel: number;
 
   constructor(
     field: MetricSizingField,
     metric: SurfaceSampler,
-    opts: { maxLevel: number },
+    opts: { maxLevel: number; pinBoundaryLevel?: number },
   ) {
     this.maxLevel = opts.maxLevel;
-    this.refine(field, metric, opts.maxLevel);
+    this.pinBoundaryLevel = opts.pinBoundaryLevel ?? 0;
+    this.refine(field, metric);
+    if (this.pinBoundaryLevel > 0) this.enforcePinnedBoundary();
     this.balance(opts.maxLevel);
+  }
+
+  /**
+   * Deepest level a cell `(level,iu,it)` may be refined to, given the pinned
+   * boundary. Without a pin this is just `maxLevel`. With a pin, a cell may go
+   * one level finer for each full pin-row its NEAREST t-edge sits away from the
+   * t=0/t=1 boundary — so boundary-touching cells cap at `pin`, the next pin-row
+   * at `pin+1`, etc. This grading is exactly what keeps the uniform pinned rows
+   * 2:1-balanced against a refined interior.
+   */
+  private levelCap(level: number, it: number): number {
+    if (this.pinBoundaryLevel <= 0) return this.maxLevel;
+    const span = 1 << level;
+    const t0 = it / span;
+    const t1 = (it + 1) / span;
+    const nearEdge = Math.min(t0, 1 - t1); // distance to nearest boundary
+    const pinRows = Math.floor(nearEdge * (1 << this.pinBoundaryLevel) + 1e-9);
+    return Math.min(this.maxLevel, this.pinBoundaryLevel + pinRows);
+  }
+
+  /** Does this cell's t-span touch the t=0 or t=1 domain boundary? */
+  private touchesBoundary(level: number, it: number): boolean {
+    return it === 0 || it === (1 << level) - 1;
+  }
+
+  /**
+   * Split any boundary-touching leaf that is still coarser than `pinBoundaryLevel`
+   * until both the t=0 and t=1 rows are uniform at exactly the pin level. The
+   * `levelCap` already prevents boundary cells from being refined PAST the pin,
+   * so after this pass the two boundary rows hold exactly 2^pin cells each.
+   */
+  private enforcePinnedBoundary(): void {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const key of Array.from(this.leafSet)) {
+        const [lvlS, iuS, itS] = key.split(':');
+        const level = Number(lvlS);
+        const iu = Number(iuS);
+        const it = Number(itS);
+        if (level >= this.pinBoundaryLevel) continue;
+        if (!this.touchesBoundary(level, it)) continue;
+        this.split(level, iu, it);
+        changed = true;
+      }
+    }
   }
 
   // ----- construction -----------------------------------------------------
@@ -92,11 +148,10 @@ export class PeriodicBalancedQuadtree {
     return Math.max(physW, physH) > target;
   }
 
-  /** Curvature/size-driven refinement from the root. */
+  /** Curvature/size-driven refinement from the root, capped by {@link levelCap}. */
   private refine(
     field: MetricSizingField,
     metric: SurfaceSampler,
-    maxLevel: number,
   ): void {
     // Worklist of cells to examine; start at the single root cell.
     const stack: Cell[] = [{ level: 0, iu: 0, it: 0 }];
@@ -104,7 +159,7 @@ export class PeriodicBalancedQuadtree {
     while (stack.length > 0) {
       const c = stack.pop() as Cell;
       if (
-        c.level < maxLevel &&
+        c.level < this.levelCap(c.level, c.it) &&
         this.shouldRefine(field, metric, c.level, c.iu, c.it)
       ) {
         const cl = c.level + 1;
@@ -137,7 +192,9 @@ export class PeriodicBalancedQuadtree {
       const level = Number(lvlS);
       const iu = Number(iuS);
       const it = Number(itS);
-      if (level >= maxLevel) continue;
+      // Never split past a cell's pin-graded cap — this is what keeps the
+      // uniform t=0/t=1 boundary rows intact under balance.
+      if (level >= this.levelCap(level, it)) continue;
       if (!this.hasFinerThanOneLevelNeighbour(level, iu, it)) continue;
 
       // Re-enqueue the coarse edge-neighbours before splitting (their balance
