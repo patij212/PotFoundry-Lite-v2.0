@@ -15,4 +15,18 @@
  * @module conforming
  */
 
-export {};
+export type { SurfaceSampler, Vec3 } from './SurfaceSampler';
+export { SyntheticCylinderSampler } from './SurfaceSampler';
+export type { MetricTensor } from './SurfaceMetricTensor';
+export { firstFundamentalForm, principalCurvatureMax } from './SurfaceMetricTensor';
+export type { SizingOptions } from './MetricSizingField';
+export { MetricSizingField } from './MetricSizingField';
+export type { QuadLeaf, QuadSide } from './PeriodicBalancedQuadtree';
+export { PeriodicBalancedQuadtree } from './PeriodicBalancedQuadtree';
+export type { QuadtreeLike, QuadtreeMesh } from './QuadtreeTriangulator';
+export { triangulateQuadtree } from './QuadtreeTriangulator';
+export type {
+  ConformingOuterWallOptions,
+  ConformingOuterWallResult,
+} from './ConformingOuterWall';
+export { buildConformingOuterWall } from './ConformingOuterWall';
