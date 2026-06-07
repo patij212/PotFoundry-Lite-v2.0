@@ -36,3 +36,10 @@ export type {
 } from './ConformingWall';
 export { buildConformingWall } from './ConformingWall';
 export { annulusStrip, discFan } from './RingStrip';
+export type {
+  AssemblyDimensions,
+  AssemblyWallOptions,
+  SurfaceRange,
+  WatertightAssemblyResult,
+} from './WatertightAssembly';
+export { assembleWatertight } from './WatertightAssembly';
