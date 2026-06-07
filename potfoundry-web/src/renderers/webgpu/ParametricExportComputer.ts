@@ -51,6 +51,7 @@ import {
 import { WELD_TOL_MM } from '../../fidelity/types';
 import {
     buildConformingOuterWall,
+    assembleWatertight,
     GpuSurfaceSampler,
 } from './parametric/conforming';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
@@ -1980,6 +1981,113 @@ export class ParametricExportComputer {
                     },
                     computeTimeMs: buildMs,
                     gridDimensions: { nu: 128, nt: 128 },
+                    adaptiveStats: {
+                        densityRatio: 0,
+                        featurePeaksSnapped: 0,
+                        tCurvatureRange: [0, 0],
+                        uCurvatureRange: [0, 0],
+                    },
+                };
+            }
+
+            // ─────────────────────────────────────────────────────────────────
+            // CONFORMING WHOLE-MESH WATERTIGHT ASSEMBLY (gated, early-return)
+            //
+            // Under flags.conformingMesher (e2e: window.__pfConforming), build
+            // the WHOLE pot watertight-by-construction: a conforming wall per
+            // surfaceId (outer 0, inner 1) pinned to the same uniform nRing, then
+            // rim/base/drain caps that REFERENCE the walls' shared ring vertices
+            // (assembleWatertight). GPU-evaluate every combined (u,t,surfaceId)
+            // vertex → 3D and return. This SKIPS the entire surface loop +
+            // optimization passes + tail repair battery below. Flag OFF ⇒ zero
+            // change to existing behaviour. (Plan 3, T5.)
+            // ─────────────────────────────────────────────────────────────────
+            if (flags.conformingMesher) {
+                const conformingStart = performance.now();
+
+                // Dense GPU sampler grid per wall surfaceId. surfaceId in slot 2
+                // selects the wall geometry in evaluate_vertices (0 outer / 1 inner).
+                const DENSE_RES_U = 256;
+                const DENSE_RES_T = 256;
+                const buildWallSampler = async (
+                    surfaceId: number,
+                ): Promise<GpuSurfaceSampler> => {
+                    const grid = new Float32Array(DENSE_RES_U * DENSE_RES_T * 3);
+                    let w = 0;
+                    for (let row = 0; row < DENSE_RES_T; row++) {
+                        const tVal = row / (DENSE_RES_T - 1);
+                        for (let col = 0; col < DENSE_RES_U; col++) {
+                            grid[w++] = col / DENSE_RES_U; // u in [0,1) periodic
+                            grid[w++] = tVal;              // t in [0,1]
+                            grid[w++] = surfaceId;         // wall selector
+                        }
+                    }
+                    const densePos = await this.evaluatePoints(
+                        grid, uniformBuffer, styleParamBuffer,
+                        dummyWrite3, dummyWrite4, dummyWrite7,
+                        dummyWrite9, dummyWrite10, dummyReadOnly,
+                    );
+                    return new GpuSurfaceSampler(densePos, DENSE_RES_U, DENSE_RES_T);
+                };
+                const outerSampler = await buildWallSampler(0);
+                const innerSampler = await buildWallSampler(1);
+
+                // Uniform ring resolution (power of two). Overridable for tuning.
+                const nRingOverride = (globalThis as unknown as { __pfConformingNRing?: number }).__pfConformingNRing;
+                const nRing = typeof nRingOverride === 'number' && nRingOverride > 0
+                    ? nRingOverride
+                    : 256;
+
+                // Assemble the whole watertight mesh in (u,t,surfaceId) space.
+                const asm = assembleWatertight(
+                    outerSampler,
+                    innerSampler,
+                    {
+                        H: dimensions.H,
+                        tBottom: dimensions.tBottom,
+                        rDrain: dimensions.rDrain,
+                    },
+                    {
+                        maxSagMm: 0.1,
+                        maxEdgeMm: 8,
+                        minEdgeMm: 0.2,
+                        gradeRatio: 2,
+                        maxLevel: 10,
+                        resU: 128,
+                        resT: 128,
+                        nRing,
+                    },
+                );
+
+                // GPU-evaluate ALL combined (u,t,surfaceId) vertices to real 3D.
+                const pos3D = await this.evaluatePoints(
+                    asm.vertices, uniformBuffer, styleParamBuffer,
+                    dummyWrite3, dummyWrite4, dummyWrite7,
+                    dummyWrite9, dummyWrite10, dummyReadOnly,
+                );
+                const buildMs = performance.now() - conformingStart;
+                const vCount = pos3D.length / 3;
+                const triCount = asm.indices.length / 3;
+
+                // Validation is skipped here by design: the whole mesh is
+                // watertight-by-construction (shared rings, no repair), and the
+                // e2e gate measures the real mesh directly via diagnoseTopoQuality.
+                console.warn(
+                    `[CONFORMING-FULL] ${params.styleId} ` +
+                    `tris=${triCount} verts=${vCount} nRing=${nRing} ` +
+                    `surfaces=${asm.surfaceRanges.length} buildMs=${buildMs.toFixed(0)}`,
+                );
+
+                // Valid result; the finally block runs the buffer cleanup.
+                return {
+                    mesh: {
+                        vertices: pos3D,
+                        indices: asm.indices,
+                        triangleCount: triCount,
+                        vertexCount: vCount,
+                    },
+                    computeTimeMs: buildMs,
+                    gridDimensions: { nu: nRing, nt: nRing },
                     adaptiveStats: {
                         densityRatio: 0,
                         featurePeaksSnapped: 0,

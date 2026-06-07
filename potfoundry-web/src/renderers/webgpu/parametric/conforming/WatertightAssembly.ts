@@ -84,6 +84,71 @@ function appendWall(verts: number[], wall: ConformingWallResult): number {
 }
 
 /**
+ * Number of radial bands for a cap whose radius runs `rOuter`→`rInner` over a
+ * ring of `nRing` U-samples. Picks bands so each is roughly square (radial step
+ * ≈ tangential segment width at the mid radius), clamped to [1, 64]. A single
+ * outer↔inner band on a wide base would be a long thin needle (high aspect); a
+ * few intermediate concentric rings keep every band well-shaped — watertight by
+ * construction (the intermediate rings are shared between adjacent bands).
+ */
+function radialBandCount(rOuter: number, rInner: number, nRing: number): number {
+  const span = Math.abs(rOuter - rInner);
+  const rMid = 0.5 * (Math.abs(rOuter) + Math.abs(rInner));
+  const tangential = (2 * Math.PI * Math.max(rMid, 1e-6)) / nRing;
+  if (tangential <= 1e-9) return 1;
+  return Math.max(1, Math.min(64, Math.round(span / tangential)));
+}
+
+/**
+ * Emit a radially-subdivided annular/disc cap referencing a shared outer ring.
+ *
+ * The cap surface parameterizes t: t=0 is the (shared) `outerRing`, t=1 is the
+ * inner terminus — either a shared `innerRing` (e.g. a drain ring) or a single
+ * `centreIdx` on the axis (solid base). `nRadial` bands are built; intermediate
+ * rings (t=k/nRadial, k=1..nRadial-1) are NEW vertices owned by this surface and
+ * SHARED between consecutive bands, so the cap stays watertight. Returns the
+ * number of NEW vertices appended (for surfaceRange bookkeeping).
+ */
+function emitRadialCap(
+  verts: number[],
+  indices: number[],
+  outerRing: number[],
+  inner: { ring: number[] } | { centreIdx: number },
+  surfaceId: number,
+  nRing: number,
+  nRadial: number,
+  invert: boolean,
+): number {
+  const newVertStart = verts.length / 3;
+  // Build the intermediate rings (t = k/nRadial for k=1..nRadial-1).
+  const rings: number[][] = [outerRing];
+  for (let k = 1; k < nRadial; k++) {
+    const t = k / nRadial;
+    const ring: number[] = [];
+    for (let i = 0; i < nRing; i++) {
+      ring.push(verts.length / 3);
+      verts.push(i / nRing, t, surfaceId);
+    }
+    rings.push(ring);
+  }
+
+  const hasInnerRing = 'ring' in inner;
+  if (hasInnerRing) rings.push(inner.ring);
+
+  // Bands between consecutive rings.
+  for (let b = 0; b < rings.length - 1; b++) {
+    const tri = annulusStrip(rings[b], rings[b + 1], invert);
+    for (const v of tri) indices.push(v);
+  }
+  // Final band to the centre (solid base), if any.
+  if (!hasInnerRing) {
+    const tri = discFan(rings[rings.length - 1], inner.centreIdx, invert);
+    for (const v of tri) indices.push(v);
+  }
+  return verts.length / 3 - newVertStart;
+}
+
+/**
  * Assemble the whole pot watertight from an outer and inner wall sampler.
  *
  * @param outerSampler Returns outer-wall 3D positions for (u,t) (surfaceId 0).
@@ -156,36 +221,42 @@ export function assembleWatertight(
 
   const hasDrain = dims.rDrain > 0;
 
+  // Representative ring radii for radial band sizing (twist-free magnitudes).
+  const rOuterBot = radial(outerSampler.position(0, 0)); // outer-wall bottom
+  const rInnerBot = radial(innerSampler.position(0, 0)); // inner-wall bottom
+
   if (hasDrain) {
     // --- 4. Drain rings (surfaceId 5): NEW vertices, ordered by U ----------
     const drainBottomRing: number[] = []; // z=0   (drain t=0)
     const drainTopRing: number[] = []; // z=tBottom (drain t=1)
     const drainVertStart = verts.length / 3;
     for (let i = 0; i < nRing; i++) {
-      const u = i / nRing;
       drainBottomRing.push(verts.length / 3);
-      verts.push(u, 0, 5);
+      verts.push(i / nRing, 0, 5);
     }
     for (let i = 0; i < nRing; i++) {
-      const u = i / nRing;
       drainTopRing.push(verts.length / 3);
-      verts.push(u, 1, 5);
+      verts.push(i / nRing, 1, 5);
     }
     const drainVertCount = verts.length / 3 - drainVertStart;
 
-    // bottom-under (3): outer-bottom (t=0) ↔ drain bottom ring (t=1).
+    // bottom-under (3): outer-bottom (t=0) ↔ drain bottom ring (t=1), radial bands.
     {
       const indexStart = indices.length;
-      const tri = annulusStrip(outerBottom, drainBottomRing, false);
-      for (const v of tri) indices.push(v);
-      ranges.push({ surfaceId: 3, indexStart, indexEnd: indices.length, vertexCount: 0 });
+      const nRad = radialBandCount(rOuterBot, dims.rDrain, nRing);
+      const newV = emitRadialCap(
+        verts, indices, outerBottom, { ring: drainBottomRing }, 3, nRing, nRad, false,
+      );
+      ranges.push({ surfaceId: 3, indexStart, indexEnd: indices.length, vertexCount: newV });
     }
-    // bottom-top (4): inner-bottom (t=0) ↔ drain top ring (t=1).
+    // bottom-top (4): inner-bottom (t=0) ↔ drain top ring (t=1), radial bands.
     {
       const indexStart = indices.length;
-      const tri = annulusStrip(innerBottom, drainTopRing, false);
-      for (const v of tri) indices.push(v);
-      ranges.push({ surfaceId: 4, indexStart, indexEnd: indices.length, vertexCount: 0 });
+      const nRad = radialBandCount(rInnerBot, dims.rDrain, nRing);
+      const newV = emitRadialCap(
+        verts, indices, innerBottom, { ring: drainTopRing }, 4, nRing, nRad, false,
+      );
+      ranges.push({ surfaceId: 4, indexStart, indexEnd: indices.length, vertexCount: newV });
     }
     // drain (5): drain bottom ring (t=0) ↔ drain top ring (t=1).
     {
@@ -200,24 +271,28 @@ export function assembleWatertight(
       });
     }
   } else {
-    // --- 4'. Solid base: each disc fans to ONE centre vertex on the axis ---
+    // --- 4'. Solid base: each disc reduces radially to ONE centre vertex ----
     // bottom-under (3): outer-bottom ring → centre at z=0.
-    const centreUnder = verts.length / 3;
-    verts.push(0, 1, 3); // (u=0, t=1, s=3) ⇒ r=rDrain≈0, z=0
     {
       const indexStart = indices.length;
-      const tri = discFan(outerBottom, centreUnder, false);
-      for (const v of tri) indices.push(v);
-      ranges.push({ surfaceId: 3, indexStart, indexEnd: indices.length, vertexCount: 1 });
+      const centreUnder = verts.length / 3;
+      verts.push(0, 1, 3); // (u=0, t=1, s=3) ⇒ r=rDrain≈0, z=0
+      const nRad = radialBandCount(rOuterBot, 0, nRing);
+      const newV = emitRadialCap(
+        verts, indices, outerBottom, { centreIdx: centreUnder }, 3, nRing, nRad, false,
+      );
+      ranges.push({ surfaceId: 3, indexStart, indexEnd: indices.length, vertexCount: newV + 1 });
     }
     // bottom-top (4): inner-bottom ring → centre at z=tBottom.
-    const centreTop = verts.length / 3;
-    verts.push(0, 1, 4); // (u=0, t=1, s=4) ⇒ r≈0, z=tBottom
     {
       const indexStart = indices.length;
-      const tri = discFan(innerBottom, centreTop, false);
-      for (const v of tri) indices.push(v);
-      ranges.push({ surfaceId: 4, indexStart, indexEnd: indices.length, vertexCount: 1 });
+      const centreTop = verts.length / 3;
+      verts.push(0, 1, 4); // (u=0, t=1, s=4) ⇒ r≈0, z=tBottom
+      const nRad = radialBandCount(rInnerBot, 0, nRing);
+      const newV = emitRadialCap(
+        verts, indices, innerBottom, { centreIdx: centreTop }, 4, nRing, nRad, false,
+      );
+      ranges.push({ surfaceId: 4, indexStart, indexEnd: indices.length, vertexCount: newV + 1 });
     }
   }
 

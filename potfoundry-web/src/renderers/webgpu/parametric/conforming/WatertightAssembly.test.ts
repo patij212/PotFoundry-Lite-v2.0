@@ -94,6 +94,29 @@ function eval3D(
   return out;
 }
 
+/** Max 3D triangle aspect (longest²·√3/(4·area)); ∞ for degenerate. */
+function maxAspect3D(pos: Float32Array, indices: Uint32Array): number {
+  let worst = 0;
+  for (let t = 0; t < indices.length; t += 3) {
+    const ia = indices[t] * 3;
+    const ib = indices[t + 1] * 3;
+    const ic = indices[t + 2] * 3;
+    const ax = pos[ia], ay = pos[ia + 1], az = pos[ia + 2];
+    const bx = pos[ib], by = pos[ib + 1], bz = pos[ib + 2];
+    const cx = pos[ic], cy = pos[ic + 1], cz = pos[ic + 2];
+    const ab2 = (ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2;
+    const bc2 = (bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2;
+    const ca2 = (cx - ax) ** 2 + (cy - ay) ** 2 + (cz - az) ** 2;
+    const longest2 = Math.max(ab2, bc2, ca2);
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const area = 0.5 * Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+    if (area < 1e-12) return Infinity;
+    worst = Math.max(worst, (longest2 * Math.sqrt(3)) / (4 * area));
+  }
+  return worst;
+}
+
 interface TopoResult {
   boundary: number;
   nonManifold: number;
@@ -171,14 +194,47 @@ describe('assembleWatertight — concentric cylinders, rim/base (rDrain>0)', () 
     expect(totalTris).toBe(asm.indices.length / 3);
   });
 
-  it('ring vertices are shared (no duplicate ring verts; vertexCount reasonable)', () => {
-    // Each wall ~nRing² verts; caps add only the two drain rings (2·nRing).
-    // If rings were duplicated, vertexCount would jump by ≥4·nRing.
-    expect(asm.vertices.length / 3).toBeGreaterThan(0);
-    // Drain rings: exactly 2·nRing new vertices beyond the two walls.
+  it('ring vertices are shared (caps add only whole nRing-multiples of new verts)', () => {
+    // Caps reference the walls' shared ring indices; the only NEW vertices are
+    // intermediate/drain rings (each a whole multiple of nRing). If a ring were
+    // duplicated, the count would not be an exact nRing multiple.
     const wallVerts = asm.surfaceRanges[0].vertexCount + asm.surfaceRanges[1].vertexCount;
     const extra = asm.vertices.length / 3 - wallVerts;
-    expect(extra).toBe(2 * WALL_OPTS.nRing);
+    expect(extra).toBeGreaterThanOrEqual(2 * WALL_OPTS.nRing);
+    expect(extra % WALL_OPTS.nRing).toBe(0);
+  });
+
+  it('base discs are not slivers: max 3D aspect < 100', () => {
+    expect(maxAspect3D(pos, asm.indices)).toBeLessThan(100);
+  });
+});
+
+describe('assembleWatertight — large radial-span base (sliver-prone, rDrain small)', () => {
+  // A small drain with a wide base → a single outer↔drain band would be a long
+  // thin needle. Radial subdivision must keep the cap aspect bounded.
+  const Ro = 56;
+  const Ri = 52;
+  const H = 120;
+  const tBottom = 6;
+  const rDrain = 2;
+  const dims: AssemblyDimensions = { H, tBottom, rDrain };
+  const outer = wallSampler(Ro, Ri, H, tBottom, rDrain, 0);
+  const inner = wallSampler(Ro, Ri, H, tBottom, rDrain, 1);
+  const geom = (u: number, t: number, s: number): Vec3 =>
+    evalSurface(Ro, Ri, H, tBottom, rDrain, u, t, s);
+  const opts = { ...WALL_OPTS, nRing: 64 };
+  const asm = assembleWatertight(outer, inner, dims, opts);
+  const pos = eval3D(geom, asm.vertices);
+  const topo = topology(pos, asm.indices);
+
+  it('still watertight: boundary=0, nonManifold=0, orientationMismatch=0', () => {
+    expect(topo.boundary).toBe(0);
+    expect(topo.nonManifold).toBe(0);
+    expect(topo.orientationMismatch).toBe(0);
+  });
+
+  it('no slivers on the wide base: max 3D aspect < 100', () => {
+    expect(maxAspect3D(pos, asm.indices)).toBeLessThan(100);
   });
 });
 
@@ -206,13 +262,20 @@ describe('assembleWatertight — concentric cylinders, full base discs (rDrain=0
     expect(topo.orientationMismatch).toBe(0);
   });
 
-  it('no drain surface; bottom discs fan to single centres (2 centre verts)', () => {
+  it('no drain surface; each base disc fans to a single centre vertex', () => {
     // No drain (surfaceId 5) triangles.
     const drainRange = asm.surfaceRanges.find((r) => r.surfaceId === 5);
     expect(drainRange === undefined || drainRange.indexEnd === drainRange.indexStart).toBe(true);
-    const wallVerts = asm.surfaceRanges[0].vertexCount + asm.surfaceRanges[1].vertexCount;
-    const extra = asm.vertices.length / 3 - wallVerts;
-    // Two centre vertices (one per disc).
-    expect(extra).toBe(2);
+    // Each disc owns exactly one centre vertex (the rest of its new verts are
+    // shared intermediate rings, nRing-multiples).
+    const under = asm.surfaceRanges.find((r) => r.surfaceId === 3);
+    const top = asm.surfaceRanges.find((r) => r.surfaceId === 4);
+    // Each disc owns k·nRing shared intermediate-ring verts + exactly 1 centre.
+    expect((under?.vertexCount ?? 0) % WALL_OPTS.nRing).toBe(1);
+    expect((top?.vertexCount ?? 0) % WALL_OPTS.nRing).toBe(1);
+  });
+
+  it('centre-fan discs are not slivers: max 3D aspect < 100', () => {
+    expect(maxAspect3D(pos, asm.indices)).toBeLessThan(100);
   });
 });
