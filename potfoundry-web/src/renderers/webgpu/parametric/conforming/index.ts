@@ -54,3 +54,5 @@ export type {
   FeatureResolutionResult,
 } from './FeatureLineGraph';
 export { extractAnalyticFeatures, measureFeatureResolution } from './FeatureLineGraph';
+export type { UWarp, UWarpAnchor, CreaseGridChoice } from './CreaseUWarp';
+export { buildCreaseUWarp, applyUWarp, chooseCreaseGrid } from './CreaseUWarp';

@@ -66,6 +66,13 @@ export interface AssemblyWallOptions {
    * sag-tight count instead of being inflated up to the budget.
    */
   budgetMode?: 'target' | 'cap';
+  /**
+   * Optional uniform base-refinement level for BOTH walls (see
+   * ConformingWallOptions.minUniformLevel). Guarantees full-height columns at
+   * u=i/2^L so sharp vertical creases can be pinned to real mesh edges. Omit for
+   * the pure adaptive mesh.
+   */
+  minUniformLevel?: number;
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -195,6 +202,7 @@ export function assembleWatertight(
     nRing,
     targetTriangles: perWallBudget,
     budgetMode: opts.budgetMode,
+    minUniformLevel: opts.minUniformLevel,
   };
   const outer = buildConformingWall(outerSampler, { ...wallOpts, surfaceId: 0 });
   const inner = buildConformingWall(innerSampler, { ...wallOpts, surfaceId: 1 });

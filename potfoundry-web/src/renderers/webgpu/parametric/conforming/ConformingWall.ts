@@ -48,6 +48,15 @@ export interface ConformingWallOptions {
   /** Surface id written into each vertex's third slot (0 = outer, 1 = inner). */
   surfaceId: number;
   /**
+   * Optional uniform base-refinement level. When set, every quadtree cell is
+   * refined to at least this level (a uniform 2^L × 2^L base grid) before
+   * curvature adds more — guaranteeing a full-height column at each u=i/2^L.
+   * Used to make sharp vertical creases pin-able to real mesh edges (the
+   * downstream u-warp maps these columns onto the crease loci). Omit for the
+   * pure adaptive mesh.
+   */
+  minUniformLevel?: number;
+  /**
    * Optional triangle budget for THIS wall. When set, the curvature sizing
    * field's target edge lengths are uniformly scaled (and the fast quadtree
    * rebuilt) to bring the triangle count toward `targetTriangles`. The search
@@ -132,6 +141,7 @@ function buildQuadtreeAtScale(
   return new PeriodicBalancedQuadtree(field, sampler, {
     maxLevel: opts.maxLevel,
     pinBoundaryLevel,
+    minUniformLevel: opts.minUniformLevel,
   });
 }
 

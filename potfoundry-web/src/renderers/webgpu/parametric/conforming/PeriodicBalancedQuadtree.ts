@@ -59,16 +59,25 @@ export class PeriodicBalancedQuadtree {
    * `pin+1`, etc.). 0/undefined disables pinning.
    */
   private readonly pinBoundaryLevel: number;
+  /**
+   * If set (>0), EVERY cell is refined to at least this level, producing a
+   * uniform 2^L × 2^L base grid before curvature-driven refinement adds more.
+   * This guarantees a full-height vertical column at each u = i/2^L (i in
+   * [0,2^L)) — the prerequisite for pinning a sharp vertical crease onto a real
+   * mesh edge via a u-warp. Capped by `maxLevel`/`levelCap` like any refinement.
+   */
+  private readonly minUniformLevel: number;
   /** Grid-scaled finite-difference steps for the metric (de-noised vs sampler). */
   private readonly steps: MetricSteps;
 
   constructor(
     field: MetricSizingField,
     metric: SurfaceSampler,
-    opts: { maxLevel: number; pinBoundaryLevel?: number },
+    opts: { maxLevel: number; pinBoundaryLevel?: number; minUniformLevel?: number },
   ) {
     this.maxLevel = opts.maxLevel;
     this.pinBoundaryLevel = opts.pinBoundaryLevel ?? 0;
+    this.minUniformLevel = Math.max(0, Math.min(opts.minUniformLevel ?? 0, opts.maxLevel));
     this.steps = metricStepsForSampler(metric);
     this.refine(field, metric);
     if (this.pinBoundaryLevel > 0) this.enforcePinnedBoundary();
@@ -161,9 +170,14 @@ export class PeriodicBalancedQuadtree {
     this.leafSet.clear();
     while (stack.length > 0) {
       const c = stack.pop() as Cell;
+      const cap = this.levelCap(c.level, c.it);
+      // Force a uniform base refinement to `minUniformLevel` (bounded by the
+      // pin-graded cap), then let curvature drive any deeper splits. The uniform
+      // floor guarantees full-height columns at u=i/2^minUniformLevel.
+      const belowUniformFloor = c.level < Math.min(this.minUniformLevel, cap);
       if (
-        c.level < this.levelCap(c.level, c.it) &&
-        this.shouldRefine(field, metric, c.level, c.iu, c.it)
+        c.level < cap &&
+        (belowUniformFloor || this.shouldRefine(field, metric, c.level, c.iu, c.it))
       ) {
         const cl = c.level + 1;
         const bu = c.iu * 2;

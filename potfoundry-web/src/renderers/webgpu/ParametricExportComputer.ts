@@ -55,6 +55,8 @@ import {
     GpuSurfaceSampler,
     extractAnalyticFeatures,
     measureFeatureResolution,
+    chooseCreaseGrid,
+    applyUWarp,
     type FeatureUTVertex,
     type FeatureResolutionResult,
 } from './parametric/conforming';
@@ -2072,10 +2074,53 @@ export class ParametricExportComputer {
                 // coarsens below the sag-required mesh (see searchBudgetScale).
                 const conformingBudget = params.targetTriangles ?? targetTris;
 
+                // ── Vertical-crease pinning, part 1: pick the column lattice ──────
+                // Sharp constant-u creases (LowPolyFacet facet edges, GeometricStar
+                // folds, Gothic columns/mullions) usually sit at NON-dyadic u, so no
+                // dyadic quadtree column lands on them ⇒ the dihedral is chamfered ⇒
+                // featuresDropped>0. The fix is a two-part, topology-preserving pin:
+                //   (1) force a UNIFORM base refinement to log2(grid) so a full-height
+                //       column exists at every u=i/grid (the crease-bearing columns),
+                //   (2) apply one monotonic, periodic, seam-fixed u-warp φ:[0,1]→[0,1]
+                //       (below) that maps those columns EXACTLY onto the crease loci.
+                // Extract the analytic graph once (also reused for feature accounting)
+                // and choose the coarsest power-of-two lattice that hosts every crease
+                // on a distinct column. chooseCreaseGrid refuses (identity, level 0)
+                // when no clean lattice exists — always topology-safe.
+                let featureGraph: ReturnType<typeof extractAnalyticFeatures> | null = null;
+                let creaseChoice: ReturnType<typeof chooseCreaseGrid> = { warp: { isIdentity: true, anchors: [] }, grid: 0, level: 0 };
+                try {
+                    const [, packedWarpParams] = buildStyleParamPayload(
+                        params.styleId,
+                        params.styleOpts as Record<string, unknown>,
+                    );
+                    featureGraph = extractAnalyticFeatures(
+                        params.styleId,
+                        Float32Array.from(packedWarpParams),
+                        { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb },
+                    );
+                    // Distinct vertical-crease u-loci (constant-u lines only).
+                    const creaseUSet = new Set<number>();
+                    const creaseU: number[] = [];
+                    for (const line of featureGraph.lines) {
+                        if (line.kind !== 'vertical-crease') continue;
+                        const u = line.points[0].u;
+                        const key = Math.round(u * 1e7);
+                        if (creaseUSet.has(key)) continue;
+                        creaseUSet.add(key);
+                        creaseU.push(u);
+                    }
+                    creaseChoice = chooseCreaseGrid(creaseU);
+                } catch (err) {
+                    featureGraph = null;
+                    console.warn(`[CONFORMING-FULL] crease grid selection skipped: ${String(err)}`);
+                }
+
                 // Assemble the whole watertight mesh in (u,t,surfaceId) space.
                 // With curvature de-noising (grid-scaled finite differences) the
                 // sag-driven mesh is already far coarser on smooth styles, so a
                 // generous maxLevel is safe; the budget caps feature-dense styles.
+                // minUniformLevel forces full-height columns for the crease pin.
                 const asm = assembleWatertight(
                     outerSampler,
                     innerSampler,
@@ -2099,8 +2144,23 @@ export class ParametricExportComputer {
                         // inflated up to the budget; only over-budget feature-dense
                         // styles are coarsened toward it (sag floored).
                         budgetMode: 'cap' as const,
+                        // Uniform base level that guarantees full-height columns on
+                        // the crease lattice (0 = no floor when no warp is needed).
+                        minUniformLevel: creaseChoice.level > 0 ? creaseChoice.level : undefined,
                     },
                 );
+
+                // ── Vertical-crease pinning, part 2: apply the u-warp ────────────
+                // φ is a circle homeomorphism (strictly increasing, seam fixed at
+                // 0→0/1→1) applied UNIFORMLY to every vertex's u, so connectivity —
+                // and thus watertightness / orientation / T-junction-freeness — is
+                // untouched; only u-positions shift, landing the pinned full-height
+                // columns exactly on the creases. Identity ⇒ no-op.
+                if (!creaseChoice.warp.isIdentity) {
+                    for (let i = 0; i < asm.vertices.length; i += 3) {
+                        asm.vertices[i] = applyUWarp(creaseChoice.warp, asm.vertices[i]);
+                    }
+                }
 
                 // GPU-evaluate ALL combined (u,t,surfaceId) vertices to real 3D.
                 const pos3D = await this.evaluatePoints(
@@ -2113,21 +2173,26 @@ export class ParametricExportComputer {
                 const triCount = asm.indices.length / 3;
 
                 // ── Feature-completeness accounting (meaningful featuresDropped) ──
-                // Extract the style's closed-form sharp feature lines (analytic
-                // loci in (u,t)), then measure how many the OUTER-WALL mesh
-                // actually TRACKS to tolerance. The assembled outer-wall vertices
-                // (surfaceId 0) carry their (u,t) directly. Failures here must NOT
-                // break the export, so guard defensively.
+                // Measure how many of the style's closed-form sharp feature lines
+                // the OUTER-WALL mesh actually TRACKS to tolerance, AFTER the crease
+                // u-warp above. The assembled outer-wall vertices (surfaceId 0) carry
+                // their (now-warped) (u,t) directly, so a pinned crease reads as a
+                // column ON the locus. Reuse the graph built for the warp; rebuild it
+                // only if that extraction failed. Failures here must NOT break the
+                // export, so guard defensively.
                 try {
-                    const [, packedFeatureParams] = buildStyleParamPayload(
-                        params.styleId,
-                        params.styleOpts as Record<string, unknown>,
-                    );
-                    const graph = extractAnalyticFeatures(
-                        params.styleId,
-                        Float32Array.from(packedFeatureParams),
-                        { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb },
-                    );
+                    let graph = featureGraph;
+                    if (!graph) {
+                        const [, packedFeatureParams] = buildStyleParamPayload(
+                            params.styleId,
+                            params.styleOpts as Record<string, unknown>,
+                        );
+                        graph = extractAnalyticFeatures(
+                            params.styleId,
+                            Float32Array.from(packedFeatureParams),
+                            { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb },
+                        );
+                    }
                     const outerUT: FeatureUTVertex[] = [];
                     for (let i = 0; i < asm.vertices.length; i += 3) {
                         if (asm.vertices[i + 2] < 0.5) {

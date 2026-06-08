@@ -133,6 +133,85 @@ describe('PeriodicBalancedQuadtree — pinned boundary rows', () => {
   });
 });
 
+describe('PeriodicBalancedQuadtree — minUniformLevel floor', () => {
+  it('forces a uniform full refinement to at least minUniformLevel everywhere', () => {
+    // A coarse constant target would otherwise yield level 3; the floor forces 5.
+    const s = new SyntheticCylinderSampler(50, 120);
+    const field = constantField(s, 45); // sag-driven level would be 3
+    const qt = new PeriodicBalancedQuadtree(field, s, {
+      maxLevel: 8,
+      minUniformLevel: 5,
+    });
+    const leaves = qt.leaves();
+    // Every leaf is at least the floor level, and the floor produced a full grid.
+    expect(leaves.every((l) => l.level >= 5)).toBe(true);
+    // A uniform level-5 grid has 2^5 distinct full-height columns at i/2^5.
+    const cols = new Set(leaves.map((l) => Math.round(l.u0 * 2 ** l.level) / 2 ** l.level));
+    for (let i = 0; i < 32; i++) expect(cols.has(i / 32)).toBe(true);
+  });
+
+  it('full-height columns exist at every i/2^minUniformLevel (spanning all t)', () => {
+    const s = new SyntheticCylinderSampler(50, 120, 8, 2);
+    const opts: SizingOptions = {
+      maxSagMm: 0.1,
+      minEdgeMm: 0.5,
+      maxEdgeMm: 120,
+      gradeRatio: 4,
+      resU: 65,
+      resT: 9,
+    };
+    const L = 4;
+    const field = new MetricSizingField(s, opts);
+    const qt = new PeriodicBalancedQuadtree(field, s, {
+      maxLevel: 7,
+      pinBoundaryLevel: 8,
+      minUniformLevel: L,
+    });
+    const leaves = qt.leaves();
+    // For each coarse column i/2^L, some leaf's left OR right edge lies on it at
+    // every t-band — i.e. a vertical grid line at u=i/2^L runs the full height.
+    // It suffices that every leaf edge u-coordinate is a multiple of 1/2^L on the
+    // coarse columns; check the column lattice is present by edge coverage in t.
+    const colEps = 1e-9;
+    for (let i = 0; i < 2 ** L; i++) {
+      const uCol = i / 2 ** L;
+      // leaves whose left edge sits exactly on this column
+      const onCol = leaves.filter((l) => Math.abs(l.u0 - uCol) < colEps);
+      // their t-bands must tile [0,1] with no gap (full height)
+      onCol.sort((a, b) => a.t0 - b.t0);
+      let covered = 0;
+      for (const l of onCol) {
+        const sz = 1 / 2 ** l.level;
+        if (Math.abs(l.t0 - covered) < 1e-9) covered = l.t0 + sz;
+      }
+      expect(covered).toBeGreaterThan(1 - 1e-9);
+    }
+  });
+
+  it('2:1 balance still holds with a uniform floor present', () => {
+    const s = new SyntheticCylinderSampler(50, 120, 8, 2);
+    const opts: SizingOptions = {
+      maxSagMm: 0.1,
+      minEdgeMm: 0.5,
+      maxEdgeMm: 120,
+      gradeRatio: 4,
+      resU: 65,
+      resT: 9,
+    };
+    const field = new MetricSizingField(s, opts);
+    const qt = new PeriodicBalancedQuadtree(field, s, {
+      maxLevel: 7,
+      pinBoundaryLevel: 8,
+      minUniformLevel: 4,
+    });
+    for (const leaf of qt.leaves()) {
+      for (const { leaf: nb } of qt.neighbors(leaf)) {
+        expect(Math.abs(leaf.level - nb.level)).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+});
+
 describe('PeriodicBalancedQuadtree — periodic neighbour', () => {
   it('a leaf at u0 = 1 - size has a uPlus neighbour at u0 = 0', () => {
     const s = new SyntheticCylinderSampler(50, 120);
