@@ -149,3 +149,75 @@ describe('buildConformingWall — uniform shared rings (nRing=64, surfaceId=1)',
     expect(maxAspect).toBeLessThan(100);
   });
 });
+
+describe('buildConformingWall — triangle-budget control', () => {
+  // A rippled cylinder: real curvature → a meaningful sag-required (scale=1)
+  // floor that the budget search can refine above but never coarsen below.
+  const s = new SyntheticCylinderSampler(50, 120, 4, 6);
+  // Generous edge clamps so the sagitta law (not the clamp) sets the floor, and
+  // a deep maxLevel so the budget search has refinement headroom.
+  const BUDGET_OPTS: Omit<ConformingWallOptions, 'surfaceId'> = {
+    maxSagMm: 0.2,
+    maxEdgeMm: 60,
+    minEdgeMm: 0.05,
+    gradeRatio: 2,
+    maxLevel: 9,
+    resU: 65,
+    resT: 17,
+    nRing: 32,
+  };
+
+  const triCount = (opts: ConformingWallOptions): number =>
+    buildConformingWall(s, opts).indices.length / 3;
+
+  // The sag-required floor: the mesh with no budget (scale=1).
+  const floorTris = triCount({ ...BUDGET_OPTS, surfaceId: 0 });
+
+  it('hits a budget ABOVE the sag floor within ±25%', () => {
+    const budget = floorTris * 4; // comfortably above the floor → refine toward it
+    const got = triCount({ ...BUDGET_OPTS, surfaceId: 0, targetTriangles: budget });
+    expect(Math.abs(got - budget) / budget).toBeLessThan(0.25);
+  });
+
+  it('a budget BELOW the sag floor is floored (count not driven under sag)', () => {
+    const budget = Math.max(8, Math.floor(floorTris / 8)); // well below the floor
+    const got = triCount({ ...BUDGET_OPTS, surfaceId: 0, targetTriangles: budget });
+    // Floored at the sag-required mesh: count stays at the floor (never coarsened
+    // below it), so it exceeds the too-small budget rather than violating sag.
+    expect(got).toBeGreaterThanOrEqual(floorTris * 0.9);
+  });
+
+  /** Worst edge-midpoint chord sag vs the true surface over a wall mesh. */
+  const measureMaxSag = (opts: ConformingWallOptions): number => {
+    const wall = buildConformingWall(s, opts);
+    const p = eval3D(s, wall.vertices);
+    let maxSag = 0;
+    for (let i = 0; i < wall.indices.length; i += 3) {
+      const tri = [wall.indices[i], wall.indices[i + 1], wall.indices[i + 2]];
+      for (let e = 0; e < 3; e++) {
+        const va = tri[e];
+        const vb = tri[(e + 1) % 3];
+        const ua = wall.vertices[va * 3], ta = wall.vertices[va * 3 + 1];
+        const ub = wall.vertices[vb * 3], tb = wall.vertices[vb * 3 + 1];
+        // Skip the seam-wrap edge (u jumps ~1): its midpoint is not the chord mid.
+        if (Math.abs(ua - ub) > 0.5) continue;
+        const mid = s.position((ua + ub) / 2, (ta + tb) / 2);
+        const A = vget(p, va), B = vget(p, vb);
+        const chordMid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2];
+        maxSag = Math.max(maxSag, len3(sub3([...mid], chordMid)));
+      }
+    }
+    return maxSag;
+  };
+
+  it('budget control never makes sag WORSE than the sag-required floor', () => {
+    // The floor (no budget) is the coarsest sag-legal mesh. Refining to a larger
+    // budget only ADDS triangles, so its worst sag must be ≤ the floor's worst
+    // sag — the budget search can never coarsen below the sag requirement.
+    const floorSag = measureMaxSag({ ...BUDGET_OPTS, surfaceId: 0 });
+    const refinedSag = measureMaxSag({
+      ...BUDGET_OPTS, surfaceId: 0, targetTriangles: floorTris * 6,
+    });
+    expect(refinedSag).toBeLessThanOrEqual(floorSag + 1e-6);
+  });
+});

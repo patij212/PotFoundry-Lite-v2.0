@@ -47,6 +47,17 @@ export interface ConformingWallOptions {
   nRing?: number;
   /** Surface id written into each vertex's third slot (0 = outer, 1 = inner). */
   surfaceId: number;
+  /**
+   * Optional triangle budget for THIS wall. When set, the curvature sizing
+   * field's target edge lengths are uniformly scaled (and the fast quadtree
+   * rebuilt) to bring the triangle count toward `targetTriangles`. The scale is
+   * bounded at 1 from above — scale=1 is the sag-required mesh (coarsest mesh
+   * the sagitta law allows), so the search may only ADD refinement toward a
+   * larger budget, never coarsen below sag. A budget below the sag floor is
+   * therefore met by the floor mesh (count floored, sag preserved). Omit to use
+   * the pure sag-driven mesh.
+   */
+  targetTriangles?: number;
 }
 
 /** Conforming wall mesh result with uniform shared boundary rings. */
@@ -72,11 +83,107 @@ function isPowerOfTwo(n: number): boolean {
   return n > 0 && (n & (n - 1)) === 0;
 }
 
+/** Lower bound on the budget-search scale (refine, never below this fraction). */
+const MIN_BUDGET_SCALE = 1 / 64;
+/** Scale-search iterations (binary search on a monotone count(scale)). */
+const BUDGET_SEARCH_STEPS = 5;
+/** Budget acceptance band: stop early once within ±this of the target. */
+const BUDGET_TOLERANCE = 0.1;
+/**
+ * Triangles per quadtree leaf. A balanced quad triangulates to ~2 triangles
+ * (transition templates add a few near level boundaries), so the search counts
+ * leaves — far cheaper than triangulating — against `targetTriangles/2`.
+ */
+const TRIS_PER_LEAF = 2;
+
+/** Build only the sizing field + quadtree at a target scale (no triangulation). */
+function buildQuadtreeAtScale(
+  sampler: SurfaceSampler,
+  opts: ConformingWallOptions,
+  pinBoundaryLevel: number,
+  targetScale: number,
+): PeriodicBalancedQuadtree {
+  const field = new MetricSizingField(sampler, {
+    maxSagMm: opts.maxSagMm,
+    minEdgeMm: opts.minEdgeMm,
+    maxEdgeMm: opts.maxEdgeMm,
+    gradeRatio: opts.gradeRatio,
+    resU: opts.resU,
+    resT: opts.resT,
+    targetScale,
+  });
+  return new PeriodicBalancedQuadtree(field, sampler, {
+    maxLevel: opts.maxLevel,
+    pinBoundaryLevel,
+  });
+}
+
+/**
+ * Choose a sizing-field target scale that brings the leaf (≈ triangle) count
+ * toward `targetTriangles`. Leaf count is monotone DECREASING in `targetScale`
+ * (larger target edge ⇒ coarser ⇒ fewer leaves), so we binary-search the scale
+ * on [MIN_BUDGET_SCALE, 1]. Scale=1 is the sag-required floor; the search only
+ * descends to ADD refinement toward a larger budget and never exceeds 1, so a
+ * budget below the floor returns scale=1 (count floored, sag preserved). Only
+ * the quadtree is rebuilt per step (tens of ms) — triangulation runs once after.
+ */
+function searchBudgetScale(
+  sampler: SurfaceSampler,
+  opts: ConformingWallOptions,
+  pinBoundaryLevel: number,
+  targetTriangles: number,
+): number {
+  const targetLeaves = targetTriangles / TRIS_PER_LEAF;
+  const leavesAt = (scale: number): number =>
+    buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, scale).leafCount();
+
+  // Floor: scale=1 is the coarsest sag-legal mesh = the FEWEST leaves. A budget
+  // at or below the floor cannot be met without coarsening past sag, so we keep
+  // the floor (count floored, sag preserved — never violated).
+  const floorLeaves = leavesAt(1);
+  if (targetLeaves <= floorLeaves) return 1;
+
+  // The finest the search can go. If even that undershoots the budget (maxLevel
+  // cap), it is the closest reachable count — use it.
+  if (leavesAt(MIN_BUDGET_SCALE) <= targetLeaves) return MIN_BUDGET_SCALE;
+
+  // Binary search: count(scale) is monotone, so bracket [lo=finer, hi=coarser].
+  let lo = MIN_BUDGET_SCALE; // more leaves
+  let hi = 1; // fewer leaves (floor)
+  let best = 1;
+  for (let i = 0; i < BUDGET_SEARCH_STEPS; i++) {
+    const mid = Math.sqrt(lo * hi); // geometric midpoint (scale is multiplicative)
+    const c = leavesAt(mid);
+    best = mid;
+    if (Math.abs(c - targetLeaves) / targetLeaves <= BUDGET_TOLERANCE) break;
+    if (c > targetLeaves) lo = mid; // too many leaves ⇒ coarsen ⇒ raise scale
+    else hi = mid;
+  }
+  return best;
+}
+
+/** The raw triangulated quadtree mesh at a given sizing-field target scale. */
+function buildWallMeshAtScale(
+  sampler: SurfaceSampler,
+  opts: ConformingWallOptions,
+  pinBoundaryLevel: number,
+  targetScale: number,
+): { vertices: Float32Array; indices: Uint32Array; seamTriangles: Uint8Array } {
+  return triangulateQuadtree(
+    buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, targetScale),
+  );
+}
+
 /**
  * Build a conforming wall with uniform `nRing` t=0/t=1 boundary rings.
  *
  * The quadtree pins the boundary rows to level `log2(nRing)` so each ring is
  * exactly `nRing` vertices at U = i/nRing. Vertices are packed (u, t, surfaceId).
+ *
+ * When `targetTriangles` is set, a global scale on the sizing field's target
+ * edge lengths is searched to steer the triangle count toward that budget,
+ * bounded so it never coarsens below the sag-required mesh (see
+ * {@link searchBudgetScale}).
  */
 export function buildConformingWall(
   sampler: SurfaceSampler,
@@ -95,21 +202,12 @@ export function buildConformingWall(
     }
   }
 
-  const field = new MetricSizingField(sampler, {
-    maxSagMm: opts.maxSagMm,
-    minEdgeMm: opts.minEdgeMm,
-    maxEdgeMm: opts.maxEdgeMm,
-    gradeRatio: opts.gradeRatio,
-    resU: opts.resU,
-    resT: opts.resT,
-  });
+  const targetScale =
+    opts.targetTriangles !== undefined && opts.targetTriangles > 0
+      ? searchBudgetScale(sampler, opts, pinBoundaryLevel, opts.targetTriangles)
+      : 1;
 
-  const quadtree = new PeriodicBalancedQuadtree(field, sampler, {
-    maxLevel: opts.maxLevel,
-    pinBoundaryLevel,
-  });
-
-  const mesh = triangulateQuadtree(quadtree);
+  const mesh = buildWallMeshAtScale(sampler, opts, pinBoundaryLevel, targetScale);
 
   // Stamp the surfaceId into each vertex's third slot (the triangulator packs 0
   // there). The GPU evaluates each vertex by its own (u, t, surfaceId) triple.

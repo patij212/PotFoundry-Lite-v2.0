@@ -30,6 +30,12 @@ export interface ConformingOuterWallOptions {
   resU: number;
   /** Sizing-field grid resolution in t. */
   resT: number;
+  /**
+   * Optional triangle budget. Scales the sizing field to approach this count,
+   * bounded so it never coarsens below the sag-required mesh. Omit for the pure
+   * sag-driven mesh.
+   */
+  targetTriangles?: number;
 }
 
 /** Conforming outer-wall mesh result (OuterWallResult-compatible subset). */
@@ -66,6 +72,7 @@ export function buildConformingOuterWall(
     maxLevel: opts.maxLevel,
     resU: opts.resU,
     resT: opts.resT,
+    targetTriangles: opts.targetTriangles,
     surfaceId: 0,
   });
   return {

@@ -53,6 +53,13 @@ export interface AssemblyWallOptions {
   resT: number;
   /** Uniform ring count — power of two; both walls pin to this. */
   nRing: number;
+  /**
+   * Optional whole-pot triangle budget. Split evenly across the two walls (the
+   * caps add only a small fixed amount), then each wall's sizing field is scaled
+   * to approach its share — bounded so neither wall coarsens below the
+   * sag-required mesh. Omit for the pure sag-driven mesh.
+   */
+  targetTriangles?: number;
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -165,6 +172,12 @@ export function assembleWatertight(
   const nRing = opts.nRing;
 
   // --- 1. Build the two conforming walls (uniform shared rings) -------------
+  // Split the whole-pot budget across the two walls (caps add only a small fixed
+  // amount). Each wall's own sag floor still bounds its share from below.
+  const perWallBudget =
+    opts.targetTriangles !== undefined && opts.targetTriangles > 0
+      ? Math.max(1, Math.floor(opts.targetTriangles / 2))
+      : undefined;
   const wallOpts = {
     maxSagMm: opts.maxSagMm,
     maxEdgeMm: opts.maxEdgeMm,
@@ -174,6 +187,7 @@ export function assembleWatertight(
     resU: opts.resU,
     resT: opts.resT,
     nRing,
+    targetTriangles: perWallBudget,
   };
   const outer = buildConformingWall(outerSampler, { ...wallOpts, surfaceId: 0 });
   const inner = buildConformingWall(innerSampler, { ...wallOpts, surfaceId: 1 });

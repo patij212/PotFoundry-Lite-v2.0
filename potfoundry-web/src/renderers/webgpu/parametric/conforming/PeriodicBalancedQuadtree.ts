@@ -322,6 +322,11 @@ export class PeriodicBalancedQuadtree {
 
   // ----- public API -------------------------------------------------------
 
+  /** Number of leaf cells (cheap — no array materialization). */
+  leafCount(): number {
+    return this.leafSet.size;
+  }
+
   /** All leaf cells in physical-parameter terms. */
   leaves(): QuadLeaf[] {
     if (this.cells.length === 0 && this.leafSet.size > 0) this.rebuildCells();

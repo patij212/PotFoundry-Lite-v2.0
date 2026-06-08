@@ -238,6 +238,47 @@ describe('assembleWatertight — large radial-span base (sliver-prone, rDrain sm
   });
 });
 
+describe('assembleWatertight — triangle budget steers the whole-pot count', () => {
+  // Rippled walls so there is real curvature (a meaningful sag floor to refine
+  // above). Both walls share the budget; caps add a small fixed amount.
+  const Ro = 50;
+  const Ri = 46;
+  const H = 120;
+  const tBottom = 8;
+  const rDrain = 10;
+  const dims: AssemblyDimensions = { H, tBottom, rDrain };
+  const ripple = (base: number, surfaceId: number): SurfaceSampler => ({
+    position: (u: number, t: number): Vec3 => {
+      const theta = 2 * Math.PI * (u - Math.floor(u));
+      const r = base + 3 * Math.cos(2 * Math.PI * 6 * u);
+      const z = surfaceId < 0.5 ? t * H : tBottom + t * (H - tBottom);
+      return [r * Math.cos(theta), r * Math.sin(theta), z];
+    },
+  });
+  const outer = ripple(Ro, 0);
+  const inner = ripple(Ri, 1);
+  const opts = {
+    maxSagMm: 0.3, maxEdgeMm: 60, minEdgeMm: 0.1,
+    gradeRatio: 2, maxLevel: 8, resU: 49, resT: 13, nRing: 32,
+  };
+
+  const triCount = (targetTriangles?: number): number =>
+    assembleWatertight(outer, inner, dims, { ...opts, targetTriangles }).indices.length / 3;
+
+  it('a budget above the sag floor lands within ±25% of the request', () => {
+    const floor = triCount();
+    const budget = floor * 3;
+    const got = triCount(budget);
+    expect(Math.abs(got - budget) / budget).toBeLessThan(0.25);
+  });
+
+  it('a budget below the sag floor is floored (sag-required count preserved)', () => {
+    const floor = triCount();
+    const got = triCount(Math.max(8, Math.floor(floor / 8)));
+    expect(got).toBeGreaterThanOrEqual(floor * 0.9);
+  });
+});
+
 describe('assembleWatertight — concentric cylinders, full base discs (rDrain=0)', () => {
   const Ro = 50;
   const Ri = 46;
