@@ -70,13 +70,27 @@ forced-crossing mirror) banks 20/20 AND fixes the twisted/high-flare inserted-st
 (a 2nd cutover blocker), is contained/lower-risk, and is robust to the later uBias change — so
 bank that milestone before the risky foundation rewrite.
 
-**STATUS 2026-06-08l: GAP 2 + Voronoi DONE → 20/20 at default dims (committed).** The grid-line
+**STATUS 2026-06-08l: GAP 2 + Voronoi DONE → 20/20 at default dims (committed 3367c8e).** Grid-line
 vertex registry + unguarded edge-snap fixed the tangent T-junction class AND the residual (u,t)
-needles. Full 20-style matrix all clean (`e2e/regress-20-2026-06-08l.log`). RE-CHECK whether GAP 2
-also fixed the twisted/high-flare INSERTED-style dimspace failures (run `_conforming_dimspace_probe.cjs`
-on Hex/Gyroid/Celtic) — the registry should have closed the high-flare bnd cracks; the twisted
-slivers may also be gone now. **GAP 1 (uBias anisotropic foundation) is now the SOLE remaining
-cutover blocker.**
+needles. Full 20-style matrix all clean (`e2e/regress-20-2026-06-08l.log`). Dimspace re-check
+(`e2e/dimspace-inserted-2026-06-08l.log`) CONFIRMED GAP 2 closed the high-flare bnd cracks +
+tall-narrow cracks; the remaining short-wide/twisted failures are all GAP-1 aspect slivers.
+
+**STATUS 2026-06-08n: GAP 1 uBias FOUNDATION — STEP 1 committed (1f6a53c) + STEP 2 wired.** A global
+anisotropy bias B makes a level-L leaf span Δu=1/2^(L+B), Δt=1/2^L → cells 3D-near-square on
+wide/flat pots. B=clamp(round(log2(A/3)),0,4), A=median √E/√G ⇒ **B=0 at default (perfect no-op,
+20/20 preserved)**, B=3 at short-wide. STEP 1 = quadtree+triangulator uBias-aware (5 unit tests).
+STEP 2 = `assembleWatertight` auto-computes B + threads nRingActual=2^(pin+B); DEFERS B=0 when
+outerFeatureLines present (inserted styles). **SHORT-WIDE FIXED for smooth+warp:** Crystalline
+28k→0, GothicArches 2.9M→0, LowPolyFacet 615k→0, BasketWeave 2.1M→0 (`e2e/_shortwide_probe.cjs`).
+**REMAINING short-wide:** ArtDeco 559k→3496 NEAR-MISS (maxAspect 101.6 — local relief √E/√G>800
+exceeds base-B3; the default→short-wide span is only ~3 anisotropy bits so a 0-at-default B caps at
+3); HexagonalHive/inserted still fail (B=0 deferred → STEP 3). Cap-tri inflation at B>0 (nRing 2048)
+is a known cost — fix: `pinBoundaryLevel=basePin-B` keeps nRing=256. **NEXT (priority):** (a) commit
+STEP 2; (b) `pinBoundaryLevel=basePin-B` polish; (c) STEP 3 = make FeatureConformingTriangulator
+uBias-aware → inserted styles short-wide; (d) ArtDeco needs LOCAL/directional anisotropy (per-cell
+u-only split where local √E/√G/2^B still high) — global B can't fully fix it. Twisted = separate
+F-shear sub-issue (metric-aligned cells, not uBias).
 
 ## 6. THE WORK (priority order; UPDATED 2026-06-08i)
 

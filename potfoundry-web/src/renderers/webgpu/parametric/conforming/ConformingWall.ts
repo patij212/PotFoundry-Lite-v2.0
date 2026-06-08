@@ -101,6 +101,15 @@ export interface ConformingWallOptions {
    *    a SMOOTH pot keeps its (small) sag-tight count instead of being inflated.
    */
   budgetMode?: 'target' | 'cap';
+  /**
+   * Anisotropy bias B (≥0) for the quadtree: a level-L leaf spans Δu=1/2^(L+B),
+   * Δt=1/2^L, so cells stay 3D-near-square under extreme circumference/height
+   * anisotropy (GAP 1). 0 (default) is the isotropic quadtree. With B>0 the
+   * boundary rings carry 2^(log2(nRing)+B) vertices (the caller derives the cap
+   * ring count from `bottomRing.length`). The metric sizing field, pin grading,
+   * and warps are unaffected (t-based / u-value-based).
+   */
+  uBias?: number;
 }
 
 /** Conforming wall mesh result with uniform shared boundary rings. */
@@ -169,6 +178,7 @@ function buildQuadtreeAtScale(
     pinBoundaryLevel,
     minUniformLevel: opts.minUniformLevel,
     featureRefine,
+    uBias: opts.uBias,
   });
 }
 

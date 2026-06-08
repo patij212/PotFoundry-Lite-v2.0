@@ -32,6 +32,60 @@ import type { SurfaceSampler } from './SurfaceSampler';
 import { buildConformingWall, type ConformingWallResult } from './ConformingWall';
 import { annulusStrip, discFan } from './RingStrip';
 import type { FeatureLine } from './FeatureLineGraph';
+import { firstFundamentalForm, metricStepsForSampler } from './SurfaceMetricTensor';
+
+/** Reference metric anisotropy at which uBias=0 — tuned to the default pot. */
+const UBIAS_AREF = 3;
+/** Cap on the anisotropy bias (bounds triangle inflation + ring growth). */
+const UBIAS_BMAX = 4;
+
+function median(xs: number[]): number {
+  if (xs.length === 0) return 1;
+  const s = xs.slice().sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)] || 1;
+}
+
+/**
+ * Anisotropy bias B (≥0) for a wall sampler — a GATED, relief-aware estimate.
+ *
+ * Two metrics over a coarse (u,t) grid:
+ *  - `baseA` = median of the SHAPE anisotropy `2π·r / √G` (circumference rate over
+ *    height rate, EXCLUDING the ripple slope `r'` — i.e. the pot's wide/flat-vs-
+ *    tall geometry, independent of a style's surface relief).
+ *  - `fullA` = median of the true cell anisotropy `√E / √G` (INCLUDING relief).
+ *
+ * The bias is GATED on `baseA`: a pot whose SHAPE is not wide/flat (baseA within
+ * the default band, ≤ AREF·√2) gets **B=0 regardless of relief** — a true no-op
+ * that preserves the validated default-dim (20/20) meshes for every style, rippled
+ * or not. Only a genuinely wide/flat pot (baseA above the band) is biased, and
+ * then by `fullA` so that high-relief styles (whose cells are √E/√G:1 slivers, not
+ * just 2π·r/√G:1) are corrected too. A square (u,t) cell maps to a √E/√G:1 3D
+ * sliver (GAP 1, level-independent); the bias makes a level-L leaf span
+ * Δu=1/2^(L+B) so cells are 3D-near-square. (Cells whose LOCAL √E/√G/2^B still
+ * exceeds the sliver bound — extreme isolated relief — need local directional
+ * refinement, beyond this global bias.)
+ */
+function computeUBias(sampler: SurfaceSampler): number {
+  const steps = metricStepsForSampler(sampler);
+  const baseRatios: number[] = [];
+  const fullRatios: number[] = [];
+  const N = 12;
+  for (let j = 1; j < N; j++) {
+    const t = j / N;
+    for (let i = 0; i < N; i++) {
+      const u = i / N;
+      const p = sampler.position(u, t);
+      const { E, G } = firstFundamentalForm(sampler, u, t, steps.hu, steps.ht);
+      const sG = Math.sqrt(Math.max(G, 1e-12));
+      baseRatios.push((2 * Math.PI * Math.hypot(p[0], p[1])) / sG); // 2π·r / √G (no relief)
+      fullRatios.push(Math.sqrt(Math.max(E, 1e-12)) / sG); // √E / √G (with relief)
+    }
+  }
+  // GATE: not a wide/flat pot (shape anisotropy in the default band) ⇒ no bias.
+  if (median(baseRatios) <= UBIAS_AREF * Math.SQRT2) return 0;
+  // Wide/flat pot ⇒ relief-aware bias (corrects √E/√G:1 cells, not just 2π·r/√G:1).
+  return Math.max(0, Math.min(UBIAS_BMAX, Math.round(Math.log2(median(fullRatios) / UBIAS_AREF))));
+}
 
 /** Pot dimensions needed to place the cap/drain surfaces. */
 export interface AssemblyDimensions {
@@ -52,8 +106,19 @@ export interface AssemblyWallOptions {
   maxLevel: number;
   resU: number;
   resT: number;
-  /** Uniform ring count — power of two; both walls pin to this. */
+  /**
+   * Uniform ring count — power of two; both walls pin to this in t. With an
+   * anisotropy bias B>0 the actual shared ring carries nRing·2^B vertices.
+   */
   nRing: number;
+  /**
+   * Optional explicit anisotropy bias B (≥0) for BOTH walls (GAP 1). When
+   * omitted it is auto-computed from the OUTER metric (median √E/√G), deferred to
+   * 0 when the outer wall carries feature lines. Δu=1/2^(level+B), Δt=1/2^level —
+   * cells stay 3D-near-square on wide/flat pots. B=0 (default at default dims) is
+   * a perfect no-op.
+   */
+  uBias?: number;
   /**
    * Optional whole-pot triangle budget. Split evenly across the two walls (the
    * caps add only a small fixed amount), then each wall's sizing field is scaled
@@ -197,6 +262,16 @@ export function assembleWatertight(
 ): WatertightAssemblyResult {
   const nRing = opts.nRing;
 
+  // --- 0. Anisotropy bias (GAP 1): make cells 3D-near-square on wide/flat pots.
+  // Both walls MUST share the same bias so their boundary rings (2^(log2(nRing)+B)
+  // verts) match by index. Computed once from the OUTER metric. DEFERRED (B=0)
+  // when the outer wall carries feature lines — the feature-insertion
+  // triangulator is not yet uBias-aware, and an inserted style at default dims
+  // gives B=0 anyway, so this only postpones the (failing) extreme-dim inserted
+  // case, never regresses a working one. An explicit `opts.uBias` overrides.
+  const hasFeatures = (opts.outerFeatureLines?.length ?? 0) > 0;
+  const uBias = opts.uBias ?? (hasFeatures ? 0 : computeUBias(outerSampler));
+
   // --- 1. Build the two conforming walls (uniform shared rings) -------------
   // Split the whole-pot budget across the two walls (caps add only a small fixed
   // amount). Each wall's own sag floor still bounds its share from below.
@@ -216,6 +291,7 @@ export function assembleWatertight(
     targetTriangles: perWallBudget,
     budgetMode: opts.budgetMode,
     minUniformLevel: opts.minUniformLevel,
+    uBias,
   };
   // Features go on the OUTER wall only (the inner wall is a smooth offset).
   const outer = buildConformingWall(outerSampler, {
@@ -226,6 +302,16 @@ export function assembleWatertight(
     featureLevel: opts.featureLevel,
   });
   const inner = buildConformingWall(innerSampler, { ...wallOpts, surfaceId: 1 });
+
+  // The shared ring vertex count grows with the bias: 2^(log2(nRing)+B). Both
+  // walls pin the SAME (pinBoundaryLevel + uBias), so their rings match; the caps
+  // reference this actual count (not the input nRing) so index-sharing holds.
+  const nRingActual = outer.bottomRing.length;
+  if (inner.bottomRing.length !== nRingActual) {
+    throw new Error(
+      `assembleWatertight: wall ring mismatch (outer ${nRingActual}, inner ${inner.bottomRing.length})`,
+    );
+  }
 
   const verts: number[] = [];
   const indices: number[] = [];
@@ -279,31 +365,31 @@ export function assembleWatertight(
     const drainBottomRing: number[] = []; // z=0   (drain t=0)
     const drainTopRing: number[] = []; // z=tBottom (drain t=1)
     const drainVertStart = verts.length / 3;
-    for (let i = 0; i < nRing; i++) {
+    for (let i = 0; i < nRingActual; i++) {
       drainBottomRing.push(verts.length / 3);
-      verts.push(i / nRing, 0, 5);
+      verts.push(i / nRingActual, 0, 5);
     }
-    for (let i = 0; i < nRing; i++) {
+    for (let i = 0; i < nRingActual; i++) {
       drainTopRing.push(verts.length / 3);
-      verts.push(i / nRing, 1, 5);
+      verts.push(i / nRingActual, 1, 5);
     }
     const drainVertCount = verts.length / 3 - drainVertStart;
 
     // bottom-under (3): outer-bottom (t=0) ↔ drain bottom ring (t=1), radial bands.
     {
       const indexStart = indices.length;
-      const nRad = radialBandCount(rOuterBot, dims.rDrain, nRing);
+      const nRad = radialBandCount(rOuterBot, dims.rDrain, nRingActual);
       const newV = emitRadialCap(
-        verts, indices, outerBottom, { ring: drainBottomRing }, 3, nRing, nRad, false,
+        verts, indices, outerBottom, { ring: drainBottomRing }, 3, nRingActual, nRad, false,
       );
       ranges.push({ surfaceId: 3, indexStart, indexEnd: indices.length, vertexCount: newV });
     }
     // bottom-top (4): inner-bottom (t=0) ↔ drain top ring (t=1), radial bands.
     {
       const indexStart = indices.length;
-      const nRad = radialBandCount(rInnerBot, dims.rDrain, nRing);
+      const nRad = radialBandCount(rInnerBot, dims.rDrain, nRingActual);
       const newV = emitRadialCap(
-        verts, indices, innerBottom, { ring: drainTopRing }, 4, nRing, nRad, false,
+        verts, indices, innerBottom, { ring: drainTopRing }, 4, nRingActual, nRad, false,
       );
       ranges.push({ surfaceId: 4, indexStart, indexEnd: indices.length, vertexCount: newV });
     }
@@ -326,9 +412,9 @@ export function assembleWatertight(
       const indexStart = indices.length;
       const centreUnder = verts.length / 3;
       verts.push(0, 1, 3); // (u=0, t=1, s=3) ⇒ r=rDrain≈0, z=0
-      const nRad = radialBandCount(rOuterBot, 0, nRing);
+      const nRad = radialBandCount(rOuterBot, 0, nRingActual);
       const newV = emitRadialCap(
-        verts, indices, outerBottom, { centreIdx: centreUnder }, 3, nRing, nRad, false,
+        verts, indices, outerBottom, { centreIdx: centreUnder }, 3, nRingActual, nRad, false,
       );
       ranges.push({ surfaceId: 3, indexStart, indexEnd: indices.length, vertexCount: newV + 1 });
     }
@@ -337,9 +423,9 @@ export function assembleWatertight(
       const indexStart = indices.length;
       const centreTop = verts.length / 3;
       verts.push(0, 1, 4); // (u=0, t=1, s=4) ⇒ r≈0, z=tBottom
-      const nRad = radialBandCount(rInnerBot, 0, nRing);
+      const nRad = radialBandCount(rInnerBot, 0, nRingActual);
       const newV = emitRadialCap(
-        verts, indices, innerBottom, { centreIdx: centreTop }, 4, nRing, nRad, false,
+        verts, indices, innerBottom, { centreIdx: centreTop }, 4, nRingActual, nRad, false,
       );
       ranges.push({ surfaceId: 4, indexStart, indexEnd: indices.length, vertexCount: newV + 1 });
     }
