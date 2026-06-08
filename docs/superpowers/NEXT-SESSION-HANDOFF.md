@@ -12,9 +12,11 @@ sliverCount = 0    boundaryEdges = 0    nonManifoldEdges = 0    orientationMisma
 featuresExpected == featuresPresent    featuresDropped = 0    + no timeouts, CAD-grade fidelity
 ```
 
-## 1. CURRENT STATE — verified & committed (UPDATED 2026-06-08l; do not re-derive; trust + spot-check)
+## 1. CURRENT STATE — verified & committed (UPDATED 2026-06-08n; do not re-derive; trust + spot-check)
 A from-scratch **watertight-by-construction conforming mesher** replaces the old non-conforming sweep + 1,100-line repair battery. It is behind a flag (`conformingMesher` / `window.__pfConforming`); **the legacy path is untouched** and is the production default until cutover.
-- **All 20 styles: `orient=bnd=nonMan=sliver=0`, maxAspect ≤ 50.3, no timeouts.** Full regression: `potfoundry-web/e2e/regress-20-2026-06-08l.log`.
+- **20/20 at DEFAULT dims** (full 6/6) AND **GAP 1 (dimension-space) PARTLY FIXED.** This session's commits: `4275a6d` GAP 1 root cause proven; `3367c8e` GAP 2+Voronoi→20/20; `1f6a53c` GAP 1 uBias foundation; `a570db9` GAP 1 uBias wired (gated); `1758087` cap-inflation fix.
+- **GAP 1 (uBias anisotropic foundation):** a global anisotropy bias B makes a level-L leaf span Δu=1/2^(L+B), Δt=1/2^L → 3D-near-square cells on wide/flat pots (the GAP 1 root cause is square cells → √E/√G:1 slivers). B is GATED on the relief-free base shape anisotropy `median(2π·r/√G)` → **B=0 at default for ALL 20 styles (TRUE no-op, byte-identical to the 20/20 matrix — `e2e/regress-20-ubias-default-2026-06-08l.log`)**; only wide/flat pots get B>0. **SHORT-WIDE (H40/OD300) now: warps FIXED** (GothicArches 2.9M→0 slivers, LowPolyFacet 615k→0, BasketWeave 2.1M→0) **+ gentle smooth PASS.** STILL FAIL short-wide: pervasive-relief smooth (Crystalline 28k→55, ArtDeco 559k→3496 — global B caps at 3, their cells need B4-5 everywhere → need LOCAL/directional anisotropy) + the INSERTED styles (deferred B=0: FeatureConformingTriangulator not yet uBias-aware — STEP 3). Other dimspace configs (tall-narrow/no-drain/high-flare/twisted) are B=0 (gate) so UNCHANGED from the GAP-2 dimspace state. **CUTOVER: still NOT ready** (short-wide residuals on ~6 styles + inserted twisted needle). Leave flag-gated. See §6 for the remaining GAP-1 plan.
+- **All 20 styles at default: `orient=bnd=nonMan=sliver=0`, maxAspect ≤ 50.3, no timeouts.** Full regression: `potfoundry-web/e2e/regress-20-2026-06-08l.log`.
 - **20/20 styles at FULL 6/6 at DEFAULT dims** (verified `featuresDropped=0` e2e): the 8 warp-captured + 8 smooth PLUS the 4 general-curve-inserted styles — **HexagonalHive (featExp=4), GyroidManifold (14), CelticKnot (9), Voronoi (206)**. 🎉
 - **Voronoi DONE (2026-06-08l):** insertion ENABLED (`VORONOI_INSERTION_ENABLED=true`). The tangent cell-edge T-junction cracks (the old blocker) are FIXED by a **grid-line vertex registry** in `triangulateQuadtreeWithFeatures` (every feature vertex on a shared cell edge is registered keyed by its grid line → both adjacent cells read the IDENTICAL edge-vertex set → symmetric by construction, no tangent crack). The residual (u,t) needles were killed by UN-guarding the edge-snap (the registry now mirrors snapped on-edge vertices to the neighbour, so the old same-level guard is unnecessary — and removing it lets the snap also fix transition-edge needles). e2e: Voronoi sliver=bnd=nonMan=orient=0, featExp=featPres=206, featDrop=0. Hex even improved (maxAspect 46.7→35.7). 211 conforming+fidelity unit tests green.
 - **Insertion engine** (`conforming/`): `ConstrainedCellTriangulator` (local cdt2d), `FeatureConformingTriangulator` (`triangulateQuadtreeWithFeatures` — per-cell CDT in feature cells, watertight + T-junction-free by construction via: identical cross-cell crossings, feature-driven refinement, corner-snap + interior weld, per-edge crossing detection for tangents, planarization of braid crossings, canonical min-qk merge of close shared-edge crossings), `SampledFeatureExtractor` (marchingSquaresZero + marchingSquaresLabels + segmentsToPolylines + Douglas-Peucker). 206 unit tests. cdt2d is now a LIVE local dep (not the dead global path).
@@ -76,21 +78,38 @@ needles. Full 20-style matrix all clean (`e2e/regress-20-2026-06-08l.log`). Dims
 (`e2e/dimspace-inserted-2026-06-08l.log`) CONFIRMED GAP 2 closed the high-flare bnd cracks +
 tall-narrow cracks; the remaining short-wide/twisted failures are all GAP-1 aspect slivers.
 
-**STATUS 2026-06-08n: GAP 1 uBias FOUNDATION — STEP 1 committed (1f6a53c) + STEP 2 wired.** A global
-anisotropy bias B makes a level-L leaf span Δu=1/2^(L+B), Δt=1/2^L → cells 3D-near-square on
-wide/flat pots. B=clamp(round(log2(A/3)),0,4), A=median √E/√G ⇒ **B=0 at default (perfect no-op,
-20/20 preserved)**, B=3 at short-wide. STEP 1 = quadtree+triangulator uBias-aware (5 unit tests).
-STEP 2 = `assembleWatertight` auto-computes B + threads nRingActual=2^(pin+B); DEFERS B=0 when
-outerFeatureLines present (inserted styles). **SHORT-WIDE FIXED for smooth+warp:** Crystalline
-28k→0, GothicArches 2.9M→0, LowPolyFacet 615k→0, BasketWeave 2.1M→0 (`e2e/_shortwide_probe.cjs`).
-**REMAINING short-wide:** ArtDeco 559k→3496 NEAR-MISS (maxAspect 101.6 — local relief √E/√G>800
-exceeds base-B3; the default→short-wide span is only ~3 anisotropy bits so a 0-at-default B caps at
-3); HexagonalHive/inserted still fail (B=0 deferred → STEP 3). Cap-tri inflation at B>0 (nRing 2048)
-is a known cost — fix: `pinBoundaryLevel=basePin-B` keeps nRing=256. **NEXT (priority):** (a) commit
-STEP 2; (b) `pinBoundaryLevel=basePin-B` polish; (c) STEP 3 = make FeatureConformingTriangulator
-uBias-aware → inserted styles short-wide; (d) ArtDeco needs LOCAL/directional anisotropy (per-cell
-u-only split where local √E/√G/2^B still high) — global B can't fully fix it. Twisted = separate
-F-shear sub-issue (metric-aligned cells, not uBias).
+**STATUS 2026-06-08n: GAP 1 uBias FOUNDATION DONE for warps+smooth (commits 1f6a53c, a570db9, 1758087).**
+A global anisotropy bias B makes a level-L leaf span Δu=1/2^(L+B), Δt=1/2^L → 3D-near-square cells on
+wide/flat pots. **STEP 1 (1f6a53c):** `PeriodicBalancedQuadtree`+`QuadtreeTriangulator` uBias-aware
+(root=2^B×1 grid; u-index/wrap via 2^(level+B); t + pin/levelCap unchanged). B=0=PERFECT no-op. 5 unit
+tests (`QuadtreeUBias.test.ts`). **STEP 2 (a570db9):** `assembleWatertight.computeUBias` is GATED +
+relief-aware: B=0 unless the BASE shape anisotropy `median(2π·r/√G)` > AREF·√2≈4.24 (a genuinely
+wide/flat pot); only THEN B=clamp(round(log2(median(√E/√G)/3)),0,4). **The gate on the relief-FREE
+base anisotropy is essential — plain median(√E/√G) tripped B=1 at DEFAULT for ripple styles
+(HarmonicRipple), changing their mesh. The gate ⇒ TRUE no-op: all 20 byte-identical at default
+(`e2e/regress-20-ubias-default-2026-06-08l.log`).** nRingActual from `outer.bottomRing.length`; DEFERS
+B=0 when outerFeatureLines present (inserted styles). **STEP 2b (1758087):** `pinBoundaryLevel =
+log2(nRing)−uBias` keeps nRing=256 (no cap inflation) — GothicArches short-wide 1.16M→720k tris,
+maxAspect 63.5→10.4. **SHORT-WIDE FIXED: GothicArches 2.9M→0, LowPolyFacet 615k→0, BasketWeave 2.1M→0,
+gentle smooth PASS.** **STILL FAIL short-wide:** Crystalline 28k→55, ArtDeco 559k→3496 (PERVASIVE
+relief — cells √E/√G:1 EVERYWHERE need B4-5, but a 0-at-default B caps at 3 since the default→short-wide
+span is only ~3 anisotropy bits) + inserted styles (deferred). Non-short-wide dimspace configs are B=0
+(gate) ⇒ unchanged. **NEXT (GAP 1 remaining, priority):**
+  (a) **LOCAL/directional anisotropy** — the proper fix for Crystalline/ArtDeco (and the cleanest for
+      inserted too): per-cell u-ONLY split where the LOCAL √E/√G/2^B still exceeds the sliver bound. No-op
+      at default (default cells don't exceed the bound). Needs independent uLevel/tLevel in the quadtree
+      (kd-tree-ish) — the biggest remaining change; do with TDD + the QuadtreeUBias guard.
+  (b) **STEP 3: make `FeatureConformingTriangulator` uBias-aware** (parallel to what STEP 1 did for
+      `QuadtreeTriangulator`: geomOf/cellSet/has/sideHasFiner via 2^(level+B); snapToCellEdge sizeU/sizeT;
+      **cornerSnap must become ANISOTROPIC — cornerSnapU=cornerSnap/2^B vs cornerSnapT — and snaps use
+      (|du|≤snapU ∧ |dt|≤snapT) not a single Chebyshev threshold**; at uBias=0 it's a no-op so the 6
+      existing tests gate it). Then remove the `hasFeatures?0` defer in `assembleWatertight` → inserted
+      styles get B at short-wide (likely fixes Hex/Gyroid/Celtic/Voronoi short-wide — their failure is
+      BASE anisotropy + featureLevel floor, not pervasive relief).
+  (c) **Twisted** (inserted styles, spinTurns=2.5) = SEPARATE F-shear sub-issue: F≠0 shrinks the cell
+      area (EG−F²→0) → slivers; uBias (E/G scaling) doesn't fix shear. Needs metric-ALIGNED (rotated)
+      cells. Narrower; defer.
+  (d) Then re-run the full dimspace probe (all styles × all configs) → cutover decision.
 
 ## 6. THE WORK (priority order; UPDATED 2026-06-08i)
 
