@@ -50,14 +50,23 @@ export interface ConformingWallOptions {
   /**
    * Optional triangle budget for THIS wall. When set, the curvature sizing
    * field's target edge lengths are uniformly scaled (and the fast quadtree
-   * rebuilt) to bring the triangle count toward `targetTriangles`. The scale is
-   * bounded at 1 from above — scale=1 is the sag-required mesh (coarsest mesh
-   * the sagitta law allows), so the search may only ADD refinement toward a
-   * larger budget, never coarsen below sag. A budget below the sag floor is
-   * therefore met by the floor mesh (count floored, sag preserved). Omit to use
-   * the pure sag-driven mesh.
+   * rebuilt) to bring the triangle count toward `targetTriangles`. The search
+   * never coarsens below the sag-required mesh (`minEdgeMm`-clamped sagitta law),
+   * so sag is always preserved. Omit to use the pure sag-driven mesh.
    */
   targetTriangles?: number;
+  /**
+   * How `targetTriangles` is interpreted:
+   *  - `'target'` (default): steer the count toward the budget in BOTH
+   *    directions — refine a coarse sag mesh UP toward a larger budget, or
+   *    coarsen an over-refined mesh DOWN toward a smaller one. A budget below the
+   *    sag-required floor is floored (count not driven under sag).
+   *  - `'cap'`: treat the budget as an UPPER LIMIT only. A mesh already at or
+   *    below the budget is left at its sag floor (no wasteful refinement); a mesh
+   *    above the budget is coarsened toward it. This is the production default —
+   *    a SMOOTH pot keeps its (small) sag-tight count instead of being inflated.
+   */
+  budgetMode?: 'target' | 'cap';
 }
 
 /** Conforming wall mesh result with uniform shared boundary rings. */
@@ -85,6 +94,14 @@ function isPowerOfTwo(n: number): boolean {
 
 /** Lower bound on the budget-search scale (refine, never below this fraction). */
 const MIN_BUDGET_SCALE = 1 / 64;
+/**
+ * Upper bound on the budget-search scale in `'cap'` mode. Coarsening multiplies
+ * the per-node sagitta target; `minEdgeMm` clamps the lower end, but a runaway
+ * scale could still relax sag in low-curvature regions, so cap it at a modest
+ * factor — cap mode is meant to trim grade/maxEdge-induced over-refinement, not
+ * to bulldoze genuine sag-required detail (that case floors at the budget-bound).
+ */
+const MAX_BUDGET_SCALE = 4;
 /** Scale-search iterations (binary search on a monotone count(scale)). */
 const BUDGET_SEARCH_STEPS = 5;
 /** Budget acceptance band: stop early once within ±this of the target. */
@@ -121,33 +138,56 @@ function buildQuadtreeAtScale(
 /**
  * Choose a sizing-field target scale that brings the leaf (≈ triangle) count
  * toward `targetTriangles`. Leaf count is monotone DECREASING in `targetScale`
- * (larger target edge ⇒ coarser ⇒ fewer leaves), so we binary-search the scale
- * on [MIN_BUDGET_SCALE, 1]. Scale=1 is the sag-required floor; the search only
- * descends to ADD refinement toward a larger budget and never exceeds 1, so a
- * budget below the floor returns scale=1 (count floored, sag preserved). Only
- * the quadtree is rebuilt per step (tens of ms) — triangulation runs once after.
+ * (larger target edge ⇒ coarser ⇒ fewer leaves), so a binary search on scale is
+ * well-posed. Only the quadtree is rebuilt per step (tens of ms) — triangulation
+ * runs once after.
+ *
+ * Scale=1 is the sag floor (coarsest sag-legal mesh). The search window depends
+ * on `mode`:
+ *  - `'target'`: window [MIN_BUDGET_SCALE, 1] — refine UP toward a larger budget
+ *    (scale<1); a budget below the floor returns scale=1 (floored).
+ *  - `'cap'`: window [1, MAX_BUDGET_SCALE] — never refines above the floor (no
+ *    inflation); a floor already under budget returns scale=1, and a floor over
+ *    budget is coarsened toward it (bounded by MAX_BUDGET_SCALE so genuine
+ *    sag-required detail is floored, not bulldozed).
  */
 function searchBudgetScale(
   sampler: SurfaceSampler,
   opts: ConformingWallOptions,
   pinBoundaryLevel: number,
   targetTriangles: number,
+  mode: 'target' | 'cap',
 ): number {
   const targetLeaves = targetTriangles / TRIS_PER_LEAF;
   const leavesAt = (scale: number): number =>
     buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, scale).leafCount();
 
-  // Floor: scale=1 is the coarsest sag-legal mesh = the FEWEST leaves. A budget
-  // at or below the floor cannot be met without coarsening past sag, so we keep
-  // the floor (count floored, sag preserved — never violated).
   const floorLeaves = leavesAt(1);
+
+  if (mode === 'cap') {
+    // Cap: never inflate. Floor already within budget ⇒ keep it (the de-noised
+    // sag mesh, e.g. a smooth pot, stays small). Over budget ⇒ coarsen toward it.
+    if (floorLeaves <= targetLeaves) return 1;
+    if (leavesAt(MAX_BUDGET_SCALE) >= targetLeaves) return MAX_BUDGET_SCALE; // can't reach; coarsest allowed
+    let lo = 1; // more leaves (floor)
+    let hi = MAX_BUDGET_SCALE; // fewer leaves (coarsest allowed)
+    let best = 1;
+    for (let i = 0; i < BUDGET_SEARCH_STEPS; i++) {
+      const mid = Math.sqrt(lo * hi);
+      const c = leavesAt(mid);
+      best = mid;
+      if (Math.abs(c - targetLeaves) / targetLeaves <= BUDGET_TOLERANCE) break;
+      if (c > targetLeaves) lo = mid; // still too many ⇒ coarsen more ⇒ raise scale
+      else hi = mid;
+    }
+    return best;
+  }
+
+  // 'target': scale=1 is the FEWEST leaves. Budget at/below the floor floors at
+  // scale=1 (sag preserved); above the floor refines up toward it.
   if (targetLeaves <= floorLeaves) return 1;
+  if (leavesAt(MIN_BUDGET_SCALE) <= targetLeaves) return MIN_BUDGET_SCALE; // maxLevel-capped; closest
 
-  // The finest the search can go. If even that undershoots the budget (maxLevel
-  // cap), it is the closest reachable count — use it.
-  if (leavesAt(MIN_BUDGET_SCALE) <= targetLeaves) return MIN_BUDGET_SCALE;
-
-  // Binary search: count(scale) is monotone, so bracket [lo=finer, hi=coarser].
   let lo = MIN_BUDGET_SCALE; // more leaves
   let hi = 1; // fewer leaves (floor)
   let best = 1;
@@ -204,7 +244,13 @@ export function buildConformingWall(
 
   const targetScale =
     opts.targetTriangles !== undefined && opts.targetTriangles > 0
-      ? searchBudgetScale(sampler, opts, pinBoundaryLevel, opts.targetTriangles)
+      ? searchBudgetScale(
+          sampler,
+          opts,
+          pinBoundaryLevel,
+          opts.targetTriangles,
+          opts.budgetMode ?? 'target',
+        )
       : 1;
 
   const mesh = buildWallMeshAtScale(sampler, opts, pinBoundaryLevel, targetScale);

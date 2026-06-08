@@ -2007,8 +2007,14 @@ export class ParametricExportComputer {
 
                 // Dense GPU sampler grid per wall surfaceId. surfaceId in slot 2
                 // selects the wall geometry in evaluate_vertices (0 outer / 1 inner).
-                const DENSE_RES_U = 256;
-                const DENSE_RES_T = 256;
+                // Resolution is overridable for tuning/monotonicity probes; the
+                // de-noised curvature step scales to this grid (h ≈ 1/res), so a
+                // finer sampler reduces quantization noise rather than amplifying it.
+                const denseResOverride = (globalThis as unknown as { __pfConformingDenseRes?: number }).__pfConformingDenseRes;
+                const DENSE_RES_U = typeof denseResOverride === 'number' && denseResOverride >= 8
+                    ? Math.floor(denseResOverride)
+                    : 256;
+                const DENSE_RES_T = DENSE_RES_U;
                 const buildWallSampler = async (
                     surfaceId: number,
                 ): Promise<GpuSurfaceSampler> => {
@@ -2038,7 +2044,16 @@ export class ParametricExportComputer {
                     ? nRingOverride
                     : 256;
 
+                // Triangle budget: prefer the caller's explicit request, else the
+                // profile-resolved target. The conforming sizing field treats this
+                // as an UPPER guide — it only removes over-refinement and never
+                // coarsens below the sag-required mesh (see searchBudgetScale).
+                const conformingBudget = params.targetTriangles ?? targetTris;
+
                 // Assemble the whole watertight mesh in (u,t,surfaceId) space.
+                // With curvature de-noising (grid-scaled finite differences) the
+                // sag-driven mesh is already far coarser on smooth styles, so a
+                // generous maxLevel is safe; the budget caps feature-dense styles.
                 const asm = assembleWatertight(
                     outerSampler,
                     innerSampler,
@@ -2056,6 +2071,12 @@ export class ParametricExportComputer {
                         resU: 128,
                         resT: 128,
                         nRing,
+                        targetTriangles: conformingBudget,
+                        // Budget is an UPPER CAP, not a target: a SMOOTH pot keeps
+                        // its small de-noised sag-tight count rather than being
+                        // inflated up to the budget; only over-budget feature-dense
+                        // styles are coarsened toward it (sag floored).
+                        budgetMode: 'cap' as const,
                     },
                 );
 
@@ -2074,7 +2095,7 @@ export class ParametricExportComputer {
                 // e2e gate measures the real mesh directly via diagnoseTopoQuality.
                 console.warn(
                     `[CONFORMING-FULL] ${params.styleId} ` +
-                    `tris=${triCount} verts=${vCount} nRing=${nRing} ` +
+                    `tris=${triCount} budget=${conformingBudget} verts=${vCount} nRing=${nRing} ` +
                     `surfaces=${asm.surfaceRanges.length} buildMs=${buildMs.toFixed(0)}`,
                 );
 

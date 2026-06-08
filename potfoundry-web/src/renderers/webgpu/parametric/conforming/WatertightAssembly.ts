@@ -60,6 +60,12 @@ export interface AssemblyWallOptions {
    * sag-required mesh. Omit for the pure sag-driven mesh.
    */
   targetTriangles?: number;
+  /**
+   * Budget interpretation (see ConformingWallOptions.budgetMode). Defaults to
+   * `'target'`; production passes `'cap'` so smooth walls keep their small
+   * sag-tight count instead of being inflated up to the budget.
+   */
+  budgetMode?: 'target' | 'cap';
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -188,6 +194,7 @@ export function assembleWatertight(
     resT: opts.resT,
     nRing,
     targetTriangles: perWallBudget,
+    budgetMode: opts.budgetMode,
   };
   const outer = buildConformingWall(outerSampler, { ...wallOpts, surfaceId: 0 });
   const inner = buildConformingWall(innerSampler, { ...wallOpts, surfaceId: 1 });

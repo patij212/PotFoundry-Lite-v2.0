@@ -210,6 +210,28 @@ describe('buildConformingWall — triangle-budget control', () => {
     return maxSag;
   };
 
+  it("cap mode never inflates: a floor below budget is kept (not refined up)", () => {
+    // Budget far above the floor. In 'cap' mode the floor is already within
+    // budget, so the mesh stays at the floor — no wasteful refinement.
+    const got = triCount({
+      ...BUDGET_OPTS, surfaceId: 0,
+      targetTriangles: floorTris * 8, budgetMode: 'cap',
+    });
+    expect(got).toBe(floorTris);
+  });
+
+  it('cap mode coarsens an over-budget floor toward the cap', () => {
+    // Budget BELOW the floor → cap mode coarsens toward it (removing
+    // grade/maxEdge over-refinement), landing at or under the floor.
+    const budget = Math.floor(floorTris / 2);
+    const got = triCount({
+      ...BUDGET_OPTS, surfaceId: 0,
+      targetTriangles: budget, budgetMode: 'cap',
+    });
+    expect(got).toBeLessThan(floorTris);
+    expect(got).toBeGreaterThanOrEqual(budget * 0.6); // bounded coarsening, near the cap
+  });
+
   it('budget control never makes sag WORSE than the sag-required floor', () => {
     // The floor (no budget) is the coarsest sag-legal mesh. Refining to a larger
     // budget only ADDS triangles, so its worst sag must be ≤ the floor's worst
