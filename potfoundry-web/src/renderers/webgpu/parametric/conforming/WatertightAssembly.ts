@@ -263,12 +263,16 @@ export function assembleWatertight(
   const nRing = opts.nRing;
 
   // --- 0. Anisotropy bias (GAP 1): make cells 3D-near-square on wide/flat pots.
-  // Both walls MUST share the same bias so their boundary rings (2^(log2(nRing)+B)
-  // verts) match by index. Computed once from the OUTER metric. DEFERRED (B=0)
-  // when the outer wall carries feature lines — the feature-insertion
-  // triangulator is not yet uBias-aware, and an inserted style at default dims
-  // gives B=0 anyway, so this only postpones the (failing) extreme-dim inserted
-  // case, never regresses a working one. An explicit `opts.uBias` overrides.
+  // Both walls MUST share the same bias so their boundary rings (= nRing verts
+  // after the pin adjustment) match by index. Computed once from the OUTER metric.
+  // The feature-insertion triangulator IS uBias-aware (STEP 3a, unit-validated for
+  // loops), BUT un-deferring inserted styles e2e left a residual bnd=6 T-junction
+  // crack on CelticKnot's BRAIDS at short-wide (crossing/Steiner asymmetry under
+  // anisotropy — 3/4 inserted styles were clean bnd=0, only braids crack). So
+  // inserted styles stay DEFERRED (B=0) until that braid-anisotropy case is fixed;
+  // at default dims B=0 anyway, so this only holds the (already-failing) extreme-dim
+  // inserted case at its prior baseline, never regresses a working one. `opts.uBias`
+  // overrides (used by the uBias unit tests).
   const hasFeatures = (opts.outerFeatureLines?.length ?? 0) > 0;
   const uBias = opts.uBias ?? (hasFeatures ? 0 : computeUBias(outerSampler));
 

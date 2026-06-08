@@ -221,15 +221,26 @@ export function triangulateQuadtreeWithFeatures(
   if (features.length === 0) return triangulateQuadtree(qt);
   const cornerSnap = Math.max(0, options.cornerSnap ?? 0);
 
+  // Anisotropy bias (GAP 1): a level-L leaf spans Δu=1/2^(L+B) in u, Δt=1/2^L in t.
+  // u-index/wrap use 2^(level+B); `cornerSnap` is the t-extent fraction, so the u
+  // threshold is `cornerSnap/2^B` (same FRACTION of the finer u-cell). B=0 ⇒ both
+  // equal ⇒ byte-identical to the isotropic path.
+  const uBias = qt.uBias?.() ?? 0;
+  const uSpanOf = (level: number): number => 1 << (level + uBias);
+  const cornerSnapU = uBias > 0 ? cornerSnap / (1 << uBias) : cornerSnap;
+  const cornerSnapT = cornerSnap;
+  /** Anisotropic Chebyshev: within snap of (u,t) in BOTH axes (per-axis threshold). */
+  const withinSnap = (du: number, dt: number): boolean =>
+    Math.abs(du) <= cornerSnapU && Math.abs(dt) <= cornerSnapT;
+
   const leaves = qt.leaves();
 
-  // Integer-cell existence set (for finer-neighbour detection) — as plain.
+  // Integer-cell existence set (for finer-neighbour detection) — iu in 2^(level+B).
   const cellSet = new Set<string>();
   let maxLevel = 0;
   for (const l of leaves) {
-    const span = 1 << l.level;
-    const iu = Math.round(l.u0 * span);
-    const it = Math.round(l.t0 * span);
+    const iu = Math.round(l.u0 * uSpanOf(l.level));
+    const it = Math.round(l.t0 * (1 << l.level));
     cellSet.add(`${l.level}:${iu}:${it}`);
     if (l.level > maxLevel) maxLevel = l.level;
   }
@@ -252,24 +263,27 @@ export function triangulateQuadtreeWithFeatures(
     const wu = ((p.u % 1) + 1) % 1;
     const tc = p.t < 0 ? 0 : p.t > 1 ? 1 : p.t;
     for (let lv = maxLevel; lv >= 0; lv--) {
-      const span = 1 << lv;
-      const iu = Math.min(span - 1, Math.floor(wu * span));
-      const it = Math.min(span - 1, Math.floor(tc * span));
+      const uSpan = uSpanOf(lv);
+      const tSpan = 1 << lv;
+      const iu = Math.min(uSpan - 1, Math.floor(wu * uSpan));
+      const it = Math.min(tSpan - 1, Math.floor(tc * tSpan));
       if (!cellSet.has(`${lv}:${iu}:${it}`)) continue;
-      const size = 1 / span;
-      const u0 = iu * size;
-      const t0 = it * size;
+      const sizeU = 1 / uSpan;
+      const sizeT = 1 / tSpan;
+      const u0 = iu * sizeU;
+      const t0 = it * sizeT;
+      // u-distances threshold on cornerSnapU (finer cell), t-distances on cornerSnapT.
       const cands: Array<{ d: number; pt: CellPoint }> = [];
       const dB = tc - t0;
-      const dT = t0 + size - tc;
+      const dT = t0 + sizeT - tc;
       const dL = wu - u0;
-      const dR = u0 + size - wu;
+      const dR = u0 + sizeU - wu;
       // Snap onto the containing cell's own edge; the registry mirrors it to the
       // neighbour across (any level) so both carry the identical edge vertex.
-      if (dB < cornerSnap) cands.push({ d: dB, pt: { u: p.u, t: t0 } });
-      if (dT < cornerSnap) cands.push({ d: dT, pt: { u: p.u, t: t0 + size } });
-      if (dL < cornerSnap) cands.push({ d: dL, pt: { u: u0, t: p.t } });
-      if (dR < cornerSnap) cands.push({ d: dR, pt: { u: u0 + size, t: p.t } });
+      if (dB < cornerSnapT) cands.push({ d: dB, pt: { u: p.u, t: t0 } });
+      if (dT < cornerSnapT) cands.push({ d: dT, pt: { u: p.u, t: t0 + sizeT } });
+      if (dL < cornerSnapU) cands.push({ d: dL, pt: { u: u0, t: p.t } });
+      if (dR < cornerSnapU) cands.push({ d: dR, pt: { u: u0 + sizeU, t: p.t } });
       if (cands.length === 0) return p;
       cands.sort((a, b) => a.d - b.d);
       return cands[0].pt;
@@ -282,7 +296,7 @@ export function triangulateQuadtreeWithFeatures(
   }));
   const segs = collectSegments(snappedFeatures);
   const has = (level: number, iu: number, it: number): boolean => {
-    const span = 1 << level;
+    const span = uSpanOf(level); // u-index wraps mod 2^(level+B)
     const wu = ((iu % span) + span) % span;
     return cellSet.has(`${level}:${wu}:${it}`);
   };
@@ -395,22 +409,25 @@ export function triangulateQuadtreeWithFeatures(
 
   // ── Per-leaf geometry + 2:1 transition splits (shared by both passes) ──
   interface LeafGeom {
-    leaf: QuadLeaf; span: number; iu: number; it: number; size: number;
+    leaf: QuadLeaf; uSpan: number; tSpan: number; iu: number; it: number;
+    sizeU: number; sizeT: number;
     u0: number; t0: number; u1: number; t1: number; um: number; tm: number;
     wrapsSeam: number; splitS: boolean; splitE: boolean; splitN: boolean; splitW: boolean;
   }
   const geomOf = (li: number): LeafGeom => {
     const leaf = leaves[li];
-    const span = 1 << leaf.level;
-    const iu = Math.round(leaf.u0 * span);
-    const it = Math.round(leaf.t0 * span);
-    const size = 1 / span;
+    const uSpan = uSpanOf(leaf.level);
+    const tSpan = 1 << leaf.level;
+    const iu = Math.round(leaf.u0 * uSpan);
+    const it = Math.round(leaf.t0 * tSpan);
+    const sizeU = 1 / uSpan;
+    const sizeT = 1 / tSpan;
     const u0 = leaf.u0;
     const t0 = leaf.t0;
     return {
-      leaf, span, iu, it, size, u0, t0,
-      u1: u0 + size, t1: t0 + size, um: u0 + size / 2, tm: t0 + size / 2,
-      wrapsSeam: Math.round((u0 + size) * QSCALE) === QSCALE ? 1 : 0,
+      leaf, uSpan, tSpan, iu, it, sizeU, sizeT, u0, t0,
+      u1: u0 + sizeU, t1: t0 + sizeT, um: u0 + sizeU / 2, tm: t0 + sizeT / 2,
+      wrapsSeam: Math.round((u0 + sizeU) * QSCALE) === QSCALE ? 1 : 0,
       splitS: sideHasFiner(leaf.level, iu, it, 'tMinus'),
       splitE: sideHasFiner(leaf.level, iu, it, 'uPlus'),
       splitN: sideHasFiner(leaf.level, iu, it, 'tPlus'),
@@ -503,7 +520,7 @@ export function triangulateQuadtreeWithFeatures(
     const snapToAnchor = (p: CellPoint): CellPoint => {
       if (cornerSnap <= 0) return p;
       for (const a of anchors) {
-        if (Math.abs(p.u - a.u) <= cornerSnap && Math.abs(p.t - a.t) <= cornerSnap) return a;
+        if (withinSnap(p.u - a.u, p.t - a.t)) return a;
       }
       return p;
     };
@@ -551,7 +568,7 @@ export function triangulateQuadtreeWithFeatures(
   for (let li = 0; li < leaves.length; li++) {
     const g = geomOf(li);
     const {
-      leaf, span, iu, it, size, u0, t0, u1, t1, um, tm, wrapsSeam,
+      leaf, uSpan, tSpan, iu, it, sizeU, sizeT, u0, t0, u1, t1, um, tm, wrapsSeam,
       splitS, splitE, splitN, splitW,
     } = g;
     const data = leafData[li];
@@ -562,11 +579,13 @@ export function triangulateQuadtreeWithFeatures(
       triWrapsSeam.push(wrapsSeam);
     };
 
-    // Feature edge points (union across both adjacent cells), as SidePoints.
-    const featS = readH(tKey(t0), u0, u1).map((p) => ({ pos: (p.u - u0) / size, pt: p }));
-    const featN = readH(tKey(t1), u0, u1).map((p) => ({ pos: (u1 - p.u) / size, pt: p }));
-    const featW = readV(uKey(u0), t0, t1).map((p) => ({ pos: (t1 - p.t) / size, pt: p }));
-    const featE = readV(uKey(u1), t0, t1).map((p) => ({ pos: (p.t - t0) / size, pt: p }));
+    // Feature edge points (union across both adjacent cells), as SidePoints. The
+    // pos is normalized along the side: south/north along u (sizeU), east/west
+    // along t (sizeT).
+    const featS = readH(tKey(t0), u0, u1).map((p) => ({ pos: (p.u - u0) / sizeU, pt: p }));
+    const featN = readH(tKey(t1), u0, u1).map((p) => ({ pos: (u1 - p.u) / sizeU, pt: p }));
+    const featW = readV(uKey(u0), t0, t1).map((p) => ({ pos: (t1 - p.t) / sizeT, pt: p }));
+    const featE = readV(uKey(u1), t0, t1).map((p) => ({ pos: (p.t - t0) / sizeT, pt: p }));
 
     const isFeature =
       data.feature || featS.length > 0 || featN.length > 0 || featW.length > 0 || featE.length > 0;
@@ -618,13 +637,16 @@ export function triangulateQuadtreeWithFeatures(
     // diverge). The registry already makes both sides see the same set, so the
     // dedup result is identical on both sides too.
     const cleanEdge = (split: boolean, niu: number, nit: number): boolean =>
-      !split && nit >= 0 && nit < span && cellSet.has(`${leaf.level}:${((niu % span) + span) % span}:${nit}`);
+      !split && nit >= 0 && nit < tSpan && cellSet.has(`${leaf.level}:${((niu % uSpan) + uSpan) % uSpan}:${nit}`);
     const cleanS = cleanEdge(splitS, iu, it - 1);
     const cleanN = cleanEdge(splitN, iu, it + 1);
     const cleanW = cleanEdge(splitW, iu - 1, it);
     const cleanE = cleanEdge(splitE, iu + 1, it);
-    const posTol = cornerSnap / size;
-    const dedupSide = (arr: SidePoint[], clean: boolean): SidePoint[] => {
+    // Side-position tolerance: u-sides (S/N) measure pos along u (cornerSnapU/sizeU);
+    // t-sides (E/W) along t (cornerSnapT/sizeT). Equal at B=0.
+    const posTolU = cornerSnapU / sizeU;
+    const posTolT = cornerSnapT / sizeT;
+    const dedupSide = (arr: SidePoint[], clean: boolean, posTol: number): SidePoint[] => {
       const tol = clean ? Math.max(ON_EDGE_EPS, posTol) : ON_EDGE_EPS;
       const out: SidePoint[] = [];
       let group: SidePoint[] = [];
@@ -644,13 +666,13 @@ export function triangulateQuadtreeWithFeatures(
     };
     const boundary: CellPoint[] = [];
     boundary.push({ u: u0, t: t0 });
-    for (const sp of dedupSide(sortBy(south), cleanS)) boundary.push(sp.pt);
+    for (const sp of dedupSide(sortBy(south), cleanS, posTolU)) boundary.push(sp.pt);
     boundary.push({ u: u1, t: t0 });
-    for (const sp of dedupSide(sortBy(east), cleanE)) boundary.push(sp.pt);
+    for (const sp of dedupSide(sortBy(east), cleanE, posTolT)) boundary.push(sp.pt);
     boundary.push({ u: u1, t: t1 });
-    for (const sp of dedupSide(sortBy(north), cleanN)) boundary.push(sp.pt);
+    for (const sp of dedupSide(sortBy(north), cleanN, posTolU)) boundary.push(sp.pt);
     boundary.push({ u: u0, t: t1 });
-    for (const sp of dedupSide(sortBy(west), cleanW)) boundary.push(sp.pt);
+    for (const sp of dedupSide(sortBy(west), cleanW, posTolT)) boundary.push(sp.pt);
 
     // Weld interior feature points onto a nearby BOUNDARY point (shared/
     // never-moved) else fold into a nearby surviving interior point — both
@@ -662,11 +684,11 @@ export function triangulateQuadtreeWithFeatures(
       let canon: CellPoint | null = null;
       if (cornerSnap > 0) {
         for (const bp of boundary) {
-          if (Math.abs(ip.u - bp.u) <= cornerSnap && Math.abs(ip.t - bp.t) <= cornerSnap) { canon = bp; break; }
+          if (withinSnap(ip.u - bp.u, ip.t - bp.t)) { canon = bp; break; }
         }
         if (!canon) {
           for (const sp of survivingInterior) {
-            if (Math.abs(ip.u - sp.u) <= cornerSnap && Math.abs(ip.t - sp.t) <= cornerSnap) { canon = sp; break; }
+            if (withinSnap(ip.u - sp.u, ip.t - sp.t)) { canon = sp; break; }
           }
         }
       }
@@ -684,9 +706,13 @@ export function triangulateQuadtreeWithFeatures(
       const exact = localKey.get(qk(c));
       if (exact !== undefined) return exact;
       let best = -1;
-      let bestD = cornerSnap + 1e-12;
+      // Normalized anisotropic distance: a point is "within snap" iff
+      // max(|du|/cornerSnapU, |dt|/cornerSnapT) ≤ 1 (≡ Chebyshev at B=0).
+      let bestD = 1 + 1e-9;
+      const snapU = cornerSnapU > 0 ? cornerSnapU : 1;
+      const snapT = cornerSnapT > 0 ? cornerSnapT : 1;
       for (let i = 0; i < combined.length; i++) {
-        const d = Math.max(Math.abs(combined[i].u - c.u), Math.abs(combined[i].t - c.t));
+        const d = Math.max(Math.abs(combined[i].u - c.u) / snapU, Math.abs(combined[i].t - c.t) / snapT);
         if (d <= bestD) { bestD = d; best = i; }
       }
       return best;

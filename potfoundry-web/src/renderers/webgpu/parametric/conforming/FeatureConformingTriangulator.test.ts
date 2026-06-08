@@ -20,6 +20,22 @@ function uniformQuadtree(level: number): QuadtreeLike {
   return { leaves: () => leaves };
 }
 
+/**
+ * A uniform ANISOTROPIC quadtree (GAP 1 uBias): a level-L leaf spans
+ * Δu=1/2^(L+B) in u, Δt=1/2^L in t — 2^(L+B) columns × 2^L rows.
+ */
+function uniformAnisoQuadtree(level: number, uBias: number): QuadtreeLike {
+  const uSpan = 1 << (level + uBias);
+  const tSpan = 1 << level;
+  const leaves: QuadLeaf[] = [];
+  for (let it = 0; it < tSpan; it++) {
+    for (let iu = 0; iu < uSpan; iu++) {
+      leaves.push({ u0: iu / uSpan, t0: it / tSpan, level });
+    }
+  }
+  return { leaves: () => leaves, uBias: () => uBias };
+}
+
 const QSCALE = 1 << 24;
 const qkey = (u: number, t: number): string =>
   `${Math.round(u * QSCALE)}:${Math.round(t * QSCALE)}`;
@@ -206,6 +222,36 @@ describe('triangulateQuadtreeWithFeatures', () => {
       expect(audit.nonManifold, `nonManifold amp=${amp}`).toBe(0);
       expect(audit.interiorBoundary, `T-junctions amp=${amp}`).toBe(0);
       expect(totalUnwrappedArea(mesh)).toBeCloseTo(1, 5);
+    }
+  });
+
+  it('inserts a loop into an ANISOTROPIC (uBias>0) quadtree, watertight + T-junction-free', () => {
+    // GAP 1 STEP 3: under the anisotropy bias the cells are 2^B× finer in u than t.
+    // The feature insertion (cellSet/neighbour reconstruction, edge-snap, corner-snap
+    // thresholds) must respect that — else slivers/T-junctions. A closed loop crosses
+    // many anisotropic cells in both axes.
+    for (const uBias of [1, 2, 3]) {
+      const qt = uniformAnisoQuadtree(3, uBias); // 2^(3+B) cols × 8 rows
+      const pts = [];
+      const N = 48;
+      for (let i = 0; i <= N; i++) {
+        const a = (2 * Math.PI * i) / N;
+        pts.push({ u: 0.5 + 0.27 * Math.cos(a), t: 0.5 + 0.27 * Math.sin(a) });
+      }
+      const loop: FeatureLine = { kind: 'general-curve', points: pts, label: `loop@B${uBias}` };
+      // cornerSnap is the t-extent fraction (production: 0.06/2^featureLevel, B-independent);
+      // the triangulator derives the finer u-threshold cornerSnap/2^B from qt.uBias().
+      const cornerSnap = 0.06 / (1 << 3);
+      const mesh = triangulateQuadtreeWithFeatures(qt, [loop], { cornerSnap });
+      const audit = wallEdgeAudit(mesh);
+      expect(audit.nonManifold, `nonManifold B=${uBias}`).toBe(0);
+      expect(audit.interiorBoundary, `T-junctions B=${uBias}`).toBe(0);
+      expect(totalUnwrappedArea(mesh)).toBeCloseTo(1, 5);
+      // The loop is tracked: a mesh vertex near every sample. A sample may be
+      // edge-snapped by up to ~2·cornerSnap (snapToCellEdge then snapToAnchor) at
+      // this coarse level, so allow that margin (production featureLevel=7 makes
+      // cornerSnap ≪ the 2.3e-3 feature tolerance).
+      for (const p of pts) expect(hasVertexNear(mesh, p.u, p.t, 2.5 * cornerSnap)).toBe(true);
     }
   });
 
