@@ -155,6 +155,64 @@ interface SidePoint {
   pt: CellPoint;
 }
 
+/** Proper interior intersection of segments (a0,a1)·(b0,b1), or null. */
+function segSegCross(
+  a0: CellPoint, a1: CellPoint, b0: CellPoint, b1: CellPoint,
+): { point: CellPoint; ta: number; tb: number } | null {
+  const r = { u: a1.u - a0.u, t: a1.t - a0.t };
+  const s = { u: b1.u - b0.u, t: b1.t - b0.t };
+  const denom = r.u * s.t - r.t * s.u;
+  if (Math.abs(denom) < 1e-300) return null; // parallel
+  const qp = { u: b0.u - a0.u, t: b0.t - a0.t };
+  const ta = (qp.u * s.t - qp.t * s.u) / denom;
+  const tb = (qp.u * r.t - qp.t * r.u) / denom;
+  const eps = 1e-7;
+  if (ta <= eps || ta >= 1 - eps || tb <= eps || tb >= 1 - eps) return null; // not a proper crossing
+  return { point: { u: a0.u + r.u * ta, t: a0.t + r.t * ta }, ta, tb };
+}
+
+/**
+ * Planarize a set of constraint segments: split every pair that PROPERLY crosses
+ * at the intersection (a Steiner point), so no two constraints cross in their
+ * interior (which cdt2d cannot handle → braids self-overlap). The intersection
+ * lies strictly inside the cell, so it is a purely-local interior vertex → no
+ * cross-cell inconsistency. Returns the split segments + the new Steiner points.
+ */
+function planarizeConstraints(
+  constraints: Array<[CellPoint, CellPoint]>,
+): { segments: Array<[CellPoint, CellPoint]>; steiner: CellPoint[] } {
+  const n = constraints.length;
+  const splits: Array<Array<{ t: number; pt: CellPoint }>> = constraints.map(() => []);
+  const steiner: CellPoint[] = [];
+  for (let a = 0; a < n; a++) {
+    for (let b = a + 1; b < n; b++) {
+      const x = segSegCross(constraints[a][0], constraints[a][1], constraints[b][0], constraints[b][1]);
+      if (!x) continue;
+      splits[a].push({ t: x.ta, pt: x.point });
+      splits[b].push({ t: x.tb, pt: x.point });
+      steiner.push(x.point);
+    }
+  }
+  const segments: Array<[CellPoint, CellPoint]> = [];
+  for (let a = 0; a < n; a++) {
+    const [p, q] = constraints[a];
+    if (splits[a].length === 0) {
+      segments.push([p, q]);
+      continue;
+    }
+    const cuts = splits[a].slice().sort((x, y) => x.t - y.t);
+    let prev = p;
+    for (const c of cuts) {
+      if (Math.abs(prev.u - c.pt.u) > 1e-12 || Math.abs(prev.t - c.pt.t) > 1e-12) {
+        segments.push([prev, c.pt]);
+      }
+      prev = c.pt;
+    }
+    if (Math.abs(prev.u - q.u) > 1e-12 || Math.abs(prev.t - q.t) > 1e-12) segments.push([prev, q]);
+  }
+  return { segments, steiner };
+}
+
 export function triangulateQuadtreeWithFeatures(
   qt: QuadtreeLike,
   features: FeatureLine[],
@@ -176,15 +234,49 @@ export function triangulateQuadtreeWithFeatures(
     if (l.level > maxLevel) maxLevel = l.level;
   }
 
-  // NOTE (robustness item): a feature vertex sitting a hair off a t=const cell
-  // edge (a local-t-min tangent to the edge from inside, far from any boundary
-  // vertex) can leave a thin needle in (u,t) parameter space. On the production
-  // GPU-smoothed surface this maps to a benign 3D aspect (well within the sliver
-  // gate), but a global edge-snap to fix it cracks the feature-clip / seam
-  // transition cells, so it is deferred to the dimension-space hardening phase
-  // (a per-edge forced-crossing pass mirrored into the neighbour cell). The
-  // straightforward insertion below stays watertight + T-junction-free.
-  const segs = collectSegments(features);
+  // ── Snap feature points onto a nearby cell edge — GUARDED ──────────────────
+  // A feature vertex sitting a hair off a cell edge (a curve local-extremum
+  // tangent to the edge from inside, far from any boundary vertex) leaves a
+  // needle the per-cell weld can't catch. Snapping it ONTO the edge makes it a
+  // crossing both adjacent cells derive (edge-crossing detection) → no sliver.
+  // GUARD: only snap to an edge whose SAME-LEVEL neighbour exists (a clean shared
+  // edge with no mid-vertex / no coarser-transition / not the periodic-seam
+  // clip boundary) — that is exactly the case both cells resolve identically.
+  // The threshold is ABSOLUTE so the two cells decide the same way.
+  const snapToCellEdge = (p: CellPoint): CellPoint => {
+    if (cornerSnap <= 0) return p;
+    const wu = ((p.u % 1) + 1) % 1;
+    const tc = p.t < 0 ? 0 : p.t > 1 ? 1 : p.t;
+    for (let lv = maxLevel; lv >= 0; lv--) {
+      const span = 1 << lv;
+      const iu = Math.min(span - 1, Math.floor(wu * span));
+      const it = Math.min(span - 1, Math.floor(tc * span));
+      if (!cellSet.has(`${lv}:${iu}:${it}`)) continue;
+      const size = 1 / span;
+      const u0 = iu * size;
+      const t0 = it * size;
+      const iuL = ((iu - 1) % span + span) % span;
+      const iuR = (iu + 1) % span;
+      const cands: Array<{ d: number; pt: CellPoint }> = [];
+      const dB = tc - t0;
+      const dT = t0 + size - tc;
+      const dL = wu - u0;
+      const dR = u0 + size - wu;
+      if (dB < cornerSnap && cellSet.has(`${lv}:${iu}:${it - 1}`)) cands.push({ d: dB, pt: { u: p.u, t: t0 } });
+      if (dT < cornerSnap && cellSet.has(`${lv}:${iu}:${it + 1}`)) cands.push({ d: dT, pt: { u: p.u, t: t0 + size } });
+      if (dL < cornerSnap && cellSet.has(`${lv}:${iuL}:${it}`)) cands.push({ d: dL, pt: { u: u0, t: p.t } });
+      if (dR < cornerSnap && cellSet.has(`${lv}:${iuR}:${it}`)) cands.push({ d: dR, pt: { u: u0 + size, t: p.t } });
+      if (cands.length === 0) return p;
+      cands.sort((a, b) => a.d - b.d);
+      return cands[0].pt;
+    }
+    return p;
+  };
+  const snappedFeatures: FeatureLine[] = features.map((line) => ({
+    ...line,
+    points: line.points.map(snapToCellEdge),
+  }));
+  const segs = collectSegments(snappedFeatures);
   const has = (level: number, iu: number, it: number): boolean => {
     const span = 1 << level;
     const wu = ((iu % span) + span) % span;
@@ -437,6 +529,14 @@ export function triangulateQuadtreeWithFeatures(
       classifyBoundary(snapToAnchor(ec));
     }
 
+    // Planarize crossing constraints (braids): split at intersections so no two
+    // constraints cross in their interior. The Steiner intersection points are
+    // strictly inside the cell → register them as interior vertices.
+    const planar = planarizeConstraints(constraints);
+    constraints.length = 0;
+    for (const seg of planar.segments) constraints.push(seg);
+    for (const sp of planar.steiner) registerInterior(sp);
+
     // Build the CCW boundary polygon: corners + sorted side points.
     const sortBy = (arr: SidePoint[]): SidePoint[] =>
       arr
@@ -473,10 +573,22 @@ export function triangulateQuadtreeWithFeatures(
     for (const ip of interior) {
       let canon: CellPoint | null = null;
       if (cornerSnap > 0) {
+        // Prefer a nearby BOUNDARY point (shared/never-moved), else fold into a
+        // nearby already-surviving INTERIOR point. Both are per-cell decisions →
+        // cross-cell consistent. The interior→interior fold removes braid-Steiner
+        // needles (a crossing landing a hair off a strand sample).
         for (const bp of boundary) {
           if (Math.abs(ip.u - bp.u) <= cornerSnap && Math.abs(ip.t - bp.t) <= cornerSnap) {
             canon = bp;
             break;
+          }
+        }
+        if (!canon) {
+          for (const sp of survivingInterior) {
+            if (Math.abs(ip.u - sp.u) <= cornerSnap && Math.abs(ip.t - sp.t) <= cornerSnap) {
+              canon = sp;
+              break;
+            }
           }
         }
       }

@@ -522,6 +522,52 @@ function gyroidVal(u: number, t: number, p: Float32Array): number {
   return (1 - morph) * gyr + morph * sch + bias;
 }
 
+/**
+ * CelticKnot braided strand centerlines. `style_celtic_knot` (styles.wgsl)
+ * places strand `i` of column `c` along `local_u = 0.4·sin(v + phaseᵢ)` with
+ * `v = t·tightness·TAU·3`, `phaseᵢ = c·π·0.333 + (TAU/strands)·i`, and
+ * `local_u = (fract(u·columns)−0.5)·2` ⇒ the centerline in wall-u is
+ * `u(t) = c/columns + (0.4·sin(v+phaseᵢ)+1)/(2·columns)`. Packed shader slots:
+ * 0 = columns, 5 = twist (→ tightness = max(0.5, twist+0.5)), 6 = strands.
+ * Smooth sinusoids (no hash) → replicate exactly. The strands CROSS (braid), so
+ * the insertion's per-cell CDT must split crossing constraints (Steiner points).
+ */
+/**
+ * Gate: the CelticKnot strand insertion captures the braid (featDrop=0,
+ * topology bnd/nonMan/orient=0) but leaves ONE residual (u,t) needle where two
+ * strands cross the SAME cell edge a hair apart (a cross-cell-consistent merge
+ * of those two crossings is not yet robust — see project memory). Until that is
+ * fixed, the extractor returns empty so CelticKnot stays at its clean blind
+ * baseline (no sliver regression) rather than 5/6. Flip to re-enable.
+ */
+const CELTIC_KNOT_INSERTION_ENABLED = false;
+
+function extractCelticKnot(p: Float32Array): FeatureLine[] {
+  if (!CELTIC_KNOT_INSERTION_ENABLED) return [];
+  const columns = Math.max(1, Math.floor(p[0]));
+  const strands = Math.max(2, Math.min(8, Math.floor(p[6] + 0.5)));
+  const tightness = Math.max(0.5, p[5] + 0.5);
+  const amp = 0.4;
+  const phaseStep = TAU / strands;
+  const N = 97; // dense t samples (smooth braided sinusoid)
+  const lines: FeatureLine[] = [];
+  for (let c = 0; c < columns; c++) {
+    const basePhase = c * Math.PI * 0.333;
+    for (let i = 0; i < strands; i++) {
+      const phase = basePhase + phaseStep * i;
+      const points: FeatureLinePoint[] = [];
+      for (let s = 0; s < N; s++) {
+        const t = s / (N - 1);
+        const v = t * tightness * TAU * 3;
+        const localU = amp * Math.sin(v + phase);
+        points.push({ u: wrapU(c / columns + (localU + 1) / (2 * columns)), t });
+      }
+      lines.push({ kind: 'general-curve', points, label: `strand[c=${c},i=${i}]` });
+    }
+  }
+  return lines;
+}
+
 const GYR_RES_U = 640;
 const GYR_RES_T = 512;
 
@@ -558,7 +604,9 @@ const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // marching squares on the analytic hex-boundary scalar (len_a−len_b) → fed to
   // the local-CDT insertion engine.
   HexagonalHive: extractHexagonalHive,
-  CelticKnot: () => [],
+  // CelticKnot: braided strand centerlines (sinusoids per column×strand) as
+  // general-curve polylines; the insertion splits their braid crossings.
+  CelticKnot: extractCelticKnot,
   // GyroidManifold: TPMS level set val=0 (sign-changing, periodic in u) traced
   // by marching squares → general-curve polylines.
   GyroidManifold: extractGyroidManifold,

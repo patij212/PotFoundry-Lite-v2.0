@@ -277,12 +277,12 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     for (const l of g.lines) expect(l.kind).toBe('general-curve');
   });
 
-  // ── CelticKnot (braided sinusoid strands) → honest empty ────────────────────
-  // The ribbon edges are sinusoids `u ≈ 0.4·sin(v+phase)` whose u oscillates with
-  // t (braided, not axis-aligned); the column boundaries u=k/num_columns are
-  // SEAMLESS (the per-column base_phase exactly tiles, zero radius jump). No
-  // constant-u/-t/-helical locus → needs general curve insertion.
-  it('CelticKnot: braided strands → honest empty (needs general curve insertion)', () => {
+  // ── CelticKnot (braided sinusoid strands) → currently gated off ─────────────
+  // The strand-centerline extractor + braid-crossing insertion are implemented
+  // (featDrop=0, topology clean) but leave one residual needle at a shared-edge
+  // double-crossing, so insertion is gated off (CELTIC_KNOT_INSERTION_ENABLED) —
+  // CelticKnot stays at its clean blind baseline (no sliver regression).
+  it('CelticKnot: braided strands → gated off (clean blind baseline)', () => {
     const g = extractAnalyticFeatures('CelticKnot', packed([3.0, 0.15, 2.0, 0.02, 0.5, 0.0, 3.0]), DIMS);
     expect(g.groundTruthCount).toBe(0);
     expect(g.lines.length).toBe(0);
