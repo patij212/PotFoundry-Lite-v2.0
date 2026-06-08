@@ -118,6 +118,34 @@ span is only ~3 anisotropy bits) + inserted styles (deferred). Non-short-wide di
       cells. Narrower; defer.
   (d) Then re-run the full dimspace probe (all styles × all configs) → cutover decision.
 
+**STATUS 2026-06-09: LOCAL/DIRECTIONAL ANISOTROPY (5b-a) IMPLEMENTED → CONCLUDED → DISABLED (opt-in).**
+The per-cell u-only split was designed (design+adversarial workflow: 4 architects→3 judges→3 skeptics;
+the naive design had 13 fatal holes, all patched → vetted blueprint `plans/2026-06-08-gap1-directional-anisotropy-blueprint.md`)
+and implemented in full (commits `e17744d`+`60dbb87`: `PeriodicBalancedQuadtree` gains per-leaf `uExtra`/
+effective-u-level eUL, both-axis 2:1 balance, registry N-mid transition template; 8 stages,
+`Gap1DirectionalRefine.test.ts`, 230 unit tests green, adversarially reviewed — watertight/T-junction-free
+under directional cells). **It is a PROVEN true no-op at default (all 20 byte-identical e2e
+`e2e/regress-20-directional-default-2026-06-09.log`) BUT the e2e on the REAL short-wide residuals showed it
+neither delivers nor is safe, so it is now OFF by default (opt-in `directionalRefine:true`; commit `ba562c4`):**
+  - **Crystalline short-wide: 0 splits, sliver=55 unchanged.** Its residual cells are **F-SHEAR** (physW≤physH),
+    correctly skipped by the `physW>physH` long-axis guard. The synthetic rippled-cylinder analogue (F≈0) was
+    u-long and got fixed — but the REAL GPU surface is F≠0. **The blueprint's "residuals are u-long" efficacy
+    assumption was WRONG for the real surfaces.**
+  - **ArtDeco short-wide: BUILD TIMEOUT (>180s).** Its cells ARE u-long so the trigger fires, but the both-axis
+    eUL-balance cascade EXPLODES (a u-split propagates as a vertical stripe through the whole t-column — the
+    exact risk the design review flagged). With directional OFF, ArtDeco short-wide now builds in ~60s
+    (`e2e/_shortwide_probe.cjs`: sliver=3639, no hang).
+  - **THE KEY KNOWLEDGE WIN:** the residual short-wide slivers (Crystalline 55, ArtDeco ~3639, Gyroid 95,
+    Voronoi 63) are **F-SHEAR (EG−F²→0 area collapse), NOT orthogonal anisotropy.** u-only refinement is the
+    WRONG TOOL — scaling Δu/Δt cannot un-shear a parallelogram. The real fix is **metric-ALIGNED / ROTATED
+    cells** (cells rotated to the eigenvectors of the first fundamental form `[[E,F],[F,G]]`, sides scaled to
+    the eigenvalues), the **SAME tool as the twisted case (5b-c)** — they unify. The directional code+tests
+    are kept (revive only if a genuinely u-long residual appears AND the cascade is bounded).
+  - **NEXT (the unified GAP-1 remaining piece):** rotated/metric-aligned cells. Start measurement-first — a
+    TDD guard (mirror `Gap1FoundationAspect.test.ts`) proving F-shear (square aspect high BECAUSE of F; u/t
+    scaling can't fix; rotated cell → aspect≈1), THEN orchestrate the rotated-cell architecture design.
+  - **CUTOVER: still NOT ready (correct to stay flag-gated)** — short-wide F-shear residuals on ~4-6 styles.
+
 ## 6. THE WORK (priority order; UPDATED 2026-06-08i)
 
 **NOW (priority 1) — finish Voronoi → 20/20.** Extraction is DONE (`extractVoronoi` in FeatureLineGraph; featDrop=0 proven). The blocker is the INSERTION topology crack (bnd>0) at tangent cell-edge transitions: a Voronoi border tangent to a cell edge leaves the cell it doesn't cross-into coarse, so that transition edge gets an inconsistent crossing → T-junction. Diagnosed via the no-GPU repro pattern (extract curves → `assembleWatertight` with a synthetic cylinder sampler → audit boundary edges; the cracks are 3-point triplets on horizontal cell edges = corner/crossing/corner where one cell has the crossing and the neighbour doesn't). Tried + reverted: a `FEATURE_TOUCH_MARGIN` box-expansion in `buildFeatureIntersector` (over-refined → cracked HexagonalHive too). The robust fix is a per-edge forced-crossing pass: when a border crosses/touches a cell edge, register that crossing in BOTH adjacent cells (mirror it across the shared edge) regardless of which cell the curve enters — this is also the deferred fix for the (u,t) needle at curve extrema (DO NOT) §4. Then flip `VORONOI_INSERTION_ENABLED=true` and re-measure (target: bnd=nonMan=orient=sliver=0, featDrop=0).
