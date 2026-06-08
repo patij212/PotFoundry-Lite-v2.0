@@ -43,3 +43,14 @@ export type {
   WatertightAssemblyResult,
 } from './WatertightAssembly';
 export { assembleWatertight } from './WatertightAssembly';
+export type {
+  FeatureLinePoint,
+  FeatureLineKind,
+  FeatureLine,
+  FeatureLineGraph,
+  FeatureUTVertex,
+  FeatureResolutionOptions,
+  FeatureLineResolution,
+  FeatureResolutionResult,
+} from './FeatureLineGraph';
+export { extractAnalyticFeatures, measureFeatureResolution } from './FeatureLineGraph';
