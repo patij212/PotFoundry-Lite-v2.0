@@ -286,13 +286,20 @@ export function assembleWatertight(
   const hasFeatures = (opts.outerFeatureLines?.length ?? 0) > 0;
   const uBias = opts.uBias ?? (hasFeatures ? 0 : computeUBias(outerSampler));
 
-  // GAP 1 local/directional anisotropy: ON by default for NON-feature walls (the
-  // pass is gated + a no-op at default dims, and never touches the pinned rings,
-  // so it is safe to leave on). DISABLED on feature walls — directional refine is
-  // deferred there (inserted styles stay deferred; braid/loop insertion is not yet
-  // directional-aware). `buildConformingWall` ALSO clamps it off when feature
-  // lines are present, but gate it here too so the inner wall's flag mirrors.
-  const directionalRefine = (opts.directionalRefine ?? true) && !hasFeatures;
+  // GAP 1 local/directional anisotropy: OPT-IN (default OFF). The pass is proven
+  // a true no-op at DEFAULT dims (gated + uExtra=0 byte-identical — verified, all
+  // 20 styles byte-identical e2e) and topologically watertight/T-junction-free
+  // (adversarially verified). BUT the e2e on the real SHORT-WIDE residuals showed
+  // it does NOT deliver and REGRESSES: the real residual slivers are F-SHEAR
+  // (area-collapse EG−F²→0), not u-long — so Crystalline gets 0 splits (correctly
+  // skipped via the physW>physH guard), while ArtDeco's u-long cells DO fire but
+  // the both-axis eUL-balance cascade explodes → BUILD TIMEOUT (the vertical-stripe
+  // propagation the design review flagged). So it stays OFF by default until (a)
+  // the cascade is bounded AND (b) a genuinely u-long-residual case exists; the
+  // real short-wide residuals need metric-ALIGNED/rotated cells (F-shear), same as
+  // twisted. Pass `directionalRefine:true` to opt in (used by the GAP-1 tests).
+  // DISABLED on feature walls regardless (directional refine is not insertion-aware).
+  const directionalRefine = (opts.directionalRefine ?? false) && !hasFeatures;
 
   // --- 1. Build the two conforming walls (uniform shared rings) -------------
   // Split the whole-pot budget across the two walls (caps add only a small fixed

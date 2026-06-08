@@ -1,5 +1,32 @@
 # GAP 1 — local/directional anisotropy: vetted implementation blueprint (2026-06-08)
 
+## RESULT (2026-06-09) — IMPLEMENTED, e2e-tested, then DISABLED BY DEFAULT (opt-in)
+The blueprint was implemented in full (commits `e17744d` + `60dbb87`, 8 stages, +1325 LOC, 230 unit
+tests green, adversarially reviewed: 2 sound / 1 fixable, no fatal holes). It is a **proven true
+no-op at default** — all 20 styles byte-identical e2e (`e2e/regress-20-directional-default-2026-06-09.log`)
+— and topologically watertight/T-junction-free under directional cells (the registry N-mid template
+holds to eUL gaps of 4, mixed-eUL, seam-straddling — adversarially probed). **BUT the e2e on the REAL
+short-wide residuals showed it does NOT deliver and REGRESSES, so it is now OFF by default (opt-in via
+`directionalRefine:true`):**
+- **Crystalline short-wide: 0 splits, sliver=55 unchanged.** Its residual cells are F-SHEAR
+  (physW≤physH), so the `physW>physH` long-axis guard CORRECTLY skips them. The synthetic analogue
+  (rippled cylinder, F≈0) was u-long and got fixed — but the REAL GPU surface is F≠0. The blueprint's
+  efficacy assumption (residuals are u-long) was WRONG for the real surfaces.
+- **ArtDeco short-wide: BUILD TIMEOUT (>180s).** Its cells ARE u-long so the trigger fires, but the
+  both-axis eUL-balance cascade EXPLODES (a u-split propagates as a vertical stripe through the whole
+  t-column — exactly the risk the design adversarial review flagged) → on 3496 cells it never converges.
+- So the directional pass either no-ops (F-shear) or explodes (u-long cascade). The REAL fix for the
+  residual short-wide slivers (Crystalline 55, ArtDeco 3496, Gyroid 95, Voronoi 63) is **metric-ALIGNED
+  / rotated cells** (F-shear area-collapse), the SAME tool as the twisted case — NOT u-only refinement.
+
+**To revive directional refine** (if a genuinely u-long-residual case appears): (1) bound the eUL-balance
+cascade (cap total splits / limit the t-column propagation), (2) confirm the target residual is u-long
+(physW>physH) not F-shear, (3) flip the `WatertightAssembly` default back. The code + tests are kept.
+
+---
+
+
+
 Produced by a design+adversarial-verification workflow (4 architects → 3 judges → 3 skeptics
 → finalizer). The 3 skeptics returned **fundamentally-broken** on the naive per-leaf u-only
 design (13 fatal holes); the finalizer patched all of them. This is the hole-patched, staged,
