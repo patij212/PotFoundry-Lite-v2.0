@@ -67,17 +67,32 @@ export class PeriodicBalancedQuadtree {
    * mesh edge via a u-warp. Capped by `maxLevel`/`levelCap` like any refinement.
    */
   private readonly minUniformLevel: number;
+  /**
+   * Optional feature-driven refinement: every cell a feature curve passes
+   * through is refined to at least `featureRefine.level` (capped by maxLevel /
+   * pin grading), so the curve crosses each cell SIMPLY (≈ one short arc). This
+   * is what keeps the downstream local-CDT insertion sliver-free — a small loop
+   * inside one large coarse cell would otherwise fan into thin triangles.
+   * `intersects(u0,t0,size)` returns true iff a feature segment meets that cell.
+   */
+  private readonly featureRefine?: { level: number; intersects: (u0: number, t0: number, size: number) => boolean };
   /** Grid-scaled finite-difference steps for the metric (de-noised vs sampler). */
   private readonly steps: MetricSteps;
 
   constructor(
     field: MetricSizingField,
     metric: SurfaceSampler,
-    opts: { maxLevel: number; pinBoundaryLevel?: number; minUniformLevel?: number },
+    opts: {
+      maxLevel: number;
+      pinBoundaryLevel?: number;
+      minUniformLevel?: number;
+      featureRefine?: { level: number; intersects: (u0: number, t0: number, size: number) => boolean };
+    },
   ) {
     this.maxLevel = opts.maxLevel;
     this.pinBoundaryLevel = opts.pinBoundaryLevel ?? 0;
     this.minUniformLevel = Math.max(0, Math.min(opts.minUniformLevel ?? 0, opts.maxLevel));
+    this.featureRefine = opts.featureRefine;
     this.steps = metricStepsForSampler(metric);
     this.refine(field, metric);
     if (this.pinBoundaryLevel > 0) this.enforcePinnedBoundary();
@@ -175,9 +190,18 @@ export class PeriodicBalancedQuadtree {
       // pin-graded cap), then let curvature drive any deeper splits. The uniform
       // floor guarantees full-height columns at u=i/2^minUniformLevel.
       const belowUniformFloor = c.level < Math.min(this.minUniformLevel, cap);
+      // Feature-driven refinement: refine cells a feature curve crosses to the
+      // feature level so the curve crosses each cell simply (sliver-free CDT).
+      const size = 1 / (1 << c.level);
+      const belowFeatureFloor =
+        this.featureRefine !== undefined &&
+        c.level < Math.min(this.featureRefine.level, cap) &&
+        this.featureRefine.intersects(c.iu * size, c.it * size, size);
       if (
         c.level < cap &&
-        (belowUniformFloor || this.shouldRefine(field, metric, c.level, c.iu, c.it))
+        (belowUniformFloor ||
+          belowFeatureFloor ||
+          this.shouldRefine(field, metric, c.level, c.iu, c.it))
       ) {
         const cl = c.level + 1;
         const bu = c.iu * 2;

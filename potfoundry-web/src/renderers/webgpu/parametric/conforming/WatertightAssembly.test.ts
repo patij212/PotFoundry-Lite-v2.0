@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { SurfaceSampler, Vec3 } from './SurfaceSampler';
 import { assembleWatertight, type AssemblyDimensions } from './WatertightAssembly';
+import type { FeatureLine } from './FeatureLineGraph';
 
 /**
  * Two concentric cylinders + flat rim + flat base + (optional) drain, evaluated
@@ -206,6 +207,61 @@ describe('assembleWatertight — concentric cylinders, rim/base (rDrain>0)', () 
 
   it('base discs are not slivers: max 3D aspect < 100', () => {
     expect(maxAspect3D(pos, asm.indices)).toBeLessThan(100);
+  });
+});
+
+describe('assembleWatertight — outer-wall feature insertion stays a closed solid', () => {
+  const Ro = 50;
+  const Ri = 46;
+  const H = 120;
+  const tBottom = 8;
+  const rDrain = 10;
+  const dims: AssemblyDimensions = { H, tBottom, rDrain };
+  const outer = wallSampler(Ro, Ri, H, tBottom, rDrain, 0);
+  const inner = wallSampler(Ro, Ri, H, tBottom, rDrain, 1);
+  const geom = (u: number, t: number, s: number): Vec3 =>
+    evalSurface(Ro, Ri, H, tBottom, rDrain, u, t, s);
+
+  // Two closed cell loops on the outer wall (honeycomb-cell proxies).
+  const mkLoop = (cu: number, cv: number, r: number): FeatureLine => {
+    const points = [];
+    for (let i = 0; i <= 40; i++) {
+      const a = (2 * Math.PI * i) / 40;
+      points.push({ u: cu + r * Math.cos(a), t: cv + r * Math.sin(a) });
+    }
+    return { kind: 'vertical-crease', points, label: `loop@${cu}` };
+  };
+  const features = [mkLoop(0.3, 0.5, 0.12), mkLoop(0.7, 0.4, 0.1)];
+  const asm = assembleWatertight(outer, inner, dims, {
+    ...WALL_OPTS,
+    nRing: 64,
+    outerFeatureLines: features,
+  });
+  const pos = eval3D(geom, asm.vertices);
+  const topo = topology(pos, asm.indices);
+
+  it('still a closed solid: boundary=0, nonManifold=0, orientationMismatch=0', () => {
+    expect(topo.boundary).toBe(0);
+    expect(topo.nonManifold).toBe(0);
+    expect(topo.orientationMismatch).toBe(0);
+  });
+
+  it('no slivers introduced: max 3D aspect < 100', () => {
+    expect(maxAspect3D(pos, asm.indices)).toBeLessThan(100);
+  });
+
+  it('the outer wall tracks every feature sample (curve → real mesh edges)', () => {
+    // Outer-wall vertices are surfaceId 0; collect their (u,t).
+    const outerUT: Array<[number, number]> = [];
+    for (let i = 0; i < asm.vertices.length; i += 3) {
+      if (asm.vertices[i + 2] < 0.5) outerUT.push([asm.vertices[i], asm.vertices[i + 1]]);
+    }
+    for (const line of features) {
+      for (const p of line.points) {
+        const hit = outerUT.some(([u, t]) => Math.hypot(u - p.u, t - p.t) < 1e-3);
+        expect(hit).toBe(true);
+      }
+    }
   });
 });
 

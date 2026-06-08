@@ -31,6 +31,7 @@
 import type { SurfaceSampler } from './SurfaceSampler';
 import { buildConformingWall, type ConformingWallResult } from './ConformingWall';
 import { annulusStrip, discFan } from './RingStrip';
+import type { FeatureLine } from './FeatureLineGraph';
 
 /** Pot dimensions needed to place the cap/drain surfaces. */
 export interface AssemblyDimensions {
@@ -73,6 +74,16 @@ export interface AssemblyWallOptions {
    * the pure adaptive mesh.
    */
   minUniformLevel?: number;
+  /**
+   * Optional feature curves (loops / diagonals / braids) inserted into the
+   * OUTER wall only (surfaceId 0) as real mesh edges via local constrained
+   * Delaunay. The inner wall is smooth (constant offset), so it gets none. See
+   * {@link ConformingWallOptions.featureLines}. Clipped to keep the shared
+   * boundary rings intact. Omit for the plain mesh.
+   */
+  outerFeatureLines?: FeatureLine[];
+  /** t-margin for feature clipping (see ConformingWallOptions.featureTMargin). */
+  featureTMargin?: number;
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -204,7 +215,13 @@ export function assembleWatertight(
     budgetMode: opts.budgetMode,
     minUniformLevel: opts.minUniformLevel,
   };
-  const outer = buildConformingWall(outerSampler, { ...wallOpts, surfaceId: 0 });
+  // Features go on the OUTER wall only (the inner wall is a smooth offset).
+  const outer = buildConformingWall(outerSampler, {
+    ...wallOpts,
+    surfaceId: 0,
+    featureLines: opts.outerFeatureLines,
+    featureTMargin: opts.featureTMargin,
+  });
   const inner = buildConformingWall(innerSampler, { ...wallOpts, surfaceId: 1 });
 
   const verts: number[] = [];

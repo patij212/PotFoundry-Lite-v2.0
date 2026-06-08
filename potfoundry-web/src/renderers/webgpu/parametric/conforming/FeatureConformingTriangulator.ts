@@ -35,6 +35,15 @@ import { triangulateConstrainedCell, type CellPoint } from './ConstrainedCellTri
 export interface FeatureTriangulationOptions {
   /** Quantization scale for vertex dedup (must match the plain triangulator). */
   quantScale?: number;
+  /**
+   * Absolute (u,t) threshold: a feature point within this Chebyshev distance of
+   * a cell corner or mid-edge vertex is SNAPPED onto it. This caps the worst
+   * triangle aspect (a crossing landing just shy of a corner would otherwise
+   * make a needle). It must be ABSOLUTE (not cell-relative) so both cells
+   * sharing an edge make the identical snap decision → no T-junction. Pick it
+   * as a small fraction of the feature cell size. 0 disables snapping.
+   */
+  cornerSnap?: number;
 }
 
 /** Quantization scale for vertex dedup (exact for dyadic coords up to lvl 24). */
@@ -108,6 +117,38 @@ function lerp(a: CellPoint, b: CellPoint, l: number): CellPoint {
   return { u: a.u + (b.u - a.u) * l, t: a.t + (b.t - a.t) * l };
 }
 
+/**
+ * Points where segment (a→b) meets the 4 edges of box [u0,u1]×[t0,t1] (endpoints
+ * INCLUSIVE, so a vertex tangent to / sitting on an edge is reported). Computed
+ * per edge LINE, so both cells sharing an edge derive the identical crossing.
+ * Corners are skipped (handled as cell corners). Pushes onto `out`.
+ */
+function edgeCrossingsInto(
+  s: Seg, u0: number, u1: number, t0: number, t1: number, eps: number, out: CellPoint[],
+): void {
+  const { a, b } = s;
+  const inU = (u: number): boolean => u >= u0 - eps && u <= u1 + eps;
+  const inT = (t: number): boolean => t >= t0 - eps && t <= t1 + eps;
+  // Horizontal edges t=t0,t1: param along t.
+  if (Math.abs(b.t - a.t) > 1e-300) {
+    for (const te of [t0, t1]) {
+      const f = (te - a.t) / (b.t - a.t);
+      if (f < -eps || f > 1 + eps) continue;
+      const u = a.u + (b.u - a.u) * f;
+      if (inU(u)) out.push({ u, t: te });
+    }
+  }
+  // Vertical edges u=u0,u1: param along u.
+  if (Math.abs(b.u - a.u) > 1e-300) {
+    for (const ue of [u0, u1]) {
+      const f = (ue - a.u) / (b.u - a.u);
+      if (f < -eps || f > 1 + eps) continue;
+      const t = a.t + (b.t - a.t) * f;
+      if (inT(t)) out.push({ u: ue, t });
+    }
+  }
+}
+
 /** Position (0..1) of a boundary point along a CCW side, or -1 if not on it. */
 interface SidePoint {
   pos: number;
@@ -117,10 +158,10 @@ interface SidePoint {
 export function triangulateQuadtreeWithFeatures(
   qt: QuadtreeLike,
   features: FeatureLine[],
-  _options: FeatureTriangulationOptions = {},
+  options: FeatureTriangulationOptions = {},
 ): QuadtreeMesh {
-  void _options;
   if (features.length === 0) return triangulateQuadtree(qt);
+  const cornerSnap = Math.max(0, options.cornerSnap ?? 0);
 
   const leaves = qt.leaves();
   const segs = collectSegments(features);
@@ -210,8 +251,13 @@ export function triangulateQuadtreeWithFeatures(
   };
   leaves.forEach((l, i) => addToBuckets(i, l));
 
-  // Per-leaf feature pieces: the clipped (a,b) segments that intersect each leaf.
-  const leafSegs: Array<Seg[]> = leaves.map(() => []);
+  // Per-leaf CANDIDATE segments: original (a,b) whose bbox overlaps the leaf box
+  // (inclusive of edge touches). We keep originals — not pre-clipped — so each
+  // leaf can compute BOTH its interior arcs (box clip) AND its boundary crossings
+  // per shared edge (so a curve TANGENT to an edge registers in BOTH cells → no
+  // T-junction; a per-cell box clip alone misses the non-entering side).
+  const EDGE_EPS = 1e-12;
+  const leafCand: Array<Seg[]> = leaves.map(() => []);
   for (const s of segs) {
     const minU = Math.min(s.a.u, s.b.u);
     const maxU = Math.max(s.a.u, s.b.u);
@@ -231,9 +277,12 @@ export function triangulateQuadtreeWithFeatures(
           seen.add(li);
           const l = leaves[li];
           const size = 1 / (1 << l.level);
-          const clip = clipToBox(s, l.u0, l.u0 + size, l.t0, l.t0 + size);
-          if (!clip) continue;
-          leafSegs[li].push({ a: lerp(s.a, s.b, clip[0]), b: lerp(s.a, s.b, clip[1]) });
+          // bbox overlap (inclusive) — keeps tangent touches as candidates.
+          if (
+            maxU < l.u0 - EDGE_EPS || minU > l.u0 + size + EDGE_EPS ||
+            maxT < l.t0 - EDGE_EPS || minT > l.t0 + size + EDGE_EPS
+          ) continue;
+          leafCand[li].push(s);
         }
       }
     }
@@ -265,8 +314,18 @@ export function triangulateQuadtreeWithFeatures(
       triWrapsSeam.push(wrapsSeam);
     };
 
-    const pieces = leafSegs[li];
-    if (pieces.length === 0) {
+    // Interior arcs (box clip) + boundary crossings (per-edge, symmetric).
+    const cand = leafCand[li];
+    const pieces: Seg[] = [];
+    const edgeCross: CellPoint[] = [];
+    for (const s of cand) {
+      const clip = clipToBox(s, u0, u1, t0, t1);
+      if (clip && clip[1] - clip[0] > 1e-12) {
+        pieces.push({ a: lerp(s.a, s.b, clip[0]), b: lerp(s.a, s.b, clip[1]) });
+      }
+      edgeCrossingsInto(s, u0, u1, t0, t1, 1e-9, edgeCross);
+    }
+    if (pieces.length === 0 && edgeCross.length === 0) {
       // ── Plain template cell (identical to triangulateQuadtree) ──
       const poly: number[] = [];
       poly.push(vertexIndex(u0, t0));
@@ -332,12 +391,41 @@ export function triangulateQuadtreeWithFeatures(
       }
     };
 
+    // Anchor points (corners + existing mids) for corner-snapping. Snapping a
+    // feature point onto a nearby anchor caps the worst triangle aspect; the
+    // ABSOLUTE threshold makes the decision identical from both sides of every
+    // shared edge (anchors are shared) → still T-junction-free.
+    const anchors: CellPoint[] = [
+      { u: u0, t: t0 }, { u: u1, t: t0 }, { u: u1, t: t1 }, { u: u0, t: t1 },
+    ];
+    if (splitS) anchors.push({ u: um, t: t0 });
+    if (splitE) anchors.push({ u: u1, t: tm });
+    if (splitN) anchors.push({ u: um, t: t1 });
+    if (splitW) anchors.push({ u: u0, t: tm });
+    const snapToAnchor = (p: CellPoint): CellPoint => {
+      if (cornerSnap <= 0) return p;
+      for (const a of anchors) {
+        if (Math.abs(p.u - a.u) <= cornerSnap && Math.abs(p.t - a.t) <= cornerSnap) return a;
+      }
+      return p;
+    };
+
     for (const piece of pieces) {
-      // Classify each endpoint; interior endpoints get registered, boundary
-      // endpoints get added to their side. Then the piece is a constraint edge.
-      if (!classifyBoundary(piece.a)) registerInterior(piece.a);
-      if (!classifyBoundary(piece.b)) registerInterior(piece.b);
-      constraints.push([piece.a, piece.b]);
+      // Snap endpoints onto nearby anchors, then classify. A piece that collapses
+      // (both endpoints snapped to the same anchor) contributes no constraint.
+      const pa = snapToAnchor(piece.a);
+      const pb = snapToAnchor(piece.b);
+      if (qk(pa) === qk(pb)) continue;
+      if (!classifyBoundary(pa)) registerInterior(pa);
+      if (!classifyBoundary(pb)) registerInterior(pb);
+      constraints.push([pa, pb]);
+    }
+
+    // Register per-edge boundary crossings (incl. tangent touches the box clip
+    // misses). These carry NO constraint — they are boundary vertices the
+    // neighbour cell across each shared edge derives identically → no T-junction.
+    for (const ec of edgeCross) {
+      classifyBoundary(snapToAnchor(ec));
     }
 
     // Build the CCW boundary polygon: corners + sorted side points.
@@ -365,20 +453,51 @@ export function triangulateQuadtreeWithFeatures(
     boundary.push({ u: u0, t: t1 });
     for (const sp of dedupSide(sortBy(west))) boundary.push(sp.pt);
 
+    // Weld interior feature points onto a nearby BOUNDARY point (within
+    // cornerSnap). Boundary points (crossings + anchors) are shared/identical
+    // across cells and are NEVER moved, so welding an INTERIOR point onto one is
+    // a purely local decision → cross-cell consistent. This removes
+    // edge-proximity needles (an interior sample landing a hair off a crossing
+    // on the same edge).
+    const interiorCanon = new Map<number, CellPoint>(); // qk(interior) → canonical
+    const survivingInterior: CellPoint[] = [];
+    for (const ip of interior) {
+      let canon: CellPoint | null = null;
+      if (cornerSnap > 0) {
+        for (const bp of boundary) {
+          if (Math.abs(ip.u - bp.u) <= cornerSnap && Math.abs(ip.t - bp.t) <= cornerSnap) {
+            canon = bp;
+            break;
+          }
+        }
+      }
+      if (canon) {
+        interiorCanon.set(qk(ip), canon);
+      } else {
+        interiorCanon.set(qk(ip), ip);
+        survivingInterior.push(ip);
+      }
+    }
+
     // Combined cell-local point → index map for constraint resolution.
     const localKey = new Map<number, number>();
     boundary.forEach((p, i) => localKey.set(qk(p), i));
-    interior.forEach((p, i) => localKey.set(qk(p), boundary.length + i));
+    survivingInterior.forEach((p, i) => localKey.set(qk(p), boundary.length + i));
 
+    const canonical = (p: CellPoint): CellPoint => interiorCanon.get(qk(p)) ?? p;
     const cellConstraints: Array<[number, number]> = [];
     for (const [pa, pb] of constraints) {
-      const ia = localKey.get(qk(pa));
-      const ib = localKey.get(qk(pb));
+      const ia = localKey.get(qk(canonical(pa)));
+      const ib = localKey.get(qk(canonical(pb)));
       if (ia === undefined || ib === undefined || ia === ib) continue;
       cellConstraints.push([ia, ib]);
     }
 
-    const result = triangulateConstrainedCell({ boundary, interior, constraints: cellConstraints });
+    const result = triangulateConstrainedCell({
+      boundary,
+      interior: survivingInterior,
+      constraints: cellConstraints,
+    });
 
     // Map cell-local point indices to GLOBAL deduped vertex indices.
     const globalOf = result.points.map((p) => vertexIndex(p.u, p.t));
@@ -387,24 +506,69 @@ export function triangulateQuadtreeWithFeatures(
     }
   }
 
-  // ── Close the seam: merge the u=1 column into the u=0 column (as plain) ──
-  const zeroByT = new Map<number, number>();
-  for (let i = 0; i < vu.length; i++) {
-    if (Math.round(vu[i] * QSCALE) === 0) zeroByT.set(Math.round(vt[i] * QSCALE), i);
+  const n = vu.length;
+  const remap = new Int32Array(n);
+  for (let i = 0; i < n; i++) remap[i] = i;
+
+  // ── Tolerance weld of float-jitter duplicates (NOT a crash/crack repair) ──
+  // A feature sample that lands within float-epsilon of a cell edge can be
+  // represented two ways across the two cells (a snapped sample vs a clip
+  // crossing), ~1e-8 apart in (u,t). The exact QSCALE dedup may keep them as
+  // two indices; the downstream 3D weld (1e-4 mm) would then merge them and
+  // collapse a triangle. WELD_TAU (1e-6) is FAR below the minimum legitimate
+  // mesh-vertex spacing (~1e-4 at the deepest level), so this can only fuse
+  // numerically-coincident representations of the SAME point — it cannot merge
+  // distinct geometry or paper over a real gap. Spatial-hash with a neighbour
+  // sweep so a jitter straddling a bucket boundary still merges.
+  const WELD_TAU = 1e-6;
+  const weldBuckets = new Map<string, number[]>();
+  const bk = (u: number, t: number): string => `${Math.floor(u / WELD_TAU)}:${Math.floor(t / WELD_TAU)}`;
+  for (let i = 0; i < n; i++) {
+    const bu = Math.floor(vu[i] / WELD_TAU);
+    const bt = Math.floor(vt[i] / WELD_TAU);
+    let canon = -1;
+    for (let du = -1; du <= 1 && canon < 0; du++) {
+      for (let dt = -1; dt <= 1 && canon < 0; dt++) {
+        const arr = weldBuckets.get(`${bu + du}:${bt + dt}`);
+        if (!arr) continue;
+        for (const j of arr) {
+          if (Math.abs(vu[j] - vu[i]) <= WELD_TAU && Math.abs(vt[j] - vt[i]) <= WELD_TAU) {
+            canon = j;
+            break;
+          }
+        }
+      }
+    }
+    if (canon >= 0) {
+      remap[i] = canon;
+    } else {
+      const key = bk(vu[i], vt[i]);
+      let arr = weldBuckets.get(key);
+      if (!arr) { arr = []; weldBuckets.set(key, arr); }
+      arr.push(i);
+    }
   }
-  const remap = new Int32Array(vu.length);
-  for (let i = 0; i < vu.length; i++) remap[i] = i;
-  for (let i = 0; i < vu.length; i++) {
-    if (Math.round(vu[i] * QSCALE) === QSCALE) {
-      const twin = zeroByT.get(Math.round(vt[i] * QSCALE));
+
+  // ── Close the seam: merge the u=1 column into the u=0 column (as plain) ──
+  // Operate on welded canonicals so the seam twin lookup is jitter-free.
+  const zeroByT = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    if (remap[i] === i && Math.round(vu[i] * QSCALE) === 0) {
+      zeroByT.set(Math.round(vt[i] * QSCALE), i);
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const r = remap[i];
+    if (Math.round(vu[r] * QSCALE) === QSCALE) {
+      const twin = zeroByT.get(Math.round(vt[r] * QSCALE));
       if (twin !== undefined) remap[i] = twin;
     }
   }
 
-  const newIndexOf = new Int32Array(vu.length).fill(-1);
+  const newIndexOf = new Int32Array(n).fill(-1);
   const keptU: number[] = [];
   const keptT: number[] = [];
-  for (let i = 0; i < vu.length; i++) {
+  for (let i = 0; i < n; i++) {
     const r = remap[i];
     if (newIndexOf[r] === -1) {
       newIndexOf[r] = keptU.length;
@@ -413,8 +577,18 @@ export function triangulateQuadtreeWithFeatures(
     }
   }
 
-  const outIndices = new Uint32Array(indices.length);
-  for (let i = 0; i < indices.length; i++) outIndices[i] = newIndexOf[remap[indices[i]]];
+  // Remap triangles; drop any that became degenerate when two of their vertices
+  // welded together (their geometric area was already ~0).
+  const outIndices: number[] = [];
+  const outSeam: number[] = [];
+  for (let k = 0; k < indices.length; k += 3) {
+    const a = newIndexOf[remap[indices[k]]];
+    const b = newIndexOf[remap[indices[k + 1]]];
+    const c = newIndexOf[remap[indices[k + 2]]];
+    if (a === b || b === c || a === c) continue;
+    outIndices.push(a, b, c);
+    outSeam.push(triWrapsSeam[k / 3]);
+  }
 
   const vertices = new Float32Array(keptU.length * 3);
   for (let i = 0; i < keptU.length; i++) {
@@ -424,7 +598,7 @@ export function triangulateQuadtreeWithFeatures(
   }
   return {
     vertices,
-    indices: outIndices,
-    seamTriangles: Uint8Array.from(triWrapsSeam),
+    indices: Uint32Array.from(outIndices),
+    seamTriangles: Uint8Array.from(outSeam),
   };
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { SyntheticCylinderSampler } from './SurfaceSampler';
 import { buildConformingWall, type ConformingWallOptions } from './ConformingWall';
+import type { FeatureLine } from './FeatureLineGraph';
 
 const OPTS: Omit<ConformingWallOptions, 'nRing' | 'surfaceId'> = {
   maxSagMm: 0.05,
@@ -147,6 +148,68 @@ describe('buildConformingWall — uniform shared rings (nRing=64, surfaceId=1)',
       maxAspect = Math.max(maxAspect, (longest * longest) / (2 * area));
     }
     expect(maxAspect).toBeLessThan(100);
+  });
+});
+
+describe('buildConformingWall — feature insertion preserves shared rings', () => {
+  const NRING = 64;
+  const s = new SyntheticCylinderSampler(50, 120, 3, 8);
+
+  // A diamond loop well inside the wall (t ∈ [0.3, 0.7]) — a cell-boundary proxy.
+  const loopPts = [];
+  for (let i = 0; i <= 48; i++) {
+    const a = (2 * Math.PI * i) / 48;
+    loopPts.push({ u: 0.5 + 0.2 * Math.cos(a), t: 0.5 + 0.2 * Math.sin(a) });
+  }
+  const loop: FeatureLine = { kind: 'vertical-crease', points: loopPts, label: 'loop' };
+  const wall = buildConformingWall(s, { ...OPTS, nRing: NRING, surfaceId: 0, featureLines: [loop] });
+  const triangles = tris(wall.indices);
+
+  it('rings still exactly nRing (features add only interior vertices)', () => {
+    expect(wall.bottomRing.length).toBe(NRING);
+    expect(wall.topRing.length).toBe(NRING);
+  });
+
+  it('still watertight: boundary edges only at the two rings', () => {
+    const eu = edgeUse(triangles);
+    const bottomSet = new Set(wall.bottomRing);
+    const topSet = new Set(wall.topRing);
+    for (const [k, count] of eu) {
+      expect(count).toBeLessThanOrEqual(2);
+      if (count === 1) {
+        const [i, j] = k.split('_').map(Number);
+        expect((bottomSet.has(i) && bottomSet.has(j)) || (topSet.has(i) && topSet.has(j))).toBe(true);
+      }
+    }
+  });
+
+  it('tracks the feature loop (a mesh vertex near every sample)', () => {
+    const n = wall.vertices.length / 3;
+    for (const p of loopPts) {
+      let found = false;
+      for (let i = 0; i < n; i++) {
+        if (Math.hypot(wall.vertices[i * 3] - p.u, wall.vertices[i * 3 + 1] - p.t) < 1e-4) {
+          found = true;
+          break;
+        }
+      }
+      expect(found).toBe(true);
+    }
+  });
+
+  it('a FULL-HEIGHT feature (t: 0→1) does not corrupt the rings', () => {
+    const fullV: FeatureLine = {
+      kind: 'vertical-crease',
+      points: [{ u: 0.31, t: 0 }, { u: 0.31, t: 1 }],
+      label: 'fullV',
+    };
+    const w2 = buildConformingWall(s, { ...OPTS, nRing: NRING, surfaceId: 0, featureLines: [fullV] });
+    expect(w2.bottomRing.length).toBe(NRING);
+    expect(w2.topRing.length).toBe(NRING);
+    // No mesh vertex on the t=0 or t=1 row sits at the feature u (rings untouched).
+    for (const v of [...w2.bottomRing, ...w2.topRing]) {
+      expect(Math.abs(w2.vertices[v * 3] - 0.31)).toBeGreaterThan(1e-6);
+    }
   });
 });
 

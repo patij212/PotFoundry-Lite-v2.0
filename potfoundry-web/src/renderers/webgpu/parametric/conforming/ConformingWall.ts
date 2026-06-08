@@ -22,6 +22,8 @@ import type { SurfaceSampler } from './SurfaceSampler';
 import { MetricSizingField } from './MetricSizingField';
 import { PeriodicBalancedQuadtree } from './PeriodicBalancedQuadtree';
 import { triangulateQuadtree } from './QuadtreeTriangulator';
+import { triangulateQuadtreeWithFeatures } from './FeatureConformingTriangulator';
+import type { FeatureLine, FeatureLinePoint } from './FeatureLineGraph';
 
 /** Tuning for a conforming wall. */
 export interface ConformingWallOptions {
@@ -64,6 +66,29 @@ export interface ConformingWallOptions {
    * so sag is always preserved. Omit to use the pure sag-driven mesh.
    */
   targetTriangles?: number;
+  /**
+   * Optional feature curves (closed loops / diagonals / braids) to insert as
+   * real mesh edges via local constrained Delaunay (see
+   * {@link triangulateQuadtreeWithFeatures}). Curves are clipped to t ∈
+   * [tMargin, 1−tMargin] so they never touch the shared t=0/t=1 boundary rings
+   * (which the caps reference by index) nor create rim slivers. Omit / empty for
+   * the plain adaptive mesh.
+   */
+  featureLines?: FeatureLine[];
+  /**
+   * t-margin for feature clipping. Feature vertices are kept strictly inside
+   * [tMargin, 1−tMargin]. Defaults to one boundary-cell height (1/nRing) so the
+   * pinned boundary cell rows stay plain (no feature → no ring corruption / rim
+   * sliver). Only used when `featureLines` is non-empty.
+   */
+  featureTMargin?: number;
+  /**
+   * Quadtree level to refine cells a feature curve crosses to, so the curve
+   * crosses each cell simply and the local-CDT insertion stays sliver-free.
+   * Capped by maxLevel / pin grading. Defaults to min(maxLevel, log2(nRing)+1).
+   * Only used when `featureLines` is non-empty.
+   */
+  featureLevel?: number;
   /**
    * How `targetTriangles` is interpreted:
    *  - `'target'` (default): steer the count toward the budget in BOTH
@@ -128,6 +153,7 @@ function buildQuadtreeAtScale(
   opts: ConformingWallOptions,
   pinBoundaryLevel: number,
   targetScale: number,
+  featureRefine?: FeatureRefineSpec,
 ): PeriodicBalancedQuadtree {
   const field = new MetricSizingField(sampler, {
     maxSagMm: opts.maxSagMm,
@@ -142,6 +168,7 @@ function buildQuadtreeAtScale(
     maxLevel: opts.maxLevel,
     pinBoundaryLevel,
     minUniformLevel: opts.minUniformLevel,
+    featureRefine,
   });
 }
 
@@ -167,10 +194,11 @@ function searchBudgetScale(
   pinBoundaryLevel: number,
   targetTriangles: number,
   mode: 'target' | 'cap',
+  featureRefine?: FeatureRefineSpec,
 ): number {
   const targetLeaves = targetTriangles / TRIS_PER_LEAF;
   const leavesAt = (scale: number): number =>
-    buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, scale).leafCount();
+    buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, scale, featureRefine).leafCount();
 
   const floorLeaves = leavesAt(1);
 
@@ -212,16 +240,155 @@ function searchBudgetScale(
   return best;
 }
 
+/**
+ * Clip one feature line to t ∈ [tLo, tHi], preserving polyline structure: each
+ * maximal run of in-range points becomes an output line, with interpolated
+ * boundary points where the line crosses tLo / tHi. Keeps features off the
+ * shared boundary rings.
+ */
+function clipLineToT(line: FeatureLine, tLo: number, tHi: number): FeatureLine[] {
+  const pts = line.points;
+  const inRange = (t: number): boolean => t >= tLo && t <= tHi;
+  const crossAt = (a: FeatureLinePoint, b: FeatureLinePoint, tEdge: number): FeatureLinePoint => {
+    const denom = b.t - a.t;
+    const f = Math.abs(denom) < 1e-300 ? 0 : (tEdge - a.t) / denom;
+    return { u: a.u + (b.u - a.u) * f, t: tEdge };
+  };
+  const out: FeatureLine[] = [];
+  let cur: FeatureLinePoint[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (inRange(p.t)) {
+      if (cur.length === 0 && i > 0 && !inRange(pts[i - 1].t)) {
+        cur.push(crossAt(pts[i - 1], p, pts[i - 1].t < tLo ? tLo : tHi));
+      }
+      cur.push(p);
+    } else if (cur.length > 0) {
+      const prev = pts[i - 1];
+      cur.push(crossAt(prev, p, p.t < tLo ? tLo : tHi));
+      if (cur.length >= 2) out.push({ ...line, points: cur });
+      cur = [];
+    }
+  }
+  if (cur.length >= 2) out.push({ ...line, points: cur });
+  return out;
+}
+
+/** Clip a feature set to the safe t-band, dropping any line that vanishes. */
+function clipFeaturesToT(features: FeatureLine[], tMargin: number): FeatureLine[] {
+  const tLo = tMargin;
+  const tHi = 1 - tMargin;
+  const out: FeatureLine[] = [];
+  for (const line of features) {
+    for (const clipped of clipLineToT(line, tLo, tHi)) out.push(clipped);
+  }
+  return out;
+}
+
+/** Feature-driven refinement spec passed to the quadtree. */
+type FeatureRefineSpec = {
+  level: number;
+  intersects: (u0: number, t0: number, size: number) => boolean;
+};
+
+/** Does segment (au,at)→(bu,bt) meet the box [u0,u1]×[t0,t1]? (Liang–Barsky.) */
+function segHitsBox(
+  au: number, at: number, bu: number, bt: number,
+  u0: number, u1: number, t0: number, t1: number,
+): boolean {
+  const du = bu - au;
+  const dt = bt - at;
+  let lo = 0;
+  let hi = 1;
+  const edges: Array<[number, number]> = [
+    [-du, au - u0],
+    [du, u1 - au],
+    [-dt, at - t0],
+    [dt, t1 - at],
+  ];
+  for (const [p, q] of edges) {
+    if (Math.abs(p) < 1e-300) {
+      if (q < 0) return false;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > hi) return false;
+      if (r > lo) lo = r;
+    } else {
+      if (r < lo) return false;
+      if (r < hi) hi = r;
+    }
+  }
+  return lo < hi;
+}
+
+/**
+ * Build a fast cell→feature intersection predicate from clipped feature lines.
+ * Segments are bucketed on a coarse uniform grid so each cell test only scans
+ * nearby segments — keeping feature refinement near O(cells + segments).
+ */
+function buildFeatureIntersector(features: FeatureLine[]): FeatureRefineSpec['intersects'] {
+  const BUCKET = 64;
+  const buckets = new Map<number, Array<[number, number, number, number]>>();
+  const key = (bu: number, bt: number): number => bt * BUCKET + bu;
+  const clampB = (x: number): number => Math.max(0, Math.min(BUCKET - 1, Math.floor(x * BUCKET)));
+  for (const line of features) {
+    const p = line.points;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const a = p[i];
+      const b = p[i + 1];
+      const bu0 = clampB(Math.min(a.u, b.u));
+      const bu1 = clampB(Math.max(a.u, b.u));
+      const bt0 = clampB(Math.min(a.t, b.t));
+      const bt1 = clampB(Math.max(a.t, b.t));
+      const seg: [number, number, number, number] = [a.u, a.t, b.u, b.t];
+      for (let bt = bt0; bt <= bt1; bt++) {
+        for (let bu = bu0; bu <= bu1; bu++) {
+          const k = key(bu, bt);
+          let arr = buckets.get(k);
+          if (!arr) { arr = []; buckets.set(k, arr); }
+          arr.push(seg);
+        }
+      }
+    }
+  }
+  return (u0: number, t0: number, size: number): boolean => {
+    const u1 = u0 + size;
+    const t1 = t0 + size;
+    const bu0 = clampB(u0);
+    const bu1 = clampB(u1 - 1e-12);
+    const bt0 = clampB(t0);
+    const bt1 = clampB(t1 - 1e-12);
+    for (let bt = bt0; bt <= bt1; bt++) {
+      for (let bu = bu0; bu <= bu1; bu++) {
+        const arr = buckets.get(key(bu, bt));
+        if (!arr) continue;
+        for (const [au, at, bvu, bvt] of arr) {
+          if (segHitsBox(au, at, bvu, bvt, u0, u1, t0, t1)) return true;
+        }
+      }
+    }
+    return false;
+  };
+}
+
 /** The raw triangulated quadtree mesh at a given sizing-field target scale. */
 function buildWallMeshAtScale(
   sampler: SurfaceSampler,
   opts: ConformingWallOptions,
   pinBoundaryLevel: number,
   targetScale: number,
+  clippedFeatures: FeatureLine[],
+  featureRefine?: FeatureRefineSpec,
 ): { vertices: Float32Array; indices: Uint32Array; seamTriangles: Uint8Array } {
-  return triangulateQuadtree(
-    buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, targetScale),
-  );
+  const qt = buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, targetScale, featureRefine);
+  if (clippedFeatures.length === 0) return triangulateQuadtree(qt);
+  // Corner-snap threshold: a small fraction of the feature cell size, made
+  // ABSOLUTE (not per-cell) so both sides of every shared edge snap identically.
+  const featureLevel = featureRefine ? featureRefine.level : opts.maxLevel;
+  const cornerSnap = 0.06 / (1 << featureLevel);
+  return triangulateQuadtreeWithFeatures(qt, clippedFeatures, { cornerSnap });
 }
 
 /**
@@ -252,6 +419,20 @@ export function buildConformingWall(
     }
   }
 
+  // Clip feature curves to the safe t-band ONCE (off the shared rings), and
+  // build the feature-driven refinement spec so cells the curves cross are
+  // refined enough for sliver-free local-CDT insertion.
+  const tMargin = opts.featureTMargin ?? (opts.nRing && opts.nRing > 0 ? 1 / opts.nRing : 1 / 64);
+  const clippedFeatures = clipFeaturesToT(opts.featureLines ?? [], tMargin);
+  let featureRefine: FeatureRefineSpec | undefined;
+  if (clippedFeatures.length > 0) {
+    const defaultLevel = Math.min(opts.maxLevel, pinBoundaryLevel + 1);
+    featureRefine = {
+      level: Math.min(opts.maxLevel, opts.featureLevel ?? defaultLevel),
+      intersects: buildFeatureIntersector(clippedFeatures),
+    };
+  }
+
   const targetScale =
     opts.targetTriangles !== undefined && opts.targetTriangles > 0
       ? searchBudgetScale(
@@ -260,10 +441,13 @@ export function buildConformingWall(
           pinBoundaryLevel,
           opts.targetTriangles,
           opts.budgetMode ?? 'target',
+          featureRefine,
         )
       : 1;
 
-  const mesh = buildWallMeshAtScale(sampler, opts, pinBoundaryLevel, targetScale);
+  const mesh = buildWallMeshAtScale(
+    sampler, opts, pinBoundaryLevel, targetScale, clippedFeatures, featureRefine,
+  );
 
   // Stamp the surfaceId into each vertex's third slot (the triangulator packs 0
   // there). The GPU evaluates each vertex by its own (u, t, surfaceId) triple.
