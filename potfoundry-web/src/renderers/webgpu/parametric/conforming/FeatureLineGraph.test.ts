@@ -266,6 +266,17 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     }
   });
 
+  // ── GyroidManifold (TPMS level set) → general-curve polylines ───────────────
+  it('GyroidManifold: TPMS level set → general-curve polylines (periodic in u)', () => {
+    // Packed shader slots: 0 scale, 2 morph, 8 bias (see packGyroidManifold).
+    const g = extractAnalyticFeatures('GyroidManifold', packed([4, 0.1, 0, 1, 0.1, 1, 0, 0.15, 0, 1]), DIMS);
+    expect(g.groundTruthCount).toBeGreaterThanOrEqual(1);
+    expect(g.lines.length).toBe(g.groundTruthCount);
+    const total = g.lines.reduce((s, l) => s + l.points.length, 0);
+    expect(total).toBeGreaterThan(100);
+    for (const l of g.lines) expect(l.kind).toBe('general-curve');
+  });
+
   // ── CelticKnot (braided sinusoid strands) → honest empty ────────────────────
   // The ribbon edges are sinusoids `u ≈ 0.4·sin(v+phase)` whose u oscillates with
   // t (braided, not axis-aligned); the column boundaries u=k/num_columns are

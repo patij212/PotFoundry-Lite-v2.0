@@ -499,6 +499,38 @@ function extractHexagonalHive(p: Float32Array): FeatureLine[] {
   return segmentsToPolylines(segs, 'hex-edge', 3, 5e-4);
 }
 
+/**
+ * GyroidManifold TPMS level value — the relief is a wall around the level set
+ * `val = (1−morph)·gyr + morph·schwarzP + bias = 0`, so that zero set is the
+ * crease network. Replicates `style_gyroid_manifold` (styles.wgsl) with the
+ * packed shader slots (0 scale, 2 morph, 5 z_stretch, 6 pulse, 8 bias). Smooth
+ * (sin/cos only, no hash) so f64 matches the GPU to well within tolerance.
+ * PERIODIC in u (theta=u·TAU → val(u=0)=val(u=1)).
+ */
+function gyroidVal(u: number, t: number, p: Float32Array): number {
+  const scale = p[0] > 0 ? p[0] : 4;
+  const morph = p[2];
+  const stretch = p[5] > 0 ? p[5] : 1;
+  const pulse = p[6];
+  const bias = p[8];
+  const theta = u * TAU;
+  const x = scale * Math.cos(theta);
+  const y = scale * Math.sin(theta);
+  const z = scale * t * stretch * 4 + pulse * TAU;
+  const gyr = Math.sin(x) * Math.cos(y) + Math.sin(y) * Math.cos(z) + Math.sin(z) * Math.cos(x);
+  const sch = Math.cos(x) + Math.cos(y) + Math.cos(z);
+  return (1 - morph) * gyr + morph * sch + bias;
+}
+
+const GYR_RES_U = 640;
+const GYR_RES_T = 512;
+
+function extractGyroidManifold(p: Float32Array): FeatureLine[] {
+  const segs = marchingSquaresZero((u, t) => gyroidVal(u, t, p), GYR_RES_U, GYR_RES_T, true);
+  // Curvy level set: a small simplify tol just thins redundant dense samples.
+  return segmentsToPolylines(segs, 'gyroid-level', 3, 3e-4);
+}
+
 const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // Vertical (u=const) creases.
   LowPolyFacet: extractLowPolyFacet,
@@ -527,6 +559,9 @@ const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // the local-CDT insertion engine.
   HexagonalHive: extractHexagonalHive,
   CelticKnot: () => [],
+  // GyroidManifold: TPMS level set val=0 (sign-changing, periodic in u) traced
+  // by marching squares → general-curve polylines.
+  GyroidManifold: extractGyroidManifold,
   // Smooth styles (no sharp C0/C1 creases): honestly empty — the radius is a sum
   // of sin/cos terms in θ and t, so curvature-adaptive meshing alone resolves
   // them. Listed explicitly so the count is HONEST rather than accidentally 0.
