@@ -30,3 +30,27 @@ high-flare, twisted. Goal vector: orient=bnd=nonMan=sliver=0.
 ## Cutover: NOT READY. The conforming path is robust at DEFAULT dims (all 20 clean,
 ## 19/20 featDrop=0) but breaks at extreme dims even for the pre-existing warp styles.
 ## Both gaps must be fixed before flipping the default.
+
+## FULL sweep (dimspace-rest-2026-06-08i.log) — sharpens the diagnosis
+
+Additional styles at short-wide (the only widely-failing config):
+- BasketWeave sliver=2.1M, CelticTriquetra 1.9M, BambooSegments 552k, ArtDeco 559k,
+  DragonScales 65k, SpiralRidges 41k, Crystalline 28k. GeometricStar = PASS.
+- **Crystalline AND ArtDeco are SMOOTH styles (no warp, no insertion) and STILL FAIL
+  short-wide.** SuperformulaBlossom (gentle smooth) passes; high-detail smooth fails.
+
+### Reframed diagnosis
+GAP 1 (short-wide / extreme aspect) is a FOUNDATION limitation of the conforming
+mesher, NOT feature-specific: the square 2:1 quadtree cannot produce 3D-isotropic
+cells when the metric anisotropy is extreme (circumference/height ≈ 23:1). Any style
+with enough surface detail (smooth-high-curvature, warp, OR insertion) over-refines
+into 3D slivers there (2-3.5M tris). minUniformLevel/featureLevel make it worse but
+are NOT the root — even pure curvature-adaptive smooth styles fail. The real fix is
+ANISOTROPIC cells (rectangular/kd splits) or an aspect-aware metric clamp in the
+sizing field — a foundation change (PeriodicBalancedQuadtree / MetricSizingField).
+
+All other configs (tall-narrow, no-drain, high-flare, twisted) PASS for warp+smooth;
+only the INSERTED styles (Hex/Gyroid/Celtic) also fail twisted/high-flare (GAP 2, the
+(u,t) needle).
+
+CUTOVER remains NOT READY. Gap 1 (foundation, extreme aspect) is the dominant blocker.
