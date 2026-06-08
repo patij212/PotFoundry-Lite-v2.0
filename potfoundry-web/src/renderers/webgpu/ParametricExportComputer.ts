@@ -57,6 +57,8 @@ import {
     measureFeatureResolution,
     chooseCreaseGrid,
     applyUWarp,
+    chooseCreaseTGrid,
+    applyTWarp,
     type FeatureUTVertex,
     type FeatureResolutionResult,
 } from './parametric/conforming';
@@ -2087,8 +2089,17 @@ export class ParametricExportComputer {
                 // and choose the coarsest power-of-two lattice that hosts every crease
                 // on a distinct column. chooseCreaseGrid refuses (identity, level 0)
                 // when no clean lattice exists — always topology-safe.
+                // Horizontal (t=const) ring creases (BambooSegments node rings,
+                // DragonScales row boundaries) are pinned by the TWIN warp: a
+                // monotonic, ENDPOINT-FIXED t-remap ψ:[0,1]→[0,1] (ψ(0)=0/ψ(1)=1
+                // so the shared t=0/t=1 boundary rings never move). The uniform
+                // base floor must host both full-HEIGHT columns (for φ) and
+                // full-WIDTH rows (for ψ), so minUniformLevel = max(u-level,
+                // t-level). ψ is applied only to WALL vertices (the cap surfaces
+                // reuse t as a radial parameter), preserving watertightness.
                 let featureGraph: ReturnType<typeof extractAnalyticFeatures> | null = null;
                 let creaseChoice: ReturnType<typeof chooseCreaseGrid> = { warp: { isIdentity: true, anchors: [] }, grid: 0, level: 0 };
+                let creaseTChoice: ReturnType<typeof chooseCreaseTGrid> = { warp: { isIdentity: true, anchors: [] }, grid: 0, level: 0 };
                 try {
                     const [, packedWarpParams] = buildStyleParamPayload(
                         params.styleId,
@@ -2102,15 +2113,26 @@ export class ParametricExportComputer {
                     // Distinct vertical-crease u-loci (constant-u lines only).
                     const creaseUSet = new Set<number>();
                     const creaseU: number[] = [];
+                    // Distinct horizontal-crease t-loci (constant-t ring creases).
+                    const creaseTSet = new Set<number>();
+                    const creaseT: number[] = [];
                     for (const line of featureGraph.lines) {
-                        if (line.kind !== 'vertical-crease') continue;
-                        const u = line.points[0].u;
-                        const key = Math.round(u * 1e7);
-                        if (creaseUSet.has(key)) continue;
-                        creaseUSet.add(key);
-                        creaseU.push(u);
+                        if (line.kind === 'vertical-crease') {
+                            const u = line.points[0].u;
+                            const key = Math.round(u * 1e7);
+                            if (creaseUSet.has(key)) continue;
+                            creaseUSet.add(key);
+                            creaseU.push(u);
+                        } else if (line.kind === 'horizontal-band') {
+                            const t = line.points[0].t;
+                            const key = Math.round(t * 1e7);
+                            if (creaseTSet.has(key)) continue;
+                            creaseTSet.add(key);
+                            creaseT.push(t);
+                        }
                     }
                     creaseChoice = chooseCreaseGrid(creaseU);
+                    creaseTChoice = chooseCreaseTGrid(creaseT);
                 } catch (err) {
                     featureGraph = null;
                     console.warn(`[CONFORMING-FULL] crease grid selection skipped: ${String(err)}`);
@@ -2144,9 +2166,15 @@ export class ParametricExportComputer {
                         // inflated up to the budget; only over-budget feature-dense
                         // styles are coarsened toward it (sag floored).
                         budgetMode: 'cap' as const,
-                        // Uniform base level that guarantees full-height columns on
-                        // the crease lattice (0 = no floor when no warp is needed).
-                        minUniformLevel: creaseChoice.level > 0 ? creaseChoice.level : undefined,
+                        // Uniform base level that guarantees full-height columns
+                        // (for the u-warp) AND full-width rows (for the t-warp) on
+                        // the crease lattices. The 2^L×2^L uniform floor carries
+                        // both, so take the max of the two chosen levels (0 = no
+                        // floor when neither warp is needed).
+                        minUniformLevel:
+                            Math.max(creaseChoice.level, creaseTChoice.level) > 0
+                                ? Math.max(creaseChoice.level, creaseTChoice.level)
+                                : undefined,
                     },
                 );
 
@@ -2155,10 +2183,30 @@ export class ParametricExportComputer {
                 // 0→0/1→1) applied UNIFORMLY to every vertex's u, so connectivity —
                 // and thus watertightness / orientation / T-junction-freeness — is
                 // untouched; only u-positions shift, landing the pinned full-height
-                // columns exactly on the creases. Identity ⇒ no-op.
+                // columns exactly on the creases. Identity ⇒ no-op. u is the angular
+                // coordinate on EVERY surface (walls + caps), so φ applies to all.
                 if (!creaseChoice.warp.isIdentity) {
                     for (let i = 0; i < asm.vertices.length; i += 3) {
                         asm.vertices[i] = applyUWarp(creaseChoice.warp, asm.vertices[i]);
+                    }
+                }
+
+                // ── Horizontal-crease pinning: apply the t-warp (walls only) ─────
+                // ψ is an interval homeomorphism (strictly increasing, BOTH
+                // endpoints fixed at 0→0/1→1) applied to every WALL vertex's t,
+                // landing the pinned full-width rows exactly on the ring creases.
+                // CRITICAL: the cap/rim/drain surfaces (surfaceId ≥ 2) reuse t as a
+                // RADIAL parameter, not height, so ψ must NOT touch them; and
+                // because ψ fixes the endpoints, the shared t=0/t=1 boundary rings
+                // (which the caps reference by index) do not move — watertightness,
+                // orientation, and T-junction-freeness are all preserved. Identity
+                // ⇒ no-op.
+                if (!creaseTChoice.warp.isIdentity) {
+                    for (let i = 0; i < asm.vertices.length; i += 3) {
+                        const surfaceId = asm.vertices[i + 2];
+                        if (surfaceId < 1.5) {
+                            asm.vertices[i + 1] = applyTWarp(creaseTChoice.warp, asm.vertices[i + 1]);
+                        }
                     }
                 }
 
@@ -2211,6 +2259,8 @@ export class ParametricExportComputer {
                 console.warn(
                     `[CONFORMING-FULL] ${params.styleId} ` +
                     `tris=${triCount} budget=${conformingBudget} verts=${vCount} nRing=${nRing} ` +
+                    `uWarp=${creaseChoice.warp.isIdentity ? 'id' : `L${creaseChoice.level}`} ` +
+                    `tWarp=${creaseTChoice.warp.isIdentity ? 'id' : `L${creaseTChoice.level}`} ` +
                     `surfaces=${asm.surfaceRanges.length} buildMs=${buildMs.toFixed(0)} ` +
                     `featExp=${LAST_CONFORMING_FEATURE_RESULT?.expected ?? 0} ` +
                     `featPres=${LAST_CONFORMING_FEATURE_RESULT?.present ?? 0} ` +

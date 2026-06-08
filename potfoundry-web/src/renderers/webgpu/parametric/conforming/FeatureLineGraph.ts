@@ -39,12 +39,27 @@
  *   folds at sector boundaries `th=(k+0.5)*angle`, where the strapwork SDF has a
  *   C1 kink → N vertical fold creases.
  *
- * - **HarmonicRipple** / **SuperformulaBlossom**: smooth (cosine petals/ripples;
- *   default sf_strength=0 → plain base profile). No sharp C0/C1 features → an
+ * - **BambooSegments** (`bamboo_segments_radius`): `segment_phase=t·node_count`,
+ *   `node_ring=exp(−dist²/…)` with `dist=min(segment_local,1−segment_local)`. The
+ *   `min(…)` cusp makes a sharp C1 ring crease at each node centre `t=k/node_count`.
+ *   HORIZONTAL (t=const) creases; the interior rings k=1..node_count−1 are pinnable
+ *   (t=0/t=1 are the shared boundary rings). Striations are smooth → not creases.
+ *
+ * - **DragonScales** (`dragon_scales_radius`): `row=floor(t·scale_rows)` makes the
+ *   staggered scale offset jump (hard C0) at each row boundary `t=k/scale_rows`.
+ *   HORIZONTAL creases at the interior boundaries k=1..scale_rows−1. The per-scale
+ *   vertical edges are STAGGERED per row (not full-height) → not emitted.
+ *
+ * - **HarmonicRipple** / **SuperformulaBlossom** / **SuperellipseMorph** /
+ *   **FourierBloom** / **WaveInterference** / **RippleInterference** /
+ *   **Crystalline** / **ArtDeco**: smooth (radius is a sum of sin/cos terms in θ
+ *   and t; defaults give plain/soft profiles). No sharp C0/C1 features → an
  *   honestly EMPTY graph (curvature-adaptive meshing alone should resolve them).
  *
- * Non-analytic styles (Voronoi with jitter, Gyroid) return an empty graph —
- * honest zero rather than a fabricated count.
+ * Non-analytic / diagonal-loop styles (Voronoi/Gyroid; HexagonalHive cells,
+ * BasketWeave diagonals, Celtic knots, SpiralRidges helices) return an empty
+ * graph — honest zero rather than a fabricated count. Their features need
+ * general curve insertion, not an axis-aligned warp.
  *
  * ## The resolution metric (the meaningful featuresDropped)
  *
@@ -250,17 +265,67 @@ function extractGeometricStar(p: Float32Array): FeatureLine[] {
   return lines;
 }
 
+/**
+ * BambooSegments node-ring creases. `segment_phase = t·node_count`,
+ * `node_ring = exp(-dist²/…)` with `dist = min(segment_local, 1−segment_local)`.
+ * The `min(…)` cusp gives a sharp C1 ring crease at every NODE CENTRE
+ * `segment_local=0`, i.e. `t = k/node_count` (k=0..node_count). t=0 and
+ * t=node_count/node_count=1 are the boundary rings (shared with the caps, already
+ * full-width), so only the INTERIOR rings k=1..node_count−1 are emitted as
+ * pinnable horizontal creases. Striations are smooth `sin(θ·striations)` — not
+ * creases.
+ */
+function extractBambooSegments(p: Float32Array): FeatureLine[] {
+  const nodeCount = Math.max(1, Math.round(p[0]));
+  const lines: FeatureLine[] = [];
+  for (let k = 1; k < nodeCount; k++) {
+    lines.push(horizontalLine(k / nodeCount, `node-ring[k=${k}]`));
+  }
+  return lines;
+}
+
+/**
+ * DragonScales row-boundary creases. `row = floor(t·scale_rows)` makes the
+ * staggered scale offset jump (hard C0 discontinuity) at every row boundary
+ * `t = k/scale_rows` (k=0..scale_rows). t=0/t=1 are the boundary rings (shared,
+ * full-width), so only the INTERIOR boundaries k=1..scale_rows−1 are emitted as
+ * pinnable horizontal creases. The per-scale vertical edges are STAGGERED
+ * (offset alternates per row), so they are not full-height constant-u lines and
+ * are NOT emitted (they need general diagonal-curve insertion).
+ */
+function extractDragonScales(p: Float32Array): FeatureLine[] {
+  const scaleRows = Math.max(1, Math.round(p[0]));
+  const lines: FeatureLine[] = [];
+  for (let k = 1; k < scaleRows; k++) {
+    lines.push(horizontalLine(k / scaleRows, `row-boundary[k=${k}]`));
+  }
+  return lines;
+}
+
 function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
 const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
+  // Vertical (u=const) creases.
   LowPolyFacet: extractLowPolyFacet,
-  GothicArches: extractGothicArches,
   GeometricStar: extractGeometricStar,
-  // Smooth styles: honestly empty (curvature-adaptive meshing should suffice).
+  // Vertical creases + horizontal relief bands.
+  GothicArches: extractGothicArches,
+  // Horizontal (t=const) ring creases.
+  BambooSegments: extractBambooSegments,
+  DragonScales: extractDragonScales,
+  // Smooth styles (no sharp C0/C1 creases): honestly empty — the radius is a sum
+  // of sin/cos terms in θ and t, so curvature-adaptive meshing alone resolves
+  // them. Listed explicitly so the count is HONEST rather than accidentally 0.
   HarmonicRipple: () => [],
   SuperformulaBlossom: () => [],
+  SuperellipseMorph: () => [],
+  FourierBloom: () => [],
+  WaveInterference: () => [],
+  RippleInterference: () => [],
+  Crystalline: () => [],
+  ArtDeco: () => [],
 };
 
 /**

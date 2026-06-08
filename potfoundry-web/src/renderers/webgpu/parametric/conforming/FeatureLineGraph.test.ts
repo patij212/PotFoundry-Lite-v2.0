@@ -112,6 +112,46 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     expect(g.groundTruthCount).toBe(12);
   });
 
+  it('BambooSegments: node_count-1 interior node-ring horizontal creases', () => {
+    // node_count=5 → rings at t=k/5; interior k=1..4 ⇒ 4 horizontal creases
+    // (t=0 and t=1 are the boundary rings, already full-width / shared with caps).
+    const g = extractAnalyticFeatures('BambooSegments', packed([5, 0.06, 0.08, 12, 0.015, 0.05, 0.1]), DIMS);
+    const horizontal = g.lines.filter((l) => l.kind === 'horizontal-band');
+    expect(horizontal.length).toBe(4);
+    expect(g.lines.every((l) => l.kind === 'horizontal-band')).toBe(true);
+    expect(g.groundTruthCount).toBe(4);
+    // loci sit exactly at k/5
+    const ts = horizontal.map((l) => l.points[0].t).sort((a, b) => a - b);
+    expect(ts).toEqual([0.2, 0.4, 0.6, 0.8].map((x) => expect.closeTo(x, 9)));
+  });
+
+  it('BambooSegments: ring count scales with node_count', () => {
+    const g = extractAnalyticFeatures('BambooSegments', packed([8, 0.06, 0.08, 12, 0.015, 0.05, 0.1]), DIMS);
+    expect(g.groundTruthCount).toBe(7); // 8 segments → 7 interior boundaries
+  });
+
+  it('DragonScales: scale_rows-1 interior row-boundary horizontal creases', () => {
+    // scale_rows=8 → boundaries at t=k/8; interior k=1..7 ⇒ 7 horizontal creases.
+    const g = extractAnalyticFeatures('DragonScales', packed([8, 16, 0.12, 0.5, 1.5, 0.1, 1.2]), DIMS);
+    const horizontal = g.lines.filter((l) => l.kind === 'horizontal-band');
+    expect(horizontal.length).toBe(7);
+    expect(g.lines.every((l) => l.kind === 'horizontal-band')).toBe(true);
+    expect(g.groundTruthCount).toBe(7);
+  });
+
+  it('DragonScales: row count scales with scale_rows', () => {
+    const g = extractAnalyticFeatures('DragonScales', packed([12, 16, 0.12, 0.5, 1.5, 0.1, 1.2]), DIMS);
+    expect(g.groundTruthCount).toBe(11);
+  });
+
+  it('smooth styles (SuperellipseMorph/FourierBloom/WaveInterference/RippleInterference/Crystalline/ArtDeco) → empty', () => {
+    for (const s of ['SuperellipseMorph', 'FourierBloom', 'WaveInterference', 'RippleInterference', 'Crystalline', 'ArtDeco']) {
+      const g = extractAnalyticFeatures(s, packed([4, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]), DIMS);
+      expect(g.groundTruthCount).toBe(0);
+      expect(g.lines.length).toBe(0);
+    }
+  });
+
   it('HarmonicRipple: smooth — zero sharp feature lines (curvature-only)', () => {
     const g = extractAnalyticFeatures('HarmonicRipple', packed([7, 0.16, 0.3, 0.6, 31, 0.03, 0, 1, 0.05]), DIMS);
     expect(g.groundTruthCount).toBe(0);
