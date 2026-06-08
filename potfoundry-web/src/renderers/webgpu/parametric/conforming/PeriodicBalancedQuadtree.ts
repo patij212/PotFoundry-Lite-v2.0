@@ -9,9 +9,14 @@
  * leaf is edge-adjacent (including across the u-seam) to a leaf more than one
  * level finer.
  *
- * Internally a leaf is an integer cell `(level, iu, it)` with
- * `u0 = iu/2^level`, `t0 = it/2^level`; `iu` is taken mod `2^level` (periodic),
- * `it ∈ [0, 2^level)`. Integer cells make neighbour queries exact.
+ * Internally a leaf is an integer cell `(level, iu, it, uExtra)`. The t-axis is
+ * isotropic: `t0 = it/2^level`, `tSize = 1/2^level`, `it ∈ [0, 2^level)`. The
+ * u-axis carries the global anisotropy bias B AND a per-leaf directional
+ * `uExtra` (default 0): the EFFECTIVE u-level is `eUL = level + B + uExtra`, so
+ * `u0 = iu/2^eUL`, `uSize = 1/2^eUL`, and `iu` is taken mod `2^eUL` (periodic).
+ * Integer cells make neighbour queries exact; keying on `eUL` (not the bare
+ * level) keeps a uExtra=0 cell and a uExtra=1 cell distinct even when their u0
+ * collides under the bare span.
  *
  * @module conforming/PeriodicBalancedQuadtree
  */
@@ -26,8 +31,28 @@ export interface QuadLeaf {
   u0: number;
   /** Lower-t corner in [0,1). */
   t0: number;
-  /** Refinement level; cell size = 1/2^level in both u and t. */
+  /** Refinement level; t-size = 1/2^level. u-size = 1/2^(level+uBias+uExtra). */
   level: number;
+  /**
+   * Integer u-index at the EFFECTIVE u-level `level+uBias+uExtra` (periodic mod
+   * 2^eUL). Populated by {@link PeriodicBalancedQuadtree.leaves} so conforming-
+   * core consumers read the integer address DIRECTLY instead of reconstructing it
+   * via `round(u0·2^(level+B))` — which collides when a uExtra=0 cell at iu=k and
+   * a uExtra=1 cell at iu=2k share u0. OPTIONAL: hand-built test fixtures (plain
+   * `{u0,t0,level}` literals) omit it; consumers fall back to the round-trip
+   * (valid because such fixtures are always uExtra=0).
+   */
+  iu?: number;
+  /** Integer t-index at `level` (it ∈ [0,2^level)). Optional (see {@link iu}). */
+  it?: number;
+  /**
+   * Per-leaf directional u-refinement (default 0). A u-split of `(level,iu,it,k)`
+   * → `(level,iu*2,it,k+1)` and `(level,iu*2+1,it,k+1)`: the cell narrows in u
+   * only (t unchanged), so an extreme short-WIDE leaf becomes 3D-near-square. 0
+   * everywhere is byte-identical to the isotropic+uBias tree (GAP 1 no-op).
+   * OPTIONAL: absent ⇒ 0 (plain fixtures / pre-GAP1 leaves).
+   */
+  uExtra?: number;
 }
 
 /** Side of a cell. u-sides wrap; t-sides do not. */
@@ -38,15 +63,41 @@ interface Cell {
   level: number;
   iu: number;
   it: number;
+  /** Per-leaf directional u-refinement (default 0). */
+  uExtra: number;
 }
 
-function cellKey(level: number, iu: number, it: number): string {
-  return `${level}:${iu}:${it}`;
+/**
+ * Primary leaf key, keyed on the EFFECTIVE u-level so uExtra-distinguished cells
+ * never collide: `${level}:${it}:${eUL}:${iu}`. `level` is retained (the t-axis
+ * uses it directly); `eUL` and `iu` fix the u-position/modulus.
+ */
+function cellKey(level: number, it: number, eUL: number, iu: number): string {
+  return `${level}:${it}:${eUL}:${iu}`;
 }
+
+/** Secondary key indexing a leaf by its effective u-position only: `${eUL}:${it}:${iu}`. */
+function uEffKey(eUL: number, it: number, iu: number): string {
+  return `${eUL}:${it}:${iu}`;
+}
+
+/** Cap on per-leaf directional u-refinement (bounds tri inflation + probe depth). */
+const MAX_U_EXTRA = 4;
+/** Reference metric anisotropy at which the directional gate opens (matches computeUBias). */
+const UBIAS_AREF = 3;
+/** F-inclusive 3D aspect above which a short-wide leaf is directionally u-split. */
+const U_SPLIT_TRIGGER = 20;
 
 export class PeriodicBalancedQuadtree {
-  /** Set of leaf keys for O(1) existence checks. */
+  /** Set of primary leaf keys for O(1) existence checks. */
   private readonly leafSet = new Set<string>();
+  /**
+   * Secondary index: effective-u key (`${eUL}:${it}:${iu}`) → primary key. Lets a
+   * u-side neighbour probe find a finer u-neighbour whether it arose from level+1
+   * (t-isotropic refinement) or uExtra+1 (directional refinement) — both raise
+   * eUL by 1. Maintained in lock-step with `leafSet`.
+   */
+  private readonly uByEffective = new Map<string, string>();
   /** Leaf cells in insertion order (rebuilt on demand). */
   private cells: Cell[] = [];
   /** Deepest level allowed; bounds the finer-neighbour probes. */
@@ -88,6 +139,14 @@ export class PeriodicBalancedQuadtree {
    * pin/levelCap grading (t-based) are unaffected by B.
    */
   private readonly uBiasLevel: number;
+  /**
+   * If true, after balancing the tree runs a LOCAL directional u-refinement pass
+   * (per-leaf `uExtra`) that drives residual short-WIDE slivers — cells whose
+   * LOCAL √E/√G/2^B still exceeds the sliver bound — to 3D-near-square. Gated on
+   * the SAME relief-aware base-anisotropy criterion as the global bias, so at
+   * default dims it touches zero cells (no-op). Default false.
+   */
+  private readonly directionalRefine: boolean;
 
   constructor(
     field: MetricSizingField,
@@ -99,6 +158,8 @@ export class PeriodicBalancedQuadtree {
       featureRefine?: { level: number; intersects: (u0: number, t0: number, size: number) => boolean };
       /** Anisotropy bias B (≥0): Δu = 1/2^(level+B), Δt = 1/2^level. 0 = isotropic. */
       uBias?: number;
+      /** Enable the local directional u-refinement pass (per-leaf uExtra). */
+      directionalRefine?: boolean;
     },
   ) {
     this.maxLevel = opts.maxLevel;
@@ -106,10 +167,12 @@ export class PeriodicBalancedQuadtree {
     this.minUniformLevel = Math.max(0, Math.min(opts.minUniformLevel ?? 0, opts.maxLevel));
     this.featureRefine = opts.featureRefine;
     this.uBiasLevel = Math.max(0, Math.floor(opts.uBias ?? 0));
+    this.directionalRefine = opts.directionalRefine ?? false;
     this.steps = metricStepsForSampler(metric);
     this.refine(field, metric);
     if (this.pinBoundaryLevel > 0) this.enforcePinnedBoundary();
     this.balance(opts.maxLevel);
+    if (this.directionalRefine) this.localDirectionalRefine(metric);
   }
 
   /** The anisotropy bias B (≥0). Consumers map u-index via 2^(level+B). */
@@ -117,9 +180,19 @@ export class PeriodicBalancedQuadtree {
     return this.uBiasLevel;
   }
 
-  /** u-axis index span at a level: 2^(level+B) (periodic modulus for iu). */
-  private uSpan(level: number): number {
-    return 1 << (level + this.uBiasLevel);
+  /** Effective u-level of a cell: level + global bias + per-leaf uExtra. */
+  private effULevel(level: number, uExtra: number): number {
+    return level + this.uBiasLevel + uExtra;
+  }
+
+  /** u-axis index modulus at an effective u-level: 2^eUL (periodic modulus for iu). */
+  private uModulus(eUL: number): number {
+    return 1 << eUL;
+  }
+
+  /** u-axis index modulus for a (level,uExtra) cell: 2^(level+B+uExtra). */
+  private uSpanCell(level: number, uExtra: number): number {
+    return 1 << this.effULevel(level, uExtra);
   }
 
   /**
@@ -155,14 +228,11 @@ export class PeriodicBalancedQuadtree {
     let changed = true;
     while (changed) {
       changed = false;
-      for (const key of Array.from(this.leafSet)) {
-        const [lvlS, iuS, itS] = key.split(':');
-        const level = Number(lvlS);
-        const iu = Number(iuS);
-        const it = Number(itS);
-        if (level >= this.pinBoundaryLevel) continue;
-        if (!this.touchesBoundary(level, it)) continue;
-        this.split(level, iu, it);
+      for (const c of Array.from(this.leafSet.values()).map((k) => this.cellOfKey(k))) {
+        if (c.level >= this.pinBoundaryLevel) continue;
+        if (c.uExtra !== 0) continue; // pinning predates directional refine
+        if (!this.touchesBoundary(c.level, c.it)) continue;
+        this.split(c.level, c.iu, c.it);
         changed = true;
       }
     }
@@ -170,14 +240,39 @@ export class PeriodicBalancedQuadtree {
 
   // ----- construction -----------------------------------------------------
 
-  private addLeaf(level: number, iu: number, it: number): void {
-    const span = this.uSpan(level); // u-index wraps mod 2^(level+B)
-    const wu = ((iu % span) + span) % span;
-    this.leafSet.add(cellKey(level, wu, it));
+  /** Reconstruct a Cell from its primary key. */
+  private cellOfKey(key: string): Cell {
+    const [lvlS, itS, eULS, iuS] = key.split(':');
+    const level = Number(lvlS);
+    const it = Number(itS);
+    const eUL = Number(eULS);
+    const iu = Number(iuS);
+    return { level, iu, it, uExtra: eUL - this.uBiasLevel - level };
   }
 
-  private removeLeaf(level: number, iu: number, it: number): void {
-    this.leafSet.delete(cellKey(level, iu, it));
+  private addLeaf(level: number, iu: number, it: number, uExtra = 0): void {
+    const eUL = this.effULevel(level, uExtra);
+    const span = this.uModulus(eUL); // u-index wraps mod 2^eUL
+    const wu = ((iu % span) + span) % span;
+    const key = cellKey(level, it, eUL, wu);
+    this.leafSet.add(key);
+    this.uByEffective.set(uEffKey(eUL, it, wu), key);
+  }
+
+  private removeLeaf(level: number, iu: number, it: number, uExtra = 0): void {
+    const eUL = this.effULevel(level, uExtra);
+    const span = this.uModulus(eUL);
+    const wu = ((iu % span) + span) % span;
+    this.leafSet.delete(cellKey(level, it, eUL, wu));
+    this.uByEffective.delete(uEffKey(eUL, it, wu));
+  }
+
+  /** Existence of a (level,iu,it,uExtra) leaf (iu wrapped mod 2^eUL). */
+  private hasLeaf(level: number, iu: number, it: number, uExtra = 0): boolean {
+    const eUL = this.effULevel(level, uExtra);
+    const span = this.uModulus(eUL);
+    const wu = ((iu % span) + span) % span;
+    return this.leafSet.has(cellKey(level, it, eUL, wu));
   }
 
   /** Should the cell (level,iu,it) be split, given the sizing field? */
@@ -188,7 +283,7 @@ export class PeriodicBalancedQuadtree {
     iu: number,
     it: number,
   ): boolean {
-    const uSize = 1 / this.uSpan(level); // 1/2^(level+B)
+    const uSize = 1 / this.uSpanCell(level, 0); // 1/2^(level+B)
     const tSize = 1 / (1 << level);
     const uc = (iu + 0.5) * uSize;
     const tc = (it + 0.5) * tSize;
@@ -207,9 +302,10 @@ export class PeriodicBalancedQuadtree {
     // Worklist of cells to examine; start at the 2^B × 1 root grid (a single
     // cell when B=0). The B root columns give every cell the 2^B:1 u:t aspect.
     const stack: Cell[] = [];
-    const rootU = this.uSpan(0); // 2^B
-    for (let iu = 0; iu < rootU; iu++) stack.push({ level: 0, iu, it: 0 });
+    const rootU = this.uSpanCell(0, 0); // 2^B
+    for (let iu = 0; iu < rootU; iu++) stack.push({ level: 0, iu, it: 0, uExtra: 0 });
     this.leafSet.clear();
+    this.uByEffective.clear();
     while (stack.length > 0) {
       const c = stack.pop() as Cell;
       const cap = this.levelCap(c.level, c.it);
@@ -219,7 +315,7 @@ export class PeriodicBalancedQuadtree {
       const belowUniformFloor = c.level < Math.min(this.minUniformLevel, cap);
       // Feature-driven refinement: refine cells a feature curve crosses to the
       // feature level so the curve crosses each cell simply (sliver-free CDT).
-      const uSize = 1 / this.uSpan(c.level);
+      const uSize = 1 / this.uSpanCell(c.level, 0);
       const tSize = 1 / (1 << c.level);
       const belowFeatureFloor =
         this.featureRefine !== undefined &&
@@ -238,12 +334,12 @@ export class PeriodicBalancedQuadtree {
         const cl = c.level + 1;
         const bu = c.iu * 2;
         const bt = c.it * 2;
-        stack.push({ level: cl, iu: bu, it: bt });
-        stack.push({ level: cl, iu: bu + 1, it: bt });
-        stack.push({ level: cl, iu: bu, it: bt + 1 });
-        stack.push({ level: cl, iu: bu + 1, it: bt + 1 });
+        stack.push({ level: cl, iu: bu, it: bt, uExtra: 0 });
+        stack.push({ level: cl, iu: bu + 1, it: bt, uExtra: 0 });
+        stack.push({ level: cl, iu: bu, it: bt + 1, uExtra: 0 });
+        stack.push({ level: cl, iu: bu + 1, it: bt + 1, uExtra: 0 });
       } else {
-        this.addLeaf(c.level, c.iu, c.it);
+        this.addLeaf(c.level, c.iu, c.it, 0);
       }
     }
   }
@@ -261,10 +357,9 @@ export class PeriodicBalancedQuadtree {
     while (queue.length > 0) {
       const key = queue.pop() as string;
       if (!this.leafSet.has(key)) continue; // already split
-      const [lvlS, iuS, itS] = key.split(':');
-      const level = Number(lvlS);
-      const iu = Number(iuS);
-      const it = Number(itS);
+      const c = this.cellOfKey(key);
+      if (c.uExtra !== 0) continue; // square balance predates directional refine
+      const { level, iu, it } = c;
       // Never split past a cell's pin-graded cap — this is what keeps the
       // uniform t=0/t=1 boundary rows intact under balance.
       if (level >= this.levelCap(level, it)) continue;
@@ -274,8 +369,8 @@ export class PeriodicBalancedQuadtree {
       // relationship to the new finer children must be rechecked).
       const sides: QuadSide[] = ['uMinus', 'uPlus', 'tMinus', 'tPlus'];
       for (const side of sides) {
-        for (const c of this.neighbourCells(level, iu, it, side)) {
-          queue.push(cellKey(c.level, c.iu, c.it));
+        for (const c2 of this.neighbourCells(level, iu, it, 0, side)) {
+          queue.push(this.keyOf(c2));
         }
       }
       this.split(level, iu, it);
@@ -283,12 +378,20 @@ export class PeriodicBalancedQuadtree {
       const cl = level + 1;
       const bu = iu * 2;
       const bt = it * 2;
-      queue.push(cellKey(cl, bu, bt));
-      queue.push(cellKey(cl, bu + 1, bt));
-      queue.push(cellKey(cl, bu, bt + 1));
-      queue.push(cellKey(cl, bu + 1, bt + 1));
+      queue.push(this.keyOf({ level: cl, iu: bu, it: bt, uExtra: 0 }));
+      queue.push(this.keyOf({ level: cl, iu: bu + 1, it: bt, uExtra: 0 }));
+      queue.push(this.keyOf({ level: cl, iu: bu, it: bt + 1, uExtra: 0 }));
+      queue.push(this.keyOf({ level: cl, iu: bu + 1, it: bt + 1, uExtra: 0 }));
     }
     this.rebuildCells();
+  }
+
+  /** Primary key for a Cell. */
+  private keyOf(c: Cell): string {
+    const eUL = this.effULevel(c.level, c.uExtra);
+    const span = this.uModulus(eUL);
+    const wu = ((c.iu % span) + span) % span;
+    return cellKey(c.level, c.it, eUL, wu);
   }
 
   /** Does this cell border any leaf more than one level finer? */
@@ -308,7 +411,9 @@ export class PeriodicBalancedQuadtree {
   /**
    * The finest level among existing leaves bordering `side` of (level,iu,it).
    * Returns `level` if no finer leaf is found (coarser/equal neighbours never
-   * violate balance from this cell's perspective).
+   * violate balance from this cell's perspective). This square-balance probe
+   * considers only uExtra=0 leaves (directional refinement is a later pass and
+   * enforces its OWN eUL balance); the t-isotropic split-level is what matters.
    */
   private finestNeighbourLevel(
     level: number,
@@ -316,7 +421,7 @@ export class PeriodicBalancedQuadtree {
     it: number,
     side: QuadSide,
   ): number {
-    const uSpanL = this.uSpan(level); // u wraps mod 2^(level+B)
+    const uSpanL = this.uSpanCell(level, 0); // u wraps mod 2^(level+B)
     const tSpanL = 1 << level; // t domain bound
     // Adjacent cell coordinate at this level.
     let au = iu;
@@ -332,7 +437,7 @@ export class PeriodicBalancedQuadtree {
     let finest = level;
     for (let lv = level; lv <= this.maxLevel; lv++) {
       if (lv === level) {
-        if (this.leafSet.has(cellKey(lv, au, at))) {
+        if (this.hasLeaf(lv, au, at, 0)) {
           finest = Math.max(finest, lv);
           // a same-level leaf fully covers the side; no finer split possible there
           return finest;
@@ -349,7 +454,7 @@ export class PeriodicBalancedQuadtree {
           // Shared edge runs along t; the touching column is the one nearest us.
           const colU = side === 'uPlus' ? baseU : baseU + mul - 1;
           for (let k = 0; k < mul; k++) {
-            if (this.leafSet.has(cellKey(lv, colU, baseT + k))) {
+            if (this.hasLeaf(lv, colU, baseT + k, 0)) {
               found = true;
               break;
             }
@@ -358,8 +463,7 @@ export class PeriodicBalancedQuadtree {
           // Shared edge runs along u; the touching row is the one nearest us.
           const rowT = side === 'tPlus' ? baseT : baseT + mul - 1;
           for (let k = 0; k < mul; k++) {
-            const colU = (baseU + k) % this.uSpan(lv);
-            if (this.leafSet.has(cellKey(lv, colU, rowT))) {
+            if (this.hasLeaf(lv, baseU + k, rowT, 0)) {
               found = true;
               break;
             }
@@ -371,24 +475,21 @@ export class PeriodicBalancedQuadtree {
     return finest;
   }
 
-  /** Split a leaf into 4 children. */
+  /** Split a leaf into 4 children (square split; uExtra reset to 0). */
   private split(level: number, iu: number, it: number): void {
-    this.removeLeaf(level, iu, it);
+    this.removeLeaf(level, iu, it, 0);
     const cl = level + 1;
     const bu = iu * 2;
     const bt = it * 2;
-    this.addLeaf(cl, bu, bt);
-    this.addLeaf(cl, bu + 1, bt);
-    this.addLeaf(cl, bu, bt + 1);
-    this.addLeaf(cl, bu + 1, bt + 1);
+    this.addLeaf(cl, bu, bt, 0);
+    this.addLeaf(cl, bu + 1, bt, 0);
+    this.addLeaf(cl, bu, bt + 1, 0);
+    this.addLeaf(cl, bu + 1, bt + 1, 0);
   }
 
   private rebuildCells(): void {
     this.cells = [];
-    for (const key of this.leafSet) {
-      const [l, u, t] = key.split(':');
-      this.cells.push({ level: Number(l), iu: Number(u), it: Number(t) });
-    }
+    for (const key of this.leafSet) this.cells.push(this.cellOfKey(key));
   }
 
   // ----- public API -------------------------------------------------------
@@ -398,99 +499,367 @@ export class PeriodicBalancedQuadtree {
     return this.leafSet.size;
   }
 
-  /** All leaf cells in physical-parameter terms (u0 = iu/2^(level+B)). */
+  /** All leaf cells in physical-parameter terms (u0 = iu/2^eUL). */
   leaves(): QuadLeaf[] {
     if (this.cells.length === 0 && this.leafSet.size > 0) this.rebuildCells();
     return this.cells.map((c) => ({
-      u0: c.iu / this.uSpan(c.level),
+      u0: c.iu / this.uSpanCell(c.level, c.uExtra),
       t0: c.it / (1 << c.level),
       level: c.level,
+      iu: c.iu,
+      it: c.it,
+      uExtra: c.uExtra,
     }));
   }
 
   /** Neighbour leaves across each of the 4 sides (u-sides wrap). */
   neighbors(leaf: QuadLeaf): { side: QuadSide; leaf: QuadLeaf }[] {
     const level = leaf.level;
-    const iu = Math.round(leaf.u0 * this.uSpan(level));
-    const it = Math.round(leaf.t0 * (1 << level));
+    const uExtra = leaf.uExtra ?? 0;
+    const iu = leaf.iu ?? Math.round(leaf.u0 * this.uSpanCell(level, uExtra));
+    const it = leaf.it ?? Math.round(leaf.t0 * (1 << level));
     const out: { side: QuadSide; leaf: QuadLeaf }[] = [];
     const sides: QuadSide[] = ['uMinus', 'uPlus', 'tMinus', 'tPlus'];
     for (const side of sides) {
-      for (const c of this.neighbourCells(level, iu, it, side)) {
-        out.push({
-          side,
-          leaf: {
-            u0: c.iu / this.uSpan(c.level),
-            t0: c.it / (1 << c.level),
-            level: c.level,
-          },
-        });
+      for (const c of this.neighbourCells(level, iu, it, uExtra, side)) {
+        out.push({ side, leaf: this.leafOfCell(c) });
       }
     }
     return out;
   }
 
+  /** Expose a Cell as a QuadLeaf. */
+  private leafOfCell(c: Cell): QuadLeaf {
+    return {
+      u0: c.iu / this.uSpanCell(c.level, c.uExtra),
+      t0: c.it / (1 << c.level),
+      level: c.level,
+      iu: c.iu,
+      it: c.it,
+      uExtra: c.uExtra,
+    };
+  }
+
   /**
-   * All existing leaf cells bordering `side` of (level,iu,it): the same-level
-   * leaf, a coarser ancestor, or several finer leaves along the shared edge.
+   * All existing leaf cells bordering `side` of (level,iu,it,uExtra): the
+   * same-class leaf, a coarser ancestor, or several finer leaves along the shared
+   * edge. The u-axis is resolved on the EFFECTIVE u-level lattice (eUL=level+B+
+   * uExtra), the t-axis on `level` (t is isotropic — uExtra never changes the
+   * t-resolution). At uExtra=0 everywhere this is byte-identical to the original
+   * level-keyed probe: eUL=level+B is a fixed bijection of level, so every
+   * effective-u step is exactly a level step and the same leaves are returned.
    */
   private neighbourCells(
     level: number,
     iu: number,
     it: number,
+    uExtra: number,
     side: QuadSide,
   ): Cell[] {
-    const uSpanL = this.uSpan(level); // u wraps mod 2^(level+B)
+    const eUL = this.effULevel(level, uExtra);
+    const uSpanL = this.uModulus(eUL); // u wraps mod 2^eUL
     const tSpanL = 1 << level; // t domain bound
     let au = iu;
     let at = it;
+    let ae = eUL; // effective-u level of the adjacent strip we probe
     if (side === 'uMinus') au = (iu - 1 + uSpanL) % uSpanL;
     else if (side === 'uPlus') au = (iu + 1) % uSpanL;
     else if (side === 'tMinus') at = it - 1;
     else at = it + 1;
     if (at < 0 || at >= tSpanL) return []; // domain boundary in t
+    const uSide = side === 'uMinus' || side === 'uPlus';
 
-    // Same level?
-    if (this.leafSet.has(cellKey(level, au, at))) {
-      return [{ level, iu: au, it: at }];
-    }
-    // Coarser ancestor?
-    let cl = level - 1;
-    let cu = au >> 1;
-    let ct = at >> 1;
-    while (cl >= 0) {
-      if (this.leafSet.has(cellKey(cl, cu, ct))) {
-        return [{ level: cl, iu: cu, it: ct }];
+    // Same class (same level, same eUL)? Found directly via the secondary index.
+    {
+      const k = this.uByEffective.get(uEffKey(ae, at, au));
+      if (k !== undefined) {
+        const c = this.cellOfKey(k);
+        if (c.level === level) return [c];
       }
-      cl -= 1;
-      cu >>= 1;
-      ct >>= 1;
     }
-    // Otherwise finer leaves along the shared edge.
+
+    // Coarser ancestor: a single leaf covering the adjacent strip at a coarser
+    // effective u-level. At each coarser eUL (au halved per step) the ancestor's
+    // level may be anything ≤ our level (with uExtra' = eUL−B−level' ≥ 0); its
+    // t-row is our adjacent t-row projected to that coarser level. The first hit
+    // (coarsest-first along the walk) is the unique covering ancestor. At
+    // uExtra=0 only level'=ce−B is possible, so this collapses to the original
+    // level-keyed ancestor walk (level and t halve together with eUL).
+    {
+      let ce = ae - 1;
+      let cu = au >> 1;
+      while (ce >= this.uBiasLevel) {
+        const maxLvl = Math.min(level, ce - this.uBiasLevel);
+        for (let cl = maxLvl; cl >= 0; cl--) {
+          const cux = ce - this.uBiasLevel - cl;
+          if (cux < 0 || cux > MAX_U_EXTRA) continue;
+          const ct = at >> (level - cl); // adjacent t-row projected to coarser level
+          if (this.hasLeaf(cl, cu, ct, cux)) return [this.normCell(cl, cu, ct, cux)];
+        }
+        ce -= 1;
+        cu >>= 1;
+      }
+    }
+
+    // Finer leaves along the shared edge (at a finer eUL; on t-sides also a finer
+    // level). The first finer eUL that has any leaf wins (2:1 balance bounds it
+    // to eUL+1, but we scan a small window to stay robust during re-balance).
     const found: Cell[] = [];
-    for (let lv = level + 1; lv <= this.maxLevel; lv++) {
-      const f = lv - level;
-      const mul = 1 << f;
-      const baseU = au * mul;
-      const baseT = at * mul;
-      if (side === 'uMinus' || side === 'uPlus') {
+    const maxEUL = this.maxLevel + this.uBiasLevel + MAX_U_EXTRA;
+    for (let fe = ae + 1; fe <= maxEUL; fe++) {
+      const mul = 1 << (fe - ae); // finer u-modulus / our u-modulus
+      const baseU = au * mul; // our adjacent u-index projected to the finer eUL
+      if (uSide) {
+        // Shared edge runs along t; the touching column is the one nearest us.
         const colU = side === 'uPlus' ? baseU : baseU + mul - 1;
-        for (let k = 0; k < mul; k++) {
-          if (this.leafSet.has(cellKey(lv, colU, baseT + k))) {
-            found.push({ level: lv, iu: colU, it: baseT + k });
+        // A finer u-neighbour is finer in level and/or uExtra. Try each level'
+        // (≥ our level — finer u-cells are never coarser in t) with matching
+        // uExtra' = fe − B − level'; its t-rows subdivide our strip.
+        for (let lvl = level; lvl <= this.maxLevel; lvl++) {
+          const ux = fe - this.uBiasLevel - lvl;
+          if (ux < 0 || ux > MAX_U_EXTRA) continue;
+          const tMul = 1 << (lvl - level);
+          const tBase = at * tMul;
+          for (let k = 0; k < tMul; k++) {
+            if (this.hasLeaf(lvl, colU, tBase + k, ux)) found.push(this.normCell(lvl, colU, tBase + k, ux));
           }
         }
       } else {
-        const rowT = side === 'tPlus' ? baseT : baseT + mul - 1;
-        for (let k = 0; k < mul; k++) {
-          const colU = (baseU + k) % this.uSpan(lv);
-          if (this.leafSet.has(cellKey(lv, colU, rowT))) {
-            found.push({ level: lv, iu: colU, it: rowT });
+        // Shared edge runs along u; the touching row is the one nearest us. Finer
+        // t-cells are at level' > level; their eUL = level'+B+uExtra' = fe.
+        for (let lvl = level + 1; lvl <= this.maxLevel; lvl++) {
+          const ux = fe - this.uBiasLevel - lvl;
+          if (ux < 0 || ux > MAX_U_EXTRA) continue;
+          const tMul = 1 << (lvl - level);
+          const baseT = at * tMul;
+          const rowT = side === 'tPlus' ? baseT : baseT + tMul - 1;
+          for (let k = 0; k < mul; k++) {
+            if (this.hasLeaf(lvl, baseU + k, rowT, ux)) found.push(this.normCell(lvl, baseU + k, rowT, ux));
           }
         }
       }
       if (found.length > 0) break;
     }
     return found;
+  }
+
+  /** Normalize a cell's iu into [0,2^eUL) and return a Cell. */
+  private normCell(level: number, iu: number, it: number, uExtra: number): Cell {
+    const eUL = this.effULevel(level, uExtra);
+    const span = this.uModulus(eUL);
+    return { level, iu: ((iu % span) + span) % span, it, uExtra };
+  }
+
+  // ----- local directional refinement (GAP 1, per-leaf uExtra) -------------
+
+  /**
+   * Directional u-split of a leaf: `(level,iu,it,k)` → `(level,iu*2,it,k+1)` and
+   * `(level,iu*2+1,it,k+1)`. Narrows the cell in u only (t unchanged), so a
+   * short-WIDE leaf becomes 3D-near-square. Raises the cell's eUL by 1.
+   */
+  private directionalUSplit(c: Cell): void {
+    this.removeLeaf(c.level, c.iu, c.it, c.uExtra);
+    this.addLeaf(c.level, c.iu * 2, c.it, c.uExtra + 1);
+    this.addLeaf(c.level, c.iu * 2 + 1, c.it, c.uExtra + 1);
+  }
+
+  /**
+   * The maximum effective u-level among the existing INTERIOR (non-boundary-row)
+   * leaves bordering a cell, scanning EVERY eUL band on each edge (not just the
+   * first/coarsest finer one — an edge may abut leaves at several eULs, e.g. a
+   * mix of uExtra=2 and uExtra=3 cells). The pinned boundary rows are EXCLUDED:
+   * they never directionally refine (uExtra stays 0 so the shared rings match both
+   * walls), and the N-mid registry covers their t-edge subdivision watertightly —
+   * so they do not impose a 2:1 eUL constraint. Interior cells are balanced ≤1
+   * amongst themselves (small mid-sets, well-shaped transition triangles).
+   */
+  private maxInteriorNeighbourEUL(c: Cell): number {
+    const eUL = this.effULevel(c.level, c.uExtra);
+    let max = 0;
+    const consider = (cell: Cell): void => {
+      if (this.touchesBoundary(cell.level, cell.it)) return; // pinned ring exempt
+      const e = this.effULevel(cell.level, cell.uExtra);
+      if (e > max) max = e;
+    };
+    // Only FINER neighbours (eUL'>eUL) can force a split (same/coarser are ≤ eUL),
+    // so a single full finer scan per side is sufficient — and exact (every band).
+    const sides: QuadSide[] = ['uMinus', 'uPlus', 'tMinus', 'tPlus'];
+    for (const side of sides) {
+      this.forEachFinerNeighbourOnSide(c.level, c.iu, c.it, eUL, side, consider);
+    }
+    return max;
+  }
+
+  /**
+   * Invoke `cb` for every existing leaf at a FINER effective u-level (eUL'>eUL)
+   * that borders `side` of (level,iu,it). Unlike {@link neighbourCells} this does
+   * NOT stop at the first finer band — it scans all of them, so the true finest
+   * neighbour is found (needed for an exact eUL balance under mixed uExtra).
+   */
+  private forEachFinerNeighbourOnSide(
+    level: number, iu: number, it: number, eUL: number, side: QuadSide,
+    cb: (c: Cell) => void,
+  ): void {
+    const span = this.uModulus(eUL);
+    const tSpanL = 1 << level;
+    let au = iu;
+    let at = it;
+    if (side === 'uMinus') au = (iu - 1 + span) % span;
+    else if (side === 'uPlus') au = (iu + 1) % span;
+    else if (side === 'tMinus') at = it - 1;
+    else at = it + 1;
+    if (at < 0 || at >= tSpanL) return;
+    const uSide = side === 'uMinus' || side === 'uPlus';
+    const maxEUL = this.maxLevel + this.uBiasLevel + MAX_U_EXTRA;
+    for (let fe = eUL + 1; fe <= maxEUL; fe++) {
+      const mul = 1 << (fe - eUL);
+      const baseU = au * mul;
+      if (uSide) {
+        const colU = side === 'uPlus' ? baseU : baseU + mul - 1;
+        for (let lvl = level; lvl <= this.maxLevel; lvl++) {
+          const ux = fe - this.uBiasLevel - lvl;
+          if (ux < 0 || ux > MAX_U_EXTRA) continue;
+          const tMul = 1 << (lvl - level);
+          const tBase = at * tMul;
+          for (let k = 0; k < tMul; k++) {
+            if (this.hasLeaf(lvl, colU, tBase + k, ux)) cb(this.normCell(lvl, colU, tBase + k, ux));
+          }
+        }
+      } else {
+        for (let lvl = level + 1; lvl <= this.maxLevel; lvl++) {
+          const ux = fe - this.uBiasLevel - lvl;
+          if (ux < 0 || ux > MAX_U_EXTRA) continue;
+          const tMul = 1 << (lvl - level);
+          const baseT = at * tMul;
+          const rowT = side === 'tPlus' ? baseT : baseT + tMul - 1;
+          for (let k = 0; k < mul; k++) {
+            if (this.hasLeaf(lvl, baseU + k, rowT, ux)) cb(this.normCell(lvl, baseU + k, rowT, ux));
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * F-INCLUSIVE true 3D-quad aspect of a cell at its centre, plus the physical
+   * width/height. The quad's two physical edge vectors are `Pu·du` (|·|=√E·du)
+   * and `Pt·dt` (|·|=√G·dt); its area is `√(EG−F²)·du·dt`. The aspect uses the
+   * longest edge² over twice the area (matches metrics.ts's right-triangle
+   * factor). Crucially F-inclusive: an F-SHEAR sliver (EG−F²→0, e.g. Voronoi/
+   * Gyroid) has a SMALL area → large aspect, but its long axis is NOT u, so the
+   * `physW>physH` caller guard leaves it untouched (u-refinement can't fix shear).
+   */
+  private cellAspect3D(
+    metric: SurfaceSampler, level: number, iu: number, it: number, uExtra: number,
+  ): { aspect: number; physW: number; physH: number } {
+    const du = 1 / this.uSpanCell(level, uExtra);
+    const dt = 1 / (1 << level);
+    const uc = (iu + 0.5) * du;
+    const tc = (it + 0.5) * dt;
+    const { E, F, G } = firstFundamentalForm(metric, uc, tc, this.steps.hu, this.steps.ht);
+    const physW = Math.sqrt(Math.max(E, 0)) * du;
+    const physH = Math.sqrt(Math.max(G, 0)) * dt;
+    const area = Math.sqrt(Math.max(E * G - F * F, 0)) * du * dt;
+    const longest2 = Math.max(physW * physW, physH * physH);
+    const aspect = area <= 1e-300 ? Infinity : (longest2 * Math.sqrt(3)) / (2 * area);
+    return { aspect, physW, physH };
+  }
+
+  /**
+   * Gate the directional pass on the SAME relief-aware BASE-anisotropy criterion
+   * the global bias uses (`median(2π·r/√G) > UBIAS_AREF·√2`). At default dims the
+   * SHAPE is not wide/flat → the gate is NOT tripped → the pass returns having
+   * touched zero cells (byte-identical no-op), regardless of per-cell relief.
+   */
+  private directionalGateTripped(metric: SurfaceSampler): boolean {
+    const ratios: number[] = [];
+    const N = 12;
+    for (let j = 1; j < N; j++) {
+      const t = j / N;
+      for (let i = 0; i < N; i++) {
+        const u = i / N;
+        const p = metric.position(u, t);
+        const { G } = firstFundamentalForm(metric, u, t, this.steps.hu, this.steps.ht);
+        const sG = Math.sqrt(Math.max(G, 1e-12));
+        ratios.push((2 * Math.PI * Math.hypot(p[0], p[1])) / sG);
+      }
+    }
+    ratios.sort((a, b) => a - b);
+    const med = ratios.length === 0 ? 1 : ratios[Math.floor(ratios.length / 2)] || 1;
+    return med > UBIAS_AREF * Math.SQRT2;
+  }
+
+  /**
+   * Local directional u-refinement (GAP 1). Runs ONLY when `directionalRefine`
+   * AND the wide/flat gate is tripped (so it is a no-op at default dims). Splits
+   * residual short-WIDE slivers in u until their F-inclusive 3D aspect drops below
+   * the sliver bound, then enforces both-axis 2:1 effective-u-level balance.
+   * Boundary rows are NEVER touched (uExtra stays 0 → shared rings stay pinned).
+   * F-SHEAR slivers (long axis ≠ u) are LEFT UNTOUCHED (physW>physH guard).
+   */
+  private localDirectionalRefine(metric: SurfaceSampler): void {
+    // (1) HARD GATE — identical to computeUBias's B=0 gate. No-op at default dims.
+    if (!this.directionalGateTripped(metric)) return;
+
+    // (2) Trigger pass: u-split any leaf whose F-inclusive aspect exceeds the
+    //     trigger, whose long axis IS u (physW>physH), that has u-refinement
+    //     budget left, and that does NOT touch the t=0/t=1 boundary. Iterate so a
+    //     once-split cell is re-tested (one split may not suffice).
+    let changed = true;
+    let guard = 0;
+    while (changed && guard++ < MAX_U_EXTRA + 2) {
+      changed = false;
+      for (const c of Array.from(this.leafSet.values()).map((k) => this.cellOfKey(k))) {
+        if (c.uExtra >= MAX_U_EXTRA) continue;
+        if (this.touchesBoundary(c.level, c.it)) continue; // rings never split
+        const { aspect, physW, physH } = this.cellAspect3D(metric, c.level, c.iu, c.it, c.uExtra);
+        if (aspect > U_SPLIT_TRIGGER && physW > physH) {
+          this.directionalUSplit(c);
+          changed = true;
+        }
+      }
+    }
+
+    // (3) Both-axis 2:1 effective-u-level balance: split any non-boundary leaf
+    //     whose eUL is ≥2 below a neighbour's, to fixpoint. The N-mid registry in
+    //     the triangulator already tolerates an arbitrary subdivision on a t-edge
+    //     against the (exempt) boundary row, but bounding the interior disparity
+    //     to ≤1 keeps the transition mid-sets small and the triangles well-shaped.
+    this.balanceEffectiveU();
+
+    this.rebuildCells();
+  }
+
+  /**
+   * Queue-driven 2:1 effective-u-level balance for directional cells: any
+   * NON-BOUNDARY leaf whose eUL is more than one below some edge-neighbour's eUL
+   * is directionally u-split (raising its eUL by 1), until stable. Boundary rows
+   * are exempt (never split) — the N-mid registry covers their t-edge transition.
+   */
+  private balanceEffectiveU(): void {
+    const queue: string[] = Array.from(this.leafSet);
+    let guard = 0;
+    const guardMax = (this.leafSet.size + 1) * (MAX_U_EXTRA + this.maxLevel + 2) + 16;
+    while (queue.length > 0 && guard++ < guardMax * 8) {
+      const key = queue.pop() as string;
+      if (!this.leafSet.has(key)) continue; // already split
+      const c = this.cellOfKey(key);
+      if (this.touchesBoundary(c.level, c.it)) continue; // rings never split
+      if (c.uExtra >= MAX_U_EXTRA) continue; // budget exhausted
+      const eUL = this.effULevel(c.level, c.uExtra);
+      if (this.maxInteriorNeighbourEUL(c) <= eUL + 1) continue; // balanced vs interior
+
+      // Re-enqueue neighbours (their balance vs the new finer children changes),
+      // split, then enqueue the two children.
+      const sides: QuadSide[] = ['uMinus', 'uPlus', 'tMinus', 'tPlus'];
+      for (const side of sides) {
+        for (const nb of this.neighbourCells(c.level, c.iu, c.it, c.uExtra, side)) {
+          queue.push(this.keyOf(nb));
+        }
+      }
+      this.directionalUSplit(c);
+      queue.push(this.keyOf({ level: c.level, iu: c.iu * 2, it: c.it, uExtra: c.uExtra + 1 }));
+      queue.push(this.keyOf({ level: c.level, iu: c.iu * 2 + 1, it: c.it, uExtra: c.uExtra + 1 }));
+    }
   }
 }

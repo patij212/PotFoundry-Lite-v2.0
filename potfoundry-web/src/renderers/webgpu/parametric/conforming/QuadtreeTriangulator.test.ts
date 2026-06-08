@@ -160,6 +160,58 @@ describe('triangulateQuadtree — transition template (one quadrant finer)', () 
   });
 });
 
+/**
+ * A hand-built periodic tree exercising the N-mid (quarter-point) transition
+ * template (GAP 1 directional refine, Stage 3): the TOP row is coarse (level 1,
+ * uExtra=0 → 2 u-columns of width 0.5 over t∈[0.5,1]); the BOTTOM row is
+ * directionally u-refined TWICE (level 1, uExtra=2 → eUL=3 → 8 u-columns of width
+ * 0.125 over t∈[0,0.5]). Each top cell's south edge (width 0.5) is therefore
+ * subdivided at QUARTER points (u = +0.125, +0.25, +0.375) by 4 bottom cells —
+ * the registry must hand the top cell all 3 interior points so the shared t=0.5
+ * edge is T-junction-free.
+ */
+function quarterPointTree(): QuadtreeLike {
+  const leaves: QuadLeaf[] = [];
+  // Top row: 2 coarse columns, t∈[0.5,1].
+  for (let iu = 0; iu < 2; iu++) {
+    leaves.push({ u0: iu / 2, t0: 0.5, level: 1, iu, it: 1, uExtra: 0 });
+  }
+  // Bottom row: 8 directional columns (eUL=3, width 0.125), t∈[0,0.5].
+  for (let iu = 0; iu < 8; iu++) {
+    leaves.push({ u0: iu / 8, t0: 0.0, level: 1, iu, it: 0, uExtra: 2 });
+  }
+  return { leaves: () => leaves, uBias: () => 0 };
+}
+
+describe('triangulateQuadtree — N-mid quarter-point transition (directional)', () => {
+  it('quarter-subdivided coarse edge is T-junction-free; invariants hold', () => {
+    const qt = quarterPointTree();
+    const { vertices, indices, seamTriangles } = triangulateQuadtree(qt);
+    // No interior boundary edge anywhere except the open t=0 / t=1 rings.
+    assertCoreInvariants(vertices, indices, seamTriangles);
+    // The 3 quarter-point vertices on the first top cell's south edge exist and
+    // are each used by some triangle edge (referenced by BOTH the top cell's
+    // centre-fan and the bottom cells → shared, no T-junction).
+    const eu = edgeUse(tris(indices));
+    for (const u of [0.125, 0.25, 0.375]) {
+      let found = -1;
+      for (let v = 0; v < vertices.length / 3; v++) {
+        if (Math.abs(vertices[v * 3] - u) < 1e-6 && Math.abs(vertices[v * 3 + 1] - 0.5) < 1e-6) {
+          found = v;
+          break;
+        }
+      }
+      expect(found).toBeGreaterThanOrEqual(0);
+      let used = false;
+      for (const k of eu.keys()) {
+        const [i, j] = k.split('_').map(Number);
+        if (i === found || j === found) { used = true; break; }
+      }
+      expect(used).toBe(true);
+    }
+  });
+});
+
 describe('triangulateQuadtree — real mixed-level tree (5,6,7)', () => {
   it('invariants hold at scale (manifold, seam-closed, CCW)', () => {
     // Same fixture as the quadtree balance test: genuinely mixed levels with

@@ -50,25 +50,67 @@ export interface QuadtreeMesh {
 /** Quantization scale for vertex dedup (exact for dyadic coords up to lvl 24). */
 const QSCALE = 1 << 24;
 
+/** Cap on per-leaf directional u-refinement (mirrors PeriodicBalancedQuadtree). */
+const MAX_U_EXTRA = 4;
+
 export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
   const leaves = qt.leaves();
   const uBias = qt.uBias?.() ?? 0;
-  const uSpanOf = (level: number): number => 1 << (level + uBias); // 2^(level+B)
+  /** Effective u-level of a leaf: level + global bias + per-leaf uExtra. */
+  const eULof = (l: { level: number; uExtra?: number }): number =>
+    l.level + uBias + (l.uExtra ?? 0);
+  /** u-modulus at an effective u-level. */
+  const uMod = (eUL: number): number => 1 << eUL;
+  /** Integer u-index of a leaf at its effective u-level (read DIRECTLY, no round-trip). */
+  const iuOf = (l: QuadLeaf): number => l.iu ?? Math.round(l.u0 * uMod(eULof(l)));
+  /** Integer t-index of a leaf. */
+  const itOf = (l: QuadLeaf): number => l.it ?? Math.round(l.t0 * (1 << l.level));
 
-  // Integer-cell existence set: key `${level}:${iu}:${it}` (iu in 2^(level+B)).
+  // Integer-cell existence set keyed on the EFFECTIVE u-level so a uExtra=0 cell
+  // and a uExtra=1 cell never collide: `${level}:${it}:${eUL}:${iu}`. Including
+  // `level` (the t-resolution) AND `eUL` (the u-resolution) disambiguates cells
+  // that share an `it` integer at different levels (different t-positions). At
+  // uExtra=0 (eUL=level+B is a fixed bijection of level) this is byte-identical to
+  // the original level-keyed set.
   const cellSet = new Set<string>();
   let maxLevel = 0;
+  let maxEUL = 0;
   for (const l of leaves) {
-    const iu = Math.round(l.u0 * uSpanOf(l.level));
-    const it = Math.round(l.t0 * (1 << l.level));
-    cellSet.add(`${l.level}:${iu}:${it}`);
+    const eUL = eULof(l);
+    const iu = iuOf(l);
+    const it = itOf(l);
+    cellSet.add(`${l.level}:${it}:${eUL}:${iu}`);
     if (l.level > maxLevel) maxLevel = l.level;
+    if (eUL > maxEUL) maxEUL = eUL;
   }
 
-  const has = (level: number, iu: number, it: number): boolean => {
-    const span = uSpanOf(level); // u-index wraps mod 2^(level+B)
+  /** Existence of a (level,iu,it,eUL) leaf (iu wraps mod 2^eUL). */
+  const has = (level: number, iu: number, it: number, eUL: number): boolean => {
+    const span = uMod(eUL);
     const wu = ((iu % span) + span) % span;
-    return cellSet.has(`${level}:${wu}:${it}`);
+    return cellSet.has(`${level}:${it}:${eUL}:${wu}`);
+  };
+  /**
+   * Does a finer u-neighbour exist in the effective-u column `col` at effective
+   * u-level `feUL` across the t-strip of OUR (level,it) cell? A finer u-neighbour
+   * may be: (a) a uExtra-split at our SAME level (its t-index is our `it`,
+   * uExtra' = feUL−B−level), or (b) a level-split at a finer level `lvl>level`
+   * (its t-indices subdivide our strip). We probe the LEVEL-keyed `has` (not the
+   * level-agnostic effective index) so a same-`it` integer at a DIFFERENT level —
+   * a genuinely different t-position — never spuriously matches. At uExtra=0 only
+   * lvl=level+1 (rows it*2, it*2+1) is possible → byte-identical to the original.
+   */
+  const uColHasFiner = (feUL: number, col: number, level: number, it: number): boolean => {
+    for (let lvl = level; lvl <= maxLevel; lvl++) {
+      const ux = feUL - uBias - lvl;
+      if (ux < 0 || ux > MAX_U_EXTRA) continue;
+      const tMul = 1 << (lvl - level);
+      const tBase = it * tMul;
+      for (let k = 0; k < tMul; k++) {
+        if (has(lvl, col, tBase + k, feUL)) return true;
+      }
+    }
+    return false;
   };
 
   // Vertex dedup by quantized (u,t) WITHOUT wrapping u, so each leaf quad keeps
@@ -98,73 +140,136 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
   const triWrapsSeam: number[] = [];
 
   /**
-   * Does the given side of (level,iu,it) border a finer (level+1) neighbour?
-   * If so, that side carries a single mid-edge vertex. In a 2:1-balanced tree
-   * the only options are same-level, one-coarser, or one-finer.
+   * Does the given side of (level,iu,it,eUL) border a finer neighbour? On a
+   * t-side "finer" is level+1 (their it-rows subdivide ours). On a u-side "finer"
+   * is effective-u-level eUL+1 — which may arise from a level+1 split OR a
+   * uExtra+1 directional split — detected via {@link uColHasFiner}, so the side
+   * carries a single mid-edge vertex either way. In a 2:1-balanced tree
+   * the only options are same, one-coarser, or one-finer. At uExtra=0 (eUL=
+   * level+B) this is byte-identical to the original level+1 probe.
    */
   const sideHasFiner = (
     level: number,
     iu: number,
     it: number,
+    eUL: number,
     side: 'uMinus' | 'uPlus' | 'tMinus' | 'tPlus',
   ): boolean => {
-    if (level >= maxLevel) return false;
-    const fl = level + 1;
-    // Finer cells that would touch this side, expressed at level fl.
     if (side === 'uPlus') {
-      // neighbour region starts at u=(iu+1)/2^level → fl col = (iu+1)*2.
-      const col = (iu + 1) * 2;
-      return has(fl, col, it * 2) || has(fl, col, it * 2 + 1);
+      if (eUL >= maxEUL) return false;
+      // neighbour region starts at u=(iu+1)/2^eUL → finer eff-col = (iu+1)*2.
+      return uColHasFiner(eUL + 1, (iu + 1) * 2, level, it);
     }
     if (side === 'uMinus') {
-      // neighbour region ends at u=iu/2^level → fl col just left = iu*2 - 1.
-      const col = iu * 2 - 1;
-      return has(fl, col, it * 2) || has(fl, col, it * 2 + 1);
+      if (eUL >= maxEUL) return false;
+      // neighbour region ends at u=iu/2^eUL → finer eff-col just left = iu*2 - 1.
+      return uColHasFiner(eUL + 1, iu * 2 - 1, level, it);
     }
+    if (level >= maxLevel) return false;
+    const fl = level + 1;
+    const fe = fl + uBias; // finer cells are uExtra=0 in a square-balanced region
     if (side === 'tPlus') {
       if (it + 1 >= 1 << level) return false; // domain top
       const row = (it + 1) * 2;
-      return has(fl, iu * 2, row) || has(fl, iu * 2 + 1, row);
+      return has(fl, iu * 2, row, fe) || has(fl, iu * 2 + 1, row, fe);
     }
     // tMinus
     if (it === 0) return false; // domain bottom
     const row = it * 2 - 1;
-    return has(fl, iu * 2, row) || has(fl, iu * 2 + 1, row);
+    return has(fl, iu * 2, row, fe) || has(fl, iu * 2 + 1, row, fe);
   };
 
-  for (const leaf of leaves) {
-    const iu = Math.round(leaf.u0 * uSpanOf(leaf.level));
-    const it = Math.round(leaf.t0 * (1 << leaf.level));
-    const sizeU = 1 / uSpanOf(leaf.level); // Δu = 1/2^(level+B)
-    const sizeT = 1 / (1 << leaf.level); // Δt = 1/2^level
+  // ── Per-leaf geometry, computed once and shared by both passes. ──
+  interface LeafGeom {
+    level: number; eUL: number; iu: number; it: number;
+    u0: number; t0: number; u1: number; t1: number; um: number; tm: number;
+    wrapsSeam: number;
+  }
+  const geom: LeafGeom[] = leaves.map((leaf) => {
+    const eUL = eULof(leaf);
+    const iu = iuOf(leaf);
+    const it = itOf(leaf);
+    const sizeU = 1 / uMod(eUL);
+    const sizeT = 1 / (1 << leaf.level);
     const u0 = leaf.u0;
     const t0 = leaf.t0;
     const u1 = u0 + sizeU;
     const t1 = t0 + sizeT;
-    const um = u0 + sizeU / 2;
-    const tm = t0 + sizeT / 2;
-    const wrapsSeam = Math.round(u1 * QSCALE) === QSCALE ? 1 : 0;
+    return {
+      level: leaf.level, eUL, iu, it,
+      u0, t0, u1, t1, um: u0 + sizeU / 2, tm: t0 + sizeT / 2,
+      wrapsSeam: Math.round(u1 * QSCALE) === QSCALE ? 1 : 0,
+    };
+  });
 
-    // Count split sides (those with a finer neighbour → one mid-edge vertex).
-    const splitS = sideHasFiner(leaf.level, iu, it, 'tMinus');
-    const splitE = sideHasFiner(leaf.level, iu, it, 'uPlus');
-    const splitN = sideHasFiner(leaf.level, iu, it, 'tPlus');
-    const splitW = sideHasFiner(leaf.level, iu, it, 'uMinus');
-    const splitCount = (splitS ? 1 : 0) + (splitE ? 1 : 0) + (splitN ? 1 : 0) + (splitW ? 1 : 0);
+  // ── PASS A: register each leaf's 4 corners onto the shared grid-line registry.
+  // A coarse cell whose edge is subdivided at MULTIPLE points by several finer
+  // neighbours (a level-finer AND uExtra-finer neighbour both abut the same edge
+  // → quarter-points, not a single mid) reads the UNION of those subdivision
+  // points in PASS B, so both sides of every shared edge carry the identical
+  // ordered vertex set → no T-junction even at an N-mid transition. Horizontal
+  // grid lines (t-lines) are keyed by quantized t; vertical (u-lines) by
+  // quantized u mod 1 so the periodic seam u=1≡u=0 shares a key. At uExtra=0 the
+  // only finer u-level is eUL+1, so every edge carries at most a single mid →
+  // PASS B takes the byte-identical single-mid fast path.
+  const tKey = (t: number): number => Math.round(t * QSCALE);
+  const uKey = (u: number): number => Math.round((((u % 1) + 1) % 1) * QSCALE);
+  const regH = new Map<number, Set<number>>(); // tKey(t) → set of uKey(u) corners on that t-line
+  const regV = new Map<number, Set<number>>(); // uKey(u) → set of tKey(t) corners on that u-line
+  const regAdd = (m: Map<number, Set<number>>, k: number, sub: number): void => {
+    let s = m.get(k);
+    if (!s) { s = new Set(); m.set(k, s); }
+    s.add(sub);
+  };
+  for (const g of geom) {
+    // Bottom (t0) and top (t1) edges run along t-lines: register the cell's two
+    // corner u-positions on each.
+    regAdd(regH, tKey(g.t0), uKey(g.u0));
+    regAdd(regH, tKey(g.t0), uKey(g.u1));
+    regAdd(regH, tKey(g.t1), uKey(g.u0));
+    regAdd(regH, tKey(g.t1), uKey(g.u1));
+    // Left (u0) and right (u1) edges run along u-lines: register corner t-positions.
+    regAdd(regV, uKey(g.u0), tKey(g.t0));
+    regAdd(regV, uKey(g.u0), tKey(g.t1));
+    regAdd(regV, uKey(g.u1), tKey(g.t0));
+    regAdd(regV, uKey(g.u1), tKey(g.t1));
+  }
 
-    // Walk the boundary CCW: SW → (south mid) → SE → (east mid) → NE →
-    // (north mid) → NW → (west mid). Insert mids only where a finer neighbour
-    // splits the side (template guarantees the mid-edge vertex is referenced →
-    // no T-junction).
-    const poly: number[] = [];
-    poly.push(vertexIndex(u0, t0)); // SW
-    if (splitS) poly.push(vertexIndex(um, t0));
-    poly.push(vertexIndex(u1, t0)); // SE
-    if (splitE) poly.push(vertexIndex(u1, tm));
-    poly.push(vertexIndex(u1, t1)); // NE
-    if (splitN) poly.push(vertexIndex(um, t1));
-    poly.push(vertexIndex(u0, t1)); // NW
-    if (splitW) poly.push(vertexIndex(u0, tm));
+  // Read the subdivision u-positions registered on t-line `tk`, strictly inside
+  // (lo,hi), ascending. (Returns the union contributed by ALL cells touching that
+  // line — including the finer neighbours across the edge.)
+  const QEPS = 1; // one quantization unit
+  const readH = (tk: number, lo: number, hi: number): number[] => {
+    const s = regH.get(tk);
+    if (!s) return [];
+    const loQ = Math.round(lo * QSCALE);
+    const hiQ = Math.round(hi * QSCALE);
+    const out: number[] = [];
+    for (const uq of s) {
+      // Unwrap the periodic u-key into [lo,hi]: candidate at uq or uq+QSCALE.
+      for (const cand of uq > loQ ? [uq] : [uq, uq + QSCALE]) {
+        if (cand > loQ + QEPS && cand < hiQ - QEPS) out.push(cand / QSCALE);
+      }
+    }
+    out.sort((a, b) => a - b);
+    return out;
+  };
+  const readV = (uk: number, lo: number, hi: number): number[] => {
+    const s = regV.get(uk);
+    if (!s) return [];
+    const loQ = Math.round(lo * QSCALE);
+    const hiQ = Math.round(hi * QSCALE);
+    const out: number[] = [];
+    for (const tq of s) if (tq > loQ + QEPS && tq < hiQ - QEPS) out.push(tq / QSCALE);
+    out.sort((a, b) => a - b);
+    return out;
+  };
+
+  // ── PASS B: triangulate each leaf, reading the UNION of edge subdivision
+  //    points so both sides of every shared edge carry the identical sequence. ──
+  for (let li = 0; li < leaves.length; li++) {
+    const g = geom[li];
+    const { level, eUL, iu, it, u0, t0, u1, t1, um, tm, wrapsSeam } = g;
 
     const emit = (a: number, b: number, c: number): void => {
       if (a === b || b === c || a === c) return;
@@ -172,20 +277,77 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
       triWrapsSeam.push(wrapsSeam);
     };
 
-    if (splitCount === 0) {
+    // Fast-path split flags (single mid where a finer neighbour exists).
+    const splitS = sideHasFiner(level, iu, it, eUL, 'tMinus');
+    const splitE = sideHasFiner(level, iu, it, eUL, 'uPlus');
+    const splitN = sideHasFiner(level, iu, it, eUL, 'tPlus');
+    const splitW = sideHasFiner(level, iu, it, eUL, 'uMinus');
+
+    // Union subdivision points on each edge (from the registry). These include
+    // the single-mid case AND multi-point (N-mid) transitions a directional
+    // neighbour creates. We walk each edge in its CCW direction.
+    const subS = readH(tKey(t0), u0, u1); // south, u ascending (CCW left→right)
+    const subE = readV(uKey(u1), t0, t1); // east, t ascending (CCW bottom→top)
+    const subN = readH(tKey(t1), u0, u1); // north, u — CCW is right→left, reverse below
+    const subW = readV(uKey(u0), t0, t1); // west, t — CCW is top→bottom, reverse below
+
+    const nExtra = subS.length + subE.length + subN.length + subW.length;
+    const splitCount = (splitS ? 1 : 0) + (splitE ? 1 : 0) + (splitN ? 1 : 0) + (splitW ? 1 : 0);
+
+    // Fast path: no edge subdivision at all (plain quad), OR exactly the legacy
+    // single-mid template (each subdivided side carries its lone mid). At
+    // uExtra=0 every transition is single-mid, so this branch is taken for the
+    // entire default tree → byte-identical to the pre-registry triangulator.
+    const singleMid =
+      (!splitS || (subS.length === 1 && Math.abs(subS[0] - um) < 2 / QSCALE)) &&
+      (!splitE || (subE.length === 1 && Math.abs(subE[0] - tm) < 2 / QSCALE)) &&
+      (!splitN || (subN.length === 1 && Math.abs(subN[0] - um) < 2 / QSCALE)) &&
+      (!splitW || (subW.length === 1 && Math.abs(subW[0] - tm) < 2 / QSCALE)) &&
+      subS.length === (splitS ? 1 : 0) && subE.length === (splitE ? 1 : 0) &&
+      subN.length === (splitN ? 1 : 0) && subW.length === (splitW ? 1 : 0);
+
+    if (nExtra === 0 && splitCount === 0) {
       // Plain quad: two triangles along the SW→NE diagonal.
-      // poly = [SW, SE, NE, NW].
-      emit(poly[0], poly[1], poly[2]);
-      emit(poly[0], poly[2], poly[3]);
-    } else {
-      // Transition template: fan from the cell centre (an interior vertex,
-      // unique to this leaf → no T-junction, no colinear slivers even when a
-      // side carries a mid-edge vertex). Centre-fan over the CCW boundary.
-      const ctr = vertexIndex(um, tm);
-      for (let i = 0; i < poly.length; i++) {
-        emit(ctr, poly[i], poly[(i + 1) % poly.length]);
-      }
+      const sw = vertexIndex(u0, t0);
+      const se = vertexIndex(u1, t0);
+      const ne = vertexIndex(u1, t1);
+      const nw = vertexIndex(u0, t1);
+      emit(sw, se, ne);
+      emit(sw, ne, nw);
+      continue;
     }
+
+    if (singleMid) {
+      // Legacy single-mid transition template (byte-identical centre-fan).
+      const poly: number[] = [];
+      poly.push(vertexIndex(u0, t0)); // SW
+      if (splitS) poly.push(vertexIndex(um, t0));
+      poly.push(vertexIndex(u1, t0)); // SE
+      if (splitE) poly.push(vertexIndex(u1, tm));
+      poly.push(vertexIndex(u1, t1)); // NE
+      if (splitN) poly.push(vertexIndex(um, t1));
+      poly.push(vertexIndex(u0, t1)); // NW
+      if (splitW) poly.push(vertexIndex(u0, tm));
+      const ctr = vertexIndex(um, tm);
+      for (let i = 0; i < poly.length; i++) emit(ctr, poly[i], poly[(i + 1) % poly.length]);
+      continue;
+    }
+
+    // N-mid transition: build the CCW boundary from the UNION of edge points,
+    // then centre-fan. The centre is interior + unique to this leaf, and the
+    // edge-point sets are symmetric across each shared edge (read from the same
+    // registry), so the result is watertight + T-junction-free with positive area.
+    const poly: number[] = [];
+    poly.push(vertexIndex(u0, t0)); // SW
+    for (const u of subS) poly.push(vertexIndex(u, t0)); // south: u ascending
+    poly.push(vertexIndex(u1, t0)); // SE
+    for (const t of subE) poly.push(vertexIndex(u1, t)); // east: t ascending
+    poly.push(vertexIndex(u1, t1)); // NE
+    for (let k = subN.length - 1; k >= 0; k--) poly.push(vertexIndex(subN[k], t1)); // north: u descending
+    poly.push(vertexIndex(u0, t1)); // NW
+    for (let k = subW.length - 1; k >= 0; k--) poly.push(vertexIndex(u0, subW[k])); // west: t descending
+    const ctr = vertexIndex(um, tm);
+    for (let i = 0; i < poly.length; i++) emit(ctr, poly[i], poly[(i + 1) % poly.length]);
   }
 
   // --- close the seam: merge the u=1 column into the u=0 column -------------

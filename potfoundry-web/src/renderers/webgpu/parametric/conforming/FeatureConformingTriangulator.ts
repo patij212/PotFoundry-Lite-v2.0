@@ -48,6 +48,8 @@ export interface FeatureTriangulationOptions {
 
 /** Quantization scale for vertex dedup (exact for dyadic coords up to lvl 24). */
 const QSCALE = 1 << 24;
+/** Cap on per-leaf directional u-refinement (mirrors PeriodicBalancedQuadtree). */
+const MAX_U_EXTRA = 4;
 /** Geometric tolerance for "on a cell boundary" classification (in u,t). */
 const ON_EDGE_EPS = 1e-9;
 
@@ -226,7 +228,12 @@ export function triangulateQuadtreeWithFeatures(
   // threshold is `cornerSnap/2^B` (same FRACTION of the finer u-cell). B=0 ⇒ both
   // equal ⇒ byte-identical to the isotropic path.
   const uBias = qt.uBias?.() ?? 0;
-  const uSpanOf = (level: number): number => 1 << (level + uBias);
+  /** Effective u-level of a leaf: level + global bias + per-leaf uExtra (GAP 1 H1). */
+  const eULof = (l: { level: number; uExtra?: number }): number =>
+    l.level + uBias + (l.uExtra ?? 0);
+  const uMod = (eUL: number): number => 1 << eUL;
+  const iuOf = (l: QuadLeaf): number => l.iu ?? Math.round(l.u0 * uMod(eULof(l)));
+  const itOf = (l: QuadLeaf): number => l.it ?? Math.round(l.t0 * (1 << l.level));
   const cornerSnapU = uBias > 0 ? cornerSnap / (1 << uBias) : cornerSnap;
   const cornerSnapT = cornerSnap;
   /** Anisotropic Chebyshev: within snap of (u,t) in BOTH axes (per-axis threshold). */
@@ -235,15 +242,28 @@ export function triangulateQuadtreeWithFeatures(
 
   const leaves = qt.leaves();
 
-  // Integer-cell existence set (for finer-neighbour detection) — iu in 2^(level+B).
+  // Integer-cell existence set keyed on the EFFECTIVE u-level (`${level}:${it}:
+  // ${eUL}:${iu}`) so a uExtra=0 and a uExtra=1 cell never collide (GAP 1 H1).
+  // A secondary effective-u set (`${eUL}:${it}:${iu}`) supports the per-(eUL,it)
+  // containing-cell lookup the feature-point snap needs. At uExtra=0 both reduce
+  // to the original level-keyed sets → byte-identical.
   const cellSet = new Set<string>();
   let maxLevel = 0;
+  let maxEUL = 0;
   for (const l of leaves) {
-    const iu = Math.round(l.u0 * uSpanOf(l.level));
-    const it = Math.round(l.t0 * (1 << l.level));
-    cellSet.add(`${l.level}:${iu}:${it}`);
+    const eUL = eULof(l);
+    const iu = iuOf(l);
+    const it = itOf(l);
+    cellSet.add(`${l.level}:${it}:${eUL}:${iu}`);
     if (l.level > maxLevel) maxLevel = l.level;
+    if (eUL > maxEUL) maxEUL = eUL;
   }
+  /** Existence of a (level,iu,it,eUL) leaf (iu wraps mod 2^eUL). */
+  const hasCell = (level: number, iu: number, it: number, eUL: number): boolean => {
+    const span = uMod(eUL);
+    const wu = ((iu % span) + span) % span;
+    return cellSet.has(`${level}:${it}:${eUL}:${wu}`);
+  };
 
   // ── Snap feature points onto a nearby cell edge ────────────────────────────
   // A feature vertex sitting a hair off a cell edge (a curve local-extremum
@@ -262,12 +282,20 @@ export function triangulateQuadtreeWithFeatures(
     if (cornerSnap <= 0) return p;
     const wu = ((p.u % 1) + 1) % 1;
     const tc = p.t < 0 ? 0 : p.t > 1 ? 1 : p.t;
-    for (let lv = maxLevel; lv >= 0; lv--) {
-      const uSpan = uSpanOf(lv);
+    // Find the leaf containing (wu,tc): scan finest-first over (level,uExtra).
+    for (let eUL = maxEUL; eUL >= 0; eUL--) {
+      const uSpan = uMod(eUL);
+      const iuCand = Math.min(uSpan - 1, Math.floor(wu * uSpan));
+      let lv = -1;
+      let it = -1;
+      for (let cand = eUL - uBias; cand >= 0; cand--) {
+        const tSpan = 1 << cand;
+        const itCand = Math.min(tSpan - 1, Math.floor(tc * tSpan));
+        if (hasCell(cand, iuCand, itCand, eUL)) { lv = cand; it = itCand; break; }
+      }
+      if (lv < 0) continue;
+      const iu = iuCand;
       const tSpan = 1 << lv;
-      const iu = Math.min(uSpan - 1, Math.floor(wu * uSpan));
-      const it = Math.min(tSpan - 1, Math.floor(tc * tSpan));
-      if (!cellSet.has(`${lv}:${iu}:${it}`)) continue;
       const sizeU = 1 / uSpan;
       const sizeT = 1 / tSpan;
       const u0 = iu * sizeU;
@@ -295,35 +323,47 @@ export function triangulateQuadtreeWithFeatures(
     points: line.points.map(snapToCellEdge),
   }));
   const segs = collectSegments(snappedFeatures);
-  const has = (level: number, iu: number, it: number): boolean => {
-    const span = uSpanOf(level); // u-index wraps mod 2^(level+B)
-    const wu = ((iu % span) + span) % span;
-    return cellSet.has(`${level}:${wu}:${it}`);
+  // Does a finer u-neighbour exist in effective-u column `col` at level `feUL`
+  // across OUR (level,it) t-strip — a uExtra-split at our level OR a level-split
+  // (mirrors the plain triangulator's H1 probe). At uExtra=0 only lvl=level+1.
+  const uColHasFiner = (feUL: number, col: number, level: number, it: number): boolean => {
+    for (let lvl = level; lvl <= maxLevel; lvl++) {
+      const ux = feUL - uBias - lvl;
+      if (ux < 0 || ux > MAX_U_EXTRA) continue;
+      const tMul = 1 << (lvl - level);
+      const tBase = it * tMul;
+      for (let k = 0; k < tMul; k++) {
+        if (hasCell(lvl, col, tBase + k, feUL)) return true;
+      }
+    }
+    return false;
   };
   const sideHasFiner = (
     level: number,
     iu: number,
     it: number,
+    eUL: number,
     side: 'uMinus' | 'uPlus' | 'tMinus' | 'tPlus',
   ): boolean => {
-    if (level >= maxLevel) return false;
-    const fl = level + 1;
     if (side === 'uPlus') {
-      const col = (iu + 1) * 2;
-      return has(fl, col, it * 2) || has(fl, col, it * 2 + 1);
+      if (eUL >= maxEUL) return false;
+      return uColHasFiner(eUL + 1, (iu + 1) * 2, level, it);
     }
     if (side === 'uMinus') {
-      const col = iu * 2 - 1;
-      return has(fl, col, it * 2) || has(fl, col, it * 2 + 1);
+      if (eUL >= maxEUL) return false;
+      return uColHasFiner(eUL + 1, iu * 2 - 1, level, it);
     }
+    if (level >= maxLevel) return false;
+    const fl = level + 1;
+    const fe = fl + uBias; // finer t-cells are uExtra=0 in a square-balanced region
     if (side === 'tPlus') {
       if (it + 1 >= 1 << level) return false;
       const row = (it + 1) * 2;
-      return has(fl, iu * 2, row) || has(fl, iu * 2 + 1, row);
+      return hasCell(fl, iu * 2, row, fe) || hasCell(fl, iu * 2 + 1, row, fe);
     }
     if (it === 0) return false;
     const row = it * 2 - 1;
-    return has(fl, iu * 2, row) || has(fl, iu * 2 + 1, row);
+    return hasCell(fl, iu * 2, row, fe) || hasCell(fl, iu * 2 + 1, row, fe);
   };
 
   // Global vertex dedup WITHOUT wrapping u (seam closed afterwards) — as plain.
@@ -409,29 +449,30 @@ export function triangulateQuadtreeWithFeatures(
 
   // ── Per-leaf geometry + 2:1 transition splits (shared by both passes) ──
   interface LeafGeom {
-    leaf: QuadLeaf; uSpan: number; tSpan: number; iu: number; it: number;
+    leaf: QuadLeaf; eUL: number; uSpan: number; tSpan: number; iu: number; it: number;
     sizeU: number; sizeT: number;
     u0: number; t0: number; u1: number; t1: number; um: number; tm: number;
     wrapsSeam: number; splitS: boolean; splitE: boolean; splitN: boolean; splitW: boolean;
   }
   const geomOf = (li: number): LeafGeom => {
     const leaf = leaves[li];
-    const uSpan = uSpanOf(leaf.level);
+    const eUL = eULof(leaf);
+    const uSpan = uMod(eUL); // u-modulus 2^eUL
     const tSpan = 1 << leaf.level;
-    const iu = Math.round(leaf.u0 * uSpan);
-    const it = Math.round(leaf.t0 * tSpan);
+    const iu = iuOf(leaf);
+    const it = itOf(leaf);
     const sizeU = 1 / uSpan;
     const sizeT = 1 / tSpan;
     const u0 = leaf.u0;
     const t0 = leaf.t0;
     return {
-      leaf, uSpan, tSpan, iu, it, sizeU, sizeT, u0, t0,
+      leaf, eUL, uSpan, tSpan, iu, it, sizeU, sizeT, u0, t0,
       u1: u0 + sizeU, t1: t0 + sizeT, um: u0 + sizeU / 2, tm: t0 + sizeT / 2,
       wrapsSeam: Math.round((u0 + sizeU) * QSCALE) === QSCALE ? 1 : 0,
-      splitS: sideHasFiner(leaf.level, iu, it, 'tMinus'),
-      splitE: sideHasFiner(leaf.level, iu, it, 'uPlus'),
-      splitN: sideHasFiner(leaf.level, iu, it, 'tPlus'),
-      splitW: sideHasFiner(leaf.level, iu, it, 'uMinus'),
+      splitS: sideHasFiner(leaf.level, iu, it, eUL, 'tMinus'),
+      splitE: sideHasFiner(leaf.level, iu, it, eUL, 'uPlus'),
+      splitN: sideHasFiner(leaf.level, iu, it, eUL, 'tPlus'),
+      splitW: sideHasFiner(leaf.level, iu, it, eUL, 'uMinus'),
     };
   };
 
@@ -453,6 +494,33 @@ export function triangulateQuadtreeWithFeatures(
     if (!inner) { inner = new Map(); m.set(k, inner); }
     if (!inner.has(sub)) inner.set(sub, p);
   };
+
+  // ── PASS A0 (directional only): register every leaf's 4 CORNERS onto the grid-
+  //    line registry so a coarse cell whose edge is subdivided by a SAME-LEVEL
+  //    u-finer (directional uExtra) neighbour — which `sideHasFiner`'s level+1
+  //    t-probe cannot see — reads the finer neighbour's on-edge corner in PASS B.
+  //    Both sides of the shared edge then carry the identical vertex set →
+  //    T-junction-free under directional (eUL) transitions.
+  //
+  //    GUARDED on the presence of any uExtra>0 cell. In production, feature walls
+  //    have directional refine DISABLED (inserted styles stay deferred), so no
+  //    leaf carries uExtra>0 and this pass is SKIPPED → the feature path is
+  //    byte-identical to the pre-GAP1 triangulator (the delicate honeycomb /
+  //    braid transition templates are untouched). ──
+  const hasDirectional = leaves.some((l) => (l.uExtra ?? 0) > 0);
+  if (hasDirectional) {
+    for (let li = 0; li < leaves.length; li++) {
+      const g = geomOf(li);
+      regAdd(regH, tKey(g.t0), uKey(g.u0), { u: g.u0, t: g.t0 });
+      regAdd(regH, tKey(g.t0), uKey(g.u1), { u: g.u1, t: g.t0 });
+      regAdd(regH, tKey(g.t1), uKey(g.u0), { u: g.u0, t: g.t1 });
+      regAdd(regH, tKey(g.t1), uKey(g.u1), { u: g.u1, t: g.t1 });
+      regAdd(regV, uKey(g.u0), tKey(g.t0), { u: g.u0, t: g.t0 });
+      regAdd(regV, uKey(g.u0), tKey(g.t1), { u: g.u0, t: g.t1 });
+      regAdd(regV, uKey(g.u1), tKey(g.t0), { u: g.u1, t: g.t0 });
+      regAdd(regV, uKey(g.u1), tKey(g.t1), { u: g.u1, t: g.t1 });
+    }
+  }
 
   // ── PASS A: classify each feature cell's boundary points + interior +
   //    constraints, and register the boundary points by grid line. Mids
@@ -568,7 +636,7 @@ export function triangulateQuadtreeWithFeatures(
   for (let li = 0; li < leaves.length; li++) {
     const g = geomOf(li);
     const {
-      leaf, uSpan, tSpan, iu, it, sizeU, sizeT, u0, t0, u1, t1, um, tm, wrapsSeam,
+      leaf, eUL, tSpan, iu, it, sizeU, sizeT, u0, t0, u1, t1, um, tm, wrapsSeam,
       splitS, splitE, splitN, splitW,
     } = g;
     const data = leafData[li];
@@ -637,7 +705,7 @@ export function triangulateQuadtreeWithFeatures(
     // diverge). The registry already makes both sides see the same set, so the
     // dedup result is identical on both sides too.
     const cleanEdge = (split: boolean, niu: number, nit: number): boolean =>
-      !split && nit >= 0 && nit < tSpan && cellSet.has(`${leaf.level}:${((niu % uSpan) + uSpan) % uSpan}:${nit}`);
+      !split && nit >= 0 && nit < tSpan && hasCell(leaf.level, niu, nit, eUL);
     const cleanS = cleanEdge(splitS, iu, it - 1);
     const cleanN = cleanEdge(splitN, iu, it + 1);
     const cleanW = cleanEdge(splitW, iu - 1, it);
