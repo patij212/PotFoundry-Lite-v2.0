@@ -241,31 +241,33 @@ function searchBudgetScale(
 }
 
 /**
- * Clip one feature line to t ∈ [tLo, tHi], preserving polyline structure: each
- * maximal run of in-range points becomes an output line, with interpolated
- * boundary points where the line crosses tLo / tHi. Keeps features off the
- * shared boundary rings.
+ * Clip one feature line to [lo, hi] on the chosen axis ('u' or 't'), preserving
+ * polyline structure: each maximal in-range run becomes an output line, with an
+ * interpolated boundary point where the line crosses lo / hi. Keeps features off
+ * the shared boundary rings (t) and off the periodic seam column (u).
  */
-function clipLineToT(line: FeatureLine, tLo: number, tHi: number): FeatureLine[] {
+function clipLineToInterval(
+  line: FeatureLine, axis: 'u' | 't', lo: number, hi: number,
+): FeatureLine[] {
   const pts = line.points;
-  const inRange = (t: number): boolean => t >= tLo && t <= tHi;
-  const crossAt = (a: FeatureLinePoint, b: FeatureLinePoint, tEdge: number): FeatureLinePoint => {
-    const denom = b.t - a.t;
-    const f = Math.abs(denom) < 1e-300 ? 0 : (tEdge - a.t) / denom;
-    return { u: a.u + (b.u - a.u) * f, t: tEdge };
+  const val = (p: FeatureLinePoint): number => (axis === 'u' ? p.u : p.t);
+  const inRange = (x: number): boolean => x >= lo && x <= hi;
+  const crossAt = (a: FeatureLinePoint, b: FeatureLinePoint, edge: number): FeatureLinePoint => {
+    const denom = val(b) - val(a);
+    const f = Math.abs(denom) < 1e-300 ? 0 : (edge - val(a)) / denom;
+    return { u: a.u + (b.u - a.u) * f, t: a.t + (b.t - a.t) * f };
   };
   const out: FeatureLine[] = [];
   let cur: FeatureLinePoint[] = [];
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
-    if (inRange(p.t)) {
-      if (cur.length === 0 && i > 0 && !inRange(pts[i - 1].t)) {
-        cur.push(crossAt(pts[i - 1], p, pts[i - 1].t < tLo ? tLo : tHi));
+    if (inRange(val(p))) {
+      if (cur.length === 0 && i > 0 && !inRange(val(pts[i - 1]))) {
+        cur.push(crossAt(pts[i - 1], p, val(pts[i - 1]) < lo ? lo : hi));
       }
       cur.push(p);
     } else if (cur.length > 0) {
-      const prev = pts[i - 1];
-      cur.push(crossAt(prev, p, p.t < tLo ? tLo : tHi));
+      cur.push(crossAt(pts[i - 1], p, val(p) < lo ? lo : hi));
       if (cur.length >= 2) out.push({ ...line, points: cur });
       cur = [];
     }
@@ -274,14 +276,22 @@ function clipLineToT(line: FeatureLine, tLo: number, tHi: number): FeatureLine[]
   return out;
 }
 
-/** Clip a feature set to the safe t-band, dropping any line that vanishes. */
-function clipFeaturesToT(features: FeatureLine[], tMargin: number): FeatureLine[] {
-  const tLo = tMargin;
-  const tHi = 1 - tMargin;
-  const out: FeatureLine[] = [];
-  for (const line of features) {
-    for (const clipped of clipLineToT(line, tLo, tHi)) out.push(clipped);
+/**
+ * Clip a feature set to the safe box [uMargin,1−uMargin]×[tMargin,1−tMargin].
+ * The t-margin keeps features off the shared t=0/t=1 rings; the u-margin keeps
+ * them off the periodic u-seam column (a feature vertex on u=0 would be a
+ * T-junction against the wrapping u=1 cells, which the non-periodic crease
+ * extraction does not mirror). Lines that vanish are dropped.
+ */
+function clipFeaturesToBox(features: FeatureLine[], uMargin: number, tMargin: number): FeatureLine[] {
+  let work = features;
+  if (uMargin > 0) {
+    const next: FeatureLine[] = [];
+    for (const line of work) for (const c of clipLineToInterval(line, 'u', uMargin, 1 - uMargin)) next.push(c);
+    work = next;
   }
+  const out: FeatureLine[] = [];
+  for (const line of work) for (const c of clipLineToInterval(line, 't', tMargin, 1 - tMargin)) out.push(c);
   return out;
 }
 
@@ -419,16 +429,21 @@ export function buildConformingWall(
     }
   }
 
-  // Clip feature curves to the safe t-band ONCE (off the shared rings), and
-  // build the feature-driven refinement spec so cells the curves cross are
-  // refined enough for sliver-free local-CDT insertion.
+  // Feature cell-refinement level (sliver-free insertion). Determined first so
+  // the u-seam clip margin can be ≥ one feature cell wide.
+  const defaultLevel = Math.min(opts.maxLevel, pinBoundaryLevel + 1);
+  const featureLevel = Math.min(opts.maxLevel, opts.featureLevel ?? defaultLevel);
+
+  // Clip feature curves to the safe box ONCE: off the shared t=0/t=1 rings AND
+  // off the periodic u-seam (a feature vertex on u=0 would be a T-junction
+  // against the wrapping u=1 cells). Then build the refinement spec.
   const tMargin = opts.featureTMargin ?? (opts.nRing && opts.nRing > 0 ? 1 / opts.nRing : 1 / 64);
-  const clippedFeatures = clipFeaturesToT(opts.featureLines ?? [], tMargin);
+  const uMargin = 1.5 / (1 << featureLevel); // ≥ one feature cell off the seam
+  const clippedFeatures = clipFeaturesToBox(opts.featureLines ?? [], uMargin, tMargin);
   let featureRefine: FeatureRefineSpec | undefined;
   if (clippedFeatures.length > 0) {
-    const defaultLevel = Math.min(opts.maxLevel, pinBoundaryLevel + 1);
     featureRefine = {
-      level: Math.min(opts.maxLevel, opts.featureLevel ?? defaultLevel),
+      level: featureLevel,
       intersects: buildFeatureIntersector(clippedFeatures),
     };
   }

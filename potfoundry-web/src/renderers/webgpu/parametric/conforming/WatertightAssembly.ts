@@ -84,6 +84,8 @@ export interface AssemblyWallOptions {
   outerFeatureLines?: FeatureLine[];
   /** t-margin for feature clipping (see ConformingWallOptions.featureTMargin). */
   featureTMargin?: number;
+  /** Feature-cell refinement level (see ConformingWallOptions.featureLevel). */
+  featureLevel?: number;
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -221,6 +223,7 @@ export function assembleWatertight(
     surfaceId: 0,
     featureLines: opts.outerFeatureLines,
     featureTMargin: opts.featureTMargin,
+    featureLevel: opts.featureLevel,
   });
   const inner = buildConformingWall(innerSampler, { ...wallOpts, surfaceId: 1 });
 

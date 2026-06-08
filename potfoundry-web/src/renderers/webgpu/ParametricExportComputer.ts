@@ -2163,6 +2163,17 @@ export class ParametricExportComputer {
                     console.warn(`[CONFORMING-FULL] crease grid selection skipped: ${String(err)}`);
                 }
 
+                // General-curve features (closed loops / braids / sampled level
+                // sets — e.g. HexagonalHive honeycomb) cannot be pinned by the
+                // axis-aligned/helical warps; they are INSERTED into the outer
+                // wall as real mesh edges via local constrained Delaunay
+                // (FeatureConformingTriangulator), with feature-driven refinement
+                // for sliver-free, T-junction-free, watertight-by-construction
+                // insertion. Empty for styles with no general curves.
+                const generalCurves = (featureGraph?.lines ?? []).filter(
+                    (l) => l.kind === 'general-curve',
+                );
+
                 // Assemble the whole watertight mesh in (u,t,surfaceId) space.
                 // With curvature de-noising (grid-scaled finite differences) the
                 // sag-driven mesh is already far coarser on smooth styles, so a
@@ -2202,6 +2213,11 @@ export class ParametricExportComputer {
                             Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level) > 0
                                 ? Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level)
                                 : undefined,
+                        // Insert general feature curves (loops/braids) as real
+                        // outer-wall edges; refine the cells they cross to
+                        // featureLevel so the insertion is sliver-free.
+                        outerFeatureLines: generalCurves.length > 0 ? generalCurves : undefined,
+                        featureLevel: 7,
                     },
                 );
 

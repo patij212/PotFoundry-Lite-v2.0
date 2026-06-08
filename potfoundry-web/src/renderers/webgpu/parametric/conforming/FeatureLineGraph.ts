@@ -98,7 +98,10 @@
  * @module conforming/FeatureLineGraph
  */
 
+import { marchingSquaresZero, segmentsToPolylines } from './SampledFeatureExtractor';
+
 const TAU = 2 * Math.PI;
+const SQRT3 = Math.sqrt(3);
 
 /** A point on a feature line, in outer-wall parameter space. u periodic, t∈[0,1]. */
 export interface FeatureLinePoint {
@@ -106,7 +109,18 @@ export interface FeatureLinePoint {
   t: number;
 }
 
-export type FeatureLineKind = 'vertical-crease' | 'horizontal-band' | 'helical-crease';
+export type FeatureLineKind =
+  | 'vertical-crease'
+  | 'horizontal-band'
+  | 'helical-crease'
+  /**
+   * An arbitrary (u,t) polyline — a closed loop (honeycomb / Voronoi cell), a
+   * braided strand, or a sampled level-set curve — that has no constant-u/-t/
+   * -single-slope decomposition. Tracked by sampling its OWN stored points
+   * (it may be non-monotone in t, so the per-kind t-parametrization used for the
+   * other kinds does not apply).
+   */
+  | 'general-curve';
 
 /** One analytic feature line: a polyline tracing a sharp crease or relief band. */
 export interface FeatureLine {
@@ -443,6 +457,48 @@ function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
+/**
+ * HexagonalHive cell-boundary scalar — the honeycomb crease is the ZERO SET of
+ * `len_a − len_b` (where the nearest of the two iq hex-lattice candidate centres
+ * switches), replicating `style_hexagonal_hive` (styles.wgsl). The relief is a
+ * bump per cell that drops to the base at the boundary, so this zero set is the
+ * sharp valley crease. (scale = style_param 0; H=20 fallback as in the shader.)
+ */
+function hexCreaseD(u: number, t: number, scale: number): number {
+  const uvx = u * TAU * scale; // theta*scale, theta=u*TAU
+  const uvy = t * scale * 0.5 * SQRT3; // v*r, v=t*scale*(H/40)=t*scale*0.5, r=√3
+  const sx = 1;
+  const sy = SQRT3;
+  const ax = Math.floor(uvx / sx);
+  const ay = Math.floor(uvy / sy);
+  const bx = Math.floor((uvx - 0.5) / sx);
+  const by = Math.floor((uvy - SQRT3 / 2) / sy);
+  const gax = uvx - (ax * sx + 0.5);
+  const gay = uvy - (ay * sy + SQRT3 / 2);
+  const gbx = uvx - (bx * sx + 1);
+  const gby = uvy - (by * sy + SQRT3);
+  return (gax * gax + gay * gay) - (gbx * gbx + gby * gby);
+}
+
+/** Marching-squares resolution for sampled crease extraction. */
+const HEX_RES_U = 512;
+const HEX_RES_T = 256;
+
+/**
+ * HexagonalHive honeycomb creases — the zero set of {@link hexCreaseD} traced
+ * into general-curve polylines. Non-periodic in u (the pattern does NOT tile at
+ * the seam: `u·TAU·scale` is non-integer), so seam-crossing edges simply end at
+ * u=0/1 rather than fabricating a spurious seam contour.
+ */
+function extractHexagonalHive(p: Float32Array): FeatureLine[] {
+  const scale = Math.max(0.1, p[0]);
+  const segs = marchingSquaresZero((u, t) => hexCreaseD(u, t, scale), HEX_RES_U, HEX_RES_T, false);
+  // Simplify straight hex edges to their corners (tol ≪ the 2.3e-3 feature
+  // tolerance) so the inserted vertex count tracks the edge count, not the
+  // per-cell contour sample count.
+  return segmentsToPolylines(segs, 'hex-edge', 3, 5e-4);
+}
+
 const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // Vertical (u=const) creases.
   LowPolyFacet: extractLowPolyFacet,
@@ -464,10 +520,12 @@ const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // Genuinely cellular / braided at defaults — no single-family axis-aligned-or-
   // helical decomposition. Honest-empty (the count is DELIBERATELY 0, not an
   // accidental omission); their features need general curve insertion.
-  //  - HexagonalHive: closed honeycomb cell walls (0°/±60° crossing families);
   //  - CelticKnot: sinusoidal braided ribbon edges (u oscillates with t), with
   //    SEAMLESS column boundaries (per-column phase tiles to zero radius jump).
-  HexagonalHive: () => [],
+  // HexagonalHive: honeycomb cell walls captured as general-curve polylines via
+  // marching squares on the analytic hex-boundary scalar (len_a−len_b) → fed to
+  // the local-CDT insertion engine.
+  HexagonalHive: extractHexagonalHive,
   CelticKnot: () => [],
   // Smooth styles (no sharp C0/C1 creases): honestly empty — the radius is a sum
   // of sin/cos terms in θ and t, so curvature-adaptive meshing alone resolves
@@ -570,6 +628,18 @@ export function measureFeatureResolution(
   const perLine: FeatureLineResolution[] = [];
   let present = 0;
   for (const line of graph.lines) {
+    // General curves (loops / braids / sampled level sets) may be non-monotone
+    // in t, so they are tracked by sampling their OWN stored points (densely
+    // sampled by the extractor), not by a t-parametrization.
+    if (line.kind === 'general-curve') {
+      let gHits = 0;
+      for (const q of line.points) if (tracked(q.u, q.t)) gHits++;
+      const gCov = line.points.length > 0 ? gHits / line.points.length : 1;
+      const gResolved = gCov >= minCoverage;
+      if (gResolved) present++;
+      perLine.push({ label: line.label, kind: line.kind, coverage: gCov, resolved: gResolved });
+      continue;
+    }
     const tMin = Math.min(...line.points.map((q) => q.t));
     const tMax = Math.max(...line.points.map((q) => q.t));
     let hits = 0;

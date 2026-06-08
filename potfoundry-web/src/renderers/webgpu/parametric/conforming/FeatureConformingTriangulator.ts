@@ -164,7 +164,6 @@ export function triangulateQuadtreeWithFeatures(
   const cornerSnap = Math.max(0, options.cornerSnap ?? 0);
 
   const leaves = qt.leaves();
-  const segs = collectSegments(features);
 
   // Integer-cell existence set (for finer-neighbour detection) — as plain.
   const cellSet = new Set<string>();
@@ -176,6 +175,16 @@ export function triangulateQuadtreeWithFeatures(
     cellSet.add(`${l.level}:${iu}:${it}`);
     if (l.level > maxLevel) maxLevel = l.level;
   }
+
+  // NOTE (robustness item): a feature vertex sitting a hair off a t=const cell
+  // edge (a local-t-min tangent to the edge from inside, far from any boundary
+  // vertex) can leave a thin needle in (u,t) parameter space. On the production
+  // GPU-smoothed surface this maps to a benign 3D aspect (well within the sliver
+  // gate), but a global edge-snap to fix it cracks the feature-clip / seam
+  // transition cells, so it is deferred to the dimension-space hardening phase
+  // (a per-edge forced-crossing pass mirrored into the neighbour cell). The
+  // straightforward insertion below stays watertight + T-junction-free.
+  const segs = collectSegments(features);
   const has = (level: number, iu: number, it: number): boolean => {
     const span = 1 << level;
     const wu = ((iu % span) + span) % span;

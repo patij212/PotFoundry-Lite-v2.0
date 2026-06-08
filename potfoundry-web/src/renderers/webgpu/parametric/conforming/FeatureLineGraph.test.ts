@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import {
   extractAnalyticFeatures,
   measureFeatureResolution,
+  type FeatureLine,
   type FeatureLineGraph,
   type FeatureUTVertex,
 } from './FeatureLineGraph';
@@ -242,14 +243,27 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     expect(ts).toEqual([0.15, 0.52, 0.9].map((x) => expect.closeTo(x, 9)));
   });
 
-  // ── HexagonalHive (honeycomb cell walls) → honest empty ─────────────────────
-  // The hex-grid walls form CLOSED honeycomb cells with edges at 0°/±60° — three
-  // crossing diagonal families / closed loops, no constant-u, constant-t, or
-  // single-slope-helical decomposition. Needs general curve insertion.
-  it('HexagonalHive: honeycomb cells → honest empty (needs general curve insertion)', () => {
+  // ── HexagonalHive (honeycomb cell walls) → general-curve polylines ──────────
+  // The hex-grid walls form CLOSED honeycomb cells with edges at 0°/±60°. They
+  // are now captured as general-curve polylines (marching squares on the
+  // analytic hex-boundary scalar len_a−len_b) feeding the local-CDT insertion.
+  it('HexagonalHive: honeycomb cells → general-curve polylines on the hex boundary', () => {
     const g = extractAnalyticFeatures('HexagonalHive', packed([4.0, 0.05, 2.0, 0.0, 0.0, 0.0]), DIMS);
-    expect(g.groundTruthCount).toBe(0);
-    expect(g.lines.length).toBe(0);
+    const totalPts = g.lines.reduce((s, l) => s + l.points.length, 0);
+    // The connected honeycomb traces into a handful of long general-curve
+    // polylines covering many cell edges (count = traced components).
+    expect(g.groundTruthCount).toBeGreaterThanOrEqual(1);
+    expect(g.lines.length).toBe(g.groundTruthCount);
+    expect(totalPts).toBeGreaterThan(100); // densely traces the boundary network
+    for (const l of g.lines) {
+      expect(l.kind).toBe('general-curve');
+      for (const p of l.points) {
+        expect(p.u).toBeGreaterThanOrEqual(-1e-6);
+        expect(p.u).toBeLessThanOrEqual(1 + 1e-6);
+        expect(p.t).toBeGreaterThanOrEqual(-1e-6);
+        expect(p.t).toBeLessThanOrEqual(1 + 1e-6);
+      }
+    }
   });
 
   // ── CelticKnot (braided sinusoid strands) → honest empty ────────────────────
@@ -437,6 +451,37 @@ describe('measureFeatureResolution — resolved-to-tolerance', () => {
     const res = measureFeatureResolution(g, []);
     expect(res.present).toBe(0);
     expect(res.dropped).toBe(0);
+  });
+});
+
+describe('measureFeatureResolution — general-curve (loops / braids)', () => {
+  const loop = (cu: number, cv: number, r: number, label: string): FeatureLine => {
+    const points = [];
+    for (let i = 0; i <= 32; i++) {
+      const a = (2 * Math.PI * i) / 32;
+      points.push({ u: cu + r * Math.cos(a), t: cv + r * Math.sin(a) });
+    }
+    return { kind: 'general-curve' as const, points, label };
+  };
+
+  it('a loop with mesh vertices on its points is resolved (dropped 0)', () => {
+    const l = loop(0.5, 0.5, 0.2, 'cell');
+    const g: FeatureLineGraph = { styleId: 'X', lines: [l], groundTruthCount: 1 };
+    const verts: FeatureUTVertex[] = l.points.map((p) => ({ u: p.u, t: p.t }));
+    const res = measureFeatureResolution(g, verts);
+    expect(res.expected).toBe(1);
+    expect(res.present).toBe(1);
+    expect(res.dropped).toBe(0);
+  });
+
+  it('a loop with NO nearby mesh vertices is dropped', () => {
+    const l = loop(0.5, 0.5, 0.2, 'cell');
+    const g: FeatureLineGraph = { styleId: 'X', lines: [l], groundTruthCount: 1 };
+    // Vertices far from the loop.
+    const verts: FeatureUTVertex[] = [{ u: 0.0, t: 0.0 }, { u: 0.9, t: 0.9 }];
+    const res = measureFeatureResolution(g, verts);
+    expect(res.present).toBe(0);
+    expect(res.dropped).toBe(1);
   });
 });
 

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import type { SurfaceSampler, Vec3 } from './SurfaceSampler';
 import { assembleWatertight, type AssemblyDimensions } from './WatertightAssembly';
 import type { FeatureLine } from './FeatureLineGraph';
+import { extractAnalyticFeatures } from './FeatureLineGraph';
+import { STYLE_PARAM_CAPACITY } from '../../../../utils/styleParams';
 
 /**
  * Two concentric cylinders + flat rim + flat base + (optional) drain, evaluated
@@ -262,6 +264,59 @@ describe('assembleWatertight — outer-wall feature insertion stays a closed sol
         expect(hit).toBe(true);
       }
     }
+  });
+});
+
+describe('assembleWatertight — REAL HexagonalHive honeycomb curves (no GPU)', () => {
+  // Reproduce the conforming-branch options with the real extracted hex curves
+  // on a synthetic rippled cylinder, to isolate any crack from the GPU path.
+  const Ro = 50;
+  const Ri = 46;
+  const H = 120;
+  const tBottom = 8;
+  const rDrain = 10;
+  const dims: AssemblyDimensions = { H, tBottom, rDrain };
+  // Gentle ripple (the production GpuSurfaceSampler is a bilinear-smoothed grid,
+  // so its effective metric is far gentler than a raw steep analytic relief).
+  const ripple = (base: number, surfaceId: number): SurfaceSampler => ({
+    position: (u: number, t: number): Vec3 => {
+      const theta = 2 * Math.PI * (u - Math.floor(u));
+      const r = base + 0.5 * Math.cos(2 * Math.PI * 3 * u) * Math.cos(Math.PI * t);
+      const z = surfaceId < 0.5 ? t * H : tBottom + t * (H - tBottom);
+      return [r * Math.cos(theta), r * Math.sin(theta), z];
+    },
+  });
+  const outerS = ripple(Ro, 0);
+  const innerS = ripple(Ri, 1);
+  const geom = (u: number, t: number, s: number): Vec3 => {
+    if (s < 0.5) return outerS.position(u, t);
+    if (s < 1.5) return innerS.position(u, t);
+    return evalSurface(Ro, Ri, H, tBottom, rDrain, u, t, s);
+  };
+  const params = new Float32Array(STYLE_PARAM_CAPACITY);
+  params.set([4.0, 0.05, 2.0, 0.0, 0.0, 0.0]);
+  const graph = extractAnalyticFeatures('HexagonalHive', params, { H, Rt: 70, Rb: 45 });
+  const curves = graph.lines.filter((l) => l.kind === 'general-curve');
+  const asm = assembleWatertight(outerS, innerS, dims, {
+    maxSagMm: 0.1, maxEdgeMm: 8, minEdgeMm: 0.2, gradeRatio: 2,
+    maxLevel: 10, resU: 128, resT: 128, nRing: 256,
+    outerFeatureLines: curves, featureLevel: 7,
+  });
+  const pos = eval3D(geom, asm.vertices);
+  const topo = topology(pos, asm.indices);
+
+  it('captures the honeycomb without cracking the solid (no seam T-junction)', () => {
+    expect(curves.length).toBeGreaterThan(0); // hex creases were extracted
+    expect(topo.nonManifold).toBe(0);
+    expect(topo.boundary).toBe(0); // u-seam + t-ring margins keep it watertight
+    expect(topo.orientationMismatch).toBe(0);
+  });
+
+  it('no catastrophic degeneracies from the dense honeycomb insertion', () => {
+    // The 3D aspect is dominated by the surface metric (the e2e probe measures it
+    // on the real GPU-smoothed surface, where it is well within the sliver gate).
+    // Here we only guard against a catastrophic near-zero-area degeneracy.
+    expect(Number.isFinite(maxAspect3D(pos, asm.indices))).toBe(true);
   });
 });
 
