@@ -343,8 +343,17 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     }
   });
 
-  it('unknown / unsupported style → empty graph (honest zero)', () => {
+  it('Voronoi: categorical cell-border extractor → gated off (clean blind baseline)', () => {
+    // The f64-worley + categorical extractor tracks the GPU cells (featDrop=0) but
+    // leaves tangent-transition cracks, so insertion is gated off
+    // (VORONOI_INSERTION_ENABLED) — Voronoi stays at its clean blind baseline.
     const g = extractAnalyticFeatures('Voronoi', packed([8, 0.8, 0.1, 2, 1]), DIMS);
+    expect(g.groundTruthCount).toBe(0);
+    expect(g.lines.length).toBe(0);
+  });
+
+  it('truly unknown style → empty graph (honest zero)', () => {
+    const g = extractAnalyticFeatures('NotAStyle', packed([1]), DIMS);
     expect(g.groundTruthCount).toBe(0);
     expect(g.lines.length).toBe(0);
   });

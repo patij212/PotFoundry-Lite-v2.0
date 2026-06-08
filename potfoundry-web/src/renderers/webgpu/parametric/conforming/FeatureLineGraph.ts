@@ -98,7 +98,7 @@
  * @module conforming/FeatureLineGraph
  */
 
-import { marchingSquaresZero, segmentsToPolylines } from './SampledFeatureExtractor';
+import { marchingSquaresZero, marchingSquaresLabels, segmentsToPolylines } from './SampledFeatureExtractor';
 
 const TAU = 2 * Math.PI;
 const SQRT3 = Math.sqrt(3);
@@ -577,6 +577,90 @@ function extractGyroidManifold(p: Float32Array): FeatureLine[] {
   return segmentsToPolylines(segs, 'gyroid-level', 3, 3e-4);
 }
 
+const fract = (x: number): number => x - Math.floor(x);
+
+/** WGSL hash22 replicated in f64 (periodic_cellular jitter, styles.wgsl). */
+function hash22(px: number, py: number): [number, number] {
+  let p3x = fract(px * 0.1031);
+  let p3y = fract(py * 0.103);
+  let p3z = fract(px * 0.0973);
+  const d = p3x * (p3y + 33.33) + p3y * (p3z + 33.33) + p3z * (p3x + 33.33);
+  p3x += d;
+  p3y += d;
+  p3z += d;
+  return [fract((p3x + p3y) * p3z), fract((p3x + p3z) * p3y)];
+}
+
+/**
+ * Voronoi nearest-cell ID at (u_wall, t) — replicates `periodic_cellular` /
+ * `style_voronoi` (styles.wgsl). The crease is the boundary between cells, so the
+ * border is where this categorical ID changes. Packed shader slots: 0 = scale,
+ * 1 = jitter, 5 = z_stretch, 6 = pulse. (worley is f32-sensitive but jitter
+ * keeps the cell points well-separated, so f64 reproduces the borders to within
+ * the feature tolerance.)
+ */
+function voronoiCellId(uWall: number, t: number, p: Float32Array): number {
+  const scale = p[0] > 0 ? p[0] : 8;
+  const jitter = p[1];
+  const stretch = p[5] > 0 ? p[5] : 1;
+  const pulse = p[6];
+  const uAnim = uWall * scale + pulse * scale;
+  const v = t * scale * stretch;
+  const cellIdX = Math.floor(uAnim);
+  const cellIdY = Math.floor(v);
+  const cuX = fract(uAnim);
+  const cuY = fract(v);
+  let f1 = 1e9;
+  let bestX = 0;
+  let bestY = 0;
+  for (let ny = -1; ny <= 1; ny++) {
+    for (let nx = -1; nx <= 1; nx++) {
+      const nidX = cellIdX + nx;
+      const nidY = cellIdY + ny;
+      const wrappedX = ((nidX % scale) + scale) % scale;
+      const h = hash22(wrappedX, nidY);
+      const dx = nx + h[0] * jitter - cuX;
+      const dy = ny + h[1] * jitter - cuY;
+      const dist = dx * dx + dy * dy;
+      if (dist < f1) {
+        f1 = dist;
+        bestX = wrappedX;
+        bestY = nidY;
+      }
+    }
+  }
+  // Unique integer per cell (bestY ∈ small range over t∈[0,1]).
+  return Math.round(bestX) * 4096 + (bestY + 32);
+}
+
+const VOR_RES_U = 640;
+const VOR_RES_T = 512;
+
+/**
+ * Gate: the f64-replicated worley + categorical border extraction TRACKS the
+ * GPU Voronoi cells (featExp=featPres, featDrop=0 — the hash reproduces) and is
+ * sliver/orient/nonMan-clean, but the dense irregular borders leave T-junction
+ * cracks where a border is TANGENT to a cell edge (the cell it does not cross
+ * into stays coarse → inconsistent transition crossing). Until that tangent-
+ * transition case is robust, the extractor returns empty so Voronoi stays at its
+ * clean blind baseline (no crack regression). Flip to re-enable.
+ */
+const VORONOI_INSERTION_ENABLED = false;
+
+/**
+ * Voronoi cell-border creases — the categorical boundary of the nearest-cell ID
+ * field, traced into general-curve polylines (periodic in u). The metric tracks
+ * vertices near the borders; the insertion makes them real edges.
+ */
+function extractVoronoi(p: Float32Array): FeatureLine[] {
+  if (!VORONOI_INSERTION_ENABLED) return [];
+  const segs = marchingSquaresLabels((u, t) => voronoiCellId(u, t, p), VOR_RES_U, VOR_RES_T, true);
+  // Stronger simplify: the categorical border is grid-jagged at 1/VOR_RES, so a
+  // larger tol straightens it (still ≪ the 2.3e-3 feature tolerance) → far fewer
+  // cell-edge crossings → sliver/crack-free insertion.
+  return segmentsToPolylines(segs, 'voronoi-cell', 3, 1.5e-3);
+}
+
 const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // Vertical (u=const) creases.
   LowPolyFacet: extractLowPolyFacet,
@@ -610,6 +694,9 @@ const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // GyroidManifold: TPMS level set val=0 (sign-changing, periodic in u) traced
   // by marching squares → general-curve polylines.
   GyroidManifold: extractGyroidManifold,
+  // Voronoi: cell-border = boundary of the nearest-cell-ID field (categorical
+  // marching squares; worley replicated in f64) → general-curve polylines.
+  Voronoi: extractVoronoi,
   // Smooth styles (no sharp C0/C1 creases): honestly empty — the radius is a sum
   // of sin/cos terms in θ and t, so curvature-adaptive meshing alone resolves
   // them. Listed explicitly so the count is HONEST rather than accidentally 0.

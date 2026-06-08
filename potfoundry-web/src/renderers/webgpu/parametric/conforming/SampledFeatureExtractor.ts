@@ -112,6 +112,57 @@ export function marchingSquaresZero(
   return segs;
 }
 
+/**
+ * Border contouring of a CATEGORICAL field (integer labels) — for cellular
+ * patterns whose crease is the boundary between regions (Voronoi cells), not a
+ * smooth zero set. For each grid cell the border crosses the edges whose two
+ * endpoints have DIFFERENT labels (crossing at the edge midpoint); two crossings
+ * are joined directly, 3+ (triple/quad junctions) are joined through the cell
+ * centre. Periodic-optional in u, same as {@link marchingSquaresZero}.
+ */
+export function marchingSquaresLabels(
+  label: (u: number, t: number) => number,
+  resU: number,
+  resT: number,
+  periodicU = false,
+): ContourSegment[] {
+  const cols = periodicU ? resU + 1 : resU;
+  const lab = new Int32Array(cols * resT);
+  const tOf = (j: number): number => j / (resT - 1);
+  for (let j = 0; j < resT; j++) {
+    for (let i = 0; i < cols; i++) {
+      lab[j * cols + i] = label(i === resU ? 0 : i / resU, tOf(j));
+    }
+  }
+  const iMax = periodicU ? resU : resU - 1;
+  const segs: ContourSegment[] = [];
+  for (let j = 0; j < resT - 1; j++) {
+    for (let i = 0; i < iMax; i++) {
+      const u0 = i / resU;
+      const u1 = (i + 1) / resU;
+      const t0 = tOf(j);
+      const t1 = tOf(j + 1);
+      const lSW = lab[j * cols + i];
+      const lSE = lab[j * cols + i + 1];
+      const lNE = lab[(j + 1) * cols + i + 1];
+      const lNW = lab[(j + 1) * cols + i];
+      if (lSW === lSE && lSE === lNE && lNE === lNW) continue;
+      const cr: FeatureLinePoint[] = [];
+      if (lSW !== lSE) cr.push({ u: (u0 + u1) / 2, t: t0 });
+      if (lSE !== lNE) cr.push({ u: u1, t: (t0 + t1) / 2 });
+      if (lNW !== lNE) cr.push({ u: (u0 + u1) / 2, t: t1 });
+      if (lSW !== lNW) cr.push({ u: u0, t: (t0 + t1) / 2 });
+      // Only the clean 2-crossing case (a border passing straight through) is
+      // emitted. Triple/quad junction cells are skipped — joining them through
+      // the cell centre injects short zig-zag spurs that the insertion turns into
+      // needles/cracks; the tiny gap left at a junction does not drop a line below
+      // the coverage threshold.
+      if (cr.length === 2) segs.push({ a: cr[0], b: cr[1] });
+    }
+  }
+  return segs;
+}
+
 const WELD = 1e-6;
 
 /** Perpendicular distance from p to the line through a,b (in (u,t)). */
