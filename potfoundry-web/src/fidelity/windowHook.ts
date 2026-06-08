@@ -64,6 +64,8 @@ export interface FidelityTopoQualitySummary {
 
 export interface FidelityHookDeps {
   setStyle: (name: string) => void;
+  /** Patch the store's geometry params (H, top_od, bottom_od, r_drain, expn, …). */
+  setDimensions: (params: Record<string, number>) => void;
   /** Parametric pipeline (the path under test) is ready for the current style. */
   isAvailable: () => boolean;
   /** GPU uniform-grid pipeline (the dense reference source) is ready. */
@@ -83,6 +85,13 @@ export interface PfFidelityApi {
   listStyles(): string[];
   isReady(): boolean;
   setStyle(styleId: string): Promise<void>;
+  /**
+   * Patch the pot geometry params (for dimension-space robustness sweeps), then
+   * settle so the next generate reads them. The style/pipeline is unchanged, so
+   * no GPU rebuild — the conforming branch rebuilds its uniform + sampler buffers
+   * from the current store on each generate.
+   */
+  setDimensions(params: Record<string, number>): Promise<void>;
   measure(opts: FidelityMeasureOptions): Promise<FidelityMetrics>;
   diagnoseTopology(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTopologyDiagnostics>;
   diagnoseQuality(opts?: FidelityQualityDiagnosticOptions): Promise<FidelityQualityDiagnostics>;
@@ -153,6 +162,12 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         await sleep(100);
       }
       throw new Error(`Fidelity: GPU did not become ready for style ${styleId}`);
+    },
+    async setDimensions(params: Record<string, number>) {
+      deps.setDimensions(params);
+      // Let React commit the store write; no pipeline teardown (style unchanged),
+      // so a short settle is enough before the next generate reads the new dims.
+      await sleep(300);
     },
     async measure(opts: FidelityMeasureOptions): Promise<FidelityMetrics> {
       const styleId = currentStyleId();

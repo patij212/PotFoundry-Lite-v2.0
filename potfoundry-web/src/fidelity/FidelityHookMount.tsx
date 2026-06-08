@@ -51,8 +51,10 @@ export function FidelityHookMount(): null {
   // Keep the latest hook handles in a ref so the window API (registered ONCE
   // below) always dereferences live values — no stale closures, no churny
   // re-registration when React re-renders these unstable hook objects.
+  const setGeometryParams = useAppStore((s) => s.setGeometryParams);
   const depsRef = useRef<FidelityHookDeps>({
     setStyle: () => {},
+    setDimensions: () => {},
     isAvailable: () => false,
     isReferenceAvailable: () => false,
     generateMesh: async () => null,
@@ -60,6 +62,8 @@ export function FidelityHookMount(): null {
   });
   depsRef.current = {
     setStyle: (name: string) => setStyle(name as Parameters<typeof setStyle>[0]),
+    setDimensions: (params: Record<string, number>) =>
+      setGeometryParams(params as Parameters<typeof setGeometryParams>[0]),
     isAvailable: () => parametricExport.isAvailable,
     isReferenceAvailable: () => gpuExport.isGPUAvailable,
     // returnInvalidMesh: the harness must measure the pipeline's actual HEAD
@@ -87,6 +91,7 @@ export function FidelityHookMount(): null {
     if (!shouldEnableFidelityHook()) return;
     window.__pfFidelity = createFidelityApi({
       setStyle: (name) => depsRef.current.setStyle(name),
+      setDimensions: (params) => depsRef.current.setDimensions(params),
       isAvailable: () => depsRef.current.isAvailable(),
       isReferenceAvailable: () => depsRef.current.isReferenceAvailable(),
       generateMesh: (n) => depsRef.current.generateMesh(n),
