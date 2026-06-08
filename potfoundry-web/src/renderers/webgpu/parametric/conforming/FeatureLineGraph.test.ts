@@ -164,10 +164,97 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     expect(g.groundTruthCount).toBe(0);
   });
 
+  it('SpiralRidges: k helical ridge creases (one per integer ridge)', () => {
+    // k=9, turns=1.15 (defaults). 9 constant-slope helical creases.
+    const g = extractAnalyticFeatures('SpiralRidges', packed([9, 1.15, 0.15, 0.25, 1.3, 0.04, 3, 1.7]), DIMS);
+    expect(g.groundTruthCount).toBe(9);
+    expect(g.lines.length).toBe(9);
+    for (const line of g.lines) expect(line.kind).toBe('helical-crease');
+  });
+
+  it('SpiralRidges: ridge count scales with k', () => {
+    const g = extractAnalyticFeatures('SpiralRidges', packed([15, 1.0, 0.15, 0.25, 1.3, 0.04, 3, 1.7]), DIMS);
+    expect(g.groundTruthCount).toBe(15);
+  });
+
+  it('SpiralRidges: each line is a constant-slope diagonal (u varies linearly with t, slope -turns/k)', () => {
+    const k = 9;
+    const turns = 1.15;
+    const g = extractAnalyticFeatures('SpiralRidges', packed([k, turns, 0.15, 0.25, 1.3, 0.04, 3, 1.7]), DIMS);
+    for (const line of g.lines) {
+      expect(line.points.length).toBeGreaterThanOrEqual(2);
+      // Recover the slope du/dt from the first two points (shortest-arc).
+      const p0 = line.points[0];
+      const p1 = line.points[1];
+      let du = (p1.u - p0.u) % 1;
+      if (du > 0.5) du -= 1;
+      if (du < -0.5) du += 1;
+      const slope = du / (p1.t - p0.t);
+      expect(slope).toBeCloseTo(-turns / k, 6);
+      // Spans the full t-range.
+      const ts = line.points.map((p) => p.t);
+      expect(Math.min(...ts)).toBeLessThanOrEqual(1e-9);
+      expect(Math.max(...ts)).toBeGreaterThanOrEqual(1 - 1e-9);
+    }
+  });
+
   it('unknown / unsupported style → empty graph (honest zero)', () => {
     const g = extractAnalyticFeatures('Voronoi', packed([8, 0.8, 0.1, 2, 1]), DIMS);
     expect(g.groundTruthCount).toBe(0);
     expect(g.lines.length).toBe(0);
+  });
+});
+
+describe('measureFeatureResolution — helical (diagonal) lines', () => {
+  const k = 9;
+  const turns = 1.15;
+  const g = extractAnalyticFeatures('SpiralRidges', packed([k, turns, 0.15, 0.25, 1.3, 0.04, 3, 1.7]), DIMS);
+
+  /** Dense vertices laid EXACTLY on each ridge's helix (mirrors a sheared mesh). */
+  function helixTrackedVertices(rows = 256): FeatureUTVertex[] {
+    const out: FeatureUTVertex[] = [];
+    const phaseU = 0.25;
+    for (let c = 0; c < k; c++) {
+      for (let r = 0; r <= rows; r++) {
+        const t = r / rows;
+        let u = (phaseU + c - turns * t) / k;
+        u %= 1;
+        if (u < 0) u += 1;
+        out.push({ u, t });
+      }
+    }
+    return out;
+  }
+
+  it('mesh vertices laid on the helices → all diagonal lines resolved, dropped 0', () => {
+    const verts = helixTrackedVertices();
+    const res = measureFeatureResolution(g, verts);
+    expect(res.expected).toBe(k);
+    expect(res.present).toBe(k);
+    expect(res.dropped).toBe(0);
+  });
+
+  it('a COARSE vertical-column mesh does NOT resolve diagonal helices (the bug the warp fixes)', () => {
+    // A coarse mesh with 32 vertical columns (Δu≈0.031 ≫ uTol≈0.0023): the
+    // diagonal ridge crosses columns, so along most of its length no column sits
+    // within uTol → coverage falls below 0.75 and the helix is dropped. (Note: a
+    // *fine* 256-column mesh would track it by proximity — the real conforming
+    // mesh is budget-coarsened, so the warp is what actually lands a column ON
+    // each diagonal.)
+    const verts: FeatureUTVertex[] = [];
+    for (let j = 0; j < 32; j++) for (let r = 0; r <= 256; r++) verts.push({ u: j / 32, t: r / 256 });
+    const res = measureFeatureResolution(g, verts);
+    expect(res.present).toBe(0);
+    expect(res.dropped).toBe(k);
+  });
+
+  it('seam-crossing helix is tracked across the u=0 wrap', () => {
+    // Ridge 0 starts near u≈0.0028 and decreases, wrapping through u=0 as t grows.
+    // The periodic interpolation + periodic uDist must still track it.
+    const verts = helixTrackedVertices();
+    const single: FeatureLineGraph = { styleId: g.styleId, lines: [g.lines[0]], groundTruthCount: 1 };
+    const res = measureFeatureResolution(single, verts);
+    expect(res.present).toBe(1);
   });
 });
 

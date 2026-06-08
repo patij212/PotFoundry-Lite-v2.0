@@ -56,10 +56,17 @@
  *   and t; defaults give plain/soft profiles). No sharp C0/C1 features → an
  *   honestly EMPTY graph (curvature-adaptive meshing alone should resolve them).
  *
- * Non-analytic / diagonal-loop styles (Voronoi/Gyroid; HexagonalHive cells,
- * BasketWeave diagonals, Celtic knots, SpiralRidges helices) return an empty
- * graph — honest zero rather than a fabricated count. Their features need
- * general curve insertion, not an axis-aligned warp.
+ * - **SpiralRidges** (`spiral_radius`): the `sin(k·theta + TAU·turns·t)` crest is
+ *   sharp along k CONSTANT-SLOPE HELICAL lines `u = (¼ + c − turns·t)/k`. These
+ *   are diagonal (neither u- nor t-constant); they are pinned by the helical
+ *   member of the warp family ({@link module:conforming/CreaseHelixWarp}), a
+ *   topology-preserving shear of full-height columns. `groundTruthCount = k`.
+ *
+ * Non-analytic / diagonal-LOOP styles (Voronoi/Gyroid; HexagonalHive cells,
+ * BasketWeave's two crossing helix families, Celtic knots) return an empty graph
+ * — honest zero rather than a fabricated count. Their features need general curve
+ * insertion (or two warp families), not a single-family axis-aligned-or-helical
+ * warp.
  *
  * ## The resolution metric (the meaningful featuresDropped)
  *
@@ -89,7 +96,7 @@ export interface FeatureLinePoint {
   t: number;
 }
 
-export type FeatureLineKind = 'vertical-crease' | 'horizontal-band';
+export type FeatureLineKind = 'vertical-crease' | 'horizontal-band' | 'helical-crease';
 
 /** One analytic feature line: a polyline tracing a sharp crease or relief band. */
 export interface FeatureLine {
@@ -191,6 +198,25 @@ function horizontalLine(t: number, label: string, nSamples = 32): FeatureLine {
     points.push({ u: i / nSamples, t });
   }
   return { kind: 'horizontal-band', points, label };
+}
+
+const HELICAL_LINE_T_SAMPLES = 33;
+
+/**
+ * Build a helical (constant-slope diagonal) crease line: `u(t) = (phaseU + c −
+ * turns·t)/k (mod 1)` sampled over t∈[0,1]. u WRAPS through the seam — the points
+ * carry the wrapped u and the resolution metric measures periodic u-distance, so
+ * the seam crossing is handled naturally. The points are ordered by t so the
+ * metric can interpolate u at any t-fraction along the line.
+ */
+function helicalLine(c: number, k: number, turns: number, phaseU: number, label: string): FeatureLine {
+  const points: FeatureLinePoint[] = [];
+  for (let i = 0; i < HELICAL_LINE_T_SAMPLES; i++) {
+    const t = i / (HELICAL_LINE_T_SAMPLES - 1);
+    const u = wrapU((phaseU + c - turns * t) / k);
+    points.push({ u, t });
+  }
+  return { kind: 'helical-crease', points, label };
 }
 
 // ── Per-style extractors ────────────────────────────────────────────────────
@@ -302,6 +328,31 @@ function extractDragonScales(p: Float32Array): FeatureLine[] {
   return lines;
 }
 
+/**
+ * SpiralRidges helical ridge creases. `spiral_radius` (styles.wgsl) modulates the
+ * radius by `amp(t)·sin(k·theta + TAU·turns·t)` (theta = u·TAU), whose crests
+ * (the sharp ridge loci) sit where `k·u + turns·t = ¼ + c`, i.e. on the k
+ * constant-slope HELICAL lines `u = (¼/k + c/k − (turns/k)·t)` (slope −turns/k in
+ * (u,t)), one per integer c=0…k−1. These are the only sharp single-family feature
+ * (the fine groove term has a different, smaller-amplitude slope and is not
+ * emitted). `groundTruthCount = k`.
+ *
+ * Param slots match the WGSL `spiral_radius`: slot 0 = k (ridge count), slot 1 =
+ * turns. A degenerate `turns≈0` collapses the helices to vertical lines; in that
+ * case the loci are still well-defined (constant u) so we still emit them, but
+ * the helix WARP refuses (it is u-warp territory) — the count stays honest.
+ */
+function extractSpiralRidges(p: Float32Array): FeatureLine[] {
+  const k = Math.max(1, Math.round(p[0]));
+  const turns = p[1];
+  const phaseU = 0.25; // ¼ from the sin crest: k·u + turns·t = ¼ + c
+  const lines: FeatureLine[] = [];
+  for (let c = 0; c < k; c++) {
+    lines.push(helicalLine(c, k, turns, phaseU, `ridge[c=${c}]`));
+  }
+  return lines;
+}
+
 function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
@@ -315,6 +366,8 @@ const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // Horizontal (t=const) ring creases.
   BambooSegments: extractBambooSegments,
   DragonScales: extractDragonScales,
+  // Helical (constant-slope diagonal) creases.
+  SpiralRidges: extractSpiralRidges,
   // Smooth styles (no sharp C0/C1 creases): honestly empty — the radius is a sum
   // of sin/cos terms in θ and t, so curvature-adaptive meshing alone resolves
   // them. Listed explicitly so the count is HONEST rather than accidentally 0.
@@ -422,8 +475,20 @@ export function measureFeatureResolution(
     for (let i = 0; i < samplesPerLine; i++) {
       const f = samplesPerLine === 1 ? 0 : i / (samplesPerLine - 1);
       const t = tMin + (tMax - tMin) * f;
-      // u along the line: vertical = constant; horizontal = sweep u.
-      const u = line.kind === 'horizontal-band' ? f : line.points[0].u;
+      // u along the line by kind:
+      //  - horizontal-band: sweep u across the row (constant t);
+      //  - vertical-crease: constant u;
+      //  - helical-crease: u varies WITH t — interpolate the stored (u,t) polyline
+      //    at this t (periodic, shortest-arc interpolation so the seam wrap is
+      //    handled). This is what lets the diagonal line be tracked column-by-row.
+      let u: number;
+      if (line.kind === 'horizontal-band') {
+        u = f;
+      } else if (line.kind === 'helical-crease') {
+        u = interpolatePolylineU(line.points, t);
+      } else {
+        u = line.points[0].u;
+      }
       if (tracked(u, t)) hits++;
     }
     const coverage = hits / samplesPerLine;
@@ -443,6 +508,37 @@ export function measureFeatureResolution(
     perLine,
     meshUColumnCount: columnCount,
   };
+}
+
+/**
+ * Interpolate the u-value of a (u,t)-ordered polyline at a query t, using
+ * PERIODIC shortest-arc interpolation in u so a line that wraps through the u=0
+ * seam between two samples interpolates correctly. Points are assumed ordered by
+ * ascending t (as built by {@link helicalLine}); t outside the range clamps to
+ * the nearest endpoint. Returns u∈[0,1).
+ */
+function interpolatePolylineU(points: readonly FeatureLinePoint[], t: number): number {
+  if (points.length === 0) return 0;
+  if (points.length === 1 || t <= points[0].t) return wrapU(points[0].u);
+  const last = points[points.length - 1];
+  if (t >= last.t) return wrapU(last.u);
+  // Find the segment [p0,p1] with p0.t ≤ t ≤ p1.t (linear scan — lines are short).
+  let lo = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].t >= t) {
+      lo = i - 1;
+      break;
+    }
+  }
+  const p0 = points[lo];
+  const p1 = points[lo + 1];
+  const span = p1.t - p0.t;
+  const f = span > 1e-12 ? (t - p0.t) / span : 0;
+  // Shortest-arc u-step (handles a seam wrap within the segment).
+  let du = (p1.u - p0.u) % 1;
+  if (du > 0.5) du -= 1;
+  if (du < -0.5) du += 1;
+  return wrapU(p0.u + du * f);
 }
 
 /**

@@ -58,3 +58,5 @@ export type { UWarp, UWarpAnchor, CreaseGridChoice } from './CreaseUWarp';
 export { buildCreaseUWarp, applyUWarp, chooseCreaseGrid } from './CreaseUWarp';
 export type { TWarp, TWarpAnchor, CreaseTGridChoice } from './CreaseTWarp';
 export { buildCreaseTWarp, applyTWarp, chooseCreaseTGrid } from './CreaseTWarp';
+export type { HelixWarp, HelixGridChoice } from './CreaseHelixWarp';
+export { chooseHelixGrid, applyHelixWarp } from './CreaseHelixWarp';

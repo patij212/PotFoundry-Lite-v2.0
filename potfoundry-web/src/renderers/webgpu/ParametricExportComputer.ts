@@ -59,6 +59,8 @@ import {
     applyUWarp,
     chooseCreaseTGrid,
     applyTWarp,
+    chooseHelixGrid,
+    applyHelixWarp,
     type FeatureUTVertex,
     type FeatureResolutionResult,
 } from './parametric/conforming';
@@ -2100,6 +2102,7 @@ export class ParametricExportComputer {
                 let featureGraph: ReturnType<typeof extractAnalyticFeatures> | null = null;
                 let creaseChoice: ReturnType<typeof chooseCreaseGrid> = { warp: { isIdentity: true, anchors: [] }, grid: 0, level: 0 };
                 let creaseTChoice: ReturnType<typeof chooseCreaseTGrid> = { warp: { isIdentity: true, anchors: [] }, grid: 0, level: 0 };
+                let helixChoice: ReturnType<typeof chooseHelixGrid> = { warp: { isIdentity: true, base: { isIdentity: true, anchors: [] }, shearRate: 0, offset: 0 }, grid: 0, level: 0 };
                 try {
                     const [, packedWarpParams] = buildStyleParamPayload(
                         params.styleId,
@@ -2116,6 +2119,10 @@ export class ParametricExportComputer {
                     // Distinct horizontal-crease t-loci (constant-t ring creases).
                     const creaseTSet = new Set<number>();
                     const creaseT: number[] = [];
+                    // Helical creases (constant-slope diagonals): one warp family for
+                    // the whole set (all share slope −turns/k; the line geometry gives
+                    // k, turns, and the t=0 phase directly).
+                    const helixLines = featureGraph.lines.filter((l) => l.kind === 'helical-crease');
                     for (const line of featureGraph.lines) {
                         if (line.kind === 'vertical-crease') {
                             const u = line.points[0].u;
@@ -2133,6 +2140,24 @@ export class ParametricExportComputer {
                     }
                     creaseChoice = chooseCreaseGrid(creaseU);
                     creaseTChoice = chooseCreaseTGrid(creaseT);
+                    if (helixLines.length > 0) {
+                        // Recover (k, turns, phaseU) from the emitted helical polylines:
+                        //  - k = number of distinct helical ridges;
+                        //  - slope du/dt (shortest-arc) of any line = −turns/k;
+                        //  - line[0] is ridge c=0 ⇒ u(t=0) = phaseU/k.
+                        const k = helixLines.length;
+                        const l0 = helixLines[0].points;
+                        const p0 = l0[0];
+                        const p1 = l0[Math.min(1, l0.length - 1)];
+                        let du = (p1.u - p0.u) % 1;
+                        if (du > 0.5) du -= 1;
+                        if (du < -0.5) du += 1;
+                        const dt = p1.t - p0.t;
+                        const slope = dt > 1e-9 ? du / dt : 0;
+                        const turns = -slope * k;
+                        const phaseU = p0.u * k; // u(t=0) of ridge 0 = phaseU/k
+                        helixChoice = chooseHelixGrid(k, turns, phaseU);
+                    }
                 } catch (err) {
                     featureGraph = null;
                     console.warn(`[CONFORMING-FULL] crease grid selection skipped: ${String(err)}`);
@@ -2167,13 +2192,15 @@ export class ParametricExportComputer {
                         // styles are coarsened toward it (sag floored).
                         budgetMode: 'cap' as const,
                         // Uniform base level that guarantees full-height columns
-                        // (for the u-warp) AND full-width rows (for the t-warp) on
-                        // the crease lattices. The 2^L×2^L uniform floor carries
-                        // both, so take the max of the two chosen levels (0 = no
-                        // floor when neither warp is needed).
+                        // (for the u-warp AND the helix warp's sheared columns) AND
+                        // full-width rows (for the t-warp) on the crease lattices.
+                        // The 2^L×2^L uniform floor carries all of them, so take the
+                        // max of the three chosen levels (0 = no floor when no warp
+                        // is needed). The helix warp pins full-HEIGHT columns (then
+                        // shears them along t), so it shares the u-floor requirement.
                         minUniformLevel:
-                            Math.max(creaseChoice.level, creaseTChoice.level) > 0
-                                ? Math.max(creaseChoice.level, creaseTChoice.level)
+                            Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level) > 0
+                                ? Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level)
                                 : undefined,
                     },
                 );
@@ -2207,6 +2234,46 @@ export class ParametricExportComputer {
                         if (surfaceId < 1.5) {
                             asm.vertices[i + 1] = applyTWarp(creaseTChoice.warp, asm.vertices[i + 1]);
                         }
+                    }
+                }
+
+                // ── Helical-crease pinning: apply the helix warp ─────────────────
+                // For constant-slope diagonal ridges (SpiralRidges) the warp is a
+                // per-vertex u-remap u_final = φ₀(u) − (turns/k)·t + offset: φ₀ pins
+                // k full-HEIGHT columns onto seam-avoiding anchors and the additive
+                // shear bends each column to follow its helix. At ANY fixed t it is
+                // the composition of a monotone circle homeomorphism with a rigid
+                // rotation — itself monotone — so applied uniformly it only shifts u;
+                // connectivity (watertight/oriented/T-junction-free) is untouched and
+                // no triangle inverts. Only applied when the (t-independent) u-warp
+                // is identity, so φ₀ never composes ambiguously with a prior u-warp.
+                //
+                // CAP HANDLING: the wall's t=0/t=1 boundary RINGS are SHARED (by
+                // index) with the cap surfaces (rim @ wall t=1; base/drain @ wall
+                // t=0). The shear rotates those rings (by `offset` at t=0, by
+                // `offset−shearRate` at t=1). If the caps' OWN vertices (intermediate
+                // rings, drain rings, centre) did NOT rotate to match, the outermost
+                // cap band would twist against the sheared ring and collapse into
+                // slivers. So each cap is rotated RIGIDLY by the helix warp evaluated
+                // at the t of the wall ring it attaches to: rim (surfaceId 2) at t=1,
+                // base/drain (3,4,5) at t=0. A constant u-rotation of a whole cap is
+                // a rigid rotation about z — it preserves the cap's shape and every
+                // shared ring stays consistent, so watertightness/orientation hold.
+                // Identity ⇒ no-op.
+                if (!helixChoice.warp.isIdentity && creaseChoice.warp.isIdentity) {
+                    for (let i = 0; i < asm.vertices.length; i += 3) {
+                        const surfaceId = asm.vertices[i + 2];
+                        let tEval: number;
+                        if (surfaceId < 1.5) {
+                            tEval = asm.vertices[i + 1]; // wall: its own t (helix slope)
+                        } else if (surfaceId < 2.5) {
+                            tEval = 1; // rim cap attaches to the wall t=1 ring
+                        } else {
+                            tEval = 0; // base/drain caps attach to the wall t=0 ring
+                        }
+                        asm.vertices[i] = applyHelixWarp(
+                            helixChoice.warp, asm.vertices[i], tEval,
+                        );
                     }
                 }
 
@@ -2261,6 +2328,7 @@ export class ParametricExportComputer {
                     `tris=${triCount} budget=${conformingBudget} verts=${vCount} nRing=${nRing} ` +
                     `uWarp=${creaseChoice.warp.isIdentity ? 'id' : `L${creaseChoice.level}`} ` +
                     `tWarp=${creaseTChoice.warp.isIdentity ? 'id' : `L${creaseTChoice.level}`} ` +
+                    `hWarp=${helixChoice.warp.isIdentity ? 'id' : `L${helixChoice.level}`} ` +
                     `surfaces=${asm.surfaceRanges.length} buildMs=${buildMs.toFixed(0)} ` +
                     `featExp=${LAST_CONFORMING_FEATURE_RESULT?.expected ?? 0} ` +
                     `featPres=${LAST_CONFORMING_FEATURE_RESULT?.present ?? 0} ` +
