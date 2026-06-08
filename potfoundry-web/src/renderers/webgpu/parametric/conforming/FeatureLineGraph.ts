@@ -353,6 +353,56 @@ function extractSpiralRidges(p: Float32Array): FeatureLine[] {
   return lines;
 }
 
+/**
+ * BasketWeave cell-boundary creases (axis-aligned case only). `style_basket_weave`
+ * (styles.wgsl) builds an over/under weave on a checkerboard of cells indexed by
+ * `u_cell=floor(u_twisted)` and `v_cell=floor(v)`, where
+ * `u_twisted = theta·strands/TAU + twist·t·strands + phase` and
+ * `v = t·layers·(1 + v_grad·(t−½))`. The strand profile `cos(u_local·π/2)` (and
+ * its v twin) is zero at every cell boundary and the over/under `checker` flips
+ * there, so each cell boundary is a sharp C0/C1 ridge crease.
+ *
+ * When `twist = 0` AND `v_grad = 0` (the defaults) the boundaries are AXIS
+ * ALIGNED and single-family-warp-pinnable:
+ *  - VERTICAL creases at `u_twisted = m` ⇒ `u = (m − phase)/strands`
+ *    (m = 0..strands−1) → `strands` constant-u lines (CreaseUWarp territory);
+ *  - HORIZONTAL creases at `v = k` ⇒ `t = k/layers` (k = 1..layers−1 interior;
+ *    t=0/t=1 are the shared boundary rings) → `layers−1` constant-t lines
+ *    (CreaseTWarp territory).
+ *
+ * When `twist ≠ 0` the u-boundaries become HELICAL with slope `−twist·strands`
+ * in (u,t) — but unlike SpiralRidges this family is NOT a pure shear of the
+ * SAME-count column set onto seam-avoiding anchors (the strand count and the
+ * horizontal family would both need pinning at once), so a single warp family
+ * cannot pin it without the t-family colliding. When `v_grad ≠ 0` the ring
+ * spacing `t = (k)/(layers·(1+v_grad·(t−½)))` is NON-uniform and non-monotone in
+ * the simple ψ sense the t-warp assumes. Both cases need two crossing warp
+ * families or a local re-mesh (out of scope), so we return an HONEST EMPTY graph
+ * rather than emit creases the pinning machinery cannot resolve.
+ */
+function extractBasketWeave(p: Float32Array): FeatureLine[] {
+  const strands = Math.max(1, Math.round(p[0]));
+  const layers = Math.max(1, Math.round(p[1]));
+  const twist = p[3];
+  const vGrad = p[8];
+  const phase = p[9];
+  // Only the axis-aligned weave is single-family-warp-pinnable. Diagonal (twist)
+  // or non-uniform-t (v_grad) weaves need two warp families / a re-mesh — honest
+  // empty so the count is never fabricated beyond what the warps can resolve.
+  if (Math.abs(twist) > 1e-9 || Math.abs(vGrad) > 1e-9) return [];
+  const lines: FeatureLine[] = [];
+  // Vertical creases: u_twisted = u·strands + phase = m ⇒ u = (m − phase)/strands.
+  for (let m = 0; m < strands; m++) {
+    const u = wrapU((m - phase) / strands);
+    lines.push(verticalLine(u, 0, 1, `strand-edge[m=${m}]`));
+  }
+  // Horizontal creases: v = t·layers = k ⇒ t = k/layers (interior k=1..layers−1).
+  for (let k = 1; k < layers; k++) {
+    lines.push(horizontalLine(k / layers, `layer-ring[k=${k}]`));
+  }
+  return lines;
+}
+
 function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
@@ -366,6 +416,9 @@ const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // Horizontal (t=const) ring creases.
   BambooSegments: extractBambooSegments,
   DragonScales: extractDragonScales,
+  // Axis-aligned weave: vertical strand edges (u=const) + horizontal layer rings
+  // (t=const). Honest-empty when twist/v_grad warp the grid off the axes.
+  BasketWeave: extractBasketWeave,
   // Helical (constant-slope diagonal) creases.
   SpiralRidges: extractSpiralRidges,
   // Smooth styles (no sharp C0/C1 creases): honestly empty — the radius is a sum

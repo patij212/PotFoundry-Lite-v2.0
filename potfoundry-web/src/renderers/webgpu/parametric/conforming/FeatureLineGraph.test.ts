@@ -144,6 +144,82 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     expect(g.groundTruthCount).toBe(11);
   });
 
+  // ── BasketWeave (axis-aligned grid case) ────────────────────────────────────
+  // Packed slots (packBasketWeave): 0 strands, 1 layers, 2 depth, 3 twist,
+  // 4 ratio, 5 profile, 6 unders, 7 noise, 8 v_grad, 9 phase. Defaults
+  // (twist=0, v_grad=0) give a clean axis-aligned weave: `strands` vertical
+  // creases at u=m/strands and `layers-1` interior horizontal creases at
+  // t=k/layers (the C0/C1 cell boundaries where the over/under checker flips).
+  it('BasketWeave: strands vertical creases + (layers-1) interior horizontal creases', () => {
+    // strands=16, layers=10, twist=0, v_grad=0, phase=0 (defaults).
+    const g = extractAnalyticFeatures(
+      'BasketWeave',
+      packed([16, 10, 2.0, 0.0, 1.0, 0.5, 0.5, 0.0, 0.0, 0.0]),
+      DIMS,
+    );
+    const vertical = g.lines.filter((l) => l.kind === 'vertical-crease');
+    const horizontal = g.lines.filter((l) => l.kind === 'horizontal-band');
+    expect(vertical.length).toBe(16); // strand boundaries u=m/16, m=0..15
+    expect(horizontal.length).toBe(9); // interior layer boundaries t=k/10, k=1..9
+    expect(g.groundTruthCount).toBe(25);
+    expect(g.groundTruthCount).toBe(g.lines.length);
+    // Vertical loci sit exactly at m/16.
+    const us = vertical.map((l) => l.points[0].u).sort((a, b) => a - b);
+    for (let m = 0; m < 16; m++) expect(us[m]).toBeCloseTo(m / 16, 9);
+    // Horizontal loci sit exactly at k/10 (interior only).
+    const ts = horizontal.map((l) => l.points[0].t).sort((a, b) => a - b);
+    for (let k = 1; k <= 9; k++) expect(ts[k - 1]).toBeCloseTo(k / 10, 9);
+  });
+
+  it('BasketWeave: crease counts scale with strands and layers', () => {
+    const g = extractAnalyticFeatures(
+      'BasketWeave',
+      packed([24, 6, 2.0, 0.0, 1.0, 0.5, 0.5, 0.0, 0.0, 0.0]),
+      DIMS,
+    );
+    expect(g.lines.filter((l) => l.kind === 'vertical-crease').length).toBe(24);
+    expect(g.lines.filter((l) => l.kind === 'horizontal-band').length).toBe(5); // 6 layers → 5 interior
+    expect(g.groundTruthCount).toBe(29);
+  });
+
+  it('BasketWeave: phase shifts the vertical-crease u-loci by -phase/strands', () => {
+    const phase = 0.3;
+    const g = extractAnalyticFeatures(
+      'BasketWeave',
+      packed([8, 4, 2.0, 0.0, 1.0, 0.5, 0.5, 0.0, 0.0, phase]),
+      DIMS,
+    );
+    const vertical = g.lines.filter((l) => l.kind === 'vertical-crease');
+    expect(vertical.length).toBe(8);
+    // u_twisted = u*strands + phase = m ⇒ u = (m - phase)/strands.
+    const wrap = (x: number): number => ((x % 1) + 1) % 1;
+    const expected = Array.from({ length: 8 }, (_, m) => wrap((m - phase) / 8)).sort((a, b) => a - b);
+    const us = vertical.map((l) => l.points[0].u).sort((a, b) => a - b);
+    // 6-digit: phase is stored Float32 in the packed array, so the f64 expected
+    // differs by ~1e-9 — well within crease-pinning tolerance (uTol≈0.6/256≈2e-3).
+    for (let i = 0; i < 8; i++) expect(us[i]).toBeCloseTo(expected[i], 6);
+  });
+
+  it('BasketWeave: twist≠0 → honest empty (helical creases out of single-warp scope)', () => {
+    const g = extractAnalyticFeatures(
+      'BasketWeave',
+      packed([16, 10, 2.0, 0.5, 1.0, 0.5, 0.5, 0.0, 0.0, 0.0]),
+      DIMS,
+    );
+    expect(g.groundTruthCount).toBe(0);
+    expect(g.lines.length).toBe(0);
+  });
+
+  it('BasketWeave: vertical_grad≠0 → honest empty (non-uniform-t rings out of single-warp scope)', () => {
+    const g = extractAnalyticFeatures(
+      'BasketWeave',
+      packed([16, 10, 2.0, 0.0, 1.0, 0.5, 0.5, 0.0, 0.4, 0.0]),
+      DIMS,
+    );
+    expect(g.groundTruthCount).toBe(0);
+    expect(g.lines.length).toBe(0);
+  });
+
   it('smooth styles (SuperellipseMorph/FourierBloom/WaveInterference/RippleInterference/Crystalline/ArtDeco) → empty', () => {
     for (const s of ['SuperellipseMorph', 'FourierBloom', 'WaveInterference', 'RippleInterference', 'Crystalline', 'ArtDeco']) {
       const g = extractAnalyticFeatures(s, packed([4, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]), DIMS);
