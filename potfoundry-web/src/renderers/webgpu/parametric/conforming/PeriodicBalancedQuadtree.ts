@@ -78,6 +78,16 @@ export class PeriodicBalancedQuadtree {
   private readonly featureRefine?: { level: number; intersects: (u0: number, t0: number, size: number) => boolean };
   /** Grid-scaled finite-difference steps for the metric (de-noised vs sampler). */
   private readonly steps: MetricSteps;
+  /**
+   * Anisotropy bias B (≥0). A level-L leaf spans Δu = 1/2^(L+B) in u and
+   * Δt = 1/2^L in t, so cells are 3D-near-square under extreme circumference/
+   * height anisotropy (a square (u,t) cell maps to a √E/√G:1 sliver — see GAP 1).
+   * B=0 (default) is byte-identical to the isotropic quadtree. The root is a
+   * 2^B × 1 grid; square splits then preserve the 2^B:1 u:t cell-aspect at every
+   * level, so the metric anisotropy is corrected uniformly. T-coordinates and the
+   * pin/levelCap grading (t-based) are unaffected by B.
+   */
+  private readonly uBiasLevel: number;
 
   constructor(
     field: MetricSizingField,
@@ -87,16 +97,29 @@ export class PeriodicBalancedQuadtree {
       pinBoundaryLevel?: number;
       minUniformLevel?: number;
       featureRefine?: { level: number; intersects: (u0: number, t0: number, size: number) => boolean };
+      /** Anisotropy bias B (≥0): Δu = 1/2^(level+B), Δt = 1/2^level. 0 = isotropic. */
+      uBias?: number;
     },
   ) {
     this.maxLevel = opts.maxLevel;
     this.pinBoundaryLevel = opts.pinBoundaryLevel ?? 0;
     this.minUniformLevel = Math.max(0, Math.min(opts.minUniformLevel ?? 0, opts.maxLevel));
     this.featureRefine = opts.featureRefine;
+    this.uBiasLevel = Math.max(0, Math.floor(opts.uBias ?? 0));
     this.steps = metricStepsForSampler(metric);
     this.refine(field, metric);
     if (this.pinBoundaryLevel > 0) this.enforcePinnedBoundary();
     this.balance(opts.maxLevel);
+  }
+
+  /** The anisotropy bias B (≥0). Consumers map u-index via 2^(level+B). */
+  uBias(): number {
+    return this.uBiasLevel;
+  }
+
+  /** u-axis index span at a level: 2^(level+B) (periodic modulus for iu). */
+  private uSpan(level: number): number {
+    return 1 << (level + this.uBiasLevel);
   }
 
   /**
@@ -148,7 +171,7 @@ export class PeriodicBalancedQuadtree {
   // ----- construction -----------------------------------------------------
 
   private addLeaf(level: number, iu: number, it: number): void {
-    const span = 1 << level;
+    const span = this.uSpan(level); // u-index wraps mod 2^(level+B)
     const wu = ((iu % span) + span) % span;
     this.leafSet.add(cellKey(level, wu, it));
   }
@@ -165,12 +188,13 @@ export class PeriodicBalancedQuadtree {
     iu: number,
     it: number,
   ): boolean {
-    const size = 1 / (1 << level);
-    const uc = (iu + 0.5) * size;
-    const tc = (it + 0.5) * size;
+    const uSize = 1 / this.uSpan(level); // 1/2^(level+B)
+    const tSize = 1 / (1 << level);
+    const uc = (iu + 0.5) * uSize;
+    const tc = (it + 0.5) * tSize;
     const { E, G } = firstFundamentalForm(metric, uc, tc, this.steps.hu, this.steps.ht);
-    const physW = Math.sqrt(Math.max(E, 0)) * size;
-    const physH = Math.sqrt(Math.max(G, 0)) * size;
+    const physW = Math.sqrt(Math.max(E, 0)) * uSize;
+    const physH = Math.sqrt(Math.max(G, 0)) * tSize;
     const target = field.edgeLength(uc, tc);
     return Math.max(physW, physH) > target;
   }
@@ -180,23 +204,31 @@ export class PeriodicBalancedQuadtree {
     field: MetricSizingField,
     metric: SurfaceSampler,
   ): void {
-    // Worklist of cells to examine; start at the single root cell.
-    const stack: Cell[] = [{ level: 0, iu: 0, it: 0 }];
+    // Worklist of cells to examine; start at the 2^B × 1 root grid (a single
+    // cell when B=0). The B root columns give every cell the 2^B:1 u:t aspect.
+    const stack: Cell[] = [];
+    const rootU = this.uSpan(0); // 2^B
+    for (let iu = 0; iu < rootU; iu++) stack.push({ level: 0, iu, it: 0 });
     this.leafSet.clear();
     while (stack.length > 0) {
       const c = stack.pop() as Cell;
       const cap = this.levelCap(c.level, c.it);
       // Force a uniform base refinement to `minUniformLevel` (bounded by the
       // pin-graded cap), then let curvature drive any deeper splits. The uniform
-      // floor guarantees full-height columns at u=i/2^minUniformLevel.
+      // floor guarantees full-height columns at u=i/2^(minUniformLevel+B).
       const belowUniformFloor = c.level < Math.min(this.minUniformLevel, cap);
       // Feature-driven refinement: refine cells a feature curve crosses to the
       // feature level so the curve crosses each cell simply (sliver-free CDT).
-      const size = 1 / (1 << c.level);
+      const uSize = 1 / this.uSpan(c.level);
+      const tSize = 1 / (1 << c.level);
       const belowFeatureFloor =
         this.featureRefine !== undefined &&
         c.level < Math.min(this.featureRefine.level, cap) &&
-        this.featureRefine.intersects(c.iu * size, c.it * size, size);
+        // Cell box is [iu·Δu, iu·Δu+Δu]×[it·Δt, it·Δt+Δt]; pass the larger extent
+        // as `size` so an anisotropic (B>0) cell is still hit-tested over its full
+        // span (the intersector treats `size` as a square edge; the larger extent
+        // is a conservative superset → never misses a crossing).
+        this.featureRefine.intersects(c.iu * uSize, c.it * tSize, Math.max(uSize, tSize));
       if (
         c.level < cap &&
         (belowUniformFloor ||
@@ -284,15 +316,16 @@ export class PeriodicBalancedQuadtree {
     it: number,
     side: QuadSide,
   ): number {
-    const span = 1 << level;
+    const uSpanL = this.uSpan(level); // u wraps mod 2^(level+B)
+    const tSpanL = 1 << level; // t domain bound
     // Adjacent cell coordinate at this level.
     let au = iu;
     let at = it;
-    if (side === 'uMinus') au = (iu - 1 + span) % span;
-    else if (side === 'uPlus') au = (iu + 1) % span;
+    if (side === 'uMinus') au = (iu - 1 + uSpanL) % uSpanL;
+    else if (side === 'uPlus') au = (iu + 1) % uSpanL;
     else if (side === 'tMinus') at = it - 1;
     else at = it + 1;
-    if (at < 0 || at >= span) return level; // domain boundary in t
+    if (at < 0 || at >= tSpanL) return level; // domain boundary in t
 
     // Probe progressively finer levels for any leaf covering the adjacent
     // cell's touching strip; return the finest level that has a leaf there.
@@ -325,7 +358,7 @@ export class PeriodicBalancedQuadtree {
           // Shared edge runs along u; the touching row is the one nearest us.
           const rowT = side === 'tPlus' ? baseT : baseT + mul - 1;
           for (let k = 0; k < mul; k++) {
-            const colU = (baseU + k) % (1 << lv);
+            const colU = (baseU + k) % this.uSpan(lv);
             if (this.leafSet.has(cellKey(lv, colU, rowT))) {
               found = true;
               break;
@@ -365,11 +398,11 @@ export class PeriodicBalancedQuadtree {
     return this.leafSet.size;
   }
 
-  /** All leaf cells in physical-parameter terms. */
+  /** All leaf cells in physical-parameter terms (u0 = iu/2^(level+B)). */
   leaves(): QuadLeaf[] {
     if (this.cells.length === 0 && this.leafSet.size > 0) this.rebuildCells();
     return this.cells.map((c) => ({
-      u0: c.iu / (1 << c.level),
+      u0: c.iu / this.uSpan(c.level),
       t0: c.it / (1 << c.level),
       level: c.level,
     }));
@@ -378,7 +411,7 @@ export class PeriodicBalancedQuadtree {
   /** Neighbour leaves across each of the 4 sides (u-sides wrap). */
   neighbors(leaf: QuadLeaf): { side: QuadSide; leaf: QuadLeaf }[] {
     const level = leaf.level;
-    const iu = Math.round(leaf.u0 * (1 << level));
+    const iu = Math.round(leaf.u0 * this.uSpan(level));
     const it = Math.round(leaf.t0 * (1 << level));
     const out: { side: QuadSide; leaf: QuadLeaf }[] = [];
     const sides: QuadSide[] = ['uMinus', 'uPlus', 'tMinus', 'tPlus'];
@@ -387,7 +420,7 @@ export class PeriodicBalancedQuadtree {
         out.push({
           side,
           leaf: {
-            u0: c.iu / (1 << c.level),
+            u0: c.iu / this.uSpan(c.level),
             t0: c.it / (1 << c.level),
             level: c.level,
           },
@@ -407,14 +440,15 @@ export class PeriodicBalancedQuadtree {
     it: number,
     side: QuadSide,
   ): Cell[] {
-    const span = 1 << level;
+    const uSpanL = this.uSpan(level); // u wraps mod 2^(level+B)
+    const tSpanL = 1 << level; // t domain bound
     let au = iu;
     let at = it;
-    if (side === 'uMinus') au = (iu - 1 + span) % span;
-    else if (side === 'uPlus') au = (iu + 1) % span;
+    if (side === 'uMinus') au = (iu - 1 + uSpanL) % uSpanL;
+    else if (side === 'uPlus') au = (iu + 1) % uSpanL;
     else if (side === 'tMinus') at = it - 1;
     else at = it + 1;
-    if (at < 0 || at >= span) return []; // domain boundary in t
+    if (at < 0 || at >= tSpanL) return []; // domain boundary in t
 
     // Same level?
     if (this.leafSet.has(cellKey(level, au, at))) {
@@ -449,7 +483,7 @@ export class PeriodicBalancedQuadtree {
       } else {
         const rowT = side === 'tPlus' ? baseT : baseT + mul - 1;
         for (let k = 0; k < mul; k++) {
-          const colU = (baseU + k) % (1 << lv);
+          const colU = (baseU + k) % this.uSpan(lv);
           if (this.leafSet.has(cellKey(lv, colU, rowT))) {
             found.push({ level: lv, iu: colU, it: rowT });
           }

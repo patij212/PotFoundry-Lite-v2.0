@@ -23,6 +23,13 @@ import type { QuadLeaf } from './PeriodicBalancedQuadtree';
 /** Minimal quadtree shape consumed by the triangulator. */
 export interface QuadtreeLike {
   leaves(): QuadLeaf[];
+  /**
+   * Anisotropy bias B (≥0): a level-L leaf spans Δu = 1/2^(L+B) in u (Δt =
+   * 1/2^L in t). Absent ⇒ 0 (isotropic). The triangulator reconstructs each
+   * leaf's integer u-index via 2^(level+B) and wraps the periodic seam mod the
+   * same, so anisotropic (B>0) leaves stay watertight + T-junction-free.
+   */
+  uBias?(): number;
 }
 
 /** Triangulated (u,t) mesh. */
@@ -45,20 +52,21 @@ const QSCALE = 1 << 24;
 
 export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
   const leaves = qt.leaves();
+  const uBias = qt.uBias?.() ?? 0;
+  const uSpanOf = (level: number): number => 1 << (level + uBias); // 2^(level+B)
 
-  // Integer-cell existence set: key `${level}:${iu}:${it}`.
+  // Integer-cell existence set: key `${level}:${iu}:${it}` (iu in 2^(level+B)).
   const cellSet = new Set<string>();
   let maxLevel = 0;
   for (const l of leaves) {
-    const span = 1 << l.level;
-    const iu = Math.round(l.u0 * span);
-    const it = Math.round(l.t0 * span);
+    const iu = Math.round(l.u0 * uSpanOf(l.level));
+    const it = Math.round(l.t0 * (1 << l.level));
     cellSet.add(`${l.level}:${iu}:${it}`);
     if (l.level > maxLevel) maxLevel = l.level;
   }
 
   const has = (level: number, iu: number, it: number): boolean => {
-    const span = 1 << level;
+    const span = uSpanOf(level); // u-index wraps mod 2^(level+B)
     const wu = ((iu % span) + span) % span;
     return cellSet.has(`${level}:${wu}:${it}`);
   };
@@ -125,16 +133,16 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
   };
 
   for (const leaf of leaves) {
-    const span = 1 << leaf.level;
-    const iu = Math.round(leaf.u0 * span);
-    const it = Math.round(leaf.t0 * span);
-    const size = 1 / span;
+    const iu = Math.round(leaf.u0 * uSpanOf(leaf.level));
+    const it = Math.round(leaf.t0 * (1 << leaf.level));
+    const sizeU = 1 / uSpanOf(leaf.level); // Δu = 1/2^(level+B)
+    const sizeT = 1 / (1 << leaf.level); // Δt = 1/2^level
     const u0 = leaf.u0;
     const t0 = leaf.t0;
-    const u1 = u0 + size;
-    const t1 = t0 + size;
-    const um = u0 + size / 2;
-    const tm = t0 + size / 2;
+    const u1 = u0 + sizeU;
+    const t1 = t0 + sizeT;
+    const um = u0 + sizeU / 2;
+    const tm = t0 + sizeT / 2;
     const wrapsSeam = Math.round(u1 * QSCALE) === QSCALE ? 1 : 0;
 
     // Count split sides (those with a finer neighbour → one mid-edge vertex).
