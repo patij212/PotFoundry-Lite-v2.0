@@ -320,6 +320,42 @@ describe('assembleWatertight — REAL HexagonalHive honeycomb curves (no GPU)', 
   });
 });
 
+describe('assembleWatertight — REAL CelticKnot braid curves stay watertight (no GPU)', () => {
+  const Ro = 50; const Ri = 46; const H = 120; const tBottom = 8; const rDrain = 10;
+  const dims: AssemblyDimensions = { H, tBottom, rDrain };
+  const ripple = (base: number, surfaceId: number): SurfaceSampler => ({
+    position: (u: number, t: number): Vec3 => {
+      const theta = 2 * Math.PI * (u - Math.floor(u));
+      const r = base + 0.5 * Math.cos(2 * Math.PI * 3 * u) * Math.cos(Math.PI * t);
+      const z = surfaceId < 0.5 ? t * H : tBottom + t * (H - tBottom);
+      return [r * Math.cos(theta), r * Math.sin(theta), z];
+    },
+  });
+  const outerS = ripple(Ro, 0); const innerS = ripple(Ri, 1);
+  const geom = (u: number, t: number, s: number): Vec3 => {
+    if (s < 0.5) return outerS.position(u, t);
+    if (s < 1.5) return innerS.position(u, t);
+    return evalSurface(Ro, Ri, H, tBottom, rDrain, u, t, s);
+  };
+  const params = new Float32Array(STYLE_PARAM_CAPACITY);
+  params.set([3.0, 0.15, 2.0, 0.02, 0.5, 0.0, 3.0]);
+  const graph = extractAnalyticFeatures('CelticKnot', params, { H, Rt: 70, Rb: 45 });
+  const curves = graph.lines.filter((l) => l.kind === 'general-curve');
+  const asm = assembleWatertight(outerS, innerS, dims, {
+    maxSagMm: 0.1, maxEdgeMm: 8, minEdgeMm: 0.2, gradeRatio: 2,
+    maxLevel: 10, resU: 128, resT: 128, nRing: 256, outerFeatureLines: curves, featureLevel: 7,
+  });
+  const pos = eval3D(geom, asm.vertices);
+  const topo = topology(pos, asm.indices);
+
+  it('braided strands inserted (planarized) keep the solid closed', () => {
+    expect(curves.length).toBe(9); // 3 columns × 3 strands
+    expect(topo.boundary).toBe(0);
+    expect(topo.nonManifold).toBe(0);
+    expect(topo.orientationMismatch).toBe(0);
+  });
+});
+
 describe('assembleWatertight — large radial-span base (sliver-prone, rDrain small)', () => {
   // A small drain with a wide base → a single outer↔drain band would be a long
   // thin needle. Radial subdivision must keep the cap aspect bounded.

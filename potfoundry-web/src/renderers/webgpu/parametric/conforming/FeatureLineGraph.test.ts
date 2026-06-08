@@ -282,10 +282,11 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
   // (featDrop=0, topology clean) but leave one residual needle at a shared-edge
   // double-crossing, so insertion is gated off (CELTIC_KNOT_INSERTION_ENABLED) —
   // CelticKnot stays at its clean blind baseline (no sliver regression).
-  it('CelticKnot: braided strands → gated off (clean blind baseline)', () => {
+  it('CelticKnot: braided strands → one general-curve per (column, strand)', () => {
+    // Packed shader slots: 0 columns (=3), 6 strands (=3) → 9 centerlines.
     const g = extractAnalyticFeatures('CelticKnot', packed([3.0, 0.15, 2.0, 0.02, 0.5, 0.0, 3.0]), DIMS);
-    expect(g.groundTruthCount).toBe(0);
-    expect(g.lines.length).toBe(0);
+    expect(g.groundTruthCount).toBe(9);
+    for (const l of g.lines) expect(l.kind).toBe('general-curve');
   });
 
   it('smooth styles (SuperellipseMorph/FourierBloom/WaveInterference/RippleInterference/Crystalline/ArtDeco) → empty', () => {

@@ -540,7 +540,7 @@ function gyroidVal(u: number, t: number, p: Float32Array): number {
  * fixed, the extractor returns empty so CelticKnot stays at its clean blind
  * baseline (no sliver regression) rather than 5/6. Flip to re-enable.
  */
-const CELTIC_KNOT_INSERTION_ENABLED = false;
+const CELTIC_KNOT_INSERTION_ENABLED = true;
 
 function extractCelticKnot(p: Float32Array): FeatureLine[] {
   if (!CELTIC_KNOT_INSERTION_ENABLED) return [];

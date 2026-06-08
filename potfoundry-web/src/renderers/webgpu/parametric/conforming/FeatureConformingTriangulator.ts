@@ -542,25 +542,48 @@ export function triangulateQuadtreeWithFeatures(
       arr
         .filter((s) => s.pos > ON_EDGE_EPS && s.pos < 1 - ON_EDGE_EPS)
         .sort((p, q) => p.pos - q.pos);
-    const dedupSide = (arr: SidePoint[]): SidePoint[] => {
+    // Merge side points closer than cornerSnap — but ONLY on a CLEAN shared edge
+    // (no mid-vertex, same-level neighbour leaf), where both adjacent cells see
+    // the IDENTICAL crossing set. Critically, keep the CANONICAL (min-qk) point
+    // of each merged group, NOT the first-in-sort-order: opposite sides walk the
+    // edge in reversed pos order (south ↑u, north ↓u), so a "keep first" rule
+    // would retain DIFFERENT crossings on the two sides → T-junction. min-qk is
+    // side-independent → both cells keep the same point. Kills the needle where
+    // two curves cross the same edge a hair apart (braids).
+    const cleanEdge = (split: boolean, niu: number, nit: number): boolean =>
+      !split && nit >= 0 && nit < span && cellSet.has(`${leaf.level}:${((niu % span) + span) % span}:${nit}`);
+    const cleanS = cleanEdge(splitS, iu, it - 1);
+    const cleanN = cleanEdge(splitN, iu, it + 1);
+    const cleanW = cleanEdge(splitW, iu - 1, it);
+    const cleanE = cleanEdge(splitE, iu + 1, it);
+    const posTol = cornerSnap / size;
+    const dedupSide = (arr: SidePoint[], clean: boolean): SidePoint[] => {
+      const tol = clean ? Math.max(ON_EDGE_EPS, posTol) : ON_EDGE_EPS;
       const out: SidePoint[] = [];
-      let lastPos = -1;
+      let group: SidePoint[] = [];
+      const flush = (): void => {
+        if (group.length === 0) return;
+        let best = group[0];
+        for (const sp of group) if (qk(sp.pt) < qk(best.pt)) best = sp;
+        out.push(best);
+        group = [];
+      };
       for (const sp of arr) {
-        if (Math.abs(sp.pos - lastPos) <= ON_EDGE_EPS) continue;
-        out.push(sp);
-        lastPos = sp.pos;
+        if (group.length > 0 && Math.abs(sp.pos - group[group.length - 1].pos) > tol) flush();
+        group.push(sp);
       }
+      flush();
       return out;
     };
     const boundary: CellPoint[] = [];
     boundary.push({ u: u0, t: t0 });
-    for (const sp of dedupSide(sortBy(south))) boundary.push(sp.pt);
+    for (const sp of dedupSide(sortBy(south), cleanS)) boundary.push(sp.pt);
     boundary.push({ u: u1, t: t0 });
-    for (const sp of dedupSide(sortBy(east))) boundary.push(sp.pt);
+    for (const sp of dedupSide(sortBy(east), cleanE)) boundary.push(sp.pt);
     boundary.push({ u: u1, t: t1 });
-    for (const sp of dedupSide(sortBy(north))) boundary.push(sp.pt);
+    for (const sp of dedupSide(sortBy(north), cleanN)) boundary.push(sp.pt);
     boundary.push({ u: u0, t: t1 });
-    for (const sp of dedupSide(sortBy(west))) boundary.push(sp.pt);
+    for (const sp of dedupSide(sortBy(west), cleanW)) boundary.push(sp.pt);
 
     // Weld interior feature points onto a nearby BOUNDARY point (within
     // cornerSnap). Boundary points (crossings + anchors) are shared/identical
@@ -606,11 +629,27 @@ export function triangulateQuadtreeWithFeatures(
     survivingInterior.forEach((p, i) => localKey.set(qk(p), boundary.length + i));
 
     const canonical = (p: CellPoint): CellPoint => interiorCanon.get(qk(p)) ?? p;
+    // Resolve a constraint endpoint to a local index: exact, else the nearest
+    // combined point within cornerSnap (its shared-edge crossing may have been
+    // merged into a canonical one by the side dedup).
+    const combined = [...boundary, ...survivingInterior];
+    const resolve = (p: CellPoint): number => {
+      const c = canonical(p);
+      const exact = localKey.get(qk(c));
+      if (exact !== undefined) return exact;
+      let best = -1;
+      let bestD = cornerSnap + 1e-12;
+      for (let i = 0; i < combined.length; i++) {
+        const d = Math.max(Math.abs(combined[i].u - c.u), Math.abs(combined[i].t - c.t));
+        if (d <= bestD) { bestD = d; best = i; }
+      }
+      return best;
+    };
     const cellConstraints: Array<[number, number]> = [];
     for (const [pa, pb] of constraints) {
-      const ia = localKey.get(qk(canonical(pa)));
-      const ib = localKey.get(qk(canonical(pb)));
-      if (ia === undefined || ib === undefined || ia === ib) continue;
+      const ia = resolve(pa);
+      const ib = resolve(pb);
+      if (ia < 0 || ib < 0 || ia === ib) continue;
       cellConstraints.push([ia, ib]);
     }
 
