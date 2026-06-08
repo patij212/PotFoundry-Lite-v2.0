@@ -208,6 +208,16 @@ let LAST_PEAK_DEBUG_DATA: PeakDebugData | null = null;
  */
 let LAST_CONFORMING_FEATURE_RESULT: FeatureResolutionResult | null = null;
 
+/**
+ * Most recent conforming-branch OUTER wall dense sampler grid (positions +
+ * resolution), stashed for the dev-only F-shear diagnostic (the fidelity hook
+ * rebuilds a {@link GpuSurfaceSampler} from it to classify the sliver mechanism
+ * on the REAL surface — see conforming/FShearDiagnostics). Null off the
+ * conforming path. Holds only a reference to the already-allocated grid, so it
+ * adds no steady-state memory beyond one retained Float32Array between builds.
+ */
+let LAST_CONFORMING_OUTER_GRID: { positions: Float32Array; resU: number; resT: number } | null = null;
+
 export function getLastChainDebugData(): ChainDebugData | null {
     return LAST_CHAIN_DEBUG_DATA;
 }
@@ -215,6 +225,12 @@ export function getLastChainDebugData(): ChainDebugData | null {
 /** Most recent conforming-branch feature-resolution result, or null. */
 export function getLastConformingFeatureResult(): FeatureResolutionResult | null {
     return LAST_CONFORMING_FEATURE_RESULT;
+}
+
+/** Most recent conforming-branch outer-wall dense sampler grid, or null. Dev
+ *  diagnostic only (F-shear sliver-mechanism classification). */
+export function getLastConformingOuterGrid(): { positions: Float32Array; resU: number; resT: number } | null {
+    return LAST_CONFORMING_OUTER_GRID;
 }
 
 export function getLastPeakDebugData(): PeakDebugData | null {
@@ -2061,6 +2077,12 @@ export class ParametricExportComputer {
                         dummyWrite3, dummyWrite4, dummyWrite7,
                         dummyWrite9, dummyWrite10, dummyReadOnly,
                     );
+                    // Stash the OUTER (surfaceId 0) grid for the dev F-shear
+                    // diagnostic (sliver-mechanism classification on the real
+                    // surface). Reference only; overwritten each build.
+                    if (surfaceId === 0) {
+                        LAST_CONFORMING_OUTER_GRID = { positions: densePos, resU: DENSE_RES_U, resT: DENSE_RES_T };
+                    }
                     return new GpuSurfaceSampler(densePos, DENSE_RES_U, DENSE_RES_T);
                 };
                 const outerSampler = await buildWallSampler(0);

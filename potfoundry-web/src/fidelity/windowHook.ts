@@ -10,8 +10,11 @@ import { STYLE_REGISTRY } from '../styles/registry';
 import {
   getLastChainDebugData,
   getLastConformingFeatureResult,
+  getLastConformingOuterGrid,
 } from '../renderers/webgpu/ParametricExportComputer';
 import type { FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
+import { GpuSurfaceSampler } from '../renderers/webgpu/parametric/conforming/SurfaceSampler';
+import { classifySurfaceShear, type ShearSummary } from '../renderers/webgpu/parametric/conforming/FShearDiagnostics';
 import {
   computeFidelityMetrics,
   topologyDiagnostics,
@@ -103,6 +106,23 @@ export interface PfFidelityApi {
    * legacy/parametric path (no analytic feature accounting there).
    */
   diagnoseFeatures(opts?: FidelityFeatureDiagnosticOptions): Promise<FidelityFeatureDiagnostics | null>;
+  /**
+   * Generate the conforming mesh once, then classify the sliver MECHANISM on the
+   * REAL outer-wall surface (anisotropy vs area-collapse shear — see
+   * conforming/FShearDiagnostics). Null on the legacy/parametric path (no
+   * conforming sampler stash). Drives the GAP-1 fix-direction decision.
+   */
+  diagnoseFShear(opts?: FidelityFShearDiagnosticOptions): Promise<FidelityFShearDiagnostics | null>;
+}
+
+export interface FidelityFShearDiagnosticOptions {
+  targetTriangles?: number;
+  resU?: number;
+  resT?: number;
+}
+
+export interface FidelityFShearDiagnostics extends ShearSummary {
+  styleId: string;
 }
 
 export interface FidelityFeatureDiagnosticOptions {
@@ -265,6 +285,18 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       const result = getLastConformingFeatureResult();
       if (!result) return null;
       return { styleId, ...result };
+    },
+    async diagnoseFShear(opts: FidelityFShearDiagnosticOptions = {}): Promise<FidelityFShearDiagnostics | null> {
+      const styleId = currentStyleId();
+      // Generating the mesh repopulates the stashed outer sampler grid
+      // (conforming branch only). Discard the mesh; classify the real surface.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const grid = getLastConformingOuterGrid();
+      if (!grid) return null;
+      const sampler = new GpuSurfaceSampler(grid.positions, grid.resU, grid.resT);
+      const summary = classifySurfaceShear(sampler, { resU: opts.resU, resT: opts.resT });
+      return { styleId, ...summary };
     },
     async diagnoseQuality(opts: FidelityQualityDiagnosticOptions = {}): Promise<FidelityQualityDiagnostics> {
       const styleId = currentStyleId();
