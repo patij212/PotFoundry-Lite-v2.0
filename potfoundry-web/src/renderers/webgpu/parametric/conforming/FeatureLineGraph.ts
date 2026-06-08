@@ -62,11 +62,21 @@
  *   member of the warp family ({@link module:conforming/CreaseHelixWarp}), a
  *   topology-preserving shear of full-height columns. `groundTruthCount = k`.
  *
- * Non-analytic / diagonal-LOOP styles (Voronoi/Gyroid; HexagonalHive cells,
- * BasketWeave's two crossing helix families, Celtic knots) return an empty graph
- * — honest zero rather than a fabricated count. Their features need general curve
- * insertion (or two warp families), not a single-family axis-aligned-or-helical
- * warp.
+ * - **CelticTriquetra** (`style_celtic_triquetra`): MIXED. The two braid bands
+ *   (rotated into a `(x+y,−x+y)` lattice — braided) and the 3-fold medallion (a
+ *   closed Vesica-Piscis loop) need general curve insertion → not emitted. But the
+ *   three RIM lines (`smoothstep(rim_top_w,0,|t−tc|)` at FIXED t=0.15/0.52/0.90,
+ *   params-independent) are full-width sharp C1 ring creases → HORIZONTAL
+ *   (t=const) creases, CreaseTWarp-pinnable. `groundTruthCount = 3`.
+ *
+ * Non-analytic / diagonal-LOOP styles (Voronoi/Gyroid; HexagonalHive honeycomb
+ * cells; BasketWeave's two crossing helix families when twisted; CelticKnot's
+ * sinusoidal braided strands) return an empty graph — honest zero rather than a
+ * fabricated count. Their features need general curve insertion (or two warp
+ * families), not a single-family axis-aligned-or-helical warp. (HexagonalHive's
+ * 0°/±60° hex walls form closed cells; CelticKnot's ribbon edges oscillate in u
+ * with t and its column boundaries are seamless — neither has an axis-aligned or
+ * single-slope subset to pin.)
  *
  * ## The resolution metric (the meaningful featuresDropped)
  *
@@ -403,6 +413,32 @@ function extractBasketWeave(p: Float32Array): FeatureLine[] {
   return lines;
 }
 
+/**
+ * CelticTriquetra rim-ring horizontal creases (the only axis-aligned subset).
+ * `style_celtic_triquetra` (styles.wgsl) draws TWO diagonal braid bands (rotated
+ * into a `q = (x+y, −x+y)` lattice — braided, u oscillates with t) and a 3-fold
+ * medallion (a closed Vesica-Piscis loop), NEITHER of which decomposes into a
+ * single constant-u / constant-t / constant-slope-helical family — they need
+ * general curve insertion and are NOT emitted.
+ *
+ * What IS axis-aligned: the three RIM lines, drawn unconditionally as
+ * `smoothstep(rim_top_w, 0, abs(t − tc))` ridges at FIXED t = 0.90 (top), 0.52
+ * (mid) and 0.15 (bottom) — full-width (u-independent) sharp C1 ring creases,
+ * params-independent. These are pinned by CreaseTWarp (ψ:[0,1]→[0,1], endpoints
+ * fixed). Verified numerically: at each tc the radius is constant across u
+ * (u-variation = 0) with a strong second-difference kink in t; the braid band
+ * boundaries instead vary by ~1.25mm across u (braided, not a clean ring), so
+ * only the three rim lines are emitted. `groundTruthCount = 3`.
+ */
+function extractCelticTriquetra(_p: Float32Array): FeatureLine[] {
+  void _p; // rim loci are hardcoded constants in the shader, independent of params
+  return [
+    horizontalLine(0.15, 'rim-bottom'),
+    horizontalLine(0.52, 'rim-mid'),
+    horizontalLine(0.9, 'rim-top'),
+  ];
+}
+
 function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
@@ -421,6 +457,18 @@ const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   BasketWeave: extractBasketWeave,
   // Helical (constant-slope diagonal) creases.
   SpiralRidges: extractSpiralRidges,
+  // Mixed: only the three params-independent RIM rings (t=0.15/0.52/0.90) are
+  // axis-aligned horizontal creases (CreaseTWarp-pinnable). The diagonal braid
+  // bands + 3-fold medallion loop are braided/cellular → not emitted.
+  CelticTriquetra: extractCelticTriquetra,
+  // Genuinely cellular / braided at defaults — no single-family axis-aligned-or-
+  // helical decomposition. Honest-empty (the count is DELIBERATELY 0, not an
+  // accidental omission); their features need general curve insertion.
+  //  - HexagonalHive: closed honeycomb cell walls (0°/±60° crossing families);
+  //  - CelticKnot: sinusoidal braided ribbon edges (u oscillates with t), with
+  //    SEAMLESS column boundaries (per-column phase tiles to zero radius jump).
+  HexagonalHive: () => [],
+  CelticKnot: () => [],
   // Smooth styles (no sharp C0/C1 creases): honestly empty — the radius is a sum
   // of sin/cos terms in θ and t, so curvature-adaptive meshing alone resolves
   // them. Listed explicitly so the count is HONEST rather than accidentally 0.

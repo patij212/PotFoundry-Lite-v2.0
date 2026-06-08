@@ -220,6 +220,49 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     expect(g.lines.length).toBe(0);
   });
 
+  // ── CelticTriquetra (default braid; only the rim rings are axis-aligned) ─────
+  // Packed slots (packCelticTriquetra): 0 scale_x(Nx), 1 rows(Ny), 2 width,
+  // 3 relief, 4 med_scale, 5 med_y, 6 gap. The braid bands + 3-fold medallion are
+  // braided/loop (need general insertion), but the shader's three RIM lines
+  // (`smoothstep(rim_top_w,0,abs(t-tc))` at t=0.90/0.52/0.15, params-independent)
+  // are full-width sharp horizontal-band creases → CreaseTWarp-pinnable.
+  it('CelticTriquetra: 3 rim horizontal-band creases at t=0.15/0.52/0.90', () => {
+    const g = extractAnalyticFeatures('CelticTriquetra', packed([14, 6, 0.18, 2.5, 0.22, 0.69, 0.05]), DIMS);
+    expect(g.lines.every((l) => l.kind === 'horizontal-band')).toBe(true);
+    expect(g.lines.length).toBe(3);
+    expect(g.groundTruthCount).toBe(3);
+    const ts = g.lines.map((l) => l.points[0].t).sort((a, b) => a - b);
+    expect(ts).toEqual([0.15, 0.52, 0.9].map((x) => expect.closeTo(x, 9)));
+  });
+
+  it('CelticTriquetra: rim loci are params-independent (same 3 rings for any scale/rows)', () => {
+    const g = extractAnalyticFeatures('CelticTriquetra', packed([8, 4, 0.1, 2.0, 0.3, 0.5, 0.02]), DIMS);
+    expect(g.groundTruthCount).toBe(3);
+    const ts = g.lines.map((l) => l.points[0].t).sort((a, b) => a - b);
+    expect(ts).toEqual([0.15, 0.52, 0.9].map((x) => expect.closeTo(x, 9)));
+  });
+
+  // ── HexagonalHive (honeycomb cell walls) → honest empty ─────────────────────
+  // The hex-grid walls form CLOSED honeycomb cells with edges at 0°/±60° — three
+  // crossing diagonal families / closed loops, no constant-u, constant-t, or
+  // single-slope-helical decomposition. Needs general curve insertion.
+  it('HexagonalHive: honeycomb cells → honest empty (needs general curve insertion)', () => {
+    const g = extractAnalyticFeatures('HexagonalHive', packed([4.0, 0.05, 2.0, 0.0, 0.0, 0.0]), DIMS);
+    expect(g.groundTruthCount).toBe(0);
+    expect(g.lines.length).toBe(0);
+  });
+
+  // ── CelticKnot (braided sinusoid strands) → honest empty ────────────────────
+  // The ribbon edges are sinusoids `u ≈ 0.4·sin(v+phase)` whose u oscillates with
+  // t (braided, not axis-aligned); the column boundaries u=k/num_columns are
+  // SEAMLESS (the per-column base_phase exactly tiles, zero radius jump). No
+  // constant-u/-t/-helical locus → needs general curve insertion.
+  it('CelticKnot: braided strands → honest empty (needs general curve insertion)', () => {
+    const g = extractAnalyticFeatures('CelticKnot', packed([3.0, 0.15, 2.0, 0.02, 0.5, 0.0, 3.0]), DIMS);
+    expect(g.groundTruthCount).toBe(0);
+    expect(g.lines.length).toBe(0);
+  });
+
   it('smooth styles (SuperellipseMorph/FourierBloom/WaveInterference/RippleInterference/Crystalline/ArtDeco) → empty', () => {
     for (const s of ['SuperellipseMorph', 'FourierBloom', 'WaveInterference', 'RippleInterference', 'Crystalline', 'ArtDeco']) {
       const g = extractAnalyticFeatures(s, packed([4, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]), DIMS);
