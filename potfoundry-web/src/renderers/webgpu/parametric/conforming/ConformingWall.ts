@@ -431,10 +431,17 @@ export function buildConformingWall(
     if (!isPowerOfTwo(opts.nRing)) {
       throw new Error(`buildConformingWall: nRing must be a power of two (got ${opts.nRing})`);
     }
-    pinBoundaryLevel = Math.round(Math.log2(opts.nRing));
+    // The boundary ring carries 2^(pinBoundaryLevel + uBias) U-columns (the cells
+    // at the pinned t-rows are 1/2^(level+uBias) wide). To keep the SHARED ring at
+    // exactly `nRing` regardless of the anisotropy bias — so caps stay nRing-wide
+    // instead of inflating to nRing·2^B — pin the t-rows `uBias` levels COARSER:
+    // pinBoundaryLevel = log2(nRing) − uBias ⇒ 2^(pinBoundaryLevel+uBias) = nRing.
+    // (uBias=0 ⇒ unchanged.) Floored at 1 so the boundary stays uniformly pinned.
+    const basePin = Math.round(Math.log2(opts.nRing));
+    pinBoundaryLevel = Math.max(1, basePin - Math.max(0, opts.uBias ?? 0));
     if (pinBoundaryLevel > opts.maxLevel) {
       throw new Error(
-        `buildConformingWall: log2(nRing)=${pinBoundaryLevel} exceeds maxLevel=${opts.maxLevel}`,
+        `buildConformingWall: pinBoundaryLevel=${pinBoundaryLevel} exceeds maxLevel=${opts.maxLevel}`,
       );
     }
   }
