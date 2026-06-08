@@ -7,7 +7,10 @@
  */
 import type { MeshData } from '../geometry/types';
 import { STYLE_REGISTRY } from '../styles/registry';
-import { getLastChainDebugData } from '../renderers/webgpu/ParametricExportComputer';
+import {
+  getLastChainDebugData,
+  getLastConformingFeatureResult,
+} from '../renderers/webgpu/ParametricExportComputer';
 import {
   computeFidelityMetrics,
   topologyDiagnostics,
@@ -157,9 +160,14 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
       const testMs = Date.now() - tTest0;
 
+      // Feature accounting. The conforming whole-mesh branch reports meaningful
+      // analytic feature-line resolution (see conforming/FeatureLineGraph); prefer
+      // it when present. The legacy/parametric path falls back to chain-debug
+      // chain/line counts.
+      const conformingFeatures = getLastConformingFeatureResult();
       const chain = getLastChainDebugData();
-      const expected = chain?.chainCount ?? 0;
-      const present = chain?.lineCount ?? 0;
+      const expected = conformingFeatures?.expected ?? chain?.chainCount ?? 0;
+      const present = conformingFeatures?.present ?? chain?.lineCount ?? 0;
 
       try {
         if (import.meta.env?.DEV) {

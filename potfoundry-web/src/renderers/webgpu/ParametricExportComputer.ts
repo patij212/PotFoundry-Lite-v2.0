@@ -53,6 +53,10 @@ import {
     buildConformingOuterWall,
     assembleWatertight,
     GpuSurfaceSampler,
+    extractAnalyticFeatures,
+    measureFeatureResolution,
+    type FeatureUTVertex,
+    type FeatureResolutionResult,
 } from './parametric/conforming';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
 import {
@@ -190,8 +194,21 @@ import type {
 let LAST_CHAIN_DEBUG_DATA: ChainDebugData | null = null;
 let LAST_PEAK_DEBUG_DATA: PeakDebugData | null = null;
 
+/**
+ * Feature-resolution accounting from the most recent CONFORMING whole-mesh
+ * build (null on the legacy/parametric path). The fidelity hook prefers this
+ * over chain-debug counts when present so featuresExpected/Present/Dropped are
+ * MEANINGFUL for the conforming export (see conforming/FeatureLineGraph).
+ */
+let LAST_CONFORMING_FEATURE_RESULT: FeatureResolutionResult | null = null;
+
 export function getLastChainDebugData(): ChainDebugData | null {
     return LAST_CHAIN_DEBUG_DATA;
+}
+
+/** Most recent conforming-branch feature-resolution result, or null. */
+export function getLastConformingFeatureResult(): FeatureResolutionResult | null {
+    return LAST_CONFORMING_FEATURE_RESULT;
 }
 
 export function getLastPeakDebugData(): PeakDebugData | null {
@@ -1701,6 +1718,11 @@ export class ParametricExportComputer {
         if (!this.initialized) throw new Error('[ParametricExport] Not initialized');
         const startTime = performance.now();
 
+        // Clear stale conforming feature accounting; only the conforming branch
+        // (below) repopulates it. A non-conforming run leaves it null so the
+        // fidelity hook falls back to chain-debug counts.
+        LAST_CONFORMING_FEATURE_RESULT = null;
+
         const requestedProfile: QualityProfileName = params.qualityProfile ?? 'standard';
         const effectiveProfileName = profileForAttempt(requestedProfile, 0);
         const effectiveProfile = getQualityProfile(effectiveProfileName);
@@ -2090,13 +2112,44 @@ export class ParametricExportComputer {
                 const vCount = pos3D.length / 3;
                 const triCount = asm.indices.length / 3;
 
+                // ── Feature-completeness accounting (meaningful featuresDropped) ──
+                // Extract the style's closed-form sharp feature lines (analytic
+                // loci in (u,t)), then measure how many the OUTER-WALL mesh
+                // actually TRACKS to tolerance. The assembled outer-wall vertices
+                // (surfaceId 0) carry their (u,t) directly. Failures here must NOT
+                // break the export, so guard defensively.
+                try {
+                    const [, packedFeatureParams] = buildStyleParamPayload(
+                        params.styleId,
+                        params.styleOpts as Record<string, unknown>,
+                    );
+                    const graph = extractAnalyticFeatures(
+                        params.styleId,
+                        Float32Array.from(packedFeatureParams),
+                        { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb },
+                    );
+                    const outerUT: FeatureUTVertex[] = [];
+                    for (let i = 0; i < asm.vertices.length; i += 3) {
+                        if (asm.vertices[i + 2] < 0.5) {
+                            outerUT.push({ u: asm.vertices[i], t: asm.vertices[i + 1] });
+                        }
+                    }
+                    LAST_CONFORMING_FEATURE_RESULT = measureFeatureResolution(graph, outerUT);
+                } catch (err) {
+                    LAST_CONFORMING_FEATURE_RESULT = null;
+                    console.warn(`[CONFORMING-FULL] feature accounting failed: ${String(err)}`);
+                }
+
                 // Validation is skipped here by design: the whole mesh is
                 // watertight-by-construction (shared rings, no repair), and the
                 // e2e gate measures the real mesh directly via diagnoseTopoQuality.
                 console.warn(
                     `[CONFORMING-FULL] ${params.styleId} ` +
                     `tris=${triCount} budget=${conformingBudget} verts=${vCount} nRing=${nRing} ` +
-                    `surfaces=${asm.surfaceRanges.length} buildMs=${buildMs.toFixed(0)}`,
+                    `surfaces=${asm.surfaceRanges.length} buildMs=${buildMs.toFixed(0)} ` +
+                    `featExp=${LAST_CONFORMING_FEATURE_RESULT?.expected ?? 0} ` +
+                    `featPres=${LAST_CONFORMING_FEATURE_RESULT?.present ?? 0} ` +
+                    `featDrop=${LAST_CONFORMING_FEATURE_RESULT?.dropped ?? 0}`,
                 );
 
                 // Valid result; the finally block runs the buffer cleanup.
