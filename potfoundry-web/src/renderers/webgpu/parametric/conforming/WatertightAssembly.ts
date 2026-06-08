@@ -120,6 +120,16 @@ export interface AssemblyWallOptions {
    */
   uBias?: number;
   /**
+   * Enable the LOCAL directional u-refinement pass (per-leaf `uExtra`, GAP 1) on
+   * the final build of NON-feature walls — removes residual short-WIDE slivers on
+   * wide/flat smooth pots (Crystalline / ArtDeco / HexagonalHive analogues). It
+   * is GATED (no-op at default dims) and never touches the pinned boundary rows
+   * (so `nRing` is unchanged and both walls' rings still match). Forced OFF when
+   * `outerFeatureLines` are present (directional refine is disabled on feature
+   * walls). Defaults to true; pass false to disable globally.
+   */
+  directionalRefine?: boolean;
+  /**
    * Optional whole-pot triangle budget. Split evenly across the two walls (the
    * caps add only a small fixed amount), then each wall's sizing field is scaled
    * to approach its share — bounded so neither wall coarsens below the
@@ -276,6 +286,14 @@ export function assembleWatertight(
   const hasFeatures = (opts.outerFeatureLines?.length ?? 0) > 0;
   const uBias = opts.uBias ?? (hasFeatures ? 0 : computeUBias(outerSampler));
 
+  // GAP 1 local/directional anisotropy: ON by default for NON-feature walls (the
+  // pass is gated + a no-op at default dims, and never touches the pinned rings,
+  // so it is safe to leave on). DISABLED on feature walls — directional refine is
+  // deferred there (inserted styles stay deferred; braid/loop insertion is not yet
+  // directional-aware). `buildConformingWall` ALSO clamps it off when feature
+  // lines are present, but gate it here too so the inner wall's flag mirrors.
+  const directionalRefine = (opts.directionalRefine ?? true) && !hasFeatures;
+
   // --- 1. Build the two conforming walls (uniform shared rings) -------------
   // Split the whole-pot budget across the two walls (caps add only a small fixed
   // amount). Each wall's own sag floor still bounds its share from below.
@@ -296,6 +314,7 @@ export function assembleWatertight(
     budgetMode: opts.budgetMode,
     minUniformLevel: opts.minUniformLevel,
     uBias,
+    directionalRefine,
   };
   // Features go on the OUTER wall only (the inner wall is a smooth offset).
   const outer = buildConformingWall(outerSampler, {

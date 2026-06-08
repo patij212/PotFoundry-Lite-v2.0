@@ -20,7 +20,7 @@
  * never uselessly inflated.
  */
 import { describe, it, expect } from 'vitest';
-import { SyntheticCylinderSampler } from './SurfaceSampler';
+import { SyntheticCylinderSampler, type SurfaceSampler, type Vec3 } from './SurfaceSampler';
 import { MetricSizingField, type SizingOptions } from './MetricSizingField';
 import { PeriodicBalancedQuadtree, type QuadLeaf } from './PeriodicBalancedQuadtree';
 import { triangulateQuadtree, type QuadtreeMesh } from './QuadtreeTriangulator';
@@ -296,5 +296,75 @@ describe('GAP 1 directional refine — Stage 5 integration (triangulators on dir
     expect(audit.nonManifold).toBe(0);
     expect(audit.interiorBoundary).toBe(0);
     expect(seamClosed(mesh)).toBe(true);
+  }, 30000);
+});
+
+/**
+ * A SHEARED cylinder: the u-iso and t-iso directions are NOT orthogonal (F≠0),
+ * and at high shear the cell area √(EG−F²) collapses → a high-aspect cell whose
+ * LONG axis is along t (physW < physH), NOT u. This is the Voronoi/Gyroid F-shear
+ * sliver mode: u-refinement provably cannot raise the area, so the trigger's
+ * `physW>physH` guard must LEAVE these cells untouched (uExtra=0) — not inflate
+ * them uselessly to MAX_U_EXTRA.
+ */
+class ShearedCylinderSampler implements SurfaceSampler {
+  constructor(
+    private readonly R0: number,
+    private readonly H: number,
+    private readonly shear: number, // θ advances by `shear` per unit t (twist)
+  ) {}
+  position(u: number, t: number): Vec3 {
+    const theta = 2 * Math.PI * u + this.shear * t;
+    return [this.R0 * Math.cos(theta), this.R0 * Math.sin(theta), t * this.H];
+  }
+}
+
+describe('GAP 1 directional refine — Stage 7 efficacy + F-shear out-of-scope', () => {
+  // Crystalline / ArtDeco / HexagonalHive analogue: a wide/flat pot with PERVASIVE
+  // local relief → residual short-WIDE (u-long) slivers after the global bias.
+  // Directional refine drives the INTERIOR-wall F-inclusive 3D aspect below the
+  // sliver bound (ASPECT_MAX=100) and engages real uExtra refinement.
+  it('u-long efficacy: a wide/flat high-relief wall → interior aspect < 100, slivers gone', () => {
+    const s = new SyntheticCylinderSampler(145, 40, 10, 80);
+    const f = new MetricSizingField(s, {
+      maxSagMm: 0.1, minEdgeMm: 0.2, maxEdgeMm: 8, gradeRatio: 2, resU: 128, resT: 128,
+    });
+    const on = new PeriodicBalancedQuadtree(f, s, {
+      maxLevel: 6, pinBoundaryLevel: 4, directionalRefine: true,
+    });
+    let interiorSlivers = 0;
+    for (const l of on.leaves()) {
+      const onBoundary = Math.abs(l.t0) < 1e-9 || Math.abs(l.t0 + 1 / (1 << l.level) - 1) < 1e-9;
+      if (onBoundary) continue;
+      if (leafAspect3D(on, s, l) > 100) interiorSlivers++;
+    }
+    expect(interiorSlivers).toBe(0);
+    expect(on.leaves().some((l) => (l.uExtra ?? 0) > 0)).toBe(true);
+  }, 30000);
+
+  it('F-shear out-of-scope: sheared (EG−F²→0) cells are LEFT UNTOUCHED (uExtra stays 0)', () => {
+    // Wide/flat so the gate is OPEN (the directional pass runs), but the sliver
+    // mode is F-shear (long axis t, not u). The trigger's physW>physH guard must
+    // refuse to u-refine: u-splitting cannot raise √(EG−F²), so inflating to
+    // MAX_U_EXTRA would only waste triangles. Expect NO directional refinement.
+    const s = new ShearedCylinderSampler(145, 40, 60); // strong twist → large F
+    const steps = metricStepsForSampler(s);
+    // Sanity: the metric really is F-sheared (F²/(EG) not negligible somewhere).
+    let maxShearFrac = 0;
+    for (let i = 0; i < 8; i++) {
+      const { E, F, G } = firstFundamentalForm(s, i / 8, 0.5, steps.hu, steps.ht);
+      maxShearFrac = Math.max(maxShearFrac, (F * F) / Math.max(E * G, 1e-12));
+    }
+    expect(maxShearFrac).toBeGreaterThan(0.3); // genuinely sheared
+
+    const f = new MetricSizingField(s, {
+      maxSagMm: 0.1, minEdgeMm: 0.2, maxEdgeMm: 8, gradeRatio: 2, resU: 128, resT: 128,
+    });
+    const on = new PeriodicBalancedQuadtree(f, s, {
+      maxLevel: 6, pinBoundaryLevel: 4, directionalRefine: true,
+    });
+    // The trigger never fires (physW>physH is false for shear cells / the metric is
+    // u-fine enough), so NO leaf is directionally refined — the pass is inert here.
+    expect(on.leaves().every((l) => (l.uExtra ?? 0) === 0)).toBe(true);
   }, 30000);
 });

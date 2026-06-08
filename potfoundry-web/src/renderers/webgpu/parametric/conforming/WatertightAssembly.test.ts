@@ -467,3 +467,67 @@ describe('assembleWatertight — concentric cylinders, full base discs (rDrain=0
     expect(maxAspect3D(pos, asm.indices)).toBeLessThan(100);
   });
 });
+
+describe('assembleWatertight — GAP 1 directional refine wiring (Stage 6)', () => {
+  const tBottom = 8;
+  const rDrain = 10;
+
+  it('directionalRefine is a perfect NO-OP at default dims (byte-identical mesh)', () => {
+    // Default-dim pot: 2π·r/√G ≈ 2.6 ≤ AREF·√2 → the directional gate is NOT
+    // tripped → the pass touches zero cells → the assembly is byte-identical with
+    // directionalRefine ON vs OFF. (The default ON value must never change a
+    // default-dim mesh — the SACRED no-op-at-default invariant.)
+    const Ro = 50, Ri = 46, H = 120;
+    const dims: AssemblyDimensions = { H, tBottom, rDrain };
+    const outer = wallSampler(Ro, Ri, H, tBottom, rDrain, 0);
+    const inner = wallSampler(Ro, Ri, H, tBottom, rDrain, 1);
+    const off = assembleWatertight(outer, inner, dims, { ...WALL_OPTS, directionalRefine: false });
+    const on = assembleWatertight(outer, inner, dims, { ...WALL_OPTS, directionalRefine: true });
+    expect(on.vertices.length).toBe(off.vertices.length);
+    expect(on.indices.length).toBe(off.indices.length);
+    expect(Array.from(on.indices)).toEqual(Array.from(off.indices));
+    expect(Array.from(on.vertices)).toEqual(Array.from(off.vertices));
+  });
+
+  it('wide/flat rippled pot: directionalRefine keeps the solid closed + rings matched', () => {
+    // Wide/flat (Ro=145, H=40 → 2π·r/√G ≈ 22.8 ≫ AREF·√2) with strong local relief
+    // → the gate opens and the directional pass engages on the OUTER wall. The
+    // boundary rows are never directionally split, so both walls keep nRing rings
+    // (assembleWatertight throws on a ring mismatch — a clean build proves equality).
+    const Ro = 145, Ri = 141, H = 40;
+    const dims: AssemblyDimensions = { H, tBottom, rDrain };
+    const relief = (base: number, surfaceId: number): SurfaceSampler => ({
+      position: (u: number, t: number): Vec3 => {
+        const theta = 2 * Math.PI * (u - Math.floor(u));
+        const r = base + 6 * Math.cos(2 * Math.PI * 12 * u);
+        const z = surfaceId < 0.5 ? t * H : tBottom + t * (H - tBottom);
+        return [r * Math.cos(theta), r * Math.sin(theta), z];
+      },
+    });
+    const outerS = relief(Ro, 0);
+    const innerS = relief(Ri, 1);
+    const geom = (u: number, t: number, s: number): Vec3 => {
+      if (s < 0.5) return outerS.position(u, t);
+      if (s < 1.5) return innerS.position(u, t);
+      return evalSurface(Ro, Ri, H, tBottom, rDrain, u, t, s);
+    };
+    const opts = {
+      maxSagMm: 0.1, maxEdgeMm: 8, minEdgeMm: 0.2, gradeRatio: 2,
+      maxLevel: 7, resU: 64, resT: 64, nRing: 64, directionalRefine: true,
+    };
+    const asm = assembleWatertight(outerS, innerS, dims, opts);
+    const pos = eval3D(geom, asm.vertices);
+    const topo = topology(pos, asm.indices);
+    expect(topo.boundary).toBe(0);
+    expect(topo.nonManifold).toBe(0);
+    expect(topo.orientationMismatch).toBe(0);
+    // Both walls' shared rings are exactly the cap-referenced nRing·2^B count: the
+    // assembly already validated outer.bottomRing.length === inner.bottomRing.length;
+    // the cap surfaces (3,4) own whole-ring multiples of NEW verts → still true.
+    const ranges = asm.surfaceRanges;
+    const under = ranges.find((r) => r.surfaceId === 3);
+    const top = ranges.find((r) => r.surfaceId === 4);
+    expect(under).toBeDefined();
+    expect(top).toBeDefined();
+  }, 60000);
+});

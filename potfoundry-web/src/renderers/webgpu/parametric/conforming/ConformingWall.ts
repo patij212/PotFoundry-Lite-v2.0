@@ -110,6 +110,16 @@ export interface ConformingWallOptions {
    * and warps are unaffected (t-based / u-value-based).
    */
   uBias?: number;
+  /**
+   * Enable the LOCAL directional u-refinement pass (per-leaf `uExtra`, GAP 1) on
+   * the FINAL build, to drive residual short-WIDE slivers (cells whose local
+   * √E/√G/2^B still exceeds the bound) to 3D-near-square. GATED on the same
+   * wide/flat criterion as the global bias, so it is a no-op at default dims, and
+   * IGNORED when feature lines are present (directional refine is disabled on
+   * feature walls). The boundary rows never directionally split → the shared
+   * `nRing` is unchanged. Default false.
+   */
+  directionalRefine?: boolean;
 }
 
 /** Conforming wall mesh result with uniform shared boundary rings. */
@@ -156,13 +166,21 @@ const BUDGET_TOLERANCE = 0.1;
  */
 const TRIS_PER_LEAF = 2;
 
-/** Build only the sizing field + quadtree at a target scale (no triangulation). */
+/**
+ * Build only the sizing field + quadtree at a target scale (no triangulation).
+ *
+ * `directionalRefine` is passed THROUGH to the quadtree only on the FINAL build —
+ * the budget search passes it FALSE so the leaf count stays monotone in
+ * `targetScale` (the directional pass adds a scale-independent, relief-driven
+ * number of cells that would otherwise break the binary search's monotonicity).
+ */
 function buildQuadtreeAtScale(
   sampler: SurfaceSampler,
   opts: ConformingWallOptions,
   pinBoundaryLevel: number,
   targetScale: number,
   featureRefine?: FeatureRefineSpec,
+  directionalRefine = false,
 ): PeriodicBalancedQuadtree {
   const field = new MetricSizingField(sampler, {
     maxSagMm: opts.maxSagMm,
@@ -179,6 +197,7 @@ function buildQuadtreeAtScale(
     minUniformLevel: opts.minUniformLevel,
     featureRefine,
     uBias: opts.uBias,
+    directionalRefine,
   });
 }
 
@@ -402,7 +421,11 @@ function buildWallMeshAtScale(
   clippedFeatures: FeatureLine[],
   featureRefine?: FeatureRefineSpec,
 ): { vertices: Float32Array; indices: Uint32Array; seamTriangles: Uint8Array } {
-  const qt = buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, targetScale, featureRefine);
+  // FINAL build: enable the directional refine pass (if requested) — but NEVER on
+  // a feature wall (clipped features present). The pass is gated/no-op at default
+  // dims; on a wide/flat smooth wall it removes residual short-WIDE slivers.
+  const directionalRefine = (opts.directionalRefine ?? false) && clippedFeatures.length === 0;
+  const qt = buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, targetScale, featureRefine, directionalRefine);
   if (clippedFeatures.length === 0) return triangulateQuadtree(qt);
   // Corner-snap threshold: a small fraction of the feature cell size, made
   // ABSOLUTE (not per-cell) so both sides of every shared edge snap identically.
