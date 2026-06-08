@@ -115,6 +115,13 @@ export interface FeatureLineResolution {
   kind: FeatureLineKind;
   coverage: number;
   resolved: boolean;
+  /**
+   * Smallest periodic u-distance from this (vertical) crease to ANY mesh vertex,
+   * in units of mesh u-columns (uDist / medianMeshColumnSpacing). ~0 means a
+   * column sits on the crease; ~0.5 means the crease falls midway between two
+   * columns (the rounding case). Undefined for horizontal bands.
+   */
+  nearestColumnGapCells?: number;
 }
 
 export interface FeatureResolutionResult {
@@ -122,6 +129,8 @@ export interface FeatureResolutionResult {
   present: number;
   dropped: number;
   perLine: FeatureLineResolution[];
+  /** Number of DISTINCT u-columns in the outer-wall mesh (its angular resolution). */
+  meshUColumnCount: number;
 }
 
 // ── Defaults: tuned to the conforming mesh's nRing=256 (Δu≈1/256≈0.0039) and a
@@ -318,6 +327,27 @@ export function measureFeatureResolution(
     return false;
   };
 
+  // Distinct mesh u-columns (the outer wall's angular resolution) and their
+  // median spacing — used to express each crease's nearest-column gap in CELLS,
+  // so a drop is self-explanatory: ~0.5 cells ⇒ crease falls between columns.
+  const { columnCount, medianSpacing } = distinctColumns(meshVertices);
+  const nearestUDist = (u: number): number => {
+    const cu = wrapU(u);
+    let best = 1;
+    const center = Math.floor(cu / bucketW);
+    // Scan a few buckets either side to find the nearest column even when the
+    // crease is up to ~half a (coarse) cell away from any vertex.
+    const span = Math.max(2, Math.ceil(medianSpacing / bucketW) + 1);
+    for (let d = -span; d <= span; d++) {
+      const bi = ((center + d) % nBuckets + nBuckets) % nBuckets;
+      for (const v of buckets[bi]) {
+        const du = uDist(v.u, cu);
+        if (du < best) best = du;
+      }
+    }
+    return best;
+  };
+
   const perLine: FeatureLineResolution[] = [];
   let present = 0;
   for (const line of graph.lines) {
@@ -334,7 +364,11 @@ export function measureFeatureResolution(
     const coverage = hits / samplesPerLine;
     const resolved = coverage >= minCoverage;
     if (resolved) present++;
-    perLine.push({ label: line.label, kind: line.kind, coverage, resolved });
+    const entry: FeatureLineResolution = { label: line.label, kind: line.kind, coverage, resolved };
+    if (line.kind === 'vertical-crease' && medianSpacing > 0) {
+      entry.nearestColumnGapCells = nearestUDist(line.points[0].u) / medianSpacing;
+    }
+    perLine.push(entry);
   }
 
   return {
@@ -342,5 +376,30 @@ export function measureFeatureResolution(
     present,
     dropped: Math.max(0, graph.groundTruthCount - present),
     perLine,
+    meshUColumnCount: columnCount,
   };
+}
+
+/**
+ * Count distinct u-columns of the outer-wall mesh and their median spacing. A
+ * curvature-adaptive mesh can have non-uniform columns; the median spacing is
+ * the meaningful "cell size" for expressing a crease's distance to its nearest
+ * column. Columns are quantized to 1e-4 in u so float jitter doesn't inflate the
+ * count.
+ */
+function distinctColumns(meshVertices: FeatureUTVertex[]): {
+  columnCount: number;
+  medianSpacing: number;
+} {
+  const q = 1e-4;
+  const set = new Set<number>();
+  for (const v of meshVertices) set.add(Math.round(wrapU(v.u) / q));
+  const cols = Array.from(set, (k) => k * q).sort((a, b) => a - b);
+  if (cols.length < 2) return { columnCount: cols.length, medianSpacing: 0 };
+  const gaps: number[] = [];
+  for (let i = 1; i < cols.length; i++) gaps.push(cols[i] - cols[i - 1]);
+  gaps.push(1 - cols[cols.length - 1] + cols[0]); // wrap gap
+  gaps.sort((a, b) => a - b);
+  const medianSpacing = gaps[Math.floor(gaps.length / 2)];
+  return { columnCount: cols.length, medianSpacing };
 }

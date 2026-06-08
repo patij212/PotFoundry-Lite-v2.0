@@ -11,6 +11,7 @@ import {
   getLastChainDebugData,
   getLastConformingFeatureResult,
 } from '../renderers/webgpu/ParametricExportComputer';
+import type { FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
 import {
   computeFidelityMetrics,
   topologyDiagnostics,
@@ -87,6 +88,20 @@ export interface PfFidelityApi {
   diagnoseQuality(opts?: FidelityQualityDiagnosticOptions): Promise<FidelityQualityDiagnostics>;
   /** Fast combined check: generates the mesh ONCE, returns topology + quality summary. */
   diagnoseTopoQuality(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTopoQualitySummary>;
+  /**
+   * Generate the conforming mesh once, then return the per-feature-line
+   * resolution breakdown (label, kind, coverage, resolved). Null on the
+   * legacy/parametric path (no analytic feature accounting there).
+   */
+  diagnoseFeatures(opts?: FidelityFeatureDiagnosticOptions): Promise<FidelityFeatureDiagnostics | null>;
+}
+
+export interface FidelityFeatureDiagnosticOptions {
+  targetTriangles?: number;
+}
+
+export interface FidelityFeatureDiagnostics extends FeatureResolutionResult {
+  styleId: string;
 }
 
 declare global {
@@ -225,6 +240,16 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         minAngleDeg: qual.minAngleDeg,
         triangleCount: Math.floor(mesh.indices.length / 3),
       };
+    },
+    async diagnoseFeatures(opts: FidelityFeatureDiagnosticOptions = {}): Promise<FidelityFeatureDiagnostics | null> {
+      const styleId = currentStyleId();
+      // Generating the mesh repopulates LAST_CONFORMING_FEATURE_RESULT (conforming
+      // branch only). Discard the mesh; we only need the stashed feature result.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const result = getLastConformingFeatureResult();
+      if (!result) return null;
+      return { styleId, ...result };
     },
     async diagnoseQuality(opts: FidelityQualityDiagnosticOptions = {}): Promise<FidelityQualityDiagnostics> {
       const styleId = currentStyleId();

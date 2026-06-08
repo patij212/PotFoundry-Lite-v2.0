@@ -193,3 +193,40 @@ describe('measureFeatureResolution — resolved-to-tolerance', () => {
     expect(res.dropped).toBe(0);
   });
 });
+
+describe('measureFeatureResolution — grid-alignment diagnostics', () => {
+  it('reports the distinct mesh u-column count', () => {
+    const g = extractAnalyticFeatures('GeometricStar', packed([8, 0.05, 0.5, 4, 1, 2, 0, 1, 0]), DIMS);
+    // A uniform 100-column mesh.
+    const verts: FeatureUTVertex[] = [];
+    for (let j = 0; j < 100; j++) for (let r = 0; r <= 32; r++) verts.push({ u: j / 100, t: r / 32 });
+    const res = measureFeatureResolution(g, verts);
+    expect(res.meshUColumnCount).toBe(100);
+  });
+
+  it('a crease falling between columns has nearestColumnGapCells ≈ 0.5 → dropped', () => {
+    // 8 folds at u=(k+0.5)/8. A uniform 8-column mesh at u=j/8 sits HALF a cell
+    // off every fold → every fold ~0.5 cells from the nearest column.
+    const g = extractAnalyticFeatures('GeometricStar', packed([8, 0.05, 0.5, 4, 1, 2, 0, 1, 0]), DIMS);
+    const verts: FeatureUTVertex[] = [];
+    for (let j = 0; j < 8; j++) for (let r = 0; r <= 64; r++) verts.push({ u: j / 8, t: r / 64 });
+    // uTol (0.0375) < the half-cell gap (0.0625) so a between-columns crease misses.
+    const res = measureFeatureResolution(g, verts, { uTol: 0.3 / 8, tTol: 1.5 / 64 });
+    expect(res.present).toBe(0);
+    for (const l of res.perLine) {
+      expect(l.nearestColumnGapCells).toBeGreaterThan(0.4);
+      expect(l.nearestColumnGapCells).toBeLessThanOrEqual(0.5 + 1e-6);
+    }
+  });
+
+  it('a column ON the crease has nearestColumnGapCells ≈ 0 → resolved', () => {
+    // 8 folds at u=(k+0.5)/8; put a dense column exactly on each fold.
+    const g = extractAnalyticFeatures('GeometricStar', packed([8, 0.05, 0.5, 4, 1, 2, 0, 1, 0]), DIMS);
+    const verts: FeatureUTVertex[] = [];
+    // 16 columns at j/16 → folds (k+0.5)/8 = (2k+1)/16 land exactly on odd columns.
+    for (let j = 0; j < 16; j++) for (let r = 0; r <= 256; r++) verts.push({ u: j / 16, t: r / 256 });
+    const res = measureFeatureResolution(g, verts, { uTol: 0.6 / 16, tTol: 1.5 / 256 });
+    expect(res.present).toBe(8);
+    for (const l of res.perLine) expect(l.nearestColumnGapCells).toBeLessThan(1e-6);
+  });
+});
