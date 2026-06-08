@@ -12,11 +12,11 @@ sliverCount = 0    boundaryEdges = 0    nonManifoldEdges = 0    orientationMisma
 featuresExpected == featuresPresent    featuresDropped = 0    + no timeouts, CAD-grade fidelity
 ```
 
-## 1. CURRENT STATE — verified & committed (UPDATED 2026-06-08i; do not re-derive; trust + spot-check)
+## 1. CURRENT STATE — verified & committed (UPDATED 2026-06-08l; do not re-derive; trust + spot-check)
 A from-scratch **watertight-by-construction conforming mesher** replaces the old non-conforming sweep + 1,100-line repair battery. It is behind a flag (`conformingMesher` / `window.__pfConforming`); **the legacy path is untouched** and is the production default until cutover.
-- **All 20 styles: `orient=bnd=nonMan=sliver=0`, maxAspect ≤ 47, no timeouts.** Full regression: `potfoundry-web/e2e/regress-20-2026-06-08h.log`.
-- **19/20 styles at FULL 6/6** (verified `featuresDropped=0` e2e): the 8 warp-captured + 8 smooth (above) PLUS the 3 NEW general-curve-inserted styles — **HexagonalHive (featExp=4), GyroidManifold (14), CelticKnot (9)**. This session BUILT the general local-CDT insertion engine (Plan 4) + marching-squares/analytic extraction and drove these 3 to 6/6.
-- **1 remaining: Voronoi** — extraction PROVEN (f64-replicated worley → categorical cell-border → featExp=featPres=94, featDrop=0 e2e: the borders track the GPU), but insertion is **gated off** (`VORONOI_INSERTION_ENABLED=false`) because the dense irregular borders leave T-junction cracks (bnd>0) at TANGENT cell-edge transitions. Voronoi stays topology-clean blind for now.
+- **All 20 styles: `orient=bnd=nonMan=sliver=0`, maxAspect ≤ 50.3, no timeouts.** Full regression: `potfoundry-web/e2e/regress-20-2026-06-08l.log`.
+- **20/20 styles at FULL 6/6 at DEFAULT dims** (verified `featuresDropped=0` e2e): the 8 warp-captured + 8 smooth PLUS the 4 general-curve-inserted styles — **HexagonalHive (featExp=4), GyroidManifold (14), CelticKnot (9), Voronoi (206)**. 🎉
+- **Voronoi DONE (2026-06-08l):** insertion ENABLED (`VORONOI_INSERTION_ENABLED=true`). The tangent cell-edge T-junction cracks (the old blocker) are FIXED by a **grid-line vertex registry** in `triangulateQuadtreeWithFeatures` (every feature vertex on a shared cell edge is registered keyed by its grid line → both adjacent cells read the IDENTICAL edge-vertex set → symmetric by construction, no tangent crack). The residual (u,t) needles were killed by UN-guarding the edge-snap (the registry now mirrors snapped on-edge vertices to the neighbour, so the old same-level guard is unnecessary — and removing it lets the snap also fix transition-edge needles). e2e: Voronoi sliver=bnd=nonMan=orient=0, featExp=featPres=206, featDrop=0. Hex even improved (maxAspect 46.7→35.7). 211 conforming+fidelity unit tests green.
 - **Insertion engine** (`conforming/`): `ConstrainedCellTriangulator` (local cdt2d), `FeatureConformingTriangulator` (`triangulateQuadtreeWithFeatures` — per-cell CDT in feature cells, watertight + T-junction-free by construction via: identical cross-cell crossings, feature-driven refinement, corner-snap + interior weld, per-edge crossing detection for tangents, planarization of braid crossings, canonical min-qk merge of close shared-edge crossings), `SampledFeatureExtractor` (marchingSquaresZero + marchingSquaresLabels + segmentsToPolylines + Douglas-Peucker). 206 unit tests. cdt2d is now a LIVE local dep (not the dead global path).
 - Architecture: GPU evaluates the WGSL surface (source of truth); CPU builds topology (metric-warped 2:1-balanced quadtree → periodic seam → uniform shared-ring assembly → topology-preserving crease warps → general-curve local-CDT insertion in the outer wall). Modules in `potfoundry-web/src/renderers/webgpu/parametric/conforming/`.
 
@@ -69,6 +69,14 @@ insertion need uBias-awareness. Touches all 20 → gate against the full 20-styl
 forced-crossing mirror) banks 20/20 AND fixes the twisted/high-flare inserted-style failures
 (a 2nd cutover blocker), is contained/lower-risk, and is robust to the later uBias change — so
 bank that milestone before the risky foundation rewrite.
+
+**STATUS 2026-06-08l: GAP 2 + Voronoi DONE → 20/20 at default dims (committed).** The grid-line
+vertex registry + unguarded edge-snap fixed the tangent T-junction class AND the residual (u,t)
+needles. Full 20-style matrix all clean (`e2e/regress-20-2026-06-08l.log`). RE-CHECK whether GAP 2
+also fixed the twisted/high-flare INSERTED-style dimspace failures (run `_conforming_dimspace_probe.cjs`
+on Hex/Gyroid/Celtic) — the registry should have closed the high-flare bnd cracks; the twisted
+slivers may also be gone now. **GAP 1 (uBias anisotropic foundation) is now the SOLE remaining
+cutover blocker.**
 
 ## 6. THE WORK (priority order; UPDATED 2026-06-08i)
 

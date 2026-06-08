@@ -637,15 +637,17 @@ const VOR_RES_U = 640;
 const VOR_RES_T = 512;
 
 /**
- * Gate: the f64-replicated worley + categorical border extraction TRACKS the
- * GPU Voronoi cells (featExp=featPres, featDrop=0 — the hash reproduces) and is
- * sliver/orient/nonMan-clean, but the dense irregular borders leave T-junction
- * cracks where a border is TANGENT to a cell edge (the cell it does not cross
- * into stays coarse → inconsistent transition crossing). Until that tangent-
- * transition case is robust, the extractor returns empty so Voronoi stays at its
- * clean blind baseline (no crack regression). Flip to re-enable.
+ * Voronoi insertion ENABLED (2026-06-08l). The f64-replicated worley +
+ * categorical border extraction TRACKS the GPU Voronoi cells (featExp=featPres,
+ * featDrop=0 — the hash reproduces) and is sliver/orient/nonMan-clean. The dense
+ * irregular borders used to leave T-junction cracks where a border runs TANGENT
+ * to a cell edge (the cell it does not cross into stayed coarse → inconsistent
+ * transition crossing). FIXED by the grid-line vertex registry in
+ * {@link triangulateQuadtreeWithFeatures}: every feature vertex on a shared cell
+ * edge is registered keyed by its grid line, so BOTH adjacent cells read the
+ * identical edge-vertex set (symmetric by construction → no tangent crack).
  */
-const VORONOI_INSERTION_ENABLED = false;
+const VORONOI_INSERTION_ENABLED = true;
 
 /**
  * Voronoi cell-border creases — the categorical boundary of the nearest-cell ID

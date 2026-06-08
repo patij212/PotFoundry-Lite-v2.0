@@ -184,6 +184,31 @@ describe('triangulateQuadtreeWithFeatures', () => {
     for (const p of pts) expect(hasVertexNear(mesh, p.u, p.t, 1e-5)).toBe(true);
   });
 
+  it('tangent border running just below a horizontal grid line stays T-junction-free', () => {
+    // GAP 2 regression: a dense border that runs nearly PARALLEL to a cell edge,
+    // grazing it from below (the Voronoi / curve-extremum failure mode). The
+    // cell below snaps the near-edge curve onto the shared edge (subdividing it);
+    // the cell above never sees the curve and keeps the edge un-subdivided →
+    // a T-junction triplet. The grid-line vertex registry must make both cells
+    // carry the identical edge-vertex set. Tested across amplitudes incl. the
+    // near-tangent worst case.
+    for (const amp of [0.06, 0.02, 0.005, 0.001]) {
+      const pts = [];
+      const N = 64;
+      for (let i = 0; i <= N; i++) {
+        const u = 0.05 + 0.9 * (i / N);
+        const t = 0.5 - 0.0005 - amp * 0.5 * (1 + Math.cos(2 * Math.PI * 5 * (i / N)));
+        pts.push({ u, t });
+      }
+      const line: FeatureLine = { kind: 'general-curve', points: pts, label: `wavy@${amp}` };
+      const mesh = triangulateQuadtreeWithFeatures(uniformQuadtree(4), [line], { cornerSnap: 0.06 / 16 });
+      const audit = wallEdgeAudit(mesh);
+      expect(audit.nonManifold, `nonManifold amp=${amp}`).toBe(0);
+      expect(audit.interiorBoundary, `T-junctions amp=${amp}`).toBe(0);
+      expect(totalUnwrappedArea(mesh)).toBeCloseTo(1, 5);
+    }
+  });
+
   it('inserts a diagonal feature on a real adaptive 2:1-balanced quadtree', () => {
     // Adaptive (non-uniform) tree from a rippled cylinder → transition cells with
     // mid-edge vertices. A diagonal feature exercises crossings on both u- and

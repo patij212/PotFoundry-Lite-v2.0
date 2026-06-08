@@ -343,13 +343,15 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     }
   });
 
-  it('Voronoi: categorical cell-border extractor → gated off (clean blind baseline)', () => {
-    // The f64-worley + categorical extractor tracks the GPU cells (featDrop=0) but
-    // leaves tangent-transition cracks, so insertion is gated off
-    // (VORONOI_INSERTION_ENABLED) — Voronoi stays at its clean blind baseline.
+  it('Voronoi: categorical cell-border extractor → enabled, general-curve loops', () => {
+    // The f64-worley + categorical extractor tracks the GPU cells (featDrop=0).
+    // The grid-line vertex registry + unguarded edge-snap made insertion
+    // T-junction- AND sliver-free (e2e: featExp=featPres, sliver/bnd/nonMan/
+    // orient=0), so VORONOI_INSERTION_ENABLED is now true.
     const g = extractAnalyticFeatures('Voronoi', packed([8, 0.8, 0.1, 2, 1]), DIMS);
-    expect(g.groundTruthCount).toBe(0);
-    expect(g.lines.length).toBe(0);
+    expect(g.groundTruthCount).toBeGreaterThan(0);
+    expect(g.lines.length).toBeGreaterThan(0);
+    for (const l of g.lines) expect(l.kind).toBe('general-curve');
   });
 
   it('truly unknown style → empty graph (honest zero)', () => {

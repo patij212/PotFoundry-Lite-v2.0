@@ -234,15 +234,19 @@ export function triangulateQuadtreeWithFeatures(
     if (l.level > maxLevel) maxLevel = l.level;
   }
 
-  // ── Snap feature points onto a nearby cell edge — GUARDED ──────────────────
+  // ── Snap feature points onto a nearby cell edge ────────────────────────────
   // A feature vertex sitting a hair off a cell edge (a curve local-extremum
   // tangent to the edge from inside, far from any boundary vertex) leaves a
-  // needle the per-cell weld can't catch. Snapping it ONTO the edge makes it a
-  // crossing both adjacent cells derive (edge-crossing detection) → no sliver.
-  // GUARD: only snap to an edge whose SAME-LEVEL neighbour exists (a clean shared
-  // edge with no mid-vertex / no coarser-transition / not the periodic-seam
-  // clip boundary) — that is exactly the case both cells resolve identically.
-  // The threshold is ABSOLUTE so the two cells decide the same way.
+  // near-collinear needle the per-cell weld can't catch (point-vs-point, never
+  // point-vs-edge). Snapping it ONTO the containing cell's edge eliminates the
+  // needle. The threshold is ABSOLUTE so neighbours decide consistently, and the
+  // grid-line vertex registry (PASS A/B below) MIRRORS the snapped on-edge vertex
+  // into the cell across that edge — including a COARSER transition neighbour or
+  // the feature-clip boundary — so the snap can no longer leave a one-sided
+  // crossing. (Previously this snap was guarded to SAME-LEVEL edges only, to
+  // avoid exactly that un-mirrored transition crack; the registry makes the guard
+  // unnecessary and lets the snap also kill needles at transition edges, the last
+  // dense-border sliver source.)
   const snapToCellEdge = (p: CellPoint): CellPoint => {
     if (cornerSnap <= 0) return p;
     const wu = ((p.u % 1) + 1) % 1;
@@ -255,17 +259,17 @@ export function triangulateQuadtreeWithFeatures(
       const size = 1 / span;
       const u0 = iu * size;
       const t0 = it * size;
-      const iuL = ((iu - 1) % span + span) % span;
-      const iuR = (iu + 1) % span;
       const cands: Array<{ d: number; pt: CellPoint }> = [];
       const dB = tc - t0;
       const dT = t0 + size - tc;
       const dL = wu - u0;
       const dR = u0 + size - wu;
-      if (dB < cornerSnap && cellSet.has(`${lv}:${iu}:${it - 1}`)) cands.push({ d: dB, pt: { u: p.u, t: t0 } });
-      if (dT < cornerSnap && cellSet.has(`${lv}:${iu}:${it + 1}`)) cands.push({ d: dT, pt: { u: p.u, t: t0 + size } });
-      if (dL < cornerSnap && cellSet.has(`${lv}:${iuL}:${it}`)) cands.push({ d: dL, pt: { u: u0, t: p.t } });
-      if (dR < cornerSnap && cellSet.has(`${lv}:${iuR}:${it}`)) cands.push({ d: dR, pt: { u: u0 + size, t: p.t } });
+      // Snap onto the containing cell's own edge; the registry mirrors it to the
+      // neighbour across (any level) so both carry the identical edge vertex.
+      if (dB < cornerSnap) cands.push({ d: dB, pt: { u: p.u, t: t0 } });
+      if (dT < cornerSnap) cands.push({ d: dT, pt: { u: p.u, t: t0 + size } });
+      if (dL < cornerSnap) cands.push({ d: dL, pt: { u: u0, t: p.t } });
+      if (dR < cornerSnap) cands.push({ d: dR, pt: { u: u0 + size, t: p.t } });
       if (cands.length === 0) return p;
       cands.sort((a, b) => a.d - b.d);
       return cands[0].pt;
@@ -389,8 +393,13 @@ export function triangulateQuadtreeWithFeatures(
     }
   }
 
-  // ── Per-leaf emit ─────────────────────────────────────────────────────────
-  for (let li = 0; li < leaves.length; li++) {
+  // ── Per-leaf geometry + 2:1 transition splits (shared by both passes) ──
+  interface LeafGeom {
+    leaf: QuadLeaf; span: number; iu: number; it: number; size: number;
+    u0: number; t0: number; u1: number; t1: number; um: number; tm: number;
+    wrapsSeam: number; splitS: boolean; splitE: boolean; splitN: boolean; splitW: boolean;
+  }
+  const geomOf = (li: number): LeafGeom => {
     const leaf = leaves[li];
     const span = 1 << leaf.level;
     const iu = Math.round(leaf.u0 * span);
@@ -398,24 +407,51 @@ export function triangulateQuadtreeWithFeatures(
     const size = 1 / span;
     const u0 = leaf.u0;
     const t0 = leaf.t0;
-    const u1 = u0 + size;
-    const t1 = t0 + size;
-    const um = u0 + size / 2;
-    const tm = t0 + size / 2;
-    const wrapsSeam = Math.round(u1 * QSCALE) === QSCALE ? 1 : 0;
-
-    const splitS = sideHasFiner(leaf.level, iu, it, 'tMinus');
-    const splitE = sideHasFiner(leaf.level, iu, it, 'uPlus');
-    const splitN = sideHasFiner(leaf.level, iu, it, 'tPlus');
-    const splitW = sideHasFiner(leaf.level, iu, it, 'uMinus');
-
-    const emit = (a: number, b: number, c: number): void => {
-      if (a === b || b === c || a === c) return;
-      indices.push(a, b, c);
-      triWrapsSeam.push(wrapsSeam);
+    return {
+      leaf, span, iu, it, size, u0, t0,
+      u1: u0 + size, t1: t0 + size, um: u0 + size / 2, tm: t0 + size / 2,
+      wrapsSeam: Math.round((u0 + size) * QSCALE) === QSCALE ? 1 : 0,
+      splitS: sideHasFiner(leaf.level, iu, it, 'tMinus'),
+      splitE: sideHasFiner(leaf.level, iu, it, 'uPlus'),
+      splitN: sideHasFiner(leaf.level, iu, it, 'tPlus'),
+      splitW: sideHasFiner(leaf.level, iu, it, 'uMinus'),
     };
+  };
 
-    // Interior arcs (box clip) + boundary crossings (per-edge, symmetric).
+  const qk = (p: CellPoint): number =>
+    Math.round(p.u * QSCALE) * (QSCALE * 2 + 1) + Math.round(p.t * QSCALE);
+  // Grid-line keys: t-lines keyed by quantized t; u-lines by quantized u mod 1
+  // (so the periodic seam u=1≡u=0 shares a key). A feature vertex landing on a
+  // shared cell edge is registered HERE keyed by its grid line, so BOTH adjacent
+  // cells read the IDENTICAL ordered vertex set in PASS B → no T-junction even
+  // when one cell is tangent to the edge and never "enters" it.
+  const tKey = (t: number): number => Math.round(t * QSCALE);
+  const uKey = (u: number): number => Math.round((((u % 1) + 1) % 1) * QSCALE);
+  const regH = new Map<number, Map<number, CellPoint>>(); // tKey(t) → uKey(u) → point
+  const regV = new Map<number, Map<number, CellPoint>>(); // uKey(u) → tKey(t) → point
+  const regAdd = (
+    m: Map<number, Map<number, CellPoint>>, k: number, sub: number, p: CellPoint,
+  ): void => {
+    let inner = m.get(k);
+    if (!inner) { inner = new Map(); m.set(k, inner); }
+    if (!inner.has(sub)) inner.set(sub, p);
+  };
+
+  // ── PASS A: classify each feature cell's boundary points + interior +
+  //    constraints, and register the boundary points by grid line. Mids
+  //    (transition vertices) are NOT registered — they are re-derived from the
+  //    splits in PASS B (already symmetric via sideHasFiner). ──
+  interface LeafData {
+    feature: boolean;
+    interior: CellPoint[];
+    constraints: Array<[CellPoint, CellPoint]>;
+  }
+  const leafData: LeafData[] = new Array(leaves.length);
+
+  for (let li = 0; li < leaves.length; li++) {
+    const g = geomOf(li);
+    const { u0, t0, u1, t1, um, tm, splitS, splitE, splitN, splitW } = g;
+
     const cand = leafCand[li];
     const pieces: Seg[] = [];
     const edgeCross: CellPoint[] = [];
@@ -427,6 +463,115 @@ export function triangulateQuadtreeWithFeatures(
       edgeCrossingsInto(s, u0, u1, t0, t1, 1e-9, edgeCross);
     }
     if (pieces.length === 0 && edgeCross.length === 0) {
+      leafData[li] = { feature: false, interior: [], constraints: [] };
+      continue;
+    }
+
+    const interior: CellPoint[] = [];
+    const interiorKey = new Map<number, number>();
+    const constraints: Array<[CellPoint, CellPoint]> = [];
+
+    // Register a boundary feature point onto its grid line (skip corners).
+    const registerBoundary = (p: CellPoint): boolean => {
+      const onS = Math.abs(p.t - t0) <= ON_EDGE_EPS;
+      const onN = Math.abs(p.t - t1) <= ON_EDGE_EPS;
+      const onW = Math.abs(p.u - u0) <= ON_EDGE_EPS;
+      const onE = Math.abs(p.u - u1) <= ON_EDGE_EPS;
+      if (!(onS || onN || onW || onE)) return false;
+      const atCorner = (onS || onN) && (onW || onE);
+      if (atCorner) return true;
+      if (onS) regAdd(regH, tKey(t0), uKey(p.u), { u: p.u, t: t0 });
+      else if (onN) regAdd(regH, tKey(t1), uKey(p.u), { u: p.u, t: t1 });
+      else if (onW) regAdd(regV, uKey(u0), tKey(p.t), { u: u0, t: p.t });
+      else regAdd(regV, uKey(u1), tKey(p.t), { u: u1, t: p.t });
+      return true;
+    };
+    const registerInterior = (p: CellPoint): void => {
+      const k = qk(p);
+      if (!interiorKey.has(k)) { interiorKey.set(k, interior.length); interior.push(p); }
+    };
+
+    // Anchors (corners + existing mids) for corner-snapping — ABSOLUTE threshold
+    // + shared anchors so both sides of every shared edge snap identically.
+    const anchors: CellPoint[] = [
+      { u: u0, t: t0 }, { u: u1, t: t0 }, { u: u1, t: t1 }, { u: u0, t: t1 },
+    ];
+    if (splitS) anchors.push({ u: um, t: t0 });
+    if (splitE) anchors.push({ u: u1, t: tm });
+    if (splitN) anchors.push({ u: um, t: t1 });
+    if (splitW) anchors.push({ u: u0, t: tm });
+    const snapToAnchor = (p: CellPoint): CellPoint => {
+      if (cornerSnap <= 0) return p;
+      for (const a of anchors) {
+        if (Math.abs(p.u - a.u) <= cornerSnap && Math.abs(p.t - a.t) <= cornerSnap) return a;
+      }
+      return p;
+    };
+
+    for (const piece of pieces) {
+      const pa = snapToAnchor(piece.a);
+      const pb = snapToAnchor(piece.b);
+      if (qk(pa) === qk(pb)) continue;
+      if (!registerBoundary(pa)) registerInterior(pa);
+      if (!registerBoundary(pb)) registerInterior(pb);
+      constraints.push([pa, pb]);
+    }
+    // Per-edge boundary crossings (incl. tangent touches the box clip misses).
+    for (const ec of edgeCross) registerBoundary(snapToAnchor(ec));
+
+    // Planarize crossing constraints (braids) → Steiner points are interior.
+    const planar = planarizeConstraints(constraints);
+    constraints.length = 0;
+    for (const seg of planar.segments) constraints.push(seg);
+    for (const sp of planar.steiner) registerInterior(sp);
+
+    leafData[li] = { feature: true, interior, constraints };
+  }
+
+  // ── PASS B: triangulate each leaf, reading the UNION of feature edge points
+  //    from the registry so both adjacent cells carry the identical edge-vertex
+  //    set (symmetric → T-junction-free). A cell that was PLAIN in PASS A but
+  //    whose neighbour registered points on a shared edge becomes a feature cell
+  //    here (it subdivides the edge to match — with no interior constraints). ──
+  const readH = (tk: number, lo: number, hi: number): CellPoint[] => {
+    const inner = regH.get(tk);
+    if (!inner) return [];
+    const out: CellPoint[] = [];
+    for (const p of inner.values()) if (p.u > lo + ON_EDGE_EPS && p.u < hi - ON_EDGE_EPS) out.push(p);
+    return out;
+  };
+  const readV = (uk: number, lo: number, hi: number): CellPoint[] => {
+    const inner = regV.get(uk);
+    if (!inner) return [];
+    const out: CellPoint[] = [];
+    for (const p of inner.values()) if (p.t > lo + ON_EDGE_EPS && p.t < hi - ON_EDGE_EPS) out.push(p);
+    return out;
+  };
+
+  for (let li = 0; li < leaves.length; li++) {
+    const g = geomOf(li);
+    const {
+      leaf, span, iu, it, size, u0, t0, u1, t1, um, tm, wrapsSeam,
+      splitS, splitE, splitN, splitW,
+    } = g;
+    const data = leafData[li];
+
+    const emit = (a: number, b: number, c: number): void => {
+      if (a === b || b === c || a === c) return;
+      indices.push(a, b, c);
+      triWrapsSeam.push(wrapsSeam);
+    };
+
+    // Feature edge points (union across both adjacent cells), as SidePoints.
+    const featS = readH(tKey(t0), u0, u1).map((p) => ({ pos: (p.u - u0) / size, pt: p }));
+    const featN = readH(tKey(t1), u0, u1).map((p) => ({ pos: (u1 - p.u) / size, pt: p }));
+    const featW = readV(uKey(u0), t0, t1).map((p) => ({ pos: (t1 - p.t) / size, pt: p }));
+    const featE = readV(uKey(u1), t0, t1).map((p) => ({ pos: (p.t - t0) / size, pt: p }));
+
+    const isFeature =
+      data.feature || featS.length > 0 || featN.length > 0 || featW.length > 0 || featE.length > 0;
+
+    if (!isFeature) {
       // ── Plain template cell (identical to triangulateQuadtree) ──
       const poly: number[] = [];
       poly.push(vertexIndex(u0, t0));
@@ -448,8 +593,7 @@ export function triangulateQuadtreeWithFeatures(
       continue;
     }
 
-    // ── Feature cell: local constrained triangulation ──
-    // Collect side points (mids + crossings) and interior feature vertices.
+    // ── Feature cell: side points = mids (transition) + registry feature points ──
     const south: SidePoint[] = [];
     const east: SidePoint[] = [];
     const north: SidePoint[] = [];
@@ -458,98 +602,21 @@ export function triangulateQuadtreeWithFeatures(
     if (splitE) east.push({ pos: 0.5, pt: { u: u1, t: tm } });
     if (splitN) north.push({ pos: 0.5, pt: { u: um, t: t1 } });
     if (splitW) west.push({ pos: 0.5, pt: { u: u0, t: tm } });
+    for (const sp of featS) south.push(sp);
+    for (const sp of featE) east.push(sp);
+    for (const sp of featN) north.push(sp);
+    for (const sp of featW) west.push(sp);
 
-    // Cell-local dedup of boundary + interior feature points by quantized key.
-    const interior: CellPoint[] = [];
-    const interiorKey = new Map<number, number>(); // qkey → interior index
-    const constraints: Array<[CellPoint, CellPoint]> = [];
-
-    const qk = (p: CellPoint): number =>
-      Math.round(p.u * QSCALE) * (QSCALE * 2 + 1) + Math.round(p.t * QSCALE);
-
-    const classifyBoundary = (p: CellPoint): boolean => {
-      // Returns true if p lies on the cell boundary; records it on the right side.
-      const onS = Math.abs(p.t - t0) <= ON_EDGE_EPS;
-      const onN = Math.abs(p.t - t1) <= ON_EDGE_EPS;
-      const onW = Math.abs(p.u - u0) <= ON_EDGE_EPS;
-      const onE = Math.abs(p.u - u1) <= ON_EDGE_EPS;
-      if (!(onS || onN || onW || onE)) return false;
-      // Corner points are already cell corners — no side insertion needed.
-      const atCorner = (onS || onN) && (onW || onE);
-      if (atCorner) return true;
-      if (onS) south.push({ pos: (p.u - u0) / size, pt: { u: p.u, t: t0 } });
-      else if (onE) east.push({ pos: (p.t - t0) / size, pt: { u: u1, t: p.t } });
-      else if (onN) north.push({ pos: (u1 - p.u) / size, pt: { u: p.u, t: t1 } });
-      else if (onW) west.push({ pos: (t1 - p.t) / size, pt: { u: u0, t: p.t } });
-      return true;
-    };
-
-    const registerInterior = (p: CellPoint): void => {
-      const k = qk(p);
-      if (!interiorKey.has(k)) {
-        interiorKey.set(k, interior.length);
-        interior.push(p);
-      }
-    };
-
-    // Anchor points (corners + existing mids) for corner-snapping. Snapping a
-    // feature point onto a nearby anchor caps the worst triangle aspect; the
-    // ABSOLUTE threshold makes the decision identical from both sides of every
-    // shared edge (anchors are shared) → still T-junction-free.
-    const anchors: CellPoint[] = [
-      { u: u0, t: t0 }, { u: u1, t: t0 }, { u: u1, t: t1 }, { u: u0, t: t1 },
-    ];
-    if (splitS) anchors.push({ u: um, t: t0 });
-    if (splitE) anchors.push({ u: u1, t: tm });
-    if (splitN) anchors.push({ u: um, t: t1 });
-    if (splitW) anchors.push({ u: u0, t: tm });
-    const snapToAnchor = (p: CellPoint): CellPoint => {
-      if (cornerSnap <= 0) return p;
-      for (const a of anchors) {
-        if (Math.abs(p.u - a.u) <= cornerSnap && Math.abs(p.t - a.t) <= cornerSnap) return a;
-      }
-      return p;
-    };
-
-    for (const piece of pieces) {
-      // Snap endpoints onto nearby anchors, then classify. A piece that collapses
-      // (both endpoints snapped to the same anchor) contributes no constraint.
-      const pa = snapToAnchor(piece.a);
-      const pb = snapToAnchor(piece.b);
-      if (qk(pa) === qk(pb)) continue;
-      if (!classifyBoundary(pa)) registerInterior(pa);
-      if (!classifyBoundary(pb)) registerInterior(pb);
-      constraints.push([pa, pb]);
-    }
-
-    // Register per-edge boundary crossings (incl. tangent touches the box clip
-    // misses). These carry NO constraint — they are boundary vertices the
-    // neighbour cell across each shared edge derives identically → no T-junction.
-    for (const ec of edgeCross) {
-      classifyBoundary(snapToAnchor(ec));
-    }
-
-    // Planarize crossing constraints (braids): split at intersections so no two
-    // constraints cross in their interior. The Steiner intersection points are
-    // strictly inside the cell → register them as interior vertices.
-    const planar = planarizeConstraints(constraints);
-    constraints.length = 0;
-    for (const seg of planar.segments) constraints.push(seg);
-    for (const sp of planar.steiner) registerInterior(sp);
-
-    // Build the CCW boundary polygon: corners + sorted side points.
+    // Build the CCW boundary polygon: corners + sorted/deduped side points.
     const sortBy = (arr: SidePoint[]): SidePoint[] =>
       arr
         .filter((s) => s.pos > ON_EDGE_EPS && s.pos < 1 - ON_EDGE_EPS)
         .sort((p, q) => p.pos - q.pos);
-    // Merge side points closer than cornerSnap — but ONLY on a CLEAN shared edge
-    // (no mid-vertex, same-level neighbour leaf), where both adjacent cells see
-    // the IDENTICAL crossing set. Critically, keep the CANONICAL (min-qk) point
-    // of each merged group, NOT the first-in-sort-order: opposite sides walk the
-    // edge in reversed pos order (south ↑u, north ↓u), so a "keep first" rule
-    // would retain DIFFERENT crossings on the two sides → T-junction. min-qk is
-    // side-independent → both cells keep the same point. Kills the needle where
-    // two curves cross the same edge a hair apart (braids).
+    // Merge side points closer than cornerSnap on a CLEAN shared edge (no mid,
+    // same-level neighbour), keeping the CANONICAL (min-qk) point so both cells
+    // agree (opposite sides walk the edge in reversed order → "keep first" would
+    // diverge). The registry already makes both sides see the same set, so the
+    // dedup result is identical on both sides too.
     const cleanEdge = (split: boolean, niu: number, nit: number): boolean =>
       !split && nit >= 0 && nit < span && cellSet.has(`${leaf.level}:${((niu % span) + span) % span}:${nit}`);
     const cleanS = cleanEdge(splitS, iu, it - 1);
@@ -585,53 +652,32 @@ export function triangulateQuadtreeWithFeatures(
     boundary.push({ u: u0, t: t1 });
     for (const sp of dedupSide(sortBy(west), cleanW)) boundary.push(sp.pt);
 
-    // Weld interior feature points onto a nearby BOUNDARY point (within
-    // cornerSnap). Boundary points (crossings + anchors) are shared/identical
-    // across cells and are NEVER moved, so welding an INTERIOR point onto one is
-    // a purely local decision → cross-cell consistent. This removes
-    // edge-proximity needles (an interior sample landing a hair off a crossing
-    // on the same edge).
-    const interiorCanon = new Map<number, CellPoint>(); // qk(interior) → canonical
+    // Weld interior feature points onto a nearby BOUNDARY point (shared/
+    // never-moved) else fold into a nearby surviving interior point — both
+    // per-cell decisions → cross-cell consistent. Removes edge-proximity +
+    // braid-Steiner needles.
+    const interiorCanon = new Map<number, CellPoint>();
     const survivingInterior: CellPoint[] = [];
-    for (const ip of interior) {
+    for (const ip of data.interior) {
       let canon: CellPoint | null = null;
       if (cornerSnap > 0) {
-        // Prefer a nearby BOUNDARY point (shared/never-moved), else fold into a
-        // nearby already-surviving INTERIOR point. Both are per-cell decisions →
-        // cross-cell consistent. The interior→interior fold removes braid-Steiner
-        // needles (a crossing landing a hair off a strand sample).
         for (const bp of boundary) {
-          if (Math.abs(ip.u - bp.u) <= cornerSnap && Math.abs(ip.t - bp.t) <= cornerSnap) {
-            canon = bp;
-            break;
-          }
+          if (Math.abs(ip.u - bp.u) <= cornerSnap && Math.abs(ip.t - bp.t) <= cornerSnap) { canon = bp; break; }
         }
         if (!canon) {
           for (const sp of survivingInterior) {
-            if (Math.abs(ip.u - sp.u) <= cornerSnap && Math.abs(ip.t - sp.t) <= cornerSnap) {
-              canon = sp;
-              break;
-            }
+            if (Math.abs(ip.u - sp.u) <= cornerSnap && Math.abs(ip.t - sp.t) <= cornerSnap) { canon = sp; break; }
           }
         }
       }
-      if (canon) {
-        interiorCanon.set(qk(ip), canon);
-      } else {
-        interiorCanon.set(qk(ip), ip);
-        survivingInterior.push(ip);
-      }
+      if (canon) interiorCanon.set(qk(ip), canon);
+      else { interiorCanon.set(qk(ip), ip); survivingInterior.push(ip); }
     }
 
-    // Combined cell-local point → index map for constraint resolution.
     const localKey = new Map<number, number>();
     boundary.forEach((p, i) => localKey.set(qk(p), i));
     survivingInterior.forEach((p, i) => localKey.set(qk(p), boundary.length + i));
-
     const canonical = (p: CellPoint): CellPoint => interiorCanon.get(qk(p)) ?? p;
-    // Resolve a constraint endpoint to a local index: exact, else the nearest
-    // combined point within cornerSnap (its shared-edge crossing may have been
-    // merged into a canonical one by the side dedup).
     const combined = [...boundary, ...survivingInterior];
     const resolve = (p: CellPoint): number => {
       const c = canonical(p);
@@ -646,7 +692,7 @@ export function triangulateQuadtreeWithFeatures(
       return best;
     };
     const cellConstraints: Array<[number, number]> = [];
-    for (const [pa, pb] of constraints) {
+    for (const [pa, pb] of data.constraints) {
       const ia = resolve(pa);
       const ib = resolve(pb);
       if (ia < 0 || ib < 0 || ia === ib) continue;
@@ -658,12 +704,8 @@ export function triangulateQuadtreeWithFeatures(
       interior: survivingInterior,
       constraints: cellConstraints,
     });
-
-    // Map cell-local point indices to GLOBAL deduped vertex indices.
     const globalOf = result.points.map((p) => vertexIndex(p.u, p.t));
-    for (const [a, b, c] of result.triangles) {
-      emit(globalOf[a], globalOf[b], globalOf[c]);
-    }
+    for (const [a, b, c] of result.triangles) emit(globalOf[a], globalOf[b], globalOf[c]);
   }
 
   const n = vu.length;
