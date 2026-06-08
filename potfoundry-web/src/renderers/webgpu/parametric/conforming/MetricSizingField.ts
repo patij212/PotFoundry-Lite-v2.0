@@ -14,7 +14,7 @@
  */
 
 import type { SurfaceSampler } from './SurfaceSampler';
-import { principalCurvatureMax } from './SurfaceMetricTensor';
+import { principalCurvatureMax, metricStepsForSampler } from './SurfaceMetricTensor';
 
 /** Configuration for the sizing field. */
 export interface SizingOptions {
@@ -30,6 +30,14 @@ export interface SizingOptions {
   resU: number;
   /** Grid resolution in t (number of nodes). */
   resT: number;
+  /**
+   * Global multiplier on the curvature-derived target edge length, applied
+   * BEFORE the min/max clamp. >1 coarsens uniformly (fewer triangles); the
+   * `maxEdgeMm`/`minEdgeMm` clamps still bound the result, so the sag floor
+   * (`maxSagMm` via the sagitta law, clamped at `minEdgeMm`) is never violated.
+   * Defaults to 1 (no scaling). Used by the triangle-budget search (Task 2).
+   */
+  targetScale?: number;
 }
 
 /**
@@ -57,14 +65,22 @@ export class MetricSizingField {
     const { resU, resT } = opts;
     const grid = new Float64Array(resU * resT);
 
-    // Raw targets from curvature (sagitta law) + min/max clamp.
+    // De-noised curvature: size the finite-difference steps to ~one grid cell of
+    // the (possibly discrete) sampler, not a fixed sub-quantization gap.
+    const { hu, ht } = metricStepsForSampler(s);
+    const scale = opts.targetScale && opts.targetScale > 0 ? opts.targetScale : 1;
+
+    // Raw targets from curvature (sagitta law) + optional global scale + clamp.
     for (let j = 0; j < resT; j++) {
       const t = resT > 1 ? j / (resT - 1) : 0;
       for (let i = 0; i < resU; i++) {
         const u = i / resU; // u is periodic: node resU coincides with node 0
-        const kappa = Math.max(principalCurvatureMax(s, u, t), 1e-6);
+        const kappa = Math.max(principalCurvatureMax(s, u, t, hu, ht), 1e-6);
         // sagitta: sag ≈ h^2·κ/8 ⇒ h = sqrt(8·maxSag/κ)
         let h = Math.sqrt((8 * opts.maxSagMm) / kappa);
+        // Budget scale coarsens uniformly; the clamp below still enforces the
+        // sag floor (minEdgeMm) so a large scale can never violate sag.
+        h *= scale;
         h = Math.min(opts.maxEdgeMm, Math.max(opts.minEdgeMm, h));
         grid[this.idx(i, j)] = h;
       }

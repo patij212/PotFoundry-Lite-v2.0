@@ -17,7 +17,7 @@
  */
 
 import type { SurfaceSampler } from './SurfaceSampler';
-import { firstFundamentalForm } from './SurfaceMetricTensor';
+import { firstFundamentalForm, metricStepsForSampler, type MetricSteps } from './SurfaceMetricTensor';
 import type { MetricSizingField } from './MetricSizingField';
 
 /** A leaf cell, exposed in physical-parameter terms. */
@@ -59,6 +59,8 @@ export class PeriodicBalancedQuadtree {
    * `pin+1`, etc.). 0/undefined disables pinning.
    */
   private readonly pinBoundaryLevel: number;
+  /** Grid-scaled finite-difference steps for the metric (de-noised vs sampler). */
+  private readonly steps: MetricSteps;
 
   constructor(
     field: MetricSizingField,
@@ -67,6 +69,7 @@ export class PeriodicBalancedQuadtree {
   ) {
     this.maxLevel = opts.maxLevel;
     this.pinBoundaryLevel = opts.pinBoundaryLevel ?? 0;
+    this.steps = metricStepsForSampler(metric);
     this.refine(field, metric);
     if (this.pinBoundaryLevel > 0) this.enforcePinnedBoundary();
     this.balance(opts.maxLevel);
@@ -141,7 +144,7 @@ export class PeriodicBalancedQuadtree {
     const size = 1 / (1 << level);
     const uc = (iu + 0.5) * size;
     const tc = (it + 0.5) * size;
-    const { E, G } = firstFundamentalForm(metric, uc, tc);
+    const { E, G } = firstFundamentalForm(metric, uc, tc, this.steps.hu, this.steps.ht);
     const physW = Math.sqrt(Math.max(E, 0)) * size;
     const physH = Math.sqrt(Math.max(G, 0)) * size;
     const target = field.edgeLength(uc, tc);

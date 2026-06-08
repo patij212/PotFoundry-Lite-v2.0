@@ -14,10 +14,25 @@
 /** A 3D position in millimetres. */
 export type Vec3 = readonly [number, number, number];
 
+/** The discrete grid resolution backing a sampler (for finite-difference step sizing). */
+export interface SamplerGridResolution {
+  /** Number of distinct u columns (u node spacing = 1/resU, periodic). */
+  resU: number;
+  /** Number of distinct t rows (t node spacing = 1/(resT-1), clamped). */
+  resT: number;
+}
+
 /** Maps outer-wall parameter (u,t) in [0,1)x[0,1] to a 3D position (mm). */
 export interface SurfaceSampler {
   /** Evaluate one point. u wraps periodically; t clamps to [0,1]. */
   position(u: number, t: number): Vec3;
+  /**
+   * The discrete grid resolution this sampler interpolates, if any. Curvature
+   * estimators use it to size finite-difference steps to ~one grid cell so they
+   * don't amplify quantization noise. Analytic samplers (no discretization)
+   * omit it and let estimators fall back to a fixed analytic step.
+   */
+  gridResolution?(): SamplerGridResolution;
 }
 
 /**
@@ -61,6 +76,11 @@ export class GpuSurfaceSampler implements SurfaceSampler {
     private readonly resU: number,
     private readonly resT: number,
   ) {}
+
+  /** This sampler interpolates a `resU × resT` grid; expose it for step sizing. */
+  gridResolution(): SamplerGridResolution {
+    return { resU: this.resU, resT: this.resT };
+  }
 
   position(u: number, t: number): Vec3 {
     const { positions, resU, resT } = this;

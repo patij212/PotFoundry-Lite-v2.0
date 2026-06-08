@@ -12,6 +12,39 @@
 
 import type { SurfaceSampler, Vec3 } from './SurfaceSampler';
 
+/** Per-axis finite-difference steps for curvature/metric estimation. */
+export interface MetricSteps {
+  /** Step in u (periodic axis). */
+  hu: number;
+  /** Step in t (clamped axis). */
+  ht: number;
+}
+
+/**
+ * Choose finite-difference steps that span ~`cells` grid cells of the sampler.
+ *
+ * For a DISCRETE sampler (one that interpolates a finite `resU × resT` grid),
+ * a step smaller than one cell reads inside a single bilinear patch — locally
+ * planar — so second differences pick up only quantization noise. Spanning ~one
+ * cell (`cells ≈ 1`) recovers the true smooth-surface curvature. Analytic
+ * samplers report no grid resolution; for them we keep the small fixed step
+ * (they have no quantization to de-noise).
+ */
+export function metricStepsForSampler(
+  s: SurfaceSampler,
+  cells = 1,
+): MetricSteps {
+  const res = s.gridResolution?.();
+  if (!res || res.resU < 2 || res.resT < 2) {
+    return { hu: DEFAULT_H, ht: DEFAULT_H };
+  }
+  // u node spacing is 1/resU (periodic); t node spacing is 1/(resT-1) (clamped).
+  return {
+    hu: (cells * 1) / res.resU,
+    ht: (cells * 1) / (res.resT - 1),
+  };
+}
+
 /** First fundamental form coefficients at a (u,t). */
 export interface MetricTensor {
   /** E = ∂P/∂u · ∂P/∂u. */
@@ -22,6 +55,14 @@ export interface MetricTensor {
   G: number;
 }
 
+/**
+ * Default finite-difference step. Only a sane fallback for callers that have no
+ * notion of sampler resolution (e.g. the analytic unit tests). The sizing field
+ * and quadtree pass grid-scaled steps (`≈ 1/samplerRes`) instead — a fixed
+ * sub-grid step against a DISCRETE sampler reads inside one bilinear cell, where
+ * the surface is locally planar, so it amplifies quantization noise into
+ * spurious curvature. See {@link principalCurvatureMax}.
+ */
 const DEFAULT_H = 1e-4;
 
 function sub(a: Vec3, b: Vec3): Vec3 {
@@ -61,20 +102,26 @@ function clampStepT(t: number, h: number): number {
 }
 
 /**
- * First fundamental form at (u,t) by central differences (step h in param).
+ * First fundamental form at (u,t) by central differences.
  *
- * `Pu = (P(u+h,t)-P(u-h,t))/(2h)`, `Pt = (P(u,t+ht)-P(u,t-ht))/(2ht)`;
+ * `Pu = (P(u+hu,t)-P(u-hu,t))/(2·hu)`, `Pt = (P(u,t+ht)-P(u,t-ht))/(2·ht)`;
  * `E = Pu·Pu`, `F = Pu·Pt`, `G = Pt·Pt`.
+ *
+ * `hu`/`ht` are the per-axis steps. Pass grid-scaled steps (`≈ 1/samplerResU`,
+ * `≈ 1/samplerResT`) when sampling a DISCRETE sampler so each difference spans
+ * roughly one grid cell rather than a sub-quantization gap. `ht` defaults to
+ * `hu` for the common isotropic case.
  */
 export function firstFundamentalForm(
   s: SurfaceSampler,
   u: number,
   t: number,
-  h: number = DEFAULT_H,
+  hu: number = DEFAULT_H,
+  ht: number = hu,
 ): MetricTensor {
-  const ht = clampStepT(t, h);
-  const Pu = scale(sub(s.position(u + h, t), s.position(u - h, t)), 1 / (2 * h));
-  const Pt = scale(sub(s.position(u, t + ht), s.position(u, t - ht)), 1 / (2 * ht));
+  const htc = clampStepT(t, ht);
+  const Pu = scale(sub(s.position(u + hu, t), s.position(u - hu, t)), 1 / (2 * hu));
+  const Pt = scale(sub(s.position(u, t + htc), s.position(u, t - htc)), 1 / (2 * htc));
   return { E: dot(Pu, Pu), F: dot(Pu, Pt), G: dot(Pt, Pt) };
 }
 
@@ -85,36 +132,45 @@ export function firstFundamentalForm(
  * `I=[[E,F],[F,G]]` and second fundamental form `II=[[L,M],[M,N]]`
  * (`L=Puu·n, M=Put·n, N=Ptt·n`, n the unit surface normal). The principal
  * curvatures are S's eigenvalues; this returns the larger magnitude.
+ *
+ * `hu`/`ht` are the per-axis finite-difference steps. Against a DISCRETE
+ * sampler (the production `GpuSurfaceSampler` interpolates a finite grid), a
+ * sub-grid step reads inside a single bilinear cell where the surface is locally
+ * planar — central second differences then straddle cell boundaries and report
+ * spurious high curvature (quantization noise). Passing grid-scaled steps
+ * (`≈ 1/samplerResU`, `≈ 1/samplerResT`) makes each stencil span roughly one
+ * cell, recovering the true smooth-surface curvature. `ht` defaults to `hu`.
  */
 export function principalCurvatureMax(
   s: SurfaceSampler,
   u: number,
   t: number,
-  h: number = DEFAULT_H,
+  hu: number = DEFAULT_H,
+  ht: number = hu,
 ): number {
-  const ht = clampStepT(t, h);
+  const htc = clampStepT(t, ht);
 
   const P = s.position(u, t);
-  const Pup = s.position(u + h, t);
-  const Pum = s.position(u - h, t);
-  const Ptp = s.position(u, t + ht);
-  const Ptm = s.position(u, t - ht);
-  const Pupp = s.position(u + h, t + ht);
-  const Pupm = s.position(u + h, t - ht);
-  const Pump = s.position(u - h, t + ht);
-  const Pumm = s.position(u - h, t - ht);
+  const Pup = s.position(u + hu, t);
+  const Pum = s.position(u - hu, t);
+  const Ptp = s.position(u, t + htc);
+  const Ptm = s.position(u, t - htc);
+  const Pupp = s.position(u + hu, t + htc);
+  const Pupm = s.position(u + hu, t - htc);
+  const Pump = s.position(u - hu, t + htc);
+  const Pumm = s.position(u - hu, t - htc);
 
   // First derivatives (central).
-  const Pu = scale(sub(Pup, Pum), 1 / (2 * h));
-  const Pt = scale(sub(Ptp, Ptm), 1 / (2 * ht));
+  const Pu = scale(sub(Pup, Pum), 1 / (2 * hu));
+  const Pt = scale(sub(Ptp, Ptm), 1 / (2 * htc));
 
   // Second derivatives (central).
-  const Puu = scale(add(sub(Pup, scale(P, 2)), Pum), 1 / (h * h));
-  const Ptt = scale(add(sub(Ptp, scale(P, 2)), Ptm), 1 / (ht * ht));
-  // Mixed: (P(u+,t+) - P(u+,t-) - P(u-,t+) + P(u-,t-)) / (4 h ht)
+  const Puu = scale(add(sub(Pup, scale(P, 2)), Pum), 1 / (hu * hu));
+  const Ptt = scale(add(sub(Ptp, scale(P, 2)), Ptm), 1 / (htc * htc));
+  // Mixed: (P(u+,t+) - P(u+,t-) - P(u-,t+) + P(u-,t-)) / (4 · hu · htc)
   const Put = scale(
     add(sub(sub(Pupp, Pupm), Pump), Pumm),
-    1 / (4 * h * ht),
+    1 / (4 * hu * htc),
   );
 
   const E = dot(Pu, Pu);
