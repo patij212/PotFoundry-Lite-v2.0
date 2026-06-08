@@ -51,6 +51,25 @@ The fidelity hook is `window.__pfFidelity` (gated by `?fidelity=1`). Probes live
 6. **Commit working increments; `git add` explicit paths** (the tree has pre-existing dirty files + many untracked probe `.txt`/`.log` — never `git add -A`).
 7. **Checkpoint to memory** (`project_conforming_mesher.md`) after each milestone, so progress survives context limits. Keep it honest (what's verified vs blind).
 
+## 5b. GAP 1 ROOT CAUSE — PROVEN (2026-06-08l, unit-level, measurement-first)
+`conforming/Gap1FoundationAspect.test.ts` (no-GPU) proves it: **a SQUARE (u,t) cell's 3D
+triangle aspect ≡ the local metric anisotropy √E/√G, INDEPENDENT of refinement level**
+(measured maxCellAspect tracks √E/√G across dims/detail). Sliver field (aspect>100) appears
+EXACTLY when √E/√G>~115. Base anisotropy 2πR/√G ≈3 default → ≈22 short-wide; base+relief
+crosses 115 for detail/warp/insert, gentle-smooth stays under (matches the e2e table). **A
+sizing-field CLAMP cannot fix this (aspect is level-independent → clamp changes count, not
+sliver-ness). The ONLY fix is ANISOTROPIC cells (Δu/Δt≈√G/√E)** — the guard's anisoFixAspect=1.73
+(≈√3) in every regime confirms EG-balanced cells erase the sliver field. Planned fix: a global
+**uBias** (u-exponent = level+B, B≈round(log2(baseAnisotropy))) so cells are 3D-near-square while
+the square-split / 2:1-balance / T-junction templates keep working (cell stays "square" in INDEX
+space; only the u→coord map gains a constant 2^B factor). nRing then = 2^(pin+B); warps +
+insertion need uBias-awareness. Touches all 20 → gate against the full 20-style probe.
+
+**DECIDED SEQUENCING: GAP 2 + Voronoi FIRST → GAP 1 uBias → cutover.** GAP 2 (per-edge
+forced-crossing mirror) banks 20/20 AND fixes the twisted/high-flare inserted-style failures
+(a 2nd cutover blocker), is contained/lower-risk, and is robust to the later uBias change — so
+bank that milestone before the risky foundation rewrite.
+
 ## 6. THE WORK (priority order; UPDATED 2026-06-08i)
 
 **NOW (priority 1) — finish Voronoi → 20/20.** Extraction is DONE (`extractVoronoi` in FeatureLineGraph; featDrop=0 proven). The blocker is the INSERTION topology crack (bnd>0) at tangent cell-edge transitions: a Voronoi border tangent to a cell edge leaves the cell it doesn't cross-into coarse, so that transition edge gets an inconsistent crossing → T-junction. Diagnosed via the no-GPU repro pattern (extract curves → `assembleWatertight` with a synthetic cylinder sampler → audit boundary edges; the cracks are 3-point triplets on horizontal cell edges = corner/crossing/corner where one cell has the crossing and the neighbour doesn't). Tried + reverted: a `FEATURE_TOUCH_MARGIN` box-expansion in `buildFeatureIntersector` (over-refined → cracked HexagonalHive too). The robust fix is a per-edge forced-crossing pass: when a border crosses/touches a cell edge, register that crossing in BOTH adjacent cells (mirror it across the shared edge) regardless of which cell the curve enters — this is also the deferred fix for the (u,t) needle at curve extrema (DO NOT) §4. Then flip `VORONOI_INSERTION_ENABLED=true` and re-measure (target: bnd=nonMan=orient=sliver=0, featDrop=0).
