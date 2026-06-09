@@ -13,6 +13,48 @@ This file supersedes the GAP-1 short-wide work (DONE this session — see
 
 ---
 
+## ⚑ STATUS UPDATE (2026-06-09, commit `6602c1c`) — SERRATION STAIRCASE FIXED + BANKED
+
+**The diagnosis below (§1 "crest absence", §3 crest insertion) was a productive DETOUR but is
+SUPERSEDED.** Measurement-first re-diagnosis (visual render + FShear classifier) proved the
+serration is **U-LONG surface anisotropy** (`√E/√G ≫ 1` from steep relief), NOT missing crests
+and NOT density. An axis-aligned cell that is wide-in-u / narrow-in-t staircases the diagonal
+morphing petal crest; **squaring those cells (a uBias) fixes it — crest insertion is MOOT for
+the staircase** (surface byte-identical with/without the inserted crest edges, proven twice).
+The earlier `maxAspect 87.6` "signal" was a **seam-unwrap measurement artifact** (leaf
+`cellAspect3D ≤ 15`), not a faithful gate.
+
+**THE FIX (banked, AUTOMATIC, no override):** `computeUBias(sampler, hasFeatures)` in
+`WatertightAssembly.ts` gained **GATE B** — at default/tall dims, when the worst u-dominant
+`maxURatio = classifySurfaceShear(sampler).maxURatio` exceeds **6**, apply
+`B = clamp(round(log2(maxURatio/√3)), 1, 4)` (reuses the same 192² lattice the probe measures →
+reproduces the proven `11.8 → B=3`). It **fires WITH features** (crests need it) and is the
+`!wideFlat` branch only, so it never touches the short-wide regime (GATE A — the fixed B=2,
+`hasFeatures?0` CelticKnot braid-crack guard — is byte-identical to before for every style).
+
+**MEASURED (e2e AUTO path, 20/20 default watertight, `sliver=bnd=nonMan=orient=0`):**
+SFB@1 `crestRms 0.335→0.209mm (−38%)`, `featDrop=0`, striping squared away — automatically.
+Re-baselined to squared cells: Crystalline/DragonScales/HarmonicRipple/SpiralRidges (B=2),
+FourierBloom (B=3). 15 low-relief styles (`maxURatio<6`, incl. CelticKnot braid 4.1) → B=0,
+byte-identical. Adversarially reviewed (20-agent workflow, 15/16 refuted); the one real finding
+(GATE-B boundary test) was added. New gate harness `e2e/_rebaseline_matrix.cjs`. Full record:
+memory `project_cad_fidelity.md` (§"DONE — relief-gated GLOBAL uBias BANKED").
+
+**WHAT REMAINS (deeper CAD-grade, OPTIONAL — the staircase the user reported is FIXED):**
+SFB@1 `serr` is still 2.09 — but that residual is the **irreducible `n1<1` cusp tip**
+(`maxCrest 8.6mm`) **plus the STAGE-0 metric's own reference artifact** (the 256-bilinear
+reference smooths sharp cusps, so `crestRms` is reference-dominated there). To push
+`serrationScore<1`: (a) fix the STAGE-0 metric reference to an analytic/finer `R_true` FIRST
+(else you re-validate against a smoothed reference), then (b) re-evaluate born-crest insertion
+(watertight-proven; good for model-true edges / `featuresDropped`, MOOT for the staircase). The
+uBias fix already generalizes to ALL smooth styles (any `maxURatio>6` auto-squares), so the
+"generalize crest extraction to 7 styles" task is superseded for the serration aspect.
+
+*The sections below are retained for historical context (the detour that led here); read them
+as the investigation trail, not the current plan.*
+
+---
+
 ## 0. THE SYMPTOM that opened this (the user's words)
 > "exported SuperformulaBlossom at higher style strengths starts getting cuts and
 > serrations in its ridges."
