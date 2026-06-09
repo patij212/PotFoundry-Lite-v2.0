@@ -32,6 +32,7 @@ import type { SurfaceSampler } from './SurfaceSampler';
 import { buildConformingWall, type ConformingWallResult } from './ConformingWall';
 import { annulusStrip, discFan } from './RingStrip';
 import type { FeatureLine } from './FeatureLineGraph';
+import { classifySurfaceShear } from './FShearDiagnostics';
 
 /** Reference shape anisotropy gating uBias on (a wide/flat pot exceeds it). */
 const UBIAS_AREF = 3;
@@ -53,6 +54,26 @@ const UBIAS_AREF = 3;
 const UBIAS_WIDE_B = 2;
 
 /**
+ * U-anisotropy gate for the RELIEF bias (GATE B, default/tall dims). A surface
+ * whose worst u-dominant √E/√G (`maxURatio`) exceeds this has ridges steep enough
+ * that axis-aligned cells STAIRCASE its diagonal crests — the high-strength
+ * serration. MEASURED (2026-06-09, classifySurfaceShear over all 20 styles at
+ * default dims): the low-relief defaults sit well below — SuperformulaBlossom@0
+ * 3.5, GothicArches 3.6, ArtDeco 3.9, the SuperellipseMorph/Bamboo/Wave/Star/Hive
+ * cluster 3.3–4.5, and crucially the braid style CelticKnot 4.1 (so GATE B never
+ * fires on the braid that cracked at short-wide) — while the serrating regime is
+ * above: SuperformulaBlossom@high 11.8, FourierBloom 12.2, HarmonicRipple 7.6,
+ * DragonScales 7.4, Crystalline 6.8. The threshold sits in the clean gap between
+ * the two clusters, so only the genuinely u-relief-dominated styles re-baseline.
+ */
+const RELIEF_RATIO_GATE = 6;
+/**
+ * Cap on the relief bias (mirrors the GAP-1 uBias ceiling). Extreme relief
+ * saturates here rather than over-refining into construction slivers.
+ */
+const MAX_RELIEF_B = 4;
+
+/**
  * Anisotropy bias B (≥0) for a wall sampler — a GATED, FIXED bias.
  *
  * Gates on a RELIEF-FREE wide/flat measure: `wideFlat = 2π·R̄ / Hspan`, the mean
@@ -71,19 +92,35 @@ const UBIAS_WIDE_B = 2;
  * space only the SHORT-WIDE regime crosses it (tall-narrow 0.25, no-drain 2.98,
  * high-flare 1.66, twisted 2.16, default 2.98 — all B=0; short-wide ≈22.8 → B=2).
  *
- * Why FIXED, not relief-scaled: a square (u,t) cell maps to a √E/√G:1 3D sliver
- * (GAP 1, level-independent); the bias makes a level-L leaf span Δu=1/2^(L+B),
- * 3D-near-square. The earlier version scaled B by `median(√E/√G)`, but a full-20
- * short-wide B-sweep MEASURED that harmful: the REAL band-limited surfaces never
- * exceed maxSquareAspect≈67 (never sliver from surface anisotropy), and a larger
- * B only adds CONSTRUCTION slivers at grading transitions (ArtDeco B=3 → 3639
- * ~101-aspect cells). A uniform B={@link UBIAS_WIDE_B} is necessary
- * (FourierBloom/SpiralRidges fail at B=0/1) and sufficient (every wide/flat
- * non-feature style is sliver-free). See UBIAS_WIDE_B.
+ * Why the wide/flat bias is FIXED, not relief-scaled: a square (u,t) cell maps to
+ * a √E/√G:1 3D sliver (GAP 1, level-independent); the bias makes a level-L leaf
+ * span Δu=1/2^(L+B), 3D-near-square. The earlier version scaled B by
+ * `median(√E/√G)`, but a full-20 short-wide B-sweep MEASURED that harmful: the
+ * REAL band-limited surfaces never exceed maxSquareAspect≈67 (never sliver from
+ * surface anisotropy), and a larger B only adds CONSTRUCTION slivers at grading
+ * transitions (ArtDeco B=3 → 3639 ~101-aspect cells). A uniform B={@link
+ * UBIAS_WIDE_B} is necessary (FourierBloom/SpiralRidges fail at B=0/1) and
+ * sufficient (every wide/flat non-feature style is sliver-free). See UBIAS_WIDE_B.
  *
- * Exported for unit testing (the gate threshold + fixed value).
+ * TWO GATES (the wide/flat dims bias is GATE A; the serration fix is GATE B):
+ *  - GATE A — wide/flat DIMS (`wideFlat > AREF·√2`): the fixed {@link UBIAS_WIDE_B}.
+ *    WITH features it stays 0 (the CelticKnot short-wide braid-crack guard).
+ *  - GATE B — U-LONG surface RELIEF at default/tall dims (`maxURatio >
+ *    {@link RELIEF_RATIO_GATE}`): steep ridges swept around the pot make a square
+ *    (u,t) cell STAIRCASE the style's DIAGONAL crests into axis-aligned slivers —
+ *    the high-strength serration. B≈log2(maxURatio/√3) squares those cells.
+ *    Unlike GATE A this FIRES WITH features (crests need it; SuperformulaBlossom@1
+ *    uBias=3 measured watertight + crest-tracked, featDrop=0) and is the !wideFlat
+ *    branch only, so it never touches the short-wide regime where relief-scaled B
+ *    injected construction slivers. At DEFAULT params the low-relief styles fall
+ *    below the gate ⇒ B=0 ⇒ byte-identical; only the genuinely u-relief-dominated
+ *    styles (and high-strength SuperformulaBlossom) re-baseline to squared cells.
+ *
+ * @param hasFeatures whether the OUTER wall carries inserted feature lines (only
+ *   affects GATE A — see above; GATE B is feature-agnostic).
+ * Exported for unit testing (both gate thresholds + the fixed/relief values).
  */
-export function computeUBias(sampler: SurfaceSampler): number {
+export function computeUBias(sampler: SurfaceSampler, hasFeatures = false): number {
   // Relief-free shape: mean radius over the z-span. ∂r/∂t relief averages/ranges
   // away, so t-relief styles read their true wide/flatness (unlike 2π·r/√G).
   let rSum = 0;
@@ -102,10 +139,22 @@ export function computeUBias(sampler: SurfaceSampler): number {
     }
   }
   const wideFlat = (2 * Math.PI * (rSum / Math.max(n, 1))) / Math.max(zMax - zMin, 1e-6);
-  // GATE: tall/default shape ⇒ no bias (default meshes stay byte-identical).
-  if (wideFlat <= UBIAS_AREF * Math.SQRT2) return 0;
-  // Wide/flat pot ⇒ a single fixed modest bias (relief-scaling proven harmful).
-  return UBIAS_WIDE_B;
+  // GATE A — wide/flat DIMS ⇒ the fixed wide bias, EXCEPT with features (the
+  // short-wide CelticKnot braid-crack guard keeps inserted styles deferred here).
+  // GATE B never reaches this regime (it is the !wideFlat branch below).
+  if (wideFlat > UBIAS_AREF * Math.SQRT2) return hasFeatures ? 0 : UBIAS_WIDE_B;
+  // GATE B — U-LONG surface relief at default/tall dims. `maxURatio` is the worst
+  // u-dominant √E/√G over the surface (same 192² lattice the serration probe uses,
+  // so this reproduces the measured 11.8 → B=3 at SuperformulaBlossom@1). Below the
+  // gate ⇒ B=0 ⇒ byte-identical default meshes.
+  const { maxURatio } = classifySurfaceShear(sampler);
+  if (maxURatio <= RELIEF_RATIO_GATE) return 0;
+  // A square (u,t) cell at √E/√G=ρ maps to a ρ:1 3D sliver; uBias B sets
+  // Δu/Δt=1/2^B, so B≈log2(ρ) squares it. Target a residual √3 (the equilateral
+  // aspect), clamp to [1, MAX_RELIEF_B] — round(log2(11.8/√3))=3 reproduces the
+  // proven SuperformulaBlossom@1 bias; the cap holds extreme relief at the ceiling.
+  const b = Math.round(Math.log2(maxURatio / Math.sqrt(3)));
+  return Math.max(1, Math.min(MAX_RELIEF_B, b));
 }
 
 /** Pot dimensions needed to place the cap/drain surfaces. */
@@ -295,14 +344,16 @@ export function assembleWatertight(
 
   // --- 0. Anisotropy bias (GAP 1): make cells 3D-near-square on wide/flat pots.
   // Both walls MUST share the same bias so their boundary rings (= nRing verts
-  // after the pin adjustment) match by index. Computed once from the OUTER metric.
-  // The feature-insertion triangulator IS uBias-aware (STEP 3a, unit-validated for
-  // loops), BUT un-deferring inserted styles e2e left a residual bnd=6 T-junction
-  // crack on CelticKnot's BRAIDS at short-wide (crossing/Steiner asymmetry under
-  // anisotropy — 3/4 inserted styles were clean bnd=0, only braids crack). So
-  // inserted styles stay DEFERRED (B=0) until that braid-anisotropy case is fixed;
-  // at default dims B=0 anyway, so this only holds the (already-failing) extreme-dim
-  // inserted case at its prior baseline, never regresses a working one. `opts.uBias`
+  // after the pin adjustment) match by index. Computed once from the OUTER metric
+  // by `computeUBias`, which itself gates features: the WIDE/FLAT dims bias (GATE A)
+  // stays DEFERRED to B=0 on feature walls — un-deferring inserted styles e2e left
+  // a residual bnd=6 T-junction crack on CelticKnot's BRAIDS at short-wide
+  // (crossing/Steiner asymmetry under anisotropy; 3/4 inserted styles were clean,
+  // only braids crack). The DEFAULT-dims RELIEF bias (GATE B) DOES fire with
+  // features (SuperformulaBlossom@high needs B>0 to de-staircase its crests, and is
+  // MEASURED watertight + crest-tracked there) — safe because the braid styles sit
+  // below GATE B's threshold at default dims (CelticKnot maxURatio 4.1 < 6) and the
+  // short-wide braid-crack regime is wide/flat, handled by GATE A. `opts.uBias`
   // overrides (used by the uBias unit tests).
   const hasFeatures = (opts.outerFeatureLines?.length ?? 0) > 0;
   // Dev/diagnostic override (`window.__pfConformingUBias`): force a specific
@@ -312,7 +363,7 @@ export function assembleWatertight(
   const uBiasOverride = (globalThis as unknown as { __pfConformingUBias?: number }).__pfConformingUBias;
   const uBias = typeof uBiasOverride === 'number' && uBiasOverride >= 0
     ? Math.floor(uBiasOverride)
-    : opts.uBias ?? (hasFeatures ? 0 : computeUBias(outerSampler));
+    : opts.uBias ?? computeUBias(outerSampler, hasFeatures);
 
   // GAP 1 local/directional anisotropy: OPT-IN (default OFF). The pass is proven
   // a true no-op at DEFAULT dims (gated + uExtra=0 byte-identical — verified, all

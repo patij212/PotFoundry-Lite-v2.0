@@ -35,13 +35,13 @@ class TReliefCylinderSampler implements SurfaceSampler {
 }
 
 describe('computeUBias — gated fixed anisotropy bias', () => {
-  it('is 0 for default / tall pots (the no-op gate that keeps default meshes byte-identical)', () => {
+  it('is 0 for default / tall pots with LOW relief (no-op gate → byte-identical defaults)', () => {
     // Default shape (R≈57, H≈120): 2πR/H ≈ 3, below the wide/flat gate.
     expect(computeUBias(new SyntheticCylinderSampler(57, 120))).toBe(0);
     // Tall-narrow: even further below.
     expect(computeUBias(new SyntheticCylinderSampler(40, 120))).toBe(0);
-    // Relief does not trip the gate (it is computed from the shape, not ∂r/∂u).
-    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 8, 16))).toBe(0);
+    // Gentle u-relief (low √E/√G) stays below the relief gate → still B=0.
+    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 2, 4))).toBe(0);
   });
 
   it('is the FIXED wide-bias for a wide/flat pot (short-wide H40/OD300 regime)', () => {
@@ -77,5 +77,47 @@ describe('computeUBias — gated fixed anisotropy bias', () => {
     expect(computeUBias(new TReliefCylinderSampler(145, 40, 20, 6))).toBe(2);
     // And a TALL pot with the same relief still gets no bias (shape, not relief).
     expect(computeUBias(new TReliefCylinderSampler(40, 120, 20, 6))).toBe(0);
+  });
+});
+
+describe('computeUBias — relief-gated bias at DEFAULT dims (the serration fix)', () => {
+  // The high-strength serration is U-LONG surface anisotropy (∂r/∂u large at
+  // steep relief → √E/√G ≫ 1) at DEFAULT (non-wide/flat) dims. uBias squares
+  // those cells. This is ADDITIVE to the wide/flat dims bias and gated on the
+  // u-anisotropy ratio (√E/√G), so it does NOT touch the short-wide regime (where
+  // relief-scaled B caused construction slivers) — the !wideFlat branch only.
+  it('biases a TALL pot with HIGH u-relief (the SuperformulaBlossom@high-strength case)', () => {
+    // R57/H120 (tall, !wideFlat) + strong u-relief → √E/√G ≈ 7 > gate → B > 0.
+    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 8, 16))).toBeGreaterThanOrEqual(2);
+    // Stronger relief → at most the cap (does not run away).
+    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 20, 24))).toBeLessThanOrEqual(4);
+  });
+
+  it('the relief bias APPLIES even with features (lifts the hasFeatures trap at default dims)', () => {
+    // SuperformulaBlossom@high-strength carries crests (hasFeatures); uBias=3 was
+    // measured watertight + crest-tracked. So relief-B must fire WITH features.
+    const withFeat = computeUBias(new SyntheticCylinderSampler(57, 120, 8, 16), true);
+    expect(withFeat).toBeGreaterThanOrEqual(2);
+  });
+
+  it('KEEPS the short-wide braid safety: wide/flat + features → B=0 (dims path unchanged)', () => {
+    // A wide/flat pot WITH features stays B=0 (the CelticKnot braid-crack guard);
+    // relief-B is the !wideFlat branch and never reaches here.
+    expect(computeUBias(new SyntheticCylinderSampler(145, 40, 20, 16), true)).toBe(0);
+    // Without features the wide/flat dims bias is the fixed value (unchanged).
+    expect(computeUBias(new SyntheticCylinderSampler(145, 40, 20, 16), false)).toBe(2);
+  });
+
+  it('brackets the RELIEF_RATIO_GATE (maxURatio ≈ 6): just below → B=0, just above → B>0', () => {
+    // TALL pot (R57/H120; with k=16 the wideFlat 16-sample scan reads r=R0+amp, so
+    // wideFlat = 2π·(57+amp)/120 ≈ 3.3 < AREF·√2 — GATE A is OFF, this is GATE B).
+    // k=16 lands the u-relief peak (u=1/64) EXACTLY on the 192² lattice (no aliasing),
+    // so the measured worst √E/√G is analytic: maxURatio = 2π·√(k²·amp²+R0²)/H.
+    //   amp=5.5 → 2π·√(256·30.25+3249)/120 ≈ 5.49  (just BELOW the 6 gate → no bias)
+    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 5.5, 16))).toBe(0);
+    //   amp=7.0 → 2π·√(256·49+3249)/120     ≈ 6.58  (just ABOVE the 6 gate → bias fires)
+    // Tight ±0.5 bracket around 6: catches a gate typo to 5 (5.49 would wrongly bias)
+    // or to 7 (6.58 would wrongly return 0).
+    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 7, 16))).toBeGreaterThanOrEqual(1);
   });
 });
