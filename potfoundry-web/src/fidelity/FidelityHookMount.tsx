@@ -43,6 +43,7 @@ function isFidelityRun(): boolean {
 
 export function FidelityHookMount(): null {
   const setStyle = useAppStore((s) => s.setStyle);
+  const setStyleOpts = useAppStore((s) => s.setStyleOpts);
   const setMeshParams = useAppStore((s) => s.setMeshParams);
   const styleName = useAppStore((s) => s.style.name);
   const parametricExport = useParametricExport();
@@ -55,6 +56,7 @@ export function FidelityHookMount(): null {
   const depsRef = useRef<FidelityHookDeps>({
     setStyle: () => {},
     setDimensions: () => {},
+    setStyleParams: () => {},
     isAvailable: () => false,
     isReferenceAvailable: () => false,
     generateMesh: async () => null,
@@ -64,6 +66,7 @@ export function FidelityHookMount(): null {
     setStyle: (name: string) => setStyle(name as Parameters<typeof setStyle>[0]),
     setDimensions: (params: Record<string, number>) =>
       setGeometryParams(params as Parameters<typeof setGeometryParams>[0]),
+    setStyleParams: (params: Record<string, number>) => setStyleOpts(params),
     isAvailable: () => parametricExport.isAvailable,
     isReferenceAvailable: () => gpuExport.isGPUAvailable,
     // returnInvalidMesh: the harness must measure the pipeline's actual HEAD
@@ -92,6 +95,7 @@ export function FidelityHookMount(): null {
     window.__pfFidelity = createFidelityApi({
       setStyle: (name) => depsRef.current.setStyle(name),
       setDimensions: (params) => depsRef.current.setDimensions(params),
+      setStyleParams: (params) => depsRef.current.setStyleParams(params),
       isAvailable: () => depsRef.current.isAvailable(),
       isReferenceAvailable: () => depsRef.current.isReferenceAvailable(),
       generateMesh: (n) => depsRef.current.generateMesh(n),

@@ -530,6 +530,109 @@ export function sagDeviation(
   };
 }
 
+/** Faithful CAD-fidelity result, restricted to the WALL. */
+export interface WallDeviationResult {
+  /** Worst radial deviation (mm) of a wall sample from the true surface. */
+  maxMm: number;
+  /** RMS radial deviation (mm) over wall samples. */
+  rmsMm: number;
+  /** 99th-percentile radial deviation (mm) — robust to a few outliers. */
+  p99Mm: number;
+  /** Wall samples measured. */
+  wallSamples: number;
+  /** Wall (near-vertical) triangles measured. */
+  wallTriangles: number;
+}
+
+/**
+ * Faithful CAD-fidelity metric for the WALL surface (the model-truth signal the
+ * mixed `sagDeviation` drowns under the drain/cap artifact).
+ *
+ * Restricts to NEAR-VERTICAL wall triangles and measures the 3D distance of
+ * interior barycentric samples to the NEAREST point on the dense true surface
+ * (not a radial compare — radial wrongly compares the near-vertical drain and
+ * inner wall against the OUTER R_true, the ~35mm artifact). Each sample is scored
+ * against ITS OWN nearest true surface, so inner wall / drain follow their own
+ * geometry (≈0) and only the OUTER ridge chord-error shows: mesh VERTICES lie on
+ * the true surface (≈0), but a flat triangle chord-cuts a convex ridge crest, so
+ * where mesh edges are not aligned with / dense enough at a crest (serration) the
+ * interior dips off the surface and the deviation spikes. A plain pot reads ≈ the
+ * sag-refinement floor; ridge serration drives `maxMm`/`p99Mm` up.
+ *
+ * Uses RADIAL deviation `|r − R_true(θ,z)|` (R_true = the OUTER radius per (θ,z)
+ * bin of the dense reference). Radial — not 3D nearest-point — because a flat
+ * triangle chord-cutting a sharp ridge crest stays close to the surface
+ * LATERALLY (nearest-point under-measures it), whereas the radial under-shoot at
+ * the crest IS the CAD error. The near-vertical DRAIN (r ≈ rDrain ≪ R_true) is
+ * excluded by `r > 0.5·R_true`; flat caps/rim/base are excluded by the
+ * near-vertical normal test. (The inner wall contributes a ~constant
+ * wall-thickness floor; the serration is the climb above it.)
+ */
+export function wallDeviation(
+  mesh: MeshView,
+  denseVertices: Float32Array,
+  order = 4,
+): WallDeviationResult {
+  const rTrue = buildRadialReference(denseVertices).rTrue;
+  const { vertices, indices } = mesh;
+  const samples = barycentricSamples(order);
+  let maxv = 0;
+  let sumSq = 0;
+  let count = 0;
+  let wallTris = 0;
+  // Histogram for a cheap p99 (0..20mm at 0.05mm; overflow in the last bucket).
+  const BUCKETS = 400;
+  const BW = 0.05;
+  const hist = new Float64Array(BUCKETS + 1);
+
+  for (let t = 0; t < indices.length; t += 3) {
+    const ia = indices[t] * 3;
+    const ib = indices[t + 1] * 3;
+    const ic = indices[t + 2] * 3;
+    const ax = vertices[ia], ay = vertices[ia + 1], az = vertices[ia + 2];
+    const bx = vertices[ib], by = vertices[ib + 1], bz = vertices[ib + 2];
+    const cx = vertices[ic], cy = vertices[ic + 1], cz = vertices[ic + 2];
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const nz = ux * vy - uy * vx;
+    const nlen = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, nz);
+    // Near-vertical WALL only (normal near-horizontal); excludes flat caps/rim/base.
+    if (!(nlen > 1e-12) || Math.abs(nz) / nlen >= NEAR_VERTICAL_COS) continue;
+    wallTris++;
+
+    for (const [wa, wb, wc] of samples) {
+      const px = ax * wa + bx * wb + cx * wc;
+      const py = ay * wa + by * wb + cy * wc;
+      const pz = az * wa + bz * wb + cz * wc;
+      const r = Math.hypot(px, py);
+      const rt = rTrue(Math.atan2(py, px), pz);
+      if (r < 0.5 * rt) continue; // exclude the inner drain cylinder (r ≪ R_true)
+      const dev = Math.abs(r - rt);
+      if (dev > maxv) maxv = dev;
+      sumSq += dev * dev;
+      count++;
+      hist[Math.min(BUCKETS, Math.floor(dev / BW))]++;
+    }
+  }
+
+  let p99 = 0;
+  if (count > 0) {
+    const target = count * 0.99;
+    let acc = 0;
+    for (let b = 0; b <= BUCKETS; b++) {
+      acc += hist[b];
+      if (acc >= target) { p99 = b * BW; break; }
+    }
+  }
+  return {
+    maxMm: maxv,
+    rmsMm: count > 0 ? Math.sqrt(sumSq / count) : 0,
+    p99Mm: p99,
+    wallSamples: count,
+    wallTriangles: wallTris,
+  };
+}
+
 export interface TriangleQualityResult {
   maxAspect3D: number;
   minAngleDeg: number;

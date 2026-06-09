@@ -19,8 +19,10 @@ import {
   computeFidelityMetrics,
   topologyDiagnostics,
   triangleQualityDiagnostics,
+  wallDeviation,
   type TopologyDiagnostics,
   type TriangleQualityDiagnostics,
+  type WallDeviationResult,
 } from './metrics';
 import { WELD_TOL_MM, type FidelityMetrics } from './types';
 
@@ -69,6 +71,8 @@ export interface FidelityHookDeps {
   setStyle: (name: string) => void;
   /** Patch the store's geometry params (H, top_od, bottom_od, r_drain, expn, …). */
   setDimensions: (params: Record<string, number>) => void;
+  /** Patch the store's STYLE opts (sf_strength, sf_n1, …) for fidelity sweeps. */
+  setStyleParams: (params: Record<string, number>) => void;
   /** Parametric pipeline (the path under test) is ready for the current style. */
   isAvailable: () => boolean;
   /** GPU uniform-grid pipeline (the dense reference source) is ready. */
@@ -95,6 +99,12 @@ export interface PfFidelityApi {
    * from the current store on each generate.
    */
   setDimensions(params: Record<string, number>): Promise<void>;
+  /**
+   * Patch the current style's opts (e.g. `{ sf_strength: 1 }`) for fidelity
+   * sweeps over style strength, then settle. No GPU rebuild (opts are read at
+   * generate time); call AFTER setStyle (which resets opts to defaults).
+   */
+  setStyleParams(params: Record<string, number>): Promise<void>;
   measure(opts: FidelityMeasureOptions): Promise<FidelityMetrics>;
   diagnoseTopology(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTopologyDiagnostics>;
   diagnoseQuality(opts?: FidelityQualityDiagnosticOptions): Promise<FidelityQualityDiagnostics>;
@@ -113,6 +123,23 @@ export interface PfFidelityApi {
    * conforming sampler stash). Drives the GAP-1 fix-direction decision.
    */
   diagnoseFShear(opts?: FidelityFShearDiagnosticOptions): Promise<FidelityFShearDiagnostics | null>;
+  /**
+   * Faithful CAD-fidelity: the WALL-restricted radial deviation of the export
+   * mesh from the dense true surface (max/p99/rms mm). Unlike `measure`'s mixed
+   * sag (drowned by the drain/cap artifact), this isolates the model-truth signal
+   * — ≈ the sag floor for a plain pot, rising sharply with ridge serration.
+   */
+  diagnoseWallFidelity(opts?: FidelityWallDiagnosticOptions): Promise<FidelityWallDiagnostics>;
+}
+
+export interface FidelityWallDiagnosticOptions {
+  targetTriangles?: number;
+  sampleOrder?: number;
+}
+
+export interface FidelityWallDiagnostics extends WallDeviationResult {
+  styleId: string;
+  triangleCount: number;
 }
 
 export interface FidelityFShearDiagnosticOptions {
@@ -187,6 +214,11 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       deps.setDimensions(params);
       // Let React commit the store write; no pipeline teardown (style unchanged),
       // so a short settle is enough before the next generate reads the new dims.
+      await sleep(300);
+    },
+    async setStyleParams(params: Record<string, number>) {
+      deps.setStyleParams(params);
+      // Opts are read at generate time; no pipeline rebuild (style.name unchanged).
       await sleep(300);
     },
     async measure(opts: FidelityMeasureOptions): Promise<FidelityMetrics> {
@@ -297,6 +329,22 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       const sampler = new GpuSurfaceSampler(grid.positions, grid.resU, grid.resT);
       const summary = classifySurfaceShear(sampler, { resU: opts.resU, resT: opts.resT });
       return { styleId, ...summary };
+    },
+    async diagnoseWallFidelity(opts: FidelityWallDiagnosticOptions = {}): Promise<FidelityWallDiagnostics> {
+      const styleId = currentStyleId();
+      // Dense true-surface reference (whole pot) → 3D nearest-surface index.
+      const dense = await deps.generateReference();
+      if (!dense) throw new Error('Fidelity: GPU-grid reference returned null');
+      const denseVertices = dense.vertices.slice();
+      // Under-test export mesh.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const w = wallDeviation(
+        { vertices: mesh.vertices, indices: mesh.indices },
+        denseVertices,
+        opts.sampleOrder ?? 4,
+      );
+      return { styleId, ...w, triangleCount: Math.floor(mesh.indices.length / 3) };
     },
     async diagnoseQuality(opts: FidelityQualityDiagnosticOptions = {}): Promise<FidelityQualityDiagnostics> {
       const styleId = currentStyleId();
