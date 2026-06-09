@@ -133,16 +133,25 @@ STAGE 3/4 plan below).** Two experiments DISPROVED "insert crest edges → fix s
   9.1→6.4→8.8 (n1<1 CUSP-tip artifact, not bulk). **Serration IS curvature-resolution-limited:
   the 128² sizing grid + 256² sampler band-limit κ → the steep petal flanks under-refine.**
 
-**STAGE 4 — IS THE REAL SERRATION FIX (was mislabelled "support").** Improve curvature-sizing
-accuracy so the flanks refine to the 0.1mm chord target: raise the 128² sizing grid (resU/resT
-in the `assembleWatertight` call) and/or `__pfConformingDenseRes`; **cap κ at a chord target**
-(n1<1 Gielis tip = cusp, unbounded κ); lift the budget cap (`budgetMode:'cap'`, tris capped
-~424k at 400k target — raise the target so refinement isn't capped). GATE = the STAGE-0
-`diagnoseSerration`: crestBandRms<0.1mm (serrationScore<1) across strength, topology clean.
-**Gate-scope change:** raising global κ resolution CHANGES default meshes (HarmonicRipple/
-DragonScales/Crystalline have real default curvature) → "20/20 byte-identical" no longer
-applies; the gate becomes RE-BASELINE (all 20 stay 6/6, sag/serration improve or hold, no new
-sliver/timeout, build 1-6s). FIRST verify denseRes is ~no-op on genuinely-smooth defaults.
+**STAGE 4 — IS THE REAL SERRATION FIX (was mislabelled "support"). LEVERS SCOPED + MEASURED:**
+- **`__pfConformingDenseRes` (sampler/FD curvature accuracy) IS THE LEVER** — 256→512→1024 →
+  crestBandRms 0.335→0.255→0.143mm (serrationScore 3.35→1.43). Monotone. **denseRes >1024 needed
+  for crestBandRms<0.1 at FULL strength** (a perf/quality tradeoff).
+- **DO NOT raise the 128² sizing grid** (resU/resT in `assembleWatertight`): at fixed denseRes it
+  made serration WORSE (0.335→0.406) — the finer grid catches the n1<1 CUSP tips and wastes
+  refinement on the irreducible cusp. (The earlier "raise 128²→256" advice was WRONG.)
+- **Budget is NOT a lever** — sag-floor-capped (`budgetMode:'cap'`): target 400k→900k moved tris
+  only 424k→434k. Raising the target does ~nothing.
+- **κ cap at the cusp = EFFICIENCY only** (fewer wasted cusp tris), NOT a serration fix (flanks are
+  limited by κ-ESTIMATE accuracy=denseRes, not budget). `maxCrest` (9.1mm, erratic) IS the cusp
+  artifact — irreducible; gate on `crestBandRmsMm`/`serrationScore`, NOT maxCrest.
+So STAGE 4 = **raise `__pfConformingDenseRes` default** (decide the perf target: 1024 → serr 1.43;
+>1024 for CAD-grade) + optional κ-cap for tri-efficiency. GATE = `diagnoseSerration` crestBandRms<0.1
++ topology clean. **Gate-scope:** raising denseRes CHANGES sharp-DEFAULT meshes (DragonScales/
+Crystalline/Gothic κ gets finer) → "20/20 byte-identical" no longer applies; gate = RE-BASELINE
+(all 20 stay 6/6, sag/serration improve or hold, no new sliver/timeout). The conforming path is
+flag-gated (internal, NOT production default) so this is safe to iterate; the open call is the
+PERF TARGET (acceptable export time for CAD-grade) — worth a quick user decision before re-baseline.
 
 **STAGE 3 (born-crest insertion) — DEMOTED to OPTIONAL** (feature-completeness / model-true
 edges only; featExp 12→~19). NOT the serration fix. Watertight-by-construction already
