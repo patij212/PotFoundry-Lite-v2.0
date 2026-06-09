@@ -104,7 +104,9 @@ const MAX_RELIEF_B = 4;
  *
  * TWO GATES (the wide/flat dims bias is GATE A; the serration fix is GATE B):
  *  - GATE A — wide/flat DIMS (`wideFlat > AREF·√2`): the fixed {@link UBIAS_WIDE_B}.
- *    WITH features it stays 0 (the CelticKnot short-wide braid-crack guard).
+ *    WITH features it stays 0 — NOT the (now-fixed) braid crack, but because B>0
+ *    amplifies GAP-2 curve-needle slivers on the level-set styles (Voronoi/Gyroid);
+ *    see the deferral note at the caller. Lifting it awaits the needle fix.
  *  - GATE B — U-LONG surface RELIEF at default/tall dims (`maxURatio >
  *    {@link RELIEF_RATIO_GATE}`): steep ridges swept around the pot make a square
  *    (u,t) cell STAIRCASE the style's DIAGONAL crests into axis-aligned slivers —
@@ -139,8 +141,9 @@ export function computeUBias(sampler: SurfaceSampler, hasFeatures = false): numb
     }
   }
   const wideFlat = (2 * Math.PI * (rSum / Math.max(n, 1))) / Math.max(zMax - zMin, 1e-6);
-  // GATE A — wide/flat DIMS ⇒ the fixed wide bias, EXCEPT with features (the
-  // short-wide CelticKnot braid-crack guard keeps inserted styles deferred here).
+  // GATE A — wide/flat DIMS ⇒ the fixed wide bias, EXCEPT with features (deferred to
+  // 0 — the braid crack it once guarded is fixed; B>0 now amplifies Voronoi/Gyroid
+  // curve-needle slivers, so the defer waits on the GAP-2 needle fix; see caller).
   // GATE B never reaches this regime (it is the !wideFlat branch below).
   if (wideFlat > UBIAS_AREF * Math.SQRT2) return hasFeatures ? 0 : UBIAS_WIDE_B;
   // GATE B — U-LONG surface relief at default/tall dims. `maxURatio` is the worst
@@ -346,15 +349,20 @@ export function assembleWatertight(
   // Both walls MUST share the same bias so their boundary rings (= nRing verts
   // after the pin adjustment) match by index. Computed once from the OUTER metric
   // by `computeUBias`, which itself gates features: the WIDE/FLAT dims bias (GATE A)
-  // stays DEFERRED to B=0 on feature walls — un-deferring inserted styles e2e left
-  // a residual bnd=6 T-junction crack on CelticKnot's BRAIDS at short-wide
-  // (crossing/Steiner asymmetry under anisotropy; 3/4 inserted styles were clean,
-  // only braids crack). The DEFAULT-dims RELIEF bias (GATE B) DOES fire with
-  // features (SuperformulaBlossom@high needs B>0 to de-staircase its crests, and is
-  // MEASURED watertight + crest-tracked there) — safe because the braid styles sit
-  // below GATE B's threshold at default dims (CelticKnot maxURatio 4.1 < 6) and the
-  // short-wide braid-crack regime is wide/flat, handled by GATE A. `opts.uBias`
-  // overrides (used by the uBias unit tests).
+  // stays DEFERRED to B=0 on feature walls. RE-MEASURED 2026-06-09 (forced B=2,
+  // H40/OD300, 6 inserted styles): the bnd=6 BRAID T-JUNCTION crack this once guarded
+  // is GONE — bnd=nonMan=orient=0 for ALL of them (the grid-line registry + transition-
+  // edge snap that landed after this comment fixed it). The deferral now serves a
+  // DIFFERENT, narrower purpose: B>0 AMPLIFIES the GAP-2 curve-needle slivers on the
+  // LEVEL-SET styles — Voronoi sliver 3→10, GyroidManifold 0→2 — even though it
+  // IMPROVES the others (CelticTriquetra maxAspect 39.8→10.7, CelticKnot 72.7→60.5,
+  // HexagonalHive 76→61, BasketWeave 50→25). So a blanket un-defer trades a wash; it
+  // waits on the GAP-2 forced-crossing-mirror needle fix (then un-defer is a clean
+  // win). The DEFAULT-dims RELIEF bias (GATE B) DOES fire with features
+  // (SuperformulaBlossom@high needs B>0 to de-staircase its crests, MEASURED watertight
+  // + crest-tracked) — safe because the inserted styles sit below GATE B's threshold at
+  // default dims (CelticKnot maxURatio 4.1 < 6); only their short-wide (wide/flat) case
+  // reaches GATE A. `opts.uBias` overrides (used by the uBias unit tests).
   const hasFeatures = (opts.outerFeatureLines?.length ?? 0) > 0;
   // Dev/diagnostic override (`window.__pfConformingUBias`): force a specific
   // anisotropy bias to bisect short-wide construction artifacts (e.g. 0 = no

@@ -89,10 +89,15 @@ function renderInPage() {
     const STRENGTHS = (process.env.PF_VALUES || '0,1').split(',').map(Number);
     for (const strength of STRENGTHS) {
       await withTimeout(page.evaluate((s) => window.__pfFidelity.setStyleParams({ sf_strength: s }), strength), 30000, 'setParams');
-      const views = [
-        { name: 'topdown', yaw: 0, pitch: -1.45, scaleMul: 1.05, panX: 0, panY: 0, wire: 0.35 },
-        { name: 'tip', yaw: 0.95, pitch: -0.25, scaleMul: 5.5, panX: -260, panY: 120, wire: 0.8 },
-      ];
+      const allViews = {
+        topdown: { name: 'topdown', yaw: 0, pitch: -1.45, scaleMul: 1.05, panX: 0, panY: 0, wire: 0.35 },
+        tip: { name: 'tip', yaw: 0.95, pitch: -0.25, scaleMul: 5.5, panX: -260, panY: 120, wire: 0.8 },
+        // Generic 3/4 view that frames the whole pot at an angle — good for ANY
+        // style (the petal-tuned 'tip' view only suits SuperformulaBlossom).
+        iso: { name: 'iso', yaw: 0.6, pitch: -0.5, scaleMul: 1.0, panX: 0, panY: 0, wire: 0.3 },
+      };
+      const sel = (process.env.PF_VIEWS || 'topdown,tip').split(',').map((s) => s.trim());
+      const views = sel.map((k) => allViews[k]).filter(Boolean);
       for (const v of views) {
         const dataUrl = await withTimeout(page.evaluate(async (args) => {
           const m = await window.__pfFidelity._debugOuterMesh(args.target);
@@ -101,7 +106,8 @@ function renderInPage() {
         }, { target, v }), 180000, `render s${strength} ${v.name}`);
         if (!dataUrl) { console.log(`s${strength} ${v.name}: NULL`); continue; }
         const b64 = dataUrl.split(',')[1];
-        const path = `${outDir}/serr_s${strength}_${v.name}.png`;
+        // Namespace by style so multi-style render batches don't clobber each other.
+        const path = `${outDir}/serr_${style}_s${strength}_${v.name}.png`;
         fs.writeFileSync(path, Buffer.from(b64, 'base64'));
         console.log(`wrote ${path}`);
       }

@@ -12,6 +12,8 @@ const PER_OP_MS = Number(process.env.PF_PER_OP_MS || 180000);
 const styles = (process.env.PF_STYLES
   || 'ArtDeco,GothicArches,Crystalline,DragonScales,HarmonicRipple,SpiralRidges,FourierBloom')
   .split(',').map((s) => s.trim()).filter(Boolean);
+// Optional dimension override (JSON), e.g. short-wide PF_DIM='{"H":40,"Rt":150,"Rb":150}'.
+const DIM = process.env.PF_DIM ? JSON.parse(process.env.PF_DIM) : null;
 
 function withTimeout(p, ms, label) {
   let to;
@@ -23,7 +25,13 @@ function withTimeout(p, ms, label) {
   const browser = await chromium.launch({ headless: false, args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan,UseSkiaRenderer'] });
   try {
     const page = await browser.newPage();
-    await page.addInitScript(() => { window.__pfConforming = true; });
+    // Optional uBias override (PF_UBIAS): force a specific anisotropy bias to test
+    // the feature-wall un-defer (PF_UBIAS=2 bypasses GATE A's hasFeatures→0 defer).
+    const UBIAS = process.env.PF_UBIAS ? Number(process.env.PF_UBIAS) : -1;
+    await page.addInitScript((ub) => {
+      window.__pfConforming = true;
+      if (ub >= 0) window.__pfConformingUBias = ub;
+    }, UBIAS);
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await page.waitForFunction(() => typeof window.__pfFidelity !== 'undefined', null, { timeout: 90000 });
     await page.waitForFunction(() => window.__pfFidelity.isReady() === true, null, { timeout: 90000 });
@@ -32,6 +40,9 @@ function withTimeout(p, ms, label) {
       const t0 = Date.now();
       try {
         await withTimeout(page.evaluate((s) => window.__pfFidelity.setStyle(s), style), 60000, `${style} setStyle`);
+        // Optional dimension override (JSON), e.g. PF_DIM='{"H":40,"Rt":150,"Rb":150}'
+        // for the short-wide regime. Default = each style's default dims.
+        if (DIM) await withTimeout(page.evaluate((d) => window.__pfFidelity.setDimensions(d), DIM), 30000, `${style} setDims`);
         const fs = await withTimeout(
           page.evaluate((t) => window.__pfFidelity.diagnoseFShear({ targetTriangles: t }), targetTriangles),
           PER_OP_MS, `fshear ${style}`,
