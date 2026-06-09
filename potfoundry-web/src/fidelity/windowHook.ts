@@ -144,6 +144,8 @@ export interface PfFidelityApi {
    * legacy/parametric path (no conforming outer-wall stash).
    */
   diagnoseSerration(opts?: FidelitySerrationDiagnosticOptions): Promise<FidelitySerrationDiagnostics | null>;
+  /** TEMP debug (revert): the OUTER-wall sub-mesh for off-DOM wireframe rendering. */
+  _debugOuterMesh(targetTriangles?: number): Promise<{ vertices: Float32Array; indices: Uint32Array } | null>;
 }
 
 export interface FidelitySerrationDiagnosticOptions {
@@ -386,6 +388,13 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       const sampler = new GpuSurfaceSampler(grid.positions, grid.resU, grid.resT);
       const w = wallChordError(sub, sampler, { newtonIters: opts.newtonIters });
       return { styleId, triangleCount: Math.floor(sub.indices.length / 3), ...w };
+    },
+    async _debugOuterMesh(targetTriangles?: number) {
+      const mesh = await deps.generateMesh(targetTriangles);
+      if (!mesh) return null;
+      const mask = getLastConformingOuterWallMask();
+      if (!mask) return { vertices: mesh.vertices, indices: mesh.indices };
+      return extractOuterWallSubmesh(mesh.vertices, mesh.indices, mask);
     },
     async diagnoseQuality(opts: FidelityQualityDiagnosticOptions = {}): Promise<FidelityQualityDiagnostics> {
       const styleId = currentStyleId();
