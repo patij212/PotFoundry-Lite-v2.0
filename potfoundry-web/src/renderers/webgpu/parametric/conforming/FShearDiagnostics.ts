@@ -102,6 +102,13 @@ export interface ShearSummary {
   maxRatioEG: number;
   /** Of square slivers, fraction whose long axis is u (√E>√G). */
   uLongFracSliver: number;
+  /** Worst U-DOMINANT ratio `√E/√G` over the lattice (drives how much uBias the
+   *  u-dominant bulk wants). */
+  maxURatio: number;
+  /** Worst T-DOMINANT ratio `√G/√E` over the lattice. uBias B MULTIPLIES this
+   *  band's 3D aspect by 2^B, so it bounds how much bias is safe (the GAP-1
+   *  over-correction lever). */
+  maxTRatio: number;
 }
 
 /** Right-triangle aspect `longest²·√3/(4·area)` for a cell whose two edge
@@ -177,6 +184,8 @@ export function classifySurfaceShear(
   let maxRotatedAspect = 0;
   let maxCosAlpha = 0;
   let maxRatioEG = 1;
+  let maxURatio = 1;
+  let maxTRatio = 1;
   let sumCosAlphaSliver = 0;
   let sumRatioEGSliver = 0;
   let uLongCountSliver = 0;
@@ -193,9 +202,13 @@ export function classifySurfaceShear(
       const sE = Math.sqrt(E);
       const sG = Math.sqrt(G);
       const cosAlpha = Math.min(1, Math.abs(F) / Math.max(sE * sG, 1e-30));
-      const ratioEG = Math.max(sE / sG, sG / sE);
+      const uRatio = sE / sG;
+      const tRatio = sG / sE;
+      const ratioEG = Math.max(uRatio, tRatio);
       if (cosAlpha > maxCosAlpha) maxCosAlpha = cosAlpha;
       if (ratioEG > maxRatioEG) maxRatioEG = ratioEG;
+      if (uRatio > maxURatio) maxURatio = uRatio;
+      if (tRatio > maxTRatio) maxTRatio = tRatio;
 
       const sq = squareAspect(E, F, G);
       if (sq > maxSquareAspect) maxSquareAspect = sq;
@@ -230,5 +243,7 @@ export function classifySurfaceShear(
     meanRatioEGSliver: sliverCountSquare > 0 ? sumRatioEGSliver / sc : 0,
     maxRatioEG,
     uLongFracSliver: sliverCountSquare > 0 ? uLongCountSliver / sc : 0,
+    maxURatio,
+    maxTRatio,
   };
 }

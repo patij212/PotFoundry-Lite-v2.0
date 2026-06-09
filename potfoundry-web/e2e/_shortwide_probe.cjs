@@ -19,7 +19,11 @@ function withTimeout(p, ms, label) {
   let anyFail = false;
   try {
     const page = await browser.newPage();
-    await page.addInitScript(() => { window.__pfConforming = true; });
+    const UBIAS = process.env.PF_UBIAS; // force a specific anisotropy bias (e.g. 0) to bisect
+    await page.addInitScript((ub) => {
+      window.__pfConforming = true;
+      if (ub !== undefined && ub !== '') window.__pfConformingUBias = Number(ub);
+    }, UBIAS);
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await page.waitForFunction(() => typeof window.__pfFidelity !== 'undefined', null, { timeout: 90000 });
     await page.waitForFunction(() => window.__pfFidelity.isReady() === true, null, { timeout: 90000 });
