@@ -13,6 +13,12 @@ const OPTS: Omit<ConformingWallOptions, 'nRing' | 'surfaceId'> = {
   resT: 17,
 };
 
+// Heavy conforming-wall builds + edge-map scans run ~2–4 s in isolation and can
+// spill past vitest's 5 s default under CI/machine load. The genuinely heavy,
+// build-bound tests below get a longer per-test ceiling so they don't flake;
+// the fast (<250 ms) tests deliberately stay at the default to still catch real hangs.
+const HEAVY_BUILD_TIMEOUT_MS = 15_000;
+
 interface Tri {
   a: number;
   b: number;
@@ -128,7 +134,7 @@ describe('buildConformingWall — uniform shared rings (nRing=64, surfaceId=1)',
         expect(bothBottom || bothTop).toBe(true);
       }
     }
-  });
+  }, HEAVY_BUILD_TIMEOUT_MS);
 
   it('3D quality: max aspect < 100', () => {
     let maxAspect = 0;
@@ -181,7 +187,7 @@ describe('buildConformingWall — feature insertion preserves shared rings', () 
         expect((bottomSet.has(i) && bottomSet.has(j)) || (topSet.has(i) && topSet.has(j))).toBe(true);
       }
     }
-  });
+  }, HEAVY_BUILD_TIMEOUT_MS);
 
   it('tracks the feature loop (a mesh vertex near every sample)', () => {
     const n = wall.vertices.length / 3;
@@ -240,7 +246,7 @@ describe('buildConformingWall — triangle-budget control', () => {
     const budget = floorTris * 4; // comfortably above the floor → refine toward it
     const got = triCount({ ...BUDGET_OPTS, surfaceId: 0, targetTriangles: budget });
     expect(Math.abs(got - budget) / budget).toBeLessThan(0.25);
-  });
+  }, HEAVY_BUILD_TIMEOUT_MS);
 
   it('a budget BELOW the sag floor is floored (count not driven under sag)', () => {
     const budget = Math.max(8, Math.floor(floorTris / 8)); // well below the floor
@@ -304,5 +310,5 @@ describe('buildConformingWall — triangle-budget control', () => {
       ...BUDGET_OPTS, surfaceId: 0, targetTriangles: floorTris * 6,
     });
     expect(refinedSag).toBeLessThanOrEqual(floorSag + 1e-6);
-  });
+  }, HEAVY_BUILD_TIMEOUT_MS);
 });

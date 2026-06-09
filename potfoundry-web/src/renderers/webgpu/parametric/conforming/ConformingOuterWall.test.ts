@@ -15,6 +15,11 @@ const OPTS: ConformingOuterWallOptions = {
   resT: 17,
 };
 
+// The watertight build + edge-map scan runs ~2 s in isolation and can spill past
+// vitest's 5 s default under CI/machine load. This one build-bound test gets a
+// longer ceiling so it doesn't flake; the fast tests stay at the default.
+const HEAVY_BUILD_TIMEOUT_MS = 15_000;
+
 interface Tri {
   a: number;
   b: number;
@@ -108,7 +113,7 @@ describe('buildConformingOuterWall — rippled cylinder (50,120,amp=3,k=8)', () 
         expect(bothBottom || bothTop).toBe(true);
       }
     }
-  });
+  }, HEAVY_BUILD_TIMEOUT_MS);
 
   it('3D quality: max aspect < 100, min angle > 1°', () => {
     let maxAspect = 0;
