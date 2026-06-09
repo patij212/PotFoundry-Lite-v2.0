@@ -133,7 +133,28 @@ STAGE 3/4 plan below).** Two experiments DISPROVED "insert crest edges → fix s
   9.1→6.4→8.8 (n1<1 CUSP-tip artifact, not bulk). **Serration IS curvature-resolution-limited:
   the 128² sizing grid + 256² sampler band-limit κ → the steep petal flanks under-refine.**
 
-**★★ VISUAL GROUNDING — THE ANSWER (2026-06-09, commit `104d5eb`) — READ THIS FIRST. ★★**
+**★★★ FIX FOUND + PROVEN (2026-06-09, commit `46ac969`) — relief-gated GLOBAL uBias. READ FIRST. ★★★**
+The high-strength serration is **U-LONG surface anisotropy** (FShear classifier: irredByAxis=0% — NOT
+F-shear, NOT a staircase; maxURatio 3.5→11.8 with sf_strength). **PROVEN FIX:** `__pfConformingUBias=3`
+@ SuperformulaBlossom strength 1 → crestRms 0.335→0.209 (−38%), the visual striping squares away (tip
+render: wide cells → near-equilateral), watertight (bnd=nonMan=orient=sliver=0), featDrop=0 (COEXISTS
+with crest insertion — the feature triangulator IS uBias-aware), no construction slivers. Three things
+the prior plan got wrong (corrected by measurement): (1) `maxAspect=87.6` is a **seam-unwrap probe
+artifact** (leaf cellAspect3D≤15) — gate on crestRms + maxURatio + the visual, NOT maxAspect; (2) the
+**directional uExtra pass is a no-op** here (trigger aspect>20, leaf aspect≤15 → fires on zero cells);
+(3) the **isotropic curvatureFloor (STAGE 4) is ineffective** (crestRms 0.335→0.326). It is the GLOBAL
+uBias (biases ALL cells, no trigger) that works. **NEXT = add a RELIEF term to `computeUBias`** sized
+from the surface maxURatio (B=round(log2(maxURatio/√3))≈3 at strength 1), **gated above the highest
+default** (measured default maxURatio: SFB@0 3.5, GothicArches 3.6, ArtDeco 3.9, Crystalline 6.8,
+DragonScales 7.4, HarmonicRipple 7.6 → threshold ≈8 keeps defaults byte-identical; a lower threshold
+re-baselines DragonScales/Crystalline/HarmonicRipple — improves but breaks byte-identical, a product
+call). **BRAID-SAFETY:** LIFT the `hasFeatures→uBias=0` trap for the relief-B (SFB measured safe at
+B=3) but KEEP it for the dims-B (short-wide CelticKnot braid crack). GATE: SFB@1 crestRms↓ + visual +
+topology + 20-style default byte-identical (or re-baseline 6/6) + short-wide CelticKnot unbroken.
+Dev levers (committed): `__pfConformingUBias` / `__pfConformingDirectional` + `PF_FSHEAR` probe.
+Everything below is SECONDARY context.
+
+**★★ VISUAL GROUNDING (2026-06-09, commit `104d5eb`) — secondary. ★★**
 I rendered the actual export mesh (new tool: `__pfFidelity._debugOuterMesh` + `e2e/_serration_render.cjs`,
 flat-shade + wireframe PNGs). At `sf_strength=1` SuperformulaBlossom is an extreme swirled multi-layer
 petal ribbon. **The surface faces are SMOOTHLY tessellated (no broken staircase) but strongly
