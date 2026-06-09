@@ -34,10 +34,24 @@ import { annulusStrip, discFan } from './RingStrip';
 import type { FeatureLine } from './FeatureLineGraph';
 import { firstFundamentalForm, metricStepsForSampler } from './SurfaceMetricTensor';
 
-/** Reference metric anisotropy at which uBias=0 — tuned to the default pot. */
+/** Reference shape anisotropy gating uBias on (a wide/flat pot exceeds it). */
 const UBIAS_AREF = 3;
-/** Cap on the anisotropy bias (bounds triangle inflation + ring growth). */
-const UBIAS_BMAX = 4;
+/**
+ * Fixed anisotropy bias applied to a wide/flat pot. MEASURED (2026-06-09, full-20
+ * short-wide H40/OD300 B-sweep): the previous relief-driven per-cell B
+ * (`round(log2(median(√E/√G)/AREF))`, capped 4) MIS-FIRED. It OVER-biased
+ * moderate-relief styles — ArtDeco got B=3, whose extra u-refinement turned the
+ * grading-transition triangles into a 3639-cell band of ~101-aspect slivers
+ * (the surface metric there is clean, maxSquareAspect≤29 — the slivers are a
+ * CONSTRUCTION artifact of too much bias, not surface anisotropy) — while a
+ * UNIFORM B=2 left EVERY wide/flat non-feature style sliver-free at short-wide
+ * (ArtDeco 3639→0, SpiralRidges 468→0, FourierBloom & 11 others all 0, max
+ * aspect ≤51). B=1 left SpiralRidges' helix at 11; B=3 broke ArtDeco. So the
+ * bias no longer scales with relief — a single modest exponent is both necessary
+ * and sufficient across the wide/flat regime. Default/tall pots stay B=0 via the
+ * gate (unchanged → byte-identical default meshes).
+ */
+const UBIAS_WIDE_B = 2;
 
 function median(xs: number[]): number {
   if (xs.length === 0) return 1;
@@ -46,45 +60,47 @@ function median(xs: number[]): number {
 }
 
 /**
- * Anisotropy bias B (≥0) for a wall sampler — a GATED, relief-aware estimate.
+ * Anisotropy bias B (≥0) for a wall sampler — a GATED, FIXED bias.
  *
- * Two metrics over a coarse (u,t) grid:
- *  - `baseA` = median of the SHAPE anisotropy `2π·r / √G` (circumference rate over
- *    height rate, EXCLUDING the ripple slope `r'` — i.e. the pot's wide/flat-vs-
- *    tall geometry, independent of a style's surface relief).
- *  - `fullA` = median of the true cell anisotropy `√E / √G` (INCLUDING relief).
+ * `baseA` = median of the SHAPE anisotropy `2π·r / √G` (circumference rate over
+ * height rate). It measures the pot's wide/flat-vs-tall geometry. The bias is
+ * GATED on it: a pot whose SHAPE is not wide/flat (baseA in the default band,
+ * ≤ AREF·√2) gets **B=0** — a true no-op that preserves the validated default-dim
+ * (20/20) meshes for every style (the gate is unchanged from the relief-aware
+ * version, so default meshes stay byte-identical). A genuinely wide/flat pot gets
+ * a single FIXED bias {@link UBIAS_WIDE_B}.
  *
- * The bias is GATED on `baseA`: a pot whose SHAPE is not wide/flat (baseA within
- * the default band, ≤ AREF·√2) gets **B=0 regardless of relief** — a true no-op
- * that preserves the validated default-dim (20/20) meshes for every style, rippled
- * or not. Only a genuinely wide/flat pot (baseA above the band) is biased, and
- * then by `fullA` so that high-relief styles (whose cells are √E/√G:1 slivers, not
- * just 2π·r/√G:1) are corrected too. A square (u,t) cell maps to a √E/√G:1 3D
- * sliver (GAP 1, level-independent); the bias makes a level-L leaf span
- * Δu=1/2^(L+B) so cells are 3D-near-square. (Cells whose LOCAL √E/√G/2^B still
- * exceeds the sliver bound — extreme isolated relief — need local directional
- * refinement, beyond this global bias.)
+ * Why FIXED, not relief-scaled: a square (u,t) cell maps to a √E/√G:1 3D sliver
+ * (GAP 1, level-independent), so the bias makes a level-L leaf span Δu=1/2^(L+B),
+ * 3D-near-square. The earlier version scaled B by the relief anisotropy
+ * `median(√E/√G)`, but a full-20 short-wide B-sweep MEASURED that to be harmful:
+ * the REAL band-limited surfaces never exceed maxSquareAspect≈67 (so never
+ * sliver from surface anisotropy), and a larger B only adds CONSTRUCTION slivers
+ * at the grading transitions (ArtDeco B=3 → 3639 ~101-aspect cells). A uniform
+ * modest B={@link UBIAS_WIDE_B} is both necessary (FourierBloom/SpiralRidges
+ * fail at B=0/B=1) and sufficient (every wide/flat non-feature style is
+ * sliver-free) across the regime. See UBIAS_WIDE_B for the measured sweep.
+ *
+ * Exported for unit testing (the gate threshold + fixed value).
  */
-function computeUBias(sampler: SurfaceSampler): number {
+export function computeUBias(sampler: SurfaceSampler): number {
   const steps = metricStepsForSampler(sampler);
   const baseRatios: number[] = [];
-  const fullRatios: number[] = [];
   const N = 12;
   for (let j = 1; j < N; j++) {
     const t = j / N;
     for (let i = 0; i < N; i++) {
       const u = i / N;
       const p = sampler.position(u, t);
-      const { E, G } = firstFundamentalForm(sampler, u, t, steps.hu, steps.ht);
+      const { G } = firstFundamentalForm(sampler, u, t, steps.hu, steps.ht);
       const sG = Math.sqrt(Math.max(G, 1e-12));
-      baseRatios.push((2 * Math.PI * Math.hypot(p[0], p[1])) / sG); // 2π·r / √G (no relief)
-      fullRatios.push(Math.sqrt(Math.max(E, 1e-12)) / sG); // √E / √G (with relief)
+      baseRatios.push((2 * Math.PI * Math.hypot(p[0], p[1])) / sG); // 2π·r / √G (shape, no relief)
     }
   }
-  // GATE: not a wide/flat pot (shape anisotropy in the default band) ⇒ no bias.
+  // GATE (unchanged ⇒ byte-identical default): tall/default shape ⇒ no bias.
   if (median(baseRatios) <= UBIAS_AREF * Math.SQRT2) return 0;
-  // Wide/flat pot ⇒ relief-aware bias (corrects √E/√G:1 cells, not just 2π·r/√G:1).
-  return Math.max(0, Math.min(UBIAS_BMAX, Math.round(Math.log2(median(fullRatios) / UBIAS_AREF))));
+  // Wide/flat pot ⇒ a single fixed modest bias (relief-scaling proven harmful).
+  return UBIAS_WIDE_B;
 }
 
 /** Pot dimensions needed to place the cap/drain surfaces. */
@@ -284,7 +300,14 @@ export function assembleWatertight(
   // inserted case at its prior baseline, never regresses a working one. `opts.uBias`
   // overrides (used by the uBias unit tests).
   const hasFeatures = (opts.outerFeatureLines?.length ?? 0) > 0;
-  const uBias = opts.uBias ?? (hasFeatures ? 0 : computeUBias(outerSampler));
+  // Dev/diagnostic override (`window.__pfConformingUBias`): force a specific
+  // anisotropy bias to bisect short-wide construction artifacts (e.g. 0 = no
+  // bias). Never set in production; mirrors `__pfConformingNRing`. Takes
+  // precedence over the gated auto-computed bias.
+  const uBiasOverride = (globalThis as unknown as { __pfConformingUBias?: number }).__pfConformingUBias;
+  const uBias = typeof uBiasOverride === 'number' && uBiasOverride >= 0
+    ? Math.floor(uBiasOverride)
+    : opts.uBias ?? (hasFeatures ? 0 : computeUBias(outerSampler));
 
   // GAP 1 local/directional anisotropy: OPT-IN (default OFF). The pass is proven
   // a true no-op at DEFAULT dims (gated + uExtra=0 byte-identical — verified, all
