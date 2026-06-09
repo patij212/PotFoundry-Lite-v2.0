@@ -79,7 +79,23 @@ extraction + insertion)** is the core; B (rotated/aligned cells) REJECTED (axis-
 cells have no rotation DOF; rotated cells forfeit the watertight registry); C (finer
 sampler/sizing) is a *flank-only support lever*, cannot make a crest-aligned edge.
 
-**STAGE 0 — the instrument (gates everything). Build FIRST.** A faithful crest-band metric.
+**STAGE 0 — DONE + VALIDATED (the instrument that gates everything).** Built
+`wallChordError` + `extractOuterWallSubmesh` + `sampleTrueRadius` + `findRowExtrema`
+(metrics.ts, 10 TDD guards in `serration.test.ts`), `LAST_CONFORMING_OUTER_WALL_MASK`
+read-only stash (ParametricExportComputer), and `__pfFidelity.diagnoseSerration` (windowHook).
+**KEY DESIGN (corrected by a design+adversarial workflow):** measure RADIAL deviation
+`|r − R_true(θ,z)|`, NOT 3D nearest-point (which UNDER-measures a tangential staircase and
+is singular where ∂r/∂θ→0 at the crest). `R_true` is recovered by inverting the OUTER
+sampler on (ANGLE, HEIGHT) — both monotone/well-conditioned on a near-vertical wall — via
+2D Newton (no crest singularity). Crest band = ALL local radius extrema per t-row (peaks AND
+valleys), NOT argmax/argmin (which misses m−1 of m petals). Outer-wall-only via the surfaceId
+mask (excludes the inner-wall ~thickness phantom). Style-AGNOSTIC (reads the sampler surface).
+**MEASURED (SuperformulaBlossom sf_strength sweep, `_serration_probe.cjs`):
+serrationScore 0.47→0.76→1.47→2.47→3.35 (0→1) — ≈0 on the plain pot (vs the OLD metric's
+rms 1.44mm ≡ 14.4: a 30× cleaner floor), strictly monotone, crestBandRms 0.047→0.335mm,
+maxCrest 0.08→9.12mm, loci=20 (all 10 petals' peaks+valleys), topology clean throughout.**
+The signal the project lacked is now in hand: no fix is accepted without it.
+The original STAGE-0 spec below (3D-nearest GN) is SUPERSEDED by the radial design above:
 Upgrade `wallDeviation`/`diagnoseWallFidelity` to measure against the **stashed outer
 sampler** (`getLastConformingOuterGrid()` → `new GpuSurfaceSampler(...)`, the exact pattern
 `diagnoseFShear` uses) instead of the whole-pot dense reference (which carries the drain

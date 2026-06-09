@@ -38,18 +38,22 @@ function withTimeout(p, ms, label) {
       const t0 = Date.now();
       try {
         await withTimeout(page.evaluate((p) => window.__pfFidelity.setStyleParams(p), { ...FIXED, [param]: v }), 30000, `set ${param}=${v}`);
-        const w = await withTimeout(
-          page.evaluate((t) => window.__pfFidelity.diagnoseWallFidelity({ targetTriangles: t }), targetTriangles),
-          PER_OP_MS, `wallFid ${v}`,
+        const sr = await withTimeout(
+          page.evaluate((t) => window.__pfFidelity.diagnoseSerration({ targetTriangles: t }), targetTriangles),
+          PER_OP_MS, `serration ${v}`,
         );
         const q = await withTimeout(
           page.evaluate((t) => window.__pfFidelity.diagnoseTopoQuality({ targetTriangles: t }), targetTriangles),
           PER_OP_MS, `topo ${v}`,
         );
+        const srStr = sr
+          ? `serr=${sr.serrationScore.toFixed(2)} crestRms=${sr.crestBandRmsMm.toFixed(4)}mm maxCrest=${sr.maxCrestDevMm.toFixed(3)}mm ` +
+            `wallRms=${sr.rmsDevMm.toFixed(4)}mm loci=${sr.crestLoci} crestSamp=${sr.crestSamples}`
+          : 'serr=NULL(legacy)';
         console.log(
-          `${param}=${String(v).padEnd(5)} maxWallDev=${w.maxMm.toFixed(3)}mm p99=${w.p99Mm.toFixed(3)}mm rms=${w.rmsMm.toFixed(4)}mm ` +
+          `${param}=${String(v).padEnd(5)} ${srStr} ` +
           `| sliver=${q.sliverCount} maxAspect=${q.maxAspect3D.toFixed(1)} bnd=${q.boundaryEdges} nonMan=${q.nonManifoldEdges} ` +
-          `orient=${q.orientationMismatches} tris=${q.triangleCount} wallTris=${w.wallTriangles} (${((Date.now() - t0) / 1000).toFixed(0)}s)`,
+          `orient=${q.orientationMismatches} tris=${q.triangleCount} (${((Date.now() - t0) / 1000).toFixed(0)}s)`,
         );
       } catch (e) {
         console.log(`${param}=${String(v).padEnd(5)} ERROR ${(e && e.message ? e.message : String(e)).slice(0, 90)} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);

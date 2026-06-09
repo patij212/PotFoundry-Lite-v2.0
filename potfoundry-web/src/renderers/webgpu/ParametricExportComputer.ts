@@ -218,6 +218,15 @@ let LAST_CONFORMING_FEATURE_RESULT: FeatureResolutionResult | null = null;
  */
 let LAST_CONFORMING_OUTER_GRID: { positions: Float32Array; resU: number; resT: number } | null = null;
 
+/**
+ * Most recent conforming-branch per-vertex OUTER-wall mask (1 = outer wall,
+ * surfaceId 0). Aligns with the returned mesh's vertex order, so the CAD-fidelity
+ * serration metric can restrict to the outer wall (excluding the inner-wall
+ * ~thickness radial phantom, the drain, and the flat caps). Reference only —
+ * built read-only after assembly; the returned mesh is unchanged.
+ */
+let LAST_CONFORMING_OUTER_WALL_MASK: Uint8Array | null = null;
+
 export function getLastChainDebugData(): ChainDebugData | null {
     return LAST_CHAIN_DEBUG_DATA;
 }
@@ -231,6 +240,13 @@ export function getLastConformingFeatureResult(): FeatureResolutionResult | null
  *  diagnostic only (F-shear sliver-mechanism classification). */
 export function getLastConformingOuterGrid(): { positions: Float32Array; resU: number; resT: number } | null {
     return LAST_CONFORMING_OUTER_GRID;
+}
+
+/** Most recent conforming-branch OUTER-wall vertex mask (1 = outer wall), aligned
+ *  with the returned mesh vertex order, or null. Dev diagnostic only (CAD-fidelity
+ *  serration metric — restrict to the outer wall). */
+export function getLastConformingOuterWallMask(): Uint8Array | null {
+    return LAST_CONFORMING_OUTER_WALL_MASK;
 }
 
 export function getLastPeakDebugData(): PeakDebugData | null {
@@ -2324,6 +2340,18 @@ export class ParametricExportComputer {
                 const buildMs = performance.now() - conformingStart;
                 const vCount = pos3D.length / 3;
                 const triCount = asm.indices.length / 3;
+
+                // Dev diagnostic: stash the OUTER-wall (surfaceId 0) vertex mask
+                // aligned with pos3D's order (pos3D[j] is the GPU evaluation of
+                // asm.vertices[j]), so the CAD-fidelity serration metric can
+                // restrict to the outer wall. Read-only; the mesh is unchanged.
+                {
+                    const outerMask = new Uint8Array(vCount);
+                    for (let j = 0; j < vCount; j++) {
+                        outerMask[j] = asm.vertices[j * 3 + 2] < 0.5 ? 1 : 0;
+                    }
+                    LAST_CONFORMING_OUTER_WALL_MASK = outerMask;
+                }
 
                 // ── Feature-completeness accounting (meaningful featuresDropped) ──
                 // Measure how many of the style's closed-form sharp feature lines

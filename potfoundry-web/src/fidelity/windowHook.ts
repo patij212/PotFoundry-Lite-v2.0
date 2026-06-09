@@ -11,17 +11,21 @@ import {
   getLastChainDebugData,
   getLastConformingFeatureResult,
   getLastConformingOuterGrid,
+  getLastConformingOuterWallMask,
 } from '../renderers/webgpu/ParametricExportComputer';
 import type { FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
 import { GpuSurfaceSampler } from '../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import { classifySurfaceShear, type ShearSummary } from '../renderers/webgpu/parametric/conforming/FShearDiagnostics';
 import {
   computeFidelityMetrics,
+  extractOuterWallSubmesh,
   topologyDiagnostics,
   triangleQualityDiagnostics,
+  wallChordError,
   wallDeviation,
   type TopologyDiagnostics,
   type TriangleQualityDiagnostics,
+  type WallChordResult,
   type WallDeviationResult,
 } from './metrics';
 import { WELD_TOL_MM, type FidelityMetrics } from './types';
@@ -130,6 +134,27 @@ export interface PfFidelityApi {
    * — ≈ the sag floor for a plain pot, rising sharply with ridge serration.
    */
   diagnoseWallFidelity(opts?: FidelityWallDiagnosticOptions): Promise<FidelityWallDiagnostics>;
+  /**
+   * STAGE 0 — the faithful crest-band serration metric. Restricts to the OUTER
+   * wall (via the stashed surfaceId mask) and measures its RADIAL deviation from
+   * the conforming OUTER sampler (the surface the mesher itself sees), inside the
+   * crest band where serration concentrates. Reads ~0 on a plain pot and rises
+   * monotonically with ridge serration; headline `serrationScore =
+   * crestBandRmsMm / 0.1mm` (<1 within CAD tolerance, ≥1 serrated). Null on the
+   * legacy/parametric path (no conforming outer-wall stash).
+   */
+  diagnoseSerration(opts?: FidelitySerrationDiagnosticOptions): Promise<FidelitySerrationDiagnostics | null>;
+}
+
+export interface FidelitySerrationDiagnosticOptions {
+  targetTriangles?: number;
+  /** (angle,z) → (u,t) inversion iterations per sample (default 6). */
+  newtonIters?: number;
+}
+
+export interface FidelitySerrationDiagnostics extends WallChordResult {
+  styleId: string;
+  triangleCount: number;
 }
 
 export interface FidelityWallDiagnosticOptions {
@@ -345,6 +370,22 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         opts.sampleOrder ?? 4,
       );
       return { styleId, ...w, triangleCount: Math.floor(mesh.indices.length / 3) };
+    },
+    async diagnoseSerration(opts: FidelitySerrationDiagnosticOptions = {}): Promise<FidelitySerrationDiagnostics | null> {
+      const styleId = currentStyleId();
+      // Generating the mesh repopulates the stashed outer sampler grid + the
+      // outer-wall vertex mask (conforming branch only). mesh.vertices is the
+      // conforming pos3D in the same order as the mask (generateMesh returns
+      // result.mesh unwelded), so the mask restricts cleanly to the outer wall.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const grid = getLastConformingOuterGrid();
+      const mask = getLastConformingOuterWallMask();
+      if (!grid || !mask) return null;
+      const sub = extractOuterWallSubmesh(mesh.vertices, mesh.indices, mask);
+      const sampler = new GpuSurfaceSampler(grid.positions, grid.resU, grid.resT);
+      const w = wallChordError(sub, sampler, { newtonIters: opts.newtonIters });
+      return { styleId, triangleCount: Math.floor(sub.indices.length / 3), ...w };
     },
     async diagnoseQuality(opts: FidelityQualityDiagnosticOptions = {}): Promise<FidelityQualityDiagnostics> {
       const styleId = currentStyleId();

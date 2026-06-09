@@ -2,7 +2,7 @@
  * Pure 3D export-fidelity metrics (SP0). No DOM, no GPU, no app imports beyond types.
  * Trusted via vitest unit tests, then run in-page by the fidelity window hook.
  */
-import { ASPECT_MAX } from './types';
+import { ASPECT_MAX, SAG_TOL_MM } from './types';
 import type { FidelityMetrics, MeshView, RTrue } from './types';
 
 const TAU = 2 * Math.PI;
@@ -1106,5 +1106,411 @@ export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetri
     featuresExpected: features.expected,
     featuresPresent: features.present,
     featuresDropped: dropped,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STAGE 0 — faithful crest-band serration metric.
+//
+// The existing `wallDeviation` is artifact-dominated (reads ~25mm / rms ~1.4mm on
+// a PLAIN pot, barely moving with serration — measured live) because its R_true
+// comes from the whole-pot dense reference (drain + caps + inner wall pollute the
+// radial bins). This metric instead measures the OUTER wall's RADIAL deviation
+// from the true crest radius recovered from the conforming OUTER sampler (the
+// surface the mesher itself sees), restricted to the crest band where serration
+// concentrates. It reads ~0 on a plain pot and rises with ridge serration.
+//
+// Design (vetted by a design+adversarial pass):
+//  - RADIAL deviation `|r − R_true(θ,z)|`, NOT 3D nearest-point: a flat triangle
+//    chord-cutting a convex crest stays close LATERALLY, so nearest-point
+//    UNDER-measures the staircase; the radial under-shoot at the crest IS the
+//    CAD error.
+//  - R_true(θ,z) is recovered by inverting the sampler on (ANGLE, HEIGHT) — both
+//    monotone and well-conditioned on a near-vertical wall — NOT by minimising 3D
+//    distance (which is singular where ∂r/∂θ→0 at the crest).
+//  - The crest band is ALL local radius extrema per t-row (peaks AND valleys),
+//    not the single global argmax/argmin (which misses m−1 of m petals).
+//  - Style-AGNOSTIC: it reads the sampler surface, so it works for every smooth
+//    style; only the extractor (the fix) is style-specific.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** CAD-fidelity serration tolerance (mm) — a crest-band rms at/above this is a
+ *  visible "cut/serration". Mirrors the sag tolerance. */
+export const SERRATION_TOL_MM = SAG_TOL_MM;
+
+/** Minimal sampler the crest metric inverts: outer-wall (u,t) → 3D position (mm).
+ *  Structurally compatible with the conforming `GpuSurfaceSampler`. */
+export interface PositionSampler {
+  position(u: number, t: number): readonly [number, number, number];
+  /** Discrete grid resolution, if any — sizes the inversion's finite-difference
+   *  step to ~one cell so it is not amplified quantization noise. */
+  gridResolution?(): { resU: number; resT: number };
+}
+
+/** Faithful crest-band serration result for the OUTER wall. */
+export interface WallChordResult {
+  /** Worst radial deviation (mm) over all outer-wall samples. */
+  maxDevMm: number;
+  /** RMS radial deviation (mm) over all outer-wall samples. */
+  rmsDevMm: number;
+  /** 99th-percentile radial deviation (mm). */
+  p99DevMm: number;
+  /** Worst radial deviation (mm) within the crest band. */
+  maxCrestDevMm: number;
+  /** RMS radial deviation (mm) within the crest band (the headline signal).
+   *  Falls back to the whole-wall rms when no crest band exists (a plain pot). */
+  crestBandRmsMm: number;
+  /** crestBandRmsMm / SERRATION_TOL_MM — <1 within CAD tolerance, ≥1 serrated. */
+  serrationScore: number;
+  /** Outer-wall samples measured. */
+  wallSamples: number;
+  /** Samples that fell in the crest band. */
+  crestSamples: number;
+  /** Max number of distinct crest loci found on any one t-row (≈ 2·m). */
+  crestLoci: number;
+}
+
+/** Options for {@link wallChordError}. */
+export interface WallChordOptions {
+  /** Interior barycentric sample order (4 → 15 interior + 3 edge midpoints). */
+  sampleOrder?: number;
+  /** Minimum radius swing (mm) for a row to be treated as crest-bearing. */
+  minProminenceMm?: number;
+  /** Crest-band half-width as a fraction of the inter-crest angular spacing. */
+  crestHalfWidthFrac?: number;
+  /** t-rows sampled to map the crest loci up the height. */
+  crestRows?: number;
+  /** u-columns sampled per row to locate the crest loci. */
+  crestCols?: number;
+  /** Newton iterations for the (angle,z) → (u,t) inversion. */
+  newtonIters?: number;
+}
+
+const TWO_PI = 2 * Math.PI;
+
+/** Wrap an angle difference to (−π, π]. */
+function wrapPi(a: number): number {
+  let x = a % TWO_PI;
+  if (x > Math.PI) x -= TWO_PI;
+  if (x <= -Math.PI) x += TWO_PI;
+  return x;
+}
+
+/**
+ * Periodic local extrema of a radius row. Returns the column indices of every
+ * strict local maximum and minimum (NOT just the global argmax/argmin — a petal
+ * row has m of each). A near-flat row (total swing < `minProminenceMm`) is a
+ * plain surface of revolution and yields no extrema, so a plain pot has an empty
+ * crest band.
+ */
+export function findRowExtrema(
+  radii: number[],
+  minProminenceMm: number,
+): { maxima: number[]; minima: number[] } {
+  const n = radii.length;
+  const maxima: number[] = [];
+  const minima: number[] = [];
+  if (n < 3) return { maxima, minima };
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (radii[i] < lo) lo = radii[i];
+    if (radii[i] > hi) hi = radii[i];
+  }
+  if (hi - lo < minProminenceMm) return { maxima, minima };
+  for (let i = 0; i < n; i++) {
+    const prev = radii[(i - 1 + n) % n];
+    const cur = radii[i];
+    const next = radii[(i + 1) % n];
+    if (cur > prev && cur > next) maxima.push(i);
+    else if (cur < prev && cur < next) minima.push(i);
+  }
+  return { maxima, minima };
+}
+
+/**
+ * Recover the true OUTER-wall radius at a given (θ, z) by inverting the sampler
+ * on ANGLE and HEIGHT via 2D Newton, then reading the radius at the converged
+ * (u,t). Angle and height are monotone on a near-vertical wall, so the system is
+ * well-conditioned everywhere (unlike a 3D distance minimiser, which is singular
+ * at the crest where ∂r/∂θ→0). Seeds u≈θ/2π and t≈(z−zMin)/(zMax−zMin); u wraps,
+ * t clamps. Robust to twist (θ ≠ 2π·u) because it matches the position's angle.
+ */
+export function sampleTrueRadius(
+  sampler: PositionSampler,
+  theta: number,
+  z: number,
+  zMin: number,
+  zMax: number,
+  opts: { newtonIters?: number } = {},
+): number {
+  const iters = opts.newtonIters ?? 6;
+  const res = sampler.gridResolution?.();
+  const hu = res && res.resU > 1 ? 1 / res.resU : 1e-3;
+  const ht = res && res.resT > 1 ? 1 / (res.resT - 1) : 1e-3;
+  const zSpan = Math.max(zMax - zMin, 1e-9);
+
+  let u = theta / TWO_PI;
+  u -= Math.floor(u);
+  let t = (z - zMin) / zSpan;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+
+  let bestU = u;
+  let bestT = t;
+  let bestErr = Infinity;
+
+  for (let it = 0; it < iters; it++) {
+    const p = sampler.position(u, t);
+    const x = p[0];
+    const y = p[1];
+    const r2 = Math.max(x * x + y * y, 1e-12);
+    const fAng = wrapPi(Math.atan2(y, x) - theta);
+    const fZ = p[2] - z;
+    const err = fAng * fAng + (fZ / zSpan) * (fZ / zSpan);
+    if (err < bestErr) {
+      bestErr = err;
+      bestU = u;
+      bestT = t;
+    }
+    // Central finite differences for the position partials (t step shrinks at
+    // the caps so it never reads outside [0,1]).
+    const htc = Math.max(1e-9, Math.min(ht, t, 1 - t));
+    const pu1 = sampler.position(u + hu, t);
+    const pu0 = sampler.position(u - hu, t);
+    const pt1 = sampler.position(u, t + htc);
+    const pt0 = sampler.position(u, t - htc);
+    const PuX = (pu1[0] - pu0[0]) / (2 * hu);
+    const PuY = (pu1[1] - pu0[1]) / (2 * hu);
+    const PuZ = (pu1[2] - pu0[2]) / (2 * hu);
+    const PtX = (pt1[0] - pt0[0]) / (2 * htc);
+    const PtY = (pt1[1] - pt0[1]) / (2 * htc);
+    const PtZ = (pt1[2] - pt0[2]) / (2 * htc);
+    // J = [[∂angle/∂u, ∂angle/∂t], [∂z/∂u, ∂z/∂t]].
+    const a = (x * PuY - y * PuX) / r2;
+    const b = (x * PtY - y * PtX) / r2;
+    const c = PuZ;
+    const d = PtZ;
+    // Levenberg-Marquardt diagonal damping keeps the 2×2 solve stable if the
+    // wall ever flattens in a parameter direction.
+    const lam = 1e-9 * (Math.abs(a) + Math.abs(d) + 1);
+    const A = a + lam;
+    const D = d + lam;
+    const det = A * D - b * c;
+    if (Math.abs(det) < 1e-20) break;
+    const du = (-fAng * D - b * -fZ) / det;
+    const dt = (A * -fZ - -fAng * c) / det;
+    u += du;
+    u -= Math.floor(u);
+    t += dt;
+    if (t < 0) t = 0;
+    else if (t > 1) t = 1;
+    if (du * du + dt * dt < 1e-16) break;
+  }
+
+  const pb = sampler.position(bestU, bestT);
+  return Math.hypot(pb[0], pb[1]);
+}
+
+/**
+ * Restrict a combined pot mesh to the OUTER wall via a per-vertex surfaceId mask
+ * (1 = outer wall). Keeps only triangles whose three vertices are all outer-wall
+ * and reindexes them compactly. This excludes the inner wall (a ~wall-thickness
+ * radial phantom), the drain, and the flat caps unambiguously.
+ */
+export function extractOuterWallSubmesh(
+  vertices: Float32Array,
+  indices: Uint32Array,
+  outerMask: Uint8Array,
+): { vertices: Float32Array; indices: Uint32Array } {
+  const remap = new Int32Array(vertices.length / 3).fill(-1);
+  const outVerts: number[] = [];
+  const outIdx: number[] = [];
+  let next = 0;
+  const mapVert = (old: number): number => {
+    let n = remap[old];
+    if (n < 0) {
+      n = next++;
+      remap[old] = n;
+      outVerts.push(vertices[old * 3], vertices[old * 3 + 1], vertices[old * 3 + 2]);
+    }
+    return n;
+  };
+  for (let t = 0; t < indices.length; t += 3) {
+    const i0 = indices[t];
+    const i1 = indices[t + 1];
+    const i2 = indices[t + 2];
+    if (!outerMask[i0] || !outerMask[i1] || !outerMask[i2]) continue;
+    outIdx.push(mapVert(i0), mapVert(i1), mapVert(i2));
+  }
+  return { vertices: new Float32Array(outVerts), indices: new Uint32Array(outIdx) };
+}
+
+/** Crest loci (θ angles) per t-row, derived from the sampler's radius extrema. */
+interface CrestLocusMap {
+  rows: number; // number of t-rows
+  loci: number[][]; // per-row sorted θ in [0, 2π)
+  halfWidth: number[]; // per-row crest-band half-width (rad)
+  maxLoci: number; // most loci on any one row
+}
+
+function buildCrestLoci(
+  sampler: PositionSampler,
+  rows: number,
+  cols: number,
+  minProminenceMm: number,
+  crestHalfWidthFrac: number,
+): CrestLocusMap {
+  const loci: number[][] = [];
+  const halfWidth: number[] = [];
+  let maxLoci = 0;
+  for (let j = 0; j < rows; j++) {
+    const t = rows > 1 ? j / (rows - 1) : 0;
+    const radii: number[] = new Array(cols);
+    const angles: number[] = new Array(cols);
+    for (let i = 0; i < cols; i++) {
+      const p = sampler.position(i / cols, t);
+      radii[i] = Math.hypot(p[0], p[1]);
+      let ang = Math.atan2(p[1], p[0]);
+      if (ang < 0) ang += TWO_PI;
+      angles[i] = ang;
+    }
+    const { maxima, minima } = findRowExtrema(radii, minProminenceMm);
+    const rowLoci = [...maxima, ...minima].map((i) => angles[i]).sort((p, q) => p - q);
+    loci.push(rowLoci);
+    if (rowLoci.length > maxLoci) maxLoci = rowLoci.length;
+    halfWidth.push(rowLoci.length > 0 ? crestHalfWidthFrac * (TWO_PI / rowLoci.length) : 0);
+  }
+  return { rows, loci, halfWidth, maxLoci };
+}
+
+/** True if θ is within the crest-band half-width of any locus on the given row. */
+function inCrestBand(map: CrestLocusMap, row: number, theta: number): boolean {
+  const rowLoci = map.loci[row];
+  if (rowLoci.length === 0) return false;
+  const hw = map.halfWidth[row];
+  let th = theta;
+  if (th < 0) th += TWO_PI;
+  for (const locus of rowLoci) {
+    let d = Math.abs(th - locus);
+    if (d > Math.PI) d = TWO_PI - d;
+    if (d < hw) return true;
+  }
+  return false;
+}
+
+/**
+ * Faithful crest-band serration metric over an OUTER-wall sub-mesh. For each
+ * near-vertical wall triangle it measures interior (barycentric) AND edge-midpoint
+ * samples' radial deviation `|hypot(P.xy) − R_true(θ_P, z_P)|` from the sampler,
+ * splitting whole-wall vs crest-band statistics. The headline `serrationScore =
+ * crestBandRmsMm / SERRATION_TOL_MM` reads ~0 on a plain pot (empty crest band →
+ * whole-wall floor) and rises with ridge serration.
+ */
+export function wallChordError(
+  mesh: MeshView,
+  sampler: PositionSampler,
+  opts: WallChordOptions = {},
+): WallChordResult {
+  const order = opts.sampleOrder ?? 4;
+  const minProminenceMm = opts.minProminenceMm ?? 0.05;
+  const crestHalfWidthFrac = opts.crestHalfWidthFrac ?? 0.25;
+  const crestRows = opts.crestRows ?? 48;
+  const crestCols = opts.crestCols ?? 360;
+  const newtonIters = opts.newtonIters ?? 6;
+
+  const { vertices, indices } = mesh;
+  let zMin = Infinity;
+  let zMax = -Infinity;
+  for (let i = 0; i < vertices.length; i += 3) {
+    const z = vertices[i + 2];
+    if (z < zMin) zMin = z;
+    if (z > zMax) zMax = z;
+  }
+  if (!(zMax > zMin)) {
+    return {
+      maxDevMm: 0, rmsDevMm: 0, p99DevMm: 0, maxCrestDevMm: 0,
+      crestBandRmsMm: 0, serrationScore: 0, wallSamples: 0, crestSamples: 0, crestLoci: 0,
+    };
+  }
+  const zSpan = zMax - zMin;
+
+  const crest = buildCrestLoci(sampler, crestRows, crestCols, minProminenceMm, crestHalfWidthFrac);
+  const samples = barycentricSamples(order);
+
+  let maxv = 0;
+  let sumSq = 0;
+  let count = 0;
+  let maxCrest = 0;
+  let sumSqCrest = 0;
+  let crestCount = 0;
+  const BUCKETS = 400;
+  const BW = 0.05;
+  const hist = new Float64Array(BUCKETS + 1);
+
+  const accumulate = (px: number, py: number, pz: number): void => {
+    const r = Math.hypot(px, py);
+    const theta = Math.atan2(py, px);
+    const rt = sampleTrueRadius(sampler, theta, pz, zMin, zMax, { newtonIters });
+    const dev = Math.abs(r - rt);
+    if (dev > maxv) maxv = dev;
+    sumSq += dev * dev;
+    count++;
+    hist[Math.min(BUCKETS, Math.floor(dev / BW))]++;
+    let row = Math.round(((pz - zMin) / zSpan) * (crest.rows - 1));
+    if (row < 0) row = 0;
+    else if (row > crest.rows - 1) row = crest.rows - 1;
+    if (inCrestBand(crest, row, theta)) {
+      if (dev > maxCrest) maxCrest = dev;
+      sumSqCrest += dev * dev;
+      crestCount++;
+    }
+  };
+
+  for (let t = 0; t < indices.length; t += 3) {
+    const ia = indices[t] * 3;
+    const ib = indices[t + 1] * 3;
+    const ic = indices[t + 2] * 3;
+    const ax = vertices[ia], ay = vertices[ia + 1], az = vertices[ia + 2];
+    const bx = vertices[ib], by = vertices[ib + 1], bz = vertices[ib + 2];
+    const cx = vertices[ic], cy = vertices[ic + 1], cz = vertices[ic + 2];
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const nz = ux * vy - uy * vx;
+    const nlen = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, nz);
+    // Near-vertical wall only — exclude any sloped foot/fillet outer-wall band
+    // where the radial metric degenerates.
+    if (!(nlen > 1e-12) || Math.abs(nz) / nlen >= NEAR_VERTICAL_COS) continue;
+
+    for (const [wa, wb, wc] of samples) {
+      accumulate(ax * wa + bx * wb + cx * wc, ay * wa + by * wb + cy * wc, az * wa + bz * wb + cz * wc);
+    }
+    // Edge midpoints — where an axis-aligned chord dips farthest under a crest.
+    accumulate((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5);
+    accumulate((bx + cx) * 0.5, (by + cy) * 0.5, (bz + cz) * 0.5);
+    accumulate((cx + ax) * 0.5, (cy + ay) * 0.5, (cz + az) * 0.5);
+  }
+
+  let p99 = 0;
+  if (count > 0) {
+    const target = count * 0.99;
+    let acc = 0;
+    for (let bkt = 0; bkt <= BUCKETS; bkt++) {
+      acc += hist[bkt];
+      if (acc >= target) { p99 = bkt * BW; break; }
+    }
+  }
+  const rmsDevMm = count > 0 ? Math.sqrt(sumSq / count) : 0;
+  const crestBandRmsMm = crestCount > 0 ? Math.sqrt(sumSqCrest / crestCount) : rmsDevMm;
+  return {
+    maxDevMm: maxv,
+    rmsDevMm,
+    p99DevMm: p99,
+    maxCrestDevMm: crestCount > 0 ? maxCrest : maxv,
+    crestBandRmsMm,
+    serrationScore: crestBandRmsMm / SERRATION_TOL_MM,
+    wallSamples: count,
+    crestSamples: crestCount,
+    crestLoci: crest.maxLoci,
   };
 }
