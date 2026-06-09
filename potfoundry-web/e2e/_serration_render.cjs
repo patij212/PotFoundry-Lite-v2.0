@@ -79,7 +79,8 @@ function renderInPage() {
   const browser = await chromium.launch({ headless: false, args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan,UseSkiaRenderer'] });
   try {
     const page = await browser.newPage();
-    await page.addInitScript(() => { window.__pfConforming = true; });
+    const UBIAS = process.env.PF_UBIAS ? Number(process.env.PF_UBIAS) : -1;
+    await page.addInitScript((ub) => { window.__pfConforming = true; if (ub >= 0) window.__pfConformingUBias = ub; }, UBIAS);
     await page.addInitScript(renderInPage);
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await page.waitForFunction(() => typeof window.__pfFidelity !== 'undefined', null, { timeout: 90000 });

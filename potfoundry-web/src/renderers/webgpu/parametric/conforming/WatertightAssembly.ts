@@ -327,7 +327,14 @@ export function assembleWatertight(
   // real short-wide residuals need metric-ALIGNED/rotated cells (F-shear), same as
   // twisted. Pass `directionalRefine:true` to opt in (used by the GAP-1 tests).
   // DISABLED on feature walls regardless (directional refine is not insertion-aware).
-  const directionalRefine = (opts.directionalRefine ?? false) && !hasFeatures;
+  // Dev/diagnostic override (`window.__pfConformingDirectional`): force the local
+  // directional u-refine on/off, BYPASSING the opt-in default AND the
+  // hasFeatures disable, to measure its effect on relief anisotropy. Never set in
+  // production; mirrors `__pfConformingUBias`.
+  const directionalOverride = (globalThis as unknown as { __pfConformingDirectional?: boolean }).__pfConformingDirectional;
+  const directionalRefine = typeof directionalOverride === 'boolean'
+    ? directionalOverride
+    : (opts.directionalRefine ?? false) && !hasFeatures;
 
   // --- 1. Build the two conforming walls (uniform shared rings) -------------
   // Split the whole-pot budget across the two walls (caps add only a small fixed

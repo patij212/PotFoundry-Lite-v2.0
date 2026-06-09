@@ -24,10 +24,14 @@ function withTimeout(p, ms, label) {
   try {
     const page = await browser.newPage();
     const DENSERES = process.env.PF_DENSERES ? Number(process.env.PF_DENSERES) : 0; // 0 → default 256
-    await page.addInitScript((dr) => {
+    const DIRECTIONAL = process.env.PF_DIRECTIONAL ? Number(process.env.PF_DIRECTIONAL) : -1; // -1 default, 0 off, 1 on
+    await page.addInitScript((cfg) => {
       window.__pfConforming = true;
-      if (dr > 0) window.__pfConformingDenseRes = dr;
-    }, DENSERES);
+      if (cfg.dr > 0) window.__pfConformingDenseRes = cfg.dr;
+      if (cfg.dir === 0) window.__pfConformingDirectional = false;
+      else if (cfg.dir === 1) window.__pfConformingDirectional = true;
+      if (cfg.ub >= 0) window.__pfConformingUBias = cfg.ub;
+    }, { dr: DENSERES, dir: DIRECTIONAL, ub: process.env.PF_UBIAS ? Number(process.env.PF_UBIAS) : -1 });
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await page.waitForFunction(() => typeof window.__pfFidelity !== 'undefined', null, { timeout: 90000 });
     await page.waitForFunction(() => window.__pfFidelity.isReady() === true, null, { timeout: 90000 });
@@ -45,6 +49,18 @@ function withTimeout(p, ms, label) {
         const fe = await withTimeout(
           page.evaluate((t) => window.__pfFidelity.diagnoseFeatures({ targetTriangles: t }), targetTriangles),
           PER_OP_MS, `feat ${v}`,
+        );
+        const fs = process.env.PF_FSHEAR
+          ? await withTimeout(
+            page.evaluate((t) => window.__pfFidelity.diagnoseFShear({ targetTriangles: t }), targetTriangles),
+            PER_OP_MS, `fshear ${v}`,
+          )
+          : null;
+        if (fs) console.log(
+          `   FSHEAR sqAspMax=${fs.maxSquareAspect.toFixed(1)} sqSliv=${fs.sliverCountSquare} ` +
+          `irredByAxis=${(fs.irreducibleByAxisFrac * 100).toFixed(0)}% maxCosA=${fs.maxCosAlpha.toFixed(3)} ` +
+          `meanCosA_sliv=${fs.meanCosAlphaSliver.toFixed(3)} uLongFrac=${(fs.uLongFracSliver * 100).toFixed(0)}% ` +
+          `maxURatio=${fs.maxURatio.toFixed(1)} maxTRatio=${fs.maxTRatio.toFixed(1)}`,
         );
         const q = await withTimeout(
           page.evaluate((t) => window.__pfFidelity.diagnoseTopoQuality({ targetTriangles: t }), targetTriangles),
