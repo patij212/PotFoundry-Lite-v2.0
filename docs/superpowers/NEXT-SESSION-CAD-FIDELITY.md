@@ -52,14 +52,21 @@ high-strength export, with the uBias fix, is essentially CAD-grade; the "serrati
 artifact + the irreducible `n1<1` cusp tip (`maxCrest ~6mm`), NOT mesh serration.** The user's
 reported staircase is FIXED.
 
-**WHAT REMAINS (optional polish, NOT blocking):** (a) root-cause the small second-order
-refRes-dependence (the metric's 2D-Newton FD step = `1/refRes` couples to the reference res) by
-clamping that step to a fixed floor, then DEFAULT the metric reference to a faithful res (512–1024)
-so the 2× inflation is retired by default. (b) born-crest insertion for model-true edges
-(watertight-proven; good for `featuresDropped`, MOOT for the staircase). The full analytic C∞ SFB
-sampler spec is extracted in memory if ever needed (likely not, given bicubic≈bilinear). The uBias
-fix already generalizes to ALL smooth styles (any `maxURatio>6` auto-squares), so the "generalize
-crest extraction to 7 styles" task is superseded for the serration aspect.
+**The second-order refRes-wobble is ROOT-CAUSED — irreducible, no fix (2026-06-09).** Tested the
+FD-step hypothesis (the metric's 2D-Newton step = `1/refRes`) by giving the bicubic sampler a fixed
+step: crestRms came back BYTE-IDENTICAL → the Newton fully converges, so the step is irrelevant.
+With FD-step and interpolation-method both ruled out and the crest band stable, the only remaining
+refRes-coupled quantity is the reference grid NODES — and SFB's `n1<1` petal tip is a TRUE CUSP
+SINGULARITY (∞ curvature) where interpolation error is O(h) and does NOT converge monotonically. So
+the ±0.03mm wobble (0.08↔0.13) IS the irreducible cusp; there is no cleaner "floor" and no metric
+bug. The metric DEFAULT stays at 256 (byte-identical; a high-res default would build a reference on
+every export for no clean gain) — faithful CAD checks use `__pfReferenceDenseRes`≥512 ON DEMAND.
+
+**WHAT REMAINS (optional, NOT blocking):** born-crest insertion for model-true edges (watertight-
+proven; good for `featuresDropped`, MOOT for the staircase). The full analytic C∞ SFB sampler spec is
+extracted in memory if ever needed (not needed — bicubic≈bilinear proved the reference interp isn't
+the limit). The uBias fix already generalizes to ALL smooth styles (any `maxURatio>6` auto-squares),
+so the "generalize crest extraction to 7 styles" task is superseded for the serration aspect.
 
 *The sections below are retained for historical context (the detour that led here); read them
 as the investigation trail, not the current plan.*
