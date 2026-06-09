@@ -663,6 +663,72 @@ function extractVoronoi(p: Float32Array): FeatureLine[] {
   return segmentsToPolylines(segs, 'voronoi-cell', 3, 1.5e-3);
 }
 
+// ── SuperformulaBlossom petal crests (CAD-fidelity: ridge serration at high strength) ──
+// The Gielis petals modulate radius in θ; their CRESTS (peak tips + valley gaps)
+// are the extrema of the radius in θ, i.e. the ZERO SET of ∂r/∂θ. Because m, n1,
+// n2, n3 all mix with t (styles.wgsl), the crests are DIAGONAL, MORPHING (u,t)
+// curves — neither constant-u nor constant-slope — so an axis-aligned quadtree
+// staircases them (serration). Tracing the zero set as general-curve polylines
+// lets the existing insertion make each crest a real, watertight mesh edge.
+const SF_CREST_RES_U = 768;
+const SF_CREST_RES_T = 320;
+/** Below this blossom strength there is no relief to capture → emit nothing
+ *  (keeps the strength-0 default export byte-identical). */
+const SF_CREST_MIN_STRENGTH = 1e-3;
+/** Prototype scope: insert only crests that span (almost) the full height. The
+ *  ~4 petal-pairs BORN mid-height as m morphs 6→10 end at a cell-interior point,
+ *  which would dangle a constraint endpoint (T-junction risk); they are deferred.
+ *  Residual serration in the born (upper) region is honest and localized. */
+const SF_CREST_FULL_HEIGHT_SPAN = 0.85;
+
+const sfMix = (a: number, b: number, x: number): number => a + (b - a) * x;
+
+/** Gielis superformula value, f64 mirror of `superformula_value` (styles.wgsl). */
+function sfSuperformula(theta: number, m: number, n1: number, n2: number, n3: number, a: number, b: number): number {
+  const c = Math.pow(Math.abs(Math.cos((m * theta) / 4) / Math.max(a, 1e-4)), n2);
+  const s = Math.pow(Math.abs(Math.sin((m * theta) / 4) / Math.max(b, 1e-4)), n3);
+  const denom = Math.pow(c + s, 1 / Math.max(n1, 1e-4));
+  return denom <= 1e-4 ? 0 : Math.min(1 / denom, 4);
+}
+
+/** The θ-modulation `rf(u,t)` of `sf_radius` (styles.wgsl) — packed slots
+ *  [0 strength,1 m_base,2 m_top,3 m_curve,4 n1_base,5 n1_top,6 n2_base,7 n2_top,
+ *  8 n3_base,9 n3_top,10 a,11 b]. The radius is `mix(r0, r0·(0.9+0.35·rf), strength)`,
+ *  so the crest LOCI (extrema in θ) are the extrema of rf — independent of r0 and
+ *  strength. */
+function sfRf(u: number, t: number, p: Float32Array): number {
+  const m = sfMix(p[1], p[2], Math.pow(t, Math.max(p[3], 1e-4)));
+  const n1 = sfMix(p[4], p[5], t);
+  const n2 = sfMix(p[6], p[7], t);
+  const n3 = sfMix(p[8], p[9], t);
+  const a = Math.max(p[10], 1e-4);
+  const b = Math.max(p[11], 1e-4);
+  const seam = (TAU / 2) / Math.max(m, 1); // seam_offset (styles.wgsl)
+  return sfSuperformula(TAU * u + seam, m, n1, n2, n3, a, b);
+}
+
+function extractSuperformulaBlossom(p: Float32Array): FeatureLine[] {
+  const strength = p.length > 0 ? p[0] : 1;
+  if (!(strength > SF_CREST_MIN_STRENGTH)) return [];
+  const h = 0.5 / SF_CREST_RES_U;
+  // ∂rf/∂u (central difference); sign-changes ⇒ petal peaks AND valleys.
+  // periodicU=FALSE: m(t) is non-integer mid-height so rf(0,t)≠rf(1,t) — wrapping
+  // would fabricate a spurious seam crest (the seam_offset already keeps the seam
+  // off a tip). Model on HexagonalHive, not the periodic Gyroid.
+  const segs = marchingSquaresZero((u, t) => sfRf(u + h, t, p) - sfRf(u - h, t, p), SF_CREST_RES_U, SF_CREST_RES_T, false);
+  const lines = segmentsToPolylines(segs, 'sf-crest', 3, 3e-4);
+  // Prototype: full-height crests only (defer born/forking crests — Stage 3).
+  return lines.filter((l) => {
+    let tMin = Infinity;
+    let tMax = -Infinity;
+    for (const pt of l.points) {
+      if (pt.t < tMin) tMin = pt.t;
+      if (pt.t > tMax) tMax = pt.t;
+    }
+    return tMax - tMin >= SF_CREST_FULL_HEIGHT_SPAN;
+  });
+}
+
 const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // Vertical (u=const) creases.
   LowPolyFacet: extractLowPolyFacet,
@@ -703,7 +769,7 @@ const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   // of sin/cos terms in θ and t, so curvature-adaptive meshing alone resolves
   // them. Listed explicitly so the count is HONEST rather than accidentally 0.
   HarmonicRipple: () => [],
-  SuperformulaBlossom: () => [],
+  SuperformulaBlossom: extractSuperformulaBlossom,
   SuperellipseMorph: () => [],
   FourierBloom: () => [],
   WaveInterference: () => [],
