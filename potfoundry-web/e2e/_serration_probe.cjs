@@ -42,6 +42,10 @@ function withTimeout(p, ms, label) {
           page.evaluate((t) => window.__pfFidelity.diagnoseSerration({ targetTriangles: t }), targetTriangles),
           PER_OP_MS, `serration ${v}`,
         );
+        const fe = await withTimeout(
+          page.evaluate((t) => window.__pfFidelity.diagnoseFeatures({ targetTriangles: t }), targetTriangles),
+          PER_OP_MS, `feat ${v}`,
+        );
         const q = await withTimeout(
           page.evaluate((t) => window.__pfFidelity.diagnoseTopoQuality({ targetTriangles: t }), targetTriangles),
           PER_OP_MS, `topo ${v}`,
@@ -50,8 +54,9 @@ function withTimeout(p, ms, label) {
           ? `serr=${sr.serrationScore.toFixed(2)} crestRms=${sr.crestBandRmsMm.toFixed(4)}mm maxCrest=${sr.maxCrestDevMm.toFixed(3)}mm ` +
             `wallRms=${sr.rmsDevMm.toFixed(4)}mm loci=${sr.crestLoci} crestSamp=${sr.crestSamples}`
           : 'serr=NULL(legacy)';
+        const feStr = fe ? `featExp=${fe.expected} featPres=${fe.present} featDrop=${fe.dropped}` : 'feat=NULL';
         console.log(
-          `${param}=${String(v).padEnd(5)} ${srStr} ` +
+          `${param}=${String(v).padEnd(5)} ${srStr} ${feStr} ` +
           `| sliver=${q.sliverCount} maxAspect=${q.maxAspect3D.toFixed(1)} bnd=${q.boundaryEdges} nonMan=${q.nonManifoldEdges} ` +
           `orient=${q.orientationMismatches} tris=${q.triangleCount} (${((Date.now() - t0) / 1000).toFixed(0)}s)`,
         );

@@ -119,22 +119,39 @@ closed form (the prototype trusts the mirror; verify it).
 
 **STAGE 2 — DONE (stable crests).** See §3. (`featDrop=0`, watertight, byte-identical default.)
 
-**STAGE 3 — born/merge crests (the hard core).** ~4 petal-pairs are BORN at interior (u,t)
-points as m:6→10. A constraint ending at a cell-interior point **dangles → T-junction**
-(the documented CelticKnot residual; `planarize` only splits in-cell *crossings*, not
-endpoints). Watertight-preserving options: extend each born crest **down to the nearest
-pinned boundary row** (full-height) OR insert a **closed peak↔valley loop**. GATE: ALL
-crests inserted, `bnd=nonMan=orient=sliver=0`, crest-band rms < 0.1mm full-circumference.
+**RE-DIAGNOSIS 2026-06-09 (measurement-first, via the STAGE-0 metric — this OVERRIDES the
+STAGE 3/4 plan below).** Two experiments DISPROVED "insert crest edges → fix serration":
+- **Born crests measured** (`SuperformulaBornCrests.test.ts`): 7 real born crests, each
+  rim(t=1)↔SEAM(u≈0.999, birth t=0.18..0.90) — born AT the seam (seam_offset=π/m), NOT
+  dangling-interior. **Naive insertion (filter→0.08) is WATERTIGHT** (featExp=19 featPres=19
+  featDrop=0, bnd=nonMan=orient=sliver=0 — the grid-line registry handles the seam) **but does
+  NOTHING for serration** (serr 3.35→3.32, crestRms/maxCrest/maxAspect unchanged). An edge
+  ALONG a crest adds no resolution ACROSS the steep flank, where the chord error lives.
+- **Density test** (`__pfConformingDenseRes` 256→512→1024 @ sf_strength=1): crestBandRms
+  **0.335→0.255→0.143mm**, serr 3.35→1.43 — MONOTONE. maxAspect stays 87.6 (= GAP-1
+  anisotropy, NOT serration — what the prior root-cause wrongly measured). maxCrest erratic
+  9.1→6.4→8.8 (n1<1 CUSP-tip artifact, not bulk). **Serration IS curvature-resolution-limited:
+  the 128² sizing grid + 256² sampler band-limit κ → the steep petal flanks under-refine.**
 
-**STAGE 4 — curvature support (only if flanks still serrate).** Raise the 128² sizing grid
-→256 (`ParametricExportComputer.ts` resU/resT) ± `__pfConformingDenseRes`; treat
-sampler-res & FD-step as ONE knob; **cap κ at a chord target** (the n1<1 Gielis tip is a
-cusp — unbounded curvature, no fixed point). Watch `budgetMode:'cap'` (it can COARSEN crests
-back) and `minEdgeMm=0.2`.
+**STAGE 4 — IS THE REAL SERRATION FIX (was mislabelled "support").** Improve curvature-sizing
+accuracy so the flanks refine to the 0.1mm chord target: raise the 128² sizing grid (resU/resT
+in the `assembleWatertight` call) and/or `__pfConformingDenseRes`; **cap κ at a chord target**
+(n1<1 Gielis tip = cusp, unbounded κ); lift the budget cap (`budgetMode:'cap'`, tris capped
+~424k at 400k target — raise the target so refinement isn't capped). GATE = the STAGE-0
+`diagnoseSerration`: crestBandRms<0.1mm (serrationScore<1) across strength, topology clean.
+**Gate-scope change:** raising global κ resolution CHANGES default meshes (HarmonicRipple/
+DragonScales/Crystalline have real default curvature) → "20/20 byte-identical" no longer
+applies; the gate becomes RE-BASELINE (all 20 stay 6/6, sag/serration improve or hold, no new
+sliver/timeout, build 1-6s). FIRST verify denseRes is ~no-op on genuinely-smooth defaults.
 
-**STAGE 5 — no-regression sweep.** Re-run the 20-style default matrix + GAP-1 short-wide.
-GATE: 20/20 default byte-identical, GAP-1 short-wide fixes unbroken, maxAspect on
-SuperformulaBlossom@1 falls toward the strength-0 baseline, build 1-6s no timeout.
+**STAGE 3 (born-crest insertion) — DEMOTED to OPTIONAL** (feature-completeness / model-true
+edges only; featExp 12→~19). NOT the serration fix. Watertight-by-construction already
+proven (above). Design vetted by the `stage3-born-crest-design` workflow (in the session
+transcript) if pursued for the featuresDropped metric.
+
+**STAGE 5 — no-regression sweep.** Re-run the 20-style matrix + GAP-1 short-wide.
+GATE: all 20 stay 6/6 (re-baseline, not byte-identical — STAGE 4 changes default meshes by
+design), GAP-1 short-wide fixes unbroken, SuperformulaBlossom@1 serrationScore<1, build 1-6s.
 
 ## 5. THE ONE CROSS-CUTTING TRAP (must respect)
 `WatertightAssembly` FORCES `uBias=0` on any wall with feature lines (`hasFeatures →
