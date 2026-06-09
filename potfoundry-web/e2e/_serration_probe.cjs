@@ -33,7 +33,8 @@ function withTimeout(p, ms, label) {
       else if (cfg.dir === 1) window.__pfConformingDirectional = true;
       if (cfg.ub >= 0) window.__pfConformingUBias = cfg.ub;
       if (cfg.rr > 0) window.__pfReferenceDenseRes = cfg.rr;
-    }, { dr: DENSERES, dir: DIRECTIONAL, ub: process.env.PF_UBIAS ? Number(process.env.PF_UBIAS) : -1, rr: REFRES });
+      if (cfg.bicubic) window.__pfReferenceBicubic = true;
+    }, { dr: DENSERES, dir: DIRECTIONAL, ub: process.env.PF_UBIAS ? Number(process.env.PF_UBIAS) : -1, rr: REFRES, bicubic: process.env.PF_REF_BICUBIC === '1' });
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await page.waitForFunction(() => typeof window.__pfFidelity !== 'undefined', null, { timeout: 90000 });
     await page.waitForFunction(() => window.__pfFidelity.isReady() === true, null, { timeout: 90000 });
@@ -70,7 +71,7 @@ function withTimeout(p, ms, label) {
         );
         const srStr = sr
           ? `serr=${sr.serrationScore.toFixed(2)} crestRms=${sr.crestBandRmsMm.toFixed(4)}mm maxCrest=${sr.maxCrestDevMm.toFixed(3)}mm ` +
-            `wallRms=${sr.rmsDevMm.toFixed(4)}mm loci=${sr.crestLoci} crestSamp=${sr.crestSamples} refRes=${sr.referenceRes}`
+            `wallRms=${sr.rmsDevMm.toFixed(4)}mm loci=${sr.crestLoci} crestSamp=${sr.crestSamples} refRes=${sr.referenceRes}${sr.referenceBicubic ? '/bicubic' : ''}`
           : 'serr=NULL(legacy)';
         const feStr = fe ? `featExp=${fe.expected} featPres=${fe.present} featDrop=${fe.dropped}` : 'feat=NULL';
         console.log(

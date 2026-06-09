@@ -16,6 +16,7 @@ import {
 } from '../renderers/webgpu/ParametricExportComputer';
 import type { FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
 import { GpuSurfaceSampler } from '../renderers/webgpu/parametric/conforming/SurfaceSampler';
+import { BicubicSurfaceSampler } from '../renderers/webgpu/parametric/conforming/BicubicSurfaceSampler';
 import { classifySurfaceShear, type ShearSummary } from '../renderers/webgpu/parametric/conforming/FShearDiagnostics';
 import {
   computeFidelityMetrics,
@@ -161,6 +162,9 @@ export interface FidelitySerrationDiagnostics extends WallChordResult {
   /** Resolution of the reference grid the metric measured against — the mesh's
    *  own denseRes, or the decoupled `__pfReferenceDenseRes` when set. */
   referenceRes: number;
+  /** Whether the reference was reconstructed with C1 bicubic (`__pfReferenceBicubic`)
+   *  rather than C0 bilinear. */
+  referenceBicubic: boolean;
 }
 
 export interface FidelityWallDiagnosticOptions {
@@ -394,9 +398,23 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       // mesh grid's own bilinear cusp-smoothing. Null unless overridden ⇒ the mesh
       // grid (current behaviour, so default diagnostics are unchanged).
       const refGrid = getLastConformingOuterReferenceGrid() ?? grid;
-      const sampler = new GpuSurfaceSampler(refGrid.positions, refGrid.resU, refGrid.resT);
+      // Reconstruct the reference with C1 BICUBIC (`__pfReferenceBicubic`) instead of
+      // C0 bilinear: bilinear's cell-boundary derivative jumps make the Newton
+      // (angle,z)→(u,t) inversion noisy near a sharp cusp (the non-monotonic crestRms
+      // at high reference res); bicubic de-noises it AND tracks the surface O(h^4) vs
+      // O(h^2) between nodes. Default false ⇒ bilinear (unchanged).
+      const bicubic = (globalThis as unknown as { __pfReferenceBicubic?: boolean }).__pfReferenceBicubic === true;
+      const sampler = bicubic
+        ? new BicubicSurfaceSampler(refGrid.positions, refGrid.resU, refGrid.resT)
+        : new GpuSurfaceSampler(refGrid.positions, refGrid.resU, refGrid.resT);
       const w = wallChordError(sub, sampler, { newtonIters: opts.newtonIters });
-      return { styleId, triangleCount: Math.floor(sub.indices.length / 3), ...w, referenceRes: refGrid.resU };
+      return {
+        styleId,
+        triangleCount: Math.floor(sub.indices.length / 3),
+        ...w,
+        referenceRes: refGrid.resU,
+        referenceBicubic: bicubic,
+      };
     },
     async _debugOuterMesh(targetTriangles?: number) {
       const mesh = await deps.generateMesh(targetTriangles);
