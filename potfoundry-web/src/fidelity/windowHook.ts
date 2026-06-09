@@ -11,6 +11,7 @@ import {
   getLastChainDebugData,
   getLastConformingFeatureResult,
   getLastConformingOuterGrid,
+  getLastConformingOuterReferenceGrid,
   getLastConformingOuterWallMask,
 } from '../renderers/webgpu/ParametricExportComputer';
 import type { FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
@@ -157,6 +158,9 @@ export interface FidelitySerrationDiagnosticOptions {
 export interface FidelitySerrationDiagnostics extends WallChordResult {
   styleId: string;
   triangleCount: number;
+  /** Resolution of the reference grid the metric measured against — the mesh's
+   *  own denseRes, or the decoupled `__pfReferenceDenseRes` when set. */
+  referenceRes: number;
 }
 
 export interface FidelityWallDiagnosticOptions {
@@ -385,9 +389,14 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       const mask = getLastConformingOuterWallMask();
       if (!grid || !mask) return null;
       const sub = extractOuterWallSubmesh(mesh.vertices, mesh.indices, mask);
-      const sampler = new GpuSurfaceSampler(grid.positions, grid.resU, grid.resT);
+      // Prefer the DECOUPLED high-res reference grid (faithful R_true, set via
+      // `__pfReferenceDenseRes`) — it measures true mesh chord error instead of the
+      // mesh grid's own bilinear cusp-smoothing. Null unless overridden ⇒ the mesh
+      // grid (current behaviour, so default diagnostics are unchanged).
+      const refGrid = getLastConformingOuterReferenceGrid() ?? grid;
+      const sampler = new GpuSurfaceSampler(refGrid.positions, refGrid.resU, refGrid.resT);
       const w = wallChordError(sub, sampler, { newtonIters: opts.newtonIters });
-      return { styleId, triangleCount: Math.floor(sub.indices.length / 3), ...w };
+      return { styleId, triangleCount: Math.floor(sub.indices.length / 3), ...w, referenceRes: refGrid.resU };
     },
     async _debugOuterMesh(targetTriangles?: number) {
       const mesh = await deps.generateMesh(targetTriangles);

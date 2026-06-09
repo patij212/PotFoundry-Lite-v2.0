@@ -25,13 +25,15 @@ function withTimeout(p, ms, label) {
     const page = await browser.newPage();
     const DENSERES = process.env.PF_DENSERES ? Number(process.env.PF_DENSERES) : 0; // 0 → default 256
     const DIRECTIONAL = process.env.PF_DIRECTIONAL ? Number(process.env.PF_DIRECTIONAL) : -1; // -1 default, 0 off, 1 on
+    const REFRES = process.env.PF_REF_DENSERES ? Number(process.env.PF_REF_DENSERES) : 0; // 0 → reference = mesh grid
     await page.addInitScript((cfg) => {
       window.__pfConforming = true;
       if (cfg.dr > 0) window.__pfConformingDenseRes = cfg.dr;
       if (cfg.dir === 0) window.__pfConformingDirectional = false;
       else if (cfg.dir === 1) window.__pfConformingDirectional = true;
       if (cfg.ub >= 0) window.__pfConformingUBias = cfg.ub;
-    }, { dr: DENSERES, dir: DIRECTIONAL, ub: process.env.PF_UBIAS ? Number(process.env.PF_UBIAS) : -1 });
+      if (cfg.rr > 0) window.__pfReferenceDenseRes = cfg.rr;
+    }, { dr: DENSERES, dir: DIRECTIONAL, ub: process.env.PF_UBIAS ? Number(process.env.PF_UBIAS) : -1, rr: REFRES });
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await page.waitForFunction(() => typeof window.__pfFidelity !== 'undefined', null, { timeout: 90000 });
     await page.waitForFunction(() => window.__pfFidelity.isReady() === true, null, { timeout: 90000 });
@@ -68,7 +70,7 @@ function withTimeout(p, ms, label) {
         );
         const srStr = sr
           ? `serr=${sr.serrationScore.toFixed(2)} crestRms=${sr.crestBandRmsMm.toFixed(4)}mm maxCrest=${sr.maxCrestDevMm.toFixed(3)}mm ` +
-            `wallRms=${sr.rmsDevMm.toFixed(4)}mm loci=${sr.crestLoci} crestSamp=${sr.crestSamples}`
+            `wallRms=${sr.rmsDevMm.toFixed(4)}mm loci=${sr.crestLoci} crestSamp=${sr.crestSamples} refRes=${sr.referenceRes}`
           : 'serr=NULL(legacy)';
         const feStr = fe ? `featExp=${fe.expected} featPres=${fe.present} featDrop=${fe.dropped}` : 'feat=NULL';
         console.log(

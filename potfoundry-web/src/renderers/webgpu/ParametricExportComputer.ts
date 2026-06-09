@@ -219,6 +219,19 @@ let LAST_CONFORMING_FEATURE_RESULT: FeatureResolutionResult | null = null;
 let LAST_CONFORMING_OUTER_GRID: { positions: Float32Array; resU: number; resT: number } | null = null;
 
 /**
+ * Optional INDEPENDENT, higher-resolution OUTER-wall reference grid for the
+ * CAD-fidelity serration metric, decoupled from the mesh's `__pfConformingDenseRes`
+ * (which also drives the curvature sizing field → raising it would change the MESH).
+ * Built only when `__pfReferenceDenseRes` is set; null otherwise (the metric then
+ * falls back to {@link LAST_CONFORMING_OUTER_GRID} — byte-identical current
+ * behaviour). Lets the metric measure TRUE mesh chord error against a surface finer
+ * than the mesh's own grid, instead of the mesh grid's own bilinear cusp-smoothing.
+ * Kept SEPARATE from LAST_CONFORMING_OUTER_GRID so the F-shear / uBias path (which
+ * reads that stash at the mesh resolution) stays consistent. Dev diagnostic only.
+ */
+let LAST_CONFORMING_OUTER_REFERENCE_GRID: { positions: Float32Array; resU: number; resT: number } | null = null;
+
+/**
  * Most recent conforming-branch per-vertex OUTER-wall mask (1 = outer wall,
  * surfaceId 0). Aligns with the returned mesh's vertex order, so the CAD-fidelity
  * serration metric can restrict to the outer wall (excluding the inner-wall
@@ -240,6 +253,13 @@ export function getLastConformingFeatureResult(): FeatureResolutionResult | null
  *  diagnostic only (F-shear sliver-mechanism classification). */
 export function getLastConformingOuterGrid(): { positions: Float32Array; resU: number; resT: number } | null {
     return LAST_CONFORMING_OUTER_GRID;
+}
+
+/** Most recent INDEPENDENT high-resolution outer-wall REFERENCE grid (decoupled
+ *  from the mesh denseRes), or null when `__pfReferenceDenseRes` is unset. Dev
+ *  diagnostic only (faithful CAD-fidelity serration reference). */
+export function getLastConformingOuterReferenceGrid(): { positions: Float32Array; resU: number; resT: number } | null {
+    return LAST_CONFORMING_OUTER_REFERENCE_GRID;
 }
 
 /** Most recent conforming-branch OUTER-wall vertex mask (1 = outer wall), aligned
@@ -2075,34 +2095,48 @@ export class ParametricExportComputer {
                     ? Math.floor(denseResOverride)
                     : 256;
                 const DENSE_RES_T = DENSE_RES_U;
+                // Evaluate one wall surface on a (resU × resT) (u,t) grid → bilinear
+                // sampler. Resolution is a parameter so the metric REFERENCE can be
+                // evaluated finer than the mesh sampler (see __pfReferenceDenseRes).
                 const buildWallSampler = async (
                     surfaceId: number,
-                ): Promise<GpuSurfaceSampler> => {
-                    const grid = new Float32Array(DENSE_RES_U * DENSE_RES_T * 3);
+                    resU: number,
+                    resT: number,
+                ): Promise<{ sampler: GpuSurfaceSampler; positions: Float32Array }> => {
+                    const grid = new Float32Array(resU * resT * 3);
                     let w = 0;
-                    for (let row = 0; row < DENSE_RES_T; row++) {
-                        const tVal = row / (DENSE_RES_T - 1);
-                        for (let col = 0; col < DENSE_RES_U; col++) {
-                            grid[w++] = col / DENSE_RES_U; // u in [0,1) periodic
-                            grid[w++] = tVal;              // t in [0,1]
-                            grid[w++] = surfaceId;         // wall selector
+                    for (let row = 0; row < resT; row++) {
+                        const tVal = row / (resT - 1);
+                        for (let col = 0; col < resU; col++) {
+                            grid[w++] = col / resU; // u in [0,1) periodic
+                            grid[w++] = tVal;       // t in [0,1]
+                            grid[w++] = surfaceId;  // wall selector
                         }
                     }
-                    const densePos = await this.evaluatePoints(
+                    const positions = await this.evaluatePoints(
                         grid, uniformBuffer, styleParamBuffer,
                         dummyWrite3, dummyWrite4, dummyWrite7,
                         dummyWrite9, dummyWrite10, dummyReadOnly,
                     );
-                    // Stash the OUTER (surfaceId 0) grid for the dev F-shear
-                    // diagnostic (sliver-mechanism classification on the real
-                    // surface). Reference only; overwritten each build.
-                    if (surfaceId === 0) {
-                        LAST_CONFORMING_OUTER_GRID = { positions: densePos, resU: DENSE_RES_U, resT: DENSE_RES_T };
-                    }
-                    return new GpuSurfaceSampler(densePos, DENSE_RES_U, DENSE_RES_T);
+                    return { sampler: new GpuSurfaceSampler(positions, resU, resT), positions };
                 };
-                const outerSampler = await buildWallSampler(0);
-                const innerSampler = await buildWallSampler(1);
+                const outerEval = await buildWallSampler(0, DENSE_RES_U, DENSE_RES_T);
+                const outerSampler = outerEval.sampler;
+                const innerSampler = (await buildWallSampler(1, DENSE_RES_U, DENSE_RES_T)).sampler;
+                // Stash the OUTER (surfaceId 0) MESH-res grid for the dev F-shear
+                // diagnostic (sliver-mechanism classification / uBias maxURatio on the
+                // real surface). Reference only; overwritten each build.
+                LAST_CONFORMING_OUTER_GRID = { positions: outerEval.positions, resU: DENSE_RES_U, resT: DENSE_RES_T };
+                // Dev-only DECOUPLED high-res serration reference (independent of the
+                // mesh denseRes): null unless `__pfReferenceDenseRes` is set, so
+                // production + every other path is byte-identical.
+                const refResOverride = (globalThis as unknown as { __pfReferenceDenseRes?: number }).__pfReferenceDenseRes;
+                const REF_RES = typeof refResOverride === 'number' && refResOverride >= 8
+                    ? Math.floor(refResOverride)
+                    : 0;
+                LAST_CONFORMING_OUTER_REFERENCE_GRID = REF_RES > 0
+                    ? { positions: (await buildWallSampler(0, REF_RES, REF_RES)).positions, resU: REF_RES, resT: REF_RES }
+                    : null;
 
                 // Uniform ring resolution (power of two). Overridable for tuning.
                 const nRingOverride = (globalThis as unknown as { __pfConformingNRing?: number }).__pfConformingNRing;
