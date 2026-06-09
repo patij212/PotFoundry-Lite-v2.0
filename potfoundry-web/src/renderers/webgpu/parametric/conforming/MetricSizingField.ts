@@ -38,6 +38,21 @@ export interface SizingOptions {
    * Defaults to 1 (no scaling). Used by the triangle-budget search (Task 2).
    */
   targetScale?: number;
+  /**
+   * Optional ANALYTIC curvature LOWER BOUND `κ_floor(u,t)` (mm⁻¹). When provided,
+   * `κ = max(κ_sampler, κ_floor)` before the sagitta law — so a style that knows
+   * its true curvature analytically (e.g. SuperformulaBlossom's steep petal
+   * flanks, which the band-limited 256² sampler under-estimates) refines
+   * correctly without a finer GPU sampler. Omit for the pure sampler estimate
+   * (byte-identical). Smooth regions where the floor ≤ the sampler are unaffected.
+   */
+  curvatureFloor?: (u: number, t: number) => number;
+  /**
+   * Optional UPPER bound on κ (mm⁻¹). Caps the sagitta refinement so an
+   * unbounded-curvature CUSP (e.g. the n1<1 Gielis tip) cannot force minEdge and
+   * waste the triangle budget on an irreducible point. Omit for no cap.
+   */
+  maxKappa?: number;
 }
 
 /**
@@ -75,7 +90,12 @@ export class MetricSizingField {
       const t = resT > 1 ? j / (resT - 1) : 0;
       for (let i = 0; i < resU; i++) {
         const u = i / resU; // u is periodic: node resU coincides with node 0
-        const kappa = Math.max(principalCurvatureMax(s, u, t, hu, ht), 1e-6);
+        let kappa = Math.max(principalCurvatureMax(s, u, t, hu, ht), 1e-6);
+        // Analytic curvature lower bound (the sampler κ is band-limited on steep
+        // flanks). max() so smooth regions are unchanged.
+        if (opts.curvatureFloor) kappa = Math.max(kappa, opts.curvatureFloor(u, t));
+        // Cap κ so an unbounded-curvature cusp (n1<1 tip) can't force minEdge.
+        if (opts.maxKappa && opts.maxKappa > 0) kappa = Math.min(kappa, opts.maxKappa);
         // sagitta: sag ≈ h^2·κ/8 ⇒ h = sqrt(8·maxSag/κ)
         let h = Math.sqrt((8 * opts.maxSagMm) / kappa);
         // Budget scale coarsens uniformly; the clamp below still enforces the

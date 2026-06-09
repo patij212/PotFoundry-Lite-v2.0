@@ -59,3 +59,38 @@ describe('MetricSizingField — Lipschitz grading', () => {
     }
   });
 });
+
+describe('MetricSizingField — curvatureFloor + maxKappa (STAGE-4 analytic floor, opt-in)', () => {
+  it('curvatureFloor BELOW the sampler κ is a no-op (byte-identical grid)', () => {
+    const s = new SyntheticCylinderSampler(50, 120); // κ = 1/50 = 0.02
+    const base = new MetricSizingField(s, baseOpts).debugGrid();
+    // Floor 0.001 ≪ 0.02 → max(κ, floor) = κ → grid unchanged.
+    const floored = new MetricSizingField(s, { ...baseOpts, curvatureFloor: () => 0.001 }).debugGrid();
+    expect(floored.length).toBe(base.length);
+    for (let i = 0; i < base.length; i++) expect(floored[i]).toBeCloseTo(base[i], 12);
+  });
+
+  it('curvatureFloor ABOVE the sampler κ refines h to the floor sagitta', () => {
+    const s = new SyntheticCylinderSampler(50, 120); // κ = 0.02 → h ≈ 6.32
+    // Uniform floor κ=0.5 → h = sqrt(8·0.1/0.5) = sqrt(1.6) ≈ 1.265 (uniform → no grading shift).
+    const field = new MetricSizingField(s, { ...baseOpts, curvatureFloor: () => 0.5 });
+    const h = field.edgeLength(0.37, 0.5);
+    expect(h).toBeCloseTo(Math.sqrt((8 * 0.1) / 0.5), 2);
+  });
+
+  it('maxKappa caps κ so a high-curvature ripple cannot drive h below the cap sagitta', () => {
+    const s = new SyntheticCylinderSampler(50, 120, 8, 12); // sharp ripple → high κ → tiny h
+    const uncapped = new MetricSizingField(s, baseOpts);
+    const capped = new MetricSizingField(s, { ...baseOpts, maxKappa: 0.02 });
+    // The capped field's minimum edge length must be no smaller than the uncapped one.
+    const minOf = (f: MetricSizingField): number => {
+      const g = f.debugGrid();
+      let m = Infinity;
+      for (let i = 0; i < g.length; i++) if (g[i] < m) m = g[i];
+      return m;
+    };
+    expect(minOf(capped)).toBeGreaterThan(minOf(uncapped));
+    // κ capped at 0.02 → h floored at sqrt(8·0.1/0.02) ≈ 6.32 (before grading/clamp).
+    expect(minOf(capped)).toBeGreaterThan(0.9 * Math.sqrt((8 * 0.1) / 0.02));
+  });
+});

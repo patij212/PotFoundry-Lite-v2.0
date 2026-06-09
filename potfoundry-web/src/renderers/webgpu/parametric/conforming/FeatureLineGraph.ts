@@ -696,7 +696,7 @@ function sfSuperformula(theta: number, m: number, n1: number, n2: number, n3: nu
  *  8 n3_base,9 n3_top,10 a,11 b]. The radius is `mix(r0, r0·(0.9+0.35·rf), strength)`,
  *  so the crest LOCI (extrema in θ) are the extrema of rf — independent of r0 and
  *  strength. */
-function sfRf(u: number, t: number, p: Float32Array): number {
+export function sfRf(u: number, t: number, p: Float32Array): number {
   const m = sfMix(p[1], p[2], Math.pow(t, Math.max(p[3], 1e-4)));
   const n1 = sfMix(p[4], p[5], t);
   const n2 = sfMix(p[6], p[7], t);
