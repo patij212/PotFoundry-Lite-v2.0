@@ -32,7 +32,6 @@ import type { SurfaceSampler } from './SurfaceSampler';
 import { buildConformingWall, type ConformingWallResult } from './ConformingWall';
 import { annulusStrip, discFan } from './RingStrip';
 import type { FeatureLine } from './FeatureLineGraph';
-import { firstFundamentalForm, metricStepsForSampler } from './SurfaceMetricTensor';
 
 /** Reference shape anisotropy gating uBias on (a wide/flat pot exceeds it). */
 const UBIAS_AREF = 3;
@@ -53,52 +52,58 @@ const UBIAS_AREF = 3;
  */
 const UBIAS_WIDE_B = 2;
 
-function median(xs: number[]): number {
-  if (xs.length === 0) return 1;
-  const s = xs.slice().sort((a, b) => a - b);
-  return s[Math.floor(s.length / 2)] || 1;
-}
-
 /**
  * Anisotropy bias B (≥0) for a wall sampler — a GATED, FIXED bias.
  *
- * `baseA` = median of the SHAPE anisotropy `2π·r / √G` (circumference rate over
- * height rate). It measures the pot's wide/flat-vs-tall geometry. The bias is
- * GATED on it: a pot whose SHAPE is not wide/flat (baseA in the default band,
- * ≤ AREF·√2) gets **B=0** — a true no-op that preserves the validated default-dim
- * (20/20) meshes for every style (the gate is unchanged from the relief-aware
- * version, so default meshes stay byte-identical). A genuinely wide/flat pot gets
- * a single FIXED bias {@link UBIAS_WIDE_B}.
+ * Gates on a RELIEF-FREE wide/flat measure: `wideFlat = 2π·R̄ / Hspan`, the mean
+ * wall radius over the wall height span. A pot that is not wide/flat (wideFlat in
+ * the default band, ≤ AREF·√2) gets **B=0** — a no-op that keeps the validated
+ * default-dim (20/20) meshes; a genuinely wide/flat pot gets a single FIXED bias
+ * {@link UBIAS_WIDE_B}.
+ *
+ * Why GEOMETRIC, not `median(2π·r/√G)`: √G = √(Hspan² + (∂r/∂t)²) is inflated by a
+ * style's t-DIRECTION relief, so the old `2π·r/√G` gate UNDER-read the wide/flat-
+ * ness of t-relief styles and wrongly excluded them — Crystalline at short-wide
+ * stayed B=0 and kept 55 slivers, while its plain-shape twins were biased. R̄ and
+ * the z-RANGE wash out relief (∂r/∂t averages/ranges away), so the gate sees the
+ * true shape. It is a strict SUPERSET of the old gate (√G ≥ Hspan ⇒ geometric ≥
+ * old ratio), so it never drops a style the old gate biased; across the dimension
+ * space only the SHORT-WIDE regime crosses it (tall-narrow 0.25, no-drain 2.98,
+ * high-flare 1.66, twisted 2.16, default 2.98 — all B=0; short-wide ≈22.8 → B=2).
  *
  * Why FIXED, not relief-scaled: a square (u,t) cell maps to a √E/√G:1 3D sliver
- * (GAP 1, level-independent), so the bias makes a level-L leaf span Δu=1/2^(L+B),
- * 3D-near-square. The earlier version scaled B by the relief anisotropy
- * `median(√E/√G)`, but a full-20 short-wide B-sweep MEASURED that to be harmful:
- * the REAL band-limited surfaces never exceed maxSquareAspect≈67 (so never
- * sliver from surface anisotropy), and a larger B only adds CONSTRUCTION slivers
- * at the grading transitions (ArtDeco B=3 → 3639 ~101-aspect cells). A uniform
- * modest B={@link UBIAS_WIDE_B} is both necessary (FourierBloom/SpiralRidges
- * fail at B=0/B=1) and sufficient (every wide/flat non-feature style is
- * sliver-free) across the regime. See UBIAS_WIDE_B for the measured sweep.
+ * (GAP 1, level-independent); the bias makes a level-L leaf span Δu=1/2^(L+B),
+ * 3D-near-square. The earlier version scaled B by `median(√E/√G)`, but a full-20
+ * short-wide B-sweep MEASURED that harmful: the REAL band-limited surfaces never
+ * exceed maxSquareAspect≈67 (never sliver from surface anisotropy), and a larger
+ * B only adds CONSTRUCTION slivers at grading transitions (ArtDeco B=3 → 3639
+ * ~101-aspect cells). A uniform B={@link UBIAS_WIDE_B} is necessary
+ * (FourierBloom/SpiralRidges fail at B=0/1) and sufficient (every wide/flat
+ * non-feature style is sliver-free). See UBIAS_WIDE_B.
  *
  * Exported for unit testing (the gate threshold + fixed value).
  */
 export function computeUBias(sampler: SurfaceSampler): number {
-  const steps = metricStepsForSampler(sampler);
-  const baseRatios: number[] = [];
-  const N = 12;
-  for (let j = 1; j < N; j++) {
+  // Relief-free shape: mean radius over the z-span. ∂r/∂t relief averages/ranges
+  // away, so t-relief styles read their true wide/flatness (unlike 2π·r/√G).
+  let rSum = 0;
+  let n = 0;
+  let zMin = Infinity;
+  let zMax = -Infinity;
+  const N = 16;
+  for (let j = 0; j <= N; j++) {
     const t = j / N;
     for (let i = 0; i < N; i++) {
-      const u = i / N;
-      const p = sampler.position(u, t);
-      const { G } = firstFundamentalForm(sampler, u, t, steps.hu, steps.ht);
-      const sG = Math.sqrt(Math.max(G, 1e-12));
-      baseRatios.push((2 * Math.PI * Math.hypot(p[0], p[1])) / sG); // 2π·r / √G (shape, no relief)
+      const p = sampler.position(i / N, t);
+      rSum += Math.hypot(p[0], p[1]);
+      n++;
+      if (p[2] < zMin) zMin = p[2];
+      if (p[2] > zMax) zMax = p[2];
     }
   }
-  // GATE (unchanged ⇒ byte-identical default): tall/default shape ⇒ no bias.
-  if (median(baseRatios) <= UBIAS_AREF * Math.SQRT2) return 0;
+  const wideFlat = (2 * Math.PI * (rSum / Math.max(n, 1))) / Math.max(zMax - zMin, 1e-6);
+  // GATE: tall/default shape ⇒ no bias (default meshes stay byte-identical).
+  if (wideFlat <= UBIAS_AREF * Math.SQRT2) return 0;
   // Wide/flat pot ⇒ a single fixed modest bias (relief-scaling proven harmful).
   return UBIAS_WIDE_B;
 }
