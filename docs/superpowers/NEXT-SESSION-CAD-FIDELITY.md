@@ -133,7 +133,28 @@ STAGE 3/4 plan below).** Two experiments DISPROVED "insert crest edges → fix s
   9.1→6.4→8.8 (n1<1 CUSP-tip artifact, not bulk). **Serration IS curvature-resolution-limited:
   the 128² sizing grid + 256² sampler band-limit κ → the steep petal flanks under-refine.**
 
-**⚠️ STAGE 4 RESULT + METRIC PIVOT (2026-06-09, end of session) — READ FIRST.** I built + committed
+**★★ VISUAL GROUNDING — THE ANSWER (2026-06-09, commit `104d5eb`) — READ THIS FIRST. ★★**
+I rendered the actual export mesh (new tool: `__pfFidelity._debugOuterMesh` + `e2e/_serration_render.cjs`,
+flat-shade + wireframe PNGs). At `sf_strength=1` SuperformulaBlossom is an extreme swirled multi-layer
+petal ribbon. **The surface faces are SMOOTHLY tessellated (no broken staircase) but strongly
+ANISOTROPIC** — cells wide-in-u / narrow-in-t (the `maxAspect` 10.7→87.6 signal) because ∂r/∂u is large
+at the steep relief; **the petal CREST silhouettes are JAGGED = the user's "serration in ridges,"
+caused by the angular UNDER-RESOLUTION of those wide cells.** Crest insertion is MOOT (surface
+byte-identical with/without — VISUALLY confirmed). **THE SERRATION == THE GAP-1 ANISOTROPY, driven by
+RELIEF (∂r/∂u) not dims.** `maxAspect` (already in `diagnoseTopoQuality`) is the FAITHFUL gate; the
+STAGE-0 `crestRms` was chasing chord error (reference-artifact-dominated AND not the defect — a
+productive detour that disproved insertion + density, but not the gate). **Why the STAGE-4 analytic
+floor failed: it drove ISOTROPIC h (smaller-but-still-WIDE cells). The fix needs ANISOTROPIC
+u-refinement** (more u-cells at high-∂r/∂u crests → 3D-near-square → maxAspect↓ → crests resolve
+angularly). The committed analytic angular-curvature foundation (`SuperformulaCurvature.ts`, `0d471bd`)
+is the right SIGNAL to drive the GAP-1 DIRECTIONAL u-refine (`Gap1DirectionalRefine` / `directionalRefine`
+/ uBias — built, disabled for the short-wide cascade explosion). **NEXT = drive directional u-refine
+from the analytic angular curvature at high RELIEF (not just wide/flat dims); bound the both-axis 2:1
+cascade; GATE on maxAspect↓ + the VISUAL render (smooth crests) + topology + 20/20 byte-identical
+(relief-gated). This UNIFIES CAD-serration with the GAP-1 anisotropy thread.** Everything below
+(metric pivot, STAGE-4 levers, crest stages) is now SECONDARY context.
+
+**⚠️ STAGE 4 RESULT + METRIC PIVOT (2026-06-09) — secondary context.** I built + committed
 the analytic-κ foundation (commit `0d471bd`: `SuperformulaCurvature.ts` + `MetricSizingField`
 curvatureFloor/maxKappa opt-in + sfRf export, 12 TDD guards), wired it for SuperformulaBlossom, and
 it was **INEFFECTIVE** (crestRms 0.335→0.326 @ strength 1). Systematic debugging found the **ROOT
