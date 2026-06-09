@@ -40,15 +40,26 @@ byte-identical. Adversarially reviewed (20-agent workflow, 15/16 refuted); the o
 (GATE-B boundary test) was added. New gate harness `e2e/_rebaseline_matrix.cjs`. Full record:
 memory `project_cad_fidelity.md` (§"DONE — relief-gated GLOBAL uBias BANKED").
 
-**WHAT REMAINS (deeper CAD-grade, OPTIONAL — the staircase the user reported is FIXED):**
-SFB@1 `serr` is still 2.09 — but that residual is the **irreducible `n1<1` cusp tip**
-(`maxCrest 8.6mm`) **plus the STAGE-0 metric's own reference artifact** (the 256-bilinear
-reference smooths sharp cusps, so `crestRms` is reference-dominated there). To push
-`serrationScore<1`: (a) fix the STAGE-0 metric reference to an analytic/finer `R_true` FIRST
-(else you re-validate against a smoothed reference), then (b) re-evaluate born-crest insertion
-(watertight-proven; good for model-true edges / `featuresDropped`, MOOT for the staircase). The
-uBias fix already generalizes to ALL smooth styles (any `maxURatio>6` auto-squares), so the
-"generalize crest extraction to 7 styles" task is superseded for the serration aspect.
+**METRIC REFERENCE FIXED — the export is ESSENTIALLY CAD-GRADE (2026-06-09, commits `13b8cde`,
+`d585aec`).** The STAGE-0 `crestRms` was measured against the mesh's OWN 256-bilinear grid, which
+smooths the sharp `n1<1` cusps and INFLATED the number ~2.6×. Added a DECOUPLED reference grid
+(`__pfReferenceDenseRes`, independent of the mesh — the mesh ignores the sampler resolution) and a
+C1 bicubic reconstruction (`__pfReferenceBicubic`). MEASURED (SFB@1, mesh FIXED at 256, auto
+uBias=3): the old `serr 2.09 / crestRms 0.209` falls to **`crestRms ~0.08–0.13mm` (serr ~0.8–1.3)
+at refRes≥512 — roughly AT CAD tolerance** (`serr=1 ⇔ 0.1mm`). Bicubic ≈ bilinear within ~5%, so
+the reference *interpolation* is NOT the bottleneck — the 256-grid being too COARSE was. **So the
+high-strength export, with the uBias fix, is essentially CAD-grade; the "serration" was ~2× metric
+artifact + the irreducible `n1<1` cusp tip (`maxCrest ~6mm`), NOT mesh serration.** The user's
+reported staircase is FIXED.
+
+**WHAT REMAINS (optional polish, NOT blocking):** (a) root-cause the small second-order
+refRes-dependence (the metric's 2D-Newton FD step = `1/refRes` couples to the reference res) by
+clamping that step to a fixed floor, then DEFAULT the metric reference to a faithful res (512–1024)
+so the 2× inflation is retired by default. (b) born-crest insertion for model-true edges
+(watertight-proven; good for `featuresDropped`, MOOT for the staircase). The full analytic C∞ SFB
+sampler spec is extracted in memory if ever needed (likely not, given bicubic≈bilinear). The uBias
+fix already generalizes to ALL smooth styles (any `maxURatio>6` auto-squares), so the "generalize
+crest extraction to 7 styles" task is superseded for the serration aspect.
 
 *The sections below are retained for historical context (the detour that led here); read them
 as the investigation trail, not the current plan.*
