@@ -133,7 +133,25 @@ STAGE 3/4 plan below).** Two experiments DISPROVED "insert crest edges → fix s
   9.1→6.4→8.8 (n1<1 CUSP-tip artifact, not bulk). **Serration IS curvature-resolution-limited:
   the 128² sizing grid + 256² sampler band-limit κ → the steep petal flanks under-refine.**
 
-**STAGE 4 — IS THE REAL SERRATION FIX (was mislabelled "support"). LEVERS SCOPED + MEASURED:**
+**⚠️ STAGE 4 RESULT + METRIC PIVOT (2026-06-09, end of session) — READ FIRST.** I built + committed
+the analytic-κ foundation (commit `0d471bd`: `SuperformulaCurvature.ts` + `MetricSizingField`
+curvatureFloor/maxKappa opt-in + sfRf export, 12 TDD guards), wired it for SuperformulaBlossom, and
+it was **INEFFECTIVE** (crestRms 0.335→0.326 @ strength 1). Systematic debugging found the **ROOT
+CAUSE: the STAGE-0 metric's 256-bilinear REFERENCE smooths the sharp n1<1 cusps (~0.5mm error at a
+κ~2 crest — ≥ crestRms itself), so `crestRms` is a REFERENCE artifact, not mesh serration.** Proof
+by elimination: minEdge 0.05+maxLevel 12 (+30% tris), crest insertion, and the analytic floor ALL
+leave crestRms unchanged; the ONLY knob that ever moved it (denseRes) ALSO moves the reference
+(`getLastConformingOuterGrid`). The mesh vertices are GPU-evaluated on the TRUE surface (more
+faithful than the reference) → no mesh fix can reduce the reference's own error. The density test's
+0.335→0.143 was the reference getting finer, NOT the mesh. **The floor wiring was REVERTED (tree
+clean; foundation 0d471bd kept). DO NOT resume mesher fixes until the metric reference is faithful —
+the current metric mis-validates everything at sharp cusps.** NEXT = replace the bilinear reference
+with ANALYTIC R_true (sfRf, the finalizer's M3 I wrongly overrode) or an independent finer grid, then
+RE-MEASURE whether the mesh is genuinely serrated or already CAD-grade (then the user's visual
+"serration" may be the maxAspect=87 ANISOTROPY (GAP-1) or the genuinely-sharp cusp — VISUALLY inspect
+a high-strength export to ground it). The levers below are SUPERSEDED by this pivot:
+
+**STAGE 4 — (superseded — see the metric pivot above). LEVERS SCOPED + MEASURED:**
 - **`__pfConformingDenseRes` (sampler/FD curvature accuracy) IS THE LEVER** — 256→512→1024 →
   crestBandRms 0.335→0.255→0.143mm (serrationScore 3.35→1.43). Monotone. **denseRes >1024 needed
   for crestBandRms<0.1 at FULL strength** (a perf/quality tradeoff).
