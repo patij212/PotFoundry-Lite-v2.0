@@ -46,6 +46,7 @@ import { buildStyleParamPayload } from '../../utils/styleParams';
 import {
     topologyMetric,
     topologyDiagnostics,
+    triangleQuality3D,
     triangleQualityDiagnostics,
 } from '../../fidelity/metrics';
 import { WELD_TOL_MM } from '../../fidelity/types';
@@ -271,6 +272,62 @@ export function getLastConformingOuterWallMask(): Uint8Array | null {
 
 export function getLastPeakDebugData(): PeakDebugData | null {
     return LAST_PEAK_DEBUG_DATA;
+}
+
+/**
+ * O(N) manifold / orientation / sliver summary for the conforming (watertight-by-
+ * construction) export path. The conforming mesh ships without any repair/weld pass
+ * — this REPORTS its already-clean topology so the export-result `validationSummary`
+ * carries the same shape the legacy validation branch produces, and the UI integrity
+ * panels + the `useParametricExport` invalid-mesh guard work for conforming exports.
+ *
+ * Measurement only (no mutation): boundary/non-manifold via a position-welded
+ * directed-edge map (`topologyMetric`), orientation mismatches via per-edge winding,
+ * and sliverCount via 3D-triangle aspect (`triangleQuality3D`). The four headline
+ * counts are surfaced both as the summary's pass/fail booleans AND as human-readable
+ * `warnings` (so the hook's guard and the UI panel both show what failed).
+ */
+export function summarizeConformingValidation(
+    pos3D: Float32Array,
+    indices: Uint32Array,
+): ValidationSummary {
+    const mesh = { vertices: pos3D, indices };
+    const topo = topologyMetric(mesh, WELD_TOL_MM);
+    const quality = triangleQuality3D(mesh);
+
+    const manifoldOk = topo.boundaryEdges === 0 && topo.nonManifoldEdges === 0;
+    const normalsOk = topo.orientationMismatches === 0;
+    // The conforming path carries no UV-distortion / non-degenerate-quality pass;
+    // a sliver here is the only triangle-quality defect that can survive
+    // by-construction, and a degenerate triangle is counted as a sliver.
+    const triangleQualityOk = quality.sliverCount === 0;
+    const degeneratesOk = quality.sliverCount === 0;
+    const valid = manifoldOk && normalsOk && triangleQualityOk;
+
+    const warnings: string[] = [];
+    if (topo.boundaryEdges > 0) {
+        warnings.push(`${topo.boundaryEdges} boundary edge(s) (naked / non-watertight)`);
+    }
+    if (topo.nonManifoldEdges > 0) {
+        warnings.push(`${topo.nonManifoldEdges} non-manifold edge(s)`);
+    }
+    if (topo.orientationMismatches > 0) {
+        warnings.push(`${topo.orientationMismatches} orientation mismatch(es) (inconsistent winding)`);
+    }
+    if (quality.sliverCount > 0) {
+        warnings.push(`${quality.sliverCount} sliver triangle(s) (aspect > 100 or degenerate)`);
+    }
+
+    return {
+        valid,
+        manifoldOk,
+        degeneratesOk,
+        normalsOk,
+        triangleQualityOk,
+        warnings,
+        minAngleDeg: quality.minAngleDeg,
+        maxAspectRatio: quality.maxAspect3D,
+    };
 }
 
 // ============================================================================
@@ -2420,9 +2477,13 @@ export class ParametricExportComputer {
                     console.warn(`[CONFORMING-FULL] feature accounting failed: ${String(err)}`);
                 }
 
-                // Validation is skipped here by design: the whole mesh is
-                // watertight-by-construction (shared rings, no repair), and the
-                // e2e gate measures the real mesh directly via diagnoseTopoQuality.
+                // Validation here is REPORTING, not gating: the mesh is watertight-
+                // by-construction (shared rings, no repair). An O(N) manifold/
+                // orientation/sliver summary on the assembled indices + GPU pos3D
+                // lets the UI integrity panels and the useParametricExport invalid-
+                // mesh guard work for conforming exports, matching the legacy branch's
+                // validationSummary shape. No repair/weld pass — measurement only.
+                const validationSummary = summarizeConformingValidation(pos3D, asm.indices);
                 console.warn(
                     `[CONFORMING-FULL] ${params.styleId} ` +
                     `tris=${triCount} budget=${conformingBudget} verts=${vCount} nRing=${nRing} ` +
@@ -2430,6 +2491,10 @@ export class ParametricExportComputer {
                     `tWarp=${creaseTChoice.warp.isIdentity ? 'id' : `L${creaseTChoice.level}`} ` +
                     `hWarp=${helixChoice.warp.isIdentity ? 'id' : `L${helixChoice.level}`} ` +
                     `surfaces=${asm.surfaceRanges.length} buildMs=${buildMs.toFixed(0)} ` +
+                    `valid=${validationSummary.valid} ` +
+                    `manifold=${validationSummary.manifoldOk} ` +
+                    `orient=${validationSummary.normalsOk} ` +
+                    `sliverOk=${validationSummary.triangleQualityOk} ` +
                     `featExp=${LAST_CONFORMING_FEATURE_RESULT?.expected ?? 0} ` +
                     `featPres=${LAST_CONFORMING_FEATURE_RESULT?.present ?? 0} ` +
                     `featDrop=${LAST_CONFORMING_FEATURE_RESULT?.dropped ?? 0}`,
@@ -2451,6 +2516,7 @@ export class ParametricExportComputer {
                         tCurvatureRange: [0, 0],
                         uCurvatureRange: [0, 0],
                     },
+                    validationSummary,
                 };
             }
 
