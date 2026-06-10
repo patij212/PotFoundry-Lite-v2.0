@@ -22,6 +22,7 @@ import {
   computeFidelityMetrics,
   crestBandTriangleQuality,
   extractOuterWallSubmesh,
+  meshHash,
   topologyDiagnostics,
   triangleQualityDiagnostics,
   triangleQualityDistribution,
@@ -174,6 +175,15 @@ export interface PfFidelityApi {
   diagnoseCrestQuality(opts?: FidelityCrestQualityDiagnosticOptions): Promise<FidelityCrestQualityDiagnostics | null>;
   /** TEMP debug (revert): the OUTER-wall sub-mesh for off-DOM wireframe rendering. */
   _debugOuterMesh(targetTriangles?: number): Promise<{ vertices: Float32Array; indices: Uint32Array } | null>;
+  /**
+   * STAGE 0 — the byte-identity tripwire. Generates the mesh once and returns its
+   * FNV-1a dual-lane fingerprint (see metrics.meshHash). Same-machine/driver
+   * comparisons only — GPU-evaluated floats are not portable across hardware.
+   */
+  _debugMeshHash(targetTriangles?: number): Promise<{
+    styleId: string; vertexCount: number; triangleCount: number;
+    vertexHash: string; indexHash: string;
+  } | null>;
 }
 
 export interface FidelityCrestQualityDiagnosticOptions {
@@ -486,6 +496,19 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       const mask = getLastConformingOuterWallMask();
       if (!mask) return { vertices: mesh.vertices, indices: mesh.indices };
       return extractOuterWallSubmesh(mesh.vertices, mesh.indices, mask);
+    },
+    async _debugMeshHash(targetTriangles?: number) {
+      const styleId = currentStyleId();
+      const mesh = await deps.generateMesh(targetTriangles);
+      if (!mesh) return null;
+      const h = meshHash(mesh.vertices, mesh.indices);
+      return {
+        styleId,
+        vertexCount: Math.floor(mesh.vertices.length / 3),
+        triangleCount: Math.floor(mesh.indices.length / 3),
+        vertexHash: h.vertexHash,
+        indexHash: h.indexHash,
+      };
     },
     async diagnoseQuality(opts: FidelityQualityDiagnosticOptions = {}): Promise<FidelityQualityDiagnostics> {
       const styleId = currentStyleId();

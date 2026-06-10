@@ -1784,3 +1784,34 @@ export function crestBandTriangleQuality(
     nonBandPctBelow15: nonBandAll > 0 ? round1((nonBandBelow / nonBandAll) * 100) : 0,
   };
 }
+
+/** One FNV-1a 32-bit lane over raw bytes (seeded so two lanes are independent). */
+function fnv1a32(bytes: Uint8Array, seed: number): number {
+  let h = seed >>> 0;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i];
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+export interface MeshHashResult {
+  vertexHash: string;
+  indexHash: string;
+}
+
+/**
+ * Byte-exact mesh fingerprint (two independent FNV-1a lanes per buffer → 64-bit
+ * hex). Valid for SAME-machine/driver comparisons only — GPU-evaluated floats
+ * are not portable across hardware. This is the Stage-0 byte-identity tripwire.
+ */
+export function meshHash(vertices: Float32Array, indices: Uint32Array): MeshHashResult {
+  const vb = new Uint8Array(vertices.buffer, vertices.byteOffset, vertices.byteLength);
+  const ib = new Uint8Array(indices.buffer, indices.byteOffset, indices.byteLength);
+  const hex = (a: number, b: number): string =>
+    a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+  return {
+    vertexHash: hex(fnv1a32(vb, 0x811c9dc5), fnv1a32(vb, 0xdeadbeef)),
+    indexHash: hex(fnv1a32(ib, 0x811c9dc5), fnv1a32(ib, 0xdeadbeef)),
+  };
+}
