@@ -66,6 +66,7 @@ import {
     decimateConforming,
     type FeatureUTVertex,
     type FeatureResolutionResult,
+    type HelixWarp,
 } from './parametric/conforming';
 import type { CdtStats } from './parametric/conforming/ConstrainedCellTriangulator';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
@@ -263,6 +264,19 @@ let LAST_CONFORMING_CDT_STATS: { outer?: CdtStats; inner?: CdtStats } | null = n
  */
 let LAST_CONFORMING_TRIANGLE_SOURCE: Uint8Array | null = null;
 
+/**
+ * Most recent conforming-branch HELIX warp (Stage-0 instrument): the helical
+ * u-shear the assembled vertices were ACTUALLY built with — the shear is applied
+ * to (u,t) AFTER triangulation, so the as-emitted cells live in the COMPOSED map
+ * (u,t) ↦ P(applyHelixWarp(warp,u,t), t), not in P itself. The fidelity hook
+ * composes it with the stashed outer sampler grid so the cell-ceiling instrument
+ * (conforming/FShearDiagnostics.classifyCellCeiling) measures the metric of the
+ * real emitted cells (the SpiralRidges helix-shear field). Identity when no
+ * helix shear was applied; null off the conforming path. Reference only — the
+ * exported mesh is unchanged.
+ */
+let LAST_CONFORMING_HELIX_WARP: HelixWarp | null = null;
+
 export function getLastChainDebugData(): ChainDebugData | null {
     return LAST_CHAIN_DEBUG_DATA;
 }
@@ -303,6 +317,14 @@ export function getLastConformingCdtStats(): { outer?: CdtStats; inner?: CdtStat
  *  Dev diagnostic only (Stage-0 sliver-attribution instrument). */
 export function getLastConformingTriangleSource(): Uint8Array | null {
     return LAST_CONFORMING_TRIANGLE_SOURCE;
+}
+
+/** Most recent conforming-branch helical u-warp the assembled vertices were
+ *  built with (identity when no helix shear was applied), or null off the
+ *  conforming path. Dev diagnostic only (Stage-0 warp-composed cell-ceiling
+ *  instrument — see conforming/FShearDiagnostics.classifyCellCeiling). */
+export function getLastConformingHelixWarp(): HelixWarp | null {
+    return LAST_CONFORMING_HELIX_WARP;
 }
 
 export function getLastPeakDebugData(): PeakDebugData | null {
@@ -1878,6 +1900,9 @@ export class ParametricExportComputer {
         // Same lifecycle for the per-triangle provenance channel (Stage-0): a
         // stale channel must never be attributed to this run's mesh.
         LAST_CONFORMING_TRIANGLE_SOURCE = null;
+        // Same lifecycle for the helix-warp stash (Stage-0): a stale warp must
+        // never be composed with this run's sampler grid.
+        LAST_CONFORMING_HELIX_WARP = null;
 
         const requestedProfile: QualityProfileName = params.qualityProfile ?? 'standard';
         const effectiveProfileName = profileForAttempt(requestedProfile, 0);
@@ -2549,6 +2574,18 @@ export class ParametricExportComputer {
                 // channel for the fidelity hook's diagnoseSliverAttribution.
                 // Read-only; the mesh is unchanged.
                 LAST_CONFORMING_TRIANGLE_SOURCE = asm.triangleSource ?? null;
+
+                // Stage-0 instrument: stash the helix warp the vertices were
+                // ACTUALLY built with, for the fidelity hook's diagnoseCellCeiling
+                // (the shear is applied to (u,t) AFTER triangulation, so the
+                // emitted cells live in the warp-COMPOSED map). Mirrors the
+                // application gate above: the helix shear is skipped when a
+                // vertical-crease u-warp is active, so stash identity then —
+                // never a warp the mesh does not carry. Read-only; the mesh is
+                // unchanged.
+                LAST_CONFORMING_HELIX_WARP = creaseChoice.warp.isIdentity
+                    ? helixChoice.warp
+                    : { isIdentity: true, base: { isIdentity: true, anchors: [] }, shearRate: 0, offset: 0 };
 
                 // ── Feature-completeness accounting (meaningful featuresDropped) ──
                 // Measure how many of the style's closed-form sharp feature lines

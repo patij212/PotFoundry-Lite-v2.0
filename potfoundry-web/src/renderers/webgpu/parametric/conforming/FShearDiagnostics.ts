@@ -247,3 +247,64 @@ export function classifySurfaceShear(
     maxTRatio,
   };
 }
+
+export interface CellCeilingSummary {
+  latticePoints: number;
+  /** Worst (smallest) parallelogram corner angle over the lattice — the analytic
+   *  min-angle CEILING for any triangulation of an axis-aligned cell there. */
+  minCornerDeg: number;
+  pctCornerBelow15: number;
+  pctCornerBelow10: number;
+  maxShearCos: number;
+}
+
+/**
+ * Per-lattice-point corner angle of the metric parallelogram spanned by the
+ * (du,0)/(0,dt) axes — F-inclusive (cosθ = |F|/√(EG)) — for the WARP-COMPOSED
+ * map when `warp` is given (e.g. the SpiralRidges helix: (u,t) ↦ P(warp(u,t), t)).
+ * Unlike squareAspect (aspect-based), this is the analytic min-angle CEILING:
+ * no triangulation of an axis-aligned cell can beat its parallelogram's acute
+ * corner, regardless of interior Steiner points or diagonal choice.
+ */
+export function classifyCellCeiling(
+  sampler: SurfaceSampler,
+  warp: ((u: number, t: number) => number) | null,
+  opts: { resU?: number; resT?: number; tMargin?: number } = {},
+): CellCeilingSummary {
+  const resU = opts.resU ?? 192;
+  const resT = opts.resT ?? 192;
+  const tMargin = opts.tMargin ?? 0.02;
+  const composed: SurfaceSampler = warp
+    ? { position: (u: number, t: number) => sampler.position(warp(u, t), t) }
+    : sampler;
+  const steps = metricStepsForSampler(sampler);
+  let latticePoints = 0;
+  let minCorner = 90;
+  let below15 = 0;
+  let below10 = 0;
+  let maxCos = 0;
+  for (let it = 0; it < resT; it++) {
+    const t = it / (resT - 1);
+    if (t < tMargin || t > 1 - tMargin) continue;
+    for (let iu = 0; iu < resU; iu++) {
+      const u = iu / resU;
+      const { E, F, G } = firstFundamentalForm(composed, u, t, steps.hu, steps.ht);
+      if (!(E > 0) || !(G > 0)) continue;
+      latticePoints++;
+      const cosAlpha = Math.min(1, Math.abs(F) / Math.max(Math.sqrt(E * G), 1e-30));
+      const corner = (Math.acos(cosAlpha) * 180) / Math.PI;
+      if (corner < minCorner) minCorner = corner;
+      if (corner < 15) below15++;
+      if (corner < 10) below10++;
+      if (cosAlpha > maxCos) maxCos = cosAlpha;
+    }
+  }
+  const pct = (n: number): number => (latticePoints ? Math.round((n / latticePoints) * 1000) / 10 : 0);
+  return {
+    latticePoints,
+    minCornerDeg: Math.round(minCorner * 100) / 100,
+    pctCornerBelow15: pct(below15),
+    pctCornerBelow10: pct(below10),
+    maxShearCos: Math.round(maxCos * 1000) / 1000,
+  };
+}

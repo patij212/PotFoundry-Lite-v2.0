@@ -11,16 +11,22 @@ import {
   getLastChainDebugData,
   getLastConformingCdtStats,
   getLastConformingFeatureResult,
+  getLastConformingHelixWarp,
   getLastConformingOuterGrid,
   getLastConformingOuterReferenceGrid,
   getLastConformingOuterWallMask,
   getLastConformingTriangleSource,
 } from '../renderers/webgpu/ParametricExportComputer';
-import type { FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
+import { applyHelixWarp, type FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
 import type { CdtCellIncident } from '../renderers/webgpu/parametric/conforming/ConstrainedCellTriangulator';
 import { GpuSurfaceSampler } from '../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import { BicubicSurfaceSampler } from '../renderers/webgpu/parametric/conforming/BicubicSurfaceSampler';
-import { classifySurfaceShear, type ShearSummary } from '../renderers/webgpu/parametric/conforming/FShearDiagnostics';
+import {
+  classifyCellCeiling,
+  classifySurfaceShear,
+  type CellCeilingSummary,
+  type ShearSummary,
+} from '../renderers/webgpu/parametric/conforming/FShearDiagnostics';
 import {
   computeFidelityMetrics,
   crestBandTriangleQuality,
@@ -149,6 +155,18 @@ export interface PfFidelityApi {
    * conforming sampler stash). Drives the GAP-1 fix-direction decision.
    */
   diagnoseFShear(opts?: FidelityFShearDiagnosticOptions): Promise<FidelityFShearDiagnostics | null>;
+  /**
+   * STAGE 0 — the F-inclusive, WARP-COMPOSED per-cell corner-angle CEILING map.
+   * A quadtree cell sheared (in the surface metric) to a parallelogram with
+   * acute corner θ admits NO triangulation with min angle > θ — interior Steiner
+   * points and diagonal choice share this analytic cap (cosθ = |F|/√(EG)). The
+   * relevant metric is the one the EMITTED cells live in: the helix shear
+   * (SpiralRidges) is applied to (u,t) AFTER triangulation, so the stashed warp
+   * is composed with the outer sampler, (u,t) ↦ P(applyHelixWarp(warp,u,t), t).
+   * Decides the spec's Stage 5 (no-op / lattice alignment / certified floor).
+   * Null on the legacy/parametric path (no conforming sampler stash).
+   */
+  diagnoseCellCeiling(opts?: FidelityCellCeilingDiagnosticOptions): Promise<FidelityCellCeilingDiagnostics | null>;
   /**
    * Faithful CAD-fidelity: the WALL-restricted radial deviation of the export
    * mesh from the dense true surface (max/p99/rms mm). Unlike `measure`'s mixed
@@ -299,6 +317,19 @@ export interface FidelityFShearDiagnosticOptions {
 
 export interface FidelityFShearDiagnostics extends ShearSummary {
   styleId: string;
+}
+
+export interface FidelityCellCeilingDiagnosticOptions {
+  targetTriangles?: number;
+  resU?: number;
+  resT?: number;
+}
+
+export interface FidelityCellCeilingDiagnostics extends CellCeilingSummary {
+  styleId: string;
+  /** True when a non-identity helix warp was composed with the sampler (the
+   *  ceiling then describes the as-emitted, sheared cells — SpiralRidges). */
+  warped: boolean;
 }
 
 export interface FidelityFeatureDiagnosticOptions {
@@ -485,6 +516,25 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       const sampler = new GpuSurfaceSampler(grid.positions, grid.resU, grid.resT);
       const summary = classifySurfaceShear(sampler, { resU: opts.resU, resT: opts.resT });
       return { styleId, ...summary };
+    },
+    async diagnoseCellCeiling(opts: FidelityCellCeilingDiagnosticOptions = {}): Promise<FidelityCellCeilingDiagnostics | null> {
+      const styleId = currentStyleId();
+      // Generating the mesh repopulates the stashed outer sampler grid AND the
+      // helix-warp stash (conforming branch only). Discard the mesh; measure the
+      // analytic corner-angle ceiling on the WARP-COMPOSED map — the metric the
+      // as-emitted cells actually live in (the shear is applied after
+      // triangulation, so the bare sampler alone would understate it).
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const grid = getLastConformingOuterGrid();
+      if (!grid) return null;
+      const sampler = new GpuSurfaceSampler(grid.positions, grid.resU, grid.resT);
+      const helix = getLastConformingHelixWarp();
+      const warp = helix && !helix.isIdentity
+        ? (u: number, t: number) => applyHelixWarp(helix, u, t)
+        : null;
+      const summary = classifyCellCeiling(sampler, warp, { resU: opts.resU, resT: opts.resT });
+      return { styleId, warped: warp !== null, ...summary };
     },
     async diagnoseWallFidelity(opts: FidelityWallDiagnosticOptions = {}): Promise<FidelityWallDiagnostics> {
       const styleId = currentStyleId();

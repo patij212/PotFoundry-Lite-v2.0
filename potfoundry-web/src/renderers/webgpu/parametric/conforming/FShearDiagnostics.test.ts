@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import type { SurfaceSampler, Vec3 } from './SurfaceSampler';
 import { SyntheticCylinderSampler } from './SurfaceSampler';
-import { classifySurfaceShear } from './FShearDiagnostics';
+import { classifyCellCeiling, classifySurfaceShear } from './FShearDiagnostics';
 
 /**
  * Twisted cylinder: `θ = 2π(u + twist·t)`, `r = R0 + amp·cos(2π k u)`, `z = H·t`.
@@ -85,5 +85,27 @@ describe('FShearDiagnostics — sliver-mechanism classifier', () => {
     const s = classifySurfaceShear(new TwistedCylinderSampler(145, 40, 2.5), { resU: 64, resT: 64 });
     expect(s.maxBestAxisAspect).toBeLessThan(100);
     expect(s.irreducibleByAxisFrac).toBe(0);
+  });
+});
+
+describe('classifyCellCeiling — analytic min-angle ceiling under a domain shear', () => {
+  it('reads ~90° corners on an unsheared cylinder', () => {
+    const s = new SyntheticCylinderSampler(50, 120);
+    const r = classifyCellCeiling(s, null);
+    expect(r.minCornerDeg).toBeGreaterThan(89);
+    expect(r.pctCornerBelow15).toBe(0);
+  });
+
+  it('matches the analytic corner angle under a pure shear warp', () => {
+    const R = 50;
+    const H = 120;
+    const shear = 2; // u' = u − shear·t
+    const s = new SyntheticCylinderSampler(R, H);
+    const r = classifyCellCeiling(s, (u, t) => u - shear * t);
+    // cylinder: E=(2πR)², G=H²; composed F = −shear·E ⇒
+    // cosθ = shear·a / √(H² + shear²·a²), a=2πR
+    const a = 2 * Math.PI * R;
+    const expected = (Math.acos((shear * a) / Math.hypot(H, shear * a)) * 180) / Math.PI;
+    expect(Math.abs(r.minCornerDeg - expected)).toBeLessThan(0.5);
   });
 });

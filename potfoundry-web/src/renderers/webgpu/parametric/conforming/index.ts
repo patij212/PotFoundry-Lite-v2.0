@@ -66,5 +66,7 @@ export type { TWarp, TWarpAnchor, CreaseTGridChoice } from './CreaseTWarp';
 export { buildCreaseTWarp, applyTWarp, chooseCreaseTGrid } from './CreaseTWarp';
 export type { HelixWarp, HelixGridChoice } from './CreaseHelixWarp';
 export { chooseHelixGrid, applyHelixWarp } from './CreaseHelixWarp';
+export type { CellCeilingSummary } from './FShearDiagnostics';
+export { classifyCellCeiling } from './FShearDiagnostics';
 export type { DecimateConformingOptions } from './decimateConforming';
 export { decimateConforming, isConformingDecimationAvailable } from './decimateConforming';
