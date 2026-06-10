@@ -241,9 +241,14 @@ export class SceneManager {
                 // Blocks main thread briefly but is far more reliable.
                 pipeline = device.createRenderPipeline(pipelineDescriptor);
             } else {
-                // Desktop: use async path with timeout safety net
-                /** Pipeline compilation timeout (ms) — prevents infinite GPU hangs */
-                const PIPELINE_TIMEOUT_MS = 8000;
+                // Desktop: use async path with timeout safety net.
+                // Bounds a genuine infinite Dawn hang, but must be GENEROUS: complex
+                // style shaders (e.g. HarmonicRipple) legitimately take >8s to compile
+                // on a COLD cache, and an 8s budget rejected them mid-compile → blank
+                // preview. 30s lets the slow-but-valid compiles finish (cached after)
+                // while still capping a true hang. (Export compute is unaffected.)
+                /** Pipeline compilation timeout (ms) — caps infinite GPU hangs. */
+                const PIPELINE_TIMEOUT_MS = 30000;
                 const pipelinePromise = device.createRenderPipelineAsync(pipelineDescriptor);
                 const timeoutPromise = new Promise<never>((_, reject) => {
                     setTimeout(() => reject(new Error(`Pipeline compilation timed out after ${PIPELINE_TIMEOUT_MS}ms (possible Dawn compiler hang)`)), PIPELINE_TIMEOUT_MS);

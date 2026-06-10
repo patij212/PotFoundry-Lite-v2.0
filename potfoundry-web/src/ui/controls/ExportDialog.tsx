@@ -174,7 +174,11 @@ const DEFAULT_FLAGS: Partial<PipelineFeatureFlags> = {
     edgeCollapseEnabled: false,
     outerWallCorridorPlanning: false,
     outerWallCorridorDiagnostics: false,
-    conformingMesher: false,
+    // Default ON: the conforming mesher is the watertight-by-construction,
+    // high-fidelity export path (clean-CAD triangle quality, features preserved,
+    // facet-free below printer resolution). It is the recommended path for slicing
+    // (Cura/PrusaSlicer). Toggle off in the Pipeline tab to compare the legacy path.
+    conformingMesher: true,
 };
 
 // ============================================================================
@@ -883,10 +887,14 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
     showChainOverlay, showPeakOverlay, onChainOverlayChange, onPeakOverlayChange,
 }) => {
     const [activeTab, setActiveTab] = useState<TabId>('export');
-    const [qualityProfile, setQualityProfile] = useState<QualityProfileName>('standard');
-    const [format, setFormat] = useState<ExportFormat>('stl');
-    const [budgetMB, setBudgetMB] = useState(100);
-    const [tolerances, setTolerances] = useState<ExportTolerances>({ ...PROFILE_DEFINITIONS.standard.tolerances });
+    // Default to HIGH quality + 3MF: the conforming export's fidelity follows the
+    // quality profile (high = 0.05mm chord → facet-free below printer resolution),
+    // and 3MF compresses the larger high-fidelity meshes ~6x vs STL (Cura reads it
+    // natively, with mm units). Pick 'ultra' for resin; 'standard'/'draft' for speed.
+    const [qualityProfile, setQualityProfile] = useState<QualityProfileName>('high');
+    const [format, setFormat] = useState<ExportFormat>('3mf');
+    const [budgetMB, setBudgetMB] = useState<number>(QUALITY_PROFILES.high.mb);
+    const [tolerances, setTolerances] = useState<ExportTolerances>({ ...PROFILE_DEFINITIONS.high.tolerances });
     const [pipeline, setPipeline] = useState<PipelineConfig>(DEFAULT_PIPELINE_CONFIG);
     const [flags, setFlags] = useState<Partial<PipelineFeatureFlags>>(DEFAULT_FLAGS);
     const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
