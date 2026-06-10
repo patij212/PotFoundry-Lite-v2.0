@@ -62,6 +62,7 @@ import {
     applyTWarp,
     chooseHelixGrid,
     applyHelixWarp,
+    decimateConforming,
     type FeatureUTVertex,
     type FeatureResolutionResult,
 } from './parametric/conforming';
@@ -178,6 +179,7 @@ import type { ValidationSummary, RefinementSummary, TDirectionFeature } from './
 import { solveRidgesBatch, type BatchEntry as RidgeBatchEntry } from './parametric/AnalyticRidgeSolver';
 import { gpuNewtonRidge, type GpuRidgeSeed } from './parametric/GpuRidgeSolver';
 import { baseRadius } from '../../geometry/profile';
+import type { MeshData } from '../../geometry/types';
 void solveRidgesBatch; void baseRadius; // legacy CPU path imports — kept for type re-export and reference
 type _LegacyRidgeBatchEntry = RidgeBatchEntry;
 void (null as unknown as _LegacyRidgeBatchEntry);
@@ -2477,16 +2479,40 @@ export class ParametricExportComputer {
                     console.warn(`[CONFORMING-FULL] feature accounting failed: ${String(err)}`);
                 }
 
+                // ── HARD triangle-budget ceiling ─────────────────────────────────
+                // The conforming sizing field treats `conformingBudget` as a SOFT
+                // guide (it never coarsens below the sag-required mesh), so at
+                // extreme dimensions the assembled mesh can blow well past it. Turn
+                // it into a HARD ceiling: when triCount exceeds the budget, run a
+                // border-locking meshoptimizer simplification (lazy WASM, degrades
+                // to a no-op if unavailable) to drop the count to ≤ budget while
+                // keeping the surface watertight/oriented. At DEFAULT dims triCount
+                // ≤ budget, so this is a no-op and the output stays byte-identical.
+                let conformingMesh: MeshData = {
+                    vertices: pos3D,
+                    indices: asm.indices,
+                    triangleCount: triCount,
+                    vertexCount: vCount,
+                };
+                if (triCount > conformingBudget) {
+                    conformingMesh = await decimateConforming(conformingMesh, {
+                        target: conformingBudget,
+                    });
+                }
+
                 // Validation here is REPORTING, not gating: the mesh is watertight-
                 // by-construction (shared rings, no repair). An O(N) manifold/
-                // orientation/sliver summary on the assembled indices + GPU pos3D
-                // lets the UI integrity panels and the useParametricExport invalid-
-                // mesh guard work for conforming exports, matching the legacy branch's
+                // orientation/sliver summary on the (possibly decimated) mesh lets
+                // the UI integrity panels and the useParametricExport invalid-mesh
+                // guard work for conforming exports, matching the legacy branch's
                 // validationSummary shape. No repair/weld pass — measurement only.
-                const validationSummary = summarizeConformingValidation(pos3D, asm.indices);
+                const validationSummary = summarizeConformingValidation(
+                    conformingMesh.vertices, conformingMesh.indices,
+                );
                 console.warn(
                     `[CONFORMING-FULL] ${params.styleId} ` +
-                    `tris=${triCount} budget=${conformingBudget} verts=${vCount} nRing=${nRing} ` +
+                    `tris=${conformingMesh.triangleCount} (built=${triCount}) ` +
+                    `budget=${conformingBudget} verts=${conformingMesh.vertexCount} nRing=${nRing} ` +
                     `uWarp=${creaseChoice.warp.isIdentity ? 'id' : `L${creaseChoice.level}`} ` +
                     `tWarp=${creaseTChoice.warp.isIdentity ? 'id' : `L${creaseTChoice.level}`} ` +
                     `hWarp=${helixChoice.warp.isIdentity ? 'id' : `L${helixChoice.level}`} ` +
@@ -2502,12 +2528,7 @@ export class ParametricExportComputer {
 
                 // Valid result; the finally block runs the buffer cleanup.
                 return {
-                    mesh: {
-                        vertices: pos3D,
-                        indices: asm.indices,
-                        triangleCount: triCount,
-                        vertexCount: vCount,
-                    },
+                    mesh: conformingMesh,
                     computeTimeMs: buildMs,
                     gridDimensions: { nu: nRing, nt: nRing },
                     adaptiveStats: {
