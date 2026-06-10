@@ -107,10 +107,23 @@ export const StatusFooter: React.FC = () => {
   const handleDownload = useCallback(async () => {
     if (progress.status === 'generating') return;
 
+    // Build 3MF colors from the appearance store (mirrors the CPU path in
+    // useExport.ts) so 3MF exports embed the current color scheme.
+    const exportColors = exportFormat === '3mf'
+      ? (() => {
+          const appearance = useAppStore.getState().appearance;
+          return {
+            primaryColor: appearance.primaryColor,
+            midColor: appearance.midColor,
+            secondaryColor: appearance.secondaryColor,
+          };
+        })()
+      : undefined;
+
     if (parametricExport.isAvailable) {
-      await parametricExport.exportSTL();
+      await parametricExport.exportSTL(undefined, undefined, { format: exportFormat, colors: exportColors });
     } else if (gpuExport.isGPUAvailable) {
-      await gpuExport.exportSTL();
+      await gpuExport.exportSTL(undefined, { format: exportFormat, colors: exportColors });
     } else {
       await cpuExport.exportSTL(undefined, exportFormat);
     }

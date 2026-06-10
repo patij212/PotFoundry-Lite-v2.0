@@ -12,12 +12,14 @@ import { useCallback, useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../state';
 import {
     downloadSTL,
+    downloadMesh,
     calculateMeshVolume,
     calculateMeshSurfaceArea,
     estimateSTLSize,
     formatFileSize,
     StyleId,
     MeshData,
+    type ExportFormat,
 } from '../geometry';
 import {
     ParametricExportComputer,
@@ -84,11 +86,25 @@ export interface ParametricExportOverrides {
     returnInvalidMesh?: boolean;
 }
 
+/**
+ * Format-selection options for exportSTL. When `format` is omitted (or 'stl'),
+ * the legacy binary-STL path is preserved (no regression). A non-stl `format`
+ * routes through downloadMesh so 3MF/OBJ produce the correct file + extension.
+ */
+export interface ExportRouteOptions {
+    format?: ExportFormat;
+    colors?: {
+        primaryColor: string;
+        midColor: string;
+        secondaryColor: string;
+    };
+}
+
 export interface UseParametricExportResult {
     progress: ParametricExportProgress;
     stats: ParametricExportStats | null;
     isAvailable: boolean;
-    exportSTL: (filename?: string, targetTriangles?: number) => Promise<void>;
+    exportSTL: (filename?: string, targetTriangles?: number, options?: ExportRouteOptions) => Promise<void>;
     generateMesh: (targetTriangles?: number, overrides?: ParametricExportOverrides) => Promise<MeshData | null>;
     reset: () => void;
     /** v15.0: Toggle chain overlay (magenta lines) on/off */
@@ -451,7 +467,8 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
 
     const exportSTL = useCallback(async (
         filename: string = 'pot.stl',
-        targetTriangles?: number
+        targetTriangles?: number,
+        options?: ExportRouteOptions
     ): Promise<void> => {
         const meshData = await generateMesh(targetTriangles);
         if (!meshData) return;
@@ -462,15 +479,29 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             message: 'Preparing download...',
         });
 
+        const format = options?.format ?? 'stl';
         const styleName = style.name ?? 'Pot';
         const finalFilename = filename === 'pot.stl'
-            ? `PotFoundry_${styleName}_Parametric_${Date.now()}.stl`
+            ? `PotFoundry_${styleName}_Parametric_${Date.now()}.${format}`
             : filename;
 
-        downloadSTL(meshData, finalFilename, {
-            name: `PotFoundry ${style.name} (Parametric v4.1 Adaptive)`,
-            binary: true,
-        });
+        const meshName = `PotFoundry ${style.name} (Parametric v4.1 Adaptive)`;
+
+        if (format !== 'stl') {
+            // 3MF / OBJ: route through the format-aware writer so the user's
+            // chosen format actually ships (instead of a hardcoded .stl).
+            await downloadMesh(meshData, finalFilename, {
+                format,
+                colors: options?.colors,
+                name: meshName,
+            });
+        } else {
+            // Default: preserve the existing binary-STL path (no regression).
+            downloadSTL(meshData, finalFilename, {
+                name: meshName,
+                binary: true,
+            });
+        }
 
         setProgress({
             status: 'complete',

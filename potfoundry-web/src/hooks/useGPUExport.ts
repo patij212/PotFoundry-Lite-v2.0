@@ -9,12 +9,14 @@ import { useCallback, useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../state';
 import {
     downloadSTL,
+    downloadMesh,
     calculateMeshVolume,
     calculateMeshSurfaceArea,
     estimateSTLSize,
     formatFileSize,
     StyleId,
     MeshData,
+    type ExportFormat,
 } from '../geometry';
 import { ExportComputer, type ExportParams, type ExportResult } from '../renderers/webgpu/ExportComputer';
 import { STYLE_IDS, STYLE_FUNCTION_MAP, STYLE_REGISTRY } from '../styles/registry';
@@ -49,6 +51,20 @@ export interface GPUExportStats {
     gpuAccelerated: boolean;
 }
 
+/**
+ * Format-selection options for exportSTL. When `format` is omitted (or 'stl'),
+ * the legacy binary-STL path is preserved (no regression). A non-stl `format`
+ * routes through downloadMesh so 3MF/OBJ produce the correct file + extension.
+ */
+export interface ExportRouteOptions {
+    format?: ExportFormat;
+    colors?: {
+        primaryColor: string;
+        midColor: string;
+        secondaryColor: string;
+    };
+}
+
 export interface UseGPUExportResult {
     /** Current export progress */
     progress: GPUExportProgress;
@@ -56,8 +72,8 @@ export interface UseGPUExportResult {
     stats: GPUExportStats | null;
     /** Whether GPU export is available */
     isGPUAvailable: boolean;
-    /** Generate and download STL file using GPU */
-    exportSTL: (filename?: string) => Promise<void>;
+    /** Generate and download mesh (STL by default; 3MF/OBJ via options.format) */
+    exportSTL: (filename?: string, options?: ExportRouteOptions) => Promise<void>;
     /** Generate mesh using GPU for preview/stats */
     generateMesh: () => Promise<MeshData | null>;
     /** Reset export state */
@@ -396,7 +412,10 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
     /**
      * Generate and download STL file
      */
-    const exportSTL = useCallback(async (filename: string = 'pot.stl'): Promise<void> => {
+    const exportSTL = useCallback(async (
+        filename: string = 'pot.stl',
+        options?: ExportRouteOptions
+    ): Promise<void> => {
         const meshData = await generateMesh();
         if (!meshData) {
             return; // Error already handled
@@ -408,17 +427,30 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             message: 'Preparing download...',
         });
 
-        // Generate filename with style name
+        // Generate filename with style name and the requested format extension
+        const format = options?.format ?? 'stl';
         const styleName = style.name ?? 'Pot';
         const finalFilename = filename === 'pot.stl'
-            ? `PotFoundry_${styleName}_GPU_${Date.now()}.stl`
+            ? `PotFoundry_${styleName}_GPU_${Date.now()}.${format}`
             : filename;
 
-        // Download STL
-        downloadSTL(meshData, finalFilename, {
-            name: `PotFoundry ${style.name} (GPU)`,
-            binary: true,
-        });
+        const meshName = `PotFoundry ${style.name} (GPU)`;
+
+        if (format !== 'stl') {
+            // 3MF / OBJ: route through the format-aware writer so the user's
+            // chosen format actually ships (instead of a hardcoded .stl).
+            await downloadMesh(meshData, finalFilename, {
+                format,
+                colors: options?.colors,
+                name: meshName,
+            });
+        } else {
+            // Default: preserve the existing binary-STL path (no regression).
+            downloadSTL(meshData, finalFilename, {
+                name: meshName,
+                binary: true,
+            });
+        }
 
         setProgress({
             status: 'complete',
