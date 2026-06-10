@@ -53,6 +53,16 @@ export interface QuadLeaf {
    * OPTIONAL: absent ⇒ 0 (plain fixtures / pre-GAP1 leaves).
    */
   uExtra?: number;
+  /**
+   * Per-leaf first fundamental form `{E,F,G}` at the cell centre (Tier 1b). The
+   * shape-aware triangulation templates ({@link triangulateQuadtree}) read it to
+   * choose the shorter 3D diagonal / ear-clip transition polygons in the local
+   * 3D metric, WITHOUT a per-triangle sampler call. OPTIONAL: when absent the
+   * triangulator emits the legacy isotropic templates verbatim (byte-identical
+   * smooth-default path). Tagging is the quadtree's job (it already evaluates the
+   * metric at each cell centre); plain test fixtures omit it.
+   */
+  efg?: { E: number; F: number; G: number };
 }
 
 /** Side of a cell. u-sides wrap; t-sides do not. */
