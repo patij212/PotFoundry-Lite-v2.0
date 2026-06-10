@@ -28,6 +28,7 @@ import ExportDialog, {
 } from './ExportDialog';
 import { Section } from '../shared/Section';
 import type { ExportFormat } from '../../geometry/stlExport';
+import type { ValidationSummary } from '../../renderers/webgpu/parametric/types';
 import './ExportPanel.css';
 
 // ============================================================================
@@ -108,6 +109,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [dialogStats, setDialogStats] = useState<ExportDialogStats | null>(null);
   const [dialogValidation, setDialogValidation] = useState<ExportDialogValidation | null>(null);
+  // Raw conforming/legacy validation summary for the surface-integrity panel.
+  const [dialogValidationSummary, setDialogValidationSummary] = useState<ValidationSummary | null>(null);
   const [dialogDiagnostics, setDialogDiagnostics] = useState<ExportDiagnostics | null>(null);
   const [dialogPhase, setDialogPhase] = useState('');
   const [dialogProgress, setDialogProgress] = useState(0);
@@ -177,6 +180,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     } else {
       setDialogValidation(null);
     }
+    // Pass the raw summary through for the surface-integrity panel.
+    setDialogValidationSummary(vs ?? null);
 
     // Map PipelineDiagnostics → ExportDiagnostics for the dialog
     const pd = s.pipelineDiagnostics;
@@ -711,6 +716,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
         generationProgress={dialogProgress}
         stats={dialogStats}
         validation={dialogValidation}
+        validationSummary={dialogValidationSummary}
         diagnostics={dialogDiagnostics}
         isAvailable={parametricExport.isAvailable}
         showChainOverlay={parametricExport.showChainOverlay}

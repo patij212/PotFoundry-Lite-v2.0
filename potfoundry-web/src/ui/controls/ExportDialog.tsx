@@ -11,8 +11,9 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { PipelineFeatureFlags } from '../../renderers/webgpu/parametric/contracts';
-import type { QualityProfileName, ExportTolerances, ChainStripMode } from '../../renderers/webgpu/parametric/types';
+import type { QualityProfileName, ExportTolerances, ChainStripMode, ValidationSummary } from '../../renderers/webgpu/parametric/types';
 import { QUALITY_PROFILES as PROFILE_DEFINITIONS } from '../../renderers/webgpu/parametric/QualityProfiles';
+import { ExportIntegrityPanel } from './ExportIntegrityPanel';
 import './ExportDialog.css';
 
 // ============================================================================
@@ -119,6 +120,12 @@ export interface ExportDialogProps {
     generationProgress: number;
     stats: ExportDialogStats | null;
     validation: ExportDialogValidation | null;
+    /**
+     * Raw conforming/legacy export validation summary (Plan Task 2.2 shape).
+     * Feeds the surface-integrity panel. Undefined/null when the active export
+     * path has not populated it → the panel shows a neutral pending state.
+     */
+    validationSummary?: ValidationSummary | null;
     diagnostics: ExportDiagnostics | null;
     isAvailable: boolean;
     showChainOverlay: boolean;
@@ -348,6 +355,7 @@ interface ExportTabProps {
     onToleranceChange: <K extends keyof ExportTolerances>(key: K, value: ExportTolerances[K]) => void;
     stats: ExportDialogStats | null;
     validation: ExportDialogValidation | null;
+    validationSummary?: ValidationSummary | null;
     isGenerating: boolean;
     generationPhase: string;
     generationProgress: number;
@@ -358,7 +366,7 @@ const ExportTab: React.FC<ExportTabProps> = ({
     format, onFormatChange,
     budgetMB, onBudgetChange,
     tolerances, onToleranceChange,
-    stats, validation,
+    stats, validation, validationSummary,
     isGenerating, generationPhase, generationProgress,
 }) => {
     const trisEst = Math.floor((budgetMB * 1_000_000 - 84) / 50);
@@ -558,6 +566,8 @@ const ExportTab: React.FC<ExportTabProps> = ({
                             ))}
                         </div>
                     )}
+
+                    <ExportIntegrityPanel validationSummary={validationSummary} />
                 </div>
             )}
         </div>
@@ -869,7 +879,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
     isOpen, onClose, potName = 'PotFoundry',
     onExport, onPreview,
     isGenerating, generationStatus, generationPhase, generationProgress,
-    stats, validation, diagnostics, isAvailable,
+    stats, validation, validationSummary, diagnostics, isAvailable,
     showChainOverlay, showPeakOverlay, onChainOverlayChange, onPeakOverlayChange,
 }) => {
     const [activeTab, setActiveTab] = useState<TabId>('export');
@@ -1002,6 +1012,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
                             onToleranceChange={setToleranceField}
                             stats={stats}
                             validation={validation}
+                            validationSummary={validationSummary}
                             isGenerating={isGenerating}
                             generationPhase={generationPhase}
                             generationProgress={generationProgress}

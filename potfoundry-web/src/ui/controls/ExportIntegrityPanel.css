@@ -1,0 +1,63 @@
+/* ============================================================================
+   ExportIntegrityPanel.css — surface-integrity readout (Plan Task 4.1)
+   Inherits the ExportDialog design tokens (scoped to .ed-backdrop) when mounted
+   inside the dialog; literal fallbacks keep it legible if mounted elsewhere.
+   ============================================================================ */
+
+.eip {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.eip-label {
+    font-family: var(--ed-mono, ui-monospace, monospace);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    color: var(--ed-text-sub, #726d78);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ed-border, rgba(255, 255, 255, 0.07));
+}
+
+.eip-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.eip-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: var(--ed-radius-sm, 6px);
+    background: var(--ed-green-glow, rgba(110, 201, 126, 0.13));
+    color: var(--ed-green, #6ec97e);
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+.eip-row--warn {
+    background: var(--ed-red-glow, rgba(201, 110, 110, 0.13));
+    color: var(--ed-red, #c96e6e);
+}
+
+.eip-row__label {
+    letter-spacing: 0.01em;
+}
+
+.eip-row__value {
+    font-family: var(--ed-mono, ui-monospace, monospace);
+    font-weight: 500;
+}
+
+.eip-pending {
+    padding: 6px 10px;
+    border-radius: var(--ed-radius-sm, 6px);
+    background: var(--ed-bg-card, #191920);
+    color: var(--ed-text-sub, #726d78);
+    font-size: 11px;
+    font-style: italic;
+}
