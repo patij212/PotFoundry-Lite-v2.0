@@ -5,6 +5,41 @@
 
 ---
 
+## ★ SESSION UPDATE 2026-06-10b — READ FIRST (supersedes §1's diagnosis) — commit `407a091` ★
+
+> **2026-06-10c:** The fix program is now governed by
+> `docs/superpowers/specs/2026-06-10-export-metric-meshing-endgame-design.md`
+> (adversarially-reviewed design). CORRECTION to "THE FIX TO BUILD NEXT" below:
+> Step A's plain-sampler efg is WRONG as written — the u-warp and t-warp
+> (ParametricExportComputer.ts:2418-2441) are post-triangulation remaps like the
+> helix, so efg must be WARP-COMPOSED from day one; the greedy earClip is replaced
+> by Klincsek DP (two crack hazards verified at QuadtreeTriangulator.ts:181,188-190).
+> Stage 0 instruments + baseline plan:
+> `docs/superpowers/plans/2026-06-10-export-endgame-stage0-instruments-baseline.md`.
+
+STAGE 0 is DONE and committed; the §1 root-cause was PARTLY WRONG (measured). Do NOT re-run Stage 0; build on this.
+
+**DONE + committed (`407a091`, production BYTE-IDENTICAL — verified by re-measure):**
+- **Faithful reference-free instrument** (the trap-proof one): `crestBandTriangleQuality` (`src/fidelity/metrics.ts`) = 3D MIN-ANGLE of outer-wall triangles (pure function of GPU verts → a reference CANNOT fool it, unlike the chord metric). Reports sub-15° fraction WITHIN a crest band vs the bulk. Hook: `__pfFidelity.diagnoseCrestQuality`. 3 TDD guards. Visual probe `e2e/_crest_stage0.cjs` (min-angle tint, red<15°), scalar `e2e/_crest_band.cjs`, full-20 baseline `e2e/_baseline_matrix.cjs`. **VISUALLY confirmed** red along the diagonal/helical crests; control (SFB@0) reads 0.
+- **318 conforming+fidelity tests green**, typecheck + scoped eslint clean.
+
+**CORRECTED DIAGNOSIS (measured — §1 conflated two different mechanisms):**
+- **SpiralRidges = helix-SHEAR warp, NOT per-cell CDT insertion.** Routing: `helical-crease` lines → `chooseHelixGrid` → `applyHelixWarp` (`ParametricExportComputer.ts:2466-2481`), applied to vertices AFTER triangulation. NO `outerFeatureLines`. Surface metric is CLEAN (`diagnoseFShear`: maxURatio 7.95, irredByAxis 0, **maxSquareAspect 9**). The 479 aspect-14161 slivers are a **post-warp construction artifact** (the shear skews axis-aligned cells into parallelograms). uBias B=2 is its BEST (2.3% <15°, sweep: B0 54.9% / B1 15.1% / **B2 2.3%** / B3 11.3%); the residual is the SHEAR, which axis-aligned uBias cannot square.
+- **SFB@1 = general-curve CDT insertion** (`extractSuperformulaBlossom` → `outerFeatureLines` → `FeatureConformingTriangulator`). The auto-uBias `B=round(log2(maxURatio/√3))` OVERSHOOTS to **B=3, which is genuinely NON-MANIFOLD** (3 duplicated `total=4` edges, mid-wall, localized via `e2e/_topo_localize.cjs`) + degenerate; **B=2 is topology-clean** (sliver=0, maxAspect 50) with a 10.4% residual.
+- **Full-20 baseline (`e2e/baselines`-style, committed probe):** only ~11 styles are clean; **9 carry slivers at DEFAULT** (ArtDeco 2107/degen, Crystalline 2027, DragonScales 2683, BasketWeave 1584/degen, GeometricStar 166/degen, BambooSegments 291, CelticTriquetra 1221, SpiralRidges 479, Voronoi 2076/**nonMan=1**). The auto-uBias GATE B re-baseline (2026-06-10 `6602c1c`) INTRODUCED these — the memory's "20/20 sliver=0" was the PRE-uBias state. So the crest serration is one face of a BROADER uBias-anisotropy defect.
+
+**RULED OUT (measured, do not retry as-is):** wiring `refineCellInterior` (the dormant Tier-2 kernel) into the CDT feature cells is **HARMFUL on the real surface** — it computes the off-center in the triangle's FLAT 3D plane then barycentric-maps to (u,t), exact ONLY for an affine map; on the curved/bilinear surface it manufactures slivers (SFB@1 0→143, Hive 0→199, CelticKnot 0→99; %<15° rises; build ~2×). It is also the WRONG TOOL: the residual slivers are ANISOTROPIC (u-stretched) and isotropic Steiner insertion cannot square them. The wiring survives behind `__pfConformingRefine=true` (DEFAULT OFF) + `minEdgeDist` weld-safety, for a future curvature-aware/anisotropic variant only. The affine `anisoSampler` unit test MASKED this — exactly the synthetic trap §3 warns about.
+
+**THE FIX TO BUILD NEXT (principled, watertight-safe, identified + verified-dead):** the metric-aware diagonal path `earClipMaxMinAngle`/`shapedTemplate` in `QuadtreeTriangulator.ts` (`:100-191`) is **DEAD in production** — it fires only when `leaf.efg` is set AND (uBias>0 OR aniso), but `PeriodicBalancedQuadtree.leafOfCell` (`:584`) **never populates `efg`** (only the test fixtures do). `earClip` picks the diagonal/ear that MAXIMIZES the min 3D angle under the metric — exactly what a sheared parallelogram cell needs — and it is INTERIOR-ONLY (polygon vertices unchanged → watertight + T-junction-free preserved, `:142-147`). The quadtree already has the sampler (`new PeriodicBalancedQuadtree(field, sampler, …)`, `ConformingWall.ts:209`) and `firstFundamentalForm(metric,uc,tc,hu,ht)` (`:811`) to compute efg.
+  - **Step A (contained):** populate `efg` from the PLAIN sampler in `leafOfCell`/`leaves()`. Activates earClip for all uBias>0 PLAIN-path styles → fixes the RELIEF-anisotropy slivers (ArtDeco/Crystalline/DragonScales/GeometricStar/BasketWeave). It is a RE-BASELINE (changes diagonals on every anisotropic cell) → gate = full-20 re-measure (all clean-or-better, no new sliver/nonMan). Does NOT touch the CDT styles (they go through `FeatureConformingTriangulator`, whose plain-template branch `:661-681` would need earClip ported too).
+  - **Step B (SpiralRidges — the PRIMARY target):** the helix shear is applied POST-triangulation, so plain efg can't see it. Feed the **WARP-COMPOSED** metric: `efg = firstFundamentalForm((u,t)→outerSampler.position(applyHelixWarp(warp,u,t), t))`. Requires threading the chosen helix warp from `ParametricExportComputer` (`helixChoice.warp`) → `assembleWatertight` → `buildConformingWall` → the quadtree (sizing stays on the plain sampler; only the efg/diagonal metric is warp-composed). Then earClip picks diagonals ALONG the shear → SpiralRidges crest slivers fall.
+  - **Step C (SFB@1 + CDT styles):** their slivers are in the CDT FILL (`triangulateConstrainedCell`, cdt2d, zero quality Steiner) AND the auto-B=3 nonMan bug. Two sub-tasks: (i) make B=3 watertight (root-cause the `dedupSide`/weld duplicated-edge at high anisotropy — `FeatureConformingTriangulator.ts:713-734`) OR cap CDT-insertion B at the watertight limit (B=2), JUSTIFIED by measurement that B2+good-diagonals meets the goal; (ii) anisotropic-aware fill (earClip-style diagonal choice inside the constrained cells, or a crest-local ribbon). TDD with the existing two-cell `wallEdgeAudit` proof.
+  - **North star unchanged:** metric-aligned (rotated) cells; earClip diagonal choice is the first, watertight-safe increment of exactly that.
+
+**Measured gate for the fix (unchanged from §0):** `diagnoseCrestQuality` band/wall %<15° → ~0 on SpiralRidges + SFB@1; `diagnoseTopoQuality` sliver=bnd=nonMan=orient=0 (no degenerate/aspect-1e9); featDrop=0; the VISUAL red gone (`_crest_stage0.cjs`); full-20 unchanged-or-better; 318+ tests green. Adversarial-workflow blueprint: `e2e/_crest_arch_workflow.mjs` (rerunnable). Dev levers added: `__pfConformingRefine` (Tier-2, off), existing `__pfConformingUBias`.
+
+---
+
 ## 0. THE MISSION (what "done" means)
 
 Make the **exported mesh true to the mathematical model at the highest fidelity** — *no visible triangle edges / serrations on a fine print, all sharp features preserved exactly* — for **all 20 styles**, especially the **diagonal/helical/morphing-crest** styles (SpiralRidges, SuperformulaBlossom at high `sf_strength`, and their kin).
