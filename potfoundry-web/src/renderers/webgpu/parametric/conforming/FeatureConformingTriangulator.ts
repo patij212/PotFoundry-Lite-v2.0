@@ -81,6 +81,8 @@ const STEINER_MIN_EDGE_DIST = 2e-6;
 const MAX_U_EXTRA = 4;
 /** Geometric tolerance for "on a cell boundary" classification (in u,t). */
 const ON_EDGE_EPS = 1e-9;
+/** Hard cap on retained CDT incidents per wall — totals stay exact past it. */
+const MAX_CDT_INCIDENTS = 500;
 
 interface Seg {
   /** start (u,t) of the original feature segment. */
@@ -840,11 +842,13 @@ export function triangulateQuadtreeWithFeatures(
       cdtStats.drops += result.droppedCount;
       const dump =
         (globalThis as { __pfConformingCellDumps?: boolean }).__pfConformingCellDumps === true;
-      cdtStats.incidents.push({
-        u0, t0, u1, t1,
-        inversions: result.inversionCount, drops: result.droppedCount,
-        ...(dump ? { input: { boundary, interior: survivingInterior, constraints: cellConstraints } } : {}),
-      });
+      if (cdtStats.incidents.length < MAX_CDT_INCIDENTS) {
+        cdtStats.incidents.push({
+          u0, t0, u1, t1,
+          inversions: result.inversionCount, drops: result.droppedCount,
+          ...(dump ? { input: { boundary, interior: survivingInterior, constraints: cellConstraints } } : {}),
+        });
+      }
     }
     // ── Tier-2 interior quality refinement (opt-in via options.sampler) ──
     // Only on REAL feature cells (data.feature — those carrying inserted feature

@@ -67,6 +67,7 @@ export interface CdtCellIncident {
 export interface CdtStats {
   inversions: number;
   drops: number;
+  /** Incident cells (capped at 500 per wall; the inversions/drops totals stay exact past the cap). */
   incidents: CdtCellIncident[];
 }
 

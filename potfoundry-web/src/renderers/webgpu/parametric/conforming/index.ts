@@ -25,6 +25,7 @@ export type { QuadLeaf, QuadSide } from './PeriodicBalancedQuadtree';
 export { PeriodicBalancedQuadtree } from './PeriodicBalancedQuadtree';
 export type { QuadtreeLike, QuadtreeMesh } from './QuadtreeTriangulator';
 export { triangulateQuadtree } from './QuadtreeTriangulator';
+export type { CdtStats, CdtCellIncident, ConstrainedCellResult } from './ConstrainedCellTriangulator';
 export type {
   ConformingOuterWallOptions,
   ConformingOuterWallResult,

@@ -223,7 +223,7 @@ export interface FidelityCdtHealthDiagnostics {
   drops: number;
   /** Number of CDT cells that fired either masking channel. */
   incidentCells: number;
-  /** First 20 incident cells (inputs attached under `__pfConformingCellDumps`). */
+  /** Top-20 incident cells by (inversions+drops), severity-sorted (inputs attached under `__pfConformingCellDumps`). */
   worstIncidents: CdtCellIncident[];
 }
 
@@ -535,7 +535,9 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         inversions: o.inversions + i.inversions,
         drops: o.drops + i.drops,
         incidentCells: o.incidents.length + i.incidents.length,
-        worstIncidents: [...o.incidents, ...i.incidents].slice(0, 20),
+        worstIncidents: [...o.incidents, ...i.incidents]
+          .sort((a, b) => (b.inversions + b.drops) - (a.inversions + a.drops))
+          .slice(0, 20),
       };
     },
     async _debugOuterMesh(targetTriangles?: number) {

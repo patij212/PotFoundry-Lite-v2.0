@@ -136,6 +136,13 @@ describe('buildConformingWall — uniform shared rings (nRing=64, surfaceId=1)',
     }
   }, HEAVY_BUILD_TIMEOUT_MS);
 
+  it('a feature-free build carries no cdtStats (diagnoseCdtHealth null contract)', () => {
+    // Only the FEATURE triangulator produces cdtStats; the feature-free
+    // quadtree path must pass through undefined so diagnoseCdtHealth can
+    // distinguish "no CDT cells" (null) from "CDT ran clean" (zero counts).
+    expect(wall.cdtStats).toBeUndefined();
+  });
+
   it('3D quality: max aspect < 100', () => {
     let maxAspect = 0;
     for (const t of triangles) {
