@@ -83,6 +83,36 @@ describe('ExportDialog corridor flags', () => {
         }));
     });
 
+    it('shows the conforming mesher toggle in the debug tab', () => {
+        renderDialog();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+
+        expect(screen.getByText(/Conforming mesher/i)).toBeInTheDocument();
+    });
+
+    it('emits conformingMesher in preview config when its toggle is enabled', () => {
+        const { onPreview } = renderDialog();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+
+        const conformingRow = screen.getByText(/Conforming mesher/i).closest('.ed-param-row');
+        expect(conformingRow).not.toBeNull();
+
+        const conformingSwitch = within(conformingRow!).getByRole('switch');
+        expect(conformingSwitch).toHaveAttribute('aria-checked', 'false');
+
+        fireEvent.click(conformingSwitch);
+        fireEvent.click(screen.getByRole('button', { name: 'Preview Stats' }));
+
+        expect(onPreview).toHaveBeenCalledTimes(1);
+        expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({
+            featureFlags: expect.objectContaining({
+                conformingMesher: true,
+            }),
+        }));
+    });
+
     it('emits explicit tolerance overrides from the export tab', () => {
         const { onPreview } = renderDialog();
 

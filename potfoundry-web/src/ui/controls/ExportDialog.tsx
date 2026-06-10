@@ -167,6 +167,7 @@ const DEFAULT_FLAGS: Partial<PipelineFeatureFlags> = {
     edgeCollapseEnabled: false,
     outerWallCorridorPlanning: false,
     outerWallCorridorDiagnostics: false,
+    conformingMesher: false,
 };
 
 // ============================================================================
@@ -717,6 +718,9 @@ const DebugTab: React.FC<DebugTabProps> = ({
                 Experimental advanced paths — all default to OFF. Enable one at a time to isolate effects.
             </p>
             <div className="ed-flag-list">
+                <ParamRow label="Conforming mesher (watertight, experimental)" hint="By-construction watertight outer wall — skips legacy optimization + repair battery">
+                    <Toggle value={Boolean(flags.conformingMesher)} onChange={v => onFlagChange('conformingMesher', v)} />
+                </ParamRow>
                 <ParamRow label="Metric-aware refinement" hint="UV metric tensor for edge-split priority">
                     <Toggle value={Boolean(flags.metricAwareRefinement)} onChange={v => onFlagChange('metricAwareRefinement', v)} />
                 </ParamRow>
