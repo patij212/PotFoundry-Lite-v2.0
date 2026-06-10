@@ -526,6 +526,7 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
       if (splitW) add(u0, tm);
       if (aniso && efg) {
         curTag = TRI_SOURCE.EAR_CLIP;
+        // curTag must be set before this call — earClipMaxMinAngle calls emit synchronously.
         earClipMaxMinAngle(efg, co, poly, emit);
       } else {
         curTag = TRI_SOURCE.TRANSITION_FAN;
@@ -554,6 +555,7 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
     for (let k = subW.length - 1; k >= 0; k--) add(u0, subW[k]); // west: t descending
     if (aniso && efg) {
       curTag = TRI_SOURCE.EAR_CLIP;
+      // curTag must be set before this call — earClipMaxMinAngle calls emit synchronously.
       earClipMaxMinAngle(efg, co, poly, emit);
     } else {
       curTag = TRI_SOURCE.TRANSITION_FAN;

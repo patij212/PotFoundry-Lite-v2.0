@@ -962,6 +962,7 @@ export function triangulateQuadtreeWithFeatures(
     const a = newIndexOf[remap[indices[k]]];
     const b = newIndexOf[remap[indices[k + 1]]];
     const c = newIndexOf[remap[indices[k + 2]]];
+    // LOCKSTEP: any future per-triangle channel must be pushed in this same loop body.
     if (a === b || b === c || a === c) continue;
     outIndices.push(a, b, c);
     outSeam.push(triWrapsSeam[k / 3]);

@@ -495,6 +495,8 @@ export function assembleWatertight(
     }
     ranges.push({ surfaceId, indexStart, indexEnd: indices.length, vertexCount });
   };
+  // INVARIANT: all pushWallTris calls MUST complete before any cap/ring index
+  // emission — the RING_OR_CAP back-fill assumes walls' tags are already in place.
   pushWallTris(0, outerOffset, outerCount, outer);
   pushWallTris(1, innerOffset, innerCount, inner);
 

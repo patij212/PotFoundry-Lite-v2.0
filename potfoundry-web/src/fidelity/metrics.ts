@@ -929,7 +929,12 @@ function lawOfCosines(adj1: number, adj2: number, opp: number): number {
 export interface TriangleShape {
   /** Min interior 3D angle (deg); 0 for a degenerate (zero-area) triangle. */
   minAngleDeg: number;
-  /** longest²·√3 / (4·area) — 1 = equilateral; Infinity when degenerate. */
+  /**
+   * longest²·√3 / (4·area) — 1 = equilateral.
+   * Infinity for degenerate triangles — diverges from triangleQuality3D's
+   * finite DEGENERATE_ASPECT=1e9 sentinel; Infinity is NOT JSON-serializable
+   * (JSON.stringify → null), so serialize bucket COUNTS, never raw aspects.
+   */
   aspect: number;
 }
 

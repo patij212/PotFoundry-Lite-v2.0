@@ -536,4 +536,57 @@ describe('triangle provenance channel (Task 3 instrument)', () => {
     for (const v of counts.values()) sum += v;
     expect(sum).toBe(triCount);
   });
+
+  it('triangleSource stays in lockstep with indices AFTER the weld degenerate-drop pass', () => {
+    // Force the FCT tolerance-weld drop path (FeatureConformingTriangulator.ts,
+    // the WELD_TAU pass): TWIN vertical creases 1e-7 apart in u — wider than one
+    // QSCALE quantum (2^-24 ≈ 5.96e-8), so the exact-key dedup keeps TWO distinct
+    // vertex columns, yet inside WELD_TAU (1e-6), so the weld fuses every same-t
+    // twin pair. The per-cell CDT must fill the 1e-7-wide strip between the two
+    // constraint chains, and the strip's boundary polygon contains twin↔twin
+    // edges (the south/north crossing pairs), so the triangles on those edges
+    // collapse to repeated indices after the weld and are DROPPED by the
+    // degenerate guard — triangleSource must be filtered in the same loop.
+    const U = 0.3;
+    const qt = uniformQuadtree(3);
+    const welded = triangulateQuadtreeWithFeatures(qt, [vertical(U), vertical(U + 1e-7)]);
+    // Control: the weld-provoking twin moved beyond WELD_TAU (1e-3 away), same
+    // cells crossed, same per-cell point counts (2 edge crossings + 1 interior
+    // point per line per cell). A full cell triangulation always has
+    // 2·interior + boundary − 2 triangles regardless of diagonal choices, so the
+    // PRE-WELD triangle totals of the two builds are EQUAL — any deficit in the
+    // welded build is exactly the weld's degenerate-drop count.
+    const control = triangulateQuadtreeWithFeatures(qt, [vertical(U), vertical(U + 1e-3)]);
+
+    // Neither build lost triangles inside the per-cell CDT (zero-area channel),
+    // so the triangle deficit below is attributable to the weld pass alone.
+    expect(welded.cdtStats!.drops).toBe(0);
+    expect(control.cdtStats!.drops).toBe(0);
+
+    // The weld actually fired: each crease contributes 17 column vertices
+    // (t=i/16), so unfused twins would leave 34 in a band covering both columns;
+    // the welded build fuses them into ONE 17-vertex column.
+    const inBand = (mesh: QuadtreeMesh, u: number): number => {
+      let n = 0;
+      for (let i = 0; i < mesh.vertices.length; i += 3) {
+        if (Math.abs(mesh.vertices[i] - u) <= 2e-6) n++;
+      }
+      return n;
+    };
+    expect(inBand(control, U)).toBe(17); // single unfused column
+    expect(inBand(control, U + 1e-3)).toBe(17); // its far twin, also unfused
+    expect(inBand(welded, U)).toBe(17); // BOTH twin columns fused into one
+
+    // At least one triangle was actually dropped by the weld.
+    expect(welded.indices.length / 3).toBeLessThan(control.indices.length / 3);
+
+    // Lockstep: one provenance tag per SURVIVING triangle...
+    expect(welded.triangleSource!.length).toBe(welded.indices.length / 3);
+    // ...and the partition still sums.
+    let sum = 0;
+    const counts = new Map<number, number>();
+    for (const s of welded.triangleSource!) counts.set(s, (counts.get(s) ?? 0) + 1);
+    for (const v of counts.values()) sum += v;
+    expect(sum).toBe(welded.indices.length / 3);
+  });
 });
