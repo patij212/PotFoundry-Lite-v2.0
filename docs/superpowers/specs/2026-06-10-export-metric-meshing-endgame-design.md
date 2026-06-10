@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-10 · **Branch:** `refactor/core-migration` · **Project:** `potfoundry-web/`
 **Status:** AWAITING USER APPROVAL — no production code touched. Next step after approval: `superpowers:writing-plans` per stage.
-**Provenance:** 21-agent design workflow (5 code verifiers → 3 web researchers → 3 competing architectures → 9 adversarial critiques → synthesis), run 2026-06-10 (`wf_fdc2001b-36b`). All file:line claims below were verified against the working tree at commit `407a091`.
+**Provenance:** 21-agent design workflow (5 code verifiers → 3 web researchers → 3 competing architectures → 9 adversarial critiques → synthesis), run 2026-06-10 (`wf_fdc2001b-36b`). All file:line claims below were verified against the working tree at commit `407a091`. **Full evidence committed at `docs/superpowers/specs/2026-06-10-export-endgame-evidence/`** (verified-code-facts, research with sources, the three full designs, synthesis).
 **Supersedes / composes with:** `docs/superpowers/NEXT-SESSION-CREST-FIDELITY.md` (its Step-A "plain efg" is corrected below), `docs/superpowers/plans/2026-06-10-export-pipeline-cutover-plan.md` (Tasks 1.2/1.3 superseded; Phase 2/3 incorporated).
 
 ---
@@ -37,7 +37,7 @@ The two user screenshots are the two faces of one defect family:
 - `MetricSizingField` is a **scalar isotropic** field (one target length per node from `principalCurvatureMax`; E/F/G never enter); splits are always square 4-way, so local anisotropy cannot change cell shape — only the global 2^B:1 root does.
 - **Ship-path correction (new, important):** the default Export today does **not** reach the conforming mesher at all. Classic UI default button → GPU-grid uniform path (`ExportPanel.tsx:103,119-125`); v2 StatusFooter → legacy repair battery (`useParametricExport.ts:473` drops overrides; `contracts.ts:412` defaults false). Only classic UI → Advanced → "Parametric v4" → Export dialog flows commit `289de23`'s conforming+high+3MF defaults through. The 3MF/OBJ format bug is **already fixed** in live paths (cutover plan Task 2.3 is done in effect). The conforming validator hard-refuses meshes with `sliverCount>0` — relevant to flip timing.
 
-## 3. Research verdict (3 independent surveys, sources in workflow artifacts)
+## 3. Research verdict (3 independent surveys; sources in `2026-06-10-export-endgame-evidence/research-findings.json`)
 
 Unanimous across production-mesher practice (Rhino/OCC/Netgen, gmsh/BAMG, CGAL), anisotropic-triangulation literature, and the alternatives survey:
 
@@ -85,7 +85,7 @@ Non-negotiables preserved absolutely: every change is interior-only connectivity
   - (a) **Registration-time edge-local in-metric clearance snap** of crest/constraint edge-points onto nearby registry grid vertices (pure function of global curve + grid line; metric at the candidate point; canonical order; registry vertices never move) — the only mechanism that can remove transition-edge dedup-survivor needles whose short edge is a *boundary* sub-edge.
   - (b) **Frozen-per-cell-metric Lawson flips** of interior non-constraint edges (constant metric ⇒ termination + constrained optimality), 3D-verified acceptance on crest cells.
   - (c) **Crest-aligned interior Steiners** via the proven `refineCellInterior` replay wiring with a metric-true kernel (tangent from constraint chords; candidates along the metric normal; positions on the true surface; accept only if measured 3D min-angle improves — worst case no-op, never a manufactured sliver).
-  - (d) **Offset-curve ribbons: documented escalation only, never default-funded** (full spec + de-scope ladder retained in workflow artifacts).
+  - (d) **Offset-curve ribbons: documented escalation only, never default-funded** (full spec + de-scope ladder: `2026-06-10-export-endgame-evidence/designs-full.json`, the "Crest-Structured" design).
 - Also quantify the non-inserted diagonal-relief mass (CelticTriquetra braid bands, twisted BasketWeave) and disposition it honestly (out-of-scope sizing residual or separately-scoped extraction extension).
 - **Gate:** crest numeric parity (band ≤ bulk + ε, bulk non-regressed) + zero red on crests (archived tint renders) + anti-relocation check (global distribution not worsened); Voronoi residual →0; featureDrop=0; feature-dense build ≤1.5×.
 
