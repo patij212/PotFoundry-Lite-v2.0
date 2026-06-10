@@ -103,7 +103,10 @@ const VIEWS = {
         const topo = await withTimeout(page.evaluate(() => window.__pfFidelity.diagnoseTopoQuality()), 180000, 'topo');
         const feat = api.includes('diagnoseFeatures')
           ? await withTimeout(page.evaluate(() => window.__pfFidelity.diagnoseFeatures()), 60000, 'feat').catch(() => null) : null;
+        const qual = api.includes('diagnoseTriangleQuality')
+          ? await withTimeout(page.evaluate(() => window.__pfFidelity.diagnoseTriangleQuality()), 180000, 'qual').catch(() => null) : null;
         row.topo = topo; row.feat = feat;
+        if (qual) row.qual = { pctBelow20: qual.pctBelow20, median: qual.medianMinAngleDeg, min: qual.minAngleDeg, degenerate: qual.degenerateCount };
         for (const vk of ['iso', 'topdown']) {
           const dataUrl = await withTimeout(page.evaluate(async (args) => {
             const m = await window.__pfFidelity._debugOuterMesh(args.target);

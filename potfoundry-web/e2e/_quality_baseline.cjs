@@ -30,8 +30,10 @@ function withTimeout(p, ms, label) {
       const t0 = Date.now();
       try {
         await withTimeout(page.evaluate((s) => window.__pfFidelity.setStyle(s), style), 60000, 'setStyle');
+        const topo = await withTimeout(page.evaluate(() => window.__pfFidelity.diagnoseTopoQuality()), 180000, 'topo');
         const q = await withTimeout(page.evaluate(() => window.__pfFidelity.diagnoseTriangleQuality()), 180000, 'quality');
-        const row = { ...q, buildMs: Date.now() - t0 };
+        const feat = await withTimeout(page.evaluate(() => window.__pfFidelity.diagnoseFeatures()), 120000, 'feat').catch(() => null);
+        const row = { ...q, sliver: topo.sliverCount, bnd: topo.boundaryEdges, nonMan: topo.nonManifoldEdges, orient: topo.orientationMismatches, maxAspect: Math.round(topo.maxAspect3D * 10) / 10, featExp: feat ? feat.expected : null, featPres: feat ? feat.present : null, featDrop: feat ? feat.dropped : null, buildMs: Date.now() - t0 };
         rows.push(row); console.log(JSON.stringify(row));
       } catch (e) {
         const row = { styleId: style, error: String(e.message || e).slice(0, 140), buildMs: Date.now() - t0 };
