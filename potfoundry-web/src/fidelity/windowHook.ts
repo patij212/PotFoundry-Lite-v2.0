@@ -23,10 +23,12 @@ import {
   extractOuterWallSubmesh,
   topologyDiagnostics,
   triangleQualityDiagnostics,
+  triangleQualityDistribution,
   wallChordError,
   wallDeviation,
   type TopologyDiagnostics,
   type TriangleQualityDiagnostics,
+  type TriangleQualityDistribution,
   type WallChordResult,
   type WallDeviationResult,
 } from './metrics';
@@ -73,6 +75,10 @@ export interface FidelityTopoQualitySummary {
   triangleCount: number;
 }
 
+export interface FidelityTriangleQualitySummary extends TriangleQualityDistribution {
+  styleId: string;
+}
+
 export interface FidelityHookDeps {
   setStyle: (name: string) => void;
   /** Patch the store's geometry params (H, top_od, bottom_od, r_drain, expn, …). */
@@ -116,6 +122,13 @@ export interface PfFidelityApi {
   diagnoseQuality(opts?: FidelityQualityDiagnosticOptions): Promise<FidelityQualityDiagnostics>;
   /** Fast combined check: generates the mesh ONCE, returns topology + quality summary. */
   diagnoseTopoQuality(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTopoQualitySummary>;
+  /**
+   * Generate the conforming mesh once, then return the min-angle DISTRIBUTION
+   * (the triangle-quality instrument the aspect>ASPECT_MAX sliver gate lacks):
+   * percent of triangles below 10/20/30°, plus p5/median/min. Drives the
+   * clean-CAD triangle-quality work (the ≥20° bar).
+   */
+  diagnoseTriangleQuality(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTriangleQualitySummary>;
   /**
    * Generate the conforming mesh once, then return the per-feature-line
    * resolution breakdown (label, kind, coverage, resolved). Null on the
@@ -342,6 +355,13 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         minAngleDeg: qual.minAngleDeg,
         triangleCount: Math.floor(mesh.indices.length / 3),
       };
+    },
+    async diagnoseTriangleQuality(opts: FidelityTopologyDiagnosticOptions = {}): Promise<FidelityTriangleQualitySummary> {
+      const styleId = currentStyleId();
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const dist = triangleQualityDistribution({ vertices: mesh.vertices, indices: mesh.indices });
+      return { styleId, ...dist };
     },
     async diagnoseFeatures(opts: FidelityFeatureDiagnosticOptions = {}): Promise<FidelityFeatureDiagnostics | null> {
       const styleId = currentStyleId();

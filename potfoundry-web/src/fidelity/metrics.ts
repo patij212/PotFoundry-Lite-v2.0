@@ -724,6 +724,108 @@ export function triangleQuality3D(mesh: MeshView): TriangleQualityResult {
   };
 }
 
+export interface TriangleQualityDistribution {
+  /** Non-degenerate triangles measured (degenerate ones have no min angle). */
+  triangleCount: number;
+  /** Degenerate (zero-area) triangles, excluded from the angle stats. */
+  degenerateCount: number;
+  /** Smallest interior angle anywhere — the single worst triangle (deg). */
+  minAngleDeg: number;
+  /** 5th-percentile smallest-interior-angle (robust worst, deg). */
+  p5MinAngleDeg: number;
+  /** Median smallest-interior-angle (deg). */
+  medianMinAngleDeg: number;
+  /** Mean smallest-interior-angle (deg). */
+  meanMinAngleDeg: number;
+  /** Percent of triangles whose smallest interior angle is below 10°. */
+  pctBelow10: number;
+  /** Percent below 20° — the "clean CAD mesh" bar. */
+  pctBelow20: number;
+  /** Percent below 30°. */
+  pctBelow30: number;
+}
+
+/**
+ * Min-angle distribution across the mesh — the triangle-quality instrument the
+ * `aspect > ASPECT_MAX` sliver gate lacks. A clean isotropic ("CAD-grade") mesh
+ * has nearly every triangle ≥ ~20–30°; stretched feature-region triangles pull
+ * the low percentiles down (measured 2026-06-10: HexagonalHive 85% of wall
+ * triangles below 20°, vs smooth styles ~0%). Degenerate triangles have no
+ * well-defined min angle, so they are excluded from the angle stats and counted
+ * separately. Uses a 0–60° integer-degree histogram (a triangle's smallest
+ * interior angle is always ≤ 60°), so memory is bounded regardless of mesh size.
+ */
+export function triangleQualityDistribution(mesh: MeshView): TriangleQualityDistribution {
+  const { vertices, indices } = mesh;
+  const BINS = 61; // 0..60 inclusive
+  const hist = new Float64Array(BINS);
+  let degenerate = 0;
+  let good = 0;
+  let angleSum = 0;
+  let minAngle = 180;
+
+  for (let t = 0; t < indices.length; t += 3) {
+    const ia = indices[t] * 3, ib = indices[t + 1] * 3, ic = indices[t + 2] * 3;
+    const ax = vertices[ia], ay = vertices[ia + 1], az = vertices[ia + 2];
+    const bx = vertices[ib], by = vertices[ib + 1], bz = vertices[ib + 2];
+    const cx = vertices[ic], cy = vertices[ic + 1], cz = vertices[ic + 2];
+
+    const ab2 = dist2(ax, ay, az, bx, by, bz);
+    const bc2 = dist2(bx, by, bz, cx, cy, cz);
+    const ca2 = dist2(cx, cy, cz, ax, ay, az);
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const area = 0.5 * Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+    if (area <= 1e-12) { degenerate++; continue; }
+
+    const a = Math.sqrt(bc2), b = Math.sqrt(ca2), c = Math.sqrt(ab2);
+    const triMin = Math.min(lawOfCosines(b, c, a), lawOfCosines(a, c, b), lawOfCosines(a, b, c));
+    if (triMin < minAngle) minAngle = triMin;
+    angleSum += triMin;
+    let bin = Math.floor(triMin);
+    if (bin < 0) bin = 0;
+    else if (bin >= BINS) bin = BINS - 1;
+    hist[bin]++;
+    good++;
+  }
+
+  if (good === 0) {
+    return {
+      triangleCount: 0, degenerateCount: degenerate, minAngleDeg: 0,
+      p5MinAngleDeg: 0, medianMinAngleDeg: 0, meanMinAngleDeg: 0,
+      pctBelow10: 0, pctBelow20: 0, pctBelow30: 0,
+    };
+  }
+
+  const pctBelow = (deg: number): number => {
+    let n = 0;
+    for (let i = 0; i < deg && i < BINS; i++) n += hist[i];
+    return (n / good) * 100;
+  };
+  const percentile = (p: number): number => {
+    const target = (p / 100) * good;
+    let cum = 0;
+    for (let i = 0; i < BINS; i++) {
+      cum += hist[i];
+      if (cum >= target) return i;
+    }
+    return BINS - 1;
+  };
+  const round1 = (x: number): number => Math.round(x * 10) / 10;
+
+  return {
+    triangleCount: good,
+    degenerateCount: degenerate,
+    minAngleDeg: round1(minAngle),
+    p5MinAngleDeg: percentile(5),
+    medianMinAngleDeg: percentile(50),
+    meanMinAngleDeg: round1(angleSum / good),
+    pctBelow10: round1(pctBelow(10)),
+    pctBelow20: round1(pctBelow(20)),
+    pctBelow30: round1(pctBelow(30)),
+  };
+}
+
 export function triangleQualityDiagnostics(mesh: MeshView, sampleLimit = 16): TriangleQualityDiagnostics {
   const { vertices, indices, uvs } = mesh;
   let maxAspect = 0;
