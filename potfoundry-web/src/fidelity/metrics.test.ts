@@ -632,3 +632,30 @@ describe('buildNearestSurface vertical-wall inclusion contract', () => {
     }
   });
 });
+
+import { triMinAngleAndAspect } from './metrics';
+
+describe('triMinAngleAndAspect', () => {
+  it('equilateral triangle: 60 deg min angle, aspect ~ 1', () => {
+    const v = new Float32Array([0, 0, 0, 1, 0, 0, 0.5, Math.sqrt(3) / 2, 0]);
+    const q = triMinAngleAndAspect(v, 0, 1, 2);
+    expect(q.minAngleDeg).toBeCloseTo(60, 3);
+    expect(q.aspect).toBeCloseTo(1, 3);
+  });
+
+  it('4:1 right needle: min angle ~ 14 deg, aspect > 1', () => {
+    // Right triangle with legs 4 and 1: min angle = atan(1/4) = 14.04 deg.
+    const v = new Float32Array([0, 0, 0, 4, 0, 0, 0, 1, 0]);
+    const q = triMinAngleAndAspect(v, 0, 1, 2);
+    expect(q.minAngleDeg).toBeCloseTo((Math.atan(1 / 4) * 180) / Math.PI, 1);
+    // longest^2 * sqrt(3) / (4*area) = 17*sqrt(3)/8 ~ 3.68.
+    expect(q.aspect).toBeCloseTo((17 * Math.sqrt(3)) / 8, 2);
+  });
+
+  it('degenerate (zero-area) triangle: 0 deg, infinite aspect', () => {
+    const v = new Float32Array([0, 0, 0, 1, 0, 0, 2, 0, 0]);
+    const q = triMinAngleAndAspect(v, 0, 1, 2);
+    expect(q.minAngleDeg).toBe(0);
+    expect(q.aspect).toBe(Infinity);
+  });
+});

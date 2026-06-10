@@ -28,7 +28,7 @@
 
 import type { QuadLeaf } from './PeriodicBalancedQuadtree';
 import type { QuadtreeLike, QuadtreeMesh } from './QuadtreeTriangulator';
-import { triangulateQuadtree } from './QuadtreeTriangulator';
+import { triangulateQuadtree, TRI_SOURCE } from './QuadtreeTriangulator';
 import type { FeatureLine } from './FeatureLineGraph';
 import {
   triangulateConstrainedCell,
@@ -417,6 +417,11 @@ export function triangulateQuadtreeWithFeatures(
 
   const indices: number[] = [];
   const triWrapsSeam: number[] = [];
+  // Stage-0 provenance channel: one TRI_SOURCE tag per emitted triangle, pushed
+  // in lockstep by `emit`. `curTag` is set immediately before each emission
+  // region. Metadata only — the triangle content/order is untouched.
+  const triSource: number[] = [];
+  let curTag: number = TRI_SOURCE.FCT_PLAIN_QUAD;
 
   // ── Spatial bucketing: assign each leaf to the coarse buckets its box overlaps,
   // so a feature segment is tested only against nearby leaves (not all of them).
@@ -681,6 +686,7 @@ export function triangulateQuadtreeWithFeatures(
       if (a === b || b === c || a === c) return;
       indices.push(a, b, c);
       triWrapsSeam.push(wrapsSeam);
+      triSource.push(curTag);
     };
 
     // Feature edge points (union across both adjacent cells), as SidePoints. The
@@ -707,9 +713,11 @@ export function triangulateQuadtreeWithFeatures(
       if (splitW) poly.push(vertexIndex(u0, tm));
       const splitCount = (splitS ? 1 : 0) + (splitE ? 1 : 0) + (splitN ? 1 : 0) + (splitW ? 1 : 0);
       if (splitCount === 0) {
+        curTag = TRI_SOURCE.FCT_PLAIN_QUAD;
         emit(poly[0], poly[1], poly[2]);
         emit(poly[0], poly[2], poly[3]);
       } else {
+        curTag = TRI_SOURCE.FCT_PLAIN_FAN;
         const ctr = vertexIndex(um, tm);
         for (let i = 0; i < poly.length; i++) emit(ctr, poly[i], poly[(i + 1) % poly.length]);
       }
@@ -867,6 +875,9 @@ export function triangulateQuadtreeWithFeatures(
       );
     }
     const globalOf = result.points.map((p) => vertexIndex(p.u, p.t));
+    // Every feature-cell triangle (incl. any Tier-2 refined replacement set)
+    // comes from the per-cell CDT fill.
+    curTag = TRI_SOURCE.FCT_FEATURE_CDT;
     for (const [a, b, c] of result.triangles) emit(globalOf[a], globalOf[b], globalOf[c]);
   }
 
@@ -942,9 +953,11 @@ export function triangulateQuadtreeWithFeatures(
   }
 
   // Remap triangles; drop any that became degenerate when two of their vertices
-  // welded together (their geometric area was already ~0).
+  // welded together (their geometric area was already ~0). The provenance tags
+  // are filtered in lockstep so they stay parallel to the surviving triangles.
   const outIndices: number[] = [];
   const outSeam: number[] = [];
+  const outSource: number[] = [];
   for (let k = 0; k < indices.length; k += 3) {
     const a = newIndexOf[remap[indices[k]]];
     const b = newIndexOf[remap[indices[k + 1]]];
@@ -952,6 +965,7 @@ export function triangulateQuadtreeWithFeatures(
     if (a === b || b === c || a === c) continue;
     outIndices.push(a, b, c);
     outSeam.push(triWrapsSeam[k / 3]);
+    outSource.push(triSource[k / 3]);
   }
 
   const vertices = new Float32Array(keptU.length * 3);
@@ -965,5 +979,6 @@ export function triangulateQuadtreeWithFeatures(
     indices: Uint32Array.from(outIndices),
     seamTriangles: Uint8Array.from(outSeam),
     cdtStats,
+    triangleSource: Uint8Array.from(outSource),
   };
 }

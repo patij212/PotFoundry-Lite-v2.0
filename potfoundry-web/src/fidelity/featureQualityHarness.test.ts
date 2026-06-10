@@ -32,9 +32,11 @@ import { triangleQualityDistribution, extractOuterWallSubmesh } from './metrics'
 import type { MeshView } from './types';
 import type { QuadLeaf } from '../renderers/webgpu/parametric/conforming/PeriodicBalancedQuadtree';
 import { triangulateQuadtreeWithFeatures } from '../renderers/webgpu/parametric/conforming/FeatureConformingTriangulator';
-import type {
-  QuadtreeLike,
-  QuadtreeMesh,
+import {
+  triangulateQuadtree,
+  TRI_SOURCE,
+  type QuadtreeLike,
+  type QuadtreeMesh,
 } from '../renderers/webgpu/parametric/conforming/QuadtreeTriangulator';
 import { SyntheticCylinderSampler } from '../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { FeatureLine } from '../renderers/webgpu/parametric/conforming/FeatureLineGraph';
@@ -483,5 +485,55 @@ describe('feature-quality measurement harness (Task 1 gate)', () => {
       `[Task1] sharp-V accessor: pctBelow20Excl=${pctBelow20Excl.toFixed(1)} ` +
         `raw=${raw} sharpCornerTris=${sharpCornerTriangles} apexes=${apexes.length}`,
     );
+  });
+});
+
+describe('triangle provenance channel (Task 3 instrument)', () => {
+  it('tags every triangle and the tags partition the mesh', () => {
+    const mesh = triangulateQuadtreeWithFeatures(uniformQuadtree(3), [vertical(0.3)]);
+    const triCount = mesh.indices.length / 3;
+    expect(mesh.triangleSource).toBeDefined();
+    expect(mesh.triangleSource!.length).toBe(triCount);
+    const counts = new Map<number, number>();
+    for (const s of mesh.triangleSource!) counts.set(s, (counts.get(s) ?? 0) + 1);
+    // A uniform grid with one vertical feature: plain FCT cells + feature CDT cells only.
+    expect(counts.get(TRI_SOURCE.FCT_FEATURE_CDT) ?? 0).toBeGreaterThan(0);
+    expect(counts.get(TRI_SOURCE.FCT_PLAIN_QUAD) ?? 0).toBeGreaterThan(0);
+    let sum = 0;
+    for (const v of counts.values()) sum += v;
+    expect(sum).toBe(triCount);
+  });
+
+  it('plain path: every triangle of a uniform grid is tagged PLAIN_QUAD', () => {
+    const mesh = triangulateQuadtree(uniformQuadtree(3));
+    const triCount = mesh.indices.length / 3;
+    expect(mesh.triangleSource).toBeDefined();
+    expect(mesh.triangleSource!.length).toBe(triCount);
+    for (const s of mesh.triangleSource!) expect(s).toBe(TRI_SOURCE.PLAIN_QUAD);
+  });
+
+  it('plain path: a mixed-level tree contains TRANSITION_FAN tags', () => {
+    // 2×2 base (level 1) with the SW quad refined to level 2 — the transition
+    // fixture from QuadtreeTriangulator.test.ts (handForcedTree shape).
+    const leaves: QuadLeaf[] = [
+      { u0: 0.0, t0: 0.0, level: 2 },
+      { u0: 0.25, t0: 0.0, level: 2 },
+      { u0: 0.0, t0: 0.25, level: 2 },
+      { u0: 0.25, t0: 0.25, level: 2 },
+      { u0: 0.5, t0: 0.0, level: 1 },
+      { u0: 0.0, t0: 0.5, level: 1 },
+      { u0: 0.5, t0: 0.5, level: 1 },
+    ];
+    const mesh = triangulateQuadtree({ leaves: () => leaves });
+    const triCount = mesh.indices.length / 3;
+    expect(mesh.triangleSource).toBeDefined();
+    expect(mesh.triangleSource!.length).toBe(triCount);
+    const counts = new Map<number, number>();
+    for (const s of mesh.triangleSource!) counts.set(s, (counts.get(s) ?? 0) + 1);
+    expect(counts.get(TRI_SOURCE.TRANSITION_FAN) ?? 0).toBeGreaterThan(0);
+    expect(counts.get(TRI_SOURCE.PLAIN_QUAD) ?? 0).toBeGreaterThan(0);
+    let sum = 0;
+    for (const v of counts.values()) sum += v;
+    expect(sum).toBe(triCount);
   });
 });

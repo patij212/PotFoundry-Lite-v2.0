@@ -925,6 +925,44 @@ function lawOfCosines(adj1: number, adj2: number, opp: number): number {
   return (Math.acos(cos) * 180) / Math.PI;
 }
 
+/** Shape of one triangle (see {@link triMinAngleAndAspect}). */
+export interface TriangleShape {
+  /** Min interior 3D angle (deg); 0 for a degenerate (zero-area) triangle. */
+  minAngleDeg: number;
+  /** longest²·√3 / (4·area) — 1 = equilateral; Infinity when degenerate. */
+  aspect: number;
+}
+
+/**
+ * 3D min interior angle (law of cosines) + aspect of one triangle `(a,b,c)` of
+ * an indexed mesh. The aspect uses the codebase's equilateral-normalized
+ * convention (longest²·√3 / (4·area), as {@link triangleQuality3D}), so the
+ * `aspect > ASPECT_MAX` sliver gate means the same thing everywhere. Shared
+ * per-triangle helper for the Stage-0 sliver-attribution diagnostic.
+ */
+export function triMinAngleAndAspect(
+  vertices: Float32Array, a: number, b: number, c: number,
+): TriangleShape {
+  const ia = a * 3, ib = b * 3, ic = c * 3;
+  const ax = vertices[ia], ay = vertices[ia + 1], az = vertices[ia + 2];
+  const bx = vertices[ib], by = vertices[ib + 1], bz = vertices[ib + 2];
+  const cx = vertices[ic], cy = vertices[ic + 1], cz = vertices[ic + 2];
+  const ux = bx - ax, uy = by - ay, uz = bz - az;
+  const vx = cx - ax, vy = cy - ay, vz = cz - az;
+  const area = 0.5 * Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+  if (!(area > 1e-12)) return { minAngleDeg: 0, aspect: Infinity };
+  const sa = Math.sqrt(dist2(bx, by, bz, cx, cy, cz)); // side opposite a
+  const sb = Math.sqrt(dist2(cx, cy, cz, ax, ay, az)); // side opposite b
+  const sc = Math.sqrt(dist2(ax, ay, az, bx, by, bz)); // side opposite c
+  const minAngleDeg = Math.min(
+    lawOfCosines(sb, sc, sa),
+    lawOfCosines(sa, sc, sb),
+    lawOfCosines(sa, sb, sc),
+  );
+  const longest2 = Math.max(sa * sa, sb * sb, sc * sc);
+  return { minAngleDeg, aspect: (longest2 * Math.sqrt(3)) / (4 * area) };
+}
+
 export interface TopologyResult {
   boundaryEdges: number;
   nonManifoldEdges: number;

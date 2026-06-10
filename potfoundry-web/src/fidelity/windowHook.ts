@@ -14,6 +14,7 @@ import {
   getLastConformingOuterGrid,
   getLastConformingOuterReferenceGrid,
   getLastConformingOuterWallMask,
+  getLastConformingTriangleSource,
 } from '../renderers/webgpu/ParametricExportComputer';
 import type { FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
 import type { CdtCellIncident } from '../renderers/webgpu/parametric/conforming/ConstrainedCellTriangulator';
@@ -28,6 +29,7 @@ import {
   topologyDiagnostics,
   triangleQualityDiagnostics,
   triangleQualityDistribution,
+  triMinAngleAndAspect,
   wallChordError,
   wallDeviation,
   type CrestBandQualityResult,
@@ -37,7 +39,7 @@ import {
   type WallChordResult,
   type WallDeviationResult,
 } from './metrics';
-import { WELD_TOL_MM, type FidelityMetrics } from './types';
+import { ASPECT_MAX, WELD_TOL_MM, type FidelityMetrics } from './types';
 
 export interface FidelityMeasureOptions {
   targetTriangles: number;
@@ -186,6 +188,18 @@ export interface PfFidelityApi {
    * cells). Counting only — the mesh itself is byte-identical.
    */
   diagnoseCdtHealth(opts?: FidelityCdtHealthDiagnosticOptions): Promise<FidelityCdtHealthDiagnostics | null>;
+  /**
+   * STAGE 0 — per-triangle sliver ATTRIBUTION over the emission-provenance
+   * channel. The conforming mesher tags every triangle with the template class
+   * that emitted it (TRI_SOURCE: plain-quad split / transition fan / ear-clip /
+   * FCT plain / FCT fan / feature-cell CDT / ring-or-cap); this generates the
+   * mesh once, computes each triangle's 3D min interior angle + aspect, and
+   * buckets the counts per tag — so a sliver field is attributable to its
+   * emitting code path. Null on the legacy/parametric path (no provenance
+   * stash) and when a downstream pass changed the triangle count (channel no
+   * longer parallel). Metadata readout only — the mesh is byte-identical.
+   */
+  diagnoseSliverAttribution(opts?: FidelitySliverAttributionOptions): Promise<FidelitySliverAttributionDiagnostics | null>;
   /** TEMP debug (revert): the OUTER-wall sub-mesh for off-DOM wireframe rendering. */
   _debugOuterMesh(targetTriangles?: number): Promise<{ vertices: Float32Array; indices: Uint32Array } | null>;
   /**
@@ -225,6 +239,29 @@ export interface FidelityCdtHealthDiagnostics {
   incidentCells: number;
   /** Top-20 incident cells by (inversions+drops), severity-sorted (inputs attached under `__pfConformingCellDumps`). */
   worstIncidents: CdtCellIncident[];
+}
+
+export interface FidelitySliverAttributionOptions {
+  targetTriangles?: number;
+  /** Min interior angle (deg) bar for the `below` counter (default 15). */
+  angleBarDeg?: number;
+}
+
+/** Per-TRI_SOURCE-tag triangle-shape bucket. */
+export interface SliverAttributionBucket {
+  /** Triangles carrying this tag. */
+  tris: number;
+  /** Triangles with min interior 3D angle < `angleBarDeg`. */
+  below: number;
+  /** Triangles with aspect > ASPECT_MAX (the standing sliver gate). */
+  slivers: number;
+}
+
+export interface FidelitySliverAttributionDiagnostics {
+  styleId: string;
+  angleBarDeg: number;
+  /** Buckets keyed by the TRI_SOURCE tag value (stringified). */
+  byTag: Record<string, SliverAttributionBucket>;
 }
 
 export interface FidelitySerrationDiagnosticOptions {
@@ -539,6 +576,30 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           .sort((a, b) => (b.inversions + b.drops) - (a.inversions + a.drops))
           .slice(0, 20),
       };
+    },
+    async diagnoseSliverAttribution(opts: FidelitySliverAttributionOptions = {}): Promise<FidelitySliverAttributionDiagnostics | null> {
+      const styleId = currentStyleId();
+      const bar = opts.angleBarDeg ?? 15;
+      // Generating the mesh repopulates the stashed provenance channel
+      // (conforming branch only). The channel is parallel to the RETURNED
+      // mesh's triangles — bail (null) if a downstream pass (e.g. decimation)
+      // changed the count so attribution can never silently misalign.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const src = getLastConformingTriangleSource();
+      if (!src || src.length !== Math.floor(mesh.indices.length / 3)) return null;
+      const byTag: Record<string, SliverAttributionBucket> = {};
+      for (let t = 0; t < mesh.indices.length; t += 3) {
+        const tag = String(src[t / 3]);
+        const b = (byTag[tag] ??= { tris: 0, below: 0, slivers: 0 });
+        b.tris++;
+        const q = triMinAngleAndAspect(
+          mesh.vertices, mesh.indices[t], mesh.indices[t + 1], mesh.indices[t + 2],
+        );
+        if (q.minAngleDeg < bar) b.below++;
+        if (q.aspect > ASPECT_MAX) b.slivers++;
+      }
+      return { styleId, angleBarDeg: bar, byTag };
     },
     async _debugOuterMesh(targetTriangles?: number) {
       const mesh = await deps.generateMesh(targetTriangles);

@@ -156,6 +156,12 @@ export interface ConformingWallResult {
    * on the FEATURE path (plain `triangulateQuadtree` output has none).
    */
   cdtStats?: CdtStats;
+  /**
+   * Per-triangle emission provenance (Stage-0 instrument): TRI_SOURCE values,
+   * parallel to `indices`/3. Copied straight from the triangulator's mesh.
+   * Metadata only — the triangle content/order is untouched.
+   */
+  triangleSource?: Uint8Array;
 }
 
 const RING_EPS = 1e-6;
@@ -585,5 +591,8 @@ export function buildConformingWall(
     // Stage-0 instrument: only the FEATURE triangulator produces cdtStats; the
     // plain path leaves it undefined. Metadata only — the mesh is unchanged.
     cdtStats: mesh.cdtStats,
+    // Stage-0 instrument: per-triangle emission provenance (both triangulators
+    // populate it). Metadata only — the mesh is unchanged.
+    triangleSource: mesh.triangleSource,
   };
 }

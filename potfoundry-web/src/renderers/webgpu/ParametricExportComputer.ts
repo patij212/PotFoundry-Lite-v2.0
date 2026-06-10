@@ -254,6 +254,15 @@ let LAST_CONFORMING_OUTER_WALL_MASK: Uint8Array | null = null;
  */
 let LAST_CONFORMING_CDT_STATS: { outer?: CdtStats; inner?: CdtStats } | null = null;
 
+/**
+ * Most recent conforming-branch per-triangle emission-provenance channel
+ * (Stage-0 instrument): one TRI_SOURCE tag per triangle of the assembled mesh,
+ * parallel to the returned mesh's indices/3 (wall templates vs ring/cap
+ * strips). Null off the conforming path. Reference only — the exported mesh is
+ * unchanged.
+ */
+let LAST_CONFORMING_TRIANGLE_SOURCE: Uint8Array | null = null;
+
 export function getLastChainDebugData(): ChainDebugData | null {
     return LAST_CHAIN_DEBUG_DATA;
 }
@@ -287,6 +296,13 @@ export function getLastConformingOuterWallMask(): Uint8Array | null {
  *  Dev diagnostic only (Stage-0 fold-over/drop instrument). */
 export function getLastConformingCdtStats(): { outer?: CdtStats; inner?: CdtStats } | null {
     return LAST_CONFORMING_CDT_STATS;
+}
+
+/** Most recent conforming-branch per-triangle emission-provenance channel
+ *  (TRI_SOURCE values, parallel to the returned mesh's indices/3), or null.
+ *  Dev diagnostic only (Stage-0 sliver-attribution instrument). */
+export function getLastConformingTriangleSource(): Uint8Array | null {
+    return LAST_CONFORMING_TRIANGLE_SOURCE;
 }
 
 export function getLastPeakDebugData(): PeakDebugData | null {
@@ -1859,6 +1875,9 @@ export class ParametricExportComputer {
         // Same lifecycle for the CDT masking-channel counters (Stage-0): never
         // let a previous conforming build's stats leak into this run's readout.
         LAST_CONFORMING_CDT_STATS = null;
+        // Same lifecycle for the per-triangle provenance channel (Stage-0): a
+        // stale channel must never be attributed to this run's mesh.
+        LAST_CONFORMING_TRIANGLE_SOURCE = null;
 
         const requestedProfile: QualityProfileName = params.qualityProfile ?? 'standard';
         const effectiveProfileName = profileForAttempt(requestedProfile, 0);
@@ -2525,6 +2544,11 @@ export class ParametricExportComputer {
                 // counters (fold-over flips + zero-area drops) for the fidelity
                 // hook's diagnoseCdtHealth. Read-only; the mesh is unchanged.
                 LAST_CONFORMING_CDT_STATS = asm.cdtStats ?? null;
+
+                // Stage-0 instrument: stash the per-triangle emission-provenance
+                // channel for the fidelity hook's diagnoseSliverAttribution.
+                // Read-only; the mesh is unchanged.
+                LAST_CONFORMING_TRIANGLE_SOURCE = asm.triangleSource ?? null;
 
                 // ── Feature-completeness accounting (meaningful featuresDropped) ──
                 // Measure how many of the style's closed-form sharp feature lines

@@ -31,6 +31,7 @@
 import type { SurfaceSampler } from './SurfaceSampler';
 import { buildConformingWall, type ConformingWallResult } from './ConformingWall';
 import type { CdtStats } from './ConstrainedCellTriangulator';
+import { TRI_SOURCE } from './QuadtreeTriangulator';
 import { annulusStrip, discFan } from './RingStrip';
 import type { FeatureLine } from './FeatureLineGraph';
 import { classifySurfaceShear } from './FShearDiagnostics';
@@ -262,6 +263,13 @@ export interface WatertightAssemblyResult {
    * wall carries features (the inner wall is a smooth offset). Metadata only.
    */
   cdtStats?: { outer?: CdtStats; inner?: CdtStats };
+  /**
+   * Per-triangle emission provenance (Stage-0 instrument): TRI_SOURCE values,
+   * parallel to `indices`/3 of the FINAL assembled mesh. Wall triangles carry
+   * their triangulator tags; every ring/cap/disc triangle is RING_OR_CAP.
+   * Metadata only — the triangle content/order is untouched.
+   */
+  triangleSource?: Uint8Array;
 }
 
 /** Append a wall's packed vertices to `verts`, returning the index offset. */
@@ -448,6 +456,10 @@ export function assembleWatertight(
   const verts: number[] = [];
   const indices: number[] = [];
   const ranges: SurfaceRange[] = [];
+  // Stage-0 provenance: one TRI_SOURCE tag per triangle of the FINAL index
+  // array, built in lockstep — walls copy their per-triangle tags below; every
+  // later (non-wall) emission is back-filled RING_OR_CAP before packing.
+  const sourceTags: number[] = [];
 
   // --- 2. Concatenate wall vertices; remap each wall's local indices --------
   const outerOffset = appendWall(verts, outer); // 0
@@ -473,6 +485,14 @@ export function assembleWatertight(
   ): void => {
     const indexStart = indices.length;
     for (let i = 0; i < wall.indices.length; i++) indices.push(wall.indices[i] + offset);
+    // Stage-0 provenance: copy the wall's per-triangle tags in lockstep. Both
+    // triangulators always populate `triangleSource`; the fallback only keeps
+    // the channel length-aligned if that contract ever breaks.
+    const wallSource = wall.triangleSource;
+    const wallTris = wall.indices.length / 3;
+    for (let i = 0; i < wallTris; i++) {
+      sourceTags.push(wallSource !== undefined ? wallSource[i] : TRI_SOURCE.PLAIN_QUAD);
+    }
     ranges.push({ surfaceId, indexStart, indexEnd: indices.length, vertexCount });
   };
   pushWallTris(0, outerOffset, outerCount, outer);
@@ -563,6 +583,17 @@ export function assembleWatertight(
     }
   }
 
+  // Stage-0 provenance: every triangle emitted AFTER the two walls (rim, caps,
+  // discs, drain) is a ring/cap template — back-fill the channel to the final
+  // triangle count. orientOutward below flips windings in place but never
+  // drops/reorders triangles, so the tags stay parallel.
+  while (sourceTags.length < indices.length / 3) sourceTags.push(TRI_SOURCE.RING_OR_CAP);
+  if (sourceTags.length !== indices.length / 3) {
+    throw new Error(
+      `assembleWatertight: triangleSource length ${sourceTags.length} != triangle count ${indices.length / 3}`,
+    );
+  }
+
   const vertices = new Float32Array(verts);
   const indexArr = new Uint32Array(indices);
 
@@ -576,7 +607,13 @@ export function assembleWatertight(
       ? { outer: outer.cdtStats, inner: inner.cdtStats }
       : undefined;
 
-  return { vertices, indices: indexArr, surfaceRanges: ranges, cdtStats };
+  return {
+    vertices,
+    indices: indexArr,
+    surfaceRanges: ranges,
+    cdtStats,
+    triangleSource: Uint8Array.from(sourceTags),
+  };
 }
 
 /**

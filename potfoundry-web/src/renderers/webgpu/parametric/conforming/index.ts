@@ -24,7 +24,7 @@ export { MetricSizingField } from './MetricSizingField';
 export type { QuadLeaf, QuadSide } from './PeriodicBalancedQuadtree';
 export { PeriodicBalancedQuadtree } from './PeriodicBalancedQuadtree';
 export type { QuadtreeLike, QuadtreeMesh } from './QuadtreeTriangulator';
-export { triangulateQuadtree } from './QuadtreeTriangulator';
+export { triangulateQuadtree, TRI_SOURCE } from './QuadtreeTriangulator';
 export type { CdtStats, CdtCellIncident, ConstrainedCellResult } from './ConstrainedCellTriangulator';
 export type {
   ConformingOuterWallOptions,

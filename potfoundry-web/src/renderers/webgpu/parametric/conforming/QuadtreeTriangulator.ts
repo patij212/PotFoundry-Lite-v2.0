@@ -21,6 +21,17 @@
 import type { QuadLeaf } from './PeriodicBalancedQuadtree';
 import type { CdtStats } from './ConstrainedCellTriangulator';
 
+/** Per-triangle emission provenance (Stage-0 instrument). */
+export const TRI_SOURCE = {
+  PLAIN_QUAD: 0,      // triangulateQuadtree plain-quad split
+  TRANSITION_FAN: 1,  // triangulateQuadtree centroid transition fan
+  EAR_CLIP: 2,        // metric ear-clip path (dead today — leaf.efg never set; reserved)
+  FCT_PLAIN_QUAD: 3,  // FeatureConformingTriangulator plain cell, 0-split
+  FCT_PLAIN_FAN: 4,   // FeatureConformingTriangulator plain cell, centroid fan
+  FCT_FEATURE_CDT: 5, // FeatureConformingTriangulator feature-cell CDT fill
+  RING_OR_CAP: 6,     // assembly ring strips / caps / discs
+} as const;
+
 /** Minimal quadtree shape consumed by the triangulator. */
 export interface QuadtreeLike {
   leaves(): QuadLeaf[];
@@ -53,6 +64,8 @@ export interface QuadtreeMesh {
    * has no CDT cells. Metadata only: the triangle output is unaffected.
    */
   cdtStats?: CdtStats;
+  /** Per-triangle emission provenance (TRI_SOURCE values; parallel to indices/3). */
+  triangleSource?: Uint8Array;
 }
 
 /** Quantization scale for vertex dedup (exact for dyadic coords up to lvl 24). */
@@ -283,6 +296,11 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
   // (u1 == 1)? Such triangles have their right-edge vertices collapsed onto the
   // u=0 column, so orientation/position must unwrap them (treat u=0 as u=1).
   const triWrapsSeam: number[] = [];
+  // Stage-0 provenance channel: one TRI_SOURCE tag per emitted triangle, pushed
+  // in lockstep by `emit`. `curTag` is set immediately before each emission
+  // region. Metadata only — the triangle content/order is untouched.
+  const source: number[] = [];
+  let curTag: number = TRI_SOURCE.PLAIN_QUAD;
 
   /**
    * Does the given side of (level,iu,it,eUL) border a finer neighbour? On a
@@ -427,6 +445,7 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
       if (a === b || b === c || a === c) return;
       indices.push(a, b, c);
       triWrapsSeam.push(wrapsSeam);
+      source.push(curTag);
     };
 
     // Fast-path split flags (single mid where a finer neighbour exists).
@@ -477,6 +496,7 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
         const qSeNw = Math.round(dSeNw * QSCALE);
         useSeNw = qSeNw < qSwNe;
       }
+      curTag = TRI_SOURCE.PLAIN_QUAD;
       if (useSeNw) {
         emit(sw, se, nw);
         emit(se, ne, nw);
@@ -505,8 +525,10 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
       add(u0, t1); // NW
       if (splitW) add(u0, tm);
       if (aniso && efg) {
+        curTag = TRI_SOURCE.EAR_CLIP;
         earClipMaxMinAngle(efg, co, poly, emit);
       } else {
+        curTag = TRI_SOURCE.TRANSITION_FAN;
         const ctr = vertexIndex(um, tm);
         for (let i = 0; i < poly.length; i++) emit(ctr, poly[i], poly[(i + 1) % poly.length]);
       }
@@ -531,8 +553,10 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
     add(u0, t1); // NW
     for (let k = subW.length - 1; k >= 0; k--) add(u0, subW[k]); // west: t descending
     if (aniso && efg) {
+      curTag = TRI_SOURCE.EAR_CLIP;
       earClipMaxMinAngle(efg, co, poly, emit);
     } else {
+      curTag = TRI_SOURCE.TRANSITION_FAN;
       const ctr = vertexIndex(um, tm);
       for (let i = 0; i < poly.length; i++) emit(ctr, poly[i], poly[(i + 1) % poly.length]);
     }
@@ -583,5 +607,8 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
     vertices,
     indices: outIndices,
     seamTriangles: Uint8Array.from(triWrapsSeam),
+    // Stage-0 provenance: the seam remap above never drops/reorders triangles,
+    // so the per-emit tags stay parallel to the final triangle list.
+    triangleSource: Uint8Array.from(source),
   };
 }
