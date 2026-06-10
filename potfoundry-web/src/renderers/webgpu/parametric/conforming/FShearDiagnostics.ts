@@ -255,6 +255,7 @@ export interface CellCeilingSummary {
   minCornerDeg: number;
   pctCornerBelow15: number;
   pctCornerBelow10: number;
+  /** Max |F|/√(EG) over the lattice — same quantity as ShearSummary.maxCosAlpha. */
   maxShearCos: number;
 }
 
@@ -277,6 +278,10 @@ export function classifyCellCeiling(
   const composed: SurfaceSampler = warp
     ? { position: (u: number, t: number) => sampler.position(warp(u, t), t) }
     : sampler;
+  // Steps from the ORIGINAL sampler: the composed wrapper has no gridResolution
+  // (its u-axis is warped), so probing it would silently fall back to the analytic
+  // step. No-warp path → correct grid-scaled step; warp path → the warp is a
+  // smooth bijection on u, so the original sampler's step remains valid.
   const steps = metricStepsForSampler(sampler);
   let latticePoints = 0;
   let minCorner = 90;
