@@ -66,6 +66,19 @@ export interface CellRefineOptions {
   angleBar?: number;
   /** Per-cell hard insertion cap (best-so-far on exhaustion). */
   cap?: number;
+  /**
+   * Minimum (u,t) distance an inserted interior point must keep from every cell
+   * SIDE and every boundary/interior vertex. Defaults to {@link ON_EDGE_EPS}
+   * (the original behaviour). The production wiring passes `2·WELD_TAU` so no
+   * accepted Steiner can be welded or QSCALE-quantized onto a registry-shared
+   * boundary vertex — or onto a neighbour cell's near-edge Steiner across the
+   * shared edge — by the consumer's downstream weld pass (which would manufacture
+   * a T-junction the registry never sanctioned). A point ≥ `minEdgeDist` from the
+   * edge on each side sits ≥ `2·minEdgeDist` from the neighbour's nearest accepted
+   * point across that edge, so for `minEdgeDist ≥ WELD_TAU` the weld cannot fuse
+   * them. Strictly interior to the cell, so it never mutates the shared perimeter.
+   */
+  minEdgeDist?: number;
 }
 
 /**
@@ -254,13 +267,17 @@ function barycentric3D(
   return [areaBCX / denom, areaCAX / denom, areaABX / denom];
 }
 
-/** True iff the (u,t) point is strictly inside the cell box (all sides clear). */
-function strictlyInsideBox(p: CellPoint, box: { u0: number; u1: number; t0: number; t1: number }): boolean {
+/** True iff the (u,t) point is at least `margin` clear of every cell side. */
+function strictlyInsideBox(
+  p: CellPoint,
+  box: { u0: number; u1: number; t0: number; t1: number },
+  margin: number,
+): boolean {
   return (
-    p.u > box.u0 + ON_EDGE_EPS &&
-    p.u < box.u1 - ON_EDGE_EPS &&
-    p.t > box.t0 + ON_EDGE_EPS &&
-    p.t < box.t1 - ON_EDGE_EPS
+    p.u > box.u0 + margin &&
+    p.u < box.u1 - margin &&
+    p.t > box.t0 + margin &&
+    p.t < box.t1 - margin
   );
 }
 
@@ -293,6 +310,10 @@ export function refineCellInterior(
 ): ConstrainedCellResult {
   const angleBar = opts.angleBar ?? THETA_MIN;
   const cap = Math.max(0, Math.floor(opts.cap ?? MAX_STEINER_PER_CELL));
+  // Weld-safe interior margin: every accepted Steiner must clear each side (and
+  // every existing vertex) by this much so the consumer's WELD_TAU weld cannot
+  // fuse it across a registry-shared edge. Defaults to ON_EDGE_EPS (no-op).
+  const minEdge = Math.max(ON_EDGE_EPS, opts.minEdgeDist ?? ON_EDGE_EPS);
 
   const boundary = seed.input.boundary;
   const constraints = seed.input.constraints;
@@ -309,14 +330,16 @@ export function refineCellInterior(
 
   /** Is `cand` a usable interior insertion (strictly inside + not coincident)? */
   const acceptable = (cand: CellPoint | null): boolean => {
-    // WATERTIGHT: reject anything not STRICTLY interior. Do not insert, do not
-    // split — the boundary is PASS A2's job, never this angle-driven loop.
-    if (cand === null || !strictlyInsideBox(cand, box)) return false;
+    // WATERTIGHT: reject anything not at least `minEdge` clear of every side. Do
+    // not insert, do not split — the boundary is PASS A2's job, never this
+    // angle-driven loop. The margin also keeps it clear of every existing vertex
+    // so the downstream weld cannot fuse a Steiner onto a shared boundary vertex.
+    if (cand === null || !strictlyInsideBox(cand, box, minEdge)) return false;
     for (const e of boundary) {
-      if (Math.abs(e.u - cand.u) <= ON_EDGE_EPS && Math.abs(e.t - cand.t) <= ON_EDGE_EPS) return false;
+      if (Math.abs(e.u - cand.u) <= minEdge && Math.abs(e.t - cand.t) <= minEdge) return false;
     }
     for (const e of interior) {
-      if (Math.abs(e.u - cand.u) <= ON_EDGE_EPS && Math.abs(e.t - cand.t) <= ON_EDGE_EPS) return false;
+      if (Math.abs(e.u - cand.u) <= minEdge && Math.abs(e.t - cand.t) <= minEdge) return false;
     }
     return true;
   };

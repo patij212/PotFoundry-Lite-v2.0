@@ -31,6 +31,12 @@ import type { QuadtreeLike, QuadtreeMesh } from './QuadtreeTriangulator';
 import { triangulateQuadtree } from './QuadtreeTriangulator';
 import type { FeatureLine } from './FeatureLineGraph';
 import { triangulateConstrainedCell, type CellPoint } from './ConstrainedCellTriangulator';
+import {
+  refineCellInterior,
+  type Sampler3D,
+  THETA_MIN,
+  MAX_STEINER_PER_CELL,
+} from './CellQualityRefinement';
 
 export interface FeatureTriangulationOptions {
   /** Quantization scale for vertex dedup (must match the plain triangulator). */
@@ -44,10 +50,29 @@ export interface FeatureTriangulationOptions {
    * as a small fraction of the feature cell size. 0 disables snapping.
    */
   cornerSnap?: number;
+  /**
+   * Optional (u,t)→3D surface sampler. When supplied, every REAL feature cell
+   * (one carrying inserted feature segments) runs the Tier-2 interior quality
+   * refinement ({@link refineCellInterior}) AFTER its constrained CDT — inserting
+   * strictly-interior off-center Steiner points (computed in the 3D surface
+   * metric) to raise the min interior angle, WITHOUT ever mutating the
+   * registry-shared perimeter. Omitted ⇒ byte-identical to the pre-refinement
+   * output (the clean styles are untouched). The closure must match the wall's
+   * production surface map so the off-centers are well-shaped in 3D.
+   */
+  sampler?: Sampler3D;
 }
 
 /** Quantization scale for vertex dedup (exact for dyadic coords up to lvl 24). */
 const QSCALE = 1 << 24;
+/**
+ * Weld-safe interior margin for Tier-2 Steiner points: ≥ 2× the float-jitter weld
+ * radius (`WELD_TAU = 1e-6` in the tolerance-weld pass below) AND > one QSCALE
+ * quantum (≈5.96e-8), so a refined interior point can never be welded or quantized
+ * onto a registry-shared boundary vertex (or a neighbour cell's near-edge Steiner
+ * across the shared edge) → no manufactured T-junction.
+ */
+const STEINER_MIN_EDGE_DIST = 2e-6;
 /** Cap on per-leaf directional u-refinement (mirrors PeriodicBalancedQuadtree). */
 const MAX_U_EXTRA = 4;
 /** Geometric tolerance for "on a cell boundary" classification (in u,t). */
@@ -222,6 +247,7 @@ export function triangulateQuadtreeWithFeatures(
 ): QuadtreeMesh {
   if (features.length === 0) return triangulateQuadtree(qt);
   const cornerSnap = Math.max(0, options.cornerSnap ?? 0);
+  const sampler = options.sampler;
 
   // Anisotropy bias (GAP 1): a level-L leaf spans Δu=1/2^(L+B) in u, Δt=1/2^L in t.
   // u-index/wrap use 2^(level+B); `cornerSnap` is the t-extent fraction, so the u
@@ -793,11 +819,27 @@ export function triangulateQuadtreeWithFeatures(
       cellConstraints.push([ia, ib]);
     }
 
-    const result = triangulateConstrainedCell({
+    let result = triangulateConstrainedCell({
       boundary,
       interior: survivingInterior,
       constraints: cellConstraints,
     });
+    // ── Tier-2 interior quality refinement (opt-in via options.sampler) ──
+    // Only on REAL feature cells (data.feature — those carrying inserted feature
+    // segments), NOT registry-passive neighbours. Inserts strictly-interior
+    // off-center Steiner points (computed in the 3D surface metric) to raise the
+    // min interior angle of the per-cell CDT fill, which inserts ZERO quality
+    // Steiner points itself. The boundary + constraints are replayed UNCHANGED, so
+    // the registry-shared perimeter is invariant; STEINER_MIN_EDGE_DIST keeps every
+    // Steiner ≥ 2·WELD_TAU clear of every side so the downstream weld cannot fuse it
+    // across a shared edge. No-op without a sampler ⇒ the clean styles are untouched.
+    if (sampler !== undefined && data.feature) {
+      result = refineCellInterior(
+        { input: { boundary, interior: survivingInterior, constraints: cellConstraints }, result },
+        sampler,
+        { angleBar: THETA_MIN, cap: MAX_STEINER_PER_CELL, minEdgeDist: STEINER_MIN_EDGE_DIST },
+      );
+    }
     const globalOf = result.points.map((p) => vertexIndex(p.u, p.t));
     for (const [a, b, c] of result.triangles) emit(globalOf[a], globalOf[b], globalOf[c]);
   }

@@ -138,6 +138,50 @@ function vertical(u: number): FeatureLine {
   return { kind: 'vertical-crease', points, label: `v@${u}` };
 }
 
+/** A DIAGONAL general-curve sweeping u0→u1 as t rises 0→1 (a crest prototype). */
+function sloped(u0: number, u1: number): FeatureLine {
+  const points = [];
+  const N = 16;
+  for (let i = 0; i <= N; i++) {
+    const f = i / N;
+    points.push({ u: u0 + (u1 - u0) * f, t: f });
+  }
+  return { kind: 'general-curve', points, label: `sloped@${u0}->${u1}` };
+}
+
+/** Smallest interior 3D angle (deg) of triangle k under a (u,t)→3D closure. */
+function tri3DMinAngle(
+  mesh: QuadtreeMesh,
+  k: number,
+  sampler: (u: number, t: number) => readonly [number, number, number],
+): number {
+  const idx = (j: number): readonly [number, number, number] =>
+    sampler(mesh.vertices[mesh.indices[k + j] * 3], mesh.vertices[mesh.indices[k + j] * 3 + 1]);
+  const A = idx(0), B = idx(1), C = idx(2);
+  const d = (p: readonly number[], q: readonly number[]): number => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  const a = d(B, C), b = d(C, A), c = d(A, B);
+  if (a < 1e-12 || b < 1e-12 || c < 1e-12) return 0;
+  const ang = (j1: number, j2: number, op: number): number => {
+    let cs = (j1 * j1 + j2 * j2 - op * op) / (2 * j1 * j2);
+    if (cs > 1) cs = 1; else if (cs < -1) cs = -1;
+    return (Math.acos(cs) * 180) / Math.PI;
+  };
+  return Math.min(ang(b, c, a), ang(a, c, b), ang(a, b, c));
+}
+
+/** Count triangles with 3D min-angle < 20° under a (u,t)→3D closure. */
+function sub20Count(
+  mesh: QuadtreeMesh,
+  sampler: (u: number, t: number) => readonly [number, number, number],
+): number {
+  let n = 0;
+  for (let k = 0; k < mesh.indices.length; k += 3) {
+    const a = tri3DMinAngle(mesh, k, sampler);
+    if (a > 0 && a < 20) n++;
+  }
+  return n;
+}
+
 describe('triangulateQuadtreeWithFeatures', () => {
   it('delegates to the plain triangulator when there are no features', () => {
     const qt = uniformQuadtree(2);
@@ -145,6 +189,34 @@ describe('triangulateQuadtreeWithFeatures', () => {
     const b = triangulateQuadtree(qt);
     expect(a.vertices.length).toBe(b.vertices.length);
     expect(a.indices.length).toBe(b.indices.length);
+    expect(Array.from(a.indices)).toEqual(Array.from(b.indices));
+  });
+
+  it('refines feature-cell interiors under a 3D sampler: more verts, fewer sub-20° tris, still watertight', () => {
+    // A diagonal crest crossing axis-aligned cells, evaluated under a u-stretched
+    // (anisotropic) 3D map, leaves the per-cell CDT fill with sub-20° feature-cell
+    // slivers (triangulateConstrainedCell inserts ZERO quality Steiner points).
+    // Supplying the sampler must run the interior Ruppert/Chew refinement on those
+    // feature cells — adding interior vertices and cutting the sub-20° count —
+    // WITHOUT mutating any shared edge (watertight + T-junction-free by construction).
+    const qt = uniformQuadtree(3); // 8×8
+    const features: FeatureLine[] = [sloped(0.1, 0.7)];
+    const sampler = (u: number, t: number): readonly [number, number, number] => [4 * u, t, 0];
+    const base = triangulateQuadtreeWithFeatures(qt, features);
+    const refined = triangulateQuadtreeWithFeatures(qt, features, { sampler });
+    expect(refined.vertices.length).toBeGreaterThan(base.vertices.length); // refinement inserted
+    expect(sub20Count(refined, sampler)).toBeLessThan(sub20Count(base, sampler)); // quality improved
+    const audit = wallEdgeAudit(refined);
+    expect(audit.nonManifold, 'nonManifold after refinement').toBe(0);
+    expect(audit.interiorBoundary, 'T-junctions after refinement').toBe(0);
+  });
+
+  it('is byte-identical with no sampler (opt-in refinement is a no-op for the clean styles)', () => {
+    const qt = uniformQuadtree(3);
+    const features: FeatureLine[] = [sloped(0.1, 0.7)];
+    const a = triangulateQuadtreeWithFeatures(qt, features);
+    const b = triangulateQuadtreeWithFeatures(qt, features, {});
+    expect(a.vertices.length).toBe(b.vertices.length);
     expect(Array.from(a.indices)).toEqual(Array.from(b.indices));
   });
 

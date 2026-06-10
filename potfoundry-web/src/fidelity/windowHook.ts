@@ -20,12 +20,14 @@ import { BicubicSurfaceSampler } from '../renderers/webgpu/parametric/conforming
 import { classifySurfaceShear, type ShearSummary } from '../renderers/webgpu/parametric/conforming/FShearDiagnostics';
 import {
   computeFidelityMetrics,
+  crestBandTriangleQuality,
   extractOuterWallSubmesh,
   topologyDiagnostics,
   triangleQualityDiagnostics,
   triangleQualityDistribution,
   wallChordError,
   wallDeviation,
+  type CrestBandQualityResult,
   type TopologyDiagnostics,
   type TriangleQualityDiagnostics,
   type TriangleQualityDistribution,
@@ -159,8 +161,31 @@ export interface PfFidelityApi {
    * legacy/parametric path (no conforming outer-wall stash).
    */
   diagnoseSerration(opts?: FidelitySerrationDiagnosticOptions): Promise<FidelitySerrationDiagnostics | null>;
+  /**
+   * STAGE 0 — the faithful REFERENCE-FREE crest-band triangle-quality gate. Unlike
+   * `diagnoseSerration` (chord error vs a sampler reference, which was
+   * reference-dominated at sharp cusps), this measures the 3D MIN INTERIOR ANGLE of
+   * each OUTER-wall triangle — a pure function of the GPU-evaluated vertices, so the
+   * reference cannot fool it — and reports the sub-15° fraction WITHIN the crest band
+   * (the diagonal/helical-crest sliver field), separated from the clean bulk. Reads
+   * ~0 on a plain pot and lights up along a ridge crest; the headline gate for the
+   * crest fix. Null on the legacy/parametric path (no conforming outer-wall stash).
+   */
+  diagnoseCrestQuality(opts?: FidelityCrestQualityDiagnosticOptions): Promise<FidelityCrestQualityDiagnostics | null>;
   /** TEMP debug (revert): the OUTER-wall sub-mesh for off-DOM wireframe rendering. */
   _debugOuterMesh(targetTriangles?: number): Promise<{ vertices: Float32Array; indices: Uint32Array } | null>;
+}
+
+export interface FidelityCrestQualityDiagnosticOptions {
+  targetTriangles?: number;
+  /** Min interior angle (deg) bar below which a triangle is "bad" (default 15). */
+  angleBarDeg?: number;
+  /** Crest-band half-width as a fraction of the inter-crest angular spacing. */
+  crestHalfWidthFrac?: number;
+}
+
+export interface FidelityCrestQualityDiagnostics extends CrestBandQualityResult {
+  styleId: string;
 }
 
 export interface FidelitySerrationDiagnosticOptions {
@@ -435,6 +460,25 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         referenceRes: refGrid.resU,
         referenceBicubic: bicubic,
       };
+    },
+    async diagnoseCrestQuality(opts: FidelityCrestQualityDiagnosticOptions = {}): Promise<FidelityCrestQualityDiagnostics | null> {
+      const styleId = currentStyleId();
+      // Generating the mesh repopulates the stashed outer sampler grid + the
+      // outer-wall vertex mask (conforming branch only). mesh.vertices is the
+      // conforming pos3D in the same order as the mask, so the mask restricts to
+      // the outer wall, and the metric measures REFERENCE-FREE 3D min angles.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const grid = getLastConformingOuterGrid();
+      const mask = getLastConformingOuterWallMask();
+      if (!grid || !mask) return null;
+      const sub = extractOuterWallSubmesh(mesh.vertices, mesh.indices, mask);
+      const sampler = new GpuSurfaceSampler(grid.positions, grid.resU, grid.resT);
+      const result = crestBandTriangleQuality(sub, sampler, {
+        angleBarDeg: opts.angleBarDeg,
+        crestHalfWidthFrac: opts.crestHalfWidthFrac,
+      });
+      return { styleId, ...result };
     },
     async _debugOuterMesh(targetTriangles?: number) {
       const mesh = await deps.generateMesh(targetTriangles);

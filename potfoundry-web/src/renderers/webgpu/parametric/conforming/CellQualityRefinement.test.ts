@@ -243,6 +243,32 @@ describe('refineCellInterior (Tier 2 kernel, single isolated cell)', () => {
     expect(refWorst).toBeGreaterThanOrEqual(seedWorst);
   });
 
+  it('confines inserted points to ≥ minEdgeDist from every side (weld-safe margin)', () => {
+    // The consumer welds vertices within WELD_TAU=1e-6 in (u,t) AFTER the per-cell
+    // CDT, so an interior Steiner accepted at the default 1e-9 margin could weld /
+    // QSCALE-quantize onto a registry-shared boundary vertex (or a neighbour cell's
+    // near-edge Steiner) → a manufactured T-junction. `minEdgeDist` keeps every
+    // inserted point clear of all four sides by that margin so the weld can never
+    // fuse it across a shared edge. A cell densified FINELY on the south side has a
+    // bad sliver whose short edge hugs that side → its off-center lands near t=0
+    // WITHOUT the guard, so the margin must reject it.
+    const boundary: CellPoint[] = [];
+    const NS = 48; // fine south densification → tiny short edges near t=0
+    for (let i = 0; i < NS; i++) boundary.push({ u: i / NS, t: 0 });
+    for (let i = 0; i < 4; i++) boundary.push({ u: 1, t: i / 4 });
+    for (let i = 4; i > 0; i--) boundary.push({ u: i / 4, t: 1 });
+    for (let i = 4; i > 0; i--) boundary.push({ u: 0, t: i / 4 });
+    const seed = seedCell({ boundary, interior: [], constraints: [] });
+    const margin = 0.05;
+    const refined = refineCellInterior(seed, anisoSampler, { angleBar: 25, cap: 64, minEdgeDist: margin });
+    expect(refined.points.length).toBeGreaterThan(seed.result.points.length); // it did work
+    for (let i = seed.result.points.length; i < refined.points.length; i++) {
+      const p = refined.points[i];
+      const clear = Math.min(p.u, 1 - p.u, p.t, 1 - p.t);
+      expect(clear).toBeGreaterThanOrEqual(margin - 1e-12);
+    }
+  });
+
   it('is a no-op when the seed is already isotropic-clean (no bad triangles)', () => {
     // Plain square, identity 3D map ⇒ both triangles are 45-45-90, already ≥20°.
     const seed = seedCell({

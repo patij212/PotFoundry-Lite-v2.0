@@ -1616,3 +1616,171 @@ export function wallChordError(
     crestLoci: crest.maxLoci,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STAGE 0 — faithful crest-band TRIANGLE-QUALITY metric (reference-free).
+//
+// The serration chord-error metric (above) measures the mesh against a sampler
+// reference and was reference-DOMINATED at sharp cusps (it fooled a prior session
+// into a wrong "CAD-grade" claim). The min interior angle of a 3D triangle is a
+// pure function of the GPU-evaluated vertex positions — REFERENCE-FREE, so it
+// cannot be fooled by the reference. The diagonal/helical-crest defect is a field
+// of STRETCHED (near-degenerate, small-min-angle) fill triangles strung along the
+// crest; this metric reports the fraction of sub-bar triangles WITHIN a crest band
+// (centred on the sampler's per-row radius extrema, the crest loci), so the signal
+// is not diluted by the clean bulk. It reads 0 on a plain pot (empty band) and
+// lights up along a ridge crest, and is the sharp gate for the fix.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Faithful crest-band triangle-quality result (3D min interior angle). */
+export interface CrestBandQualityResult {
+  /** Outer-wall triangles measured (degenerate ones count as below-bar). */
+  triangleCount: number;
+  /** Angle bar (deg) below which a triangle is "bad" (default 15). */
+  angleBarDeg: number;
+  /** Percent of ALL outer-wall triangles with min interior angle < bar. */
+  pctBelow15: number;
+  /** Worst (smallest) min interior angle anywhere on the outer wall (deg). */
+  worstMinAngleDeg: number;
+  /** 1st-percentile min interior angle — robust worst tail (deg). */
+  p1MinAngleDeg: number;
+  /** Max distinct crest loci on any one t-row (≈ 2·m). 0 ⇒ plain pot. */
+  crestLoci: number;
+  /** Triangles whose centroid falls in a crest band. */
+  bandTriangles: number;
+  /** Percent of crest-band triangles below the bar (the headline gate). */
+  bandPctBelow15: number;
+  /** Worst min interior angle within the crest band (deg). */
+  bandWorstMinAngleDeg: number;
+  /** Percent of NON-band (bulk) triangles below the bar — proves localization. */
+  nonBandPctBelow15: number;
+}
+
+/** Options for {@link crestBandTriangleQuality}. */
+export interface CrestBandQualityOptions {
+  /** Min interior angle (deg) bar. Default 15 (the handoff crest bar). */
+  angleBarDeg?: number;
+  /** Minimum radius swing (mm) for a row to be crest-bearing. */
+  minProminenceMm?: number;
+  /** Crest-band half-width as a fraction of the inter-crest angular spacing. */
+  crestHalfWidthFrac?: number;
+  /** t-rows sampled to map the crest loci up the height. */
+  crestRows?: number;
+  /** u-columns sampled per row to locate the crest loci. */
+  crestCols?: number;
+}
+
+/**
+ * Reference-free crest-band triangle-quality over an OUTER-wall sub-mesh. For each
+ * triangle it computes the 3D min interior angle (a degenerate triangle scores 0)
+ * and classifies its centroid (θ,z) as inside/outside a crest band derived from the
+ * sampler's per-row radius extrema. Returns the whole-wall sub-bar fraction + worst
+ * tail AND the band-vs-bulk split: a plain pot has no crest band (`crestLoci=0`,
+ * `bandTriangles=0`, `bandPctBelow15=0`); a diagonal/helical ridge concentrates the
+ * sub-bar triangles in the band (`bandPctBelow15` ≫ `nonBandPctBelow15`).
+ */
+export function crestBandTriangleQuality(
+  mesh: MeshView,
+  sampler: PositionSampler,
+  opts: CrestBandQualityOptions = {},
+): CrestBandQualityResult {
+  const bar = opts.angleBarDeg ?? 15;
+  const minProminenceMm = opts.minProminenceMm ?? 0.05;
+  const crestHalfWidthFrac = opts.crestHalfWidthFrac ?? 0.3;
+  const crestRows = opts.crestRows ?? 48;
+  const crestCols = opts.crestCols ?? 360;
+
+  const { vertices, indices } = mesh;
+  let zMin = Infinity;
+  let zMax = -Infinity;
+  for (let i = 2; i < vertices.length; i += 3) {
+    const z = vertices[i];
+    if (z < zMin) zMin = z;
+    if (z > zMax) zMax = z;
+  }
+  const zSpan = Math.max(zMax - zMin, 1e-9);
+  const crest = buildCrestLoci(sampler, crestRows, crestCols, minProminenceMm, crestHalfWidthFrac);
+
+  const BINS = 61; // 0..60 inclusive (a min interior angle is always ≤ 60°)
+  const hist = new Float64Array(BINS);
+  let all = 0;
+  let below = 0;
+  let worst = 180;
+  let bandAll = 0;
+  let bandBelow = 0;
+  let bandWorst = 180;
+  let nonBandAll = 0;
+  let nonBandBelow = 0;
+
+  for (let t = 0; t < indices.length; t += 3) {
+    const ia = indices[t] * 3;
+    const ib = indices[t + 1] * 3;
+    const ic = indices[t + 2] * 3;
+    const ax = vertices[ia], ay = vertices[ia + 1], az = vertices[ia + 2];
+    const bx = vertices[ib], by = vertices[ib + 1], bz = vertices[ib + 2];
+    const cx = vertices[ic], cy = vertices[ic + 1], cz = vertices[ic + 2];
+
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const area = 0.5 * Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+    // Degenerate (zero-area) triangle: the worst possible sliver — score 0 so it
+    // counts as below-bar rather than being silently dropped.
+    let mAng = 0;
+    if (area > 1e-12) {
+      const a = Math.sqrt(dist2(bx, by, bz, cx, cy, cz)); // side opposite A
+      const b = Math.sqrt(dist2(cx, cy, cz, ax, ay, az)); // side opposite B
+      const c = Math.sqrt(dist2(ax, ay, az, bx, by, bz)); // side opposite C
+      mAng = Math.min(lawOfCosines(b, c, a), lawOfCosines(a, c, b), lawOfCosines(a, b, c));
+    }
+
+    all++;
+    let bin = Math.floor(mAng);
+    if (bin < 0) bin = 0;
+    else if (bin >= BINS) bin = BINS - 1;
+    hist[bin]++;
+    const isBelow = mAng < bar;
+    if (isBelow) below++;
+    if (mAng < worst) worst = mAng;
+
+    const ccx = (ax + bx + cx) / 3;
+    const ccy = (ay + by + cy) / 3;
+    const ccz = (az + bz + cz) / 3;
+    const theta = Math.atan2(ccy, ccx);
+    let row = Math.round(((ccz - zMin) / zSpan) * (crest.rows - 1));
+    if (row < 0) row = 0;
+    else if (row > crest.rows - 1) row = crest.rows - 1;
+    if (inCrestBand(crest, row, theta)) {
+      bandAll++;
+      if (isBelow) bandBelow++;
+      if (mAng < bandWorst) bandWorst = mAng;
+    } else {
+      nonBandAll++;
+      if (isBelow) nonBandBelow++;
+    }
+  }
+
+  const round1 = (x: number): number => Math.round(x * 10) / 10;
+  const round2 = (x: number): number => Math.round(x * 100) / 100;
+  let p1 = 0;
+  if (all > 0) {
+    const target = all * 0.01;
+    let acc = 0;
+    for (let bkt = 0; bkt < BINS; bkt++) {
+      acc += hist[bkt];
+      if (acc >= target) { p1 = bkt; break; }
+    }
+  }
+
+  return {
+    triangleCount: all,
+    angleBarDeg: bar,
+    pctBelow15: all > 0 ? round1((below / all) * 100) : 0,
+    worstMinAngleDeg: all > 0 ? round2(worst) : 0,
+    p1MinAngleDeg: p1,
+    crestLoci: crest.maxLoci,
+    bandTriangles: bandAll,
+    bandPctBelow15: bandAll > 0 ? round1((bandBelow / bandAll) * 100) : 0,
+    bandWorstMinAngleDeg: bandAll > 0 ? round2(bandWorst) : 0,
+    nonBandPctBelow15: nonBandAll > 0 ? round1((nonBandBelow / nonBandAll) * 100) : 0,
+  };
+}

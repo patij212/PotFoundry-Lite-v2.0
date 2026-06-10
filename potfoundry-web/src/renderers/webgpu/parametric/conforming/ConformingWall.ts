@@ -449,7 +449,22 @@ function buildWallMeshAtScale(
   // ABSOLUTE (not per-cell) so both sides of every shared edge snap identically.
   const featureLevel = featureRefine ? featureRefine.level : opts.maxLevel;
   const cornerSnap = 0.06 / (1 << featureLevel);
-  return triangulateQuadtreeWithFeatures(qt, clippedFeatures, { cornerSnap });
+  // Tier-2 interior quality refinement is OPT-IN and DEFAULT-OFF. MEASURED HARMFUL
+  // on the real (bilinear/curved) surface: refineCellInterior places its off-center
+  // in the triangle's FLAT 3D plane then barycentric-maps to (u,t) — exact only for
+  // an AFFINE map — so on a steep crest cell the back-mapped point lands wrong and
+  // MANUFACTURES slivers (SFB@1 sliver 0→143, Hive 0→199, CelticKnot 0→99; %<15°
+  // rises). It is also the wrong TOOL: the residual slivers are uBias-ANISOTROPIC
+  // (u-stretched), and isotropic Steiner insertion cannot square them. Kept behind
+  // `window.__pfConformingRefine=true` (dev-only) so the wiring + the affine-correct
+  // kernel survive for a future curvature-aware / anisotropic variant. Default path
+  // passes NO sampler ⇒ byte-identical to before this change.
+  const refineEnabled =
+    (globalThis as unknown as { __pfConformingRefine?: boolean }).__pfConformingRefine === true;
+  return triangulateQuadtreeWithFeatures(qt, clippedFeatures, {
+    cornerSnap,
+    sampler: refineEnabled ? (u, t) => sampler.position(u, t) : undefined,
+  });
 }
 
 /**
