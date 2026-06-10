@@ -48,25 +48,11 @@ const UBIAS_AREF = 3;
  * (ArtDeco 3639→0, SpiralRidges 468→0, FourierBloom & 11 others all 0, max
  * aspect ≤51). B=1 left SpiralRidges' helix at 11; B=3 broke ArtDeco. So the
  * bias no longer scales with relief — a single modest exponent is both necessary
- * and sufficient across the wide/flat regime. Default/tall pots stay B=0 via the
- * gate (unchanged → byte-identical default meshes).
+ * and sufficient across the wide/flat regime. (Default/tall pots are handled by
+ * GATE B below — the anisotropy quality bias — not this wide/flat dims bias.)
  */
 const UBIAS_WIDE_B = 2;
 
-/**
- * U-anisotropy gate for the RELIEF bias (GATE B, default/tall dims). A surface
- * whose worst u-dominant √E/√G (`maxURatio`) exceeds this has ridges steep enough
- * that axis-aligned cells STAIRCASE its diagonal crests — the high-strength
- * serration. MEASURED (2026-06-09, classifySurfaceShear over all 20 styles at
- * default dims): the low-relief defaults sit well below — SuperformulaBlossom@0
- * 3.5, GothicArches 3.6, ArtDeco 3.9, the SuperellipseMorph/Bamboo/Wave/Star/Hive
- * cluster 3.3–4.5, and crucially the braid style CelticKnot 4.1 (so GATE B never
- * fires on the braid that cracked at short-wide) — while the serrating regime is
- * above: SuperformulaBlossom@high 11.8, FourierBloom 12.2, HarmonicRipple 7.6,
- * DragonScales 7.4, Crystalline 6.8. The threshold sits in the clean gap between
- * the two clusters, so only the genuinely u-relief-dominated styles re-baseline.
- */
-const RELIEF_RATIO_GATE = 6;
 /**
  * Cap on the relief bias (mirrors the GAP-1 uBias ceiling). Extreme relief
  * saturates here rather than over-refining into construction slivers.
@@ -77,10 +63,9 @@ const MAX_RELIEF_B = 4;
  * Anisotropy bias B (≥0) for a wall sampler — a GATED, FIXED bias.
  *
  * Gates on a RELIEF-FREE wide/flat measure: `wideFlat = 2π·R̄ / Hspan`, the mean
- * wall radius over the wall height span. A pot that is not wide/flat (wideFlat in
- * the default band, ≤ AREF·√2) gets **B=0** — a no-op that keeps the validated
- * default-dim (20/20) meshes; a genuinely wide/flat pot gets a single FIXED bias
- * {@link UBIAS_WIDE_B}.
+ * wall radius over the wall height span. A genuinely wide/flat pot gets a single
+ * FIXED bias {@link UBIAS_WIDE_B} (GATE A); a pot that is not wide/flat falls
+ * through to GATE B (the anisotropy quality bias), which now fires at default dims.
  *
  * Why GEOMETRIC, not `median(2π·r/√G)`: √G = √(Hspan² + (∂r/∂t)²) is inflated by a
  * style's t-DIRECTION relief, so the old `2π·r/√G` gate UNDER-read the wide/flat-
@@ -107,16 +92,16 @@ const MAX_RELIEF_B = 4;
  *    WITH features it stays 0 — NOT the (now-fixed) braid crack, but because B>0
  *    amplifies GAP-2 curve-needle slivers on the level-set styles (Voronoi/Gyroid);
  *    see the deferral note at the caller. Lifting it awaits the needle fix.
- *  - GATE B — U-LONG surface RELIEF at default/tall dims (`maxURatio >
- *    {@link RELIEF_RATIO_GATE}`): steep ridges swept around the pot make a square
- *    (u,t) cell STAIRCASE the style's DIAGONAL crests into axis-aligned slivers —
- *    the high-strength serration. B≈log2(maxURatio/√3) squares those cells.
- *    Unlike GATE A this FIRES WITH features (crests need it; SuperformulaBlossom@1
- *    uBias=3 measured watertight + crest-tracked, featDrop=0) and is the !wideFlat
- *    branch only, so it never touches the short-wide regime where relief-scaled B
- *    injected construction slivers. At DEFAULT params the low-relief styles fall
- *    below the gate ⇒ B=0 ⇒ byte-identical; only the genuinely u-relief-dominated
- *    styles (and high-strength SuperformulaBlossom) re-baseline to squared cells.
+ *  - GATE B — surface ANISOTROPY at default/tall dims (`!wideFlat`): a square (u,t)
+ *    cell at √E/√G=ρ splits into ρ:1 3D triangles (low min-angle; staircased crests
+ *    at steep relief). `B≈log2(maxURatio/√3)` squares them toward equilateral. It is
+ *    SELF-CALIBRATING: moderate base anisotropy (ρ≈3 → B=1) gives clean-CAD triangle
+ *    quality (MEASURED 2026-06-10: %below-20° ~50%→~2-10%, fewer triangles); high
+ *    u-relief climbs (11.8 → B=3, the proven SuperformulaBlossom@1 serration bias);
+ *    `maxURatio < √2·√3 ≈ 2.45` (tall-narrow) → B=0. It FIRES WITH features and is
+ *    the !wideFlat branch only (never the short-wide regime). This RE-BASELINES
+ *    default meshes (no longer byte-identical) — a deliberate quality trade; the
+ *    goal vector (watertight / features / no slivers) still holds.
  *
  * @param hasFeatures whether the OUTER wall carries inserted feature lines (only
  *   affects GATE A — see above; GATE B is feature-agnostic).
@@ -146,18 +131,24 @@ export function computeUBias(sampler: SurfaceSampler, hasFeatures = false): numb
   // curve-needle slivers, so the defer waits on the GAP-2 needle fix; see caller).
   // GATE B never reaches this regime (it is the !wideFlat branch below).
   if (wideFlat > UBIAS_AREF * Math.SQRT2) return hasFeatures ? 0 : UBIAS_WIDE_B;
-  // GATE B — U-LONG surface relief at default/tall dims. `maxURatio` is the worst
-  // u-dominant √E/√G over the surface (same 192² lattice the serration probe uses,
-  // so this reproduces the measured 11.8 → B=3 at SuperformulaBlossom@1). Below the
-  // gate ⇒ B=0 ⇒ byte-identical default meshes.
+  // GATE B — ANISOTROPY bias at default/tall dims (clean-CAD triangle quality +
+  // serration, unified). `maxURatio` is the worst u-dominant √E/√G over the surface
+  // (same 192² lattice the serration probe uses). A square (u,t) cell at √E/√G=ρ
+  // splits into ρ:1 3D triangles — low min-angle, and at steep relief a staircased
+  // crest. uBias B sets Δu/Δt=1/2^B, so B≈log2(ρ/√3) squares the cell toward the
+  // equilateral residual √3. The formula is SELF-CALIBRATING and now fires at
+  // DEFAULT dims: moderate base anisotropy (ρ≈3 → B=1) — MEASURED 2026-06-10 to drop
+  // %below-20° from ~50% to ~2-10% with FEWER triangles, watertight, across
+  // Hive/Gyroid/Gothic/Voronoi/ArtDeco/CelticKnot/BasketWeave; high u-relief still
+  // climbs (11.8 → B=3, the proven SuperformulaBlossom@1 serration bias); very low
+  // anisotropy (maxURatio < √2·√3 ≈ 2.45, e.g. tall-narrow) → B=0 (untouched). It
+  // FIRES WITH features (crests/quality need it) and is the !wideFlat branch only,
+  // so it never touches the short-wide regime (GATE A). This RE-BASELINES default
+  // meshes (no longer byte-identical) — a deliberate quality-for-byte-identical
+  // trade; the goal vector (watertight / features / no slivers) still holds.
   const { maxURatio } = classifySurfaceShear(sampler);
-  if (maxURatio <= RELIEF_RATIO_GATE) return 0;
-  // A square (u,t) cell at √E/√G=ρ maps to a ρ:1 3D sliver; uBias B sets
-  // Δu/Δt=1/2^B, so B≈log2(ρ) squares it. Target a residual √3 (the equilateral
-  // aspect), clamp to [1, MAX_RELIEF_B] — round(log2(11.8/√3))=3 reproduces the
-  // proven SuperformulaBlossom@1 bias; the cap holds extreme relief at the ceiling.
   const b = Math.round(Math.log2(maxURatio / Math.sqrt(3)));
-  return Math.max(1, Math.min(MAX_RELIEF_B, b));
+  return Math.max(0, Math.min(MAX_RELIEF_B, b));
 }
 
 /** Pot dimensions needed to place the cap/drain surfaces. */
@@ -234,6 +225,15 @@ export interface AssemblyWallOptions {
   featureTMargin?: number;
   /** Feature-cell refinement level (see ConformingWallOptions.featureLevel). */
   featureLevel?: number;
+  /**
+   * Warp-pinned CREASE loci (vertical/horizontal/helical) for the OUTER wall —
+   * REFINE-ONLY (see {@link ConformingWallOptions.creaseLines}): they drive
+   * uBias-invariant t-refinement of the crease columns/rows so an anisotropy bias
+   * B>0 does not strip the crease t-rows feature coverage needs. NOT inserted as
+   * CDT edges (the downstream warps realise the creases). Applied to the outer
+   * wall only (the inner wall is a smooth constant offset). No-op at B=0 / empty.
+   */
+  outerCreaseLines?: FeatureLine[];
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -424,6 +424,7 @@ export function assembleWatertight(
     featureLines: opts.outerFeatureLines,
     featureTMargin: opts.featureTMargin,
     featureLevel: opts.featureLevel,
+    creaseLines: opts.outerCreaseLines,
   });
   const inner = buildConformingWall(innerSampler, { ...wallOpts, surfaceId: 1 });
 

@@ -137,6 +137,22 @@ export class PeriodicBalancedQuadtree {
    * `intersects(u0,t0,size)` returns true iff a feature segment meets that cell.
    */
   private readonly featureRefine?: { level: number; intersects: (u0: number, t0: number, size: number) => boolean };
+  /**
+   * Optional CREASE-driven refinement: cells a warp-pinned crease locus crosses
+   * are size-tested with the BIAS-FREE u-width (1/2^level instead of 1/2^(level+B))
+   * so their t-subdivision matches the B=0 mesh. This restores the crease-column
+   * t-rows that the global anisotropy bias B>0 otherwise removes — under B>0 the
+   * u-driven square refinement near a sharp crease reaches the sizing target B
+   * levels SHALLOWER, halving the crease column's t-rows per uBias level and
+   * dropping the feature-coverage metric below threshold. The bias-free test
+   * re-adds exactly the lost levels, and ONLY on crease-crossed cells (the rest of
+   * the wall keeps the bias quality win — square cells, fewer triangles). The
+   * crease itself stays a real, continuous mesh edge (it is a warp-pinned full-
+   * height column, never a CDT insertion). `intersects(u0,t0,size)` returns true
+   * iff a crease locus meets that cell. Omit ⇒ no crease refinement (B-invariant
+   * no-op at B=0, since the bias-free width equals the biased width there).
+   */
+  private readonly creaseRefine?: { intersects: (u0: number, t0: number, size: number) => boolean };
   /** Grid-scaled finite-difference steps for the metric (de-noised vs sampler). */
   private readonly steps: MetricSteps;
   /**
@@ -166,6 +182,12 @@ export class PeriodicBalancedQuadtree {
       pinBoundaryLevel?: number;
       minUniformLevel?: number;
       featureRefine?: { level: number; intersects: (u0: number, t0: number, size: number) => boolean };
+      /**
+       * CREASE-driven refinement: crease-crossed cells are size-tested with the
+       * BIAS-FREE u-width so their t-subdivision matches the B=0 mesh (restores the
+       * crease-column t-rows the anisotropy bias B>0 removes). No-op at B=0.
+       */
+      creaseRefine?: { intersects: (u0: number, t0: number, size: number) => boolean };
       /** Anisotropy bias B (≥0): Δu = 1/2^(level+B), Δt = 1/2^level. 0 = isotropic. */
       uBias?: number;
       /** Enable the local directional u-refinement pass (per-leaf uExtra). */
@@ -176,6 +198,7 @@ export class PeriodicBalancedQuadtree {
     this.pinBoundaryLevel = opts.pinBoundaryLevel ?? 0;
     this.minUniformLevel = Math.max(0, Math.min(opts.minUniformLevel ?? 0, opts.maxLevel));
     this.featureRefine = opts.featureRefine;
+    this.creaseRefine = opts.creaseRefine;
     this.uBiasLevel = Math.max(0, Math.floor(opts.uBias ?? 0));
     this.directionalRefine = opts.directionalRefine ?? false;
     this.steps = metricStepsForSampler(metric);
@@ -285,20 +308,31 @@ export class PeriodicBalancedQuadtree {
     return this.leafSet.has(cellKey(level, it, eUL, wu));
   }
 
-  /** Should the cell (level,iu,it) be split, given the sizing field? */
+  /**
+   * Should the cell (level,iu,it) be split, given the sizing field?
+   *
+   * When `biasFreeU` the u-width is taken as the BIAS-FREE 1/2^level (as if B=0)
+   * for the size test only — used on crease-crossed cells so their t-subdivision
+   * matches the B=0 mesh (the cell GEOMETRY is still the biased 1/2^(level+B); only
+   * the refinement DECISION ignores the bias). At B=0 the two widths coincide, so
+   * this is a perfect no-op there.
+   */
   private shouldRefine(
     field: MetricSizingField,
     metric: SurfaceSampler,
     level: number,
     iu: number,
     it: number,
+    biasFreeU = false,
   ): boolean {
     const uSize = 1 / this.uSpanCell(level, 0); // 1/2^(level+B)
     const tSize = 1 / (1 << level);
     const uc = (iu + 0.5) * uSize;
     const tc = (it + 0.5) * tSize;
     const { E, G } = firstFundamentalForm(metric, uc, tc, this.steps.hu, this.steps.ht);
-    const physW = Math.sqrt(Math.max(E, 0)) * uSize;
+    // Bias-free u-width (1/2^level) for the crease test; biased width otherwise.
+    const wTestSize = biasFreeU ? 1 / (1 << level) : uSize;
+    const physW = Math.sqrt(Math.max(E, 0)) * wTestSize;
     const physH = Math.sqrt(Math.max(G, 0)) * tSize;
     const target = field.edgeLength(uc, tc);
     return Math.max(physW, physH) > target;
@@ -335,11 +369,19 @@ export class PeriodicBalancedQuadtree {
         // span (the intersector treats `size` as a square edge; the larger extent
         // is a conservative superset → never misses a crossing).
         this.featureRefine.intersects(c.iu * uSize, c.it * tSize, Math.max(uSize, tSize));
+      // Crease-driven refinement: on cells a warp-pinned crease crosses, run the
+      // size test with the BIAS-FREE u-width so the crease column keeps the B=0
+      // t-rows the global bias would otherwise strip (restores feature coverage,
+      // bias-invariantly). No-op at B=0 (bias-free width == biased width).
+      const onCrease =
+        this.creaseRefine !== undefined &&
+        this.uBiasLevel > 0 &&
+        this.creaseRefine.intersects(c.iu * uSize, c.it * tSize, Math.max(uSize, tSize));
       if (
         c.level < cap &&
         (belowUniformFloor ||
           belowFeatureFloor ||
-          this.shouldRefine(field, metric, c.level, c.iu, c.it))
+          this.shouldRefine(field, metric, c.level, c.iu, c.it, onCrease))
       ) {
         const cl = c.level + 1;
         const bu = c.iu * 2;

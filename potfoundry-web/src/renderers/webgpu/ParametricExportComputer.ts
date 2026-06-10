@@ -56,6 +56,7 @@ import {
     GpuSurfaceSampler,
     extractAnalyticFeatures,
     measureFeatureResolution,
+    buildCreaseRefineLines,
     chooseCreaseGrid,
     applyUWarp,
     chooseCreaseTGrid,
@@ -2305,6 +2306,35 @@ export class ParametricExportComputer {
                     (l) => l.kind === 'general-curve',
                 );
 
+                // Warp-pinned VERTICAL/HELICAL crease columns AND boundary-adjacent
+                // HORIZONTAL bands → REFINE-ONLY lines for the outer wall, so the
+                // anisotropy bias B>0 does not strip the t-rows feature coverage needs.
+                // The bias squares cells for triangle quality, but a sharp crease's
+                // u-driven square refinement then stops B levels shallower → the pinned
+                // crease COLUMN loses ~half its t-rows per bias level and feature
+                // coverage drops below threshold (MEASURED: Gothic columns 0.906→0.69 at
+                // B=1 → featDrop). Refining ONLY the crease-crossed cells with the
+                // BIAS-FREE u-width restores exactly those rows (B-invariant), while the
+                // rest of the wall keeps the bias quality win. These lines are NOT
+                // inserted/clipped (the warps realise the creases) — only their cell
+                // FOOTPRINT matters. {@link buildCreaseRefineLines} derives the PRE-warp
+                // column source for EACH crease LOCUS (not just the warp's anchors): a
+                // column the warp leaves fixed — already-dyadic (GeometricStar folds at
+                // (2k+1)/16) or the u=0 SEAM (GothicArches column[k=0]) — is dropped from
+                // `warp.anchors` but STILL loses its t-rows under B>0, so it must be fed
+                // too. It also emits the interior HORIZONTAL bands: a band needs a real
+                // mesh t-row spanning all u, which uBias's t-coarsening removes near the
+                // BOUNDARIES (BambooSegments node-ring k=1/k=4) — the bias-free refinement
+                // forces the square splits back to the B=0 depth there. No-op at B=0
+                // (uBias=0 in the quadtree) and for styles with no axis-aligned creases.
+                const creaseLines = featureGraph
+                    ? buildCreaseRefineLines(featureGraph, {
+                          uWarp: creaseChoice.warp,
+                          tWarp: creaseTChoice.warp,
+                          helixWarp: helixChoice.warp,
+                      })
+                    : [];
+
                 // Assemble the whole watertight mesh in (u,t,surfaceId) space.
                 // With curvature de-noising (grid-scaled finite differences) the
                 // sag-driven mesh is already far coarser on smooth styles, so a
@@ -2349,6 +2379,8 @@ export class ParametricExportComputer {
                         // featureLevel so the insertion is sliver-free.
                         outerFeatureLines: generalCurves.length > 0 ? generalCurves : undefined,
                         featureLevel: 7,
+                        // Crease loci → uBias-invariant t-refinement (refine-only).
+                        outerCreaseLines: creaseLines.length > 0 ? creaseLines : undefined,
                     },
                 );
 

@@ -99,6 +99,9 @@
  */
 
 import { marchingSquaresZero, marchingSquaresLabels, segmentsToPolylines } from './SampledFeatureExtractor';
+import type { UWarp } from './CreaseUWarp';
+import type { TWarp } from './CreaseTWarp';
+import type { HelixWarp } from './CreaseHelixWarp';
 
 const TAU = 2 * Math.PI;
 const SQRT3 = Math.sqrt(3);
@@ -972,4 +975,152 @@ function distinctColumns(meshVertices: FeatureUTVertex[]): {
   gaps.sort((a, b) => a - b);
   const medianSpacing = gaps[Math.floor(gaps.length / 2)];
   return { columnCount: cols.length, medianSpacing };
+}
+
+// ── Crease-refine line builder (uBias-invariant feature coverage) ─────────────
+
+/** Number of t-samples in a full-height vertical crease-refine line. */
+const CREASE_REFINE_T_SAMPLES = 33;
+/** Number of u-samples in a full-width horizontal crease-refine line. */
+const CREASE_REFINE_U_SAMPLES = 64;
+
+/** The warp choices a crease-refine build reads (subset of the warp-family API). */
+export interface CreaseWarpChoices {
+  /** The vertical-crease u-warp (maps source mesh columns → crease loci). */
+  uWarp: UWarp;
+  /** The horizontal-crease t-warp (maps source mesh ROWS → band loci). */
+  tWarp: TWarp;
+  /** The helical-crease warp (its base φ₀ pins the pre-warp helix columns). */
+  helixWarp: HelixWarp;
+}
+
+/**
+ * Build the REFINE-ONLY crease lines fed to the quadtree's `creaseRefine`/
+ * `outerCreaseLines` (uBias-invariant feature coverage). These are NEVER inserted
+ * as CDT edges — only their cell FOOTPRINT matters, so the quadtree size-tests the
+ * cells they cross with the BIAS-FREE u-width and restores the t-subdivision the
+ * anisotropy bias B>0 would otherwise strip from the crease columns/rows.
+ *
+ * The crucial difference from reading the warp anchors directly: a crease column
+ * that needs NO warp move — because it is ALREADY on a dyadic mesh column
+ * (GeometricStar folds at (2k+1)/16) or it IS the u=0 seam column (GothicArches
+ * column[k=0]) — is DROPPED from `warp.anchors` (the warp only carries the columns
+ * it must SHIFT). Such a column still loses its t-rows under B>0, so it still needs
+ * the bias-free refinement. We therefore derive the refine column directly from the
+ * crease LOCUS: resolve its PRE-warp source as `warp.anchor.source` when the warp
+ * moves it, else the locus itself (a fixed point — dyadic or seam). This feeds the
+ * dyadic and seam columns the warp omits, fixing the GeometricStar (all-features)
+ * and GothicArches (seam-only) residuals.
+ *
+ * Horizontal bands are ALSO included now: a horizontal band needs a real mesh
+ * t-ROW at its t spanning all u, and uBias's t-coarsening (square splits stop B
+ * levels shallower) removes that row near the BOUNDARIES (where the pin-grade caps
+ * the depth) — so the boundary-adjacent bands regress (BambooSegments node-ring
+ * k=1/k=4). The bias-free refinement on the band's cells forces the square splits
+ * back to the B=0 depth, restoring the t-row across u. The interior bands are
+ * unaffected (they were already resolved) — this only ADDS coverage. The pinned
+ * t=0/t=1 boundary rings are NEVER touched (the band loci are interior; the
+ * quadtree's levelCap holds the boundary rows at the pin level regardless).
+ *
+ * @param graph    The analytic feature graph (provides the crease loci by kind).
+ * @param choices  The chosen warp family (resolves pre-warp source columns).
+ * @returns Refine-only FeatureLines (vertical-crease + horizontal-band), or [] when
+ *          the style has no axis-aligned creases (a pure no-op).
+ */
+export function buildCreaseRefineLines(
+  graph: FeatureLineGraph,
+  choices: CreaseWarpChoices,
+): FeatureLine[] {
+  const { uWarp, tWarp, helixWarp } = choices;
+
+  // Pre-warp source column for a vertical crease locus `c`: the column the u-warp
+  // maps ONTO c. When the warp moves it, that is the anchor whose target≈c; when
+  // the warp leaves it fixed (dyadic / seam — dropped from anchors), the source IS
+  // c itself. This is what feeds the columns the warp omits.
+  const sourceForCrease = (c: number): number => {
+    if (!uWarp.isIdentity) {
+      const a = uWarp.anchors.find((x) => Math.abs(x.target - wrapU(c)) < 1e-7);
+      if (a) return a.source;
+    }
+    return wrapU(c);
+  };
+
+  // Distinct vertical-crease source columns (dedup on the snapped u). Seam u=0 is
+  // kept (the refine must reach the seam column — its cells are the iu=0 strip).
+  const colSet = new Set<number>();
+  const columnSources: number[] = [];
+  const addColumn = (u: number): void => {
+    const su = wrapU(u);
+    const key = Math.round(su * 1e7);
+    if (colSet.has(key)) return;
+    colSet.add(key);
+    columnSources.push(su);
+  };
+  for (const line of graph.lines) {
+    if (line.kind === 'vertical-crease') addColumn(sourceForCrease(line.points[0].u));
+  }
+  // Helical creases: the pre-warp footprint is the BASE column φ₀ pins. The base
+  // anchors carry the SHIFTED columns; an already-dyadic base leaves them fixed at
+  // (c+½)/k, so derive them from the shear geometry when the base is identity.
+  if (!helixWarp.isIdentity) {
+    if (!helixWarp.base.isIdentity) {
+      for (const a of helixWarp.base.anchors) addColumn(a.source);
+    }
+    // (Already-dyadic helix base columns are full-height on the natural lattice and
+    // resolved by the dyadic mesh; the shear keeps them on the helix. The bias only
+    // strips t-rows on cells where the column is u-refined, which the base anchors
+    // capture — so identity-base helices need no extra refine line here.)
+  }
+
+  // Pre-warp source ROW for a horizontal band locus `t`: the row the t-warp maps
+  // ONTO the band. CRITICAL — refining the band's TARGET t is wrong: the t-warp
+  // lands the SOURCE row (a dyadic full-width row) on the band, so the cells that
+  // must keep their bias-stripped t-subdivision are at the SOURCE t, not the band.
+  // When the warp moves the row, that is the anchor whose target≈t; when the warp
+  // leaves it fixed (already-dyadic band — no warp), the source IS t itself.
+  const sourceForBand = (t: number): number => {
+    if (!tWarp.isIdentity) {
+      const a = tWarp.anchors.find((x) => Math.abs(x.target - t) < 1e-7);
+      if (a) return a.source;
+    }
+    return t;
+  };
+
+  // Distinct horizontal-band source rows (interior only; the boundary rings are
+  // pinned and never moved). Each becomes a full-width refine row at its source t.
+  const rowSet = new Set<number>();
+  const bandRows: number[] = [];
+  for (const line of graph.lines) {
+    if (line.kind !== 'horizontal-band') continue;
+    const t = line.points[0].t;
+    if (t <= 1e-6 || t >= 1 - 1e-6) continue; // boundary rings — pinned, skip
+    const src = sourceForBand(t);
+    if (src <= 1e-6 || src >= 1 - 1e-6) continue; // never refine onto a pinned ring
+    const key = Math.round(src * 1e7);
+    if (rowSet.has(key)) continue;
+    rowSet.add(key);
+    bandRows.push(src);
+  }
+
+  const lines: FeatureLine[] = [];
+  columnSources.forEach((u, j) => {
+    lines.push({
+      kind: 'vertical-crease',
+      label: `creaseCol${j}`,
+      points: Array.from({ length: CREASE_REFINE_T_SAMPLES }, (_, k) => ({
+        u,
+        t: k / (CREASE_REFINE_T_SAMPLES - 1),
+      })),
+    });
+  });
+  bandRows.forEach((t, j) => {
+    // Full-width row: u = 0 … 1 inclusive (the trailing u=1 closes the seam cell
+    // so the band's refinement reaches every column, not just [0, 63/64]).
+    const points: FeatureLinePoint[] = Array.from(
+      { length: CREASE_REFINE_U_SAMPLES + 1 },
+      (_, k) => ({ u: k / CREASE_REFINE_U_SAMPLES, t }),
+    );
+    lines.push({ kind: 'horizontal-band', label: `creaseRow${j}`, points });
+  });
+  return lines;
 }

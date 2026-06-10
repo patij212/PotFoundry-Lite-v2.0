@@ -35,13 +35,16 @@ class TReliefCylinderSampler implements SurfaceSampler {
 }
 
 describe('computeUBias — gated fixed anisotropy bias', () => {
-  it('is 0 for default / tall pots with LOW relief (no-op gate → byte-identical defaults)', () => {
-    // Default shape (R≈57, H≈120): 2πR/H ≈ 3, below the wide/flat gate.
-    expect(computeUBias(new SyntheticCylinderSampler(57, 120))).toBe(0);
-    // Tall-narrow: even further below.
+  it('biases default pots to B=1 (moderate base anisotropy) but leaves tall-narrow at B=0', () => {
+    // RE-BASELINE 2026-06-10 (clean-CAD triangle quality): GATE B now fires at
+    // DEFAULT dims. Default shape (R≈57, H≈120): maxURatio = 2πR/H ≈ 2.98 →
+    // B=round(log2(2.98/√3))=1, squaring the ~3:1 cells (median min-angle 19°→33°,
+    // MEASURED). Was B=0 (byte-identical) before the re-baseline.
+    expect(computeUBias(new SyntheticCylinderSampler(57, 120))).toBe(1);
+    // Tall-narrow (maxURatio ≈ 2.09 < √2·√3 ≈ 2.45): genuinely low anisotropy → B=0.
     expect(computeUBias(new SyntheticCylinderSampler(40, 120))).toBe(0);
-    // Gentle u-relief (low √E/√G) stays below the relief gate → still B=0.
-    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 2, 4))).toBe(0);
+    // Gentle u-relief lifts maxURatio to ≈3.1 → B=1.
+    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 2, 4))).toBe(1);
   });
 
   it('is the FIXED wide-bias for a wide/flat pot (short-wide H40/OD300 regime)', () => {
@@ -64,10 +67,12 @@ describe('computeUBias — gated fixed anisotropy bias', () => {
     expect(computeUBias(new SyntheticCylinderSampler(300, 20))).toBe(2);
   });
 
-  it('brackets the gate threshold (2πR/H ≈ AREF·√2 ≈ 4.24)', () => {
-    // Just below the wide/flat gate → no bias; just above → fixed bias.
-    expect(computeUBias(new SyntheticCylinderSampler(80, 120))).toBe(0); // 2πR/H ≈ 4.19
-    expect(computeUBias(new SyntheticCylinderSampler(85, 120))).toBe(2); // 2πR/H ≈ 4.45
+  it('brackets the GATE A wide/flat threshold (2πR/H ≈ AREF·√2 ≈ 4.24): GATE B below, GATE A above', () => {
+    // Just below the wide/flat gate → GATE B anisotropy bias (maxURatio 4.19 → B=1);
+    // just above → the fixed GATE A wide bias (B=2). (Pre-re-baseline the below
+    // case was B=0.)
+    expect(computeUBias(new SyntheticCylinderSampler(80, 120))).toBe(1); // 2πR/H ≈ 4.19 (GATE B)
+    expect(computeUBias(new SyntheticCylinderSampler(85, 120))).toBe(2); // wideFlat 4.45 → GATE A
   });
 
   it('is NOT fooled by t-direction relief (the Crystalline gate bug)', () => {
@@ -75,8 +80,10 @@ describe('computeUBias — gated fixed anisotropy bias', () => {
     // `2π·r/√G` gate read it as tall (B=0 → residual slivers). The geometric gate
     // averages/ranges the relief away and correctly biases it.
     expect(computeUBias(new TReliefCylinderSampler(145, 40, 20, 6))).toBe(2);
-    // And a TALL pot with the same relief still gets no bias (shape, not relief).
-    expect(computeUBias(new TReliefCylinderSampler(40, 120, 20, 6))).toBe(0);
+    // A TALL pot with the same relief gets no GATE-A (wide/flat) bias, but GATE B
+    // now fires on the u-anisotropy at the wide relief-PEAK bands (maxURatio ≈ 3.1 →
+    // B=1) — squaring those bands is correct (re-baseline).
+    expect(computeUBias(new TReliefCylinderSampler(40, 120, 20, 6))).toBe(1);
   });
 });
 
@@ -108,16 +115,14 @@ describe('computeUBias — relief-gated bias at DEFAULT dims (the serration fix)
     expect(computeUBias(new SyntheticCylinderSampler(145, 40, 20, 16), false)).toBe(2);
   });
 
-  it('brackets the RELIEF_RATIO_GATE (maxURatio ≈ 6): just below → B=0, just above → B>0', () => {
+  it('B climbs continuously with u-relief (the self-calibrating serration bias)', () => {
     // TALL pot (R57/H120; with k=16 the wideFlat 16-sample scan reads r=R0+amp, so
-    // wideFlat = 2π·(57+amp)/120 ≈ 3.3 < AREF·√2 — GATE A is OFF, this is GATE B).
-    // k=16 lands the u-relief peak (u=1/64) EXACTLY on the 192² lattice (no aliasing),
-    // so the measured worst √E/√G is analytic: maxURatio = 2π·√(k²·amp²+R0²)/H.
-    //   amp=5.5 → 2π·√(256·30.25+3249)/120 ≈ 5.49  (just BELOW the 6 gate → no bias)
-    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 5.5, 16))).toBe(0);
-    //   amp=7.0 → 2π·√(256·49+3249)/120     ≈ 6.58  (just ABOVE the 6 gate → bias fires)
-    // Tight ±0.5 bracket around 6: catches a gate typo to 5 (5.49 would wrongly bias)
-    // or to 7 (6.58 would wrongly return 0).
-    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 7, 16))).toBeGreaterThanOrEqual(1);
+    // wideFlat ≈ 3.3 < AREF·√2 — GATE A is OFF, this is GATE B). k=16 lands the
+    // u-relief peak (u=1/64) EXACTLY on the 192² lattice (no aliasing), so the worst
+    // √E/√G is analytic: maxURatio = 2π·√(k²·amp²+R0²)/H.
+    //   amp=5.5 → maxURatio ≈ 5.49 → round(log2(5.49/√3)) = 2
+    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 5.5, 16))).toBe(2);
+    //   amp=7.0 → maxURatio ≈ 6.58 → B = 2 (climbs toward the serration B=3 at 11.8)
+    expect(computeUBias(new SyntheticCylinderSampler(57, 120, 7, 16))).toBeGreaterThanOrEqual(2);
   });
 });

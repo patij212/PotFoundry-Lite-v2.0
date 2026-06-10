@@ -120,6 +120,20 @@ export interface ConformingWallOptions {
    * `nRing` is unchanged. Default false.
    */
   directionalRefine?: boolean;
+  /**
+   * Warp-pinned CREASE loci (vertical/horizontal/helical) — used ONLY to drive
+   * uBias-invariant t-refinement of the crease columns/rows, NOT inserted as CDT
+   * edges (the creases are realised by the downstream warps, which pin a full-
+   * height column / full-width row onto each locus). With an anisotropy bias B>0
+   * the u-driven square refinement near a sharp crease stops B levels shallower,
+   * halving the crease column's t-rows per bias level and dropping feature
+   * coverage; refining crease-crossed cells with the BIAS-FREE u-width restores
+   * exactly those rows, on the crease cells only (the rest of the wall keeps the
+   * bias quality win). No-op at B=0 (bias-free width == biased width) and when
+   * empty. These lines are NOT clipped/inserted — only their cell footprint
+   * matters — so passing full-height/width loci is safe and cheap.
+   */
+  creaseLines?: FeatureLine[];
 }
 
 /** Conforming wall mesh result with uniform shared boundary rings. */
@@ -181,6 +195,7 @@ function buildQuadtreeAtScale(
   targetScale: number,
   featureRefine?: FeatureRefineSpec,
   directionalRefine = false,
+  creaseRefine?: { intersects: FeatureRefineSpec['intersects'] },
 ): PeriodicBalancedQuadtree {
   const field = new MetricSizingField(sampler, {
     maxSagMm: opts.maxSagMm,
@@ -196,6 +211,7 @@ function buildQuadtreeAtScale(
     pinBoundaryLevel,
     minUniformLevel: opts.minUniformLevel,
     featureRefine,
+    creaseRefine,
     uBias: opts.uBias,
     directionalRefine,
   });
@@ -224,10 +240,11 @@ function searchBudgetScale(
   targetTriangles: number,
   mode: 'target' | 'cap',
   featureRefine?: FeatureRefineSpec,
+  creaseRefine?: { intersects: FeatureRefineSpec['intersects'] },
 ): number {
   const targetLeaves = targetTriangles / TRIS_PER_LEAF;
   const leavesAt = (scale: number): number =>
-    buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, scale, featureRefine).leafCount();
+    buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, scale, featureRefine, false, creaseRefine).leafCount();
 
   const floorLeaves = leavesAt(1);
 
@@ -420,12 +437,13 @@ function buildWallMeshAtScale(
   targetScale: number,
   clippedFeatures: FeatureLine[],
   featureRefine?: FeatureRefineSpec,
+  creaseRefine?: { intersects: FeatureRefineSpec['intersects'] },
 ): { vertices: Float32Array; indices: Uint32Array; seamTriangles: Uint8Array } {
   // FINAL build: enable the directional refine pass (if requested) — but NEVER on
   // a feature wall (clipped features present). The pass is gated/no-op at default
   // dims; on a wide/flat smooth wall it removes residual short-WIDE slivers.
   const directionalRefine = (opts.directionalRefine ?? false) && clippedFeatures.length === 0;
-  const qt = buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, targetScale, featureRefine, directionalRefine);
+  const qt = buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, targetScale, featureRefine, directionalRefine, creaseRefine);
   if (clippedFeatures.length === 0) return triangulateQuadtree(qt);
   // Corner-snap threshold: a small fraction of the feature cell size, made
   // ABSOLUTE (not per-cell) so both sides of every shared edge snap identically.
@@ -488,6 +506,16 @@ export function buildConformingWall(
     };
   }
 
+  // Crease t-refinement spec (REFINE-ONLY, no CDT): the warp-pinned crease loci
+  // drive bias-free-u refinement of their columns/rows so a B>0 anisotropy bias
+  // does not strip the crease t-rows feature coverage needs. Only the cell
+  // footprint matters (the warps realise the creases), so the lines are used
+  // as-is — NOT clipped or inserted. A pure no-op when B=0 or no crease lines.
+  let creaseRefine: { intersects: FeatureRefineSpec['intersects'] } | undefined;
+  if ((opts.creaseLines?.length ?? 0) > 0 && (opts.uBias ?? 0) > 0) {
+    creaseRefine = { intersects: buildFeatureIntersector(opts.creaseLines as FeatureLine[]) };
+  }
+
   const targetScale =
     opts.targetTriangles !== undefined && opts.targetTriangles > 0
       ? searchBudgetScale(
@@ -497,11 +525,12 @@ export function buildConformingWall(
           opts.targetTriangles,
           opts.budgetMode ?? 'target',
           featureRefine,
+          creaseRefine,
         )
       : 1;
 
   const mesh = buildWallMeshAtScale(
-    sampler, opts, pinBoundaryLevel, targetScale, clippedFeatures, featureRefine,
+    sampler, opts, pinBoundaryLevel, targetScale, clippedFeatures, featureRefine, creaseRefine,
   );
 
   // Stamp the surfaceId into each vertex's third slot (the triangulator packs 0
