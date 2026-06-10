@@ -2204,11 +2204,35 @@ export class ParametricExportComputer {
                     ? nRingOverride
                     : 256;
 
-                // Triangle budget: prefer the caller's explicit request, else the
-                // profile-resolved target. The conforming sizing field treats this
-                // as an UPPER guide — it only removes over-refinement and never
-                // coarsens below the sag-required mesh (see searchBudgetScale).
-                const conformingBudget = params.targetTriangles ?? targetTris;
+                // Dev quality-sweep overrides (never set in production; mirror
+                // __pfConformingNRing). Let a probe push fidelity well below printer
+                // resolution (tighter sag / minEdge, deeper quadtree, unbounded budget).
+                const qOv = globalThis as unknown as {
+                    __pfConformingBudget?: number; __pfConformingMaxSag?: number;
+                    __pfConformingMinEdge?: number; __pfConformingMaxLevel?: number;
+                };
+                // Fidelity + budget are PROFILE-DRIVEN. This conforming path is the
+                // high-fidelity EXPORT (not the live preview), so it DEFAULTS to the
+                // 'high' profile (chord error 0.05mm → ~0.02mm crest facets, below
+                // printer resolution) when the caller didn't pick one; an explicit
+                // 'ultra' goes finer (0.03mm), 'standard'/'draft' looser/faster. The
+                // profile's epsPosMm IS the sag target; minEdge + quadtree depth
+                // derive from it. (It previously hardcoded maxSag=0.1/minEdge=0.2/
+                // maxLevel=10 and IGNORED the profile, so the quality slider only moved
+                // the triangle budget, never the chord error. MEASURED 2026-06-10:
+                // epsPos 0.1->0.05 drops crest facet deviation 0.082->0.021mm and
+                // plateaus there.) Dev overrides still win for tuning/sweeps.
+                const exportProfileName: QualityProfileName = params.qualityProfile ?? 'high';
+                const exportProfile = getQualityProfile(exportProfileName);
+                const conformingBudget = (typeof qOv.__pfConformingBudget === 'number' && qOv.__pfConformingBudget > 0)
+                    ? qOv.__pfConformingBudget
+                    : (params.targetTriangles ?? exportProfile.maxTriangleBudget);
+                const profileSag = exportProfile.tolerances.epsPosMm;
+                const qMaxSag = (typeof qOv.__pfConformingMaxSag === 'number' && qOv.__pfConformingMaxSag > 0) ? qOv.__pfConformingMaxSag : profileSag;
+                const qMinEdge = (typeof qOv.__pfConformingMinEdge === 'number' && qOv.__pfConformingMinEdge > 0) ? qOv.__pfConformingMinEdge : Math.min(0.2, Math.max(0.04, profileSag * 2));
+                const qMaxLevel = (typeof qOv.__pfConformingMaxLevel === 'number' && qOv.__pfConformingMaxLevel >= 6)
+                    ? Math.floor(qOv.__pfConformingMaxLevel)
+                    : (exportProfileName === 'ultra' || exportProfileName === 'high' ? 12 : exportProfileName === 'standard' ? 11 : 10);
 
                 // ── Vertical-crease pinning, part 1: pick the column lattice ──────
                 // Sharp constant-u creases (LowPolyFacet facet edges, GeometricStar
@@ -2349,11 +2373,11 @@ export class ParametricExportComputer {
                         rDrain: dimensions.rDrain,
                     },
                     {
-                        maxSagMm: 0.1,
+                        maxSagMm: qMaxSag,
                         maxEdgeMm: 8,
-                        minEdgeMm: 0.2,
+                        minEdgeMm: qMinEdge,
                         gradeRatio: 2,
-                        maxLevel: 10,
+                        maxLevel: qMaxLevel,
                         resU: 128,
                         resT: 128,
                         nRing,
