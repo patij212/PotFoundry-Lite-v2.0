@@ -9,12 +9,14 @@ import type { MeshData } from '../geometry/types';
 import { STYLE_REGISTRY } from '../styles/registry';
 import {
   getLastChainDebugData,
+  getLastConformingCdtStats,
   getLastConformingFeatureResult,
   getLastConformingOuterGrid,
   getLastConformingOuterReferenceGrid,
   getLastConformingOuterWallMask,
 } from '../renderers/webgpu/ParametricExportComputer';
 import type { FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
+import type { CdtCellIncident } from '../renderers/webgpu/parametric/conforming/ConstrainedCellTriangulator';
 import { GpuSurfaceSampler } from '../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import { BicubicSurfaceSampler } from '../renderers/webgpu/parametric/conforming/BicubicSurfaceSampler';
 import { classifySurfaceShear, type ShearSummary } from '../renderers/webgpu/parametric/conforming/FShearDiagnostics';
@@ -173,6 +175,17 @@ export interface PfFidelityApi {
    * crest fix. Null on the legacy/parametric path (no conforming outer-wall stash).
    */
   diagnoseCrestQuality(opts?: FidelityCrestQualityDiagnosticOptions): Promise<FidelityCrestQualityDiagnostics | null>;
+  /**
+   * STAGE 0 — the constrained-CDT masking-channel readout. The per-cell CDT
+   * normalization silently FLIPPED inverted triangles (masking constraint
+   * fold-overs — the suspected non-manifold mechanism) and DROPPED zero-(u,t)-area
+   * triangles ((u,t)-collinear ≠ 3D-collinear ⇒ potential hole); both channels are
+   * now counted per build. Generates the mesh once, then reports the totals and
+   * the incident cells (with replay dumps under `__pfConformingCellDumps`). Null
+   * on the legacy/parametric path and on feature-free conforming builds (no CDT
+   * cells). Counting only — the mesh itself is byte-identical.
+   */
+  diagnoseCdtHealth(opts?: FidelityCdtHealthDiagnosticOptions): Promise<FidelityCdtHealthDiagnostics | null>;
   /** TEMP debug (revert): the OUTER-wall sub-mesh for off-DOM wireframe rendering. */
   _debugOuterMesh(targetTriangles?: number): Promise<{ vertices: Float32Array; indices: Uint32Array } | null>;
   /**
@@ -196,6 +209,22 @@ export interface FidelityCrestQualityDiagnosticOptions {
 
 export interface FidelityCrestQualityDiagnostics extends CrestBandQualityResult {
   styleId: string;
+}
+
+export interface FidelityCdtHealthDiagnosticOptions {
+  targetTriangles?: number;
+}
+
+export interface FidelityCdtHealthDiagnostics {
+  styleId: string;
+  /** Total CW→CCW winding flips across both walls (fold-over signal). */
+  inversions: number;
+  /** Total zero-(u,t)-area drops across both walls (potential holes). */
+  drops: number;
+  /** Number of CDT cells that fired either masking channel. */
+  incidentCells: number;
+  /** First 20 incident cells (inputs attached under `__pfConformingCellDumps`). */
+  worstIncidents: CdtCellIncident[];
 }
 
 export interface FidelitySerrationDiagnosticOptions {
@@ -489,6 +518,25 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         crestHalfWidthFrac: opts.crestHalfWidthFrac,
       });
       return { styleId, ...result };
+    },
+    async diagnoseCdtHealth(opts: FidelityCdtHealthDiagnosticOptions = {}): Promise<FidelityCdtHealthDiagnostics | null> {
+      const styleId = currentStyleId();
+      // Generating the mesh repopulates the stashed per-wall CDT masking-channel
+      // counters (conforming branch only). Discard the mesh; read the stash.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const stats = getLastConformingCdtStats();
+      if (!stats) return null;
+      const empty = { inversions: 0, drops: 0, incidents: [] as CdtCellIncident[] };
+      const o = stats.outer ?? empty;
+      const i = stats.inner ?? empty;
+      return {
+        styleId,
+        inversions: o.inversions + i.inversions,
+        drops: o.drops + i.drops,
+        incidentCells: o.incidents.length + i.incidents.length,
+        worstIncidents: [...o.incidents, ...i.incidents].slice(0, 20),
+      };
     },
     async _debugOuterMesh(targetTriangles?: number) {
       const mesh = await deps.generateMesh(targetTriangles);

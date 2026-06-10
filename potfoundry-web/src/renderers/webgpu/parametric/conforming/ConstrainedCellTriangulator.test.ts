@@ -1,5 +1,8 @@
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
+  normalizeWinding,
   triangulateConstrainedCell,
   type CellPoint,
 } from './ConstrainedCellTriangulator';
@@ -111,6 +114,53 @@ describe('triangulateConstrainedCell', () => {
     expect(totalArea(res)).toBeCloseTo(1, 9);
     for (const [a, b, c] of res.triangles) {
       expect(signedArea(res.points[a], res.points[b], res.points[c])).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('normalizeWinding — masking-channel counters', () => {
+  const pts: CellPoint[] = [
+    { u: 0, t: 0 }, { u: 1, t: 0 }, { u: 1, t: 1 }, { u: 0.5, t: 0 },
+  ];
+
+  it('passes CCW triangles through with zero counts', () => {
+    const r = normalizeWinding(pts, [[0, 1, 2]]);
+    expect(r.triangles).toEqual([[0, 1, 2]]);
+    expect(r.inversionCount).toBe(0);
+    expect(r.droppedCount).toBe(0);
+  });
+
+  it('counts a CW triangle as an inversion and flips it', () => {
+    const r = normalizeWinding(pts, [[0, 2, 1]]);
+    expect(r.triangles).toEqual([[0, 1, 2]]);
+    expect(r.inversionCount).toBe(1);
+  });
+
+  it('counts a zero-area (collinear) triangle as a drop', () => {
+    const r = normalizeWinding(pts, [[0, 3, 1]]); // 3 collinear points on t=0
+    expect(r.triangles).toEqual([]);
+    expect(r.droppedCount).toBe(1);
+  });
+
+  it('triangulateConstrainedCell reports zero counts on a clean square', () => {
+    const boundary: CellPoint[] = [
+      { u: 0, t: 0 }, { u: 1, t: 0 }, { u: 1, t: 1 }, { u: 0, t: 1 },
+    ];
+    const res = triangulateConstrainedCell({ boundary, interior: [], constraints: [] });
+    expect(res.inversionCount).toBe(0);
+    expect(res.droppedCount).toBe(0);
+  });
+});
+
+describe('CDT incident replays (drop e2e dumps into __fixtures__/cdt-incidents/)', () => {
+  const dir = join(__dirname, '__fixtures__', 'cdt-incidents');
+  const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.json')) : [];
+  it.skipIf(files.length === 0)('replays every dumped incident and re-reports its counters', () => {
+    for (const f of files) {
+      const input = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+      const res = triangulateConstrainedCell(input);
+      // The dump exists BECAUSE a channel fired — replay must reproduce it (causal repro).
+      expect(res.inversionCount + res.droppedCount, f).toBeGreaterThan(0);
     }
   });
 });

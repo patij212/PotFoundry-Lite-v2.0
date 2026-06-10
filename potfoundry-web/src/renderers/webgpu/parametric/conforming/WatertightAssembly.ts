@@ -30,6 +30,7 @@
 
 import type { SurfaceSampler } from './SurfaceSampler';
 import { buildConformingWall, type ConformingWallResult } from './ConformingWall';
+import type { CdtStats } from './ConstrainedCellTriangulator';
 import { annulusStrip, discFan } from './RingStrip';
 import type { FeatureLine } from './FeatureLineGraph';
 import { classifySurfaceShear } from './FShearDiagnostics';
@@ -255,6 +256,12 @@ export interface WatertightAssemblyResult {
   indices: Uint32Array;
   /** Per-surface index ranges + owned-vertex counts. */
   surfaceRanges: SurfaceRange[];
+  /**
+   * Per-wall constrained-CDT masking-channel counters (Stage-0 instrument).
+   * Present only when a wall took the feature path; in practice only the OUTER
+   * wall carries features (the inner wall is a smooth offset). Metadata only.
+   */
+  cdtStats?: { outer?: CdtStats; inner?: CdtStats };
 }
 
 /** Append a wall's packed vertices to `verts`, returning the index offset. */
@@ -562,7 +569,14 @@ export function assembleWatertight(
   // --- 5. Orientation: make the closed solid consistently outward -----------
   orientOutward(vertices, indexArr, evalPos.bind(null, dims, outerSampler, innerSampler));
 
-  return { vertices, indices: indexArr, surfaceRanges: ranges };
+  // Stage-0 instrument: surface the per-wall CDT masking-channel counters where
+  // present (feature walls only). Metadata only — the mesh is unchanged.
+  const cdtStats =
+    outer.cdtStats !== undefined || inner.cdtStats !== undefined
+      ? { outer: outer.cdtStats, inner: inner.cdtStats }
+      : undefined;
+
+  return { vertices, indices: indexArr, surfaceRanges: ranges, cdtStats };
 }
 
 /**

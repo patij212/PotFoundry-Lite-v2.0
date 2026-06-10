@@ -67,6 +67,7 @@ import {
     type FeatureUTVertex,
     type FeatureResolutionResult,
 } from './parametric/conforming';
+import type { CdtStats } from './parametric/conforming/ConstrainedCellTriangulator';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
 import {
     circularDistance,
@@ -244,6 +245,15 @@ let LAST_CONFORMING_OUTER_REFERENCE_GRID: { positions: Float32Array; resU: numbe
  */
 let LAST_CONFORMING_OUTER_WALL_MASK: Uint8Array | null = null;
 
+/**
+ * Most recent conforming-branch per-wall constrained-CDT masking-channel
+ * counters (Stage-0 instrument): winding inversions (fold-over signal) and
+ * zero-area drops (potential hole), with per-cell incidents (+ optional replay
+ * dumps under `__pfConformingCellDumps`). Null off the conforming path and on
+ * feature-free builds. Reference only — the exported mesh is unchanged.
+ */
+let LAST_CONFORMING_CDT_STATS: { outer?: CdtStats; inner?: CdtStats } | null = null;
+
 export function getLastChainDebugData(): ChainDebugData | null {
     return LAST_CHAIN_DEBUG_DATA;
 }
@@ -271,6 +281,12 @@ export function getLastConformingOuterReferenceGrid(): { positions: Float32Array
  *  serration metric — restrict to the outer wall). */
 export function getLastConformingOuterWallMask(): Uint8Array | null {
     return LAST_CONFORMING_OUTER_WALL_MASK;
+}
+
+/** Most recent conforming-branch per-wall CDT masking-channel counters, or null.
+ *  Dev diagnostic only (Stage-0 fold-over/drop instrument). */
+export function getLastConformingCdtStats(): { outer?: CdtStats; inner?: CdtStats } | null {
+    return LAST_CONFORMING_CDT_STATS;
 }
 
 export function getLastPeakDebugData(): PeakDebugData | null {
@@ -1840,6 +1856,9 @@ export class ParametricExportComputer {
         // (below) repopulates it. A non-conforming run leaves it null so the
         // fidelity hook falls back to chain-debug counts.
         LAST_CONFORMING_FEATURE_RESULT = null;
+        // Same lifecycle for the CDT masking-channel counters (Stage-0): never
+        // let a previous conforming build's stats leak into this run's readout.
+        LAST_CONFORMING_CDT_STATS = null;
 
         const requestedProfile: QualityProfileName = params.qualityProfile ?? 'standard';
         const effectiveProfileName = profileForAttempt(requestedProfile, 0);
@@ -2501,6 +2520,11 @@ export class ParametricExportComputer {
                     }
                     LAST_CONFORMING_OUTER_WALL_MASK = outerMask;
                 }
+
+                // Stage-0 instrument: stash the per-wall CDT masking-channel
+                // counters (fold-over flips + zero-area drops) for the fidelity
+                // hook's diagnoseCdtHealth. Read-only; the mesh is unchanged.
+                LAST_CONFORMING_CDT_STATS = asm.cdtStats ?? null;
 
                 // ── Feature-completeness accounting (meaningful featuresDropped) ──
                 // Measure how many of the style's closed-form sharp feature lines

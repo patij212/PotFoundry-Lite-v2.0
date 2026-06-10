@@ -30,7 +30,11 @@ import type { QuadLeaf } from './PeriodicBalancedQuadtree';
 import type { QuadtreeLike, QuadtreeMesh } from './QuadtreeTriangulator';
 import { triangulateQuadtree } from './QuadtreeTriangulator';
 import type { FeatureLine } from './FeatureLineGraph';
-import { triangulateConstrainedCell, type CellPoint } from './ConstrainedCellTriangulator';
+import {
+  triangulateConstrainedCell,
+  type CellPoint,
+  type CdtStats,
+} from './ConstrainedCellTriangulator';
 import {
   refineCellInterior,
   type Sampler3D,
@@ -659,6 +663,10 @@ export function triangulateQuadtreeWithFeatures(
     return out;
   };
 
+  // Masking-channel counters across all constrained cells (Stage-0 instrument):
+  // winding inversions (fold-over signal) + zero-area drops (potential hole).
+  const cdtStats: CdtStats = { inversions: 0, drops: 0, incidents: [] };
+
   for (let li = 0; li < leaves.length; li++) {
     const g = geomOf(li);
     const {
@@ -824,6 +832,20 @@ export function triangulateQuadtreeWithFeatures(
       interior: survivingInterior,
       constraints: cellConstraints,
     });
+    // Record the masking-channel counters from the FIRST (per-cell CDT) result —
+    // `result` may be reassigned by refineCellInterior below. Counting only; the
+    // triangle output is untouched.
+    if (result.inversionCount > 0 || result.droppedCount > 0) {
+      cdtStats.inversions += result.inversionCount;
+      cdtStats.drops += result.droppedCount;
+      const dump =
+        (globalThis as { __pfConformingCellDumps?: boolean }).__pfConformingCellDumps === true;
+      cdtStats.incidents.push({
+        u0, t0, u1, t1,
+        inversions: result.inversionCount, drops: result.droppedCount,
+        ...(dump ? { input: { boundary, interior: survivingInterior, constraints: cellConstraints } } : {}),
+      });
+    }
     // ── Tier-2 interior quality refinement (opt-in via options.sampler) ──
     // Only on REAL feature cells (data.feature — those carrying inserted feature
     // segments), NOT registry-passive neighbours. Inserts strictly-interior
@@ -938,5 +960,6 @@ export function triangulateQuadtreeWithFeatures(
     vertices,
     indices: Uint32Array.from(outIndices),
     seamTriangles: Uint8Array.from(outSeam),
+    cdtStats,
   };
 }

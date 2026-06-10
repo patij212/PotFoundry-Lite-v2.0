@@ -19,6 +19,7 @@
  */
 
 import type { QuadLeaf } from './PeriodicBalancedQuadtree';
+import type { CdtStats } from './ConstrainedCellTriangulator';
 
 /** Minimal quadtree shape consumed by the triangulator. */
 export interface QuadtreeLike {
@@ -45,6 +46,13 @@ export interface QuadtreeMesh {
    * (u,t) must unwrap those (treat the triangle's u=0 vertices as u=1).
    */
   seamTriangles: Uint8Array;
+  /**
+   * Masking-channel counters from the constrained-CDT cells (Stage-0
+   * instrument) — only the feature path ({@link
+   * FeatureConformingTriangulator}) populates this; the plain triangulator
+   * has no CDT cells. Metadata only: the triangle output is unaffected.
+   */
+  cdtStats?: CdtStats;
 }
 
 /** Quantization scale for vertex dedup (exact for dyadic coords up to lvl 24). */

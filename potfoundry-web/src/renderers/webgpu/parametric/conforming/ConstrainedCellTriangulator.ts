@@ -45,11 +45,54 @@ export interface ConstrainedCellResult {
   points: CellPoint[];
   /** CCW triangles as index triples into `points`. */
   triangles: Array<[number, number, number]>;
+  /** cdt2d emitted a CW triangle that was flipped CCW — a fold-over signal. */
+  inversionCount: number;
+  /** Zero-(u,t)-area triangles dropped — (u,t)-collinear ≠ 3D-collinear ⇒ potential hole. */
+  droppedCount: number;
+}
+
+/** One CDT cell that fired a masking channel (Stage-0 instrument). */
+export interface CdtCellIncident {
+  u0: number;
+  t0: number;
+  u1: number;
+  t1: number;
+  inversions: number;
+  drops: number;
+  /** Replay dump — only when `globalThis.__pfConformingCellDumps === true`. */
+  input?: ConstrainedCellInput;
+}
+
+/** Aggregated masking-channel counters across all CDT cells of one mesh build. */
+export interface CdtStats {
+  inversions: number;
+  drops: number;
+  incidents: CdtCellIncident[];
 }
 
 /** Signed area of triangle p,q,r in (u,t); positive ⇒ CCW. */
 function signedArea2(p: CellPoint, q: CellPoint, r: CellPoint): number {
   return (q.u - p.u) * (r.t - p.t) - (r.u - p.u) * (q.t - p.t);
+}
+
+/** Winding normalization with masking-channel counters (was silent). */
+export function normalizeWinding(
+  points: CellPoint[],
+  raw: Array<[number, number, number]>,
+): { triangles: Array<[number, number, number]>; inversionCount: number; droppedCount: number } {
+  const triangles: Array<[number, number, number]> = [];
+  let inversionCount = 0;
+  let droppedCount = 0;
+  for (const [a, b, c] of raw) {
+    const area = signedArea2(points[a], points[b], points[c]);
+    if (area > 0) triangles.push([a, b, c]);
+    else if (area < 0) {
+      triangles.push([a, c, b]);
+      inversionCount++;
+    } else droppedCount++;
+    // area === 0 ⇒ degenerate (a constraint forced collinear points) — counted, dropped.
+  }
+  return { triangles, inversionCount, droppedCount };
 }
 
 export function triangulateConstrainedCell(
@@ -78,13 +121,13 @@ export function triangulateConstrainedCell(
 
   // Normalize winding to CCW (cdt2d emits CCW for a CCW boundary, but guard
   // against any inverted/degenerate triangle so downstream orientation holds).
-  const triangles: Array<[number, number, number]> = [];
-  for (const [a, b, c] of raw) {
-    const area = signedArea2(points[a], points[b], points[c]);
-    if (area > 0) triangles.push([a, b, c]);
-    else if (area < 0) triangles.push([a, c, b]);
-    // area === 0 ⇒ degenerate; drop (a constraint forced collinear points).
-  }
-
-  return { points, triangles };
+  // Both guard channels are COUNTED (Stage-0 instrument): a flip masks a
+  // constraint fold-over; a drop is a potential hole ((u,t)-collinear ≠ 3D-collinear).
+  const norm = normalizeWinding(points, raw);
+  return {
+    points,
+    triangles: norm.triangles,
+    inversionCount: norm.inversionCount,
+    droppedCount: norm.droppedCount,
+  };
 }

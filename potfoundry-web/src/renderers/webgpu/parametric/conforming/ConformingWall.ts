@@ -21,9 +21,10 @@
 import type { SurfaceSampler } from './SurfaceSampler';
 import { MetricSizingField } from './MetricSizingField';
 import { PeriodicBalancedQuadtree } from './PeriodicBalancedQuadtree';
-import { triangulateQuadtree } from './QuadtreeTriangulator';
+import { triangulateQuadtree, type QuadtreeMesh } from './QuadtreeTriangulator';
 import { triangulateQuadtreeWithFeatures } from './FeatureConformingTriangulator';
 import type { FeatureLine, FeatureLinePoint } from './FeatureLineGraph';
+import type { CdtStats } from './ConstrainedCellTriangulator';
 
 /** Tuning for a conforming wall. */
 export interface ConformingWallOptions {
@@ -150,6 +151,11 @@ export interface ConformingWallResult {
   bottomRing: number[];
   /** Ordered top-ring (t=1) vertex indices, length nRing, U=i/nRing ascending. */
   topRing: number[];
+  /**
+   * Constrained-CDT masking-channel counters (Stage-0 instrument). Present only
+   * on the FEATURE path (plain `triangulateQuadtree` output has none).
+   */
+  cdtStats?: CdtStats;
 }
 
 const RING_EPS = 1e-6;
@@ -438,7 +444,7 @@ function buildWallMeshAtScale(
   clippedFeatures: FeatureLine[],
   featureRefine?: FeatureRefineSpec,
   creaseRefine?: { intersects: FeatureRefineSpec['intersects'] },
-): { vertices: Float32Array; indices: Uint32Array; seamTriangles: Uint8Array } {
+): QuadtreeMesh {
   // FINAL build: enable the directional refine pass (if requested) — but NEVER on
   // a feature wall (clipped features present). The pass is gated/no-op at default
   // dims; on a wide/flat smooth wall it removes residual short-WIDE slivers.
@@ -576,5 +582,8 @@ export function buildConformingWall(
     gridVertexCount: n,
     bottomRing: bottom,
     topRing: top,
+    // Stage-0 instrument: only the FEATURE triangulator produces cdtStats; the
+    // plain path leaves it undefined. Metadata only — the mesh is unchanged.
+    cdtStats: mesh.cdtStats,
   };
 }
