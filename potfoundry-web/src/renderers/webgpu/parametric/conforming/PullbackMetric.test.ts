@@ -11,9 +11,11 @@
  *  - pure-shear helix u' = u − s·t on the plain cylinder
  *    P(u,t) = (R·cos2πu, R·sin2πu, t·H): Pt' = −s·Pu + Pt ⇒
  *    E' = E = (2πR)², F' = −s·E, G' = s²·E + H².
- *  - piecewise-linear u-warp φ: E' = E·φ′², F' = φ′·F (= 0 on the separable
- *    cylinder), G' = G — valid INSIDE each linear segment (the FD stencil must
- *    not straddle a kink, hence sampling at segment midpoints).
+ *  - piecewise-linear u-warp φ: E' = E(φ(u),t)·φ′², F' = F(φ(u),t)·φ′,
+ *    G' = G(φ(u),t) — the base metric is evaluated at the WARPED point φ(u),
+ *    not u (invisible on this u-invariant cylinder where F≡0, but load-bearing
+ *    on any non-separable surface) — valid INSIDE each linear segment (the FD
+ *    stencil must not straddle a kink, hence sampling at segment midpoints).
  *  - piecewise-linear t-warp ψ: G' = G·ψ′², E' = E.
  *  - kink dyadicity (extraction fact #5): `chooseCreaseGrid`/`chooseCreaseTGrid`
  *    anchor sources are exact multiples of 1/2^level, so warp kinks lie ON
