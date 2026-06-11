@@ -1,0 +1,3696 @@
+{
+  "measuredAt": "2026-06",
+  "opts": "production (auto uBias)",
+  "target": 400000,
+  "dims": {
+    "default": {
+      "H": 120,
+      "top_od": 140,
+      "bottom_od": 90,
+      "r_drain": 10
+    },
+    "shortWide": {
+      "H": 40,
+      "top_od": 300,
+      "bottom_od": 280,
+      "r_drain": 20
+    },
+    "tallNarrow": {
+      "H": 480,
+      "top_od": 40,
+      "bottom_od": 36,
+      "r_drain": 6
+    },
+    "highFlare": {
+      "H": 200,
+      "top_od": 320,
+      "bottom_od": 44,
+      "r_drain": 8,
+      "expn": 3.5
+    },
+    "noDrain": {
+      "H": 120,
+      "top_od": 140,
+      "bottom_od": 90,
+      "r_drain": 0
+    }
+  },
+  "rows": [
+    {
+      "tag": "SuperformulaBlossom",
+      "dim": "default",
+      "buildMs": 32570,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 11,
+      "tris": 90624,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 29.28,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.01297524863326146,
+      "serrationScore": 0.1297524863326146,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 1132
+      },
+      "attribution": {
+        "0": {
+          "tris": 34816,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 2560,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53248,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "7ed0089d16037eeb",
+      "indexHash": "69b1fac5308b3d1f"
+    },
+    {
+      "tag": "SuperformulaBlossom",
+      "dim": "shortWide",
+      "buildMs": 7282,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 10,
+      "tris": 85248,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 95.5,
+      "worst": 9.99,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 94.3,
+        "bulkPct": 94.8,
+        "capB": 100,
+        "capT": 66.7,
+        "seamTris": 636
+      },
+      "attribution": {
+        "0": {
+          "tris": 19200,
+          "below": 19200,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 2560,
+          "below": 1536,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 63488,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SuperformulaBlossom",
+      "dim": "tallNarrow",
+      "buildMs": 33157,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 18,
+      "tris": 302080,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 100,
+      "worst": 13.26,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 100,
+        "bulkPct": 100,
+        "capB": 100,
+        "capT": 100,
+        "seamTris": 6156
+      },
+      "attribution": {
+        "0": {
+          "tris": 262144,
+          "below": 262144,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 39936,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SuperformulaBlossom",
+      "dim": "highFlare",
+      "buildMs": 9766,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 13,
+      "tris": 92544,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 27.51,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 1688
+      },
+      "attribution": {
+        "0": {
+          "tris": 51328,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 3840,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 37376,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SuperformulaBlossom",
+      "dim": "noDrain",
+      "buildMs": 8462,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 35,
+      "tris": 102912,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 34.07,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 1132
+      },
+      "attribution": {
+        "0": {
+          "tris": 34816,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 2560,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 10240,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SuperellipseMorph",
+      "dim": "default",
+      "buildMs": 20437,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 11,
+      "tris": 97820,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 23.91,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.023069521589406127,
+      "serrationScore": 0.23069521589406125,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 1188
+      },
+      "attribution": {
+        "0": {
+          "tris": 31288,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 10724,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 55808,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "9af4594eb90f8ca4",
+      "indexHash": "2dd6782899f40a4e"
+    },
+    {
+      "tag": "SuperellipseMorph",
+      "dim": "shortWide",
+      "buildMs": 17872,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 12,
+      "tris": 157698,
+      "bandPctBelow15": 94.8,
+      "wallPctBelow15": 94.5,
+      "worst": 9,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 97.9,
+        "bulkPct": 96.1,
+        "capB": 66.1,
+        "capT": 67,
+        "seamTris": 3012
+      },
+      "attribution": {
+        "0": {
+          "tris": 86246,
+          "below": 84106,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 6428,
+          "below": 4612,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65024,
+          "below": 1152,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SuperellipseMorph",
+      "dim": "tallNarrow",
+      "buildMs": 99332,
+      "sliver": 762,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 69.9,
+      "wallPctBelow15": 66.4,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 81.9,
+        "bulkPct": 74.8,
+        "capB": 87.6,
+        "capT": 37.3,
+        "seamTris": 24433
+      },
+      "attribution": {
+        "0": {
+          "tris": 449070,
+          "below": 357542,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 82668,
+          "below": 39356,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 43520,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SuperellipseMorph",
+      "dim": "highFlare",
+      "buildMs": 16496,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 13,
+      "tris": 119324,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 18,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 2393
+      },
+      "attribution": {
+        "0": {
+          "tris": 63476,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 14888,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 40960,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SuperellipseMorph",
+      "dim": "noDrain",
+      "buildMs": 14478,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 36,
+      "tris": 107548,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 23.91,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 1188
+      },
+      "attribution": {
+        "0": {
+          "tris": 31288,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 10724,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 10772,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "LowPolyFacet",
+      "dim": "default",
+      "buildMs": 29876,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 16,
+      "tris": 115824,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 24.16,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.007879133125483752,
+      "serrationScore": 0.07879133125483752,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 446
+      },
+      "attribution": {
+        "0": {
+          "tris": 33552,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 32096,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 50176,
+          "below": 588,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "f3d41393264536bd",
+      "indexHash": "829872f91c9670f3"
+    },
+    {
+      "tag": "LowPolyFacet",
+      "dim": "shortWide",
+      "buildMs": 32632,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 13,
+      "tris": 219818,
+      "bandPctBelow15": 69.7,
+      "wallPctBelow15": 65.9,
+      "worst": 8.21,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 63.3,
+        "capB": 50.4,
+        "capT": 22.4,
+        "seamTris": 1244
+      },
+      "attribution": {
+        "0": {
+          "tris": 118892,
+          "below": 77494,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 39998,
+          "below": 21640,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 60928,
+          "below": 3012,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "LowPolyFacet",
+      "dim": "tallNarrow",
+      "buildMs": 122235,
+      "sliver": 1568,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 34.9,
+      "wallPctBelow15": 46.7,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 85.9,
+        "bulkPct": 68.8,
+        "capB": 70.7,
+        "capT": 52.8,
+        "seamTris": 1788
+      },
+      "attribution": {
+        "0": {
+          "tris": 464248,
+          "below": 333956,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 172310,
+          "below": 102754,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 35328,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "LowPolyFacet",
+      "dim": "highFlare",
+      "buildMs": 25913,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 20,
+      "tris": 135288,
+      "bandPctBelow15": 0.1,
+      "wallPctBelow15": 0.1,
+      "worst": 9.33,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 1.9,
+        "seamTris": 1062
+      },
+      "attribution": {
+        "0": {
+          "tris": 56872,
+          "below": 120,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 45648,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 32768,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "LowPolyFacet",
+      "dim": "noDrain",
+      "buildMs": 22377,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 54,
+      "tris": 131184,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 24.16,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 446
+      },
+      "attribution": {
+        "0": {
+          "tris": 33552,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 32096,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 12076,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "ArtDeco",
+      "dim": "default",
+      "buildMs": 206908,
+      "sliver": 2074,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 12.5,
+      "wallPctBelow15": 13.1,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.15844311451804813,
+      "serrationScore": 1.5844311451804811,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 8.3,
+        "bulkPct": 9.1,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 10942
+      },
+      "attribution": {
+        "0": {
+          "tris": 280128,
+          "below": 40028,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 197880,
+          "below": 2360,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 52736,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "bcd00026af36dfb0",
+      "indexHash": "10bd1788f6624152"
+    },
+    {
+      "tag": "ArtDeco",
+      "dim": "shortWide",
+      "buildMs": 436992,
+      "sliver": 3419,
+      "bnd": 0,
+      "nonMan": 1,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 61.3,
+      "wallPctBelow15": 65.4,
+      "worst": 0,
+      "featDrop": null,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "ArtDeco",
+      "dim": "tallNarrow",
+      "buildMs": 150014,
+      "error": "setStyle timeout"
+    },
+    {
+      "tag": "ArtDeco",
+      "dim": "highFlare",
+      "buildMs": 15249,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+    },
+    {
+      "tag": "ArtDeco",
+      "dim": "noDrain",
+      "buildMs": 159508,
+      "sliver": 2116,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 4567969137,
+      "tris": 400000,
+      "bandPctBelow15": 12.5,
+      "wallPctBelow15": 13.1,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 8.3,
+        "bulkPct": 9.1,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 10942
+      },
+      "attribution": {
+        "0": {
+          "tris": 280128,
+          "below": 40028,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 197880,
+          "below": 2360,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 10732,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "Crystalline",
+      "dim": "default",
+      "buildMs": 266701,
+      "sliver": 1972,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 61372,
+      "tris": 400000,
+      "bandPctBelow15": 6.6,
+      "wallPctBelow15": 11.6,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.024982947060719112,
+      "serrationScore": 0.2498294706071911,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0.4,
+        "bulkPct": 3.7,
+        "capB": 0,
+        "capT": 19.6,
+        "seamTris": 16235
+      },
+      "attribution": {
+        "0": {
+          "tris": 527186,
+          "below": 22911,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 227032,
+          "below": 4715,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 50176,
+          "below": 18065,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "cb08d5a9c5d3d733",
+      "indexHash": "e219baf94743e573"
+    },
+    {
+      "tag": "Crystalline",
+      "dim": "shortWide",
+      "buildMs": 475893,
+      "sliver": 3663,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 48.2,
+      "wallPctBelow15": 56.5,
+      "worst": 0,
+      "featDrop": null,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "Crystalline",
+      "dim": "tallNarrow",
+      "buildMs": 150011,
+      "error": "setStyle timeout"
+    },
+    {
+      "tag": "Crystalline",
+      "dim": "highFlare",
+      "buildMs": 6055,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+    },
+    {
+      "tag": "Crystalline",
+      "dim": "noDrain",
+      "buildMs": 206442,
+      "sliver": 1934,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 61372,
+      "tris": 400000,
+      "bandPctBelow15": 6.6,
+      "wallPctBelow15": 11.6,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0.4,
+        "bulkPct": 3.7,
+        "capB": 0,
+        "capT": 19.6,
+        "seamTris": 16235
+      },
+      "attribution": {
+        "0": {
+          "tris": 527186,
+          "below": 22911,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 227032,
+          "below": 4715,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 36427,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "BambooSegments",
+      "dim": "default",
+      "buildMs": 83804,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 11,
+      "tris": 339848,
+      "bandPctBelow15": 0.7,
+      "wallPctBelow15": 0.6,
+      "worst": 9.48,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.03928598034264879,
+      "serrationScore": 0.39285980342648785,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0.4,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 7651
+      },
+      "attribution": {
+        "0": {
+          "tris": 196012,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 89564,
+          "below": 1071,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 54272,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "d224e55982bcb71b",
+      "indexHash": "917f9b1b9f90175d"
+    },
+    {
+      "tag": "BambooSegments",
+      "dim": "shortWide",
+      "buildMs": 413148,
+      "sliver": 4420,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 3832727,
+      "tris": 400000,
+      "bandPctBelow15": 33.2,
+      "wallPctBelow15": 34.3,
+      "worst": 0,
+      "featDrop": null,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "BambooSegments",
+      "dim": "tallNarrow",
+      "buildMs": 42344,
+      "error": "setDims timeout"
+    },
+    {
+      "tag": "BambooSegments",
+      "dim": "highFlare",
+      "buildMs": 150003,
+      "error": "setStyle timeout"
+    },
+    {
+      "tag": "BambooSegments",
+      "dim": "noDrain",
+      "buildMs": 20,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+    },
+    {
+      "tag": "RippleInterference",
+      "dim": "default",
+      "buildMs": 39815,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 11,
+      "tris": 132768,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 31.99,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.014029274100378445,
+      "serrationScore": 0.14029274100378444,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 2592
+      },
+      "attribution": {
+        "0": {
+          "tris": 49472,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 30048,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53248,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "968a8c1d7c35cbf3",
+      "indexHash": "d0c9274c0a10cda2"
+    },
+    {
+      "tag": "RippleInterference",
+      "dim": "shortWide",
+      "buildMs": 334377,
+      "sliver": 1911,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 24911,
+      "tris": 400000,
+      "bandPctBelow15": 85.8,
+      "wallPctBelow15": 85,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "RippleInterference",
+      "dim": "tallNarrow",
+      "buildMs": 144460,
+      "sliver": 465,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 89.6,
+      "wallPctBelow15": 89.8,
+      "worst": 0.01,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 91.6,
+        "bulkPct": 94.3,
+        "capB": 96.8,
+        "capT": 98.8,
+        "seamTris": 23870
+      },
+      "attribution": {
+        "0": {
+          "tris": 397838,
+          "below": 397838,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 96144,
+          "below": 67856,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 38912,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "RippleInterference",
+      "dim": "highFlare",
+      "buildMs": 15116,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 13,
+      "tris": 104088,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 26.86,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 2226
+      },
+      "attribution": {
+        "0": {
+          "tris": 55184,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 11528,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 37376,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "RippleInterference",
+      "dim": "noDrain",
+      "buildMs": 24795,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 35,
+      "tris": 145056,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 31.99,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 2592
+      },
+      "attribution": {
+        "0": {
+          "tris": 49472,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 30048,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 10396,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "WaveInterference",
+      "dim": "default",
+      "buildMs": 26651,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 11,
+      "tris": 106470,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 32.99,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.023246609312543118,
+      "serrationScore": 0.23246609312543118,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 1412
+      },
+      "attribution": {
+        "0": {
+          "tris": 37354,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 16380,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 52736,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "d2aedc18113b77aa",
+      "indexHash": "3a8eb2dc352eb35e"
+    },
+    {
+      "tag": "WaveInterference",
+      "dim": "shortWide",
+      "buildMs": 162462,
+      "sliver": 1049,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 86460,
+      "tris": 400000,
+      "bandPctBelow15": 92.1,
+      "wallPctBelow15": 90.8,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 95.7,
+        "bulkPct": 95.5,
+        "capB": 71.9,
+        "capT": 64.5,
+        "seamTris": 11573
+      },
+      "attribution": {
+        "0": {
+          "tris": 530898,
+          "below": 530898,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 109252,
+          "below": 79106,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 63488,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "WaveInterference",
+      "dim": "tallNarrow",
+      "buildMs": 162823,
+      "sliver": 1027,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 178197,
+      "tris": 400000,
+      "bandPctBelow15": 90.5,
+      "wallPctBelow15": 88.1,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 92.3,
+        "bulkPct": 91.2,
+        "capB": 96.2,
+        "capT": 98.8,
+        "seamTris": 18845
+      },
+      "attribution": {
+        "0": {
+          "tris": 798912,
+          "below": 775169,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 171750,
+          "below": 111316,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 37888,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "WaveInterference",
+      "dim": "highFlare",
+      "buildMs": 21967,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 13,
+      "tris": 133484,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 27.41,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 2934
+      },
+      "attribution": {
+        "0": {
+          "tris": 69296,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 27836,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 36352,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "WaveInterference",
+      "dim": "noDrain",
+      "buildMs": 19655,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 36,
+      "tris": 119270,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 32.99,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 1412
+      },
+      "attribution": {
+        "0": {
+          "tris": 37354,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 16380,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 10289,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "HarmonicRipple",
+      "dim": "default",
+      "buildMs": 77463,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 13,
+      "tris": 343436,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 19.7,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.017683519861823736,
+      "serrationScore": 0.17683519861823735,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 1,
+        "seamTris": 7475
+      },
+      "attribution": {
+        "0": {
+          "tris": 248340,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 38264,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 56832,
+          "below": 7701,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "6148e6720dd95a54",
+      "indexHash": "a194179400dc323a"
+    },
+    {
+      "tag": "HarmonicRipple",
+      "dim": "shortWide",
+      "buildMs": 129309,
+      "sliver": 776,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 76850366,
+      "tris": 400000,
+      "bandPctBelow15": 89.6,
+      "wallPctBelow15": 87.4,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 95.5,
+        "bulkPct": 93.2,
+        "capB": 65.4,
+        "capT": 60.3,
+        "seamTris": 15213
+      },
+      "attribution": {
+        "0": {
+          "tris": 524394,
+          "below": 501009,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 76208,
+          "below": 57514,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 66048,
+          "below": 10239,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "HarmonicRipple",
+      "dim": "tallNarrow",
+      "buildMs": 342859,
+      "sliver": 872,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 44.1,
+      "wallPctBelow15": 41.6,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "HarmonicRipple",
+      "dim": "highFlare",
+      "buildMs": 39599,
+      "error": "setDims timeout"
+    },
+    {
+      "tag": "HarmonicRipple",
+      "dim": "noDrain",
+      "buildMs": 66946,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 41,
+      "tris": 352140,
+      "bandPctBelow15": 0,
+      "wallPctBelow15": 0,
+      "worst": 19.7,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 1,
+        "seamTris": 7475
+      },
+      "attribution": {
+        "0": {
+          "tris": 248340,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 38264,
+          "below": 0,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 19517,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GeometricStar",
+      "dim": "default",
+      "buildMs": 99081,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 16,
+      "tris": 396160,
+      "bandPctBelow15": 6.2,
+      "wallPctBelow15": 7.1,
+      "worst": 5.83,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.04797882400553682,
+      "serrationScore": 0.47978824005536813,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 2.5,
+        "bulkPct": 8.2,
+        "capB": 0.4,
+        "capT": 0,
+        "seamTris": 5584
+      },
+      "attribution": {
+        "0": {
+          "tris": 211776,
+          "below": 21976,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 130624,
+          "below": 5120,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53760,
+          "below": 712,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "1682a794b332cbae",
+      "indexHash": "195904d9e32fa61b"
+    },
+    {
+      "tag": "GeometricStar",
+      "dim": "shortWide",
+      "buildMs": 330993,
+      "sliver": 1881,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 70.8,
+      "wallPctBelow15": 69.2,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GeometricStar",
+      "dim": "tallNarrow",
+      "buildMs": 275758,
+      "sliver": 541,
+      "bnd": 0,
+      "nonMan": 1,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 69.3,
+      "wallPctBelow15": 68.3,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 81.8,
+        "bulkPct": 77.5,
+        "capB": 82.9,
+        "capT": 100,
+        "seamTris": 44450
+      },
+      "attribution": {
+        "0": {
+          "tris": 1535552,
+          "below": 1217284,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 238528,
+          "below": 161856,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 39936,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GeometricStar",
+      "dim": "highFlare",
+      "buildMs": 128417,
+      "sliver": 1770,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 16,
+      "wallPctBelow15": 15.9,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 4.5,
+        "bulkPct": 7.7,
+        "capB": 2.5,
+        "capT": 0,
+        "seamTris": 10112
+      },
+      "attribution": {
+        "0": {
+          "tris": 406974,
+          "below": 35016,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 151990,
+          "below": 7072,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 37376,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GeometricStar",
+      "dim": "noDrain",
+      "buildMs": 75934,
+      "sliver": 144,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 140233,
+      "tris": 400000,
+      "bandPctBelow15": 7.2,
+      "wallPctBelow15": 8,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 2.5,
+        "bulkPct": 8.2,
+        "capB": 0.4,
+        "capT": 0,
+        "seamTris": 5584
+      },
+      "attribution": {
+        "0": {
+          "tris": 211776,
+          "below": 21976,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 130624,
+          "below": 5120,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 10560,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "BasketWeave",
+      "dim": "default",
+      "buildMs": 283524,
+      "sliver": 1628,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 13.3,
+      "wallPctBelow15": 11.7,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.18262434251026097,
+      "serrationScore": 1.8262434251026096,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 7.6,
+        "bulkPct": 5.1,
+        "capB": 2.4,
+        "capT": 1.2,
+        "seamTris": 25404
+      },
+      "attribution": {
+        "0": {
+          "tris": 499980,
+          "below": 31119,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 302932,
+          "below": 10453,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53760,
+          "below": 969,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "5da425c4279d134a",
+      "indexHash": "bfde4b3f457844c5"
+    },
+    {
+      "tag": "BasketWeave",
+      "dim": "shortWide",
+      "buildMs": 454768,
+      "sliver": 2294,
+      "bnd": 0,
+      "nonMan": 6,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 60,
+      "wallPctBelow15": 60.7,
+      "worst": 0,
+      "featDrop": null,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "BasketWeave",
+      "dim": "tallNarrow",
+      "buildMs": 150015,
+      "error": "setStyle timeout"
+    },
+    {
+      "tag": "BasketWeave",
+      "dim": "highFlare",
+      "buildMs": 146895,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+    },
+    {
+      "tag": "BasketWeave",
+      "dim": "noDrain",
+      "buildMs": 219162,
+      "sliver": 1599,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 13.3,
+      "wallPctBelow15": 11.6,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 7.6,
+        "bulkPct": 5.1,
+        "capB": 2.4,
+        "capT": 1.2,
+        "seamTris": 25404
+      },
+      "attribution": {
+        "0": {
+          "tris": 499980,
+          "below": 31119,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 302932,
+          "below": 10453,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 11069,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GyroidManifold",
+      "dim": "default",
+      "buildMs": 76760,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 27,
+      "tris": 316102,
+      "bandPctBelow15": 6.5,
+      "wallPctBelow15": 8.2,
+      "worst": 2.1,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.07347018400147641,
+      "serrationScore": 0.734701840014764,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 2.7,
+        "bulkPct": 8,
+        "capB": 0.7,
+        "capT": 0.8,
+        "seamTris": 4702
+      },
+      "attribution": {
+        "0": {
+          "tris": 80384,
+          "below": 7606,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 47218,
+          "below": 1581,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 77336,
+          "below": 7301,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 41721,
+          "below": 1413,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 16195,
+          "below": 2424,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53248,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "a59160aa641abec8",
+      "indexHash": "7635448f1f44d79d"
+    },
+    {
+      "tag": "GyroidManifold",
+      "dim": "shortWide",
+      "buildMs": 353715,
+      "sliver": 3214,
+      "bnd": 0,
+      "nonMan": 2,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 95.2,
+      "wallPctBelow15": 94,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GyroidManifold",
+      "dim": "tallNarrow",
+      "buildMs": 245626,
+      "sliver": 378,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 83.5,
+      "wallPctBelow15": 78.6,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 87.3,
+        "bulkPct": 89.6,
+        "capB": 96.9,
+        "capT": 98.5,
+        "seamTris": 21739
+      },
+      "attribution": {
+        "0": {
+          "tris": 475832,
+          "below": 443900,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 88768,
+          "below": 64933,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 405366,
+          "below": 373451,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 69369,
+          "below": 50397,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 20979,
+          "below": 17943,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 39936,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GyroidManifold",
+      "dim": "highFlare",
+      "buildMs": 75214,
+      "sliver": 304,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 16121,
+      "tris": 400000,
+      "bandPctBelow15": 7.1,
+      "wallPctBelow15": 8.3,
+      "worst": 0.01,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 2.1,
+        "bulkPct": 5.9,
+        "capB": 0.8,
+        "capT": 0.6,
+        "seamTris": 7436
+      },
+      "attribution": {
+        "0": {
+          "tris": 139562,
+          "below": 8961,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 51594,
+          "below": 1118,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 124478,
+          "below": 8126,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 46406,
+          "below": 707,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 18094,
+          "below": 2816,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 37376,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GyroidManifold",
+      "dim": "noDrain",
+      "buildMs": 56154,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 35,
+      "tris": 328390,
+      "bandPctBelow15": 6.5,
+      "wallPctBelow15": 8.2,
+      "worst": 2.1,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 2.7,
+        "bulkPct": 8,
+        "capB": 0.7,
+        "capT": 0.8,
+        "seamTris": 4702
+      },
+      "attribution": {
+        "0": {
+          "tris": 80384,
+          "below": 7606,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 47218,
+          "below": 1581,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 77336,
+          "below": 7301,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 41721,
+          "below": 1413,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 16195,
+          "below": 2424,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 10252,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GothicArches",
+      "dim": "default",
+      "buildMs": 86907,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 17,
+      "tris": 311412,
+      "bandPctBelow15": 0.5,
+      "wallPctBelow15": 0.3,
+      "worst": 4.87,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.09645788647204244,
+      "serrationScore": 0.9645788647204243,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0.4,
+        "bulkPct": 0.2,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 5418
+      },
+      "attribution": {
+        "0": {
+          "tris": 141638,
+          "below": 348,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 116526,
+          "below": 215,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53248,
+          "below": 1024,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "e86d26a9159287bb",
+      "indexHash": "9ce565b4173ebc42"
+    },
+    {
+      "tag": "GothicArches",
+      "dim": "shortWide",
+      "buildMs": 438304,
+      "sliver": 2291,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 64.6,
+      "wallPctBelow15": 65,
+      "worst": 0,
+      "featDrop": null,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GothicArches",
+      "dim": "tallNarrow",
+      "buildMs": 150010,
+      "error": "setStyle timeout"
+    },
+    {
+      "tag": "GothicArches",
+      "dim": "highFlare",
+      "buildMs": 64325,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 20,
+      "tris": 336920,
+      "bandPctBelow15": 1.3,
+      "wallPctBelow15": 1,
+      "worst": 8.35,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 3.1,
+        "bulkPct": 1,
+        "capB": 0,
+        "capT": 0.6,
+        "seamTris": 8370
+      },
+      "attribution": {
+        "0": {
+          "tris": 192896,
+          "below": 2292,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 106136,
+          "below": 792,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 37888,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "GothicArches",
+      "dim": "noDrain",
+      "buildMs": 65646,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 53,
+      "tris": 323700,
+      "bandPctBelow15": 0.5,
+      "wallPctBelow15": 0.3,
+      "worst": 4.87,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0.4,
+        "bulkPct": 0.2,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 5418
+      },
+      "attribution": {
+        "0": {
+          "tris": 141638,
+          "below": 348,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 116526,
+          "below": 215,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 12288,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "DragonScales",
+      "dim": "default",
+      "buildMs": 332975,
+      "sliver": 2364,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1384982,
+      "tris": 400000,
+      "bandPctBelow15": 13.5,
+      "wallPctBelow15": 17.5,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.06793401106261775,
+      "serrationScore": 0.6793401106261774,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 7.8,
+        "bulkPct": 7,
+        "capB": 0,
+        "capT": 2,
+        "seamTris": 17220
+      },
+      "attribution": {
+        "0": {
+          "tris": 398336,
+          "below": 17399,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 324564,
+          "below": 33147,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 50688,
+          "below": 6101,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "17555441f2deb333",
+      "indexHash": "acd1a417927a19dd"
+    },
+    {
+      "tag": "DragonScales",
+      "dim": "shortWide",
+      "buildMs": 485760,
+      "sliver": 5217,
+      "bnd": 0,
+      "nonMan": 1,
+      "orient": 0,
+      "maxAspect": 1828367,
+      "tris": 400000,
+      "bandPctBelow15": 51,
+      "wallPctBelow15": 57.2,
+      "worst": 0,
+      "featDrop": null,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "DragonScales",
+      "dim": "tallNarrow",
+      "buildMs": 150008,
+      "error": "setStyle timeout"
+    },
+    {
+      "tag": "DragonScales",
+      "dim": "highFlare",
+      "buildMs": 34957,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+    },
+    {
+      "tag": "DragonScales",
+      "dim": "noDrain",
+      "buildMs": 253433,
+      "sliver": 2374,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1384982,
+      "tris": 400000,
+      "bandPctBelow15": 13.5,
+      "wallPctBelow15": 17.5,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 7.8,
+        "bulkPct": 7,
+        "capB": 0,
+        "capT": 2,
+        "seamTris": 17220
+      },
+      "attribution": {
+        "0": {
+          "tris": 398336,
+          "below": 17399,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 324564,
+          "below": 33147,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 19840,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SpiralRidges",
+      "dim": "default",
+      "buildMs": 126692,
+      "sliver": 550,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 14226,
+      "tris": 400000,
+      "bandPctBelow15": 2.4,
+      "wallPctBelow15": 2.4,
+      "worst": 0.01,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.015906911300874852,
+      "serrationScore": 0.15906911300874851,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0.1,
+        "bulkPct": 0.2,
+        "capB": 0,
+        "capT": 5.6,
+        "seamTris": 6033
+      },
+      "attribution": {
+        "0": {
+          "tris": 301672,
+          "below": 439,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 87692,
+          "below": 406,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53760,
+          "below": 9034,
+          "slivers": 0
+        }
+      },
+      "ceiling": {
+        "styleId": "SpiralRidges",
+        "warped": true,
+        "latticePoints": 35328,
+        "minCornerDeg": 38.83,
+        "pctCornerBelow15": 0,
+        "pctCornerBelow10": 0,
+        "maxShearCos": 0.779
+      },
+      "vertexHash": "3e00f3e24be36384",
+      "indexHash": "a302cd4ad47680d8"
+    },
+    {
+      "tag": "SpiralRidges",
+      "dim": "shortWide",
+      "buildMs": 358286,
+      "sliver": 2493,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 51.6,
+      "wallPctBelow15": 47.2,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 18.3,
+        "bulkPct": 40.2,
+        "capB": 51.2,
+        "capT": 50.7,
+        "seamTris": 20078
+      },
+      "attribution": {
+        "0": {
+          "tris": 1132490,
+          "below": 402982,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 279306,
+          "below": 161184,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 64512,
+          "below": 13941,
+          "slivers": 0
+        }
+      },
+      "ceiling": {
+        "styleId": "SpiralRidges",
+        "warped": true,
+        "latticePoints": 35328,
+        "minCornerDeg": 11.48,
+        "pctCornerBelow15": 0.8,
+        "pctCornerBelow10": 0,
+        "maxShearCos": 0.98
+      },
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SpiralRidges",
+      "dim": "tallNarrow",
+      "buildMs": 473774,
+      "sliver": 1520,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 50694372,
+      "tris": 400000,
+      "bandPctBelow15": 39,
+      "wallPctBelow15": 36,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SpiralRidges",
+      "dim": "highFlare",
+      "buildMs": 581594,
+      "sliver": 994,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 2158814,
+      "tris": 400000,
+      "bandPctBelow15": 77.9,
+      "wallPctBelow15": 78.3,
+      "worst": 0.01,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "SpiralRidges",
+      "dim": "noDrain",
+      "buildMs": 196134,
+      "sliver": 665,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 2.5,
+      "wallPctBelow15": 2.4,
+      "worst": 0.01,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0.1,
+        "bulkPct": 0.2,
+        "capB": 0,
+        "capT": 5.6,
+        "seamTris": 6033
+      },
+      "attribution": {
+        "0": {
+          "tris": 301672,
+          "below": 439,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 87692,
+          "below": 406,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 22525,
+          "slivers": 0
+        }
+      },
+      "ceiling": {
+        "styleId": "SpiralRidges",
+        "warped": true,
+        "latticePoints": 35328,
+        "minCornerDeg": 38.83,
+        "pctCornerBelow15": 0,
+        "pctCornerBelow10": 0,
+        "maxShearCos": 0.779
+      },
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "FourierBloom",
+      "dim": "default",
+      "buildMs": 84347,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 15,
+      "tris": 328186,
+      "bandPctBelow15": 5,
+      "wallPctBelow15": 4,
+      "worst": 13.47,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.0033584808141489354,
+      "serrationScore": 0.03358480814148935,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0.1,
+        "bulkPct": 6.1,
+        "capB": 9.7,
+        "capT": 5.2,
+        "seamTris": 8601
+      },
+      "attribution": {
+        "0": {
+          "tris": 224962,
+          "below": 14896,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 46392,
+          "below": 1044,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 56832,
+          "below": 3424,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "dc3a6890321028b6",
+      "indexHash": "284e9045fea794bf"
+    },
+    {
+      "tag": "FourierBloom",
+      "dim": "shortWide",
+      "buildMs": 72460,
+      "sliver": 690,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 90.8,
+      "wallPctBelow15": 93.2,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 99.1,
+        "bulkPct": 95.8,
+        "capB": 77.5,
+        "capT": 77.7,
+        "seamTris": 17894
+      },
+      "attribution": {
+        "0": {
+          "tris": 342992,
+          "below": 334478,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 43374,
+          "below": 35427,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 4714,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "FourierBloom",
+      "dim": "tallNarrow",
+      "buildMs": 281640,
+      "sliver": 3942,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 61297209,
+      "tris": 400000,
+      "bandPctBelow15": 49,
+      "wallPctBelow15": 46.3,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 15.2,
+        "bulkPct": 53.5,
+        "capB": 58.8,
+        "capT": 34.3,
+        "seamTris": 53685
+      },
+      "attribution": {
+        "0": {
+          "tris": 1447494,
+          "below": 827002,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 285230,
+          "below": 74148,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 44544,
+          "below": 3305,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "FourierBloom",
+      "dim": "highFlare",
+      "buildMs": 135044,
+      "sliver": 1020,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 12631381,
+      "tris": 400000,
+      "bandPctBelow15": 62.2,
+      "wallPctBelow15": 59,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 39.3,
+        "bulkPct": 46.5,
+        "capB": 76.7,
+        "capT": 12.8,
+        "seamTris": 18349
+      },
+      "attribution": {
+        "0": {
+          "tris": 532188,
+          "below": 260578,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 87324,
+          "below": 25618,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 41984,
+          "below": 2620,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "FourierBloom",
+      "dim": "noDrain",
+      "buildMs": 62660,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 40,
+      "tris": 336890,
+      "bandPctBelow15": 5,
+      "wallPctBelow15": 4,
+      "worst": 13.47,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0.1,
+        "bulkPct": 6.1,
+        "capB": 9.7,
+        "capT": 5.2,
+        "seamTris": 8601
+      },
+      "attribution": {
+        "0": {
+          "tris": 224962,
+          "below": 14896,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 46392,
+          "below": 1044,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 14049,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "HexagonalHive",
+      "dim": "default",
+      "buildMs": 51080,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 22,
+      "tris": 252638,
+      "bandPctBelow15": 2.9,
+      "wallPctBelow15": 2.2,
+      "worst": 2.34,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.04657944842863665,
+      "serrationScore": 0.4657944842863665,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 1.2,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 4683
+      },
+      "attribution": {
+        "0": {
+          "tris": 73324,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 22354,
+          "below": 0,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 68980,
+          "below": 0,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 19755,
+          "below": 0,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 13953,
+          "below": 2294,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 54272,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "b0f37c6e79425768",
+      "indexHash": "15c97379b3d97363"
+    },
+    {
+      "tag": "HexagonalHive",
+      "dim": "shortWide",
+      "buildMs": 340606,
+      "sliver": 878,
+      "bnd": 0,
+      "nonMan": 1,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 99.6,
+      "wallPctBelow15": 99.7,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "HexagonalHive",
+      "dim": "tallNarrow",
+      "buildMs": 427758,
+      "sliver": 273,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 47.1,
+      "wallPctBelow15": 38,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "HexagonalHive",
+      "dim": "highFlare",
+      "buildMs": 44029,
+      "error": "setDims timeout"
+    },
+    {
+      "tag": "HexagonalHive",
+      "dim": "noDrain",
+      "buildMs": 47827,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 37,
+      "tris": 263902,
+      "bandPctBelow15": 2.9,
+      "wallPctBelow15": 2.2,
+      "worst": 2.34,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 1.2,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 4683
+      },
+      "attribution": {
+        "0": {
+          "tris": 73324,
+          "below": 0,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 22354,
+          "below": 0,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 68980,
+          "below": 0,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 19755,
+          "below": 0,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 13953,
+          "below": 2294,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 10790,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "CelticKnot",
+      "dim": "default",
+      "buildMs": 83446,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 24,
+      "tris": 342764,
+      "bandPctBelow15": 5.2,
+      "wallPctBelow15": 6.5,
+      "worst": 2.29,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.05260936869842221,
+      "serrationScore": 0.5260936869842221,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 6,
+        "capB": 2.8,
+        "capT": 2.2,
+        "seamTris": 1084
+      },
+      "attribution": {
+        "0": {
+          "tris": 86098,
+          "below": 5145,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 53386,
+          "below": 2113,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 83324,
+          "below": 4654,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 45151,
+          "below": 1698,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 21557,
+          "below": 3440,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53248,
+          "below": 1378,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "1e807127e17a6bad",
+      "indexHash": "517b85eb3ef5d3c1"
+    },
+    {
+      "tag": "CelticKnot",
+      "dim": "shortWide",
+      "buildMs": 377386,
+      "sliver": 3114,
+      "bnd": 0,
+      "nonMan": 6,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 91.7,
+      "wallPctBelow15": 89.8,
+      "worst": 0,
+      "featDrop": null,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "CelticKnot",
+      "dim": "tallNarrow",
+      "buildMs": 86521,
+      "error": "setDims timeout"
+    },
+    {
+      "tag": "CelticKnot",
+      "dim": "highFlare",
+      "buildMs": 126066,
+      "sliver": 1646,
+      "bnd": 0,
+      "nonMan": 1,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 400000,
+      "bandPctBelow15": 12,
+      "wallPctBelow15": 12.7,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 5.4,
+        "capB": 3.4,
+        "capT": 1.1,
+        "seamTris": 1868
+      },
+      "attribution": {
+        "0": {
+          "tris": 191364,
+          "below": 10594,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 73556,
+          "below": 3103,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 164558,
+          "below": 8571,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 63094,
+          "below": 2677,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 26294,
+          "below": 2850,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 36352,
+          "below": 1980,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "CelticKnot",
+      "dim": "noDrain",
+      "buildMs": 62094,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 41,
+      "tris": 355052,
+      "bandPctBelow15": 5.2,
+      "wallPctBelow15": 6.5,
+      "worst": 2.29,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 6,
+        "capB": 2.8,
+        "capT": 2.2,
+        "seamTris": 1084
+      },
+      "attribution": {
+        "0": {
+          "tris": 86098,
+          "below": 5145,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 53386,
+          "below": 2113,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 83324,
+          "below": 4654,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 45151,
+          "below": 1698,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 21557,
+          "below": 3440,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 11540,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "CelticTriquetra",
+      "dim": "default",
+      "buildMs": 377144,
+      "sliver": 1480,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 251027,
+      "tris": 400000,
+      "bandPctBelow15": 5,
+      "wallPctBelow15": 5.5,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.03057228276694514,
+      "serrationScore": 0.30572282766945136,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 24507
+      },
+      "attribution": {
+        "0": {
+          "tris": 824506,
+          "below": 207,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 347008,
+          "below": 169,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53248,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "d1afb37f641746b5",
+      "indexHash": "33a7932fea895649"
+    },
+    {
+      "tag": "CelticTriquetra",
+      "dim": "shortWide",
+      "buildMs": 511986,
+      "sliver": 3004,
+      "bnd": 0,
+      "nonMan": 24,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 399998,
+      "bandPctBelow15": 56.7,
+      "wallPctBelow15": 55.1,
+      "worst": 0,
+      "featDrop": null,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "CelticTriquetra",
+      "dim": "tallNarrow",
+      "buildMs": 150014,
+      "error": "setStyle timeout"
+    },
+    {
+      "tag": "CelticTriquetra",
+      "dim": "highFlare",
+      "buildMs": 111159,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+    },
+    {
+      "tag": "CelticTriquetra",
+      "dim": "noDrain",
+      "buildMs": 289646,
+      "sliver": 1465,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 251027,
+      "tris": 400000,
+      "bandPctBelow15": 4.9,
+      "wallPctBelow15": 5.4,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 0,
+        "capB": 0,
+        "capT": 0,
+        "seamTris": 24507
+      },
+      "attribution": {
+        "0": {
+          "tris": 824506,
+          "below": 207,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 347008,
+          "below": 169,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 65536,
+          "below": 10240,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "Voronoi",
+      "dim": "default",
+      "buildMs": 249223,
+      "sliver": 1971,
+      "bnd": 0,
+      "nonMan": 2,
+      "orient": 0,
+      "maxAspect": 56312566,
+      "tris": 400000,
+      "bandPctBelow15": 7.6,
+      "wallPctBelow15": 8.6,
+      "worst": 0,
+      "featDrop": 0,
+      "crestBandRmsMm": 0.019785906672617197,
+      "serrationScore": 0.19785906672617196,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 0,
+        "bulkPct": 1,
+        "capB": 2.1,
+        "capT": 2,
+        "seamTris": 10523
+      },
+      "attribution": {
+        "0": {
+          "tris": 167786,
+          "below": 236,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 108926,
+          "below": 66,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 157290,
+          "below": 0,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 93980,
+          "below": 0,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 36512,
+          "below": 5249,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53248,
+          "below": 512,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": "6b28a44cdfaa6e2e",
+      "indexHash": "738dbe55f5dd41c7"
+    },
+    {
+      "tag": "Voronoi",
+      "dim": "shortWide",
+      "buildMs": 481398,
+      "sliver": 11920,
+      "bnd": 0,
+      "nonMan": 149,
+      "orient": 0,
+      "maxAspect": 1000000000,
+      "tris": 399994,
+      "bandPctBelow15": 96.5,
+      "wallPctBelow15": 95.8,
+      "worst": 0,
+      "featDrop": null,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": null,
+      "drops": null,
+      "seam": null,
+      "attribution": null,
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    },
+    {
+      "tag": "Voronoi",
+      "dim": "tallNarrow",
+      "buildMs": 41817,
+      "error": "setDims timeout"
+    },
+    {
+      "tag": "Voronoi",
+      "dim": "highFlare",
+      "buildMs": 150009,
+      "error": "setStyle timeout"
+    },
+    {
+      "tag": "Voronoi",
+      "dim": "noDrain",
+      "buildMs": 14,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+    },
+    {
+      "tag": "SFB_s1",
+      "dim": "default+params",
+      "buildMs": 84965,
+      "sliver": 0,
+      "bnd": 0,
+      "nonMan": 0,
+      "orient": 0,
+      "maxAspect": 41,
+      "tris": 354984,
+      "bandPctBelow15": 10.7,
+      "wallPctBelow15": 9.5,
+      "worst": 1.5,
+      "featDrop": 0,
+      "crestBandRmsMm": null,
+      "serrationScore": null,
+      "inversions": 0,
+      "drops": 0,
+      "seam": {
+        "seamPct": 14.3,
+        "bulkPct": 10.8,
+        "capB": 1.7,
+        "capT": 2.3,
+        "seamTris": 10592
+      },
+      "attribution": {
+        "0": {
+          "tris": 88674,
+          "below": 13655,
+          "slivers": 0
+        },
+        "1": {
+          "tris": 51024,
+          "below": 3589,
+          "slivers": 0
+        },
+        "3": {
+          "tris": 95850,
+          "below": 9704,
+          "slivers": 0
+        },
+        "4": {
+          "tris": 51046,
+          "below": 2200,
+          "slivers": 0
+        },
+        "5": {
+          "tris": 15142,
+          "below": 3481,
+          "slivers": 0
+        },
+        "6": {
+          "tris": 53248,
+          "below": 1683,
+          "slivers": 0
+        }
+      },
+      "ceiling": null,
+      "vertexHash": null,
+      "indexHash": null
+    }
+  ]
+}
