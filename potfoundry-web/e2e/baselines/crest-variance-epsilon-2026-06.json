@@ -1,0 +1,147 @@
+﻿{
+    "measuredAt":  "2026-06-11",
+    "method":  "3 full _baseline_matrix.cjs runs, identical dev server, default dims, target 400k",
+    "finding":  "ZERO spread on all 20 styles across 3 runs (pipeline deterministic on this machine, consistent with byte-identical mesh hashes); epsilon = 0.5pp floor for every style; no style needs median-of-3 gating",
+    "rows":  [
+                 {
+                     "style":  "SuperformulaBlossom",
+                     "bandBelow15":  0,
+                     "wallBelow15":  0,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "SuperellipseMorph",
+                     "bandBelow15":  0,
+                     "wallBelow15":  0,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "LowPolyFacet",
+                     "bandBelow15":  0,
+                     "wallBelow15":  0,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "ArtDeco",
+                     "bandBelow15":  12.8,
+                     "wallBelow15":  13.9,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "Crystalline",
+                     "bandBelow15":  6.2,
+                     "wallBelow15":  12.3,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "BambooSegments",
+                     "bandBelow15":  3,
+                     "wallBelow15":  3.4,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "RippleInterference",
+                     "bandBelow15":  0,
+                     "wallBelow15":  0,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "WaveInterference",
+                     "bandBelow15":  0,
+                     "wallBelow15":  0,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "HarmonicRipple",
+                     "bandBelow15":  0,
+                     "wallBelow15":  0,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "GeometricStar",
+                     "bandBelow15":  6.6,
+                     "wallBelow15":  7.6,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "BasketWeave",
+                     "bandBelow15":  14.1,
+                     "wallBelow15":  12.6,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "GyroidManifold",
+                     "bandBelow15":  5.5,
+                     "wallBelow15":  7.1,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "GothicArches",
+                     "bandBelow15":  0.7,
+                     "wallBelow15":  0.4,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "DragonScales",
+                     "bandBelow15":  13.8,
+                     "wallBelow15":  18.2,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "SpiralRidges",
+                     "bandBelow15":  2.3,
+                     "wallBelow15":  2.3,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "FourierBloom",
+                     "bandBelow15":  1.5,
+                     "wallBelow15":  1.3,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "HexagonalHive",
+                     "bandBelow15":  3.1,
+                     "wallBelow15":  2.4,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "CelticKnot",
+                     "bandBelow15":  4.6,
+                     "wallBelow15":  5.9,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "CelticTriquetra",
+                     "bandBelow15":  4.5,
+                     "wallBelow15":  5.1,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 },
+                 {
+                     "style":  "Voronoi",
+                     "bandBelow15":  8.2,
+                     "wallBelow15":  9.3,
+                     "spread3Runs":  0,
+                     "epsilonPp":  0.5
+                 }
+             ]
+}
