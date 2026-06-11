@@ -156,6 +156,15 @@ export class PeriodicBalancedQuadtree {
   /** Grid-scaled finite-difference steps for the metric (de-noised vs sampler). */
   private readonly steps: MetricSteps;
   /**
+   * Optional WARP-COMPOSED surface map used ONLY to tag each leaf's `efg` in
+   * {@link leaves} (Stage-1 Task 2). Sizing/refinement keep using the PLAIN
+   * `metric` arg — the composed map exists solely so the triangulator's
+   * diagonal/ear-clip choices see the metric the emitted triangles ACTUALLY
+   * carry after the post-assembly domain warps. Absent ⇒ no leaf is tagged
+   * (legacy byte-identical path).
+   */
+  private readonly efgSampler?: SurfaceSampler;
+  /**
    * Anisotropy bias B (≥0). A level-L leaf spans Δu = 1/2^(L+B) in u and
    * Δt = 1/2^L in t, so cells are 3D-near-square under extreme circumference/
    * height anisotropy (a square (u,t) cell maps to a √E/√G:1 sliver — see GAP 1).
@@ -192,6 +201,12 @@ export class PeriodicBalancedQuadtree {
       uBias?: number;
       /** Enable the local directional u-refinement pass (per-leaf uExtra). */
       directionalRefine?: boolean;
+      /**
+       * Optional WARP-COMPOSED sampler for per-leaf `efg` tagging in
+       * {@link leaves} (see the field doc). Sizing/refinement ignore it — the
+       * PLAIN `metric` stays the sizing basis (spec: sizing stays plain).
+       */
+      efgSampler?: SurfaceSampler;
     },
   ) {
     this.maxLevel = opts.maxLevel;
@@ -201,6 +216,7 @@ export class PeriodicBalancedQuadtree {
     this.creaseRefine = opts.creaseRefine;
     this.uBiasLevel = Math.max(0, Math.floor(opts.uBias ?? 0));
     this.directionalRefine = opts.directionalRefine ?? false;
+    this.efgSampler = opts.efgSampler;
     this.steps = metricStepsForSampler(metric);
     this.refine(field, metric);
     if (this.pinBoundaryLevel > 0) this.enforcePinnedBoundary();
@@ -551,17 +567,49 @@ export class PeriodicBalancedQuadtree {
     return this.leafSet.size;
   }
 
-  /** All leaf cells in physical-parameter terms (u0 = iu/2^eUL). */
+  /**
+   * All leaf cells in physical-parameter terms (u0 = iu/2^eUL).
+   *
+   * When an `efgSampler` was injected, each leaf is additionally tagged with
+   * `efg` = the first fundamental form of that (warp-COMPOSED) map at the cell
+   * CENTRE — the input the shaped triangulation templates gate on. Population
+   * happens HERE and ONLY here:
+   *  - `leafOfCell` is the hot per-edge neighbours path (called many times per
+   *    leaf during triangulation); tagging there would multiply sampler calls
+   *    for values the neighbour consumers never read.
+   *  - The budget-scale search calls only {@link leafCount}, never `leaves()`,
+   *    so repeated quadtree rebuilds during the search pay NOTHING for efg
+   *    (lazy = free); the cost lands once, on the final triangulated build.
+   * The FD steps are `this.steps` — derived from the PLAIN metric's grid
+   * resolution. The composed wrapper FORWARDS `gridResolution()` from the plain
+   * sampler (same (u,t) domain), so `metricStepsForSampler(efgSampler)` would
+   * be equivalent; reusing `this.steps` keeps one step basis for the whole
+   * tree. Per-leaf cost: one `firstFundamentalForm` = 4 `position()` calls.
+   */
   leaves(): QuadLeaf[] {
     if (this.cells.length === 0 && this.leafSet.size > 0) this.rebuildCells();
-    return this.cells.map((c) => ({
-      u0: c.iu / this.uSpanCell(c.level, c.uExtra),
-      t0: c.it / (1 << c.level),
-      level: c.level,
-      iu: c.iu,
-      it: c.it,
-      uExtra: c.uExtra,
-    }));
+    return this.cells.map((c) => {
+      const uSpan = this.uSpanCell(c.level, c.uExtra);
+      const tSpan = 1 << c.level;
+      const leaf: QuadLeaf = {
+        u0: c.iu / uSpan,
+        t0: c.it / tSpan,
+        level: c.level,
+        iu: c.iu,
+        it: c.it,
+        uExtra: c.uExtra,
+      };
+      if (this.efgSampler) {
+        leaf.efg = firstFundamentalForm(
+          this.efgSampler,
+          (c.iu + 0.5) / uSpan,
+          (c.it + 0.5) / tSpan,
+          this.steps.hu,
+          this.steps.ht,
+        );
+      }
+      return leaf;
+    });
   }
 
   /** Neighbour leaves across each of the 4 sides (u-sides wrap). */

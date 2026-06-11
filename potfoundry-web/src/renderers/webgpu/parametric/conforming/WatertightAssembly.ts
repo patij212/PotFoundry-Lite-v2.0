@@ -244,6 +244,24 @@ export interface AssemblyWallOptions {
    * wall only (the inner wall is a smooth constant offset). No-op at B=0 / empty.
    */
   outerCreaseLines?: FeatureLine[];
+  /**
+   * Optional WARP-COMPOSED surface map of the OUTER wall, used ONLY to tag
+   * quadtree leaves with `efg` so the shaped triangulation templates measure
+   * the metric the emitted triangles ACTUALLY carry after the post-assembly
+   * domain warps (Stage-1 Task 2; see {@link ConformingWallOptions.efgSampler}).
+   * Per-wall because each wall's warp composition reads its OWN plain sampler.
+   * Sizing/refinement stay on the plain `outerSampler`. Omit ⇒ untagged
+   * (legacy templates, byte-identical).
+   */
+  outerEfgSampler?: SurfaceSampler;
+  /**
+   * Warp-composed map of the INNER wall (same role as `outerEfgSampler`). The
+   * inner wall receives the SAME three warps as the outer (u-warp: all
+   * surfaces; t-warp: surfaceId<1.5 includes the inner wall; helix: walls
+   * sheared by their own t — verified against the ParametricExportComputer
+   * application loops), composed over the inner plain sampler.
+   */
+  innerEfgSampler?: SurfaceSampler;
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -454,6 +472,8 @@ export function assembleWatertight(
     directionalRefine,
   };
   // Features go on the OUTER wall only (the inner wall is a smooth offset).
+  // The per-wall efg samplers (warp-composed maps) arm the shaped templates;
+  // sizing stays on the plain samplers (first positional arg).
   const outer = buildConformingWall(outerSampler, {
     ...wallOpts,
     surfaceId: 0,
@@ -461,8 +481,13 @@ export function assembleWatertight(
     featureTMargin: opts.featureTMargin,
     featureLevel: opts.featureLevel,
     creaseLines: opts.outerCreaseLines,
+    efgSampler: opts.outerEfgSampler,
   });
-  const inner = buildConformingWall(innerSampler, { ...wallOpts, surfaceId: 1 });
+  const inner = buildConformingWall(innerSampler, {
+    ...wallOpts,
+    surfaceId: 1,
+    efgSampler: opts.innerEfgSampler,
+  });
 
   // The shared ring vertex count grows with the bias: 2^(log2(nRing)+B). Both
   // walls pin the SAME (pinBoundaryLevel + uBias), so their rings match; the caps

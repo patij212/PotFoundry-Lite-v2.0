@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SyntheticCylinderSampler } from './SurfaceSampler';
+import { SyntheticCylinderSampler, type SurfaceSampler } from './SurfaceSampler';
 import { MetricSizingField, type SizingOptions } from './MetricSizingField';
 import { PeriodicBalancedQuadtree, type QuadLeaf } from './PeriodicBalancedQuadtree';
 
@@ -208,6 +208,93 @@ describe('PeriodicBalancedQuadtree — minUniformLevel floor', () => {
       for (const { leaf: nb } of qt.neighbors(leaf)) {
         expect(Math.abs(leaf.level - nb.level)).toBeLessThanOrEqual(1);
       }
+    }
+  });
+});
+
+// ── Stage-1 Task 2: per-leaf efg population from an injected efgSampler ──────
+//
+// The shaped-template gate (QuadtreeTriangulator.shapedTemplate) fires only
+// when a leaf carries `efg` — production never populated it before this. The
+// quadtree now accepts an OPTIONAL `efgSampler` (the WARP-COMPOSED wall map,
+// PullbackMetric.composedWallSampler) and tags each leaf in `leaves()` with the
+// first fundamental form at its cell centre. Sizing/refinement stay on the
+// PLAIN `metric` arg — only the leaf tags read the composed map.
+
+/**
+ * Sheared-plane sampler (cribbed from QuadtreeTriangulator.test.ts):
+ * position(u,t) = (SX·u + SH·t, SY·t, 0). Constant first fundamental form
+ * E = SX², F = SX·SH, G = SH² + SY² — FD is exact on a linear map, so leaf efg
+ * values can be pinned tightly.
+ */
+class ShearedPlaneSampler implements SurfaceSampler {
+  constructor(
+    private readonly sx: number,
+    private readonly sy: number,
+    private readonly shear: number,
+  ) {}
+  position(u: number, t: number): readonly [number, number, number] {
+    return [this.sx * u + this.shear * t, this.sy * t, 0];
+  }
+}
+
+describe('PeriodicBalancedQuadtree — per-leaf efg population (efgSampler)', () => {
+  const R0 = 50;
+  const H = 120;
+
+  it('(a) with efgSampler set, every leaf carries the closed-form cylinder efg', () => {
+    // Plain cylinder: E = (2πR0)², F = 0, G = H² everywhere (closed form).
+    const s = new SyntheticCylinderSampler(R0, H);
+    const field = constantField(s, 45);
+    const qt = new PeriodicBalancedQuadtree(field, s, { maxLevel: 8, efgSampler: s });
+    const leaves = qt.leaves();
+    expect(leaves.length).toBeGreaterThan(0);
+    const E_EXPECT = (2 * Math.PI * R0) ** 2;
+    const G_EXPECT = H * H;
+    for (const leaf of leaves) {
+      expect(leaf.efg).toBeDefined();
+      const { E, F, G } = leaf.efg as { E: number; F: number; G: number };
+      expect(Math.abs(E - E_EXPECT) / E_EXPECT).toBeLessThan(0.02);
+      expect(Math.abs(F)).toBeLessThan(0.02 * E);
+      expect(Math.abs(G - G_EXPECT) / G_EXPECT).toBeLessThan(0.02);
+    }
+  });
+
+  it('(b) WITHOUT efgSampler, leaves carry NO efg field (legacy byte-identity)', () => {
+    // The downstream byte-identity tests (QuadtreeTriangulator.test.ts) depend
+    // on absent-efg leaves taking the legacy template path verbatim.
+    const s = new SyntheticCylinderSampler(R0, H);
+    const field = constantField(s, 45);
+    const qt = new PeriodicBalancedQuadtree(field, s, { maxLevel: 8 });
+    const leaves = qt.leaves();
+    expect(leaves.length).toBeGreaterThan(0);
+    for (const leaf of leaves) {
+      expect(Object.prototype.hasOwnProperty.call(leaf, 'efg')).toBe(false);
+      expect(leaf.efg).toBeUndefined();
+    }
+  });
+
+  it('(c) leaf efg reflects the EFG SAMPLER, not the sizing metric (F = SX·SH)', () => {
+    // Sizing metric = plain cylinder (F=0 everywhere); efgSampler = sheared
+    // plane (F = SX·SH ≠ 0). If leaves carried the SIZING metric's form, F
+    // would be ~0 — the nonzero shear proves the separation (sizing plain,
+    // diagonal choice composed).
+    const SX = 6;
+    const SY = 2;
+    const SH = 8;
+    const sheared = new ShearedPlaneSampler(SX, SY, SH);
+    const plain = new SyntheticCylinderSampler(R0, H);
+    const field = constantField(plain, 45);
+    const qt = new PeriodicBalancedQuadtree(field, plain, { maxLevel: 8, efgSampler: sheared });
+    const leaves = qt.leaves();
+    expect(leaves.length).toBeGreaterThan(0);
+    for (const leaf of leaves) {
+      expect(leaf.efg).toBeDefined();
+      const { E, F, G } = leaf.efg as { E: number; F: number; G: number };
+      // FD is exact on the linear map (up to float rounding).
+      expect(E).toBeCloseTo(SX * SX, 6);
+      expect(F).toBeCloseTo(SX * SH, 6);
+      expect(G).toBeCloseTo(SH * SH + SY * SY, 6);
     }
   });
 });

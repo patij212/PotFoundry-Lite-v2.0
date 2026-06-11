@@ -63,6 +63,7 @@ import {
     applyTWarp,
     chooseHelixGrid,
     applyHelixWarp,
+    composedWallSampler,
     decimateConforming,
     type DecimationReport,
     type FeatureUTVertex,
@@ -2490,6 +2491,38 @@ export class ParametricExportComputer {
                       })
                     : [];
 
+                // ── Warp-composed per-wall efg samplers (Stage-1 Task 2) ─────────
+                // The walls are triangulated in (u,t) BEFORE the crease/helix warps
+                // below mutate the assembled vertices, so the emitted triangles live
+                // on the warp-COMPOSED surface. Tagging quadtree leaves with the
+                // composed map's first fundamental form arms the shaped templates
+                // (shorter-3D-diagonal / max-min-angle transitions) with the metric
+                // the triangles ACTUALLY carry — the plain metric under-reports
+                // shear/anisotropy (e.g. the SpiralRidges helix). Both walls get the
+                // SAME three warps with the same semantics as the application loops
+                // below: u-warp all surfaces (:u-warp loop), t-warp surfaceId<1.5
+                // (includes the inner wall), helix shears each wall by its OWN t —
+                // composedWallSampler mirrors those guards exactly (incl. the
+                // helix-XOR-u-warp gate). Sizing/refinement stay on the PLAIN
+                // samplers; only the per-leaf efg tags read the composed maps.
+                // Dev lever `window.__pfConformingEfg` (default ON): set false to
+                // bisect shaped-template effects (mirrors __pfConformingUBias).
+                const efgOn = (globalThis as unknown as { __pfConformingEfg?: boolean }).__pfConformingEfg !== false;
+                const outerEfgSampler = efgOn
+                    ? composedWallSampler(outerSampler, {
+                          uWarp: creaseChoice.warp,
+                          tWarp: creaseTChoice.warp,
+                          helix: helixChoice.warp,
+                      })
+                    : undefined;
+                const innerEfgSampler = efgOn
+                    ? composedWallSampler(innerSampler, {
+                          uWarp: creaseChoice.warp,
+                          tWarp: creaseTChoice.warp,
+                          helix: helixChoice.warp,
+                      })
+                    : undefined;
+
                 // Assemble the whole watertight mesh in (u,t,surfaceId) space.
                 // With curvature de-noising (grid-scaled finite differences) the
                 // sag-driven mesh is already far coarser on smooth styles, so a
@@ -2536,6 +2569,10 @@ export class ParametricExportComputer {
                         featureLevel: 7,
                         // Crease loci → uBias-invariant t-refinement (refine-only).
                         outerCreaseLines: creaseLines.length > 0 ? creaseLines : undefined,
+                        // Warp-composed per-wall efg samplers — arm the shaped
+                        // templates with the post-warp metric (see block above).
+                        outerEfgSampler,
+                        innerEfgSampler,
                     },
                 );
 

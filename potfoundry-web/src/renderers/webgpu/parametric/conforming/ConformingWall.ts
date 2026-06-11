@@ -135,6 +135,18 @@ export interface ConformingWallOptions {
    * matters — so passing full-height/width loci is safe and cheap.
    */
   creaseLines?: FeatureLine[];
+  /**
+   * Optional WARP-COMPOSED surface map for per-leaf `efg` tagging (Stage-1
+   * Task 2 — see {@link PeriodicBalancedQuadtree}'s `efgSampler` opt). Tagged
+   * leaves arm the shaped triangulation templates (shorter-3D-diagonal /
+   * max-min-angle transition polygons) with the metric the emitted triangles
+   * ACTUALLY carry after the post-assembly domain warps. SIZING and refinement
+   * stay on the plain `sampler` argument. The budget-scale search only reads
+   * `leafCount()` — `leaves()` (where efg is computed) never runs during the
+   * search, so this adds no cost to the repeated search rebuilds. Omit for the
+   * legacy untagged tree (byte-identical templates).
+   */
+  efgSampler?: SurfaceSampler;
 }
 
 /**
@@ -252,6 +264,10 @@ function buildQuadtreeAtScale(
     creaseRefine,
     uBias: opts.uBias,
     directionalRefine,
+    // Per-leaf efg tagging (shaped templates). Lazy: the quadtree only computes
+    // efg inside `leaves()`, and the budget search above calls `leafCount()`
+    // alone — so threading it here costs the search nothing.
+    efgSampler: opts.efgSampler,
   });
 }
 

@@ -25,7 +25,7 @@ import type { CdtStats } from './ConstrainedCellTriangulator';
 export const TRI_SOURCE = {
   PLAIN_QUAD: 0,      // triangulateQuadtree plain-quad split
   TRANSITION_FAN: 1,  // triangulateQuadtree centroid transition fan
-  EAR_CLIP: 2,        // metric ear-clip path (dead today — leaf.efg never set; reserved)
+  EAR_CLIP: 2,        // metric ear-clip path (ARMED Stage-1: leaves carry efg when an efgSampler is threaded)
   FCT_PLAIN_QUAD: 3,  // FeatureConformingTriangulator plain cell, 0-split
   FCT_PLAIN_FAN: 4,   // FeatureConformingTriangulator plain cell, centroid fan
   FCT_FEATURE_CDT: 5, // FeatureConformingTriangulator feature-cell CDT fill
