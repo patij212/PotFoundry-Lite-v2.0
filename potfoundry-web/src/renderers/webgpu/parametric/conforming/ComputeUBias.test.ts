@@ -115,6 +115,18 @@ describe('computeUBias — relief-gated bias at DEFAULT dims (the serration fix)
     expect(computeUBias(new SyntheticCylinderSampler(145, 40, 20, 16), false)).toBe(2);
   });
 
+  it('TEMPORARY containment (Stage 0): caps GATE B at 2 for feature-inserting styles', () => {
+    // High u-relief sampler that reads B>=3 without features (the maxURatio ~12
+    // class; k=16 lands the relief peak on the 192² lattice → maxURatio ≈ 12.1,
+    // MEASURED). B-sweep verdict (e2e/baselines/b-sweep-2026-06.json): auto-B=3 is
+    // NON-MANIFOLD on CDT-insertion styles (SFB@1: nonMan=3, sliver=2285) while B=2
+    // is clean with no true-instrument crest loss — so the hasFeatures path is
+    // capped at 2 until Stage 3's gate lifts it.
+    const hot = new SyntheticCylinderSampler(57, 120, 14, 16);
+    expect(computeUBias(hot, false)).toBeGreaterThanOrEqual(3); // plain path keeps full B
+    expect(computeUBias(hot, true)).toBe(2); // CDT-insertion path capped
+  });
+
   it('B climbs continuously with u-relief (the self-calibrating serration bias)', () => {
     // TALL pot (R57/H120; with k=16 the wideFlat 16-sample scan reads r=R0+amp, so
     // wideFlat ≈ 3.3 < AREF·√2 — GATE A is OFF, this is GATE B). k=16 lands the

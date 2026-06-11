@@ -105,8 +105,9 @@ const MAX_RELIEF_B = 4;
  *    default meshes (no longer byte-identical) — a deliberate quality trade; the
  *    goal vector (watertight / features / no slivers) still holds.
  *
- * @param hasFeatures whether the OUTER wall carries inserted feature lines (only
- *   affects GATE A — see above; GATE B is feature-agnostic).
+ * @param hasFeatures whether the OUTER wall carries inserted feature lines.
+ *   Affects GATE A (see above) and, TEMPORARILY (Stage 0), caps GATE B at 2 —
+ *   see the containment note at the GATE B tail.
  * Exported for unit testing (both gate thresholds + the fixed/relief values).
  */
 export function computeUBias(sampler: SurfaceSampler, hasFeatures = false): number {
@@ -150,7 +151,12 @@ export function computeUBias(sampler: SurfaceSampler, hasFeatures = false): numb
   // trade; the goal vector (watertight / features / no slivers) still holds.
   const { maxURatio } = classifySurfaceShear(sampler);
   const b = Math.round(Math.log2(maxURatio / Math.sqrt(3)));
-  return Math.max(0, Math.min(MAX_RELIEF_B, b));
+  // TEMPORARY Stage-0 containment (export-endgame spec §5 Stage 0; B-sweep artifact
+  // e2e/baselines/b-sweep-2026-06.json): auto-B>=3 is NON-MANIFOLD on CDT-insertion
+  // styles (SFB@1 B=3: nonMan=3, sliver=2285) with no true-instrument gain over B=2
+  // (band 40.6%->11.6% sub-15deg at B=2, crestRms within 4%). Lifted by Stage 3's gate.
+  const capped = hasFeatures ? Math.min(b, 2) : b;
+  return Math.max(0, Math.min(MAX_RELIEF_B, capped));
 }
 
 /** Pot dimensions needed to place the cap/drain surfaces. */
