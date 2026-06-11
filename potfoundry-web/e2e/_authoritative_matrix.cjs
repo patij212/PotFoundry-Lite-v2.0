@@ -34,13 +34,26 @@ const wt = (p, ms, l) => { let to; const t = new Promise((_, r) => { to = setTim
   try {
     const page = await browser.newPage();
     await page.addInitScript(() => { window.__pfConforming = true; window.__pfReferenceDenseRes = 1024; });
-    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 90000 });
-    await page.waitForFunction(() => typeof window.__pfFidelity !== 'undefined', null, { timeout: 90000 });
-    await page.waitForFunction(() => window.__pfFidelity.isReady && window.__pfFidelity.isReady() === true, null, { timeout: 90000 });
+    const boot = async () => {
+      await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 90000 });
+      await page.waitForFunction(() => typeof window.__pfFidelity !== 'undefined', null, { timeout: 90000 });
+      await page.waitForFunction(() => window.__pfFidelity.isReady && window.__pfFidelity.isReady() === true, null, { timeout: 90000 });
+    };
+    await boot();
+    // PF_RESUME=1: skip (tag,dim) cells already measured WITHOUT error in OUT.
+    const done = new Set();
+    if (process.env.PF_RESUME === '1' && fs.existsSync(OUT)) {
+      const prev = JSON.parse(fs.readFileSync(OUT, 'utf8'));
+      for (const r of prev.rows || []) if (!r.error) { rows.push(r); done.add(r.tag + '|' + r.dim); }
+      console.log('resuming: ' + rows.length + ' rows kept');
+    }
     const measure = async (tag, style, dimName, dims, params) => {
+      if (done.has(tag + '|' + dimName)) return;
       const t0 = Date.now();
       try {
-        await wt(page.evaluate((s) => window.__pfFidelity.setStyle(s), style), 60000, 'setStyle');
+        // Generous timeout: a style switch after a pathological build (ArtDeco
+        // short-wide ~435s) can stall behind pending GPU work.
+        await wt(page.evaluate((s) => window.__pfFidelity.setStyle(s), style), 150000, 'setStyle');
         if (dims) await wt(page.evaluate((d) => window.__pfFidelity.setDimensions(d), dims), 30000, 'setDims');
         if (params) await wt(page.evaluate((p) => window.__pfFidelity.setStyleParams(p), params), 30000, 'setParams');
         const tq = await wt(page.evaluate((t) => window.__pfFidelity.diagnoseTopoQuality({ targetTriangles: t }), TARGET), 260000, 'tq');
@@ -60,7 +73,7 @@ const wt = (p, ms, l) => { let to; const t = new Promise((_, r) => { to = setTim
           sliver: tq.sliverCount, bnd: tq.boundaryEdges, nonMan: tq.nonManifoldEdges,
           orient: tq.orientationMismatches, maxAspect: Math.round(tq.maxAspect3D), tris: tq.triangleCount,
           bandPctBelow15: cq && cq.bandPctBelow15, wallPctBelow15: cq && cq.pctBelow15, worst: cq && cq.worstMinAngleDeg,
-          featDrop: feat && feat.featuresDropped, crestBandRmsMm: serr && serr.crestBandRmsMm,
+          featDrop: feat ? feat.dropped : null, crestBandRmsMm: serr && serr.crestBandRmsMm,
           serrationScore: serr && serr.serrationScore,
           inversions: cdt && cdt.inversions, drops: cdt && cdt.drops,
           seam: seam && { seamPct: seam.seam.pctBelow15, bulkPct: seam.bulk.pctBelow15, capB: seam.capBottom.pctBelow15, capT: seam.capTop.pctBelow15, seamTris: seam.seam.triangles },
@@ -69,13 +82,17 @@ const wt = (p, ms, l) => { let to; const t = new Promise((_, r) => { to = setTim
         });
       } catch (e) {
         rows.push({ tag, dim: dimName, buildMs: Date.now() - t0, error: String(e.message || e).slice(0, 140) });
+        // A wedged page (pathological build leaving pending GPU work) poisons
+        // every later cell — recover with a fresh page load before continuing.
+        try { await boot(); console.log('recovered: page reloaded'); }
+        catch (e2) { console.log('recovery failed: ' + String(e2.message || e2).slice(0, 100)); }
       }
       console.log(JSON.stringify(rows[rows.length - 1]));
       save();
     };
     for (const style of STYLES) {
       for (const [dimName, dims] of Object.entries(DIMS)) await measure(style, style, dimName, dims, null);
-      await wt(page.evaluate((d) => window.__pfFidelity.setDimensions(d), DIMS.default), 30000, 'resetDims');
+      await wt(page.evaluate((d) => window.__pfFidelity.setDimensions(d), DIMS.default), 30000, 'resetDims').catch(async () => { await boot(); });
     }
     for (const pc of PARAM_CASES) await measure(pc.tag, pc.style, 'default+params', DIMS.default, pc.params);
   } finally { await browser.close(); }
