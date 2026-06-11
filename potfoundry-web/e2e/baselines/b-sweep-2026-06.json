@@ -1,0 +1,1665 @@
+[
+  {
+    "tag": "ArtDeco",
+    "B": 0,
+    "sliver": 863,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 13.2,
+    "wallPctBelow15": 14.6,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 294136,
+        "below": 23553,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 124218,
+        "below": 2360,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 52736,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.12286901379435264,
+    "serrationScore": 1.2286901379435262,
+    "ceiling": null
+  },
+  {
+    "tag": "ArtDeco",
+    "B": 1,
+    "sliver": 2107,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 12.8,
+    "wallPctBelow15": 13.9,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 319818,
+        "below": 39568,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 202066,
+        "below": 2440,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 52736,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.15710385783237885,
+    "serrationScore": 1.5710385783237883,
+    "ceiling": null
+  },
+  {
+    "tag": "ArtDeco",
+    "B": 2,
+    "sliver": 2703,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1078884,
+    "bandPctBelow15": 19.3,
+    "wallPctBelow15": 19.9,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": 0.17190056501256457,
+    "serrationScore": 1.7190056501256457,
+    "ceiling": null
+  },
+  {
+    "tag": "ArtDeco",
+    "B": 3,
+    "sliver": 2990,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 27.5,
+    "wallPctBelow15": 28.2,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": null,
+    "serrationScore": null,
+    "ceiling": null
+  },
+  {
+    "tag": "ArtDeco",
+    "B": "auto",
+    "sliver": 2107,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 12.8,
+    "wallPctBelow15": 13.9,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 319818,
+        "below": 39568,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 202066,
+        "below": 2440,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 52736,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.15710385783237885,
+    "serrationScore": 1.5710385783237883,
+    "ceiling": null
+  },
+  {
+    "tag": "Crystalline",
+    "B": 0,
+    "sliver": 1798,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 554366,
+    "bandPctBelow15": 61.7,
+    "wallPctBelow15": 71.8,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": 0.9998894214504083,
+    "serrationScore": 9.998894214504082,
+    "ceiling": null
+  },
+  {
+    "tag": "Crystalline",
+    "B": 1,
+    "sliver": 1863,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 624743,
+    "bandPctBelow15": 18.1,
+    "wallPctBelow15": 34.9,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 889008,
+        "below": 478647,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 241780,
+        "below": 54835,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 50688,
+        "below": 18381,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.030980962207342977,
+    "serrationScore": 0.30980962207342977,
+    "ceiling": null
+  },
+  {
+    "tag": "Crystalline",
+    "B": 2,
+    "sliver": 2027,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 12094840,
+    "bandPctBelow15": 6.2,
+    "wallPctBelow15": 12.3,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 554846,
+        "below": 47393,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 237608,
+        "below": 6761,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 50688,
+        "below": 18381,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.028985636485009143,
+    "serrationScore": 0.2898563648500914,
+    "ceiling": null
+  },
+  {
+    "tag": "Crystalline",
+    "B": 3,
+    "sliver": 1628,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 274942,
+    "bandPctBelow15": 26.1,
+    "wallPctBelow15": 34.5,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": 0.028951710719500687,
+    "serrationScore": 0.28951710719500684,
+    "ceiling": null
+  },
+  {
+    "tag": "Crystalline",
+    "B": "auto",
+    "sliver": 2027,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 12094840,
+    "bandPctBelow15": 6.2,
+    "wallPctBelow15": 12.3,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 554846,
+        "below": 47393,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 237608,
+        "below": 6761,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 50688,
+        "below": 18381,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.028985636485009143,
+    "serrationScore": 0.2898563648500914,
+    "ceiling": null
+  },
+  {
+    "tag": "DragonScales",
+    "B": 0,
+    "sliver": 1219,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 110254,
+    "bandPctBelow15": 31,
+    "wallPctBelow15": 45.9,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 912180,
+        "below": 503866,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 212714,
+        "below": 77468,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 51200,
+        "below": 6266,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.0423985887995465,
+    "serrationScore": 0.423985887995465,
+    "ceiling": null
+  },
+  {
+    "tag": "DragonScales",
+    "B": 1,
+    "sliver": 1760,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1142635,
+    "bandPctBelow15": 8.1,
+    "wallPctBelow15": 13.7,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 462110,
+        "below": 26953,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 217740,
+        "below": 21110,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 51200,
+        "below": 6266,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.07069731790562844,
+    "serrationScore": 0.7069731790562844,
+    "ceiling": null
+  },
+  {
+    "tag": "DragonScales",
+    "B": 2,
+    "sliver": 2683,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 401914,
+    "bandPctBelow15": 13.8,
+    "wallPctBelow15": 18.2,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 421620,
+        "below": 14727,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 368070,
+        "below": 43242,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 51200,
+        "below": 6266,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.09142396871673478,
+    "serrationScore": 0.9142396871673477,
+    "ceiling": null
+  },
+  {
+    "tag": "DragonScales",
+    "B": 3,
+    "sliver": 2813,
+    "bnd": 0,
+    "nonMan": 1,
+    "orient": 0,
+    "maxAspect": 3381982,
+    "bandPctBelow15": 31.2,
+    "wallPctBelow15": 35.1,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": 0.11049987250960129,
+    "serrationScore": 1.104998725096013,
+    "ceiling": null
+  },
+  {
+    "tag": "DragonScales",
+    "B": "auto",
+    "sliver": 2683,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 401914,
+    "bandPctBelow15": 13.8,
+    "wallPctBelow15": 18.2,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 421620,
+        "below": 14727,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 368070,
+        "below": 43242,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 51200,
+        "below": 6266,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.09142396871673478,
+    "serrationScore": 0.9142396871673477,
+    "ceiling": null
+  },
+  {
+    "tag": "BasketWeave",
+    "B": 0,
+    "sliver": 1801,
+    "bnd": 0,
+    "nonMan": 1,
+    "orient": 0,
+    "maxAspect": 2591384143,
+    "bandPctBelow15": 48.5,
+    "wallPctBelow15": 46.7,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 994700,
+        "below": 484611,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 297878,
+        "below": 80755,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 941,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.12506683235594296,
+    "serrationScore": 1.2506683235594296,
+    "ceiling": null
+  },
+  {
+    "tag": "BasketWeave",
+    "B": 1,
+    "sliver": 1584,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 14.1,
+    "wallPctBelow15": 12.6,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 557106,
+        "below": 31778,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 303838,
+        "below": 9482,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 941,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.18391305383048687,
+    "serrationScore": 1.8391305383048686,
+    "ceiling": null
+  },
+  {
+    "tag": "BasketWeave",
+    "B": 2,
+    "sliver": 2274,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 12.5,
+    "wallPctBelow15": 12.2,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": 0.313053642791649,
+    "serrationScore": 3.1305364279164896,
+    "ceiling": null
+  },
+  {
+    "tag": "BasketWeave",
+    "B": 3,
+    "sliver": 2094,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1361269,
+    "bandPctBelow15": 31.9,
+    "wallPctBelow15": 31.9,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": null,
+    "serrationScore": null,
+    "ceiling": null
+  },
+  {
+    "tag": "BasketWeave",
+    "B": "auto",
+    "sliver": 1584,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 14.1,
+    "wallPctBelow15": 12.6,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 557106,
+        "below": 31778,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 303838,
+        "below": 9482,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 941,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.18391305383048687,
+    "serrationScore": 1.8391305383048686,
+    "ceiling": null
+  },
+  {
+    "tag": "GeometricStar",
+    "B": 0,
+    "sliver": 1858,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 22.2,
+    "wallPctBelow15": 23.3,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 454112,
+        "below": 38520,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 152704,
+        "below": 5008,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 704,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.03549188121471085,
+    "serrationScore": 0.35491881214710846,
+    "ceiling": null
+  },
+  {
+    "tag": "GeometricStar",
+    "B": 1,
+    "sliver": 166,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 6.6,
+    "wallPctBelow15": 7.6,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 233088,
+        "below": 19328,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 124656,
+        "below": 3776,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 704,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.039895915323935494,
+    "serrationScore": 0.39895915323935494,
+    "ceiling": null
+  },
+  {
+    "tag": "GeometricStar",
+    "B": 2,
+    "sliver": 2171,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 19.8,
+    "wallPctBelow15": 21.1,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 279008,
+        "below": 53032,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 218912,
+        "below": 10456,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 704,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.027324973384223284,
+    "serrationScore": 0.27324973384223283,
+    "ceiling": null
+  },
+  {
+    "tag": "GeometricStar",
+    "B": 3,
+    "sliver": 2757,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1777808,
+    "bandPctBelow15": 35.9,
+    "wallPctBelow15": 37.3,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 469552,
+        "below": 125344,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 327216,
+        "below": 20024,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 704,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.04397076222496525,
+    "serrationScore": 0.4397076222496525,
+    "ceiling": null
+  },
+  {
+    "tag": "GeometricStar",
+    "B": "auto",
+    "sliver": 166,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 6.6,
+    "wallPctBelow15": 7.6,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 233088,
+        "below": 19328,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 124656,
+        "below": 3776,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 704,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.039895915323935494,
+    "serrationScore": 0.39895915323935494,
+    "ceiling": null
+  },
+  {
+    "tag": "BambooSegments",
+    "B": 0,
+    "sliver": 857,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 37.2,
+    "wallPctBelow15": 38.3,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 378360,
+        "below": 121122,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 110532,
+        "below": 16268,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 54272,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.023029831712785973,
+    "serrationScore": 0.23029831712785973,
+    "ceiling": null
+  },
+  {
+    "tag": "BambooSegments",
+    "B": 1,
+    "sliver": 291,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 233929,
+    "bandPctBelow15": 3,
+    "wallPctBelow15": 3.4,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 259090,
+        "below": 0,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 112676,
+        "below": 1331,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 54272,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.046410715869802326,
+    "serrationScore": 0.4641071586980232,
+    "ceiling": null
+  },
+  {
+    "tag": "BambooSegments",
+    "B": 2,
+    "sliver": 1673,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 10.3,
+    "wallPctBelow15": 10.7,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 417802,
+        "below": 7637,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 203468,
+        "below": 15622,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 54272,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.07900771530102285,
+    "serrationScore": 0.7900771530102285,
+    "ceiling": null
+  },
+  {
+    "tag": "BambooSegments",
+    "B": 3,
+    "sliver": 1251,
+    "bnd": 0,
+    "nonMan": 3,
+    "orient": 0,
+    "maxAspect": 11224398,
+    "bandPctBelow15": 30,
+    "wallPctBelow15": 30,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": 0.08539680397887622,
+    "serrationScore": 0.8539680397887622,
+    "ceiling": null
+  },
+  {
+    "tag": "BambooSegments",
+    "B": "auto",
+    "sliver": 291,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 233929,
+    "bandPctBelow15": 3,
+    "wallPctBelow15": 3.4,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 259090,
+        "below": 0,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 112676,
+        "below": 1331,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 54272,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.046410715869802326,
+    "serrationScore": 0.4641071586980232,
+    "ceiling": null
+  },
+  {
+    "tag": "CelticTriquetra",
+    "B": 0,
+    "sliver": 1482,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 10.8,
+    "wallPctBelow15": 16,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": 0.894985395670961,
+    "serrationScore": 8.94985395670961,
+    "ceiling": null
+  },
+  {
+    "tag": "CelticTriquetra",
+    "B": 1,
+    "sliver": 1221,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 5993720,
+    "bandPctBelow15": 4.5,
+    "wallPctBelow15": 5.1,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 945436,
+        "below": 71,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 336404,
+        "below": 22,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53248,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.023830729785744766,
+    "serrationScore": 0.23830729785744764,
+    "ceiling": null
+  },
+  {
+    "tag": "CelticTriquetra",
+    "B": 2,
+    "sliver": 1162,
+    "bnd": 0,
+    "nonMan": 1,
+    "orient": 0,
+    "maxAspect": 2723858,
+    "bandPctBelow15": 10.8,
+    "wallPctBelow15": 10.4,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": 0.8640763549857639,
+    "serrationScore": 8.640763549857638,
+    "ceiling": null
+  },
+  {
+    "tag": "CelticTriquetra",
+    "B": 3,
+    "sliver": 1014,
+    "bnd": 0,
+    "nonMan": 1,
+    "orient": 0,
+    "maxAspect": 75085,
+    "bandPctBelow15": 35.7,
+    "wallPctBelow15": 36,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": null,
+    "serrationScore": null,
+    "ceiling": null
+  },
+  {
+    "tag": "CelticTriquetra",
+    "B": "auto",
+    "sliver": 1221,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 5993720,
+    "bandPctBelow15": 4.5,
+    "wallPctBelow15": 5.1,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 945436,
+        "below": 71,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 336404,
+        "below": 22,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53248,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.023830729785744766,
+    "serrationScore": 0.23830729785744764,
+    "ceiling": null
+  },
+  {
+    "tag": "SpiralRidges",
+    "B": 0,
+    "sliver": 1117,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 7885193,
+    "bandPctBelow15": 52.5,
+    "wallPctBelow15": 54.9,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 796712,
+        "below": 445878,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 163462,
+        "below": 88071,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 9018,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.0374786024738508,
+    "serrationScore": 0.374786024738508,
+    "ceiling": {
+      "minCornerDeg": 48.63,
+      "pctBelow15": 0,
+      "warped": true
+    }
+  },
+  {
+    "tag": "SpiralRidges",
+    "B": 1,
+    "sliver": 1333,
+    "bnd": 0,
+    "nonMan": 1,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 15,
+    "wallPctBelow15": 15.1,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 410006,
+        "below": 44281,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 105756,
+        "below": 13174,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 9018,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.03157608428249241,
+    "serrationScore": 0.31576084282492406,
+    "ceiling": {
+      "minCornerDeg": 48.63,
+      "pctBelow15": 0,
+      "warped": true
+    }
+  },
+  {
+    "tag": "SpiralRidges",
+    "B": 2,
+    "sliver": 479,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 14161,
+    "bandPctBelow15": 2.3,
+    "wallPctBelow15": 2.3,
+    "worst": 0.01,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 300364,
+        "below": 1397,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 85696,
+        "below": 582,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 9018,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.020421313503462567,
+    "serrationScore": 0.20421313503462565,
+    "ceiling": {
+      "minCornerDeg": 48.63,
+      "pctBelow15": 0,
+      "warped": true
+    }
+  },
+  {
+    "tag": "SpiralRidges",
+    "B": 3,
+    "sliver": 2148,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 11.9,
+    "wallPctBelow15": 11.3,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 466862,
+        "below": 12512,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 113110,
+        "below": 8456,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 9018,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.008675851777699183,
+    "serrationScore": 0.08675851777699183,
+    "ceiling": {
+      "minCornerDeg": 48.63,
+      "pctBelow15": 0,
+      "warped": true
+    }
+  },
+  {
+    "tag": "SpiralRidges",
+    "B": "auto",
+    "sliver": 479,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 14161,
+    "bandPctBelow15": 2.3,
+    "wallPctBelow15": 2.3,
+    "worst": 0.01,
+    "inversions": null,
+    "drops": null,
+    "attribution": {
+      "0": {
+        "tris": 300364,
+        "below": 1397,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 85696,
+        "below": 582,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 9018,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.020421313503462567,
+    "serrationScore": 0.20421313503462565,
+    "ceiling": {
+      "minCornerDeg": 48.63,
+      "pctBelow15": 0,
+      "warped": true
+    }
+  },
+  {
+    "tag": "Voronoi",
+    "B": 0,
+    "sliver": 1875,
+    "bnd": 0,
+    "nonMan": 2,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 15.5,
+    "wallPctBelow15": 18.2,
+    "worst": 0,
+    "inversions": 0,
+    "drops": 0,
+    "attribution": {
+      "0": {
+        "tris": 357506,
+        "below": 18722,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 116212,
+        "below": 3895,
+        "slivers": 0
+      },
+      "3": {
+        "tris": 358718,
+        "below": 18164,
+        "slivers": 0
+      },
+      "4": {
+        "tris": 110952,
+        "below": 3777,
+        "slivers": 0
+      },
+      "5": {
+        "tris": 37588,
+        "below": 4617,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53248,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.014203555852079936,
+    "serrationScore": 0.14203555852079935,
+    "ceiling": null
+  },
+  {
+    "tag": "Voronoi",
+    "B": 1,
+    "sliver": 2076,
+    "bnd": 0,
+    "nonMan": 1,
+    "orient": 0,
+    "maxAspect": 437963,
+    "bandPctBelow15": 8.2,
+    "wallPctBelow15": 9.3,
+    "worst": 0,
+    "inversions": 0,
+    "drops": 0,
+    "attribution": {
+      "0": {
+        "tris": 193904,
+        "below": 7,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 109186,
+        "below": 0,
+        "slivers": 0
+      },
+      "3": {
+        "tris": 183172,
+        "below": 0,
+        "slivers": 0
+      },
+      "4": {
+        "tris": 98620,
+        "below": 0,
+        "slivers": 0
+      },
+      "5": {
+        "tris": 38282,
+        "below": 5700,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53248,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.01583937634154125,
+    "serrationScore": 0.15839376341541248,
+    "ceiling": null
+  },
+  {
+    "tag": "Voronoi",
+    "B": 2,
+    "sliver": 1997,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 352655,
+    "bandPctBelow15": 15.7,
+    "wallPctBelow15": 17.3,
+    "worst": 0,
+    "inversions": 0,
+    "drops": 0,
+    "attribution": {
+      "0": {
+        "tris": 265060,
+        "below": 83416,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 197874,
+        "below": 16514,
+        "slivers": 0
+      },
+      "3": {
+        "tris": 250392,
+        "below": 74670,
+        "slivers": 0
+      },
+      "4": {
+        "tris": 168256,
+        "below": 12303,
+        "slivers": 0
+      },
+      "5": {
+        "tris": 56584,
+        "below": 7813,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53248,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.01568872202246734,
+    "serrationScore": 0.15688722022467338,
+    "ceiling": null
+  },
+  {
+    "tag": "Voronoi",
+    "B": 3,
+    "sliver": 2251,
+    "bnd": 0,
+    "nonMan": 5,
+    "orient": 0,
+    "maxAspect": 283546,
+    "bandPctBelow15": 36.6,
+    "wallPctBelow15": 39.2,
+    "worst": 0,
+    "inversions": null,
+    "drops": null,
+    "attribution": null,
+    "crestBandRmsMm": 0.018324220178316166,
+    "serrationScore": 0.18324220178316164,
+    "ceiling": null
+  },
+  {
+    "tag": "Voronoi",
+    "B": "auto",
+    "sliver": 2076,
+    "bnd": 0,
+    "nonMan": 1,
+    "orient": 0,
+    "maxAspect": 437963,
+    "bandPctBelow15": 8.2,
+    "wallPctBelow15": 9.3,
+    "worst": 0,
+    "inversions": 0,
+    "drops": 0,
+    "attribution": {
+      "0": {
+        "tris": 193904,
+        "below": 7,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 109186,
+        "below": 0,
+        "slivers": 0
+      },
+      "3": {
+        "tris": 183172,
+        "below": 0,
+        "slivers": 0
+      },
+      "4": {
+        "tris": 98620,
+        "below": 0,
+        "slivers": 0
+      },
+      "5": {
+        "tris": 38282,
+        "below": 5700,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53248,
+        "below": 512,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.01583937634154125,
+    "serrationScore": 0.15839376341541248,
+    "ceiling": null
+  },
+  {
+    "tag": "SFB_s1",
+    "B": 0,
+    "sliver": 2525,
+    "bnd": 0,
+    "nonMan": 2,
+    "orient": 0,
+    "maxAspect": 2521042509,
+    "bandPctBelow15": 64.7,
+    "wallPctBelow15": 60.4,
+    "worst": 0,
+    "inversions": 0,
+    "drops": 0,
+    "attribution": {
+      "0": {
+        "tris": 247496,
+        "below": 187857,
+        "slivers": 83
+      },
+      "1": {
+        "tris": 83712,
+        "below": 39454,
+        "slivers": 5
+      },
+      "3": {
+        "tris": 247906,
+        "below": 189027,
+        "slivers": 105
+      },
+      "4": {
+        "tris": 78853,
+        "below": 35925,
+        "slivers": 7
+      },
+      "5": {
+        "tris": 17803,
+        "below": 8253,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 1715,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.11879540787313068,
+    "serrationScore": 1.1879540787313068,
+    "ceiling": null
+  },
+  {
+    "tag": "SFB_s1",
+    "B": 1,
+    "sliver": 244,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 174800,
+    "bandPctBelow15": 15.8,
+    "wallPctBelow15": 13.9,
+    "worst": 0,
+    "inversions": 0,
+    "drops": 0,
+    "attribution": {
+      "0": {
+        "tris": 118540,
+        "below": 15286,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 54906,
+        "below": 3287,
+        "slivers": 0
+      },
+      "3": {
+        "tris": 119422,
+        "below": 13519,
+        "slivers": 0
+      },
+      "4": {
+        "tris": 52892,
+        "below": 1919,
+        "slivers": 0
+      },
+      "5": {
+        "tris": 14434,
+        "below": 3950,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 1715,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.11290471102425619,
+    "serrationScore": 1.1290471102425619,
+    "ceiling": null
+  },
+  {
+    "tag": "SFB_s1",
+    "B": 2,
+    "sliver": 0,
+    "bnd": 0,
+    "nonMan": 0,
+    "orient": 0,
+    "maxAspect": 50,
+    "bandPctBelow15": 11.6,
+    "wallPctBelow15": 10.4,
+    "worst": 1.02,
+    "inversions": 0,
+    "drops": 0,
+    "attribution": {
+      "0": {
+        "tris": 97898,
+        "below": 17472,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 55904,
+        "below": 4422,
+        "slivers": 0
+      },
+      "3": {
+        "tris": 104176,
+        "below": 11842,
+        "slivers": 0
+      },
+      "4": {
+        "tris": 55825,
+        "below": 2699,
+        "slivers": 0
+      },
+      "5": {
+        "tris": 15157,
+        "below": 3646,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 1715,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.09643591773840318,
+    "serrationScore": 0.9643591773840318,
+    "ceiling": null
+  },
+  {
+    "tag": "SFB_s1",
+    "B": 3,
+    "sliver": 2285,
+    "bnd": 0,
+    "nonMan": 3,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 40.6,
+    "wallPctBelow15": 35.7,
+    "worst": 0,
+    "inversions": 0,
+    "drops": 0,
+    "attribution": {
+      "0": {
+        "tris": 170942,
+        "below": 87245,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 85750,
+        "below": 27790,
+        "slivers": 0
+      },
+      "3": {
+        "tris": 186312,
+        "below": 78648,
+        "slivers": 0
+      },
+      "4": {
+        "tris": 85937,
+        "below": 23670,
+        "slivers": 0
+      },
+      "5": {
+        "tris": 20215,
+        "below": 6142,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 1715,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.09336729400916036,
+    "serrationScore": 0.9336729400916035,
+    "ceiling": null
+  },
+  {
+    "tag": "SFB_s1",
+    "B": "auto",
+    "sliver": 2285,
+    "bnd": 0,
+    "nonMan": 3,
+    "orient": 0,
+    "maxAspect": 1000000000,
+    "bandPctBelow15": 40.6,
+    "wallPctBelow15": 35.7,
+    "worst": 0,
+    "inversions": 0,
+    "drops": 0,
+    "attribution": {
+      "0": {
+        "tris": 170942,
+        "below": 87245,
+        "slivers": 0
+      },
+      "1": {
+        "tris": 85750,
+        "below": 27790,
+        "slivers": 0
+      },
+      "3": {
+        "tris": 186312,
+        "below": 78648,
+        "slivers": 0
+      },
+      "4": {
+        "tris": 85937,
+        "below": 23670,
+        "slivers": 0
+      },
+      "5": {
+        "tris": 20215,
+        "below": 6142,
+        "slivers": 0
+      },
+      "6": {
+        "tris": 53760,
+        "below": 1715,
+        "slivers": 0
+      }
+    },
+    "crestBandRmsMm": 0.09336729400916036,
+    "serrationScore": 0.9336729400916035,
+    "ceiling": null
+  }
+]

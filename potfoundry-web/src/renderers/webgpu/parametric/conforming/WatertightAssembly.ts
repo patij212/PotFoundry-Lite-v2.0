@@ -99,7 +99,8 @@ const MAX_RELIEF_B = 4;
  *    at steep relief). `B≈log2(maxURatio/√3)` squares them toward equilateral. It is
  *    SELF-CALIBRATING: moderate base anisotropy (ρ≈3 → B=1) gives clean-CAD triangle
  *    quality (MEASURED 2026-06-10: %below-20° ~50%→~2-10%, fewer triangles); high
- *    u-relief climbs (11.8 → B=3, the proven SuperformulaBlossom@1 serration bias);
+ *    u-relief climbs (11.8 → B=3 — but B≥3 was later MEASURED non-manifold on
+ *    CDT-insertion styles, hence the temporary hasFeatures cap below);
  *    `maxURatio < √2·√3 ≈ 2.45` (tall-narrow) → B=0. It FIRES WITH features and is
  *    the !wideFlat branch only (never the short-wide regime). This RE-BASELINES
  *    default meshes (no longer byte-identical) — a deliberate quality trade; the
@@ -143,7 +144,8 @@ export function computeUBias(sampler: SurfaceSampler, hasFeatures = false): numb
   // DEFAULT dims: moderate base anisotropy (ρ≈3 → B=1) — MEASURED 2026-06-10 to drop
   // %below-20° from ~50% to ~2-10% with FEWER triangles, watertight, across
   // Hive/Gyroid/Gothic/Voronoi/ArtDeco/CelticKnot/BasketWeave; high u-relief still
-  // climbs (11.8 → B=3, the proven SuperformulaBlossom@1 serration bias); very low
+  // climbs (11.8 → B=3 — but B≥3 was later MEASURED non-manifold on CDT-insertion
+  // styles, hence the temporary hasFeatures cap below); very low
   // anisotropy (maxURatio < √2·√3 ≈ 2.45, e.g. tall-narrow) → B=0 (untouched). It
   // FIRES WITH features (crests/quality need it) and is the !wideFlat branch only,
   // so it never touches the short-wide regime (GATE A). This RE-BASELINES default
