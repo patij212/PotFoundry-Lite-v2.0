@@ -659,3 +659,43 @@ describe('triMinAngleAndAspect', () => {
     expect(q.aspect).toBe(Infinity);
   });
 });
+
+import { seamBandTriangleQuality } from './metrics';
+
+describe('seamBandTriangleQuality — periodic-seam and cap-ring bands vs bulk', () => {
+  // Two wall triangles: one straddling the u-seam (u≈0.995/0.005), one mid-wall.
+  // 3D positions: unit-ish triangles; quality values don't matter — bucketing does.
+  const vertices = new Float32Array([
+    0, 0, 0,   1, 0, 0,   0, 1, 0,   // tri A vertices
+    5, 0, 0,   6, 0, 0,   5, 1, 0,   // tri B vertices
+  ]);
+  const indices = new Uint32Array([0, 1, 2, 3, 4, 5]);
+  const ut = new Float32Array([
+    0.995, 0.5, 0,   0.005, 0.5, 0,   0.998, 0.52, 0, // tri A: wraps the seam, mid-t
+    0.40, 0.5, 0,    0.42, 0.5, 0,    0.41, 0.52, 0,  // tri B: bulk
+  ]);
+
+  it('buckets the seam-wrapping triangle into seam, the other into bulk', () => {
+    const r = seamBandTriangleQuality({ vertices, indices }, ut);
+    expect(r.seam.triangles).toBe(1);
+    expect(r.bulk.triangles).toBe(1);
+    expect(r.capBottom.triangles).toBe(0);
+    expect(r.capTop.triangles).toBe(0);
+  });
+
+  it('buckets a cap-adjacent triangle into the cap band', () => {
+    const ut2 = new Float32Array(ut);
+    ut2[1] = 0.01; ut2[4] = 0.012; ut2[7] = 0.015; // tri A now hugs t=0
+    ut2[0] = 0.4; ut2[3] = 0.42; ut2[6] = 0.41;    // ...and is away from the seam
+    const r = seamBandTriangleQuality({ vertices, indices }, ut2);
+    expect(r.capBottom.triangles).toBe(1);
+    expect(r.seam.triangles).toBe(0);
+  });
+
+  it('skips non-wall surfaces (surfaceId ≥ 2)', () => {
+    const ut3 = new Float32Array(ut);
+    ut3[2] = 2; ut3[5] = 2; ut3[8] = 2; // tri A is a rim-cap triangle
+    const r = seamBandTriangleQuality({ vertices, indices }, ut3);
+    expect(r.seam.triangles + r.bulk.triangles + r.capBottom.triangles + r.capTop.triangles).toBe(1);
+  });
+});

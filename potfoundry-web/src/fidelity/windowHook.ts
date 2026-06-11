@@ -9,6 +9,7 @@ import type { MeshData } from '../geometry/types';
 import { STYLE_REGISTRY } from '../styles/registry';
 import {
   getLastChainDebugData,
+  getLastConformingAssemblyUT,
   getLastConformingCdtStats,
   getLastConformingFeatureResult,
   getLastConformingHelixWarp,
@@ -32,6 +33,7 @@ import {
   crestBandTriangleQuality,
   extractOuterWallSubmesh,
   meshHash,
+  seamBandTriangleQuality,
   topologyDiagnostics,
   triangleQualityDiagnostics,
   triangleQualityDistribution,
@@ -39,6 +41,7 @@ import {
   wallChordError,
   wallDeviation,
   type CrestBandQualityResult,
+  type SeamBandQualityResult,
   type TopologyDiagnostics,
   type TriangleQualityDiagnostics,
   type TriangleQualityDistribution,
@@ -218,6 +221,18 @@ export interface PfFidelityApi {
    * longer parallel). Metadata readout only — the mesh is byte-identical.
    */
   diagnoseSliverAttribution(opts?: FidelitySliverAttributionOptions): Promise<FidelitySliverAttributionDiagnostics | null>;
+  /**
+   * STAGE 0 — seam/cap-band triangle-quality split (the user-raised periodicity
+   * concern, measured rather than argued). The conforming mesher's pre-warp
+   * assembly (u,t,surfaceId) copy is parallel to the returned mesh's vertices,
+   * so wall triangles are bucketed by the registry's topological u-seam
+   * (pre-warp u=0/1, including u-span wrap) and the cap-adjacent pinned rings
+   * (t≈0 / t≈1), each scored by 3D min interior angle vs the bulk. Null on the
+   * legacy/parametric path (no assembly stash) and when a downstream pass
+   * changed the vertex count (copy no longer parallel). Metadata readout only —
+   * the mesh is byte-identical.
+   */
+  diagnoseSeamBands(opts?: FidelitySeamBandDiagnosticOptions): Promise<FidelitySeamBandDiagnostics | null>;
   /** TEMP debug (revert): the OUTER-wall sub-mesh for off-DOM wireframe rendering. */
   _debugOuterMesh(targetTriangles?: number): Promise<{ vertices: Float32Array; indices: Uint32Array } | null>;
   /**
@@ -280,6 +295,14 @@ export interface FidelitySliverAttributionDiagnostics {
   angleBarDeg: number;
   /** Buckets keyed by the TRI_SOURCE tag value (stringified). */
   byTag: Record<string, SliverAttributionBucket>;
+}
+
+export interface FidelitySeamBandDiagnosticOptions {
+  targetTriangles?: number;
+}
+
+export interface FidelitySeamBandDiagnostics extends SeamBandQualityResult {
+  styleId: string;
 }
 
 export interface FidelitySerrationDiagnosticOptions {
@@ -650,6 +673,18 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         if (q.aspect > ASPECT_MAX) b.slivers++;
       }
       return { styleId, angleBarDeg: bar, byTag };
+    },
+    async diagnoseSeamBands(opts: FidelitySeamBandDiagnosticOptions = {}): Promise<FidelitySeamBandDiagnostics | null> {
+      const styleId = currentStyleId();
+      // Generating the mesh repopulates the stashed PRE-WARP assembly
+      // (u,t,surfaceId) copy (conforming branch only). The copy is parallel to
+      // the RETURNED mesh's vertices — bail (null) if a downstream pass changed
+      // the vertex count so the band bucketing can never silently misalign.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const ut = getLastConformingAssemblyUT();
+      if (!ut || ut.length !== mesh.vertices.length) return null;
+      return { styleId, ...seamBandTriangleQuality({ vertices: mesh.vertices, indices: mesh.indices }, ut) };
     },
     async _debugOuterMesh(targetTriangles?: number) {
       const mesh = await deps.generateMesh(targetTriangles);

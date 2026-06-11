@@ -277,6 +277,19 @@ let LAST_CONFORMING_TRIANGLE_SOURCE: Uint8Array | null = null;
  */
 let LAST_CONFORMING_HELIX_WARP: HelixWarp | null = null;
 
+/**
+ * Most recent conforming-branch PRE-WARP assembly (u,t,surfaceId) array (Stage-0
+ * instrument): a copy of assembleWatertight's vertices taken BEFORE the domain
+ * warps (u-warp/t-warp/helix) mutate them in place and the GPU evaluation
+ * overwrites them with 3D positions. Triangle indices are never mutated, so the
+ * copy stays parallel (same vertex order) to the returned mesh — the fidelity
+ * hook's seam/cap-band instrument (metrics.seamBandTriangleQuality) uses it to
+ * bucket wall triangles by the registry's topological seam (pre-warp u=0/1) and
+ * the cap-adjacent pinned rings (t≈0/1). Null off the conforming path.
+ * Reference only — the exported mesh is unchanged.
+ */
+let LAST_CONFORMING_ASSEMBLY_UT: Float32Array | null = null;
+
 export function getLastChainDebugData(): ChainDebugData | null {
     return LAST_CHAIN_DEBUG_DATA;
 }
@@ -325,6 +338,14 @@ export function getLastConformingTriangleSource(): Uint8Array | null {
  *  instrument — see conforming/FShearDiagnostics.classifyCellCeiling). */
 export function getLastConformingHelixWarp(): HelixWarp | null {
     return LAST_CONFORMING_HELIX_WARP;
+}
+
+/** Most recent conforming-branch PRE-WARP assembly (u,t,surfaceId) copy,
+ *  parallel to the returned mesh's vertex order, or null off the conforming
+ *  path. Dev diagnostic only (Stage-0 seam/cap-band quality instrument —
+ *  see metrics.seamBandTriangleQuality). */
+export function getLastConformingAssemblyUT(): Float32Array | null {
+    return LAST_CONFORMING_ASSEMBLY_UT;
 }
 
 export function getLastPeakDebugData(): PeakDebugData | null {
@@ -1903,6 +1924,9 @@ export class ParametricExportComputer {
         // Same lifecycle for the helix-warp stash (Stage-0): a stale warp must
         // never be composed with this run's sampler grid.
         LAST_CONFORMING_HELIX_WARP = null;
+        // Same lifecycle for the pre-warp assembly (u,t,surfaceId) copy (Stage-0):
+        // a stale copy must never be paired with this run's mesh vertices.
+        LAST_CONFORMING_ASSEMBLY_UT = null;
 
         const requestedProfile: QualityProfileName = params.qualityProfile ?? 'standard';
         const effectiveProfileName = profileForAttempt(requestedProfile, 0);
@@ -2470,6 +2494,13 @@ export class ParametricExportComputer {
                         outerCreaseLines: creaseLines.length > 0 ? creaseLines : undefined,
                     },
                 );
+
+                // PRE-WARP (u,t,surfaceId) copy for the seam/cap-band instrument — must be taken
+                // BEFORE the domain-warp loops below mutate asm.vertices in place (the registry's
+                // topological seam lives at pre-warp u=0/1). Triangle indices are never mutated,
+                // so the copy stays parallel to the final 3D mesh. Read-only; the mesh is
+                // unchanged.
+                LAST_CONFORMING_ASSEMBLY_UT = asm.vertices.slice();
 
                 // ── Vertical-crease pinning, part 2: apply the u-warp ────────────
                 // φ is a circle homeomorphism (strictly increasing, seam fixed at

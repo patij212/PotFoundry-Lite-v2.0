@@ -1828,6 +1828,80 @@ export function crestBandTriangleQuality(
   };
 }
 
+/** Triangle-quality summary of one seam/cap/bulk band (see {@link seamBandTriangleQuality}). */
+export interface BandQuality {
+  /** Triangles bucketed into this band. */
+  triangles: number;
+  /** Percent of the band's triangles with min interior 3D angle < the bar. */
+  pctBelow15: number;
+  /** Worst min interior angle within the band (deg); 0 when the band is empty. */
+  worstMinAngleDeg: number;
+}
+
+/** Band split returned by {@link seamBandTriangleQuality}. */
+export interface SeamBandQualityResult {
+  /** Triangles touching (or wrapping) the periodic u-seam band. */
+  seam: BandQuality;
+  /** Triangles hugging the bottom cap-adjacent pinned ring (t≈0). */
+  capBottom: BandQuality;
+  /** Triangles hugging the top cap-adjacent pinned ring (t≈1). */
+  capTop: BandQuality;
+  /** Everything else on the walls. */
+  bulk: BandQuality;
+}
+
+/** Options for {@link seamBandTriangleQuality}. */
+export interface SeamBandQualityOptions {
+  /** Seam band half-width in u (default 0.01, pre-registered). */
+  seamHalfWidthU?: number;
+  /** Cap band depth in t from each end (default 0.02, pre-registered). */
+  capBandT?: number;
+  /** Min interior angle (deg) bar below which a triangle is "bad" (default 15). */
+  angleBarDeg?: number;
+}
+
+/**
+ * Wall-triangle min-angle quality bucketed into: the periodic u-seam band, the
+ * cap-adjacent pinned-ring bands (t≈0 / t≈1), and the bulk. `ut` is the PRE-WARP
+ * assembly (u,t,surfaceId) parallel to the evaluated 3D `mesh.vertices` (same
+ * vertex order — the registry's topological seam lives at pre-warp u=0/1).
+ * Pre-registered defaults: seam half-width 0.01 in u, cap band 0.02 in t.
+ */
+export function seamBandTriangleQuality(
+  mesh: MeshView,
+  ut: Float32Array,
+  opts: SeamBandQualityOptions = {},
+): SeamBandQualityResult {
+  const sw = opts.seamHalfWidthU ?? 0.01;
+  const cb = opts.capBandT ?? 0.02;
+  const bar = opts.angleBarDeg ?? 15;
+  interface BandAcc { triangles: number; below: number; worst: number }
+  const mk = (): BandAcc => ({ triangles: 0, below: 0, worst: 180 });
+  const acc = { seam: mk(), capBottom: mk(), capTop: mk(), bulk: mk() };
+  const { vertices, indices } = mesh;
+  for (let t = 0; t < indices.length; t += 3) {
+    const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+    // wall only (surfaceId 0/1 — outer/inner)
+    if (ut[a * 3 + 2] >= 1.5 || ut[b * 3 + 2] >= 1.5 || ut[c * 3 + 2] >= 1.5) continue;
+    const us = [ut[a * 3], ut[b * 3], ut[c * 3]];
+    const ts = [ut[a * 3 + 1], ut[b * 3 + 1], ut[c * 3 + 1]];
+    const nearSeam = us.some((u) => u < sw || u > 1 - sw)
+      || Math.max(...us) - Math.min(...us) > 0.5; // u-span wrap = seam triangle
+    const tc = (ts[0] + ts[1] + ts[2]) / 3;
+    const bucket = nearSeam ? acc.seam : tc < cb ? acc.capBottom : tc > 1 - cb ? acc.capTop : acc.bulk;
+    const mAng = triMinAngleAndAspect(vertices, a, b, c).minAngleDeg;
+    bucket.triangles++;
+    if (mAng < bar) bucket.below++;
+    if (mAng < bucket.worst) bucket.worst = mAng;
+  }
+  const out = (x: BandAcc): BandQuality => ({
+    triangles: x.triangles,
+    pctBelow15: x.triangles ? Math.round((x.below / x.triangles) * 1000) / 10 : 0,
+    worstMinAngleDeg: x.triangles ? Math.round(x.worst * 100) / 100 : 0,
+  });
+  return { seam: out(acc.seam), capBottom: out(acc.capBottom), capTop: out(acc.capTop), bulk: out(acc.bulk) };
+}
+
 /** One FNV-1a 32-bit lane over raw bytes (seeded so two lanes are independent). */
 function fnv1a32(bytes: Uint8Array, seed: number): number {
   let h = seed >>> 0;
