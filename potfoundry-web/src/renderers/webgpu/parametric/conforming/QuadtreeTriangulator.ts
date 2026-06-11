@@ -26,10 +26,11 @@ export const TRI_SOURCE = {
   PLAIN_QUAD: 0,      // triangulateQuadtree plain-quad split
   TRANSITION_FAN: 1,  // triangulateQuadtree centroid transition fan
   EAR_CLIP: 2,        // metric max-min-angle DP templates (Klincsek; tag name kept for cross-epoch continuity)
-  FCT_PLAIN_QUAD: 3,  // FeatureConformingTriangulator plain cell, 0-split
+  FCT_PLAIN_QUAD: 3,  // FeatureConformingTriangulator plain cell, 0-split (either diagonal)
   FCT_PLAIN_FAN: 4,   // FeatureConformingTriangulator plain cell, centroid fan
   FCT_FEATURE_CDT: 5, // FeatureConformingTriangulator feature-cell CDT fill
   RING_OR_CAP: 6,     // assembly ring strips / caps / discs
+  FCT_EAR_CLIP: 7,    // FeatureConformingTriangulator plain TRANSITION cell, metric max-min-angle DP (Stage-1 Task 4 mirror)
 } as const;
 
 /** Minimal quadtree shape consumed by the triangulator. */
@@ -96,8 +97,10 @@ const ANISO_ASPECT_GATE = Math.sqrt(3) * (1 + 1e-6);
  * fundamental form `efg`: |Pu·du + Pt·dt|² = E·du² + 2F·du·dt + G·dt². This is
  * the local metric the shape templates minimize/maximize over, matching the 3D
  * law-of-cosines basis the gate metric (`triangleQualityDistribution`) uses.
+ * Exported for the FCT plain-branch mirror (Stage-1 Task 4), so the feature
+ * path's diagonal choice uses the IDENTICAL metric + tie convention.
  */
-function metricLen2(efg: Efg, du: number, dt: number): number {
+export function metricLen2(efg: Efg, du: number, dt: number): number {
   return efg.E * du * du + 2 * efg.F * du * dt + efg.G * dt * dt;
 }
 
@@ -116,9 +119,10 @@ function cellAspect3D(efg: Efg, du: number, dt: number): number {
  * carries an `efg` tag AND it is anisotropic (3D aspect over the gate) OR the
  * tree is globally u-biased (B>0, which makes EVERY cell anisotropic in u by
  * construction). Otherwise (no tag, or isotropic + B==0) the legacy templates
- * are emitted verbatim → smooth-default mesh stays byte-identical.
+ * are emitted verbatim → smooth-default mesh stays byte-identical. Exported so
+ * the FCT plain-branch mirror (Stage-1 Task 4) applies the IDENTICAL gate.
  */
-function shapedTemplate(efg: Efg | undefined, du: number, dt: number, uBias: number): efg is Efg {
+export function shapedTemplate(efg: Efg | undefined, du: number, dt: number, uBias: number): efg is Efg {
   if (!efg) return false;
   if (uBias > 0) return true;
   return cellAspect3D(efg, du, dt) > ANISO_ASPECT_GATE;

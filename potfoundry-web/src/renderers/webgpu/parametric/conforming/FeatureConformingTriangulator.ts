@@ -27,8 +27,14 @@
  */
 
 import type { QuadLeaf } from './PeriodicBalancedQuadtree';
-import type { QuadtreeLike, QuadtreeMesh } from './QuadtreeTriangulator';
-import { triangulateQuadtree, TRI_SOURCE } from './QuadtreeTriangulator';
+import type { Efg, QuadtreeLike, QuadtreeMesh } from './QuadtreeTriangulator';
+import {
+  triangulateQuadtree,
+  TRI_SOURCE,
+  metricLen2,
+  shapedTemplate,
+  maxMinAngleTriangulation,
+} from './QuadtreeTriangulator';
 import type { FeatureLine } from './FeatureLineGraph';
 import {
   triangulateConstrainedCell,
@@ -254,6 +260,16 @@ export function triangulateQuadtreeWithFeatures(
   if (features.length === 0) return triangulateQuadtree(qt);
   const cornerSnap = Math.max(0, options.cornerSnap ?? 0);
   const sampler = options.sampler;
+  // Stage-1 Task 4: shaped templates (shorter-3D-diagonal + Klincsek max-min-
+  // angle DP) on the PLAIN cells of a feature wall, mirroring the plain
+  // triangulator. Dev lever `__pfConformingShapedCdtCells` (default ON; set
+  // false to restore the legacy plain templates) — read ONCE per build so a
+  // mid-build flag flip can never split one wall across template regimes. It
+  // composes with efg presence: leaves without an `efg` tag take the legacy
+  // arms regardless of the flag.
+  const shapedCdtCells =
+    (globalThis as { __pfConformingShapedCdtCells?: boolean }).__pfConformingShapedCdtCells !==
+    false;
 
   // Anisotropy bias (GAP 1): a level-L leaf spans Δu=1/2^(L+B) in u, Δt=1/2^L in t.
   // u-index/wrap use 2^(level+B); `cornerSnap` is the t-extent fraction, so the u
@@ -701,21 +717,58 @@ export function triangulateQuadtreeWithFeatures(
       data.feature || featS.length > 0 || featN.length > 0 || featW.length > 0 || featE.length > 0;
 
     if (!isFeature) {
-      // ── Plain template cell (identical to triangulateQuadtree) ──
+      // ── Plain template cell (mirrors triangulateQuadtree's plain branch,
+      // INCLUDING the Stage-1 shaped templates — Task 4 mirror). The shaped
+      // arms keep the registry contract: interior connectivity only, the
+      // boundary polygon's vertex set is unchanged, so every shared edge keeps
+      // its exact vertex sequence (watertight + T-junction-free preserved —
+      // the plain-path precedent in QuadtreeTriangulator). No efg tag, or
+      // isotropic + B==0, or the dev flag off ⇒ legacy arms byte-for-byte. ──
       const poly: number[] = [];
-      poly.push(vertexIndex(u0, t0));
-      if (splitS) poly.push(vertexIndex(um, t0));
-      poly.push(vertexIndex(u1, t0));
-      if (splitE) poly.push(vertexIndex(u1, tm));
-      poly.push(vertexIndex(u1, t1));
-      if (splitN) poly.push(vertexIndex(um, t1));
-      poly.push(vertexIndex(u0, t1));
-      if (splitW) poly.push(vertexIndex(u0, tm));
+      const co: [number, number][] = [];
+      const add = (u: number, t: number): void => { poly.push(vertexIndex(u, t)); co.push([u, t]); };
+      add(u0, t0); // SW
+      if (splitS) add(um, t0);
+      add(u1, t0); // SE
+      if (splitE) add(u1, tm);
+      add(u1, t1); // NE
+      if (splitN) add(um, t1);
+      add(u0, t1); // NW
+      if (splitW) add(u0, tm);
       const splitCount = (splitS ? 1 : 0) + (splitE ? 1 : 0) + (splitN ? 1 : 0) + (splitW ? 1 : 0);
+      // Per-leaf shaped gate, derived EXACTLY as the plain path derives `aniso`
+      // (leaf.efg + cell extents + the tree's global uBias).
+      const efg: Efg | undefined = shapedCdtCells ? leaf.efg : undefined;
+      const aniso = shapedTemplate(efg, sizeU, sizeT, uBias);
       if (splitCount === 0) {
+        // Plain quad. Legacy: SW→NE diagonal. Shaped: the SHORTER 3D diagonal
+        // via metricLen2 with the SAME QSCALE tie-quantization convention as
+        // the plain path (tie → SW→NE → byte-identical isotropic path). The
+        // diagonal choice keeps the FCT_PLAIN_QUAD tag — it is still a plain
+        // quad, only its interior diagonal differs.
         curTag = TRI_SOURCE.FCT_PLAIN_QUAD;
-        emit(poly[0], poly[1], poly[2]);
-        emit(poly[0], poly[2], poly[3]);
+        let useSeNw = false;
+        if (aniso && efg) {
+          const dSwNe = metricLen2(efg, u1 - u0, t1 - t0); // SW→NE
+          const dSeNw = metricLen2(efg, u0 - u1, t1 - t0); // SE→NW
+          // Quantize to suppress float jitter so the tie always falls to SW→NE.
+          const qSwNe = Math.round(dSwNe * QSCALE);
+          const qSeNw = Math.round(dSeNw * QSCALE);
+          useSeNw = qSeNw < qSwNe;
+        }
+        if (useSeNw) {
+          emit(poly[0], poly[1], poly[3]); // SW, SE, NW
+          emit(poly[1], poly[2], poly[3]); // SE, NE, NW
+        } else {
+          emit(poly[0], poly[1], poly[2]); // SW, SE, NE
+          emit(poly[0], poly[2], poly[3]); // SW, NE, NW
+        }
+      } else if (aniso && efg) {
+        // Shaped transition: the certified Klincsek max-min-angle DP over the
+        // CCW boundary polygon — no centroid vertex, no zero-area emissions.
+        curTag = TRI_SOURCE.FCT_EAR_CLIP;
+        // curTag must be set before this call — maxMinAngleTriangulation calls emit synchronously.
+        maxMinAngleTriangulation(efg, co, poly, emit);
       } else {
         curTag = TRI_SOURCE.FCT_PLAIN_FAN;
         const ctr = vertexIndex(um, tm);

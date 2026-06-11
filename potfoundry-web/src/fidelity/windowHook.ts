@@ -219,7 +219,8 @@ export interface PfFidelityApi {
    * STAGE 0 — per-triangle sliver ATTRIBUTION over the emission-provenance
    * channel. The conforming mesher tags every triangle with the template class
    * that emitted it (TRI_SOURCE: plain-quad split / transition fan / ear-clip /
-   * FCT plain / FCT fan / feature-cell CDT / ring-or-cap); this generates the
+   * FCT plain / FCT fan / feature-cell CDT / ring-or-cap / FCT ear-clip); this
+   * generates the
    * mesh once, computes each triangle's 3D min interior angle + aspect, and
    * buckets the counts per tag — so a sliver field is attributable to its
    * emitting code path. Null on the legacy/parametric path (no provenance

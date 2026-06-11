@@ -35,6 +35,7 @@ import { triangulateQuadtreeWithFeatures } from '../renderers/webgpu/parametric/
 import {
   triangulateQuadtree,
   TRI_SOURCE,
+  type Efg,
   type QuadtreeLike,
   type QuadtreeMesh,
 } from '../renderers/webgpu/parametric/conforming/QuadtreeTriangulator';
@@ -588,5 +589,236 @@ describe('triangle provenance channel (Task 3 instrument)', () => {
     for (const s of welded.triangleSource!) counts.set(s, (counts.get(s) ?? 0) + 1);
     for (const v of counts.values()) sum += v;
     expect(sum).toBe(welded.indices.length / 3);
+  });
+});
+
+// ── Stage-1 Task 4 — shaped templates mirrored into the FCT plain branch ─────
+//
+// The plain triangulator's Tier-1b/Stage-1 shaped templates (shorter-3D-diagonal
+// for 0-split quads, Klincsek max-min-angle DP for transition polygons) must
+// also fire on the PLAIN cells of a FEATURE wall (CDT styles), reading the same
+// `leaf.efg` tags the quadtree populates. The mirror keeps the registry contract
+// (interior connectivity only — the polygon vertex set is unchanged) so
+// watertight + T-junction-free is preserved; untagged builds stay byte-identical.
+
+/**
+ * Sheared-plane sampler (cribbed from QuadtreeTriangulator.test.ts's
+ * ShearedPlaneSampler): position(u,t) = (SX·u + SHEAR·t, SY·t, 0); constant
+ * first fundamental form E=SX², F=SX·SHEAR, G=SHEAR²+SY². With (6,2,8) the
+ * 3D cell aspect of a square (u,t) cell is ≈4.9 > √3, so the shapedTemplate
+ * gate fires at B=0 (a milder shear like {E:4,F:3,G:4} has aspect ≈1.31 and
+ * falls through to legacy — the gate is aspect-based, not F-based).
+ */
+class ShearedPlane {
+  constructor(
+    private readonly sx: number,
+    private readonly sy: number,
+    private readonly shear: number,
+  ) {}
+  position(u: number, t: number): readonly [number, number, number] {
+    return [this.sx * u + this.shear * t, this.sy * t, 0];
+  }
+  efg(): Efg {
+    return {
+      E: this.sx * this.sx,
+      F: this.sx * this.shear,
+      G: this.shear * this.shear + this.sy * this.sy,
+    };
+  }
+}
+
+/**
+ * A mixed-level tree: 8×8 level-3 base with the centre block (iu=4..5, it=4..5)
+ * refined to level 4 — its 8 cardinal level-3 neighbours become TRANSITION
+ * cells (one mid each). Every leaf optionally carries `efg`. A vertical feature
+ * at u=0.3 (column iu=2) is far from the refined block, so the feature cells
+ * and the transition cells are disjoint: the transitions stay PLAIN cells of
+ * the feature build and exercise the FCT plain branch's shaped templates.
+ */
+function mixedFeatureTree(efg?: Efg): QuadtreeLike {
+  const leaves: QuadLeaf[] = [];
+  for (let it = 0; it < 8; it++) {
+    for (let iu = 0; iu < 8; iu++) {
+      const refined = (iu === 4 || iu === 5) && (it === 4 || it === 5);
+      if (refined) {
+        for (let dt = 0; dt < 2; dt++) {
+          for (let du = 0; du < 2; du++) {
+            leaves.push({
+              u0: (iu * 2 + du) / 16, t0: (it * 2 + dt) / 16,
+              level: 4, iu: iu * 2 + du, it: it * 2 + dt, efg,
+            });
+          }
+        }
+      } else {
+        leaves.push({ u0: iu / 8, t0: it / 8, level: 3, iu, it, efg });
+      }
+    }
+  }
+  return { leaves: () => leaves, uBias: () => 0 };
+}
+
+/** Tag-partition counts of a provenance channel. */
+function tagCounts(mesh: QuadtreeMesh): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const s of mesh.triangleSource!) counts.set(s, (counts.get(s) ?? 0) + 1);
+  return counts;
+}
+
+/**
+ * Indices of NON-SEAM triangles carrying one of `tags` (the FCT plain-branch
+ * slice). Seam-wrapping triangles are dropped because their u=1 corners were
+ * collapsed onto u=0 — a direct sampler eval would misplace them in 3D
+ * (mirrors QuadtreeTriangulator.test.ts's nonSeamIndices).
+ */
+function tagIndices(mesh: QuadtreeMesh, tags: ReadonlySet<number>): Uint32Array {
+  const out: number[] = [];
+  for (let i = 0; i < mesh.triangleSource!.length; i++) {
+    if (!tags.has(mesh.triangleSource![i])) continue;
+    if (mesh.seamTriangles[i] === 1) continue;
+    out.push(mesh.indices[i * 3], mesh.indices[i * 3 + 1], mesh.indices[i * 3 + 2]);
+  }
+  return Uint32Array.from(out);
+}
+
+/** Map a (u,t,0)-packed mesh to 3D via the sheared plane, for the angle metric. */
+function planeTo3D(verts: Float32Array, sampler: ShearedPlane): Float32Array {
+  const out = new Float32Array(verts.length);
+  for (let i = 0; i < verts.length / 3; i++) {
+    const p = sampler.position(verts[i * 3], verts[i * 3 + 1]);
+    out[i * 3] = p[0];
+    out[i * 3 + 1] = p[1];
+    out[i * 3 + 2] = p[2];
+  }
+  return out;
+}
+
+describe('FCT plain-branch shaped templates (Stage-1 Task 4)', () => {
+  const sampler = new ShearedPlane(6, 2, 8); // E=36, F=48, G=68 — fires the gate
+  const efg = sampler.efg();
+  const features: FeatureLine[] = [vertical(0.3)];
+
+  it('(a) efg-tagged transitions emit FCT_EAR_CLIP and strictly lift the plain-branch 3D min angle', () => {
+    const tagged = triangulateQuadtreeWithFeatures(mixedFeatureTree(efg), features);
+    const untagged = triangulateQuadtreeWithFeatures(mixedFeatureTree(undefined), features);
+
+    // Arming proof: the DP fired on the tagged build's plain transition cells…
+    const ct = tagCounts(tagged);
+    const cu = tagCounts(untagged);
+    expect(ct.get(TRI_SOURCE.FCT_EAR_CLIP) ?? 0).toBeGreaterThan(0);
+    // …and replaced the centroid fans there (the legacy arm keeps its own tag).
+    expect(ct.get(TRI_SOURCE.FCT_PLAIN_FAN) ?? 0).toBe(0);
+    expect(cu.get(TRI_SOURCE.FCT_PLAIN_FAN) ?? 0).toBeGreaterThan(0);
+    expect(cu.get(TRI_SOURCE.FCT_EAR_CLIP) ?? 0).toBe(0);
+
+    // The partition still sums to the triangle count on both builds.
+    const sumOf = (m: Map<number, number>): number => [...m.values()].reduce((a, b) => a + b, 0);
+    expect(sumOf(ct)).toBe(tagged.indices.length / 3);
+    expect(sumOf(cu)).toBe(untagged.indices.length / 3);
+
+    // Strictly better 3D min angle over the plain-branch slice (the only
+    // triangles the mirror touches): tagged {quad, DP} vs untagged {quad, fan}.
+    const plainTagged = tagIndices(tagged, new Set([TRI_SOURCE.FCT_PLAIN_QUAD, TRI_SOURCE.FCT_EAR_CLIP]));
+    const plainUntagged = tagIndices(untagged, new Set([TRI_SOURCE.FCT_PLAIN_QUAD, TRI_SOURCE.FCT_PLAIN_FAN]));
+    expect(plainTagged.length).toBeGreaterThan(0);
+    expect(plainUntagged.length).toBeGreaterThan(0);
+    const qTagged = triangleQualityDistribution({
+      vertices: planeTo3D(tagged.vertices, sampler), indices: plainTagged,
+    });
+    const qUntagged = triangleQualityDistribution({
+      vertices: planeTo3D(untagged.vertices, sampler), indices: plainUntagged,
+    });
+    expect(qTagged.minAngleDeg).toBeGreaterThan(qUntagged.minAngleDeg + 1e-6);
+    // The DP never emits a degenerate triangle (certified k−2 coverage).
+    expect(qTagged.degenerateCount).toBe(0);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[Task4] plain-branch minAngle: untagged=${qUntagged.minAngleDeg.toFixed(2)} ` +
+        `tagged=${qTagged.minAngleDeg.toFixed(2)} earClipTris=${ct.get(TRI_SOURCE.FCT_EAR_CLIP)}`,
+    );
+  });
+
+  it('(b) __pfConformingShapedCdtCells=false restores byte-identity even with efg tags', () => {
+    const g = globalThis as { __pfConformingShapedCdtCells?: boolean };
+    const untagged = triangulateQuadtreeWithFeatures(mixedFeatureTree(undefined), features);
+    let off: QuadtreeMesh;
+    try {
+      g.__pfConformingShapedCdtCells = false;
+      off = triangulateQuadtreeWithFeatures(mixedFeatureTree(efg), features);
+    } finally {
+      g.__pfConformingShapedCdtCells = undefined;
+    }
+    expect(Array.from(off.indices)).toEqual(Array.from(untagged.indices));
+    expect(Array.from(off.vertices)).toEqual(Array.from(untagged.vertices));
+    expect(Array.from(off.triangleSource!)).toEqual(Array.from(untagged.triangleSource!));
+  });
+
+  it('(c) 0-split plain cell with sheared efg splits along the shorter (SE→NW) 3D diagonal', () => {
+    // A uniform 4×4 (level-2) tree run through the FEATURE path (vertical crease
+    // in column iu=1); only the strictly-interior plain cell (iu=2, it=1) is
+    // efg-tagged. With E−2F+G=8 ≪ E+2F+G=200 the SE→NW diagonal is far shorter,
+    // so the tagged build must share the SE–NW edge while the untagged build
+    // keeps the legacy SW–NE split. The tag stays FCT_PLAIN_QUAD (still a quad).
+    const TAG_IU = 2, TAG_IT = 1;
+    const tree = (tag?: Efg): QuadtreeLike => {
+      const leaves: QuadLeaf[] = [];
+      for (let it = 0; it < 4; it++) {
+        for (let iu = 0; iu < 4; iu++) {
+          const isTag = iu === TAG_IU && it === TAG_IT;
+          leaves.push({ u0: iu / 4, t0: it / 4, level: 2, iu, it, efg: isTag ? tag : undefined });
+        }
+      }
+      return { leaves: () => leaves, uBias: () => 0 };
+    };
+    const u0 = TAG_IU / 4, u1 = (TAG_IU + 1) / 4, t0 = TAG_IT / 4, t1 = (TAG_IT + 1) / 4;
+    const findVert = (m: QuadtreeMesh, u: number, t: number): number => {
+      for (let v = 0; v < m.vertices.length / 3; v++) {
+        if (Math.abs(m.vertices[v * 3] - u) < 1e-9 && Math.abs(m.vertices[v * 3 + 1] - t) < 1e-9) {
+          return v;
+        }
+      }
+      return -1;
+    };
+    const cellTriangles = (m: QuadtreeMesh): { tris: number[][]; tags: number[] } => {
+      const inCell = (vi: number): boolean => {
+        const u = m.vertices[vi * 3], t = m.vertices[vi * 3 + 1];
+        return u >= u0 - 1e-9 && u <= u1 + 1e-9 && t >= t0 - 1e-9 && t <= t1 + 1e-9;
+      };
+      const tris: number[][] = [];
+      const tags: number[] = [];
+      for (let i = 0; i < m.indices.length; i += 3) {
+        const a = m.indices[i], b = m.indices[i + 1], c = m.indices[i + 2];
+        if (inCell(a) && inCell(b) && inCell(c)) {
+          tris.push([a, b, c]);
+          tags.push(m.triangleSource![i / 3]);
+        }
+      }
+      return { tris, tags };
+    };
+
+    const tagged = triangulateQuadtreeWithFeatures(tree(efg), features);
+    const untagged = triangulateQuadtreeWithFeatures(tree(undefined), features);
+
+    // Tagged: both cell triangles contain SE and NW (shared SE–NW diagonal).
+    const tTag = cellTriangles(tagged);
+    expect(tTag.tris.length).toBe(2);
+    const se = findVert(tagged, u1, t0);
+    const nw = findVert(tagged, u0, t1);
+    for (const tri of tTag.tris) {
+      expect(tri).toContain(se);
+      expect(tri).toContain(nw);
+    }
+    // The diagonal choice keeps the plain-quad tag (it is still a plain quad).
+    for (const tag of tTag.tags) expect(tag).toBe(TRI_SOURCE.FCT_PLAIN_QUAD);
+
+    // Untagged: legacy SW–NE diagonal.
+    const tUn = cellTriangles(untagged);
+    expect(tUn.tris.length).toBe(2);
+    const sw = findVert(untagged, u0, t0);
+    const ne = findVert(untagged, u1, t1);
+    for (const tri of tUn.tris) {
+      expect(tri).toContain(sw);
+      expect(tri).toContain(ne);
+    }
   });
 });
