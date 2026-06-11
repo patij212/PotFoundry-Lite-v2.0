@@ -617,6 +617,10 @@ function collectTris(
  * the input set; every triangle STRICTLY CCW in (u,t) (signedArea2 > 0 ⇒ zero
  * zero-area emissions); every boundary sub-edge (consecutive polygon pair,
  * wrap included) covered exactly once.
+ *
+ * PRECONDITION: the polygon must be CONVEX — the boundary-coverage check uses
+ * UNDIRECTED edge keys, which is sound only because no interior chord of a
+ * convex polygon can coincide with a boundary sub-edge.
  */
 function checkCertified(
   tris: Tri3[],

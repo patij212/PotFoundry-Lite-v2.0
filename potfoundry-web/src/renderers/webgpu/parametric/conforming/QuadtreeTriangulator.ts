@@ -217,6 +217,8 @@ export function maxMinAngleTriangulation(
       // edge). Such intervals are never reconstructed at the top level while a
       // non-degenerate triangulation exists, but the table stays total.
       let bestK = i + 1;
+      // best[i][i+1] = +∞ (bare edge) — the three-way min's middle term is a
+      // no-op for k=i+1, hence the two-way form here.
       let bestV = Math.min(score(i, i + 1, j), best[i + 1][j]);
       for (let k = i + 2; k < j; k++) {
         const v = Math.min(score(i, k, j), best[i][k], best[k][j]);
