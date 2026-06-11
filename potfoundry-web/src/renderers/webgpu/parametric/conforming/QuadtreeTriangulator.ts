@@ -25,7 +25,7 @@ import type { CdtStats } from './ConstrainedCellTriangulator';
 export const TRI_SOURCE = {
   PLAIN_QUAD: 0,      // triangulateQuadtree plain-quad split
   TRANSITION_FAN: 1,  // triangulateQuadtree centroid transition fan
-  EAR_CLIP: 2,        // metric ear-clip path (ARMED Stage-1: leaves carry efg when an efgSampler is threaded)
+  EAR_CLIP: 2,        // metric max-min-angle DP templates (Klincsek; tag name kept for cross-epoch continuity)
   FCT_PLAIN_QUAD: 3,  // FeatureConformingTriangulator plain cell, 0-split
   FCT_PLAIN_FAN: 4,   // FeatureConformingTriangulator plain cell, centroid fan
   FCT_FEATURE_CDT: 5, // FeatureConformingTriangulator feature-cell CDT fill
@@ -75,7 +75,7 @@ const QSCALE = 1 << 24;
 const MAX_U_EXTRA = 4;
 
 /** First fundamental form `{E,F,G}` carried by a leaf (Tier 1b shape templates). */
-interface Efg {
+export interface Efg {
   E: number;
   F: number;
   G: number;
@@ -157,17 +157,22 @@ function signedArea2(
 }
 
 /**
- * Ear-clip a CCW boundary polygon (given as (u,t) points + their global vertex
- * indices) into a fan-free triangulation, repeatedly removing the ear whose
- * resulting triangle has the LARGEST minimum 3D angle (locally-max-min-angle).
- * Pure interior choice: the polygon vertices are unchanged, so every shared edge
- * keeps its exact vertex set (watertight + T-junction-free preserved). Collinear
- * (zero-area) ears are never selected (they score −∞), so a near-collinear mid
- * set produces NO degenerate triangle. Convex polygons (every transition cell
- * here is a rectangle + on-edge mids) always have a valid ear, guaranteeing
- * termination in exactly k−2 triangles.
+ * Klincsek interval DP: the max-min-3D-angle triangulation of a convex CCW
+ * polygon (corners + on-edge mids), given as (u,t) points + their global
+ * vertex indices. best(i,j) = max over k in (i,j) of
+ * min(score(i,k,j), best(i,k), best(k,j)) with zero-(u,t)-area triangles
+ * scored −Infinity — so a degenerate triangle is NEVER emitted while any
+ * non-degenerate triangulation exists (collinear mid runs always admit one:
+ * fan from any off-line vertex). Pure interior choice: the polygon vertices
+ * are unchanged, so every shared edge keeps its exact vertex set (watertight +
+ * T-junction-free preserved). Certified: exactly k−2 triangles covering every
+ * boundary sub-edge exactly once (replaces the greedy ear-clip, whose
+ * skip-collinear loop emitted zero-area triangles on collinear runs — the
+ * measured DragonScales 45k-degenerate defect). i<k<j ordering IS CCW for a
+ * CCW polygon. O(n³) at n≤12 → ≤1.7k score evaluations per cell. Emission is
+ * atomic: reconstruct fully, then emit (all-or-nothing; no partial fans).
  */
-function earClipMaxMinAngle(
+export function maxMinAngleTriangulation(
   efg: Efg,
   poly: readonly [number, number][],
   idx: readonly number[],
@@ -175,39 +180,69 @@ function earClipMaxMinAngle(
 ): void {
   const n = poly.length;
   if (n < 3) return;
-  const remaining: number[] = [];
-  for (let i = 0; i < n; i++) remaining.push(i);
-  const AREA_EPS = 1e-18;
-  while (remaining.length > 3) {
-    const m = remaining.length;
-    let bestPrev = -1;
-    let bestScore = -Infinity;
-    for (let k = 0; k < m; k++) {
-      const ip = remaining[(k - 1 + m) % m];
-      const ic = remaining[k];
-      const inx = remaining[(k + 1) % m];
-      const pp = poly[ip];
-      const pc = poly[ic];
-      const pn = poly[inx];
-      // Valid ear: convex corner (CCW, strictly positive area) and — for the
-      // convex polygons here — no containment test is needed. Reject collinear.
-      const area2 = signedArea2(pp, pc, pn);
-      if (area2 <= AREA_EPS) continue;
-      const score = triMinAngle3D(efg, pp, pc, pn);
-      if (score > bestScore) {
-        bestScore = score;
-        bestPrev = k;
-      }
-    }
-    if (bestPrev < 0) break; // no convex ear (should not happen for a convex poly)
-    const ip = remaining[(bestPrev - 1 + m) % m];
-    const ic = remaining[bestPrev];
-    const inx = remaining[(bestPrev + 1) % m];
-    emit(idx[ip], idx[ic], idx[inx]);
-    remaining.splice(bestPrev, 1);
+  if (n === 3) {
+    emit(idx[0], idx[1], idx[2]);
+    return;
   }
-  if (remaining.length === 3) {
-    emit(idx[remaining[0]], idx[remaining[1]], idx[remaining[2]]);
+  if (n > 16) {
+    // Defensive bound: production transition polygons are ≤12 (4 corners + ≤8
+    // mids). Anything larger means an upstream registry/balance bug — surface
+    // it loudly with the cell's polygon coordinates instead of an O(n³) stall.
+    throw new Error(
+      `maxMinAngleTriangulation: polygon n=${n} exceeds the defensive bound 16 ` +
+        `(transition cells are <=12); poly=${JSON.stringify(poly)}`,
+    );
+  }
+  const AREA_EPS = 1e-18; // same zero-area floor the greedy ear-clip used
+  /** Triangle weight: min 3D angle, or −∞ for a degenerate (u,t) triangle. */
+  const score = (i: number, k: number, j: number): number =>
+    signedArea2(poly[i], poly[k], poly[j]) <= AREA_EPS
+      ? -Infinity
+      : triMinAngle3D(efg, poly[i], poly[k], poly[j]);
+  // best[i][j]: the max-min score over triangulations of the chain i..j; +∞ on
+  // bare edges (j−i==1: no triangle → neutral under min). choice[i][j]: the
+  // arg-max apex. Filled by increasing interval length, so the recurrence only
+  // reads completed entries.
+  const best: number[][] = [];
+  const choice: number[][] = [];
+  for (let i = 0; i < n; i++) {
+    best.push(new Array<number>(n).fill(Infinity));
+    choice.push(new Array<number>(n).fill(-1));
+  }
+  for (let len = 2; len < n; len++) {
+    for (let i = 0; i + len < n; i++) {
+      const j = i + len;
+      // Seed with k=i+1 so `choice` is ALWAYS set — even when every option is
+      // −∞ (a fully-collinear sub-interval, e.g. mids along one rectangle
+      // edge). Such intervals are never reconstructed at the top level while a
+      // non-degenerate triangulation exists, but the table stays total.
+      let bestK = i + 1;
+      let bestV = Math.min(score(i, i + 1, j), best[i + 1][j]);
+      for (let k = i + 2; k < j; k++) {
+        const v = Math.min(score(i, k, j), best[i][k], best[k][j]);
+        if (v > bestV) {
+          bestV = v;
+          bestK = k;
+        }
+      }
+      best[i][j] = bestV;
+      choice[i][j] = bestK;
+    }
+  }
+  // Reconstruct from choice[0][n-1] with an explicit small stack, buffering the
+  // idx-mapped triples; emit only after the full walk (atomic emission).
+  const tris: number[] = [];
+  const stack: number[] = [0, n - 1];
+  while (stack.length > 0) {
+    const j = stack.pop() as number;
+    const i = stack.pop() as number;
+    if (j - i < 2) continue;
+    const k = choice[i][j];
+    tris.push(i, k, j);
+    stack.push(i, k, k, j);
+  }
+  for (let t = 0; t < tris.length; t += 3) {
+    emit(idx[tris[t]], idx[tris[t + 1]], idx[tris[t + 2]]);
   }
 }
 
@@ -510,9 +545,9 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
     if (singleMid) {
       // Single-mid transition. Build the CCW boundary polygon (corners + lone
       // mids), then EITHER the legacy centre-fan (isotropic / untagged → byte-
-      // identical) OR a max-min-angle ear-clip (anisotropic). Both keep the exact
-      // boundary vertex set; only the interior connectivity differs (no centroid
-      // vertex in the ear-clip), so every shared edge stays T-junction-free.
+      // identical) OR the Klincsek max-min-angle DP (anisotropic). Both keep the
+      // exact boundary vertex set; only the interior connectivity differs (no
+      // centroid vertex in the DP), so every shared edge stays T-junction-free.
       const poly: number[] = [];
       const co: [number, number][] = [];
       const add = (u: number, t: number): void => { poly.push(vertexIndex(u, t)); co.push([u, t]); };
@@ -526,8 +561,8 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
       if (splitW) add(u0, tm);
       if (aniso && efg) {
         curTag = TRI_SOURCE.EAR_CLIP;
-        // curTag must be set before this call — earClipMaxMinAngle calls emit synchronously.
-        earClipMaxMinAngle(efg, co, poly, emit);
+        // curTag must be set before this call — maxMinAngleTriangulation calls emit synchronously.
+        maxMinAngleTriangulation(efg, co, poly, emit);
       } else {
         curTag = TRI_SOURCE.TRANSITION_FAN;
         const ctr = vertexIndex(um, tm);
@@ -537,11 +572,12 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
     }
 
     // N-mid transition: build the CCW boundary from the UNION of edge points,
-    // then EITHER centre-fan (legacy) or max-min-angle ear-clip (anisotropic).
-    // The centre is interior + unique to this leaf, and the edge-point sets are
-    // symmetric across each shared edge (read from the same registry), so EITHER
-    // template is watertight + T-junction-free with positive area; the ear-clip
-    // additionally avoids the centroid needles a wide cell would radiate.
+    // then EITHER centre-fan (legacy) or the Klincsek max-min-angle DP
+    // (anisotropic). The centre is interior + unique to this leaf, and the
+    // edge-point sets are symmetric across each shared edge (read from the same
+    // registry), so EITHER template is watertight + T-junction-free; the DP
+    // additionally avoids the centroid needles a wide cell would radiate AND
+    // never emits a zero-area triangle on collinear mid runs.
     const poly: number[] = [];
     const co: [number, number][] = [];
     const add = (u: number, t: number): void => { poly.push(vertexIndex(u, t)); co.push([u, t]); };
@@ -555,8 +591,8 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
     for (let k = subW.length - 1; k >= 0; k--) add(u0, subW[k]); // west: t descending
     if (aniso && efg) {
       curTag = TRI_SOURCE.EAR_CLIP;
-      // curTag must be set before this call — earClipMaxMinAngle calls emit synchronously.
-      earClipMaxMinAngle(efg, co, poly, emit);
+      // curTag must be set before this call — maxMinAngleTriangulation calls emit synchronously.
+      maxMinAngleTriangulation(efg, co, poly, emit);
     } else {
       curTag = TRI_SOURCE.TRANSITION_FAN;
       const ctr = vertexIndex(um, tm);

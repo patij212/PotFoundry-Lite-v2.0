@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { SyntheticCylinderSampler, type SurfaceSampler } from './SurfaceSampler';
 import { MetricSizingField, type SizingOptions } from './MetricSizingField';
 import { PeriodicBalancedQuadtree, type QuadLeaf } from './PeriodicBalancedQuadtree';
-import { triangulateQuadtree, type QuadtreeLike } from './QuadtreeTriangulator';
+import {
+  triangulateQuadtree,
+  maxMinAngleTriangulation,
+  type QuadtreeLike,
+  type Efg,
+} from './QuadtreeTriangulator';
 import { triangleQualityDistribution } from '../../../../fidelity/metrics';
 
 interface Tri {
@@ -477,5 +482,364 @@ describe('triangulateQuadtree — Tier 1b shape-aware templates (Task 3)', () =>
     expect(degenerate3D(mesh.vertices, mesh.indices, mesh.seamTriangles, sampler)).toBe(0);
     // (u,t)-space invariants: CCW positive area, manifold, seam-closed.
     assertCoreInvariants(mesh.vertices, mesh.indices, mesh.seamTriangles);
+  });
+});
+
+// ── Stage-1 Task 3 — Klincsek max-min-angle DP (replaces the greedy ear-clip) ─
+//
+// The DP must be CERTIFIED: exactly k−2 triangles, every boundary sub-edge
+// covered exactly once, every triangle strictly CCW in (u,t) — i.e. ZERO
+// zero-area emissions BY CONSTRUCTION, even on the exact-collinear
+// corner-mid-corner runs where the deleted greedy ear-clip emitted its
+// measured tens of thousands of degenerate EAR_CLIP triangles (Task-2 armed
+// state: DragonScales 45,331 / ArtDeco 27,177 / BasketWeave 32,639, worst=0°).
+
+/** Deterministic seeded LCG (no Math.random in workflow contexts). */
+function lcg(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 2 ** 32;
+  };
+}
+
+// ── Verbatim copies of the PRE-Task-3 production code, kept ONLY as the test
+// oracle: the greedy ear-clip (deleted from QuadtreeTriangulator.ts by Task 3)
+// plus the two scorers it closes over. Do NOT "fix" these — they document the
+// exact defect the DP replaced (collinear ears skipped not scored, bestPrev<0
+// break stranding boundary sub-edges, unguarded final-3 emission).
+
+/** Verbatim copy of the production metricLen2 (the DP/oracle scorer basis). */
+function metricLen2(efg: Efg, du: number, dt: number): number {
+  return efg.E * du * du + 2 * efg.F * du * dt + efg.G * dt * dt;
+}
+
+/** Verbatim copy of the production triMinAngle3D (law-of-cosines min angle). */
+function triMinAngle3D(
+  efg: Efg,
+  p0: readonly [number, number],
+  p1: readonly [number, number],
+  p2: readonly [number, number],
+): number {
+  const a2 = metricLen2(efg, p2[0] - p1[0], p2[1] - p1[1]); // opposite p0
+  const b2 = metricLen2(efg, p0[0] - p2[0], p0[1] - p2[1]); // opposite p1
+  const c2 = metricLen2(efg, p1[0] - p0[0], p1[1] - p0[1]); // opposite p2
+  const a = Math.sqrt(Math.max(a2, 0));
+  const b = Math.sqrt(Math.max(b2, 0));
+  const c = Math.sqrt(Math.max(c2, 0));
+  const ang = (adj1: number, adj2: number, opp: number): number => {
+    if (adj1 <= 0 || adj2 <= 0) return 0;
+    let cos = (adj1 * adj1 + adj2 * adj2 - opp * opp) / (2 * adj1 * adj2);
+    if (cos > 1) cos = 1;
+    if (cos < -1) cos = -1;
+    return (Math.acos(cos) * 180) / Math.PI;
+  };
+  return Math.min(ang(b, c, a), ang(a, c, b), ang(a, b, c));
+}
+
+/** Verbatim copy of the production signedArea2 (>0 ⇒ CCW in (u,t)). */
+function signedArea2(
+  p0: readonly [number, number],
+  p1: readonly [number, number],
+  p2: readonly [number, number],
+): number {
+  return (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1]);
+}
+
+/** Verbatim copy of the DELETED greedy earClipMaxMinAngle — the comparison oracle. */
+function greedyOracle(
+  efg: Efg,
+  poly: readonly [number, number][],
+  idx: readonly number[],
+  emit: (a: number, b: number, c: number) => void,
+): void {
+  const n = poly.length;
+  if (n < 3) return;
+  const remaining: number[] = [];
+  for (let i = 0; i < n; i++) remaining.push(i);
+  const AREA_EPS = 1e-18;
+  while (remaining.length > 3) {
+    const m = remaining.length;
+    let bestPrev = -1;
+    let bestScore = -Infinity;
+    for (let k = 0; k < m; k++) {
+      const ip = remaining[(k - 1 + m) % m];
+      const ic = remaining[k];
+      const inx = remaining[(k + 1) % m];
+      const pp = poly[ip];
+      const pc = poly[ic];
+      const pn = poly[inx];
+      // Valid ear: convex corner (CCW, strictly positive area) and — for the
+      // convex polygons here — no containment test is needed. Reject collinear.
+      const area2 = signedArea2(pp, pc, pn);
+      if (area2 <= AREA_EPS) continue;
+      const score = triMinAngle3D(efg, pp, pc, pn);
+      if (score > bestScore) {
+        bestScore = score;
+        bestPrev = k;
+      }
+    }
+    if (bestPrev < 0) break; // no convex ear (should not happen for a convex poly)
+    const ip = remaining[(bestPrev - 1 + m) % m];
+    const ic = remaining[bestPrev];
+    const inx = remaining[(bestPrev + 1) % m];
+    emit(idx[ip], idx[ic], idx[inx]);
+    remaining.splice(bestPrev, 1);
+  }
+  if (remaining.length === 3) {
+    emit(idx[remaining[0]], idx[remaining[1]], idx[remaining[2]]);
+  }
+}
+
+type Tri3 = readonly [number, number, number];
+type Triangulator = (
+  efg: Efg,
+  poly: readonly [number, number][],
+  idx: readonly number[],
+  emit: (a: number, b: number, c: number) => void,
+) => void;
+
+/** Run a triangulator with a collecting emit; return the emitted triples. */
+function collectTris(
+  fn: Triangulator,
+  efg: Efg,
+  poly: readonly [number, number][],
+  idx: readonly number[],
+): Tri3[] {
+  const out: Tri3[] = [];
+  fn(efg, poly, idx, (a, b, c) => out.push([a, b, c]));
+  return out;
+}
+
+/**
+ * Certified-completeness check (throws with `label` on the first violation so
+ * the 2·10⁴-case loop stays cheap): exactly k−2 triangles; all indices from
+ * the input set; every triangle STRICTLY CCW in (u,t) (signedArea2 > 0 ⇒ zero
+ * zero-area emissions); every boundary sub-edge (consecutive polygon pair,
+ * wrap included) covered exactly once.
+ */
+function checkCertified(
+  tris: Tri3[],
+  poly: readonly [number, number][],
+  idx: readonly number[],
+  label: string,
+): void {
+  const k = poly.length;
+  if (tris.length !== k - 2) {
+    throw new Error(`${label}: emitted ${tris.length} triangles, expected k-2=${k - 2}`);
+  }
+  const pos = new Map<number, number>();
+  idx.forEach((v, i) => pos.set(v, i));
+  const edgeKey = (a: number, b: number): string => (a < b ? `${a}_${b}` : `${b}_${a}`);
+  const eu = new Map<string, number>();
+  for (const [a, b, c] of tris) {
+    for (const v of [a, b, c]) {
+      if (!pos.has(v)) throw new Error(`${label}: emitted index ${v} not in the input idx set`);
+    }
+    const area2 = signedArea2(
+      poly[pos.get(a) as number],
+      poly[pos.get(b) as number],
+      poly[pos.get(c) as number],
+    );
+    if (!(area2 > 0)) {
+      throw new Error(`${label}: non-CCW/zero-area triangle (${a},${b},${c}) area2=${area2}`);
+    }
+    eu.set(edgeKey(a, b), (eu.get(edgeKey(a, b)) ?? 0) + 1);
+    eu.set(edgeKey(b, c), (eu.get(edgeKey(b, c)) ?? 0) + 1);
+    eu.set(edgeKey(c, a), (eu.get(edgeKey(c, a)) ?? 0) + 1);
+  }
+  for (let i = 0; i < k; i++) {
+    const key = edgeKey(idx[i], idx[(i + 1) % k]);
+    const count = eu.get(key) ?? 0;
+    if (count !== 1) {
+      throw new Error(`${label}: boundary sub-edge ${i}->${(i + 1) % k} covered ${count}x (want 1)`);
+    }
+  }
+}
+
+/**
+ * A randomized convex transition polygon: an axis-aligned rectangle's 4
+ * corners + 0..4 on-edge mids per side (total capped at 8 ⇒ k ≤ 12), walked
+ * CCW (S→E→N→W, matching the production N-mid branch). Mids share the side's
+ * EXACT t (or u) coordinate, so every corner-mid-corner run is exactly
+ * collinear (signedArea2 === 0) — the regime that broke the greedy. Mid
+ * fractions live on a distinct 1/32 lattice. idx values are non-trivial
+ * (1000 + 7i) so index-mapping bugs surface.
+ */
+function rectWithMids(rand: () => number): {
+  poly: [number, number][];
+  idx: number[];
+  midCounts: number[];
+} {
+  const u0 = rand();
+  const t0 = rand();
+  const u1 = u0 + 0.05 + rand();
+  const t1 = t0 + 0.05 + rand();
+  const midCounts: number[] = [];
+  let total = 0;
+  for (let side = 0; side < 4; side++) {
+    let c = Math.floor(rand() * 5); // 0..4
+    if (total + c > 8) c = 8 - total;
+    midCounts.push(c);
+    total += c;
+  }
+  const fracs = (c: number): number[] => {
+    const set = new Set<number>();
+    let guard = 0;
+    while (set.size < c) {
+      set.add((1 + Math.floor(rand() * 31)) / 32);
+      if (++guard > 1000) throw new Error('rectWithMids: LCG starvation');
+    }
+    return [...set].sort((a, b) => a - b);
+  };
+  const south = fracs(midCounts[0]);
+  const east = fracs(midCounts[1]);
+  const north = fracs(midCounts[2]);
+  const west = fracs(midCounts[3]);
+  const poly: [number, number][] = [];
+  poly.push([u0, t0]); // SW
+  for (const f of south) poly.push([u0 + f * (u1 - u0), t0]); // u ascending
+  poly.push([u1, t0]); // SE
+  for (const f of east) poly.push([u1, t0 + f * (t1 - t0)]); // t ascending
+  poly.push([u1, t1]); // NE
+  for (let i = north.length - 1; i >= 0; i--) poly.push([u0 + north[i] * (u1 - u0), t1]); // u desc
+  poly.push([u0, t1]); // NW
+  for (let i = west.length - 1; i >= 0; i--) poly.push([u0, t0 + west[i] * (t1 - t0)]); // t desc
+  const idx = poly.map((_, i) => 1000 + i * 7);
+  return { poly, idx, midCounts };
+}
+
+/**
+ * A strictly convex CCW k-gon on a random ellipse (jittered equispaced angles
+ * ⇒ no duplicate and no 3-collinear vertices) — the greedy oracle completes at
+ * full value on these, making the optimality comparison fair.
+ */
+function strictlyConvexPolygon(rand: () => number, k: number): [number, number][] {
+  const cx = rand() * 2 - 1;
+  const cy = rand() * 2 - 1;
+  const a = 0.5 + 1.5 * rand();
+  const b = 0.5 + 1.5 * rand();
+  const pts: [number, number][] = [];
+  for (let i = 0; i < k; i++) {
+    const th = (2 * Math.PI * (i + 0.1 + 0.8 * rand())) / k;
+    pts.push([cx + a * Math.cos(th), cy + b * Math.sin(th)]);
+  }
+  return pts;
+}
+
+describe('maxMinAngleTriangulation — Klincsek DP (Stage-1 Task 3)', () => {
+  it('(dp-1) certified completeness: 2·10⁴ random convex transition polygons × {isotropic, 16:1 aniso, sheared}', () => {
+    const metrics: Efg[] = [
+      { E: 1, F: 0, G: 1 }, // isotropic
+      { E: 256, F: 0, G: 1 }, // 16:1 anisotropic
+      { E: 4, F: 3, G: 4 }, // sheared (F≠0, det=7>0)
+    ];
+    const rand = lcg(0xc0ffee);
+    const CASES = 20000;
+    let sawTwoMidSide = false;
+    let sawFourMidSide = false;
+    let sawCollinearRun = false;
+    let sawK12 = false;
+    for (let c = 0; c < CASES; c++) {
+      const { poly, idx, midCounts } = rectWithMids(rand);
+      if (midCounts.some((m) => m === 2)) sawTwoMidSide = true;
+      if (midCounts.some((m) => m === 4)) sawFourMidSide = true;
+      if (midCounts.some((m) => m >= 1)) sawCollinearRun = true;
+      if (poly.length === 12) sawK12 = true;
+      const efg = metrics[c % 3];
+      const dpTris = collectTris(maxMinAngleTriangulation, efg, poly, idx);
+      checkCertified(dpTris, poly, idx, `case ${c} (k=${poly.length}, metric ${c % 3})`);
+    }
+    // The corpus must have exercised the required shapes: a side with TWO mids,
+    // a side with FOUR mids, exact-collinear corner-mid-corner runs, and k=12.
+    expect(sawTwoMidSide).toBe(true);
+    expect(sawFourMidSide).toBe(true);
+    expect(sawCollinearRun).toBe(true);
+    expect(sawK12).toBe(true);
+  });
+
+  it('(dp-2) optimality: DP min 3D angle ≥ greedy oracle on 500 strictly-convex sheared/aniso cases', () => {
+    const metrics: Efg[] = [
+      { E: 256, F: 0, G: 1 }, // 16:1 anisotropic
+      { E: 4, F: 3, G: 4 }, // sheared
+    ];
+    const rand = lcg(0xbada55);
+    for (let c = 0; c < 500; c++) {
+      const k = 4 + Math.floor(rand() * 9); // 4..12
+      const poly = strictlyConvexPolygon(rand, k);
+      const idx = poly.map((_, i) => i);
+      const efg = metrics[c % 2];
+      const minOf = (ts: Tri3[]): number =>
+        Math.min(...ts.map(([a, b, cc]) => triMinAngle3D(efg, poly[a], poly[b], poly[cc])));
+      const dpTris = collectTris(maxMinAngleTriangulation, efg, poly, idx);
+      const greedyTris = collectTris(greedyOracle, efg, poly, idx);
+      expect(dpTris.length).toBe(k - 2);
+      expect(greedyTris.length).toBe(k - 2); // strictly convex ⇒ the greedy completes
+      expect(minOf(dpTris)).toBeGreaterThanOrEqual(minOf(greedyTris) - 1e-9);
+    }
+  });
+
+  it('(dp-3) collinear corner-mid-corner run: DP certified where the greedy emits zero-area or strands edges', () => {
+    // Unit square + ONE exact mid on the south edge (k=5): the greedy's
+    // max-min-angle order removes NE then NW, leaving the exactly-collinear
+    // (SW, mid, SE) as its UNGUARDED final-3 emission — a zero-area triangle
+    // (the live DragonScales 45k-degenerate defect in miniature). The DP scores
+    // that triangle −∞ and finds a positive-area 3-triangulation instead.
+    const poly: [number, number][] = [
+      [0, 0], // SW
+      [0.5, 0], // exact-collinear south mid
+      [1, 0], // SE
+      [1, 1], // NE
+      [0, 1], // NW
+    ];
+    const idx = [0, 1, 2, 3, 4];
+    const efg: Efg = { E: 1, F: 0, G: 1 };
+    // DP: certified — k−2 triangles, all strictly CCW, boundary covered once.
+    const dpTris = collectTris(maxMinAngleTriangulation, efg, poly, idx);
+    checkCertified(dpTris, poly, idx, 'dp-3');
+    // Greedy oracle on the SAME input: at least one zero-area triangle OR fewer
+    // than k−2 triangles (stranded boundary sub-edges) — what Task 3 fixed.
+    const greedyTris = collectTris(greedyOracle, efg, poly, idx);
+    const zeroArea = greedyTris.filter(
+      ([a, b, c]) => signedArea2(poly[a], poly[b], poly[c]) <= 1e-18,
+    ).length;
+    expect(greedyTris.length < poly.length - 2 || zeroArea > 0).toBe(true);
+  });
+
+  it('(dp-4) degenerate inputs: n=3 passthrough, n<3 no-op, n>16 defensive throw with poly coords', () => {
+    const efg: Efg = { E: 1, F: 0, G: 1 };
+    // n=3: passthrough of the (idx-mapped) single triangle.
+    const tri = collectTris(
+      maxMinAngleTriangulation,
+      efg,
+      [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+      ],
+      [7, 8, 9],
+    );
+    expect(tri).toEqual([[7, 8, 9]]);
+    // n<3: no emission, no throw.
+    expect(
+      collectTris(
+        maxMinAngleTriangulation,
+        efg,
+        [
+          [0, 0],
+          [1, 0],
+        ],
+        [0, 1],
+      ),
+    ).toEqual([]);
+    // n>16: defensive throw (transition polygons are ≤12 in production) that
+    // carries the polygon coordinates for triage.
+    const big: [number, number][] = [];
+    for (let i = 0; i < 17; i++) {
+      big.push([Math.cos((2 * Math.PI * i) / 17), Math.sin((2 * Math.PI * i) / 17)]);
+    }
+    const bigIdx = big.map((_, i) => i);
+    expect(() => maxMinAngleTriangulation(efg, big, bigIdx, () => {})).toThrow(/n=17/);
+    expect(() => maxMinAngleTriangulation(efg, big, bigIdx, () => {})).toThrow(/poly=\[\[1,0\]/);
   });
 });
