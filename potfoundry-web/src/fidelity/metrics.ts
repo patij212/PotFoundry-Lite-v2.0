@@ -1834,7 +1834,11 @@ export interface BandQuality {
   triangles: number;
   /** Percent of the band's triangles with min interior 3D angle < the bar. */
   pctBelow15: number;
-  /** Worst min interior angle within the band (deg); 0 when the band is empty. */
+  /**
+   * Worst min interior angle within the band (deg); 0 when the band is empty
+   * (check `triangles > 0` before comparing against any angle threshold — 0
+   * also equals a degenerate triangle's min angle).
+   */
   worstMinAngleDeg: number;
 }
 
@@ -1883,11 +1887,13 @@ export function seamBandTriangleQuality(
     const a = indices[t], b = indices[t + 1], c = indices[t + 2];
     // wall only (surfaceId 0/1 — outer/inner)
     if (ut[a * 3 + 2] >= 1.5 || ut[b * 3 + 2] >= 1.5 || ut[c * 3 + 2] >= 1.5) continue;
-    const us = [ut[a * 3], ut[b * 3], ut[c * 3]];
-    const ts = [ut[a * 3 + 1], ut[b * 3 + 1], ut[c * 3 + 1]];
-    const nearSeam = us.some((u) => u < sw || u > 1 - sw)
-      || Math.max(...us) - Math.min(...us) > 0.5; // u-span wrap = seam triangle
-    const tc = (ts[0] + ts[1] + ts[2]) / 3;
+    const ua = ut[a * 3], ub = ut[b * 3], uc = ut[c * 3];
+    const ta = ut[a * 3 + 1], tb = ut[b * 3 + 1], tcv = ut[c * 3 + 1];
+    const uMin = ua < ub ? (ua < uc ? ua : uc) : (ub < uc ? ub : uc);
+    const uMax = ua > ub ? (ua > uc ? ua : uc) : (ub > uc ? ub : uc);
+    const nearSeam = ua < sw || ua > 1 - sw || ub < sw || ub > 1 - sw || uc < sw || uc > 1 - sw
+      || uMax - uMin > 0.5; // u-span wrap = seam triangle
+    const tc = (ta + tb + tcv) / 3;
     const bucket = nearSeam ? acc.seam : tc < cb ? acc.capBottom : tc > 1 - cb ? acc.capTop : acc.bulk;
     const mAng = triMinAngleAndAspect(vertices, a, b, c).minAngleDeg;
     bucket.triangles++;

@@ -287,6 +287,10 @@ let LAST_CONFORMING_HELIX_WARP: HelixWarp | null = null;
  * bucket wall triangles by the registry's topological seam (pre-warp u=0/1) and
  * the cap-adjacent pinned rings (t≈0/1). Null off the conforming path.
  * Reference only — the exported mesh is unchanged.
+ *
+ * Cost: ~12 B/vertex — ~5 MB at a 400k-triangle budget, ~24 MB at 2M;
+ * deliberately unconditional like the sibling stashes (no hook-active
+ * side-channel exists), but 12-30× larger than them.
  */
 let LAST_CONFORMING_ASSEMBLY_UT: Float32Array | null = null;
 

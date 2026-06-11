@@ -698,4 +698,21 @@ describe('seamBandTriangleQuality — periodic-seam and cap-ring bands vs bulk',
     const r = seamBandTriangleQuality({ vertices, indices }, ut3);
     expect(r.seam.triangles + r.bulk.triangles + r.capBottom.triangles + r.capTop.triangles).toBe(1);
   });
+
+  it('detects a seam triangle by u-span wrap even when no vertex is near the seam', () => {
+    const ut4 = new Float32Array([
+      0.03, 0.5, 0,   0.97, 0.5, 0,   0.50, 0.52, 0, // span 0.94 > 0.5, all u beyond sw
+      0.40, 0.5, 0,   0.42, 0.5, 0,   0.41, 0.52, 0,
+    ]);
+    const r = seamBandTriangleQuality({ vertices, indices }, ut4);
+    expect(r.seam.triangles).toBe(1);
+    expect(r.bulk.triangles).toBe(1);
+  });
+
+  it('skips a MIXED-surface triangle (two wall vertices + one cap vertex)', () => {
+    const ut5 = new Float32Array(ut);
+    ut5[8] = 2; // only tri A's third vertex is a cap vertex
+    const r = seamBandTriangleQuality({ vertices, indices }, ut5);
+    expect(r.seam.triangles + r.bulk.triangles + r.capBottom.triangles + r.capTop.triangles).toBe(1);
+  });
 });
