@@ -12,8 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- **Export quality gate** (`tests/test_mesh_manifold.py`): asserts every exported
+  mesh is a closed, consistently-oriented, outward-facing solid with no
+  degenerate faces, across all styles, twist, bell modulation, and drain clamp.
+- ADR 0002 documenting the outward-oriented export mesh decision.
 
 ### Fixed
+- **Export-blocking mesh orientation bug** (Grasshopper/Rhino quality): the outer
+  wall, inner wall, rim cap, and bottom-underside face groups were wound so their
+  normals pointed *inward*, giving a negative signed volume and 160 inconsistently
+  oriented seam edges (= 2·n_theta) where they met the slab/drain groups. This
+  caused flipped normals on import (black/holed surfaces, "rebuild normals"
+  repairs). Fixed at construction in `build_pot_mesh()` — zero runtime cost,
+  counts/dimensions/determinism unchanged.
+
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`
