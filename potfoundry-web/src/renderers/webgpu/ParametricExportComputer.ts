@@ -2822,7 +2822,7 @@ export class ParametricExportComputer {
                     // via the existing ExportDialog warnings panel.
                     validationSummary.warnings.push(
                         `triangle budget not met: ${budgetReport.refusalReason}; ` +
-                        `exporting ${triCount.toLocaleString()} tris (~${budgetReport.estimatedStlMB.toFixed(0)} MB as binary STL)`,
+                        `exporting ${budgetReport.deliveredTriangles.toLocaleString()} tris (~${budgetReport.estimatedStlMB.toFixed(0)} MB as binary STL)`,
                     );
                 }
                 console.warn(

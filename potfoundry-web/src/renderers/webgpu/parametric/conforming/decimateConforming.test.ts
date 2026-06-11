@@ -192,6 +192,10 @@ describe('decimateConforming', () => {
     const mesh = buildIcosphere(6);
     const out = await decimateConforming(mesh, { target: 20_000, errorAbsMm: 0.5 });
     expect(out.report.applied).toBe(true);
+    // Pin that compaction actually ran (a compactMesh-throw fallback returns the
+    // ORIGINAL array by reference, which would pass the subset loop vacuously).
+    expect(out.mesh.vertices).not.toBe(mesh.vertices);
+    expect(out.mesh.vertexCount).toBeLessThan(mesh.vertexCount);
     const inputKeys = positionKeySet(mesh.vertices, mesh.vertexCount);
     for (let i = 0; i < out.mesh.vertexCount; i++) {
       const key = `${out.mesh.vertices[i * 3]}|${out.mesh.vertices[i * 3 + 1]}|${out.mesh.vertices[i * 3 + 2]}`;
