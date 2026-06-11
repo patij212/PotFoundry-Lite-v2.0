@@ -29,7 +29,7 @@ if not HAS_PLOTLY:
     st.info("Plotly is not available. Interactive 3D preview and mesh features are disabled.")
 
 # --- PotFoundry UI/engine imports ---
-from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY
+from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY, WRITE_OBJ
 from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict
 from pfui.schemas import STYLE_SCHEMAS
 from pfui.state import (
@@ -1737,6 +1737,26 @@ with _tab1:
                     pass
             st.success(f"STL ready: {safe}.stl  — triangles: {len(faces):,}")
             st.download_button("Download STL", data=data, file_name=f"{safe}.stl", mime="model/stl")
+
+            # Also offer an indexed OBJ (welded topology + smooth normals) for
+            # Rhino/Grasshopper, which import it as a single connected mesh.
+            if WRITE_OBJ is not None:
+                try:
+                    obj_path = Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.obj"
+                    WRITE_OBJ(str(obj_path), safe, verts, faces)
+                    obj_data = obj_path.read_bytes()
+                    try:
+                        obj_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    st.download_button(
+                        "Download OBJ (Rhino/Grasshopper)",
+                        data=obj_data,
+                        file_name=f"{safe}.obj",
+                        mime="model/obj",
+                    )
+                except Exception as _obj_err:
+                    st.caption(f"OBJ export unavailable: {_obj_err}")
 
             # Publish to library if enabled
             if publish_enabled and license_consent and _has_library:

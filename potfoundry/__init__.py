@@ -24,6 +24,9 @@ from .core.geometry import (
 # Binary STL writer (recommended)
 from .core.io.stl import write_stl_binary
 
+# Indexed OBJ writer (welded topology + smooth normals; Rhino/Grasshopper-friendly)
+from .core.io.obj import write_obj
+
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
 
@@ -36,6 +39,8 @@ __all__ = [
     'save_preview_png',
     # STL export (binary is recommended)
     'write_stl_binary',
+    # OBJ export (indexed, welded, smooth normals)
+    'write_obj',
     'write_ascii_stl',  # deprecated
     # Version
     '__version__',

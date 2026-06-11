@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mesh is a closed, consistently-oriented, outward-facing solid with no
   degenerate faces, across all styles, twist, bell modulation, and drain clamp.
 - ADR 0002 documenting the outward-oriented export mesh decision.
+- **Indexed OBJ export** (`potfoundry.write_obj`): Wavefront OBJ writer that
+  preserves the welded, indexed topology and emits smooth, area-weighted
+  per-vertex normals. Imports into Rhino/Grasshopper as a single connected,
+  smoothly-shaded mesh (vs STL triangle soup that must be re-welded). Exposed in
+  the Streamlit app as a "Download OBJ (Rhino/Grasshopper)" button next to STL.
 
 ### Fixed
 - **Export-blocking mesh orientation bug** (Grasshopper/Rhino quality): the outer
