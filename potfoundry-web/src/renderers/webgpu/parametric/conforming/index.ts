@@ -67,6 +67,8 @@ export type { TWarp, TWarpAnchor, CreaseTGridChoice } from './CreaseTWarp';
 export { buildCreaseTWarp, applyTWarp, chooseCreaseTGrid } from './CreaseTWarp';
 export type { HelixWarp, HelixGridChoice } from './CreaseHelixWarp';
 export { chooseHelixGrid, applyHelixWarp } from './CreaseHelixWarp';
+export type { WallWarps } from './PullbackMetric';
+export { uWarpDerivative, tWarpDerivative, composedWallSampler } from './PullbackMetric';
 export type { CellCeilingSummary } from './FShearDiagnostics';
 export { classifyCellCeiling } from './FShearDiagnostics';
 export type {
