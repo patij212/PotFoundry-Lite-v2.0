@@ -63,3 +63,31 @@ At SFB@1 B=3 (nonMan=3) the fold/drop counters read **inversions=0, drops=0**: t
 - **Decimator class (new, owns sliver=0 gates):** quality-bounded decimation fix, gate `sliver=0 ∧ maxAspect<100 ∧ bnd=nonMan=0` on the decimated export at default budget, all 20 styles.
 - **CDT/topology class (Stage 3):** Voronoi nm=2 at default; dedupSide-path repro for SFB@1-at-B≥3; short-wide nm population (149/24/6/6/2/1/1/1) at extremes.
 - **Byte-identity:** `mesh-hashes-default-2026-06.json` remains the tripwire (20/20 deterministic; unchanged by the cap at default).
+
+---
+
+# Stage 1 — Epoch-1 Verdict (2026-06-11, commits cd6af38..294fa5e)
+
+Shipped: PullbackMetric (warp-composed sampler + derivative pins), efg population in leaves() (Task 2, `__pfConformingEfg` default ON), Klincsek max-min-angle DP (Task 3, greedy deleted), FCT plain-branch mirror (Task 4, `__pfConformingShapedCdtCells`, FCT_EAR_CLIP=7), and the epoch-closing **in-metric DP-vs-fan chooser** + metric-reliability guard (294fa5e).
+
+**Two intra-epoch findings (measured, the chooser resolved both):**
+1. Arming efg exposed the greedy ear-clip live: zero-area triangles on collinear mid runs (DragonScales 45,331 degenerates) — eliminated by the DP by construction.
+2. DP-always REGRESSED fan-favourable styles (LowPolyFacet 0→7.8, GothicArches 0.7→4.4): B>0 forces the shaped path onto metrically-isotropic cells where the centroid fan (an interior Steiner) beats ANY diagonal-only triangulation. The DP is optimal only within its family ⇒ `emitShapedTransition` now scores BOTH templates in the metric and emits the winner (tie→fan). The first-attempted metric-reliability guard (suppress efg when it varies >50% across the cell) did NOT move these styles (their facets are flat ⇒ metric exact) but stays as a defense for genuinely metric-unfaithful cells.
+
+**Final epoch gate (undecimated 2M-target band sub-15°, ε=0.5pp; vs the Stage-0 table):**
+| Style | before → after | | Style | before → after |
+|---|---|---|---|---|
+| Crystalline | 6.6 → **0** | | ArtDeco | 12.5 → **8.0** |
+| CelticTriquetra | 5.0 → **0** | | DragonScales | 13.5 → **7.9** |
+| SpiralRidges | 2.4 → **0.3** | | BasketWeave | 13.3 → **7.2** |
+| GeometricStar | 6.2 → 0.9 | | GyroidManifold | 6.5 → 3.9 |
+| FourierBloom | 5.0 → 1.3 | | CelticKnot | 5.2 → 2.9 |
+| Voronoi | 7.6 → 1.5 | | HexagonalHive | 2.9 → 3.2 (±ε) |
+| SFB@1 (Task-4 probe) | 11.6 → **4.0** | | LowPolyFacet/Gothic/Bamboo/smooth | unchanged (0-level) |
+
+- **No-regression clause: PASS 20/20.** Topology zeros + sliver=0: 20/20. Suite 318→378 tests across the program.
+- 50%-relative-reduction criterion: MET on 6 styles (74–100%); ArtDeco (−36%), BasketWeave (−46%), DragonScales (−41%), Gyroid (−40%), CelticKnot (−44%) improved short of 50% → **routed to the Stage-4 escalation ladder** (registration-time snap → frozen-metric flips → metric-true Steiners) per the plan; no improvisation inside the epoch.
+- SpiralRidges 0.3 ≤ its 1.0 target → **Stage 5 pre-registered verdict: NO-OP confirmed** (the ceiling map predicted exactly this).
+- Hash baseline re-archived at epoch close (every changed style explained by EAR_CLIP/FCT_EAR_CLIP>0 or B≥1 shaped-template arming). TRIS_PER_LEAF recalibration: builds completed within envelopes; deferred to Stage 6 with a note (DP emits k−2 vs fan k on a subset of transition cells — modest).
+
+**Remaining residual classes after epoch 1:** the 5 ladder-routed styles above (worst 8.0); Voronoi nm=2 at default (Stage 3, dedupSide repro); the extremes/build-time class (Stage 6); the UI quality panel still shows legacy targets (cutover plan Phase 2).

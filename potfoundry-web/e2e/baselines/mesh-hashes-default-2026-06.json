@@ -5,162 +5,162 @@
     {
       "style": "SuperformulaBlossom",
       "styleId": "SuperformulaBlossom",
-      "vertexCount": 45312,
-      "triangleCount": 90624,
-      "vertexHash": "7ed0089d16037eeb",
-      "indexHash": "69b1fac5308b3d1f"
+      "vertexCount": 45056,
+      "triangleCount": 90112,
+      "vertexHash": "4cf3c196636a0408",
+      "indexHash": "36fde694c6c315e2"
     },
     {
       "style": "SuperellipseMorph",
       "styleId": "SuperellipseMorph",
-      "vertexCount": 53468,
-      "triangleCount": 106936,
-      "vertexHash": "a69f74800c5f5cfa",
-      "indexHash": "d6b5fb81ee82ffb3"
+      "vertexCount": 53300,
+      "triangleCount": 106600,
+      "vertexHash": "fad4d69bbc9f1e65",
+      "indexHash": "f00b877963b0464f"
     },
     {
       "style": "LowPolyFacet",
       "styleId": "LowPolyFacet",
-      "vertexCount": 64476,
-      "triangleCount": 128952,
-      "vertexHash": "69e41f46388d8c00",
-      "indexHash": "b8201cf7007e9349"
+      "vertexCount": 64300,
+      "triangleCount": 128600,
+      "vertexHash": "f3d8918a5fd92640",
+      "indexHash": "1a84745a6737a1c8"
     },
     {
       "style": "ArtDeco",
       "styleId": "ArtDeco",
-      "vertexCount": 263930,
-      "triangleCount": 527860,
-      "vertexHash": "d7cec93cf9a8e4da",
-      "indexHash": "2749337dc611c8ff"
+      "vertexCount": 255214,
+      "triangleCount": 510428,
+      "vertexHash": "000a09c7ecac94d1",
+      "indexHash": "e4a417ee65e10618"
     },
     {
       "style": "Crystalline",
       "styleId": "Crystalline",
-      "vertexCount": 272894,
-      "triangleCount": 545788,
-      "vertexHash": "e4b3b5e6f4177fec",
-      "indexHash": "24c916c10bbd4603"
+      "vertexCount": 257533,
+      "triangleCount": 515066,
+      "vertexHash": "1ab87a2c954f08ba",
+      "indexHash": "c5144721d7373f2b"
     },
     {
       "style": "BambooSegments",
       "styleId": "BambooSegments",
-      "vertexCount": 213019,
-      "triangleCount": 426038,
-      "vertexHash": "9e107ae4d36a3032",
-      "indexHash": "a0a8d95c3694979a"
+      "vertexCount": 203691,
+      "triangleCount": 407382,
+      "vertexHash": "08cc32120b880cfc",
+      "indexHash": "09923da26405f224"
     },
     {
       "style": "RippleInterference",
       "styleId": "RippleInterference",
-      "vertexCount": 75064,
-      "triangleCount": 150128,
-      "vertexHash": "f2eb215f212b963d",
-      "indexHash": "86253721860cd77f"
+      "vertexCount": 73208,
+      "triangleCount": 146416,
+      "vertexHash": "de88650f607be085",
+      "indexHash": "abd9c5dfce061101"
     },
     {
       "style": "WaveInterference",
       "styleId": "WaveInterference",
-      "vertexCount": 55515,
-      "triangleCount": 111030,
-      "vertexHash": "ceaf795a3c4f12b0",
-      "indexHash": "e8f028095d13ee6f"
+      "vertexCount": 55095,
+      "triangleCount": 110190,
+      "vertexHash": "1b5657d892ac6492",
+      "indexHash": "fcab8e6e9cdcc534"
     },
     {
       "style": "HarmonicRipple",
       "styleId": "HarmonicRipple",
-      "vertexCount": 164594,
-      "triangleCount": 329188,
-      "vertexHash": "af163f4053bec742",
-      "indexHash": "a45b3f82a78d17a0"
+      "vertexCount": 163401,
+      "triangleCount": 326802,
+      "vertexHash": "439768d20f8bf0ec",
+      "indexHash": "57bd6099d02a3133"
     },
     {
       "style": "GeometricStar",
       "styleId": "GeometricStar",
-      "vertexCount": 205752,
-      "triangleCount": 411504,
-      "vertexHash": "c04809358d005c0f",
-      "indexHash": "982bfd994a9a4e83"
+      "vertexCount": 201720,
+      "triangleCount": 403440,
+      "vertexHash": "2c2317f38c8bbf0d",
+      "indexHash": "f3b3cbd9af8353bb"
     },
     {
       "style": "BasketWeave",
       "styleId": "BasketWeave",
-      "vertexCount": 283672,
-      "triangleCount": 567344,
-      "vertexHash": "5fa3198c3cf5a70a",
-      "indexHash": "646ef8abfd0db8d5"
+      "vertexCount": 266979,
+      "triangleCount": 533958,
+      "vertexHash": "e411749fda7530bd",
+      "indexHash": "168c65954d1dcdd3"
     },
     {
       "style": "GyroidManifold",
       "styleId": "GyroidManifold",
-      "vertexCount": 170933,
-      "triangleCount": 341866,
-      "vertexHash": "5361c167fc244915",
-      "indexHash": "215727a620242e58"
+      "vertexCount": 167018,
+      "triangleCount": 334036,
+      "vertexHash": "bfb41e1c76e9d04e",
+      "indexHash": "8c4362944f3a8ebe"
     },
     {
       "style": "GothicArches",
       "styleId": "GothicArches",
-      "vertexCount": 184801,
-      "triangleCount": 369602,
-      "vertexHash": "17022c6dfcc77697",
-      "indexHash": "771f18fe596afb18"
+      "vertexCount": 179036,
+      "triangleCount": 358072,
+      "vertexHash": "039903401d169a4e",
+      "indexHash": "46d52d5230a521b8"
     },
     {
       "style": "DragonScales",
       "styleId": "DragonScales",
-      "vertexCount": 308402,
-      "triangleCount": 616804,
-      "vertexHash": "6183413d4a14e517",
-      "indexHash": "dc78d14881e73ec2"
+      "vertexCount": 301348,
+      "triangleCount": 602696,
+      "vertexHash": "183be1ea754d8850",
+      "indexHash": "f69074379ba56435"
     },
     {
       "style": "SpiralRidges",
       "styleId": "SpiralRidges",
-      "vertexCount": 219910,
-      "triangleCount": 439820,
-      "vertexHash": "ccf3da2661195674",
-      "indexHash": "31ef4f5a7643f3a0"
+      "vertexCount": 214550,
+      "triangleCount": 429100,
+      "vertexHash": "796e2b2dea1f133b",
+      "indexHash": "9cd1a892909316a4"
     },
     {
       "style": "FourierBloom",
       "styleId": "FourierBloom",
-      "vertexCount": 149633,
-      "triangleCount": 299266,
-      "vertexHash": "10646f58a3bba9f2",
-      "indexHash": "f36841101cf44176"
+      "vertexCount": 145105,
+      "triangleCount": 290210,
+      "vertexHash": "da8a51879a570d39",
+      "indexHash": "1323f87aeda5dab0"
     },
     {
       "style": "HexagonalHive",
       "styleId": "HexagonalHive",
-      "vertexCount": 133783,
-      "triangleCount": 267566,
-      "vertexHash": "8c7b07714aa878b7",
-      "indexHash": "fc341422e1675838"
+      "vertexCount": 132207,
+      "triangleCount": 264414,
+      "vertexHash": "701c31273fb1aa89",
+      "indexHash": "667ce16533bf4ef3"
     },
     {
       "style": "CelticKnot",
       "styleId": "CelticKnot",
-      "vertexCount": 185401,
-      "triangleCount": 370802,
-      "vertexHash": "9888dbc31c3fbfbd",
-      "indexHash": "caca24c58db65983"
+      "vertexCount": 182509,
+      "triangleCount": 365018,
+      "vertexHash": "86629c73ffd25f2d",
+      "indexHash": "f3f0898798e441c5"
     },
     {
       "style": "CelticTriquetra",
       "styleId": "CelticTriquetra",
-      "vertexCount": 270914,
-      "triangleCount": 541828,
-      "vertexHash": "fc38ddb2fe11f71c",
-      "indexHash": "2829e3941a5ed0e2"
+      "vertexCount": 263191,
+      "triangleCount": 526382,
+      "vertexHash": "814828b870da570a",
+      "indexHash": "a517368bef1e7889"
     },
     {
       "style": "Voronoi",
       "styleId": "Voronoi",
-      "vertexCount": 291488,
-      "triangleCount": 582976,
-      "vertexHash": "a5ecacf722e79135",
-      "indexHash": "bb15634de64df077"
+      "vertexCount": 282408,
+      "triangleCount": 564816,
+      "vertexHash": "83a74192e28d49f4",
+      "indexHash": "b322b0572e9e1669"
     }
   ]
 }
