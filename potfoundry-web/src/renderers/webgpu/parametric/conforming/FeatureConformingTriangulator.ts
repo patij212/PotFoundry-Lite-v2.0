@@ -33,7 +33,7 @@ import {
   TRI_SOURCE,
   metricLen2,
   shapedTemplate,
-  maxMinAngleTriangulation,
+  emitShapedTransition,
 } from './QuadtreeTriangulator';
 import type { FeatureLine } from './FeatureLineGraph';
 import {
@@ -764,11 +764,14 @@ export function triangulateQuadtreeWithFeatures(
           emit(poly[0], poly[2], poly[3]); // SW, NE, NW
         }
       } else if (aniso && efg) {
-        // Shaped transition: the certified Klincsek max-min-angle DP over the
-        // CCW boundary polygon — no centroid vertex, no zero-area emissions.
+        // Shaped transition: in-metric chooser between the Klincsek DP and the
+        // centroid fan (see emitShapedTransition — the DP-always variant
+        // regressed fan-favourable cells; both candidates are interior-only).
         curTag = TRI_SOURCE.FCT_EAR_CLIP;
-        // curTag must be set before this call — maxMinAngleTriangulation calls emit synchronously.
-        maxMinAngleTriangulation(efg, co, poly, emit);
+        emitShapedTransition(efg, co, poly, um, tm, () => {
+          curTag = TRI_SOURCE.FCT_PLAIN_FAN;
+          return vertexIndex(um, tm);
+        }, emit);
       } else {
         curTag = TRI_SOURCE.FCT_PLAIN_FAN;
         const ctr = vertexIndex(um, tm);

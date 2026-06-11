@@ -5,6 +5,7 @@ import { PeriodicBalancedQuadtree, type QuadLeaf } from './PeriodicBalancedQuadt
 import {
   triangulateQuadtree,
   maxMinAngleTriangulation,
+  emitShapedTransition,
   type QuadtreeLike,
   type Efg,
 } from './QuadtreeTriangulator';
@@ -730,6 +731,58 @@ function strictlyConvexPolygon(rand: () => number, k: number): [number, number][
   }
   return pts;
 }
+
+describe('emitShapedTransition — in-metric DP-vs-fan chooser (epoch-1 regression fix)', () => {
+  /** Square + 3 mids on the south side (collinear run): under an ISOTROPIC
+   *  metric the centroid fan beats every diagonal-only triangulation (the DP's
+   *  best triangle must reach across the collinear run) — the LowPolyFacet/
+   *  GothicArches regression class (B>0 forces shaped onto isotropic cells). */
+  const square: [number, number][] = [
+    [0, 0], [0.25, 0], [0.5, 0], [0.75, 0], [1, 0], [1, 1], [0, 1],
+  ];
+  const sqIdx = square.map((_, i) => 100 + i);
+  const collectShaped = (
+    efg: Efg,
+    poly2: readonly [number, number][],
+    idx2: readonly number[],
+  ): { tris: Tri3[]; dpWon: boolean; ctrUsed: boolean } => {
+    const tris: Tri3[] = [];
+    let ctrUsed = false;
+    const dpWon = emitShapedTransition(efg, poly2, idx2, 0.5, 0.5, () => {
+      ctrUsed = true;
+      return 999; // the centroid's global index stand-in
+    }, (a, b, c) => tris.push([a, b, c]));
+    return { tris, dpWon, ctrUsed };
+  };
+
+  it('(ch-1) isotropic metric + collinear mids → the FAN wins (regression class)', () => {
+    const efg: Efg = { E: 1, F: 0, G: 1 };
+    const r = collectShaped(efg, square, sqIdx);
+    expect(r.dpWon).toBe(false);
+    expect(r.ctrUsed).toBe(true);
+    expect(r.tris.length).toBe(square.length); // fan: k triangles around the centroid
+    // The fan's metric min-angle must be >= the DP-only optimum on this polygon.
+    const dpTris: Tri3[] = [];
+    maxMinAngleTriangulation(efg, square, sqIdx, (a, b, c) => dpTris.push([a, b, c]));
+    const minAngleOf = (tris: Tri3[], withCtr: boolean): number => {
+      let m = Infinity;
+      for (const [a, b, c] of tris) {
+        const p = (g: number): readonly [number, number] =>
+          g === 999 ? [0.5, 0.5] : square[sqIdx.indexOf(g)];
+        m = Math.min(m, triMinAngle3D(efg, p(a), p(b), p(c)));
+      }
+      return withCtr ? m : m;
+    };
+    expect(minAngleOf(r.tris, true)).toBeGreaterThanOrEqual(minAngleOf(dpTris, false) - 1e-9);
+  });
+
+  it('(ch-2) strongly sheared metric → the DP wins (no centroid vertex created)', () => {
+    const r = collectShaped({ E: 36, F: 48, G: 68 }, square, sqIdx);
+    expect(r.dpWon).toBe(true);
+    expect(r.ctrUsed).toBe(false);
+    expect(r.tris.length).toBe(square.length - 2); // DP: k−2 triangles, no Steiner
+  });
+});
 
 describe('maxMinAngleTriangulation — Klincsek DP (Stage-1 Task 3)', () => {
   it('(dp-1) certified completeness: 2·10⁴ random convex transition polygons × {isotropic, 16:1 aniso, sheared}', () => {

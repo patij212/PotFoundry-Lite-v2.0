@@ -151,6 +151,56 @@ function triMinAngle3D(
   return Math.min(ang(b, c, a), ang(a, c, b), ang(a, b, c));
 }
 
+/**
+ * Shaped TRANSITION template chooser: score BOTH available interior-only
+ * templates in the metric — the Klincsek DP (no interior vertex) and the
+ * legacy centroid fan (one interior Steiner) — and emit the winner.
+ *
+ * The DP is optimal only WITHIN the diagonal-only family; on cells with many
+ * (near-)collinear mids an interior vertex achieves a strictly larger min
+ * angle than ANY diagonal-only triangulation (MEASURED epoch 1: LowPolyFacet
+ * band sub-15° 0→7.8 and GothicArches 0.7→4.4 under DP-always — B>0 forces the
+ * shaped path onto metrically-isotropic cells where the fan was already
+ * right). Tie → fan (the legacy template). Both candidates are interior-only,
+ * so every shared edge keeps its exact vertex set either way (watertight +
+ * T-junction-free preserved).
+ *
+ * `acquireCtr` is called ONLY when the fan wins (the centroid vertex must not
+ * be created otherwise) — callers use it to set the fan provenance tag before
+ * the fan emits. Returns true when the DP won.
+ */
+export function emitShapedTransition(
+  efg: Efg,
+  co: readonly [number, number][],
+  poly: readonly number[],
+  ctrU: number,
+  ctrT: number,
+  acquireCtr: () => number,
+  emit: (a: number, b: number, c: number) => void,
+): boolean {
+  const n = co.length;
+  const localIdx: number[] = [];
+  for (let i = 0; i < n; i++) localIdx.push(i);
+  const dpLocal: [number, number, number][] = [];
+  maxMinAngleTriangulation(efg, co, localIdx, (a, b, c) => dpLocal.push([a, b, c]));
+  let dpScore = Infinity;
+  for (const [a, b, c] of dpLocal) {
+    dpScore = Math.min(dpScore, triMinAngle3D(efg, co[a], co[b], co[c]));
+  }
+  const ctr: readonly [number, number] = [ctrU, ctrT];
+  let fanScore = Infinity;
+  for (let i = 0; i < n; i++) {
+    fanScore = Math.min(fanScore, triMinAngle3D(efg, ctr, co[i], co[(i + 1) % n]));
+  }
+  if (dpScore > fanScore) {
+    for (const [a, b, c] of dpLocal) emit(poly[a], poly[b], poly[c]);
+    return true;
+  }
+  const ci = acquireCtr();
+  for (let i = 0; i < n; i++) emit(ci, poly[i], poly[(i + 1) % n]);
+  return false;
+}
+
 /** Signed (u,t)-space area×2 of triangle (p0,p1,p2); >0 ⇒ CCW. */
 function signedArea2(
   p0: readonly [number, number],
@@ -566,9 +616,13 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
       add(u0, t1); // NW
       if (splitW) add(u0, tm);
       if (aniso && efg) {
+        // curTag must be set before emission — both candidates emit synchronously;
+        // acquireCtr retags to TRANSITION_FAN before any fan triangle is recorded.
         curTag = TRI_SOURCE.EAR_CLIP;
-        // curTag must be set before this call — maxMinAngleTriangulation calls emit synchronously.
-        maxMinAngleTriangulation(efg, co, poly, emit);
+        emitShapedTransition(efg, co, poly, um, tm, () => {
+          curTag = TRI_SOURCE.TRANSITION_FAN;
+          return vertexIndex(um, tm);
+        }, emit);
       } else {
         curTag = TRI_SOURCE.TRANSITION_FAN;
         const ctr = vertexIndex(um, tm);
@@ -596,9 +650,13 @@ export function triangulateQuadtree(qt: QuadtreeLike): QuadtreeMesh {
     add(u0, t1); // NW
     for (let k = subW.length - 1; k >= 0; k--) add(u0, subW[k]); // west: t descending
     if (aniso && efg) {
+      // curTag must be set before emission — both candidates emit synchronously;
+      // acquireCtr retags to TRANSITION_FAN before any fan triangle is recorded.
       curTag = TRI_SOURCE.EAR_CLIP;
-      // curTag must be set before this call — maxMinAngleTriangulation calls emit synchronously.
-      maxMinAngleTriangulation(efg, co, poly, emit);
+      emitShapedTransition(efg, co, poly, um, tm, () => {
+        curTag = TRI_SOURCE.TRANSITION_FAN;
+        return vertexIndex(um, tm);
+      }, emit);
     } else {
       curTag = TRI_SOURCE.TRANSITION_FAN;
       const ctr = vertexIndex(um, tm);

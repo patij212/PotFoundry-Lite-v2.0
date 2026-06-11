@@ -587,6 +587,12 @@ export class PeriodicBalancedQuadtree {
    * tree. Per-leaf cost: one `firstFundamentalForm` = 4 `position()` calls.
    */
   leaves(): QuadLeaf[] {
+    /**
+     * Max relative component deviation (center vs inset corners) above which
+     * the per-leaf constant-metric assumption is declared violated and efg is
+     * suppressed. Pre-registered at 0.5 (epoch-1 guard; see the block below).
+     */
+    const EFG_MAX_REL_VARIATION = 0.5;
     if (this.cells.length === 0 && this.leafSet.size > 0) this.rebuildCells();
     return this.cells.map((c) => {
       const uSpan = this.uSpanCell(c.level, c.uExtra);
@@ -600,13 +606,36 @@ export class PeriodicBalancedQuadtree {
         uExtra: c.uExtra,
       };
       if (this.efgSampler) {
-        leaf.efg = firstFundamentalForm(
-          this.efgSampler,
-          (c.iu + 0.5) / uSpan,
-          (c.it + 0.5) / tSpan,
-          this.steps.hu,
-          this.steps.ht,
+        const uc = (c.iu + 0.5) / uSpan;
+        const tc = (c.it + 0.5) / tSpan;
+        const center = firstFundamentalForm(this.efgSampler, uc, tc, this.steps.hu, this.steps.ht);
+        // METRIC-RELIABILITY GUARD (epoch-1 MEASURED regression: LowPolyFacet
+        // band 0→7.8, GothicArches 0.7→4.4 sub-15°, all in the DP tag): the
+        // shaped templates assume the metric is CONSTANT over the leaf; on
+        // facet/crease styles the surface bends INSIDE the cell, the center
+        // efg misrepresents it, and the DP picks diagonals that are bad in
+        // real 3D. Probe two inset corners; if any component deviates from the
+        // center by more than EFG_MAX_REL_VARIATION (E,G relative to
+        // themselves; F relative to √(E·G)), suppress efg — the shapedTemplate
+        // gate then falls back to the legacy fan, which measurement showed
+        // handles intra-cell relief better. Cost: 3 FFF (12 position()) per
+        // leaf, final build only.
+        const cA = firstFundamentalForm(
+          this.efgSampler, (c.iu + 0.25) / uSpan, (c.it + 0.25) / tSpan, this.steps.hu, this.steps.ht,
         );
+        const cB = firstFundamentalForm(
+          this.efgSampler, (c.iu + 0.75) / uSpan, (c.it + 0.75) / tSpan, this.steps.hu, this.steps.ht,
+        );
+        const scaleF = Math.sqrt(Math.max(center.E * center.G, 1e-30));
+        const varOf = (m: { E: number; F: number; G: number }): number =>
+          Math.max(
+            Math.abs(m.E - center.E) / Math.max(center.E, 1e-30),
+            Math.abs(m.G - center.G) / Math.max(center.G, 1e-30),
+            Math.abs(m.F - center.F) / scaleF,
+          );
+        if (Math.max(varOf(cA), varOf(cB)) <= EFG_MAX_REL_VARIATION) {
+          leaf.efg = center;
+        }
       }
       return leaf;
     });

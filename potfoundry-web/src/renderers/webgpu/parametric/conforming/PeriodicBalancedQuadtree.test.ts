@@ -297,6 +297,49 @@ describe('PeriodicBalancedQuadtree — per-leaf efg population (efgSampler)', ()
       expect(G).toBeCloseTo(SH * SH + SY * SY, 6);
     }
   });
+
+  it('(d) metric-RELIABILITY guard: a fold inside the cell suppresses efg (legacy fallback)', () => {
+    // MEASURED epoch-1 regression (LowPolyFacet 0→7.8, GothicArches 0.7→4.4
+    // band sub-15°, all in the DP tag): on facet/crease styles the surface
+    // bends INSIDE a cell, the constant cell-center efg misrepresents it, and
+    // the DP optimizes against the lie. Guard: when efg varies strongly across
+    // the cell (center vs inset corners), do NOT attach efg — the existing
+    // shapedTemplate gate then falls back to the legacy fan, which the
+    // measurement showed handles intra-cell relief better.
+    /** A fold at u=FOLD (non-dyadic, so coarse cells straddle it): E jumps 1 → 1+SLOPE². */
+    const FOLD = 0.3;
+    const SLOPE = 4;
+    const folded: SurfaceSampler = {
+      position: (u: number, t: number): readonly [number, number, number] => {
+        const uu = u - Math.floor(u);
+        return [uu, t * 2, uu < FOLD ? 0 : (uu - FOLD) * SLOPE];
+      },
+    };
+    const plain = new SyntheticCylinderSampler(R0, H);
+    const field = constantField(plain, 45);
+    const qt = new PeriodicBalancedQuadtree(field, plain, { maxLevel: 8, efgSampler: folded });
+    const leaves = qt.leaves();
+    expect(leaves.length).toBeGreaterThan(0);
+    let straddling = 0;
+    let away = 0;
+    for (const leaf of leaves) {
+      const uSpan = 1 / 2 ** (leaf.level + (leaf.uExtra ?? 0));
+      const u1 = leaf.u0 + uSpan;
+      if (leaf.u0 < FOLD && FOLD < u1) {
+        // The fold runs through this cell — the constant-metric assumption is
+        // violated; efg must be suppressed so the legacy template fires.
+        straddling++;
+        expect(leaf.efg).toBeUndefined();
+      } else if (u1 < FOLD - uSpan || leaf.u0 > FOLD + uSpan) {
+        // Comfortably away from the fold (one full cell of clearance): the
+        // metric is locally constant — efg must be attached.
+        away++;
+        expect(leaf.efg).toBeDefined();
+      }
+    }
+    expect(straddling).toBeGreaterThan(0);
+    expect(away).toBeGreaterThan(0);
+  });
 });
 
 describe('PeriodicBalancedQuadtree — periodic neighbour', () => {
