@@ -66,6 +66,8 @@ export interface ParametricExportStats {
     refinementSummary?: import('../renderers/webgpu/parametric/types').RefinementSummary;
     /** Pipeline diagnostics for the debug tab (null if not collected). */
     pipelineDiagnostics?: import('../renderers/webgpu/parametric/types').PipelineDiagnostics;
+    /** Budget honesty report (conforming path; present when a budget was given). */
+    budgetReport?: import('../renderers/webgpu/parametric/types').ExportBudgetReport;
 }
 
 /** Optional pipeline overrides passed from the ExportDialog. */
@@ -106,6 +108,14 @@ export interface UseParametricExportResult {
     isAvailable: boolean;
     exportSTL: (filename?: string, targetTriangles?: number, options?: ExportRouteOptions) => Promise<void>;
     generateMesh: (targetTriangles?: number, overrides?: ParametricExportOverrides) => Promise<MeshData | null>;
+    /**
+     * Budget-honesty report from the most recent generateMesh, set SYNCHRONOUSLY
+     * (ref, not state) so callers in the same tick read the verdict
+     * cause-accurately — never inferred from triangleCount > target, which would
+     * misattribute legacy-path / wasm-unavailable cases. Null on the legacy path
+     * or before the first generate.
+     */
+    lastBudgetReport: import('../renderers/webgpu/parametric/types').ExportBudgetReport | null;
     reset: () => void;
     /** v15.0: Toggle chain overlay (magenta lines) on/off */
     setShowChainOverlay: (show: boolean) => void;
@@ -161,6 +171,10 @@ export function useParametricExport(): UseParametricExportResult {
     // Keep last debug data refs so we can toggle overlays without re-exporting
     const lastChainSegsRef = useRef<Float32Array | null>(null);
     const lastPeakPointsRef = useRef<Float32Array | null>(null);
+
+    // Budget-honesty report of the most recent generate — a ref (not state) so
+    // same-tick callers (ExportPanel's dialog handler) read it synchronously.
+    const lastBudgetReportRef = useRef<import('../renderers/webgpu/parametric/types').ExportBudgetReport | null>(null);
 
     const computerRef = useRef<ParametricExportComputer | null>(null);
     const deviceRef = useRef<GPUDevice | null>(null);
@@ -362,6 +376,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             };
 
             const result = await computerRef.current.compute(params);
+            lastBudgetReportRef.current = result.budgetReport ?? null;
             if (result.validationSummary && !result.validationSummary.valid) {
                 const reason = result.validationSummary.warnings.length > 0
                     ? result.validationSummary.warnings.slice(0, 4).join('; ')
@@ -396,6 +411,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 validationSummary: result.validationSummary,
                 refinementSummary: result.refinementSummary,
                 pipelineDiagnostics: result.pipelineDiagnostics,
+                budgetReport: result.budgetReport,
             };
 
             setStats(exportStats);
@@ -404,10 +420,26 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 ? ` (${result.adaptiveStats.densityRatio.toFixed(0)}× density, ${result.adaptiveStats.featurePeaksSnapped} peaks)`
                 : '';
 
+            // Honest refusal notice: the budget is a REQUEST, not a promise. When
+            // the requested triangle budget could not be met without quality
+            // damage, the export succeeds with the natural mesh and the completion
+            // message states the ACTUAL delivered size. 'full detail' wording is
+            // conditional on capScale (the pre-triangulation cap may already have
+            // spent chord error in low-curvature regions).
+            const br = result.budgetReport;
+            const detailNote = br && br.capScale > 1
+                ? ` at reduced surface detail (~${br.effectiveMaxSagMm.toFixed(2)}mm chord)`
+                : ' at full detail';
+            const refusalNote = br?.decimation === 'refused'
+                ? ` — ${(br.requestedTriangles / 1e6).toFixed(1)}M-tri budget not reachable without quality loss; ` +
+                  `exported ${(br.deliveredTriangles / 1e6).toFixed(2)}M tris${detailNote} ` +
+                  `(~${br.estimatedStlMB.toFixed(0)} MB as binary STL, smaller as 3MF)`
+                : '';
+
             setProgress({
                 status: 'complete',
                 progress: 100,
-                message: `Generated ${result.mesh.triangleCount.toLocaleString()} tris in ${result.computeTimeMs.toFixed(0)}ms${adaptiveMsg}`,
+                message: `Generated ${result.mesh.triangleCount.toLocaleString()} tris in ${result.computeTimeMs.toFixed(0)}ms${adaptiveMsg}${refusalNote}`,
             });
 
             // Broadcast chain debug lines for preview overlay diagnostics.
@@ -544,6 +576,11 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         isAvailable,
         exportSTL,
         generateMesh,
+        // Synchronously-readable verdict of the most recent generate (see
+        // UseParametricExportResult.lastBudgetReport).
+        get lastBudgetReport() {
+            return lastBudgetReportRef.current;
+        },
         reset,
         setShowChainOverlay,
         setShowPeakOverlay,

@@ -29,7 +29,7 @@
  */
 
 import type { SurfaceSampler } from './SurfaceSampler';
-import { buildConformingWall, type ConformingWallResult } from './ConformingWall';
+import { buildConformingWall, type ConformingWallResult, type WallBudgetTelemetry } from './ConformingWall';
 import type { CdtStats } from './ConstrainedCellTriangulator';
 import { TRI_SOURCE } from './QuadtreeTriangulator';
 import { annulusStrip, discFan } from './RingStrip';
@@ -278,6 +278,19 @@ export interface WatertightAssemblyResult {
    * Metadata only — the triangle content/order is untouched.
    */
   triangleSource?: Uint8Array;
+  /**
+   * Pre-triangulation budget telemetry: how far 'cap' sizing got toward
+   * `opts.targetTriangles` BEFORE triangulation. `capSaturated` on either wall
+   * means the budget is unreachable by coarsening alone (the residual gap is
+   * the decimate-or-refuse decision's input). Metadata only — the mesh is
+   * byte-identical with or without it.
+   */
+  budgetReport?: {
+    requestedTriangles?: number;
+    perWallBudget?: number;
+    outer?: WallBudgetTelemetry;
+    inner?: WallBudgetTelemetry;
+  };
 }
 
 /** Append a wall's packed vertices to `verts`, returning the index offset. */
@@ -617,12 +630,25 @@ export function assembleWatertight(
       ? { outer: outer.cdtStats, inner: inner.cdtStats }
       : undefined;
 
+  // Budget-honesty channel: per-wall sizing-search telemetry, present only when
+  // a budget drove the search. Metadata only — the mesh is unchanged.
+  const budgetReport =
+    opts.targetTriangles !== undefined && opts.targetTriangles > 0
+      ? {
+          requestedTriangles: opts.targetTriangles,
+          perWallBudget,
+          outer: outer.budget,
+          inner: inner.budget,
+        }
+      : undefined;
+
   return {
     vertices,
     indices: indexArr,
     surfaceRanges: ranges,
     cdtStats,
     triangleSource: Uint8Array.from(sourceTags),
+    budgetReport,
   };
 }
 

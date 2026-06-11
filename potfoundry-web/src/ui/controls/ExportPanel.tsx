@@ -234,6 +234,19 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     const meshData = await parametricExport.generateMesh(tris, buildOverrides(config));
     if (!meshData) return;
 
+    // Budget honesty: read the hook's CAUSE-ACCURATE verdict (never inferred
+    // from triangleCount > tris, which would misattribute legacy-path or
+    // wasm-unavailable cases). Passive pre-download notice (approved contract);
+    // the same message renders in the dialog's warning panel via
+    // validationSummary.warnings.
+    const br = parametricExport.lastBudgetReport;
+    if (br?.decimation === 'refused') {
+      console.warn(
+        `[Export] ${br.refusalReason} — delivering ${br.deliveredTriangles.toLocaleString()} tris ` +
+        `(~${br.estimatedStlMB.toFixed(0)} MB binary STL; 3MF default is smaller).`,
+      );
+    }
+
     const styleName = style.name ?? 'Pot';
     const ext = config.format === '3mf' ? '3mf' : config.format === 'obj' ? 'obj' : 'stl';
     const filename = `PotFoundry_${styleName}_${Date.now()}.${ext}`;

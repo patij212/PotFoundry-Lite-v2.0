@@ -1,0 +1,3090 @@
+{
+  "measuredAt": "2026-06-11",
+  "dims": {
+    "H": 120,
+    "top_od": 140,
+    "bottom_od": 90,
+    "r_drain": 10
+  },
+  "meshoptimizerVersion": "1.0.1",
+  "contract": "met-safely OR refused-honestly: every row delivered-mesh-clean (sliver=0, maxAspect3D<100, bnd=orient=0, nonMan=0 [Voronoi<=2 carve-out], featDrop=0) AND (delivered<=budget with not-needed/applied) OR (refused with delivered===built and a machine-readable reason). Decimation ladder: ErrorAbsolute, seed=profile sag (0.05mm high), x2 rungs to 0.2mm ceiling, plain-then-Regularize, per-candidate delta gates.",
+  "preRegisteredOutcome": "FAILED-AS-DESIGNED ESCALATION: ArtDeco@499998 and DragonScales@499998 expected applied, measured refused (no-quality-safe-point). meshopt 1.0.1 reaches every budget within tiny absolute error (e.g. ArtDeco resultErr 0.0346mm < 0.05mm seed) but its greedy collapse manufactures slivers: ArtDeco plain +1076 slivers (maxAspect 1e9 degenerates), Regularize +147 (maxAspect 1.2e5); DragonScales plain +2683..+3424, Regularize +133..+235. The ladder is not the binding constraint - collapse ORDERING is. Named escalations (controller decision): simplifyWithAttributes vertex_lock on feature-line vertices; meshoptimizer 1.1.x (full re-baseline); accept refusal-dominant Draft tier.",
+  "verdictSplit": {
+    "applied": 0,
+    "refused": 17,
+    "notNeeded": 25,
+    "rowGateClean": 42,
+    "totalRows": 42
+  },
+  "noOpTripwire": {
+    "productionDefault4M": "BYTE-IDENTICAL 20/20 (HEAD pre-fix vs post-fix, PF_TARGET=4000000, dec=not-needed everywhere)",
+    "target400kVsCommittedBaseline": "IDENTICAL 11/20 (all styles with natural<=400k); CHANGED 9/20 BY DESIGN - the committed mesh-hashes-default-2026-06.json rows for ArtDeco/Crystalline/BambooSegments/GeometricStar/BasketWeave/DragonScales/SpiralRidges/CelticTriquetra/Voronoi are the BROKEN decimator output (exactly 400000 tris, slivered); those rows now ship the cap-coarsened clean natural mesh.",
+    "hashes4mAfter": [
+      {
+        "style": "SuperformulaBlossom",
+        "styleId": "SuperformulaBlossom",
+        "vertexCount": 45312,
+        "triangleCount": 90624,
+        "vertexHash": "7ed0089d16037eeb",
+        "indexHash": "69b1fac5308b3d1f"
+      },
+      {
+        "style": "SuperellipseMorph",
+        "styleId": "SuperellipseMorph",
+        "vertexCount": 53468,
+        "triangleCount": 106936,
+        "vertexHash": "a69f74800c5f5cfa",
+        "indexHash": "d6b5fb81ee82ffb3"
+      },
+      {
+        "style": "LowPolyFacet",
+        "styleId": "LowPolyFacet",
+        "vertexCount": 64476,
+        "triangleCount": 128952,
+        "vertexHash": "69e41f46388d8c00",
+        "indexHash": "b8201cf7007e9349"
+      },
+      {
+        "style": "ArtDeco",
+        "styleId": "ArtDeco",
+        "vertexCount": 287310,
+        "triangleCount": 574620,
+        "vertexHash": "21e2f8b3f097edb1",
+        "indexHash": "fffc80322fad973c"
+      },
+      {
+        "style": "Crystalline",
+        "styleId": "Crystalline",
+        "vertexCount": 421571,
+        "triangleCount": 843142,
+        "vertexHash": "e2f95ffa338b01d8",
+        "indexHash": "7e4769a403002fa6"
+      },
+      {
+        "style": "BambooSegments",
+        "styleId": "BambooSegments",
+        "vertexCount": 213019,
+        "triangleCount": 426038,
+        "vertexHash": "9e107ae4d36a3032",
+        "indexHash": "a0a8d95c3694979a"
+      },
+      {
+        "style": "RippleInterference",
+        "styleId": "RippleInterference",
+        "vertexCount": 75064,
+        "triangleCount": 150128,
+        "vertexHash": "f2eb215f212b963d",
+        "indexHash": "86253721860cd77f"
+      },
+      {
+        "style": "WaveInterference",
+        "styleId": "WaveInterference",
+        "vertexCount": 55515,
+        "triangleCount": 111030,
+        "vertexHash": "ceaf795a3c4f12b0",
+        "indexHash": "e8f028095d13ee6f"
+      },
+      {
+        "style": "HarmonicRipple",
+        "styleId": "HarmonicRipple",
+        "vertexCount": 164594,
+        "triangleCount": 329188,
+        "vertexHash": "af163f4053bec742",
+        "indexHash": "a45b3f82a78d17a0"
+      },
+      {
+        "style": "GeometricStar",
+        "styleId": "GeometricStar",
+        "vertexCount": 205752,
+        "triangleCount": 411504,
+        "vertexHash": "c04809358d005c0f",
+        "indexHash": "982bfd994a9a4e83"
+      },
+      {
+        "style": "BasketWeave",
+        "styleId": "BasketWeave",
+        "vertexCount": 457352,
+        "triangleCount": 914704,
+        "vertexHash": "f8b3219b1fea6c35",
+        "indexHash": "066133e9e3317737"
+      },
+      {
+        "style": "GyroidManifold",
+        "styleId": "GyroidManifold",
+        "vertexCount": 170933,
+        "triangleCount": 341866,
+        "vertexHash": "5361c167fc244915",
+        "indexHash": "215727a620242e58"
+      },
+      {
+        "style": "GothicArches",
+        "styleId": "GothicArches",
+        "vertexCount": 184801,
+        "triangleCount": 369602,
+        "vertexHash": "17022c6dfcc77697",
+        "indexHash": "771f18fe596afb18"
+      },
+      {
+        "style": "DragonScales",
+        "styleId": "DragonScales",
+        "vertexCount": 420445,
+        "triangleCount": 840890,
+        "vertexHash": "928c61ffb9163b75",
+        "indexHash": "537f05cb166bb919"
+      },
+      {
+        "style": "SpiralRidges",
+        "styleId": "SpiralRidges",
+        "vertexCount": 219910,
+        "triangleCount": 439820,
+        "vertexHash": "ccf3da2661195674",
+        "indexHash": "31ef4f5a7643f3a0"
+      },
+      {
+        "style": "FourierBloom",
+        "styleId": "FourierBloom",
+        "vertexCount": 149633,
+        "triangleCount": 299266,
+        "vertexHash": "10646f58a3bba9f2",
+        "indexHash": "f36841101cf44176"
+      },
+      {
+        "style": "HexagonalHive",
+        "styleId": "HexagonalHive",
+        "vertexCount": 133783,
+        "triangleCount": 267566,
+        "vertexHash": "8c7b07714aa878b7",
+        "indexHash": "fc341422e1675838"
+      },
+      {
+        "style": "CelticKnot",
+        "styleId": "CelticKnot",
+        "vertexCount": 185401,
+        "triangleCount": 370802,
+        "vertexHash": "9888dbc31c3fbfbd",
+        "indexHash": "caca24c58db65983"
+      },
+      {
+        "style": "CelticTriquetra",
+        "styleId": "CelticTriquetra",
+        "vertexCount": 667544,
+        "triangleCount": 1335088,
+        "vertexHash": "d103d26422206766",
+        "indexHash": "96ae59d835d122f6"
+      },
+      {
+        "style": "Voronoi",
+        "styleId": "Voronoi",
+        "vertexCount": 338206,
+        "triangleCount": 676412,
+        "vertexHash": "31573fec2d0a5d6a",
+        "indexHash": "d2fc23a0eea13b5a"
+      }
+    ]
+  },
+  "fidelitySpotCheck": {
+    "note": "No applied row exists to spot-check; capSaturated case measured instead (mandatory in-gate).",
+    "instrument": "diagnoseSerration, decoupled bicubic reference res=1024",
+    "DragonScales_natural_4M": {
+      "crestBandRmsMm": 0.09192856483026868,
+      "serrationScore": 0.9192856483026868
+    },
+    "DragonScales_capSaturated_100k": {
+      "crestBandRmsMm": 0.13455069513955428,
+      "serrationScore": 1.3455069513955427,
+      "capScale": 4,
+      "effectiveMaxSagMm": 0.2
+    },
+    "verdictStackedChordError": "cap coarsening at saturation adds +0.043mm crest rms (0.092->0.135), bounded well under the reported effectiveMaxSagMm=0.2"
+  },
+  "rows": [
+    {
+      "style": "ArtDeco",
+      "target": 100000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 38.32,
+      "styleId": "ArtDeco",
+      "budget": {
+        "requestedTriangles": 100000,
+        "builtTriangles": 192120,
+        "deliveredTriangles": 192120,
+        "decimation": "refused",
+        "capScale": 2.5936791093020193,
+        "effectiveMaxSagMm": 0.12968395546510098,
+        "capSaturated": false,
+        "estimatedStlMB": 9.606084,
+        "refusalReason": "budget 100000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 14.110436563917446
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 100000,
+          "resultErrorMm": 0.008217494003474712,
+          "reachedBudget": true,
+          "sliverDelta": 479,
+          "maxAspect3D": 61360.71198070413,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 298.40000000596046,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 190768,
+          "resultErrorMm": 0.04966180771589279,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 132.09999999403954,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 100000,
+          "resultErrorMm": 0.008217494003474712,
+          "reachedBudget": true,
+          "sliverDelta": 479,
+          "maxAspect3D": 61360.71198070413,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 297.6000000089407,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 158584,
+          "resultErrorMm": 0.09938942641019821,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 175.5,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 100000,
+          "resultErrorMm": 0.008217494003474712,
+          "reachedBudget": true,
+          "sliverDelta": 479,
+          "maxAspect3D": 61360.71198070413,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 295.79999999701977,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 100000,
+          "resultErrorMm": 0.19877389073371887,
+          "reachedBudget": true,
+          "sliverDelta": 12,
+          "maxAspect3D": 180.7649351865662,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 182.70000000298023,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "ArtDeco",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 78.258,
+      "styleId": "ArtDeco",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 527860,
+        "deliveredTriangles": 527860,
+        "decimation": "refused",
+        "capScale": 1.0905077326652577,
+        "effectiveMaxSagMm": 0.05452538663326289,
+        "capSaturated": false,
+        "estimatedStlMB": 26.393084,
+        "refusalReason": "budget 400000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 27.18051493814648
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.00012375364894978702,
+          "reachedBudget": true,
+          "sliverDelta": 2107,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 3277.4000000059605,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.049723729491233826,
+          "reachedBudget": true,
+          "sliverDelta": 182,
+          "maxAspect3D": 53574.28023200634,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 658.2999999970198,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.00012375364894978702,
+          "reachedBudget": true,
+          "sliverDelta": 2107,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1021.9000000059605,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.05125322565436363,
+          "reachedBudget": true,
+          "sliverDelta": 189,
+          "maxAspect3D": 53574.28023200634,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 515.2000000029802,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.00012375364894978702,
+          "reachedBudget": true,
+          "sliverDelta": 2107,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 778.5,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.05125322565436363,
+          "reachedBudget": true,
+          "sliverDelta": 189,
+          "maxAspect3D": 53574.28023200634,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 442.79999999701977,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "ArtDeco",
+      "target": 499998,
+      "pass": false,
+      "violations": [
+        "PRE-REGISTERED: expected applied at Draft floor, got refused"
+      ],
+      "elapsedS": 53.066,
+      "styleId": "ArtDeco",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 574620,
+        "deliveredTriangles": 574620,
+        "decimation": "refused",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 28.731084,
+        "refusalReason": "budget 499998 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 27.18051493814648
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 1076,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 578.0999999940395,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.034605447202920914,
+          "reachedBudget": true,
+          "sliverDelta": 147,
+          "maxAspect3D": 117847.58138836588,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 503.20000000298023,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 1076,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 387.5,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.034605447202920914,
+          "reachedBudget": true,
+          "sliverDelta": 147,
+          "maxAspect3D": 117847.58138836588,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 495.40000000596046,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 1076,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 400.20000000298023,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.034605447202920914,
+          "reachedBudget": true,
+          "sliverDelta": 147,
+          "maxAspect3D": 117847.58138836588,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 489.09999999403954,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "DragonScales",
+      "target": 100000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 24.324,
+      "styleId": "DragonScales",
+      "budget": {
+        "requestedTriangles": 100000,
+        "builtTriangles": 212348,
+        "deliveredTriangles": 212348,
+        "decimation": "refused",
+        "capScale": 4,
+        "effectiveMaxSagMm": 0.2,
+        "capSaturated": true,
+        "estimatedStlMB": 10.617484,
+        "refusalReason": "budget 100000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.830546426238008
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 100000,
+          "resultErrorMm": 0.04075276479125023,
+          "reachedBudget": true,
+          "sliverDelta": 256,
+          "maxAspect3D": 6274847.603975936,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 239.40000000596046,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 212298,
+          "resultErrorMm": 0.04981548711657524,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 110,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 100000,
+          "resultErrorMm": 0.04075276479125023,
+          "reachedBudget": true,
+          "sliverDelta": 256,
+          "maxAspect3D": 6274847.603975936,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 246.8999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 203634,
+          "resultErrorMm": 0.09920591115951538,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 133.8999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 100000,
+          "resultErrorMm": 0.04075276479125023,
+          "reachedBudget": true,
+          "sliverDelta": 256,
+          "maxAspect3D": 6274847.603975936,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 235.29999999701977,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 145696,
+          "resultErrorMm": 0.19660232961177826,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 176.90000000596046,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "DragonScales",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 81.92,
+      "styleId": "DragonScales",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 616804,
+        "deliveredTriangles": 616804,
+        "decimation": "refused",
+        "capScale": 1.4142135623730951,
+        "effectiveMaxSagMm": 0.07071067811865477,
+        "capSaturated": false,
+        "estimatedStlMB": 30.840284,
+        "refusalReason": "budget 400000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 33.55781261139214
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.011286742985248566,
+          "reachedBudget": true,
+          "sliverDelta": 2683,
+          "maxAspect3D": 401913.90513116797,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1951.3999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 565184,
+          "resultErrorMm": 0.04914984479546547,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 816.2000000029802,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.011286742985248566,
+          "reachedBudget": true,
+          "sliverDelta": 2683,
+          "maxAspect3D": 401913.90513116797,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 951,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 437718,
+          "resultErrorMm": 0.09887952357530594,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 806.9000000059605,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.011286742985248566,
+          "reachedBudget": true,
+          "sliverDelta": 2683,
+          "maxAspect3D": 401913.90513116797,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 817.5,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.1276954710483551,
+          "reachedBudget": true,
+          "sliverDelta": 133,
+          "maxAspect3D": 16347.674371248879,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 546.6999999880791,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "DragonScales",
+      "target": 499998,
+      "pass": false,
+      "violations": [
+        "PRE-REGISTERED: expected applied at Draft floor, got refused"
+      ],
+      "elapsedS": 66.22,
+      "styleId": "DragonScales",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 718142,
+        "deliveredTriangles": 718142,
+        "decimation": "refused",
+        "capScale": 1.189207115002721,
+        "effectiveMaxSagMm": 0.05946035575013606,
+        "capSaturated": false,
+        "estimatedStlMB": 35.907184,
+        "refusalReason": "budget 499998 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 34.95875265792245
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.008125578053295612,
+          "reachedBudget": true,
+          "sliverDelta": 3424,
+          "maxAspect3D": 364672.37963094166,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1076,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 628244,
+          "resultErrorMm": 0.04914986714720726,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 643.0999999940395,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.008125578053295612,
+          "reachedBudget": true,
+          "sliverDelta": 3424,
+          "maxAspect3D": 364672.37963094166,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 762.5999999940395,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.09195158630609512,
+          "reachedBudget": true,
+          "sliverDelta": 235,
+          "maxAspect3D": 24759.58759187708,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 516.4000000059605,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.008125578053295612,
+          "reachedBudget": true,
+          "sliverDelta": 3424,
+          "maxAspect3D": 364672.37963094166,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 802.4000000059605,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.09195158630609512,
+          "reachedBudget": true,
+          "sliverDelta": 235,
+          "maxAspect3D": 24759.58759187708,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 495.69999998807907,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "SpiralRidges",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 22.745,
+      "styleId": "SpiralRidges",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 439820,
+        "deliveredTriangles": 439820,
+        "decimation": "refused",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 21.991084,
+        "refusalReason": "budget 400000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 23.408210605608907
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 479,
+          "maxAspect3D": 14161.473419942735,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 495,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 427906,
+          "resultErrorMm": 0.04961583390831947,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 556,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 479,
+          "maxAspect3D": 14161.473419942735,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 329.79999999701977,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.0824679583311081,
+          "reachedBudget": true,
+          "sliverDelta": 50,
+          "maxAspect3D": 10698.207988098186,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 360.90000000596046,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 479,
+          "maxAspect3D": 14161.473419942735,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 283.59999999403954,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.0824679583311081,
+          "reachedBudget": true,
+          "sliverDelta": 50,
+          "maxAspect3D": 10698.207988098186,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 359.09999999403954,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "SpiralRidges",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 25.654,
+      "styleId": "SpiralRidges",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 439820,
+        "deliveredTriangles": 439820,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 21.991084
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 23.408210605608907
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "SuperformulaBlossom",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 1.902,
+      "styleId": "SuperformulaBlossom",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 90624,
+        "deliveredTriangles": 90624,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 4.531284
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "SuperformulaBlossom",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 1.593,
+      "styleId": "SuperformulaBlossom",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 90624,
+        "deliveredTriangles": 90624,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 4.531284
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "SuperellipseMorph",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 5.715,
+      "styleId": "SuperellipseMorph",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 106936,
+        "deliveredTriangles": 106936,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 5.346884
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "SuperellipseMorph",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 3.011,
+      "styleId": "SuperellipseMorph",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 106936,
+        "deliveredTriangles": 106936,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 5.346884
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "LowPolyFacet",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 4.878,
+      "styleId": "LowPolyFacet",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 128952,
+        "deliveredTriangles": 128952,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 6.447684
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 15.926017507215967
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "LowPolyFacet",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 4.307,
+      "styleId": "LowPolyFacet",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 128952,
+        "deliveredTriangles": 128952,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 6.447684
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 15.926017507215967
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "Crystalline",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 56.537,
+      "styleId": "Crystalline",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 545788,
+        "deliveredTriangles": 545788,
+        "decimation": "refused",
+        "capScale": 1.2968395546510096,
+        "effectiveMaxSagMm": 0.06484197773255049,
+        "capSaturated": false,
+        "estimatedStlMB": 27.289484,
+        "refusalReason": "budget 400000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 39.48821060418113
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.011221804656088352,
+          "reachedBudget": true,
+          "sliverDelta": 2027,
+          "maxAspect3D": 12094839.678477217,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 2484.5999999940395,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 545508,
+          "resultErrorMm": 0.04986409470438957,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 508.6000000089407,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.011221804656088352,
+          "reachedBudget": true,
+          "sliverDelta": 2027,
+          "maxAspect3D": 12094839.678477217,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1576.3999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 524238,
+          "resultErrorMm": 0.09984874725341797,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1201.7000000029802,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.011221804656088352,
+          "reachedBudget": true,
+          "sliverDelta": 2027,
+          "maxAspect3D": 12094839.678477217,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 922.1000000089407,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.18414358794689178,
+          "reachedBudget": true,
+          "sliverDelta": 919,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 445,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "Crystalline",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 64.105,
+      "styleId": "Crystalline",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 727546,
+        "deliveredTriangles": 727546,
+        "decimation": "refused",
+        "capScale": 1.0905077326652577,
+        "effectiveMaxSagMm": 0.05452538663326289,
+        "capSaturated": false,
+        "estimatedStlMB": 36.377384,
+        "refusalReason": "budget 499998 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 39.48821060418113
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.01292094774544239,
+          "reachedBudget": true,
+          "sliverDelta": 3230,
+          "maxAspect3D": 9941892.945150454,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 798.1000000089407,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 726650,
+          "resultErrorMm": 0.04997614026069641,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 352.3999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.01292094774544239,
+          "reachedBudget": true,
+          "sliverDelta": 3230,
+          "maxAspect3D": 9941892.945150454,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 673.8999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 696530,
+          "resultErrorMm": 0.09975746273994446,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 493.1000000089407,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.01292094774544239,
+          "reachedBudget": true,
+          "sliverDelta": 3230,
+          "maxAspect3D": 9941892.945150454,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 659.5,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.1800941824913025,
+          "reachedBudget": true,
+          "sliverDelta": 2097,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 421,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "BambooSegments",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 17.197,
+      "styleId": "BambooSegments",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 426038,
+        "deliveredTriangles": 426038,
+        "decimation": "refused",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 21.301984,
+        "refusalReason": "budget 400000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 291,
+          "maxAspect3D": 233929.3541988242,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 190.29999999701977,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.026134639978408813,
+          "reachedBudget": true,
+          "sliverDelta": 131,
+          "maxAspect3D": 38052.33368309019,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 282.29999999701977,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 291,
+          "maxAspect3D": 233929.3541988242,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 199.70000000298023,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.026134639978408813,
+          "reachedBudget": true,
+          "sliverDelta": 131,
+          "maxAspect3D": 38052.33368309019,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 268.6000000089407,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 291,
+          "maxAspect3D": 233929.3541988242,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 187.8999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.026134639978408813,
+          "reachedBudget": true,
+          "sliverDelta": 131,
+          "maxAspect3D": 38052.33368309019,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 285.6000000089407,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "BambooSegments",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 15.09,
+      "styleId": "BambooSegments",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 426038,
+        "deliveredTriangles": 426038,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 21.301984
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "RippleInterference",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 4.856,
+      "styleId": "RippleInterference",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 150128,
+        "deliveredTriangles": 150128,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 7.506484
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "RippleInterference",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 4.95,
+      "styleId": "RippleInterference",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 150128,
+        "deliveredTriangles": 150128,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 7.506484
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "WaveInterference",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 4.034,
+      "styleId": "WaveInterference",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 111030,
+        "deliveredTriangles": 111030,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 5.551584
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "WaveInterference",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 3.308,
+      "styleId": "WaveInterference",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 111030,
+        "deliveredTriangles": 111030,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 5.551584
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "HarmonicRipple",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 13.137,
+      "styleId": "HarmonicRipple",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 329188,
+        "deliveredTriangles": 329188,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 16.459484
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 12.952894093214542
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "HarmonicRipple",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 10.545,
+      "styleId": "HarmonicRipple",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 329188,
+        "deliveredTriangles": 329188,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 16.459484
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 12.952894093214542
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "GeometricStar",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 16.962,
+      "styleId": "GeometricStar",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 411504,
+        "deliveredTriangles": 411504,
+        "decimation": "refused",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 20.575284,
+        "refusalReason": "budget 400000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 14.979100588963375
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 166,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 349.8999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 403970,
+          "resultErrorMm": 0.04981796815991402,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 284.90000000596046,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 166,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 204.20000000298023,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.057941973209381104,
+          "reachedBudget": true,
+          "sliverDelta": 5,
+          "maxAspect3D": 1313.6973579596474,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 206.8999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0,
+          "reachedBudget": true,
+          "sliverDelta": 166,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 231,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.057941973209381104,
+          "reachedBudget": true,
+          "sliverDelta": 5,
+          "maxAspect3D": 1313.6973579596474,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 206.70000000298023,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "GeometricStar",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 14.208,
+      "styleId": "GeometricStar",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 411504,
+        "deliveredTriangles": 411504,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 20.575284
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 14.979100588963375
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "BasketWeave",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 55.742,
+      "styleId": "BasketWeave",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 567344,
+        "deliveredTriangles": 567344,
+        "decimation": "refused",
+        "capScale": 1.4142135623730951,
+        "effectiveMaxSagMm": 0.07071067811865477,
+        "capSaturated": false,
+        "estimatedStlMB": 28.367284,
+        "refusalReason": "budget 400000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 16.257345267262618
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.0032664705067873,
+          "reachedBudget": true,
+          "sliverDelta": 1584,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 3764.6000000089407,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 503884,
+          "resultErrorMm": 0.04927742853760719,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1712.5999999940395,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.0032664705067873,
+          "reachedBudget": true,
+          "sliverDelta": 1584,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1246.7999999970198,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.09699346870183945,
+          "reachedBudget": true,
+          "sliverDelta": 27,
+          "maxAspect3D": 69341.92554903765,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 653.4000000059605,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.0032664705067873,
+          "reachedBudget": true,
+          "sliverDelta": 1584,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1219.199999988079,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.09699346870183945,
+          "reachedBudget": true,
+          "sliverDelta": 27,
+          "maxAspect3D": 69341.92554903765,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 591.8000000119209,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "BasketWeave",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 66.588,
+      "styleId": "BasketWeave",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 702148,
+        "deliveredTriangles": 702148,
+        "decimation": "refused",
+        "capScale": 1.241857812073484,
+        "effectiveMaxSagMm": 0.062092890603674206,
+        "capSaturated": false,
+        "estimatedStlMB": 35.107484,
+        "refusalReason": "budget 499998 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 19.01517146355224
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.0033547019120305777,
+          "reachedBudget": true,
+          "sliverDelta": 2207,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1044.7000000029802,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 593058,
+          "resultErrorMm": 0.04927742853760719,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 572.4000000059605,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.0033547019120305777,
+          "reachedBudget": true,
+          "sliverDelta": 2207,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 937.6999999880791,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.06843890994787216,
+          "reachedBudget": true,
+          "sliverDelta": 287,
+          "maxAspect3D": 204928.21845840415,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 497.20000000298023,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.0033547019120305777,
+          "reachedBudget": true,
+          "sliverDelta": 2207,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 954.2000000029802,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.06843890994787216,
+          "reachedBudget": true,
+          "sliverDelta": 287,
+          "maxAspect3D": 204928.21845840415,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 475.5,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "GyroidManifold",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 12.138,
+      "styleId": "GyroidManifold",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 341866,
+        "deliveredTriangles": 341866,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 17.093384
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 37.244473196075596
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "GyroidManifold",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 10.976,
+      "styleId": "GyroidManifold",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 341866,
+        "deliveredTriangles": 341866,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 17.093384
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 37.244473196075596
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "GothicArches",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 14.606,
+      "styleId": "GothicArches",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 369602,
+        "deliveredTriangles": 369602,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 18.480184
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 15.926105752974548
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "GothicArches",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 14.467,
+      "styleId": "GothicArches",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 369602,
+        "deliveredTriangles": 369602,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 18.480184
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 15.926105752974548
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "FourierBloom",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 11.358,
+      "styleId": "FourierBloom",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 299266,
+        "deliveredTriangles": 299266,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 14.963384
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 14.674864339493986
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "FourierBloom",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 31.338,
+      "styleId": "FourierBloom",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 299266,
+        "deliveredTriangles": 299266,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 14.963384
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 14.674864339493986
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "HexagonalHive",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 8.32,
+      "styleId": "HexagonalHive",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 267566,
+        "deliveredTriangles": 267566,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 13.378384
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 24.598226042681553
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "HexagonalHive",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 7.464,
+      "styleId": "HexagonalHive",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 267566,
+        "deliveredTriangles": 267566,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 13.378384
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 24.598226042681553
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "CelticKnot",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 12.767,
+      "styleId": "CelticKnot",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 370802,
+        "deliveredTriangles": 370802,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 18.540184
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 25.555520902921497
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "CelticKnot",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 12.664,
+      "styleId": "CelticKnot",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 370802,
+        "deliveredTriangles": 370802,
+        "decimation": "not-needed",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 18.540184
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 25.555520902921497
+      },
+      "featDrop": 0,
+      "decimationAttempts": null
+    },
+    {
+      "style": "CelticTriquetra",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 61.901,
+      "styleId": "CelticTriquetra",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 541828,
+        "deliveredTriangles": 541828,
+        "decimation": "refused",
+        "capScale": 1.6817928305074292,
+        "effectiveMaxSagMm": 0.08408964152537146,
+        "capSaturated": false,
+        "estimatedStlMB": 27.091484,
+        "refusalReason": "budget 400000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.0010623452253639698,
+          "reachedBudget": true,
+          "sliverDelta": 1221,
+          "maxAspect3D": 5993719.571484158,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 5178.9000000059605,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 533204,
+          "resultErrorMm": 0.049556903541088104,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 631.1999999880791,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.0010623452253639698,
+          "reachedBudget": true,
+          "sliverDelta": 1221,
+          "maxAspect3D": 5993719.571484158,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1959.2000000029802,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 478922,
+          "resultErrorMm": 0.09911603480577469,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 763.5,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.0010623452253639698,
+          "reachedBudget": true,
+          "sliverDelta": 1221,
+          "maxAspect3D": 5993719.571484158,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1196.1000000089407,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.14017146825790405,
+          "reachedBudget": true,
+          "sliverDelta": 63,
+          "maxAspect3D": 160262.92022355687,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 477.69999998807907,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "CelticTriquetra",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 59.151,
+      "styleId": "CelticTriquetra",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 725508,
+        "deliveredTriangles": 725508,
+        "decimation": "refused",
+        "capScale": 1.4142135623730951,
+        "effectiveMaxSagMm": 0.07071067811865477,
+        "capSaturated": false,
+        "estimatedStlMB": 36.275484,
+        "refusalReason": "budget 499998 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 10.656758195595424
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.007041061297059059,
+          "reachedBudget": true,
+          "sliverDelta": 1986,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 1108.4000000059605,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 697950,
+          "resultErrorMm": 0.049556903541088104,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 662.8999999910593,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.007041061297059059,
+          "reachedBudget": true,
+          "sliverDelta": 1986,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 903.7000000029802,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 582654,
+          "resultErrorMm": 0.09911597520112991,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 578.8000000119209,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.007041061297059059,
+          "reachedBudget": true,
+          "sliverDelta": 1986,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 958.1999999880791,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.1284148097038269,
+          "reachedBudget": true,
+          "sliverDelta": 64,
+          "maxAspect3D": 1479.5831227319602,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 587,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "Voronoi",
+      "target": 400000,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 52.141,
+      "styleId": "Voronoi",
+      "budget": {
+        "requestedTriangles": 400000,
+        "builtTriangles": 582976,
+        "deliveredTriangles": 582976,
+        "decimation": "refused",
+        "capScale": 1.0905077326652577,
+        "effectiveMaxSagMm": 0.05452538663326289,
+        "capSaturated": false,
+        "estimatedStlMB": 29.148884,
+        "refusalReason": "budget 400000 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 28.90525206652593
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.003748450893908739,
+          "reachedBudget": true,
+          "sliverDelta": 2076,
+          "maxAspect3D": 437962.68810100865,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 818.5999999940395,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 557130,
+          "resultErrorMm": 0.049824777990579605,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 360.5,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.003748450893908739,
+          "reachedBudget": true,
+          "sliverDelta": 2076,
+          "maxAspect3D": 437962.68810100865,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 839.2000000029802,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 442346,
+          "resultErrorMm": 0.09964961558580399,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 453.79999999701977,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.003748450893908739,
+          "reachedBudget": true,
+          "sliverDelta": 2076,
+          "maxAspect3D": 437962.68810100865,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 833.5999999940395,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 400000,
+          "resultErrorMm": 0.12083882838487625,
+          "reachedBudget": true,
+          "sliverDelta": 107,
+          "maxAspect3D": 5664.800584228232,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 366.5,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "style": "Voronoi",
+      "target": 499998,
+      "pass": true,
+      "violations": [],
+      "elapsedS": 29.941,
+      "styleId": "Voronoi",
+      "budget": {
+        "requestedTriangles": 499998,
+        "builtTriangles": 676412,
+        "deliveredTriangles": 676412,
+        "decimation": "refused",
+        "capScale": 1,
+        "effectiveMaxSagMm": 0.05,
+        "capSaturated": false,
+        "estimatedStlMB": 33.820684,
+        "refusalReason": "budget 499998 unreachable without quality damage within 0.2mm (no-quality-safe-point, 6 attempts)"
+      },
+      "topo": {
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "orientationMismatches": 0
+      },
+      "quality": {
+        "sliverCount": 0,
+        "maxAspect3D": 47.25181249712592
+      },
+      "featDrop": 0,
+      "decimationAttempts": [
+        {
+          "errorAbsMm": 0.05,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.00013019819743931293,
+          "reachedBudget": true,
+          "sliverDelta": 2603,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 738.8000000119209,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.05,
+          "regularize": true,
+          "resultTriangles": 636896,
+          "resultErrorMm": 0.049824777990579605,
+          "reachedBudget": false,
+          "sliverDelta": -1,
+          "maxAspect3D": -1,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 486.79999999701977,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.00013019819743931293,
+          "reachedBudget": true,
+          "sliverDelta": 2603,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 779.7000000029802,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.1,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.09515085816383362,
+          "reachedBudget": true,
+          "sliverDelta": 120,
+          "maxAspect3D": 3965.772356890001,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 433.5,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": false,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.00013019819743931293,
+          "reachedBudget": true,
+          "sliverDelta": 2603,
+          "maxAspect3D": 1000000000,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 745.5999999940395,
+          "passed": false
+        },
+        {
+          "errorAbsMm": 0.2,
+          "regularize": true,
+          "resultTriangles": 499998,
+          "resultErrorMm": 0.09515085816383362,
+          "reachedBudget": true,
+          "sliverDelta": 120,
+          "maxAspect3D": 3965.772356890001,
+          "foldedDelta": -1,
+          "bndDelta": -1,
+          "nonManDelta": -1,
+          "orientDelta": -1,
+          "externalReject": null,
+          "elapsedMs": 406.29999999701977,
+          "passed": false
+        }
+      ]
+    }
+  ]
+}

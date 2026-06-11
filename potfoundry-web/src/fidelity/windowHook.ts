@@ -10,7 +10,9 @@ import { STYLE_REGISTRY } from '../styles/registry';
 import {
   getLastChainDebugData,
   getLastConformingAssemblyUT,
+  getLastConformingBudgetReport,
   getLastConformingCdtStats,
+  getLastConformingDecimationReport,
   getLastConformingFeatureResult,
   getLastConformingHelixWarp,
   getLastConformingOuterGrid,
@@ -18,6 +20,8 @@ import {
   getLastConformingOuterWallMask,
   getLastConformingTriangleSource,
 } from '../renderers/webgpu/ParametricExportComputer';
+import type { ExportBudgetReport } from '../renderers/webgpu/parametric/types';
+import type { DecimationAttempt } from '../renderers/webgpu/parametric/conforming';
 import { applyHelixWarp, type FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
 import type { CdtCellIncident } from '../renderers/webgpu/parametric/conforming/ConstrainedCellTriangulator';
 import { GpuSurfaceSampler } from '../renderers/webgpu/parametric/conforming/SurfaceSampler';
@@ -35,6 +39,8 @@ import {
   meshHash,
   seamBandTriangleQuality,
   topologyDiagnostics,
+  topologyMetric,
+  triangleQuality3D,
   triangleQualityDiagnostics,
   triangleQualityDistribution,
   triMinAngleAndAspect,
@@ -233,6 +239,15 @@ export interface PfFidelityApi {
    * the mesh is byte-identical.
    */
   diagnoseSeamBands(opts?: FidelitySeamBandDiagnosticOptions): Promise<FidelitySeamBandDiagnostics | null>;
+  /**
+   * Budget honesty + delivered-mesh quality in ONE generation: builds at the
+   * requested targetTriangles, then measures topology/quality DIRECTLY on the
+   * returned (delivered) mesh and reads the budget + feature stashes from the
+   * SAME build — one build per probe row instead of three independent
+   * generateMesh calls measuring meshes that are only same-by-assumption.
+   * Null when the conforming branch did not run.
+   */
+  diagnoseBudget(opts?: FidelityBudgetDiagnosticOptions): Promise<FidelityBudgetDiagnostics | null>;
   /** TEMP debug (revert): the OUTER-wall sub-mesh for off-DOM wireframe rendering. */
   _debugOuterMesh(targetTriangles?: number): Promise<{ vertices: Float32Array; indices: Uint32Array } | null>;
   /**
@@ -361,6 +376,23 @@ export interface FidelityFeatureDiagnosticOptions {
 
 export interface FidelityFeatureDiagnostics extends FeatureResolutionResult {
   styleId: string;
+}
+
+export interface FidelityBudgetDiagnosticOptions {
+  targetTriangles?: number;
+}
+
+/** Single-build budget-honesty row: verdict + delivered-mesh topo/quality/featDrop. */
+export interface FidelityBudgetDiagnostics {
+  styleId: string;
+  budget: ExportBudgetReport;
+  topo: { boundaryEdges: number; nonManifoldEdges: number; orientationMismatches: number };
+  quality: { sliverCount: number; maxAspect3D: number };
+  /** null = feature accounting unavailable on this build. */
+  featDrop: number | null;
+  /** Per-attempt ladder telemetry (which gate stage rejected each rung), or
+   *  null when the decimation branch did not run. Pure numbers — small. */
+  decimationAttempts: DecimationAttempt[] | null;
 }
 
 declare global {
@@ -685,6 +717,30 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       const ut = getLastConformingAssemblyUT();
       if (!ut || ut.length !== mesh.vertices.length) return null;
       return { styleId, ...seamBandTriangleQuality({ vertices: mesh.vertices, indices: mesh.indices }, ut) };
+    },
+    async diagnoseBudget(opts: FidelityBudgetDiagnosticOptions = {}): Promise<FidelityBudgetDiagnostics | null> {
+      const styleId = currentStyleId();
+      // ONE generation: the budget verdict, the feature stash, AND the
+      // topology/quality measurements all describe this same delivered mesh.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const budget = getLastConformingBudgetReport();
+      if (!budget) return null;
+      const view = { vertices: mesh.vertices, indices: mesh.indices };
+      const topo = topologyMetric(view, WELD_TOL_MM);
+      const q = triangleQuality3D(view);
+      return {
+        styleId,
+        budget,
+        topo: {
+          boundaryEdges: topo.boundaryEdges,
+          nonManifoldEdges: topo.nonManifoldEdges,
+          orientationMismatches: topo.orientationMismatches,
+        },
+        quality: { sliverCount: q.sliverCount, maxAspect3D: q.maxAspect3D },
+        featDrop: getLastConformingFeatureResult()?.dropped ?? null,
+        decimationAttempts: getLastConformingDecimationReport()?.attempts ?? null,
+      };
     },
     async _debugOuterMesh(targetTriangles?: number) {
       const mesh = await deps.generateMesh(targetTriangles);

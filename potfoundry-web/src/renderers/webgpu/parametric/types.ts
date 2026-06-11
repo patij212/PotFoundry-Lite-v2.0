@@ -136,6 +136,37 @@ export interface PipelineStageConfig {
     debugDiagnostics?: boolean;
 }
 
+/**
+ * Honest budget accounting for the conforming export. Refusal is NOT an error:
+ * the delivered mesh is always watertight and sliver-free; 'refused' only means
+ * the requested triangle budget could not be met without exceeding the
+ * decimation error ceiling or damaging quality/features.
+ */
+export interface ExportBudgetReport {
+    /** Budget the caller asked for (targetTriangles / dialog MB slider). */
+    requestedTriangles: number;
+    /** POST-CAP assembled count (cap-mode sizing may already have coarsened
+     *  toward the budget at capScale > 1 — this is NOT the sag-floor natural). */
+    builtTriangles: number;
+    /** Triangle count of the mesh actually returned. */
+    deliveredTriangles: number;
+    decimation: 'not-needed' | 'applied' | 'refused';
+    /** Present when decimation === 'refused' (reason + attempt count). */
+    refusalReason?: string;
+    /** meshopt result error, ABSOLUTE mm, when decimation === 'applied'. */
+    decimationErrorMm?: number;
+    /** Max pre-triangulation sizing scale across walls (1 = sag floor kept). */
+    capScale: number;
+    /** capScale x profile sag — the chord error the CAP may already have spent
+     *  in low-curvature regions. 'Full detail' wording requires capScale === 1. */
+    effectiveMaxSagMm: number;
+    /** Cap hit MAX_BUDGET_SCALE and still could not reach budget. */
+    capSaturated: boolean;
+    /** BINARY-STL-EQUIVALENT size of the DELIVERED mesh: (tris*50+84)/1e6.
+     *  The dialog's 3MF default compresses several-fold smaller. */
+    estimatedStlMB: number;
+}
+
 export interface ParametricExportResult {
     mesh: MeshData;
     computeTimeMs: number;
@@ -162,6 +193,8 @@ export interface ParametricExportResult {
     refinementSummary?: RefinementSummary;
     /** Per-phase pipeline diagnostics for the ExportDialog debug tab. */
     pipelineDiagnostics?: PipelineDiagnostics;
+    /** Budget honesty report (conforming path; present when a budget was given). */
+    budgetReport?: ExportBudgetReport;
 }
 
 /**

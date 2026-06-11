@@ -137,6 +137,27 @@ export interface ConformingWallOptions {
   creaseLines?: FeatureLine[];
 }
 
+/**
+ * Telemetry from the budget-scale search (budget-honesty channel). Makes the
+ * cap's three failure modes (MAX_BUDGET_SCALE saturation; scale-independent
+ * floors — minUniformLevel crease lattice, featureLevel refinement,
+ * creaseRefine, pinBoundaryLevel + balancing; leaves→tris slack) OBSERVABLE
+ * instead of inferred, and supplies the chosenScale the export's honesty
+ * report needs (effectiveMaxSagMm = chosenScale × profile sag). Metadata only
+ * — the search behaviour and the emitted mesh are byte-identical.
+ */
+export interface WallBudgetTelemetry {
+  /** Leaves at scale=1 — the sag floor INCLUDING the scale-independent floors. */
+  floorLeaves: number;
+  /** Scale actually chosen ([1, MAX_BUDGET_SCALE] in 'cap' mode; <=1 in 'target'). */
+  chosenScale: number;
+  /** Leaf count at the chosen scale. */
+  leavesAtChosen: number;
+  /** 'cap' mode only: leavesAt(MAX_BUDGET_SCALE) >= targetLeaves — coarsening is
+   *  SATURATED; the residual gap is the decimate-or-refuse decision's input. */
+  capSaturated: boolean;
+}
+
 /** Conforming wall mesh result with uniform shared boundary rings. */
 export interface ConformingWallResult {
   /** Packed (u, t, surfaceId) per vertex — exact positions, no interpolation. */
@@ -162,6 +183,11 @@ export interface ConformingWallResult {
    * Metadata only — the triangle content/order is untouched.
    */
   triangleSource?: Uint8Array;
+  /**
+   * Present when a triangle budget drove a sizing-scale search
+   * ({@link searchBudgetScale}). Metadata only — the mesh is unchanged.
+   */
+  budget?: WallBudgetTelemetry;
 }
 
 const RING_EPS = 1e-6;
@@ -253,7 +279,7 @@ function searchBudgetScale(
   mode: 'target' | 'cap',
   featureRefine?: FeatureRefineSpec,
   creaseRefine?: { intersects: FeatureRefineSpec['intersects'] },
-): number {
+): { scale: number; telemetry: WallBudgetTelemetry } {
   const targetLeaves = targetTriangles / TRIS_PER_LEAF;
   const leavesAt = (scale: number): number =>
     buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, scale, featureRefine, false, creaseRefine).leafCount();
@@ -263,39 +289,73 @@ function searchBudgetScale(
   if (mode === 'cap') {
     // Cap: never inflate. Floor already within budget ⇒ keep it (the de-noised
     // sag mesh, e.g. a smooth pot, stays small). Over budget ⇒ coarsen toward it.
-    if (floorLeaves <= targetLeaves) return 1;
-    if (leavesAt(MAX_BUDGET_SCALE) >= targetLeaves) return MAX_BUDGET_SCALE; // can't reach; coarsest allowed
+    if (floorLeaves <= targetLeaves) {
+      return {
+        scale: 1,
+        telemetry: { floorLeaves, chosenScale: 1, leavesAtChosen: floorLeaves, capSaturated: false },
+      };
+    }
+    const coarsestLeaves = leavesAt(MAX_BUDGET_SCALE);
+    if (coarsestLeaves >= targetLeaves) {
+      // Can't reach the budget; coarsest allowed — coarsening is SATURATED.
+      return {
+        scale: MAX_BUDGET_SCALE,
+        telemetry: { floorLeaves, chosenScale: MAX_BUDGET_SCALE, leavesAtChosen: coarsestLeaves, capSaturated: true },
+      };
+    }
     let lo = 1; // more leaves (floor)
     let hi = MAX_BUDGET_SCALE; // fewer leaves (coarsest allowed)
     let best = 1;
+    let lastCount = floorLeaves;
     for (let i = 0; i < BUDGET_SEARCH_STEPS; i++) {
       const mid = Math.sqrt(lo * hi);
       const c = leavesAt(mid);
       best = mid;
+      lastCount = c;
       if (Math.abs(c - targetLeaves) / targetLeaves <= BUDGET_TOLERANCE) break;
       if (c > targetLeaves) lo = mid; // still too many ⇒ coarsen more ⇒ raise scale
       else hi = mid;
     }
-    return best;
+    return {
+      scale: best,
+      telemetry: { floorLeaves, chosenScale: best, leavesAtChosen: lastCount, capSaturated: false },
+    };
   }
 
   // 'target': scale=1 is the FEWEST leaves. Budget at/below the floor floors at
   // scale=1 (sag preserved); above the floor refines up toward it.
-  if (targetLeaves <= floorLeaves) return 1;
-  if (leavesAt(MIN_BUDGET_SCALE) <= targetLeaves) return MIN_BUDGET_SCALE; // maxLevel-capped; closest
+  if (targetLeaves <= floorLeaves) {
+    return {
+      scale: 1,
+      telemetry: { floorLeaves, chosenScale: 1, leavesAtChosen: floorLeaves, capSaturated: false },
+    };
+  }
+  const finestLeaves = leavesAt(MIN_BUDGET_SCALE);
+  if (finestLeaves <= targetLeaves) {
+    // maxLevel-capped; closest
+    return {
+      scale: MIN_BUDGET_SCALE,
+      telemetry: { floorLeaves, chosenScale: MIN_BUDGET_SCALE, leavesAtChosen: finestLeaves, capSaturated: false },
+    };
+  }
 
   let lo = MIN_BUDGET_SCALE; // more leaves
   let hi = 1; // fewer leaves (floor)
   let best = 1;
+  let lastCount = floorLeaves;
   for (let i = 0; i < BUDGET_SEARCH_STEPS; i++) {
     const mid = Math.sqrt(lo * hi); // geometric midpoint (scale is multiplicative)
     const c = leavesAt(mid);
     best = mid;
+    lastCount = c;
     if (Math.abs(c - targetLeaves) / targetLeaves <= BUDGET_TOLERANCE) break;
     if (c > targetLeaves) lo = mid; // too many leaves ⇒ coarsen ⇒ raise scale
     else hi = mid;
   }
-  return best;
+  return {
+    scale: best,
+    telemetry: { floorLeaves, chosenScale: best, leavesAtChosen: lastCount, capSaturated: false },
+  };
 }
 
 /**
@@ -543,7 +603,7 @@ export function buildConformingWall(
     creaseRefine = { intersects: buildFeatureIntersector(opts.creaseLines as FeatureLine[]) };
   }
 
-  const targetScale =
+  const search =
     opts.targetTriangles !== undefined && opts.targetTriangles > 0
       ? searchBudgetScale(
           sampler,
@@ -554,7 +614,8 @@ export function buildConformingWall(
           featureRefine,
           creaseRefine,
         )
-      : 1;
+      : undefined;
+  const targetScale = search?.scale ?? 1;
 
   const mesh = buildWallMeshAtScale(
     sampler, opts, pinBoundaryLevel, targetScale, clippedFeatures, featureRefine, creaseRefine,
@@ -594,5 +655,7 @@ export function buildConformingWall(
     // Stage-0 instrument: per-triangle emission provenance (both triangulators
     // populate it). Metadata only — the mesh is unchanged.
     triangleSource: mesh.triangleSource,
+    // Budget-honesty telemetry: present only when a budget drove the search.
+    budget: search?.telemetry,
   };
 }

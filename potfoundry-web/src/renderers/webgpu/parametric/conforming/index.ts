@@ -34,6 +34,7 @@ export { buildConformingOuterWall } from './ConformingOuterWall';
 export type {
   ConformingWallOptions,
   ConformingWallResult,
+  WallBudgetTelemetry,
 } from './ConformingWall';
 export { buildConformingWall } from './ConformingWall';
 export { annulusStrip, discFan } from './RingStrip';
@@ -68,5 +69,11 @@ export type { HelixWarp, HelixGridChoice } from './CreaseHelixWarp';
 export { chooseHelixGrid, applyHelixWarp } from './CreaseHelixWarp';
 export type { CellCeilingSummary } from './FShearDiagnostics';
 export { classifyCellCeiling } from './FShearDiagnostics';
-export type { DecimateConformingOptions } from './decimateConforming';
+export type {
+  DecimateConformingOptions,
+  DecimateConformingResult,
+  DecimationReport,
+  DecimationAttempt,
+  DecimationInputDefects,
+} from './decimateConforming';
 export { decimateConforming, isConformingDecimationAvailable } from './decimateConforming';

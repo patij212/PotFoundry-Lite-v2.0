@@ -64,6 +64,7 @@ import {
     chooseHelixGrid,
     applyHelixWarp,
     decimateConforming,
+    type DecimationReport,
     type FeatureUTVertex,
     type FeatureResolutionResult,
     type HelixWarp,
@@ -194,6 +195,7 @@ export type { FeaturePoint, FeatureKind, ChainDebugLine, ChainDebugData, PeakDeb
 import type {
     ParametricExportParams,
     ParametricExportResult,
+    ExportBudgetReport,
     ChainDebugData,
     ChainDebugLine,
     PeakDebugData,
@@ -294,8 +296,38 @@ let LAST_CONFORMING_HELIX_WARP: HelixWarp | null = null;
  */
 let LAST_CONFORMING_ASSEMBLY_UT: Float32Array | null = null;
 
+/**
+ * Budget-honesty report from the most recent CONFORMING whole-mesh build (null
+ * on the legacy/parametric path): requested vs built vs delivered triangles,
+ * the decimation verdict ('not-needed' | 'applied' | 'refused' + reason), the
+ * pre-triangulation cap's fidelity spend (capScale × profile sag), and the
+ * binary-STL-equivalent size estimate. Mirrors the LAST_CONFORMING_* stash
+ * pattern so the fidelity hook and the export hook read the verdict
+ * cause-accurately instead of inferring it from triangle counts.
+ */
+let LAST_CONFORMING_BUDGET_REPORT: ExportBudgetReport | null = null;
+
+/**
+ * Full decimation ladder report (per-attempt telemetry incl. which gate stage
+ * rejected each rung) from the most recent CONFORMING build, or null when the
+ * decimation branch did not run. Debuggability companion to
+ * LAST_CONFORMING_BUDGET_REPORT — the fidelity hook surfaces the attempts so a
+ * refusal is attributable to its rejecting gate stage, never guessed.
+ */
+let LAST_CONFORMING_DECIMATION_REPORT: DecimationReport | null = null;
+
 export function getLastChainDebugData(): ChainDebugData | null {
     return LAST_CHAIN_DEBUG_DATA;
+}
+
+/** Most recent conforming-branch budget-honesty report, or null. */
+export function getLastConformingBudgetReport(): ExportBudgetReport | null {
+    return LAST_CONFORMING_BUDGET_REPORT;
+}
+
+/** Most recent conforming-branch decimation ladder report, or null. */
+export function getLastConformingDecimationReport(): DecimationReport | null {
+    return LAST_CONFORMING_DECIMATION_REPORT;
 }
 
 /** Most recent conforming-branch feature-resolution result, or null. */
@@ -1931,6 +1963,10 @@ export class ParametricExportComputer {
         // Same lifecycle for the pre-warp assembly (u,t,surfaceId) copy (Stage-0):
         // a stale copy must never be paired with this run's mesh vertices.
         LAST_CONFORMING_ASSEMBLY_UT = null;
+        // Same lifecycle for the budget-honesty report: a stale verdict must
+        // never be attributed to a run that took the legacy path.
+        LAST_CONFORMING_BUDGET_REPORT = null;
+        LAST_CONFORMING_DECIMATION_REPORT = null;
 
         const requestedProfile: QualityProfileName = params.qualityProfile ?? 'standard';
         const effectiveProfileName = profileForAttempt(requestedProfile, 0);
@@ -2301,6 +2337,10 @@ export class ParametricExportComputer {
                 const qOv = globalThis as unknown as {
                     __pfConformingBudget?: number; __pfConformingMaxSag?: number;
                     __pfConformingMinEdge?: number; __pfConformingMaxLevel?: number;
+                    // Decimation-ladder levers (quality-bounded budget enforcement):
+                    // absolute-mm error seed (default = profile sag) and honesty
+                    // ceiling (default 0.2mm ≈ one FDM layer height).
+                    __pfDecimateErrMm?: number; __pfDecimateErrCeilMm?: number;
                 };
                 // Fidelity + budget are PROFILE-DRIVEN. This conforming path is the
                 // high-fidelity EXPORT (not the live preview), so it DEFAULTS to the
@@ -2629,7 +2669,11 @@ export class ParametricExportComputer {
                 // their (now-warped) (u,t) directly, so a pinned crease reads as a
                 // column ON the locus. Reuse the graph built for the warp; rebuild it
                 // only if that extraction failed. Failures here must NOT break the
-                // export, so guard defensively.
+                // export, so guard defensively. The (re)built graph is HOISTED to
+                // featureGraphForGate so the decimation feature gate below reuses it
+                // — if no graph is obtainable, decimation refuses conservatively
+                // instead of shipping an unchecked reduction.
+                let featureGraphForGate: ReturnType<typeof extractAnalyticFeatures> | null = null;
                 try {
                     let graph = featureGraph;
                     if (!graph) {
@@ -2643,6 +2687,7 @@ export class ParametricExportComputer {
                             { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb },
                         );
                     }
+                    featureGraphForGate = graph;
                     const outerUT: FeatureUTVertex[] = [];
                     for (let i = 0; i < asm.vertices.length; i += 3) {
                         if (asm.vertices[i + 2] < 0.5) {
@@ -2655,26 +2700,112 @@ export class ParametricExportComputer {
                     console.warn(`[CONFORMING-FULL] feature accounting failed: ${String(err)}`);
                 }
 
-                // ── HARD triangle-budget ceiling ─────────────────────────────────
-                // The conforming sizing field treats `conformingBudget` as a SOFT
-                // guide (it never coarsens below the sag-required mesh), so at
-                // extreme dimensions the assembled mesh can blow well past it. Turn
-                // it into a HARD ceiling: when triCount exceeds the budget, run a
-                // border-locking meshoptimizer simplification (lazy WASM, degrades
-                // to a no-op if unavailable) to drop the count to ≤ budget while
-                // keeping the surface watertight/oriented. At DEFAULT dims triCount
-                // ≤ budget, so this is a no-op and the output stays byte-identical.
+                // ── Budget honesty: HARD ceiling via QUALITY-BOUNDED decimation ──
+                // The pre-triangulation CAP (searchBudgetScale 'cap') is the primary
+                // budget actuator; its telemetry (capScale/capSaturated) is threaded
+                // through asm.budgetReport. Any residual gap is closed by the
+                // deterministic absolute-error decimation ladder — gated per
+                // candidate (no NEW slivers/folds/topology defects, featDrop=0 on
+                // the SURVIVING vertex set) — or REFUSED honestly: the export then
+                // SUCCEEDS with the natural watertight mesh plus a structured
+                // ExportBudgetReport and a warning (never a throw, never a damaged
+                // mesh, never a silent no-op). At DEFAULT dims + default budget
+                // triCount ≤ budget, so this is verdict 'not-needed' and the output
+                // stays byte-identical.
+                const estStlMB = (t: number): number => (t * 50 + 84) / 1_000_000;
+                const capScale = Math.max(
+                    asm.budgetReport?.outer?.chosenScale ?? 1,
+                    asm.budgetReport?.inner?.chosenScale ?? 1,
+                );
                 let conformingMesh: MeshData = {
                     vertices: pos3D,
                     indices: asm.indices,
                     triangleCount: triCount,
                     vertexCount: vCount,
                 };
+                let budgetReport: ExportBudgetReport = {
+                    requestedTriangles: conformingBudget,
+                    builtTriangles: triCount,
+                    deliveredTriangles: triCount,
+                    decimation: 'not-needed',
+                    capScale,
+                    effectiveMaxSagMm: capScale * qMaxSag,
+                    capSaturated: (asm.budgetReport?.outer?.capSaturated ?? false)
+                        || (asm.budgetReport?.inner?.capSaturated ?? false),
+                    estimatedStlMB: estStlMB(triCount),
+                };
                 if (triCount > conformingBudget) {
-                    conformingMesh = await decimateConforming(conformingMesh, {
-                        target: conformingBudget,
-                    });
+                    if (!featureGraphForGate) {
+                        // Feature coverage of a decimated candidate would be
+                        // unmeasurable — refuse conservatively rather than ship an
+                        // unchecked reduction. (LAST_CONFORMING_FEATURE_RESULT is
+                        // already null from the accounting catch — honest.)
+                        budgetReport = {
+                            ...budgetReport,
+                            decimation: 'refused',
+                            refusalReason: 'feature-gate-unmeasurable: analytic feature extraction failed',
+                        };
+                    } else {
+                        const decErrSeed = (typeof qOv.__pfDecimateErrMm === 'number' && qOv.__pfDecimateErrMm > 0)
+                            ? qOv.__pfDecimateErrMm
+                            : qMaxSag;
+                        const decErrCeil = (typeof qOv.__pfDecimateErrCeilMm === 'number' && qOv.__pfDecimateErrCeilMm > 0)
+                            ? qOv.__pfDecimateErrCeilMm
+                            : 0.2;
+                        const gateGraph = featureGraphForGate;
+                        // Closure stash: featDrop of the candidate the gate last
+                        // accepted (the accepted candidate is always the LAST gate
+                        // invocation — acceptance returns immediately).
+                        let gateFeatureResult: FeatureResolutionResult | null = null;
+                        const dec = await decimateConforming(conformingMesh, {
+                            target: conformingBudget,
+                            errorAbsMm: decErrSeed,
+                            errorCeilingMm: decErrCeil,
+                            validateCandidate: (idx) => {
+                                // RAW pre-compaction ids — parallel to asm.vertices
+                                // (the (u,t,surfaceId) stash; pos3D[j] is the GPU
+                                // evaluation of asm.vertices[j]). NEVER compacted ids.
+                                const used = new Uint8Array(vCount);
+                                for (let k = 0; k < idx.length; k++) used[idx[k]] = 1;
+                                const outerUT: FeatureUTVertex[] = [];
+                                for (let j = 0; j < vCount; j++) {
+                                    if (used[j] === 1 && asm.vertices[j * 3 + 2] < 0.5) {
+                                        outerUT.push({ u: asm.vertices[j * 3], t: asm.vertices[j * 3 + 1] });
+                                    }
+                                }
+                                gateFeatureResult = measureFeatureResolution(gateGraph, outerUT);
+                                return gateFeatureResult.dropped > 0
+                                    ? `featureDrop=${gateFeatureResult.dropped} post-decimation`
+                                    : null;
+                            },
+                        });
+                        LAST_CONFORMING_DECIMATION_REPORT = dec.report;
+                        if (dec.report.applied) {
+                            conformingMesh = dec.mesh;
+                            // featDrop must describe the SHIPPED mesh — reuse the
+                            // gate's own measurement of the accepted candidate.
+                            LAST_CONFORMING_FEATURE_RESULT = gateFeatureResult;
+                            budgetReport = {
+                                ...budgetReport,
+                                deliveredTriangles: dec.mesh.triangleCount,
+                                decimation: 'applied',
+                                decimationErrorMm: dec.report.attempts.find((a) => a.passed)?.resultErrorMm,
+                                estimatedStlMB: estStlMB(dec.mesh.triangleCount),
+                            };
+                        } else if (dec.report.refused) {
+                            const why = dec.report.reason === 'wasm-unavailable' || dec.report.reason === 'simplify-threw'
+                                ? `decimation unavailable (${dec.report.reason})`
+                                : `budget ${conformingBudget} unreachable without quality damage within ` +
+                                  `${dec.report.errorCeilingMm}mm (${dec.report.reason}, ${dec.report.attempts.length} attempts)`;
+                            budgetReport = {
+                                ...budgetReport,
+                                decimation: 'refused',
+                                refusalReason: why,
+                            };
+                        }
+                    }
                 }
+                LAST_CONFORMING_BUDGET_REPORT = budgetReport;
 
                 // Validation here is REPORTING, not gating: the mesh is watertight-
                 // by-construction (shared rings, no repair). An O(N) manifold/
@@ -2685,10 +2816,22 @@ export class ParametricExportComputer {
                 const validationSummary = summarizeConformingValidation(
                     conformingMesh.vertices, conformingMesh.indices,
                 );
+                if (budgetReport.decimation === 'refused') {
+                    // Honest, reason-derived warning; `valid` stays MEASURED (the
+                    // natural mesh is clean, the export proceeds oversize). Renders
+                    // via the existing ExportDialog warnings panel.
+                    validationSummary.warnings.push(
+                        `triangle budget not met: ${budgetReport.refusalReason}; ` +
+                        `exporting ${triCount.toLocaleString()} tris (~${budgetReport.estimatedStlMB.toFixed(0)} MB as binary STL)`,
+                    );
+                }
                 console.warn(
                     `[CONFORMING-FULL] ${params.styleId} ` +
                     `tris=${conformingMesh.triangleCount} (built=${triCount}) ` +
                     `budget=${conformingBudget} verts=${conformingMesh.vertexCount} nRing=${nRing} ` +
+                    `dec=${budgetReport.decimation} ` +
+                    `decErrMm=${budgetReport.decimationErrorMm?.toFixed(4) ?? 'n/a'} ` +
+                    `capScale=${capScale.toFixed(2)} capSat=${budgetReport.capSaturated} ` +
                     `uWarp=${creaseChoice.warp.isIdentity ? 'id' : `L${creaseChoice.level}`} ` +
                     `tWarp=${creaseTChoice.warp.isIdentity ? 'id' : `L${creaseTChoice.level}`} ` +
                     `hWarp=${helixChoice.warp.isIdentity ? 'id' : `L${helixChoice.level}`} ` +
@@ -2714,6 +2857,7 @@ export class ParametricExportComputer {
                         uCurvatureRange: [0, 0],
                     },
                     validationSummary,
+                    budgetReport,
                 };
             }
 
