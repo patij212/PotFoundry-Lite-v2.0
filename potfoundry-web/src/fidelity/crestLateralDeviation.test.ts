@@ -316,6 +316,118 @@ describe('crestLateralDeviation — z-plane slicer (synthetic mesh, known deviat
     expect(r.totalCrestSamples).toBe(crest.sampleCount);
     expect(r.totalValleySamples).toBe(valley.sampleCount);
   });
+
+  it('T8: NaN mesh vertices are rejected LOUDLY — nonFiniteCount > 0, max/rms stay finite and correct for the unpoisoned crest', () => {
+    const R0 = 50;
+    const H = 40;
+    const nU = 96;
+    const col = 30;
+    const D = 0.3; // mm constant lateral offset of the CLEAN crest
+    const mesh = ridgeCylinderMesh(R0, H, nU, 81, [
+      { col, r: 52, dTheta: () => D / 52 },
+    ]);
+    const m = toMesh(mesh);
+    // Poison the x coordinate of every vertex in the NEIGHBOURING column —
+    // strictly inside the θ-window, where a NaN intersection point passes the
+    // window filter (|NaN| > w is false), captures `best`, and no finite point
+    // displaces it (p.r > NaN is false): maxMm would silently read 0 (false
+    // PASS). The harness deliberately measures validator-rejected meshes
+    // (returnInvalidMesh: true), so pathological GPU output is in scope.
+    for (let j = 0; j < 81; j++) m.vertices[(j * nU + col + 1) * 3] = NaN;
+    const ridge: TrueRidge = {
+      branches: [straightBranch('crest', (TAU * col) / nU, 0, H, 0.2)],
+      refErrBoundMm: 0,
+    };
+    const r = crestLateralDeviation(m, ridge, { sliceSpacingMm: 0.25 });
+    // LOUD: the rejects are counted (absolute count, house style)…
+    expect(r.nonFiniteCount).toBeGreaterThan(0);
+    // …and the unpoisoned crest still measures finite and correct.
+    expect(Number.isFinite(r.worstCrestMaxMm)).toBe(true);
+    expect(Number.isFinite(r.worstCrestRmsMm)).toBe(true);
+    const b = r.branches[0];
+    expect(b.sampleCount).toBe(b.sliceCount);
+    expect(b.maxMm).toBeGreaterThan(0.98 * D);
+    expect(b.maxMm).toBeLessThan(1.02 * D);
+    expect(b.rmsMm).toBeGreaterThan(0.98 * D);
+    expect(b.rmsMm).toBeLessThan(1.02 * D);
+  });
+
+  it('T9: vertex-exactly-on-plane emission — every slice plane coincident with a vertex row, no missing apex, correct deviation', () => {
+    const R0 = 50;
+    const H = 40;
+    const nU = 96;
+    const col = 12;
+    const D = 0.25; // mm constant lateral offset
+    // 81 rows over H=40 put vertex rows at EXACT 0.5mm steps (float32-exact);
+    // sliceSpacingMm=1 puts every plane at zMin + (k+0.5)·1 = 0.5, 1.5, …,
+    // 39.5 — exactly ON a vertex row, so the pool is fed SOLELY by the
+    // z0 === z vertex-emission path (interpolated crossings are impossible:
+    // every edge either lies in the plane's row or starts/ends on it).
+    const mesh = ridgeCylinderMesh(R0, H, nU, 81, [
+      { col, r: 52, dTheta: () => D / 52 },
+    ]);
+    const ridge: TrueRidge = {
+      branches: [straightBranch('crest', (TAU * col) / nU, 0, H, 0.15)],
+      refErrBoundMm: 0,
+    };
+    const r = crestLateralDeviation(toMesh(mesh), ridge, { sliceSpacingMm: 1 });
+    expect(r.sliceCount).toBe(40);
+    const b = r.branches[0];
+    // No missing apex: every on-vertex plane still yields a sample.
+    expect(b.sliceCount).toBe(40);
+    expect(b.sampleCount).toBe(40);
+    // Correct deviation; for a constant offset rms === max, so duplicated
+    // emissions of the same apex cannot skew either statistic.
+    expect(b.maxMm).toBeGreaterThan(0.98 * D);
+    expect(b.maxMm).toBeLessThan(1.02 * D);
+    expect(b.rmsMm).toBeGreaterThan(0.98 * D);
+    expect(b.rmsMm).toBeLessThan(1.02 * D);
+  });
+
+  it('T10: chord-interior valley foot — the true radial minimum mid-chord is found with the known analytic deviation', () => {
+    const R = 50;
+    const phi = 0.3; // chord half-angle (rad)
+    const delta = 0.1; // rad — known lateral offset of the analytic valley
+    const H = 10;
+    // One vertical rectangle (two triangles) spanning the chord between
+    // θ=−φ and θ=+φ at radius R. Each z-slice's INTERSECTION points are the
+    // two chord endpoints (r = R, outside the window) plus one shared
+    // diagonal point that wanders along the chord with z — but the true
+    // radial minimum r = R·cos(φ) at θ = 0 lies strictly INSIDE the chord:
+    // only the interior-foot refinement can supply it on every slice.
+    const ax = R * Math.cos(-phi);
+    const ay = R * Math.sin(-phi);
+    const bx = R * Math.cos(phi);
+    const by = R * Math.sin(phi);
+    const verts = new Float32Array([
+      ax, ay, 0, // A0
+      bx, by, 0, // B0
+      ax, ay, H, // A1
+      bx, by, H, // B1
+    ]);
+    const idx = new Uint32Array([0, 1, 2, 1, 3, 2]);
+    const ridge: TrueRidge = {
+      branches: [straightBranch('valley', delta, 0, H, 0.15)],
+      refErrBoundMm: 0,
+    };
+    const r = crestLateralDeviation({ vertices: verts, indices: idx }, ridge, {
+      sliceSpacingMm: 0.25,
+    });
+    expect(r.valleyCount).toBe(1);
+    const b = r.branches[0];
+    expect(b.kind).toBe('valley');
+    // The interior foot covers EVERY slice (the endpoints are window-excluded
+    // and the diagonal point leaves the window on most slices).
+    expect(b.sliceCount).toBe(40);
+    expect(b.sampleCount).toBe(40);
+    // Known analytic value: foot at θ=0, r=R·cosφ; valley locus at θ=δ ⇒
+    // |d| = R·cosφ·δ (constant-θ branch ⇒ slope term 1).
+    const expected = R * Math.cos(phi) * delta;
+    expect(r.worstValleyMaxMm).toBeGreaterThan(0.995 * expected);
+    expect(r.worstValleyMaxMm).toBeLessThan(1.005 * expected);
+    expect(b.rmsMm).toBeGreaterThan(0.995 * expected);
+    expect(b.rmsMm).toBeLessThan(1.005 * expected);
+  });
 });
 
 // ── (6): SuperformulaBlossom closed form vs brute-force f64 sfRf ─────────────
@@ -411,6 +523,31 @@ describe('sfClosedFormCrestLoci — closed form vs brute-force argmax of sfRf', 
     for (let k = 0; k < 4; k++) {
       expect(Math.abs(zMins[6 + k] - expectedBirths[k])).toBeLessThan(1e-3);
     }
+  });
+
+  it('T11: pathological externally-supplied m — non-finite m returns EMPTY, huge m is CAPPED (no hang)', () => {
+    // m = Infinity must be honestly empty (no loci are computable), fast.
+    const pInf = sfbPacked();
+    pInf[1] = Infinity;
+    pInf[2] = Infinity;
+    expect(sfClosedFormCrestLoci(pInf, 0.5)).toEqual([]);
+    expect(sfClosedFormParamRidge(pInf).branches).toEqual([]);
+
+    // m = 1e8 must be capped at the documented jMax (4096-class) instead of
+    // iterating ~1e8 times — the window hook feeds live store opts, so the
+    // loop bound is externally supplied.
+    const pHuge = sfbPacked();
+    pHuge[1] = 1e8;
+    pHuge[2] = 1e8;
+    const start = performance.now();
+    const loci = sfClosedFormCrestLoci(pHuge, 0.5);
+    const ridge = sfClosedFormParamRidge(pHuge, { tSamples: 33 });
+    const elapsedMs = performance.now() - start;
+    expect(loci.length).toBeGreaterThan(0);
+    expect(loci.length).toBeLessThanOrEqual(4096);
+    expect(ridge.branches.length).toBeGreaterThan(0);
+    expect(ridge.branches.length).toBeLessThanOrEqual(4096);
+    expect(elapsedMs).toBeLessThan(2000);
   });
 });
 

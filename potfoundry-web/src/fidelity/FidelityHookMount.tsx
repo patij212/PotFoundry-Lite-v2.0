@@ -76,13 +76,19 @@ export function FidelityHookMount(): null {
     // Live style/geometry state for the analytic true-ridge construction
     // (diagnoseCrestLateralDeviation). r0 = mean wall radius — the radius
     // SCALE only (ridge loci are r0-independent; r0 keeps the f64 mirror's
-    // prominence gate in physical mm).
+    // prominence gate in physical mm). The spin/twist params mirror what
+    // production useExport.buildStyleOptions injects into the style functions
+    // — the diagnostic refuses (null) when they are non-zero, because its
+    // analytic ridge is solved spin-free.
     getStyleState: () => {
       const s = useAppStore.getState();
       return {
         opts: { ...(s.style.opts ?? {}) } as Record<string, number>,
         H: s.geometry.H,
         r0: (s.geometry.top_od + s.geometry.bottom_od) / 4,
+        spinTurns: s.geometry.spinTurns,
+        spinPhaseDeg: s.geometry.spinPhase,
+        spinCurveExp: s.geometry.spinCurve,
       };
     },
   };
@@ -112,7 +118,11 @@ export function FidelityHookMount(): null {
       isReferenceAvailable: () => depsRef.current.isReferenceAvailable(),
       generateMesh: (n) => depsRef.current.generateMesh(n),
       generateReference: () => depsRef.current.generateReference(),
-      getStyleState: () => depsRef.current.getStyleState?.() ?? { opts: {}, H: 0, r0: 0 },
+      // Forward absence HONESTLY: no fabricated `{ opts: {}, H: 0, r0: 0 }`
+      // fallback — an all-zeros "pot" would read as a perfect (all-zero)
+      // deviation result, inverting the documented null contract. When the
+      // getter is missing, diagnoseCrestLateralDeviation returns null.
+      getStyleState: () => depsRef.current.getStyleState?.() ?? null,
     });
     return () => {
       delete window.__pfFidelity;

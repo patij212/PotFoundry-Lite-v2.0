@@ -136,10 +136,23 @@ export interface FidelityHookDeps {
    * Live style + geometry state for analytic true-ridge construction
    * (diagnoseCrestLateralDeviation): the current style's raw opts (snake_case
    * registry keys, packed via buildStyleParamPayload exactly like production)
-   * plus pot height and a representative base radius for the f64 CPU radius
-   * mirror. Optional — the diagnostic returns null without it.
+   * plus pot height, a representative base radius for the f64 CPU radius
+   * mirror, and the production spin/twist params (spinTurns/spinPhaseDeg/
+   * spinCurveExp — useExport.buildStyleOptions injects these into the style
+   * functions, so the diagnostic must REFUSE to measure when they are
+   * non-zero rather than emit confident wrong numbers). Optional, and may
+   * return null when the state is unavailable — the diagnostic then returns
+   * null per its contract. NEVER substitute a fabricated default state (an
+   * all-zeros "pot" reads as a perfect result, inverting the null contract).
    */
-  getStyleState?: () => { opts: Record<string, number>; H: number; r0: number };
+  getStyleState?: () => {
+    opts: Record<string, number>;
+    H: number;
+    r0: number;
+    spinTurns: number;
+    spinPhaseDeg: number;
+    spinCurveExp: number;
+  } | null;
 }
 
 export interface PfFidelityApi {
@@ -246,9 +259,18 @@ export interface PfFidelityApi {
    * percent anywhere), plus slice/sample counts for coverage gating. Honors
    * the `__pfReferenceDenseRes`/`__pfReferenceBicubic` reference levers (same
    * selection as diagnoseSerration). Null on the legacy/parametric path (no
-   * conforming outer-wall stash) or when the mount provided no style-state
-   * getter. Run at high AND ultra: a staircase HALVES when density doubles, a
-   * true crest defect does not — the density-independence discriminator.
+   * conforming outer-wall stash); when the mount provided no style-state
+   * getter or it returned null (absence is forwarded HONESTLY — never a
+   * fabricated all-zeros state); when the pot height is non-finite or ≤ 0;
+   * or when spin/twist is active (spinTurns ≠ 0 or spinPhaseDeg ≠ 0) — the
+   * analytic ridge is solved spin-free (the f64 mirror omits the
+   * spinTurns/spinPhaseDeg/spinCurveExp composition production
+   * buildStyleOptions injects), so a spun pot would yield confident WRONG
+   * numbers and is refused instead. NaN/Inf mesh vertices never silently
+   * understate: rejected slice points are counted in `nonFiniteCount`
+   * (any nonzero value ⇒ do not gate on the result). Run at high AND ultra:
+   * a staircase HALVES when density doubles, a true crest defect does not —
+   * the density-independence discriminator.
    */
   diagnoseCrestLateralDeviation(opts?: FidelityCrestLateralDiagnosticOptions): Promise<FidelityCrestLateralDiagnostics | null>;
   /**
@@ -737,8 +759,19 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
       const grid = getLastConformingOuterGrid();
       const mask = getLastConformingOuterWallMask();
-      const style = deps.getStyleState?.();
+      const style = deps.getStyleState?.() ?? null;
       if (!grid || !mask || !style) return null;
+      // HONEST-NULL GUARDS — no fabricated state, no silently-wrong numbers:
+      //  • a non-finite or non-positive height is not a measurable pot;
+      //  • the analytic ridge below is solved with ZERO spin/twist, while
+      //    production buildStyleOptions (useExport.ts) injects spinTurns/
+      //    spinPhaseDeg/spinCurveExp into the style functions — the f64
+      //    mirror call below deliberately omits them, so a spun/phased pot
+      //    (profile.spinTwistRadians is non-zero when turns ≠ 0 OR phase ≠ 0)
+      //    would read a confidently WRONG ridge. Refuse (null), enforcing the
+      //    constraint instead of documenting it.
+      if (!Number.isFinite(style.H) || style.H <= 0) return null;
+      if (style.spinTurns !== 0 || style.spinPhaseDeg !== 0) return null;
       const sub = extractOuterWallSubmesh(mesh.vertices, mesh.indices, mask);
 
       // The ridge is SOLVED in the style's NATIVE (u,t) domain — the same
@@ -768,8 +801,8 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         // f64 CPU radius mirror in the style's (u,t) domain. The mirrors take
         // camelCase StyleOptions; the store carries snake_case registry keys —
         // copy both spellings (the useExport buildStyleOptions convention).
-        // KNOWN LIMIT: assumes the default zero spin/twist (θ = TAU·u + const
-        // per t) — matches every pinned benchmark config.
+        // Zero spin/twist (θ = TAU·u + const per t) is ENFORCED by the guard
+        // above — a spun pot returns null instead of a wrong ridge.
         const toCamel = (s: string): string => s.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
         const styleOptions: Record<string, number> = {};
         for (const [key, value] of Object.entries(style.opts)) {
@@ -791,10 +824,18 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       }
 
       // Bilinear sampler chord-vs-arc bound (rad ≈ (TAU/resU)²/8, ×r → mm) —
-      // the grid sampler's own contribution to the reference error.
-      const probe = surface.position(0, 0.5);
-      const rProbe = Math.hypot(probe[0], probe[1]);
-      const gridBoundMm = (rProbe * Math.pow(TAU / refGrid.resU, 2)) / 8;
+      // the grid sampler's own contribution to the reference error. A genuine
+      // UPPER bound needs the MAX radius anywhere on the wall (on a tapered
+      // pot the max r can be ~2× a single mid-height probe, which would
+      // UNDERSTATE the bound): scan the reference grid's own positions, which
+      // cover the full outer surface.
+      let rMax = 0;
+      const gpos = refGrid.positions;
+      for (let i = 0; i + 1 < gpos.length; i += 3) {
+        const rr = Math.hypot(gpos[i], gpos[i + 1]);
+        if (rr > rMax) rMax = rr;
+      }
+      const gridBoundMm = (rMax * Math.pow(TAU / refGrid.resU, 2)) / 8;
       const ridge = ridgeFromParamBranches(paramRidge, surface, { extraRefErrMm: gridBoundMm });
 
       const result = crestLateralDeviation(sub, ridge, { sliceSpacingMm: opts.sliceSpacingMm });

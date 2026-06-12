@@ -70,6 +70,14 @@ const DEFAULT_SLICE_SPACING_MM = 0.25;
  *  surface, so the closed-form ridge is honestly empty. */
 const SF_MIN_STRENGTH = 1e-3;
 
+/** Hard cap on the closed-form locus/branch index j. The SFB registry petal
+ *  count (m) tops out in the tens; 4096 is far beyond any real configuration
+ *  while bounding the locus loops against EXTERNALLY-SUPPLIED m (the window
+ *  hook feeds live store opts): m = 1e8 or Infinity must terminate fast, not
+ *  hang. Loci beyond the cap are truncated — the ridge is then a prefix,
+ *  which is honest for an instrument (fewer branches, never wrong ones). */
+const SF_MAX_LOCI = 4096;
+
 /** Wrap an angle difference to (−π, π]. */
 function wrapPi(a: number): number {
   let x = a % TAU;
@@ -186,10 +194,13 @@ function sfMOf(p: Float32Array, t: number): number {
 export function sfClosedFormCrestLoci(p: Float32Array, t: number): SfCrestLocus[] {
   const tc = clamp01(t);
   const m = sfMOf(p, tc);
-  if (!(m > 0)) return [];
+  // Guard externally-supplied m: non-finite m has no computable loci (honestly
+  // empty), and the loop below is bounded by SF_MAX_LOCI so a huge-but-finite
+  // m (1e8-class) terminates fast instead of iterating ~m times.
+  if (!Number.isFinite(m) || !(m > 0)) return [];
   const out: SfCrestLocus[] = [];
   const eps = 1 / (16 * m);
-  for (let j = 1; ; j++) {
+  for (let j = 1; j <= SF_MAX_LOCI; j++) {
     const u = (2 * j - 1) / (2 * m);
     if (u >= 1 - 1e-12) break;
     const v0 = sfRf(u, tc, p);
@@ -231,10 +242,15 @@ export function sfClosedFormParamRidge(
   const m1 = sfMOf(p, 1);
   const mLo = Math.min(m0, m1);
   const mHi = Math.max(m0, m1);
-  if (!(mHi > 0)) return { branches: [], duTol: 0 };
+  // Guard externally-supplied m (window-hook live opts): non-finite m has no
+  // computable branch domain (honestly empty); the branch loop is bounded by
+  // SF_MAX_LOCI so a huge-but-finite m terminates fast instead of hanging.
+  if (!Number.isFinite(mLo) || !Number.isFinite(mHi) || !(mHi > 0)) {
+    return { branches: [], duTol: 0 };
+  }
 
   const branches: ParamRidgeBranch[] = [];
-  for (let j = 1; (2 * j - 1) / (2 * mHi) < 1 - 1e-12; j++) {
+  for (let j = 1; j <= SF_MAX_LOCI && (2 * j - 1) / (2 * mHi) < 1 - 1e-12; j++) {
     const need = j - 0.5;
     let t0 = 0;
     let t1 = 1;
@@ -705,6 +721,16 @@ export interface CrestLateralDeviationResult {
   worstValleyRmsMm: number;
   /** Forwarded reference-error bound (mm) of the analytic ridge. */
   refErrBoundMm: number;
+  /**
+   * Non-finite (NaN/Inf) mesh data REJECTED during slicing (absolute count,
+   * house style): non-finite-z vertices + non-finite intersection points. The
+   * harness deliberately measures validator-rejected meshes
+   * (returnInvalidMesh), so pathological GPU output is in scope — a NaN point
+   * would otherwise pass the θ-window filter, capture the apex, and silently
+   * UNDERSTATE maxMm (false PASS). ANY nonzero value means coverage
+   * understates the truth: do not gate on this result.
+   */
+  nonFiniteCount: number;
 }
 
 export interface CrestLateralDeviationOptions {
@@ -774,6 +800,9 @@ export function crestLateralDeviation(
       : DEFAULT_SLICE_SPACING_MM;
   const { vertices, indices } = mesh;
 
+  // Non-finite rejects (CRITICAL guard): counted LOUDLY, never silent.
+  let nonFinite = 0;
+
   const empty = (sliceCount: number): CrestLateralDeviationResult => ({
     sliceSpacingMm: spacing,
     sliceCount,
@@ -788,12 +817,19 @@ export function crestLateralDeviation(
     worstValleyMaxMm: 0,
     worstValleyRmsMm: 0,
     refErrBoundMm: ridge.refErrBoundMm,
+    nonFiniteCount: nonFinite,
   });
 
   let zMin = Infinity;
   let zMax = -Infinity;
   for (let i = 2; i < vertices.length; i += 3) {
     const z = vertices[i];
+    // A non-finite z silently drops every triangle touching the vertex from
+    // the slice buckets — count it so the coverage loss is visible.
+    if (!Number.isFinite(z)) {
+      nonFinite++;
+      continue;
+    }
     if (z < zMin) zMin = z;
     if (z > zMax) zMax = z;
   }
@@ -811,6 +847,9 @@ export function crestLateralDeviation(
     const zc = vertices[indices[tIdx + 2] * 3 + 2];
     const lo = Math.min(za, zb, zc);
     const hi = Math.max(za, zb, zc);
+    // Non-finite z range: NaN comparisons would skip every bucket silently.
+    // The poisoned vertices were already counted in the scan above.
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) continue;
     let k0 = Math.ceil((lo - zMin) / spacing - 0.5);
     let k1 = Math.floor((hi - zMin) / spacing - 0.5);
     if (k0 < 0) k0 = 0;
@@ -876,6 +915,15 @@ export function crestLateralDeviation(
           py = vertices[i0 + 1];
         }
         if (px === null || py === null) continue;
+        // CRITICAL: reject non-finite intersection points LOUDLY. A NaN point
+        // passes the θ-window filter (|NaN| > w is false) and can capture
+        // `best` while no finite point displaces it (p.r > NaN is false) —
+        // maxAbs would silently understate (false PASS) while samples++
+        // claimed the slice as covered.
+        if (!Number.isFinite(px) || !Number.isFinite(py)) {
+          nonFinite++;
+          continue;
+        }
         const p: SlicePoint = { theta: Math.atan2(py, px), r: Math.hypot(px, py) };
         pts.push(p);
         // Track the chord pair for the valley interior-foot candidate.
@@ -972,5 +1020,6 @@ export function crestLateralDeviation(
     worstValleyMaxMm: worstValley?.maxMm ?? 0,
     worstValleyRmsMm: worstValley?.rmsMm ?? 0,
     refErrBoundMm: ridge.refErrBoundMm,
+    nonFiniteCount: nonFinite,
   };
 }
