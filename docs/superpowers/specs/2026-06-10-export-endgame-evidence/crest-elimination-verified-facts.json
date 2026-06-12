@@ -1,0 +1,392 @@
+﻿[
+    {
+        "area":  "Crest serration â€” SuperformulaBlossom / smooth-ridge feature-line extraction and the FeatureConformingTriangulator constraint-insertion path (conforming mesher)",
+        "summary":  "The hypothesis is PARTIALLY REFUTED. 7 of the 8 smooth-ridge styles do return empty feature graphs, but SuperformulaBlossom does NOT: a marching-squares crest extractor (zero set of dr/dtheta) is live in production since commit 927d8c7 and its 12 full-height petal crests ARE inserted as real watertight constraint edges through the same FeatureConformingTriangulator path Voronoi/Gyroid use (featPres=12, featDrop=0). Only the ~4-7 BORN crests of the m:6-\u003e10 morph are filtered out (SF_CREST_FULL_HEIGHT_SPAN=0.85) and remain grid-approximated. Critically, two committed in-repo experiments DISPROVED \u0027insert the crest edge -\u003e serration fixed\u0027: naive insertion of the born crests was watertight but left serration numerically unchanged (serr 3.35-\u003e3.32), and the surface was byte-identical with/without inserted crest edges. The measured serration mechanism is the crest-BAND triangle tail: axis-aligned cells beside the diagonal/morphing crest get CDT-filled with long thin triangles spanning ACROSS the crest (quality-blind cdt2d fill + uBias anisotropy), under-resolving the dihedral perpendicular to the crest â€” finer density yields a finer-but-never-clean sawtooth, exactly the user\u0027s observation, but the lever is triangle orientation/anisotropy at the crest, not a missing constraint edge. The crest is NOT warp-realizable (helix warp is constant-slope, fixed column count; SFB crests have nonlinear slope and a t-varying petal count), so insertion + crest-aligned fill is the only route. Containments already landed: auto-uBias capped at B=2 on feature walls (B=3 was measured non-manifold on SFB@1), Stage-1 warp-composed efg / Klincsek-DP shaped templates (plain path only â€” the CDT fill is still metric-blind), Stage-4 analytic curvature floor built but dormant. Side observation: defect 3 (tolerance gates) is being fixed in the working tree right now (uncommitted resolveSurfaceErrorMm change in ParametricExportComputer.ts).",
+        "findings":  [
+                         {
+                             "claim":  "The 8 smooth-ridge styles (SuperformulaBlossom, HarmonicRipple, SuperellipseMorph, FourierBloom, WaveInterference, RippleInterference, Crystalline, ArtDeco) extract ZERO feature lines in FeatureLineGraph.ts",
+                             "verdict":  "partial",
+                             "evidence":  "7 of 8 are explicit honest-empty `() =\u003e []` entries at potfoundry-web/src/renderers/webgpu/parametric/conforming/FeatureLineGraph.ts:774-781, with the rationale at :53-57 (\u0027smooth... curvature-adaptive meshing alone should resolve them\u0027). SuperformulaBlossom is the exception: EXTRACTORS registers extractSuperformulaBlossom at :775, implemented at :713-733 â€” marching squares on the zero set of d(rf)/du (radius extrema = petal peak AND valley crests) at 768x320, emitted as \u0027general-curve\u0027 polylines. Committed in 927d8c7 \u0027extract+insert SuperformulaBlossom petal crests\u0027. Gates: strength \u003e SF_CREST_MIN_STRENGTH=1e-3 (:680, :715 â€” default strength 0 stays byte-identical, SuperformulaCrests.test.ts:37-45) and a full-height span filter SF_CREST_FULL_HEIGHT_SPAN=0.85 (:685, :724-732) that DROPS the born/forking mid-height crests."
+                         },
+                         {
+                             "claim":  "SuperformulaBlossom\u0027s sharp ridge is NOT a real inserted mesh edge â€” the axis-aligned quadtree merely approximates it (staircase)",
+                             "verdict":  "partial",
+                             "evidence":  "REFUTED for the 12 full-height base crests: they flow extractAnalyticFeatures (ParametricExportComputer.ts:2437) -\u003e generalCurves filter (:2499-2501) -\u003e assembleWatertight outerFeatureLines (:2606, featureLevel 7 at :2607) -\u003e outer wall featureLines (WatertightAssembly.ts:477-485) -\u003e triangulateQuadtreeWithFeatures (ConformingWall.ts:552) â€” per-cell constrained Delaunay, real mesh edges. Measured in-repo: \u0027featExp=12 featPres=12 featDrop=0 (12 stable petal crests are now real, tracked mesh edges)\u0027 (NEXT-SESSION-CAD-FIDELITY.md:128). CONFIRMED only for the ~4-7 born crests (m:6-\u003e10 morph births petals mid-height at the seam): filtered at FeatureLineGraph.ts:724-732, so the upper birth region is grid-approximated and \u0027retains the worst triangle â€” honest, localized residual\u0027 (NEXT-SESSION-CAD-FIDELITY.md:132-133)."
+                         },
+                         {
+                             "claim":  "Making the crest a real constraint edge (born-crest insertion) is what eliminates the sawtooth; finer grid can never produce a clean sharp dihedral without it",
+                             "verdict":  "refuted",
+                             "evidence":  "Two committed measurements disprove insertion-as-cure. (1) NEXT-SESSION-CAD-FIDELITY.md:183-189: \u0027Naive insertion (filter-\u003e0.08) is WATERTIGHT (featExp=19 featPres=19...) but does NOTHING for serration (serr 3.35-\u003e3.32, crestRms/maxCrest/maxAspect unchanged). An edge ALONG a crest adds no resolution ACROSS the steep flank, where the chord error lives.\u0027 (2) :22-23: \u0027surface byte-identical with/without the inserted crest edges, proven twice.\u0027 Also density-independence is measured: sampler 256-\u003e1024/2048 leaves worst min-angle byte-identical (NEXT-SESSION-CREST-FIDELITY.md:59, SuperformulaCrests.test.ts:8-9 \u0027sampler 256-\u003e1024 does NOT help -\u003e alignment, not density\u0027). The user\u0027s render observation (finer density = finer serrations, never gone) is consistent with the MEASURED mechanism â€” crest-band triangle orientation â€” not with a missing constraint edge (the edge is already there for full-height crests)."
+                         },
+                         {
+                             "claim":  "Born-crest insertion prior art exists and is watertight-proven but dormant",
+                             "verdict":  "confirmed",
+                             "evidence":  "SuperformulaBornCrests.test.ts:7-13 documents the measured geometry: every born crest runs RIM(t=1)\u003c-\u003eSEAM(u~0.999, birth t=0.18..0.90) â€” NO interior dangling endpoint (the original T-junction fear at FeatureLineGraph.ts:683-685 was wrong); \u0027a separate e2e experiment then proved naive insertion is watertight â€” the grid-line registry handles the seam â€” but does NOT reduce serration\u0027. Un-deferring is a one-constant change (SF_CREST_FULL_HEIGHT_SPAN at FeatureLineGraph.ts:685) and is listed as \u0027optional, NOT blocking\u0027 (NEXT-SESSION-CAD-FIDELITY.md:65)."
+                         },
+                         {
+                             "claim":  "The existing general-curve insertion handles smooth OPEN diagonal/morphing (u,t) polylines, not only loops/braids",
+                             "verdict":  "confirmed",
+                             "evidence":  "Open diagonal curves are in production today: CelticKnot\u0027s braided strand centerlines are open, t-spanning, u-oscillating general-curve polylines (FeatureLineGraph.ts:548-572, enabled :546) with per-cell crossing splits (:536-537, canonical shared-edge crossing merge commit 18b1b66); HexagonalHive emits non-periodic open polylines truncated at u=0/1 (:491-503); SFB\u0027s own full-height crests are open morphing diagonals and insert cleanly (\u0027the diagonal, morphing crests insert cleanly through the existing FeatureConformingTriangulator\u0027, NEXT-SESSION-CAD-FIDELITY.md:130-131). All lines are clipped to the safe box [uMargin,1-uMargin]x[tMargin,1-tMargin] (ConformingWall.ts:383-430) so endpoints land on clip boundaries, off the pinned t=0/1 rings and the u-seam. Caveat: FeatureConformingTriangulator.ts:19-21 states the watertightness argument assumes \u0027closed loops / full-height lines\u0027; a truly cell-INTERIOR endpoint is the untested case â€” but SFB has none (measured RIM\u003c-\u003eSEAM, SuperformulaBornCrests.test.ts:74-96)."
+                         },
+                         {
+                             "claim":  "SuperformulaBlossom\u0027s crest could be realized by a warp (like SpiralRidges\u0027 helix warp) instead of insertion",
+                             "verdict":  "refuted",
+                             "evidence":  "CreaseHelixWarp is strictly a CONSTANT-SLOPE shear: u_final = phi0(u) - (turns/k)*t + offset, pinning a FIXED count k of full-height columns (CreaseHelixWarp.ts:13-19, :26-47); it is refused for anything else. SFB crests violate both requirements: slope is non-constant (m(t)=mix(m_base,m_top,t^m_curve) makes u(t) nonlinear â€” sfRf at FeatureLineGraph.ts:702-711) and the crest COUNT changes with t (6-\u003e10, new crests born mid-height) â€” a topology-preserving column shear cannot create crest-following columns that exist only above a birth height. The code states it directly: \u0027the crests are DIAGONAL, MORPHING (u,t) curves â€” neither constant-u nor constant-slope\u0027 (FeatureLineGraph.ts:670-675). Insertion is the only mechanism, and it is already wired. BasketWeave\u0027s twisted case documents the same single-family-warp limit (:400-408)."
+                         },
+                         {
+                             "claim":  "The crest-serration residual at HEAD is the crest-band sliver/orientation tail plus known, partially-shipped containments",
+                             "verdict":  "confirmed",
+                             "evidence":  "Corrected diagnosis (NEXT-SESSION-CREST-FIDELITY.md:26-39, commit 407a091): SFB@1 = general-curve CDT insertion; auto-uBias B=3 was genuinely NON-MANIFOLD (3 duplicated edges) â€” now contained by capping GATE B at B=2 on feature walls (WatertightAssembly.ts:156-161 \u0027auto-B\u003e=3 is NON-MANIFOLD on CDT-insertion styles (SFB@1 B=3: nonMan=3, sliver=2285)... const capped = hasFeatures ? Math.min(b, 2) : b\u0027), leaving a 10.4% band sub-15-degree residual (band 40.6%-\u003e11.6% at B=2). Root cause per :61: cells beside the diagonal crest \u0027get filled (per-cell CDT...) with long, thin triangles that span across the diagonal... the sharp dihedral is under-resolved perpendicular to the crest -\u003e sawtooth silhouette\u0027. Stage-1 (warp-composed efg arming the Klincsek-DP/shaped-template diagonal choice) is committed (294fa5e, cd6af38, 13c83e9; ParametricExportComputer.ts:2548-2562; PeriodicBalancedQuadtree.ts:589-611 with EFG_MAX_REL_VARIATION=0.5 guard at :595) but covers the PLAIN template path only â€” the constrained-cell CDT fill (cdt2d, zero quality Steiner) is still metric-blind (Step C(ii) at NEXT-SESSION-CREST-FIDELITY.md:36 not done). Stage-4 analytic flank-curvature floor (superformulaAngularKappa, SuperformulaCurvature.ts:62-76; hook MetricSizingField.ts:49,:96) is built but DORMANT â€” no production caller (grep: only tests reference it) â€” and was measured near-ineffective in isotropic form (crestRms 0.335-\u003e0.326, NEXT-SESSION-CAD-FIDELITY.md:205). refineCellInterior is ruled out (measured harmful, FeatureConformingTriangulator default-off behind __pfConformingRefine, ConformingWall.ts:540-551)."
+                         }
+                     ],
+        "mechanism":  "SuperformulaBlossom\u0027s sharp ridge IS a real inserted mesh edge today for the 12 full-height crests (strength \u003e 1e-3); only the born/forking upper crests are grid-approximated (deliberate span filter). The sawtooth the user sees is therefore NOT primarily an along-crest staircase from a missing constraint edge â€” the repo proved twice that adding/removing the crest edges leaves the measured serration and even the surface bytes unchanged. The measured mechanism is CROSS-crest: the axis-aligned (u,t) cells the diagonal/morphing crest passes through are filled by a quality-blind per-cell CDT (cdt2d, no Steiner quality), and uBias anisotropy plus the morphing diagonal leave long thin triangles oriented ACROSS the crest, under-resolving the sharp dihedral perpendicular to its tangent. That produces a sawtooth whose amplitude scales with the local cell size â€” finer density makes finer serrations but can never produce a clean dihedral, matching the user\u0027s observation while inverting the prescribed cure: the missing piece is crest-ALIGNED (anisotropic/metric-aware) triangle orientation in the crest band (plus the deferred born crests\u0027 honest local residual and the band-limited 256-squared-bilinear sizing curvature on steep flanks), not constraint insertion, which already exists and is watertight-proven.",
+        "fixSurface":  "No triangulator changes are needed to route crests through the constraint path â€” it is generic. (a) Born crests: lower/remove SF_CREST_FULL_HEIGHT_SPAN=0.85 at FeatureLineGraph.ts:685 (one constant; insertion measured watertight, endpoints RIM\u003c-\u003eSEAM handled by the grid-line registry) â€” but expect no serration win per the committed measurements. (b) Other 7 smooth styles: replace each `() =\u003e []` at FeatureLineGraph.ts:774-781 with a style-specific extractor mirroring extractSuperformulaBlossom (f64 mirror of the WGSL radius, marchingSquaresZero on d(r)/d(theta), segmentsToPolylines, periodicU per style); downstream (ParametricExportComputer.ts:2499/2606 -\u003e WatertightAssembly.ts:480 -\u003e ConformingWall.ts:552) is style-agnostic. (c) The actual serration levers per the in-repo fix program (NEXT-SESSION-CREST-FIDELITY.md:33-39): Step C(ii) â€” metric/efg-aware diagonal choice INSIDE the constrained feature cells (FeatureConformingTriangulator plain-template branch ~:661-681 + ConstrainedCellTriangulator fill), or the crest-local ribbon (approach A, :96); the plain-path efg/Klincsek-DP is already live (PeriodicBalancedQuadtree.ts:589-611). (d) Dormant support lever: wire superformulaAngularKappa into MetricSizingField.curvatureFloor (MetricSizingField.ts:49) as DIRECTED u-refinement (the isotropic form measured ineffective). (e) Instrumentation gap vs the user\u0027s methodology: crestBandTriangleQuality (src/fidelity/metrics.ts) reports the diluting band PERCENT; the absolute sub-threshold COUNT and the serration-amplitude-in-mm (lateral mesh-crest deviation perpendicular to the analytic ridge tangent) instrument does not exist yet and must gate any fix.",
+        "code":  [
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/FeatureLineGraph.ts",
+                         "lines":  "669-733, 735-782",
+                         "what":  "SuperformulaBlossom crest extractor (zero set of d(rf)/du via marchingSquaresZero 768x320, non-periodic; SF_CREST_MIN_STRENGTH=1e-3 at :680/:715; born-crest filter SF_CREST_FULL_HEIGHT_SPAN=0.85 at :685/:724-732) and the EXTRACTORS table â€” SuperformulaBlossom live at :775; the other 7 smooth styles honest-empty at :774-781"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts",
+                         "lines":  "2428-2441, 2499-2501, 2548-2562, 2606-2613",
+                         "what":  "Conforming branch: extractAnalyticFeatures call; generalCurves = kind===\u0027general-curve\u0027 filter; warp-composed efg samplers (Stage 1, __pfConformingEfg default ON); outerFeatureLines + featureLevel:7 + outerCreaseLines passed to assembleWatertight. Working tree also carries the uncommitted defect-3 fix (resolveSurfaceErrorMm honoring params.toleranceOverrides.epsPosMm, ~:2376-2386)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/WatertightAssembly.ts",
+                         "lines":  "114-162, 413-426, 477-485",
+                         "what":  "computeUBias: GATE B fires WITH features but TEMPORARILY capped at B=2 on feature walls (:160 â€” SFB@1 auto-B=3 measured non-manifold, nonMan=3/sliver=2285); hasFeatures from outerFeatureLines (:420); features routed to the OUTER wall only (:480)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/ConformingWall.ts",
+                         "lines":  "70-92, 383-430, 522-556, 593-598",
+                         "what":  "featureLines/featureTMargin/featureLevel options; clipLineToInterval/clipFeaturesToBox (open-polyline clipping to the safe box â€” keeps endpoints off pinned rings and the u-seam); final build calls triangulateQuadtreeWithFeatures with absolute cornerSnap; refineCellInterior gated default-OFF (__pfConformingRefine, measured harmful)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/FeatureConformingTriangulator.ts",
+                         "lines":  "1-113",
+                         "what":  "Per-cell CDT constraint insertion; watertight/T-junction-free-by-construction contract â€” shared-edge crossings derived bit-identically by both cells; documented assumption \u0027closed loops / full-height lines\u0027 (:19-21) â€” interior dangling endpoints are the one untested case (SFB has none, measured)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/CreaseHelixWarp.ts",
+                         "lines":  "1-70",
+                         "what":  "Helix warp = constant-slope shear u_final = phi0(u) - (turns/k)*t + offset over a FIXED count k of pinned full-height columns â€” structurally cannot realize SFB\u0027s nonlinear-slope, count-changing (6-\u003e10) morphing crests; insertion is the only mechanism"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/SuperformulaBornCrests.test.ts",
+                         "lines":  "1-97",
+                         "what":  "Measured born-crest geometry: 12 full-height base crests; every born crest runs RIM\u003c-\u003eSEAM (no interior dangle); header records the e2e proof that naive insertion is WATERTIGHT but does NOT reduce serration (residual = flank chord error)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/SuperformulaCurvature.ts",
+                         "lines":  "1-77",
+                         "what":  "Stage-4 analytic angular-curvature floor (band-limited 256-squared bilinear FD kappa under-refines steep flanks; measured crestBandRms 0.33mm at full strength) â€” BUILT but DORMANT: superformulaAngularKappa has no production caller; MetricSizingField.curvatureFloor hook (MetricSizingField.ts:49,:96) unused"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/PeriodicBalancedQuadtree.ts",
+                         "lines":  "589-615",
+                         "what":  "leaves() populates leaf.efg from the warp-composed efgSampler (Stage 1, commits 294fa5e/cd6af38/13c83e9 â€” the formerly-dead shaped-template path now fires), guarded by EFG_MAX_REL_VARIATION=0.5 (:595) â€” the metric-reliability suppression relevant to defect 2"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/docs/superpowers/NEXT-SESSION-CAD-FIDELITY.md",
+                         "lines":  "18-23, 65, 121-133, 183-192, 199-212, 222-229",
+                         "what":  "The two measurements disproving insertion-as-serration-fix (\u0027surface byte-identical with/without the inserted crest edges, proven twice\u0027; born-crest insertion watertight but serr 3.35-\u003e3.32); stable-crest insertion DONE (featDrop=0); root cause = U-LONG anisotropy / angular under-resolution of crest cells"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/docs/superpowers/NEXT-SESSION-CREST-FIDELITY.md",
+                         "lines":  "8-39, 49-51, 55-62, 92-102",
+                         "what":  "Latest corrected diagnosis (commit 407a091): SFB@1 = general-curve CDT insertion, auto-B=3 non-manifold (B=2 clean, 10.4% residual); serration = crest-band orientation tail (long thin triangles spanning across the diagonal); fix program Steps A/B (efg, landed) and C (CDT-fill diagonal quality + B=3 root cause, NOT done); crest-aligned anisotropic triangulation is the fix direction"
+                     }
+                 ]
+    },
+    {
+        "area":  "Crystalline high-curvature faceting â€” conforming mesher sizing path + EFG metric-reliability guard (potfoundry-web/src/renderers/webgpu/parametric/conforming/)",
+        "summary":  "Measured with the real production modules (MetricSizingField, PeriodicBalancedQuadtree, triangulateQuadtree, computeUBias) on an analytic Crystalline surface and its production 256-squared discrete twin: the faceting is (b) GENUINE UNDER-TESSELLATION, and the efg-guard hypothesis (a) is REFUTED â€” the EFG_MAX_REL_VARIATION=0.5 guard suppresses efg on only 96 of 376,351 leaves (0.03%, all level-7), and the legacy-template control build is measurably WORSE, so the guard costs nothing on Crystalline. The under-tessellation has a precise three-part gate chain: (1) curvature band-limiting â€” the 256-squared bilinear wall sampler plus one-grid-cell FD steps under-read the facet-groove curvature ~1350x (kappa true 116.3/mm reads as 0.086/mm), so the sagitta law demands h=1.0mm (the maxEdge clamp) exactly at the sharpest lines; 78% of the 128x128 sizing grid sits at the maxEdge clamp and zero nodes reach minEdge; (2) the sag law bounds chord error only â€” normal error (what the eye sees as facets) grows as sqrt(8*sag*kappa), measured up to 35 degrees even in correctly-sized kappa~1/mm regions; epsNormalDeg=4 exists in the high profile but is consumed only by the legacy AdaptiveRefinement path, never by MetricSizingField; (3) Crystalline\u0027s 12 main + 24 sub facet grooves are TRUE C1 creases (26.9-degree tangent dihedral, from pow(triangleWave,2.5) slope discontinuity) that FeatureLineGraph honestly-but-wrongly declares smooth (returns []), so no constraint edge ever lands on them â€” irreducible by density (2.1x-triangle rebuild only moved crease-band dihedral p99 from 25.7 to 17.8 degrees). Raising maxLevel beyond 12 does NOTHING: leaf count is byte-identical at maxLevel 14 and the production tree never refines past level 9 â€” refinement is sizing-gated, not level-gated.",
+        "findings":  [
+                         {
+                             "claim":  "The EFG_MAX_REL_VARIATION=0.5 metric-reliability guard in PeriodicBalancedQuadtree.leaves() suppresses efg on high-curvature cells, falling back to legacy templates (no Klincsek DP / shorter-diagonal)",
+                             "verdict":  "partial",
+                             "evidence":  "Mechanism confirmed in code: PeriodicBalancedQuadtree.ts:595-639 probes two inset corners (0.25,0.25)/(0.75,0.75) vs center; any E/G/F component deviating \u003e50% suppresses leaf.efg, and QuadtreeTriangulator.ts:125-129 (shapedTemplate) then returns false -\u003e legacy SW-NE diagonal (:582-597) and centre-fan transitions (:626-630, :660-664) instead of shorter-3D-diagonal/Klincsek DP. BUT the \u0027fires widely on Crystalline\u0027 half is refuted (next finding)."
+                         },
+                         {
+                             "claim":  "Crystalline is high-relief enough to trip the guard widely",
+                             "verdict":  "refuted",
+                             "evidence":  "Probe (real modules, default dims H=120/Rt=70/Rb=45, high profile, B=2 from computeUBias GATE B maxURatio=6.84): guard trips on 96 of 376,351 leaves = 0.03%, all at L7; crease-band leaves = 104,897 of which only 96 suppressed (0.1%). Reason: the production tree is dominated by L8/L9 leaves (u-size 1/1024-1/2048 with B=2) â€” cells are too small for the bilinear-sampler metric to vary 50% across them. The guard is NOT the faceting mechanism."
+                         },
+                         {
+                             "claim":  "The faceting is (a) the efg-guard fallback [template/diagonal class]",
+                             "verdict":  "refuted",
+                             "evidence":  "Control build with efgSampler omitted (legacy templates on ALL leaves) is WORSE, not equal: crease-band dihedral p90 13.21 vs 7.0 deg, edges \u003e4deg 121,632 vs 48,476; smooth-region \u003e10deg 133,944 vs 52,435. The shaped templates measurably improve normal continuity; suppressing them on 0.03% of leaves is noise. Subdividing-until-metric-constant instead of suppressing is moot for Crystalline."
+                         },
+                         {
+                             "claim":  "The faceting is (b) genuine under-tessellation [too few triangles for curvature]",
+                             "verdict":  "confirmed",
+                             "evidence":  "Production mesh (778,972 outer-wall tris): crease-band dihedral p99=25.7deg, 5,251 band edges \u003e20deg, max 128deg; smooth-region p99=17.8deg, max 34.65deg. Root causes measured: (i) kappa at the facet groove reads 0.086/mm on the production 256-squared sampler with 1-cell FD steps (SurfaceMetricTensor.ts:33-46) vs TRUE 116.3/mm analytic â€” ~1350x under-read â€” so the sagitta law (MetricSizingField.ts:100) targets h=1.0mm = the maxEdgeMm clamp AT the crease; (ii) 78% (12,764/16,384) of sizing-grid nodes sit at the maxEdge clamp, 0 at minEdge â€” Crystalline refinement is maxEdge-driven, not curvature-driven; (iii) sag bounds chord error only: measured smooth-region max dihedral 34.65deg matches theory sqrt(8*sag*kappa)=35.5deg at kappa=0.96, h=0.647mm â€” chord error 0.05mm is met while normals jump 35deg. epsNormalDeg=4deg (QualityProfiles.ts:87) is dead in the conforming path (grep: only parametric/AdaptiveRefinement.ts consumes it)."
+                         },
+                         {
+                             "claim":  "In high-curvature regions the sizing field refines to sag (vs a clamp leaving it coarse)",
+                             "verdict":  "refuted",
+                             "evidence":  "The field DOES honor sag for the kappa it SEES, but the kappa it sees at transitions is band-limited ~1000x low, so the maxEdgeMm=1 upper clamp (MetricSizingField.ts:104, profile-driven via ParametricExportComputer.ts:2389-2391) dominates: h(crease)=1.000mm, h(facet-interior)=0.844mm. minEdgeMm=0.1 (= 2x sag, ParametricExportComputer.ts:2380) never binds anywhere on Crystalline. The curvatureFloor escape hatch exists in SizingOptions (MetricSizingField.ts:49-55) but ConformingWall.buildQuadtreeAtScale (ConformingWall.ts:250-258) never threads it â€” it is dead in production."
+                         },
+                         {
+                             "claim":  "Raising maxLevel beyond 12 helps",
+                             "verdict":  "refuted",
+                             "evidence":  "Probe: leafCount at maxLevel=12 and maxLevel=14 is byte-identical (376,351) on the same sizing field; the production tree only contains L7/L8/L9 leaves (deepest effective u-level 9+B=11), nowhere near the 12 cap. Gates, in order: (1) the sizing target itself â€” maxEdge clamp + band-limited kappa mean shouldRefine (PeriodicBalancedQuadtree.ts:336-355) stops splitting at ~L9; (2) minEdgeMm floor (0.1mm at high) bounds the deepest demandable cell; (3) pin grading (levelCap, PeriodicBalancedQuadtree.ts:255-263, pin=log2(nRing)-B=8) caps only boundary rows. maxLevel is a ceiling that is never reached; raising it without lowering maxSag/minEdge AND fixing the kappa under-read changes nothing."
+                         },
+                         {
+                             "claim":  "Crystalline is smooth (sum of sin/cos) so curvature-adaptive meshing alone resolves it â€” the FeatureLineGraph bet",
+                             "verdict":  "refuted",
+                             "evidence":  "FeatureLineGraph.ts:780 returns [] for Crystalline with the :53-57 rationale \u0027radius is a sum of sin/cos terms\u0027. Factually wrong: rOuterCrystalline (geometry/styles.ts:879-891) uses pow(|triangleWave|,2.5) â€” slope discontinuity at the triangle-wave apex = TRUE C1 crease, measured tangent-plane dihedral 26.9deg â€” and |sin|^1.25 sub-facets (curvature blows up as x^-0.75 at the 24 sub-crease lines). These 36 grooves are constant-slope helical lines u = m/24 - 0.8t/24 (one family: k=24, turns=0.8, phase=0) â€” exactly the \u0027helical-crease\u0027 family the existing CreaseHelixWarp/chooseHelixGrid machinery already pins for SpiralRidges (FeatureLineGraph.ts:59-63, ParametricExportComputer.ts:2462-2479). A 2.1x-triangle density rebuild left the crease dihedral class intact (\u003e10deg band edges 22.9k -\u003e 21.7k) â€” confirming the crease component is density-irreducible and needs real constraint edges, same mechanism as defect #1."
+                         }
+                     ],
+        "mechanism":  "Verdict: (b) genuine under-tessellation â€” NOT (a) the efg guard, and not (c). Three stacked causes, all measured: (1) CURVATURE BAND-LIMITING: the conforming branch builds its wall samplers as 256x256 bilinear grids (ParametricExportComputer.ts:2292-2295) and sizes curvature FD steps to one sampler cell (SurfaceMetricTensor.ts:33-46, steps 1/256) to de-noise â€” which simultaneously low-passes the surface: Crystalline\u0027s facet-groove curvature (true 116/mm) reads as 0.086/mm, so the sagitta law h=sqrt(8*sag/kappa) (MetricSizingField.ts:100) demands 1.0mm cells â€” the maxEdge clamp â€” exactly at the sharpest features. 78% of the 128x128 sizing grid (resU/resT=128, ParametricExportComputer.ts:2576-2577) is at the maxEdge clamp; minEdge never binds; the quadtree consequently never refines past level 9 and maxLevel=12 is dead headroom. (2) WRONG ERROR LAW FOR THE EYE: sag bounds chord error; the visible artifact is the NORMAL jump, which under sag-sizing grows as sqrt(8*sag*kappa) â€” measured 35deg facets in regions where kappa IS read correctly (~1/mm). The profile\u0027s epsNormalDeg=4deg is never consumed by MetricSizingField (only the legacy AdaptiveRefinement path uses it). (3) TRUE CREASES WITHOUT CONSTRAINT EDGES: the 12 main + 24 sub grooves are real C1 dihedrals (26.9deg) that FeatureLineGraph declares smooth (returns []), so no mesh edge tracks them â€” the residual stepping along grooves is density-irreducible (the defect-#1 mechanism on a different style). The EFG guard at PeriodicBalancedQuadtree.ts:595 works as designed and trips on 0.03% of leaves; the shaped templates it gates measurably REDUCE dihedral error where armed.",
+        "fixSurface":  "Per mechanism, cheapest-first: (1) kappa under-read: thread the ALREADY-IMPLEMENTED curvatureFloor option (MetricSizingField.ts:49-55) through ConformingWall.buildQuadtreeAtScale (ConformingWall.ts:250-258, the only construction site) and supply a style-aware analytic floor (or a finer kappa probe via the existing __pfConformingDenseRes lever, e.g. 1024 â€” measure cost first); this makes transition bands refine toward minEdge=0.1mm instead of sitting at maxEdge=1mm. (2) Normal-error sizing: in MetricSizingField.buildGrid (MetricSizingField.ts:89-107) take h = min(sqrt(8*maxSag/kappa), thetaMax/kappa, maxEdge) with thetaMax = profile epsNormalDeg (already in QualityProfiles, currently dead in this path) â€” one-line law change, bounds what the eye sees; note thetaMax/kappa is the binding term precisely in high-curvature regions. (3) The groove creases themselves (density-irreducible 27deg dihedrals): emit Crystalline\u0027s grooves in FeatureLineGraph.ts:780 as ONE helical-crease family â€” 24 lines u(t) = m/24 - 0.8t/24 (k=24, turns=0.8, phase 0; main creases are the even-m subset) â€” the existing chooseHelixGrid + CreaseHelixWarp pipeline (proven watertight on SpiralRidges) pins them as real full-height sheared columns with zero new machinery; also fix the false \u0027smooth\u0027 doc claim at FeatureLineGraph.ts:53-57. Do NOT change the EFG guard (measured: not the problem; its fallback is better-than-nothing where it fires, and subdivide-until-constant would address 0.03% of leaves). Do NOT raise maxLevel alone (proven no-op). Verification gate per the user\u0027s methodology: absolute count of crease-band edges with dihedral \u003e epsNormalDeg, plus worst-case dihedral, on the real export â€” both density-independent once the crease is a constraint edge.",
+        "code":  [
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/PeriodicBalancedQuadtree.ts",
+                         "lines":  "589-642",
+                         "what":  "leaves() + EFG_MAX_REL_VARIATION=0.5 metric-reliability guard (:595, :608-639): center vs two inset-corner FFF probes; \u003e50% component deviation suppresses leaf.efg. Measured trip rate on Crystalline: 96/376,351 leaves (0.03%) â€” hypothesis refuted."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/PeriodicBalancedQuadtree.ts",
+                         "lines":  "336-355, 255-263",
+                         "what":  "shouldRefine (the ACTUAL refinement gate: max(physW,physH) \u003e field.edgeLength) and levelCap pin grading (pin=log2(nRing)-B=8 at high/B=2). Tree never exceeds L9; maxLevel=12 unreachable under production sizing."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/MetricSizingField.ts",
+                         "lines":  "89-107, 49-55",
+                         "what":  "Sagitta law h=sqrt(8*maxSag/kappa) + clamp [minEdge,maxEdge] (:100-104) â€” bounds chord error only, never normal error; curvatureFloor option exists (:49) but is never threaded by production. Measured: 78% of nodes at maxEdge clamp, 0 at minEdge."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/SurfaceMetricTensor.ts",
+                         "lines":  "33-46, 144-212",
+                         "what":  "metricStepsForSampler (FD step = 1 sampler cell = 1/256) + principalCurvatureMax. The de-noising step IS the band-limiter: true crease kappa 116.3/mm reads as 0.086/mm (~1350x under-read) on the production 256-squared bilinear sampler."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts",
+                         "lines":  "2292-2295, 2379-2391, 2571-2577",
+                         "what":  "Conforming branch config: DENSE_RES=256 sampler grid; qMaxSag=profile epsPos (0.05 high), qMinEdge=min(0.2,max(0.04,2*sag))=0.1, qMaxLevel=12 (high/ultra), qMaxEdge=profile 1mm; sizing grid resU/resT=128. These four numbers + the kappa under-read fully determine the Crystalline mesh density."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/ConformingWall.ts",
+                         "lines":  "250-258",
+                         "what":  "buildQuadtreeAtScale â€” the single MetricSizingField construction site; passes maxSag/minEdge/maxEdge/grade/res/targetScale only. curvatureFloor and maxKappa are NOT threaded (dead options). The cheapest kappa-fix lands here."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/QuadtreeTriangulator.ts",
+                         "lines":  "125-129, 582-597, 618-630, 652-664",
+                         "what":  "shapedTemplate gate (B\u003e0 -\u003e every TAGGED leaf takes the shaped path; untagged -\u003e legacy SW-NE diagonal + centre-fan). Measured: efg-OFF control doubles \u003e4deg dihedral counts â€” shaped templates help; guard fallback is not the faceting cause."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/WatertightAssembly.ts",
+                         "lines":  "114-162",
+                         "what":  "computeUBias â€” Crystalline at default dims takes GATE B: maxURatio=6.84 -\u003e B=2 (round(log2(6.84/sqrt(3)))). With B=2, shapedTemplate fires unconditionally on tagged leaves and pinBoundaryLevel drops to 8."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/FeatureLineGraph.ts",
+                         "lines":  "780, 53-57, 59-63",
+                         "what":  "Crystalline: () =\u003e [] with the (measured-false) \u0027smooth sum of sin/cos\u0027 rationale. Its 36 grooves are one constant-slope helical-crease family (k=24, turns=0.8) â€” the SpiralRidges helix-warp machinery (:59-63) can pin them with no new machinery."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/geometry/styles.ts",
+                         "lines":  "857-894",
+                         "what":  "rOuterCrystalline: facetShape=pow(|triangleWave|,2.5) â€” slope discontinuity at the wave apex = true C1 crease (measured 26.9deg tangent dihedral); subShape=|sin|^1.25 â€” curvature blows up (x^-0.75) at 24 sub-crease lines. Defaults: 12 facets, heightPhase 0.4 -\u003e grooves drift 0.4/12 in u over height (helical, not vertical)."
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/QualityProfiles.ts",
+                         "lines":  "83-102",
+                         "what":  "High profile: epsPosMm 0.05, epsNormalDeg 4.0, maxEdgeMm 1, nRing 1024, budget 6M. epsNormalDeg is consumed ONLY by legacy parametric/AdaptiveRefinement.ts (grep-verified) â€” dead in the conforming sizing path; this is the missing error law for visible facets."
+                     }
+                 ]
+    },
+    {
+        "area":  "Export tolerance-override wiring: ExportDialog â†’ ExportPanel â†’ useParametricExport â†’ ParametricExportComputer conforming branch",
+        "summary":  "Dead-control bug CONFIRMED in the committed (shipped) code: the UIâ†’hookâ†’params plumbing delivers toleranceOverrides intact all the way into ParametricExportComputer.compute(), and resolveTolerances() correctly merges them into effectiveTolerances in the shared preamble (line 1985) â€” but the conforming branch (2283â†’early-return ~2922) never reads effectiveTolerances or params.toleranceOverrides. At HEAD line 2378 it derives profileSag = exportProfile.tolerances.epsPosMm (profile only), so qMaxSag/qMinEdge and the decimation error seed ignore the surface-error slider. epsFeatureMm is consumed by NOTHING on the conforming path (zero occurrences in ParametricExportComputer.ts and conforming/**) â€” the feature-drift slider is dead by absence of any consumer, not by a dropped value. IMPORTANT: an UNCOMMITTED working-tree patch (8 ins/1 del, present before this investigation, not authored here) already fixes the epsPosMm half at lines 2378-2385; it is not in any commit, so the shipped state still has the bug, and the epsFeatureMm half remains unfixed even in the working tree.",
+        "findings":  [
+                         {
+                             "claim":  "ExportDialog surface-error / feature-drift controls write config.toleranceOverrides and it reaches generateMesh",
+                             "verdict":  "confirmed",
+                             "evidence":  "ExportDialog.tsx:903 seeds tolerances state from PROFILE_DEFINITIONS.high.tolerances (full 5-key object); :909-912 re-seeds on profile select; :428-436 NumberInput â†’ onToleranceChange(\u0027epsPosMm\u0027, v); :438-446 â†’ \u0027epsFeatureMm\u0027; :953-955 buildConfig â†’ { ..., toleranceOverrides: tolerances }. ExportPanel.tsx:232-238 buildOverrides forwards config.toleranceOverrides; :245 parametricExport.generateMesh(tris, buildOverrides(config)). Note the dialog ALWAYS sends the full object (values equal profile defaults unless moved), so explicitToleranceRequest at ParametricExportComputer.ts:1994 is always true for dialog exports."
+                         },
+                         {
+                             "claim":  "useParametricExport.generateMesh forwards toleranceOverrides into ParametricExportParams",
+                             "verdict":  "confirmed",
+                             "evidence":  "useParametricExport.ts:78-83 ParametricExportOverrides.toleranceOverrides; :317 generateMesh(targetTriangles, overrides); :382-390 builds params with toleranceOverrides: overrides?.toleranceOverrides; :392 computerRef.current.compute(params). Field exists on ParametricExportParams at parametric/types.ts:104. Plumbing is intact â€” the drop is NOT here. (Side note: the quick exportSTL path, useParametricExport.ts:519-522, only forwards qualityProfile, never toleranceOverrides â€” but the dialog path is complete.)"
+                         },
+                         {
+                             "claim":  "qMaxSag in the conforming branch reads ONLY the profile epsPosMm; params.toleranceOverrides.epsPosMm is dropped",
+                             "verdict":  "confirmed",
+                             "evidence":  "At HEAD (shipped): ParametricExportComputer.ts HEAD:2378 `const profileSag = exportProfile.tolerances.epsPosMm;` then HEAD:2379 qMaxSag and HEAD:2380 qMinEdge derive from profileSag. `git show HEAD:...ParametricExportComputer.ts | grep -n toleranceOverrides` returns ONLY lines 1987 (resolveTolerances arg) and 1994 (explicitToleranceRequest) â€” zero references inside the conforming branch (2283-2935). effectiveTolerances is likewise never read inside the branch; its first post-preamble use is line 4710, AFTER the conforming early return at ~2922-2934. CAVEAT: an uncommitted working-tree diff (git diff hunk @@ -2375,7 +2375,14 @@) already replaces HEAD:2378 with an override-aware derivation (worktree :2378-2385, comment explicitly says \u0027user-reported\u0027); this fix exists ONLY in the working tree, not in any commit (file shows \u0027 M\u0027 in git status)."
+                         },
+                         {
+                             "claim":  "resolveTolerances() is called for conforming runs but its result is bypassed by the conforming density derivation",
+                             "verdict":  "confirmed",
+                             "evidence":  "ParametricExportComputer.ts:1985-1988 calls resolveTolerances({ qualityProfile: effectiveProfileName, toleranceOverrides: params.toleranceOverrides }) in the shared compute() preamble; QualityProfiles.ts:181-197 correctly merges overrides (epsPosMm at :191, epsFeatureMm at :193). But on a conforming run the ONLY consumer of effectiveTolerances that executes is assessToleranceFeasibility (:1990-2001), which per ExportFeasibility.ts:59-119 reads epsPosMm alone and can only warn or throw preflight â€” it never shapes the mesh. All other effectiveTolerances consumers (weld tolerances :4710+, MeshValidator configs :5308/:6672) are legacy-path code after the conforming early return. So: called, correctly merged, then ignored by the mesher."
+                         },
+                         {
+                             "claim":  "epsFeatureMm (feature-drift slider) controls something on the conforming path",
+                             "verdict":  "refuted",
+                             "evidence":  "Zero occurrences of epsFeatureMm in ParametricExportComputer.ts (grep) and zero in src/renderers/webgpu/parametric/conforming/** (grep). The conforming feature gate is the binary featureDrop\u003e0 check via measureFeatureResolution in the decimation candidate validator (ParametricExportComputer.ts:2839-2855) â€” no mm-drift threshold parameter. summarizeConformingValidation (:2891-2893) takes only (vertices, indices), no tolerances. Runtime consumers of epsFeatureMm are exclusively legacy: MeshValidator.ts:1904 and :2027 (maxFeatureDriftMm \u003c= epsFeatureMm), fed via `tolerances: effectiveTolerances` at :5308/:6672 â€” both unreachable on the conforming path. checkTolerances (QualityProfiles.ts:298) is test-only (callers only in QualityProfiles.test.ts). Even the working-tree patch does not touch this â€” feature-drift remains a fully dead control on the conforming path."
+                         },
+                         {
+                             "claim":  "Even with the epsPosMm override honored, parts of the conforming quality derivation remain profile-locked",
+                             "verdict":  "partial",
+                             "evidence":  "Worktree :2388-2390 qMaxLevel is profile-NAME driven (high/ultra=12, standard=11, draft=10) â€” a tight epsPosMm override on draft/standard can be clamped by quadtree depth; :2396-2398 qMaxEdge = exportProfile.maxEdgeMm and :2403-2405 qNRing = exportProfile.nRing stay profile-only, so the slider tightens sag-driven curvature refinement but never the flat-wall visual-facet cap or ring density. The override DOES propagate downstream of qMaxSag: decimation error seed decErrSeed = qMaxSag (:2824-2826) and effectiveMaxSagMm report (:2807)."
+                         }
+                     ],
+        "mechanism":  "The override survives every hop (Dialog state â†’ ExportDialogConfig.toleranceOverrides â†’ ExportPanel.buildOverrides â†’ useParametricExport params â†’ ParametricExportComputer.compute params) and is even merged correctly by resolveTolerances() at ParametricExportComputer.ts:1985-1988 into effectiveTolerances. The drop is a single dead-end inside the conforming early-return branch (starts :2283, returns :2922-2934): the quality-lever derivation reads the raw profile object instead of the resolved tolerances â€” HEAD:2378 `const profileSag = exportProfile.tolerances.epsPosMm;`. qMaxSag (HEAD:2379), qMinEdge (HEAD:2380), and the decimation error seed all chain off that profile-only value, so moving the surface-error slider changes nothing in the exported mesh; its only observable effect is the feasibility preflight (warn/throw, epsPosMm only). The feature-drift slider is dead for a different reason: no code on the conforming path consumes epsFeatureMm at all â€” the conforming feature gate is binary featureDrop\u003e0 with no drift-mm threshold.",
+        "fixSurface":  "epsPosMm: change HEAD:2378 so the sag target consults params.toleranceOverrides first, falling back to the profile. The cleanest form is `const profileSag = effectiveTolerances.epsPosMm;` (reuses the already-called resolveTolerances merge â€” single precedence implementation); the uncommitted working-tree patch instead inlines `const overrideSag = params.toleranceOverrides?.epsPosMm; const profileSag = (typeof overrideSag === \u0027number\u0027 \u0026\u0026 overrideSag \u003e 0) ? overrideSag : exportProfile.tolerances.epsPosMm;` (worktree :2378-2385) â€” equivalent for epsPosMm, must be COMMITTED to ship. For full override semantics also consider deriving qMaxLevel from the resolved sag (worktree :2388-2390) since a tight override can be depth-clamped on draft/standard; qMaxEdge (:2396-2398) and qNRing (:2403-2405) stay profile-only by design (visual-facet cap, not chord error). epsFeatureMm: needs a consumer to exist at all on the conforming path â€” natural anchor is the decimation candidate gate (:2839-2855) / measureFeatureResolution (FeatureLineGraph) where a drift-in-mm threshold could replace or augment the binary featureDrop\u003e0 check; alternatively hide the control on the conforming path rather than ship a placebo.",
+        "code":  [
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/ui/controls/ExportDialog.tsx",
+                         "lines":  "428-446, 903, 909-912, 953-955, 62",
+                         "what":  "Sliders write tolerances.epsPosMm/epsFeatureMm; state seeded from profile defs; buildConfig ships the full object as config.toleranceOverrides every export"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/ui/controls/ExportPanel.tsx",
+                         "lines":  "232-238, 240-245",
+                         "what":  "buildOverrides forwards config.toleranceOverrides; handleDialogExport calls generateMesh(tris, overrides) â€” intact hop"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/hooks/useParametricExport.ts",
+                         "lines":  "78-83, 317, 382-392, 519-522",
+                         "what":  "Overrides forwarded into ParametricExportParams and compute(params) â€” intact; quick exportSTL path never passes overrides (dialog path does)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/types.ts",
+                         "lines":  "104",
+                         "what":  "ParametricExportParams.toleranceOverrides?: Partial\u003cExportTolerances\u003e â€” field exists"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/QualityProfiles.ts",
+                         "lines":  "181-197",
+                         "what":  "resolveTolerances correctly merges overrides over profile (epsPosMm :191, epsFeatureMm :193) â€” the merge logic is fine, just unused by the conforming mesher"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts",
+                         "lines":  "1985-2001",
+                         "what":  "Shared preamble: resolveTolerances called with params.toleranceOverrides â†’ effectiveTolerances; only conforming-run consumer is the epsPosMm-only feasibility preflight (warn/throw, never shapes the mesh)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts",
+                         "lines":  "HEAD:2378-2380 (worktree 2378-2387)",
+                         "what":  "THE BUG (HEAD): profileSag = exportProfile.tolerances.epsPosMm â€” override dropped; qMaxSag/qMinEdge chain off it. Worktree carries an UNCOMMITTED fix consulting params.toleranceOverrides?.epsPosMm first"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts",
+                         "lines":  "2283, 2388-2405, 2807, 2824-2826, 2839-2855, 2891-2893, 2922-2935",
+                         "what":  "Conforming branch extent and remaining profile-locked levers (qMaxLevel/qMaxEdge/qNRing); decimation seed inherits qMaxSag; binary featureDrop\u003e0 gate and tolerance-free validation summary â€” no epsFeatureMm consumer anywhere"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/MeshValidator.ts",
+                         "lines":  "1904, 2027",
+                         "what":  "Only runtime epsFeatureMm consumers (maxFeatureDriftMm gates) â€” legacy path only, fed at ParametricExportComputer.ts:5308/:6672 after the conforming early return"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/ExportFeasibility.ts",
+                         "lines":  "59-119",
+                         "what":  "Feasibility preflight reads epsPosMm only â€” an extreme slider value can abort/warn the export while the mesh itself ignores it (HEAD)"
+                     }
+                 ]
+    },
+    {
+        "area":  "Conforming mesher crest-edge insertion machinery (FeatureConformingTriangulator / ConstrainedCellTriangulator / FeatureLineGraph) + fidelity metric building blocks (metrics.ts, windowHook.ts)",
+        "summary":  "The constraint-insertion machinery is COMPLETE and already proven on open polylines â€” nothing in FCT/CCT needs to change for born-crest insertion. triangulateQuadtreeWithFeatures inserts arbitrary (u,t) polylines (closed loops, OPEN polylines, diagonals, mutually-crossing braids) watertight-by-construction via a grid-line vertex registry: boundary crossings are computed per edge-LINE (bit-identical from both cells), registered keyed by quantized grid line, and PASS B makes both adjacent cells read the identical edge-vertex union, with plain neighbours becoming passive feature cells. Open-polyline endpoints are safe: a cell-interior endpoint is a purely-local dangling constraint (cdt2d handles it); an on-edge endpoint is registry-mirrored; and endpoints can NEVER reach the pinned t=0/t=1 cap rings because ConformingWall clips all features to [tMargin, 1-tMargin] (default 1/nRing) and off the u-seam (uMargin=1.5/2^featureLevel). The kind taxonomy: a morphing diagonal crest is \u0027general-curve\u0027 (CDT-inserted via outerFeatureLines); vertical/horizontal/helical creases are warp-pinned with outerCreaseLines being refine-only footprints. KEY CORRECTION to the hypothesis: only 7 of the 8 smooth styles return empty graphs â€” SuperformulaBlossom ALREADY extracts and inserts its 12 full-height crests as real constraint edges at strength\u003e1e-3 (production, CELTIC_KNOT-style general curves); only its BORN crests (t-span\u003c0.85) are filtered out by SF_CREST_FULL_HEIGHT_SPAN, and the dangling-endpoint justification for that filter was measured FALSE (SuperformulaBornCrests.test.ts: all born crests run rim\u003c-\u003eseam; naive insertion measured watertight). CRITICAL prior art: that same insertion experiment was measured to NOT move serration â€” but with the crestRms metric later proven reference-dominated, so the question is open pending the lateral-deviation metric. For the metric: buildCrestLoci + findRowExtrema already produce the analytic per-row crest theta-loci (style-agnostic), sfRf gives an EXACT analytic SFB reference, and the only genuinely new piece for a crest-line lateral-deviation metric is a ~40-line z-plane mesh slicer; the absolute sub-threshold triangle count is already computed inside crestBandTriangleQuality but only surfaced as a percent.",
+        "findings":  [
+                         {
+                             "claim":  "The CDT-feature path can insert a SMOOTH OPEN crest polyline as watertight constraint edges with no new machinery",
+                             "verdict":  "confirmed",
+                             "evidence":  "collectSegments (FeatureConformingTriangulator.ts:101-113) flattens ANY polyline to independent segments â€” no closure requirement. Open general-curve polylines are ALREADY inserted in production: CelticKnot braided strands (FeatureLineGraph.ts:546-572, CELTIC_KNOT_INSERTION_ENABLED=true) and SuperformulaBlossom full-height crests (713-733). Crossing constraints are planarized into interior Steiner points (FCT:220-253). The header\u0027s \u0027closed loops / full-height lines\u0027 assumption (FCT:19-21) is stale â€” superseded by the grid-line registry (FCT:539-549, 613-626, 674-687) which mirrors every on-edge feature vertex into BOTH adjacent cells regardless of curve topology; a PASS-A-plain cell whose neighbour registered edge points becomes a passive feature cell that subdivides its edge to match (FCT:669-673, 716-717)."
+                         },
+                         {
+                             "claim":  "The 8 smooth-ridge styles extract ZERO feature lines, so the sharp crest is never a real mesh edge",
+                             "verdict":  "partial",
+                             "evidence":  "7/8 true: HarmonicRipple, SuperellipseMorph, FourierBloom, WaveInterference, RippleInterference, Crystalline, ArtDeco are hard-wired () =\u003e [] (FeatureLineGraph.ts:774-781). SuperformulaBlossom is the EXCEPTION: extractSuperformulaBlossom (713-733) traces the zero-set of drf/du via marching squares at strength\u003eSF_CREST_MIN_STRENGTH=1e-3 and these \u0027sf-crest\u0027 general-curve lines flow into production insertion (ParametricExportComputer.ts:2435-2439 -\u003e 2499-2501 -\u003e 2606). BUT only crests with t-span \u003e= SF_CREST_FULL_HEIGHT_SPAN=0.85 survive the filter (FeatureLineGraph.ts:685, 724-732) â€” the ~4-7 BORN/forking crests of the m:6-\u003e10 morph are dropped, so SFB\u0027s upper-region sawtooth occurs where crests are NOT mesh edges, and the other 7 styles have NO crest edges anywhere."
+                         },
+                         {
+                             "claim":  "Polyline endpoints at t=0/t=1 near the pinned cap rings are a crack hazard",
+                             "verdict":  "refuted",
+                             "evidence":  "Structurally impossible in the current path: clipFeaturesToBox (ConformingWall.ts:420-430, applied at 601-603) clips every feature line to t in [tMargin, 1-tMargin] (tMargin default = 1/nRing, ConformingWall.ts:78-85) and u in [uMargin, 1-uMargin] (uMargin = 1.5/2^featureLevel, :602) â€” features never touch the index-shared boundary rings (ring count invariant checked at WatertightAssembly.ts:495-500). A clipped endpoint landing exactly on a grid line is registry-mirrored (FCT:325-328 comment names \u0027the feature-clip boundary\u0027 explicitly); an endpoint strictly inside a cell becomes registerInterior (FCT:653-654) â€” a purely cell-local dangling constraint that cdt2d accepts, with zero cross-cell footprint. SuperformulaBornCrests.test.ts:74-96 measured every born crest ends rim(t=1)\u003c-\u003eseam(u~0.999) â€” none dangles interior â€” and NEXT-SESSION-CAD-FIDELITY.md:184-188 records naive born-crest insertion as WATERTIGHT (bnd=nonMan=orient=sliver=0)."
+                         },
+                         {
+                             "claim":  "A morphing diagonal crest is the \u0027general-curve\u0027 FeatureLine kind; outerFeatureLines are CDT-inserted while outerCreaseLines are refine-only",
+                             "verdict":  "confirmed",
+                             "evidence":  "FeatureLineKind doc (FeatureLineGraph.ts:115-126): \u0027general-curve\u0027 = arbitrary (u,t) polyline with no constant-u/-t/-single-slope decomposition â€” exactly a morphing diagonal crest (vertical-crease/horizontal-band/helical-crease are warp-pinned instead). Wiring: ParametricExportComputer.ts:2499-2501 filters kind===\u0027general-curve\u0027 into outerFeatureLines (:2606, featureLevel:7 at :2607); outerCreaseLines (:2609) = buildCreaseRefineLines output (FeatureLineGraph.ts:1030-1126), consumed ONLY as a quadtree refinement footprint (ConformingWall.ts:617-619 â€” and ONLY when uBias\u003e0), never inserted (WatertightAssembly.ts:239-246). Axis-aligned/helical kinds are realized by post-triangulation domain warps (PEC:2624-2659)."
+                         },
+                         {
+                             "claim":  "crestBandTriangleQuality is the diluting band-percent metric; the absolute count exists internally but is not reported",
+                             "verdict":  "confirmed",
+                             "evidence":  "metrics.ts:1725-1829: headline outputs are bandPctBelow15 / nonBandPctBelow15 (percent, :1825-1827) â€” the dilution the user flagged. The absolute below-bar band count is computed (bandBelow, :1797) but only surfaced as a percent; bandTriangles and bandWorstMinAngleDeg (worst-case min angle, :1826) ARE reported, so (a) of the methodology needs only surfacing bandBelow as a count. Band location: buildCrestLoci (:1502-1530) samples the SAMPLER on crestRows x crestCols, finds per-row radius extrema via findRowExtrema (:1351-1374, maxima+minima merged at :1524), band membership = within crestHalfWidthFrac x (2pi/loci) of any locus (inCrestBand :1533-1545)."
+                         },
+                         {
+                             "claim":  "wallChordError measures crest serration faithfully",
+                             "verdict":  "refuted",
+                             "evidence":  "metrics.ts:1555-1661 measures RADIAL deviation |hypot(P.xy) - R_true(theta_P, z_P)| at barycentric + edge-midpoint samples (R_true via 2D-Newton inversion sampleTrueRadius :1384-1458). This is chord error ACROSS the surface â€” density-DEPENDENT (shrinks as triangles shrink) and proven reference-dominated at sharp cusps (NEXT-SESSION-CAD-FIDELITY.md:238-254: the 256-bilinear reference inflated crestRms ~2.6x). It is not the lateral (perpendicular-to-crest) sawtooth amplitude the eye sees."
+                         },
+                         {
+                             "claim":  "A density-independent crest-line lateral-deviation metric (mesh crest vs analytic ridge, perpendicular mm) is constructible almost entirely from existing pieces",
+                             "verdict":  "confirmed",
+                             "evidence":  "TRUE ridge: reuse buildCrestLoci\u0027s row scan (metrics.ts:1512-1527) keeping maxima/minima separate (findRowExtrema already returns them separately :1351-1374), chained row-to-row by nearest-theta into theta_true(z) polylines; for SuperformulaBlossom an EXACT analytic reference exists â€” sfRf is exported (FeatureLineGraph.ts:702-711) with crest = zero-set of drf/du (:713-722), eliminating reference error entirely. MESH crest: slice the outer-wall submesh (extractOuterWallSubmesh metrics.ts:1466-1492 + getLastConformingOuterWallMask, plumbing identical to diagnoseSerration windowHook.ts:611-644) with z=const planes near each locus; per slice take the local radius-max apex nearest theta_true -\u003e theta_mesh(z). NO mesh slicer exists in-repo (grep verified) â€” this is the ONLY new piece (~40 lines of edge-plane crossing). DEVIATION: dev_perp(z) = r*wrapPi(theta_mesh - theta_true)/sqrt(1+(r*dtheta_true/dz)^2) â€” wrapPi at metrics.ts:1337; periodic seam-safe polyline interpolation reusable from interpolatePolylineU (FeatureLineGraph.ts:932-954). Density-independence: an inserted crest constraint edge puts the slice apex ON the edge (~0 at any density); a quadtree staircase apex wanders ~half the local cell. Alternative vertex-only variant via getLastConformingAssemblyUT (PEC.ts:385, stashed pre-warp at :2622) is simpler but misses the between-vertex silhouette; the plane-slice version measures what renders show. Plumbing: clone diagnoseCrestQuality (windowHook.ts:646-664); the decoupled high-res/bicubic reference levers already exist (:624-636)."
+                         },
+                         {
+                             "claim":  "Born-crest insertion was already tried for SFB and did not fix serration (prior art that must inform the design)",
+                             "verdict":  "confirmed",
+                             "evidence":  "NEXT-SESSION-CAD-FIDELITY.md:182-194: naive insertion of the born crests (filter 0.85-\u003e0.08) was watertight (featDrop=0, topology zeros) but left serr 3.35-\u003e3.32 â€” HOWEVER that verdict was rendered by the crestRms metric LATER PROVEN reference-dominated (:238-254), and the visual-grounding section (:217-236) attributed the jagged silhouette to u-long anisotropy (since fixed by uBias GATE B, memory: project_cad_fidelity). Whether insertion kills the REMAINING sawtooth at the new profile-driven density is therefore UNDECIDED â€” the lateral-deviation metric is precisely the instrument to re-adjudicate it, and Stage 3 born-crest insertion remains \u0027watertight-proven, demoted to optional\u0027 (:276-279)."
+                         }
+                     ],
+        "mechanism":  "Watertight constraint insertion works in two passes over the balanced quadtree. PASS A: each feature polyline is flattened to segments, snapped (snapToCellEdge, then per-cell anchor snap with an ABSOLUTE cornerSnap = 0.06/2^featureLevel so both sides of every shared edge decide identically), clipped per-cell (Liang-Barsky), and its boundary crossings computed per edge-LINE (same segment x same line =\u003e bit-identical point from both cells) then registered in a grid-line vertex registry (regH keyed by quantized t-line, regV by quantized u-line mod 1 so the seam shares keys). PASS B: every cell â€” feature or plain â€” reads the UNION of registered points on each of its four edges, so both sides of every shared edge carry the identical ordered vertex sequence (T-junction-free by construction); cells with edge points but no interior constraints become passive feature cells that merely subdivide the edge. The per-cell fill is cdt2d run locally with the cell\u0027s CCW boundary loop itself passed as constraint edges (keeps collinear edge points), {exterior:false}, and the feature segments as interior constraints â€” every constraint becomes a real mesh edge (a sharp dihedral), zero quality-Steiner inserted. Crossing constraints (braids, forking crests) are pre-planarized into strictly-interior Steiner points. Endpoints: cell-interior =\u003e local dangling constraint (safe); on-edge =\u003e registry-mirrored; t=0/t=1 unreachable (tMargin clip keeps the pinned cap rings, which caps reference by index, feature-free). A jitter weld (WELD_TAU=1e-6, far below min vertex spacing) then the u=1-\u003eu=0 seam merge finish the mesh. The crest sawtooth mechanism this enables fixing: for 7 smooth styles (and SFB\u0027s born crests) the crest is only APPROXIMATED by axis-aligned cell edges, so the silhouette apex alternates around the true ridge by ~half a cell â€” insertion would pin the apex to an exact analytic constraint edge.",
+        "fixSurface":  "Born-crest/smooth-crest insertion: (1) FeatureLineGraph.ts â€” relax/remove SF_CREST_FULL_HEIGHT_SPAN (:685, filter :724-732) for SFB born crests (measured rim\u003c-\u003eseam, watertight); add per-style extractors for the other 7 smooth styles following the SFB template (CPU radius mirror + marching-squares zero-set of dr/dtheta -\u003e \u0027general-curve\u0027 lines; the doc\u0027s generalization guidance is NEXT-SESSION-CAD-FIDELITY.md section 6: one style at a time, gated by the metric). NO changes needed in FeatureConformingTriangulator.ts / ConstrainedCellTriangulator.ts / ConformingWall.ts / WatertightAssembly.ts â€” the insertion contract, clipping, refinement (featureLevel) and registry already handle open diagonal polylines; note the interaction trap: hasFeatures defers GATE-A uBias (WatertightAssembly.ts:420-428) but GATE-B relief bias still fires (safe, measured). Metric: (2) metrics.ts â€” new crestLateralDeviation() reusing buildCrestLoci/findRowExtrema (true ridge), extractOuterWallSubmesh, wrapPi; plus a new ~40-line z-plane outer-wall slicer (the only missing piece); surface the absolute bandBelow count in crestBandTriangleQuality (:1797 -\u003e result). (3) windowHook.ts â€” clone diagnoseCrestQuality (:646-664) into diagnoseCrestLateralDeviation; for SFB pass the exact sfRf-based analytic ridge instead of the sampler-extrema ridge to remove reference error.",
+        "code":  [
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/FeatureConformingTriangulator.ts",
+                         "lines":  "10-27, 101-113, 165-189, 198-253, 329-372, 532-549, 589-667, 669-687, 711-717, 896-937, 944-997",
+                         "what":  "triangulateQuadtreeWithFeatures: watertight-by-construction contract (header), polyline-\u003esegment flattening (no closure requirement), per-edge-LINE crossings, planarizeConstraints (crossing braids -\u003e Steiner), snapToCellEdge + absolute cornerSnap, grid-line vertex registry (regH/regV), PASS A boundary/interior registration (endpoints: interior=local dangle :653-654, on-edge=mirrored :613-626), PASS B union read + passive feature cells, per-cell CDT call + Tier-2 refine hook, WELD_TAU jitter weld + seam closure"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/ConstrainedCellTriangulator.ts",
+                         "lines":  "9-19, 80-97, 99-134",
+                         "what":  "Per-cell constrained Delaunay: boundary used EXACTLY (neighbour sees identical vertex set), constraint edges become real mesh edges (sharp dihedral, not chamfer); boundary loop passed as constraints so collinear edge points survive cdt2d; {exterior:false}; normalizeWinding inversion/drop counters"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/FeatureLineGraph.ts",
+                         "lines":  "115-143, 546-572, 669-733 (esp. 685, 702-711, 724-732), 735-782, 932-954, 1030-1126",
+                         "what":  "FeatureLineKind taxonomy (general-curve = the morphing diagonal crest kind), CelticKnot open-strand insertion precedent, SuperformulaBlossom crest extractor (sfRf exported analytic field, SF_CREST_FULL_HEIGHT_SPAN=0.85 born-crest filter), EXTRACTORS table (7 smooth styles hard-wired empty, SFB the exception), interpolatePolylineU (seam-safe polyline interpolation, reusable for the metric), buildCreaseRefineLines (the refine-only outerCreaseLines source)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/ConformingWall.ts",
+                         "lines":  "70-92, 124-137, 377-430, 520-556, 593-637",
+                         "what":  "featureLines/featureTMargin/featureLevel/creaseLines option contracts; clipLineToInterval + clipFeaturesToBox (the t=0/t=1 pinned-ring protection: tMargin default 1/nRing, uMargin=1.5/2^featureLevel off the seam); buildWallMeshAtScale (cornerSnap=0.06/2^featureLevel, directional refine disabled on feature walls, Tier-2 refine dev-gated __pfConformingRefine)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/WatertightAssembly.ts",
+                         "lines":  "227-246, 394-500",
+                         "what":  "outerFeatureLines (CDT-inserted, outer wall only) vs outerCreaseLines (refine-only) option semantics; hasFeatures-\u003euBias deferral history (:402-428); ring-count invariant check (:495-500) â€” the cap index-sharing the t-clip protects"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/ParametricExportComputer.ts",
+                         "lines":  "299, 385-386, 2426-2439, 2492-2530, 2569-2622, 2624-2659",
+                         "what":  "Conforming-branch wiring: extractAnalyticFeatures call, general-curve -\u003e outerFeatureLines (featureLevel:7), buildCreaseRefineLines -\u003e outerCreaseLines, assembleWatertight, LAST_CONFORMING_ASSEMBLY_UT pre-warp (u,t) stash + getter (per-vertex (u,t) for any new metric), post-assembly u/t/helix warps"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/fidelity/metrics.ts",
+                         "lines":  "1337-1342, 1351-1374, 1384-1458, 1466-1492, 1502-1545, 1555-1661, 1725-1829",
+                         "what":  "wrapPi; findRowExtrema (per-row maxima/minima, separate); sampleTrueRadius (Newton (theta,z)-\u003e(u,t) inversion); extractOuterWallSubmesh; buildCrestLoci + inCrestBand (the crest-band locator â€” the true-ridge half of the lateral metric); wallChordError (radial, density-dependent â€” NOT lateral); crestBandTriangleQuality (band-percent metric; absolute bandBelow count internal-only at :1797)"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/fidelity/windowHook.ts",
+                         "lines":  "611-664, 624-636, 718",
+                         "what":  "diagnoseSerration / diagnoseCrestQuality plumbing to clone for the new lateral metric (generateMesh -\u003e outer grid + wall mask -\u003e submesh -\u003e sampler); decoupled high-res reference (__pfReferenceDenseRes) + C1 bicubic (__pfReferenceBicubic) levers; getLastConformingAssemblyUT consumer precedent"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/src/renderers/webgpu/parametric/conforming/SuperformulaBornCrests.test.ts",
+                         "lines":  "1-97",
+                         "what":  "Measured born-crest geometry: every born crest runs rim(t=1)\u003c-\u003eseam(u~0.999), none dangles interior â€” the SF_CREST_FULL_HEIGHT_SPAN filter\u0027s T-junction justification is disproven; cites the e2e proof that naive insertion is watertight"
+                     },
+                     {
+                         "file":  "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/docs/superpowers/NEXT-SESSION-CAD-FIDELITY.md",
+                         "lines":  "182-194, 217-236, 238-254, 276-279, 285-299",
+                         "what":  "Prior art record: born-crest insertion watertight but no crestRms change (measured with the later-discredited reference-dominated metric); visual grounding (anisotropy diagnosis); metric pivot; Stage 3 born-crest demotion; the hasFeatures-\u003euBias trap; section-6 generalization guidance for the other 7 smooth styles"
+                     }
+                 ]
+    }
+]
