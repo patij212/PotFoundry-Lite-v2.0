@@ -73,6 +73,18 @@ export function FidelityHookMount(): null {
     // output even when its own validator rejects it (non-manifold/sliver/etc).
     generateMesh: (n) => parametricExport.generateMesh(n, { returnInvalidMesh: true }),
     generateReference: () => gpuExport.generateMesh(),
+    // Live style/geometry state for the analytic true-ridge construction
+    // (diagnoseCrestLateralDeviation). r0 = mean wall radius — the radius
+    // SCALE only (ridge loci are r0-independent; r0 keeps the f64 mirror's
+    // prominence gate in physical mm).
+    getStyleState: () => {
+      const s = useAppStore.getState();
+      return {
+        opts: { ...(s.style.opts ?? {}) } as Record<string, number>,
+        H: s.geometry.H,
+        r0: (s.geometry.top_od + s.geometry.bottom_od) / 4,
+      };
+    },
   };
 
   // Expose the current style id for the fidelity hook's row labelling.
@@ -100,6 +112,7 @@ export function FidelityHookMount(): null {
       isReferenceAvailable: () => depsRef.current.isReferenceAvailable(),
       generateMesh: (n) => depsRef.current.generateMesh(n),
       generateReference: () => depsRef.current.generateReference(),
+      getStyleState: () => depsRef.current.getStyleState?.() ?? { opts: {}, H: 0, r0: 0 },
     });
     return () => {
       delete window.__pfFidelity;

@@ -54,6 +54,18 @@ import {
   type WallChordResult,
   type WallDeviationResult,
 } from './metrics';
+import {
+  crestLateralDeviation,
+  ridgeFromParamBranches,
+  sfClosedFormParamRidge,
+  solveParamRidgeByBisection,
+  type CrestLateralDeviationResult,
+  type ParamRidge,
+} from './crestLateralDeviation';
+import { buildStyleParamPayload } from '../utils/styleParams';
+import { getStyleFunction } from '../geometry/styles';
+import { TAU } from '../geometry/types';
+import type { StyleId, StyleOptions } from '../geometry/types';
 import { ASPECT_MAX, WELD_TOL_MM, type FidelityMetrics } from './types';
 
 export interface FidelityMeasureOptions {
@@ -120,6 +132,14 @@ export interface FidelityHookDeps {
    * too CPU-bound to build a dense reference across all ~20 styles.
    */
   generateReference: () => Promise<MeshData | null>;
+  /**
+   * Live style + geometry state for analytic true-ridge construction
+   * (diagnoseCrestLateralDeviation): the current style's raw opts (snake_case
+   * registry keys, packed via buildStyleParamPayload exactly like production)
+   * plus pot height and a representative base radius for the f64 CPU radius
+   * mirror. Optional — the diagnostic returns null without it.
+   */
+  getStyleState?: () => { opts: Record<string, number>; H: number; r0: number };
 }
 
 export interface PfFidelityApi {
@@ -209,6 +229,29 @@ export interface PfFidelityApi {
    */
   diagnoseCrestQuality(opts?: FidelityCrestQualityDiagnosticOptions): Promise<FidelityCrestQualityDiagnostics | null>;
   /**
+   * STAGE 2a — the FAITHFUL crest lateral-deviation instrument (blueprint
+   * faithfulMetricSpec 1–3): serration amplitude in MILLIMETERS versus the
+   * ANALYTIC ridge, density-independent by construction. Unlike
+   * `diagnoseCrestQuality` (triangle SHAPE) this slices the OUTER-wall submesh
+   * by z-planes and measures the mesh crest apex's lateral offset
+   * d = r·wrapPi(θ_mesh − θ_true)/√(1+(r·dθ_true/dz)²) from the analytic ridge:
+   * SuperformulaBlossom uses the CLOSED-FORM loci u*(t) = (2j−1)/(2m(t))
+   * (seam-aware, refErrBound ≈ 0); every other style takes the generic path —
+   * bisection roots of ∂r/∂u = 0 on the f64 CPU radius mirror
+   * (geometry/styles.ts) chained by continuation, with fold-point births
+   * solved exactly. Every number carries `refErrBoundMm` (root tolerance +
+   * polyline interpolation + sampler-grid chord bound) — an amplitude without
+   * its reference-error bound is meaningless. Reported per crest as MAX and
+   * RMS (absolute mm, worst-case; crests and valleys separate channels; NO
+   * percent anywhere), plus slice/sample counts for coverage gating. Honors
+   * the `__pfReferenceDenseRes`/`__pfReferenceBicubic` reference levers (same
+   * selection as diagnoseSerration). Null on the legacy/parametric path (no
+   * conforming outer-wall stash) or when the mount provided no style-state
+   * getter. Run at high AND ultra: a staircase HALVES when density doubles, a
+   * true crest defect does not — the density-independence discriminator.
+   */
+  diagnoseCrestLateralDeviation(opts?: FidelityCrestLateralDiagnosticOptions): Promise<FidelityCrestLateralDiagnostics | null>;
+  /**
    * STAGE 0 — the constrained-CDT masking-channel readout. The per-cell CDT
    * normalization silently FLIPPED inverted triangles (masking constraint
    * fold-overs — the suspected non-manifold mechanism) and DROPPED zero-(u,t)-area
@@ -276,6 +319,25 @@ export interface FidelityCrestQualityDiagnosticOptions {
 
 export interface FidelityCrestQualityDiagnostics extends CrestBandQualityResult {
   styleId: string;
+}
+
+export interface FidelityCrestLateralDiagnosticOptions {
+  targetTriangles?: number;
+  /** Z-slice spacing (mm). Default 0.25 (spec: min(0.25, local cell t-extent);
+   *  the cell extent is not cheaply available here — override when known). */
+  sliceSpacingMm?: number;
+}
+
+export interface FidelityCrestLateralDiagnostics extends CrestLateralDeviationResult {
+  styleId: string;
+  /** Outer-wall submesh triangles sliced. */
+  triangleCount: number;
+  /** True-ridge construction path: SFB closed form vs generic f64 bisection. */
+  ridgeMethod: 'closed-form' | 'bisection';
+  /** Resolution of the sampler grid used to map the ridge into 3D. */
+  referenceRes: number;
+  /** Whether that sampler was C1 bicubic (`__pfReferenceBicubic`). */
+  referenceBicubic: boolean;
 }
 
 export interface FidelityCdtHealthDiagnosticOptions {
@@ -665,6 +727,85 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         crestHalfWidthFrac: opts.crestHalfWidthFrac,
       });
       return { styleId, ...result };
+    },
+    async diagnoseCrestLateralDeviation(opts: FidelityCrestLateralDiagnosticOptions = {}): Promise<FidelityCrestLateralDiagnostics | null> {
+      const styleId = currentStyleId();
+      // Generating the mesh repopulates the stashed outer sampler grid + the
+      // outer-wall vertex mask (conforming branch only); the mask restricts the
+      // slicer to the outer wall exactly as diagnoseCrestQuality does.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const grid = getLastConformingOuterGrid();
+      const mask = getLastConformingOuterWallMask();
+      const style = deps.getStyleState?.();
+      if (!grid || !mask || !style) return null;
+      const sub = extractOuterWallSubmesh(mesh.vertices, mesh.indices, mask);
+
+      // The ridge is SOLVED in the style's NATIVE (u,t) domain — the same
+      // domain the stashed PLAIN sampler consumes (the crease/helix warps
+      // re-parameterize the triangulation lattice, not the surface), so the
+      // mapping needs NO composedWallSampler composition here; composing the
+      // stashed helix would DOUBLE-apply the shear to an already-helical
+      // locus (see crestLateralDeviation.ts module doc). Reference selection
+      // mirrors diagnoseSerration: the decoupled `__pfReferenceDenseRes` grid
+      // when set, C1 bicubic under `__pfReferenceBicubic`.
+      const refGrid = getLastConformingOuterReferenceGrid() ?? grid;
+      const bicubic = (globalThis as unknown as { __pfReferenceBicubic?: boolean }).__pfReferenceBicubic === true;
+      const surface = bicubic
+        ? new BicubicSurfaceSampler(refGrid.positions, refGrid.resU, refGrid.resT)
+        : new GpuSurfaceSampler(refGrid.positions, refGrid.resU, refGrid.resT);
+
+      // TRUE RIDGE: SFB closed form (refErrBound ≈ 0); generic f64-mirror
+      // bisection otherwise. Both consume the SAME packed/option state the
+      // production pipeline reads (buildStyleParamPayload / store opts).
+      let paramRidge: ParamRidge;
+      let ridgeMethod: 'closed-form' | 'bisection';
+      if (styleId === 'SuperformulaBlossom') {
+        const [, packed] = buildStyleParamPayload(styleId, style.opts as Record<string, unknown>);
+        paramRidge = sfClosedFormParamRidge(Float32Array.from(packed));
+        ridgeMethod = 'closed-form';
+      } else {
+        // f64 CPU radius mirror in the style's (u,t) domain. The mirrors take
+        // camelCase StyleOptions; the store carries snake_case registry keys —
+        // copy both spellings (the useExport buildStyleOptions convention).
+        // KNOWN LIMIT: assumes the default zero spin/twist (θ = TAU·u + const
+        // per t) — matches every pinned benchmark config.
+        const toCamel = (s: string): string => s.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+        const styleOptions: Record<string, number> = {};
+        for (const [key, value] of Object.entries(style.opts)) {
+          if (typeof value !== 'number') continue;
+          styleOptions[key] = value;
+          const camel = toCamel(key);
+          if (camel !== key) styleOptions[camel] = value;
+        }
+        const fn = getStyleFunction(styleId as StyleId);
+        paramRidge = solveParamRidgeByBisection(
+          {
+            value: (u: number, t: number): number =>
+              fn(TAU * u, t * style.H, style.r0, style.H, styleOptions as StyleOptions),
+            periodicU: true,
+          },
+          { minProminence: 0.05 },
+        );
+        ridgeMethod = 'bisection';
+      }
+
+      // Bilinear sampler chord-vs-arc bound (rad ≈ (TAU/resU)²/8, ×r → mm) —
+      // the grid sampler's own contribution to the reference error.
+      const probe = surface.position(0, 0.5);
+      const rProbe = Math.hypot(probe[0], probe[1]);
+      const gridBoundMm = (rProbe * Math.pow(TAU / refGrid.resU, 2)) / 8;
+      const ridge = ridgeFromParamBranches(paramRidge, surface, { extraRefErrMm: gridBoundMm });
+
+      const result = crestLateralDeviation(sub, ridge, { sliceSpacingMm: opts.sliceSpacingMm });
+      return {
+        styleId,
+        triangleCount: Math.floor(sub.indices.length / 3),
+        ridgeMethod,
+        referenceRes: refGrid.resU,
+        referenceBicubic: bicubic,
+        ...result,
+      };
     },
     async diagnoseCdtHealth(opts: FidelityCdtHealthDiagnosticOptions = {}): Promise<FidelityCdtHealthDiagnostics | null> {
       const styleId = currentStyleId();
