@@ -100,7 +100,13 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   // State for GPU preference, adaptive mode, format, and parametric mode
   const [useGPU, setUseGPU] = useState(true);
   const [useAdaptive, setUseAdaptive] = useState(false);
-  const [useParametric, setUseParametric] = useState(false);
+  // Parametric v4 (conforming mesher) is the production default since the
+  // 2026-06-11 dominance checkpoint. Safe as a bare `true`: every consumer
+  // gates on parametricExport.isAvailable (async WebGPU init), so WebGL /
+  // no-WebGPU sessions fall through to adaptive → GPU grid → legacy CPU
+  // exactly as before. Do NOT add an auto-disable effect mirroring useGPU's:
+  // isAvailable is false during init and would permanently clear the default.
+  const [useParametric, setUseParametric] = useState(true);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('stl');
   const [adaptiveQuality, setAdaptiveQuality] = useState<AdaptiveExportQuality>('high');
   const parametricBudgetMB = 250; // Fallback budget for non-dialog export path

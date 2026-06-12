@@ -169,6 +169,25 @@ describe('contracts', () => {
             const flags = resolveFeatureFlags({ metricAwareRefinement: true });
             expect(Object.isFrozen(flags)).toBe(true);
         });
+
+        // 2026-06-11 cutover: the conforming mesher is the production default
+        // (dominance checkpoint — see the conformingMesher doc in contracts.ts).
+        it('defaults conformingMesher ON (2026-06-11 dominance checkpoint)', () => {
+            expect(resolveFeatureFlags(undefined).conformingMesher).toBe(true);
+            expect(resolveFeatureFlags({}).conformingMesher).toBe(true);
+        });
+
+        it('keeps the conforming default when overrides omit the key', () => {
+            // Regression guard: a partial-overrides caller must inherit the
+            // default-on value, not have the omitted key coerced to false.
+            const flags = resolveFeatureFlags({ metricAwareRefinement: true });
+            expect(flags.conformingMesher).toBe(true);
+        });
+
+        it('explicit conformingMesher:false selects the legacy battery (reversibility)', () => {
+            const flags = resolveFeatureFlags({ conformingMesher: false });
+            expect(flags.conformingMesher).toBe(false);
+        });
     });
 
     // -----------------------------------------------------------------------
@@ -215,7 +234,7 @@ describe('contracts', () => {
             expect(Object.isFrozen(DEFAULT_FEATURE_FLAGS)).toBe(true);
         });
 
-        it('has all flags set to false', () => {
+        it('pins the production defaults (experimental flags off, conforming mesher on)', () => {
             expect(DEFAULT_FEATURE_FLAGS.metricAwareRefinement).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.distortionGating).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.gpuFidelityCheck).toBe(false);
@@ -223,6 +242,9 @@ describe('contracts', () => {
             expect(DEFAULT_FEATURE_FLAGS.outerWallCorridorPlanning).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.outerWallCorridorDiagnostics).toBe(false);
             expect(DEFAULT_FEATURE_FLAGS.mdcIsosurface).toBe(false);
+            expect(DEFAULT_FEATURE_FLAGS.byConstructionAssembly).toBe(false);
+            // Production default since the 2026-06-11 dominance checkpoint.
+            expect(DEFAULT_FEATURE_FLAGS.conformingMesher).toBe(true);
         });
     });
 

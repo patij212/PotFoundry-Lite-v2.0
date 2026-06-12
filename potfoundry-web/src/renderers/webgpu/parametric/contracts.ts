@@ -389,14 +389,24 @@ export interface PipelineFeatureFlags {
      * triangulated with transition templates (T-junction-free, seam closed
      * by construction). When true, the outer wall is built watertight by
      * construction and the optimization passes + tail repair battery are
-     * skipped. Legacy path when false. Default: false.
+     * skipped. Legacy battery path when false.
+     *
+     * Default: TRUE as of the 2026-06-11 dominance checkpoint (design doc
+     * 2026-06-10-export-metric-meshing-endgame §5 Stage 6): conforming at
+     * default dims is all-zeros 20/20 (sliver=bnd=nonMan=orient=0, featDrop=0)
+     * while the legacy battery ships 9 styles with 722–35,481 orientation
+     * mismatches. The legacy path remains reachable via an explicit
+     * `conformingMesher: false` override (ExportDialog/Debug toggle) for
+     * reversibility.
      * See docs/superpowers/specs/2026-06-07-cad-grade-parametric-export-design.md.
      */
     readonly conformingMesher?: boolean;
 }
 
 /**
- * Default feature flags (all advanced features disabled).
+ * Default feature flags. All experimental flags disabled; the conforming
+ * mesher is default-ON (production path since the 2026-06-11 dominance
+ * checkpoint — see the conformingMesher doc above).
  */
 export const DEFAULT_FEATURE_FLAGS: Readonly<PipelineFeatureFlags> = Object.freeze({
     metricAwareRefinement: false,
@@ -409,7 +419,7 @@ export const DEFAULT_FEATURE_FLAGS: Readonly<PipelineFeatureFlags> = Object.free
     outerWallCorridorPlanning: false,
     outerWallCorridorDiagnostics: false,
     byConstructionAssembly: false,
-    conformingMesher: false,
+    conformingMesher: true,
 });
 
 /**
@@ -434,7 +444,14 @@ export function resolveFeatureFlags(
     return Object.freeze({
         ...DEFAULT_FEATURE_FLAGS,
         ...overrides,
-        conformingMesher: Boolean(overrides.conformingMesher) || conformingHatch,
+        // Unspecified inherits the default (true since the 2026-06-11 cutover);
+        // an explicit false selects the legacy battery (reversibility); the
+        // e2e hatch always wins. NOTE: must be ??, not Boolean(...) — coercing
+        // an omitted key to false would silently disable conforming for every
+        // partial-overrides caller now that the default is on.
+        conformingMesher:
+            (overrides.conformingMesher ?? DEFAULT_FEATURE_FLAGS.conformingMesher)
+            || conformingHatch,
     });
 }
 

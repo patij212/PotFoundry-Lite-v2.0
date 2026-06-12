@@ -91,7 +91,7 @@ describe('ExportDialog corridor flags', () => {
         expect(screen.getByText(/Conforming mesher/i)).toBeInTheDocument();
     });
 
-    it('emits conformingMesher in preview config when its toggle is enabled', () => {
+    it('defaults conformingMesher ON and emits an explicit false when toggled off (legacy reversibility)', () => {
         const { onPreview } = renderDialog();
 
         fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
@@ -99,16 +99,21 @@ describe('ExportDialog corridor flags', () => {
         const conformingRow = screen.getByText(/Conforming mesher/i).closest('.ed-param-row');
         expect(conformingRow).not.toBeNull();
 
+        // Conforming is the production default (2026-06-11 dominance checkpoint),
+        // so the dialog toggle starts ON.
         const conformingSwitch = within(conformingRow!).getByRole('switch');
-        expect(conformingSwitch).toHaveAttribute('aria-checked', 'false');
+        expect(conformingSwitch).toHaveAttribute('aria-checked', 'true');
 
+        // Toggling OFF must emit an EXPLICIT conformingMesher:false override —
+        // the only way to reach the legacy battery now that the resolved
+        // default is true (resolveFeatureFlags treats an omitted key as ON).
         fireEvent.click(conformingSwitch);
         fireEvent.click(screen.getByRole('button', { name: 'Preview Stats' }));
 
         expect(onPreview).toHaveBeenCalledTimes(1);
         expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({
             featureFlags: expect.objectContaining({
-                conformingMesher: true,
+                conformingMesher: false,
             }),
         }));
     });

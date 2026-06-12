@@ -685,6 +685,8 @@ describe('Parametric Pipeline Integration', () => {
             expect(flags.seamHealing).toBe(true);
             expect(flags.outerWallCorridorPlanning).toBe(false);
             expect(flags.outerWallCorridorDiagnostics).toBe(false);
+            // 2026-06-11 cutover: conforming mesher is the production default.
+            expect(flags.conformingMesher).toBe(true);
 
             expect(() => validateFeatureFlags(flags)).not.toThrow();
             expect(() => validateFeatureFlags(resolveFeatureFlags({ mdcIsosurface: true }))).toThrow();
