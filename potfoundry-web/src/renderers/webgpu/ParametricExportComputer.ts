@@ -2326,11 +2326,10 @@ export class ParametricExportComputer {
                     ? { positions: (await buildWallSampler(0, REF_RES, REF_RES)).positions, resU: REF_RES, resT: REF_RES }
                     : null;
 
-                // Uniform ring resolution (power of two). Overridable for tuning.
-                const nRingOverride = (globalThis as unknown as { __pfConformingNRing?: number }).__pfConformingNRing;
-                const nRing = typeof nRingOverride === 'number' && nRingOverride > 0
-                    ? nRingOverride
-                    : 256;
+                // Uniform ring resolution (power of two). This is the DEFAULT base; the
+                // dev override `__pfConformingNRing` is applied (snapped to 2^k) below as
+                // `qNRing`, alongside the other quality-sweep levers.
+                const nRing = 256;
 
                 // Dev quality-sweep overrides (never set in production; mirror
                 // __pfConformingNRing). Let a probe push fidelity well below printer
@@ -2338,6 +2337,16 @@ export class ParametricExportComputer {
                 const qOv = globalThis as unknown as {
                     __pfConformingBudget?: number; __pfConformingMaxSag?: number;
                     __pfConformingMinEdge?: number; __pfConformingMaxLevel?: number;
+                    // Visual-facet density levers. `__pfConformingMaxEdge` (mm) caps the
+                    // LONGEST triangle edge: the sag refiner stops splitting once a cell
+                    // is below sag tolerance, so flat/low-curvature wall regions keep
+                    // edges up to maxEdge (default 8mm → visible 8mm facets even though
+                    // chord error is ~0.02mm). Lowering it forces uniform subdivision of
+                    // those flat regions to visual smoothness independent of curvature.
+                    // `__pfConformingNRing` (snapped to 2^k, ≥64 below) raises the
+                    // tangential ring resolution so the per-column density matches.
+                    // Both default to today's values (8 / 256) ⇒ production byte-identical.
+                    __pfConformingMaxEdge?: number; __pfConformingNRing?: number;
                     // Decimation-ladder levers (quality-bounded budget enforcement):
                     // absolute-mm error seed (default = profile sag) and honesty
                     // ceiling (default 0.2mm ≈ one FDM layer height).
@@ -2365,6 +2374,19 @@ export class ParametricExportComputer {
                 const qMaxLevel = (typeof qOv.__pfConformingMaxLevel === 'number' && qOv.__pfConformingMaxLevel >= 6)
                     ? Math.floor(qOv.__pfConformingMaxLevel)
                     : (exportProfileName === 'ultra' || exportProfileName === 'high' ? 12 : exportProfileName === 'standard' ? 11 : 10);
+                // Longest-edge cap (mm). The sag refiner only splits curved cells, so
+                // flat wall regions keep edges up to this length (visible facets). Lower
+                // it to force uniform subdivision toward visual smoothness. Default 8mm
+                // (unchanged ⇒ byte-identical when unset).
+                const qMaxEdge = (typeof qOv.__pfConformingMaxEdge === 'number' && qOv.__pfConformingMaxEdge > 0)
+                    ? qOv.__pfConformingMaxEdge
+                    : 8;
+                // Tangential ring resolution. nRing MUST be a power of two (the bias
+                // 2^B and the i/nRing parameterization assume it); snap the override to
+                // the nearest 2^k, floored at 64. Default = nRing (256) when unset.
+                const qNRing = (typeof qOv.__pfConformingNRing === 'number' && qOv.__pfConformingNRing >= 64)
+                    ? (1 << Math.round(Math.log2(qOv.__pfConformingNRing)))
+                    : nRing;
 
                 // ── Vertical-crease pinning, part 1: pick the column lattice ──────
                 // Sharp constant-u creases (LowPolyFacet facet edges, GeometricStar
@@ -2538,13 +2560,13 @@ export class ParametricExportComputer {
                     },
                     {
                         maxSagMm: qMaxSag,
-                        maxEdgeMm: 8,
+                        maxEdgeMm: qMaxEdge,
                         minEdgeMm: qMinEdge,
                         gradeRatio: 2,
                         maxLevel: qMaxLevel,
                         resU: 128,
                         resT: 128,
-                        nRing,
+                        nRing: qNRing,
                         targetTriangles: conformingBudget,
                         // Budget is an UPPER CAP, not a target: a SMOOTH pot keeps
                         // its small de-noised sag-tight count rather than being
@@ -2865,7 +2887,7 @@ export class ParametricExportComputer {
                 console.warn(
                     `[CONFORMING-FULL] ${params.styleId} ` +
                     `tris=${conformingMesh.triangleCount} (built=${triCount}) ` +
-                    `budget=${conformingBudget} verts=${conformingMesh.vertexCount} nRing=${nRing} ` +
+                    `budget=${conformingBudget} verts=${conformingMesh.vertexCount} nRing=${qNRing} maxEdge=${qMaxEdge} ` +
                     `dec=${budgetReport.decimation} ` +
                     `decErrMm=${budgetReport.decimationErrorMm?.toFixed(4) ?? 'n/a'} ` +
                     `capScale=${capScale.toFixed(2)} capSat=${budgetReport.capSaturated} ` +
@@ -2886,7 +2908,7 @@ export class ParametricExportComputer {
                 return {
                     mesh: conformingMesh,
                     computeTimeMs: buildMs,
-                    gridDimensions: { nu: nRing, nt: nRing },
+                    gridDimensions: { nu: qNRing, nt: qNRing },
                     adaptiveStats: {
                         densityRatio: 0,
                         featurePeaksSnapped: 0,
