@@ -181,4 +181,43 @@ describe('useParametricExport budget/profile plumbing', () => {
         expect(params.qualityProfile).toBe('ultra');
         expect(params.targetTriangles).toBeUndefined();
     });
+
+    it('exportSTL forwards options.toleranceOverrides into compute params (quick-path slider completion)', async () => {
+        // Blueprint quick win QW2: the quick exportSTL route previously
+        // forwarded ONLY qualityProfile — an explicit epsPosMm override (the
+        // dialog's surface-error slider) was silently dropped on this path
+        // even after the 88c40c1 conforming-sizing fix.
+        const { result } = await renderReadyHook();
+
+        await act(async () => {
+            await result.current.exportSTL(undefined, undefined, {
+                qualityProfile: 'standard',
+                toleranceOverrides: { epsPosMm: 0.02 },
+            });
+        });
+
+        const params = computeParamsSpy.mock.calls[0][0] as {
+            qualityProfile?: string;
+            toleranceOverrides?: { epsPosMm?: number };
+        };
+        expect(params.qualityProfile).toBe('standard');
+        expect(params.toleranceOverrides).toEqual({ epsPosMm: 0.02 });
+    });
+
+    it('exportSTL forwards toleranceOverrides without a qualityProfile (override-only export)', async () => {
+        const { result } = await renderReadyHook();
+
+        await act(async () => {
+            await result.current.exportSTL(undefined, undefined, {
+                toleranceOverrides: { epsPosMm: 0.04, epsNormalDeg: 3 },
+            });
+        });
+
+        const params = computeParamsSpy.mock.calls[0][0] as {
+            qualityProfile?: string;
+            toleranceOverrides?: { epsPosMm?: number; epsNormalDeg?: number };
+        };
+        expect(params.qualityProfile).toBeUndefined();
+        expect(params.toleranceOverrides).toEqual({ epsPosMm: 0.04, epsNormalDeg: 3 });
+    });
 });

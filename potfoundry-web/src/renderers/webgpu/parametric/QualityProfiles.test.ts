@@ -11,6 +11,7 @@ import {
     getQualityProfile,
     resolveTolerances,
     resolveSurfaceErrorMm,
+    resolveQuadtreeMaxLevel,
     resolveTriangleBudget,
     downgradeProfile,
     buildDowngradeLadder,
@@ -188,6 +189,46 @@ describe('QualityProfiles', () => {
             const tol2 = resolveTolerances({ qualityProfile: 'high' });
             expect(tol1).not.toBe(tol2);
             expect(tol1).toEqual(tol2);
+        });
+    });
+
+    // ========================================================================
+    // resolveQuadtreeMaxLevel
+    // ========================================================================
+
+    describe('resolveQuadtreeMaxLevel', () => {
+        it('reproduces the per-profile depths at the DEFAULT profile sags (defaults unchanged)', () => {
+            // The mapping must reproduce the pre-fix profile-name switch exactly
+            // at the four profile sags, so default exports are byte-identical:
+            //   ultra    0.03mm → 12 (was 'ultra'    → 12)
+            //   high     0.05mm → 12 (was 'high'     → 12)
+            //   standard 0.08mm → 11 (was 'standard' → 11)
+            //   draft    0.12mm → 10 (was else       → 10)
+            expect(resolveQuadtreeMaxLevel(QUALITY_PROFILES.ultra.tolerances.epsPosMm)).toBe(12);
+            expect(resolveQuadtreeMaxLevel(QUALITY_PROFILES.high.tolerances.epsPosMm)).toBe(12);
+            expect(resolveQuadtreeMaxLevel(QUALITY_PROFILES.standard.tolerances.epsPosMm)).toBe(11);
+            expect(resolveQuadtreeMaxLevel(QUALITY_PROFILES.draft.tolerances.epsPosMm)).toBe(10);
+        });
+
+        it('follows the RESOLVED sag, not the profile name — a tight epsPosMm override on draft/standard unlocks full depth', () => {
+            // Pre-fix bug: qMaxLevel switched on the profile NAME, so a user who
+            // dialed a tight surface-error override while on draft/standard was
+            // silently depth-clamped (the slider half-worked: sizing tightened
+            // but the quadtree could not refine deep enough to honor it).
+            const draft = getQualityProfile('draft');
+            expect(resolveQuadtreeMaxLevel(resolveSurfaceErrorMm(draft, { epsPosMm: 0.02 }))).toBe(12);
+            const standard = getQualityProfile('standard');
+            expect(resolveQuadtreeMaxLevel(resolveSurfaceErrorMm(standard, { epsPosMm: 0.05 }))).toBe(12);
+            // Symmetric: a loosened high-profile export does not waste depth.
+            const high = getQualityProfile('high');
+            expect(resolveQuadtreeMaxLevel(resolveSurfaceErrorMm(high, { epsPosMm: 0.12 }))).toBe(10);
+        });
+
+        it('maps the band edges consistently (≤0.06 → 12, ≤0.09 → 11, else 10)', () => {
+            expect(resolveQuadtreeMaxLevel(0.06)).toBe(12);
+            expect(resolveQuadtreeMaxLevel(0.061)).toBe(11);
+            expect(resolveQuadtreeMaxLevel(0.09)).toBe(11);
+            expect(resolveQuadtreeMaxLevel(0.091)).toBe(10);
         });
     });
 

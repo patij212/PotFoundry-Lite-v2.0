@@ -216,6 +216,35 @@ export function resolveSurfaceErrorMm(
 }
 
 /**
+ * Resolve the conforming quadtree's max refinement depth from the RESOLVED
+ * sag target (mm) — the surface error the user actually asked for — instead
+ * of the profile NAME. The old name switch ('ultra'/'high' → 12, 'standard'
+ * → 11, else 10) silently depth-clamped a tight epsPosMm override on
+ * draft/standard: the sizing field tightened but the tree could not refine
+ * deep enough to honor it, so the dialog's surface-error slider half-worked
+ * (blueprint quick win QW1).
+ *
+ * The band edges reproduce today's per-profile depths EXACTLY at the default
+ * profile sags, so default exports are unchanged:
+ *
+ * | profile  | epsPosMm | depth (old name switch) | depth (this mapping) |
+ * |----------|----------|-------------------------|----------------------|
+ * | ultra    | 0.03     | 12                      | 12 (≤ 0.06)          |
+ * | high     | 0.05     | 12                      | 12 (≤ 0.06)          |
+ * | standard | 0.08     | 11                      | 11 (≤ 0.09)          |
+ * | draft    | 0.12     | 10                      | 10 (> 0.09)          |
+ *
+ * The `__pfConformingMaxLevel` dev lever (checked at the call site) still
+ * wins over this resolution for sweeps/probes.
+ *
+ * @param sagMm - The RESOLVED sag target in mm (see {@link resolveSurfaceErrorMm}).
+ * @returns The quadtree max refinement level (12 for high/ultra-class sag).
+ */
+export function resolveQuadtreeMaxLevel(sagMm: number): number {
+    return sagMm <= 0.06 ? 12 : sagMm <= 0.09 ? 11 : 10;
+}
+
+/**
  * Resolve the effective triangle budget.
  *
  * Uses explicit target if provided, otherwise falls back to the profile's

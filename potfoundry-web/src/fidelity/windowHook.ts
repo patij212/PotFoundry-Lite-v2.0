@@ -201,7 +201,11 @@ export interface PfFidelityApi {
    * reference cannot fool it — and reports the sub-15° fraction WITHIN the crest band
    * (the diagonal/helical-crest sliver field), separated from the clean bulk. Reads
    * ~0 on a plain pot and lights up along a ridge crest; the headline gate for the
-   * crest fix. Null on the legacy/parametric path (no conforming outer-wall stash).
+   * crest fix. The result surfaces the ABSOLUTE counts (`belowCount`,
+   * `bandBelowCount`) and worst-case angles (`worstMinAngleDeg`,
+   * `bandWorstMinAngleDeg`) alongside the percents: percent dilutes as density
+   * rises, so gates use absolute counts + worst-case (QW4). Null on the
+   * legacy/parametric path (no conforming outer-wall stash).
    */
   diagnoseCrestQuality(opts?: FidelityCrestQualityDiagnosticOptions): Promise<FidelityCrestQualityDiagnostics | null>;
   /**

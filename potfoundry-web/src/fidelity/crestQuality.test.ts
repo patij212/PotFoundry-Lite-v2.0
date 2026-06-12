@@ -104,6 +104,10 @@ describe('crestBandTriangleQuality (faithful reference-free crest-band min-angle
     expect(r.bandPctBelow15).toBe(0);
     // A regular cylinder grid is right-triangle clean (cells ~2.5×1.6mm → ~33°).
     expect(r.pctBelow15).toBeLessThan(1);
+    // Absolute companions (QW4): a clean grid has ZERO sub-bar triangles —
+    // exact counts, not a rounded percent.
+    expect(r.belowCount).toBe(0);
+    expect(r.bandBelowCount).toBe(0);
   });
 
   it('C2: a sliver ribbon ON the ridge loci is attributed to the crest band', () => {
@@ -123,6 +127,11 @@ describe('crestBandTriangleQuality (faithful reference-free crest-band min-angle
     expect(r.bandPctBelow15).toBeGreaterThan(1); // the crest band is red
     expect(r.nonBandPctBelow15).toBe(0); // the smooth bulk stays clean
     expect(r.bandPctBelow15).toBeGreaterThan(r.nonBandPctBelow15); // localized to the band
+    // Absolute companions (QW4): exactly the 8 ridges × 9 z-levels = 72
+    // injected needles, ALL attributed to the band. The percent would dilute
+    // toward 0 as the clean bulk densifies; the count cannot.
+    expect(r.bandBelowCount).toBe(m * 9);
+    expect(r.belowCount).toBe(m * 9);
   });
 
   it('C3: a sliver ribbon OFF the crest (flank) is attributed to the bulk, not the band', () => {
@@ -141,5 +150,9 @@ describe('crestBandTriangleQuality (faithful reference-free crest-band min-angle
     expect(r.worstMinAngleDeg).toBeLessThan(5); // the needles still drag the worst tail
     expect(r.bandPctBelow15).toBe(0); // nothing sub-bar inside the band
     expect(r.nonBandPctBelow15).toBeGreaterThan(1); // the flank ribbon is bulk
+    // Absolute companions (QW4): the 72 flank needles are sub-bar on the WALL
+    // (belowCount) but NONE land in the crest band (bandBelowCount stays 0).
+    expect(r.bandBelowCount).toBe(0);
+    expect(r.belowCount).toBe(m * 9);
   });
 });

@@ -1675,7 +1675,15 @@ export function wallChordError(
 // lights up along a ridge crest, and is the sharp gate for the fix.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Faithful crest-band triangle-quality result (3D min interior angle). */
+/**
+ * Faithful crest-band triangle-quality result (3D min interior angle).
+ *
+ * ABSOLUTE-COUNT companions (`belowCount`/`bandBelowCount`): a percent DILUTES
+ * as triangle density rises — at 1.8M tris a "small percent" is still ~90k bad
+ * triangles (user-identified anti-dilution requirement). Gates therefore use
+ * the absolute counts + the worst-case angle, never percent alone; the percent
+ * fields remain for cross-density comparison only.
+ */
 export interface CrestBandQualityResult {
   /** Outer-wall triangles measured (degenerate ones count as below-bar). */
   triangleCount: number;
@@ -1683,6 +1691,8 @@ export interface CrestBandQualityResult {
   angleBarDeg: number;
   /** Percent of ALL outer-wall triangles with min interior angle < bar. */
   pctBelow15: number;
+  /** ABSOLUTE count of outer-wall triangles below the bar (whole wall). */
+  belowCount: number;
   /** Worst (smallest) min interior angle anywhere on the outer wall (deg). */
   worstMinAngleDeg: number;
   /** 1st-percentile min interior angle — robust worst tail (deg). */
@@ -1693,6 +1703,8 @@ export interface CrestBandQualityResult {
   bandTriangles: number;
   /** Percent of crest-band triangles below the bar (the headline gate). */
   bandPctBelow15: number;
+  /** ABSOLUTE count of crest-band triangles below the bar (anti-dilution gate). */
+  bandBelowCount: number;
   /** Worst min interior angle within the crest band (deg). */
   bandWorstMinAngleDeg: number;
   /** Percent of NON-band (bulk) triangles below the bar — proves localization. */
@@ -1818,11 +1830,13 @@ export function crestBandTriangleQuality(
     triangleCount: all,
     angleBarDeg: bar,
     pctBelow15: all > 0 ? round1((below / all) * 100) : 0,
+    belowCount: below,
     worstMinAngleDeg: all > 0 ? round2(worst) : 0,
     p1MinAngleDeg: p1,
     crestLoci: crest.maxLoci,
     bandTriangles: bandAll,
     bandPctBelow15: bandAll > 0 ? round1((bandBelow / bandAll) * 100) : 0,
+    bandBelowCount: bandBelow,
     bandWorstMinAngleDeg: bandAll > 0 ? round2(bandWorst) : 0,
     nonBandPctBelow15: nonBandAll > 0 ? round1((nonBandBelow / nonBandAll) * 100) : 0,
   };

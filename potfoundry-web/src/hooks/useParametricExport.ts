@@ -110,6 +110,13 @@ export interface ExportRouteOptions {
      * (StatusFooter download) pin the profile without the full overrides bag.
      */
     qualityProfile?: import('../renderers/webgpu/parametric/types').QualityProfileName;
+    /**
+     * Explicit tolerance overrides (the dialog's surface-error slider etc.).
+     * Forwarded into generateMesh's overrides so the quick exportSTL path
+     * honors them — previously only qualityProfile survived this route and
+     * an epsPosMm override was silently dropped (blueprint quick win QW2).
+     */
+    toleranceOverrides?: Partial<import('../renderers/webgpu/parametric/types').ExportTolerances>;
 }
 
 export interface UseParametricExportResult {
@@ -516,10 +523,17 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         targetTriangles?: number,
         options?: ExportRouteOptions
     ): Promise<void> => {
-        const meshData = await generateMesh(
-            targetTriangles,
-            options?.qualityProfile ? { qualityProfile: options.qualityProfile } : undefined,
-        );
+        // Forward BOTH the profile and any explicit tolerance overrides —
+        // the quick path previously forwarded only qualityProfile, so the
+        // dialog's surface-error slider was dead on this route (QW2).
+        const overrides: ParametricExportOverrides | undefined =
+            options?.qualityProfile || options?.toleranceOverrides
+                ? {
+                    ...(options?.qualityProfile ? { qualityProfile: options.qualityProfile } : {}),
+                    ...(options?.toleranceOverrides ? { toleranceOverrides: options.toleranceOverrides } : {}),
+                }
+                : undefined;
+        const meshData = await generateMesh(targetTriangles, overrides);
         if (!meshData) return;
 
         setProgress({

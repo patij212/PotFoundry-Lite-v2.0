@@ -52,9 +52,19 @@
  *
  * - **HarmonicRipple** / **SuperformulaBlossom** / **SuperellipseMorph** /
  *   **FourierBloom** / **WaveInterference** / **RippleInterference** /
- *   **Crystalline** / **ArtDeco**: smooth (radius is a sum of sin/cos terms in θ
- *   and t; defaults give plain/soft profiles). No sharp C0/C1 features → an
- *   honestly EMPTY graph (curvature-adaptive meshing alone should resolve them).
+ *   **ArtDeco**: smooth (radius is a sum of sin/cos terms in θ and t; defaults
+ *   give plain/soft profiles). No sharp C0/C1 features → an honestly EMPTY
+ *   graph (curvature-adaptive meshing alone should resolve them).
+ *
+ * - **Crystalline** (`crystal_facets_radius`): NOT smooth — previously
+ *   misdocumented here as a crease-free "smooth sum of sin/cos", which is
+ *   MEASURED FALSE (2026-06-10). It carries a C1 HELICAL crease family: k=24
+ *   constant-slope helical lines (turns=0.8 at defaults) whose 12 main groove
+ *   apexes have a ~26.9° dihedral. The extractor below still returns [] — a
+ *   KNOWN GAP, not an honest zero. The crest-elimination blueprint's
+ *   Crystalline stage (Stage 5, docs/superpowers/specs/
+ *   2026-06-10-export-endgame-evidence/crest-elimination-blueprint.json) wires
+ *   it via the existing chooseHelixGrid + CreaseHelixWarp machinery.
  *
  * - **SpiralRidges** (`spiral_radius`): the `sin(k·theta + TAU·turns·t)` crest is
  *   sharp along k CONSTANT-SLOPE HELICAL lines `u = (¼ + c − turns·t)/k`. These
@@ -777,6 +787,10 @@ const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
   FourierBloom: () => [],
   WaveInterference: () => [],
   RippleInterference: () => [],
+  // Crystalline is NOT smooth (measured 2026-06-10: C1 helical crease family,
+  // k=24, turns=0.8, ~26.9° dihedral on the 12 main groove apexes). [] here is
+  // a KNOWN GAP kept until the crest-elimination blueprint's Stage 5 wires the
+  // family via chooseHelixGrid + CreaseHelixWarp — see the header doc.
   Crystalline: () => [],
   ArtDeco: () => [],
 };

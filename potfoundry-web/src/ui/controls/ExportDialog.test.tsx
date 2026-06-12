@@ -124,9 +124,6 @@ describe('ExportDialog corridor flags', () => {
         fireEvent.change(screen.getByRole('spinbutton', { name: 'Surface error tolerance' }), {
             target: { value: '0.0008' },
         });
-        fireEvent.change(screen.getByRole('spinbutton', { name: 'Feature drift tolerance' }), {
-            target: { value: '0.0006' },
-        });
         fireEvent.change(screen.getByRole('spinbutton', { name: 'Normal error tolerance' }), {
             target: { value: '2.5' },
         });
@@ -136,10 +133,28 @@ describe('ExportDialog corridor flags', () => {
         expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({
             toleranceOverrides: expect.objectContaining({
                 epsPosMm: 0.0008,
-                epsFeatureMm: 0.0006,
                 epsNormalDeg: 2.5,
             }),
         }));
+    });
+
+    it('hides the dead feature-drift control while the conforming path is active, restores it on the legacy path (QW3)', () => {
+        renderDialog();
+
+        // Conforming is the default path and has ZERO epsFeatureMm consumers
+        // (feature preservation is exact by construction; featDrop=0 is gated)
+        // — shipping the editable control there would be a placebo.
+        expect(screen.queryByRole('spinbutton', { name: 'Feature drift tolerance' })).not.toBeInTheDocument();
+
+        // Toggle the conforming mesher OFF (Debug tab) → the legacy path DOES
+        // consume epsFeatureMm (MeshValidator), so the control must return.
+        fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+        const conformingRow = screen.getByText(/Conforming mesher/i).closest('.ed-param-row');
+        expect(conformingRow).not.toBeNull();
+        fireEvent.click(within(conformingRow!).getByRole('switch'));
+        fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+
+        expect(screen.getByRole('spinbutton', { name: 'Feature drift tolerance' })).toBeInTheDocument();
     });
 
     it('surfaces generation errors inside the dialog', () => {

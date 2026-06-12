@@ -363,6 +363,12 @@ interface ExportTabProps {
     onBudgetChange: (mb: number) => void;
     tolerances: ExportTolerances;
     onToleranceChange: <K extends keyof ExportTolerances>(key: K, value: ExportTolerances[K]) => void;
+    /**
+     * True when the conforming mesher handles this export (the production
+     * default; flags.conformingMesher !== false). Hides the feature-drift
+     * control, which has zero conforming-path consumers (QW3).
+     */
+    conformingActive: boolean;
     stats: ExportDialogStats | null;
     validation: ExportDialogValidation | null;
     validationSummary?: ValidationSummary | null;
@@ -376,6 +382,7 @@ const ExportTab: React.FC<ExportTabProps> = ({
     format, onFormatChange,
     budgetMB, onBudgetChange,
     tolerances, onToleranceChange,
+    conformingActive,
     stats, validation, validationSummary,
     isGenerating, generationPhase, generationProgress,
 }) => {
@@ -435,16 +442,25 @@ const ExportTab: React.FC<ExportTabProps> = ({
                             onChange={v => onToleranceChange('epsPosMm', v)}
                         />
                     </ParamRow>
-                    <ParamRow label="Feature drift" hint="mm">
-                        <NumberInput
-                            label="Feature drift tolerance"
-                            value={tolerances.epsFeatureMm}
-                            min={0.0001}
-                            max={1}
-                            step={0.0001}
-                            onChange={v => onToleranceChange('epsFeatureMm', v)}
-                        />
-                    </ParamRow>
+                    {/* Feature drift (epsFeatureMm) is hidden while the conforming
+                        mesher is active: it is not applicable to the conforming
+                        path (feature preservation is exact by construction;
+                        featDrop=0 is gated) and has ZERO consumers there —
+                        shipping an editable dead control is a placebo (QW3).
+                        The legacy path consumes it (MeshValidator), so the
+                        control returns when conforming is toggled off. */}
+                    {!conformingActive && (
+                        <ParamRow label="Feature drift" hint="mm">
+                            <NumberInput
+                                label="Feature drift tolerance"
+                                value={tolerances.epsFeatureMm}
+                                min={0.0001}
+                                max={1}
+                                step={0.0001}
+                                onChange={v => onToleranceChange('epsFeatureMm', v)}
+                            />
+                        </ParamRow>
+                    )}
                     <ParamRow label="Normal error" hint="degrees">
                         <NumberInput
                             label="Normal error tolerance"
@@ -1024,6 +1040,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
                             onBudgetChange={setBudgetMB}
                             tolerances={tolerances}
                             onToleranceChange={setToleranceField}
+                            conformingActive={flags.conformingMesher !== false}
                             stats={stats}
                             validation={validation}
                             validationSummary={validationSummary}

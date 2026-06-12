@@ -126,6 +126,7 @@ import {
     resolveTriangleBudget,
     resolveTolerances,
     resolveSurfaceErrorMm,
+    resolveQuadtreeMaxLevel,
     profileForAttempt,
 } from './parametric/QualityProfiles';
 import { assessToleranceFeasibility } from './parametric/ExportFeasibility';
@@ -2367,8 +2368,9 @@ export class ParametricExportComputer {
                 // bound the VISUAL facets that sag alone leaves on flat walls. Dev
                 // overrides still win for tuning/sweeps. (This block previously
                 // re-defaulted `params.qualityProfile ?? 'high'` while the top of
-                // compute() defaulted 'standard' — the dual-default bug.)
-                const exportProfileName: QualityProfileName = effectiveProfileName;
+                // compute() defaulted 'standard' — the dual-default bug. The
+                // profile NAME is no longer consulted here at all: every derived
+                // knob, including quadtree depth, follows the RESOLVED sag.)
                 const exportProfile = effectiveProfile;
                 const conformingBudget = (typeof qOv.__pfConformingBudget === 'number' && qOv.__pfConformingBudget > 0)
                     ? qOv.__pfConformingBudget
@@ -2383,9 +2385,15 @@ export class ParametricExportComputer {
                 const profileSag = resolveSurfaceErrorMm(exportProfile, params.toleranceOverrides);
                 const qMaxSag = (typeof qOv.__pfConformingMaxSag === 'number' && qOv.__pfConformingMaxSag > 0) ? qOv.__pfConformingMaxSag : profileSag;
                 const qMinEdge = (typeof qOv.__pfConformingMinEdge === 'number' && qOv.__pfConformingMinEdge > 0) ? qOv.__pfConformingMinEdge : Math.min(0.2, Math.max(0.04, profileSag * 2));
+                // Quadtree depth follows the sag the user ACTUALLY asked for
+                // (resolveQuadtreeMaxLevel: ≤0.06 → 12, ≤0.09 → 11, else 10 —
+                // reproduces the per-profile depths exactly at the default
+                // profile sags). Previously this switched on the profile NAME,
+                // so a tight epsPosMm override on draft/standard was silently
+                // depth-clamped (the slider half-worked). The dev lever wins.
                 const qMaxLevel = (typeof qOv.__pfConformingMaxLevel === 'number' && qOv.__pfConformingMaxLevel >= 6)
                     ? Math.floor(qOv.__pfConformingMaxLevel)
-                    : (exportProfileName === 'ultra' || exportProfileName === 'high' ? 12 : exportProfileName === 'standard' ? 11 : 10);
+                    : resolveQuadtreeMaxLevel(profileSag);
                 // Longest-edge cap (mm). The sag refiner only splits curved cells, so
                 // flat wall regions keep edges up to this length (visible facets) —
                 // this is the VISUAL facet bound, profile-driven (high=1mm → ~1-1.4mm
