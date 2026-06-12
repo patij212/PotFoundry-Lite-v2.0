@@ -25,7 +25,7 @@ from collections import Counter
 import numpy as np
 import pytest
 
-from potfoundry import build_pot_mesh, STYLES
+from potfoundry import build_pot_mesh, write_stl_binary, STYLES
 
 
 def _directed_edge_counts(faces: np.ndarray) -> Counter:
@@ -84,3 +84,51 @@ def test_normals_point_outward(style, H, Rt, Rb, nth, nz):
         f"{style}: signed volume {vol:.1f} <= 0 -> inverted normals "
         "(Rhino/Grasshopper will see the solid inside-out)"
     )
+
+
+def _read_binary_stl(path) -> tuple[np.ndarray, np.ndarray]:
+    """Read a binary STL, returning (face_normals, triangle_vertices)."""
+    import struct
+
+    data = path.read_bytes()
+    count = struct.unpack_from("<I", data, 80)[0]
+    rec = np.dtype([
+        ("n", "<f4", (3,)),
+        ("v", "<f4", (3, 3)),
+        ("attr", "<u2"),
+    ])
+    recs = np.frombuffer(data, dtype=rec, count=count, offset=84)
+    return recs["n"].astype(float), recs["v"].astype(float)
+
+
+def test_exported_stl_is_outward_oriented(tmp_path):
+    """End-to-end: the serialized STL encodes an outward-oriented solid.
+
+    Rhino/Grasshopper consume the file, not the in-memory arrays, and the writer
+    recomputes face normals from winding. This guards that the orientation fix
+    survives serialization on two counts:
+
+    * the signed volume from the file's triangle winding is positive, and
+    * each stored facet normal agrees with the winding it is written next to
+      (so a reader that trusts the normal field sees the same outward solid).
+    """
+    fn = STYLES["SuperformulaBlossom"][0]
+    verts, faces, _ = build_pot_mesh(
+        H=120, Rt=70, Rb=50, t_wall=3, t_bottom=3, r_drain=10,
+        expn=1.1, n_theta=120, n_z=60, r_outer_fn=fn, style_opts={},
+    )
+    out = tmp_path / "pot.stl"
+    write_stl_binary(out, "Pot", verts, faces)
+
+    normals, tris = _read_binary_stl(out)
+    a, b, c = tris[:, 0], tris[:, 1], tris[:, 2]
+
+    vol = float(np.sum(np.einsum("ij,ij->i", a, np.cross(b, c))) / 6.0)
+    assert vol > 0, f"serialized STL has inverted winding (signed volume {vol:.1f})"
+
+    # Stored normals must agree with the winding (cross product) direction.
+    wind = np.cross(b - a, c - a)
+    wlen = np.linalg.norm(wind, axis=1)
+    ok = wlen > 0
+    agree = np.einsum("ij,ij->i", normals[ok], wind[ok])
+    assert np.all(agree >= 0), "stored facet normals disagree with winding direction"
