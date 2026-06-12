@@ -9,9 +9,11 @@ fix must beat.
 
 Instrument: `potfoundry-web/src/fidelity/snapPlacementAudit.ts`
 (`measureExtractionError` / `measureSnapDisplacement` / `runSfbSnapFloorAudit`),
-test-pinned by `snapPlacementAudit.test.ts` (S1–S6). CPU-only, vitest-runnable;
-**zero production files modified** — the audit imports the REAL extractor and
-the REAL `FeatureConformingTriangulator` read-only and runs them in-process.
+test-pinned by `snapPlacementAudit.test.ts` (S1–S10). CPU-only, vitest-runnable;
+**production behavior unmodified** — the audit imports the REAL extractor, the
+REAL `FeatureConformingTriangulator`, and the REAL `clipFeaturesToBox` (exported
+from ConformingWall.ts for this audit — `export` keyword only, behavior
+unchanged) and runs them in-process.
 
 ## Pinned config (production law, stated assumptions)
 
@@ -23,7 +25,7 @@ the REAL `FeatureConformingTriangulator` read-only and runs them in-process.
 | cornerSnap | 0.06/2⁷ = **4.6875e-4** (t-units) | ConformingWall.ts:539 |
 | uBias B | 2 ⇒ cornerSnapU = cornerSnap/2² = **1.171875e-4** | `computeUBias` GATE B + Stage-0 `hasFeatures` B≤2 cap (WatertightAssembly.ts); FCT.ts:285 |
 | Grid | uniform 2⁹×2⁷ = 65,536 level-7 leaves (B=2) | mirrors FCT.test.ts `uniformAnisoQuadtree`; production trees are adaptive but every inserted vertex lives in a featureLevel-7 feature cell, which this grid reproduces everywhere |
-| Feature clip | uMargin = 1.5/2⁷, tMargin = 1/nRing = 1/1024 ('high' nRing) | ConformingWall.ts:601-603 (audit mirrors the private `clipFeaturesToBox`) |
+| Feature clip | uMargin = 1.5/2⁷, tMargin = 1/nRing = 1/1024 ('high' nRing) | ConformingWall.ts:601-603 (audit imports the PRODUCTION `clipFeaturesToBox` — no mirror, no drift) |
 | Inserted set | 12 full-height crest/valley polylines, 146 vertices total | production extractor (768×320 marching squares, 3e-4 simplify, `SF_CREST_FULL_HEIGHT_SPAN` filter) |
 | Truth | Stage 2a `solveParamRidgeByBisection` on the f64 `sfRf` mirror, duTol = 1e-6, periodicU=false | reference error ≤ ~5e-4 mm-class — carried as `truthDuTol` |
 
@@ -72,6 +74,21 @@ only a vertex displaced beyond 3× cornerSnap would read unmatched (none did).
 Snapped/unsnapped split at numericFloor = 2e-6 (f32 storage ≈6e-8 + WELD_TAU
 1e-6 — both ≪ cornerSnapU).
 
+**NN-swap impossibility (measured):** for the pinned SFB@1 input set the
+minimum pairwise input-vertex spacing is **1.93× the search-box edge** in the
+per-axis normalized (Chebyshev) metric — the closest pair (two adjacent
+same-line vertices) sits at du = 6.77e-4, dt = 1.68e-3 against a search box of
+3.52e-4 × 1.41e-3 (u-ratio 1.93, t-ratio 1.19; every other pair is farther on
+its dominant axis). The worst snap composition moves a vertex ≤2.5× cornerSnap
+per axis = 0.83× the 3× search box, so a neighbor's post-snap image stays
+≥ (1.93 − 0.83) = 1.10 box edges away on the dominant axis — **outside the
+box**: matching one input to its NEIGHBOR's image (neighbor-swap) is
+geometrically impossible for this run, even under the worst observed 2.5×
+cornerSnap composition. Aliasing is additionally instrumented:
+`sharedOutputMatchCount` (inputs sharing an already-claimed output vertex
+beyond the numeric floor) = **0**, and both channels' `nonFiniteCount` = **0**
+(asserted in test S5).
+
 - inserted = 146, matched = 146, **unmatched = 0**
 - **snapped = 22** (7 in u, 15 in t), unsnapped = 124
 - **maxAbsDu = 1.119e-4** (= 0.95× cornerSnapU), rmsDu = 1.268e-5
@@ -95,13 +112,21 @@ worst class from FCT.test.ts:323-326 is a coarse-grid/anchor-composition case).
 
 - **Worst-case placement error (both channels, never summed): extraction
   0.0744 mm max (≈0.15 mm incl. the chord bound); snap 0.1586 mm max.**
-- **Implied placement floor = max(0.02, 0.1586) = 0.159 mm** (pre-fix).
+- **Implied placement floor = max(0.02, extraction 0.0744, snap 0.1586) =
+  0.159 mm** (pre-fix). The floor formula takes the max over the blueprint's
+  0.02 mm minimum and BOTH channels — post-Stage-4 the snap term may collapse
+  below the extraction error, and the published floor must not understate the
+  dominant remaining channel. (Snap dominates today, so the value is
+  unchanged.)
 - Both channels sit inside the blueprint's expected **0.05–0.2 mm class** at
   r≈70 mm — confirming the snap-floor verdict: 0.01–0.02 mm amplitude gates are
   numerically unachievable until Stage 4's exact placement (along-crest slide +
   analytic crest×grid-line intersections) and a tighter/exact extraction (the
   closed-form loci instead of the marching-squares trace) land. After Stage 4,
-  re-run `runSfbSnapFloorAudit` and re-freeze the gates at the new floor.
+  re-run `runSfbSnapFloorAudit` and re-freeze the gates at the new floor —
+  test S5 deliberately pins `snappedCount > 0` (PRE-Stage-4 behavior) as a
+  tripwire: its failure when Stage-4 exact placement lands is the signal to
+  re-run and re-freeze this document.
 
 Reproduce: `npx vitest run src/fidelity/snapPlacementAudit.test.ts` (test S5
 logs the full table; values here are from the 2026-06-12 run at the pinned

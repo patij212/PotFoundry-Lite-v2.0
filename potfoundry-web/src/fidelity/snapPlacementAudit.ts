@@ -33,6 +33,18 @@
  *      exactly (f32 storage floor ≈6e-8, WELD_TAU=1e-6 jitter weld), so a
  *      `numericFloor` of 2e-6 separates "snapped" from "unsnapped" honestly.
  *
+ *      MATCHING PRECONDITION (NN aliasing): unique pre→post correspondence is
+ *      GUARANTEED only when the pairwise INPUT-vertex spacing exceeds the
+ *      search box — i.e. every input pair is separated, on at least one axis,
+ *      by more than (1 + worst snap composition/searchRadiusScale) search-box
+ *      half-extents. Below that, two inputs can match the same output vertex:
+ *      legitimate for welds, but a CDT-DROPPED input whose NEIGHBOR's image is
+ *      in range reads as a small snap and UNDERSTATES displacement.
+ *      `sharedOutputMatchCount` makes this visible — nonzero means re-verify
+ *      the spacing precondition before trusting the numbers. (Measured at the
+ *      pinned SFB@1 config: min pairwise spacing = 1.93× the search-box edge —
+ *      see stage2-snap-floor.md.)
+ *
  * ## The snap rule being audited (FeatureConformingTriangulator.ts)
  *
  * `cornerSnap` (FCT.ts:261) is the absolute per-axis threshold in t; the u
@@ -58,17 +70,17 @@
  * CPU TypeScript). The measured numbers are published in
  * docs/superpowers/specs/2026-06-10-export-endgame-evidence/stage2-snap-floor.md.
  *
- * Pure CPU (vitest-trusted). Production modules are imported READ-ONLY; no
- * production file is modified by this instrument.
+ * Pure CPU (vitest-trusted). Production modules are imported READ-ONLY; the
+ * only production-file change made for this audit is the `export` keyword on
+ * ConformingWall's `clipFeaturesToBox` (behavior unchanged) so the audit can
+ * run the REAL clip instead of a drift-prone mirror.
  */
-import type {
-  FeatureLine,
-  FeatureLinePoint,
-} from '../renderers/webgpu/parametric/conforming/FeatureLineGraph';
+import type { FeatureLine } from '../renderers/webgpu/parametric/conforming/FeatureLineGraph';
 import {
   extractAnalyticFeatures,
   sfRf,
 } from '../renderers/webgpu/parametric/conforming/FeatureLineGraph';
+import { clipFeaturesToBox } from '../renderers/webgpu/parametric/conforming/ConformingWall';
 import { triangulateQuadtreeWithFeatures } from '../renderers/webgpu/parametric/conforming/FeatureConformingTriangulator';
 import type { QuadLeaf } from '../renderers/webgpu/parametric/conforming/PeriodicBalancedQuadtree';
 import type {
@@ -142,8 +154,18 @@ export interface ExtractionBranchError {
 export interface ExtractionErrorResult {
   totalPolylineVertices: number;
   matchedVertexCount: number;
-  /** Vertices with no analytic branch within the match window (absolute). */
+  /** FINITE vertices with no analytic branch within the match window
+   *  (absolute). Non-finite rejects are a separate class: `nonFiniteCount`. */
   unmatchedVertexCount: number;
+  /**
+   * Non-finite (NaN/Inf) polyline vertices REJECTED before matching (absolute
+   * count, house style). Unguarded, a NaN vertex PASSES the branch-domain
+   * check (NaN comparisons are false), captures a match candidate, and
+   * poisons rms while leaving maxU/maxMm silently clean (false PASS). ANY
+   * nonzero value means this channel did not see the full polyline: do not
+   * gate on this result.
+   */
+  nonFiniteCount: number;
   branches: ExtractionBranchError[];
   /** Branch with the worst maxMm (among matched branches). */
   worstBranchLabel: string;
@@ -273,6 +295,7 @@ export function measureExtractionError(
 
   let total = 0;
   let matched = 0;
+  let nonFinite = 0;
   let gMaxU = 0;
   let gSumSqU = 0;
   let gMaxMm = 0;
@@ -281,6 +304,15 @@ export function measureExtractionError(
   for (const line of lines) {
     for (const p of line.points) {
       total++;
+      // CRITICAL: reject non-finite vertices LOUDLY before candidate creation
+      // (house nonFiniteCount pattern — see crestLateralDeviation.ts). A NaN
+      // u/t passes the branch-domain check below (NaN comparisons are false),
+      // captures the first branch as a "match", and poisons rms while
+      // maxU/maxMm stay silently clean — a false PASS.
+      if (!Number.isFinite(p.u) || !Number.isFinite(p.t)) {
+        nonFinite++;
+        continue;
+      }
       let best = -1;
       let bestDu = 0;
       let bestEval: BranchEval | null = null;
@@ -333,7 +365,8 @@ export function measureExtractionError(
   return {
     totalPolylineVertices: total,
     matchedVertexCount: matched,
-    unmatchedVertexCount: total - matched,
+    unmatchedVertexCount: total - matched - nonFinite,
+    nonFiniteCount: nonFinite,
     branches,
     worstBranchLabel: worst,
     maxU: gMaxU,
@@ -389,6 +422,23 @@ export interface SnapDisplacementResult {
   rmsLateralMm: number;
   /** The worst-lateral vertex (pre-snap position + its displacement). */
   worst: { u: number; t: number; du: number; dt: number; lateralMm: number } | null;
+  /**
+   * Non-finite (NaN/Inf) OUTPUT mesh vertices REJECTED during bucketing
+   * (absolute count, house style). Unguarded, a NaN vertex lands in an
+   * unreachable "NaN:NaN" bucket and vanishes silently — invisible coverage
+   * loss on the post-snap side. ANY nonzero value: do not gate on this result.
+   */
+  nonFiniteCount: number;
+  /**
+   * Inputs (beyond the first) whose matched output vertex was ALSO claimed by
+   * another input, where the shared claims include a displacement beyond
+   * `numericFloor` (absolute count). Two inputs may legitimately share one
+   * output (a weld at ~0 distance — not counted); but a CDT-DROPPED input
+   * matching its NEIGHBOR's image reads as a small snap and UNDERSTATES
+   * displacement. ANY nonzero value means the spacing precondition (module
+   * header) is violated or suspect: do not gate on this result.
+   */
+  sharedOutputMatchCount: number;
   /** The snapped/unsnapped classification floor (see NUMERIC_FLOOR). */
   numericFloor: number;
   /** Derived per-axis snap thresholds (the FCT law: cornerSnap/2^B in u). */
@@ -433,10 +483,19 @@ export function measureSnapDisplacement(
   // 3×3 neighborhood at u, u−1, u+1 so the periodic seam matches across wrap.
   const buckets = new Map<string, number[]>();
   const nVerts = mesh.vertices.length / 3;
+  let nonFinite = 0;
   for (let i = 0; i < nVerts; i++) {
-    const key = `${Math.floor(mesh.vertices[i * 3] / searchU)}:${Math.floor(
-      mesh.vertices[i * 3 + 1] / searchT,
-    )}`;
+    const vu = mesh.vertices[i * 3];
+    const vt = mesh.vertices[i * 3 + 1];
+    // CRITICAL: count non-finite output vertices LOUDLY (house nonFiniteCount
+    // pattern — see crestLateralDeviation.ts). Math.floor(NaN) keys an
+    // unreachable "NaN:NaN" bucket, so an unguarded NaN vertex would vanish
+    // silently from the matchable set.
+    if (!Number.isFinite(vu) || !Number.isFinite(vt)) {
+      nonFinite++;
+      continue;
+    }
+    const key = `${Math.floor(vu / searchU)}:${Math.floor(vt / searchT)}`;
     let arr = buckets.get(key);
     if (!arr) {
       arr = [];
@@ -486,6 +545,10 @@ export function measureSnapDisplacement(
   let maxLat = 0;
   let sumSqLat = 0;
   let worst: SnapDisplacementResult['worst'] = null;
+  // Output-vertex claims for the NN-aliasing counter (sharedOutputMatchCount):
+  // per matched output index, how many inputs claimed it and whether any claim
+  // was displaced beyond the numeric floor.
+  const claims = new Map<number, { count: number; beyondFloor: boolean }>();
 
   for (const line of inputLines) {
     const pts = line.points;
@@ -497,7 +560,15 @@ export function measureSnapDisplacement(
       matched++;
       const absDu = Math.abs(hit.du);
       const absDt = Math.abs(hit.dt);
-      if (absDu > NUMERIC_FLOOR || absDt > NUMERIC_FLOOR) snapped++;
+      const beyondFloor = absDu > NUMERIC_FLOOR || absDt > NUMERIC_FLOOR;
+      const claim = claims.get(hit.i);
+      if (claim) {
+        claim.count++;
+        claim.beyondFloor = claim.beyondFloor || beyondFloor;
+      } else {
+        claims.set(hit.i, { count: 1, beyondFloor });
+      }
+      if (beyondFloor) snapped++;
       if (absDu > NUMERIC_FLOOR) snappedInU++;
       if (absDt > NUMERIC_FLOOR) snappedInT++;
       if (absDu > maxAbsDu) maxAbsDu = absDu;
@@ -534,6 +605,11 @@ export function measureSnapDisplacement(
     }
   }
 
+  let sharedOutputMatches = 0;
+  for (const c of claims.values()) {
+    if (c.count >= 2 && c.beyondFloor) sharedOutputMatches += c.count - 1;
+  }
+
   return {
     totalInsertedVertices: total,
     matchedCount: matched,
@@ -549,6 +625,8 @@ export function measureSnapDisplacement(
     maxLateralMm: maxLat,
     rmsLateralMm: matched > 0 ? Math.sqrt(sumSqLat / matched) : 0,
     worst,
+    nonFiniteCount: nonFinite,
+    sharedOutputMatchCount: sharedOutputMatches,
     numericFloor: NUMERIC_FLOOR,
     cornerSnapU,
     cornerSnapT,
@@ -600,8 +678,11 @@ export interface SfbSnapFloorAuditResult {
   config: SfbSnapFloorConfig;
   extraction: ExtractionErrorResult;
   snap: SnapDisplacementResult;
-  /** max(0.02mm, measured snap maxLateralMm) — the blueprint's amplitude-gate
-   *  floor input (gates are frozen at max(0.02, post-fix placement floor)). */
+  /** max(0.02mm, extraction maxMm, snap maxLateralMm) — the blueprint's
+   *  amplitude-gate floor input (gates are frozen at max(0.02, post-fix
+   *  placement floor)). BOTH channels feed the max: post-Stage-4 the snap term
+   *  may collapse below the extraction error (0.074mm-class today), and the
+   *  published floor must not understate the dominant remaining channel. */
   impliedPlacementFloorMm: number;
 }
 
@@ -635,71 +716,15 @@ function uniformAnisoQuadtree(level: number, uBias: number): QuadtreeLike {
   return { leaves: () => leaves, uBias: () => uBias };
 }
 
-/** Mirror of ConformingWall's private clipLineToInterval (:383-411): each
- *  maximal in-range run becomes an output line, with an interpolated boundary
- *  point where the line crosses lo/hi. */
-function clipLineToInterval(
-  line: FeatureLine,
-  axis: 'u' | 't',
-  lo: number,
-  hi: number,
-): FeatureLine[] {
-  const pts = line.points;
-  const val = (p: FeatureLinePoint): number => (axis === 'u' ? p.u : p.t);
-  const inRange = (x: number): boolean => x >= lo && x <= hi;
-  const crossAt = (a: FeatureLinePoint, b: FeatureLinePoint, edge: number): FeatureLinePoint => {
-    const denom = val(b) - val(a);
-    const f = Math.abs(denom) < 1e-300 ? 0 : (edge - val(a)) / denom;
-    return { u: a.u + (b.u - a.u) * f, t: a.t + (b.t - a.t) * f };
-  };
-  const out: FeatureLine[] = [];
-  let cur: FeatureLinePoint[] = [];
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    if (inRange(val(p))) {
-      if (cur.length === 0 && i > 0 && !inRange(val(pts[i - 1]))) {
-        cur.push(crossAt(pts[i - 1], p, val(pts[i - 1]) < lo ? lo : hi));
-      }
-      cur.push(p);
-    } else if (cur.length > 0) {
-      cur.push(crossAt(pts[i - 1], p, val(p) < lo ? lo : hi));
-      if (cur.length >= 2) out.push({ ...line, points: cur });
-      cur = [];
-    }
-  }
-  if (cur.length >= 2) out.push({ ...line, points: cur });
-  return out;
-}
-
-/** Mirror of ConformingWall's private clipFeaturesToBox (:420-430). */
-function clipFeaturesToBoxMirror(
-  features: FeatureLine[],
-  uMargin: number,
-  tMargin: number,
-): FeatureLine[] {
-  let work = features;
-  if (uMargin > 0) {
-    const next: FeatureLine[] = [];
-    for (const line of work) {
-      for (const c of clipLineToInterval(line, 'u', uMargin, 1 - uMargin)) next.push(c);
-    }
-    work = next;
-  }
-  const out: FeatureLine[] = [];
-  for (const line of work) {
-    for (const c of clipLineToInterval(line, 't', tMargin, 1 - tMargin)) out.push(c);
-  }
-  return out;
-}
-
 /**
  * CHANNEL C — the publishable SFB@1 snap-floor measurement at the pinned
  * production config:
  *
  *  - REAL extractor: `extractAnalyticFeatures('SuperformulaBlossom', …)` at
  *    sf_strength=1 (768×320 marching squares + 3e-4 simplify, full-height
- *    crests only — the production insertion set), clipped with the
- *    production-mirror margins (uMargin = 1.5/2^featureLevel,
+ *    crests only — the production insertion set), clipped by the PRODUCTION
+ *    `clipFeaturesToBox` (imported from ConformingWall — exported for this
+ *    audit) at the production margins (uMargin = 1.5/2^featureLevel,
  *    tMargin = 1/nRing — ConformingWall.ts:601-603).
  *  - REAL insertion: `triangulateQuadtreeWithFeatures` with
  *    cornerSnap = 0.06/2^featureLevel (ConformingWall.ts:539) on a uniform
@@ -711,7 +736,7 @@ function clipFeaturesToBoxMirror(
  *  - mm conversion: the SFB@1 default-dims wall surface (r≈45-90mm).
  *
  * Returns both channels SEPARATELY plus the implied placement floor
- * max(0.02mm, measured snap maxLateralMm). Values are published in
+ * max(0.02mm, extraction maxMm, snap maxLateralMm). Values are published in
  * stage2-snap-floor.md; tests only pin that the instrument runs.
  */
 export function runSfbSnapFloorAudit(): SfbSnapFloorAuditResult {
@@ -725,7 +750,7 @@ export function runSfbSnapFloorAudit(): SfbSnapFloorAuditResult {
     Rt: SFB_DIMS.Rt,
     Rb: SFB_DIMS.Rb,
   });
-  const clipped = clipFeaturesToBoxMirror(graph.lines, uMargin, tMargin);
+  const clipped = clipFeaturesToBox(graph.lines, uMargin, tMargin);
 
   const qt = uniformAnisoQuadtree(SFB_FEATURE_LEVEL, SFB_UBIAS);
   const mesh = triangulateQuadtreeWithFeatures(qt, clipped, { cornerSnap });
@@ -759,6 +784,6 @@ export function runSfbSnapFloorAudit(): SfbSnapFloorAuditResult {
     },
     extraction,
     snap,
-    impliedPlacementFloorMm: Math.max(0.02, snap.maxLateralMm),
+    impliedPlacementFloorMm: Math.max(0.02, extraction.maxMm, snap.maxLateralMm),
   };
 }

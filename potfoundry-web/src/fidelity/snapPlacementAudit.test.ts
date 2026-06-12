@@ -33,6 +33,12 @@
  * Test 5 is the PUBLISHABLE SFB@1 measurement (numbers logged; the test only
  * pins that the instrument runs and stays in sane bounds — the VALUES go in
  * docs/superpowers/specs/2026-06-10-export-endgame-evidence/stage2-snap-floor.md).
+ *
+ * Tests S7a/S7b pin the house nonFiniteCount loudness pattern (NaN data is
+ * REJECTED with an absolute count, never silently matched or vanished); S8/S9
+ * cover the periodic u-seam matching path (bucket shift probes + sdU wrap),
+ * unmatchedCount > 0, and a non-default searchRadiusScale; S10 pins
+ * sharedOutputMatchCount (NN aliasing visibility).
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -253,13 +259,28 @@ describe('runSfbSnapFloorAudit — SFB@1 production-config audit (publishable)',
       // Channel B sanity: real snapping occurred, finite, mm bounded.
       expect(res.snap.totalInsertedVertices).toBeGreaterThan(100);
       expect(res.snap.matchedCount).toBeGreaterThan(0);
+      // RE-FREEZE TRIPWIRE — this pins PRE-Stage-4 production behavior on
+      // purpose: it WILL fail when Stage-4 exact placement (along-crest slide
+      // + analytic crest×grid-line intersections) lands and snapping stops.
+      // That failure is the signal to re-run this audit and re-freeze the
+      // floor in stage2-snap-floor.md.
       expect(res.snap.snappedCount).toBeGreaterThan(0);
       expect(Number.isFinite(res.snap.maxLateralMm)).toBe(true);
       expect(res.snap.maxLateralMm).toBeGreaterThan(0);
       expect(res.snap.maxLateralMm).toBeLessThan(5);
 
-      // The implied placement floor (blueprint: gates at max(0.02, floor)).
-      expect(res.impliedPlacementFloorMm).toBeGreaterThanOrEqual(0.02);
+      // NaN loudness + NN aliasing: a clean production run has zero non-finite
+      // rejects on both channels and zero shared-output (aliased) matches.
+      expect(res.extraction.nonFiniteCount).toBe(0);
+      expect(res.snap.nonFiniteCount).toBe(0);
+      expect(res.snap.sharedOutputMatchCount).toBe(0);
+
+      // The implied placement floor is the max of the blueprint 0.02mm minimum
+      // and BOTH channels — post-Stage-4 the snap term may collapse below the
+      // extraction error, and the floor must not understate it.
+      expect(res.impliedPlacementFloorMm).toBe(
+        Math.max(0.02, res.extraction.maxMm, res.snap.maxLateralMm),
+      );
 
       // ── Publish: the values go into stage2-snap-floor.md, not assertions ──
       const e = res.extraction;
@@ -294,9 +315,162 @@ describe('runSfbSnapFloorAudit — SFB@1 production-config audit (publishable)',
         );
       }
       console.log(
-        `[Stage2b] implied placement floor = max(0.02, ${s.maxLateralMm.toFixed(4)}) = ` +
-          `${res.impliedPlacementFloorMm.toFixed(4)} mm`,
+        `[Stage2b] implied placement floor = max(0.02, extraction ${e.maxMm.toFixed(4)}, ` +
+          `snap ${s.maxLateralMm.toFixed(4)}) = ${res.impliedPlacementFloorMm.toFixed(4)} mm`,
       );
     },
   );
+});
+
+// ── (7) Non-finite loudness — the house nonFiniteCount pattern ───────────────
+
+describe('non-finite loudness — NaN data is rejected LOUDLY, never silently', () => {
+  const R0 = 50;
+  const H = 100;
+  const surface = new CylinderSampler(R0, H);
+
+  it('S7a: NaN polyline vertices are REJECTED with a count, not silently matched (channel A)', () => {
+    // Vertical ridge + fixed offset (the S2 setup) so the unpoisoned data has
+    // an exact expectation: maxU ≈ rmsU ≈ duOff.
+    const duOff = 0.003;
+    const truth = solveParamRidgeByBisection(ridgeField(() => 0.3));
+    const points = [];
+    for (let i = 0; i <= 32; i++) {
+      points.push({ u: 0.3 + duOff, t: i / 32 });
+    }
+    // Poison TWO vertices — one NaN u, one NaN t. Unguarded, a NaN vertex
+    // PASSES the branch-domain check (NaN comparisons are false), captures a
+    // match, and poisons rms while maxU/maxMm stay silently clean.
+    points[7] = { u: Number.NaN, t: points[7].t };
+    points[20] = { u: points[20].u, t: Number.NaN };
+    const line: FeatureLine = { kind: 'general-curve', points, label: 'poisoned' };
+    const res = measureExtractionError([line], truth, surface);
+    expect(res.nonFiniteCount).toBe(2);
+    expect(Number.isFinite(res.nonFiniteCount)).toBe(true);
+    expect(res.totalPolylineVertices).toBe(33);
+    expect(res.matchedVertexCount).toBe(31);
+    // NaN is a REJECT class, not coverage loss — unmatched stays 0.
+    expect(res.unmatchedVertexCount).toBe(0);
+    // The unpoisoned data still reads correctly and stays finite.
+    expect(Number.isFinite(res.rmsU)).toBe(true);
+    expect(Number.isFinite(res.rmsMm)).toBe(true);
+    expect(Math.abs(res.maxU - duOff)).toBeLessThan(5e-5);
+    expect(Math.abs(res.rmsU - duOff)).toBeLessThan(5e-5);
+    const expectedMm = duOff * TAU * R0;
+    expect(Math.abs(res.maxMm - expectedMm)).toBeLessThan(expectedMm * 0.02);
+  });
+
+  it('S7b: a NaN OUTPUT mesh vertex is COUNTED, not vanished into a NaN bucket (channel B)', () => {
+    const LEVEL = 3;
+    const CORNER_SNAP = 0.06 / (1 << LEVEL);
+    const config = { featureLevel: LEVEL, uBias: 0, cornerSnap: CORNER_SNAP };
+    const line = midRowLine(() => 0.25, LEVEL, 'on-column');
+    const mesh = triangulateQuadtreeWithFeatures(uniformQuadtree(LEVEL), [line], {
+      cornerSnap: CORNER_SNAP,
+    });
+    // Poison ONE output vertex that is NOT a feature-vertex image (a grid
+    // corner near u=0.75, far from the inserted u=0.25 column) so the matching
+    // set itself is untouched and S3's expectations still hold exactly.
+    const verts = Float32Array.from(mesh.vertices);
+    let poisoned = -1;
+    for (let i = 0; i < verts.length / 3; i++) {
+      if (Math.abs(verts[i * 3] - 0.75) < 1e-6 && Math.abs(verts[i * 3 + 1] - 0.5) < 1e-6) {
+        poisoned = i;
+        break;
+      }
+    }
+    expect(poisoned).toBeGreaterThanOrEqual(0);
+    verts[poisoned * 3] = Number.NaN;
+    const res = measureSnapDisplacement({ vertices: verts }, [line], surface, config);
+    expect(res.nonFiniteCount).toBe(1);
+    expect(Number.isFinite(res.nonFiniteCount)).toBe(true);
+    // The unpoisoned data still reads exactly like S3 (on-column, unsnapped).
+    expect(res.totalInsertedVertices).toBe(8);
+    expect(res.matchedCount).toBe(8);
+    expect(res.unmatchedCount).toBe(0);
+    expect(res.snappedCount).toBe(0);
+    expect(res.maxAbsDu).toBeLessThanOrEqual(res.numericFloor);
+    expect(Number.isFinite(res.rmsDu)).toBe(true);
+    expect(Number.isFinite(res.maxLateralMm)).toBe(true);
+    expect(res.maxLateralMm).toBeLessThan(1e-3);
+  });
+});
+
+// ── (8) Periodic seam matching, unmatched coverage, search-radius options ────
+
+describe('measureSnapDisplacement — periodic seam + search-box options', () => {
+  const R0 = 50;
+  const H = 100;
+  const surface = new CylinderSampler(R0, H);
+
+  it('S8: a feature line hugging u≈1 on the periodic grid matches across the seam (small du)', () => {
+    const LEVEL = 3;
+    const CORNER_SNAP = 0.06 / (1 << LEVEL);
+    const config = { featureLevel: LEVEL, uBias: 0, cornerSnap: CORNER_SNAP };
+    // 0.4·cornerSnap inside the seam column u=1: snapToCellEdge snaps onto the
+    // u=1 edge, which the triangulator stores COLLAPSED onto the u=0 column
+    // (QuadtreeMesh seam contract) — the matcher must find it across the wrap
+    // with |du| = the small offset, never ~1 or unmatched.
+    const duOff = 0.4 * CORNER_SNAP;
+    const line = midRowLine(() => 1 - duOff, LEVEL, 'seam-hugging');
+    const mesh = triangulateQuadtreeWithFeatures(uniformQuadtree(LEVEL), [line], {
+      cornerSnap: CORNER_SNAP,
+    });
+    const res = measureSnapDisplacement(mesh, [line], surface, config);
+    expect(res.totalInsertedVertices).toBe(8);
+    expect(res.matchedCount).toBe(8);
+    expect(res.unmatchedCount).toBe(0);
+    expect(res.snappedCount).toBe(8);
+    expect(Math.abs(res.maxAbsDu - duOff)).toBeLessThan(1e-6);
+    expect(res.maxAbsDt).toBeLessThan(1e-6);
+  });
+
+  it('S9: synthetic wrap match at u≈0/1 + an unmatched far vertex + non-default searchRadiusScale', () => {
+    const CORNER_SNAP = 0.0075;
+    const config = { featureLevel: 3, uBias: 0, cornerSnap: CORNER_SNAP };
+    // ONE output vertex just above u=0; input vertex just below u=1 — only the
+    // shift∈{−1,+1} bucket probes + sdU wrap can match it (du = 1e-3 across
+    // the seam, NOT 0.999). The second input is far from ANY output ⇒ the
+    // unmatchedCount>0 path. searchRadiusScale=2 (non-default) must be echoed
+    // in the derived box.
+    const mesh = { vertices: new Float32Array([0.0005, 0.5, 0]) };
+    const line: FeatureLine = {
+      kind: 'general-curve',
+      points: [
+        { u: 0.9995, t: 0.5 },
+        { u: 0.5, t: 0.5 },
+      ],
+      label: 'wrap+far',
+    };
+    const res = measureSnapDisplacement(mesh, [line], surface, config, { searchRadiusScale: 2 });
+    expect(res.searchRadiusU).toBeCloseTo(2 * CORNER_SNAP, 12);
+    expect(res.searchRadiusT).toBeCloseTo(2 * CORNER_SNAP, 12);
+    expect(res.totalInsertedVertices).toBe(2);
+    expect(res.matchedCount).toBe(1);
+    expect(res.unmatchedCount).toBe(1);
+    expect(res.snappedCount).toBe(1);
+    expect(Math.abs(res.maxAbsDu - 0.001)).toBeLessThan(1e-7);
+    expect(res.maxAbsDt).toBeLessThan(1e-12);
+  });
+
+  it('S10: two inputs claiming one output vertex beyond the floor read as sharedOutputMatchCount', () => {
+    const CORNER_SNAP = 0.0075;
+    const config = { featureLevel: 3, uBias: 0, cornerSnap: CORNER_SNAP };
+    // One output; two inputs inside its box — one exact (a legitimate weld
+    // image), one displaced 2e-4 ≫ numericFloor (the CDT-dropped-vertex
+    // aliasing shape). The counter must make the aliasing visible.
+    const mesh = { vertices: new Float32Array([0.25, 0.5, 0]) };
+    const line: FeatureLine = {
+      kind: 'general-curve',
+      points: [
+        { u: 0.25, t: 0.5 },
+        { u: 0.2502, t: 0.5 },
+      ],
+      label: 'aliased',
+    };
+    const res = measureSnapDisplacement(mesh, [line], surface, config);
+    expect(res.matchedCount).toBe(2);
+    expect(res.unmatchedCount).toBe(0);
+    expect(res.sharedOutputMatchCount).toBe(1);
+  });
 });

@@ -417,7 +417,8 @@ function clipLineToInterval(
  * T-junction against the wrapping u=1 cells, which the non-periodic crease
  * extraction does not mirror). Lines that vanish are dropped.
  */
-function clipFeaturesToBox(features: FeatureLine[], uMargin: number, tMargin: number): FeatureLine[] {
+// Exported for the fidelity snap audit (src/fidelity/snapPlacementAudit.ts) — behavior unchanged.
+export function clipFeaturesToBox(features: FeatureLine[], uMargin: number, tMargin: number): FeatureLine[] {
   let work = features;
   if (uMargin > 0) {
     const next: FeatureLine[] = [];
