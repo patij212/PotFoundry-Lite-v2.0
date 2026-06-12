@@ -12,9 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- Mesh export quality: `_orient_faces_outward` pass in `build_pot_mesh` and
+  `tests/test_mesh_orientation.py` pinning two CAD-grade invariants — consistent
+  winding (every directed edge once) and outward normals (positive signed
+  volume) — across all styles and resolutions. See `adr/0002`.
 
 ### Fixed
 - **Critical Bug Fixes:**
+  - Exported meshes had globally inverted normals (negative signed volume) and
+    inconsistent winding at the base, despite being watertight. Rhino/Grasshopper
+    rely on outward-facing normals for closed-solid detection and booleans; STL
+    slicers masked this by auto-repairing on import. Faces are now oriented
+    outward at build time.
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`
   - Removed unused `Client` import in `supabase_client.py`

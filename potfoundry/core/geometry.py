@@ -294,6 +294,69 @@ STYLES = {
 
 
 # -----------------------------
+# Orientation (outward-facing normals for Rhino/Grasshopper-grade export)
+# -----------------------------
+
+# Outward-reference codes for each face group. A pot is a closed solid of
+# revolution: the outer wall faces away from the axis (+radial), the inner
+# cavity wall and the drain-hole cylinder face toward their axes (-radial),
+# and the horizontal caps face up or down (±z).
+_REF_RADIAL_OUT, _REF_RADIAL_IN, _REF_Z_UP, _REF_Z_DOWN = 0, 1, 2, 3
+
+
+def _orient_faces_outward(verts: np.ndarray, faces: np.ndarray,
+                          group_specs: list[tuple[int, int]]) -> np.ndarray:
+    """Flip any face whose winding gives an inward-pointing normal.
+
+    For STL/Rhino/Grasshopper the convention is that face normals point *out*
+    of the solid. ``build_pot_mesh`` assembles faces group by group, and each
+    group has a known outward direction (see ``_REF_*`` codes). We compute the
+    geometric normal of every face and reverse the winding of any face whose
+    normal opposes its group's outward reference.
+
+    Because each group is a single-valued radial graph (or a planar cap), every
+    face in a group shares the same outward sign, so the whole group flips
+    uniformly — preserving the consistent, orientable winding that
+    watertightness requires while guaranteeing positive enclosed volume.
+
+    Args:
+        verts: Vertex array (N, 3).
+        faces: Face index array (M, 3), modified in place.
+        group_specs: Ordered ``(face_count, ref_code)`` per appended face group;
+            the counts must sum to ``len(faces)``.
+
+    Returns:
+        The (in-place corrected) face array.
+    """
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    normals = np.cross(v1 - v0, v2 - v0)
+    centers = (v0 + v1 + v2) / 3.0
+
+    ref = np.zeros_like(centers)
+    i = 0
+    for count, code in group_specs:
+        sl = slice(i, i + count)
+        i += count
+        if code == _REF_RADIAL_OUT:
+            ref[sl, 0] = centers[sl, 0]
+            ref[sl, 1] = centers[sl, 1]
+        elif code == _REF_RADIAL_IN:
+            ref[sl, 0] = -centers[sl, 0]
+            ref[sl, 1] = -centers[sl, 1]
+        elif code == _REF_Z_UP:
+            ref[sl, 2] = 1.0
+        else:  # _REF_Z_DOWN
+            ref[sl, 2] = -1.0
+    assert i == len(faces), f"group_specs cover {i} faces, mesh has {len(faces)}"
+
+    inward = np.einsum("ij,ij->i", normals, ref) < 0.0
+    faces[inward] = faces[inward][:, [0, 2, 1]]
+    return faces
+
+
+# -----------------------------
 # Mesh builder (watertight)
 # -----------------------------
 
@@ -445,7 +508,30 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+
+    # Correct winding so all normals point out of the solid (Rhino/Grasshopper
+    # and slicers expect outward normals / positive enclosed volume). Groups are
+    # listed in the exact order they were appended to ``faces_out_parts`` above.
+    wall_rows = len(z_outer) - 1
+    inner_rows = len(z_inner) - 1
+    group_specs = [
+        (wall_rows * n_theta, _REF_RADIAL_OUT),   # outer wall tri1
+        (wall_rows * n_theta, _REF_RADIAL_OUT),   # outer wall tri2
+        (inner_rows * n_theta, _REF_RADIAL_IN),   # inner wall tri_in1
+        (inner_rows * n_theta, _REF_RADIAL_IN),   # inner wall tri_in2
+        (n_theta, _REF_Z_UP),                     # rim cap tri_rim1
+        (n_theta, _REF_Z_UP),                     # rim cap tri_rim2
+        (n_theta, _REF_Z_DOWN),                   # bottom underside tri_bot1
+        (n_theta, _REF_Z_DOWN),                   # bottom underside tri_bot2
+        (n_theta, _REF_Z_UP),                     # slab top tri_top1
+        (n_theta, _REF_Z_UP),                     # slab top tri_top2
+        (n_theta, _REF_RADIAL_IN),                # drain cylinder tri_cyl1
+        (n_theta, _REF_RADIAL_IN),                # drain cylinder tri_cyl2
+    ]
+    faces_arr = _orient_faces_outward(verts_arr, faces_arr, group_specs)
+
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
