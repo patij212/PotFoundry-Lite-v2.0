@@ -171,7 +171,9 @@ export function getQualityProfile(name: string): QualityProfile {
  * Priority:
  * 1. Explicit tolerance overrides in params
  * 2. Named quality profile defaults
- * 3. 'standard' profile defaults (fallback)
+ * 3. DEFAULT_EXPORT_QUALITY_PROFILE ('high') — the SAME fallback the export
+ *    pipeline uses, so a direct caller can never silently get looser
+ *    tolerances than an unparameterized export would.
  *
  * @param params - Export configuration with optional profile/tolerance overrides.
  * @returns Fully resolved tolerance values.
@@ -180,7 +182,7 @@ export function resolveTolerances(params: {
     qualityProfile?: QualityProfileName;
     toleranceOverrides?: Partial<ExportTolerances>;
 }): ExportTolerances {
-    const profile = getQualityProfile(params.qualityProfile ?? 'standard');
+    const profile = getQualityProfile(params.qualityProfile ?? DEFAULT_EXPORT_QUALITY_PROFILE);
     const base = profile.tolerances;
 
     if (!params.toleranceOverrides) return { ...base };

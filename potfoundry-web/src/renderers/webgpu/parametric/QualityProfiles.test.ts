@@ -144,10 +144,10 @@ describe('QualityProfiles', () => {
     // ========================================================================
 
     describe('resolveTolerances', () => {
-        it('uses standard profile as default', () => {
+        it('defaults to DEFAULT_EXPORT_QUALITY_PROFILE (high) — same fallback as the export pipeline', () => {
             const tol = resolveTolerances({});
-            expect(tol.epsPosMm).toBe(0.08);
-            expect(tol.epsNormalDeg).toBe(6.0);
+            expect(tol.epsPosMm).toBe(QUALITY_PROFILES[DEFAULT_EXPORT_QUALITY_PROFILE].tolerances.epsPosMm);
+            expect(tol.epsNormalDeg).toBe(QUALITY_PROFILES[DEFAULT_EXPORT_QUALITY_PROFILE].tolerances.epsNormalDeg);
         });
 
         it('uses named profile tolerances', () => {

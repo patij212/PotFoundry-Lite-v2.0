@@ -151,18 +151,6 @@ export function trianglesToFileSizeMB(triangles: number): number {
     return (triangles * 50 + 84) / 1_000_000;
 }
 
-// Triangle CAPS per tier — mirrors QUALITY_PROFILES maxTriangleBudget
-// (2026-06 quality re-baseline: high 6M, ultra 12M).
-export const PARAMETRIC_PRESETS = {
-    draft: { triangles: 500_000, label: 'Draft', fileSizeMB: 25 },
-    standard: { triangles: 2_000_000, label: 'Standard', fileSizeMB: 100 },
-    high: { triangles: 6_000_000, label: 'High', fileSizeMB: 300 },
-    ultra: { triangles: 12_000_000, label: 'Ultra', fileSizeMB: 600 },
-    maximum: { triangles: 20_000_000, label: 'Maximum', fileSizeMB: 1000 },
-} as const;
-
-export type ParametricQuality = keyof typeof PARAMETRIC_PRESETS;
-
 // ============================================================================
 // Hook Implementation
 // ============================================================================
