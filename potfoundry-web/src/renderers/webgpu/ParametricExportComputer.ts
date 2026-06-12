@@ -2385,11 +2385,10 @@ export class ParametricExportComputer {
                 const profileSag = resolveSurfaceErrorMm(exportProfile, params.toleranceOverrides);
                 const qMaxSag = (typeof qOv.__pfConformingMaxSag === 'number' && qOv.__pfConformingMaxSag > 0) ? qOv.__pfConformingMaxSag : profileSag;
                 const qMinEdge = (typeof qOv.__pfConformingMinEdge === 'number' && qOv.__pfConformingMinEdge > 0) ? qOv.__pfConformingMinEdge : Math.min(0.2, Math.max(0.04, profileSag * 2));
-                // Quadtree depth follows the sag the user ACTUALLY asked for
-                // (resolveQuadtreeMaxLevel: ≤0.06 → 12, ≤0.09 → 11, else 10 —
-                // reproduces the per-profile depths exactly at the default
-                // profile sags). Previously this switched on the profile NAME,
-                // so a tight epsPosMm override on draft/standard was silently
+                // Quadtree depth follows the sag the user ACTUALLY asked for —
+                // band edges + rationale live in resolveQuadtreeMaxLevel's doc.
+                // Previously this switched on the profile NAME, so a tight
+                // epsPosMm override on draft/standard was silently
                 // depth-clamped (the slider half-worked). The dev lever wins.
                 const qMaxLevel = (typeof qOv.__pfConformingMaxLevel === 'number' && qOv.__pfConformingMaxLevel >= 6)
                     ? Math.floor(qOv.__pfConformingMaxLevel)

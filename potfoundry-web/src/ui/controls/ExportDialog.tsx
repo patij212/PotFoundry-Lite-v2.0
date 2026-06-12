@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { resolveFeatureFlags } from '../../renderers/webgpu/parametric/contracts';
 import type { PipelineFeatureFlags } from '../../renderers/webgpu/parametric/contracts';
 import type { QualityProfileName, ExportTolerances, ChainStripMode, ValidationSummary } from '../../renderers/webgpu/parametric/types';
 import { QUALITY_PROFILES as PROFILE_DEFINITIONS } from '../../renderers/webgpu/parametric/QualityProfiles';
@@ -183,9 +184,21 @@ const DEFAULT_FLAGS: Partial<PipelineFeatureFlags> = {
     // Default ON: the conforming mesher is the watertight-by-construction,
     // high-fidelity export path (clean-CAD triangle quality, features preserved,
     // facet-free below printer resolution). It is the recommended path for slicing
-    // (Cura/PrusaSlicer). Toggle off in the Pipeline tab to compare the legacy path.
+    // (Cura/PrusaSlicer). Toggle off in the Debug tab to compare the legacy path.
     conformingMesher: true,
 };
+
+/**
+ * Single source of truth for "the conforming mesher will handle this export".
+ * Delegates to the pipeline's own flag resolution (an omitted key inherits the
+ * pipeline default of ON; an explicit false selects the legacy battery), so the
+ * Debug-tab toggle display and the Export-tab control gating can never disagree
+ * with each other — or with what the export actually runs.
+ */
+const isConformingActive = (flags: Partial<PipelineFeatureFlags>): boolean =>
+    // The === true narrows the optional field's type; resolveFeatureFlags
+    // always populates conformingMesher (?? default), so it never fires.
+    resolveFeatureFlags(flags).conformingMesher === true;
 
 // ============================================================================
 // Icons (inline SVG — no external dependency)
@@ -365,8 +378,12 @@ interface ExportTabProps {
     onToleranceChange: <K extends keyof ExportTolerances>(key: K, value: ExportTolerances[K]) => void;
     /**
      * True when the conforming mesher handles this export (the production
-     * default; flags.conformingMesher !== false). Hides the feature-drift
-     * control, which has zero conforming-path consumers (QW3).
+     * default; see isConformingActive). Hides the feature-drift control:
+     * the conforming path has zero epsFeatureMm consumers (feature
+     * preservation is exact by construction; featDrop=0 is gated), so an
+     * editable control there would be a placebo. The legacy path consumes
+     * it (MeshValidator), so the control returns when conforming is
+     * toggled off (QW3).
      */
     conformingActive: boolean;
     stats: ExportDialogStats | null;
@@ -442,13 +459,8 @@ const ExportTab: React.FC<ExportTabProps> = ({
                             onChange={v => onToleranceChange('epsPosMm', v)}
                         />
                     </ParamRow>
-                    {/* Feature drift (epsFeatureMm) is hidden while the conforming
-                        mesher is active: it is not applicable to the conforming
-                        path (feature preservation is exact by construction;
-                        featDrop=0 is gated) and has ZERO consumers there —
-                        shipping an editable dead control is a placebo (QW3).
-                        The legacy path consumes it (MeshValidator), so the
-                        control returns when conforming is toggled off. */}
+                    {/* Hidden on the conforming path — see the conformingActive
+                        prop doc for the rationale (QW3). */}
                     {!conformingActive && (
                         <ParamRow label="Feature drift" hint="mm">
                             <NumberInput
@@ -751,11 +763,12 @@ const DebugTab: React.FC<DebugTabProps> = ({
         <div className="ed-section">
             <div className="ed-section__label">PIPELINE FEATURE FLAGS</div>
             <p className="ed-flag-note">
-                Experimental advanced paths — all default to OFF. Enable one at a time to isolate effects.
+                Conforming export is the production default (ON). The rest are experimental
+                paths defaulting to OFF — enable one at a time to isolate effects.
             </p>
             <div className="ed-flag-list">
-                <ParamRow label="Conforming mesher (watertight, experimental)" hint="By-construction watertight outer wall — skips legacy optimization + repair battery">
-                    <Toggle value={Boolean(flags.conformingMesher)} onChange={v => onFlagChange('conformingMesher', v)} />
+                <ParamRow label="Conforming mesher (watertight, production default)" hint="By-construction watertight outer wall — skips legacy optimization + repair battery">
+                    <Toggle value={isConformingActive(flags)} onChange={v => onFlagChange('conformingMesher', v)} />
                 </ParamRow>
                 <ParamRow label="Metric-aware refinement" hint="UV metric tensor for edge-split priority">
                     <Toggle value={Boolean(flags.metricAwareRefinement)} onChange={v => onFlagChange('metricAwareRefinement', v)} />
@@ -1040,7 +1053,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
                             onBudgetChange={setBudgetMB}
                             tolerances={tolerances}
                             onToleranceChange={setToleranceField}
-                            conformingActive={flags.conformingMesher !== false}
+                            conformingActive={isConformingActive(flags)}
                             stats={stats}
                             validation={validation}
                             validationSummary={validationSummary}

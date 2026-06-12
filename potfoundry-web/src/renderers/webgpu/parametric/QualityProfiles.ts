@@ -234,10 +234,18 @@ export function resolveSurfaceErrorMm(
  * | standard | 0.08     | 11                      | 11 (≤ 0.09)          |
  * | draft    | 0.12     | 10                      | 10 (> 0.09)          |
  *
+ * Edge derivation: 0.06 and 0.09 are round-value separators placed strictly
+ * between adjacent profile sags (0.05 < 0.06 < 0.08 and 0.08 < 0.09 < 0.12) —
+ * any value in those open intervals reproduces the table; these were chosen so
+ * each default sag sits strictly inside its band, never ON an edge.
+ *
  * The `__pfConformingMaxLevel` dev lever (checked at the call site) still
  * wins over this resolution for sweeps/probes.
  *
  * @param sagMm - The RESOLVED sag target in mm (see {@link resolveSurfaceErrorMm}).
+ *   Assumed positive and finite — guaranteed by resolveSurfaceErrorMm, whose
+ *   override guard rejects non-positive/NaN values and falls back to the
+ *   profile constant.
  * @returns The quadtree max refinement level (12 for high/ultra-class sag).
  */
 export function resolveQuadtreeMaxLevel(sagMm: number): number {

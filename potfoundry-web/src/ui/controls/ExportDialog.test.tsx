@@ -139,7 +139,7 @@ describe('ExportDialog corridor flags', () => {
     });
 
     it('hides the dead feature-drift control while the conforming path is active, restores it on the legacy path (QW3)', () => {
-        renderDialog();
+        const { onPreview } = renderDialog();
 
         // Conforming is the default path and has ZERO epsFeatureMm consumers
         // (feature preservation is exact by construction; featDrop=0 is gated)
@@ -152,9 +152,25 @@ describe('ExportDialog corridor flags', () => {
         const conformingRow = screen.getByText(/Conforming mesher/i).closest('.ed-param-row');
         expect(conformingRow).not.toBeNull();
         fireEvent.click(within(conformingRow!).getByRole('switch'));
+        // Switch back to the Export tab (this is the tab button, not the
+        // footer's download action — that one is named "Download STL").
         fireEvent.click(screen.getByRole('button', { name: 'Export' }));
 
         expect(screen.getByRole('spinbutton', { name: 'Feature drift tolerance' })).toBeInTheDocument();
+
+        // The restored control must be functional end-to-end, not merely
+        // visible: an edited value has to reach the export config.
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Feature drift tolerance' }), {
+            target: { value: '0.05' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Preview Stats' }));
+
+        expect(onPreview).toHaveBeenCalledTimes(1);
+        expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({
+            toleranceOverrides: expect.objectContaining({
+                epsFeatureMm: 0.05,
+            }),
+        }));
     });
 
     it('surfaces generation errors inside the dialog', () => {
