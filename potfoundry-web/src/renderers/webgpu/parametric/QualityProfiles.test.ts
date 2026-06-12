@@ -10,6 +10,7 @@ import {
     PROFILE_QUALITY_ORDER,
     getQualityProfile,
     resolveTolerances,
+    resolveSurfaceErrorMm,
     resolveTriangleBudget,
     downgradeProfile,
     buildDowngradeLadder,
@@ -144,6 +145,19 @@ describe('QualityProfiles', () => {
     // ========================================================================
 
     describe('resolveTolerances', () => {
+        it('resolveSurfaceErrorMm: an explicit epsPosMm override WINS over the profile (the dialog surface-error slider)', () => {
+            const high = getQualityProfile('high');
+            // No overrides → profile default.
+            expect(resolveSurfaceErrorMm(high)).toBe(high.tolerances.epsPosMm);
+            expect(resolveSurfaceErrorMm(high, {})).toBe(high.tolerances.epsPosMm);
+            // Explicit override wins (tighter OR looser — the user's choice).
+            expect(resolveSurfaceErrorMm(high, { epsPosMm: 0.01 })).toBe(0.01);
+            expect(resolveSurfaceErrorMm(high, { epsPosMm: 0.2 })).toBe(0.2);
+            // Invalid overrides fall back to the profile.
+            expect(resolveSurfaceErrorMm(high, { epsPosMm: 0 })).toBe(high.tolerances.epsPosMm);
+            expect(resolveSurfaceErrorMm(high, { epsPosMm: -1 })).toBe(high.tolerances.epsPosMm);
+        });
+
         it('defaults to DEFAULT_EXPORT_QUALITY_PROFILE (high) — same fallback as the export pipeline', () => {
             const tol = resolveTolerances({});
             expect(tol.epsPosMm).toBe(QUALITY_PROFILES[DEFAULT_EXPORT_QUALITY_PROFILE].tolerances.epsPosMm);

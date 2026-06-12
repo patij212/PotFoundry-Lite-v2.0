@@ -125,6 +125,7 @@ import {
     getQualityProfile,
     resolveTriangleBudget,
     resolveTolerances,
+    resolveSurfaceErrorMm,
     profileForAttempt,
 } from './parametric/QualityProfiles';
 import { assessToleranceFeasibility } from './parametric/ExportFeasibility';
@@ -2375,7 +2376,11 @@ export class ParametricExportComputer {
                     // budget) or the profile budget — CAP semantics preserved; the
                     // decimator's honest refusal handles natural-mesh overshoot.
                     : targetTris;
-                const profileSag = exportProfile.tolerances.epsPosMm;
+                // Surface-error tolerance: the dialog's epsPosMm slider (an explicit
+                // user override) WINS over the profile default — previously only the
+                // legacy branch consulted toleranceOverrides, leaving the dialog's
+                // surface-error control DEAD on the conforming path (user-reported).
+                const profileSag = resolveSurfaceErrorMm(exportProfile, params.toleranceOverrides);
                 const qMaxSag = (typeof qOv.__pfConformingMaxSag === 'number' && qOv.__pfConformingMaxSag > 0) ? qOv.__pfConformingMaxSag : profileSag;
                 const qMinEdge = (typeof qOv.__pfConformingMinEdge === 'number' && qOv.__pfConformingMinEdge > 0) ? qOv.__pfConformingMinEdge : Math.min(0.2, Math.max(0.04, profileSag * 2));
                 const qMaxLevel = (typeof qOv.__pfConformingMaxLevel === 'number' && qOv.__pfConformingMaxLevel >= 6)

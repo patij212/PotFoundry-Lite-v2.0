@@ -197,6 +197,25 @@ export function resolveTolerances(params: {
 }
 
 /**
+ * Resolve the effective surface-error (sag) target in mm for the conforming
+ * mesher: an explicit per-export tolerance override (the dialog's
+ * surface-error slider) WINS over the profile default. Extracted as a pure
+ * seam because the conforming branch previously read ONLY the profile value,
+ * leaving the dialog's surface-error control dead (user-reported 2026-06-12).
+ *
+ * @param profile - The resolved quality profile (its epsPosMm is the default).
+ * @param toleranceOverrides - Optional explicit overrides from the export dialog.
+ * @returns The sag target in mm the sizing field must honor.
+ */
+export function resolveSurfaceErrorMm(
+    profile: QualityProfile,
+    toleranceOverrides?: Partial<ExportTolerances>,
+): number {
+    const override = toleranceOverrides?.epsPosMm;
+    return typeof override === 'number' && override > 0 ? override : profile.tolerances.epsPosMm;
+}
+
+/**
  * Resolve the effective triangle budget.
  *
  * Uses explicit target if provided, otherwise falls back to the profile's
