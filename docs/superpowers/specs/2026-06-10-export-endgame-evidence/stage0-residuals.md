@@ -91,3 +91,19 @@ Shipped: PullbackMetric (warp-composed sampler + derivative pins), efg populatio
 - Hash baseline re-archived at epoch close (every changed style explained by EAR_CLIP/FCT_EAR_CLIP>0 or B≥1 shaped-template arming). TRIS_PER_LEAF recalibration: builds completed within envelopes; deferred to Stage 6 with a note (DP emits k−2 vs fan k on a subset of transition cells — modest).
 
 **Remaining residual classes after epoch 1:** the 5 ladder-routed styles above (worst 8.0); Voronoi nm=2 at default (Stage 3, dedupSide repro); the extremes/build-time class (Stage 6); the UI quality panel still shows legacy targets (cutover plan Phase 2).
+
+---
+
+# Quality Re-baseline — Profile-Driven Density (2026-06-12, commits 844b11d/6a39405/98a51d3)
+
+**The user-reported gap:** exports were mathematically smooth (chord ≤0.02mm) but VISUALLY faceted — `maxEdgeMm: 8` was hardcoded and the budget is cap-only, so flat wall regions kept 4-8mm triangles and no UI setting could add density.
+
+**Measured response surface** (default dims, 'high' sag, topo zeros + sliver=0 at every config; artifact `band-highdensity-2026-06.json` + the sweep table in commit 6a39405's message): edge 1mm/nRing 1024 → 807k-1.02M tris, facets ≤1.4mm, builds 17-27s; edge 0.5/2048 → 2.66-3.1M tris (133-155MB STL), facets p99 0.49-0.8mm, crest chord ≤0.007mm, builds 100-130s; edge 0.3 → >5min builds (envelope edge).
+
+**Shipped model:** `QualityProfile` gains `maxEdgeMm`+`nRing`: draft 4/256 (500k), standard 2/512 (2M), high 1/1024 (6M), ultra 0.5/2048 (12M; slicer ceiling ≈21.4M). `DEFAULT_EXPORT_QUALITY_PROFILE='high'` unifies the old dual default ('standard' at compute() entry vs 'high' in the conforming block); every export button passes the profile (StatusFooter, ExportPanel non-dialog, dialog budgetMB per tier 25/100/300/600MB). GeometricStar's residual ~1.7mm MAX edges at fine settings are along-crest edges (correct anisotropic meshing — long ALONG the fold); p99 is the visual-field metric.
+
+**Band table at the new 'high' density (app-default dims, vs epoch-1):** improvements nearly everywhere — ArtDeco 8.0→5.3, DragonScales 7.9→5.7, BasketWeave 7.2→6.9, Gyroid 3.9→1.4, Hive 3.2→1.4, CelticKnot 2.9→1.1, Voronoi 1.5→0.8, Gothic 0.7→0.4; wobbles within ~ε: Bamboo 0.7→1.0, SpiralRidges 0.3→0.6. Topology zeros + sliver=0 on all measured. **The Stage-4 ladder list shrinks to: ArtDeco 5.3, DragonScales 5.7, BasketWeave 6.9** (≥5%); everything else ≤1.4%.
+
+**Probe note:** Crystalline returned generateMesh=null ONCE in the long matrix run (single page reused across 20 sequential GPU builds; harness logged HEALTH DEGRADED) but succeeds in isolation: 1,811,710 tris, all zeros, 62.5s. Transient env artifact — matrix drivers should use a fresh page per style (the density sweep's pattern).
+
+**Hash baseline re-archived at the new density** (all 20 change — the deliberate quality re-baseline; mesh-hashes-default-2026-06.json updated).
