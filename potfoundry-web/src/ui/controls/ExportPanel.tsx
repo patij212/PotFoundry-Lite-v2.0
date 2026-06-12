@@ -16,6 +16,7 @@ import { useExport, useExportTier, FREE_TIER_MONTHLY_LIMIT } from '../../hooks';
 import useGPUExport from '../../hooks/useGPUExport';
 import useAdaptiveExport, { type AdaptiveExportQuality } from '../../hooks/useAdaptiveExport';
 import useParametricExport, { fileSizeToTriangles } from '../../hooks/useParametricExport';
+import { DEFAULT_EXPORT_QUALITY_PROFILE } from '../../renderers/webgpu/parametric/QualityProfiles';
 import { useIsPro, useIsAuthenticated } from '../../context/AuthContext';
 import { PricingModal } from '../pricing';
 import { AuthModal } from '../auth';
@@ -109,7 +110,6 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const [useParametric, setUseParametric] = useState(true);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('stl');
   const [adaptiveQuality, setAdaptiveQuality] = useState<AdaptiveExportQuality>('high');
-  const parametricBudgetMB = 250; // Fallback budget for non-dialog export path
 
   // Export dialog state
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -131,9 +131,14 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
         : cpuExport;
   const { progress, stats, generateMesh: baseGenerateMesh, reset } = activeExport;
 
-  // Wrap generateMesh to pass budget for parametric
+  // Wrap generateMesh for the non-dialog parametric path: profile-driven.
+  // No targetTriangles — the profile's triangle budget applies (cap
+  // semantics), replacing the old fixed 250MB-derived budget that overrode
+  // the profile. The panel has no parametric quality selector outside the
+  // dialog (the dialog has the profile cards), so pin the unified export
+  // default ('high' — ~1mm visual facets, ~1M tris).
   const generateMesh = useParametric && parametricExport.isAvailable
-    ? () => parametricExport.generateMesh(fileSizeToTriangles(parametricBudgetMB))
+    ? () => parametricExport.generateMesh(undefined, { qualityProfile: DEFAULT_EXPORT_QUALITY_PROFILE })
     : baseGenerateMesh;
 
   const { checkExportAllowed, recordExport, exportsThisMonth } = useExportTier();
@@ -290,7 +295,10 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     // Note: CPU exporter returns MeshResult { mesh, diagnostics }
     //       GPU exporter returns MeshData directly
     const result = useParametric && parametricExport.isAvailable
-      ? await parametricExport.generateMesh(fileSizeToTriangles(parametricBudgetMB))
+      // Profile-driven (no explicit budget): the 'high' profile bounds visual
+      // facets at ~1mm and caps triangles at its own budget — see the
+      // generateMesh wrapper comment above.
+      ? await parametricExport.generateMesh(undefined, { qualityProfile: DEFAULT_EXPORT_QUALITY_PROFILE })
       : useAdaptive && adaptiveExport.isAvailable
         ? await adaptiveExport.generateMesh(adaptiveQuality)
         : await generateMesh();
@@ -323,7 +331,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
       reset();
       alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}. Try reducing the resolution.`);
     }
-  }, [generateMesh, exportFormat, tierCheck, recordExport, isAuthenticated, style.name, onExportComplete, isDev, reset, useParametric, parametricExport, parametricBudgetMB, useAdaptive, adaptiveExport, adaptiveQuality]);
+  }, [generateMesh, exportFormat, tierCheck, recordExport, isAuthenticated, style.name, onExportComplete, isDev, reset, useParametric, parametricExport, useAdaptive, adaptiveExport, adaptiveQuality]);
 
   const handlePreview = useCallback(async () => {
     await generateMesh();

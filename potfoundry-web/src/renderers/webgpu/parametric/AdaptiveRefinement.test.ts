@@ -146,6 +146,8 @@ function testProfile(overrides?: Partial<QualityProfile>): QualityProfile {
         name: 'standard',
         tolerances: testTolerances(),
         maxTriangleBudget: 2_000_000,
+        maxEdgeMm: 2,
+        nRing: 512,
         maxRefineIterations: 2,
         description: 'test profile',
         ...overrides,

@@ -50,6 +50,24 @@ export interface QualityProfile {
     tolerances: ExportTolerances;
     /** Maximum triangle budget (safety cap, not quality target). */
     maxTriangleBudget: number;
+    /**
+     * Max target edge length (mm) for the conforming sizing field — the VISUAL
+     * facet bound on low-curvature regions. Sag (chord error) alone leaves flat
+     * walls coarse: the sag refiner stops splitting once a cell is under
+     * tolerance, so flat regions keep edges up to this length regardless of how
+     * tight epsPosMm is. MEASURED 2026-06-10 (default dims, 'high' sag):
+     * 8mm → 3.9mm visible wall facets; 2mm → ~2mm; 1mm → ~1-1.4mm (p99 ~1mm);
+     * 0.5mm → 0.49-0.8mm p99 (sub-printer-resolution).
+     */
+    maxEdgeMm: number;
+    /**
+     * Conforming boundary-ring resolution — the angular base density of the
+     * shared wall/cap rings. MUST be a power of two (the uBias 2^B and the
+     * i/nRing parameterization assume it). Scales with maxEdgeMm so the
+     * per-column tangential density matches the edge cap (measured pairs:
+     * 8mm/256, 2mm/512, 1mm/1024, 0.5mm/2048 — topo zeros at every config).
+     */
+    nRing: number;
     /** Maximum adaptive refinement iterations (0 = no refinement). */
     maxRefineIterations: number;
     /**
@@ -70,11 +88,17 @@ export interface ParametricExportParams {
     styleId: StyleId;
     styleOpts: StyleOptions;
     styleIndex: number;
-    /** Target triangle count (default: 2M = ~100MB STL) */
+    /**
+     * Explicit triangle budget (CAP semantics — see resolveTriangleBudget).
+     * When omitted, the resolved quality profile's maxTriangleBudget applies.
+     */
     targetTriangles?: number;
     /** Number of anisotropic relaxation steps (v5.3). Default: 20 */
     relaxIterations?: number;
-    /** Named quality profile (default: 'standard'). */
+    /**
+     * Named quality profile. Default: 'high' (DEFAULT_EXPORT_QUALITY_PROFILE)
+     * — this pipeline is the high-fidelity EXPORT path, not the live preview.
+     */
     qualityProfile?: QualityProfileName;
     /** Explicit tolerance overrides (take precedence over profile defaults). */
     toleranceOverrides?: Partial<ExportTolerances>;

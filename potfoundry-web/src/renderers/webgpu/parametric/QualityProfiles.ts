@@ -16,6 +16,16 @@ export const MAX_BINARY_STL_BYTES = 1024 * 1024 * 1024;
 /** Maximum triangle count that fits in a binary STL below 1 GiB. */
 export const MAX_BINARY_STL_TRIANGLES = Math.floor((MAX_BINARY_STL_BYTES - 84) / 50);
 
+/**
+ * The default profile for the EXPORT pipeline when the caller did not pick one.
+ * 'high' — every export button produces the high-fidelity result by default
+ * (~1mm visual facets, sub-printer chord error); the live preview has its own
+ * budgets. Single source of truth: ParametricExportComputer.compute() and the
+ * UI export buttons must all resolve through this constant so the default can
+ * never fork again (it previously forked 'standard' vs 'high' inside compute).
+ */
+export const DEFAULT_EXPORT_QUALITY_PROFILE: QualityProfileName = 'high';
+
 // ============================================================================
 // Profile Definitions
 // ============================================================================
@@ -34,9 +44,13 @@ const DRAFT: QualityProfile = {
         maxAspectRatio: 24.0,    // R/r metric: equilateral=2, sliver→∞
     },
     maxTriangleBudget: 500_000,
+    // MEASURED 2026-06-10 (default dims): 4mm edge cap ≈ today's coarse look;
+    // 256-ring keeps draft fast (90-403k tris at 8/256, draft sits between).
+    maxEdgeMm: 4,
+    nRing: 256,
     maxRefineIterations: 1,
     qualityIterations: 1,
-    description: 'Fast preview — loose tolerances, minimal adaptive refinement',
+    description: 'Fast preview — ~4mm facets, <0.5M tris, seconds; design iteration only',
 };
 
 /**
@@ -53,9 +67,13 @@ const STANDARD: QualityProfile = {
         maxAspectRatio: 20.0,    // R/r metric: equilateral=2, sliver→∞
     },
     maxTriangleBudget: 2_000_000,
+    // MEASURED 2026-06-10: edge 2mm / 512-ring → 272-558k tris, ~2mm facets,
+    // topo zeros + sliver=0 — comfortably under the 2M cap.
+    maxEdgeMm: 2,
+    nRing: 512,
     maxRefineIterations: 4,
     qualityIterations: 2,
-    description: 'Balanced quality for FDM printing',
+    description: 'Balanced FDM — ~2mm facets, ~0.3-0.6M tris, fast builds',
 };
 
 /**
@@ -71,10 +89,16 @@ const HIGH: QualityProfile = {
         minTriangleAngleDeg: 20,
         maxAspectRatio: 16.0,    // R/r metric: equilateral=2, sliver→∞
     },
-    maxTriangleBudget: 4_000_000,
+    // MEASURED 2026-06-10: edge 1mm / 1024-ring → 807k-1.02M tris (~40-50MB
+    // STL), ~1-1.4mm max facets (p99 ~1mm), builds 17-27s, topo zeros. Budget
+    // raised 4M → 6M so the cap never coarsens a clean 1mm-edge build on
+    // feature-dense styles.
+    maxTriangleBudget: 6_000_000,
+    maxEdgeMm: 1,
+    nRing: 1024,
     maxRefineIterations: 8,
     qualityIterations: 3,
-    description: 'High-fidelity for detailed FDM and draft SLA',
+    description: '~1mm facets, ~1M tris, ~30s — detailed FDM (export default)',
 };
 
 /**
@@ -90,10 +114,17 @@ const ULTRA: QualityProfile = {
         minTriangleAngleDeg: 22,
         maxAspectRatio: 12.0,    // R/r metric: equilateral=2, sliver→∞
     },
-    maxTriangleBudget: 8_000_000,
+    // MEASURED 2026-06-10: edge 0.5mm / 2048-ring → 2.66-3.1M tris (133-155MB
+    // STL), facets p99 0.49-0.8mm, crest chord ≤0.007mm, builds 100-130s.
+    // Budget raised 8M → 12M (headroom for feature-dense styles; still well
+    // under MAX_BINARY_STL_TRIANGLES ≈ 21.4M). Edge 0.3mm was probed and
+    // exceeds the 5-min build envelope — 0.5mm is the ultra ceiling.
+    maxTriangleBudget: 12_000_000,
+    maxEdgeMm: 0.5,
+    nRing: 2048,
     maxRefineIterations: 12,
     qualityIterations: 4,
-    description: 'Maximum fidelity for SLA/resin printing',
+    description: '≤0.5-0.8mm facets, ~3M tris, ~2min — resin/SLA, sub-printer-resolution everywhere',
 };
 
 // ============================================================================

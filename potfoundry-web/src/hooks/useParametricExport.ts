@@ -27,6 +27,10 @@ import {
     getLastChainDebugData,
     getLastPeakDebugData,
 } from '../renderers/webgpu/ParametricExportComputer';
+import {
+    DEFAULT_EXPORT_QUALITY_PROFILE,
+    getQualityProfile,
+} from '../renderers/webgpu/parametric/QualityProfiles';
 import { STYLE_IDS, STYLE_FUNCTION_MAP, STYLE_REGISTRY } from '../styles/registry';
 import { stripShaderCode } from '../utils/shaderStripper';
 import { useControllerMaybe } from '../context/ControllerContext';
@@ -100,6 +104,12 @@ export interface ExportRouteOptions {
         midColor: string;
         secondaryColor: string;
     };
+    /**
+     * Quality profile for this export. Omitted → the pipeline's unified
+     * default (DEFAULT_EXPORT_QUALITY_PROFILE = 'high'). Lets simple buttons
+     * (StatusFooter download) pin the profile without the full overrides bag.
+     */
+    qualityProfile?: import('../renderers/webgpu/parametric/types').QualityProfileName;
 }
 
 export interface UseParametricExportResult {
@@ -141,11 +151,13 @@ export function trianglesToFileSizeMB(triangles: number): number {
     return (triangles * 50 + 84) / 1_000_000;
 }
 
+// Triangle CAPS per tier — mirrors QUALITY_PROFILES maxTriangleBudget
+// (2026-06 quality re-baseline: high 6M, ultra 12M).
 export const PARAMETRIC_PRESETS = {
     draft: { triangles: 500_000, label: 'Draft', fileSizeMB: 25 },
     standard: { triangles: 2_000_000, label: 'Standard', fileSizeMB: 100 },
-    high: { triangles: 4_000_000, label: 'High', fileSizeMB: 200 },
-    ultra: { triangles: 8_000_000, label: 'Ultra', fileSizeMB: 400 },
+    high: { triangles: 6_000_000, label: 'High', fileSizeMB: 300 },
+    ultra: { triangles: 12_000_000, label: 'Ultra', fileSizeMB: 600 },
     maximum: { triangles: 20_000_000, label: 'Maximum', fileSizeMB: 1000 },
 } as const;
 
@@ -325,13 +337,25 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         }
 
         try {
-            const tris = targetTriangles ?? 2_000_000;
-            const estSizeMB = trianglesToFileSizeMB(tris);
+            // Budget: an explicit target wins; otherwise targetTriangles stays
+            // UNDEFINED so the computer resolves the quality profile's
+            // maxTriangleBudget (CAP semantics — resolveTriangleBudget). The old
+            // `?? 2_000_000` fallback silently overrode the profile budget for
+            // every button that didn't pass a target. The resolved values here
+            // are for the progress message ONLY.
+            const profileName = overrides?.qualityProfile ?? DEFAULT_EXPORT_QUALITY_PROFILE;
+            const budgetCap = targetTriangles ?? getQualityProfile(profileName).maxTriangleBudget;
+            const estSizeMB = trianglesToFileSizeMB(budgetCap);
+            const generatingMessage = targetTriangles !== undefined
+                ? `Generating curvature-adaptive mesh (~${estSizeMB.toFixed(0)}MB, ${(targetTriangles / 1_000_000).toFixed(1)}M tris)...`
+                // Profile-driven: the budget is a cap, not a target — quote the
+                // profile instead of a misleading size estimate.
+                : `Generating curvature-adaptive mesh ('${profileName}' quality, ≤${(budgetCap / 1_000_000).toFixed(0)}M tris)...`;
 
             setProgress({
                 status: 'generating',
                 progress: 10,
-                message: `Generating curvature-adaptive mesh (~${estSizeMB.toFixed(0)}MB, ${(tris / 1_000_000).toFixed(1)}M tris)...`,
+                message: generatingMessage,
             });
             await new Promise(r => setTimeout(r, 0));
 
@@ -367,7 +391,9 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 styleId,
                 styleOpts,
                 styleIndex,
-                targetTriangles: tris,
+                // Undefined flows through → the computer resolves the profile
+                // budget (see resolveTriangleBudget cap semantics).
+                targetTriangles,
                 qualityProfile: overrides?.qualityProfile,
                 toleranceOverrides: overrides?.toleranceOverrides,
                 pipelineFeatureFlags: overrides?.pipelineFeatureFlags,
@@ -502,7 +528,10 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         targetTriangles?: number,
         options?: ExportRouteOptions
     ): Promise<void> => {
-        const meshData = await generateMesh(targetTriangles);
+        const meshData = await generateMesh(
+            targetTriangles,
+            options?.qualityProfile ? { qualityProfile: options.qualityProfile } : undefined,
+        );
         if (!meshData) return;
 
         setProgress({

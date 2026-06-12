@@ -17,6 +17,7 @@ import { useAppStore } from '../../../state';
 import { useExport } from '../../../hooks/useExport';
 import { useGPUExport } from '../../../hooks/useGPUExport';
 import { useParametricExport } from '../../../hooks/useParametricExport';
+import { DEFAULT_EXPORT_QUALITY_PROFILE } from '../../../renderers/webgpu/parametric/QualityProfiles';
 import { useAnnounce } from '../shared/Announcer';
 import { useConfidence } from '../onboarding/useConfidence';
 import { useHaptics } from '../hooks/useHaptics';
@@ -121,7 +122,15 @@ export const StatusFooter: React.FC = () => {
       : undefined;
 
     if (parametricExport.isAvailable) {
-      await parametricExport.exportSTL(undefined, undefined, { format: exportFormat, colors: exportColors });
+      // No targetTriangles: the profile's triangle budget applies (cap
+      // semantics). The v2 store has no export-quality selection yet, so the
+      // footer pins the unified export default explicitly ('high' — ~1mm
+      // visual facets, ~1M tris) rather than relying on implicit defaults.
+      await parametricExport.exportSTL(undefined, undefined, {
+        format: exportFormat,
+        colors: exportColors,
+        qualityProfile: DEFAULT_EXPORT_QUALITY_PROFILE,
+      });
     } else if (gpuExport.isGPUAvailable) {
       await gpuExport.exportSTL(undefined, { format: exportFormat, colors: exportColors });
     } else {

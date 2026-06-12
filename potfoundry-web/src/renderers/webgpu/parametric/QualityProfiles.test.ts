@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
     MAX_BINARY_STL_BYTES,
     MAX_BINARY_STL_TRIANGLES,
+    DEFAULT_EXPORT_QUALITY_PROFILE,
     QUALITY_PROFILES,
     PROFILE_QUALITY_ORDER,
     getQualityProfile,
@@ -40,6 +41,11 @@ describe('QualityProfiles', () => {
                 expect(profile.tolerances.minTriangleAngleDeg).toBeGreaterThan(0);
                 expect(profile.tolerances.maxAspectRatio).toBeGreaterThan(0);
                 expect(profile.maxTriangleBudget).toBeGreaterThan(0);
+                expect(profile.maxEdgeMm).toBeGreaterThan(0);
+                // nRing is contractually a power of two (uBias 2^B and the
+                // i/nRing parameterization assume it), floored at 64.
+                expect(profile.nRing).toBeGreaterThanOrEqual(64);
+                expect(Number.isInteger(Math.log2(profile.nRing))).toBe(true);
                 expect(profile.maxRefineIterations).toBeGreaterThanOrEqual(0);
                 expect(profile.description.length).toBeGreaterThan(0);
             }
@@ -56,6 +62,9 @@ describe('QualityProfiles', () => {
                 expect(curr.tolerances.epsNormalDeg).toBeLessThan(prev.tolerances.epsNormalDeg);
                 // Higher budget
                 expect(curr.maxTriangleBudget).toBeGreaterThanOrEqual(prev.maxTriangleBudget);
+                // Tighter visual-facet bound, denser ring
+                expect(curr.maxEdgeMm).toBeLessThan(prev.maxEdgeMm);
+                expect(curr.nRing).toBeGreaterThanOrEqual(prev.nRing);
             }
         });
 
@@ -64,6 +73,37 @@ describe('QualityProfiles', () => {
             expect(QUALITY_PROFILES.standard.tolerances.epsPosMm).toBe(0.08);
             expect(QUALITY_PROFILES.high.tolerances.epsPosMm).toBe(0.05);
             expect(QUALITY_PROFILES.ultra.tolerances.epsPosMm).toBe(0.03);
+        });
+
+        it('profiles match the measured 2026-06-10 density/budget re-baseline', () => {
+            // (maxEdgeMm, nRing) pairs from the committed response-surface sweep
+            // (topo zeros + sliver=0 at every config); budgets are caps sized so
+            // the cap never coarsens a clean build at that density.
+            expect(QUALITY_PROFILES.draft.maxEdgeMm).toBe(4);
+            expect(QUALITY_PROFILES.draft.nRing).toBe(256);
+            expect(QUALITY_PROFILES.draft.maxTriangleBudget).toBe(500_000);
+
+            expect(QUALITY_PROFILES.standard.maxEdgeMm).toBe(2);
+            expect(QUALITY_PROFILES.standard.nRing).toBe(512);
+            expect(QUALITY_PROFILES.standard.maxTriangleBudget).toBe(2_000_000);
+
+            expect(QUALITY_PROFILES.high.maxEdgeMm).toBe(1);
+            expect(QUALITY_PROFILES.high.nRing).toBe(1024);
+            expect(QUALITY_PROFILES.high.maxTriangleBudget).toBe(6_000_000);
+
+            expect(QUALITY_PROFILES.ultra.maxEdgeMm).toBe(0.5);
+            expect(QUALITY_PROFILES.ultra.nRing).toBe(2048);
+            expect(QUALITY_PROFILES.ultra.maxTriangleBudget).toBe(12_000_000);
+        });
+    });
+
+    describe('DEFAULT_EXPORT_QUALITY_PROFILE', () => {
+        it('is high — the single unified export default', () => {
+            // ParametricExportComputer.compute() and every UI export button
+            // resolve through this constant. It pins the fix for the
+            // dual-default bug (compute() forked 'standard' vs 'high').
+            expect(DEFAULT_EXPORT_QUALITY_PROFILE).toBe('high');
+            expect(QUALITY_PROFILES[DEFAULT_EXPORT_QUALITY_PROFILE]).toBeDefined();
         });
     });
 
@@ -159,7 +199,7 @@ describe('QualityProfiles', () => {
 
         it('returns ultra budget for ultra profile', () => {
             const budget = resolveTriangleBudget(undefined, QUALITY_PROFILES.ultra);
-            expect(budget).toBe(8_000_000);
+            expect(budget).toBe(12_000_000);
         });
 
         it('keeps every profile under the 1 GiB binary STL cap', () => {

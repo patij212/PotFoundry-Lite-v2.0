@@ -138,11 +138,17 @@ export interface ExportDialogProps {
 // Constants
 // ============================================================================
 
+// Per-profile budgetMB defaults. `mb` mirrors the profile's maxTriangleBudget
+// (binary-STL bytes: tris*50+84 → 500K≈25MB, 2M≈100MB, 6M≈300MB, 12M≈600MB)
+// so the dialog slider's default never caps below the profile budget. Density
+// (maxEdgeMm/nRing — the visual facet bound) lives on the profile itself; the
+// typical delivered size is far smaller (high ≈ 1M tris ≈ 50MB; the budget is
+// a cap, not a target).
 const QUALITY_PROFILES = {
-    draft: { label: 'Draft', trisLabel: '500K', mb: 25, desc: 'Fast iteration' },
-    standard: { label: 'Standard', trisLabel: '2M', mb: 100, desc: 'Balanced quality' },
-    high: { label: 'High', trisLabel: '4M', mb: 200, desc: 'Detail-first' },
-    ultra: { label: 'Ultra', trisLabel: '8M', mb: 400, desc: 'SLA/Resin ready' },
+    draft: { label: 'Draft', trisLabel: '500K', mb: 25, desc: 'Fast iteration, ~4mm facets' },
+    standard: { label: 'Standard', trisLabel: '2M', mb: 100, desc: 'Balanced FDM, ~2mm facets' },
+    high: { label: 'High', trisLabel: '6M', mb: 300, desc: 'Detailed FDM, ~1mm facets' },
+    ultra: { label: 'Ultra', trisLabel: '12M', mb: 600, desc: 'SLA/Resin, ≤0.8mm facets' },
 } as const;
 
 const MAX_EXPORT_MB = 1024;

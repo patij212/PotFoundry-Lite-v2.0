@@ -121,6 +121,7 @@ import {
     type QualityProfileName,
 } from './parametric/types';
 import {
+    DEFAULT_EXPORT_QUALITY_PROFILE,
     getQualityProfile,
     resolveTriangleBudget,
     resolveTolerances,
@@ -1969,7 +1970,16 @@ export class ParametricExportComputer {
         LAST_CONFORMING_BUDGET_REPORT = null;
         LAST_CONFORMING_DECIMATION_REPORT = null;
 
-        const requestedProfile: QualityProfileName = params.qualityProfile ?? 'standard';
+        // THE export quality profile, resolved exactly ONCE for the whole run.
+        // Default is 'high' (DEFAULT_EXPORT_QUALITY_PROFILE): this pipeline is
+        // the high-fidelity EXPORT path, not the live preview. Every downstream
+        // consumer (tolerances, triangle budget, the conforming density levers
+        // below) MUST use this resolved name/profile — compute() previously
+        // forked the default ('standard' here vs 'high' in the conforming
+        // branch), so the budget/tolerances and the mesh density silently came
+        // from DIFFERENT profiles on a default export.
+        const requestedProfile: QualityProfileName =
+            params.qualityProfile ?? DEFAULT_EXPORT_QUALITY_PROFILE;
         const effectiveProfileName = profileForAttempt(requestedProfile, 0);
         const effectiveProfile = getQualityProfile(effectiveProfileName);
         const effectiveTolerances = resolveTolerances({
@@ -2326,11 +2336,6 @@ export class ParametricExportComputer {
                     ? { positions: (await buildWallSampler(0, REF_RES, REF_RES)).positions, resU: REF_RES, resT: REF_RES }
                     : null;
 
-                // Uniform ring resolution (power of two). This is the DEFAULT base; the
-                // dev override `__pfConformingNRing` is applied (snapped to 2^k) below as
-                // `qNRing`, alongside the other quality-sweep levers.
-                const nRing = 256;
-
                 // Dev quality-sweep overrides (never set in production; mirror
                 // __pfConformingNRing). Let a probe push fidelity well below printer
                 // resolution (tighter sag / minEdge, deeper quadtree, unbounded budget).
@@ -2340,34 +2345,36 @@ export class ParametricExportComputer {
                     // Visual-facet density levers. `__pfConformingMaxEdge` (mm) caps the
                     // LONGEST triangle edge: the sag refiner stops splitting once a cell
                     // is below sag tolerance, so flat/low-curvature wall regions keep
-                    // edges up to maxEdge (default 8mm → visible 8mm facets even though
-                    // chord error is ~0.02mm). Lowering it forces uniform subdivision of
-                    // those flat regions to visual smoothness independent of curvature.
+                    // edges up to maxEdge (visible facets even though chord error is
+                    // ~0.02mm). Lowering it forces uniform subdivision of those flat
+                    // regions to visual smoothness independent of curvature.
                     // `__pfConformingNRing` (snapped to 2^k, ≥64 below) raises the
                     // tangential ring resolution so the per-column density matches.
-                    // Both default to today's values (8 / 256) ⇒ production byte-identical.
+                    // Both default to the PROFILE's maxEdgeMm / nRing below.
                     __pfConformingMaxEdge?: number; __pfConformingNRing?: number;
                     // Decimation-ladder levers (quality-bounded budget enforcement):
                     // absolute-mm error seed (default = profile sag) and honesty
                     // ceiling (default 0.2mm ≈ one FDM layer height).
                     __pfDecimateErrMm?: number; __pfDecimateErrCeilMm?: number;
                 };
-                // Fidelity + budget are PROFILE-DRIVEN. This conforming path is the
-                // high-fidelity EXPORT (not the live preview), so it DEFAULTS to the
-                // 'high' profile (chord error 0.05mm → ~0.02mm crest facets, below
-                // printer resolution) when the caller didn't pick one; an explicit
-                // 'ultra' goes finer (0.03mm), 'standard'/'draft' looser/faster. The
-                // profile's epsPosMm IS the sag target; minEdge + quadtree depth
-                // derive from it. (It previously hardcoded maxSag=0.1/minEdge=0.2/
-                // maxLevel=10 and IGNORED the profile, so the quality slider only moved
-                // the triangle budget, never the chord error. MEASURED 2026-06-10:
-                // epsPos 0.1->0.05 drops crest facet deviation 0.082->0.021mm and
-                // plateaus there.) Dev overrides still win for tuning/sweeps.
-                const exportProfileName: QualityProfileName = params.qualityProfile ?? 'high';
-                const exportProfile = getQualityProfile(exportProfileName);
+                // Fidelity + budget are PROFILE-DRIVEN, and the profile is the ONE
+                // resolved at the top of compute() (default 'high' — this conforming
+                // path is the high-fidelity EXPORT, not the live preview). The
+                // profile's epsPosMm IS the sag target (MEASURED 2026-06-10: epsPos
+                // 0.1->0.05 drops crest facet deviation 0.082->0.021mm and plateaus);
+                // minEdge + quadtree depth derive from it; maxEdgeMm/nRing (below)
+                // bound the VISUAL facets that sag alone leaves on flat walls. Dev
+                // overrides still win for tuning/sweeps. (This block previously
+                // re-defaulted `params.qualityProfile ?? 'high'` while the top of
+                // compute() defaulted 'standard' — the dual-default bug.)
+                const exportProfileName: QualityProfileName = effectiveProfileName;
+                const exportProfile = effectiveProfile;
                 const conformingBudget = (typeof qOv.__pfConformingBudget === 'number' && qOv.__pfConformingBudget > 0)
                     ? qOv.__pfConformingBudget
-                    : (params.targetTriangles ?? exportProfile.maxTriangleBudget);
+                    // targetTris (resolved once above) = min(explicit target, profile
+                    // budget) or the profile budget — CAP semantics preserved; the
+                    // decimator's honest refusal handles natural-mesh overshoot.
+                    : targetTris;
                 const profileSag = exportProfile.tolerances.epsPosMm;
                 const qMaxSag = (typeof qOv.__pfConformingMaxSag === 'number' && qOv.__pfConformingMaxSag > 0) ? qOv.__pfConformingMaxSag : profileSag;
                 const qMinEdge = (typeof qOv.__pfConformingMinEdge === 'number' && qOv.__pfConformingMinEdge > 0) ? qOv.__pfConformingMinEdge : Math.min(0.2, Math.max(0.04, profileSag * 2));
@@ -2375,18 +2382,20 @@ export class ParametricExportComputer {
                     ? Math.floor(qOv.__pfConformingMaxLevel)
                     : (exportProfileName === 'ultra' || exportProfileName === 'high' ? 12 : exportProfileName === 'standard' ? 11 : 10);
                 // Longest-edge cap (mm). The sag refiner only splits curved cells, so
-                // flat wall regions keep edges up to this length (visible facets). Lower
-                // it to force uniform subdivision toward visual smoothness. Default 8mm
-                // (unchanged ⇒ byte-identical when unset).
+                // flat wall regions keep edges up to this length (visible facets) —
+                // this is the VISUAL facet bound, profile-driven (high=1mm → ~1-1.4mm
+                // max wall facets MEASURED; the old hardcoded 8mm shipped 3.9mm
+                // facets at every quality setting). Lever wins for sweeps.
                 const qMaxEdge = (typeof qOv.__pfConformingMaxEdge === 'number' && qOv.__pfConformingMaxEdge > 0)
                     ? qOv.__pfConformingMaxEdge
-                    : 8;
+                    : exportProfile.maxEdgeMm;
                 // Tangential ring resolution. nRing MUST be a power of two (the bias
                 // 2^B and the i/nRing parameterization assume it); snap the override to
-                // the nearest 2^k, floored at 64. Default = nRing (256) when unset.
+                // the nearest 2^k, floored at 64. Default = the profile's nRing
+                // (high=1024), which is already a power of two by contract.
                 const qNRing = (typeof qOv.__pfConformingNRing === 'number' && qOv.__pfConformingNRing >= 64)
                     ? (1 << Math.round(Math.log2(qOv.__pfConformingNRing)))
-                    : nRing;
+                    : exportProfile.nRing;
 
                 // ── Vertical-crease pinning, part 1: pick the column lattice ──────
                 // Sharp constant-u creases (LowPolyFacet facet edges, GeometricStar
