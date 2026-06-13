@@ -688,11 +688,19 @@ const SF_CREST_RES_T = 320;
 /** Below this blossom strength there is no relief to capture → emit nothing
  *  (keeps the strength-0 default export byte-identical). */
 const SF_CREST_MIN_STRENGTH = 1e-3;
-/** Prototype scope: insert only crests that span (almost) the full height. The
- *  ~4 petal-pairs BORN mid-height as m morphs 6→10 end at a cell-interior point,
- *  which would dangle a constraint endpoint (T-junction risk); they are deferred.
- *  Residual serration in the born (upper) region is honest and localized. */
+/** Full-height crest span (the 12 base m=6 crests span ≥ this). Used as the OFF
+ *  (byte-identical default) filter. The original "born petals dangle at a
+ *  cell-interior point → T-junction" deferral was MEASURED WRONG
+ *  (SuperformulaBornCrests.test.ts): every born crest runs RIM↔SEAM (u≈0.999, the
+ *  seam_offset birth point) — no interior dangle — and naive insertion is
+ *  watertight (the grid-line registry handles the seam). */
 const SF_CREST_FULL_HEIGHT_SPAN = 0.85;
+/** Min t-span for a BORN crest when the born-crest lever is on (drops the
+ *  <5-point seam-fragment noise from the periodicU=false cut; real born crests
+ *  span birth_t→rim, well above this). Born crests are the dominant
+ *  surface-fidelity straddle (verify_edgeVsFlank_adaptive: ~2411 straddle tris,
+ *  worst 3.39mm), so admitting them as edges is the (1b) fix. */
+const SF_CREST_BORN_MIN_SPAN = 0.05;
 
 const sfMix = (a: number, b: number, x: number): number => a + (b - a) * x;
 
@@ -730,7 +738,11 @@ function extractSuperformulaBlossom(p: Float32Array): FeatureLine[] {
   // off a tip). Model on HexagonalHive, not the periodic Gyroid.
   const segs = marchingSquaresZero((u, t) => sfRf(u + h, t, p) - sfRf(u - h, t, p), SF_CREST_RES_U, SF_CREST_RES_T, false);
   const lines = segmentsToPolylines(segs, 'sf-crest', 3, 3e-4);
-  // Prototype: full-height crests only (defer born/forking crests — Stage 3).
+  // OFF (default, byte-identical): full-height crests only. ON (born-crest lever):
+  // admit every real crest (born petals run RIM↔SEAM, insert watertightly), drop
+  // only the <5-point seam-fragment noise. Lever default off ⇒ no production change
+  // until wired to the surfaceFidelityExact flag (see plan Task 4 / spec §3.1).
+  const bornOn = (globalThis as unknown as { __pfSfbBornCrests?: boolean }).__pfSfbBornCrests === true;
   return lines.filter((l) => {
     let tMin = Infinity;
     let tMax = -Infinity;
@@ -738,7 +750,9 @@ function extractSuperformulaBlossom(p: Float32Array): FeatureLine[] {
       if (pt.t < tMin) tMin = pt.t;
       if (pt.t > tMax) tMax = pt.t;
     }
-    return tMax - tMin >= SF_CREST_FULL_HEIGHT_SPAN;
+    const span = tMax - tMin;
+    if (bornOn) return l.points.length >= 5 && span >= SF_CREST_BORN_MIN_SPAN;
+    return span >= SF_CREST_FULL_HEIGHT_SPAN;
   });
 }
 
