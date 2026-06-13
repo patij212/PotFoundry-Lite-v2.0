@@ -641,20 +641,23 @@ export function measureSnapDisplacement(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The pinned SFB@1 packed params (WGSL slot order; defaults + sf_strength=1 —
- *  the blueprint's pinned benchmark config: strength 0 extracts nothing). */
-const SFB1_PACKED: readonly number[] = [1, 6, 10, 1.2, 0.35, 0.5, 0.8, 1.4, 0.8, 0.8, 1, 1];
+ *  the blueprint's pinned benchmark config: strength 0 extracts nothing).
+ *  EXPORTED so sibling audits (cellTriangulationCeiling) pin the identical
+ *  config — single source of truth, no drift. */
+export const SFB1_PACKED: readonly number[] = [1, 6, 10, 1.2, 0.35, 0.5, 0.8, 1.4, 0.8, 0.8, 1, 1];
 
 /** Default pot dims (state/types.ts DEFAULT_GEOMETRY: H=120, top_od=140,
  *  bottom_od=90, expn=1.1) — the r≈45-90mm wall the blueprint's 0.05-0.2mm
- *  class refers to. */
-const SFB_DIMS = { H: 120, Rt: 70, Rb: 45, expn: 1.1 } as const;
+ *  class refers to. EXPORTED (see SFB1_PACKED). */
+export const SFB_DIMS = { H: 120, Rt: 70, Rb: 45, expn: 1.1 } as const;
 
 /** Production conforming config for SFB@1 at the default 'high' profile:
  *  featureLevel=7 (ParametricExportComputer.ts conforming branch), uBias B=2
  *  (computeUBias GATE B with the Stage-0 hasFeatures cap — measured B=2 clean,
- *  B=3 non-manifold), nRing=1024 ('high' profile → tMargin=1/nRing). */
-const SFB_FEATURE_LEVEL = 7;
-const SFB_UBIAS = 2;
+ *  B=3 non-manifold), nRing=1024 ('high' profile → tMargin=1/nRing).
+ *  EXPORTED (see SFB1_PACKED). */
+export const SFB_FEATURE_LEVEL = 7;
+export const SFB_UBIAS = 2;
 const SFB_NRING = 1024;
 
 /** Pinned config echo published with the measurement. */
@@ -689,7 +692,7 @@ export interface SfbSnapFloorAuditResult {
 /** SFB@1 wall surface: r(u,t) = r0(t)·(0.9 + 0.35·rf) at strength 1, with the
  *  default-dims base profile r0(t) = Rb + (Rt−Rb)·t^expn (geometry/profile.ts)
  *  and the production f64 `sfRf` mirror — the mm-conversion surface. */
-class SfbWallSampler implements PositionSampler {
+export class SfbWallSampler implements PositionSampler {
   constructor(private readonly p: Float32Array) {}
 
   position(u: number, t: number): readonly [number, number, number] {
