@@ -55,6 +55,14 @@ function build(level: number, bornOn: boolean): { mesh: { vertices: number[]; in
 }
 
 describe('Task 4 — un-defer SFB born petals (fidelity straddle fix)', () => {
+  it('extractAnalyticFeatures opts.bornCrests drives born petals (the production wiring path, no global lever)', () => {
+    const dims = { H: SFB_DIMS.H, Rt: SFB_DIMS.Rt, Rb: SFB_DIMS.Rb };
+    const off = extractAnalyticFeatures('SuperformulaBlossom', p, dims, { bornCrests: false });
+    const on = extractAnalyticFeatures('SuperformulaBlossom', p, dims, { bornCrests: true });
+    expect(off.lines.length).toBe(12);            // explicit false ⇒ full-height only
+    expect(on.lines.length).toBeGreaterThan(12);  // explicit true ⇒ born admitted
+  });
+
   it('OFF is byte-identical (12 full-height crests); ON inserts born crests and cuts the straddle, watertight', () => {
     const level = 7, seamExclU = 1.5 / (1 << (level + SFB_UBIAS));
     const off = build(level, false);

@@ -2443,6 +2443,9 @@ export class ParametricExportComputer {
                         params.styleId,
                         Float32Array.from(packedWarpParams),
                         { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb },
+                        // Surface-fidelity exact (flag, default off): un-defer SFB born
+                        // petals as edges (the (1b) fix). Off ⇒ byte-identical.
+                        { bornCrests: flags.surfaceFidelityExact },
                     );
                     // Distinct vertical-crease u-loci (constant-u lines only).
                     const creaseUSet = new Set<number>();
@@ -2609,7 +2612,15 @@ export class ParametricExportComputer {
                         // outer-wall edges; refine the cells they cross to
                         // featureLevel so the insertion is sliver-free.
                         outerFeatureLines: generalCurves.length > 0 ? generalCurves : undefined,
-                        featureLevel: 7,
+                        // Feature-proximity density. Surface-fidelity exact (flag, default
+                        // off) raises it so near-feature chord drops below tol
+                        // (verify_featureRefineLevel: L11 → p99 0.125→0.037; ~3.6x tris,
+                        // within the budget cap). Off ⇒ 7 (byte-identical). The dominant
+                        // (1a)-sizing "Task 3" was measured a no-op — this density lever (not
+                        // curvature) is the real one. Dev override: __pfFidelityFeatureLevel.
+                        featureLevel: flags.surfaceFidelityExact
+                            ? ((globalThis as unknown as { __pfFidelityFeatureLevel?: number }).__pfFidelityFeatureLevel ?? 11)
+                            : 7,
                         // Crease loci → uBias-invariant t-refinement (refine-only).
                         outerCreaseLines: creaseLines.length > 0 ? creaseLines : undefined,
                         // Warp-composed per-wall efg samplers — arm the shaped
@@ -2765,6 +2776,7 @@ export class ParametricExportComputer {
                             params.styleId,
                             Float32Array.from(packedFeatureParams),
                             { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb },
+                            { bornCrests: flags.surfaceFidelityExact },
                         );
                     }
                     featureGraphForGate = graph;

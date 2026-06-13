@@ -401,6 +401,19 @@ export interface PipelineFeatureFlags {
      * See docs/superpowers/specs/2026-06-07-cad-grade-parametric-export-design.md.
      */
     readonly conformingMesher?: boolean;
+
+    /**
+     * Surface-fidelity exact mode (2026-06-13, edges-only design Rev 3). When
+     * true, the conforming export drives the measured SFB-fidelity recipe:
+     * un-defer the SuperformulaBlossom born petals (extraction) AND raise the
+     * feature-proximity density (featureRefine.level) so near-feature chord error
+     * drops below tolerance (verify_featureRefineLevel: p99 0.125→0.037). Default
+     * FALSE ⇒ byte-identical to the current conforming export. The fix is EDGES +
+     * feature-proximity density, NOT curvature sizing (the analytic-curvature
+     * "Task 3" was measured to be a no-op).
+     * See docs/superpowers/specs/2026-06-13-surface-fidelity-export-design.md.
+     */
+    readonly surfaceFidelityExact?: boolean;
 }
 
 /**
@@ -420,6 +433,7 @@ export const DEFAULT_FEATURE_FLAGS: Readonly<PipelineFeatureFlags> = Object.free
     outerWallCorridorDiagnostics: false,
     byConstructionAssembly: false,
     conformingMesher: true,
+    surfaceFidelityExact: false,
 });
 
 /**

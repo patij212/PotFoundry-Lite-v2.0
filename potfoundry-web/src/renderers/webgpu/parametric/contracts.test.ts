@@ -170,6 +170,15 @@ describe('contracts', () => {
             expect(Object.isFrozen(flags)).toBe(true);
         });
 
+        it('surfaceFidelityExact defaults OFF and the override branch is honored', () => {
+            expect(DEFAULT_FEATURE_FLAGS.surfaceFidelityExact).toBe(false);
+            expect(resolveFeatureFlags(undefined).surfaceFidelityExact).toBe(false);
+            expect(resolveFeatureFlags({}).surfaceFidelityExact).toBe(false);
+            expect(resolveFeatureFlags({ surfaceFidelityExact: true }).surfaceFidelityExact).toBe(true);
+            // override-spread must keep it set alongside other overrides
+            expect(resolveFeatureFlags({ conformingMesher: true, surfaceFidelityExact: true }).surfaceFidelityExact).toBe(true);
+        });
+
         // 2026-06-11 cutover: the conforming mesher is the production default
         // (dominance checkpoint — see the conformingMesher doc in contracts.ts).
         it('defaults conformingMesher ON (2026-06-11 dominance checkpoint)', () => {

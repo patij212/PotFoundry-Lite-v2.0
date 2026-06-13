@@ -728,7 +728,15 @@ export function sfRf(u: number, t: number, p: Float32Array): number {
   return sfSuperformula(TAU * u + seam, m, n1, n2, n3, a, b);
 }
 
-function extractSuperformulaBlossom(p: Float32Array): FeatureLine[] {
+/** Per-extraction options (surfaceFidelityExact-driven). Backward-compatible:
+ *  omitted ⇒ each extractor's default (byte-identical) behavior. */
+export interface ExtractOpts {
+  /** Un-defer the SuperformulaBlossom born petals (the (1b) edge fix). When
+   *  omitted, falls back to the __pfSfbBornCrests dev lever (probes). */
+  bornCrests?: boolean;
+}
+
+function extractSuperformulaBlossom(p: Float32Array, opts?: ExtractOpts): FeatureLine[] {
   const strength = p.length > 0 ? p[0] : 1;
   if (!(strength > SF_CREST_MIN_STRENGTH)) return [];
   const h = 0.5 / SF_CREST_RES_U;
@@ -742,7 +750,7 @@ function extractSuperformulaBlossom(p: Float32Array): FeatureLine[] {
   // admit every real crest (born petals run RIM↔SEAM, insert watertightly), drop
   // only the <5-point seam-fragment noise. Lever default off ⇒ no production change
   // until wired to the surfaceFidelityExact flag (see plan Task 4 / spec §3.1).
-  const bornOn = (globalThis as unknown as { __pfSfbBornCrests?: boolean }).__pfSfbBornCrests === true;
+  const bornOn = opts?.bornCrests ?? ((globalThis as unknown as { __pfSfbBornCrests?: boolean }).__pfSfbBornCrests === true);
   return lines.filter((l) => {
     let tMin = Infinity;
     let tMax = -Infinity;
@@ -756,7 +764,7 @@ function extractSuperformulaBlossom(p: Float32Array): FeatureLine[] {
   });
 }
 
-const EXTRACTORS: Record<string, (p: Float32Array) => FeatureLine[]> = {
+const EXTRACTORS: Record<string, (p: Float32Array, opts?: ExtractOpts) => FeatureLine[]> = {
   // Vertical (u=const) creases.
   LowPolyFacet: extractLowPolyFacet,
   GeometricStar: extractGeometricStar,
@@ -819,10 +827,11 @@ export function extractAnalyticFeatures(
   styleId: string,
   packedParams: Float32Array,
   _dimensions: { H: number; Rt: number; Rb: number },
+  opts?: ExtractOpts,
 ): FeatureLineGraph {
   void _dimensions; // loci are in (u,t) param space — dimensions reserved for future 3D loci
   const extractor = EXTRACTORS[styleId];
-  const lines = extractor ? extractor(packedParams) : [];
+  const lines = extractor ? extractor(packedParams, opts) : [];
   return { styleId, lines, groundTruthCount: lines.length };
 }
 
