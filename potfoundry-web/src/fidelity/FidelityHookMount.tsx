@@ -89,6 +89,16 @@ export function FidelityHookMount(): null {
         spinTurns: s.geometry.spinTurns,
         spinPhaseDeg: s.geometry.spinPhase,
         spinCurveExp: s.geometry.spinCurve,
+        // Per-t base PROFILE inputs for the B5 absolute surface-fidelity gate
+        // (diagnoseSurfaceFidelity). The scalar mean `r0` above reads a CYLINDER
+        // on a tapered pot — the gate needs Rt/Rb/expn to reconstruct
+        // r0(t)=baseRadius(t·H,H,Rb,Rt,expn,bell), the EXPORT's true base radius.
+        Rt: s.geometry.top_od / 2,
+        Rb: s.geometry.bottom_od / 2,
+        expn: s.geometry.expn,
+        bellAmp: s.geometry.bellAmp,
+        bellCenter: s.geometry.bellCenter,
+        bellWidth: s.geometry.bellWidth,
       };
     },
   };

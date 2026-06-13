@@ -64,6 +64,14 @@ import {
 } from './crestLateralDeviation';
 import { buildStyleParamPayload } from '../utils/styleParams';
 import { getStyleFunction } from '../geometry/styles';
+import { baseRadius } from '../geometry/profile';
+import { sfRf } from '../renderers/webgpu/parametric/conforming/FeatureLineGraph';
+import {
+  radialAnalyticDeviation,
+  artDecoRiserTBands,
+  type AnalyticRadiusFn,
+  type AnalyticDevResult,
+} from './analyticSurfaceGate';
 import { TAU } from '../geometry/types';
 import type { StyleId, StyleOptions } from '../geometry/types';
 import { ASPECT_MAX, WELD_TOL_MM, type FidelityMetrics } from './types';
@@ -152,6 +160,18 @@ export interface FidelityHookDeps {
     spinTurns: number;
     spinPhaseDeg: number;
     spinCurveExp: number;
+    /** Per-t base-profile inputs for the B5 absolute surface-fidelity gate
+     *  (diagnoseSurfaceFidelity). r0(t)=baseRadius(t·H,H,Rb,Rt,expn,bell): the
+     *  scalar `r0` mean reads a cylinder on a tapered pot, so the gate needs the
+     *  taper (Rt/Rb/expn) and the multiplicative bell to reconstruct the EXPORT's
+     *  true outer base radius. Optional so older mounts still satisfy the type;
+     *  diagnoseSurfaceFidelity returns null when they are absent. */
+    Rt?: number;
+    Rb?: number;
+    expn?: number;
+    bellAmp?: number;
+    bellCenter?: number;
+    bellWidth?: number;
   } | null;
 }
 
@@ -216,6 +236,30 @@ export interface PfFidelityApi {
    * — ≈ the sag floor for a plain pot, rising sharply with ridge serration.
    */
   diagnoseWallFidelity(opts?: FidelityWallDiagnosticOptions): Promise<FidelityWallDiagnostics>;
+  /**
+   * B5 — the ABSOLUTE surface-fidelity gate. Measures the REAL exported 3D mesh
+   * (x,y,z) against the TRUE ANALYTIC surface with NO GPU-grid reference (which
+   * is band-limited + bin-quantized + GPU-vs-GPU). For the RADIAL outer wall
+   * (surfaceId 0) it maps each 3D point back exactly (twist=0) — theta=atan2(y,x),
+   * z direct, t=z/H, r0(t)=baseRadius(...) — and reports the radial deviation
+   * |hypot(x,y) − rAnalytic(theta,z)| in two channels: a VERTEX channel (exact
+   * placement, the "mesh lies on the true surface" number) and a CHORD channel
+   * (dense flat-triangle samples, what a slicer sees). The truth is CONFIG-AWARE:
+   * SFB via the packed sfRf + sf_strength mix (the BLOCKING-2 fix — at the default
+   * sf_strength=0 the export is smooth and the gate reads ≈ 0, not full petals);
+   * every other style via STYLE_FUNCTIONS with snake+camel opts and the tapered
+   * r0(t) (NOT the scalar-mean cylinder). The u-seam cliff and ArtDeco riser
+   * t-bands are EXCLUDED (accepted feature faces, tracked separately, never
+   * failed). Null on the legacy/parametric path (no assembly-UT stash); when the
+   * mount provided no style-state getter or it lacks Rt/Rb/expn (absence is
+   * forwarded HONESTLY); when the pot height is non-finite or ≤ 0; when spin/twist
+   * is active (spinTurns ≠ 0 or spinPhaseDeg ≠ 0 — atan2 recovers the TWISTED
+   * azimuth, not the style theta, so a spun pot is refused rather than measured
+   * wrong); or when a downstream pass broke the assembly-UT↔mesh parallelism.
+   * This is an in-memory (GPU-f32) metric — the round-tripped binary-STL re-welds
+   * and f32-quantizes, so it is necessary-but-not-sufficient for the shipped bytes.
+   */
+  diagnoseSurfaceFidelity(opts?: FidelitySurfaceFidelityDiagnosticOptions): Promise<FidelitySurfaceFidelityDiagnostics | null>;
   /**
    * STAGE 0 — the faithful crest-band serration metric. Restricts to the OUTER
    * wall (via the stashed surfaceId mask) and measures its RADIAL deviation from
@@ -434,6 +478,26 @@ export interface FidelityWallDiagnosticOptions {
 export interface FidelityWallDiagnostics extends WallDeviationResult {
   styleId: string;
   triangleCount: number;
+}
+
+export interface FidelitySurfaceFidelityDiagnosticOptions {
+  targetTriangles?: number;
+  /** Tolerance (mm); nAbove counts samples above it (default 0.1). */
+  tolMm?: number;
+  /** Barycentric sub-samples per edge for the dense chord (default 12). */
+  denseN?: number;
+  /** Half-width of the excluded u-seam band (default the production seam width). */
+  seamExclU?: number;
+  /** Half-width of the ArtDeco riser t-band exclusion (default 1.6e-3). */
+  tBandHalf?: number;
+}
+
+export interface FidelitySurfaceFidelityDiagnostics extends AnalyticDevResult {
+  styleId: string;
+  /** Outer-wall triangles whose 3 corners are all surfaceId 0 (the measured set). */
+  triangleCount: number;
+  /** Echo of the truth source: 'sfb-packed' honors sf_strength; 'analytic' = STYLE_FUNCTIONS. */
+  referenceMode: 'sfb-packed' | 'analytic';
 }
 
 export interface FidelityFShearDiagnosticOptions {
@@ -695,6 +759,100 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         opts.sampleOrder ?? 4,
       );
       return { styleId, ...w, triangleCount: Math.floor(mesh.indices.length / 3) };
+    },
+    async diagnoseSurfaceFidelity(
+      opts: FidelitySurfaceFidelityDiagnosticOptions = {},
+    ): Promise<FidelitySurfaceFidelityDiagnostics | null> {
+      const styleId = currentStyleId();
+      // Generating the mesh repopulates the PRE-WARP assembly (u,t,surfaceId) copy
+      // (conforming branch only), PARALLEL to the returned mesh's vertices.
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const ut = getLastConformingAssemblyUT();
+      const style = deps.getStyleState?.() ?? null;
+      // HONEST-NULL: legacy/parametric path (no stash), or no config getter.
+      if (!ut || !style) return null;
+      // The stash must stay parallel to the returned mesh (a downstream pass — e.g.
+      // decimation — can change the vertex count, breaking the (u,t) lookup).
+      if (ut.length !== mesh.vertices.length) return null;
+      if (!Number.isFinite(style.H) || style.H <= 0) return null;
+      // TWIST: atan2(y,x) recovers the TWISTED azimuth, not the style theta, so the
+      // analytic radius would be sampled at a sheared angle — refuse (mirror
+      // diagnoseCrestLateralDeviation). (Radius itself is twist-invariant, but the
+      // back-mapping is not.) SFB@1 / ArtDeco default configs are spin-zero.
+      if (style.spinTurns !== 0 || style.spinPhaseDeg !== 0) return null;
+      // CONFIG-TRUTH: the per-t base profile needs the taper, not the scalar mean.
+      // Refuse rather than read a cylinder when the mount did not forward them.
+      if (style.Rt === undefined || style.Rb === undefined || style.expn === undefined) return null;
+      const H = style.H, Rt = style.Rt, Rb = style.Rb, expn = style.expn;
+      const bellOpts: StyleOptions = {
+        bellAmp: style.bellAmp ?? 0,
+        bellCenter: style.bellCenter ?? 0.5,
+        bellWidth: style.bellWidth ?? 0.22,
+      };
+      // r0(t) = the EXPORT's tapered+belled base radius (profile.ts mirrors styles.wgsl r_base).
+      const r0Of = (t: number): number => baseRadius(t * H, H, Rb, Rt, expn, bellOpts);
+
+      // Build the config-true analytic radius closure (theta, z) -> mm.
+      let rAnalytic: AnalyticRadiusFn;
+      let referenceMode: 'sfb-packed' | 'analytic';
+      if (styleId === 'SuperformulaBlossom') {
+        // PACKED truth: honor sf_strength at p[0] with the GPU mix (styles.wgsl:102)
+        // — STYLE_FUNCTIONS omits strength (always full petals), the BLOCKING-2 trap.
+        const [, packed] = buildStyleParamPayload(styleId, style.opts as Record<string, unknown>);
+        const p = Float32Array.from(packed);
+        const strength = Math.max(0, Math.min(1, p[0]));
+        rAnalytic = (theta, z) => {
+          const t = z / H;
+          const r0 = r0Of(t);
+          const sf = r0 * (0.9 + 0.35 * sfRf(((theta / TAU) % 1 + 1) % 1, t, p));
+          return r0 + (sf - r0) * strength;
+        };
+        referenceMode = 'sfb-packed';
+      } else {
+        // Generic styles: STYLE_FUNCTIONS with snake+camel opts (the production
+        // buildStyleOptions convention, windowHook.ts diagnoseCrestLateralDeviation).
+        const toCamel = (s: string): string => s.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+        const styleOptions: Record<string, number> = {};
+        for (const [key, value] of Object.entries(style.opts)) {
+          if (typeof value !== 'number') continue;
+          styleOptions[key] = value;
+          const camel = toCamel(key);
+          if (camel !== key) styleOptions[camel] = value;
+        }
+        const fn = getStyleFunction(styleId as StyleId);
+        rAnalytic = (theta, z) => {
+          const r = fn(theta, z, r0Of(z / H), H, styleOptions as StyleOptions);
+          return Number.isFinite(r) ? r : r0Of(z / H);
+        };
+        referenceMode = 'analytic';
+      }
+
+      // ArtDeco C0 riser t-bands from the live step count (excluded vertical faces).
+      const tBands = styleId === 'ArtDeco'
+        ? artDecoRiserTBands(style.opts.ad_step_count ?? style.opts.adStepCount ?? 4)
+        : [];
+
+      const res = radialAnalyticDeviation(
+        { vertices: mesh.vertices, indices: mesh.indices },
+        ut,
+        rAnalytic,
+        {
+          H,
+          tolMm: opts.tolMm ?? 0.1,
+          // Production seam half-width: 1.5 / 2^(featureLevel(7) + uBias(2)) (SFB@1 config).
+          seamExclU: opts.seamExclU ?? 1.5 / (1 << (7 + 2)),
+          tBands,
+          tBandHalf: opts.tBandHalf ?? 1.6e-3,
+          denseN: opts.denseN,
+        },
+      );
+      return {
+        styleId,
+        triangleCount: res.wallTriangles,
+        referenceMode,
+        ...res,
+      };
     },
     async diagnoseSerration(opts: FidelitySerrationDiagnosticOptions = {}): Promise<FidelitySerrationDiagnostics | null> {
       const styleId = currentStyleId();
