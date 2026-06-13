@@ -781,30 +781,35 @@ function extractSuperformulaBlossom(p: Float32Array, opts?: ExtractOpts): Featur
  * Packed slots [0 fanCount,1 fanSpread,2 stepCount,3 stepDepth,4 chevronAmp,
  * 5 chevronFreq,6 blend].
  *
- * ⚠ DEV-LEVER GATED ONLY (__pfArtDecoSteps), NOT the production surfaceFidelityExact
- * flag. MEASURED (verify_artDecoFidelity, real adaptive mesh): inserting the
- * t-steps ALONE REGRESSES ArtDeco (max 3.41→4.39mm) because the DOMINANT residual
- * is the fan (|cos|^exp u-cusps) + chevron (|sin| diagonal) U-features, and the
- * featureLevel density lever AMPLIFIES those un-inserted u-cusps near the refined
- * t-step cells. The density lever is only safe with COMPLETE extraction. So this
- * t-step extractor is a FOUNDATION kept out of the production flag until the
- * fan/chevron families are added; opts.surfaceFidelityExact deliberately does NOT
- * enable it (flag-ON must never regress ArtDeco). `opts` is accepted for the
- * EXTRACTORS signature but intentionally unused here.
+ * The step is a C0 radius JUMP, so each edge is emitted as a PAIRED RING at
+ * `t_step ± AD_RISER_HALF_T` — the thin band between the two rings is the vertical
+ * RISER face (verify_artDecoRiser: paired ε≈1e-3 captures the step, non-band wall
+ * clean at p99 0.008; a SINGLE ring regressed because it can't represent the
+ * vertical face). Safe on the production surfaceFidelityExact flag (the regressing
+ * single-ring version is gone). The riser BAND is an accepted feature face — the
+ * fidelity gate excludes it via `tBands` (like the seam). Fan (C2, 0.006mm) =
+ * density; chevron (0.34mm |sin| diagonal) = follow-up. The C0-step style
+ * BambooSegments should use the same paired-ring riser. (`__pfArtDecoSteps` dev
+ * lever still forces it on for probes.)
  */
+const AD_RISER_HALF_T = 1e-3;
 function extractArtDeco(p: Float32Array, opts?: ExtractOpts): FeatureLine[] {
-  void opts; // intentionally NOT keyed to the production flag (see doc — regresses)
-  const on = (globalThis as unknown as { __pfArtDecoSteps?: boolean }).__pfArtDecoSteps === true;
+  const on = opts?.surfaceFidelityExact
+    ?? ((globalThis as unknown as { __pfArtDecoSteps?: boolean }).__pfArtDecoSteps === true);
   if (!on) return [];
   const stepCount = Math.max(1, Math.round(p.length > 2 ? p[2] : 4));
   const stepDepth = p.length > 3 ? p[3] : 0.08;
   if (!(stepDepth > 1e-4)) return []; // no step relief ⇒ nothing to insert
+  const e = AD_RISER_HALF_T;
   const lines: FeatureLine[] = [];
+  const riser = (tStep: number, tag: string): void => {
+    for (const t of [tStep - e, tStep + e]) {
+      if (t > 1e-4 && t < 1 - 1e-4) lines.push(horizontalLine(t, `ad-riser-${tag}@${tStep.toFixed(3)}`));
+    }
+  };
   for (let tier = 0; tier < stepCount; tier++) {
-    const tLo = (tier + 0.1) / stepCount; // full→reduced edge
-    const tHi = (tier + 0.9) / stepCount; // reduced→full edge
-    if (tLo > 1e-4 && tLo < 1 - 1e-4) lines.push(horizontalLine(tLo, `ad-step-lo[tier=${tier}]`));
-    if (tHi > 1e-4 && tHi < 1 - 1e-4) lines.push(horizontalLine(tHi, `ad-step-hi[tier=${tier}]`));
+    riser((tier + 0.1) / stepCount, `lo[${tier}]`); // reduced→full C0 jump
+    riser((tier + 0.9) / stepCount, `hi[${tier}]`); // full→reduced C0 jump
   }
   return lines;
 }

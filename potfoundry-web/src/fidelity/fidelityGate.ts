@@ -32,6 +32,12 @@ export interface DeviationOpts {
   tolMm: number;
   /** Half-width of the excluded u-seam band (the accepted non-periodic cliff). */
   seamExclU?: number;
+  /** t-positions of accepted vertical-riser faces (C0 t-jumps, e.g. ArtDeco/Bamboo
+   *  steps). Triangles whose centroid-t is within `tBandHalf` of any are excluded
+   *  (the riser face IS the feature; the r(u,t) metric cannot score a vertical face). */
+  tBands?: number[];
+  /** Half-width of the riser-band exclusion in t (defaults to 2× the riser ε). */
+  tBandHalf?: number;
   /** Barycentric sub-samples per edge for the dense chord (default 12). */
   denseN?: number;
   /** Centroid pre-filter threshold (mm) below which the dense scan is skipped (default 0.04). */
@@ -65,20 +71,27 @@ function pctl(sorted: number[], q: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
 }
 
-/** Iterate non-seam triangles, calling `fn(uA,tA,uB,tB,uC,tC, centroidU)`. */
+/** Iterate triangles; `seam` flags excluded ones (u-seam, u-wrap, or a riser t-band). */
 function forEachWallTri(
   mesh: FidelityMesh,
   seamExclU: number,
   fn: (ua: number, ta: number, ub: number, tb: number, uc: number, tc: number, cu: number, seam: boolean) => void,
+  tBands?: number[],
+  tBandHalf?: number,
 ): void {
   const v = mesh.vertices, idx = mesh.indices;
+  const halfT = tBandHalf ?? 0;
   for (let i = 0; i + 2 < idx.length; i += 3) {
     const a = idx[i], b = idx[i + 1], c = idx[i + 2];
     const ua = v[a * 3], ub = v[b * 3], uc = v[c * 3];
     const ta = v[a * 3 + 1], tb = v[b * 3 + 1], tc = v[c * 3 + 1];
     const cu = ((((ua + ub + uc) / 3) % 1) + 1) % 1;
     const spanWrap = Math.max(ua, ub, uc) - Math.min(ua, ub, uc) > 0.5;
-    const seam = cu < seamExclU || cu > 1 - seamExclU || spanWrap;
+    let seam = cu < seamExclU || cu > 1 - seamExclU || spanWrap;
+    if (!seam && tBands && tBands.length > 0 && halfT > 0) {
+      const ct = (ta + tb + tc) / 3;
+      if (tBands.some((te) => Math.abs(ct - te) < halfT)) seam = true; // riser face: accepted feature
+    }
     fn(ua, ta, ub, tb, uc, tc, cu, seam);
   }
 }
@@ -129,7 +142,7 @@ export function deviationVsTrueSurface(mesh: FidelityMesh, surface: SurfaceFn, o
     if (seam) { if (dmax > seamBandMax) seamBandMax = dmax; return; }
     devs.push(dmax);
     if (dmax > worst.mm) worst = { u: au, t: at, mm: dmax };
-  });
+  }, opts.tBands, opts.tBandHalf);
   devs.sort((x, y) => x - y);
   const nAbove = devs.filter((d) => d > opts.tolMm).length;
   return {
