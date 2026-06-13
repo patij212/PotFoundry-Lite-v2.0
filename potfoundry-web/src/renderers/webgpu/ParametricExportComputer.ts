@@ -2822,7 +2822,11 @@ export class ParametricExportComputer {
                     deliveredTriangles: triCount,
                     decimation: 'not-needed',
                     capScale,
-                    effectiveMaxSagMm: capScale * qMaxSag,
+                    // sag ∝ edge² (sagitta law), and capScale scales the EDGE target,
+                    // so cap-coarsening raises the effective sag QUADRATICALLY. The old
+                    // linear `capScale·qMaxSag` under-reported the spent chord error by
+                    // up to capScale (red-team Task-9 telemetry bug).
+                    effectiveMaxSagMm: capScale * capScale * qMaxSag,
                     capSaturated: (asm.budgetReport?.outer?.capSaturated ?? false)
                         || (asm.budgetReport?.inner?.capSaturated ?? false),
                     estimatedStlMB: estStlMB(triCount),

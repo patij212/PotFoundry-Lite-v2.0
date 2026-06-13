@@ -181,8 +181,8 @@ export interface ExportBudgetReport {
     decimationErrorMm?: number;
     /** Max pre-triangulation sizing scale across walls (1 = sag floor kept). */
     capScale: number;
-    /** capScale x profile sag — the chord error the CAP may already have spent
-     *  in low-curvature regions. 'Full detail' wording requires capScale === 1. */
+    /** capScale² × profile sag (sag ∝ edge²) — the chord error the CAP may already
+     *  have spent in low-curvature regions. 'Full detail' requires capScale === 1. */
     effectiveMaxSagMm: number;
     /** Cap hit MAX_BUDGET_SCALE and still could not reach budget. */
     capSaturated: boolean;

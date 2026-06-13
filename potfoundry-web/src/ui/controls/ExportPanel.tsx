@@ -257,6 +257,17 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
         `(~${br.estimatedStlMB.toFixed(0)} MB binary STL; 3MF default is smaller).`,
       );
     }
+    // Budget honesty (Task 9): cap-mode coarsening (capScale > 1) raises the
+    // effective chord error QUADRATICALLY above the requested tolerance to fit the
+    // triangle budget — surface it (previously SILENT; only decimation-refused was
+    // reported). Passive notice, same channel as the refusal notice.
+    if (br && br.capScale > 1) {
+      console.warn(
+        `[Export] cap-coarsened (capScale ${br.capScale.toFixed(2)}${br.capSaturated ? ', SATURATED' : ''}): ` +
+        `effective chord ≈ ${br.effectiveMaxSagMm.toFixed(3)}mm exceeds the requested surface tolerance — ` +
+        `fidelity reduced in low-curvature regions to fit the triangle budget. Raise the budget for full detail.`,
+      );
+    }
 
     const styleName = style.name ?? 'Pot';
     const ext = config.format === '3mf' ? '3mf' : config.format === 'obj' ? 'obj' : 'stl';
