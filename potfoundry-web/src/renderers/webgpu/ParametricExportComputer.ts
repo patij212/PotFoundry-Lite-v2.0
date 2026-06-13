@@ -2443,9 +2443,10 @@ export class ParametricExportComputer {
                         params.styleId,
                         Float32Array.from(packedWarpParams),
                         { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb },
-                        // Surface-fidelity exact (flag, default off): un-defer SFB born
-                        // petals as edges (the (1b) fix). Off ⇒ byte-identical.
-                        { bornCrests: flags.surfaceFidelityExact },
+                        // Surface-fidelity exact (flag, default off): per-style edge
+                        // extraction — SFB born petals, ArtDeco C0 t-steps, etc. (the
+                        // (1b) fix). Off ⇒ byte-identical.
+                        { surfaceFidelityExact: flags.surfaceFidelityExact },
                     );
                     // Distinct vertical-crease u-loci (constant-u lines only).
                     const creaseUSet = new Set<number>();
@@ -2776,7 +2777,7 @@ export class ParametricExportComputer {
                             params.styleId,
                             Float32Array.from(packedFeatureParams),
                             { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb },
-                            { bornCrests: flags.surfaceFidelityExact },
+                            { surfaceFidelityExact: flags.surfaceFidelityExact },
                         );
                     }
                     featureGraphForGate = graph;

@@ -728,12 +728,15 @@ export function sfRf(u: number, t: number, p: Float32Array): number {
   return sfSuperformula(TAU * u + seam, m, n1, n2, n3, a, b);
 }
 
-/** Per-extraction options (surfaceFidelityExact-driven). Backward-compatible:
- *  omitted ⇒ each extractor's default (byte-identical) behavior. */
+/** Per-extraction options (driven by the surfaceFidelityExact flag).
+ *  Backward-compatible: omitted ⇒ each extractor's default (byte-identical)
+ *  behavior. Each extractor decides what "exact" means for its style:
+ *  SuperformulaBlossom un-defers born petals; ArtDeco emits its C0 t-step bands;
+ *  etc. */
 export interface ExtractOpts {
-  /** Un-defer the SuperformulaBlossom born petals (the (1b) edge fix). When
-   *  omitted, falls back to the __pfSfbBornCrests dev lever (probes). */
-  bornCrests?: boolean;
+  /** Surface-fidelity exact mode. When omitted, each extractor falls back to its
+   *  own dev lever (probes) or its byte-identical default. */
+  surfaceFidelityExact?: boolean;
 }
 
 function extractSuperformulaBlossom(p: Float32Array, opts?: ExtractOpts): FeatureLine[] {
@@ -750,7 +753,7 @@ function extractSuperformulaBlossom(p: Float32Array, opts?: ExtractOpts): Featur
   // admit every real crest (born petals run RIM↔SEAM, insert watertightly), drop
   // only the <5-point seam-fragment noise. Lever default off ⇒ no production change
   // until wired to the surfaceFidelityExact flag (see plan Task 4 / spec §3.1).
-  const bornOn = opts?.bornCrests ?? ((globalThis as unknown as { __pfSfbBornCrests?: boolean }).__pfSfbBornCrests === true);
+  const bornOn = opts?.surfaceFidelityExact ?? ((globalThis as unknown as { __pfSfbBornCrests?: boolean }).__pfSfbBornCrests === true);
   return lines.filter((l) => {
     let tMin = Infinity;
     let tMax = -Infinity;
@@ -762,6 +765,48 @@ function extractSuperformulaBlossom(p: Float32Array, opts?: ExtractOpts): Featur
     if (bornOn) return l.points.length >= 5 && span >= SF_CREST_BORN_MIN_SPAN;
     return span >= SF_CREST_FULL_HEIGHT_SPAN;
   });
+}
+
+/**
+ * ArtDeco extractor — the DOMINANT feature is the C0 t-STEP band (rOuterArtDeco:
+ * the radius drops by ad_step_depth where stepLocal ∈ [0,0.1)∪(0.9,1]). The sharp
+ * HORIZONTAL edges sit at t=(tier+0.1)/stepCount and (tier+0.9)/stepCount for
+ * tier=0..stepCount-1 — emitted as horizontal-band edges (the DragonScales /
+ * CreaseTWarp family). marching-squares on ∂r/∂u CANNOT see a t-step (no u
+ * sign-cross), which is why ArtDeco was the top no-extractor gap (4.69mm,
+ * verify_crossStyleEdgeGap). The smaller fan (|cos|^exp u-cusps, ~1mm) + chevron
+ * (|sin| diagonal) families are left to density for now (measured residual after
+ * the steps decides if they need edges — see verify_artDecoFidelity).
+ *
+ * Packed slots [0 fanCount,1 fanSpread,2 stepCount,3 stepDepth,4 chevronAmp,
+ * 5 chevronFreq,6 blend].
+ *
+ * ⚠ DEV-LEVER GATED ONLY (__pfArtDecoSteps), NOT the production surfaceFidelityExact
+ * flag. MEASURED (verify_artDecoFidelity, real adaptive mesh): inserting the
+ * t-steps ALONE REGRESSES ArtDeco (max 3.41→4.39mm) because the DOMINANT residual
+ * is the fan (|cos|^exp u-cusps) + chevron (|sin| diagonal) U-features, and the
+ * featureLevel density lever AMPLIFIES those un-inserted u-cusps near the refined
+ * t-step cells. The density lever is only safe with COMPLETE extraction. So this
+ * t-step extractor is a FOUNDATION kept out of the production flag until the
+ * fan/chevron families are added; opts.surfaceFidelityExact deliberately does NOT
+ * enable it (flag-ON must never regress ArtDeco). `opts` is accepted for the
+ * EXTRACTORS signature but intentionally unused here.
+ */
+function extractArtDeco(p: Float32Array, opts?: ExtractOpts): FeatureLine[] {
+  void opts; // intentionally NOT keyed to the production flag (see doc — regresses)
+  const on = (globalThis as unknown as { __pfArtDecoSteps?: boolean }).__pfArtDecoSteps === true;
+  if (!on) return [];
+  const stepCount = Math.max(1, Math.round(p.length > 2 ? p[2] : 4));
+  const stepDepth = p.length > 3 ? p[3] : 0.08;
+  if (!(stepDepth > 1e-4)) return []; // no step relief ⇒ nothing to insert
+  const lines: FeatureLine[] = [];
+  for (let tier = 0; tier < stepCount; tier++) {
+    const tLo = (tier + 0.1) / stepCount; // full→reduced edge
+    const tHi = (tier + 0.9) / stepCount; // reduced→full edge
+    if (tLo > 1e-4 && tLo < 1 - 1e-4) lines.push(horizontalLine(tLo, `ad-step-lo[tier=${tier}]`));
+    if (tHi > 1e-4 && tHi < 1 - 1e-4) lines.push(horizontalLine(tHi, `ad-step-hi[tier=${tier}]`));
+  }
+  return lines;
 }
 
 const EXTRACTORS: Record<string, (p: Float32Array, opts?: ExtractOpts) => FeatureLine[]> = {
@@ -814,7 +859,11 @@ const EXTRACTORS: Record<string, (p: Float32Array, opts?: ExtractOpts) => Featur
   // a KNOWN GAP kept until the crest-elimination blueprint's Stage 5 wires the
   // family via chooseHelixGrid + CreaseHelixWarp — see the header doc.
   Crystalline: () => [],
-  ArtDeco: () => [],
+  // ArtDeco: dominant feature is a C0 t-STEP jump (radius drops by ad_step_depth
+  // in horizontal bands), NOT a u-curve — so marching-squares on ∂r/∂u misses it
+  // (verify_crossStyleEdgeGap: 4.69mm worst, was the top no-extractor gap).
+  // extractArtDeco emits the step-edge horizontal bands (the dominant family).
+  ArtDeco: extractArtDeco,
 };
 
 /**
