@@ -4,7 +4,7 @@
 
 **Goal:** Make every exported mesh lie on the true mathematical surface (deviation ≤ tolerance, default 0.05mm; target the f32 floor) — sharp where the model is sharp, smooth where it is smooth — slivers acceptable.
 
-**Architecture (CORRECTED):** Production already evaluates every vertex exactly on the GPU, so "exact per-vertex eval" is a no-op. The two real, unfixed mechanisms (re-baselined `verify_rebaseline_realpath.test.ts`) are: **(1b) missing/partial feature EDGES** (dominant — born petals dropped, ArtDeco/Crystalline gaps, partial extractors; flat triangles straddle them, worst 3.39mm) and **(1a) the sizing field reads the band-limited bilinear-256 sampler** (under-refines crests; the lever is the dormant analytic `curvatureFloor`/`maxKappa` hooks, NOT a denser sampler). Plus four cross-cutting defects the red-team found: config-blind gate truth, a 6M-not-20M budget contract with silent degraders, no geometric-validity gate, and a ship gate that measures a GPU-grid reference instead of the analytic surface. See `docs/superpowers/specs/2026-06-13-surface-fidelity-export-design.md` (Revision 2).
+**Architecture (REVISION 3 — edges-only):** Two prior "fixes" were measured away — exact per-vertex eval is a no-op (positions already exact) AND analytic-curvature sizing is a no-op (de-risk + `verify_edgeVsFlank_adaptive`: of 6,786 tris >0.1mm, 96.7% EDGE-attributable, 3.3% out-of-scope seam, 0.06% = 4 tris true sizing residual). **The fix is feature EDGES**: un-defer SFB born petals (the dominant 3.39mm straddle), build the missing ArtDeco (C0 t-step) + Crystalline (12-crease) extractors, complete the partial ones, add inner-wall edges. Plus four cross-cutting correctness defects the red-team found (independent of the above): config-blind gate truth, a 6M-not-20M budget with silent degraders, no geometric-validity gate, and a ship gate that measures a GPU-grid reference instead of the analytic surface. See `docs/superpowers/specs/2026-06-13-surface-fidelity-export-design.md` (Revision 3).
 
 **Tech Stack:** TypeScript; the conforming mesher (`src/renderers/webgpu/parametric/conforming/`); `ParametricExportComputer`; Vitest (CPU fidelity probes in `src/fidelity/`); Playwright/WebGPU (e2e). No new deps.
 
@@ -90,19 +90,9 @@ The re-baseline (already measured) proves: vertices exact (Task 8 is a contract,
 
 ---
 
-### Task 3: Exact-curvature adaptive sizing (the (1a) fix — PROMOTED)
+### Task 3: ~~Exact-curvature adaptive sizing~~ — **CUT (measured no-op)**
 
-**Files:** Modify `ConformingWall.ts` (wire `curvatureFloor`/`maxKappa` into `MetricSizingField`; thread exact curvature into `PeriodicBalancedQuadtree`'s cell-size test); add per-style analytic curvature in a new `src/renderers/webgpu/parametric/conforming/AnalyticCurvature.ts`.
-
-The sizing field reads the band-limited bilinear-256 sampler → under-refines crests (PART B: implied sag 0.48mm median / 5.3mm p99 vs 0.05 target, 100% over). A denser sampler barely helps (PART B2: +0.55 levels) — the lever is the dormant analytic `curvatureFloor` (`MetricSizingField.ts:49`), cusp-aware via `maxKappa`.
-
-- [ ] **Step 1: Failing test** — `verify_sizingExactCurvature.test.ts`: with `curvatureFloor` wired, the crest implied sag ≤ tol where the bilinear-driven sizing left >tol (use `verify_rebaseline_realpath` PART B as the red baseline); the quadtree's crest-band mean level rises.
-- [ ] **Step 2: Run, FAIL.**
-- [ ] **Step 3: Implement** — `AnalyticCurvature.ts`: per-style `curvatureFloor(u,t)` (SFB closed-form crest flank κ; smooth styles return 0 → no-op) + a `maxKappa` cap. Wire into `buildQuadtreeAtScale`'s `MetricSizingField` opts AND `PeriodicBalancedQuadtree`'s cell-size test (the red-team's "ALL styles + the quadtree's own κ"). Flag-gated by `surfaceFidelityExact`.
-- [ ] **Step 4: Run, PASS** — crest residual chord ≤ tol; topology zeros (`assertMeshExportable`); flag-off byte-identical.
-- [ ] **Step 5: Commit** `feat(fidelity): exact-curvature adaptive sizing (curvatureFloor/maxKappa) — fixes (1a) crest under-refinement`.
-
-**Gate (spec §8.2).** *Discovery risk: per-style analytic curvature (spec §9).*
+**De-risked + refuted** (`verify_task3_curvatureFloor.test.ts` + `verify_edgeVsFlank_adaptive.test.ts`): production adaptive sizing already meets tolerance on crest flanks (0.006mm median, 1% over); the analytic `curvatureFloor` changes it 1%→1% (+0.24 quadtree levels); the true in-scope sizing residual is **4 triangles (0.06%)** at the base junction. The Rev-2 "0.48mm/100% over" was sampling at the singular cusp tip (an inserted edge, not a cell). **No sizing work is planned.** The dormant `curvatureFloor`/`maxKappa` hooks stay available; wire them ONLY if the cross-style edge-vs-flank probe later surfaces a real clean-body flank residual for some style (gated by that measurement). Edge tasks (4-7) below are the fix.
 
 ---
 
@@ -238,7 +228,7 @@ The current `__pfFidelity` measures vs a GPU-grid mesh (BLOCKING-5) — re-point
 ## Self-Review
 
 - **Spec coverage:** §3.1 edges → Tasks 4 (born), 5 (ArtDeco), 6 (Crystalline), 7 (partials + inner); §3.2 exact-curvature sizing → Task 3; §3.3 exact-eval contract + finiteness → Task 8; §3.4 cross-cutting → Task 1 (config-aware gate + fold), Task 9 (budget), Task 10 (validity + weld), Task 11 (analytic + byte ship gate). Flag → Task 0; re-baseline → Task 2. All §8 gates owned.
-- **Ordering (corrected):** flag → gate infra → premise lock → **sizing (the (1a) fix, promoted)** → **edges (the dominant (1b) fix: born, ArtDeco, Crystalline, partials+inner)** → exact-eval contract → budget honesty → geometric validity → ship gate. Impact-ordered; the discovery-heavy tasks (3, 5, 6) are isolated and each gated. Tasks 4–7 gate on the INTERIM straddle classifier (runnable at position); the `≤tol` surface gate is the post-Task-3 cross-style checkpoint (Task 11), so no task gates on a not-yet-built dependency.
+- **Ordering (Rev 3):** flag → gate infra → premise lock → ~~sizing~~ (CUT) → **edges (the fix: Task 4 born petals = dominant 3.39mm straddle, then ArtDeco, Crystalline, partials+inner)** → exact-eval contract → budget honesty → geometric validity → ship gate. Impact-ordered; the discovery-heavy tasks (5, 6) are isolated and each gated. Tasks 4–7 gate on the INTERIM straddle classifier (runnable at position); the `≤tol` surface gate is the post-edges cross-style checkpoint (Task 11), so no task gates on a not-yet-built dependency.
 - **Types/consistency:** `surfaceFidelityExact` flag (Tasks 0,3,8); `deviationVsTrueSurface(mesh, styleId, packedParams, dims, opts)` signature (Task 1 → all gates); `fidelityGate` reused everywhere (DRY); `PipelineFeatureFlags` (not `FeatureFlags`).
 - **No-placeholder honesty:** mechanical tasks carry code; the analytic-loci tasks (5,6) + per-style curvature (3) give exact files + corrected mechanism + the measured gate that defines done (genuine discovery, flagged in the Testability note + spec §9).
 - **Watertight + reversible:** every task asserts `assertMeshExportable` (topology zeros) + `foldedTriangles=0` + flag-off byte-identical; no post-hoc repair; the export-boundary weld is reconciled (Task 10).

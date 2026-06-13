@@ -1,8 +1,21 @@
-# Surface-Fidelity Export — Design Spec (2026-06-13, **REVISION 2** — post red-team + re-baseline)
+# Surface-Fidelity Export — Design Spec (2026-06-13, **REVISION 3** — edges-only, sizing cut)
 
-**Status:** measurement phase CLOSED, adversarially red-teamed, and RE-BASELINED
-against the real production path. This revision **corrects the dominant premise**
-of Revision 1.
+**Status:** measurement phase CLOSED, adversarially red-teamed, RE-BASELINED, and
+the (1a)-sizing hypothesis DE-RISKED + REFUTED by direct measurement. This is the
+edges-centered design.
+
+**What changed in Rev 3 (the decisive measurement):** Rev 2 promoted "exact-curvature
+sizing" (Task 3) as the (1a) fix. A de-risk spike
+(`potfoundry-web/src/fidelity/verify_task3_curvatureFloor.test.ts` +
+`verify_edgeVsFlank_adaptive.test.ts`) **refuted it**: on the REAL adaptive
+production mesh (SFB@1, exact eval, seam excluded), of 6,786 triangles >0.1mm —
+**96.7% are EDGE-attributable** (62.3% straddle a feature; 34.4% are flank cells
+*adjacent to a dropped born petal*, which `featureRefine` shrinks once the petal is
+inserted), **3.3% are the out-of-scope seam**, and the **true in-scope sizing
+residual is 4 triangles (0.06%)** — at the base junction, not a wall flank. The
+analytic `curvatureFloor` changes the flank over-tol fraction 1%→1% (the "(1a)
+0.48mm" of Rev 2 was sampling AT the singular cusp tip, which is an inserted edge,
+not a cell). **⇒ Sizing is adequate; Task 3 is CUT. The fix is EDGES.**
 
 **What changed (and why):** Revision 1 attributed the export's surface error to
 *bilinear-256 vertex flattening* and made "exact per-vertex GPU eval" the dominant
@@ -67,15 +80,15 @@ for SFB (`verify_cross_consistency`). Re-baseline (SFB@1, seam excluded):
   (it is a flat triangle spanning a feature that is not a mesh edge). Source: SFB
   **born petals dropped** (`SF_CREST_FULL_HEIGHT_SPAN=0.85`), and the un-covered /
   partial styles (`verify_rebaseline_realpath` PART C, `verify_worstTriangle`).
-- **(1a) The sizing field under-refines crests.** The real `MetricSizingField`
-  reads curvature from the bilinear-256 sampler (`ConformingWall.ts:250`), which
-  band-limits the sharp crest. Measured implied actual crest sag under
-  production's chosen edge length = **0.48mm median / 5.3mm p99 vs the 0.05mm
-  target (100% of crest samples over target)**. A denser SAMPLER barely helps
-  (1024 → only +0.55 quadtree levels at the crest) because a finite grid flattens
-  the cusp tip — **the lever is the dormant ANALYTIC `curvatureFloor`/`maxKappa`
-  hooks** (`MetricSizingField.ts:49,55`), unwired in production
-  (`verify_rebaseline_realpath` PART B/B2).
+- **(1a) Sizing is ADEQUATE (Rev-3 correction).** Decisive measurement on the
+  REAL adaptive mesh (`verify_edgeVsFlank_adaptive`): of 6,786 triangles >0.1mm,
+  **96.7% are EDGE-attributable** (62.3% straddle a feature; 34.4% flank cells
+  adjacent to a *dropped born petal*), **3.3% out-of-scope seam**, and **4
+  triangles (0.06%) are a true in-scope sizing residual** (at the base junction).
+  The crest-flank implied sag is 0.006mm median (1% over tol); the analytic
+  `curvatureFloor` changes it 1%→1% (`verify_task3_curvatureFloor`). The Rev-2
+  "0.48mm / 100% over" was sampling AT the singular cusp TIP — an inserted edge,
+  not a cell. **Task 3 (sizing) is CUT.**
 - **BLOCKING-2: the gate's truth was config-blind.** `STYLE_FUNCTIONS(id,{})` for
   SFB has no strength term → always full petals; but the **default export packs
   `sf_strength=0`** (`registry.ts:27`) → a smooth pot. A config-blind gate reports
@@ -131,18 +144,18 @@ crease warps); NO post-hoc repair.
 - **Inner-wall feature edges** for general-curve styles (measure first — §6).
 - Smooth styles stay edge-free (correctly `()=>[]`); resolved by density (§3.2).
 
-### 3.2 Exact-curvature adaptive sizing (the (1a) fix — was §3.3)
+### 3.2 Adaptive sizing — ADEQUATE; analytic-curvature sizing CUT (measured)
 
-The `MetricSizingField` curvature input must come from **analytic curvature**, not
-the band-limited bilinear-256 sampler. Wire the **dormant `curvatureFloor(u,t)` /
-`maxKappa`** hooks (`MetricSizingField.ts:49,55`) — a per-style analytic curvature
-lower bound (cusp-aware) — AND feed exact curvature into the **quadtree's own
-cell-size test** (`PeriodicBalancedQuadtree.ts`, which independently reads the
-sampler). Refine so residual chord < tolerance, spending budget where curvature
-demands, down to the f32 floor, capped per §1 with honest refusal. This is the
-real lever a denser sampler cannot replace (cusp singularity). Smooth
-high-frequency styles (FourierBloom/Wave/Ripple) are resolved here too — their κ
-is also read off the band-limited sampler today.
+**Rev 3 result: the production adaptive sizing already meets tolerance on crest
+flanks** (0.006mm median, 1% over tol; true in-scope residual = 4 triangles =
+0.06%). The dormant `curvatureFloor`/`maxKappa` hooks (`MetricSizingField.ts:49,55`)
+do NOT materially help (1%→1%, +0.24 quadtree levels) — the cusp tip they would
+target is an inserted EDGE, and the sampler reads the finite *flank* curvature
+fine. **So no sizing work is planned.** The hooks remain available (documented) if
+a future cross-style measurement surfaces a real sizing residual; smooth
+high-frequency styles (FourierBloom/Wave/Ripple) should be CHECKED with the
+cross-style edge-vs-flank probe — if any shows a clean-body flank residual, the
+hooks are wired then, gated by its own measurement (not pre-emptively).
 
 ### 3.3 Verify-and-lock exact per-vertex eval + finiteness refusal (was §3.1, demoted)
 
@@ -239,10 +252,11 @@ sized from the mesh's finest seam cell), tolerance 0.05mm:
    edges — **no triangle straddles an inserted locus** (the `verify_worstTriangle`
    straddle classifier, exact CPU eval, current mesh — genuinely red→green). Born
    petals inserted; ArtDeco (t-step) + Crystalline (12 creases) extractors exist.
-2. **Sizing gate (1a):** with the analytic `curvatureFloor`/`maxKappa` wired (field
-   AND quadtree cell-test), residual chord < tolerance at crests where the
-   bilinear-driven sizing left >tol (`verify_rebaseline_realpath` PART B as the
-   red baseline).
+2. **Sizing-adequacy gate (1a, confirmation not fix):** the cross-style
+   edge-vs-flank probe (`verify_edgeVsFlank_adaptive`) shows ~0 CLEAN-BODY flank
+   triangles >tol per style (edges + seam explain the residual). If any style
+   shows a real clean-body flank residual, THEN wire the dormant
+   `curvatureFloor`/`maxKappa` for that style — gated by its own measurement.
 3. **Exact-eval contract gate:** the evaluated `(u,t)` list == `mesh.vertices`;
    flag-off byte-identical; finiteness pass refuses non-finite `pos3D`.
 4. **Config-aware fidelity gate:** the gate truth = the export's packed params +
