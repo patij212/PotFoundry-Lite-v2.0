@@ -56,11 +56,28 @@ real WebGPU adapter confirmed available here).
    petals+density don't fully close at the 1M target → density/budget, item 2). And
    the **STL-bytes round-trip** (re-weld 0.001mm + f32 quantize) is a separate
    follow-up gate (the B5 number is in-memory GPU-f32).
-2. **Budget honesty (Task 9).** `featureLevel 11` ~2× tris; cap-mode coarsening
-   (`MAX_BUDGET_SCALE=4`, ~0.2mm) + decimation degrade silently below the 6M `high`
-   budget (NOT 20M — spec §1 was corrected). ArtDeco e2e showed tris cap-limited
-   (density absorbed). Entry: `ConformingWall.searchBudgetScale`,
-   `ParametricExportComputer :~2596/:2812/:2817`, `QualityProfiles.ts`.
+2. **Budget honesty (Task 9) — PARTIALLY DONE + premise corrected (commit 4b6baef).**
+   MEASURED (`e2e/_fidelity_density_sweep.cjs`, B5 chord): SFB@1 across featL11/1.6M →
+   featL13-maxL14/5.7M — chordMax **STUCK at 0.873mm (irreducible)**; p99 **0.072 →
+   0.015** (below tol); >tol frac 4.1% → 0.17%. ⇒ Task-9 budget does **NOT** close
+   SFB's 0.873mm (a localized born-crest seam-transition STRADDLE; the 6M cap isn't
+   even binding, 5.7M<6M). Density **does** close the pervasive residual.
+   - DONE (safe, for capScale>1 *feature-dense* styles): `effectiveMaxSagMm`
+     telemetry `capScale·` → `capScale²·qMaxSag` (sag∝edge²); ExportPanel surfaces
+     cap-coarsening (`capScale>1`) as a passive fidelity notice (was silent).
+   - STILL OPEN: (a) **the 0.873mm born-crest seam-clip straddle** —
+     `clipFeaturesToBox` (`ConformingWall`, uMargin≈0.0117) strips the born crest at
+     u>0.988 so its seam-end isn't an edge → spanning triangle; fix = extend born
+     crests to the seam (watertightness-delicate — the born-crest test proved naive
+     seam insertion watertight) OR accept as the out-of-scope seam zone (u>0.95). (b)
+     **per-style density-to-tol** (the pervasive residual closes at featL13/maxL14,
+     but "density only safe with COMPLETE extraction" — NOT a global featL bump; ArtDeco/
+     partials would regress). (c) **B5-gate-driven export fidelity report** (run
+     `diagnoseSurfaceFidelity` post-export → honest "tol met / not met" on the result,
+     replacing the analytic-sag estimate — red-team's preferred refusal trigger). (d)
+     decimation acceptance re-gated on the B5 fidelity, not triangle-quality deltas.
+   Entry: `ConformingWall.searchBudgetScale`, `ParametricExportComputer :~2620/:2823`,
+   `FeatureLineGraph.clipFeaturesToBox`, `windowHook.diagnoseSurfaceFidelity`.
 3. **BambooSegments rim-node density** (smooth, NOT a riser): the worst (2.256mm) is
    the t=1 rim node bulge — `extractBambooSegments` stops at k=nodeCount-1 and the
    density lever only refines inserted rings. Needs boundary-aware sizing / exact
