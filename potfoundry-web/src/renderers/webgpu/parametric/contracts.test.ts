@@ -179,6 +179,20 @@ describe('contracts', () => {
             expect(resolveFeatureFlags({ conformingMesher: true, surfaceFidelityExact: true }).surfaceFidelityExact).toBe(true);
         });
 
+        it('__pfSurfaceFidelityExact hatch forces the flag on (e2e enabler) and cleans up', () => {
+            const g = globalThis as { __pfSurfaceFidelityExact?: boolean };
+            try {
+                g.__pfSurfaceFidelityExact = true;
+                expect(resolveFeatureFlags(undefined).surfaceFidelityExact).toBe(true); // no-overrides path
+                expect(resolveFeatureFlags({}).surfaceFidelityExact).toBe(true);        // overrides path
+                // an explicit false override is still forced on by the hatch (mirrors __pfConforming)
+                expect(resolveFeatureFlags({ surfaceFidelityExact: false }).surfaceFidelityExact).toBe(true);
+            } finally {
+                delete g.__pfSurfaceFidelityExact;
+            }
+            expect(resolveFeatureFlags(undefined).surfaceFidelityExact).toBe(false); // hatch cleared
+        });
+
         // 2026-06-11 cutover: the conforming mesher is the production default
         // (dominance checkpoint — see the conformingMesher doc in contracts.ts).
         it('defaults conformingMesher ON (2026-06-11 dominance checkpoint)', () => {

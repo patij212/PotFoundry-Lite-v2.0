@@ -451,9 +451,18 @@ export function resolveFeatureFlags(
     const conformingHatch = Boolean(
         (globalThis as { __pfConforming?: boolean }).__pfConforming,
     );
+    // Surface-fidelity exact e2e hatch (mirrors __pfConforming): lets a real-GPU
+    // probe force the flag on without a UI control or caller overrides.
+    const fidelityHatch = Boolean(
+        (globalThis as { __pfSurfaceFidelityExact?: boolean }).__pfSurfaceFidelityExact,
+    );
     if (!overrides) {
-        if (!conformingHatch) return DEFAULT_FEATURE_FLAGS;
-        return Object.freeze({ ...DEFAULT_FEATURE_FLAGS, conformingMesher: true });
+        if (!conformingHatch && !fidelityHatch) return DEFAULT_FEATURE_FLAGS;
+        return Object.freeze({
+            ...DEFAULT_FEATURE_FLAGS,
+            conformingMesher: DEFAULT_FEATURE_FLAGS.conformingMesher || conformingHatch,
+            surfaceFidelityExact: DEFAULT_FEATURE_FLAGS.surfaceFidelityExact || fidelityHatch,
+        });
     }
     return Object.freeze({
         ...DEFAULT_FEATURE_FLAGS,
@@ -466,6 +475,9 @@ export function resolveFeatureFlags(
         conformingMesher:
             (overrides.conformingMesher ?? DEFAULT_FEATURE_FLAGS.conformingMesher)
             || conformingHatch,
+        surfaceFidelityExact:
+            (overrides.surfaceFidelityExact ?? DEFAULT_FEATURE_FLAGS.surfaceFidelityExact)
+            || fidelityHatch,
     });
 }
 
