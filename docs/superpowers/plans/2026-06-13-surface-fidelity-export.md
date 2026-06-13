@@ -112,7 +112,9 @@ The 3.39mm SFB worst case (26% of >0.1mm triangles straddle) is born outer petal
 
 ---
 
-### Task 5: ArtDeco feature extractor (C0 t-step band — corrected mechanism)
+> **Cross-style edge-gap evidence** (`verify_crossStyleEdgeGap.test.ts`, uniform-L7/uBias-2, real extractors, exact eval, seam excl — a relative yardstick, not production density). Ranked withFeat max / p99 mm: **ArtDeco 4.69/4.23 (0 feats — TOP gap)**, SFB 3.39/0.39 (born dropped), Bamboo 2.30, BasketWeave 2.00, CelticKnot 1.80 (⚠ consistency CHECK — config-suspect), DragonScales 1.64, GeometricStar 1.60, CelticTriquetra 1.53, Gothic 1.43, Gyroid 1.35, Voronoi 1.02, **Crystalline 0.785/0.40 (0 feats — density-class, DEMOTED)**, Hive 0.59, SpiralRidges 0.12, LowPolyFacet 0.02; smooth (Harmonic/Fourier/Ripple/Wave/Superellipse) ≤0.08 (confirmed no edges). Implementation order: **Task 4 (SFB born) + Task 5 (ArtDeco) first**, then Task 7 partials; Crystalline re-evaluated; CelticKnot needs a config-parity fix before its number is trusted.
+
+### Task 5: ArtDeco feature extractor (C0 t-step band — corrected mechanism) — **TOP edge gap (4.69mm, pervasive p99 4.23, no extractor)**
 
 **Files:** Modify `FeatureLineGraph.ts` (add `extractArtDeco`, fix the `:53-57` "smooth" misdoc, register in `EXTRACTORS`); reference `styles.ts` ArtDeco branch; Test `verify_artDecoFidelity.test.ts`.
 
@@ -129,19 +131,17 @@ ArtDeco's dominant feature is a **C0 radius jump in t** (horizontal band at `t=(
 
 ---
 
-### Task 6: Crystalline extractor (12 creases + ripple-via-density — corrected mechanism)
+### Task 6: Crystalline — **DEMOTED (re-evaluate; measured residual 0.785mm, density-class)**
 
-**Files:** Modify `FeatureLineGraph.ts` (`extractCrystalline`); reuse `chooseHelixGrid`/`CreaseHelixWarp` + a `crHeightPhase≈0 → CreaseUWarp` branch; Test `verify_crystallineFidelity.test.ts`.
+**Measured (`verify_crossStyleEdgeGap`): Crystalline withFeat max 0.785 / p99 0.40 (uniform-L7) — far below the ArtDeco/SFB/partials gaps.** The red-team's "8.5mm ripple" was the radius AMPLITUDE, not chord deviation: the 17-fold `crAsymmetry` ripple (`styles.wgsl:599`) is SMOOTH and largely density-handled (74k cells >0.1mm but each small). So Crystalline is a DENSITY style, not an urgent edge build.
 
-Crystalline's dominant relief is a non-helical ~8.5mm 17-fold `crAsymmetry` ripple (`styles.wgsl:599`) — a DENSITY problem (Task 3), NOT edges. Only the 12 true apex creases are edges: insert via the helical family (k=`crFacetCount`, turns=`crHeightPhase·crSubFacets` from live params), with an explicit `crHeightPhase≈0 → CreaseUWarp` (vertical-crease) branch + unit test. Drop the over-conservative "refuse non-integer subFacets" (subFacets doesn't control helix slope).
+- [ ] **Step 1: Measure first** — run the SFB-style edge-vs-flank probe on Crystalline's REAL ADAPTIVE mesh (`verify_edgeVsFlank_adaptive` generalized). Decide:
+  - if the adaptive sizing already brings it ≤ tol (like SFB) → **NO extractor needed** (close this task);
+  - if the band-limited sampler under-reads the 17-fold ripple (clean-body flank residual >tol) → this is the ONE style that needs the dormant `curvatureFloor`/`maxKappa` (the spec §3.2 contingency) — wire it for Crystalline only, gated by this measurement;
+  - only if a real C1 crease dihedral straddles → add the 12-crease helical insertion (k=`crFacetCount`, turns=`crHeightPhase·crSubFacets`; `crHeightPhase≈0 → CreaseUWarp` branch).
+- [ ] **Step 2-5:** implement only the branch the measurement selects; gate `≤ tol`; topology zeros; byte-identical elsewhere; commit.
 
-- [ ] **Step 1: Failing test** — `fidelityGate('Crystalline', packed, dims)`: the 12 apex creases inserted (count = 12), zero straddle on them (interim gate); the ripple residual is flagged as density-resolvable (≤ tol after Task 3) or honest-refusal within the budget.
-- [ ] **Step 2: Run, FAIL.**
-- [ ] **Step 3: Implement** — 12-crease helical insertion + `crHeightPhase≈0` branch; ripple left to Task 3 sizing (`curvatureFloor` reads the 17-fold ripple, which the band-limited sampler under-reads ~1000×).
-- [ ] **Step 4: Run, PASS** — 12 creases inserted, no crease straddle; ripple ≤ tol after Task 3 (or refusal); topology zeros; byte-identical elsewhere.
-- [ ] **Step 5: Commit** `feat(fidelity): Crystalline 12-crease extractor + ripple-via-density`.
-
-**Gate (spec §8.1, Crystalline).** *Discovery risk: helix params from live values (spec §9).*
+**Gate (spec §8.1/§8.2 as selected).** *Lower priority than Tasks 4/5/7 per the cross-style data.*
 
 ---
 
