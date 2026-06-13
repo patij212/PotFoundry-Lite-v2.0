@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] - 2024-12 (In Development)
 
 ### Added
+- **OBJ export (Rhino / Grasshopper quality):** New `write_obj` writer plus
+  `build_pot_quads` and `vertex_normals`. Unlike STL (unwelded triangle soup
+  with per-face normals), OBJ export uses shared/welded vertices, preserves
+  the builder's native **quad** topology, and carries smooth per-vertex
+  normals — so the mesh imports into Rhino/Grasshopper closed, connected, and
+  smooth-shaded, ready for SubD/NURBS reconstruction. Wired into the app's
+  export panel and exposed through `pfui.imports`.
+  - Refactored geometry into a shared `_build_pot_rings` topology core that
+    both the triangle (STL) and quad (OBJ) paths derive from, guaranteeing
+    they always agree on vertices and winding. Triangle output (and all
+    golden-mesh hashes/counts) is unchanged.
+  - New `tests/test_obj_export.py`: quad/triangulation consistency, OBJ
+    round-trip + validation, and a closed-manifold-by-position guarantee
+    (the property Rhino checks on import) across every style.
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
 

@@ -29,7 +29,14 @@ if not HAS_PLOTLY:
     st.info("Plotly is not available. Interactive 3D preview and mesh features are disabled.")
 
 # --- PotFoundry UI/engine imports ---
-from pfui.imports import STYLES, build_pot_mesh, WRITE_STL_BINARY
+from pfui.imports import (
+    STYLES,
+    build_pot_mesh,
+    WRITE_STL_BINARY,
+    WRITE_OBJ,
+    build_pot_quads,
+    vertex_normals,
+)
 from pfui.presets import PRESETS, _read_user_presets, _write_user_presets, apply_preset_dict
 from pfui.schemas import STYLE_SCHEMAS
 from pfui.state import (
@@ -1737,6 +1744,33 @@ with _tab1:
                     pass
             st.success(f"STL ready: {safe}.stl  — triangles: {len(faces):,}")
             st.download_button("Download STL", data=data, file_name=f"{safe}.stl", mime="model/stl")
+
+            # OBJ export (Rhino / Grasshopper): welded vertices, quad topology,
+            # smooth per-vertex normals — far cleaner to import than STL.
+            if WRITE_OBJ is not None and build_pot_quads is not None:
+                try:
+                    qverts, quads, _ = build_pot_quads(
+                        H=H, Rt=Rt, Rb=Rb, t_wall=t_wall, t_bottom=t_bottom, r_drain=r_drain,
+                        expn=expn, n_theta=n_theta_export, n_z=n_z_export,
+                        r_outer_fn=r_outer_fn, style_opts=opts,
+                    )
+                    vn = vertex_normals(qverts, quads) if vertex_normals is not None else None
+                    obj_path = Path(tempfile.gettempdir()) / f"_pf2_{safe}_{uuid.uuid4().hex[:8]}.obj"
+                    WRITE_OBJ(str(obj_path), safe, qverts, quads, vertex_normals=vn)
+                    obj_data = obj_path.read_bytes()
+                    try:
+                        obj_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    st.caption(f"OBJ (Rhino/Grasshopper): {len(quads):,} quads, welded + smooth normals")
+                    st.download_button(
+                        "Download OBJ (Rhino/Grasshopper)",
+                        data=obj_data,
+                        file_name=f"{safe}.obj",
+                        mime="model/obj",
+                    )
+                except Exception as obj_err:
+                    st.info(f"OBJ export unavailable: {obj_err}")
 
             # Publish to library if enabled
             if publish_enabled and license_consent and _has_library:

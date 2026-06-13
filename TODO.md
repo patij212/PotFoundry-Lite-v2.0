@@ -46,7 +46,7 @@ This document tracks planned features, improvements, and technical debt for futu
 - [ ] Add performance metrics dashboard
 
 #### Export & Integration
-- [ ] Add OBJ export format
+- [x] Add OBJ export format (Rhino/Grasshopper: welded vertices, quad topology, smooth normals)
 - [ ] Add 3MF export format (with metadata)
 - [ ] Add STEP/IGES export (if feasible)
 - [ ] Slicer integration (PrusaSlicer, Cura)

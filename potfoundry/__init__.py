@@ -18,11 +18,16 @@ from .core.geometry import (
     PotDefaults,
     STYLES,
     build_pot_mesh,
+    build_pot_quads,
+    vertex_normals,
     save_preview_png,
 )
 
 # Binary STL writer (recommended)
 from .core.io.stl import write_stl_binary
+
+# Wavefront OBJ writer (Rhino / Grasshopper-quality: welded vertices, quads)
+from .core.io.obj import write_obj
 
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
@@ -33,9 +38,13 @@ __all__ = [
     'PotDefaults',
     'STYLES',
     'build_pot_mesh',
+    'build_pot_quads',
+    'vertex_normals',
     'save_preview_png',
     # STL export (binary is recommended)
     'write_stl_binary',
+    # OBJ export (Rhino / Grasshopper)
+    'write_obj',
     'write_ascii_stl',  # deprecated
     # Version
     '__version__',

@@ -27,6 +27,34 @@ def _import_geometry():
         return STYLES, base_radius, _spin_twist_radians, build_pot_mesh
 
 
+def _import_obj():
+    """Resolve the OBJ export path (writer + quad builder + vertex normals).
+
+    Returns (write_obj, build_pot_quads, vertex_normals), each possibly None
+    on older layouts so the app can feature-detect.
+    """
+    write_obj = build_pot_quads = vertex_normals = None
+    try:
+        from potfoundry.core.io.obj import write_obj as _w  # type: ignore
+        write_obj = _w
+    except Exception:  # pragma: no cover
+        try:
+            from potfoundry import write_obj as _w  # type: ignore
+            write_obj = _w
+        except Exception:
+            write_obj = None  # type: ignore
+    try:
+        from potfoundry.core.geometry import build_pot_quads as _q, vertex_normals as _n  # type: ignore
+        build_pot_quads, vertex_normals = _q, _n
+    except Exception:  # pragma: no cover
+        try:
+            from potfoundry import build_pot_quads as _q, vertex_normals as _n  # type: ignore
+            build_pot_quads, vertex_normals = _q, _n
+        except Exception:
+            build_pot_quads = vertex_normals = None  # type: ignore
+    return write_obj, build_pot_quads, vertex_normals
+
+
 def _import_schema_and_batch():
     validate_recipe = None
     load_config = None
@@ -59,4 +87,5 @@ def _import_schema_and_batch():
 
 WRITE_STL_BINARY = _import_writer()
 STYLES, base_radius, _spin_twist_radians, build_pot_mesh = _import_geometry()
+WRITE_OBJ, build_pot_quads, vertex_normals = _import_obj()
 validate_recipe, load_config, build_from_yaml = _import_schema_and_batch()

@@ -11,7 +11,8 @@ from functools import lru_cache
 
 __all__ = [
     "MeshQuality", "PotDefaults", "STYLES",
-    "r_base_out", "build_pot_mesh",
+    "r_base_out", "build_pot_mesh", "build_pot_quads",
+    "vertex_normals",
     "save_preview_png",
     "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
@@ -297,14 +298,32 @@ STYLES = {
 # Mesh builder (watertight)
 # -----------------------------
 
-def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float, r_drain: float,
-                   expn: float, n_theta: int, n_z: int,
-                   r_outer_fn: Callable[[np.ndarray | float, float, float, float, dict], np.ndarray | float],
-                   style_opts: dict) -> tuple[np.ndarray, np.ndarray, dict]:
+@dataclass
+class _PotRings:
+    """Structured ring topology for a pot, shared by every export path.
+
+    The pot is built as a set of co-axial rings of ``n_theta`` samples each.
+    Connecting adjacent rings forms quad strips (outer wall, inner wall, rim,
+    bottom slab, drain cylinder). Both the triangle mesh (STL) and the quad
+    mesh (OBJ / Rhino) are derived from this single structure so they always
+    agree on vertices and topology.
     """
-    Return (vertices [N,3], faces [M,3], diagnostics).
+    verts: np.ndarray            # (N, 3)
+    n_theta: int
+    outer_idx: np.ndarray        # (n_z+1, n_theta) vertex indices, bottom->top
+    inner_idx: np.ndarray        # (n_z+1, n_theta)
+    drain_under: np.ndarray      # (n_theta,) ring at z=0
+    drain_top: np.ndarray        # (n_theta,) ring at z=t_bottom
+    diagnostics: dict
+
+
+def _build_pot_rings(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float,
+                     r_drain: float, expn: float, n_theta: int, n_z: int,
+                     r_outer_fn, style_opts: dict) -> _PotRings:
+    """Build the shared ring topology (vertices + index grids) for a pot.
+
     Parity: sample r_outer_fn at (theta + twist) for preview/export match.
-    Vectorization (stage 1): theta dimension is fully vectorized; faces built by numpy indexing.
+    Vectorization: theta dimension is fully vectorized.
     """
     assert H > 0 and Rt > 0 and Rb > 0 and t_wall > 0 and t_bottom >= 2.0, "Invalid size parameters."
     assert r_drain > 0 and r_drain < (Rb - t_wall - 2.0), "Drain hole too large for base—adjust sizes."
@@ -315,7 +334,6 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     z_inner = np.linspace(t_bottom, H, n_z + 1)
 
     verts: list[tuple[float, float, float]] = []
-    faces_out_parts: list[np.ndarray] = []
 
     def add_ring_xy(r_vals: np.ndarray, z: float, cTw: float, sTw: float) -> np.ndarray:
         # Rotate precomputed cos/sin by twist: cos(θ+tw)=cosθ·cosTw - sinθ·sinTw; sin(θ+tw)=sinθ·cosTw + cosθ·sinTw
@@ -332,7 +350,6 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     outer_idx = np.empty((len(z_outer), n_theta), dtype=int)
     est_top_od = None
     est_bottom_od = None
-    # No style-specific fast path by default; rely on vectorized style_fn
 
     for i, z in enumerate(z_outer):
         twist = _spin_twist_radians(z, H, style_opts)
@@ -347,19 +364,6 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
             est_bottom_od = 2.0 * max_r
         if i == (len(z_outer) - 1):
             est_top_od = 2.0 * max_r
-
-    # Vectorized faces for outer wall
-    rows = len(z_outer) - 1
-    j = np.arange(n_theta, dtype=int)
-    jn = (j + 1) % n_theta
-    v00 = outer_idx[:-1, :][:, j]
-    v01 = outer_idx[:-1, :][:, jn]
-    v10 = outer_idx[1:, :][:, j]
-    v11 = outer_idx[1:, :][:, jn]
-    tri1 = np.stack([v00, v10, v11], axis=2).reshape(-1, 3)
-    tri2 = np.stack([v00, v11, v01], axis=2).reshape(-1, 3)
-    faces_out_parts.append(tri1)
-    faces_out_parts.append(tri2)
 
     # ---- Inner wall rings (clamp near drain)
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
@@ -376,66 +380,21 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         r_in_vals[clamped] = min_allowed
         inner_idx[i] = add_ring_xy(r_in_vals, z, cTw, sTw)
 
-    # Vectorized faces for inner wall (reverse winding)
-    rows_in = len(z_inner) - 1
-    vi00 = inner_idx[:-1, :][:, j]
-    vi01 = inner_idx[:-1, :][:, jn]
-    vi10 = inner_idx[1:, :][:, j]
-    vi11 = inner_idx[1:, :][:, jn]
-    tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
-    tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
-    faces_out_parts.append(tri_in1)
-    faces_out_parts.append(tri_in2)
-
-    # ---- Rim cap
-    outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
-    v00 = outer_top[j]; v01 = outer_top[jn]
-    vi0 = inner_top[j]; vi1 = inner_top[jn]
-    tri_rim1 = np.stack([outer_top[j], inner_top[j], inner_top[jn]], axis=1)
-    tri_rim2 = np.stack([outer_top[j], inner_top[jn], outer_top[jn]], axis=1)
-    faces_out_parts.append(tri_rim1)
-    faces_out_parts.append(tri_rim2)
-
     # ---- Drain circles (untwisted)
     drain_under = []; drain_top = []
-    # Vectorized drain circles using cached cos/sin
     for c, s in zip(cos_th, sin_th):
         x0 = r_drain * float(c); y0 = r_drain * float(s)
         drain_under.append(len(verts)); verts.append((x0, y0, 0.0))
         drain_top.append(len(verts));   verts.append((x0, y0, float(t_bottom)))
     drain_under = np.array(drain_under, dtype=int); drain_top = np.array(drain_top, dtype=int)
-    outer_bottom = outer_idx[0]; inner_bottom = inner_idx[0]
-
-    # Bottom underside (outer bottom ring -> drain under ring)
-    v00 = outer_bottom[j]; v01 = outer_bottom[jn]
-    vd0 = drain_under[j];  vd1 = drain_under[jn]
-    tri_bot1 = np.stack([outer_bottom[j], drain_under[jn], drain_under[j]], axis=1)
-    tri_bot2 = np.stack([outer_bottom[j], outer_bottom[jn], drain_under[jn]], axis=1)
-    faces_out_parts.append(tri_bot1)
-    faces_out_parts.append(tri_bot2)
-
-    # Top of bottom slab (inner bottom ring -> drain top ring)
-    vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
-    vd0 = drain_top[j];    vd1 = drain_top[jn]
-    tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
-    tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
-    faces_out_parts.append(tri_top1)
-    faces_out_parts.append(tri_top2)
-
-    # Drain cylinder wall
-    v0b = drain_under[j]; v1b = drain_under[jn]
-    v0t = drain_top[j];   v1t = drain_top[jn]
-    tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
-    tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
-    faces_out_parts.append(tri_cyl1)
-    faces_out_parts.append(tri_cyl2)
 
     # Diagnostics (use tracked radii; fall back to scan if missing)
+    verts_arr = np.array(verts, dtype=float)
     if est_top_od is None:
-        pts = np.array([verts[k] for k in outer_top], dtype=float)
+        pts = verts_arr[outer_idx[-1]]
         est_top_od = 2.0 * float(np.linalg.norm(pts[:, :2], axis=1).max())
     if est_bottom_od is None:
-        pts = np.array([verts[k] for k in outer_bottom], dtype=float)
+        pts = verts_arr[outer_idx[0]]
         est_bottom_od = 2.0 * float(np.linalg.norm(pts[:, :2], axis=1).max())
     clamp_ratio = clamp_count / max(1, total_inner_samples)
 
@@ -444,8 +403,111 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
-    faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    return _PotRings(
+        verts=verts_arr, n_theta=n_theta,
+        outer_idx=outer_idx, inner_idx=inner_idx,
+        drain_under=drain_under, drain_top=drain_top,
+        diagnostics=diagnostics,
+    )
+
+
+def _quad_strips(rings: _PotRings) -> list[np.ndarray]:
+    """Return the pot's quad faces, grouped by surface section.
+
+    Every section is a ring-to-ring quad strip with consistent outward
+    winding. ``build_pot_mesh`` fan-splits each quad [a,b,c,d] into the
+    triangles [a,b,c] and [a,c,d]; OBJ export keeps the quads intact.
+    """
+    n_theta = rings.n_theta
+    j = np.arange(n_theta, dtype=int)
+    jn = (j + 1) % n_theta
+    oi, ii = rings.outer_idx, rings.inner_idx
+    du, dt = rings.drain_under, rings.drain_top
+
+    def strip(ring_a, ring_b):
+        # quad [a_j, b_j, b_jn, a_jn] -> tris [a_j,b_j,b_jn] + [a_j,b_jn,a_jn]
+        return np.stack([ring_a[j], ring_b[j], ring_b[jn], ring_a[jn]], axis=1)
+
+    quads: list[np.ndarray] = []
+
+    # Outer wall: a=ring i, b=ring i+1 -> [v00, v10, v11, v01]
+    quads.append(np.stack([oi[:-1, j], oi[1:, j], oi[1:, jn], oi[:-1, jn]], axis=2).reshape(-1, 4))
+    # Inner wall (reverse winding): [vi00, vi01, vi11, vi10]
+    quads.append(np.stack([ii[:-1, j], ii[:-1, jn], ii[1:, jn], ii[1:, j]], axis=2).reshape(-1, 4))
+    # Rim cap: outer_top -> inner_top  [o_j, i_j, i_jn, o_jn]
+    quads.append(strip(oi[-1], ii[-1]))
+    # Bottom underside: outer_bottom -> drain_under  [ob_j, ob_jn, du_jn, du_j]
+    quads.append(np.stack([oi[0, j], oi[0, jn], du[jn], du[j]], axis=1))
+    # Top of bottom slab: inner_bottom -> drain_top  [ib_j, ib_jn, dt_jn, dt_j]
+    quads.append(np.stack([ii[0, j], ii[0, jn], dt[jn], dt[j]], axis=1))
+    # Drain cylinder wall: drain_under -> drain_top  [du_j, dt_j, dt_jn, du_jn]
+    quads.append(strip(du, dt))
+    return quads
+
+
+def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float, r_drain: float,
+                   expn: float, n_theta: int, n_z: int,
+                   r_outer_fn: Callable[[np.ndarray | float, float, float, float, dict], np.ndarray | float],
+                   style_opts: dict) -> tuple[np.ndarray, np.ndarray, dict]:
+    """
+    Return (vertices [N,3], triangle faces [M,3], diagnostics).
+
+    Triangle faces are produced by fan-splitting the structured quad strips
+    (see :func:`build_pot_quads`) so STL and OBJ exports share vertices and
+    topology exactly. Suitable for STL export and slicers.
+    """
+    rings = _build_pot_rings(H, Rt, Rb, t_wall, t_bottom, r_drain, expn,
+                             n_theta, n_z, r_outer_fn, style_opts)
+    tri_parts: list[np.ndarray] = []
+    for quads in _quad_strips(rings):
+        a, b, c, d = quads[:, 0], quads[:, 1], quads[:, 2], quads[:, 3]
+        tri_parts.append(np.stack([a, b, c], axis=1))
+        tri_parts.append(np.stack([a, c, d], axis=1))
+    faces_arr = np.vstack(tri_parts).astype(int, copy=False)
+    return rings.verts, faces_arr, rings.diagnostics
+
+
+def build_pot_quads(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float, r_drain: float,
+                    expn: float, n_theta: int, n_z: int,
+                    r_outer_fn: Callable[[np.ndarray | float, float, float, float, dict], np.ndarray | float],
+                    style_opts: dict) -> tuple[np.ndarray, np.ndarray, dict]:
+    """
+    Return (vertices [N,3], quad faces [M,4], diagnostics).
+
+    Same vertices and topology as :func:`build_pot_mesh`, but faces are kept
+    as quads. This is the preferred export for Rhino / Grasshopper, which
+    weld shared vertices and favour quad-dominant meshes for clean shading
+    and NURBS / SubD reconstruction.
+    """
+    rings = _build_pot_rings(H, Rt, Rb, t_wall, t_bottom, r_drain, expn,
+                             n_theta, n_z, r_outer_fn, style_opts)
+    quads = np.vstack(_quad_strips(rings)).astype(int, copy=False)
+    return rings.verts, quads, rings.diagnostics
+
+
+def vertex_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Area-weighted per-vertex normals for smooth shading.
+
+    Accepts triangle (M,3) or quad (M,4) faces. Quads are fan-triangulated
+    for normal accumulation. Returns unit normals (N,3); isolated vertices
+    get a zero normal.
+    """
+    v = np.asarray(vertices, dtype=float)
+    f = np.asarray(faces)
+    if f.shape[1] == 4:
+        tris = np.vstack([f[:, [0, 1, 2]], f[:, [0, 2, 3]]])
+    else:
+        tris = f
+    a = v[tris[:, 0]]; b = v[tris[:, 1]]; c = v[tris[:, 2]]
+    # Cross product magnitude is proportional to triangle area -> area weighting.
+    fn = np.cross(b - a, c - a)
+    out = np.zeros_like(v)
+    for k in range(3):
+        np.add.at(out, tris[:, k], fn)
+    lens = np.linalg.norm(out, axis=1)
+    mask = lens > 0
+    out[mask] /= lens[mask][:, None]
+    return out
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
