@@ -44,12 +44,18 @@ real WebGPU adapter confirmed available here).
 
 ## Open items (prioritized, with entry points)
 
-1. **B5 — absolute-fidelity gate (the one unvalidated claim).** The exported mesh is
-   3D (no u,t), and `measure()`'s GPU-grid reference is too noisy (~35mm seam
-   artifact). Need a nearest-surface metric vs an **analytic-built dense reference**
-   (red-team B5). Entry: `fidelity/windowHook.ts` `measure`/`generateReference`;
-   add a `diagnoseSurfaceFidelity` (analytic). Until then, OFF-vs-ON wiring is
-   validated but the absolute "mesh on true surface" number is not.
+1. **B5 — absolute-fidelity gate — ✅ DONE (commit 4feb9af, GPU-certified).**
+   `windowHook.diagnoseSurfaceFidelity` + `analyticSurfaceGate.radialAnalyticDeviation`
+   map the 3D exported mesh back (`theta=atan2(y,x)`, z direct) → `|hypot(x,y) −
+   r_analytic|` vs the analytic surface (seam + riser excluded via the pre-existing
+   `LAST_CONFORMING_ASSEMBLY_UT` stash). CPU-proven (`verify_b5_analyticMetric`, 5/5)
+   and real-GPU-certified (`e2e/_fidelity_surface_validate.cjs`): SFB vertices exact
+   (~f32 floor), chordMax 1.93→0.87mm (flag improves); ArtDeco wall 0.1175mm. Spec:
+   `2026-06-13-b5-absolute-fidelity-gate.md`.
+   **NEW residual it surfaced:** SFB absolute chord **0.87mm ON is still >tol** (born
+   petals+density don't fully close at the 1M target → density/budget, item 2). And
+   the **STL-bytes round-trip** (re-weld 0.001mm + f32 quantize) is a separate
+   follow-up gate (the B5 number is in-memory GPU-f32).
 2. **Budget honesty (Task 9).** `featureLevel 11` ~2× tris; cap-mode coarsening
    (`MAX_BUDGET_SCALE=4`, ~0.2mm) + decimation degrade silently below the 6M `high`
    budget (NOT 20M — spec §1 was corrected). ArtDeco e2e showed tris cap-limited
