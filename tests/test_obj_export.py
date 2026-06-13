@@ -208,6 +208,34 @@ def test_exported_obj_is_closed_manifold_by_position(tmp_path, style_name):
     assert not bad, f"{style_name}: {len(bad)} non-manifold edges after weld"
 
 
+@pytest.mark.parametrize("Rb,r_drain,n_z", [
+    (50, 10, 84),    # nominal
+    (45, 39, 40),    # large drain -> heavy inner-wall clamp at the base
+    (60, 52, 30),    # near-maximal drain
+    (40, 34, 120),   # fine vertical resolution + big drain
+])
+def test_export_has_no_degenerate_faces(Rb, r_drain, n_z):
+    """Rhino flags zero-area faces; the clamp near a big drain hole is the
+    prime suspect. Assert every quad has positive area under both fan
+    triangulations across a stress grid of every style."""
+    from potfoundry import build_pot_quads
+
+    for style_name, (fn, _) in STYLES.items():
+        v, q, _ = build_pot_quads(
+            H=120, Rt=70, Rb=Rb, t_wall=3, t_bottom=3, r_drain=r_drain,
+            expn=1.1, n_theta=96, n_z=n_z,
+            r_outer_fn=fn, style_opts={"spin_turns": 0.37},
+        )
+        a = v[q[:, 0]]; b = v[q[:, 1]]; c = v[q[:, 2]]; d = v[q[:, 3]]
+        t1 = 0.5 * np.linalg.norm(np.cross(b - a, c - a), axis=1)
+        t2 = 0.5 * np.linalg.norm(np.cross(c - a, d - a), axis=1)
+        worst = float(min(t1.min(), t2.min()))
+        assert worst > 1e-6, (
+            f"{style_name} (Rb={Rb}, drain={r_drain}): degenerate face "
+            f"area {worst:.2e}"
+        )
+
+
 class TestAppShimWiring:
     """The Streamlit app reaches geometry only through pfui.imports; the OBJ
     export path must be exposed there or the download button silently hides."""
