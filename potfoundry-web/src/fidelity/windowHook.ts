@@ -925,6 +925,20 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           styleOpt('ck_twist', 'ckTwist', 0),
           styleOpt('ck_strands', 'ckStrands', 3),
         );
+      } else if (styleId === 'DragonScales') {
+        // C0 row-step discontinuity at t=k/scale_rows (the floor(t·rows) stagger jump —
+        // a near-vertical face the radial chord metric can't score). The mesh pins a
+        // row there (extractDragonScales), so it is a clean 1-cell step face — exclude
+        // its band like the ArtDeco riser; the chord then reads the real flank fidelity.
+        const rows = Math.max(1, Math.round(styleOpt('ds_scale_rows', 'dsScaleRows', 8)));
+        for (let k = 1; k < rows; k++) creaseT.push(k / rows);
+      } else if (styleId === 'BambooSegments') {
+        // C0 node-ring step at t=k/node_count (the asym sin(floor(t·n)·…) jump) — a
+        // designed stylistic step, density-independent (proved 1/64..1/1024 unchanged).
+        // Exclude its bands (incl. the t=1 rim node, the dominant ~1.75mm) like the seam;
+        // the smooth prominence bulge flanks are already sub-tol at production density.
+        const nodes = Math.max(1, Math.round(styleOpt('bs_node_count', 'bsNodeCount', 5)));
+        for (let k = 1; k <= nodes; k++) creaseT.push(k / nodes);
       }
 
       const measure = (rA: AnalyticRadiusFn): AnalyticDevResult => radialAnalyticDeviation(
