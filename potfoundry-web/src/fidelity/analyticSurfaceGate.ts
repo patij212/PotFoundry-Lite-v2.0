@@ -45,6 +45,20 @@ export interface AnalyticDevOpts {
   tBands?: number[];
   /** Half-width of the riser-band exclusion in t (default 1.6e-3). */
   tBandHalf?: number;
+  /**
+   * Surface-u loci of VERTICAL over/under crease discontinuities (e.g. BasketWeave
+   * strand edges at u=(m−phase)/strands). The conforming warp PINS mesh columns
+   * exactly onto these, where the cell-parity `floor()` is two-valued — the GPU
+   * (f32) and this CPU reference (f64) round to opposite sides and flip the
+   * over/under strand, a false full-depth deviation (the vertical-crease analog of
+   * the u-seam cliff). Triangles touching/straddling a locus are excluded and
+   * tracked in `creaseBandMaxMm`. Recovered-u based (atan2 → [0,1)).
+   */
+  creaseU?: number[];
+  /** Surface-t loci of HORIZONTAL over/under crease discontinuities (layer rings). */
+  creaseT?: number[];
+  /** Half-width of the crease-locus exclusion band (default 1.5e-3). */
+  creaseHalf?: number;
   /** Barycentric sub-samples per edge for the dense chord (default 12). */
   denseN?: number;
   /** Centroid pre-filter (mm) below which the dense chord scan is skipped (default 0.04). */
@@ -84,6 +98,8 @@ export interface AnalyticDevResult {
   seamBandMaxMm: number;
   /** Max deviation (mm) among the EXCLUDED riser-band samples (tracked, not failed). */
   riserBandMaxMm: number;
+  /** Max deviation (mm) among the EXCLUDED crease-locus samples (tracked, not failed). */
+  creaseBandMaxMm: number;
   /** (theta,z,mm) of the worst non-excluded sample. */
   worst: { theta: number; z: number; mm: number };
 }
@@ -112,9 +128,13 @@ export function radialAnalyticDeviation(
   const tol = opts.tolMm;
   const tBands = opts.tBands ?? [];
   const halfT = opts.tBandHalf ?? 1.6e-3;
+  const creaseU = opts.creaseU ?? [];
+  const creaseT = opts.creaseT ?? [];
+  const halfCrease = opts.creaseHalf ?? 1.5e-3;
+  const H = opts.H;
 
   const devs: number[] = [];
-  let vMax = 0, cMax = 0, seamMax = 0, riserMax = 0, nonFinite = 0, wallTris = 0;
+  let vMax = 0, cMax = 0, seamMax = 0, riserMax = 0, creaseMax = 0, nonFinite = 0, wallTris = 0;
   let worst = { theta: 0, z: 0, mm: 0 };
 
   // Radial deviation at a 3D point (recover theta=atan2, z direct → r_analytic).
@@ -141,7 +161,7 @@ export function radialAnalyticDeviation(
     const ta = ut[a * 3 + 1], tb = ut[b * 3 + 1], tc = ut[c * 3 + 1];
     const cu = wrap1((ua + ub + uc) / 3);
     const spanWrap = Math.max(ua, ub, uc) - Math.min(ua, ub, uc) > 0.5;
-    let exclude: 0 | 1 | 2 = 0; // 0 measured, 1 seam, 2 riser
+    let exclude: 0 | 1 | 2 | 3 = 0; // 0 measured, 1 seam, 2 riser, 3 over/under crease
     if (cu < seamU || cu > 1 - seamU || spanWrap) exclude = 1;
     else if (tBands.length > 0 && halfT > 0) {
       const ct = (ta + tb + tc) / 3;
@@ -156,6 +176,21 @@ export function radialAnalyticDeviation(
       || !Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(cz)) {
       nonFinite++;
       continue;
+    }
+
+    // OVER/UNDER CREASE exclusion (recovered-u/t based — the warp pins columns/rows
+    // onto these discontinuities, where the cell-parity floor() is two-valued and
+    // GPU-f32/CPU-f64 flip the over/under strand). A triangle that TOUCHES or
+    // STRADDLES a locus is excluded. Recovered u = atan2 → [0,1) (post-warp, matches
+    // where the pinning lands); recovered t = z/H. Seam-spanning triangles are
+    // already excluded above, so the small-interval [lo,hi] test needs no wrap.
+    if (exclude === 0 && (creaseU.length > 0 || creaseT.length > 0)) {
+      const uA = wrap1(Math.atan2(ay, ax) / TAU), uB = wrap1(Math.atan2(by, bx) / TAU), uC = wrap1(Math.atan2(cy, cx) / TAU);
+      const uLo = Math.min(uA, uB, uC), uHi = Math.max(uA, uB, uC);
+      const tLo = Math.min(az, bz, cz) / H, tHi = Math.max(az, bz, cz) / H;
+      const hitsU = creaseU.some((L) => L >= uLo - halfCrease && L <= uHi + halfCrease);
+      const hitsT = creaseT.some((L) => L >= tLo - halfCrease && L <= tHi + halfCrease);
+      if (hitsU || hitsT) exclude = 3;
     }
 
     // OPTIONAL near-horizontal geometric guard (default OFF — see opts doc): a
@@ -176,6 +211,7 @@ export function radialAnalyticDeviation(
       const d = devAt(vxc, vyc, vzc);
       if (exclude === 1) { if (d > seamMax) seamMax = d; continue; }
       if (exclude === 2) { if (d > riserMax) riserMax = d; continue; }
+      if (exclude === 3) { if (d > creaseMax) creaseMax = d; continue; }
       devs.push(d);
       if (d > vMax) vMax = d;
       if (d > triMax) { triMax = d; triWorst = { theta: Math.atan2(vyc, vxc), z: vzc, mm: d }; }
@@ -186,6 +222,7 @@ export function radialAnalyticDeviation(
     let dCen = devAt(ccx, ccy, ccz);
     if (exclude === 1) { if (dCen > seamMax) seamMax = dCen; continue; }
     if (exclude === 2) { if (dCen > riserMax) riserMax = dCen; continue; }
+    if (exclude === 3) { if (dCen > creaseMax) creaseMax = dCen; continue; }
     wallTris++;
     // Pre-filter: a clearly-fine facet skips the dense scan (centroid only).
     if (dCen <= pre) {
@@ -226,6 +263,7 @@ export function radialAnalyticDeviation(
     nonFiniteCount: nonFinite,
     seamBandMaxMm: seamMax,
     riserBandMaxMm: riserMax,
+    creaseBandMaxMm: creaseMax,
     worst,
   };
 }
@@ -240,6 +278,28 @@ export function artDecoRiserTBands(stepCount: number): number[] {
   return Array.from({ length: n }, (_, tier) => [(tier + 0.1) / n, (tier + 0.9) / n])
     .flat()
     .filter((t) => t > 2e-3 && t < 1 - 2e-3);
+}
+
+/**
+ * BasketWeave over/under crease loci (the conforming warp pins mesh columns/rows
+ * onto these — `extractBasketWeave`/FeatureLineGraph). VERTICAL strand edges at
+ * `u_twisted = u·strands + phase = m` ⇒ `u = (m−phase)/strands` (m=0..strands−1),
+ * HORIZONTAL layer rings at `v = t·layers = k` ⇒ `t = k/layers` (interior
+ * k=1..layers−1; t=0/1 are shared boundary rings, not creases). Only the
+ * AXIS-ALIGNED weave (twist=0, vGrad=0) is warp-pinned — the caller passes [] for
+ * the diagonal/non-uniform cases (no pinning ⇒ no false discontinuity dev).
+ */
+export function basketWeaveCreaseLoci(
+  strands: number,
+  layers: number,
+  phase: number,
+): { creaseU: number[]; creaseT: number[] } {
+  const s = Math.max(1, Math.round(strands));
+  const l = Math.max(1, Math.round(layers));
+  const creaseU = Array.from({ length: s }, (_, m) => wrap1((m - phase) / s));
+  const creaseT = Array.from({ length: l - 1 }, (_, i) => (i + 1) / l)
+    .filter((t) => t > 2e-3 && t < 1 - 2e-3);
+  return { creaseU, creaseT };
 }
 
 export { TAU, wrap1, clamp01 };

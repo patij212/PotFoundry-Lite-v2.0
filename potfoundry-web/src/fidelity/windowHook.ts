@@ -70,6 +70,7 @@ import { sfRf } from '../renderers/webgpu/parametric/conforming/FeatureLineGraph
 import {
   radialAnalyticDeviation,
   artDecoRiserTBands,
+  basketWeaveCreaseLoci,
   type AnalyticRadiusFn,
   type AnalyticDevResult,
 } from './analyticSurfaceGate';
@@ -884,6 +885,26 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         ? artDecoRiserTBands(style.opts.ad_step_count ?? style.opts.adStepCount ?? 4)
         : [];
 
+      // BasketWeave over/under crease loci (strand edges + layer rings the conforming
+      // warp PINS columns/rows onto — the cell-parity floor() is two-valued there and
+      // GPU-f32/CPU-f64 flip the strand, a false full-depth dev; excluded like the seam).
+      // Only the axis-aligned weave (twist=0, vGrad=0) is warp-pinned — mirrors extractBasketWeave.
+      let creaseU: number[] = [];
+      let creaseT: number[] = [];
+      if (styleId === 'BasketWeave') {
+        const opt = (snake: string, camel: string, def: number): number => {
+          const v = style.opts[snake] ?? style.opts[camel];
+          return typeof v === 'number' ? v : def;
+        };
+        if (Math.abs(opt('bw_twist', 'bwTwist', 0)) < 1e-9 && Math.abs(opt('bw_vertical_grad', 'bwVerticalGrad', 0)) < 1e-9) {
+          ({ creaseU, creaseT } = basketWeaveCreaseLoci(
+            opt('bw_strands', 'bwStrands', 16),
+            opt('bw_layers', 'bwLayers', 10),
+            opt('bw_phase', 'bwPhase', 0),
+          ));
+        }
+      }
+
       const measure = (rA: AnalyticRadiusFn): AnalyticDevResult => radialAnalyticDeviation(
         { vertices: mesh.vertices, indices: mesh.indices },
         ut,
@@ -895,6 +916,8 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           seamExclU: opts.seamExclU ?? 1.5 / (1 << (7 + 2)),
           tBands,
           tBandHalf: opts.tBandHalf ?? 1.6e-3,
+          creaseU,
+          creaseT,
           denseN: opts.denseN,
         },
       );
@@ -1240,7 +1263,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         return Number.isFinite(r) ? r : r0Of(z / H);
       };
       const V = mesh.vertices, n = Math.floor(V.length / 3);
-      const rows: Array<{ u: number; t: number; thetaRec: number; z: number; rPlaced: number; rRec: number; rExact: number; devRec: number; devExact: number }> = [];
+      const rows: Array<{ u: number; t: number; thetaRec: number; uTau: number; z: number; tH: number; rPlaced: number; rRec: number; rExact: number; devRec: number; devExact: number }> = [];
       for (let i = 0; i < n; i++) {
         if (ut[i * 3 + 2] >= 0.5) continue; // outer wall (surfaceId 0) only
         const u = ut[i * 3], t = ut[i * 3 + 1];
