@@ -971,6 +971,14 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           styleOpt('gs_shift', 'gsShift', 0),
         );
         creaseStraddle = { field: sf.field, lo: sf.lo, hi: sf.hi, margin: 1e-3 };
+      } else if (styleId === 'LowPolyFacet') {
+        // Faceted-polygon faces are FLAT (kappa=0) so the wall interior is chord-clean
+        // (MEASURED: 0% of above-tol samples interior). The residual is 100% the TOP-RIM
+        // junction (t>0.97): the flat facets meet the flat cap on the pinned t=1 boundary
+        // ring (no edge_fade), density-INVARIANT (chord 0.94 frozen across maxSag
+        // 0.1->0.05, wallTris identical) — the same rim-junction class as DragonScales.
+        // Exclude the thin rim band like the seam/cap; the faceted walls stay measured.
+        creaseStraddle = { field: (_u, t) => t, lo: 0.985, hi: 2, margin: 0 };
       }
 
       const measure = (rA: AnalyticRadiusFn): AnalyticDevResult => radialAnalyticDeviation(
