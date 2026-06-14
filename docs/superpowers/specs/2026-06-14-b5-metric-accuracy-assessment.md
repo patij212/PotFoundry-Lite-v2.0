@@ -15,18 +15,24 @@ flips) — the same "inspection fixes are ~50% wrong" lesson, now guarded.
 | **Voronoi** | analytic 0.67 | formula-drift + f32/f64 | `hash22` used `%` not `fract` (both p3 inits + return); 3 smoothsteps linearized. Restored. | 0.67 → **0.14** (formula fixed; 0.14 = f32/f64 hash floor) |
 | **CelticKnot** | analytic 0.42 | crease-discontinuity | byte-faithful port (no styles.ts edit); added geometric `creasePredicate` for the swept braid creases. | 0.42 (predicate excludes crease zones; **one** atan2-recovery vertex survives) |
 
-**Net: 16/20 → 18/20 EXACT-trusted** (added HexHive + LowPoly). Voronoi + CelticKnot
-have their **formula drift fully resolved** (CPU now byte-matches WGSL); their
-residuals are the **irreducible f32/f64 precision floor**, not bugs:
-- **Voronoi 0.14**: distributed (p99 0.155) — the hash amplifies f32-vs-f64 precision
-  differences. Irreducible without `Math.fround`-simulating the hash (invasive, and
-  it is CPU export-pipeline code).
-- **CelticKnot 0.42**: ONE vertex (of ~373k) — an atan2-recovery round-flip at a
-  strand discontinuity. The recovered u looks clean (mid-strand) so a geometric
-  predicate can't see it; only the f64 recovery epsilon flips the braid. Proper fix =
-  a stash-parameter vertex reference (evaluate the vertex channel at the placement
-  (u,t) from `LAST_CONFORMING_ASSEMBLY_UT`, not the recovered atan2/z-H) — a larger
-  metric change, deferred. Both fall back to the GPU-grid honestly (REF-UNTRUSTED).
+**Net: 16/20 → 19/20 EXACT-trusted** (added HexHive + LowPoly + CelticKnot). The
+formula drift is fully resolved on all four (CPU now byte-matches WGSL).
+
+**CelticKnot — RESOLVED via the stash-parameter vertex reference (commit `94a3007`).**
+The 0.42 was ONE vertex (of ~373k): an atan2-recovery round-flip at a strand
+discontinuity (the recovered u looks clean mid-strand, so a geometric predicate can't
+see it — only the f64 recovery epsilon flips the braid). Fix: the metric now reads the
+EXACT placement (u,t) the GPU evaluated (`LAST_CONFORMING_ASSEMBLY_UT_POSTWARP`,
+captured after the domain warps) for the VERTEX channel, instead of recovering the
+azimuth via atan2. → vtx 0.42→0.0001, **PARTIAL** (chord 0.82 = real braid density).
+No regression (placement≈recovery for well-behaved styles; BasketWeave stays 0.0000).
+
+**Voronoi — the lone remaining REF-UNTRUSTED (0.14), an irreducible f32/f64 floor.**
+Distributed (p99 0.155) — the hash amplifies f32-vs-f64 precision differences. The
+stash-parameter reference left it UNCHANGED at 0.14, which PROVES it is precision, not
+a recovery flip or formula drift (those are now all fixed). Closing it would require
+`Math.fround`-simulating the hash (invasive, in CPU export-pipeline code) — deferred as
+not worth it (0.14mm is sub-printer-resolution; the GPU-grid fallback reports it honestly).
 
 ## Is the B5 metric SOUND? (per-mechanism, from the synthesis)
 
