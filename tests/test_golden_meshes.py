@@ -283,29 +283,26 @@ class TestMeshProperties:
         # (away from pot center which is at [0, 0, z])
         # We check this for faces not on the top or bottom
 
-        middle_faces = (centers[:, 2] > 10) & (centers[:, 2] < 90)  # Not top/bottom
+        # Outer-wall faces only: build_pot_mesh appends the (n_z+1) outer rings
+        # first, so faces wholly within that index block are the outer wall.
+        n_theta, n_z = 60, 30
+        n_outer = (n_z + 1) * n_theta
+        outer_wall = (
+            np.all(faces < n_outer, axis=1)
+            & (centers[:, 2] > 10)
+            & (centers[:, 2] < 90)
+        )
 
-        for i in np.where(middle_faces)[0]:
-            center = centers[i]
-            normal = normals[i]
+        radial = centers[outer_wall].copy()
+        radial[:, 2] = 0.0
+        radial /= np.linalg.norm(radial, axis=1, keepdims=True) + 1e-12
+        dots = np.einsum("ij,ij->i", normals[outer_wall, :2], radial[:, :2])
 
-            # Radial direction from Z-axis to face center
-            radial = np.array([center[0], center[1], 0])
-            radial_norm = np.linalg.norm(radial)
+        # Correctly-oriented solid: outer-wall normals point radially outward.
+        assert np.mean(dots > 0) > 0.95, \
+            "Outer-wall face normals must point outward (mesh wound inside-out)"
 
-            if radial_norm > 1.0:  # Skip faces near centerline
-                radial_unit = radial / radial_norm
-
-                # Normal should have positive dot product with radial direction
-                # (pointing outward)
-                np.dot(normal[:2], radial_unit[:2])
-
-                # Allow some tolerance for complex geometries
-                # Just check that most faces point outward
-                # This is a heuristic, not a strict requirement
-                pass  # Skip strict check for now
-
-        # At minimum, normals should exist and be non-zero
+        # All normals should exist and be non-zero.
         normal_lengths = np.linalg.norm(normals, axis=1)
         assert np.all(normal_lengths > 0), "All face normals should be non-zero"
 

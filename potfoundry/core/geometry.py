@@ -445,6 +445,13 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
+    # Orientation fix: the per-region winding above is internally consistent but
+    # globally *inward* (negative signed volume). Solid meshes must wind outward
+    # so face normals point away from the material — this is what Rhino and
+    # Grasshopper require for correct shading, booleans, and shelling (slicers
+    # silently auto-repair STL, which masked the inversion). Reverse winding once,
+    # globally, by swapping the 2nd and 3rd vertex of every triangle.
+    faces_arr = faces_arr[:, [0, 2, 1]]
     return np.array(verts, dtype=float), faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
