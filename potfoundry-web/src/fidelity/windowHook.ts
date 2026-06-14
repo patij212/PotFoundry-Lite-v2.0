@@ -76,6 +76,16 @@ import { TAU } from '../geometry/types';
 import type { StyleId, StyleOptions } from '../geometry/types';
 import { ASPECT_MAX, WELD_TOL_MM, type FidelityMetrics } from './types';
 
+/**
+ * Reference-parity epsilon (mm) for the B5 surface-fidelity gate. Production
+ * GPU-evaluates every outer-wall vertex EXACTLY at its (u,t), so a faithful CPU
+ * reference reads vertexMax ≈ the f32 floor (measured ≤ 0.0011mm on the 11
+ * parity-clean styles). The drifted styles read ≥ 0.67mm (Gyroid/Basket/Hex land
+ * EXACTLY on their full relief default). This threshold sits in that gap, so it
+ * cleanly separates a trustworthy reference from a `styles.ts`↔WGSL parity gap.
+ */
+export const REFERENCE_PARITY_EPS_MM = 0.05;
+
 export interface FidelityMeasureOptions {
   targetTriangles: number;
   referenceTriangles: number;
@@ -498,6 +508,19 @@ export interface FidelitySurfaceFidelityDiagnostics extends AnalyticDevResult {
   triangleCount: number;
   /** Echo of the truth source: 'sfb-packed' honors sf_strength; 'analytic' = STYLE_FUNCTIONS. */
   referenceMode: 'sfb-packed' | 'analytic';
+  /**
+   * Self-check that the CPU reference matches the GPU shader that PLACED the
+   * vertices. Production GPU-evaluates every outer-wall vertex EXACTLY at its
+   * (u,t), so with a faithful reference the VERTEX channel reads ≈ the f32 floor
+   * (≤ ~0.001mm). A `vertexMaxMm` above {@link REFERENCE_PARITY_EPS_MM} means the
+   * analytic reference (`styles.ts` STYLE_FUNCTIONS) has DRIFTED from the WGSL
+   * shader (e.g. a relief-amplitude/mask mismatch — measured on Gyroid/Basket/
+   * Hex where vertexMax == the full relief default). When false, the mesh is
+   * still GPU-faithful (it renders correctly) but the `chord`/`dev` numbers are
+   * measured against a WRONG surface and MUST NOT be gated on. The headline
+   * "mesh lies on the true surface" claim only holds when this is true.
+   */
+  referenceTrusted: boolean;
 }
 
 export interface FidelityFShearDiagnosticOptions {
@@ -847,10 +870,16 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           denseN: opts.denseN,
         },
       );
+      // PARITY SELF-CHECK: vertices are GPU-placed-exact, so a faithful reference
+      // reads vertexMax ≈ f32 floor. Above the eps ⇒ the CPU reference drifted
+      // from the WGSL shader (NOT a mesh defect) ⇒ the chord/dev numbers are
+      // measured against the wrong surface — do not gate on them.
+      const referenceTrusted = res.vertexMaxMm <= REFERENCE_PARITY_EPS_MM;
       return {
         styleId,
         triangleCount: res.wallTriangles,
         referenceMode,
+        referenceTrusted,
         ...res,
       };
     },
