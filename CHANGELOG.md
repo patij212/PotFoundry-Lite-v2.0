@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Rhino / Grasshopper export quality:**
+  - `compute_vertex_normals` (`potfoundry.core.io.normals`): area-weighted,
+    seam-continuous per-vertex normals for smooth (non-faceted) shading.
+  - `write_obj` (`potfoundry.core.io.obj`): Wavefront OBJ exporter — welded
+    topology, smooth vertex normals, millimetre header. Pure-Python, atomic.
+  - `write_3dm` (`potfoundry.core.io.rhino3dm_io`): native Rhino `.3dm`
+    exporter with model units = millimetres and vertex normals. Optional
+    `rhino3dm` dependency, lazily imported with graceful fallback. The exported
+    mesh passes Rhino's own `IsValid`/`IsClosed` checks across all styles and
+    edge-case dimensions.
+  - `pfui` helpers `export_obj_bytes` / `export_3dm_bytes`.
+
+### Fixed
+- **Mesh orientation (export-quality root cause):** `build_pot_mesh` produced a
+  globally *inward* winding (negative signed volume) for every style. Slicers
+  auto-repair STL, so 3D printing was unaffected, but Rhino/Grasshopper respect
+  orientation — the pot imported inside-out, breaking shading, booleans, and
+  shelling. Triangle winding is now reversed once, globally, so face normals
+  point outward (positive signed volume). The previously no-op normal
+  orientation test was strengthened to assert outwardness.
+
+---
+
 ## [2.1.0] - 2024-12 (In Development)
 
 ### Added

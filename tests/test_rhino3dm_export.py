@@ -72,3 +72,25 @@ def test_returns_path(tmp_path):
     result = write_3dm(path, "Pot", verts, faces)
     from pathlib import Path
     assert Path(result) == path
+
+
+@pytest.mark.parametrize("style_name", list(STYLES.keys()))
+@pytest.mark.parametrize("cfg_name,cfg", [
+    ("default", dict(H=120, Rt=70, Rb=50, t_wall=3, t_bottom=3, r_drain=10, expn=1.1)),
+    ("thin_wall", dict(H=140, Rt=80, Rb=40, t_wall=2, t_bottom=2, r_drain=6, expn=1.4)),
+    ("big_drain", dict(H=100, Rt=60, Rb=55, t_wall=3, t_bottom=3, r_drain=44, expn=1.0)),
+])
+def test_exported_3dm_is_valid_closed_solid(tmp_path, style_name, cfg_name, cfg):
+    """Rhino's own validator must accept the export as a valid closed solid
+    across every style and edge-case dimension set."""
+    fn = STYLES[style_name][0]
+    verts, faces, _ = build_pot_mesh(
+        r_outer_fn=fn, style_opts={}, n_theta=72, n_z=36, **cfg
+    )
+    path = tmp_path / f"{style_name}_{cfg_name}.3dm"
+    write_3dm(path, style_name, verts, faces)
+
+    model = rhino3dm.File3dm.Read(str(path))
+    mesh = list(model.Objects)[0].Geometry
+    assert mesh.IsValid, f"{style_name}/{cfg_name}: Rhino rejected mesh as invalid"
+    assert mesh.IsClosed, f"{style_name}/{cfg_name}: mesh is not a closed solid"
