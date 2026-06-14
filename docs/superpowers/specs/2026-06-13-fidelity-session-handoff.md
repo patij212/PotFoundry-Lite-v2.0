@@ -86,6 +86,34 @@ real mesh gap or a grid-vs-mesh inconsistency is unresolved BY the grid; the ana
 would settle it.) Probes: `_fidelity_surface_sweep.cjs` (PF_REF_RES, PF_STYLES, PF_DENSE_N,
 PF_DIAG_TIMEOUT), `_fidelity_gpuref_check.cjs`. Logs: 512 main sweep + 1024 pass on the 8.
 
+## ANALYTIC PARITY-FIX — done, GPU-verified (2026-06-14, commit `f6ae121`)
+
+The analytic parity-fix (chosen over a finer grid for the unresolved styles) found TWO root
+causes — and the GPU verify overturned 2 of the 4 sub-agent inspection-fixes:
+
+- **METRIC theta-recovery bug (the dominant one, `analyticSurfaceGate`):** the B5 metric
+  recovered `theta = atan2 ∈ [−π,π]` but the shader places vertices with `theta ∈ [0,TAU)`.
+  Styles with theta-SIGN-dependent integer logic (cell parity / column id) sampled the WRONG
+  cell on the back half. Wrapping theta to `[0,TAU)` (now unconditional; a no-op on periodic
+  styles) FIXED **DragonScales 8.91→0.0001** and **Crystalline →0.0002**, and dropped
+  **CelticKnot 2.6→0.42**. The proposed DragonScales "missing clamp" fix was a RED HERRING —
+  GPU-verify caught it (vtx unchanged at 8.91 until the wrap).
+- **`styles.ts` CPU-port parity (per style):** GyroidManifold lattice mask (ramp-out→ramp-in
+  smoothstep) **1.5→0.0004**; CelticTriquetra rim lines (linear→smoothstep) **1.26→0.0001**;
+  CelticKnot checkerboard→3-strand braid+Z-buffer rewrite **2.6→0.42** (structurally correct,
+  small residual); DragonScales clamp (parity-correct, not load-bearing). Golden fixtures
+  regenerated (legacy export + fixtures are the only consumers; production conforming uses
+  GpuRidgeSolver/WGSL — detect_changes LOW/0-processes).
+
+**FINAL full-20 partition (commit f6ae121, no regression):** **15/20 EXACT analytic-trusted**
+(vtx ≈ f32 floor): 7 CERTIFIED + 8 PARTIAL (SFB 0.84, Gothic 1.45, **Crystalline 0.56**,
+**DragonScales 1.57**, Bamboo 2.15, **Gyroid 1.29**, GeoStar 0.98, **CelticTriquetra 1.50**).
+3 band-limit-clean (LowPoly/Voronoi/HexHive — nAbove≈0, certify at refRes≥1024). **2 genuine
+holdouts: CelticKnot (0.42 — residual braid-port diff, re-diff the weave_density/phase) and
+BasketWeave (1.89 — CPU body PROVABLY matches WGSL line-for-line + NOT theta-convention →
+the mesh genuinely deviates from both refs; a real mesh/mapping investigation, NOT a styles.ts
+fix).** The actionable export-fidelity list (real chord gaps, trusted) is now the 8 PARTIALs.
+
 ## The validated model (use this to classify any style)
 
 - **C0 radius jump** (discontinuity, e.g. ArtDeco step) → **paired-ring riser**:
