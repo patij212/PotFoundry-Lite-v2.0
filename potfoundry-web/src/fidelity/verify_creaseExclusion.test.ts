@@ -67,6 +67,26 @@ describe('crease-locus exclusion (BasketWeave over/under discontinuity)', () => 
     expect(r.wallTriangles).toBe(1); // control triangle A still measured
   });
 
+  it('utPlacement: the VERTEX channel uses the placement param, not the recovered atan2', () => {
+    // rAnalytic returns theta as the "radius" so we can tell which param was used.
+    const rAna = (theta: number): number => theta;
+    const R = Math.PI / 2; // vertex radius
+    // 3 vertices near azimuth 0 (on +x axis → atan2≈0), at t=0.5; stash u=0.25 (off-seam).
+    const vv: number[] = [], uu: number[] = [];
+    for (const a of [0.0, 0.01, 0.005]) { vv.push(R * Math.cos(a), R * Math.sin(a), 50); uu.push(0.25, 0.5, 0); }
+    const m = { vertices: Float32Array.from(vv), indices: Uint32Array.from([0, 1, 2]) };
+    const utA = Float32Array.from(uu);
+    // Placement says u=0.25 → theta=PI/2 → rAna=PI/2=R → vertex dev ≈ 0.
+    const place = Float32Array.from([0.25, 0.5, 0, 0.25, 0.5, 0, 0.25, 0.5, 0]);
+    const base2 = { H: 100, tolMm: 0.1, seamExclU: 0.01, denseN: 4 };
+    const withPlace = radialAnalyticDeviation(m, utA, rAna, { ...base2, utPlacement: place });
+    const without = radialAnalyticDeviation(m, utA, rAna, base2);
+    // WITH placement: vertex channel matches (radius == rAna(placement theta)).
+    expect(withPlace.vertexMaxMm).toBeLessThan(0.01);
+    // WITHOUT: recovered atan2≈0 → rAna≈0 → vertex dev ≈ R = PI/2.
+    expect(without.vertexMaxMm).toBeGreaterThan(1.5);
+  });
+
   it('celticKnotCreasePredicate: returns a function flagging the strand-boundary band', () => {
     const pred = celticKnotCreasePredicate(3, 0.15, 0, 3);
     expect(typeof pred).toBe('function');

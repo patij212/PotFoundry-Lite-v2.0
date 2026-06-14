@@ -60,6 +60,17 @@ export interface AnalyticDevOpts {
   /** Half-width of the crease-locus exclusion band (default 1.5e-3). */
   creaseHalf?: number;
   /**
+   * POST-WARP placement (u,t,surfaceId), parallel to `mesh.vertices` (the exact
+   * parameter the GPU evaluated each vertex at). When provided, the VERTEX channel
+   * evaluates the reference at the placement (u·TAU, t·H) instead of recovering the
+   * azimuth via atan2 — the atan2 round-trip through f64 trig carries an epsilon that
+   * FLIPS the over/under strand at a discontinuity (a false full-relief vertex dev).
+   * Reading the placement parameter is exact, so the vertex deviation reads the true
+   * CPU↔WGSL parity. The CHORD channel still uses the recovered (atan2,z) — a flat
+   * facet sample has no placement parameter. Omit to keep the recovery behaviour.
+   */
+  utPlacement?: ArrayLike<number>;
+  /**
    * Geometric over/under crease PREDICATE for styles whose discontinuities SWEEP
    * through (u,t) (curved ribbons — e.g. the CelticKnot braid) and so cannot be
    * captured by constant-u/constant-t loci. Given a vertex's recovered (u∈[0,1),
@@ -144,6 +155,7 @@ export function radialAnalyticDeviation(
   const creaseT = opts.creaseT ?? [];
   const halfCrease = opts.creaseHalf ?? 1.5e-3;
   const creasePredicate = opts.creasePredicate;
+  const utPlace = opts.utPlacement;
   const H = opts.H;
 
   const devs: number[] = [];
@@ -161,6 +173,13 @@ export function radialAnalyticDeviation(
     if (theta < 0) theta += TAU; // → [0,TAU) to match the shader's azimuth domain
     return Math.abs(Math.hypot(x, y) - rAnalytic(theta, z));
   };
+
+  // VERTEX-channel reference at vertex `idx`: exact placement (u·TAU, t·H) when the
+  // post-warp stash is available (no atan2 round-trip flip), else recovered (atan2,z).
+  const vertexDev = (idx: number, x: number, y: number, z: number): number =>
+    (utPlace
+      ? Math.abs(Math.hypot(x, y) - rAnalytic(utPlace[idx * 3] * TAU, utPlace[idx * 3 + 1] * H))
+      : devAt(x, y, z));
 
   for (let i = 0; i + 2 < I.length; i += 3) {
     const a = I[i], b = I[i + 1], c = I[i + 2];
@@ -221,11 +240,11 @@ export function radialAnalyticDeviation(
     const dropNz = opts.dropNearHorizontalNz;
     if (dropNz !== undefined && Math.abs(nz) / nlen >= dropNz) continue;
 
-    // VERTEX channel — exact placement, no inverse needed for the radius.
+    // VERTEX channel — exact placement param (utPlacement) when available, else atan2.
     let triMax = 0;
     let triWorst = { theta: 0, z: 0, mm: 0 };
-    for (const [vxc, vyc, vzc] of [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] as const) {
-      const d = devAt(vxc, vyc, vzc);
+    for (const [vi, vxc, vyc, vzc] of [[a, ax, ay, az], [b, bx, by, bz], [c, cx, cy, cz]] as const) {
+      const d = vertexDev(vi, vxc, vyc, vzc);
       if (exclude === 1) { if (d > seamMax) seamMax = d; continue; }
       if (exclude === 2) { if (d > riserMax) riserMax = d; continue; }
       if (exclude === 3) { if (d > creaseMax) creaseMax = d; continue; }

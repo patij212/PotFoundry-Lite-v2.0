@@ -10,6 +10,7 @@ import { STYLE_REGISTRY } from '../styles/registry';
 import {
   getLastChainDebugData,
   getLastConformingAssemblyUT,
+  getLastConformingAssemblyUTPostWarp,
   getLastConformingBudgetReport,
   getLastConformingCdtStats,
   getLastConformingDecimationReport,
@@ -828,6 +829,11 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       // The stash must stay parallel to the returned mesh (a downstream pass — e.g.
       // decimation — can change the vertex count, breaking the (u,t) lookup).
       if (ut.length !== mesh.vertices.length) return null;
+      // POST-WARP placement stash (exact (u,t) the GPU evaluated) — the vertex channel
+      // uses it to avoid the atan2 azimuth-recovery round-trip flip at discontinuities.
+      // Only when parallel to the mesh (else the vertex channel keeps the atan2 recovery).
+      const utPostRaw = getLastConformingAssemblyUTPostWarp();
+      const utPlacement = utPostRaw && utPostRaw.length === mesh.vertices.length ? utPostRaw : undefined;
       if (!Number.isFinite(style.H) || style.H <= 0) return null;
       // TWIST: atan2(y,x) recovers the TWISTED azimuth, not the style theta, so the
       // analytic radius would be sampled at a sheared angle — refuse (mirror
@@ -935,6 +941,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           creaseU,
           creaseT,
           creasePredicate,
+          utPlacement,
           denseN: opts.denseN,
         },
       );

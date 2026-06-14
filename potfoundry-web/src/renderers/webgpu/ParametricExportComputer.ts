@@ -301,6 +301,19 @@ let LAST_CONFORMING_HELIX_WARP: HelixWarp | null = null;
 let LAST_CONFORMING_ASSEMBLY_UT: Float32Array | null = null;
 
 /**
+ * Most recent conforming-branch POST-WARP assembly (u,t,surfaceId) — a copy taken
+ * AFTER the domain warps (u-warp/t-warp/helix) and BEFORE the GPU evaluation, so it
+ * holds the EXACT (u,t) the GPU evaluated each vertex at (the placement parameter).
+ * The B5 vertex channel uses this instead of recovering the azimuth via atan2: the
+ * atan2 round-trip through f64 trig carries a ~1e-9 epsilon that FLIPS the over/under
+ * strand at a discontinuity (the CelticKnot lone-vertex artifact). Reading the
+ * placement (u,t) directly is exact, so the vertex deviation reads the true
+ * CPU↔WGSL parity with no recovery flip. Parallel to the returned mesh (warps shift
+ * coordinates, never reorder; indices are untouched). Null off the conforming path.
+ */
+let LAST_CONFORMING_ASSEMBLY_UT_POSTWARP: Float32Array | null = null;
+
+/**
  * Budget-honesty report from the most recent CONFORMING whole-mesh build (null
  * on the legacy/parametric path): requested vs built vs delivered triangles,
  * the decimation verdict ('not-needed' | 'applied' | 'refused' + reason), the
@@ -386,6 +399,14 @@ export function getLastConformingHelixWarp(): HelixWarp | null {
  *  see metrics.seamBandTriangleQuality). */
 export function getLastConformingAssemblyUT(): Float32Array | null {
     return LAST_CONFORMING_ASSEMBLY_UT;
+}
+
+/** Most recent conforming-branch POST-WARP assembly (u,t,surfaceId) — the EXACT
+ *  placement parameter the GPU evaluated each vertex at (after the domain warps,
+ *  before the GPU eval), parallel to the returned mesh. Dev diagnostic only (the B5
+ *  vertex channel uses it to avoid the atan2 azimuth-recovery round-trip flip). */
+export function getLastConformingAssemblyUTPostWarp(): Float32Array | null {
+    return LAST_CONFORMING_ASSEMBLY_UT_POSTWARP;
 }
 
 export function getLastPeakDebugData(): PeakDebugData | null {
@@ -2709,6 +2730,13 @@ export class ParametricExportComputer {
                         );
                     }
                 }
+
+                // POST-WARP (u,t,surfaceId) copy — the EXACT placement parameter the GPU
+                // is about to evaluate (after all domain warps, before evaluatePoints
+                // overwrites asm.vertices with 3D). The B5 vertex channel reads this
+                // instead of recovering the azimuth via atan2 (which round-trips through
+                // f64 trig and flips the over/under strand at a discontinuity).
+                LAST_CONFORMING_ASSEMBLY_UT_POSTWARP = asm.vertices.slice();
 
                 // GPU-evaluate ALL combined (u,t,surfaceId) vertices to real 3D.
                 const pos3D = await this.evaluatePoints(
