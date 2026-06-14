@@ -9,3 +9,7 @@ pydantic>=2
 plotly>=5.20
 
 plotly>=5.20
+
+# Optional: native Rhino .3dm export (write_3dm). STL and OBJ export work
+# without it; install to enable .3dm output for Rhino/Grasshopper.
+# rhino3dm>=8.0
