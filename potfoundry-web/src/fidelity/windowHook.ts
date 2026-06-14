@@ -507,6 +507,8 @@ export interface FidelitySurfaceFidelityDiagnosticOptions {
   tolMm?: number;
   /** Barycentric sub-samples per edge for the dense chord (default 12). */
   denseN?: number;
+  /** Localization probe: collect up to N above-tol sample (u,t,mm) into aboveTolSamples (default off). */
+  collectAboveTol?: number;
   /** Half-width of the excluded u-seam band (default the production seam width). */
   seamExclU?: number;
   /** Half-width of the ArtDeco riser t-band exclusion (default 1.6e-3). */
@@ -979,6 +981,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           creaseStraddle,
           utPlacement,
           denseN: opts.denseN,
+          collectAboveTol: opts.collectAboveTol,
         },
       );
 

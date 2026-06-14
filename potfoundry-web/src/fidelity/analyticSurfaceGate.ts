@@ -95,6 +95,14 @@ export interface AnalyticDevOpts {
    * vertex OUT (e.g. masked faded-relief regions). Excluded → creaseBandMaxMm.
    */
   creaseStraddle?: { field: (u: number, t: number) => number; lo: number; hi: number; margin?: number };
+  /**
+   * Localization probe (default off). When >0, collect up to this many ABOVE-tol
+   * sample (recovered u∈[0,1), t∈[0,1], mm) into `aboveTolSamples` — for finding
+   * WHERE a style's chord residual concentrates (rim row? scale apex? edge?) so a
+   * clean exclusion band can be designed. Diagnostic only; no effect on the gated
+   * channels.
+   */
+  collectAboveTol?: number;
   /** Barycentric sub-samples per edge for the dense chord (default 12). */
   denseN?: number;
   /** Centroid pre-filter (mm) below which the dense chord scan is skipped (default 0.04). */
@@ -138,6 +146,8 @@ export interface AnalyticDevResult {
   creaseBandMaxMm: number;
   /** (theta,z,mm) of the worst non-excluded sample. */
   worst: { theta: number; z: number; mm: number };
+  /** Above-tol sample locations (recovered u,t,mm) when `collectAboveTol`>0 — localization probe. */
+  aboveTolSamples?: Array<{ u: number; t: number; mm: number }>;
 }
 
 const wrap1 = (u: number): number => ((u % 1) + 1) % 1;
@@ -175,6 +185,13 @@ export function radialAnalyticDeviation(
   const devs: number[] = [];
   let vMax = 0, cMax = 0, seamMax = 0, riserMax = 0, creaseMax = 0, nonFinite = 0, wallTris = 0;
   let worst = { theta: 0, z: 0, mm: 0 };
+  const collectMax = opts.collectAboveTol ?? 0;
+  const aboveTol: Array<{ u: number; t: number; mm: number }> = [];
+  const collect = (x: number, y: number, z: number, mm: number): void => {
+    if (collectMax > 0 && mm > tol && aboveTol.length < collectMax) {
+      aboveTol.push({ u: wrap1(Math.atan2(y, x) / TAU), t: z / H, mm });
+    }
+  };
 
   // Radial deviation at a 3D point (recover theta=atan2, z direct → r_analytic).
   // THETA CONVENTION: atan2 returns [−π,π]; the WGSL shader receives the azimuth
@@ -298,6 +315,7 @@ export function radialAnalyticDeviation(
           const d = devAt(px, py, pz);
           devs.push(d);
           if (d > cMax) cMax = d;
+          collect(px, py, pz, d);
           if (d > triMax) { triMax = d; triWorst = { theta: Math.atan2(py, px), z: pz, mm: d }; }
         }
       }
@@ -324,6 +342,7 @@ export function radialAnalyticDeviation(
     riserBandMaxMm: riserMax,
     creaseBandMaxMm: creaseMax,
     worst,
+    ...(collectMax > 0 ? { aboveTolSamples: aboveTol } : {}),
   };
 }
 
