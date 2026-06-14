@@ -13,6 +13,35 @@ A long measurement-and-implementation session. Everything below is **flag-gated
 Both validated end-to-end via `e2e/_fidelity_flag_validate.cjs` (headed Chromium,
 real WebGPU adapter confirmed available here).
 
+## Cross-style B5 baseline (2026-06-14, commit `ba886bd`)
+
+The B5 gate was generalized from 2 styles to all 20 (`e2e/_fidelity_surface_sweep.cjs`,
+flag ON, 1M tris, real GPU). **Audit-first partition (measured):**
+
+| Bucket | Styles | Meaning |
+|---|---|---|
+| **CERTIFIED (6)** | FourierBloom, SpiralRidges, SuperellipseMorph, HarmonicRipple, ArtDeco, RippleInterference | on the true surface AND slicer-clean (chord < 0.3mm) |
+| **PARTIAL (4)** | SuperformulaBlossom 0.87, GothicArches 1.46, BambooSegments 2.46, GeometricStar 1.03 | vertices on-surface (ref trusted), **real chord/density gap** — the genuine fidelity TODO |
+| **REF-UNTRUSTED (10)** | LowPolyFacet 16.16, WaveInterference 1.19, Crystalline 45.35, DragonScales 8.91, Gyroid 1.50, Voronoi 0.67, BasketWeave 2.00, HexagonalHive 2.00, CelticKnot 2.60, CelticTriquetra 0.14 | `styles.ts` ↔ WGSL **reference drift**, NOT a mesh defect |
+
+**The REF-UNTRUSTED 10 are NOT defects.** The conforming export GPU-evaluates every
+vertex EXACTLY at its (u,t) from the WGSL shader (which renders correctly), so a
+faithful CPU reference reads vertexMax ≈ f32 floor (≤0.0011mm on the 11 parity-clean
+styles). Gyroid/Basket/Hex land EXACTLY on their full relief default (`gmRelief 1.5`,
+`bwDepth 2.0`, `hhRelief 2.0`) and Crystalline reads 45mm — impossible as a placement
+defect. It is the SFB "BLOCKING-2" trap generalized: `src/geometry/styles.ts`
+STYLE_FUNCTIONS (the codebase's own "export-only, may be deprecated" CPU port) has
+drifted from the shaders for these 10. The GPU-grid `wallDeviation` oracle can't
+adjudicate — it reads 31–63mm on the *clean* CERTIFIED controls (drain/cap radial-bin
+artifact); the relief-default match adjudicates (`e2e/_fidelity_surface_confirm.cjs`).
+
+**Honest-refusal mechanism shipped:** `diagnoseSurfaceFidelity` now returns
+`referenceTrusted` (`vertexMaxMm ≤ REFERENCE_PARITY_EPS_MM = 0.05`). A naive B5-gate
+export refusal trigger (item 2c) would have FALSELY refused these 10 good styles; it
+must consult `referenceTrusted` (or use a GPU-truth reference). To B5-certify the 10,
+either parity-fix `styles.ts` against the WGSL, or give the gate a GPU-eval reference
+(generalize SFB's packed path to a per-(θ,z) GPU sample).
+
 ## The validated model (use this to classify any style)
 
 - **C0 radius jump** (discontinuity, e.g. ArtDeco step) → **paired-ring riser**:
@@ -78,6 +107,11 @@ real WebGPU adapter confirmed available here).
      decimation acceptance re-gated on the B5 fidelity, not triangle-quality deltas.
    Entry: `ConformingWall.searchBudgetScale`, `ParametricExportComputer :~2620/:2823`,
    `FeatureLineGraph.clipFeaturesToBox`, `windowHook.diagnoseSurfaceFidelity`.
+   **(c) UPDATE (2026-06-14):** the gate now exposes `referenceTrusted` (the honest
+   "can I judge this?" signal). The remaining (c) work is wiring it into the export:
+   run `diagnoseSurfaceFidelity` post-export → report tol-met/not, but ONLY when
+   `referenceTrusted` (else the gate is blind for that style). The 4 genuine PARTIAL
+   styles are where (b) per-style density-to-tol actually applies.
 3. **BambooSegments rim-node density** (smooth, NOT a riser): the worst (2.256mm) is
    the t=1 rim node bulge — `extractBambooSegments` stops at k=nodeCount-1 and the
    density lever only refines inserted rings. Needs boundary-aware sizing / exact
@@ -85,12 +119,21 @@ real WebGPU adapter confirmed available here).
 4. **ArtDeco chevron** (`R5`, 0.34mm |sin| diagonal C0 corners) — density or a
    diagonal general-curve extractor; fan negligible (0.006mm). Spec:
    `2026-06-13-artdeco-tstep-riser.md`.
-5. **Other partials** (cross-style ranking, `verify_crossStyleEdgeGap`): DragonScales
-   1.64, GeometricStar 1.60, CelticTriquetra 1.53, Gothic 1.43, Gyroid 1.35, Voronoi
-   1.02 — classify each (C0/C1/smooth) then apply the matching mechanism. DragonScales
-   likely C1 (existing horizontal-line extractor) = a quick win.
-6. **CelticKnot** flagged config-suspect by the consistency guard (1.80mm) — needs a
-   packed-vs-CPU truth-parity fix before its number is trusted.
+5. **Other partials** — SUPERSEDED by the cross-style B5 baseline above. Of the
+   `verify_crossStyleEdgeGap` list, only **GeometricStar** (chord 1.03, ref TRUSTED)
+   is a genuine actionable partial; **DragonScales/Gyroid/Voronoi/CelticTriquetra are
+   REF-UNTRUSTED** (styles.ts↔WGSL drift, NOT a mesh/edge defect — that probe's CPU
+   reference is the discredited one). Fix the reference parity before chasing their
+   "edge gaps". The 4 real PARTIAL items: SFB, GothicArches, BambooSegments, GeometricStar.
+6. **CelticKnot** — CONFIRMED config-suspect by the B5 vertex channel (2.60mm =
+   `ckRelief 2.0`+extra; `referenceTrusted: false`). Same class as the other 9
+   REF-UNTRUSTED: `styles.ts` ↔ WGSL parity, not a mesh defect.
+6b. **REF-UNTRUSTED reference-parity (10 styles)** — to let B5 judge them, EITHER
+   parity-fix `src/geometry/styles.ts` STYLE_FUNCTIONS against the WGSL shaders
+   (the relief-amplitude/mask mismatch; Gyroid/Basket/Hex are exact-relief cases =
+   easiest to diff), OR give `diagnoseSurfaceFidelity` a GPU-eval reference
+   (generalize SFB's `sfb-packed` path to a per-(θ,z) GPU sample). The MESH needs no
+   change — these render and export correctly.
 7. **Flag-flip / UI** — decide when to default `surfaceFidelityExact` on (re-baseline)
    or wire it to a quality-profile toggle.
 8. **Smooth high-freq** (FourierBloom etc.) confirmed clean at production density
