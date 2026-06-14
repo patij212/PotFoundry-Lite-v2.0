@@ -384,6 +384,12 @@ export interface PfFidelityApi {
     styleId: string; vertexCount: number; triangleCount: number;
     vertexHash: string; indexHash: string;
   } | null>;
+  /** INVESTIGATION: per outer-wall vertex, placed radius vs analytic ref at the
+   *  recovered (atan2,z) AND the exact stash (u,t) — isolates recovery vs formula/mesh. */
+  _debugRadialBreakdown(opts?: { targetTriangles?: number; topK?: number }): Promise<{
+    styleId: string; count: number;
+    worst: Array<{ u: number; t: number; thetaRec: number; uTau: number; z: number; tH: number; rPlaced: number; rRec: number; rExact: number; devRec: number; devExact: number }>;
+  } | null>;
 }
 
 export interface FidelityCrestQualityDiagnosticOptions {
@@ -1199,6 +1205,56 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         vertexHash: h.vertexHash,
         indexHash: h.indexHash,
       };
+    },
+    async _debugRadialBreakdown(opts: { targetTriangles?: number; topK?: number } = {}) {
+      // INVESTIGATION (BasketWeave holdout): per outer-wall vertex, compare the
+      // PLACED radius hypot(x,y) against the analytic reference evaluated BOTH at the
+      // recovered (theta=atan2 wrapped, z) AND at the EXACT stash placement params
+      // (u·TAU, t·H). devExact≈0 ⇒ formula+placement consistent (recovery is the
+      // issue); devExact large ⇒ CPU formula ≠ placed radius (mesh moved the vertex
+      // OR CPU≠WGSL). Generic 'analytic' path only (sufficient for BasketWeave).
+      const styleId = currentStyleId();
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) return null;
+      const ut = getLastConformingAssemblyUT();
+      const style = deps.getStyleState?.() ?? null;
+      if (!ut || !style || ut.length !== mesh.vertices.length) return null;
+      if (style.Rt === undefined || style.Rb === undefined || style.expn === undefined
+        || !Number.isFinite(style.H) || style.H <= 0) return null;
+      const H = style.H, Rt = style.Rt, Rb = style.Rb, expn = style.expn;
+      const bellOpts: StyleOptions = {
+        bellAmp: style.bellAmp ?? 0, bellCenter: style.bellCenter ?? 0.5, bellWidth: style.bellWidth ?? 0.22,
+      };
+      const r0Of = (t: number): number => baseRadius(t * H, H, Rb, Rt, expn, bellOpts);
+      const toCamel = (s: string): string => s.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+      const styleOptions: Record<string, number> = {};
+      for (const [k, v] of Object.entries(style.opts)) {
+        if (typeof v !== 'number') continue;
+        styleOptions[k] = v;
+        const c = toCamel(k);
+        if (c !== k) styleOptions[c] = v;
+      }
+      const fn = getStyleFunction(styleId as StyleId);
+      const rAnalytic = (theta: number, z: number): number => {
+        const r = fn(theta, z, r0Of(z / H), H, styleOptions as StyleOptions);
+        return Number.isFinite(r) ? r : r0Of(z / H);
+      };
+      const V = mesh.vertices, n = Math.floor(V.length / 3);
+      const rows: Array<{ u: number; t: number; thetaRec: number; z: number; rPlaced: number; rRec: number; rExact: number; devRec: number; devExact: number }> = [];
+      for (let i = 0; i < n; i++) {
+        if (ut[i * 3 + 2] >= 0.5) continue; // outer wall (surfaceId 0) only
+        const u = ut[i * 3], t = ut[i * 3 + 1];
+        const x = V[i * 3], y = V[i * 3 + 1], z = V[i * 3 + 2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        let thetaRec = Math.atan2(y, x);
+        if (thetaRec < 0) thetaRec += TAU;
+        const rPlaced = Math.hypot(x, y);
+        const rRec = rAnalytic(thetaRec, z);
+        const rExact = rAnalytic(u * TAU, t * H);
+        rows.push({ u, t, thetaRec, uTau: u * TAU, z, tH: t * H, rPlaced, rRec, rExact, devRec: Math.abs(rPlaced - rRec), devExact: Math.abs(rPlaced - rExact) });
+      }
+      rows.sort((a, b) => b.devRec - a.devRec);
+      return { styleId, count: rows.length, worst: rows.slice(0, opts.topK ?? 20) };
     },
     async diagnoseQuality(opts: FidelityQualityDiagnosticOptions = {}): Promise<FidelityQualityDiagnostics> {
       const styleId = currentStyleId();
