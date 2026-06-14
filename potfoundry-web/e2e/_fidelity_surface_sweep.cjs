@@ -23,15 +23,26 @@ const baseUrl = process.env.PF_BASE_URL || 'http://127.0.0.1:3000/?fidelity=1';
 const TARGET = Number(process.env.PF_TARGET_TRIS || 1000000);
 const VERTEX_TOL_MM = Number(process.env.PF_VERTEX_TOL_MM || 0.5); // placement gate
 const CHORD_TOL_MM = Number(process.env.PF_CHORD_TOL_MM || 0.3); // slicer-seen gate
+// Decouple a high-res GPU outer-wall reference grid so diagnoseSurfaceFidelity's
+// 'auto' source can FALL BACK to GPU truth on styles whose CPU analytic reference
+// (styles.ts) has drifted from the WGSL shader. 0 = analytic only (no fallback).
+const REF_RES = Number(process.env.PF_REF_RES || 512);
 
 // All 20 registry styles (registry.ts key names — what setStyle expects).
-const STYLES = [
+// PF_STYLES=A,B re-runs a subset (e.g. the high-tri styles that need a longer budget).
+const ALL_STYLES = [
   'SuperformulaBlossom', 'FourierBloom', 'SpiralRidges', 'SuperellipseMorph',
   'HarmonicRipple', 'LowPolyFacet', 'GothicArches', 'WaveInterference',
   'Crystalline', 'ArtDeco', 'DragonScales', 'BambooSegments',
   'RippleInterference', 'GyroidManifold', 'Voronoi', 'BasketWeave',
   'GeometricStar', 'HexagonalHive', 'CelticKnot', 'CelticTriquetra',
 ];
+const ONLY = (process.env.PF_STYLES || '').split(',').map((s) => s.trim()).filter(Boolean);
+const STYLES = ONLY.length ? ONLY : ALL_STYLES;
+// The GPU-grid fallback (Newton inversion over millions of samples) is slow on
+// high-triangle styles; allow a longer diag budget + lighter chord sampling.
+const DIAG_TIMEOUT = Number(process.env.PF_DIAG_TIMEOUT || 600000);
+const DENSE_N = Number(process.env.PF_DENSE_N || 0); // 0 = gate default (12)
 
 function withTimeout(p, ms, label) {
   let to;
@@ -42,7 +53,11 @@ function withTimeout(p, ms, label) {
 async function runStyle(browser, style) {
   const page = await browser.newPage();
   try {
-    await page.addInitScript(() => { window.__pfConforming = true; window.__pfSurfaceFidelityExact = true; });
+    await page.addInitScript((refRes) => {
+      window.__pfConforming = true;
+      window.__pfSurfaceFidelityExact = true;
+      if (refRes > 0) { window.__pfReferenceDenseRes = refRes; window.__pfReferenceBicubic = true; }
+    }, REF_RES);
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await withTimeout(page.waitForFunction(() => window.__pfFidelity && window.__pfFidelity.isReady() === true, null, { timeout: 95000 }), 100000, 'ready');
     await withTimeout(page.evaluate((s) => window.__pfFidelity.setStyle(s), style), 60000, 'setStyle');
@@ -50,7 +65,7 @@ async function runStyle(browser, style) {
     // feature surface to certify (matches _fidelity_surface_validate.cjs). All
     // other styles use their registry defaults (the honest "what ships" config).
     if (style === 'SuperformulaBlossom') await withTimeout(page.evaluate((pp) => window.__pfFidelity.setStyleParams(pp), { sf_strength: 1 }), 60000, 'setStyleParams');
-    const d = await withTimeout(page.evaluate((tgt) => window.__pfFidelity.diagnoseSurfaceFidelity({ targetTriangles: tgt }), TARGET), 300000, 'diag');
+    const d = await withTimeout(page.evaluate(([tgt, dn]) => window.__pfFidelity.diagnoseSurfaceFidelity({ targetTriangles: tgt, denseN: dn || undefined }), [TARGET, DENSE_N]), DIAG_TIMEOUT, 'diag');
     return d; // FidelitySurfaceFidelityDiagnostics | null
   } finally {
     await page.close();
@@ -89,10 +104,11 @@ function classify(d) {
     } else if (!d) {
       console.log(`${style.padEnd(20)} | ${verdict.padEnd(16)} | gate refused (twist / legacy path / decimation broke parallelism / missing taper config)`);
     } else {
+      const mode = d.referenceMode === 'gpu-grid' ? `gpu-grid@${d.referenceRes}` : d.referenceMode;
       console.log(
         `${style.padEnd(20)} | ${verdict.padEnd(16)} | ${String(d.vertexMaxMm?.toFixed(4)).padStart(9)} | ${String(d.chordMaxMm?.toFixed(4)).padStart(8)} | `
         + `${String(d.p99DevMm?.toFixed(4)).padStart(6)} | ${String(`${d.nAbove}/${d.samples}`).padStart(14)} | ${String(d.triangleCount).padStart(8)} | `
-        + `${String(d.seamBandMaxMm?.toFixed(2)).padStart(5)} | ${String(d.riserBandMaxMm?.toFixed(2)).padStart(5)} | ${d.referenceMode}`,
+        + `${String(d.seamBandMaxMm?.toFixed(2)).padStart(5)} | ${String(d.riserBandMaxMm?.toFixed(2)).padStart(5)} | ${mode}`,
       );
     }
   }

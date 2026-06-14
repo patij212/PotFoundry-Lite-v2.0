@@ -37,6 +37,7 @@ import {
   crestBandTriangleQuality,
   extractOuterWallSubmesh,
   meshHash,
+  sampleTrueRadius,
   seamBandTriangleQuality,
   topologyDiagnostics,
   topologyMetric,
@@ -500,25 +501,46 @@ export interface FidelitySurfaceFidelityDiagnosticOptions {
   seamExclU?: number;
   /** Half-width of the ArtDeco riser t-band exclusion (default 1.6e-3). */
   tBandHalf?: number;
+  /**
+   * Which truth to compare against:
+   *  - `'analytic'` (or `'sfb-packed'` for SFB): the CPU formula — EXACT where
+   *    `styles.ts` matches the WGSL shader, WRONG where it has drifted.
+   *  - `'gpu'`: the decoupled GPU outer-wall grid (the shader's own eval) — faithful
+   *    for ANY style, but band-limited at sharp features. Requires the
+   *    `__pfReferenceDenseRes` lever (else the grid is null and this is a no-op).
+   *  - `'auto'` (DEFAULT): use the analytic reference, but FALL BACK to the GPU grid
+   *    when the analytic reference is untrusted (vertexMax > eps) AND a grid is
+   *    available — keeps the exact reference where it is best, GPU-truth elsewhere.
+   */
+  referenceSource?: 'analytic' | 'gpu' | 'auto';
+  /** Newton iterations for the GPU-grid (θ,z)→radius inversion (default 6). */
+  newtonIters?: number;
 }
 
 export interface FidelitySurfaceFidelityDiagnostics extends AnalyticDevResult {
   styleId: string;
   /** Outer-wall triangles whose 3 corners are all surfaceId 0 (the measured set). */
   triangleCount: number;
-  /** Echo of the truth source: 'sfb-packed' honors sf_strength; 'analytic' = STYLE_FUNCTIONS. */
-  referenceMode: 'sfb-packed' | 'analytic';
   /**
-   * Self-check that the CPU reference matches the GPU shader that PLACED the
+   * Echo of the truth source used for THIS result: 'sfb-packed' honors sf_strength;
+   * 'analytic' = STYLE_FUNCTIONS; 'gpu-grid' = the decoupled GPU outer-wall grid
+   * (the shader's own eval, used as the fallback when the analytic ref drifted).
+   */
+  referenceMode: 'sfb-packed' | 'analytic' | 'gpu-grid';
+  /** Grid resolution when referenceMode==='gpu-grid' (band-limit caveat); else undefined. */
+  referenceRes?: number;
+  /**
+   * Self-check that the chosen reference RESOLVES the GPU shader that PLACED the
    * vertices. Production GPU-evaluates every outer-wall vertex EXACTLY at its
-   * (u,t), so with a faithful reference the VERTEX channel reads ≈ the f32 floor
-   * (≤ ~0.001mm). A `vertexMaxMm` above {@link REFERENCE_PARITY_EPS_MM} means the
-   * analytic reference (`styles.ts` STYLE_FUNCTIONS) has DRIFTED from the WGSL
-   * shader (e.g. a relief-amplitude/mask mismatch — measured on Gyroid/Basket/
-   * Hex where vertexMax == the full relief default). When false, the mesh is
-   * still GPU-faithful (it renders correctly) but the `chord`/`dev` numbers are
-   * measured against a WRONG surface and MUST NOT be gated on. The headline
-   * "mesh lies on the true surface" claim only holds when this is true.
+   * (u,t), so a reference that tracks the true surface reads vertexMax ≈ the f32
+   * floor (≤ ~0.001mm). A `vertexMaxMm` above {@link REFERENCE_PARITY_EPS_MM} means
+   * the reference does NOT track it — either the CPU analytic (`styles.ts`) has
+   * DRIFTED from the WGSL shader (a relief-amplitude/mask mismatch — measured on
+   * Gyroid/Basket/Hex where vertexMax == the full relief default), or the
+   * band-limited 'gpu-grid' under-resolves a sharp feature (raise
+   * `__pfReferenceDenseRes`). In both cases the mesh is still GPU-faithful (it
+   * renders correctly) but the `chord`/`dev` numbers are not yet trustworthy. The
+   * headline "mesh lies on the true surface" claim holds only when this is true.
    */
   referenceTrusted: boolean;
 }
@@ -818,7 +840,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
 
       // Build the config-true analytic radius closure (theta, z) -> mm.
       let rAnalytic: AnalyticRadiusFn;
-      let referenceMode: 'sfb-packed' | 'analytic';
+      let referenceMode: 'sfb-packed' | 'analytic' | 'gpu-grid';
       if (styleId === 'SuperformulaBlossom') {
         // PACKED truth: honor sf_strength at p[0] with the GPU mix (styles.wgsl:102)
         // — STYLE_FUNCTIONS omits strength (always full petals), the BLOCKING-2 trap.
@@ -856,10 +878,10 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         ? artDecoRiserTBands(style.opts.ad_step_count ?? style.opts.adStepCount ?? 4)
         : [];
 
-      const res = radialAnalyticDeviation(
+      const measure = (rA: AnalyticRadiusFn): AnalyticDevResult => radialAnalyticDeviation(
         { vertices: mesh.vertices, indices: mesh.indices },
         ut,
-        rAnalytic,
+        rA,
         {
           H,
           tolMm: opts.tolMm ?? 0.1,
@@ -870,15 +892,57 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           denseN: opts.denseN,
         },
       );
-      // PARITY SELF-CHECK: vertices are GPU-placed-exact, so a faithful reference
-      // reads vertexMax ≈ f32 floor. Above the eps ⇒ the CPU reference drifted
-      // from the WGSL shader (NOT a mesh defect) ⇒ the chord/dev numbers are
-      // measured against the wrong surface — do not gate on them.
+
+      let res = measure(rAnalytic);
+      let referenceRes: number | undefined;
+
+      // GPU-TRUTH FALLBACK: the CPU analytic reference (styles.ts STYLE_FUNCTIONS)
+      // has DRIFTED from the WGSL shader on ~half the styles (vertexMax >> f32
+      // floor — measured: Gyroid/Basket/Hex == full relief default, Crystalline 45mm).
+      // When it has (or when 'gpu' is forced), re-measure against the DECOUPLED GPU
+      // outer-wall grid — the shader's OWN eval, faithful for ANY style (band-limited
+      // at sharp features, so kept ONLY as the fallback; the exact analytic stays
+      // primary where it is trusted, which is better on sharp crests). Requires the
+      // `__pfReferenceDenseRes` lever; with no grid we keep the analytic result
+      // (backward-compatible — default probes are unchanged).
+      const source = opts.referenceSource ?? 'auto';
+      const wantGpu = source === 'gpu'
+        || (source === 'auto' && res.vertexMaxMm > REFERENCE_PARITY_EPS_MM);
+      if (wantGpu) {
+        const refGrid = getLastConformingOuterReferenceGrid();
+        if (refGrid) {
+          const useBicubic = (globalThis as unknown as { __pfReferenceBicubic?: boolean }).__pfReferenceBicubic === true;
+          const sampler = useBicubic
+            ? new BicubicSurfaceSampler(refGrid.positions, refGrid.resU, refGrid.resT)
+            : new GpuSurfaceSampler(refGrid.positions, refGrid.resU, refGrid.resT);
+          // Outer-wall z extent from the grid (the sampler's own domain — seeds the
+          // (θ,z)→(u,t) Newton inversion).
+          let zMin = Infinity, zMax = -Infinity;
+          for (let i = 2; i < refGrid.positions.length; i += 3) {
+            const z = refGrid.positions[i];
+            if (z < zMin) zMin = z;
+            if (z > zMax) zMax = z;
+          }
+          const iters = opts.newtonIters ?? 6;
+          const gpuRAnalytic: AnalyticRadiusFn = (theta, z) =>
+            sampleTrueRadius(sampler, theta, z, zMin, zMax, { newtonIters: iters });
+          res = measure(gpuRAnalytic);
+          referenceMode = 'gpu-grid';
+          referenceRes = refGrid.resU;
+        }
+      }
+
+      // PARITY / RESOLUTION SELF-CHECK: vertices are GPU-placed-exact, so a reference
+      // that tracks the true surface reads vertexMax ≈ f32 floor. Above the eps ⇒ the
+      // chosen reference does NOT track it (analytic drift, OR a band-limited gpu-grid
+      // under-resolving a sharp feature) — mesh still GPU-faithful, but the numbers
+      // are not yet trustworthy.
       const referenceTrusted = res.vertexMaxMm <= REFERENCE_PARITY_EPS_MM;
       return {
         styleId,
         triangleCount: res.wallTriangles,
         referenceMode,
+        referenceRes,
         referenceTrusted,
         ...res,
       };
