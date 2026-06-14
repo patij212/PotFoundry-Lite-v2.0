@@ -42,6 +42,50 @@ must consult `referenceTrusted` (or use a GPU-truth reference). To B5-certify th
 either parity-fix `styles.ts` against the WGSL, or give the gate a GPU-eval reference
 (generalize SFB's packed path to a per-(θ,z) GPU sample).
 
+## GPU-truth reference fallback — "trust all 20" (2026-06-14, commit `85cbe7f`)
+
+Chose the GPU-eval reference (lower risk than parity-fixing the deprecated `styles.ts`,
+generalizes uniformly). `diagnoseSurfaceFidelity` gained `referenceSource`
+`'analytic'|'gpu'|'auto'` (default `'auto'`): keep the EXACT analytic reference where it
+is trusted (better on sharp crests), fall back to the **decoupled GPU outer-wall grid**
+(`__pfReferenceDenseRes` + bicubic + the tested `sampleTrueRadius` Newton (θ,z)→(u,t)
+inversion) where the analytic drifted. `referenceMode` echoes `'gpu-grid'`+`referenceRes`;
+`referenceTrusted` is uniform (vertexMax≤eps on whichever ref was used).
+
+**The drift FAILs collapse under GPU truth** (real GPU, sweep + `_fidelity_gpuref_check.cjs`):
+WaveInterference 1.19→**CERTIFIED** (vtx 0.0003); Crystalline 45→0.43, LowPoly 16→0.11(@512),
+DragonScales 8.9→1.55, Gyroid 1.5→1.23, Voronoi 0.67→0.40, HexHive 2.0→0.075, CelticKnot
+2.6→0.78. Confirms the meshes are GPU-faithful; the big numbers were pure reference drift.
+
+**⚠ KEY band-limit finding (refRes test, LowPolyFacet 512→1024):** a band-limited grid
+reference does TWO things — it INFLATES vertexMax (smoothed ref vs sharp mesh vertex) AND
+**UNDER-STATES the chord** (a smoothed ref sits closer to a flat facet than the true sharp
+surface). LowPolyFacet@512 read chord 0.115 (untrusted, vtx 0.068); @1024 vtx dropped to
+0.034 (**trusted**) and the TRUE chord surfaced at **0.577** (a real density gap 512 HID).
+⇒ **trust the chord ONLY where `referenceTrusted=true`**; for a drift style that means
+raising `__pfReferenceDenseRes` until the reference resolves it. `referenceTrusted`
+correctly gated this (it read false at 512). Sharp styles may need refRes ≥1024–2048, or
+the analytic parity-fix (exact, no band-limit) — the better long-term path for them.
+
+**COMPLETE "trust all 20" partition (best reference per style — analytic where trusted,
+else gpu-grid@512/1024):** 15 of 20 now have a TRUSTWORTHY verdict.
+
+| Bucket | Styles | Evidence |
+|---|---|---|
+| **CERTIFIED (8)** — on true surface + slicer-clean | FourierBloom, SpiralRidges, SuperellipseMorph, HarmonicRipple, WaveInterference, ArtDeco, RippleInterference, **HexagonalHive** | vtx ≈ f32 floor (Hive 0.006@1024), chord < 0.3 |
+| **Band-limit / body-clean (2)** — p99 < tol, residual vtx = sharp-edge band-limit (certify at higher refRes) | Voronoi (p99 0.11, vtx 0.18→0.08), Crystalline (p99 0.072, vtx 0.43→0.20) | vtx DROPS with refRes; body below tol |
+| **PARTIAL — real chord gap, TRUSTED ref (5)** | SuperformulaBlossom 0.87 (seam), GothicArches 1.46, BambooSegments 2.46, GeometricStar 1.03, LowPolyFacet 0.58 | analytic-exact (4) / gpu@1024 trusted (LowPoly vtx 0.034) |
+| **GPU-grid UNRESOLVED (5)** — referenceTrusted=false AND refRes-STABLE (grid can't pin them) | DragonScales (vtx 1.52→1.52, p99 1.29), BasketWeave (1.88, p99 1.45), GyroidManifold (0.63, p99 0.58), CelticKnot (0.65, p99 0.35), CelticTriquetra (1.12, p99 0.25) | refRes 512→1024 barely moves vtx |
+
+**The refRes test is the band-limit/real discriminator:** vtx DROPS with refRes ⇒ band-limit
+(mesh fine — HexHive, Voronoi, Crystalline, LowPoly); vtx STABLE ⇒ the grid genuinely can't
+represent the style's sharp/fine surface (DragonScales' total invariance is the canary).
+**⇒ the last 5 want the ANALYTIC parity-fix (exact, no band-limit), not a finer grid** —
+this is where the GPU-grid reference approach hits its limit. (Whether their residual is a
+real mesh gap or a grid-vs-mesh inconsistency is unresolved BY the grid; the analytic ref
+would settle it.) Probes: `_fidelity_surface_sweep.cjs` (PF_REF_RES, PF_STYLES, PF_DENSE_N,
+PF_DIAG_TIMEOUT), `_fidelity_gpuref_check.cjs`. Logs: 512 main sweep + 1024 pass on the 8.
+
 ## The validated model (use this to classify any style)
 
 - **C0 radius jump** (discontinuity, e.g. ArtDeco step) → **paired-ring riser**:
