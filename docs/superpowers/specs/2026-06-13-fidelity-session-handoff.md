@@ -113,7 +113,20 @@ holdouts: CelticKnot (0.42 — residual braid-port diff, re-diff the weave_densi
 BasketWeave (1.89 — see below).** The actionable export-fidelity list (real chord gaps,
 trusted) is now the 8 PARTIALs.
 
-## BasketWeave holdout — ROOT-CAUSED, it is a METRIC discontinuity artifact (2026-06-14, commit `31d2a4d`)
+## BasketWeave holdout — RESOLVED (root-caused `31d2a4d`, fixed `a431776`)
+
+**FIX SHIPPED (`a431776`):** `radialAnalyticDeviation` gained `creaseU`/`creaseT`/`creaseHalf`
+— triangles touching/straddling an over/under crease locus are excluded + tracked in
+`creaseBandMaxMm`, exactly like `seamExclU`/`tBands`. `basketWeaveCreaseLoci()` computes the
+loci; `windowHook` passes them for BasketWeave only when axis-aligned (twist=0, vGrad=0).
+**Real-GPU result: BasketWeave vtx 1.89→0.0000 → referenceTrusted=true → TRUSTED PARTIAL.**
+The remaining chord ~2.0 is GENUINE (flat facets chord-cut the 2.0mm weave relief bump
+within each cell — density-closable, BambooSegments-class) and is now honestly reported.
+⇒ **16/20 EXACT-trusted** (the prior 15 + BasketWeave). `creaseU/T` empty for every other
+style → zero impact on the other 19. Tests: `verify_creaseExclusion` 3/3. Below = the
+original root-cause record.
+
+### Original root-cause record (it is a METRIC discontinuity artifact, `31d2a4d`)
 
 Investigated with `_debugRadialBreakdown` + `e2e/_fidelity_basketweave_probe.cjs` (per
 outer-wall vertex: placed radius vs analytic ref at the RECOVERED (atan2,z/H) AND the EXACT
