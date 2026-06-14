@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-01-19T01:10:38.645Z",
+  "generatedAt": "2026-06-14T13:07:00.860Z",
   "version": "1.0.0",
   "tolerance": 0.001,
   "styles": {
@@ -3613,210 +3613,422 @@
         "theta": 0,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.5
+        "expectedRadius": 46.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 0.7853981633974483,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.92548751831055
+        "expectedRadius": 46.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 1.5707963267948966,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.5
+        "expectedRadius": 46.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 3.141592653589793,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 49.5
+        "expectedRadius": 46.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 4.71238898038469,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.5
+        "expectedRadius": 46.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 6.2731853071795864,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.5
+        "expectedRadius": 46.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 0,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.25
+        "expectedRadius": 50.650001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 0.7853981633974483,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.67548751831055
+        "expectedRadius": 50.650001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 1.5707963267948966,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.25
+        "expectedRadius": 50.650001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 3.141592653589793,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 53.25
+        "expectedRadius": 50.650001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 4.71238898038469,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.25
+        "expectedRadius": 50.650001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 6.2731853071795864,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.25
+        "expectedRadius": 50.650001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 0,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 59.5
+        "expectedRadius": 56.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 0.7853981633974483,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 57.758819580078125
+        "expectedRadius": 56.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 1.5707963267948966,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 59.5
+        "expectedRadius": 56.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 3.141592653589793,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 59.5
+        "expectedRadius": 56.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 4.71238898038469,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 59.5
+        "expectedRadius": 56.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 6.2731853071795864,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 59.5
+        "expectedRadius": 56.900001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 0,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 63.75
+        "expectedRadius": 63.150001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 0.7853981633974483,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 64.17548370361328
+        "expectedRadius": 63.150001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 1.5707963267948966,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 63.75
+        "expectedRadius": 63.150001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 3.141592653589793,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.75
+        "expectedRadius": 63.150001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 4.71238898038469,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 63.75
+        "expectedRadius": 63.150001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 6.2731853071795864,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 63.75
+        "expectedRadius": 63.150001525878906
       },
       {
         "styleId": "CelticKnot",
         "theta": 0,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 67.5
+        "expectedRadius": 66.9000015258789
       },
       {
         "styleId": "CelticKnot",
         "theta": 0.7853981633974483,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 67.92548370361328
+        "expectedRadius": 66.9000015258789
       },
       {
         "styleId": "CelticKnot",
         "theta": 1.5707963267948966,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 67.5
+        "expectedRadius": 66.9000015258789
       },
       {
         "styleId": "CelticKnot",
         "theta": 3.141592653589793,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 69.5
+        "expectedRadius": 66.9000015258789
       },
       {
         "styleId": "CelticKnot",
         "theta": 4.71238898038469,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 67.5
+        "expectedRadius": 66.9000015258789
       },
       {
         "styleId": "CelticKnot",
         "theta": 6.2731853071795864,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 67.5
+        "expectedRadius": 66.9000015258789
+      }
+    ],
+    "CelticTriquetra": [
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0,
+        "t": 0.1,
+        "r0": 47.5,
+        "expectedRadius": 47.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0.7853981633974483,
+        "t": 0.1,
+        "r0": 47.5,
+        "expectedRadius": 47.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 1.5707963267948966,
+        "t": 0.1,
+        "r0": 47.5,
+        "expectedRadius": 47.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 3.141592653589793,
+        "t": 0.1,
+        "r0": 47.5,
+        "expectedRadius": 47.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 4.71238898038469,
+        "t": 0.1,
+        "r0": 47.5,
+        "expectedRadius": 47.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 6.2731853071795864,
+        "t": 0.1,
+        "r0": 47.5,
+        "expectedRadius": 47.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0,
+        "t": 0.25,
+        "r0": 51.25,
+        "expectedRadius": 52.88652420043945
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0.7853981633974483,
+        "t": 0.25,
+        "r0": 51.25,
+        "expectedRadius": 50.9375
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 1.5707963267948966,
+        "t": 0.25,
+        "r0": 51.25,
+        "expectedRadius": 50.9375
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 3.141592653589793,
+        "t": 0.25,
+        "r0": 51.25,
+        "expectedRadius": 52.88652038574219
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 4.71238898038469,
+        "t": 0.25,
+        "r0": 51.25,
+        "expectedRadius": 50.9375
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 6.2731853071795864,
+        "t": 0.25,
+        "r0": 51.25,
+        "expectedRadius": 53.12511444091797
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0,
+        "t": 0.5,
+        "r0": 57.5,
+        "expectedRadius": 57.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0.7853981633974483,
+        "t": 0.5,
+        "r0": 57.5,
+        "expectedRadius": 57.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 1.5707963267948966,
+        "t": 0.5,
+        "r0": 57.5,
+        "expectedRadius": 57.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 3.141592653589793,
+        "t": 0.5,
+        "r0": 57.5,
+        "expectedRadius": 57.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 4.71238898038469,
+        "t": 0.5,
+        "r0": 57.5,
+        "expectedRadius": 57.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 6.2731853071795864,
+        "t": 0.5,
+        "r0": 57.5,
+        "expectedRadius": 57.125
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0,
+        "t": 0.75,
+        "r0": 63.75,
+        "expectedRadius": 63.375
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0.7853981633974483,
+        "t": 0.75,
+        "r0": 63.75,
+        "expectedRadius": 64.95164489746094
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 1.5707963267948966,
+        "t": 0.75,
+        "r0": 63.75,
+        "expectedRadius": 63.375
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 3.141592653589793,
+        "t": 0.75,
+        "r0": 63.75,
+        "expectedRadius": 65.8661117553711
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 4.71238898038469,
+        "t": 0.75,
+        "r0": 63.75,
+        "expectedRadius": 63.375
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 6.2731853071795864,
+        "t": 0.75,
+        "r0": 63.75,
+        "expectedRadius": 63.375
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0,
+        "t": 0.9,
+        "r0": 67.5,
+        "expectedRadius": 68.625
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 0.7853981633974483,
+        "t": 0.9,
+        "r0": 67.5,
+        "expectedRadius": 68.625
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 1.5707963267948966,
+        "t": 0.9,
+        "r0": 67.5,
+        "expectedRadius": 68.625
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 3.141592653589793,
+        "t": 0.9,
+        "r0": 67.5,
+        "expectedRadius": 68.625
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 4.71238898038469,
+        "t": 0.9,
+        "r0": 67.5,
+        "expectedRadius": 68.625
+      },
+      {
+        "styleId": "CelticTriquetra",
+        "theta": 6.2731853071795864,
+        "t": 0.9,
+        "r0": 67.5,
+        "expectedRadius": 68.625
       }
     ],
     "LowPolyFacet": [

@@ -1011,7 +1011,8 @@ export function rOuterDragonScales(
   const rowLocal = rowPhase - row;
 
   // Stagger scales between rows (brick pattern)
-  const staggerOffset = (row % 2) * 0.5 * TAU / scalesPerRow;
+  // Match GPU: select(0.0, 0.5 * TAU / scales_per_row, i32(row) % 2 == 1)
+  const staggerOffset = (Math.trunc(row) % 2 === 1) ? (0.5 * TAU / scalesPerRow) : 0.0;
   const scaleTheta = theta + staggerOffset;
 
   // Scale position
@@ -1035,8 +1036,8 @@ export function rOuterDragonScales(
 
   const modulation = 1.0 - scaleDepth * scaleShape * sizeMultiplier + randVar;
 
-  // Match GPU: max(modulation, 0.5)
-  return r0 * Math.max(modulation, 0.5);
+  // Match GPU: clamp(modulation, 0.5, 2.0)
+  return r0 * Math.min(Math.max(modulation, 0.5), 2.0);
 }
 
 export function rOuterDragonScalesVec(
@@ -1273,36 +1274,29 @@ export function rOuterGyroidManifold(
   // Apply Bias
   val = val + bias;
 
-  // Threshold for lattice
-  // "Inside" the lattice wall if abs(val) < thickness
-  // Smoothstep for nice bevel
-  const d = Math.abs(val) - thickness * 1.5; // Scale thickness slightly
+  // Lattice relief — MATCHES the WGSL `style_gyroid_manifold` exactly (CPU↔WGSL
+  // parity for the B5 fidelity reference; the legacy CPU export shares this).
+  // WGSL operative: shape = smoothstep(th, th − smoothVal·th, |val|)^curve, i.e. a
+  // plateau of 1 for |val| ≤ th·(1−smoothVal) ramping INWARD to 0 at |val| ≥ th.
+  const th = thickness * 1.5;
+  const d = Math.abs(val);
+  const denom = smoothVal * th;
+  let s = denom > 1e-12 ? (th - d) / denom : (d < th ? 1 : 0);
+  s = Math.max(0, Math.min(1, s)); // = WGSL smoothstep(th, th − smoothVal·th, d)
+  const shapeRaw = s * s * (3 - 2 * s);
+  const shape = Math.pow(shapeRaw, curve > 0 ? curve : 1);
 
-  // Mask: 1.0 inside wall, 0.0 outside
-  // Invert d so negative (inside) becomes positive mask
-  // Smooth transition width
-  const smooth = smoothVal * thickness * 1.5;
-  let mask = 0.0;
-  if (d < 0) {
-    mask = 1.0;
-  } else if (d < smooth) {
-    // smoothstep(th, th-smooth, d) logic inverted
-    // mask = 1.0 - smoothstep(0, smooth, d)
-    let t = d / smooth; // 0 to 1
-    t = Math.max(0, Math.min(1, t));
-    mask = 1.0 - t * t * (3 - 2 * t);
-  }
-  mask = Math.pow(mask, curve);
-
-  // Edge Fading
+  // Edge fade — product of a bottom AND a top smoothstep (WGSL fade_factor).
   let fade = 1.0;
   if (edgeFade > 0) {
-    if (t < edgeFade) fade = t / edgeFade;
-    else if (t > 1.0 - edgeFade) fade = (1.0 - t) / edgeFade;
-    fade = fade * fade * (3 - 2 * fade);
+    const bs = Math.max(0, Math.min(1, t / edgeFade));
+    const bFade = bs * bs * (3 - 2 * bs);
+    const tsr = Math.max(0, Math.min(1, (t - (1 - edgeFade)) / edgeFade));
+    const tFade = 1 - tsr * tsr * (3 - 2 * tsr);
+    fade = bFade * tFade;
   }
 
-  return r0 + relief * mask * fade;
+  return r0 + relief * shape * fade;
 }
 
 /**
@@ -1356,28 +1350,26 @@ export function rOuterGyroidManifoldVec(
     // Apply Bias
     val = val + bias;
 
-    const d = Math.abs(val) - thickness * 1.5;
-
-    let mask = 0.0;
-
-    const smooth = smoothVal * thickness * 1.5;
-    if (d < 0) {
-      mask = 1.0;
-    } else if (d < smooth) {
-      let t = d / smooth;
-      t = Math.max(0, Math.min(1, t));
-      mask = 1.0 - t * t * (3 - 2 * t);
-    }
-    mask = Math.pow(mask, curve);
+    // Lattice relief — MATCHES the WGSL `style_gyroid_manifold` (CPU↔WGSL parity;
+    // see the scalar rOuterGyroidManifold above for the derivation).
+    const th = thickness * 1.5;
+    const d = Math.abs(val);
+    const denom = smoothVal * th;
+    let s = denom > 1e-12 ? (th - d) / denom : (d < th ? 1 : 0);
+    s = Math.max(0, Math.min(1, s));
+    const shapeRaw = s * s * (3 - 2 * s);
+    const shape = Math.pow(shapeRaw, curve > 0 ? curve : 1);
 
     let fade = 1.0;
     if (edgeFade > 0) {
-      if (t < edgeFade) fade = t / edgeFade;
-      else if (t > 1.0 - edgeFade) fade = (1.0 - t) / edgeFade;
-      fade = fade * fade * (3 - 2 * fade);
+      const bs = Math.max(0, Math.min(1, t / edgeFade));
+      const bFade = bs * bs * (3 - 2 * bs);
+      const tsr = Math.max(0, Math.min(1, (t - (1 - edgeFade)) / edgeFade));
+      const tFade = 1 - tsr * tsr * (3 - 2 * tsr);
+      fade = bFade * tFade;
     }
 
-    result[i] = r0 + relief * mask * fade;
+    result[i] = r0 + relief * shape * fade;
   }
   return result;
 }
@@ -1909,71 +1901,110 @@ export function rOuterCelticKnot(
 ): number {
   const params = opts as Partial<CelticKnotParams>;
 
-  const scale = params.ckScale ?? DEFAULT_CELTIC_KNOT.ckScale;
-  const width = params.ckWidth ?? DEFAULT_CELTIC_KNOT.ckWidth;
+  // WGSL style_celtic_knot param map (packCelticKnot in styleParams.ts):
+  //   0: Scale, 1: Width, 2: Relief, 3: Gap, 4: Roundness, 5: Twist, 6: Strands.
+  // The CPU previously implemented a DIFFERENT (checkerboard) algorithm; this is a
+  // literal port of the WGSL 3-strand sine braid + Z-buffer occlusion (CPU↔WGSL parity).
+  const p0 = params.ckScale ?? DEFAULT_CELTIC_KNOT.ckScale;
+  const p1 = params.ckWidth ?? DEFAULT_CELTIC_KNOT.ckWidth;
   const relief = params.ckRelief ?? DEFAULT_CELTIC_KNOT.ckRelief;
-  const gap = params.ckGap ?? DEFAULT_CELTIC_KNOT.ckGap;
+  const gapVis = params.ckGap ?? DEFAULT_CELTIC_KNOT.ckGap;
   const roundness = params.ckRoundness ?? DEFAULT_CELTIC_KNOT.ckRoundness;
-  const twist = params.ckTwist ?? DEFAULT_CELTIC_KNOT.ckTwist;
+  const p5 = params.ckTwist ?? DEFAULT_CELTIC_KNOT.ckTwist;
+  const p6 = params.ckStrands ?? DEFAULT_CELTIC_KNOT.ckStrands;
 
-  const t = Math.max(0, Math.min(1, z / Math.max(H, 1e-4)));
   const PI = Math.PI;
   const TAU = 2 * PI;
   const PI_OVER_2 = PI / 2;
 
-  const uRaw = theta / TAU * scale;
-  const vRaw = t * scale;
+  const t = Math.max(0, Math.min(1, z / Math.max(H, 1e-4)));
 
-  const row = Math.floor(vRaw);
+  const numColumns = Math.max(1.0, Math.floor(p0));
+  const strandW = p1 * 0.15;
+  const tightness = Math.max(0.5, p5 + 0.5);
+  const numStrandsF = Math.max(2.0, Math.min(8.0, Math.floor(p6 + 0.5)));
+  const numStrands = Math.trunc(numStrandsF); // i32(num_strands_f)
 
-  const uTwisted = uRaw + row * twist;
-  const colTwisted = Math.floor(uTwisted);
+  // Column tiling
+  const thetaNorm = theta / TAU;
+  const columnId = Math.floor(thetaNorm * numColumns);
+  const fractColU = (thetaNorm * numColumns) - Math.floor(thetaNorm * numColumns);
+  const localU = (fractColU - 0.5) * 2.0;
 
-  const uLocal = (uTwisted - Math.floor(uTwisted)) - 0.5;
-  const vLocal = (vRaw - Math.floor(vRaw)) - 0.5;
+  // Vertical coordinate with tightness control
+  const v = t * tightness * TAU * 3.0;
 
-  const checker = (colTwisted + row) % 2;
+  // Braid parameters
+  const amp = 0.4;
+  const frq = 1.0;
+  const phaseStep = TAU / numStrandsF;
+  const basePhase = columnId * PI * 0.333;
 
-  const dH = Math.abs(vLocal) - width;
-  const dV = Math.abs(uLocal) - width;
+  const distances: number[] = new Array(8).fill(999.0);
+  const zHeights: number[] = new Array(8).fill(0.0);
 
-  const inH = dH < 0;
-  const inV = dV < 0;
-  const atCross = inH && inV;
+  const weaveDensity = Math.max(1.0, numStrandsF - 1.0);
+  const isOddStrands = (numStrands % 2) !== 0;
 
-  let hBand = 0;
-
-  if (inH || inV) {
-    let dBand = 0;
-    if (inH && !inV) {
-      dBand = Math.abs(vLocal) / width;
-    } else if (inV && !inH) {
-      dBand = Math.abs(uLocal) / width;
-    } else {
-      dBand = Math.min(Math.abs(uLocal), Math.abs(vLocal)) / width;
+  for (let i = 0; i < 8; i++) {
+    if (i >= numStrands) {
+      distances[i] = 999.0;
+      continue;
     }
+    const phase = basePhase + phaseStep * i;
+    const arg = v * frq + phase;
 
-    const profileRound = Math.cos(dBand * PI_OVER_2);
-    const profileFlat = 1.0 - dBand;
-    hBand = profileFlat * (1 - roundness) + profileRound * roundness;
+    const x = amp * Math.sin(arg);
+    distances[i] = Math.abs(localU - x);
 
-    if (atCross) {
-      const isHOnTop = checker < 0.5;
-      if (isHOnTop) {
-        hBand = Math.cos(Math.abs(vLocal) / width * PI_OVER_2) * ((1 - roundness) + profileRound * roundness);
-        if (Math.abs(uLocal) < Math.abs(vLocal) - gap) {
-          hBand = hBand * 0.5;
-        }
-      } else {
-        hBand = Math.cos(Math.abs(uLocal) / width * PI_OVER_2) * ((1 - roundness) + profileRound * roundness);
-        if (Math.abs(vLocal) < Math.abs(uLocal) - gap) {
-          hBand = hBand * 0.5;
-        }
-      }
+    // Parity-switched Z-oscillation
+    const oscArg = arg * weaveDensity;
+    zHeights[i] = isOddStrands ? Math.sin(oscArg) : Math.cos(oscArg);
+  }
+
+  // Find the closest strand
+  let minD = 999.0;
+  let closestId = 0;
+  for (let i = 0; i < 8; i++) {
+    if (i >= numStrands) break;
+    const d = distances[i];
+    if (d < minD) {
+      minD = d;
+      closestId = i;
     }
   }
 
-  return r0 + hBand * relief;
+  // Background if not on any strand
+  if (minD > strandW) {
+    return r0 - relief * 0.3;
+  }
+
+  // Occlusion search (standard Z-buffer)
+  let bestZ = zHeights[closestId];
+  let finalDist = minD;
+  for (let i = 0; i < 8; i++) {
+    if (i >= numStrands) break;
+    if (i === closestId) continue;
+    const d = distances[i];
+    const zz = zHeights[i];
+    if (d < strandW && zz > bestZ) {
+      bestZ = zz;
+      finalDist = d;
+    }
+  }
+
+  // Render
+  const dNorm = finalDist / strandW;
+  // mix(1 - dNorm, cos(dNorm * PI_OVER_2), roundness)
+  const profile = (1.0 - dNorm) + (Math.cos(dNorm * PI_OVER_2) - (1.0 - dNorm)) * roundness;
+
+  // Normalize Z [-1,1] -> [0,1]
+  const zNorm = bestZ * 0.5 + 0.5;
+  // mix(0.3 + gapVis*0.2, 1.0, zNorm)
+  const lo = 0.3 + gapVis * 0.2;
+  const depthFactor = lo + (1.0 - lo) * zNorm;
+
+  return r0 + profile * relief * depthFactor;
 }
 
 export function rOuterCelticKnotVec(
@@ -2252,11 +2283,15 @@ export function rOuterCelticTriquetra(
     h = Math.max(h, inside * hm);
   }
 
-  // Rim lines
+  // Rim lines — smoothstep(rimW, 0, |t - center|) to match WGSL exactly
   const rimW = 0.008;
-  const rimTop = Math.max(0, 1 - Math.abs(t - 0.90) / rimW) * 0.6;
-  const rimMid = Math.max(0, 1 - Math.abs(t - 0.52) / rimW) * 0.4;
-  const rimBot = Math.max(0, 1 - Math.abs(t - 0.15) / rimW) * 0.4;
+  const rimFall = (d: number): number => {
+    const s = Math.min(Math.max((d - rimW) / (0.0 - rimW), 0), 1); // smoothstep(rimW, 0, d)
+    return s * s * (3 - 2 * s);
+  };
+  const rimTop = rimFall(Math.abs(t - 0.90)) * 0.6;
+  const rimMid = rimFall(Math.abs(t - 0.52)) * 0.4;
+  const rimBot = rimFall(Math.abs(t - 0.15)) * 0.4;
   h = Math.max(h, rimTop, rimMid, rimBot);
 
   const base = r0 - relief * 0.15;

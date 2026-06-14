@@ -118,8 +118,14 @@ export function radialAnalyticDeviation(
   let worst = { theta: 0, z: 0, mm: 0 };
 
   // Radial deviation at a 3D point (recover theta=atan2, z direct → r_analytic).
+  // THETA CONVENTION: atan2 returns [−π,π]; the WGSL shader receives the azimuth
+  // in [0,TAU). Styles whose radius has theta-SIGN-dependent INTEGER logic (cell
+  // parity, column id — DragonScales, CelticKnot, …) sample the WRONG cell on the
+  // back half (atan2<0) without this wrap; measured DragonScales 8.91mm→0.0001mm,
+  // CelticKnot 2.6→0.42 when wrapped, while periodic styles (Gyroid/…) are a no-op.
   const devAt = (x: number, y: number, z: number): number => {
-    const theta = Math.atan2(y, x);
+    let theta = Math.atan2(y, x);
+    if (theta < 0) theta += TAU; // → [0,TAU) to match the shader's azimuth domain
     return Math.abs(Math.hypot(x, y) - rAnalytic(theta, z));
   };
 
