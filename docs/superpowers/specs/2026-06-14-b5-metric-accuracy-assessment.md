@@ -27,12 +27,19 @@ captured after the domain warps) for the VERTEX channel, instead of recovering t
 azimuth via atan2. → vtx 0.42→0.0001, **PARTIAL** (chord 0.82 = real braid density).
 No regression (placement≈recovery for well-behaved styles; BasketWeave stays 0.0000).
 
-**Voronoi — the lone remaining REF-UNTRUSTED (0.14), an irreducible f32/f64 floor.**
-Distributed (p99 0.155) — the hash amplifies f32-vs-f64 precision differences. The
-stash-parameter reference left it UNCHANGED at 0.14, which PROVES it is precision, not
-a recovery flip or formula drift (those are now all fixed). Closing it would require
-`Math.fround`-simulating the hash (invasive, in CPU export-pipeline code) — deferred as
-not worth it (0.14mm is sub-printer-resolution; the GPU-grid fallback reports it honestly).
+**Voronoi — the lone remaining REF-UNTRUSTED (0.14): irreducible independent-verification
+floor.** Distributed (p99 0.155) at the steep web-edge gradient. The stash-parameter
+reference left it unchanged (not a recovery flip) AND the formula byte-matches WGSL (not
+drift). **An f32 hash simulation via `Math.fround` was ATTEMPTED (hash22 + periodicCellular
++ grid coords) and did NOT close it (0.14→0.1448, no benefit) — reverted.** Root cause: the
+GPU hash uses FMA + a driver-specific rounding ORDER; `Math.fround` matches f32 *precision*
+but not the op sequence, and in a chaotic `fract`-based hash that difference (not precision)
+is what diverges. A true bit-match needs driver-specific FMA replication (not portable), and
+the only bit-exact reference is the GPU itself (circular — the mesh vertex IS the GPU eval).
+⇒ 0.14 is the floor of INDEPENDENT CPU verification for a chaotic-hash style; the **mesh is
+faithful** (GPU-placed), the metric just can't certify it tighter. REF-UNTRUSTED is the
+honest verdict. 19/20 is the vertex-certification ceiling; this is a metric-verification
+limit, NOT an export defect (Voronoi's chord is the real density measure).
 
 ## Is the B5 metric SOUND? (per-mechanism, from the synthesis)
 
