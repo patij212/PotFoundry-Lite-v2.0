@@ -110,9 +110,33 @@ causes — and the GPU verify overturned 2 of the 4 sub-agent inspection-fixes:
 **DragonScales 1.57**, Bamboo 2.15, **Gyroid 1.29**, GeoStar 0.98, **CelticTriquetra 1.50**).
 3 band-limit-clean (LowPoly/Voronoi/HexHive — nAbove≈0, certify at refRes≥1024). **2 genuine
 holdouts: CelticKnot (0.42 — residual braid-port diff, re-diff the weave_density/phase) and
-BasketWeave (1.89 — CPU body PROVABLY matches WGSL line-for-line + NOT theta-convention →
-the mesh genuinely deviates from both refs; a real mesh/mapping investigation, NOT a styles.ts
-fix).** The actionable export-fidelity list (real chord gaps, trusted) is now the 8 PARTIALs.
+BasketWeave (1.89 — see below).** The actionable export-fidelity list (real chord gaps,
+trusted) is now the 8 PARTIALs.
+
+## BasketWeave holdout — ROOT-CAUSED, it is a METRIC discontinuity artifact (2026-06-14, commit `31d2a4d`)
+
+Investigated with `_debugRadialBreakdown` + `e2e/_fidelity_basketweave_probe.cjs` (per
+outer-wall vertex: placed radius vs analytic ref at the RECOVERED (atan2,z/H) AND the EXACT
+stash (u,t)). Findings (default config — flag on/off identical):
+- devRec=2.0 (full bwDepth) but devExact=0.2–0.4 → the placed radius matches the surface at
+  the vertex's stash t; only the z/H-recovered eval is full-depth off.
+- Δθ=0 (u exact); the worst vertices' `u·strands` = 13,9,1,3,14,10 — ALL INTEGERS = the
+  vertical strand-edge creases (`u_twisted∈ℤ`) that CreaseUWarp pins columns onto.
+- BasketWeave-specific: Gyroid (no crease-warp) has Δz=0, devRec=devExact≈0.0003.
+
+**ROOT CAUSE: the conforming warp pins vertices EXACTLY onto the weave's over/under
+discontinuities (strand edges). There `checker=(floor(u_twisted)+floor(v))%2` is ill-defined;
+the GPU (f32) and the CPU reference (f64) round `floor(u_twisted)` to OPPOSITE sides, flipping
+the over/under strand → a false full-depth deviation. The mesh vertex is genuinely ON the
+surface (one valid side); the reference disagrees. ⇒ NOT a mesh defect — it is the
+vertical-crease analog of the u-seam cliff the metric ALREADY excludes.** BasketWeave's TRUE
+fidelity is the mid-cell ~0.2–0.4mm (so it really belongs in the trusted-PARTIAL bucket).
+
+**FIX (follow-up, metric-only):** in `radialAnalyticDeviation`, exclude the warp-pinned
+crease loci — strand edges `u=(m−phase)/strands` (m=0..strands−1) and layer rings
+`t=k/layers` (k=1..layers−1) — with a thin band, exactly as `seamExclU`/`tBands` already do.
+That reclassifies BasketWeave from "holdout" to clean (~0.3). The same crease-exclusion may
+also help any other warp-pinned style measured at a discontinuity.
 
 ## The validated model (use this to classify any style)
 
