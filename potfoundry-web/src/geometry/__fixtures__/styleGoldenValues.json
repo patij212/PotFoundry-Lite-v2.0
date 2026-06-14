@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-14T13:07:00.860Z",
+  "generatedAt": "2026-06-14T16:32:26.090Z",
   "version": "1.0.0",
   "tolerance": 0.001,
   "styles": {
@@ -2772,7 +2772,7 @@
         "theta": 0.7853981633974483,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.796104431152344
+        "expectedRadius": 47.686744689941406
       },
       {
         "styleId": "Voronoi",
@@ -2814,14 +2814,14 @@
         "theta": 0.7853981633974483,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 52.28292465209961
+        "expectedRadius": 52.29936599731445
       },
       {
         "styleId": "Voronoi",
         "theta": 1.5707963267948966,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.857757568359375
+        "expectedRadius": 51.691810607910156
       },
       {
         "styleId": "Voronoi",
@@ -2863,7 +2863,7 @@
         "theta": 1.5707963267948966,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 57.59790802001953
+        "expectedRadius": 57.51390838623047
       },
       {
         "styleId": "Voronoi",
@@ -2891,14 +2891,14 @@
         "theta": 0,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.12504577636719
+        "expectedRadius": 65.28618621826172
       },
       {
         "styleId": "Voronoi",
         "theta": 0.7853981633974483,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 64.60916137695312
+        "expectedRadius": 64.5401382446289
       },
       {
         "styleId": "Voronoi",
@@ -2926,7 +2926,7 @@
         "theta": 6.2731853071795864,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.28549194335938
+        "expectedRadius": 65.4764633178711
       },
       {
         "styleId": "Voronoi",
@@ -2954,7 +2954,7 @@
         "theta": 3.141592653589793,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 67.52942657470703
+        "expectedRadius": 67.50213623046875
       },
       {
         "styleId": "Voronoi",
@@ -3443,42 +3443,42 @@
         "theta": 0,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 53.25
+        "expectedRadius": 51.25
       },
       {
         "styleId": "HexagonalHive",
         "theta": 0.7853981633974483,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 53.0896110534668
+        "expectedRadius": 52.222354888916016
       },
       {
         "styleId": "HexagonalHive",
         "theta": 1.5707963267948966,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 52.60844802856445
+        "expectedRadius": 52.873931884765625
       },
       {
         "styleId": "HexagonalHive",
         "theta": 3.141592653589793,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.7457275390625
+        "expectedRadius": 53.214759826660156
       },
       {
         "styleId": "HexagonalHive",
         "theta": 4.71238898038469,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 53.068931579589844
+        "expectedRadius": 52.272483825683594
       },
       {
         "styleId": "HexagonalHive",
         "theta": 6.2731853071795864,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 53.18119430541992
+        "expectedRadius": 51.92312240600586
       },
       {
         "styleId": "HexagonalHive",
@@ -3527,42 +3527,42 @@
         "theta": 0,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.75
+        "expectedRadius": 63.75
       },
       {
         "styleId": "HexagonalHive",
         "theta": 0.7853981633974483,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.58961486816406
+        "expectedRadius": 64.72235107421875
       },
       {
         "styleId": "HexagonalHive",
         "theta": 1.5707963267948966,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.10844421386719
+        "expectedRadius": 65.37393188476562
       },
       {
         "styleId": "HexagonalHive",
         "theta": 3.141592653589793,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 64.2457275390625
+        "expectedRadius": 65.71475982666016
       },
       {
         "styleId": "HexagonalHive",
         "theta": 4.71238898038469,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.56893157958984
+        "expectedRadius": 64.7724838256836
       },
       {
         "styleId": "HexagonalHive",
         "theta": 6.2731853071795864,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.68119049072266
+        "expectedRadius": 64.4231185913086
       },
       {
         "styleId": "HexagonalHive",
@@ -4037,210 +4037,210 @@
         "theta": 0,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 52.772499084472656
+        "expectedRadius": 41.79999923706055
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 0.7853981633974483,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 42.227500915527344
+        "expectedRadius": 43.27454376220703
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 1.5707963267948966,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 52.772499084472656
+        "expectedRadius": 41.79999923706055
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 3.141592653589793,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 52.772499084472656
+        "expectedRadius": 41.79999923706055
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 4.71238898038469,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 52.772499084472656
+        "expectedRadius": 41.79999923706055
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 6.2731853071795864,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 52.71564483642578
+        "expectedRadius": 41.80208969116211
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 0,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 56.938751220703125
+        "expectedRadius": 45.099998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 0.7853981633974483,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 45.561248779296875
+        "expectedRadius": 46.690956115722656
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 1.5707963267948966,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 56.938751220703125
+        "expectedRadius": 45.099998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 3.141592653589793,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 56.938751220703125
+        "expectedRadius": 45.099998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 4.71238898038469,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 56.938751220703125
+        "expectedRadius": 45.099998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 6.2731853071795864,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 56.87740707397461
+        "expectedRadius": 45.102256774902344
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 0,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 63.88249969482422
+        "expectedRadius": 50.599998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 0.7853981633974483,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 51.11750030517578
+        "expectedRadius": 52.38497543334961
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 1.5707963267948966,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 63.88249969482422
+        "expectedRadius": 50.599998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 3.141592653589793,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 63.88249969482422
+        "expectedRadius": 50.599998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 4.71238898038469,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 63.88249969482422
+        "expectedRadius": 50.599998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 6.2731853071795864,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 63.81367492675781
+        "expectedRadius": 50.60253143310547
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 0,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 70.82624816894531
+        "expectedRadius": 56.099998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 0.7853981633974483,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 56.67375183105469
+        "expectedRadius": 58.07899475097656
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 1.5707963267948966,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 70.82624816894531
+        "expectedRadius": 56.099998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 3.141592653589793,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 70.82624816894531
+        "expectedRadius": 56.099998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 4.71238898038469,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 70.82624816894531
+        "expectedRadius": 56.099998474121094
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 6.2731853071795864,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 70.74994659423828
+        "expectedRadius": 56.102806091308594
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 0,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 74.99250030517578
+        "expectedRadius": 59.400001525878906
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 0.7853981633974483,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 60.00749969482422
+        "expectedRadius": 61.49540328979492
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 1.5707963267948966,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 74.99250030517578
+        "expectedRadius": 59.400001525878906
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 3.141592653589793,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 74.99250030517578
+        "expectedRadius": 59.400001525878906
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 4.71238898038469,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 74.99250030517578
+        "expectedRadius": 59.400001525878906
       },
       {
         "styleId": "LowPolyFacet",
         "theta": 6.2731853071795864,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 74.91170501708984
+        "expectedRadius": 59.40296936035156
       }
     ]
   }

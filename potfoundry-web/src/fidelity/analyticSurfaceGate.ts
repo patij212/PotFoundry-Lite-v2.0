@@ -59,6 +59,18 @@ export interface AnalyticDevOpts {
   creaseT?: number[];
   /** Half-width of the crease-locus exclusion band (default 1.5e-3). */
   creaseHalf?: number;
+  /**
+   * Geometric over/under crease PREDICATE for styles whose discontinuities SWEEP
+   * through (u,t) (curved ribbons — e.g. the CelticKnot braid) and so cannot be
+   * captured by constant-u/constant-t loci. Given a vertex's recovered (u∈[0,1),
+   * t∈[0,1]), returns true when it is within the discontinuity band (the over/under
+   * strand boundary / closest-strand tie) where GPU-f32/CPU-f64 flip the strand.
+   * A triangle with ANY vertex satisfying it is excluded (tracked in creaseBandMaxMm).
+   * MUST be geometric (proximity to the discontinuity), NOT an f32/f64 self-test —
+   * the dominant deviation is a GPU-placement/CPU-recovery round-flip the self-test
+   * is structurally blind to.
+   */
+  creasePredicate?: (u: number, t: number) => boolean;
   /** Barycentric sub-samples per edge for the dense chord (default 12). */
   denseN?: number;
   /** Centroid pre-filter (mm) below which the dense chord scan is skipped (default 0.04). */
@@ -131,6 +143,7 @@ export function radialAnalyticDeviation(
   const creaseU = opts.creaseU ?? [];
   const creaseT = opts.creaseT ?? [];
   const halfCrease = opts.creaseHalf ?? 1.5e-3;
+  const creasePredicate = opts.creasePredicate;
   const H = opts.H;
 
   const devs: number[] = [];
@@ -184,13 +197,17 @@ export function radialAnalyticDeviation(
     // STRADDLES a locus is excluded. Recovered u = atan2 → [0,1) (post-warp, matches
     // where the pinning lands); recovered t = z/H. Seam-spanning triangles are
     // already excluded above, so the small-interval [lo,hi] test needs no wrap.
-    if (exclude === 0 && (creaseU.length > 0 || creaseT.length > 0)) {
+    if (exclude === 0 && (creaseU.length > 0 || creaseT.length > 0 || creasePredicate)) {
       const uA = wrap1(Math.atan2(ay, ax) / TAU), uB = wrap1(Math.atan2(by, bx) / TAU), uC = wrap1(Math.atan2(cy, cx) / TAU);
+      const tA = az / H, tB = bz / H, tC = cz / H;
       const uLo = Math.min(uA, uB, uC), uHi = Math.max(uA, uB, uC);
-      const tLo = Math.min(az, bz, cz) / H, tHi = Math.max(az, bz, cz) / H;
+      const tLo = Math.min(tA, tB, tC), tHi = Math.max(tA, tB, tC);
       const hitsU = creaseU.some((L) => L >= uLo - halfCrease && L <= uHi + halfCrease);
       const hitsT = creaseT.some((L) => L >= tLo - halfCrease && L <= tHi + halfCrease);
-      if (hitsU || hitsT) exclude = 3;
+      // Geometric predicate (curved/swept creases): ANY vertex in the band.
+      const hitsPred = creasePredicate !== undefined
+        && (creasePredicate(uA, tA) || creasePredicate(uB, tB) || creasePredicate(uC, tC));
+      if (hitsU || hitsT || hitsPred) exclude = 3;
     }
 
     // OPTIONAL near-horizontal geometric guard (default OFF — see opts doc): a
@@ -300,6 +317,47 @@ export function basketWeaveCreaseLoci(
   const creaseT = Array.from({ length: l - 1 }, (_, i) => (i + 1) / l)
     .filter((t) => t > 2e-3 && t < 1 - 2e-3);
   return { creaseU, creaseT };
+}
+
+/**
+ * CelticKnot over/under crease predicate (the braid's strand boundaries SWEEP
+ * through (u,t) as curved sinusoidal ribbons — `style_celtic_knot`/rOuterCelticKnot
+ * — so they cannot be captured by constant-u/constant-t loci). Reconstructs the
+ * per-strand distances ds[i]=|localU − 0.4·sin(v + basePhase + phaseStep·i)| from the
+ * live config and flags a point within `band` of EITHER the background cutoff
+ * (min ds ≈ strandW) OR a closest-strand tie (ds[0] ≈ ds[1]) — the two discontinuity
+ * families where GPU-f32/CPU-f64 flip the strand. band≈0.002 (in localU units)
+ * captures the residual with ~1.6% over-exclusion (the true crease set is measure-zero).
+ */
+export function celticKnotCreasePredicate(
+  scale: number,
+  width: number,
+  twist: number,
+  strands: number,
+  band = 2e-3,
+): (u: number, t: number) => boolean {
+  const numColumns = Math.max(1, Math.floor(scale));
+  const strandW = width * 0.15;
+  const tightness = Math.max(0.5, twist + 0.5);
+  const numStrandsF = Math.max(2, Math.min(8, Math.floor(strands + 0.5)));
+  const numStrands = Math.trunc(numStrandsF);
+  const phaseStep = TAU / numStrandsF;
+  const PI = Math.PI;
+  return (u: number, t: number): boolean => {
+    const scaled = u * numColumns;
+    const columnId = Math.floor(scaled);
+    const localU = ((scaled - columnId) - 0.5) * 2.0;
+    const v = t * tightness * TAU * 3.0;
+    const basePhase = columnId * PI * 0.333;
+    const ds: number[] = [];
+    for (let i = 0; i < numStrands; i++) {
+      ds.push(Math.abs(localU - 0.4 * Math.sin(v + basePhase + phaseStep * i)));
+    }
+    ds.sort((a, b) => a - b);
+    const d0 = ds[0];
+    const d1 = ds.length > 1 ? ds[1] : Infinity;
+    return Math.min(Math.abs(d0 - strandW), Math.abs(d0 - d1)) < band;
+  };
 }
 
 export { TAU, wrap1, clamp01 };

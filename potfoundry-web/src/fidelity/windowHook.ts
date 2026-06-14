@@ -71,6 +71,7 @@ import {
   radialAnalyticDeviation,
   artDecoRiserTBands,
   basketWeaveCreaseLoci,
+  celticKnotCreasePredicate,
   type AnalyticRadiusFn,
   type AnalyticDevResult,
 } from './analyticSurfaceGate';
@@ -891,18 +892,33 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       // Only the axis-aligned weave (twist=0, vGrad=0) is warp-pinned — mirrors extractBasketWeave.
       let creaseU: number[] = [];
       let creaseT: number[] = [];
+      let creasePredicate: ((u: number, t: number) => boolean) | undefined;
+      const styleOpt = (snake: string, camel: string, def: number): number => {
+        const v = style.opts[snake] ?? style.opts[camel];
+        return typeof v === 'number' ? v : def;
+      };
       if (styleId === 'BasketWeave') {
-        const opt = (snake: string, camel: string, def: number): number => {
-          const v = style.opts[snake] ?? style.opts[camel];
-          return typeof v === 'number' ? v : def;
-        };
-        if (Math.abs(opt('bw_twist', 'bwTwist', 0)) < 1e-9 && Math.abs(opt('bw_vertical_grad', 'bwVerticalGrad', 0)) < 1e-9) {
+        if (Math.abs(styleOpt('bw_twist', 'bwTwist', 0)) < 1e-9 && Math.abs(styleOpt('bw_vertical_grad', 'bwVerticalGrad', 0)) < 1e-9) {
           ({ creaseU, creaseT } = basketWeaveCreaseLoci(
-            opt('bw_strands', 'bwStrands', 16),
-            opt('bw_layers', 'bwLayers', 10),
-            opt('bw_phase', 'bwPhase', 0),
+            styleOpt('bw_strands', 'bwStrands', 16),
+            styleOpt('bw_layers', 'bwLayers', 10),
+            styleOpt('bw_phase', 'bwPhase', 0),
           ));
         }
+      } else if (styleId === 'CelticKnot') {
+        // The braid's over/under strand boundaries sweep through (u,t) — a geometric
+        // predicate, not constant-u/t loci. (Twist shears the braid but the predicate
+        // reconstructs it from the live config, so it holds for any twist.)
+        // Excludes the over/under strand-crease discontinuities (chord-channel noise).
+        // NOTE: a lone atan2-recovery round-flip vertex can still survive (the recovered
+        // u looks clean there) — that residual is an irreducible f64-recovery artifact,
+        // not a styles.ts↔WGSL drift (the braid port is byte-faithful).
+        creasePredicate = celticKnotCreasePredicate(
+          styleOpt('ck_scale', 'ckScale', 3),
+          styleOpt('ck_width', 'ckWidth', 0.15),
+          styleOpt('ck_twist', 'ckTwist', 0),
+          styleOpt('ck_strands', 'ckStrands', 3),
+        );
       }
 
       const measure = (rA: AnalyticRadiusFn): AnalyticDevResult => radialAnalyticDeviation(
@@ -918,6 +934,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           tBandHalf: opts.tBandHalf ?? 1.6e-3,
           creaseU,
           creaseT,
+          creasePredicate,
           denseN: opts.denseN,
         },
       );

@@ -7,7 +7,7 @@
  * triangle away from any crease must still be measured.
  */
 import { describe, it, expect } from 'vitest';
-import { radialAnalyticDeviation, basketWeaveCreaseLoci } from './analyticSurfaceGate';
+import { radialAnalyticDeviation, basketWeaveCreaseLoci, celticKnotCreasePredicate } from './analyticSurfaceGate';
 
 const H = 100;
 const R0 = 50;
@@ -55,6 +55,29 @@ describe('crease-locus exclusion (BasketWeave over/under discontinuity)', () => 
     // Control triangle A is still measured (not over-excluded).
     expect(r.wallTriangles).toBe(1);
     expect(r.samples).toBeGreaterThan(0);
+  });
+
+  it('WITH creasePredicate (swept braid creases): the flip triangle is EXCLUDED', () => {
+    // A predicate that flags the u≈0.5 band (stands in for a swept braid crease at
+    // the straddle triangle B's location). Same exclude=3 path as creaseU.
+    const pred = (u: number): boolean => Math.abs(u - 0.5) < 0.01;
+    const r = radialAnalyticDeviation({ vertices, indices }, ut, rAnalytic, { ...base, creasePredicate: pred });
+    expect(r.creaseBandMaxMm).toBeGreaterThan(1.9);
+    expect(r.maxDevMm).toBeLessThan(0.05);
+    expect(r.wallTriangles).toBe(1); // control triangle A still measured
+  });
+
+  it('celticKnotCreasePredicate: returns a function flagging the strand-boundary band', () => {
+    const pred = celticKnotCreasePredicate(3, 0.15, 0, 3);
+    expect(typeof pred).toBe('function');
+    // It returns a boolean for any (u,t) without throwing.
+    expect(typeof pred(0.3, 0.5)).toBe('boolean');
+    // Sweeping u at fixed t, SOME points are in a crease band and some are not
+    // (the braid has discrete strand boundaries, not the whole row).
+    let inBand = 0, outBand = 0;
+    for (let i = 0; i < 200; i++) { if (pred(i / 200, 0.5)) inBand++; else outBand++; }
+    expect(inBand).toBeGreaterThan(0);
+    expect(outBand).toBeGreaterThan(0);
   });
 
   it('basketWeaveCreaseLoci: strand edges u=(m-phase)/strands + interior layer rings', () => {

@@ -1386,30 +1386,37 @@ export function rOuterLowPolyFacet(
   H: number,
   opts: StyleOptions
 ): number {
+  // Faceted-polygon SDF — a LITERAL port of the WGSL low_poly_facet_radius
+  // (styles.wgsl:1767). The CPU previously FAKED this via rOuterHarmonicRipple (a
+  // totally different algorithm → ~16mm reference drift). Param phase is DEGREES on
+  // the CPU but the GPU packs lp_phase_deg·DEG2RAD (styleParams.ts), so convert here.
   const facets = opts.lpFacets ?? 12;
   const tiers = opts.lpTiers ?? 1;
-  const amp = (opts.lpAmp ?? 0.12);
+  const amp = opts.lpAmp ?? 0.12;
   const bevel = opts.lpBevel ?? 0.15;
   const jitter = opts.lpJitter ?? 0.15;
-  const phaseDeg = opts.lpPhaseDeg ?? 0;
+  const phaseOffset = (opts.lpPhaseDeg ?? 0) * (Math.PI / 180);
 
-  // Map to Harmonic Ripple parameters
-  const harmonicOpts: StyleOptions = {
-    hrPetals: facets,
-    hrPetalAmp: amp * (1.0 - bevel * 0.5),
-    hrPetalPhaseDeg: phaseDeg,
-    hrPetalZgain: 0.0,
-    hrRippleFreq: facets * tiers,
-    hrRippleAmp: jitter * 0.02,
-    hrRipplePhaseDeg: 0,
-    hrRippleZgain: tiers > 1 ? 1.0 : 0.0,
-    hrBell: 0.0,
-  };
+  const t = Math.max(0, Math.min(1, z / Math.max(H, 1e-4))); // WGSL surf clamps t
+  const N = Math.max(3, Math.floor(facets + 0.5));
+  const tiersN = Math.max(1, Math.floor(tiers + 0.5));
 
-  return rOuterHarmonicRipple(theta, z, r0, H, harmonicOpts);
+  const tierIdx = Math.floor(t * tiersN);
+  const tierPhase = tierIdx * jitter * (TAU / N);
+  const th = theta + tierPhase + phaseOffset;
+  const alpha = TAU / N;
+  // wrap_dist_u(th/alpha, 0) = fract(x+0.5)-0.5 → local angle in [-alpha/2, alpha/2].
+  const x = th / alpha + 0.5;
+  const angle = (x - Math.floor(x) - 0.5) * alpha;
+  // Flat face (secant) distance, then smin(circle r0, polygon r_face, k).
+  const D = r0 * (1.0 - amp);
+  const rFace = D / Math.max(Math.cos(angle), 0.001);
+  const k = Math.max(0.001, bevel * 0.2 * r0);
+  const h = Math.max(0, Math.min(1, 0.5 + 0.5 * (rFace - r0) / k));
+  return (rFace + (r0 - rFace) * h) - k * h * (1.0 - h); // mix(rFace, r0, h) - k·h·(1-h)
 }
 
-// Vectorized Low Poly Facet
+// Vectorized Low Poly Facet — delegates to the scalar (same per-theta math).
 export function rOuterLowPolyFacetVec(
   thetas: Float32Array,
   z: number,
@@ -1417,37 +1424,24 @@ export function rOuterLowPolyFacetVec(
   H: number,
   opts: StyleOptions
 ): Float32Array {
-  const facets = opts.lpFacets ?? 12;
-  const tiers = opts.lpTiers ?? 1;
-  const amp = (opts.lpAmp ?? 0.12);
-  const bevel = opts.lpBevel ?? 0.15;
-  const jitter = opts.lpJitter ?? 0.15;
-  const phaseDeg = opts.lpPhaseDeg ?? 0;
-
-  // Map to Harmonic Ripple parameters
-  const harmonicOpts: StyleOptions = {
-    hrPetals: facets,
-    hrPetalAmp: amp * (1.0 - bevel * 0.5),
-    hrPetalPhaseDeg: phaseDeg,
-    hrPetalZgain: 0.0,
-    hrRippleFreq: facets * tiers,
-    hrRippleAmp: jitter * 0.02,
-    hrRipplePhaseDeg: 0,
-    hrRippleZgain: tiers > 1 ? 1.0 : 0.0,
-    hrBell: 0.0,
-  };
-
-  return rOuterHarmonicRippleVec(thetas, z, r0, H, harmonicOpts);
+  const n = thetas.length;
+  const rs = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    rs[i] = rOuterLowPolyFacet(thetas[i], z, r0, H, opts);
+  }
+  return rs;
 }
 
 /**
  * 2D Hash for periodic noise (matches WGSL)
  */
 function hash22(p: { x: number; y: number }): { x: number; y: number } {
+  // WGSL fract (x - floor(x)), NOT JS '%' (truncated → wrong sign for negatives).
+  const fract = (x: number): number => x - Math.floor(x);
   let p3 = {
-    x: (p.x * 0.1031) % 1,
-    y: (p.y * 0.1030) % 1,
-    z: (p.x * 0.0973) % 1,
+    x: fract(p.x * 0.1031),
+    y: fract(p.y * 0.1030),
+    z: fract(p.x * 0.0973),
   };
   // matrix equivalent: p3 = fract(vec3(p.xyx) * ...)
   // p3 = p3 + dot(p3, p3.yzx + 33.33)
@@ -1455,10 +1449,11 @@ function hash22(p: { x: number; y: number }): { x: number; y: number } {
   p3.x += dot;
   p3.y += dot;
   p3.z += dot;
-  // return fract((p3.xx + p3.yz) * p3.zy)
+  // return fract((p3.xx + p3.yz) * p3.zy) — JS '%' truncates (wrong sign for
+  // negatives, e.g. p.y=-1 → %1=-0.103 vs fract=0.897, off by exactly 1.0).
   return {
-    x: ((p3.x + p3.y) * p3.z) % 1,
-    y: ((p3.x + p3.z) * p3.y) % 1,
+    x: fract((p3.x + p3.y) * p3.z),
+    y: fract((p3.x + p3.z) * p3.y),
   };
 }
 
@@ -1540,11 +1535,18 @@ export function rOuterVoronoi(
   const cellSdf = f2 - f1;
   const th = thickness;
 
+  // WGSL uses smoothstep (cubic s*s*(3-2*s)); the CPU port had linearized it to a
+  // plain clamp (just s) — a real CPU↔WGSL drift (handles e0>e1 like the bubble case).
+  const smoothstep = (e0: number, e1: number, x: number): number => {
+    const s = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+    return s * s * (3 - 2 * s);
+  };
+
   // Web: 1.0 when cell_sdf < th
-  const web = 1.0 - Math.max(0, Math.min(1, (cellSdf - 0.0) / (th - 0.0))); // smoothstep(0.0, th, cell_sdf)
+  const web = 1.0 - smoothstep(0.0, th, cellSdf);
 
   // Bubble: smoothstep(1.0, 0.0, f1)
-  const bubble = Math.max(0, Math.min(1, (f1 - 1.0) / (0.0 - 1.0)));
+  const bubble = smoothstep(1.0, 0.0, f1);
 
   const pattern = bubble * (1 - morph) + web * morph;
 
@@ -1552,8 +1554,8 @@ export function rOuterVoronoi(
   let fadeFactor = 1.0;
   const fadeLimit = Math.min(edgeFade, 0.49);
   if (fadeLimit > 0.0) {
-    const bFade = Math.max(0, Math.min(1, t / fadeLimit));
-    const tFade = 1.0 - Math.max(0, Math.min(1, (t - (1.0 - fadeLimit)) / fadeLimit));
+    const bFade = smoothstep(0.0, fadeLimit, t);
+    const tFade = 1.0 - smoothstep(1.0 - fadeLimit, 1.0, t);
     fadeFactor = bFade * tFade;
   }
 
@@ -1798,7 +1800,11 @@ export function rOuterHexagonalHive(
 
   // Coordinates
   const u = theta * scale;
-  const v = t * scale * (H / 40.0); // Rough aspect
+  // WGSL style_hexagonal_hive HARDCODES H=20 (styles.wgsl:1173 `let H = 20.0`,
+  // shadowing the real height) → v = t·scale·(20/40). The CPU port used the REAL
+  // pot height here, a ~6× vertical-grid mismatch that misaligned the hex cells by
+  // the full relief (vtxMax==hhRelief). Match the shader exactly.
+  const v = t * scale * (20.0 / 40.0); // Rough aspect (WGSL hardcoded H=20)
 
   const uvX = u;
   const uvY = v * 1.7320508; // sqrt(3)
