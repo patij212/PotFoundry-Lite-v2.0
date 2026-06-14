@@ -59,6 +59,14 @@ function coords(u, t) {
   }
   const pct = (n) => `${(100 * n / s.length).toFixed(1)}%`;
   console.log(`mean ${(sumMm / s.length).toFixed(3)}mm  max ${maxMm.toFixed(3)}mm`);
+  // Fine t-histogram of the boundary regions (to size a minimal exclusion band).
+  const lo = new Array(10).fill(0), hi = new Array(10).fill(0); // 0.01 bins for t<0.10 and t>0.90
+  for (const p of s) {
+    if (p.t < 0.10) lo[Math.min(9, Math.floor(p.t * 100))]++;
+    else if (p.t > 0.90) hi[Math.min(9, Math.floor((p.t - 0.90) * 100))]++;
+  }
+  console.log('t<0.10 by 0.01:  ' + lo.map((n, i) => `[${(i / 100).toFixed(2)}]${pct(n)}`).join(' '));
+  console.log('t>0.90 by 0.01:  ' + hi.map((n, i) => `[${(0.90 + i / 100).toFixed(2)}]${pct(n)}`).join(' '));
   console.log(`t-location:  rim(t>0.95||<0.05) ${pct(rim)}   interior ${pct(interior)}`);
   console.log(`dist bucket: apex(<0.35) ${pct(apex)}   flank(0.35-0.85) ${pct(flank)}   groove(>0.85) ${pct(groove)}`);
   console.log(`xDist:       scale-edge(>0.8) ${pct(edge)}   mid(0.25-0.8) ${pct(mid)}   scale-center(<0.25) ${pct(center)}`);

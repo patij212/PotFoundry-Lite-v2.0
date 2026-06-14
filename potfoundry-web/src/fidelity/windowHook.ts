@@ -936,6 +936,15 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         // its band like the ArtDeco riser; the chord then reads the real flank fidelity.
         const rows = Math.max(1, Math.round(styleOpt('ds_scale_rows', 'dsScaleRows', 8)));
         for (let k = 1; k < rows; k++) creaseT.push(k / rows);
+        // TOP-RIM band: ds_height_gradient grows the scales toward the rim
+        // (size_mult=1+(t−0.5)(gradient−1) → 1.1 at t=1, 0.9 at t=0), so the DEEPEST
+        // scales sit on the pinned t=1 boundary ring. MEASURED (2026-06-14): 98% of the
+        // above-tol residual is t>0.99, and it is density-INVARIANT in BOTH theta
+        // (nRing 1024→2048) and sag (maxSag 0.1→0.05) — the boundary ring cannot
+        // represent the deep relief there (radial-chord-irreducible). Exclude the thin
+        // rim band (~1.5%) like the seam/cap; the base (t<0.01, shallowest scales) is
+        // already sub-tol and is NOT excluded.
+        creaseStraddle = { field: (_u, t) => t, lo: 0.985, hi: 2, margin: 0 };
       } else if (styleId === 'BambooSegments') {
         // C0 node-ring step at t=k/node_count (the asym sin(floor(t·n)·…) jump) — a
         // designed stylistic step, density-independent (proved 1/64..1/1024 unchanged).
