@@ -37,7 +37,13 @@
  *
  * - **GeometricStar** (`style_geometric_star`): N-fold polar fold. `p.x=|a*..|`
  *   folds at sector boundaries `th=(k+0.5)*angle`, where the strapwork SDF has a
- *   C1 kink → N vertical fold creases.
+ *   C1 kink → N vertical fold creases. The dominant chord residual is the
+ *   strapwork relief EDGES (`dStrap=|dLine|-gap` ∈ [0,edge]) — near-VERTICAL
+ *   diagonal cliffs (~2mm/0.07mm in z) that the radial chord mis-scores
+ *   regardless of density (MEASURED: chevron insertion left nAbove unchanged,
+ *   exploded tris). Handled by EXCLUSION in the gate
+ *   ({@link module:fidelity/analyticSurfaceGate.geometricStarStrapPredicate}),
+ *   like the ArtDeco/Bamboo riser — not extraction.
  *
  * - **BambooSegments** (`bamboo_segments_radius`): `segment_phase=t·node_count`,
  *   `node_ring=exp(−dist²/…)` with `dist=min(segment_local,1−segment_local)`. The
@@ -318,6 +324,16 @@ function extractGothicArches(p: Float32Array): FeatureLine[] {
  * GeometricStar N-fold fold creases. The kaleidoscopic fold `p.x=|a*(N/4)|`
  * folds at sector boundaries `th=(k+0.5)*angle` (angle=TAU/N), where the
  * strapwork SDF has a C1 kink → N vertical fold creases at u=(k+0.5)/N.
+ *
+ * The DOMINANT chord residual is NOT these folds but the strapwork relief EDGES
+ * (`dStrap=|dLine|−gap ∈ [0,edge]`), which are near-VERTICAL diagonal cliffs
+ * (~relief over ~edge/|∇dLine| ≈ 2mm/0.07mm in z — the v-term gradient
+ * dominates). MEASURED (2026-06-14): general-curve chevron insertion of those
+ * cliffs left nAbove UNCHANGED (27%→26.3% at L8) while exploding to 2.2M tris —
+ * a near-radial facet on a near-vertical wall reads large RADIAL chord
+ * regardless of density. So the cliffs are a designed C0-ish feature handled by
+ * EXCLUSION in the gate (geometricStarStrapPredicate, like the ArtDeco/Bamboo
+ * riser), not extraction. The folds stay as the byte-identical baseline.
  */
 function extractGeometricStar(p: Float32Array): FeatureLine[] {
   const N = Math.max(4, Math.round(p[0]));

@@ -73,6 +73,7 @@ import {
   artDecoRiserTBands,
   basketWeaveCreaseLoci,
   celticKnotCreasePredicate,
+  geometricStarStrapField,
   type AnalyticRadiusFn,
   type AnalyticDevResult,
 } from './analyticSurfaceGate';
@@ -899,6 +900,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       let creaseU: number[] = [];
       let creaseT: number[] = [];
       let creasePredicate: ((u: number, t: number) => boolean) | undefined;
+      let creaseStraddle: { field: (u: number, t: number) => number; lo: number; hi: number; margin?: number } | undefined;
       const styleOpt = (snake: string, camel: string, def: number): number => {
         const v = style.opts[snake] ?? style.opts[camel];
         return typeof v === 'number' ? v : def;
@@ -939,6 +941,25 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         // the smooth prominence bulge flanks are already sub-tol at production density.
         const nodes = Math.max(1, Math.round(styleOpt('bs_node_count', 'bsNodeCount', 5)));
         for (let k = 1; k <= nodes; k++) creaseT.push(k / nodes);
+      } else if (styleId === 'GeometricStar') {
+        // Strapwork relief EDGES (dStrap=|dLine|−gap ∈ [0,edge]) are near-VERTICAL
+        // diagonal cliffs (~2mm/0.07mm in z, 2° from vertical). The radial chord
+        // mis-scores the near-radial cliff facets regardless of density (MEASURED:
+        // chevron insertion left nAbove 27%→26.3% while exploding to 2.2M tris) — a
+        // designed C0-ish step like the ArtDeco/Bamboo riser. Exclude the cliff via a
+        // TRIANGLE-LEVEL straddle on dStrap∈[0,edge] (robust to facets larger than
+        // the thin band; per-vertex would leak a facet spanning it with both vertices
+        // outside). The plateau tops + flat gaps stay measured (sub-tol).
+        const sf = geometricStarStrapField(
+          styleOpt('gs_points', 'gsPoints', 8),
+          styleOpt('gs_gap', 'gsGap', 0.05),
+          styleOpt('gs_detail', 'gsDetail', 0.5),
+          styleOpt('gs_layers', 'gsLayers', 4),
+          styleOpt('gs_roundness', 'gsRoundness', 0),
+          styleOpt('gs_zoom', 'gsZoom', 1),
+          styleOpt('gs_shift', 'gsShift', 0),
+        );
+        creaseStraddle = { field: sf.field, lo: sf.lo, hi: sf.hi, margin: 1e-3 };
       }
 
       const measure = (rA: AnalyticRadiusFn): AnalyticDevResult => radialAnalyticDeviation(
@@ -955,6 +976,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           creaseU,
           creaseT,
           creasePredicate,
+          creaseStraddle,
           utPlacement,
           denseN: opts.denseN,
         },

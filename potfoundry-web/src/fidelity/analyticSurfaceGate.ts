@@ -82,6 +82,19 @@ export interface AnalyticDevOpts {
    * is structurally blind to.
    */
   creasePredicate?: (u: number, t: number) => boolean;
+  /**
+   * Triangle-level STRADDLE exclusion for a swept scalar feature band. Excludes a
+   * triangle whose vertices' field values OVERLAP [lo, hi] — i.e. max(field) ≥
+   * lo−margin AND min(field) ≤ hi+margin. Unlike {@link creasePredicate} (per-vertex,
+   * OR'd), this is ROBUST to facet size: a facet STRADDLING a thin band with BOTH
+   * vertices outside it is still excluded (its value range crosses the band), so
+   * margin≈0 suffices → MINIMAL over-exclusion. For near-vertical relief CLIFFS the
+   * radial chord cannot score regardless of density (e.g. GeometricStar strapwork
+   * edges `dStrap=|dLine|−gap ∈ [0,edge]`, a ~2mm/0.07mm wall). `field` is evaluated
+   * at recovered (u∈[0,1), t∈[0,1]); return a value far outside [lo,hi] to opt a
+   * vertex OUT (e.g. masked faded-relief regions). Excluded → creaseBandMaxMm.
+   */
+  creaseStraddle?: { field: (u: number, t: number) => number; lo: number; hi: number; margin?: number };
   /** Barycentric sub-samples per edge for the dense chord (default 12). */
   denseN?: number;
   /** Centroid pre-filter (mm) below which the dense chord scan is skipped (default 0.04). */
@@ -155,6 +168,7 @@ export function radialAnalyticDeviation(
   const creaseT = opts.creaseT ?? [];
   const halfCrease = opts.creaseHalf ?? 1.5e-3;
   const creasePredicate = opts.creasePredicate;
+  const creaseStraddle = opts.creaseStraddle;
   const utPlace = opts.utPlacement;
   const H = opts.H;
 
@@ -216,7 +230,7 @@ export function radialAnalyticDeviation(
     // STRADDLES a locus is excluded. Recovered u = atan2 → [0,1) (post-warp, matches
     // where the pinning lands); recovered t = z/H. Seam-spanning triangles are
     // already excluded above, so the small-interval [lo,hi] test needs no wrap.
-    if (exclude === 0 && (creaseU.length > 0 || creaseT.length > 0 || creasePredicate)) {
+    if (exclude === 0 && (creaseU.length > 0 || creaseT.length > 0 || creasePredicate || creaseStraddle)) {
       const uA = wrap1(Math.atan2(ay, ax) / TAU), uB = wrap1(Math.atan2(by, bx) / TAU), uC = wrap1(Math.atan2(cy, cx) / TAU);
       const tA = az / H, tB = bz / H, tC = cz / H;
       const uLo = Math.min(uA, uB, uC), uHi = Math.max(uA, uB, uC);
@@ -226,7 +240,16 @@ export function radialAnalyticDeviation(
       // Geometric predicate (curved/swept creases): ANY vertex in the band.
       const hitsPred = creasePredicate !== undefined
         && (creasePredicate(uA, tA) || creasePredicate(uB, tB) || creasePredicate(uC, tC));
-      if (hitsU || hitsT || hitsPred) exclude = 3;
+      // Triangle-level straddle (swept scalar cliff band): vertex field RANGE
+      // overlaps [lo, hi] — robust to facets larger than the band (per-vertex would
+      // miss a facet spanning a thin cliff with both vertices outside it).
+      let hitsStraddle = false;
+      if (creaseStraddle !== undefined) {
+        const m = creaseStraddle.margin ?? 0;
+        const fA = creaseStraddle.field(uA, tA), fB = creaseStraddle.field(uB, tB), fC = creaseStraddle.field(uC, tC);
+        hitsStraddle = Math.max(fA, fB, fC) >= creaseStraddle.lo - m && Math.min(fA, fB, fC) <= creaseStraddle.hi + m;
+      }
+      if (hitsU || hitsT || hitsPred || hitsStraddle) exclude = 3;
     }
 
     // OPTIONAL near-horizontal geometric guard (default OFF — see opts doc): a
@@ -377,6 +400,49 @@ export function celticKnotCreasePredicate(
     const d1 = ds.length > 1 ? ds[1] : Infinity;
     return Math.min(Math.abs(d0 - strandW), Math.abs(d0 - d1)) < band;
   };
+}
+
+/**
+ * GeometricStar strapwork distance FIELD `dStrap = |dLine| − gap` in (u,t),
+ * replicating `style_geometric_star` (styles.wgsl) / rOuterGeometricStar
+ * (`dLine = p·(sin,cos)(starAngle)`, `p=(|a·N/4|, v)`, `v=(fract(t·layers·zoom)−0.5)·2`).
+ * The relief is `1−smoothstep(0,edge,dStrap)` (edge=0.02+roundness·0.2), so the strap
+ * EDGE band `dStrap ∈ [0,edge]` is a near-VERTICAL diagonal cliff: the v-term gradient
+ * dominates (~relief over ~edge/|∇| ≈ 2mm/0.07mm in z at defaults), 2° from vertical.
+ * MEASURED (2026-06-14): a near-radial facet there reads large RADIAL dev regardless
+ * of density (general-curve chevron insertion left nAbove 27%→26.3% while exploding to
+ * 2.2M tris). So the cliff is a designed C0-ish step, EXCLUDED like the ArtDeco/Bamboo
+ * riser — via {@link AnalyticDevOptions.creaseStraddle} with the returned {field, lo:0,
+ * hi:edge} (triangle-level straddle, robust to facets larger than the thin cliff). The
+ * plateau tops + flat gaps stay measured. Mirrors the live shader (CPU↔WGSL byte-parity;
+ * vtx 0.0001).
+ */
+export function geometricStarStrapField(
+  points: number,
+  gap: number,
+  detail: number,
+  layers: number,
+  roundness: number,
+  zoom: number,
+  shift: number,
+): { field: (u: number, t: number) => number; lo: number; hi: number } {
+  const N = Math.max(4, points);
+  const edge = 0.02 + roundness * 0.2;
+  const starAngle = (0.2 + 0.6 * detail) * (Math.PI / 2);
+  const sa = Math.sin(starAngle);
+  const ca = Math.cos(starAngle);
+  const angle = TAU / N;
+  const field = (u: number, t: number): number => {
+    const vRaw = t * layers * zoom;
+    const row = Math.floor(vRaw);
+    const v = (vRaw - row - 0.5) * 2.0;
+    const rowOffset = (row % 2) * (Math.PI / N) * shift * 2.0;
+    const th = u * TAU + rowOffset;
+    const a = (th / angle - Math.floor(th / angle) - 0.5) * angle;
+    const px = Math.abs(a * (N / 4.0));
+    return Math.abs(px * sa + v * ca) - gap;
+  };
+  return { field, lo: 0, hi: edge };
 }
 
 export { TAU, wrap1, clamp01 };

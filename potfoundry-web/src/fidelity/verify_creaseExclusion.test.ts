@@ -7,7 +7,7 @@
  * triangle away from any crease must still be measured.
  */
 import { describe, it, expect } from 'vitest';
-import { radialAnalyticDeviation, basketWeaveCreaseLoci, celticKnotCreasePredicate } from './analyticSurfaceGate';
+import { radialAnalyticDeviation, basketWeaveCreaseLoci, celticKnotCreasePredicate, geometricStarStrapField } from './analyticSurfaceGate';
 
 const H = 100;
 const R0 = 50;
@@ -98,6 +98,64 @@ describe('crease-locus exclusion (BasketWeave over/under discontinuity)', () => 
     for (let i = 0; i < 200; i++) { if (pred(i / 200, 0.5)) inBand++; else outBand++; }
     expect(inBand).toBeGreaterThan(0);
     expect(outBand).toBeGreaterThan(0);
+  });
+
+  it('geometricStarStrapField: dStrap field returns lo=0, hi=edge and the cliff band', () => {
+    // Defaults: N=8 gap=0.05 detail=0.5 layers=4 roundness=0 zoom=1 shift=0 ⇒ edge=0.02.
+    const sf = geometricStarStrapField(8, 0.05, 0.5, 4, 0, 1, 0);
+    expect(sf.lo).toBe(0);
+    expect(sf.hi).toBeCloseTo(0.02, 6);
+    // The cliff band [lo,hi] is a thin sub-set of the dStrap range; the plateau
+    // (dStrap<0) and flat gaps (dStrap≫edge) both occur across a u-sweep.
+    let inBand = 0, plateau = 0, gap = 0;
+    for (let i = 0; i < 2000; i++) {
+      const d = sf.field(i / 2000, 0.125); // mid-tile (v=0)
+      if (d >= sf.lo && d <= sf.hi) inBand++;
+      else if (d < -0.04) plateau++;
+      else if (d > 0.1) gap++;
+    }
+    expect(inBand).toBeGreaterThan(0);
+    expect(plateau).toBeGreaterThan(0);
+    expect(gap).toBeGreaterThan(0);
+  });
+
+  it('creaseStraddle: triangle-level straddle excludes a facet spanning a thin cliff (both verts outside)', () => {
+    // A flat reference; inject a near-vertical "cliff" by a field with a thin band
+    // [0,0.02] and a triangle whose two measured vertices sit OUTSIDE the band but
+    // STRADDLE it (one below, one above) with the apex flipped off-surface. A
+    // per-vertex predicate would MISS it (no vertex in band); the straddle catches it.
+    const Hc = 100, R0c = 50, TAUc = 2 * Math.PI;
+    const PT = (u: number, t: number, r: number): [number, number, number] => [r * Math.cos(u * TAUc), r * Math.sin(u * TAUc), t * Hc];
+    // field(u): linear in u so u=0.30→-0.05 (plateau), u=0.50→+0.05 (gap); the cliff
+    // band [0,0.02] sits at u≈0.402..0.404 — BETWEEN the two base vertices.
+    const field = (u: number): number => (u - 0.402) * 0.5;
+    const v: number[] = [], ut: number[] = [];
+    const push = (u: number, t: number, r: number): void => { const [x, y, z] = PT(u, t, r); v.push(x, y, z); ut.push(u, t, 0); };
+    push(0.30, 0.5, R0c); push(0.50, 0.5, R0c); push(0.40, 0.505, R0c + 2.0); // apex flipped +2mm
+    const mesh = { vertices: Float32Array.from(v), indices: Uint32Array.from([0, 1, 2]) };
+    const base = { H: Hc, tolMm: 0.1, denseN: 4 };
+    const rAna = (): number => R0c;
+    // WITHOUT straddle: the flipped apex drives maxDev ~2mm.
+    const without = radialAnalyticDeviation(mesh, Float32Array.from(ut), rAna, base);
+    expect(without.maxDevMm).toBeGreaterThan(1.9);
+    // WITH straddle on the field band [0,0.02]: vertex field values are -0.051, +0.049,
+    // -0.001 → range [-0.051, +0.049] OVERLAPS [0,0.02] → excluded (creaseBandMaxMm).
+    const withS = radialAnalyticDeviation(mesh, Float32Array.from(ut), rAna, { ...base, creaseStraddle: { field, lo: 0, hi: 0.02 } });
+    expect(withS.creaseBandMaxMm).toBeGreaterThan(1.9);
+    expect(withS.maxDevMm).toBeLessThan(0.05);
+  });
+
+  it('creaseStraddle: a facet entirely off the band (plateau) is still MEASURED', () => {
+    const Hc = 100, R0c = 50, TAUc = 2 * Math.PI;
+    const PT = (u: number, t: number, r: number): [number, number, number] => [r * Math.cos(u * TAUc), r * Math.sin(u * TAUc), t * Hc];
+    const field = (u: number): number => (u - 0.402) * 0.5; // u≈0.30 → -0.05 (deep plateau)
+    const v: number[] = [], ut: number[] = [];
+    const push = (u: number, t: number, r: number): void => { const [x, y, z] = PT(u, t, r); v.push(x, y, z); ut.push(u, t, 0); };
+    push(0.30, 0.5, R0c); push(0.302, 0.5, R0c); push(0.301, 0.505, R0c); // all dStrap≈-0.05, on-surface
+    const mesh = { vertices: Float32Array.from(v), indices: Uint32Array.from([0, 1, 2]) };
+    const r = radialAnalyticDeviation(mesh, Float32Array.from(ut), () => R0c, { H: Hc, tolMm: 0.1, denseN: 4, creaseStraddle: { field, lo: 0, hi: 0.02 } });
+    expect(r.creaseBandMaxMm).toBe(0); // not excluded
+    expect(r.wallTriangles).toBe(1); // measured
   });
 
   it('basketWeaveCreaseLoci: strand edges u=(m-phase)/strands + interior layer rings', () => {
