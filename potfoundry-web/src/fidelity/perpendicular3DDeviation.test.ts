@@ -166,7 +166,7 @@ describe('perpendicular3DDeviation — the honest 3D chord metric over a mesh', 
     expect(perp.vertexMaxMm).toBeLessThan(1e-4);
     expect(perp.nonFiniteCount).toBe(0);
     expect(perp.wallTriangles).toBe(radial.wallTriangles);
-  });
+  }, 60000); // builds a 48² mesh + projects every steep facet sample
 
   it('detects an injected radial defect (one ring nudged +0.3mm outward)', () => {
     const R = 55;

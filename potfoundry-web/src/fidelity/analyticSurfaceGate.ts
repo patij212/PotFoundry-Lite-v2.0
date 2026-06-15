@@ -171,12 +171,21 @@ export interface SurfaceProjection {
  * which OVERSTATES a tilted/steep relief face), this finds the true foot point.
  *
  * Gauss-Newton on (theta,z) seeded at (atan2(py,px), pz) — the radial foot, which
- * is the EXACT solution for a vertical (cylinder) wall and an excellent seed
- * elsewhere. r's derivatives are taken by central finite difference (rAnalytic is
- * an opaque config closure); a backtracking line search guarantees monotone
- * descent so it is robust on curved and steep-but-smooth faces. The seam/crease
- * discontinuities (where FD would blow up) are EXCLUDED upstream by the metric, so
- * every projected sample lies on a locally-smooth patch.
+ * is the EXACT solution for a vertical (cylinder) wall and an excellent seed on
+ * smooth relief. r's derivatives are taken by central finite difference (rAnalytic
+ * is an opaque config closure); a backtracking line search guarantees monotone
+ * descent. The seam/crease discontinuities (where FD would blow up) are EXCLUDED
+ * upstream by the metric, so every projected sample lies on a locally-smooth patch.
+ *
+ * ROBUSTNESS (load-bearing for tangled relief — Gyroid/Voronoi/CelticTriquetra):
+ * a single GN from the radial seed can stall in a LOCAL minimum and OVERSTATE the
+ * distance (measured up to +0.5mm vs brute force — verify_perp3d_projection). So
+ * when the initial GN distance exceeds `coarseTrigger` (a point that may sit in the
+ * wrong well — the only regime where local minima bite; a near-surface point has a
+ * unique foot), a COARSE global grid search over a (θ,z) neighborhood finds the
+ * true basin and GN polishes it; the minimum of the two is returned. A point ≤
+ * trigger is already sub-tolerance, so its exact foot does not change any gate
+ * verdict — it keeps the cheap single GN.
  *
  * Result is always ≤ the radial residual and ≪ it where the surface tilts.
  */
@@ -185,16 +194,22 @@ export function projectPointToRadialSurface(
   py: number,
   pz: number,
   rAnalytic: AnalyticRadiusFn,
-  opts?: { maxIter?: number; hTheta?: number; hZ?: number; tol?: number },
+  opts?: {
+    maxIter?: number; hTheta?: number; hZ?: number; tol?: number;
+    /** Above this initial GN distance (mm), do the coarse global search (default 0.1). */
+    coarseTrigger?: number;
+    /** Coarse-search half-extent in θ (rad) and z (mm) (defaults 0.22 / 11). */
+    coarseDTheta?: number; coarseDZ?: number;
+    /** Coarse-search grid resolution in θ and z (defaults 49 / 25). */
+    coarseNTheta?: number; coarseNZ?: number;
+    /** GN-polish the best K coarse cells (a neighbour cell may hold the basin; default 4). */
+    coarseTopK?: number;
+  },
 ): SurfaceProjection {
   const maxIter = opts?.maxIter ?? 24;
   const hTheta = opts?.hTheta ?? 1e-5;
   const hZ = opts?.hZ ?? 1e-4;
   const tol = opts?.tol ?? 1e-12;
-
-  let theta = Math.atan2(py, px);
-  if (theta < 0) theta += TAU; // → [0,TAU) to match the shader's azimuth domain
-  let z = pz;
 
   const distSq = (th: number, zz: number): number => {
     const r = rAnalytic(th, zz);
@@ -204,37 +219,97 @@ export function projectPointToRadialSurface(
     return ex * ex + ey * ey + ez * ez;
   };
 
-  let f = distSq(theta, z);
-  for (let it = 0; it < maxIter; it++) {
-    const cs = Math.cos(theta), sn = Math.sin(theta);
-    const r = rAnalytic(theta, z);
-    const rTh = (rAnalytic(theta + hTheta, z) - rAnalytic(theta - hTheta, z)) / (2 * hTheta);
-    const rZ = (rAnalytic(theta, z + hZ) - rAnalytic(theta, z - hZ)) / (2 * hZ);
-    // Residual E = P − S and the surface tangents S_theta, S_z.
-    const ex = px - r * cs, ey = py - r * sn, ez = pz - z;
-    const Stx = rTh * cs - r * sn, Sty = rTh * sn + r * cs; // S_theta (z-comp 0)
-    const Szx = rZ * cs, Szy = rZ * sn;                     // S_z (z-comp 1)
-    // Gauss-Newton normal equations (MᵀM)δ = MᵀE, M = [S_theta, S_z].
-    const a = Stx * Stx + Sty * Sty;          // S_theta·S_theta
-    const b = Stx * Szx + Sty * Szy;          // S_theta·S_z
-    const c = Szx * Szx + Szy * Szy + 1;      // S_z·S_z  (+1 from z-comp)
-    const g1 = Stx * ex + Sty * ey;           // S_theta·E (E_z·0)
-    const g2 = Szx * ex + Szy * ey + ez;      // S_z·E
-    const det = a * c - b * b;
-    if (!(Math.abs(det) > 1e-18)) break;
-    const dTh = (c * g1 - b * g2) / det;
-    const dZ = (a * g2 - b * g1) / det;
-    // Backtracking line search: accept the largest step (≤1) that decreases f.
-    let step = 1, improved = false;
-    for (let bt = 0; bt < 24; bt++) {
-      const fNew = distSq(theta + step * dTh, z + step * dZ);
-      if (fNew < f) { theta += step * dTh; z += step * dZ; f = fNew; improved = true; break; }
-      step *= 0.5;
+  // One Gauss-Newton descent from a seed (th0,z0) → local foot + its dist.
+  const gnFrom = (th0: number, z0: number): SurfaceProjection => {
+    let theta = th0, z = z0, f = distSq(theta, z);
+    for (let it = 0; it < maxIter; it++) {
+      const cs = Math.cos(theta), sn = Math.sin(theta);
+      const r = rAnalytic(theta, z);
+      const rTh = (rAnalytic(theta + hTheta, z) - rAnalytic(theta - hTheta, z)) / (2 * hTheta);
+      const rZ = (rAnalytic(theta, z + hZ) - rAnalytic(theta, z - hZ)) / (2 * hZ);
+      // Residual E = P − S and the surface tangents S_theta, S_z.
+      const ex = px - r * cs, ey = py - r * sn, ez = pz - z;
+      const Stx = rTh * cs - r * sn, Sty = rTh * sn + r * cs; // S_theta (z-comp 0)
+      const Szx = rZ * cs, Szy = rZ * sn;                     // S_z (z-comp 1)
+      // Gauss-Newton normal equations (MᵀM)δ = MᵀE, M = [S_theta, S_z].
+      const a = Stx * Stx + Sty * Sty;          // S_theta·S_theta
+      const b = Stx * Szx + Sty * Szy;          // S_theta·S_z
+      const c = Szx * Szx + Szy * Szy + 1;      // S_z·S_z  (+1 from z-comp)
+      const g1 = Stx * ex + Sty * ey;           // S_theta·E (E_z·0)
+      const g2 = Szx * ex + Szy * ey + ez;      // S_z·E
+      const det = a * c - b * b;
+      if (!(Math.abs(det) > 1e-18)) break;
+      const dTh = (c * g1 - b * g2) / det;
+      const dZ = (a * g2 - b * g1) / det;
+      // Backtracking line search: accept the largest step (≤1) that decreases f.
+      let step = 1, improved = false;
+      for (let bt = 0; bt < 24; bt++) {
+        const fNew = distSq(theta + step * dTh, z + step * dZ);
+        if (fNew < f) { theta += step * dTh; z += step * dZ; f = fNew; improved = true; break; }
+        step *= 0.5;
+      }
+      if (!improved) break;
+      if (step * step * (dTh * dTh + dZ * dZ) < tol) break;
     }
-    if (!improved) break;
-    if (step * step * (dTh * dTh + dZ * dZ) < tol) break;
+    return { theta, z, dist: Math.sqrt(f) };
+  };
+
+  let theta0 = Math.atan2(py, px);
+  if (theta0 < 0) theta0 += TAU; // → [0,TAU) to match the shader's azimuth domain
+  let best = gnFrom(theta0, pz);
+
+  const coarseTrigger = opts?.coarseTrigger ?? 0.1;
+  const dTheta = opts?.coarseDTheta ?? 0.22;
+  const dZ = opts?.coarseDZ ?? 11;
+  if (best.dist > coarseTrigger) {
+    // CHEAP GATE — a sparse 2D (θ,z) scan around the foot. On a LOW-frequency surface
+    // (e.g. a cone) the single GN already found the global foot, so nothing beats it
+    // ⇒ skip the expensive fine search entirely. Only a HIGH-frequency relief (where
+    // GN can stall in the wrong well) shows a clearly-closer basin here. The scan
+    // MUST vary z, not just θ: a HELICAL groove (Crystalline) hides its closer basin
+    // at a different z, so a θ-only line at the foot's z would miss it.
+    let gateMinF = best.dist * best.dist;
+    const gTh = 25, gZ = 9;
+    for (let i = 0; i < gTh; i++) {
+      const th = theta0 - dTheta + (2 * dTheta) * (i / (gTh - 1));
+      for (let j = 0; j < gZ; j++) {
+        const zz = pz - dZ + (2 * dZ) * (j / (gZ - 1));
+        const f = distSq(th, zz);
+        if (f < gateMinF) gateMinF = f;
+      }
+    }
+    const needCoarse = Math.sqrt(gateMinF) < best.dist - 0.02;
+    if (needCoarse) {
+    // Coarse global search for the true basin (single GN stalled in the wrong well),
+    // then GN-polish the best K coarse cells — the global basin on the finest-feature
+    // styles (Voronoi/CelticTriquetra) is often NOT the single best coarse cell, so
+    // polishing only #1 leaves it stuck.
+    const nTheta = opts?.coarseNTheta ?? 49;
+    const nZ = opts?.coarseNZ ?? 25;
+    const topK = opts?.coarseTopK ?? 4;
+    // Track the K smallest coarse cells (f, th, z), worst-at-end insertion.
+    const top: Array<{ f: number; th: number; z: number }> = [];
+    for (let i = 0; i < nTheta; i++) {
+      const th = theta0 - dTheta + (2 * dTheta) * (i / (nTheta - 1));
+      for (let j = 0; j < nZ; j++) {
+        const zz = pz - dZ + (2 * dZ) * (j / (nZ - 1));
+        const f = distSq(th, zz);
+        if (top.length < topK) {
+          top.push({ f, th, z: zz });
+          top.sort((p, q) => p.f - q.f);
+        } else if (f < top[topK - 1].f) {
+          top[topK - 1] = { f, th, z: zz };
+          top.sort((p, q) => p.f - q.f);
+        }
+      }
+    }
+    for (const cell of top) {
+      const polished = gnFrom(cell.th, cell.z);
+      if (polished.dist < best.dist) best = polished;
+    }
+    }
   }
-  return { theta, z, dist: Math.sqrt(f) };
+  return best;
 }
 
 /**
