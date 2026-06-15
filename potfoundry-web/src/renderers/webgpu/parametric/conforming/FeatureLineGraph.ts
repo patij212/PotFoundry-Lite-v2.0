@@ -875,10 +875,12 @@ const EXTRACTORS: Record<string, (p: Float32Array, opts?: ExtractOpts) => Featur
   FourierBloom: () => [],
   WaveInterference: () => [],
   RippleInterference: () => [],
-  // Crystalline is NOT smooth (measured 2026-06-10: C1 helical crease family,
-  // k=24, turns=0.8, ~26.9° dihedral on the 12 main groove apexes). [] here is
-  // a KNOWN GAP kept until the crest-elimination blueprint's Stage 5 wires the
-  // family via chooseHelixGrid + CreaseHelixWarp — see the header doc.
+  // Crystalline: the C1 helical facet-EDGE crease loci ARE derivable (k=facet_count,
+  // slope −height_phase/facet_count; defaults k=12 turns=0.4) — but the helix WARP
+  // BUILD is impractically slow for those params (chooseHelixGrid forces a too-large
+  // minUniformLevel → >150s synchronous build, MEASURED 2026-06-15). So Crystalline
+  // stays ACCEPT-class (broad helical residual, mild chord 0.569, geometrically
+  // faithful, like Gyroid). [] = honest until the helix-warp perf is fixed.
   Crystalline: () => [],
   // ArtDeco: dominant feature is a C0 t-STEP jump (radius drops by ad_step_depth
   // in horizontal bands), NOT a u-curve — so marching-squares on ∂r/∂u misses it
