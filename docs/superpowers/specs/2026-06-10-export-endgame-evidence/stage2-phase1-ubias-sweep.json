@@ -1,0 +1,26 @@
+{
+  "probe": "_fidelity_quality_ubias_sweep.cjs",
+  "target": 1000000,
+  "angleBar": 20,
+  "note": "uBias def=production default (computeUBias auto); 0=forced no-bias. min-angle only.",
+  "rows": [
+    { "style": "GyroidManifold", "ubias": "def", "worstMinAngleDeg": 0.85, "p1": 5, "pctBelow": 7.10, "bandPct": 5.20, "bulkPct": 8.80, "tris": 684876 },
+    { "style": "GyroidManifold", "ubias": 0, "worstMinAngleDeg": 0.97, "p1": 6, "pctBelow": 58.70, "bandPct": 59.60, "bulkPct": 57.70, "tris": 755366 },
+    { "style": "BasketWeave", "ubias": "def", "worstMinAngleDeg": 2.64, "p1": 3, "pctBelow": 13.00, "bandPct": 16.20, "bulkPct": 8.20, "tris": 545964 },
+    { "style": "BasketWeave", "ubias": 0, "worstMinAngleDeg": 5.04, "p1": 7, "pctBelow": 71.70, "bandPct": 71.30, "bulkPct": 72.20, "tris": 532404 },
+    { "style": "ArtDeco", "ubias": "def", "worstMinAngleDeg": 1.83, "p1": 2, "pctBelow": 6.00, "bandPct": 5.80, "bulkPct": 6.20, "tris": 522496 },
+    { "style": "ArtDeco", "ubias": 0, "worstMinAngleDeg": 3.89, "p1": 4, "pctBelow": 62.30, "bandPct": 62.00, "bulkPct": 62.60, "tris": 609152 },
+    { "style": "DragonScales", "ubias": "def", "worstMinAngleDeg": 2.47, "p1": 5, "pctBelow": 6.00, "bandPct": 5.20, "bulkPct": 6.70, "tris": 619396 },
+    { "style": "DragonScales", "ubias": 0, "worstMinAngleDeg": 4.58, "p1": 8, "pctBelow": 75.10, "bandPct": 62.10, "bulkPct": 86.00, "tris": 1066380 },
+    { "style": "CelticKnot", "ubias": "def", "worstMinAngleDeg": 0.41, "p1": 6, "pctBelow": 8.20, "bandPct": 6.20, "bulkPct": 10.20, "tris": 743836 },
+    { "style": "CelticKnot", "ubias": 0, "worstMinAngleDeg": 0.47, "p1": 6, "pctBelow": 56.50, "bandPct": 57.90, "bulkPct": 54.80, "tris": 807220 },
+    { "style": "HexagonalHive", "ubias": "def", "worstMinAngleDeg": 1.31, "p1": 7, "pctBelow": 4.30, "bandPct": 4.80, "bulkPct": 2.70, "tris": 1016470 },
+    { "style": "HexagonalHive", "ubias": 0, "worstMinAngleDeg": 1.02, "p1": 7, "pctBelow": 58.70, "bandPct": 56.40, "bulkPct": 63.30, "tris": 982600 },
+    { "style": "SuperformulaBlossom", "ubias": "def", "worstMinAngleDeg": 0.37, "p1": 6, "pctBelow": 11.30, "bandPct": 12.40, "bulkPct": 0.00, "tris": 1582096 },
+    { "style": "SuperformulaBlossom", "ubias": 0, "worstMinAngleDeg": 0.29, "p1": 4, "pctBelow": 72.30, "bandPct": 72.10, "bulkPct": 73.10, "tris": 1299964 },
+    { "style": "Voronoi", "ubias": "def", "worstMinAngleDeg": 0.74, "p1": 5, "pctBelow": 8.30, "bandPct": 6.00, "bulkPct": 9.70, "tris": 1109046 },
+    { "style": "Voronoi", "ubias": 0, "worstMinAngleDeg": 0.68, "p1": 4, "pctBelow": 49.90, "bandPct": 55.00, "bulkPct": 45.50, "tris": 943034 },
+    { "style": "FourierBloom", "ubias": "def", "worstMinAngleDeg": 13.36, "p1": 15, "pctBelow": 17.30, "bandPct": 22.80, "bulkPct": 7.90, "tris": 360010 },
+    { "style": "FourierBloom", "ubias": 0, "worstMinAngleDeg": 4.37, "p1": 4, "pctBelow": 91.80, "bandPct": 87.10, "bulkPct": 96.60, "tris": 1287502 }
+  ]
+}
