@@ -418,7 +418,14 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
-    return np.array(verts, dtype=float), np.array(faces, dtype=int), diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    faces_arr = np.array(faces, dtype=int)
+    # Normalize winding so this legacy fallback matches the canonical builder:
+    # a consistently-oriented, outward-facing manifold (see core.geometry and
+    # adr/0002-mesh-orientation-normalization.md).
+    from .core.geometry import orient_mesh
+    faces_arr = orient_mesh(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401

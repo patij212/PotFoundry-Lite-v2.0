@@ -12,6 +12,7 @@ from functools import lru_cache
 __all__ = [
     "MeshQuality", "PotDefaults", "STYLES",
     "r_base_out", "build_pot_mesh",
+    "orient_mesh", "signed_volume",
     "save_preview_png",
     "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
@@ -294,6 +295,149 @@ STYLES = {
 
 
 # -----------------------------
+# Orientation normalization
+# -----------------------------
+
+def signed_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+    """Enclosed signed volume of a closed triangle mesh (divergence theorem).
+
+    Positive iff the face winding produces consistently *outward* normals.
+    For an open or non-manifold mesh the value is not physically meaningful,
+    but the sign still reflects the dominant winding direction.
+    """
+    if len(faces) == 0:
+        return 0.0
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    return float(np.einsum("ij,ij->i", v0, np.cross(v1, v2)).sum() / 6.0)
+
+
+def orient_mesh(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Return a copy of ``faces`` with consistent, outward-facing winding.
+
+    Rhino/Grasshopper (and robust boolean/solid operations everywhere) require
+    a mesh whose triangles are *consistently* oriented and whose normals point
+    *outward*. Hand-built triangle groups can satisfy the looser "every edge is
+    shared twice" condition while still disagreeing on winding at the seams
+    between groups, and the whole mesh may be globally inverted.
+
+    This pass fixes both, independent of how the triangles were generated:
+
+    1. **Consistency** — flood-fill orientation across shared edges so that
+       every interior edge is traversed in opposite directions by its two
+       faces (the definition of an orientable manifold). This is robust to any
+       per-group winding mistake.
+    2. **Outward** — flip the whole mesh if the resulting signed volume is
+       negative, so normals point outward (positive enclosed volume).
+
+    Disconnected components are each oriented relative to their own seed, then
+    the global outward flip is applied to all of them together.
+
+    Args:
+        verts: Vertex array (N, 3).
+        faces: Triangle index array (M, 3).
+
+    Returns:
+        A new (M, 3) int array with normalized winding. The input is unchanged.
+    """
+    faces = np.asarray(faces)
+    m = len(faces)
+    if m == 0:
+        return faces.astype(int, copy=True)
+
+    # Directed edges per face: (v0->v1), (v1->v2), (v2->v0).
+    fa = np.repeat(np.arange(m, dtype=np.int64), 3)
+    e = np.stack(
+        [faces[:, [0, 1, 2]].reshape(-1), faces[:, [1, 2, 0]].reshape(-1)],
+        axis=1,
+    ).astype(np.int64)
+    emin = e.min(axis=1)
+    emax = e.max(axis=1)
+    # Direction each face traverses the *undirected* edge: +1 for min->max.
+    edge_dir = np.where(e[:, 0] <= e[:, 1], 1, -1).astype(np.int8)
+
+    # Group directed edges by their undirected key so we can find the faces
+    # sharing each edge. A single integer key keeps the sort fast.
+    n_verts = int(faces.max()) + 1
+    key = emin * n_verts + emax
+    order = np.argsort(key, kind="stable")
+    key_s = key[order]
+    fa_s = fa[order]
+    dir_s = edge_dir[order]
+
+    # For every edge shared by exactly two faces, record the face pair and the
+    # required relative sign. Consistent orientation => the two faces traverse
+    # the edge in opposite directions, i.e. sign[f1] = sign[f0] * (-d0*d1).
+    # Non-manifold edges (shared by != 2 faces) are skipped — orientation
+    # across them is undefined. This is fully vectorized: size-2 runs in the
+    # sorted key array occupy consecutive positions [start, start+1].
+    _, grp_start, grp_count = np.unique(
+        key_s, return_index=True, return_counts=True
+    )
+    two = grp_start[grp_count == 2]
+    f0 = fa_s[two]
+    f1 = fa_s[two + 1]
+    rel = (-dir_s[two] * dir_s[two + 1]).astype(np.int8)
+
+    # Build a symmetric CSR adjacency over faces so the flood fill can expand a
+    # frontier without rescanning every edge each pass.
+    src = np.concatenate([f0, f1])
+    dst = np.concatenate([f1, f0])
+    rel2 = np.concatenate([rel, rel])
+    so = np.argsort(src, kind="stable")
+    dst_s = dst[so]
+    rel_s = rel2[so]
+    deg = np.bincount(src[so], minlength=m)
+    off = np.zeros(m + 1, dtype=np.int64)
+    np.cumsum(deg, out=off[1:])
+
+    # Flood-fill a per-face sign (+1 keep, -1 flip) with a vectorized BFS. Each
+    # pass gathers the out-edges of the current frontier via ragged CSR slices,
+    # assigns signs to newly reached faces, and advances the frontier — so each
+    # edge is touched O(1) times overall (amortized linear). Disconnected
+    # components are seeded in turn. The mesh is orientable, so concurrent
+    # writes to a face are identical.
+    sign = np.zeros(m, dtype=np.int8)
+    next_unsigned = 0
+    while True:
+        while next_unsigned < m and sign[next_unsigned] != 0:
+            next_unsigned += 1
+        if next_unsigned >= m:
+            break
+        sign[next_unsigned] = 1
+        frontier = np.array([next_unsigned], dtype=np.int64)
+        while frontier.size:
+            counts = deg[frontier]
+            total = int(counts.sum())
+            if total == 0:
+                break
+            # Ragged gather: indices into the CSR arrays for every frontier edge.
+            starts = off[frontier]
+            ramp = np.arange(total) - np.repeat(np.cumsum(counts) - counts, counts)
+            idx = np.repeat(starts, counts) + ramp
+            nb = dst_s[idx]
+            parent = np.repeat(sign[frontier], counts)
+            cand = (parent * rel_s[idx]).astype(np.int8)
+            fresh = sign[nb] == 0
+            nb = nb[fresh]
+            sign[nb] = cand[fresh]
+            frontier = np.unique(nb)
+
+    oriented = faces.astype(int, copy=True)
+    flip = sign < 0
+    if flip.any():
+        # Reverse winding by swapping the last two vertices.
+        oriented[flip] = oriented[flip][:, [0, 2, 1]]
+
+    # Global outward flip: positive enclosed volume => outward normals.
+    if signed_volume(verts, oriented) < 0:
+        oriented = oriented[:, [0, 2, 1]]
+
+    return oriented
+
+
+# -----------------------------
 # Mesh builder (watertight)
 # -----------------------------
 
@@ -445,7 +589,12 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    # Normalize winding so the exported mesh is a consistently-oriented,
+    # outward-facing manifold (required for clean Rhino/Grasshopper imports,
+    # boolean ops, and watertightness checks).
+    faces_arr = orient_mesh(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
