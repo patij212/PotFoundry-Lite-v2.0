@@ -103,7 +103,17 @@
     },
     {
       "style": "WaveInterference",
-      "error": "perp timeout 600000ms"
+      "note": "denseN=4 backfill (denseN=6 perp coarse-search timed out); smooth style",
+      "perpChordMaxMm": 0.0185,
+      "perpP99Mm": 0.0051,
+      "nAbove": 0,
+      "vertexMaxMm": 0.0003,
+      "wallTriangles": 268754,
+      "worstMinAngleDeg": 29.35,
+      "p1MinAngleDeg": 29.0,
+      "pctBelowBar": 0.0,
+      "angleBarDeg": 20,
+      "denseN": 4
     },
     {
       "style": "Crystalline",

@@ -26,7 +26,7 @@ the calibrated gate that Stages 2–4 consume. **All numbers trace to committed 
 
 | Class | Styles | Action |
 |---|---|---|
-| **PASS both gates** | SuperellipseMorph, HarmonicRipple, RippleInterference (+WaveInterference, backfill pending) | none — regression-guard only |
+| **PASS both gates** | SuperellipseMorph, HarmonicRipple, RippleInterference, WaveInterference (denseN=4) | none — regression-guard only |
 | **Chord-clean, QUALITY-fail** | FourierBloom (17.3% <20°), GeometricStar, BambooSegments, SpiralRidges, ArtDeco, HexagonalHive, DragonScales, SuperformulaBlossom, Crystalline, LowPolyFacet (marginal) | **Stage 2 only** (triangulation-pattern fix; chord already CAD-grade) |
 | **CHORD-fail (A) + QUALITY-fail** | GyroidManifold, BasketWeave, CelticKnot, GothicArches, CelticTriquetra | **Stage 3 (density via perp oracle) AND Stage 2 (quality)** — both, independent mechanisms |
 | **REF-UNTRUSTED** | Voronoi (vtxMax 0.182, f32/f64 hash floor) + quality-fail | separate precision item; quality via Stage 2 |
@@ -83,8 +83,8 @@ shared styles) and should arguably go first since it blocks the most styles.
   (`useParametricExport.ts:405-406`), no fallback. Every refiner change re-runs
   `summarizeConformingValidation` (bnd/nonMan/orient/sliver=0).
 - **Voronoi** ref-untrusted (hash floor) — separate precision track; do not block.
-- **WaveInterference** denseN=6 perp timeout — backfill at denseN=4 (smooth,
-  known-clean); not on the critical path.
+- **WaveInterference** — backfilled at denseN=4 (passes both gates; denseN=6 perp
+  coarse-search times out — a perf note for the metric, not an export defect).
 
 ---
 

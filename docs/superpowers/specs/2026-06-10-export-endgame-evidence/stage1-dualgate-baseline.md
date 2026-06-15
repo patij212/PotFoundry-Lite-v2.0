@@ -10,7 +10,7 @@ Probe: `potfoundry-web/e2e/_fidelity_dualgate_baseline.cjs`. Raw JSON:
 reference `refRes=512`, quality = reference-free min interior angle (`diagnoseCrestQuality`,
 bar 20°). One run per style, deterministic build.
 
-## The matrix (19/20; WaveInterference denseN=6 timeout — see note)
+## The matrix (20/20; WaveInterference at denseN=4 — see note)
 
 | Style | perpChord | **perp p99** | nAbove% | vtxMax | worstMinAng° | p1MinAng° | **%<20°** | wallTris | chord | quality |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -33,7 +33,7 @@ bar 20°). One run per style, deterministic build.
 | CelticKnot | 0.7016 | **0.2320** | 2.499 | 0.0001 | 0.41 | 6.0 | 8.20 | 709k | ❌ GAP-3D | ❌ catastrophic |
 | BasketWeave | 1.6249 | **0.4790** | 3.768 | 0.0000 | 2.64 | 3.0 | 13.00 | 367k | ❌ GAP-3D | ❌ catastrophic |
 | GyroidManifold | 1.1822 | **0.4886** | 5.499 | 0.0004 | 0.85 | 5.0 | 7.10 | 683k | ❌ GAP-3D | ❌ catastrophic |
-| WaveInterference | — | — | — | — | — | — | — | — | (denseN=6 timeout) | (pending denseN=4) |
+| WaveInterference † | 0.0185 | 0.0051 | 0 | 0.0003 | 29.35 | 29.0 | 0.00 | 269k | ✅ | ✅ |
 
 (Provisional verdict columns use a working gate: chord = perp p99 < 0.1mm; quality
 = worst-min-angle ≥ 20° with no slivers. Constants are pinned for real in
@@ -53,7 +53,8 @@ CAD-grade**:
   ArtDeco (1.83°), DragonScales (2.47°), BasketWeave (2.64°).
 - **Chord-clean but quality-failing:** FourierBloom (chord 0.0158, **17.3% < 20°**),
   GeometricStar (chord 0.0066, 1.9% < 20°, worst 6.9°), BambooSegments, ArtDeco, SFB.
-- **Clean on both:** SuperellipseMorph, HarmonicRipple, RippleInterference (smooth styles).
+- **Clean on both:** SuperellipseMorph, HarmonicRipple, RippleInterference, WaveInterference
+  (the smooth styles).
 
 **Implication for the plan:** the triangle-quality problem is the *dominant* and *wider*
 defect, and is largely separable from the 5-style chord gap. Stage 2 (quality) is a
@@ -70,9 +71,11 @@ Stage-2 lead.
   (`2026-06-15-perpendicular-3d-rebaseline-findings.md`) within run noise → trusted.
 
 ## Notes
-- **WaveInterference** timed out on the denseN=6 perpendicular coarse search (same as the
-  prior re-baseline run); it is a smooth, known-CAD-grade style (prior chord 0.0185).
-  Backfill at denseN=4 pending; not on the critical path.
+- **† WaveInterference** timed out on the denseN=6 perpendicular coarse search (same as
+  the prior re-baseline run); backfilled at **denseN=4** → chord 0.0185, p99 0.0051,
+  worst min-angle 29.35°, 0% < 20° ⇒ **passes both gates** (smooth, known-CAD-grade,
+  matches prior chord 0.0185). The lower denseN slightly understates p99 but the verdict
+  (well under tol, sliver-free) is unambiguous.
 - `p1MinAng°` = 1st-percentile min angle (robust worst); `worstMinAng°` = absolute min.
   Where worst ≪ p1 (e.g. SFB 0.37 vs 6.0), the catastrophic triangles are a thin tail —
   still disqualifying under a "no slivers" bar, but localized (Stage-2 can target the loci).
