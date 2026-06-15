@@ -875,12 +875,13 @@ const EXTRACTORS: Record<string, (p: Float32Array, opts?: ExtractOpts) => Featur
   FourierBloom: () => [],
   WaveInterference: () => [],
   RippleInterference: () => [],
-  // Crystalline: the C1 helical facet-EDGE crease loci ARE derivable (k=facet_count,
-  // slope −height_phase/facet_count; defaults k=12 turns=0.4) — but the helix WARP
-  // BUILD is impractically slow for those params (chooseHelixGrid forces a too-large
-  // minUniformLevel → >150s synchronous build, MEASURED 2026-06-15). So Crystalline
-  // stays ACCEPT-class (broad helical residual, mild chord 0.569, geometrically
-  // faithful, like Gyroid). [] = honest until the helix-warp perf is fixed.
+  // Crystalline: the C1 helical facet-EDGE loci ARE derivable & pinnable (k=facet_count,
+  // slope −height_phase/facet_count; defaults k=12 turns=0.4). MEASURED (2026-06-15):
+  // wiring the helix warp builds WATERTIGHT in 128s (1.7M tris) — but the chord is
+  // UNCHANGED (0.569 identical, same distribution): the facet grooves are STEEP faces,
+  // so aligning edges to them does NOT reduce the RADIAL chord (a near-radial facet on
+  // a steep groove reads ~0.569 regardless of alignment — radial-chord-irreducible, like
+  // Gyroid/Gothic). Extraction = pure cost, zero fidelity gain ⇒ ACCEPT-class. [].
   Crystalline: () => [],
   // ArtDeco: dominant feature is a C0 t-STEP jump (radius drops by ad_step_depth
   // in horizontal bands), NOT a u-curve — so marching-squares on ∂r/∂u misses it
