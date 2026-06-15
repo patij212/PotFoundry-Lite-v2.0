@@ -25,6 +25,7 @@ const CHORD_TOL_MM = Number(process.env.PF_CHORD_TOL_MM || 0.1);   // CAD/printe
 const REF_RES = Number(process.env.PF_REF_RES || 512);            // GPU-grid fallback for drifted styles
 const DENSE_N = Number(process.env.PF_DENSE_N || 0);              // 0 = gate default (12)
 const MAXSAG = Number(process.env.PF_MAXSAG || 0);               // 0 = profile default; else force chord density
+const NRING = Number(process.env.PF_NRING || 0);                // 0 = profile default; else force theta/relief density (2^k, >=64)
 
 const ALL_STYLES = [
   'SuperformulaBlossom', 'FourierBloom', 'SpiralRidges', 'SuperellipseMorph',
@@ -46,12 +47,13 @@ function withTimeout(p, ms, label) {
 async function runStyle(browser, style) {
   const page = await browser.newPage();
   try {
-    await page.addInitScript(([refRes, maxSag]) => {
+    await page.addInitScript(([refRes, maxSag, nRing]) => {
       window.__pfConforming = true;
       window.__pfSurfaceFidelityExact = true;
       if (refRes > 0) { window.__pfReferenceDenseRes = refRes; window.__pfReferenceBicubic = true; }
       if (maxSag > 0) window.__pfConformingMaxSag = maxSag; // force chord density
-    }, [REF_RES, MAXSAG]);
+      if (nRing > 0) window.__pfConformingNRing = nRing;     // force theta/relief density
+    }, [REF_RES, MAXSAG, NRING]);
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await withTimeout(page.waitForFunction(() => window.__pfFidelity && window.__pfFidelity.isReady() === true, null, { timeout: 95000 }), 100000, 'ready');
     await withTimeout(page.evaluate((s) => window.__pfFidelity.setStyle(s), style), 60000, 'setStyle');

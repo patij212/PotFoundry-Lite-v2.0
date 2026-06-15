@@ -97,8 +97,11 @@ Commits: `aa11fa1` (metric + wiring), `511adb4` (robust projection + verify),
 | BasketWeave | 1.698 | **1.625** | 0.96 | 0.479 | 74492/2.0M (3.8%) | **GAP-3D (weave)** |
 | GyroidManifold | 1.250 | **1.182** | 0.95 | 0.489 | 176985/3.2M (5.5%) | **GAP-3D (TPMS lattice)** |
 | GothicArches | 1.429 | **0.449** | 0.31 | 0.211 | 151668/2.6M (5.9%) | **GAP-3D (upper diamond lattice)** |
+| WaveInterference | 0.0185 | **0.0185** | 1.00 | 0.005 | 0 | CAD-grade (denseN=4; gpu-grid ref) |
 | Voronoi | 0.381 | 0.257 | 0.67 | 0.074 | 18378/5.2M (0.36%) | REF-UNTRUSTED (vtx 0.18, hash floor) |
-| WaveInterference | — | — | — | — | timeout @ 540s | re-measure pending |
+
+**Counts: 9 CAD-grade clean + 5 CAD-grade-bulk (cusp/thin tail, p99<0.1) = 14
+effectively CAD-grade in true 3D; 5 genuine broad gaps; 1 REF-UNTRUSTED (Voronoi).**
 
 ### Reading the ratio
 - **ratio ≈ 1.0** + small perp ⇒ surface normal is radial (smooth pot, FourierBloom) —
@@ -122,19 +125,36 @@ Commits: `aa11fa1` (metric + wiring), `511adb4` (robust projection + verify),
 | CelticKnot | 0.23 | sinusoidal braid ribbons | facets chord across the braid |
 
 These are SMOOTH-in-3D curved features (the projection is brute-exact on Gyroid /
-Crystalline smooth relief), so density and/or feature-aligned cells **should** close
-them (a flat facet straddling a curve has a chord error that shrinks as facets
-shrink / align). This is the SHALLOW-in-3D / straddle class the handoff §10.3
-predicted — but it is real and present (NOT collapsed), and it is concentrated in
-exactly these five families.
+Crystalline smooth relief): a flat facet straddling a curved lattice wall has a
+chord error that *would* shrink as facets shrink / align. This is the
+SHALLOW-in-3D / straddle class the handoff §10.3 predicted — but it is real and
+present (NOT collapsed), concentrated in exactly these five families.
 
-**NOT YET MEASURED:** density-invariance of these perp gaps (does nRing/maxSag
-shrink them?). `__pfConformingMaxSag` did NOT change Gyroid wallTris (683k→683k) —
-its triangle count is driven by **nRing (theta/relief density)**, not the
-vertical-profile sag. The decisive next probe is an `nRing` sweep (handoff
-`_fidelity_nring_audit.cjs` lever `__pfConformingNRing`) with the perpendicular
-metric: chord shrinks ~with density ⇒ density/alignment closes it; flat ⇒ needs
-general-curve CDT insertion or honest-accept.
+### Density-invariance probe (Gyroid) — and a measurement lesson
+Tried to shrink the Gyroid perp gap via the density dev-levers:
+- `__pfConformingMaxSag` does NOT change Gyroid wallTris (683k→683k).
+- `__pfConformingNRing` does NOT change it either: at **fixed sampling (denseN=3,
+  uncapped budget)**, profile-default vs nRing=2048 give **identical** results —
+  perp 0.982 both, p99 0.190 vs 0.183, nAbove 42922 both, wallTris 715k vs 732k
+  (+2%). The lever barely changes the mesh, so it cannot change the gap.
+
+**★ CONFOUND CAUGHT (audit-first):** an earlier "p99 0.49→0.37→0.18 as nRing rose"
+trend was a MEASUREMENT ARTIFACT — I lowered `denseN` (6→4→3) for speed at the same
+time, and a lower denseN samples nearer the facet vertices (low chord), under-stating
+p99. At a FIXED denseN the nRing sweep is flat. The true gap magnitude is the
+thorough-sampling number (denseN=6): **p99 ≈ 0.49** for Gyroid. Lesson: never vary
+the sampling resolution and the mesh density in the same comparison.
+
+**CONCLUSION:** the conforming mesher's adaptive density for the lattice styles is
+**self-determined and NOT raised by the available dev-levers** (maxSag/nRing leave
+wallTris ~constant). So "just densify" is not reachable through these knobs, and the
+gap at the mesher's chosen density is real (~0.49 p99 for Gyroid). Closing it
+requires a genuine MESHER change — **feature-aligned cells ACROSS the lattice walls
+(Route-B / general-curve CDT insertion, `outerFeatureLines`)** — or **honest-accept**.
+This matches the historical dead-ends (GeometricStar chevron insertion exploded
+tris 0.4M→2.2M with no gain; Crystalline helix 128s build, chord unchanged): naive
+insertion has not paid off, so step 3 needs a measured, aligned-cell approach with a
+chord-improvement gate BEFORE committing any production change.
 
 ---
 
@@ -149,11 +169,15 @@ general-curve CDT insertion or honest-accept.
 
 ## 5. Status vs the handoff's 4-step plan
 1. **Perpendicular 3D metric** — ✅ DONE, adversarially verified.
-2. **Re-baseline all 20** — ✅ DONE (this doc); 18/20 measured, Voronoi
-   ref-untrusted, WaveInterference re-running. **Hypothesis corrected: 5
-   lattice/weave/braid styles have genuine 3D gaps, not artifacts.**
-3. **Align facets to tangled curves (general-curve CDT)** — NOT STARTED. Now
-   correctly scoped to the 5 gap styles; gate density-invariance FIRST (audit-first)
-   to choose density vs alignment vs accept.
-4. **Certified 20-style matrix** — this doc is the honest interim matrix; final
-   certification awaits the step-3 measurements on the 5 gap styles.
+2. **Re-baseline all 20** — ✅ DONE (this doc); 19/20 measured (Voronoi
+   ref-untrusted). **Hypothesis corrected: 5 lattice/weave/braid styles have genuine
+   3D gaps, not artifacts.**
+3. **Align facets to tangled curves (general-curve CDT)** — NOT STARTED, now
+   correctly scoped to the 5 gap styles. Density-invariance GATED (Gyroid): the
+   dev-levers can't raise the mesher's density, so the fix is a real mesher change
+   (feature-aligned cells across the lattice walls) or honest-accept — to be done
+   measured-first with a chord-improvement gate, given the historical insertion
+   dead-ends.
+4. **Certified 20-style matrix** — this doc is the honest matrix: 14 CAD-grade, 5
+   genuine gaps (real mesher work or accept), 1 ref-untrusted. Final
+   "all-CAD-grade" certification depends on the step-3 mesher decision per gap style.
