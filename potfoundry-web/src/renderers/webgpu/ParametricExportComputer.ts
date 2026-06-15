@@ -70,6 +70,7 @@ import {
     type FeatureResolutionResult,
     type HelixWarp,
 } from './parametric/conforming';
+import { resolveUniformLevelOverride } from './parametric/conforming/uniformLevelOverride';
 import type { CdtStats } from './parametric/conforming/ConstrainedCellTriangulator';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
 import {
@@ -2375,6 +2376,10 @@ export class ParametricExportComputer {
                     // tangential ring resolution so the per-column density matches.
                     // Both default to the PROFILE's maxEdgeMm / nRing below.
                     __pfConformingMaxEdge?: number; __pfConformingNRing?: number;
+                    // Stage-1 diagnostic: force a uniform quadtree floor to test
+                    // whether isotropic densification closes the perp-3D chord gap
+                    // on lattice/weave/braid styles (A-vs-C fork). 0/unset in production.
+                    __pfConformingUniformLevel?: number;
                     // Decimation-ladder levers (quality-bounded budget enforcement):
                     // absolute-mm error seed (default = profile sag) and honesty
                     // ceiling (default 0.2mm ≈ one FDM layer height).
@@ -2429,6 +2434,12 @@ export class ParametricExportComputer {
                 const qNRing = (typeof qOv.__pfConformingNRing === 'number' && qOv.__pfConformingNRing >= 64)
                     ? (1 << Math.round(Math.log2(qOv.__pfConformingNRing)))
                     : exportProfile.nRing;
+                // Stage-1 diagnostic A-vs-C discriminator: force a uniform quadtree
+                // floor (bypasses the curvature-grid refiner). 0/unset → byte-identical.
+                const qUniformLevel =
+                    typeof qOv.__pfConformingUniformLevel === 'number' && qOv.__pfConformingUniformLevel > 0
+                        ? Math.round(qOv.__pfConformingUniformLevel)
+                        : 0;
 
                 // ── Vertical-crease pinning, part 1: pick the column lattice ──────
                 // Sharp constant-u creases (LowPolyFacet facet edges, GeometricStar
@@ -2626,10 +2637,10 @@ export class ParametricExportComputer {
                         // max of the three chosen levels (0 = no floor when no warp
                         // is needed). The helix warp pins full-HEIGHT columns (then
                         // shears them along t), so it shares the u-floor requirement.
-                        minUniformLevel:
-                            Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level) > 0
-                                ? Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level)
-                                : undefined,
+                        minUniformLevel: resolveUniformLevelOverride(
+                            Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level),
+                            qUniformLevel,
+                        ),
                         // Insert general feature curves (loops/braids) as real
                         // outer-wall edges; refine the cells they cross to
                         // featureLevel so the insertion is sliver-free.
