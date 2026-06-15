@@ -19,6 +19,7 @@
  */
 
 import type { SurfaceSampler } from './SurfaceSampler';
+import { resolveEfgSampler } from './efgSamplerOverride';
 import { MetricSizingField } from './MetricSizingField';
 import { PeriodicBalancedQuadtree } from './PeriodicBalancedQuadtree';
 import { triangulateQuadtree, type QuadtreeMesh } from './QuadtreeTriangulator';
@@ -266,8 +267,14 @@ function buildQuadtreeAtScale(
     directionalRefine,
     // Per-leaf efg tagging (shaped templates). Lazy: the quadtree only computes
     // efg inside `leaves()`, and the budget search above calls `leafCount()`
-    // alone — so threading it here costs the search nothing.
-    efgSampler: opts.efgSampler,
+    // alone — so threading it here costs the search nothing. The Stage-2
+    // diagnostic `__pfConformingEfgDP` injects the surface sampler so efg
+    // populates and the max-min-angle DP fires (default off → byte-identical).
+    efgSampler: resolveEfgSampler(
+      opts.efgSampler,
+      sampler,
+      (globalThis as unknown as { __pfConformingEfgDP?: boolean }).__pfConformingEfgDP === true,
+    ),
   });
 }
 
