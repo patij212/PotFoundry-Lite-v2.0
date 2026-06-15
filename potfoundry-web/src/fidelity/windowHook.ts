@@ -70,6 +70,7 @@ import { baseRadius } from '../geometry/profile';
 import { sfRf } from '../renderers/webgpu/parametric/conforming/FeatureLineGraph';
 import {
   radialAnalyticDeviation,
+  perpendicular3DDeviation,
   artDecoRiserTBands,
   basketWeaveCreaseLoci,
   celticKnotCreasePredicate,
@@ -527,6 +528,16 @@ export interface FidelitySurfaceFidelityDiagnosticOptions {
   referenceSource?: 'analytic' | 'gpu' | 'auto';
   /** Newton iterations for the GPU-grid (θ,z)→radius inversion (default 6). */
   newtonIters?: number;
+  /**
+   * Which deviation MEASURE the chord channel uses (default 'radial'):
+   *  - `'radial'`: |hypot(x,y) − r(atan2,z)| — EXACT for radial features, but
+   *    OVERSTATES steep/tilted relief faces (the historical B5 number).
+   *  - `'perpendicular'`: the shortest 3D distance from each flat facet to the true
+   *    surface (`perpendicular3DDeviation`) — the honest "every triangle faithful"
+   *    gate, ≤ radial and ≪ it on steep features. The VERTEX channel + exclusions
+   *    + reference selection are identical; only chordMax/p99/rms/nAbove differ.
+   */
+  metric?: 'radial' | 'perpendicular';
 }
 
 export interface FidelitySurfaceFidelityDiagnostics extends AnalyticDevResult {
@@ -555,6 +566,8 @@ export interface FidelitySurfaceFidelityDiagnostics extends AnalyticDevResult {
    * headline "mesh lies on the true surface" claim holds only when this is true.
    */
   referenceTrusted: boolean;
+  /** Which chord MEASURE produced this result ('radial' default, or 'perpendicular'). */
+  metric: 'radial' | 'perpendicular';
 }
 
 export interface FidelityFShearDiagnosticOptions {
@@ -981,7 +994,12 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         creaseStraddle = { field: (_u, t) => t, lo: 0.985, hi: 2, margin: 0 };
       }
 
-      const measure = (rA: AnalyticRadiusFn): AnalyticDevResult => radialAnalyticDeviation(
+      // Chord MEASURE: the honest 3D perpendicular distance, or the legacy radial
+      // residual (default). Same channels/exclusions/reference selection — only the
+      // chord-channel deviation function differs.
+      const metric = opts.metric ?? 'radial';
+      const metricFn = metric === 'perpendicular' ? perpendicular3DDeviation : radialAnalyticDeviation;
+      const measure = (rA: AnalyticRadiusFn): AnalyticDevResult => metricFn(
         { vertices: mesh.vertices, indices: mesh.indices },
         ut,
         rA,
@@ -1053,6 +1071,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         referenceMode,
         referenceRes,
         referenceTrusted,
+        metric,
         ...res,
       };
     },

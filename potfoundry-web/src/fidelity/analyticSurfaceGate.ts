@@ -153,17 +153,146 @@ export interface AnalyticDevResult {
 const wrap1 = (u: number): number => ((u % 1) + 1) % 1;
 const clamp01 = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
 
+/** Foot point + shortest 3D distance of the projection onto the radial surface. */
+export interface SurfaceProjection {
+  /** Recovered surface azimuth (radians; may fall slightly outside [0,TAU)). */
+  theta: number;
+  /** Recovered surface height (mm). */
+  z: number;
+  /** Shortest 3D distance |P − S(theta,z)| (mm). */
+  dist: number;
+}
+
 /**
- * B5 radial deviation of the REAL 3D outer-wall mesh from the CPU ANALYTIC
- * surface. `ut` = the PRE-WARP (u,t,surfaceId) stash, PARALLEL to `mesh.vertices`
+ * Shortest 3D (PERPENDICULAR) distance from a point P=(px,py,pz) to the radial
+ * surface S(theta,z) = (r·cosθ, r·sinθ, z), r = rAnalytic(theta,z). This is the
+ * HONEST geometric facet→surface error: unlike the radial residual
+ * |hypot(x,y) − r(atan2,z)| (the distance to the surface point at P's OWN azimuth,
+ * which OVERSTATES a tilted/steep relief face), this finds the true foot point.
+ *
+ * Gauss-Newton on (theta,z) seeded at (atan2(py,px), pz) — the radial foot, which
+ * is the EXACT solution for a vertical (cylinder) wall and an excellent seed
+ * elsewhere. r's derivatives are taken by central finite difference (rAnalytic is
+ * an opaque config closure); a backtracking line search guarantees monotone
+ * descent so it is robust on curved and steep-but-smooth faces. The seam/crease
+ * discontinuities (where FD would blow up) are EXCLUDED upstream by the metric, so
+ * every projected sample lies on a locally-smooth patch.
+ *
+ * Result is always ≤ the radial residual and ≪ it where the surface tilts.
+ */
+export function projectPointToRadialSurface(
+  px: number,
+  py: number,
+  pz: number,
+  rAnalytic: AnalyticRadiusFn,
+  opts?: { maxIter?: number; hTheta?: number; hZ?: number; tol?: number },
+): SurfaceProjection {
+  const maxIter = opts?.maxIter ?? 24;
+  const hTheta = opts?.hTheta ?? 1e-5;
+  const hZ = opts?.hZ ?? 1e-4;
+  const tol = opts?.tol ?? 1e-12;
+
+  let theta = Math.atan2(py, px);
+  if (theta < 0) theta += TAU; // → [0,TAU) to match the shader's azimuth domain
+  let z = pz;
+
+  const distSq = (th: number, zz: number): number => {
+    const r = rAnalytic(th, zz);
+    const ex = px - r * Math.cos(th);
+    const ey = py - r * Math.sin(th);
+    const ez = pz - zz;
+    return ex * ex + ey * ey + ez * ez;
+  };
+
+  let f = distSq(theta, z);
+  for (let it = 0; it < maxIter; it++) {
+    const cs = Math.cos(theta), sn = Math.sin(theta);
+    const r = rAnalytic(theta, z);
+    const rTh = (rAnalytic(theta + hTheta, z) - rAnalytic(theta - hTheta, z)) / (2 * hTheta);
+    const rZ = (rAnalytic(theta, z + hZ) - rAnalytic(theta, z - hZ)) / (2 * hZ);
+    // Residual E = P − S and the surface tangents S_theta, S_z.
+    const ex = px - r * cs, ey = py - r * sn, ez = pz - z;
+    const Stx = rTh * cs - r * sn, Sty = rTh * sn + r * cs; // S_theta (z-comp 0)
+    const Szx = rZ * cs, Szy = rZ * sn;                     // S_z (z-comp 1)
+    // Gauss-Newton normal equations (MᵀM)δ = MᵀE, M = [S_theta, S_z].
+    const a = Stx * Stx + Sty * Sty;          // S_theta·S_theta
+    const b = Stx * Szx + Sty * Szy;          // S_theta·S_z
+    const c = Szx * Szx + Szy * Szy + 1;      // S_z·S_z  (+1 from z-comp)
+    const g1 = Stx * ex + Sty * ey;           // S_theta·E (E_z·0)
+    const g2 = Szx * ex + Szy * ey + ez;      // S_z·E
+    const det = a * c - b * b;
+    if (!(Math.abs(det) > 1e-18)) break;
+    const dTh = (c * g1 - b * g2) / det;
+    const dZ = (a * g2 - b * g1) / det;
+    // Backtracking line search: accept the largest step (≤1) that decreases f.
+    let step = 1, improved = false;
+    for (let bt = 0; bt < 24; bt++) {
+      const fNew = distSq(theta + step * dTh, z + step * dZ);
+      if (fNew < f) { theta += step * dTh; z += step * dZ; f = fNew; improved = true; break; }
+      step *= 0.5;
+    }
+    if (!improved) break;
+    if (step * step * (dTh * dTh + dZ * dZ) < tol) break;
+  }
+  return { theta, z, dist: Math.sqrt(f) };
+}
+
+/**
+ * Radial deviation closures for a config `rAnalytic`: `devAt` (recover
+ * theta=atan2(y,x), z direct → |hypot(x,y) − r|) and `vertexDev` (the EXACT
+ * post-warp utPlacement param when available — no atan2 round-trip flip — else
+ * devAt). THETA CONVENTION: atan2 returns [−π,π]; the WGSL shader receives the
+ * azimuth in [0,TAU). Styles whose radius has theta-SIGN-dependent INTEGER logic
+ * (cell parity, column id — DragonScales, CelticKnot, …) sample the WRONG cell on
+ * the back half (atan2<0) without this wrap; measured DragonScales 8.91mm→0.0001mm,
+ * CelticKnot 2.6→0.42 when wrapped, while periodic styles (Gyroid/…) are a no-op.
+ */
+function makeRadialDevs(
+  rAnalytic: AnalyticRadiusFn,
+  H: number,
+  utPlace: ArrayLike<number> | undefined,
+): {
+  devAt: (x: number, y: number, z: number) => number;
+  vertexDev: (idx: number, x: number, y: number, z: number) => number;
+} {
+  const devAt = (x: number, y: number, z: number): number => {
+    let theta = Math.atan2(y, x);
+    if (theta < 0) theta += TAU; // → [0,TAU) to match the shader's azimuth domain
+    return Math.abs(Math.hypot(x, y) - rAnalytic(theta, z));
+  };
+  const vertexDev = (idx: number, x: number, y: number, z: number): number =>
+    (utPlace
+      ? Math.abs(Math.hypot(x, y) - rAnalytic(utPlace[idx * 3] * TAU, utPlace[idx * 3 + 1] * H))
+      : devAt(x, y, z));
+  return { devAt, vertexDev };
+}
+
+/**
+ * Shared core: iterate outer-wall (surfaceId 0) triangles, apply the seam/riser/
+ * crease exclusions, and accumulate a VERTEX channel + a dense CHORD channel into
+ * an {@link AnalyticDevResult}. The deviation MEASURE is injected via `strategy`:
+ *  - `vertexDev(idx,x,y,z)` — per outer-wall vertex (placement faithfulness).
+ *  - `chordDev(x,y,z)` — the REAL chord-channel deviation at a flat-facet sample.
+ *  - `chordBound(x,y,z)` — a CHEAP UPPER BOUND on chordDev, used ONLY for the
+ *    centroid pre-filter and the tracked exclusion bands. A facet whose bound is
+ *    ≤ preFilterMm has chordDev ≤ bound ≤ preFilterMm too, so it cannot drive
+ *    chordMax/nAbove — recording the bound there (skipping the dense scan) keeps
+ *    those headline numbers EXACT while avoiding the expensive measure on the
+ *    smooth tail. For the radial metric bound === dev (byte-identical behaviour).
+ *
+ * `ut` = the PRE-WARP (u,t,surfaceId) stash, PARALLEL to `mesh.vertices`
  * (getLastConformingAssemblyUT). The caller MUST guard `ut.length ===
  * mesh.vertices.length` before calling (the parallelism contract).
  */
-export function radialAnalyticDeviation(
+function accumulateDeviation(
   mesh: { vertices: ArrayLike<number>; indices: ArrayLike<number> },
   ut: ArrayLike<number>,
-  rAnalytic: AnalyticRadiusFn,
   opts: AnalyticDevOpts,
+  strategy: {
+    vertexDev: (idx: number, x: number, y: number, z: number) => number;
+    chordBound: (x: number, y: number, z: number) => number;
+    chordDev: (x: number, y: number, z: number) => number;
+  },
 ): AnalyticDevResult {
   // NOTE: opts.H is part of the contract (outer-wall z = t·H) but is baked into
   // the caller's rAnalytic(theta, z) closure, so this metric reads z directly.
@@ -179,8 +308,8 @@ export function radialAnalyticDeviation(
   const halfCrease = opts.creaseHalf ?? 1.5e-3;
   const creasePredicate = opts.creasePredicate;
   const creaseStraddle = opts.creaseStraddle;
-  const utPlace = opts.utPlacement;
   const H = opts.H;
+  const { vertexDev, chordBound, chordDev } = strategy;
 
   const devs: number[] = [];
   let vMax = 0, cMax = 0, seamMax = 0, riserMax = 0, creaseMax = 0, nonFinite = 0, wallTris = 0;
@@ -192,25 +321,6 @@ export function radialAnalyticDeviation(
       aboveTol.push({ u: wrap1(Math.atan2(y, x) / TAU), t: z / H, mm });
     }
   };
-
-  // Radial deviation at a 3D point (recover theta=atan2, z direct → r_analytic).
-  // THETA CONVENTION: atan2 returns [−π,π]; the WGSL shader receives the azimuth
-  // in [0,TAU). Styles whose radius has theta-SIGN-dependent INTEGER logic (cell
-  // parity, column id — DragonScales, CelticKnot, …) sample the WRONG cell on the
-  // back half (atan2<0) without this wrap; measured DragonScales 8.91mm→0.0001mm,
-  // CelticKnot 2.6→0.42 when wrapped, while periodic styles (Gyroid/…) are a no-op.
-  const devAt = (x: number, y: number, z: number): number => {
-    let theta = Math.atan2(y, x);
-    if (theta < 0) theta += TAU; // → [0,TAU) to match the shader's azimuth domain
-    return Math.abs(Math.hypot(x, y) - rAnalytic(theta, z));
-  };
-
-  // VERTEX-channel reference at vertex `idx`: exact placement (u·TAU, t·H) when the
-  // post-warp stash is available (no atan2 round-trip flip), else recovered (atan2,z).
-  const vertexDev = (idx: number, x: number, y: number, z: number): number =>
-    (utPlace
-      ? Math.abs(Math.hypot(x, y) - rAnalytic(utPlace[idx * 3] * TAU, utPlace[idx * 3 + 1] * H))
-      : devAt(x, y, z));
 
   for (let i = 0; i + 2 < I.length; i += 3) {
     const a = I[i], b = I[i + 1], c = I[i + 2];
@@ -293,18 +403,20 @@ export function radialAnalyticDeviation(
       if (d > triMax) { triMax = d; triWorst = { theta: Math.atan2(vyc, vxc), z: vzc, mm: d }; }
     }
 
-    // CHORD channel — dense barycentric samples on the FLAT facet.
+    // CHORD channel — the CHEAP bound at the centroid drives both the exclusion
+    // bands and the pre-filter; the REAL chordDev measures the kept samples.
     const ccx = (ax + bx + cx) / 3, ccy = (ay + by + cy) / 3, ccz = (az + bz + cz) / 3;
-    let dCen = devAt(ccx, ccy, ccz);
-    if (exclude === 1) { if (dCen > seamMax) seamMax = dCen; continue; }
-    if (exclude === 2) { if (dCen > riserMax) riserMax = dCen; continue; }
-    if (exclude === 3) { if (dCen > creaseMax) creaseMax = dCen; continue; }
+    const boundCen = chordBound(ccx, ccy, ccz);
+    if (exclude === 1) { if (boundCen > seamMax) seamMax = boundCen; continue; }
+    if (exclude === 2) { if (boundCen > riserMax) riserMax = boundCen; continue; }
+    if (exclude === 3) { if (boundCen > creaseMax) creaseMax = boundCen; continue; }
     wallTris++;
-    // Pre-filter: a clearly-fine facet skips the dense scan (centroid only).
-    if (dCen <= pre) {
-      devs.push(dCen);
-      if (dCen > cMax) cMax = dCen;
-      if (dCen > triMax) { triMax = dCen; triWorst = { theta: Math.atan2(ccy, ccx), z: ccz, mm: dCen }; }
+    // Pre-filter: a facet whose UPPER BOUND is ≤ pre has chordDev ≤ bound ≤ pre,
+    // so it cannot beat chordMax/cross tol — record the bound, skip the dense scan.
+    if (boundCen <= pre) {
+      devs.push(boundCen);
+      if (boundCen > cMax) cMax = boundCen;
+      if (boundCen > triMax) { triMax = boundCen; triWorst = { theta: Math.atan2(ccy, ccx), z: ccz, mm: boundCen }; }
     } else {
       for (let p = 0; p <= N; p++) {
         for (let q = 0; q <= N - p; q++) {
@@ -312,7 +424,7 @@ export function radialAnalyticDeviation(
           const px = wa * ax + wb * bx + wc * cx;
           const py = wa * ay + wb * by + wc * cy;
           const pz = wa * az + wb * bz + wc * cz;
-          const d = devAt(px, py, pz);
+          const d = chordDev(px, py, pz);
           devs.push(d);
           if (d > cMax) cMax = d;
           collect(px, py, pz, d);
@@ -344,6 +456,49 @@ export function radialAnalyticDeviation(
     worst,
     ...(collectMax > 0 ? { aboveTolSamples: aboveTol } : {}),
   };
+}
+
+/**
+ * B5 RADIAL deviation of the REAL 3D outer-wall mesh from the CPU ANALYTIC
+ * surface. Recovers theta=atan2(y,x), z direct, and compares hypot(x,y) vs
+ * rAnalytic(theta,z) — EXACT for radial features and a (loose) UPPER bound on a
+ * tilted/steep relief face (where the closest surface point is at a different
+ * θ/z). For the honest geometric error on steep features use
+ * {@link perpendicular3DDeviation}.
+ */
+export function radialAnalyticDeviation(
+  mesh: { vertices: ArrayLike<number>; indices: ArrayLike<number> },
+  ut: ArrayLike<number>,
+  rAnalytic: AnalyticRadiusFn,
+  opts: AnalyticDevOpts,
+): AnalyticDevResult {
+  const { devAt, vertexDev } = makeRadialDevs(rAnalytic, opts.H, opts.utPlacement);
+  return accumulateDeviation(mesh, ut, opts, { vertexDev, chordBound: devAt, chordDev: devAt });
+}
+
+/**
+ * B5 PERPENDICULAR (3D) deviation — the HONEST "every triangle faithful" gate.
+ * Same channels and exclusions as {@link radialAnalyticDeviation}, but the CHORD
+ * channel measures the SHORTEST 3D distance from each flat-facet sample to the
+ * true surface (`projectPointToRadialSurface`) instead of the radial residual, so
+ * it does NOT overstate steep/tilted relief faces (the radial metric's known
+ * artifact — see the handoff). The VERTEX channel stays the radial placement check
+ * (vertices lie ON the surface ⇒ both read the f32 floor). The cheap radial
+ * residual is used as the pre-filter UPPER BOUND (perpendicular ≤ radial always),
+ * so the Gauss-Newton projection runs ONLY on facets that carry real residual —
+ * exactly the steep/dense/tangled facets this metric exists to score; `chordMaxMm`
+ * and `nAbove` are exact, the smooth sub-pre tail is recorded at its radial bound.
+ */
+export function perpendicular3DDeviation(
+  mesh: { vertices: ArrayLike<number>; indices: ArrayLike<number> },
+  ut: ArrayLike<number>,
+  rAnalytic: AnalyticRadiusFn,
+  opts: AnalyticDevOpts,
+): AnalyticDevResult {
+  const { devAt, vertexDev } = makeRadialDevs(rAnalytic, opts.H, opts.utPlacement);
+  const chordDev = (x: number, y: number, z: number): number =>
+    projectPointToRadialSurface(x, y, z, rAnalytic).dist;
+  return accumulateDeviation(mesh, ut, opts, { vertexDev, chordBound: devAt, chordDev });
 }
 
 /**
