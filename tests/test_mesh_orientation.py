@@ -88,3 +88,39 @@ def test_mesh_normals_point_outward(style_name, case):
         f"{style_name}: signed volume {vol:.1f} <= 0 — mesh is inside-out "
         f"(normals point inward)."
     )
+
+
+# Drain-clamp stress: tiny base + large drain + thick wall forces the inner wall
+# to clamp against the drain, the region most likely to collapse triangles.
+_CLAMP_STRESS = dict(H=100, Rt=45, Rb=30, t_wall=5, t_bottom=4, r_drain=20,
+                     expn=1.1, n_theta=120, n_z=60, style_opts={})
+
+
+@pytest.mark.parametrize("style_name", list(STYLES.keys()))
+@pytest.mark.parametrize("case", _CASES + [_CLAMP_STRESS])
+def test_mesh_has_no_degenerate_faces(style_name, case):
+    """No zero-area or repeated-index triangles.
+
+    Degenerate faces have an undefined normal (the binary STL writer stores
+    [0,0,0]) and are rejected by slicers and CAD repair tools, so they must
+    never be emitted — including in the heavily clamped drain region.
+    """
+    style_fn = STYLES[style_name][0]
+    verts, faces, _ = build_pot_mesh(r_outer_fn=style_fn, **case)
+
+    repeated = (
+        (faces[:, 0] == faces[:, 1])
+        | (faces[:, 1] == faces[:, 2])
+        | (faces[:, 0] == faces[:, 2])
+    )
+    assert not repeated.any(), (
+        f"{style_name}: {int(repeated.sum())} triangles reuse a vertex index."
+    )
+
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    areas = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=1)
+    assert np.all(areas > 1e-9), (
+        f"{style_name}: {int(np.sum(areas <= 1e-9))} zero-area (degenerate) triangles."
+    )
