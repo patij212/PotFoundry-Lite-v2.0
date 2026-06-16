@@ -66,6 +66,39 @@ cell-**resolution** problem, not a template-**choice** problem.
 
 ---
 
+## Experiment 3 — Metric-aware targeted refinement (`__pfConformingMetricRefine`)
+
+**Hypothesis:** the slivers come from transition cells whose surface metric varies *within*
+the cell (the `efg`-reliability guard suppresses efg there → fan fallback). **Subdivide** those
+cells (instead of suppressing efg) until each is metric-uniform → templates become correct.
+
+**Method:** flag-gated `metricVaries` criterion in `PeriodicBalancedQuadtree.refine()`,
+reusing the guard's corner-sampling; subdivide a cell when its metric variation exceeds a
+sweepable threshold (default 0.5 = the guard's `EFG_MAX_REL_VARIATION`).
+
+**Result — NO-OP at 0.5, WORSE at 0.1:**
+
+| threshold (synthetic tangled wall) | tris | worst | <20° |
+|---|---|---|---|
+| off | 79,648 | 17.977° | 4,960 |
+| 0.5 (guard value) | 79,648 | 17.977° | 4,960 *(no cells trigger — slivers are on efg-PRESENT cells, not suppressed ones)* |
+| 0.1 (aggressive) | **306,112** | 16.702° | **25,616** |
+
+At a low threshold it fires (4× triangles) but produces **5× MORE slivers** — refinement made
+it strictly worse.
+
+**Analysis — the fundamental insight (the WHY behind all six failures):** refinement is what
+*creates* the 2:1-balanced **transitions**, and the transition cell is what *creates* the
+slivers. So **more refinement → more transition cells → more slivers.** Chord wants *more*
+refinement (close the gap); quality wants *fewer* transitions (avoid slivers). **The two goals
+conflict through the quadtree-transition mechanism itself.** No refinement strategy (uniform,
+targeted, or metric-aware) can win — refining to fix chord worsens quality, and coarsening to
+fix quality worsens chord.
+
+**Disposition:** reverted. Dead end — and it explains why the others were too.
+
+---
+
 ## Issues / caveats encountered
 - **The synthetic localizer wall (`GyroidLikeSampler`) only produces MILD slivers (worst 17.977°),
   not the real catastrophic <1°.** So it validated the *mechanism* (TRANSITION_FAN) and the

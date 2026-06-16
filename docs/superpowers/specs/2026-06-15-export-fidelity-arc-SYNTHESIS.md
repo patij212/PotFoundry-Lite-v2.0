@@ -35,10 +35,15 @@ prioritized roadmap. Branch `refactor/core-migration`. All production code staye
 | 7 | **Sliver-source localizer** (per-triangle `TRI_SOURCE`) | which template makes the slivers? | **100% TRANSITION_FAN** (centroid fan); PLAIN_QUAD/EAR_CLIP = 0 | `sliversBySource.localizer.test.ts` |
 | 8 | **Targeted fix: DP-always** | force DP over the fan | **REGRESSION** (slivers 4960→8128; code-documented dead-end) | `stage2-phase2-targeted-fix-findings.md` |
 | 9 | **Targeted fix: true-3D scoring** | score fan-vs-DP by real 3D angles | **NO-OP** (Gyroid 0.85° / FourierBloom 13.36° unchanged) — correctly keeps the fan; cell-resolution wall | `stage2-phase2-targeted-fix-findings.md` |
+| 10 | **Targeted fix: metric-aware refinement** (`__pfConformingMetricRefine`) | subdivide metric-non-uniform cells | **WORSE** (slivers 4960→25616, 5×) — refinement *creates* transitions, transitions *create* slivers | `stage2-phase2-targeted-fix-findings.md` |
 
-**The unifying conclusion:** experiments 2, 6, 8, 9 (and the structural Phase-1/1b analysis) all
-hit the **same local-metric / cell-resolution wall** — the tangled transition cells are too coarse
-for their local curvature, and neither density, template choice, nor a tractable remesh fixes that.
+**The unifying conclusion (deepened by experiment 10):** the quadtree's **2:1-balanced transition
+templates** are the structural source of the slivers, and **refinement *creates* transitions** — so
+chord (wants more refinement) and quality (wants fewer transitions) **conflict through the mesher's
+own mechanism.** No refinement strategy (uniform, targeted, metric-aware) and no template choice can
+win. The only escape is a **transition-free** mesher — a Delaunay refinement where every triangle is
+a proper Delaunay triangle (no 2:1 templates) — which, per the spike (exp. 6), needs the **heavy
+anisotropic** version for tangled lattices.
 
 ---
 
@@ -68,16 +73,17 @@ for their local curvature, and neither density, template choice, nor a tractable
 
 ## 4. Roadmap — future pipeline work (prioritized)
 
-1. **[Most promising, untested] Perp-3D-oracle-driven targeted refinement of high-sliver cells.**
-   Subdivide *specifically* the transition cells producing slivers (metric-aware, per sub-cell
-   re-evaluation) until the local metric is uniform — could close BOTH the chord gap and the quality
-   slivers with one mechanism. Caveat: blunt uniform density (experiment 2) left the worst angle
-   pinned, so this needs *targeted + metric-aware* refinement. **Do a measured spike first.**
-   (Details: `stage2-phase2-targeted-fix-findings.md` §"Further developments".)
-2. **[Definitive, heavy] Full anisotropic (local-metric) Delaunay mesher.** Per-point metric tensor,
-   anisotropic in-circle + refinement, seeded by `projectPointToRadialSurface`. The only path proven
-   to handle tangled lattices. Large re-architecture; re-prove watertightness/vertex-exactness.
-   (The spike `metricDelaunayRefine.ts` is the kernel to grow.)
+1. **[TESTED — DEAD END] ~~Perp-3D-oracle-driven targeted refinement~~.** Built + measured
+   (experiment 10): subdividing high-sliver cells makes it **5× worse** — refinement *creates* the
+   transitions that *create* the slivers. Do not re-try refinement-based quality fixes. This leaves
+   #2 as the only path for the tangled styles.
+2. **[ONLY remaining path for tangled — definitive, heavy] Full anisotropic (local-metric) Delaunay
+   mesher.** A **transition-free** triangulation (no 2:1 quadtree templates → no transition slivers
+   by construction), with a per-point metric tensor + anisotropic in-circle/refinement, seeded by
+   `projectPointToRadialSurface`. The spike (`metricDelaunayRefine.ts`) is the kernel to grow; it
+   showed the *global-scale* version handles smooth but not tangled (needs the true anisotropic
+   in-circle). Large re-architecture; re-prove watertightness/vertex-exactness. **This is the ONLY
+   way to CAD-grade the 5 tangled styles** — accept-the-floor (shipped) is the alternative.
 3. **[Hygiene] Wire the dual-gate into a GPU-capable CI** (currently it guards the *committed*
    baseline; a GPU CI lane could regenerate + gate live). And re-baseline (`_fidelity_dualgate_baseline.cjs`)
    whenever the mesher changes.
