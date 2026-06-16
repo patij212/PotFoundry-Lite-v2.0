@@ -12,8 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- Mesh orientation guarantees: `tests/test_mesh_orientation.py` asserts every
+  style/parameter combination produces a *consistently oriented* closed manifold
+  with outward-facing normals (consistent winding + positive signed volume) —
+  the prerequisite for clean Rhino/Grasshopper import, mesh booleans and slicing.
 
 ### Fixed
+- **Mesh orientation (export quality):** `build_pot_mesh` produced an
+  *inside-out* mesh. The main body (outer wall, inner wall, rim and bottom
+  underside) was wound inward while the slab-top and drain cylinder were wound
+  outward, leaving the surface globally non-orientable (240 inconsistently wound
+  edges at the bottom seams for the default resolution) with inward normals.
+  This is exactly the defect Rhino/Grasshopper flag ("Unify Normals") and that
+  makes mesh booleans/slicing fail. The main-body face groups are now wound
+  outward by construction (a zero-cost numpy view reversal), so the whole
+  surface is a single consistently oriented manifold with outward normals.
+  Vertex positions, counts, bounding box, surface area and watertightness are
+  unchanged, so golden-mesh metrics still hold.
+
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`
