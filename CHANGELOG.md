@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outward-pointing normals and positive volume — so they import into Rhino,
   Grasshopper and other CAD/NURBS tools as closed solids instead of inverted /
   flipped-normal meshes. See `adr/0002-coherent-outward-mesh-orientation.md`.
+- **OBJ export (`potfoundry.write_obj`):** Wavefront OBJ writer that preserves
+  the welded, indexed mesh topology at full float precision. Unlike binary STL
+  (an unindexed float32 triangle soup the importer must re-weld), OBJ imports
+  into Rhino/Grasshopper as a single clean closed object. Supports optional
+  per-vertex normals (`vn` / `f v//vn`).
 
 ### Fixed
 - **Mesh orientation:** Pot meshes were watertight but not coherently oriented:
