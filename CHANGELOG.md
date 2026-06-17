@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- **Export quality (Rhino/Grasshopper):** Added a coherent outward mesh
+  orientation pass (`potfoundry.orient_outward` / `signed_volume`). Generated
+  pot meshes are now true *solids* — consistently wound 2-manifolds with
+  outward-pointing normals and positive volume — so they import into Rhino,
+  Grasshopper and other CAD/NURBS tools as closed solids instead of inverted /
+  flipped-normal meshes. See `adr/0002-coherent-outward-mesh-orientation.md`.
+
+### Fixed
+- **Mesh orientation:** Pot meshes were watertight but not coherently oriented:
+  the outer wall normals pointed inward, the whole solid had negative signed
+  volume, and the bottom-slab/inner-wall and drain/underside junctions had 160
+  inconsistently wound edges. All faces are now oriented outward and coherently
+  across every style. New regression tests in `tests/test_mesh_orientation.py`
+  and `tests/test_mesh_orient_unit.py` pin the invariants.
 
 ### Fixed
 - **Critical Bug Fixes:**

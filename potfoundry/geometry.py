@@ -418,7 +418,13 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
-    return np.array(verts, dtype=float), np.array(faces, dtype=int), diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    faces_arr = np.array(faces, dtype=int)
+    # Coherently orient all faces outward so the mesh is a true solid for
+    # Rhino/Grasshopper/CAD (positive volume, no flipped/naked normals).
+    from potfoundry.core.mesh_orient import orient_outward
+    faces_arr = orient_outward(verts_arr, faces_arr).astype(int, copy=False)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
