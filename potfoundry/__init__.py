@@ -18,6 +18,7 @@ from .core.geometry import (
     PotDefaults,
     STYLES,
     build_pot_mesh,
+    orient_faces_outward,
     save_preview_png,
 )
 
@@ -33,6 +34,7 @@ __all__ = [
     'PotDefaults',
     'STYLES',
     'build_pot_mesh',
+    'orient_faces_outward',
     'save_preview_png',
     # STL export (binary is recommended)
     'write_stl_binary',

@@ -226,7 +226,10 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 
 ### High Priority
 - [ ] Investigate occasional cache invalidation issues
-- [ ] Fix edge cases in mesh watertightness validation
+- [x] Fix edge cases in mesh watertightness validation — meshes were
+      watertight but not coherently oriented (inverted/inconsistent normals).
+      Added `orient_faces_outward` normalization pass guaranteeing outward
+      normals for CAD/Rhino/Grasshopper export. See `adr/0002-...`.
 - [ ] Improve error handling for invalid parameter combinations
 
 ### Medium Priority

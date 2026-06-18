@@ -12,8 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- Mesh export quality: `orient_faces_outward()` mesh-orientation pass and
+  `tests/test_mesh_orientation.py` regression matrix (signed-volume + winding
+  coherence across all styles, with/without spin). See `adr/0002-...`.
 
 ### Fixed
+- **Export Quality (CAD / Rhino / Grasshopper):**
+  - Exported meshes had inverted, incoherently-wound normals: watertight but
+    not a coherently-oriented manifold (the two base-ring caps were wound
+    opposite to the walls), so STLs imported "inside-out" and were not
+    recognised as closed solids. `build_pot_mesh` now normalizes winding so all
+    normals point outward; stored STL facet normals agree with vertex winding.
+  - Replaced the no-op "consistent normals" golden test with a real
+    signed-volume (outward-orientation) assertion.
+
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`

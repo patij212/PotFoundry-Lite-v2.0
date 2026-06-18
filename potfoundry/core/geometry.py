@@ -11,7 +11,7 @@ from functools import lru_cache
 
 __all__ = [
     "MeshQuality", "PotDefaults", "STYLES",
-    "r_base_out", "build_pot_mesh",
+    "r_base_out", "build_pot_mesh", "orient_faces_outward",
     "save_preview_png",
     "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
@@ -294,6 +294,127 @@ STYLES = {
 
 
 # -----------------------------
+# Mesh orientation (export quality)
+# -----------------------------
+
+def _signed_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+    """Signed volume via the divergence theorem.
+
+    Positive when triangles are wound counter-clockwise as seen from outside
+    (i.e. outward-pointing normals).
+    """
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    return float(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0)
+
+
+def orient_faces_outward(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Return a copy of ``faces`` re-wound so the mesh has outward normals.
+
+    The pot mesh is assembled from several patches (walls, rim, base, drain)
+    whose individual winding conventions need not agree with one another. For a
+    valid *closed solid* in Rhino / Grasshopper (and a correct STL), the whole
+    surface must be a single coherently-oriented manifold with every normal
+    pointing outward.
+
+    This performs the standard two-step normalisation:
+
+    1. Flood-fill across shared edges, flipping faces so neighbouring triangles
+       traverse their shared edge in opposite directions (coherent orientation).
+    2. Flip the entire mesh if its signed volume is negative, so normals point
+       outward rather than inward.
+
+    The mesh is assumed watertight (2-manifold); non-manifold input is left as
+    coherently oriented as possible without raising.
+    """
+    faces = np.array(faces, dtype=np.int64, copy=True)
+    m = faces.shape[0]
+    if m == 0:
+        return faces
+
+    # --- Build face adjacency over shared edges (vectorised) ---
+    # Directed edges: slot s of face f is (faces[f, s] -> faces[f, (s+1)%3]).
+    f_idx = np.repeat(np.arange(m, dtype=np.int64), 3)
+    u = faces[:, [0, 1, 2]].reshape(-1)
+    v = faces[:, [1, 2, 0]].reshape(-1)
+    lo = np.minimum(u, v)
+    hi = np.maximum(u, v)
+    forward = (u < v)  # True when the directed edge runs low -> high
+    # Stable integer key per undirected edge.
+    n_v = int(faces.max()) + 1
+    ekey = lo * np.int64(n_v) + hi
+
+    order = np.argsort(ekey, kind="stable")
+    ekey_s = ekey[order]
+    face_s = f_idx[order]
+    fwd_s = forward[order]
+
+    # Group boundaries where the undirected edge key changes.
+    grp_start = np.empty(ekey_s.shape[0], dtype=bool)
+    grp_start[0] = True
+    grp_start[1:] = ekey_s[1:] != ekey_s[:-1]
+    starts = np.flatnonzero(grp_start)
+    counts = np.diff(np.append(starts, ekey_s.shape[0]))
+
+    # Manifold edges (exactly two faces) define adjacency. Two faces sharing an
+    # edge are consistently oriented iff they traverse it in opposite
+    # directions (forward flags differ); when both run the same way one face
+    # must be flipped. We encode the BFS constraint flip[a] XOR flip[b] == same.
+    pair_mask = counts == 2
+    pair_starts = starts[pair_mask]
+    fa = face_s[pair_starts]
+    fb = face_s[pair_starts + 1]
+    same = (fwd_s[pair_starts] == fwd_s[pair_starts + 1])
+
+    # CSR-style adjacency: for each face, neighbours and the "same" flag.
+    nbr_face = np.concatenate([fb, fa])
+    nbr_same = np.concatenate([same, same])
+    nbr_src = np.concatenate([fa, fb])
+    sort2 = np.argsort(nbr_src, kind="stable")
+    nbr_src_s = nbr_src[sort2]
+    nbr_face_s = nbr_face[sort2]
+    nbr_same_s = nbr_same[sort2]
+    deg = np.bincount(nbr_src_s, minlength=m)
+    offset = np.zeros(m + 1, dtype=np.int64)
+    offset[1:] = np.cumsum(deg)
+
+    nbr_face_list = nbr_face_s.tolist()
+    nbr_same_list = nbr_same_s.tolist()
+    off = offset.tolist()
+
+    # --- 2-colouring flood fill: assign each face a flip flag ---
+    flip = np.full(m, -1, dtype=np.int8)
+    from collections import deque
+
+    for seed in range(m):
+        if flip[seed] != -1:
+            continue
+        flip[seed] = 0
+        queue = deque([seed])
+        while queue:
+            fi = queue.popleft()
+            base = flip[fi]
+            for k in range(off[fi], off[fi + 1]):
+                nf = nbr_face_list[k]
+                if flip[nf] != -1:
+                    continue
+                # flip[nf] = flip[fi] XOR same  (1 if same direction)
+                flip[nf] = base ^ (1 if nbr_same_list[k] else 0)
+                queue.append(nf)
+
+    to_flip = flip == 1
+    if np.any(to_flip):
+        faces[to_flip] = faces[to_flip][:, ::-1]
+
+    # Step 2: ensure outward (positive volume).
+    if _signed_volume(verts, faces) < 0.0:
+        faces = faces[:, ::-1].copy()
+
+    return faces
+
+
+# -----------------------------
 # Mesh builder (watertight)
 # -----------------------------
 
@@ -445,7 +566,12 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    # Normalise winding so the watertight surface is a single coherently
+    # oriented manifold with outward normals (required for Rhino/Grasshopper
+    # solid recognition and conformant STL export).
+    faces_arr = orient_faces_outward(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401

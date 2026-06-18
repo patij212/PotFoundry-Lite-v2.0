@@ -418,7 +418,13 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
-    return np.array(verts, dtype=float), np.array(faces, dtype=int), diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    faces_arr = np.array(faces, dtype=int)
+    # Normalise winding to a coherently-oriented, outward-facing manifold so
+    # this legacy fallback path matches core.geometry export quality.
+    from potfoundry.core.geometry import orient_faces_outward
+    faces_arr = orient_faces_outward(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
