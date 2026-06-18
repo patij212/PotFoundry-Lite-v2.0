@@ -233,6 +233,12 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 - [ ] Improve error handling for invalid parameter combinations
 
 ### Medium Priority
+- [ ] Reduce sliver triangles in the base/drain fan. ~300 faces/mesh have
+      aspect ratio ~70–81 where the wide base annulus (outer/inner ring → small
+      drain ring) is triangulated 1:1. Not degenerate and mesh stays watertight
+      with outward normals, but high-AR slivers are lower quality for CAD.
+      Likely fix: add intermediate concentric rings in the base annulus so
+      radial triangle spans are bounded. (Next export-quality target.)
 - [ ] Optimize memory usage for very high-resolution meshes
 - [ ] Improve preview performance on low-end hardware
 - [ ] Better handling of Unicode in file names
