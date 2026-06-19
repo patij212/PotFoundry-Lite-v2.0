@@ -38,6 +38,40 @@ COMMON = dict(
 )
 
 
+def count_winding_conflicts(faces: np.ndarray) -> int:
+    """Number of directed edges shared in the *same* direction by two faces.
+
+    In a consistently oriented closed manifold every interior edge is
+    traversed once in each direction by its two incident triangles, so each
+    directed edge ``(a, b)`` occurs exactly once. A directed edge that occurs
+    more than once means two neighbouring faces are wound the same way — a
+    local orientation conflict that makes part of the surface face the wrong
+    direction even when the mesh is watertight. CAD/slicer importers see this
+    as flipped patches.
+    """
+    from collections import Counter
+
+    de: Counter = Counter()
+    for a, b, c in faces:
+        de[(a, b)] += 1
+        de[(b, c)] += 1
+        de[(c, a)] += 1
+    return sum(1 for n in de.values() if n > 1)
+
+
+@pytest.mark.parametrize("style_name", list(STYLES.keys()))
+def test_mesh_is_consistently_oriented(style_name):
+    """Every style must be a *consistently* wound manifold (no flipped
+    patches), not merely watertight."""
+    style_fn = STYLES[style_name][0]
+    verts, faces, _ = build_pot_mesh(r_outer_fn=style_fn, style_opts={}, **COMMON)
+    conflicts = count_winding_conflicts(faces)
+    assert conflicts == 0, (
+        f"{style_name}: {conflicts} directed-edge winding conflicts — "
+        f"part of the surface is wound backwards (flipped patches on export)"
+    )
+
+
 @pytest.mark.parametrize("style_name", list(STYLES.keys()))
 def test_mesh_is_outward_oriented(style_name):
     """Every style must produce an outward-oriented (positive volume) solid."""

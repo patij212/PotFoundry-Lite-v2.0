@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into Rhino/Grasshopper and slicers. The mesh is now normalized to outward
   orientation by construction (`orient_outward` flips winding when the signed
   volume is negative), so the binary STL carries correct outward normals.
+- **Export quality — flipped patches at the base (root cause):** the
+  bottom-slab-top and drain-cylinder sections were wound with the opposite
+  convention from the walls/caps, leaving the mesh watertight but *not*
+  consistently oriented (a band of `2·n_theta` directed-edge winding conflicts
+  per ring at z=0/z=t_bottom). These sections are now wound to the global
+  convention, so the whole closed solid is a single consistently-oriented
+  manifold — no flipped patches on import. Holds under the clamped-drain case.
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`

@@ -409,16 +409,18 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces.extend(list(zip(v00, v01, vd1)))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
+    # Wound to match the global orientation convention so the closed solid is
+    # consistently oriented (no flipped patches at the seams).
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    faces.extend(list(zip(vi0, vi1, vd1)))
-    faces.extend(list(zip(vi0, vd1, vd0)))
+    faces.extend(list(zip(vi0, vd1, vi1)))
+    faces.extend(list(zip(vi0, vd0, vd1)))
 
-    # Drain cylinder wall
+    # Drain cylinder wall (same consistent winding convention)
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    faces.extend(list(zip(v0b, v0t, v1t)))
-    faces.extend(list(zip(v0b, v1t, v1b)))
+    faces.extend(list(zip(v0b, v1t, v0t)))
+    faces.extend(list(zip(v0b, v1b, v1t)))
 
     # Diagnostics
     def ring_od(ids):

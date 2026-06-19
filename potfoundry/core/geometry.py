@@ -448,18 +448,20 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces_out_parts.append(tri_bot2)
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
+    # Wound to match the global orientation convention of the walls/caps so the
+    # closed solid is *consistently* oriented (no flipped patches at the seams).
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
-    tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_top1 = np.stack([inner_bottom[j], drain_top[jn], inner_bottom[jn]], axis=1)
+    tri_top2 = np.stack([inner_bottom[j], drain_top[j], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_top1)
     faces_out_parts.append(tri_top2)
 
-    # Drain cylinder wall
+    # Drain cylinder wall (same consistent winding convention)
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
-    tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
+    tri_cyl1 = np.stack([drain_under[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_cyl2 = np.stack([drain_under[j], drain_under[jn], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 
