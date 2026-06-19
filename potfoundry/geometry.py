@@ -86,6 +86,23 @@ def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     t = 0.0 if H <= 0 else z / H
     return Rb + (Rt - Rb) * (t ** expn)
 
+def signed_mesh_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+    """Signed volume of a closed triangle mesh (positive iff outward-wound)."""
+    if faces.size == 0:
+        return 0.0
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    return float(np.einsum("ij,ij->i", v0, np.cross(v1, v2)).sum() / 6.0)
+
+
+def orient_outward(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Re-wind faces so the closed solid faces outward (positive volume)."""
+    if signed_mesh_volume(verts, faces) < 0.0:
+        faces = faces[:, [0, 2, 1]]
+    return np.ascontiguousarray(faces)
+
+
 def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     n = np.cross(b - a, c - a)
     norm = np.linalg.norm(n)
@@ -418,7 +435,12 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
-    return np.array(verts, dtype=float), np.array(faces, dtype=int), diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    faces_arr = np.array(faces, dtype=int)
+    # Guarantee outward-facing normals for the whole closed solid (parity with
+    # potfoundry.core.geometry) so exports import correctly into CAD/slicers.
+    faces_arr = orient_outward(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401

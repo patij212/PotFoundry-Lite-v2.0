@@ -12,6 +12,7 @@ from functools import lru_cache
 __all__ = [
     "MeshQuality", "PotDefaults", "STYLES",
     "r_base_out", "build_pot_mesh",
+    "signed_mesh_volume", "orient_outward",
     "save_preview_png",
     "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
@@ -85,6 +86,38 @@ def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     """Unmodulated outer radius vs height z (0..H), with flare exponent."""
     t = 0.0 if H <= 0 else z / H
     return Rb + (Rt - Rb) * (t ** expn)
+
+def signed_mesh_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+    """Signed volume of a closed triangle mesh via the divergence theorem.
+
+    ``V = (1/6) * Σ_faces  v0 · (v1 × v2)``
+
+    For a closed manifold wound counter-clockwise *when viewed from outside*
+    this is strictly positive and equals the enclosed volume. A negative value
+    means every face is wound the wrong way (normals point inward), i.e. the
+    solid is inside-out.
+    """
+    if faces.size == 0:
+        return 0.0
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    return float(np.einsum("ij,ij->i", v0, np.cross(v1, v2)).sum() / 6.0)
+
+
+def orient_outward(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Return ``faces`` re-wound so the closed solid faces outward.
+
+    Computes the signed volume and, if it is negative, swaps the second and
+    third index of every triangle (reversing the winding) so that all face
+    normals point away from the enclosed solid. This makes orientation
+    correct-by-construction for the whole mesh and is what CAD tools
+    (Rhino/Grasshopper) and slicers expect on import.
+    """
+    if signed_mesh_volume(verts, faces) < 0.0:
+        faces = faces[:, [0, 2, 1]]
+    return np.ascontiguousarray(faces)
+
 
 def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     n = np.cross(b - a, c - a)
@@ -445,7 +478,11 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    # Guarantee outward-facing normals for the whole closed solid so the mesh
+    # imports correctly into Rhino/Grasshopper and slicers (no inside-out).
+    faces_arr = orient_outward(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401

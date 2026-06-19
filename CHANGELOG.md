@@ -12,8 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- Geometry: `signed_mesh_volume()` and `orient_outward()` helpers in
+  `potfoundry.core.geometry` (and the legacy `potfoundry.geometry`) for
+  orientation-correct mesh export.
+- Tests: `tests/test_mesh_orientation.py` proving every style exports an
+  outward-oriented (positive signed volume) solid with correct outer-wall and
+  cavity normals.
 
 ### Fixed
+- **Export quality — inverted mesh normals (root cause):** `build_pot_mesh`
+  produced triangles wound clockwise-from-outside, giving a *negative* signed
+  volume — every face normal pointed inward, so the solid imported inside-out
+  into Rhino/Grasshopper and slicers. The mesh is now normalized to outward
+  orientation by construction (`orient_outward` flips winding when the signed
+  volume is negative), so the binary STL carries correct outward normals.
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`
