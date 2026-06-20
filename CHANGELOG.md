@@ -12,8 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- **CAD export quality:** `build_pot_mesh` now reports
+  `diagnostics["signed_volume_mm3"]`, and new regression tests
+  (`tests/test_mesh_export_quality.py`) enforce that generated meshes are
+  consistently-oriented closed manifolds with outward normals and no
+  degenerate faces — the invariants Rhino/Grasshopper require. See
+  `adr/0002-mesh-orientation-for-cad-export.md`.
 
 ### Fixed
+- **Mesh orientation for Rhino/Grasshopper export:** Corrected two cap
+  windings (top-of-bottom-slab and drain-cylinder) that produced
+  non-orientable folds, and added a global orientation guarantee so exported
+  normals always point outward (previously the entire shell was wound
+  inside-out: negative signed volume). Fix applied to both the vectorized core
+  builder and the legacy scalar builder used by the Streamlit UI.
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`

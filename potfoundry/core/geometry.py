@@ -93,6 +93,19 @@ def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
         return np.array([0.0, 0.0, 0.0], dtype=float)
     return n / norm
 
+def _signed_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+    """Signed volume of a closed triangular mesh (divergence theorem).
+
+    Positive when the per-face winding yields outward-pointing normals, i.e.
+    the mesh encloses a valid solid the right way out. A negative value means
+    the surface is wound inside-out, which downstream solid-modeling kernels
+    (Rhino, Grasshopper, slicers) will import as an inverted/invalid solid.
+    """
+    a = verts[faces[:, 0]]
+    b = verts[faces[:, 1]]
+    c = verts[faces[:, 2]]
+    return float(np.sum(np.einsum("ij,ij->i", a, np.cross(b, c))) / 6.0)
+
 def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> None:
     """Write triangles to ASCII STL (portable, human-readable).
 
@@ -415,18 +428,23 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces_out_parts.append(tri_bot2)
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
+    # Winding chosen so this cap agrees with the inner wall along the shared
+    # inner-bottom ring (otherwise the shared edge is wound the same way by
+    # both faces -> a non-orientable fold that breaks Rhino/Grasshopper import).
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
-    tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_top1 = np.stack([drain_top[jn], inner_bottom[jn], inner_bottom[j]], axis=1)
+    tri_top2 = np.stack([drain_top[j], drain_top[jn], inner_bottom[j]], axis=1)
     faces_out_parts.append(tri_top1)
     faces_out_parts.append(tri_top2)
 
     # Drain cylinder wall
+    # Winding chosen so the cylinder agrees with the bottom underside along the
+    # shared drain-under ring (consistent orientation across the whole shell).
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
-    tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
+    tri_cyl1 = np.stack([drain_top[jn], drain_top[j], drain_under[j]], axis=1)
+    tri_cyl2 = np.stack([drain_under[jn], drain_top[jn], drain_under[j]], axis=1)
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 
@@ -445,7 +463,17 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+
+    # Orientation guarantee for export quality: the shell is built with
+    # internally-consistent winding, but the overall convention can come out
+    # inside-out. Flip the whole mesh once if the signed volume is negative so
+    # exported normals always point outward (valid solid for Rhino/Grasshopper).
+    if _signed_volume(verts_arr, faces_arr) < 0.0:
+        faces_arr = faces_arr[:, ::-1].copy()
+
+    diagnostics["signed_volume_mm3"] = _signed_volume(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
