@@ -113,4 +113,32 @@ def test_no_degenerate_faces(builder_name, style_name):
     v2 = verts[faces[:, 2]]
     areas = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=1)
     n_degen = int(np.count_nonzero(areas < 1e-9))
-    assert n_degen == 0, f"{style_name}: {n_degen} degenerate (zero-area) faces"
+    assert n_degen == 0, (
+        f"{builder_name}/{style_name}: {n_degen} degenerate (zero-area) faces"
+    )
+
+
+@pytest.mark.parametrize("builder_name,style_name", CASES, ids=CASE_IDS)
+def test_topology_is_clean_torus(builder_name, style_name):
+    """Mesh is a clean closed manifold of the expected topology.
+
+    A pot with a drain hole punched through the bottom (connecting the inner
+    cavity to the outside) is topologically a torus: genus 1, Euler
+    characteristic V - E + F = 0. Any deviation means a spurious crack
+    (extra boundary) or a self-overlap (extra handle) crept in — both of which
+    a CAD kernel rejects.
+    """
+    verts, faces, _ = _build(BUILDERS[builder_name], style_name)
+
+    undirected = set()
+    for f in faces:
+        a, b, c = int(f[0]), int(f[1]), int(f[2])
+        for u, v in ((a, b), (b, c), (c, a)):
+            undirected.add((u, v) if u < v else (v, u))
+
+    chi = len(verts) - len(undirected) + len(faces)
+    genus = (2 - chi) // 2
+    assert chi == 0 and genus == 1, (
+        f"{builder_name}/{style_name}: expected a genus-1 torus (chi=0), got "
+        f"chi={chi}, genus={genus} — topology is not a clean pot-with-drain"
+    )
