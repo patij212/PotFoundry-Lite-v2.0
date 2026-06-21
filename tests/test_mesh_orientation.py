@@ -24,10 +24,14 @@ Run with: PYTHONPATH=. pytest tests/test_mesh_orientation.py -v
 """
 from __future__ import annotations
 
+import struct
+import tempfile
+from pathlib import Path
+
 import numpy as np
 import pytest
 
-from potfoundry import build_pot_mesh, STYLES
+from potfoundry import build_pot_mesh, write_stl_binary, STYLES
 
 # Representative build parameters reused across cases.
 _PARAMS = dict(
@@ -197,6 +201,59 @@ class TestMeshHealth:
         keys = np.sort(de, axis=1)
         _, counts = np.unique(keys, axis=0, return_counts=True)
         assert np.all(counts == 2), "Every undirected edge must be shared by exactly 2 faces"
+
+
+def _parse_binary_stl(path: Path):
+    """Return (normals (M,3), tris (M,3,3)) from a binary STL file."""
+    data = Path(path).read_bytes()
+    count = struct.unpack_from("<I", data, 80)[0]
+    normals = np.empty((count, 3), dtype=np.float64)
+    tris = np.empty((count, 3, 3), dtype=np.float64)
+    off = 84
+    for i in range(count):
+        vals = struct.unpack_from("<12f", data, off)
+        normals[i] = vals[0:3]
+        tris[i, 0] = vals[3:6]
+        tris[i, 1] = vals[6:9]
+        tris[i, 2] = vals[9:12]
+        off += 50  # 12 floats (48 bytes) + 2-byte attribute
+    return normals, tris
+
+
+class TestExportedStlNormals:
+    """The written binary STL is the artifact Rhino/Grasshopper actually read.
+
+    STL stores an explicit per-face normal *and* the vertex order; CAD tools may
+    trust either. Both must agree and point out of the solid.
+    """
+
+    @pytest.mark.parametrize("style_name", ALL_STYLES)
+    def test_stored_normals_agree_with_winding_and_outward(self, style_name):
+        verts, faces, _ = _build(style_name)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pot.stl"
+            write_stl_binary(path, style_name, verts, faces)
+            stored_n, tris = _parse_binary_stl(path)
+
+        # Right-hand-rule normal from the stored vertex order.
+        rhr = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
+        lens = np.linalg.norm(rhr, axis=1)
+        good = lens > 0
+        rhr_unit = rhr[good] / lens[good][:, None]
+        stored_unit = stored_n[good]
+        slens = np.linalg.norm(stored_unit, axis=1)
+        sgood = slens > 0
+        # Stored normal must point the same way as the winding (dot ~ +1).
+        dots = np.einsum("ij,ij->i", stored_unit[sgood], rhr_unit[sgood])
+        assert np.all(dots > 0.99), (
+            f"{style_name}: stored STL normals disagree with vertex winding "
+            f"(min dot {dots.min():.3f})"
+        )
+
+        # Closed shell described by the file encloses positive volume (outward).
+        v0, v1, v2 = tris[:, 0], tris[:, 1], tris[:, 2]
+        vol = float(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0)
+        assert vol > 0.0, f"{style_name}: exported STL is wound inside-out (vol={vol:.1f})"
 
 
 if __name__ == "__main__":
