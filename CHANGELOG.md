@@ -12,8 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- Mesh orientation test suite (`tests/test_mesh_orientation.py`) pinning
+  CAD-export quality: consistent winding, outward normals, region-normal
+  directions, and degenerate-triangle checks across all styles.
 
 ### Fixed
+- **CAD export quality (Rhino/Grasshopper):** Generated meshes were watertight
+  by undirected-edge count but had **inconsistent winding** (240 flipped
+  directed edges at the base seams) and **globally inverted normals** (negative
+  signed volume; outer wall pointing inward, rim pointing down). Re-wound every
+  face group in both builders (`potfoundry/core/geometry.py` and the legacy
+  `potfoundry/geometry.py`) so each mesh is a single consistently-oriented
+  manifold with outward-facing normals. See ADR 0002.
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`

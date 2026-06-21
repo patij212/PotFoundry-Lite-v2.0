@@ -339,11 +339,15 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     rows = len(z_outer) - 1
     j = np.arange(n_theta, dtype=int)
     jn = (j + 1) % n_theta
+    # Winding note (CAD export quality): groups below are wound so the whole
+    # shell is a single consistently-oriented manifold with outward normals
+    # (positive signed volume). See tests/test_mesh_orientation.py. Outer wall
+    # normals point away from the central axis.
     for i in range(rows):
         v00 = outer_idx[i, j]; v01 = outer_idx[i, jn]
         v10 = outer_idx[i+1, j]; v11 = outer_idx[i+1, jn]
-        faces.extend(list(zip(v00, v10, v11)))
-        faces.extend(list(zip(v00, v11, v01)))
+        faces.extend(list(zip(v00, v11, v10)))
+        faces.extend(list(zip(v00, v01, v11)))
 
     # ---- Inner wall rings (clamp near drain)
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
@@ -365,15 +369,17 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     for i in range(rows_in):
         v00 = inner_idx[i, j]; v01 = inner_idx[i, jn]
         v10 = inner_idx[i+1, j]; v11 = inner_idx[i+1, jn]
-        faces.extend(list(zip(v00, v11, v10)))
-        faces.extend(list(zip(v00, v01, v11)))
+        # Inner wall faces the cavity: normals point toward the axis.
+        faces.extend(list(zip(v00, v10, v11)))
+        faces.extend(list(zip(v00, v11, v01)))
 
     # ---- Rim cap
     outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
     v00 = outer_top[j]; v01 = outer_top[jn]
     vi0 = inner_top[j]; vi1 = inner_top[jn]
-    faces.extend(list(zip(v00, vi0, vi1)))
-    faces.extend(list(zip(v00, vi1, v01)))
+    # Rim cap closes the top annulus; normals point up (+z).
+    faces.extend(list(zip(v00, vi1, vi0)))
+    faces.extend(list(zip(v00, v01, vi1)))
 
     # ---- Drain circles (untwisted)
     drain_under = []; drain_top = []
@@ -388,8 +394,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     # Bottom underside (outer bottom ring -> drain under ring)
     v00 = outer_bottom[j]; v01 = outer_bottom[jn]
     vd0 = drain_under[j];  vd1 = drain_under[jn]
-    faces.extend(list(zip(v00, vd1, vd0)))
-    faces.extend(list(zip(v00, v01, vd1)))
+    # Underside annulus closes the base; normals point down (-z).
+    faces.extend(list(zip(v00, vd0, vd1)))
+    faces.extend(list(zip(v00, vd1, v01)))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
