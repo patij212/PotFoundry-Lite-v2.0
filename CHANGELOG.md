@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Mesh orientation for CAD export (Grasshopper/Rhino):** `build_pot_mesh` now
+  produces a consistently wound, outward-facing watertight mesh. Previously the
+  whole mesh was wound inside-out (negative enclosed volume) and the drain-slab
+  and drain-cylinder patches were oriented inconsistently with the walls. This
+  imported "inside-out" into Rhino/Grasshopper (inverted shading, negative
+  `Volume`, broken offset/thicken/boolean/MeshToNURB). Fixed at the source plus
+  a cheap vectorized signed-volume guard (`_orient_faces_outward`). Mesh
+  topology/dimensions are unchanged; only triangle winding changed. See
+  [ADR 0002](adr/0002-mesh-orientation-for-cad-export.md).
+
+### Added
+- Regression tests `tests/test_mesh_orientation.py`: manifoldness, consistent
+  orientation (directed-edge), outward normals (signed volume + ray-cast
+  Möller–Trumbore parity), and degenerate-face checks across styles/params.
+
+---
+
 ## [2.1.0] - 2024-12 (In Development)
 
 ### Added

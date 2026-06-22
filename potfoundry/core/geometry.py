@@ -86,6 +86,36 @@ def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     t = 0.0 if H <= 0 else z / H
     return Rb + (Rt - Rb) * (t ** expn)
 
+def _mesh_signed_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+    """Signed volume of a closed triangle mesh (divergence theorem).
+
+    Positive when faces are wound counter-clockwise as seen from outside, i.e.
+    normals point *out* of the enclosed solid; negative when the mesh is
+    inverted. Used to guarantee outward orientation for CAD interchange
+    (Grasshopper/Rhino respect mesh winding and import inverted meshes
+    "inside-out").
+    """
+    if faces.shape[0] == 0:
+        return 0.0
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    return float(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0)
+
+
+def _orient_faces_outward(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Ensure a consistently wound, closed mesh has outward-facing normals.
+
+    This is a cheap, vectorized (O(faces)) global-orientation guard: it does
+    *not* repair inconsistent winding (the builder constructs each patch with
+    consistent winding), it only flips the whole mesh when the enclosed signed
+    volume is negative so that exported normals point outward.
+    """
+    if _mesh_signed_volume(verts, faces) < 0.0:
+        return faces[:, ::-1]
+    return faces
+
+
 def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     n = np.cross(b - a, c - a)
     norm = np.linalg.norm(n)
@@ -415,18 +445,20 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces_out_parts.append(tri_bot2)
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
+    # Winding reversed so this patch is consistently oriented with the walls
+    # (see _orient_faces_outward / tests/test_mesh_orientation.py).
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
-    tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_top1 = np.stack([inner_bottom[j], drain_top[jn], inner_bottom[jn]], axis=1)
+    tri_top2 = np.stack([inner_bottom[j], drain_top[j], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_top1)
     faces_out_parts.append(tri_top2)
 
-    # Drain cylinder wall
+    # Drain cylinder wall (winding reversed for consistent orientation)
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
-    tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
+    tri_cyl1 = np.stack([drain_under[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_cyl2 = np.stack([drain_under[j], drain_under[jn], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 
@@ -445,7 +477,10 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    # Guarantee outward-facing normals for clean Grasshopper/Rhino interchange.
+    faces_arr = _orient_faces_outward(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
