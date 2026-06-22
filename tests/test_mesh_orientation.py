@@ -126,6 +126,36 @@ def test_mesh_has_no_degenerate_faces(style_name, opts):
     assert degenerate == 0, f"{style_name} {opts}: {degenerate} degenerate faces"
 
 
+# A spread of dimension presets covering the valid design envelope: short,
+# tall/bottom-heavy, thick-wall, extreme flare, and minimum bottom thickness.
+PARAM_SWEEP = [
+    dict(H=20, Rt=30, Rb=30, t_wall=3, t_bottom=3, r_drain=8, expn=1.0),
+    dict(H=300, Rt=40, Rb=120, t_wall=3, t_bottom=3, r_drain=8, expn=1.0),
+    dict(H=120, Rt=30, Rb=30, t_wall=8, t_bottom=5, r_drain=15, expn=1.0),
+    dict(H=120, Rt=200, Rb=30, t_wall=2.5, t_bottom=3, r_drain=5, expn=2.5),
+    dict(H=120, Rt=70, Rb=50, t_wall=3, t_bottom=2, r_drain=10, expn=1.1),
+]
+
+
+@pytest.mark.parametrize("style_name", list(STYLES))
+@pytest.mark.parametrize("dims", PARAM_SWEEP)
+def test_export_invariants_hold_across_parameter_space(style_name, dims):
+    """Watertight + consistently oriented + outward must hold for all valid
+    designs, not just the defaults — this is the core export-quality contract.
+    """
+    style_fn = STYLES[style_name][0]
+    verts, faces, _ = build_pot_mesh(
+        n_theta=48, n_z=24, r_outer_fn=style_fn, style_opts={}, **dims
+    )
+    ue = undirected_edge_counts(faces)
+    assert all(c == 2 for c in ue.values()), f"{style_name} {dims}: not watertight"
+    de = directed_edge_counts(faces)
+    assert all(c == 1 for c in de.values()), (
+        f"{style_name} {dims}: inconsistent winding"
+    )
+    assert signed_volume(verts, faces) > 0.0, f"{style_name} {dims}: inverted"
+
+
 def _ray_hits(origin: np.ndarray, direction: np.ndarray,
               verts: np.ndarray, faces: np.ndarray) -> int:
     """Count forward ray/triangle intersections (Möller–Trumbore, vectorized).
