@@ -2645,15 +2645,20 @@ export class ParametricExportComputer {
                         // outer-wall edges; refine the cells they cross to
                         // featureLevel so the insertion is sliver-free.
                         outerFeatureLines: generalCurves.length > 0 ? generalCurves : undefined,
-                        // Feature-proximity density. Surface-fidelity exact (flag, default
-                        // off) raises it so near-feature chord drops below tol
-                        // (verify_featureRefineLevel: L11 → p99 0.125→0.037; ~3.6x tris,
-                        // within the budget cap). Off ⇒ 7 (byte-identical). The dominant
-                        // (1a)-sizing "Task 3" was measured a no-op — this density lever (not
-                        // curvature) is the real one. Dev override: __pfFidelityFeatureLevel.
-                        featureLevel: flags.surfaceFidelityExact
-                            ? ((globalThis as unknown as { __pfFidelityFeatureLevel?: number }).__pfFidelityFeatureLevel ?? 11)
-                            : 7,
+                        // Feature-proximity density. The cells a general-curve feature
+                        // crosses are refined to this level so the steep relief FLANKS
+                        // beside the inserted edge don't staircase. MEASURED 2026-06-23
+                        // (src/fidelity/verify_*FeatureFlow.test.ts, extractor-independent):
+                        // L11 collapses the near-feature flank radial p99 — CelticKnot
+                        // 0.18→0.013mm, Gyroid 0.31→~0.05mm, Voronoi cell-interior
+                        // 0.078→0.018mm — at ~2x tris, within the budget cap; L7 left the
+                        // flanks staircased while the old (circular) metric reported 100%.
+                        // Now the DEFAULT for ALL profiles (user-directed: "all profiles
+                        // dense"). The surfaceFidelityExact flag still gates per-style edge
+                        // EXTRACTION extras (SFB petals / ArtDeco t-steps), not this density.
+                        // Dev override: __pfFidelityFeatureLevel.
+                        featureLevel:
+                            (globalThis as unknown as { __pfFidelityFeatureLevel?: number }).__pfFidelityFeatureLevel ?? 11,
                         // Crease loci → uBias-invariant t-refinement (refine-only).
                         outerCreaseLines: creaseLines.length > 0 ? creaseLines : undefined,
                         // Warp-composed per-wall efg samplers — arm the shaped
