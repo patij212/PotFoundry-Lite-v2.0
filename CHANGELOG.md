@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
 
 ### Fixed
+- **Mesh export orientation (Grasshopper/Rhino quality):** Corrected face winding
+  in both mesh builders (`potfoundry/core/geometry.py` and `potfoundry/geometry.py`)
+  so generated meshes are *coherently oriented* with outward-facing normals
+  (positive signed volume). Previously every exported mesh was wound inward and the
+  bottom/drain caps disagreed with the walls (240 incoherent edges), causing
+  inside-out / flipped-face imports in Rhino and Grasshopper. The fix is a
+  zero-overhead construction-time change; STL facet normals now match outward
+  winding 1:1. Covered by `tests/test_mesh_orientation.py` across all styles and a
+  parameter envelope including inner-wall clamping. See ADR 0002.
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`

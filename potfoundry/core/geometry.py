@@ -356,8 +356,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     v01 = outer_idx[:-1, :][:, jn]
     v10 = outer_idx[1:, :][:, j]
     v11 = outer_idx[1:, :][:, jn]
-    tri1 = np.stack([v00, v10, v11], axis=2).reshape(-1, 3)
-    tri2 = np.stack([v00, v11, v01], axis=2).reshape(-1, 3)
+    # Wound CCW as seen from outside -> face normals point radially outward.
+    tri1 = np.stack([v00, v11, v10], axis=2).reshape(-1, 3)
+    tri2 = np.stack([v00, v01, v11], axis=2).reshape(-1, 3)
     faces_out_parts.append(tri1)
     faces_out_parts.append(tri2)
 
@@ -382,8 +383,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vi01 = inner_idx[:-1, :][:, jn]
     vi10 = inner_idx[1:, :][:, j]
     vi11 = inner_idx[1:, :][:, jn]
-    tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
-    tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
+    # Cavity wall: normals point radially inward (away from the solid material).
+    tri_in1 = np.stack([vi00, vi10, vi11], axis=2).reshape(-1, 3)
+    tri_in2 = np.stack([vi00, vi11, vi01], axis=2).reshape(-1, 3)
     faces_out_parts.append(tri_in1)
     faces_out_parts.append(tri_in2)
 
@@ -391,8 +393,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
     v00 = outer_top[j]; v01 = outer_top[jn]
     vi0 = inner_top[j]; vi1 = inner_top[jn]
-    tri_rim1 = np.stack([outer_top[j], inner_top[j], inner_top[jn]], axis=1)
-    tri_rim2 = np.stack([outer_top[j], inner_top[jn], outer_top[jn]], axis=1)
+    # Rim annulus faces upward (+z), away from the wall below it.
+    tri_rim1 = np.stack([outer_top[j], inner_top[jn], inner_top[j]], axis=1)
+    tri_rim2 = np.stack([outer_top[j], outer_top[jn], inner_top[jn]], axis=1)
     faces_out_parts.append(tri_rim1)
     faces_out_parts.append(tri_rim2)
 
@@ -409,8 +412,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     # Bottom underside (outer bottom ring -> drain under ring)
     v00 = outer_bottom[j]; v01 = outer_bottom[jn]
     vd0 = drain_under[j];  vd1 = drain_under[jn]
-    tri_bot1 = np.stack([outer_bottom[j], drain_under[jn], drain_under[j]], axis=1)
-    tri_bot2 = np.stack([outer_bottom[j], outer_bottom[jn], drain_under[jn]], axis=1)
+    # Underside of the base faces downward (-z).
+    tri_bot1 = np.stack([outer_bottom[j], drain_under[j], drain_under[jn]], axis=1)
+    tri_bot2 = np.stack([outer_bottom[j], drain_under[jn], outer_bottom[jn]], axis=1)
     faces_out_parts.append(tri_bot1)
     faces_out_parts.append(tri_bot2)
 
