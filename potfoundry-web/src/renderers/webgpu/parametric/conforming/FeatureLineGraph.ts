@@ -114,7 +114,7 @@
  * @module conforming/FeatureLineGraph
  */
 
-import { marchingSquaresZero, marchingSquaresLabels, segmentsToPolylines } from './SampledFeatureExtractor';
+import { marchingSquaresZero, segmentsToPolylines } from './SampledFeatureExtractor';
 import type { UWarp } from './CreaseUWarp';
 import type { TWarp } from './CreaseTWarp';
 import type { HelixWarp } from './CreaseHelixWarp';
@@ -621,16 +621,37 @@ function hash22(px: number, py: number): [number, number] {
 }
 
 /**
- * Voronoi nearest-cell ID at (u_wall, t) — replicates `periodic_cellular` /
- * `style_voronoi` (styles.wgsl). The crease is the boundary between cells, so the
- * border is where this categorical ID changes. Packed shader slots: 0 = scale,
- * 1 = jitter, 5 = z_stretch, 6 = pulse. (worley is f32-sensitive but jitter
- * keeps the cell points well-separated, so f64 reproduces the borders to within
- * the feature tolerance.)
+ * Voronoi CONTINUOUS web field at (u_wall, t) — replicates `periodic_cellular` /
+ * `style_voronoi` (styles.wgsl), tracking the TWO smallest worley distances f1,f2
+ * and returning the SIGN-CHANGING field whose zero set is the VISIBLE relief
+ * crease the surface actually shows.
+ *
+ * The surface relief (`rOuterVoronoi`, styles.ts) raises the wall by
+ * `web = 1 − smoothstep(0, th, cellSdf)` with `cellSdf = f2 − f1` and
+ * `th = thickness` (packed slot 2). So the web is fully raised where
+ * `cellSdf ≤ 0` (the cell border centerline) and ramps to flat at `cellSdf = th`
+ * (the outer wall edge). The OLD extractor traced the CATEGORICAL nearest-cell-ID
+ * boundary (`marchingSquaresLabels(voronoiCellId)`), which skips triple junctions
+ * and rides a DIFFERENT locus than the continuous web — measured to cover only
+ * ~74-76% of the visible web ridge regardless of density
+ * (verify_voronoiCelticFeatureFlow.test.ts). Tracing the continuous web instead
+ * lands the inserted general-curve edges on the actual relief crease.
+ *
+ * `g = (f2 − f1) − th·frac` is negative inside the raised web band, positive
+ * outside, with the zero set at the chosen relief level. NOTE `f2 ≥ f1` ALWAYS
+ * (f2 is the second-nearest by construction), so `f2 − f1 ≥ 0` everywhere — the
+ * field only sign-changes for a POSITIVE level (`frac > 0`); `frac = 0` (the
+ * cell-border centerline) is a ridge MINIMUM, not a zero crossing, and yields no
+ * contour (measured: 0 lines). The level must be a positive offset.
+ *
+ * Packed shader slots: 0 = scale, 1 = jitter, 2 = thickness, 5 = z_stretch,
+ * 6 = pulse. (worley is f32-sensitive but jitter keeps the cell points
+ * well-separated, so f64 reproduces the field to within the feature tolerance.)
  */
-function voronoiCellId(uWall: number, t: number, p: Float32Array): number {
+function voronoiWebField(uWall: number, t: number, p: Float32Array): number {
   const scale = p[0] > 0 ? p[0] : 8;
   const jitter = p[1];
+  const thickness = p[2] > 0 ? p[2] : 0.1;
   const stretch = p[5] > 0 ? p[5] : 1;
   const pulse = p[6];
   const uAnim = uWall * scale + pulse * scale;
@@ -639,9 +660,8 @@ function voronoiCellId(uWall: number, t: number, p: Float32Array): number {
   const cellIdY = Math.floor(v);
   const cuX = fract(uAnim);
   const cuY = fract(v);
-  let f1 = 1e9;
-  let bestX = 0;
-  let bestY = 0;
+  let f1 = 999;
+  let f2 = 999;
   for (let ny = -1; ny <= 1; ny++) {
     for (let nx = -1; nx <= 1; nx++) {
       const nidX = cellIdX + nx;
@@ -650,26 +670,28 @@ function voronoiCellId(uWall: number, t: number, p: Float32Array): number {
       const h = hash22(wrappedX, nidY);
       const dx = nx + h[0] * jitter - cuX;
       const dy = ny + h[1] * jitter - cuY;
-      const dist = dx * dx + dy * dy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < f1) {
+        f2 = f1;
         f1 = dist;
-        bestX = wrappedX;
-        bestY = nidY;
+      } else if (dist < f2) {
+        f2 = dist;
       }
     }
   }
-  // Unique integer per cell (bestY ∈ small range over t∈[0,1]).
-  return Math.round(bestX) * 4096 + (bestY + 32);
+  // Sign-changing web field: negative inside the raised web band, positive
+  // outside. Zero set = the chosen web level (default frac=1 → the outer wall
+  // edge where the relief returns to the base radius; see VORONOI_WEB_LEVEL_FRAC).
+  return f2 - f1 - thickness * VORONOI_WEB_LEVEL_FRAC;
 }
 
 const VOR_RES_U = 640;
 const VOR_RES_T = 512;
 
 /**
- * Voronoi insertion ENABLED (2026-06-08l). The f64-replicated worley +
- * categorical border extraction TRACKS the GPU Voronoi cells (featExp=featPres,
- * featDrop=0 — the hash reproduces) and is sliver/orient/nonMan-clean. The dense
- * irregular borders used to leave T-junction cracks where a border runs TANGENT
+ * Voronoi insertion ENABLED (2026-06-08l). The f64-replicated worley web field
+ * TRACKS the GPU Voronoi relief and is sliver/orient/nonMan-clean. The dense
+ * irregular creases used to leave T-junction cracks where a crease runs TANGENT
  * to a cell edge (the cell it does not cross into stayed coarse → inconsistent
  * transition crossing). FIXED by the grid-line vertex registry in
  * {@link triangulateQuadtreeWithFeatures}: every feature vertex on a shared cell
@@ -679,15 +701,34 @@ const VOR_RES_T = 512;
 const VORONOI_INSERTION_ENABLED = true;
 
 /**
- * Voronoi cell-border creases — the categorical boundary of the nearest-cell ID
- * field, traced into general-curve polylines (periodic in u). The metric tracks
- * vertices near the borders; the insertion makes them real edges.
+ * Level-set fraction of `thickness` at which the continuous web is traced.
+ * The web ramps from fully-raised at `cellSdf = f2−f1 = 0` (the cell-border
+ * centerline) to flat at `cellSdf = th` (the outer wall edge, where the relief
+ * returns to the base radius). MEASURED (verify_voronoiCelticFeatureFlow.test.ts,
+ * default dims, independent web-ridge coverage at featureLevel 11):
+ *   frac 0.0 → 0 lines (degenerate: `f2−f1 ≥ 0`, no zero crossing — a ridge min)
+ *   frac 0.5 (mid-ramp)  → 95.5%
+ *   frac 1.0 (wall edge) → 100.0%
+ * frac = 1.0 traces the visible web boundary `rOuterVoronoi` uses
+ * (`web = 1 − smoothstep(0, th, cellSdf)` reaches 0 at cellSdf = th) and
+ * maximizes true coverage, so it is the production default.
+ */
+const VORONOI_WEB_LEVEL_FRAC = 1.0;
+
+/**
+ * Voronoi web creases — the CONTINUOUS relief web traced as the zero set of the
+ * sign-changing worley `f2 − f1 − th·frac` field, into general-curve polylines
+ * (periodic in u). This is the locus `rOuterVoronoi` actually raises (the visible
+ * crease), NOT the categorical nearest-cell-ID boundary the old extractor traced
+ * (which rode a divergent locus and capped visible-web coverage at ~74-76%
+ * regardless of near-feature density). The metric tracks vertices near the web;
+ * the insertion makes them real edges.
  */
 function extractVoronoi(p: Float32Array): FeatureLine[] {
   if (!VORONOI_INSERTION_ENABLED) return [];
-  const segs = marchingSquaresLabels((u, t) => voronoiCellId(u, t, p), VOR_RES_U, VOR_RES_T, true);
-  // Stronger simplify: the categorical border is grid-jagged at 1/VOR_RES, so a
-  // larger tol straightens it (still ≪ the 2.3e-3 feature tolerance) → far fewer
+  const segs = marchingSquaresZero((u, t) => voronoiWebField(u, t, p), VOR_RES_U, VOR_RES_T, true);
+  // Stronger simplify: the worley web is grid-jagged at 1/VOR_RES, so a larger
+  // tol straightens it (still ≪ the 2.3e-3 feature tolerance) → far fewer
   // cell-edge crossings → sliver/crack-free insertion.
   return segmentsToPolylines(segs, 'voronoi-cell', 3, 1.5e-3);
 }
