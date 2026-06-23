@@ -727,10 +727,23 @@ const VORONOI_WEB_LEVEL_FRAC = 1.0;
 function extractVoronoi(p: Float32Array): FeatureLine[] {
   if (!VORONOI_INSERTION_ENABLED) return [];
   const segs = marchingSquaresZero((u, t) => voronoiWebField(u, t, p), VOR_RES_U, VOR_RES_T, true);
-  // Stronger simplify: the worley web is grid-jagged at 1/VOR_RES, so a larger
-  // tol straightens it (still ≪ the 2.3e-3 feature tolerance) → far fewer
-  // cell-edge crossings → sliver/crack-free insertion.
-  return segmentsToPolylines(segs, 'voronoi-cell', 3, 1.5e-3);
+  // DP simplify tol. The CORNERED worley web (sharp triple junctions + curved
+  // cell arcs) needs DENSER chord retention than Gyroid's smooth level set: at
+  // the old 1.5e-3 the Douglas-Peucker chords ran up to ~29mm and secant-cut the
+  // curved web, so the INSERTED feature curve serrated at midpoint-chord-dev p99
+  // ~0.31mm (visible). 3e-4 (matching extractGyroidManifold) keeps the dense
+  // smooth samples → inserted-curve chord-dev p99 ~0.10mm. MEASURED on the REAL
+  // conforming wall (featureLevel 11 + maxSag 0.05 + maxLevel 12 = the production
+  // default; _probe_voronoiDpSweep, 2026-06-23): the triangulator's per-cell
+  // sizing-field subdivision re-densifies the chords, so realized mesh-edge
+  // lateral serration p99 0.020→0.014mm (max pinned 0.048mm, density-invariant),
+  // tris 2.382M→2.366M (FEWER), build flat ~84s, watertight bnd=0/nonMan=0 at every
+  // tol swept {1.5e-3,3e-4,1e-4,5e-5}. 3e-4 is the largest tol that straightens the
+  // inserted curve to ≈Gyroid while staying well below printer resolution (~40µm);
+  // 1e-4/5e-5 only shave realized p99 to 0.011/0.009mm (far below print res) at ~2×
+  // the polyline points — wasted retention. Still ≪ the 2.3e-3 feature tolerance,
+  // so the insertion stays sliver/crack-free.
+  return segmentsToPolylines(segs, 'voronoi-cell', 3, 3e-4);
 }
 
 // ── SuperformulaBlossom petal crests (CAD-fidelity: ridge serration at high strength) ──
