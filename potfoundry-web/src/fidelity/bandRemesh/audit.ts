@@ -22,16 +22,24 @@ export interface Mesh3 {
 
 /** Result of {@link auditWatertight}. */
 export interface WatertightAuditResult {
-  /** Edges referenced by exactly 1 triangle that are NOT T-junctions. */
+  /**
+   * Edges referenced by exactly 1 triangle whose both endpoints are in the
+   * caller-supplied `boundaryVertexIndices` set. These are genuine open-boundary
+   * edges (cap/rail rings) — NOT defects.
+   *
+   * When `boundaryVertexIndices` is omitted the mesh is treated as fully closed,
+   * so this count is always 0 (every count-1 edge becomes a T-junction instead).
+   */
   boundaryEdges: number;
   /** Edges referenced by more than 2 triangles. */
   nonManifoldEdges: number;
   /**
    * Interior boundary edges: edges referenced exactly once whose both endpoints
-   * are NOT on the mesh boundary ring (i.e., they are interior T-junctions).
+   * are NOT both in `boundaryVertexIndices` (i.e., they are interior T-junctions).
    *
-   * Detection: if `opts.openT === 'none'` the mesh is assumed closed — every
-   * boundary edge is a T-junction. Otherwise no openT heuristic is applied.
+   * When `boundaryVertexIndices` is omitted every count-1 edge is a T-junction
+   * (safe default for a gate — no silent false-passes).
+   * `openT === 'none'` has the same effect and is kept for backward compatibility.
    */
   tJunctions: number;
 }
@@ -39,10 +47,30 @@ export interface WatertightAuditResult {
 /** Options for {@link auditWatertight}. */
 export interface WatertightAuditOptions {
   /**
+   * Explicit set of vertex indices that form the open boundary rings (e.g. the
+   * t=0 and t=1 cap/rail rings of a cylinder ribbon). A count-1 edge whose
+   * **both** endpoints are in this set is classified as a legitimate
+   * `boundaryEdge`; otherwise it is a `tJunction`.
+   *
+   * **Precedence:** when this is supplied it is used exclusively — `openT` is
+   * ignored. When omitted, the gate falls back to the `openT` option.
+   *
+   * Use this in preference to the old y-coordinate heuristic. Passing the
+   * explicit set is the only sound approach because the open rings could map to
+   * any axis (Z for `SyntheticCylinderSampler`, Y for legacy wall meshes, etc.).
+   */
+  boundaryVertexIndices?: Set<number>;
+
+  /**
    * Pass `'none'` to indicate the mesh has no open boundary rings (fully
    * closed surface). In that case every boundary edge (count=1) is a
-   * T-junction. Omit for the default "open walls" mode where boundary edges
-   * along the t=0 / t=1 rings are expected and not flagged.
+   * T-junction. This is also the behaviour when `boundaryVertexIndices` is
+   * omitted (safe default — no silent false-passes).
+   *
+   * Ignored when `boundaryVertexIndices` is supplied.
+   *
+   * @deprecated Prefer `boundaryVertexIndices` for explicit, geometry-independent
+   * boundary classification. This option will be kept for backward compatibility.
    */
   openT?: 'none';
 }
@@ -72,22 +100,26 @@ export interface LateralWobbleResult {
  *
  * Builds an undirected edge map keyed by sorted vertex-index pair.
  * - count > 2 → non-manifold edge
- * - count = 1 → boundary edge; further classified as T-junction if:
- *     - opts.openT === 'none' (no legitimate boundary rings)
- *     - or: neither vertex lies on the t=0 / t=1 ring
- *       (T-junction detection adapted from wallEdgeAudit in
- *        FeatureConformingTriangulator.test.ts).
+ * - count = 1 → boundary edge; further classified as:
+ *     - `boundaryEdge`: both endpoints are in `opts.boundaryVertexIndices`
+ *     - `tJunction`: otherwise (interior crack — a real defect)
  *
- * The T-junction definition used here: a boundary edge (count=1) whose
- * vertices are NOT on the expected open boundary rings. For a fully closed
- * mesh (openT='none') every boundary edge is a T-junction.
+ * **Safe default when `boundaryVertexIndices` is omitted:** every count-1 edge
+ * is a `tJunction`. This is the conservative choice for a gate — the mesh is
+ * assumed fully closed so nothing is silently forgiven. `openT === 'none'`
+ * has the same effect and is kept for backward compatibility.
+ *
+ * **Do not rely on positional heuristics** (e.g. y-min/y-max planes) to infer
+ * which vertices are on the boundary rings. Those heuristics are axis-specific
+ * and break for cylinder-style meshes (where open rings map to the Z axis).
+ * Pass `boundaryVertexIndices` explicitly — the caller knows which vertices are
+ * the cap/rail open boundary.
  */
 export function auditWatertight(
   mesh: Mesh3,
   opts: WatertightAuditOptions = {},
 ): WatertightAuditResult {
-  const { positions, indices } = mesh;
-  const nVerts = positions.length / 3;
+  const { indices } = mesh;
 
   // Build undirected edge → use count map.
   const edges = new Map<string, number>();
@@ -102,28 +134,15 @@ export function auditWatertight(
     }
   }
 
-  // Determine which vertices lie on the open boundary rings (t=0 or t=1).
-  // For Mesh3, positions are 3D XYZ; we cannot infer t-coords without the
-  // parametric domain. We use a positional heuristic: compare each vertex's
-  // y-coordinate against the global min and max — vertices on the extreme
-  // y-planes are treated as boundary-ring vertices. When openT='none', we
-  // skip this heuristic entirely (all boundary edges are T-junctions).
-  const isBoundaryRingVertex = (() => {
-    if (opts.openT === 'none') return (_i: number): boolean => false;
-    if (nVerts === 0) return (_i: number): boolean => false;
-    let yMin = positions[1];
-    let yMax = positions[1];
-    for (let i = 0; i < nVerts; i++) {
-      const y = positions[i * 3 + 1];
-      if (y < yMin) yMin = y;
-      if (y > yMax) yMax = y;
-    }
-    const yEps = (yMax - yMin) * 1e-6 + 1e-12;
-    return (i: number): boolean => {
-      const y = positions[i * 3 + 1];
-      return y <= yMin + yEps || y >= yMax - yEps;
-    };
-  })();
+  // Boundary-ring classification.
+  // When boundaryVertexIndices is supplied: both-in-set → true open boundary.
+  // Otherwise (including openT='none' or no opts): every count-1 edge is a
+  // T-junction — safe for a gate (no silent false-passes).
+  const bvi = opts.boundaryVertexIndices;
+  const isBoundaryEdge =
+    bvi !== undefined
+      ? (vi: number, vj: number): boolean => bvi.has(vi) && bvi.has(vj)
+      : (_vi: number, _vj: number): boolean => false;
 
   let nonManifoldEdges = 0;
   let tJunctions = 0;
@@ -136,11 +155,10 @@ export function auditWatertight(
       const [iS, jS] = key.split(':');
       const vi = Number(iS);
       const vj = Number(jS);
-      const onRing = isBoundaryRingVertex(vi) && isBoundaryRingVertex(vj);
-      if (onRing) {
+      if (isBoundaryEdge(vi, vj)) {
         openBoundaryEdges++;
       } else {
-        // Interior boundary edge → T-junction
+        // Interior boundary edge → T-junction (or omitted boundary set)
         tJunctions++;
       }
     }
