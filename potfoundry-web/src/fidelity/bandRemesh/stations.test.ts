@@ -168,4 +168,30 @@ describe('buildStations', () => {
       }
     }
   });
+
+  it('endpoint anchors: first row footPt/crestPt are rail[0], last row are rail[last] (reference equality)', () => {
+    const { rows } = buildStations(foot, crest, sampler, 5.0);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    // First row must reference exactly the first rail vertex objects.
+    expect(rows[0].footPt).toBe(foot[0]);
+    expect(rows[0].crestPt).toBe(crest[0]);
+    // Last row must reference exactly the last rail vertex objects.
+    expect(rows[rows.length - 1].footPt).toBe(foot[foot.length - 1]);
+    expect(rows[rows.length - 1].crestPt).toBe(crest[crest.length - 1]);
+  });
+
+  it('sparse rail (spacing > targetEdgeMm/2) throws with a clear precondition message', () => {
+    // One long straight segment: two points only, 3D spacing = 60mm on foot rail (H=100, Δt=0.6).
+    // targetEdgeMm = 5mm → halfTarget = 2.5mm; 60mm >> 2.5mm → must throw.
+    const sparseFoot = verticalRail(uFoot, tStart, tEnd, 2);   // 2 pts → 1 segment ≈ 60mm
+    const sparseCrest = verticalRail(uCrest, tStart, tEnd, 2);
+    expect(() => buildStations(sparseFoot, sparseCrest, sampler, 5.0)).toThrow(
+      /bandRemesh\.buildStations:.*rail vertex spacing.*exceeds.*targetEdgeMm\/2.*densify/,
+    );
+  });
+
+  it('dense enough rail (spacing ≤ targetEdgeMm/2) does not throw', () => {
+    // 40 points over 60mm → spacing ≈ 1.54mm < 5.0/2 = 2.5mm → no throw.
+    expect(() => buildStations(foot, crest, sampler, 5.0)).not.toThrow();
+  });
 });

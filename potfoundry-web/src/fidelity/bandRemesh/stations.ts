@@ -156,7 +156,10 @@ function buildCrossBandRow(
 ): StationPoint[] {
   // Build a dense scratch polyline between footPt and crestPt.
   // We interpolate linearly in (u,t) — on a smooth surface this gives a geodesic
-  // approximation sufficient for metric sizing.
+  // approximation sufficient for metric sizing.  Specifically, for a band
+  // subtending ≤ π/2 in u the under-approximation of true 3D arclength is
+  // ≤ ~10%, well within the ±25% budget; wider bands would need geodesic
+  // integration.
   const SCRATCH_STEPS = 64;
   const scratch: StationPoint[] = [];
   for (let i = 0; i <= SCRATCH_STEPS; i++) {
@@ -204,6 +207,27 @@ export function buildStations(
 ): StationGrid {
   if (foot.length < 2 || crest.length < 2) {
     return { rows: [] };
+  }
+
+  // Fail-fast: rail vertex spacing must be ≤ targetEdgeMm/2 so that the
+  // nearest-vertex snap stays within the ±25% along-s tolerance.
+  // Real DP-simplified rails (long straight segments) will violate this;
+  // densify the rail before calling buildStations (Task 5).
+  const halfTarget = targetEdgeMm / 2;
+  for (const [railName, rail] of [['foot', foot], ['crest', crest]] as const) {
+    for (let i = 1; i < rail.length; i++) {
+      const a = sampler.position(rail[i - 1].u, rail[i - 1].t);
+      const b = sampler.position(rail[i].u, rail[i].t);
+      const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+      const spacing = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (spacing > halfTarget) {
+        throw new Error(
+          `bandRemesh.buildStations: ${railName} rail vertex spacing ${spacing.toFixed(3)}mm` +
+          ` exceeds targetEdgeMm/2 = ${halfTarget.toFixed(3)}mm` +
+          ` — densify the rail before paving`,
+        );
+      }
+    }
   }
 
   // Compute cumulative arclength along both rails.
