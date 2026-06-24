@@ -155,6 +155,17 @@ export interface ConformingWallOptions {
    * takes the no-feature fast path). Omit ⇒ byte-identical default mesh.
    */
   bandRegions?: BandRegion[];
+  /**
+   * Opt-in offset-band RAIL feature lines (general-mesher integration spike,
+   * Task 4 — the complement half of the densify-and-share contract). Threaded
+   * verbatim to {@link triangulateQuadtreeWithFeatures}'s `railLines` force-
+   * register: every snapped rail vertex is admitted into the grid-line registry
+   * regardless of the on-edge check, so both adjacent cells adopt it identically
+   * and the band's paving welds to the complement by the same global id. The
+   * feature path runs when EITHER `featureLines` OR `railLines` is non-empty.
+   * Omit / empty ⇒ byte-identical default mesh (the load-bearing flag-OFF rule).
+   */
+  railLines?: FeatureLine[];
 }
 
 /**
@@ -535,13 +546,20 @@ function buildWallMeshAtScale(
   clippedFeatures: FeatureLine[],
   featureRefine?: FeatureRefineSpec,
   creaseRefine?: { intersects: FeatureRefineSpec['intersects'] },
+  railLines?: FeatureLine[],
 ): QuadtreeMesh {
+  // The feature triangulator runs when EITHER inserted features OR force-register
+  // rail lines are present (Task 4). With neither, the plain fast-out is taken
+  // (byte-identical to the pre-spike mesh). `railLines` are NOT clipped — they are
+  // pre-snapped to the QSCALE grid by the caller and must reach the registry intact.
+  const hasRails = (railLines?.length ?? 0) > 0;
+  const featurePath = clippedFeatures.length > 0 || hasRails;
   // FINAL build: enable the directional refine pass (if requested) — but NEVER on
-  // a feature wall (clipped features present). The pass is gated/no-op at default
-  // dims; on a wide/flat smooth wall it removes residual short-WIDE slivers.
-  const directionalRefine = (opts.directionalRefine ?? false) && clippedFeatures.length === 0;
+  // a feature wall (clipped features or rail lines present). The pass is gated/no-op
+  // at default dims; on a wide/flat smooth wall it removes residual short-WIDE slivers.
+  const directionalRefine = (opts.directionalRefine ?? false) && !featurePath;
   const qt = buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, targetScale, featureRefine, directionalRefine, creaseRefine);
-  if (clippedFeatures.length === 0) return triangulateQuadtree(qt);
+  if (!featurePath) return triangulateQuadtree(qt);
   // Corner-snap threshold: a small fraction of the feature cell size, made
   // ABSOLUTE (not per-cell) so both sides of every shared edge snap identically.
   const featureLevel = featureRefine ? featureRefine.level : opts.maxLevel;
@@ -562,6 +580,7 @@ function buildWallMeshAtScale(
     cornerSnap,
     sampler: refineEnabled ? (u, t) => sampler.position(u, t) : undefined,
     bandRegions: opts.bandRegions,
+    railLines,
   });
 }
 
@@ -611,11 +630,17 @@ export function buildConformingWall(
   const tMargin = opts.featureTMargin ?? (opts.nRing && opts.nRing > 0 ? 1 / opts.nRing : 1 / 64);
   const uMargin = 1.5 / (1 << featureLevel); // ≥ one feature cell off the seam
   const clippedFeatures = clipFeaturesToBox(opts.featureLines ?? [], uMargin, tMargin);
+  // Rail lines (Task 4) are pre-snapped to the QSCALE grid by the caller and are
+  // NOT clipped — they must reach the force-register with their exact dyadic
+  // vertices. They DO drive the same feature-cell refinement (the cells they cross
+  // refine to featureLevel so the CDT insertion stays sliver-free).
+  const railLines = opts.railLines ?? [];
+  const refineLines = [...clippedFeatures, ...railLines];
   let featureRefine: FeatureRefineSpec | undefined;
-  if (clippedFeatures.length > 0) {
+  if (refineLines.length > 0) {
     featureRefine = {
       level: featureLevel,
-      intersects: buildFeatureIntersector(clippedFeatures),
+      intersects: buildFeatureIntersector(refineLines),
     };
   }
 
@@ -645,6 +670,7 @@ export function buildConformingWall(
 
   const mesh = buildWallMeshAtScale(
     sampler, opts, pinBoundaryLevel, targetScale, clippedFeatures, featureRefine, creaseRefine,
+    railLines.length > 0 ? railLines : undefined,
   );
 
   // Stamp the surfaceId into each vertex's third slot (the triangulator packs 0

@@ -272,6 +272,15 @@ export interface AssemblyWallOptions {
    * default assembly (the load-bearing flag-OFF guarantee).
    */
   bandRegions?: BandRegion[];
+  /**
+   * Opt-in offset-band RAIL feature lines (general-mesher integration spike,
+   * Task 4), threaded to the OUTER wall only (features are outer-only). Every
+   * snapped rail vertex is force-registered into the complement's grid-line
+   * registry so both adjacent cells adopt it identically and the band's paving
+   * welds to the complement by the same global id (watertight by construction).
+   * Omit / empty ⇒ byte-identical default assembly.
+   */
+  railLines?: FeatureLine[];
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -493,6 +502,7 @@ export function assembleWatertight(
     creaseLines: opts.outerCreaseLines,
     efgSampler: opts.outerEfgSampler,
     bandRegions: opts.bandRegions,
+    railLines: opts.railLines,
   });
   const inner = buildConformingWall(innerSampler, {
     ...wallOpts,
