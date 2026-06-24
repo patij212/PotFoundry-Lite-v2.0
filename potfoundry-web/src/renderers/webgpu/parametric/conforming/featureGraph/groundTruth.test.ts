@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { makeReliefIndicator, denseReliefWallTruth, denseRidgeTruth, denseCreaseTruth } from './groundTruth';
+import { makeReliefIndicator, denseReliefWallTruth, denseRidgeTruth, denseCreaseTruth, denseFeatureGroundTruth } from './groundTruth';
 import { sampleFeatureFields } from './sampleFields';
 import { styleSampler } from './styleSampler';
 import type { StyleSamplerDims } from './styleSampler';
@@ -504,4 +504,156 @@ describe('denseCreaseTruth — brute-force normal-discontinuity ground truth', (
     const cylLines = denseCreaseTruth(cylFields, 28);
     expect(cylLines.length).toBe(0);
   });
+});
+
+// ---------------------------------------------------------------------------
+// 5. denseFeatureGroundTruth — union of all three families
+// ---------------------------------------------------------------------------
+
+/**
+ * Combined synthetic surface for Task 3:
+ *   - k=6 cosine ridges  (u-periodic curvature ridges at u = m/6, m=0..5)
+ *   - V-groove crease at t=0.5  (sharp normal discontinuity)
+ *   - Raised relief band [0.65, 0.80]  (u-varying bump → relief-wall edges)
+ *
+ * The three features are designed to be spatially separated so each family fires
+ * independently. The groove lives at t=0.5 (middle), the ridge runs the full
+ * height, and the relief band is at t∈[0.65,0.80] (upper portion).
+ *
+ * r(u,t) = R0
+ *          + ridgeAmp · cos(2π·k·u)              [u-ridges, all t]
+ *          + grooveAmp · |t - 0.5|                [V-groove crease]
+ *          + bandAmp · (1+cos(2π·nBand·u))/2 · inBand(t)  [raised band]
+ */
+function combinedSyntheticSampler(): SurfaceSampler {
+  const R0 = 40;
+  const H = 100;
+  const ridgeAmp = 4;    // cosine ripple amplitude (creates curvature ridges)
+  const k = 6;           // number of ridges
+  const grooveAmp = 60;  // V-groove amplitude — large enough to exceed 28° threshold
+  const bandAmp = 3;     // raised band amplitude
+  const nBand = 4;       // u-variation in band (ensures relief indicator fires)
+  const bandT: [number, number] = [0.65, 0.80];
+
+  return {
+    position(u: number, t: number): [number, number, number] {
+      const theta = 2 * Math.PI * u;
+      const ridge = ridgeAmp * Math.cos(2 * Math.PI * k * u);
+      const groove = grooveAmp * Math.abs(t - 0.5);
+      const inBand = t >= bandT[0] && t <= bandT[1];
+      const band = inBand ? bandAmp * (1 + Math.cos(2 * Math.PI * nBand * u)) / 2 : 0;
+      const r = R0 + ridge + groove + band;
+      return [r * Math.cos(theta), r * Math.sin(theta), t * H];
+    },
+  };
+}
+
+describe('denseFeatureGroundTruth — union of ridge + crease + wall truth', () => {
+  const DENSITY_TIMEOUT_MS = 120_000;
+
+  it('combined surface: detects all three families (ridge, crease, wall)', () => {
+    const sampler = combinedSyntheticSampler();
+    const uToMm = 2 * Math.PI * 40; // approx circumference
+    const tToMm = 100;              // height
+
+    const lines = denseFeatureGroundTruth(sampler, { res: 256, uToMm, tToMm });
+
+    expect(lines.length).toBeGreaterThan(0);
+
+    // --- Ridge family: lines labelled 'ridge-truth' near u = m/6 (m=0..5) ---
+    const ridgeLines = lines.filter((l) => l.label === 'ridge-truth');
+    expect(ridgeLines.length).toBeGreaterThan(0);
+
+    // At least 5 of 6 ridge u-positions should be represented.
+    const ridgeUBuckets = new Set<number>();
+    for (const line of ridgeLines) {
+      for (const p of line.points) {
+        ridgeUBuckets.add(Math.round(p.u * 6) % 6);
+      }
+    }
+    expect(ridgeUBuckets.size).toBeGreaterThanOrEqual(5);
+
+    // --- Crease family: lines labelled 'crease-truth' near t=0.5 ---
+    const creaseLines = lines.filter((l) => l.label === 'crease-truth');
+    expect(creaseLines.length).toBeGreaterThan(0);
+
+    const creaseTValues = creaseLines.flatMap((l) => l.points.map((p) => p.t));
+    expect(creaseTValues.some((t) => Math.abs(t - 0.5) < 0.05)).toBe(true);
+
+    // --- Relief-wall family: lines labelled 'relief-wall-truth' near band edges ---
+    const wallLines = lines.filter((l) => l.label === 'relief-wall-truth');
+    expect(wallLines.length).toBeGreaterThan(0);
+
+    const wallTValues = wallLines.flatMap((l) => l.points.map((p) => p.t));
+    // Both band edges (t≈0.65 and t≈0.80) should be detected.
+    expect(wallTValues.some((t) => Math.abs(t - 0.65) < 0.04)).toBe(true);
+    expect(wallTValues.some((t) => Math.abs(t - 0.80) < 0.04)).toBe(true);
+  });
+
+  it('smooth cylinder: returns ≈ empty (no detectable features)', () => {
+    // A smooth cylinder has uniform curvature, no normal-discontinuity, no relief variation.
+    const smoothCylinder: SurfaceSampler = {
+      position(u: number, t: number): [number, number, number] {
+        const theta = 2 * Math.PI * u;
+        const r = 40;
+        return [r * Math.cos(theta), r * Math.sin(theta), t * 100];
+      },
+    };
+
+    const lines = denseFeatureGroundTruth(smoothCylinder, {
+      res: 128,
+      uToMm: 2 * Math.PI * 40,
+      tToMm: 100,
+    });
+
+    // A smooth cylinder should produce no features. (May have 0 or very few from
+    // floating-point noise; use a generous floor since uniform κ=1/R < kappaFloor.)
+    expect(lines.length).toBe(0);
+  });
+
+  it(
+    'density stability: total truth arclength is within ±10% between res=192 and res=320',
+    () => {
+      const sampler = combinedSyntheticSampler();
+      const uToMm = 2 * Math.PI * 40;
+      const tToMm = 100;
+
+      const lines192 = denseFeatureGroundTruth(sampler, { res: 192, uToMm, tToMm });
+      const lines320 = denseFeatureGroundTruth(sampler, { res: 320, uToMm, tToMm });
+
+      // Compute total arclength using the same metric helpers as above.
+      function arcLengthMm(lines: FeatureLine[]): number {
+        const uScale = uToMm;
+        const tScale = tToMm;
+        let total = 0;
+        for (const line of lines) {
+          for (let i = 0; i + 1 < line.points.length; i++) {
+            const a = line.points[i];
+            const b = line.points[i + 1];
+            let du = Math.abs(a.u - b.u) % 1;
+            if (du > 0.5) du = 1 - du;
+            const dt = Math.abs(a.t - b.t);
+            total += Math.hypot(du * uScale, dt * tScale);
+          }
+        }
+        return total;
+      }
+
+      const len192 = arcLengthMm(lines192);
+      const len320 = arcLengthMm(lines320);
+
+      /* eslint-disable no-console */
+      console.log(`denseFeatureGroundTruth density: res192=${len192.toFixed(1)}mm, res320=${len320.toFixed(1)}mm`);
+      /* eslint-enable no-console */
+
+      // Both must be non-trivial.
+      expect(len192).toBeGreaterThan(0);
+      expect(len320).toBeGreaterThan(0);
+
+      // Stability: the shorter length must be at least 90% of the longer.
+      const ratio = Math.min(len192, len320) / Math.max(len192, len320);
+      expect(ratio).toBeGreaterThanOrEqual(0.9);
+    },
+    DENSITY_TIMEOUT_MS,
+  );
 });

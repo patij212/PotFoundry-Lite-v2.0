@@ -19,6 +19,7 @@
 import type { SurfaceSampler } from '../SurfaceSampler';
 import { marchingSquaresZero } from '../SampledFeatureExtractor';
 import type { FeatureLine } from '../FeatureLineGraph';
+import { sampleFeatureFields } from './sampleFields';
 import type { Fields } from './types';
 
 // ---------------------------------------------------------------------------
@@ -272,6 +273,114 @@ export function denseCreaseTruth(fields: Fields, minAngleDeg: number): FeatureLi
   }
 
   return lines;
+}
+
+// ---------------------------------------------------------------------------
+// Combined dense-truth entry point — detector-matched config, union of all families
+// ---------------------------------------------------------------------------
+
+/**
+ * Number of chord segments used to measure the u-circumference for kappaFloor.
+ * MUST match the MEASURE_N constant in detectFeatures.ts so the derived
+ * kappaFloor is identical to the detector's.
+ */
+const MEASURE_N_GT = 128;
+
+/**
+ * Dimensionless scale factor for the curvature floor.
+ * MUST match RIDGE_KAPPA_FACTOR in detectFeatures.ts.
+ */
+const RIDGE_KAPPA_FACTOR_GT = 2;
+
+/**
+ * Minimum normal-angle discontinuity (degrees) for the crease detector.
+ * MUST match GLOBAL_OPTS.minAngleDeg in detectFeatures.ts.
+ */
+const MIN_ANGLE_DEG_GT = 28;
+
+/**
+ * Measure the 3D chord length of the u-ring at t=0.5 (IDENTICAL to
+ * measureUCircumference in detectFeatures.ts — verbatim copy for independence).
+ */
+function measureUCircumferenceGT(sampler: SurfaceSampler): number {
+  let total = 0;
+  const [px0, py0, pz0] = sampler.position(0, 0.5);
+  let prevX = px0, prevY = py0, prevZ = pz0;
+  for (let i = 1; i <= MEASURE_N_GT; i++) {
+    const u = i / MEASURE_N_GT; // at i===MEASURE_N_GT wraps to u=1 = u=0 (periodic close)
+    const [cx, cy, cz] = sampler.position(u % 1, 0.5);
+    const dx = cx - prevX, dy = cy - prevY, dz = cz - prevZ;
+    total += Math.sqrt(dx * dx + dy * dy + dz * dz);
+    prevX = cx; prevY = cy; prevZ = cz;
+  }
+  return total;
+}
+
+/**
+ * Options for {@link denseFeatureGroundTruth}.
+ */
+export interface DenseFeatureGroundTruthOptions {
+  /** Grid resolution for sampling (both u and t axes). Use ≥ 192. */
+  res: number;
+  /**
+   * u→mm scale factor (circumference). Accepted for forward-compatibility but
+   * NOT used internally — the function derives its own scale from the sampler
+   * to stay detector-matched. Reserved for future metric use by the caller.
+   */
+  uToMm: number;
+  /**
+   * t→mm scale factor (height). Accepted for forward-compatibility but NOT used
+   * internally — see uToMm note above.
+   */
+  tToMm: number;
+}
+
+/**
+ * Dense brute-force ground-truth entry point: union of the three truth families.
+ *
+ * Returns the CONCATENATION of:
+ *   - {@link denseRidgeTruth}   — curvature ridges (label `'ridge-truth'`)
+ *   - {@link denseCreaseTruth}  — normal-discontinuity creases (label `'crease-truth'`)
+ *   - {@link denseReliefWallTruth} — relief-wall locus (label `'relief-wall-truth'`)
+ *
+ * The detector-matched configuration is derived from the sampler:
+ *   - `kappaFloor = RIDGE_KAPPA_FACTOR / Rchar` where
+ *     `Rchar = uCircumference / (2π)`, `uCircumference` measured identically to
+ *     `detectFeatures.ts`'s `measureUCircumference`.
+ *   - `minAngleDeg = 28` (the detector's GLOBAL_OPTS value).
+ *   - `reliefIndicator = makeReliefIndicator(sampler)`.
+ *
+ * Coincident loci across families are NOT deduped — the arclength-coverage
+ * metric is robust to overlap; keeping it simple preserves correctness.
+ *
+ * Independence: does NOT import any detector tracers/unifier/fired-cell logic.
+ * Only the shared primitives + Tasks 1–2 functions above.
+ *
+ * @param sampler  The surface sampler (analytic CPU sampler).
+ * @param opts     Resolution + scale factors (see {@link DenseFeatureGroundTruthOptions}).
+ * @returns        Concatenated ground-truth FeatureLines (all three families).
+ */
+export function denseFeatureGroundTruth(
+  sampler: SurfaceSampler,
+  opts: DenseFeatureGroundTruthOptions,
+): FeatureLine[] {
+  const { res } = opts;
+
+  // 1. Sample fields ONCE at res × res.
+  const fields = sampleFeatureFields(sampler, { resU: res, resT: res });
+
+  // 2. Derive detector-matched config.
+  const uCircumference = measureUCircumferenceGT(sampler);
+  const Rchar = uCircumference / (2 * Math.PI);
+  const kappaFloor = RIDGE_KAPPA_FACTOR_GT / Rchar;
+  const reliefIndicator = makeReliefIndicator(sampler);
+
+  // 3. Union of the three families (no dedup — overlap is harmless).
+  return [
+    ...denseRidgeTruth(fields, kappaFloor),
+    ...denseCreaseTruth(fields, MIN_ANGLE_DEG_GT),
+    ...denseReliefWallTruth(reliefIndicator, res),
+  ];
 }
 
 // Re-export Fields type for test convenience.
