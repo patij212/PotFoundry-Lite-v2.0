@@ -14,12 +14,24 @@
  *      Component boundary (if reliefIndicator is supplied) runs globally in
  *      both the coarse and fine passes -- not per-sub-region -- because its
  *      zero-contour is a global entity that typically falls on a cell boundary.
- *   c) Identify (u,t) sub-regions (coarse grid cells) where ridge or crease
- *      detectors fired.
- *   d) For each fired sub-region: re-sample ONLY that sub-region at fineRes
- *      and re-detect ridge and crease detectors there (finer placement).
+ *   c) Identify (u,t) coarse grid cells where ridge or crease detectors fired.
+ *   d) Group contiguous fired cells into CONNECTED COMPONENTS (4-connectivity
+ *      over the fired-cell set, u periodic). Re-sample each component ONCE as a
+ *      single fine sub-grid over its union bounding box and re-detect ridge and
+ *      crease there (finer placement).
+ *
+ *      Why connected components (not per-cell sub-regions)? Re-sampling each cell
+ *      independently gives each sub-grid its own sample offset, so a continuous
+ *      feature crossing a cell boundary lands on two NON-shared sample points
+ *      ~1/fineRes apart in the shared axis — at/over the unifier's weldTol
+ *      (=1/fineRes) — and fails to weld, FRAGMENTING the feature into pieces. A
+ *      whole connected component sampled as one grid has NO internal sub-region
+ *      seams, so a full-height ridge column re-detects as ONE continuous polyline
+ *      the unifier keeps intact. Each fired cell belongs to exactly one component,
+ *      so components never overlap → no partial-overlap duplicate segments (which
+ *      the unifier's whole-polyline dedup would NOT merge).
  *   e) Run component boundary at fineRes globally (all t rows, all u columns).
- *   f) Unify all fine segments: ridge + crease from sub-regions, boundary global.
+ *   f) Unify all fine segments: ridge + crease from components, boundary global.
  *
  * @module conforming/featureGraph/detectFeatures
  */
@@ -206,7 +218,7 @@ export function detectFeatures(
   const coarseCrease = detectNormalDiscontinuity(coarseFields, { minAngleDeg });
 
   // -------------------------------------------------------------------------
-  // Step 2 - identify fired sub-regions (ridge + crease only; boundary is global)
+  // Step 2 - identify fired cells (ridge + crease only; boundary is global)
   // -------------------------------------------------------------------------
 
   const firedCells = new Set<string>();
@@ -218,40 +230,44 @@ export function detectFeatures(
   }
 
   // -------------------------------------------------------------------------
-  // Step 3 - fine pass: re-sample + re-detect ridge+crease inside fired cells
+  // Step 3 - group fired cells into connected components, then fine-pass each
+  // component as ONE sub-grid over its union bounding box. Sampling a whole
+  // connected component as a single grid (rather than each cell separately)
+  // keeps a continuous feature one polyline through the fine pass — no internal
+  // sub-region seam to fragment it.
   // -------------------------------------------------------------------------
 
-  const sortedCells = [...firedCells].sort();
+  const components = connectedComponents(firedCells, coarseRes);
 
   const finalRidgeSegs: RawSegment[] = [];
   const finalCreaseSegs: RawSegment[] = [];
 
-  for (const cellKey of sortedCells) {
-    const [ci, cj] = cellKey.split(':').map(Number);
+  for (const comp of components) {
+    // Union bounding box for the component, with boundaries snapped to the
+    // coarse grid coordinates (cell edges = ci/coarseRes, cj/(coarseRes-1)).
+    // Snapping to the coarse grid makes the fine region's boundary endpoints
+    // coincide with the adjacent coarse-cell coordinate, so a fine-region edge
+    // welds to whatever (coarse or fine) segment abuts it instead of leaving a
+    // coarse/fine seam break.
+    const { uLo, uHi, tLo, tHi } = componentBounds(comp, coarseRes);
 
-    // Sub-region u/t bounds for this coarse cell.
-    const uLo = ci / coarseRes;
-    const uHi = (ci + 1) / coarseRes;
-    const tLo = cj / (coarseRes - 1);
-    const tHi = Math.min((cj + 1) / (coarseRes - 1), 1);
-
-    // Build a sub-sampler for [uLo,uHi) x [tLo,tHi].
+    // Build a sub-sampler for the component's union bbox [uLo,uHi) x [tLo,tHi].
     const subSampler = makeSubSampler(sampler, uLo, uHi, tLo, tHi);
 
-    // Sample the sub-region at fineRes x fineRes.
+    // Sample the whole component at fineRes x fineRes (single grid, no seams).
     const fineFields = sampleFeatureFields(subSampler, {
       resU: fineRes,
       resT: fineRes,
     });
 
-    // Ridge detector on sub-region.
+    // Ridge detector on the component.
     const fineRidge = detectCurvatureRidge(fineFields, {
       minStrength: KAPPA_FLOOR,
     });
     const remappedRidge = remapSegs(fineRidge, uLo, uHi, tLo, tHi);
     for (const s of remappedRidge.segs) finalRidgeSegs.push(s);
 
-    // Crease detector on sub-region.
+    // Crease detector on the component.
     const fineCrease = detectNormalDiscontinuity(fineFields, { minAngleDeg });
     const remappedCrease = remapSegs(fineCrease, uLo, uHi, tLo, tHi);
     for (const s of remappedCrease.segs) finalCreaseSegs.push(s);
@@ -325,6 +341,153 @@ function markCell(u: number, t: number, coarseRes: number, fired: Set<string>): 
   const ci = Math.min(Math.floor(uMod * coarseRes), coarseRes - 1);
   const cj = Math.min(Math.floor(t * (coarseRes - 1)), coarseRes - 2);
   fired.add(`${ci}:${cj}`);
+}
+
+/** A coarse grid cell index pair. */
+interface Cell {
+  ci: number;
+  cj: number;
+}
+
+/**
+ * Group the fired coarse cells into connected components under 4-connectivity
+ * (left/right/up/down neighbours), with the u (column) axis PERIODIC so the cell
+ * at column coarseRes−1 is adjacent to the cell at column 0 (a feature crossing
+ * the seam stays one component). The t (row) axis is NOT periodic.
+ *
+ * Determinism: each component's cells are sorted by (ci, cj), and the components
+ * themselves are sorted by their lexicographically-smallest (ci, cj) cell — so
+ * the same fired set always yields the same component ordering regardless of Set
+ * iteration order.
+ */
+function connectedComponents(fired: Set<string>, coarseRes: number): Cell[][] {
+  const cells: Cell[] = [];
+  for (const key of fired) {
+    const [ci, cj] = key.split(':').map(Number);
+    cells.push({ ci, cj });
+  }
+
+  // Union-find over the fired cells, keyed by their cell string.
+  const parent = new Map<string, string>();
+  const key = (ci: number, cj: number): string => `${ci}:${cj}`;
+  const find = (x: string): string => {
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r) as string;
+    // Path-compress.
+    let cur = x;
+    while (parent.get(cur) !== r) {
+      const nx = parent.get(cur) as string;
+      parent.set(cur, r);
+      cur = nx;
+    }
+    return r;
+  };
+  const union = (a: string, b: string): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) {
+      // Make the lexicographically-smaller root the parent for stability.
+      if (ra < rb) parent.set(rb, ra);
+      else parent.set(ra, rb);
+    }
+  };
+
+  for (const c of cells) parent.set(key(c.ci, c.cj), key(c.ci, c.cj));
+
+  for (const c of cells) {
+    const self = key(c.ci, c.cj);
+    // Right neighbour (u periodic): column wraps at coarseRes.
+    const ciRight = (c.ci + 1) % coarseRes;
+    if (fired.has(key(ciRight, c.cj))) union(self, key(ciRight, c.cj));
+    // Up neighbour (t NOT periodic): only if it exists.
+    if (fired.has(key(c.ci, c.cj + 1))) union(self, key(c.ci, c.cj + 1));
+    // (left/down are covered by the right/up edges of the neighbouring cells.)
+  }
+
+  // Bucket cells by their representative root.
+  const groups = new Map<string, Cell[]>();
+  for (const c of cells) {
+    const r = find(key(c.ci, c.cj));
+    let g = groups.get(r);
+    if (!g) {
+      g = [];
+      groups.set(r, g);
+    }
+    g.push(c);
+  }
+
+  // Sort cells within each component, and components by their smallest cell.
+  const comps = [...groups.values()];
+  for (const comp of comps) comp.sort(compareCell);
+  comps.sort((a, b) => compareCell(a[0], b[0]));
+  return comps;
+}
+
+/** Lexicographic (ci, cj) cell comparison. */
+function compareCell(a: Cell, b: Cell): number {
+  return a.ci - b.ci || a.cj - b.cj;
+}
+
+/**
+ * Compute the union bounding box of a connected component in (u,t) parameter
+ * space, with boundaries snapped to the coarse-grid cell coordinates.
+ *
+ * - t (non-periodic): tLo = minRow/(coarseRes−1), tHi = (maxRow+1)/(coarseRes−1)
+ *   clamped to 1.
+ * - u (periodic): the occupied columns form a set on a circle of coarseRes slots;
+ *   we take the MINIMAL COVERING ARC (the complement of the largest empty gap
+ *   between consecutive occupied columns). uLo = arcStart/coarseRes,
+ *   uHi = (arcStart + arcWidth)/coarseRes — uHi may exceed 1 when the arc wraps
+ *   the seam, which the periodic sub-sampler and unifier both handle.
+ *
+ * All four bounds land exactly on coarse-grid coordinates, so the fine region's
+ * boundary segment endpoints coincide with the adjacent coarse-cell coordinate.
+ */
+function componentBounds(
+  comp: Cell[],
+  coarseRes: number,
+): { uLo: number; uHi: number; tLo: number; tHi: number } {
+  let minRow = Infinity;
+  let maxRow = -Infinity;
+  const colSet = new Set<number>();
+  for (const c of comp) {
+    if (c.cj < minRow) minRow = c.cj;
+    if (c.cj > maxRow) maxRow = c.cj;
+    colSet.add(c.ci);
+  }
+  const tLo = minRow / (coarseRes - 1);
+  const tHi = Math.min((maxRow + 1) / (coarseRes - 1), 1);
+
+  // Minimal covering arc over the occupied columns on the periodic u circle.
+  const cols = [...colSet].sort((a, b) => a - b);
+  let arcStart: number;
+  let arcWidth: number; // in whole columns
+  if (cols.length === coarseRes) {
+    // All columns occupied → the arc is the full circle.
+    arcStart = 0;
+    arcWidth = coarseRes;
+  } else {
+    // Find the largest gap between consecutive occupied columns (wrapping the
+    // seam). The covering arc is the complement of that largest gap.
+    let largestGap = -1;
+    let gapEndCol = cols[0]; // column immediately AFTER the largest gap
+    for (let i = 0; i < cols.length; i++) {
+      const cur = cols[i];
+      const next = cols[(i + 1) % cols.length];
+      // Gap (number of empty columns) from cur to next, wrapping the seam.
+      const gap = (next - cur - 1 + coarseRes) % coarseRes;
+      if (gap > largestGap) {
+        largestGap = gap;
+        gapEndCol = next; // arc starts at the column after the gap
+      }
+    }
+    arcStart = gapEndCol;
+    arcWidth = coarseRes - largestGap; // occupied span = circle − biggest gap
+  }
+
+  const uLo = arcStart / coarseRes;
+  const uHi = (arcStart + arcWidth) / coarseRes;
+  return { uLo, uHi, tLo, tHi };
 }
 
 /**

@@ -15,10 +15,15 @@
  * B. >=1 normal-discontinuity edge.
  * C. >=1 component-boundary edge.
  * D. >=1 junction node or multi-type edge (features cross).
- * E. TWO-SCALE: fine-pass ridge maxDev < coarse-pass maxDev when K=7 (non-aligned).
+ * E. TWO-SCALE (k=7, non-aligned): fine-pass ridge maxDev < coarse-pass maxDev;
+ *    the ripple is feature-DENSE (not the sparsity witness); and two-scale ridge
+ *    chains stay CONTINUOUS (≈ coarse count, no fine-pass fragmentation).
  * F. FLAT surface -> 0 ridge and 0 discontinuity edges.
  * G. Coarse-only sanity: still >=6 ridge edges.
  * H. minStrength gate drops all edges when threshold > max saliency.
+ * I. LOCALIZED-bump surface (sparsity witness): the two-scale pass re-samples only
+ *    a small fraction (< 15%) of coarse cells — proving fine-pass re-sampling is
+ *    local, which the feature-dense ripple cannot witness.
  *
  * @module conforming/featureGraph/detectFeatures.test
  */
@@ -225,39 +230,108 @@ describe('detectFeatures -- two-scale ridge placement (E, k=7)', () => {
     expect(fineMaxDev).toBeLessThan(coarseMaxDev);
   });
 
-  it('E: fired coarse cells are strictly fewer than all cells (fine pass is local not global)', () => {
-    // A k=7 ripple has 14 ridges. Each ridge fires a narrow band of columns in
-    // the 30×30 coarse grid. Even with column-edge spillover (each ridge can
-    // touch 2-3 adjacent columns), ridge-only cells remain well under the total.
-    // The invariant: firedCells < totalCells, i.e. the fine pass is NOT running
-    // over every coarse cell (which would make it equivalent to a flat fine pass).
-    // We assert < 80% to ensure at least 20% of cells are silent (unfired).
+  it('E: the k=7 ripple is feature-DENSE (it is NOT the sparsity witness)', () => {
+    // The k=7 ripple fires curvature features almost everywhere across u (a
+    // global ridge field), so the fired-cell fraction is LARGE — this surface
+    // proves the fine-pass placement improvement (maxDev) and the chain
+    // continuity, NOT sparse re-sampling. Sparsity is witnessed separately on a
+    // localized-bump surface (see the dedicated suite below), where the fired
+    // fraction is genuinely small. Here we only assert "ridges fired" — the
+    // 80%-cap that USED to live here proved nothing on a feature-dense surface.
     const { firedCellCount, totalCellCount } = twoScaleResult;
-    expect(firedCellCount).toBeLessThan(totalCellCount * 0.8);
-    // And at least one cell must have fired (ridges were detected).
     expect(firedCellCount).toBeGreaterThan(0);
+    expect(firedCellCount).toBeLessThanOrEqual(totalCellCount);
   });
 
-  it('E: ridge chain count in two-scale run does not balloon vs coarse-only (no spurious detection)', () => {
-    // The fine pass re-detects ridges at higher resolution WITHIN each fired
-    // sub-region. Sub-region boundary clipping can legitimately split long chains
-    // into shorter segments (one per sub-region they span), so the fine run may
-    // yield more polyline edges than the coarse run. However, the count should
-    // not balloon to many times the coarse count -- that would indicate the fine
-    // pass is inventing new features rather than refining existing ones.
-    // We assert fine ≤ 3× coarse as the principled upper bound: with fineRes=90
-    // and coarseRes=30, a single coarse chain spanning all 30 cells can at most
-    // be clipped into 30 sub-region pieces, but welding and chain-joining in the
-    // unifier collapses most of those back. A 3× ratio implies severe fragmentation
-    // that would not occur for a clean ridge surface.
+  it('E: two-scale ridge chains stay CONTINUOUS (≈ coarse count, no fragmentation)', () => {
+    // ROOT-CAUSE REGRESSION GUARD. Each k=7 ripple ridge is a single continuous
+    // vertical line spanning the full t-range. The defective per-cell fine pass
+    // re-sampled each fired coarse cell independently, so each sub-grid had its
+    // own sample offset and the shared cell boundary was NOT a shared sample
+    // point. Adjacent sub-region segment endpoints landed ~1/fineRes apart in t
+    // — at/over the unifier's weldTol (=1/fineRes) — so the seam did NOT weld and
+    // each ridge arrived as ~3 broken fragments (count ballooned ~32 → ~57).
+    //
+    // The connected-component fine pass re-samples each contiguous fired region
+    // as ONE sub-grid, so a full-height ridge column is re-detected as a single
+    // continuous polyline with no internal seam. The two-scale chain count must
+    // therefore stay ≈ the coarse count (here both are 14 = 7 crests + 7 valleys).
+    // We assert ≤ 1.5× coarse: a regression that re-fragments (≈4× here) FAILS.
     const coarseRidgeEdges = coarseResult.edges.filter((e) =>
       (e.types as string[]).includes('curvature-ridge'),
     ).length;
     const fineRidgeEdges = twoScaleResult.edges.filter((e) =>
       (e.types as string[]).includes('curvature-ridge'),
     ).length;
+    expect(coarseRidgeEdges).toBeGreaterThan(0);
     expect(fineRidgeEdges).toBeGreaterThan(0);
-    expect(fineRidgeEdges).toBeLessThanOrEqual(coarseRidgeEdges * 3);
+    expect(fineRidgeEdges).toBeLessThanOrEqual(coarseRidgeEdges * 1.5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite I: Sparsity witness — a LOCALIZED feature surface
+//
+// Unlike the global k=7 ripple (which fires nearly everywhere), this surface has
+// a SINGLE Gaussian bump covering ~10% of the u-range on an otherwise smooth
+// cylinder wall. The two-scale pass must re-sample ONLY the cells the bump fires
+// — a genuinely small fraction of the coarse grid — proving the fine pass is
+// local (re-samples where features are), not a disguised global resample.
+// ---------------------------------------------------------------------------
+
+/**
+ * Smooth cylinder with ONE localized radial Gaussian bump centred at u=0.5,
+ * with σ_u ≈ 0.02 so the bump occupies roughly |u−0.5| < ~0.05 (≈10% of u).
+ * Everywhere else the surface is the bare cylinder (no curvature feature).
+ */
+class LocalizedBumpSampler implements SurfaceSampler {
+  constructor(
+    private readonly R0: number,
+    private readonly H: number,
+    private readonly ampBump: number,
+    private readonly uCenter: number,
+    private readonly sigmaU: number,
+  ) {}
+
+  position(u: number, t: number): Vec3 {
+    const theta = 2 * Math.PI * u;
+    // Periodic distance from the bump centre.
+    let du = Math.abs(u - this.uCenter) % 1;
+    if (du > 0.5) du = 1 - du;
+    const bump = this.ampBump * Math.exp(-(du * du) / (2 * this.sigmaU * this.sigmaU));
+    const r = this.R0 + bump;
+    return [r * Math.cos(theta), r * Math.sin(theta), t * this.H];
+  }
+}
+
+describe('detectFeatures -- localized bump => sparse re-sampling (I, sparsity witness)', () => {
+  const bumpSampler = new LocalizedBumpSampler(R0, H, AMP_RIPPLE, 0.5, 0.02);
+
+  // minAngleDeg=30 is set ABOVE the smooth cylinder's per-column hoop rotation
+  // (360°/COARSE_RES = 12° at res 30) so the bare wall does NOT fire the crease
+  // detector. The ONLY feature is then the bump's curvature ridge, making the
+  // fired-cell count a faithful measure of how localized the re-sampling is.
+  const result: DetectFeaturesResult = detectFeatures(bumpSampler, {
+    coarseRes: COARSE_RES,
+    fineRes: FINE_RES,
+    minStrength: MIN_STRENGTH,
+    minAngleDeg: 30,
+  });
+
+  it('I: a feature WAS detected (precondition — the bump fires a ridge)', () => {
+    expect(edgesOfType(result, 'curvature-ridge')).toBeGreaterThanOrEqual(1);
+  });
+
+  it('I: fired coarse cells are a genuinely SMALL fraction (< 15% of all cells)', () => {
+    // The bump occupies ~10% of u and the full t-range, so only a narrow band of
+    // columns fires (measured 28/900 = 3.1%). A truly localized feature must keep
+    // the fired fraction well below the whole grid — this is the assertion the
+    // global-ripple test could NOT make (it fires ~68% by design). If the fine
+    // pass ever degenerated into a global resample, this fraction would approach
+    // 100% and the test would fail.
+    const { firedCellCount, totalCellCount } = result;
+    expect(firedCellCount).toBeGreaterThan(0);
+    expect(firedCellCount).toBeLessThan(totalCellCount * 0.15);
   });
 });
 
