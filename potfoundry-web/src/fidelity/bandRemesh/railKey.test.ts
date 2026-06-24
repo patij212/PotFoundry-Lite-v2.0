@@ -113,9 +113,12 @@ describe('railKey — Part 1: round-trip equivalence', () => {
 });
 
 // ── A minimal hand-built 2-leaf quadtree: two same-level cells stacked in t,
-//    sharing the horizontal edge t=0.5. Both span the full u-period [0,1].
-//    QuadLeaf fixtures may omit iu/it/uExtra (uExtra=0) — the triangulator
-//    reconstructs them. uBias=0 → isotropic. ──
+//    sharing the horizontal edge t=0.5. At level 1 each cell is 0.5 wide, so both
+//    span u ∈ [0, 0.5] (ONE level-1 cell, NOT the full u-period) — the u=0/u=0.5
+//    columns are therefore OUTER boundary here, not a periodic seam; the audit's
+//    boundaryVertexIndices accounts for that. For a full-period de-risk (Task 4)
+//    use level 0 or a full covering leaf set. QuadLeaf fixtures may omit
+//    iu/it/uExtra (uExtra=0) — the triangulator reconstructs them. uBias=0 → isotropic. ──
 function twoLeafQuadtree(): QuadtreeLike {
   const leaves: QuadLeaf[] = [
     { u0: 0, t0: 0, level: 1 },   // BOTTOM cell: t ∈ [0, 0.5]
