@@ -12,13 +12,19 @@
  *    a. Estimate the κ-gradient vector ∇κ via central differences:
  *         gU = (κ[i+1,j] − κ[i−1,j]) / 2   (u is periodic)
  *         gT = (κ[i,j+1] − κ[i,j−1]) / 2   (t is interior → no clamping needed)
- *    b. Estimate the SECOND DIRECTIONAL DERIVATIVE of κ along ∇κ (the
- *       "second difference") using a 1-cell finite difference:
+ *    b. PRIMARY GATE — dominant-axis strict local maximum: compare |gU|² vs |gT|²
+ *       to find which axis carries the gradient, then require κ[i,j] to be a
+ *       strict maximum along that axis:
+ *         if |gU|² ≥ |gT|²  (ridge runs along t): κ[i,j] > κ[i−1,j] AND κ[i,j] > κ[i+1,j]
+ *         if |gT|² > |gU|²  (ridge runs along u): κ[i,j] > κ[i,j−1] AND κ[i,j] > κ[i,j+1]
+ *       This is the primary discriminator. Without it, the entire concave-down
+ *       half-period of a cosine κ field would be marked as ridge.
+ *    c. SECONDARY GATE — second directional derivative D²κ < 0 (concave-down
+ *       crest confirmation, redundant but cheap):
  *         D²κ = gU²·(κ[i+1,j] + κ[i−1,j] − 2·κ[i,j])
  *             + gT²·(κ[i,j+1] + κ[i,j−1] − 2·κ[i,j])
  *             + 2·gU·gT·(κ[i+1,j+1] − κ[i+1,j−1] − κ[i−1,j+1] + κ[i−1,j−1]) / 4
- *       (D²κ is negative at a crest of κ along the gradient direction.)
- *    c. Mark the node as a RIDGE if D²κ < 0 AND κ[i,j] > minStrength.
+ *       Mark the node as a RIDGE only if D²κ < 0 AND κ[i,j] > minStrength.
  *
  * 2. Emit segments between adjacent ridge-marked nodes in the same grid row or
  *    column. Two ridge nodes that share a grid edge produce one segment connecting

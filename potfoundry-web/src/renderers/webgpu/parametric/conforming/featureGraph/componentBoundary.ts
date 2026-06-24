@@ -15,7 +15,7 @@
  *
  * The caller supplies a generic field callback — there is NO style-id branching
  * inside this module. The returned {@link RawSegments} carries a constant
- * `type: 'component-boundary'` and a `strength` function that returns 1 for
+ * `type: 'component-boundary'` and a per-segment `strength` field of 1 for
  * every segment (the field gives no local saliency; downstream code may weight
  * by segment length or curvature if needed).
  *
@@ -102,7 +102,7 @@ export interface ComponentBoundaryOptions {
  *                for constructing the appropriate indicator from the sampler.
  * @param opts    Resolution, periodicity, and tracing mode.
  * @returns       {@link RawSegments} — unordered segments, type tag, and
- *                strength accessor.
+ *                per-segment strength field.
  */
 export function detectComponentBoundary(
   field: (u: number, t: number) => number,

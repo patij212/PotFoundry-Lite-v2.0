@@ -61,6 +61,33 @@ class GaussianBumpSampler implements SurfaceSampler {
 }
 
 // ---------------------------------------------------------------------------
+// Synthetic ring-ridge sampler (t-branch exercise)
+// ---------------------------------------------------------------------------
+
+/**
+ * A cylinder whose radius varies with t only: r(t) = R0 + amp·exp(-((t−0.5)/σ)²).
+ * This places a raised band ring at t≈0.5 — a feature with a curvature ridge that
+ * runs along u (constant t). The κ-gradient is in the t-direction, so gTSq > gUSq
+ * and the t-branch of the dominant-axis gate fires. If the t-branch is broken,
+ * no ridge is detected.
+ */
+class RingRidgeSampler implements SurfaceSampler {
+  constructor(
+    private readonly R0: number,
+    private readonly H: number,
+    private readonly amp: number,
+    private readonly t0: number,
+    private readonly sigma: number,
+  ) {}
+
+  position(u: number, t: number): Vec3 {
+    const theta = 2 * Math.PI * u;
+    const r = this.R0 + this.amp * Math.exp(-Math.pow((t - this.t0) / this.sigma, 2));
+    return [r * Math.cos(theta), r * Math.sin(theta), t * this.H];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -179,6 +206,64 @@ describe('detectCurvatureRidge — Gaussian bump at u0=0.3', () => {
       return d <= TWO_CELLS;
     });
     expect(nearApex).toBe(true);
+  });
+
+  it('per-segment strength is finite and >= minStrength', () => {
+    for (const seg of result.segs) {
+      expect(Number.isFinite(seg.strength)).toBe(true);
+      expect(seg.strength).toBeGreaterThanOrEqual(MIN_STRENGTH);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case 4 — Ring ridge at t0=0.5 (t-branch exercise)
+// ---------------------------------------------------------------------------
+// r(t) = R0 + amp·exp(-((t − 0.5)/σ)²). The curvature is maximal along the
+// raised ring at t≈0.5 and decays away in both ±t directions. The κ-gradient
+// is therefore in the t-direction (gTSq > gUSq), which exercises the ELSE
+// branch of the dominant-axis gate (k0 > kT0 && k0 > kT2). If that branch
+// were buggy (e.g. testing the wrong axis), no segments near t=0.5 would be
+// found even though the curvature peak is real.
+
+describe('detectCurvatureRidge — ring ridge at t0=0.5 (t-branch)', () => {
+  const RING_T0 = 0.5;
+  const RING_SIGMA = 0.07; // narrow enough to produce a clear gradient
+  const RING_AMP = 8; // large amplitude → strong κ peak
+  const sampler = new RingRidgeSampler(R0, H, RING_AMP, RING_T0, RING_SIGMA);
+  const fields = sampleFeatureFields(sampler, { resU: RES_U, resT: RES_T });
+  const result = detectCurvatureRidge(fields, { minStrength: MIN_STRENGTH });
+
+  it('returns type "curvature-ridge"', () => {
+    expect(result.type).toBe('curvature-ridge');
+  });
+
+  it('detects at least one segment near t0=0.5 (within 2 t-cells)', () => {
+    // Each t-cell spans 1/(resT−1). A ridge at t=0.5 must be within 2 cells.
+    const T_CELL = 1 / (RES_T - 1);
+    const TWO_T_CELLS = 2 * T_CELL;
+    const nearRing = result.segs.some((seg) => {
+      const midT = (seg.a.t + seg.b.t) / 2;
+      return Math.abs(midT - RING_T0) <= TWO_T_CELLS;
+    });
+    // If this fails, the t-branch of the dominant-axis gate is broken.
+    expect(nearRing).toBe(true);
+  });
+
+  it('detected ring segments span the full u-circumference (≥ 4 distinct u-bands)', () => {
+    // The ring runs along u — segments should be distributed across u, not
+    // clustered at a single column. Count distinct u-bands (bucket u into 4
+    // equal quarters and require at least one segment per quarter).
+    const T_CELL_LOCAL = 1 / (RES_T - 1);
+    const ringSegs = result.segs.filter(
+      (seg) => Math.abs((seg.a.t + seg.b.t) / 2 - RING_T0) <= 2 * T_CELL_LOCAL,
+    );
+    const quarters = new Set<number>();
+    for (const seg of ringSegs) {
+      const midU = (seg.a.u + seg.b.u) / 2;
+      quarters.add(Math.floor(midU * 4)); // bucket into [0,3]
+    }
+    expect(quarters.size).toBeGreaterThanOrEqual(4);
   });
 
   it('per-segment strength is finite and >= minStrength', () => {
