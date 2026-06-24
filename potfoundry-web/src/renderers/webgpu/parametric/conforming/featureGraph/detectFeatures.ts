@@ -41,6 +41,7 @@ import type { FeatureGraph, RawSegments, RawSegment } from './types';
 import { sampleFeatureFields } from './sampleFields';
 import { detectCurvatureRidge } from './curvatureRidge';
 import { detectNormalDiscontinuity } from './normalDiscontinuity';
+import type { LocalContrastOptions } from './normalDiscontinuity';
 import { detectComponentBoundary } from './componentBoundary';
 import { unifyToGraph } from './unify';
 
@@ -101,6 +102,21 @@ export interface DetectFeaturesOptions {
    * the floor scale-invariant (fires on ridges sharper than the smooth pot wall).
    */
   kappaFloor?: number;
+
+  /**
+   * Optional local-contrast gate for the normal-discontinuity detector (the
+   * crease detector). When provided, an edge ALSO qualifies as a crease if it is
+   * a clear local PEAK in the edge-angle field (a relative-prominence test) even
+   * when its absolute angle is below `minAngleDeg`. This lifts recall on
+   * gentle/rounded-but-real creases (LowPolyFacet's smin-rounded facet edges,
+   * GeometricStar's soft sector folds) that sit below the absolute floor, without
+   * firing on a uniformly-smooth wall (whose angle field is a flat plateau, so
+   * the local span is ≈0 and the gate stays silent). ONE global formulation —
+   * no per-style knowledge, derived purely from the sampled field. Applied
+   * identically in the coarse and fine passes. Omit to use the absolute floor
+   * only (legacy behaviour).
+   */
+  creaseContrast?: LocalContrastOptions;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +201,14 @@ export function detectFeatures(
   sampler: SurfaceSampler,
   opts: DetectFeaturesOptions,
 ): DetectFeaturesResult {
-  const { coarseRes, fineRes, minStrength, minAngleDeg, reliefIndicator } = opts;
+  const {
+    coarseRes,
+    fineRes,
+    minStrength,
+    minAngleDeg,
+    reliefIndicator,
+    creaseContrast,
+  } = opts;
 
   // -------------------------------------------------------------------------
   // Derive scale constants from the sampler when not explicitly provided.
@@ -215,7 +238,10 @@ export function detectFeatures(
     minStrength: KAPPA_FLOOR,
   });
 
-  const coarseCrease = detectNormalDiscontinuity(coarseFields, { minAngleDeg });
+  const coarseCrease = detectNormalDiscontinuity(coarseFields, {
+    minAngleDeg,
+    contrast: creaseContrast,
+  });
 
   // -------------------------------------------------------------------------
   // Step 2 - identify fired cells (ridge + crease only; boundary is global)
@@ -268,7 +294,10 @@ export function detectFeatures(
     for (const s of remappedRidge.segs) finalRidgeSegs.push(s);
 
     // Crease detector on the component.
-    const fineCrease = detectNormalDiscontinuity(fineFields, { minAngleDeg });
+    const fineCrease = detectNormalDiscontinuity(fineFields, {
+      minAngleDeg,
+      contrast: creaseContrast,
+    });
     const remappedCrease = remapSegs(fineCrease, uLo, uHi, tLo, tHi);
     for (const s of remappedCrease.segs) finalCreaseSegs.push(s);
   }

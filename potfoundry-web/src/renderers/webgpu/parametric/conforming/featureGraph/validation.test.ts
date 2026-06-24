@@ -99,6 +99,19 @@ const T_TO_MM = DIMS.H; // 100 mm
 //     see {@link makeReliefIndicator}. It is the ONLY indicator and carries NO
 //     styleId; the component-boundary detector traces its zero-contour, which is
 //     the OUTLINE of the significant-relief region (the cellular/lattice walls).
+//   creaseContrast : the additive LOCAL-CONTRAST crease gate (this iteration). An
+//     edge ALSO qualifies as a crease when it is a clear local PEAK in the
+//     edge-angle field — exceeds its window minimum by ≥ factor·(localMax−localMin),
+//     with the local span itself > absFloorDeg — even if its absolute angle is
+//     below minAngleDeg=28. This catches gentle/rounded-but-distinct creases
+//     (LowPolyFacet's smin-rounded facet edges; GeometricStar's soft sector folds)
+//     that the absolute floor misses, WITHOUT firing on a uniformly-smooth wall
+//     (whose angle field is a flat plateau → span ≈ 0 < absFloorDeg → silent;
+//     verified by the FLAT cone gate below, which stays at 0 spurious arclength).
+//     windowRadius 5 / factor 0.6 / absFloorDeg 8 chosen by sweeping the 3
+//     diagnostic surfaces (flat cone + the 2 targets): the cone is silent at every
+//     setting tested; the targets light up on their real crease loci. ONE global
+//     formulation, no per-style code.
 const GLOBAL_OPTS: Omit<DetectFeaturesOptions, 'reliefIndicator'> = {
   coarseRes: 40,
   fineRes: 120,
@@ -106,6 +119,11 @@ const GLOBAL_OPTS: Omit<DetectFeaturesOptions, 'reliefIndicator'> = {
   minAngleDeg: 28,
   uToMm: U_TO_MM,
   tToMm: T_TO_MM,
+  //   (A κ local-contrast ridge gate was also built + measured but is NOT shipped:
+  //    on the cohort it was a recall NO-OP — the κ contrast set is essentially a
+  //    subset of the absolute κ-floor set, so it added only precision noise +
+  //    compute. The crease (normal-angle) contrast gate is the effective lever.)
+  creaseContrast: { windowRadius: 5, factor: 0.6, absFloorDeg: 8 },
 };
 
 // ---------------------------------------------------------------------------
