@@ -58,6 +58,7 @@ import type { FeatureEdge } from './types';
 import { styleSampler } from './styleSampler';
 import type { StyleSamplerDims } from './styleSampler';
 import { GpuSurfaceSampler } from '../SurfaceSampler';
+import type { SurfaceSampler } from '../SurfaceSampler';
 import { baseRadius } from '../../../../../geometry/profile';
 import {
   extractAnalyticFeatures,
@@ -94,7 +95,11 @@ const T_TO_MM = DIMS.H; // 100 mm
 //   minAngleDeg 28 : a crease must turn the normal ≥ 28°. Below ~20° the smooth
 //     wall's micro-faceting fires; above ~35° soft creases (Bamboo rings) are lost.
 //   kappaFloor left auto (RIDGE_KAPPA_FACTOR/Rchar): scale-invariant ridge floor.
-const GLOBAL_OPTS: DetectFeaturesOptions = {
+//   reliefIndicator : ONE GLOBAL, sampler-derived relief field for ALL styles —
+//     see {@link makeReliefIndicator}. It is the ONLY indicator and carries NO
+//     styleId; the component-boundary detector traces its zero-contour, which is
+//     the OUTLINE of the significant-relief region (the cellular/lattice walls).
+const GLOBAL_OPTS: Omit<DetectFeaturesOptions, 'reliefIndicator'> = {
   coarseRes: 40,
   fineRes: 120,
   minStrength: 1.0,
@@ -102,6 +107,108 @@ const GLOBAL_OPTS: DetectFeaturesOptions = {
   uToMm: U_TO_MM,
   tToMm: T_TO_MM,
 };
+
+// ---------------------------------------------------------------------------
+// GLOBAL, sampler-derived relief indicator (ONE formula for ALL 20 styles).
+// ---------------------------------------------------------------------------
+//
+// THE WIRING FIX (this iteration). The component-boundary detector was built to
+// trace cellular/lattice WALL networks (Voronoi web, Gyroid TPMS, HexHive comb)
+// by marching-squares on a relief-indicator scalar field. But `GLOBAL_OPTS`
+// previously left `reliefIndicator` UNSET, so component-boundary fell back to its
+// weak curvature-mask path for EVERY style — including the very cellular ones it
+// was designed for. The detector built for lattices never ran in its designed
+// mode. This supplies that field.
+//
+// THE FIELD — fully generic, derived ONLY from the sampler (NO styleId, NO
+// per-style params). For a t-row let
+//   raw(u,t) = r(u,t) − meanOverU(r(·,t)),   r = hypot(position.x, position.y),
+// the radial relief about the row's own mean radius (this removes the smooth
+// base-flare WITHOUT needing baseRadius's per-style bell/flare opts — the mean is
+// read off the surface itself, keeping the indicator strictly sampler-derived).
+// The detector then traces the ZERO-CONTOUR of
+//   indicator(u,t) = |raw(u,t)| − floor(t),
+//   floor(t) = max(ABS_FLOOR_MM, ALPHA · rmsOverU(raw(·,t))).
+// indicator > 0 on the high-relief WALLS (where |relief| exceeds the row's noise
+// floor) and < 0 in the smooth cell interiors, so its zero set is the OUTLINE of
+// the wall network — exactly the cellular/lattice walls. ONE indicator, ALL
+// styles, no branch.
+//
+// Why the magnitude + per-row floor (not raw signed relief): the zero set of the
+// signed relief raw(u,t) is wherever the surface merely RETURNS to its row mean —
+// dense over an entire SMOOTH wall, where raw is pure ~1e-6 float noise that flips
+// sign every cell. A flat cone then hallucinates the whole wall as contour (358 mm
+// vs the 4.4 mm budget — measured). Tracing |raw| − floor instead means a flat
+// surface has |raw| ≈ noise < floor ⇒ indicator < 0 EVERYWHERE ⇒ no contour, while
+// a real wall (|raw| ≫ floor) still fires. The floor is per-row, sampler-derived
+// (ALPHA·RMS), with a tiny absolute mm term so a perfectly flat row (RMS≈0) stays
+// strictly negative. ALPHA and ABS_FLOOR_MM are GLOBAL constants (same for every
+// style); they are a noise gate, not a per-style tuning knob.
+const RELIEF_MEAN_SAMPLES = 256; // u-samples for the per-t-row mean radius + RMS.
+// Fraction of the row's relief RMS below which |relief| is treated as noise (not a
+// wall). 0.5 ≈ "wall = at least half-an-RMS of radial relief"; GLOBAL for all styles.
+const RELIEF_ALPHA = 0.5;
+// Absolute mm noise floor so a perfectly flat row (RMS≈0, pure float jitter) yields
+// a strictly negative indicator (no spurious zero crossing). 1e-3 mm ≪ any real
+// decorative relief (≥ 0.1 mm) yet ≫ f32 grid quantization (~1e-5 mm here). GLOBAL.
+const RELIEF_ABS_FLOOR_MM = 1e-3;
+
+/** Radius the sampler encodes at (u,t): r = hypot(x, y). */
+function samplerRadius(sampler: SurfaceSampler, u: number, t: number): number {
+  const [x, y] = sampler.position(u, t);
+  return Math.hypot(x, y);
+}
+
+/** Per-t-row mean radius and relief RMS (the DC term and the noise scale). */
+interface RowStats {
+  mean: number;
+  floor: number;
+}
+
+/**
+ * Build the ONE GLOBAL relief indicator for a sampler:
+ *   indicator(u,t) = |r(u,t) − meanOverU(r(·,t))| − floor(t),
+ *   floor(t) = max(RELIEF_ABS_FLOOR_MM, RELIEF_ALPHA · rmsOverU(relief)).
+ * Per-t-row stats are memoized (the marching-squares grid samples each row's
+ * indicator at many u for one t). No styleId, no per-style params — strictly
+ * sampler-derived, identical formula for every style.
+ */
+function makeReliefIndicator(sampler: SurfaceSampler): (u: number, t: number) => number {
+  const rowStats = new Map<number, RowStats>();
+  const statsAtT = (t: number): RowStats => {
+    const cached = rowStats.get(t);
+    if (cached !== undefined) return cached;
+    let sum = 0;
+    const rs = new Float64Array(RELIEF_MEAN_SAMPLES);
+    for (let i = 0; i < RELIEF_MEAN_SAMPLES; i++) {
+      const r = samplerRadius(sampler, i / RELIEF_MEAN_SAMPLES, t);
+      rs[i] = r;
+      sum += r;
+    }
+    const mean = sum / RELIEF_MEAN_SAMPLES;
+    let sq = 0;
+    for (let i = 0; i < RELIEF_MEAN_SAMPLES; i++) {
+      const d = rs[i] - mean;
+      sq += d * d;
+    }
+    const rms = Math.sqrt(sq / RELIEF_MEAN_SAMPLES);
+    const stats: RowStats = {
+      mean,
+      floor: Math.max(RELIEF_ABS_FLOOR_MM, RELIEF_ALPHA * rms),
+    };
+    rowStats.set(t, stats);
+    return stats;
+  };
+  return (u: number, t: number): number => {
+    const { mean, floor } = statsAtT(t);
+    return Math.abs(samplerRadius(sampler, u, t) - mean) - floor;
+  };
+}
+
+/** The full global option set: static thresholds + the per-sampler relief field. */
+function globalOpts(sampler: SurfaceSampler): DetectFeaturesOptions {
+  return { ...GLOBAL_OPTS, reliefIndicator: makeReliefIndicator(sampler) };
+}
 
 // ---------------------------------------------------------------------------
 // Principled, GLOBAL tolerance (mm). Same value for every style.
@@ -282,7 +389,7 @@ interface StyleRun {
 /** Detect features for a style at its DEFAULT params (used by all assertions). */
 function runStyle(styleId: StyleId): StyleRun {
   const sampler = styleSampler(styleId, {}, DIMS);
-  const graph = detectFeatures(sampler, GLOBAL_OPTS);
+  const graph = detectFeatures(sampler, globalOpts(sampler));
   const refLines = referenceLines(styleId);
   // Junction = a node referenced by ≥3 edge endpoints (degree ≥ 3).
   const degree = new Map<number, number>();
@@ -449,7 +556,9 @@ describe('style-agnostic feature detector — validation gate (20 styles)', () =
       }
     }
     const cone = new GpuSurfaceSampler(positions, resU, resT);
-    const graph = detectFeatures(cone, GLOBAL_OPTS);
+    // Same GLOBAL relief indicator (sampler-derived) applies to the flat cone: its
+    // per-row mean equals r everywhere, so relief ≡ 0 → no spurious wall contour.
+    const graph = detectFeatures(cone, globalOpts(cone));
     const spuriousMm = totalLen(edgeSubs(graph.edges));
     const budgetMm = 0.02 * U_TO_MM;
     expect(spuriousMm).toBeLessThanOrEqual(budgetMm);
