@@ -2,15 +2,60 @@
  * sampleFields.test.ts — TDD tests for sampleFeatureFields.
  *
  * Surface: SyntheticCylinderSampler(R0=40, H=120, amp=5, k=6) — a rippled
- * cylinder. The radius profile r(u) = 40 + 5*cos(12π*u) has k=6 crests (cos=+1)
- * and k=6 valleys (cos=−1), giving 12 extrema per revolution at u = m/12 for
- * m = 0..11.
+ * cylinder. The radius profile r(u) = R0 + amp*cos(2π*k*u) has k=6 crests
+ * (cos=+1, r=R0+amp=45) and k=6 valleys (cos=−1, r=R0−amp=35), giving 12
+ * extrema per revolution at u = m/12 for m = 0..11.
  *
- * Max principal curvature at these extrema is dominated by the second derivative
- * of the profile: |r''| = amp*(2π*k)². The resulting κ in mm⁻¹ is approximately
- * |r''| / (r * |Pu/∂u|²) which works out to ≈ 1/(r·(2π*r)²) * |r''|... but
- * most simply: numerical value ≈ 0.111 mm⁻¹ at the extrema (computed by
- * principalCurvatureMax on the analytic surface).
+ * ── Analytic principal curvature at a profile extremum ─────────────────────
+ *
+ * The surface is P(u,t) = [r·cosθ, r·sinθ, t·H] with θ = 2π·u and
+ * r(u) = R0 + amp·cos(2π·k·u).
+ *
+ * At an extremum r′(u) = 0 (i.e. sin(2π·k·u) = 0), the two basis tangents
+ * are orthogonal:
+ *   Pu = r·2π·(−sinθ, cosθ, 0),   |Pu|² = (2π·r)²
+ *   Pt = (0, 0, H),                 |Pt|² = H²
+ *   F  = Pu·Pt = 0
+ *
+ * The unit outward normal at any extremum is n̂ = (cosθ, sinθ, 0).
+ *
+ * Second derivative: Puu = (r″ − r·(2π)²)·(cosθ, sinθ, 0).
+ *   r″ = −amp·(2π·k)²·cos(2π·k·u)
+ *      = −amp·(2π·k)²  at a crest  (cos = +1)
+ *      = +amp·(2π·k)²  at a valley (cos = −1)
+ *
+ * Second fundamental form coefficient in the u-direction:
+ *   L = Puu · n̂ = r″ − r·(2π)²
+ *
+ * Principal curvature in the u-direction (the dominant one; κ_t = 0 because
+ * Ptt = 0):
+ *   κ = L / |Pu|² = (r″ − r·(2π)²) / (2π·r)²
+ *     = r″ / (2π·r)²  −  1/r
+ *     = amp·(2π·k)²·sign / (2π·r)²  −  1/r   (sign = −1 at crest, +1 at valley)
+ *     = ∓amp·k² / r²  −  1/r     (expanding (2π·k)²/(2π)²= k²)
+ *
+ * But curvature magnitude = |κ| (using outward-normal sign convention, both
+ * crest and valley give positive κ):
+ *   κ_crest  = amp·k²/(R0+amp)²  +  1/(R0+amp)   [sign: both terms add]
+ *   κ_valley = amp·k²/(R0−amp)²  −  1/(R0−amp)   [sign: subtract hoop term]
+ *
+ * (The hoop term 1/r is the ordinary cylinder curvature; at the valley the
+ * profile curves away from axis while the hoop curves toward it, so they
+ * partially cancel.)
+ *
+ * Numerically for R0=40, amp=5, k=6:
+ *   κ_crest  = 5·36/45²  + 1/45  = 0.08889 + 0.02222 = 0.11111 mm⁻¹
+ *   κ_valley = 5·36/35²  − 1/35  = 0.14694 − 0.02857 = 0.11837 mm⁻¹
+ *
+ * The global per-row maximum κ is at the valley (0.11837 > 0.11111).
+ *
+ * Finite-difference error budget at resU=256:
+ *   Step hu = 1/256. The curvature varies at spatial frequency ~2k = 12 cycles
+ *   per u-revolution. Central-difference κ has O(hu²·|κ‴|) error. For a
+ *   k=6 sinusoidal ripple the third derivative scales as (2π·k)³·amp/r² which
+ *   gives a relative error of order (2π·k·hu)² / 6 ≈ (2π·6/256)² / 6 ≈ 0.36%.
+ *   A ±5% tolerance comfortably covers this and any cross-term contributions;
+ *   ±25% would only be needed to accept a 2× curvature error (useless gate).
  *
  * The per-row kappa maxima must land within 1 cell (1/resU) of one of the 12
  * analytic extrema positions.
@@ -97,28 +142,30 @@ describe('sampleFeatureFields — SyntheticCylinder(R0=40,H=120,amp=5,k=6)', () 
     }
   });
 
-  it('κ at an extremum is in the right order of magnitude (within 25% of analytic)', () => {
-    // For SyntheticCylinder(R0=40,H=120,amp=5,k=6) at a profile extremum, the
-    // max principal curvature is dominated by the hoop curvature
-    // κ ≈ amp*(2π*k)² / (r * E) where E = |∂P/∂u|² ≈ (2π*r)².
-    // Simplifying: κ ≈ amp*(2π*k)² / (r * (2π*r)²) = amp*(k)² / (r³) * (1/(4π²)) ...
-    // Rather than derive analytically, we anchor to the numerically verified value:
-    // at u=0 (crest, r=45mm), t=0.5: kappa ≈ 0.111 mm⁻¹.
-    // At u=1/12 (inflection → actually this is extremum u=1/(2k)=1/12):
-    // cos(2π*6*1/12)=cos(π)=-1 → r=35mm (valley), kappa ≈ 0.117 mm⁻¹.
+  it('κ at the valley extremum is within 5% of the analytic value (see file-header derivation)', () => {
+    // Analytic curvature at a VALLEY (r = R0 − amp = 35 mm), derived in the
+    // file-header comment above:
+    //   κ_valley = amp*k²/(R0−amp)² − 1/(R0−amp)
+    //            = 5*36/35²  − 1/35
+    //            = 0.14694   − 0.02857
+    //            = 0.11837 mm⁻¹
     //
-    // The expected order of magnitude: kappa >> 1/R0 (≈0.025) because the ripple
-    // dominates. We assert kappa > 4/R0 and kappa < 20/R0 (a 5x range around
-    // the numerically verified value ≈ 0.111 mm⁻¹ = 4.4/R0).
-    const kappaLow = 4 / R0; // 0.10 mm⁻¹
-    const kappaHigh = 20 / R0; // 0.50 mm⁻¹
+    // This is the global per-row maximum (κ_valley > κ_crest = 0.11111).
+    //
+    // Tolerance: ±5%. The finite-difference error at resU=256 is O((2π·k·hu)²/6)
+    // ≈ 0.36%, so ±5% gives 13× headroom above the FD floor while still
+    // rejecting any implementation with a 2× curvature error (which would land
+    // at ±50–100% off, far outside this gate).
+    const kValley = (amp * k * k) / (R0 - amp) ** 2 - 1 / (R0 - amp);
+    // 0.14694 − 0.02857 = 0.11837 mm⁻¹
 
-    // Sample at t=0.5 (mid-height) at u=0 (a known extremum — crest at cos=1).
-    const j = Math.round(0.5 * (RES_T - 1));
-    const i = 0; // u=0 is an extremum (crest)
-    const kappaAtExtrema = fields.kappa[j * RES_U + i];
+    // Valley nearest to u=0 is at u = 1/(2k) = 1/12.  Column index = round(resU/12).
+    // cos(2π·6·(1/12)) = cos(π) = −1 → r = R0 − amp = 35 mm. ✓
+    const i = Math.round(RES_U / (2 * k)); // nearest grid column to u = 1/12
+    const j = Math.round(0.5 * (RES_T - 1)); // mid-height t = 0.5
+    const kappaAtValley = fields.kappa[j * RES_U + i];
 
-    expect(kappaAtExtrema).toBeGreaterThan(kappaLow);
-    expect(kappaAtExtrema).toBeLessThan(kappaHigh);
+    const relError = Math.abs(kappaAtValley - kValley) / kValley;
+    expect(relError).toBeLessThan(0.05); // within 5% of analytic — rejects 2× errors
   });
 });
