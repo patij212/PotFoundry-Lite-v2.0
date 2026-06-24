@@ -96,6 +96,86 @@ describe('densifyRail', () => {
   });
 });
 
+// ── Negative-control (crack detection) helpers ────────────────────────────────
+
+/**
+ * Given a stitched result, find ONE interior rail vertex — a vertex that appears
+ * in railEdgeKeys but whose t is strictly in (0, 1) (i.e. NOT in
+ * openBoundaryVertices). Interior rail vertices are unambiguously shared seam
+ * vertices; splitting one creates a real crack along the rail.
+ *
+ * Returns undefined only if every rail vertex happens to sit at a boundary row
+ * (which cannot happen for nRows > 2).
+ */
+function findInteriorRailVertex(
+  railEdgeKeys: string[],
+  openBoundaryVertices: Set<number>,
+): number | undefined {
+  for (const key of railEdgeKeys) {
+    const [iS, jS] = key.split(':');
+    const vi = Number(iS);
+    const vj = Number(jS);
+    if (!openBoundaryVertices.has(vi)) return vi;
+    if (!openBoundaryVertices.has(vj)) return vj;
+  }
+  return undefined;
+}
+
+/**
+ * Build a cracked copy of `mesh` by splitting `splitIdx`:
+ *   - Push a duplicate of vertex `splitIdx`'s position → new index `newIdx`.
+ *   - For each triangle in `bandIndices`, replace any reference to `splitIdx`
+ *     with `newIdx`, leaving complement triangles on the original index.
+ *
+ * This breaks the shared interior rail vertex, creating a one-sided edge along
+ * the rail that auditWatertight should report as tJunctions > 0.
+ */
+function buildCrackedMesh(
+  mesh: { positions: Float32Array; indices: Uint32Array },
+  bandIndices: Uint32Array,
+  splitIdx: number,
+): { positions: Float32Array; indices: Uint32Array } {
+  // Append a copy of the split vertex to positions.
+  const newPositions = new Float32Array(mesh.positions.length + 3);
+  newPositions.set(mesh.positions);
+  newPositions[mesh.positions.length] = mesh.positions[splitIdx * 3];
+  newPositions[mesh.positions.length + 1] = mesh.positions[splitIdx * 3 + 1];
+  newPositions[mesh.positions.length + 2] = mesh.positions[splitIdx * 3 + 2];
+  const newIdx = mesh.positions.length / 3; // index of the duplicate
+
+  // Build a set of triangle start offsets that belong to the band.
+  const bandTriSet = new Set<number>();
+  for (let k = 0; k < bandIndices.length; k += 3) {
+    // Identify the triangle in the combined index buffer by matching all three
+    // indices. We scan combined indices for matching (a,b,c) triples.
+    const ba = bandIndices[k];
+    const bb = bandIndices[k + 1];
+    const bc = bandIndices[k + 2];
+    for (let m = 0; m < mesh.indices.length; m += 3) {
+      if (
+        mesh.indices[m] === ba &&
+        mesh.indices[m + 1] === bb &&
+        mesh.indices[m + 2] === bc
+      ) {
+        bandTriSet.add(m);
+        break;
+      }
+    }
+  }
+
+  // Rewrite: band-side triangles referencing splitIdx → newIdx.
+  const newIndices = new Uint32Array(mesh.indices);
+  for (const offset of bandTriSet) {
+    for (let s = 0; s < 3; s++) {
+      if (newIndices[offset + s] === splitIdx) {
+        newIndices[offset + s] = newIdx;
+      }
+    }
+  }
+
+  return { positions: newPositions, indices: newIndices };
+}
+
 // ── THE GATE ──────────────────────────────────────────────────────────────────
 
 describe('stitchBandIntoGrid — watertight gate', () => {
@@ -127,6 +207,40 @@ describe('stitchBandIntoGrid — watertight gate', () => {
         });
         expect(audit.nonManifoldEdges).toBe(0);
         expect(audit.tJunctions).toBe(0);
+      });
+
+      it('NEGATIVE CONTROL: splitting one interior rail vertex creates tJunctions > 0 (gate is non-vacuous)', () => {
+        // Build the clean stitched mesh — identical setup to the GATE test above.
+        const { mesh, bandMesh, openBoundaryVertices, railEdgeKeys } =
+          stitchBandIntoGrid({
+            sampler,
+            footRail: coarseVerticalRail(uFoot),
+            crestRail: coarseVerticalRail(uCrest),
+            targetEdgeMm,
+          });
+
+        // Confirm the clean mesh passes (control side of the pair).
+        const cleanAudit = auditWatertight(mesh, {
+          boundaryVertexIndices: openBoundaryVertices,
+        });
+        expect(cleanAudit.tJunctions).toBe(0);
+
+        // Find an interior rail vertex (t strictly in (0,1) — unambiguously a crack
+        // if split, not a legit boundary endpoint).
+        const splitIdx = findInteriorRailVertex(railEdgeKeys, openBoundaryVertices);
+        expect(splitIdx).toBeDefined();
+        if (splitIdx === undefined) return; // type-narrowing guard; never reached
+
+        // Duplicate the vertex and re-point band-side triangles to the copy.
+        // The complement-side triangles still reference the original → rail crack.
+        const cracked = buildCrackedMesh(mesh, bandMesh.indices, splitIdx);
+
+        // Same boundary set: the t=0/t=1 rings are untouched.
+        const crackedAudit = auditWatertight(cracked, {
+          boundaryVertexIndices: openBoundaryVertices,
+        });
+        // The cracked mesh must register the interior crack as a T-junction.
+        expect(crackedAudit.tJunctions).toBeGreaterThan(0);
       });
 
       it('the only open-boundary edges are the t=0 / t=1 wall rings', () => {
