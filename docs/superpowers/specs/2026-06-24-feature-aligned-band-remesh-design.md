@@ -41,12 +41,19 @@ FL11; the slivers are currently density-invariant so the fix must be too):
 
 - **Watertight:** `boundaryEdges = 0`, `nonManifoldEdges = 0`, `orientationMismatches = 0` at every
   featureLevel (must not regress from today's 0/0/0).
-- **Edge smoothness:** ribbon free-edge wobble (both rails) ≤ **0.05mm** (≈ resin printer
-  resolution), no axis-aligned staircase (down from crest p99 0.289mm / max 0.654mm).
-- **Triangle quality (the actual cure):** ribbon-triangle worst 3D aspect ≤ **~6** (from 36
-  foot-only / 104 two-constraint), and **zero** ribbon triangles with min interior angle <10°
-  (from 0.6% / 2.1%); ribbon min-angle p50 stays ≥ ~30°.
-- **Visual:** a real GPU export + 3MF + flat-shaded render shows a smooth ribbon to the user's eye.
+- **Edge smoothness (TIGHTENED — "seamless"):** ribbon free-edge wobble (both rails) ≤ **0.02mm**
+  — roughly half a resin XY pixel (~0.035mm), i.e. below visual perception at print scale — and
+  **push toward the rail-curve / geometry floor** (vertices already sit on the surface at ~f32,
+  ~0.0004mm; the limit is rail sampling + facet density, both of which the paving controls).
+  0.05mm was explicitly rejected as not smooth enough. No axis-aligned staircase (down from crest
+  p99 0.289mm / max 0.654mm).
+- **Near-feature facet/chord:** perpendicular-3D facet→surface deviation within the band ≤ **0.02mm**
+  (the relief flank reads smooth, not faceted).
+- **Triangle quality (the actual cure):** ribbon-triangle worst 3D aspect ≤ **~4** (from 36
+  foot-only / 104 two-constraint), **zero** ribbon triangles with min interior angle <10°
+  (from 0.6% / 2.1%), and ribbon min-angle p50 ≥ **~30°** (near-isotropic, band-following).
+- **Visual:** a real GPU export + 3MF + flat-shaded render shows a seamlessly smooth ribbon to the
+  user's eye — the actual acceptance test.
 
 ## 3. Approach — advancing-front paving of the band (Approach C)
 
@@ -108,8 +115,8 @@ stitching proves intractable.
 
 1. **SPIKE A — watertight stitching.** One straight diagonal ribbon between two pinned curves on a
    smooth wall. Pave it; stitch to the surrounding dyadic grid at rail vertices. **Gate:** `bnd=0`,
-   `nonManifold=0`, zero T-junctions; ribbon aspect ≤6, no <10° slivers, edge wobble ≤0.05mm. If it
-   cannot be made watertight cleanly → STOP, fall back to A.
+   `nonManifold=0`, zero T-junctions; ribbon aspect ≤4, no <10° slivers, edge wobble ≤0.02mm,
+   near-feature facet ≤0.02mm. If it cannot be made watertight cleanly → STOP, fall back to A.
 2. **SPIKE B — triple junction.** A 3-ribbon junction (synthetic). Same watertight + quality gate.
 3. **Real Voronoi band mesher.** Build for real Voronoi via `assembleWatertight`, flag-gated.
 4. **Verify + render.** Unit metrics (watertight, wobble, aspect, slivers, density-invariant) + real
