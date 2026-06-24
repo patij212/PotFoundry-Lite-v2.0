@@ -487,6 +487,17 @@ describe('denseCreaseTruth — brute-force normal-discontinuity ground truth', (
     expect(ts.length).toBeGreaterThan(0);
     expect(ts.some((t) => Math.abs(t - 0.5) < 0.05)).toBe(true);
 
+    // FULL-RING check: the apex crease runs the whole circumference, so a vertical
+    // edge fires at ~every u-column (resU=64). A partial-firing bug (e.g. only even
+    // i) would pass the some() check above but fail here. Distinct apex-edge
+    // u-columns must cover ≥90% of the circumference.
+    const apexUs = new Set(
+      lines
+        .filter((l) => l.points.every((p) => Math.abs(p.t - 0.5) < 0.05))
+        .map((l) => Math.round(l.points[0].u * 64)),
+    );
+    expect(apexUs.size).toBeGreaterThanOrEqual(64 * 0.9);
+
     // A smooth cylinder has no normal discontinuity → empty
     const cylinder = vGrooveSampler(R0, 0, H);
     const cylFields = sampleFeatureFields(cylinder, { resU: 64, resT: 256 });
