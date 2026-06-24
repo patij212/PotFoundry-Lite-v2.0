@@ -239,6 +239,15 @@ export function denseCreaseTruth(fields: Fields, minAngleDeg: number): FeatureLi
   const { resU, resT, nx, ny, nz, uOf, tOf } = fields;
   const minCos = Math.cos(minAngleDeg * (Math.PI / 180));
 
+  // Degenerate-normal guard (mirrors normalDiscontinuity.ts): sampleFeatureFields
+  // leaves the normal at (0,0,0) for a degenerate sample (e.g. a pole). The raw dot
+  // with a zero vector is 0 → would be read as a 90° crease and emit a SPURIOUS truth
+  // locus. Unit normals have |n|²≈1, degenerate ≈0, so 0.5 cleanly separates. The 20
+  // cylinder-parameterized gate styles have no t-poles, but the truth is the
+  // load-bearing reference and must not fabricate creases at degenerate normals.
+  const nonDegen = (idx: number): boolean =>
+    nx[idx] * nx[idx] + ny[idx] * ny[idx] + nz[idx] * nz[idx] > 0.5;
+
   const lines: FeatureLine[] = [];
 
   for (let j = 0; j < resT; j++) {
@@ -249,7 +258,7 @@ export function denseCreaseTruth(fields: Fields, minAngleDeg: number): FeatureLi
       const iRight = (i + 1) % resU;
       const idxRight = j * resU + iRight;
       const dotRight = nx[idxA] * nx[idxRight] + ny[idxA] * ny[idxRight] + nz[idxA] * nz[idxRight];
-      if (dotRight < minCos) {
+      if (dotRight < minCos && nonDegen(idxA) && nonDegen(idxRight)) {
         lines.push({
           kind: 'general-curve',
           points: [{ u: uOf(i), t: tOf(j) }, { u: uOf(iRight), t: tOf(j) }],
@@ -261,7 +270,7 @@ export function denseCreaseTruth(fields: Fields, minAngleDeg: number): FeatureLi
       if (j + 1 < resT) {
         const idxUp = (j + 1) * resU + i;
         const dotUp = nx[idxA] * nx[idxUp] + ny[idxA] * ny[idxUp] + nz[idxA] * nz[idxUp];
-        if (dotUp < minCos) {
+        if (dotUp < minCos && nonDegen(idxA) && nonDegen(idxUp)) {
           lines.push({
             kind: 'general-curve',
             points: [{ u: uOf(i), t: tOf(j) }, { u: uOf(i), t: tOf(j + 1) }],
