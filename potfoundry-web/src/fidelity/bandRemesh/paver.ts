@@ -65,6 +65,8 @@ function dist3Sq(
 /**
  * Law-of-cosines angle (degrees) at vertex B given side lengths AB, BC, AC.
  * Clamps cosine to [-1,1] to protect against floating-point drift.
+ *
+ * Parameter names: ab = |AB|, bc = |BC|, ac = |AC|; computes the angle at vertex B.
  */
 function angleDeg(ab: number, bc: number, ac: number): number {
   if (ab <= 0 || bc <= 0) return 0;
@@ -181,8 +183,10 @@ function zipRows(
  * Pave the band described by `grid` into a triangle mesh.
  *
  * Consecutive rows are connected by an advancing-front zip (see {@link zipRows}).
- * Vertices are deduplicated by exact (u,t) key so every shared-row boundary
- * point maps to a single vertex ID — the mesh is internally watertight.
+ * Vertices are deduplicated by exact (u,t) key so each (u,t) point is stored
+ * once.  Watertightness is guaranteed by {@link zipRows}: it links the vertex IDs
+ * of both adjacent rows so every shared-row edge is referenced by exactly two
+ * triangles — no T-junctions and no non-manifold edges along row boundaries.
  *
  * @param grid    Station grid produced by `buildStations`.
  * @param sampler Surface sampler (used only for 3D min-angle evaluation during
@@ -236,7 +240,7 @@ export function paveBand(
   // Build rail vertex-id arrays from per-row vertex tables.
   // foot  = w[0]      of each row
   // crest = w[last]   of each row
-  const footIds: number[] = rows.map((row, r) => rowVids[r][0]);
+  const footIds: number[] = rowVids.map((ids) => ids[0]);
   const crestIds: number[] = rows.map((row, r) => rowVids[r][row.w.length - 1]);
 
   return {

@@ -17,6 +17,7 @@ import { buildStations } from './stations';
 import { paveBand } from './paver';
 import { auditWatertight, triangleQuality3D } from './audit';
 import type { Mesh3 } from './audit';
+import type { StationGrid, StationPoint } from './stations';
 
 // ── Cylinder parameters ───────────────────────────────────────────────────────
 
@@ -210,5 +211,220 @@ describe('paveBand', () => {
       expect(mesh.indices[i]).toBeGreaterThanOrEqual(0);
       expect(mesh.indices[i]).toBeLessThan(nVtx);
     }
+  });
+});
+
+// ── Helper: build a Mesh3 from a PaveBandResult ────────────────────────────────
+
+/** Convert utVertices to 3D Float32Array positions via sampler, then wrap as Mesh3. */
+function buildMesh3FromPaveResult(
+  utVertices: Array<[number, number]>,
+  indices: Uint32Array,
+  samp: SyntheticCylinderSampler,
+): Mesh3 {
+  const positions = new Float32Array(utVertices.length * 3);
+  for (let i = 0; i < utVertices.length; i++) {
+    const [u, t] = utVertices[i];
+    const p = samp.position(u, t);
+    positions[i * 3] = p[0];
+    positions[i * 3 + 1] = p[1];
+    positions[i * 3 + 2] = p[2];
+  }
+  return { positions, indices };
+}
+
+/** Re-index utVertices by exact (u,t) key so we can recover vertex IDs. */
+function makeVtxIndex(utVertices: Array<[number, number]>): Map<string, number> {
+  const idx = new Map<string, number>();
+  for (let i = 0; i < utVertices.length; i++) {
+    idx.set(`${utVertices[i][0]}|${utVertices[i][1]}`, i);
+  }
+  return idx;
+}
+
+/** Collect boundary vertex indices: foot rail + crest rail + first row + last row. */
+function collectBoundaryVtxIds(
+  grid: StationGrid,
+  utVertices: Array<[number, number]>,
+  railFoot: number[],
+  railCrest: number[],
+): Set<number> {
+  const vtxIdx = makeVtxIndex(utVertices);
+  const bnd = new Set<number>();
+  for (const id of railFoot) bnd.add(id);
+  for (const id of railCrest) bnd.add(id);
+  const addRow = (rowIdx: number): void => {
+    for (const pt of grid.rows[rowIdx].w) {
+      const id = vtxIdx.get(`${pt.u}|${pt.t}`);
+      if (id !== undefined) bnd.add(id);
+    }
+  };
+  addRow(0);
+  addRow(grid.rows.length - 1);
+  return bnd;
+}
+
+// ── Unequal-row-length zippering ───────────────────────────────────────────────
+
+describe('zipRows — unequal row lengths', () => {
+  /**
+   * Build a StationGrid manually with three rows of deliberately different
+   * w-lengths (3, 6, 4) to exercise the exhaustion branches in zipRows — the
+   * paths that fire when one cursor reaches its last vertex before the other.
+   *
+   * All rows span u ∈ [0.1, 0.3], at t = 0.2, 0.5, 0.8 respectively.
+   * Points linearly interpolate u from 0.1 to 0.3 within each row.
+   */
+
+  function makeRow(t: number, n: number, s: number): { s: number; footPt: StationPoint; crestPt: StationPoint; w: StationPoint[] } {
+    const w: StationPoint[] = [];
+    for (let i = 0; i < n; i++) {
+      w.push({ u: 0.1 + 0.2 * (i / (n - 1)), t });
+    }
+    return { s, footPt: w[0], crestPt: w[n - 1], w };
+  }
+
+  const unequalGrid: StationGrid = {
+    rows: [
+      makeRow(0.2, 3, 0),
+      makeRow(0.5, 6, 30),
+      makeRow(0.8, 4, 60),
+    ],
+  };
+
+  it('is watertight: nonManifoldEdges = 0 and tJunctions = 0', () => {
+    const { utVertices, indices, railVertexIds } = paveBand(unequalGrid, sampler);
+    const mesh = buildMesh3FromPaveResult(utVertices, indices, sampler);
+    const bnd = collectBoundaryVtxIds(unequalGrid, utVertices, railVertexIds.foot, railVertexIds.crest);
+    const audit = auditWatertight(mesh, { boundaryVertexIndices: bnd });
+    expect(audit.nonManifoldEdges).toBe(0);
+    // tJunctions = 0 is non-negotiable: if this fires, zipRows has a real bug.
+    expect(audit.tJunctions).toBe(0);
+  });
+
+  it('produces triangles (index buffer non-empty, length % 3 = 0)', () => {
+    const { indices } = paveBand(unequalGrid, sampler);
+    expect(indices.length).toBeGreaterThan(0);
+    expect(indices.length % 3).toBe(0);
+  });
+
+  it('triangle quality: aspectMax <= 8 (tapered band tolerance)', () => {
+    // The band is tapered — wider row (6 pts) zips to narrower rows (3, 4 pts),
+    // so some triangles will be less equilateral than in a constant-width band.
+    // aspectMax <= 8 is a realistic bound for this geometry.
+    const { utVertices, indices } = paveBand(unequalGrid, sampler);
+    const mesh = buildMesh3FromPaveResult(utVertices, indices, sampler);
+    const quality = triangleQuality3D(mesh);
+    expect(quality.aspectMax).toBeLessThanOrEqual(8);
+  });
+});
+
+// ── Diagonal quality selection ─────────────────────────────────────────────────
+
+describe('minAngle3D / diagonal quality selection', () => {
+  /**
+   * Exhaustion-path test: row 0 has 3 w-points, row 1 has only 1 w-point.
+   *
+   * With nB = 1, iB starts at 0 and nB-1 = 0, so canAdvB is immediately false.
+   * Every step must advance A only, emitting triangles:
+   *   (A[0], A[1], B[0])  →  (A[1], A[2], B[0])
+   * This gives exactly 2 triangles = 6 indices.
+   */
+  describe('B-exhausted path: all steps advance A only', () => {
+    function makeTwoRowGrid(): StationGrid {
+      const row0: StationPoint[] = [
+        { u: 0.1, t: 0.2 },
+        { u: 0.2, t: 0.2 },
+        { u: 0.3, t: 0.2 },
+      ];
+      const row1: StationPoint[] = [
+        { u: 0.1, t: 0.5 },
+      ];
+      return {
+        rows: [
+          { s: 0, footPt: row0[0], crestPt: row0[2], w: row0 },
+          { s: 30, footPt: row1[0], crestPt: row1[0], w: row1 },
+        ],
+      };
+    }
+
+    it('emits exactly 2 triangles (6 indices)', () => {
+      const grid = makeTwoRowGrid();
+      const { indices } = paveBand(grid, sampler);
+      expect(indices.length).toBe(6);
+    });
+
+    it('is watertight: nonManifoldEdges = 0 and tJunctions = 0', () => {
+      const grid = makeTwoRowGrid();
+      const { utVertices, indices, railVertexIds } = paveBand(grid, sampler);
+      const mesh = buildMesh3FromPaveResult(utVertices, indices, sampler);
+      const bnd = collectBoundaryVtxIds(grid, utVertices, railVertexIds.foot, railVertexIds.crest);
+      const audit = auditWatertight(mesh, { boundaryVertexIndices: bnd });
+      expect(audit.nonManifoldEdges).toBe(0);
+      expect(audit.tJunctions).toBe(0);
+    });
+  });
+
+  /**
+   * Diagonal-quality test: a sheared 2×2 quad where one diagonal split is
+   * clearly better than the other.
+   *
+   * Row 0: A0=(u0.10, t0.2)  A1=(u0.40, t0.2)  — wide span (~188mm arc)
+   * Row 1: B0=(u0.10, t0.5)  B1=(u0.11, t0.5)  — narrow span (~3mm arc)
+   *
+   * The two candidate first triangles are:
+   *   advance-A → (A0, A1, B0): sides ≈ 188mm, 30mm, 190mm. Min angle ≈ 20°.
+   *   advance-B → (A0, B0, B1): sides ≈ 30mm, 3mm, 30mm. Min angle ≈ 6°.
+   *
+   * Since minAngle(advance-A) ≈ 20° > minAngle(advance-B) ≈ 6°, the algorithm
+   * must pick advance-A first, emitting triangle (A0, A1, B0) as tris[0..2].
+   *
+   * Vertex intern order: rows processed top-to-bottom, w left-to-right.
+   *   id 0 = A0, id 1 = A1, id 2 = B0, id 3 = B1
+   * So tris[0..2] should be [0, 1, 2] (A0, A1, B0).
+   */
+  describe('diagonal-quality selection: picks better min-angle first', () => {
+    function makeAnisotropicQuadGrid(): StationGrid {
+      const row0: StationPoint[] = [
+        { u: 0.10, t: 0.2 },
+        { u: 0.40, t: 0.2 },
+      ];
+      const row1: StationPoint[] = [
+        { u: 0.10, t: 0.5 },
+        { u: 0.11, t: 0.5 },
+      ];
+      return {
+        rows: [
+          { s: 0,  footPt: row0[0], crestPt: row0[1], w: row0 },
+          { s: 30, footPt: row1[0], crestPt: row1[1], w: row1 },
+        ],
+      };
+    }
+
+    it('emits exactly 2 triangles (6 indices)', () => {
+      const grid = makeAnisotropicQuadGrid();
+      const { indices } = paveBand(grid, sampler);
+      expect(indices.length).toBe(6);
+    });
+
+    it('first triangle is (A0, A1, B0) — the higher-min-angle diagonal', () => {
+      // If the algorithm picked advance-B first it would emit (A0, B0, B1) = [0, 2, 3].
+      // The correct quality-maximising choice is advance-A → (A0, A1, B0) = [0, 1, 2].
+      const grid = makeAnisotropicQuadGrid();
+      const { indices } = paveBand(grid, sampler);
+      expect(indices[0]).toBe(0); // A0
+      expect(indices[1]).toBe(1); // A1
+      expect(indices[2]).toBe(2); // B0
+    });
+
+    it('is watertight: nonManifoldEdges = 0 and tJunctions = 0', () => {
+      const grid = makeAnisotropicQuadGrid();
+      const { utVertices, indices, railVertexIds } = paveBand(grid, sampler);
+      const mesh = buildMesh3FromPaveResult(utVertices, indices, sampler);
+      const bnd = collectBoundaryVtxIds(grid, utVertices, railVertexIds.foot, railVertexIds.crest);
+      const audit = auditWatertight(mesh, { boundaryVertexIndices: bnd });
+      expect(audit.nonManifoldEdges).toBe(0);
+      expect(audit.tJunctions).toBe(0);
+    });
   });
 });
