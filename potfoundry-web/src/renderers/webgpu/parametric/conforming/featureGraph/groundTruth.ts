@@ -19,6 +19,7 @@
 import type { SurfaceSampler } from '../SurfaceSampler';
 import { marchingSquaresZero } from '../SampledFeatureExtractor';
 import type { FeatureLine } from '../FeatureLineGraph';
+import type { Fields } from './types';
 
 // ---------------------------------------------------------------------------
 // Relief indicator — VERBATIM copy of the formula in validation.test.ts.
@@ -128,3 +129,150 @@ export function denseReliefWallTruth(
     label: 'relief-wall-truth',
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Dense ridge truth — brute-force curvature-ridge extractor
+// ---------------------------------------------------------------------------
+
+/**
+ * Brute-force curvature-ridge ground truth.
+ *
+ * A node (i,j) is a ridge point iff:
+ *   1. kappa[idx] >= kappaFloor  (above the scale-invariant floor), AND
+ *   2. kappa is a 1D local maximum across u  (compare i-1 and i+1, periodic wrap)
+ *      OR across t  (compare j-1 and j+1, clamped at the t-boundaries).
+ *
+ * Each marked node is then connected to its marked 4-neighbours (right u, up t)
+ * as 2-point FeatureLines in global (u,t) parameter space.
+ *
+ * This is INDEPENDENT of curvatureRidge.ts — plain loops over the Fields grid.
+ *
+ * @param fields     The sampled field grid from {@link sampleFeatureFields}.
+ * @param kappaFloor Minimum curvature threshold (mm⁻¹). Use the detector's
+ *                   scale-invariant floor: RIDGE_KAPPA_FACTOR / Rchar.
+ */
+export function denseRidgeTruth(fields: Fields, kappaFloor: number): FeatureLine[] {
+  const { resU, resT, kappa, uOf, tOf } = fields;
+
+  // Build the boolean mark grid.
+  const marked = new Uint8Array(resU * resT);
+
+  for (let j = 0; j < resT; j++) {
+    for (let i = 0; i < resU; i++) {
+      const idx = j * resU + i;
+      const k = kappa[idx];
+      if (k < kappaFloor) continue;
+
+      // Periodic u neighbours.
+      const iPrev = (i - 1 + resU) % resU;
+      const iNext = (i + 1) % resU;
+      const localMaxU = k >= kappa[j * resU + iPrev] && k >= kappa[j * resU + iNext];
+
+      // Clamped t neighbours.
+      const jPrev = Math.max(j - 1, 0);
+      const jNext = Math.min(j + 1, resT - 1);
+      const localMaxT = k >= kappa[jPrev * resU + i] && k >= kappa[jNext * resU + i];
+
+      if (localMaxU || localMaxT) {
+        marked[idx] = 1;
+      }
+    }
+  }
+
+  // Connect each marked node to its marked 4-neighbours (right u, up t) as 2-point lines.
+  const lines: FeatureLine[] = [];
+
+  for (let j = 0; j < resT; j++) {
+    for (let i = 0; i < resU; i++) {
+      const idx = j * resU + i;
+      if (!marked[idx]) continue;
+
+      const u0 = uOf(i);
+      const t0 = tOf(j);
+
+      // Right u neighbour (periodic).
+      const iRight = (i + 1) % resU;
+      if (marked[j * resU + iRight]) {
+        lines.push({
+          kind: 'general-curve',
+          points: [{ u: u0, t: t0 }, { u: uOf(iRight), t: t0 }],
+          label: 'ridge-truth',
+        });
+      }
+
+      // Up t neighbour (clamped: j+1 only if in range).
+      if (j + 1 < resT && marked[(j + 1) * resU + i]) {
+        lines.push({
+          kind: 'general-curve',
+          points: [{ u: u0, t: t0 }, { u: u0, t: tOf(j + 1) }],
+          label: 'ridge-truth',
+        });
+      }
+    }
+  }
+
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
+// Dense crease truth — brute-force normal-discontinuity extractor
+// ---------------------------------------------------------------------------
+
+/**
+ * Brute-force normal-discontinuity ground truth.
+ *
+ * For each grid edge between two adjacent nodes, computes the angle (degrees)
+ * between the unit surface normals at the two endpoints. If the angle exceeds
+ * `minAngleDeg`, the edge is emitted as a 2-point FeatureLine.
+ *
+ * Two types of edges are checked:
+ *   - Horizontal u-edges: node (i,j) ↔ (i+1,j) with periodic u wrap.
+ *   - Vertical t-edges:   node (i,j) ↔ (i,j+1) with clamped t (only within range).
+ *
+ * This is INDEPENDENT of normalDiscontinuity.ts — plain loops over the Fields grid.
+ *
+ * @param fields      The sampled field grid from {@link sampleFeatureFields}.
+ * @param minAngleDeg Minimum angle (degrees) between normals to count as a crease.
+ */
+export function denseCreaseTruth(fields: Fields, minAngleDeg: number): FeatureLine[] {
+  const { resU, resT, nx, ny, nz, uOf, tOf } = fields;
+  const minCos = Math.cos(minAngleDeg * (Math.PI / 180));
+
+  const lines: FeatureLine[] = [];
+
+  for (let j = 0; j < resT; j++) {
+    for (let i = 0; i < resU; i++) {
+      const idxA = j * resU + i;
+
+      // --- Horizontal edge: (i,j) ↔ (i+1,j), periodic u ---
+      const iRight = (i + 1) % resU;
+      const idxRight = j * resU + iRight;
+      const dotRight = nx[idxA] * nx[idxRight] + ny[idxA] * ny[idxRight] + nz[idxA] * nz[idxRight];
+      if (dotRight < minCos) {
+        lines.push({
+          kind: 'general-curve',
+          points: [{ u: uOf(i), t: tOf(j) }, { u: uOf(iRight), t: tOf(j) }],
+          label: 'crease-truth',
+        });
+      }
+
+      // --- Vertical edge: (i,j) ↔ (i,j+1), clamped t ---
+      if (j + 1 < resT) {
+        const idxUp = (j + 1) * resU + i;
+        const dotUp = nx[idxA] * nx[idxUp] + ny[idxA] * ny[idxUp] + nz[idxA] * nz[idxUp];
+        if (dotUp < minCos) {
+          lines.push({
+            kind: 'general-curve',
+            points: [{ u: uOf(i), t: tOf(j) }, { u: uOf(i), t: tOf(j + 1) }],
+            label: 'crease-truth',
+          });
+        }
+      }
+    }
+  }
+
+  return lines;
+}
+
+// Re-export Fields type for test convenience.
+export type { Fields };

@@ -16,7 +16,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { makeReliefIndicator, denseReliefWallTruth } from './groundTruth';
+import { makeReliefIndicator, denseReliefWallTruth, denseRidgeTruth, denseCreaseTruth } from './groundTruth';
+import { sampleFeatureFields } from './sampleFields';
 import { styleSampler } from './styleSampler';
 import type { StyleSamplerDims } from './styleSampler';
 import type { SurfaceSampler } from '../SurfaceSampler';
@@ -372,4 +373,124 @@ describe('validate the validator — dense truth matches exact analytic loci', (
     },
     CROSS_CHECK_TIMEOUT_MS,
   );
+});
+
+// ---------------------------------------------------------------------------
+// 3. denseRidgeTruth — brute-force curvature-ridge ground truth
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a cosine-ripple surface sampler: r = R0 + amp·cos(2π·k·u).
+ * This surface has k crests (maxima) and k valleys (minima) in u — ALL 2k
+ * extrema are principal-curvature ridges because κ is locally maximal there.
+ * A smooth cylinder (amp=0) has uniform κ = 1/R0 with no local maxima → empty.
+ */
+function cosineRippleSampler(R0: number, amp: number, k: number, H: number): SurfaceSampler {
+  return {
+    position(u: number, t: number): [number, number, number] {
+      const r = R0 + amp * Math.cos(2 * Math.PI * k * u);
+      const theta = 2 * Math.PI * u;
+      return [r * Math.cos(theta), r * Math.sin(theta), t * H];
+    },
+  };
+}
+
+/**
+ * Build a V-groove sampler: a cylinder whose profile has a sharp angular crease
+ * at t=0.5. The normal flips abruptly there, producing a large angle between
+ * adjacent t-row normals.
+ *
+ * r(t) = R0 + groove * |t - 0.5|  (V shape: minimum at t=0.5)
+ *
+ * The outer normal has a discontinuity at t=0.5 due to the cusp.
+ */
+function vGrooveSampler(R0: number, groove: number, H: number): SurfaceSampler {
+  return {
+    position(u: number, t: number): [number, number, number] {
+      const r = R0 + groove * Math.abs(t - 0.5);
+      const theta = 2 * Math.PI * u;
+      return [r * Math.cos(theta), r * Math.sin(theta), t * H];
+    },
+  };
+}
+
+/** Derive kappaFloor the same way detectFeatures.ts does: RIDGE_KAPPA_FACTOR / Rchar. */
+function deriveKappaFloor(sampler: SurfaceSampler): number {
+  // Mirror measureUCircumference from detectFeatures.ts
+  const MEASURE_N = 128;
+  const RIDGE_KAPPA_FACTOR = 2;
+  let total = 0;
+  const [px0, py0, pz0] = sampler.position(0, 0.5);
+  let prevX = px0, prevY = py0, prevZ = pz0;
+  for (let i = 1; i <= MEASURE_N; i++) {
+    const u = (i % MEASURE_N) / MEASURE_N;
+    const [cx, cy, cz] = sampler.position(u, 0.5);
+    const dx = cx - prevX, dy = cy - prevY, dz = cz - prevZ;
+    total += Math.sqrt(dx * dx + dy * dy + dz * dz);
+    prevX = cx; prevY = cy; prevZ = cz;
+  }
+  const Rchar = total / (2 * Math.PI);
+  return RIDGE_KAPPA_FACTOR / Rchar;
+}
+
+describe('denseRidgeTruth — brute-force curvature ridge ground truth', () => {
+  it('cosine ripple: detects 12 extrema (6 crests + 6 valleys) and smooth cylinder is empty', () => {
+    const R0 = 40, amp = 4, k = 6, H = 100;
+    const ripple = cosineRippleSampler(R0, amp, k, H);
+    const fields = sampleFeatureFields(ripple, { resU: 256, resT: 64 });
+    const kappaFloor = deriveKappaFloor(ripple);
+
+    const lines = denseRidgeTruth(fields, kappaFloor);
+
+    // Extract all unique u values from ridge line endpoints
+    const uSet = new Set<number>();
+    for (const line of lines) {
+      for (const p of line.points) {
+        // Bucket into 12 bins (6 crests at m/6, 6 valleys at (m+0.5)/6)
+        const bucket = Math.round(p.u * 12) / 12;
+        uSet.add(bucket);
+      }
+    }
+
+    // Expect ridge lines to cluster at the 12 extrema u positions
+    // (m/6 for m=0..5: crests, and (m+0.5)/6 for m=0..5: valleys → bucketed to m/12)
+    expect(lines.length).toBeGreaterThan(0);
+    // Each of the 12 extrema should be represented (crest at m/6, valley at (2m+1)/12)
+    const extremaFound = uSet.size;
+    expect(extremaFound).toBeGreaterThanOrEqual(10); // ≥10 of 12 extrema buckets detected
+
+    // A smooth cylinder has uniform κ — no local maxima → empty
+    const cylinder = cosineRippleSampler(R0, 0, k, H);
+    const cylFields = sampleFeatureFields(cylinder, { resU: 256, resT: 64 });
+    const cylKappaFloor = deriveKappaFloor(cylinder);
+    const cylLines = denseRidgeTruth(cylFields, cylKappaFloor);
+    expect(cylLines.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. denseCreaseTruth — brute-force normal-discontinuity ground truth
+// ---------------------------------------------------------------------------
+
+describe('denseCreaseTruth — brute-force normal-discontinuity ground truth', () => {
+  it('V-groove: detects crease at t≈0.5 and smooth cylinder is empty', () => {
+    // groove=100, H=100 → ~53° angle between adjacent t-row normals at the apex,
+    // well above the 28° threshold. groove=50 gives only ~28.1° (too marginal).
+    const R0 = 40, groove = 100, H = 100;
+    const grooved = vGrooveSampler(R0, groove, H);
+    const fields = sampleFeatureFields(grooved, { resU: 64, resT: 256 });
+
+    const lines = denseCreaseTruth(fields, 28);
+
+    // Lines should cluster at t≈0.5 (the groove apex)
+    const ts = lines.flatMap((l) => l.points.map((p) => p.t));
+    expect(ts.length).toBeGreaterThan(0);
+    expect(ts.some((t) => Math.abs(t - 0.5) < 0.05)).toBe(true);
+
+    // A smooth cylinder has no normal discontinuity → empty
+    const cylinder = vGrooveSampler(R0, 0, H);
+    const cylFields = sampleFeatureFields(cylinder, { resU: 64, resT: 256 });
+    const cylLines = denseCreaseTruth(cylFields, 28);
+    expect(cylLines.length).toBe(0);
+  });
 });
