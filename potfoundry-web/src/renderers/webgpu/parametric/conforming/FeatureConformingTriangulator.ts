@@ -97,6 +97,30 @@ export interface FeatureTriangulationOptions {
    * production surface map so the off-centers are well-shaped in 3D.
    */
   sampler?: Sampler3D;
+  /**
+   * Opt-in offset-band RAIL feature lines (general-mesher integration spike,
+   * Task 3) — the densify-and-share contract's complement half. Every vertex of
+   * a rail line is FORCE-REGISTERED into the grid-line registry
+   * (`regH`/`regV`) keyed by its `tKey(t)`/`uKey(u)` line, REGARDLESS of the
+   * on-edge check that gates ordinary feature points (`registerBoundary`). A rail
+   * vertex that the band placed on a shared cell edge is therefore adopted
+   * IDENTICALLY by both adjacent cells (read via `readH`/`readV`), so the band's
+   * paving and the complement weld by the same global id — watertight by
+   * construction.
+   *
+   * Rail lines are ADDITIVE feature constraints: they are triangulated as
+   * constraints exactly like ordinary `features` AND additionally force-
+   * registered. The vertices MUST be `quantizeRailUT`-snapped (Task 1) so their
+   * grid-line keys are exact dyadic and dedupe with the neighbour + `vertexIndex`.
+   *
+   * This is gated to rail lines ONLY: ordinary `features` keep their exact
+   * current behaviour (an interior feature point stays single-cell), so an empty
+   * / omitted `railLines` is byte-identical to the pre-Task-3 output (the default
+   * export path is never disturbed). NOTE: when `railLines` is supplied but
+   * `features` is empty, the feature path still runs (the early plain fast-out is
+   * taken only when BOTH are empty).
+   */
+  railLines?: FeatureLine[];
 }
 
 /** Quantization scale for vertex dedup (exact for dyadic coords up to lvl 24). */
@@ -283,7 +307,15 @@ export function triangulateQuadtreeWithFeatures(
   features: FeatureLine[],
   options: FeatureTriangulationOptions = {},
 ): QuadtreeMesh {
-  if (features.length === 0) return triangulateQuadtree(qt);
+  // Rail lines (Task 3) are ADDITIVE feature constraints that are ALSO force-
+  // registered. They run through the same feature path, so the plain fast-out is
+  // taken only when BOTH inputs are empty. Read ONCE per build (mirroring the
+  // bandRegions/shapedCdtCells flag pattern) so a mid-build flip can never split
+  // one wall across regimes. Empty/omitted ⇒ no force-register fires ⇒ the
+  // ordinary feature path is byte-identical to the pre-Task-3 output.
+  const railLines = options.railLines ?? [];
+  const hasRails = railLines.length > 0;
+  if (features.length === 0 && !hasRails) return triangulateQuadtree(qt);
   const cornerSnap = Math.max(0, options.cornerSnap ?? 0);
   const sampler = options.sampler;
   // Opt-in band-region emit-gate (Task 2). Read ONCE per build so a mid-build
@@ -401,7 +433,12 @@ export function triangulateQuadtreeWithFeatures(
     ...line,
     points: line.points.map(snapToCellEdge),
   }));
-  const segs = collectSegments(snappedFeatures);
+  // Rail lines (Task 3) are appended UN-snapped: their (u,t) are already
+  // `quantizeRailUT`-snapped to the QSCALE dyadic grid, and snapToCellEdge would
+  // perturb them off the exact grid line the force-register depends on. They are
+  // additive feature constraints (so on-edge rail vertices are triangulated and
+  // interior ones become real CDT vertices) AND are force-registered below.
+  const segs = collectSegments([...snappedFeatures, ...railLines]);
   // Does a finer u-neighbour exist in effective-u column `col` at level `feUL`
   // across OUR (level,it) t-strip — a uExtra-split at our level OR a level-split
   // (mirrors the plain triangulator's H1 probe). At uExtra=0 only lvl=level+1.
@@ -578,6 +615,33 @@ export function triangulateQuadtreeWithFeatures(
     if (!inner) { inner = new Map(); m.set(k, inner); }
     if (!inner.has(sub)) inner.set(sub, p);
   };
+
+  // ── Rail force-register (Task 3) ────────────────────────────────────────────
+  // Admit EVERY (snapped) rail-line vertex into the grid-line registry keyed by
+  // its `tKey(t)` (horizontal line) AND `uKey(u)` (vertical line),
+  // REGARDLESS of the on-edge check that gates ordinary feature points
+  // (`registerBoundary`, which registers a point only when it sits on its
+  // CONTAINING cell's edge). This is the complement half of the densify-and-share
+  // contract: a rail vertex the band placed on a shared cell edge is now adopted
+  // IDENTICALLY by both adjacent cells (each reads it via `readH`/`readV` on that
+  // shared edge), so band paving and complement weld by the same global id.
+  //
+  // A registry entry on a grid line that is NOT any cell's edge is simply never
+  // read (readH/readV are invoked only on a cell's own t0/t1/u0/u1 lines), so a
+  // strictly-interior rail vertex's entry is inert — it does NOT manufacture a
+  // spurious crossing. The vertices are `quantizeRailUT`-snapped, so `tKey`/`uKey`
+  // are exact dyadic and dedupe with the neighbour and with `vertexIndex`. Gated
+  // to rail lines ONLY: with no railLines this loop never runs ⇒ the registry is
+  // identical to the pre-Task-3 ordinary-feature path (byte-identical default).
+  const registerRailVertex = (p: CellPoint): void => {
+    regAdd(regH, tKey(p.t), uKey(p.u), { u: p.u, t: p.t });
+    regAdd(regV, uKey(p.u), tKey(p.t), { u: p.u, t: p.t });
+  };
+  if (hasRails) {
+    for (const line of railLines) {
+      for (const p of line.points) registerRailVertex({ u: p.u, t: p.t });
+    }
+  }
 
   // ── PASS A0 (directional only): register every leaf's 4 CORNERS onto the grid-
   //    line registry so a coarse cell whose edge is subdivided by a SAME-LEVEL

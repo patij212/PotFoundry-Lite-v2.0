@@ -271,3 +271,166 @@ describe('railKey — Part 2: 2-cell adoption de-risk (the real gate)', () => {
     expect(interiorCrossCellShared).toBe(false);
   });
 });
+
+// ── Task 3: rail force-register — the complement ADOPTS the band's densified rail
+//    vertices via a force-register path gated to a SEPARATE `railLines` input
+//    (so non-rail features keep their exact current behaviour → flag-OFF
+//    byte-identical). Every snapped rail-line vertex is admitted into the
+//    complement's grid-line registry REGARDLESS of the on-edge check, so both
+//    adjacent cells read it identically via readH/readV. ──
+describe('railKey — Part 3: rail force-register (the complement adopts rail vertices)', () => {
+  it('a rail vertex passed ONLY via railLines is adopted + shared by both cells (NOT via features)', () => {
+    const qt = twoLeafQuadtree();
+
+    // The decisive rail vertex sits on the shared edge t=0.5 (where cross-cell
+    // adoption is geometrically valid — a strictly-interior point belongs to one
+    // leaf only, by the quadtree partition). It is delivered ONLY through the new
+    // `railLines` force-register input, NOT through `features`. `features` carries
+    // an UNRELATED strand (so the function runs the feature path and does not
+    // early-return) that never touches the shared-edge rail vertex — proving the
+    // adoption comes from force-register, not the ordinary clip/edge-crossing path.
+    const uRail = 0.317; // non-dyadic → exercises the snap
+    const [railU, railT] = quantizeRailUT(uRail, 0.5); // ON the shared edge
+
+    // A short rail FeatureLine whose MIDDLE vertex is the shared-edge crossing,
+    // with endpoints strictly inside each cell so it is a real densified rail.
+    const [raU, raT] = quantizeRailUT(uRail, 0.2); // inside BOTTOM
+    const [rbU, rbT] = quantizeRailUT(uRail, 0.8); // inside TOP
+    const railLine: FeatureLine = {
+      kind: 'general-curve',
+      label: 'rail',
+      points: [
+        { u: raU, t: raT },
+        { u: railU, t: railT }, // the shared-edge rail vertex (force-registered)
+        { u: rbU, t: rbT },
+      ],
+    };
+
+    // An UNRELATED feature strand at a different u so the feature path runs but
+    // never registers anything at uRail. Its vertices are snapped too.
+    const uOther = 0.1;
+    const [oaU, oaT] = quantizeRailUT(uOther, 0.15);
+    const [obU, obT] = quantizeRailUT(uOther, 0.85);
+    const otherFeature: FeatureLine = {
+      kind: 'general-curve',
+      label: 'unrelated',
+      points: [
+        { u: oaU, t: oaT },
+        { u: obU, t: obT },
+      ],
+    };
+
+    const mesh = triangulateQuadtreeWithFeatures(qt, [otherFeature], {
+      cornerSnap: 0,
+      railLines: [railLine],
+    });
+
+    const nV = mesh.vertices.length / 3;
+    expect(nV).toBeGreaterThan(0);
+    expect(mesh.indices.length).toBeGreaterThan(0);
+
+    const tol = 1.5 / QSCALE;
+    const matches = (vi: number, u: number, t: number): boolean =>
+      Math.abs(mesh.vertices[vi * 3] - u) <= tol &&
+      Math.abs(mesh.vertices[vi * 3 + 1] - t) <= tol;
+
+    // ── The rail vertex exists as EXACTLY ONE global id (force-registered +
+    //    deduped by vertexIndex), referenced by triangles on BOTH sides of the
+    //    shared edge — i.e. both adjacent cells adopted it. ──
+    const railIds: number[] = [];
+    for (let vi = 0; vi < nV; vi++) if (matches(vi, railU, railT)) railIds.push(vi);
+    expect(railIds.length).toBe(1);
+    const railId = railIds[0];
+
+    let touchesBelow = false;
+    let touchesAbove = false;
+    for (let k = 0; k < mesh.indices.length; k += 3) {
+      const tri = [mesh.indices[k], mesh.indices[k + 1], mesh.indices[k + 2]];
+      if (!tri.includes(railId)) continue;
+      for (const v of tri) {
+        const tv = mesh.vertices[v * 3 + 1];
+        if (tv < 0.5 - tol) touchesBelow = true;
+        if (tv > 0.5 + tol) touchesAbove = true;
+      }
+    }
+    // The force-registered rail vertex is genuinely SHARED across the seam.
+    expect(touchesBelow).toBe(true);
+    expect(touchesAbove).toBe(true);
+
+    // ── Watertight: no T-junction at the adopted rail vertex (or anywhere). The
+    //    2-leaf patch is the rectangle u∈[0,0.5]×t∈[0,1]; the only interior edge
+    //    is the shared line t=0.5. Classify the full outer perimeter as boundary;
+    //    any count-1 edge off it is a real crack. ──
+    const positions = new Float32Array(nV * 3);
+    for (let vi = 0; vi < nV; vi++) {
+      positions[vi * 3] = mesh.vertices[vi * 3];
+      positions[vi * 3 + 1] = mesh.vertices[vi * 3 + 1];
+      positions[vi * 3 + 2] = 0;
+    }
+    const uLo = 0;
+    const uHi = 0.5;
+    const onOuter = (uv: number, tv: number): boolean =>
+      Math.round(tv * QSCALE) === 0 ||
+      Math.round(tv * QSCALE) === QSCALE ||
+      Math.round(uv * QSCALE) === Math.round(uLo * QSCALE) ||
+      Math.round(uv * QSCALE) === Math.round(uHi * QSCALE);
+    const boundary = new Set<number>();
+    for (let vi = 0; vi < nV; vi++) {
+      if (onOuter(mesh.vertices[vi * 3], mesh.vertices[vi * 3 + 1])) boundary.add(vi);
+    }
+    const audit = auditWatertight({ positions, indices: mesh.indices }, {
+      boundaryVertexIndices: boundary,
+    });
+    expect(audit.tJunctions).toBe(0);
+    expect(audit.nonManifoldEdges).toBe(0);
+  });
+
+  it('NON-rail features are NOT force-registered: an interior feature point stays single-cell', () => {
+    // The byte-identical guarantee rests on force-register firing ONLY for
+    // railLines. A feature passed via the ordinary `features` input with a
+    // strictly-interior point must keep its current behaviour: the interior point
+    // is owned by ONE cell (NOT cross-cell shared) — exactly as Task 1 documented.
+    const qt = twoLeafQuadtree();
+
+    const uMid = 0.317;
+    const [inU, inT] = quantizeRailUT(uMid, 0.25); // strictly inside BOTTOM
+    const [aU, aT] = quantizeRailUT(uMid, 0.1);
+    const [bU, bT] = quantizeRailUT(uMid, 0.4);
+    const feature: FeatureLine = {
+      kind: 'general-curve',
+      label: 'non-rail',
+      points: [
+        { u: aU, t: aT },
+        { u: inU, t: inT }, // interior point — must NOT be force-registered
+        { u: bU, t: bT },
+      ],
+    };
+
+    // NO railLines → force-register never fires.
+    const mesh = triangulateQuadtreeWithFeatures(qt, [feature], { cornerSnap: 0 });
+
+    const nV = mesh.vertices.length / 3;
+    const tol = 1.5 / QSCALE;
+    const interiorIds: number[] = [];
+    for (let vi = 0; vi < nV; vi++) {
+      if (
+        Math.abs(mesh.vertices[vi * 3] - inU) <= tol &&
+        Math.abs(mesh.vertices[vi * 3 + 1] - inT) <= tol
+      ) {
+        interiorIds.push(vi);
+      }
+    }
+    expect(interiorIds.length).toBe(1);
+    const interiorId = interiorIds[0];
+
+    // The interior feature point is confined to the bottom cell (no co-triangle
+    // reaches t>0.5) — NOT promoted to a cross-cell shared vertex.
+    let touchesAbove = false;
+    for (let k = 0; k < mesh.indices.length; k += 3) {
+      const tri = [mesh.indices[k], mesh.indices[k + 1], mesh.indices[k + 2]];
+      if (!tri.includes(interiorId)) continue;
+      for (const v of tri) if (mesh.vertices[v * 3 + 1] > 0.5 + tol) touchesAbove = true;
+    }
+    expect(touchesAbove).toBe(false);
+  });
+});
