@@ -22,7 +22,7 @@ import type { SurfaceSampler } from './SurfaceSampler';
 import { MetricSizingField } from './MetricSizingField';
 import { PeriodicBalancedQuadtree } from './PeriodicBalancedQuadtree';
 import { triangulateQuadtree, type QuadtreeMesh } from './QuadtreeTriangulator';
-import { triangulateQuadtreeWithFeatures } from './FeatureConformingTriangulator';
+import { triangulateQuadtreeWithFeatures, type BandRegion } from './FeatureConformingTriangulator';
 import type { FeatureLine, FeatureLinePoint } from './FeatureLineGraph';
 import type { CdtStats } from './ConstrainedCellTriangulator';
 
@@ -147,6 +147,14 @@ export interface ConformingWallOptions {
    * legacy untagged tree (byte-identical templates).
    */
   efgSampler?: SurfaceSampler;
+  /**
+   * Opt-in offset-band footprints (general-mesher integration spike, Task 2).
+   * Threaded verbatim to {@link triangulateQuadtreeWithFeatures}'s emit-gate:
+   * a leaf fully inside a band is skipped at emission so the band's own paving
+   * fills it. Only effective when `featureLines` are present (the plain wall
+   * takes the no-feature fast path). Omit ⇒ byte-identical default mesh.
+   */
+  bandRegions?: BandRegion[];
 }
 
 /**
@@ -553,6 +561,7 @@ function buildWallMeshAtScale(
   return triangulateQuadtreeWithFeatures(qt, clippedFeatures, {
     cornerSnap,
     sampler: refineEnabled ? (u, t) => sampler.position(u, t) : undefined,
+    bandRegions: opts.bandRegions,
   });
 }
 

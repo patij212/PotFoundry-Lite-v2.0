@@ -30,6 +30,8 @@
 
 import type { SurfaceSampler } from './SurfaceSampler';
 import { buildConformingWall, type ConformingWallResult, type WallBudgetTelemetry } from './ConformingWall';
+import type { BandRegion } from './FeatureConformingTriangulator';
+export type { BandRegion } from './FeatureConformingTriangulator';
 import type { CdtStats } from './ConstrainedCellTriangulator';
 import { TRI_SOURCE } from './QuadtreeTriangulator';
 import { annulusStrip, discFan } from './RingStrip';
@@ -262,6 +264,14 @@ export interface AssemblyWallOptions {
    * application loops), composed over the inner plain sampler.
    */
   innerEfgSampler?: SurfaceSampler;
+  /**
+   * Opt-in offset-band footprints (general-mesher integration spike, Task 2),
+   * threaded to the OUTER wall's emit-gate (features are outer-only, so the
+   * inner smooth-offset wall gets none). A leaf fully inside a band is skipped
+   * at emission so the band's own paving fills it. Omit ⇒ byte-identical
+   * default assembly (the load-bearing flag-OFF guarantee).
+   */
+  bandRegions?: BandRegion[];
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -482,6 +492,7 @@ export function assembleWatertight(
     featureLevel: opts.featureLevel,
     creaseLines: opts.outerCreaseLines,
     efgSampler: opts.outerEfgSampler,
+    bandRegions: opts.bandRegions,
   });
   const inner = buildConformingWall(innerSampler, {
     ...wallOpts,

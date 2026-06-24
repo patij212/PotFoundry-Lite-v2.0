@@ -48,9 +48,35 @@ import {
   MAX_STEINER_PER_CELL,
 } from './CellQualityRefinement';
 
+/**
+ * A band region in (u,t) parameter space — the footprint of an offset feature
+ * band whose own paving (the general-mesher's `paveBand`) fills it. The
+ * predicate answers "is this (u,t) strictly inside the band interior?". The
+ * emit-gate (PASS B) SUPPRESSES triangle emission for any quadtree leaf whose 4
+ * corners AND center are all inside, so the band's paved triangles can occupy
+ * the hole without overlap. Straddle leaves (rail-crossed) keep emitting — they
+ * are feature-constrained by the rails passed as `FeatureLine`s. The simplest
+ * representation the per-cell test needs: a corner+center membership predicate.
+ */
+export interface BandRegion {
+  /** True iff (u,t) is strictly inside the band interior. */
+  insideBand(u: number, t: number): boolean;
+}
+
 export interface FeatureTriangulationOptions {
   /** Quantization scale for vertex dedup (must match the plain triangulator). */
   quantScale?: number;
+  /**
+   * Opt-in offset-band footprints (general-mesher integration spike, Task 2).
+   * When supplied, a quadtree leaf whose 4 corners AND center all fall inside a
+   * band is SKIPPED at emission (a hole the band's own paving fills); every
+   * other leaf is unchanged. The tree build (refine/balance) is NOT touched —
+   * only emission is gated — so the 2:1-balance + pinned-boundary invariants
+   * hold. Omitted / empty ⇒ byte-identical to the pre-gate output (the default
+   * export path is never disturbed). Band straddle cells keep emitting; they are
+   * feature-constrained by the rails passed in `features`.
+   */
+  bandRegions?: BandRegion[];
   /**
    * Absolute (u,t) threshold: a feature point within this Chebyshev distance of
    * a cell corner or mid-edge vertex is SNAPPED onto it. This caps the worst
@@ -260,6 +286,11 @@ export function triangulateQuadtreeWithFeatures(
   if (features.length === 0) return triangulateQuadtree(qt);
   const cornerSnap = Math.max(0, options.cornerSnap ?? 0);
   const sampler = options.sampler;
+  // Opt-in band-region emit-gate (Task 2). Read ONCE per build so a mid-build
+  // flag flip can never split one wall across emit regimes. Undefined/empty ⇒
+  // the gate is inert (no leaf is ever skipped) ⇒ byte-identical default path.
+  const bandRegions = options.bandRegions;
+  const hasBands = (bandRegions?.length ?? 0) > 0;
   // Stage-1 Task 4: shaped templates (shorter-3D-diagonal + Klincsek max-min-
   // angle DP) on the PLAIN cells of a feature wall, mirroring the plain
   // triangulator. Dev lever `__pfConformingShapedCdtCells` (default ON; set
@@ -697,6 +728,27 @@ export function triangulateQuadtreeWithFeatures(
       splitS, splitE, splitN, splitW,
     } = g;
     const data = leafData[li];
+
+    // ── Band-region emit-gate (Task 2) ─────────────────────────────────────
+    // Classify the leaf against the opt-in band footprints: if its 4 corners
+    // AND center are ALL strictly inside one band, it is FULLY-INSIDE → skip
+    // emission (a hole the band's own paving fills). Straddle leaves (any
+    // corner/center outside) fall through unchanged — they are feature-
+    // constrained by the rails passed as `features`. The tree (refine/balance)
+    // is untouched: only emission is suppressed, so the 2:1-balance + pinned-
+    // boundary invariants hold. Inert (no skip) when no bands are supplied ⇒
+    // byte-identical default path.
+    if (hasBands) {
+      const fullyInsideBand = bandRegions!.some(
+        (br) =>
+          br.insideBand(u0, t0) &&
+          br.insideBand(u1, t0) &&
+          br.insideBand(u1, t1) &&
+          br.insideBand(u0, t1) &&
+          br.insideBand(um, tm),
+      );
+      if (fullyInsideBand) continue;
+    }
 
     const emit = (a: number, b: number, c: number): void => {
       if (a === b || b === c || a === c) return;
