@@ -392,16 +392,17 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces.extend(list(zip(v00, v01, vd1)))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
+    # Winding reversed so this cap is consistently wound with the walls/rim.
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    faces.extend(list(zip(vi0, vi1, vd1)))
-    faces.extend(list(zip(vi0, vd1, vd0)))
+    faces.extend(list(zip(vi0, vd1, vi1)))
+    faces.extend(list(zip(vi0, vd0, vd1)))
 
-    # Drain cylinder wall
+    # Drain cylinder wall (winding reversed to match the consistent orientation)
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    faces.extend(list(zip(v0b, v0t, v1t)))
-    faces.extend(list(zip(v0b, v1t, v1b)))
+    faces.extend(list(zip(v0b, v1t, v0t)))
+    faces.extend(list(zip(v0b, v1b, v1t)))
 
     # Diagnostics
     def ring_od(ids):
@@ -413,12 +414,19 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     est_bottom_od = ring_od(outer_bottom)
     clamp_ratio = clamp_count / max(1, total_inner_samples)
 
+    verts_arr = np.array(verts, dtype=float)
+    faces_arr = np.array(faces, dtype=int)
+    # Guarantee outward-facing normals (positive signed volume) for export.
+    from potfoundry.core.geometry import mesh_signed_volume, orient_faces_outward
+    faces_arr = orient_faces_outward(verts_arr, faces_arr)
+
     diagnostics = dict(
         clamp_ratio_at_bottom=float(clamp_ratio),
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
+        signed_volume_mm3=mesh_signed_volume(verts_arr, faces_arr),
     )
-    return np.array(verts, dtype=float), np.array(faces, dtype=int), diagnostics
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401

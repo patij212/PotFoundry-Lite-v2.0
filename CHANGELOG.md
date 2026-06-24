@@ -12,8 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- Mesh orientation guarantees for CAD/slicer export (see ADR 0002):
+  - `mesh_signed_volume()` and `orient_faces_outward()` helpers in
+    `potfoundry.core.geometry`
+  - `build_pot_mesh` now reports `signed_volume_mm3` in diagnostics
+  - `tests/test_mesh_orientation.py`: signed volume, winding-consistency, and
+    end-to-end exported-STL orientation tests
 
 ### Fixed
+- **Mesh export orientation (Rhino/Grasshopper/slicer quality):**
+  - Fixed globally inverted face normals — generated meshes had negative signed
+    volume (all normals pointing inward), exporting inside-out solids
+  - Fixed a locally inverted patch: the bottom-slab and drain-cylinder faces
+    were wound backwards relative to the walls, leaving `2·n_theta`
+    inconsistently-wound edges at the drain rings
+  - Applied to both `potfoundry/core/geometry.py` and the legacy
+    `potfoundry/geometry.py`
+  - Replaced the no-op `test_mesh_has_consistent_normals` (was `pass`) with a
+    rigorous winding-consistency + positive-volume assertion
+
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`
