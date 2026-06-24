@@ -303,7 +303,10 @@ function totalLen(subs: Sub[]): number {
  * cells of side `cellMm`. u is periodic (the u-bucket axis wraps); t is clamped.
  * Used to answer "is any target sub within `tol` of this point?" in O(neighbourhood)
  * instead of O(#targets). `cellMm` MUST be ≥ every `tol` it is queried at so the 3×3
- * neighbourhood contains every point within `tol`.
+ * neighbourhood contains every point within `tol`. The invariant is preserved on the
+ * periodic u-axis because `nU = floor(U_TO_MM / cellMm)` makes the ACTUAL u-cell width
+ * `U_TO_MM/nU ≥ cellMm` (floor never shrinks it); the t-cell equals `cellMm` exactly.
+ * So NEVER set `cellMm` below the largest tol queried (here the sweep max, not CAL_TOL).
  */
 class SubIndex {
   private readonly cellMm: number;
@@ -680,9 +683,11 @@ describe('style-agnostic feature detector — DENSE-TRUTH validation gate (20 st
         parts.push(
           `PRECISION=${m.precision.toFixed(2)}: only ${(m.precision * 100).toFixed(0)}% of detected ` +
             `arclength lands within CAL_TOL=${CAL_TOL.toFixed(2)}mm of a truth locus — the rest is ` +
-            `placed OFF the dense-truth locus (two-scale weld/dedup + connected-component ` +
-            `union-bbox shifts edges > one fine cell from the true position, or fires in cells ` +
-            `the brute-force truth did not mark)`,
+            `placed OFF the dense-truth locus, in low-curvature/sub-threshold regions away from the ` +
+            `true feature (MEASURED on the dense lattices Gyroid/CelticKnot: the uncovered ~38% of ` +
+            `arclength sits ~3-6mm into the relief-band flank where κ≈0.03 < floor 0.056, off the ` +
+            `true ridge/crease; precision recovers only at a wider tol ≈6mm). Which two-scale ` +
+            `sub-stage places it there (fired-cell vs unifier weld) is NOT isolated by this gate.`,
         );
       }
       return parts.join(' | ');
