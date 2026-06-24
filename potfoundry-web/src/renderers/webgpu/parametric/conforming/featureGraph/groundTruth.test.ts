@@ -230,7 +230,7 @@ describe('validate the validator — dense truth matches exact analytic loci', (
 
   // GyroidManifold: DOCUMENTED CROSS-CHECK MISS — not a truth-machinery bug.
   //
-  // Measured (2026-06-24, res=256): exact→truth=0.426, truth→exact=0.216 at tol=2mm.
+  // Measured (2026-06-24, res=256): exact→truth=0.434, truth→exact=0.236 at tol=2mm.
   // These do NOT reach 0.8 and CANNOT at this tolerance. Root cause: the relief
   // indicator (makeReliefIndicator) and the Gyroid exact extractor trace DIFFERENT
   // LOCI from DIFFERENT SCALAR FIELDS:
@@ -313,6 +313,14 @@ describe('validate the validator — dense truth matches exact analytic loci', (
   // some crease line) but 2mm is too tight for the slope-to-center gap. The 0.8
   // bar is NOT reachable at 2mm without using the hex-crease scalar field directly
   // (style-specific, violating independence). Per brief §6: STOP and report.
+  //
+  // SECONDARY discrepancy: the Hex exact extractor traces with periodicU=FALSE
+  // (FeatureLineGraph.ts; u·TAU·scale is non-integer, so wrapping would fabricate a
+  // spurious seam contour) while the truth uses periodicU=TRUE (matching the
+  // detector). So this cross-check compares two INTENTIONALLY-different machineries
+  // (edge-vs-center field AND periodicU) — it is a sanity check against the analytic
+  // locus, NOT a gate self-test. The gate scores detector-relief vs truth-relief
+  // (identical field + periodicU=true on both), where these differences cancel.
   it.skip(
     'HexagonalHive: mutual coverage ≥ 0.8 (truth↔exact) within 2 mm [DOCUMENTED MISS — different loci; see comment]',
     () => {
