@@ -29,6 +29,7 @@ import type { SurfaceSampler } from '../SurfaceSampler';
 import type { Vec3 } from '../SurfaceSampler';
 import type { FeatureGraph } from './types';
 import { detectFeatures } from './detectFeatures';
+import type { DetectFeaturesResult } from './detectFeatures';
 import { sampleFeatureFields } from './sampleFields';
 import { detectCurvatureRidge } from './curvatureRidge';
 
@@ -194,7 +195,7 @@ describe('detectFeatures -- two-scale ridge placement (E, k=7)', () => {
   const rippleSampler = new SyntheticCylinderSampler(R0, H, AMP_RIPPLE, K7);
 
   // Coarse-only: fineRes === coarseRes => no sub-cell improvement.
-  const coarseGraph = detectFeatures(rippleSampler, {
+  const coarseResult: DetectFeaturesResult = detectFeatures(rippleSampler, {
     coarseRes: COARSE_RES,
     fineRes: COARSE_RES,
     minStrength: MIN_STRENGTH,
@@ -202,15 +203,15 @@ describe('detectFeatures -- two-scale ridge placement (E, k=7)', () => {
   });
 
   // Two-scale: fineRes = 90 > coarseRes = 30 => sub-regions sampled at 90 cols.
-  const twoScaleGraph = detectFeatures(rippleSampler, {
+  const twoScaleResult: DetectFeaturesResult = detectFeatures(rippleSampler, {
     coarseRes: COARSE_RES,
     fineRes: FINE_RES,
     minStrength: MIN_STRENGTH,
     minAngleDeg: MIN_ANGLE_DEG,
   });
 
-  const coarseMaxDev = ridgeMaxDevToAnalyticLocus(coarseGraph, K7);
-  const fineMaxDev = ridgeMaxDevToAnalyticLocus(twoScaleGraph, K7);
+  const coarseMaxDev = ridgeMaxDevToAnalyticLocus(coarseResult, K7);
+  const fineMaxDev = ridgeMaxDevToAnalyticLocus(twoScaleResult, K7);
 
   it('E: both passes detected ridges (precondition)', () => {
     expect(coarseMaxDev).toBeGreaterThan(0);
@@ -222,6 +223,41 @@ describe('detectFeatures -- two-scale ridge placement (E, k=7)', () => {
     // giving maxDev ~ 1/60 ~ 0.0167. The fine pass re-samples at 1/90-wide
     // sub-columns inside those cells, giving maxDev ~ 1/180 ~ 0.0056.
     expect(fineMaxDev).toBeLessThan(coarseMaxDev);
+  });
+
+  it('E: fired coarse cells are strictly fewer than all cells (fine pass is local not global)', () => {
+    // A k=7 ripple has 14 ridges. Each ridge fires a narrow band of columns in
+    // the 30×30 coarse grid. Even with column-edge spillover (each ridge can
+    // touch 2-3 adjacent columns), ridge-only cells remain well under the total.
+    // The invariant: firedCells < totalCells, i.e. the fine pass is NOT running
+    // over every coarse cell (which would make it equivalent to a flat fine pass).
+    // We assert < 80% to ensure at least 20% of cells are silent (unfired).
+    const { firedCellCount, totalCellCount } = twoScaleResult;
+    expect(firedCellCount).toBeLessThan(totalCellCount * 0.8);
+    // And at least one cell must have fired (ridges were detected).
+    expect(firedCellCount).toBeGreaterThan(0);
+  });
+
+  it('E: ridge chain count in two-scale run does not balloon vs coarse-only (no spurious detection)', () => {
+    // The fine pass re-detects ridges at higher resolution WITHIN each fired
+    // sub-region. Sub-region boundary clipping can legitimately split long chains
+    // into shorter segments (one per sub-region they span), so the fine run may
+    // yield more polyline edges than the coarse run. However, the count should
+    // not balloon to many times the coarse count -- that would indicate the fine
+    // pass is inventing new features rather than refining existing ones.
+    // We assert fine ≤ 3× coarse as the principled upper bound: with fineRes=90
+    // and coarseRes=30, a single coarse chain spanning all 30 cells can at most
+    // be clipped into 30 sub-region pieces, but welding and chain-joining in the
+    // unifier collapses most of those back. A 3× ratio implies severe fragmentation
+    // that would not occur for a clean ridge surface.
+    const coarseRidgeEdges = coarseResult.edges.filter((e) =>
+      (e.types as string[]).includes('curvature-ridge'),
+    ).length;
+    const fineRidgeEdges = twoScaleResult.edges.filter((e) =>
+      (e.types as string[]).includes('curvature-ridge'),
+    ).length;
+    expect(fineRidgeEdges).toBeGreaterThan(0);
+    expect(fineRidgeEdges).toBeLessThanOrEqual(coarseRidgeEdges * 3);
   });
 });
 

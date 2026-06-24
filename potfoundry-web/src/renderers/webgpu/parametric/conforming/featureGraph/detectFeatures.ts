@@ -65,6 +65,101 @@ export interface DetectFeaturesOptions {
    * When omitted, the component-boundary detector is skipped.
    */
   reliefIndicator?: (u: number, t: number) => number;
+
+  /**
+   * u→mm scale factor: how many millimetres span the full u∈[0,1) parameter
+   * range (i.e. the circumference of the pot).
+   * When omitted, derived automatically from the sampler by measuring the 3D
+   * chord length of a ring at t=0.5.
+   */
+  uToMm?: number;
+
+  /**
+   * t→mm scale factor: how many millimetres span the full t∈[0,1] parameter
+   * range (i.e. the height of the pot).
+   * When omitted, derived automatically from the sampler by measuring the 3D
+   * chord length of a column at u=0.
+   */
+  tToMm?: number;
+
+  /**
+   * Minimum curvature (mm⁻¹) for the ridge detector.
+   * When omitted, derived as RIDGE_KAPPA_FACTOR / Rchar where Rchar is the
+   * characteristic radius estimated from the u-circumference measurement, making
+   * the floor scale-invariant (fires on ridges sharper than the smooth pot wall).
+   */
+  kappaFloor?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Scale-measurement helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Number of sample points used when measuring u-circumference and t-height.
+ * 128 points is more than sufficient for any smooth parametric surface.
+ */
+const MEASURE_N = 128;
+
+/**
+ * Dimensionless scale factor for the curvature floor.
+ *
+ * kappaFloor = RIDGE_KAPPA_FACTOR / Rchar
+ *
+ * With Rchar = uCircumference / (2π), a factor of 2 means: fire on any ridge
+ * whose curvature exceeds twice the smooth-wall hoop curvature (κ_hoop = 1/R).
+ * This is conservative enough to suppress the pot body on large pots (R=200,
+ * κ_hoop=0.005, floor=0.01) while still firing on shallow decorative ridges
+ * on small pots (R=10, κ_hoop=0.1, floor=0.2 — well below typical 0.5+).
+ */
+const RIDGE_KAPPA_FACTOR = 2;
+
+/**
+ * Measure the 3D chord length of the u-ring at t=0.5.
+ * Returns the total circumference in mm (u traverses one full period).
+ */
+function measureUCircumference(sampler: SurfaceSampler): number {
+  let total = 0;
+  const [px0, py0, pz0] = sampler.position(0, 0.5);
+  let prevX = px0, prevY = py0, prevZ = pz0;
+  for (let i = 1; i <= MEASURE_N; i++) {
+    const u = i / MEASURE_N; // at i===MEASURE_N this wraps back to u=0 (periodic close)
+    const [cx, cy, cz] = sampler.position(u % 1, 0.5);
+    const dx = cx - prevX, dy = cy - prevY, dz = cz - prevZ;
+    total += Math.sqrt(dx * dx + dy * dy + dz * dz);
+    prevX = cx; prevY = cy; prevZ = cz;
+  }
+  return total;
+}
+
+/**
+ * Measure the 3D chord length of the t-column at u=0.
+ * Returns the total height in mm (t traverses [0,1]).
+ */
+function measureTHeight(sampler: SurfaceSampler): number {
+  let total = 0;
+  const [px0, py0, pz0] = sampler.position(0, 0);
+  let prevX = px0, prevY = py0, prevZ = pz0;
+  for (let i = 1; i <= MEASURE_N; i++) {
+    const t = i / MEASURE_N;
+    const [cx, cy, cz] = sampler.position(0, t);
+    const dx = cx - prevX, dy = cy - prevY, dz = cz - prevZ;
+    total += Math.sqrt(dx * dx + dy * dy + dz * dz);
+    prevX = cx; prevY = cy; prevZ = cz;
+  }
+  return total;
+}
+
+// ---------------------------------------------------------------------------
+// Public result type
+// ---------------------------------------------------------------------------
+
+/** Return value of {@link detectFeatures} extended with diagnostic statistics. */
+export interface DetectFeaturesResult extends FeatureGraph {
+  /** Number of coarse grid cells that fired in the two-scale pass. */
+  firedCellCount: number;
+  /** Total number of coarse grid cells (coarseRes²). */
+  totalCellCount: number;
 }
 
 /**
@@ -77,15 +172,23 @@ export interface DetectFeaturesOptions {
 export function detectFeatures(
   sampler: SurfaceSampler,
   opts: DetectFeaturesOptions,
-): FeatureGraph {
+): DetectFeaturesResult {
   const { coarseRes, fineRes, minStrength, minAngleDeg, reliefIndicator } = opts;
 
-  // Internal curvature floor for the ridge detector.
-  const KAPPA_FLOOR = 0.05; // mm^-1
+  // -------------------------------------------------------------------------
+  // Derive scale constants from the sampler when not explicitly provided.
+  // -------------------------------------------------------------------------
 
-  // u/t -> mm scale factors for the unifier weld step.
-  const U_TO_MM = 250;
-  const T_TO_MM = 120;
+  const uCircumference = measureUCircumference(sampler);
+  const tHeight = measureTHeight(sampler);
+
+  // u/t → mm scale factors for the unifier weld step.
+  const U_TO_MM = opts.uToMm ?? uCircumference;
+  const T_TO_MM = opts.tToMm ?? tHeight;
+
+  // Characteristic radius from the ring measurement, then scale-invariant floor.
+  const Rchar = uCircumference / (2 * Math.PI);
+  const KAPPA_FLOOR = opts.kappaFloor ?? (RIDGE_KAPPA_FACTOR / Rchar);
 
   // -------------------------------------------------------------------------
   // Step 1 - coarse-pass field sampling + ridge/crease detection
@@ -192,16 +295,21 @@ export function detectFeatures(
   // Step 6 - unify into one topology-rich FeatureGraph
   // -------------------------------------------------------------------------
 
+  const firedCellCount = firedCells.size;
+  const totalCellCount = coarseRes * coarseRes;
+
   if (finalRaw.length === 0) {
-    return { nodes: [], edges: [] };
+    return { nodes: [], edges: [], firedCellCount, totalCellCount };
   }
 
-  return unifyToGraph(finalRaw, {
+  const graph = unifyToGraph(finalRaw, {
     weldTol: 1 / fineRes,
     minStrength,
     uToMm: U_TO_MM,
     tToMm: T_TO_MM,
   });
+
+  return { ...graph, firedCellCount, totalCellCount };
 }
 
 // ---------------------------------------------------------------------------
