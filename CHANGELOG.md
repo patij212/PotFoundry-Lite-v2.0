@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `build_pot_mesh` now reports `signed_volume_mm3` in diagnostics
   - `tests/test_mesh_orientation.py`: signed volume, winding-consistency, and
     end-to-end exported-STL orientation tests
+- Wavefront OBJ export (`write_obj`) for Rhino/Grasshopper interchange:
+  - `potfoundry.core.io.obj.write_obj(path, name, vertices, faces,
+    vertex_normals=False)`, exported from `potfoundry`
+  - Stores welded indexed topology (1-based faces) — round-trips to the same
+    vertex count instead of STL's ~3x unwelded triangle soup, so importers do
+    not have to re-weld by tolerance (avoids naked edges)
+  - Optional area-weighted smooth vertex normals (`vn` + `f v//vn`)
+  - Atomic write; `tests/test_obj_export.py` proves watertight, consistently
+    wound, outward round-trip for every style
 
 ### Fixed
 - **Mesh export orientation (Rhino/Grasshopper/slicer quality):**
