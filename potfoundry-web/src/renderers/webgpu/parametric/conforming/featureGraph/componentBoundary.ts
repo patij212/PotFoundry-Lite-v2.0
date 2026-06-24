@@ -32,15 +32,25 @@ import {
 // Public types
 // ---------------------------------------------------------------------------
 
-/** A single undirected segment connecting two (u,t) points. */
+/**
+ * A single undirected segment connecting two (u,t) points.
+ *
+ * `strength` is the feature saliency in [0,∞) at this segment. For
+ * component boundaries it is 1 (no local variation). For curvature ridges it
+ * is the max-principal-curvature κ at the ridge point. The unifier compares
+ * homogeneous strength values across detectors, so every detector must
+ * populate this field.
+ */
 export interface RawSegment {
   a: Vec2;
   b: Vec2;
+  /** Feature saliency in [0,∞). Higher = sharper / more prominent. */
+  strength: number;
 }
 
 /**
  * The raw output of a single detector pass — an unordered array of (u,t)
- * segments, a feature-type tag, and a per-segment strength accessor.
+ * segments with per-segment strength values, plus a feature-type tag.
  *
  * Downstream tasks (Tasks 3–6) weld these into polylines and inject them into
  * the CDT constraint graph.
@@ -48,14 +58,8 @@ export interface RawSegment {
 export interface RawSegments {
   /** Unordered array of (u,t) segments produced by the detector. */
   segs: RawSegment[];
-  /** Feature classification tag — always `'component-boundary'` here. */
+  /** Feature classification tag. */
   type: FeatureType;
-  /**
-   * Returns the saliency strength of a segment in [0,∞).
-   * For component boundaries, all segments carry equal weight (1). Callers may
-   * multiply by segment length or local curvature to bias constraint selection.
-   */
-  strength: (seg: RawSegment) => number;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,14 +116,14 @@ export function detectComponentBoundary(
       : marchingSquaresLabels(field, resU, resT, periodicU);
 
   // ContourSegment uses FeatureLinePoint which has {u,t} — same shape as Vec2.
-  // Cast directly; no copy needed.
-  const segs = rawSegs as RawSegment[];
+  // Cast to the underlying shape then add the required strength field (1 for
+  // all component-boundary segments — no local saliency variation).
+  const segs: RawSegment[] = (rawSegs as Array<{ a: Vec2; b: Vec2 }>).map(
+    (s) => ({ a: s.a, b: s.b, strength: 1 }),
+  );
 
   return {
     segs,
     type: 'component-boundary',
-    // All component-boundary segments carry equal intrinsic saliency. The caller
-    // can scale by segment length or local curvature if needed.
-    strength: (_seg: RawSegment) => 1,
   };
 }

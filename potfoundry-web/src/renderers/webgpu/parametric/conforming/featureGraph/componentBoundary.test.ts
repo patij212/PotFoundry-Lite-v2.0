@@ -59,11 +59,10 @@ describe('detectComponentBoundary — kind: zero', () => {
     }
   });
 
-  it('strength(seg) is finite and >= 0', () => {
+  it('seg.strength is finite and >= 0', () => {
     for (const seg of res.segs) {
-      const s = res.strength(seg);
-      expect(Number.isFinite(s)).toBe(true);
-      expect(s).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(seg.strength)).toBe(true);
+      expect(seg.strength).toBeGreaterThanOrEqual(0);
     }
   });
 
@@ -99,11 +98,10 @@ describe('detectComponentBoundary — kind: label', () => {
     expect(res.segs.length).toBeGreaterThan(0);
   });
 
-  it('strength(seg) is finite and >= 0', () => {
+  it('seg.strength is finite and >= 0', () => {
     for (const seg of res.segs) {
-      const s = res.strength(seg);
-      expect(Number.isFinite(s)).toBe(true);
-      expect(s).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(seg.strength)).toBe(true);
+      expect(seg.strength).toBeGreaterThanOrEqual(0);
     }
   });
 });
