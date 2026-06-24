@@ -672,12 +672,15 @@ describe('dyadic-edge seam — feature-aligned corridor paving (Q2)', () => {
     expect(m.wobbleP99Mm).toBeLessThan(0.05); // chain rides the analytic locus (≈0)
     // (3) Quality (MEASURED evidence; the load-bearing pass criteria are the seam
     // + feature-edge-chain above). Boundary-matched Steiner density keeps min-angle
-    // slivers essentially gone everywhere. DOCUMENTED RESIDUAL: the thin diagonal
-    // ribbon terminates in a WEDGE at each of its 2 interior tips; cdt2d closes
-    // each tip with one high-ASPECT triangle (~4 tris, away from the feature) — an
-    // artifact of the synthetic ribbon's pointed ends, not the paving.
+    // slivers essentially gone (≈0.06%). DOCUMENTED RESIDUAL (corrected per review):
+    // the ~4 <10° / aspect-107 slivers are acute WEDGES where each snapped feature
+    // ENDPOINT meets its adjacent COARSE boundary edge — at the 2 ribbon tips, ON
+    // the feature tip (NOT away from it). It is the feature-endpoint-meets-coarse-
+    // boundary transition of this synthetic pointed ribbon; the finer FL11 boundary
+    // resolves it (aspectMax 5.36, %<10° 0.00). A real ring-to-ring / closed-loop
+    // feature has no such interior pinch — verify on a real full-height wall next.
     expect(m.corridorPctBelow10).toBeLessThan(0.5); // ≈0.06% — near sliver-free
-    expect(m.corridorAspectMax).toBeLessThan(150); // ≈107 at the 2 ribbon tips (documented)
+    expect(m.corridorAspectMax).toBeLessThan(150); // ≈107 at the 2 feature-tip wedges (FL11-resolved)
   }, 600000);
 
   it('FL11: the corridor seam still welds 0/0/0 and the feature chain holds at the finer level', () => {
