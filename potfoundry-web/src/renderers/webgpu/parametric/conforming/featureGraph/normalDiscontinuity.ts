@@ -25,8 +25,7 @@
  * @module conforming/featureGraph/normalDiscontinuity
  */
 
-import type { Fields } from './types';
-import type { RawSegments, RawSegment } from './componentBoundary';
+import type { Fields, RawSegments, RawSegment } from './types';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -112,7 +111,10 @@ export function detectNormalDiscontinuity(
     }
   }
 
-  return { segs, type: 'normal-discontinuity' };
+  // `minAngleDeg` is the emission threshold (same unit as strength: degrees).
+  // Every emitted edge has angle > minAngleDeg, so strength / minAngleDeg > 1 →
+  // normalized saliency is comparable with the other detectors'.
+  return { segs, type: 'normal-discontinuity', threshold: minAngleDeg };
 }
 
 // ---------------------------------------------------------------------------

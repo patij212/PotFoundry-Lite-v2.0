@@ -22,45 +22,16 @@
  * @module conforming/featureGraph/componentBoundary
  */
 
-import type { Vec2, FeatureType } from './types';
+import type { Vec2, RawSegment, RawSegments } from './types';
 import {
   marchingSquaresZero,
   marchingSquaresLabels,
 } from '../SampledFeatureExtractor';
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-/**
- * A single undirected segment connecting two (u,t) points.
- *
- * `strength` is the feature saliency in [0,∞) at this segment. For
- * component boundaries it is 1 (no local variation). For curvature ridges it
- * is the max-principal-curvature κ at the ridge point. The unifier compares
- * homogeneous strength values across detectors, so every detector must
- * populate this field.
- */
-export interface RawSegment {
-  a: Vec2;
-  b: Vec2;
-  /** Feature saliency in [0,∞). Higher = sharper / more prominent. */
-  strength: number;
-}
-
-/**
- * The raw output of a single detector pass — an unordered array of (u,t)
- * segments with per-segment strength values, plus a feature-type tag.
- *
- * Downstream tasks (Tasks 3–6) weld these into polylines and inject them into
- * the CDT constraint graph.
- */
-export interface RawSegments {
-  /** Unordered array of (u,t) segments produced by the detector. */
-  segs: RawSegment[];
-  /** Feature classification tag. */
-  type: FeatureType;
-}
+// `RawSegment` / `RawSegments` were moved to ./types so all three detectors and
+// the unifier share one canonical definition; re-export them here so existing
+// `import { RawSegment } from './componentBoundary'` call sites keep compiling.
+export type { RawSegment, RawSegments } from './types';
 
 // ---------------------------------------------------------------------------
 // Options
@@ -125,5 +96,9 @@ export function detectComponentBoundary(
   return {
     segs,
     type: 'component-boundary',
+    // Every component-boundary segment carries strength 1 and the detector's
+    // "emission threshold" is 1 — so normalized saliency is exactly 1.0 for all
+    // of them (a present-but-not-locally-graded feature).
+    threshold: 1,
   };
 }

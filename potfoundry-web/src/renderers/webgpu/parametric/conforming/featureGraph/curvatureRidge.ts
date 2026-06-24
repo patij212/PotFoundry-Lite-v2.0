@@ -37,8 +37,7 @@
  * @module conforming/featureGraph/curvatureRidge
  */
 
-import type { Fields } from './types';
-import type { RawSegments, RawSegment } from './componentBoundary';
+import type { Fields, RawSegments, RawSegment } from './types';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -210,5 +209,8 @@ export function detectCurvatureRidge(
     }
   }
 
-  return { segs, type: 'curvature-ridge' };
+  // `minStrength` (κ in mm⁻¹) is the emission threshold: every ridge node has
+  // κ > minStrength, so each segment's strength (the mean κ of its endpoints)
+  // is ≥ minStrength → normalized saliency ≥ 1, comparable across detectors.
+  return { segs, type: 'curvature-ridge', threshold: minStrength };
 }

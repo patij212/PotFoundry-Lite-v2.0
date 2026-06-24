@@ -68,6 +68,54 @@ export interface FeatureGraph {
 }
 
 // ---------------------------------------------------------------------------
+// Raw detector output — the unordered segment soup the unifier consumes.
+// (Moved here from componentBoundary.ts so all three detectors and the unifier
+//  share one canonical definition.)
+// ---------------------------------------------------------------------------
+
+/**
+ * A single undirected segment connecting two (u,t) points.
+ *
+ * `strength` is the RAW per-detector saliency in [0,∞) and its UNIT differs by
+ * detector: curvature-ridge emits κ (mm⁻¹), normal-discontinuity emits the
+ * normal-angle jump (DEGREES), component-boundary emits a constant 1. These raw
+ * values are therefore NOT comparable across detectors — the unifier first
+ * normalizes each to a dimensionless saliency (raw / detector-threshold) before
+ * any cross-detector comparison. See {@link RawSegments.threshold}.
+ */
+export interface RawSegment {
+  a: Vec2;
+  b: Vec2;
+  /** Raw, per-detector feature saliency in [0,∞). Unit varies by detector. */
+  strength: number;
+}
+
+/**
+ * The raw output of a single detector pass — an unordered array of (u,t)
+ * segments with per-segment strength values, a feature-type tag, and the
+ * emission threshold the detector used.
+ *
+ * Downstream tasks (the unifier, then the CDT constraint injector) weld these
+ * into polylines and merge them into one topology-rich feature graph.
+ */
+export interface RawSegments {
+  /** Unordered array of (u,t) segments produced by the detector. */
+  segs: RawSegment[];
+  /** Feature classification tag. */
+  type: FeatureType;
+  /**
+   * The emission threshold this detector used, in the SAME UNIT as each
+   * segment's `strength` (κ for curvature-ridge, degrees for
+   * normal-discontinuity, 1 for component-boundary). The unifier divides
+   * `strength` by this to obtain a dimensionless, cross-detector-comparable
+   * saliency (≥1 for every emitted segment). Optional for backward
+   * compatibility; when absent the unifier falls back to a threshold of 1
+   * (i.e. saliency = raw strength).
+   */
+  threshold?: number;
+}
+
+// ---------------------------------------------------------------------------
 // Fields — the 2-D sampled grid consumed by all three detectors.
 // ---------------------------------------------------------------------------
 
