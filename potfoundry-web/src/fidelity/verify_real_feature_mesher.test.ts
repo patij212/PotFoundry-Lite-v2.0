@@ -53,9 +53,14 @@ import { styleSampler } from '../renderers/webgpu/parametric/conforming/featureG
 import { detectFeatures } from '../renderers/webgpu/parametric/conforming/featureGraph/detectFeatures';
 import type { DetectFeaturesOptions } from '../renderers/webgpu/parametric/conforming/featureGraph/detectFeatures';
 import { assembleWatertight } from '../renderers/webgpu/parametric/conforming/WatertightAssembly';
+import type { FeatureGraph } from '../renderers/webgpu/parametric/conforming/featureGraph/types';
 import { auditWatertight, triangleQuality3D, lateralWobbleMm, type Mesh3 } from './bandRemesh/audit';
 import type { UTPoint } from './bandRemesh/corridorPave';
-import { realFeatureCorridor } from './bandRemesh/realCorridor';
+import {
+  realFeatureCorridor,
+  realFeatureCorridorMulti,
+  type MultiFeatureSpec,
+} from './bandRemesh/realCorridor';
 
 const TAU = 2 * Math.PI;
 
@@ -588,5 +593,413 @@ describe('real-feature mesher — corridorPave on a REAL Voronoi wall (Task 1 �
     expect(withOptUndefined.indices.length).toBe(baseline.indices.length);
     expect(Array.from(withOptUndefined.vertices)).toEqual(Array.from(baseline.vertices));
     expect(Array.from(withOptUndefined.indices)).toEqual(Array.from(baseline.indices));
+  }, 600000);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TASK 2 — REAL TOPOLOGY: a Voronoi JUNCTION (3 edges meeting at a node) + a closed
+// LOOP (a Voronoi cell), each paved in ONE corridor with all its features pinned.
+//
+// The single-wall corridor (Task 1) is GO. Task 2 proves the SAME flood-fill paves
+// real TOPOLOGY: more features → more wall edges → more flood components, every
+// interior component kept. The JUNCTION's 3 edges must meet at ONE SHARED mesh
+// vertex (the junction node, an interior id shared by the 3 chains); the LOOP must
+// CLOSE (first≡last vertex). Both must weld 0/0/0 at FL7 & FL11 with every feature a
+// continuous mesh edge-chain.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** A degree-3 junction: the node + its 3 incident edges clipped to junction-rooted sub-arcs. */
+interface PickedJunction {
+  nodeId: number;
+  nodeUT: UTPoint;
+  degree: number;
+  /** 3 sub-arcs, each ORIENTED so polyline[0] is AT the junction node. */
+  arms: UTPoint[][];
+}
+
+/** Periodic-u (u,t) chord. */
+function chordUT(a: UTPoint, b: UTPoint): number {
+  return Math.hypot(uDistP(a.u, b.u), a.t - b.t);
+}
+
+/** (u,t) span of a polyline (periodic u). */
+function polySpan(pts: UTPoint[]): number {
+  let s = 0;
+  for (let k = 1; k < pts.length; k++) {
+    let du = Math.abs(pts[k].u - pts[k - 1].u);
+    if (du > 0.5) du = 1 - du;
+    s += Math.hypot(du, pts[k].t - pts[k - 1].t);
+  }
+  return s;
+}
+
+/** True if the polyline crosses the u=0/1 seam or strays off the u∈[0.2,0.8] band. */
+function offSeamOpen(pts: UTPoint[]): boolean {
+  let uMin = Infinity, uMax = -Infinity, seam = false;
+  for (let k = 0; k < pts.length; k++) {
+    if (pts[k].u < uMin) uMin = pts[k].u;
+    if (pts[k].u > uMax) uMax = pts[k].u;
+    if (k > 0 && Math.abs(pts[k].u - pts[k - 1].u) > 0.5) seam = true;
+  }
+  return !seam && uMin > 0.2 && uMax < 0.8;
+}
+
+/**
+ * Pick a REAL degree-≥3 Voronoi junction: an interior, off-seam node whose 3 longest
+ * incident edges are each substantial and off-seam. Each arm is oriented so its head
+ * sits AT the junction node, then clipped to a bounded sub-arc (so its far end lands
+ * well inside the corridor, where it snaps to the hole boundary). Geometric (stable
+ * across detector versions), NOT a hardcoded index.
+ */
+function pickRealVoronoiJunction(graph: FeatureGraph): PickedJunction {
+  const deg = new Array(graph.nodes.length).fill(0);
+  const incident: number[][] = graph.nodes.map(() => []);
+  for (let i = 0; i < graph.edges.length; i++) {
+    const e = graph.edges[i];
+    deg[e.endpoints[0]]++;
+    incident[e.endpoints[0]].push(i);
+    if (e.endpoints[1] !== e.endpoints[0]) {
+      deg[e.endpoints[1]]++;
+      incident[e.endpoints[1]].push(i);
+    }
+  }
+  let bestNode = -1;
+  let bestScore = -1;
+  let bestArms: UTPoint[][] = [];
+  for (let n = 0; n < graph.nodes.length; n++) {
+    if (deg[n] < 3) continue;
+    const node = graph.nodes[n];
+    if (!(node.t > 0.18 && node.t < 0.82 && node.u > 0.25 && node.u < 0.75)) continue;
+    // The incident edges, oriented head-at-node, with their spans; reject seam-crossers.
+    const cand: Array<{ arc: UTPoint[]; span: number }> = [];
+    let bad = false;
+    for (const ei of incident[n]) {
+      const e = graph.edges[ei];
+      if (e.kind !== 'open') continue;
+      const pts = e.polyline.map((p) => ({ u: p.u, t: p.t }));
+      if (!offSeamOpen(pts)) { bad = true; break; }
+      // Orient so head is AT the junction node (the end nearest the node).
+      const dHead = chordUT(pts[0], node);
+      const dTail = chordUT(pts[pts.length - 1], node);
+      if (dTail < dHead) pts.reverse();
+      cand.push({ arc: pts, span: polySpan(pts) });
+    }
+    if (bad || cand.length < 3) continue;
+    cand.sort((a, b) => b.span - a.span);
+    const top3 = cand.slice(0, 3);
+    const minSpan = top3[2].span;
+    if (minSpan > bestScore) {
+      bestScore = minSpan;
+      bestNode = n;
+      bestArms = top3.map((c) => c.arc);
+    }
+  }
+  if (bestNode < 0) throw new Error('pickRealVoronoiJunction: no interior off-seam degree-3 junction found');
+  // Clip each arm to a bounded sub-arc rooted at the junction node so its far end is
+  // a genuine traversing endpoint (~0.06 (u,t) out) that lands inside the corridor.
+  const arms = bestArms.map((arc) => {
+    const head = arc[0];
+    let cut = arc.length - 1;
+    for (let k = 1; k < arc.length; k++) {
+      if (chordUT(arc[k], head) > 0.06) { cut = k; break; }
+    }
+    return arc.slice(0, cut + 1);
+  });
+  return { nodeId: bestNode, nodeUT: graph.nodes[bestNode], degree: deg[bestNode], arms };
+}
+
+/** A closed Voronoi cell loop. */
+interface PickedLoop {
+  polyline: UTPoint[];
+  span: number;
+}
+
+/**
+ * Pick a REAL closed Voronoi cell: a `kind:'loop'` edge, interior, off-seam, of
+ * moderate span (the largest within bounds). Closed (first≡last).
+ */
+function pickRealVoronoiLoop(graph: FeatureGraph): PickedLoop {
+  let best = -1;
+  let bestSpan = -1;
+  for (let i = 0; i < graph.edges.length; i++) {
+    const e = graph.edges[i];
+    if (e.kind !== 'loop') continue;
+    let tMin = 1, tMax = 0, uMin = 1, uMax = 0, seam = false;
+    const pts = e.polyline;
+    for (let k = 0; k < pts.length; k++) {
+      const p = pts[k];
+      if (p.t < tMin) tMin = p.t;
+      if (p.t > tMax) tMax = p.t;
+      if (p.u < uMin) uMin = p.u;
+      if (p.u > uMax) uMax = p.u;
+      if (k > 0 && Math.abs(pts[k].u - pts[k - 1].u) > 0.5) seam = true;
+    }
+    if (seam) continue;
+    if (!(tMin > 0.18 && tMax < 0.82 && uMin > 0.25 && uMax < 0.75)) continue;
+    const sp = polySpan(pts);
+    if (sp < 0.08) continue;
+    if (sp > bestSpan) { bestSpan = sp; best = i; }
+  }
+  if (best < 0) throw new Error('pickRealVoronoiLoop: no interior off-seam closed loop found');
+  return { polyline: graph.edges[best].polyline.map((p) => ({ u: p.u, t: p.t })), span: bestSpan };
+}
+
+/** Build the set of undirected mesh edges of a merged index buffer. */
+function meshEdgeSet(indices: number[]): Set<string> {
+  const s = new Set<string>();
+  for (let k = 0; k + 2 < indices.length; k += 3) {
+    const tri = [indices[k], indices[k + 1], indices[k + 2]];
+    for (let e = 0; e < 3; e++) {
+      const i = tri[e], j = tri[(e + 1) % 3];
+      s.add(i < j ? `${i}:${j}` : `${j}:${i}`);
+    }
+  }
+  return s;
+}
+
+/** Every consecutive pair of a chain is a mesh edge (feature-followed proof). */
+function chainAllMeshEdges(chain: number[], edges: Set<string>): boolean {
+  for (let i = 0; i + 1 < chain.length; i++) {
+    const a = chain[i], b = chain[i + 1];
+    if (!edges.has(a < b ? `${a}:${b}` : `${b}:${a}`)) return false;
+  }
+  return true;
+}
+
+interface MultiMeasurement {
+  featureLevel: number;
+  boundaryEdges: number;
+  ringVerts: number;
+  nonManifoldEdges: number;
+  tJunctions: number;
+  orientMismatches: number;
+  holeLoops: number;
+  fillTris: number;
+  boundaryEdgesUnfilled: number;
+  aspectMax: number;
+  pctBelow10: number;
+  allChainsFollowed: boolean;
+}
+
+/** Audit + measure a merged multi-feature corridor result. */
+function measureMulti(
+  sampler: SurfaceSampler,
+  r: ReturnType<typeof realFeatureCorridorMulti>,
+): MultiMeasurement {
+  const positions = evalPositions(sampler, r.merged.vertexUT);
+  const mergedMesh: Mesh3 = { positions, indices: new Uint32Array(r.merged.indices) };
+  const audit = auditWatertight(mergedMesh, { boundaryVertexIndices: r.merged.ringVertexIds });
+  const orient = orientationMismatches(mergedMesh.indices);
+
+  const edges = meshEdgeSet(r.merged.indices);
+  let allChainsFollowed = true;
+  for (const chain of r.paved.featureChains) {
+    if (!chainAllMeshEdges(chain, edges)) { allChainsFollowed = false; break; }
+  }
+
+  // Hole-boundary edges with no fill triangle (the count-2 weld gap).
+  const fillEdges = new Set<string>();
+  for (const [a, b, c] of r.paved.triangles) {
+    for (const [i, j] of [[a, b], [b, c], [c, a]] as const) {
+      fillEdges.add(i < j ? `${i}:${j}` : `${j}:${i}`);
+    }
+  }
+  let boundaryEdgesUnfilled = 0;
+  for (const loop of r.hole.loops) {
+    for (let i = 0; i < loop.length; i++) {
+      const a = loop[i], b = loop[(i + 1) % loop.length];
+      if (!fillEdges.has(a < b ? `${a}:${b}` : `${b}:${a}`)) boundaryEdgesUnfilled++;
+    }
+  }
+
+  const corridorMesh: Mesh3 = { positions, indices: new Uint32Array(r.paved.triangles.flat()) };
+  const q = triangleQuality3D(corridorMesh);
+
+  return {
+    featureLevel: 0,
+    boundaryEdges: audit.boundaryEdges,
+    ringVerts: r.merged.ringVertexIds.size,
+    nonManifoldEdges: audit.nonManifoldEdges,
+    tJunctions: audit.tJunctions,
+    orientMismatches: orient,
+    holeLoops: r.hole.loops.length,
+    fillTris: r.paved.triangles.length,
+    boundaryEdgesUnfilled,
+    aspectMax: q.aspectMax,
+    pctBelow10: q.pctMinAngleBelow10,
+    allChainsFollowed,
+  };
+}
+
+describe('real-feature mesher — JUNCTION + LOOP topology (Task 2)', () => {
+  const { sampler } = buildVoronoiSamplers();
+  const graph: FeatureGraph = detectFeatures(sampler, {
+    ...GLOBAL_OPTS,
+    reliefIndicator: makeReliefIndicator(sampler),
+  });
+  const junction = pickRealVoronoiJunction(graph);
+  const loop = pickRealVoronoiLoop(graph);
+  // eslint-disable-next-line no-console
+  console.log(
+    `[JUNCTION] node=${junction.nodeId} @(${junction.nodeUT.u.toFixed(3)},${junction.nodeUT.t.toFixed(3)}) ` +
+    `degree=${junction.degree} arms=${junction.arms.length} ` +
+    `armSpans=[${junction.arms.map((a) => polySpan(a).toFixed(3)).join(',')}]`,
+  );
+  // eslint-disable-next-line no-console
+  console.log(
+    `[LOOP] pts=${loop.polyline.length} span=${loop.span.toFixed(3)} ` +
+    `head=(${loop.polyline[0].u.toFixed(3)},${loop.polyline[0].t.toFixed(3)}) ` +
+    `tail=(${loop.polyline[loop.polyline.length - 1].u.toFixed(3)},${loop.polyline[loop.polyline.length - 1].t.toFixed(3)})`,
+  );
+
+  it('picks a real degree-≥3 junction (3 substantial arms) + a real closed cell loop', () => {
+    expect(junction.degree).toBeGreaterThanOrEqual(3);
+    expect(junction.arms.length).toBe(3);
+    for (const arm of junction.arms) {
+      expect(arm.length).toBeGreaterThanOrEqual(2);
+      expect(polySpan(arm)).toBeGreaterThan(0.02);
+    }
+    // All 3 arms share the junction node as their head (within snapping tolerance).
+    for (const arm of junction.arms) {
+      expect(chordUT(arm[0], junction.nodeUT)).toBeLessThan(0.05);
+    }
+    expect(loop.polyline.length).toBeGreaterThanOrEqual(8);
+    expect(loop.span).toBeGreaterThan(0.08);
+    // The loop is genuinely closed (first ≡ last).
+    const f = loop.polyline[0], l = loop.polyline[loop.polyline.length - 1];
+    expect(chordUT(f, l)).toBeLessThan(1e-3);
+  }, 600000);
+
+  /** The junction's 3 arms, all heads pinned to ONE shared junction node id. */
+  function junctionFeatures(): MultiFeatureSpec[] {
+    const JK = 'voronoi-junction';
+    return junction.arms.map((arm) => ({
+      polyline: arm,
+      closed: false,
+      start: { kind: 'junction', junctionKey: JK } as const, // head = junction node
+      end: { kind: 'snap-boundary' } as const,               // tail = hole boundary
+    }));
+  }
+
+  function runJunction(featureLevel: number): MultiMeasurement {
+    const r = realFeatureCorridorMulti(sampler, junctionFeatures(), { featureLevel });
+    const m = measureMulti(sampler, r);
+    m.featureLevel = featureLevel;
+    // The 3 chains must SHARE one junction-node id (the head of every chain).
+    const heads = new Set(r.paved.featureChains.map((c) => c[0]));
+    const sharedJunction = heads.size === 1;
+    // eslint-disable-next-line no-console
+    console.log(
+      `[JUNCTION FL${featureLevel}] bnd=${m.boundaryEdges} (rings=${m.ringVerts}) ` +
+      `nonMan=${m.nonManifoldEdges} tJunction=${m.tJunctions} orient=${m.orientMismatches} | ` +
+      `holeLoops=${m.holeLoops} fillTris=${m.fillTris} unfilled=${m.boundaryEdgesUnfilled} | ` +
+      `chains=${r.paved.featureChains.length} sharedJunctionId=${sharedJunction} ` +
+      `(heads={${[...heads].join(',')}}) allFollowed=${m.allChainsFollowed} | ` +
+      `aspectMax=${m.aspectMax.toFixed(2)} %<10°=${m.pctBelow10.toFixed(2)}`,
+    );
+    expect(sharedJunction).toBe(true);
+    return m;
+  }
+
+  function runLoop(featureLevel: number): MultiMeasurement {
+    const r = realFeatureCorridorMulti(sampler, [{ polyline: loop.polyline, closed: true }], { featureLevel });
+    const m = measureMulti(sampler, r);
+    m.featureLevel = featureLevel;
+    const chain = r.paved.featureChains[0];
+    const closed = chain.length > 1 && chain[0] === chain[chain.length - 1];
+    // eslint-disable-next-line no-console
+    console.log(
+      `[LOOP FL${featureLevel}] bnd=${m.boundaryEdges} (rings=${m.ringVerts}) ` +
+      `nonMan=${m.nonManifoldEdges} tJunction=${m.tJunctions} orient=${m.orientMismatches} | ` +
+      `holeLoops=${m.holeLoops} fillTris=${m.fillTris} unfilled=${m.boundaryEdgesUnfilled} | ` +
+      `loopChainLen=${chain.length} loopClosed=${closed} allFollowed=${m.allChainsFollowed} | ` +
+      `aspectMax=${m.aspectMax.toFixed(2)} %<10°=${m.pctBelow10.toFixed(2)}`,
+    );
+    expect(closed).toBe(true);
+    return m;
+  }
+
+  it('JUNCTION FL7: 3 edges welded at ONE shared node, corridor 0/0/0', () => {
+    const m = runJunction(7);
+    expect(m.holeLoops).toBeGreaterThanOrEqual(1);
+    expect(m.fillTris).toBeGreaterThan(0);
+    expect(m.boundaryEdges).toBe(m.ringVerts);
+    expect(m.nonManifoldEdges).toBe(0);
+    expect(m.orientMismatches).toBe(0);
+    expect(m.tJunctions).toBe(0);
+    expect(m.boundaryEdgesUnfilled).toBe(0);
+    expect(m.allChainsFollowed).toBe(true); // all 3 edges are continuous mesh edge-chains
+  }, 600000);
+
+  it('JUNCTION FL11: still welds 0/0/0 at the finer level', () => {
+    const m = runJunction(11);
+    expect(m.holeLoops).toBeGreaterThanOrEqual(1);
+    expect(m.fillTris).toBeGreaterThan(0);
+    expect(m.boundaryEdges).toBe(m.ringVerts);
+    expect(m.nonManifoldEdges).toBe(0);
+    expect(m.orientMismatches).toBe(0);
+    expect(m.tJunctions).toBe(0);
+    expect(m.boundaryEdgesUnfilled).toBe(0);
+    expect(m.allChainsFollowed).toBe(true);
+  }, 600000);
+
+  it('LOOP FL7: the closed cell loop welds 0/0/0 and closes as a continuous mesh edge-chain', () => {
+    const m = runLoop(7);
+    expect(m.holeLoops).toBeGreaterThanOrEqual(1);
+    expect(m.fillTris).toBeGreaterThan(0);
+    expect(m.boundaryEdges).toBe(m.ringVerts);
+    expect(m.nonManifoldEdges).toBe(0);
+    expect(m.orientMismatches).toBe(0);
+    expect(m.tJunctions).toBe(0);
+    expect(m.boundaryEdgesUnfilled).toBe(0);
+    expect(m.allChainsFollowed).toBe(true);
+  }, 600000);
+
+  it('LOOP FL11: still welds 0/0/0 at the finer level', () => {
+    const m = runLoop(11);
+    expect(m.holeLoops).toBeGreaterThanOrEqual(1);
+    expect(m.fillTris).toBeGreaterThan(0);
+    expect(m.boundaryEdges).toBe(m.ringVerts);
+    expect(m.nonManifoldEdges).toBe(0);
+    expect(m.orientMismatches).toBe(0);
+    expect(m.tJunctions).toBe(0);
+    expect(m.boundaryEdgesUnfilled).toBe(0);
+    expect(m.allChainsFollowed).toBe(true);
+  }, 600000);
+
+  it('NON-VACUOUS control: cracking an interior SHARED junction-corridor vertex ⇒ tJunctions > 0', () => {
+    const r = realFeatureCorridorMulti(sampler, junctionFeatures(), { featureLevel: 7 });
+    const positions = evalPositions(sampler, r.merged.vertexUT);
+    const mergedTris = r.merged.indices;
+    const cleanAudit = auditWatertight(
+      { positions, indices: new Uint32Array(mergedTris) },
+      { boundaryVertexIndices: r.merged.ringVertexIds },
+    );
+    expect(cleanAudit.tJunctions).toBe(0);
+
+    // Crack the SHARED junction node itself (an interior id all 3 chains reference).
+    const crackV = r.paved.featureChains[0][0];
+    expect(crackV).toBeGreaterThanOrEqual(r.existingVertexCount); // it's a NEW interior id
+    const nV = r.merged.vertexUT.length;
+    const newPositions = new Float32Array((nV + 1) * 3);
+    newPositions.set(positions);
+    newPositions[nV * 3] = positions[crackV * 3];
+    newPositions[nV * 3 + 1] = positions[crackV * 3 + 1];
+    newPositions[nV * 3 + 2] = positions[crackV * 3 + 2];
+    const crackedIndices = Uint32Array.from(mergedTris);
+    let cracked = false;
+    for (let k = 0; k + 2 < crackedIndices.length && !cracked; k += 3) {
+      for (let e = 0; e < 3; e++) {
+        if (crackedIndices[k + e] === crackV) { crackedIndices[k + e] = nV; cracked = true; break; }
+      }
+    }
+    expect(cracked).toBe(true);
+    const crackedAudit = auditWatertight(
+      { positions: newPositions, indices: crackedIndices },
+      { boundaryVertexIndices: r.merged.ringVertexIds },
+    );
+    // eslint-disable-next-line no-console
+    console.log(`[JUNCTION control] clean tJ=${cleanAudit.tJunctions}; cracked shared node v=${crackV} ⇒ tJ=${crackedAudit.tJunctions}`);
+    expect(crackedAudit.tJunctions).toBeGreaterThan(0);
   }, 600000);
 });

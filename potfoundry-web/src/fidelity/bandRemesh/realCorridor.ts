@@ -38,7 +38,14 @@ import {
 } from '../../renderers/webgpu/parametric/conforming/WatertightAssembly';
 import { railVertexKey, QSCALE } from './railKey';
 import { extractHoleBoundary, type HoleBoundary, type IndexedMesh } from './seamFill';
-import { corridorPave, type CorridorPaveResult, type UTPoint } from './corridorPave';
+import {
+  corridorPave,
+  corridorPaveMulti,
+  type CorridorPaveResult,
+  type CorridorPaveMultiResult,
+  type FeatureChainInput,
+  type UTPoint,
+} from './corridorPave';
 
 /** Periodic distance in u (the wall wraps at u=1). */
 function uDistPeriodic(a: number, b: number): number {
@@ -345,6 +352,143 @@ export function realFeatureCorridor(
     boundary: hole,
     vertexUT,
     featurePolyline: featureEdgePolyline,
+    sampler,
+  });
+
+  // ── 5. Merge: complement outer wall ++ corridor fill (one id-space). ───────────
+  const mergedVertexUT: Array<[number, number]> = vertexUT.slice();
+  for (let i = vertexUT.length; i < paved.vertexUT.length; i++) {
+    mergedVertexUT.push(paved.vertexUT[i]);
+  }
+  const mergedIndices: number[] = (outerWall.indices as number[]).slice();
+  for (const [a, b, c] of paved.triangles) mergedIndices.push(a, b, c);
+
+  return {
+    bandRegion,
+    hole,
+    paved,
+    merged: {
+      indices: mergedIndices,
+      vertexUT: mergedVertexUT,
+      ringVertexIds,
+    },
+    existingVertexCount: vertexUT.length,
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MULTI-FEATURE corridor (Task 2 — a real junction + a real loop in ONE corridor).
+//
+// `realFeatureCorridor` (above) drives ONE feature edge. Real topology needs MANY
+// features in ONE corridor: a JUNCTION (≥3 open edges meeting at a shared node) or a
+// closed LOOP (a Voronoi cell). `realFeatureCorridorMulti` changes exactly two things
+// vs the single path: (1) the band TUBE is the UNION of tubes around EVERY feature
+// polyline (a point is in-band if it is within `widthMm` of ANY feature); (2) it calls
+// {@link corridorPaveMulti} with all the chains (open junction edges + closed loops)
+// pinned at once. The assemble → intern → extract → merge spine is byte-identical.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** One real feature to pin in a multi-feature corridor. */
+export interface MultiFeatureSpec {
+  /** Dense (u,t) polyline (a detector sub-arc, or a closed cell loop). */
+  polyline: UTPoint[];
+  /** `true` ⇒ a closed loop (a Voronoi cell). */
+  closed?: boolean;
+  /** Anchor for the chain HEAD (open chains only; default snap-boundary). */
+  start?: FeatureChainInput['start'];
+  /** Anchor for the chain TAIL (open chains only; default snap-boundary). */
+  end?: FeatureChainInput['end'];
+}
+
+/** Result of {@link realFeatureCorridorMulti}. */
+export interface RealFeatureCorridorMultiResult {
+  bandRegion: BandRegion;
+  hole: HoleBoundary;
+  paved: CorridorPaveMultiResult;
+  merged: {
+    indices: number[];
+    vertexUT: Array<[number, number]>;
+    ringVertexIds: Set<number>;
+  };
+  existingVertexCount: number;
+}
+
+/**
+ * Run the dyadic-edge-seam corridor pipeline with MULTIPLE real features pinned in
+ * ONE corridor (a junction and/or a closed loop). The corridor band is the union of
+ * mm-width tubes around every feature polyline.
+ *
+ * @param sampler  The outer-wall surface sampler (a REAL `styleSampler` pot).
+ * @param features  The real features to pin (open junction edges + closed cell loops).
+ * @param opts  Feature level, corridor width, and optional dim/sampler overrides.
+ */
+export function realFeatureCorridorMulti(
+  sampler: SurfaceSampler,
+  features: MultiFeatureSpec[],
+  opts: RealFeatureCorridorOptions,
+): RealFeatureCorridorMultiResult {
+  const dims = opts.dims ?? DEFAULT_DIMS;
+  const base = opts.baseOptions ?? DEFAULT_BASE;
+  const cellWidth = 1 / 2 ** opts.featureLevel;
+
+  const innerSampler: SurfaceSampler =
+    opts.innerSampler ?? {
+      position(u: number, t: number) {
+        const theta = u * 2 * Math.PI;
+        const r = 36;
+        const z = dims.tBottom + t * (dims.H - dims.tBottom);
+        return [r * Math.cos(theta), r * Math.sin(theta), z];
+      },
+    };
+
+  // ── mm scale factors (FL-independent band width). Use the radius at the first
+  // feature's midpoint as the local u→mm factor (all features sit in one region). ──
+  const ref = features[0].polyline;
+  const midPt = ref[Math.floor(ref.length / 2)];
+  const midPos = sampler.position(((midPt.u % 1) + 1) % 1, midPt.t);
+  const featRadiusMm = Math.hypot(midPos[0], midPos[1]);
+  const uToMm = 2 * Math.PI * featRadiusMm;
+  const tToMm = dims.H;
+
+  const widthMm =
+    opts.widthCells !== undefined
+      ? opts.widthCells * cellWidth * uToMm
+      : opts.widthMm ?? 3;
+
+  // ── 1. The corridor band: UNION of tubes around every feature polyline. ────────
+  const bandRegion: BandRegion = {
+    insideBand(u: number, t: number): boolean {
+      const uu = ((u % 1) + 1) % 1;
+      for (const f of features) {
+        if (distToPolylinePeriodic(uu, t, f.polyline, uToMm, tToMm) < widthMm) return true;
+      }
+      return false;
+    },
+  };
+
+  // ── 2. Assemble with the band excluded → the dyadic hole. ──────────────────────
+  const assembly = assembleWatertight(sampler, innerSampler, dims, {
+    ...base,
+    featureLevel: opts.featureLevel,
+    outerFeatureLines: opts.assemblyFeatureLines ?? defaultAssemblyFeature(),
+    bandRegions: [bandRegion],
+  });
+  const { outerWall, vertexUT, ringVertexIds } = internOuterWall(assembly);
+
+  // ── 3. Extract the count-1 dyadic hole boundary. ───────────────────────────────
+  const hole = extractHoleBoundary(outerWall, ringVertexIds);
+
+  // ── 4. Multi-feature corridor paving (all chains pinned in one region). ────────
+  const featureChains: FeatureChainInput[] = features.map((f) => ({
+    polyline: f.polyline,
+    closed: f.closed,
+    start: f.start,
+    end: f.end,
+  }));
+  const paved = corridorPaveMulti({
+    boundary: hole,
+    vertexUT,
+    features: featureChains,
     sampler,
   });
 

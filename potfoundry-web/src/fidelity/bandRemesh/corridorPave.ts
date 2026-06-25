@@ -593,6 +593,405 @@ export function corridorPave(input: CorridorPaveInput): CorridorPaveResult {
   };
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// MULTI-FEATURE corridor paving (Task 2 — a real junction + a real loop).
+//
+// `corridorPave` (above) pins ONE open feature polyline. Real topology needs MANY
+// features pinned in ONE corridor: a JUNCTION (≥3 open feature edges meeting at a
+// shared node) and a closed LOOP (a Voronoi cell). `corridorPaveMulti` generalizes
+// the SAME machinery — the only new work is:
+//   (a) accept an ARRAY of feature chains (open OR closed);
+//   (b) add EVERY chain's edges to the constraint set AND the flood-fill wall set;
+//   (c) snap each OPEN chain endpoint that crosses the hole boundary to the nearest
+//       EXISTING boundary id (the Q1 seam rule — no new boundary vertex), but pin a
+//       JUNCTION endpoint to ONE SHARED interior id so the meeting edges weld there;
+//   (d) a CLOSED loop is densified into a ring of NEW interior ids whose first≡last
+//       (the loop closes as a continuous mesh edge-chain).
+// The flood-fill, Steiner fill, interior recovery, and seam reconciliation are the
+// PROVEN single-feature path verbatim — more wall edges → more components, every
+// interior component kept.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** How a single feature chain endpoint is anchored. */
+export type ChainAnchor =
+  | { kind: 'snap-boundary' }
+  | { kind: 'junction'; junctionKey: string };
+
+/** One feature chain pinned into the corridor by {@link corridorPaveMulti}. */
+export interface FeatureChainInput {
+  /** Dense (u,t) polyline of this chain (a detector sub-arc, or a closed cell loop). */
+  polyline: UTPoint[];
+  /**
+   * `true` ⇒ a CLOSED loop (a Voronoi cell): densified into a ring of NEW interior
+   * ids with first≡last; `start`/`end` are ignored. `false`/omitted ⇒ an OPEN chain.
+   */
+  closed?: boolean;
+  /**
+   * Anchor for the chain HEAD (open chains only). `snap-boundary` pins it to the
+   * nearest EXISTING hole-boundary id; `junction` pins it to the SHARED junction-node
+   * id (minted once per `junctionKey`, reused by every chain that meets there).
+   * Default: `snap-boundary`.
+   */
+  start?: ChainAnchor;
+  /** Anchor for the chain TAIL (open chains only). Default: `snap-boundary`. */
+  end?: ChainAnchor;
+}
+
+/** Inputs for {@link corridorPaveMulti}. */
+export interface CorridorPaveMultiInput {
+  /** The Q1 hole boundary (loops of EXISTING vertex ids + complement dirs). */
+  boundary: HoleBoundary;
+  /** (u,t) per EXISTING merged vertex id. Read-only. */
+  vertexUT: Array<[number, number]>;
+  /** The feature chains (open junction edges + closed cell loops) to pin. */
+  features: FeatureChainInput[];
+  /** Surface sampler (reserved — cdt2d works in (u,t)). */
+  sampler: SurfaceSampler;
+  /** Target interior edge length (auto-calibrated to the median boundary edge if omitted). */
+  targetEdgeUT?: number;
+}
+
+/** Result of {@link corridorPaveMulti}. */
+export interface CorridorPaveMultiResult {
+  /** (u,t) for every vertex the fill indexes (existing ids first, then NEW interior). */
+  vertexUT: Array<[number, number]>;
+  /** Number of existing (Q1) vertices — ids `< existingCount` are seam-shared. */
+  existingCount: number;
+  /** Fill triangles (CCW in (u,t)). */
+  triangles: Array<[number, number, number]>;
+  /**
+   * One chain of vertex ids per input feature (parallel to `features`). For an open
+   * chain: [headId, ...interior, tailId]. For a closed loop: [...ring, firstId] so
+   * the last consecutive pair closes it (first≡last). Every consecutive pair MUST be
+   * a mesh edge (feature-followed proof).
+   */
+  featureChains: number[][];
+  /** The shared interior id minted for each junctionKey (the SHARED junction vertices). */
+  junctionIds: Map<string, number>;
+  inversionCount: number;
+  droppedCount: number;
+  unfillablePinches: Array<{ a: number; b: number; ut: [number, number] }>;
+}
+
+/**
+ * Resample an open arc of (u,t) at ~`targetEdgeUT` spacing, returning the STRICTLY
+ * interior samples (head and tail dropped — the caller supplies the anchored
+ * endpoints). Mirrors {@link densifyInteriorFeature}'s resampler without the
+ * boundary-crossing arc search (the multi path anchors endpoints explicitly).
+ */
+function resampleInterior(arc: UTPoint[], targetEdgeUT: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (let i = 0; i + 1 < arc.length; i++) {
+    const a = arc[i];
+    const b = arc[i + 1];
+    const segLen = dist2(a.u, a.t, b.u, b.t);
+    const nSub = Math.max(1, Math.round(segLen / targetEdgeUT));
+    for (let s = 0; s < nSub; s++) {
+      const f = s / nSub;
+      out.push([a.u + (b.u - a.u) * f, a.t + (b.t - a.t) * f]);
+    }
+  }
+  out.push([arc[arc.length - 1].u, arc[arc.length - 1].t]);
+  return out.slice(1, out.length - 1);
+}
+
+/**
+ * Pave the corridor (the Q1 hole) so the interior triangles FOLLOW MULTIPLE pinned
+ * features in ONE constrained-Delaunay region — a junction (≥3 open edges meeting at
+ * a SHARED node) and/or a closed loop (a cell). The boundary is pinned to the EXACT
+ * Q1 hole-boundary ids (the seam still welds 0/0/0 by the Q1 guarantee — the features
+ * are internal to the fill).
+ *
+ * Construction (the single-feature path, generalized to an array):
+ *  1. Mint one SHARED interior id per `junctionKey` (the junction node — a real
+ *     mesh vertex the meeting edges share).
+ *  2. For each OPEN chain: anchor each endpoint (snap-boundary → nearest existing id;
+ *     junction → the shared id), densify the interior arc → NEW interior ids → the
+ *     chain [head, ...interior, tail].
+ *  3. For each CLOSED loop: densify the closed polyline into a ring of NEW interior
+ *     ids; the chain is [...ring, ring[0]] (first≡last → the loop closes).
+ *  4. Scatter interior Steiner points (strictly inside, off EVERY feature + the
+ *     boundary segments) for quality.
+ *  5. cdt2d ONCE over the whole corridor (boundary loops + EVERY feature chain as
+ *     constraint edges), recover the interior by the constraint-respecting
+ *     TOPOLOGICAL FLOOD-FILL (every feature chain edge is a wall), keep every
+ *     interior component, normalize winding, reconcile to the complement.
+ */
+export function corridorPaveMulti(input: CorridorPaveMultiInput): CorridorPaveMultiResult {
+  const { boundary, vertexUT, features } = input;
+  const targetEdgeUT = input.targetEdgeUT ?? medianBoundaryEdge(boundary, vertexUT);
+
+  const loopsByArea = boundary.loops
+    .map((loop) => ({ loop, area: Math.abs(loopSignedArea2(loop, vertexUT)) }))
+    .sort((a, b) => b.area - a.area);
+  const outerLoop = loopsByArea[0].loop;
+
+  // Combined point table: existing ids first (identity), then NEW interior.
+  const existingCount = vertexUT.length;
+  const points: Array<[number, number]> = vertexUT.map((p) => [p[0], p[1]]);
+  const addInterior = (u: number, t: number): number => {
+    const id = points.length;
+    points.push([u, t]);
+    return id;
+  };
+
+  // ── 1. Mint one SHARED interior id per junctionKey (the junction node). ──────
+  // Each junction node is a single (u,t) shared by the meeting edges; its (u,t) is
+  // the average of the meeting chains' designated endpoints (they coincide in the
+  // detector graph, so the average IS that node — robust to sub-arc clipping jitter).
+  const junctionUT = new Map<string, { su: number; st: number; n: number }>();
+  for (const f of features) {
+    if (f.closed) continue;
+    const head = f.polyline[0];
+    const tail = f.polyline[f.polyline.length - 1];
+    for (const [anchor, p] of [
+      [f.start, head] as const,
+      [f.end, tail] as const,
+    ]) {
+      if (anchor?.kind !== 'junction') continue;
+      const acc = junctionUT.get(anchor.junctionKey) ?? { su: 0, st: 0, n: 0 };
+      acc.su += p.u;
+      acc.st += p.t;
+      acc.n += 1;
+      junctionUT.set(anchor.junctionKey, acc);
+    }
+  }
+  const junctionIds = new Map<string, number>();
+  for (const [key, acc] of junctionUT) {
+    junctionIds.set(key, addInterior(acc.su / acc.n, acc.st / acc.n));
+  }
+
+  // ── 2/3. Build each feature chain (open: anchored; closed: a ring). ──────────
+  const featureChains: number[][] = [];
+  const resolveAnchor = (anchor: ChainAnchor | undefined, p: UTPoint): number => {
+    if (anchor?.kind === 'junction') {
+      const id = junctionIds.get(anchor.junctionKey);
+      if (id === undefined) throw new Error(`corridorPaveMulti: junction ${anchor.junctionKey} not minted`);
+      return id;
+    }
+    return snapToBoundaryId(p.u, p.t, boundary, vertexUT);
+  };
+  for (const f of features) {
+    if (f.closed) {
+      // Closed loop → ring of NEW interior ids, first repeated at the end to close.
+      const arc = f.polyline.slice();
+      // Drop a duplicated trailing point if the detector already closed it (first≈last).
+      if (
+        arc.length > 1 &&
+        dist2(arc[0].u, arc[0].t, arc[arc.length - 1].u, arc[arc.length - 1].t) < 1e-9
+      ) {
+        arc.pop();
+      }
+      const ringIds: number[] = [];
+      let prev: [number, number] | undefined;
+      for (let i = 0; i < arc.length; i++) {
+        const a = arc[i];
+        const b = arc[(i + 1) % arc.length];
+        // Resample THIS closed segment (a→b) at ~targetEdgeUT, emitting a then the
+        // strictly-interior subsamples; the next iteration emits b.
+        const segLen = dist2(a.u, a.t, b.u, b.t);
+        const nSub = Math.max(1, Math.round(segLen / targetEdgeUT));
+        for (let s = 0; s < nSub; s++) {
+          const fr = s / nSub;
+          const pu = a.u + (b.u - a.u) * fr;
+          const pt = a.t + (b.t - a.t) * fr;
+          // Skip a sample coincident with the previous (degenerate sub-step).
+          if (prev && dist2(pu, pt, prev[0], prev[1]) < 1e-9) continue;
+          const id = addInterior(pu, pt);
+          ringIds.push(id);
+          prev = [pu, pt];
+        }
+      }
+      ringIds.push(ringIds[0]); // close the ring (first≡last)
+      featureChains.push(ringIds);
+    } else {
+      // Open chain → [headId, ...interior, tailId].
+      const headId = resolveAnchor(f.start, f.polyline[0]);
+      const tailId = resolveAnchor(f.end, f.polyline[f.polyline.length - 1]);
+      const interior = resampleInterior(f.polyline, targetEdgeUT);
+      const chain: number[] = [headId];
+      for (const [u, t] of interior) chain.push(addInterior(u, t));
+      chain.push(tailId);
+      featureChains.push(chain);
+    }
+  }
+
+  // ── 4. Interior Steiner grid for quality (strictly inside, off EVERY feature). ─
+  const minU = Math.min(...outerLoop.map((id) => vertexUT[id][0]));
+  const maxU = Math.max(...outerLoop.map((id) => vertexUT[id][0]));
+  const minT = Math.min(...outerLoop.map((id) => vertexUT[id][1]));
+  const maxT = Math.max(...outerLoop.map((id) => vertexUT[id][1]));
+  const reject = targetEdgeUT * 0.6;
+  const nearSegments = (
+    u: number,
+    t: number,
+    segs: ReadonlyArray<readonly [readonly [number, number], readonly [number, number]]>,
+  ): boolean => {
+    for (const [a, b] of segs) {
+      const du = b[0] - a[0];
+      const dt = b[1] - a[1];
+      const len2 = du * du + dt * dt;
+      let fp = 0;
+      if (len2 > 1e-24) fp = Math.max(0, Math.min(1, ((u - a[0]) * du + (t - a[1]) * dt) / len2));
+      const d = dist2(u, t, a[0] + du * fp, a[1] + dt * fp);
+      if (d < reject) return true;
+    }
+    return false;
+  };
+  // Feature segments from ALL chains.
+  const featureSegs: Array<[readonly [number, number], readonly [number, number]]> = [];
+  for (const chain of featureChains) {
+    for (let i = 0; i + 1 < chain.length; i++) featureSegs.push([points[chain[i]], points[chain[i + 1]]]);
+  }
+  const boundarySegs: Array<[readonly [number, number], readonly [number, number]]> = [];
+  for (const loop of boundary.loops) {
+    for (let i = 0; i < loop.length; i++) {
+      boundarySegs.push([vertexUT[loop[i]], vertexUT[loop[(i + 1) % loop.length]]]);
+    }
+  }
+  const innerLoops = loopsByArea.slice(1).map((l) => l.loop);
+  for (let u = minU + targetEdgeUT; u < maxU; u += targetEdgeUT) {
+    for (let t = minT + targetEdgeUT; t < maxT; t += targetEdgeUT) {
+      if (!pointInLoop(u, t, outerLoop, vertexUT)) continue;
+      let inInner = false;
+      for (const inner of innerLoops) {
+        if (pointInLoop(u, t, inner, vertexUT)) { inInner = true; break; }
+      }
+      if (inInner) continue;
+      if (nearSegments(u, t, featureSegs) || nearSegments(u, t, boundarySegs)) continue;
+      addInterior(u, t);
+    }
+  }
+
+  // ── 5. cdt2d ONCE, then the constraint-respecting TOPOLOGICAL FLOOD-FILL. ─────
+  const edgeKeys = new Set<string>();
+  const edges: Array<[number, number]> = [];
+  const wallEdges = new Set<string>();
+  const addEdge = (a: number, b: number): void => {
+    if (a === b) return;
+    const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+    wallEdges.add(key);
+    if (edgeKeys.has(key)) return;
+    edgeKeys.add(key);
+    edges.push([a, b]);
+  };
+  for (const loop of boundary.loops) {
+    for (let i = 0; i < loop.length; i++) addEdge(loop[i], loop[(i + 1) % loop.length]);
+  }
+  for (const chain of featureChains) {
+    for (let i = 0; i + 1 < chain.length; i++) addEdge(chain[i], chain[i + 1]);
+  }
+
+  const raw = cdt2d(points, edges, { exterior: true, interior: true }) as Array<[number, number, number]>;
+
+  const rawTris: Array<[number, number, number]> = [];
+  let droppedCount = 0;
+  for (const tri of raw) {
+    if (tri2(points[tri[0]], points[tri[1]], points[tri[2]]) === 0) {
+      droppedCount++;
+      continue;
+    }
+    rawTris.push(tri);
+  }
+
+  const edgeToTris = new Map<string, number[]>();
+  for (let ti = 0; ti < rawTris.length; ti++) {
+    const [a, b, c] = rawTris[ti];
+    for (const [i, j] of [[a, b], [b, c], [c, a]] as const) {
+      const key = i < j ? `${i}:${j}` : `${j}:${i}`;
+      const list = edgeToTris.get(key);
+      if (list) list.push(ti);
+      else edgeToTris.set(key, [ti]);
+    }
+  }
+
+  const componentOf = new Int32Array(rawTris.length).fill(-1);
+  const components: number[][] = [];
+  for (let seed = 0; seed < rawTris.length; seed++) {
+    if (componentOf[seed] !== -1) continue;
+    const compId = components.length;
+    const comp: number[] = [];
+    const stack = [seed];
+    componentOf[seed] = compId;
+    while (stack.length > 0) {
+      const ti = stack.pop() as number;
+      comp.push(ti);
+      const [a, b, c] = rawTris[ti];
+      for (const [i, j] of [[a, b], [b, c], [c, a]] as const) {
+        const key = i < j ? `${i}:${j}` : `${j}:${i}`;
+        if (wallEdges.has(key)) continue;
+        const neighbours = edgeToTris.get(key);
+        if (!neighbours) continue;
+        for (const nt of neighbours) {
+          if (componentOf[nt] !== -1) continue;
+          componentOf[nt] = compId;
+          stack.push(nt);
+        }
+      }
+    }
+    components.push(comp);
+  }
+
+  const triangles: Array<[number, number, number]> = [];
+  let inversionCount = 0;
+  for (const comp of components) {
+    let repTi = comp[0];
+    let repArea = -1;
+    for (const ti of comp) {
+      const [a, b, c] = rawTris[ti];
+      const ar = Math.abs(tri2(points[a], points[b], points[c]));
+      if (ar > repArea) { repArea = ar; repTi = ti; }
+    }
+    const [ra, rb, rc] = rawTris[repTi];
+    const cu = (points[ra][0] + points[rb][0] + points[rc][0]) / 3;
+    const ct = (points[ra][1] + points[rb][1] + points[rc][1]) / 3;
+    if (!pointInLoop(cu, ct, outerLoop, points)) continue;
+    let inInner = false;
+    for (const inner of innerLoops) {
+      if (pointInLoop(cu, ct, inner, points)) { inInner = true; break; }
+    }
+    if (inInner) continue;
+    for (const ti of comp) {
+      const [a, b, c] = rawTris[ti];
+      const area = tri2(points[a], points[b], points[c]);
+      if (area > 0) triangles.push([a, b, c]);
+      else { triangles.push([a, c, b]); inversionCount++; }
+    }
+  }
+
+  // ── Boundary-completeness audit. ──
+  const fillEdgeSet = new Set<string>();
+  for (const tri of triangles) {
+    for (let e = 0; e < 3; e++) {
+      const i = tri[e];
+      const j = tri[(e + 1) % 3];
+      fillEdgeSet.add(i < j ? `${i}:${j}` : `${j}:${i}`);
+    }
+  }
+  const unfillablePinches: Array<{ a: number; b: number; ut: [number, number] }> = [];
+  for (const loop of boundary.loops) {
+    for (let i = 0; i < loop.length; i++) {
+      const a = loop[i];
+      const b = loop[(i + 1) % loop.length];
+      const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+      if (!fillEdgeSet.has(key)) unfillablePinches.push({ a, b, ut: points[a] });
+    }
+  }
+
+  const flipped = reconcileToComplement(triangles, boundary);
+
+  return {
+    vertexUT: points,
+    existingCount,
+    triangles: flipped,
+    featureChains,
+    junctionIds,
+    inversionCount,
+    droppedCount,
+    unfillablePinches,
+  };
+}
+
 /** Canonical undirected edge key (i<j). */
 function edgeKeyOf(i: number, j: number): string {
   return i < j ? `${i}:${j}` : `${j}:${i}`;
