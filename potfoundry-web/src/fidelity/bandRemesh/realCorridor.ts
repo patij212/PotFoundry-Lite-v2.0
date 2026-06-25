@@ -47,9 +47,21 @@ function uDistPeriodic(a: number, b: number): number {
   return d;
 }
 
-/** 2D distance in (u,t) using PERIODIC u (so a band tube wraps the seam correctly). */
-function dist2Periodic(au: number, at: number, bu: number, bt: number): number {
-  return Math.hypot(uDistPeriodic(au, bu), at - bt);
+/**
+ * 2D distance in (u,t) using PERIODIC u, with optional anisotropic mm scaling.
+ * When `uScale`/`tScale` are the u→mm / t→mm factors the result is a true MILLIMETRE
+ * distance (so an mm corridor half-width is FL-independent); with both = 1 it is the
+ * legacy isotropic (u,t)-unit distance. The default keeps the spike's behaviour.
+ */
+function dist2Periodic(
+  au: number,
+  at: number,
+  bu: number,
+  bt: number,
+  uScale = 1,
+  tScale = 1,
+): number {
+  return Math.hypot(uDistPeriodic(au, bu) * uScale, (at - bt) * tScale);
 }
 
 /** Unwrap `x`'s u so it is within ±0.5 of reference `ref` (the same u period). */
@@ -75,9 +87,15 @@ function unwrapU(x: number, ref: number): number {
  * for a feature at u≈0.34). Anchoring the whole segment+query to ONE frame removes
  * the fold: a segment never spans more than its true (≤0.5) u-extent.
  */
-function distToPolylinePeriodic(u: number, t: number, polyline: UTPoint[]): number {
+function distToPolylinePeriodic(
+  u: number,
+  t: number,
+  polyline: UTPoint[],
+  uScale = 1,
+  tScale = 1,
+): number {
   if (polyline.length === 1) {
-    return dist2Periodic(u, t, polyline[0].u, polyline[0].t);
+    return dist2Periodic(u, t, polyline[0].u, polyline[0].t, uScale, tScale);
   }
   let best = Infinity;
   for (let i = 0; i + 1 < polyline.length; i++) {
@@ -87,15 +105,19 @@ function distToPolylinePeriodic(u: number, t: number, polyline: UTPoint[]): numb
     const bu = unwrapU(polyline[i + 1].u, au);
     const bt = polyline[i + 1].t;
     const qu = unwrapU(u, au);
-    const du = bu - au;
-    const dt = bt - at;
+    // Project in MM space so a thin curved segment is not over/under-weighted in
+    // one axis; the closest-point parameter is computed against mm-scaled offsets.
+    const du = (bu - au) * uScale;
+    const dt = (bt - at) * tScale;
     const len2 = du * du + dt * dt;
     let f = 0;
-    if (len2 > 1e-24) f = Math.max(0, Math.min(1, ((qu - au) * du + (t - at) * dt) / len2));
-    const cu = au + du * f;
-    const ct = at + dt * f;
-    // qu and cu are in the SAME (A-anchored) frame → plain Euclidean is exact.
-    const d = Math.hypot(qu - cu, t - ct);
+    if (len2 > 1e-24) {
+      f = Math.max(0, Math.min(1, ((qu - au) * uScale * du + (t - at) * tScale * dt) / len2));
+    }
+    const cu = au + (bu - au) * f;
+    const ct = at + (bt - at) * f;
+    // qu and cu are in the SAME (A-anchored) frame → mm-scaled Euclidean is exact.
+    const d = Math.hypot((qu - cu) * uScale, (t - ct) * tScale);
     if (d < best) best = d;
   }
   return best;
@@ -110,9 +132,19 @@ export interface RealFeatureCorridorOptions {
    */
   featureLevel: number;
   /**
-   * Corridor half-width in dyadic cells (default 1.5, matching the spike's
-   * ~1.5-cell band). Wider ⇒ more interior to triangulate; narrower risks the
-   * staircase touching the feature.
+   * Corridor half-width in MILLIMETRES (default 3 mm). This is the LOAD-BEARING
+   * width lever: a fixed mm half-width makes the corridor MULTIPLE small dyadic
+   * cells wide at ANY `featureLevel` (a fixed CELL count, by contrast, shrinks to a
+   * sub-cell tube at high FL → no whole cell fits → no hole forms / corridorPave
+   * throws — the old FL11 failure). Multiple cells wide ⇒ the concave bays are wider
+   * than a Delaunay triangle ⇒ fillable. The band is an mm tube (anisotropic u/t mm
+   * scaling) around the feature polyline.
+   */
+  widthMm?: number;
+  /**
+   * DEPRECATED legacy half-width in dyadic cells. When set it OVERRIDES `widthMm`
+   * (back-compat for the cell-count band); prefer `widthMm`. A fixed cell count is
+   * FL-fragile (see `widthMm`) — kept only so existing callers/tests can opt in.
    */
   widthCells?: number;
   /** Pot dimensions (default H=120, tBottom=6, rDrain=0 — the spike's dims). */
@@ -259,9 +291,7 @@ export function realFeatureCorridor(
 ): RealFeatureCorridorResult {
   const dims = opts.dims ?? DEFAULT_DIMS;
   const base = opts.baseOptions ?? DEFAULT_BASE;
-  const widthCells = opts.widthCells ?? 1.5;
   const cellWidth = 1 / 2 ** opts.featureLevel;
-  const bandHalf = widthCells * cellWidth;
 
   // The inner wall: a smooth constant-offset cylinder (the spike's innerSampler).
   const innerSampler: SurfaceSampler =
@@ -274,11 +304,27 @@ export function realFeatureCorridor(
       },
     };
 
+  // ── mm scale factors for the band tube. u→mm is the local circumference at the
+  // feature (2·π·radius from the REAL sampler at the feature midpoint); t→mm is the
+  // pot height. So `widthMm` is a true millimetre half-width, FL-independent. ──
+  const midPt = featureEdgePolyline[Math.floor(featureEdgePolyline.length / 2)];
+  const midPos = sampler.position(((midPt.u % 1) + 1) % 1, midPt.t);
+  const featRadiusMm = Math.hypot(midPos[0], midPos[1]);
+  const uToMm = 2 * Math.PI * featRadiusMm;
+  const tToMm = dims.H;
+
   // ── 1. The corridor band: a TUBE around the real feature polyline (periodic u). ─
+  // Width is a fixed MM half-width by default (FL-independent → multiple cells wide
+  // → fillable bays). A legacy cell-count override is honoured for back-compat: it
+  // is converted to mm via the u→mm scale so the band predicate stays mm-anisotropic.
+  const widthMm =
+    opts.widthCells !== undefined
+      ? opts.widthCells * cellWidth * uToMm
+      : opts.widthMm ?? 3;
   const bandRegion: BandRegion = {
     insideBand(u: number, t: number): boolean {
       const uu = ((u % 1) + 1) % 1;
-      return distToPolylinePeriodic(uu, t, featureEdgePolyline) < bandHalf;
+      return distToPolylinePeriodic(uu, t, featureEdgePolyline, uToMm, tToMm) < widthMm;
     },
   };
 

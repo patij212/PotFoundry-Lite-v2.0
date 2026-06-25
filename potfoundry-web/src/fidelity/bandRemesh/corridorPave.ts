@@ -23,9 +23,17 @@
  *
  * The kernel is `cdt2d` (constrained Delaunay) — the SAME library
  * {@link module:conforming/ConstrainedCellTriangulator} uses — run ONCE on the
- * whole corridor (not per-cell). New interior vertices (densified feature points
- * + interior Steiner points for quality) are fine: they are strictly INTERIOR to
- * the corridor, never on the seam.
+ * whole corridor (not per-cell). The corridor interior is recovered by a
+ * CONSTRAINT-RESPECTING TOPOLOGICAL FLOOD-FILL of the FULL triangulation: the
+ * triangle adjacency is flooded across SHARED EDGES, never crossing a constraint
+ * (boundary-loop OR feature) edge, partitioning the triangulation into components
+ * each wholly on one side of every constraint; each component is then classified
+ * interior/exterior by a robust ray test on its largest-area triangle (NOT cdt2d's
+ * `{exterior:false}` flood-fill, which carves the concave bays of a self-proximate
+ * real-wall staircase out of the fill; NOT a per-triangle centroid test, which
+ * flips wrongly in the self-proximate pinch regions). New interior vertices
+ * (densified feature points + interior Steiner points for quality) are fine: they
+ * are strictly INTERIOR to the corridor, never on the seam.
  *
  * Pure CPU (analytic / CPU `styleSampler`), no GPU/DOM.
  *
@@ -92,6 +100,14 @@ export interface CorridorPaveResult {
   inversionCount: number;
   /** (u,t)-degenerate triangles dropped by the winding normalizer. */
   droppedCount: number;
+  /**
+   * Boundary edges the flood-fill could NOT cover with an inside triangle — a
+   * genuinely degenerate self-touch (a constraint edge with NO triangle on its
+   * interior side). Empty ⇒ every boundary edge welds count-2. A non-empty list is
+   * a precise, documented finding: each entry's (u,t) is where the corridor
+   * FOOTPRINT must be simplified.
+   */
+  unfillablePinches: Array<{ a: number; b: number; ut: [number, number] }>;
 }
 
 /** Twice the signed area of triangle (a,b,c) in (u,t). Positive ⇒ CCW. */
@@ -257,9 +273,22 @@ function densifyInteriorFeature(
  *     chain is [snappedStart, ...interiorFeature, snappedEnd] (all by id).
  *  3. Scatter interior Steiner points on a (u,t) grid, keeping only those
  *     strictly inside the hole and away from the feature/boundary, for quality.
- *  4. Run cdt2d ONCE: boundary loops as closed constraint edges (keeps every
- *     corner + 2:1 mid-edge), the feature chain as constraint edges, `{exterior:
- *     false}` to keep the corridor interior. Normalize winding to CCW.
+ *  4. Run cdt2d ONCE over the WHOLE corridor (boundary loops + feature chain as
+ *     constraint edges) as a FULL constrained Delaunay (NO `{exterior:false}`
+ *     flood-fill), then recover the interior by a CONSTRAINT-RESPECTING TOPOLOGICAL
+ *     FLOOD-FILL: flood the triangle adjacency across SHARED edges, never crossing a
+ *     constraint (boundary OR feature) edge → components each wholly on one side of
+ *     every constraint; classify each component interior/exterior by a robust ray
+ *     test on its largest-area triangle (centroid farthest from any boundary →
+ *     unambiguous even where the corridor SELF-TOUCHES). Keep every triangle of every
+ *     interior component. This fills the TRUE interior INCLUDING concave bays AND the
+ *     self-proximate pinch regions a per-triangle centroid test mis-classifies — the
+ *     cure for the deeply self-proximate real-wall staircase. Normalize winding to CCW.
+ *  5. Boundary-completeness audit: the flood-fill covers every boundary edge by
+ *     construction (each separates an interior component from an exterior one); any
+ *     residual degenerate self-touch (a constraint edge with no interior-side
+ *     triangle) is recorded in `unfillablePinches` (documented, never a silent
+ *     T-junction).
  *
  * The returned `triangles` index a vertex table whose ids `< existingCount` are
  * the UNCHANGED Q1 ids (seam-shared); appended ids are interior-only.
@@ -309,17 +338,27 @@ export function corridorPave(input: CorridorPaveInput): CorridorPaveResult {
 
   // ── 3. Interior Steiner grid for quality (strictly inside, off the feature). ─
   // Grid spacing ~targetEdgeUT; reject points within ~0.6·targetEdgeUT of the
-  // feature chain or a boundary vertex (so cdt2d does not produce slivers there).
+  // feature chain or a boundary EDGE. The boundary check is segment-distance, NOT
+  // vertex-distance: a self-proximate dyadic staircase has LONG coarse boundary
+  // edges whose midpoints are far from any boundary vertex, so a vertex-only reject
+  // would leave a Steiner point sitting ON a coarse boundary edge → cdt2d SPLITS
+  // that constraint edge (a point in its relative interior) → the coarse edge has no
+  // triangle and welds count-1 against the complement's coarse edge (a T-junction).
+  // Rejecting near the boundary SEGMENT keeps every boundary edge an unsplit
+  // constraint → it bounds exactly one interior triangle → count-2 weld.
   const minU = Math.min(...outerLoop.map((id) => vertexUT[id][0]));
   const maxU = Math.max(...outerLoop.map((id) => vertexUT[id][0]));
   const minT = Math.min(...outerLoop.map((id) => vertexUT[id][1]));
   const maxT = Math.max(...outerLoop.map((id) => vertexUT[id][1]));
   const featurePts = featureChainIds.map((id) => points[id]);
   const reject = targetEdgeUT * 0.6;
-  const nearFeature = (u: number, t: number): boolean => {
-    for (let i = 0; i + 1 < featurePts.length; i++) {
-      const a = featurePts[i];
-      const b = featurePts[i + 1];
+  /** Distance from (u,t) to a polyline-segment list; true if within `reject`. */
+  const nearSegments = (
+    u: number,
+    t: number,
+    segs: ReadonlyArray<readonly [readonly [number, number], readonly [number, number]]>,
+  ): boolean => {
+    for (const [a, b] of segs) {
       const du = b[0] - a[0];
       const dt = b[1] - a[1];
       const len2 = du * du + dt * dt;
@@ -330,14 +369,16 @@ export function corridorPave(input: CorridorPaveInput): CorridorPaveResult {
     }
     return false;
   };
-  const nearBoundary = (u: number, t: number): boolean => {
-    for (const loop of boundary.loops) {
-      for (const id of loop) {
-        if (dist2(u, t, vertexUT[id][0], vertexUT[id][1]) < reject) return true;
-      }
+  const featureSegs: Array<[readonly [number, number], readonly [number, number]]> = [];
+  for (let i = 0; i + 1 < featurePts.length; i++) featureSegs.push([featurePts[i], featurePts[i + 1]]);
+  const boundarySegs: Array<[readonly [number, number], readonly [number, number]]> = [];
+  for (const loop of boundary.loops) {
+    for (let i = 0; i < loop.length; i++) {
+      boundarySegs.push([vertexUT[loop[i]], vertexUT[loop[(i + 1) % loop.length]]]);
     }
-    return false;
-  };
+  }
+  const nearFeature = (u: number, t: number): boolean => nearSegments(u, t, featureSegs);
+  const nearBoundary = (u: number, t: number): boolean => nearSegments(u, t, boundarySegs);
   for (let u = minU + targetEdgeUT; u < maxU; u += targetEdgeUT) {
     for (let t = minT + targetEdgeUT; t < maxT; t += targetEdgeUT) {
       if (!pointInLoop(u, t, outerLoop, vertexUT)) continue;
@@ -355,12 +396,39 @@ export function corridorPave(input: CorridorPaveInput): CorridorPaveResult {
     }
   }
 
-  // ── 4. cdt2d ONCE over the whole corridor. ─────────────────────────────────
+  // ── 4. cdt2d ONCE over the whole corridor, then a CONSTRAINT-RESPECTING FLOOD-FILL. ─
+  // The seam fix proved the boundary IS a single simple closed loop. The historical
+  // failure was NOT the topology — it was cdt2d's `{exterior:false}` flood-fill,
+  // which CARVES the concave bays of a deeply self-proximate dyadic staircase OUT
+  // as "exterior" → ~44% of hole-boundary edges got no fill triangle → 197 tJ.
+  //
+  // We run the FULL constrained Delaunay (`{exterior:true,interior:true}` → every
+  // cell of the convex-hull triangulation, NO cdt2d flood-fill filter) and then
+  // recover the interior OURSELVES by a TOPOLOGICAL flood-fill. The earlier per-
+  // triangle CENTROID point-in-polygon test mis-classified triangles in the SELF-
+  // PROXIMATE pinch regions (a centroid's inside/outside verdict flips wrongly where
+  // the boundary nearly touches itself) → it dropped interior triangles → interior
+  // count-1 edges → T-junctions.
+  //
+  // The flood-fill is robust to self-proximity because it uses TOPOLOGY, not
+  // per-triangle geometry: build the triangle adjacency across SHARED EDGES; an edge
+  // is a "wall" iff it is a boundary-loop edge OR a feature constraint edge (exactly
+  // the constraint edges). Flood (BFS) the triangle graph crossing only NON-wall
+  // edges → maximal regions, each lying WHOLLY on one side of every constraint edge.
+  // Classify each FLOOD COMPONENT (not each triangle) interior/exterior by a robust
+  // ray test on a REPRESENTATIVE (the largest-area triangle, whose centroid is
+  // farthest from any boundary → its even-odd verdict is unambiguous even when the
+  // corridor self-touches). Keep every triangle of every interior component. By
+  // construction every boundary edge then bounds exactly one inside triangle (its
+  // exterior neighbour is dropped) → count-1 on the hole side → count-2 weld, and the
+  // feature (a wall) is a continuous mesh edge-chain on BOTH of its incident sides.
   const edgeKeys = new Set<string>();
   const edges: Array<[number, number]> = [];
+  const wallEdges = new Set<string>();
   const addEdge = (a: number, b: number): void => {
     if (a === b) return;
     const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+    wallEdges.add(key); // every constraint edge is a flood-fill wall
     if (edgeKeys.has(key)) return;
     edgeKeys.add(key);
     edges.push([a, b]);
@@ -374,35 +442,137 @@ export function corridorPave(input: CorridorPaveInput): CorridorPaveResult {
     addEdge(featureChainIds[i], featureChainIds[i + 1]);
   }
 
-  const raw = cdt2d(points, edges, { exterior: false }) as Array<[number, number, number]>;
+  // FULL triangulation (no `{exterior:false}` flood-fill). With interior===exterior
+  // and Delaunay on, cdt2d returns every cell of the constrained Delaunay over the
+  // convex hull of all points — we classify them ourselves below.
+  const raw = cdt2d(points, edges, {
+    exterior: true,
+    interior: true,
+  }) as Array<[number, number, number]>;
 
-  // Normalize winding to CCW in (u,t); count fold-overs and (u,t)-degenerate drops.
+  // Drop (u,t)-degenerate triangles up front (they carry no area and would corrupt
+  // the adjacency); keep the survivors with their RAW winding for the flood graph.
+  const rawTris: Array<[number, number, number]> = [];
+  let droppedCount = 0;
+  for (const tri of raw) {
+    if (tri2(points[tri[0]], points[tri[1]], points[tri[2]]) === 0) {
+      droppedCount++;
+      continue;
+    }
+    rawTris.push(tri);
+  }
+
+  // Triangle adjacency across SHARED (undirected) edges.
+  const edgeToTris = new Map<string, number[]>();
+  for (let ti = 0; ti < rawTris.length; ti++) {
+    const [a, b, c] = rawTris[ti];
+    for (const [i, j] of [[a, b], [b, c], [c, a]] as const) {
+      const key = i < j ? `${i}:${j}` : `${j}:${i}`;
+      const list = edgeToTris.get(key);
+      if (list) list.push(ti);
+      else edgeToTris.set(key, [ti]);
+    }
+  }
+
+  // Flood-fill into components, crossing only NON-wall shared edges. Each component
+  // is a maximal triangle region not separated by any constraint edge.
+  const innerLoops = loopsByArea.slice(1).map((l) => l.loop);
+  const componentOf = new Int32Array(rawTris.length).fill(-1);
+  const components: number[][] = [];
+  for (let seed = 0; seed < rawTris.length; seed++) {
+    if (componentOf[seed] !== -1) continue;
+    const compId = components.length;
+    const comp: number[] = [];
+    const stack = [seed];
+    componentOf[seed] = compId;
+    while (stack.length > 0) {
+      const ti = stack.pop() as number;
+      comp.push(ti);
+      const [a, b, c] = rawTris[ti];
+      for (const [i, j] of [[a, b], [b, c], [c, a]] as const) {
+        const key = i < j ? `${i}:${j}` : `${j}:${i}`;
+        if (wallEdges.has(key)) continue; // never cross a constraint edge
+        const neighbours = edgeToTris.get(key);
+        if (!neighbours) continue;
+        for (const nt of neighbours) {
+          if (componentOf[nt] !== -1) continue;
+          componentOf[nt] = compId;
+          stack.push(nt);
+        }
+      }
+    }
+    components.push(comp);
+  }
+
+  // Classify each component interior/exterior by a robust ray test on its
+  // LARGEST-area triangle (centroid farthest from any boundary → unambiguous even
+  // where the corridor self-touches). Keep every triangle of every interior
+  // component; normalize each survivor to CCW in (u,t) (counting fold-overs).
   const triangles: Array<[number, number, number]> = [];
   let inversionCount = 0;
-  let droppedCount = 0;
-  for (const [a, b, c] of raw) {
-    const area = tri2(points[a], points[b], points[c]);
-    if (area > 0) triangles.push([a, b, c]);
-    else if (area < 0) {
-      triangles.push([a, c, b]);
-      inversionCount++;
-    } else droppedCount++;
+  for (const comp of components) {
+    // Representative = max-|area| triangle of the component (its centroid is farthest
+    // from any boundary → the even-odd verdict is unambiguous even where the corridor
+    // self-touches; a per-triangle test could flip in a pinch).
+    let repTi = comp[0];
+    let repArea = -1;
+    for (const ti of comp) {
+      const [a, b, c] = rawTris[ti];
+      const ar = Math.abs(tri2(points[a], points[b], points[c]));
+      if (ar > repArea) {
+        repArea = ar;
+        repTi = ti;
+      }
+    }
+    const [ra, rb, rc] = rawTris[repTi];
+    const cu = (points[ra][0] + points[rb][0] + points[rc][0]) / 3;
+    const ct = (points[ra][1] + points[rb][1] + points[rc][1]) / 3;
+    if (!pointInLoop(cu, ct, outerLoop, points)) continue; // exterior component
+    let inInner = false;
+    for (const inner of innerLoops) {
+      if (pointInLoop(cu, ct, inner, points)) {
+        inInner = true;
+        break;
+      }
+    }
+    if (inInner) continue; // inside an inner hole — not corridor interior
+    for (const ti of comp) {
+      const [a, b, c] = rawTris[ti];
+      const area = tri2(points[a], points[b], points[c]);
+      if (area > 0) triangles.push([a, b, c]);
+      else {
+        triangles.push([a, c, b]);
+        inversionCount++;
+      }
+    }
   }
 
-  // Drop any triangle whose CENTROID is inside an inner hole loop (cdt2d with
-  // {exterior:false} keeps faces between nested loops; for a simply-connected
-  // corridor there are none, but guard for the multiply-connected case).
-  let filtered = triangles;
-  if (loopsByArea.length > 1) {
-    filtered = triangles.filter(([a, b, c]) => {
-      const cu = (points[a][0] + points[b][0] + points[c][0]) / 3;
-      const ct = (points[a][1] + points[b][1] + points[c][1]) / 3;
-      for (let li = 1; li < loopsByArea.length; li++) {
-        if (pointInLoop(cu, ct, loopsByArea[li].loop, vertexUT)) return false;
-      }
-      return true;
-    });
+  // ── 4b. Boundary-completeness audit: every boundary edge MUST bound an inside
+  // triangle (count-1 on the hole side → it welds count-2 with the complement). The
+  // flood-fill guarantees this by construction (each boundary edge separates an
+  // interior component from an exterior one → the interior triangle is kept). Any
+  // residual uncovered edge is a genuinely degenerate self-touch (a constraint edge
+  // with NO triangle on the interior side); record it as a documented unfillable
+  // pinch — never a silent T-junction. ──
+  const fillEdgeSet = new Set<string>();
+  for (const tri of triangles) {
+    for (let e = 0; e < 3; e++) {
+      const i = tri[e];
+      const j = tri[(e + 1) % 3];
+      fillEdgeSet.add(i < j ? `${i}:${j}` : `${j}:${i}`);
+    }
   }
+  const unfillablePinches: Array<{ a: number; b: number; ut: [number, number] }> = [];
+  for (const loop of boundary.loops) {
+    for (let i = 0; i < loop.length; i++) {
+      const a = loop[i];
+      const b = loop[(i + 1) % loop.length];
+      const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+      if (!fillEdgeSet.has(key)) unfillablePinches.push({ a, b, ut: points[a] });
+    }
+  }
+
+  const filtered = triangles;
 
   // ── 5. Reconcile orientation to the complement (weld count-2). ─────────────
   // cdt2d gives CCW-in-(u,t) triangles, but the complement traverses each
@@ -419,6 +589,7 @@ export function corridorPave(input: CorridorPaveInput): CorridorPaveResult {
     featureChainIds,
     inversionCount,
     droppedCount,
+    unfillablePinches,
   };
 }
 
