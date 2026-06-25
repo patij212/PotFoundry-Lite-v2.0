@@ -43,6 +43,7 @@
 import cdt2d from 'cdt2d';
 import type { SurfaceSampler } from '../../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { HoleBoundary } from './seamFill';
+import { planarizeChains } from './planarizeChains';
 
 /** A point in (u,t) parameter space. */
 export interface UTPoint {
@@ -855,6 +856,22 @@ export function corridorPaveMulti(input: CorridorPaveMultiInput): CorridorPaveMu
       chain.push(tailId);
       featureChains.push(chain);
     }
+  }
+
+  // ── 3b. Planarize feature-vs-feature crossings into SHARED vertices. ──────────
+  // Where two pinned chains CROSS, the raw constraint set is a non-planar PSLG: cdt2d
+  // cannot honour both edges (it drops one, and at production density crashes outright —
+  // the measured 'upperIds' mergeHulls bug). Splitting each crossing into ONE shared
+  // interior vertex makes the feature set planar, so cdt2d keeps every feature segment as
+  // a mesh edge. WELD-SAFE: only the feature CHAINS are planarized — never a boundary
+  // edge — so no boundary-interior vertex is minted (the T-junction failure mode). A no-op
+  // (byte-identical) on non-crossing chains (e.g. a junction-shared sub-web).
+  if (featureChains.length > 1) {
+    const baseLen = points.length;
+    const planar = planarizeChains(points, featureChains);
+    for (let id = baseLen; id < planar.points.length; id++) points.push(planar.points[id]);
+    featureChains.length = 0;
+    for (const ch of planar.chains) featureChains.push(ch);
   }
 
   // ── 4. Interior Steiner grid for quality (strictly inside, off EVERY feature). ─
