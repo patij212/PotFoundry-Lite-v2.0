@@ -220,10 +220,14 @@ const DEFAULT_BASE: AssemblyWallOptions = {
  * `internAssembly`), lifted here so {@link realFeatureCorridor} owns the whole
  * detector→corridor pipeline. No production code is touched.
  */
-function internOuterWall(assembly: ReturnType<typeof assembleWatertight>): {
+export function internOuterWall(assembly: ReturnType<typeof assembleWatertight>): {
   outerWall: IndexedMesh;
   vertexUT: Array<[number, number]>;
   ringVertexIds: Set<number>;
+  /** asm-outer-vertex-index → merged id (-1 if the vertex was never referenced by an outer tri). */
+  compToMerged: Int32Array;
+  /** asm outer-wall OWNED vertex count (the outer wall is appended FIRST → ids [0, outerVertCount)). */
+  outerVertCount: number;
 } {
   const av = assembly.vertices; // packed (u,t,surfaceId)
   const ai = assembly.indices;
@@ -269,7 +273,7 @@ function internOuterWall(assembly: ReturnType<typeof assembleWatertight>): {
     if (tQ === 0 || tQ === QSCALE) ringVertexIds.add(i);
   }
 
-  return { outerWall: { indices: tris }, vertexUT, ringVertexIds };
+  return { outerWall: { indices: tris }, vertexUT, ringVertexIds, compToMerged, outerVertCount };
 }
 
 /**
