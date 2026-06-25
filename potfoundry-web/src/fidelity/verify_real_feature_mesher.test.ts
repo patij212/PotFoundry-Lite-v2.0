@@ -55,7 +55,7 @@ import type { DetectFeaturesOptions } from '../renderers/webgpu/parametric/confo
 import { assembleWatertight } from '../renderers/webgpu/parametric/conforming/WatertightAssembly';
 import type { FeatureGraph } from '../renderers/webgpu/parametric/conforming/featureGraph/types';
 import { auditWatertight, triangleQuality3D, lateralWobbleMm, type Mesh3 } from './bandRemesh/audit';
-import type { UTPoint } from './bandRemesh/corridorPave';
+import { corridorPaveMulti, type UTPoint } from './bandRemesh/corridorPave';
 import {
   realFeatureCorridor,
   realFeatureCorridorMulti,
@@ -1000,6 +1000,366 @@ describe('real-feature mesher — JUNCTION + LOOP topology (Task 2)', () => {
     );
     // eslint-disable-next-line no-console
     console.log(`[JUNCTION control] clean tJ=${cleanAudit.tJunctions}; cracked shared node v=${crackV} ⇒ tJ=${crackedAudit.tJunctions}`);
+    expect(crackedAudit.tJunctions).toBeGreaterThan(0);
+  }, 600000);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TASK 3 — THE DENSE NETWORK (the make-or-break for the tangled-lattice styles).
+//
+// Tasks 1+2 proved the corridor mechanism on ONE wall, then on a junction (3 edges)
+// + a closed loop. Task 3 pushes it to a DENSE CONNECTED REGION of the real Voronoi
+// web — a connected sub-graph of MANY edges meeting at MANY junctions, paved as ONE
+// cdt2d corridor with the WHOLE sub-FeatureGraph pinned. This is the scale/quality
+// make-or-break: does cdt2d stay tractable over the larger constraint network, and
+// does the fill quality hold at density?
+//
+// REGION SELECTION (geometric, stable across detector versions): BFS-grow a CONNECTED
+// component of open feature edges from a deep-interior, off-seam seed junction up to a
+// target edge count. Classify each selected edge's two endpoints by its degree WITHIN
+// the selected sub-graph:
+//   - selDeg ≥ 2 (a junction of the selected web) → a SHARED junction id (all chains
+//     meeting there weld to ONE mesh vertex);
+//   - selDeg = 1 (a dangling leaf of the selected sub-graph, deep inside the corridor)
+//     → a `free-interior` stub (the chain ends at an interior vertex; NOT snapped to the
+//     wall — snapping would mint a spurious deep-interior→wall constraint).
+// Any closed Voronoi cell loop fully inside the region's bbox is added (paved closed).
+//
+// THE GATE (FL7 & FL11, NOT weakened): seam 0/0/0 (boundaryEdges = the two rings ONLY,
+// nonManifold = 0, orient = 0, tJunctions = 0, boundaryUnfilled = 0); EVERY feature
+// chain a continuous mesh edge-chain (junctions shared, loops closed). SCALE + QUALITY
+// are MEASURED + REPORTED (the key data): fill tri count, cdt2d/pave runtime (ms),
+// aspectMax + %<10° over the corridor, boundary self-proximity (pinchPairs).
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** A connected dense region of the Voronoi web: selected open edges + their endpoint roles. */
+interface PickedRegion {
+  /** One MultiFeatureSpec per selected feature (open web edges + any closed cell loops). */
+  features: MultiFeatureSpec[];
+  edgeCount: number;
+  junctionCount: number;
+  loopCount: number;
+  uMin: number;
+  uMax: number;
+  tMin: number;
+  tMax: number;
+  seedNodeId: number;
+}
+
+/**
+ * Pick a CONNECTED dense region of the real Voronoi web (geometric, NOT a hardcoded
+ * index). BFS-grow a connected component of usable (open, off-seam, interior) feature
+ * edges from a deep-interior seed degree-≥3 junction up to `targetEdges`; anchor each
+ * selected edge's endpoints by its degree within the SELECTED sub-graph (shared
+ * junction vs free-interior stub); add any closed cell loop fully inside the region.
+ */
+function pickDenseVoronoiRegion(graph: FeatureGraph, targetEdges: number): PickedRegion {
+  const deg = new Array(graph.nodes.length).fill(0);
+  const incident: number[][] = graph.nodes.map(() => []);
+  for (let i = 0; i < graph.edges.length; i++) {
+    const e = graph.edges[i];
+    deg[e.endpoints[0]]++;
+    incident[e.endpoints[0]].push(i);
+    if (e.endpoints[1] !== e.endpoints[0]) {
+      deg[e.endpoints[1]]++;
+      incident[e.endpoints[1]].push(i);
+    }
+  }
+  const edgeSeam = (i: number): boolean => {
+    const pts = graph.edges[i].polyline;
+    for (let k = 1; k < pts.length; k++) if (Math.abs(pts[k].u - pts[k - 1].u) > 0.5) return true;
+    return false;
+  };
+  const edgeBox = (i: number): { uMin: number; uMax: number; tMin: number; tMax: number } => {
+    const pts = graph.edges[i].polyline;
+    let uMin = 1, uMax = 0, tMin = 1, tMax = 0;
+    for (const p of pts) {
+      if (p.u < uMin) uMin = p.u; if (p.u > uMax) uMax = p.u;
+      if (p.t < tMin) tMin = p.t; if (p.t > tMax) tMax = p.t;
+    }
+    return { uMin, uMax, tMin, tMax };
+  };
+  // Usable = open, off-seam, comfortably interior to the rings + off the u-seam band.
+  const usable = (i: number): boolean => {
+    if (graph.edges[i].kind !== 'open') return false;
+    if (edgeSeam(i)) return false;
+    const b = edgeBox(i);
+    return b.uMin > 0.2 && b.uMax < 0.8 && b.tMin > 0.12 && b.tMax < 0.88;
+  };
+
+  // Seed: a deep-interior degree-≥3 junction (so the region sits centred, away from rings).
+  let seedNode = -1;
+  for (let n = 0; n < graph.nodes.length; n++) {
+    const nd = graph.nodes[n];
+    if (deg[n] >= 3 && nd.u > 0.35 && nd.u < 0.65 && nd.t > 0.35 && nd.t < 0.65) {
+      // Require at least one usable incident edge so growth starts.
+      if (incident[n].some(usable)) { seedNode = n; break; }
+    }
+  }
+  if (seedNode < 0) throw new Error('pickDenseVoronoiRegion: no deep-interior degree-3 seed junction found');
+
+  // BFS-grow the connected component of usable edges.
+  const region = new Set<number>();
+  const frontier = [seedNode];
+  const seen = new Set<number>([seedNode]);
+  while (frontier.length > 0 && region.size < targetEdges) {
+    const n = frontier.shift() as number;
+    for (const ei of incident[n]) {
+      if (region.size >= targetEdges) break;
+      if (!usable(ei) || region.has(ei)) continue;
+      region.add(ei);
+      for (const ep of graph.edges[ei].endpoints) if (!seen.has(ep)) { seen.add(ep); frontier.push(ep); }
+    }
+  }
+  const regionEdges = [...region];
+
+  // selDeg[n] = how many SELECTED edges touch node n (defines junction vs stub).
+  const selDeg = new Map<number, number>();
+  for (const ei of regionEdges) {
+    for (const ep of graph.edges[ei].endpoints) selDeg.set(ep, (selDeg.get(ep) ?? 0) + 1);
+  }
+
+  // Region bbox (open edges).
+  let uMin = 1, uMax = 0, tMin = 1, tMax = 0;
+  for (const ei of regionEdges) {
+    const b = edgeBox(ei);
+    if (b.uMin < uMin) uMin = b.uMin; if (b.uMax > uMax) uMax = b.uMax;
+    if (b.tMin < tMin) tMin = b.tMin; if (b.tMax > tMax) tMax = b.tMax;
+  }
+
+  // Build one MultiFeatureSpec per selected open edge, anchoring each endpoint by selDeg.
+  const anchorFor = (nodeId: number): MultiFeatureSpec['start'] =>
+    (selDeg.get(nodeId) ?? 0) >= 2
+      ? { kind: 'junction', junctionKey: `vj-${nodeId}` }
+      : { kind: 'free-interior' };
+  const features: MultiFeatureSpec[] = [];
+  let junctionCount = 0;
+  for (const [n, d] of selDeg) if (d >= 2) junctionCount++;
+  for (const ei of regionEdges) {
+    const e = graph.edges[ei];
+    features.push({
+      polyline: e.polyline.map((p) => ({ u: p.u, t: p.t })),
+      closed: false,
+      start: anchorFor(e.endpoints[0]),
+      end: anchorFor(e.endpoints[1]),
+    });
+  }
+
+  // Add any closed cell loop whose bbox is fully inside the region bbox + off-seam.
+  let loopCount = 0;
+  for (let i = 0; i < graph.edges.length; i++) {
+    const e = graph.edges[i];
+    if (e.kind !== 'loop' || edgeSeam(i)) continue;
+    const b = edgeBox(i);
+    if (b.uMin >= uMin && b.uMax <= uMax && b.tMin >= tMin && b.tMax <= tMax) {
+      features.push({ polyline: e.polyline.map((p) => ({ u: p.u, t: p.t })), closed: true });
+      loopCount++;
+      if (b.uMin < uMin) uMin = b.uMin; if (b.uMax > uMax) uMax = b.uMax;
+    }
+  }
+
+  return {
+    features,
+    edgeCount: regionEdges.length,
+    junctionCount,
+    loopCount,
+    uMin, uMax, tMin, tMax,
+    seedNodeId: seedNode,
+  };
+}
+
+interface DenseMeasurement extends MultiMeasurement {
+  /** Wall-clock of the WHOLE pipeline (assemble + intern + extract + pave + merge). */
+  pipelineMs: number;
+  /** Wall-clock of JUST corridorPaveMulti/cdt2d on the extracted hole (the scale concern). */
+  cdtMs: number;
+  totalFeatures: number;
+  /** Non-adjacent hole-boundary vertex pairs within 0.6 dyadic cell (self-proximity). */
+  pinchPairs: number;
+}
+
+/** Run the dense-region corridor at one featureLevel and MEASURE scale + quality. */
+function measureDenseRegion(
+  sampler: SurfaceSampler,
+  region: PickedRegion,
+  featureLevel: number,
+): DenseMeasurement {
+  const t0 = performance.now();
+  const r = realFeatureCorridorMulti(sampler, region.features, { featureLevel });
+  const pipelineMs = performance.now() - t0;
+
+  // Isolate the cdt2d/pave cost (the dense-network SCALE concern the brief asks for):
+  // re-run JUST corridorPaveMulti on the SAME extracted hole + existing-id (u,t) prefix.
+  // (The full pipeline above is dominated by assembleWatertight — the conforming-mesher
+  // build that DEEPENS at high FL — which is orthogonal to the cdt2d-at-scale question.)
+  const existingUT = r.merged.vertexUT.slice(0, r.existingVertexCount);
+  const tPave = performance.now();
+  corridorPaveMulti({
+    boundary: r.hole,
+    vertexUT: existingUT,
+    features: region.features.map((f) => ({
+      polyline: f.polyline, closed: f.closed, start: f.start, end: f.end,
+    })),
+    sampler,
+  });
+  const cdtMs = performance.now() - tPave;
+
+  const base = measureMulti(sampler, r);
+  base.featureLevel = featureLevel;
+
+  // Self-proximity over the hole boundary (the dense-network pinch concern).
+  const cellW = 1 / 2 ** featureLevel;
+  const pinchTol = 0.6 * cellW;
+  let pinchPairs = 0;
+  for (const loop of r.hole.loops) {
+    const n = loop.length;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 2; j < n; j++) {
+        if (i === 0 && j === n - 1) continue;
+        const a = r.merged.vertexUT[loop[i]];
+        const b = r.merged.vertexUT[loop[j]];
+        let du = Math.abs(a[0] - b[0]) % 1;
+        if (du > 0.5) du = 1 - du;
+        if (Math.hypot(du, a[1] - b[1]) < pinchTol) pinchPairs++;
+      }
+    }
+  }
+
+  // Junction-share check: every junction key resolves to ONE shared id used by all
+  // chains meeting there (proves the dense web's nodes are real shared mesh vertices).
+  const m: DenseMeasurement = {
+    ...base,
+    pipelineMs,
+    cdtMs,
+    totalFeatures: region.features.length,
+    pinchPairs,
+  };
+  // eslint-disable-next-line no-console
+  console.log(
+    `[DENSE FL${featureLevel}] features=${m.totalFeatures} (edges=${region.edgeCount} ` +
+    `junctions=${region.junctionCount} loops=${region.loopCount}) | ` +
+    `bnd=${m.boundaryEdges} (rings=${m.ringVerts}) nonMan=${m.nonManifoldEdges} ` +
+    `tJunction=${m.tJunctions} orient=${m.orientMismatches} unfilled=${m.boundaryEdgesUnfilled} | ` +
+    `holeLoops=${m.holeLoops} fillTris=${m.fillTris} | ` +
+    `cdtMs=${m.cdtMs.toFixed(0)} pipelineMs=${m.pipelineMs.toFixed(0)} | ` +
+    `allFollowed=${m.allChainsFollowed} aspectMax=${m.aspectMax.toFixed(2)} ` +
+    `%<10°=${m.pctBelow10.toFixed(2)} pinchPairs=${m.pinchPairs}`,
+  );
+  return m;
+}
+
+describe('real-feature mesher — DENSE Voronoi network region (Task 3 — scale + quality)', () => {
+  const { sampler } = buildVoronoiSamplers();
+  const graph: FeatureGraph = detectFeatures(sampler, {
+    ...GLOBAL_OPTS,
+    reliefIndicator: makeReliefIndicator(sampler),
+  });
+  // Target ~12 connected web edges (a genuinely dense junction-rich region).
+  const region = pickDenseVoronoiRegion(graph, 12);
+  // eslint-disable-next-line no-console
+  console.log(
+    `[DENSE region] seed=${region.seedNodeId} features=${region.features.length} ` +
+    `(edges=${region.edgeCount} junctions=${region.junctionCount} loops=${region.loopCount}) ` +
+    `bbox u[${region.uMin.toFixed(3)},${region.uMax.toFixed(3)}] t[${region.tMin.toFixed(3)},${region.tMax.toFixed(3)}]`,
+  );
+
+  it('selects a CONNECTED dense region (many web edges + multiple junctions, interior off-seam)', () => {
+    expect(region.edgeCount).toBeGreaterThanOrEqual(8); // a genuinely dense web region
+    expect(region.junctionCount).toBeGreaterThanOrEqual(2);
+    expect(region.features.length).toBeGreaterThanOrEqual(region.edgeCount);
+    // Interior + off-seam (the corridor never touches the rings or the u-seam).
+    expect(region.tMin).toBeGreaterThan(0.1);
+    expect(region.tMax).toBeLessThan(0.9);
+    expect(region.uMin).toBeGreaterThan(0.2);
+    expect(region.uMax).toBeLessThan(0.8);
+  }, 600000);
+
+  it('FL7: the dense web region paves as ONE corridor, welds 0/0/0, every feature followed (scale+quality measured)', () => {
+    const m = measureDenseRegion(sampler, region, 7);
+
+    // ── The dyadic hole forms + fills. ──
+    expect(m.holeLoops).toBeGreaterThanOrEqual(1);
+    expect(m.fillTris).toBeGreaterThan(0);
+
+    // ── THE GATE (0/0/0 + boundaryUnfilled=0): the dense corridor welds watertight. ──
+    expect(m.boundaryEdges).toBe(m.ringVerts);
+    expect(m.nonManifoldEdges).toBe(0);
+    expect(m.orientMismatches).toBe(0);
+    expect(m.tJunctions).toBe(0);
+    expect(m.boundaryEdgesUnfilled).toBe(0);
+
+    // ── Every feature edge of the dense web is a continuous mesh edge-chain (junctions
+    // shared, loops closed) — the topology is followed. ──
+    expect(m.allChainsFollowed).toBe(true);
+
+    // ── SCALE + QUALITY are MEASURED + REPORTED (the make-or-break data); these bounds
+    // are loose sanity caps (cdt2d tractable; quality not pathological), NOT the gate.
+    // The gate is the cdt2d/pave cost (the dense-network scale concern), NOT the
+    // pipeline time (dominated by assembleWatertight — orthogonal). ──
+    expect(m.cdtMs).toBeLessThan(20000);       // cdt2d stays tractable over the network
+    expect(m.fillTris).toBeGreaterThan(100);   // a real dense fill
+    expect(m.pctBelow10).toBeLessThan(15);     // quality holds (user accepts pinch slivers)
+    expect(m.aspectMax).toBeLessThan(200);
+  }, 600000);
+
+  it('FL11: the dense web region still welds 0/0/0 at the finer feature level (scale+quality measured)', () => {
+    const m = measureDenseRegion(sampler, region, 11);
+    expect(m.holeLoops).toBeGreaterThanOrEqual(1);
+    expect(m.fillTris).toBeGreaterThan(0);
+    expect(m.boundaryEdges).toBe(m.ringVerts);
+    expect(m.nonManifoldEdges).toBe(0);
+    expect(m.orientMismatches).toBe(0);
+    expect(m.tJunctions).toBe(0);
+    expect(m.boundaryEdgesUnfilled).toBe(0);
+    expect(m.allChainsFollowed).toBe(true);
+    expect(m.cdtMs).toBeLessThan(20000);
+    expect(m.pctBelow10).toBeLessThan(15);
+    expect(m.aspectMax).toBeLessThan(200);
+  }, 600000);
+
+  it('NON-VACUOUS control: cracking a SHARED junction vertex of the dense web ⇒ tJunctions > 0', () => {
+    const r = realFeatureCorridorMulti(sampler, region.features, { featureLevel: 7 });
+    const positions = evalPositions(sampler, r.merged.vertexUT);
+    const mergedTris = r.merged.indices;
+    const cleanAudit = auditWatertight(
+      { positions, indices: new Uint32Array(mergedTris) },
+      { boundaryVertexIndices: r.merged.ringVertexIds },
+    );
+    expect(cleanAudit.tJunctions).toBe(0);
+
+    // Crack a SHARED junction id (an interior id ≥2 chains reference). Find a chain head
+    // that is shared by another chain (a real junction of the dense web).
+    const headCount = new Map<number, number>();
+    for (const chain of r.paved.featureChains) {
+      headCount.set(chain[0], (headCount.get(chain[0]) ?? 0) + 1);
+      headCount.set(chain[chain.length - 1], (headCount.get(chain[chain.length - 1]) ?? 0) + 1);
+    }
+    let crackV = -1;
+    for (const [id, c] of headCount) {
+      if (c >= 2 && id >= r.existingVertexCount) { crackV = id; break; }
+    }
+    expect(crackV).toBeGreaterThanOrEqual(0); // a genuine shared junction vertex exists
+
+    const nV = r.merged.vertexUT.length;
+    const newPositions = new Float32Array((nV + 1) * 3);
+    newPositions.set(positions);
+    newPositions[nV * 3] = positions[crackV * 3];
+    newPositions[nV * 3 + 1] = positions[crackV * 3 + 1];
+    newPositions[nV * 3 + 2] = positions[crackV * 3 + 2];
+    const crackedIndices = Uint32Array.from(mergedTris);
+    let cracked = false;
+    for (let k = 0; k + 2 < crackedIndices.length && !cracked; k += 3) {
+      for (let e = 0; e < 3; e++) {
+        if (crackedIndices[k + e] === crackV) { crackedIndices[k + e] = nV; cracked = true; break; }
+      }
+    }
+    expect(cracked).toBe(true);
+    const crackedAudit = auditWatertight(
+      { positions: newPositions, indices: crackedIndices },
+      { boundaryVertexIndices: r.merged.ringVertexIds },
+    );
+    // eslint-disable-next-line no-console
+    console.log(`[DENSE control] clean tJ=${cleanAudit.tJunctions}; cracked shared junction v=${crackV} ⇒ tJ=${crackedAudit.tJunctions}`);
     expect(crackedAudit.tJunctions).toBeGreaterThan(0);
   }, 600000);
 });

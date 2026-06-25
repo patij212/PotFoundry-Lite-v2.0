@@ -445,10 +445,29 @@ export function corridorPave(input: CorridorPaveInput): CorridorPaveResult {
   // FULL triangulation (no `{exterior:false}` flood-fill). With interior===exterior
   // and Delaunay on, cdt2d returns every cell of the constrained Delaunay over the
   // convex hull of all points — we classify them ourselves below.
-  const raw = cdt2d(points, edges, {
+  //
+  // SCALE FIX (Task 3): feed cdt2d a COMPACT array of ONLY the participating ids (the
+  // hole-boundary loop ids + the feature-chain ids + the new interior/Steiner ids),
+  // NOT the full `points` table (which holds every complement-wall vertex — ~10^5 at
+  // nRing=1024 → cdt2d would triangulate the whole wall to fill a small hole). The fill
+  // is identical (the bulk-wall points are never on the boundary, never a constraint,
+  // and are dropped by the flood-fill / point-in-loop classification regardless).
+  const participating = new Set<number>();
+  for (const loop of boundary.loops) for (const id of loop) participating.add(id);
+  for (const id of featureChainIds) participating.add(id);
+  for (let id = existingCount; id < points.length; id++) participating.add(id);
+  const globalOf: number[] = [...participating];
+  const localOf = new Map<number, number>();
+  for (let li = 0; li < globalOf.length; li++) localOf.set(globalOf[li], li);
+  const cdtPoints = globalOf.map((g) => points[g]);
+  const cdtEdges = edges.map(([a, b]) => [localOf.get(a) as number, localOf.get(b) as number] as [number, number]);
+  const rawLocal = cdt2d(cdtPoints, cdtEdges, {
     exterior: true,
     interior: true,
   }) as Array<[number, number, number]>;
+  const raw: Array<[number, number, number]> = rawLocal.map(
+    (t) => [globalOf[t[0]], globalOf[t[1]], globalOf[t[2]]] as [number, number, number],
+  );
 
   // Drop (u,t)-degenerate triangles up front (they carry no area and would corrupt
   // the adjacency); keep the survivors with their RAW winding for the flood graph.
@@ -612,10 +631,26 @@ export function corridorPave(input: CorridorPaveInput): CorridorPaveResult {
 // interior component kept.
 // ═════════════════════════════════════════════════════════════════════════════
 
-/** How a single feature chain endpoint is anchored. */
+/**
+ * How a single feature chain endpoint is anchored.
+ *
+ * - `snap-boundary` — pin to the nearest EXISTING hole-boundary id (no new boundary
+ *   vertex → the Q1 seam guarantee). Used where the chain CROSSES the corridor wall.
+ * - `junction` — pin to the SHARED junction-node id (minted once per `junctionKey`,
+ *   reused by every chain that meets there). Used at a degree-≥3 graph node.
+ * - `free-interior` — mint a NEW interior id AT the endpoint's own (u,t), pinned to
+ *   nothing else. Used for a DANGLING STUB of a selected sub-graph (a degree-1 leaf
+ *   of the picked region that lives deep INSIDE the corridor, not on its wall): the
+ *   chain simply ENDS at an interior vertex (a constraint edge that dead-ends inside
+ *   the fill — the flood-fill never crosses it but the components on its two sides are
+ *   one region, so it is a non-separating wall the cdt2d still honours as a mesh edge).
+ *   Snapping such a stub to the boundary instead would mint a spurious long constraint
+ *   from deep interior to the wall (Task 3 — the dense network has many interior leaves).
+ */
 export type ChainAnchor =
   | { kind: 'snap-boundary' }
-  | { kind: 'junction'; junctionKey: string };
+  | { kind: 'junction'; junctionKey: string }
+  | { kind: 'free-interior' };
 
 /** One feature chain pinned into the corridor by {@link corridorPaveMulti}. */
 export interface FeatureChainInput {
@@ -769,6 +804,12 @@ export function corridorPaveMulti(input: CorridorPaveMultiInput): CorridorPaveMu
       if (id === undefined) throw new Error(`corridorPaveMulti: junction ${anchor.junctionKey} not minted`);
       return id;
     }
+    if (anchor?.kind === 'free-interior') {
+      // A dangling stub of the selected sub-graph: end at a NEW interior vertex at its
+      // own (u,t) (no boundary snap, no junction share). The constraint edge dead-ends
+      // inside the fill — honoured as a mesh edge, never crossed by the flood-fill.
+      return addInterior(p.u, p.t);
+    }
     return snapToBoundaryId(p.u, p.t, boundary, vertexUT);
   };
   for (const f of features) {
@@ -882,7 +923,32 @@ export function corridorPaveMulti(input: CorridorPaveMultiInput): CorridorPaveMu
     for (let i = 0; i + 1 < chain.length; i++) addEdge(chain[i], chain[i + 1]);
   }
 
-  const raw = cdt2d(points, edges, { exterior: true, interior: true }) as Array<[number, number, number]>;
+  // SCALE FIX (Task 3): cdt2d triangulates the convex hull of EVERY point it is given.
+  // `points` holds ALL existing complement ids (the WHOLE outer wall — ~10^5 vertices at
+  // nRing=1024), but only the hole-boundary loop ids + the feature-chain ids + the new
+  // interior/Steiner ids actually PARTICIPATE in the corridor fill. Feeding cdt2d the full
+  // wall made it triangulate ~240k points to fill a small hole (MEASURED ~95s at FL7 / ~278s
+  // at FL11 — a dense-network NO-GO). We instead feed cdt2d a COMPACT point array of ONLY the
+  // participating ids (remapped to a local index space) and translate its triangles back to
+  // global ids. The fill is IDENTICAL: the discarded bulk-wall points were never on the hole
+  // boundary, never referenced by a constraint, and are dropped by the interior flood-fill /
+  // point-in-loop classification anyway — removing them only shrinks the convex hull and the
+  // O(N log N) point count, not the corridor interior.
+  const participating = new Set<number>();
+  for (const loop of boundary.loops) for (const id of loop) participating.add(id);
+  for (const chain of featureChains) for (const id of chain) participating.add(id);
+  for (let id = existingCount; id < points.length; id++) participating.add(id); // new interior + Steiner
+  const globalOf: number[] = [...participating];
+  const localOf = new Map<number, number>();
+  for (let li = 0; li < globalOf.length; li++) localOf.set(globalOf[li], li);
+  const cdtPoints = globalOf.map((g) => points[g]);
+  const cdtEdges = edges.map(([a, b]) => [localOf.get(a) as number, localOf.get(b) as number] as [number, number]);
+  const rawLocal = cdt2d(cdtPoints, cdtEdges, { exterior: true, interior: true }) as Array<[number, number, number]>;
+  // Translate cdt2d's local-index triangles back to the global id space the rest of the
+  // function (flood-fill, classification, weld reconciliation) operates in.
+  const raw: Array<[number, number, number]> = rawLocal.map(
+    (t) => [globalOf[t[0]], globalOf[t[1]], globalOf[t[2]]] as [number, number, number],
+  );
 
   const rawTris: Array<[number, number, number]> = [];
   let droppedCount = 0;
