@@ -46,8 +46,11 @@ This document tracks planned features, improvements, and technical debt for futu
 - [ ] Add performance metrics dashboard
 
 #### Export & Integration
-- [ ] Add OBJ export format
-- [ ] Add 3MF export format (with metadata)
+- [x] Add OBJ export format (`potfoundry.write_obj`; shared vertices + smooth
+      outward vertex normals for Rhino/Grasshopper). Still TODO: wire a download
+      button into the Streamlit UI (`app.py`).
+- [ ] Add 3MF export format (with metadata) — would also fix STL's missing unit
+      (mm) declaration that makes Rhino prompt for units on import.
 - [ ] Add STEP/IGES export (if feasible)
 - [ ] Slicer integration (PrusaSlicer, Cura)
 - [ ] Export with embedded settings/metadata
@@ -226,7 +229,12 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 
 ### High Priority
 - [ ] Investigate occasional cache invalidation issues
-- [ ] Fix edge cases in mesh watertightness validation
+- [x] Fix edge cases in mesh watertightness validation — meshes were watertight
+      but had globally-inverted / locally-inconsistent face winding (negative
+      signed volume), importing "inside-out" into Rhino/Grasshopper. Fixed at
+      source + O(M) `ensure_outward` guard. Locked by `tests/test_mesh_orientation.py`
+      and the position-welded grid in `tests/test_export_watertight.py`. See
+      ADR 0002.
 - [ ] Improve error handling for invalid parameter combinations
 
 ### Medium Priority
