@@ -21,8 +21,11 @@ from .core.geometry import (
     save_preview_png,
 )
 
-# Binary STL writer (recommended)
+# Binary STL writer (recommended for slicers)
 from .core.io.stl import write_stl_binary
+
+# Wavefront OBJ writer (recommended for CAD: Rhino / Grasshopper)
+from .core.io.obj import write_obj
 
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
@@ -37,9 +40,11 @@ __all__ = [
     'STYLES',
     'build_pot_mesh',
     'save_preview_png',
-    # STL export (binary is recommended)
+    # STL export (binary is recommended for slicers)
     'write_stl_binary',
     'write_ascii_stl',  # deprecated
+    # OBJ export (recommended for CAD: Rhino / Grasshopper)
+    'write_obj',
     # Mesh orientation / validation
     'signed_volume',
     'ensure_outward',
