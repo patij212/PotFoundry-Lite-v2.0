@@ -257,10 +257,15 @@ export function assembleWatertightWithFeatures(
   try {
     return mergeCorridorIntoAssembly(asm, features, outerSampler);
   } catch (err) {
-    // A degenerate hole (feature too thin to exclude a whole cell) is a no-op, not a crash.
+    // The paver failed (e.g. the measured cdt2d 'upperIds' crash on a dense crossing
+    // PSLG). `asm` was built WITH `bandRegions`, so its excluded feature cells are HOLES
+    // that are now UNFILLED — returning it would be non-watertight (boundary / T-junctions).
+    // Re-assemble WITHOUT `bandRegions`: the dyadic complement meshes those cells (the
+    // feature staircases there, but the mesh is watertight) → byte-identical to the
+    // no-feature path. The export is degraded-but-never-broken; the flag-OFF guarantee holds.
     // eslint-disable-next-line no-console
-    console.warn('[featureMesher] corridor graft skipped:', (err as Error).message);
-    return asm;
+    console.warn('[featureMesher] corridor graft failed; falling back to dyadic assembly:', (err as Error).message);
+    return assembleWatertight(outerSampler, innerSampler, dims, wallOpts);
   }
 }
 
