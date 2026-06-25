@@ -189,6 +189,10 @@ import { solveRidgesBatch, type BatchEntry as RidgeBatchEntry } from './parametr
 import { gpuNewtonRidge, type GpuRidgeSeed } from './parametric/GpuRidgeSolver';
 import { baseRadius } from '../../geometry/profile';
 import type { MeshData } from '../../geometry/types';
+import { assembleWatertightWithFeatures } from '../../fidelity/bandRemesh/assembleWithFeatures';
+import { makeReliefIndicator } from './parametric/conforming/featureGraph/groundTruth';
+import type { DetectFeaturesOptions } from './parametric/conforming/featureGraph/detectFeatures';
+import type { SurfaceSampler } from './parametric/conforming/SurfaceSampler';
 void solveRidgesBatch; void baseRadius; // legacy CPU path imports — kept for type re-export and reference
 type _LegacyRidgeBatchEntry = RidgeBatchEntry;
 void (null as unknown as _LegacyRidgeBatchEntry);
@@ -1681,6 +1685,26 @@ export function validationPassForExport(report: ValidationReport): boolean {
 }
 
 // ============================================================================
+// Feature mesher helpers
+// ============================================================================
+
+/**
+ * Production detect options for the feature-aligned corridor mesher.
+ * Uses makeReliefIndicator (pure CPU, already exported from groundTruth.ts)
+ * so no new module is created.
+ */
+function productionDetectOptions(sampler: SurfaceSampler): DetectFeaturesOptions {
+    return {
+        coarseRes: 40,
+        fineRes: 120,
+        minStrength: 1.0,
+        minAngleDeg: 28,
+        creaseContrast: { windowRadius: 5, factor: 0.6, absFloorDeg: 8 },
+        reliefIndicator: makeReliefIndicator(sampler),
+    };
+}
+
+// ============================================================================
 // GPU Compute Pipeline
 // ============================================================================
 
@@ -2036,6 +2060,17 @@ export class ParametricExportComputer {
             || Boolean((globalThis as unknown as { __pfByConstruction?: boolean }).__pfByConstruction);
         if (byConstructionAssembly) {
             console.warn('[ParametricExport] by-construction assembly ENABLED (periodic seam + shared rings + verifier tail)');
+        }
+
+        // Feature-aligned corridor mesher. Runs ONLY on top of the by-construction assembly
+        // path (byConstructionAssembly must be true). When enabled, assembleWatertight is
+        // swapped for assembleWatertightWithFeatures which grafts a corridor fill BEFORE the
+        // warp loop so corridor surfaceId-0 vertices warp with the outer wall.
+        const enableFeatureMesher =
+            Boolean((flags as { featureMesher?: boolean }).featureMesher) ||
+            Boolean((globalThis as unknown as { __pfFeatureMesher?: boolean }).__pfFeatureMesher);
+        if (enableFeatureMesher) {
+            console.warn('[ParametricExport] Feature mesher ENABLED (corridor pass active; requires byConstruction)');
         }
 
         // Resolve pipeline-stage config (UI overrides → hardcoded defaults)
@@ -2607,66 +2642,74 @@ export class ParametricExportComputer {
                 // sag-driven mesh is already far coarser on smooth styles, so a
                 // generous maxLevel is safe; the budget caps feature-dense styles.
                 // minUniformLevel forces full-height columns for the crease pin.
-                const asm = assembleWatertight(
-                    outerSampler,
-                    innerSampler,
-                    {
-                        H: dimensions.H,
-                        tBottom: dimensions.tBottom,
-                        rDrain: dimensions.rDrain,
-                    },
-                    {
-                        maxSagMm: qMaxSag,
-                        maxEdgeMm: qMaxEdge,
-                        minEdgeMm: qMinEdge,
-                        gradeRatio: 2,
-                        maxLevel: qMaxLevel,
-                        resU: 128,
-                        resT: 128,
-                        nRing: qNRing,
-                        targetTriangles: conformingBudget,
-                        // Budget is an UPPER CAP, not a target: a SMOOTH pot keeps
-                        // its small de-noised sag-tight count rather than being
-                        // inflated up to the budget; only over-budget feature-dense
-                        // styles are coarsened toward it (sag floored).
-                        budgetMode: 'cap' as const,
-                        // Uniform base level that guarantees full-height columns
-                        // (for the u-warp AND the helix warp's sheared columns) AND
-                        // full-width rows (for the t-warp) on the crease lattices.
-                        // The 2^L×2^L uniform floor carries all of them, so take the
-                        // max of the three chosen levels (0 = no floor when no warp
-                        // is needed). The helix warp pins full-HEIGHT columns (then
-                        // shears them along t), so it shares the u-floor requirement.
-                        minUniformLevel: resolveUniformLevelOverride(
-                            Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level),
-                            qUniformLevel,
-                        ),
-                        // Insert general feature curves (loops/braids) as real
-                        // outer-wall edges; refine the cells they cross to
-                        // featureLevel so the insertion is sliver-free.
-                        outerFeatureLines: generalCurves.length > 0 ? generalCurves : undefined,
-                        // Feature-proximity density. The cells a general-curve feature
-                        // crosses are refined to this level so the steep relief FLANKS
-                        // beside the inserted edge don't staircase. MEASURED 2026-06-23
-                        // (src/fidelity/verify_*FeatureFlow.test.ts, extractor-independent):
-                        // L11 collapses the near-feature flank radial p99 — CelticKnot
-                        // 0.18→0.013mm, Gyroid 0.31→~0.05mm, Voronoi cell-interior
-                        // 0.078→0.018mm — at ~2x tris, within the budget cap; L7 left the
-                        // flanks staircased while the old (circular) metric reported 100%.
-                        // Now the DEFAULT for ALL profiles (user-directed: "all profiles
-                        // dense"). The surfaceFidelityExact flag still gates per-style edge
-                        // EXTRACTION extras (SFB petals / ArtDeco t-steps), not this density.
-                        // Dev override: __pfFidelityFeatureLevel.
-                        featureLevel:
-                            (globalThis as unknown as { __pfFidelityFeatureLevel?: number }).__pfFidelityFeatureLevel ?? 11,
-                        // Crease loci → uBias-invariant t-refinement (refine-only).
-                        outerCreaseLines: creaseLines.length > 0 ? creaseLines : undefined,
-                        // Warp-composed per-wall efg samplers — arm the shaped
-                        // templates with the post-warp metric (see block above).
-                        outerEfgSampler,
-                        innerEfgSampler,
-                    },
-                );
+                const asmDims = {
+                    H: dimensions.H,
+                    tBottom: dimensions.tBottom,
+                    rDrain: dimensions.rDrain,
+                };
+                const assemblyOpts = {
+                    maxSagMm: qMaxSag,
+                    maxEdgeMm: qMaxEdge,
+                    minEdgeMm: qMinEdge,
+                    gradeRatio: 2,
+                    maxLevel: qMaxLevel,
+                    resU: 128,
+                    resT: 128,
+                    nRing: qNRing,
+                    targetTriangles: conformingBudget,
+                    // Budget is an UPPER CAP, not a target: a SMOOTH pot keeps
+                    // its small de-noised sag-tight count rather than being
+                    // inflated up to the budget; only over-budget feature-dense
+                    // styles are coarsened toward it (sag floored).
+                    budgetMode: 'cap' as const,
+                    // Uniform base level that guarantees full-height columns
+                    // (for the u-warp AND the helix warp's sheared columns) AND
+                    // full-width rows (for the t-warp) on the crease lattices.
+                    // The 2^L×2^L uniform floor carries all of them, so take the
+                    // max of the three chosen levels (0 = no floor when no warp
+                    // is needed). The helix warp pins full-HEIGHT columns (then
+                    // shears them along t), so it shares the u-floor requirement.
+                    minUniformLevel: resolveUniformLevelOverride(
+                        Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level),
+                        qUniformLevel,
+                    ),
+                    // Insert general feature curves (loops/braids) as real
+                    // outer-wall edges; refine the cells they cross to
+                    // featureLevel so the insertion is sliver-free.
+                    outerFeatureLines: generalCurves.length > 0 ? generalCurves : undefined,
+                    // Feature-proximity density. The cells a general-curve feature
+                    // crosses are refined to this level so the steep relief FLANKS
+                    // beside the inserted edge don't staircase. MEASURED 2026-06-23
+                    // (src/fidelity/verify_*FeatureFlow.test.ts, extractor-independent):
+                    // L11 collapses the near-feature flank radial p99 — CelticKnot
+                    // 0.18→0.013mm, Gyroid 0.31→~0.05mm, Voronoi cell-interior
+                    // 0.078→0.018mm — at ~2x tris, within the budget cap; L7 left the
+                    // flanks staircased while the old (circular) metric reported 100%.
+                    // Now the DEFAULT for ALL profiles (user-directed: "all profiles
+                    // dense"). The surfaceFidelityExact flag still gates per-style edge
+                    // EXTRACTION extras (SFB petals / ArtDeco t-steps), not this density.
+                    // Dev override: __pfFidelityFeatureLevel.
+                    featureLevel:
+                        (globalThis as unknown as { __pfFidelityFeatureLevel?: number }).__pfFidelityFeatureLevel ?? 11,
+                    // Crease loci → uBias-invariant t-refinement (refine-only).
+                    outerCreaseLines: creaseLines.length > 0 ? creaseLines : undefined,
+                    // Warp-composed per-wall efg samplers — arm the shaped
+                    // templates with the post-warp metric (see block above).
+                    outerEfgSampler,
+                    innerEfgSampler,
+                };
+                // Feature graft must precede the u/t/helix warps so corridor
+                // surfaceId-0 vertices warp with the outer wall. For Voronoi the
+                // warps are identity (Phase-1 isolation), but the ordering is
+                // load-bearing for Phase 2 (warped styles).
+                const asm = enableFeatureMesher
+                    ? assembleWatertightWithFeatures(outerSampler, innerSampler, asmDims, {
+                          ...assemblyOpts,
+                          featureLevel: assemblyOpts.featureLevel ?? 11,
+                          detectOptions: productionDetectOptions(outerSampler),
+                          corridorWidthMm: 3,
+                      })
+                    : assembleWatertight(outerSampler, innerSampler, asmDims, assemblyOpts);
 
                 // PRE-WARP (u,t,surfaceId) copy for the seam/cap-band instrument — must be taken
                 // BEFORE the domain-warp loops below mutate asm.vertices in place (the registry's
