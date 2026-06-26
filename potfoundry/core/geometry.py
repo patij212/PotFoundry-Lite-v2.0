@@ -415,18 +415,22 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces_out_parts.append(tri_bot2)
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
+    # Wound to agree with the inner wall along the shared inner-bottom ring so
+    # the assembled mesh has consistent face orientation (see orientation flip
+    # at the end of this function).
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
-    tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_top1 = np.stack([inner_bottom[j], drain_top[jn], inner_bottom[jn]], axis=1)
+    tri_top2 = np.stack([inner_bottom[j], drain_top[j], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_top1)
     faces_out_parts.append(tri_top2)
 
-    # Drain cylinder wall
+    # Drain cylinder wall (wound to agree with the adjacent caps along the
+    # drain_under / drain_top rings).
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
-    tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
+    tri_cyl1 = np.stack([drain_under[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_cyl2 = np.stack([drain_under[j], drain_under[jn], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 
@@ -445,6 +449,12 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
+    # The wall/cap groups above are all wound with a consistent (inward-facing)
+    # orientation. Flip every triangle once so face normals point OUTWARD, which
+    # is what slicers, Rhino/Grasshopper and other CAD tools expect from a closed
+    # solid (equivalently: positive signed volume). This makes the exported STL a
+    # consistently oriented closed manifold rather than merely edge-closed.
+    faces_arr = np.ascontiguousarray(faces_arr[:, ::-1])
     return np.array(verts, dtype=float), faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
