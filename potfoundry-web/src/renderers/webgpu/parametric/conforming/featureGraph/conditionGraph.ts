@@ -42,11 +42,25 @@ export interface ConditionGraphOptions {
   tToMm: number;
   /** Dangling open edges shorter than this (mm) are pruned as spurs. */
   minFeatureMm: number;
+  /**
+   * Only prune a spur whose saliency (FeatureEdge.strength, a multiple of the
+   * detector threshold) is ≤ this. Protects high-saliency REAL short features
+   * (braid/weave strand ends) from being mistaken for low-saliency contour noise
+   * — fidelity is the hard constraint. Default Infinity (length-only pruning).
+   */
+  spurMaxSaliency?: number;
   /** Douglas–Peucker tolerance (mm) for polyline simplification. */
   simplifyTolMm: number;
   /** Degree≥3 nodes within this distance (mm) merge into one junction. */
   junctionMergeMm: number;
-  /** Run spur pruning (default true). */
+  /**
+   * Run spur pruning (default FALSE — opt-in). Length-based pruning is NOT
+   * universally recall-safe: in tight-feature styles (braids/weaves) short
+   * dangling segments are REAL features, so pruning regresses fidelity
+   * (measured: CelticTriquetra recall 0.914→0.897). Spur NOISE is removed
+   * recall-safely upstream by the detector's connectivity-based hysteresis
+   * (`unify.ts`). Enable here only with `spurMaxSaliency` and a validated gate.
+   */
   prune?: boolean;
   /** Run polyline simplification (default true). */
   simplify?: boolean;
@@ -92,7 +106,9 @@ export function conditionGraph(graph: FeatureGraph, opts: ConditionGraphOptions)
     nodeKindCounts: { endpoint: 0, regular: 0, triple: 0, reflex: 0, highDegree: 0 },
   };
 
-  if (opts.prune !== false) pruneSpurs(wg, opts.minFeatureMm, uToMm, tToMm, stats);
+  if (opts.prune === true) {
+    pruneSpurs(wg, opts.minFeatureMm, opts.spurMaxSaliency ?? Infinity, uToMm, tToMm, stats);
+  }
   if (opts.simplify !== false) simplifyEdges(wg, opts.simplifyTolMm, uToMm, tToMm, stats);
   if (opts.mergeJunctions !== false) mergeJunctions(wg, opts.junctionMergeMm, uToMm, tToMm, stats);
 
@@ -162,6 +178,7 @@ function incidentEdges(wg: Working, x: number): number[] {
 function pruneSpurs(
   wg: Working,
   minFeatureMm: number,
+  spurMaxSaliency: number,
   uToMm: number,
   tToMm: number,
   stats: ConditionStats,
@@ -172,7 +189,13 @@ function pruneSpurs(
     for (const e of wg.edges) {
       if (!e.alive || e.kind === 'loop') continue; // loops are features, not spurs
       const dangling = deg[e.a] === 1 || deg[e.b] === 1;
-      if (dangling && polyLengthMm(e.pts, uToMm, tToMm) < minFeatureMm) {
+      // Prune only SHORT and WEAK dangling stubs — high-saliency short edges are
+      // real features (braid/weave strand ends) and must be preserved (fidelity).
+      if (
+        dangling &&
+        e.strength <= spurMaxSaliency &&
+        polyLengthMm(e.pts, uToMm, tToMm) < minFeatureMm
+      ) {
         e.alive = false;
         stats.prunedSpurs++;
         changed = true;
