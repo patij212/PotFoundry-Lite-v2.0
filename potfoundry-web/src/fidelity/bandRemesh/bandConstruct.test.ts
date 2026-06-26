@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { SyntheticCylinderSampler } from '../../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { StationPoint } from './stations';
-import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable, paveRidgeAdaptive } from './bandConstruct';
+import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable, paveRidgeAdaptive, splitAtFoldPoints } from './bandConstruct';
 import { auditWatertight } from './audit';
 
 describe('measureSpineCurvatureRadius', () => {
@@ -62,6 +62,27 @@ describe('offsetRailVariable', () => {
     };
     // The middle station (width 2) is offset farther from the spine than the ends (width 1).
     expect(d(rail[1], spine[1])).toBeGreaterThan(d(rail[0], spine[0]) + 0.5);
+  });
+});
+
+describe('splitAtFoldPoints (approach C)', () => {
+  it('splits a right-angle-corner spine at the corner into sub-spines sharing the corner vertex', () => {
+    const spine: StationPoint[] = [{ u: 0.3, t: 0.3 }, { u: 0.5, t: 0.3 }, { u: 0.5, t: 0.55 }];
+    const radius = [Infinity, 0.1, Infinity]; // the corner station folds a full-width offset
+    const subs = splitAtFoldPoints(spine, radius, 0.8 * 3); // minRadius = 2.4
+    expect(subs.length).toBe(2);
+    // adjacent sub-spines SHARE the corner vertex (exact (u,t)).
+    expect(subs[0][subs[0].length - 1]).toEqual(spine[1]);
+    expect(subs[1][0]).toEqual(spine[1]);
+    for (const s of subs) expect(s.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('returns the whole spine as one sub-spine when no station folds', () => {
+    const spine: StationPoint[] = [{ u: 0.3, t: 0.3 }, { u: 0.4, t: 0.3 }, { u: 0.5, t: 0.3 }];
+    const radius = [Infinity, 100, Infinity];
+    const subs = splitAtFoldPoints(spine, radius, 0.8 * 3);
+    expect(subs.length).toBe(1);
+    expect(subs[0].length).toBe(3);
   });
 });
 

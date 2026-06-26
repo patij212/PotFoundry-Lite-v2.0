@@ -174,6 +174,38 @@ export function footprintSelfCrossings(
   return count;
 }
 
+/**
+ * Split a densified spine into maximal sub-spines at every interior station where a
+ * full-width offset would FOLD (`radius[i] < minRadius`, with `minRadius =
+ * safety·widthMm`). Adjacent sub-spines SHARE the split (corner) vertex exactly, so
+ * the corner-join can weld them. Each returned sub-spine has `radius ≥ minRadius`
+ * everywhere interior ⇒ its constant-width offset is simple (the proven `paveRidge`
+ * regime). When nothing folds, returns the whole spine as one sub-spine.
+ *
+ * This is approach C's split step (approach A's variable-width pinch was refuted:
+ * pinching corners degenerates the band; here corners become joins, not pinches).
+ */
+export function splitAtFoldPoints(
+  spine: StationPoint[],
+  radius: number[],
+  minRadius: number,
+): StationPoint[][] {
+  const folds: number[] = [];
+  for (let i = 1; i < spine.length - 1; i++) {
+    if (radius[i] < minRadius) folds.push(i);
+  }
+  const copy = (a: number, b: number): StationPoint[] => spine.slice(a, b).map((p) => ({ u: p.u, t: p.t }));
+  if (folds.length === 0) return [copy(0, spine.length)];
+  const subs: StationPoint[][] = [];
+  let start = 0;
+  for (const f of folds) {
+    subs.push(copy(start, f + 1)); // include the fold vertex as this sub-spine's end
+    start = f; // ...and as the next sub-spine's start (shared corner)
+  }
+  subs.push(copy(start, spine.length));
+  return subs;
+}
+
 /** Options for {@link paveRidgeAdaptive}. */
 export interface AdaptiveRidgeOptions {
   /** Target flank half-width (mm) where curvature allows. */
