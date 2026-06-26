@@ -375,3 +375,69 @@ it the transition templates? That isolates "points vs triangulation" for the ker
 
 **Ledger:** this block. **Evidence doc:** `docs/superpowers/specs/2026-06-26-evidence-ours-vs-sota-OPUS.md`.
 **Dumps:** `research/exchange/_oursvssota_opus/<style>__<config>.json` (24, gitignored, SEPARATE from sonnet's `_oursvssota/`).
+
+---
+
+## E-2026-06-26-3D-DIRECT-VS-UV — Does meshing the surface DIRECTLY in 3D beat UV-(u,t)-metric meshing on the tangled lattices? (2026-06-26)
+
+**Status:** PRE-REGISTERED (kill-criterion fixed below BEFORE the deciding 768² run)
+**Date:** 2026-06-26
+**Runner:** `research/bridge/threeDDirectVsUv.test.ts` + remesher `research/bridge/remesh3d.py` (NEW, dev-only)
+**Run command:** `PF_3D_DIRECT=1 npx vitest run research/bridge/threeDDirectVsUv.test.ts`
+**Dump JSONs:** `research/exchange/_3ddirect/<style>__<config>[__<budget>].json` (gitignored — NEW dir, does NOT touch `_oursvssota*`)
+**Evidence doc:** `docs/superpowers/specs/2026-06-26-evidence-3d-direct-vs-uv.md`
+**New venv deps (recorded):** `research/oracle/requirements-3ddirect.txt` — pyvista 0.48.4 + pyacvd 0.4.0 (surface CVT) + fast_simplification 0.1.13 (QEM).
+
+### The fork this de-risks
+`2026-06-26-rebaseline-sota-vs-ours.md` §3.5: gmsh meshes the FLAT (u,t) under a band-limited metric → at tol=0.05 it UNDER-tessellates and LOSES the relief (BasketWeave mushy, Gyroid jagged) even though triangle angles are clean. Hypothesis: a mesher that places/refines triangles by REAL 3D-surface criteria (not a lossy 2D metric proxy) captures the relief AND stays clean. This experiment tests it: remesh a DENSE 3D true surface by 3D-surface criteria, compare to gmsh UV-metric at equal triangle budget.
+
+### Pre-registered Hypothesis (written before the deciding run)
+H: A 3D-DIRECT remesh of the dense true surface achieves LOWER mean/RMS fidelity (`rmsDevMm` — captures the relief) at a `minAngleDeg` NO WORSE than gmsh-iso, at EQUAL triangle count, on BOTH GyroidManifold and BasketWeave.
+
+**Kill-criterion (pre-registered):** for a 3D-direct method (cvt OR qem) on a style at ~equal budget (within ±5% of gmsh-iso's tri count):
+- **CONFIRMED** if `rmsDevMm(3d-direct) < rmsDevMm(gmsh-iso)` AND `minAngleDeg(3d-direct) ≥ gmsh-iso minAngleDeg − 2°`.
+- **REFUTED** if `rmsDevMm(3d-direct) ≥ rmsDevMm(gmsh-iso)` OR `minAngleDeg(3d-direct) < gmsh-iso minAngleDeg − 2°`.
+- **OVERALL CONFIRMED** iff ≥1 3D-direct method CONFIRMS on BOTH styles.
+- Honest metrics per this session: fidelity = `rmsDevMm` (the mean/RMS channel — NOT chordP99, which §3.5 proved blind to under-tessellation, dominated by shared near-C0 creases); quality = `minAngleDeg` (depth-invariant — NOT `%<20°`, a dilution artifact). Both reported.
+
+### Method / candidates
+- **Ground truth:** dense (u,t) grid 768×768 (1.18M tris) lifted via the analytic `rA` (the `measure.ts` `liftUtToRadial` lift). Convergence probe `_denseConvProbe`: this is the FINEST faithful reference (dense-truth `rmsDevMm` floors at ~0.10mm Gyroid / ~0.23mm BasketWeave; `chordMax` PINNED at 1.02/1.74 = the irreducible near-C0 straddle step — so even the reference cannot drive rms→0; remeshing from the finest source steelmans the candidate).
+- **3D-DIRECT (cvt):** pyacvd surface Centroidal-Voronoi clustering of the dense truth → uniform well-shaped tris ON the surface (the principled "mesh the surface, not the flat UV" candidate). Resamples.
+- **3D-DIRECT (qem):** fast_simplification Garland-Heckbert quadric-error decimation of the dense truth → error-driven edge collapse (cross-check, different mechanism, keeps truth vertices).
+- **UV baseline:** gmsh-iso + GENUINE gmsh-aniso via `runStyle({aniso:true})` (the metric IS wired — verified aniso tris ≠ iso tris), tol 0.05, sizeRes 32.
+- Each 3D-direct mesh targeted to gmsh-iso's tri count (±5%, the equal-budget fair comparison) AND a 2nd point at gmsh-aniso's (lower) count.
+- ONE instrument every mesh: `perpendicular3DDeviation` (rms+p99) + `triangleQualityDistribution` (minAngle+%<20°); same analytic `rA` lift + projection reference for truth, oracle, and candidate.
+
+### Fork decision this informs
+If 3D-direct wins (lower rms, no-worse minAngle, equal budget) → mesh the SURFACE not the flat UV (informs the rebuild architecture). If not → UV-metric (with a better/analytic metric) may suffice. RESULT block appended below after the deciding run.
+
+### RESULT — **REFUTED** (deciding run 768² dense, 8.6 min, test PASSED)
+Full evidence + tables: `docs/superpowers/specs/2026-06-26-evidence-3d-direct-vs-uv.md`.
+
+Scorecard (instrument: perpendicular3DDeviation + triangleQualityDistribution; ◆ tangled; **rms** = deciding fidelity channel):
+
+| style | config | tris | **rmsDevMm** | minAngle° | chordP99 | chordMax | vMax |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Gyroid ◆ | gmsh-iso | 11168 | 0.3062 | 12.1 | 0.968 | 1.572 | <0.001 |
+| Gyroid ◆ | cvt-3d @iso | 10968 | 0.3079 | **32.9** | 0.897 | 1.501 | 1.05‡ |
+| Gyroid ◆ | qem-3d @iso | 23828✗ | 0.2710 | **0.1** | 1.194 | 1.914 | 1.51‡ |
+| Gyroid | dense-truth | 1178112 | 0.0996 | 5.7 | 0.551 | 1.022 | — |
+| BasketWeave ◆ | gmsh-iso | 12331 | 0.2333 | 9.6 | 0.917 | 1.781 | <0.001 |
+| BasketWeave ◆ | cvt-3d @iso | 12105 | 0.3157 | **22.2** | 1.057 | 1.847 | 1.98‡ |
+| BasketWeave ◆ | qem-3d @iso | 12331 | 0.2996 | **0.5** | 1.049 | 2.506 | 1.64‡ |
+| BasketWeave | dense-truth | 1178112 | 0.2284 | 4.4 | 0.941 | 1.744 | — |
+
+(gmsh-aniso GENUINE: Gyroid 4385 / BasketWeave 5773 tris, ≠ iso, ≈ rebaseline 4457/5757. ✗ QEM Gyroid floors at 23828 — cannot reach budget even at agg 10. ‡ CVT/QEM vMax = off-surface RESAMPLING penalty gmsh doesn't pay.)
+
+**Kill-criterion:** REFUTED on BOTH styles — no 3D-direct method achieves lower combined `rmsDevMm` AND no-worse `minAngle` at equal budget. **Steelman** (chord-only rms, vertex penalty removed, `_chordOnlyProbe`): CVT 0.169<0.193 on Gyroid but 0.289>0.224 on BasketWeave ⇒ wins only 1/2, still REFUTED.
+
+**Decision-relevant findings:**
+1. **3D-direct does NOT capture more relief than gmsh at equal budget** — CVT fidelity TIES gmsh-iso (within 0.02–0.08mm); BasketWeave worse. The §3.5 relief loss is a **sizing-field/budget** limit (band-limited curvature metric under-sizes the lattice), NOT a UV-vs-3D-topology limit: both approaches hit the same near-C0 straddle floor (chordMax pinned ~1.0–1.8mm, density-irreducible).
+2. **CVT's win is triangle QUALITY (min-angle 33°/22° vs 12°/10°), not fidelity** — surface-CVT/Lloyd maximizes min-angle; it spends quality on the SAME relief.
+3. **QEM = sliver factory** (min-angle 0.1–0.5°, the decimation-sliver defect) AND can't hit the Gyroid budget.
+
+**Recommendation for the fork:** do NOT pivot the rebuild to a 3D-surface remesher to chase fidelity — no payoff, more cost (dense-truth build/resample, no native (u,t) for warp/seam, off-surface vertices, no border lock). KEEP the transition-free constrained-Delaunay-over-(u,t) path (rebaseline/OURS-VS-SOTA), and close the relief gap with an **accurate curvature sizing field** (`curvatureFloor`/analytic curvature — corroborates `project_crease_density_breakthrough`: density CLOSES the chord). The one transferable 3D-direct lesson = add a **CVT/ODT smoothing post-pass** (the in-house GAP) for triangle quality, INSIDE the (u,t) domain — not a wholesale 3D remesh.
+
+**Next:** isolate "sizing field" from "topology" — accurate analytic-curvature sizing on the same transition-free engine vs the dense-truth floor at equal budget; and a (u,t) CVT/ODT pass to reproduce CVT's min-angle win without leaving UV.
+
+**Ledger:** this block. **Evidence doc:** `docs/superpowers/specs/2026-06-26-evidence-3d-direct-vs-uv.md`. **Dumps:** `research/exchange/_3ddirect/` (gitignored, NEW dir — separate from `_oursvssota*`).

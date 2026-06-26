@@ -1,0 +1,6 @@
+# Extra venv deps for E-2026-06-26-3D-DIRECT-VS-UV (the 3D-direct surface remeshers).
+# Installed ON TOP of requirements.txt into the same research/oracle/.venv.
+# Dev-only; nothing ships. Reproduce: .venv/Scripts/python.exe -m pip install -r requirements-3ddirect.txt
+pyvista==0.48.4               # PolyData + VTK backend for pyacvd
+pyacvd==0.4.0                 # surface Centroidal-Voronoi clustering remesh (3D-direct: cvt)
+fast_simplification==0.1.13  # Garland-Heckbert QEM decimation (3D-direct: qem)
