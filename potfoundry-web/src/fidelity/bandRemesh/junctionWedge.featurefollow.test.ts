@@ -422,4 +422,84 @@ describe('STEP 2 DECISIVE — feature-following (raw vs conditioned) vs straight
     /* eslint-enable no-console */
     expect(true).toBe(true);
   }, 180000);
+
+  it('DENSITY-INVARIANCE: is the high-relief residual irreducible-acute or construction-reducible?', () => {
+    /* eslint-disable no-console */
+    // The discriminator (per Step-1 / the export-endgame method): refine the
+    // triangle edge length and watch the per-triangle sliver rate.
+    //   density-INVARIANT  -> geometric/acute = irreducible = ACCEPT-CLASS min(20°,θ)
+    //   density-WORSENING  -> constant-width arm-band pinch = sizing-reducible
+    //   density-IMPROVING  -> under-resolution = refinement-reducible
+    // Also split band-INTERIOR vs band-END triangles: in the real mesher a band
+    // END welds to the fan/neighbour, so isolated-band end rows over-count; the
+    // INTERIOR rate is the production-relevant figure.
+    const W = 2.5;
+    const footW = (crest: StationPoint[], s: SurfaceSampler): StationPoint[] => {
+      let vote = 0;
+      const dirs = crest.map((p, i) => {
+        const tan = tangentUV(crest, i);
+        const d = perpDir(s, p.u, p.t, tan.du, tan.dt);
+        vote += samplerRadius(s, p.u + d.a * W * 0.5, p.t + d.b * W * 0.5) <= samplerRadius(s, p.u - d.a * W * 0.5, p.t - d.b * W * 0.5) ? 1 : -1;
+        return d;
+      });
+      const sign = vote >= 0 ? 1 : -1;
+      return crest.map((p, i) => ({ u: p.u + sign * dirs[i].a * W, t: p.t + sign * dirs[i].b * W }));
+    };
+    const utKey = (u: number, t: number): string => `${u}|${t}`;
+    interface Stats { nTri: number; nSliver: number; nInt: number; nSliverInt: number }
+    const paveAt = (foot: StationPoint[], crest: StationPoint[], s: SurfaceSampler, edgeMm: number): Stats | null => {
+      const cap = (edgeMm / 2) * 0.9;
+      try {
+        const grid = buildStations(densifyArcLen(foot, s, cap), densifyArcLen(crest, s, cap), s, edgeMm);
+        if (grid.rows.length < 3) return null;
+        // End-row (u,t) keys: first + last grid row (these weld away in the real mesher).
+        const endKeys = new Set<string>();
+        for (const p of grid.rows[0].w) endKeys.add(utKey(p.u, p.t));
+        for (const p of grid.rows[grid.rows.length - 1].w) endKeys.add(utKey(p.u, p.t));
+        const band = paveBand(grid, s);
+        const pos = new Float32Array(band.utVertices.length * 3);
+        const isEnd = new Uint8Array(band.utVertices.length);
+        for (let i = 0; i < band.utVertices.length; i++) {
+          const p = s.position(band.utVertices[i][0], band.utVertices[i][1]);
+          pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = p[2];
+          if (endKeys.has(utKey(band.utVertices[i][0], band.utVertices[i][1]))) isEnd[i] = 1;
+        }
+        const P = (i: number): Vec3 => [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
+        let nTri = 0, nSliver = 0, nInt = 0, nSliverInt = 0;
+        for (let k = 0; k < band.indices.length; k += 3) {
+          const a = band.indices[k], b = band.indices[k + 1], c = band.indices[k + 2];
+          if (a === b || b === c || c === a) continue;
+          const sliver = triMinAngle(P(a), P(b), P(c)) < 20;
+          nTri++; if (sliver) nSliver++;
+          if (!isEnd[a] && !isEnd[b] && !isEnd[c]) { nInt++; if (sliver) nSliverInt++; }
+        }
+        return { nTri, nSliver, nInt, nSliverInt };
+      } catch { return null; }
+    };
+    console.log('\n=== STEP 2: FF-cond density-invariance (per-triangle sliver %, all / interior-only) ===');
+    console.log('style'.padEnd(16) + 'edge=3.0mm'.padEnd(20) + 'edge=1.5mm'.padEnd(20) + 'edge=0.75mm');
+    for (const styleId of ['Voronoi', 'GyroidManifold', 'HarmonicRipple']) {
+      const s = styleSampler(styleId as Parameters<typeof styleSampler>[0], {}, DIMS);
+      const graph = detectFeatures(s, globalOpts(s));
+      const edges = graph.edges.filter((e) => e.polyline.length >= 3 && arcLen3D(e.polyline, s) >= 8).slice(0, 150);
+      const cols: string[] = [];
+      for (const edgeMm of [3.0, 1.5, 0.75]) {
+        let tTri = 0, tSliv = 0, tInt = 0, tSlivInt = 0;
+        for (const e of edges) {
+          const crest = resampleArcLen(smoothPolyline(clipPolyline3D(e.polyline, s, MAX_LEN_MM), 4), s, edgeMm);
+          if (crest.length < 3) continue;
+          const st = paveAt(footW(crest, s), crest, s, edgeMm);
+          if (!st) continue;
+          tTri += st.nTri; tSliv += st.nSliver; tInt += st.nInt; tSlivInt += st.nSliverInt;
+        }
+        const all = (tSliv / Math.max(1, tTri)) * 100;
+        const intr = (tSlivInt / Math.max(1, tInt)) * 100;
+        cols.push(`${all.toFixed(1)}% / ${intr.toFixed(1)}%`.padEnd(20));
+      }
+      console.log(styleId.padEnd(16) + cols.join(''));
+    }
+    console.log('\nREAD (interior-only number): flat across edge sizes ⇒ irreducible-acute (accept-class);\nrising as edge shrinks ⇒ constant-width pinch (size the band); falling ⇒ under-resolution (refine).');
+    /* eslint-enable no-console */
+    expect(true).toBe(true);
+  }, 240000);
 });
