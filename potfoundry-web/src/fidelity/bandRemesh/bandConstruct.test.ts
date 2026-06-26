@@ -8,8 +8,9 @@
 import { describe, it, expect } from 'vitest';
 import { SyntheticCylinderSampler } from '../../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { StationPoint } from './stations';
-import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable, paveRidgeAdaptive, splitAtFoldPoints } from './bandConstruct';
-import { auditWatertight } from './audit';
+import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable, paveRidgeAdaptive, splitAtFoldPoints, joinCorner, footprintSelfCrossings } from './bandConstruct';
+import { auditWatertight, triangleQuality3D } from './audit';
+import { quantizeRailUT } from './railKey';
 
 describe('measureSpineCurvatureRadius', () => {
   it('is large on a near-straight spine and small at a sharp corner', () => {
@@ -83,6 +84,72 @@ describe('splitAtFoldPoints (approach C)', () => {
     const subs = splitAtFoldPoints(spine, radius, 0.8 * 3);
     expect(subs.length).toBe(1);
     expect(subs[0].length).toBe(3);
+  });
+});
+
+describe('joinCorner (approach C — corner-split + join)', () => {
+  // The cylinder is developable: a +u step is azimuthal arclength (2π·R0·du mm), a
+  // +t step is vertical (H·dt mm). So a spine segment along +u then along +t turns
+  // through a true 90° in 3D — the constant-width fold case approach C must solve.
+  const flat = new SyntheticCylinderSampler(50, 100, 0, 0);
+
+  // Sub-spines sharing the corner C = (0.50, 0.30). A runs in +u (azimuthal), B in
+  // +t (vertical): a sharp 90° corner where a full-width offset self-folds.
+  const C: StationPoint = { u: 0.50, t: 0.30 };
+  const subA: StationPoint[] = [{ u: 0.30, t: 0.30 }, C];
+  const subB: StationPoint[] = [C, { u: 0.50, t: 0.55 }];
+
+  it('joins two straight sub-spines at a 90° corner into a SIMPLE-footprint band', () => {
+    const res = joinCorner(subA, subB, flat, { widthMm: 3, edgeMm: 2 });
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+    expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
+  });
+
+  it('the joined band is internally watertight (no T-junctions, no non-manifold edges)', () => {
+    const res = joinCorner(subA, subB, flat, { widthMm: 3, edgeMm: 2 });
+    const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(a.nonManifoldEdges).toBe(0);
+    expect(a.tJunctions).toBe(0);
+  });
+
+  it('keeps the crest EXACT: every input spine vertex is a crease (spine) vertex (0mm fidelity loss)', () => {
+    const res = joinCorner(subA, subB, flat, { widthMm: 3, edgeMm: 2 });
+    const spineKeys = new Set(res.spineVertexIds.map((id) => {
+      const [u, t] = res.vertexUT[id];
+      return `${u}|${t}`;
+    }));
+    for (const v of [subA[0], C, subB[subB.length - 1]]) {
+      const [qu, qt] = quantizeRailUT(v.u, v.t);
+      expect(spineKeys.has(`${qu}|${qt}`)).toBe(true);
+    }
+  });
+
+  it('produces well-formed corner triangles (no inverted/degenerate; full-width, not pinched)', () => {
+    // A naive full-spine paveRidge folds here (footprintSelfCrossings=1, proven above).
+    // The join must instead be a real, non-vacuous, sliver-free corner element.
+    const naive = joinCorner(subA, subB, flat, { widthMm: 3, edgeMm: 2 });
+    const q = triangleQuality3D(naive.mesh);
+    expect(q.aspectMax).toBeLessThan(20); // no needle slivers from the miter/wedge
+    expect(q.minAngleP50).toBeGreaterThan(15);
+    // Non-vacuous: the joined band spans both sub-spines (more tris than a single flank pair).
+    expect(naive.mesh.indices.length / 3).toBeGreaterThan(20);
+  });
+
+  it('joins a SHARP ~60° corner that turns the OTHER way (concave on the mirror flank)', () => {
+    // Incoming +u (azimuthal); outgoing rotated 120° CW in the developed plane
+    // (interior angle ~60°, a right turn) so the concave side is the -perp flank —
+    // exercising the mirror branch of the corner resolver.
+    const Cc: StationPoint = { u: 0.50, t: 0.50 };
+    const a60: StationPoint[] = [{ u: 0.30, t: 0.50 }, Cc];
+    // dev-plane outgoing: 30mm at -120° → Δ(u,t) = (-15/(2π·50), -25.98/100).
+    const end: StationPoint = { u: Cc.u - 15 / (2 * Math.PI * 50), t: Cc.t - 25.98 / 100 };
+    const b60: StationPoint[] = [Cc, end];
+    const res = joinCorner(a60, b60, flat, { widthMm: 3, edgeMm: 2 });
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+    expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
+    const audit = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(audit.nonManifoldEdges).toBe(0);
+    expect(audit.tJunctions).toBe(0);
   });
 });
 

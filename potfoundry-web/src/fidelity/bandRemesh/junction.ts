@@ -132,7 +132,7 @@ function minAngle3DXyz(A: Vec3, B: Vec3, C: Vec3): number {
 }
 
 /** 3D position triple. */
-type Vec3 = readonly [number, number, number];
+export type Vec3 = readonly [number, number, number];
 
 /**
  * Triangulate a simple polygon (given as a loop of 3D points) into triangles
@@ -154,7 +154,7 @@ type Vec3 = readonly [number, number, number];
  * the polygon is tiny and near-planar on the cylinder) only to determine ear
  * convexity sign; all quality scoring uses true 3D side lengths.
  */
-function triangulatePolygon3D(loop: Vec3[]): Array<[number, number, number]> {
+export function triangulatePolygon3D(loop: Vec3[]): Array<[number, number, number]> {
   const n = loop.length;
   if (n < 3) return [];
   if (n === 3) return [[0, 1, 2]];
