@@ -58,7 +58,7 @@ import type { RidgeResult } from './featureStrip';
 import { corridorPaveMulti } from './corridorPave';
 import { extractHoleBoundary } from './seamFill';
 import type { HoleBoundary } from './seamFill';
-import { auditWatertight } from './audit';
+import { auditWatertight, triangleQuality3D } from './audit';
 import type { Mesh3 } from './audit';
 import { QSCALE, quantizeRailUT } from './railKey';
 import type { StationPoint } from './stations';
@@ -328,6 +328,86 @@ describe.skipIf(!process.env.PF_DERISK)('APPROACH C GATE — full-coverage corne
         // The residual fold population is the near-self-touching spines (not the join).
         expect(selfTouch).toBeGreaterThan(0);
       });
+
+      it('SAFETY SWEEP: is the feature-width fold dominated by over-splitting?', () => {
+        const { sampler, edges } = getBuild(style);
+        /* eslint-disable no-console */
+        console.log(`[SAFETY ${style}] half=0.6 edge=0.6 | safety -> simple%`);
+        for (const safety of [0.6, 0.8, 1.0, 1.2, 1.5, 2.5]) {
+          let simple = 0;
+          for (const e of edges) {
+            try {
+              const band = paveRidgeCornerSplit(e.polyline.map((p) => ({ u: p.u, t: p.t })), sampler, { widthMm: 0.6, edgeMm: 0.6, safety });
+              if (footprintSelfCrossings(band.mesh, band.vertexUT) === 0) simple++;
+            } catch { /* fold */ }
+          }
+          console.log(`  safety=${safety.toFixed(1)} -> ${simple}/${edges.length} (${((100 * simple) / edges.length).toFixed(0)}%)`);
+        }
+        /* eslint-enable no-console */
+        expect(edges.length).toBeGreaterThan(0);
+      }, 120000);
+
+      it('SELF-TOUCH CHARACTERIZATION: what are the folding edges at feature width?', () => {
+        const { sampler, edges } = getBuild(style); // edges: FeatureEdge[]
+        const HALF = 0.6, EDGE = 0.6;
+        /* eslint-disable no-console */
+        let folding = 0, loopFold = 0, selfTouchFold = 0, otherFold = 0;
+        const selfDists: number[] = [];
+        for (const e of edges) {
+          const spine: StationPoint[] = e.polyline.map((p) => ({ u: p.u, t: p.t }));
+          try {
+            const band = paveRidgeCornerSplit(spine, sampler, { widthMm: HALF, edgeMm: EDGE });
+            if (footprintSelfCrossings(band.mesh, band.vertexUT) === 0) continue;
+          } catch { folding++; otherFold++; continue; }
+          folding++;
+          // Min 3D distance between non-adjacent polyline vertices (self-approach).
+          let minD = Infinity;
+          for (let i = 0; i < e.polyline.length; i++) for (let j = i + 3; j < e.polyline.length; j++) {
+            const a = sampler.position(e.polyline[i].u, e.polyline[i].t), b = sampler.position(e.polyline[j].u, e.polyline[j].t);
+            const d = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+            if (d < minD) minD = d;
+          }
+          selfDists.push(minD);
+          if (e.kind === 'loop') loopFold++;
+          else if (minD < 2 * HALF) selfTouchFold++;
+          else otherFold++;
+        }
+        selfDists.sort((a, b) => a - b);
+        const p50 = selfDists.length ? selfDists[Math.floor(selfDists.length / 2)].toFixed(2) : '—';
+        console.log(`[SELFTOUCH ${style}] @half=${HALF}mm folding=${folding} | loop=${loopFold} selfTouch(<${2 * HALF}mm)=${selfTouchFold} other=${otherFold} | foldEdge selfApproach p50=${p50}mm`);
+        /* eslint-enable no-console */
+        expect(edges.length).toBeGreaterThan(0);
+      }, 120000);
+
+      it('OPERATING POINT: coverage + flank quality vs (halfWidth, edgeMm)', () => {
+        const { sampler, edges } = getBuild(style);
+        /* eslint-disable no-console */
+        console.log(`[OPPT ${style}] halfW × edge | simple% | flank p50min<20°/aspect | avgTris`);
+        for (const halfW of [1.0, 0.6, 0.4]) {
+          for (const edge of [1.0, 0.6, 0.3]) {
+            if (edge > halfW) continue; // need ≥~1 row across the flank
+            let simple = 0;
+            const minAngles: number[] = []; let below20 = 0, nTri = 0, aspectMax = 0, nBands = 0, triSum = 0;
+            for (const e of edges) {
+              let band;
+              try { band = paveRidgeCornerSplit(e.polyline.map((p) => ({ u: p.u, t: p.t })), sampler, { widthMm: halfW, edgeMm: edge }); } catch { continue; }
+              if (footprintSelfCrossings(band.mesh, band.vertexUT) !== 0) continue;
+              simple++; nBands++; triSum += band.mesh.indices.length / 3;
+              const q = triangleQuality3D(band.mesh);
+              minAngles.push(q.minAngleP50); aspectMax = Math.max(aspectMax, q.aspectMax);
+              below20 += q.pctMinAngleBelow10 > 0 ? 1 : 0; nTri++;
+            }
+            minAngles.sort((a, b) => a - b);
+            const medP50 = minAngles.length ? minAngles[Math.floor(minAngles.length / 2)] : 0;
+            console.log(
+              `  ${halfW.toFixed(1)} × ${edge.toFixed(1)} | ${((100 * simple) / edges.length).toFixed(0)}% | ` +
+                `medP50=${medP50.toFixed(0)}° bands<10°=${below20}/${nBands} aspMax=${aspectMax.toFixed(1)} | ${nBands ? (triSum / nBands).toFixed(0) : 0}`,
+            );
+          }
+        }
+        /* eslint-enable no-console */
+        expect(edges.length).toBeGreaterThan(0);
+      }, 120000);
 
       it('CREST FIDELITY: each band crest passes through the exact input edge corners (0mm)', () => {
         const { sampler, edges } = getBuild(style);
