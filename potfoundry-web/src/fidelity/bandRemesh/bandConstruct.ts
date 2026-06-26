@@ -58,3 +58,43 @@ export function measureSpineCurvatureRadius(spine: StationPoint[], sampler: Surf
   }
   return out;
 }
+
+/** Options for {@link safeHalfWidthProfile}. */
+export interface HalfWidthOpts {
+  /** Fraction of the curvature radius the half-width may use (default 0.8). */
+  safety?: number;
+  /** Min-filter neighborhood (stations each side) tapering a pinch (default 2). */
+  taperRadius?: number;
+  /** Optional per-station upper bound (mm) from feature density (assembler-supplied). */
+  maxByDensity?: number[];
+}
+
+/**
+ * Per-station flank half-width (mm): `w_i = min(target, safety·R_i, density_i)`,
+ * then a min-filter over `±taperRadius` so a corner's pinch tapers across its
+ * neighbours (prevents multi-segment folds). The crest is unaffected — only the
+ * flank width adapts.
+ */
+export function safeHalfWidthProfile(
+  radius: number[],
+  targetWidthMm: number,
+  opts: HalfWidthOpts = {},
+): number[] {
+  const safety = opts.safety ?? 0.8;
+  const taper = opts.taperRadius ?? 2;
+  const base = radius.map((R, i) => {
+    let w = Math.min(targetWidthMm, safety * R);
+    if (opts.maxByDensity) w = Math.min(w, opts.maxByDensity[i]);
+    return w;
+  });
+  if (taper <= 0) return base;
+  const out = base.slice();
+  for (let i = 0; i < base.length; i++) {
+    let m = base[i];
+    for (let k = Math.max(0, i - taper); k <= Math.min(base.length - 1, i + taper); k++) {
+      if (base[k] < m) m = base[k];
+    }
+    out[i] = m;
+  }
+  return out;
+}
