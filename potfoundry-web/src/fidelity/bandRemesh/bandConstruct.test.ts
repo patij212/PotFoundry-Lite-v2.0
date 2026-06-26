@@ -8,7 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import { SyntheticCylinderSampler } from '../../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { StationPoint } from './stations';
-import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable } from './bandConstruct';
+import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable, paveRidgeAdaptive } from './bandConstruct';
+import { auditWatertight } from './audit';
 
 describe('measureSpineCurvatureRadius', () => {
   it('is large on a near-straight spine and small at a sharp corner', () => {
@@ -61,5 +62,21 @@ describe('offsetRailVariable', () => {
     };
     // The middle station (width 2) is offset farther from the spine than the ends (width 1).
     expect(d(rail[1], spine[1])).toBeGreaterThan(d(rail[0], spine[0]) + 0.5);
+  });
+});
+
+describe('paveRidgeAdaptive', () => {
+  it('produces a SIMPLE footprint + watertight band on a sharp right-angle corner spine (where constant width folds)', () => {
+    const flat = new SyntheticCylinderSampler(50, 100, 0, 0);
+    // An L-shaped spine with a sharp 90° corner — the constant-width failure case.
+    const spine: StationPoint[] = [
+      { u: 0.30, t: 0.30 }, { u: 0.50, t: 0.30 }, { u: 0.50, t: 0.55 },
+    ];
+    const res = paveRidgeAdaptive(spine, flat, { widthMm: 3, edgeMm: 2 });
+    expect(res.selfCrossings).toBe(0); // simple footprint (the whole point)
+    const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(a.nonManifoldEdges).toBe(0);
+    expect(a.tJunctions).toBe(0); // band is internally watertight
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
   });
 });

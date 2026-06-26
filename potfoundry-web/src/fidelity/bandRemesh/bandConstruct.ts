@@ -22,7 +22,9 @@
 
 import type { SurfaceSampler } from '../../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { StationPoint } from './stations';
-import { perpUV } from './featureStrip';
+import type { RidgeResult } from './featureStrip';
+import { perpUV, assembleRidgeBands } from './featureStrip';
+import { densifyRail } from './stitch';
 import { extractHoleBoundary } from './seamFill';
 
 /** 3D distance between two (u,t) samples. */
@@ -170,4 +172,69 @@ export function footprintSelfCrossings(
     }
   }
   return count;
+}
+
+/** Options for {@link paveRidgeAdaptive}. */
+export interface AdaptiveRidgeOptions {
+  /** Target flank half-width (mm) where curvature allows. */
+  widthMm: number;
+  /** Target 3D edge length (mm). */
+  edgeMm: number;
+  /** Curvature safety fraction (default 0.8). */
+  safety?: number;
+  /** Taper neighborhood (default 2). */
+  taperRadius?: number;
+  /** Optional per-DENSIFIED-station density bound (mm). Rare; usually omitted. */
+  maxByDensity?: number[];
+  /** Max verify-and-shrink iterations (default 8; w·0.7^8 ≈ 0.06·w). */
+  maxShrink?: number;
+}
+
+/** {@link RidgeResult} plus the construction diagnostics. */
+export interface AdaptiveRidgeResult extends RidgeResult {
+  /** How many global width-shrinks the verify net needed (0 = the cap sufficed). */
+  shrinks: number;
+  /** Footprint self-crossings of the returned band (0 by the simplicity guarantee). */
+  selfCrossings: number;
+}
+
+/**
+ * Pave a ridge whose (u,t) footprint is SIMPLE by construction: cap each station's
+ * flank half-width by the local curvature radius, then VERIFY and globally shrink
+ * the width until the footprint has zero self-crossings (terminating — w→0 is always
+ * simple). The crest is the exact spine; sharp corners pinch to accept-class thin
+ * slivers. Reuses paveRidge's proven assembly ({@link assembleRidgeBands}).
+ */
+export function paveRidgeAdaptive(
+  spine: StationPoint[],
+  sampler: SurfaceSampler,
+  opts: AdaptiveRidgeOptions,
+): AdaptiveRidgeResult {
+  const { widthMm, edgeMm } = opts;
+  const maxSpacingMm = (edgeMm / 2) * 0.95;
+  const spineDense = densifyRail(spine, sampler, maxSpacingMm);
+  const radius = measureSpineCurvatureRadius(spineDense, sampler);
+  const base = safeHalfWidthProfile(radius, widthMm, {
+    safety: opts.safety,
+    taperRadius: opts.taperRadius,
+    maxByDensity: opts.maxByDensity,
+  });
+
+  const maxShrink = opts.maxShrink ?? 8;
+  let scale = 1;
+  let last: RidgeResult | null = null;
+  let lastCross = Infinity;
+  for (let s = 0; s <= maxShrink; s++) {
+    const widths = base.map((w) => Math.max(1e-4, w * scale));
+    const leftRail = densifyRail(offsetRailVariable(spineDense, sampler, widths, 1), sampler, maxSpacingMm);
+    const rightRail = densifyRail(offsetRailVariable(spineDense, sampler, widths, -1), sampler, maxSpacingMm);
+    const res = assembleRidgeBands(spineDense, leftRail, rightRail, sampler, edgeMm);
+    const cross = footprintSelfCrossings(res.mesh, res.vertexUT);
+    last = res;
+    lastCross = cross;
+    if (cross === 0) return { ...res, shrinks: s, selfCrossings: 0 };
+    scale *= 0.7;
+  }
+  // Net exhausted (pathological spine) — return the best attempt + LOUD diagnostic.
+  return { ...(last as RidgeResult), shrinks: maxShrink, selfCrossings: lastCross };
 }
