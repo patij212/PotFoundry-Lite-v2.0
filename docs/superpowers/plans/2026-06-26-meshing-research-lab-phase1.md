@@ -583,19 +583,12 @@ export function measureOracleMesh(
   return {
     engine: out.engine, tris: indices.length / 3,
     chordP99Mm: dev.p99DevMm, chordMaxMm: dev.chordMaxMm, vertexMaxMm: dev.vertexMaxMm,
-    pctUnder20deg: q.pctUnder20deg ?? percentUnder(q, 20), minAngleDeg: q.minAngleDeg ?? q.minAngle ?? 0,
+    pctUnder20deg: q.pctBelow20, minAngleDeg: q.minAngleDeg,
     engineMs: out.engineMs,
   };
 }
-
-// `triangleQualityDistribution` returns a histogram; derive %<20° if not provided directly.
-function percentUnder(q: { histogram?: ArrayLike<number>; triangleCount?: number }, deg: number): number {
-  const h = q.histogram; if (!h || !q.triangleCount) return 0;
-  let below = 0; for (let i = 0; i < deg && i < h.length; i++) below += h[i];
-  return (100 * below) / q.triangleCount;
-}
 ```
-*(Step 3a: open `src/fidelity/metrics.ts:758` `triangleQualityDistribution` and adjust the `ScoreRow` derivation to its ACTUAL return fields — use the real property names; the `percentUnder` fallback covers the histogram case. Re-run the test after aligning.)*
+*(Verified during planning at `src/fidelity/metrics.ts:727` — `triangleQualityDistribution` returns `{ triangleCount, degenerateCount, minAngleDeg, p5MinAngleDeg, medianMinAngleDeg, meanMinAngleDeg, pctBelow10, pctBelow20, pctBelow30 }`. The `ScoreRow` reads `q.pctBelow20` and `q.minAngleDeg` directly — no histogram, no fallback.)*
 
 - [ ] **Step 4: Run to verify it passes** — `npx vitest run research/bridge/measure.test.ts` → PASS.
 
@@ -676,7 +669,7 @@ These are real, scoped tasks; their full TDD code is written once Task 5 confirm
 
 **Placeholder scan:** Tasks 0–4 carry complete code. Task 5 references Task-1–4 signatures + a `fidelityGate` helper read in its own Step 1 (not a placeholder — a grounded read step). Tasks 6–10 are explicitly outline-now/detail-post-spike per the project's spike practice, not TBDs.
 
-**Type consistency:** `OracleInput`/`OracleOutput` (Task 2) are consumed unchanged in Tasks 3 (Python mirror) + 4 (`measureOracleMesh`). `ScoreRow` (Task 4) flows to Tasks 5 + 8. `AnalyticRadiusFn`/`AnalyticDevOpts`/`perpendicular3DDeviation` match `analyticSurfaceGate.ts:35/37/567`. `triangleQualityDistribution` field names are aligned to the real return in Task 4 Step 3a (flagged read).
+**Type consistency:** `OracleInput`/`OracleOutput` (Task 2) are consumed unchanged in Tasks 3 (Python mirror) + 4 (`measureOracleMesh`). `ScoreRow` (Task 4) flows to Tasks 5 + 8. `AnalyticRadiusFn`/`AnalyticDevOpts`/`perpendicular3DDeviation` match `analyticSurfaceGate.ts:35/37/567`. `triangleQualityDistribution` field names verified during planning (`pctBelow20`, `minAngleDeg`) — Task 4 reads them directly.
 
 ## Execution Handoff
 
