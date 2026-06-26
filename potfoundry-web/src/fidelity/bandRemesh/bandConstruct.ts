@@ -587,3 +587,114 @@ export function paveRidgeCornerSplit(
   const subSpines = splitAtFoldPoints(spineDense, radius, safety * widthMm);
   return assembleSubSpines(subSpines, sampler, { widthMm, edgeMm });
 }
+
+/** Outgoing (u,t) azimuth of an arm at J in the metric tangent plane (for CCW ordering). */
+function armAzimuth(arm: StationPoint[], J: StationPoint, sampler: SurfaceSampler): number {
+  const d = dirUT(J, arm[1]);
+  const E = 1e-4;
+  const sub = (a: readonly number[], b: readonly number[]): [number, number, number] => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const pu = sub(sampler.position(J.u + E, J.t), sampler.position(J.u - E, J.t)) as [number, number, number];
+  const pt = sub(sampler.position(J.u, J.t + E), sampler.position(J.u, J.t - E)) as [number, number, number];
+  const t3 = [pu[0] * d.du + pt[0] * d.dt, pu[1] * d.du + pt[1] * d.dt, pu[2] * d.du + pt[2] * d.dt];
+  const x = t3[0] * pu[0] + t3[1] * pu[1] + t3[2] * pu[2];
+  const y = t3[0] * pt[0] + t3[1] * pt[1] + t3[2] * pt[2];
+  return Math.atan2(y, x);
+}
+
+/**
+ * Compose N ridge bands meeting at a shared node J into ONE watertight ridge whose
+ * (u,t) footprint is SIMPLE by construction — the approach-C corner-join generalized
+ * from degree-2 to degree-N.
+ *
+ * Each `spines[i]` is a (u,t) polyline whose FIRST vertex is the shared node J (exact
+ * (u,t) across all arms). Each arm is paved at FULL width sharing J as a crease end;
+ * the arms are ordered by azimuth around J; each azimuth SECTOR between two adjacent
+ * arms is resolved by the per-corner machinery — here the wide-sector wedge fill
+ * between arm-A's CCW-facing (+perp) J-row and arm-B's CW-facing (−perp) J-row, all
+ * sharing J (Steiner-free via `triangulatePolygon3D`). Narrow-sector miter = Task 2.
+ */
+export function paveRidgeJunction(
+  spines: StationPoint[][],
+  sampler: SurfaceSampler,
+  opts: CornerJoinOptions,
+): RidgeResult {
+  const { widthMm, edgeMm } = opts;
+  const maxSpacingMm = (edgeMm / 2) * 0.95;
+  const J: StationPoint = { u: spines[0][0].u, t: spines[0][0].t };
+  const arms = spines.map((s) => densifyRail(s, sampler, maxSpacingMm));
+  const order = arms
+    .map((a, i) => ({ i, az: armAzimuth(a, J, sampler) }))
+    .sort((p, q) => p.az - q.az)
+    .map((o) => o.i);
+
+  // Per-arm ±perp rails (J = head). +perp (railP) faces the CCW sector; −perp (railM) the CW sector.
+  const railP = arms.map((a) => offsetRailVariable(a, sampler, new Array<number>(a.length).fill(widthMm), 1));
+  const railM = arms.map((a) => offsetRailVariable(a, sampler, new Array<number>(a.length).fill(widthMm), -1));
+
+  // Resolve each CCW sector: < 180° ⇒ the two facing flanks OVERLAP near J → MITER them to a
+  // shared point M (clip both facing rail heads to M; their J-rows become the identical
+  // buildCrossBandRow(J,M) ⇒ weld). > 180° (reflex) ⇒ they DIVERGE → wedge-fill (deferred to
+  // the loop after paving). This is the corner-join's concave-miter / convex-wedge split, per sector.
+  const N = order.length;
+  const reflexSectors: number[] = []; // sector index k (arm order[k] → order[k+1])
+  for (let k = 0; k < N; k++) {
+    const a = order[k], b = order[(k + 1) % N];
+    const azGap = (() => {
+      const g = arms.map((arm) => armAzimuth(arm, J, sampler));
+      let d = g[b] - g[a];
+      return ((d % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    })();
+    if (azGap > Math.PI) { reflexSectors.push(k); continue; }
+    // Miter: M = intersection of arm-a's +perp crest line and arm-b's −perp crest line.
+    const dA = dirUT(J, arms[a][1]);
+    const dB = dirUT(J, arms[b][1]);
+    const pA = perpUV(sampler, J.u, J.t, dA.du, dA.dt);
+    const pB = perpUV(sampler, J.u, J.t, dB.du, dB.dt);
+    const crestA: StationPoint = { u: J.u + pA.a * widthMm, t: J.t + pA.b * widthMm };
+    const crestB: StationPoint = { u: J.u - pB.a * widthMm, t: J.t - pB.b * widthMm };
+    const M = lineIntersectUT(crestA, dA, crestB, dB);
+    if (M) {
+      railP[a] = clipHeadToMiter(railP[a], M, dA);
+      railM[b] = clipHeadToMiter(railM[b], M, dB);
+    }
+  }
+
+  const table = makeCombinedTable();
+  const tris: number[] = [];
+  const left: PavedFlank[] = [];
+  const right: PavedFlank[] = [];
+  for (let i = 0; i < arms.length; i++) {
+    left.push(addFlankToCombined(arms[i], railP[i], sampler, edgeMm, maxSpacingMm, table, tris));
+    right.push(addFlankToCombined(arms[i], railM[i], sampler, edgeMm, maxSpacingMm, table, tris));
+  }
+
+  // Reflex sectors only: wedge-fill between arm-A's +perp J-row and arm-B's −perp J-row (share J).
+  for (const k of reflexSectors) {
+    const a = order[k], b = order[(k + 1) % N];
+    const aRow = left[a].grid.rows[0].w;
+    const bRow = right[b].grid.rows[0].w;
+    fillPolygon([...aRow, ...bRow.slice(1).reverse()], sampler, table, tris);
+  }
+
+  // Open boundary: every flank crest rail + every arm's outer (free) end row.
+  const openBoundaryVertices = new Set<number>();
+  for (const f of [...left, ...right]) {
+    for (const id of f.crestIds) openBoundaryVertices.add(id);
+    const outer = f.grid.rows[f.grid.rows.length - 1].w;
+    for (const p of outer) openBoundaryVertices.add(table.intern(p.u, p.t));
+  }
+  const spineVertexIds: number[] = [];
+  for (const f of left) for (const r of f.grid.rows) spineVertexIds.push(table.intern(r.footPt.u, r.footPt.t));
+
+  const positions = new Float32Array(table.ut.length * 3);
+  for (let i = 0; i < table.ut.length; i++) {
+    const p = sampler.position(table.ut[i][0], table.ut[i][1]);
+    positions[i * 3] = p[0]; positions[i * 3 + 1] = p[1]; positions[i * 3 + 2] = p[2];
+  }
+  return {
+    mesh: { positions, indices: new Uint32Array(tris) },
+    vertexUT: table.ut.map((v) => [v[0], v[1]] as [number, number]),
+    spineVertexIds,
+    openBoundaryVertices,
+  };
+}

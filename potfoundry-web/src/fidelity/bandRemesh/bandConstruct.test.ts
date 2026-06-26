@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { SyntheticCylinderSampler } from '../../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { StationPoint } from './stations';
-import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable, paveRidgeAdaptive, splitAtFoldPoints, joinCorner, footprintSelfCrossings, paveRidgeCornerSplit } from './bandConstruct';
+import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable, paveRidgeAdaptive, splitAtFoldPoints, joinCorner, footprintSelfCrossings, paveRidgeCornerSplit, paveRidgeJunction } from './bandConstruct';
 import { auditWatertight, triangleQuality3D } from './audit';
 import { quantizeRailUT } from './railKey';
 
@@ -203,6 +203,63 @@ describe('paveRidgeCornerSplit (approach C — orchestrator)', () => {
   it('a no-fold (gently curved) spine paves as one simple band (no spurious split)', () => {
     const spine: StationPoint[] = [{ u: 0.30, t: 0.30 }, { u: 0.40, t: 0.32 }, { u: 0.50, t: 0.30 }];
     const res = paveRidgeCornerSplit(spine, flat, OPTS);
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+    expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
+    const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(a.nonManifoldEdges).toBe(0);
+    expect(a.tJunctions).toBe(0);
+  });
+});
+
+describe('paveRidgeJunction (STEP 3b — junction composition)', () => {
+  // Near-ISOTROPIC cylinder (circumference 2π·R0 = H = 100) so dev-plane angles map
+  // cleanly to (u,t) — this isolates the junction MECHANISM from metric anisotropy
+  // (the cylinder's u-squish folds the (u,t) footprint of metric-spread arms; that is
+  // a surface property the real-junction gate measures, not a mechanism defect).
+  const flat = new SyntheticCylinderSampler(100 / (2 * Math.PI), 100, 0, 0);
+  const J: StationPoint = { u: 0.5, t: 0.5 };
+  // Arm radiating from J at dev-plane angle `deg`, length L mm (1 dev-mm = 1/100 in u,t).
+  const armAt = (deg: number, L = 20): StationPoint[] => {
+    const r = (deg * Math.PI) / 180;
+    return [J, { u: J.u + (L * Math.cos(r)) / 100, t: J.t + (L * Math.sin(r)) / 100 }];
+  };
+
+  it('composes a symmetric degree-3 Y into a SIMPLE-footprint, watertight ridge (J shared crease)', () => {
+    const spines = [armAt(90), armAt(210), armAt(330)];
+    const res = paveRidgeJunction(spines, flat, { widthMm: 3, edgeMm: 2 });
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+    expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
+    const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(a.nonManifoldEdges).toBe(0);
+    expect(a.tJunctions).toBe(0);
+    // J is a crease vertex shared by all arms.
+    const [qu, qt] = quantizeRailUT(J.u, J.t);
+    const spineKeys = new Set(res.spineVertexIds.map((id) => { const [u, t] = res.vertexUT[id]; return `${u}|${t}`; }));
+    expect(spineKeys.has(`${qu}|${qt}`)).toBe(true);
+  });
+
+  it('composes an asymmetric junction with a NARROW sector (sharp miter) — simple + watertight', () => {
+    // Two arms 40° apart (80°,120°) + one opposite (280°): one narrow sector → a sharp miter.
+    const res = paveRidgeJunction([armAt(80), armAt(120), armAt(280)], flat, { widthMm: 3, edgeMm: 2 });
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+    expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
+    const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(a.nonManifoldEdges).toBe(0);
+    expect(a.tJunctions).toBe(0);
+  });
+
+  it('composes a REFLEX degree-3 junction (one sector > 180°, wedge branch) — simple + watertight', () => {
+    // Three arms bunched in a half-plane → the opposite sector is reflex (> 180°).
+    const res = paveRidgeJunction([armAt(60), armAt(120), armAt(180)], flat, { widthMm: 3, edgeMm: 2 });
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+    expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
+    const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(a.nonManifoldEdges).toBe(0);
+    expect(a.tJunctions).toBe(0);
+  });
+
+  it('composes a degree-4 junction — simple + watertight', () => {
+    const res = paveRidgeJunction([armAt(45), armAt(135), armAt(225), armAt(315)], flat, { widthMm: 3, edgeMm: 2 });
     expect(res.mesh.indices.length).toBeGreaterThan(0);
     expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
     const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
