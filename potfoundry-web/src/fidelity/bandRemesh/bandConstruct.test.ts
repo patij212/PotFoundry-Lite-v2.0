@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { SyntheticCylinderSampler } from '../../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { StationPoint } from './stations';
-import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable, paveRidgeAdaptive, splitAtFoldPoints, joinCorner, footprintSelfCrossings } from './bandConstruct';
+import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable, paveRidgeAdaptive, splitAtFoldPoints, joinCorner, footprintSelfCrossings, paveRidgeCornerSplit } from './bandConstruct';
 import { auditWatertight, triangleQuality3D } from './audit';
 import { quantizeRailUT } from './railKey';
 
@@ -150,6 +150,52 @@ describe('joinCorner (approach C — corner-split + join)', () => {
     const audit = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
     expect(audit.nonManifoldEdges).toBe(0);
     expect(audit.tJunctions).toBe(0);
+  });
+});
+
+describe('paveRidgeCornerSplit (approach C — orchestrator)', () => {
+  const flat = new SyntheticCylinderSampler(50, 100, 0, 0);
+  const OPTS = { widthMm: 3, edgeMm: 2 };
+
+  it('paves a single-corner spine into a SIMPLE-footprint, watertight ridge (crest exact)', () => {
+    const spine: StationPoint[] = [{ u: 0.30, t: 0.30 }, { u: 0.50, t: 0.30 }, { u: 0.50, t: 0.55 }];
+    const res = paveRidgeCornerSplit(spine, flat, OPTS);
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+    expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
+    const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(a.nonManifoldEdges).toBe(0);
+    expect(a.tJunctions).toBe(0);
+    // Crest exact: the sharp corner is preserved as a crease vertex.
+    const spineKeys = new Set(res.spineVertexIds.map((id) => {
+      const [u, t] = res.vertexUT[id];
+      return `${u}|${t}`;
+    }));
+    const [qu, qt] = quantizeRailUT(0.50, 0.30);
+    expect(spineKeys.has(`${qu}|${qt}`)).toBe(true);
+  });
+
+  it('paves a MULTI-corner zigzag (alternating left/right turns) — simple footprint + watertight', () => {
+    // A staircase of sharp 90° corners alternating turn direction (concave side flips).
+    const spine: StationPoint[] = [
+      { u: 0.20, t: 0.20 }, { u: 0.40, t: 0.20 }, { u: 0.40, t: 0.45 },
+      { u: 0.60, t: 0.45 }, { u: 0.60, t: 0.70 },
+    ];
+    const res = paveRidgeCornerSplit(spine, flat, OPTS);
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+    expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
+    const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(a.nonManifoldEdges).toBe(0);
+    expect(a.tJunctions).toBe(0);
+  });
+
+  it('a no-fold (gently curved) spine paves as one simple band (no spurious split)', () => {
+    const spine: StationPoint[] = [{ u: 0.30, t: 0.30 }, { u: 0.40, t: 0.32 }, { u: 0.50, t: 0.30 }];
+    const res = paveRidgeCornerSplit(spine, flat, OPTS);
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+    expect(footprintSelfCrossings(res.mesh, res.vertexUT)).toBe(0);
+    const a = auditWatertight(res.mesh, { boundaryVertexIndices: res.openBoundaryVertices });
+    expect(a.nonManifoldEdges).toBe(0);
+    expect(a.tJunctions).toBe(0);
   });
 });
 

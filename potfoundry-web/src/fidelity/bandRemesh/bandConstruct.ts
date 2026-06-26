@@ -413,96 +413,111 @@ function fillPolygon(loopPts: StationPoint[], sampler: SurfaceSampler, table: Co
   }
 }
 
-/**
- * Join two sub-spines that meet at a shared corner vertex `C`
- * (`subSpineA[last]` === `subSpineB[0]` === `C`) into ONE watertight ridge whose
- * (u,t) footprint is SIMPLE by construction — the approach-C corner-join.
- *
- * Each sub-band is paved at FULL width over its own sub-spine, so `C` is a first/last
- * `buildStations` row of every flank ⇒ the crest stays EXACT through the corner (full
- * fidelity, no corner-cut). At the corner exactly one flank is CONCAVE and one CONVEX:
- *   - **Concave:** both sub-bands' concave crest rails are clipped to the shared miter
- *     point `M`. Their corner cross-rows are both `buildCrossBandRow(C, M)` — byte
- *     identical ⇒ they weld (no overlap, no fold).
- *   - **Convex:** the two sub-bands' convex corner rows leave a wedge gap; it is filled
- *     Steiner-free by `triangulatePolygon3D` (full width, no pinch).
- * Everything is interned by exact (u,t) key (QSCALE) so the two sub-bands + the wedge
- * weld into one mesh.
- */
-export function joinCorner(
-  subSpineA: StationPoint[],
-  subSpineB: StationPoint[],
-  sampler: SurfaceSampler,
-  opts: CornerJoinOptions,
-): RidgeResult {
-  const { widthMm, edgeMm } = opts;
-  const maxSpacingMm = (edgeMm / 2) * 0.95;
-  const C = subSpineA[subSpineA.length - 1];
-  const subAdense = densifyRail(subSpineA, sampler, maxSpacingMm);
-  const subBdense = densifyRail(subSpineB, sampler, maxSpacingMm);
+/** Resolved corner frame between a sub-spine ending at C and the next starting at C. */
+interface CornerGeom {
+  dIn: { du: number; dt: number };
+  dOut: { du: number; dt: number };
+  mLeft: StationPoint | null;
+  mRight: StationPoint | null;
+  /** True ⇒ the +perp (left) flank is the inside of the turn (concave). */
+  leftConcave: boolean;
+}
 
-  // Corner frame: incoming/outgoing (u,t) tangents + the metric ±perp at C.
-  const dIn = dirUT(subAdense[subAdense.length - 2], C);
-  const dOut = dirUT(C, subBdense[1]);
+/** Corner frame at the shared vertex `C` of `endDense` (ends at C) and `startDense` (starts at C). */
+function computeCornerGeom(
+  endDense: StationPoint[], startDense: StationPoint[], C: StationPoint, sampler: SurfaceSampler, widthMm: number,
+): CornerGeom {
+  const dIn = dirUT(endDense[endDense.length - 2], C);
+  const dOut = dirUT(C, startDense[1]);
   const pIn = perpUV(sampler, C.u, C.t, dIn.du, dIn.dt);
   const pOut = perpUV(sampler, C.u, C.t, dOut.du, dOut.dt);
   const crestInL: StationPoint = { u: C.u + pIn.a * widthMm, t: C.t + pIn.b * widthMm };
   const crestOutL: StationPoint = { u: C.u + pOut.a * widthMm, t: C.t + pOut.b * widthMm };
   const crestInR: StationPoint = { u: C.u - pIn.a * widthMm, t: C.t - pIn.b * widthMm };
   const crestOutR: StationPoint = { u: C.u - pOut.a * widthMm, t: C.t - pOut.b * widthMm };
-  const mLeft = lineIntersectUT(crestInL, dIn, crestOutL, dOut);
-  const mRight = lineIntersectUT(crestInR, dIn, crestOutR, dOut);
-  const leftConcave = turnSign3D(sampler, C, dIn, dOut) > 0;
+  return {
+    dIn, dOut,
+    mLeft: lineIntersectUT(crestInL, dIn, crestOutL, dOut),
+    mRight: lineIntersectUT(crestInR, dIn, crestOutR, dOut),
+    leftConcave: turnSign3D(sampler, C, dIn, dOut) > 0,
+  };
+}
 
-  // Per-vertex ±perp offset rails (constant full width). The corner end of each is
-  // crestIn*/crestOut* exactly (offsetRailVariable uses the segment tangent at the end).
-  const widthsA = new Array<number>(subAdense.length).fill(widthMm);
-  const widthsB = new Array<number>(subBdense.length).fill(widthMm);
-  const rawAL = offsetRailVariable(subAdense, sampler, widthsA, 1);
-  const rawAR = offsetRailVariable(subAdense, sampler, widthsA, -1);
-  const rawBL = offsetRailVariable(subBdense, sampler, widthsB, 1);
-  const rawBR = offsetRailVariable(subBdense, sampler, widthsB, -1);
+/**
+ * Assemble a chain of sub-spines (each sharing its endpoints with its neighbours at
+ * fold corners) into ONE watertight ridge with a SIMPLE (u,t) footprint — the general
+ * core of approach C. Each sub-band is paved at FULL width over its own sub-spine (so
+ * every corner `C` is a first/last `buildStations` row ⇒ crest EXACT through corners);
+ * each interior corner is a JOIN: concave crest rails clipped to the shared miter `M`
+ * (byte-identical `C→M` cross-rows weld, no overlap/fold), convex wedge filled
+ * Steiner-free by `triangulatePolygon3D` (full width, no pinch). All interned by exact
+ * (u,t) key (QSCALE) so sub-bands + wedges weld into one mesh.
+ */
+function assembleSubSpines(
+  subSpines: StationPoint[][], sampler: SurfaceSampler, opts: CornerJoinOptions,
+): RidgeResult {
+  const { widthMm, edgeMm } = opts;
+  const maxSpacingMm = (edgeMm / 2) * 0.95;
+  const N = subSpines.length;
+  const dense = subSpines.map((s) => densifyRail(s, sampler, maxSpacingMm));
 
-  // Concave rails get clipped to the miter; convex rails keep their full offset (they
-  // already terminate at crestIn*/crestOut*, the fan endpoints).
-  const leftRailA = leftConcave && mLeft ? clipTailToMiter(rawAL, mLeft, dIn) : rawAL;
-  const rightRailA = !leftConcave && mRight ? clipTailToMiter(rawAR, mRight, dIn) : rawAR;
-  const leftRailB = leftConcave && mLeft ? clipHeadToMiter(rawBL, mLeft, dOut) : rawBL;
-  const rightRailB = !leftConcave && mRight ? clipHeadToMiter(rawBR, mRight, dOut) : rawBR;
+  // Corner i is the shared vertex between dense[i] (its end) and dense[i+1] (its start).
+  const corners: CornerGeom[] = [];
+  for (let i = 0; i < N - 1; i++) {
+    const C = dense[i][dense[i].length - 1];
+    corners.push(computeCornerGeom(dense[i], dense[i + 1], C, sampler, widthMm));
+  }
 
-  // Assemble: pave all four flanks into one combined table; flanks of A share the
-  // crease (foot=subAdense) and flanks of B share theirs; A & B share C (and the miter).
   const table = makeCombinedTable();
   const tris: number[] = [];
-  const aLeft = addFlankToCombined(subAdense, leftRailA, sampler, edgeMm, maxSpacingMm, table, tris);
-  const aRight = addFlankToCombined(subAdense, rightRailA, sampler, edgeMm, maxSpacingMm, table, tris);
-  const bLeft = addFlankToCombined(subBdense, leftRailB, sampler, edgeMm, maxSpacingMm, table, tris);
-  const bRight = addFlankToCombined(subBdense, rightRailB, sampler, edgeMm, maxSpacingMm, table, tris);
+  const flankL: PavedFlank[] = [];
+  const flankR: PavedFlank[] = [];
 
-  // Convex wedge: between A's convex corner row (last row of A) and B's convex corner
-  // row (first row of B). Loop = A-row(C→crest) ++ reverse(B-row)(crest→…→b1).
-  const aConvex = leftConcave ? aRight : aLeft;
-  const bConvex = leftConcave ? bRight : bLeft;
-  const aRowC = aConvex.grid.rows[aConvex.grid.rows.length - 1].w; // [C, …, crestInConvex]
-  const bRowC = bConvex.grid.rows[0].w; // [C, …, crestOutConvex]
-  const wedgeLoop = [...aRowC, ...bRowC.slice(1).reverse()];
-  fillPolygon(wedgeLoop, sampler, table, tris);
+  for (let i = 0; i < N; i++) {
+    const widths = new Array<number>(dense[i].length).fill(widthMm);
+    let railL = offsetRailVariable(dense[i], sampler, widths, 1);
+    let railR = offsetRailVariable(dense[i], sampler, widths, -1);
+    const endCorner = i < N - 1 ? corners[i] : null; // C at the END of dense[i]
+    const startCorner = i > 0 ? corners[i - 1] : null; // C at the START of dense[i]
+    // Clip the CONCAVE rail to the miter at each corner end (convex rails keep full offset).
+    if (endCorner) {
+      if (endCorner.leftConcave) { if (endCorner.mLeft) railL = clipTailToMiter(railL, endCorner.mLeft, endCorner.dIn); }
+      else if (endCorner.mRight) railR = clipTailToMiter(railR, endCorner.mRight, endCorner.dIn);
+    }
+    if (startCorner) {
+      if (startCorner.leftConcave) { if (startCorner.mLeft) railL = clipHeadToMiter(railL, startCorner.mLeft, startCorner.dOut); }
+      else if (startCorner.mRight) railR = clipHeadToMiter(railR, startCorner.mRight, startCorner.dOut);
+    }
+    flankL.push(addFlankToCombined(dense[i], railL, sampler, edgeMm, maxSpacingMm, table, tris));
+    flankR.push(addFlankToCombined(dense[i], railR, sampler, edgeMm, maxSpacingMm, table, tris));
+  }
 
-  // Open boundary: every flank's crest rail (outer flank edge, incl. the convex chord
-  // endpoints) + the two free t-ends (A's outer row, B's outer row). The crease + the
-  // concave miter cross-rows + the convex corner cross-rows are all interior (count-2).
+  // Convex wedge fill at each interior corner.
+  for (let i = 0; i < N - 1; i++) {
+    const cg = corners[i];
+    const aConvex = cg.leftConcave ? flankR[i] : flankL[i];
+    const bConvex = cg.leftConcave ? flankR[i + 1] : flankL[i + 1];
+    const aRowC = aConvex.grid.rows[aConvex.grid.rows.length - 1].w; // [C, …, crestInConvex]
+    const bRowC = bConvex.grid.rows[0].w; // [C, …, crestOutConvex]
+    fillPolygon([...aRowC, ...bRowC.slice(1).reverse()], sampler, table, tris);
+  }
+
+  // Open boundary: every flank's crest rail + the two free t-ends (first sub-spine's
+  // start rows, last sub-spine's end rows). Corner cross-rows + the crease are interior.
   const openBoundaryVertices = new Set<number>();
-  for (const f of [aLeft, aRight, bLeft, bRight]) for (const id of f.crestIds) openBoundaryVertices.add(id);
-  for (const f of [aLeft, aRight]) for (const p of f.grid.rows[0].w) openBoundaryVertices.add(table.intern(p.u, p.t));
-  for (const f of [bLeft, bRight]) {
+  for (const f of [...flankL, ...flankR]) for (const id of f.crestIds) openBoundaryVertices.add(id);
+  for (const f of [flankL[0], flankR[0]]) for (const p of f.grid.rows[0].w) openBoundaryVertices.add(table.intern(p.u, p.t));
+  for (const f of [flankL[N - 1], flankR[N - 1]]) {
     const outer = f.grid.rows[f.grid.rows.length - 1].w;
     for (const p of outer) openBoundaryVertices.add(table.intern(p.u, p.t));
   }
 
-  // Crease (spine) ids: A's foot rows then B's foot rows (sharing C).
-  const footA = aLeft.grid.rows.map((r) => table.intern(r.footPt.u, r.footPt.t));
-  const footB = bLeft.grid.rows.map((r) => table.intern(r.footPt.u, r.footPt.t));
-  const spineVertexIds = [...footA, ...footB.slice(1)];
+  // Crease (spine) ids: foot rows across all sub-spines, dropping shared-corner dups.
+  const spineVertexIds: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const foot = flankL[i].grid.rows.map((r) => table.intern(r.footPt.u, r.footPt.t));
+    spineVertexIds.push(...(i === 0 ? foot : foot.slice(1)));
+  }
 
   const positions = new Float32Array(table.ut.length * 3);
   for (let i = 0; i < table.ut.length; i++) {
@@ -515,4 +530,52 @@ export function joinCorner(
     spineVertexIds,
     openBoundaryVertices,
   };
+}
+
+/**
+ * Join two sub-spines that meet at a shared corner vertex `C`
+ * (`subSpineA[last]` === `subSpineB[0]` === `C`) into ONE watertight ridge whose
+ * (u,t) footprint is SIMPLE by construction — the approach-C corner-join (the 2-arm
+ * case of {@link assembleSubSpines}). The crest stays EXACT through the corner; the
+ * concave flank mitres to a shared vertex, the convex flank fills its wedge.
+ */
+export function joinCorner(
+  subSpineA: StationPoint[],
+  subSpineB: StationPoint[],
+  sampler: SurfaceSampler,
+  opts: CornerJoinOptions,
+): RidgeResult {
+  return assembleSubSpines([subSpineA, subSpineB], sampler, opts);
+}
+
+/** Options for {@link paveRidgeCornerSplit}. */
+export interface CornerSplitOptions extends CornerJoinOptions {
+  /**
+   * Split the spine at every station whose curvature radius is below
+   * `safety·widthMm` (where a full-width offset would fold). Default 1.5. Calibrate
+   * UP (more splits) to harden construction — never relax the gate.
+   */
+  safety?: number;
+}
+
+/**
+ * Pave a feature ridge whose (u,t) footprint is SIMPLE by construction for ANY spine
+ * — the approach-C drop-in for `paveRidge`. Densify → measure curvature →
+ * `splitAtFoldPoints` (at every station whose radius < `safety·widthMm`, where a
+ * full-width offset would fold) → {@link assembleSubSpines} (pave each sub-spine at
+ * full width + join the corners). A fold-free spine yields one sub-spine ⇒ a single
+ * ridge. `footprintSelfCrossings === 0` is the by-construction net the assembler must
+ * meet (callers/gates assert it).
+ */
+export function paveRidgeCornerSplit(
+  spine: StationPoint[],
+  sampler: SurfaceSampler,
+  opts: CornerSplitOptions,
+): RidgeResult {
+  const { widthMm, edgeMm, safety = 1.5 } = opts;
+  const maxSpacingMm = (edgeMm / 2) * 0.95;
+  const spineDense = densifyRail(spine, sampler, maxSpacingMm);
+  const radius = measureSpineCurvatureRadius(spineDense, sampler);
+  const subSpines = splitAtFoldPoints(spineDense, radius, safety * widthMm);
+  return assembleSubSpines(subSpines, sampler, { widthMm, edgeMm });
 }
