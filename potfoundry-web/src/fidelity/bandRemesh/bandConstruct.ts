@@ -628,8 +628,10 @@ export function paveRidgeJunction(
     .map((o) => o.i);
 
   // Per-arm ±perp rails (J = head). +perp (railP) faces the CCW sector; −perp (railM) the CW sector.
-  const railP = arms.map((a) => offsetRailVariable(a, sampler, new Array<number>(a.length).fill(widthMm), 1));
-  const railM = arms.map((a) => offsetRailVariable(a, sampler, new Array<number>(a.length).fill(widthMm), -1));
+  const rawP = arms.map((a) => offsetRailVariable(a, sampler, new Array<number>(a.length).fill(widthMm), 1));
+  const rawM = arms.map((a) => offsetRailVariable(a, sampler, new Array<number>(a.length).fill(widthMm), -1));
+  const railP = [...rawP];
+  const railM = [...rawM];
 
   // Resolve each CCW sector: < 180° ⇒ the two facing flanks OVERLAP near J → MITER them to a
   // shared point M (clip both facing rail heads to M; their J-rows become the identical
@@ -664,6 +666,11 @@ export function paveRidgeJunction(
   const left: PavedFlank[] = [];
   const right: PavedFlank[] = [];
   for (let i = 0; i < arms.length; i++) {
+    // GUARD: a very narrow sector can clip a facing rail below 2 points (a sub-arc shorter
+    // than the band width — common at high-degree nodes with tiny sectors). Fall back to the
+    // raw offset there (un-mitered, may fold — recorded — but never a crash).
+    if (railP[i].length < 2) railP[i] = rawP[i];
+    if (railM[i].length < 2) railM[i] = rawM[i];
     left.push(addFlankToCombined(arms[i], railP[i], sampler, edgeMm, maxSpacingMm, table, tris));
     right.push(addFlankToCombined(arms[i], railM[i], sampler, edgeMm, maxSpacingMm, table, tris));
   }
