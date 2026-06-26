@@ -56,6 +56,16 @@ sliver population); minAngle (~2° ours vs 14–20° SOTA) is the honest signal.
 
 **Replace `PeriodicBalancedQuadtree` + transition-fan templates with a transition-free constrained-Delaunay
 mesher over the (u,t) domain under the surface metric.**
+
+> **Architecture fork RESOLVED (2026-06-26, `2026-06-26-evidence-3d-direct-vs-uv.md`, 88906a0): mesh in (u,t),
+> NOT 3D-direct.** A 3D-surface remesh (CVT/QEM) at EQUAL budget does NOT beat gmsh-UV on fidelity (both hit the
+> same near-C0 straddle floor; CVT ties Gyroid, loses BasketWeave; QEM = slivers) — the relief loss is
+> SIZING/BUDGET, not UV-vs-3D-topology. Keep (u,t) (native warp/seam/watertight). Two concrete levers the
+> de-risk surfaced: (1) an **accurate sizing field** (analytic curvature / `curvatureFloor`, not the band-limited
+> grid) to close the relief gap; (2) a **(u,t) CVT/ODT smoothing post-pass** for triangle quality (CVT scored
+> minAngle 33°/22° vs gmsh 12°/10° — the in-house GAP). Next experiment: isolate sizing-field vs topology
+> (analytic-curvature sizing on the transition-free engine vs the dense-truth floor at equal budget) + a (u,t)
+> CVT pass to reproduce CVT's min-angle win without leaving UV.
 - **Isotropic-by-default** (gmsh-iso is quality-robust on all 20 — never worsened quality); add anisotropy
   **selectively** for directional styles (lattices) as an efficiency optimization, NOT universally.
 - **Kernel:** the existing `metricDelaunayRefine.ts` spike (the synthesis's throwaway) is the prior attempt;
