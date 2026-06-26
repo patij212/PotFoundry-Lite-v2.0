@@ -50,6 +50,7 @@ import { buildStations } from './stations';
 import type { StationPoint, StationRow } from './stations';
 import { paveBand } from './paver';
 import { densifyRail } from './stitch';
+import { quantizeRailUT } from './railKey';
 
 // ── Public types ────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,13 @@ export interface JunctionArm {
 export interface JunctionResult {
   /** The combined three-band + junction mesh (watertight by construction). */
   mesh: Mesh3;
+  /**
+   * (u,t) per combined-mesh vertex (aligned to `mesh.positions`), each on the QSCALE
+   * dyadic grid. The assembler welds the junction's outer perimeter to the cdt2d
+   * interior by these (u,t) — exactly as `paveRidge` (featureStrip.ts) exposes its
+   * `vertexUT`. Bit-compatible with the production complement's `railVertexKey`.
+   */
+  vertexUT: Array<[number, number]>;
   /**
    * The junction sub-mesh alone (in combined-mesh indexing), for triangle
    * quality checks over the central polygon.
@@ -409,7 +417,13 @@ export function paveJunction(
   // ── Combined-mesh vertex interning (exact (u,t) key) ──────────────────────────
   const combinedKeyToId = new Map<string, number>();
   const combinedUt: Array<[number, number]> = [];
-  const internUt = (u: number, t: number): number => {
+  const internUt = (uRaw: number, tRaw: number): number => {
+    // Snap onto the QSCALE dyadic grid BEFORE keying — parity with paveRidge
+    // (featureStrip.ts) so the junction's rail/perimeter vertices weld bit-compatibly
+    // with the production complement's railVertexKey (the assembler's keystone weld).
+    // Sub-micron snap: watertightness + quality unchanged; coincident points (shared
+    // corners, end-row weld) still collapse to one id.
+    const [u, t] = quantizeRailUT(uRaw, tRaw);
     const key = utKey(u, t);
     let id = combinedKeyToId.get(key);
     if (id === undefined) {
@@ -533,6 +547,7 @@ export function paveJunction(
   }
   const mesh: Mesh3 = { positions, indices: new Uint32Array(tris) };
   const junctionMesh: Mesh3 = { positions, indices: new Uint32Array(junctionTris) };
+  const vertexUT: Array<[number, number]> = combinedUt.map((v) => [v[0], v[1]] as [number, number]);
 
-  return { mesh, junctionMesh, openBoundaryVertices, sharedEdgeKeys };
+  return { mesh, junctionMesh, vertexUT, openBoundaryVertices, sharedEdgeKeys };
 }
