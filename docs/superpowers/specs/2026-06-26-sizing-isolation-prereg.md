@@ -16,3 +16,21 @@ Is the relief-fidelity gap (gmsh mushing the tangled lattices) closable in **(u,
 
 ## Controls
 Equal-instrument (RMS + minAngle on every mesh); RMS-vs-tris curve so budget is explicit (not confounded with sizing); deterministic (gmsh seed pinned); dense-truth floor as the reference. Surface-patch fidelity probe (watertightness not tested).
+
+## RESULT (2026-06-26) — VERDICT: **REFUTED** (sizing accuracy is a MINOR lever, not the silver bullet)
+Scorecard: `2026-06-26-rebaseline-evidence/sizing-scorecard.json` (16 rows).
+
+| style | metric | RMS-vs-tris | reaches floor? |
+|---|---|---|---|
+| Gyroid (floor 0.10) | band-limited 32 | 0.28→0.24 across 5.5k→44k (stuck) | no |
+| Gyroid | accurate 256 | 0.24→0.14 across 9.9k→**160k** | ~1.4× floor at 160k |
+| BasketWeave (floor 0.23) | band-limited 32 | **0.23–0.27** from 12k on (≈floor already) | yes, at 12k |
+| BasketWeave | accurate 256 | **0.25–0.26** across 56k→442k (stuck) | ≈floor, never below |
+
+Three findings (the refutation is itself the result):
+1. **The curves mostly COINCIDE.** At matched tris, accurate beats band-limited clearly only once (Gyroid ~10k: 0.24 vs 0.28); ties elsewhere; BasketWeave is pure-budget. ⇒ **the relief gap is BUDGET + the irreducible near-C0 straddle floor, not sizing-accuracy.** Gyroid closes only with raw triangles (160k → 0.14).
+2. **Accurate metric WORSENS angles** — sizeRes 256 minAngle 1.8–4.9° vs 32's 10–13° (the anisotropy double-edge: finer metric → more stretch → more slivers). ⇒ **a (u,t) CVT/ODT smoothing pass is MANDATORY in the rebuild**, not optional.
+3. **RMS is STRADDLE-MASKED for crease styles** (the session's 3rd metric blind spot, after `%<20°`-dilution and chord-p99-blindness): BasketWeave RMS sits at the ~0.23 straddle floor at 12k AND 442k tris, yet the 3D render shows 12k mushy / dense crisp — the irreducible over/under-weave creases swamp the under-tessellation signal. ⇒ **honest relief fidelity needs the per-style crease/straddle EXCLUSION** (`analyticSurfaceGate`) before the RMS, or trust the 3D render.
+
+**Roadmap impact:** transition-free (u,t) Delaunay stands, but the relief gap is *budget*, the **CVT/ODT smoothing pass is mandatory** (accurate sizing alone slivers), and the **fidelity metric needs straddle exclusion** to be honest. "Accurate sizing closes the relief gap cheaply" — refuted.
+

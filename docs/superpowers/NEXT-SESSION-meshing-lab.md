@@ -63,9 +63,14 @@ mesher over the (u,t) domain under the surface metric.**
 > SIZING/BUDGET, not UV-vs-3D-topology. Keep (u,t) (native warp/seam/watertight). Two concrete levers the
 > de-risk surfaced: (1) an **accurate sizing field** (analytic curvature / `curvatureFloor`, not the band-limited
 > grid) to close the relief gap; (2) a **(u,t) CVT/ODT smoothing post-pass** for triangle quality (CVT scored
-> minAngle 33°/22° vs gmsh 12°/10° — the in-house GAP). Next experiment: isolate sizing-field vs topology
-> (analytic-curvature sizing on the transition-free engine vs the dense-truth floor at equal budget) + a (u,t)
-> CVT pass to reproduce CVT's min-angle win without leaving UV.
+> minAngle 33°/22° vs gmsh 12°/10° — the in-house GAP). **Sizing-isolation experiment RAN
+> (`2026-06-26-sizing-isolation-prereg.md`, acc19a8) → REFUTED that (1) is cheap:** the relief gap is BUDGET +
+> the irreducible near-C0 straddle floor (Gyroid closes only at ~160k tris; BasketWeave RMS is floored at the
+> straddle from 12k on, never below). Accurate metric WORSENS angles (sizeRes256 minAngle 2–5° vs 32's 10–13°,
+> the anisotropy double-edge) ⇒ **the CVT/ODT pass (2) is MANDATORY, not optional.** And **RMS is
+> straddle-MASKED for crease styles** (3rd metric blind spot) ⇒ the fidelity gate needs per-style straddle
+> EXCLUSION (or trust the 3D render). NET rebuild recipe: transition-free (u,t) Delaunay + **mandatory CVT/ODT
+> pass** + budget; sizing-accuracy is a minor lever; measure fidelity with straddle exclusion.
 - **Isotropic-by-default** (gmsh-iso is quality-robust on all 20 — never worsened quality); add anisotropy
   **selectively** for directional styles (lattices) as an efficiency optimization, NOT universally.
 - **Kernel:** the existing `metricDelaunayRefine.ts` spike (the synthesis's throwaway) is the prior attempt;
