@@ -188,6 +188,18 @@ describe('paveRidgeCornerSplit (approach C — orchestrator)', () => {
     expect(a.tJunctions).toBe(0);
   });
 
+  it('does NOT crash on two very close corners (degenerate short sub-spine) — guard, not throw', () => {
+    // Corners C1=(0.40,0.50) and C2=(0.40,0.51) are ~1mm apart in 3D — far closer than
+    // the full band width (6mm) — so the middle sub-spine's concave rail clips empty.
+    // The guard must fall back (no crash) rather than throw on the degenerate sub-band.
+    const spine: StationPoint[] = [
+      { u: 0.30, t: 0.50 }, { u: 0.40, t: 0.50 }, { u: 0.40, t: 0.51 }, { u: 0.50, t: 0.51 },
+    ];
+    expect(() => paveRidgeCornerSplit(spine, flat, { widthMm: 3, edgeMm: 2 })).not.toThrow();
+    const res = paveRidgeCornerSplit(spine, flat, { widthMm: 3, edgeMm: 2 });
+    expect(res.mesh.indices.length).toBeGreaterThan(0);
+  });
+
   it('a no-fold (gently curved) spine paves as one simple band (no spurious split)', () => {
     const spine: StationPoint[] = [{ u: 0.30, t: 0.30 }, { u: 0.40, t: 0.32 }, { u: 0.50, t: 0.30 }];
     const res = paveRidgeCornerSplit(spine, flat, OPTS);

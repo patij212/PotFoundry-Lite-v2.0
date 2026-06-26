@@ -475,8 +475,10 @@ function assembleSubSpines(
 
   for (let i = 0; i < N; i++) {
     const widths = new Array<number>(dense[i].length).fill(widthMm);
-    let railL = offsetRailVariable(dense[i], sampler, widths, 1);
-    let railR = offsetRailVariable(dense[i], sampler, widths, -1);
+    const rawL = offsetRailVariable(dense[i], sampler, widths, 1);
+    const rawR = offsetRailVariable(dense[i], sampler, widths, -1);
+    let railL = rawL;
+    let railR = rawR;
     const endCorner = i < N - 1 ? corners[i] : null; // C at the END of dense[i]
     const startCorner = i > 0 ? corners[i - 1] : null; // C at the START of dense[i]
     // Clip the CONCAVE rail to the miter at each corner end (convex rails keep full offset).
@@ -488,6 +490,12 @@ function assembleSubSpines(
       if (startCorner.leftConcave) { if (startCorner.mLeft) railL = clipHeadToMiter(railL, startCorner.mLeft, startCorner.dOut); }
       else if (startCorner.mRight) railR = clipHeadToMiter(railR, startCorner.mRight, startCorner.dOut);
     }
+    // GUARD: a sub-spine shorter than the band width can have BOTH-end clips collapse
+    // its concave rail below 2 points (no band can support that miter). Fall back to the
+    // raw full-width offset there — the corner stays un-mitered (may fold, recorded by the
+    // footprintSelfCrossings net) but the construction never CRASHES on dense corners.
+    if (railL.length < 2) railL = rawL;
+    if (railR.length < 2) railR = rawR;
     flankL.push(addFlankToCombined(dense[i], railL, sampler, edgeMm, maxSpacingMm, table, tris));
     flankR.push(addFlankToCombined(dense[i], railR, sampler, edgeMm, maxSpacingMm, table, tris));
   }
