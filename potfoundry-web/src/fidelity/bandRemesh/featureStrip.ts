@@ -71,7 +71,7 @@ function len3(a: Vec3): number {
  * the (a,b) realizing the in-tangent-plane normal×tangent direction with 3D step
  * length 1 (solved via the first fundamental form). Caller scales by ±widthMm.
  */
-function perpUV(sampler: SurfaceSampler, u: number, t: number, du: number, dt: number): { a: number; b: number } {
+export function perpUV(sampler: SurfaceSampler, u: number, t: number, du: number, dt: number): { a: number; b: number } {
   const pu = sub3(sampler.position(u + METRIC_EPS, t), sampler.position(u - METRIC_EPS, t)).map((x) => x / (2 * METRIC_EPS)) as [number, number, number];
   const pt = sub3(sampler.position(u, t + METRIC_EPS), sampler.position(u, t - METRIC_EPS)).map((x) => x / (2 * METRIC_EPS)) as [number, number, number];
   const E = dot3(pu, pu), F = dot3(pu, pt), G = dot3(pt, pt);
@@ -132,18 +132,32 @@ export function paveRidge(spine: StationPoint[], sampler: SurfaceSampler, opts: 
   const leftRail = densifyRail(offsetRail(spineDense, sampler, widthMm, 1), sampler, maxSpacingMm);
   const rightRail = densifyRail(offsetRail(spineDense, sampler, widthMm, -1), sampler, maxSpacingMm);
 
+  return assembleRidgeBands(spineDense, leftRail, rightRail, sampler, edgeMm);
+}
+
+/**
+ * Build the two flank bands from a densified spine + its two (already-offset,
+ * densified) flank rails: rows ∥ ridge, spine = shared crease, every vertex
+ * SNAPPED onto the QSCALE dyadic grid (`quantizeRailUT`) before interning + position
+ * eval — the crux that makes the band's weld key bit-compatible with the production
+ * complement's `railVertexKey`. Shared verbatim by {@link paveRidge} (constant width)
+ * and `bandConstruct.paveRidgeAdaptive` (curvature-capped variable width) so neither
+ * re-derives the assembly. The snap is sub-micron (≤ 1/2·QSCALE in u,t) so
+ * quality/watertightness are unaffected; coincident rail points from both flanks snap
+ * to ONE id (the crease).
+ */
+export function assembleRidgeBands(
+  spineDense: StationPoint[],
+  leftRail: StationPoint[],
+  rightRail: StationPoint[],
+  sampler: SurfaceSampler,
+  edgeMm: number,
+): RidgeResult {
   const leftGrid = buildStations(spineDense, leftRail, sampler, edgeMm);
   const rightGrid = buildStations(spineDense, rightRail, sampler, edgeMm);
   const leftBand = paveBand(leftGrid, sampler);
   const rightBand = paveBand(rightGrid, sampler);
 
-  // Combine both bands into one (u,t)-interned vertex table.
-  // Every vertex is SNAPPED onto the QSCALE dyadic grid (quantizeRailUT) before
-  // interning + position eval. This is the crux that makes the band's weld key
-  // bit-compatible with the production complement's railVertexKey, so a ridge rail
-  // welds to the cdt2d interior with zero T-junctions (the assembler's keystone).
-  // The snap is sub-micron (≤ 1/2·QSCALE in u,t) so quality/watertightness are
-  // unaffected; coincident rail points from both flanks snap to ONE id (the crease).
   const keyToId = new Map<string, number>();
   const combinedUt: Array<[number, number]> = [];
   const intern = (uRaw: number, tRaw: number): number => {
