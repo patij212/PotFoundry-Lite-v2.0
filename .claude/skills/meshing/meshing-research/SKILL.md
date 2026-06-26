@@ -23,11 +23,12 @@ Mesh/export fidelity work here is **experimental science**, not coding. The two 
 ## Quick reference
 **Levers** (window globals; `?fidelity=1`; default off → byte-identical): `__pfConformingUniformLevel / MaxSag / NRing / UBias / Efg / MinEdge / MaxLevel / Budget`, `__pfSurfaceFidelityExact`, `__pfReferenceDenseRes / Bicubic`.
 **Instruments:** `perpendicular3DDeviation` (honest 3D chord), `triangleQualityDistribution` (min-angle, `pctBelow20`), `crestBandTriangleQuality`, `deviationVsTrueSurface` (fidelityGate), the `TRI_SOURCE` channel (attribute a sliver to its template). The [[oracle-harness]] measures gmsh/Triangle on the SAME instruments.
-**Gates:** chord p99 ≤ τ(p) (`src/fidelity/gateThresholds.ts`); min-angle ≥ 20°; watertight by **index**; vertex faithfulness ≤ f32 floor.
+**Gates — use the HONEST ones (`[measured 2026-06-26]`):** **minAngle** for slivers (depth-invariant) — NOT `%<20°`, which DILUTES under refinement (a denser slivered mesh shows a *lower* `%<20°` as good interior tris swamp a fixed sliver count); **RMS / relief-coverage** chord for fidelity — NOT p99 alone, which is BLIND to under-tessellation (a relief-losing mesh shares the same worst-case near-C0-crease p99). Plus watertight by **index**; vertex faithfulness ≤ f32 floor. (τ(p) p99 in `src/fidelity/gateThresholds.ts` is a floor check, not a fidelity gate.)
 **Controls:**
 - Never vary sampling-resolution and mesh-density in the same comparison (the denseN confound).
 - Synthetic proxies validate **mechanism + direction, not magnitude** — the real-style GPU sweep is the decisive test.
 - Compare only at **equal triangle budget**.
+- **Verify the metric RESPONDS to the defect you care about** — sweep density/scale and confirm it isn't *diluting* (`%<20°` falls under refinement) or *saturating* (p99-chord pinned by shared creases while the surface mushes). If a flat-shaded **3D render** disagrees with the metric, trust the render and fix the metric.
 - GPU hygiene: let Playwright probes reach `browser.close()`; reap orphaned chromium; serialize GPU probes.
 
 ## Rationalizations — STOP if you think one (all observed in this project)
@@ -38,6 +39,7 @@ Mesh/export fidelity work here is **experimental science**, not coding. The two 
 | "The synthetic test passed" | Proxies validate mechanism+direction, not magnitude. The real-style GPU sweep decides. |
 | "Denser mesh fixed it" | Did you vary sampling-res AND density together? And density is **sliver-invariant** here. |
 | "The metric went down" | Down on which metric, vs what reference? A verified-TRUE number can measure the WRONG thing (the dilation-recall artifact). |
+| "%<20° / chord-p99 improved" | Does the metric DILUTE or SATURATE under density? `[measured 2026-06-26]` `%<20°` DROPS as you refine a slivered mesh (good interior tris dilute a fixed sliver count → false win); chord-**p99** is BLIND to under-tessellation (a relief-losing mush has the same p99 as a crisp mesh). Score slivers by **minAngle** (depth-invariant), fidelity by **RMS/coverage** — then re-check. |
 | "I'll keep the refuted code as reference" | Commit it WITH its honest NO-GO status. Reverting to discard loses the diagnosis. |
 
 ## Red flags — you are off the method
