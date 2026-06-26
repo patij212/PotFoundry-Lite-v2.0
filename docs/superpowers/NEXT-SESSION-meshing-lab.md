@@ -36,8 +36,17 @@ worst facets **straddle a near-C0 relief step** (chord ≈ ½ the step height), 
 project's **straddle / steep-relief accept-class**, needing the per-style `analyticSurfaceGate` crease/straddle
 **exclusion** (this run omitted it), NOT more triangles. (Corrects the pre-registration: GyroidManifold is NOT
 clean-chord.) Caveat: a lab-vs-production setup difference may also contribute (lab lifts gmsh's (u,t) via the
-CPU `rA`; production warps + GPU-evaluates) — reconcile before any chord conclusion. **The quality leg is
-exclusion-independent and is the clean, decisive result.**
+CPU `rA`; production warps + GPU-evaluates) — reconcile before any chord conclusion.
+
+**3D FIDELITY (added 2026-06-26 — the most important correction; flat-shaded 3D render of the dumps' `xyz`+`tris`
+via Three.js, in scratchpad):** "gmsh wins quality" is NOT "gmsh captures the shape." At tol=0.05 gmsh-iso's
+band-limited metric under-sized it to ~11–12k tris → it LOSES the relief (BasketWeave mushes into bumps, Gyroid
+facets into ridges); ours (50×) renders it crisply. **The chord-p99 gate is BLIND to this** (similar p99 for
+both, dominated by shared near-C0 creases; the fidelity gap is in the mean/RMS). ⇒ (a) the mesher rebuild must
+pair transition-free topology with an ACCURATE curvature sizing field (the band-limited grid is the common
+blocker for both fidelity and the chord puzzle); (b) **add a mean/RMS or coverage fidelity metric — p99 alone
+passes under-tessellated, relief-losing meshes.** To reproduce a 3D render: the `_oursvssota` dumps carry `xyz`
+(lifted) + `tris`; flat-shade them (Three.js `MeshStandardMaterial{flatShading:true}` or pyvista), same camera.
 
 ## The roadmap (the decision this run informs)
 
