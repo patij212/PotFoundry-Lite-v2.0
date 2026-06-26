@@ -44,8 +44,12 @@ band-limited metric under-sized it to ~11–12k tris → it LOSES the relief (Ba
 facets into ridges); ours (50×) renders it crisply. **The chord-p99 gate is BLIND to this** (similar p99 for
 both, dominated by shared near-C0 creases; the fidelity gap is in the mean/RMS). ⇒ (a) the mesher rebuild must
 pair transition-free topology with an ACCURATE curvature sizing field (the band-limited grid is the common
-blocker for both fidelity and the chord puzzle); (b) **add a mean/RMS or coverage fidelity metric — p99 alone
-passes under-tessellated, relief-losing meshes.** To reproduce a 3D render: the `_oursvssota` dumps carry `xyz`
+blocker for both fidelity and the chord puzzle); (b) **fix the metrics — BOTH project gates have density blind
+spots.** Add a mean/RMS or coverage fidelity metric (p99-chord alone passes under-tessellated meshes), AND score
+slivers by **minAngle** (depth-invariant), NOT `%<20°` — the opus ours-vs-SOTA run found `%<20°` DILUTES under
+deep refinement (ours' `%<20°` *drops* 10.5→5.2 from maxLevel 10→16 as well-shaped interior tris dilute a fixed
+sliver population); minAngle (~2° ours vs 14–20° SOTA) is the honest signal. The two honest gates = minAngle
+(sliver) + mean/coverage (fidelity). (Opus run: `2026-06-26-evidence-ours-vs-sota-OPUS.md`, e170b23.)** To reproduce a 3D render: the `_oursvssota` dumps carry `xyz`
 (lifted) + `tris`; flat-shade them (Three.js `MeshStandardMaterial{flatShading:true}` or pyvista), same camera.
 
 ## The roadmap (the decision this run informs)
