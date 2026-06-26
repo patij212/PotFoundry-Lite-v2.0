@@ -7,6 +7,8 @@ export interface OracleInput {
   H: number;
   domain: { uPeriodic: boolean };
   sizing: { resU: number; resT: number; h: number[] };
+  /** Anisotropic metric field (optional). When present, the gmsh adapter uses BAMG (Algorithm 7). */
+  metric?: { resU: number; resT: number; m: number[] };
   /** Our conforming (u,t) mesh for comparison; null if not extractable (use grid fallback). */
   ours: { ut: number[]; indices: number[] } | null;
 }

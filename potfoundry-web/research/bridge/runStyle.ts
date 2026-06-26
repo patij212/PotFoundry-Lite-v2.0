@@ -7,6 +7,7 @@ import { baseRadius } from '../../src/geometry/profile';
 import { DEFAULT_STYLE_PARAMS, type StyleId, type StyleOptions } from '../../src/geometry/types';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
 import { buildIsotropicSizingField } from './sizingField';
+import { buildAnisotropicMetricField } from './metricField';
 import { writeOracleInput, readOracleOutput, type OracleInput } from './exchange';
 import { measureOracleMesh, type ScoreRow } from './measure';
 
@@ -30,7 +31,7 @@ const ORACLE = 'research/oracle/oracle.py';
 /** Run a style through the given engines; return one ScoreRow per engine. */
 export function runStyle(
   styleId: StyleId, dims: StyleDims, engines: string[],
-  opts: { tolMm: number; sizeRes: number; hMin: number; hMax: number },
+  opts: { tolMm: number; sizeRes: number; hMin: number; hMax: number; aniso?: boolean },
 ): ScoreRow[] {
   const rA = buildRadiusFn(styleId, {}, dims);
   const field = buildIsotropicSizingField(rA, dims.H, {
@@ -38,9 +39,21 @@ export function runStyle(
   });
   const dir = join('research', 'exchange', String(styleId));
   mkdirSync(dir, { recursive: true });
+  // Build anisotropic metric when requested (gmsh BAMG path).
+  const metric = opts.aniso === true
+    ? (() => {
+        const mf = buildAnisotropicMetricField(rA, dims.H, {
+          resU: opts.sizeRes, resT: opts.sizeRes,
+          tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax,
+        });
+        return { resU: mf.resU, resT: mf.resT, m: Array.from(mf.m) };
+      })()
+    : undefined;
   const input: OracleInput = {
     style: String(styleId), H: dims.H, domain: { uPeriodic: true },
-    sizing: { resU: field.resU, resT: field.resT, h: Array.from(field.h) }, ours: null,
+    sizing: { resU: field.resU, resT: field.resT, h: Array.from(field.h) },
+    ...(metric !== undefined && { metric }),
+    ours: null,
   };
   writeOracleInput(dir, input);
   const rows: ScoreRow[] = [];
