@@ -204,3 +204,33 @@ graphs with known noise (a spur, a jagged line, a junction cluster, a deg-4 node
 5. Part A hysteresis; re-run existing + new fidelity gates.
 6. Determinism gate. Decide deg-4 splitting based on its gated measurement.
 7. Wire the conditioned path behind the flag.
+
+## 10. BUILD RESULT (2026-06-26) — SHIPPED + validated
+
+Built and committed on `refactor/core-migration` (f57461f, a111f85, 2fae8f0, 69f5546):
+
+- **`graphMetric.ts`** — shared periodic-u/mm primitives (pure refactor; unify/detect byte-identical).
+- **`conditionGraph.ts`** — prune / simplify / merge / type, deterministic, 10/10 unit tests.
+- **`fidelityMetric.ts`** — importable dense-truth recall/precision (mirrors validation.test).
+- **Gates** (`conditionGraph.fidelity.test.ts`, `conditionGraph.skeleton.test.ts`, PF_DERISK-gated):
+  - **FIDELITY: NO regressions** across all 20 styles — every style passing raw passes conditioned
+    (CelticTriquetra braid 0.91/1.00 preserved). The hard constraint holds.
+  - **SKELETON (recall-safe merge wins):** Voronoi junctions 485→234, NN spacing 1.8→5.0mm
+    (true-cell scale); junction-count stability vs fineRes **251%→11%**. Gyroid 230→102, Hex 299→135,
+    Celtic 741→287.
+  - **DETERMINISM:** reorder-invariance unit test green.
+
+- **Calibration result (evidence-based, op-isolation):** the production config is **MERGE 2.5mm +
+  gentle SIMPLIFY 0.5mm, PRUNE OFF**. Op isolation proved MERGE is recall-safe on every style incl.
+  the braid; PRUNE (length-based) costs braid recall (0.897<0.9) so it is **opt-in, default-off**.
+
+- **Part A detector hysteresis — implemented, gated, MEASURED NO-GO:** cuts only ~5% of spurs AND
+  regresses recall (Hex 0.933→0.882, Celtic 0.914→0.877). The ~2000 "spurs" are inherent REAL
+  weak/fragmented feature ends, not removable source noise. Kept gated-OFF + documented; not enabled.
+
+### Deferred (with rationale)
+- **Degree-4 splitting:** the conditioner TYPES `highDegree` nodes (post-merge) so the paver can
+  apply an N-arm fan; auto-splitting adds geometry risk and is deferred to the paver/integration.
+- **Flag-wiring (step 7):** nothing consumes the graph yet — the whole-wall integration (the future
+  Step 3) is the natural consumer. `conditionGraph` is a validated, ready building block; wire it
+  there with the calibrated config (merge 2.5 / simplify 0.5 / prune off).
