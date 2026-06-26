@@ -57,8 +57,14 @@ mesher over the (u,t) domain under the surface metric.**
 ## Sharp de-risk experiments to run next (cheap, lab-only, high-information)
 1. **Metric accuracy → chord:** raise the metric `sizeRes` (and/or wire analytic curvature) and confirm chord
    → CAD on the tangled lattices (the sizeRes sweep started this — see the result doc).
-2. **`ours` vs SOTA (H2-full):** extract the production conforming mesher's outer-wall (u,t) mesh CPU-side and
-   measure its `%<20°` against gmsh on the same styles — quantifies exactly how far the quadtree is from SOTA.
+2. **`ours` vs SOTA (H2-full):** quantify the quadtree's slivers vs gmsh on the same styles. Concrete entry
+   (found): `buildConformingOuterWall(styleSampler(styleId, params, {H,Rt,Rb}), opts)` returns
+   `{ vertices:(u,t,0), indices }` — lift + measure exactly like the lab measures an oracle mesh. CAVEATS to
+   handle for FAITHFULNESS: (a) supply the production conforming `opts` (maxSag/maxEdge/minEdge/gradeRatio/
+   maxLevel/nRing — extracted as named consts in `ParametricExportComputer`); (b) this is the PRE-warp quadtree
+   grid — the 2:1 transition templates (hence the slivers) ARE present, but the crease-warp is applied
+   downstream in `WatertightAssembly`, so on warped tangled styles the 3D min-angles differ from production
+   (apply the warp, or compare in (u,t) space, before drawing a head-to-head number).
 3. **In-circle isolation:** does a metric-aware in-circle (vs Euclidean `delaunator`) on the SAME points close
    the quality gap? Isolates "points vs metric-triangulation" for the kernel build.
 
