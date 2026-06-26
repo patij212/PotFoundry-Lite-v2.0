@@ -70,7 +70,13 @@ failures) and pass after.
 
 ## Follow-ups (toward fuller Rhino/Grasshopper quality)
 
-- Indexed mesh export (OBJ/PLY/3MF) that preserves shared vertices, which Rhino
-  and Grasshopper import as a welded mesh rather than a triangle soup.
-- Degenerate/sliver-triangle culling at extreme parameters.
-- Optional `orient_outward` guard wired into the export entry point.
+- [x] Indexed OBJ export that preserves shared vertices (`potfoundry.write_obj`),
+  which Rhino and Grasshopper import as a welded mesh rather than a triangle soup.
+- [x] Smooth area-weighted per-vertex normals (`compute_vertex_normals`) so the
+  curved surface reconstructs/shades smoothly; OBJ can embed them.
+- Degenerate/sliver-triangle culling at extreme parameters. Investigated: the
+  input assertion `r_drain < Rb - t_wall - 2` structurally prevents bottom-ring
+  clamp collapse, and all styles stay degenerate-free + oriented manifold across
+  extreme parameter sweeps, so no fix was warranted yet.
+- Optional `orient_outward` guard wired into the Streamlit export entry point.
+- PLY / 3MF (with units + metadata) export.

@@ -32,6 +32,7 @@ from .core.geometry import write_ascii_stl
 
 # Mesh quality / orientation utilities (CAD & slicer export guarantees)
 from .core.mesh import (
+    compute_vertex_normals,
     edge_manifold_stats,
     is_oriented_manifold,
     orient_outward,
@@ -51,6 +52,7 @@ __all__ = [
     # Indexed OBJ export (welded topology for CAD/Rhino/Grasshopper)
     'write_obj',
     # Mesh quality / orientation
+    'compute_vertex_normals',
     'edge_manifold_stats',
     'is_oriented_manifold',
     'orient_outward',

@@ -35,6 +35,7 @@ __all__ = [
     "edge_manifold_stats",
     "is_oriented_manifold",
     "orient_outward",
+    "compute_vertex_normals",
 ]
 
 
@@ -78,6 +79,54 @@ def signed_volume(verts: np.ndarray, faces: np.ndarray) -> float:
     b = v[f[:, 1]]
     c = v[f[:, 2]]
     return float(np.sum(np.einsum("ij,ij->i", a, np.cross(b, c))) / 6.0)
+
+
+def compute_vertex_normals(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Area-weighted smooth per-vertex normals for an indexed mesh.
+
+    Each face contributes its (unnormalized) cross-product to all three of its
+    vertices; the cross product's magnitude is proportional to twice the face
+    area, so larger faces are weighted more -- the standard robust scheme. The
+    result is normalized to unit length. Because shared vertices (including the
+    periodic theta seam) are referenced by index, their normals are averaged
+    consistently with no special seam handling.
+
+    For an outward-wound mesh the normals point outward. A vertex with no
+    incident faces (or perfectly cancelling contributions) falls back to a unit
+    radial direction so the output is always finite and unit length.
+
+    Args:
+        verts: (N, 3) vertex positions.
+        faces: (M, 3) triangle indices.
+
+    Returns:
+        (N, 3) float64 unit normals, one per vertex.
+    """
+    v = np.asarray(verts, dtype=float)
+    f = _as_faces(faces)
+    vn = np.zeros_like(v)
+    a = v[f[:, 0]]
+    b = v[f[:, 1]]
+    c = v[f[:, 2]]
+    fn = np.cross(b - a, c - a)  # magnitude == 2 * area, direction == face normal
+    np.add.at(vn, f[:, 0], fn)
+    np.add.at(vn, f[:, 1], fn)
+    np.add.at(vn, f[:, 2], fn)
+
+    lengths = np.linalg.norm(vn, axis=1)
+    zero = lengths <= 1e-12
+    if np.any(zero):
+        # Fallback: outward radial direction in the XY plane (z up).
+        radial = v[zero].copy()
+        radial[:, 2] = 0.0
+        rlen = np.linalg.norm(radial, axis=1)
+        flat = rlen <= 1e-12
+        radial[~flat] /= rlen[~flat][:, None]
+        radial[flat] = np.array([0.0, 0.0, 1.0])
+        vn[zero] = radial
+        lengths[zero] = 1.0
+    vn /= lengths[:, None]
+    return vn
 
 
 def _directed_edges(faces: np.ndarray) -> np.ndarray:
