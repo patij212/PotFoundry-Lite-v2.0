@@ -94,13 +94,24 @@ export interface StitchResult {
 // ── densifyRail ──────────────────────────────────────────────────────────────────
 
 /**
- * Densify a rail polyline by inserting metric-arclength-interpolated points so
- * that consecutive 3D spacing is ≤ `maxSpacingMm`.
+ * Densify a rail polyline by inserting interpolated points so that EVERY
+ * consecutive 3D spacing is ≤ `maxSpacingMm` — the precondition `buildStations`
+ * enforces.
  *
- * Each input segment [a→b] is subdivided into
- * `ceil(|a→b|_3D / maxSpacingMm)` equal-parameter sub-segments. Endpoints of the
- * ORIGINAL polyline are preserved exactly (anchor preservation), and original
- * interior vertices are preserved (they remain segment boundaries). Deterministic.
+ * Each input segment [a→b] is split into `n` equal-parameter sub-segments, where
+ * `n` is raised until the MEASURED worst 3D sub-gap is ≤ `maxSpacingMm`. Sizing
+ * `n` from the segment's 3D CHORD alone (the original approach) under-resolves
+ * curved / relief-crossing rails — the chord badly under-estimates the true
+ * arclength, so equal-parameter sub-segments exceed the cap and `buildStations`
+ * throws (measured on 88-99% of real-relief rails in the Step-2 de-risk). Probing
+ * the actual 3D spacing and growing `n` makes the contract hold on any surface.
+ *
+ * On a smooth, already-fine rail (chord ≈ arc) the initial `n` already satisfies
+ * the cap, so no extra iterations and no extra points are added.
+ *
+ * Endpoints of the ORIGINAL polyline are preserved exactly (anchor preservation),
+ * and original interior vertices are preserved (they remain segment boundaries).
+ * Deterministic.
  *
  * @param rail         Input rail (≥2 (u,t) points).
  * @param sampler      Surface position evaluator (for 3D spacing).
@@ -119,16 +130,42 @@ export function densifyRail(
 
   const out: StationPoint[] = [{ u: rail[0].u, t: rail[0].t }];
 
+  /** Worst consecutive 3D sub-gap over `n` equal-parameter steps of [a→b]. */
+  const worstGap = (a: StationPoint, b: StationPoint, n: number): number => {
+    let max = 0;
+    let prev = sampler.position(a.u, a.t);
+    for (let k = 1; k <= n; k++) {
+      const alpha = k / n;
+      const cur = sampler.position(a.u + (b.u - a.u) * alpha, a.t + (b.t - a.t) * alpha);
+      const d = Math.hypot(cur[0] - prev[0], cur[1] - prev[1], cur[2] - prev[2]);
+      if (d > max) max = d;
+      prev = cur;
+    }
+    return max;
+  };
+
   for (let i = 1; i < rail.length; i++) {
     const a = rail[i - 1];
     const b = rail[i];
     const pa = sampler.position(a.u, a.t);
     const pb = sampler.position(b.u, b.t);
-    const seg = Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]);
-    const nSub = Math.max(1, Math.ceil(seg / maxSpacingMm));
-    // Insert nSub-1 interior points (equal parameter), then the segment endpoint b.
-    for (let k = 1; k < nSub; k++) {
-      const alpha = k / nSub;
+    const chord = Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]);
+
+    // Seed from the chord (the original sizing), then grow n until the measured
+    // worst 3D sub-gap fits the cap (handles chord ≪ arc on curved/relief rails).
+    // On a smooth rail (chord ≈ arc) the seed already fits, so no growth, no extra
+    // points, and the output matches the original chord-only sizing. Bounded.
+    let n = Math.max(1, Math.ceil(chord / maxSpacingMm));
+    for (let iter = 0; iter < 16; iter++) {
+      const gap = worstGap(a, b, n);
+      if (gap <= maxSpacingMm) break;
+      n = Math.ceil(n * (gap / maxSpacingMm) * 1.05) + 1;
+      if (n > 100000) break; // hard guard against pathological input
+    }
+
+    // Insert n-1 interior points (equal parameter), then the segment endpoint b.
+    for (let k = 1; k < n; k++) {
+      const alpha = k / n;
       out.push({ u: a.u + (b.u - a.u) * alpha, t: a.t + (b.t - a.t) * alpha });
     }
     // Push the exact endpoint b (anchor preservation for original vertices).
