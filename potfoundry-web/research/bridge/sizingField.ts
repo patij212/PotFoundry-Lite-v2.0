@@ -1,4 +1,3 @@
-// potfoundry-web/research/bridge/sizingField.ts
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
 
 const TAU = 2 * Math.PI;
@@ -7,10 +6,14 @@ export interface IsotropicSizingField { resU: number; resT: number; h: Float64Ar
 
 /**
  * Isotropic chord-control sizing field over (u,t). At each grid node we estimate
- * the surface's worst principal curvature κ by central differences of the radial
- * surface S(θ,z)=(r·cosθ, r·sinθ, z) (θ=u·TAU, z=t·H), then the chord-error edge
- * length in MM is h_mm ≈ sqrt(8·tol/κ). We convert to (u,t) units via the local
- * parametric speeds |S_u|,|S_t| (use the smaller speed → the conservative bound).
+ * the worst second-fundamental-form magnitude |S_dd| by central differences of the
+ * radial surface S(θ,z)=(r·cosθ, r·sinθ, z) (θ=u·TAU, z=t·H) in each parameter
+ * direction. A parameter-edge of length h has chord sag ≈ |S_dd|·h²/8, so bounding
+ * sag ≤ tol gives the target edge length DIRECTLY in (u,t) units (|S_dd| already
+ * carries the parameter→mm scale — no speed division):
+ *   h = clamp( sqrt(8·tol / max(|S_uu|,|S_tt|)), hMin, hMax ).
+ * A cylinder r=R is circumferentially curved (|S_uu|=(2π)²R) ⇒ h≈sqrt(8·tol/((2π)²R)),
+ * NOT hMax; only a (degenerate) zero-curvature patch saturates at hMax.
  */
 export function buildIsotropicSizingField(
   rA: AnalyticRadiusFn, H: number,
@@ -21,28 +24,23 @@ export function buildIsotropicSizingField(
     const th = TAU * u, z = t * H, r = rA(th, z);
     return [r * Math.cos(th), r * Math.sin(th), z];
   };
-  const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-  const norm = (a: number[]) => Math.hypot(a[0], a[1], a[2]);
+  // |a − 2c + b| / step²  — central second-difference magnitude (≈ |S_dd|).
+  const secondDiff = (
+    a: [number, number, number], c: [number, number, number], b: [number, number, number], step: number,
+  ): number =>
+    Math.hypot(a[0] - 2 * c[0] + b[0], a[1] - 2 * c[1] + b[1], a[2] - 2 * c[2] + b[2]) / (step * step);
   const h = new Float64Array(resU * resT);
   const du = 1 / Math.max(resU - 1, 1), dt = 1 / Math.max(resT - 1, 1);
   for (let it = 0; it < resT; it++) {
     for (let iu = 0; iu < resU; iu++) {
-      const u = iu * du, t = it * dt;
-      const uu = Math.min(Math.max(u, du), 1 - du), tt = Math.min(Math.max(t, dt), 1 - dt);
+      // clamp the stencil centre off the boundary so the ± samples stay in-domain
+      const uu = Math.min(Math.max(iu * du, du), 1 - du);
+      const tt = Math.min(Math.max(it * dt, dt), 1 - dt);
       const c = S(uu, tt);
-      const su = sub(S(uu + du, tt), S(uu - du, tt)).map((v) => v / (2 * du));
-      const st = sub(S(uu, tt + dt), S(uu, tt - dt)).map((v) => v / (2 * dt));
-      // second differences → curvature magnitude proxy in each param direction
-      const suu = [S(uu + du, tt), c, S(uu - du, tt)];
-      const stt = [S(uu, tt + dt), c, S(uu, tt - dt)];
-      const d2u = norm(sub(sub(suu[0], c), sub(c, suu[2]))) / (du * du);
-      const d2t = norm(sub(sub(stt[0], c), sub(c, stt[2]))) / (dt * dt);
-      const speedU = Math.max(norm(su), 1e-9), speedT = Math.max(norm(st), 1e-9);
-      const kU = d2u / (speedU * speedU), kT = d2t / (speedT * speedT); // κ ≈ |S''|/|S'|²
-      const kMax = Math.max(kU, kT, 1e-9);
-      const hMm = Math.sqrt((8 * tolMm) / kMax);
-      const speedMin = Math.min(speedU, speedT);
-      const hUt = hMm / speedMin; // mm → (u,t) units (conservative: smaller speed)
+      const d2u = secondDiff(S(uu + du, tt), c, S(uu - du, tt), du);
+      const d2t = secondDiff(S(uu, tt + dt), c, S(uu, tt - dt), dt);
+      const d2max = Math.max(d2u, d2t, 1e-9);
+      const hUt = Math.sqrt((8 * tolMm) / d2max);
       h[it * resU + iu] = Math.min(Math.max(hUt, hMin), hMax);
     }
   }
