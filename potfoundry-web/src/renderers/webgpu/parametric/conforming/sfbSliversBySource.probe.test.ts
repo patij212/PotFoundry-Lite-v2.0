@@ -40,6 +40,7 @@ function runAtUBias(
   generalCurves: FeatureLine[],
   uBias: number,
   stripPave = false,
+  featureLevel = 9,
 ): void {
   const g = globalThis as {
     __pfConformingRefine?: boolean;
@@ -56,7 +57,7 @@ function runAtUBias(
     maxLevel: 11, resU: 128, resT: 128, nRing: 256,
     surfaceId: 0,
     featureLines: generalCurves,
-    featureLevel: 9,
+    featureLevel,
     targetTriangles: 6_000_000, budgetMode: 'cap',
     uBias,
     efgSampler: sampler,
@@ -151,5 +152,9 @@ describe.skipIf(!process.env.PF_DERISK)('SFB@1 sliver source probe (real per-cel
     for (const b of [0, 1, 2]) runAtUBias(sampler, generalCurves, b);
     // The decisive comparison: production anisotropy (uBias=2), strip-pave ON.
     runAtUBias(sampler, generalCurves, 2, true);
+    // Adversarial check — does it still help at the PRODUCTION featureLevel=11
+    // (tiny cells)? The GPU export (fL11) showed a net regression; confirm on CPU.
+    runAtUBias(sampler, generalCurves, 2, false, 11);
+    runAtUBias(sampler, generalCurves, 2, true, 11);
   }, 600000);
 });
