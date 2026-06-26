@@ -22,6 +22,8 @@
 
 import type { SurfaceSampler } from '../../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { StationPoint } from './stations';
+import { perpUV } from './featureStrip';
+import { extractHoleBoundary } from './seamFill';
 
 /** 3D distance between two (u,t) samples. */
 function dist3(sampler: SurfaceSampler, a: StationPoint, b: StationPoint): number {
@@ -97,4 +99,75 @@ export function safeHalfWidthProfile(
     out[i] = m;
   }
   return out;
+}
+
+/** Offset each spine station by its own ±width along the metric perpendicular. */
+export function offsetRailVariable(
+  spine: StationPoint[],
+  sampler: SurfaceSampler,
+  widths: number[],
+  sign: 1 | -1,
+): StationPoint[] {
+  const n = spine.length;
+  const out: StationPoint[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = spine[Math.max(0, i - 1)];
+    const b = spine[Math.min(n - 1, i + 1)];
+    let du = (b.u - a.u) % 1;
+    if (du > 0.5) du -= 1;
+    if (du < -0.5) du += 1;
+    const dt = b.t - a.t;
+    const l = Math.hypot(du, dt) || 1;
+    const { a: pa, b: pb } = perpUV(sampler, spine[i].u, spine[i].t, du / l, dt / l);
+    const w = widths[i];
+    out.push({ u: spine[i].u + sign * pa * w, t: spine[i].t + sign * pb * w });
+  }
+  return out;
+}
+
+/** Proper (strict-interior) crossing of (u,t) segments p1→p2 and p3→p4. */
+function properCrossUT(
+  p1: readonly [number, number], p2: readonly [number, number],
+  p3: readonly [number, number], p4: readonly [number, number],
+): boolean {
+  const rx = p2[0] - p1[0], ry = p2[1] - p1[1];
+  const sx = p4[0] - p3[0], sy = p4[1] - p3[1];
+  const denom = rx * sy - ry * sx;
+  if (denom === 0) return false;
+  const qpx = p3[0] - p1[0], qpy = p3[1] - p1[1];
+  const tS = (qpx * sy - qpy * sx) / denom;
+  const tU = (qpx * ry - qpy * rx) / denom;
+  const E = 1e-12;
+  return tS > E && tS < 1 - E && tU > E && tU < 1 - E;
+}
+
+/**
+ * Count proper self-crossings of the band's (u,t) FOOTPRINT — the count-1 perimeter
+ * loop of its mesh (the spine crease is count-2 interior). Returns `Infinity` when
+ * the perimeter is not a single simple loop (a degenerate band). This is the weld
+ * precondition `corridorPaveMulti`'s `pointInLoop` exclusion requires.
+ */
+export function footprintSelfCrossings(
+  mesh: { indices: Uint32Array },
+  vertexUT: Array<[number, number]>,
+): number {
+  let loop: number[];
+  try {
+    const bh = extractHoleBoundary({ indices: mesh.indices }, new Set<number>());
+    if (bh.loops.length !== 1) return Infinity;
+    loop = bh.loops[0];
+  } catch {
+    return Infinity;
+  }
+  const pts = loop.map((id) => vertexUT[id]);
+  const m = pts.length;
+  let count = 0;
+  for (let i = 0; i < m; i++) {
+    const a = pts[i], b = pts[(i + 1) % m];
+    for (let j = i + 1; j < m; j++) {
+      if (j === i || (j + 1) % m === i || (i + 1) % m === j) continue;
+      if (properCrossUT(a, b, pts[j], pts[(j + 1) % m])) count++;
+    }
+  }
+  return count;
 }

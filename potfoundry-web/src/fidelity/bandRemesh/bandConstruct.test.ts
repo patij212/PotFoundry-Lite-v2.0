@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { SyntheticCylinderSampler } from '../../renderers/webgpu/parametric/conforming/SurfaceSampler';
 import type { StationPoint } from './stations';
-import { measureSpineCurvatureRadius, safeHalfWidthProfile } from './bandConstruct';
+import { measureSpineCurvatureRadius, safeHalfWidthProfile, offsetRailVariable } from './bandConstruct';
 
 describe('measureSpineCurvatureRadius', () => {
   it('is large on a near-straight spine and small at a sharp corner', () => {
@@ -45,5 +45,21 @@ describe('safeHalfWidthProfile', () => {
     // Far-from-pinch stations reach the target.
     const wNoPinch = safeHalfWidthProfile([Infinity, 10, 10, 10, Infinity], 2.5, { safety: 0.8 });
     expect(wNoPinch[2]).toBeCloseTo(2.5, 5); // min(2.5, 8) = 2.5
+  });
+});
+
+describe('offsetRailVariable', () => {
+  it('offsets each station by its own width along the metric perpendicular', () => {
+    const flat = new SyntheticCylinderSampler(50, 100, 0, 0);
+    const spine: StationPoint[] = [{ u: 0.40, t: 0.5 }, { u: 0.45, t: 0.5 }, { u: 0.50, t: 0.5 }];
+    const widths = [1, 2, 1];
+    const rail = offsetRailVariable(spine, flat, widths, 1);
+    expect(rail.length).toBe(3);
+    const d = (a: StationPoint, b: StationPoint): number => {
+      const pa = flat.position(a.u, a.t), pb = flat.position(b.u, b.t);
+      return Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]);
+    };
+    // The middle station (width 2) is offset farther from the spine than the ends (width 1).
+    expect(d(rail[1], spine[1])).toBeGreaterThan(d(rail[0], spine[0]) + 0.5);
   });
 });
