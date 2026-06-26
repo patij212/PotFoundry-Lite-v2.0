@@ -85,6 +85,16 @@ export interface UnifyOptions {
   uToMm: number;
   /** Scale factor: 1 unit of t ≈ tToMm millimetres (for distance metric). */
   tToMm: number;
+  /**
+   * Optional Canny-style hysteresis noise gate, applied to the welded segment
+   * graph BEFORE the polyline walk. A connected component of welded segments is
+   * KEPT iff it contains at least one segment with saliency ≥ `strongSaliency`;
+   * components made entirely of weak segments are dropped as isolated noise. This
+   * removes spurious low-saliency fragments at the source while preserving every
+   * weak segment that is connected to a strong feature (recall-safe). When absent,
+   * behaviour is unchanged (byte-identical).
+   */
+  hysteresis?: { strongSaliency: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +169,15 @@ export function unifyToGraph(raw: RawSegments[], opts: UnifyOptions): FeatureGra
   }
 
   // -------------------------------------------------------------------------
+  // Step 2.5 — HYSTERESIS noise gate (optional): drop connected components of
+  // welded segments that contain no strong segment (isolated weak noise). Keeps
+  // every weak segment connected to a strong feature → recall-safe.
+  // -------------------------------------------------------------------------
+  const keep = opts.hysteresis
+    ? hysteresisKeep(norm, nodeOf, weld.pos.length, opts.hysteresis.strongSaliency)
+    : null;
+
+  // -------------------------------------------------------------------------
   // Step 3 — Build typed adjacency, then walk into polylines.
   // -------------------------------------------------------------------------
   const adj = new Map<number, AdjEntry[]>();
@@ -176,6 +195,7 @@ export function unifyToGraph(raw: RawSegments[], opts: UnifyOptions): FeatureGra
   // loops (a-id === b-id, a sub-weldTol segment) are dropped.
   const edgeSeen = new Set<string>();
   for (let k = 0; k < norm.length; k++) {
+    if (keep && !keep[k]) continue; // dropped by the hysteresis noise gate
     const [ai, bi] = nodeOf[k];
     if (ai === bi) continue;
     const s = norm[k];
@@ -202,6 +222,54 @@ export function unifyToGraph(raw: RawSegments[], opts: UnifyOptions): FeatureGra
   // Step 6 — Assemble + STABLE deterministic ordering.
   // -------------------------------------------------------------------------
   return assembleGraph(kept);
+}
+
+// ---------------------------------------------------------------------------
+// Hysteresis noise gate
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-segment keep mask: a welded-segment connected component survives iff it
+ * contains a segment with saliency ≥ `strongSaliency`. Union-find over the welded
+ * endpoint node ids; component "strength" is the max saliency among its segments.
+ * Recall-safe: a weak segment is dropped only if NO strong segment shares its
+ * component (i.e. it is isolated noise, not part of a real feature).
+ */
+function hysteresisKeep(
+  norm: NormSegment[],
+  nodeOf: Array<[number, number]>,
+  nNodes: number,
+  strongSaliency: number,
+): boolean[] {
+  const parent = new Int32Array(nNodes);
+  for (let i = 0; i < nNodes; i++) parent[i] = i;
+  const find = (x: number): number => {
+    let r = x;
+    while (parent[r] !== r) r = parent[r];
+    while (parent[x] !== r) {
+      const nx = parent[x];
+      parent[x] = r;
+      x = nx;
+    }
+    return r;
+  };
+  const union = (a: number, b: number): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb);
+  };
+  for (let k = 0; k < norm.length; k++) {
+    const [a, b] = nodeOf[k];
+    union(a, b);
+  }
+  // Mark roots whose component holds a strong segment.
+  const strongRoot = new Set<number>();
+  for (let k = 0; k < norm.length; k++) {
+    if (norm[k].saliency >= strongSaliency) strongRoot.add(find(nodeOf[k][0]));
+  }
+  const keep = new Array<boolean>(norm.length);
+  for (let k = 0; k < norm.length; k++) keep[k] = strongRoot.has(find(nodeOf[k][0]));
+  return keep;
 }
 
 // ---------------------------------------------------------------------------

@@ -145,6 +145,31 @@ describe.skipIf(!process.env.PF_DERISK)('conditionGraph — fidelity gate + cali
     expect(cache.size).toBeGreaterThan(0);
   }, 600000);
 
+  it('HYSTERESIS (Part A): does the detector noise gate cut spurs recall-safely?', () => {
+    /* eslint-disable no-console */
+    const styles = ['Voronoi', 'GyroidManifold', 'HexagonalHive', 'CelticTriquetra', 'HarmonicRipple'];
+    console.log('\n=== detector hysteresis noise gate (strongSaliency sweep) ===');
+    console.log('style'.padEnd(16) + 'mode'.padEnd(10) + 'edges'.padEnd(8) + 'spurs'.padEnd(8) + 'recall'.padEnd(9) + 'prec');
+    for (const id of styles) {
+      const { truth } = get(id);
+      const s = styleSampler(id as StyleId, {}, DIMS);
+      const base = { ...GLOBAL_OPTS, reliefIndicator: makeReliefIndicator(s) };
+      for (const strong of [0, 2, 3, 4]) {
+        const g = detectFeatures(s, strong === 0 ? base : { ...base, hysteresis: { strongSaliency: strong } });
+        const f = fidelity(truthPolys(truth), edgePolys(g), U_TO_MM, T_TO_MM, CAL_TOL);
+        console.log(
+          (strong === 0 ? id : '').padEnd(16) +
+          (strong === 0 ? 'raw' : `hyst${strong}`).padEnd(10) +
+          String(g.edges.length).padEnd(8) + String(spurCount(g)).padEnd(8) +
+          f.recall.toFixed(3).padEnd(9) + f.precision.toFixed(3),
+        );
+      }
+    }
+    console.log('READ: pick the largest strongSaliency that cuts spurs/edges while keeping recall ≥ raw−ε.');
+    /* eslint-enable no-console */
+    expect(cache.size).toBeGreaterThan(0);
+  }, 600000);
+
   it('FIDELITY GATE: conditioned graph preserves recall/precision ≥ 0.9 where raw passes (20 styles)', () => {
     /* eslint-disable no-console */
     console.log('\n=== fidelity gate: RAW vs CONDITIONED (recall/precision @ CAL_TOL) ===');

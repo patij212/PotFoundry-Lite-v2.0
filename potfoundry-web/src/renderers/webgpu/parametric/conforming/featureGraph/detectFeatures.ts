@@ -117,6 +117,15 @@ export interface DetectFeaturesOptions {
    * only (legacy behaviour).
    */
   creaseContrast?: LocalContrastOptions;
+
+  /**
+   * Optional Canny-style hysteresis noise gate (passed to {@link unifyToGraph}):
+   * drop connected components of detected segments that contain no segment with
+   * saliency ≥ `strongSaliency` (isolated weak noise), keeping every weak segment
+   * connected to a strong feature. Reduces spurious spurs at the source,
+   * recall-safely. Absent ⇒ unchanged behaviour.
+   */
+  hysteresis?: { strongSaliency: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +361,7 @@ export function detectFeatures(
     minStrength,
     uToMm: U_TO_MM,
     tToMm: T_TO_MM,
+    hysteresis: opts.hysteresis,
   });
 
   return { ...graph, firedCellCount, totalCellCount };
