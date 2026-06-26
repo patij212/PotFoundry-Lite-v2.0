@@ -1,5 +1,6 @@
 """Frontal-Delaunay quality meshing of the (u,t) square under a scalar size field."""
 import time
+import warnings
 import numpy as np
 import gmsh
 
@@ -25,6 +26,7 @@ def mesh(input: dict) -> dict:
         # if the PostView field does not produce a valid mesh.
         hmin = float(h.min())
         field_ok = False
+        size_field = "postview"  # which size-field path actually drove the mesh
         try:
             view = gmsh.view.add("size")
             data = []
@@ -41,8 +43,14 @@ def mesh(input: dict) -> dict:
             gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
             gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
             field_ok = True
-        except Exception:
-            # Fall back to uniform target size via MeshSizeMin/Max
+        except Exception as e:
+            # Fall back to uniform target size via MeshSizeMin/Max.
+            # Warn loudly: a silent fallback would confound size-field comparisons
+            # (e.g. the anisotropic-metric study in later tasks).
+            warnings.warn(
+                f"gmsh PostView size-field failed; using uniform fallback: {e}",
+                stacklevel=2)
+            size_field = "fallback"
             gmsh.option.setNumber("Mesh.MeshSizeMin", hmin)
             gmsh.option.setNumber("Mesh.MeshSizeMax", hmin)
 
@@ -55,6 +63,11 @@ def mesh(input: dict) -> dict:
             tri_count = len(enodes_check[list(etypes_check).index(2)]) // 3
         if tri_count == 0 and field_ok:
             # PostView produced no triangles — regenerate with uniform fallback
+            warnings.warn(
+                "gmsh PostView size-field produced 0 triangles; "
+                "regenerating with uniform fallback",
+                stacklevel=2)
+            size_field = "fallback"
             gmsh.model.mesh.clear()
             gmsh.option.setNumber("Mesh.MeshSizeMin", hmin)
             gmsh.option.setNumber("Mesh.MeshSizeMax", hmin)
@@ -67,7 +80,7 @@ def mesh(input: dict) -> dict:
         etypes, etags, enodes = gmsh.model.mesh.getElements(2)
         tri = enodes[list(etypes).index(2)].reshape(-1, 3)
         idx = np.array([[idmap[int(n)] for n in row] for row in tri]).reshape(-1).tolist()
-        return {"engine": "gmsh", "config": {"algo": "frontal-delaunay"},
+        return {"engine": "gmsh", "config": {"algo": "frontal-delaunay", "sizeField": size_field},
                 "ut": ut, "indices": idx,
                 "engineMs": (time.perf_counter() - t0) * 1000,
                 "engineVersion": gmsh.__version__ if hasattr(gmsh, "__version__") else "4.x"}
