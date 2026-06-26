@@ -319,7 +319,8 @@ function runStyle(styleId: string): void {
     expect(wellCond.length).toBeGreaterThan(0);
 }
 
-describe('SYNTH-VERIFY — re-pave well-formed junctions on the REAL surface', () => {
+// Documented throwaway de-risk spike: skipped in CI; run with PF_DERISK=1.
+describe.skipIf(!process.env.PF_DERISK)('SYNTH-VERIFY — re-pave well-formed junctions on the REAL surface', () => {
   it('Voronoi (high relief) vs HarmonicRipple (mild relief) control', () => {
     runStyle('Voronoi');
     runStyle('HarmonicRipple');

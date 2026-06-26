@@ -298,7 +298,8 @@ function analyze(styleId: string, maxEdges: number): StyleResult {
   return { id: styleId, edgesUsed: edges.length, ffRaw, ffCond, straight };
 }
 
-describe('STEP 2 DECISIVE — feature-following (raw vs conditioned) vs straight on REAL relief', () => {
+// Documented throwaway de-risk spike: skipped in CI; run with PF_DERISK=1.
+describe.skipIf(!process.env.PF_DERISK)('STEP 2 DECISIVE — feature-following (raw vs conditioned) vs straight on REAL relief', () => {
   const STYLES = ['Voronoi', 'GyroidManifold', 'HarmonicRipple'];
   const results = STYLES.map((id) => analyze(id, 200));
 

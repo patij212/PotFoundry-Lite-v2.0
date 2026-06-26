@@ -298,7 +298,8 @@ function tryPave(azims: [number, number, number]): PaveOutcome {
 
 const LATTICE_STYLES = ['Voronoi', 'GyroidManifold', 'HexagonalHive', 'CelticTriquetra', 'CelticKnot', 'BasketWeave', 'GothicArches'];
 
-describe('ADVERSARIAL — honest coverage + reflex-paveability of the junction primitive', () => {
+// Documented throwaway de-risk spike: skipped in CI; run with PF_DERISK=1.
+describe.skipIf(!process.env.PF_DERISK)('ADVERSARIAL — honest coverage + reflex-paveability of the junction primitive', () => {
   it('(a)+(c) HONEST END-TO-END COVERAGE across ALL junction nodes', () => {
     /* eslint-disable no-console */
     console.log('\n=== HONEST COVERAGE: fraction of ALL detected junctions handled clean by the primitive ===');

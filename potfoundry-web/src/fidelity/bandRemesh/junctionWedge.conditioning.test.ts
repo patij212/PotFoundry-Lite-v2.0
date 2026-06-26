@@ -146,7 +146,8 @@ function median(arr: number[]): number {
   return v[Math.floor(v.length / 2)];
 }
 
-describe('STEP 3 — junction graph-conditioning: reflex/deg4+ artifact vs real', () => {
+// Documented throwaway de-risk spike: skipped in CI; run with PF_DERISK=1.
+describe.skipIf(!process.env.PF_DERISK)('STEP 3 — junction graph-conditioning: reflex/deg4+ artifact vs real', () => {
   const STYLES = ['Voronoi', 'GyroidManifold'];
 
   it('DISCRIMINATOR 1: fineRes sweep — does reflex%/deg4+% shrink as detection sharpens?', () => {

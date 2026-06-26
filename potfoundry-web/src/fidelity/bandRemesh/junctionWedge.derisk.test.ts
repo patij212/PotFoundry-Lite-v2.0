@@ -385,7 +385,8 @@ function pct(arr: number[], p: number): number {
 // THE SPIKE
 // ───────────────────────────────────────────────────────────────────────────
 
-describe('STEP 2 de-risk — paveJunction across the real Voronoi wedge distribution', () => {
+// Documented throwaway de-risk spike: skipped in CI; run with PF_DERISK=1.
+describe.skipIf(!process.env.PF_DERISK)('STEP 2 de-risk — paveJunction across the real Voronoi wedge distribution', () => {
   const sampler = styleSampler('Voronoi', {}, DIMS);
   const graph = detectFeatures(sampler, globalOpts(sampler));
   const { junctions, degreeHist, deg3WithArms } = extractJunctions(graph, sampler);
@@ -586,7 +587,7 @@ function analyzeStyleConditioning(styleId: string): StyleConditioning {
   };
 }
 
-describe('STEP 2 — junction-conditioning sweep across junction-lattice styles', () => {
+describe.skipIf(!process.env.PF_DERISK)('STEP 2 — junction-conditioning sweep across junction-lattice styles', () => {
   // The styles whose features form a JUNCTION WEB (degree-≥3 meeting points), where
   // the junction fan matters. Smooth + axis-aligned-crease styles have no junctions.
   const LATTICE_STYLES = [
