@@ -24,6 +24,9 @@ from .core.geometry import (
 # Binary STL writer (recommended)
 from .core.io.stl import write_stl_binary
 
+# Indexed OBJ writer (preserves welded topology for Rhino/Grasshopper/CAD)
+from .core.io.obj import write_obj
+
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
 
@@ -45,6 +48,8 @@ __all__ = [
     # STL export (binary is recommended)
     'write_stl_binary',
     'write_ascii_stl',  # deprecated
+    # Indexed OBJ export (welded topology for CAD/Rhino/Grasshopper)
+    'write_obj',
     # Mesh quality / orientation
     'edge_manifold_stats',
     'is_oriented_manifold',
