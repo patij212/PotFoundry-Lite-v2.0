@@ -21,7 +21,10 @@ export function buildRadiusFn(styleId: StyleId, params: StyleOptions, dims: Styl
   return (theta, z) => radiusFn(theta, z, baseRadius(z, H, Rb, Rt, expn, opts), H, opts);
 }
 
-const PY = 'research/oracle/.venv/Scripts/python.exe'; // relative to potfoundry-web/ (the CWD)
+// venv interpreter is platform-specific (win: Scripts/python.exe, unix: bin/python) so
+// Phase-1B can run cross-platform / in CI. Paths are relative to potfoundry-web/ (the CWD).
+const VENV_PY = process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python';
+const PY = `research/oracle/.venv/${VENV_PY}`;
 const ORACLE = 'research/oracle/oracle.py';
 
 /** Run a style through the given engines; return one ScoreRow per engine. */
@@ -49,6 +52,7 @@ export function runStyle(
       throw new Error(`oracle ${eng} failed for ${String(styleId)}: ${err.stderr ?? err.stdout ?? e}`);
     }
     const out = readOracleOutput(join(dir, `out_${eng}.json`));
+    // seamExclU: 0 — the oracle meshes a smooth periodic patch (no u-seam cliff to exclude).
     rows.push(measureOracleMesh(out, rA, dims.H, { tolMm: opts.tolMm, seamExclU: 0, denseN: 8 }));
   }
   return rows;
