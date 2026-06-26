@@ -74,7 +74,8 @@ export default defineConfig({
         globals: true,
         environment: 'jsdom',
         setupFiles: ['./src/test/setup.ts'],
-        include: ['src/**/*.test.{ts,tsx}'],
+        // src/ is the product; research/ is the dev-only meshing lab (Tasks read src/ types, never the reverse).
+        include: ['src/**/*.test.{ts,tsx}', 'research/**/*.test.ts'],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'html', 'lcov'],

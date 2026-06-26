@@ -20,7 +20,7 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['src/**/*.{ts,tsx}', 'research/**/*.ts'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -54,7 +54,7 @@ export default [
   },
   {
     // Test files and webgpu_core.ts (under active refactor) are exempt from no-explicit-any.
-    files: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/webgpu_core.ts'],
+    files: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/webgpu_core.ts', 'research/**/*.test.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },
