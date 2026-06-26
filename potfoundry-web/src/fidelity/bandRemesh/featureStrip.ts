@@ -24,6 +24,7 @@ import { buildStations } from './stations';
 import type { StationPoint } from './stations';
 import { paveBand } from './paver';
 import { densifyRail } from './stitch';
+import { quantizeRailUT } from './railKey';
 
 /** Options for {@link paveRidge}. */
 export interface RidgeOptions {
@@ -37,6 +38,12 @@ export interface RidgeOptions {
 export interface RidgeResult {
   /** Combined two-flank mesh (watertight by construction). */
   mesh: Mesh3;
+  /**
+   * (u,t) per mesh vertex (aligned to `mesh.positions`), each on the QSCALE dyadic
+   * grid. The assembler welds bands to the cdt2d interior by `railVertexKey` over
+   * these — so a band rail (u,t) and the same complement (u,t) collapse to one id.
+   */
+  vertexUT: Array<[number, number]>;
   /** Combined-mesh vertex ids of the shared spine rail, in spine order. */
   spineVertexIds: number[];
   /**
@@ -131,9 +138,16 @@ export function paveRidge(spine: StationPoint[], sampler: SurfaceSampler, opts: 
   const rightBand = paveBand(rightGrid, sampler);
 
   // Combine both bands into one (u,t)-interned vertex table.
+  // Every vertex is SNAPPED onto the QSCALE dyadic grid (quantizeRailUT) before
+  // interning + position eval. This is the crux that makes the band's weld key
+  // bit-compatible with the production complement's railVertexKey, so a ridge rail
+  // welds to the cdt2d interior with zero T-junctions (the assembler's keystone).
+  // The snap is sub-micron (≤ 1/2·QSCALE in u,t) so quality/watertightness are
+  // unaffected; coincident rail points from both flanks snap to ONE id (the crease).
   const keyToId = new Map<string, number>();
   const combinedUt: Array<[number, number]> = [];
-  const intern = (u: number, t: number): number => {
+  const intern = (uRaw: number, tRaw: number): number => {
+    const [u, t] = quantizeRailUT(uRaw, tRaw);
     const key = utKey(u, t);
     let id = keyToId.get(key);
     if (id === undefined) {
@@ -181,5 +195,10 @@ export function paveRidge(spine: StationPoint[], sampler: SurfaceSampler, opts: 
     positions[i * 3 + 2] = p[2];
   }
 
-  return { mesh: { positions, indices: new Uint32Array(tris) }, spineVertexIds, openBoundaryVertices };
+  return {
+    mesh: { positions, indices: new Uint32Array(tris) },
+    vertexUT: combinedUt.map((v) => [v[0], v[1]] as [number, number]),
+    spineVertexIds,
+    openBoundaryVertices,
+  };
 }

@@ -21,6 +21,7 @@ import { auditWatertight, triangleQuality3D } from './audit';
 import type { Mesh3 } from './audit';
 import { paveRidge } from './featureStrip';
 import type { StationPoint } from './stations';
+import { QSCALE, railVertexKey } from './railKey';
 
 // A rippled cylinder with k=8 ridges; the ridge crests sit at u = j/8.
 const R0 = 50;
@@ -115,6 +116,20 @@ describe('paveRidge — watertight ridge strip-pave (shared crease)', () => {
       });
     });
   }
+
+  it('WELD-READY: every vertex is on the QSCALE dyadic grid (bit-compatible with railVertexKey)', () => {
+    // A DIAGONAL spine — the worst case for the weld (not a vertical rail).
+    const diag: StationPoint[] = [{ u: 0.2, t: 0.1 }, { u: 0.6, t: 0.9 }];
+    const { vertexUT } = paveRidge(diag, sampler, { widthMm: 6, edgeMm: 3 });
+    expect(vertexUT.length).toBeGreaterThan(10);
+    for (const [u, t] of vertexUT) {
+      // Dyadic ⇒ round(x·QSCALE) === x·QSCALE exactly (k/QSCALE ratio).
+      expect(Math.round(u * QSCALE)).toBe(u * QSCALE);
+      expect(Math.round(t * QSCALE)).toBe(t * QSCALE);
+      // railVertexKey is exact + reproducible on these snapped coords.
+      expect(railVertexKey(u, t)).toBe(railVertexKey(u, t));
+    }
+  });
 
   it('NEGATIVE CONTROL: splitting a shared spine vertex opens a T-junction', () => {
     const { mesh, openBoundaryVertices, spineVertexIds } = paveRidge(ridgeSpine(), sampler, { widthMm: 6, edgeMm: 3 });
