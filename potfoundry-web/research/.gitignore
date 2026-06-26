@@ -1,0 +1,6 @@
+# potfoundry-web/research/.gitignore
+oracle/.venv/
+exchange/
+__pycache__/
+*.pyc
+.pytest_cache/

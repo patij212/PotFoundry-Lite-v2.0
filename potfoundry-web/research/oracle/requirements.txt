@@ -1,0 +1,8 @@
+# potfoundry-web/research/oracle/requirements.txt
+gmsh==4.13.1
+triangle==20230923
+numpy==1.26.4
+scipy==1.13.1
+trimesh==4.4.3
+meshio==5.3.5
+pytest==8.2.2
