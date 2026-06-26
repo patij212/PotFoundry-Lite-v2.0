@@ -28,6 +28,10 @@ const rows = runStyle('GyroidManifold', { H: 120, Rb: 40, Rt: 50, expn: 1 },
 ```
 Internally: build the analytic `rA(θ,z)` (from `STYLE_FUNCTIONS` + `baseRadius`, production-identical) → curvature **sizing field** (`buildIsotropicSizingField`) → write `OracleInput` JSON → run the Python CLI → read back → **measure with our instruments**.
 
+**Anisotropic gmsh:** pass `aniso: true` — `runStyle` then builds the 2nd-fundamental-form metric (`buildAnisotropicMetricField`) and routes gmsh to BAMG.
+
+> **Common mistake (always go through `runStyle`):** do NOT re-implement the engine invocation / `OracleInput` assembly. Observed pressure-test failure (2026-06-26 ours-vs-SOTA): a hand-rolled oracle helper wrote only the scalar `sizing` field and omitted the `metric` tensor → `gmsh-aniso` **silently equalled `gmsh-iso`** (caught only because the agent compared the two columns). `runStyle`'s `aniso` flag is the single source of truth for wiring the metric.
+
 ## CLI contract (stateless, file-in/file-out)
 ```bash
 .venv/Scripts/python.exe research/oracle/oracle.py mesh --in <exchange-dir> --engine <triangle|gmsh>
