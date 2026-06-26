@@ -39,7 +39,18 @@ function runAtUBias(
   sampler: SurfaceSampler,
   generalCurves: FeatureLine[],
   uBias: number,
+  stripPave = false,
 ): void {
+  const g = globalThis as {
+    __pfConformingRefine?: boolean;
+    __pfFeatureAlignedCells?: boolean;
+    __pfFeatureAlignedStats?: { tried: number; improved: number };
+  };
+  if (stripPave) {
+    g.__pfConformingRefine = true; // make buildConformingWall pass the 3D sampler
+    g.__pfFeatureAlignedCells = true; // run strip-pave (suppresses refineCellInterior)
+    g.__pfFeatureAlignedStats = { tried: 0, improved: 0 };
+  }
   const wall = buildConformingWall(sampler, {
     maxSagMm: 0.1, maxEdgeMm: 8, minEdgeMm: 0.1, gradeRatio: 2,
     maxLevel: 11, resU: 128, resT: 128, nRing: 256,
@@ -81,10 +92,18 @@ function runAtUBias(
   const cdt = TRI_SOURCE.FCT_FEATURE_CDT;
   const share = (n: number, d: number): string => (d > 0 ? ((n / d) * 100).toFixed(1) : '0.0');
   /* eslint-disable no-console */
+  const faStats = g.__pfFeatureAlignedStats;
   console.log(
-    `\n[SFB@1 uBias=${uBias}] tris=${nTri} worst=${worst.toFixed(3)}deg (src=${SOURCE_NAME[worstSrc] ?? worstSrc}) ` +
-    `cdtStats=${JSON.stringify(wall.cdtStats ? { inv: wall.cdtStats.inversions, drop: wall.cdtStats.drops } : null)}`,
+    `\n[SFB@1 uBias=${uBias}${stripPave ? ' +STRIPPAVE' : ''}] tris=${nTri} worst=${worst.toFixed(3)}deg ` +
+    `(src=${SOURCE_NAME[worstSrc] ?? worstSrc}) ` +
+    `cdtStats=${JSON.stringify(wall.cdtStats ? { inv: wall.cdtStats.inversions, drop: wall.cdtStats.drops } : null)}` +
+    (faStats ? ` stripPave(tried=${faStats.tried} improved=${faStats.improved})` : ''),
   );
+  if (stripPave) {
+    g.__pfConformingRefine = undefined;
+    g.__pfFeatureAlignedCells = undefined;
+    g.__pfFeatureAlignedStats = undefined;
+  }
   console.log(`  whole-wall: <20=${allBelow20}(${share(allBelow20, allTotal)}%) <10=${allBelow10}(${share(allBelow10, allTotal)}%) <1=${allBelow1}`);
   console.log(`  total:  ${fmt(total)}`);
   console.log(`  <20deg: ${fmt(below20)}`);
@@ -130,5 +149,7 @@ describe.skipIf(!process.env.PF_DERISK)('SFB@1 sliver source probe (real per-cel
     /* eslint-enable no-console */
 
     for (const b of [0, 1, 2]) runAtUBias(sampler, generalCurves, b);
+    // The decisive comparison: production anisotropy (uBias=2), strip-pave ON.
+    runAtUBias(sampler, generalCurves, 2, true);
   }, 600000);
 });

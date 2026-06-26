@@ -40,7 +40,9 @@ import {
   triangulateConstrainedCell,
   type CellPoint,
   type CdtStats,
+  type ConstrainedCellResult,
 } from './ConstrainedCellTriangulator';
+import { triangulateFeatureAlignedCell, type Sampler3D as FeatureSampler3D } from './featureAlignedCell';
 import {
   refineCellInterior,
   type Sampler3D,
@@ -302,6 +304,25 @@ function planarizeConstraints(
   return { segments, steiner };
 }
 
+/** Worst (smallest) 3D min interior angle (deg) over a cell result, via `sampler`. */
+function worstMin3D(result: ConstrainedCellResult, sampler: FeatureSampler3D): number {
+  let worst = 180;
+  for (const [a, b, c] of result.triangles) {
+    const pa = sampler(result.points[a].u, result.points[a].t);
+    const pb = sampler(result.points[b].u, result.points[b].t);
+    const pc = sampler(result.points[c].u, result.points[c].t);
+    const A = Math.hypot(pb[0] - pc[0], pb[1] - pc[1], pb[2] - pc[2]);
+    const B = Math.hypot(pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]);
+    const C = Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]);
+    if (A < 1e-12 || B < 1e-12 || C < 1e-12) return 0;
+    const ang = (o1: number, o2: number, op: number): number =>
+      Math.acos(Math.max(-1, Math.min(1, (o1 * o1 + o2 * o2 - op * op) / (2 * o1 * o2))));
+    const m = Math.min(ang(B, C, A), ang(A, C, B), ang(A, B, C)) * (180 / Math.PI);
+    if (m < worst) worst = m;
+  }
+  return worst;
+}
+
 export function triangulateQuadtreeWithFeatures(
   qt: QuadtreeLike,
   features: FeatureLine[],
@@ -318,6 +339,16 @@ export function triangulateQuadtreeWithFeatures(
   if (features.length === 0 && !hasRails) return triangulateQuadtree(qt);
   const cornerSnap = Math.max(0, options.cornerSnap ?? 0);
   const sampler = options.sampler;
+  // Opt-in per-cell feature-aligned strip-pave (the FCT_FEATURE_CDT sliver fix).
+  // Dev lever `__pfFeatureAlignedCells` (default OFF). When ON *and* a 3D `sampler`
+  // is supplied, every REAL feature cell additionally tries the ridge-aligned fill
+  // ({@link triangulateFeatureAlignedCell}); the result is kept ONLY if its 3D
+  // worst min-angle strictly beats the plain CDT's (keep-better ⇒ the graft can
+  // never regress a cell). Read ONCE per build (mid-flip safety). OFF ⇒ the call
+  // is never reached ⇒ byte-identical default path. Takes precedence over (and
+  // suppresses) the measured-harmful refineCellInterior on the same cell.
+  const featureAlignedOn =
+    (globalThis as { __pfFeatureAlignedCells?: boolean }).__pfFeatureAlignedCells === true;
   // Opt-in band-region emit-gate (Task 2). Read ONCE per build so a mid-build
   // flag flip can never split one wall across emit regimes. Undefined/empty ⇒
   // the gate is inert (no leaf is ever skipped) ⇒ byte-identical default path.
@@ -1030,6 +1061,33 @@ export function triangulateQuadtreeWithFeatures(
         });
       }
     }
+    // ── Feature-aligned strip-pave (opt-in keep-better; __pfFeatureAlignedCells) ──
+    // On a REAL feature cell, try the ridge-aligned fill and keep it ONLY if its 3D
+    // worst min-angle strictly beats the plain CDT's — so the graft can never
+    // regress a cell. Target spacing = a fraction of the cell's 3D short side, so
+    // even a small feature cell gets ≥1 ridge subdivision. The fill keeps the
+    // boundary vertex set UNCHANGED (interior Steiner only ≥ STEINER_MIN_EDGE_DIST
+    // from the perimeter), so the registry-shared perimeter stays watertight +
+    // T-junction-free. Suppresses refineCellInterior on the same cell (below).
+    if (featureAlignedOn && sampler !== undefined && data.feature) {
+      const c00 = sampler(u0, t0), c10 = sampler(u1, t0), c01 = sampler(u0, t1);
+      const e3u = Math.hypot(c10[0] - c00[0], c10[1] - c00[1], c10[2] - c00[2]);
+      const e3t = Math.hypot(c01[0] - c00[0], c01[1] - c00[1], c01[2] - c00[2]);
+      const cellShort3D = Math.min(e3u, e3t);
+      const faStats = (globalThis as { __pfFeatureAlignedStats?: { tried: number; improved: number } })
+        .__pfFeatureAlignedStats;
+      if (faStats) faStats.tried++;
+      const aligned = triangulateFeatureAlignedCell(
+        { boundary, interior: survivingInterior, constraints: cellConstraints },
+        sampler as FeatureSampler3D,
+        { targetEdgeMm: 0.45 * cellShort3D, minEdgeDist: STEINER_MIN_EDGE_DIST },
+      );
+      if (aligned !== null && worstMin3D(aligned, sampler as FeatureSampler3D) >
+          worstMin3D(result, sampler as FeatureSampler3D) + 1e-9) {
+        result = aligned;
+        if (faStats) faStats.improved++;
+      }
+    }
     // ── Tier-2 interior quality refinement (opt-in via options.sampler) ──
     // Only on REAL feature cells (data.feature — those carrying inserted feature
     // segments), NOT registry-passive neighbours. Inserts strictly-interior
@@ -1039,7 +1097,8 @@ export function triangulateQuadtreeWithFeatures(
     // the registry-shared perimeter is invariant; STEINER_MIN_EDGE_DIST keeps every
     // Steiner ≥ 2·WELD_TAU clear of every side so the downstream weld cannot fuse it
     // across a shared edge. No-op without a sampler ⇒ the clean styles are untouched.
-    if (sampler !== undefined && data.feature) {
+    // SUPPRESSED when the strip-pave graft is active (it owns the feature cells).
+    if (!featureAlignedOn && sampler !== undefined && data.feature) {
       result = refineCellInterior(
         { input: { boundary, interior: survivingInterior, constraints: cellConstraints }, result },
         sampler,
