@@ -221,3 +221,157 @@ quality loop with metric in-circle test, seeded by `projectPointToRadialSurface`
 the (u,t) domain under the surface metric. Validate each stage against gmsh-iso as oracle
 (this lab). The mechanism is now experimentally confirmed: eliminating the 2:1 transition
 templates is the necessary and sufficient change for the tangled-lattice quality gap.
+
+---
+
+## E-2026-06-26-OURS-VS-SOTA-OPUS — Ours (production-faithful opts) vs SOTA, GENUINE aniso (2026-06-26)
+
+**Status:** PRE-REGISTERED (kill-criterion fixed below BEFORE running)
+**Date:** 2026-06-26
+**Runner:** `research/bridge/oursVsSotaOpus.test.ts` (independent of the sonnet `oursVsSota.test.ts`)
+**Run command:** `PF_OURS_VS_SOTA_OPUS=1 npx vitest run research/bridge/oursVsSotaOpus.test.ts`
+**Dump JSONs:** `research/exchange/_oursvssota_opus/<style>__<config>.json` (24 files, gitignored — SEPARATE dir, does NOT clobber the sonnet `_oursvssota/`)
+**Evidence doc:** `docs/superpowers/specs/2026-06-26-evidence-ours-vs-sota-OPUS.md`
+
+### Why a second run (delta vs the sonnet E-2026-06-26-OURS-VS-SOTA)
+Two faithfulness corrections to the prior run, both of which can move the SOTA-frontier conclusion:
+1. **GENUINE gmsh-aniso.** The sonnet run's `runOracleEngine` omitted the `metric` tensor, so its
+   `gmsh-aniso` column was byte-identical to `gmsh-iso` (its own footnote † admits this). This run
+   routes the aniso config through `runStyle(..., { aniso: true })` — the single source of truth
+   that builds the 2nd-fundamental-form metric (`buildAnisotropicMetricField`) and sends gmsh to
+   BAMG. **Pre-registered verification: aniso triangle counts MUST differ from iso (else the metric
+   silently dropped again).**
+2. **Production-FAITHFUL `ours` opts.** The sonnet run used the `__pfConformingProbe` block's numbers
+   (`maxEdgeMm=8, minEdgeMm=0.2, maxLevel=10`, ParametricExportComputer.ts:2205-2213) — that block
+   is a DEV diagnostic, not the export path. The real export resolves `assemblyOpts`
+   (ParametricExportComputer.ts:2699-2711) through the 'high' profile (`DEFAULT_EXPORT_QUALITY_PROFILE`):
+   `maxEdgeMm = exportProfile.maxEdgeMm = 1`, `minEdgeMm = min(0.2, max(0.04, sag*2))`,
+   `maxLevel = max(resolveQuadtreeMaxLevel(sag), CAD_MAX_LEVEL=16)`. To match the engines' tol I set
+   `maxSagMm=0.05` (the deliberate equal-chord-target control; production's CAD floor is 0.003). At
+   sag=0.05 → minEdgeMm=0.1, maxLevel=16.
+
+### Pre-registered Hypothesis (written before run)
+H: At a COMMON chord target (maxSagMm = tol = 0.05) on the 5 tangled lattices, the production
+conforming mesher (PRE-warp `buildConformingOuterWall`, production-faithful 'high' opts) has a
+triangle-quality `%<20°` materially WORSE than the best SOTA engine (min over gmsh-iso, gmsh-aniso),
+because its 2:1-balanced quadtree transition templates are the structural sliver source — a defect
+the transition-free Delaunay engines do not have. The gap is NOT explained by triangle budget
+(`ours` is expected DENSER, not coarser).
+
+**Kill-criterion (pre-registered, BEFORE running):**
+- **CONFIRMED** if, on ALL 5 tangled lattices, `ours %<20°  >  min(gmsh-iso, gmsh-aniso) %<20° + 5 pp`
+  AND `ours minAngleDeg < min(gmsh-iso, gmsh-aniso) minAngleDeg` (ours both more-slivered and
+  worse worst-angle than the best SOTA engine).
+- **REFUTED** if any tangled style has `ours %<20° ≤ best-SOTA %<20° + 5 pp` OR `ours minAngleDeg ≥
+  best-SOTA minAngleDeg` (i.e. on that style ours is within 5 pp of SOTA quality, or its worst angle
+  is no worse).
+- **Aniso-validity gate (separate, pre-registered):** gmsh-aniso `triCount` MUST differ from
+  gmsh-iso `triCount` on ≥4 of 6 styles; if not, the metric was dropped and the aniso column is void.
+
+### Parameters
+```
+DIMS      = { H: 120mm, Rb: 40mm, Rt: 50mm, expn: 1 }
+TOL_MM    = 0.05   (maxSagMm for ours; tol for triangle/gmsh-iso/gmsh-aniso — EQUAL chord target)
+SIZE_RES  = 32, HMIN = 0.005, HMAX = 0.1   (oracle sizing/metric grid — identical to the all-20 rebaseline)
+OURS_OPTS = { maxSagMm:0.05, maxEdgeMm:1, minEdgeMm:0.1, gradeRatio:2, maxLevel:16, resU:128, resT:128 }
+            (production 'high' export path values at sag=0.05; sonnet used 8/0.2/10 from the dev probe block)
+STYLES    = [GyroidManifold, BasketWeave, CelticKnot, CelticTriquetra, GothicArches] + SuperellipseMorph (smooth control)
+```
+
+### Controls / honest caveats
+- **Equal chord target, NOT equal triangle budget.** All 4 configs target the same 0.05mm sag/tol;
+  triangle counts will differ. The kill-criterion is robust to this BY DESIGN: if `ours` is worse
+  quality while DENSER, "ours is just coarser" is ruled out.
+- **WARP CAVEAT (mandatory).** `buildConformingOuterWall` returns the PRE-warp (u,t) quadtree grid;
+  the crease-warp (applyUWarp/applyTWarp/applyHelixWarp) is applied downstream in WatertightAssembly.
+  The 2:1 transition-template slivers ARE a (u,t)-topology property and ARE present here. All 4
+  configs are measured in identically-lifted (u,t)→3D space via the analytic `rA` (same lift
+  measure.ts uses for the oracles), so the quality comparison is equal-footing — but the `ours`
+  3D angles are NOT a production-faithful absolute on warped styles. Read the (u,t)-topology
+  quality gap as the mechanism signal; do not read the `ours` chord as a production chord.
+- **`vertexMaxMm` is the reference-trust self-check.** If the analytic `rA` diverges from the
+  warp-convention a style uses, `vertexMaxMm` >> f32 floor flags that style's `ours` quality as
+  unreliable (the sonnet run saw BasketWeave 2.0mm). Flag and down-weight any such style.
+
+### Measured Scorecard (24 rows — `research/exchange/_oursvssota_opus/scorecard.json`)
+Instrument: `perpendicular3DDeviation` + `triangleQualityDistribution` (one-metric-both-meshes).
+Run: 26 min CPU-only, test PASSED. ◆ = tangled lattice.
+
+| style | config | triCount | %<20° | minAngle° | chordP99mm | vMax mm |
+|---|---|---|---|---|---|---|
+| GyroidManifold ◆ | triangle | 37717 | 12.4 | 11.6 | 0.934 | <0.001 |
+| GyroidManifold ◆ | gmsh-iso | 11168 | 3.0 | 12.1 | 0.968 | <0.001 |
+| GyroidManifold ◆ | **gmsh-aniso** | **4411** | **0.3** | **14.8** | 1.150 | <0.001 |
+| GyroidManifold ◆ | **ours** | 634370 | 5.2 | **2.2** | 0.534 | <0.001 |
+| BasketWeave ◆ | triangle | 39642 | 13.0 | 11.4 | 0.975 | <0.001 |
+| BasketWeave ◆ | gmsh-iso | 12331 | 3.8 | 9.6 | 0.940 | <0.001 |
+| BasketWeave ◆ | **gmsh-aniso** | **5815** | **0.2** | **15.8** | 0.997 | <0.001 |
+| BasketWeave ◆ | **ours** | 1165686 | 14.5 | **1.7** | 1.136 | 2.0‡ |
+| CelticKnot ◆ | triangle | 50160 | 12.4 | 10.9 | 0.863 | <0.001 |
+| CelticKnot ◆ | gmsh-iso | 11006 | 2.5 | 11.6 | 0.916 | <0.001 |
+| CelticKnot ◆ | **gmsh-aniso** | **4077** | **1.1** | **15.9** | 0.957 | <0.001 |
+| CelticKnot ◆ | **ours** | 756432 | 18.6 | **2.0** | 0.431 | <0.001 |
+| CelticTriquetra ◆ | triangle | 51734 | 9.8 | 10.2 | 0.499 | <0.001 |
+| CelticTriquetra ◆ | gmsh-iso | 15255 | 2.2 | 11.7 | 0.836 | <0.001 |
+| CelticTriquetra ◆ | **gmsh-aniso** | **9114** | **1.7** | **14.3** | 0.993 | <0.001 |
+| CelticTriquetra ◆ | **ours** | 999766 | 6.6 | **2.0** | 0.113 | <0.001 |
+| GothicArches ◆ | triangle | 33980 | 12.2 | 12.4 | 0.479 | <0.001 |
+| GothicArches ◆ | gmsh-iso | 10614 | 0.8 | 12.7 | 0.495 | <0.001 |
+| GothicArches ◆ | **gmsh-aniso** | **3029** | **0.1** | **19.6** | 0.502 | <0.001 |
+| GothicArches ◆ | **ours** | 644128 | 8.1 | **3.2** | 0.176 | <0.001 |
+| SuperellipseMorph | triangle | 73792 | 19.4 | 9.9 | 0.055 | <0.001 |
+| SuperellipseMorph | gmsh-iso | 16509 | 10.4 | 7.8 | 0.101 | <0.001 |
+| SuperellipseMorph | gmsh-aniso | 1817 | 27.2 | 9.6 | 0.117 | <0.001 |
+| SuperellipseMorph | **ours** | 506172 | 26.2 | 16.2 | 0.004 | <0.001 |
+
+‡ BasketWeave/ours vMax=2.0mm → analytic `rA` diverges from this style's warp convention; its `ours`
+quality is REFERENCE-UNTRUSTED (down-weighted). Gap DIRECTION (ours ≫ SOTA) still holds.
+
+### Aniso-validity gate: **PASSED 6/6** (genuine aniso)
+gmsh-aniso triCount differs from gmsh-iso on ALL 6 styles (0.11–0.60× the iso count), and the
+counts match the all-20 rebaseline's gmsh-aniso column (Gyroid 4411≈4457, Basket 5815≈5757,
+CelticKnot 4077≈4059, Triquetra 9114≈9036, Gothic 3029≈2961, Superellipse 1817≈1841). **This is the
+correction over the sonnet run, whose aniso==iso (the BAMG metric tensor was dropped).**
+
+### Kill-criterion classification (ours vs BEST-SOTA = min over gmsh-iso/aniso)
+| style | %<20° gap pp | minAngle deficit ° | ours/best-SOTA tris | %<20° leg | minAngle leg |
+|---|---|---|---|---|---|
+| GyroidManifold | +4.9 | 12.6 | 144× | REFUTED (≤5) | CONFIRMED |
+| BasketWeave‡ | +14.3 | 14.1 | 201× | CONFIRMED | CONFIRMED |
+| CelticKnot | +17.5 | 13.9 | 186× | CONFIRMED | CONFIRMED |
+| CelticTriquetra | +4.9 | 12.3 | 110× | REFUTED (≤5) | CONFIRMED |
+| GothicArches | +8.0 | 16.4 | 213× | CONFIRMED | CONFIRMED |
+
+**OVERALL (strict AND criterion): REFUTED** — on Gyroid & CelticTriquetra the `%<20°` gap is +4.9pp
+(just under the pre-registered 5pp), so the conjunctive criterion fails there. **The minAngle leg is
+CONFIRMED on ALL 5** (deficit 12.3–16.4°; ours' worst angle ≈2° vs SOTA's 14–20°).
+
+### Verdict & interpretation
+**REFUTED on the letter, but the decision-relevant finding is sharper than the pre-registration:**
+1. **The honest sliver instrument is minAngle, not `%<20°`.** `%<20°` is DEPTH-SENSITIVE: at production
+   `maxLevel=16` it is LOWER than at the sonnet's `maxLevel=10` (Gyroid 5.2 vs 10.5; CelticTriquetra 6.6
+   vs 7.4) — not because the slivers shrank but because deep refinement FLOODS the mesh with well-shaped
+   interior triangles (634k–1.17M tris) that DILUTE the fixed transition-fan sliver population. The worst
+   angle is unmoved (~2°). So `%<20°` improving with depth is a DILUTION ARTIFACT; **minAngle is the
+   depth-invariant truth and it is catastrophic (5–9× worse than SOTA) on every tangled style.**
+2. **Density does not fix slivers — it is the project's density-INVARIANT sliver gap, directly measured.**
+   Ours is 110–213× DENSER than best-SOTA and STILL more slivered ⇒ "ours is just coarser" is decisively
+   ruled out. The 2:1 quadtree transition templates are the structural source (`TRI_SOURCE`=TRANSITION_FAN
+   in prior measurement); no triangle budget closes a worst-angle of ~2°.
+3. **The SOTA frontier:** gmsh-iso CAD-grades all 5 (`%<20°` ≤3.8); gmsh-aniso does it with 0.11–0.60×
+   the tris (and BETTER worst-angle, 14.3–19.6°) on the tangled lattices — anisotropy is a triangle-
+   EFFICIENCY win HERE (directional lattice ridges), but it OVER-stretches the smooth control
+   (SuperellipseMorph %<20° 10.4→27.2). Quality-robust universal choice = isotropic transition-free
+   Delaunay; aniso = selective efficiency.
+
+### Recommendation
+Same destination as the sonnet run (build a transition-free constrained-Delaunay quality loop;
+gmsh-iso the universal oracle, aniso selective), but two method corrections for any future scorecard:
+(a) **score slivers by minAngle (and a pctBelow-X-vs-density sweep), not `%<20°` alone** — the latter is a
+dilution artifact under deep refinement; (b) **always route aniso through `runStyle({aniso:true})`** (this
+run's 6/6 genuineness vs the sonnet's 0/6). Next cheap experiment: the in-circle-isolation probe
+(NEXT-SESSION-meshing-lab §3) — does a metric in-circle on the SAME points close the minAngle gap, or is
+it the transition templates? That isolates "points vs triangulation" for the kernel build.
+
+**Ledger:** this block. **Evidence doc:** `docs/superpowers/specs/2026-06-26-evidence-ours-vs-sota-OPUS.md`.
+**Dumps:** `research/exchange/_oursvssota_opus/<style>__<config>.json` (24, gitignored, SEPARATE from sonnet's `_oursvssota/`).
