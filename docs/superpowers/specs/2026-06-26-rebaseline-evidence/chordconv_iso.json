@@ -1,0 +1,29 @@
+[
+  {
+    "tolMm": 0.1,
+    "tris": 9644,
+    "chordP99Mm": 0.9311392809781915,
+    "chordMaxMm": 1.5711157421098183,
+    "pctUnder20deg": 6.9,
+    "minAngleDeg": 11.5,
+    "engineMs": 355.335100000957
+  },
+  {
+    "tolMm": 0.05,
+    "tris": 19475,
+    "chordP99Mm": 0.9350385729922032,
+    "chordMaxMm": 1.5271737603110995,
+    "pctUnder20deg": 7.2,
+    "minAngleDeg": 10,
+    "engineMs": 668.7795999969239
+  },
+  {
+    "tolMm": 0.025,
+    "tris": 38628,
+    "chordP99Mm": 0.9316806580731384,
+    "chordMaxMm": 1.4879188836546537,
+    "pctUnder20deg": 7.5,
+    "minAngleDeg": 9.3,
+    "engineMs": 1503.975999999966
+  }
+]

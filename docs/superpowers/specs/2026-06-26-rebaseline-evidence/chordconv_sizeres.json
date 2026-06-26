@@ -1,0 +1,29 @@
+[
+  {
+    "sizeRes": 48,
+    "tris": 7258,
+    "chordP99Mm": 0.9510618292636683,
+    "chordMaxMm": 1.5635177316646593,
+    "pctUnder20deg": 2.1,
+    "minAngleDeg": 14.7,
+    "engineMs": 1717.8562999979476
+  },
+  {
+    "sizeRes": 96,
+    "tris": 14918,
+    "chordP99Mm": 0.9338633551643438,
+    "chordMaxMm": 1.444568789170341,
+    "pctUnder20deg": 5,
+    "minAngleDeg": 3,
+    "engineMs": 4024.8673999958555
+  },
+  {
+    "sizeRes": 192,
+    "tris": 26319,
+    "chordP99Mm": 0.9278595453197915,
+    "chordMaxMm": 1.1210781387592068,
+    "pctUnder20deg": 7,
+    "minAngleDeg": 3,
+    "engineMs": 8060.263899998972
+  }
+]
