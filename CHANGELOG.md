@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- **Mesh orientation guarantees (Rhino/Grasshopper export quality):**
+  - `build_pot_mesh` now emits a **consistently oriented, outward-facing**
+    manifold by construction. Previously the shell was wound inward and the
+    base/rim caps were inconsistent with the walls (240 inconsistent directed
+    edges, negative signed volume). CAD/boolean/slicer pipelines that respect
+    winding (notably Rhino and Grasshopper) would see an inside-out solid.
+  - New `potfoundry.core.mesh` utilities, exported from the package:
+    `orient_outward`, `signed_volume`, `is_consistently_oriented`. These provide
+    a reusable topological repair (flood-fill rewind + global outward flip) for
+    any mesh entering the export pipeline (imported/boolean/experimental). Kept
+    off the hot path — the builder is correct by construction.
+  - Tests: `tests/test_mesh_orientation.py` (per-style directed-edge consistency,
+    positive signed volume, twist+clamp stress, and an end-to-end binary-STL
+    orientation check) and `tests/test_mesh_repair.py` (repair on a scrambled
+    cube). The prior watertight test only checked *undirected* edges and so
+    missed both defects.
 
 ### Fixed
 - **Critical Bug Fixes:**

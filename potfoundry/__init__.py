@@ -24,6 +24,13 @@ from .core.geometry import (
 # Binary STL writer (recommended)
 from .core.io.stl import write_stl_binary
 
+# Mesh quality / orientation utilities (export hardening for Rhino/Grasshopper)
+from .core.mesh import (
+    orient_outward,
+    signed_volume,
+    is_consistently_oriented,
+)
+
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
 
@@ -37,6 +44,10 @@ __all__ = [
     # STL export (binary is recommended)
     'write_stl_binary',
     'write_ascii_stl',  # deprecated
+    # Mesh quality / orientation utilities
+    'orient_outward',
+    'signed_volume',
+    'is_consistently_oriented',
     # Version
     '__version__',
 ]
