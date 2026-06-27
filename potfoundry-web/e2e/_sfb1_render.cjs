@@ -84,11 +84,17 @@ const wt = (p, ms, l) => { let to; const t = new Promise((_, r) => { to = setTim
         // flat: soft lambert (smooth surface read). normal: per-face normal AS COLOR
         // (matcap-class) — adjacent slivers with differing normals jump colour, so the
         // crest-band sliver noise is vivid (a smooth, well-shaped band stays uniform).
+        // Slicer-style gold + specular (per-face normal): facet/tooth normals catch
+        // sharp highlights, so a sawtooth feature edge is unmistakable (matches the
+        // user's slicer view far better than soft lambert).
         const fsFlat = `#version 300 es
-        precision highp float; in vec3 w; out vec4 o;
+        precision highp float; in vec3 w; uniform vec3 eye; out vec4 o;
         void main(){ vec3 n=normalize(cross(dFdx(w),dFdy(w)));
-          vec3 L=normalize(vec3(0.5,0.6,0.9)); float d=abs(dot(n,L));
-          float sh=0.25+0.75*d; vec3 c=vec3(0.78,0.80,0.85)*sh; o=vec4(c,1.0); }`;
+          vec3 V=normalize(eye-w); if(dot(n,V)<0.0) n=-n;
+          vec3 L=normalize(vec3(0.3,0.4,0.85)); float d=max(dot(n,L),0.0);
+          vec3 H=normalize(L+V); float spec=pow(max(dot(n,H),0.0),32.0);
+          vec3 gold=vec3(0.83,0.66,0.22);
+          o=vec4(gold*(0.18+0.82*d)+vec3(1.0,0.95,0.8)*spec*0.7,1.0); }`;
         const fsNormal = `#version 300 es
         precision highp float; in vec3 w; out vec4 o;
         void main(){ vec3 n=normalize(cross(dFdx(w),dFdy(w))); o=vec4(n*0.5+0.5,1.0); }`;
@@ -100,6 +106,7 @@ const wt = (p, ms, l) => { let to; const t = new Promise((_, r) => { to = setTim
         gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
         const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.i, gl.STATIC_DRAW);
         gl.uniformMatrix4fv(gl.getUniformLocation(pr, 'u'), false, MVP);
+        const eyeLoc = gl.getUniformLocation(pr, 'eye'); if (eyeLoc) gl.uniform3fv(eyeLoc, eye);
         gl.enable(gl.DEPTH_TEST); gl.viewport(0, 0, 1200, 1200); gl.clearColor(0.105, 0.114, 0.133, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         gl.drawElements(gl.TRIANGLES, m.i.length, gl.UNSIGNED_INT, 0);
         gl.finish();
@@ -113,17 +120,15 @@ const wt = (p, ms, l) => { let to; const t = new Promise((_, r) => { to = setTim
     const b = meta.bbox;
     const R = Math.max(b.xmax, b.ymax, -b.xmin, -b.ymin);
     const H = b.zmax - b.zmin;
-    // Orientation.
-    await renderView([R * 3.4, 0, b.zmin + H * 0.5], [0, 0, b.zmin + H * 0.5], 32, 'full', 'flat');
-    // GRAZING upper-rim zoom — matches the user's slicer view (silhouette at top, the
-    // sliver "fur" texture across the surface). Tight fov to resolve individual slivers.
-    const E_GRAZE = [R * 1.7, R * 0.7, b.zmin + H * 0.42], T_GRAZE = [R * 0.5, R * 0.18, b.zmin + H * 0.9];
-    await renderView(E_GRAZE, T_GRAZE, 13, 'graze', 'flat');
-    await renderView(E_GRAZE, T_GRAZE, 13, 'graze', 'normal');
-    // Even tighter patch.
-    const E_PATCH = [R * 1.25, R * 0.55, b.zmin + H * 0.6], T_PATCH = [R * 0.35, R * 0.12, b.zmin + H * 0.88];
-    await renderView(E_PATCH, T_PATCH, 8, 'patch', 'flat');
-    out.screenshots = [`sfb1_${SFTAG}_b${UBIAS}_flat_graze.png`, `sfb1_${SFTAG}_b${UBIAS}_normal_graze.png`, `sfb1_${SFTAG}_b${UBIAS}_flat_patch.png`];
+    // Side overview (gold specular) — orientation; the outer petal-tip silhouette
+    // (left/right outline) is the candidate sawtooth EDGE.
+    await renderView([R * 3.6, 0, b.zmin + H * 0.55], [0, 0, b.zmin + H * 0.55], 26, 'side', 'flat');
+    // Grazing the +y upper wall along a petal edge (look NEARLY tangent to the wall so
+    // a petal-ridge silhouette runs across the frame).
+    await renderView([R * 2.2, R * 2.4, b.zmin + H * 0.58], [R * 0.2, R * 0.85, b.zmin + H * 0.66], 13, 'sil1', 'flat');
+    // Tighter, higher.
+    await renderView([R * 1.5, R * 1.9, b.zmin + H * 0.74], [R * 0.1, R * 0.62, b.zmin + H * 0.82], 9, 'sil2', 'flat');
+    out.screenshots = [`sfb1_${SFTAG}_b${UBIAS}_flat_side.png`, `sfb1_${SFTAG}_b${UBIAS}_flat_sil1.png`, `sfb1_${SFTAG}_b${UBIAS}_flat_sil2.png`];
   } catch (e) {
     out.error = String(e.message).slice(0, 180);
   } finally {
