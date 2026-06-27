@@ -13,6 +13,9 @@ const TARGET = Number(process.env.PF_TARGET || 1_500_000);
 // NOT inserted). Default 1 ⇒ the dev-lever "best" export (crests inserted).
 const SFEXACT = process.env.PF_SFEXACT !== '0';
 const SFTAG = SFEXACT ? 'sf1' : 'sf0';
+// PF_UBIAS: '3' (the forced dev-lever the STLs used), '2', or 'auto' (production
+// computeUBias — do NOT force). Tags the output so views are comparable.
+const UBIAS = process.env.PF_UBIAS || '3';
 const OUT = path.resolve(__dirname, '..', 'export-deliverables');
 const T = 300_000;
 fs.mkdirSync(OUT, { recursive: true });
@@ -24,13 +27,13 @@ const wt = (p, ms, l) => { let to; const t = new Promise((_, r) => { to = setTim
   const page = await browser.newPage({ viewport: { width: 1200, height: 1200 } });
   page.on('console', (m) => { const t = m.text(); if (/error|RENDER/i.test(t)) console.log('  [page]', t.slice(0, 160)); });
   try {
-    await page.addInitScript((sfexact) => {
+    await page.addInitScript((args) => {
       window.__pfConforming = true;
-      if (sfexact) window.__pfSurfaceFidelityExact = true; // OFF ⇒ production default (no crest edges)
+      if (args.sfexact) window.__pfSurfaceFidelityExact = true; // OFF ⇒ production default (no crest edges)
       window.__pfConformingMaxLevel = 12;
       window.__pfConformingMaxSag = 0.05;
-      window.__pfConformingUBias = 3;
-    }, SFEXACT);
+      if (args.ubias !== 'auto') window.__pfConformingUBias = Number(args.ubias); // 'auto' ⇒ production computeUBias
+    }, { sfexact: SFEXACT, ubias: UBIAS });
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await wt(page.waitForFunction(() => window.__pfFidelity && window.__pfFidelity.isReady() === true, null, { timeout: 95000 }), 100000, 'ready');
     await wt(page.evaluate((s) => window.__pfFidelity.setStyle(s), STYLE), 60000, 'setStyle');
@@ -104,21 +107,23 @@ const wt = (p, ms, l) => { let to; const t = new Promise((_, r) => { to = setTim
       }, { eye, target, fovDeg, mode });
       if (ok !== 'ok') { out['render_' + tag] = ok; return; }
       await page.waitForTimeout(400);
-      await page.locator('#__rcv').screenshot({ path: path.join(OUT, `sfb1_${SFTAG}_${mode}_${tag}.png`) });
+      await page.locator('#__rcv').screenshot({ path: path.join(OUT, `sfb1_${SFTAG}_b${UBIAS}_${mode}_${tag}.png`) });
     };
 
     const b = meta.bbox;
     const R = Math.max(b.xmax, b.ymax, -b.xmin, -b.ymin);
     const H = b.zmax - b.zmin;
-    // FLAT (smooth surface read) — orientation + upper petals.
-    const E_FULL = [R * 3.4, 0, b.zmin + H * 0.5], T_FULL = [0, 0, b.zmin + H * 0.5];
-    const E_UP = [R * 2.4, R * 1.3, b.zmin + H * 0.78], T_UP = [0, 0, b.zmin + H * 0.66];
-    await renderView(E_FULL, T_FULL, 32, 'full', 'flat');
-    await renderView(E_UP, T_UP, 24, 'upper34', 'flat');
-    // NORMAL-AS-COLOUR (matcap-class) — same framings; sliver-band normal noise pops.
-    await renderView(E_FULL, T_FULL, 32, 'full', 'normal');
-    await renderView(E_UP, T_UP, 24, 'upper34', 'normal');
-    out.screenshots = ['sfb1_flat_full.png', 'sfb1_flat_upper34.png', 'sfb1_normal_full.png', 'sfb1_normal_upper34.png'];
+    // Orientation.
+    await renderView([R * 3.4, 0, b.zmin + H * 0.5], [0, 0, b.zmin + H * 0.5], 32, 'full', 'flat');
+    // GRAZING upper-rim zoom — matches the user's slicer view (silhouette at top, the
+    // sliver "fur" texture across the surface). Tight fov to resolve individual slivers.
+    const E_GRAZE = [R * 1.7, R * 0.7, b.zmin + H * 0.42], T_GRAZE = [R * 0.5, R * 0.18, b.zmin + H * 0.9];
+    await renderView(E_GRAZE, T_GRAZE, 13, 'graze', 'flat');
+    await renderView(E_GRAZE, T_GRAZE, 13, 'graze', 'normal');
+    // Even tighter patch.
+    const E_PATCH = [R * 1.25, R * 0.55, b.zmin + H * 0.6], T_PATCH = [R * 0.35, R * 0.12, b.zmin + H * 0.88];
+    await renderView(E_PATCH, T_PATCH, 8, 'patch', 'flat');
+    out.screenshots = [`sfb1_${SFTAG}_b${UBIAS}_flat_graze.png`, `sfb1_${SFTAG}_b${UBIAS}_normal_graze.png`, `sfb1_${SFTAG}_b${UBIAS}_flat_patch.png`];
   } catch (e) {
     out.error = String(e.message).slice(0, 180);
   } finally {
