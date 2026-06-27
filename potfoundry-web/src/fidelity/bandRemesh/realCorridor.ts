@@ -516,3 +516,132 @@ export function realFeatureCorridorMulti(
     existingVertexCount: vertexUT.length,
   };
 }
+
+/** Even-odd point-in-polygon in (u,t) over a hole loop's vertex (u,t)s (interior cusps don't wrap the seam). */
+function pointInLoopUT(u: number, t: number, loopUT: Array<[number, number]>): boolean {
+  let inside = false;
+  for (let i = 0, j = loopUT.length - 1; i < loopUT.length; j = i++) {
+    const ui = loopUT[i][0], ti = loopUT[i][1], uj = loopUT[j][0], tj = loopUT[j][1];
+    if (ti > t !== tj > t && u < ((uj - ui) * (t - ti)) / (tj - ti) + ui) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * PER-LOOP variant of {@link realFeatureCorridorMulti}: ONE emit-gate over every
+ * band footprint (same hole), but each hole LOOP is filled by its OWN
+ * {@link corridorPaveMulti} call (only the feature(s) inside it), then merged.
+ *
+ * Why: a single corridorPaveMulti over MANY separate loops fills the convex hull
+ * INCLUDING the (already-complement-meshed) space between loops → overlap →
+ * T-junctions (measured: 9 SFB cusps → tJ=3653). Per-loop isolates each loop into
+ * one simple region — each welds 0/0 like the single-cusp GO. Each feature is
+ * assigned to the loop whose (u,t) polygon contains its midpoint (nearest-centroid
+ * fallback). New fill ids are id-offset so loops never collide in the merge.
+ */
+export function realFeatureCorridorPerLoop(
+  sampler: SurfaceSampler,
+  features: MultiFeatureSpec[],
+  opts: RealFeatureCorridorOptions,
+): RealFeatureCorridorMultiResult {
+  const dims = opts.dims ?? DEFAULT_DIMS;
+  const base = opts.baseOptions ?? DEFAULT_BASE;
+  const cellWidth = 1 / 2 ** opts.featureLevel;
+  const innerSampler: SurfaceSampler = opts.innerSampler ?? {
+    position(u: number, t: number) {
+      const theta = u * 2 * Math.PI;
+      return [36 * Math.cos(theta), 36 * Math.sin(theta), dims.tBottom + t * (dims.H - dims.tBottom)];
+    },
+  };
+  const ref = features[0].polyline;
+  const midPt = ref[Math.floor(ref.length / 2)];
+  const midPos = sampler.position(((midPt.u % 1) + 1) % 1, midPt.t);
+  const uToMm = 2 * Math.PI * Math.hypot(midPos[0], midPos[1]);
+  const tToMm = dims.H;
+  const widthMm = opts.widthCells !== undefined ? opts.widthCells * cellWidth * uToMm : opts.widthMm ?? 3;
+
+  const bandRegion: BandRegion = {
+    insideBand(u: number, t: number): boolean {
+      const uu = ((u % 1) + 1) % 1;
+      for (const f of features) {
+        if (distToPolylinePeriodic(uu, t, f.polyline, uToMm, tToMm) < widthMm) return true;
+      }
+      return false;
+    },
+  };
+  const assembly = assembleWatertight(sampler, innerSampler, dims, {
+    ...base,
+    featureLevel: opts.featureLevel,
+    outerFeatureLines: opts.assemblyFeatureLines ?? defaultAssemblyFeature(),
+    bandRegions: [bandRegion],
+  });
+  const { outerWall, vertexUT, ringVertexIds } = internOuterWall(assembly);
+  const hole = extractHoleBoundary(outerWall, ringVertexIds);
+
+  // Assign each feature to its containing hole loop (point-in-polygon; nearest-centroid fallback).
+  const loopUTs = hole.loops.map((loop) => loop.map((id) => vertexUT[id]));
+  const featByLoop: number[][] = hole.loops.map(() => []);
+  features.forEach((f, fi) => {
+    const m = f.polyline[Math.floor(f.polyline.length / 2)];
+    const uu = ((m.u % 1) + 1) % 1;
+    let li = loopUTs.findIndex((lut) => pointInLoopUT(uu, m.t, lut));
+    if (li < 0) {
+      let best = Infinity;
+      loopUTs.forEach((lut, k) => {
+        let cu = 0, ct = 0;
+        for (const p of lut) { cu += p[0]; ct += p[1]; }
+        cu /= lut.length; ct /= lut.length;
+        const d = Math.hypot(uDistPeriodic(uu, cu), m.t - ct);
+        if (d < best) { best = d; li = k; }
+      });
+    }
+    if (li >= 0) featByLoop[li].push(fi);
+  });
+
+  // Per-loop fill + merge (boundary ids shared; new fill ids offset).
+  const mergedVertexUTP: Array<[number, number]> = vertexUT.slice();
+  const mergedIndicesP: number[] = (outerWall.indices as number[]).slice();
+  const fillTriangles: Array<[number, number, number]> = [];
+  const featureChains: number[][] = [];
+  let totalInv = 0, totalDrop = 0;
+  for (let li = 0; li < hole.loops.length; li++) {
+    const fis = featByLoop[li];
+    if (fis.length === 0) continue; // a loop with no feature inside — left for a follow-up (rare).
+    const loop = hole.loops[li];
+    const loopSet = new Set(loop);
+    const complementDir = new Map<string, [number, number]>();
+    for (const [k, v] of hole.complementDir) {
+      if (loopSet.has(v[0]) && loopSet.has(v[1])) complementDir.set(k, v);
+    }
+    const loopHole: HoleBoundary = { loops: [loop], complementDir, vertexCount: loopSet.size };
+    const chains: FeatureChainInput[] = fis.map((fi) => ({
+      polyline: features[fi].polyline, closed: features[fi].closed, start: features[fi].start, end: features[fi].end,
+    }));
+    let pavedLoop: CorridorPaveMultiResult;
+    try {
+      pavedLoop = corridorPaveMulti({ boundary: loopHole, vertexUT, features: chains, sampler });
+    } catch {
+      continue; // a loop that fails to pave is skipped (surfaced by the gate's followed/quality checks).
+    }
+    const offset = mergedVertexUTP.length - vertexUT.length;
+    for (let i = vertexUT.length; i < pavedLoop.vertexUT.length; i++) mergedVertexUTP.push(pavedLoop.vertexUT[i]);
+    const remap = (id: number): number => (id < vertexUT.length ? id : id + offset);
+    for (const [a, b, c] of pavedLoop.triangles) {
+      const tt: [number, number, number] = [remap(a), remap(b), remap(c)];
+      mergedIndicesP.push(tt[0], tt[1], tt[2]);
+      fillTriangles.push(tt);
+    }
+    for (const ch of pavedLoop.featureChains) featureChains.push(ch.map(remap));
+    totalInv += pavedLoop.inversionCount; totalDrop += pavedLoop.droppedCount;
+  }
+
+  const pavedAll: CorridorPaveMultiResult = {
+    triangles: fillTriangles, vertexUT: mergedVertexUTP, featureChains,
+    inversionCount: totalInv, droppedCount: totalDrop,
+  } as CorridorPaveMultiResult;
+  return {
+    bandRegion, hole, paved: pavedAll,
+    merged: { indices: mergedIndicesP, vertexUT: mergedVertexUTP, ringVertexIds },
+    existingVertexCount: vertexUT.length,
+  };
+}
