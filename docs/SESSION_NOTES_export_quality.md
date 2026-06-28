@@ -80,6 +80,21 @@ clamp raised the inner radius without bounding it against the outer wall):
 never binds for roomy drains. Verified by `tests/test_wall_thickness.py` (12
 tests) and the full suite (167 passing). Generation stays ~34 ms (budget 200 ms).
 
+## Cycle 3: exported-STL round-trip validity
+
+### Proved
+Added `tests/test_stl_export_quality.py`: the in-memory mesh is validated, but
+the artifact a user loads into Rhino is the *written binary STL* — float32
+coordinates, per-face vertex duplication. The test reproduces the import path
+(write → parse → weld coincident vertices by rounded position → rebuild face
+index table) and asserts the recovered solid is still closed/manifold/oriented/
+outward with no degenerate faces, and that the welded vertex count exactly
+matches the source mesh's distinct referenced positions. Covers a normal config,
+a stress config, and the extreme-concave config that exercises the wall guard.
+
+All 6 pass: float32 export preserves watertightness and the cycle-1/2 fixes
+survive the file round-trip. Full suite now **173 passing**.
+
 ## Suggested next steps (not yet done)
 1. **Surface validation in the export path.** `pfui/exporters.export_stl_bytes`
    and the Streamlit export in `app.py` could call `validate_mesh` (and check
