@@ -12,8 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- **Mesh validation for CAD-grade export quality** (`potfoundry.validate_mesh`):
+  a fast, fully-vectorized validator reporting closed/manifold/oriented/outward
+  status, degenerate-face count, and signed volume. This backs the
+  Rhino/Grasshopper/slicer import-quality guarantee. New test suite
+  `tests/test_mesh_quality.py` exercises it across every style and a
+  heavy inner-wall-clamping stress config.
 
 ### Fixed
+- **Mesh orientation (export quality):** `build_pot_mesh` produced a mesh with
+  inverted face normals (outer wall pointed inward, signed volume negative) and
+  with the bottom-slab + drain-cylinder face groups wound inconsistently with
+  the rest of the shell. On import into Rhino/Grasshopper this reads as a solid
+  with reversed faces — not a valid closed volume. Winding of the outer wall,
+  inner wall, rim cap, and bottom underside groups is now corrected so the whole
+  mesh is a consistently-oriented, outward-facing closed manifold (positive
+  signed volume) across all styles. Verified by `tests/test_mesh_quality.py`.
+
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`
