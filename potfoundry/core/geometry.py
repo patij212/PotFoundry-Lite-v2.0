@@ -309,6 +309,15 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     assert H > 0 and Rt > 0 and Rb > 0 and t_wall > 0 and t_bottom >= 2.0, "Invalid size parameters."
     assert r_drain > 0 and r_drain < (Rb - t_wall - 2.0), "Drain hole too large for base—adjust sizes."
 
+    # Self-intersection guard: a deep concave style can shrink the outer radius
+    # below the drain-clamped inner radius, flipping the wall inside-out (inner
+    # shell pokes through outer shell -> self-intersecting, un-importable solid).
+    # We floor the outer radius and clip the inner radius so the inner wall can
+    # never reach the outer wall. min_wall is the thinnest manufacturable wall.
+    min_wall = min(0.6, float(t_wall))
+    r_out_floor = float(r_drain) + 1.0 + min_wall  # outer can't pinch below this
+    min_wall_realized = float("inf")
+
     # Use cached theta grid (angles, cos, sin) to avoid recomputation
     thetas, cos_th, sin_th = _theta_grid_cached(int(n_theta))
     z_outer = np.linspace(0.0, H, n_z + 1)
@@ -340,6 +349,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
         # Sample style at (theta + twist) for parity with rotated placement (vectorized)
         r_vals = np.asarray(r_outer_fn(thetas + twist, z, r0, H, style_opts), dtype=float)
+        # Floor so the outer silhouette never pinches below the drain + wall.
+        np.maximum(r_vals, r_out_floor, out=r_vals)
         outer_idx[i] = add_ring_xy(r_vals, z, cTw, sTw)
         # Track estimated ODs without scanning verts
         max_r = float(np.max(r_vals)) if r_vals.size else 0.0
@@ -372,11 +383,18 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         cTw, sTw = float(np.cos(twist)), float(np.sin(twist))
         r0 = base_radius(z, H, Rb, Rt, expn, style_opts)
         r_out_vals = np.asarray(r_outer_fn(thetas + twist, z, r0, H, style_opts), dtype=float)
-        r_in_vals = r_out_vals - t_wall
+        # Same floor as the outer ring so the inner wall is measured against the
+        # real outer geometry.
+        np.maximum(r_out_vals, r_out_floor, out=r_out_vals)
         min_allowed = r_drain + 1.0
-        clamped = r_in_vals < min_allowed
-        clamp_count += int(np.count_nonzero(clamped))
-        r_in_vals[clamped] = min_allowed
+        # Nominal inner radius, then clip into [drain+1, outer - min_wall] so the
+        # inner wall stays inside the drain *and* never crosses the outer wall.
+        # r_out_floor guarantees the upper bound is >= the lower bound.
+        r_in_vals = r_out_vals - t_wall
+        clamp_count += int(np.count_nonzero(r_in_vals < min_allowed))
+        np.clip(r_in_vals, min_allowed, r_out_vals - min_wall, out=r_in_vals)
+        wall_here = r_out_vals - r_in_vals
+        min_wall_realized = min(min_wall_realized, float(wall_here.min()))
         inner_idx[i] = add_ring_xy(r_in_vals, z, cTw, sTw)
 
     # Vectorized faces for inner wall (reverse winding)
@@ -450,6 +468,7 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         clamp_ratio_at_bottom=float(clamp_ratio),
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
+        min_wall_thickness_mm=float(min_wall_realized),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
     return np.array(verts, dtype=float), faces_arr, diagnostics

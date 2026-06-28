@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   heavy inner-wall-clamping stress config.
 
 ### Fixed
+- **Wall self-intersection (export quality):** with extreme concave style
+  options a deep inward dip could shrink the outer radius below the
+  drain-clamped inner radius, flipping the wall inside-out — the inner shell
+  poked through the outer shell, producing a self-intersecting solid (wall
+  thickness down to −34 mm) that no CAD kernel or slicer accepts, even though it
+  was topologically watertight. `build_pot_mesh` now floors the outer radius at
+  `r_drain + 1 + min_wall` and clips the inner radius into
+  `[r_drain + 1, r_outer − min_wall]`, guaranteeing a strictly positive wall
+  everywhere, and reports the realised `min_wall_thickness_mm` in diagnostics.
+  Default designs are unaffected (the floor never binds). Verified by
+  `tests/test_wall_thickness.py`.
+
 - **Mesh orientation (export quality):** `build_pot_mesh` produced a mesh with
   inverted face normals (outer wall pointed inward, signed volume negative) and
   with the bottom-slab + drain-cylinder face groups wound inconsistently with

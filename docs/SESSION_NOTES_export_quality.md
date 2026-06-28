@@ -56,16 +56,36 @@ top level.
 - No stored golden hashes/STL fixtures existed, so the winding change broke no
   regression baseline.
 
+## Cycle 2: wall self-intersection fixed
+
+### Proved
+With extreme (but valid) concave style options on a small-base/wide-drain
+config, the wall thickness went strongly **negative** (down to −34 mm across
+SpiralRidges/HarmonicRipple/FourierBloom/Superformula/Superellipse): the inner
+wall crossed *outside* the outer wall. `validate_mesh` still reported the mesh
+as valid because it was topologically closed/manifold/oriented — the defect is
+purely **geometric self-intersection**, which a CAD kernel/slicer rejects.
+
+### Fixed
+`build_pot_mesh` now applies a self-intersection guard (root cause: the drain
+clamp raised the inner radius without bounding it against the outer wall):
+- floor the outer radius at `r_drain + 1 + min_wall` so the silhouette can't
+  pinch narrower than the drain plus a minimum wall;
+- clip the inner radius into `[r_drain + 1, r_outer − min_wall]`, which (given
+  the floor) is always a valid range, so the inner wall stays inside the drain
+  *and* never reaches the outer wall;
+- report the realised `min_wall_thickness_mm` in diagnostics.
+
+`min_wall = min(0.6 mm, t_wall)`. Default designs are unaffected — the floor
+never binds for roomy drains. Verified by `tests/test_wall_thickness.py` (12
+tests) and the full suite (167 passing). Generation stays ~34 ms (budget 200 ms).
+
 ## Suggested next steps (not yet done)
 1. **Surface validation in the export path.** `pfui/exporters.export_stl_bytes`
-   and the Streamlit export in `app.py` could call `validate_mesh` and warn the
-   user (or block) when a mesh is not `is_valid` — e.g. degenerate faces from
-   extreme style + clamping combinations.
-2. **Self-intersection check.** `validate_mesh` covers topology/orientation but
-   not geometric self-intersection (deep-concave styles can make the inner wall
-   cross the outer wall). This is the next real CAD-quality gap; needs a
-   spatial test (e.g. per-ring radius monotonicity or triangle-triangle).
-3. **True NURBS/profile export.** "Rhino/Grasshopper quality" ultimately wants a
+   and the Streamlit export in `app.py` could call `validate_mesh` (and check
+   `diag["min_wall_thickness_mm"]`) and warn the user when a mesh is not
+   `is_valid` or the wall is thinner than the printer's minimum.
+2. **True NURBS/profile export.** "Rhino/Grasshopper quality" ultimately wants a
    parametric profile (revolve curve) rather than a triangulated shell. The
    radius-profile functions in `geometry.py` already define the curve; exporting
    the generating profile (e.g. as polyline/3dm or a Grasshopper-friendly CSV of
