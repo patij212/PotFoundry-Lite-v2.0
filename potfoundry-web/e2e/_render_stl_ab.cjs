@@ -25,14 +25,14 @@ function readStlPositions(file) {
 
 (async () => {
   const a = readStlPositions(path.join(OUT, 'SuperformulaBlossom_sf1_percell.stl'));
-  const c = readStlPositions(path.join(OUT, 'SuperformulaBlossom_sf1_corridor.stl'));
+  const c = readStlPositions(path.join(OUT, 'SuperformulaBlossom_sf1_sharp.stl'));
   const b = a.bbox;
   const R = Math.max(b.xmax, b.ymax, -b.xmin, -b.ymin);
   const Hh = b.zmax - b.zmin;
-  // Grazing upper-petal view (where the cusps show as a silhouette).
-  const eye = [R * 1.9, R * 1.1, b.zmin + Hh * 0.5];
-  const target = [R * 0.15, R * 0.4, b.zmin + Hh * 0.72];
-  const fov = 16;
+  // Pulled-back 3/4 view of the WHOLE pot — petal ridges show on the silhouette edges.
+  const eye = [R * 4.5, R * 4.5, b.zmin + Hh * 0.62];
+  const target = [0, 0, b.zmin + Hh * 0.5];
+  const fov = 30;
 
   const browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-gl=angle'] });
   const page = await browser.newPage({ viewport: { width: 1200, height: 1200 } });
@@ -65,6 +65,6 @@ function readStlPositions(file) {
     await page.locator('#c').screenshot({ path: path.join(OUT, `sfb_ab_${tag}.png`) });
     console.log(`wrote sfb_ab_${tag}.png`);
   };
-  try { await renderOne(a, 'percell'); await renderOne(c, 'corridor'); }
+  try { await renderOne(a, 'percell'); await renderOne(c, 'fullfeature'); }
   finally { await page.close(); await browser.close(); console.log('done'); }
 })();

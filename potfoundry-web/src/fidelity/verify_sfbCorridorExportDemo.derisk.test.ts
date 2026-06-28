@@ -22,7 +22,7 @@ import type { SurfaceSampler } from '../renderers/webgpu/parametric/conforming/S
 const H = 120, R0 = 40, TBOTTOM = 6;
 const DIMS = { H, tBottom: TBOTTOM, rDrain: 0 };
 const STYLE_DIMS = { H, Rt: R0, Rb: R0, expn: 1 };
-const FL = 10; // demo featureLevel (smaller STL than FL11; cusp topology is the same)
+const FL = 11; // featureLevel (FL10 hit a degree-4 hole-boundary at uBias=2; FL11 composes)
 const OUT = path.resolve(__dirname, '..', '..', 'export-deliverables');
 
 function cusps(): UTPoint[][] {
@@ -76,7 +76,7 @@ describe.skipIf(!process.env.PF_DERISK)('SFB corridor export A/B demo (per-cell 
     // ── PER-CELL (the sawtooth): the cusps inserted via the per-cell CDT. ──
     const featLines: FeatureLine[] = cs.map((c, i) => ({ kind: 'general-curve', label: `cusp${i}`, points: c.map((p) => ({ u: p.u, t: p.t })) }));
     const pc = buildConformingWall(sampler, {
-      maxSagMm: 0.1, maxEdgeMm: 8, minEdgeMm: 0.1, gradeRatio: 2, maxLevel: 12,
+      maxSagMm: 0.05, maxEdgeMm: 1, minEdgeMm: 0.1, gradeRatio: 2, maxLevel: 12,
       resU: 128, resT: 128, nRing: 1 << FL, surfaceId: 0, featureLines: featLines, featureLevel: FL,
       targetTriangles: 6_000_000, budgetMode: 'cap', uBias: 2,
     });
@@ -84,9 +84,18 @@ describe.skipIf(!process.env.PF_DERISK)('SFB corridor export A/B demo (per-cell 
     for (let i = 0; i < pc.vertices.length; i += 3) pcUT.push([pc.vertices[i], pc.vertices[i + 1]]);
     const pcBytes = writeStl(path.join(OUT, 'SuperformulaBlossom_sf1_percell.stl'), sampler, pcUT, pc.indices, 'SFB sf1 per-cell (sawtooth)');
 
-    // ── CORRIDOR (the fix): per-loop hole-fill. ──
+    // ── CORRIDOR (the fix): per-loop hole-fill. Use the SAME uBias=2 wall as the
+    //    per-cell build (DEFAULT_BASE has uBias=0 → a heavily slivered wall that
+    //    swamped the clean cusp fills and made the A/B unfair). ──
     const specs: MultiFeatureSpec[] = cs.map((polyline) => ({ polyline }));
-    const co = realFeatureCorridorPerLoop(sampler, specs, { featureLevel: FL, widthMm: 3, dims: DIMS });
+    const co = realFeatureCorridorPerLoop(sampler, specs, {
+      featureLevel: FL, widthMm: 3, dims: DIMS,
+      assemblyFeatureLines: featLines, // refine the wall AT the cusps (not a dummy strand)
+      baseOptions: {
+        maxSagMm: 0.05, maxEdgeMm: 1, minEdgeMm: 0.1, gradeRatio: 2, maxLevel: 12,
+        resU: 128, resT: 128, nRing: 1 << FL, targetTriangles: 6_000_000, budgetMode: 'cap', uBias: 2,
+      },
+    });
     const coBytes = writeStl(path.join(OUT, 'SuperformulaBlossom_sf1_corridor.stl'), sampler, co.merged.vertexUT, co.merged.indices, 'SFB sf1 corridor (clean cusps)');
 
     /* eslint-disable no-console */

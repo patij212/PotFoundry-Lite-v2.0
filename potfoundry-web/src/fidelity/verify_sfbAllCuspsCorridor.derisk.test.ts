@@ -60,7 +60,10 @@ describe.skipIf(!process.env.PF_DERISK)('SFB ALL-cusps corridor — SCALING gate
     let r: ReturnType<typeof realFeatureCorridorPerLoop> | null = null;
     let crashed = '';
     try {
-      r = realFeatureCorridorPerLoop(sampler, features, { featureLevel: 11, widthMm: 3, dims: DIMS });
+      r = realFeatureCorridorPerLoop(sampler, features, {
+        featureLevel: 11, widthMm: 3, dims: DIMS,
+        baseOptions: { maxSagMm: 0.05, maxEdgeMm: 1, minEdgeMm: 0.1, gradeRatio: 2, maxLevel: 12, resU: 128, resT: 128, nRing: 1 << 11, targetTriangles: 6_000_000, budgetMode: 'cap', uBias: 2 },
+      });
     } catch (e) {
       crashed = String((e as Error).message).slice(0, 160);
     }
