@@ -2,7 +2,7 @@
 // The metric math is correctness-critical (a wrong tensor silently invalidates the whole study), so we pin it
 // to closed-form g on two surfaces with known fundamental forms: a cylinder and a cone.
 import { describe, it, expect } from 'vitest';
-import { buildSurfaceMetricField } from './surfaceMetricField';
+import { buildSurfaceMetricField, gradeSizeField } from './surfaceMetricField';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
 
 const RES = 65; // fine enough that the central-difference Su is within ~0.3% of analytic (sin(δ)/δ, δ=2π/64)
@@ -44,5 +44,22 @@ describe('buildSurfaceMetricField — first fundamental form M = g/h²', () => {
     expect(Math.abs(f.m[b] / (E * inv) - 1)).toBeLessThan(0.02);   // M00 = E/h₃D² (κ via central diffs ~1%)
     expect(f.m[b + 1]).toBeCloseTo(0, 5);                          // M01 = 0
     expect(Math.abs(f.m[b + 2] / (G * inv) - 1)).toBeLessThan(0.02); // M11 = G/h₃D²
+  });
+
+  it('gradation caps the adjacent size ratio to (1+β)', () => {
+    // sharp spike: one tiny cell amid large cells → ungraded ratio = 10, graded ≤ 1+β
+    const resU = 9, resT = 9;
+    const h = new Float64Array(resU * resT).fill(1.0);
+    h[4 * resU + 4] = 0.1; // central tiny cell
+    const beta = 0.4;
+    gradeSizeField(h, resU, resT, beta, 64);
+    let maxRatio = 1;
+    const at = (iu: number, it: number): number => it * resU + iu;
+    for (let it = 0; it < resT; it++) for (let iu = 0; iu < resU; iu++) {
+      if (iu < resU - 1) maxRatio = Math.max(maxRatio, h[at(iu + 1, it)] / h[at(iu, it)], h[at(iu, it)] / h[at(iu + 1, it)]);
+      if (it < resT - 1) maxRatio = Math.max(maxRatio, h[at(iu, it + 1)] / h[at(iu, it)], h[at(iu, it)] / h[at(iu, it + 1)]);
+    }
+    expect(maxRatio).toBeLessThanOrEqual(1 + beta + 1e-9);
+    expect(h[4 * resU + 4]).toBeCloseTo(0.1, 9); // crease fineness preserved (the small seed is untouched)
   });
 });
