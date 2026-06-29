@@ -33,6 +33,8 @@ test-results/
 # Project-specific exports
 *.stl
 *.zip
+*.3mf
+export-deliverables/
 
 # CI artifacts and local caches
 artifacts/
@@ -50,6 +52,17 @@ mesh_pipeline_audit*.resolved
 *.bak
 .tmp_*.txt
 *_COMMIT_MSG.txt
+
+# Diagnostic probe dumps & render captures (scratch, never commit)
+gothic-*.txt
+harmonic-*.txt
+render_*.png
+
+# Tool caches, visualizations, and nested agent worktrees
+gource-output/
+.vite/
+.playwright-mcp/
+.claude/worktrees/
 
 # Legacy (safe to keep until .venv is deleted)
 .venv/
