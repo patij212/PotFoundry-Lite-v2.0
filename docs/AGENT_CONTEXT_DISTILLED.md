@@ -415,10 +415,15 @@ the metric `M = g/h₃D²` — "even in the metric" = "even on the 3D surface", 
   remaining ceiling for seconds-at-15M is the per-round full `delaunator` rebuild → incremental insertion.
 - **Status / next:** lab-validated on a (u,t) PATCH only; the conforming mesher still SHIPS. DONE: per-node
   `M=g/h²` placement + chord-aware refine (rms 0.003 / mean 46.5 / 3M tris) + the ~14× perf pass (3M in 55s).
-  REMAINING: (1) incremental Delaunay (Bowyer-Watson) to remove the per-round full rebuild — the last ceiling
-  for seconds-at-15M, (2) periodic-u seam + t=0/1 rim/base, (3) correct crease-aligned anisotropic metric
-  ((II,I) generalized eigendecomp) for the residual hard crease slivers, (4) flag-gated production cutover
-  (CRITICAL `PeriodicBalancedQuadtree`/`WatertightAssembly` — needs a design pass).
+  REMAINING: (1) ~~incremental Delaunay~~ — primitives built+verified (Delaunay-correct) but the insertion
+  drop-in OVER-REFINES (pure-Delaunay tolerates long edges the batch's per-round reset removes); fix =
+  connectivity-free metric point sampling, est. only ~2× (`2026-06-29-incremental-delaunay-findings.md`).
+  (2) periodic-u seam + t=0/1 rim/base. (3) ~~crease-aligned anisotropic metric~~ — DONE + wired into the
+  kernel (`creaseAlignedMesh.ts`, anisotropic metric in-circle flip): **14× fewer tris on extended-feature
+  styles (HarmonicRipple) at equal chord + excellent in-metric quality**; on sharp Gyroid creases it gives
+  good quality at 2.5× fewer tris but the CHORD is band-limited (needs analytic/finer curvature) — does NOT
+  close the steep crease (`2026-06-29-crease-kernel-findings.md`). (4) flag-gated production cutover (CRITICAL
+  `PeriodicBalancedQuadtree`/`WatertightAssembly` — needs a design pass).
 - **Full detail:** `docs/superpowers/specs/2026-06-29-*.md` (surface-metric-isolation, quality-max,
   density-quality, crease-fidelity, inhouse-kernel-milestone) + `research/bridge/*.test.ts`. Reusable lab
   instruments: `perpendicular3DDeviation` (3D chord) + `triangleQualityDistribution` (3D angles). Metric blind
