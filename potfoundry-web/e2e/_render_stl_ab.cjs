@@ -24,7 +24,7 @@ function readStlPositions(file) {
 }
 
 (async () => {
-  const a = readStlPositions(path.join(OUT, 'SuperformulaBlossom_sf1_structured_p3b.stl'));
+  const a = readStlPositions(path.join(OUT, 'SuperformulaBlossom_sf1_solid.stl'));
   const c = readStlPositions(path.join(OUT, 'SuperformulaBlossom_sf1_sharp.stl'));
   const b = a.bbox;
   const R = Math.max(b.xmax, b.ymax, -b.xmin, -b.ymin);
@@ -66,6 +66,6 @@ function readStlPositions(file) {
     console.log(`wrote sfb_ab_${tag}.png`);
   };
   // wider whole-pot framings: front (seam ~ +x) and back (seam side)
-  try { await renderOne(a, 'structured_p3b'); await renderOne(c, 'sharp'); }
+  try { await renderOne(a, 'solid'); await renderOne(c, 'sharp'); }
   finally { await page.close(); await browser.close(); console.log('done'); }
 })();

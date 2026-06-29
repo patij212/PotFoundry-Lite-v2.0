@@ -415,6 +415,16 @@ export interface RealFeatureCorridorMultiResult {
     ringVertexIds: Set<number>;
   };
   existingVertexCount: number;
+  /**
+   * Phase-4 full-pot graft (per-loop variant only): the FULL watertight assembly
+   * (outer-wall-with-band-holes + inner wall + caps + rim) and the outer-wall id
+   * mapping, so the clean corridor outer wall can be welded onto the inner/caps.
+   */
+  assembly?: ReturnType<typeof assembleWatertight>;
+  /** asm-outer-vertex-index → merged id (from {@link internOuterWall}). */
+  compToMerged?: Int32Array;
+  /** asm outer-wall owned vertex count (asm ids [0, outerVertCount) are the outer wall). */
+  outerVertCount?: number;
 }
 
 /**
@@ -575,7 +585,7 @@ export function realFeatureCorridorPerLoop(
     outerFeatureLines: opts.assemblyFeatureLines ?? defaultAssemblyFeature(),
     bandRegions: [bandRegion],
   });
-  const { outerWall, vertexUT, ringVertexIds } = internOuterWall(assembly);
+  const { outerWall, vertexUT, ringVertexIds, compToMerged, outerVertCount } = internOuterWall(assembly);
   const hole = extractHoleBoundary(outerWall, ringVertexIds);
 
   // Assign each feature to its containing hole loop (point-in-polygon; nearest-centroid fallback).
@@ -643,5 +653,6 @@ export function realFeatureCorridorPerLoop(
     bandRegion, hole, paved: pavedAll,
     merged: { indices: mergedIndicesP, vertexUT: mergedVertexUTP, ringVertexIds },
     existingVertexCount: vertexUT.length,
+    assembly, compToMerged, outerVertCount,
   };
 }
