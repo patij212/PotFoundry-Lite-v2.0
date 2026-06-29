@@ -5096,3 +5096,152 @@ Validation:
 Risks / Next agent:
 - Remaining blockers: collinear residue on ~6 topology-clean styles (ArtDeco 5, WaveInterference 4, RippleInterference 1, Crystalline nonMan1+slivers); fold-class holes (DragonScales bnd=30/nonMan=6); FourierBloom watertightness regression (bnd=272 crack at z=29-38, r=47 - present in BOTH legacy and byConstruction, introduced by the multi-agent tree, not the seam); heavy styles (Gothic/Gyroid/Voronoi) diagnostic-timeout >300s.
 - The real path to completion is the by-construction base-tessellation rework (conforming subdivision/chain-integration). Validate with `_check.cjs` (fast), clean styles as regression canaries. Export is ~150s/style/gen - budget accordingly.
+
+---
+
+## 2026-06-13 - Codex - Latest Export Pipeline Fidelity Review
+
+Summary:
+- Reviewed the latest conforming-export progress through HEAD `1191e2e`.
+- Confirmed the conforming mesher is now the production-default parametric path.
+- Confirmed Stage 1 metric-aware triangulation, profile-driven density, and
+  quality-bounded decimation are substantial architectural improvements.
+- Found that the newest crest/snap commits are measurement-only; they do not yet
+  improve production feature placement or tessellation.
+
+Decisions:
+- Assess the pipeline as on a credible Rhino-class trajectory at supported
+  default dimensions, but not ready for a perfect-fidelity claim.
+- Treat `featDrop=0` as incomplete evidence: Crystalline is a documented empty
+  extractor gap, and feature resolution currently proves nearby vertices, not
+  constrained edge connectivity or preserved dihedral.
+- Treat the measured SFB@1 placement floor of 0.1586 mm as the current hard
+  blocker to exact feature preservation until Stage 4 exact placement lands.
+- Treat conforming `validationSummary.valid` as a print-topology gate, not a
+  Rhino-fidelity gate; it only rejects topology/orientation defects and
+  aspect-over-100 slivers.
+
+Validation:
+- GREEN: `npm run typecheck`.
+- GREEN: `npm run lint`.
+- GREEN: 134 focused tests for snap/crest instruments, quality profiles,
+  feature graph/FCT, and certified quadtree triangulation.
+- GREEN: 60 focused tests for conforming walls/assembly, feature-quality
+  harness, and quality-bounded decimation.
+- TIMEOUT: full `npm test -- --run` exceeded 15 minutes; remaining Vitest
+  processes from this run were stopped.
+- GitNexus unavailable: index was 66 commits stale and refresh failed because
+  `.gitnexus/lbug.shadow` could not be opened; no reliable graph impact report.
+
+Risks:
+- Crystalline's sharp helical crease family is still unmodeled.
+- The feature-resolution metric can vacuously pass empty graphs and does not
+  prove feature-edge incidence.
+- Exact feature placement remains 0.159 mm-class pre-fix.
+- ArtDeco, DragonScales, and BasketWeave retain 5.3-6.9% crest-band sub-15-degree
+  triangles at the latest high-density baseline.
+- Extreme short-wide/tall-narrow/high-flare dimensions remain a separate
+  topology, quality, and build-time failure class.
+
+Next agent:
+- Prioritize exact analytic crest/grid-line placement and strengthen the
+  shipped validation gate with lateral feature error, feature-edge incidence,
+  min-angle tail, and independent sag/chord bounds before claiming CAD fidelity.
+
+---
+
+## 2026-06-25 - Codex - Export Pipeline Direction Review
+
+Summary:
+- Reviewed the recent export-pipeline work for the goal of representing mathematical
+  pot models as highest-fidelity tessellated 3D meshes.
+- Refreshed GitNexus, read current context/docs/specs, inspected the conforming
+  production path, the CAD-density floor, and the June 24 band-remesh/corridor work.
+- Direction verdict: continue, but pivot effort away from CDT corridor patching and
+  toward feature-aligned by-construction band/rail meshing with stronger production
+  integration gates.
+
+Decisions:
+- Treat the conforming mesher + high/ultra CAD-density floor as a credible baseline,
+  not the final architecture for exact feature ribbons.
+- Treat the Phase 0 band-remesh paver/stitch/junction stack as the promising core:
+  it makes feature curves actual mesh edges and proves watertight stitching in
+  controlled cases.
+- Treat the current real-corridor CDT path as a diagnostic bridge only; it improved
+  old unfilled-boundary failures but still leaves real Voronoi topology/quality
+  defects and should not become the main tessellation strategy.
+- Recommend the next work focus on production integration: grid-computed rail
+  crossings, closed-loop/annulus paver quality, and feature-incidence/chord gates.
+
+Validation:
+- GREEN: `node .gitnexus/run.cjs analyze` refreshed the index to HEAD.
+- GREEN: `npm run lint`.
+- RED: `npm run typecheck` fails at `src/fidelity/bandRemesh/corridorPave.ts` because
+  `{ interior: true }` is not in the installed `cdt2d` TypeScript option type.
+- GREEN: `verify_dyadic_seam.test.ts` passed 6/6; Q1/Q2 synthetic seam/corridor hold.
+- RED: `verify_real_feature_mesher.test.ts` failed 3/5 on stale NO-GO assertions; live
+  metrics show FL7 now has `boundaryUnfilled=0/233` and FL11 no longer throws, but
+  real Voronoi still reports `tJunction=100`, `orientMismatch=3`, `wobbleP99=2.5555mm`.
+- GREEN: `bandRemesh/phase1_seam_derisk.test.ts` passed 3/3; seam is viable
+  (`tJunctions=0`, L9 `nonManifold=0`) but band quality is poor on uneven real loops
+  (`bandAspectMax=29223.94`, `bandPct<10=100%`).
+- GREEN: 91 focused Phase 0 band-remesh tests passed for audit, paver, stitch,
+  junction, stations, rails, and rail key.
+- GitNexus `detect_changes(scope: all)` reports medium risk; direct impact on
+  `assembleWatertight` is HIGH because it is the production assembly hinge.
+
+Risks:
+- Worktree is not handoff-clean: typecheck is red and the real-feature test suite is
+  out of date relative to the uncommitted `corridorPave` / `realCorridor` changes.
+- The current production-integration proof is topology-heavy but quality-light:
+  the seam can close while the paver emits unusable annulus slivers on real loops.
+- `assembleWatertight` / conforming option threading is high-blast-radius even when
+  the code delta is small; keep new mechanisms flag-gated until gates are strict.
+- CAD-density floors raise fidelity by brute force and file size; they do not solve
+  feature-aligned triangle orientation or exact feature incidence.
+
+Next agent:
+- First make the worktree honest: fix the `cdt2d` option typing/runtime contract or
+  wrapper, then update `verify_real_feature_mesher.test.ts` to assert the current
+  residuals instead of the old NO-GO.
+- Then attack the real blocker: closed-loop/annulus paver quality for uneven
+  grid-computed rings, with gates on feature-edge incidence, lateral error, 3D
+  chord/sag, min-angle tail, and watertightness together.
+- Do not spend more time on generic post-hoc repair or CDT corridor fan patches
+  except as short-lived diagnostics.
+
+## 2026-06-29 - Claude - Meshing research: surface-metric recipe + in-house kernel milestone (LAB)
+
+Summary:
+- Built a dev-only meshing research lab (`potfoundry-web/research/`, gmsh 4.13.1 + Triangle oracles; `src/`
+  never imports it, nothing ships) and re-baselined the tangled-lattice quality/fidelity problem vs ground truth.
+- KEY: meshing (u,t) under the first fundamental form `M=g/h²` gives even-on-the-3D-surface triangles in UV —
+  mean min-angle 30°→50°, %<20° 14%→~2%; steep-crease chord p99 0.50→0.019mm, rms→0.014 (Gyroid/BasketWeave).
+- Started the in-house kernel: spike `src/fidelity/spike/metricDelaunayRefine.ts` + a vertex-OPTIMIZATION pass
+  (iterated [`surfaceSmoothing` + `metricFlipPasses`]) → tangled Gyroid mean 41/%<20° 2.5 (near oracle), no gmsh.
+
+Decisions:
+- Rebuild target = metric-Delaunay over (u,t) under `M=g/h₃D²`: first form for 3D-even SHAPE, curvature
+  `h₃D=√(8·tol/κ)` for chord SIZE (isotropic-in-3D). Generous budget → prefer near-uniform dense sizing; if
+  chord-adaptive, apply gradation (adjacent size ratio ≤1.25) to avoid transition slivers.
+- CORRECTED two prior conclusions: "CVT/ODT pass mandatory" was an artifact of testing the 2nd fundamental form
+  (curvature → slivers); the 2nd-form anisotropic metric (the `metricField.ts` pattern) is BROKEN for chord
+  (eigendecomp ignores I — a correct crease-aligned metric needs the (II,I) generalized eigendecomposition).
+- gmsh BAMG hard-caps ~1.8M tris (oracle limit) ⇒ rms-0.01 / 15M-triangle targets need the in-house kernel.
+
+Validation:
+- Lab unit tests GREEN (metric vs analytic g: cylinder+cone+chord; gradation invariant; smoothing pins boundary
+  & improves quality). All `research/bridge/*.test.ts` lint-clean (0 warnings). Scored with the project's own
+  `perpendicular3DDeviation` (3D chord) + `triangleQualityDistribution` (3D angles).
+- NOT run: production typecheck/full suite (no `src/` changes); watertight/seam not tested in the patch lab.
+
+Risks:
+- All findings are LAB/oracle-only; the conforming mesher STILL SHIPS. Do not treat numbers as production.
+- The in-house spike rebuilds Delaunay every round (slow) — needs incremental insertion before millions.
+- Production cutover touches CRITICAL `PeriodicBalancedQuadtree`/`WatertightAssembly` — flag-gate + design first.
+
+Next agent:
+- Continue the kernel: (1) per-node `M=g/h²` placement (close mean 41→47), (2) chord refine (rms/p99→0.01),
+  (3) incremental Delaunay for scale, (4) periodic-u seam + rim/base, (5) flag-gated cutover.
+- Full detail + numbers: `docs/superpowers/specs/2026-06-29-{surface-metric-isolation,quality-max,
+  density-quality,crease-fidelity,inhouse-kernel-milestone}.md`; distilled summary in §7 "Surface-Metric Era".
