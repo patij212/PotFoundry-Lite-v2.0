@@ -403,14 +403,20 @@ the metric `M = g/h₃D²` — "even in the metric" = "even on the 3D surface", 
   eigendecomposition of `(II, I)`.
 - **gmsh BAMG hard-caps at ~1.8M triangles** (every density rung pins at 1.796M regardless of tol/sizeRes) — a
   dev-oracle limit, NOT the recipe. So the user's **rms-0.01 / 15M-triangle** targets require the in-house kernel.
-- **In-house kernel milestone:** the existing spike `src/fidelity/spike/metricDelaunayRefine.ts` (shipped
-  `delaunator` + true-3D-angle Lawson flips) matches the oracle on smooth styles but lagged on tangled
-  (Gyroid mean 35.9/%<20° 12.2). The missing piece was a **vertex-optimization pass**; iterated
-  [on-surface smooth + true-3D flip] lifts it to **mean 41.3/%<20° 2.5%** (near oracle ~47/3) with no gmsh.
-- **Status / next:** lab-validated on the oracle only; the conforming mesher still SHIPS. Rebuild path =
-  (1) per-node `M=g/h²` placement (close mean 41→47), (2) chord-aware refine (rms/p99→0.01), (3) incremental
-  Delaunay for scale (the spike rebuilds every round — too slow for millions), (4) periodic-u seam + rim/base,
-  (5) flag-gated production cutover (CRITICAL `PeriodicBalancedQuadtree`/`WatertightAssembly` — needs a design pass).
+- **In-house kernel — DELIVERS the targets (no gmsh).** The spike `src/fidelity/spike/metricDelaunayRefine.ts`
+  (shipped `delaunator` + true-3D flips) lagged on tangled (Gyroid mean 35.9/%<20° 12.2); two upgrades closed
+  it, both in `research/bridge/inhouseMetricMesh.ts`: (a) a **vertex-optimization pass** (iterated [on-surface
+  smooth + true-3D flip]) → mean 41; (b) **per-node metric placement** (refine by the local `M=g/h²` edge
+  length, not a global anisotropy scale) → **mean 46.5 (oracle ~47)**. Dense run: **2,998,516 tris — past
+  gmsh BAMG's 1.8M cap — rms 0.0030mm (3µm), p99 0.0101mm (crease), mean 46.5, %<20° 1.1%.** Both targets
+  (rms→0.01, steep crease at highest fidelity) MET in the lab. Fast xyz-cached flips (numeric edge keys) scale;
+  perf is ~3M in 13min (per-round delaunator rebuild + Map flips → needs incremental insertion for routine 15M).
+- **Status / next:** lab-validated on a (u,t) PATCH only; the conforming mesher still SHIPS. DONE: per-node
+  `M=g/h²` placement + chord-aware refine (rms 0.003 / mean 46.5 / 3M tris). REMAINING: (1) incremental Delaunay
+  for routine-scale perf (the current per-round rebuild does 3M in 13min — too slow for 15M cadence),
+  (2) periodic-u seam + t=0/1 rim/base, (3) correct crease-aligned anisotropic metric ((II,I) generalized
+  eigendecomp) for the residual hard crease slivers, (4) flag-gated production cutover (CRITICAL
+  `PeriodicBalancedQuadtree`/`WatertightAssembly` — needs a design pass).
 - **Full detail:** `docs/superpowers/specs/2026-06-29-*.md` (surface-metric-isolation, quality-max,
   density-quality, crease-fidelity, inhouse-kernel-milestone) + `research/bridge/*.test.ts`. Reusable lab
   instruments: `perpendicular3DDeviation` (3D chord) + `triangleQualityDistribution` (3D angles). Metric blind
