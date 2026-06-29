@@ -55,7 +55,10 @@ const linkHE = (halfedges: Int32Array, a: number, b: number): void => { halfedge
  * Edge a (halfedge, twin b=halfedges[a]) has triangles T_a={pr,pl,p0}, T_b={pl,?,p1} sharing edge pr-pl with
  * apexes p0,p1; flipping swaps the diagonal to p0-p1 when that raises the worse of the two 3D min-angles.
  */
-export function flipHE(triangles: Uint32Array, halfedges: Int32Array, xyz: Float64Array, uv: number[], maxPasses: number): void {
+export function flipHE(
+  triangles: Uint32Array, halfedges: Int32Array, xyz: Float64Array, uv: number[], maxPasses: number,
+  shouldFlip?: (pr: number, pl: number, p0: number, p1: number) => boolean,
+): void {
   const ne = triangles.length;
   for (let pass = 0; pass < maxPasses; pass++) {
     let flips = 0;
@@ -73,11 +76,16 @@ export function flipHE(triangles: Uint32Array, halfedges: Int32Array, xyz: Float
       const sPr = dx * (uv[pr * 2 + 1] - uv[p0 * 2 + 1]) - dy * (uv[pr * 2] - uv[p0 * 2]);
       const sPl = dx * (uv[pl * 2 + 1] - uv[p0 * 2 + 1]) - dy * (uv[pl * 2] - uv[p0 * 2]);
       if (sPr * sPl >= 0) continue;
-      // worst (largest max-cos) of the current pair vs the flipped pair; flip if the flip LOWERS the worst cos
-      // (i.e. raises the worse min-angle).
-      const curWorstCos = Math.max(maxCosXYZ(xyz, pr, pl, p0), maxCosXYZ(xyz, pr, pl, p1));
-      const flpWorstCos = Math.max(maxCosXYZ(xyz, p0, p1, pl), maxCosXYZ(xyz, p0, p1, pr));
-      if (flpWorstCos >= curWorstCos - 1e-9) continue;
+      let doFlip: boolean;
+      if (shouldFlip !== undefined) {
+        doFlip = shouldFlip(pr, pl, p0, p1);            // pluggable criterion (e.g. anisotropic metric in-circle)
+      } else {
+        // default: flip if it LOWERS the worst max-cos (raises the worse true-3D min-angle).
+        const curWorstCos = Math.max(maxCosXYZ(xyz, pr, pl, p0), maxCosXYZ(xyz, pr, pl, p1));
+        const flpWorstCos = Math.max(maxCosXYZ(xyz, p0, p1, pl), maxCosXYZ(xyz, p0, p1, pr));
+        doFlip = flpWorstCos < curWorstCos - 1e-9;
+      }
+      if (!doFlip) continue;
       triangles[a] = p1; triangles[b] = p0;
       const hbl = halfedges[bl], har = halfedges[ar];
       linkHE(halfedges, a, hbl);
