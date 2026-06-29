@@ -88,18 +88,23 @@ describe('export3MF.schema — structural 3MF Core validation of a real pot', ()
     const triangles = doc.getElementsByTagName('triangle');
     expect(triangles.length).toBeGreaterThan(0);
 
-    for (let i = 0; i < triangles.length; i++) {
+    // Validate in a single pass and assert ONCE. A per-element expect() over
+    // ~57k triangles is ~870k assertions, which blows the default 5s test
+    // timeout (and yields a useless failure message). Record the first offender.
+    let firstBad: string | null = null;
+    for (let i = 0; i < triangles.length && firstBad === null; i++) {
       const tri = triangles[i];
       for (const attr of ['v1', 'v2', 'v3'] as const) {
         const raw = tri.getAttribute(attr);
-        expect(raw).not.toBeNull();
         const idx = Number(raw);
-        expect(Number.isInteger(idx)).toBe(true);
-        expect(idx).toBeGreaterThanOrEqual(0);
-        expect(idx).toBeLessThan(vertexCount);
+        if (raw === null || !Number.isInteger(idx) || idx < 0 || idx >= vertexCount) {
+          firstBad = `triangle[${i}].${attr}=${raw} (vertexCount=${vertexCount})`;
+          break;
+        }
       }
     }
-  });
+    expect(firstBad).toBeNull();
+  }, 60_000);
 
   it('_rels Target resolves to the model part present in the package', async () => {
     const zip = await exportRealPotZip();
