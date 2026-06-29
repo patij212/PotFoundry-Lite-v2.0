@@ -24,28 +24,48 @@ export function smoothSurfaceOnRadial(
   const u = new Float64Array(n), t = new Float64Array(n);
   for (let i = 0; i < n; i++) { u[i] = ut[2 * i]; t[i] = ut[2 * i + 1]; }
 
-  // 1-ring adjacency
-  const adj: Set<number>[] = Array.from({ length: n }, () => new Set<number>());
-  for (let k = 0; k < indices.length; k += 3) {
+  // 1-ring adjacency as a CSR (typed arrays, no Set) with O(1) mark-based dedup of distinct neighbours.
+  const m = indices.length;
+  const deg = new Int32Array(n);
+  for (let k = 0; k < m; k += 3) { deg[indices[k]] += 2; deg[indices[k + 1]] += 2; deg[indices[k + 2]] += 2; }
+  const rawOff = new Int32Array(n + 1);
+  for (let i = 0; i < n; i++) rawOff[i + 1] = rawOff[i] + deg[i];
+  const rawNbr = new Int32Array(rawOff[n]);
+  const fill = Int32Array.from(rawOff.subarray(0, n));
+  for (let k = 0; k < m; k += 3) {
     const a = indices[k], b = indices[k + 1], c = indices[k + 2];
-    adj[a].add(b); adj[a].add(c); adj[b].add(a); adj[b].add(c); adj[c].add(a); adj[c].add(b);
+    rawNbr[fill[a]++] = b; rawNbr[fill[a]++] = c;
+    rawNbr[fill[b]++] = a; rawNbr[fill[b]++] = c;
+    rawNbr[fill[c]++] = a; rawNbr[fill[c]++] = b;
   }
+  const off = new Int32Array(n + 1);
+  const nbr = new Int32Array(rawOff[n]);
+  const mark = new Int32Array(n).fill(-1);
+  let w = 0;
+  for (let i = 0; i < n; i++) {
+    off[i] = w;
+    for (let p = rawOff[i]; p < rawOff[i + 1]; p++) { const nb = rawNbr[p]; if (mark[nb] !== i) { mark[nb] = i; nbr[w++] = nb; } }
+  }
+  off[n] = w;
+
   // pin patch-boundary vertices (u or t at 0/1)
   const pinned = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     if (u[i] <= eps || u[i] >= 1 - eps || t[i] <= eps || t[i] >= 1 - eps) pinned[i] = 1;
   }
 
+  const px = new Float64Array(n), py = new Float64Array(n), pz = new Float64Array(n);
   for (let iter = 0; iter < iterations; iter++) {
+    // precompute every vertex's 3D position ONCE per iteration (rA is the expensive call) — the centroid loop
+    // then just reads neighbour positions instead of re-evaluating rA per (neighbour × incidence).
+    for (let i = 0; i < n; i++) { const th = TAU * u[i], z = t[i] * H, r = rA(th, z); px[i] = r * Math.cos(th); py[i] = r * Math.sin(th); pz[i] = z; }
     const nu = Float64Array.from(u), nt = Float64Array.from(t);
     for (let i = 0; i < n; i++) {
-      if (pinned[i] || adj[i].size === 0) continue;
+      const s = off[i], e = off[i + 1];
+      if (pinned[i] || e === s) continue;
       // 3D centroid of the 1-ring
-      let cx = 0, cy = 0, cz = 0, cnt = 0;
-      for (const j of adj[i]) {
-        const th = TAU * u[j], z = t[j] * H, r = rA(th, z);
-        cx += r * Math.cos(th); cy += r * Math.sin(th); cz += z; cnt++;
-      }
+      let cx = 0, cy = 0, cz = 0; const cnt = e - s;
+      for (let p = s; p < e; p++) { const j = nbr[p]; cx += px[j]; cy += py[j]; cz += pz[j]; }
       cx /= cnt; cy /= cnt; cz /= cnt;
       // recover (θ,z) → (u,t); radius is re-snapped to the surface at lift time (vertex stays ON the surface)
       let uNew = (Math.atan2(cy, cx) / TAU + 1) % 1;

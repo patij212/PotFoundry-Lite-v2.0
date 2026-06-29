@@ -5,8 +5,9 @@
 //      (buildSurfaceMetricField). A triangle is "too big" when its longest edge exceeds the local metric
 //      target — refine by METRIC edge length, not a global 3D length. Cheap (bilinear field lookups, no
 //      per-triangle oracle chord sampling), so it scales past gmsh BAMG's ~1.8M cap.
-//   2. FAST flips: a true-3D max-min-angle Lawson flip using a per-round precomputed xyz array + numeric edge
-//      keys (no per-vertex oracle calls, no string keys) → flips stay cheap at millions of triangles.
+//   2. FAST flips: a true-3D max-min-angle Lawson flip over Delaunator's HALFEDGE structure (no per-pass edge
+//      Map — the measured 84%-of-runtime bottleneck) with a per-round precomputed xyz array and an acos-free
+//      squared-cosine comparison → flips stay cheap at millions of triangles.
 //   3. Optimization: iterated [on-surface smooth + flip] (the pass the spike lacked).
 //
 // Connectivity: initial Euclidean Delaunay (shipped delaunator) in coords scaled by the global median
@@ -17,64 +18,75 @@ import { smoothSurfaceOnRadial } from './surfaceSmoothing';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
 
 const TAU = 2 * Math.PI;
-const RAD2DEG = 180 / Math.PI;
 
 export interface InhouseMeshOpts {
   tolMm: number; hMin: number; hMax: number;
   sizeRes?: number; gradeBeta?: number; seedN?: number;
   maxPoints?: number; maxRounds?: number; splitThresh?: number; optimizeSweeps?: number; dedupeEps?: number;
+  profile?: boolean;
 }
 export interface InhouseMesh { ut: number[]; indices: Uint32Array; points: number; rounds: number; hitBudget: boolean; }
 
-/** Min interior 3D angle (deg) of triangle (a,b,c) given flat xyz arrays; 0 if degenerate. */
-function minAngleXYZ(xyz: Float64Array, a: number, b: number, c: number): number {
+/**
+ * MAX interior-angle cosine of the 3D triangle (a,b,c) — monotone proxy for its MIN angle (largest cos ⇔
+ * smallest angle), with no `acos` (the flip decision only needs to COMPARE worst angles). Returns 1
+ * (cos 0°) for a degenerate triangle so it ranks as the worst.
+ */
+function maxCosXYZ(xyz: Float64Array, a: number, b: number, c: number): number {
   const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
   const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
   const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
-  const lab = Math.hypot(ax - bx, ay - by, az - bz);
-  const lbc = Math.hypot(bx - cx, by - cy, bz - cz);
-  const lca = Math.hypot(cx - ax, cy - ay, cz - az);
-  if (lab < 1e-12 || lbc < 1e-12 || lca < 1e-12) return 0;
-  const ac = (j: number, k: number, opp: number): number => Math.acos(Math.max(-1, Math.min(1, (j * j + k * k - opp * opp) / (2 * j * k))));
-  return Math.min(ac(lca, lab, lbc), ac(lab, lbc, lca), ac(lbc, lca, lab)) * RAD2DEG;
+  const la2 = (bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2; // opposite a
+  const lb2 = (cx - ax) ** 2 + (cy - ay) ** 2 + (cz - az) ** 2; // opposite b
+  const lc2 = (ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2; // opposite c
+  if (la2 < 1e-24 || lb2 < 1e-24 || lc2 < 1e-24) return 1;
+  const cosA = (lb2 + lc2 - la2) / (2 * Math.sqrt(lb2 * lc2));
+  const cosB = (la2 + lc2 - lb2) / (2 * Math.sqrt(la2 * lc2));
+  const cosC = (la2 + lb2 - lc2) / (2 * Math.sqrt(la2 * lb2));
+  return Math.max(cosA, cosB, cosC);
 }
 
-/** True-3D max-min-angle Lawson flips using a precomputed xyz array + numeric edge keys (fast at scale). */
-function flipMaxMinAngle(uv: number[], triIn: Uint32Array, xyz: Float64Array, maxPasses: number): Uint32Array {
-  const T = Uint32Array.from(triIn);
-  const MULT = 134217728; // 2^27 > max vertex count here; numeric edge key
+const linkHE = (halfedges: Int32Array, a: number, b: number): void => { halfedges[a] = b; if (b !== -1) halfedges[b] = a; };
+
+/**
+ * In-place true-3D max-min-angle Lawson flips over Delaunator's halfedge structure — NO per-pass edge Map
+ * (the 84%-of-runtime bottleneck). Each flip relinks a constant number of halfedges following Delaunator's own
+ * `_legalize`, so a pass is O(edges) array iteration + O(flips) relink. Mutates `triangles` + `halfedges`.
+ * Edge a (halfedge, twin b=halfedges[a]) has triangles T_a={pr,pl,p0}, T_b={pl,?,p1} sharing edge pr-pl with
+ * apexes p0,p1; flipping swaps the diagonal to p0-p1 when that raises the worse of the two 3D min-angles.
+ */
+export function flipHE(triangles: Uint32Array, halfedges: Int32Array, xyz: Float64Array, uv: number[], maxPasses: number): void {
+  const ne = triangles.length;
   for (let pass = 0; pass < maxPasses; pass++) {
-    const edges = new Map<number, number>(); // key → (tri<<2 | localOppSlot) packed as tri*4+slot, first occurrence
-    const second = new Map<number, number>();
-    const nt = T.length / 3;
-    const addEdge = (a: number, b: number, tri: number, oppSlot: number): void => {
-      const k = a < b ? a * MULT + b : b * MULT + a;
-      if (!edges.has(k)) edges.set(k, tri * 4 + oppSlot); else if (!second.has(k)) second.set(k, tri * 4 + oppSlot);
-    };
-    for (let t = 0; t < nt; t++) { const a = T[3 * t], b = T[3 * t + 1], c = T[3 * t + 2]; addEdge(a, b, t, 2); addEdge(b, c, t, 0); addEdge(c, a, t, 1); }
-    let flips = 0; const touched = new Uint8Array(nt);
-    for (const [k, e0] of edges) {
-      const e1 = second.get(k); if (e1 === undefined) continue;
-      const t0 = e0 >> 2, t1 = e1 >> 2;
+    let flips = 0;
+    const touched = new Uint8Array(ne / 3);
+    for (let a = 0; a < ne; a++) {
+      const b = halfedges[a];
+      if (b === -1 || b < a) continue; // each interior edge once, from its lower halfedge
+      const t0 = (a / 3) | 0, t1 = (b / 3) | 0;
       if (touched[t0] || touched[t1]) continue;
-      const r = T[3 * t0 + (e0 & 3)], s = T[3 * t1 + (e1 & 3)];
-      const a = Math.floor(k / MULT), b = k % MULT;
-      // r,s must straddle edge a-b in (u,t) for a valid flip
-      const ru = uv[r * 2], rt = uv[r * 2 + 1], su = uv[s * 2], st = uv[s * 2 + 1];
-      const sideA = (su - ru) * (uv[a * 2 + 1] - rt) - (st - rt) * (uv[a * 2] - ru);
-      const sideB = (su - ru) * (uv[b * 2 + 1] - rt) - (st - rt) * (uv[b * 2] - ru);
-      if (sideA * sideB >= 0) continue;
-      const curMin = Math.min(minAngleXYZ(xyz, a, b, r), minAngleXYZ(xyz, a, b, s));
-      const flpMin = Math.min(minAngleXYZ(xyz, a, r, s), minAngleXYZ(xyz, b, r, s));
-      if (flpMin > curMin + 1e-6) {
-        T[3 * t0] = a; T[3 * t0 + 1] = r; T[3 * t0 + 2] = s;
-        T[3 * t1] = b; T[3 * t1 + 1] = r; T[3 * t1 + 2] = s;
-        touched[t0] = 1; touched[t1] = 1; flips++;
-      }
+      const a0 = a - (a % 3), b0 = b - (b % 3);
+      const al = a0 + (a + 1) % 3, ar = a0 + (a + 2) % 3, bl = b0 + (b + 2) % 3;
+      const pr = triangles[a], pl = triangles[al], p0 = triangles[ar], p1 = triangles[bl];
+      // validity: pr,pl must straddle the new diagonal p0-p1 in (u,t) (convex quad, no inversion)
+      const dx = uv[p1 * 2] - uv[p0 * 2], dy = uv[p1 * 2 + 1] - uv[p0 * 2 + 1];
+      const sPr = dx * (uv[pr * 2 + 1] - uv[p0 * 2 + 1]) - dy * (uv[pr * 2] - uv[p0 * 2]);
+      const sPl = dx * (uv[pl * 2 + 1] - uv[p0 * 2 + 1]) - dy * (uv[pl * 2] - uv[p0 * 2]);
+      if (sPr * sPl >= 0) continue;
+      // worst (largest max-cos) of the current pair vs the flipped pair; flip if the flip LOWERS the worst cos
+      // (i.e. raises the worse min-angle).
+      const curWorstCos = Math.max(maxCosXYZ(xyz, pr, pl, p0), maxCosXYZ(xyz, pr, pl, p1));
+      const flpWorstCos = Math.max(maxCosXYZ(xyz, p0, p1, pl), maxCosXYZ(xyz, p0, p1, pr));
+      if (flpWorstCos >= curWorstCos - 1e-9) continue;
+      triangles[a] = p1; triangles[b] = p0;
+      const hbl = halfedges[bl], har = halfedges[ar];
+      linkHE(halfedges, a, hbl);
+      linkHE(halfedges, b, har);
+      linkHE(halfedges, ar, bl);
+      touched[t0] = 1; touched[t1] = 1; flips++;
     }
     if (flips === 0) break;
   }
-  return T;
 }
 
 export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: InhouseMeshOpts): InhouseMesh {
@@ -127,10 +139,16 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
     return p;
   };
 
+  const prof = opts.profile === true;
+  const now = (): number => Date.now();
+  let tDel = 0, tFlip = 0, tXYZ = 0, tSplit = 0, tSmooth = 0;
+
   let tris = new Uint32Array(0); let rounds = 0; let hitBudget = false;
   for (; rounds < maxRounds; rounds++) {
-    tris = new Delaunator(scaledCoords()).triangles;
-    tris = flipMaxMinAngle(uv, tris, computeXYZ(), 4);
+    let z = now(); const d = new Delaunator(scaledCoords()); tris = d.triangles; const he = d.halfedges; tDel += now() - z;
+    z = now(); const xyzR = computeXYZ(); tXYZ += now() - z;
+    z = now(); flipHE(tris, he, xyzR, uv, 3); tFlip += now() - z;
+    z = now();
     let added = 0;
     for (let ti = 0; ti < tris.length; ti += 3) {
       const a = tris[ti] * 2, b = tris[ti + 1] * 2, c = tris[ti + 2] * 2;
@@ -146,20 +164,27 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
       if (addPoint(mu, mt)) added++;
       if (uv.length / 2 > maxPoints) { hitBudget = true; break; }
     }
+    tSplit += now() - z;
     if (hitBudget || added === 0) { rounds++; break; }
   }
 
-  // final connectivity + optimization sweeps (relocate on the surface, then re-flip to the true-3D Delaunay)
-  tris = new Delaunator(scaledCoords()).triangles;
-  tris = flipMaxMinAngle(uv, tris, computeXYZ(), 8);
+  // final connectivity + optimization sweeps (relocate on the surface, then re-flip to the true-3D Delaunay).
+  // Smoothing moves vertices but NOT connectivity, so the halfedge structure stays valid across sweeps.
+  let z = now(); const dF = new Delaunator(scaledCoords()); tris = dF.triangles; const heF = dF.halfedges; tDel += now() - z;
+  z = now(); flipHE(tris, heF, computeXYZ(), uv, 4); tFlip += now() - z;
   let cur = uv.slice();
   for (let k = 0; k < sweeps; k++) {
-    cur = smoothSurfaceOnRadial(cur, tris, rA, H, { iterations: 3, relax: 0.5 });
-    // recompute xyz for the relocated points, then flip
+    z = now(); cur = smoothSurfaceOnRadial(cur, tris, rA, H, { iterations: 3, relax: 0.5 }); tSmooth += now() - z;
+    z = now();
     const n = cur.length / 2, p = new Float64Array(n * 3);
-    for (let i = 0; i < n; i++) { const u = cur[2 * i], t = cur[2 * i + 1], th = TAU * u, z = t * H, r = rA(th, z); p[3 * i] = r * Math.cos(th); p[3 * i + 1] = r * Math.sin(th); p[3 * i + 2] = z; }
-    tris = flipMaxMinAngle(cur, tris, p, 6);
+    for (let i = 0; i < n; i++) { const u = cur[2 * i], t = cur[2 * i + 1], th = TAU * u, zz = t * H, r = rA(th, zz); p[3 * i] = r * Math.cos(th); p[3 * i + 1] = r * Math.sin(th); p[3 * i + 2] = zz; }
+    tXYZ += now() - z;
+    z = now(); flipHE(tris, heF, p, cur, 4); tFlip += now() - z;
   }
 
+  if (prof) {
+    // eslint-disable-next-line no-console
+    console.log(`  [profile] delaunay=${(tDel / 1000).toFixed(1)}s flip=${(tFlip / 1000).toFixed(1)}s smooth=${(tSmooth / 1000).toFixed(1)}s xyz=${(tXYZ / 1000).toFixed(1)}s split=${(tSplit / 1000).toFixed(1)}s`);
+  }
   return { ut: cur, indices: tris, points: cur.length / 2, rounds, hitBudget };
 }
