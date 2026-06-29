@@ -1,0 +1,182 @@
+[
+  {
+    "style": "GyroidManifold",
+    "arm": "euclid",
+    "knob": 0.1,
+    "tris": 9644,
+    "minAngleDeg": 11.5,
+    "rmsMm": 0.2611753761262404,
+    "p99Mm": 0.9311392809781915,
+    "pctBelow20": 6.9
+  },
+  {
+    "style": "GyroidManifold",
+    "arm": "euclid",
+    "knob": 0.05,
+    "tris": 19475,
+    "minAngleDeg": 10,
+    "rmsMm": 0.31387664805312865,
+    "p99Mm": 0.9350385729922032,
+    "pctBelow20": 7.2
+  },
+  {
+    "style": "GyroidManifold",
+    "arm": "euclid",
+    "knob": 0.025,
+    "tris": 38628,
+    "minAngleDeg": 9.3,
+    "rmsMm": 0.2883642543194294,
+    "p99Mm": 0.9316806580731384,
+    "pctBelow20": 7.5
+  },
+  {
+    "style": "GyroidManifold",
+    "arm": "euclid",
+    "knob": 0.0125,
+    "tris": 76534,
+    "minAngleDeg": 7.3,
+    "rmsMm": 0.24610069511200128,
+    "p99Mm": 0.8885462875244321,
+    "pctBelow20": 7.4
+  },
+  {
+    "style": "GyroidManifold",
+    "arm": "surfmetric",
+    "knob": 6,
+    "tris": 2095,
+    "minAngleDeg": 32.8,
+    "rmsMm": 0.2858258929498768,
+    "p99Mm": 1.503300939125438,
+    "pctBelow20": 0
+  },
+  {
+    "style": "GyroidManifold",
+    "arm": "surfmetric",
+    "knob": 4,
+    "tris": 4714,
+    "minAngleDeg": 29.8,
+    "rmsMm": 0.35353794368232827,
+    "p99Mm": 1.4141297786043563,
+    "pctBelow20": 0
+  },
+  {
+    "style": "GyroidManifold",
+    "arm": "surfmetric",
+    "knob": 3,
+    "tris": 8545,
+    "minAngleDeg": 27.3,
+    "rmsMm": 0.3844460489603573,
+    "p99Mm": 1.403332297495851,
+    "pctBelow20": 0
+  },
+  {
+    "style": "GyroidManifold",
+    "arm": "surfmetric",
+    "knob": 2.2,
+    "tris": 15828,
+    "minAngleDeg": 29,
+    "rmsMm": 0.3426165418508613,
+    "p99Mm": 1.120160174008208,
+    "pctBelow20": 0
+  },
+  {
+    "style": "GyroidManifold",
+    "arm": "surfmetric",
+    "knob": 1.6,
+    "tris": 29972,
+    "minAngleDeg": 26.6,
+    "rmsMm": 0.29135190583274306,
+    "p99Mm": 0.935057270982518,
+    "pctBelow20": 0
+  },
+  {
+    "style": "BasketWeave",
+    "arm": "euclid",
+    "knob": 0.1,
+    "tris": 11175,
+    "minAngleDeg": 11.6,
+    "rmsMm": 0.2506326864528537,
+    "p99Mm": 0.9606599766861177,
+    "pctBelow20": 6
+  },
+  {
+    "style": "BasketWeave",
+    "arm": "euclid",
+    "knob": 0.05,
+    "tris": 22452,
+    "minAngleDeg": 10.4,
+    "rmsMm": 0.2806253822125421,
+    "p99Mm": 0.9904939062308441,
+    "pctBelow20": 5.4
+  },
+  {
+    "style": "BasketWeave",
+    "arm": "euclid",
+    "knob": 0.025,
+    "tris": 44591,
+    "minAngleDeg": 10.1,
+    "rmsMm": 0.2973424082313957,
+    "p99Mm": 0.9943832424958942,
+    "pctBelow20": 5.4
+  },
+  {
+    "style": "BasketWeave",
+    "arm": "euclid",
+    "knob": 0.0125,
+    "tris": 88164,
+    "minAngleDeg": 7.5,
+    "rmsMm": 0.2774358148134457,
+    "p99Mm": 0.9545295891873492,
+    "pctBelow20": 5.3
+  },
+  {
+    "style": "BasketWeave",
+    "arm": "surfmetric",
+    "knob": 6,
+    "tris": 2154,
+    "minAngleDeg": 28.7,
+    "rmsMm": 0.3495098772010224,
+    "p99Mm": 1.2222830972755323,
+    "pctBelow20": 0
+  },
+  {
+    "style": "BasketWeave",
+    "arm": "surfmetric",
+    "knob": 4,
+    "tris": 4889,
+    "minAngleDeg": 30.8,
+    "rmsMm": 0.271946451804414,
+    "p99Mm": 0.9842981092240681,
+    "pctBelow20": 0
+  },
+  {
+    "style": "BasketWeave",
+    "arm": "surfmetric",
+    "knob": 3,
+    "tris": 8816,
+    "minAngleDeg": 29.2,
+    "rmsMm": 0.27042699163130796,
+    "p99Mm": 1.0081191262554472,
+    "pctBelow20": 0
+  },
+  {
+    "style": "BasketWeave",
+    "arm": "surfmetric",
+    "knob": 2.2,
+    "tris": 16355,
+    "minAngleDeg": 29.7,
+    "rmsMm": 0.3080678174164443,
+    "p99Mm": 1.0146118491597942,
+    "pctBelow20": 0
+  },
+  {
+    "style": "BasketWeave",
+    "arm": "surfmetric",
+    "knob": 1.6,
+    "tris": 31091,
+    "minAngleDeg": 21.6,
+    "rmsMm": 0.31732689125597396,
+    "p99Mm": 1.0860485175385732,
+    "pctBelow20": 0
+  }
+]

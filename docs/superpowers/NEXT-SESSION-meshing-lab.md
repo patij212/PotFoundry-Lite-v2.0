@@ -71,6 +71,19 @@ mesher over the (u,t) domain under the surface metric.**
 > straddle-MASKED for crease styles** (3rd metric blind spot) ⇒ the fidelity gate needs per-style straddle
 > EXCLUSION (or trust the 3D render). NET rebuild recipe: transition-free (u,t) Delaunay + **mandatory CVT/ODT
 > pass** + budget; sizing-accuracy is a minor lever; measure fidelity with straddle exclusion.
+>
+> **SURFACE-METRIC experiment RAN (2026-06-29, `2026-06-29-surface-metric-isolation-prereg.md`) → the kernel
+> target is now PRECISE, and the "CVT mandatory" line above is CORRECTED.** The user's challenge ("Delaunay
+> ignores the 3D shape; evenly tessellate the 3D surface, not a cylinder") was right about *Euclidean* Delaunay.
+> Meshing the (u,t) square under the **first fundamental form** `M = g/h²` (new `surfaceMetricField.ts`, gmsh
+> BAMG) lifts 3D worst-angle **+11° to +18.7°** at matched budget vs Euclidean (Gyroid 29° vs 10°, BasketWeave
+> 30° vs 10°), with **`%<20°` → 0.0%** and rms within 15% — i.e. CVT-grade 3D quality (~30°) **without leaving
+> UV**, BY CONSTRUCTION. So the earlier "CVT/ODT MANDATORY" was an artifact of testing the *second* fundamental
+> form (curvature → slivers); the *first* form is the lever. **Rebuild kernel = metric-Delaunay (anisotropic
+> in-circle) over (u,t) under `M = g/h(u,t)²`** (first form = 3D-even shape; curvature `h` = chord). CVT/ODT
+> demoted to optional polish. Open lab step: add the combined `M=g/h(u,t)²` arm (uniform-h surfmetric raises
+> p99 chord 1.0–1.5 since it doesn't crease-refine — the combined field should hold +18° quality AND pull chord
+> to euclid level). Relief chord *floor* still budget+straddle (separate axis, unchanged).
 - **Isotropic-by-default** (gmsh-iso is quality-robust on all 20 — never worsened quality); add anisotropy
   **selectively** for directional styles (lattices) as an efficiency optimization, NOT universally.
 - **Kernel:** the existing `metricDelaunayRefine.ts` spike (the synthesis's throwaway) is the prior attempt;
