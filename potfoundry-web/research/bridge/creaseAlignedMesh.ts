@@ -22,6 +22,9 @@ function inCircle(ax: number, ay: number, bx: number, by: number, cx: number, cy
 export interface CreaseMeshOpts {
   tolMm: number; hMin: number; hMax: number;
   sizeRes?: number; seedN?: number; maxPoints?: number; splitThresh?: number; maxRounds?: number; dedupeEps?: number;
+  /** Override the metric with an ON-DEMAND function (u,t)→[M00,M01,M11] (e.g. onDemandMetric.creaseMetricAt) —
+   *  bypasses the band-limited storage grid so sharp/sub-cell curvature is resolved. */
+  metricFn?: (u: number, t: number) => [number, number, number];
 }
 export interface CreaseMesh { ut: number[]; indices: Uint32Array; points: number; rounds: number; hitBudget: boolean; }
 
@@ -33,26 +36,34 @@ export function buildCreaseAlignedMesh(rA: AnalyticRadiusFn, H: number, opts: Cr
   const maxRounds = opts.maxRounds ?? 60;
   const dedupeEps = opts.dedupeEps ?? 1e-6;
 
-  const mf = buildCreaseAlignedMetric(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax });
-  const RU = mf.resU, RT = mf.resT, M = mf.m;
-  const metricAt = (u: number, t: number): [number, number, number] => {
-    const fu = Math.min(Math.max(u, 0), 1) * (RU - 1), ft = Math.min(Math.max(t, 0), 1) * (RT - 1);
-    const iu = Math.min(Math.floor(fu), RU - 2), it = Math.min(Math.floor(ft), RT - 2);
-    const au = fu - iu, bt = ft - it;
-    const c00 = (it * RU + iu) * 3, c10 = c00 + 3, c01 = ((it + 1) * RU + iu) * 3, c11 = c01 + 3;
-    const w00 = (1 - au) * (1 - bt), w10 = au * (1 - bt), w01 = (1 - au) * bt, w11 = au * bt;
-    return [
-      M[c00] * w00 + M[c10] * w10 + M[c01] * w01 + M[c11] * w11,
-      M[c00 + 1] * w00 + M[c10 + 1] * w10 + M[c01 + 1] * w01 + M[c11 + 1] * w11,
-      M[c00 + 2] * w00 + M[c10 + 2] * w10 + M[c01 + 2] * w01 + M[c11 + 2] * w11,
-    ];
-  };
+  // metric source: on-demand function (no grid band-limit) if provided, else the stored grid (bilinear interp).
+  let metricAt: (u: number, t: number) => [number, number, number];
+  let s: number; // global anisotropy scale for the initial Euclidean Delaunay (metric flips fix the residual)
+  if (opts.metricFn !== undefined) {
+    metricAt = opts.metricFn;
+    const r: number[] = []; const NS = 24;
+    for (let i = 0; i <= NS; i++) for (let j = 0; j <= NS; j++) { const mm = metricAt(i / NS, j / NS); if (mm[0] > 0 && mm[2] > 0) r.push(Math.sqrt(mm[0] / mm[2])); }
+    r.sort((x, y) => x - y); s = r[Math.floor(r.length / 2)] || 1;
+  } else {
+    const mf = buildCreaseAlignedMetric(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax });
+    const RU = mf.resU, RT = mf.resT, M = mf.m;
+    metricAt = (u: number, t: number): [number, number, number] => {
+      const fu = Math.min(Math.max(u, 0), 1) * (RU - 1), ft = Math.min(Math.max(t, 0), 1) * (RT - 1);
+      const iu = Math.min(Math.floor(fu), RU - 2), it = Math.min(Math.floor(ft), RT - 2);
+      const au = fu - iu, bt = ft - it;
+      const c00 = (it * RU + iu) * 3, c10 = c00 + 3, c01 = ((it + 1) * RU + iu) * 3, c11 = c01 + 3;
+      const w00 = (1 - au) * (1 - bt), w10 = au * (1 - bt), w01 = (1 - au) * bt, w11 = au * bt;
+      return [M[c00] * w00 + M[c10] * w10 + M[c01] * w01 + M[c11] * w11, M[c00 + 1] * w00 + M[c10 + 1] * w10 + M[c01 + 1] * w01 + M[c11 + 1] * w11, M[c00 + 2] * w00 + M[c10 + 2] * w10 + M[c01 + 2] * w01 + M[c11 + 2] * w11];
+    };
+    const r: number[] = [];
+    for (let i = 0; i < RU * RT; i++) { const a = M[i * 3], c = M[i * 3 + 2]; if (a > 0 && c > 0) r.push(Math.sqrt(a / c)); }
+    r.sort((x, y) => x - y); s = r[Math.floor(r.length / 2)] || 1;
+  }
   const metricLen2 = (u0: number, t0: number, u1: number, t1: number): number => {
     const [m00, m01, m11] = metricAt((u0 + u1) / 2, (t0 + t1) / 2);
     const du = u1 - u0, dt = t1 - t0;
     return m00 * du * du + 2 * m01 * du * dt + m11 * dt * dt;
   };
-
   const uv: number[] = [];
   // metric in-circle flip: whiten the 4 (u,t) points by Cholesky Lᵀ of M (at the current diagonal's midpoint),
   // then Euclidean in-circle. M = L·Lᵀ ⇒ Lᵀ=[[√m00, m01/√m00],[0,√(m11−·)]] maps params to metric-orthonormal.
@@ -63,12 +74,6 @@ export function buildCreaseAlignedMesh(rA: AnalyticRadiusFn, H: number, opts: Cr
     const ty = (i: number): number => l11 * uv[i * 2 + 1];
     return inCircle(tx(p0), ty(p0), tx(pr), ty(pr), tx(pl), ty(pl), tx(p1), ty(p1)) < 0;
   };
-
-  // global anisotropy scale for the initial Euclidean Delaunay (metric flips fix the local residual)
-  const ratios: number[] = [];
-  for (let i = 0; i < RU * RT; i++) { const a = M[i * 3], c = M[i * 3 + 2]; if (a > 0 && c > 0) ratios.push(Math.sqrt(a / c)); }
-  ratios.sort((x, y) => x - y);
-  const s = ratios[Math.floor(ratios.length / 2)] || 1;
 
   const seen = new Set<number>();
   const addPoint = (u: number, t: number): boolean => { const k = Math.round(u / dedupeEps) * 1_500_000 + Math.round(t / dedupeEps); if (seen.has(k)) return false; seen.add(k); uv.push(u, t); return true; };

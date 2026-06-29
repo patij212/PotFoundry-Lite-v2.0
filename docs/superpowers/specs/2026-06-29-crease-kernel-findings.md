@@ -42,6 +42,32 @@ triangles).
   curvature metric (the standing band-limit fix), not the alignment itself. The steep near-C0 crease remains the
   hardest case (consistent with the project-wide "steep relief = accept/irreducible-on-current-metric" theme).
 
-## Next levers (if pursued)
-Analytic curvature (or much finer metric grid) to fix the Gyroid along-channel chord; per-style hMax in the
-curvature regime; apply crease-aligned to the extended-feature styles where the 14× win lands.
+## Analytic / on-demand curvature follow-up (2026-06-29) — band-limit CONFIRMED, but anisotropy is the wrong tool for Gyroid
+Built `onDemandMetric.ts` (metric via fine FD at the query point, no storage grid → no band-limit) and a finer
+storage grid, to test "does sharper curvature close the Gyroid crease chord?". Gyroid, tol 0.006, hMax 1.0:
+
+| variant | tris | chord rms / p99 | ISO-3D %<20 | in-metric %<20 |
+|---|---|---|---|---|
+| **iso metric** (grid256) | 774k | **0.016 / 0.064** | **3.1** | 11.5 |
+| crease grid256 | 306k | 0.064 / 0.40 | 15 | 13 |
+| crease grid512 | 434k | 0.036 / 0.19 | 21 | 18 |
+| crease grid768 | 446k | 0.031 / 0.16 | 26 | 22 |
+
+- **Band-limit confirmed:** finer curvature monotonically lowers the crease chord (0.064→0.031 over res 256→768).
+- **But it does NOT cleanly close it AND quality degrades** (%<20 15→26): resolving Gyroid's near-C0 crease
+  demands ever-more-extreme anisotropy, which itself spawns slivers. **Chord ↓ but quality ↓ — a hard tradeoff
+  intrinsic to anisotropy at a near-fold.**
+- **For Gyroid the ISOTROPIC metric is strictly better** (chord 0.016 AND %<20 3.1 at 774k), and Gyroid's chord
+  is already closeable isotropically (the in-house kernel hit rms 0.003 at 3M). So anisotropy's payoff is the
+  14× efficiency on EXTENDED-feature styles, NOT Gyroid.
+- **Pure on-demand metric is too slow** for the per-edge hot loop (~9 rA evals + eigendecomp per query → the
+  full build times out). The deployable form of "analytic curvature" is a finer grid (or caching on-demand onto
+  a grid), i.e. the standing `curvatureFloor`/denser-grid lever — used where it helps (the iso metric, the
+  extended-feature crease styles), not to force Gyroid.
+
+## Conclusion
+The steep near-C0 crease (Gyroid) is the irreducible-hard case — consistent with the project-wide "steep relief =
+accept-class". It is solved ISOTROPICALLY (density → rms 0.003). Crease-aligned anisotropy is a real, banked
+lever for the EXTENDED-feature styles (ripples/flutes/ridges: 2.5–14× fewer triangles at equal fidelity).
+Next, if pursued: an all-20 crease-aligned sweep to map which styles get the anisotropy win; per-style metric
+selection (iso for fine/near-C0 styles, crease-aligned for extended-feature styles).
