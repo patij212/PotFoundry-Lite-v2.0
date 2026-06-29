@@ -31,8 +31,8 @@ gmsh BAMG pinned at ~1.796M regardless of settings. The in-house kernel has no s
 | **p99** (crease worst-chord) | **0.0101 mm** (10µm) — steep crease at the 0.01 target |
 | mean min-angle | **46.5°** (oracle ~47) |
 | p5 / %<20° | 31° / 1.1% |
-| worst-angle | 0.1° (a few residual hard slivers; %<20° only 1.1%) |
-| build | 759s (~13 min); `hitBudget=true` → headroom toward 15M |
+| worst-angle | 0.1° (a few residual hard slivers; %<20° 1.0%) |
+| build | **55s** (after the perf pass below; was 759s); `hitBudget=true` → headroom toward 15M |
 
 **Both user targets met in the lab, by our own kernel:** rms 0.01 (reached 0.003), steep crease at highest
 fidelity (p99 10µm), and well past the gmsh cap (3M, with headroom). Quality matches the oracle (mean 46.5).
@@ -40,9 +40,13 @@ fidelity (p99 10µm), and well past the gmsh cap (3M, with headroom). Quality ma
 ## Honest status / remaining
 - LAB/dev-only; the conforming mesher still SHIPS. These numbers are on a (u,t) PATCH (no periodic-u seam,
   no t=0/1 rim) — the known-solvable engineering, not yet done.
-- **Performance:** 3M in ~13 min. The cost is the per-round full `delaunator` rebuild + the flip's per-pass
-  Map. For routine multi-million / 15M, switch to incremental insertion (Bowyer-Watson) or halfedge-based
-  flips. Acceptable for proving the target; needs optimization for production cadence.
+- **Performance — DONE (~14×): 3M in 55s (was 759s).** Profiled, then fixed the real bottlenecks: the flip was
+  84% of runtime (per-pass edge Map) → replaced with halfedge-structure flips (Delaunator `_legalize` relink) +
+  an acos-free squared-cosine criterion; the smoothing rebuilt a `Set[]` ring + re-evaluated `rA` per neighbour
+  → CSR adjacency + positions precomputed per iteration; and the longest-edge-only refinement trickled (rounds
+  hit the 60 cap) → split every over-size edge per round (rounds 60→9). Measured: 360k 82→9s, 692k 368→38s,
+  1.13M 142→50s, 3M 759→55s. Quality byte-identical across the change. The last ceiling for *seconds* at 15M is
+  the per-round full `delaunator` rebuild → incremental Bowyer-Watson insertion (not yet done).
 - **Residual hard slivers** (worst 0.1°, %<20° 1.1%) at the steep creases — the geometric crease floor; a
   correct crease-aligned anisotropic metric ((II,I) generalized eigendecomp) is the lever to push it lower.
 - **Next:** periodic-u seam + rim/base; incremental-Delaunay perf; then the flag-gated production cutover

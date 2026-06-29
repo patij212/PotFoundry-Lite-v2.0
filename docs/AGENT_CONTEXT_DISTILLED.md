@@ -409,14 +409,16 @@ the metric `M = g/h₃D²` — "even in the metric" = "even on the 3D surface", 
   smooth + true-3D flip]) → mean 41; (b) **per-node metric placement** (refine by the local `M=g/h²` edge
   length, not a global anisotropy scale) → **mean 46.5 (oracle ~47)**. Dense run: **2,998,516 tris — past
   gmsh BAMG's 1.8M cap — rms 0.0030mm (3µm), p99 0.0101mm (crease), mean 46.5, %<20° 1.1%.** Both targets
-  (rms→0.01, steep crease at highest fidelity) MET in the lab. Fast xyz-cached flips (numeric edge keys) scale;
-  perf is ~3M in 13min (per-round delaunator rebuild + Map flips → needs incremental insertion for routine 15M).
+  (rms→0.01, steep crease at highest fidelity) MET in the lab. **Perf optimized ~14× (3M in 55s, was 759s):**
+  halfedge-structure flips (no per-pass edge Map — was 84% of runtime), acos-free squared-cosine flip criterion,
+  CSR smoothing with positions precomputed per iteration, and all-over-size-edge splitting (rounds 60→9). The
+  remaining ceiling for seconds-at-15M is the per-round full `delaunator` rebuild → incremental insertion.
 - **Status / next:** lab-validated on a (u,t) PATCH only; the conforming mesher still SHIPS. DONE: per-node
-  `M=g/h²` placement + chord-aware refine (rms 0.003 / mean 46.5 / 3M tris). REMAINING: (1) incremental Delaunay
-  for routine-scale perf (the current per-round rebuild does 3M in 13min — too slow for 15M cadence),
-  (2) periodic-u seam + t=0/1 rim/base, (3) correct crease-aligned anisotropic metric ((II,I) generalized
-  eigendecomp) for the residual hard crease slivers, (4) flag-gated production cutover (CRITICAL
-  `PeriodicBalancedQuadtree`/`WatertightAssembly` — needs a design pass).
+  `M=g/h²` placement + chord-aware refine (rms 0.003 / mean 46.5 / 3M tris) + the ~14× perf pass (3M in 55s).
+  REMAINING: (1) incremental Delaunay (Bowyer-Watson) to remove the per-round full rebuild — the last ceiling
+  for seconds-at-15M, (2) periodic-u seam + t=0/1 rim/base, (3) correct crease-aligned anisotropic metric
+  ((II,I) generalized eigendecomp) for the residual hard crease slivers, (4) flag-gated production cutover
+  (CRITICAL `PeriodicBalancedQuadtree`/`WatertightAssembly` — needs a design pass).
 - **Full detail:** `docs/superpowers/specs/2026-06-29-*.md` (surface-metric-isolation, quality-max,
   density-quality, crease-fidelity, inhouse-kernel-milestone) + `research/bridge/*.test.ts`. Reusable lab
   instruments: `perpendicular3DDeviation` (3D chord) + `triangleQualityDistribution` (3D angles). Metric blind

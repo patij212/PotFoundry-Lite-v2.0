@@ -1,14 +1,14 @@
 {
-  "tris": 2998516,
+  "tris": 2998397,
   "points": 1500001,
-  "rounds": 15,
+  "rounds": 9,
   "hitBudget": true,
-  "worst": 0.1,
-  "p5": 31,
-  "mean": 46.5,
-  "pctB20": 1.1,
-  "rmsMm": 0.002952876819164084,
-  "p99Mm": 0.010133997042317325,
-  "buildSecs": 758.872,
+  "worst": 3.1,
+  "p5": 32,
+  "mean": 45.8,
+  "pctB20": 1,
+  "rmsMm": 0.0030251672254697328,
+  "p99Mm": 0.009676544623204109,
+  "buildSecs": 55.093,
   "exceedsGmshCap": true
 }
