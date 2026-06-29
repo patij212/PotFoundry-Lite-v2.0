@@ -1,0 +1,98 @@
+[
+  {
+    "style": "GyroidManifold",
+    "stage": "euclid",
+    "tris": 19475,
+    "worst": 10,
+    "p5": 18,
+    "mean": 30.1,
+    "pctB20": 7.2,
+    "pctB30": 55.7,
+    "rmsMm": 0.31387664805312865,
+    "p99Mm": 0.9350385729922032
+  },
+  {
+    "style": "GyroidManifold",
+    "stage": "surfmetric-uni",
+    "tris": 15802,
+    "worst": 28.3,
+    "p5": 41,
+    "mean": 50.7,
+    "pctB20": 0,
+    "pctB30": 0,
+    "rmsMm": 0.33977679369955976,
+    "p99Mm": 1.1155213343457187
+  },
+  {
+    "style": "GyroidManifold",
+    "stage": "surfmetric-chord",
+    "tris": 9569,
+    "worst": 21.4,
+    "p5": 31,
+    "mean": 44.9,
+    "pctB20": 0,
+    "pctB30": 3.2,
+    "rmsMm": 0.31667005831138434,
+    "p99Mm": 0.9360514942140706
+  },
+  {
+    "style": "GyroidManifold",
+    "stage": "chord+smooth",
+    "tris": 9569,
+    "worst": 20.7,
+    "p5": 31,
+    "mean": 45.3,
+    "pctB20": 0,
+    "pctB30": 2.9,
+    "rmsMm": 0.317757101732342,
+    "p99Mm": 0.9360855806139299
+  },
+  {
+    "style": "BasketWeave",
+    "stage": "euclid",
+    "tris": 22452,
+    "worst": 10.4,
+    "p5": 19,
+    "mean": 30.5,
+    "pctB20": 5.4,
+    "pctB30": 52.7,
+    "rmsMm": 0.2806253822125421,
+    "p99Mm": 0.9904939062308441
+  },
+  {
+    "style": "BasketWeave",
+    "stage": "surfmetric-uni",
+    "tris": 16291,
+    "worst": 25.9,
+    "p5": 41,
+    "mean": 50.7,
+    "pctB20": 0,
+    "pctB30": 0,
+    "rmsMm": 0.3152723377814066,
+    "p99Mm": 1.0788702136581776
+  },
+  {
+    "style": "BasketWeave",
+    "stage": "surfmetric-chord",
+    "tris": 11055,
+    "worst": 19.6,
+    "p5": 35,
+    "mean": 47.7,
+    "pctB20": 0,
+    "pctB30": 0.8,
+    "rmsMm": 0.29896252681369073,
+    "p99Mm": 1.14837122740061
+  },
+  {
+    "style": "BasketWeave",
+    "stage": "chord+smooth",
+    "tris": 11055,
+    "worst": 21.1,
+    "p5": 36,
+    "mean": 48.2,
+    "pctB20": 0,
+    "pctB30": 0.5,
+    "rmsMm": 0.3009460642875687,
+    "p99Mm": 1.166501483325355
+  }
+]

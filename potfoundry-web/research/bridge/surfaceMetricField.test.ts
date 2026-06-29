@@ -32,4 +32,17 @@ describe('buildSurfaceMetricField — first fundamental form M = g/h²', () => {
     expect(f.m[b + 1]).toBeCloseTo(0, 5);                          // M01 = F/h² = 0 (r indep of θ)
     expect(Math.abs(f.m[b + 2] / (G * inv) - 1)).toBeLessThan(0.01); // M11 = G/h²
   });
+
+  it('chord mode on cylinder: κ_max=1/R ⇒ h₃D=√(8·tol·R) ⇒ M00=4π²R²/(8·tol·R)', () => {
+    const R = 45, H = 120, tol = 0.1;
+    const rA: AnalyticRadiusFn = () => R;
+    const f = buildSurfaceMetricField(rA, H, { resU: RES, resT: RES, tolMm: tol, hMin: 0.5, hMax: 50 });
+    const iu = 32, it = 32, b = (it * RES + iu) * 3; // interior node
+    const h3D = Math.sqrt(8 * tol * R);              // = 6 mm, inside [0.5,50] so unclamped
+    const inv = 1 / (h3D * h3D);
+    const E = 4 * Math.PI * Math.PI * R * R, G = H * H;
+    expect(Math.abs(f.m[b] / (E * inv) - 1)).toBeLessThan(0.02);   // M00 = E/h₃D² (κ via central diffs ~1%)
+    expect(f.m[b + 1]).toBeCloseTo(0, 5);                          // M01 = 0
+    expect(Math.abs(f.m[b + 2] / (G * inv) - 1)).toBeLessThan(0.02); // M11 = G/h₃D²
+  });
 });
