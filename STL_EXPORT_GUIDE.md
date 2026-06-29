@@ -124,12 +124,63 @@ Write mesh to ASCII STL file (LEGACY - use write_stl_binary instead).
 
 Shows DeprecationWarning when called. Retained only for backward compatibility.
 
+## OBJ Export (Rhino / Grasshopper)
+
+STL is the right format for slicers, but it is a poor handoff to CAD. STL stores
+three raw coordinates per triangle: **no shared topology** (the mesh arrives as
+unwelded triangle soup) and **no smooth normals**. Imported into Rhino or
+Grasshopper, an STL becomes tens of thousands of loose triangles that must be
+welded by hand.
+
+For CAD interchange, use **OBJ** instead:
+
+```python
+from potfoundry import write_obj, build_pot_mesh
+
+verts, faces, _ = build_pot_mesh(
+    H=120, Rt=70, Rb=50, t_wall=3, t_bottom=3, r_drain=10,
+    expn=1.1, n_theta=168, n_z=84, r_outer_fn=..., style_opts={},
+)
+
+# Crease-aware normals by default: rim/foot/drain stay crisp, walls stay smooth.
+write_obj("my_pot.obj", "FlowerPot", verts, faces)
+
+# Fully smooth shading (one normal per vertex):
+write_obj("my_pot_smooth.obj", "FlowerPot", verts, faces, crease_angle_deg=None)
+```
+
+In the Streamlit app, the export panel offers a **"Download OBJ
+(Rhino/Grasshopper)"** button next to the STL download.
+
+### What makes the OBJ Rhino-clean
+
+- **Welded vertices** — one `v` per vertex, faces share indices, so Rhino sees a
+  single connected mesh, not triangle soup.
+- **Outward, coherent normals** — the mesh is built coherently oriented with
+  normals facing out of the solid, so surfaces render correctly and booleans /
+  offsets work without "Unify Normals". (See `adr/0002-…` for the root-cause fix.)
+- **Crisp functional edges** — crease-aware per-corner normals keep the rim,
+  foot, and drain edges sharp while leaving the decorative walls smooth.
+
+### `write_obj(path, name, vertices, faces, normals=None, crease_angle_deg=30.0)`
+
+- `crease_angle_deg` (float | None): edges sharper than this keep split normals
+  (crisp); `None` = fully smooth, one normal per vertex.
+- `normals` (ndarray, optional): explicit per-vertex normals; written as-is.
+
+Run the OBJ tests with:
+
+```bash
+python -m pytest tests/test_obj_export.py tests/test_mesh_orientation.py -v
+```
+
 ## Questions?
 
 - **File too large?** → You're probably still using ASCII STL. Switch to `write_stl_binary`.
 - **Need debugging?** → Binary STL can be opened in any slicer for visual inspection.
 - **Version control?** → STL files (binary or ASCII) are not ideal for VCS. Consider versioning parameters instead.
+- **Taking it into Rhino/Grasshopper?** → Export **OBJ**, not STL (see above).
 
 ---
 
-**Last Updated:** 2024 - PotFoundry v2.0 Binary STL Migration
+**Last Updated:** 2026 - OBJ export + mesh-orientation fix for Rhino/Grasshopper (v2.0 Binary STL Migration baseline)

@@ -18,6 +18,19 @@ def _import_writer():
                 return None  # type: ignore
 
 
+def _import_obj_writer():
+    """Wavefront OBJ writer (Rhino/Grasshopper export). Optional in old builds."""
+    try:
+        from potfoundry.core.io.obj import write_obj  # type: ignore
+        return write_obj
+    except Exception:
+        try:
+            from potfoundry import write_obj  # type: ignore
+            return write_obj
+        except Exception:  # pragma: no cover
+            return None  # type: ignore
+
+
 def _import_geometry():
     try:
         from potfoundry.core.geometry import STYLES, base_radius, _spin_twist_radians, build_pot_mesh
@@ -58,5 +71,6 @@ def _import_schema_and_batch():
 
 
 WRITE_STL_BINARY = _import_writer()
+WRITE_OBJ = _import_obj_writer()
 STYLES, base_radius, _spin_twist_radians, build_pot_mesh = _import_geometry()
 validate_recipe, load_config, build_from_yaml = _import_schema_and_batch()
