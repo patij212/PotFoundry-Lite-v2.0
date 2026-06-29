@@ -208,6 +208,8 @@ export interface PfFidelityApi {
    * generate time); call AFTER setStyle (which resets opts to defaults).
    */
   setStyleParams(params: Record<string, number>): Promise<void>;
+  /** Dev-only: generate the conforming export mesh and return its raw 3D vertices+indices for visual rendering. */
+  getMeshForRender(targetTriangles?: number): Promise<{ vertices: Float32Array; indices: Uint32Array } | null>;
   measure(opts: FidelityMeasureOptions): Promise<FidelityMetrics>;
   diagnoseTopology(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTopologyDiagnostics>;
   diagnoseQuality(opts?: FidelityQualityDiagnosticOptions): Promise<FidelityQualityDiagnostics>;
@@ -678,6 +680,10 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       deps.setStyleParams(params);
       // Opts are read at generate time; no pipeline rebuild (style.name unchanged).
       await sleep(300);
+    },
+    async getMeshForRender(targetTriangles?: number) {
+      const mesh = await deps.generateMesh(targetTriangles);
+      return mesh ? { vertices: mesh.vertices, indices: mesh.indices } : null;
     },
     async measure(opts: FidelityMeasureOptions): Promise<FidelityMetrics> {
       const styleId = currentStyleId();

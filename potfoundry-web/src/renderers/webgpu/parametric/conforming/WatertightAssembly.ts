@@ -206,6 +206,14 @@ export interface AssemblyWallOptions {
    */
   directionalRefine?: boolean;
   /**
+   * Metric samples per axis for the quadtree refinement size test on BOTH walls
+   * (default 1 = centre-only, byte-identical). >1 makes the refiner SEE a steep
+   * relief crease anywhere in a cell (the centre-only test misses an off-centre
+   * crease → under-tessellated wall → stretched chord facets). See
+   * {@link ConformingWallOptions.cellSamples}.
+   */
+  cellSamples?: number;
+  /**
    * Optional whole-pot triangle budget. Split evenly across the two walls (the
    * caps add only a small fixed amount), then each wall's sizing field is scaled
    * to approach its share — bounded so neither wall coarsens below the
@@ -489,6 +497,7 @@ export function assembleWatertight(
     minUniformLevel: opts.minUniformLevel,
     uBias,
     directionalRefine,
+    cellSamples: opts.cellSamples,
   };
   // Features go on the OUTER wall only (the inner wall is a smooth offset).
   // The per-wall efg samplers (warp-composed maps) arm the shaped templates;

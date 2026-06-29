@@ -2415,6 +2415,16 @@ export class ParametricExportComputer {
                     // whether isotropic densification closes the perp-3D chord gap
                     // on lattice/weave/braid styles (A-vs-C fork). 0/unset in production.
                     __pfConformingUniformLevel?: number;
+                    // Crease-seeing refiner: metric samples per axis for the quadtree
+                    // size test (default 1 = centre-only, byte-identical). >1 makes the
+                    // refiner SEE a steep crease that crosses a cell off-centre (the
+                    // centre-only test misses it → under-tessellated wall → stretched
+                    // chord facets / "staircased" crease). 2-3 is plenty.
+                    __pfConformingCellSamples?: number;
+                    // Sizing-field curvature-grid resolution (default 128). Raising it lets
+                    // the sag refiner SEE + densify a steep crease adaptively (vs the blunt
+                    // global maxSag tighten that also bloats smooth-wavy styles).
+                    __pfConformingSizingRes?: number;
                     // Decimation-ladder levers (quality-bounded budget enforcement):
                     // absolute-mm error seed (default = profile sag) and honesty
                     // ceiling (default 0.2mm ≈ one FDM layer height).
@@ -2433,18 +2443,42 @@ export class ParametricExportComputer {
                 // profile NAME is no longer consulted here at all: every derived
                 // knob, including quadtree depth, follows the RESOLVED sag.)
                 const exportProfile = effectiveProfile;
+                // CAD-GRADE FIDELITY FLOOR (high/ultra export profiles only — draft/
+                // standard stay fast for iteration). The default sag/depth leaves steep
+                // relief creases STAIRCASED: MEASURED 2026-06-16, the conforming mesher's
+                // L12 depth cap + band-limited curvature estimate held the tangled-lattice
+                // (Gyroid/Gothic/Celtic*/BasketWeave) true-3D perpendicular chord at
+                // ~0.46mm — flat facets chording across the under-tessellated steep wall.
+                // Driving the refiner DEEP closes it to CAD-grade (Gyroid p99 0.46→0.086mm
+                // ≤ 0.1 tol; CelticKnot 0.42→0.004; Gothic→≤0.10). No cheaper adaptive
+                // lever exists — raising the curvature-grid resolution barely moved it
+                // (the κ MODEL is band-limited, not just the grid), so the fix is depth +
+                // a finer sampler ring. Cost is borne adaptively: flat walls stay
+                // maxEdge-bounded; only real curvature (tangled/wavy relief) densifies.
+                // Dev levers (__pfConforming*) still win for sweeps. See memory
+                // project-crease-density-breakthrough.
+                const cadFidelity = exportProfile.name === 'high' || exportProfile.name === 'ultra';
+                const CAD_SAG_MM = 0.003;          // chord target → Gyroid/Gothic ≤ 0.1mm true-3D
+                const CAD_MAX_LEVEL = 16;          // lift the L12 cap so the crease can refine
+                const CAD_NRING = 2048;            // sampler ring must resolve the crease (≤1024 smears)
+                const CAD_CELL_SAMPLES = 2;        // crease-seeing refiner (minor, principled)
+                const CAD_BUDGET_TRIS = 16_000_000; // cap above the natural faithful mesh (no decimation)
                 const conformingBudget = (typeof qOv.__pfConformingBudget === 'number' && qOv.__pfConformingBudget > 0)
                     ? qOv.__pfConformingBudget
                     // targetTris (resolved once above) = min(explicit target, profile
                     // budget) or the profile budget — CAP semantics preserved; the
-                    // decimator's honest refusal handles natural-mesh overshoot.
-                    : targetTris;
+                    // decimator's honest refusal handles natural-mesh overshoot. The CAD
+                    // floor raises the cap so the faithful crease mesh is not decimated
+                    // back into a staircase (decimation damages chord/slivers).
+                    : (cadFidelity ? Math.max(targetTris, CAD_BUDGET_TRIS) : targetTris);
                 // Surface-error tolerance: the dialog's epsPosMm slider (an explicit
                 // user override) WINS over the profile default — previously only the
                 // legacy branch consulted toleranceOverrides, leaving the dialog's
                 // surface-error control DEAD on the conforming path (user-reported).
                 const profileSag = resolveSurfaceErrorMm(exportProfile, params.toleranceOverrides);
-                const qMaxSag = (typeof qOv.__pfConformingMaxSag === 'number' && qOv.__pfConformingMaxSag > 0) ? qOv.__pfConformingMaxSag : profileSag;
+                const qMaxSag = (typeof qOv.__pfConformingMaxSag === 'number' && qOv.__pfConformingMaxSag > 0)
+                    ? qOv.__pfConformingMaxSag
+                    : (cadFidelity ? Math.min(profileSag, CAD_SAG_MM) : profileSag);
                 const qMinEdge = (typeof qOv.__pfConformingMinEdge === 'number' && qOv.__pfConformingMinEdge > 0) ? qOv.__pfConformingMinEdge : Math.min(0.2, Math.max(0.04, profileSag * 2));
                 // Quadtree depth follows the sag the user ACTUALLY asked for —
                 // band edges + rationale live in resolveQuadtreeMaxLevel's doc.
@@ -2453,7 +2487,7 @@ export class ParametricExportComputer {
                 // depth-clamped (the slider half-worked). The dev lever wins.
                 const qMaxLevel = (typeof qOv.__pfConformingMaxLevel === 'number' && qOv.__pfConformingMaxLevel >= 6)
                     ? Math.floor(qOv.__pfConformingMaxLevel)
-                    : resolveQuadtreeMaxLevel(profileSag);
+                    : (cadFidelity ? Math.max(resolveQuadtreeMaxLevel(profileSag), CAD_MAX_LEVEL) : resolveQuadtreeMaxLevel(profileSag));
                 // Longest-edge cap (mm). The sag refiner only splits curved cells, so
                 // flat wall regions keep edges up to this length (visible facets) —
                 // this is the VISUAL facet bound, profile-driven (high=1mm → ~1-1.4mm
@@ -2468,13 +2502,28 @@ export class ParametricExportComputer {
                 // (high=1024), which is already a power of two by contract.
                 const qNRing = (typeof qOv.__pfConformingNRing === 'number' && qOv.__pfConformingNRing >= 64)
                     ? (1 << Math.round(Math.log2(qOv.__pfConformingNRing)))
-                    : exportProfile.nRing;
+                    : (cadFidelity ? Math.max(exportProfile.nRing, CAD_NRING) : exportProfile.nRing);
                 // Stage-1 diagnostic A-vs-C discriminator: force a uniform quadtree
                 // floor (bypasses the curvature-grid refiner). 0/unset → byte-identical.
                 const qUniformLevel =
                     typeof qOv.__pfConformingUniformLevel === 'number' && qOv.__pfConformingUniformLevel > 0
                         ? Math.round(qOv.__pfConformingUniformLevel)
                         : 0;
+                // Crease-seeing refiner: k×k metric samples in the quadtree size test.
+                // 1 (default/unset) = centre-only, byte-identical to the legacy refiner.
+                const qCellSamples =
+                    typeof qOv.__pfConformingCellSamples === 'number' && qOv.__pfConformingCellSamples >= 1
+                        ? Math.floor(qOv.__pfConformingCellSamples)
+                        : (cadFidelity ? CAD_CELL_SAMPLES : 1);
+                // Sizing-field curvature-grid resolution. Default 128 is too coarse to
+                // resolve a steep relief crease between nodes (the κ estimate smears →
+                // the sag target under-asks for density there → staircased crease). A
+                // higher resolution lets the sag refiner densify the crease ADAPTIVELY
+                // (smooth cells stay coarse). Floored at 128. Dev lever only.
+                const qSizingRes =
+                    typeof qOv.__pfConformingSizingRes === 'number' && qOv.__pfConformingSizingRes >= 128
+                        ? Math.floor(qOv.__pfConformingSizingRes)
+                        : 128;
 
                 // ── Vertical-crease pinning, part 1: pick the column lattice ──────
                 // Sharp constant-u creases (LowPolyFacet facet edges, GeometricStar

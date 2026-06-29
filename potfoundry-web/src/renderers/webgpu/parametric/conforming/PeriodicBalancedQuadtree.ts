@@ -182,6 +182,16 @@ export class PeriodicBalancedQuadtree {
    * default dims it touches zero cells (no-op). Default false.
    */
   private readonly directionalRefine: boolean;
+  /**
+   * Metric samples per axis for the {@link shouldRefine} size test (default 1 =
+   * cell-centre only, byte-identical to the legacy refiner). >1 evaluates the
+   * first fundamental form on a k×k interior grid and splits if ANY sample's
+   * physical extent exceeds the local target — so a steep relief crease passing
+   * anywhere through the cell is seen (the centre-only test misses an off-centre
+   * crease, leaving the wall under-tessellated → stretched chord facets). Cost is
+   * k² metric evals per refinement decision; leaf geometry/efg are unchanged.
+   */
+  private readonly cellSamples: number;
 
   constructor(
     field: MetricSizingField,
@@ -202,6 +212,13 @@ export class PeriodicBalancedQuadtree {
       /** Enable the local directional u-refinement pass (per-leaf uExtra). */
       directionalRefine?: boolean;
       /**
+       * Metric samples per axis for the refinement size test (default 1 =
+       * centre-only, byte-identical). >1 makes the refiner SEE a steep crease
+       * anywhere in the cell (catches the off-centre UV→3D stretch the centre
+       * sample misses). Snapped to ≥1 in the constructor.
+       */
+      cellSamples?: number;
+      /**
        * Optional WARP-COMPOSED sampler for per-leaf `efg` tagging in
        * {@link leaves} (see the field doc). Sizing/refinement ignore it — the
        * PLAIN `metric` stays the sizing basis (spec: sizing stays plain).
@@ -216,6 +233,7 @@ export class PeriodicBalancedQuadtree {
     this.creaseRefine = opts.creaseRefine;
     this.uBiasLevel = Math.max(0, Math.floor(opts.uBias ?? 0));
     this.directionalRefine = opts.directionalRefine ?? false;
+    this.cellSamples = Math.max(1, Math.floor(opts.cellSamples ?? 1));
     this.efgSampler = opts.efgSampler;
     this.steps = metricStepsForSampler(metric);
     this.refine(field, metric);
@@ -343,15 +361,28 @@ export class PeriodicBalancedQuadtree {
   ): boolean {
     const uSize = 1 / this.uSpanCell(level, 0); // 1/2^(level+B)
     const tSize = 1 / (1 << level);
-    const uc = (iu + 0.5) * uSize;
-    const tc = (it + 0.5) * tSize;
-    const { E, G } = firstFundamentalForm(metric, uc, tc, this.steps.hu, this.steps.ht);
     // Bias-free u-width (1/2^level) for the crease test; biased width otherwise.
     const wTestSize = biasFreeU ? 1 / (1 << level) : uSize;
-    const physW = Math.sqrt(Math.max(E, 0)) * wTestSize;
-    const physH = Math.sqrt(Math.max(G, 0)) * tSize;
-    const target = field.edgeLength(uc, tc);
-    return Math.max(physW, physH) > target;
+    // Sample the metric on a k×k INTERIOR grid. k=1 ⇒ offset (0.5,0.5) = exactly
+    // the cell centre, so this is byte-identical to the legacy centre-only test.
+    // k>1 makes the refiner SEE a steep relief crease that crosses the cell
+    // OFF-centre: firstFundamentalForm finite-differences the REAL surface, so an
+    // off-centre sample directly measures the local UV→3D stretch the centre
+    // misses (that miss is what leaves the wall under-tessellated → stretched
+    // chord facets / "staircased" crease). Split if ANY sample's physical extent
+    // exceeds the local target. Cost is k² metric evals per refinement decision.
+    const k = this.cellSamples;
+    for (let p = 0; p < k; p++) {
+      for (let q = 0; q < k; q++) {
+        const uc = (iu + (p + 0.5) / k) * uSize;
+        const tc = (it + (q + 0.5) / k) * tSize;
+        const { E, G } = firstFundamentalForm(metric, uc, tc, this.steps.hu, this.steps.ht);
+        const physW = Math.sqrt(Math.max(E, 0)) * wTestSize;
+        const physH = Math.sqrt(Math.max(G, 0)) * tSize;
+        if (Math.max(physW, physH) > field.edgeLength(uc, tc)) return true;
+      }
+    }
+    return false;
   }
 
   /** Curvature/size-driven refinement from the root, capped by {@link levelCap}. */
