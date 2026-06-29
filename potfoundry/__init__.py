@@ -21,8 +21,12 @@ from .core.geometry import (
     save_preview_png,
 )
 
-# Binary STL writer (recommended)
+# Binary STL writer (recommended for slicing / 3D printing)
 from .core.io.stl import write_stl_binary
+
+# Wavefront OBJ writer (recommended for Rhino / Grasshopper interchange):
+# welded vertices + smooth outward normals for a clean CAD import.
+from .core.io.obj import write_obj, compute_vertex_normals
 
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
@@ -34,9 +38,12 @@ __all__ = [
     'STYLES',
     'build_pot_mesh',
     'save_preview_png',
-    # STL export (binary is recommended)
+    # STL export (binary is recommended for slicing)
     'write_stl_binary',
     'write_ascii_stl',  # deprecated
+    # OBJ export (recommended for Rhino / Grasshopper)
+    'write_obj',
+    'compute_vertex_normals',
     # Version
     '__version__',
 ]
