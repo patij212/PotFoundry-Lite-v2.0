@@ -24,7 +24,7 @@ function readStlPositions(file) {
 }
 
 (async () => {
-  const a = readStlPositions(path.join(OUT, 'SuperformulaBlossom_sf1_percell.stl'));
+  const a = readStlPositions(path.join(OUT, 'SuperformulaBlossom_sf1_retrofit.stl'));
   const c = readStlPositions(path.join(OUT, 'SuperformulaBlossom_sf1_sharp.stl'));
   const b = a.bbox;
   const R = Math.max(b.xmax, b.ymax, -b.xmin, -b.ymin);
@@ -65,6 +65,6 @@ function readStlPositions(file) {
     await page.locator('#c').screenshot({ path: path.join(OUT, `sfb_ab_${tag}.png`) });
     console.log(`wrote sfb_ab_${tag}.png`);
   };
-  try { await renderOne(a, 'percell'); await renderOne(c, 'fullfeature'); }
+  try { await renderOne(a, 'retrofit'); await renderOne(c, 'sharp'); }
   finally { await page.close(); await browser.close(); console.log('done'); }
 })();
