@@ -150,18 +150,13 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
     z = now(); flipHE(tris, he, xyzR, uv, 3); tFlip += now() - z;
     z = now();
     let added = 0;
+    // split EVERY over-size edge's midpoint this round (not just the longest per triangle) — shared edges dedup
+    // via addPoint, and refining all over-size edges at once converges in ~log2(ratio) rounds, not ~60.
     for (let ti = 0; ti < tris.length; ti += 3) {
       const a = tris[ti] * 2, b = tris[ti + 1] * 2, c = tris[ti + 2] * 2;
-      const eAB = metricLen2(uv[a], uv[a + 1], uv[b], uv[b + 1]);
-      const eBC = metricLen2(uv[b], uv[b + 1], uv[c], uv[c + 1]);
-      const eCA = metricLen2(uv[c], uv[c + 1], uv[a], uv[a + 1]);
-      const mx = Math.max(eAB, eBC, eCA);
-      if (mx <= splitThresh2) continue;
-      let mu: number, mt: number;
-      if (eAB >= eBC && eAB >= eCA) { mu = (uv[a] + uv[b]) / 2; mt = (uv[a + 1] + uv[b + 1]) / 2; }
-      else if (eBC >= eCA) { mu = (uv[b] + uv[c]) / 2; mt = (uv[b + 1] + uv[c + 1]) / 2; }
-      else { mu = (uv[c] + uv[a]) / 2; mt = (uv[c + 1] + uv[a + 1]) / 2; }
-      if (addPoint(mu, mt)) added++;
+      if (metricLen2(uv[a], uv[a + 1], uv[b], uv[b + 1]) > splitThresh2 && addPoint((uv[a] + uv[b]) / 2, (uv[a + 1] + uv[b + 1]) / 2)) added++;
+      if (metricLen2(uv[b], uv[b + 1], uv[c], uv[c + 1]) > splitThresh2 && addPoint((uv[b] + uv[c]) / 2, (uv[b + 1] + uv[c + 1]) / 2)) added++;
+      if (metricLen2(uv[c], uv[c + 1], uv[a], uv[a + 1]) > splitThresh2 && addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
       if (uv.length / 2 > maxPoints) { hitBudget = true; break; }
     }
     tSplit += now() - z;
