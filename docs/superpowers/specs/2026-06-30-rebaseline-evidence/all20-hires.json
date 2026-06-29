@@ -1,0 +1,122 @@
+[
+  {
+    "style": "SuperformulaBlossom",
+    "tris": 2570475,
+    "mean": 46.6,
+    "secs": 210.145
+  },
+  {
+    "style": "FourierBloom",
+    "tris": 632855,
+    "mean": 44.3,
+    "secs": 10.018
+  },
+  {
+    "style": "SpiralRidges",
+    "tris": 1399982,
+    "mean": 45.2,
+    "secs": 18.77
+  },
+  {
+    "style": "SuperellipseMorph",
+    "tris": 96304,
+    "mean": 46.6,
+    "secs": 1.636
+  },
+  {
+    "style": "HarmonicRipple",
+    "tris": 1116499,
+    "mean": 44.6,
+    "secs": 12.775
+  },
+  {
+    "style": "GothicArches",
+    "tris": 2056000,
+    "mean": 46.1,
+    "secs": 143.594
+  },
+  {
+    "style": "WaveInterference",
+    "tris": 137011,
+    "mean": 47.8,
+    "secs": 2.516
+  },
+  {
+    "style": "Crystalline",
+    "tris": 3423359,
+    "mean": 45.4,
+    "secs": 92.194
+  },
+  {
+    "style": "ArtDeco",
+    "tris": 978713,
+    "mean": 42,
+    "secs": 107.87
+  },
+  {
+    "style": "DragonScales",
+    "tris": 1803669,
+    "mean": 45.1,
+    "secs": 104.441
+  },
+  {
+    "style": "BambooSegments",
+    "tris": 1612322,
+    "mean": 43.1,
+    "secs": 66.167
+  },
+  {
+    "style": "RippleInterference",
+    "tris": 177046,
+    "mean": 48.1,
+    "secs": 2.542
+  },
+  {
+    "style": "GyroidManifold",
+    "tris": 1129621,
+    "mean": 44.9,
+    "secs": 46.557
+  },
+  {
+    "style": "Voronoi",
+    "tris": 3998411,
+    "mean": 42.5,
+    "secs": 65.358
+  },
+  {
+    "style": "BasketWeave",
+    "tris": 3995525,
+    "mean": 43.5,
+    "secs": 52.371
+  },
+  {
+    "style": "GeometricStar",
+    "tris": 1420536,
+    "mean": 45.5,
+    "secs": 47.565
+  },
+  {
+    "style": "HexagonalHive",
+    "tris": 868649,
+    "mean": 47.4,
+    "secs": 10.974
+  },
+  {
+    "style": "CelticKnot",
+    "tris": 2375067,
+    "mean": 45.4,
+    "secs": 139.395
+  },
+  {
+    "style": "CelticTriquetra",
+    "tris": 3998288,
+    "mean": 43.9,
+    "secs": 51.581
+  },
+  {
+    "style": "LowPolyFacet",
+    "tris": 296220,
+    "mean": 46.7,
+    "secs": 15.17
+  }
+]
