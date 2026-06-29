@@ -384,6 +384,39 @@ These bugs cost hours to days of debugging. Know them so you don't reintroduce t
 
 **ROOT CAUSE of 39 rounds**: `sweepQuad` line 231 alternates diagonal direction when chain U oscillates between rows.
 
+**Surface-Metric Era (2026-06-29) — the measured rebuild recipe (LAB, dev-only, NOT shipped).** A dev-only
+meshing lab (`potfoundry-web/research/`, gmsh 4.13.1 + Triangle oracles; `src/` never imports it) re-baselined
+the whole problem against ground truth. Headline: the tangled-lattice sliver gap is a **parametrization-distortion**
+problem, fixable in UV. Plain (Euclidean) (u,t) Delaunay maximizes the min angle in the *flat* parameter
+rectangle — but the map distorts it (even a plain cylinder is 2.36:1 anisotropic: √E=2πr≈283 vs √G≈H=120), so a
+(u,t)-equilateral triangle is a 3D sliver. **Fix: mesh under the first fundamental form** `g=[[E,F],[F,G]]` via
+the metric `M = g/h₃D²` — "even in the metric" = "even on the 3D surface", BY CONSTRUCTION, without leaving UV.
+- **Measured (Gyroid/BasketWeave, gmsh oracle):** mean min-angle 30°→**50°**, `%<20°` 14%→~2%, worst-angle 10°→28°
+  at matched/lower triangle count. The crease *chord* resolves with density: p99 0.50→**0.019mm** (19µm), rms→0.014.
+- **Sizing:** SHAPE from `g` (3D-even); SIZE from curvature `h₃D=√(8·tol/κ_max)` (chord) — isotropic-IN-3D.
+  With a generous triangle budget, near-UNIFORM dense sizing is best (mean 50°/p5 39°/%<20° 1.9%/rms 0.057);
+  chord-adaptivity only saves triangles and reintroduces size-gradient slivers (use GRADATION, adjacent ratio≤1.25).
+- **Two corrections to prior conclusions:** (a) the "CVT/ODT pass is MANDATORY" finding came from testing the
+  *second* fundamental form (curvature) metric, which deliberately makes slivers — the *first* form needs no CVT;
+  (b) the existing `research`/`metricField.ts`-style **2nd-form anisotropic metric is BROKEN for chord** (plateaus
+  at rms 0.11): its eigendecomposition ignores `I`; a correct crease-aligned metric needs the generalized
+  eigendecomposition of `(II, I)`.
+- **gmsh BAMG hard-caps at ~1.8M triangles** (every density rung pins at 1.796M regardless of tol/sizeRes) — a
+  dev-oracle limit, NOT the recipe. So the user's **rms-0.01 / 15M-triangle** targets require the in-house kernel.
+- **In-house kernel milestone:** the existing spike `src/fidelity/spike/metricDelaunayRefine.ts` (shipped
+  `delaunator` + true-3D-angle Lawson flips) matches the oracle on smooth styles but lagged on tangled
+  (Gyroid mean 35.9/%<20° 12.2). The missing piece was a **vertex-optimization pass**; iterated
+  [on-surface smooth + true-3D flip] lifts it to **mean 41.3/%<20° 2.5%** (near oracle ~47/3) with no gmsh.
+- **Status / next:** lab-validated on the oracle only; the conforming mesher still SHIPS. Rebuild path =
+  (1) per-node `M=g/h²` placement (close mean 41→47), (2) chord-aware refine (rms/p99→0.01), (3) incremental
+  Delaunay for scale (the spike rebuilds every round — too slow for millions), (4) periodic-u seam + rim/base,
+  (5) flag-gated production cutover (CRITICAL `PeriodicBalancedQuadtree`/`WatertightAssembly` — needs a design pass).
+- **Full detail:** `docs/superpowers/specs/2026-06-29-*.md` (surface-metric-isolation, quality-max,
+  density-quality, crease-fidelity, inhouse-kernel-milestone) + `research/bridge/*.test.ts`. Reusable lab
+  instruments: `perpendicular3DDeviation` (3D chord) + `triangleQualityDistribution` (3D angles). Metric blind
+  spots found: `%<20°` DILUTES under refinement, chord-p99 is BLIND to under-tessellation, RMS is STRADDLE-MASKED
+  on crease styles — score slivers by minAngle, fidelity by RMS/coverage with crease exclusion (or the 3D render).
+
 ---
 
 ## 8. High-Risk Zones — Handle With Extreme Care
