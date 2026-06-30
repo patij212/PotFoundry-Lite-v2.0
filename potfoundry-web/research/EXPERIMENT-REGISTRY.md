@@ -1126,3 +1126,35 @@ true-3D: A=baseline+guard, B=conf refined (shipped), C=conf noRefine (raw biline
 **VERDICT D1: (a) REFUTED, (c) REFUTED (lab), (b) REFUTED as the cause.** True cause = constraint-edge
 straight-chord across discontinuous step/occlusion relief; the LOCK pins a bad chord. Documented; the fix is
 NOT denser/2D loci. (Continued in D2 below: test injectStep density + a no-lock / sliver-only path.)
+
+### RESULT D2/D3 (no-lock REFUTED; Voronoi CONFIRMED clean) — warpfix2 + warphd-D3 ran; agent killed before GothicArches-HD/recovery
+
+**D2 — `_warpFix2Probe` (PF_WARPFIX2, 250k-class, A/B/G/H, true-3D p99):** the NO-LOCK hypothesis is **REFUTED.**
+Inject-only-gated (G = pinned crest vertices, NO constraint edges / no lock) ≈ conf-refined (B = locked edges) on
+EVERY style:
+
+| style | A.base+guard | B.conf-locked | G.inject-only (NO lock) | H.denser-chord | sliverR B |
+|---|---|---|---|---|---|
+| BasketWeave | 0.4753 | 0.7781 | **0.7710** | 1.4126 | 2.06→1.04 |
+| CelticKnot | 0.1360 | 0.4870 | **0.4867** | 0.9326 | 2.08→1.11 |
+| GyroidManifold (control) | 0.0567 | 0.0648 | 0.0644 | 0.0812 | 1.67→1.61 |
+
+⇒ removing the lock does NOT save the weave/braid family — the regression comes from PINNING VERTICES on the
+step/occlusion loci AT ALL (G≈B to 3 decimals), not from the edge lock. Every conforming mode KILLS the slivers
+(2.0→1.0) but RAISES true-3D on weave/braid. Denser chord (H) is strictly worse (more short locked chords across
+more steps). Control Gyroid ~neutral (sub-0.1 either way; its earlier "improvement" is budget-marginal).
+**CONCLUSION: BasketWeave / CelticKnot / CelticTriquetra are EXCLUDE-class for feature-conforming** — there is no
+lock-free escape; conforming intrinsically trades sliver cleanup for a chord regression on step/occlusion relief.
+
+**D3 — Voronoi full density (`_warpHdProbe`, 2M tris):** CONFIRMED lean-budget artifact. At full density the
+measured gate fires **0/54996** loci ⇒ gated-conf == baseline EXACTLY (true-3D p99 0.0195 both, nonMan 0). Voronoi
+is ACCEPT (no real defect; its ALL20 "regression" was the reduced budget inflating the gate).
+
+**D4/D5 NOT COMPLETED** (process killed after D3): GothicArches HD-3M confirm (stands at 0.132 @800k / 0.112 spike
+Stage-B; <0.1 at 3M unconfirmed) + recovery priority-ordering. Minor — not decision-changing.
+
+**NET (E-2026-06-30-FEAT-CONFORM-WARP):** the warp/weave/braid regression is INTRINSIC to feature-conforming on
+step/occlusion-DISCONTINUOUS relief (refuted: loci accuracy, edge-lock) ⇒ those 3 styles are EXCLUDE. Voronoi clean.
+Feature-conforming's validated wins are narrow + real: **GothicArches thin-ridge chord (0.24→0.13) + feature-adjacent
+sliver cleanup on conform-friendly relief**; gated OFF smooth (no-regression); EXCLUDE on risers (already CAD-grade)
++ weave/braid. The non-manifold guard (20/20 watertight) is the universal win.
