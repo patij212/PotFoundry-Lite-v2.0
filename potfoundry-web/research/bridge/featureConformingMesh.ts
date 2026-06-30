@@ -121,7 +121,11 @@ function periodicDu(u1: number, u0: number): number {
  * feature, defeating the grid-curvature aliasing the kernel's sizing field suffers from.
  */
 export function buildFeatureConformingMesh(
-  styleId: StyleId, params: StyleOptions, dims: StyleDims, opts: InhouseMeshOpts & FeatureConformOpts,
+  styleId: StyleId, params: StyleOptions, dims: StyleDims,
+  opts: InhouseMeshOpts & FeatureConformOpts & {
+    lineFilter?: (line: FeatureLine, index: number) => boolean;
+    truth?: FeatureTruth;
+  },
 ): FeatureConformResult {
   const rA = buildRadiusFnLocal(styleId, params, dims);
   const H = dims.H;
@@ -129,8 +133,11 @@ export function buildFeatureConformingMesh(
   const injectStepMm = opts.injectStepMm ?? Math.max(3 * opts.hMin, 0.02);
   const searchHalfMm = opts.searchHalfMm ?? 0.6;
   const pin = opts.pin ?? true;
+  // Opt-in SHARP GATE hook (parallel to Stage B): inject ONLY the gated loci. Default undefined = inject all
+  // loci (the spike behaviour) — additive, no existing caller changes.
+  const lineFilter = opts.lineFilter;
 
-  const truth = buildFeatureTruth(styleId, params, dims, truthRes);
+  const truth = opts.truth ?? buildFeatureTruth(styleId, params, dims, truthRes);
   const uToMm = truth.uToMm, tToMm = H;
   const ref = makeRefiner(rA, H, uToMm, tToMm, searchHalfMm);
   const dedupeMm = opts.dedupeMm ?? injectStepMm / 2;
@@ -138,7 +145,8 @@ export function buildFeatureConformingMesh(
 
   let moveSum = 0, moveN = 0;
 
-  for (const line of truth.lines) {
+  truth.lines.forEach((line, lineIdx) => {
+    if (lineFilter !== undefined && !lineFilter(line, lineIdx)) return; // SHARP GATE: skip un-gated loci
     const pts = line.points;
     for (let i = 0; i + 1 < pts.length; i++) {
       const u0 = pts[i].u, u1 = pts[i + 1].u, t0 = pts[i].t, t1 = pts[i + 1].t;
@@ -161,7 +169,7 @@ export function buildFeatureConformingMesh(
         moveSum += r.moveMm; moveN++;
       }
     }
-  }
+  });
 
   const injected = dd.points;
   if (opts.profile === true) {
@@ -203,6 +211,13 @@ export function buildFeatureConformingMeshB(
     tFilter?: [number, number]; constrainLabels?: string[];
     lineFilter?: (line: FeatureLine, index: number) => boolean;
     truth?: FeatureTruth;
+    /**
+     * TASK 4 (E-2026-06-30-FEAT-CONFORM-WARP D5): when true, emit the constraint edges ORDERED by relief
+     * amplitude (|r − rowMean| at the edge, descending) so the kernel's recovery LOCKS the strongest/sharpest
+     * loci FIRST and a weaker crosser gives up (the lock blocks it). Default false = emit in line order (the
+     * shipped behaviour). Opt-in → byte-identical when off.
+     */
+    constraintPriority?: boolean;
   },
 ): FeatureConformBResult {
   const rA = buildRadiusFnLocal(styleId, params, dims);
@@ -214,6 +229,7 @@ export function buildFeatureConformingMeshB(
   const tFilter = opts.tFilter;
   const labelSet = opts.constrainLabels ? new Set(opts.constrainLabels) : undefined;
   const lineFilter = opts.lineFilter;
+  const priority = opts.constraintPriority === true;
 
   const truth = opts.truth ?? buildFeatureTruth(styleId, params, dims, truthRes);
   const uToMm = truth.uToMm, tToMm = H;
@@ -223,6 +239,8 @@ export function buildFeatureConformingMeshB(
 
   const constraints: number[] = [];
   const constraintSeen = new Set<number>(); // dedupe constraint pairs too (a snap-collapsed pair can repeat)
+  // For the priority option: per-constraint strength = max |r − rowMean| over its two endpoint loci (mm).
+  const constraintAmp: number[] = [];
   let moveSum = 0, moveN = 0;
 
   truth.lines.forEach((line, lineIdx) => {
@@ -239,7 +257,7 @@ export function buildFeatureConformingMeshB(
       const tl = Math.hypot(txMm, tyMm) || 1;
       const perpU = (-tyMm / tl) / uToMm, perpT = (txMm / tl) / tToMm;
       const n = Math.max(1, Math.ceil(lenMm / injectStepMm));
-      let prevPos = -1;
+      let prevPos = -1, prevAmp = 0;
       for (let k = 0; k <= n; k++) {
         const ff = k / n;
         let u = u0 + du * ff; u -= Math.floor(u);
@@ -251,15 +269,25 @@ export function buildFeatureConformingMeshB(
           uR = r.u; tR = r.t; moveSum += r.moveMm; moveN++;
         }
         const pos = dd.add(uR, tR);
+        // amplitude of THIS refined point: |r − rowMean| (mm), the locus strength.
+        const amp = priority ? Math.abs(ref.radAt(uR, tR) - ref.rowMean(tR)) : 0;
         if (prevPos >= 0 && prevPos !== pos) {
           const a = prevPos < pos ? prevPos : pos, b = prevPos < pos ? pos : prevPos;
           const key = a * 16_777_216 + b;
-          if (!constraintSeen.has(key)) { constraintSeen.add(key); constraints.push(prevPos, pos); }
+          if (!constraintSeen.has(key)) { constraintSeen.add(key); constraints.push(prevPos, pos); if (priority) constraintAmp.push(Math.max(prevAmp, amp)); }
         }
-        prevPos = pos;
+        prevPos = pos; prevAmp = amp;
       }
     }
   });
+
+  // TASK 4: reorder constraint pairs strongest-first so the kernel locks high-relief loci before weak crossers.
+  let orderedConstraints = constraints;
+  if (priority && constraintAmp.length === constraints.length / 2) {
+    const idx = constraintAmp.map((_, i) => i).sort((a, b) => constraintAmp[b] - constraintAmp[a]);
+    orderedConstraints = new Array(constraints.length);
+    for (let j = 0; j < idx.length; j++) { orderedConstraints[2 * j] = constraints[2 * idx[j]]; orderedConstraints[2 * j + 1] = constraints[2 * idx[j] + 1]; }
+  }
 
   const injected = dd.points;
   if (opts.profile === true) {
@@ -267,8 +295,8 @@ export function buildFeatureConformingMeshB(
     console.log(`  [feat-conform-B ${styleId}] injected=${injected.length / 2} (deduped @${dedupeMm.toFixed(3)}mm) constraints=${constraints.length / 2} meanMove=${(moveN ? moveSum / moveN : 0).toFixed(3)}mm`);
   }
 
-  const mesh = buildInhouseMetricMesh(rA, H, { ...opts, injectedPoints: injected, pinInjected: pin, constraintEdges: constraints });
-  return { ...mesh, injected: injected.length / 2, meanRefineMoveMm: moveN ? moveSum / moveN : 0, constraintsRequested: constraints.length / 2 };
+  const mesh = buildInhouseMetricMesh(rA, H, { ...opts, injectedPoints: injected, pinInjected: pin, constraintEdges: orderedConstraints });
+  return { ...mesh, injected: injected.length / 2, meanRefineMoveMm: moveN ? moveSum / moveN : 0, constraintsRequested: orderedConstraints.length / 2 };
 }
 
 // Local copy of buildRadiusFn (runStyle imports node:child_process at module top, which is fine in vitest;

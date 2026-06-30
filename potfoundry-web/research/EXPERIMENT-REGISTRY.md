@@ -980,3 +980,149 @@ baseline+conforming, so each DELTA is exact (density-invariant direction).
   deliverable runner; incremental NDJSON (`research/exchange/_featconform_all20/*.ndjson`).
 
 **Ledger:** this block. **NOT committed (left for review).**
+
+
+---
+
+## E-2026-06-30-FEAT-CONFORM-WARP — Warp/weave/hash loci mis-location: diagnose + fix
+
+**Status:** PRE-REGISTERED (this block written BEFORE running). RESULT appended below.
+**Date:** 2026-06-30
+**Builds on:** E-2026-06-30-FEAT-CONFORM-ALL20 (commit 6dc259c). Gated Stage-B conforming IMPROVES 5 styles
+(GothicArches/Bamboo/Gyroid/LowPoly/Crystalline) but REGRESSES the warp/weave/hash family: BasketWeave
+(true-3D p99 0.206→0.654), CelticKnot (0.078→0.090), Voronoi (0.079→0.294 @lean budget), CelticTriquetra
+(expected, per-CelticKnot analog). Diagnosed cause (ALL20 residual #1): loci from `denseFeatureGroundTruth`
+(via the bilinear `styleSampler`) are MIS-LOCATED on these surfaces; constraining edges to wrong (u,t) pulls
+the mesh OFF the true surface (slivers improve, true-3D worsens).
+
+**KEY ARCHITECTURAL FACT (verified by reading src):** the metric `rA` (buildRadiusFn) AND the loci-source
+sampler (styleSampler) BOTH evaluate the SAME `STYLE_FUNCTIONS[styleId]` from `src/geometry/styles.ts`. There
+is NO separate "warp surface" in the lab — `rOuterBasketWeave` (floor-cell checker + max-occlusion) and
+`rOuterCelticKnot` ("literal port of the WGSL 3-strand sine braid + Z-buffer occlusion") ARE the surface the
+metric scores against. ⇒ the "analytic-rA-vs-warp mismatch" (hypothesis c) is a CPU↔GPU(WGSL) divergence
+(oursVsSota vertexMax 2.0mm), NOT reproducible in the all-CPU lab. So in the lab the mis-location is (a)
+bilinear styleSampler under-resolution of the C0 cell/strand edges and/or (b) the 1D-perpendicular refinement
+(makeRefiner.refine) breaking on diagonal/braided features (its perpendicular is taken to the AXIS-ALIGNED
+grid-edge tangent of denseRidge/denseCrease truth, so on a diagonal strand the search runs ALONG the strand or
+hits an adjacent strand; the crest/valley classifier seekMax=radAt≥rowMean mis-classifies over/under-woven
+points).
+
+**HYPOTHESIS (H-WARP, one sentence):** On BasketWeave + CelticKnot the conforming regression is caused by (b)
+the 1D-axis-aligned-perpendicular extremum refinement landing injected/constraint vertices OFF the true rA
+crest (large meanRefineMove + large post-refine true-3D residual of the injected points themselves), NOT (c) an
+analytic-vs-warp surface mismatch; a refinement that (i) searches the LOCAL 2D radial extremum (not a
+fixed-axis perpendicular) and/or (ii) derives the perpendicular from the true rA gradient lands the loci ON the
+surface and makes conforming NON-REGRESSING (true-3D not raised) with slivers still down.
+
+**KILL-CRITERIA (pre-registered, exact numbers):**
+- **D1 (diagnosis, cheapest):** classify (a) vs (b) vs (c). REFUTE (c) iff the injected REFINED loci points'
+  own true-3D distance to the analytic surface is < 0.01mm (they ARE on rA by construction of the 1D search on
+  rA — if so the surface is reachable, mis-location is in WHICH extremum, i.e. (b)). CONFIRM (b)-dominant iff
+  on BasketWeave/CelticKnot the refine move is LARGE (meanRefineMove > 0.1mm, i.e. the bilinear loci are far
+  off-extremum) AND the per-injected-vertex radial residual after refinement is NON-ZERO at a material fraction
+  of points (the 1D search converged to the wrong local extremum). Quantify (a) by re-running the loci
+  extraction at truthRes 384→768 + gridResU/T 1024→2048 and measuring whether the loci (u,t) shift > 0.5 cell.
+- **D2 (fix direction):** with the best fix from D1, BasketWeave gated-conf true-3D p99 ≤ baseline 0.206 (DO NOT
+  RAISE; ideally < 0.15) AND CelticKnot gated-conf true-3D p99 ≤ baseline 0.078, with sliverRatio still ≤ ~1.3×.
+  REFUTED iff conf p99 > base p99 on either after the fix (regression persists ⇒ the lab-reachable levers are
+  exhausted; document the production post-warp-GPU-loci requirement precisely).
+- **D3 (Voronoi full-density):** at FULL budget (no PF_FC_BUDGET cap, ≥1.6M tris) the measured gate fires ~0
+  loci (baseline true-3D p99 < 0.02 per R2) ⇒ conforming is ~no-op ⇒ true-3D within ±0.01 of baseline.
+  CONFIRMED iff gate kept < ~50 AND |conf−base| ≤ 0.01; REFUTED iff gate fires materially (>200) at full
+  density (then it is a real defect, not a lean-budget artifact).
+- **D4 (GothicArches HD):** at maxPoints 3M / tolMm 0.004 / hMin 0.008 with gated Stage B, true-3D p99 < 0.1
+  (from 0.132 @800k). CONFIRMED iff p99 < 0.1; else report residual + diagnose (irreducible thin-ridge cusp vs
+  recovery gap). The spike Stage-B hit 0.112 at 800k-class — HD should clear if density-responsive.
+- **D5 (recovery priority-ordering):** ordering constraints strongest-locus-first (by relief amplitude /
+  curvature) so the weaker crosser gives up RAISES GothicArches recovery% above the 90.6% baseline AND does NOT
+  raise true-3D p99 on any conformed style. CONFIRMED iff recovery% rises ≥ +1pp with true-3D non-worse;
+  NO-OP iff recovery% unchanged ±1pp; REFUTED iff it lowers recovery or raises true-3D.
+
+**DISCRIMINATOR (cheapest first, before any fix build):**
+- D1: a pure-measurement probe (NO mesh build) — extract loci for BasketWeave/CelticKnot/GothicArches/Gyroid,
+  run the existing makeRefiner.refine, and for each refined point measure (1) refine move mm, (2) the refined
+  point's radial residual = |r_refined − localRadialExtremum(2D)| where the 2D extremum is a small 2D grid
+  search around the point on raw rA. If (b): warp styles show refined points NOT at the 2D extremum (the
+  axis-aligned 1D search missed it) while GothicArches/Gyroid do. This refutes/confirms before touching the
+  mesher. (Plus the truthRes-doubling loci-shift probe for (a).)
+- D3: run the measured-gate count probe on Voronoi at full budget (cheap vs the full metric) — gate-kept count
+  alone refutes/confirms the lean-budget-artifact claim.
+
+**METHOD:** (1) D1 probe → classify. (2) If (b): add an opt-in `refine2D` mode to makeRefiner — a LOCAL 2D
+radial-extremum search (small (u,t) neighbourhood, crest=max/valley=min by the same rowMean sign) instead of
+the fixed-axis 1D perpendicular; the injected/constraint vertex then lands on the true local extremum
+regardless of strand orientation. Opt-in flag on buildFeatureConformingMeshB (default = current 1D behaviour →
+the 5 improving styles stay byte-identical / unchanged). (3) If (a) also matters: raise truthRes/gridRes for
+the warp family only. (4) D5: add an opt-in `constraintPriority` to buildFeatureConformingMeshB +
+recoverAndLockEdges that sorts constraints by relief amplitude (strongest first). (5) Re-measure BasketWeave/
+CelticKnot/Voronoi/CelticTriquetra (true-3D before/after) + GothicArches HD + the full-20 final scorecard. (6)
+If the regression PERSISTS after 2D-refine (the loci are genuinely un-placeable from rA alone because the
+SURFACE the GPU renders differs — the production post-warp eval), document that precisely as the cutover
+requirement and do NOT fake it.
+
+**CONTROLS:** equal budget baseline vs conforming (same InhouseMeshOpts); the 5 IMPROVING styles
+(GothicArches/Bamboo/Gyroid/LowPoly/Crystalline) are a NON-REGRESSION control for the 2D-refine change (must
+not regress them); TRUE-3D featureLineChord3D is primary; slivers by featAdj %<20° ratio; watertight by the
+3D-weld index audit; a non-vacuous control: the refine-mode change MUST move the injected points on the warp
+styles (else it is a no-op and cannot fix anything).
+
+**INSTRUMENTS (one-metric-all-meshes):** featureLineChord3D (true-3D), crestValleyRetention (radial,
+annotated), featureAdjacentSlivers, globalChord (perpendicular3DDeviation), auditManifold (3D-weld by-index).
+Plus the D1 measure-only refine-residual probe.
+
+### RESULT (appended after running)
+
+**Task 1 / D1 (loci probe) — (a) and (c) REFUTED; (b) REAL but NON-DISCRIMINATING.** `_warpLociProbe.test.ts`
+(PF_WARPLOCI, measure-only, no mesh build): for BasketWeave/CelticKnot/Gyroid/Bamboo/Gothic/LowPoly, measured
+(i) the 1D-refine move, (ii) residual2D = how far the 1D-refined point's radius sits below the TRUE 2D local
+radial extremum (a small dense 2D search on raw rA), (iii) loci-shift under sampler+truth res-doubling.
+
+| style | move1D mean/p99 | RESID2D mean/p99 | frac>0.05 | move2D mean/p99 | lociShift(384→768) med/p90 |
+|---|---|---|---|---|---|
+| BasketWeave | 0.430/0.637 | 0.227/1.494 | 67.1% | 0.923/1.271 | 0.078/0.204 mm |
+| CelticKnot | 0.336/0.637 | 0.079/0.834 | 47.7% | 0.856/1.224 | 0.080/0.204 mm |
+| GyroidManifold | 0.350/0.637 | 0.041/0.139 | 35.0% | 0.914/1.199 | 0.112/0.279 mm |
+| BambooSegments | 0.572/0.637 | 0.417/1.813 | 93.0% | 1.175/1.271 | 0.067/0.240 mm |
+| GothicArches | 0.431/0.637 | 0.248/1.462 | 61.4% | 0.849/1.271 | 0.076/0.218 mm |
+| LowPolyFacet | 0.511/0.637 | 0.101/0.237 | 98.5% | 1.186/1.271 | 0.041/0.073 mm |
+
+- **(a) sampler-resolution REFUTED as dominant:** loci-shift under 384→768 / 1024→2048 res-doubling is TINY on
+  every style (median 0.04–0.11mm, p90 ≤ 0.28mm) — denser sampling barely moves the loci. Not the cause.
+- **(c) analytic-vs-warp REFUTED by construction (verified in src):** metric rA and the loci sampler share
+  `STYLE_FUNCTIONS[styleId]`; `rOuterBasketWeave`/`rOuterCelticKnot` ARE the metric surface. (c) is a CPU↔WGSL
+  divergence, not reproducible in the all-CPU lab.
+- **(b) 1D-refine off-extremum is REAL but does NOT discriminate:** residual2D is LARGE on the IMPROVING styles
+  too (Bamboo 0.417/93%, LowPoly 0.101/98.5%, Gothic 0.248/61%) — as bad as or worse than the regressing warp
+  styles. So "the 1D perpendicular search lands off the true extremum" is NOT what separates regress from
+  improve. (Largely an artifact of my 2D probe over-reaching to a taller neighbouring feature within ±0.6mm on
+  dense multi-scale relief — the loci sit on their OWN feature.) ⇒ a 2D-refine fix is predicted NOT to help.
+
+**Task 1 / D1b (the REAL discriminator — A/B mechanism probe) `_warpFixProbe.test.ts` (PF_WARPFIX).** Built
+small conforming meshes (300k-cap budget, all modes share it → exact deltas) and A/B-tested the mechanisms on
+true-3D: A=baseline+guard, B=conf refined (shipped), C=conf noRefine (raw bilinear loci), F=conf crease-only.
+
+| style | A.base | B.refined | C.noRefine | F.creaseOnly | verdict |
+|---|---|---|---|---|---|
+| BasketWeave | 0.323 | 0.709 | 0.688 | 0.572 | ALL conform REGRESS; B≈C; crease-only still +0.25 |
+| CelticKnot | 0.106 | 0.242 | 0.247 | 0.237 | ALL conform REGRESS; B≈C |
+| BambooSegments | 0.081 | 0.102 | 0.102 | 0.079 | B/C mild-regress, crease-only ~same |
+| GyroidManifold | 0.057 | 0.051 | 0.050 | 0.053 | conform IMPROVES (control holds) |
+
+- **The 1D refine is IRRELEVANT — C(noRefine) ≈ B(refined) on EVERY style** (BasketWeave 0.688 vs 0.709;
+  CelticKnot 0.247 vs 0.242; Bamboo identical; Gyroid 0.050 vs 0.051). This CONFIRMS D1's prediction and
+  **REFUTES the brief's stated diagnosis** ("loci mis-located via bilinear sampler / 1D refinement breaking")
+  AND my H-WARP fix-direction. Higher-fidelity loci extraction / 2D-extremum refinement CANNOT fix this.
+- **The regression is the CONSTRAINT-EDGE STRAIGHT-CHORD model failing on stepped/occluded relief.** Every
+  conforming mode IMPROVES slivers (slivR 2.1→1.0) while RAISING true-3D on BasketWeave/CelticKnot — i.e.
+  locking ANY straight (u,t) constraint edge between two loci samples cuts across the weave/braid's
+  cell-boundary radius STEP (rOuterBasketWeave: `floor`-cell `max()` occlusion; rOuterCelticKnot: Z-buffer
+  strand occlusion) and the LOCK forbids the Delaunay flip that would otherwise chord it better. On Gyroid
+  (smooth trig relief, no steps) a straight loci-to-loci chord follows the surface ⇒ conforming helps. The
+  DISCRIMINATOR is the relief being STEP/OCCLUSION-discontinuous (weave/braid) vs SMOOTH-or-thin-ridge
+  (Gyroid/Gothic), NOT the loci accuracy.
+- Crease-only (F) helps BasketWeave a lot (0.709→0.572) but still regresses (+0.25): the relief-wall + ridge
+  families are the worst, but the creases also straddle steps.
+
+**VERDICT D1: (a) REFUTED, (c) REFUTED (lab), (b) REFUTED as the cause.** True cause = constraint-edge
+straight-chord across discontinuous step/occlusion relief; the LOCK pins a bad chord. Documented; the fix is
+NOT denser/2D loci. (Continued in D2 below: test injectStep density + a no-lock / sliver-only path.)
