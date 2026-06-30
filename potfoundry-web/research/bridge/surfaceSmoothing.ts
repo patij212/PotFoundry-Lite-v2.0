@@ -15,11 +15,15 @@ const TAU = 2 * Math.PI;
 
 export function smoothSurfaceOnRadial(
   ut: number[], indices: ArrayLike<number>, rA: AnalyticRadiusFn, H: number,
-  opts: { iterations?: number; relax?: number; boundaryEps?: number } = {},
+  opts: { iterations?: number; relax?: number; boundaryEps?: number; pinned?: Set<number> } = {},
 ): number[] {
   const iterations = opts.iterations ?? 5;
   const relax = opts.relax ?? 0.5;
   const eps = opts.boundaryEps ?? 1e-6;
+  // OPT-IN: extra vertex indices to PIN in place (e.g. injected feature-crest vertices) so the optimizer
+  // cannot relax them off the locus they were placed on. STRICT NO-OP when undefined/empty — the pinned[]
+  // array below is filled ONLY from the patch-boundary test, exactly as before.
+  const pinExtra = opts.pinned;
   const n = ut.length / 2;
   const u = new Float64Array(n), t = new Float64Array(n);
   for (let i = 0; i < n; i++) { u[i] = ut[2 * i]; t[i] = ut[2 * i + 1]; }
@@ -53,6 +57,8 @@ export function smoothSurfaceOnRadial(
   for (let i = 0; i < n; i++) {
     if (u[i] <= eps || u[i] >= 1 - eps || t[i] <= eps || t[i] >= 1 - eps) pinned[i] = 1;
   }
+  // additionally pin any explicitly-requested vertices (no-op when pinExtra is undefined/empty)
+  if (pinExtra !== undefined) for (const idx of pinExtra) if (idx >= 0 && idx < n) pinned[idx] = 1;
 
   const px = new Float64Array(n), py = new Float64Array(n), pz = new Float64Array(n);
   for (let iter = 0; iter < iterations; iter++) {

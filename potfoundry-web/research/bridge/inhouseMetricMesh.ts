@@ -15,6 +15,7 @@
 import Delaunator from 'delaunator';
 import { buildSurfaceMetricField } from './surfaceMetricField';
 import { smoothSurfaceOnRadial } from './surfaceSmoothing';
+import { recoverAndLockEdges, lockedPredicate } from './constraintRecovery';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
 
 const TAU = 2 * Math.PI;
@@ -28,8 +29,32 @@ export interface InhouseMeshOpts {
    *  a fidelity guarantee that catches sharp/thin relief the grid-curvature metric aliases (e.g. GothicArches
    *  V-grooves). mm. */
   chordTolMm?: number;
+  /**
+   * OPT-IN feature-conforming hook (DEV/LAB only). Flat (u,t) pairs of FORCED points to seed into the point
+   * set alongside the seed grid — typically dense feature loci refined to the true crest/valley extremum
+   * (see research/bridge/featureConformingMesh.ts). De-duped against existing points via the same addPoint
+   * keyOf as the seeds. STRICT NO-OP when undefined or empty: the default path is byte-identical (the seed
+   * loop, refinement, flips, and smoothing are unchanged; this only appends extra points BEFORE the first
+   * Delaunay, exactly where a denser seed grid would add them).
+   */
+  injectedPoints?: number[];
+  /**
+   * When true (and injectedPoints non-empty), the injected vertices are PINNED during the on-surface
+   * smoothing sweeps so the optimizer cannot relax them OFF the crest/valley they were placed on. No-op
+   * unless injectedPoints is non-empty. Default false (injected points smooth like any interior vertex).
+   */
+  pinInjected?: boolean;
+  /**
+   * OPT-IN Stage-B constrained edges (DEV/LAB only). Flat list of vertex-PAIRS as positions into
+   * injectedPoints: [posA0,posB0, posA1,posB1, ...]. On the FINAL triangulation the kernel recovers each
+   * edge via locked Lawson flips (constraintRecovery.ts) so a mesh edge FOLLOWS the locus, then LOCKS it so
+   * the optimization flips never cut back across it. STRICT NO-OP when undefined/empty. Requires
+   * injectedPoints (the pair positions index into it). Reports recovery stats via the returned `constraint`.
+   */
+  constraintEdges?: number[];
 }
-export interface InhouseMesh { ut: number[]; indices: Uint32Array; points: number; rounds: number; hitBudget: boolean; }
+export interface ConstraintRecoveryStats { requested: number; alreadyPresent: number; recovered: number; failed: number; flips: number; }
+export interface InhouseMesh { ut: number[]; indices: Uint32Array; points: number; rounds: number; hitBudget: boolean; constraint?: ConstraintRecoveryStats; }
 
 /**
  * MAX interior-angle cosine of the 3D triangle (a,b,c) — monotone proxy for its MIN angle (largest cos ⇔
@@ -62,8 +87,24 @@ const linkHE = (halfedges: Int32Array, a: number, b: number): void => { halfedge
 export function flipHE(
   triangles: Uint32Array, halfedges: Int32Array, xyz: Float64Array, uv: number[], maxPasses: number,
   shouldFlip?: (pr: number, pl: number, p0: number, p1: number) => boolean,
+  isLocked?: (pr: number, pl: number) => boolean,
+  guardManifold?: boolean,
 ): void {
   const ne = triangles.length;
+  // OPT-IN manifold guard: a Lawson flip (pr,pl)→(p0,p1) creates a NON-MANIFOLD edge if (p0,p1) already
+  // exists elsewhere. For a Delaunay mesh this never happens, but a PINNED/non-Delaunay configuration (the
+  // feature-conforming injection path) can request such a flip — MEASURED: the sweep flips introduced
+  // 22–193 non-manifold edges with pinned crest vertices. When guardManifold is set we maintain an
+  // undirected-edge set and reject any flip whose new diagonal already exists. STRICT NO-OP when absent
+  // (the default kernel path never builds the set → byte-identical).
+  const nV = uv.length / 2;
+  const EK = nV + 1;
+  const ekey = (a: number, b: number): number => (a < b ? a * EK + b : b * EK + a);
+  let edgeSet: Set<number> | undefined;
+  if (guardManifold === true) {
+    edgeSet = new Set<number>();
+    for (let e = 0; e < ne; e++) { const u = triangles[e], v = triangles[e % 3 === 2 ? e - 2 : e + 1]; edgeSet.add(ekey(u, v)); }
+  }
   for (let pass = 0; pass < maxPasses; pass++) {
     let flips = 0;
     const touched = new Uint8Array(ne / 3);
@@ -75,6 +116,10 @@ export function flipHE(
       const a0 = a - (a % 3), b0 = b - (b % 3);
       const al = a0 + (a + 1) % 3, ar = a0 + (a + 2) % 3, bl = b0 + (b + 2) % 3;
       const pr = triangles[a], pl = triangles[al], p0 = triangles[ar], p1 = triangles[bl];
+      // OPT-IN: never flip a LOCKED constraint edge (the shared edge pr-pl). No-op when isLocked is absent.
+      if (isLocked !== undefined && isLocked(pr, pl)) continue;
+      // OPT-IN manifold guard: reject the flip if the new diagonal (p0,p1) already exists elsewhere.
+      if (edgeSet !== undefined && edgeSet.has(ekey(p0, p1))) continue;
       // validity: pr,pl must straddle the new diagonal p0-p1 in (u,t) (convex quad, no inversion)
       const dx = uv[p1 * 2] - uv[p0 * 2], dy = uv[p1 * 2 + 1] - uv[p0 * 2 + 1];
       const sPr = dx * (uv[pr * 2 + 1] - uv[p0 * 2 + 1]) - dy * (uv[pr * 2] - uv[p0 * 2]);
@@ -95,6 +140,7 @@ export function flipHE(
       linkHE(halfedges, a, hbl);
       linkHE(halfedges, b, har);
       linkHE(halfedges, ar, bl);
+      if (edgeSet !== undefined) { edgeSet.delete(ekey(pr, pl)); edgeSet.add(ekey(p0, p1)); }
       touched[t0] = 1; touched[t1] = 1; flips++;
     }
     if (flips === 0) break;
@@ -156,12 +202,41 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
   const s = ratios[Math.floor(ratios.length / 2)] || 1;
 
   const uv: number[] = [];
-  const seen = new Set<number>();
+  // key → vertex index. Map (not Set) so the OPT-IN constraint path can recover the index of a point that
+  // merged into an existing vertex (injPosToVert). Dedup decisions + push order are unchanged ⇒ the default
+  // path stays byte-identical (verified by the no-op fingerprint test).
+  const seen = new Map<number, number>();
   const keyOf = (u: number, t: number): number => Math.round(u / dedupeEps) * 1_500_000 + Math.round(t / dedupeEps);
-  const addPoint = (u: number, t: number): boolean => { const k = keyOf(u, t); if (seen.has(k)) return false; seen.add(k); uv.push(u, t); return true; };
+  const addPoint = (u: number, t: number): boolean => { const k = keyOf(u, t); if (seen.has(k)) return false; seen.set(k, uv.length / 2); uv.push(u, t); return true; };
+  const vertOfKey = (k: number): number => seen.get(k) ?? -1;
 
   const seedNt = Math.max(2, seedN), seedNu = Math.max(2, Math.round(seedN * s));
   for (let i = 0; i <= seedNu; i++) for (let j = 0; j <= seedNt; j++) addPoint(i / seedNu, j / seedNt);
+
+  // OPT-IN feature-conforming injection. Forced points (e.g. refined crest/valley loci) are appended to the
+  // point set here — exactly where a denser seed grid would add them — then participate in EVERY round of
+  // Delaunay/flip/split below. addPoint de-dupes against the seeds. We record which final-vertex indices are
+  // injected (the uv length before/after each successful add) so smoothing can pin them. STRICT NO-OP when
+  // the option is absent/empty: the loop never executes, leaving the default path byte-identical.
+  const pinnedInjected = opts.pinInjected === true ? new Set<number>() : undefined;
+  const inj = opts.injectedPoints;
+  // map[injectedArrayPosition] = kernel vertex index (or the index of the existing dup it merged into).
+  // Needed so opt.constraintEdges (pairs of injected positions) can be resolved to vertex indices.
+  const wantConstraints = opts.constraintEdges !== undefined && opts.constraintEdges.length > 0;
+  const injPosToVert: Int32Array | undefined = (inj !== undefined && wantConstraints) ? new Int32Array(inj.length / 2).fill(-1) : undefined;
+  if (inj !== undefined && inj.length >= 2) {
+    for (let i = 0; i + 1 < inj.length; i += 2) {
+      const before = uv.length / 2;
+      const u = inj[i], t = inj[i + 1];
+      if (addPoint(u, t)) {
+        if (pinnedInjected !== undefined) pinnedInjected.add(before);
+        if (injPosToVert !== undefined) injPosToVert[i / 2] = before;
+      } else if (injPosToVert !== undefined) {
+        // merged into an existing vertex — recover its index from the dedupe key.
+        injPosToVert[i / 2] = vertOfKey(keyOf(u, t));
+      }
+    }
+  }
 
   const scaledCoords = (): Float64Array => { const c = new Float64Array(uv.length); for (let k = 0; k < uv.length; k += 2) { c[k] = uv[k] * s; c[k + 1] = uv[k + 1]; } return c; };
   const computeXYZ = (): Float64Array => {
@@ -208,19 +283,48 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
   // Smoothing moves vertices but NOT connectivity, so the halfedge structure stays valid across sweeps.
   let z = now(); const dF = new Delaunator(scaledCoords()); tris = dF.triangles; const heF = dF.halfedges; tDel += now() - z;
   z = now(); flipHE(tris, heF, computeXYZ(), uv, 4); tFlip += now() - z;
+
+  // OPT-IN Stage-B: recover + lock the constraint edges on the final triangulation, BEFORE the optimization
+  // sweeps, so the locus becomes a real mesh edge and the locked-flip guard keeps it. STRICT NO-OP when
+  // constraintEdges is absent/empty (the block never runs; isLocked stays undefined → flipHE unchanged).
+  let isLocked: ((a: number, b: number) => boolean) | undefined;
+  let constraintStats: ConstraintRecoveryStats | undefined;
+  const cEdges = opts.constraintEdges;
+  if (cEdges !== undefined && cEdges.length >= 2 && injPosToVert !== undefined) {
+    // resolve injected positions → vertex indices
+    const cverts: number[] = [];
+    for (let i = 0; i + 1 < cEdges.length; i += 2) {
+      const a = injPosToVert[cEdges[i]], b = injPosToVert[cEdges[i + 1]];
+      if (a >= 0 && b >= 0 && a !== b) cverts.push(a, b);
+    }
+    z = now();
+    const rec = recoverAndLockEdges(tris, heF, uv, cverts);
+    tFlip += now() - z;
+    isLocked = lockedPredicate(rec.locked, uv.length / 2);
+    constraintStats = { requested: cverts.length / 2, alreadyPresent: rec.alreadyPresent, recovered: rec.recovered, failed: rec.recoveryFailed, flips: rec.flips };
+    if (prof) {
+      // eslint-disable-next-line no-console
+      console.log(`  [constraint] requested=${constraintStats.requested} present=${rec.alreadyPresent} recovered=${rec.recovered} failed=${rec.recoveryFailed} flips=${rec.flips}`);
+    }
+  }
+
+  // The optimization sweeps re-flip on a PINNED (non-Delaunay) configuration when feature points are injected,
+  // which can request a flip that duplicates an existing edge → non-manifold. Guard those flips against
+  // creating a duplicate edge ONLY on the injection path (default path stays byte-identical).
+  const guardMan = inj !== undefined && inj.length >= 2;
   let cur = uv.slice();
   for (let k = 0; k < sweeps; k++) {
-    z = now(); cur = smoothSurfaceOnRadial(cur, tris, rA, H, { iterations: 3, relax: 0.5 }); tSmooth += now() - z;
+    z = now(); cur = smoothSurfaceOnRadial(cur, tris, rA, H, { iterations: 3, relax: 0.5, pinned: pinnedInjected }); tSmooth += now() - z;
     z = now();
     const n = cur.length / 2, p = new Float64Array(n * 3);
     for (let i = 0; i < n; i++) { const u = cur[2 * i], t = cur[2 * i + 1], th = TAU * u, zz = t * H, r = rA(th, zz); p[3 * i] = r * Math.cos(th); p[3 * i + 1] = r * Math.sin(th); p[3 * i + 2] = zz; }
     tXYZ += now() - z;
-    z = now(); flipHE(tris, heF, p, cur, 4); tFlip += now() - z;
+    z = now(); flipHE(tris, heF, p, cur, 4, undefined, isLocked, guardMan); tFlip += now() - z;
   }
 
   if (prof) {
     // eslint-disable-next-line no-console
     console.log(`  [profile] delaunay=${(tDel / 1000).toFixed(1)}s flip=${(tFlip / 1000).toFixed(1)}s smooth=${(tSmooth / 1000).toFixed(1)}s xyz=${(tXYZ / 1000).toFixed(1)}s split=${(tSplit / 1000).toFixed(1)}s`);
   }
-  return { ut: cur, indices: tris, points: cur.length / 2, rounds, hitBudget };
+  return { ut: cur, indices: tris, points: cur.length / 2, rounds, hitBudget, constraint: constraintStats };
 }

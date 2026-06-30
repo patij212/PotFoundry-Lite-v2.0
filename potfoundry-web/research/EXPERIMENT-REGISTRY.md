@@ -619,3 +619,137 @@ runner `featureLocalizedFidelityR2.test.ts` (env PF_FEATFID_R2=1). Sentinel guar
 **Next:** feature-conforming the surface-metric kernel (snap vertices onto crest/ridge loci via the featureGraph
 dense-truth + insert feature lines as constrained edges), targeting the 11; re-measure on this same harness.
 
+
+---
+
+## E-2026-06-30-FEAT-CONFORM-SPIKE — Feature-conforming the surface-metric kernel (vertex injection on crests)
+
+**Status:** PRE-REGISTERED (this block written BEFORE running the spike). Updated with RESULT below.
+
+**Motivation:** E-2026-06-30-FEAT-FID-R2 proved the crest under-shoot is DENSITY-INVARIANT (ArtDeco
+3.35mm@0.8M→3.16mm@1M; GothicArches 1.51mm@0.8M→1.39mm@2M) — the in-house metric kernel
+(inhouseMetricMesh.ts) places vertices by sizing/quality alone and is BLIND to features, so mesh vertices never
+LAND on the sharp crests. The fix must put vertices ON the crests, not add triangles between them.
+
+**HYPOTHESIS (H-SPIKE):** Injecting the dense feature loci (denseFeatureGroundTruth via styleSampler),
+refined to the TRUE local radial extremum on the raw rA, as forced points into the kernel's point set (then the
+same metric-Delaunay + flip + smooth, with injected crest vertices PINNED during smoothing) closes the crest
+under-shoot on the 2 worst styles. Stage A = vertex injection alone; Stage B = constrained edges (cdt2d /
+locked-edge flips) only if A leaves residual.
+
+**KILL-CRITERION (pre-registered, exact numbers):**
+- PRIMARY (confirm): crest under-shoot worst < 0.1mm on BOTH ArtDeco AND GothicArches (from 3.35 / 1.51mm).
+- Stage A SUFFICIENT iff crest-under < 0.1mm on both AND featAdj %<20° ≤ 1.3× whole-mesh; else Stage B needed.
+- feature-line chord3D p99 must NOT be worse than baseline (ArtDeco 0.039, GothicArches 0.240).
+- manifold/watertight: 0 new non-manifold edges, no flipped/inverted tris.
+- tri-count increase < ~2× the equal-budget baseline.
+- NO REGRESSION control: HarmonicRipple crest-under stays < 0.06mm (loci weak/absent → conforming ≈ no-op).
+- REFUTED iff crest-under ≥ 0.1mm on either style after A AND B (report residual + mechanism).
+
+**Discriminator already run (cheapest, pre-spike):** loci composition probe (_probe_loci.test.ts). Both styles
+have abundant loci: ArtDeco 35188 lines (ridge 13180 / crease 6144 / relief-wall 15864), relief depth ∈ [-2.05,
++1.88]mm; GothicArches 47992 lines (ridge 13356 / crease 10380 / relief-wall 24256), depth ∈ [-0.29, +1.44]mm;
+HarmonicRipple 39517 lines but smooth (already accept). ⇒ injection HAS loci to land on; proceed to Stage A.
+
+
+### RESULT (measured; equal-budget kernel opts maxPoints=400k/hMin=0.02/sizeRes=256, STEP_MM=0.05, TRUTH_RES=384)
+
+Instruments (all on the SAME mesh): crestValleyRetention (radial crest under-shoot), featureLineChord3D (true-3D
+point->mesh-surface, the HONEST metric), featureAdjacentSlivers, perpendicular3DDeviation (globalChord),
+rigorous 3D-weld manifold audit. Baseline = kernel (no injection); Stage A = refined-loci vertex injection +
+pin; Stage B = + locked-constraint-edge recovery (ridge+relief-wall loci).
+
+| Style | mode | tris | crestU worst (mm/%amp) | crestU mean | true-3D p99 | true-3D max | radOvr | featAdj%<20 vs mesh | nonMan |
+|-------|------|------|------------------------|-------------|-------------|-------------|--------|---------------------|--------|
+| GothicArches | baseline | 798518 | 1.484 / 132% | 0.031 | 0.2441 | 1.386 | 1.8x | 1.8 vs 0.8 (2.3x) | 24(dagger) |
+| GothicArches | stageA | 795561 | 1.000 / 71% | 0.008 | 0.1476 | 0.478 | 2.5x | 41.2 vs 41.2 (1.0x) | 0 |
+| GothicArches | stageB | 795598 | 1.243 / 104% | 0.003 | 0.1121 | 0.409 | 2.3x | 35.6 vs 34.0 (1.0x) | 0 |
+| ArtDeco | baseline | 395705 | 2.685 / 154% | 0.021 | 0.0392 | 0.168 | 26.8x | 17.6 vs 12.3 (1.4x) | 181(dagger) |
+| ArtDeco | stageA | 798603 | 3.311 / 188% | 0.016 | 0.0668 | 0.342 | 21.2x | 46.7 vs 44.2 (1.1x) | 0 |
+| ArtDeco | stageB | 798603 | 3.593 / 194% | 0.031 | 0.385 | 1.600 | 7.4x | 46.7 vs 42.2 (1.1x) | 0 |
+| HarmonicRipple | baseline | 443587 | 0.023 / 0% | 0.004 | 0.0131 | 0.027 | 1.1x | 0.0 vs 0.0 | 0 |
+| HarmonicRipple | stageA | 797234 | 3.560 / 38% (WARN) | 0.029 | 0.2300 | 0.362 | 2.1x | 73.0 vs 64.7 (1.1x) | 0 |
+
+(dagger) Baseline nonMan (24/181) is a PRE-EXISTING KERNEL DEFECT, not introduced by this spike — see Finding 5.
+Stage-B recovery rates: GothicArches 133404 present + 33120 recovered = 166524/200626 (83%); ArtDeco
+126752+8150 = 134902/138188 (98%); the ~17%/2% "failed" are longer multi-edge segments the greedy
+single-direction flip recovery gives up on (manifold-safe — it never corrupts the mesh).
+
+### VERDICT vs pre-registered KILL-CRITERION
+
+- PRIMARY (crest under-shoot worst < 0.1mm on BOTH): REFUTED. GothicArches best 1.000mm (Stage A), ArtDeco
+  best 2.685mm (baseline — conforming made the RADIAL crest WORSE). Neither reaches 0.1mm radial.
+- Stage A SUFFICIENT? NO (crest-under not <0.1mm) -> Stage B was run; Stage B helps GothicArches true-3D
+  further (p99 0.148->0.112, max 0.478->0.409) but does NOT close the radial worst-case either.
+- true-3D p99 NOT worse than baseline: GothicArches PASS (0.244->0.112, BETTER). ArtDeco stageA PASS
+  (0.039->0.067 ~same class), stageB FAIL (0.385, worse — constraints perturb an already-faithful riser).
+- Manifold/watertight: PASS for Stage A AND Stage B (nonMan=0 under rigorous 3D-weld audit), via the new
+  opt-in flip manifold-guard. (Baseline 24/181 is the pre-existing kernel defect, Finding 5.)
+- tri increase < 2x: PASS (GothicArches 799k->796k ~equal; ArtDeco 396k->799k = 2.0x at the boundary).
+- NO-REGRESSION control (HarmonicRipple crest < 0.06mm): FAILED — 0.023->3.560mm. Injecting+pinning dense
+  "extrema" loci into a SMOOTH high-amplitude (+/-9mm) style creates pinned radial-under-shoot. (true-3D only
+  0.013->0.230, still sub-0.25mm, so it is mostly a radial-metric artifact — but it VIOLATES the control.)
+
+OVERALL: REFUTED for the literal <0.1mm target, with a substantial PARTIAL WIN on the real-3D defect.
+
+### HONEST FINDINGS (mechanism)
+
+1. The two "worst styles" are DIFFERENT classes — measured, not assumed. GothicArches = a GENUINE thin
+   C0 ridge (apex half-width 0.17mm, apex WANDERS in u with t: u 0.175->0.226->0.297 over t 0.2->0.7; true-3D
+   p99 0.244mm = real 3D gap). ArtDeco = a near-VERTICAL RISER (stepEdge stepLocal<0.1||>0.9 hard radius
+   step + 8mm-wide fan; true-3D p99 ALREADY 0.039mm = CAD-grade; radOvr 26.8x). The R2 "crest under-shoot"
+   metric is RADIAL and overstates a vertical wall by 7-27x — ArtDeco's 3.35mm is a radial-projection
+   artifact, NOT a 3D defect. ArtDeco belongs to the EXCLUDE class (riser, project-memory precedent), not
+   extract; feature-conforming a feature that is already 3D-faithful only perturbs it.
+2. Vertex injection ALONE (Stage A) is necessary but NOT sufficient for a thin ridge. A lone pinned crest
+   vertex reaches the apex, but the triangulation interpolates AWAY from it the moment you step off (all its
+   neighbors sit in the valley -> a "tent" correct only AT the apex point). Stage A still helped GothicArches
+   true-3D -40% (crest mean 0.031->0.008) by putting vertices on the ridge.
+3. Constrained EDGES (Stage B) are the right mechanism and are TRI-EFFICIENT. Locked ridge edges make
+   the crease a real mesh edge so interpolation runs ALONG it: GothicArches true-3D p99 0.148->0.112, max
+   0.478->0.409, crest mean ->0.003, sliver ratio 2.3x->1.0x. In an isolated single-band prototype Stage B at
+   80k tris BEAT Stage A at 321k tris on true-3D (0.219 vs 0.424) — edges beat blind density.
+4. The residual worst-case crest (~1mm radial / 0.4mm true-3D) is an IRREDUCIBLE thin-ridge C0 cusp +
+   radial overstatement. Diagnosed: 1751/1752 GothicArches crest samples are <0.1mm under Stage B; the ONE
+   outlier is a single-sample radius spike (44.5->46.1->44.5 across 0.002 in u) whose truth sample lands ~0.03mm
+   off the discrete mesh apex; its TRUE-3D distance is 0.43mm (radOvr 2.5x). No finite mesh captures an
+   infinitely-thin ridge at EVERY query point; the radial metric magnifies it. (Matches project-memory
+   "irreducible n1<1 cusp".)
+5. PRE-EXISTING KERNEL DEFECT discovered (byproduct): the in-house kernel's DEFAULT optimization-sweep
+   flips (flipHE in the smooth->flip sweep loop) create NON-MANIFOLD edges on sharp/near-vertical styles
+   at default settings — ArtDeco sweeps=0->0, =1->150, =2->181, =4->93; GothicArches 24. flipHE requests a
+   diagonal flip that DUPLICATES an existing edge on these geometries. This spike's opt-in guardManifold
+   (reject a flip whose new diagonal already exists) FIXES it (Stage A/B nonMan=0) and would fix the default
+   too — but it is kept OPT-IN so the default path stays byte-identical (verified by fingerprint). Worth a
+   follow-up: enable guardManifold by default (it should be a strict improvement; measure byte-delta + perf).
+6. My approach must be GATED to feature-dense styles. HarmonicRipple (smooth) regressed badly — never
+   apply injection+pin to a style whose loci are weak/curvature-resolvable. The R2 accept-class list IS that
+   gate.
+
+### RECOMMENDATION (next experiments)
+
+- A) Productionize Stage B for thin-ridge styles ONLY, behind a default-off flag, gated to the R2 defect
+  list (exclude smooth/accept styles). Stage B is watertight, tri-efficient, kills feature-adjacent slivers,
+  and makes GothicArches near-CAD-grade ON AVERAGE in true-3D. Report it on the TRUE-3D metric, not radial.
+- B) Switch the acceptance metric from radial crestValleyRetention to true-3D for near-vertical styles —
+  the radial crest under-shoot is provably overstated (radOvr 7-27x) on risers/cliffs; ArtDeco is already
+  3D-CAD-grade and should be ACCEPT/EXCLUDE, not a conforming target.
+- C) Improve Stage-B recovery completeness (the 17% failed multi-edge segments): replace the greedy
+  single-direction flip with the textbook "collect all crossings, flip in order" recovery — should lift
+  recovery from ~83% toward ~100% and tighten the GothicArches true-3D max further.
+- D) Fix the pre-existing kernel non-manifold (Finding 5) as its own task: enable guardManifold by default.
+- E) For the irreducible thin-ridge cusp (Finding 4): accept + document (true-3D 0.4mm worst on an
+  infinitely-thin C0 ridge is at/near the radial-metric noise floor; not closeable by more vertices/edges).
+
+Files (dev-only, research/ — NOT committed, NOT touching src/ or the default kernel path):
+- research/bridge/featureConformingMesh.ts — Stage A buildFeatureConformingMesh + Stage B
+  buildFeatureConformingMeshB: dense-loci extraction (buildFeatureTruth) -> perpendicular extremum refinement
+  on raw rA (golden-section) -> mm-grid snap-dedupe + seam-twin -> kernel injection (+ constraint pairs for B).
+- research/bridge/constraintRecovery.ts (+ .test.ts, 4 unit tests green) — locked-Lawson constrained-edge
+  recovery over Delaunator halfedges (vertex-fan walk, periodic-seam-aware, manifold-safe give-up).
+- research/bridge/inhouseMetricMesh.ts — opt-in NO-OP hooks: injectedPoints, pinInjected,
+  constraintEdges, + flipHE guardManifold/isLocked. Default path BYTE-IDENTICAL (fingerprint
+  idxHash=948740756 unchanged, _kernel_noop.test.ts).
+- research/bridge/surfaceSmoothing.ts — opt-in pinned set (no-op when absent).
+- Evidence runners: featureConformingMesh.test.ts (PF_FEATCONF), _kernel_noop.test.ts (PF_NOOP),
+  _probe_loci.test.ts (PF_PROBE_LOCI).
