@@ -429,6 +429,17 @@ the metric `M = g/h₃D²` — "even in the metric" = "even on the 3D surface", 
   instruments: `perpendicular3DDeviation` (3D chord) + `triangleQualityDistribution` (3D angles). Metric blind
   spots found: `%<20°` DILUTES under refinement, chord-p99 is BLIND to under-tessellation, RMS is STRADDLE-MASKED
   on crease styles — score slivers by minAngle, fidelity by RMS/coverage with crease exclusion (or the 3D render).
+- **RENDER-ARTIFACT TRAP (2026-06-30, commit 8573255):** "relief is MISSING / has big chunks gone" when eyeballing
+  these meshes is almost always a **SMOOTH-SHADING artifact, not a mesh defect** — `flatShading:false` +
+  `computeVertexNormals` averages normals across sharp near-C0 grooves and visually fades them. GothicArches looked
+  gutted in the smooth montage yet measured chord rms **0.0066mm**/max 0.29 at 2.06M; flat-shaded the grooves are
+  complete. **ALWAYS flat-shade sharp relief when inspecting** (the smooth montage under-sold ALL 20 styles). STLs
+  carry true geometry (per-face normals) so slicers render correctly regardless. Added a `chordTolMm` **fidelity
+  guard** to `inhouseMetricMesh.ts` (default-off / byte-identical when unset): splits any triangle whose DIRECT
+  facet→surface chord-sag (`chordSag`, sampled on the true surface — robust to the band-limited grid-curvature
+  aliasing that would silently drop genuinely-thin relief) exceeds tol. Cheap insurance for sharp/thin styles.
+  Spec: `docs/superpowers/specs/2026-06-30-gothic-relief-diagnosis.md`. Render scripts (scratchpad,
+  flat-shaded): `surfMontageBin.cjs` / `surfZoomBin.cjs`.
 
 ---
 
