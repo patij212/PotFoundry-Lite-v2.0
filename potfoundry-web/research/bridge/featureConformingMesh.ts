@@ -25,9 +25,10 @@
 // (loci, same as the harness), runStyle (radius fn). Does NOT modify any src/ file or the default kernel path.
 
 import { buildInhouseMetricMesh, type InhouseMeshOpts, type InhouseMesh } from './inhouseMetricMesh';
-import { buildFeatureTruth } from './featureLocalizedFidelity';
+import { buildFeatureTruth, type FeatureTruth } from './featureLocalizedFidelity';
 import type { StyleDims } from './runStyle';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
+import type { FeatureLine } from '../../src/renderers/webgpu/parametric/conforming/FeatureLineGraph';
 import type { StyleId, StyleOptions } from '../../src/geometry/types';
 
 const TAU = 2 * Math.PI;
@@ -190,10 +191,19 @@ export interface FeatureConformBResult extends FeatureConformResult {
  *
  * @param tFilter optional [tMin,tMax] to restrict constraints to a t-band (mechanism prototype: isolate one
  *                ridge region to keep the O(constraints·tris) recovery tractable on a small mesh).
+ * @param lineFilter optional per-line predicate (line, index) ⇒ conform-this-locus? This is the SHARP-FEATURE
+ *                GATE hook (E-2026-06-30-FEAT-CONFORM-ALL20 Task 2): the measured gate passes a keep-mask so
+ *                ONLY the loci the baseline metric mesh actually under-resolves become constraints. When
+ *                absent, every line (subject to constrainLabels/tFilter) is conformed — the spike behaviour.
+ *                A `truth` may be supplied to reuse loci already extracted by the gate (avoids re-extraction).
  */
 export function buildFeatureConformingMeshB(
   styleId: StyleId, params: StyleOptions, dims: StyleDims,
-  opts: InhouseMeshOpts & FeatureConformOpts & { tFilter?: [number, number]; constrainLabels?: string[] },
+  opts: InhouseMeshOpts & FeatureConformOpts & {
+    tFilter?: [number, number]; constrainLabels?: string[];
+    lineFilter?: (line: FeatureLine, index: number) => boolean;
+    truth?: FeatureTruth;
+  },
 ): FeatureConformBResult {
   const rA = buildRadiusFnLocal(styleId, params, dims);
   const H = dims.H;
@@ -203,8 +213,9 @@ export function buildFeatureConformingMeshB(
   const pin = opts.pin ?? true;
   const tFilter = opts.tFilter;
   const labelSet = opts.constrainLabels ? new Set(opts.constrainLabels) : undefined;
+  const lineFilter = opts.lineFilter;
 
-  const truth = buildFeatureTruth(styleId, params, dims, truthRes);
+  const truth = opts.truth ?? buildFeatureTruth(styleId, params, dims, truthRes);
   const uToMm = truth.uToMm, tToMm = H;
   const ref = makeRefiner(rA, H, uToMm, tToMm, searchHalfMm);
   const dedupeMm = opts.dedupeMm ?? injectStepMm / 2;
@@ -214,8 +225,9 @@ export function buildFeatureConformingMeshB(
   const constraintSeen = new Set<number>(); // dedupe constraint pairs too (a snap-collapsed pair can repeat)
   let moveSum = 0, moveN = 0;
 
-  for (const line of truth.lines) {
-    if (labelSet !== undefined && !labelSet.has(String(line.label ?? ''))) continue;
+  truth.lines.forEach((line, lineIdx) => {
+    if (labelSet !== undefined && !labelSet.has(String(line.label ?? ''))) return;
+    if (lineFilter !== undefined && !lineFilter(line, lineIdx)) return; // SHARP GATE: skip un-gated loci
     const pts = line.points;
     for (let i = 0; i + 1 < pts.length; i++) {
       const u0 = pts[i].u, u1 = pts[i + 1].u, t0 = pts[i].t, t1 = pts[i + 1].t;
@@ -247,7 +259,7 @@ export function buildFeatureConformingMeshB(
         prevPos = pos;
       }
     }
-  }
+  });
 
   const injected = dd.points;
   if (opts.profile === true) {

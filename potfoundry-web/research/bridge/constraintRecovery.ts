@@ -6,21 +6,31 @@
 // ACROSS it (the residual that vertex-injection alone, Stage A, cannot fix on thin wandering ridges —
 // MEASURED: GothicArches true-3D p99 only −44% from injection; density-along-line made it WORSE).
 //
-// Approach (textbook segment-constraint insertion):
+// Approach (textbook CROSSING-CHAIN segment-constraint insertion — Sloan 1993 / de Berg ch.9 / Shewchuk):
 //   For each constraint (p,q):
 //     if the edge p–q already exists → lock it.
-//     else repeatedly find the triangle edge that the segment p–q crosses and FLIP it (when the quad is
-//     convex) until p–q appears, then lock it. Edges already locked are never flipped (would un-recover a
-//     previously inserted constraint), and the in-circle/optimization flips that follow also skip locked edges.
+//     else (1) WALK the triangle strip from p toward q, collecting the ORDERED list of all triangle edges the
+//     segment p–q crosses; (2) resolve the crossings by Lawson flips — repeatedly pick a CROSSING edge whose
+//     two adjacent triangles form a strictly convex quad and flip it; the flipped diagonal either no longer
+//     crosses p–q (drop it) or still crosses (re-queue it). Edges whose quad is momentarily non-convex are
+//     deferred — a convex flip of a neighbour eventually makes them convex (the classic worklist). When the
+//     list empties, p–q exists → lock it.
+//   This is the upgrade over the prior GREEDY single-direction walk (which only ever flipped edges in p's
+//   immediate fan and GAVE UP — recoveryFailed — the moment the next crossing was deep in the strip, not
+//   incident to p; MEASURED 83% recovery on GothicArches). The crossing-chain walk reaches the whole chain
+//   ⇒ ~100% (E-2026-06-30-FEAT-CONFORM-ALL20). Edges already LOCKED are never flipped (they would un-recover
+//   a previously inserted constraint); a crossing chain blocked by a locked edge or a collinear vertex ON the
+//   segment is the only remaining give-up (manifold-safe).
 //
 // Periodic u: the mesh wraps at the u-seam. We operate in a per-segment LOCAL u-frame: both endpoints and any
 // candidate vertex are shifted into the segment's [umin-0.5, umin+0.5] band (shortest-image) so the 2D
 // orientation predicates are well-defined across the seam. This mirrors the locator's straddle normalization.
 //
-// HONEST limitation: a plain flip-only recovery cannot insert a constraint whose span is blocked by a vertex
-// lying ON the segment, or by a non-convex flip chain; such constraints are LEFT un-recovered and counted
-// (recoveryFailed). The kernel proceeds with whatever was recovered — a partial constraint set still pins most
-// of the ridge. We report the recovery rate so the measurement is honest about how complete Stage B was.
+// HONEST limitation: a crossing chain that is blocked by a LOCKED edge, or by a vertex lying exactly ON the
+// segment (collinear), is LEFT un-recovered and counted (recoveryFailed). The kernel proceeds with whatever
+// was recovered — a partial constraint set still pins most of the ridge. We report the recovery rate so the
+// measurement stays honest. The walk NEVER corrupts the mesh: every flip is convexity-checked and the
+// give-up path simply stops.
 
 const TAU = 2 * Math.PI;
 
@@ -121,60 +131,113 @@ export function recoverAndLockEdges(
     return found;
   };
 
+  // --- Geometry helpers in a per-segment LOCAL u-frame (anchored at p; shortest-image across the seam). ---
+  // Does segment p→q strictly cross the far-edge (b,c) of a triangle? (proper crossing, q-corner excluded.)
+  const wx = (v: number, uRef: number): number => wrapU(uv[2 * v], uRef);
+  const wy = (v: number): number => uv[2 * v + 1];
+
+  // Flip the shared edge of halfedge `e` iff the quad of its two triangles is strictly CONVEX (the textbook
+  // CDT crossing-edge flip — Sloan 1993 / Shewchuk). Flipping the diagonal of a convex crossing quad can
+  // never invert a triangle; the new diagonal connects the two apexes. We do NOT require the new diagonal to
+  // clear p→q (that over-strict condition stalled on long chains): a convex crossing edge always exists while
+  // crossings remain, and the resolution loop's strict crossing-count-decrease guard (below) guarantees
+  // termination. Returns true on flip. Maintains halfedges + vhe exactly like the kernel's flipHE.
+  const flipConvexCrossing = (e: number, uRef: number): boolean => {
+    const tw = halfedges[e];
+    if (tw < 0) return false;
+    if (locked.has(lockKey(triangles[e], triangles[nextHE(e)]))) return false; // never break a locked constraint
+    const eNext = nextHE(e), ePrev = prevHE(e), twPrev = prevHE(tw);
+    const pr = triangles[e], pl = triangles[eNext], ap0 = triangles[ePrev], ap1 = triangles[twPrev];
+    // convexity: the new diagonal ap0-ap1 must strictly separate pr and pl (and the old diagonal pr-pl must
+    // separate ap0 and ap1 — both hold iff the quad (pr,ap0,pl,ap1) is strictly convex).
+    const a0x = wx(ap0, uRef), a0y = wy(ap0), a1x = wx(ap1, uRef), a1y = wy(ap1);
+    const prx = wx(pr, uRef), pry = wy(pr), plx = wx(pl, uRef), ply = wy(pl);
+    const s0 = orient(a0x, a0y, a1x, a1y, prx, pry);
+    const s1 = orient(a0x, a0y, a1x, a1y, plx, ply);
+    if (s0 * s1 >= 0) return false; // ap0-ap1 does not separate pr,pl → not convex
+    const r0 = orient(prx, pry, plx, ply, a0x, a0y);
+    const r1 = orient(prx, pry, plx, ply, a1x, a1y);
+    if (r0 * r1 >= 0) return false; // pr-pl does not separate ap0,ap1 → not convex (reflex quad)
+    triangles[e] = ap1; triangles[tw] = ap0;
+    const hbl = halfedges[twPrev], har = halfedges[ePrev];
+    linkHE(halfedges, e, hbl);
+    linkHE(halfedges, tw, har);
+    linkHE(halfedges, ePrev, twPrev);
+    const t0 = e - (e % 3), t1 = tw - (tw % 3);
+    setVhe(t0); setVhe(t0 + 1); setVhe(t0 + 2);
+    setVhe(t1); setVhe(t1 + 1); setVhe(t1 + 2);
+    return true;
+  };
+
+  // Collect the ORDERED chain of halfedges (each the LOWER-id representative of an undirected edge) that the
+  // segment p→q crosses, by walking the triangle strip from p toward q. Returns null if the walk is blocked
+  // by a vertex lying ON the segment (collinear) or runs off a boundary (manifold-safe give-up).
+  const collectCrossings = (p: number, q: number, uRef: number): number[] | null => {
+    const px = wx(p, uRef), py = wy(p), qx = wx(q, uRef), qy = wy(q);
+    // 1) starting triangle: the one in p's fan whose FAR edge (b,c) the segment p→q crosses.
+    let startFar = -1;
+    forEachOutgoing(p, (e) => {
+      const farE = nextHE(e);
+      const b = triangles[farE], c = triangles[nextHE(farE)];
+      if (b === q || c === q) return false; // q is an immediate neighbour — edge would already exist
+      if (segCross(px, py, qx, qy, wx(b, uRef), wy(b), wx(c, uRef), wy(c))) { startFar = farE; return true; }
+      return false;
+    });
+    if (startFar < 0) return null; // q collinear with a fan edge, or no clean entry → give up
+    const chain: number[] = [];
+    let cur = startFar;
+    for (let guard = 0; guard < maxFlipsPerEdge * 4; guard++) {
+      chain.push(cur);
+      const tw = halfedges[cur];
+      if (tw < 0) return null; // ran off the boundary before reaching q (shouldn't happen for interior q)
+      // The triangle across `cur` has apex = the vertex opposite the shared edge.
+      const apexE = prevHE(tw); // halfedge whose origin is the apex of the far triangle
+      const apex = triangles[apexE];
+      if (apex === q) return chain; // reached q — the strip ends at this triangle
+      // The far triangle's three edges are: the entry edge (== `tw`, undirected) and the two edges incident to
+      // the apex. The exit is whichever apex-incident edge the segment p→q crosses next. apexE's origin is the
+      // apex, so apexE (apex→next) and prevHE(apexE) (prev→apex) are the two candidates; the entry edge is the
+      // third (nextHE(apexE)) and is never re-crossed.
+      const exitA = apexE;             // apex → next
+      const va = triangles[exitA], vb = triangles[nextHE(exitA)];
+      if (segCross(px, py, qx, qy, wx(va, uRef), wy(va), wx(vb, uRef), wy(vb))) { cur = exitA; continue; }
+      const exitC = prevHE(apexE);     // prev → apex
+      const vc = triangles[exitC], vd = triangles[nextHE(exitC)];
+      if (segCross(px, py, qx, qy, wx(vc, uRef), wy(vc), wx(vd, uRef), wy(vd))) { cur = exitC; continue; }
+      return null; // segment passes through the apex vertex (collinear) → give up, manifold-safe
+    }
+    return null; // guard tripped (degenerate) → give up
+  };
+
   for (let ci = 0; ci + 1 < constraints.length; ci += 2) {
     const p = constraints[ci], q = constraints[ci + 1];
     if (p === q || p < 0 || q < 0 || p >= nVerts || q >= nVerts) continue;
     if (edgeExists(p, q)) { locked.add(lockKey(p, q)); alreadyPresent++; continue; }
 
-    // local u-frame anchored at p (shortest-image across the seam)
-    const uRef = uv[2 * p];
-    const px = wrapU(uv[2 * p], uRef), py = uv[2 * p + 1];
-    const qx = wrapU(uv[2 * q], uRef), qy = uv[2 * q + 1];
+    const uRef = uv[2 * p]; // local u-frame anchored at p (shortest-image across the seam)
 
-    let ok = false;
-    for (let iter = 0; iter < maxFlipsPerEdge; iter++) {
+    // CROSSING-CHAIN recovery (Sloan): re-collect the crossing chain, flip ONE convex crossing edge, repeat.
+    // We scan the live chain and flip the first CONVEX crossing edge; flipping any convex crossing edge is
+    // always safe (no inversion). To guarantee termination we require the crossing COUNT to make net
+    // progress: we allow a flip that does not immediately shrink the chain (a convex flip whose new diagonal
+    // still crosses), but if the chain length fails to reach a new minimum within `stallCap` flips we give up
+    // (manifold-safe). On a convex crossing region the chain provably drains to 0; the guard only trips on a
+    // pathological/degenerate locus (e.g. a vertex ON the segment), which is left un-recovered + counted.
+    let ok = edgeExists(p, q);
+    let bestLen = Infinity, sinceImprove = 0;
+    const stallCap = 4;
+    for (let outer = 0; outer < maxFlipsPerEdge * 8 && !ok; outer++) {
+      const chain = collectCrossings(p, q, uRef);
+      if (chain === null || chain.length === 0) break; // blocked / collinear / done → give up cleanly
+      if (chain.length < bestLen) { bestLen = chain.length; sinceImprove = 0; } else if (++sinceImprove > stallCap) break;
+      let flippedAny = false;
+      for (const e of chain) {
+        if (flipConvexCrossing(e, uRef)) { totalFlips++; flippedAny = true; break; } // re-collect on the mutated mesh
+      }
       if (edgeExists(p, q)) { ok = true; break; }
-      // Find, in p's outgoing fan, the triangle whose FAR edge (opposite p) crosses segment p→q, then flip
-      // that far edge. (Standard CDT walk — the first crossed edge always lies in the fan of p.)
-      let flipE = -1;
-      forEachOutgoing(p, (e) => {
-        // triangle of halfedge e = (p, b, c) with b=triangles[nextHE(e)], c=triangles[prevHE(e)].
-        const farE = nextHE(e); // halfedge b→c, the edge opposite p
-        const b = triangles[farE], c = triangles[nextHE(farE)];
-        if (b === q || c === q) return false; // q is a corner — edge p-q will appear by another flip
-        const bx = wrapU(uv[2 * b], uRef), by = uv[2 * b + 1];
-        const cx = wrapU(uv[2 * c], uRef), cy = uv[2 * c + 1];
-        if (segCross(px, py, qx, qy, bx, by, cx, cy)) { flipE = farE; return true; }
-        return false;
-      });
-      if (flipE < 0) break; // no crossing edge in p's fan → give up (non-convex / blocked)
-      const tw = halfedges[flipE];
-      if (tw < 0) break;
-      if (locked.has(lockKey(triangles[flipE], triangles[nextHE(flipE)]))) break; // would break a constraint
-      // Quad = the two triangles sharing flipE. Apexes:
-      const e = flipE;
-      const eNext = nextHE(e), ePrev = prevHE(e), twPrev = prevHE(tw);
-      const pr = triangles[e], pl = triangles[eNext], ap0 = triangles[ePrev], ap1 = triangles[twPrev];
-      // convexity: new diagonal ap0-ap1 must separate pr and pl
-      const a0x = wrapU(uv[2 * ap0], uRef), a0y = uv[2 * ap0 + 1];
-      const a1x = wrapU(uv[2 * ap1], uRef), a1y = uv[2 * ap1 + 1];
-      const prx = wrapU(uv[2 * pr], uRef), pry = uv[2 * pr + 1];
-      const plx = wrapU(uv[2 * pl], uRef), ply = uv[2 * pl + 1];
-      const s0 = orient(a0x, a0y, a1x, a1y, prx, pry);
-      const s1 = orient(a0x, a0y, a1x, a1y, plx, ply);
-      if (s0 * s1 >= 0) break; // not convex → cannot flip
-      // perform the flip (relink identical to flipHE)
-      triangles[e] = ap1; triangles[tw] = ap0;
-      const hbl = halfedges[twPrev], har = halfedges[ePrev];
-      linkHE(halfedges, e, hbl);
-      linkHE(halfedges, tw, har);
-      linkHE(halfedges, ePrev, twPrev);
-      // repair vhe for every halfedge in the two rewritten triangles
-      const t0 = e - (e % 3), t1 = tw - (tw % 3);
-      setVhe(t0); setVhe(t0 + 1); setVhe(t0 + 2);
-      setVhe(t1); setVhe(t1 + 1); setVhe(t1 + 2);
-      totalFlips++;
+      if (!flippedAny) break; // no convex crossing edge anywhere → give up cleanly (degenerate)
     }
+
     if (ok || edgeExists(p, q)) { locked.add(lockKey(p, q)); recovered++; }
     else recoveryFailed++;
   }

@@ -719,13 +719,15 @@ export interface FeatureLineChord3DResult {
  */
 export function featureLineChord3D(
   truth: FeatureTruth, locator: PointLocator, mesh: MeshUt, rA: AnalyticRadiusFn, H: number,
-  stepMm: number, sameParamP99 = 0,
+  stepMm: number, sameParamP99 = 0, cellROverride?: number,
 ): FeatureLineChord3DResult {
   const { xyz, indices } = mesh;
   // Cell radius for neighborhood: aim for ~1mm radius. cellSize is in (u,t) units;
   // we need to cover ~1mm / uToMm in u and ~1mm / H in t. A safe fixed cellR=4 on a
   // 256-cell grid is (4/256 in u) × uToMm mm ≈ 4–6mm, well within the triangle density.
-  const cellR = 4;
+  // cellROverride lets a caller trade radius for speed on dense meshes (the nearest tri is
+  // typically within 2–3 cells at high density); default 4 keeps existing callers identical.
+  const cellR = cellROverride ?? 4;
 
   const devs: number[] = [];
   let missed = 0;

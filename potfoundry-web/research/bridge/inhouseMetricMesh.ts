@@ -52,6 +52,16 @@ export interface InhouseMeshOpts {
    * injectedPoints (the pair positions index into it). Reports recovery stats via the returned `constraint`.
    */
   constraintEdges?: number[];
+  /**
+   * OPT-IN manifold guard for the DEFAULT (non-injection) path (DEV/LAB only). The kernel's optimization-sweep
+   * flips create NON-MANIFOLD edges on sharp/near-vertical styles at default settings (MEASURED, E-2026-06-30-
+   * FEAT-CONFORM-SPIKE Finding 5: ArtDeco 181, GothicArches 24 non-manifold edges) — flipHE requests a diagonal
+   * flip that DUPLICATES an existing edge. When true, BOTH the post-Delaunay flip AND the sweep flips use the
+   * guardManifold (reject a flip whose new diagonal already exists). STRICT NO-OP when absent/false: the default
+   * path stays byte-identical (verified by the no-op fingerprint). The injection path always guards regardless.
+   * Task 4: enabling this FIXES the pre-existing non-manifold defect; it CHANGES output ONLY on the buggy styles.
+   */
+  guardManifoldAlways?: boolean;
 }
 export interface ConstraintRecoveryStats { requested: number; alreadyPresent: number; recovered: number; failed: number; flips: number; }
 export interface InhouseMesh { ut: number[]; indices: Uint32Array; points: number; rounds: number; hitBudget: boolean; constraint?: ConstraintRecoveryStats; }
@@ -279,10 +289,16 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
     if (hitBudget || added === 0) { rounds++; break; }
   }
 
+  // OPT-IN: force the manifold guard on the DEFAULT (non-injection) path too (Task 4). The injection path
+  // always guards (guardMan below). When guardManifoldAlways is set, the final flip + sweep flips reject any
+  // flip whose new diagonal already exists, fixing the pre-existing kernel non-manifold defect. STRICT NO-OP
+  // when false (the flips run exactly as before → byte-identical default).
+  const guardAlways = opts.guardManifoldAlways === true;
+
   // final connectivity + optimization sweeps (relocate on the surface, then re-flip to the true-3D Delaunay).
   // Smoothing moves vertices but NOT connectivity, so the halfedge structure stays valid across sweeps.
   let z = now(); const dF = new Delaunator(scaledCoords()); tris = dF.triangles; const heF = dF.halfedges; tDel += now() - z;
-  z = now(); flipHE(tris, heF, computeXYZ(), uv, 4); tFlip += now() - z;
+  z = now(); flipHE(tris, heF, computeXYZ(), uv, 4, undefined, undefined, guardAlways); tFlip += now() - z;
 
   // OPT-IN Stage-B: recover + lock the constraint edges on the final triangulation, BEFORE the optimization
   // sweeps, so the locus becomes a real mesh edge and the locked-flip guard keeps it. STRICT NO-OP when
@@ -310,8 +326,9 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
 
   // The optimization sweeps re-flip on a PINNED (non-Delaunay) configuration when feature points are injected,
   // which can request a flip that duplicates an existing edge → non-manifold. Guard those flips against
-  // creating a duplicate edge ONLY on the injection path (default path stays byte-identical).
-  const guardMan = inj !== undefined && inj.length >= 2;
+  // creating a duplicate edge on the injection path (always) OR when guardManifoldAlways is set (Task 4 —
+  // fixes the DEFAULT-path non-manifold defect on sharp styles). Default path stays byte-identical.
+  const guardMan = (inj !== undefined && inj.length >= 2) || guardAlways;
   let cur = uv.slice();
   for (let k = 0; k < sweeps; k++) {
     z = now(); cur = smoothSurfaceOnRadial(cur, tris, rA, H, { iterations: 3, relax: 0.5, pinned: pinnedInjected }); tSmooth += now() - z;
