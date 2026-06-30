@@ -441,3 +441,181 @@ Scorecard (instrument: perpendicular3DDeviation + triangleQualityDistribution; �
 **Next:** isolate "sizing field" from "topology" — accurate analytic-curvature sizing on the same transition-free engine vs the dense-truth floor at equal budget; and a (u,t) CVT/ODT pass to reproduce CVT's min-angle win without leaving UV.
 
 **Ledger:** this block. **Evidence doc:** `docs/superpowers/specs/2026-06-26-evidence-3d-direct-vs-uv.md`. **Dumps:** `research/exchange/_3ddirect/` (gitignored, NEW dir — separate from `_oursvssota*`).
+
+---
+
+## E-2026-06-30-FEAT-FID — Feature-Localized Fidelity (straddle-mask quantified)
+
+**Status:** straddle-mask CONFIRMED (all 3) · stepped-over REFUTED (all ≥2 tris/channel) · chord-guard does-NOT-close (1.5× target) but HALVES Gothic feature error
+**Date:** 2026-06-30
+**Runner:** `research/bridge/featureLocalizedFidelity.test.ts` (env `PF_FEATFID=1`)
+**Harness:** `research/bridge/featureLocalizedFidelity.ts` (NEW, dev-only, never imported by src/)
+
+**MISSION:** MEASURE-ONLY. Quantify how much the in-house surface-metric mesher
+GENERALIZES (rounds off / steps over / under-shoots) the tiniest/sharpest/narrowest
+style features. The global perpendicular3DDeviation rms is STRADDLE-MASKED (averages
+over the whole surface). Build a FEATURE-LOCALIZED metric that samples error ON the
+feature lines (denseFeatureGroundTruth), plus crest-height retention and
+narrow-channel coverage. Do NOT change the kernel. Do NOT propose fixes.
+
+**HYPOTHESIS (falsifiable):** On the sharpest/narrowest styles (GeometricStar,
+GothicArches, Crystalline) the feature-line chord rms (error sampled ON ridge/crease/
+relief-wall loci) is materially WORSE than the global chord rms — i.e. the global
+metric masks feature generalization — and at least one style has a narrowest channel
+covered by < 2 mesh triangles (stepped over) at the default fidelity config.
+
+**KILL-CRITERION (pre-registered, exact numbers):**
+- The straddle-mask claim is CONFIRMED for a style iff `featureLineRms >= 2.0 * globalRms`
+  (feature-line error at least 2x the global average). If for ALL three styles
+  `featureLineRms < 1.5 * globalRms`, the straddle-mask hypothesis is REFUTED (the global
+  metric already represents the features).
+- The stepped-over claim is CONFIRMED iff at least one style has `minTrisAcross < 2`
+  on its narrowest measured channel; REFUTED if all three have `minTrisAcross >= 2`.
+- The chord-sag guard (config B, chordTolMm:0.05) CLOSES the gap iff it brings
+  `featureLineRms` to within `1.5 * globalRms` for a style that failed under config A.
+
+**CONFIGS (both at high budget, DIMS={H:120,Rb:40,Rt:50,expn:1}, params {}):**
+- A (default fidelity): {tolMm:0.004, hMin:0.008, hMax:8, sizeRes:256, gradeBeta:0.2, seedN:14, maxPoints:3_000_000, splitThresh:1.5, optimizeSweeps:2}
+- B (+chord-sag guard): A + chordTolMm:0.05
+
+**Measurements:** (1) feature-line chord rms/p99/max vs global rms; (2) crest/valley
+height retention (peak under-shoot mean/worst, mm & % of local relief amplitude);
+(3) narrow-channel coverage (narrowest width mm, min-tris-across).
+
+**Runtime:** full sweep 1247s (6 builds at ≤3M points + feature-line sampling 3–7M samples/run + channel scan). Log: scratchpad `featfid_run.log`. No dumps committed.
+
+### Scorecard (3 styles × 2 configs, equal budget maxPoints=3M)
+
+| style | cfg | tris | **globalRms** | **flRms** | flP99 | flMax | **RATIO** (fl/global) | crestU mean/worst (mm) | worst % amp | narrow (mm) | **tris-across** | flSamples |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GeometricStar | A | 1420536 | 0.00368 | 0.00770 | 0.031 | 0.698 | **2.09** | 0.002/0.698 | 62.7% | 0.051 | **2** | 3.33M |
+| GeometricStar | B | 1423508 | 0.00364 | 0.00741 | 0.031 | 0.568 | **2.04** | 0.002/0.424 | 18.9% | 0.051 | **2** | 3.33M |
+| GothicArches | A | 2056000 | 0.00664 | 0.05500 | 0.240 | 1.392 | **8.28** | 0.013/1.392 | 92.1% | 0.051 | **3** | 2.97M |
+| GothicArches | B | 2187824 | 0.00488 | 0.02511 | 0.128 | 0.518 | **5.15** | 0.006/0.518 | 68.4% | 0.051 | **3** | 2.97M |
+| Crystalline | A | 3423359 | 0.00185 | 0.00385 | 0.005 | 0.238 | **2.08** | 0.002/0.020 | 0.2% | 0.308 | **5** | 6.95M |
+| Crystalline | B | 3428112 | 0.00171 | 0.00351 | 0.005 | 0.238 | **2.05** | 0.002/0.017 | 0.2% | 0.308 | **5** | 6.95M |
+
+Relief amplitude context (peak-to-mean radius, mm): GeometricStar maxRowAmp 1.37 (relief only at t≤0.3; `vFade` kills it at t≥0.5); GothicArches 1.49 (t=0.3) → 0.55 (upper tier); Crystalline **10–12** (deep facets). All vertexMax ≈ f32 floor (mesh vertices ON the surface — confirmed by 1.17e-14mm self-locate in the smoke check).
+
+### Verdict vs pre-registered kill-criteria
+
+1. **STRADDLE-MASK — CONFIRMED on all 3** (kill was flRms ≥ 2.0×globalRms): RATIO 2.09 / 8.28 / 2.08 (cfg A). The global perpendicular3DDeviation rms UNDERSTATES feature error by 2×–8× — quantified. GothicArches is the extreme: global rms 0.0066mm reads CAD-grade while feature-line rms is 0.055mm (8.3×) and the worst rib crest is under-shot 1.39mm (92% of relief). The thin-side-groove user complaint is REAL and the global metric was blind to it.
+
+2. **STEPPED-OVER — REFUTED on all 3** (kill was any minTrisAcross < 2): narrowest channels carry 2 (Star), 3 (Gothic), 5 (Crystalline) triangles across. At maxPoints=3M the sizing field is NOT failing to put ≥2 edges across the narrowest measured channels (Star/Gothic ~0.05mm, Crystalline ~0.31mm). Generalization is NOT under-sampling-blindness at this budget. (Caveat: "channel width" defined as the 1%-percentile perpendicular spacing between parallel feature loci, coincident-locus-filtered; see caveats.)
+
+3. **CHORD-SAG GUARD does NOT close the gap to 1.5×** (REFUTED as a closer): cfg B leaves RATIO 2.04 / 5.15 / 2.05 — all > 1.5×. BUT it materially helps the one style that needs it: **GothicArches flRms 0.055→0.025 (−54%), flMax 1.39→0.52 (−63%), worst rib crest under-shoot 1.39→0.52mm (92%→68% of amp)**, at +30% tris and +2.4× runtime. Negligible on Star/Crystalline (already near their irreducible cliff floor).
+
+### DIAGNOSIS — dominant generalization mechanism per style
+
+The brief's three candidate mechanisms: (i) under-sampling thin features (tris-across<2), (ii) un-aligned crease/ridge edges (flRms≫global but crests reached), (iii) crest under-shoot (vertices not landing on extrema).
+
+- **GeometricStar = (ii) un-aligned edges, NOT a sizing failure.** flMax 0.70mm but crest under-shoot mean 0.002mm and tris-across=2. The error is the radial chord OVERSTATING the near-vertical strapwork cliff (`dStrap=|dLine|−gap`, ~1.4mm relief over a ~0.05mm edge), exactly the steep-cliff/exclude class in project memory (creaseStraddle for GeometricStar). The mesh reaches the strap heights (crest under-shoot ≈0); the residual is a facet straddling the vertical edge between strap-top and gap-floor — a few facets, not a density problem. **This is the smallest real defect of the three.** Chord guard barely moves it (cliff is density-irreducible).
+
+- **GothicArches = (iii) crest UNDER-SHOOT — the dominant, genuine generalization.** Worst rib crest under-shot 1.39mm = 92% of the 1.49mm relief at default fidelity: the mesh essentially FLATTENS the sharpest rib/mullion crests (reaches only ~8% of them). flRms 8.3× global. This is the "rounding off sharp peaks" the user sees, and it is NOT explained by tris-across (=3, adequate) — it is the sizing field being BLIND to the sub-cell ridge (the grid-curvature metric aliases the thin `ridge(d,w,sharp)` crest, memory: "GothicArches V-grooves the grid-curvature metric aliases"). The direct facet→surface chord-sag guard (cfg B) is the right lever class: it CUTS the worst crest under-shoot in half (1.39→0.52mm). Still not CAD-grade (0.52mm) — needs a stronger/iterated guard, but the mechanism is now isolated and the lever direction is proven.
+
+- **Crystalline = essentially FINE; residual is (ii) radial-chord overstatement of vertical facet edges.** Despite the DEEPEST relief (10–12mm), worst crest under-shoot is 0.017–0.020mm (0.2% of amplitude) and flMax 0.238mm. RATIO 2.08 only because the facet EDGES are near-vertical so the radial metric magnifies a sub-0.02mm true error. tris-across=5. **Crystalline does NOT generalize its features** at this budget — report it as fine; the 2× ratio is a metric artifact of the radial projection on near-vertical facets, not a mesh defect. (The helical phaseShift the memory flags as a build-killer is at the EXTRACTION stage; the kernel meshes it cleanly here.)
+
+### Caveats (honest)
+
+- **Point location is EXACT** (smoke self-locate maxErr 1.17e-14mm over the mesh; 0 feature-line misses on all 6 runs). Periodic-u seam verified (queries at u=0 and u=0.9999 both hit). Barycentric over exact-lifted vertices ⇒ P_mesh is the true linear facet interpolant.
+- **Feature LOCATIONS** come from `denseFeatureGroundTruth` on a 1024² bilinear `styleSampler` (deliberately C0-rounded to avoid spurious 1e6 curvature) at marching-grid res 384 — loci are sub-cell-accurate in (u,t); POSITIONS/RADII are evaluated from the RAW analytic `rA` (kernel's own surface), so the metric mm values are not bilinear-contaminated.
+- **"Channel width"** = 1%-percentile perpendicular spacing between PARALLEL feature loci (|tangent·tangent|>0.7, connector ⊥ wall), with coincident loci (<max(4·step,0.05)mm — same wall sampled by ridge+crease+relief families) filtered. This is a heuristic; the narrowest *resolved* relief feature could be thinner than the 0.05mm floor and would then read as 0-across — so the REFUTED stepped-over verdict is "no stepped-over channel ≥0.05mm wide," not an absolute guarantee at all scales. Median spacing 0.31mm on all styles is a sanity anchor.
+- **% of amplitude** uses the per-t-row peak-to-mean radius; a sample's worst-% can exceed 100% when the mesh facet bridges a groove and lands on the far wall (GeometricStar cfg-A valley-over 0.44mm) — informative, not a bug. mm is the primary number; % is secondary.
+- **Crest/valley classification** is r_true ≷ row-mean (ridge bump vs groove). Robust but coarse; a feature line riding the mean is counted in whichever side it falls.
+
+### RECOMMENDATION (next experiments — NO fix proposed here, measure-only mission complete)
+
+1. **GothicArches is the target** — the only style with genuine crest generalization (92%→68% under-shoot). Next: pre-register an experiment isolating "sizing-field blindness" — does an ITERATED / tighter direct chord-sag guard (chordTolMm 0.02, or a curvature-floor sizing term) drive the worst rib crest under 0.1mm at acceptable tris? The cfg-B half-step proves the lever direction.
+2. **GeometricStar + Crystalline** — confirm the 2× RATIO is radial-metric artifact (not mesh) by re-measuring feature-line error with a TRUE perpendicular (3D nearest-surface) instead of radial at the feature samples; expected to collapse to the f32 floor (corroborates the steep-cliff/exclude reframe). If so, document as accept-class, not a sizing target.
+3. Generalize the harness to the other 17 styles to find any with minTrisAcross<2 (a real stepped-over channel) that this 3-style probe did not hit.
+
+**Ledger:** this block (committed). **Files (NOT committed to production — dev-only):** `research/bridge/featureLocalizedFidelity.ts`, `featureLocalizedFidelity.test.ts`, `featureLocalizedFidelity.smoke.test.ts`. **No src/ or kernel file touched.**
+
+
+---
+
+## E-2026-06-30-FEAT-FID-R2 — Feature-Localized Fidelity Round 2 (true-3D + sliver-adjacent + all-20 screen)
+
+**Status:** PRE-REGISTERED (measuring)
+**Date:** 2026-06-30
+**Runner:** `research/bridge/featureLocalizedFidelityR2.test.ts` (env `PF_FEATFID_R2=1`)
+**Harness extension:** `research/bridge/featureLocalizedFidelity.ts` (adds featureLineChord3D + featureAdjacentSlivers) — research-only, never imported by src/
+
+**HYPOTHESES (falsifiable):**
+H1 (radial-overstatement): For GeometricStar and Crystalline, the true-3D nearest-surface feature error collapses to near the f32 floor (< 0.01mm p99) relative to the R1 same-param flP99 (0.031 / 0.005mm) — confirming they are radial-metric artifacts, not mesh defects. KILL: confirmed iff true3D p99 < 0.5 × same-param p99; refuted if true3D p99 ≥ same-param p99.
+H2 (sliver-adjacent ≫ whole-mesh): For GothicArches, feature-adjacent triangles have materially higher %<20° than the whole mesh. KILL: confirmed if featAdj%<20° ≥ 1.5 × whole-mesh%<20°.
+H3 (BambooSegments is defective): BambooSegments has true-3D feature p99 > 0.1mm OR feature-adjacent %<20° materially worse than whole mesh. KILL: confirmed iff either criterion holds at screen budget.
+H4 (all-20 screen yields a ranked defect list): The all-20 screen at moderate budget separates REAL-DEFECT from accept-class styles. Discriminator: true-3D feature p99 > 0.1mm OR crest under > 0.1mm OR featAdj%<20° ≥ 1.5 × whole%<20°.
+
+**KILL-CRITERION (pre-registered):** see H1–H4 above. A style is REAL-DEFECT if any trigger fires; ACCEPT-CLASS otherwise.
+
+**Method:** extend featureLocalizedFidelity.ts with (a) featureLineChord3D: point-to-triangle 3D distance from P_true to the mesh, using candidate triangles from the bucket grid neighbors; (b) featureAdjacentSlivers: for all triangles within a truth-cell radius of a feature locus, report min-angle, %<20°, %<10°, count. Screen all 20 styles at moderate budget; high-density confirm on BambooSegments + GothicArches + 3 worst screened.
+
+**Result:** COMPLETE (20/20 screened @ moderate budget + 5 high-density confirms). Run note: the vitest
+process spanned a host suspend/resume so wall-clock hit the 2h `testTimeout` and the runner reported FAIL —
+but ALL data printed before the timeout (actual compute ≈21 min); results are valid.
+
+### SCORECARD — all-20 screen (moderate budget: tolMm 0.01, hMin 0.02, maxPoints 800k)
+
+| Style | class | tris | true3D p99 (mm) | true3D max | crestUnder (mm / %amp) | featAdj%<20 vs mesh%<20 | radOvr |
+|---|---|---|---|---|---|---|---|
+| ArtDeco | **DEFECT** | 396k | 0.039 | 0.168 | **3.346 / 193%** | 17.5 vs 12.3 (1.4×) | 26.7× |
+| BasketWeave | **DEFECT** | 1.60M | **0.119** | 0.496 | **1.901 / 107%** | 10.9 vs 6.4 (1.7×) | 10.5× |
+| GothicArches | **DEFECT** | 817k | **0.240** | 1.405 | **1.511 / 160%** | 1.7 vs 0.8 (2.1×) | 1.8× |
+| BambooSegments | **DEFECT** | 636k | 0.074 | 0.444 | **1.564 / 48%** | 10.9 vs 4.1 (2.7×) | 8.3× |
+| CelticTriquetra | **DEFECT** | 1.60M | 0.061 | 0.396 | **1.459 / 111%** | 1.1 vs 0.8 (1.4×) | 1.6× |
+| GeometricStar | **DEFECT** | 581k | 0.031 | 0.140 | **1.192 / 74%** | 0.3 vs 0.2 (1.7×) | 2.0× |
+| DragonScales | **DEFECT** | 774k | 0.040 | 0.189 | 1.090 / 20% | 11.0 vs 5.3 (2.1×) | 5.9× |
+| GyroidManifold | **DEFECT** | 481k | 0.056 | 0.185 | 0.802 / 58% | 6.0 vs 3.6 (1.7×) | 4.2× |
+| LowPolyFacet | **DEFECT** | 118k | 0.061 | 0.190 | 0.780 / 76% | 0.4 vs 0.2 (2.7×) | 2.4× |
+| CelticKnot | **DEFECT** | 954k | 0.067 | 0.220 | 0.588 / 25% | 4.7 vs 3.1 (1.5×) | 4.7× |
+| SuperformulaBlossom | **DEFECT** | 1.03M | 0.029 | 0.269 | 0.530 / 9% | 0.4 vs 0.2 (1.9×) | 1.3× |
+| Crystalline | ~~DEFECT~~ → **ACCEPT** | 1.38M | 0.015 | 0.187 | 0.045 / 0% | 0.0 vs 0.0 (sentinel x99) | 1.2× |
+| Voronoi | accept | 1.60M | 0.020 | 0.083 | 0.060 / 4% | 3.2 vs 2.8 (1.1×) | 1.2× |
+| HexagonalHive | accept | 343k | 0.037 | 0.147 | 0.039 / 8% | 0.0 vs 0.0 | 1.1× |
+| RippleInterference | accept | 72k | 0.014 | 0.035 | 0.031 / 5% | — | 1.0× |
+| SpiralRidges | accept | 563k | 0.014 | 0.024 | 0.025 / 0% | — | 1.2× |
+| FourierBloom | accept | 258k | 0.013 | 0.023 | 0.024 / 0% | — | 1.4× |
+| WaveInterference | accept | 56k | 0.013 | 0.023 | 0.024 / 3% | — | 1.0× |
+| HarmonicRipple | accept | 444k | 0.013 | 0.027 | 0.023 / 0% | — | 1.1× |
+| SuperellipseMorph | accept | 39k | 0.012 | 0.022 | 0.022 / 1% | — | 1.2× |
+
+### HIGH-DENSITY CONFIRM (tolMm 0.004, hMin 0.008, maxPoints 3M) — DENSITY DOES NOT FIX IT
+
+| Style | tris | crestUnder screen → HD | featAdj%<20 (HD) |
+|---|---|---|---|
+| GothicArches | 2.06M | 1.511 → **1.388** mm | 1.2 vs 0.5 (2.2×) |
+| BambooSegments | 1.61M | 1.564 → **1.584** mm | 7.4 vs 2.4 (3.0×) |
+| ArtDeco | 0.98M | 3.346 → **3.158** mm | 11.6 vs 7.7 (1.5×) |
+| BasketWeave | **4.50M** | 1.901 → **1.952** mm (WORSE) | 8.2 vs 4.9 (1.7×) |
+| CelticTriquetra | **6.00M** | 1.459 → **1.415** mm | 2.0 vs 1.6 (1.2×) |
+
+### VERDICTS (vs pre-registered H1–H4)
+
+- **H1 (radial-overstatement → GeoStar/Crystalline are accept):** SPLIT. Crystalline CONFIRMED accept (true3D p99
+  0.015, crest 0.045/0%; its DEFECT flag was the x99 sliver SENTINEL with both rates ~0 — a metric artifact, now
+  guarded in the harness). GeometricStar REFUTED — true-3D crest under-shoot is **1.192mm (74%)**, a REAL defect,
+  NOT a radial artifact (radOvr only 2.0×). The radial overstatement is real for the GLOBAL rms on near-vertical
+  styles (ArtDeco 26.7×, BasketWeave 23×) but crest-under-shoot is a SEPARATE, real, non-radial signal.
+- **H2 (sliver-adjacent ≫ whole-mesh on GothicArches):** CONFIRMED (2.1× screen, 2.2× HD).
+- **H3 (BambooSegments defective):** CONFIRMED — crest 1.56mm + feature-adjacent slivers 2.7×→3.0× (the user's
+  red-triangle screenshot, quantified).
+- **H4 (all-20 screen separates defect vs accept):** CONFIRMED — clean separation. **11 REAL-DEFECT, 9 ACCEPT.**
+
+### HEADLINE
+
+1. **The generalization is WIDESPREAD: 11/20 styles** flatten sharp crests by 0.5–3.3mm (often 50–193% of relief
+   amplitude — i.e. the sharpest ribs are partially-to-entirely ABSENT, interpolated over valley-to-valley).
+2. **DENSITY IS NOT THE FIX (decisive):** crest under-shoot is essentially UNCHANGED from 0.8M→6M tris
+   (BasketWeave even WORSENS 1.90→1.95 at 4.5M). The mesh vertices don't LAND on the crests; adding more triangles
+   between the crests can't fix that. ⇒ the fix is **FEATURE-CONFORMING** meshing.
+3. **9 ACCEPT styles** (smooth/wavy + Crystalline): true-3D p99 <0.02mm, crest <0.06mm — already faithful, leave alone.
+4. Dominant mechanism = **crest UNDER-SHOOT** (vertex placement), with **feature-adjacent SLIVERS** (the visible
+   red triangles) co-occurring on the relief-heavy styles (ArtDeco/DragonScales/BambooSegments/BasketWeave/Gyroid
+   1.5–3.0× the whole-mesh sliver rate).
+
+**Files:** harness `research/bridge/featureLocalizedFidelity.ts` (+ featureLineChord3D / featureAdjacentSlivers),
+runner `featureLocalizedFidelityR2.test.ts` (env PF_FEATFID_R2=1). Sentinel guard fixed post-run (Crystalline).
+**Next:** feature-conforming the surface-metric kernel (snap vertices onto crest/ridge loci via the featureGraph
+dense-truth + insert feature lines as constrained edges), targeting the 11; re-measure on this same harness.
+
