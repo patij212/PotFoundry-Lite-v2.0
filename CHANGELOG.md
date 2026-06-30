@@ -12,9 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- **CAD export quality:** Meshes are now oriented with consistent, outward-facing
+  normals (positive signed volume) for clean import into Rhino/Grasshopper.
+  Added `_orient_patch_outward` patch-orientation pass in `core/geometry.py`,
+  `tests/test_export_orientation.py` (manifold + orientation guards across all
+  styles), and `adr/0002-outward-mesh-orientation.md`.
 
 ### Fixed
 - **Critical Bug Fixes:**
+  - Mesh export was "inside-out": the bulk wall/rim patches were wound inward
+    (negative signed volume) and the two drain caps were wound inconsistently
+    with their neighbours, producing a non-orientable seam. Rhino/Grasshopper
+    would report inconsistent face normals. Faces are now wound outward by
+    construction.
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`
   - Removed unused `Client` import in `supabase_client.py`

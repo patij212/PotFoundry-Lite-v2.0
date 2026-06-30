@@ -93,6 +93,53 @@ def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
         return np.array([0.0, 0.0, 0.0], dtype=float)
     return n / norm
 
+
+def _orient_patch_outward(verts: np.ndarray, faces: np.ndarray, ref: str) -> np.ndarray:
+    """Return ``faces`` rewound so each triangle's normal points outward.
+
+    Export targets such as Rhino and Grasshopper expect a closed solid whose
+    faces are *consistently* wound with outward-facing normals (positive signed
+    volume). Each structural patch of the pot has an unambiguous outward
+    direction, so we orient patch-by-patch at construction time — this is O(M),
+    fully vectorized, and avoids an expensive global flood-fill on every build.
+
+    Args:
+        verts: Vertex array (N, 3).
+        faces: Face indices for a single patch (M, 3).
+        ref: Outward reference for the patch, one of
+            ``"radial_out"`` (away from the z-axis),
+            ``"radial_in"`` (toward the z-axis),
+            ``"z_up"`` (+Z) or ``"z_down"`` (-Z).
+
+    Returns:
+        Faces (M, 3) with winding flipped where the mean face normal disagrees
+        with the outward reference. Winding is decided per patch (a single
+        flip for the whole patch) since each patch is a coherent surface.
+    """
+    if faces.size == 0:
+        return faces
+    a = verts[faces[:, 0]]
+    b = verts[faces[:, 1]]
+    c = verts[faces[:, 2]]
+    normals = np.cross(b - a, c - a)
+    centers = (a + b + c) / 3.0
+
+    if ref in ("z_up", "z_down"):
+        sign = 1.0 if ref == "z_up" else -1.0
+        agreement = float(np.sum(sign * normals[:, 2]))
+    else:
+        # Radial reference: compare the in-plane normal against the outward
+        # (or inward) radial direction at each face centroid.
+        radial = centers.copy()
+        radial[:, 2] = 0.0
+        if ref == "radial_in":
+            radial = -radial
+        agreement = float(np.sum(normals[:, 0] * radial[:, 0] + normals[:, 1] * radial[:, 1]))
+
+    if agreement < 0.0:
+        return faces[:, ::-1]
+    return faces
+
 def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> None:
     """Write triangles to ASCII STL (portable, human-readable).
 
@@ -315,7 +362,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     z_inner = np.linspace(t_bottom, H, n_z + 1)
 
     verts: list[tuple[float, float, float]] = []
-    faces_out_parts: list[np.ndarray] = []
+    # Each entry is (faces_array, outward_reference) so the whole solid can be
+    # oriented outward (Rhino/Grasshopper export quality) at the end.
+    faces_out_parts: list[tuple[np.ndarray, str]] = []
 
     def add_ring_xy(r_vals: np.ndarray, z: float, cTw: float, sTw: float) -> np.ndarray:
         # Rotate precomputed cos/sin by twist: cos(θ+tw)=cosθ·cosTw - sinθ·sinTw; sin(θ+tw)=sinθ·cosTw + cosθ·sinTw
@@ -358,8 +407,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     v11 = outer_idx[1:, :][:, jn]
     tri1 = np.stack([v00, v10, v11], axis=2).reshape(-1, 3)
     tri2 = np.stack([v00, v11, v01], axis=2).reshape(-1, 3)
-    faces_out_parts.append(tri1)
-    faces_out_parts.append(tri2)
+    faces_out_parts.append((tri1, "radial_out"))
+    faces_out_parts.append((tri2, "radial_out"))
 
     # ---- Inner wall rings (clamp near drain)
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
@@ -384,8 +433,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vi11 = inner_idx[1:, :][:, jn]
     tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
     tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
-    faces_out_parts.append(tri_in1)
-    faces_out_parts.append(tri_in2)
+    faces_out_parts.append((tri_in1, "radial_in"))
+    faces_out_parts.append((tri_in2, "radial_in"))
 
     # ---- Rim cap
     outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
@@ -393,8 +442,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vi0 = inner_top[j]; vi1 = inner_top[jn]
     tri_rim1 = np.stack([outer_top[j], inner_top[j], inner_top[jn]], axis=1)
     tri_rim2 = np.stack([outer_top[j], inner_top[jn], outer_top[jn]], axis=1)
-    faces_out_parts.append(tri_rim1)
-    faces_out_parts.append(tri_rim2)
+    faces_out_parts.append((tri_rim1, "z_up"))
+    faces_out_parts.append((tri_rim2, "z_up"))
 
     # ---- Drain circles (untwisted)
     drain_under = []; drain_top = []
@@ -411,24 +460,24 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vd0 = drain_under[j];  vd1 = drain_under[jn]
     tri_bot1 = np.stack([outer_bottom[j], drain_under[jn], drain_under[j]], axis=1)
     tri_bot2 = np.stack([outer_bottom[j], outer_bottom[jn], drain_under[jn]], axis=1)
-    faces_out_parts.append(tri_bot1)
-    faces_out_parts.append(tri_bot2)
+    faces_out_parts.append((tri_bot1, "z_down"))
+    faces_out_parts.append((tri_bot2, "z_down"))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
     tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
     tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
-    faces_out_parts.append(tri_top1)
-    faces_out_parts.append(tri_top2)
+    faces_out_parts.append((tri_top1, "z_up"))
+    faces_out_parts.append((tri_top2, "z_up"))
 
     # Drain cylinder wall
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
     tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
     tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
-    faces_out_parts.append(tri_cyl1)
-    faces_out_parts.append(tri_cyl2)
+    faces_out_parts.append((tri_cyl1, "radial_in"))
+    faces_out_parts.append((tri_cyl2, "radial_in"))
 
     # Diagnostics (use tracked radii; fall back to scan if missing)
     if est_top_od is None:
@@ -444,8 +493,14 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
-    faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    # Orient every patch outward so the exported solid has consistent,
+    # outward-facing normals (positive signed volume) for Rhino/Grasshopper.
+    oriented_parts = [
+        _orient_patch_outward(verts_arr, part, ref) for part, ref in faces_out_parts
+    ]
+    faces_arr = np.vstack(oriented_parts).astype(int, copy=False)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
