@@ -27,7 +27,7 @@ import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   buildRadiusFn, buildInhouseMetricMesh, buildFeatureTruth, buildMeshUt, buildLocator, featureLineChord3D,
-  liftTrue, liftUtToRadial, auditNonManByIndex, perFaceTrue3DSag, perFaceChordSag, dumpHeatmap,
+  liftTrue, liftUtToRadial, auditNonManByIndex, perFaceTrue3DSag, perFaceChordSag, dumpHeatmap, dumpRenderBins,
   triangleQualityDistribution, perpendicular3DDeviation, projectPointToRadialSurface,
   type StyleDims, type AnalyticRadiusFn, type FeatureTruth,
 } from './labkit';
@@ -427,19 +427,19 @@ describe('PERFECT-PIPELINE CLIFF-RENDER — cliff-excluded heatmap for the roadm
     const b = buildUnified(style);
     const sag = perFaceTrue3DSag(b.ut, b.idx, b.rA, DIMS.H, { preFilterMm: 0.02 });
     const nF = b.idx.length / 3, nV = b.vtx.length / 3;
-    // per-vertex colour: cliff facets -> grey; else true-3D sag ramp (green->yellow->red @0.15)
+    // per-vertex colour: cliff facets -> grey; else true-3D sag ramp (green->yellow->red @0.15).
+    // COST: classify ONLY the over-0.03 facets (a green facet is trivially non-cliff) — the tight+wide cliff
+    // probes are ~400 rA evals each, so restricting to the over-tol set (a few %) keeps this fast.
     const col = new Float32Array(nV * 3);
     const GREY: [number, number, number] = [0.55, 0.55, 0.6];
-    // first pass: mark cliff vertices
     const cliffVert = new Uint8Array(nV);
-    let excluded = 0;
+    let excluded = 0, worstNonCliff = 0, overNonCliff = 0;
     for (let f = 0; f < nF; f++) {
-      if (isCliffFacet(b.ut, b.idx, f, b.rA, DIMS.H) || (sag.faceErr[f] > 0.03 && facetMaxStepWide(b.ut, b.idx, f, b.rA, DIMS.H, 4) > 0.25)) {
-        excluded++;
-        cliffVert[b.idx[3 * f]] = 1; cliffVert[b.idx[3 * f + 1]] = 1; cliffVert[b.idx[3 * f + 2]] = 1;
-      }
+      if (sag.faceErr[f] <= 0.03) continue;
+      const cliff = isCliffFacet(b.ut, b.idx, f, b.rA, DIMS.H) || facetMaxStepWide(b.ut, b.idx, f, b.rA, DIMS.H, 4) > 0.25;
+      if (cliff) { excluded++; cliffVert[b.idx[3 * f]] = 1; cliffVert[b.idx[3 * f + 1]] = 1; cliffVert[b.idx[3 * f + 2]] = 1; }
+      else { overNonCliff++; if (sag.faceErr[f] > worstNonCliff) worstNonCliff = sag.faceErr[f]; }
     }
-    // ramp for non-cliff vertices
     const ramp = (e: number): [number, number, number] => {
       const c = Math.max(0, Math.min(1, e / 0.15));
       const L = (a: number, z: number, k: number): number => a + (z - a) * k;
@@ -450,11 +450,6 @@ describe('PERFECT-PIPELINE CLIFF-RENDER — cliff-excluded heatmap for the roadm
     for (let v = 0; v < nV; v++) {
       const [r, g, bl] = cliffVert[v] ? GREY : ramp(sag.vertErr[v]);
       col[3 * v] = r; col[3 * v + 1] = g; col[3 * v + 2] = bl;
-    }
-    // recompute non-cliff worst for the legend
-    let worstNonCliff = 0, overNonCliff = 0;
-    for (let f = 0; f < nF; f++) {
-      if (sag.faceErr[f] > 0.03 && !(isCliffFacet(b.ut, b.idx, f, b.rA, DIMS.H) || facetMaxStepWide(b.ut, b.idx, f, b.rA, DIMS.H, 4) > 0.25)) { overNonCliff++; if (sag.faceErr[f] > worstNonCliff) worstNonCliff = sag.faceErr[f]; }
     }
     dumpRenderBins(DIR, `${style}_cliffExcluded`, b.xyz, b.idx, {
       colors: col,
@@ -515,44 +510,49 @@ describe('PERFECT-PIPELINE TAIL — steep-tail closure sweep', () => {
 //   below 0.03? Also: green-band census — how many of the 20 styles are ALL-GREEN at 0.03/0.05/0.10/0.15mm.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 describe('PERFECT-PIPELINE CUSP — GothicArches irreducible-cusp proof + micro-round spike', () => {
-  it.skipIf(process.env.PF_PERFECT_CUSP !== '1')('localizes the cusp, freezes it, spikes a rounded rA', () => {
+  it.skipIf(process.env.PF_PERFECT_CUSP !== '1')('localizes the cusp, freezes it, spikes a rounded rA (resumable)', () => {
     mkdirSync(DIR, { recursive: true });
     const style: StyleId = 'GothicArches';
     const rABase = buildRadiusFn(style, {}, DIMS);
-    // baseline: measure worst + its (u,t)
-    const b = buildUnified(style, { chordSteiner: true, chordTolMm: 0.01, maxPoints: 2_500_000 });
-    const m = measureTrue3D(b.ut, b.idx, b.vtx, rABase);
-    // localize the worst facet's (u,t) via perFaceTrue3DSag
-    const sag = perFaceTrue3DSag(b.ut, b.idx, rABase, DIMS.H, { preFilterMm: 0.02 });
-    let wf = -1, wmx = 0;
-    for (let f = 0; f < sag.faceErr.length; f++) if (sag.faceErr[f] > wmx) { wmx = sag.faceErr[f]; wf = f; }
-    const a = b.idx[3 * wf], bb = b.idx[3 * wf + 1], c = b.idx[3 * wf + 2];
-    const cu = (b.ut[2 * a] + b.ut[2 * bb] + b.ut[2 * c]) / 3;
-    const ct = (b.ut[2 * a + 1] + b.ut[2 * bb + 1] + b.ut[2 * c + 1]) / 3;
-    // sharpness: curvature at the cusp (central 2nd diff in z at fixed theta)
-    const th = TAU * cu, z = ct * DIMS.H, dz = 0.02;
-    const rzz = (rABase(th, z + dz) - 2 * rABase(th, z) + rABase(th, z - dz)) / (dz * dz);
-    // MICRO-ROUND spike: build a rounded rA that low-pass filters the arch tip in z (5-tap boxcar over ±roundMm).
+    // MODERATE budget (1M) — the cusp worst is a LOCAL steep facet, visible at moderate density; the 2.5M builds
+    // blew past the environment's kill window (4 sequential rounded builds, each rounded-rA is ~9× slower).
+    const MAXP = 1_000_000;
+    // MICRO-ROUND: low-pass filter the arch tip in z (9-tap boxcar over ±roundMm) → single-valued smooth cusp.
     const makeRounded = (roundMm: number): AnalyticRadiusFn => (theta: number, zz: number): number => {
       let s = 0; const N = 4;
       for (let k = -N; k <= N; k++) s += rABase(theta, zz + (k / N) * roundMm);
       return s / (2 * N + 1);
     };
-    const results: any[] = [{ recipe: 'base_sharp', chordMaxMm: m.chordMaxMm, p99DevMm: m.p99DevMm, pctOver0_03: m.pctOver0_03, cuspU: cu, cuspT: ct, cuspCurvZZ: rzz, worst: m.worst }];
-    for (const roundMm of [0.5, 1.0, 2.0]) {
+    // BASE (sharp) — checkpoint separately so it is not re-run if a later rounded build is killed.
+    if (!done('cusp_base_sharp')) {
+      const b = buildUnified(style, { chordSteiner: true, chordTolMm: 0.01, maxPoints: MAXP });
+      const m = measureTrue3D(b.ut, b.idx, b.vtx, rABase);
+      const sag = perFaceTrue3DSag(b.ut, b.idx, rABase, DIMS.H, { preFilterMm: 0.02 });
+      let wf = -1, wmx = 0;
+      for (let f = 0; f < sag.faceErr.length; f++) if (sag.faceErr[f] > wmx) { wmx = sag.faceErr[f]; wf = f; }
+      const a = b.idx[3 * wf], bb = b.idx[3 * wf + 1], c = b.idx[3 * wf + 2];
+      const cu = (b.ut[2 * a] + b.ut[2 * bb] + b.ut[2 * c]) / 3, ct = (b.ut[2 * a + 1] + b.ut[2 * bb + 1] + b.ut[2 * c + 1]) / 3;
+      const th = TAU * cu, z = ct * DIMS.H, dz = 0.02;
+      const rzz = (rABase(th, z + dz) - 2 * rABase(th, z) + rABase(th, z - dz)) / (dz * dz);
+      ckpt('cusp_base_sharp', { recipe: 'base_sharp', tris: b.tris, chordMaxMm: m.chordMaxMm, p99DevMm: m.p99DevMm, pctOver0_03: m.pctOver0_03, cuspU: cu, cuspT: ct, cuspCurvZZ: rzz, worst: m.worst });
+      console.log(`CUSP base tris=${b.tris} chordMax=${m.chordMaxMm.toFixed(4)} p99=${m.p99DevMm.toFixed(4)} @u=${cu.toFixed(4)},t=${ct.toFixed(4)} curvZZ=${rzz.toExponential(2)}`);
+    } else console.log('SKIP cusp_base_sharp');
+    for (const roundMm of [1.0, 2.0]) {
+      const tag = `cusp_round_${roundMm}`;
+      if (done(tag)) { console.log(`SKIP ${tag}`); continue; }
       const rr = makeRounded(roundMm);
-      const br = buildUnified(style, { chordSteiner: true, chordTolMm: 0.01, maxPoints: 2_500_000, overrideRA: rr });
-      // measure the rounded mesh against the ROUNDED surface (self-consistent) AND against the ORIGINAL (fidelity cost)
+      const br = buildUnified(style, { chordSteiner: true, chordTolMm: 0.01, maxPoints: MAXP, overrideRA: rr });
       const mSelf = measureTrue3D(br.ut, br.idx, br.vtx, rr);
       const nV = br.ut.length / 2; const ut3 = new Float64Array(nV * 3);
       for (let i = 0; i < nV; i++) { ut3[3 * i] = br.ut[2 * i]; ut3[3 * i + 1] = br.ut[2 * i + 1]; ut3[3 * i + 2] = 0; }
       const pOrig = perpendicular3DDeviation({ vertices: br.vtx, indices: Uint32Array.from(br.idx) }, ut3, rABase, { H: DIMS.H, tolMm: 0.03, seamExclU: SEAM });
-      results.push({ recipe: `round_${roundMm}mm`, selfChordMax: mSelf.chordMaxMm, selfP99: mSelf.p99DevMm, selfPctOver0_03: mSelf.pctOver0_03, deviationFromOriginalMax: pOrig.maxDevMm, deviationFromOriginalP99: pOrig.p99DevMm });
+      ckpt(tag, { recipe: `round_${roundMm}mm`, tris: br.tris, selfChordMax: mSelf.chordMaxMm, selfP99: mSelf.p99DevMm, selfPctOver0_03: mSelf.pctOver0_03, deviationFromOriginalMax: pOrig.maxDevMm, deviationFromOriginalP99: pOrig.p99DevMm });
       console.log(`ROUND ${roundMm}mm: selfChordMax=${mSelf.chordMaxMm.toFixed(4)} selfP99=${mSelf.p99DevMm.toFixed(4)} devFromOrig=${pOrig.maxDevMm.toFixed(4)}`);
     }
+    // aggregate for convenience
+    const results = ['cusp_base_sharp', 'cusp_round_1', 'cusp_round_2'].filter(done).map(load);
     ckpt('cusp_gothic', { style, results });
-    console.log(`CUSP base chordMax=${m.chordMaxMm.toFixed(4)} p99=${m.p99DevMm.toFixed(4)} @u=${cu.toFixed(4)},t=${ct.toFixed(4)} curvZZ=${rzz.toExponential(2)}`);
-    expect(results.length).toBe(4);
+    expect(results.length).toBe(3);
   }, 60 * 60 * 1000);
 });
 

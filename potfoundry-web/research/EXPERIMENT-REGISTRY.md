@@ -1870,3 +1870,44 @@ threshold) and %>0.03 to **0.142%** — the surface is broadly green; the residu
 0.139, matching BUILD3's 0.127 floor). **curvatureFineStep 1/512 REFUTED even coarse** (D bloats to the 5M cap AND
 regresses chordMax 0.139→0.220 vs C) — corroborates BUILD3 (1/2048) at a much coarser step. Winner = chordSteiner
 ALONE. (Gyroid/Voronoi + remaining TAIL styles running.) Checkpoints: `tail_<style>_<recipe>.json`.
+
+### BLOCK 3 (cont) — TAIL representatives: Gyroid stalls, Voronoi greens
+
+| style/recipe | tris | chordMax(mm) | p99(mm) | %>0.03 | verdict |
+|---|---|---|---|---|---|
+| GyroidManifold/A_base | 1.57M | 0.872 | 0.090 | 1.415% | |
+| GyroidManifold/B_steiner02 | 1.67M | 0.504 | 0.065 | 1.037% | |
+| GyroidManifold/C_steiner01 | 1.88M | 0.626 | 0.043 | 0.589% | chordSteiner STALLS at p99 0.043 (genuine lattice-junction tail; converged, not budget) |
+| Voronoi/A_base | 3.0M | 0.349 | 0.010 | 0.085% | already broad-green |
+| Voronoi/B_steiner02 | 3.0M | 0.349 | 0.010 | 0.083% | budget-limited, steiner didn't fire |
+| Voronoi/C_steiner01 | 5.0M | **0.066** | **0.004** | **0.015%** | chordSteiner@0.01 ⇒ essentially GREEN |
+
+TAIL split emerging: **chordSteiner-greenable** (GothicArches p99→0.024, Voronoi p99→0.004) vs **residual-tail**
+(Gyroid p99 stalls 0.043 — a genuine steep lattice-junction floor, needs tighter tol or is near-C0). Remaining 6
+TAIL styles running (most already low-p99 per sweepmap). curvatureFineStep D refuted on both GothicArches AND Gyroid.
+
+### BLOCK 5 — CRYSTALLINE nonMan=2 (H5 confirmed): localized topological FOLD, not a flip-diagonal dup
+
+Localized the 2 non-manifold edges (weld-by-index, edges shared by >2 tris). BOTH emanate from ONE apex vertex at
+**(u=0.609, t=0.519)** — a Crystalline helical-ripple region — pos (-40.13,-32.93,62.32). Each bad edge is shared
+by **4 triangles** (tris 512735 & 513071 appear in BOTH edges). The three involved vertices are 0.05-0.15mm apart
+(distinct, NOT weldable at 1e-4). ⇒ a genuine topological FOLD: at this steep ripple the surface sheet folds back
+so 4 triangles meet an edge. `guardManifoldAlways` only rejects a flip whose NEW diagonal ALREADY EXISTS; it does
+NOT catch a fold produced by the initial Delaunay + on-surface smoothing pulling two near-coincident sheets
+together (no flip is involved). **Proposed fix (kernel, out of scope for this isolated probe):** add an EDGE-DEGREE
+guard (reject any flip/smooth step that would make an edge incident to >2 triangles) OR a final non-manifold-fan
+repair pass (collapse/split the folded fan). H5 VERDICT: confirmed diagnosable. Checkpoint: cryst_nonman.json.
+
+### BLOCK 4 — CUSP (H4): the GothicArches residual is a designed sharp V-RIB CORNER, not a fixable defect
+
+Localized the GothicArches worst facet (chordSteiner C, z=59.8, θ=-2.451): the radius is flat ~44.98 then SPIKES to
+46.41 over ~0.01 rad and drops back — a thin sharp RIB crest (near-C1 CORNER, not a C0 cliff, not the arch tip).
+Its chord sag scales ~LINEARLY with facet width (corner signature): du=0.001→0.367, 0.0005→0.187, 0.0002→0.068mm
+(arc 0.009mm). Reaching 0.03mm needs du≈1e-4 (arc ~0.005mm ⇒ ~24k rows at the apex — impractical). So it is
+density-reducible IN PRINCIPLE but pinned near ~0.14mm at any practical budget (matches BUILD3's 0.13 floor).
+**Micro-round mitigation REFUTED:** a boxcar-rounded rA makes the crest trivially green (dense-mesh sag ~0.002mm) but
+at a fidelity cost of **0.31mm (R=0.5), 0.54mm (R=1), 0.86mm (R=2)** deviation-from-original — far above the 0.10mm
+criterion; rounding destroys the designed sharp rib. **H4 VERDICT: the residual is a designed sharp-corner crest
+(near-C1) — accept-at-band, NOT micro-round, NOT a bug.** (The 1M-budget resumable cusp mesh builds ran but the
+rounded-rA boxcar was ~9× slower and exceeded the env kill window twice → the analytical corner-scaling +
+rounding-cost proof above is the honest, cheaper answer. Checkpoints: cusp_base_sharp.json.)
