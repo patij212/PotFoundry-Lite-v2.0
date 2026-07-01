@@ -297,6 +297,19 @@ STYLES = {
 # Mesh builder (watertight)
 # -----------------------------
 
+
+def _rev(tri: np.ndarray) -> np.ndarray:
+    """Reverse triangle winding (flip facet normals) for an (M, 3) index array.
+
+    Export targets (Rhino, Grasshopper, slicers) require a consistently
+    oriented closed manifold whose facet normals point *outward*. Several
+    surface blocks below are authored with inward-facing winding; reversing
+    them makes the whole mesh outward-consistent (positive signed volume) so
+    exported STL normals are correct by construction. See
+    tests/test_mesh_orientation.py for the invariants this upholds.
+    """
+    return tri[:, ::-1]
+
 def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: float, r_drain: float,
                    expn: float, n_theta: int, n_z: int,
                    r_outer_fn: Callable[[np.ndarray | float, float, float, float, dict], np.ndarray | float],
@@ -358,8 +371,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     v11 = outer_idx[1:, :][:, jn]
     tri1 = np.stack([v00, v10, v11], axis=2).reshape(-1, 3)
     tri2 = np.stack([v00, v11, v01], axis=2).reshape(-1, 3)
-    faces_out_parts.append(tri1)
-    faces_out_parts.append(tri2)
+    # Outer wall normals must point away from the axis -> reverse to outward.
+    faces_out_parts.append(_rev(tri1))
+    faces_out_parts.append(_rev(tri2))
 
     # ---- Inner wall rings (clamp near drain)
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
@@ -384,8 +398,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vi11 = inner_idx[1:, :][:, jn]
     tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
     tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
-    faces_out_parts.append(tri_in1)
-    faces_out_parts.append(tri_in2)
+    # Inner-wall (cavity) normals must point toward the axis, into the cavity.
+    faces_out_parts.append(_rev(tri_in1))
+    faces_out_parts.append(_rev(tri_in2))
 
     # ---- Rim cap
     outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
@@ -393,8 +408,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vi0 = inner_top[j]; vi1 = inner_top[jn]
     tri_rim1 = np.stack([outer_top[j], inner_top[j], inner_top[jn]], axis=1)
     tri_rim2 = np.stack([outer_top[j], inner_top[jn], outer_top[jn]], axis=1)
-    faces_out_parts.append(tri_rim1)
-    faces_out_parts.append(tri_rim2)
+    # Rim annulus normals must point up (+Z), away from the solid.
+    faces_out_parts.append(_rev(tri_rim1))
+    faces_out_parts.append(_rev(tri_rim2))
 
     # ---- Drain circles (untwisted)
     drain_under = []; drain_top = []
@@ -411,8 +427,9 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vd0 = drain_under[j];  vd1 = drain_under[jn]
     tri_bot1 = np.stack([outer_bottom[j], drain_under[jn], drain_under[j]], axis=1)
     tri_bot2 = np.stack([outer_bottom[j], outer_bottom[jn], drain_under[jn]], axis=1)
-    faces_out_parts.append(tri_bot1)
-    faces_out_parts.append(tri_bot2)
+    # Underside normals must point down (-Z), away from the solid.
+    faces_out_parts.append(_rev(tri_bot1))
+    faces_out_parts.append(_rev(tri_bot2))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
