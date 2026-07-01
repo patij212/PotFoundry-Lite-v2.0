@@ -19,9 +19,14 @@ const binDir = path.resolve(process.argv[3]);
 const COLS = Math.max(1, parseInt(process.argv[4] || '2', 10));
 const cells = process.argv.slice(5);
 const ROWS = Math.ceil(cells.length / COLS);
-const PW = 560, PH = 560, LEG = 44;
+// HIGH-QUALITY: cell resolution is env-tunable (PF_RENDER_CELL, default 560; use 1000–1400 for crisp per-map PNGs).
+// Fonts + legend scale with the cell so labels stay legible at any resolution.
+const PW = Math.max(200, parseInt(process.env.PF_RENDER_CELL || '560', 10)), PH = PW;
+const FS = Math.max(12, Math.round(PW / 42)), LEG = Math.max(44, Math.round(PW / 12)), BAR = Math.round(PW * 0.55);
 const hasHeat = cells.some((n) => fs.existsSync(path.join(binDir, `${n}.col.bin`)));
 const metaOf = (n) => { try { return JSON.parse(fs.readFileSync(path.join(binDir, `${n}.meta.json`), 'utf8')); } catch { return {}; } };
+// ruler = meta.ruler (dumpHeatmap) OR inferred from the name suffix (_true3d/_radial) so older sweep bins label too.
+const rulerOf = (n) => metaOf(n).ruler || (n.endsWith('_true3d') ? 'true3d' : n.endsWith('_radial') ? 'radial' : null);
 const labels = cells.map((n, i) => {
   const col = i % COLS, row = (i / COLS) | 0; const m = metaOf(n);
   const bits = [];
@@ -32,17 +37,18 @@ const labels = cells.map((n, i) => {
   if (m.pctOver0_03 != null) bits.push(`${(+m.pctOver0_03).toFixed(2)}% >0.03`);
   else if (m.pctOver0_15 != null) bits.push(`${(+m.pctOver0_15).toFixed(2)}% red`);
   if (m.nonMan != null) bits.push(`nonMan ${m.nonMan}`);
-  return `<div style="position:absolute;left:${col * PW}px;top:${row * PH + PH - 20}px;width:${PW}px;text-align:center;font:12px sans-serif;color:#111">${n}${bits.length ? ' — ' + bits.join(' · ') : ''}</div>`;
+  const rl = rulerOf(n); const tag = [rl, m.class].filter(Boolean).join(' · ');
+  return `<div style="position:absolute;left:${col * PW}px;top:${row * PH + PH - FS * 1.7}px;width:${PW}px;text-align:center;font:${FS}px sans-serif;color:#111">${n}${tag ? ` [${tag}]` : ''}${bits.length ? ' — ' + bits.join(' · ') : ''}</div>`;
 }).join('');
-// legend labels the RULER honestly (dumpHeatmap writes meta.ruler): true-3D perpendicular is the default/honest view;
-// radial (same-(u,t)) OVERSTATES near-vertical relief 2–370× and is opt-in for A/B only.
-const rulers = cells.map(metaOf).map((m) => m.ruler).filter(Boolean);
+// legend labels the RULER honestly: true-3D perpendicular is the default/honest view; radial (same-(u,t)) OVERSTATES
+// near-vertical relief 2–370× and is opt-in for A/B only.
+const rulers = cells.map(rulerOf).filter(Boolean);
 const rulerTxt = rulers.length === 0 ? 'chord sag'
   : rulers.every((r) => r === 'true3d') ? 'true-3D chord sag (perpendicular · honest)'
   : rulers.every((r) => r === 'radial') ? 'radial chord sag (same-u,t · OVERSTATES steep relief)'
   : 'chord sag (mixed rulers)';
-const legend = hasHeat ? `<div style="position:absolute;left:0;top:${ROWS * PH}px;width:${COLS * PW}px;height:${LEG}px;display:flex;align-items:center;justify-content:center;gap:10px;font:13px sans-serif;color:#111">
-  <span>${rulerTxt} 0mm</span><span style="display:inline-block;width:300px;height:15px;background:linear-gradient(90deg,rgb(33,158,59),rgb(250,209,26),rgb(219,33,33));border:1px solid #999"></span><span>&ge;0.15mm</span></div>` : '';
+const legend = hasHeat ? `<div style="position:absolute;left:0;top:${ROWS * PH}px;width:${COLS * PW}px;height:${LEG}px;display:flex;align-items:center;justify-content:center;gap:${Math.round(FS * 0.8)}px;font:${FS}px sans-serif;color:#111">
+  <span>${rulerTxt} 0mm</span><span style="display:inline-block;width:${BAR}px;height:${Math.round(FS)}px;background:linear-gradient(90deg,rgb(33,158,59),rgb(250,209,26),rgb(219,33,33));border:1px solid #999"></span><span>&ge;0.15mm</span></div>` : '';
 const CANH = ROWS * PH + (hasHeat ? LEG : 0);
 const BG = hasHeat ? 0xf7f6f3 : 0xf2f1ee;
 
