@@ -9,6 +9,7 @@
 //
 // Run (NOTE the NODE_PATH — a scratchpad/research script can't resolve the project node_modules otherwise):
 //   NODE_PATH="<repo>/potfoundry-web/node_modules" node research/render/meshRender.cjs <out.png> <binDir> <cols> <name...>
+/* eslint-env node */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
