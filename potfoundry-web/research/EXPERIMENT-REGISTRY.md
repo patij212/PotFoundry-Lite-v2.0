@@ -1396,3 +1396,16 @@ flat domain), and a gmsh-STL reparametrize+remesh would likely FAIL on the occlu
 self-occlusion breaks reparametrization). DECISION for the user: install Instant Meshes/QuadriFlow to run Bet 3
 properly, or deprioritize (the kernel already handles the bulk; residual worst-slivers are the only Bet-3 target).
 Components kept with this honest NO-GO status (preserve-work). Adapter `quad` mode is still a valid isotropic-quad tool.
+
+### UPDATE 2026-07-01b — Bet 1 refined-loci fidelity advance (refineLoci.ts + test 2/2)
+
+Advanced Bet 1: `refineLoci.ts` snaps loci to the true rA radial extremum perpendicular to the ridge (golden-section;
+unit-tested — an off-crest point snaps onto the analytic crest, smooth control barely moves). Raw-vs-refined embed A/B
+on GothicArches (equal budget, FIXED interior truth): refining loci to the crest drops featureLineChord3D
+**p99 0.514 → 0.334 (−35%)**, max 1.43→1.21; recovery 100% both, watertight. BUT still ≫ 0.112, and slivers WORSEN
+(%<20 4.7→10.2, minA→0.0 — more embedded edges → more constrained-Delaunay slivers). DIAGNOSIS: the residual is now
+dominated by (a) INTERIOR mesh coarseness — the uniform h chords the curved surface BETWEEN ridges → needs adaptive
+curvature sizing = **Bet 2**; and (b) forced-edge slivers = **Bet 3**. So Bet 1 RECOVERY is solved (100%) and its
+fidelity is partially closed by refinement; the remaining gap is exactly the Bet-2 (sizing) + Bet-3 (sliver) coupling
+the thesis predicted. NEXT: feed a curvature-adaptive size field to the embed (the Bet 2 outcome test — needs the
+kernel sizeField hook, queued behind the green push) + a sliver-cleanup pass.
