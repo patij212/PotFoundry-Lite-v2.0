@@ -72,13 +72,20 @@ export function auditNonManByIndex(xyz: ArrayLike<number>, indices: ArrayLike<nu
     const h = wmap.get(k); if (h !== undefined) canon[i] = h; else { wmap.set(k, i); canon[i] = i; }
   }
   const EK = n + 1; const key = (a: number, b: number): number => (a < b ? a * EK + b : b * EK + a);
-  const ec = new Map<number, number>();
+  // SHARDED edge-count map: a single JS Map caps at ~2^24 (16.7M) entries, which a large mesh (≥~6M tris ⇒ ~18M
+  // undirected edges) exceeds → "Map maximum size exceeded" (MEASURED at 10M tris). Shard by the low bits of the
+  // min endpoint (mirrors flipHE's edge-set sharding) so each Map stays under cap. The count is identical to the
+  // single-Map version (every edge maps to exactly one shard by its own min vertex), so small-mesh results and the
+  // non-vacuous crack-injection control are unchanged.
+  const NSHARD = 64;
+  const ecs: Array<Map<number, number>> = Array.from({ length: NSHARD }, () => new Map<number, number>());
+  const bump = (p: number, r: number): void => { const kk = key(p, r); const m = ecs[(p < r ? p : r) & (NSHARD - 1)]; m.set(kk, (m.get(kk) ?? 0) + 1); };
   for (let k = 0; k < indices.length; k += 3) {
     const a = canon[indices[k]], b = canon[indices[k + 1]], c = canon[indices[k + 2]];
     if (a === b || b === c || a === c) continue;
-    for (const [p, r] of [[a, b], [b, c], [c, a]] as const) { const kk = key(p, r); ec.set(kk, (ec.get(kk) ?? 0) + 1); }
+    bump(a, b); bump(b, c); bump(c, a);
   }
-  let nm = 0; for (const v of ec.values()) if (v > 2) nm++; return nm;
+  let nm = 0; for (const m of ecs) for (const v of m.values()) if (v > 2) nm++; return nm;
 }
 
 // ───────────────────────── per-face chord sag (what the heatmap shows) ─────────────────────────
