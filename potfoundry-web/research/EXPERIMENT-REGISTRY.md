@@ -1434,3 +1434,26 @@ VERDICT: **Build #1 achieves CAD-grade TRUE-3D fidelity (p99 0.084 < 0.112) on G
 metric-sizing + protected-crest half of the unified mechanism WORKS. Remaining = the sliver regression + low recovery
 → BUILD #2 (metric-orthogonal insertion under M, protected-by-construction; Tenkes–Loseille–Alauzet) to add alignment
 (de-sliver) + by-construction protection.
+
+## E-2026-07-01-FRONTIER-BUILD2 — de-sliver: drop the locked edges (both build-#1 caveats CLOSED)
+
+Build #2. Hypothesis: build #1's LOCKED constraint edges block the kernel's true-3D max-min-angle flips (→ slivers)
+and recovered only 42% (→ barely helped fidelity); PINNING the crest VERTICES keeps fidelity while the freed flips
+de-sliver. `_frontierBuild2Probe.test.ts` (PF_BUILD2). GothicArches, 3 variants, all 2.92M tris, watertight (nonMan=0):
+
+| variant | true-3D p99 | %<20° | p5 min-angle |
+|---|---|---|---|
+| pin + LOCK (= build #1) | 0.084 | 6.5 | 17° (rec 42%) |
+| **pin, NO-lock** | **0.070** | 3.5 | 22° |
+| no-pin, no-lock | 0.085 | 1.8 | 24° (minA 0.20) |
+
+RESULT: dropping the locked edges IMPROVES BOTH fidelity (0.084→0.070) AND quality (%<20 6.5→3.5) AND removes the
+recovery problem entirely (no edges to recover — the crest is carried by pinned/injected vertices + emergent Delaunay
+edges). no-pin trades a little fidelity (0.085) for the best quality (%<20 1.8 / minA 0.20 / p5 24°).
+
+VERDICT: **both build-#1 caveats CLOSED.** The unified mechanism's clean, simplest form =
+**metric-Delaunay under M + injected refined-crest VERTICES (NO locked edges, NO CDT recovery)** →
+GothicArches true-3D p99 **0.070** (CAD-grade, < 0.112), %<20 3.5, watertight. pin↔no-pin is a fidelity↔quality knob
+(pin 0.070/3.5; no-pin 0.085/1.8). Strictly better + simpler than build #1. NEXT: generalize across conform-friendly
+styles; a residual-sliver pass (metric-orthogonal Steiner, Tenkes–Loseille–Alauzet) would lift the minA floor further.
+Render: `research/exchange/_build2/build2_heatmap.png`.
