@@ -71,8 +71,77 @@ def _mesh_aniso(input: dict) -> dict:
         gmsh.finalize()
 
 
+def _mesh_embed(input: dict) -> dict:
+    """FRONTIER Bet 1 (protected-PLC / discontinuity-first proxy). Mesh the (u,t) square with a PLANARIZED feature
+    skeleton EMBEDDED as conforming constrained edges (gmsh mesh.embed). Crossing loci MUST be pre-split to share
+    junction points (a PSLG) — then embedding is legal and the edges are conforming BY CONSTRUCTION (100% recovery),
+    unlike the in-house recover-after path that ceilings at ~90% on crossing loci."""
+    t0 = time.perf_counter()
+    emb = input["embed"]
+    pts = np.array(emb["points"], dtype=float).reshape(-1, 2)
+    edges = np.array(emb["edges"], dtype=int).reshape(-1, 2)
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.option.setNumber("Mesh.RandomSeed", 1)
+        gmsh.option.setNumber("Mesh.Algorithm", 6)  # Frontal-Delaunay
+        gmsh.model.add("ut_embed")
+        cpt = [gmsh.model.geo.addPoint(x, y, 0) for x, y in [(0, 0), (1, 0), (1, 1), (0, 1)]]
+        clines = [gmsh.model.geo.addLine(cpt[i], cpt[(i + 1) % 4]) for i in range(4)]
+        surf = gmsh.model.geo.addPlaneSurface([gmsh.model.geo.addCurveLoop(clines)])
+        # skeleton points (clamp interior so embedded geometry never collides with the boundary)
+        EPS = 1e-6
+        gp = [gmsh.model.geo.addPoint(min(max(float(u), EPS), 1 - EPS), min(max(float(t), EPS), 1 - EPS), 0) for (u, t) in pts]
+        gl = [gmsh.model.geo.addLine(gp[int(i)], gp[int(j)]) for (i, j) in edges if int(i) != int(j)]
+        gmsh.model.geo.synchronize()
+        # embed the skeleton (points + lines) as conforming constraints in the surface
+        if gp:
+            gmsh.model.mesh.embed(0, gp, 2, surf)
+        if gl:
+            gmsh.model.mesh.embed(1, gl, 2, surf)
+        # background size field: PostView grid of h(u,t) if provided, else uniform
+        size_field = "uniform"
+        s = input.get("sizing")
+        if s:
+            view = gmsh.view.add("size")
+            resU, resT, h = s["resU"], s["resT"], np.array(s["h"], dtype=float)
+            data = []
+            for it in range(resT):
+                for iu in range(resU):
+                    data.append([iu / max(resU - 1, 1), it / max(resT - 1, 1), 0.0, float(h[it * resU + iu])])
+            gmsh.view.addListData(view, "SP", len(data), np.array(data).reshape(-1).tolist())
+            bg = gmsh.model.mesh.field.add("PostView")
+            gmsh.model.mesh.field.setNumber(bg, "ViewIndex", 0)
+            gmsh.model.mesh.field.setAsBackgroundMesh(bg)
+            for opt in ("Mesh.MeshSizeExtendFromBoundary", "Mesh.MeshSizeFromPoints", "Mesh.MeshSizeFromCurvature"):
+                gmsh.option.setNumber(opt, 0)
+            size_field = "postview"
+        else:
+            u = float(input.get("uniformH", 0.03))
+            gmsh.option.setNumber("Mesh.MeshSizeMin", u)
+            gmsh.option.setNumber("Mesh.MeshSizeMax", u)
+        gmsh.model.mesh.generate(2)
+        tags, coords, _ = gmsh.model.mesh.getNodes()
+        coords = coords.reshape(-1, 3)
+        idmap = {int(t): i for i, t in enumerate(tags)}
+        etypes, _, enodes = gmsh.model.mesh.getElements(2)
+        if 2 not in etypes:
+            raise RuntimeError("embed mesh produced no triangles")
+        tri = enodes[list(etypes).index(2)].reshape(-1, 3)
+        idx = np.array([[idmap[int(n)] for n in row] for row in tri]).reshape(-1).tolist()
+        return {"engine": "gmsh",
+                "config": {"algo": "frontal-delaunay-embed", "embeddedPts": len(gp), "embeddedEdges": len(gl), "sizeField": size_field},
+                "ut": coords[:, :2].reshape(-1).tolist(), "indices": idx,
+                "engineMs": (time.perf_counter() - t0) * 1000,
+                "engineVersion": getattr(gmsh, "__version__", "4.x")}
+    finally:
+        gmsh.finalize()
+
+
 def mesh(input: dict) -> dict:
-    """Route to anisotropic BAMG path when a metric is present; else use Frontal-Delaunay."""
+    """Route: embedded-skeleton (Bet 1) → anisotropic BAMG (metric) → Frontal-Delaunay (sizing)."""
+    if input.get("embed"):
+        return _mesh_embed(input)
     if input.get("metric"):
         return _mesh_aniso(input)
     t0 = time.perf_counter()
