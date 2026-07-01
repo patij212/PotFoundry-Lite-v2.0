@@ -29,6 +29,11 @@ export interface InhouseMeshOpts {
    *  a fidelity guarantee that catches sharp/thin relief the grid-curvature metric aliases (e.g. GothicArches
    *  V-grooves). mm. */
   chordTolMm?: number;
+  /** With chordTolMm: when a facet exceeds the chord tolerance, insert a STEINER point at the WORST-sag sample
+   *  (the centroid for sharp apex/junction faces where the surface bulges in the facet interior) instead of the
+   *  longest-edge midpoint — an edge split can never converge a vertex onto an interior apex, a Steiner point can.
+   *  Opt-in → STRICT NO-OP when false/absent (the longest-edge branch runs exactly as before). */
+  chordSteiner?: boolean;
   /**
    * OPT-IN feature-conforming hook (DEV/LAB only). Flat (u,t) pairs of FORCED points to seed into the point
    * set alongside the seed grid — typically dense feature loci refined to the true crest/valley extremum
@@ -204,6 +209,23 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
     }
     return mx;
   };
+  // Like chordSag but returns the (u,t) of the WORST-sag bary sample (opt-in Steiner refinement target).
+  const chordWorstBary = (va: number, vb: number, vc: number): { sag: number; u: number; t: number } => {
+    const A = liftP(uv[2 * va], uv[2 * va + 1]), B = liftP(uv[2 * vb], uv[2 * vb + 1]), C = liftP(uv[2 * vc], uv[2 * vc + 1]);
+    let nx = (B[1] - A[1]) * (C[2] - A[2]) - (B[2] - A[2]) * (C[1] - A[1]);
+    let ny = (B[2] - A[2]) * (C[0] - A[0]) - (B[0] - A[0]) * (C[2] - A[2]);
+    let nz = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+    const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+    let mx = 0, mu = (uv[2 * va] + uv[2 * vb] + uv[2 * vc]) / 3, mt = (uv[2 * va + 1] + uv[2 * vb + 1] + uv[2 * vc + 1]) / 3;
+    for (const [w0, w1, w2] of BARY) {
+      const su = w0 * uv[2 * va] + w1 * uv[2 * vb] + w2 * uv[2 * vc];
+      const st = w0 * uv[2 * va + 1] + w1 * uv[2 * vb + 1] + w2 * uv[2 * vc + 1];
+      const p = liftP(su, st);
+      const d = Math.abs((p[0] - A[0]) * nx + (p[1] - A[1]) * ny + (p[2] - A[2]) * nz);
+      if (d > mx) { mx = d; mu = su; mt = st; }
+    }
+    return { sag: mx, u: mu, t: mt };
+  };
 
   // global anisotropy scale for the initial Euclidean Delaunay (flips fix the local residual)
   const ratios: number[] = [];
@@ -278,10 +300,17 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
       if (eCA > splitThresh2 && addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
       // fidelity guard: if the facet deviates from the TRUE surface > chordTolMm, split the longest edge
       // (catches sharp/thin relief the grid-curvature metric aliases). Skip if already metric-split this edge.
-      if (chordTolMm !== undefined && Math.max(eAB, eBC, eCA) <= splitThresh2 && chordSag(tris[ti], tris[ti + 1], tris[ti + 2]) > chordTolMm) {
-        if (eAB >= eBC && eAB >= eCA) { if (addPoint((uv[a] + uv[b]) / 2, (uv[a + 1] + uv[b + 1]) / 2)) added++; }
-        else if (eBC >= eCA) { if (addPoint((uv[b] + uv[c]) / 2, (uv[b + 1] + uv[c + 1]) / 2)) added++; }
-        else if (addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
+      if (chordTolMm !== undefined && Math.max(eAB, eBC, eCA) <= splitThresh2) {
+        if (opts.chordSteiner === true) {
+          // Steiner at the worst-sag sample (interior apex faces): an edge split can't converge a vertex onto
+          // an interior bulge; the worst-sag point (often the centroid) can.
+          const w = chordWorstBary(tris[ti], tris[ti + 1], tris[ti + 2]);
+          if (w.sag > chordTolMm && addPoint(w.u, w.t)) added++;
+        } else if (chordSag(tris[ti], tris[ti + 1], tris[ti + 2]) > chordTolMm) {
+          if (eAB >= eBC && eAB >= eCA) { if (addPoint((uv[a] + uv[b]) / 2, (uv[a + 1] + uv[b + 1]) / 2)) added++; }
+          else if (eBC >= eCA) { if (addPoint((uv[b] + uv[c]) / 2, (uv[b + 1] + uv[c + 1]) / 2)) added++; }
+          else if (addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
+        }
       }
       if (uv.length / 2 > maxPoints) { hitBudget = true; break; }
     }
