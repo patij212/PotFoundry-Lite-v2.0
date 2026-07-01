@@ -1409,3 +1409,28 @@ curvature sizing = **Bet 2**; and (b) forced-edge slivers = **Bet 3**. So Bet 1 
 fidelity is partially closed by refinement; the remaining gap is exactly the Bet-2 (sizing) + Bet-3 (sliver) coupling
 the thesis predicted. NEXT: feed a curvature-adaptive size field to the embed (the Bet 2 outcome test — needs the
 kernel sizeField hook, queued behind the green push) + a sliver-cleanup pass.
+
+## E-2026-07-01-FRONTIER-BUILD1 — protected skeleton under M (in-house): true-3D fidelity TARGET MET
+
+Build #1 of the unified mechanism (Bet 1 protected-PLC + Bet 2 curvature metric). In-house: `buildInhouseMetricMesh`
+(metric-Delaunay under M=g/h²) + refined+planarized PROTECTED skeleton via the committed injectedPoints(pinned) /
+constraintEdges hooks. `_frontierBuild1Probe.test.ts` (PF_BUILD1). GothicArches A/B vs the raw kernel. Render:
+`research/exchange/_build1/build1_heatmap.png`.
+
+RESULT: raw kernel (2.06M) true-3D p99 0.142 / max 0.936 / minA 0.7 / %<20 0.6 / 0.10% red / watertight. Protected-
+under-M (2.92M; skeleton 93.8k pts / 91.5k edges): **true-3D p99 0.0844 (< 0.112 TARGET MET; −41%)**, max 0.936→0.343
+(−63%), red faces 0.10%→0.04% (halved), watertight (nonMan=0). Heatmap: rib crests go red→green.
+
+CAVEATS (honest): (1) constraint RECOVERY only **42.2%** on the dense 91k-edge skeleton (recover-after ceiling — most
+of the fidelity came from the metric SIZING + PINNED crest vertices, not the recovered edges). gmsh embed's
+100%-by-construction CANNOT be combined with the anisotropic metric: measured that gmsh Algo 7/BAMG partially breaks
+embedded constraints (junction node kept but only 3/8 incident edges vs Frontal-Delaunay's 8) → gmsh can't do
+protected+anisotropic; the in-house kernel is the only path that does both (at recover-after recovery). (2) SLIVERS
+regressed: %<20 0.6→6.5, minA 0.7→0.0 — constraint edges + injected points spawn constrained-Delaunay slivers = the
+Bet 3 wall. (3) radial crestU stayed 1.37→1.17 = the known radial-metric overstatement on near-vertical ribs; TRUE-3D
+p99 0.084 is the honest gate and it is CAD-grade.
+
+VERDICT: **Build #1 achieves CAD-grade TRUE-3D fidelity (p99 0.084 < 0.112) on GothicArches, watertight** — the
+metric-sizing + protected-crest half of the unified mechanism WORKS. Remaining = the sliver regression + low recovery
+→ BUILD #2 (metric-orthogonal insertion under M, protected-by-construction; Tenkes–Loseille–Alauzet) to add alignment
+(de-sliver) + by-construction protection.
