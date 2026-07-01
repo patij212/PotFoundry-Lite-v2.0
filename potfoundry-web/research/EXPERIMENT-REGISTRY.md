@@ -1184,3 +1184,22 @@ GothicArches + BambooSegments; STL + render-bins in `research/exchange/_showcase
   0.05% both (already faithful). Even baseline is 99.5% green — conforming targets the sharp-crest residual.
 - **Honest cost**: conforming adds thin tris at the forced crease (GothicArches feature-adjacent %<20° rose ~1.4→5.5%);
   net strongly positive (chord halved) but not free. STLs are relief SURFACE patches (manifold), NOT closed solids.
+
+## E-2026-07-01-FRONTIER-THESIS — standing frontier thesis (meta-synthesis over this registry)
+
+`frontier-meta-synthesis` workflow (4 lenses — walls / wins / SOTA-scout / leverage → adversarial synthesis) mined
+the whole ledger. **UNIFYING PATTERN:** every standing wall is a **C0/near-C0 DISCONTINUITY** (crease / occlusion
+step / cliff / cusp / hash break) colliding with a mesher + metric that assume a smooth single-valued field; every
+durable WIN was a placement/classification fix validated by a TRUE-3D perpendicular measurement (never density/budget).
+**THESIS:** make the discontinuity graph the **PRIMITIVE** the mesh grows from (feature-skeleton-first / protected-PLC
+refinement), so "conform vs exclude vs recover" dissolves into a boundary-of-domain problem — instead of patching
+discontinuities into a smooth-field mesh after the fact. **Ranked bets (falsifiable ≤1 day; full doc
+`research/FRONTIER-THESIS.md`):** (1) **discontinuity-first protected-PLC meshing** [CGAL 1D-feature protection /
+Cheng–Dey / Boissonnat–Oudot, *verify*] — cracks the recovery ceiling + crest under-shoot + u-seam; discriminator =
+GothicArches arch-apex patch (reuse existing featureGraph loci), CONFIRM iff apex recovery 100% AND
+`featureLineChord3D` p99 ≤ 0.112. (2) **analytic curvature-floor sizing on raw rA** (retires the per-style conform
+gate) — A/B measure-only, Gothic p99 → ~0.10 in the tessellation step alone. (3) **Instant-Meshes field-aligned seed**
+[SIGGRAPH Asia 2015, *verify*] — the ONLY bet targeting the 2:1 transition-fan **sliver** class (worst-angle ~2°,
+density-invariant); offline-binary discriminator. **RUN FIRST = Bet 1** (skeleton-only dev build, one style, refutes
+the recovery wall AND validates the paradigm shift in one experiment). Demoted: signpost-intrinsic (fallback for Bet 1),
+(II,I) aniso (folds into Bet 2, over-stretches smooth). Dropped (refuted): 3D-direct remesh, density, no-lock weave rescue.
