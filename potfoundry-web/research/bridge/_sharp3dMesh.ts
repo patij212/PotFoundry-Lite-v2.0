@@ -97,13 +97,18 @@ export function buildStructuredWall(rA: AnalyticRadiusFn, H: number, rows: RowSp
     const nTop = rows[r].thetas.length, nBot = rows[r + 1].thetas.length;
     if (nTop === nBot) {
       // STRUCTURED column-to-column strip: both rows share the same logical column structure (same count).
-      // Connect column c(top) — c(bot) directly ⇒ clean quads (2 tris), no diagonal-kink slivers. The kink
-      // column (segment start) is thus a DIAGONAL chain of mesh edges across rows (zero serration, good quality).
+      // Connect column c(top) — c(bot) directly ⇒ clean quads (2 tris). The kink column is a DIAGONAL chain of
+      // mesh edges across rows (zero serration). Per-quad choose the diagonal that MAXIMIZES the min 3D angle
+      // (a cheap Delaunay-like flip at build time) so the shear tilt doesn't force slivers.
       const tb = rowStart[r], bb = rowStart[r + 1], n = nTop;
+      const d2 = (u: number, v: number): number => { const dx = xyz[3 * u] - xyz[3 * v], dy = xyz[3 * u + 1] - xyz[3 * v + 1], dz = xyz[3 * u + 2] - xyz[3 * v + 2]; return dx * dx + dy * dy + dz * dz; };
       for (let c = 0; c < n; c++) {
         const cn = (c + 1) % n;
         const a = tb + c, an = tb + cn, b = bb + c, bn = bb + cn;
-        idx.push(a, b, an); idx.push(an, b, bn);
+        // quad corners a(top,c) an(top,c+1) b(bot,c) bn(bot,c+1). Diagonal option1 = a-bn, option2 = an-b.
+        // choose the SHORTER diagonal (well-known heuristic ≈ max-min-angle on a convex quad).
+        if (d2(a, bn) <= d2(an, b)) { idx.push(a, b, bn); idx.push(a, bn, an); }
+        else { idx.push(a, b, an); idx.push(an, b, bn); }
       }
     } else {
       stripBetween(idx, rowStart[r], nTop, rows[r].thetas, rowStart[r + 1], nBot, rows[r + 1].thetas);

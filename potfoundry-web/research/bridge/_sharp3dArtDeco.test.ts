@@ -974,4 +974,143 @@ describe('E-2026-07-01-SHARP3D-ARTDECO', () => {
     expect(nm).toBe(0);
     expect(advMax).toBeLessThan(1e-9);
   }, 900_000);
+
+  // ─────────────── STAGE 11: FINAL — best-diagonal quality + FAITHFUL reference + sheet/ring-band localization ──
+  // stage10: worst 0.039 / p99 0.012 / serration ~0 / watertight — but (a) minAngle 8° (shear tilt, FIXED by the
+  // build-time best-diagonal now in buildStructuredWall → ~50°) and (b) refOnSurf 0.0137 (reference too coarse at
+  // the fan cusps — taints the ring-band BVH readings). This stage: faithful reference (fine dth) + best-diagonal
+  // export + localize the over-tol into sheet(projector, exact) vs ring-band(BVH) to separate a true residual from
+  // reference noise.
+  it.skipIf(process.env.PF_SHARP3D !== '1')('stage11: FINAL ArtDeco sharp-3D — best-diagonal + faithful ref + localize', () => {
+    const rA = buildRadiusFn('ArtDeco', {}, DIMS);
+    const rings = artDecoStepRings(DIMS.H, STEP_COUNT);
+    const ringZs = rings.map(r => r.z);
+    const zEps = 5e-4;
+    const chevronFreq = 6;
+    const shear = (4 * Math.PI) / chevronFreq;
+
+    // FAITHFUL reference: fine θ-sorted conforming (kinks pinned, dth small ⇒ smooth chord ~0.001) + dense z.
+    const refDth = 0.0013;
+    const ref = buildStepReference(rA, DIMS.H, rings, { nTheta: 0, nZperBand: 75, zEps, thetasFor: (rz) => conformingThetas(kinkThetas(rz / DIMS.H), refDth) });
+    const loc = buildRefLocator(ref, 1.5);
+    // validate reference faithfulness on-surface (must be << 0.01).
+    let refOnSurfMax = 0;
+    for (let s = 0; s < 400; s++) {
+      const th = TAU * Math.random(), z = DIMS.H * (0.03 + 0.94 * Math.random());
+      let near = false; for (const rz of ringZs) if (Math.abs(z - rz) < 0.05) near = true; if (near) continue;
+      const r = rA(th, z); const d = loc.dist(r * Math.cos(th), r * Math.sin(th), z); if (d > refOnSurfMax) refOnSurfMax = d;
+    }
+    save('stage11_ref', { nV: ref.nV, nF: ref.nF, refDth, refOnSurfMax });
+
+    // export: nCol=960 (12·80, chevrons pinned), nZ=30/tier (best-diagonal → minAngle ~50°), tread sub 10.
+    const nCol = 12 * 80, nZband = 30, treadSub = 10;
+    const rows: RowSpec[] = [];
+    const sorted = [...rings].sort((a, b) => a.z - b.z);
+    const th = (rz: number): Float64Array => shearedThetas(rz / DIMS.H, nCol, shear);
+    const pushSheetBand = (z0: number, z1: number, nrows: number): void => {
+      for (let i = 1; i < nrows; i++) { const z = z0 + (z1 - z0) * (i / nrows); rows.push({ z, rz: z, thetas: th(z), kind: 'sheet' }); }
+    };
+    rows.push({ z: 0, rz: zEps, thetas: th(zEps), kind: 'sheet' });
+    let cursor = 0;
+    for (const ring of sorted) {
+      pushSheetBand(cursor, ring.z, nZband);
+      const rzIn = ring.z - zEps, rzOut = ring.z + zEps;
+      rows.push({ z: ring.z, rz: rzIn, thetas: th(rzIn), kind: 'ringBelow' });
+      for (let s = 1; s < treadSub; s++) rows.push({ z: ring.z, rz: ring.z, thetas: th(ring.z), kind: 'tread', treadBlend: { s: s / treadSub, rzInner: rzIn, rzOuter: rzOut } });
+      rows.push({ z: ring.z, rz: rzOut, thetas: th(rzOut), kind: 'ringAbove' });
+      cursor = ring.z;
+    }
+    pushSheetBand(cursor, DIMS.H, nZband);
+    rows.push({ z: DIMS.H, rz: DIMS.H - zEps, thetas: th(DIMS.H - zEps), kind: 'sheet' });
+    const mesh = buildStructuredWall(rA, DIMS.H, rows);
+    const mh = metric3DHybrid(mesh, loc, rA, ringZs, 0.25);
+
+    // localize over-tol into sheet (projector branch, EXACT) vs ring-band (BVH branch, ref-limited).
+    const rowOf = new Int32Array(mesh.nV);
+    for (let r = 0; r < rows.length; r++) for (let v = mesh.rowStart[r]; v < mesh.rowStart[r + 1]; v++) rowOf[v] = r;
+    const cls = { sheetOver: 0, sheetWorst: 0, ringBandOver: 0, ringBandWorst: 0, sliverOver: 0 };
+    const minAng = (f: number): number => {
+      const a = mesh.idx[3 * f], b = mesh.idx[3 * f + 1], c = mesh.idx[3 * f + 2];
+      const la = Math.hypot(mesh.xyz[3 * b] - mesh.xyz[3 * c], mesh.xyz[3 * b + 1] - mesh.xyz[3 * c + 1], mesh.xyz[3 * b + 2] - mesh.xyz[3 * c + 2]);
+      const lb = Math.hypot(mesh.xyz[3 * c] - mesh.xyz[3 * a], mesh.xyz[3 * c + 1] - mesh.xyz[3 * a + 1], mesh.xyz[3 * c + 2] - mesh.xyz[3 * a + 2]);
+      const lc = Math.hypot(mesh.xyz[3 * a] - mesh.xyz[3 * b], mesh.xyz[3 * a + 1] - mesh.xyz[3 * b + 1], mesh.xyz[3 * a + 2] - mesh.xyz[3 * b + 2]);
+      if (la < 1e-9 || lb < 1e-9 || lc < 1e-9) return 0;
+      const A = Math.acos(Math.max(-1, Math.min(1, (lb * lb + lc * lc - la * la) / (2 * lb * lc))));
+      const B = Math.acos(Math.max(-1, Math.min(1, (la * la + lc * lc - lb * lb) / (2 * la * lc))));
+      return Math.min(A, B, Math.PI - A - B) * 180 / Math.PI;
+    };
+    for (let f = 0; f < mesh.nF; f++) {
+      if (mh.faceErr[f] <= 0.01) continue;
+      const a = mesh.idx[3 * f], b = mesh.idx[3 * f + 1], c = mesh.idx[3 * f + 2];
+      const za = mesh.xyz[3 * a + 2], zb = mesh.xyz[3 * b + 2], zc = mesh.xyz[3 * c + 2];
+      let near = false; for (const rz of ringZs) if (Math.abs(za - rz) < 0.25 || Math.abs(zb - rz) < 0.25 || Math.abs(zc - rz) < 0.25) near = true;
+      if (near) { cls.ringBandOver++; if (mh.faceErr[f] > cls.ringBandWorst) cls.ringBandWorst = mh.faceErr[f]; }
+      else { cls.sheetOver++; if (mh.faceErr[f] > cls.sheetWorst) cls.sheetWorst = mh.faceErr[f]; }
+      if (minAng(f) < 5) cls.sliverOver++;
+    }
+
+    // serration (ring + chevron, reusing stage10 logic).
+    const segDist = (px: number, py: number, pz: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number): number => {
+      const dx = bx - ax, dy = by - ay, dz = bz - az; const L2 = dx * dx + dy * dy + dz * dz || 1;
+      let tt = ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / L2; tt = Math.max(0, Math.min(1, tt));
+      return Math.hypot(px - (ax + tt * dx), py - (ay + tt * dy), pz - (az + tt * dz));
+    };
+    let ringSerr = 0;
+    for (let r = 0; r < rows.length; r++) {
+      if (rows[r].kind !== 'ringBelow' && rows[r].kind !== 'ringAbove') continue;
+      const base = mesh.rowStart[r], n = rows[r].thetas.length, rz = rows[r].rz, z = rows[r].z, tR = rz / DIMS.H;
+      for (let s = 0; s < n * 3; s++) {
+        const phi = TAU * (s / (n * 3)); let thc = phi - shear * tR; thc = ((thc % TAU) + TAU) % TAU; const rr = rA(thc, rz);
+        const px = rr * Math.cos(thc), py = rr * Math.sin(thc), pz = z;
+        const c0 = Math.floor((phi / TAU) * n) % n, c1 = (c0 + 1) % n;
+        const d = segDist(px, py, pz, mesh.xyz[3 * (base + c0)], mesh.xyz[3 * (base + c0) + 1], mesh.xyz[3 * (base + c0) + 2], mesh.xyz[3 * (base + c1)], mesh.xyz[3 * (base + c1) + 1], mesh.xyz[3 * (base + c1) + 2]);
+        if (d > ringSerr) ringSerr = d;
+      }
+    }
+    let chevSerr = 0;
+    for (let mm = 0; mm < 12; mm++) {
+      const col = mm * (nCol / 12);
+      for (let r = 0; r + 1 < rows.length; r++) {
+        if (rows[r].z === rows[r + 1].z) continue;
+        const va = mesh.rowStart[r] + col, vb = mesh.rowStart[r + 1] + col;
+        const ta = rows[r].rz / DIMS.H, tb = rows[r + 1].rz / DIMS.H;
+        for (let s = 1; s < 4; s++) {
+          const t = ta + (tb - ta) * (s / 4); const phi = (mm * Math.PI) / chevronFreq; let thc = phi - shear * t; thc = ((thc % TAU) + TAU) % TAU;
+          const z = t * DIMS.H, rr = rA(thc, z); const d = segDist(rr * Math.cos(thc), rr * Math.sin(thc), z, mesh.xyz[3 * va], mesh.xyz[3 * va + 1], mesh.xyz[3 * va + 2], mesh.xyz[3 * vb], mesh.xyz[3 * vb + 1], mesh.xyz[3 * vb + 2]);
+          if (d > chevSerr) chevSerr = d;
+        }
+      }
+    }
+
+    // adversarial + quality + watertight.
+    const order = Array.from({ length: mesh.nF }, (_, i) => i).sort((x, y) => mh.faceErr[y] - mh.faceErr[x]).slice(0, 40);
+    let advMax = 0;
+    for (const f of order) {
+      const a = mesh.idx[3 * f], b = mesh.idx[3 * f + 1], c = mesh.idx[3 * f + 2];
+      const px = (mesh.xyz[3 * a] + mesh.xyz[3 * b] + mesh.xyz[3 * c]) / 3, py = (mesh.xyz[3 * a + 1] + mesh.xyz[3 * b + 1] + mesh.xyz[3 * c + 1]) / 3, pz = (mesh.xyz[3 * a + 2] + mesh.xyz[3 * b + 2] + mesh.xyz[3 * c + 2]) / 3;
+      const e = Math.abs(loc.dist(px, py, pz) - loc.bruteDist(px, py, pz)); if (e > advMax) advMax = e;
+    }
+    const q = triangleQualityDistribution({ vertices: mesh.xyz, indices: mesh.idx });
+    const nm = auditNonManByIndex(mesh.xyz, mesh.idx);
+
+    // render.
+    const vertErr = new Float64Array(mesh.nV);
+    for (let f = 0; f < mesh.nF; f++) { const e = mh.faceErr[f]; for (let k = 0; k < 3; k++) { const v = mesh.idx[3 * f + k]; if (e > vertErr[v]) vertErr[v] = e; } }
+    dumpRenderBins(DIR, 'artdeco_sharp3d_final', mesh.xyz, mesh.idx, { colors: vertErrColors(vertErr, 0.02),
+      meta: { ruler: 'true3d-reference', label: 'ArtDeco sheared-φ conforming (best-diagonal) vs closed 3D object', worstMm: mh.worst, p99Mm: mh.p99, pctOver0_01: 100 * mh.over01 / mesh.nF, scaleMm: 0.02 }, stl: true });
+
+    const rec = { tag: `final_c${nCol}_z${nZband}_ts${treadSub}`, tris: mesh.nF, verts: mesh.nV, refTris: ref.nF, refOnSurfMax,
+      worst: mh.worst, p99: mh.p99, p50: mh.p50, over01: mh.over01, pctOver01: 100 * mh.over01 / mesh.nF, bvhFacets: mh.bvhFacets,
+      minAngle: q.minAngleDeg, p5Angle: q.p5MinAngleDeg, pctBelow20: q.pctBelow20, pctBelow10: q.pctBelow10, nonMan: nm,
+      cls, ringSerrMm: ringSerr, chevSerrMm: chevSerr, advMax };
+    save('stage11_final', rec);
+    // eslint-disable-next-line no-console
+    console.log(`[stage11] tris=${rec.tris} refOnSurf=${refOnSurfMax.toExponential(2)} worst=${rec.worst.toFixed(4)} p99=${rec.p99.toFixed(4)} p50=${rec.p50.toFixed(5)} over01=${rec.over01}(${rec.pctOver01.toFixed(3)}%)`);
+    // eslint-disable-next-line no-console
+    console.log(`[stage11] minAng=${rec.minAngle.toFixed(1)} %<20=${rec.pctBelow20.toFixed(1)} nonMan=${nm} | sheetOver=${cls.sheetOver}(worst ${cls.sheetWorst.toFixed(4)}) ringBandOver=${cls.ringBandOver}(worst ${cls.ringBandWorst.toFixed(4)}) sliverOver=${cls.sliverOver}`);
+    // eslint-disable-next-line no-console
+    console.log(`[stage11] serration ring=${ringSerr.toExponential(2)} chev=${chevSerr.toExponential(2)} adv=${advMax.toExponential(2)}`);
+    expect(nm).toBe(0);
+    expect(advMax).toBeLessThan(1e-9);
+  }, 1_200_000);
 });
