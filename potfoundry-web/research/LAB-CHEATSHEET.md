@@ -69,3 +69,14 @@ grooves). Example: `research/bridge/_heatmapDefaultSmoke.test.ts` (PF_HEATSMOKE=
 ## Return concisely
 Full scorecard → the registry file. Your return = HYPOTHESIS / DISCRIMINATOR / KILL-CRITERION / EVIDENCE (headline
 numbers) / VERDICT / RECOMMENDATION / LEDGER(path+sha). Don't inline a 400k-token scorecard.
+
+## Lab (multi-agent) — organ of last resort for contested/frontier work
+- **Solo vs convene:** cheap mechanical sweep → dispatch solo `meshing-researcher`.
+  Contested finding / frontier wall / DEGENERATING programme / "trust this" → convene the
+  `meshing-lab` skill (PI + 7-8 specialists, generative→falsification→anti-closure).
+- **Durable state:** `research/programme-scorecard.md` (A1), `research/assumption-ledger.md`
+  (C2), `research/lab/<arc>-transcript.md` from `research/lab/TRANSCRIPT-TEMPLATE.md`
+  (FINDINGS + SURPRISES + CLOSE-GATE RECEIPTS). Validate format:
+  `node research/lab/validateLedgers.cjs <files...>`.
+- **Invariant unchanged:** generative organs only propose/score ("if true, how much does it
+  reprice?"); a measurement still closes everything.
