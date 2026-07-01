@@ -86,3 +86,33 @@ same transition-fan slivers or under-sizes the relief that Bet 2 targets — i.e
 fixes *recovery and crest placement* but leaves the *interior quality/sizing* wall untouched, in which case Bet 1
 must ship together with Bet 2/Bet 3 rather than alone. (Also: CGAL/PRS SOTA basis is **(verify)** — not
 tool-confirmed against the current papers.)
+
+## Update 2026-07-01 — literature-grounded (see FRONTIER-KNOWLEDGE.md) + empirical convergence
+
+**Citations VERIFIED** (WebSearch, 2026-07-01): all six "(verify)" refs are REAL + correctly attributed (details +
+[C#] bibliography in `FRONTIER-KNOWLEDGE.md` §1/§7). Corrections: signpost intrinsic = Sharp–**Soliman**–Crane 2019
+(not "Sawhney"); cheaper Bet-1 successor = Dey–Ramos "Localized Delaunay Refinement," SoCG 2013.
+
+**Bet 3 UNBLOCKED** (was: blocked on a 3D field-aligned remesher). The isolated proxy failed because gmsh Algo 11 =
+Reberol–Georgiadis–Remacle 2021 is a cross-field + SCALAR size-map mesher BY DESIGN (confirmed — not an adapter bug).
+The literature gives a portable IN-(u,t) path that sidesteps the self-occlusion 3D-remesh problem: solve the cross
+field under the PULLBACK METRIC g (not flat (u,t) — the proxy's exact bug), or use METRIC-ORTHOGONAL point placement
+(Tenkes–Loseille–Alauzet, AIAA SciTech 2022) — reuses the in-house M=g/h², replaces the 2:1 quadtree, no 3D remesh.
+Frame-field theory: Panozzo et al., SIGGRAPH 2014.
+
+**Empirical CONVERGENCE — the three bets are ONE mechanism.** The Bet 1 refined-loci A/B (E-2026-07-01-FRONTIER-BET1
+UPDATE) closed p99 0.51→0.33 but left a residual = interior sizing (Bet 2) + forced-edge slivers (Bet 3). Bet 3's
+metric-orthogonal-under-M path IS adaptive anisotropic meshing = Bet 2's sizing fix + field alignment in one. So the
+frontier collapses to a single portable target: **metric-orthogonal anisotropic (u,t) meshing under M=g/h² with a
+protected feature skeleton** = Bet 1 (protected-PLC) + Bet 2 (curvature metric) + Bet 3 (metric-orthogonal alignment),
+unified.
+
+**Unifying framework (named):** feature-preserving PSC Delaunay refinement under a curvature-derived Riemannian metric
+(two axes: protected-PLC constraint model + metric anisotropic sizing). Canonical: Cheng–Dey–Shewchuk, *Delaunay Mesh
+Generation* (CRC 2012); CDRR SODA 2007; MMG/mmgs. Subsumes 4/5 wall classes; the weave/braid occlusion family needs
+one representation change (cut to single-valued charts, Bommes 2009) to enter it.
+
+**Portable next builds** (all in-(u,t), reuse shipped cdt2d + planarizeSkeleton + refineLoci + the in-house M; NO new dep):
+1. protected-CDT Ruppert refinement over (u,t) under M with junction protecting-disks — Bet 1 fidelity, closes the residual.
+2. metric-orthogonal insertion under M — Bet 3 alignment + Bet 2 sizing in one.
+Full detail + citations: `FRONTIER-KNOWLEDGE.md`.
