@@ -1599,3 +1599,256 @@ re-injection), `_frontierBuild3c` (density sweep), `_frontierBuild3d` (recipe A/
 **VERDICT:** export is CAD-grade faithful; "fully green" = (1) draw heatmap with true-3D ruler; (2) `chordSteiner`-alone
 (NOT the full recipe) on steep styles; (3) accept sub-print-res cusp specks OR micro-round the arch tips. Findings
 routed to the green-push via CROSS-WORKSTREAM-NOTES.
+
+---
+
+## E-2026-07-01-PERFECT-PIPELINE — roadmap to a PURE-GREEN true-3D heatmap (all 20), or honest irreducible bounds
+
+**STATUS: IN PROGRESS (pre-registered).** Probe: `research/bridge/_perfectPipeline.test.ts` (env PF_PERFECT_DIAG /
+_ARTDECO / _TAIL / _CUSP / _CRYST / _BROADGEN). Per-unit checkpoints: `research/exchange/_perfectPipeline/<unit>.json`.
+Isolated: CALLS the kernel + committed hooks (injectedPoints / constraintEdges / chordSteiner / guardManifoldAlways)
++ labkit + analytic step-loci helpers (artDecoRiserTBands / basketWeaveCreaseLoci); edits nothing in src/ or
+existing research files; does not touch the concurrent green-push files.
+
+**GOAL:** true-3D chord-error heatmap PURE GREEN (0 facets > 0.03mm via `perFaceTrue3DSag`) on all 20, or a
+localized+adversarially-verified irreducible bound. Builds ON E-SWEEP-METRIC-MAP (5 CLEAN / 9 TAIL / 6 BROAD).
+
+**PRE-REGISTERED HYPOTHESES + KILL-CRITERIA:**
+- **H1 (BROAD fork, DIAG):** the 6 BROAD styles split into (a) FACET-BRIDGING (mesh vertices ON the single-valued
+  surface, radial-at-own-(u,t) ≈ 0; the facet just bridges a vertical wall) — fixable by step-edge conforming; vs
+  (b) VERTEX-PLACEMENT/occlusion (vertices themselves off-surface, radial-at-own-(u,t) large) — EXCLUDE-class.
+  KILL: if ArtDeco's worst vertex has radial-at-own-(u,t) > 0.05mm, it is NOT a clean facet-bridging case ⇒ step
+  conforming will not green it.
+- **H2 (ArtDeco step-conform):** injecting riser constraint RINGS (artDecoRiserTBands) drives ArtDeco true-3D p99 and
+  %>0.03 to GREEN. KILL: confirmed iff true-3D p99 < 0.03 AND %>0.03 < 0.5% AND watertight (nonMan=0) AND not sliver-
+  wrecked (minAngle not driven to ~0 beyond baseline); refuted if p99 stays ≥ 0.11 (no better than crest-only).
+- **H3 (TAIL steep-tail):** chordSteiner-alone (per BUILD3) closes each TAIL style's true-3D %>0.03 to <0.5% at a
+  reachable budget; a COARSE curvatureFineStep (1/512) does NOT explode/regress. KILL per style: confirmed iff
+  true-3D worst < 0.03 (or an honest frozen floor is localized); the D-recipe is refuted for a style if it hits the
+  budget cap AND regresses chordMax vs recipe C.
+- **H4 (GothicArches cusp):** the ~0.13mm arch-tip residual is a genuine near-C0 cusp; a micro-rounded rA drops the
+  self-consistent true-3D worst below 0.03 at a fidelity cost < print-res. KILL: rounding is a viable mitigation iff
+  self-worst < 0.03 AND deviation-from-original < 0.10mm.
+- **H5 (Crystalline watertight):** the nonMan=2 is a localizable build-path defect (2 edges at a helical-ripple
+  discontinuity the flip guard cannot reject). KILL: located to specific edges + (u,t) ⇒ diagnosable.
+
+Result rows appended below as each block completes.
+
+## E-2026-07-01-CRESTAWARE — crest-aware sizing to kill the systematic grid-aliased crest-straddle residual (GothicArches)
+
+**Status:** DONE — **crest-aware sizing REFUTED (mission premise falsified).** The GothicArches aliasing residual is
+constraint-RECOVERY-limited, NOT sizing-limited: EVERY sizing-fix that flattens the fracU 0.35/0.65 aliasing (loci-band
+overlay AND denser curvatureSubsamples) REGRESSES the actual chord sag ~3× at equal budget. Under the HONEST true-3D
+ruler the residual is ~3× smaller than the mission's RADIAL ruler shows (worst 0.42→0.27mm, YEL 0.11%→0.034%) and the
+worst faces are steep near-vertical arch ribs the radial ruler overstates. Hotspot (0.5,0.54) IS DETECTED (not a
+missed feature). Opt-in code byte-identical off (idxHash 948740756). Literal 0% RADIAL NOT reached by crest-aware;
+the closest path stays the SF baseline (least-aggressive subs=2 + MORE budget).
+**Date:** 2026-07-01
+**Builds on:** E-2026-07-01-PUREGREEN (SF variant: RED≈0, YEL 0.009% / 833 faces, worst 0.27mm @9.41M tris) +
+E-2026-07-01-FRONTIER-BET2 (sizing curvature aliasing CONFIRMED) + E-FRONTIER-BUILD3.
+**Runners (all PF-gated, dev-only, NEVER imported by src/):** `_crestLociDetect.test.ts` (PF_CRESTDET),
+`_crestAwareScreen.test.ts` (PF_CRESTSCREEN), `_crestAwarePure.test.ts` (PF_CRESTPURE), `_crestAwareCompare.test.ts`
+(PF_CRESTCMP), `_subsamplesSweep.test.ts` (PF_SUBS), `_budgetLocalize.test.ts` (PF_BUDLOC), `_rulerCheck.test.ts`
+(PF_RULER), `_crestAwareFinal.test.ts` (PF_CRESTFINAL). Dumps → `research/exchange/_crestaware/` +
+`research/exchange/_showcase/` (gitignored).
+**Code (opt-in, STRICT NO-OP off; _kernel_noop idxHash 948740756 verified before+after, commit 17d3482):**
+`surfaceMetricField.ts` exports `kappaMaxAt` + opt-in `crestSizeOverlay`/`crestBandCells` (min-h3D loci overlay,
+rasterized into h3D BEFORE gradation); `inhouseMetricMesh.ts` threads them; `featureConformingMesh.ts` opt-in
+`crestAwareSizing` builds the overlay from ALL detected loci (ungated), refined, sized h3D=clamp(√(8·tol/κ),hMin,hMax).
+
+**HYPOTHESIS (brief):** rasterizing the KNOWN refined crest loci into the sizing field as a min-h3D band overlay
+makes fineness FOLLOW the loci (defeating the sizeRes-grid curvature aliasing that under-sizes sub-cell crests at
+fracU 0.35/0.65) → drives the GothicArches per-face RADIAL chord-sag heatmap to 0% RED AND 0% YELLOW.
+
+**KILL-CRITERION (pre-registered):** (P1 mechanism) crest-aware ON vs OFF at equal budget FLATTENS the fracU
+0.35/0.65 peaks (peakRatio → ~1.0) AND cuts over05 face count; (P2 mission) 0% RED (≥0.15) AND 0% YELLOW (≥0.05)
+at reasonable tris, nonMan=0; (P3) byte-identical off (idxHash 948740756) + HarmonicRipple untouched.
+
+### RESULT so far
+
+**(a) HOTSPOT (0.5,0.54) IS DETECTED — REFUTES the brief's step-2 hypothesis.** `_crestLociDetect` (PF_CRESTDET):
+the nearest ground-truth locus to (0.50,0.54) is a **`relief-wall-truth` at (0.5000,0.5402), 0.0195mm away** (≈ON the
+hotspot); 27 loci within 1mm, 3 within 0.3mm. So `denseFeatureGroundTruth` does NOT miss the horizontal arch feature.
+The detector splits loci into ridge-truth (13356) / crease-truth (10380) / relief-wall-truth (24256) and DOES check
+both u- and t-direction local maxima (denseRidgeTruth) + a relief-wall family — horizontal/mixed features ARE
+captured. ⇒ the hotspot is NOT an undetected feature; it is either gated-off conforming (computeMeasuredGate keeps a
+locus only where the BASE mesh gap > 0.1mm) or a sizing/recovery artifact. The ungated crest-aware overlay covers it.
+
+**(b) LOCI-BAND OVERLAY — REFUTED at equal budget.** `_crestAwareCompare` (PF_CRESTCMP), GothicArches, conf +
+planarize + gate, sizeRes 512, **equal 2.5M-point budget (~5.0M tris each)**, per-face RADIAL chord sag + fracU512:
+
+| config | tris | worst | RED(≥0.15) | YEL(≥0.05) | over05 faces | fracU peakRatio |
+|---|---|---|---|---|---|---|
+| **B = curvatureFineStep (SF mechanism) + chordSteiner** | 5.00M | **0.417** | **0.0037%** | **0.112%** | **5586** | 1.29 |
+| C = crest-aware overlay + chordSteiner | 5.00M | 1.027 | 0.100% | 0.360% | 18000 | 1.11 |
+| E = crest-aware overlay, NO chordSteiner | 5.00M | 1.264 | 0.109% | 0.378% | 18884 | 1.09 |
+
+The overlay DOES flatten the aliasing (peakRatio 1.29 → 1.09–1.11, the fracU histogram becomes uniform) — so the
+MECHANISM claim (P1 flattening) is CONFIRMED — but it TRIPLES over05 and quadruples worst at equal budget: the
+band (band=1 = ±0.6mm at sizeRes 512) forces h→hMin (minH3D≈0.034mm) across the whole crest NEIGHBOURHOOD, exhausting
+the point budget on band-fill so the actual crest apexes get FEWER points. The moderate screen corroborated:
+crest-aware ON cut YEL 0.63%→0.14% but at 4.3× tris (939k→4M) and worst 0.455→0.692 (constraint recovery failed
+4290→20257 at the higher density). **⇒ the loci-band min-h3D overlay is budget-INEFFICIENT and does NOT beat the
+existing grid-subsample fine-curvature (finestep) — REFUTED as specified.** The finestep mechanism (config B) is the
+better lever and is the path to green (B at 5M already: worst 0.417, RED 0.0037%, YEL 0.112%; SF at 9.4M: 0.27 / 0 /
+0.009%).
+
+**(c) curvatureSubsamples — ALSO REFUTED (same failure mode).** Root-cause re-read: the finestep window-max samples
+κ at only `curvatureSubsamples²` sub-cell points; at the default **2** the offsets are ±0.5·du (cell EDGES), so a
+crest at fracU 0.35/0.65 between the sampled points is under-read → the residual aliases. `_subsamplesSweep` (PF_SUBS),
+config B, subs∈{2,5,8} at equal 2.5M budget:
+
+| subs | tris | worst | RED(≥0.15) | YEL(≥0.05) | over05 | fracU peakRatio |
+|---|---|---|---|---|---|---|
+| **2** | 5.0M | **0.417** | **0.0037%** | **0.112%** | **5586** | 1.29 |
+| 5 | 5.0M | 0.935 | 0.083% | 0.328% | 16417 | 1.11 |
+| 8 | 5.0M | 1.027 | 0.099% | 0.357% | 17832 | 1.09 |
+
+MONOTONIC regression: raising subsamples FLATTENS the aliasing (peakRatio 1.29→1.09) but TRIPLES over05 + worst at
+equal budget — IDENTICAL to the overlay. ⇒ **the residual is NOT sizing-limited.** Any mechanism that makes the crest
+sizing finer over-densifies → the constraint recovery (which LOCKS the conforming edges) fails far more at higher
+density (`_crestAwareScreen`: fails 4290→20257), and each recovery failure leaves a spanning facet. The least-aggressive
+sizing (subs=2 = the shipped SF mechanism) is the SWEET SPOT; the peakRatio "flattening" is misleading (it means the
+residual is no longer crest-concentrated — it is now recovery-slivers spread uniformly).
+
+**(d) THE REAL LEVER IS BUDGET (at subs=2), and the WORST FACES ARE STEEP RIBS.** `_budgetLocalize` (PF_BUDLOC),
+config B subs=2 at rising budget. At 2.5M-points/5.0M-tris: worst 0.416, RED 0.0040%, YEL 0.111%, recovery failed
+1343/14157. The top-12 worst faces are **STEEP near-vertical arch ribs** (steepness |dr/dz| **1.17–5.14**, |d²r/du²|
+**5e6–1e7**) concentrated in the UPPER arch (t-band peak 0.8–0.9). (The 5M/9M-point budget points confirm the SF
+9.41M-tri result — worst 0.27, YEL 0.009% — i.e. MORE budget at subs=2 monotonically reduces the residual; the run
+crashed in the audit at 10M tris via a labkit Map-cap bug, since FIXED + committed 93efb87.)
+
+**(e) A LARGE PART OF THE RESIDUAL IS THE RADIAL RULER OVERSTATING STEEP RIBS.** `_rulerCheck` (PF_RULER),
+re-measure the subs=2 5.0M-tri mesh under BOTH rulers:
+
+| ruler | worst | RED(≥0.15) | YEL(≥0.05) | >0.03 |
+|---|---|---|---|---|
+| RADIAL (mission heatmap) | 0.416 | 0.00404% (202) | 0.11070% (5533) | 0.271% |
+| **TRUE-3D (honest)** | **0.270** | **0.00084% (42)** | **0.03413% (1706)** | **0.102%** |
+
+The honest true-3D nearest-surface ruler ~THIRDS the residual (YEL 5533→1706 faces, RED 202→42, worst 0.42→0.27).
+Corroborates E-FRONTIER-BUILD3 (radial overstates GothicArches ribs 4–5×) + the whole-lab metric discipline: the
+worst faces are the steep ribs from (d), where radial magnifies a small true-3D error. **The mission's literal-0%-
+RADIAL target is partly chasing a ruler artifact.** Under true-3D the export is essentially CAD-grade already (worst
+0.27mm even at 5M; the 1706 residual faces are steep-rib radial overstatement, not export defects).
+
+**(P2 mission) — NOT MET, and NOT met by crest-aware.** Literal 0% RADIAL RED **and** 0% RADIAL YEL is not reached by
+crest-aware sizing (it regresses). The closest is the SF baseline (subs=2 + budget): 9.41M tris → RADIAL RED≈0
+(0.00016%), YEL 0.009%, worst 0.27 — a ~800-face yellow floor that (per e) is dominated by radial overstatement of
+steep ribs (true-3D even lower). Genuinely irreducible? NO for true-3D (CAD-grade). For literal-0% RADIAL: it is more
+BUDGET at subs=2 (asymptotes toward the steep-rib radial-overstatement floor), NOT crest-aware sizing.
+
+**(P3 no-op + smooth control) — CONFIRMED.** `_kernel_noop` idxHash 948740756 identical before+after the kernel edit
+(commit 17d3482); all new options default undefined ⇒ default kernel + conforming-without-flag byte-identical.
+`_crestAwareFinal` (PF_CRESTFINAL) re-fingerprints 948740756 + the HarmonicRipple smooth control (crest-aware OFF vs
+ON) — dumps `GothicArches_crestaware_{base,conf}[_radial]` + HarmonicRipple for render.
+
+### VERDICT
+**REFUTED.** Crest-aware sizing (loci-band min-h3D overlay) does NOT drive the GothicArches RADIAL heatmap to 0% RED +
+0% YELLOW; it (and any finer-crest-sizing mechanism) REGRESSES ~3× at equal budget because the residual is
+constraint-recovery-limited, not sizing-limited. The mission's step-2 hotspot hypothesis is also refuted (the feature
+IS detected). The honest re-diagnosis: (i) subs=2 (least-aggressive sizing, the shipped SF mechanism) is the sweet
+spot; (ii) the lever toward literal-0%-RADIAL is more BUDGET at subs=2; (iii) most of the remaining RADIAL residual is
+the radial ruler overstating steep near-vertical arch ribs — under the honest true-3D ruler the export is already
+CAD-grade (worst 0.27mm, YEL 0.034%).
+
+### RECOMMENDATION
+Do NOT productionize crest-aware sizing (net-negative). ACCEPT + DOCUMENT: draw the GothicArches heatmap with the
+TRUE-3D ruler (already the lab default `dumpHeatmap`) — it shows the export is CAD-grade and dissolves ~2/3 of the
+"residual". If literal-0% RADIAL is still wanted, the only honest lever is MORE BUDGET at subs=2 (the SF recipe), which
+asymptotes to the steep-rib radial-overstatement floor — better spent by fixing the RULER (true-3D) than by burning
+budget/adding a regressing mechanism. The reusable kernel additions (`kappaMaxAt`, opt-in `crestSizeOverlay`) stay in
+(byte-identical off) for future field-driven sizing experiments. The labkit audit Map-cap fix (93efb87) is a net win
+for all large-mesh probes.
+
+**Ledger:** this block. Commits 17d3482 (code), 93efb87 (labkit audit fix), 15fcb4c/fb4b40a/266872e/ce822d4/918b58d/
+c6d1cf0/512cdf7/899247c (probes). Dumps in `research/exchange/_crestaware/` + `research/exchange/_showcase/`.
+
+### BLOCK 1 — DIAG (H1 RESOLVED): all 6 BROAD are FACET-BRIDGING, NOT vertex-placement
+
+Decomposed each BROAD style (unified crest-pinned mechanism, moderate density) into worst-FACET sag vs the
+perpendicular projection of that facet's VERTICES (`perFaceTrue3DSag` → top-40 worst facets → project their verts).
+KILL-CRITERION was: worst-facet vertex projMm > 0.05 ⇒ NOT clean facet-bridging. Result — ALL SIX pass:
+
+| style | tris | worstFacetSag(mm) | worstFacetVertexProj(mm) | class |
+|---|---|---|---|---|
+| ArtDeco | 1.39M | 2.783 | 0.0000 | FACET-BRIDGING |
+| BasketWeave | 3.0M | 1.336 | 0.0000 | FACET-BRIDGING |
+| BambooSegments | 2.16M | 0.853 | 0.0001 | FACET-BRIDGING |
+| DragonScales | 3.0M | 0.865 | 0.0001 | FACET-BRIDGING |
+| CelticKnot | 3.0M | 0.671 | 0.0000 | FACET-BRIDGING |
+| LowPolyFacet | 1.04M | 0.515 | 0.0000 | FACET-BRIDGING |
+
+**FINDING (overturns the settled EXCLUDE-class framing for the UNIFIED mechanism):** the mesh VERTICES are ALL
+exactly on the true single-valued radial surface (projMm ≤ 0.0001mm). The entire BROAD true-3D gap is FACETS
+bridging vertical step/riser/weave walls between correctly-placed vertices — there is NO occlusion/two-valued
+vertex misplacement at these dims (the "over/under weave" is still a single-valued height field r(θ,z); a facet
+spanning the vertical wall reads the gap). ⇒ step-edge conforming is the right lever for ALL 6, IN PRINCIPLE.
+(NOTE: the sweepmap's high `vertexMax` (ArtDeco 4.1 / BasketWeave 2.0) is the RADIAL vertex-channel flipping across
+the C0 step at a vertex sitting exactly ON a riser boundary — a metric artifact AT the discontinuity, not a
+misplaced vertex; the honest perpendicular projMm of those same vertices is ~0.)
+**H1 VERDICT: confirmed (all FACET-BRIDGING).** Checkpoints: `research/exchange/_perfectPipeline/diag_<style>.json`.
+
+### BLOCK 2 — ArtDeco step-conform (H2 REFRAMED): the BROAD gap is an IRREDUCIBLE C0 radius CLIFF, not under-tess
+
+- **Single constraint ring at the jump-t = NO-OP** (artdeco_after_singlering): chordMax 2.98→2.99, %>0.03 1.57→1.01.
+- **DOUBLE ring straddling the jump (t=jump±δ) at δ=5e-4 = NO-OP too**: chordMax 2.97, %>0.03 1.55. A synthetic
+  L-wall proxy predicted δ=1e-4 → 0.012mm; the real mesh at δ=1e-4 stays at worstFacetSag **2.78mm** (artdiag).
+- **ROOT CAUSE (artdiag + cliffgap.mjs):** the worst facet IS a thin strip (t-extent 1.0e-4 = exactly 2δ) with
+  rSpan [48.27, 52.46] — it DOES straddle the jump. Its perpendicular sag is 2.78mm because the ArtDeco riser is a
+  **4.1mm C0 radius CLIFF**: at t=0.975 the analytic radius JUMPS 51.28→47.19 over ~0 t, and there is **NO analytic
+  surface in the annular gap** (scanned: no z near the jump has r=midR). So a facet bridging the cliff (the physical
+  "tread") is intrinsically ~cliff/2 ≈ **1.9mm** from the single-valued sheet r(θ,z), REGARDLESS of how thin the
+  strip is. This is IRREDUCIBLE for a single-valued (u,t) mesh AND for the `perFaceTrue3DSag` ruler.
+- **THE REFRAME:** the tread/riser facet is CORRECT physical step geometry (a real face of the pot solid, required
+  for watertightness). `perFaceTrue3DSag`/`projectPointToRadialSurface` measure against r(θ,z), which does NOT
+  parameterize the riser ⇒ they SCORE the correct step as ~1.9mm error. The honest fix is NOT more conforming — it
+  is to EXCLUDE the designed C0-cliff facets from the green metric (exactly what perpendicular3DDeviation's `tBands`
+  riser exclusion already does). Densify/conform CANNOT green a C0 cliff; nothing can, for a single-valued mesh.
+- **H2 VERDICT: refuted as stated** (step-edge conforming does NOT drive ArtDeco true-3D green) → **superseded by
+  the cliff-exclusion reframe** (BLOCK 2c). Checkpoints: artdeco_after_singlering / artdeco_double_d* / artdiag_d*.
+
+### BLOCK 2c — CLIFF-EXCLUDED GREEN (the honest BROAD metric): style-agnostic C0-cliff detector
+
+A facet is a C0-CLIFF facet iff, on a 16×16 sub-grid over its (padded) (u,t) footprint, the max ADJACENT-node
+radius step > 0.25mm (a smooth steep relief ramps → tiny adjacent steps; a C0 cliff jumps). Validated on the
+analytic fns: ArtDeco cliff 4.12 (flag), plateau 0.001 (no), Gyroid steep-continuous crest 0.003 (correctly NOT
+flagged), BasketWeave strand wall 1.995 (flag). Measured %>0.03 among NON-cliff facets (moderate density):
+
+| style | over0.03 CLIFF | over0.03 nonCliff | nonCliff worst(mm) | nonCliff p99(mm) |
+|---|---|---|---|---|
+| ArtDeco | 21148 | 687 / 1.39M | 0.071 | 0.061 |
+| BasketWeave | 96510 | 4360 / 3.0M | 0.325 | 0.152 |
+| BambooSegments | 21911 | 5275 / 2.16M | 0.742 | 0.708 |
+| DragonScales | 26255 | 9272 / 3.0M | 0.641 | 0.479 |
+| CelticKnot | 48366 | 7738 / 3.0M | 0.638 | 0.399 |
+| LowPolyFacet | 1560 | 2733 / 1.04M | 0.355 | 0.312 |
+
+The BULK of the BROAD over-tol facets ARE C0 cliffs (correct physical steps, irreducible for a single-valued mesh
++ unscoreable by the analytic-sheet ruler). ArtDeco is essentially green after exclusion (worst nonCliff 0.071).
+The 5 others retain nonCliff over-tol facets at 0.3-0.74mm ⇒ BLOCK 2d classifies these as cliff-ADJACENT (irreducible)
+vs GENUINE under-tess. Checkpoints: `research/exchange/_perfectPipeline/cliffgreen_<style>.json`.
+
+### BLOCK 2d — CLIFF-ADJACENCY (H1/H2 final): the residual nonCliff facets are cliff-ADJACENT, genuine gap ≤ 0.13mm
+
+Re-classified each style's residual nonCliff over-tol facets with a WIDE box (padFactor 4): if the wider footprint
+catches a >0.25mm adjacent-node radius step, the facet is cliff-ADJACENT (its footprint grazes the C0 cliff foot —
+same irreducible gap, just missed by the tight box). Result:
+
+| style | nonCliff (tight) | cliff-adjacent (wide) | GENUINE remaining | worst GENUINE (mm) |
+|---|---|---|---|---|
+| ArtDeco | 687 | 139 | 548 | 0.065 |
+| BasketWeave | 4360 | 4308 | 52 | 0.089 |
+| BambooSegments | 2346 | 439 | 1907 | 0.127 |
+| DragonScales | 2655 | 2350 | 305 | 0.101 |
+| CelticKnot | 1367 | 379 | 988 | 0.070 |
+| LowPolyFacet | 1424 | 335 | 1089 | 0.132 |
+
+**BROAD VERDICT (H1/H2 resolved):** NO BROAD style has a broad genuine under-tessellation gap. Every BROAD "red"
+facet is either (a) a correct C0-cliff/tread facet (physical step geometry, IRREDUCIBLE for a single-valued (u,t)
+mesh + UNSCOREABLE by the analytic-sheet ruler → must be EXCLUDED from the green metric), or (b) a cliff-ADJACENT
+facet (same gap), or (c) a small genuine transition-zone tail whose WORST is ≤ **0.132mm** (sub-print-res). The
+"6 BROAD need step-edge conforming" conclusion of E-SWEEP-METRIC-MAP is **superseded**: step-edge conforming CANNOT
+green a C0 cliff (BLOCK 2), and it doesn't need to — the cliff facets are correct. The path to green is the RULER +
+EXCLUSION (draw the heatmap with the cliff facets excluded/greyed as designed features), not more mesh.
+Checkpoints: `research/exchange/_perfectPipeline/cliffadj_<style>.json`.
