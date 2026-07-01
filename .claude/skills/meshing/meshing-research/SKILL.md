@@ -11,6 +11,7 @@ Mesh/export fidelity work here is **experimental science**, not coding. The two 
 **Core principle:** Measure before fixing — and measure the RIGHT thing, against a stated reference, past a kill-criterion you wrote down *first*. **Violating the letter of this loop is violating its spirit.**
 
 ## The loop (do every step, in order)
+0. **Read the ledger + cheat-sheet first** (`research/EXPERIMENT-REGISTRY.md`, `research/LAB-CHEATSHEET.md`) — build on prior verdicts, never re-run an already-refuted hypothesis, and import instruments from `research/bridge/labkit.ts` instead of re-coding them.
 1. **Hypothesis** — one falsifiable sentence ("anisotropic gmsh closes the Gyroid chord+quality gap at our budget").
 2. **Cheapest discriminator** — the existing lever or the [[oracle-harness]] engine that can KILL it fastest, *before building anything*.
 3. **Pre-register the kill-criterion** — write the exact number that confirms/refutes it **before running**. Append it to the experiment ledger. This is the step that prevents "it looks fixed".
@@ -22,7 +23,7 @@ Mesh/export fidelity work here is **experimental science**, not coding. The two 
 
 ## Quick reference
 **Levers** (window globals; `?fidelity=1`; default off → byte-identical): `__pfConformingUniformLevel / MaxSag / NRing / UBias / Efg / MinEdge / MaxLevel / Budget`, `__pfSurfaceFidelityExact`, `__pfReferenceDenseRes / Bicubic`.
-**Instruments:** `perpendicular3DDeviation` (honest 3D chord), `triangleQualityDistribution` (min-angle, `pctBelow20`), `crestBandTriangleQuality`, `deviationVsTrueSurface` (fidelityGate), the `TRI_SOURCE` channel (attribute a sliver to its template). The [[oracle-harness]] measures gmsh/Triangle on the SAME instruments.
+**Instruments (import from `research/bridge/labkit.ts`):** `perpendicular3DDeviation` (3D chord), `triangleQualityDistribution` (min-angle), `crestBandTriangleQuality`; plus the `TRI_SOURCE` per-triangle channel (a mesh attribute, not a labkit fn). **For FIDELITY use TRUE-3D — `featureLineChord3D` (nearest-surface, on `buildFeatureTruth` loci) or `perFaceChordSag` (facet→surface = the chord-error heatmap)** — NOT the radial/same-(u,t) chord, which OVERSTATES near-vertical relief 2–27× (ArtDeco radial 3.35mm ≙ true-3D 0.039mm) and NOT global RMS (straddle-masked). Watertight by `auditNonManByIndex` (by index, non-vacuous). The [[oracle-harness]] measures gmsh/Triangle on the SAME instruments.
 **Gates — use the HONEST ones (`[measured 2026-06-26]`):** **minAngle** for slivers (depth-invariant) — NOT `%<20°`, which DILUTES under refinement (a denser slivered mesh shows a *lower* `%<20°` as good interior tris swamp a fixed sliver count); **RMS / relief-coverage** chord for fidelity — NOT p99 alone, which is BLIND to under-tessellation (a relief-losing mesh shares the same worst-case near-C0-crease p99). Plus watertight by **index**; vertex faithfulness ≤ f32 floor. (τ(p) p99 in `src/fidelity/gateThresholds.ts` is a floor check, not a fidelity gate.)
 **Controls:**
 - Never vary sampling-resolution and mesh-density in the same comparison (the denseN confound).
@@ -30,6 +31,14 @@ Mesh/export fidelity work here is **experimental science**, not coding. The two 
 - Compare only at **equal triangle budget**.
 - **Verify the metric RESPONDS to the defect you care about** — sweep density/scale and confirm it isn't *diluting* (`%<20°` falls under refinement) or *saturating* (p99-chord pinned by shared creases while the surface mushes). If a flat-shaded **3D render** disagrees with the metric, trust the render and fix the metric.
 - GPU hygiene: let Playwright probes reach `browser.close()`; reap orphaned chromium; serialize GPU probes.
+- **Resilience:** the environment kills long runs (6+ process-exits lost multi-hour work this arc). One env-gated probe per question (resumable by re-running only the unfinished one); CHECKPOINT each unit's result to disk the instant it's computed (`dumpRenderBins` per mesh, append the registry row per style) — never only at the end; screen at moderate budget + high-density-confirm only the flagged few. No single multi-hour unit.
+
+## What to return
+The full scorecard goes in `research/EXPERIMENT-REGISTRY.md` (durable). Your RETURN is concise — a structured finding, not narration, and not a re-inlined scorecard (a prior return inlined 400k tokens):
+```
+HYPOTHESIS / DISCRIMINATOR / KILL-CRITERION (pre-registered) / EVIDENCE (headline numbers, instrument named, equal budget) / VERDICT (confirmed|refuted|no-op) / RECOMMENDATION / LEDGER (path + commit sha)
+```
+When the question is fidelity, include VISUAL evidence (`research/render/meshRender.cjs`; flat-shade sharp relief, chord-sag heatmap) and cite the PNG path. If a render disagrees with a metric, trust the render and fix the metric.
 
 ## Rationalizations — STOP if you think one (all observed in this project)
 | Rationalization | Reality |

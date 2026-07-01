@@ -1158,3 +1158,29 @@ step/occlusion-DISCONTINUOUS relief (refuted: loci accuracy, edge-lock) ⇒ thos
 Feature-conforming's validated wins are narrow + real: **GothicArches thin-ridge chord (0.24→0.13) + feature-adjacent
 sliver cleanup on conform-friendly relief**; gated OFF smooth (no-regression); EXCLUDE on risers (already CAD-grade)
 + weave/braid. The non-manifold guard (20/20 watertight) is the universal win.
+
+## E-2026-06-30-SHOWCASE — before/after + STL + HD/recovery confirm + per-face chord heatmap
+
+Runners: `featConformShowcase.test.ts` (PF_SHOWCASE), `featConformHeatmap.test.ts` (PF_HEATMAP),
+`_warpPriorityProbe.test.ts` (PF_WARPPRI). Baseline (default kernel + guardManifold) vs gated Stage-B conforming,
+GothicArches + BambooSegments; STL + render-bins in `research/exchange/_showcase/`.
+
+| mesh | tris | true-3D p99 (mm) | worst | sliverRatio | nonMan |
+|---|---|---|---|---|---|
+| GothicArches base 1M | 1.37M | 0.217 | 1.23 | 2.19 | 0 |
+| GothicArches conf 1M | 1.93M | **0.096** | 0.42 | 1.40 | 0 |
+| GothicArches conf **3M** (2.65M) | 2.65M | **0.082** | 0.39 | 1.43 | 0 |
+| BambooSegments base 1M | 1.04M | 0.037 | 0.20 | 2.93 | 0 |
+| BambooSegments conf 1M | 1.13M | 0.035 | 0.26 | 2.16 | 0 |
+
+- **D4 (GothicArches HD) CONFIRMED** — conf true-3D p99 0.217→0.096 @1M → **0.082 @3M** (2.65M tris): CAD-grade (<0.1),
+  density-responsive. (Supersedes the earlier "D4 NOT COMPLETED / unconfirmed" note from FEAT-CONFORM-WARP — that was
+  the `_warpHdProbe` D4 which was killed; the showcase run completed it.)
+- **D5 (recovery priority-ordering) = NO-OP** — `_warpPriorityProbe`: strongest-first ordering moves recovery ±0.2pp
+  and true-3D is unchanged across GothicArches/BasketWeave/CelticKnot/Gyroid. The ~88–96% recovery ceiling is genuine
+  locus-CROSSING conflicts, not an ordering deficiency.
+- **PER-FACE CHORD HEATMAP** (`perFaceChordSag`, plane-distance, render `research/exchange/_showcase/chord_error_heatmap.png`):
+  GothicArches faces with sag >0.1mm = 0.55%(base)→0.23%(conf), p99 0.063→0.040, worst 1.32→0.84mm; BambooSegments
+  0.05% both (already faithful). Even baseline is 99.5% green — conforming targets the sharp-crest residual.
+- **Honest cost**: conforming adds thin tris at the forced crease (GothicArches feature-adjacent %<20° rose ~1.4→5.5%);
+  net strongly positive (chord halved) but not free. STLs are relief SURFACE patches (manifold), NOT closed solids.
