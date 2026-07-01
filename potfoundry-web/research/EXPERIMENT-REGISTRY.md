@@ -1203,3 +1203,84 @@ gate) — A/B measure-only, Gothic p99 → ~0.10 in the tessellation step alone.
 density-invariant); offline-binary discriminator. **RUN FIRST = Bet 1** (skeleton-only dev build, one style, refutes
 the recovery wall AND validates the paradigm shift in one experiment). Demoted: signpost-intrinsic (fallback for Bet 1),
 (II,I) aniso (folds into Bet 2, over-stretches smooth). Dropped (refuted): 3D-direct remesh, density, no-lock weave rescue.
+
+
+---
+
+## E-2026-07-01-PUREGREEN — Planarize the feature-constraint graph → drive GothicArches chord-sag heatmap to PURE GREEN
+
+**Status:** PRE-REGISTERED (this block written BEFORE running). RESULT appended below.
+**Date:** 2026-07-01
+**Builds on:** E-2026-06-30-SHOWCASE + green-push variants A–E (commit 798c239). Variant E (chordTolMm 0.02 +
+chordSteiner + dedupeEps 1e-7 + 6M budget) is the current best: GothicArches 2.89M faces, worst 0.292mm,
+RED(>0.15) 0.0027% (~78 faces), YELLOW(>0.05) 0.096%. Visually all-green but NOT literally. D5 (E-2026-06-30-
+SHOWCASE) already proved the ~88-96% recovery ceiling is GENUINE locus-CROSSING conflicts (priority-ordering was a
+NO-OP). The residual red/yellow sits at the near-vertical arch-apex JUNCTION cusps where two ridge loci CROSS:
+constraint recovery fails there (recoveryFailed on the crosser), so a facet spans the cusp.
+
+**HYPOTHESIS (one sentence):** PLANARIZING the (refined injected points + constraint segments) PSLG in (u,t)
+before the kernel — weld coincident junction endpoints + split every interior crossing into a NEW shared vertex
+(refined to the true surface) so every junction is a fan of non-crossing edges — lifts GothicArches constraint
+recovery from ~90% toward ~100% AND, with the chord-sag guard tightened, drives the per-face chord-sag heatmap to
+literal PURE GREEN (0% faces ≥0.15mm AND 0% ≥0.05mm).
+
+**KILL-CRITERIA (pre-registered, exact numbers):**
+- **P1 (planarization proof — the mechanism gate):** on GothicArches, recovery% (recovered+alreadyPresent /
+  requested) rises from the ~90% baseline to **≥ 98%** with planarizeConstraints on. CONFIRMED iff ≥98%; PARTIAL
+  iff [92%,98%) (planarization helped but residual crossings/seam remain — diagnose); REFUTED iff < 92% (no lift).
+  Non-vacuous control: the number of CROSSING pairs found+split must be > 0 (else planarization is a no-op and
+  cannot be the fix).
+- **P2 (pure-green — the mission):** on the pushed GothicArches mesh (conf + planarize + guardManifoldAlways +
+  chordSteiner + tightening chordTolMm), per-face chord sag **RED(≥0.15mm) = 0.000%** AND **YELLOW(≥0.05mm) =
+  0.000%**, ideally worst-face < 0.02mm. CONFIRMED iff both 0.000%; PARTIAL iff RED=0 but YELLOW>0 (report the
+  floor + why); REFUTED iff RED>0 persists after planarize + the tightest tractable chordTolMm/budget.
+- **P3 (no-regression / opt-in):** _kernel_noop idxHash stays **948740756** (kernel default byte-identical);
+  planarizeConstraints OFF ⇒ a conforming build matches the pre-change conforming output (same tris/idxHash);
+  HarmonicRipple (smooth control) gate keeps 0 loci ⇒ conforming byte-identical (untouched by the gate).
+  CONFIRMED iff all three hold; REFUTED iff any changes.
+
+**DISCRIMINATOR (cheapest first):** P1 is measured on a MODERATE-budget conforming build (recovery% is printed by
+the kernel's `[constraint]` profile line and is density-invariant in DIRECTION) BEFORE the expensive HD push —
+if planarization doesn't lift recovery at 0.5-1M it won't at 6M. Only if P1 confirms do I run the HD pure-green
+push (P2). The crossing-count (non-vacuous control) is measured in the planarizer itself.
+
+**METHOD:** (1) add opt-in `planarizeConstraints?: boolean` to buildFeatureConformingMeshB — STRICT NO-OP off.
+When on, after building the refined injected points + constraint pairs, run a planarizer in (u,t): WELD (reuse the
+snap-deduper's shared vertices — already collapses coincident junction endpoints), then SPLIT CROSSINGS via a
+uniform (u,t) bucket grid (bucket segments by bbox, test only same-bucket pairs → avoids O(E²)); at each interior
+crossing insert a new injected point at the intersection (u,t), refined to the true radial extremum, and split
+both segments; iterate a few passes (a split can create new crossings). Emit the augmented injected points +
+planar constraintEdges to the kernel. (2) P1 screen at moderate budget: recovery% off vs on + crossing count.
+(3) If P1 confirms, P2 HD push: iterate chordTolMm 0.02 → 0.015 → 0.01 (+budget) until YELLOW=0 or the honest
+floor; dump xyz/idx/col as GothicArches_puregreen_conf.* (+ _base). (4) P3 no-op re-verify.
+
+**CONTROLS:** equal budget for the recovery A/B; the crossing-count must be >0 (non-vacuous); _kernel_noop
+fingerprint + conforming-without-flag match (opt-in proof); HarmonicRipple gate=0 (smooth control untouched);
+TRUE per-face chord sag (perFaceChordSag, what the heatmap shows) is the primary metric; watertight by
+auditNonManByIndex (must stay 0).
+
+### RESULT (appended after running)
+
+**P1 (planarization mechanism) — CONFIRMED.** `_planarizeRecovery.test.ts` (PF_PLANREC), moderate 900k-budget
+gated-conforming GothicArches, planarize OFF vs ON:
+
+| build | constraints req | present+rec | failed | recovery% | tris | nonMan |
+|---|---|---|---|---|---|---|
+| conf OFF (shipped) | 55097 | 48718 | 6379 | **88.4%** | 1.17M | 0 |
+| conf ON (planar) | 74061 | 73183 | 878 | **98.8%** | 1.19M | **2** |
+
+- Planarizer diag: **crossingsSplit=10515, addedPoints=9713, passes=3, residual=0** (converged — 0 crossings
+  remain). Non-vacuous control PASSES (crossings > 0). The FIRST (iterative pairwise-split) planarizer FAILED
+  (recovery 88→50%, residual=25939 non-converged) because the caller's coarse 0.04mm loci-deduper collapsed
+  crossing points onto endpoints; the FIX = a proper **single-pass segment ARRANGEMENT** with its own FINE
+  0.004mm intersection-vertex hash (collect ALL crossings per edge, sort by param, rebuild as a chain) →
+  converges in 3 passes, recovery **88.4%→98.8%** (P1 kill ≥98% → CONFIRMED). The residual 878 (1.2%) are
+  collinear/locked-blocked chains, not strict crossings.
+- **NEW REGRESSION: nonMan=2** with planarize on (was 0). The recovery LOCKS edges through the new T-junction
+  vertices; a locked edge can pin a near-degenerate config the manifold guard cannot flip out of. Fixed before
+  the HD push (watertight is non-negotiable) — see P2.
+- Heatmap at THIS screen budget barely moved (RED 0.148→0.127%, worst 0.782 identical) — EXPECTED: this build
+  has no chordTolMm/chordSteiner, so its sag is metric-sizing-dominated, not apex-cusp-dominated. The heatmap
+  payoff is tested in the HD push (P2).
+
+**P2 (pure-green HD push):** _(pending — fixing nonMan=2, then push chordTolMm)_

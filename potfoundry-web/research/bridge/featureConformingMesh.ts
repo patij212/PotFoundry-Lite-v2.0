@@ -112,6 +112,183 @@ function periodicDu(u1: number, u0: number): number {
   return du;
 }
 
+/** Shortest-image u of `u` relative to reference `uRef` (periodic in 1). */
+function wrapURef(u: number, uRef: number): number {
+  let d = u - uRef;
+  while (d > 0.5) d -= 1;
+  while (d < -0.5) d += 1;
+  return uRef + d;
+}
+
+/** 2D orientation sign of (a,b,c): >0 ccw, <0 cw, 0 collinear (mm-scaled inputs). */
+function orient2(ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number {
+  return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+}
+
+export interface PlanarizeResult {
+  /** augmented flat (u,t) injected points (original + crossing/split vertices). */
+  injected: number[];
+  /** the PLANAR (non-crossing) constraint edges as vertex-position pairs into `injected`. */
+  constraints: number[];
+  /** diagnostics. */
+  crossingsSplit: number;
+  passes: number;
+  addedPoints: number;
+  /** residual crossings still present after the last pass (should be 0). */
+  residualCrossings: number;
+}
+
+/**
+ * PLANARIZE a (u,t) PSLG: split every interior crossing of two constraint segments into a NEW shared vertex
+ * (refined to the true surface) so the result is a planar graph — every junction is a FAN of non-crossing
+ * edges and no facet can span a sharp cusp. Seam-aware in u (periodic): a segment pair is compared in the
+ * first segment's local [uRef-0.5, uRef+0.5] band (shortest-image), mirroring the constraint-recovery /
+ * locator normalization. Uniform (u,t) bucket grid over segment bboxes → only same/neighbour-bucket pairs
+ * are tested (avoids O(E²)). Iterates until no crossings remain (a split can create new crossings) or a pass
+ * cap. WELD is already done by the caller's snap-deduper (`dd`) — coincident endpoints share a vertex; this
+ * only adds the interior crossing vertices.
+ *
+ * @param constraints0 vertex-position pairs into pointsRef.
+ * @param uToMm,tToMm  (u,t)→mm scales (for mm-consistent orientation predicates).
+ * @param pointsRef    the LIVE flat (u,t) points list — planarization APPENDS intersection vertices to it (via
+ *                     its own fine hash) and returns edge pairs indexing into it. Must be the same list the
+ *                     kernel receives as injectedPoints.
+ */
+export function planarizeConstraintGraph(
+  constraints0: number[],
+  uToMm: number, tToMm: number,
+  pointsRef: number[],
+  maxPasses = 4,
+): PlanarizeResult {
+  // SEGMENT ARRANGEMENT (single pass per iteration; converges in a few iterations even on a dense multi-ridge
+  // apex): for every edge collect ALL its crossings with other edges, add each intersection as a distinct
+  // shared vertex (via a FINE own hash — NOT the caller's coarse loci deduper, whose 0.04mm grid collapsed
+  // crossing points onto endpoints and left the crossing unresolved), then rebuild the edge as the chain
+  // through its sorted crossing points. Every crossing pair therefore ends up sharing the SAME vertex ⇒ a
+  // planar fan. A split can create a new near-degenerate crossing (an intersection lying on a third edge), so
+  // we re-run a couple of passes; residual counts what remains.
+  //
+  // Intersection vertices are placed AT THE TRUE (u,t) INTERSECTION and lifted to the surface by the kernel
+  // (which evaluates rA at every (u,t)). We do NOT snap them to a 2D radial extremum — the two constraint
+  // chords are the mesh's model of the two ridges, so their crossing IS the junction the mesh should pass
+  // through; pulling it to a nearby extremum moves it OFF the chords and re-creates a spanning facet.
+  const px = (v: number): number => pointsRef[2 * v];
+  const py = (v: number): number => pointsRef[2 * v + 1];
+
+  // FINE intersection-vertex dedupe (own hash on a mm grid ≪ the loci grid). Coincident crossings at one apex
+  // share a vertex; distinct crossings stay distinct. Seam-wrapped in u.
+  const fineMm = 0.004; // ~1e-5 in (u,t) at these scales — well below the injectStep dedupe, above f32 noise
+  const cellU = Math.max(fineMm / uToMm, 1e-8), cellT = Math.max(fineMm / tToMm, 1e-8);
+  const nUcells = Math.max(1, Math.round(1 / cellU));
+  const fineMap = new Map<number, number>();
+  let addedPoints = 0;
+  const addFine = (u: number, t: number): number => {
+    let uu = u - Math.floor(u); if (uu < 0) uu += 1;
+    const tc = t < 0 ? 0 : t > 1 ? 1 : t;
+    const gu = ((Math.round(uu / cellU) % nUcells) + nUcells) % nUcells;
+    const gt = Math.round(tc / cellT);
+    const key = gu * 16_777_216 + gt;
+    const hit = fineMap.get(key); if (hit !== undefined) return hit;
+    const pos = pointsRef.length / 2; pointsRef.push(uu, tc); fineMap.set(key, pos); addedPoints++;
+    return pos;
+  };
+
+  const ekey = (a: number, b: number): number => { const lo = a < b ? a : b, hi = a < b ? b : a; return lo * 67_108_864 + hi; };
+  let edges: Array<[number, number]> = [];
+  {
+    const seen = new Set<number>();
+    for (let i = 0; i + 1 < constraints0.length; i += 2) {
+      const a = constraints0[i], b = constraints0[i + 1];
+      if (a === b || a < 0 || b < 0) continue;
+      const k = ekey(a, b); if (seen.has(k)) continue; seen.add(k);
+      edges.push([a, b]);
+    }
+  }
+
+  const GRID = 384; // bucket grid; a segment registers in every cell its bbox overlaps
+  let totalCrossings = 0, pass = 0, residual = 0;
+
+  for (; pass < maxPasses; pass++) {
+    // bucket edges by bbox (seam-aware: anchor each edge in its endpoint-a u-frame).
+    const buckets = new Map<number, number[]>();
+    const addToBucket = (cu: number, ct: number, ei: number): void => {
+      const cuW = ((cu % GRID) + GRID) % GRID;
+      const ctC = ct < 0 ? 0 : ct > GRID - 1 ? GRID - 1 : ct;
+      let arr = buckets.get(cuW * (GRID + 2) + ctC); if (arr === undefined) { arr = []; buckets.set(cuW * (GRID + 2) + ctC, arr); }
+      arr.push(ei);
+    };
+    for (let ei = 0; ei < edges.length; ei++) {
+      const [a, b] = edges[ei];
+      const uA = px(a), uB = wrapURef(px(b), uA), tA = py(a), tB = py(b);
+      const cuLo = Math.floor(Math.min(uA, uB) * GRID), cuHi = Math.floor(Math.max(uA, uB) * GRID);
+      const ctLo = Math.floor(Math.min(tA, tB) * GRID), ctHi = Math.floor(Math.max(tA, tB) * GRID);
+      for (let cu = cuLo; cu <= cuHi; cu++) for (let ct = ctLo; ct <= ctHi; ct++) addToBucket(cu, ct, ei);
+    }
+
+    // per-edge crossing list: for edge ei, an array of {s (param along a→b), vertex}.
+    const crossPerEdge: Array<Array<{ s: number; v: number }>> = edges.map(() => []);
+    const pairSeen = new Set<number>();
+    let passCrossings = 0;
+    for (const arr of buckets.values()) {
+      for (let x = 0; x < arr.length; x++) {
+        for (let y = x + 1; y < arr.length; y++) {
+          const ei = arr[x], ej = arr[y];
+          if (ei === ej) continue;
+          const pk = ei < ej ? ei * 67_108_864 + ej : ej * 67_108_864 + ei;
+          if (pairSeen.has(pk)) continue; pairSeen.add(pk);
+          const [a, b] = edges[ei], [c, d] = edges[ej];
+          if (a === c || a === d || b === c || b === d) continue; // share a vertex → already a fan
+          const uRef = px(a);
+          const axU = px(a), ayU = py(a);
+          const bxU = wrapURef(px(b), uRef), byU = py(b);
+          const cxU = wrapURef(px(c), uRef), cyU = py(c);
+          const dxU = wrapURef(px(d), uRef), dyU = py(d);
+          const axM = axU * uToMm, ayM = ayU * tToMm, bxM = bxU * uToMm, byM = byU * tToMm;
+          const cxM = cxU * uToMm, cyM = cyU * tToMm, dxM = dxU * uToMm, dyM = dyU * tToMm;
+          const o1 = orient2(axM, ayM, bxM, byM, cxM, cyM), o2 = orient2(axM, ayM, bxM, byM, dxM, dyM);
+          const o3 = orient2(cxM, cyM, dxM, dyM, axM, ayM), o4 = orient2(cxM, cyM, dxM, dyM, bxM, byM);
+          if (!(((o1 > 0 && o2 < 0) || (o1 < 0 && o2 > 0)) && ((o3 > 0 && o4 < 0) || (o3 < 0 && o4 > 0)))) continue;
+          const rpx = bxU - axU, rpy = byU - ayU, spx = dxU - cxU, spy = dyU - cyU;
+          const denom = rpx * spy - rpy * spx;
+          if (Math.abs(denom) < 1e-18) continue;
+          const s = ((cxU - axU) * spy - (cyU - ayU) * spx) / denom;
+          const sj = ((cxU - axU) * rpy - (cyU - ayU) * rpx) / denom; // param along c→d
+          if (s <= 1e-6 || s >= 1 - 1e-6 || sj <= 1e-6 || sj >= 1 - 1e-6) continue; // endpoint-touch, not interior
+          const iu = axU + s * rpx, it = ayU + s * rpy;
+          const v = addFine(iu, it);
+          if (v === a || v === b || v === c || v === d) continue; // merged onto an endpoint → not a real split
+          crossPerEdge[ei].push({ s, v });
+          crossPerEdge[ej].push({ s: sj, v });
+          passCrossings++;
+        }
+      }
+    }
+
+    if (passCrossings === 0) { residual = 0; break; }
+    totalCrossings += passCrossings;
+
+    // rebuild every edge as the chain through its sorted crossings; edges with none pass through unchanged.
+    const next: Array<[number, number]> = [];
+    const seen2 = new Set<number>();
+    const pushEdge = (a: number, b: number): void => { if (a === b) return; const k = ekey(a, b); if (seen2.has(k)) return; seen2.add(k); next.push([a, b]); };
+    for (let ei = 0; ei < edges.length; ei++) {
+      const [a, b] = edges[ei];
+      const xs = crossPerEdge[ei];
+      if (xs.length === 0) { pushEdge(a, b); continue; }
+      xs.sort((p, q) => p.s - q.s);
+      let prev = a;
+      for (const { v } of xs) { if (v !== prev) { pushEdge(prev, v); prev = v; } }
+      pushEdge(prev, b);
+    }
+    edges = next;
+    residual = passCrossings; // if the pass cap trips, this is the last unresolved count
+  }
+
+  const outC: number[] = [];
+  for (const [a, b] of edges) outC.push(a, b);
+  return { injected: pointsRef, constraints: outC, crossingsSplit: totalCrossings, passes: pass, addedPoints, residualCrossings: residual };
+}
+
 /**
  * Build the feature-conforming point injection for a style, then mesh with the kernel.
  *
@@ -218,8 +395,18 @@ export function buildFeatureConformingMeshB(
      * shipped behaviour). Opt-in → byte-identical when off.
      */
     constraintPriority?: boolean;
+    /**
+     * E-2026-07-01-PUREGREEN: PLANARIZE the (u,t) constraint PSLG before meshing — split every interior crossing
+     * of two constraint segments into a NEW shared vertex (refined to the true junction apex) so no facet can
+     * span a sharp cusp and constraint recovery reaches ~100% (the ~90% ceiling is genuine locus CROSSINGS —
+     * E-2026-06-30-SHOWCASE D5). Opt-in → STRICT NO-OP when false/absent (the constraint list is unchanged, so
+     * a conforming build without the flag is byte-identical to the pre-change conforming output). When on with
+     * constraintPriority, planarization runs FIRST (it removes crossings, making priority-give-up moot) so the
+     * priority ordering is skipped.
+     */
+    planarizeConstraints?: boolean;
   },
-): FeatureConformBResult {
+): FeatureConformBResult & { planarize?: PlanarizeResult } {
   const rA = buildRadiusFnLocal(styleId, params, dims);
   const H = dims.H;
   const truthRes = opts.truthRes ?? 384;
@@ -281,9 +468,24 @@ export function buildFeatureConformingMeshB(
     }
   });
 
+  // E-2026-07-01-PUREGREEN: PLANARIZE the PSLG (split crossings into shared junction vertices) BEFORE the
+  // priority reorder — planarization removes the crossings that priority-give-up existed to work around, so
+  // when planarizing we skip the reorder. STRICT NO-OP when the flag is off (constraints unchanged).
+  let planarize: PlanarizeResult | undefined;
+  let planarConstraints = constraints;
+  if (opts.planarizeConstraints === true) {
+    planarize = planarizeConstraintGraph(constraints, uToMm, tToMm, dd.points);
+    planarConstraints = planarize.constraints;
+    if (opts.profile === true) {
+      // eslint-disable-next-line no-console
+      console.log(`  [planarize ${styleId}] crossingsSplit=${planarize.crossingsSplit} added=${planarize.addedPoints} passes=${planarize.passes} residual=${planarize.residualCrossings} constraints ${constraints.length / 2}->${planarConstraints.length / 2}`);
+    }
+  }
+
   // TASK 4: reorder constraint pairs strongest-first so the kernel locks high-relief loci before weak crossers.
-  let orderedConstraints = constraints;
-  if (priority && constraintAmp.length === constraints.length / 2) {
+  // (Skipped when planarizing — there are no crossings left for the ordering to help with.)
+  let orderedConstraints = planarConstraints;
+  if (priority && !planarize && constraintAmp.length === constraints.length / 2) {
     const idx = constraintAmp.map((_, i) => i).sort((a, b) => constraintAmp[b] - constraintAmp[a]);
     orderedConstraints = new Array(constraints.length);
     for (let j = 0; j < idx.length; j++) { orderedConstraints[2 * j] = constraints[2 * idx[j]]; orderedConstraints[2 * j + 1] = constraints[2 * idx[j] + 1]; }
@@ -292,11 +494,11 @@ export function buildFeatureConformingMeshB(
   const injected = dd.points;
   if (opts.profile === true) {
     // eslint-disable-next-line no-console
-    console.log(`  [feat-conform-B ${styleId}] injected=${injected.length / 2} (deduped @${dedupeMm.toFixed(3)}mm) constraints=${constraints.length / 2} meanMove=${(moveN ? moveSum / moveN : 0).toFixed(3)}mm`);
+    console.log(`  [feat-conform-B ${styleId}] injected=${injected.length / 2} (deduped @${dedupeMm.toFixed(3)}mm) constraints=${orderedConstraints.length / 2} meanMove=${(moveN ? moveSum / moveN : 0).toFixed(3)}mm`);
   }
 
   const mesh = buildInhouseMetricMesh(rA, H, { ...opts, injectedPoints: injected, pinInjected: pin, constraintEdges: orderedConstraints });
-  return { ...mesh, injected: injected.length / 2, meanRefineMoveMm: moveN ? moveSum / moveN : 0, constraintsRequested: orderedConstraints.length / 2 };
+  return { ...mesh, injected: injected.length / 2, meanRefineMoveMm: moveN ? moveSum / moveN : 0, constraintsRequested: orderedConstraints.length / 2, planarize };
 }
 
 // Local copy of buildRadiusFn (runStyle imports node:child_process at module top, which is fine in vitest;
