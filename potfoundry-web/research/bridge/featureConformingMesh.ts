@@ -176,18 +176,26 @@ export function planarizeConstraintGraph(
   const py = (v: number): number => pointsRef[2 * v + 1];
 
   // FINE intersection-vertex dedupe (own hash on a mm grid ≪ the loci grid). Coincident crossings at one apex
-  // share a vertex; distinct crossings stay distinct. Seam-wrapped in u.
-  const fineMm = 0.004; // ~1e-5 in (u,t) at these scales — well below the injectStep dedupe, above f32 noise
+  // share a vertex; distinct crossings stay distinct. Seam-wrapped in u. CRITICAL: the map is SEEDED with the
+  // EXISTING points so an intersection that coincides with a loci endpoint MERGES onto it instead of adding a
+  // near-coincident duplicate — MEASURED, that duplicate was the nonMan=2 (two vertices at the same near-
+  // vertical apex (u,t) welding to one 3D point while both anchor a locked edge → incident=4 doubled edge).
+  const fineMm = 0.006; // ≳ the loci injectStep/2 dedupe so a crossing at a loci sample collapses onto it
   const cellU = Math.max(fineMm / uToMm, 1e-8), cellT = Math.max(fineMm / tToMm, 1e-8);
   const nUcells = Math.max(1, Math.round(1 / cellU));
+  const gkey = (u: number, t: number): number => {
+    let uu = u - Math.floor(u); if (uu < 0) uu += 1;
+    const tc = t < 0 ? 0 : t > 1 ? 1 : t;
+    const gu = ((Math.round(uu / cellU) % nUcells) + nUcells) % nUcells;
+    return gu * 16_777_216 + Math.round(tc / cellT);
+  };
   const fineMap = new Map<number, number>();
+  for (let i = 0; i < pointsRef.length / 2; i++) { const k = gkey(pointsRef[2 * i], pointsRef[2 * i + 1]); if (!fineMap.has(k)) fineMap.set(k, i); }
   let addedPoints = 0;
   const addFine = (u: number, t: number): number => {
     let uu = u - Math.floor(u); if (uu < 0) uu += 1;
     const tc = t < 0 ? 0 : t > 1 ? 1 : t;
-    const gu = ((Math.round(uu / cellU) % nUcells) + nUcells) % nUcells;
-    const gt = Math.round(tc / cellT);
-    const key = gu * 16_777_216 + gt;
+    const key = gkey(uu, tc);
     const hit = fineMap.get(key); if (hit !== undefined) return hit;
     const pos = pointsRef.length / 2; pointsRef.push(uu, tc); fineMap.set(key, pos); addedPoints++;
     return pos;
@@ -497,7 +505,10 @@ export function buildFeatureConformingMeshB(
     console.log(`  [feat-conform-B ${styleId}] injected=${injected.length / 2} (deduped @${dedupeMm.toFixed(3)}mm) constraints=${orderedConstraints.length / 2} meanMove=${(moveN ? moveSum / moveN : 0).toFixed(3)}mm`);
   }
 
-  const mesh = buildInhouseMetricMesh(rA, H, { ...opts, injectedPoints: injected, pinInjected: pin, constraintEdges: orderedConstraints });
+  // When planarizing, guard the recovery flips against creating a duplicate edge at the dense T-junction fans
+  // (fixes the nonMan=2 planarize regression). Off otherwise → the shipped conforming recovery is byte-identical.
+  const guardRecoveryManifold = opts.guardRecoveryManifold ?? (opts.planarizeConstraints === true);
+  const mesh = buildInhouseMetricMesh(rA, H, { ...opts, injectedPoints: injected, pinInjected: pin, constraintEdges: orderedConstraints, guardRecoveryManifold });
   return { ...mesh, injected: injected.length / 2, meanRefineMoveMm: moveN ? moveSum / moveN : 0, constraintsRequested: orderedConstraints.length / 2, planarize };
 }
 

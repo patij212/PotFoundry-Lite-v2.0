@@ -87,12 +87,28 @@ export interface RecoveryResult {
 export function recoverAndLockEdges(
   triangles: Uint32Array, halfedges: Int32Array, uv: number[], constraints: number[],
   maxFlipsPerEdge = 64,
+  guardManifold = false,
 ): RecoveryResult {
   const nVerts = uv.length / 2;
   const N = nVerts + 1;
   const locked = new Set<number>();
   const lockKey = (a: number, b: number): number => (a < b ? a * N + b : b * N + a);
   let alreadyPresent = 0, recovered = 0, recoveryFailed = 0, totalFlips = 0;
+
+  // OPT-IN manifold guard (E-2026-07-01-PUREGREEN): a crossing-edge flip (pr,pl)→(ap0,ap1) creates a
+  // NON-MANIFOLD edge if the new diagonal (ap0,ap1) already exists elsewhere. On a dense PLANARIZED graph the
+  // T-junction fans make this possible; MEASURED nonMan=2 on GothicArches when planarizing. When on we
+  // maintain an undirected-edge multiset and reject any flip that would duplicate an existing edge. STRICT
+  // NO-OP when off (the edgeSet is never built → the existing recovery path is byte-identical; the shipped
+  // ALL20/SHOWCASE conforming numbers are unchanged). Because a flip removes (pr,pl) and adds (ap0,ap1), the
+  // set is maintained exactly across flips.
+  const EKm = nVerts + 1;
+  const mkey = (a: number, b: number): number => (a < b ? a * EKm + b : b * EKm + a);
+  let medges: Map<number, number> | undefined;
+  if (guardManifold) {
+    medges = new Map<number, number>();
+    for (let e = 0; e < triangles.length; e++) { const u = triangles[e], v = triangles[nextHE(e)]; const k = mkey(u, v); medges.set(k, (medges.get(k) ?? 0) + 1); }
+  }
 
   // vhe[v] = ONE halfedge whose ORIGIN is v (i.e. triangles[vhe[v]] === v). Updated incrementally on flips.
   const vhe = new Int32Array(nVerts).fill(-1);
@@ -158,6 +174,10 @@ export function recoverAndLockEdges(
     const r0 = orient(prx, pry, plx, ply, a0x, a0y);
     const r1 = orient(prx, pry, plx, ply, a1x, a1y);
     if (r0 * r1 >= 0) return false; // pr-pl does not separate ap0,ap1 → not convex (reflex quad)
+    // OPT-IN manifold guard: reject the flip if the new diagonal (ap0,ap1) already exists elsewhere in the
+    // mesh (a T-junction fan on a planarized graph can make this happen → non-manifold). No-op when off.
+    if (medges !== undefined && (medges.get(mkey(ap0, ap1)) ?? 0) > 0) return false;
+    if (medges !== undefined) { const ok = mkey(pr, pl); medges.set(ok, Math.max(0, (medges.get(ok) ?? 0) - 1)); const nk = mkey(ap0, ap1); medges.set(nk, (medges.get(nk) ?? 0) + 1); }
     triangles[e] = ap1; triangles[tw] = ap0;
     const hbl = halfedges[twPrev], har = halfedges[ePrev];
     linkHE(halfedges, e, hbl);

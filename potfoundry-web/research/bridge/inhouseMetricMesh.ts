@@ -67,6 +67,14 @@ export interface InhouseMeshOpts {
    * Task 4: enabling this FIXES the pre-existing non-manifold defect; it CHANGES output ONLY on the buggy styles.
    */
   guardManifoldAlways?: boolean;
+  /**
+   * OPT-IN manifold guard for the CONSTRAINT-RECOVERY flips (E-2026-07-01-PUREGREEN). On a PLANARIZED constraint
+   * graph the dense T-junction fans let a recovery flip duplicate an existing edge → non-manifold (MEASURED
+   * nonMan=2 on planarized GothicArches). When true, recoverAndLockEdges rejects any crossing-flip whose new
+   * diagonal already exists. STRICT NO-OP when absent/false (recovery runs exactly as before → the shipped
+   * non-planarized conforming numbers are byte-identical). Only meaningful with constraintEdges.
+   */
+  guardRecoveryManifold?: boolean;
 }
 export interface ConstraintRecoveryStats { requested: number; alreadyPresent: number; recovered: number; failed: number; flips: number; }
 export interface InhouseMesh { ut: number[]; indices: Uint32Array; points: number; rounds: number; hitBudget: boolean; constraint?: ConstraintRecoveryStats; }
@@ -343,7 +351,7 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
       if (a >= 0 && b >= 0 && a !== b) cverts.push(a, b);
     }
     z = now();
-    const rec = recoverAndLockEdges(tris, heF, uv, cverts);
+    const rec = recoverAndLockEdges(tris, heF, uv, cverts, 64, opts.guardRecoveryManifold === true);
     tFlip += now() - z;
     isLocked = lockedPredicate(rec.locked, uv.length / 2);
     constraintStats = { requested: cverts.length / 2, alreadyPresent: rec.alreadyPresent, recovered: rec.recovered, failed: rec.recoveryFailed, flips: rec.flips };
