@@ -35,7 +35,15 @@ export interface SurfaceMetricField { resU: number; resT: number; m: Float64Arra
 
 type Grade = { gradeBeta?: number; gradePasses?: number };
 type UniformOpts = { resU: number; resT: number; h3DMm: number } & Grade;
-type ChordOpts = { resU: number; resT: number; tolMm: number; hMin: number; hMax: number } & Grade;
+type ChordOpts = {
+  resU: number; resT: number; tolMm: number; hMin: number; hMax: number;
+  /** OPT-IN: compute the sizing curvature κ_max with this FINE central-difference step (in (u,t)) instead of the
+   *  sizing-grid step, sampled at `curvatureSubsamples`² sub-cell points (window-max). Resolves sharp sub-cell
+   *  ridges the grid-step 2nd-difference aliases 5-10× (the crest-straddle root cause). Absent ⇒ byte-identical. */
+  curvatureFineStep?: number;
+  /** sub-cell samples per axis for the fine-curvature window-max (default 3). Only used with curvatureFineStep. */
+  curvatureSubsamples?: number;
+} & Grade;
 export type SurfaceMetricOpts = UniformOpts | ChordOpts;
 
 function isChord(o: SurfaceMetricOpts): o is ChordOpts {
@@ -75,6 +83,28 @@ export function buildSurfaceMetricField(rA: AnalyticRadiusFn, H: number, opts: S
   const du = 1 / Math.max(resU - 1, 1), dt = 1 / Math.max(resT - 1, 1);
   const chord = isChord(opts);
 
+  // κ_max (max |principal curvature|) at (cu,ct) via central differences with FD step h. Powers the OPT-IN
+  // fine-curvature sizing path — a small h resolves a sharp sub-cell ridge that the grid-step FD averages away.
+  const kappaAt = (cu: number, ct: number, h: number): number => {
+    const uu = Math.min(Math.max(cu, h), 1 - h), tt = Math.min(Math.max(ct, h), 1 - h);
+    const Su = (sub(S(uu + h, tt), S(uu - h, tt)).map((v) => v / (2 * h)) as V3);
+    const St = (sub(S(uu, tt + h), S(uu, tt - h)).map((v) => v / (2 * h)) as V3);
+    const E = dot(Su, Su), F = dot(Su, St), G = dot(St, St);
+    const c = S(uu, tt);
+    const Suu = (sub(sub(S(uu + h, tt), c), sub(c, S(uu - h, tt))).map((v) => v / (h * h)) as V3);
+    const Stt = (sub(sub(S(uu, tt + h), c), sub(c, S(uu, tt - h))).map((v) => v / (h * h)) as V3);
+    const pp = S(uu + h, tt + h), pm = S(uu + h, tt - h), mp = S(uu - h, tt + h), mm_ = S(uu - h, tt - h);
+    const Sut = ([0, 1, 2].map((k) => (pp[k] - pm[k] - mp[k] + mm_[k]) / (4 * h * h)) as V3);
+    let n = cross(Su, St); const nl = Math.hypot(n[0], n[1], n[2]);
+    if (nl <= 1e-30) return 0;
+    n = [n[0] / nl, n[1] / nl, n[2] / nl];
+    const L = dot(Suu, n), Mn = dot(Sut, n), N = dot(Stt, n);
+    const a = E * G - F * F, b = -(E * N + G * L - 2 * F * Mn), cc = L * N - Mn * Mn;
+    if (Math.abs(a) <= 1e-30) return 0;
+    const disc = Math.sqrt(Math.max(0, b * b - 4 * a * cc));
+    return Math.max(Math.abs((-b + disc) / (2 * a)), Math.abs((-b - disc) / (2 * a)));
+  };
+
   // Pass 1 — first fundamental form (E,F,G) and target 3D size h₃D per node.
   const Eg = new Float64Array(resU * resT), Fg = new Float64Array(resU * resT), Gg = new Float64Array(resU * resT);
   const h3D = new Float64Array(resU * resT);
@@ -90,20 +120,33 @@ export function buildSurfaceMetricField(rA: AnalyticRadiusFn, H: number, opts: S
 
       if (chord) {
         const o = opts as ChordOpts;
-        const c = S(uu, tt);
-        const Suu = (sub(sub(S(uu + du, tt), c), sub(c, S(uu - du, tt))).map((v) => v / (du * du)) as V3);
-        const Stt = (sub(sub(S(uu, tt + dt), c), sub(c, S(uu, tt - dt))).map((v) => v / (dt * dt)) as V3);
-        const pp = S(uu + du, tt + dt), pm = S(uu + du, tt - dt), mp = S(uu - du, tt + dt), mm_ = S(uu - du, tt - dt);
-        const Sut = ([0, 1, 2].map((k) => (pp[k] - pm[k] - mp[k] + mm_[k]) / (4 * du * dt)) as V3);
-        let n = cross(Su, St); const nl = Math.hypot(n[0], n[1], n[2]);
         let kappaMax = 0;
-        if (nl > 1e-30) {
-          n = [n[0] / nl, n[1] / nl, n[2] / nl];
-          const L = dot(Suu, n), Mn = dot(Sut, n), N = dot(Stt, n);
-          const a = E * G - F * F, b = -(E * N + G * L - 2 * F * Mn), cc = L * N - Mn * Mn;
-          if (Math.abs(a) > 1e-30) {
-            const disc = Math.sqrt(Math.max(0, b * b - 4 * a * cc));
-            kappaMax = Math.max(Math.abs((-b + disc) / (2 * a)), Math.abs((-b - disc) / (2 * a)));
+        if (o.curvatureFineStep !== undefined) {
+          // OPT-IN fine-curvature window-max: κ at sub-cell points via a FINE FD step, take the max → catches a
+          // sharp ridge anywhere in the cell that the grid-step 2nd-difference below would average away.
+          const fs = o.curvatureFineStep;
+          const ns = Math.max(1, o.curvatureSubsamples ?? 3);
+          for (let su = 0; su < ns; su++) for (let sv = 0; sv < ns; sv++) {
+            const ou = ns === 1 ? 0 : (su / (ns - 1) - 0.5) * du;
+            const ov = ns === 1 ? 0 : (sv / (ns - 1) - 0.5) * dt;
+            const k = kappaAt(uu + ou, tt + ov, fs);
+            if (k > kappaMax) kappaMax = k;
+          }
+        } else {
+          const c = S(uu, tt);
+          const Suu = (sub(sub(S(uu + du, tt), c), sub(c, S(uu - du, tt))).map((v) => v / (du * du)) as V3);
+          const Stt = (sub(sub(S(uu, tt + dt), c), sub(c, S(uu, tt - dt))).map((v) => v / (dt * dt)) as V3);
+          const pp = S(uu + du, tt + dt), pm = S(uu + du, tt - dt), mp = S(uu - du, tt + dt), mm_ = S(uu - du, tt - dt);
+          const Sut = ([0, 1, 2].map((k) => (pp[k] - pm[k] - mp[k] + mm_[k]) / (4 * du * dt)) as V3);
+          let n = cross(Su, St); const nl = Math.hypot(n[0], n[1], n[2]);
+          if (nl > 1e-30) {
+            n = [n[0] / nl, n[1] / nl, n[2] / nl];
+            const L = dot(Suu, n), Mn = dot(Sut, n), N = dot(Stt, n);
+            const a = E * G - F * F, b = -(E * N + G * L - 2 * F * Mn), cc = L * N - Mn * Mn;
+            if (Math.abs(a) > 1e-30) {
+              const disc = Math.sqrt(Math.max(0, b * b - 4 * a * cc));
+              kappaMax = Math.max(Math.abs((-b + disc) / (2 * a)), Math.abs((-b - disc) / (2 * a)));
+            }
           }
         }
         const hRaw = kappaMax > 1e-9 ? Math.sqrt((8 * o.tolMm) / kappaMax) : o.hMax;

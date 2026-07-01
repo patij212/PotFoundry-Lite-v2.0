@@ -34,6 +34,11 @@ export interface InhouseMeshOpts {
    *  longest-edge midpoint — an edge split can never converge a vertex onto an interior apex, a Steiner point can.
    *  Opt-in → STRICT NO-OP when false/absent (the longest-edge branch runs exactly as before). */
   chordSteiner?: boolean;
+  /** OPT-IN: size the metric with FINE-step, sub-cell-window-max curvature (resolves sharp sub-cell ridges the
+   *  sizeRes grid aliases 5-10× → crest facets born small, killing crest-straddle chord sag). Passed straight to
+   *  buildSurfaceMetricField. Absent ⇒ byte-identical default. */
+  curvatureFineStep?: number;
+  curvatureSubsamples?: number;
   /**
    * OPT-IN feature-conforming hook (DEV/LAB only). Flat (u,t) pairs of FORCED points to seed into the point
    * set alongside the seed grid — typically dense feature loci refined to the true crest/valley extremum
@@ -179,7 +184,7 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
   const sweeps = opts.optimizeSweeps ?? 6;
   const dedupeEps = opts.dedupeEps ?? 1e-6;
 
-  const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2 });
+  const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2, curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples });
   const RU = mf.resU, RT = mf.resT, M = mf.m;
   const metricAt = (u: number, t: number): [number, number, number] => {
     const fu = Math.min(Math.max(u, 0), 1) * (RU - 1), ft = Math.min(Math.max(t, 0), 1) * (RT - 1);
