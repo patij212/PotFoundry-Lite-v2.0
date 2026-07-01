@@ -104,10 +104,15 @@ export function recoverAndLockEdges(
   // set is maintained exactly across flips.
   const EKm = nVerts + 1;
   const mkey = (a: number, b: number): number => (a < b ? a * EKm + b : b * EKm + a);
-  let medges: Map<number, number> | undefined;
+  // SHARDED edge multiset (a single JS Map caps at 2^24 entries, which a dense planarized mesh exceeds).
+  const MSHARD = 64;
+  const mshard = (a: number, b: number): number => ((a < b ? a : b) & (MSHARD - 1));
+  let medges: Map<number, number>[] | undefined;
+  const mget = (a: number, b: number): number => medges![mshard(a, b)].get(mkey(a, b)) ?? 0;
+  const mset = (a: number, b: number, val: number): void => { medges![mshard(a, b)].set(mkey(a, b), val); };
   if (guardManifold) {
-    medges = new Map<number, number>();
-    for (let e = 0; e < triangles.length; e++) { const u = triangles[e], v = triangles[nextHE(e)]; const k = mkey(u, v); medges.set(k, (medges.get(k) ?? 0) + 1); }
+    medges = Array.from({ length: MSHARD }, () => new Map<number, number>());
+    for (let e = 0; e < triangles.length; e++) { const u = triangles[e], v = triangles[nextHE(e)]; mset(u, v, mget(u, v) + 1); }
   }
 
   // vhe[v] = ONE halfedge whose ORIGIN is v (i.e. triangles[vhe[v]] === v). Updated incrementally on flips.
@@ -176,8 +181,8 @@ export function recoverAndLockEdges(
     if (r0 * r1 >= 0) return false; // pr-pl does not separate ap0,ap1 → not convex (reflex quad)
     // OPT-IN manifold guard: reject the flip if the new diagonal (ap0,ap1) already exists elsewhere in the
     // mesh (a T-junction fan on a planarized graph can make this happen → non-manifold). No-op when off.
-    if (medges !== undefined && (medges.get(mkey(ap0, ap1)) ?? 0) > 0) return false;
-    if (medges !== undefined) { const ok = mkey(pr, pl); medges.set(ok, Math.max(0, (medges.get(ok) ?? 0) - 1)); const nk = mkey(ap0, ap1); medges.set(nk, (medges.get(nk) ?? 0) + 1); }
+    if (medges !== undefined && mget(ap0, ap1) > 0) return false;
+    if (medges !== undefined) { mset(pr, pl, Math.max(0, mget(pr, pl) - 1)); mset(ap0, ap1, mget(ap0, ap1) + 1); }
     triangles[e] = ap1; triangles[tw] = ap0;
     const hbl = halfedges[twPrev], har = halfedges[ePrev];
     linkHE(halfedges, e, hbl);
