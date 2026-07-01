@@ -1852,3 +1852,21 @@ facet (same gap), or (c) a small genuine transition-zone tail whose WORST is ≤
 green a C0 cliff (BLOCK 2), and it doesn't need to — the cliff facets are correct. The path to green is the RULER +
 EXCLUSION (draw the heatmap with the cliff facets excluded/greyed as designed features), not more mesh.
 Checkpoints: `research/exchange/_perfectPipeline/cliffadj_<style>.json`.
+
+### BLOCK 3 — TAIL steep-tail closure (H3): chordSteiner-alone closes the broad tail; curvatureFineStep bloats+regresses
+
+GothicArches, moderate→2.5M budget, recipes A=crest-only, B=chordSteiner@0.02, C=chordSteiner@0.01(2.5M),
+D=chordSteiner@0.01+curvatureFineStep 1/512(2.5M):
+
+| recipe | tris | budget-hit | chordMax(mm) | p99(mm) | %>0.03 |
+|---|---|---|---|---|---|
+| A_base | 2.92M | no | 0.580 | 0.069 | 0.762% |
+| B_steiner02 | 3.0M | yes | 0.191 | 0.030 | 0.238% |
+| **C_steiner01** | 3.40M | no | **0.139** | **0.024** | **0.142%** |
+| D_steiner_cf512 | 5.0M | yes | 0.220 | 0.025 | 0.153% |
+
+**GothicArches H3 confirmed:** chordSteiner@0.01 (recipe C) drives the BROAD p99 to **0.024mm** (below the 0.03 green
+threshold) and %>0.03 to **0.142%** — the surface is broadly green; the residual is the arch-tip cusp tail (chordMax
+0.139, matching BUILD3's 0.127 floor). **curvatureFineStep 1/512 REFUTED even coarse** (D bloats to the 5M cap AND
+regresses chordMax 0.139→0.220 vs C) — corroborates BUILD3 (1/2048) at a much coarser step. Winner = chordSteiner
+ALONE. (Gyroid/Voronoi + remaining TAIL styles running.) Checkpoints: `tail_<style>_<recipe>.json`.
