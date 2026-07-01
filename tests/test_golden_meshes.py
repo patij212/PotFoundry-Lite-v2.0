@@ -276,38 +276,22 @@ class TestMeshProperties:
 
         normals = np.cross(v1 - v0, v2 - v0)
 
-        # Compute face centers
-        centers = (v0 + v1 + v2) / 3.0
-
-        # For outer wall faces, normals should generally point outward
-        # (away from pot center which is at [0, 0, z])
-        # We check this for faces not on the top or bottom
-
-        middle_faces = (centers[:, 2] > 10) & (centers[:, 2] < 90)  # Not top/bottom
-
-        for i in np.where(middle_faces)[0]:
-            center = centers[i]
-            normal = normals[i]
-
-            # Radial direction from Z-axis to face center
-            radial = np.array([center[0], center[1], 0])
-            radial_norm = np.linalg.norm(radial)
-
-            if radial_norm > 1.0:  # Skip faces near centerline
-                radial_unit = radial / radial_norm
-
-                # Normal should have positive dot product with radial direction
-                # (pointing outward)
-                np.dot(normal[:2], radial_unit[:2])
-
-                # Allow some tolerance for complex geometries
-                # Just check that most faces point outward
-                # This is a heuristic, not a strict requirement
-                pass  # Skip strict check for now
-
-        # At minimum, normals should exist and be non-zero
+        # Normals must exist and be non-zero (no degenerate facets).
         normal_lengths = np.linalg.norm(normals, axis=1)
         assert np.all(normal_lengths > 0), "All face normals should be non-zero"
+
+        # Global orientation invariant: a consistently outward-oriented closed
+        # manifold has positive signed volume. A hollow vessel's inner-cavity
+        # facets correctly point inward, so a per-face "points away from centre"
+        # heuristic is invalid -- signed volume is the right check. This is what
+        # makes STL export normals correct for Rhino / Grasshopper / slicers.
+        signed_volume = float(
+            np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0
+        )
+        assert signed_volume > 0, (
+            f"Signed volume {signed_volume:.1f} <= 0 -> normals inverted "
+            "(mesh exports inside-out)"
+        )
 
     def test_mesh_vertices_within_bounds(self):
         """Verify all vertices are within expected bounds."""
