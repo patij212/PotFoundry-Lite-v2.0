@@ -1912,6 +1912,15 @@ criterion; rounding destroys the designed sharp rib. **H4 VERDICT: the residual 
 rounded-rA boxcar was ~9× slower and exceeded the env kill window twice → the analytical corner-scaling +
 rounding-cost proof above is the honest, cheaper answer. Checkpoints: cusp_base_sharp.json.)
 
+### BLOCK 6 — CLEAN robustness (task pt 4 confirmed): chordSteiner does NOT regress a CLEAN style
+
+HarmonicRipple + chordSteiner@0.01 (the winning TAIL recipe): tris 3.10M, worst true-3D **0.022mm**, %>0.03 = **0**
+(pure green). chordSteiner is a no-op-toward-worse on CLEAN styles — it only inserts points where a facet's radial
+sag exceeds tol, which on an already-CAD-grade surface either does nothing or refines slightly; fidelity cannot
+regress. ⇒ the winning recipe (true-3D ruler + gated chordSteiner + cliff-exclusion) is safe to apply broadly; the
+gate that keeps chordSteiner off smooth styles is a perf choice, not a correctness one. Checkpoint:
+cliffgreen_HarmonicRipple.json.
+
 ### BLOCK 3 (final) — full TAIL scorecard (chordSteiner@0.01 = recipe C) + the 2 STALLS diagnosed
 
 | style | A_base chordMax/p99/%>03 | C_steiner01 chordMax/p99/%>03 | class |
