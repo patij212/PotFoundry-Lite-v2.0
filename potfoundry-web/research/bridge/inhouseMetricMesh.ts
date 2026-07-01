@@ -128,10 +128,17 @@ export function flipHE(
   const nV = uv.length / 2;
   const EK = nV + 1;
   const ekey = (a: number, b: number): number => (a < b ? a * EK + b : b * EK + a);
-  let edgeSet: Set<number> | undefined;
+  // Undirected-edge presence, SHARDED: a single JS Set caps at 2^24 (16.7M) entries, which a large
+  // feature-conforming mesh exceeds — shard by the low bits of the min vertex so each Set stays well under cap.
+  const NSHARD = 64;
+  const eshard = (a: number, b: number): number => ((a < b ? a : b) & (NSHARD - 1));
+  let edgeSets: Set<number>[] | undefined;
+  const edgeHas = (a: number, b: number): boolean => edgeSets![eshard(a, b)].has(ekey(a, b));
+  const edgeAdd = (a: number, b: number): void => { edgeSets![eshard(a, b)].add(ekey(a, b)); };
+  const edgeDel = (a: number, b: number): void => { edgeSets![eshard(a, b)].delete(ekey(a, b)); };
   if (guardManifold === true) {
-    edgeSet = new Set<number>();
-    for (let e = 0; e < ne; e++) { const u = triangles[e], v = triangles[e % 3 === 2 ? e - 2 : e + 1]; edgeSet.add(ekey(u, v)); }
+    edgeSets = Array.from({ length: NSHARD }, () => new Set<number>());
+    for (let e = 0; e < ne; e++) { const u = triangles[e], v = triangles[e % 3 === 2 ? e - 2 : e + 1]; edgeAdd(u, v); }
   }
   for (let pass = 0; pass < maxPasses; pass++) {
     let flips = 0;
@@ -147,7 +154,7 @@ export function flipHE(
       // OPT-IN: never flip a LOCKED constraint edge (the shared edge pr-pl). No-op when isLocked is absent.
       if (isLocked !== undefined && isLocked(pr, pl)) continue;
       // OPT-IN manifold guard: reject the flip if the new diagonal (p0,p1) already exists elsewhere.
-      if (edgeSet !== undefined && edgeSet.has(ekey(p0, p1))) continue;
+      if (edgeSets !== undefined && edgeHas(p0, p1)) continue;
       // validity: pr,pl must straddle the new diagonal p0-p1 in (u,t) (convex quad, no inversion)
       const dx = uv[p1 * 2] - uv[p0 * 2], dy = uv[p1 * 2 + 1] - uv[p0 * 2 + 1];
       const sPr = dx * (uv[pr * 2 + 1] - uv[p0 * 2 + 1]) - dy * (uv[pr * 2] - uv[p0 * 2]);
@@ -168,7 +175,7 @@ export function flipHE(
       linkHE(halfedges, a, hbl);
       linkHE(halfedges, b, har);
       linkHE(halfedges, ar, bl);
-      if (edgeSet !== undefined) { edgeSet.delete(ekey(pr, pl)); edgeSet.add(ekey(p0, p1)); }
+      if (edgeSets !== undefined) { edgeDel(pr, pl); edgeAdd(p0, p1); }
       touched[t0] = 1; touched[t1] = 1; flips++;
     }
     if (flips === 0) break;
