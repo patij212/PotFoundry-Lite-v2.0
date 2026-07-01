@@ -2017,3 +2017,54 @@ export is geometrically FAITHFUL everywhere. PERFECT-PIPELINE = true-3D ruler + 
 
 **FILES:** probe `research/bridge/_perfectPipeline.test.ts`; checkpoints `research/exchange/_perfectPipeline/*.json`;
 renders `.../{artdeco_beforeafter,artdeco_cliffExcluded,gothic_radial_vs_true3d}.png`. Commits 1aa5fc2, 4faf6f2, +this.
+
+---
+
+## E-2026-07-01-SHARP3D-ARTDECO — ArtDeco to a GENUINE 3D standard (closed-object reference + tread meshing) — PRE-REGISTERED
+
+**Supersedes/challenges** the accept/exclude verdict of E-2026-07-01-PERFECT-PIPELINE BLOCK 2/2c/2d/2e (which declared
+the ArtDeco riser an "IRREDUCIBLE C0 cliff, unscoreable, EXCLUDE from green"). The user REJECTS that conclusion: the
+prior verdict was for the SINGLE-VALUED (u,t) sheet + the parametric-sheet ruler. The actual CLOSED 3D pot object HAS
+the connecting tread surface; the fault was (a) the mesh never meshed it and (b) the ruler measured against r(θ,z)
+which does not parameterize it.
+
+### HYPOTHESIS
+ArtDeco CAN be meshed to ≤0.01mm chord error against the ACTUAL CLOSED 3D outer-wall object (with the 8 step-tread
+annular bands explicitly present), with every crest/valley/crease AND every step ring (both radii, top & bottom)
+embedded as mesh edges BY CONSTRUCTION (zero serration), steep tread faces tessellated as first-class 3D surfaces,
+watertight, good quality — with any residual being a real geometric limit (knife-edge corner), quantified, NOT
+"phantom/accept".
+
+### GEOMETRY (measured, this probe, DIMS H=120 Rb=40 Rt=50 expn=1, defaults stepCount=4 depth=0.08)
+8 discontinuity rings = 2/tier × 4 tiers, each a PURE radius jump at a FIXED z (θ-independent z; θ-modulated jump
+3.1–4.2mm). loc=0.1 rings (z=3,33,63,93) jump UP (reduced→full) ⇒ up-facing annular tread; loc=0.9 rings
+(z=27,57,87,117) jump DOWN ⇒ down-facing tread. r flat then jumps in ~0 Δz ⇒ HORIZONTAL annular ledge (not vertical
+wall). ⇒ the closed object = the parametric sheet on the 8 open t-bands PLUS 8 horizontal warped annuli connecting
+r_reduced(θ,z_ring)↔r_full(θ,z_ring) at each ring's z.
+
+### KILL-CRITERION (pre-registered, exact numbers)
+Build (A) an explicit DENSE watertight 3D reference object incl. the 8 treads; (B) a genuine 3D metric
+(facet→nearest-point-on-reference-mesh via BVH/hash, sanity-checked vs projectPointToRadialSurface on a SMOOTH style
+where they must agree to <0.005mm); (C) a discontinuity-conforming export mesh = parametric sheet with the 8 tread
+bands explicitly added + every step ring embedded as a mesh-edge chain at BOTH radii, refined to 0.01 by MY 3D metric.
+- **CONFIRMED** iff: 3D-vs-reference %>0.01mm = 0 (worst → ≤0.01mm) AND serration residual (each feature/step-ring
+  curve → nearest MESH EDGE) ≤ 0.001mm AND watertight (auditNonManByIndex = 0) AND min-angle > 15° (%<20° reported).
+- **REFUTED (wall found)** iff a residual >0.01mm persists that is NOT a knife-edge corner; must localize it in 3D.
+- **PARTIAL/knife-edge** iff the only >0.01mm residual is a genuine convex knife-edge (tread outer/inner rim where the
+  printable solid IS a true edge); quantify the min facet size needed and report as a real geometric limit, NOT accept.
+Adversarial: cross-check the 3D metric with brute-force nearest-triangle on the worst 50 facets; verify each
+"conformed" step ring is ACTUALLY a chain of mesh edges (consecutive vertices share a triangle edge), not merely
+nearby vertices.
+
+### DISCRIMINATOR (cheapest)
+Reuse buildInhouseMetricMesh (injectedPoints+constraintEdges+guardManifoldAlways) for the SHEET part; add the tread
+bands as explicit triangle strips (their own vertices at both ring radii) stitched to the sheet at the shared ring
+edges. The cheap falsifier: if even a hand-built dense tread strip + 3D reference cannot reach 0.01mm, the wall is
+real. Moderate density screen, high-density confirm the flagged region only.
+
+### RESILIENCE
+Env-gated `PF_SHARP3D=1` in `research/bridge/_sharp3dArtDeco.test.ts`; each stage checkpoints to
+`research/exchange/_sharp3d/*.json` the instant computed; resumable. New ISOLATED files only (`_sharp3d*`); COPY any
+kernel fn modified; edit nothing in src/ or existing research files.
+
+### RESULT — (pending)
