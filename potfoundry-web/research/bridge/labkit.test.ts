@@ -7,8 +7,8 @@ import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  auditNonManByIndex, perFaceChordSag, chordSagColor, vertErrColors, writeBinarySTL,
-  buildInhouseMetricMesh, featureLineChord3D, computeMeasuredGate, recoverAndLockEdges, perpendicular3DDeviation,
+  auditNonManByIndex, perFaceChordSag, perFaceTrue3DSag, chordSagColor, vertErrColors, writeBinarySTL, dumpHeatmap,
+  buildInhouseMetricMesh, featureLineChord3D, computeMeasuredGate, recoverAndLockEdges, perpendicular3DDeviation, projectPointToRadialSurface,
   // these three were mis-routed in the barrel (caught by verification) — import them so the guard is non-vacuous:
   honestGate, lockedPredicate, crestBandTriangleQuality,
 } from './labkit';
@@ -45,6 +45,24 @@ describe('labkit helpers', () => {
     expect(big.fracOver(0)).toBeGreaterThan(0);
   });
 
+  it('perFaceTrue3DSag ≤ the same-(u,t) bound, projection finds a NEARER surface point, and shrinks under refinement', () => {
+    const rA = (th: number, _z: number): number => 40 + 5 * Math.cos(3 * th); // synthetic radial bump (curved)
+    const H = 120;
+    const ut = [0.0, 0.5, 0.2, 0.5, 0.1, 0.55]; const idx = [0, 1, 2]; // one WIDE facet (bound ≫ preFilter → projects)
+    // preFilterMm huge ⇒ never projects ⇒ returns the same-(u,t) full-3D distance (the guaranteed UPPER BOUND);
+    // preFilterMm 0 ⇒ always projects ⇒ the true-3D nearest distance. Nearest must be ≤ the bound, and strictly less
+    // where the surface curves (the nearest foot sits at a different (u,t) than the bary) — that's the whole point.
+    const bound = perFaceTrue3DSag(ut, idx, rA, H, { preFilterMm: 1e9 });
+    const projected = perFaceTrue3DSag(ut, idx, rA, H, { preFilterMm: 0 });
+    expect(projected.worstMm).toBeGreaterThan(0);
+    expect(Number.isFinite(projected.worstMm)).toBe(true);
+    expect(projected.worstMm).toBeLessThanOrEqual(bound.worstMm + 1e-9); // nearest ≤ any specific same-(u,t) point
+    expect(projected.worstMm).toBeLessThan(bound.worstMm);                // projection genuinely finds a nearer point
+    const small = perFaceTrue3DSag([0.0, 0.5, 0.02, 0.5, 0.01, 0.505], idx, rA, H, { preFilterMm: 0 });
+    expect(projected.worstMm).toBeGreaterThan(small.worstMm);            // refinement reduces true-3D sag
+    expect(projected.faceErr.length).toBe(1); expect(projected.vertErr.length).toBe(3);
+  });
+
   it('chordSagColor maps 0→green and ≥scale→red; vertErrColors packs rgb', () => {
     const g = chordSagColor(0, 0.15); expect(g[1]).toBeGreaterThan(g[0]); expect(g[1]).toBeGreaterThan(g[2]); // green dominant
     const r = chordSagColor(0.3, 0.15); expect(r[0]).toBeGreaterThan(r[1]); // red dominant (clamped)
@@ -55,7 +73,7 @@ describe('labkit helpers', () => {
   it('barrel re-exports resolve to callables (incl. the cross-module ones)', () => {
     // honestGate←honestMetrics, lockedPredicate←constraintRecovery, crestBandTriangleQuality←src/fidelity/metrics
     // are re-routed through the barrel — a mis-routed `export {x} from './wrong'` yields undefined here.
-    for (const fn of [buildInhouseMetricMesh, featureLineChord3D, computeMeasuredGate, recoverAndLockEdges, perpendicular3DDeviation, honestGate, lockedPredicate, crestBandTriangleQuality]) {
+    for (const fn of [buildInhouseMetricMesh, featureLineChord3D, computeMeasuredGate, recoverAndLockEdges, perpendicular3DDeviation, projectPointToRadialSurface, perFaceTrue3DSag, dumpHeatmap, honestGate, lockedPredicate, crestBandTriangleQuality]) {
       expect(typeof fn).toBe('function');
     }
   });

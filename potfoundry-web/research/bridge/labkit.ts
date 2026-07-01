@@ -16,6 +16,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { projectPointToRadialSurface } from '../../src/fidelity/analyticSurfaceGate';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
 
 // ───────────────────────── barrel: the canonical instruments ─────────────────────────
@@ -46,7 +47,7 @@ export type {
   CrestRetentionResult, FeatureAdjacentSliverResult, ChannelResult, GlobalChordResult,
 } from './featureLocalizedFidelity';
 // shared src instruments
-export { perpendicular3DDeviation } from '../../src/fidelity/analyticSurfaceGate';
+export { perpendicular3DDeviation, projectPointToRadialSurface } from '../../src/fidelity/analyticSurfaceGate';
 export type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
 export { triangleQualityDistribution, triangleQuality3D, crestBandTriangleQuality } from '../../src/fidelity/metrics';
 export type { TriangleQualityDistribution, TriangleQualityResult } from '../../src/fidelity/metrics';
@@ -145,6 +146,54 @@ export function vertErrColors(vertErr: Float64Array, scaleMm = 0.15): Float32Arr
   return col;
 }
 
+// ───────────────────────── per-face TRUE-3D sag (the HONEST heatmap ruler — DEFAULT) ─────────────────────────
+/**
+ * Per-face TRUE-3D chord sag: the SHORTEST 3D distance from each flat-facet interior sample to the true surface
+ * (`projectPointToRadialSurface` — Gauss-Newton + global-search fallback), NOT the same-(u,t) radial residual. This
+ * is the HONEST "is every triangle faithful" ruler and the DEFAULT lab heatmap: it does NOT overstate near-vertical
+ * / steep relief the way `perFaceChordSag` (radial) does — radial overstates true-3D 2–370× (measured across all 20
+ * styles; the arch-tip / riser / weave near-vertical walls read red under radial but green under true-3D).
+ *
+ * Perf: the same-(u,t) FULL-3D distance is a guaranteed UPPER BOUND on the true-3D nearest distance, so it is
+ * computed first (cheap) and the expensive projection runs ONLY on facets whose bound exceeds `preFilterMm` (default
+ * 0.02mm); sub-threshold facets keep the bound (all deep-green — negligible over-statement). Returns the same
+ * `ChordSagResult` shape as `perFaceChordSag`, so it is a drop-in for `vertErrColors` / `dumpRenderBins`.
+ */
+export function perFaceTrue3DSag(ut: number[], indices: ArrayLike<number>, rA: AnalyticRadiusFn, H: number, opts: { preFilterMm?: number } = {}): ChordSagResult {
+  const preFilter = opts.preFilterMm ?? 0.02;
+  const nV = ut.length / 2, nF = indices.length / 3;
+  const xyz = new Float64Array(nV * 3);
+  for (let i = 0; i < nV; i++) { const th = TAU * ut[2 * i], z = ut[2 * i + 1] * H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
+  const faceErr = new Float64Array(nF); const vertErr = new Float64Array(nV);
+  let worst = 0;
+  for (let f = 0; f < nF; f++) {
+    const a = indices[3 * f], b = indices[3 * f + 1], c = indices[3 * f + 2];
+    const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
+    const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
+    const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+    let ua = ut[2 * a], ub = ut[2 * b], uc = ut[2 * c];
+    if (Math.max(ua, ub, uc) - Math.min(ua, ub, uc) > 0.5) { if (ua < 0.5) ua += 1; if (ub < 0.5) ub += 1; if (uc < 0.5) uc += 1; }
+    const ta = ut[2 * a + 1], tb = ut[2 * b + 1], tc = ut[2 * c + 1];
+    // pass 1: same-(u,t) full-3D distance = guaranteed upper bound on the true-3D nearest distance; keep sample pts
+    let ub3 = 0; const px: number[] = [], py: number[] = [], pz: number[] = [];
+    for (const [wa, wb, wc] of SAG_BARY) {
+      const fx = wa * ax + wb * bx + wc * cx, fy = wa * ay + wb * by + wc * cy, fz = wa * az + wb * bz + wc * cz;
+      px.push(fx); py.push(fy); pz.push(fz);
+      const um = wa * ua + wb * ub + wc * uc, tm = wa * ta + wb * tb + wc * tc;
+      const th = TAU * um, z = tm * H, r = rA(th, z);
+      const d = Math.hypot(r * Math.cos(th) - fx, r * Math.sin(th) - fy, z - fz);
+      if (d > ub3) ub3 = d;
+    }
+    let err: number;
+    if (ub3 <= preFilter) { err = ub3; } // sub-threshold: bound already tight + deep-green, skip the projection
+    else { let mx = 0; for (let k = 0; k < px.length; k++) { const dd = projectPointToRadialSurface(px[k], py[k], pz[k], rA).dist; if (dd > mx) mx = dd; } err = mx; }
+    faceErr[f] = err; if (err > worst) worst = err;
+    if (err > vertErr[a]) vertErr[a] = err; if (err > vertErr[b]) vertErr[b] = err; if (err > vertErr[c]) vertErr[c] = err;
+  }
+  const fracOver = (mm: number): number => { let o = 0; for (let f = 0; f < nF; f++) if (faceErr[f] > mm) o++; return nF ? o / nF : 0; };
+  return { faceErr, vertErr, worstMm: worst, fracOver };
+}
+
 // ───────────────────────── export: binary STL + render bins ─────────────────────────
 /** Binary STL with per-face normals from geometry. xyz = lifted positions (any float ArrayLike). */
 export function writeBinarySTL(path: string, xyz: ArrayLike<number>, indices: ArrayLike<number>): void {
@@ -184,4 +233,28 @@ export function dumpRenderBins(
   writeFileSync(join(dir, `${name}.meta.json`), JSON.stringify({ name, tris: indices.length / 3, ...(opts.meta ?? {}) }));
   if (opts.colors) writeFileSync(join(dir, `${name}.col.bin`), Buffer.from(opts.colors.buffer, opts.colors.byteOffset, opts.colors.byteLength));
   if (opts.stl) writeBinarySTL(join(dir, `${name}.stl`), xyz, indices);
+}
+
+/**
+ * CANONICAL default lab heatmap dump. Colours each vertex by the TRUE-3D per-face sag (the honest ruler) by DEFAULT
+ * — `ruler:'radial'` opts into the legacy same-(u,t) chord (which OVERSTATES near-vertical relief 2–370×; keep for
+ * A/B only). Prefer THIS over hand-wiring `perFaceChordSag`+`vertErrColors` in new probes. Writes the render bins +
+ * `.col.bin` + a `.meta.json` carrying `ruler`/`worstMm`/`p99Mm`/`pctOver0_03` so `meshRender.cjs` labels the ruler
+ * honestly. `xyz` = lifted 3D positions (from buildMeshUt/liftUtToRadial). Returns the ChordSagResult it computed.
+ */
+export function dumpHeatmap(
+  dir: string, name: string, xyz: ArrayLike<number>, ut: number[], indices: ArrayLike<number>,
+  rA: AnalyticRadiusFn, H: number,
+  opts: { ruler?: 'true3d' | 'radial'; scaleMm?: number; preFilterMm?: number; stl?: boolean; meta?: Record<string, unknown> } = {},
+): ChordSagResult {
+  const ruler = opts.ruler ?? 'true3d';
+  const sag = ruler === 'radial' ? perFaceChordSag(ut, indices, rA, H) : perFaceTrue3DSag(ut, indices, rA, H, { preFilterMm: opts.preFilterMm });
+  const sorted = Float64Array.from(sag.faceErr).sort();
+  const p99 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(0.99 * sorted.length))] : 0;
+  dumpRenderBins(dir, name, xyz, indices, {
+    colors: vertErrColors(sag.vertErr, opts.scaleMm ?? 0.15),
+    meta: { ruler, worstMm: sag.worstMm, p99Mm: p99, pctOver0_03: 100 * sag.fracOver(0.03), ...(opts.meta ?? {}) },
+    stl: opts.stl,
+  });
+  return sag;
 }

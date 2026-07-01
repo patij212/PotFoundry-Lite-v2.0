@@ -26,13 +26,23 @@ const labels = cells.map((n, i) => {
   const col = i % COLS, row = (i / COLS) | 0; const m = metaOf(n);
   const bits = [];
   if (m.tris) bits.push(`${(m.tris / 1e6).toFixed(2)}M`);
-  if (m.true3D_p99 != null) bits.push(`p99 ${(+m.true3D_p99).toFixed(3)}`);
-  if (m.pctOver0_15 != null) bits.push(`${(+m.pctOver0_15).toFixed(2)}% red`);
+  if (m.p99Mm != null) bits.push(`p99 ${(+m.p99Mm).toFixed(3)}`); // dumpHeatmap
+  else if (m.true3D_p99 != null) bits.push(`p99 ${(+m.true3D_p99).toFixed(3)}`); // legacy
+  if (m.worstMm != null) bits.push(`worst ${(+m.worstMm).toFixed(3)}`);
+  if (m.pctOver0_03 != null) bits.push(`${(+m.pctOver0_03).toFixed(2)}% >0.03`);
+  else if (m.pctOver0_15 != null) bits.push(`${(+m.pctOver0_15).toFixed(2)}% red`);
   if (m.nonMan != null) bits.push(`nonMan ${m.nonMan}`);
   return `<div style="position:absolute;left:${col * PW}px;top:${row * PH + PH - 20}px;width:${PW}px;text-align:center;font:12px sans-serif;color:#111">${n}${bits.length ? ' — ' + bits.join(' · ') : ''}</div>`;
 }).join('');
+// legend labels the RULER honestly (dumpHeatmap writes meta.ruler): true-3D perpendicular is the default/honest view;
+// radial (same-(u,t)) OVERSTATES near-vertical relief 2–370× and is opt-in for A/B only.
+const rulers = cells.map(metaOf).map((m) => m.ruler).filter(Boolean);
+const rulerTxt = rulers.length === 0 ? 'chord sag'
+  : rulers.every((r) => r === 'true3d') ? 'true-3D chord sag (perpendicular · honest)'
+  : rulers.every((r) => r === 'radial') ? 'radial chord sag (same-u,t · OVERSTATES steep relief)'
+  : 'chord sag (mixed rulers)';
 const legend = hasHeat ? `<div style="position:absolute;left:0;top:${ROWS * PH}px;width:${COLS * PW}px;height:${LEG}px;display:flex;align-items:center;justify-content:center;gap:10px;font:13px sans-serif;color:#111">
-  <span>chord sag 0mm</span><span style="display:inline-block;width:300px;height:15px;background:linear-gradient(90deg,rgb(33,158,59),rgb(250,209,26),rgb(219,33,33));border:1px solid #999"></span><span>&ge;0.15mm</span></div>` : '';
+  <span>${rulerTxt} 0mm</span><span style="display:inline-block;width:300px;height:15px;background:linear-gradient(90deg,rgb(33,158,59),rgb(250,209,26),rgb(219,33,33));border:1px solid #999"></span><span>&ge;0.15mm</span></div>` : '';
 const CANH = ROWS * PH + (hasHeat ? LEG : 0);
 const BG = hasHeat ? 0xf7f6f3 : 0xf2f1ee;
 
