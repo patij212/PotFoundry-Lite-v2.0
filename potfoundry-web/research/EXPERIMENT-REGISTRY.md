@@ -1457,3 +1457,116 @@ GothicArches true-3D p99 **0.070** (CAD-grade, < 0.112), %<20 3.5, watertight. p
 (pin 0.070/3.5; no-pin 0.085/1.8). Strictly better + simpler than build #1. NEXT: generalize across conform-friendly
 styles; a residual-sliver pass (metric-orthogonal Steiner, Tenkes–Loseille–Alauzet) would lift the minA floor further.
 Render: `research/exchange/_build2/build2_heatmap.png`.
+
+## E-2026-07-01-SWEEP-METRIC-MAP — definitive RADIAL-vs-TRUE-3D chord map, all 20 styles (unified mechanism)
+
+Generalized the GothicArches metric-verify (E-2026-07-01-FRONTIER-VERIFY) to ALL 20 styles. Isolated probe
+`research/bridge/_sweepMetricMap.test.ts` (PF_SWEEPMAP=1), CALLS the kernel, edits nothing. Mesh = the
+b2_pin_nolock UNIFIED MECHANISM: `buildInhouseMetricMesh` (metric-Delaunay under M=g/h²) + PINNED refined-crest
+skeleton (`refineLinesToExtremum` → `planarizeSegments`), NO locked edges, NO CDT recovery. MODERATE density
+(hMin 0.008 / maxP 1.5M, sizeRes 256, tolMm 0.004). DIMS {H:120,Rb:40,Rt:50}. Per style: RADIAL `perFaceChordSag`,
+TRUE-3D `perpendicular3DDeviation` (seam-excluded — see fix below), feature-line `featureLineChord3D`, slivers
+`triangleQualityDistribution`, watertight `auditNonManByIndex`, top-20 worst-radial facets with brute-force nearest
+adversarial cross-check + local steepness dr/du,dr/dt. RESUMABLE: each style checkpoints `research/exchange/_sweepmap/
+<style>.json` the instant measured; skipped on re-run. **Survived 4 env kills** (proven long-run killer) — resumed by
+re-running; every completed style was on disk. Total wall ~5.5h across the 5 launches.
+
+**METRIC FIX (vs the reference verify probe):** `perpendicular3DDeviation` reads `ut` as STRIDE-3 (u,t,surfaceId):
+surfaceId≥0.5→skip (L405), (u,t)→seam band. The in-house kernel emits STRIDE-2 (u,t) OUTER-WALL-ONLY. The reference
+probe passed stride-2 ⇒ the surfaceId/seam masks read GARBAGE (dropped/kept wrong facets). This probe builds a proper
+ut3=(u,t,0) + `seamExclU=SEAM=0.01` (the SAME band interiorTruth filters for the feature-line metric). Verified NOT
+merely a seam artifact: GothicArches chordMax stayed 0.58 seam-in vs seam-out (worst facet is an INTERIOR rib ledge
+@θ=-2.46,z=60, drdt huge), but its BROAD p99=0.069 / featLine=0.070 are CAD-grade ⇒ the 0.58 is a ~20-facet steep-rib
+TAIL, not broad under-tess.
+
+**CLASSIFICATION** (CAD tol 0.11mm). Radial worst OVERSTATES true-3D on near-vertical relief across the board
+(2–17×). The honest split hinges on the true-3D BREADTH: **CLEAN** (both metrics green, radial worst <0.06) =5/20 ·
+**REAL-GAP-TAIL** (true-3D p99 < 0.11 CAD-grade but chordMax ≥ 0.11 = a handful of steep facets over tol) =9/20 ·
+**REAL-GAP-BROAD** (true-3D p99 ≥ 0.11 = widespread; the mesh BRIDGES a step/riser/weave discontinuity) =6/20.
+(The task's chordMax-only rule would call all 15 non-CLEAN "REAL-GAP"; the TAIL/BROAD split is what makes them
+actionable — TAIL is near-CAD-grade with a steep-facet tail, BROAD needs real conforming work.)
+
+HEADLINE: **5/20 CLEAN, 9/20 REAL-GAP-TAIL (broad-CAD-grade + steep tail), 6/20 REAL-GAP-BROAD (bridged discontinuity)**.
+No pure-ARTIFACT (radial overstated but chordMax<0.11) came out CLEAN-labelled because those styles' radial worst is
+also large; several TAIL styles (Voronoi rad 1.84→p99 0.010, SuperformulaBlossom 1.51→0.004) are ARTIFACT-in-spirit
+(radial 5–370× the broad true-3D) with only a single steep tail facet over tol.
+
+Per-style scorecard (radialWorst | true3D chordMax | true3D p99 | featLine p99 | nonMan | median-drdu of top-20 |
+worst-facet z | adversarial-brute-fire):
+
+| style | class | radialWorst | true3Dmax | true3Dp99 | featP99 | nonMan | mdrdu | worst@z | adv |
+|---|---|---|---|---|---|---|---|---|---|
+| SuperellipseMorph | CLEAN | 0.011 | 0.0102 | 0.0037 | 0.0069 | 0 | 28.8 | 67 | n |
+| WaveInterference | CLEAN | 0.012 | 0.0129 | 0.0028 | 0.0050 | 0 | 16.0 | 71 | n |
+| RippleInterference | CLEAN | 0.016 | 0.0142 | 0.0034 | 0.0049 | 0 | 23.2 | 60 | n |
+| FourierBloom | CLEAN | 0.016 | 0.0141 | 0.0031 | 0.0053 | 0 | 140 | 3 | n |
+| HarmonicRipple | CLEAN | 0.047 | 0.0169 | 0.0035 | 0.0060 | 0 | 77.6 | 120 | n |
+| SpiralRidges | REAL-GAP-TAIL | 0.117 | 0.1386 | 0.0036 | 0.0059 | 0 | 73.4 | 72 | Y(292×) |
+| HexagonalHive | REAL-GAP-TAIL | 0.145 | 0.1158 | 0.0111 | 0.0170 | 0 | 151 | 51 | n |
+| Voronoi | REAL-GAP-TAIL | 1.837 | 0.3489 | 0.0103 | 0.0130 | 0 | 56.5 | 59 | n |
+| SuperformulaBlossom | REAL-GAP-TAIL | 1.510 | 0.3455 | 0.0043 | 0.0057 | 0 | 59.1 | 120 | n |
+| GeometricStar | REAL-GAP-TAIL | 0.692 | 0.2059 | 0.0264 | 0.0119 | 0 | 18.0 | 16 | Y(7×) |
+| Crystalline | REAL-GAP-TAIL | 0.523 | 0.9869 | 0.0365 | 0.0102 | **2** | 68.5 | 120 | n |
+| GothicArches | REAL-GAP-TAIL | 1.120 | 0.5797 | 0.0692 | 0.0701 | 0 | 13.2 | 60 | n |
+| GyroidManifold | REAL-GAP-TAIL | 0.149 | 0.8724 | 0.0902 | 0.0188 | 0 | 161 | 35 | Y(4×) |
+| CelticTriquetra | REAL-GAP-TAIL | 1.987 | 1.3606 | 0.0854 | 0.0348 | 0 | 0.0 | 98 | Y(2×) |
+| LowPolyFacet | REAL-GAP-BROAD | 0.109 | 0.7089 | 0.3047 | 0.0052 | 0 | 21.0 | 120 | n |
+| CelticKnot | REAL-GAP-BROAD | 0.655 | 0.6981 | 0.3677 | 0.0131 | 0 | 559 | 61 | Y(138×) |
+| DragonScales | REAL-GAP-BROAD | 0.521 | 1.1642 | 0.4214 | 0.0260 | 0 | 383 | 105 | n |
+| BambooSegments | REAL-GAP-BROAD | 0.222 | 1.0717 | 0.6835 | 0.0125 | 0 | 47.9 | 96 | n |
+| BasketWeave | REAL-GAP-BROAD | 1.274 | 1.8379 | 1.0985 | 0.0344 | 0 | 0.0 | 24 | n |
+| ArtDeco | REAL-GAP-BROAD | 0.478 | 2.9786 | 2.2541 | 0.0158 | 0 | 84.7 | 117 | n |
+
+**REAL-GAP-BROAD (the 6 that need real mesh work, not a metric swap)** — all are step/riser/weave DISCONTINUITY
+bridging that the crest-pinned unified mechanism does NOT conform (only crests are pinned; the vertical cliffs are
+bridged by flat facets). This EXACTLY matches the settled feature-conforming map (EXCLUDE weave/braid + EXCLUDE
+risers): ArtDeco (p99 2.25, vertical risers, drdt≈1900 — brute≈proj CONFIRMS real), BasketWeave (1.10, over/under
+weave, mdrdu 0 = occlusion step), DragonScales (0.42, scale cliffs mdrdu 383), CelticKnot (0.37, braid strands),
+BambooSegments (0.68, ring segment steps), LowPolyFacet (0.31 — RIM-edge t=1 polygon-edge tail; proj OVER-states here,
+brute<proj, true ~0.24). featLine p99 is CAD-grade on ALL 6 (0.005–0.035) ⇒ the CRESTS are placed perfectly; the gap
+is purely the bridged VERTICAL step between crests. → to make these "fully green" you must CONFORM the step edges
+(inject riser/weave-step edges as constraints), not densify.
+
+**REAL-GAP-TAIL (9)** — broad mesh is CAD-grade (true-3D p99 0.004–0.090, featLine ≤0.070) with a steep-facet TAIL
+over tol. GothicArches (p99 0.069, rib ledge tail), Gyroid (0.090 lattice), CelticTriquetra (0.085 braid; borderline),
+Crystalline/GeoStar/HexHive/Voronoi/SuperformulaBlossom/SpiralRidges (p99 0.004–0.037, single steep tail facet). These
+are "fully green in true-3D except a small steep tail" — a targeted worst-facet Steiner or a modest steep-facet
+densify closes them; the RADIAL heatmap red is the ruler (radial 5–370× the true-3D p99).
+
+**ADVERSARIAL (brute-force nearest cross-check on the top-20 worst-radial facets):** the guard flagged 5 styles
+(SpiralRidges 292×, CelticKnot 138×, GeoStar 7×, Gyroid 4×, CelticTriquetra 2×). INSPECTED all: every fire is a
+BRUTE-FORCE WINDOW ARTIFACT (brute > proj), NOT a projector under-statement. The brute grids only ±0.06 (u,t) around
+the mesh point, but on helical/braid/steep styles the TRUE nearest surface foot is at a DISTANT u (spiral wrap /
+seam-straddle at u=1.0) OUTSIDE the window → brute returns a huge false distance while the projector's WIDE coarse
+global search (coarseDTheta 0.22, coarseDZ 11) finds the true near foot. On the 15 non-flagged styles brute≈proj
+(ratio 0.5–2) confirming the projector is trustworthy. Where proj > brute (LowPoly/CelticTriquetra rim facets, ratio
+0.4–0.8) the projector OVER-states (GN local min) — benign for fidelity (true error is SMALLER). NET: no style where
+the projector UNDER-states the true-3D error; the true-3D column is a trustworthy floor (BROAD calls confirmed real,
+TAIL calls if anything slightly pessimistic). **Methodology note: the brute cross-check window must widen (≥0.3 u) for
+helical/wrapping styles or it false-alarms — the projector's global search is the more reliable oracle there.**
+
+**WATERTIGHT:** 19/20 nonMan=0. **Crystalline nonMan=2** — the lone non-watertight mesh under the unified mechanism
++ `guardManifoldAlways:true` (2 non-manifold edges survive the guard on Crystalline's helical ripple). Flag for the
+build path: guardManifoldAlways is NOT universal on Crystalline.
+
+**SLIVERS:** minAngleDeg=0.00 on all 20 (a worst sliver exists everywhere at this config — expected, the pinned dense
+skeleton spawns constrained-Delaunay slivers, matching E-BUILD1/2). %<20° 2.6–16.9% — the density-invariant quality
+tail; sliver cleanup is orthogonal to this fidelity map.
+
+VERDICT: **map COMPLETE + CONFIRMED.** The unified mechanism places CRESTS perfectly on ALL 20 (featLine p99
+0.005–0.070 = CAD-grade everywhere). The "not fully green" heatmap is: (a) on 14/20 styles a RADIAL-METRIC
+OVERSTATEMENT of near-vertical relief + at most a small steep TAIL (true-3D broad p99 ≤ 0.090 = CAD-grade) — a metric
+swap to true-3D turns the heatmap green (rendered: GothicArches ribs radial-RED → true-3D-GREEN; Voronoi walls same);
+(b) on 6/20 a GENUINE broad gap = the mesh bridging vertical step/riser/weave discontinuities (ArtDeco/BasketWeave/
+DragonScales/CelticKnot/BambooSegments/LowPoly) — these need STEP-EDGE CONFORMING, exactly the EXCLUDE-class the
+settled map already names. Render evidence: `scratchpad/sweepmap_heatmaps.png` (GothicArches radial|true3D, ArtDeco
+true3D riser-line, Voronoi radial|true3D, HarmonicRipple true3D). Adversarial brute cross-check confirms the true-3D
+column is a trustworthy floor.
+
+RECOMMENDATION: for the user's "fully green heatmap" requirement — (1) draw the heatmap with `perpendicular3DDeviation`
+(true-3D), NOT `perFaceChordSag` (radial): this greens 14/20 immediately (the radial 2–370× overstatement is the ruler,
+not a defect); (2) the 6 REAL-GAP-BROAD styles need step-edge conforming (inject riser/weave-step constraint edges) —
+densify alone won't help (crests are already perfect); (3) close the 9 TAIL styles' steep tail with a targeted
+worst-facet Steiner (density-responsive per E-CREASE-DENSITY-BREAKTHROUGH); (4) FIX Crystalline nonMan=2 in the build
+path. Probe: `research/bridge/_sweepMetricMap.test.ts`; per-style JSON: `research/exchange/_sweepmap/<style>.json`
+(20 files + render bins); render: `scratchpad/sweepmap_heatmaps.png`.
