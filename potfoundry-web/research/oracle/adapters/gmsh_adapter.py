@@ -138,10 +138,79 @@ def _mesh_embed(input: dict) -> dict:
         gmsh.finalize()
 
 
+def _mesh_quad(input: dict) -> dict:
+    """FRONTIER Bet 3: FIELD-ALIGNED quad meshing (gmsh Algorithm 11 = quasi-structured/cross-field quads, or
+    Algorithm 8 = Frontal + RecombineAll). Triangulated (each quad → 2 tris) for the depth-invariant tri min-angle
+    metric — the test of whether cross-field edge flow avoids the 2:1 transition-fan slivers (~2° floor). Honors a
+    metric (TP view) or sizing (SP view) background if present."""
+    t0 = time.perf_counter()
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.option.setNumber("Mesh.RandomSeed", 1)
+        gmsh.model.add("ut_quad")
+        p = [gmsh.model.geo.addPoint(x, y, 0) for x, y in [(0, 0), (1, 0), (1, 1), (0, 1)]]
+        lines = [gmsh.model.geo.addLine(p[i], p[(i + 1) % 4]) for i in range(4)]
+        surf = gmsh.model.geo.addPlaneSurface([gmsh.model.geo.addCurveLoop(lines)])
+        gmsh.model.geo.synchronize()
+        met = input.get("metric"); s = input.get("sizing")
+        if met:
+            resU, resT = met["resU"], met["resT"]; mm = np.array(met["m"], dtype=float)
+            view = gmsh.view.add("metric"); muz = float(mm.reshape(-1, 3)[:, 0].max() or 1.0)
+            data = []
+            for it in range(resT):
+                for iu in range(resU):
+                    M00, M01, M11 = mm[(it * resU + iu) * 3: (it * resU + iu) * 3 + 3]
+                    data += [iu / max(resU - 1, 1), it / max(resT - 1, 1), 0.0, M00, M01, 0.0, M01, M11, 0.0, 0.0, 0.0, muz]
+            gmsh.view.addListData(view, "TP", resU * resT, data)
+            bg = gmsh.model.mesh.field.add("PostView"); gmsh.model.mesh.field.setNumber(bg, "ViewIndex", 0); gmsh.model.mesh.field.setAsBackgroundMesh(bg)
+            for opt in ("Mesh.MeshSizeExtendFromBoundary", "Mesh.MeshSizeFromPoints", "Mesh.MeshSizeFromCurvature"):
+                gmsh.option.setNumber(opt, 0)
+        elif s:
+            resU, resT, h = s["resU"], s["resT"], np.array(s["h"], dtype=float)
+            view = gmsh.view.add("size")
+            data = [[iu / max(resU - 1, 1), it / max(resT - 1, 1), 0.0, float(h[it * resU + iu])] for it in range(resT) for iu in range(resU)]
+            gmsh.view.addListData(view, "SP", len(data), np.array(data).reshape(-1).tolist())
+            bg = gmsh.model.mesh.field.add("PostView"); gmsh.model.mesh.field.setNumber(bg, "ViewIndex", 0); gmsh.model.mesh.field.setAsBackgroundMesh(bg)
+            for opt in ("Mesh.MeshSizeExtendFromBoundary", "Mesh.MeshSizeFromPoints", "Mesh.MeshSizeFromCurvature"):
+                gmsh.option.setNumber(opt, 0)
+        else:
+            u = float(input.get("uniformH", 0.03)); gmsh.option.setNumber("Mesh.MeshSizeMin", u); gmsh.option.setNumber("Mesh.MeshSizeMax", u)
+        algo = int(input.get("quadAlgo", 11))
+        gmsh.option.setNumber("Mesh.Algorithm", algo)
+        if algo == 8:
+            gmsh.option.setNumber("Mesh.RecombineAll", 1)
+        gmsh.model.mesh.generate(2)
+        tags, coords, _ = gmsh.model.mesh.getNodes(); coords = coords.reshape(-1, 3)
+        idmap = {int(t): i for i, t in enumerate(tags)}
+        etypes, _, enodes = gmsh.model.mesh.getElements(2)
+        tri = []; nquad = 0; ntri = 0
+        for et, en in zip(etypes, enodes):
+            if et == 2:
+                a = en.reshape(-1, 3); ntri = len(a)
+                for row in a:
+                    tri.append([idmap[int(row[0])], idmap[int(row[1])], idmap[int(row[2])]])
+            elif et == 3:
+                a = en.reshape(-1, 4); nquad = len(a)
+                for row in a:
+                    q = [idmap[int(x)] for x in row]
+                    tri.append([q[0], q[1], q[2]]); tri.append([q[0], q[2], q[3]])  # split quad into 2 tris
+        if not tri:
+            raise RuntimeError(f"quad algo {algo} produced no elements")
+        idx = np.array(tri).reshape(-1).tolist()
+        return {"engine": "gmsh", "config": {"algo": f"quad-{algo}", "quads": nquad, "trisNative": ntri},
+                "ut": coords[:, :2].reshape(-1).tolist(), "indices": idx,
+                "engineMs": (time.perf_counter() - t0) * 1000, "engineVersion": getattr(gmsh, "__version__", "4.x")}
+    finally:
+        gmsh.finalize()
+
+
 def mesh(input: dict) -> dict:
-    """Route: embedded-skeleton (Bet 1) → anisotropic BAMG (metric) → Frontal-Delaunay (sizing)."""
+    """Route: embedded-skeleton (Bet 1) → field-aligned quad (Bet 3) → anisotropic BAMG (metric) → Frontal-Delaunay."""
     if input.get("embed"):
         return _mesh_embed(input)
+    if input.get("quad"):
+        return _mesh_quad(input)
     if input.get("metric"):
         return _mesh_aniso(input)
     t0 = time.perf_counter()

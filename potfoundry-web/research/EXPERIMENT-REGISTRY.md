@@ -1337,3 +1337,28 @@ territory.
 cleanup (Bet 3)** — empirically validates the thesis's "Bet 1 must ship with Bet 2/3." NEXT: embed TRUE-extremum-
 refined loci (replicate makeRefiner in the probe) -> expect p99 to fall toward the loci-chord floor; then a
 curvature-adaptive size field + a sliver pass.
+
+## E-2026-07-01-FRONTIER-BET3 — field-aligned quad proxy (gmsh Algo 11): proxy INVALID (honest NO-GO)
+
+Frontier Bet 3 (field-aligned edge flow vs the 2:1 transition-fan ~2° sliver floor). Isolated attempt via gmsh
+Algorithm 11 (quasi-structured/cross-field quad) in the oracle (new `quad` mode + `_frontierBet3QuadProbe.test.ts`
+PF_BET3). Instant Meshes / Blender not installed (availability gate); gmsh Algo 11 chosen as the in-venv proxy.
+
+FINDING — the (u,t) gmsh-quad proxy is INVALID for testing relief field-alignment: (1) **Algo 11 IGNORES the
+anisotropic TP metric background** — Gyroid/BasketWeave metric → 8 tris/4 quads (trivially coarse), while the SAME
+metric drives BAMG (Algo 7) to 142k/406k tris. It DOES honor an isotropic SP size (uniform h=0.05→3528, h=0.02→21624
+tris) so the adapter is correct; Algo 11 just doesn't consume the tensor metric. (2) Even with isotropic sizing,
+meshing the FLAT (u,t) square yields a cross-field aligned to the domain AXES, not the 3D relief (invisible in flat
+(u,t)). The initial "minA 32°, CONFIRM YES" was a FALSE POSITIVE on the 8-tri metric-ignored mesh.
+
+INCIDENTAL BASELINE (real, same run): the in-house surface-metric kernel already beats the production 2:1-quadtree
+~2° floor on the BULK — Gyroid minA 3.0 / p5 22 / %<20 4.1 (189k tris); BasketWeave minA 0.4 / p5 11 / %<20 8.6
+(534k). BAMG-tri (Algo 7, metric): Gyroid minA 7.1 / p5 17; BasketWeave minA 3.6 / p5 15. So the transition-fan
+sliver WALL is largely dissolved already by the research kernel; the residual is the worst-case sliver TAIL (minA <3°).
+
+VERDICT: **Bet 3 isolated path BLOCKED.** A valid field-aligned test needs a 3D-SURFACE cross-field remesh — Instant
+Meshes / QuadriFlow (NOT installed) or Blender-MCP QuadriFlow (not isolated). gmsh Algo 11 can't (ignores metric +
+flat domain), and a gmsh-STL reparametrize+remesh would likely FAIL on the occluding tangled lattices (BasketWeave
+self-occlusion breaks reparametrization). DECISION for the user: install Instant Meshes/QuadriFlow to run Bet 3
+properly, or deprioritize (the kernel already handles the bulk; residual worst-slivers are the only Bet-3 target).
+Components kept with this honest NO-GO status (preserve-work). Adapter `quad` mode is still a valid isotropic-quad tool.

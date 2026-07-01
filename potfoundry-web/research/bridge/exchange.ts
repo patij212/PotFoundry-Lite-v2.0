@@ -17,6 +17,12 @@ export interface OracleInput {
    * construction) — the test of whether features-FIRST build order beats recover-after (~90% ceiling).
    */
   embed?: { points: number[]; edges: number[] };
+  /** FRONTIER Bet 3: field-aligned quad meshing (gmsh Algorithm 11 cross-field / 8 Frontal+recombine), triangulated
+   *  for the tri min-angle metric — the test of whether cross-field edge flow avoids the 2:1 transition-fan slivers. */
+  quad?: boolean;
+  quadAlgo?: number;
+  /** uniform (u,t) target size when no metric/sizing background drives the mesh. */
+  uniformH?: number;
   /** Our conforming (u,t) mesh for comparison; null if not extractable (use grid fallback). */
   ours: { ut: number[]; indices: number[] } | null;
 }
