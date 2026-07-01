@@ -112,8 +112,10 @@ describe('crest-aware PURE sizing (mechanism isolation, no conform)', () => {
 
     // ON: same, + crest-aware overlay (built from ALL truth loci), band=1 at sizeRes 512 (~0.6mm u band).
     const overlay = buildOverlay(rA, H, TRUTH_RES, 0.03, 0.02, 8, 1 / 2048, 0.08);
+    let ovMin = Infinity; for (const s of overlay) if (s.h3DMm < ovMin) ovMin = s.h3DMm;
+    const ovSorted = overlay.map(s => s.h3DMm).sort((a, b) => a - b);
     // eslint-disable-next-line no-console
-    console.log(`overlay samples=${overlay.length} minH3D=${Math.min(...overlay.map(s => s.h3DMm)).toFixed(4)} medianH3D=${overlay.map(s => s.h3DMm).sort((a, b) => a - b)[overlay.length >> 1].toFixed(4)}`);
+    console.log(`overlay samples=${overlay.length} minH3D=${ovMin.toFixed(4)} medianH3D=${ovSorted[overlay.length >> 1].toFixed(4)} p90H3D=${ovSorted[Math.floor(overlay.length * 0.9)].toFixed(4)}`);
     const on = buildInhouseMetricMesh(rA, H, { ...OPTS, crestSizeOverlay: overlay, crestBandCells: 1 });
     const onIdx = Uint32Array.from(on.indices); const onM = buildMeshUt(on.ut, onIdx, rA, H);
     const sOn = perFaceChordSag(on.ut, onIdx, rA, H); const nmOn = auditNonManByIndex(onM.xyz, onIdx);
