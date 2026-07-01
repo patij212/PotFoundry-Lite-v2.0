@@ -13,7 +13,7 @@
 // Connectivity: initial Euclidean Delaunay (shipped delaunator) in coords scaled by the global median
 // anisotropy s=median(√(M00/M11)); the true-3D flips then correct the local diagonals the global scale misses.
 import Delaunator from 'delaunator';
-import { buildSurfaceMetricField } from './surfaceMetricField';
+import { buildSurfaceMetricField, type CrestSizeSample } from './surfaceMetricField';
 import { smoothSurfaceOnRadial } from './surfaceSmoothing';
 import { recoverAndLockEdges, lockedPredicate } from './constraintRecovery';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
@@ -39,6 +39,17 @@ export interface InhouseMeshOpts {
    *  buildSurfaceMetricField. Absent ⇒ byte-identical default. */
   curvatureFineStep?: number;
   curvatureSubsamples?: number;
+  /**
+   * OPT-IN CREST-AWARE SIZING overlay (E-2026-07-01-CRESTAWARE). KNOWN crest/valley loci samples (u,t + a
+   * pre-computed local target 3D size), rasterized into the sizing field's h3D grid as a MIN-overlay BEFORE
+   * gradation (see buildSurfaceMetricField.crestSizeOverlay). This defeats the grid-fraction curvature aliasing
+   * (E-2026-07-01-FRONTIER-BET2): the sizing grid samples κ at cell corners and MISSES sub-cell crests at fracU
+   * 0.35/0.65 → under-sizes → crest-straddle chord sag. Feeding the loci directly makes fineness FOLLOW them.
+   * Built by buildFeatureConformingMeshB from its refined loci (crestAwareSizing option). STRICT NO-OP when
+   * absent/empty (the h3D grid is untouched ⇒ the metric field is byte-identical to the default). */
+  crestSizeOverlay?: ReadonlyArray<CrestSizeSample>;
+  /** MIN-overlay neighbourhood half-width in grid cells for crestSizeOverlay (default 1). Only used with it. */
+  crestBandCells?: number;
   /**
    * OPT-IN feature-conforming hook (DEV/LAB only). Flat (u,t) pairs of FORCED points to seed into the point
    * set alongside the seed grid — typically dense feature loci refined to the true crest/valley extremum
@@ -191,7 +202,7 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
   const sweeps = opts.optimizeSweeps ?? 6;
   const dedupeEps = opts.dedupeEps ?? 1e-6;
 
-  const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2, curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples });
+  const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2, curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples, crestSizeOverlay: opts.crestSizeOverlay, crestBandCells: opts.crestBandCells });
   const RU = mf.resU, RT = mf.resT, M = mf.m;
   const metricAt = (u: number, t: number): [number, number, number] => {
     const fu = Math.min(Math.max(u, 0), 1) * (RU - 1), ft = Math.min(Math.max(t, 0), 1) * (RT - 1);

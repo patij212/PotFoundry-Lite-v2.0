@@ -25,6 +25,7 @@
 // (loci, same as the harness), runStyle (radius fn). Does NOT modify any src/ file or the default kernel path.
 
 import { buildInhouseMetricMesh, type InhouseMeshOpts, type InhouseMesh } from './inhouseMetricMesh';
+import { kappaMaxAt, type CrestSizeSample } from './surfaceMetricField';
 import { buildFeatureTruth, type FeatureTruth } from './featureLocalizedFidelity';
 import type { StyleDims } from './runStyle';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
@@ -413,8 +414,24 @@ export function buildFeatureConformingMeshB(
      * priority ordering is skipped.
      */
     planarizeConstraints?: boolean;
+    /**
+     * E-2026-07-01-CRESTAWARE: CREST-AWARE SIZING. When true, RASTERIZE the refined feature loci into the kernel's
+     * sizing field as a min-h3D overlay (via crestSizeOverlay): for each refined locus point compute κ_max ON the
+     * locus (kappaMaxAt, fine step), h3D=clamp(√(8·tol/κ),hMin,hMax), and force the sizing cells the loci pass
+     * through to that size. This makes fineness FOLLOW the loci — defeating the sizing-grid curvature aliasing
+     * (E-2026-07-01-FRONTIER-BET2: the grid samples κ at corners and MISSES sub-cell crests at fracU 0.35/0.65 →
+     * under-sizes → the SYSTEMATIC crest-straddle residual). Opt-in → STRICT NO-OP when false/absent (no overlay is
+     * emitted ⇒ the metric field + mesh are byte-identical to conforming-without-the-flag). Uses `chordTolMm ?? tolMm`
+     * as the sizing chord target so the overlay targets the SAME green goal the chord guard does. */
+    crestAwareSizing?: boolean;
+    /** MIN-overlay neighbourhood half-width in sizing-grid cells for crestAwareSizing (default 1). Keep NARROW so
+     *  the overlay does not balloon triangle count away from the loci. */
+    crestBandCells?: number;
+    /** FD step (in (u,t)) for the on-locus κ_max used by crestAwareSizing (default = curvatureFineStep ?? 1/2048).
+     *  Small resolves the sharp sub-cell ridge; a TRUE C0 cusp is bounded by the hMin clamp on h3D. */
+    crestKappaStep?: number;
   },
-): FeatureConformBResult & { planarize?: PlanarizeResult } {
+): FeatureConformBResult & { planarize?: PlanarizeResult; crestOverlayCount?: number; crestHMinMm?: number } {
   const rA = buildRadiusFnLocal(styleId, params, dims);
   const H = dims.H;
   const truthRes = opts.truthRes ?? 384;
@@ -505,11 +522,37 @@ export function buildFeatureConformingMeshB(
     console.log(`  [feat-conform-B ${styleId}] injected=${injected.length / 2} (deduped @${dedupeMm.toFixed(3)}mm) constraints=${orderedConstraints.length / 2} meanMove=${(moveN ? moveSum / moveN : 0).toFixed(3)}mm`);
   }
 
+  // E-2026-07-01-CRESTAWARE: build the CREST-AWARE SIZING overlay from the refined loci (dd.points — the exact
+  // points that get injected as vertices, so the overlay follows the SAME crests). For each locus point compute
+  // κ_max ON the locus with a fine FD step and size h3D=clamp(√(8·tol/κ),hMin,hMax). This forces the sizing field
+  // fine ON the loci, defeating the grid-corner aliasing. STRICT NO-OP when the flag is off (overlay=undefined).
+  let crestSizeOverlay: CrestSizeSample[] | undefined;
+  let crestHMinMm = 0;
+  if (opts.crestAwareSizing === true) {
+    const sizeTolMm = opts.chordTolMm ?? opts.tolMm;
+    const kStep = opts.crestKappaStep ?? opts.curvatureFineStep ?? 1 / 2048;
+    crestSizeOverlay = [];
+    let hmn = Infinity;
+    for (let i = 0; i + 1 < injected.length; i += 2) {
+      const u = injected[i], t = injected[i + 1];
+      const kappa = kappaMaxAt(rA, H, u, t, kStep);
+      const hRaw = kappa > 1e-9 ? Math.sqrt((8 * sizeTolMm) / kappa) : opts.hMax;
+      const h3DMm = Math.min(Math.max(hRaw, opts.hMin), opts.hMax);
+      crestSizeOverlay.push({ u, t, h3DMm });
+      if (h3DMm < hmn) hmn = h3DMm;
+    }
+    crestHMinMm = crestSizeOverlay.length ? hmn : 0;
+    if (opts.profile === true) {
+      // eslint-disable-next-line no-console
+      console.log(`  [crest-aware ${styleId}] overlay=${crestSizeOverlay.length} samples, sizeTol=${sizeTolMm}mm kStep=${kStep.toExponential(1)} minH3D=${crestHMinMm.toFixed(4)}mm band=${opts.crestBandCells ?? 1}`);
+    }
+  }
+
   // When planarizing, guard the recovery flips against creating a duplicate edge at the dense T-junction fans
   // (fixes the nonMan=2 planarize regression). Off otherwise → the shipped conforming recovery is byte-identical.
   const guardRecoveryManifold = opts.guardRecoveryManifold ?? (opts.planarizeConstraints === true);
-  const mesh = buildInhouseMetricMesh(rA, H, { ...opts, injectedPoints: injected, pinInjected: pin, constraintEdges: orderedConstraints, guardRecoveryManifold });
-  return { ...mesh, injected: injected.length / 2, meanRefineMoveMm: moveN ? moveSum / moveN : 0, constraintsRequested: orderedConstraints.length / 2, planarize };
+  const mesh = buildInhouseMetricMesh(rA, H, { ...opts, injectedPoints: injected, pinInjected: pin, constraintEdges: orderedConstraints, guardRecoveryManifold, crestSizeOverlay, crestBandCells: opts.crestBandCells });
+  return { ...mesh, injected: injected.length / 2, meanRefineMoveMm: moveN ? moveSum / moveN : 0, constraintsRequested: orderedConstraints.length / 2, planarize, crestOverlayCount: crestSizeOverlay?.length, crestHMinMm };
 }
 
 // Local copy of buildRadiusFn (runStyle imports node:child_process at module top, which is fine in vitest;
