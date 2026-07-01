@@ -24,16 +24,32 @@ const RULES = {
   ],
 };
 
+// Explicit suffix-based rule resolver — readable at a glance.
+// Exact basename match is the fast path; suffix rules cover named variants
+// (e.g. "broken-scorecard.md") and filled transcripts (e.g. "smoke-transcript.md").
 function ruleFor(file) {
   const base = path.basename(file);
-  return RULES[base] || RULES[Object.keys(RULES).find(k => base.endsWith(k) || k.endsWith(base.replace(/^[^-]+-/, '')))];
+  // Fast path: exact key match.
+  if (RULES[base]) return RULES[base];
+  // Suffix matches — explicit, no regex-strip cleverness.
+  if (base === 'TRANSCRIPT-TEMPLATE.md' || base.endsWith('-transcript.md')) return RULES['TRANSCRIPT-TEMPLATE.md'];
+  if (base === 'programme-scorecard.md' || base.endsWith('-scorecard.md'))   return RULES['programme-scorecard.md'];
+  if (base === 'assumption-ledger.md'   || base.endsWith('-ledger.md'))       return RULES['assumption-ledger.md'];
+  return undefined;
 }
 
 let ok = true;
 for (const file of process.argv.slice(2)) {
   const rules = ruleFor(file);
   if (!rules) { console.error(`SKIP (no rule): ${file}`); continue; }
-  const text = fs.readFileSync(file, 'utf8');
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (err) {
+    ok = false;
+    console.error(`FAIL ${file}: unreadable (${err.code || err.message})`);
+    continue;
+  }
   const missing = rules.filter(re => !re.test(text));
   if (missing.length) {
     ok = false;
