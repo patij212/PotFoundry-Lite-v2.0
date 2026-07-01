@@ -320,13 +320,16 @@ function isCliffFacet(ut: number[], idx: number[], f: number, rA: AnalyticRadius
 describe('PERFECT-PIPELINE CLIFF-GREEN — cliff-excluded honest green for BROAD styles', () => {
   it.skipIf(process.env.PF_PERFECT_CLIFFGREEN !== '1')('measures %>0.03 among non-cliff facets (resumable)', () => {
     mkdirSync(DIR, { recursive: true });
-    const only = (process.env.PF_PERFECT_CLIFFGREEN_ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-    const todo = only.length ? BROAD.filter((s) => only.includes(s)) : BROAD;
+    // ONLY can name ANY style (not just BROAD) — used to test whether a TAIL STALL (Gyroid/CelticTriquetra) is
+    // cliff-driven too. Builds crest-only + chordSteiner@0.01 so the tail is the steiner-converged mesh.
+    const only = (process.env.PF_PERFECT_CLIFFGREEN_ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean) as StyleId[];
+    const todo: StyleId[] = only.length ? only : BROAD;
+    const useSteiner = process.env.PF_CLIFFGREEN_STEINER === '1';
     for (const style of todo) {
       const tag = `cliffgreen_${style}`;
       if (done(tag)) { console.log(`SKIP ${tag}`); continue; }
       console.log(`RUN  ${tag} ...`);
-      const b = buildUnified(style);
+      const b = buildUnified(style, useSteiner ? { chordSteiner: true, chordTolMm: 0.01, maxPoints: 2_500_000 } : {});
       const sag = perFaceTrue3DSag(b.ut, b.idx, b.rA, DIMS.H, { preFilterMm: 0.02 });
       const nF = b.idx.length / 3;
       // classify facets: only test the ones over 0.03 (green facets are trivially non-cliff)
