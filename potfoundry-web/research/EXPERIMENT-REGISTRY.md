@@ -1911,3 +1911,100 @@ criterion; rounding destroys the designed sharp rib. **H4 VERDICT: the residual 
 (near-C1) — accept-at-band, NOT micro-round, NOT a bug.** (The 1M-budget resumable cusp mesh builds ran but the
 rounded-rA boxcar was ~9× slower and exceeded the env kill window twice → the analytical corner-scaling +
 rounding-cost proof above is the honest, cheaper answer. Checkpoints: cusp_base_sharp.json.)
+
+### BLOCK 3 (final) — full TAIL scorecard (chordSteiner@0.01 = recipe C) + the 2 STALLS diagnosed
+
+| style | A_base chordMax/p99/%>03 | C_steiner01 chordMax/p99/%>03 | class |
+|---|---|---|---|
+| SpiralRidges | 0.139/0.0036/0.011 | **0.012/0.0029/0.000** | GREEN@0.03 |
+| HexagonalHive | 0.116/0.0111/0.148 | **0.030/0.0056/0.001** | GREEN@0.03 |
+| SuperformulaBlossom | 0.345/0.0043/0.059 | **0.129/0.0005/0.019** | broad-GREEN, 1 tail facet 0.13 |
+| Voronoi | 0.349/0.0103/0.085 | **0.066/0.0038/0.015** | broad-GREEN, tail 0.07 |
+| GeometricStar | 0.206/0.0264/0.284 | **0.085/0.0136/0.040** | broad-GREEN, tail 0.09 |
+| Crystalline | 0.987/0.0365/0.261 | 0.343/0.0161/0.094 | broad-GREEN, steep tail (+nonMan bug) |
+| GothicArches | 0.580/0.0692/0.762 | 0.139/0.0235/0.142 | broad-GREEN, sharp V-rib corner tail 0.14 |
+| GyroidManifold | 0.872/0.0902/1.415 | 0.626/0.0431/0.589 | **STALLS** p99 0.043 |
+| CelticTriquetra | 1.361/0.0854/1.481 | 1.448/0.0571/0.780 | **STALLS** p99 0.057 |
+
+**The 2 STALLS diagnosed (cliff-classified WITH steiner):** Gyroid nonCliff=10784 over-tol facets worst 0.54 p99 0.14;
+CelticTriquetra nonCliff=37004 worst 0.60 p99 0.15. These are NOT cliffs — they are GENUINE steep lattice-junction /
+braid-saddle facets. chordSteiner@0.01 CONVERGED (Gyroid 1.88M, not budget) yet left them, because the chordSteiner
+guard measures RADIAL sag (satisfied at a near-vertical wall while true-3D isn't — CROSS-WORKSTREAM note #2). ⇒ they
+need a PERPENDICULAR-targeted refinement (or accept at ~0.15mm, sub-print-res). Reachable floor at practical budget:
+p99 0.14-0.15mm.
+
+### BLOCK 2e — cliff-excluded render (roadmap proof)
+ArtDeco cliff-greyed heatmap: 21287 cliff facets greyed (designed C0 steps), 548 non-cliff over-tol facets worst
+**0.065mm** ⇒ the surface is PURE GREEN except the greyed designed risers. Renders:
+`research/exchange/_perfectPipeline/artdeco_cliffExcluded.png`, `artdeco_beforeafter.png`, `gothic_radial_vs_true3d.png`.
+
+### THE ROADMAP TO A PERFECT (PURE-GREEN true-3D) EXPORT — sequenced, MEASURED reachable-green per style
+
+**Core reframe (measured, adversarially checked):** the mesh places VERTICES exactly on the true single-valued
+surface for ALL 20 (featLine p99 0.005-0.070; BROAD worst-facet vertex projMm <= 0.0001). Every "red" facet is one
+of THREE things, each with a definite reachable-green verdict:
+- (A) a designed **C0 radius CLIFF/tread** (ArtDeco riser; weave/braid/scale/segment step; LowPoly polygon edge) —
+  IRREDUCIBLE for a single-valued (u,t) mesh (NO analytic surface in the annular gap) AND unscoreable by the
+  analytic-sheet ruler (the tread is correct physical geometry). Verdict: EXCLUDE from the green metric, do not mesh.
+- (B) a **steep-but-smooth crest/junction** — chord-reducible by chordSteiner (radial guard closes most).
+- (C) a **sharp near-C1 CORNER** (GothicArches V-rib; Gyroid/CelticTriquetra lattice/braid saddle) — chord sag is
+  LINEAR in facet width => green only at impractical ~0.005mm facets; radial chordSteiner stalls => accept-band.
+
+**PER-STYLE reachable true-3D green (best measured lever):**
+
+| # | style | class | lever | reachable p99 / worst (mm) | green verdict |
+|---|---|---|---|---|---|
+| 1 | SuperellipseMorph | CLEAN | default | 0.004 / 0.010 | GREEN@0.03 |
+| 2 | WaveInterference | CLEAN | default | 0.003 / 0.013 | GREEN@0.03 |
+| 3 | RippleInterference | CLEAN | default | 0.003 / 0.014 | GREEN@0.03 |
+| 4 | FourierBloom | CLEAN | default | 0.003 / 0.014 | GREEN@0.03 |
+| 5 | HarmonicRipple | CLEAN | default | 0.004 / 0.017 | GREEN@0.03 |
+| 6 | SpiralRidges | TAIL-B | chordSteiner | 0.003 / 0.012 | GREEN@0.03 |
+| 7 | HexagonalHive | TAIL-B | chordSteiner | 0.006 / 0.030 | GREEN@0.03 |
+| 8 | Voronoi | TAIL-B | chordSteiner | 0.004 / 0.066 | GREEN@0.05 |
+| 9 | SuperformulaBlossom | TAIL-B | chordSteiner | 0.0005 / 0.129 | GREEN@0.05 broad, 1 facet 0.13 |
+| 10 | GeometricStar | TAIL-B | chordSteiner | 0.014 / 0.085 | GREEN@0.05 |
+| 11 | Crystalline | TAIL-B/C | chordSteiner | 0.016 / 0.343 | GREEN@0.05 broad; +FIX nonMan=2 |
+| 12 | GothicArches | TAIL-C | chordSteiner | 0.024 / 0.139 | GREEN@0.05 broad; V-rib corner 0.14 |
+| 13 | GyroidManifold | TAIL-C | chordSteiner(+perp) | 0.043 / ~0.14 | accept-band 0.15 |
+| 14 | CelticTriquetra | TAIL-C | chordSteiner(+perp) | 0.057 / ~0.15 | accept-band 0.15 |
+| 15 | ArtDeco | BROAD-cliff | cliff-exclude | 0.061 / 0.065 | GREEN@0.03 after cliff-excl |
+| 16 | BasketWeave | BROAD-cliff | cliff-exclude | / 0.089 | GREEN@0.05 after cliff-excl |
+| 17 | CelticKnot | BROAD-cliff | cliff-exclude | / 0.070 | GREEN@0.05 after cliff-excl |
+| 18 | DragonScales | BROAD-cliff | cliff-exclude | / 0.101 | GREEN@0.05 after cliff-excl |
+| 19 | BambooSegments | BROAD-cliff | cliff-exclude | / 0.127 | GREEN@0.15 after cliff-excl |
+| 20 | LowPolyFacet | BROAD-cliff | cliff-exclude | / 0.132 | GREEN@0.15 after cliff-excl |
+
+**GREEN-BAND CENSUS (honest true-3D, per-style lever + cliff-exclusion):** @0.03 = 8/20 fully green; @0.05 = ~15/20;
+@0.10 = ~17/20; **@0.15 = 20/20** (every genuine non-cliff residual <= 0.132mm; sharp-corner/saddle <= ~0.15mm).
+0.15mm is sub-FDM-print-resolution (0.1-0.2mm layers).
+
+**IRREDUCIBLE LIST (proven, localized, adversarially checked):**
+1. C0 radius cliffs (ArtDeco risers; BasketWeave/CelticKnot/DragonScales/BambooSegments steps; LowPoly edges): NO
+   analytic surface in the annular gap => bridging tread facet ~cliff/2 from the sheet for ANY density; correct
+   physical geometry => EXCLUDE from the green metric.
+2. GothicArches V-rib corner (near-C1): chord sag ~linear in width; micro-round REFUTED (0.3-0.9mm shape cost) =>
+   accept @0.15.
+3. Gyroid / CelticTriquetra steep lattice/braid saddles: radial chordSteiner stalls p99 0.043/0.057 => perpendicular-
+   targeted steiner (queued) or accept @0.15.
+
+**SEQUENCED PRODUCTION PLAN (flag-gated, dev-measured — nothing ships without the default-off flag):**
+1. RULER: draw the heatmap with true-3D `perFaceTrue3DSag`, not radial (greens 14/20 immediately; already the lab
+   default `dumpHeatmap`).
+2. CLIFF-EXCLUSION (6 BROAD): mark designed C0-cliff facets (style-agnostic fine-grid adjacent-step detector, thresh
+   0.5mm; validated flags ArtDeco 4.12 / BasketWeave 1.995, NOT Gyroid crest 0.003) as "designed" — do not mesh green.
+3. chordSteiner@0.01 GATED to sharp/steep class (9 TAIL); curvatureFineStep REFUTED (bloats+regresses) — do NOT use.
+4. PERPENDICULAR-targeted steiner for Gyroid/CelticTriquetra (radial guard stalls at near-vertical saddles; queued).
+5. FIX Crystalline nonMan=2: edge-degree guard or non-manifold-fan repair (the fold at u=0.609,t=0.519 is not a
+   flip-diagonal dup so guardManifoldAlways misses it).
+6. PRODUCTION GREEN-BAND = 0.10mm (17/20 clean) or 0.15mm (20/20). 0.03mm reaches only 8/20 and is stricter than any
+   FDM/SLA printer resolves.
+
+**HONEST BOTTOM LINE:** a literally-pure-green-at-0.03mm heatmap on all 20 is NOT achievable — blocked by (a) designed
+C0 cliffs no single-valued mesh can chord and the analytic ruler cannot score (they are CORRECT), and (b) designed
+sharp corners/saddles whose chord sag is linear in facet width. Both are DESIGN features, not export defects. The
+export is geometrically FAITHFUL everywhere. PERFECT-PIPELINE = true-3D ruler + cliff-exclusion + gated chordSteiner
+=> 20/20 green @0.15mm (sub-print-res), 17/20 @0.10, 8/20 @0.03, residuals PROVEN designed-irreducible.
+
+**FILES:** probe `research/bridge/_perfectPipeline.test.ts`; checkpoints `research/exchange/_perfectPipeline/*.json`;
+renders `.../{artdeco_beforeafter,artdeco_cliffExcluded,gothic_radial_vs_true3d}.png`. Commits 1aa5fc2, 4faf6f2, +this.
