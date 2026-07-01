@@ -1314,3 +1314,26 @@ needs a curvature CAP — here fine h is 0.046-0.074mm (above hMin 0.008), so ac
 **Bet 1 (protected-PLC) status:** DEFERRED — CGAL not installed (oracle venv has gmsh only; gmsh embedded-edges
 could proxy a protected-PLC) AND it overlaps the concurrent recovery/planarize work (`_planarizeRecovery.test.ts`).
 Pick up after coordinating, or via the gmsh-embedded-edge proxy.
+
+## E-2026-07-01-FRONTIER-BET1 — gmsh embedded-skeleton (protected-PLC) on GothicArches
+
+Frontier Bet 1 discriminator. Isolated (new files: `planarizeSkeleton.ts`+test 4/4, `_frontierBet1EmbedProbe.test.ts`
+PF_BET1; oracle `embed` mode + `test_embed.py` 2/2). Pipeline: GothicArches featureGraph loci -> planarize to a PSLG
+(crossings/T-junctions -> shared nodes) -> gmsh `mesh.embed` -> lift -> measure. vs in-house recover-after (~90%, p99 0.112).
+
+RESULT (11540 segs -> 12305 PSLG edges, h=0.003, 278k tris, 18s): **recovery 100.0%** (vs ~90%), **nonMan=0
+(watertight)** — the crossing-locus recovery CEILING is DISSOLVED by features-first embedding (constraints satisfied
+BY CONSTRUCTION). BUT fidelity/quality NOT won at this config: featureLineChord3D p99 **0.51** (interior-only 0.514
+~= all-loci 0.511 -> NOT a seam artifact; finer skeleton 0.68->0.51 -> NOT skeleton-coarseness), minAngle **0.1deg** /
+%<20 4.7% (slivers near forced edges).
+
+DIAGNOSIS (residual is COUPLED to the other bets, as the thesis predicted): (1) I embedded the RAW bilinear-sampler
+loci, NOT refined to the true rA crest — the Bet 2 locus-aliasing finding: sampler loci sit OFF the sharp crest, so
+the embedded edges are near-but-not-ON the true ridge -> high chord. Fix = refine loci to the true extremum BEFORE
+embedding (the in-house makeRefiner step). (2) constrained-Delaunay slivers near forced edges = Bet 3 (field-aligned)
+territory.
+
+**VERDICT: Bet 1 RECOVERY claim CONFIRMED (100% vs 90%, watertight); fidelity requires refined loci (Bet 2) + sliver
+cleanup (Bet 3)** — empirically validates the thesis's "Bet 1 must ship with Bet 2/3." NEXT: embed TRUE-extremum-
+refined loci (replicate makeRefiner in the probe) -> expect p99 to fall toward the loci-chord floor; then a
+curvature-adaptive size field + a sliver pass.
