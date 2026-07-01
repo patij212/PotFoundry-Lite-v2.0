@@ -80,10 +80,20 @@ describe('GothicArches chord-sag GREEN push', () => {
     const gate = computeMeasuredGate(truth, buildLocator(baseM, 256), baseM, rA, H, { stepMm: GATE_STEP_MM, trueFloorMm: GATE_FLOOR_MM, cellR: CELL_R });
     const common = { ...OPTS, guardManifoldAlways: true as const, searchHalfMm: 0.6, truthRes: TRUTH_RES, pin: true, truth, injectStepMm: 0.08, lineFilter: (_l: unknown, i: number): boolean => gate.keep[i] };
 
-    // E: decisive push at the apex-junction floor — finer dedupe (allow sub-1e-6 (u,t) points at the compressed
-    // near-vertical apex) + tighter tol 0.02 + STEINER + more budget. Tests whether the 0.38mm plateau breaks.
-    const E = buildFeatureConformingMeshB(STYLE, {}, DIMS, { ...common, hMin: 0.006, maxPoints: 6_000_000, dedupeEps: 1e-7, chordTolMm: 0.02, chordSteiner: true });
-    measureAndDump('GothicArches_green_E_steiner02_fine', E.ut, Uint32Array.from(E.indices), rA, H);
+    // SF: the ROOT-CAUSE full stack — fine-curvature sizing (sizes crest facets small at the source, fixing the
+    // aliasing the chord guard couldn't compensate for) + planarize (junctions) + chordSteiner guard (insurance)
+    // + guardManifoldAlways (watertight). Target: 0% RED and 0% YELLOW.
+    // Size for the ACTUAL green target (sag ~0.02mm, well under the 0.05 yellow threshold) — NOT 0.004mm, which
+    // over-refined 10x and overflowed the manifold-guard edge-Set. hMin 0.03 floors crest facets small enough for
+    // sag<<0.05 at these curvatures without exploding density. maxPoints 2.5M keeps 3*2*nPts edges < 16.7M Set cap.
+    // DEDICATED zero-yellow: FINER sizing grid (sizeRes 512) so the fine-curvature window is a NARROW crest band
+    // (±0.27mm, not ±0.55mm) — kills the runaway while still sizing crests small — + tight chord guard 0.01 to
+    // finish. Sharded guard+recovery handle whatever tris result. tolMm 0.012 / hMin 0.015 → crest sag << 0.05.
+    const SF = buildFeatureConformingMeshB(STYLE, {}, DIMS, {
+      ...common, sizeRes: 512, planarizeConstraints: true, tolMm: 0.012, hMin: 0.015, maxPoints: 8_000_000,
+      dedupeEps: 1e-7, chordTolMm: 0.01, chordSteiner: true, curvatureFineStep: 1 / 2048, curvatureSubsamples: 2,
+    });
+    measureAndDump('GothicArches_puregreen_SF', SF.ut, Uint32Array.from(SF.indices), rA, H);
 
     expect(true).toBe(true);
   }, 90 * 60 * 1000);
