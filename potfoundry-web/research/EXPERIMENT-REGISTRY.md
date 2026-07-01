@@ -1570,3 +1570,32 @@ densify alone won't help (crests are already perfect); (3) close the 9 TAIL styl
 worst-facet Steiner (density-responsive per E-CREASE-DENSITY-BREAKTHROUGH); (4) FIX Crystalline nonMan=2 in the build
 path. Probe: `research/bridge/_sweepMetricMap.test.ts`; per-style JSON: `research/exchange/_sweepmap/<style>.json`
 (20 files + render bins); render: `scratchpad/sweepmap_heatmaps.png`.
+
+---
+
+## E-2026-07-01-FRONTIER-BUILD3 (GothicArches "fully green" — ruler diagnosis + recipe isolation), commit 00de1ca
+
+**Q:** user wants the chord-error heatmap FULLY GREEN (no yellow/red) on GothicArches. Is the red a geometric export
+defect, or a metric artifact? (Single-style deep dive; generalized by E-SWEEP-METRIC-MAP above.)
+
+**METHOD (isolated probes, CALL kernel, edit nothing):** `_frontierBuild3` (chordTolMm no-steiner baseline),
+`_frontierVerifyMetricProbe` (dual ruler + brute-force projector cross-check), `_frontierBuild3b` (radial-targeted
+re-injection), `_frontierBuild3c` (density sweep), `_frontierBuild3d` (recipe A/B/C isolation), `_frontierBuild3e`
+(perpendicular-targeted re-injection), `_frontierBuild3f` (residual localization: cusp vs topology).
+
+**RESULT:**
+- **RULER:** heatmap `perFaceChordSag` = RADIAL/same-(u,t) chord OVERSTATES near-vertical GothicArches ribs 4–5×
+  (radial worst 0.60–1.18mm vs true-3D `perpendicular3DDeviation` **0.127mm**). Under true-3D: **p99 0.015mm, featLine
+  0.015mm, 99.8% <0.03mm = CAD-grade.** Render `research/exchange/_build3e` (radial vs true-3D side-by-side).
+- **RECIPE (build #3d A/B/C):** `chordSteiner` ALONE = winner (true-3D chordMax 0.127, p99 0.016, converged 1.7M verts).
+  `curvatureFineStep:1/2048` (curv-only AND full recipe) BOTH budget-hit (2.5M cap) and REGRESS to chordMax 0.47–0.65.
+  `chordTolMm` WITHOUT `chordSteiner` (build #3) = rib BEADING (longest-edge split lands in the gap, not on the rib).
+- **DENSITY (build #3c):** hMin 0.008/0.004/0.0025 = BYTE-IDENTICAL mesh ⇒ hMin NON-binding; the metric/curvature grid
+  dictates the mesh (Bet 2 corroborated).
+- **RESIDUAL (build #3e/3f):** ~0.13mm true-3D at ~0.2% of surface = GENUINE near-C0 cusp floor (arch tips
+  u≈0.320/t≈0.266, curvature ~6e6, near-vertical). FROZEN across density/radial-Steiner/perpendicular re-injection;
+  NOT a topology bug (build #3f: 0/4000 residual samples near the 4 non-manifold verts). 0.13mm < print resolution.
+
+**VERDICT:** export is CAD-grade faithful; "fully green" = (1) draw heatmap with true-3D ruler; (2) `chordSteiner`-alone
+(NOT the full recipe) on steep styles; (3) accept sub-print-res cusp specks OR micro-round the arch tips. Findings
+routed to the green-push via CROSS-WORKSTREAM-NOTES.
