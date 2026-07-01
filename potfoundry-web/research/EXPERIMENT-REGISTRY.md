@@ -2068,3 +2068,21 @@ Env-gated `PF_SHARP3D=1` in `research/bridge/_sharp3dArtDeco.test.ts`; each stag
 kernel fn modified; edit nothing in src/ or existing research files.
 
 ### RESULT — (pending)
+
+---
+
+## E-2026-07-02-STEEP-HETEROGENEITY (meshing-lab full-team convene; PI + Theorist + Skeptic + Metrologist + Oracle-keeper + Experimentalist)
+
+**QUESTION (A-STEEP-RULER inversion):** are the ACCEPT-broad-steep styles ruler artifacts (accept) or genuine 3D gaps (fix)? Registry contradicted itself (endgame "faithful/radial-overstated" vs perp_3d "genuine broad gaps ratio≈1").
+
+**DISCRIMINATOR:** labkit `perFaceChordSag` (radial) vs `perFaceTrue3DSag` (GN true-3D) on red facets, DEFAULT vs maxSag-HALVED, brute-force dense-nearest TWIN as trusted reference; braid sheet-guard. Density-response SIGN = the class discriminator.
+
+**KILL-CRITERION:** trusted perp <0.05 & ratio≥3 → ARTIFACT; ≥0.05 & FALLS → DEPTH-CAPPED-CLOSABLE; ≥0.05 & FLAT → TRUE-CUSP-GAP; sheet-flip>0/ref-untrusted → UNMEASURABLE.
+
+**RESULT (trusted brute-anchored worst-40 p99):** GothicArches 0.117 (ratio 2.08, falls 26%); Gyroid 0.092 (halved→0 red facets); CelticTriquetra 0.234 (ratio 1.06, sheet-clean, weak 11% response = borderline cusp); Voronoi 0.148 (ratio 1.88, twin machine-precision-trusted); control HarmonicRipple 0.016/0.045 (non-vacuous PASS). **VERDICT: heterogeneity PARTIALLY REFUTED — all 4 = DEPTH-CAPPED-CLOSABLE, not a 4-class spread; heterogeneity survives only fine-grain.** Net reframe: the steep class is CLOSABLE-WITH-DENSITY, NOT accept-class nor fixed-gap.
+
+**F2 INSTRUMENT BUG (the headline):** labkit GN `perFaceTrue3DSag`/`perpendicular3DDeviation` OVERSTATES perp up to 7× on tangled lattices (Gyroid GN 0.644 vs brute-trusted 0.092) via wrong-local-minimum feet. The brute twin is load-bearing. Corrects the smoke run (Gothic 0.259→0.117) and likely inflated prior steep perp verdicts (project_perpendicular_3d_metric re-baseline flagged). FIX = fold brute-anchoring into labkit's steep-facet path (dev-only).
+
+**RECOMMENDATION:** Oracle-keeper gmsh closable-leg on CelticTriquetra (borderline) + Voronoi (equal-budget, aniso-validity-gated, one-metric-both-meshes) → closable-vs-irreducible. labkit brute-anchor fix. Re-baseline steep perp verdicts under the trusted twin.
+
+**LEDGER:** transcript `research/lab/steep-heterogeneity-transcript.md`; checkpoints `research/exchange/_steep/ledger.ndjson` (21 rows); probe `research/bridge/_steepHeterogeneity.test.ts`. Classification only — nothing productionized.
