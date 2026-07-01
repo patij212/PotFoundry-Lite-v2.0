@@ -522,19 +522,53 @@ export function buildFeatureConformingMeshB(
     console.log(`  [feat-conform-B ${styleId}] injected=${injected.length / 2} (deduped @${dedupeMm.toFixed(3)}mm) constraints=${orderedConstraints.length / 2} meanMove=${(moveN ? moveSum / moveN : 0).toFixed(3)}mm`);
   }
 
-  // E-2026-07-01-CRESTAWARE: build the CREST-AWARE SIZING overlay from the refined loci (dd.points — the exact
-  // points that get injected as vertices, so the overlay follows the SAME crests). For each locus point compute
-  // κ_max ON the locus with a fine FD step and size h3D=clamp(√(8·tol/κ),hMin,hMax). This forces the sizing field
-  // fine ON the loci, defeating the grid-corner aliasing. STRICT NO-OP when the flag is off (overlay=undefined).
+  // E-2026-07-01-CRESTAWARE: build the CREST-AWARE SIZING overlay. Sizing (unlike vertex injection) is cheap and
+  // safe — it forces the metric fine on KNOWN crests without injecting vertices or locking edges, so it can cover
+  // EVERY detected locus, not just the gated+injected ones. This matters: the SHARP GATE (lineFilter) drops loci
+  // the BASE mesh already resolves OK for INJECTION, but those same loci can still be grid-ALIASED for SIZING (the
+  // (0.5,0.54) hotspot is a `relief-wall-truth` locus detected 0.0195mm away — _crestLociDetect — that the gate can
+  // filter off conforming yet the grid still under-sizes). So we sample the FULL truth loci (ungated), refine each
+  // to the true extremum (reusing `ref`), and size h3D=clamp(√(8·tol/κ),hMin,hMax) with κ_max computed ON the
+  // refined locus. STRICT NO-OP when the flag is off (overlay=undefined ⇒ the metric field is untouched).
   let crestSizeOverlay: CrestSizeSample[] | undefined;
   let crestHMinMm = 0;
   if (opts.crestAwareSizing === true) {
     const sizeTolMm = opts.chordTolMm ?? opts.tolMm;
     const kStep = opts.crestKappaStep ?? opts.curvatureFineStep ?? 1 / 2048;
+    // dedupe overlay samples on a mm grid so overlapping loci families don't emit N× the same κ eval.
+    const ovDedupeMm = Math.max(injectStepMm / 2, 0.01);
+    const ovDD = makeSnapDeduper(uToMm, tToMm, ovDedupeMm);
+    const ovUT: number[] = [];
+    const pushOv = (u: number, t: number): void => { const before = ovDD.points.length / 2; ovDD.add(u, t); if (ovDD.points.length / 2 > before) { ovUT.push(u, t); } };
+    truth.lines.forEach((line) => {
+      // NOTE: NO lineFilter / labelSet / tFilter gate here — the overlay sizes ALL detected crests.
+      const pts = line.points;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const u0 = pts[i].u, u1 = pts[i + 1].u, t0 = pts[i].t, t1 = pts[i + 1].t;
+        const du = periodicDu(u1, u0), dt = t1 - t0;
+        const lenMm = Math.hypot(du * uToMm, dt * tToMm);
+        if (lenMm < 1e-9) continue;
+        const txMm = du * uToMm, tyMm = dt * tToMm;
+        const tl = Math.hypot(txMm, tyMm) || 1;
+        const perpU = (-tyMm / tl) / uToMm, perpT = (txMm / tl) / tToMm;
+        const n = Math.max(1, Math.ceil(lenMm / injectStepMm));
+        for (let k = 0; k <= n; k++) {
+          const ff = k / n;
+          let u = u0 + du * ff; u -= Math.floor(u);
+          const t = t0 + dt * ff;
+          let uR = u, tR = t < 0 ? 0 : t > 1 ? 1 : t;
+          if (opts.noRefine !== true) {
+            const seekMax = ref.radAt(u, t) >= ref.rowMean(t);
+            const r = ref.refine(u, t, perpU, perpT, seekMax); uR = r.u; tR = r.t;
+          }
+          pushOv(uR, tR);
+        }
+      }
+    });
     crestSizeOverlay = [];
     let hmn = Infinity;
-    for (let i = 0; i + 1 < injected.length; i += 2) {
-      const u = injected[i], t = injected[i + 1];
+    for (let i = 0; i + 1 < ovUT.length; i += 2) {
+      const u = ovUT[i], t = ovUT[i + 1];
       const kappa = kappaMaxAt(rA, H, u, t, kStep);
       const hRaw = kappa > 1e-9 ? Math.sqrt((8 * sizeTolMm) / kappa) : opts.hMax;
       const h3DMm = Math.min(Math.max(hRaw, opts.hMin), opts.hMax);
@@ -544,7 +578,7 @@ export function buildFeatureConformingMeshB(
     crestHMinMm = crestSizeOverlay.length ? hmn : 0;
     if (opts.profile === true) {
       // eslint-disable-next-line no-console
-      console.log(`  [crest-aware ${styleId}] overlay=${crestSizeOverlay.length} samples, sizeTol=${sizeTolMm}mm kStep=${kStep.toExponential(1)} minH3D=${crestHMinMm.toFixed(4)}mm band=${opts.crestBandCells ?? 1}`);
+      console.log(`  [crest-aware ${styleId}] overlay=${crestSizeOverlay.length} samples (ungated, all loci), sizeTol=${sizeTolMm}mm kStep=${kStep.toExponential(1)} minH3D=${crestHMinMm.toFixed(4)}mm band=${opts.crestBandCells ?? 1}`);
     }
   }
 
