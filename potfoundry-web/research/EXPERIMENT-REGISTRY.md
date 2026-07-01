@@ -1283,7 +1283,41 @@ gated-conforming GothicArches, planarize OFF vs ON:
   has no chordTolMm/chordSteiner, so its sag is metric-sizing-dominated, not apex-cusp-dominated. The heatmap
   payoff is tested in the HD push (P2).
 
-**P2 (pure-green HD push):** _(pending — fixing nonMan=2, then push chordTolMm)_
+**nonMan fix (watertight, P1 addendum) — DONE.** The planarize path left nonMan=2 = two distinct injected
+vertices at the SAME near-vertical arch-apex (u,t) welding to one 3D point while both anchor a locked edge
+(incident=4 doubled edge) — LOCALIZED by `_planarizeNonman.test.ts`. Fixed by (a) SEEDING the planarizer's
+fine intersection-vertex hash with the existing loci points + coarsen to 0.006mm (a crossing at a loci sample
+merges onto it, no duplicate); (b) opt-in `guardRecoveryManifold` (reject a recovery crossing-flip whose new
+diagonal already exists). Planarize recovery 88.4%→**96.6%** with **nonMan=0** (the finer 0.004 hash hit 99.3%
+but reintroduced the apex doubling → 96.6%+watertight is the operating point). P1 verdict: **PARTIAL** (helped,
+96.6% ∈ [92,98) not the ≥98% target; residual 3.4% are collinear/lock-blocked chains, not strict crossings).
+
+**P2 (pure-green HD push) — the planarization does NOT close the HD heatmap; the residual is NOT junction
+crossings.** `_planarizeGreen.test.ts` (PF_PLANGREEN), GothicArches HD, conf + PLANARIZE + guardManifoldAlways
++ guardRecoveryManifold + chordSteiner:
+
+| variant | chordTolMm | budget | tris | worst | RED(≥0.15) | YEL(≥0.05) | recovery | nonMan |
+|---|---|---|---|---|---|---|---|---|
+| t20 | 0.020 | 6M | 2.90M | 0.292 | 0.0025% (73) | 0.0961% (2784) | 96.7% | 0 |
+| t10 | 0.010 | 8M | 3.15M | **0.191** | 0.0005% (15) | **0.0443%** (1400) | 95.8% | 0 |
+
+- **t20 ≈ the prior variant-E** (worst 0.292, RED 0.0027%, YEL 0.096%) — **planarization barely changed the HD
+  heatmap.** At HD the gate fires on FEW loci (12031 constraints vs 55097 @900k screen) and only **407 crossings**
+  exist to split (vs 8220 @screen), so planarization is near-no-op at HD. ⇒ **REFUTES the brief's diagnosis for
+  the HD residual**: the red/yellow is NOT the junction-crossing spanning facets.
+- **`_greenResidual.test.ts` LOCALIZED the worst faces** (t20 mesh): they are **NOT near-vertical apexes and NOT
+  junction-clustered** — steepness |dr/dz| ≤ 1.3 (mostly 0.1–0.4, i.e. NOT cliffs), eMax **0.23–0.46mm** (large
+  facets straddling ridge crests), spread across ALL t-bands (t=0.13…0.99), scattered (u,t). The yellow band is
+  generic crest-straddle chord sag, everywhere the relief is sharp.
+- **Tightening chordTolMm 0.02→0.01 is density-RESPONSIVE but with STEEP diminishing returns AND the guard is
+  NOT effectively targeting the residual**: worst 0.292→0.191 (−35%), YEL halved, but **tris only +9%**
+  (2.90M→3.15M). A freely-splitting guard would balloon tris; the near-flat tri growth ⇒ the chordSteiner point
+  is being DEDUPED/NOT-INCORPORATED at the bad faces (the LOCKED constraint edges block the flip that would
+  fold the Steiner point into the sharp face — hypothesis, testing next). Pure-green by brute chordTolMm alone
+  is NOT reached (worst 0.191 ≫ 0.02) and the tri-vs-tol curve says it would need an impractical budget.
+
+**NEXT (P2 continued):** discriminate lock-blocked-Steiner (run HD chordSteiner WITHOUT conforming/locks — if
+worst ≪ 0.19, the locks are the cap) vs Steiner-sampling-miss; then the true green lever.
 
 ## E-2026-07-01-FRONTIER-BET2 — sizing-field curvature aliasing (MECHANISM CONFIRMED)
 

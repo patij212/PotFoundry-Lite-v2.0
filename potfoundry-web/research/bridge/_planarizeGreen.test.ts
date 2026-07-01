@@ -9,6 +9,8 @@
 //   PF_PLANGREEN=t20    → chordTolMm 0.02   variant
 //   PF_PLANGREEN=t15    → chordTolMm 0.015  variant
 //   PF_PLANGREEN=t10    → chordTolMm 0.010  variant
+//   PF_PLANGREEN=nolock → HD chordSteiner WITHOUT conforming (no constraints/locks) — the lock-cap discriminator
+//   PF_PLANGREEN=t05    → chordTolMm 0.005  variant (does tighter tol keep reducing, or is it stuck?)
 //   PF_PLANGREEN=1      → base + t20 + t15 + t10 in sequence (each dumped as it completes)
 //
 // Run: PF_PLANGREEN=t20 npx vitest run research/bridge/_planarizeGreen.test.ts
@@ -90,6 +92,24 @@ describe('GothicArches planarized pure-green push P2', () => {
       const s = measureDump('GothicArches_puregreen_t10', r.ut, Uint32Array.from(r.indices), { variant: 'planar+steiner+chord0.010', recovery: r.constraint });
       // eslint-disable-next-line no-console
       console.log(`  t10 recovery=${r.constraint ? (100 * (r.constraint.alreadyPresent + r.constraint.recovered) / r.constraint.requested).toFixed(1) : '?'}% failed=${r.constraint?.failed}`);
+      expect(s.tris).toBeGreaterThan(0);
+    }
+    if (want('t05')) {
+      const r = buildFeatureConformingMeshB(STYLE, {}, DIMS, { ...common, maxPoints: 12_000_000, chordTolMm: 0.005, profile: true });
+      const s = measureDump('GothicArches_puregreen_t05', r.ut, Uint32Array.from(r.indices), { variant: 'planar+steiner+chord0.005', recovery: r.constraint });
+      // eslint-disable-next-line no-console
+      console.log(`  t05 recovery=${r.constraint ? (100 * (r.constraint.alreadyPresent + r.constraint.recovered) / r.constraint.requested).toFixed(1) : '?'}% failed=${r.constraint?.failed} hitBudget=${r.hitBudget}`);
+      expect(s.tris).toBeGreaterThan(0);
+    }
+    // LOCK-CAP DISCRIMINATOR: pure kernel chordSteiner at HD with NO conforming (no injected points, no
+    // constraints, no locks). If its worst chord sag is well BELOW the conforming t10 0.191, the LOCKED
+    // constraint edges are what caps the chord guard (they block the flip that folds the Steiner in). If it is
+    // ALSO ~0.19, the cap is the chord guard's own reach (sampling / edge-split geometry), not the lock.
+    if (want('nolock')) {
+      const r = buildInhouseMetricMesh(rA, H, { ...OPTS, hMin: 0.006, maxPoints: 8_000_000, guardManifoldAlways: true, chordTolMm: 0.010, chordSteiner: true, dedupeEps: 1e-7 });
+      const s = measureDump('GothicArches_puregreen_nolock', r.ut, Uint32Array.from(r.indices), { variant: 'NOconf+steiner+chord0.010', hitBudget: r.hitBudget });
+      // eslint-disable-next-line no-console
+      console.log(`  nolock hitBudget=${r.hitBudget} rounds=${r.rounds}`);
       expect(s.tris).toBeGreaterThan(0);
     }
     expect(true).toBe(true);
