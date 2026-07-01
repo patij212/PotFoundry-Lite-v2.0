@@ -1284,3 +1284,33 @@ gated-conforming GothicArches, planarize OFF vs ON:
   payoff is tested in the HD push (P2).
 
 **P2 (pure-green HD push):** _(pending — fixing nonMan=2, then push chordTolMm)_
+
+## E-2026-07-01-FRONTIER-BET2 — sizing-field curvature aliasing (MECHANISM CONFIRMED)
+
+Frontier Bet 2 (analytic feature-aware sizing) cheapest discriminator. MEASURE-ONLY, `_frontierBet2SizingProbe.test.ts`
+(PF_BET2), NEW file, NO shared-file edit (isolated from the concurrent green push). Replicated
+`buildSurfaceMetricField`'s `kappaMax` at grid-step (1/256 ~ 1.1mm cell) vs fine-step (1/2048 ~ 0.14mm),
+**window-max perpendicular to each ridge locus** (placement-robust — a v1 fixed-locus probe was confounded:
+non-monotonic / C0-unstable + grid-detected loci sit off the sub-cell ridge). Pre-registered: CONFIRM iff sharp
+styles fine/grid ratio >= 2 AND smooth controls < 1.3.
+
+| style | class | median fine/grid peak-kappa | grid h coarser | verdict |
+|---|---|---|---|---|
+| GothicArches | sharp thin ridge | 5.66 (p90 22.9) | 2.14x | ALIASED |
+| GyroidManifold | sharp-crease lattice | 9.81 (p90 20.7) | 3.09x | ALIASED |
+| HarmonicRipple | smooth CONTROL | 1.07 (p90 1.13) | 1.05x | resolved (ok) |
+| SuperellipseMorph | smooth CONTROL | 1.00 (p90 1.00) | 1.00x | resolved (ok) |
+
+**VERDICT: CONFIRMED.** The sizeRes=256 grid under-reads sharp-ridge curvature 5-10x -> sizes h3D 2-3x too coarse
+at the crests, while correctly fine on smooth relief. The smooth controls reading ~1.0 **validate the window-max
+instrument** (rules out an upward artifact — the key falsification of my own probe; v1 was confounded). => the
+band-limited sizing is genuinely blind to sub-cell ridges; analytic/finer curvature sizing would place vertices ON
+the ridges the grid misses, plausibly retiring the conform gate for the sharp-crease class. **Confirms the MECHANISM,
+not the OUTCOME.** Caveats: (a) OUTCOME test = mesh-level A/B (analytic vs grid sizing -> featureLineChord3D p99)
+needs an additive kernel sizeField/analytic hook -> DEFERRED until the green push settles the shared kernel files
+(inhouseMetricMesh/featureConformingMesh in-flight); (b) at a TRUE C0 cusp kappa->inf as step->0, so analytic sizing
+needs a curvature CAP — here fine h is 0.046-0.074mm (above hMin 0.008), so actionable, not collapsing to hMin.
+
+**Bet 1 (protected-PLC) status:** DEFERRED — CGAL not installed (oracle venv has gmsh only; gmsh embedded-edges
+could proxy a protected-PLC) AND it overlaps the concurrent recovery/planarize work (`_planarizeRecovery.test.ts`).
+Pick up after coordinating, or via the gmsh-embedded-edge proxy.
