@@ -137,6 +137,7 @@ The environment kills long runs (6+ multi-hour agents lost in the prior arc). Th
 ## 8. Deliverables
 
 - A new **`meshing-lab` skill** = the standing-lab protocol the PI follows: role charters, the combined meeting loop, the audit-first invariant, the generative organs, the ledgers, the transcript convention, the stopping rule.
+- **`meshing-frontier` stays untouched** (a working sibling skill). The lab **copies over** its steelman→ground→tournament machinery into its own generative core (Clusters A+C+D are that loop, multi-agent-ized) so the lab is self-contained and frontier keeps working standalone. No edits to the frontier skill.
 - **Role charters** live in the skill (debate roles need only Read/Grep/Glob/WebSearch). **Experimentalist reuses `meshing-researcher`**; Oracle-keeper reuses it in oracle mode.
 - **Three ledger files** scaffolded under `research/` + one line each in `LAB-CHEATSHEET.md`.
 - A **mode-selector**: solo `meshing-researcher` for a cheap sweep; **convene the lab** for a contested finding, a frontier wall, a degenerating programme, or anything you want adversarially trusted.
@@ -166,5 +167,8 @@ Not all organs are equal. **Strongest (would have produced a specific reframe fa
 
 - Cadence constants (K for auto-invert; N for "Reopen the Cornerstone"; the exploration-tithe %).
 - Ledger file formats (markdown tables vs ndjson) — must be append-only and resumable.
-- How the `meshing-lab` skill and the existing `meshing-frontier` skill compose (the lab is the multi-agent realization of frontier's steelman→tournament — does frontier become a *phase inside* the lab, or a sibling mode?).
 - Whether the Outsider seat and Champion rotation are on by default or opt-in per convene.
+
+## 14. Decisions locked in review
+
+- **`meshing-frontier` remains an untouched sibling skill.** `meshing-lab` **copies** frontier's steelman→ground→tournament machinery into its own generative core rather than editing frontier or making it a sub-phase. The lab is self-contained; frontier keeps working standalone. *(Resolves former open question 3.)*
