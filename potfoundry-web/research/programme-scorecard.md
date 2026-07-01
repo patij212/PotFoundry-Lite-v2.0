@@ -9,6 +9,7 @@
 
 | date | programme | finding | label | novel-facts:exceptions | trend |
 |------|-----------|---------|-------|------------------------|-------|
+| 2026-07-01 | chord-metric fidelity | E-2026-07-01-GOTHIC-PERP-RIB: ruler-artifact hypothesis REFUTED on GothicArches red ribs (perp p99 0.259mm, radial/perp ratio 3.44×, density-responsive) | CONSERVATIVE | 0 confirmed-novel : 0 exceptions — BLOCKED a premature accept-class exclusion + opened the crest-conforming capability question | first |
 
 ## Auto-invert rule
 

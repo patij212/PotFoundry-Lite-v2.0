@@ -7,6 +7,7 @@
 
 | assumption | relied-on-by | blast-radius | flip-probe | last-inverted | evidence-for | refuted-flips |
 |------------|--------------|--------------|------------|---------------|--------------|---------------|
+| A-STEEP-RULER: steep near-vertical "red" ⇒ radial ruler overstatement ⇒ accept-class (true-3D CAD-grade) | CHORD-program accept-class closures on steep styles (Gothic / Gyroid / Voronoi / CelticTriquetra) | HIGH (multiple accept-class closures depend on it) | perpendicular3DDeviation on red facets per style + brute-force nearest twin | 2026-07-01 | GeometricStar strapwork + DragonScales confirmed ruler-overstatement | GothicArches REFUTED 2026-07-01 (perp p99 0.259mm, ratio only 3.44×, twin-trusted to 1.6e-9 — genuine crest under-tessellation, NOT a ruler artifact) |
 
 ## Inversion cadence
 
