@@ -11,3 +11,18 @@
 }
 .pf3-export-footer .pf3-btn { width: 100%; }
 .pf3-export-footer__error { font: 500 11px var(--pf3-font-body); color: var(--pf3-error); }
+
+.pf3-fidelity {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline;
+  width: 100%; text-align: left;
+  border: 1px solid var(--pf3-glass-border); border-radius: var(--pf3-radius-md);
+  padding: 8px 10px; margin-bottom: 6px;
+  transition: border-color var(--pf3-dur-control) var(--pf3-ease-move);
+}
+.pf3-fidelity--on { border-color: var(--pf3-gold); background: var(--pf3-gold-tint); }
+.pf3-fidelity__name { font: 500 12.5px var(--pf3-font-body); color: var(--pf3-text-primary); }
+.pf3-fidelity__purpose { font-size: 11px; color: var(--pf3-text-secondary); }
+.pf3-fidelity__est { font-size: 10px; color: var(--pf3-text-muted); }
+.pf3-format { display: flex; gap: 2px; margin-top: var(--pf3-space-sm);
+  background: rgba(245, 240, 232, 0.06); border-radius: var(--pf3-radius-md); padding: 2.5px; }
+.pf3-format .pf3-seg__item:disabled { opacity: 0.4; cursor: not-allowed; }
