@@ -464,6 +464,21 @@ drag value = scrub · double-click value = reset
 
 ---
 
+### Task 18: Ultra becomes real — 4096×2048 (owner-approved 2026-07-03)
+
+**Files:**
+- Modify: `src/state/slices/mesh.ts` (ultra preset export resolution → 4096×2048; preview resolution unchanged), its test file if one exists
+- Modify: `src/ui/v3/panel/ExportTab.tsx` (+test) — FIDELITIES ultra entry `nTheta: 4096, nZ: 2048`; the high/ultra preview-value tiebreaker in `activeKey` can stay (now redundant but harmless)
+
+**Interfaces:**
+- Owner decision: Ultra differentiates from High with a real 4× triangle count. Estimates will show ≈16,777,216 tris · ~800 MB — the honest grid upper bound; the parametric pipeline's budget cap may deliver less. Add one quiet line under the Ultra row when selected: `capped by the mesh budget on most pots` (`.pf3-label`, no scare formatting).
+
+- [ ] **Step 1: verify** the ultra preset object in `src/state/slices/mesh.ts` (shape confirmed in Phase 1: export 2048×1024) and whether any test pins those numbers.
+- [ ] **Step 2: failing tests** — ExportTab: Ultra row shows the 4096-derived estimate and is distinct from High's; selecting Ultra applies `export_n_theta === 4096`; the budget-cap note appears only when Ultra is the active fidelity.
+- [ ] **Step 3: implement** (mesh slice value change + ExportTab entry + note), **Step 4: gates** (`npx vitest run src/ui/v3 src/state && npm run typecheck` — no regressions; watch for any mesh-slice consumer test pinning 2048), **Step 5: commit** `feat(ui-v3): Ultra preset earns its PRO chip — 4096×2048 export grid`.
+
+---
+
 ## Plan Self-Review (completed at write time)
 
 - **Spec coverage (Phase-2 scope):** Blueprint §6 → Tasks 3–6 (bidirectional exit gate in Task 5's tests + e2e drag); two-surface style system §7 → Tasks 1, 7–10 (working set never grows: ≤8 strip; showroom absorbs scale; favorites bridge; hover live-apply w/ sanctioned fallback); certificate + kiln log §8.3 → Tasks 11–12 (blob-cache deviation recorded in header); entrance §3.3 → Task 17 (CSS-only deviation recorded); inherited Phase-1 deferrals → scrub Task 15, `?`/F11 Task 16, View-pill extras + grid Task 14, account chip Task 13. "Showroom smooth at 100 styles" exit gate: covered by lazy IO tiles + in-memory cache + the e2e; a synthetic 100-style stress test is NOT included — the registry has 20 real styles and synthesizing fakes would mock the exact GPU path under test; the gate is deferred to the content expansion (recorded here explicitly).
