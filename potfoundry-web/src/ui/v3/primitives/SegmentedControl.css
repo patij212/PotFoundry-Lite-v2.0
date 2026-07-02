@@ -1,0 +1,18 @@
+.pf3-seg {
+  display: flex; padding: 2.5px;
+  background: rgba(245, 240, 232, 0.06);
+  border-radius: var(--pf3-radius-md);
+}
+.pf3-root[data-theme='light'] .pf3-seg { background: rgba(60, 50, 40, 0.07); }
+.pf3-seg__item {
+  flex: 1; padding: 6px 0;
+  border-radius: calc(var(--pf3-radius-md) - 2px);
+  font: 500 12px var(--pf3-font-body);
+  color: var(--pf3-text-secondary);
+  transition: color var(--pf3-dur-control) var(--pf3-ease-move);
+}
+.pf3-seg__item--on {
+  background: var(--pf3-gold-grad);
+  color: var(--pf3-on-gold);
+  font-weight: 600;
+}
