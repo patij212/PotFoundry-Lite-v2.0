@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './ParamRow.css';
 
 export interface ParamRowProps {
@@ -31,10 +31,15 @@ export const ParamRow: React.FC<ParamRowProps> = ({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const interacting = useRef(false);
+  // F1/F2: set true before setEditing(false) so the trailing unmount-blur is a no-op
+  const skipBlurRef = useRef(false);
+  // F3: holds the pending single-click timer; second click cancels it and resets
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // F4: snap then clamp — rounding cannot push the value past bounds
   const apply = useCallback(
     (raw: number, commit: boolean) => {
-      const next = snap(clamp(raw, min, max), step, min);
+      const next = clamp(snap(raw, step, min), min, max);
       onChange(next);
       if (commit) onValueCommit?.();
     },
@@ -46,14 +51,55 @@ export const ParamRow: React.FC<ParamRowProps> = ({
     setEditing(true);
   }, [value]);
 
-  const commitDraft = useCallback(() => {
-    setEditing(false);
+  // Shared commit logic for both Enter-key and blur paths
+  const applyDraft = useCallback(() => {
     const parsed = Number(draft);
     if (!Number.isNaN(parsed)) {
       onInteractionStart?.();
       apply(parsed, true);
     }
   }, [draft, apply, onInteractionStart]);
+
+  // F2: set skipBlurRef before closing so the trailing unmount-blur is a no-op
+  const commitDraft = useCallback(() => {
+    skipBlurRef.current = true;
+    setEditing(false);
+    applyDraft();
+  }, [applyDraft]);
+
+  // F1/F2: skip commit when a preceding Enter or Escape already handled this gesture
+  const handleBlur = useCallback(() => {
+    if (skipBlurRef.current) {
+      skipBlurRef.current = false;
+      return;
+    }
+    setEditing(false);
+    applyDraft();
+  }, [applyDraft]);
+
+  // F3: first click arms a 250 ms timer; second click within that window resets instead
+  const handleChipClick = useCallback(() => {
+    if (clickTimerRef.current !== null) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      if (defaultValue !== undefined) {
+        onInteractionStart?.();
+        apply(defaultValue, true);
+      }
+    } else {
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        beginEdit();
+      }, 250);
+    }
+  }, [defaultValue, beginEdit, onInteractionStart, apply]);
+
+  // F3: clear any pending click timer on unmount
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current !== null) clearTimeout(clickTimerRef.current);
+    };
+  }, []);
 
   const handleChipKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -80,10 +126,13 @@ export const ParamRow: React.FC<ParamRowProps> = ({
             autoFocus
             inputMode="decimal"
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={commitDraft}
+            onBlur={handleBlur}
             onKeyDown={(e) => {
               if (e.key === 'Enter') commitDraft();
-              if (e.key === 'Escape') setEditing(false);
+              if (e.key === 'Escape') {
+                skipBlurRef.current = true; // F1: guard the trailing blur
+                setEditing(false);
+              }
             }}
           />
         ) : (
@@ -93,13 +142,7 @@ export const ParamRow: React.FC<ParamRowProps> = ({
             data-testid={testId ? `${testId}-value` : undefined}
             data-pf3-focusable=""
             title="Click to type · double-click to reset"
-            onClick={beginEdit}
-            onDoubleClick={() => {
-              if (defaultValue === undefined) return;
-              setEditing(false);
-              onInteractionStart?.();
-              apply(defaultValue, true);
-            }}
+            onClick={handleChipClick}
             onKeyDown={handleChipKeyDown}
           >
             {value.toFixed(dec)}{unit ? ` ${unit}` : ''}
