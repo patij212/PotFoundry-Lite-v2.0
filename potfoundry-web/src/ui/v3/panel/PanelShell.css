@@ -1,0 +1,33 @@
+.pf3-panel {
+  position: absolute;
+  left: var(--pf3-space-lg); top: var(--pf3-space-lg); bottom: var(--pf3-space-lg);
+  z-index: var(--pf3-z-panel);
+  display: flex;
+  pointer-events: auto;
+}
+.pf3-panel__surface {
+  display: flex; flex-direction: column;
+  width: 100%; overflow: hidden;
+}
+.pf3-panel__header { padding: var(--pf3-space-md) var(--pf3-space-md) var(--pf3-space-sm); }
+.pf3-panel__wordmark {
+  font: 400 17px var(--pf3-font-display);
+  margin-bottom: var(--pf3-space-sm);
+}
+.pf3-panel__content {
+  flex: 1; overflow-y: auto;
+  padding: var(--pf3-space-sm) var(--pf3-space-md);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 240, 232, 0.15) transparent;
+}
+.pf3-panel__footer {
+  border-top: 1px solid var(--pf3-hairline);
+  padding: var(--pf3-space-md);
+  background: rgba(20, 16, 13, 0.6);
+}
+.pf3-root[data-theme='light'] .pf3-panel__footer { background: rgba(60, 50, 40, 0.05); }
+.pf3-panel__resize {
+  width: 6px; cursor: col-resize; margin-left: 2px;
+  border-radius: 3px;
+}
+.pf3-panel__resize:hover { background: var(--pf3-gold-tint); }
