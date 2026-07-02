@@ -249,10 +249,13 @@ export const DEFAULT_APPEARANCE: AppearanceState = {
 // ============================================================================
 
 /** UI theme variant */
-export type UITheme = 'classic' | 'v2';
+export type UITheme = 'classic' | 'v2' | 'v3';
 
 /** v2 sidebar tab */
 export type V2Tab = 'shape' | 'style' | 'export';
+
+/** v3 panel tab — same tabs as v2 by design */
+export type V3Tab = V2Tab;
 
 /** Display density */
 export type UIDensity = 'compact' | 'comfortable' | 'spacious';
@@ -284,6 +287,8 @@ export interface UIState {
   density: UIDensity;
   /** Whether haptic feedback is enabled in v2 */
   hapticsEnabled: boolean;
+  /** Active tab in v3 panel */
+  v3ActiveTab: V3Tab;
 }
 
 /** Default UI state */
@@ -298,6 +303,7 @@ export const DEFAULT_UI_STATE: UIState = {
   zenMode: false,
   density: 'comfortable',
   hapticsEnabled: true,
+  v3ActiveTab: 'shape',
 };
 
 // ============================================================================

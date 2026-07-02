@@ -12,6 +12,7 @@ import {
   UIState,
   UITheme,
   V2Tab,
+  V3Tab,
   UIDensity,
   GeometryParams,
   MeshQuality,
@@ -194,6 +195,11 @@ export interface UISlice {
    * Set the active tab in v2 sidebar.
    */
   setV2ActiveTab: (tab: V2Tab) => void;
+
+  /**
+   * Set the active tab in v3 panel.
+   */
+  setV3ActiveTab: (tab: V3Tab) => void;
 
   /**
    * Toggle Zen mode (full-screen viewport).
@@ -406,6 +412,12 @@ export const createUISlice: StateCreator<
   setV2ActiveTab: (tab) => {
     set((state) => ({
       ui: { ...state.ui, v2ActiveTab: tab },
+    }));
+  },
+
+  setV3ActiveTab: (tab) => {
+    set((state) => ({
+      ui: { ...state.ui, v3ActiveTab: tab },
     }));
   },
 

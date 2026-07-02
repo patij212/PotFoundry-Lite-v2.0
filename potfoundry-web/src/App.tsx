@@ -22,6 +22,9 @@ import './WebGPUPreview.css';
 // Lazy-load v2 UI — v1 users pay zero bundle cost
 const AppUIv2 = lazy(() => import('./ui/v2/AppUIv2'));
 
+// Lazy-load v3 UI — v1/v2 users pay zero bundle cost
+const AppUIv3 = lazy(() => import('./ui/v3/AppUIv3'));
+
 // ============================================================================
 // Fallback Parameters (used only for WebGPU mount if no persisted state exists)
 // ============================================================================
@@ -561,6 +564,10 @@ Protocol: ${protocol}`}
                                 {uiTheme === 'v2' ? (
                                     <Suspense fallback={null}>
                                         <AppUIv2 />
+                                    </Suspense>
+                                ) : uiTheme === 'v3' ? (
+                                    <Suspense fallback={null}>
+                                        <AppUIv3 />
                                     </Suspense>
                                 ) : (
                                     <AppUI />

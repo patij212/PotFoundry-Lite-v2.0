@@ -69,7 +69,7 @@ export function AppSettingsModal({ open, onOpenChange }: AppSettingsModalProps) 
               UI Theme
             </h3>
             <div className="app-settings-toggle-group" role="radiogroup" aria-label="UI Theme">
-              {(['classic', 'v2'] as const).map((theme) => (
+              {(['classic', 'v2', 'v3'] as const).map((theme) => (
                 <button
                   key={theme}
                   role="radio"
@@ -77,7 +77,7 @@ export function AppSettingsModal({ open, onOpenChange }: AppSettingsModalProps) 
                   className={`app-settings-toggle ${uiTheme === theme ? 'app-settings-toggle--active' : ''}`}
                   onClick={() => setUITheme(theme)}
                 >
-                  {theme === 'classic' ? 'Classic' : 'v2'}
+                  {theme === 'classic' ? 'Classic' : theme}
                 </button>
               ))}
             </div>
