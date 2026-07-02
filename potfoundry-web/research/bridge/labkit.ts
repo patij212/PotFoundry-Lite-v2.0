@@ -333,6 +333,70 @@ export function bruteAnchoredRedPerp(
   };
 }
 
+// ───────────────────────── anchored TRUE-3D sag (trusted HEATMAP source for steep lattices) ─────────────────────────
+/**
+ * `perFaceTrue3DSag` with the WORST-K red facets brute-ANCHORED — a TRUSTED HEATMAP source for STEEP LATTICES.
+ * The plain true-3D ruler OVER-COLOURS steep-lattice red facets because single-seed GN overstates their perp up to
+ * ~7× via wrong-local-minimum feet (E-2026-07-02-STEEP-HETEROGENEITY / F2). Whole-mesh brute anchoring is infeasible
+ * (~3.4h at ~2700 red facets), so this anchors ONLY the `topK` reddest facets (radial sag > `redMm`): each is
+ * re-scored at its 4 SAG_BARY interior samples as max_k min(GN, brute[, fine]) via {@link bruteNearestOnRadialSurface}
+ * (fine tie-break on coarse-disagreement OR a still-red coarse value), while the green body keeps the fast GN score.
+ * The anchor can only LOWER a facet's error, so the red tail stops lying without touching the honest green body.
+ *
+ * Returns a drop-in {@link ChordSagResult} (faceErr overwritten on the anchored facets; vertErr + worstMm recomputed)
+ * for `vertErrColors` / `dumpHeatmap`. Bounded cost = topK × 4 × brute (seconds–tens of seconds, not hours). Pass a
+ * precomputed `radial` (perFaceChordSag) to skip the recompute; `onStats` reports {nRed, anchoredK} for coverage
+ * logging (worst-K is a CAP — facets beyond topK keep the GN colour). DEV-ONLY.
+ */
+export function perFaceTrue3DSagAnchored(
+  ut: number[], indices: ArrayLike<number>, rA: AnalyticRadiusFn, H: number,
+  opts: {
+    preFilterMm?: number; redMm?: number; topK?: number; disagreeMm?: number;
+    coarse?: { nTheta?: number; nZ?: number }; fine?: { nTheta?: number; nZ?: number };
+    radial?: ChordSagResult; onStats?: (s: { nRed: number; anchoredK: number }) => void;
+  } = {},
+): ChordSagResult {
+  const preFilter = opts.preFilterMm ?? 0.02, redMm = opts.redMm ?? 0.1, topK = opts.topK ?? 200, disagreeMm = opts.disagreeMm ?? 0.02;
+  const cN = { nTheta: opts.coarse?.nTheta ?? 2048, nZ: opts.coarse?.nZ ?? 400 };
+  const fN = { nTheta: opts.fine?.nTheta ?? 8192, nZ: opts.fine?.nZ ?? 1600 };
+  const base = perFaceTrue3DSag(ut, indices, rA, H, { preFilterMm: preFilter }); // fast GN body (green stays honest)
+  const radial = opts.radial ?? perFaceChordSag(ut, indices, rA, H);
+  const nV = ut.length / 2, nF = indices.length / 3;
+  const red: number[] = [];
+  for (let f = 0; f < nF; f++) if (radial.faceErr[f] > redMm) red.push(f);
+  red.sort((x, y) => radial.faceErr[y] - radial.faceErr[x]);
+  const sample = red.slice(0, Math.min(topK, red.length));
+  opts.onStats?.({ nRed: red.length, anchoredK: sample.length });
+  if (sample.length === 0) return base; // no red facets ⇒ identical to perFaceTrue3DSag
+  const xyz = new Float64Array(nV * 3);
+  for (let i = 0; i < nV; i++) { const th = TAU * ut[2 * i], z = ut[2 * i + 1] * H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
+  for (const f of sample) {
+    const a = indices[3 * f], b = indices[3 * f + 1], c = indices[3 * f + 2];
+    let mx = 0;
+    for (const [wa, wb, wc] of SAG_BARY) {
+      const px = wa * xyz[3 * a] + wb * xyz[3 * b] + wc * xyz[3 * c];
+      const py = wa * xyz[3 * a + 1] + wb * xyz[3 * b + 1] + wc * xyz[3 * c + 1];
+      const pz = wa * xyz[3 * a + 2] + wb * xyz[3 * b + 2] + wc * xyz[3 * c + 2];
+      const gn = projectPointToRadialSurface(px, py, pz, rA).dist;
+      const bf = bruteNearestOnRadialSurface(px, py, pz, rA, H, cN);
+      let tf = Math.min(gn, bf.dist);
+      if (bf.dist - gn > disagreeMm || tf > redMm) tf = Math.min(tf, bruteNearestOnRadialSurface(px, py, pz, rA, H, fN).dist);
+      if (tf > mx) mx = tf;
+    }
+    base.faceErr[f] = mx; // overwrite the GN-overstated facet error with the brute-anchored one (only ever lower)
+  }
+  // recompute vertErr (max incident face) + worstMm from the corrected faceErr; fracOver closes over the same array.
+  base.vertErr.fill(0);
+  let worst = 0;
+  for (let f = 0; f < nF; f++) {
+    const e = base.faceErr[f]; if (e > worst) worst = e;
+    const a = indices[3 * f], b = indices[3 * f + 1], c = indices[3 * f + 2];
+    if (e > base.vertErr[a]) base.vertErr[a] = e; if (e > base.vertErr[b]) base.vertErr[b] = e; if (e > base.vertErr[c]) base.vertErr[c] = e;
+  }
+  base.worstMm = worst;
+  return base;
+}
+
 // ───────────────────────── export: binary STL + render bins ─────────────────────────
 /** Binary STL with per-face normals from geometry. xyz = lifted positions (any float ArrayLike). */
 export function writeBinarySTL(path: string, xyz: ArrayLike<number>, indices: ArrayLike<number>): void {
@@ -380,19 +444,39 @@ export function dumpRenderBins(
  * A/B only). Prefer THIS over hand-wiring `perFaceChordSag`+`vertErrColors` in new probes. Writes the render bins +
  * `.col.bin` + a `.meta.json` carrying `ruler`/`worstMm`/`p99Mm`/`pctOver0_03` so `meshRender.cjs` labels the ruler
  * honestly. `xyz` = lifted 3D positions (from buildMeshUt/liftUtToRadial). Returns the ChordSagResult it computed.
+ *
+ * STEEP-LATTICE TRUSTED VISUAL (`anchorSteep`): the default true-3D ruler OVER-COLOURS steep-lattice red facets
+ * (single-seed GN overstates up to ~7×, F2). Pass `anchorSteep` to brute-anchor the worst-K red facets via
+ * {@link perFaceTrue3DSagAnchored} — the reddest facets show their TRUE colour, the green body stays fast-GN, in
+ * seconds (not the ~3.4h a whole-mesh anchor would cost). Meta then carries `ruler:'true3d-anchored'` +
+ * `anchoredK`/`nRedTotal` so the legend shows how many red facets were anchored vs left GN-coloured (worst-K CAP).
  */
 export function dumpHeatmap(
   dir: string, name: string, xyz: ArrayLike<number>, ut: number[], indices: ArrayLike<number>,
   rA: AnalyticRadiusFn, H: number,
-  opts: { ruler?: 'true3d' | 'radial'; scaleMm?: number; preFilterMm?: number; stl?: boolean; meta?: Record<string, unknown> } = {},
+  opts: {
+    ruler?: 'true3d' | 'radial'; scaleMm?: number; preFilterMm?: number; stl?: boolean; meta?: Record<string, unknown>;
+    /** brute-anchor the worst-K red facets (steep-lattice trusted visual) — see {@link perFaceTrue3DSagAnchored}. */
+    anchorSteep?: { redMm?: number; topK?: number; disagreeMm?: number; coarse?: { nTheta?: number; nZ?: number }; fine?: { nTheta?: number; nZ?: number } };
+  } = {},
 ): ChordSagResult {
   const ruler = opts.ruler ?? 'true3d';
-  const sag = ruler === 'radial' ? perFaceChordSag(ut, indices, rA, H) : perFaceTrue3DSag(ut, indices, rA, H, { preFilterMm: opts.preFilterMm });
+  let sag: ChordSagResult, rulerLabel: string = ruler, anchorMeta: Record<string, unknown> = {};
+  if (ruler === 'radial') {
+    sag = perFaceChordSag(ut, indices, rA, H);
+  } else if (opts.anchorSteep) {
+    let cov = { nRed: 0, anchoredK: 0 };
+    sag = perFaceTrue3DSagAnchored(ut, indices, rA, H, { preFilterMm: opts.preFilterMm, ...opts.anchorSteep, onStats: (s) => { cov = s; } });
+    rulerLabel = 'true3d-anchored';
+    anchorMeta = { anchored: true, redMm: opts.anchorSteep.redMm ?? 0.1, anchoredK: cov.anchoredK, nRedTotal: cov.nRed };
+  } else {
+    sag = perFaceTrue3DSag(ut, indices, rA, H, { preFilterMm: opts.preFilterMm });
+  }
   const sorted = Float64Array.from(sag.faceErr).sort();
   const p99 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(0.99 * sorted.length))] : 0;
   dumpRenderBins(dir, name, xyz, indices, {
     colors: vertErrColors(sag.vertErr, opts.scaleMm ?? 0.15),
-    meta: { ruler, worstMm: sag.worstMm, p99Mm: p99, pctOver0_03: 100 * sag.fracOver(0.03), ...(opts.meta ?? {}) },
+    meta: { ruler: rulerLabel, worstMm: sag.worstMm, p99Mm: p99, pctOver0_03: 100 * sag.fracOver(0.03), ...anchorMeta, ...(opts.meta ?? {}) },
     stl: opts.stl,
   });
   return sag;
