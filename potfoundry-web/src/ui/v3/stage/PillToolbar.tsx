@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import { GlassSurface } from '../primitives/GlassSurface';
 import { useAppStore } from '../../../state';
 import { useControllerMaybe } from '../../../context';
@@ -28,8 +28,8 @@ export const PillToolbar: React.FC = () => {
   const toggleZenMode = useAppStore((s) => s.toggleZenMode);
   const toggleFullscreen = useAppStore((s) => s.toggleFullscreen);
   const zenMode = useAppStore((s) => s.ui.zenMode);
-  const [autoRotate, setAutoRotate] = useState(false);
   const controller = useControllerMaybe();
+  const autoRotate = controller?.cameraState.autoRotate ?? false;
 
   const resetCamera = useCallback(() => {
     if (controller?.isReady) controller.resetCamera();
@@ -37,12 +37,11 @@ export const PillToolbar: React.FC = () => {
   }, [controller]);
 
   const toggleAutoRotate = useCallback(() => {
-    if (controller?.isReady) controller.toggleAutoRotate();
-    setAutoRotate((v) => {
-      window.dispatchEvent(new CustomEvent('pf3:auto-rotate', { detail: { enabled: !v } }));
-      return !v;
-    });
-  }, [controller]);
+    if (controller?.isReady) {
+      controller.toggleAutoRotate();
+      window.dispatchEvent(new CustomEvent('pf3:auto-rotate', { detail: { enabled: !autoRotate } }));
+    }
+  }, [controller, autoRotate]);
 
   return (
     <div className="pf3-toolbar" data-zen={zenMode || undefined}>
