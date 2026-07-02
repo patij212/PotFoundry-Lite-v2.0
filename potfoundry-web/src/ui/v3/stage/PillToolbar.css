@@ -1,0 +1,18 @@
+.pf3-toolbar {
+  position: absolute; top: var(--pf3-space-lg); left: 50%;
+  transform: translateX(calc(-50% + 170px)); /* optically centered over the stage, right of panel */
+  display: flex; gap: var(--pf3-space-sm);
+  z-index: var(--pf3-z-toolbar);
+  pointer-events: auto;
+}
+.pf3-toolbar__pill { border-radius: var(--pf3-radius-pill); }
+.pf3-toolbar__group { display: flex; padding: 4px 6px; gap: 2px; }
+.pf3-pillbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 24px; border-radius: var(--pf3-radius-pill);
+  color: var(--pf3-text-secondary);
+  transition: color var(--pf3-dur-control) var(--pf3-ease-move),
+              background-color var(--pf3-dur-control) var(--pf3-ease-move);
+}
+.pf3-pillbtn:hover { color: var(--pf3-text-primary); background: var(--pf3-gold-tint); }
+.pf3-pillbtn--active { color: var(--pf3-gold); }
