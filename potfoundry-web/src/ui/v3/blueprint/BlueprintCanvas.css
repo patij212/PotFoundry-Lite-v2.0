@@ -1,0 +1,37 @@
+/* BlueprintCanvas — spec §6 vessel-study SVG. */
+
+.pf3-blueprint {
+  border: 1px dashed rgba(180, 151, 90, 0.25);
+  border-radius: var(--pf3-radius-md);
+  background: rgba(0, 0, 0, 0.2);
+  width: 100%;
+  display: block;
+  overflow: hidden;
+}
+
+/* Outer generatrix — gold, primary weight (spec §6) */
+.pf3-bp__outer {
+  stroke: var(--pf3-gold);
+  stroke-width: 1.6;
+  fill: none;
+}
+
+/* Inner wall — same gold, reduced opacity */
+.pf3-bp__inner {
+  stroke: var(--pf3-gold);
+  stroke-width: 1;
+  stroke-opacity: 0.45;
+  fill: none;
+}
+
+/* Centerline — ghost gold, dashed */
+.pf3-bp__centerline {
+  stroke: rgba(180, 151, 90, 0.25);
+  stroke-width: 0.5;
+}
+
+/* Dimension tick labels — informational, not actionable */
+.pf3-bp__tick {
+  fill: var(--pf3-text-secondary);
+  font-size: 9px;
+}
