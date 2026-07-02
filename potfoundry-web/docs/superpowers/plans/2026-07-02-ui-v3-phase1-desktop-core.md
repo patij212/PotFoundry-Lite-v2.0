@@ -14,6 +14,10 @@
 - Export formats: STL wired; 3MF/OBJ segmented options rendered **disabled** with a "soon" tooltip.
 - Fidelity rows show ≈triangles + ≈file size. Estimated *time* deferred to Phase 2 (needs telemetry).
 - Pedestal shadow deferred to Phase 2 (renderer work); Phase 1 backdrop uses the existing `appearance.gradient` GPU background.
+- *(Recorded post-review, 2026-07-03)* ParamRow **drag-to-scrub** (spec §5) deferred to Phase 2 — Phase 1 ships click-to-type/double-click-reset/arrow-nudge only.
+- *(Recorded post-review)* Spec §11's `?` shortcuts-dialog and F11 handling deferred to Phase 2; keyboard map ships Z/D/R/Alt+1-3/undo/redo. `D` is carved out of zen mode (its listener lives in the panel's ExportFooter, unmounted in zen) until Phase-2 export orchestration.
+- *(Recorded post-review)* View pill ships reset + auto-rotate only; spec §4.1's orbit presets / ortho / grid toggles deferred to Phase 2.
+- *(Recorded post-review)* Account chip (spec §4) was a plan gap: the legacy `pf-app__header` (gear + auth) remains over v3 — it is the only route to Settings/theme-switch, so it stays until Phase 2 restyles it into the v3 identity.
 
 ## Global Constraints
 
