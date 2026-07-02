@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] - 2024-12 (In Development)
 
 ### Added
+- **OBJ export (`write_obj`):** Welded Wavefront OBJ writer with area-weighted
+  smooth per-vertex normals — the recommended format for CAD round-tripping into
+  Rhino/Grasshopper. Unlike STL (unwelded triangle soup, per-facet normals only),
+  OBJ preserves the mesh's indexed topology so the pot imports as a single closed
+  mesh with no naked edges and correct smooth shading. Exposed as
+  `potfoundry.write_obj`.
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
 
