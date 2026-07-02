@@ -2159,3 +2159,19 @@ metric). Commits 17b7659 (pre-reg), df67c68 (best-diag+faithful-ref), d9aa343 (l
 **RECOMMENDATION:** Oracle-keeper gmsh closable-leg on CelticTriquetra (borderline) + Voronoi (equal-budget, aniso-validity-gated, one-metric-both-meshes) → closable-vs-irreducible. labkit brute-anchor fix. Re-baseline steep perp verdicts under the trusted twin.
 
 **LEDGER:** transcript `research/lab/steep-heterogeneity-transcript.md`; checkpoints `research/exchange/_steep/ledger.ndjson` (21 rows); probe `research/bridge/_steepHeterogeneity.test.ts`. Classification only — nothing productionized.
+
+---
+
+## E-2026-07-02-SFB-PUSH (SuperformulaBlossom @1 sharp petals → 0.01mm, Team A)
+
+**Q:** can SFB@1 (sf_strength=1) be driven to ≤0.01mm true-3D all-green, petal-corner ridges embedded as mesh edges (zero serration), watertight?
+
+**METHOD:** analytic petal-ridge tracer (`tracePetalLoci`) → seam/rim-aware constraint edges + a graded perpendicular tip-ladder forcing sub-metric cells at the cusps; measured with the TRUSTED true-3D ruler (dense sheet BVH + full-azimuth analytic brute, `min(GN,brute)` — the anchored metric merged this session) + an own-(u,t) chord filter to reject degenerate-seam-sliver artifacts. Kernel via committed hooks; src/ untouched. Isolated `_sfbPush.test.ts`/`_sfbPushLib.ts`, dir `research/exchange/_sfbpush/`.
+
+**RESULT (best = fine metric base + traced seam/rim ridge constraints + graded tip-ladder step 0.08mm, 8.73M tris):** true-3D worst **0.0213mm on 24 facets** (0.00027%), p99 **0.001mm**; serration (curve→nearest mesh EDGE) worst **0.0079mm**; watertight **nonMan=0**; minAngle 0 / %<20 8.2% (density-invariant sliver tail). Progression crest-only 0.455 → chordSteiner ~0.129 → tip-ladder **0.021** (6×). The prior 0.032 "seam" residual PROVEN a metric artifact (zero-u-width seam slivers, own-chord=0) via the anchored/own-(u,t) ruler.
+
+**VERDICT: REFUTED the literal ≤0.01 bar — honest floor 0.0213mm at the sharp-base petal-tip cusps** (α≈0.86 fractional-power corners). NOT geometrically irreducible (finite exponent → density closes it) but a KERNEL constraint-recovery-robustness limit: denser ridge constraints regress via recovery slivers/non-manifold folds (189–396 recovery failures + Crystalline-class folds). Sub-print (0.021 ≪ 0.05mm resin layer), 6× the prior best.
+
+**RECOMMENDATION:** accept+document 0.021mm for SFB@1 now; ONE follow-up = harden `recoverAndLockEdges` against dense sharp-feature pickets (a kernel edit) → curvature-graded ridge step at t<0.3 would close the last 2× to ≤0.01.
+
+**LEDGER:** scorecard `research/exchange/_sfbpush/SCORECARD.md`; probes `research/bridge/_sfbPush.test.ts` + `_sfbPushLib.ts`; best mesh `research/exchange/_sfbpush/ladder/…_v2_mesh.bin`; STL `…/meas_ladder_both_step0p08_offs6_brow_v2.stl` (8.73M tris, 416MB); heatmap `research/exchange/_sfbpush/heatmap_BEST_step008_ownsag.png`.
