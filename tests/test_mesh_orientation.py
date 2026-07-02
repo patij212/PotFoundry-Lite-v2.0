@@ -67,6 +67,27 @@ def test_orientation_is_globally_consistent(style_name: str) -> None:
     )
 
 
+# Non-default configurations that exercise twist and heavy style modulation —
+# orientation is topological so these must hold too, but they guard against a
+# future change coupling winding to geometry (e.g. a per-face reorder).
+_EXTRA_OPTS = {
+    "twist": {"spin_turns": 2.0, "spin_phase_deg": 30.0},
+    "extreme_superformula": {"sf_m_top": 16.0, "sf_n1": 0.2},
+    "bell": {"bell_amp": 0.4, "bell_center": 0.5},
+}
+
+
+@pytest.mark.parametrize("label", list(_EXTRA_OPTS))
+def test_orientation_holds_under_twist_and_modulation(label: str) -> None:
+    """Consistency + outward orientation survive twist and strong modulation."""
+    fn = STYLES["SuperformulaBlossom"][0]
+    verts, faces, _ = build_pot_mesh(
+        r_outer_fn=fn, style_opts=_EXTRA_OPTS[label], **_PARAMS
+    )
+    assert _bad_directed_edges(faces) == 0, f"{label}: inconsistent orientation"
+    assert _signed_volume(verts, faces) > 0, f"{label}: mesh is inside-out"
+
+
 @pytest.mark.parametrize("style_name", STYLE_NAMES)
 def test_normals_point_outward(style_name: str) -> None:
     """Signed volume is positive => face normals point outward from the solid."""
