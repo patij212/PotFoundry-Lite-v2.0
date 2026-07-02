@@ -10,3 +10,4 @@
   transition: width var(--pf3-dur-control) var(--pf3-ease-move);
 }
 .pf3-export-footer .pf3-btn { width: 100%; }
+.pf3-export-footer__error { font: 500 11px var(--pf3-font-body); color: var(--pf3-error); }

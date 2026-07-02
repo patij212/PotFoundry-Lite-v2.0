@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { deriveDefaultFilename, estimateExport, formatBytes } from './exportName';
 
 const exportSTL = vi.fn().mockResolvedValue(undefined);
@@ -50,9 +50,22 @@ describe('ExportFooter', () => {
   it('fires the parametric export with a derived filename and records it', async () => {
     render(<ExportFooter />);
     fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
-    await vi.waitFor(() => expect(exportSTL).toHaveBeenCalled());
+    await waitFor(() => expect(exportSTL).toHaveBeenCalled());
     expect(String(exportSTL.mock.calls[0][0])).toMatch(/^[a-z0-9-]+$/);
-    await vi.waitFor(() => expect(recordExport).toHaveBeenCalledOnce());
+    await waitFor(() => expect(recordExport).toHaveBeenCalledOnce());
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Exported ✓/ })).toBeInTheDocument();
+    });
+  });
+
+  it('shows error feedback when export fails', async () => {
+    exportSTL.mockRejectedValueOnce(new Error('Export failed'));
+    render(<ExportFooter />);
+    fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Export failed — check the console, then try again');
+    });
+    expect(recordExport).not.toHaveBeenCalled();
   });
 
   it('shows the upgrade CTA when gated', () => {

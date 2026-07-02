@@ -17,6 +17,7 @@ export const ExportFooter: React.FC = () => {
   const { checkExportAllowed, recordExport } = useExportTier();
 
   const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const firing = progress.status === 'initializing' || progress.status === 'generating';
   const { tris, bytes } = estimateExport(nTheta, nZ);
   const filename = exportFilename ?? deriveDefaultFilename(styleName, H);
@@ -25,9 +26,14 @@ export const ExportFooter: React.FC = () => {
   const fire = useCallback(async () => {
     if (firing || !tier.canExport) return;
     setDone(null);
-    await exportSTL(filename);
-    await recordExport();
-    setDone(filename);
+    setError(null);
+    try {
+      await exportSTL(filename);
+      await recordExport();
+      setDone(filename);
+    } catch {
+      setError('Export failed — check the console, then try again');
+    }
   }, [firing, tier.canExport, exportSTL, filename, recordExport]);
 
   useEffect(() => {
@@ -41,6 +47,12 @@ export const ExportFooter: React.FC = () => {
     const t = setTimeout(() => setDone(null), 4000);
     return () => clearTimeout(t);
   }, [done]);
+
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 4000);
+    return () => clearTimeout(t);
+  }, [error]);
 
   return (
     <div className="pf3-export-footer">
@@ -58,9 +70,16 @@ export const ExportFooter: React.FC = () => {
           </div>
         </div>
       ) : tier.canExport ? (
-        <Button variant="primary" onClick={() => void fire()} disabled={!isAvailable} data-testid="pf3-export-cta">
-          {done ? `Exported ✓ ${done}.stl` : 'Export STL'}
-        </Button>
+        <>
+          <Button variant="primary" onClick={() => void fire()} disabled={!isAvailable} data-testid="pf3-export-cta">
+            {done ? `Exported ✓ ${done}.stl` : 'Export STL'}
+          </Button>
+          {error && (
+            <span className="pf3-export-footer__error" role="alert">
+              {error}
+            </span>
+          )}
+        </>
       ) : (
         <Button
           variant="primary"
