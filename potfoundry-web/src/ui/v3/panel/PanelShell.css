@@ -31,3 +31,10 @@
   border-radius: 3px;
 }
 .pf3-panel__resize:hover { background: var(--pf3-gold-tint); }
+
+.pf3-style-tab__select {
+  width: 100%; margin: 4px 0 var(--pf3-space-sm);
+  background: var(--pf3-elevated); color: var(--pf3-text-primary);
+  border: 1px solid var(--pf3-glass-border); border-radius: var(--pf3-radius-sm);
+  padding: 6px 8px; font-size: 12px;
+}
