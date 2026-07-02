@@ -2175,3 +2175,23 @@ metric). Commits 17b7659 (pre-reg), df67c68 (best-diag+faithful-ref), d9aa343 (l
 **RECOMMENDATION:** accept+document 0.021mm for SFB@1 now; ONE follow-up = harden `recoverAndLockEdges` against dense sharp-feature pickets (a kernel edit) → curvature-graded ridge step at t<0.3 would close the last 2× to ≤0.01.
 
 **LEDGER:** scorecard `research/exchange/_sfbpush/SCORECARD.md`; probes `research/bridge/_sfbPush.test.ts` + `_sfbPushLib.ts`; best mesh `research/exchange/_sfbpush/ladder/…_v2_mesh.bin`; STL `…/meas_ladder_both_step0p08_offs6_brow_v2.stl` (8.73M tris, 416MB); heatmap `research/exchange/_sfbpush/heatmap_BEST_step008_ownsag.png`.
+
+---
+
+## E-2026-07-02-BREADTH (does SHARP3D-ARTDECO transfer to DragonScales/GeometricStar/BambooSegments/LowPolyFacet, Team B)
+
+**Q:** does the ArtDeco 3D cliff-conforming recipe (closed-3D reference + tread meshing + feature-conforming + true-3D-vs-object metric) transfer cleanly to the 4 assumed "step/riser" styles?
+
+**STEP-0 (empirical discontinuity classification) — the premise is REFUTED for 3 of 4:** only **DragonScales** is ArtDeco-class (7 TRUE C0 radius-step rings z=k·15, θ-independent, jump 0.88–1.21mm from the `floor(t·8)` stagger). **GeometricStar** = in-plane strapwork creases only (no z-step). **BambooSegments** = SMOOTH (Gaussian node-ring + sine striations, no C0). **LowPolyFacet** = bevel-smoothed polygon faces (no z-step).
+
+**RESULT (best per style; instrument noted):**
+- **DragonScales** (BVH-vs-closed-object, 1.88M): p99 **0.0049**, worst 0.051 (tread-lip C0 edge), serration **0.0023**, watertight, treads GREEN + density-responsive. Quality FAILS (minAngle 0.1°, %<20=29%) but proven ENTIRELY the constant-z tread SUB-RINGS (sheet-only minAngle 14.1°) = ArtDeco's known square-sizing sliver class → TUNABLE. **Tread machinery TRANSFERS.**
+- **GeometricStar** (radial, 7.9M): p99 **0.018** (0.0073 @9.2M), trustedP99 0.021 (GN did NOT overstate here), minAngle 10.2°, watertight. Red only on strap-edge crease lines (density-responsive C1 corner).
+- **BambooSegments** (radial, 3.0M): p99 **0.0056**, interior 0.0006 @nZ3200, watertight. The 0.5mm perp was a wrong-azimuth-foot ARTIFACT (radial 0.025 vs perp 0.54, vertices on-surface).
+- **LowPolyFacet** (radial, 3.0M): interior worst **0.0000**, p99 **0.0000, 0% over** — faces machine-flat-perfect; density-INVARIANT 0.25mm perp = the 12 DESIGNED convex polygon EDGES (genuine geometry). watertight.
+
+**METRIC REFINEMENT (load-bearing):** the perpendicular/global-nearest ruler OVERSTATES on AZIMUTHAL relief — the nearest foot lands on an ADJACENT azimuth/feature (Bamboo node: perp/brute 0.54 vs facet own-(u,t) RADIAL chord 0.025, same z different θ, vErr=0). ⇒ for a structured on-surface mesh the FAITHFUL per-facet ruler is the RADIAL own-region chord; the closed-object BVH is needed ONLY at genuine discontinuities (DragonScales treads) where radial is blind. This extends the anchor finding: the right ruler is discontinuity-vs-on-surface-dependent, NOT one-size.
+
+**VERDICT: framework TRANSFERS; premise refuted.** Fidelity near-CAD/perfect on all 4 (p99 green everywhere; LowPoly literally perfect). Only DragonScales needs treads (transferred; one quality-tune gap). Remaining work is uniform KNOWN levers: (1) DragonScales tread-sub-ring square-sizing; (2) crease-conforming columns (sheared-φ analog) on GeoStar strap / DragonScales scale-edge / LowPoly 12-edge loci to drive designed edges ≤0.01 by construction; (3) Bamboo local z-refinement at node rings; (4) fold the own-region-vs-global-nearest ruler note into labkit.
+
+**LEDGER:** scorecard `research/exchange/_breadth/SCORECARD.md`; probes `research/bridge/_breadth*.test.ts` + `vitest.breadth.config.ts`; heatmaps `research/exchange/_breadth/<style>/*.png`; checkpoints `research/exchange/_breadth/<style>/…`.
