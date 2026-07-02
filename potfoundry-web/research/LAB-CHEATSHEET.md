@@ -12,6 +12,7 @@ import {
   buildMeshUt, buildLocator, buildFeatureTruth,
   featureLineChord3D, crestValleyRetention, featureAdjacentSlivers, perpendicular3DDeviation, triangleQualityDistribution,
   auditNonManByIndex, perFaceChordSag, perFaceTrue3DSag, vertErrColors, writeBinarySTL, dumpRenderBins, dumpHeatmap,
+  bruteNearestOnRadialSurface, bruteAnchoredRedPerp,
 } from './labkit';
 ```
 `auditNonManByIndex`, `perFaceChordSag`, `perFaceTrue3DSag`, `vertErrColors`, `writeBinarySTL`, `dumpRenderBins`,
@@ -28,6 +29,15 @@ import {
   by the same-(u,t) bound so the projection runs only on facets that carry real residual (fast).
 - **For any FIDELITY verdict use TRUE-3D** `featureLineChord3D` (nearest-surface on feature loci) or `perFaceTrue3DSag`
   / `perpendicular3DDeviation` (facet→surface). Report the radial number only as a screen, and state both when unsure.
+- **STEEP LATTICES: single-seed GN OVERSTATES true-3D up to ~7×** (E-2026-07-02-STEEP-HETEROGENEITY / F2: Gyroid GN
+  0.644 ≙ brute-trusted 0.092). `perFaceTrue3DSag` / `perpendicular3DDeviation` (both use `projectPointToRadialSurface`)
+  stall in WRONG-LOCAL-MINIMUM feet on tangled lattices (Gyroid/CelticTriquetra/…). For a steep-red VERDICT use
+  `bruteAnchoredRedPerp(ut,idx,rA,H,{radial})` — the worst-N brute twin (full-azimuth `bruteNearestOnRadialSurface`,
+  keeps the SMALLER distance; seconds). Whole-mesh anchoring is ~3.4h — infeasible; the p99 signal lives in the worst
+  facets. Do NOT trust the raw-GN heatmap red p99 on steep lattices; `bruteAnchoredRedPerp` returns `gnP99` next to
+  `trustedP99` + `gnOver` so you can SEE the overstatement. `trustedP99` is CENTROID-anchored (faithful to the convene
+  twin) ⇒ it reads ≤ the 4-point `perFaceTrue3DSag` ruler — it corrects GN's centroid overstatement, NOT the facet's
+  worst-interior perp. Probe: `_gnPerpAnchor.test.ts` (PF_GNANCHOR=1).
 - **Global RMS is straddle-masked** (a chamfered crest drowns under smooth walls) → sample ON feature loci
   (`buildFeatureTruth` → `featureLineChord3D`), not uniformly.
 - **Slivers by minAngle** (`triangleQualityDistribution`, depth-invariant) — `%<20°` DILUTES under refinement.

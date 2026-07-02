@@ -28,7 +28,7 @@ import { join } from 'node:path';
 import {
   buildRadiusFn, buildInhouseMetricMesh, buildFeatureTruth, buildMeshUt, buildLocator, featureLineChord3D,
   liftTrue, liftUtToRadial, auditNonManByIndex, perFaceTrue3DSag, perFaceChordSag, dumpHeatmap, dumpRenderBins,
-  triangleQualityDistribution, perpendicular3DDeviation, projectPointToRadialSurface,
+  triangleQualityDistribution, perpendicular3DDeviation, projectPointToRadialSurface, bruteAnchoredRedPerp,
   type StyleDims, type AnalyticRadiusFn, type FeatureTruth,
 } from './labkit';
 import { planarizeSegments, segmentsFromLines } from './planarizeSkeleton';
@@ -108,6 +108,12 @@ function buildUnified(style: StyleId, extra: BuildExtras = {}): {
 }
 
 // ─── shared: TRUE-3D measurement (seam-excluded), matches E-SWEEP-METRIC-MAP ───
+// ⚠ RAW-GN CAVEAT (E-2026-07-02-STEEP-HETEROGENEITY / F2): chordMaxMm / p99DevMm / worst here come from single-seed
+// Gauss-Newton (perpendicular3DDeviation / perFaceTrue3DSag → projectPointToRadialSurface), which stalls in
+// WRONG-LOCAL-MINIMUM feet on TANGLED LATTICES (Gyroid/CelticTriquetra/Voronoi/Crystalline/SpiralRidges) and
+// OVERSTATES the WORST-RED perp up to ~7×. The whole-facet p99DevMm is green-dominated so less affected, but any
+// "reachable worst" / "irreducible floor" claim on a tangled style must be re-confirmed with the brute-anchored
+// worst-red floor — see BLOCK 3b (PF_PERFECT_TAILANCHOR) and labkit `bruteAnchoredRedPerp`.
 function measureTrue3D(ut: number[], idx: number[], vtx: Float64Array, rA: AnalyticRadiusFn): {
   chordMaxMm: number; p99DevMm: number; vertexMaxMm: number; pctOver0_03: number; worst: { theta: number; z: number; mm: number };
 } {
@@ -467,6 +473,9 @@ describe('PERFECT-PIPELINE CLIFF-RENDER — cliff-excluded heatmap for the roadm
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 // BLOCK 3 — TAIL steep-tail closure. chordSteiner + a COARSE curvatureFineStep sweep. Per TAIL style: reachable
 //   worst/p99/%>0.03 and the irreducible floor. Start with GothicArches / GyroidManifold / Voronoi.
+//   ⚠ RAW-GN CAVEAT (F2): the worst/p99 here are single-seed-GN (see measureTrue3D) and OVERSTATE the worst-red perp
+//   on TANGLED lattices; treat this block's "irreducible floor" for Gyroid/Voronoi/CelticTriquetra/Crystalline/
+//   SpiralRidges as an UPPER bound and re-confirm with BLOCK 3b (PF_PERFECT_TAILANCHOR) below.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 const TAIL_PROBE: StyleId[] = ['GothicArches', 'GyroidManifold', 'Voronoi', 'CelticTriquetra', 'Crystalline', 'GeometricStar', 'HexagonalHive', 'SpiralRidges', 'SuperformulaBlossom'];
 
@@ -505,6 +514,49 @@ describe('PERFECT-PIPELINE TAIL — steep-tail closure sweep', () => {
     }
     expect(todo.length).toBeGreaterThan(0);
   }, 4 * 60 * 60 * 1000);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// BLOCK 3b — TAIL-ANCHOR re-baseline (E-2026-07-02-STEEP-HETEROGENEITY / F2). BLOCK 3's measureTrue3D worst/p99 are
+//   single-seed-GN and OVERSTATE the worst-red perp up to ~7× on TANGLED lattices (wrong-local-minimum feet). This
+//   records, per tangled TAIL style at the SAME OPTS density, the raw-GN worst-red centroid p99 (bruteAnchoredRedPerp
+//   .gnP99 = what BLOCK 3's ruler reads on the worst red facets) NEXT TO the brute-anchored TRUSTED floor
+//   (.trustedP99) + the overstatement ratio. This is the honest steep-red floor the "irreducible floor" language owes.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+const TAIL_TANGLED: StyleId[] = ['GyroidManifold', 'Voronoi', 'CelticTriquetra', 'Crystalline', 'SpiralRidges'];
+
+describe('PERFECT-PIPELINE TAIL-ANCHOR — brute-anchored trusted steep-red floor (F2 re-baseline)', () => {
+  it.skipIf(process.env.PF_PERFECT_TAILANCHOR !== '1')('raw-GN worst-red p99 vs brute-anchored trusted floor (resumable)', () => {
+    mkdirSync(DIR, { recursive: true });
+    const only = (process.env.PF_PERFECT_TAILANCHOR_ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const todo = only.length ? TAIL_TANGLED.filter((s) => only.includes(s)) : TAIL_TANGLED;
+    for (const style of todo) {
+      const tag = `tailanchor_${style}`;
+      if (done(tag)) { console.log(`SKIP ${tag}`); continue; }
+      console.log(`RUN  ${tag} ...`);
+      const t0 = Date.now();
+      let out: unknown;
+      try {
+        const b = buildUnified(style); // baseline (recipe A) at OPTS density, comparable to E-SWEEP-METRIC-MAP
+        // worst-40 red-facet centroid twin: gnP99 = raw single-seed GN on the worst red facets (the OVERSTATED number
+        // BLOCK 3's ruler reports there), trustedP99 = the brute-anchored honest floor. (Braids also want the
+        // _steepHeterogeneity sheet-guard; the sign flip is not applied here, so CelticTriquetra is centroid-only.)
+        const anc = bruteAnchoredRedPerp(b.ut, b.idx, b.rA, DIMS.H);
+        const ratio = anc.trustedP99 > 1e-9 ? anc.gnP99 / anc.trustedP99 : Infinity;
+        out = {
+          style, tris: b.tris, nonMan: b.nonMan, hitBudget: b.hitBudget, nRed: anc.nRed,
+          redGnP99_rawGN: anc.gnP99, redTrustedP99: anc.trustedP99, overstateRatio: ratio,
+          gnOver: anc.gnOver, bruteOver: anc.bruteOver, timeMs: Date.now() - t0,
+        };
+        console.log(`DONE ${tag.padEnd(30)} tris=${String(b.tris).padStart(8)} nRed=${anc.nRed} redGnP99=${anc.gnP99.toFixed(4)} redTrusted=${anc.trustedP99.toFixed(4)} ratio=${ratio.toFixed(1)}x gnOver=${anc.gnOver}`);
+      } catch (e: unknown) {
+        out = { style, error: String((e as Error)?.message ?? e), failed: true };
+        console.log(`FAIL ${tag}: ${(e as Error)?.message}`);
+      }
+      ckpt(tag, out);
+    }
+    expect(todo.length).toBeGreaterThan(0);
+  }, 2 * 60 * 60 * 1000);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
