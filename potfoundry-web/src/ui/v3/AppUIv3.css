@@ -1,0 +1,5 @@
+.pf3-layout {
+  position: absolute; inset: 0;
+  pointer-events: none; /* children opt in — the canvas below stays orbit-able */
+  z-index: 10;
+}

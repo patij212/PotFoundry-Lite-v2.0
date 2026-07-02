@@ -1,7 +1,29 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import AppUIv3 from './AppUIv3';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { useAppStore } from '../../state';
+
+vi.mock('../../hooks/useParametricExport', () => ({
+  useParametricExport: () => ({
+    progress: { status: 'idle', progress: 0, message: '' },
+    stats: null,
+    isAvailable: true,
+    exportSTL: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+vi.mock('../../hooks/useExportTier', () => ({
+  useExportTier: () => ({
+    checkExportAllowed: () => ({
+      canExport: true, isPro: false, exportsRemaining: 7,
+      totalExports: 10, showUpgradePrompt: false, reason: null,
+    }),
+    recordExport: vi.fn().mockResolvedValue(undefined),
+    exportsThisMonth: 3,
+    isPro: false,
+    isAuthConfigured: true,
+  }),
+}));
+
+import AppUIv3 from './AppUIv3';
 
 describe('AppUIv3 shell', () => {
   it('renders the pf3 root with dark theme', () => {
@@ -19,5 +41,29 @@ describe('AppUIv3 shell', () => {
   it('store tracks the v3 active tab', () => {
     useAppStore.getState().setV3ActiveTab('export');
     expect(useAppStore.getState().ui.v3ActiveTab).toBe('export');
+  });
+
+  it('renders panel, toolbar and status chrome', () => {
+    useAppStore.getState().setUITheme('v3');
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-panel')).toBeInTheDocument();
+    expect(screen.getAllByTestId('pf3-pill')).toHaveLength(3);
+    expect(screen.getByTestId('pf3-status')).toBeInTheDocument();
+  });
+
+  it('Alt+2 switches to the style tab; typing in inputs is ignored', () => {
+    useAppStore.getState().setUITheme('v3');
+    render(<AppUIv3 />);
+    fireEvent.keyDown(document, { key: '2', altKey: true });
+    expect(useAppStore.getState().ui.v3ActiveTab).toBe('style');
+  });
+
+  it('Z toggles zen and hides the panel', () => {
+    useAppStore.getState().setUITheme('v3');
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: false } }));
+    render(<AppUIv3 />);
+    fireEvent.keyDown(document, { key: 'z' });
+    expect(useAppStore.getState().ui.zenMode).toBe(true);
+    expect(screen.queryByTestId('pf3-panel')).not.toBeInTheDocument();
   });
 });
