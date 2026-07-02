@@ -7,8 +7,8 @@
  * Adaptations vs brief (all recorded):
  *  A1 — persist key corrected: `potfoundry-store` (brief guessed `potfoundry-storage`)
  *  A2 — baseURL overridden to port 3000 (vite default); playwright.config defaults to 3001
- *  A3 — readStoredTheme() in ui.ts only handles 'v2', not 'v3'; v3 activated via
- *       window.__POTFOUNDRY_STORE__.getState().setUITheme('v3') post-load
+ *  A3 — store-call activates v3 post-load for speed; readStoredTheme() now accepts 'v3'
+ *       so the initScript localStorage write is sufficient on its own
  *  A4 — pf3-hint-dismissed=1 injected to suppress first-run HintLine overlay
  *  A5 — height test polls via waitForFunction (Zustand persist timing on slow GPU)
  *  A6 — v1/v2 compat test drives theme via setUITheme() without page.reload(),
@@ -25,12 +25,12 @@ test.describe('UI v3 desktop smoke', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
-      // Set both keys; readStoredTheme() ignores 'v3' today, store-call below handles it
+      // Set both keys; store-call below activates v3 for speed (readStoredTheme now accepts 'v3')
       localStorage.setItem('pf2-ui-theme', 'v3');
       localStorage.setItem('pf3-hint-dismissed', '1');
     });
     await page.goto('/');
-    // A3: ui.ts readStoredTheme() only returns 'classic'|'v2'; call store action directly
+    // A3: store-call kept for speed; readStoredTheme() now also accepts 'v3'
     await page.evaluate(() => {
       window.__POTFOUNDRY_STORE__?.getState().setUITheme('v3');
     });

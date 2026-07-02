@@ -1,13 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { useAppStore } from '../../state';
+
+const mockExportSTL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('../../hooks/useParametricExport', () => ({
   useParametricExport: () => ({
     progress: { status: 'idle', progress: 0, message: '' },
     stats: null,
     isAvailable: true,
-    exportSTL: vi.fn().mockResolvedValue(undefined),
+    exportSTL: mockExportSTL,
   }),
 }));
 vi.mock('../../hooks/useExportTier', () => ({
@@ -26,6 +28,10 @@ vi.mock('../../hooks/useExportTier', () => ({
 import AppUIv3 from './AppUIv3';
 
 describe('AppUIv3 shell', () => {
+  beforeEach(() => {
+    mockExportSTL.mockClear();
+  });
+
   it('renders the pf3 root with dark theme', () => {
     render(<AppUIv3 />);
     const root = screen.getByTestId('pf3-root');
@@ -65,5 +71,13 @@ describe('AppUIv3 shell', () => {
     fireEvent.keyDown(document, { key: 'z' });
     expect(useAppStore.getState().ui.zenMode).toBe(true);
     expect(screen.queryByTestId('pf3-panel')).not.toBeInTheDocument();
+  });
+
+  it('D in zen mode does not throw and no export fires', () => {
+    useAppStore.getState().setUITheme('v3');
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: true } }));
+    render(<AppUIv3 />);
+    expect(() => fireEvent.keyDown(document, { key: 'd' })).not.toThrow();
+    expect(mockExportSTL).not.toHaveBeenCalled();
   });
 });

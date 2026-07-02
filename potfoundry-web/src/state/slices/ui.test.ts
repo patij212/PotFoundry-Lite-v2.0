@@ -2,7 +2,7 @@
  * UI Slice Tests
  * Tests for the UI slice state defaults and theme persistence.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { UISlice } from './ui';
 
 // Note: We test the interface/exports and localStorage behavior
@@ -49,26 +49,33 @@ describe('Theme persistence', () => {
 
     afterEach(() => {
         localStorage.clear();
+        vi.resetModules();
     });
 
-    it('should default to classic theme when no theme is stored', () => {
-        // readStoredTheme is not exported, so we verify behavior through the UI type
-        const validThemes = ['classic', 'v2', 'v3'] as const;
-        const mockUI = { uiTheme: 'classic' as const };
-        expect(validThemes).toContain(mockUI.uiTheme);
+    it('defaults to classic when no theme is stored', async () => {
+        vi.resetModules();
+        const { useAppStore: freshStore } = await import('../store');
+        expect(freshStore.getState().ui.uiTheme).toBe('classic');
     });
 
-    it('should support v2 theme', () => {
+    it('boots into v2 when pf2-ui-theme=v2 is stored', async () => {
         localStorage.setItem('pf2-ui-theme', 'v2');
-        // Verify the stored value is a valid UITheme
-        const stored = localStorage.getItem('pf2-ui-theme');
-        expect(stored).toBe('v2');
+        vi.resetModules();
+        const { useAppStore: freshStore } = await import('../store');
+        expect(freshStore.getState().ui.uiTheme).toBe('v2');
     });
 
-    it('should support v3 theme', () => {
+    it('boots into v3 when pf2-ui-theme=v3 is stored', async () => {
         localStorage.setItem('pf2-ui-theme', 'v3');
-        // Verify the stored value is a valid UITheme
-        const stored = localStorage.getItem('pf2-ui-theme');
-        expect(stored).toBe('v3');
+        vi.resetModules();
+        const { useAppStore: freshStore } = await import('../store');
+        expect(freshStore.getState().ui.uiTheme).toBe('v3');
+    });
+
+    it('falls back to classic for unrecognized stored themes', async () => {
+        localStorage.setItem('pf2-ui-theme', 'garbage');
+        vi.resetModules();
+        const { useAppStore: freshStore } = await import('../store');
+        expect(freshStore.getState().ui.uiTheme).toBe('classic');
     });
 });

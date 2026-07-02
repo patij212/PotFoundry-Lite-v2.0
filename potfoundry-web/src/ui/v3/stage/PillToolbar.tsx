@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { GlassSurface } from '../primitives/GlassSurface';
 import { useAppStore } from '../../../state';
 import { useControllerMaybe } from '../../../context';
@@ -33,15 +33,17 @@ export const PillToolbar: React.FC = () => {
 
   const resetCamera = useCallback(() => {
     if (controller?.isReady) controller.resetCamera();
-    window.dispatchEvent(new CustomEvent('pf3:reset-camera'));
   }, [controller]);
 
+  // Keyboard path: AppUIv3 dispatches pf3:reset-camera when R is pressed.
+  useEffect(() => {
+    window.addEventListener('pf3:reset-camera', resetCamera);
+    return () => window.removeEventListener('pf3:reset-camera', resetCamera);
+  }, [resetCamera]);
+
   const toggleAutoRotate = useCallback(() => {
-    if (controller?.isReady) {
-      controller.toggleAutoRotate();
-      window.dispatchEvent(new CustomEvent('pf3:auto-rotate', { detail: { enabled: !autoRotate } }));
-    }
-  }, [controller, autoRotate]);
+    if (controller?.isReady) controller.toggleAutoRotate();
+  }, [controller]);
 
   return (
     <div className="pf3-toolbar" data-zen={zenMode || undefined}>

@@ -52,12 +52,17 @@ export const AppUIv3: React.FC = () => {
 
       const k = e.key.toLowerCase();
       if (k === 'z') { e.preventDefault(); toggleZenMode(); }
-      if (k === 'd') { e.preventDefault(); window.dispatchEvent(new CustomEvent('pf3:download')); }
+      if (k === 'd') {
+        // D targets the panel's ExportFooter — unmounted in zen; zen download ships with Phase-2 export orchestration
+        if (zenMode) return;
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('pf3:download'));
+      }
       if (k === 'r') { e.preventDefault(); window.dispatchEvent(new CustomEvent('pf3:reset-camera')); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [uiTheme, undo, redo, setV3ActiveTab, toggleZenMode]);
+  }, [uiTheme, zenMode, undo, redo, setV3ActiveTab, toggleZenMode]);
 
   return (
     <ErrorBoundary name="AppUIv3">
