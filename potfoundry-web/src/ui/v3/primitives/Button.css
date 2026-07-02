@@ -1,0 +1,21 @@
+.pf3-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 14px;
+  border-radius: var(--pf3-radius-md);
+  font: 600 12.5px var(--pf3-font-body);
+  transition: filter var(--pf3-dur-control) var(--pf3-ease-move),
+              background-color var(--pf3-dur-control) var(--pf3-ease-move);
+}
+.pf3-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.pf3-btn--primary {
+  background: var(--pf3-gold-grad); color: var(--pf3-on-gold);
+  box-shadow: 0 2px 12px rgba(180, 151, 90, 0.25);
+}
+.pf3-btn--primary:not(:disabled):hover { filter: brightness(1.06); }
+.pf3-btn--secondary {
+  border: 1px solid var(--pf3-glass-border); color: var(--pf3-text-primary);
+  font-weight: 500;
+}
+.pf3-btn--secondary:not(:disabled):hover { background: var(--pf3-gold-tint); }
+.pf3-btn--tertiary { color: var(--pf3-text-secondary); font-weight: 500; }
+.pf3-btn--tertiary:not(:disabled):hover { color: var(--pf3-text-primary); }

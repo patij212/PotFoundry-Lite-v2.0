@@ -1,0 +1,8 @@
+.pf3-glass-surface {
+  background: var(--pf3-glass);
+  border: 1px solid var(--pf3-glass-border);
+  border-radius: var(--pf3-radius-lg);
+  box-shadow: var(--pf3-shadow-float);
+  backdrop-filter: blur(var(--pf3-blur));
+  -webkit-backdrop-filter: blur(var(--pf3-blur));
+}
