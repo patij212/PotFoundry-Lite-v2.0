@@ -26,8 +26,12 @@ export const PanelShell: React.FC<PanelShellProps> = ({ children, footer }) => {
   const setV3ActiveTab = useAppStore((s) => s.setV3ActiveTab);
 
   const [width, setWidth] = useState<number>(() => {
-    const stored = Number(localStorage.getItem(WIDTH_KEY));
-    return stored >= MIN_W && stored <= MAX_W ? stored : DEFAULT_W;
+    try {
+      const stored = Number(localStorage.getItem(WIDTH_KEY));
+      return stored >= MIN_W && stored <= MAX_W ? stored : DEFAULT_W;
+    } catch {
+      return DEFAULT_W;
+    }
   });
   const panelRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ startX: number; startW: number } | null>(null);
@@ -46,7 +50,7 @@ export const PanelShell: React.FC<PanelShellProps> = ({ children, footer }) => {
   const onHandleUp = useCallback(() => {
     if (!drag.current || !panelRef.current) return;
     drag.current = null;
-    const w = panelRef.current.offsetWidth;
+    const w = Math.max(MIN_W, Math.min(MAX_W, panelRef.current.offsetWidth || DEFAULT_W));
     setWidth(w);
     try { localStorage.setItem(WIDTH_KEY, String(w)); } catch { /* private mode */ }
   }, []);
