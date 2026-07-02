@@ -76,21 +76,6 @@ export interface RecoveryResult {
   recoveryFailed: number;
   /** total flips performed. */
   flips: number;
-  /** ROBUST-only diagnostics (0 when robust is off): flips rejected by the sliver guard / drift-free manifold guard. */
-  robustSliverRejects?: number;
-  robustManifoldRejects?: number;
-}
-
-/** OPT-IN robustness for DENSE near-collinear pickets (E-2026-07-02-KERNEL-HARDEN). See recoverAndLockEdges. */
-export interface RecoveryRobustOpts {
-  /** Master switch. When absent/false the recovery path is BYTE-IDENTICAL to the pre-hardening behavior. */
-  robust?: boolean;
-  /** |signed area| threshold (local u-frame units) below which a resulting triangle is a SLIVER and the flip is
-   *  rejected. Default 0 (OFF): MEASURED (E-2026-07-02-KERNEL-HARDEN SFB A/B) that sliver-rejection STARVES
-   *  recovery (a crossing chain legitimately drains through near-collinear quads) and REGRESSES the chord, and
-   *  the mesh is already index-manifold, so slivers are NOT the fold source. Set >0 only to probe a specific
-   *  sliver-attributed fold. Only used when robust is true. */
-  sliverEps?: number;
 }
 
 /**
@@ -98,29 +83,12 @@ export interface RecoveryRobustOpts {
  * vertex-index pairs [p0,q0, p1,q1, ...]. Returns the locked-edge set + recovery stats.
  *
  * @param maxFlipsPerEdge cap on the flip walk per constraint (guards a pathological non-convex chain).
- * @param guardManifold LEGACY incremental-multiset guard (rejects a flip whose new diagonal appears present in
- *   the multiset). MEASURED to DRIFT on dense pickets (the initial multiset counts each interior undirected edge
- *   TWICE — both halfedges, line ~115 — but each flip only ±1, so removed edges leave a STALE POSITIVE and new
- *   interior diagonals are UNDERSTATED 1-vs-2; E-2026-07-02-KERNEL-HARDEN PROOF 1). Kept for the shipped
- *   ALL20/SHOWCASE/green-push numbers which were tuned against it.
- * @param robustOpts OPT-IN hardening for DENSE near-collinear constraint pickets (SFB@1 petal-tip ladders at
- *   step ≤0.03; Crystalline-class). When `robust` is true, each convex crossing flip is additionally rejected if
- *   (a) either resulting triangle is a SLIVER (|signed area| < sliverEps in the local u-frame — the near-collinear
- *   picket produces these, the tolerance-free convex predicate misses them) OR (b) the new diagonal (ap0,ap1)
- *   ALREADY EXISTS as a LIVE mesh edge (a DRIFT-FREE non-manifold test that reads the halfedge structure directly,
- *   replacing the drifting multiset for the robust path). Both are pure rejections — the flip never mutates on
- *   failure — so the mesh stays MANIFOLD-SAFE BY CONSTRUCTION. STRICT NO-OP when robust is absent/false: the extra
- *   checks never run and the recovery path is byte-identical (verified by the no-op fingerprint).
  */
 export function recoverAndLockEdges(
   triangles: Uint32Array, halfedges: Int32Array, uv: number[], constraints: number[],
   maxFlipsPerEdge = 64,
   guardManifold = false,
-  robustOpts?: RecoveryRobustOpts,
 ): RecoveryResult {
-  const robust = robustOpts?.robust === true;
-  const sliverEps = robustOpts?.sliverEps ?? 0; // default OFF (sliver-rejection starves recovery — see A/B)
-  let robustSliverRejects = 0, robustManifoldRejects = 0; // diagnostics (returned in stats; 0 when off)
   const nVerts = uv.length / 2;
   const N = nVerts + 1;
   const locked = new Set<number>();
@@ -211,32 +179,9 @@ export function recoverAndLockEdges(
     const r0 = orient(prx, pry, plx, ply, a0x, a0y);
     const r1 = orient(prx, pry, plx, ply, a1x, a1y);
     if (r0 * r1 >= 0) return false; // pr-pl does not separate ap0,ap1 → not convex (reflex quad)
-    // OPT-IN ROBUST guards (E-2026-07-02-KERNEL-HARDEN) — for DENSE near-collinear pickets. Pure rejections
-    // (no mutation), so the mesh is MANIFOLD-SAFE BY CONSTRUCTION. STRICT NO-OP when robust is off.
-    if (robust) {
-      // (b) DRIFT-FREE manifold guard: reject if the new diagonal (ap0,ap1) ALREADY exists as a LIVE mesh edge
-      // (T-junction fan → non-manifold). Reads the halfedge structure directly (edgeExists), so it CANNOT drift
-      // like the incremental multiset (PROOF 1: the drifting multiset understates new interior diagonals 1-vs-2
-      // and leaves stale positives on removed edges → FALSE-REJECTS legit flips → recovery stalls). This
-      // REPLACES the legacy medges check when robust is on (see below — the medges check is skipped for robust),
-      // so recovery gets the CORRECT manifold test WITHOUT the drift's false rejects.
-      if (edgeExists(ap0, ap1)) { robustManifoldRejects++; return false; }
-      // (a) OPTIONAL SLIVER guard (only when sliverEps>0). The two new triangles are (ap0,ap1,pl)/(ap0,ap1,pr).
-      // A near-collinear picket makes the strict-convex predicate PASS even when they are near-zero area. NOTE
-      // (MEASURED, E-2026-07-02-KERNEL-HARDEN SFB A/B): rejecting these STARVES recovery (failed 86→2082, chord
-      // WORSE) because a crossing chain legitimately drains THROUGH near-collinear quads — slivers are NOT the
-      // fold source (the mesh is already index-manifold). Default OFF (sliverEps 0); enable only if a real fold
-      // is later attributed to a specific sliver flip.
-      if (sliverEps > 0) {
-        const area2A = Math.abs(orient(a0x, a0y, a1x, a1y, plx, ply)); // = 2·area(ap0,ap1,pl)
-        const area2B = Math.abs(orient(a0x, a0y, a1x, a1y, prx, pry)); // = 2·area(ap0,ap1,pr)
-        if (area2A < 2 * sliverEps || area2B < 2 * sliverEps) { robustSliverRejects++; return false; }
-      }
-    }
-    // LEGACY manifold guard (drifting incremental multiset): reject the flip if the new diagonal (ap0,ap1)
-    // appears present in the multiset. SKIPPED when robust is on (the drift-free edgeExists guard above replaces
-    // it — the multiset FALSE-REJECTS under dense pickets). No-op when medges is undefined (guard off).
-    if (!robust && medges !== undefined && mget(ap0, ap1) > 0) return false;
+    // OPT-IN manifold guard: reject the flip if the new diagonal (ap0,ap1) already exists elsewhere in the
+    // mesh (a T-junction fan on a planarized graph can make this happen → non-manifold). No-op when off.
+    if (medges !== undefined && mget(ap0, ap1) > 0) return false;
     if (medges !== undefined) { mset(pr, pl, Math.max(0, mget(pr, pl) - 1)); mset(ap0, ap1, mget(ap0, ap1) + 1); }
     triangles[e] = ap1; triangles[tw] = ap0;
     const hbl = halfedges[twPrev], har = halfedges[ePrev];
@@ -322,7 +267,7 @@ export function recoverAndLockEdges(
     else recoveryFailed++;
   }
 
-  return { locked, alreadyPresent, recovered, recoveryFailed, flips: totalFlips, robustSliverRejects, robustManifoldRejects };
+  return { locked, alreadyPresent, recovered, recoveryFailed, flips: totalFlips };
 }
 
 /** Helper to convert a locked-edge Set into the isLocked predicate flipHE expects. */

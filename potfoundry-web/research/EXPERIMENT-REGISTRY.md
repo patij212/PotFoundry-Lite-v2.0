@@ -2195,3 +2195,19 @@ metric). Commits 17b7659 (pre-reg), df67c68 (best-diag+faithful-ref), d9aa343 (l
 **VERDICT: framework TRANSFERS; premise refuted.** Fidelity near-CAD/perfect on all 4 (p99 green everywhere; LowPoly literally perfect). Only DragonScales needs treads (transferred; one quality-tune gap). Remaining work is uniform KNOWN levers: (1) DragonScales tread-sub-ring square-sizing; (2) crease-conforming columns (sheared-φ analog) on GeoStar strap / DragonScales scale-edge / LowPoly 12-edge loci to drive designed edges ≤0.01 by construction; (3) Bamboo local z-refinement at node rings; (4) fold the own-region-vs-global-nearest ruler note into labkit.
 
 **LEDGER:** scorecard `research/exchange/_breadth/SCORECARD.md`; probes `research/bridge/_breadth*.test.ts` + `vitest.breadth.config.ts`; heatmaps `research/exchange/_breadth/<style>/*.png`; checkpoints `research/exchange/_breadth/<style>/…`.
+
+---
+
+## E-2026-07-02-KERNEL-HARDEN (harden recoverAndLockEdges vs dense pickets — REFRAMED: no fold, latent bug fixed)
+
+**Q:** dense near-collinear constraint pickets (SFB@1 step ≤0.03) made `recoverAndLockEdges` "produce non-manifold folds" (SFB scorecard: 72/76 nonMan) blocking 0.021→0.01. Harden it (opt-in, byte-identical-off).
+
+**REFRAME (decisive, measurement-first):** there is NO topological fold. RAW-INDEX nonMan = **0** at every step/density (with AND without recovery). The "72/76 nonMan" were **3D-WELD ARTIFACTS** — `auditNonManByIndex` merges near-coincident tip/seam vertices at 1e-4mm quantization → false >2-shared edges. Instrument `nonManByRawIndex` added as the discriminator (raw index = true topology; weld = watertight-with-tolerance, over-counts at dense sharp tips). ⇒ the finer-step chord regression (0.021→0.068) is driven by RECOVERY FAILURES (un-embedded crossing chains), NOT folds — a crossing-chain-completion problem, not manifold-robustness.
+
+**REAL LATENT BUG FOUND + FIXED:** the legacy `guardRecoveryManifold` multiset counts each interior edge TWICE at init but only ±1 per flip → stale positives + understated new diagonals (PROOF 1: arithmetic replay). Benign on SFB@1 but can false-reject valid flips on genuinely-folding styles. FIX = **`recoveryRobust`** opt: a DRIFT-FREE manifold guard (reads the halfedge structure via `edgeExists` instead of the drifting multiset) + an OPTIONAL sliver guard. Both PURE REJECTIONS ⇒ manifold-safe by construction.
+
+**A/B RESULTS (SFB@1 step-0.03, 9.95M tris):** OFF chord 0.06814, raw nonMan 0, failed 86. `recoveryRobust` ON (drift-free guard) → **byte-identical chord 0.06814, robustManifoldRejects=0** (never fires on SFB@1). Sliver guard ON → **REGRESSED** (2857 rejects starved recovery: failed 86→2082, nOver01 59→432) ⇒ **sliver guard A/B-REFUTED, default OFF**. BYTE-IDENTICAL-WHEN-OFF: independently verified (labkit 10/10; `_kernelHardenByteId` vs pristine git-HEAD `_kernelHardenPristineCR` — locked-set + stats + tri-checksum identical, both guardManifold false+true).
+
+**VERDICT:** fold premise REFUTED; `recoveryRobust` LANDED as reviewed insurance (correct-by-construction, byte-identical-off, 0-cost on SFB@1, fixes the real multiset-drift bug). Does NOT move SFB@1 0.021→0.01 — that needs CROSSING-CHAIN COMPLETION (raise stallCap/maxFlipsPerEdge, pre-planarize the ladder so no chain exceeds 1–2 edges, or graded step), the real next lever. Verify `recoveryRobust` on Crystalline before relying there.
+
+**DIFF (reviewed + committed):** `constraintRecovery.ts` (+robust guards behind `if(robust)`; legacy line → `if(!robust && medges…)`), `inhouseMetricMesh.ts` (+`recoveryRobust`/`recoverySliverEps` opts, threaded). Probes `_kernelHarden{Red,Drift,Real,ByteId,Pristine,Sfb}.test.ts` + `_kernelHardenPristineCR.ts`. Scorecard `research/exchange/_kernelharden/SCORECARD.md`.

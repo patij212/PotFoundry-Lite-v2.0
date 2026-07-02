@@ -91,8 +91,25 @@ export interface InhouseMeshOpts {
    * non-planarized conforming numbers are byte-identical). Only meaningful with constraintEdges.
    */
   guardRecoveryManifold?: boolean;
+  /**
+   * OPT-IN ROBUST constraint recovery for DENSE near-collinear pickets (E-2026-07-02-KERNEL-HARDEN). The
+   * legacy guardRecoveryManifold multiset DRIFTS on dense pickets (SFB@1 petal-tip ladders at step <=0.03;
+   * Crystalline-class): it counts each interior undirected edge TWICE at init but only +/-1 per flip, so it
+   * leaves stale positives + understates new diagonals -> the tolerance-free convex-flip predicate produces
+   * near-collinear SLIVERS + NON-MANIFOLD folds it cannot reject (MEASURED: SFB@1 step 0.03 -> 72 nonMan).
+   * When true, recoverAndLockEdges additionally rejects any convex crossing flip that (a) creates a sub-eps
+   * SLIVER triangle or (b) whose new diagonal already exists as a LIVE mesh edge (a drift-free non-manifold
+   * test) -- both pure rejections -> manifold-safe by construction. STRICT NO-OP when absent/false (the robust
+   * checks never run; the recovery path is byte-identical -> shipped conforming numbers unchanged). Only
+   * meaningful with constraintEdges.
+   */
+  recoveryRobust?: boolean;
+  /** Sliver |signed-area| threshold (local u-frame) for recoveryRobust. Default 0 (OFF) — sliver-rejection was
+   *  A/B-REFUTED (it starves recovery: SFB@1 failed 86->2082, chord WORSE). Set >0 only to probe a specific
+   *  sliver-attributed fold. Only used with recoveryRobust. */
+  recoverySliverEps?: number;
 }
-export interface ConstraintRecoveryStats { requested: number; alreadyPresent: number; recovered: number; failed: number; flips: number; }
+export interface ConstraintRecoveryStats { requested: number; alreadyPresent: number; recovered: number; failed: number; flips: number; robustSliverRejects?: number; robustManifoldRejects?: number; }
 export interface InhouseMesh { ut: number[]; indices: Uint32Array; points: number; rounds: number; hitBudget: boolean; constraint?: ConstraintRecoveryStats; }
 
 /**
@@ -374,10 +391,14 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
       if (a >= 0 && b >= 0 && a !== b) cverts.push(a, b);
     }
     z = now();
-    const rec = recoverAndLockEdges(tris, heF, uv, cverts, 64, opts.guardRecoveryManifold === true);
+    // OPT-IN robust recovery (E-2026-07-02-KERNEL-HARDEN): threads recoveryRobust/recoverySliverEps to the
+    // recovery flip guards. STRICT NO-OP when recoveryRobust is absent/false (robustOpts.robust is false →
+    // the extra sliver/manifold checks never run → byte-identical recovery).
+    const rec = recoverAndLockEdges(tris, heF, uv, cverts, 64, opts.guardRecoveryManifold === true,
+      opts.recoveryRobust === true ? { robust: true, sliverEps: opts.recoverySliverEps } : undefined);
     tFlip += now() - z;
     isLocked = lockedPredicate(rec.locked, uv.length / 2);
-    constraintStats = { requested: cverts.length / 2, alreadyPresent: rec.alreadyPresent, recovered: rec.recovered, failed: rec.recoveryFailed, flips: rec.flips };
+    constraintStats = { requested: cverts.length / 2, alreadyPresent: rec.alreadyPresent, recovered: rec.recovered, failed: rec.recoveryFailed, flips: rec.flips, robustSliverRejects: rec.robustSliverRejects, robustManifoldRejects: rec.robustManifoldRejects };
     if (prof) {
       // eslint-disable-next-line no-console
       console.log(`  [constraint] requested=${constraintStats.requested} present=${rec.alreadyPresent} recovered=${rec.recovered} failed=${rec.recoveryFailed} flips=${rec.flips}`);
