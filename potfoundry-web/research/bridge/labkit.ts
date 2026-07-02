@@ -153,6 +153,48 @@ export function vertErrColors(vertErr: Float64Array, scaleMm = 0.15): Float32Arr
   return col;
 }
 
+// ───────────────────────── brute-force nearest-surface (the GN anchor for tangled lattices) ─────────────────────────
+/** Foot point + shortest 3D distance from the brute-force dense-nearest search (the trusted anchor for the GN foot). */
+export interface BruteNearestResult { dist: number; theta: number; z: number; }
+
+/**
+ * BRUTE-FORCE nearest-surface distance from P=(px,py,pz) to S(θ,z)=(r·cosθ, r·sinθ, z), r = rA(θ,z): a dense
+ * FULL-AZIMUTH (θ,z) grid scan + local box-refine. This is the TRUSTED FLOOR that anchors
+ * `projectPointToRadialSurface`'s single-seed Gauss-Newton foot on TANGLED LATTICES (Gyroid / CelticTriquetra / …),
+ * where a single GN can stall in a WRONG LOCAL MINIMUM and OVERSTATE the true perpendicular deviation up to ~7×
+ * (E-2026-07-02-STEEP-HETEROGENEITY / F2: Gyroid GN 0.644 vs brute 0.092). A denser sample can only make the
+ * distance SMALLER, so `min(GN, brute)` is a safe trusted anchor. The FULL azimuth sweep is load-bearing — GN's own
+ * src coarse fallback only scans a ±0.22-rad LOCAL window, so a wrong-well foot at a different azimuth stays hidden
+ * from it but not from this scan.
+ *
+ * DEV-ONLY (research/): O(nTheta·nZ) per call is far too slow for src — use it only to anchor the WORST steep facets
+ * (see {@link bruteAnchoredRedPerp}). Coarse default 2048×400; pass a fine grid (e.g. 8192×1600) to break ties on
+ * sharp ribs where the coarse grid can alias PAST the true foot and read a spuriously larger distance.
+ */
+export function bruteNearestOnRadialSurface(
+  px: number, py: number, pz: number, rA: AnalyticRadiusFn, H: number,
+  opts: { nTheta?: number; nZ?: number; zBandMm?: number; refineIters?: number } = {},
+): BruteNearestResult {
+  const nTheta = opts.nTheta ?? 2048, nZ = opts.nZ ?? 400, band = opts.zBandMm ?? 14, refineIters = opts.refineIters ?? 60;
+  const d2 = (th: number, z: number): number => { const r = rA(th, z); const ex = px - r * Math.cos(th), ey = py - r * Math.sin(th), ez = pz - z; return ex * ex + ey * ey + ez * ez; };
+  // coarse global grid across the full azimuth + a z-band around P's own z (relief is local in z)
+  const zLo = Math.max(0, pz - band), zHi = Math.min(H, pz + band);
+  let best = Infinity, bth = 0, bz = pz;
+  for (let i = 0; i < nTheta; i++) {
+    const th = (i / nTheta) * TAU;
+    for (let j = 0; j <= nZ; j++) { const z = zLo + (zHi - zLo) * (j / nZ); const f = d2(th, z); if (f < best) { best = f; bth = th; bz = z; } }
+  }
+  // local box-refine: shrink a ±cell box around (bth,bz) until it stops improving, then halve
+  let hTh = TAU / nTheta, hZ = (zHi - zLo) / nZ;
+  for (let it = 0; it < refineIters; it++) {
+    let improved = false;
+    for (const dth of [-hTh, 0, hTh]) for (const dz of [-hZ, 0, hZ]) { const f = d2(bth + dth, bz + dz); if (f < best) { best = f; bth += dth; bz += dz; improved = true; } }
+    if (!improved) { hTh *= 0.5; hZ *= 0.5; }
+    if (hTh < 1e-10 && hZ < 1e-10) break;
+  }
+  return { dist: Math.sqrt(best), theta: bth, z: bz };
+}
+
 // ───────────────────────── per-face TRUE-3D sag (the HONEST heatmap ruler — DEFAULT) ─────────────────────────
 /**
  * Per-face TRUE-3D chord sag: the SHORTEST 3D distance from each flat-facet interior sample to the true surface
@@ -165,6 +207,13 @@ export function vertErrColors(vertErr: Float64Array, scaleMm = 0.15): Float32Arr
  * computed first (cheap) and the expensive projection runs ONLY on facets whose bound exceeds `preFilterMm` (default
  * 0.02mm); sub-threshold facets keep the bound (all deep-green — negligible over-statement). Returns the same
  * `ChordSagResult` shape as `perFaceChordSag`, so it is a drop-in for `vertErrColors` / `dumpRenderBins`.
+ *
+ * STEEP-STYLE CAVEAT (E-2026-07-02-STEEP-HETEROGENEITY / F2): the underlying single-seed GN
+ * (`projectPointToRadialSurface`) can stall in a WRONG LOCAL MINIMUM on TANGLED LATTICES (Gyroid / CelticTriquetra /
+ * …) and OVERSTATE red-facet perp up to ~7× (Gyroid GN 0.644 vs brute-trusted 0.092). This ruler therefore
+ * OVER-colours steep-lattice red facets. Whole-mesh brute-anchoring is infeasible (~3.4h at 2703 red facets), so for
+ * any STEEP-STYLE red-facet VERDICT use {@link bruteAnchoredRedPerp} (worst-N brute-twin, seconds) — do NOT trust
+ * this ruler's steep-lattice red p99. On SMOOTH styles GN ≡ brute (unique foot), so this ruler is already honest.
  */
 export function perFaceTrue3DSag(ut: number[], indices: ArrayLike<number>, rA: AnalyticRadiusFn, H: number, opts: { preFilterMm?: number } = {}): ChordSagResult {
   const preFilter = opts.preFilterMm ?? 0.02;
@@ -199,6 +248,89 @@ export function perFaceTrue3DSag(ut: number[], indices: ArrayLike<number>, rA: A
   }
   const fracOver = (mm: number): number => { let o = 0; for (let f = 0; f < nF; f++) if (faceErr[f] > mm) o++; return nF ? o / nF : 0; };
   return { faceErr, vertErr, worstMm: worst, fracOver };
+}
+
+// ───────────────────────── brute-anchored trusted steep-red perp (the honest verdict number) ─────────────────────────
+/** Trusted brute-anchored perpendicular-3D result on the worst red facets + the raw-GN it corrects. */
+export interface BruteAnchoredPerp {
+  /** total red facets (radial per-face sag > redMm). */ nRed: number;
+  /** facets actually anchored = min(sampleN, nRed). */ nSample: number;
+  /** sampled facets where raw GN OVERSTATED the brute floor by > overMm (the wrong-local-minimum signature). */ gnOver: number;
+  /** sampled facets where the coarse brute exceeded GN by > disagreeMm (coarse aliased above GN's foot). */ bruteOver: number;
+  /** raw single-seed GN p99 at the sampled facet CENTROIDS — the OVERSTATED value (same projector perFaceTrue3DSag uses). */ gnP99: number;
+  /** brute-anchored TRUSTED CENTROID p99 = min(GN, brute[, fine]) — the honest steep-red perp (≤ perFaceTrue3DSag's 4-pt max). */ trustedP99: number;
+  /** brute-anchored trusted CENTROID max over the sampled facets. */ trustedMax: number;
+}
+
+function pctile99(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  const s = Float64Array.from(arr).sort();
+  return s[Math.min(s.length - 1, Math.floor(0.99 * s.length))];
+}
+
+/**
+ * BRUTE-ANCHORED trusted perpendicular-3D deviation on the WORST red facets — the honest steep-style verdict number,
+ * folding the convene's brute-twin (E-2026-07-02-STEEP-HETEROGENEITY / F2). Single-seed GN
+ * (`projectPointToRadialSurface`, used by `perFaceTrue3DSag` / `perpendicular3DDeviation`) stalls in WRONG-LOCAL-
+ * MINIMUM feet on tangled lattices and OVERSTATES perp up to ~7× (Gyroid GN 0.644 vs brute-trusted 0.092). For the
+ * `sampleN` red facets (radial sag > `redMm`) with the LARGEST radial sag, this cross-checks each facet-CENTROID GN
+ * foot against a full-azimuth {@link bruteNearestOnRadialSurface} (coarse `coarse`, default 2048×400) and keeps the
+ * SMALLER distance. A `fine` tie-break (default 8192×1600) fires when the coarse brute exceeds GN by > `disagreeMm`
+ * (a sharp rib the coarse grid aliased PAST) OR the coarse-anchored value is still ≥ `redMm` (a rib can alias BOTH GN
+ * and the coarse brute HIGH with disagree≈0, so a "still-red" result warrants the fine confirm). Returns the TRUSTED
+ * p99 alongside the raw-GN p99 + `gnOver` so the caller can SEE the overstatement it corrected.
+ *
+ * CENTROID-ONLY (faithful to the convene's `twinSheet`): each facet is anchored at its CENTROID, so `trustedP99` is
+ * the centroid perp — the honest correction of GN's centroid overstatement, and the exact statistic the convene used
+ * to classify the steep class. It is NOT `perFaceTrue3DSag`'s per-facet ruler, which takes the MAX over 4 SAG_BARY
+ * interior points and so reads HIGHER; do not read `trustedP99` as the facet's worst-interior perp. `gnOver` counts
+ * facets where GN beat the brute floor by > `overMm` (default 0.1, the RED band) — a STRICTER gate than the convene
+ * twin's 0.02, so its count is not directly comparable to the convene's `gnOver`.
+ *
+ * Why worst-N + centroid: whole-mesh anchoring is infeasible (~3.4h at ~2700 red facets × 2048×400); the convene
+ * used the worst-40 centroid twin (p99/verdict signal lives in the worst facets) and it runs in seconds. Pass a
+ * precomputed `radial` (perFaceChordSag) to skip the radial recompute. DEV-ONLY — reuse the exported
+ * `bruteNearestOnRadialSurface` primitive for other sample geometries. Does NOT do the braid sheet-guard; for
+ * braids (CelticTriquetra/Knot) also run the sign check from `_steepHeterogeneity.test.ts`.
+ */
+export function bruteAnchoredRedPerp(
+  ut: number[], indices: ArrayLike<number>, rA: AnalyticRadiusFn, H: number,
+  opts: {
+    redMm?: number; sampleN?: number; overMm?: number; disagreeMm?: number;
+    coarse?: { nTheta?: number; nZ?: number }; fine?: { nTheta?: number; nZ?: number };
+    /** precomputed radial chord sag (perFaceChordSag) to pick the red set without recomputing it. */
+    radial?: ChordSagResult;
+  } = {},
+): BruteAnchoredPerp {
+  const redMm = opts.redMm ?? 0.1, sampleN = opts.sampleN ?? 40, overMm = opts.overMm ?? 0.1, disagreeMm = opts.disagreeMm ?? 0.02;
+  const cN = { nTheta: opts.coarse?.nTheta ?? 2048, nZ: opts.coarse?.nZ ?? 400 };
+  const fN = { nTheta: opts.fine?.nTheta ?? 8192, nZ: opts.fine?.nZ ?? 1600 };
+  const radial = opts.radial ?? perFaceChordSag(ut, indices, rA, H);
+  const red: number[] = [];
+  for (let f = 0; f < radial.faceErr.length; f++) if (radial.faceErr[f] > redMm) red.push(f);
+  red.sort((x, y) => radial.faceErr[y] - radial.faceErr[x]);
+  const sample = red.slice(0, Math.min(sampleN, red.length));
+  // lift the sampled facets' vertices (only the ones we touch)
+  const gnD: number[] = [], trusted: number[] = [];
+  let gnOver = 0, bruteOver = 0;
+  const lift = (i: number): [number, number, number] => { const th = TAU * ut[2 * i], z = ut[2 * i + 1] * H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; };
+  for (const f of sample) {
+    const [ax, ay, az] = lift(indices[3 * f]), [bx, by, bz] = lift(indices[3 * f + 1]), [cx2, cy2, cz2] = lift(indices[3 * f + 2]);
+    const cx = (ax + bx + cx2) / 3, cy = (ay + by + cy2) / 3, cz = (az + bz + cz2) / 3;
+    const gn = projectPointToRadialSurface(cx, cy, cz, rA).dist;
+    const bf = bruteNearestOnRadialSurface(cx, cy, cz, rA, H, cN);
+    let tf = Math.min(gn, bf.dist);
+    if (gn - bf.dist > overMm) gnOver++;                 // GN overstated → brute floor already captured in tf
+    if (bf.dist - gn > disagreeMm) bruteOver++;          // coarse brute > GN ⇒ it aliased ABOVE a foot GN found
+    // Fine tie-break when the coarse brute disagreed with GN OR the coarse-anchored value is still RED — a sharp rib
+    // can alias BOTH gn and the coarse brute HIGH (disagree≈0), and only the fine grid finds the true foot.
+    if (bf.dist - gn > disagreeMm || tf > redMm) tf = Math.min(tf, bruteNearestOnRadialSurface(cx, cy, cz, rA, H, fN).dist);
+    gnD.push(gn); trusted.push(tf);
+  }
+  return {
+    nRed: red.length, nSample: sample.length, gnOver, bruteOver,
+    gnP99: pctile99(gnD), trustedP99: pctile99(trusted), trustedMax: trusted.length ? Math.max(...trusted) : 0,
+  };
 }
 
 // ───────────────────────── export: binary STL + render bins ─────────────────────────
