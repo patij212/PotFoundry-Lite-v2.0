@@ -1,0 +1,12 @@
+.pf3-export-footer { display: flex; flex-direction: column; gap: 6px; }
+.pf3-export-footer__meta { display: flex; justify-content: space-between; align-items: baseline; }
+.pf3-export-footer__est { font-size: 10.5px; color: var(--pf3-text-muted); }
+.pf3-export-footer__progress { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+.pf3-export-footer__bar {
+  height: 3px; border-radius: 2px; background: rgba(245, 240, 232, 0.12); overflow: hidden;
+}
+.pf3-export-footer__fill {
+  height: 100%; background: var(--pf3-gold-grad);
+  transition: width var(--pf3-dur-control) var(--pf3-ease-move);
+}
+.pf3-export-footer .pf3-btn { width: 100%; }

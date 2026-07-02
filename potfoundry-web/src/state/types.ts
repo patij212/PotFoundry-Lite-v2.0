@@ -289,6 +289,8 @@ export interface UIState {
   hapticsEnabled: boolean;
   /** Active tab in v3 panel */
   v3ActiveTab: V3Tab;
+  /** Custom export filename (without extension). Null = derived from style + H. */
+  exportFilename: string | null;
 }
 
 /** Default UI state */
@@ -304,6 +306,7 @@ export const DEFAULT_UI_STATE: UIState = {
   density: 'comfortable',
   hapticsEnabled: true,
   v3ActiveTab: 'shape',
+  exportFilename: null,
 };
 
 // ============================================================================

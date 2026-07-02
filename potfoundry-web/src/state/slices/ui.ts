@@ -222,6 +222,11 @@ export interface UISlice {
   setExportFormat: (format: UIState['exportFormat']) => void;
 
   /**
+   * Set a custom export filename (no extension). Null = auto-derive from style + H.
+   */
+  setExportFilename: (name: string | null) => void;
+
+  /**
    * Capture one pre-interaction snapshot for undo history.
    */
   beginHistoryTransaction: () => void;
@@ -444,6 +449,12 @@ export const createUISlice: StateCreator<
   setExportFormat: (format) => {
     set((state) => ({
       ui: { ...state.ui, exportFormat: format },
+    }));
+  },
+
+  setExportFilename: (name) => {
+    set((state) => ({
+      ui: { ...state.ui, exportFilename: name },
     }));
   },
 

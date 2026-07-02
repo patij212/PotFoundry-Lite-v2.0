@@ -17,11 +17,14 @@ describe('UISlice interface', () => {
                 activeTab: 'controls',
                 modalOpen: null,
                 fullscreen: false,
+                exportFormat: 'stl',
                 uiTheme: 'classic',
                 v2ActiveTab: 'shape',
                 zenMode: false,
                 density: 'comfortable',
                 hapticsEnabled: true,
+                v3ActiveTab: 'shape',
+                exportFilename: null,
             },
         };
         expect(mockSlice.ui).toBeDefined();
