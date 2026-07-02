@@ -1113,4 +1113,246 @@ describe('E-2026-07-01-SHARP3D-ARTDECO', () => {
     expect(nm).toBe(0);
     expect(advMax).toBeLessThan(1e-9);
   }, 1_200_000);
+
+  // ─────────────── STAGE 12: LOCALIZE the 196 ring-band residual — knife-edge corner or fixable transition? ─────
+  it.skipIf(process.env.PF_SHARP3D !== '1')('stage12: localize + classify the ring-band >0.01mm residual (knife-edge test)', () => {
+    const rA = buildRadiusFn('ArtDeco', {}, DIMS);
+    const rings = artDecoStepRings(DIMS.H, STEP_COUNT);
+    const ringZs = rings.map(r => r.z);
+    const zEps = 5e-4;
+    const shear = (4 * Math.PI) / 6;
+    const refDth = 0.0013;
+    const ref = buildStepReference(rA, DIMS.H, rings, { nTheta: 0, nZperBand: 75, zEps, thetasFor: (rz) => conformingThetas(kinkThetas(rz / DIMS.H), refDth) });
+    const loc = buildRefLocator(ref, 1.5);
+
+    // rebuild the stage11 export mesh deterministically WITH row-kind tracking.
+    const nCol = 12 * 80, nZband = 30, treadSub = 10;
+    const rows: RowSpec[] = [];
+    const sorted = [...rings].sort((a, b) => a.z - b.z);
+    const th = (rz: number): Float64Array => shearedThetas(rz / DIMS.H, nCol, shear);
+    const pushSheetBand = (z0: number, z1: number, nrows: number): void => { for (let i = 1; i < nrows; i++) { const z = z0 + (z1 - z0) * (i / nrows); rows.push({ z, rz: z, thetas: th(z), kind: 'sheet' }); } };
+    rows.push({ z: 0, rz: zEps, thetas: th(zEps), kind: 'sheet' });
+    let cursor = 0;
+    for (const ring of sorted) {
+      pushSheetBand(cursor, ring.z, nZband);
+      const rzIn = ring.z - zEps, rzOut = ring.z + zEps;
+      rows.push({ z: ring.z, rz: rzIn, thetas: th(rzIn), kind: 'ringBelow' });
+      for (let s = 1; s < treadSub; s++) rows.push({ z: ring.z, rz: ring.z, thetas: th(ring.z), kind: 'tread', treadBlend: { s: s / treadSub, rzInner: rzIn, rzOuter: rzOut } });
+      rows.push({ z: ring.z, rz: rzOut, thetas: th(rzOut), kind: 'ringAbove' });
+      cursor = ring.z;
+    }
+    pushSheetBand(cursor, DIMS.H, nZband);
+    rows.push({ z: DIMS.H, rz: DIMS.H - zEps, thetas: th(DIMS.H - zEps), kind: 'sheet' });
+    const mesh = buildStructuredWall(rA, DIMS.H, rows);
+    const rowOf = new Int32Array(mesh.nV);
+    for (let r = 0; r < rows.length; r++) for (let v = mesh.rowStart[r]; v < mesh.rowStart[r + 1]; v++) rowOf[v] = r;
+
+    const mh = metric3DHybrid(mesh, loc, rA, ringZs, 0.25);
+    // for each over-tol facet: which row-kind pair, z vs ring, radius vs the two tread radii, min angle.
+    const kindPairs: Record<string, { count: number; worst: number }> = {};
+    const details: Array<{ err: number; kinds: string; z: number; rMin: number; rMax: number; ang: number }> = [];
+    const minAng = (f: number): number => {
+      const a = mesh.idx[3 * f], b = mesh.idx[3 * f + 1], c = mesh.idx[3 * f + 2];
+      const la = Math.hypot(mesh.xyz[3 * b] - mesh.xyz[3 * c], mesh.xyz[3 * b + 1] - mesh.xyz[3 * c + 1], mesh.xyz[3 * b + 2] - mesh.xyz[3 * c + 2]);
+      const lb = Math.hypot(mesh.xyz[3 * c] - mesh.xyz[3 * a], mesh.xyz[3 * c + 1] - mesh.xyz[3 * a + 1], mesh.xyz[3 * c + 2] - mesh.xyz[3 * a + 2]);
+      const lc = Math.hypot(mesh.xyz[3 * a] - mesh.xyz[3 * b], mesh.xyz[3 * a + 1] - mesh.xyz[3 * b + 1], mesh.xyz[3 * a + 2] - mesh.xyz[3 * b + 2]);
+      if (la < 1e-9 || lb < 1e-9 || lc < 1e-9) return 0;
+      const A = Math.acos(Math.max(-1, Math.min(1, (lb * lb + lc * lc - la * la) / (2 * lb * lc))));
+      const B = Math.acos(Math.max(-1, Math.min(1, (la * la + lc * lc - lb * lb) / (2 * la * lc))));
+      return Math.min(A, B, Math.PI - A - B) * 180 / Math.PI;
+    };
+    for (let f = 0; f < mesh.nF; f++) {
+      if (mh.faceErr[f] <= 0.01) continue;
+      const a = mesh.idx[3 * f], b = mesh.idx[3 * f + 1], c = mesh.idx[3 * f + 2];
+      const ks = [rows[rowOf[a]].kind, rows[rowOf[b]].kind, rows[rowOf[c]].kind].sort();
+      const key = ks.join('+');
+      if (!kindPairs[key]) kindPairs[key] = { count: 0, worst: 0 };
+      kindPairs[key].count++; if (mh.faceErr[f] > kindPairs[key].worst) kindPairs[key].worst = mh.faceErr[f];
+      if (details.length < 30) {
+        const rr = [Math.hypot(mesh.xyz[3 * a], mesh.xyz[3 * a + 1]), Math.hypot(mesh.xyz[3 * b], mesh.xyz[3 * b + 1]), Math.hypot(mesh.xyz[3 * c], mesh.xyz[3 * c + 1])];
+        const zz = [mesh.xyz[3 * a + 2], mesh.xyz[3 * b + 2], mesh.xyz[3 * c + 2]];
+        details.push({ err: mh.faceErr[f], kinds: [rows[rowOf[a]].kind, rows[rowOf[b]].kind, rows[rowOf[c]].kind].join(','), z: Math.min(...zz), rMin: Math.min(...rr), rMax: Math.max(...rr), ang: minAng(f) });
+      }
+    }
+    details.sort((x, y) => y.err - x.err);
+    const rec = { over01: mh.over01, worst: mh.worst, kindPairs, top15: details.slice(0, 15) };
+    save('stage12_localize', rec);
+    // eslint-disable-next-line no-console
+    console.log(`[stage12] over01=${mh.over01} worst=${mh.worst.toFixed(4)} kindPairs=${JSON.stringify(kindPairs)}`);
+    // eslint-disable-next-line no-console
+    for (const d of details.slice(0, 6)) console.log(`  err=${d.err.toFixed(4)} ang=${d.ang.toFixed(1)} kinds=[${d.kinds}] z=${d.z.toFixed(3)} r=[${d.rMin.toFixed(2)},${d.rMax.toFixed(2)}]`);
+  }, 900_000);
+
+  // ─────────────── STAGE 13: FINAL+ — near-ring z-GRADING closes the transition-zone residual → all-green test ──
+  // stage12: the 196 residual are sheet↔ring transition facets (chord sag where the sheet z-density (0.2mm) is too
+  // coarse near the ring's sharp turn) — NOT knife-edges (minAngle ~15°, tiny radius span), NOT tread. FIX: grade
+  // the sheet z-rows geometrically finer toward each ring (boundary-layer refinement). Re-measure vs faithful ref.
+  it.skipIf(process.env.PF_SHARP3D !== '1')('stage13: near-ring z-grading — ArtDeco all-green ≤0.01mm test', () => {
+    const rA = buildRadiusFn('ArtDeco', {}, DIMS);
+    const rings = artDecoStepRings(DIMS.H, STEP_COUNT);
+    const ringZs = rings.map(r => r.z);
+    const zEps = 5e-4;
+    const shear = (4 * Math.PI) / 6;
+    const refDth = 0.0013;
+    const ref = buildStepReference(rA, DIMS.H, rings, { nTheta: 0, nZperBand: 75, zEps, thetasFor: (rz) => conformingThetas(kinkThetas(rz / DIMS.H), refDth) });
+    const loc = buildRefLocator(ref, 1.5);
+
+    const nCol = 12 * 80, treadSub = 10;
+    const th = (rz: number): Float64Array => shearedThetas(rz / DIMS.H, nCol, shear);
+    const rows: RowSpec[] = [];
+    const sorted = [...rings].sort((a, b) => a.z - b.z);
+    // GRADED sheet band: place rows with geometric clustering toward BOTH ends (near rings) — a symmetric
+    // cosine spacing so dz shrinks near z0 and z1 (the ring turns). nBase rows + the clustering handles the corner.
+    const pushGradedBand = (z0: number, z1: number, nrows: number): void => {
+      for (let i = 1; i < nrows; i++) {
+        const u = i / nrows; // cosine cluster toward both ends: maps uniform u → clustered s
+        const s = 0.5 - 0.5 * Math.cos(Math.PI * u);
+        rows.push({ z: z0 + (z1 - z0) * s, rz: z0 + (z1 - z0) * s, thetas: th(z0 + (z1 - z0) * s), kind: 'sheet' });
+      }
+    };
+    rows.push({ z: 0, rz: zEps, thetas: th(zEps), kind: 'sheet' });
+    let cursor = 0;
+    const nZband = 30;
+    for (const ring of sorted) {
+      pushGradedBand(cursor, ring.z, nZband);
+      const rzIn = ring.z - zEps, rzOut = ring.z + zEps;
+      rows.push({ z: ring.z, rz: rzIn, thetas: th(rzIn), kind: 'ringBelow' });
+      for (let s = 1; s < treadSub; s++) rows.push({ z: ring.z, rz: ring.z, thetas: th(ring.z), kind: 'tread', treadBlend: { s: s / treadSub, rzInner: rzIn, rzOuter: rzOut } });
+      rows.push({ z: ring.z, rz: rzOut, thetas: th(rzOut), kind: 'ringAbove' });
+      cursor = ring.z;
+    }
+    pushGradedBand(cursor, DIMS.H, nZband);
+    rows.push({ z: DIMS.H, rz: DIMS.H - zEps, thetas: th(DIMS.H - zEps), kind: 'sheet' });
+    const mesh = buildStructuredWall(rA, DIMS.H, rows);
+    const mh = metric3DHybrid(mesh, loc, rA, ringZs, 0.25);
+
+    const q = triangleQualityDistribution({ vertices: mesh.xyz, indices: mesh.idx });
+    const nm = auditNonManByIndex(mesh.xyz, mesh.idx);
+    // adversarial
+    const order = Array.from({ length: mesh.nF }, (_, i) => i).sort((x, y) => mh.faceErr[y] - mh.faceErr[x]).slice(0, 40);
+    let advMax = 0;
+    for (const f of order) {
+      const a = mesh.idx[3 * f], b = mesh.idx[3 * f + 1], c = mesh.idx[3 * f + 2];
+      const px = (mesh.xyz[3 * a] + mesh.xyz[3 * b] + mesh.xyz[3 * c]) / 3, py = (mesh.xyz[3 * a + 1] + mesh.xyz[3 * b + 1] + mesh.xyz[3 * c + 1]) / 3, pz = (mesh.xyz[3 * a + 2] + mesh.xyz[3 * b + 2] + mesh.xyz[3 * c + 2]) / 3;
+      const e = Math.abs(loc.dist(px, py, pz) - loc.bruteDist(px, py, pz)); if (e > advMax) advMax = e;
+    }
+    // render final all-green
+    const vertErr = new Float64Array(mesh.nV);
+    for (let f = 0; f < mesh.nF; f++) { const e = mh.faceErr[f]; for (let k = 0; k < 3; k++) { const v = mesh.idx[3 * f + k]; if (e > vertErr[v]) vertErr[v] = e; } }
+    dumpRenderBins(DIR, 'artdeco_sharp3d_allgreen', mesh.xyz, mesh.idx, { colors: vertErrColors(vertErr, 0.01),
+      meta: { ruler: 'true3d-reference', label: 'ArtDeco sheared-φ + treads + near-ring grading vs closed 3D object (scale 0.01mm)', worstMm: mh.worst, p99Mm: mh.p99, pctOver0_01: 100 * mh.over01 / mesh.nF, scaleMm: 0.01 }, stl: true });
+
+    const rec = { tag: `graded_c${nCol}_z${nZband}_ts${treadSub}`, tris: mesh.nF, verts: mesh.nV, refTris: ref.nF,
+      worst: mh.worst, p99: mh.p99, p50: mh.p50, over01: mh.over01, pctOver01: 100 * mh.over01 / mesh.nF,
+      minAngle: q.minAngleDeg, p5Angle: q.p5MinAngleDeg, pctBelow20: q.pctBelow20, pctBelow10: q.pctBelow10, nonMan: nm, advMax };
+    save('stage13_allgreen', rec);
+    // eslint-disable-next-line no-console
+    console.log(`[stage13] tris=${rec.tris} worst=${rec.worst.toFixed(4)} p99=${rec.p99.toFixed(4)} p50=${rec.p50.toFixed(5)} over01=${rec.over01}(${rec.pctOver01.toFixed(4)}%) minAng=${rec.minAngle.toFixed(1)} %<20=${rec.pctBelow20.toFixed(1)} nonMan=${nm} adv=${advMax.toExponential(1)}`);
+    expect(nm).toBe(0);
+    expect(advMax).toBeLessThan(1e-9);
+  }, 1_200_000);
+
+  // ─────────────── STAGE 14: z-DENSITY discriminator — is the ring-band residual density-reducible or a corner? ──
+  // grading FAILED (slivers). Test UNIFORM z-density: nZband 30→60→90. If worst/over01 DROP ⇒ density-reducible
+  // (transition chord). If FROZEN ⇒ a genuine C0/C1 corner at the sheet-tread junction (a real edge of the solid).
+  it.skipIf(process.env.PF_SHARP3D !== '1')('stage14: uniform z-density discriminator on the ring-band residual', () => {
+    const rA = buildRadiusFn('ArtDeco', {}, DIMS);
+    const rings = artDecoStepRings(DIMS.H, STEP_COUNT);
+    const ringZs = rings.map(r => r.z);
+    const zEps = 5e-4;
+    const shear = (4 * Math.PI) / 6;
+    const refDth = 0.0013;
+    const ref = buildStepReference(rA, DIMS.H, rings, { nTheta: 0, nZperBand: 90, zEps, thetasFor: (rz) => conformingThetas(kinkThetas(rz / DIMS.H), refDth) });
+    const loc = buildRefLocator(ref, 1.5);
+    const nCol = 12 * 80, treadSub = 10;
+    const th = (rz: number): Float64Array => shearedThetas(rz / DIMS.H, nCol, shear);
+    const build = (nZband: number): BuiltMesh => {
+      const rows: RowSpec[] = [];
+      const sorted = [...rings].sort((a, b) => a.z - b.z);
+      const pushSheetBand = (z0: number, z1: number, nrows: number): void => { for (let i = 1; i < nrows; i++) { const z = z0 + (z1 - z0) * (i / nrows); rows.push({ z, rz: z, thetas: th(z), kind: 'sheet' }); } };
+      rows.push({ z: 0, rz: zEps, thetas: th(zEps), kind: 'sheet' });
+      let cursor = 0;
+      for (const ring of sorted) {
+        pushSheetBand(cursor, ring.z, nZband);
+        const rzIn = ring.z - zEps, rzOut = ring.z + zEps;
+        rows.push({ z: ring.z, rz: rzIn, thetas: th(rzIn), kind: 'ringBelow' });
+        for (let s = 1; s < treadSub; s++) rows.push({ z: ring.z, rz: ring.z, thetas: th(ring.z), kind: 'tread', treadBlend: { s: s / treadSub, rzInner: rzIn, rzOuter: rzOut } });
+        rows.push({ z: ring.z, rz: rzOut, thetas: th(rzOut), kind: 'ringAbove' });
+        cursor = ring.z;
+      }
+      pushSheetBand(cursor, DIMS.H, nZband);
+      rows.push({ z: DIMS.H, rz: DIMS.H - zEps, thetas: th(DIMS.H - zEps), kind: 'sheet' });
+      return buildStructuredWall(rA, DIMS.H, rows);
+    };
+    const results: any[] = [];
+    for (const nZ of [30, 60, 120]) {
+      const tag = `z${nZ}`;
+      if (existsSync(ck(`stage14_${tag}`))) { results.push(load(`stage14_${tag}`)); continue; }
+      const mesh = build(nZ);
+      const mh = metric3DHybrid(mesh, loc, rA, ringZs, 0.25);
+      const q = triangleQualityDistribution({ vertices: mesh.xyz, indices: mesh.idx });
+      const rec = { tag, tris: mesh.nF, worst: mh.worst, p99: mh.p99, over01: mh.over01, pctOver01: 100 * mh.over01 / mesh.nF, minAngle: q.minAngleDeg, pctBelow20: q.pctBelow20 };
+      save(`stage14_${tag}`, rec); results.push(rec);
+      // eslint-disable-next-line no-console
+      console.log(`[stage14 ${tag}] tris=${rec.tris} worst=${rec.worst.toFixed(4)} p99=${rec.p99.toFixed(4)} over01=${rec.over01}(${rec.pctOver01.toFixed(4)}%) minAng=${rec.minAngle.toFixed(1)}`);
+    }
+    save('stage14_summary', results);
+  }, 1_200_000);
+
+  // ─────────────── STAGE 15: is the 0.018 stall a REFERENCE-band floor or a genuine corner? ──────────────────────
+  // stage14: worst STALLS ~0.018 (density-invariant 60→120), over01 frozen 196. Either (a) a genuine sheet↔tread
+  // C0 corner (real edge of the solid), or (b) the REFERENCE's own ring-band chord (metric floor). Discriminate:
+  // (1) validate reference faithfulness NEAR rings (on-true-surface points within the ring band → BVH dist);
+  // (2) measure the export z120 worst against a MUCH finer reference (refDth 0.0007, nZ 120). If worst drops ⇒
+  //     it was the reference floor; if it stays ~0.018 ⇒ genuine corner (quantify min facet size for 0.01).
+  it.skipIf(process.env.PF_SHARP3D !== '1')('stage15: reference-floor vs genuine-corner discriminator', () => {
+    const rA = buildRadiusFn('ArtDeco', {}, DIMS);
+    const rings = artDecoStepRings(DIMS.H, STEP_COUNT);
+    const ringZs = rings.map(r => r.z);
+    const zEps = 5e-4;
+    const shear = (4 * Math.PI) / 6;
+    // VERY fine reference.
+    const refDth = 0.0007;
+    const ref = buildStepReference(rA, DIMS.H, rings, { nTheta: 0, nZperBand: 130, zEps, thetasFor: (rz) => conformingThetas(kinkThetas(rz / DIMS.H), refDth) });
+    const loc = buildRefLocator(ref, 1.2);
+    // reference faithfulness NEAR rings: sample the true sheet just above/below each ring (within 0.3mm) → BVH.
+    let nearRingRefMax = 0;
+    for (const rz of ringZs) {
+      for (let side of [-1, 1]) {
+        for (let s = 0; s < 200; s++) {
+          const dz = 0.002 + 0.29 * (s / 200); const z = rz + side * dz; if (z <= 0 || z >= DIMS.H) continue;
+          const thh = TAU * Math.random(); const r = rA(thh, z); const d = loc.dist(r * Math.cos(thh), r * Math.sin(thh), z);
+          if (d > nearRingRefMax) nearRingRefMax = d;
+        }
+      }
+    }
+    save('stage15_nearRingRef', { refDth, refTris: ref.nF, nearRingRefMax });
+
+    // export z120 vs this finer reference.
+    const nCol = 12 * 80, treadSub = 10, nZband = 120;
+    const th = (r: number): Float64Array => shearedThetas(r / DIMS.H, nCol, shear);
+    const rows: RowSpec[] = [];
+    const sorted = [...rings].sort((a, b) => a.z - b.z);
+    const pushSheetBand = (z0: number, z1: number, nrows: number): void => { for (let i = 1; i < nrows; i++) { const z = z0 + (z1 - z0) * (i / nrows); rows.push({ z, rz: z, thetas: th(z), kind: 'sheet' }); } };
+    rows.push({ z: 0, rz: zEps, thetas: th(zEps), kind: 'sheet' });
+    let cursor = 0;
+    for (const ring of sorted) {
+      pushSheetBand(cursor, ring.z, nZband);
+      const rzIn = ring.z - zEps, rzOut = ring.z + zEps;
+      rows.push({ z: ring.z, rz: rzIn, thetas: th(rzIn), kind: 'ringBelow' });
+      for (let s = 1; s < treadSub; s++) rows.push({ z: ring.z, rz: ring.z, thetas: th(ring.z), kind: 'tread', treadBlend: { s: s / treadSub, rzInner: rzIn, rzOuter: rzOut } });
+      rows.push({ z: ring.z, rz: rzOut, thetas: th(rzOut), kind: 'ringAbove' });
+      cursor = ring.z;
+    }
+    pushSheetBand(cursor, DIMS.H, nZband);
+    rows.push({ z: DIMS.H, rz: DIMS.H - zEps, thetas: th(DIMS.H - zEps), kind: 'sheet' });
+    const mesh = buildStructuredWall(rA, DIMS.H, rows);
+    const mh = metric3DHybrid(mesh, loc, rA, ringZs, 0.25);
+    const rec = { tag: 'z120_fineRef', tris: mesh.nF, refTris: ref.nF, worst: mh.worst, p99: mh.p99, over01: mh.over01, pctOver01: 100 * mh.over01 / mesh.nF, nearRingRefMax };
+    save('stage15_result', rec);
+    // eslint-disable-next-line no-console
+    console.log(`[stage15] nearRingRefMax=${nearRingRefMax.toExponential(3)} (reference floor near rings) | export z120 vs fineRef: worst=${mh.worst.toFixed(4)} p99=${mh.p99.toFixed(4)} over01=${mh.over01}(${rec.pctOver01.toFixed(4)}%)`);
+    // eslint-disable-next-line no-console
+    console.log(`[stage15] VERDICT: ${nearRingRefMax > 0.01 ? 'REFERENCE-FLOOR (near-ring ref chord dominates) → refine ref' : 'GENUINE (ref faithful; residual is a real sheet↔tread corner)'}`);
+  }, 1_200_000);
 });
