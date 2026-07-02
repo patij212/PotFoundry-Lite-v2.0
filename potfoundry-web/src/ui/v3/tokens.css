@@ -1,1 +1,114 @@
-/* PotFoundry UI v3 design tokens — populated in Task 2 */
+/* PotFoundry UI v3 — "Studio at Dusk" design tokens. Spec §3. */
+@import './fonts.css';
+
+.pf3-root {
+  /* --- Stage & surfaces (dark default) --- */
+  --pf3-bg-stage: #131009;
+  --pf3-bg-stage-deep: #0e0b08;
+  --pf3-glass: rgba(28, 23, 18, 0.88);
+  --pf3-glass-border: rgba(245, 240, 232, 0.09);
+  --pf3-elevated: #2a2119;
+  --pf3-hairline: rgba(245, 240, 232, 0.08);
+
+  /* --- Text --- */
+  --pf3-text-primary: #f5f0e8;
+  --pf3-text-secondary: #a8a29e;
+  --pf3-text-muted: #7a756f;
+
+  /* --- Gold: actionable elements ONLY (spec §3.1) --- */
+  --pf3-gold: #cfa967;
+  --pf3-gold-deep: #b4975a;
+  --pf3-gold-grad: linear-gradient(180deg, var(--pf3-gold), var(--pf3-gold-deep));
+  --pf3-gold-tint: rgba(180, 151, 90, 0.12);
+  --pf3-on-gold: #17120e;
+
+  /* --- Status (desaturated) --- */
+  --pf3-ok: #7fa886;
+  --pf3-warn: #d4a94c;
+  --pf3-error: #c9706a;
+
+  /* --- Type --- */
+  --pf3-font-display: 'Fraunces Variable', 'Fraunces', Georgia, serif;
+  --pf3-font-body: 'Inter Variable', 'Inter', system-ui, sans-serif;
+  --pf3-font-mono: 'IBM Plex Mono', Consolas, monospace;
+
+  /* --- Space / radius --- */
+  --pf3-space-xs: 4px; --pf3-space-sm: 8px; --pf3-space-md: 12px;
+  --pf3-space-lg: 16px; --pf3-space-xl: 24px;
+  --pf3-radius-sm: 6px; --pf3-radius-md: 9px; --pf3-radius-lg: 12px; --pf3-radius-pill: 999px;
+
+  /* --- Depth: exactly two levels (spec §3.4) --- */
+  --pf3-shadow-float: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --pf3-shadow-overlay: 0 24px 80px rgba(0, 0, 0, 0.6);
+  --pf3-blur: 12px;
+
+  /* --- Z scale --- */
+  --pf3-z-stage: 0; --pf3-z-toolbar: 50; --pf3-z-panel: 100;
+  --pf3-z-overlay: 200; --pf3-z-tooltip: 300;
+
+  /* --- Motion (spec §3.3) --- */
+  --pf3-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --pf3-ease-move: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --pf3-dur-control: 120ms; --pf3-dur-panel: 200ms; --pf3-dur-overlay: 320ms;
+
+  font-family: var(--pf3-font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--pf3-text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+.pf3-root[data-theme='light'] {
+  --pf3-bg-stage: #f4efe6;
+  --pf3-bg-stage-deep: #eae3d6;
+  --pf3-glass: rgba(255, 253, 248, 0.9);
+  --pf3-glass-border: rgba(60, 50, 40, 0.12);
+  --pf3-elevated: #fffdf8;
+  --pf3-hairline: rgba(60, 50, 40, 0.1);
+  --pf3-text-primary: #2c241c;
+  --pf3-text-secondary: #6b6156;
+  --pf3-text-muted: #97897b;
+  --pf3-gold: #8a6d4a;
+  --pf3-gold-deep: #75592d;
+  --pf3-on-gold: #fffdf8;
+}
+
+.pf3-root *, .pf3-root *::before, .pf3-root *::after { box-sizing: border-box; }
+
+.pf3-root button {
+  font-family: inherit; color: inherit;
+  background: none; border: none; padding: 0; cursor: pointer;
+}
+
+/* Focus ring — gold halo (spec §11) */
+.pf3-root [data-pf3-focusable]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pf3-glass), 0 0 0 4px var(--pf3-gold);
+}
+
+/* Typography utilities */
+.pf3-mono {
+  font-family: var(--pf3-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.pf3-section-voice {
+  font-family: var(--pf3-font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 15px;
+  color: var(--pf3-text-secondary);
+}
+.pf3-label {
+  font-size: 11px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--pf3-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf3-root { --pf3-dur-control: 0.01ms; --pf3-dur-panel: 0.01ms; --pf3-dur-overlay: 0.01ms; }
+  .pf3-root *, .pf3-root *::before, .pf3-root *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
