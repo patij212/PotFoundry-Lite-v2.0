@@ -50,7 +50,10 @@ export const ExportTab: React.FC = () => {
               onClick={() => setQualityPreset(f.key)}
               data-pf3-focusable=""
             >
-              <span className="pf3-fidelity__name">{f.name}</span>
+              <span className="pf3-fidelity__name">
+                {f.name}
+                {f.key === 'ultra' && <span className="pf3-prochip">PRO</span>}
+              </span>
               <span className="pf3-fidelity__purpose">{f.purpose}</span>
               <span className="pf3-mono pf3-fidelity__est">
                 ≈ {tris.toLocaleString('en-US')} · {formatBytes(bytes)}
@@ -81,9 +84,26 @@ export const ExportTab: React.FC = () => {
       </div>
 
       {!isPro && isAuthConfigured && tier.exportsRemaining !== null && (
-        <p className="pf3-label" style={{ textTransform: 'none', letterSpacing: 0, marginTop: 'var(--pf3-space-md)' }}>
-          {tier.exportsRemaining} of {tier.totalExports ?? 10} free exports left this month
-        </p>
+        <div className="pf3-quota-display">
+          <svg className="pf3-quota-arc" width="24" height="24" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.3" />
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke="var(--pf3-gold)"
+              strokeWidth="1.5"
+              strokeDasharray={`${(tier.exportsRemaining / (tier.totalExports ?? 10)) * (2 * Math.PI * 10)} ${2 * Math.PI * 10}`}
+              strokeDashoffset="0"
+              transform="rotate(-90 12 12)"
+              style={{ transition: 'stroke-dasharray var(--pf3-dur-control) var(--pf3-ease-move)' }}
+            />
+          </svg>
+          <p className="pf3-quota-text">
+            {tier.exportsRemaining} of {tier.totalExports ?? 10} free exports left this month
+          </p>
+        </div>
       )}
     </div>
   );

@@ -26,3 +26,14 @@
 .pf3-format { display: flex; gap: 2px; margin-top: var(--pf3-space-sm);
   background: rgba(245, 240, 232, 0.06); border-radius: var(--pf3-radius-md); padding: 2.5px; }
 .pf3-format .pf3-seg__item:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.pf3-prochip {
+  font: 600 8px var(--pf3-font-body); letter-spacing: 0.06em;
+  color: var(--pf3-on-gold); background: var(--pf3-gold-grad);
+  border-radius: 5px; padding: 1.5px 5px; margin-left: 6px; vertical-align: 1px;
+}
+
+.pf3-quota-display { display: flex; gap: 10px; align-items: center; margin-top: var(--pf3-space-md); }
+.pf3-quota-arc { width: 24px; height: 24px; flex-shrink: 0; }
+.pf3-quota-text { font: 400 11px var(--pf3-font-body); color: var(--pf3-text-muted);
+  margin: 0; text-transform: none; letter-spacing: 0; }
