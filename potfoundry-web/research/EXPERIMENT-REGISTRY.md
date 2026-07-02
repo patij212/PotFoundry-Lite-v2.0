@@ -2211,3 +2211,18 @@ metric). Commits 17b7659 (pre-reg), df67c68 (best-diag+faithful-ref), d9aa343 (l
 **VERDICT:** fold premise REFUTED; `recoveryRobust` LANDED as reviewed insurance (correct-by-construction, byte-identical-off, 0-cost on SFB@1, fixes the real multiset-drift bug). Does NOT move SFB@1 0.021→0.01 — that needs CROSSING-CHAIN COMPLETION (raise stallCap/maxFlipsPerEdge, pre-planarize the ladder so no chain exceeds 1–2 edges, or graded step), the real next lever. Verify `recoveryRobust` on Crystalline before relying there.
 
 **DIFF (reviewed + committed):** `constraintRecovery.ts` (+robust guards behind `if(robust)`; legacy line → `if(!robust && medges…)`), `inhouseMetricMesh.ts` (+`recoveryRobust`/`recoverySliverEps` opts, threaded). Probes `_kernelHarden{Red,Drift,Real,ByteId,Pristine,Sfb}.test.ts` + `_kernelHardenPristineCR.ts`. Scorecard `research/exchange/_kernelharden/SCORECARD.md`.
+
+---
+
+## E-2026-07-02-SFB-CHAIN (SFB@1 crossing-chain completion → 0.01mm — recovery-paradigm floor + structured-columns path)
+
+**Q:** close SFB@1's 0.021→0.01mm via crossing-chain completion (pre-planarize / structured ridge columns / raise recovery caps).
+
+**RESULTS (all raw-index + own-region trusted ruler):**
+- **Lever 3 (raise stallCap/maxFlipsPerEdge) CLEANLY REFUTED:** step0.03 failed=71 = [26 STALL, 0 maxFlips, **45 collinear-BLOCKED**]; chains max 7 / avg 1.5. Caps 4/64 → 64/1024 gave BYTE-IDENTICAL 71. **63% of recovery failures are a grid vertex lying ON the constraint segment** — uncloseable by ANY cap. The "long-chains-abandoned-by-caps" premise was WRONG (chains short; maxFlips never hit).
+- **Kernel-path floor CONFIRMED 0.0213mm:** step0.08 best own-trusted 0.0213 / 26 facets, serration 0.0079, **rawNonMan 0**. step0.03 REGRESSES to 0.035 (weldNonMan 72 but **rawNonMan 0** — weld artifact RE-confirmed) because the 45 collinear-blocked failures leave un-embedded ridge → interior residual. ⇒ the metric-Delaunay + point-injection + Lawson-recovery paradigm is **collinear-blocked + cap-invariant**; 0.021 is its floor.
+- **Lever 2 (STRUCTURED RIDGE COLUMNS) MECHANISM CONFIRMED:** ridge-as-a-mesh-column (no recovery) → **serration ≈2.4e-6 (ZERO by construction)**, rawNonMan 0, %<20 ~6-7%, own worst ~0.05mm (density-responsive) in a clean mid-band; residual localized at the SEAM wrap-gap, NOT tips/recovery. Full closed wall regressed = fragile birth-transition/seam LINKING builder (engineering gap, not a fidelity limit).
+
+**VERDICT: refuted the literal ≤0.01 this session; the PATH is structured ridge columns, not recovery.** The recovery/injection paradigm has a genuine sub-print 0.021 floor (collinear-blocked). Structured feature-columns (generalize ArtDeco sheared-φ) eliminate recovery entirely + give zero-serration-by-construction — the general mechanism the whole family needs. NEXT = a robust ridge-GRAPH builder (continuous chain identity through the 4 petal-births + seam-crossing always a column) + finer tip density → the plausible ≤0.01 path. Converges with the review roadmap's "generalize the ArtDeco engine" + "features-first CDT" bets.
+
+**DIFF (reviewed):** `inhouseMetricMesh.ts` +OPT-IN `recoveryHook` (byte-identical-off; no-op fingerprint idxHash 948740756 unchanged) + fixes the line-422 `rec`-scope ReferenceError (`profile:true`+constraints). `constraintRecovery.ts` UNTOUCHED (diagnostic used a copy). Probes `_sfbChain{Diag,Recovery,Measure,Columns,Baseband,Wall,Geom}.{ts,test.ts}`; scorecard `research/exchange/_sfbchain/SCORECARD.md`.

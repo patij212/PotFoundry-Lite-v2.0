@@ -108,8 +108,18 @@ export interface InhouseMeshOpts {
    *  A/B-REFUTED (it starves recovery: SFB@1 failed 86->2082, chord WORSE). Set >0 only to probe a specific
    *  sliver-attributed fold. Only used with recoveryRobust. */
   recoverySliverEps?: number;
+  /**
+   * OPT-IN recovery HOOK (E-2026-07-02-SFB-CHAIN, DEV/LAB only). When present AND constraintEdges is non-empty,
+   * this callback is invoked on the FINAL triangulation IN PLACE OF the internal recoverAndLockEdges — it
+   * receives the live (triangles, halfedges, uv, cverts) and MUST recover+lock the constraints in-place, then
+   * return the locked-edge Set (canonical key min*(nV+1)+max) plus recovery stats for the returned `constraint`.
+   * Lets the SFB-CHAIN diagnostic plug in a caps-configurable / failure-classifying recovery (constraintRecovery
+   * copy) WITHOUT editing the shared committed constraintRecovery.ts. STRICT NO-OP when absent: the internal
+   * recoverAndLockEdges runs exactly as before (byte-identical). Only meaningful with constraintEdges.
+   */
+  recoveryHook?: (triangles: Uint32Array, halfedges: Int32Array, uv: number[], cverts: number[]) => { locked: Set<number>; stats: ConstraintRecoveryStats };
 }
-export interface ConstraintRecoveryStats { requested: number; alreadyPresent: number; recovered: number; failed: number; flips: number; robustSliverRejects?: number; robustManifoldRejects?: number; }
+export interface ConstraintRecoveryStats { requested: number; alreadyPresent: number; recovered: number; failed: number; flips: number; robustSliverRejects?: number; robustManifoldRejects?: number; [k: string]: number | undefined; }
 export interface InhouseMesh { ut: number[]; indices: Uint32Array; points: number; rounds: number; hitBudget: boolean; constraint?: ConstraintRecoveryStats; }
 
 /**
@@ -391,17 +401,25 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
       if (a >= 0 && b >= 0 && a !== b) cverts.push(a, b);
     }
     z = now();
-    // OPT-IN robust recovery (E-2026-07-02-KERNEL-HARDEN): threads recoveryRobust/recoverySliverEps to the
-    // recovery flip guards. STRICT NO-OP when recoveryRobust is absent/false (robustOpts.robust is false →
-    // the extra sliver/manifold checks never run → byte-identical recovery).
-    const rec = recoverAndLockEdges(tris, heF, uv, cverts, 64, opts.guardRecoveryManifold === true,
-      opts.recoveryRobust === true ? { robust: true, sliverEps: opts.recoverySliverEps } : undefined);
+    if (opts.recoveryHook !== undefined) {
+      // OPT-IN recovery hook (E-2026-07-02-SFB-CHAIN): the caller's recovery runs IN PLACE OF the internal one
+      // (caps-configurable / failure-classifying diagnostic). It mutates tris/heF in place + returns locked+stats.
+      const hooked = opts.recoveryHook(tris, heF, uv, cverts);
+      isLocked = lockedPredicate(hooked.locked, uv.length / 2);
+      constraintStats = hooked.stats;
+    } else {
+      // OPT-IN robust recovery (E-2026-07-02-KERNEL-HARDEN): threads recoveryRobust/recoverySliverEps to the
+      // recovery flip guards. STRICT NO-OP when recoveryRobust is absent/false (robustOpts.robust is false →
+      // the extra sliver/manifold checks never run → byte-identical recovery).
+      const rec = recoverAndLockEdges(tris, heF, uv, cverts, 64, opts.guardRecoveryManifold === true,
+        opts.recoveryRobust === true ? { robust: true, sliverEps: opts.recoverySliverEps } : undefined);
+      isLocked = lockedPredicate(rec.locked, uv.length / 2);
+      constraintStats = { requested: cverts.length / 2, alreadyPresent: rec.alreadyPresent, recovered: rec.recovered, failed: rec.recoveryFailed, flips: rec.flips, robustSliverRejects: rec.robustSliverRejects, robustManifoldRejects: rec.robustManifoldRejects };
+    }
     tFlip += now() - z;
-    isLocked = lockedPredicate(rec.locked, uv.length / 2);
-    constraintStats = { requested: cverts.length / 2, alreadyPresent: rec.alreadyPresent, recovered: rec.recovered, failed: rec.recoveryFailed, flips: rec.flips, robustSliverRejects: rec.robustSliverRejects, robustManifoldRejects: rec.robustManifoldRejects };
     if (prof) {
       // eslint-disable-next-line no-console
-      console.log(`  [constraint] requested=${constraintStats.requested} present=${rec.alreadyPresent} recovered=${rec.recovered} failed=${rec.recoveryFailed} flips=${rec.flips}`);
+      console.log(`  [constraint] requested=${constraintStats?.requested} present=${constraintStats?.alreadyPresent} recovered=${constraintStats?.recovered} failed=${constraintStats?.failed} flips=${constraintStats?.flips}`);
     }
   }
 
