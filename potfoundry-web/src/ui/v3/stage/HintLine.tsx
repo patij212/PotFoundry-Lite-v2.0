@@ -1,0 +1,28 @@
+import React, { useEffect, useState } from 'react';
+import { GlassSurface } from '../primitives/GlassSurface';
+import './HintLine.css';
+
+const KEY = 'pf3-hint-dismissed';
+
+export const HintLine: React.FC = () => {
+  const [visible, setVisible] = useState<boolean>(() => {
+    try { return localStorage.getItem(KEY) !== '1'; } catch { return true; }
+  });
+
+  useEffect(() => {
+    if (!visible) return;
+    const dismiss = () => {
+      try { localStorage.setItem(KEY, '1'); } catch { /* private mode */ }
+      setVisible(false);
+    };
+    window.addEventListener('pointerdown', dismiss, { once: true });
+    return () => window.removeEventListener('pointerdown', dismiss);
+  }, [visible]);
+
+  if (!visible) return null;
+  return (
+    <GlassSurface className="pf3-hint">
+      <span className="pf3-hint__text">Drag to orbit · pick a starting point on the left</span>
+    </GlassSurface>
+  );
+};

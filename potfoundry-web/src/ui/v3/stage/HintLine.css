@@ -1,0 +1,11 @@
+.pf3-hint {
+  position: absolute; bottom: var(--pf3-space-lg); left: 58%;
+  transform: translateX(-50%);
+  padding: 6px 14px; border-radius: var(--pf3-radius-pill);
+  z-index: var(--pf3-z-toolbar);
+  pointer-events: none;
+}
+.pf3-hint__text {
+  font: italic 400 12px var(--pf3-font-display);
+  color: var(--pf3-text-secondary);
+}
