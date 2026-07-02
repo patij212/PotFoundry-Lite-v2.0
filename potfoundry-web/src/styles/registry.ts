@@ -1,4 +1,4 @@
-import { StyleSchema } from '../state/types';
+import { StyleSchema, StyleCategory } from '../state/types';
 import { StyleId } from '../geometry/types';
 
 /**
@@ -11,7 +11,20 @@ import { StyleId } from '../geometry/types';
 export interface StyleConfig extends StyleSchema {
     id: number;
     shaderName: string;
+    category: StyleCategory;
+    tags: string[];
 }
+
+/**
+ * Categories for showroom filtering: all categories plus the 'all' filter.
+ */
+export const STYLE_CATEGORIES: ReadonlyArray<{ key: StyleCategory | 'all'; label: string }> = [
+    { key: 'all', label: 'All' },
+    { key: 'organic', label: 'Organic' },
+    { key: 'geometric', label: 'Geometric' },
+    { key: 'woven', label: 'Woven' },
+    { key: 'architectural', label: 'Architectural' },
+];
 
 /**
  * Registry of all available styles.
@@ -21,6 +34,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     SuperformulaBlossom: {
         id: 0,
         shaderName: 'sf_radius',
+        category: 'organic',
+        tags: ['petals', 'flower', 'sculptural'],
         name: 'Superformula Blossom',
         description: 'Petals via Gielis superformula; sharpen toward rim.',
         params: {
@@ -44,6 +59,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     FourierBloom: {
         id: 1,
         shaderName: 'fourier_radius',
+        category: 'organic',
+        tags: ['waves', 'bloom', 'smooth'],
         name: 'Fourier Bloom',
         description: 'Floral ridges from Fourier series; twist offset for helix.',
         params: {
@@ -71,6 +88,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     SpiralRidges: {
         id: 2,
         shaderName: 'spiral_radius',
+        category: 'geometric',
+        tags: ['spiral', 'ridges', 'helix'],
         name: 'Spiral Ridges',
         description: 'Helical ridges spiraling around the pot.',
         params: {
@@ -90,6 +109,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     SuperellipseMorph: {
         id: 3,
         shaderName: 'superellipse_radius',
+        category: 'geometric',
+        tags: ['squircle', 'morph', 'minimal'],
         name: 'Superellipse Morph',
         description: 'Circle → rounded square → soft diamond vs height.',
         params: {
@@ -108,6 +129,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     HarmonicRipple: {
         id: 4,
         shaderName: 'harmonic_radius',
+        category: 'organic',
+        tags: ['ripple', 'petals', 'classic'],
         name: 'Harmonic Ripple',
         description: 'Petals + ripples + gentle mid-height bell.',
         params: {
@@ -128,6 +151,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     LowPolyFacet: {
         id: 19,
         shaderName: 'low_poly_facet_radius',
+        category: 'geometric',
+        tags: ['facets', 'lowpoly', 'crystal'],
         name: 'Low Poly Facet',
         description: 'Piecewise-flat facets for low-poly aesthetic.',
         params: {
@@ -145,6 +170,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     GothicArches: {
         id: 5,
         shaderName: 'gothic_arches_radius',
+        category: 'architectural',
+        tags: ['arches', 'gothic', 'tracery'],
         name: 'Gothic Arches',
         description: 'Interlaced pointed arch patterns with tracery.',
         params: {
@@ -168,6 +195,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     WaveInterference: {
         id: 6,
         shaderName: 'wave_interference_radius',
+        category: 'organic',
+        tags: ['waves', 'interference', 'water'],
         name: 'Wave Interference',
         description: 'Complex moiré-like patterns with domain warping.',
         params: {
@@ -191,6 +220,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     Crystalline: {
         id: 7,
         shaderName: 'crystalline_radius',
+        category: 'geometric',
+        tags: ['crystal', 'sharp', 'mineral'],
         name: 'Crystalline',
         description: 'Faceted crystal surfaces with geometric complexity.',
         params: {
@@ -208,6 +239,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     ArtDeco: {
         id: 8,
         shaderName: 'art_deco_radius',
+        category: 'architectural',
+        tags: ['deco', 'stepped', 'vintage'],
         name: 'Art Deco',
         description: '1920s geometric styling with sunbursts and chevrons.',
         params: {
@@ -226,6 +259,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     DragonScales: {
         id: 9,
         shaderName: 'dragon_scales_radius',
+        category: 'woven',
+        tags: ['scales', 'overlap', 'reptile'],
         name: 'Dragon Scales',
         description: 'Overlapping scale patterns like dragon or fish scales.',
         params: {
@@ -244,6 +279,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     BambooSegments: {
         id: 10,
         shaderName: 'bamboo_segments_radius',
+        category: 'organic',
+        tags: ['bamboo', 'segments', 'natural'],
         name: 'Bamboo Segments',
         description: 'Bamboo-inspired node segments with fine striations.',
         params: {
@@ -262,6 +299,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     RippleInterference: {
         id: 11,
         shaderName: 'ripple_interference_radius',
+        category: 'organic',
+        tags: ['ripple', 'rings', 'water'],
         name: 'Ripple Interference',
         description: 'Physics-based wave interference pattern from multiple sources.',
         params: {
@@ -281,6 +320,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     GyroidManifold: {
         id: 12,
         shaderName: 'style_gyroid_manifold',
+        category: 'geometric',
+        tags: ['gyroid', 'lattice', 'math'],
         name: 'Gyroid Manifold',
         description: 'Intricate porous lattice based on Triply Periodic Minimal Surfaces.',
         params: {
@@ -302,6 +343,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     Voronoi: {
         id: 13,
         shaderName: 'style_voronoi',
+        category: 'geometric',
+        tags: ['cells', 'voronoi', 'organic-math'],
         name: 'Voronoi',
         description: 'Organic cellular patterns based on periodic Voronoi/Worley noise.',
         params: {
@@ -321,6 +364,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     BasketWeave: {
         id: 14,
         shaderName: 'style_basket_weave',
+        category: 'woven',
+        tags: ['weave', 'basket', 'strands'],
         name: 'Basket Weave',
         description: 'Interwoven vertical and horizontal strands with customizable profile and density.',
         params: {
@@ -342,6 +387,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     GeometricStar: {
         id: 15,
         shaderName: 'style_geometric_star',
+        category: 'geometric',
+        tags: ['star', 'interlaced', 'geometric'],
         name: 'Geometric Star',
         description: 'Complex geometric star pattern with interlaced strapwork.',
         params: {
@@ -362,6 +409,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     HexagonalHive: {
         id: 16,
         shaderName: 'style_hexagonal_hive',
+        category: 'geometric',
+        tags: ['hex', 'honeycomb', 'tiling'],
         name: 'Hexagonal Hive',
         description: 'Tech-inspired hexagonal grid with volumetric control.',
         params: {
@@ -379,6 +428,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     CelticKnot: {
         id: 17,
         shaderName: 'style_celtic_knot',
+        category: 'woven',
+        tags: ['knot', 'celtic', 'braid'],
         name: 'Celtic Knot',
         description: 'Interlacing bands forming continuous knot patterns.',
         params: {
@@ -397,6 +448,8 @@ export const STYLE_REGISTRY: Record<string, StyleConfig> = {
     CelticTriquetra: {
         id: 18,
         shaderName: 'style_celtic_triquetra',
+        category: 'woven',
+        tags: ['triquetra', 'celtic', 'medallion'],
         name: 'Celtic Triquetra',
         description: 'Authentic Celtic knotwork with continuous braided strands and woven medallions.',
         params: {

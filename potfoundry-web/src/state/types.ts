@@ -82,6 +82,11 @@ export const GEOMETRY_BOUNDS = {
 // ============================================================================
 
 /**
+ * Style category for filtering and organization in the showroom.
+ */
+export type StyleCategory = 'organic' | 'geometric' | 'woven' | 'architectural';
+
+/**
  * Schema definition for a single style parameter.
  * Used to generate UI controls dynamically.
  */
@@ -105,6 +110,10 @@ export interface StyleSchema {
   params: Record<string, ParamSchema>;
   /** Optional advanced parameters shown in collapsible section */
   advancedParams?: Record<string, ParamSchema>;
+  /** Category for showroom filtering */
+  category?: StyleCategory;
+  /** Tags for showroom search and discovery */
+  tags?: string[];
 }
 
 /**
@@ -139,7 +148,12 @@ export type StyleName =
   | 'BambooSegments'
   | 'RippleInterference'
   | 'GyroidManifold'
-  | 'Voronoi';
+  | 'Voronoi'
+  | 'BasketWeave'
+  | 'GeometricStar'
+  | 'HexagonalHive'
+  | 'CelticKnot'
+  | 'CelticTriquetra';
 
 /** Default style - uses STYLE_SCHEMAS parameter names */
 export const DEFAULT_STYLE: StyleState = {
