@@ -1,0 +1,137 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  .xm { background: #14100d; border: 1px solid rgba(245,240,232,0.1); border-radius: 12px; padding: 14px; }
+  .xm * { box-sizing: border-box; }
+  .qcard { display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(245,240,232,0.09); border-radius: 9px; padding: 8px 10px; margin-bottom: 6px; }
+  .qcard.sel { border: 1.5px solid #cfa967; background: rgba(180,151,90,0.08); }
+  .qcard .qn { font: 500 11px 'Inter', sans-serif; color: #e8e2d6; }
+  .qcard .qd { font: 400 8.5px 'IBM Plex Mono', monospace; color: #8a8378; margin-top: 2px; }
+  .qcard .qv { font: 500 9px 'IBM Plex Mono', monospace; color: #cfa967; text-align: right; }
+  .seg { display: flex; background: rgba(245,240,232,0.06); border-radius: 8px; padding: 2px; margin: 10px 0; }
+  .seg div { flex: 1; text-align: center; font: 500 10px 'Inter', sans-serif; color: #bdb5a8; padding: 4px 0; }
+  .seg .on { background: linear-gradient(180deg,#cfa967,#b4975a); color: #17120e; border-radius: 6px; font-weight: 600; }
+  .lbl5 { font: 500 8.5px 'Inter', sans-serif; letter-spacing: 0.09em; text-transform: uppercase; color: rgba(245,240,232,0.42); }
+</style>
+
+<h2>Sections 3 & 4 — the Kiln (export) and the mobile companion</h2>
+<p class="subtitle">Left: the Export tab and its firing ceremony. Right: the phone layout rebuilt. Both follow every rule established so far.</p>
+
+<div class="split">
+
+  <!-- ============ EXPORT ============ -->
+  <div class="mockup">
+    <div class="mockup-header">Export tab + the firing moment</div>
+    <div class="mockup-body" style="padding:10px; background:#0e0b09;">
+      <div class="xm">
+        <div style="font: italic 13px 'Fraunces', serif; color:#d8cfc0; margin-bottom:8px;">Fidelity</div>
+        <div class="qcard"><div><div class="qn">Draft</div><div class="qd">fast checks</div></div><div class="qv">≈ 25k tris · 0.5 MB</div></div>
+        <div class="qcard sel"><div><div class="qn">High <span style="color:#cfa967;">●</span></div><div class="qd">print-ready · 0.20 mm detail</div></div><div class="qv">≈ 214k tris · 4.1 MB</div></div>
+        <div class="qcard"><div><div class="qn">Ultra</div><div class="qd">exhibition · 0.05 mm</div></div><div class="qv">≈ 1.2M tris · 23 MB</div></div>
+
+        <div class="lbl5" style="margin-top:10px;">Format</div>
+        <div class="seg"><div class="on">STL</div><div>3MF</div><div>OBJ</div></div>
+
+        <div style="display:flex; align-items:center; gap:6px; margin: 8px 0;">
+          <div style="flex:1; height:1px; background:rgba(245,240,232,0.08);"></div>
+          <span class="lbl5" style="color:#b4975a;">⌄ advanced — mesher, resolution</span>
+          <div style="flex:1; height:1px; background:rgba(245,240,232,0.08);"></div>
+        </div>
+
+        <!-- quota arc -->
+        <div style="display:flex; align-items:center; gap:8px; margin: 10px 0;">
+          <svg width="26" height="26" viewBox="0 0 26 26">
+            <circle cx="13" cy="13" r="10" fill="none" stroke="rgba(245,240,232,0.1)" stroke-width="2.5"/>
+            <circle cx="13" cy="13" r="10" fill="none" stroke="#cfa967" stroke-width="2.5" stroke-dasharray="44 63" stroke-linecap="round" transform="rotate(-90 13 13)"/>
+            <text x="13" y="16" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#e8e2d6">7</text>
+          </svg>
+          <span style="font:400 9.5px 'Inter',sans-serif; color:#a8a29e;">7 of 10 free exports left this month · <span style="color:#cfa967;">Pro is unlimited →</span></span>
+        </div>
+
+        <div style="height:30px; border-radius:9px; background:linear-gradient(180deg,#cfa967,#b4975a); text-align:center; font:600 11px/30px 'Inter',sans-serif; color:#17120e;">Export STL</div>
+      </div>
+
+      <!-- firing dialog -->
+      <div class="xm" style="margin-top:12px; text-align:center; padding: 18px 14px;">
+        <svg width="54" height="54" viewBox="0 0 54 54" style="margin-bottom:6px;">
+          <circle cx="27" cy="27" r="24" fill="none" stroke="rgba(245,240,232,0.08)" stroke-width="2"/>
+          <circle cx="27" cy="27" r="24" fill="none" stroke="#cfa967" stroke-width="2" stroke-dasharray="94 151" stroke-linecap="round" transform="rotate(-90 27 27)"/>
+          <path d="M18 16 L21 38 Q21 41 25 41 L29 41 Q33 41 33 38 L36 16 Q27 19 18 16 Z" fill="#b07a4f"/>
+        </svg>
+        <div style="font: italic 12px 'Fraunces', serif; color:#f5f0e8;">Firing · shaping the mesh</div>
+        <div style="font: 400 8.5px 'IBM Plex Mono', monospace; color:#8a8378; margin-top:4px;">stage 1 of 3 — 214,412 triangles · then: verify watertight → write file</div>
+        <div style="font: 500 9px 'Inter', sans-serif; color:#a8a29e; margin-top:8px;">the pot glyph warms from raw clay to terracotta as it fires</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MOBILE ============ -->
+  <div class="mockup">
+    <div class="mockup-header">Mobile companion — 390 × 844</div>
+    <div class="mockup-body" style="padding:10px; display:flex; justify-content:center; background:#0e0b09;">
+      <div style="width:230px; aspect-ratio: 390/844; background: radial-gradient(ellipse 100% 55% at 50% 32%, #241d16 0%, #171310 60%, #0e0b09 100%); border-radius: 22px; border: 1px solid rgba(245,240,232,0.12); position: relative; overflow: hidden;">
+        <!-- slim top bar -->
+        <div style="position:absolute; top:8px; left:10px; right:10px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="background:rgba(24,20,16,0.88); border:1px solid rgba(245,240,232,0.09); border-radius:9px; padding:3px 7px;">
+            <span style="display:inline-block; width:10px; height:9px; border-radius:3px; background:rgba(245,240,232,0.12); margin-right:2px;"></span>
+            <span style="display:inline-block; width:10px; height:9px; border-radius:3px; background:rgba(245,240,232,0.12);"></span>
+          </div>
+          <div style="background:rgba(24,20,16,0.88); border:1px solid rgba(245,240,232,0.09); border-radius:10px; padding:3px 8px;">
+            <div style="width:9px; height:9px; border-radius:50%; background:#b4975a; display:inline-block;"></div>
+          </div>
+        </div>
+        <!-- pot -->
+        <svg style="position:absolute; left:50%; top:26%; transform:translate(-50%,-50%);" width="110" height="98" viewBox="0 0 150 130">
+          <defs><linearGradient id="g5" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7d6142"/><stop offset="0.4" stop-color="#e0c193"/><stop offset="0.55" stop-color="#c8a878"/><stop offset="1" stop-color="#7d6142"/></linearGradient></defs>
+          <path d="M22 12 Q16 9 19 16 L31 113 Q33 121 42 121 L108 121 Q117 121 119 113 L131 16 Q134 9 128 12 Q75 30 22 12 Z" fill="url(#g5)"/>
+        </svg>
+        <div style="position:absolute; left:50%; top:37%; width:120px; height:20px; transform:translateX(-50%); background:radial-gradient(ellipse at center, rgba(0,0,0,0.5), transparent 70%); border-radius:50%;"></div>
+
+        <!-- bottom sheet at half -->
+        <div style="position:absolute; left:0; right:0; bottom:0; height:47%; background:rgba(26,21,17,0.96); border:1px solid rgba(245,240,232,0.1); border-bottom:none; border-radius:16px 16px 0 0; padding:6px 10px;">
+          <div style="width:32px; height:4px; border-radius:2px; background:rgba(245,240,232,0.2); margin:2px auto 8px;"></div>
+          <div class="seg" style="margin:0 0 8px;"><div class="on">Shape</div><div>Style</div><div>Export</div></div>
+          <!-- compressed blueprint strip -->
+          <div style="height:38px; border:1px dashed rgba(180,151,90,0.25); border-radius:6px; background:rgba(0,0,0,0.2); margin-bottom:8px; display:flex; align-items:center; justify-content:center;">
+            <svg width="90" height="30" viewBox="0 0 200 70">
+              <line x1="100" y1="4" x2="100" y2="66" stroke="rgba(180,151,90,0.25)" stroke-dasharray="3 4" stroke-width="1"/>
+              <path d="M62 8 Q56 6 58 13 L68 56 Q70 62 80 62 L100 62" fill="none" stroke="#cfa967" stroke-width="2"/>
+              <path d="M138 8 Q144 6 142 13 L132 56 Q130 62 120 62 L100 62" fill="none" stroke="#cfa967" stroke-width="2"/>
+            </svg>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <span style="font:500 9px 'Inter',sans-serif; color:#e8e2d6;">Height</span>
+            <span style="font:500 8.5px 'IBM Plex Mono',monospace; color:#cfa967;">120 mm</span>
+          </div>
+          <div style="position:relative; height:3px; border-radius:2px; background:rgba(245,240,232,0.12); margin:5px 0 10px;"><div style="position:absolute; left:42%; top:-5px; width:13px; height:13px; border-radius:50%; background:#cfa967; border:2px solid #17120e;"></div></div>
+          <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <span style="font:500 9px 'Inter',sans-serif; color:#e8e2d6;">Top diameter</span>
+            <span style="font:500 8.5px 'IBM Plex Mono',monospace; color:#cfa967;">140 mm</span>
+          </div>
+          <div style="position:relative; height:3px; border-radius:2px; background:rgba(245,240,232,0.12); margin:5px 0;"><div style="position:absolute; left:58%; top:-5px; width:13px; height:13px; border-radius:50%; background:#cfa967; border:2px solid #17120e;"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top:18px;">The rules encoded above</h3>
+<div class="section" style="font-size:13.5px; line-height:1.65;">
+  <ul style="padding-left:20px;">
+    <li><strong>Fidelity, not "quality"</strong> — tiers named by what they're for (fast checks / print-ready / exhibition) with honest numbers: triangles, file size, detail in mm. Draft/Standard/High/Ultra jargon collapses to three choices (Standard merges into High).</li>
+    <li><strong>The firing ceremony</strong> — export progress uses the pipeline's real stages (mesh → verify watertight → write); the pot glyph warms raw-clay → terracotta. Errors name the stage that failed and what to do.</li>
+    <li><strong>Dignified gating</strong> — the free quota is a quiet gold arc, always visible, never a surprise. Hitting the limit swaps the CTA for "Continue with Pro" + one-line why. No slap-modals mid-flow.</li>
+    <li><strong>Mobile: sheet with three stops</strong> (peek / half / full) — grabber handle, drag via transform (no React re-render per frame — fixes critique C3/C4), no overshoot spring. Peek keeps style name + tri count + Export button reachable. Toolbar collapses to two pills; gizmo hidden; 44px targets; safe-area insets.</li>
+    <li><strong>The Blueprint compresses, never disappears</strong> — on mobile it becomes a slim strip above the sliders.</li>
+  </ul>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="xm-approve" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>Both sections approved</h3><p>Export/Kiln + mobile companion as shown.</p></div>
+  </div>
+  <div class="option" data-choice="xm-changes" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>Changes needed</h3><p>Tell me in the terminal what to adjust.</p></div>
+  </div>
+</div>

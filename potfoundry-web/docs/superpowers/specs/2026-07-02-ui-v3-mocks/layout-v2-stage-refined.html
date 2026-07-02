@@ -1,0 +1,162 @@
+<h2>The Stage, refined</h2>
+<p class="subtitle">Eight improvements pinned on the layout — each fixes a specific weakness of the current UI. Click the ones below that matter to you (or tell me "all eight"). Numbers on the mockup match the list.</p>
+
+<style>
+  .stage { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden;
+           background: radial-gradient(ellipse 90% 70% at 62% 42%, #2a231c 0%, #1a1512 55%, #100d0b 100%); }
+  .stage * { box-sizing: border-box; }
+  .stage .shadow { position: absolute; left: 62%; top: 76%; width: 300px; height: 44px; transform: translateX(-50%);
+                   background: radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, transparent 70%); border-radius: 50%; }
+  .glass { background: rgba(24, 20, 16, 0.88); border: 1px solid rgba(245,240,232,0.09); border-radius: 12px;
+           box-shadow: 0 12px 40px rgba(0,0,0,0.45); backdrop-filter: blur(6px); }
+  .serif { font-family: Georgia, 'Times New Roman', serif; color: #f5f0e8; }
+  .mono { font-family: 'Consolas', monospace; color: #cfc8bd; }
+  .lbl2 { font-family: Inter, sans-serif; font-size: 8.5px; letter-spacing: 0.09em; text-transform: uppercase; color: rgba(245,240,232,0.42); }
+  .sld { position: relative; height: 3px; border-radius: 2px; background: rgba(245,240,232,0.12); margin: 4px 0 10px; }
+  .sld i { position: absolute; top: -4px; width: 11px; height: 11px; border-radius: 50%; background: #cfa967; border: 2px solid #17120e; }
+  .srow { display: flex; justify-content: space-between; align-items: baseline; margin-top: 7px; }
+  .srow .nm { font-family: Inter, sans-serif; font-size: 9.5px; color: #e8e2d6; }
+  .srow .vl { font-family: Consolas, monospace; font-size: 9px; color: #b4975a; }
+  .pin { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #b4975a; color: #17120e;
+         font: 700 11px/18px Inter, sans-serif; text-align: center; box-shadow: 0 0 0 3px rgba(180,151,90,0.25); z-index: 5; }
+  .tbtn { display: inline-block; width: 16px; height: 14px; border-radius: 4px; background: rgba(245,240,232,0.1); margin: 0 1.5px; }
+  .potsvg { position: absolute; left: 62%; top: 46%; transform: translate(-50%, -50%); }
+  .minipot { width: 34px; height: 40px; border-radius: 6px; background: rgba(245,240,232,0.05); border: 1px solid rgba(245,240,232,0.08);
+             display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
+</style>
+
+<div class="mockup">
+  <div class="mockup-header">Refined Stage — desktop 1440×900</div>
+  <div class="mockup-body" style="padding:0;">
+    <div class="stage">
+      <div class="shadow"></div>
+      <svg class="potsvg" width="240" height="210" viewBox="0 0 150 130">
+        <defs>
+          <linearGradient id="g2" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#7d6142"/><stop offset="0.35" stop-color="#e0c193"/>
+            <stop offset="0.5" stop-color="#c8a878"/><stop offset="0.65" stop-color="#e0c193"/><stop offset="1" stop-color="#7d6142"/>
+          </linearGradient>
+        </defs>
+        <path d="M22 12 Q16 9 19 16 L31 113 Q33 121 42 121 L108 121 Q117 121 119 113 L131 16 Q134 9 128 12 Q75 30 22 12 Z" fill="url(#g2)"/>
+        <ellipse cx="75" cy="14" rx="53" ry="7" fill="#4a3a28" opacity="0.9"/>
+      </svg>
+
+      <!-- ① toolbar: grouped pills -->
+      <div style="position:absolute; top:14px; left:58%; transform:translateX(-50%); display:flex; gap:10px; align-items:center;">
+        <div class="glass" style="padding:4px 8px; border-radius:9px;"><span class="tbtn"></span><span class="tbtn"></span></div>
+        <div class="glass" style="padding:4px 8px; border-radius:9px;"><span class="tbtn"></span><span class="tbtn"></span><span class="tbtn"></span><span class="tbtn"></span></div>
+        <div class="glass" style="padding:4px 8px; border-radius:9px;"><span class="tbtn"></span><span class="tbtn"></span></div>
+      </div>
+      <div class="pin" style="top:10px; left:44%;">1</div>
+
+      <!-- account chip -->
+      <div class="glass" style="position:absolute; top:14px; right:14px; padding:4px 10px; border-radius:12px; display:flex; gap:6px; align-items:center;">
+        <div style="width:12px; height:12px; border-radius:50%; background:#b4975a;"></div>
+        <span class="lbl2" style="color:#e8e2d6;">pro</span>
+      </div>
+
+      <!-- ② the panel -->
+      <div class="glass" style="position:absolute; left:16px; top:16px; bottom:16px; width:27.5%; padding:12px 12px 0; display:flex; flex-direction:column;">
+        <div class="serif" style="font-size:15px; margin-bottom:8px;">PotFoundry</div>
+
+        <!-- segmented tabs -->
+        <div style="display:flex; background:rgba(245,240,232,0.05); border-radius:8px; padding:2px; margin-bottom:10px;">
+          <div style="flex:1; text-align:center; font:600 9px Inter,sans-serif; color:#17120e; background:#cfa967; border-radius:6px; padding:4px 0;">Shape</div>
+          <div style="flex:1; text-align:center; font:500 9px Inter,sans-serif; color:#bdb5a8; padding:4px 0;">Style</div>
+          <div style="flex:1; text-align:center; font:500 9px Inter,sans-serif; color:#bdb5a8; padding:4px 0;">Export</div>
+        </div>
+
+        <!-- ④ preset shelf -->
+        <div class="lbl2" style="margin-bottom:5px;">Start from</div>
+        <div style="display:flex; gap:6px; margin-bottom:12px;">
+          <div class="minipot"><svg width="22" height="30" viewBox="0 0 30 40"><path d="M6 3 L9 35 Q9 38 13 38 L17 38 Q21 38 21 35 L24 3 Q15 7 6 3Z" fill="#c8a878"/></svg></div>
+          <div class="minipot"><svg width="22" height="30" viewBox="0 0 30 40"><path d="M4 8 Q15 0 26 8 L22 35 Q21 38 15 38 Q9 38 8 35 Z" fill="#a88860"/></svg></div>
+          <div class="minipot"><svg width="22" height="30" viewBox="0 0 30 40"><path d="M8 2 L7 36 Q7 38 15 38 Q23 38 23 36 L22 2 Q15 5 8 2Z" fill="#d9b98c"/></svg></div>
+          <div class="minipot" style="align-items:center;"><span style="color:#7a756f; font-size:12px;">+</span></div>
+        </div>
+        <div class="pin" style="top:97px; left:calc(27.5% - 4px);">4</div>
+
+        <!-- SIZE section -->
+        <div class="lbl2 serif" style="font-family:Georgia,serif; font-style:italic; font-size:11px; text-transform:none; letter-spacing:0.02em; color:#d8cfc0;">Size</div>
+        <div class="srow"><span class="nm">Height</span><span class="vl">120 mm</span></div>
+        <div class="sld"><i style="left:42%;"></i></div>
+        <div class="srow"><span class="nm">Top diameter</span><span class="vl">140 mm</span></div>
+        <div class="sld"><i style="left:58%;"></i></div>
+        <div class="srow"><span class="nm">Bottom diameter</span><span class="vl">90 mm</span></div>
+        <div class="sld"><i style="left:31%;"></i></div>
+        <div class="pin" style="top:46%; left:calc(27.5% - 4px);">2</div>
+
+        <!-- ③ advanced disclosure -->
+        <div style="display:flex; align-items:center; gap:6px; margin:10px 0 6px;">
+          <div style="flex:1; height:1px; background:rgba(245,240,232,0.08);"></div>
+          <span class="lbl2" style="color:#b4975a;">⌄ advanced — wall, drain, bell, spin</span>
+          <div style="flex:1; height:1px; background:rgba(245,240,232,0.08);"></div>
+        </div>
+        <div class="pin" style="top:63%; left:calc(27.5% - 4px);">3</div>
+
+        <div style="flex:1;"></div>
+
+        <!-- ⑥ sticky export footer -->
+        <div style="margin:0 -12px; padding:10px 12px; border-top:1px solid rgba(245,240,232,0.08); background:rgba(20,16,13,0.6);">
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span class="lbl2">quality · high</span><span class="mono" style="font-size:8.5px;">≈ 214k tris · 4.1 MB</span>
+          </div>
+          <div style="height:24px; border-radius:8px; background:linear-gradient(180deg,#cfa967,#b4975a); text-align:center; font:600 10px/24px Inter,sans-serif; color:#17120e;">Export STL</div>
+        </div>
+        <div class="pin" style="bottom:34px; left:calc(27.5% - 4px);">6</div>
+      </div>
+
+      <!-- ⑤ scene pin -->
+      <div class="pin" style="top:30%; right:12%;">5</div>
+
+      <!-- ⑦ status + gizmo -->
+      <div class="mono" style="position:absolute; bottom:12px; left:calc(27.5% + 28px); font-size:8.5px; color:rgba(245,240,232,0.4);">24,412 triangles · 0.20 mm detail · WebGPU</div>
+      <div class="glass" style="position:absolute; bottom:12px; right:12px; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+        <span class="mono" style="font-size:7px; color:#8a8378;">xyz</span>
+      </div>
+      <div class="pin" style="bottom:8px; right:52px;">7</div>
+
+      <!-- ⑧ first-run hint -->
+      <div class="glass" style="position:absolute; bottom:14px; left:58%; transform:translateX(-50%); padding:5px 12px; border-radius:14px;">
+        <span style="font:400 9px Georgia,serif; font-style:italic; color:#d8cfc0;">Drag to orbit · pick a starting point on the left</span>
+      </div>
+      <div class="pin" style="bottom:40px; left:52%;">8</div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top:24px;">The eight improvements</h3>
+<div class="options" data-multiselect>
+  <div class="option" data-choice="1-toolbar" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content"><h3>Grouped pill toolbar</h3><p>History · View · Scene as three separate pills with hover labels — replaces the current strip of ~15 identical icons that overlaps the gizmo on mobile.</p></div>
+  </div>
+  <div class="option" data-choice="2-panel-voice" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content"><h3>Panel with a voice</h3><p>Serif italic section headings ("Size", "Profile"), essentials first, values in gold mono aligned right. Labels never truncate — the panel is one coherent instrument, not stacked widgets.</p></div>
+  </div>
+  <div class="option" data-choice="3-advanced" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content"><h3>Inline advanced disclosure</h3><p>Each section ends in a hairline "advanced" seam that names what's inside (wall, drain, bell, spin). Expands in place, remembers its state. Newcomers never meet the deep end uninvited.</p></div>
+  </div>
+  <div class="option" data-choice="4-presets" onclick="toggleSelect(this)">
+    <div class="letter">4</div>
+    <div class="content"><h3>Real preset thumbnails</h3><p>"Start from" shelf with actual GPU-rendered pot previews — the thumbnail render pipeline already exists in the codebase (universal WGSL shader). Kills the "Preview unavailable" placeholders.</p></div>
+  </div>
+  <div class="option" data-choice="5-scene" onclick="toggleSelect(this)">
+    <div class="letter">5</div>
+    <div class="content"><h3>The scene is part of the design</h3><p>Warm studio backdrop with a soft pedestal shadow replaces the navy blueprint grid that currently fights the gold UI. The pot always looks like it's being exhibited, not debugged.</p></div>
+  </div>
+  <div class="option" data-choice="6-export-footer" onclick="toggleSelect(this)">
+    <div class="letter">6</div>
+    <div class="content"><h3>Sticky export footer</h3><p>Quality tier, live triangle/file estimate, and one gold CTA always visible at the panel's foot — export is the product's promise, it never scrolls away or gets cut off.</p></div>
+  </div>
+  <div class="option" data-choice="7-status" onclick="toggleSelect(this)">
+    <div class="letter">7</div>
+    <div class="content"><h3>Humane status, tucked gizmo</h3><p>"24,412 triangles · 0.20 mm detail · WebGPU" in quiet mono instead of cryptic △0 ⬡0 glyphs. Axis gizmo lives bottom-right, out of the toolbar's territory.</p></div>
+  </div>
+  <div class="option" data-choice="8-firstrun" onclick="toggleSelect(this)">
+    <div class="letter">8</div>
+    <div class="content"><h3>Whispered onboarding</h3><p>A single italic hint line on the stage replaces the white welcome card. First-run glow on the preset shelf. Zen mode (Z) fades everything to just the pot.</p></div>
+  </div>
+</div>

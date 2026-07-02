@@ -1,0 +1,116 @@
+<h2>Style system for 100+ styles — the two-surface hybrid</h2>
+<p class="subtitle">The panel holds your <em>working set</em> (small, personal, instant). The showroom is the <em>library</em> (searchable, categorized, infinite). You tune in the panel; you go shopping in the showroom.</p>
+
+<style>
+  .sb2 { position: relative; width: 100%; aspect-ratio: 16/10; background: #16120e; border-radius: 8px; overflow: hidden; }
+  .sb2 * { box-sizing: border-box; }
+  .thumb2 { border-radius: 8px; background: linear-gradient(160deg, #2a2119, #1d1712); border: 1px solid rgba(245,240,232,0.08);
+            display: flex; align-items: center; justify-content: center; position: relative; }
+  .thumb2.sel { border: 1.5px solid #cfa967; box-shadow: 0 0 12px rgba(207,169,103,0.25); }
+  .thumb2 .nm2 { position: absolute; bottom: 4px; left: 6px; font: 500 7px Inter, sans-serif; color: #d8cfc0; }
+  .thumb2 .heart { position: absolute; top: 3px; right: 5px; font-size: 7px; color: #cfa967; }
+  .tpot2 { width: 55%; height: 62%; background: linear-gradient(90deg, #7d6142, #e0c193 40%, #c8a878 55%, #7d6142); }
+  .lbl4 { font: 500 8px Inter, sans-serif; letter-spacing: 0.09em; text-transform: uppercase; color: rgba(245,240,232,0.42); }
+  .knb2 { position: relative; height: 3px; border-radius: 2px; background: rgba(245,240,232,0.12); margin: 8px 0; }
+  .knb2::after { content: ''; position: absolute; left: 45%; top: -3.5px; width: 10px; height: 10px; border-radius: 50%; background: #cfa967; }
+  .srch { height: 16px; border-radius: 8px; background: rgba(245,240,232,0.07); border: 1px solid rgba(245,240,232,0.1);
+          font: 400 7.5px Inter,sans-serif; color: #8a8378; padding: 0 8px; line-height: 16px; }
+  .cat { font: 500 7.5px Inter, sans-serif; color: #bdb5a8; padding: 3px 8px; border-radius: 8px; }
+  .cat.on { background: rgba(180,151,90,0.25); color: #e8dcc4; border: 1px solid rgba(180,151,90,0.4); }
+</style>
+
+<div class="split">
+
+  <div class="mockup">
+    <div class="mockup-header">Surface 1 — the panel (working set)</div>
+    <div class="mockup-body" style="padding:0;">
+      <div class="sb2" style="aspect-ratio: 4/5;">
+        <div style="position:absolute; inset:10px; background:rgba(24,20,16,0.95); border:1px solid rgba(245,240,232,0.09); border-radius:10px; padding:10px;">
+          <div class="lbl4" style="margin-bottom:6px;">Style</div>
+          <div class="srch" style="margin-bottom:8px;">⌕ search styles…</div>
+
+          <div class="lbl4" style="margin-bottom:4px; color:rgba(245,240,232,0.3);">Current</div>
+          <div style="display:flex; gap:6px; margin-bottom:8px;">
+            <div class="thumb2 sel" style="width:44px; aspect-ratio:1;"><div class="tpot2" style="clip-path:polygon(15% 0, 85% 0, 78% 10%, 92% 25%, 80% 40%, 95% 60%, 82% 75%, 90% 92%, 75% 100%, 25% 100%, 10% 92%, 18% 75%, 5% 60%, 20% 40%, 8% 25%, 22% 10%);"></div></div>
+            <div style="flex:1;">
+              <div style="font:italic 10px Georgia,serif; color:#f5f0e8;">Superformula Blossom</div>
+              <div style="font:400 7px Inter,sans-serif; color:#8a8378; margin-top:2px;">Organic · 6 parameters</div>
+            </div>
+          </div>
+
+          <div class="lbl4" style="margin-bottom:4px; color:rgba(245,240,232,0.3);">Favorites & recent</div>
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin-bottom:8px;">
+            <div class="thumb2" style="aspect-ratio:1;"><div class="tpot2" style="border-radius:40%;"></div><span class="heart">♥</span></div>
+            <div class="thumb2" style="aspect-ratio:1;"><div class="tpot2" style="clip-path:polygon(20% 0, 80% 0, 90% 100%, 10% 100%);"></div><span class="heart">♥</span></div>
+            <div class="thumb2" style="aspect-ratio:1;"><div class="tpot2" style="opacity:.7;"></div></div>
+            <div class="thumb2" style="aspect-ratio:1; align-items:center;"><span style="color:#b4975a; font:600 8px Inter,sans-serif;">all →</span></div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:6px; margin: 4px 0 6px;">
+            <div style="flex:1; height:1px; background:rgba(245,240,232,0.08);"></div>
+            <span style="font:italic 9px Georgia,serif; color:#d8cfc0;">Blossom parameters</span>
+            <div style="flex:1; height:1px; background:rgba(245,240,232,0.08);"></div>
+          </div>
+          <div class="knb2"></div><div class="knb2"></div><div class="knb2"></div>
+          <div class="lbl4" style="color:#b4975a; margin-top:6px;">⌄ advanced — 3 more</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Surface 2 — the showroom (library, "all →" or /)</div>
+    <div class="mockup-body" style="padding:0;">
+      <div class="sb2" style="aspect-ratio: 4/5;">
+        <div style="position:absolute; inset:0; background:rgba(10,8,6,0.8);"></div>
+        <div style="position:absolute; inset:8px; background:rgba(24,20,16,0.97); border:1px solid rgba(245,240,232,0.12); border-radius:10px; padding:10px; display:flex; flex-direction:column;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font:italic 12px Georgia,serif; color:#f5f0e8;">Style library</span>
+            <div class="srch" style="width:40%;">⌕ "gothic"…</div>
+          </div>
+          <div style="display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;">
+            <span class="cat on">All 112</span><span class="cat">Organic</span><span class="cat">Geometric</span>
+            <span class="cat">Woven</span><span class="cat">Architectural</span><span class="cat">♥ Mine</span>
+          </div>
+          <div style="flex:1; display:grid; grid-template-columns:repeat(4,1fr); grid-auto-rows:1fr; gap:6px; overflow:hidden;">
+            <div class="thumb2 sel"><div class="tpot2"></div><span class="nm2">Blossom</span></div>
+            <div class="thumb2"><div class="tpot2" style="border-radius:40%;"></div><span class="nm2">Ripple</span><span class="heart">♥</span></div>
+            <div class="thumb2"><div class="tpot2" style="clip-path:polygon(20% 0, 80% 0, 90% 100%, 10% 100%);"></div><span class="nm2">Gothic</span></div>
+            <div class="thumb2"><div class="tpot2" style="clip-path:polygon(0 20%, 100% 0, 85% 100%, 15% 90%);"></div><span class="nm2">Voronoi</span></div>
+            <div class="thumb2"><div class="tpot2" style="opacity:.75; border-radius:20%;"></div><span class="nm2">Bamboo</span></div>
+            <div class="thumb2"><div class="tpot2" style="opacity:.65;"></div><span class="nm2">Dragon</span></div>
+            <div class="thumb2"><div class="tpot2" style="opacity:.55; border-radius:50% 50% 0 0;"></div><span class="nm2">Art Deco</span></div>
+            <div class="thumb2"><div class="tpot2" style="opacity:.5;"></div><span class="nm2">Gyroid</span></div>
+            <div class="thumb2"><div class="tpot2" style="opacity:.45;"></div><span class="nm2">Celtic</span></div>
+            <div class="thumb2"><div class="tpot2" style="opacity:.4;"></div><span class="nm2">Hive</span></div>
+            <div class="thumb2"><div class="tpot2" style="opacity:.35;"></div><span class="nm2">Weave</span></div>
+            <div class="thumb2" style="align-items:center;"><span style="color:#7a756f; font:500 8px Inter,sans-serif;">+ 100 more…</span></div>
+          </div>
+          <div style="font:400 7.5px Inter,sans-serif; color:#8a8378; margin-top:6px;">hover = preview on your pot behind the overlay · click = apply & return</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<h3 style="margin-top:20px;">Why this scales to 100+</h3>
+<div class="section" style="font-size:14px; line-height:1.65;">
+  <ul style="padding-left:20px;">
+    <li><strong>The panel never grows.</strong> Current style + favorites/recents (max ~8 thumbs) + parameters. Whether you have 15 styles or 500, the daily surface stays calm.</li>
+    <li><strong>The showroom absorbs all scale:</strong> category chips (needs a <code>category</code> field added to the style registry), search-as-you-type, lazy GPU thumbnail rendering with an IndexedDB cache so 100 previews don't re-render every open.</li>
+    <li><strong>Semi-transparent overlay:</strong> your pot stays faintly visible behind it; hovering a style live-applies to the real pot — comparison without leaving the library.</li>
+    <li><strong>Favorites (♥) bridge the two surfaces</strong> — shopping in the showroom stocks the panel's shelf.</li>
+  </ul>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="hybrid-yes" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>Adopt the two-surface hybrid</h3><p>Panel working set + showroom library, favorites bridge, category field in the registry.</p></div>
+  </div>
+  <div class="option" data-choice="hybrid-tweak" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>Hybrid, but with changes</h3><p>Tell me in the terminal what you'd adjust (e.g., no favorites, different categories, showroom as side drawer instead of overlay).</p></div>
+  </div>
+</div>

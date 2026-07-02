@@ -58,3 +58,6 @@ reproduce_*.js
 reproduce_*.ts
 temp_*.ts
 verify_fix.ts
+
+# Brainstorm companion sessions (mock working dirs)
+.superpowers/
