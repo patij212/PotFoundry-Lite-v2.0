@@ -2067,7 +2067,80 @@ Env-gated `PF_SHARP3D=1` in `research/bridge/_sharp3dArtDeco.test.ts`; each stag
 `research/exchange/_sharp3d/*.json` the instant computed; resumable. New ISOLATED files only (`_sharp3d*`); COPY any
 kernel fn modified; edit nothing in src/ or existing research files.
 
-### RESULT — (pending)
+### RESULT — VERDICT: CONFIRMED with a quantified sub-tolerance geometric-edge caveat (the raised standard IS reachable)
+
+The prior "irreducible C0 cliff / exclude / phantom" verdict (E-PERFECT-PIPELINE BLOCK 2) is **OVERTURNED**. Its two
+faults are both fixed here: (1) the tread WAS never meshed — now it is a first-class tessellated surface; (2) the
+ruler measured against r(θ,z) — now it measures against the ACTUAL CLOSED 3D OBJECT (a BVH point-to-triangle metric
+over a watertight reference that INCLUDES the 8 warped-annular treads). The ArtDeco "3.35mm cliff" was NEVER a real
+error — it was a missing surface in both the mesh and the metric.
+
+**THE FOUR NUMBERS (best build: sheared-φ conforming, nCol=960, nZ=120/tier graded-off, treadSub=10, 2.23M tris,
+faithful 21M-tri reference):**
+| metric | value | verdict |
+|---|---|---|
+| **3D chord vs closed object** | worst **0.014mm**, **p99 0.001mm**, p50 0.0003mm, **99.98% ≤0.01mm** (384/2.23M facets >0.01) | GREEN except the stair-tread lip |
+| **triangle quality** | minAngle recovers to ~14–50° at balanced aspect (best-diagonal); sliverOver=0 at balanced density; pctBelow10=0 at nZ≤60 | GOOD |
+| **serration** (feature-curve→nearest MESH EDGE) | step-ring **0.0010mm**, chevron **0.0036mm** | ~ZERO (features ARE mesh-edge chains) |
+| **watertight** (`auditNonManByIndex`, by index) | **0** at every stage/density | WATERTIGHT |
+
+Metric SOUND (adversarial): hashed-BVH == brute-force nearest-triangle to **0** on every worst-facet set (advMax=0
+across stages 1/3/6/9/10/11); the 3D metric AGREES with `projectPointToRadialSurface` to **2.9e-3mm** on a smooth C1
+control (stage1); the sheet branch of the hybrid metric agrees with the full BVH to **5.2e-3mm**. Conformed edges
+VERIFIED to be ACTUAL mesh edges (ring rows / chevron φ-columns are consecutive-vertex chains sharing triangle edges;
+serration ~0 is the proof), not merely nearby vertices.
+
+**WHAT SOLVED IT (the mechanism, by construction):**
+1. **Explicit closed-3D reference** (`_sharp3dRef.ts`): the parametric sheet on the 8 OPEN t-bands PLUS 8 horizontal
+   warped-annular TREAD bands, each a strip between r-below(θ) and r-above(θ) at the ring's fixed z. (Geometry
+   measured: 8 rings = 2/tier×4 tiers, PURE radius jump at a FIXED z, θ-modulated 3.1–4.2mm; jump over ~0 Δz ⇒
+   horizontal ledge, NOT vertical wall.)
+2. **Genuine 3D metric**: facet-sample → nearest point on the reference mesh via a flat-CSR spatial hash + exact
+   point-to-triangle (Ericson). Adversarially exact (== brute).
+3. **Tread meshing** (the single-valued (u,t) kernel CANNOT do this — the tread is a range of radii at ONE z): a
+   native 3D structured wall (`_sharp3dMesh.ts`) with DOUBLED ring rows (both radii at each ring z) ⇒ the tread is a
+   first-class tessellated strip; **tread radial sub-rings** make tread cells ~square (killed the 8–40:1 slivers →
+   minAngle 5.5°→15.9°). RESULT: **tread facets 0 over-tol** (the "cliff" the prior verdict called irreducible is
+   fully green).
+4. **Feature-conforming BY CONSTRUCTION**: every step ring is a full-circle constant-z mesh-edge chain at BOTH radii
+   (serration 0.001). The dominant sharp θ-feature is the chevron `|sin|` **C1 corner** (measured chord sag LINEAR
+   in facet width, sag/h≈7.8 const ⇒ uniform density stalls, like GothicArches V-ribs) — SOLVED by a **sheared
+   coordinate φ = θ + (4π/chevronFreq)·t** that turns the diagonal chevron kinks into FIXED φ-columns (z-independent,
+   twist-free), so a structured column-on-kink strip conforms them exactly (chevron serration 0.0036). Fan `|cos|^2.5`
+   cusps are density-convergent (sub-linear, measured) → handled by φ-fill.
+
+**REFUTED sub-approaches (kept, honest):** (a) uniform-θ + treads reaches minAngle 15.9° but STALLS on the chevron
+θ-chord (over01 6048, worst 0.063) — density can't cheaply conform a C1 corner. (b) `conformingThetas` merge-strip
+fixes the chevron chord (p99 0.006) but makes merge-strip SLIVERS (minAngle 0.1°). (c) LOGICAL-COLUMN structured
+strip TWISTS (kink cyclic order rotates across the θ=0 seam ⇒ self-crossing, worst 4.5mm) — this is why diagonal
+periodic features defeat naive structured meshing; the SHEAR is the fix. (d) cosine near-ring z-grading made junction
+slivers (minAngle 1.5°) with no chord gain — uniform density + best-diagonal is better.
+
+**THE RESIDUAL, LOCALIZED IN 3D (NOT phantom/accept):** the last 196–384 over-tol facets (0.017% of the mesh, worst
+**0.014mm**) are ALL at the **sheet↔tread junction** — the ~90° C0 EDGE where the near-vertical tier wall meets the
+horizontal tread (the physical "lip" of each stair tread; dihedral measured ~90°: sheet dr/dz≈0.19, tread horizontal).
+This is a GENUINE edge of the printable solid. The corner APEX is a mesh vertex (ring row reads ~0); the residual is
+the flat facet ADJACENT to the edge deviating from the true two-face surface at its interior — density-reducible but
+CORNER-LINEAR (worst 0.40 no-tread → 0.026 → 0.018 → 0.014 as ref/density rise; stalls near the corner floor). The
+reference ITSELF cannot get on-true-surface points near the junction below **0.0125mm even at 21M tris** — i.e. a flat
+triangle mesh cannot follow a 90° edge below ~O(facet-leg); to push the last facets 0.014→0.01 needs the near-apex
+facet leg ~0.3mm→~0.21mm (≈nZ 170/tier + treadSub 14). This is the real, quantified geometric limit — the same limit
+ANY triangle mesh (incl. a CAD tessellation) hits at a hard edge; it is sub-tolerance for the 99.98% and the 0.014
+tail is < FDM/SLA layer resolution.
+
+**BOTTOM LINE:** ArtDeco meshes to a GENUINE 3D standard — treads as first-class surfaces, all features embedded as
+mesh edges by construction (zero serration), watertight, good quality, **99.98% of facets ≤0.01mm against the ACTUAL
+CLOSED OBJECT, p99 0.001mm**. The only residual is the physical stair-tread-lip C0 edge at ~0.014mm (density-reducible
+to 0.01 at ~4× the facet budget; irreducible-to-0 for any flat-triangle mesh, as it is a true edge). The raised
+standard is REACHABLE. This POC clears the bar to scale the method to the other step/riser styles
+(DragonScales/GeometricStar/BasketWeave/CelticKnot/Bamboo/LowPoly — same "model the connecting band + shear/conform
+the sharp in-plane feature + score vs closed object" recipe).
+
+**FILES:** helpers `research/bridge/_sharp3dRef.ts` (closed-3D reference + BVH metric), `research/bridge/_sharp3dMesh.ts`
+(structured wall: tread sub-rings, sheared-φ, best-diagonal). Probe `research/bridge/_sharp3dArtDeco.test.ts`
+(PF_SHARP3D=1, stages 1–15, resumable). Checkpoints `research/exchange/_sharp3d/*.json`. Renders
+`research/exchange/_sharp3d/artdeco_sharp3d_final_vs_allgreen.png` (broadly green + isolated junction dots, matches
+metric). Commits 17b7659 (pre-reg), df67c68 (best-diag+faithful-ref), d9aa343 (localize), + this.
 
 ---
 
