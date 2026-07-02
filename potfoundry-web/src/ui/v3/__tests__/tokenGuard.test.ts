@@ -14,7 +14,7 @@ function walk(dir: string): string[] {
 describe('v3 token discipline', () => {
   it('uses no v1/v2 tokens inside src/ui/v3', () => {
     const offenders: string[] = [];
-    for (const file of walk(V3_DIR).filter((f) => /\.(css|tsx?)$/.test(f) && !f.includes('__tests__'))) {
+    for (const file of walk(V3_DIR).filter((f) => /\.(css|tsx?)$/.test(f) && !f.endsWith('tokenGuard.test.ts'))) {
       const text = fs.readFileSync(file, 'utf8');
       if (/--pf2-/.test(text) || /--pf-(?!3-)/.test(text)) offenders.push(file);
     }
