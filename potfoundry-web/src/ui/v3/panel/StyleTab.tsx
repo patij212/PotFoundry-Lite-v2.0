@@ -49,11 +49,14 @@ export const StyleTab: React.FC = () => {
 
   return (
     <div className="pf3-style-tab">
-      {/* style.name (registry key) must be in textContent for tests + current-style indicator */}
+      {/* config.name (display name) heads the card; registry key kept as mono secondary label */}
       <div className="pf3-style-tab__current" data-testid="pf3-style-current">
-        <div className="pf3-section-voice">{style.name}</div>
+        <div className="pf3-section-voice">
+          {config.name}{' '}
+          <span className="pf3-mono pf3-label">{style.name}</span>
+        </div>
         <p className="pf3-label" style={{ textTransform: 'none', letterSpacing: 0 }}>
-          {config.name} — {config.description}
+          {`${config.description} · ${Object.keys(config.params).length} parameters`}
         </p>
       </div>
       {/* Isolated handler: Phase 2 will replace <select> with a showroom overlay — one-line swap */}
