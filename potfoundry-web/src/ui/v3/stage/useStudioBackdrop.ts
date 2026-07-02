@@ -1,0 +1,22 @@
+import { useEffect } from 'react';
+import { useAppStore } from '../../../state';
+import { DEFAULT_APPEARANCE } from '../../../state/types';
+
+export const STUDIO_GRADIENT: [string, string] = ['#131009', '#0e0b08'];
+const FLAG = 'pf3-scene-migrated';
+
+export function useStudioBackdrop(): void {
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(FLAG) === '1') return;
+      const { appearance, setCustomGradient, setGradientAngle } = useAppStore.getState();
+      const [a, b] = appearance.gradient;
+      const [da, db] = DEFAULT_APPEARANCE.gradient;
+      if (a === da && b === db) {
+        setCustomGradient(STUDIO_GRADIENT);
+        setGradientAngle(0);
+      }
+      localStorage.setItem(FLAG, '1');
+    } catch { /* private mode — skip migration */ }
+  }, []);
+}
