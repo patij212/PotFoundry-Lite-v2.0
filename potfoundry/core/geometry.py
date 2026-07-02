@@ -317,6 +317,18 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     verts: list[tuple[float, float, float]] = []
     faces_out_parts: list[np.ndarray] = []
 
+    # Winding convention: every triangle is emitted so its normal points OUTWARD
+    # from the solid shell (CCW seen from outside), yielding a consistently
+    # oriented, positive-volume closed manifold. This is required for clean CAD
+    # import (Rhino/Grasshopper shade/boolean correctly) and slicing. The outer
+    # wall, inner wall, rim, and bottom-underside patches below are built with
+    # the geometrically natural (inward) winding and then reversed via
+    # ``_out(...)``; the top-of-slab and drain-cylinder patches are already
+    # outward. See tests/test_mesh_orientation.py for the enforced invariants.
+    def _out(tri: np.ndarray) -> np.ndarray:
+        """Reverse triangle winding so its normal faces outward."""
+        return tri[:, ::-1]
+
     def add_ring_xy(r_vals: np.ndarray, z: float, cTw: float, sTw: float) -> np.ndarray:
         # Rotate precomputed cos/sin by twist: cos(θ+tw)=cosθ·cosTw - sinθ·sinTw; sin(θ+tw)=sinθ·cosTw + cosθ·sinTw
         cx =  cos_th * cTw - sin_th * sTw
@@ -358,8 +370,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     v11 = outer_idx[1:, :][:, jn]
     tri1 = np.stack([v00, v10, v11], axis=2).reshape(-1, 3)
     tri2 = np.stack([v00, v11, v01], axis=2).reshape(-1, 3)
-    faces_out_parts.append(tri1)
-    faces_out_parts.append(tri2)
+    faces_out_parts.append(_out(tri1))
+    faces_out_parts.append(_out(tri2))
 
     # ---- Inner wall rings (clamp near drain)
     inner_idx = np.empty((len(z_inner), n_theta), dtype=int)
@@ -384,8 +396,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vi11 = inner_idx[1:, :][:, jn]
     tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
     tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
-    faces_out_parts.append(tri_in1)
-    faces_out_parts.append(tri_in2)
+    faces_out_parts.append(_out(tri_in1))
+    faces_out_parts.append(_out(tri_in2))
 
     # ---- Rim cap
     outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
@@ -393,8 +405,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vi0 = inner_top[j]; vi1 = inner_top[jn]
     tri_rim1 = np.stack([outer_top[j], inner_top[j], inner_top[jn]], axis=1)
     tri_rim2 = np.stack([outer_top[j], inner_top[jn], outer_top[jn]], axis=1)
-    faces_out_parts.append(tri_rim1)
-    faces_out_parts.append(tri_rim2)
+    faces_out_parts.append(_out(tri_rim1))
+    faces_out_parts.append(_out(tri_rim2))
 
     # ---- Drain circles (untwisted)
     drain_under = []; drain_top = []
@@ -411,8 +423,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     vd0 = drain_under[j];  vd1 = drain_under[jn]
     tri_bot1 = np.stack([outer_bottom[j], drain_under[jn], drain_under[j]], axis=1)
     tri_bot2 = np.stack([outer_bottom[j], outer_bottom[jn], drain_under[jn]], axis=1)
-    faces_out_parts.append(tri_bot1)
-    faces_out_parts.append(tri_bot2)
+    faces_out_parts.append(_out(tri_bot1))
+    faces_out_parts.append(_out(tri_bot2))
 
     # Top of bottom slab (inner bottom ring -> drain top ring)
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]

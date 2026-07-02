@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
 
 ### Fixed
+- **Mesh export quality (Rhino/Grasshopper):** `build_pot_mesh` now emits a
+  consistently-oriented, outward-facing closed manifold (positive signed volume,
+  every directed edge unique). Previously meshes were watertight but inside-out
+  with the bottom/drain caps wound opposite to the walls, which imports into CAD
+  tools with inverted/black faces and breaks boolean/thickness operations. Fixed
+  at construction in both `potfoundry/core/geometry.py` and the legacy
+  `potfoundry/geometry.py`; enforced by `tests/test_mesh_orientation.py`. See
+  [ADR 0002](adr/0002-mesh-orientation-invariant.md).
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`
